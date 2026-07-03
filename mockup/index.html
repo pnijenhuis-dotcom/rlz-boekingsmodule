@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RLZ Boekingsmodule — mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --border: #e2e4e8;
+    --text: #1f2430; --muted: #6b7280; --accent: #1d5fbf;
+    --green: #157a4a; --green-bg: #e4f4ec;
+    --orange: #b25e09; --orange-bg: #fdf0e0;
+    --red: #b3261e; --red-bg: #fbe9e7;
+    --blue-bg: #e7eefb; --purple: #6941c6; --purple-bg: #f0ebfa;
+  }
+  body.dark {
+    --bg: #12161f; --panel: #1b2230; --border: #2b3448;
+    --text: #e4e8f0; --muted: #98a3b8; --accent: #5b93e8;
+    --green: #3dbd82; --green-bg: #12352a;
+    --orange: #e59a3f; --orange-bg: #3a2c14;
+    --red: #e26a62; --red-bg: #3b1f1d;
+    --blue-bg: #1d2a44; --purple: #a78bfa; --purple-bg: #2a2342;
+  }
+  body.dark .upload { background: #161c28; border-color: #3a4560; }
+  body.dark th { background: #161c28; }
+  body.dark tr.clickable:hover { background: #202940; }
+  body.dark input, body.dark select, body.dark textarea { background-color: #131c1a; color: var(--text); }
+  body.dark .modal { background: var(--panel); }
+  body.dark input.warnfield, body.dark select.warnfield { background-color: #2e2513; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  .app { display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { width: 220px; background: #17223b; color: #cdd5e4; padding: 18px 0; flex-shrink: 0; }
+  .logo { font-weight: 700; color: #fff; padding: 0 20px 4px; font-size: 16px; }
+  .logo span { color: #7fa8e8; }
+  .sub { padding: 0 20px 18px; font-size: 11px; color: #7d8aa5; }
+  .nav a { display: flex; justify-content: space-between; padding: 10px 20px; color: #cdd5e4; text-decoration: none; cursor: pointer; }
+  .nav a:hover { background: #1e2c4d; }
+  .nav a.active { background: #24365e; color: #fff; border-left: 3px solid #7fa8e8; padding-left: 17px; }
+  .badge { background: var(--red); color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 11px; }
+  .badge.gray { background: #3a4a6e; }
+  .userbox { margin-top: 30px; padding: 14px 20px; border-top: 1px solid #263355; font-size: 12px; color: #8ea0c0; }
+  .userbox b { color: #fff; display: block; }
+
+  /* Main */
+  .main { flex: 1; padding: 22px 28px; max-width: 1250px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  h1 { font-size: 19px; }
+  .adm-select { display: flex; align-items: center; gap: 8px; }
+  .adm-select select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; font-size: 13px; }
+  .btn { background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .btn.secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  .btn.green { background: var(--green); }
+  .btn.warn { background: #fff; color: var(--orange); border: 1px solid var(--orange); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .cards { display: flex; gap: 14px; margin-bottom: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; flex: 1; }
+  .card .num { font-size: 24px; font-weight: 700; }
+  .card .lbl { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--border); background: #fafbfc; }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: #f6f9ff; }
+  .amount { text-align: right; font-variant-numeric: tabular-nums; }
+  th.amount { text-align: right; }
+
+  .chip { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 11.5px; font-weight: 600; }
+  .chip.ubl { background: var(--green-bg); color: var(--green); }
+  .chip.ai { background: var(--orange-bg); color: var(--orange); }
+  .chip.vraag { background: var(--red-bg); color: var(--red); }
+  .chip.geboekt { background: #eef0f3; color: var(--muted); }
+  .chip.klaar { background: var(--blue-bg); color: var(--accent); }
+  .chip.geheugen { background: var(--purple-bg); color: var(--purple); }
+
+  .upload { border: 2px dashed #c6cbd4; border-radius: 8px; padding: 26px; text-align: center; color: var(--muted); background: #fbfcfd; margin-bottom: 20px; }
+  .upload b { color: var(--accent); }
+
+  /* Controlescherm */
+  .review { display: flex; gap: 20px; align-items: flex-start; }
+  .docpane { flex: 1; background: #525659; border-radius: 8px; min-height: 640px; display: flex; align-items: center; justify-content: center; position: sticky; top: 20px; }
+  .fakepdf { background: #fff; width: 82%; min-height: 560px; padding: 30px; font-size: 12px; color: #333; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  .fakepdf h3 { margin-bottom: 4px; }
+  .fakepdf .fr { display: flex; justify-content: space-between; margin: 3px 0; }
+  .fakepdf hr { border: none; border-top: 1px solid #ddd; margin: 14px 0; }
+  .formpane { flex: 1.15; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; margin-bottom: 14px; }
+  .panel h2 { font-size: 14px; margin-bottom: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  label { font-size: 11.5px; color: var(--muted); display: block; margin-bottom: 3px; }
+  input, select, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; background: #fff; }
+  .conf { font-size: 10.5px; margin-left: 5px; font-weight: 600; }
+  .conf.hi { color: var(--green); } .conf.lo { color: var(--red); }
+  input.warnfield, select.warnfield { border-color: var(--orange); background-color: #fffaf3; }
+
+  .membanner { background: var(--purple-bg); border: 1px solid #d9ccf3; border-radius: 8px; padding: 11px 14px; font-size: 12.5px; color: #4a3591; margin-bottom: 14px; display: flex; gap: 10px; align-items: flex-start; }
+  .membanner .icon { font-size: 16px; }
+  .alertbanner { background: var(--orange-bg); border: 1px solid #f3d9b4; border-radius: 8px; padding: 11px 14px; font-size: 12.5px; color: #7a4a10; margin-bottom: 14px; display: flex; gap: 10px; }
+
+  .lines th, .lines td { padding: 8px 10px; font-size: 12.5px; }
+  .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+
+  /* Modal */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 50; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #fff; border-radius: 10px; padding: 22px; width: 480px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .modal h2 { font-size: 15px; margin-bottom: 12px; }
+  .modal .row { margin-bottom: 12px; }
+
+  /* Vragen */
+  .q-item { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 12px; }
+  .q-item .meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .q-item .vraagtekst { background: var(--red-bg); border-radius: 6px; padding: 9px 12px; margin: 8px 0; font-size: 13px; }
+  .q-answer { display: flex; gap: 8px; margin-top: 10px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 14px; }
+  .mock-note { position: fixed; bottom: 12px; right: 14px; background: #17223b; color: #9db2d6; font-size: 11px; padding: 6px 12px; border-radius: 14px; opacity: .85; }
+</style>
+<style id="designpass">
+  /* ===== Designpass: tokens ===== */
+  :root {
+    --bg: #f5f7f7; --panel: #ffffff; --border: #e5e9e8;
+    --text: #16181d; --muted: #647572; --accent: #2e6660;
+    --green: #12805c; --green-bg: #e6f4ee;
+    --orange: #b45309; --orange-bg: #fdf3e3;
+    --red: #b42318; --red-bg: #fceceb;
+    --blue-bg: #e9effc; --purple: #6941c6; --purple-bg: #f1ecfb;
+    --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 4px rgba(16,24,40,.05);
+  }
+  body { font-family: 'Inter', -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.01em; font-size: 13.5px; }
+  body.dark {
+    --bg: #0e1514; --panel: #16211f; --border: #263533;
+    --text: #e6ecea; --muted: #8ba09b; --accent: #5cb3a8;
+    --green: #34c08b; --green-bg: #123227;
+    --orange: #e9a23b; --orange-bg: #372a12;
+    --red: #ee6c62; --red-bg: #3a1e1b;
+    --blue-bg: #1b2740; --purple: #ab8ffc; --purple-bg: #28203f;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+
+  /* ===== Sidebar ===== */
+  .sidebar { width: 232px; background: linear-gradient(180deg, #14242b 0%, #0d1a19 100%); padding-top: 22px; }
+  .sub { color: #6e8683; padding-bottom: 22px; }
+  .nav a { margin: 2px 10px; padding: 9px 12px; border-radius: 8px; font-weight: 500; font-size: 13px; color: #a9bfba; transition: background .15s, color .15s; }
+  .nav a:hover { background: rgba(255,255,255,.06); color: #e6efec; }
+  .nav a.active { background: rgba(92,179,168,.16); color: #fff; border-left: none; padding-left: 12px; box-shadow: inset 3px 0 0 #5cb3a8; }
+  .badge { background: #e2544a; font-weight: 600; font-size: 10.5px; padding: 2px 7px; }
+  .badge.gray { background: rgba(255,255,255,.12); }
+  .userbox { border-top: 1px solid rgba(255,255,255,.08); margin-top: 26px; font-size: 12px; }
+  .blue-bg-fix { background: var(--blue-bg); }
+  :root { --blue-bg: #e6f0ee; --green: #1c7a54; }
+  body.dark { --blue-bg: #1a2e2b; }
+
+  /* ===== Layout & typography ===== */
+  .main { padding: 26px 34px; }
+  h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
+  .topbar { margin-bottom: 22px; }
+  .panel { border-radius: var(--radius); box-shadow: var(--shadow); border-color: var(--border); padding: 18px 20px; margin-bottom: 18px; }
+  .panel h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 14px; }
+  .card { border-radius: var(--radius); box-shadow: var(--shadow); }
+  .hint { font-size: 12px; line-height: 1.55; }
+
+  /* ===== Tables ===== */
+  table { border-radius: 10px; box-shadow: none; }
+  th { font-size: 10.5px; letter-spacing: .06em; padding: 9px 14px; background: transparent; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr.clickable { transition: background .12s; }
+  tr.clickable:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+  body.dark th { background: transparent; }
+  body.dark tr.clickable:hover { background: rgba(92,179,168,.08); }
+
+  /* ===== Chips met statusdot ===== */
+  .chip { border-radius: 999px; padding: 3px 10px 3px 8px; font-size: 11px; font-weight: 600; letter-spacing: 0; }
+  .chip::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: currentColor; }
+
+  /* ===== Buttons & inputs ===== */
+  .btn { border-radius: 8px; font-weight: 600; padding: 8px 16px; transition: filter .12s, transform .05s; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(1px); }
+  .btn.secondary:hover { filter: none; background: var(--bg); }
+  input, select, textarea { border-radius: 8px; padding: 8px 10px; transition: border-color .12s, box-shadow .12s; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  label { font-weight: 500; }
+
+  /* ===== Upload, modals, overig ===== */
+  .upload { border-radius: var(--radius); border-color: #cdd3de; transition: border-color .15s, background .15s; }
+  .upload:hover { border-color: var(--accent); background: var(--blue-bg); }
+  body.dark .upload { border-color: #33504b; }
+  body.dark .upload:hover { background: var(--blue-bg); }
+  .modal { border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  .membanner, .alertbanner { border-radius: 10px; line-height: 1.5; }
+  .docpane { border-radius: var(--radius); background: #3f4247; }
+  .cards { gap: 16px; }
+  .card .num { font-size: 26px; letter-spacing: -0.03em; }
+  .mock-note { font-weight: 600; letter-spacing: .02em; }
+
+  /* Logo: wit op de donkere sidebar, in beide thema's */
+  .applogo { display: block; width: calc(100% - 36px); margin: 2px 18px 4px; filter: brightness(0) invert(.96); opacity: .95; }
+
+  /* Fluid layout: groeit mee met het browservenster */
+  .main { max-width: none; }
+
+  /* Bedragen nadrukkelijker */
+  td.amount { font-weight: 600; }
+
+  /* Dark mode: zachter wit */
+  body.dark { --text: #d7dfdc; }
+  body.dark .fakepdf { background: #ececec; box-shadow: 0 4px 14px rgba(0,0,0,.6); }
+
+  /* Uniforme dropdowns */
+  select {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    padding-right: 32px; cursor: pointer; font-family: inherit; font-size: 13px; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; background-color: var(--panel);
+    box-shadow: 0 1px 2px rgba(16,24,40,.04); transition: border-color .12s, box-shadow .12s;
+    max-width: 100%; text-overflow: ellipsis;
+  }
+  select:hover { border-color: #c6cede; }
+  select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  td select { min-width: 150px; }
+  body.dark select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b96ab' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-color: var(--panel);
+  }
+  body.dark select:hover { border-color: #3a4763; }
+
+  /* Bankpicker */
+  .bankpicker { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; box-shadow: var(--shadow); }
+  .bankpicker .bp-icon { font-size: 18px; }
+  .bankpicker label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 1px; }
+  .bankpicker select { border: none; box-shadow: none; padding: 0 28px 0 0; font-weight: 600; font-size: 13px; background-color: transparent; min-width: 320px; }
+  .bankpicker select:focus { box-shadow: none; }
+  .bankpicker select:hover { border: none; }
+  .bankpicker .bp-saldo { font-size: 12px; color: var(--muted); border-left: 1px solid var(--border); padding-left: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <img src="logo.png" alt="Administratiekantoor Nijenhuis" class="applogo">
+    <div class="sub" style="padding-top:8px;text-align:center">Boekingsmodule · via Reeleezee API</div>
+    <div style="padding:0 14px 12px"><input placeholder="🔍 Zoek alles…" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#e8edf6;font-size:12.5px" onfocus="show('zoeken', null)"></div>
+    <div class="nav">
+      <a class="active" data-view="werkvoorraad" onclick="show('werkvoorraad', this)">Werkvoorraad <span class="badge">14</span></a>
+      <a data-view="klanten" onclick="show('klanten', this)">Klanten</a>
+      <a data-view="bank" onclick="show('bank', this)">Bank <span class="badge">9</span></a>
+      <a data-view="projecten" onclick="show('projecten', this)">Projecten <span class="badge">3</span></a>
+      <a data-view="autorisatie" onclick="show('autorisatie', this)">Autorisatie</a>
+      <a data-view="instellingen" onclick="show('instellingen', this)">Instellingen</a>
+    </div>
+    <div class="userbox"><b>Peter Nijenhuis</b>ingelogd · uitloggen<br><br>
+      <a style="cursor:pointer;color:#9db2d6" onclick="document.body.classList.toggle('dark'); this.textContent = document.body.classList.contains('dark') ? '☀️ Licht thema' : '🌙 Donker thema'">🌙 Donker thema</a>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- ================= WERKVOORRAAD ================= -->
+    <div class="view active" id="werkvoorraad">
+      <div class="topbar">
+        <h1>Werkvoorraad</h1>
+        <div class="adm-select">
+          <label style="margin:0">Administratie</label>
+          <select onchange="document.getElementById('admlabel').innerText=this.value">
+            <option>Alle administraties</option>
+            <option>Kempen Groep B.V.</option>
+            <option>Kempen Vastgoed B.V.</option>
+            <option>Kempen Services B.V.</option>
+          </select>
+          <button class="btn">+ Facturen uploaden</button>
+        </div>
+      </div>
+
+      <div class="upload">Sleep hier PDF- of UBL-bestanden naartoe, of <b>blader</b> · UBL wordt automatisch herkend, PDF's gaan door AI-extractie en komen altijd langs het controlescherm<br><span style="font-size:12px">Een PDF met méérdere facturen wordt automatisch gesplitst; elke factuur wordt op tenaamstelling aan de juiste administratie toegewezen. De voorgestelde splitsing en toewijzing zie je altijd eerst ter controle.</span></div>
+
+      <div class="panel" style="border-left:3px solid var(--orange)">
+        <h2>Niet toegewezen — handmatig koppelen (2)</h2>
+        <table>
+          <tr><th>Document</th><th>Binnengekomen via</th><th class="amount">Bedrag</th><th>AI-suggestie</th><th>Toewijzen aan</th><th></th></tr>
+          <tr>
+            <td>factuur_energie.pdf <span style="font-size:11px;color:var(--accent);cursor:pointer">bekijken ›</span></td>
+            <td>e-mail · info@blow.nl</td><td class="amount">€ 391,44</td>
+            <td><span class="chip ai">BLOW B.V. 61% / Kempen Groep 34%</span><br><span style="font-size:11px;color:var(--muted)">tenaamstelling "BLOW Holding" matcht geen administratie exact</span></td>
+            <td><select><option>BLOW B.V. (AI-suggestie)</option><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option></select></td>
+            <td style="white-space:nowrap"><button class="btn" style="padding:5px 12px" onclick="alert('Mockup: factuur gaat naar de werkvoorraad van de gekozen administratie en doorloopt daar de normale flow. De app onthoudt de koppeling: volgende keer wordt deze afzender/tenaamstelling automatisch toegewezen.')">Toewijzen ✓</button> <button class="btn secondary" style="padding:5px 12px" onclick="alert('Mockup: \'hoort niet bij ons\' — met verplichte reden, blijft in het archief terugvindbaar.')">Hoort niet bij ons</button></td>
+          </tr>
+          <tr>
+            <td>scan_whatsapp.jpg <span style="font-size:11px;color:var(--accent);cursor:pointer">bekijken ›</span></td>
+            <td>upload · P. Nijenhuis</td><td class="amount">€ 89,95</td>
+            <td><span class="chip vraag">geen suggestie</span><br><span style="font-size:11px;color:var(--muted)">bonnetje zonder tenaamstelling</span></td>
+            <td><select><option>— kies administratie —</option><option>BLOW B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option></select></td>
+            <td style="white-space:nowrap"><button class="btn" style="padding:5px 12px">Toewijzen ✓</button> <button class="btn secondary" style="padding:5px 12px">Hoort niet bij ons</button></td>
+          </tr>
+        </table>
+        <div class="hint">Alles wat de app niet eenduidig aan een administratie kan koppelen (e-mail, upload of batch-splitsing) komt hier terecht — er raakt nooit iets kwijt. Elke handmatige toewijzing wordt onthouden: dezelfde afzender of tenaamstelling wordt de volgende keer automatisch gekoppeld. Leeg = paneel onzichtbaar.</div>
+      </div>
+
+      <div class="panel">
+        <h2>Overzicht per klant</h2>
+        <table>
+          <tr><th>Administratie</th><th>Te controleren</th><th>Klaar om te boeken</th><th>Vragen</th><th>Afgewezen</th><th>Bij klant (goedkeuring)</th><th>Bank</th></tr>
+          <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))">
+            <td><b>Kempen Groep B.V.</b></td><td><span class="chip ai">2</span></td><td><span class="chip klaar">2</span></td><td><span class="chip vraag">1</span></td><td><span class="chip vraag">1</span></td><td>—</td><td><span class="chip ai">6</span></td>
+          </tr>
+          <tr class="clickable" onclick="alert('Mockup: opent dezelfde detailweergave, gefilterd op Kempen Vastgoed B.V.')">
+            <td><b>Kempen Vastgoed B.V.</b></td><td><span class="chip ai">1</span></td><td>—</td><td><span class="chip vraag">1</span></td><td>—</td><td>—</td><td>—</td>
+          </tr>
+          <tr class="clickable">
+            <td onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><b>BLOW B.V.</b></td><td>—</td><td onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><span class="chip klaar">1 omzetboeking</span></td><td>—</td><td>—</td><td onclick="alert('Mockup: filtert direct op de factuur die bij de klant ligt (laag 1/2).')"><span class="chip geheugen">1 (laag 1/2)</span></td><td onclick="show('bank', document.querySelector('[data-view=bank]')); alert('Mockup: opent Bank, gefilterd op BLOW B.V. — de 3 openstaande bankmutaties.')"><span class="chip ai">3</span></td>
+          </tr>
+        </table>
+        <div class="hint">Alleen klanten mét openstaande zaken staan in deze lijst — is alles geboekt, dan verdwijnt de klant automatisch en verschijnt hij weer zodra er een nieuwe mutatie binnenkomt. Elke teller is klikbaar en filtert direct. <span style="color:var(--muted)">· 9 klanten zonder openstaande zaken (verborgen)</span></div>
+      </div>
+
+    </div>
+
+    <!-- ================= KLANTPAGINA (openstaande zaken per klant) ================= -->
+    <div class="view" id="klantpagina">
+      <div class="topbar">
+        <h1><a onclick="show('werkvoorraad', document.querySelector('[data-view=werkvoorraad]'))" style="cursor:pointer;color:var(--accent)">← Werkvoorraad</a> <span style="color:var(--muted);font-weight:400">/</span> Kempen Groep B.V.</h1>
+        <div class="adm-select"><button class="btn">+ Facturen uploaden</button></div>
+      </div>
+      <div class="panel">
+      <h2>Openstaande zaken</h2>
+      <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center">
+        <input placeholder="Zoek op leverancier, bedrag, factuurnr…" style="max-width:300px">
+        <label style="margin:0;font-size:12px"><input type="checkbox" style="width:auto"> toon ook geboekt (archief)</label>
+        <span style="flex:1"></span>
+        <button class="btn green" onclick="alert('Mockup: alle facturen met status \'Klaar om te boeken\' worden in één keer geboekt — elk met eigen duplicaatcheck en idempotency-key. In de echte app met selectievakjes per regel.')">Boek alles wat klaar staat (2) ✓</button>
+      </div>
+      <table>
+        <tr><th>Document</th><th>Leverancier</th><th>Factuurdatum</th><th class="amount">Bedrag (incl. btw)</th><th>Status</th><th>Toegewezen</th></tr>
+        <tr>
+          <td>2026-0642-kopie.pdf</td><td>Bouwmaat Nederland B.V.</td><td>29 jun 2026</td><td class="amount">€ 1.847,23</td><td><span class="chip vraag">Mogelijk duplicaat van 2026-0642 — beoordelen</span></td><td>—</td>
+        </tr>
+        <tr>
+          <td>onderhoud-mei.pdf</td><td>Installatiebedrijf Hemmink</td><td>15 mei 2026</td><td class="amount">€ 3.660,10</td><td><span class="chip vraag">Boeken mislukt — RLZ: "boekjaar gesloten"</span> <button class="btn secondary" style="padding:3px 10px;font-size:11px" onclick="event.stopPropagation();alert('Mockup: toont de exacte RLZ-foutmelding + knop opnieuw proberen of boekdatum aanpassen. Een mislukte boeking blijft altijd zichtbaar, verdwijnt nooit stil.')">details</button></td><td>M. de Boer</td>
+        </tr>
+        <tr class="clickable" onclick="show('review', document.querySelector('[data-view=review]'))">
+          <td>2026-0642.pdf</td><td>Bouwmaat Nederland B.V.</td><td>29 jun 2026</td><td class="amount">€ 1.847,23</td><td><span class="chip ai">Te controleren</span></td><td>—</td>
+        </tr>
+        <tr class="clickable" onclick="show('review', document.querySelector('[data-view=review]'))">
+          <td>huur-juli.pdf</td><td>Vastgoed Beheer Twente</td><td>1 jul 2026</td><td class="amount">€ 3.025,00</td><td><span class="chip ai">Te controleren</span></td><td>—</td>
+        </tr>
+        <tr class="clickable" onclick="show('review', document.querySelector('[data-view=review]'))">
+          <td>batch_scan_wk27.pdf · p. 2–3 <span class="chip geheugen">gesplitst uit batch (5 fact.)</span></td><td>Eneco Zakelijk</td><td>27 jun 2026</td><td class="amount">€ 486,20</td><td><span class="chip ai">Te controleren</span></td><td>—</td>
+        </tr>
+        <tr class="clickable" onclick="show('review', document.querySelector('[data-view=review]'))">
+          <td>f2026-1108.xml</td><td>Technische Unie B.V.</td><td>30 jun 2026</td><td class="amount">€ 612,48</td><td><span class="chip klaar">Klaar om te boeken</span></td><td>—</td>
+        </tr>
+        <tr class="clickable" onclick="show('review', document.querySelector('[data-view=review]'))">
+          <td>f2026-1109.xml</td><td>Technische Unie B.V.</td><td>30 jun 2026</td><td class="amount">€ 88,12</td><td><span class="chip klaar">Klaar om te boeken</span></td><td>—</td>
+        </tr>
+        <tr class="clickable" onclick="show('vragen', document.querySelector('[data-view=vragen]'))">
+          <td>scan_0034.pdf</td><td>Onbekend (handgeschreven)</td><td>—</td><td class="amount">€ 450,00</td><td><span class="chip vraag">Vraag open</span></td><td>M. de Boer</td>
+        </tr>
+        <tr class="clickable" onclick="show('vragen', document.querySelector('[data-view=vragen]'))">
+          <td>2026-0598.pdf</td><td>Garage Wolters</td><td>25 jun 2026</td><td class="amount">€ 1.210,55</td><td><span class="chip vraag">Vraag open</span></td><td>P. Nijenhuis</td>
+        </tr>
+        <tr class="clickable" onclick="show('review', null)">
+          <td>2026-0611.pdf</td><td>Media Plaza Reclame</td><td>26 jun 2026</td><td class="amount">€ 795,00</td><td><span class="chip vraag">Afgewezen — ter controle</span><br><span style="font-size:11px;color:var(--muted)">reden: "niet onze bestelling, navragen bij leverancier" — J. Willems</span></td><td>P. Nijenhuis</td>
+        </tr>
+        <tr>
+          <td>2026-0640.pdf</td><td>Gamma Zakelijk</td><td>28 jun 2026</td><td class="amount">€ 234,90</td><td><span class="chip geboekt">Geboekt · IF-2026-0231</span></td><td>—</td>
+        </tr>
+        <tr>
+          <td>blow-inkoop-0221.pdf</td><td>Growshop De Toekomst</td><td>30 jun 2026</td><td class="amount">€ 2.480,00</td><td><span class="chip geheugen">Bij klant — goedkeuring laag 1/2</span></td><td>klant</td>
+        </tr>
+        <tr class="clickable" onclick="show('omzetreview', null)">
+          <td>MargeRapport-wk37.pdf</td><td><span class="chip klaar">omzetboeking</span> Weekomzet 15-09 t/m 21-09</td><td>21 sep 2025</td><td class="amount">€ 22.463,36</td><td><span class="chip klaar">Klaar om te boeken</span></td><td>—</td>
+        </tr>
+      </table>
+      <div class="hint">Klik op een regel om te controleren. Vragen staan als status in deze lijst (klik = vraag openen). Geboekte regels tonen het RLZ-boekstuknummer.</div>
+      </div>
+    </div>
+
+    <!-- ================= CONTROLESCHERM ================= -->
+    <div class="view" id="review">
+      <div class="topbar">
+        <h1><a onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))" style="cursor:pointer;color:var(--accent)">← Kempen Groep B.V.</a> <span style="color:var(--muted);font-weight:400">/</span> 2026-0642.pdf</h1>
+        <div class="adm-select"><span class="chip ai">PDF · AI-extractie</span></div>
+      </div>
+
+      <div class="membanner">
+        <div class="icon">🧠</div>
+        <div><b>Boekingsgeheugen:</b> laatste 12 facturen van <b>Bouwmaat Nederland B.V.</b> in deze administratie geboekt op <b>4110 · Bouwmaterialen</b> (btw 21%, betaaltermijn 30 dgn). Voorstel is vooraf ingevuld — controleer en pas aan waar nodig.</div>
+      </div>
+      <div class="alertbanner">
+        <div class="icon">⚠️</div>
+        <div><b>Afwijking:</b> factuurregel 3 bevat <b>0% btw</b> waar deze leverancier historisch altijd 21% rekent. Veld is gemarkeerd — controleer op de factuur.</div>
+      </div>
+
+      <div class="review">
+        <div class="docpane">
+          <div class="fakepdf">
+            <h3>FACTUUR</h3>
+            <div style="color:#888">Bouwmaat Nederland B.V. · Hengelo</div>
+            <hr>
+            <div class="fr"><span>Factuurnummer</span><b>2026-0642</b></div>
+            <div class="fr"><span>Factuurdatum</span><b>29-06-2026</b></div>
+            <div class="fr"><span>Vervaldatum</span><b>29-07-2026</b></div>
+            <div class="fr"><span>Debiteurnr.</span><b>KG-1042</b></div>
+            <hr>
+            <div class="fr"><span>Multiplex 18mm 122x244 (12×)</span><span>€ 762,00</span></div>
+            <div class="fr"><span>Verzinkt bevestigingsmat. div.</span><span>€ 411,10</span></div>
+            <div class="fr"><span>Statiegeld pallets</span><span>€ 90,00</span></div>
+            <hr>
+            <div class="fr"><span>Subtotaal excl. btw</span><b>€ 1.263,10</b></div>
+            <div class="fr"><span>Btw 21%</span><b>€ 246,35</b></div>
+            <div class="fr"><span>Btw 0%</span><b>€ 0,00</b></div>
+            <div class="fr" style="font-size:14px"><span><b>Totaal</b></span><b>€ 1.847,23 ?</b></div>
+            <div style="margin-top:26px;color:#aaa;font-size:10px">(mockup: hier staat de echte PDF-viewer / UBL-weergave)</div>
+          </div>
+        </div>
+
+        <div class="formpane">
+          <div class="panel">
+            <h2>Kopgegevens <span class="conf hi">extractie-zekerheid per veld</span></h2>
+            <div class="grid2">
+              <div><label>Administratie</label><select><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Services B.V.</option></select></div>
+              <div><label>Leverancier (RLZ-relatie) <span class="conf hi">98%</span></label><select><option>Bouwmaat Nederland B.V. (L-0042)</option><option>+ Nieuwe leverancier aanmaken…</option></select>
+              <label style="margin-top:6px;font-size:11px"><input type="checkbox" style="width:auto"> voortaan automatisch boeken voor deze leverancier <span style="color:var(--muted)">(harde checks — duplicaat, IBAN-wissel, telling — blijven altijd blokkeren)</span></label></div>
+              <div><label>Factuurnummer <span class="conf hi">99%</span></label><input value="2026-0642"></div>
+              <div><label>Factuurdatum <span class="conf hi">99%</span></label><input value="29-06-2026"></div>
+              <div><label>Vervaldatum <span class="conf hi">97%</span></label><input value="29-07-2026"></div>
+              <div><label>Totaal incl. btw <span class="conf lo">74% — wijkt af van regeltelling</span></label><input class="warnfield" value="€ 1.847,23"></div>
+              <div><label>Project <span style="color:var(--muted)">(verplicht bij deze administratie)</span></label><select class="warnfield" onchange="if(this.value.startsWith('+')) alert('Mockup: nieuw project aanmaken — naam + code invullen, wordt direct via de API in RLZ aangemaakt en is meteen selecteerbaar. Geen dubbele projectadministratie.')"><option>— kies project (verplicht, blokkeert boeken) —</option><option>P-2026-014 · Verbouwing pand Hengelo</option><option>P-2026-018 · Nieuwbouw unit 4</option><option>OVH · Overhead / algemene kosten (intern)</option><option>+ Nieuw project aanmaken… (synct naar RLZ)</option></select></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Boekingsregels <span class="chip geheugen">voorstel uit geheugen</span></h2>
+            <label style="font-size:12.5px;margin-bottom:10px;display:block"><input type="checkbox" style="width:auto" onchange="alert('Mockup: de factuurregels worden samengevoegd tot één boekingsregel — jij kiest één grootboekrekening en btw-code voor het totaal. Handig bij facturen met veel regels die allemaal op hetzelfde GB horen. De keuze wordt per leverancier onthouden.')"> <b>Regels samenvoegen tot één boekingsregel</b> <span style="color:var(--muted)">(één grootboek voor het hele factuurbedrag; wordt per leverancier onthouden)</span></label>
+            <table class="lines">
+              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th class="amount">Excl.</th></tr>
+              <tr>
+                <td>Multiplex 18mm (12×)</td>
+                <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option><option>4530 · Huisvesting</option></select></td>
+                <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>EU, Diensten</option><option>EU, Goederen (ICP)</option><option>Buiten EU</option><option>BTW-bedrag zelf specificeren</option></select></td>
+                <td class="amount">€ 762,00</td>
+              </tr>
+              <tr>
+                <td>Bevestigingsmateriaal</td>
+                <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option></select></td>
+                <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>EU, Diensten</option><option>EU, Goederen (ICP)</option><option>Buiten EU</option><option>BTW-bedrag zelf specificeren</option></select></td>
+                <td class="amount">€ 411,10</td>
+              </tr>
+              <tr>
+                <td>Statiegeld pallets</td>
+                <td><select class="warnfield"><option>?? — geen historie voor statiegeld</option><option>4110 · Bouwmaterialen</option><option>1300 · Vooruitbetaald</option></select></td>
+                <td><select class="warnfield"><option>0%</option><option>21%</option></select></td>
+                <td class="amount">€ 90,00</td>
+              </tr>
+            </table>
+            <div class="hint">Grootboek- én btw-lijsten komen live uit RLZ van deze administratie (alle tarieven, incl. verlegd/EU/vrijgesteld). Correcties die je hier maakt wegen zwaarder dan oude historie: pas je Ziggo één keer aan van Communicatie naar Internet, dan is Internet vanaf dat moment de eerste suggestie.</div>
+          </div>
+
+          <div class="panel">
+            <h2>Tijdlijn</h2>
+            <table class="lines">
+              <tr><td style="white-space:nowrap;color:var(--muted)">29 jun · 14:22</td><td>Binnengekomen via <b>facturen@kempengroep.nl</b> (afzender: administratie@bouwmaat.nl)</td></tr>
+              <tr><td style="white-space:nowrap;color:var(--muted)">29 jun · 14:23</td><td>AI-extractie afgerond · toegewezen aan <b>Kempen Groep B.V.</b> o.b.v. tenaamstelling</td></tr>
+              <tr><td style="white-space:nowrap;color:var(--muted)">30 jun · 09:05</td><td>Vraag gesteld door <b>M. de Boer</b> → beantwoord door <b>P. Nijenhuis</b> (30 jun · 11:47)</td></tr>
+              <tr><td style="white-space:nowrap;color:var(--muted)">—</td><td style="color:var(--muted)">Nog te gebeuren: controle → (accordering indien aan) → boeken in RLZ</td></tr>
+            </table>
+            <div class="hint">Elke stap met datum en tijd, van binnenkomst tot RLZ-boekstuk — ook wie accordeerde (welke laag) en wie boekte. Dezelfde tijdlijn is terug te vinden via Zoeken, ook bij geboekte facturen.</div>
+          </div>
+
+          <div class="actions">
+            <button class="btn secondary" onclick="document.getElementById('afwijsmodal').classList.add('open')">Afwijzen…</button>
+            <button class="btn warn" onclick="document.getElementById('vraagmodal').classList.add('open')">Vraag stellen…</button>
+            <button class="btn green" onclick="alert('Mockup — gedrag hangt af van de administratie:\n\n• Klant-goedkeuring UIT (zoals Kempen Groep): direct boeken in RLZ.\n\n• Klant-goedkeuring AAN: knop heet dan \'Ter accordering ✓\' — factuur gaat de goedkeuringsflow in en wordt NA het laatste akkoord automatisch geboekt, zonder extra handeling. Wijst de klant af, dan komt de factuur met reden terug in de werkvoorraad.')">Boeken in RLZ ✓</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= OMZETBOEKING CONTROLEREN (BLOW) ================= -->
+    <div class="view" id="omzetreview">
+      <div class="topbar">
+        <h1><a onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))" style="cursor:pointer;color:var(--accent)">← BLOW B.V.</a> <span style="color:var(--muted);font-weight:400">/</span> MargeRapport-wk37.pdf</h1>
+        <div class="adm-select"><span class="chip klaar">omzetboeking · kassarapport</span></div>
+      </div>
+
+      <div class="membanner">
+        <div class="icon">🧠</div>
+        <div><b>Rapport herkend:</b> Margerapport BLOW B.V., periode 15-09 t/m 21-09 (uit het rapport zelf gelezen). Periode nog niet geboekt — geen duplicaat. Plausibiliteit: marge 160% (historisch gemiddeld 157%), omzet +2,7% t.o.v. vorige week — binnen bandbreedte.</div>
+      </div>
+      <div class="alertbanner">
+        <div class="icon">⚠️</div>
+        <div><b>Btw-behandeling:</b> cannabisomzet valt buiten de btw-heffing en boekt op "NL, Geen BTW (Vrijgesteld)" — bewust géén 0%-tarief (dat zou in rubriek 1e van de aangifte belanden). Headshop- of horeca-omzet zou wél 21%/9% dragen; dit rapport bevat die categorieën niet.</div>
+      </div>
+
+      <div class="review">
+        <div class="docpane">
+          <div class="fakepdf">
+            <h3>Margerapport</h3>
+            <div style="color:#888">BLOWBV · 15-9 t/m 22-9 21:49</div>
+            <hr>
+            <div class="fr" style="font-weight:600;color:#888"><span>Omschrijving</span><span>Ink. Tot. · Verk. Tot. · %</span></div>
+            <div class="fr"><span>1. Weed</span><span>8.585,32 · 13.655,33 · 159%</span></div>
+            <div class="fr"><span>2. Hash</span><span>2.668,82 · 4.706,97 · 176%</span></div>
+            <div class="fr"><span>3. Joints</span><span>1.627,90 · 2.345,68 · 144%</span></div>
+            <div class="fr"><span>4. Edibles</span><span>280,85 · 315,00 · 112%</span></div>
+            <div class="fr"><span>Weed Prepacked</span><span>854,40 · 1.440,38 · 169%</span></div>
+            <hr>
+            <div class="fr" style="font-size:13px"><span><b>Totaal</b></span><b>14.017,29 · 22.463,36 · 160%</b></div>
+            <div style="margin-top:22px;color:#aaa;font-size:10px">(kassarapport zoals aangeleverd — btw-kolom overal 0)</div>
+          </div>
+        </div>
+
+        <div class="formpane">
+          <div class="panel">
+            <h2>Verkoopboeking (document 1 van 2) <span class="chip geheugen">mapping onthouden per administratie</span></h2>
+            <table class="lines">
+              <tr><th>Categorie (rapport)</th><th>Omzet-GB (RLZ)</th><th>Btw</th><th class="amount">Credit</th></tr>
+              <tr><td>1. Weed</td><td>Omzet Wiet</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 13.655,33</td></tr>
+              <tr><td>2. Hash</td><td>Omzet Hash</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 4.706,97</td></tr>
+              <tr><td>3. Joints</td><td>Omzet Joints</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 2.345,68</td></tr>
+              <tr><td>4. Edibles</td><td>Omzet Edibles</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 315,00</td></tr>
+              <tr><td>Weed Prepacked</td><td>Omzet Wiet</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 1.440,38</td></tr>
+              <tr><td><b>Debiteur: Kasomzet (systeemdebiteur) → Kas</b></td><td></td><td></td><td class="amount"><b>€ 22.463,36</b></td></tr>
+            </table>
+          </div>
+          <div class="panel">
+            <h2>Kostprijsboeking — memoriaal (document 2 van 2, gekoppeld)</h2>
+            <table class="lines">
+              <tr><th>Categorie</th><th>Kosten-GB (RLZ)</th><th class="amount">Debet</th></tr>
+              <tr><td>1. Weed</td><td>Inkopen Wiet</td><td class="amount">€ 8.585,32</td></tr>
+              <tr><td>2. Hash</td><td>Inkopen Hash</td><td class="amount">€ 2.668,82</td></tr>
+              <tr><td>3. Joints</td><td>Inkopen Joints</td><td class="amount">€ 1.627,90</td></tr>
+              <tr><td>4. Edibles</td><td>Inkopen Edibles</td><td class="amount">€ 280,85</td></tr>
+              <tr><td>Weed Prepacked</td><td>Inkopen Wiet</td><td class="amount">€ 854,40</td></tr>
+              <tr><td><b>aan Voorraad handelsgoederen</b></td><td></td><td class="amount"><b>€ 14.017,29 credit</b></td></tr>
+            </table>
+            <div class="hint">Marge blijft zo per productgroep zichtbaar in RLZ (omzet én kostprijs per groep) en de voorraad loopt mee. Beide documenten krijgen het PDF-rapport als bijlage en worden als één transactie geboekt: faalt document 2, dan zie je dat als foutstatus — nooit een halve boeking.</div>
+          </div>
+          <div class="actions">
+            <button class="btn warn" onclick="document.getElementById('vraagmodal').classList.add('open')">Vraag stellen…</button>
+            <button class="btn green" onclick="alert('Mockup: verkoopboeking + kostprijsmemoriaal worden via de API geboekt (met PDF-bijlage), wk 37 wordt als geboekte periode geregistreerd en kan niet dubbel geboekt worden.')">Boeken in RLZ ✓</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= (vervallen: omzetrapporten-tab — omzetboekingen lopen via de werkvoorraad) ================= -->
+    <div class="view" id="verkoop" style="display:none !important">
+      <div class="topbar">
+        <h1>Omzetrapporten</h1>
+        <div class="adm-select">
+          <select><option>BLOW B.V. (coffeeshop)</option><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option></select>
+          <button class="btn">+ Rapport uploaden</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Boekingen — BLOW B.V. <span class="chip geheugen">profiel: Margerapport (wekelijks)</span></h2>
+        <table>
+          <tr><th>Week</th><th>Periode</th><th>Status</th><th class="amount">Omzet</th><th class="amount">Kostprijs</th><th class="amount">Marge %</th><th>Boekstuk</th></tr>
+          <tr class="clickable" onclick="alert('Mockup: opent detail van de geboekte week (zelfde weergave als wk 37 hieronder, met RLZ-boekstuk).')"><td>Wk 36</td><td>08-09 t/m 14-09</td><td><span class="chip geboekt">Geboekt</span></td><td class="amount">€ 21.870,15</td><td class="amount">€ 13.712,40</td><td class="amount">158%</td><td>MEM-2025-0142</td></tr>
+          <tr class="clickable" onclick="document.getElementById('wkdetail').style.display = document.getElementById('wkdetail').style.display === 'none' ? 'block' : 'none'"><td>Wk 37</td><td>15-09 t/m 21-09</td><td><span class="chip klaar">Klaar om te boeken — klik voor detail</span></td><td class="amount">€ 22.463,36</td><td class="amount">€ 14.017,29</td><td class="amount">160%</td><td>—</td></tr>
+          <tr style="background:var(--red-bg)"><td>Wk 38</td><td>22-09 t/m 28-09</td><td><span class="chip vraag">Ontbreekt — rappel naar klant?</span></td><td class="amount">—</td><td class="amount">—</td><td class="amount">—</td><td>—</td></tr>
+        </table>
+      </div>
+
+      <div class="panel" id="wkdetail">
+        <h2>Detail wk 37 — boekingsvoorstel (memoriaal)</h2>
+        <div class="membanner">
+          <div class="icon">🧠</div>
+          <div><b>Plausibiliteit:</b> omzet +2,7% en marge 160% (historisch gemiddeld 157%) — binnen bandbreedte. Grootboekrekeningen komen live uit het RLZ-schema van deze administratie.</div>
+        </div>
+        <table>
+          <tr><th>Omzetregel</th><th>Grootboek (RLZ)</th><th>Btw</th><th class="amount">Credit</th></tr>
+          <tr><td>1. Weed</td><td>Omzet Wiet</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 13.655,33</td></tr>
+          <tr><td>2. Hash</td><td>Omzet Hash</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 4.706,97</td></tr>
+          <tr><td>3. Joints</td><td>Omzet Joints</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 2.345,68</td></tr>
+          <tr><td>4. Edibles</td><td>Omzet Edibles</td><td>Geen BTW (vrijgesteld) ⚠️</td><td class="amount">€ 315,00</td></tr>
+          <tr><td>Weed Prepacked</td><td>Omzet Wiet ⚠️ (mapping bevestigen)</td><td>Geen BTW (vrijgesteld)</td><td class="amount">€ 1.440,38</td></tr>
+          <tr><td><b>Tegenrekening</b></td><td>Kas</td><td>—</td><td class="amount"><b>€ 22.463,36 debet</b></td></tr>
+        </table>
+        <table style="margin-top:10px">
+          <tr><th>Kostprijsregel (per productgroep)</th><th>Grootboek (RLZ)</th><th class="amount">Debet</th></tr>
+          <tr><td>1. Weed</td><td>Inkopen Wiet</td><td class="amount">€ 8.585,32</td></tr>
+          <tr><td>2. Hash</td><td>Inkopen Hash</td><td class="amount">€ 2.668,82</td></tr>
+          <tr><td>3. Joints</td><td>Inkopen Joints</td><td class="amount">€ 1.627,90</td></tr>
+          <tr><td>4. Edibles</td><td>Inkopen Edibles</td><td class="amount">€ 280,85</td></tr>
+          <tr><td>Weed Prepacked</td><td>Inkopen Wiet ⚠️ (mapping bevestigen)</td><td class="amount">€ 854,40</td></tr>
+          <tr><td><b>Tegenrekening</b></td><td>Voorraad handelsgoederen</td><td class="amount"><b>€ 14.017,29 credit</b></td></tr>
+        </table>
+        <div class="actions" style="margin-top:12px">
+          <button class="btn warn" onclick="document.getElementById('vraagmodal').classList.add('open')">Vraag stellen…</button>
+          <button class="btn green" onclick="alert('Mockup: memoriaal wordt via de Reeleezee API geboekt; wk 37 krijgt het boekstuknummer en kan niet dubbel geboekt worden.')">Boeken in RLZ ✓</button>
+        </div>
+        <div class="hint">De mapping (categorie → grootboek → btw) stel je de eerste keer hier in het detail in; daarna onthoudt de app hem per administratie — zelfde principe als het boekingsgeheugen bij inkoop. Nieuwe categorie zonder mapping → regel geblokkeerd + automatische vraag.</div>
+      </div>
+
+    </div>
+
+    <!-- ================= BANK ================= -->
+    <div class="view" id="bank">
+      <div class="topbar"><h1>Bank controleren</h1></div>
+      <div class="panel">
+        <h2>Klanten met onverwerkte bankmutaties</h2>
+        <table>
+          <tr><th>Klant</th><th>Rekeningen</th><th>Onverwerkt</th><th>Oudste onverwerkte</th></tr>
+          <tr class="clickable" onclick="show('bankdetail', document.querySelector('[data-view=bank]'))">
+            <td><b>Kempen Groep B.V.</b></td><td>ING zakelijk · ING spaar · Kas</td><td><span class="chip ai">6</span></td><td>29-06-2026</td>
+          </tr>
+          <tr class="clickable" onclick="alert('Mockup: opent de bankpagina van BLOW B.V. met alleen hun rekeningen (Rabobank + Kas).')">
+            <td><b>BLOW B.V.</b></td><td>Rabobank · Kas</td><td><span class="chip ai">3</span></td><td>30-06-2026</td>
+          </tr>
+        </table>
+        <div class="hint">Alleen klanten met onverwerkte mutaties; volledig verwerkte klanten verschijnen hier pas weer bij nieuwe mutaties. Klik op een klant voor de rekeningen.</div>
+      </div>
+    </div>
+
+    <!-- ================= BANKDETAIL (per klant) ================= -->
+    <div class="view" id="bankdetail">
+      <div class="topbar">
+        <h1><a onclick="show('bank', document.querySelector('[data-view=bank]'))" style="cursor:pointer;color:var(--accent)">← Bank</a> <span style="color:var(--muted);font-weight:400">/</span> Kempen Groep B.V.</h1>
+        <div class="bankpicker">
+          <span class="bp-icon">🏦</span>
+          <div>
+            <label>Rekening</label>
+            <select>
+              <option>ING zakelijk · NL91 INGB 0002 4455 88 — ④ open</option>
+              <option>ING spaar · NL45 INGB 0007 1123 40 — ① open</option>
+              <option>Kas — ① open</option>
+            </select>
+          </div>
+          <span class="bp-saldo">Saldo € 48.212,90 · <b>6 onverwerkt</b></span>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="num">6</div><div class="lbl">Onverwerkte mutaties (deze rekening: 4)</div></div>
+        <div class="card"><div class="num">4</div><div class="lbl">Automatisch voorstel (regel herkend)</div></div>
+        <div class="card"><div class="num">2</div><div class="lbl">Handmatig beoordelen</div></div>
+      </div>
+      <div class="panel">
+        <h2>Onverwerkte bankmutaties</h2>
+        <table>
+          <tr><th>Datum</th><th>Tegenpartij / omschrijving</th><th class="amount">Bedrag</th><th>Voorstel</th><th>Bron voorstel</th><th></th></tr>
+          <tr>
+            <td>01-07</td><td>ING Bank N.V. · kosten zakelijk juni</td><td class="amount" style="color:var(--red)">− € 24,50</td>
+            <td>4890 · Bankkosten · geen btw</td><td><span class="chip geheugen">vaste regel (elke maand)</span></td>
+            <td><button class="btn green" onclick="alert('Mockup: geboekt volgens vaste regel.')">Akkoord ✓</button></td>
+          </tr>
+          <tr style="opacity:.65">
+            <td>01-07</td><td>Bouwmaat Nederland B.V. · fact. 2026-0642</td><td class="amount" style="color:var(--red)">− € 1.847,23</td>
+            <td>1600 · Crediteuren — afgeletterd op 2026-0642</td><td><span class="chip ubl">automatisch geboekt — exacte match naam + factuurnr + bedrag</span></td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>01-07</td><td>Vastgoed Beheer Twente · huur juli</td><td class="amount" style="color:var(--red)">− € 3.025,00</td>
+            <td>1600 · Crediteuren — afletteren op inkoopfactuur huur-juli.pdf</td><td><span class="chip geheugen">match op naam, geen factuurnr — bevestigen</span></td>
+            <td><button class="btn green" onclick="alert('Mockup: betaling afgeletterd op de openstaande inkoopfactuur.')">Akkoord ✓</button></td>
+          </tr>
+          <tr>
+            <td>30-06</td><td>Ziggo Zakelijk · abonnement</td><td class="amount" style="color:var(--red)">− € 68,45</td>
+            <td>4560 · Communicatie · 21% btw terugvragen</td><td><span class="chip geheugen">vaste regel (elke maand)</span></td>
+            <td><button class="btn green" onclick="alert('Mockup: geboekt volgens vaste regel.')">Akkoord ✓</button></td>
+          </tr>
+          <tr style="background:#fffaf3">
+            <td>29-06</td><td>J.H. Berends · spoedklus?? bedankt</td><td class="amount" style="color:var(--green)">+ € 850,00</td>
+            <td><select class="warnfield"><option>?? — geen regel, geen factuurmatch</option><option>8000 · Omzet</option><option>2000 · Kruisposten</option></select></td>
+            <td><span class="chip ai">handmatig</span></td>
+            <td><button class="btn warn" onclick="document.getElementById('vraagmodal').classList.add('open')">Vraag…</button></td>
+          </tr>
+        </table>
+        <div class="hint">Volgorde: 1) <b>exacte match</b> (tegenpartijnaam + factuurnummer + bedrag = openstaande factuur) → automatisch afgeletterd, geen handeling nodig; 2) gedeeltelijke match (naam wel, factuurnr of bedrag niet — denk aan deelbetalingen) → voorstel ter bevestiging; 3) vaste regel uit het geheugen (bankkosten, abonnementen); 4) <b>RLZ's eigen boekingsvoorstel</b> — via de API uitleesbaar, wordt getoond als bron en door ons voorstel overschreven waar ons geheugen het beter weet; 5) handmatig met vraag-optie. Elke regel toont wélke bron het voorstel deed. Na 3× dezelfde handmatige boeking stelt de app een vaste regel voor.</div>
+      </div>
+      <div class="hint">⚠️ Open verificatiepunt: kunnen bankmutaties via de Reeleezee API gelezen worden (RLZ heeft eigen bankkoppeling), of importeren wij zelf CAMT.053/MT940? Bepaalt de architectuur van dit scherm.</div>
+    </div>
+
+    <!-- ================= VRAGEN ================= -->
+    <div class="view" id="vragen">
+      <div class="topbar"><h1>Openstaande vragen</h1></div>
+
+      <div class="q-item">
+        <div class="meta"><span class="chip vraag">Open</span> &nbsp; scan_0034.pdf · Kempen Vastgoed B.V. · € 450,00 · gesteld door P. Nijenhuis, 01-07 14:32 · toegewezen aan <b>M. de Boer</b> (eigenaar administratie)</div>
+        <div class="vraagtekst">"Handgeschreven bon zonder leveranciersnaam. Weet jij van wie dit is en waar dit op geboekt moet worden?"</div>
+        <div class="q-answer"><input placeholder="Antwoord typen… (mockup)"><button class="btn">Beantwoorden</button><button class="btn secondary">Factuur bekijken</button></div>
+      </div>
+
+      <div class="q-item">
+        <div class="meta"><span class="chip vraag">Open</span> &nbsp; 2026-0598.pdf · Kempen Groep B.V. · € 1.210,55 · gesteld door M. de Boer, 30-06 09:15 · toegewezen aan <b>P. Nijenhuis</b> (eigenaar administratie)</div>
+        <div class="vraagtekst">"Garage Wolters — is dit onderhoud van de bedrijfsbus (4210) of van de heftruck (4220)? Kenteken staat niet op de factuur."</div>
+        <div class="q-answer"><input placeholder="Antwoord typen… (mockup)"><button class="btn">Beantwoorden</button><button class="btn secondary">Factuur bekijken</button></div>
+      </div>
+
+      <div class="q-item" style="opacity:.6">
+        <div class="meta"><span class="chip geboekt">Beantwoord & geboekt</span> &nbsp; 2026-0571.pdf · Kempen Services B.V. · beantwoord door J. Willems, 26-06</div>
+        <div class="vraagtekst" style="background:#eef0f3">"Abonnement Ziggo — zakelijk of doorbelasten aan huurder?" → <b>"Zakelijk, boeken op 4560."</b></div>
+      </div>
+      <div class="hint">Een factuur met een openstaande vraag kan niet geboekt worden tot de vraag beantwoord is. Het antwoord wordt toegevoegd aan het boekingsgeheugen.</div>
+    </div>
+
+    <!-- ================= PROJECTEN ================= -->
+    <div class="view" id="projecten">
+      <div class="topbar">
+        <h1>Projecten</h1>
+        <div class="adm-select"><input placeholder="Zoek project…" style="width:220px"></div>
+      </div>
+      <div class="panel">
+        <h2>Klanten met projectadministratie</h2>
+        <table>
+          <tr><th>Klant</th><th>Lopende projecten</th><th>Signalen</th><th class="amount">Nog te factureren (totaal)</th></tr>
+          <tr class="clickable" onclick="show('projectklant', document.querySelector('[data-view=projecten]'))"><td><b>Universal Steigerbouw B.V.</b></td><td>60</td><td><span class="chip vraag">3 projecten lopen achter</span></td><td class="amount">€ 214.600</td></tr>
+          <tr class="clickable" onclick="alert('Mockup: opent projectenlijst Kempen Groep B.V.')"><td><b>Kempen Groep B.V.</b></td><td>4</td><td><span class="chip ubl">geen</span></td><td class="amount">€ 38.150</td></tr>
+        </table>
+        <div class="hint">Alleen zichtbaar voor administraties waar projectadministratie aan staat. Dit menu-item verschijnt automatisch zodra een klant de projecttoggle aan heeft.</div>
+      </div>
+    </div>
+
+    <!-- ================= PROJECTKLANT (projecten van één klant) ================= -->
+    <div class="view" id="projectklant">
+      <div class="topbar">
+        <h1><a onclick="show('projecten', document.querySelector('[data-view=projecten]'))" style="cursor:pointer;color:var(--accent)">← Projecten</a> <span style="color:var(--muted);font-weight:400">/</span> Universal Steigerbouw B.V.</h1>
+        <div class="adm-select"><input placeholder="Zoek project…" style="width:200px"><label style="margin:0;font-size:12px;white-space:nowrap"><input type="checkbox" style="width:auto"> toon gearchiveerde (85)</label></div>
+      </div>
+      <div class="panel">
+        <h2>Lopende projecten (60)</h2>
+        <table>
+          <tr><th>Project (RLZ-code)</th><th class="amount">Budget (offerte)</th><th class="amount">Gefactureerd</th><th class="amount">Nog te factureren</th><th class="amount">Inkoop/kosten</th><th>Signaal</th></tr>
+          <tr class="clickable" onclick="show('projectdetail', document.querySelector('[data-view=projecten]'))"><td><b>25047</b> Ede (Welling bouw)</td><td class="amount">€ 84.500</td><td class="amount">€ 52.000</td><td class="amount">€ 32.500</td><td class="amount">€ 49.200</td><td><span class="chip vraag">transport loopt achter</span></td></tr>
+          <tr class="clickable" onclick="alert('Mockup: projectdetail.')"><td><b>25137</b> Bergeijk (van Stiphout)</td><td class="amount">€ 41.200</td><td class="amount">€ 39.800</td><td class="amount">€ 1.400</td><td class="amount">€ 30.100</td><td><span class="chip ubl">op schema</span></td></tr>
+          <tr class="clickable" onclick="alert('Mockup: projectdetail.')"><td><b>26074</b> Maarssen Kuyperstraat (Wessels)</td><td class="amount">€ 28.000</td><td class="amount">€ 12.500</td><td class="amount">€ 15.500</td><td class="amount">€ 19.750</td><td><span class="chip vraag">kosten &gt; gefactureerd</span></td></tr>
+        </table>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn green" onclick="document.getElementById('nieuwprojectmodal').classList.add('open')">+ Nieuw project aanmaken</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= PROJECTDETAIL ================= -->
+    <div class="view" id="projectdetail">
+      <div class="topbar">
+        <h1><a onclick="show('projectklant', document.querySelector('[data-view=projecten]'))" style="cursor:pointer;color:var(--accent)">← Universal Steigerbouw B.V.</a> <span style="color:var(--muted);font-weight:400">/</span> 25047 Ede (Welling bouw)</h1>
+        <div class="adm-select"><button class="btn secondary" onclick="alert('Mockup: opent de gekoppelde offerte/opdrachtbevestiging (PDF) en de budgetversies incl. meerwerk.')">Offerte & budgetversies</button></div>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="num">€ 84.500</div><div class="lbl">Budget (opdracht + 1× meerwerk)</div></div>
+        <div class="card"><div class="num">€ 52.000</div><div class="lbl">Gefactureerd (62%)</div></div>
+        <div class="card"><div class="num">€ 49.200</div><div class="lbl">Inkoop/kosten</div></div>
+        <div class="card"><div class="num" style="color:var(--green)">€ 30.400</div><div class="lbl">Prognose einde werk (budget − verwachte kosten)</div></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn" id="pdt-o" onclick="pdtab('o')">Overzicht</button>
+        <button class="btn secondary" id="pdt-m" onclick="pdtab('m')">Meerwerk (2)</button>
+      </div>
+      <div id="pd-overzicht">
+      <div class="panel">
+        <h2>Voortgang — gebouwde m² steiger vs offerte</h2>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="flex:1;background:var(--border);border-radius:999px;height:14px;overflow:hidden"><div style="width:78%;height:100%;background:var(--accent)"></div></div>
+          <b style="white-space:nowrap">1.240 / 1.600 m² (78%)</b>
+        </div>
+        <div class="hint">m² afgeleid uit de regels van inkoop- en verkoopfacturen (aantallen × afmetingen door AI-extractie), afgezet tegen de geoffreerde m². ⚠️ Werkt alleen betrouwbaar zolang m²/aantallen op de facturen staan — bij eigen materiaal zonder inkoopfactuur valt de app terug op montage-omzet als voortgangsmaat.</div>
+      </div>
+      <div class="panel">
+        <h2>25047 Ede (Welling bouw) — per werksoort <span class="chip geheugen">werksoorten live uit RLZ</span></h2>
+        <table>
+          <tr><th>Werksoort (omzet-GB ↔ kosten-GB in RLZ)</th><th class="amount">Budget</th><th class="amount">Gefactureerd</th><th class="amount">Nog te factureren</th><th class="amount">Inkoop/kosten</th><th>Status</th></tr>
+          <tr><td>Montage / demontage · <span style="color:var(--muted)">Omzet montage/demontage ↔ Inhuur montage/demontage</span></td><td class="amount">€ 46.000</td><td class="amount">€ 31.500</td><td class="amount">€ 14.500</td><td class="amount">€ 26.800</td><td><span class="chip ubl">op schema</span></td></tr>
+          <tr style="background:var(--red-bg)"><td>Transport (aan-/afvoer) · <span style="color:var(--muted)">Omzet transport ↔ Inhuur transport</span></td><td class="amount">€ 9.500</td><td class="amount">€ 3.200</td><td class="amount">€ 6.300</td><td class="amount">€ 6.900</td><td><span class="chip vraag">kosten € 3.700 hoger dan gefactureerd</span></td></tr>
+          <tr><td>Huur steigermateriaal · <span style="color:var(--muted)">Omzet huur ↔ Inhuur steiger</span> · <span class="chip ai">duurgebonden</span></td><td class="amount">€ 17.000</td><td class="amount">€ 11.300</td><td class="amount">€ 5.700</td><td class="amount">€ 8.100</td><td><span class="chip ubl">op schema</span></td></tr>
+          <tr><td>Tekenwerk & veiligheidsplan · <span style="color:var(--muted)">Omzet tekenwerk ↔ Inhuur tekeningen</span></td><td class="amount">€ 12.000</td><td class="amount">€ 6.000</td><td class="amount">€ 6.000</td><td class="amount">€ 7.400</td><td><span class="chip ai">let op — kosten naderen gefactureerd</span></td></tr>
+          <tr><td><b>Totaal</b></td><td class="amount"><b>€ 84.500</b></td><td class="amount"><b>€ 52.000</b></td><td class="amount"><b>€ 32.500</b></td><td class="amount"><b>€ 49.200</b></td><td></td></tr>
+        </table>
+        <div class="hint">Budget komt uit de ontlede offerte; gefactureerd en inkoop komen live uit RLZ (factuurregels met deze projectcode, gesplitst op omzet-GB). Signaaldefinitie: <b>achterstand = inkoop/kosten binnen een werksoort hoger dan wat ervoor gefactureerd is</b> — elke ochtend herberekend, signalen verschijnen in de werkvoorraad bij de klant-eigenaar. Budgetoverschrijding (gefactureerd + nog te factureren &gt; budget) geeft een tweede type signaal.</div>
+      </div>
+      <div class="panel">
+        <h2>Weekanalyse — gefactureerd vs inkoop</h2>
+        <table>
+          <tr><th>Week</th><th class="amount">Omzet gefactureerd</th><th class="amount">Inkoop geboekt</th><th>Signaal</th></tr>
+          <tr><td>Wk 23</td><td class="amount">€ 8.400</td><td class="amount">€ 6.100</td><td><span class="chip ubl">ok</span></td></tr>
+          <tr><td>Wk 24</td><td class="amount">€ 7.900</td><td class="amount">€ 5.800</td><td><span class="chip ubl">ok</span></td></tr>
+          <tr style="background:var(--red-bg)"><td>Wk 25</td><td class="amount">—</td><td class="amount">€ 1.660</td><td><span class="chip vraag">wél inkoop, geen omzet gefactureerd</span></td></tr>
+          <tr style="background:var(--red-bg)"><td>Wk 26</td><td class="amount">—</td><td class="amount">€ 760</td><td><span class="chip vraag">huurweek niet gefactureerd (steiger staat nog)</span></td></tr>
+          <tr><td>Wk 27 (huidig)</td><td class="amount">€ 1.190</td><td class="amount">€ 760</td><td><span class="chip ubl">ok</span></td></tr>
+        </table>
+        <div class="hint">Per week: wat is er gefactureerd en wat kwam er aan inkoop binnen op dit project. Weken met wél inkoop maar geen omzet zijn de klassieke lekkage bij steigerbouw (doorlopende huur, vergeten meerwerk) — die kleuren rood en genereren een signaal.</div>
+      </div>
+
+      <div class="panel">
+        <h2>Integrale marge (analytisch — niet geboekt)</h2>
+        <table>
+          <tr><th></th><th class="amount">Bedrag</th></tr>
+          <tr><td>Marge op directe kosten (gefactureerd − inkoop)</td><td class="amount">€ 2.800</td></tr>
+          <tr><td>Toegerekende overhead · <span style="color:var(--muted)">AK-opslag 8% van directe kosten (instelbaar per administratie)</span></td><td class="amount">− € 3.936</td></tr>
+          <tr><td><b>Integrale marge tot nu toe</b></td><td class="amount" style="color:var(--red)"><b>− € 1.136</b></td></tr>
+          <tr><td><b>Integrale prognose einde werk</b></td><td class="amount" style="color:var(--green)"><b>€ 26.464</b></td></tr>
+        </table>
+        <div class="hint">Analytische toerekening, alleen in dit platform — RLZ blijft ongemoeid (geen verdeelboekingen, geen tweede waarheid). De verdeelsleutel is per administratie instelbaar (% van directe kosten of €/montage-uur). Maandelijkse <b>dekkingscontrole</b>: som van toegerekende overhead over alle projecten vs de werkelijke kosten op het OVH-project — dekt de opslag de echte overhead niet (&lt;100%), dan is dat het signaal dat de tarieven omhoog moeten.</div>
+      </div>
+      </div>
+
+      <div id="pd-meerwerk" style="display:none">
+      <div class="panel">
+        <h2>Getekende opdracht & meerwerk</h2>
+        <table>
+          <tr><th>Versie</th><th>Document</th><th>Datum</th><th class="amount">Budget</th><th class="amount">Gefactureerd</th><th class="amount">Inkoop</th><th>Status</th></tr>
+          <tr><td><b>Opdracht</b></td><td>opdrachtbevestiging_25047.pdf</td><td>12 mrt 2026</td><td class="amount">€ 78.500</td><td class="amount">€ 48.800</td><td class="amount">€ 46.100</td><td><span class="chip ubl">actief</span></td></tr>
+          <tr><td><b>MW-01</b> · 2x oppersteiger</td><td>mail-akkoord-welling.pdf</td><td>18 jun 2026</td><td class="amount">€ 6.000</td><td class="amount">€ 3.200</td><td class="amount">€ 3.100</td><td><span class="chip ubl">actief</span></td></tr>
+          <tr style="background:var(--orange-bg)"><td><b>MW-02</b> · extra huurweken 25–28</td><td>— (mondeling, vastgelegd door uitvoerder)</td><td>26 jun 2026</td><td class="amount">€ 2.400</td><td class="amount">—</td><td class="amount">€ 760</td><td><span class="chip ai">wacht op akkoord klant</span></td></tr>
+          <tr><td colspan="3"><b>Totaal actief budget</b></td><td class="amount"><b>€ 84.500</b></td><td class="amount"><b>€ 52.000</b></td><td class="amount"><b>€ 49.200</b></td><td></td></tr>
+        </table>
+        <div class="actions" style="margin-top:10px"><button class="btn" onclick="alert('Mockup: upload een meerwerk-opdracht of akkoord-mail — wordt ontleed en als nieuwe budgetversie toegevoegd, gesplitst naar werksoort.')">+ Meerwerk toevoegen</button></div>
+        <div class="hint">Meerwerk telt pas mee in het actieve budget ná akkoord van de klant. Let op MW-02: er is al € 760 inkoop geboekt op meerwerk zonder akkoord — dat is ongedekt risico en genereert een signaal. Per versie zie je de eigen inkoop/verkoop-splitsing, zodat de getekende opdracht nooit vervuild raakt met meerwerkcijfers.</div>
+      </div>
+      </div>
+    </div>
+
+    <!-- ================= AUTORISATIE ================= -->
+    <div class="view" id="autorisatie">
+      <div class="topbar">
+        <h1>Autorisatie — goedkeuring door klanten</h1>
+        <div class="adm-select"><input placeholder="Zoek klant…" style="width:220px"></div>
+      </div>
+      <div class="panel">
+        <h2>Klanten</h2>
+        <table>
+          <tr><th>Klant / administratie</th><th>Goedkeuring</th><th>Accordeurs</th><th>Openstaand</th></tr>
+          <tr class="clickable" onclick="const d=document.getElementById('autdetail'); d.style.display='block'; d.scrollIntoView({behavior:'smooth'})"><td><b>BLOW B.V.</b></td><td><span class="chip ubl">aan</span></td><td>2 (schema: 1 → 2)</td><td><span class="chip geheugen">1 wacht op laag 1</span></td></tr>
+          <tr class="clickable" onclick="alert('Mockup: opent detail Kempen Groep B.V.')"><td><b>Kempen Groep B.V.</b></td><td><span class="chip geboekt">uit</span></td><td>—</td><td>—</td></tr>
+          <tr class="clickable" onclick="alert('Mockup: opent detail Kempen Vastgoed B.V.')"><td><b>Kempen Vastgoed B.V.</b></td><td><span class="chip geboekt">uit</span></td><td>—</td><td>—</td></tr>
+        </table>
+        <div class="hint">Schaalbaar naar 100+ klanten: zoeken, sorteren op openstaand. Klik op een klant voor accordeurs en schema.</div>
+      </div>
+      <div class="panel" id="autdetail" style="display:none">
+        <h2>BLOW B.V. — accordeurs & schema</h2>
+        <table>
+          <tr><th>Volgorde</th><th>Accordeur</th><th>Voorwaarde</th><th>Status</th></tr>
+          <tr><td><b>1</b></td><td>S. Bakker (s.bakker@blow.nl)</td><td>Alle facturen</td><td><span class="chip ubl">actief · app geïnstalleerd</span></td></tr>
+          <tr><td><b>2</b></td><td>R. Jansen (r.jansen@blow.nl)</td><td>Alleen &gt; € 1.000</td><td><span class="chip ai">uitnodiging verstuurd</span></td></tr>
+        </table>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn" onclick="alert('Mockup: klantmedewerker ontvangt uitnodiging per e-mail; account werkt in de mobiele goedkeur-app en op web. Ziet uitsluitend BLOW B.V.')">+ Accordeur uitnodigen</button>
+          <button class="btn secondary">Schema bewerken</button>
+        </div>
+        <div class="hint">Sequentieel: eerst laag 1 akkoord, dan pas laag 2 (indien voorwaarde van toepassing). Daarna wordt de factuur "klaar om te boeken" bij jullie. Elke stap in het audit log. Goedkeuren kan ook direct via de link in de notificatie-mail.</div>
+      </div>
+      <div class="panel">
+        <h2>Mobiele goedkeur-app (klanten)</h2>
+        <div style="display:flex;gap:24px;align-items:flex-start">
+          <div style="width:260px;border:10px solid #222;border-radius:28px;background:var(--bg);padding:12px;flex-shrink:0">
+            <div style="background:rgba(120,130,150,.18);border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:10.5px;line-height:1.4">
+              <b>🔔 RLZ Goedkeuren</b> · 09:00<br>Goedemorgen! Er wachten nog <b>2 facturen</b> op je akkoord.
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div style="font-size:11px;color:var(--muted)">BLOW B.V. · S. Bakker</div>
+              <div style="font-size:11px;font-weight:700">1 van 2</div>
+            </div>
+            <div style="background:#fff;border-radius:8px;min-height:230px;padding:12px;font-size:9px;color:#333;box-shadow:0 2px 8px rgba(0,0,0,.25)">
+              <b style="font-size:11px">FACTUUR — Growshop De Toekomst</b><br><span style="color:#888">nr. 2026-0221 · 30-06-2026</span><hr style="border:none;border-top:1px solid #ddd;margin:6px 0">
+              Kweekbenodigdheden div. — € 2.049,59<br>Btw 21% — € 430,41<hr style="border:none;border-top:1px solid #ddd;margin:6px 0"><b>Totaal € 2.480,00</b>
+              <div style="margin-top:10px;color:#aaa;font-size:8px">(volledige PDF, zoombaar)</div>
+            </div>
+            <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:8px;font-size:11px">
+              Boeking: <b>Inkopen Headshop</b> · btw 21%<br><span style="color:var(--muted)">€ 2.480,00 · vervalt 30-07</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px">
+              <button class="btn green" style="flex:1;padding:8px" onclick="alert('Mockup: akkoord vastgelegd (laag 1) → factuur 2 van 2 verschijnt automatisch. Na de laatste: \'Alles afgehandeld ✓\'')">Akkoord ✓</button>
+              <button class="btn secondary" style="flex:1;padding:8px" onclick="alert('Mockup: afwijzen vraagt verplicht een reden en gaat door naar de volgende factuur. Afwijzing komt met reden in jullie werkvoorraad.')">Afwijzen</button>
+            </div>
+          </div>
+          <div style="font-size:13px;line-height:1.6">
+            <b>Installeerbare app (PWA)</b><br>
+            Reviewflow: het factuurbeeld staat centraal, met daaronder compact wat er geboekt gaat worden. Akkoord → automatisch de volgende factuur, tot de stapel leeg is ("2 van 5"). Afwijzen vereist een reden en komt terug in jullie werkvoorraad.<br><br>
+            <b>Notificaties:</b> direct bij een nieuwe factuur, plus een dagelijkse herinnering (standaard 09:00, instelbaar per accordeur) met het aantal openstaande facturen — alleen als er iets openstaat, dus nooit ruis.<br><br>
+            <span style="color:var(--muted)">Technisch: Progressive Web App op dezelfde codebase — geen apart App Store-traject, updates direct live. Mocht een echte store-app later gewenst zijn, dan kan dezelfde code in een native schil (Capacitor).</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= KLANTEN (register) ================= -->
+    <div class="view" id="klanten">
+      <div class="topbar">
+        <h1>Klanten</h1>
+        <div class="adm-select"><input placeholder="Zoek klant…" style="width:240px"><button class="btn">+ Administratie koppelen</button></div>
+      </div>
+      <div class="panel">
+        <table>
+          <tr><th>Klant / administratie</th><th>RLZ-koppeling</th><th>Eigenaar</th><th>Goedkeuring klant</th><th>Openstaand</th><th class="amount">Geboekt deze maand</th></tr>
+          <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>BLOW B.V.</b></td><td><span class="chip ubl">verbonden</span></td><td>J. Willems</td><td><span class="chip ubl">aan (2 lagen)</span></td><td><span class="chip ai">4</span></td><td class="amount">31</td></tr>
+          <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>Kempen Groep B.V.</b></td><td><span class="chip ubl">verbonden</span></td><td>P. Nijenhuis</td><td><span class="chip geboekt">uit</span></td><td><span class="chip ai">6</span></td><td class="amount">58</td></tr>
+          <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>Kempen Vastgoed B.V.</b></td><td><span class="chip ubl">verbonden</span></td><td>M. de Boer</td><td><span class="chip geboekt">uit</span></td><td>—</td><td class="amount">12</td></tr>
+          <tr class="clickable" onclick="alert('Mockup: klantdossier van een klant zonder openstaand werk — volledig archief blijft bereikbaar.')"><td><b>Bakkerij Wolters V.O.F.</b></td><td><span class="chip ubl">verbonden</span></td><td>M. de Boer</td><td><span class="chip geboekt">uit</span></td><td>—</td><td class="amount">19</td></tr>
+        </table>
+        <div class="hint">Het volledige klantregister — óók klanten zonder openstaand werk (anders dan de werkvoorraad). Klik voor het klantdossier: openstaande zaken, geboekt archief, bankrekeningen, autorisatie en instellingen van die klant op één plek.</div>
+      </div>
+    </div>
+
+    <!-- ================= ZOEKEN ================= -->
+    <div class="view" id="zoeken">
+      <div class="topbar"><h1>Zoeken</h1></div>
+      <div class="panel">
+        <input placeholder='Zoek op leverancier, factuurnummer, bedrag, klant, medewerker…' value="bouwmaat" style="font-size:15px;padding:12px 14px;margin-bottom:16px">
+        <h2>Boekingen (3)</h2>
+        <table>
+          <tr><th>Document</th><th>Klant</th><th class="amount">Bedrag</th><th>Status</th><th>Historie</th></tr>
+          <tr class="clickable" onclick="show('review', null)"><td>2026-0642 · Bouwmaat Nederland B.V.</td><td>Kempen Groep B.V.</td><td class="amount">€ 1.847,23</td><td><span class="chip ai">Te controleren</span></td><td style="font-size:12px;color:var(--muted)">ontvangen 29-06 (e-mail) · AI-extractie 29-06</td></tr>
+          <tr class="clickable" onclick="alert('Mockup: opent de geboekte factuur uit het archief, met PDF en volledige historie.')"><td>2026-0601 · Bouwmaat Nederland B.V.</td><td>Kempen Groep B.V.</td><td class="amount">€ 922,04</td><td><span class="chip geboekt">Geboekt · IF-2026-0219</span></td><td style="font-size:12px;color:var(--muted)">geboekt 24-06 door P. Nijenhuis</td></tr>
+          <tr class="clickable" onclick="alert('Mockup: geboekte factuur met accorderingshistorie.')"><td>2026-0574 · Bouwmaat Nederland B.V.</td><td>BLOW B.V.</td><td class="amount">€ 2.310,66</td><td><span class="chip geboekt">Geboekt · IF-2026-0201</span></td><td style="font-size:12px;color:var(--muted)">akkoord S. Bakker (laag 1) 17-06 · akkoord R. Jansen (laag 2) 18-06 · automatisch geboekt 18-06</td></tr>
+        </table>
+        <h2 style="margin-top:18px">Audit-gebeurtenissen (2)</h2>
+        <table>
+          <tr><th>Tijdstip</th><th>Gebruiker</th><th>Actie</th><th>Detail</th></tr>
+          <tr><td>24-06 11:40</td><td>P. Nijenhuis</td><td>Geboekt</td><td>2026-0601 Bouwmaat · Kempen Groep B.V. · € 922,04</td></tr>
+          <tr><td>12-06 09:03</td><td>M. de Boer</td><td>Grootboek gecorrigeerd</td><td>Bouwmaat: 4120 Gereedschap → 4110 Bouwmaterialen (geheugen bijgewerkt)</td></tr>
+        </table>
+        <div class="hint">Doorzoekt alles in één keer: boekingen (ook gearchiveerd, mét RLZ-boekstuk en PDF), accorderingshistorie (wie keurde wanneer, welke laag), vragen & antwoorden en audit-gebeurtenissen. Bereikbaar vanaf elk scherm via het zoekveld linksboven.</div>
+      </div>
+    </div>
+
+    <!-- ================= INSTELLINGEN ================= -->
+    <div class="view" id="instellingen">
+      <div class="topbar"><h1>Instellingen</h1></div>
+      <div style="display:flex;gap:8px;margin-bottom:18px">
+        <button class="btn" id="stb-adm" onclick="stab('adm')">Administraties</button>
+        <button class="btn secondary" id="stb-gebr" onclick="stab('gebr')">Gebruikers</button>
+        <button class="btn secondary" id="stb-mail" onclick="stab('mail')">E-mail intake</button>
+        <button class="btn secondary" id="stb-audit" onclick="stab('audit')">Audit log</button>
+      </div>
+      <div class="panel" data-tab="adm">
+        <h2>Administraties & eigenaren</h2>
+        <input placeholder="Zoek administratie… (schaalt naar 100+, met paginering)" style="max-width:340px;margin-bottom:12px">
+        <table>
+          <tr><th>Administratie</th><th>RLZ-koppeling</th><th>Eigenaar (krijgt vragen)</th><th>Project verplicht bij boeken</th></tr>
+          <tr><td>Kempen Groep B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>P. Nijenhuis</option><option>M. de Boer</option><option>J. Willems</option></select></td><td><input type="checkbox" checked style="width:auto"> aan</td></tr>
+          <tr><td>Kempen Vastgoed B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>M. de Boer</option><option>P. Nijenhuis</option><option>J. Willems</option></select></td><td><input type="checkbox" checked style="width:auto"> aan</td></tr>
+          <tr><td>BLOW B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>J. Willems</option><option>P. Nijenhuis</option><option>M. de Boer</option></select></td><td><input type="checkbox" style="width:auto"> uit</td></tr>
+        </table>
+        <div class="hint">Projecten worden per administratie live uit RLZ gesynchroniseerd. Staat de toggle aan, dan is project een <b>harde eis</b>: boeken is geblokkeerd tot elke regel een projectcode heeft. Kosten zonder echt project (overhead, kantoorkosten) gaan naar het interne overhead-project (bijv. "OVH") dat bij inrichting per administratie wordt aangemaakt — zo sluit de som van alle projecten altijd aan op de totale administratie.</div>
+        <div class="actions" style="margin-top:10px"><button class="btn" onclick="alert('Mockup onboarding-flow nieuwe klant: 1) webservice-login aanmaken in de RLZ-administratie, 2) hier invoeren (versleuteld opgeslagen), 3) app synct grootboek, btw-codes, crediteuren en projecten, 4) eigenaar + toggles instellen. Klaar in ±5 minuten per klant.')">+ Administratie koppelen</button></div>
+      </div>
+      <div class="panel" data-tab="mail" style="display:none">
+        <h2>E-mail intake (centraal adres)</h2>
+        <table>
+          <tr><th>Adres</th><th>Status</th><th>Werking</th></tr>
+          <tr><td><b>facturen@kempengroep.nl</b></td><td><span class="chip ubl">actief</span></td><td>Bijlagen worden automatisch gescand, gesplitst en op tenaamstelling aan de juiste administratie toegewezen. Afzender telt als hint (klant X mailt → default administratie X), tenaamstelling op de factuur is leidend. Niet toewijsbaar → vraag naar behandelaar.</td></tr>
+        </table>
+      </div>
+      <div class="panel" data-tab="gebr" style="display:none">
+        <h2>Gebruikers (kantoor + klantaccordeurs)</h2>
+        <input placeholder="Zoek gebruiker…" style="max-width:340px;margin-bottom:12px">
+        <table>
+          <tr><th>Naam</th><th>E-mail</th><th>Rol / modules</th><th>Status</th><th>Laatste login</th></tr>
+          <tr><td>P. Nijenhuis</td><td>p.nijenhuis@kempengroep.nl</td><td><select><option>Beheerder (alle modules)</option><option>Boekhouding + Projecten</option><option>Boekhouding</option></select></td><td><span class="chip ubl">actief · 2FA</span></td><td>vandaag 09:12</td></tr>
+          <tr><td>M. de Boer</td><td>m.deboer@kempengroep.nl</td><td><select><option>Boekhouding + Projecten</option><option>Beheerder (alle modules)</option><option>Boekhouding</option></select></td><td><span class="chip ubl">actief · 2FA</span></td><td>gisteren 16:40</td></tr>
+          <tr><td>J. Willems</td><td>j.willems@kempengroep.nl</td><td><select><option>Boekhouding (geen projecten)</option><option>Boekhouding + Projecten</option><option>Beheerder (alle modules)</option></select></td><td><span class="chip ai">uitnodiging verstuurd (verloopt over 68 u)</span></td><td>—</td></tr>
+          <tr><td>S. Bakker <span class="chip geheugen">klant · BLOW B.V.</span></td><td>s.bakker@blow.nl</td><td>Accordeur (alleen eigen administratie)</td><td><span class="chip ubl">actief · 2FA</span></td><td>30-06 11:05</td></tr>
+        </table>
+        <div class="hint">Rollen bepalen welke modules een medewerker ziet: wie geen projectadministratie doet, ziet het Projecten-menu niet. Beheerder kan rollen en klant-scope per medewerker instellen; elke rolwijziging staat in het audit log.</div>
+        <div class="actions" style="margin-top:10px"><button class="btn" onclick="alert('Mockup: collega ontvangt een e-mail met eenmalige activatielink (72 uur geldig), maakt eigen wachtwoord + 2FA aan. Nooit gedeelde accounts.')">+ Collega uitnodigen</button></div>
+      </div>
+      <div class="panel" data-tab="audit" style="display:none">
+        <h2>Audit log</h2>
+        <table>
+          <tr><th>Tijdstip</th><th>Gebruiker</th><th>Actie</th><th>Detail</th></tr>
+          <tr><td>02-07 14:32</td><td>P. Nijenhuis</td><td>Geboekt</td><td>Inkoopfactuur TEST-POC-001 · BLOW B.V. · € 1,21 · RLZ-id 4a27…11e7</td></tr>
+          <tr><td>02-07 14:28</td><td>P. Nijenhuis</td><td>Leverancier aangemaakt</td><td>"TEST PoC Boekingsmodule" · BLOW B.V.</td></tr>
+          <tr><td>01-07 09:15</td><td>J. Willems</td><td>Afgewezen</td><td>2026-0611.pdf · reden: "niet onze bestelling" · terug in werkvoorraad</td></tr>
+        </table>
+        <div class="hint">Append-only: elke handeling (upload, wijziging, vraag, antwoord, boeking, afwijzing, login) met gebruiker, tijdstip en oude → nieuwe waarde. Export naar CSV mogelijk.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- VRAAG-MODAL -->
+<div class="modal-bg" id="vraagmodal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <h2>Vraag stellen over deze factuur</h2>
+    <div class="row"><label>Toewijzen aan</label>
+      <select><option>M. de Boer — eigenaar Kempen Vastgoed B.V. (standaard)</option><option>P. Nijenhuis</option><option>J. Willems</option></select>
+    </div>
+    <div class="row"><label>Vraag</label><textarea rows="3" placeholder="Bijv.: op welke kostenpost moet dit geboekt worden?"></textarea></div>
+    <div class="actions">
+      <button class="btn secondary" onclick="document.getElementById('vraagmodal').classList.remove('open')">Annuleren</button>
+      <button class="btn" onclick="document.getElementById('vraagmodal').classList.remove('open'); alert('Mockup: factuur krijgt status \'Vraag open\' en verschijnt in de vragenlijst van de gekozen collega. Boeken is geblokkeerd tot beantwoording.')">Vraag versturen</button>
+    </div>
+  </div>
+</div>
+
+<!-- NIEUW PROJECT-MODAL -->
+<div class="modal-bg" id="nieuwprojectmodal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:560px">
+    <h2>Nieuw project — Universal Steigerbouw B.V.</h2>
+    <div class="upload" style="padding:18px;margin-bottom:14px">Sleep hier de <b>offerte, opdrachtbevestiging of afspraken</b> naartoe · de AI ontleedt het document en vult onderstaande velden en de budgetregels per werksoort alvast in</div>
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-bottom:12px">
+      <div><label>Projectcode (automatisch, volgende in reeks)</label><input value="26085" readonly style="background:var(--bg)"></div>
+      <div><label>Status</label><select><option>Offerte (budget nog niet actief)</option><option>Opdracht (budget actief)</option></select></div>
+      <div><label>Plaats</label><input value="Ede" placeholder="uit document"></div>
+      <div><label>Opdrachtgever</label><input value="Welling bouw" placeholder="uit document"></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">RLZ-projectnaam wordt: <b>26085 Ede (Welling bouw)</b> — conform de bestaande naamconventie. Budget: € 78.500 verdeeld over 4 werksoorten (uit offerte).</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="document.getElementById('nieuwprojectmodal').classList.remove('open')">Annuleren</button>
+      <button class="btn green" onclick="document.getElementById('nieuwprojectmodal').classList.remove('open'); alert('Mockup: het platform genereert de projectcode (volgende in de reeks), maakt het project direct via de API aan in RLZ en registreert de budgetregels. Status \'Offerte\' = zichtbaar maar budget nog niet actief; wordt actief zodra de opdrachtbevestiging is gekoppeld.')">Project aanmaken ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- AFWIJS-MODAL -->
+<div class="modal-bg" id="afwijsmodal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <h2>Factuur afwijzen</h2>
+    <div class="row"><label>Reden van afwijzing (verplicht)</label><textarea rows="3" placeholder="Bijv.: niet onze bestelling / dubbele aanlevering / onjuiste tenaamstelling"></textarea></div>
+    <div class="row"><label>Ter controle naar</label>
+      <select><option>P. Nijenhuis — eigenaar administratie (standaard)</option><option>M. de Boer</option><option>J. Willems</option></select>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" onclick="document.getElementById('afwijsmodal').classList.remove('open')">Annuleren</button>
+      <button class="btn" onclick="document.getElementById('afwijsmodal').classList.remove('open'); alert('Mockup: factuur krijgt status \'Afgewezen — ter controle\' en blijft zichtbaar in de werkvoorraad. Niets verdwijnt ooit zonder spoor.')">Afwijzen</button>
+    </div>
+  </div>
+</div>
+
+<div class="mock-note">MOCKUP — dummy-data, geen echte koppeling</div>
+
+<script>
+function pdtab(t) {
+  document.getElementById('pd-overzicht').style.display = t === 'o' ? 'block' : 'none';
+  document.getElementById('pd-meerwerk').style.display = t === 'm' ? 'block' : 'none';
+  document.getElementById('pdt-o').className = t === 'o' ? 'btn' : 'btn secondary';
+  document.getElementById('pdt-m').className = t === 'm' ? 'btn' : 'btn secondary';
+}
+function stab(name) {
+  document.querySelectorAll('#instellingen .panel[data-tab]').forEach(p => p.style.display = p.dataset.tab === name ? 'block' : 'none');
+  ['adm','gebr','mail','audit'].forEach(t => document.getElementById('stb-' + t).className = t === name ? 'btn' : 'btn secondary');
+}
+function show(id, link) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  if (link) link.classList.add('active');
+  window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>
