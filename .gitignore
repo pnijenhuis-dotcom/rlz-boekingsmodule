@@ -3,3 +3,8 @@ verkenning/output/
 __pycache__/
 node_modules/
 *.pyc
+.DS_Store
+backend/.venv/
+backend/.pytest_cache/
+backend/*.egg-info/
+frontend/dist/
