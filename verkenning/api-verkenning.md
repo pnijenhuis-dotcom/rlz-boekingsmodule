@@ -63,5 +63,25 @@ Volledige keten werkt, empirisch bevestigd:
 1. Exacte payloadstructuur `PUT PurchaseInvoices/{guid}` + regels + boek-action (welke action-naam).
 2. Hoe `BankMutationDirectBookings` aan een statement-regel gekoppeld wordt.
 3. Afletteren: `QuickPaymentSelections`-flow bevestigen.
-4. Rate limits (docs-pagina "REST API limits") respecteren in de importpipeline.
+4. Rate limits (docs-pagina "REST API limits") — deels geobserveerd, zie hieronder; exacte
+   drempel nog niet bepaald.
 5. ⚠️ De RLZ-Blow-login lijkt de productie-administratie van klant BLOW B.V. — schrijf-acties in de PoC alléén op een testadministratie.
+6. ⚠️ **Nieuw (5 juli 2026): TESTADMIN-login heeft geen schrijfrechten.** `PUT Vendors/{guid}` op de
+   RLZ-test-administratie ("Administratiekantoor Nijenhuis", `8dbfb856-…3fc5`) geeft `403`:
+   `"Actie niet toegestaan bij huidige gebruikersrechten"`. Lezen werkt probleemloos (Ledgers,
+   TaxRates, Vendors — 184 crediteuren opgehaald). Blokkeert de schrijf-integratietest-suite
+   (`write_integration`) volledig — actie 138/17/19 nog niet te verifiëren. **Actie: Peter moet in
+   RLZ (Instellingen → Algemene instellingen → Webservice koppelingen) de rechten van de
+   TESTADMIN-webservice-login controleren/uitbreiden** (vermoedelijk ontbreekt het
+   crediteuren/inkoop-schrijfrecht).
+
+## Rate-limit-observatie (5 juli 2026, tegen BLOw B.V, read-only)
+
+20 opeenvolgende `GET Ledgers`-requests, sequentieel (geen parallelisme): alle 200, gemiddeld
+3,2 req/s volgehouden over 6,16s, **geen enkele rate-limit- of `Retry-After`-header** in de
+responses (niet bij succes, dus onbekend of ze bij een 429 wél verschijnen). Geen throttling
+opgetreden bij dit tempo. Dit is een lichte, niet-agressieve steekproef — geen poging gedaan om de
+daadwerkelijke bovengrens te vinden (BLOw is een productieadministratie van een echte klant, geen
+testomgeving om tegen te stresstesten). De ingebouwde client (`app/rlz/client.py`) doet sowieso
+altijd exponentiële backoff + respecteert een eventuele `Retry-After` op 429/5xx — voldoende
+robuust voor nu, los van het exacte cijfer.

@@ -128,6 +128,10 @@ class RlzClient:
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         return self._request("GET", path, params=params).json()
 
+    def request_raw(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Rauwe response incl. headers — vooral voor het observeren van rate-limit-headers."""
+        return self._request(method, path, **kwargs)
+
     def put(self, path: str, body: dict[str, Any], *, params: dict[str, Any] | None = None) -> httpx.Response:
         return self._request("PUT", path, json=body, params=params)
 
