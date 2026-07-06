@@ -24,11 +24,13 @@ brew install postgresql@16 python@3.12
 
 ### PostgreSQL 16 lokaal draaien
 
-Doel is uiteindelijk **PostgreSQL 16 via `docker-compose.yml`** (repo-root, koppelcontract v1.2).
-Op deze ontwikkelmachine is Docker niet geïnstalleerd; in plaats daarvan draait een losse
-Homebrew-PostgreSQL-16-cluster **op poort 5433** (5432 kan in gebruik zijn door een andere lokale
-Postgres-installatie, bv. Postgres.app — expliciet niet gebruikt voor dit project omdat die op
-een nieuwere major-versie dan prod zit).
+**PostgreSQL 16 via `docker-compose.yml`** (repo-root, koppelcontract v1.2) is de weg voor devs/CI
+met Docker: `docker compose up -d postgres` maakt zowel `boekhouding` als `boekhouding_test` aan op
+poort 5433, credentials identiek aan `.env.example`. Op deze ontwikkelmachine is Docker niet
+geïnstalleerd; in plaats daarvan draait een losse Homebrew-PostgreSQL-16-cluster **op poort 5433**
+(5432 kan in gebruik zijn door een andere lokale Postgres-installatie, bv. Postgres.app —
+expliciet niet gebruikt voor dit project omdat die op een nieuwere major-versie dan prod zit). Kies
+één van de twee paden; ze delen dezelfde poort en zijn dus niet gelijktijdig te draaien.
 
 ```bash
 make pg16-start   # start via pg_ctl — zie let op hieronder

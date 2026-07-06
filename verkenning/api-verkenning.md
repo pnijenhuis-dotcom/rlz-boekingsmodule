@@ -66,14 +66,63 @@ Volledige keten werkt, empirisch bevestigd:
 4. Rate limits (docs-pagina "REST API limits") — deels geobserveerd, zie hieronder; exacte
    drempel nog niet bepaald.
 5. ⚠️ De RLZ-Blow-login lijkt de productie-administratie van klant BLOW B.V. — schrijf-acties in de PoC alléén op een testadministratie.
-6. ⚠️ **Nieuw (5 juli 2026): TESTADMIN-login heeft geen schrijfrechten.** `PUT Vendors/{guid}` op de
-   RLZ-test-administratie ("Administratiekantoor Nijenhuis", `8dbfb856-…3fc5`) geeft `403`:
-   `"Actie niet toegestaan bij huidige gebruikersrechten"`. Lezen werkt probleemloos (Ledgers,
-   TaxRates, Vendors — 184 crediteuren opgehaald). Blokkeert de schrijf-integratietest-suite
-   (`write_integration`) volledig — actie 138/17/19 nog niet te verifiëren. **Actie: Peter moet in
-   RLZ (Instellingen → Algemene instellingen → Webservice koppelingen) de rechten van de
-   TESTADMIN-webservice-login controleren/uitbreiden** (vermoedelijk ontbreekt het
-   crediteuren/inkoop-schrijfrecht).
+6. ✅ **Opgelost (6 juli 2026): TESTADMIN-schrijfrechten uitgebreid.** Was 5 juli 2026 geblokkeerd
+   op `403` (zie git-historie); Peter heeft het "niets wijzigen"-vinkje op de AK_NijenClaude-login
+   uitgezet. `write_integration`-suite draait nu volledig — zie "Actie 19 Correct — geverifieerd
+   gedrag" hieronder.
+
+## Actie 19 Correct — geverifieerd gedrag (6 juli 2026, test-administratie) — GESLAAGD
+
+Volledige boekflow (vendor → inkoopfactuur → boeken (17) → storneren (19)) tweemaal end-to-end
+gedraaid tegen de RLZ-test-administratie ("Administratiekantoor Nijenhuis", `8dbfb856-…3fc5`),
+laatste run via `pytest -m write_integration`. Belangrijkste bevinding — dit was nog onbekend
+terrein (koppelcontract §7.3 nam "storneren = actie 19 + creditboeking" aan zonder het ooit
+end-to-end te hebben getest):
+
+- **Actie 19 zet `Status` van het bestaande document terug naar `1` (concept) — hetzelfde
+  document-id, geen apart creditdocument.** Vóór actie 19: `Status: 2` (definitief geboekt). Na
+  actie 19: `Status: 1`, zelfde `id`, `ReceiptNumber`, `Reference` en bedragen ongewijzigd.
+  `DocumentLineList`/`Lines` blijven intact (zelfde regel, geen negatieve tegenregel toegevoegd).
+- Er verschijnt **geen nieuw document** (geen aparte creditnota-achtige entiteit met eigen id) —
+  RLZ's "Correct" is dus een **heropen-actie**, niet een stornering-met-tegenboeking in de zin
+  van "twee documenten die samen optellen tot nul". Het effect op de onderliggende
+  journaalposten/grootboeksaldi is niet direct via de `PurchaseInvoices`-resource te zien (geen
+  `SourceDocumentId`-achtig veld op `JournalEntries` gevonden — `400 Could not find a property
+  named 'SourceDocumentId'`); aanname: het origineel geboekte journaalpost wordt door RLZ intern
+  teruggedraaid zodra het document weer concept wordt, maar dat is **niet bevestigd** via de API
+  en moet nog apart geverifieerd worden (bv. door grootboeksaldo vóór/na actie 19 te vergelijken
+  via `LedgerBalances`).
+- **Praktische consequentie voor de bouwlaag:** "storneren" in onze werkvoorraad-taal is dus geen
+  los creditdocument boeken — het is **actie 19 aanroepen en het document daarna opnieuw
+  corrigeren + herboeken (actie 17)** als je de correctie definitief wilt maken, of laten staan
+  als concept als je het gewoon wilt intrekken. Domeinbeslissingen die uitgaan van "stornering +
+  creditboeking als apart, zichtbaar tweede document" (CLAUDE.md, koppelcontract §7.3) moeten
+  hierop worden herzien.
+- `Reference` wordt door RLZ **afgekapt op 30 tekens** (ons `TEST-{uuid}` is 41 tekens; opgeslagen
+  als bv. `TEST-543de493-4ef4-4fed-ae87-4`). Relevant voor duplicaatcheck-criteria en voor de
+  referentie-prefix-conventie (`Platform/registers/reference-prefixen.md`) — prefixen + korte
+  hash passen, een volledige UUID niet.
+- Testdocumenten blijven staan (nooit hard verwijderd, conform §7.3): twee inkoopfacturen in
+  concept-status na actie 19 (id's `2b3f958f-a168-4e2f-b7e0-5c4c55eb0a7f` en
+  `543de493-4ef4-4fed-ae87-4b46cfa0aa15`, beide referentie-prefix `TEST-`), plus de leverancier
+  "TEST PoC RLZ-boekingsmodule — verwijderen" (`f56b1c00-856e-41d2-a400-894e090f1251`).
+
+### Actie 138 (duplicaatcheck) — payload-vorm nog steeds onbekend
+
+Blijft een open punt (was al onbekend terrein, zie boven). `POST PurchaseInvoices/Actions` met
+`{Type: 138}` geeft in elke geprobeerde vorm **`400 _InvalidData`**:
+- `{Type: 138, Reference: "..."}` (criteria-vorm)
+- `{Type: 138, Entity: {id}, Reference: "..."}`
+- volledige documentvorm (`Entity` + `DocumentLineList` + `Reference`) met `Type: 138`
+- kale `{Type: 138, Description: "..."}`
+
+De Help-pagina (`GET Help/Api/POST-adminId-PurchaseInvoices-Actions`) documenteert alleen de
+generieke `ApiAction`-vorm (`id`, `Type`, `Description`) — geen schema specifiek voor actie 138.
+Duplicaatcheck is daarmee **nog niet inzetbaar als idempotentie-hard-rule** in de bouwlaag; de
+`write_integration`-test laat deze stap nu non-blocking falen (loggen, niet hard assert) zodat de
+rest van de flow (17/19) wél getest kan worden. **Actie: navraag bij Reeleezee-support over het
+exacte requestschema voor ActionKind 138**, of reverse-engineeren via de RLZ-webinterface
+(netwerktab) tijdens een handmatige duplicaatcheck.
 
 ## Rate-limit-observatie (5 juli 2026, tegen BLOw B.V, read-only)
 

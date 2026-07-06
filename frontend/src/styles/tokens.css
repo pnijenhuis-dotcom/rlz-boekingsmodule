@@ -1,0 +1,50 @@
+/* Design tokens 1:1 overgenomen uit mockup/index.html (canonieke UI, #designpass-laag —
+   dat is de laatst-gewonnen versie in de mockup's eigen CSS-cascade). Wijzigingen aan tokens
+   gaan via de mockup, niet hier los. */
+:root {
+  --bg: #f5f7f7;
+  --panel: #ffffff;
+  --border: #e5e9e8;
+  --text: #16181d;
+  --muted: #647572;
+  --accent: #2e6660;
+  --green: #1c7a54;
+  --green-bg: #e6f4ee;
+  --orange: #b45309;
+  --orange-bg: #fdf3e3;
+  --red: #b42318;
+  --red-bg: #fceceb;
+  --blue-bg: #e6f0ee;
+  --purple: #6941c6;
+  --purple-bg: #f1ecfb;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 4px rgba(16, 24, 40, 0.05);
+}
+
+body.dark {
+  --bg: #0e1514;
+  --panel: #16211f;
+  --border: #263533;
+  --text: #d7dfdc;
+  --muted: #8ba09b;
+  --accent: #5cb3a8;
+  --green: #34c08b;
+  --green-bg: #123227;
+  --orange: #e9a23b;
+  --orange-bg: #372a12;
+  --red: #ee6c62;
+  --red-bg: #3a1e1b;
+  --blue-bg: #1a2e2b;
+  --purple: #ab8ffc;
+  --purple-bg: #28203f;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  letter-spacing: -0.01em;
+  font-size: 13.5px;
+  background: var(--bg);
+  color: var(--text);
+}

@@ -33,6 +33,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `boekhouding` (deze module). Vastgoedmodule krijgt `vastgoed`, MI-dashboard later `mi`.
 - Auth: e-mailuitnodiging (eenmalige link 72 u) + wachtwoord + **TOTP-2FA verplicht**, JWT-sessies.
   Rollen: Beheerder / Boekhouding+Projecten / Boekhouding / Klant-accordeur (scope: eigen administratie).
+- **Autorisatie (hard, bevestigd 2026-07-06):** klanten-scope per medewerker via koppeltabel
+  gebruiker↔administraties, afgedwongen door RLS (DB-niveau) + server-side checks — geen scope =
+  geen data, ook niet via bugs in de app-laag. Rol- en scope-wijzigingen exclusief door de
+  Beheerder-rol (initieel alleen Peter), server-side gecontroleerd. **Niemand kan zijn eigen rol
+  of scope muteren, ook een Beheerder niet** (tweede beheerder aanwijzen kan alleen door een
+  andere beheerder). Elke rol-/scope-wijziging in het append-only audit_event.
 - **Platformbrede afspraken (koppelcontract v1.3 + 14_ANTWOORD_AAN_RLZ, bindend):**
   uniform `audit_event`-schema (timestamptz, actor=platform-user-id, module, tabel+record-id,
   actie, oude+nieuwe waarde JSON, correlatie-id) als bron voor de WORM-export; **PII gescheiden
@@ -66,8 +72,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (RLZ's eigen bankvoorstellen, `IsSystemGenerated:true`).
 - Rate limits: docs "REST API limits" — exact verifiëren; client bouwt met throttling + retry/backoff.
 - Testdata (v1.3-afspraak): integratietests tegen een **aparte RLZ-test-administratie**;
-  testboekingen worden **gestorneerd/teruggeboekt** (actie 19 Correct + creditboeking), nooit hard
-  verwijderd — consistent met "niets verwijderen in externe systemen". Schrijftests op echte
+  testboekingen worden **gestorneerd** (actie 19 Correct), nooit hard verwijderd — consistent met
+  "niets verwijderen in externe systemen". **Geverifieerd gedrag (6 juli 2026, zie
+  verkenning/api-verkenning.md "Actie 19 Correct"): actie 19 zet hetzelfde document terug naar
+  concept (Status 1), er komt géén apart creditdocument bij** — de eerdere aanname
+  "actie 19 + creditboeking" was ongetest en klopt niet. Open vervolgpunt: nagaan of dit
+  domeinbeslissingen raakt die een zichtbaar stornering/credit-spoor veronderstellen (bv.
+  archief/tijdlijn-weergave), en koppelcontract §7.3 hierop bijwerken. Schrijftests op echte
   klantadministraties alleen bij uitzondering, met TEST-referentie en akkoord van Peter.
 
 ## Domeinbeslissingen (uit 10 ontwerprondes met Peter — details in mockup/index.html)
