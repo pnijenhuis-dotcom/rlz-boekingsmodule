@@ -44,6 +44,10 @@ ignore = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# write_integration is opt-in: een kale pytest-run mag NOOIT de live RLZ-testadministratie raken.
+# Expliciet draaien: `make test-write-integration` (of handmatig
+# `pytest -m write_integration --override-ini='addopts='`).
+addopts = '-m "not write_integration"'
 markers = [
-    "write_integration: schrijf-integratietests tegen een echte RLZ-testadministratie (skipt zonder TESTADMIN_* credentials)",
+    "write_integration: schrijf-integratietests tegen een echte RLZ-testadministratie (skipt zonder TESTADMIN_* credentials) — opt-in, zie addopts hierboven",
 ]

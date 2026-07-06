@@ -16,6 +16,19 @@ Backend:
    credential-store (envelope encryption via Secret Manager/KMS), append-only audit log in het
    **uniforme `audit_event`-schema** (v1.3), **PII gescheiden van financiële data**
    (pseudonimiseerbaar), **Row-Level Security** op administratie-scope (`SET LOCAL` per transactie).
+   Migratie 0002 + endpoints + tests staan (2026-07-06). **Besloten (Peter, 2026-07-06) — eerste
+   taken volgende sessie:**
+   - **Bootstrap-CLI voor de allereerste Beheerder.** Uitnodigen is Beheerder-only, dus er is nu
+     geen manier om de eerste Beheerder aan te maken zonder rechtstreeks in de database te
+     schrijven (kip-ei). Wordt een los commando (migratie-seed of eenmalig CLI-script), niet via
+     de uitnodigingsflow.
+   - **Refresh-tokens revocable maken** (aparte tabel i.p.v. stateless JWT — nu geen server-side
+     "log alle sessies uit" mogelijk) **+ audit_event ook voor login/activatie** (nu alleen
+     rol-/scope-wijzigingen, bewust beperkt gehouden bij het bouwen van de auth-basis).
+   - **E-mailverzending van uitnodigingen via een Cloud Run-job** (nu retourneert de
+     uitnodig-endpoint het token synchroon in de API-respons, geen SMTP-integratie).
+   - **Wachtwoordbeleid** (sterkte-eisen boven de minimumlengte van 12 tekens) bewust uitgesteld
+     — geen actie vóór een volgende sessie het oppakt.
 3. RLZ-client: Basic auth per administratie, `{adminId}`-routing, throttling/retry, PUT+GUID-
    conventie, acties (17/19/138), `$expand`-helpers. Integratietests tegen BLOW (read-only).
 4. Sync-laag per administratie: Ledgers, TaxRates, Vendors, Projects, JournalEntries (historie →

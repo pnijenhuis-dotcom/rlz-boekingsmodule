@@ -66,6 +66,14 @@ make migrate           # alembic upgrade head tegen boekhouding
 make test              # pytest — reset + migreert boekhouding_test, draait dan de tests
 ```
 
-Schrijf-integratietests (marker `write_integration`) draaien alleen als
-`TESTADMIN_USERNAME`/`TESTADMIN_PASSWORD` gevuld zijn in `../verkenning/.env` — zie
-`tests/integration/test_write_integration.py`.
+Schrijf-integratietests (marker `write_integration`) zijn **opt-in**: `pyproject.toml`
+(`addopts = '-m "not write_integration"'`) sluit ze standaard uit, zodat een kale `pytest`/
+`make test` nooit de live RLZ-test-administratie raakt. Expliciet draaien (alleen als
+`TESTADMIN_USERNAME`/`TESTADMIN_PASSWORD` gevuld zijn in `../verkenning/.env`):
+
+```bash
+make test-write-integration                                   # of handmatig:
+.venv/bin/pytest -m write_integration --override-ini='addopts=' -s
+```
+
+Zie `tests/integration/test_write_integration.py`.
