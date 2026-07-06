@@ -13,8 +13,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
    Correct); verwijderen doet alleen een mens in RLZ zelf.
 4. **Niets verdwijnt stil.** Afwijzen = verplichte reden + status in werkvoorraad. API-fout =
    zichtbare foutstatus + retry. Append-only audit log op elke handeling (wie/wat/wanneer/oud→nieuw).
-5. **Idempotentie overal**: client-GUID's (UUIDv5 waar deterministisch mogelijk), RLZ-duplicaatcheck
-   (collectie-actie 138) vóór elke boeking, idempotency-keys op boekacties.
+5. **Idempotentie overal**: client-GUID's (UUIDv5 waar deterministisch mogelijk) + eigen
+   duplicaatquery op Entity+Reference+bedrag vóór elke PUT, idempotency-keys op boekacties.
+   **RLZ's eigen actie 138 (duplicaatcheck) is bewezen zonder bruikbaar signaal** (drie
+   experimenten, verkenning/api-verkenning.md "Actie 138") — RLZ blokkeert duplicaten ook niet
+   zelf bij boeken (17). Niet gebruiken; idempotentie is volledig onze verantwoordelijkheid.
 6. **Secrets** in `.env`/secret-store, nooit in code of git. RLZ-credentials server-side versleuteld
    (envelope encryption, master key buiten de DB).
 
@@ -53,9 +56,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - Base: `https://apps.reeleezee.nl/api/v1` · Basic Auth (webservice-login per administratie) ·
   OData v4 · JSON via `Accept: application/json`. Endpointlijst: `GET /Help` (2.133 routes).
 - **Multi-administratie**: elke route ook als `{adminId}/...`. `GET Administrations` → id's.
-- **Aanmaken = PUT met client-GUID** (geen POST). Acties: `POST .../Actions {Type: n}`.
-  Actie 17 = Book (definitief), 19 = Correct, 34 = verrekenen, 138 = duplicaatcheck (collectie),
-  15/16 = LinkPaymentItems/UnlinkPayment (afletteren).
+- **Aanmaken = PUT met client-GUID** (geen POST). Acties: `POST .../{id}/Actions {Type: n}`
+  (per document, ook 138 — een collectie-vorm bestaat niet). Actie 17 = Book (definitief), 19 =
+  Correct (zet terug naar concept, géén apart creditdocument), 34 = verrekenen, 138 =
+  duplicaatcheck (**bewezen zonder bruikbaar signaal, niet gebruiken** — zie
+  verkenning/api-verkenning.md "Actie 138"), 15/16 = LinkPaymentItems/UnlinkPayment (afletteren).
 - Documentstatus: 1 = concept, 2 = definitief (inkoopfactuur), 3 = definitief (memoriaal).
 - **PurchaseInvoices**: PUT met `Entity:{id:vendorGuid}` + `DocumentLineList` (per regel
   `Account:{id}`, `TaxRate:{id}`, `NetAmount`, `TaxAmount`, `Project:{id}`). `/Uploads` = PDF-bijlage

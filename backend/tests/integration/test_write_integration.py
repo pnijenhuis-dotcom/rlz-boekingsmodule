@@ -2,8 +2,17 @@
 Nijenhuis', Platform/registers/entiteiten.md). Marker `write_integration`; skipt automatisch
 zolang TESTADMIN_USERNAME/TESTADMIN_PASSWORD leeg zijn in verkenning/.env.
 
-Flow (koppelcontract §7.3): vendor aanmaken -> inkoopfactuur met regel -> duplicaatcheck (138)
--> boeken (17) -> storneren (19 + creditboeking). Nooit hard verwijderen.
+Flow (koppelcontract §7.3): eigen duplicaatcheck (Entity+Reference+bedrag) -> vendor aanmaken ->
+inkoopfactuur met regel -> boeken (17) -> storneren (19). Nooit hard verwijderen.
+
+Idempotentie-fundament (verkenning/api-verkenning.md "Actie 138" + "Boekt RLZ zelf..."):
+RLZ's actie 138 (DetermineDuplicateInvoice) is bewezen zonder waarneembaar effect — geen
+onderscheid tussen duplicaat/unieke factuur in respons of document, en Book (17) blokkeert
+duplicaten zelf ook niet (getest met een byte-identieke Entity+Reference+bedrag-factuur die
+gewoon geboekt werd). Idempotentie moet dus volledig aan onze kant: deterministische
+client-GUID's (UUIDv5 waar mogelijk, zodat een herhaalde PUT vanzelf hetzelfde document raakt)
++ RlzClient.find_purchase_invoices_by_reference() vóór elke PUT als vangnet voor niet-
+deterministische GUID's.
 """
 
 from __future__ import annotations
@@ -12,7 +21,7 @@ import uuid
 
 import pytest
 
-from app.rlz.client import RlzApiError, RlzClient
+from app.rlz.client import RlzClient
 
 pytestmark = pytest.mark.write_integration
 
@@ -37,8 +46,16 @@ def test_volledige_boekflow_met_stornering(
 ) -> None:
     invoice_id = uuid.uuid4()
     reference = f"TEST-{invoice_id}"
+    total_amount = 1.21
 
-    # 1. Inkoopfactuur met regel (PUT + client-GUID)
+    # 1. Eigen duplicaatcheck vóór de PUT (idempotentie-fundament — niet RLZ's actie 138, zie
+    # moduledocstring). Nieuw client-GUID + nieuwe Reference, dus verwacht leeg.
+    existing = testadmin_client.find_purchase_invoices_by_reference(
+        vendor_id=test_vendor_id, reference=reference, total_amount=total_amount
+    )
+    assert existing == [], f"Onverwacht al aanwezig vóór aanmaken: {existing}"
+
+    # 2. Inkoopfactuur met regel (PUT + client-GUID)
     response = testadmin_client.put_purchase_invoice(
         invoice_id,
         vendor_id=test_vendor_id,
@@ -57,23 +74,25 @@ def test_volledige_boekflow_met_stornering(
     invoice = testadmin_client.get(f"PurchaseInvoices/{invoice_id}")
     assert invoice["Status"] == 1, "Verwachtte concept (1) vóór boeken"
 
-    # 2. Duplicaatcheck (collectie-actie 138) vóór boeken — idempotentie-hard-rule. Payload-vorm
-    # nog niet geverifieerd (open punt, verkenning/api-verkenning.md): elke geprobeerde vorm
-    # (Reference-criteria, volledige documentvorm, kale Type-only body) geeft 400 _InvalidData.
-    # Niet blokkerend maken voor de rest van de flow zolang dit openstaat — wél zichtbaar loggen.
-    try:
-        dup_response = testadmin_client.check_purchase_invoice_duplicate(Reference=reference)
-        print(f"\n[138-observatie] status={dup_response.status_code} body={dup_response.text}")
-    except RlzApiError as exc:
-        print(f"\n[138-observatie] payload-vorm nog onbekend, API gaf: {exc}")
+    # Duplicaatcheck vindt het net aangemaakte document nu wél (regressietest voor de filter zelf).
+    found = testadmin_client.find_purchase_invoices_by_reference(
+        vendor_id=test_vendor_id, reference=reference, total_amount=total_amount
+    )
+    assert [f["id"] for f in found] == [str(invoice_id)]
 
-    # 3. Boeken (actie 17)
+    # 3. RLZ's eigen actie 138 — bewezen geen effect (zie moduledocstring), hier alleen een
+    # regressietest dat het per-document-endpoint nog 204 geeft (niet meer op de collectie-vorm,
+    # die altijd 400 gaf).
+    dup_response = testadmin_client.run_unreliable_duplicate_check_action(invoice_id)
+    assert dup_response.status_code < 300, dup_response.text
+
+    # 4. Boeken (actie 17)
     book_response = testadmin_client.book_purchase_invoice(invoice_id)
     assert book_response.status_code < 300, book_response.text
     invoice = testadmin_client.get(f"PurchaseInvoices/{invoice_id}")
     assert invoice["Status"] == 2, "Verwachtte definitief-geboekt (2) na actie 17"
 
-    # 4. Storneren (actie 19) — nooit hard verwijderen (contract §7.3). Vastleggen wat de API
+    # 5. Storneren (actie 19) — nooit hard verwijderen (contract §7.3). Vastleggen wat de API
     # daadwerkelijk teruggeeft: geverifieerd 2026-07-06, zie verkenning/api-verkenning.md
     # ("Actie 19 Correct — geverifieerd gedrag").
     correct_response = testadmin_client.correct_purchase_invoice(invoice_id)

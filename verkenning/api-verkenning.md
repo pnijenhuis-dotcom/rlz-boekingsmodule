@@ -41,7 +41,7 @@ Volledige keten werkt, empirisch bevestigd:
 2. `PUT {adminId}/PurchaseInvoices/{guid}` met `Entity: {id: vendorGuid}` + `DocumentLineList` (regel met `Account: {id}`, `TaxRate: {id}`, `NetAmount`, `TaxAmount`) → 204; RLZ berekent totalen correct (€ 1,00 net + 21% = € 1,21)
 3. Factuurstatus: 1 = concept, 2 = definitief geboekt
 4. Boeken: `POST .../PurchaseInvoices/{id}/Actions` met `{Type: 17}` (Book) → 204, status → 2
-5. Beschikbare acties per factuur: 17 Book, 34 Factuur verrekenen, 109 Kopieer; collectie-acties: 133 Document berekenen, **138 "Bepaal of factuur al bestaat" (duplicaatcheck — gebruiken voor idempotentie!)**; verder ActionKind 15/16 LinkPaymentItems/UnlinkPayment (afletteren), 19 Correct
+5. Beschikbare acties per factuur: 17 Book, 34 Factuur verrekenen, 109 Kopieer; collectie-acties: 133 Document berekenen; verder ActionKind 15/16 LinkPaymentItems/UnlinkPayment (afletteren), 19 Correct, 138 "Bepaal of factuur al bestaat" — **per-document-actie, bewezen zonder bruikbaar signaal, niet gebruiken voor idempotentie** (zie "Actie 138" hieronder)
 6. Testdata in BLOw B.V: leverancier "TEST PoC Boekingsmodule — verwijderen" (4abedc58-2504-4229-b2d2-6e9924ba6146), factuur TEST-POC-001 (4a27719a-051f-41a1-b60d-dc05e07a11e7) — na controle door Peter opruimen via actie 19 (Correct) + verwijderen
 
 ## PoC 2: memoriaal weekomzet (2 juli 2026) — GESLAAGD
@@ -107,22 +107,72 @@ end-to-end te hebben getest):
   `543de493-4ef4-4fed-ae87-4b46cfa0aa15`, beide referentie-prefix `TEST-`), plus de leverancier
   "TEST PoC RLZ-boekingsmodule — verwijderen" (`f56b1c00-856e-41d2-a400-894e090f1251`).
 
-### Actie 138 (duplicaatcheck) — payload-vorm nog steeds onbekend
+### Actie 138 (duplicaatcheck) — DEFINITIEF: geen bruikbaar signaal, niet gebruiken
 
-Blijft een open punt (was al onbekend terrein, zie boven). `POST PurchaseInvoices/Actions` met
-`{Type: 138}` geeft in elke geprobeerde vorm **`400 _InvalidData`**:
-- `{Type: 138, Reference: "..."}` (criteria-vorm)
-- `{Type: 138, Entity: {id}, Reference: "..."}`
-- volledige documentvorm (`Entity` + `DocumentLineList` + `Reference`) met `Type: 138`
-- kale `{Type: 138, Description: "..."}`
+Drie experimenten (6 juli 2026, test-administratie) sluiten dit open punt af — met een andere
+uitkomst dan verwacht: **actie 138 werkt technisch, maar levert nooit een bruikbaar
+duplicaat-signaal.**
 
-De Help-pagina (`GET Help/Api/POST-adminId-PurchaseInvoices-Actions`) documenteert alleen de
-generieke `ApiAction`-vorm (`id`, `Type`, `Description`) — geen schema specifiek voor actie 138.
-Duplicaatcheck is daarmee **nog niet inzetbaar als idempotentie-hard-rule** in de bouwlaag; de
-`write_integration`-test laat deze stap nu non-blocking falen (loggen, niet hard assert) zodat de
-rest van de flow (17/19) wél getest kan worden. **Actie: navraag bij Reeleezee-support over het
-exacte requestschema voor ActionKind 138**, of reverse-engineeren via de RLZ-webinterface
-(netwerktab) tijdens een handmatige duplicaatcheck.
+**Experiment 1 — payload/endpoint.** `POST PurchaseInvoices/Actions` (collectie, zonder `{id}`)
+geeft met élke geprobeerde body **`400 _InvalidData`** (criteria-vorm, volledige documentvorm,
+kale `{Type: 138}`). Reden: 138 is, net als 17/19, een **per-document-actie**. Op
+`POST PurchaseInvoices/{id}/Actions` met kale `{"Type": 138}` (dezelfde minimale `ApiAction`-vorm
+als elke andere actie) geeft de API **`204`**. `GET ActionKinds/138` bevestigt
+`Name: DetermineDuplicateInvoice`, `Description: "Bepaal of de factuur al bestaat"`.
+
+**Experiment 2 — echt duplicaat vs uniek document.** Drie concept-inkoopfacturen aangemaakt bij
+dezelfde vendor, zelfde regel/bedrag (€1,21): A en B met **identieke** `Reference` (`TEST-DUP-A`),
+C met een unieke `Reference` (`TEST-DUP-CONTROL`) als controle. Actie 138 gedraaid op B (het
+duplicaat) én op C (uniek):
+- Response **exact gelijk** in beide gevallen: `204`, lege raw body, identieke headerset (alleen
+  de load-balancer-cookie `AWSALB`/`AWSALBCORS` verschilt — routing, geen data).
+- `GET` vóór/ná op beide documenten: het enige veld dat verandert is `Token`. Controlemeting op
+  document A — waarop **geen** actie is uitgevoerd, alleen twee keer `GET` — toont dezelfde
+  `Token`-drift. `Token` roteert dus bij élke `GET`, los van actie 138; geen signaal.
+- `PurchaseInvoices/{id}/DocumentTaskHistory` is voor B en C identiek leeg
+  (`DetailDataCollection: []`) — ook hier geen onderscheid.
+
+**Experiment 3 — blokkeert Book (17) zelf duplicaten?** Binnen besluit 0005 (boeken mag in de
+test-administratie, mits meteen gestorneerd): A geboekt (uniek op dat moment) → `204`, Status 2.
+Vervolgens B (het byte-identieke duplicaat qua Entity+Reference+bedrag, nog concept) óók geboekt →
+**`204`, Status 2 — geen enkele blokkade.** RLZ boekt het duplicaat gewoon, met een eigen
+`ReceiptNumber`. Actie 138 nogmaals op het inmiddels geboekte B: nog steeds `204`, geen effect. Een
+tweede boekpoging op het al-geboekte B geeft wél een fout — **`409 APIActions_NotAllowed`** — maar
+dat is de generieke statusmachine-guard ("kan niet twee keer boeken vanuit Status 2"), niet een
+duplicaatmelding. Beide (A en B) meteen na het experiment gestorneerd (actie 19 → Status 1, conform
+besluit 0005); niets hard verwijderd.
+
+**Conclusie:** RLZ heeft **geen server-side duplicaatbescherming** bij het boeken van
+inkoopfacturen, en actie 138 geeft **in geen enkele geteste toestand** (concept/geboekt,
+duplicaat/uniek) een waarneembaar signaal terug. Actie 138 is voor idempotentie-doeleinden
+**onbruikbaar** — niet omdat de payload-vorm ontbrak (dat was de aanvankelijke misvatting), maar
+omdat de actie zelf geen extern waarneembaar resultaat heeft.
+
+**Idempotentie-fundament wordt daarmee volledig eigen verantwoordelijkheid** (koppelcontract-
+principe 5, CLAUDE.md):
+1. **Deterministische client-GUID's** (UUIDv5 waar het brondocument dat toelaat) — een herhaalde
+   PUT met dezelfde GUID raakt vanzelf hetzelfde document, RLZ's PUT-semantiek is hier al
+   idempotent voor.
+2. **Eigen duplicaatquery vóór elke PUT**, als vangnet voor niet-deterministische GUID's:
+   `GET PurchaseInvoices?$filter=Entity/id eq {vendorGuid} and Reference eq '{ref}'` — **werkend
+   geverifieerd** (test-administratie: 2 hits op de identieke-Reference-paar A/B, 1 hit op de
+   unieke C). Optioneel `and BaseInvoiceAmount eq {bedrag}` erbij voor extra precisie — ook
+   geverifieerd. **Filter op de afgekapte (30-tekens) `Reference`**, anders mist de query facturen
+   met een lange referentie (zie hierboven). Geïmplementeerd als
+   `RlzClient.find_purchase_invoices_by_reference()`.
+3. RLZ's actie 138 blijft beschikbaar in de client
+   (`RlzClient.run_unreliable_duplicate_check_action()`) puur voor volledigheid/toekomstig
+   support-antwoord — nooit aanroepen vóór het gedrag hierboven is herzien door Reeleezee-support.
+
+**Openstaand:** supportvraag aan Reeleezee (zie onderaan dit document) — is dit het bedoelde
+gedrag van actie 138, of ontbreekt er server-side configuratie/rechten om het functioneel te
+maken?
+
+Achtergebleven testdocumenten uit dit experiment (nooit verwijderd, alle concept ná stornering):
+vendor `f56b1c00-856e-41d2-a400-894e090f1251`; facturen A (`fe46f0d6-9b34-406d-8cd4-f55e603c2e26`,
+`TEST-DUP-A`, geboekt geweest + gestorneerd), B (`14e1b412-d367-4ad1-bc08-ff5537ae10bf`,
+`TEST-DUP-A`, geboekt geweest + gestorneerd), C (`4f5ff019-f85f-4785-9383-50abb6cbfcda`,
+`TEST-DUP-CONTROL`, nooit geboekt).
 
 ## Rate-limit-observatie (5 juli 2026, tegen BLOw B.V, read-only)
 
@@ -134,3 +184,40 @@ daadwerkelijke bovengrens te vinden (BLOw is een productieadministratie van een 
 testomgeving om tegen te stresstesten). De ingebouwde client (`app/rlz/client.py`) doet sowieso
 altijd exponentiële backoff + respecteert een eventuele `Retry-After` op 429/5xx — voldoende
 robuust voor nu, los van het exacte cijfer.
+
+## Concept-supportvraag aan Reeleezee (actie 138)
+
+Openstaand, nog niet verstuurd — Peter's akkoord + eventueel contactkanaal (support-portal/
+accountmanager) nodig.
+
+> Onderwerp: ActionKind 138 "DetermineDuplicateInvoice" — verwacht gedrag?
+>
+> Wij gebruiken de REST-API (`/api/v1`, webservice-login) om inkoopfacturen te boeken en willen
+> vóór het boeken een duplicaatcheck doen via actie 138 (`POST PurchaseInvoices/{id}/Actions`,
+> body `{"Type": 138}`). De aanroep slaagt altijd (`204`), maar we kunnen geen enkel verschil
+> vinden tussen een duplicaat en een unieke factuur:
+>
+> - Twee inkoopfacturen aangemaakt bij dezelfde vendor, met identieke `Reference`, `Entity` en
+>   bedrag (€1,21) — puur als test in onze eigen test-administratie.
+> - Actie 138 op beide (en op een derde, unieke controlefactuur): altijd `204`, lege response
+>   body, geen headers die verschillen (behalve de load-balancer-cookie).
+> - `GET` op het document vóór/na de actie: geen enkel veld verandert (op een blijkbaar bij elke
+>   `GET` roterend `Token`-veld na, dat ook zonder actie 138 verandert).
+> - `PurchaseInvoices/{id}/DocumentTaskHistory`: leeg, identiek voor duplicaat en unieke factuur.
+> - Ter volledigheid ook getest of `Book` (actie 17) zelf duplicaten blokkeert: nee — we konden
+>   de byte-identieke duplicaat-factuur zonder enige foutmelding boeken (`204`, eigen
+>   `ReceiptNumber`). Beide testfacturen zijn meteen na het boeken gecorrigeerd (actie 19).
+>
+> Vragen:
+> 1. Is dit het bedoelde gedrag van actie 138, of ontbreekt er iets aan onze aanroep (bv. extra
+>    parameters, een `$expand`, of rechten/instellingen op de administratie) om een daadwerkelijk
+>    duplicaat-resultaat terug te krijgen?
+> 2. Is er wél server-side duplicaatbescherming bij het boeken van inkoopfacturen (actie 17) die
+>    per ongeluk niet aansloeg op onze testadministratie, of is dit inderdaad afwezig?
+> 3. Is er een andere/aanbevolen manier om duplicaten te detecteren via de API, of is een eigen
+>    query op `Entity`+`Reference`+bedrag (zoals wij nu doen als tijdelijke oplossing) de
+>    aangewezen weg?
+>
+> Testomgeving: RLZ-test-administratie "Administratiekantoor Nijenhuis"
+> (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), webservice-login AK_NijenClaude. Testdocumenten
+> herkenbaar aan `Reference` beginnend met `TEST-`.

@@ -16,7 +16,11 @@ BASE_URL = "https://apps.reeleezee.nl/api/v1"
 ACTION_BOOK = 17
 ACTION_CORRECT = 19
 ACTION_SETTLE = 34
-ACTION_DUPLICATE_CHECK = 138
+# Bewezen zonder waarneembaar effect (verkenning/api-verkenning.md "Actie 138" en "Boekt RLZ..."):
+# geen enkel geval (concept/geboekt, duplicaat/uniek) laat een verschil zien in respons of
+# document, en Book (17) blokkeert duplicaten ook zelf niet. Niet gebruiken voor idempotentie —
+# zie find_purchase_invoices_by_reference() voor de eigen duplicaatcheck die dat wél doet.
+ACTION_DUPLICATE_CHECK_UNRELIABLE = 138
 
 
 class RlzApiError(Exception):
@@ -61,9 +65,7 @@ class RlzClient:
     `{adminId}/...`; zie `for_administration`.
 
     Alle endpoints/velden hieronder zijn geverifieerd tegen de live API — zie
-    verkenning/api-verkenning.md. Waar een payload-vorm nog niet geverifieerd is (bv. de exacte
-    criteria voor de duplicaatcheck-actie 138), geeft de aanroeper die expliciet mee in plaats
-    van dat deze client een veld verzint.
+    verkenning/api-verkenning.md.
     """
 
     def __init__(
@@ -137,7 +139,10 @@ class RlzClient:
 
     def post_action(self, path: str, action_type: int, **extra_body: Any) -> httpx.Response:
         """POST .../Actions {Type: n, ...extra}. n.a.v. verkenning/api-verkenning.md: 17=Book,
-        19=Correct, 34=verrekenen, 138=duplicaatcheck (collectie), 15/16=Link/UnlinkPayment."""
+        19=Correct (zet terug naar concept, géén apart creditdocument), 34=verrekenen,
+        138=duplicaatcheck (per document, bewezen zonder effect), 15/16=Link/UnlinkPayment.
+        `path` moet het document-pad zijn (`PurchaseInvoices/{id}`), niet de collectie: RLZ's
+        Actions-routes zijn per-document, ook voor 138 (collectie-vorm geeft altijd 400)."""
         body = {"Type": action_type, **extra_body}
         return self._request("POST", f"{path.rstrip('/')}/Actions", json=body)
 
@@ -199,13 +204,36 @@ class RlzClient:
         return self.post_action(f"PurchaseInvoices/{invoice_id}", ACTION_BOOK)
 
     def correct_purchase_invoice(self, invoice_id: uuid.UUID) -> httpx.Response:
-        """Stornering (koppelcontract §7.3): nooit hard verwijderen, altijd actie 19 + creditboeking."""
+        """Stornering (koppelcontract §7.3): nooit hard verwijderen, altijd actie 19. Geverifieerd
+        gedrag (verkenning/api-verkenning.md "Actie 19 Correct"): zet hetzelfde document terug
+        naar concept (Status 1) — er komt géén apart creditdocument bij."""
         return self.post_action(f"PurchaseInvoices/{invoice_id}", ACTION_CORRECT)
 
-    def check_purchase_invoice_duplicate(self, **criteria: Any) -> httpx.Response:
-        """Collectie-actie 138 — vóór elke boeking (idempotentie-hard-rule). Exacte criteria-velden
-        nog niet geverifieerd (open punt verkenning/api-verkenning.md), dus expliciet meegeven."""
-        return self.post_action("PurchaseInvoices", ACTION_DUPLICATE_CHECK, **criteria)
+    def run_unreliable_duplicate_check_action(self, invoice_id: uuid.UUID) -> httpx.Response:
+        """Actie 138 op een bestaand document. Bewezen zonder waarneembaar effect (drie
+        experimenten, verkenning/api-verkenning.md "Actie 138"): geen verschil in respons of
+        document tussen een echt duplicaat en een unieke factuur, in concept- én geboekte staat,
+        en Book (17) boekt duplicaten zelf ook zonder blokkade. **Gebruik dit niet voor
+        idempotentie** — zie find_purchase_invoices_by_reference()."""
+        return self.post_action(f"PurchaseInvoices/{invoice_id}", ACTION_DUPLICATE_CHECK_UNRELIABLE)
+
+    def find_purchase_invoices_by_reference(
+        self, *, vendor_id: uuid.UUID | str, reference: str, total_amount: float | None = None
+    ) -> list[dict[str, Any]]:
+        """Eigen duplicaatcheck (idempotentie-fundament — RLZ's actie 138 geeft geen bruikbaar
+        signaal, zie run_unreliable_duplicate_check_action). Vóór elke PUT+Book aanroepen; niet-
+        leeg resultaat = al aangemaakt, dus PUT overslaan (client-GUID maakt de PUT zelf al
+        idempotent, maar dit vangt ook niet-deterministische GUID's af).
+
+        RLZ kapt `Reference` af op 30 tekens (geverifieerd) — filter dus op de afgekapte vorm,
+        anders mist de check net-te-lange referenties zoals een volledige UUID. `total_amount`
+        filtert op `BaseInvoiceAmount` (netto + btw, geverifieerd veld) — optioneel, voor
+        onderscheid tussen twee facturen die toevallig dezelfde (afgekapte) referentie delen."""
+        truncated_reference = reference[:30].replace("'", "''")
+        filter_expr = f"Entity/id eq {vendor_id} and Reference eq '{truncated_reference}'"
+        if total_amount is not None:
+            filter_expr += f" and BaseInvoiceAmount eq {total_amount}"
+        return self.get("PurchaseInvoices", params={"$filter": filter_expr}).get("value", [])
 
 
 def _parse_retry_after(value: str | None) -> float | None:
