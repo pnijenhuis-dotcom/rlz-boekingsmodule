@@ -22,11 +22,25 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 
 - **Vite + React** (frontend) · **FastAPI** (backend) · **PostgreSQL** — identiek aan de
   vastgoedmodule (apart project, zelfde platform-fundament).
-- Docker Compose op EU-VPS, reverse proxy (Caddy/Traefik) met HTTPS. Modules apart deploybaar.
+- **Host (v1.2, 2026-07-04): Google Cloud `europe-west4`.** Deze module = eigen **Cloud
+  Run**-service; database = gedeelde **Cloud SQL for PostgreSQL** (HA + PITR), schema
+  `boekhouding`; secrets via **Google Secret Manager** (credential-store: envelope encryption met
+  KMS-gewrapte data-keys); documenten (7 jaar bewaarplicht) in **Cloud Storage** met retentie;
+  achtergrondwerk (signalering, sync, e-mail-intake) via **Cloud Scheduler + Cloud Run jobs**.
+  Docker Compose = lokale dev. CLOUD Act geaccepteerd; herzieningsmoment vóór go-live (inbreng:
+  CMEK/client-side documentversleuteling voor klantboekhouddata).
 - DB-schema's: `platform` (gebruikers, rollen, administraties, credential-store, audit log),
   `boekhouding` (deze module). Vastgoedmodule krijgt `vastgoed`, MI-dashboard later `mi`.
 - Auth: e-mailuitnodiging (eenmalige link 72 u) + wachtwoord + **TOTP-2FA verplicht**, JWT-sessies.
   Rollen: Beheerder / Boekhouding+Projecten / Boekhouding / Klant-accordeur (scope: eigen administratie).
+- **Platformbrede afspraken (koppelcontract v1.3 + 14_ANTWOORD_AAN_RLZ, bindend):**
+  uniform `audit_event`-schema (timestamptz, actor=platform-user-id, module, tabel+record-id,
+  actie, oude+nieuwe waarde JSON, correlatie-id) als bron voor de WORM-export; **PII gescheiden
+  van financiële data** (AVG-verwijderverzoek = pseudonimiseren ná relatie-einde + 7 jaar, nooit
+  hard verwijderen); **Row-Level Security** op entiteit/administratie als DB-niveau
+  scopingpatroon (scope-context via `SET LOCAL` per transactie — nooit sessie-breed i.v.m.
+  connection pooling); webhook-push met HMAC + timestamp + nonce (replay-venster ~5 min) en
+  `schema_version` in de payload.
 
 ## Reeleezee API (live geverifieerd — zie verkenning/api-verkenning.md)
 
@@ -51,8 +65,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (historie → boekingsgeheugen), `PaymentAccounts` (+`/Statements`), `BankMutationDirectBookings`
   (RLZ's eigen bankvoorstellen, `IsSystemGenerated:true`).
 - Rate limits: docs "REST API limits" — exact verifiëren; client bouwt met throttling + retry/backoff.
-- Testdata: administratie "BLOw B.V" is een echte klant — schrijftests alléén met TEST-referenties
-  en na akkoord van Peter; hij verwijdert testdocumenten zelf in RLZ.
+- Testdata (v1.3-afspraak): integratietests tegen een **aparte RLZ-test-administratie**;
+  testboekingen worden **gestorneerd/teruggeboekt** (actie 19 Correct + creditboeking), nooit hard
+  verwijderd — consistent met "niets verwijderen in externe systemen". Schrijftests op echte
+  klantadministraties alleen bij uitzondering, met TEST-referentie en akkoord van Peter.
 
 ## Domeinbeslissingen (uit 10 ontwerprondes met Peter — details in mockup/index.html)
 
@@ -97,6 +113,29 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   boeking, met datum+tijd).
 - **Archief**: geboekte documenten 7 jaar terugvindbaar met PDF (bewaarplicht).
 
+## Praktijklessen uit echte documenten (verkenning/12_DOCUMENTANALYSE_UNIVERSAL.md)
+
+- **Btw verlegd is de norm in de bouwketen** (onderaanneming): factuur zonder btw van een
+  arbeids-leverancier → verlegd voorstellen, nooit 0%/vrijgesteld. Geheugen leert per leverancier.
+- **Leveranciers hanteren eigen werknummers**: mapping leverancier-werknummer ↔ RLZ-project +
+  fuzzy match op plaats/opdrachtgever; eerste keer bevestigen, daarna automatisch.
+- **Urenstaat = documenttype**: gekoppeld aan project+week; inkoopfactuur onderaannemer wordt
+  gecheckt tegen de getekende staat; "geparkeerde uren" = wacht-op-akkoord-status.
+- **Intercompany-huurbijlagen parsen**: m²-standen per datum = bron voor voortgang en
+  doorlopende-huur-detectie. Intercompany-leveranciers krijgen een vlag.
+- **Contract-ontleding**: eenheden m²/m¹/stuks/manuren, verrekenbaarheidsregels, boeteclausules,
+  termijnregeling — contractkenmerken sturen de projectsignalen.
+- **G-rekening (WKA)**: één factuur → gesplitste betaling (regulier + G-rekening) is de
+  standaard-case in bankmatching, geen uitzondering.
+- **Doorbelastingscontrole op item-niveau (dagelijks)**: ingehuurde items/huurperiodes (liften,
+  trappentorens, gaas — uit inkoopfactuurregels) vergelijken met ontlede offerte/opdracht én
+  verkoopfactuurregels per project. Niet gedekt én niet doorbelast → signaal + vraag; de
+  verrekenbaarheidsregels uit het contract bepalen het advies (doorbelasten vs eigen rekening).
+  Bedragcontrole per werksoort vangt dit niet (aantallen kunnen wegvallen in totalen).
+- **Creditnota's**: negatieve regels accepteren, nulregels (tariefstaffels) wegfilteren.
+- **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
+  bewaard (WKA), preview maskeert.
+
 ## Koppelvlak vastgoedmodule (verkenning/11_KOPPELCONTRACT_DEFINITIEF.md is leidend)
 
 - Documenten van de vastgoedmodule dragen `Reference`-prefix **`VGB-`** → herkennen, nooit als
@@ -110,11 +149,24 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 
 - `mockup/index.html` — goedgekeurde UI (alle schermen, klikbaar; design tokens = CSS-variabelen)
 - `verkenning/api-verkenning.md` — alle geverifieerde API-feiten + PoC-resultaten
-- `verkenning/11_KOPPELCONTRACT_DEFINITIEF.md` — contract met vastgoedmodule
+- `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
+  besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
+  schema-versies, entiteiten, conventies)**
 - `docs/BOUWPLAN.md` — fasering en definition of done per fase
 - `verkenning/.env` — RLZ-credentials (BLOW + Universal Steigerbouw), NOOIT committen
 
 ## Werkwijze
+
+- **Cross-projectdocumenten hebben precies één canonieke locatie**: het koppelcontract leeft als
+  master in `verkenning/` van deze repo (kopie in de vastgoed-repo wordt bij elke versiebump
+  gesynchroniseerd en per diff geverifieerd); `01_ARCHITECTUUR.md` en `14_ANTWOORD_AAN_RLZ.md`
+  leven uitsluitend in de vastgoed-repo. Geen derde kopieën maken.
+- **Dit project is eigenaar van het gedeelde platform-fundament** (auth, credential-store,
+  entiteitenregister, IAM, audit_event/WORM) — interface-wijzigingen alleen met akkoord van
+  beide projecten en een versienummer (contract v1.5).
+- **Continue evaluatie**: bij elk nieuw inzicht actief checken of eerdere beslissingen, dit
+  bestand, het bouwplan of het koppelcontract bijgewerkt moeten worden — inconsistenties tussen
+  afspraken zelf ook signaleren.
 
 - Peter is opdrachtgever én vakinhoudelijk scherp: wees proactief, benoem zwakke punten direct,
   onderbouw keuzes, vind gaten vóór hij ze vindt. Geen lege complimenten.

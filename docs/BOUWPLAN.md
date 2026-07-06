@@ -8,10 +8,14 @@
 **Doel:** één klant-administratie end-to-end: PDF/UBL erin → gecontroleerd → geboekt in RLZ.
 
 Backend:
-1. Repo-setup: FastAPI + PostgreSQL (schema's `platform` + `boekhouding`), Docker Compose,
-   Alembic-migraties, pytest.
+1. Repo-setup: FastAPI + PostgreSQL (schema's `platform` + `boekhouding`), Docker Compose voor
+   lokale dev, Alembic-migraties, pytest. Deploy-doel: **Cloud Run** (europe-west4) + gedeelde
+   **Cloud SQL** + **Secret Manager** + **Cloud Storage** (documenten) + **Cloud Scheduler/jobs**
+   (achtergrondwerk) — conform koppelcontract v1.2. Dev→prod pariteit via container.
 2. Platform-basis: gebruikers (uitnodiging + TOTP-2FA), rollen, administratie-register,
-   credential-store (envelope encryption), append-only audit log.
+   credential-store (envelope encryption via Secret Manager/KMS), append-only audit log in het
+   **uniforme `audit_event`-schema** (v1.3), **PII gescheiden van financiële data**
+   (pseudonimiseerbaar), **Row-Level Security** op administratie-scope (`SET LOCAL` per transactie).
 3. RLZ-client: Basic auth per administratie, `{adminId}`-routing, throttling/retry, PUT+GUID-
    conventie, acties (17/19/138), `$expand`-helpers. Integratietests tegen BLOW (read-only).
 4. Sync-laag per administratie: Ledgers, TaxRates, Vendors, Projects, JournalEntries (historie →
@@ -45,6 +49,10 @@ Frontend (Vite + React, design tokens uit mockup):
 
 - Autorisatiemodule: accordeurs, sequentiële lagen met drempels, "Ter accordering"-flow,
   goedkeuren via e-maillink, PWA (installeerbaar, push: direct + dagelijks 09:00).
+- Platform-auth-uitbreiding (besluit 0010, akkoord 2026-07-05): auth-niveau per rol (TOTP
+  verplicht voor kantoor/beheer/accordeur; mobiele token-flow + biometrie + Sign in with Apple
+  voor huurder-accounts t.b.v. vastgoed native app) + push als platform-service met topics per
+  module — moet af vóór vastgoed-fase 3.
 - E-mail intake (centraal adres, IMAP/Graph), multi-factuur-PDF-splitsing, verzamelbak-leren.
 - Rollenmodel volledig (module-zichtbaarheid per rol).
 
@@ -58,9 +66,26 @@ Frontend (Vite + React, design tokens uit mockup):
 
 ## Fase 5 — Integraties & schaal
 
-- Vastgoedmodule-webhook live (integratietest met VGB-TEST-documenten, koppelcontract §7).
+- Vastgoedmodule-webhook live (HMAC + timestamp/nonce + schema_version; integratietest tegen de
+  aparte RLZ-test-administratie, testboekingen storneren — koppelcontract v1.3 §7.3).
 - MI-dashboard-module (read-only, Financials-endpoints + read-models).
 - Peppol-intake, hardening (rate-limit-gedrag, backup/restore, monitoring), uitrol alle klanten.
+
+## Platform-verbeteringen (vastgesteld 2026-07-04, mogelijk gemaakt door GCP-keuze)
+
+| # | Verbetering | Waarom | Fase |
+|---|-------------|--------|------|
+| 1 | Boeken via **Cloud Tasks-queue** (idempotency-key = taaknaam, retry/backoff, dead-letter → foutstatus werkvoorraad) | robuustste "niets verdwijnt stil"; dubbel boeken technisch onmogelijk | **1** |
+| 2 | **Staging-omgeving** (scale-to-zero, eigen kleine Cloud SQL + bucket); alles eerst tegen testadministratie | dev→prod zonder risico op klantdata | **1** |
+| 3 | Audit log-export naar Cloud Storage met **bucket retention lock (WORM)** | audit log aantoonbaar onvervalsbaar (kantoor-waardig) | 2 |
+| 4 | **Cloud DLP** als BSN-vangnet (NL-BSN-detectie + maskering vóór indexering) | machinale waarborg op het AVG-hard-principe | 2 |
+| 5 | **Extractiekwaliteit-meting**: elke menselijke correctie = meetpunt per veld; drempels voor auto-boeken op data i.p.v. gevoel | objectieve basis voor auto-boeken per leverancier | 2 |
+| 6 | **Signed URLs** (kortlevend, per gebruiker) voor factuur-PDF's in klant-app en zoekresultaten | documenten nooit publiek benaderbaar | 3 |
+| 7 | **Cloud Monitoring-alerts**: RLZ-foutpercentage, sync-achterstand, signaleringsjob niet gedraaid, dead-letter niet leeg, budget | stille degradatie bestaat niet meer | 2 |
+| 8 | **Secret-rotatie** RLZ-logins (halfjaarlijks, gelogd) | boekhoudtoegang verdient een rotatieproces | 5 |
+
+Bewust afgewezen: Kubernetes (overkill), microservices binnen de module (één service + jobs
+volstaat), multi-region (cross-region backup volstaat), AlloyDB (alleen MI-groeipad).
 
 ## Openstaande verificaties (inplannen in de fase waar ze nodig zijn)
 
