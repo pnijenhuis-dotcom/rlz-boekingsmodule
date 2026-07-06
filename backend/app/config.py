@@ -21,5 +21,20 @@ class Settings(BaseSettings):
         "postgresql+psycopg://boekhouding_app:devpassword@localhost:5433/boekhouding_test"
     )
 
+    # Omgeving voor secret-fallback-guards (zie app/security/envelope.py, migraties/0001).
+    environment: str = "dev"
+
+    # JWT-signing (HS256). Lokaal via .env; in Cloud Run via Secret Manager. Nooit een fallback
+    # buiten dev — zie app/security/tokens.py::_resolve_jwt_secret.
+    jwt_secret: str | None = None
+    jwt_access_ttl_seconds: int = 900  # 15 min
+    jwt_refresh_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 dagen
+    jwt_totp_setup_ttl_seconds: int = 600  # 10 min, alleen voor de TOTP-enrollment-stap
+
+    # Envelope-encryption masterkey (base64, 32 bytes) voor totp_secret at rest. Lokaal via .env;
+    # in Cloud Run via Secret Manager/KMS (zie app/security/envelope.py voor het wrap-vervangbare
+    # MasterKeyProvider-interface). Nooit een fallback buiten dev.
+    totp_master_key_b64: str | None = None
+
 
 settings = Settings()

@@ -21,7 +21,10 @@ def two_administraties(admin_engine: Engine) -> tuple[uuid.UUID, uuid.UUID, uuid
             {"a": admin_a, "a_rlz": f"rlz-{admin_a}", "b": admin_b, "b_rlz": f"rlz-{admin_b}"},
         )
         conn.execute(
-            text("INSERT INTO platform.gebruiker (id, naam, e_mail) VALUES (:id, 'Actor', :mail)"),
+            text(
+                "INSERT INTO platform.gebruiker (id, naam, e_mail, rol) "
+                "VALUES (:id, 'Actor', :mail, 'boekhouding')"
+            ),
             {"id": actor, "mail": f"{actor}@test.local"},
         )
     return admin_a, admin_b, actor

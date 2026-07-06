@@ -29,7 +29,16 @@ def test_gebruiker_heeft_geen_financiele_kolommen(admin_engine: Engine) -> None:
                 )
             )
         }
-    assert columns == {"id", "naam", "e_mail", "aangemaakt_op", "gepseudonimiseerd_op"}
+    assert columns == {
+        "id",
+        "naam",
+        "e_mail",
+        "aangemaakt_op",
+        "gepseudonimiseerd_op",
+        "wachtwoord_hash",
+        "rol",
+        "status",
+    }
     assert not (columns & financial_hints)
 
 
@@ -38,7 +47,10 @@ def test_audit_event_is_append_only_voor_app_rol(admin_engine: Engine, app_engin
     event_id = uuid.uuid4()
     with admin_engine.begin() as conn:
         conn.execute(
-            text("INSERT INTO platform.gebruiker (id, naam, e_mail) VALUES (:id, 'Test', :mail)"),
+            text(
+                "INSERT INTO platform.gebruiker (id, naam, e_mail, rol) "
+                "VALUES (:id, 'Test', :mail, 'boekhouding')"
+            ),
             {"id": actor_id, "mail": f"{actor_id}@test.local"},
         )
         conn.execute(

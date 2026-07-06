@@ -21,9 +21,11 @@ Backend:
 4. Sync-laag per administratie: Ledgers, TaxRates, Vendors, Projects, JournalEntries (historie →
    boekingsgeheugen-seed). Cache met verversing bij gebruik.
 5. Document-pipeline (statusmachine): ontvangen → gesplitst → geëxtraheerd (AI + deterministische
-   checks: regeltelling vs totaal, duplicaat via actie 138 + eigen hash, IBAN-wissel) → voorstel
-   (geheugen: historie + correcties, recency-gewogen) → te controleren → klaar → geboekt/afgewezen/
-   vraag open/fout. Upload via UI; e-mail intake = fase 3.
+   checks: regeltelling vs totaal, duplicaatcheck via eigen query op Entity+Reference(30
+   tekens)+bedrag — RLZ's actie 138 is bewezen zonder bruikbaar signaal, besluit 0013 — +
+   deterministisch client-GUID, IBAN-wissel) → voorstel (geheugen: historie + correcties,
+   recency-gewogen) → te controleren → klaar → geboekt/afgewezen/vraag open/fout. Upload via UI;
+   e-mail intake = fase 3.
 6. Boeken: PurchaseInvoice + PDF-bijlage + Book-actie, idempotency-key, audit, RLZ-boekstuk terug.
 7. Webhook-stub "factuur geboekt" (koppelcontract §3) — payload klaar, aflevering configureerbaar.
 
@@ -43,7 +45,11 @@ Frontend (Vite + React, design tokens uit mockup):
 - Bankmodule: PaymentAccounts/Statements lezen, voorstel-volgorde (exacte match → gedeeltelijk →
   vaste regels → RLZ-voorstel → handmatig), auto-afletteren bij naam+factuurnr+bedrag,
   regel-leren (3×), BankMutationDirectBookings schrijven. PoC afletteren (acties 15/16) eerst.
-- Bulk-boeken, archief-weergave, tijdlijn per boeking.
+- Bulk-boeken, archief-weergave, tijdlijn per boeking. **Let op (koppelcontract v1.7, §7.3):**
+  actie 19 (Correct) zet een RLZ-document terug naar concept i.p.v. een apart creditdocument —
+  archief/tijdlijn kunnen dus geen zichtbaar stornering-/credit-spoor uit RLZ's documentstatus
+  lezen. Het correctiespoor ("wanneer gestorneerd, door wie, waarom") moet uit ons eigen
+  `audit_event` komen. Nu nog niet uitwerken — check bij het bouwen van dit scherm.
 
 ## Fase 3 — Klantportaal + intake
 

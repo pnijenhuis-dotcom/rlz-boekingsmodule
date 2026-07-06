@@ -21,7 +21,10 @@ def session_factory_for(bind: Engine) -> sessionmaker:
 
 @contextmanager
 def scoped_session(
-    administratie_id: uuid.UUID | None, *, session_factory: sessionmaker | None = None
+    administratie_id: uuid.UUID | None,
+    *,
+    actor_id: uuid.UUID | None = None,
+    session_factory: sessionmaker | None = None,
 ) -> Generator[Session, None, None]:
     """Open een transactie gescoped op één administratie voor Row-Level Security.
 
@@ -33,12 +36,20 @@ def scoped_session(
 
     `administratie_id=None` scoped op platformbrede rijen (administratie_id IS NULL in het
     beleid) — géén toegang tot administratie-gebonden rijen.
+
+    `actor_id` zet `app.current_actor_id` (zelfde SET LOCAL-patroon) — vereist door de
+    audit_event-triggers op rol-/scope-wijzigingen (migratie 0002): zonder een gezette actor
+    faalt zo'n wijziging hard, i.p.v. een audit_event zonder actor achter te laten.
     """
     session = (session_factory or SessionLocal)()
     try:
         session.execute(
             text("SELECT set_config('app.current_administratie_id', :value, true)"),
             {"value": str(administratie_id) if administratie_id else ""},
+        )
+        session.execute(
+            text("SELECT set_config('app.current_actor_id', :value, true)"),
+            {"value": str(actor_id) if actor_id else ""},
         )
         yield session
         session.commit()
