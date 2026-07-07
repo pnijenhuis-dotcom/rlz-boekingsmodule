@@ -314,7 +314,7 @@
         <table>
           <tr><th>Administratie</th><th>Te controleren</th><th>Klaar om te boeken</th><th>Vragen</th><th>Afgewezen</th><th>Bij klant (goedkeuring)</th><th>Bank</th></tr>
           <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))">
-            <td><b>Kempen Groep B.V.</b></td><td><span class="chip ai">2</span></td><td><span class="chip klaar">2</span></td><td><span class="chip vraag">1</span></td><td><span class="chip vraag">1</span></td><td>—</td><td><span class="chip ai">6</span></td>
+            <td><b>Kempen Facilities B.V.</b> <span style="font-size:11px;color:var(--muted)">· centrale inkoop Kempen Groep</span></td><td><span class="chip ai">2</span></td><td><span class="chip klaar">2</span></td><td><span class="chip vraag">1</span></td><td><span class="chip vraag">1</span></td><td>—</td><td><span class="chip ai">6</span></td>
           </tr>
           <tr class="clickable" onclick="alert('Mockup: opent dezelfde detailweergave, gefilterd op Kempen Vastgoed B.V.')">
             <td><b>Kempen Vastgoed B.V.</b></td><td><span class="chip ai">1</span></td><td>—</td><td><span class="chip vraag">1</span></td><td>—</td><td>—</td><td>—</td>
@@ -331,7 +331,7 @@
     <!-- ================= KLANTPAGINA (openstaande zaken per klant) ================= -->
     <div class="view" id="klantpagina">
       <div class="topbar">
-        <h1><a onclick="show('werkvoorraad', document.querySelector('[data-view=werkvoorraad]'))" style="cursor:pointer;color:var(--accent)">← Werkvoorraad</a> <span style="color:var(--muted);font-weight:400">/</span> Kempen Groep B.V.</h1>
+        <h1><a onclick="show('werkvoorraad', document.querySelector('[data-view=werkvoorraad]'))" style="cursor:pointer;color:var(--accent)">← Werkvoorraad</a> <span style="color:var(--muted);font-weight:400">/</span> Kempen Facilities B.V. <span class="chip geheugen">centrale inkoop</span></h1>
         <div class="adm-select"><button class="btn">+ Facturen uploaden</button></div>
       </div>
       <div class="panel">
@@ -391,8 +391,8 @@
     <!-- ================= CONTROLESCHERM ================= -->
     <div class="view" id="review">
       <div class="topbar">
-        <h1><a onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))" style="cursor:pointer;color:var(--accent)">← Kempen Groep B.V.</a> <span style="color:var(--muted);font-weight:400">/</span> 2026-0642.pdf</h1>
-        <div class="adm-select"><span class="chip ai">PDF · AI-extractie</span></div>
+        <h1><a onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))" style="cursor:pointer;color:var(--accent)">← Kempen Facilities B.V.</a> <span style="color:var(--muted);font-weight:400">/</span> 2026-0642.pdf</h1>
+        <div class="adm-select"><span class="chip geheugen">centrale inkoop actief</span><span class="chip ai">PDF · AI-extractie</span></div>
       </div>
 
       <div class="membanner">
@@ -431,7 +431,7 @@
           <div class="panel">
             <h2>Kopgegevens <span class="conf hi">extractie-zekerheid per veld</span></h2>
             <div class="grid2">
-              <div><label>Administratie</label><select><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Services B.V.</option></select></div>
+              <div><label>Administratie</label><select><option>Kempen Facilities B.V. — centrale inkoop</option><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Services B.V.</option></select></div>
               <div><label>Leverancier (RLZ-relatie) <span class="conf hi">98%</span></label><select><option>Bouwmaat Nederland B.V. (L-0042)</option><option>+ Nieuwe leverancier aanmaken…</option></select>
               <label style="margin-top:6px;font-size:11px"><input type="checkbox" style="width:auto"> voortaan automatisch boeken voor deze leverancier <span style="color:var(--muted)">(harde checks — duplicaat, IBAN-wissel, telling — blijven altijd blokkeren)</span></label></div>
               <div><label>Factuurnummer <span class="conf hi">99%</span></label><input value="2026-0642"></div>
@@ -444,36 +444,54 @@
 
           <div class="panel">
             <h2>Boekingsregels <span class="chip geheugen">voorstel uit geheugen</span></h2>
-            <label style="font-size:12.5px;margin-bottom:10px;display:block"><input type="checkbox" style="width:auto" onchange="alert('Mockup: de factuurregels worden samengevoegd tot één boekingsregel — jij kiest één grootboekrekening en btw-code voor het totaal. Handig bij facturen met veel regels die allemaal op hetzelfde GB horen. De keuze wordt per leverancier onthouden.')"> <b>Regels samenvoegen tot één boekingsregel</b> <span style="color:var(--muted)">(één grootboek voor het hele factuurbedrag; wordt per leverancier onthouden)</span></label>
+            <label style="font-size:12.5px;margin-bottom:10px;display:block"><input type="checkbox" checked style="width:auto" onchange="document.getElementById('regelsSamen').style.display=this.checked?'block':'none';document.getElementById('regelsUitgesplitst').style.display=this.checked?'none':'block'"> <b>Regels samenvoegen tot één boekingsregel</b> <span style="color:var(--muted)">(standaard aan · één grootboek voor het hele factuurbedrag · keuze wordt per leverancier onthouden)</span></label>
+            <div id="regelsSamen">
             <table class="lines">
-              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th class="amount">Excl.</th></tr>
+              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th>Doorbelasten aan</th><th class="amount">Excl.</th></tr>
+              <tr>
+                <td>Factuur 2026-0642 — samengevoegd (3 regels)</td>
+                <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option><option>4530 · Huisvesting</option></select></td>
+                <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>BTW-bedrag zelf specificeren</option></select></td>
+                <td><span class="chip geheugen" style="cursor:pointer" onclick="document.getElementById('verdeelmodal').classList.add('open')" title="Klik om de verdeling aan te passen">≡ 3 entiteiten · 50/30/20</span></td>
+                <td class="amount">€ 1.263,10</td>
+              </tr>
+            </table>
+            </div>
+            <div id="regelsUitgesplitst" style="display:none">
+            <table class="lines">
+              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th>Doorbelasten aan</th><th class="amount">Excl.</th></tr>
               <tr>
                 <td>Multiplex 18mm (12×)</td>
                 <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option><option>4530 · Huisvesting</option></select></td>
                 <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>EU, Diensten</option><option>EU, Goederen (ICP)</option><option>Buiten EU</option><option>BTW-bedrag zelf specificeren</option></select></td>
+                <td><select><option>Kempen Bouw B.V. (100%)</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option><option>≡ Splitsen met percentages…</option></select></td>
                 <td class="amount">€ 762,00</td>
               </tr>
               <tr>
                 <td>Bevestigingsmateriaal</td>
                 <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option></select></td>
                 <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>EU, Diensten</option><option>EU, Goederen (ICP)</option><option>Buiten EU</option><option>BTW-bedrag zelf specificeren</option></select></td>
+                <td><span class="chip geheugen" style="cursor:pointer" onclick="document.getElementById('verdeelmodal').classList.add('open')" title="Klik om de verdeling aan te passen">≡ 3 entiteiten · 50/30/20</span></td>
                 <td class="amount">€ 411,10</td>
               </tr>
               <tr>
                 <td>Statiegeld pallets</td>
                 <td><select class="warnfield"><option>?? — geen historie voor statiegeld</option><option>4110 · Bouwmaterialen</option><option>1300 · Vooruitbetaald</option></select></td>
                 <td><select class="warnfield"><option>0%</option><option>21%</option></select></td>
+                <td><select class="warnfield"><option>— kies entiteit (verplicht) —</option><option>Kempen Bouw B.V. (100%)</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option><option>≡ Splitsen met percentages…</option></select></td>
                 <td class="amount">€ 90,00</td>
               </tr>
             </table>
+            </div>
             <div class="hint">Grootboek- én btw-lijsten komen live uit RLZ van deze administratie (alle tarieven, incl. verlegd/EU/vrijgesteld). Correcties die je hier maakt wegen zwaarder dan oude historie: pas je Ziggo één keer aan van Communicatie naar Internet, dan is Internet vanaf dat moment de eerste suggestie.</div>
+            <div class="hint" style="margin-top:6px"><b>Centrale inkoop:</b> elke regel moet volledig (100%) aan één of meer entiteiten zijn toegewezen — anders blokkeert boeken, net als bij een ontbrekend project. Alleen administraties op de whitelist van deze klant zijn kiesbaar. Bij het boeken ontstaan naast deze inkoopfactuur automatisch per betrokken entiteit een <b>doorbelastings-verkoopfactuur</b> (Kempen Facilities, mét btw — geen fiscale eenheid) en de <b>spiegel-inkoopfactuur</b> in de doeladministratie: hier 1 + 2×3 = 7 documenten, geboekt als één bewaakte transactie met zichtbare status per deelboeking. Het boekingsgeheugen leert de entiteit(verdeling) per leverancier, zoals bij grootboek en btw.</div>
           </div>
 
           <div class="panel">
             <h2>Tijdlijn</h2>
             <table class="lines">
               <tr><td style="white-space:nowrap;color:var(--muted)">29 jun · 14:22</td><td>Binnengekomen via <b>facturen@kempengroep.nl</b> (afzender: administratie@bouwmaat.nl)</td></tr>
-              <tr><td style="white-space:nowrap;color:var(--muted)">29 jun · 14:23</td><td>AI-extractie afgerond · toegewezen aan <b>Kempen Groep B.V.</b> o.b.v. tenaamstelling</td></tr>
+              <tr><td style="white-space:nowrap;color:var(--muted)">29 jun · 14:23</td><td>AI-extractie afgerond · toegewezen aan <b>Kempen Facilities B.V.</b> o.b.v. tenaamstelling (centrale inkoop)</td></tr>
               <tr><td style="white-space:nowrap;color:var(--muted)">30 jun · 09:05</td><td>Vraag gesteld door <b>M. de Boer</b> → beantwoord door <b>P. Nijenhuis</b> (30 jun · 11:47)</td></tr>
               <tr><td style="white-space:nowrap;color:var(--muted)">—</td><td style="color:var(--muted)">Nog te gebeuren: controle → (accordering indien aan) → boeken in RLZ</td></tr>
             </table>
@@ -482,8 +500,9 @@
 
           <div class="actions">
             <button class="btn secondary" onclick="document.getElementById('afwijsmodal').classList.add('open')">Afwijzen…</button>
+            <button class="btn secondary" onclick="document.getElementById('tenaamstellingmodal').classList.add('open')">Verkeerde tenaamstelling…</button>
             <button class="btn warn" onclick="document.getElementById('vraagmodal').classList.add('open')">Vraag stellen…</button>
-            <button class="btn green" onclick="alert('Mockup — gedrag hangt af van de administratie:\n\n• Klant-goedkeuring UIT (zoals Kempen Groep): direct boeken in RLZ.\n\n• Klant-goedkeuring AAN: knop heet dan \'Ter accordering ✓\' — factuur gaat de goedkeuringsflow in en wordt NA het laatste akkoord automatisch geboekt, zonder extra handeling. Wijst de klant af, dan komt de factuur met reden terug in de werkvoorraad.')">Boeken in RLZ ✓</button>
+            <button class="btn green" onclick="alert('Mockup — gedrag hangt af van de administratie:\n\n• Klant-goedkeuring UIT (zoals hier): direct boeken in RLZ.\n\n• Klant-goedkeuring AAN: knop heet dan \'Ter accordering ✓\' — factuur gaat de goedkeuringsflow in en wordt NA het laatste akkoord automatisch geboekt.\n\n• Centrale inkoop AAN (zoals hier): boeken = 1 inkoopfactuur + per betrokken entiteit een doorbelastings-verkoopfactuur en spiegel-inkoopfactuur (hier 7 documenten), als één bewaakte transactie. Faalt een deelboeking, dan zie je precies welke — nooit een halve doorbelasting zonder spoor.')">Boeken in RLZ ✓</button>
           </div>
         </div>
       </div>
@@ -908,7 +927,8 @@
         <table>
           <tr><th>Klant / administratie</th><th>RLZ-koppeling</th><th>Eigenaar</th><th>Goedkeuring klant</th><th>Openstaand</th><th class="amount">Geboekt deze maand</th></tr>
           <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>BLOW B.V.</b></td><td><span class="chip ubl">verbonden</span></td><td>J. Willems</td><td><span class="chip ubl">aan (2 lagen)</span></td><td><span class="chip ai">4</span></td><td class="amount">31</td></tr>
-          <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>Kempen Groep B.V.</b></td><td><span class="chip ubl">verbonden</span></td><td>P. Nijenhuis</td><td><span class="chip geboekt">uit</span></td><td><span class="chip ai">6</span></td><td class="amount">58</td></tr>
+          <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>Kempen Facilities B.V.</b> <span class="chip geheugen">centrale inkoop · 6 entiteiten</span></td><td><span class="chip ubl">verbonden</span></td><td>P. Nijenhuis</td><td><span class="chip geboekt">uit</span></td><td><span class="chip ai">6</span></td><td class="amount">58</td></tr>
+          <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>Kempen Groep B.V.</b></td><td><span class="chip ubl">verbonden</span></td><td>P. Nijenhuis</td><td><span class="chip geboekt">uit</span></td><td>—</td><td class="amount">14</td></tr>
           <tr class="clickable" onclick="show('klantpagina', document.querySelector('[data-view=werkvoorraad]'))"><td><b>Kempen Vastgoed B.V.</b></td><td><span class="chip ubl">verbonden</span></td><td>M. de Boer</td><td><span class="chip geboekt">uit</span></td><td>—</td><td class="amount">12</td></tr>
           <tr class="clickable" onclick="alert('Mockup: klantdossier van een klant zonder openstaand werk — volledig archief blijft bereikbaar.')"><td><b>Bakkerij Wolters V.O.F.</b></td><td><span class="chip ubl">verbonden</span></td><td>M. de Boer</td><td><span class="chip geboekt">uit</span></td><td>—</td><td class="amount">19</td></tr>
         </table>
@@ -951,12 +971,14 @@
         <h2>Administraties & eigenaren</h2>
         <input placeholder="Zoek administratie… (schaalt naar 100+, met paginering)" style="max-width:340px;margin-bottom:12px">
         <table>
-          <tr><th>Administratie</th><th>RLZ-koppeling</th><th>Eigenaar (krijgt vragen)</th><th>Project verplicht bij boeken</th></tr>
-          <tr><td>Kempen Groep B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>P. Nijenhuis</option><option>M. de Boer</option><option>J. Willems</option></select></td><td><input type="checkbox" checked style="width:auto"> aan</td></tr>
-          <tr><td>Kempen Vastgoed B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>M. de Boer</option><option>P. Nijenhuis</option><option>J. Willems</option></select></td><td><input type="checkbox" checked style="width:auto"> aan</td></tr>
-          <tr><td>BLOW B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>J. Willems</option><option>P. Nijenhuis</option><option>M. de Boer</option></select></td><td><input type="checkbox" style="width:auto"> uit</td></tr>
+          <tr><th>Administratie</th><th>RLZ-koppeling</th><th>Eigenaar (krijgt vragen)</th><th>Project verplicht bij boeken</th><th>Centrale inkoop</th></tr>
+          <tr><td>Kempen Facilities B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>P. Nijenhuis</option><option>M. de Boer</option><option>J. Willems</option></select></td><td><input type="checkbox" style="width:auto"> uit</td><td><span class="chip ubl" style="cursor:pointer" onclick="document.getElementById('centraleinkoopmodal').classList.add('open')">aan · 6 entiteiten — instellen ›</span></td></tr>
+          <tr><td>Kempen Groep B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>P. Nijenhuis</option><option>M. de Boer</option><option>J. Willems</option></select></td><td><input type="checkbox" checked style="width:auto"> aan</td><td style="color:var(--muted)">uit</td></tr>
+          <tr><td>Kempen Vastgoed B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>M. de Boer</option><option>P. Nijenhuis</option><option>J. Willems</option></select></td><td><input type="checkbox" checked style="width:auto"> aan</td><td style="color:var(--muted)">uit</td></tr>
+          <tr><td>BLOW B.V.</td><td><span class="chip ubl">verbonden</span></td><td><select><option>J. Willems</option><option>P. Nijenhuis</option><option>M. de Boer</option></select></td><td><input type="checkbox" style="width:auto"> uit</td><td style="color:var(--muted)">uit</td></tr>
         </table>
         <div class="hint">Projecten worden per administratie live uit RLZ gesynchroniseerd. Staat de toggle aan, dan is project een <b>harde eis</b>: boeken is geblokkeerd tot elke regel een projectcode heeft. Kosten zonder echt project (overhead, kantoorkosten) gaan naar het interne overhead-project (bijv. "OVH") dat bij inrichting per administratie wordt aangemaakt — zo sluit de som van alle projecten altijd aan op de totale administratie.</div>
+        <div class="hint" style="margin-top:6px"><b>Centrale inkoop:</b> voor administraties waar alle groepsfacturen binnenkomen en doorbelast worden (zoals Kempen Facilities). Staat dit aan, dan is bij het boeken per regel een doelentiteit of percentage-verdeling <b>verplicht</b> en worden de doorbelastings-facturen automatisch meegeboekt — uitsluitend naar administraties op de whitelist van die klant (zie instellen).</div>
         <div class="actions" style="margin-top:10px"><button class="btn" onclick="alert('Mockup onboarding-flow nieuwe klant: 1) webservice-login aanmaken in de RLZ-administratie, 2) hier invoeren (versleuteld opgeslagen), 3) app synct grootboek, btw-codes, crediteuren en projecten, 4) eigenaar + toggles instellen. Klaar in ±5 minuten per klant.')">+ Administratie koppelen</button></div>
       </div>
       <div class="panel" data-tab="mail" style="display:none">
@@ -964,6 +986,11 @@
         <table>
           <tr><th>Adres</th><th>Status</th><th>Werking</th></tr>
           <tr><td><b>facturen@kempengroep.nl</b></td><td><span class="chip ubl">actief</span></td><td>Bijlagen worden automatisch gescand, gesplitst en op tenaamstelling aan de juiste administratie toegewezen. Afzender telt als hint (klant X mailt → default administratie X), tenaamstelling op de factuur is leidend. Niet toewijsbaar → vraag naar behandelaar.</td></tr>
+        </table>
+        <h2 style="margin-top:16px">E-mailsjablonen (uitgaand)</h2>
+        <table>
+          <tr><th>Sjabloon</th><th>Gebruikt bij</th><th></th></tr>
+          <tr><td><b>Verkeerde tenaamstelling</b> <span style="color:var(--muted);font-size:11.5px">variabelen: leverancier, factuurnummer/-datum, NAW juiste entiteit</span></td><td>Knop "Verkeerde tenaamstelling…" in het controlescherm — verzoek tot creditering + heraanlevering</td><td><span style="color:var(--accent);cursor:pointer" onclick="alert('Mockup: opent de sjabloon-editor. NAW-gegevens per entiteit komen uit het administratieregister; verzending altijd na preview en expliciete klik, nooit automatisch.')">bewerken ›</span></td></tr>
         </table>
       </div>
       <div class="panel" data-tab="gebr" style="display:none">
@@ -1039,6 +1066,91 @@
     <div class="actions">
       <button class="btn secondary" onclick="document.getElementById('afwijsmodal').classList.remove('open')">Annuleren</button>
       <button class="btn" onclick="document.getElementById('afwijsmodal').classList.remove('open'); alert('Mockup: factuur krijgt status \'Afgewezen — ter controle\' en blijft zichtbaar in de werkvoorraad. Niets verdwijnt ooit zonder spoor.')">Afwijzen</button>
+    </div>
+  </div>
+</div>
+
+<!-- VERKEERDE-TENAAMSTELLING-MODAL -->
+<div class="modal-bg" id="tenaamstellingmodal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:620px">
+    <h2>Verkeerde tenaamstelling — 2026-0642.pdf</h2>
+    <div class="grid2" style="margin-bottom:12px">
+      <div><label>Juiste entiteit (tenaamstelling had moeten zijn)</label><select><option>— kies administratie —</option><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></div>
+      <div><label>Aan (afzender van de factuur — controleer op noreply!)</label><input value="administratie@bouwmaat.nl" class="warnfield"></div>
+    </div>
+    <div class="row"><label>Onderwerp</label><input value="Onjuiste tenaamstelling — verzoek tot creditering factuur 2026-0642"></div>
+    <div class="row"><label>Bericht (sjabloon wordt automatisch ingevuld en bij "Verwerken" direct verzonden — aanpassen kan, hoeft niet)</label>
+      <textarea rows="12">Beste Bouwmaat Nederland B.V.,
+
+Dank voor uw factuur 2026-0642 d.d. 29-06-2026. Deze factuur is echter onjuist tenaamgesteld. Wij verzoeken u de factuur volledig te crediteren en opnieuw te factureren aan:
+
+Kempen Bouw B.V.
+Voorbeeldstraat 12
+7550 AA Hengelo
+KvK 12345678 · btw NL001234567B01
+facturen@kempengroep.nl
+
+Tot ontvangst van de creditnota en de gecorrigeerde factuur nemen wij deze factuur niet in behandeling en wordt deze niet betaald.
+
+Met vriendelijke groet,
+Administratiekantoor Nijenhuis</textarea></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Sjabloon instelbaar bij <b>Instellingen → E-mail intake</b> (variabelen: leverancier, factuurnummer/-datum, NAW juiste entiteit uit het administratieregister). Bij "Verwerken" wordt de mail <b>direct verzonden</b> en krijgt de factuur de status <b>"Afgewezen — verkeerde tenaamstelling, leverancier geïnformeerd"</b> (blijft zichtbaar; mail in tijdlijn en audit log). Verdere opvolging is er bewust niet: de onjuiste factuur en een eventuele creditnota nemen wij niet in behandeling — de leverancier is zelf verantwoordelijk voor een nieuwe, juiste factuur, die als normale intake binnenkomt op de juiste entiteit. Het afzender-geheugen leert bewust <b>niet</b> van deze factuur (verkeerd geadresseerd = geen betrouwbare toewijzingshint).</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="document.getElementById('tenaamstellingmodal').classList.remove('open')">Annuleren</button>
+      <button class="btn warn" onclick="document.getElementById('tenaamstellingmodal').classList.remove('open'); alert('Mockup: mail wordt direct verzonden (mens-geïnitieerd: jij vulde in en klikte) en de factuur gaat naar Afgewezen — verkeerde tenaamstelling. Geen verdere opvolging: nieuwe factuur van de leverancier komt vanzelf als normale intake binnen.')">Verwerken ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- VERDEELSLEUTEL-MODAL (regel splitsen over entiteiten) -->
+<div class="modal-bg" id="verdeelmodal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:560px">
+    <h2>Regel splitsen — Bevestigingsmateriaal · € 411,10 excl.</h2>
+    <table class="lines" style="margin-bottom:10px">
+      <tr><th>Entiteit</th><th style="width:80px">%</th><th class="amount">Bedrag excl.</th><th style="width:34px"></th></tr>
+      <tr><td><select><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input value="50"></td><td class="amount">€ 205,55</td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
+      <tr><td><select><option>Kempen Services B.V.</option><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input value="30"></td><td class="amount">€ 123,33</td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
+      <tr><td><select><option>Kempen Vastgoed B.V.</option><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input value="20"></td><td class="amount">€ 82,22</td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
+      <tr><td><b>Totaal</b> <span class="chip ubl">100% ✓</span></td><td></td><td class="amount"><b>€ 411,10</b></td><td></td></tr>
+    </table>
+    <div style="margin-bottom:10px"><button class="btn secondary" style="padding:5px 12px;font-size:12px" onclick="alert('Mockup: extra verdeelregel erbij — splitsen kan over zoveel entiteiten als op de whitelist staan (bijv. 5 of 6). Percentages moeten samen weer exact 100% zijn.')">+ Entiteit toevoegen</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Totaal moet <b>exact 100%</b> zijn, anders blokkeert boeken (harde check). Centen worden automatisch kloppend verdeeld (grootste-rest-methode): de som van de delen is altijd exact het regelbedrag — er raakt nooit een cent kwijt. Btw wordt per deelbedrag berekend en sluit gegarandeerd aan op het regeltotaal.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="document.getElementById('verdeelmodal').classList.remove('open')">Annuleren</button>
+      <button class="btn" onclick="document.getElementById('verdeelmodal').classList.remove('open')">Toepassen ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- CENTRALE-INKOOP-INSTELMODAL -->
+<div class="modal-bg" id="centraleinkoopmodal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:640px">
+    <h2>Centrale inkoop — Kempen Facilities B.V.</h2>
+    <div class="row"><label style="font-size:12.5px;color:var(--text)"><input type="checkbox" checked style="width:auto"> <b>Centrale inkoop actief</b> — per boekingsregel is een doelentiteit (of percentage-verdeling) verplicht; doorbelastings-facturen worden automatisch meegeboekt</label></div>
+    <div class="row"><label>Gekoppelde administraties (whitelist — alléén deze kunnen doelentiteit zijn)</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:12.5px;margin-top:4px">
+        <label style="color:var(--text)"><input type="checkbox" checked style="width:auto"> Kempen Groep B.V.</label>
+        <label style="color:var(--text)"><input type="checkbox" checked style="width:auto"> Kempen Bouw B.V.</label>
+        <label style="color:var(--text)"><input type="checkbox" checked style="width:auto"> Kempen Vastgoed B.V.</label>
+        <label style="color:var(--text)"><input type="checkbox" checked style="width:auto"> Kempen Installatie B.V.</label>
+        <label style="color:var(--text)"><input type="checkbox" checked style="width:auto"> Kempen Services B.V.</label>
+        <label style="color:var(--text)"><input type="checkbox" checked style="width:auto"> Kempen Beheer B.V.</label>
+        <label style="color:var(--muted)"><input type="checkbox" style="width:auto"> BLOW B.V.</label>
+        <label style="color:var(--muted)"><input type="checkbox" style="width:auto"> Bakkerij Wolters V.O.F.</label>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">De whitelist wordt <b>server-side afgedwongen</b>: doorbelasten buiten deze lijst is technisch onmogelijk — ook niet via een geheugen-suggestie of een fout in het scherm. Kempen kan dus nooit bij BLOW uitkomen. Bovendien kan een medewerker alleen doorbelasten naar administraties waarop hij zelf scope heeft. Elke wijziging van deze lijst staat in het audit log.</div>
+    <div class="grid2">
+      <div><label>Btw op doorbelasting (geen fiscale eenheid)</label><select><option>Tarief volgt de oorspronkelijke factuurregel</option><option>Altijd hoog tarief (21%)</option></select></div>
+      <div><label>Provisie-opslag (standaard, override per entiteit mogelijk)</label><input value="5%"></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin:8px 0 12px">De provisie komt als <b>aparte regel</b> op de doorbelastingsfactuur (eigen omzet-GB "Provisie doorbelasting", btw-belast) — kosten en fee blijven gescheiden zichtbaar en het factuurtotaal blijft controleerbaar: doorbelaste kosten + provisie. Berekening over het netto doorbelaste bedrag per entiteit, ná de percentage-verdeling. Afwijkend % per doelentiteit instelbaar via de whitelist-lijst hierboven (klik op een entiteit).</div>
+    <div class="row" style="margin-top:12px"><label>Intercompany-koppeling per entiteit</label>
+      <div style="font-size:12px;color:var(--muted)">Per doelentiteit: debiteur in Kempen Facilities + crediteur "Kempen Facilities B.V." in de doeladministratie — bij inrichting automatisch gedetecteerd of via de API aangemaakt. Status: <span class="chip ubl">6 van 6 gekoppeld ✓</span></div>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" onclick="document.getElementById('centraleinkoopmodal').classList.remove('open')">Annuleren</button>
+      <button class="btn green" onclick="document.getElementById('centraleinkoopmodal').classList.remove('open'); alert('Mockup: instellingen opgeslagen. Elke wijziging aan de whitelist of btw-instelling staat in het audit log (append-only).')">Opslaan ✓</button>
     </div>
   </div>
 </div>
