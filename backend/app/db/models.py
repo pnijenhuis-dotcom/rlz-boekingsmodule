@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, MetaData, func
+from sqlalchemy import ForeignKey, MetaData, SmallInteger, func
 from sqlalchemy.dialects.postgresql import BYTEA, ENUM, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -159,6 +159,30 @@ class TotpSecret(Base):
     laatste_stap: Mapped[int | None] = mapped_column(default=None)
     bevestigd_op: Mapped[datetime | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Grootboekrekening(Base):
+    """Gedeelde platform-tabel (koppelcontract §2c, v1.8): RLZ-sync is de enige schrijver, vastgoed
+    leest read-only (GRANT SELECT + RLS, geen eigen Reeleezee-scope/tweede client — zie migratie
+    0005). `soort` is Reeleezee's AccountType ONVERTAALD doorgezet (1=opbrengsten, 2=kosten,
+    3=activa, 4=passiva — geverifieerd tegen de officiële AccountTypeEnum-documentatie, zie
+    Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md §2c). `verdwenen_uit_bron_op` is GEEN
+    RLZ-brongegeven maar een sync-afleiding: de nachtelijke/on-demand sync zet dit op een rij
+    zodra hij niet meer in de meest recente `GET Ledgers`-respons voorkomt (nooit hard
+    verwijderen; komt hij terug, gaat de kolom terug naar NULL)."""
+
+    __tablename__ = "grootboekrekening"
+
+    ledger_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    code: Mapped[str]
+    naam: Mapped[str]
+    soort: Mapped[int] = mapped_column(SmallInteger)
+    is_totaalrekening: Mapped[bool]
+    laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
+    verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class AuditEvent(Base):

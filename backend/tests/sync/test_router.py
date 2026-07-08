@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.rlz.credentials import GeenRlzCredentials
+from app.security.tokens import create_access_token
+from tests.sync.conftest import FakeRlzClient
+
+client = TestClient(app)
+
+
+def _bearer(gebruiker_id: uuid.UUID, *, rol: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(gebruiker_id, rol=rol)}"}
+
+
+def test_sync_trigger_zonder_authenticatie_faalt(administratie_id: uuid.UUID) -> None:
+    resp = client.post(f"/administraties/{administratie_id}/sync/ledgers")
+    assert resp.status_code in (401, 403)
+
+
+def test_sync_trigger_zonder_scope_faalt(gescoopte_gebruiker: uuid.UUID) -> None:
+    andere_administratie_id = uuid.uuid4()
+    resp = client.post(
+        f"/administraties/{andere_administratie_id}/sync/ledgers",
+        headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
+    )
+    assert resp.status_code == 403
+
+
+def test_sync_trigger_met_scope_slaagt(
+    monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    ledger = {
+        "id": str(uuid.uuid4()),
+        "AccountNumber": "4000",
+        "Description": "Testrekening",
+        "AccountType": 2,
+        "IsTotalAccount": False,
+    }
+    monkeypatch.setattr(
+        "app.sync.service.client_voor_rlz_admin_id", lambda rlz_admin_id: FakeRlzClient({"Ledgers": [ledger]})
+    )
+
+    resp = client.post(
+        f"/administraties/{administratie_id}/sync/ledgers", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"aangemaakt": 1, "bijgewerkt": 0, "verdwenen": 0}
+
+
+def test_sync_trigger_zonder_credentials_geeft_503(
+    monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    def _geen_credentials(rlz_admin_id: str) -> FakeRlzClient:
+        raise GeenRlzCredentials("geen credentials in deze test")
+
+    monkeypatch.setattr("app.sync.service.client_voor_rlz_admin_id", _geen_credentials)
+
+    resp = client.post(
+        f"/administraties/{administratie_id}/sync/ledgers", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 503

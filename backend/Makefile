@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test test-write-integration bootstrap-beheerder pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -45,7 +45,17 @@ test: check-versions
 test-write-integration: check-versions
 	.venv/bin/pytest -m write_integration --override-ini='addopts=' -s
 
+# read_integration is óók opt-in (net als write_integration): leest live tegen de RLZ-test-
+# administratie. Read-only, maar bewust nog steeds niet in de kale run — zie pyproject.toml.
+test-read-integration: check-versions
+	.venv/bin/pytest -m read_integration --override-ini='addopts=' -s
+
 # Eenmalig, kip-ei-oplossing: uitnodigen is zelf Beheerder-only (zie app/auth/service.py).
 # Voorbeeld: make bootstrap-beheerder NAAM="Peter Nijenhuis" EMAIL=peter@nijenhuis.nl
 bootstrap-beheerder: check-versions
 	.venv/bin/python -m app.cli bootstrap-beheerder --naam "$(NAAM)" --e-mail "$(EMAIL)"
+
+# Nachtelijke sync (fase-vervolg: Cloud Scheduler -> Cloud Run job roept dit aan). Lokaal
+# handmatig, of via cron: raakt alleen administraties met werkende .env-credentials.
+sync-alles: check-versions
+	.venv/bin/python -m app.cli sync-alles

@@ -41,8 +41,33 @@ Backend:
      — geen actie vóór een volgende sessie het oppakt.
 3. RLZ-client: Basic auth per administratie, `{adminId}`-routing, throttling/retry, PUT+GUID-
    conventie, acties (17/19/138), `$expand`-helpers. Integratietests tegen BLOW (read-only).
-4. Sync-laag per administratie: Ledgers, TaxRates, Vendors, Projects, JournalEntries (historie →
-   boekingsgeheugen-seed). Cache met verversing bij gebruik.
+4. **Sync-laag per administratie — Ledgers/TaxRates/Vendors/Projects gebouwd (2026-07-08).**
+   Migratie 0005: gedeelde `platform.grootboekrekening` (koppelcontract §2c v1.8, RLZ-sync is
+   enige schrijver, vastgoed leest read-only via GRANT SELECT + RLS) + niet-gedeelde
+   `boekhouding.{taxrate,vendor,project}_cache` (eigen controlescherm — crediteurkeuze, btw-code,
+   projectkoppeling; `brondata`-JSONB als vangnet naast de wél-geverifieerde velden, want
+   TaxRate's officiële resource-model-documentatie gaf herhaaldelijk een serverfout). Generieke
+   upsert + `verdwenen_uit_bron_op`-markering (nooit hard verwijderen; terugkeer = NULL, conform
+   §2c) — één implementatie voor alle vier de bronnen (`app/sync/service.py`).
+   - **On-demand trigger** `POST /administraties/{id}/sync/ledgers` — nu met gebruikers-auth +
+     administratie-scope (zelfde dependency als document-upload); het service-to-service
+     platform-JWT voor vastgoed's eigen ververs-knop komt bij de Cloud-uitrol.
+   - **Nachtelijke sync** is nu een aanroepbaar commando (`make sync-alles` /
+     `python -m app.cli sync-alles`) — de **Cloud Scheduler-koppeling zelf volgt bij de
+     GCP-uitrol** (fase 5-platformverbetering), dit commando is exact het werk-item dat de
+     Cloud Run-job straks aanroept. Eén administratie zonder werkende credentials stopt de rest
+     van de run niet.
+   - **Credentials tijdelijk via .env-logins** (`app/rlz/credentials.py`, prefix per
+     RLZ-adminId — Universal/TESTADMIN/Rubicon; BLOw ontbreekt bewust, het volledige adminId
+     staat nergens in de repo) — vervalt zodra de credential-store er is (fase 1, punt 2 hierboven
+     legde het fundament, de RLZ-credential-koppeling zelf is nog niet gedaan).
+   - **Aanname, nog te bevestigen door vastgoed:** de GRANT aan hun leesrol gaat naar
+     `vastgoed_app` (naar analogie van `boekhouding_app`) — zie Platform/OPEN_ITEMS.md. Lokaal is
+     de GRANT voorwaardelijk (rol bestaat hier niet), dus geen migratiefout, maar wél een
+     bevestiging nodig vóór de éérste keer dat vastgoed dit in de gedeelde Cloud SQL verwacht.
+   - JournalEntries (historie → boekingsgeheugen-seed) blijft open voor een volgende sessie —
+     hoort inhoudelijk bij het boekingsgeheugen (fase-vervolg), niet bij deze read-only
+     referentiedata-sync.
 5. **Document-pipeline (statusmachine) — fundament gebouwd (2026-07-08).** Migratie 0004:
    `boekhouding.document` (client-UUID, RLS conform besluit 0004 — `administratie_id` mag NULL
    voor de niet_toegewezen-verzamelbak, zelfde patroon als `audit_event`) + `document_gebeurtenis`

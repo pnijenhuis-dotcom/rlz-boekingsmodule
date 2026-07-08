@@ -2,6 +2,10 @@
 
 Hard: geen enkele schrijfactie in dit bestand. Schrijf-integratietests staan apart in
 test_write_integration.py en draaien uitsluitend tegen de RLZ-test-administratie.
+
+read_integration-marker (2026-07-08, zelfde reden als write_integration): dit leest live
+productiedata van échte klanten (BLOw/Universal) — dat hoort niet in een kale pytest-run te
+zitten, zelfs niet als alleen-lezend en zelfs niet als hij zonder credentials toch al skipt.
 """
 
 from __future__ import annotations
@@ -11,6 +15,8 @@ import time
 import pytest
 
 from app.rlz.client import RlzClient
+
+pytestmark = pytest.mark.read_integration
 
 
 def test_administrations_bereikbaar_blow(blow_login: RlzClient) -> None:

@@ -57,8 +57,19 @@ def test_verkeerd_tokentype_wordt_geweigerd() -> None:
 
 
 def test_ongeldige_signature_wordt_geweigerd() -> None:
+    """Was flaky: het allerlaatste base64url-teken van een 32-byte HMAC-SHA256-signature bevat 2
+    betekenisloze opvulbits (256 bits / 6 = geen geheel getal, dus het laatste teken van de
+    signature draagt maar 4 echte databits + 2 nul-opvulbits). `base64.urlsafe_b64decode` negeert
+    die opvulbits bij het decoderen — een vervanging van precies dát teken kan toevallig naar
+    exact dezelfde bytes decoderen, waardoor de manipulatie soms geen effect had. Het
+    voorlaatste teken zit niet op die randgrens en draagt altijd de volle 6 databits, dus een
+    afwijkende waarde daar verandert de gedecodeerde bytes gegarandeerd."""
     gebruiker_id = uuid.uuid4()
     token = create_access_token(gebruiker_id, rol="boekhouding")
-    geknoeid = token[:-1] + ("A" if token[-1] != "A" else "B")
+    header, payload, signature = token.rsplit(".", 2)
+    tamper_index = -2
+    vervanger = "A" if signature[tamper_index] != "A" else "B"
+    geknoeide_signature = signature[:tamper_index] + vervanger + signature[tamper_index + 1 :]
+    geknoeid = f"{header}.{payload}.{geknoeide_signature}"
     with pytest.raises(TokenError):
         decode_token(geknoeid, expected_type="access")
