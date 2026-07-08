@@ -2,14 +2,38 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth import schemas, service
 from app.auth.deps import CurrentGebruiker, require_beheerder
+from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer(auto_error=True)
+
+REFRESH_COOKIE_NAME = "refresh_token"
+REFRESH_COOKIE_PATH = "/auth/token/vernieuwen"
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    """httpOnly+Secure+SameSite (Auth-0010-b punt 1) — nooit leesbaar voor JS, dus nooit via
+    localStorage lekbaar. Path beperkt tot het refresh-endpoint: de browser stuurt hem nergens
+    anders naartoe. secure=False alleen in dev/local (zelfde gate als de JWT-secret-fallback in
+    app/security/tokens.py) — anders werkt lokaal draaien over http niet."""
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        max_age=settings.jwt_refresh_ttl_seconds,
+        httponly=True,
+        secure=settings.environment not in ("dev", "local"),
+        samesite="strict",
+        path=REFRESH_COOKIE_PATH,
+    )
+
+
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 @router.post("/uitnodigingen", response_model=schemas.UitnodigingAanmakenResponse)
@@ -50,31 +74,43 @@ def uitnodiging_accepteren(
 @router.post("/totp/bevestigen", response_model=schemas.TokenPaarResponse)
 def totp_bevestigen(
     payload: schemas.TotpBevestigenRequest,
+    response: Response,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> schemas.TokenPaarResponse:
     try:
         paar = service.bevestig_totp(totp_setup_token=credentials.credentials, code=payload.code)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return schemas.TokenPaarResponse(access_token=paar.access_token, refresh_token=paar.refresh_token)
+    _set_refresh_cookie(response, paar.refresh_token)
+    return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
 @router.post("/login", response_model=schemas.TokenPaarResponse)
-def login(payload: schemas.LoginRequest) -> schemas.TokenPaarResponse:
+def login(payload: schemas.LoginRequest, request: Request, response: Response) -> schemas.TokenPaarResponse:
     try:
-        paar = service.login(e_mail=payload.e_mail, wachtwoord=payload.wachtwoord, totp_code=payload.totp_code)
+        paar = service.login(
+            e_mail=payload.e_mail,
+            wachtwoord=payload.wachtwoord,
+            totp_code=payload.totp_code,
+            ip_adres=_client_ip(request),
+        )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    return schemas.TokenPaarResponse(access_token=paar.access_token, refresh_token=paar.refresh_token)
+    _set_refresh_cookie(response, paar.refresh_token)
+    return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
 @router.post("/token/vernieuwen", response_model=schemas.TokenPaarResponse)
-def token_vernieuwen(payload: schemas.RefreshRequest) -> schemas.TokenPaarResponse:
+def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarResponse:
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if refresh_token is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token cookie aangeleverd")
     try:
-        paar = service.vernieuw_token(refresh_token=payload.refresh_token)
+        paar = service.vernieuw_token(refresh_token=refresh_token, ip_adres=_client_ip(request))
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    return schemas.TokenPaarResponse(access_token=paar.access_token, refresh_token=paar.refresh_token)
+    _set_refresh_cookie(response, paar.refresh_token)
+    return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
 @router.patch("/gebruikers/{gebruiker_id}/rol", status_code=status.HTTP_204_NO_CONTENT)

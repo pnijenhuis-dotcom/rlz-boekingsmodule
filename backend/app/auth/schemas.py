@@ -38,8 +38,11 @@ class TotpBevestigenRequest(BaseModel):
 
 
 class TokenPaarResponse(BaseModel):
+    """Bevat bewust geen refresh_token: die gaat uitsluitend als httpOnly-cookie mee
+    (Auth-0010-b punt 1) — nooit in de JSON-body, anders kan een frontend hem alsnog in
+    localStorage zetten en is het hele punt van httpOnly weg."""
+
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
 
 
@@ -47,10 +50,6 @@ class LoginRequest(BaseModel):
     e_mail: str
     wachtwoord: str
     totp_code: str
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
 
 
 class RolWijzigenRequest(BaseModel):

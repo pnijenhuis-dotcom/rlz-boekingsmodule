@@ -55,9 +55,11 @@ def test_volledige_http_flow_uitnodigen_tot_login_en_refresh(beheerder_id: uuid.
         "/auth/login", json={"e_mail": e_mail, "wachtwoord": "een-heel-lang-wachtwoord", "totp_code": login_code}
     )
     assert resp.status_code == 200, resp.text
-    tokens = resp.json()
+    assert "refresh_token" not in resp.json(), "refresh_token hoort alleen als httpOnly-cookie mee, niet in de body"
+    assert client.cookies.get("refresh_token") is not None
 
-    resp = client.post("/auth/token/vernieuwen", json={"refresh_token": tokens["refresh_token"]})
+    # TestClient's cookiejar stuurt de zojuist gezette refresh-cookie vanzelf mee.
+    resp = client.post("/auth/token/vernieuwen")
     assert resp.status_code == 200, resp.text
 
 

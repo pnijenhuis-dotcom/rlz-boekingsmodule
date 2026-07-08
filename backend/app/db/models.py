@@ -120,6 +120,29 @@ class Uitnodiging(Base):
     gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
+class RefreshToken(Base):
+    """Server-side vastlegging van uitgegeven refresh-tokens (Auth-0010-b punt 1, Platform/
+    OPEN_ITEMS.md) — maakt intrekken en hergebruik-detectie mogelijk, wat een stateless JWT niet
+    kan. Alleen `token_hash` wordt opgeslagen (zelfde patroon als Uitnodiging.token_hash).
+    `gebruikt_op` markeert een geroteerd (verbruikt) token; `ingetrokken_op` markeert expliciete
+    intrekking (bv. hergebruik-detectie trekt alle actieve tokens van de gebruiker in).
+    `voorganger_id` legt de rotatieketen vast voor traceerbaarheid, niet functioneel vereist voor
+    de hergebruik-check zelf (die leunt op gebruikt_op/ingetrokken_op)."""
+
+    __tablename__ = "refresh_token"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    token_hash: Mapped[str] = mapped_column(unique=True)
+    voorganger_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.refresh_token.id"), default=None
+    )
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verloopt_op: Mapped[datetime]
+    gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
+    ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
 class TotpSecret(Base):
     """TOTP-secret, versleuteld at rest (envelope encryption — zie app/security/envelope.py).
     `bevestigd_op` is NULL tot de eerste succesvolle verificatie (activatie-gate); daarna gezet

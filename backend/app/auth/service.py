@@ -6,9 +6,20 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
-from app.db.models import Gebruiker, GebruikerAdministratie, GebruikerRol, GebruikerStatus, TotpSecret, Uitnodiging
+from app.config import settings
+from app.db.audit import record_audit_event
+from app.db.models import (
+    Gebruiker,
+    GebruikerAdministratie,
+    GebruikerRol,
+    GebruikerStatus,
+    RefreshToken,
+    TotpSecret,
+    Uitnodiging,
+)
 from app.db.session import scoped_session
 from app.security.envelope import unwrap_secret, wrap_secret
 from app.security.passwords import hash_password, verify_password
@@ -33,6 +44,12 @@ class AuthError(Exception):
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _login_metadata(ip_adres: str | None) -> dict[str, str] | None:
+    """IP is uitsluitend anomalie-metadata (Auth-0010-b) — nooit een auth-anker. Alleen
+    opgenomen in het audit-record zelf, nooit gebruikt om een login/sessie te (dis)kwalificeren."""
+    return {"ip": ip_adres} if ip_adres else None
 
 
 @dataclass(frozen=True)
@@ -133,6 +150,37 @@ class TokenPaar:
     refresh_token: str
 
 
+def _issue_token_paar(
+    session: Session, *, gebruiker_id: uuid.UUID, rol: GebruikerRol, voorganger_id: uuid.UUID | None = None
+) -> TokenPaar:
+    """Enige plek die een refresh-token uitgeeft: naast het JWT ook de bijbehorende hash
+    vastleggen in `refresh_token`, anders is rotatie/hergebruik-detectie niet mogelijk voor dit
+    token. `voorganger_id` legt de rotatieketen vast (None bij een verse login/activatie)."""
+    access_token = create_access_token(gebruiker_id, rol=rol.value)
+    refresh_token = create_refresh_token(gebruiker_id)
+    session.add(
+        RefreshToken(
+            id=uuid.uuid4(),
+            gebruiker_id=gebruiker_id,
+            token_hash=_hash_token(refresh_token),
+            voorganger_id=voorganger_id,
+            verloopt_op=datetime.now(UTC) + timedelta(seconds=settings.jwt_refresh_ttl_seconds),
+        )
+    )
+    return TokenPaar(access_token=access_token, refresh_token=refresh_token)
+
+
+def _intrek_alle_sessies(session: Session, gebruiker_id: uuid.UUID, *, now: datetime) -> None:
+    """Hergebruik-detectie (Auth-0010-b): een al-geroteerd of al-ingetrokken refresh-token dat
+    opnieuw wordt aangeboden, wijst op een gestolen/gelekt token — trek voor de zekerheid ALLE
+    actieve refresh-tokens van deze gebruiker in, niet alleen de ene sessie die zich meldde."""
+    session.execute(
+        update(RefreshToken)
+        .where(RefreshToken.gebruiker_id == gebruiker_id, RefreshToken.ingetrokken_op.is_(None))
+        .values(ingetrokken_op=now)
+    )
+
+
 def bevestig_totp(*, totp_setup_token: str, code: str) -> TokenPaar:
     """Activatie-gate: pas na een geslaagde verificatie wordt de gebruiker Actief. Het
     totp_setup-token is eenmalig van aard: een tweede aanroep faalt omdat bevestigd_op al gezet is."""
@@ -158,62 +206,136 @@ def bevestig_totp(*, totp_setup_token: str, code: str) -> TokenPaar:
         gebruiker = session.get(Gebruiker, gebruiker_id)
         assert gebruiker is not None
         gebruiker.status = GebruikerStatus.ACTIEF
-        rol = gebruiker.rol
+        paar = _issue_token_paar(session, gebruiker_id=gebruiker_id, rol=gebruiker.rol)
 
-    return TokenPaar(
-        access_token=create_access_token(gebruiker_id, rol=rol.value),
-        refresh_token=create_refresh_token(gebruiker_id),
-    )
+    return paar
 
 
-def login(*, e_mail: str, wachtwoord: str, totp_code: str) -> TokenPaar:
+def login(*, e_mail: str, wachtwoord: str, totp_code: str, ip_adres: str | None = None) -> TokenPaar:
     """Bewust dezelfde generieke fout voor onbekend e-mailadres/verkeerd wachtwoord/verkeerde
     TOTP-code — anders lekt de foutmelding zelf of een account bestaat, actief is, of al
-    TOTP-enrolled is (account-/2FA-enumeratie)."""
+    TOTP-enrolled is (account-/2FA-enumeratie).
+
+    Login-events (geslaagd/mislukt/TOTP-mislukt) gaan naar audit_event (Auth-0010-b punt 2). Bij
+    een onbekend e-mailadres is er geen platform.gebruiker-rij om aan te koppelen (actor_id is
+    NOT NULL) — daar wordt bewust geen audit-rij voor geschreven; er is geen entiteit om over te
+    rapporteren. Faalpaden loggen we via een APARTE, ná deze functie gestarte transactie: deze
+    hoofdtransactie faalt hier nooit hard (raise gebeurt pas na de `with`-blok), want
+    `scoped_session` rolt bij een exception de hele transactie terug — inclusief een audit-schrijving
+    die er middenin zou staan."""
     generic_error = "Ongeldige inloggegevens"
+    faal_actie: str | None = None
+    faal_gebruiker_id: uuid.UUID | None = None
+    paar: TokenPaar | None = None
 
     with scoped_session(None) as session:
         gebruiker = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == e_mail)).one_or_none()
-        if gebruiker is None or gebruiker.status != GebruikerStatus.ACTIEF or gebruiker.wachtwoord_hash is None:
-            raise AuthError(generic_error)
-        if not verify_password(wachtwoord, gebruiker.wachtwoord_hash):
-            raise AuthError(generic_error)
+        if gebruiker is None:
+            pass
+        elif (
+            gebruiker.status != GebruikerStatus.ACTIEF
+            or gebruiker.wachtwoord_hash is None
+            or not verify_password(wachtwoord, gebruiker.wachtwoord_hash)
+        ):
+            faal_actie, faal_gebruiker_id = "login_mislukt", gebruiker.id
+        else:
+            totp_row = session.get(TotpSecret, gebruiker.id)
+            if totp_row is None or totp_row.bevestigd_op is None:
+                faal_actie, faal_gebruiker_id = "login_mislukt", gebruiker.id
+            else:
+                secret = unwrap_secret(totp_row.secret_ciphertext, totp_row.wrapped_data_key).decode()
+                matched_step = verify_code(secret, totp_code, last_accepted_step=totp_row.laatste_stap)
+                if matched_step is None:
+                    faal_actie, faal_gebruiker_id = "totp_mislukt", gebruiker.id
+                else:
+                    totp_row.laatste_stap = matched_step
+                    paar = _issue_token_paar(session, gebruiker_id=gebruiker.id, rol=gebruiker.rol)
+                    record_audit_event(
+                        session,
+                        actor_id=gebruiker.id,
+                        module="platform",
+                        tabel="gebruiker",
+                        record_id=gebruiker.id,
+                        actie="login_geslaagd",
+                        correlatie_id=uuid.uuid4(),
+                        nieuwe_waarde=_login_metadata(ip_adres),
+                    )
 
-        totp_row = session.get(TotpSecret, gebruiker.id)
-        if totp_row is None or totp_row.bevestigd_op is None:
-            raise AuthError(generic_error)
-        secret = unwrap_secret(totp_row.secret_ciphertext, totp_row.wrapped_data_key).decode()
-        matched_step = verify_code(secret, totp_code, last_accepted_step=totp_row.laatste_stap)
-        if matched_step is None:
-            raise AuthError(generic_error)
-        totp_row.laatste_stap = matched_step
+    if faal_actie is not None and faal_gebruiker_id is not None:
+        with scoped_session(None, actor_id=faal_gebruiker_id) as log_session:
+            record_audit_event(
+                log_session,
+                actor_id=faal_gebruiker_id,
+                module="platform",
+                tabel="gebruiker",
+                record_id=faal_gebruiker_id,
+                actie=faal_actie,
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde=_login_metadata(ip_adres),
+            )
 
-        gebruiker_id = gebruiker.id
-        rol = gebruiker.rol
-
-    return TokenPaar(
-        access_token=create_access_token(gebruiker_id, rol=rol.value),
-        refresh_token=create_refresh_token(gebruiker_id),
-    )
+    if paar is None:
+        raise AuthError(generic_error)
+    return paar
 
 
-def vernieuw_token(*, refresh_token: str) -> TokenPaar:
+def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenPaar:
+    """Rotatie bij elke aanroep (Auth-0010-b punt 1): het aangeboden token wordt verbruikt-
+    gemarkeerd en vervangen door een nieuwe. Wordt hetzelfde token een tweede keer aangeboden
+    (gebruikt_op of ingetrokken_op al gezet), dan is dat hergebruik van een gestolen/gelekt token
+    — alle actieve sessies van de gebruiker worden dan preventief ingetrokken.
+
+    Zelfde reden als in login(): de revoke-all + audit-schrijving bij hergebruik mogen niet
+    verloren gaan doordat deze functie voor de aanroeper een fout meldt — dus wordt hier nooit
+    binnen de `with`-transactie ge-raised; de uitkomst wordt na het blok (dat altijd commit't)
+    omgezet in een AuthError."""
     try:
         payload = decode_token(refresh_token, expected_type="refresh")
     except TokenError as exc:
         raise AuthError(str(exc)) from exc
     gebruiker_id = uuid.UUID(payload["sub"])
+    token_hash = _hash_token(refresh_token)
+    now = datetime.now(UTC)
+
+    faal_reden: str | None = None
+    paar: TokenPaar | None = None
 
     with scoped_session(None) as session:
-        gebruiker = session.get(Gebruiker, gebruiker_id)
-        if gebruiker is None or gebruiker.status != GebruikerStatus.ACTIEF:
-            raise AuthError("Account niet (meer) actief")
-        rol = gebruiker.rol
+        rij = session.scalars(select(RefreshToken).where(RefreshToken.token_hash == token_hash)).one_or_none()
+        if rij is None:
+            faal_reden = "onbekend"
+        elif rij.gebruikt_op is not None or rij.ingetrokken_op is not None:
+            _intrek_alle_sessies(session, gebruiker_id, now=now)
+            record_audit_event(
+                session,
+                actor_id=gebruiker_id,
+                module="platform",
+                tabel="refresh_token",
+                record_id=rij.id,
+                actie="refresh_token_hergebruik_gedetecteerd",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde=_login_metadata(ip_adres),
+            )
+            faal_reden = "hergebruik"
+        elif rij.verloopt_op < now:
+            faal_reden = "verlopen"
+        else:
+            gebruiker = session.get(Gebruiker, gebruiker_id)
+            if gebruiker is None or gebruiker.status != GebruikerStatus.ACTIEF:
+                faal_reden = "inactief"
+            else:
+                rij.gebruikt_op = now
+                paar = _issue_token_paar(session, gebruiker_id=gebruiker_id, rol=gebruiker.rol, voorganger_id=rij.id)
 
-    return TokenPaar(
-        access_token=create_access_token(gebruiker_id, rol=rol.value),
-        refresh_token=create_refresh_token(gebruiker_id),
-    )
+    if paar is None:
+        foutmeldingen = {
+            "onbekend": "Ongeldig refresh-token",
+            "hergebruik": "Refresh-token al gebruikt — alle sessies zijn ter voorzorg beëindigd",
+            "verlopen": "Refresh-token verlopen",
+            "inactief": "Account niet (meer) actief",
+        }
+        raise AuthError(foutmeldingen.get(faal_reden, "Ongeldig refresh-token"))
+    return paar
 
 
 def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol: GebruikerRol) -> None:
@@ -245,3 +367,62 @@ def verwijder_scope(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, admini
         rij = session.get(GebruikerAdministratie, (doel_gebruiker_id, administratie_id))
         if rij is not None:
             session.delete(rij)
+
+
+@dataclass(frozen=True)
+class BootstrapResultaat:
+    gebruiker_id: uuid.UUID
+    token: str
+    verloopt_op: datetime
+
+
+def bootstrap_eerste_beheerder(*, naam: str, e_mail: str) -> BootstrapResultaat:
+    """Doorbreekt het kip-ei-probleem van de uitnodigingsflow (Beheerder-only, zie
+    deps.require_beheerder) — zonder dit commando is er geen manier om de allereerste Beheerder
+    aan te maken. Idempotent: weigert zodra er al één Beheerder-rol bestaat, ongeacht diens
+    status. Maakt, net als een normale uitnodiging, alleen de gebruiker + een eenmalig
+    uitnodigingstoken aan; wachtwoord en TOTP lopen via de bestaande
+    accepteer_uitnodiging()/bevestig_totp()-flow — geen aparte activatieroute om te onderhouden.
+
+    Schrijft zelf een audit_event: de rol-wijzigingstrigger (migratie 0002) vuurt alleen op
+    UPDATE van een bestaande rij, niet op deze allereerste INSERT."""
+    with scoped_session(None) as session:
+        bestaat_al = session.scalars(select(Gebruiker.id).where(Gebruiker.rol == GebruikerRol.BEHEERDER)).first()
+        if bestaat_al is not None:
+            raise AuthError("Er bestaat al een Beheerder — dit commando is eenmalig.")
+
+        gebruiker_id = uuid.uuid4()
+        session.add(
+            Gebruiker(
+                id=gebruiker_id,
+                naam=naam,
+                e_mail=e_mail,
+                rol=GebruikerRol.BEHEERDER,
+                status=GebruikerStatus.UITGENODIGD,
+            )
+        )
+        session.flush()
+
+        token = secrets.token_urlsafe(32)
+        verloopt_op = datetime.now(UTC) + INVITE_TTL
+        session.add(
+            Uitnodiging(
+                id=uuid.uuid4(),
+                gebruiker_id=gebruiker_id,
+                token_hash=_hash_token(token),
+                aangemaakt_door=gebruiker_id,
+                verloopt_op=verloopt_op,
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=gebruiker_id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=gebruiker_id,
+            actie="eerste_beheerder_bootstrapped",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={"rol": GebruikerRol.BEHEERDER.value},
+        )
+
+    return BootstrapResultaat(gebruiker_id=gebruiker_id, token=token, verloopt_op=verloopt_op)

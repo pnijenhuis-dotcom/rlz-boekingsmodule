@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Generator
+from dataclasses import dataclass
 
+import pyotp
 import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 import app.db.session as db_session
+from app.auth import service
 from app.config import settings
+from app.db.models import GebruikerRol
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -43,6 +47,35 @@ def beheerder_id(admin_engine: Engine) -> uuid.UUID:
             {"id": gid, "mail": f"{gid}@test.local"},
         )
     return gid
+
+
+@dataclass(frozen=True)
+class ActieveGebruiker:
+    """Volledig geactiveerde gebruiker (uitgenodigd -> wachtwoord -> TOTP bevestigd) — herbruikbaar
+    voor tests die daadwerkelijk moeten inloggen (login()/vernieuw_token()), i.p.v. de kortere
+    `_bearer()`-shortcut die alleen een access-token nodig heeft."""
+
+    id: uuid.UUID
+    e_mail: str
+    wachtwoord: str
+    secret: str
+
+
+@pytest.fixture
+def actieve_gebruiker(beheerder_id: uuid.UUID) -> ActieveGebruiker:
+    e_mail = f"{uuid.uuid4()}@test.local"
+    wachtwoord = "een-heel-lang-wachtwoord"
+    resultaat = service.maak_uitnodiging(
+        actor_id=beheerder_id,
+        naam="Actieve Gebruiker",
+        e_mail=e_mail,
+        rol=GebruikerRol.BOEKHOUDING,
+        administratie_ids=[],
+    )
+    acceptatie = service.accepteer_uitnodiging(token=resultaat.token, wachtwoord=wachtwoord)
+    code = pyotp.TOTP(acceptatie.secret).now()
+    service.bevestig_totp(totp_setup_token=acceptatie.totp_setup_token, code=code)
+    return ActieveGebruiker(id=resultaat.gebruiker_id, e_mail=e_mail, wachtwoord=wachtwoord, secret=acceptatie.secret)
 
 
 @pytest.fixture
