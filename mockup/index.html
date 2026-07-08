@@ -14,6 +14,7 @@
     --orange: #b25e09; --orange-bg: #fdf0e0;
     --red: #b3261e; --red-bg: #fbe9e7;
     --blue-bg: #e7eefb; --purple: #6941c6; --purple-bg: #f0ebfa;
+    --focus: rgba(29,95,191,.15);
   }
   body.dark {
     --bg: #12161f; --panel: #1b2230; --border: #2b3448;
@@ -22,7 +23,11 @@
     --orange: #e59a3f; --orange-bg: #3a2c14;
     --red: #e26a62; --red-bg: #3b1f1d;
     --blue-bg: #1d2a44; --purple: #a78bfa; --purple-bg: #2a2342;
+    --focus: rgba(91,147,232,.28);
   }
+  body.dark .membanner { border-color: #3d3170; color: #c9bcf2; }
+  body.dark .alertbanner { border-color: #5a4420; color: #e8c48c; }
+  body.dark .chip.geboekt { background: #242c3d; color: var(--muted); }
   body.dark .upload { background: #161c28; border-color: #3a4560; }
   body.dark th { background: #161c28; }
   body.dark tr.clickable:hover { background: #202940; }
@@ -99,6 +104,11 @@
   .conf { font-size: 10.5px; margin-left: 5px; font-weight: 600; }
   .conf.hi { color: var(--green); } .conf.lo { color: var(--red); }
   input.warnfield, select.warnfield { border-color: var(--orange); background-color: #fffaf3; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+  .btn:hover:not(:disabled) { filter: brightness(.92); }
+  input.pct { text-align: right; }
+  .modal-x { position: absolute; top: 10px; right: 14px; cursor: pointer; color: var(--muted); font-size: 17px; line-height: 1; }
+  .modal-x:hover { color: var(--text); }
 
   .membanner { background: var(--purple-bg); border: 1px solid #d9ccf3; border-radius: 8px; padding: 11px 14px; font-size: 12.5px; color: #4a3591; margin-bottom: 14px; display: flex; gap: 10px; align-items: flex-start; }
   .membanner .icon { font-size: 16px; }
@@ -110,7 +120,7 @@
   /* Modal */
   .modal-bg { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 50; align-items: center; justify-content: center; }
   .modal-bg.open { display: flex; }
-  .modal { background: #fff; border-radius: 10px; padding: 22px; width: 480px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .modal { background: #fff; border-radius: 10px; padding: 22px; width: min(480px, 94vw); max-height: 88vh; overflow-y: auto; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
   .modal h2 { font-size: 15px; margin-bottom: 12px; }
   .modal .row { margin-bottom: 12px; }
 
@@ -447,38 +457,42 @@
             <label style="font-size:12.5px;margin-bottom:10px;display:block"><input type="checkbox" checked style="width:auto" onchange="document.getElementById('regelsSamen').style.display=this.checked?'block':'none';document.getElementById('regelsUitgesplitst').style.display=this.checked?'none':'block'"> <b>Regels samenvoegen tot één boekingsregel</b> <span style="color:var(--muted)">(standaard aan · één grootboek voor het hele factuurbedrag · keuze wordt per leverancier onthouden)</span></label>
             <div id="regelsSamen">
             <table class="lines">
-              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th>Doorbelasten aan</th><th class="amount">Excl.</th></tr>
+              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th>Doorbelasten aan</th><th>GB doelentiteit</th><th class="amount">Excl.</th></tr>
               <tr>
                 <td>Factuur 2026-0642 — samengevoegd (3 regels)</td>
-                <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option><option>4530 · Huisvesting</option></select></td>
+                <td><input list="gb-facilities" value="4110 · Bouwmaterialen" title="Rekeningschema Kempen Facilities — typ nummer of naam"></td>
                 <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>BTW-bedrag zelf specificeren</option></select></td>
                 <td><span class="chip geheugen" style="cursor:pointer" onclick="document.getElementById('verdeelmodal').classList.add('open')" title="Klik om de verdeling aan te passen">≡ 3 entiteiten · 50/30/20</span></td>
+                <td style="color:var(--muted);font-size:12px">per entiteit — in splitsing</td>
                 <td class="amount">€ 1.263,10</td>
               </tr>
             </table>
             </div>
             <div id="regelsUitgesplitst" style="display:none">
             <table class="lines">
-              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th>Doorbelasten aan</th><th class="amount">Excl.</th></tr>
+              <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th>Doorbelasten aan</th><th>GB doelentiteit</th><th class="amount">Excl.</th></tr>
               <tr>
                 <td>Multiplex 18mm (12×)</td>
-                <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option><option>4530 · Huisvesting</option></select></td>
+                <td><input list="gb-facilities" value="4110 · Bouwmaterialen" title="Rekeningschema Kempen Facilities — typ nummer of naam"></td>
                 <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>EU, Diensten</option><option>EU, Goederen (ICP)</option><option>Buiten EU</option><option>BTW-bedrag zelf specificeren</option></select></td>
                 <td><select><option>Kempen Bouw B.V. (100%)</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option><option>≡ Splitsen met percentages…</option></select></td>
+                <td><input list="gb-kempenbouw" value="4110 · Bouwmaterialen" title="Rekeningschema van Kempen Bouw — live uit RLZ; typ nummer of naam"></td>
                 <td class="amount">€ 762,00</td>
               </tr>
               <tr>
                 <td>Bevestigingsmateriaal</td>
-                <td><select><option>4110 · Bouwmaterialen</option><option>4120 · Gereedschap</option></select></td>
+                <td><input list="gb-facilities" value="4110 · Bouwmaterialen" title="Rekeningschema Kempen Facilities — typ nummer of naam"></td>
                 <td><select><option>NL, Hoog tarief (21%)</option><option>NL, Laag tarief (9%)</option><option>NL, Nul tarief (0%)</option><option>NL, Geen BTW (vrijgesteld)</option><option>NL, BTW verlegd</option><option>EU, Diensten</option><option>EU, Goederen (ICP)</option><option>Buiten EU</option><option>BTW-bedrag zelf specificeren</option></select></td>
                 <td><span class="chip geheugen" style="cursor:pointer" onclick="document.getElementById('verdeelmodal').classList.add('open')" title="Klik om de verdeling aan te passen">≡ 3 entiteiten · 50/30/20</span></td>
+                <td style="color:var(--muted);font-size:12px">per entiteit — in splitsing</td>
                 <td class="amount">€ 411,10</td>
               </tr>
               <tr>
                 <td>Statiegeld pallets</td>
-                <td><select class="warnfield"><option>?? — geen historie voor statiegeld</option><option>4110 · Bouwmaterialen</option><option>1300 · Vooruitbetaald</option></select></td>
+                <td><input class="warnfield" list="gb-facilities" placeholder="?? geen historie — typ om te zoeken" title="Rekeningschema Kempen Facilities"></td>
                 <td><select class="warnfield"><option>0%</option><option>21%</option></select></td>
                 <td><select class="warnfield"><option>— kies entiteit (verplicht) —</option><option>Kempen Bouw B.V. (100%)</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option><option>≡ Splitsen met percentages…</option></select></td>
+                <td><input class="warnfield" list="gb-doel" placeholder="typ nummer of naam… (verplicht)" title="Rekeningschema van de gekozen doelentiteit — beschikbaar zodra een entiteit is gekozen"></td>
                 <td class="amount">€ 90,00</td>
               </tr>
             </table>
@@ -1104,17 +1118,17 @@ Administratiekantoor Nijenhuis</textarea></div>
 
 <!-- VERDEELSLEUTEL-MODAL (regel splitsen over entiteiten) -->
 <div class="modal-bg" id="verdeelmodal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal" style="width:560px">
+  <div class="modal" style="width:min(760px,94vw)">
     <h2>Regel splitsen — Bevestigingsmateriaal · € 411,10 excl.</h2>
     <table class="lines" style="margin-bottom:10px">
-      <tr><th>Entiteit</th><th style="width:80px">%</th><th class="amount">Bedrag excl.</th><th style="width:34px"></th></tr>
-      <tr><td><select><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input value="50"></td><td class="amount">€ 205,55</td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
-      <tr><td><select><option>Kempen Services B.V.</option><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input value="30"></td><td class="amount">€ 123,33</td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
-      <tr><td><select><option>Kempen Vastgoed B.V.</option><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input value="20"></td><td class="amount">€ 82,22</td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
-      <tr><td><b>Totaal</b> <span class="chip ubl">100% ✓</span></td><td></td><td class="amount"><b>€ 411,10</b></td><td></td></tr>
+      <tr><th>Entiteit</th><th style="width:70px">%</th><th class="amount">Bedrag excl.</th><th>GB in doeladministratie</th><th style="width:34px"></th></tr>
+      <tr><td><select><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input class="pct" value="50"></td><td class="amount">€ 205,55</td><td><input list="gb-kempenbouw" value="4110 · Bouwmaterialen" title="Rekeningschema van Kempen Bouw — live uit RLZ; typ nummer of naam"></td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
+      <tr><td><select><option>Kempen Services B.V.</option><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Vastgoed B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input class="pct" value="30"></td><td class="amount">€ 123,33</td><td><input list="gb-kempenservices" value="4530 · Huisvestingskosten" title="Rekeningschema van Kempen Services — live uit RLZ; typ nummer of naam"></td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
+      <tr><td><select><option>Kempen Vastgoed B.V.</option><option>Kempen Bouw B.V.</option><option>Kempen Groep B.V.</option><option>Kempen Services B.V.</option><option>Kempen Installatie B.V.</option><option>Kempen Beheer B.V.</option></select></td><td><input class="pct" value="20"></td><td class="amount">€ 82,22</td><td><input class="warnfield" list="gb-kempenvastgoed" placeholder="typ nummer of naam… (verplicht)" title="Rekeningschema van Kempen Vastgoed — live uit RLZ"></td><td style="text-align:center"><span style="cursor:pointer" title="Regel verwijderen" onclick="alert('Mockup: verdeelregel wordt verwijderd — het totaal telt direct opnieuw en moet weer op 100% uitkomen vóór je kunt toepassen.')">🗑</span></td></tr>
+      <tr><td><b>Totaal</b> <span class="chip ubl">100% ✓</span></td><td></td><td class="amount"><b>€ 411,10</b></td><td></td><td></td></tr>
     </table>
     <div style="margin-bottom:10px"><button class="btn secondary" style="padding:5px 12px;font-size:12px" onclick="alert('Mockup: extra verdeelregel erbij — splitsen kan over zoveel entiteiten als op de whitelist staan (bijv. 5 of 6). Percentages moeten samen weer exact 100% zijn.')">+ Entiteit toevoegen</button></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Totaal moet <b>exact 100%</b> zijn, anders blokkeert boeken (harde check). Centen worden automatisch kloppend verdeeld (grootste-rest-methode): de som van de delen is altijd exact het regelbedrag — er raakt nooit een cent kwijt. Btw wordt per deelbedrag berekend en sluit gegarandeerd aan op het regeltotaal.</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Totaal moet <b>exact 100%</b> zijn, anders blokkeert boeken (harde check). Centen worden automatisch kloppend verdeeld (grootste-rest-methode): de som van de delen is altijd exact het regelbedrag — er raakt nooit een cent kwijt. Btw wordt per deelbedrag berekend en sluit gegarandeerd aan op het regeltotaal. <b>GB in doeladministratie:</b> per regel kies je hier direct waar de kosten in de doelentiteit landen — zoekbare lijst, live uit het RLZ-rekeningschema van díé administratie (ook balans-GB's: investeringen kun je zo direct laten activeren). De spiegel-inkoopfactuur wordt daarop automatisch geboekt; de provisie boekt in de doelentiteit áltijd apart, op de vaste provisie-GB uit de instellingen. Het geheugen leert de doel-GB per leverancier+entiteit.</div>
     <div class="actions">
       <button class="btn secondary" onclick="document.getElementById('verdeelmodal').classList.remove('open')">Annuleren</button>
       <button class="btn" onclick="document.getElementById('verdeelmodal').classList.remove('open')">Toepassen ✓</button>
@@ -1141,12 +1155,14 @@ Administratiekantoor Nijenhuis</textarea></div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px">De whitelist wordt <b>server-side afgedwongen</b>: doorbelasten buiten deze lijst is technisch onmogelijk — ook niet via een geheugen-suggestie of een fout in het scherm. Kempen kan dus nooit bij BLOW uitkomen. Bovendien kan een medewerker alleen doorbelasten naar administraties waarop hij zelf scope heeft. Elke wijziging van deze lijst staat in het audit log.</div>
     <div class="grid2">
-      <div><label>Btw op doorbelasting (geen fiscale eenheid)</label><select><option>Tarief volgt de oorspronkelijke factuurregel</option><option>Altijd hoog tarief (21%)</option></select></div>
+      <div><label>Btw op doorbelasting (geen fiscale eenheid)</label><select><option>Altijd hoog tarief (21%) — zoals huidige praktijk</option><option>Tarief volgt de oorspronkelijke factuurregel</option></select></div>
       <div><label>Provisie-opslag (standaard, override per entiteit mogelijk)</label><input value="5%"></div>
+      <div><label>Omzet-GB doorbelasting (bron-kant)</label><select><option>8000 · Omzet 1 (zoals huidige praktijk)</option><option>andere omzetrekening…</option></select></div>
+      <div><label>Omzet-GB provisieregel</label><select><option>Zelfde als doorbelasting (default)</option><option>aparte omzetrekening…</option></select></div>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin:8px 0 12px">De provisie komt als <b>aparte regel</b> op de doorbelastingsfactuur (eigen omzet-GB "Provisie doorbelasting", btw-belast) — kosten en fee blijven gescheiden zichtbaar en het factuurtotaal blijft controleerbaar: doorbelaste kosten + provisie. Berekening over het netto doorbelaste bedrag per entiteit, ná de percentage-verdeling. Afwijkend % per doelentiteit instelbaar via de whitelist-lijst hierboven (klik op een entiteit).</div>
+    <div style="font-size:12px;color:var(--muted);margin:8px 0 12px">De provisie komt als <b>aparte regel</b> op de doorbelastingsfactuur (geverifieerd patroon Kempen: kosten- én provisieregel op één omzet-GB, vlak 21%) — het factuurtotaal blijft controleerbaar: doorbelaste kosten + provisie. Berekening over het netto doorbelaste bedrag per entiteit, ná de percentage-verdeling. Afwijkend % per doelentiteit via de whitelist hierboven. <b>Let op intercompany-afhandeling:</b> de tegenpost boekt op de RC-rekening per entiteit (niet op Debiteuren) — deze facturen verschijnen dus bewust niet in de bank-afletterwerkvoorraad.</div>
     <div class="row" style="margin-top:12px"><label>Intercompany-koppeling per entiteit</label>
-      <div style="font-size:12px;color:var(--muted)">Per doelentiteit: debiteur in Kempen Facilities + crediteur "Kempen Facilities B.V." in de doeladministratie — bij inrichting automatisch gedetecteerd of via de API aangemaakt. Status: <span class="chip ubl">6 van 6 gekoppeld ✓</span></div>
+      <div style="font-size:12px;color:var(--muted)">Per doelentiteit wordt bij koppeling vastgelegd: debiteur in Kempen Facilities (met RC-rekening als debiteurenrekening), crediteur "Kempen Facilities B.V." in de doeladministratie, webservice-login van die administratie (met rechten-verificatie) én de <b>kosten-GB waarop de provisie in de doelentiteit apart wordt geboekt (verplicht)</b> — zonder deze vier is de entiteit niet koppelbaar. Status: <span class="chip ubl">6 van 6 gekoppeld ✓</span></div>
     </div>
     <div class="actions">
       <button class="btn secondary" onclick="document.getElementById('centraleinkoopmodal').classList.remove('open')">Annuleren</button>
@@ -1154,6 +1170,29 @@ Administratiekantoor Nijenhuis</textarea></div>
     </div>
   </div>
 </div>
+
+<!-- Datalists: type-ahead-suggesties GB per administratie (mockup; echte app: zoekbare combobox, live uit RLZ-sync) -->
+<datalist id="gb-facilities">
+  <option value="4110 · Bouwmaterialen"></option><option value="4120 · Gereedschap"></option>
+  <option value="4210 · Onderhoud"></option><option value="4530 · Huisvesting"></option>
+  <option value="1300 · Vooruitbetaald"></option><option value="8000 · Omzet 1"></option>
+</datalist>
+<datalist id="gb-kempenbouw">
+  <option value="4110 · Bouwmaterialen"></option><option value="4210 · Onderhoud"></option>
+  <option value="4300 · Inventaris"></option><option value="0210 · Machines (activeren)"></option>
+</datalist>
+<datalist id="gb-kempenservices">
+  <option value="4530 · Huisvestingskosten"></option><option value="4110 · Materialen"></option>
+  <option value="4610 · Schoonmaakkosten"></option>
+</datalist>
+<datalist id="gb-kempenvastgoed">
+  <option value="4210 · Onderhoud panden"></option><option value="4530 · Huisvesting"></option>
+  <option value="0100 · Gebouwen (activeren)"></option>
+</datalist>
+<datalist id="gb-doel">
+  <option value="4110 · Bouwmaterialen"></option><option value="4210 · Onderhoud"></option>
+  <option value="4530 · Huisvesting"></option><option value="0210 · Machines (activeren)"></option>
+</datalist>
 
 <div class="mock-note">MOCKUP — dummy-data, geen echte koppeling</div>
 
@@ -1175,6 +1214,16 @@ function show(id, link) {
   if (link) link.classList.add('active');
   window.scrollTo(0, 0);
 }
+// Sluit-kruisje op elke modal + Esc sluit alles
+document.querySelectorAll('.modal').forEach(m => {
+  const x = document.createElement('span');
+  x.className = 'modal-x'; x.textContent = '✕'; x.title = 'Sluiten (Esc)';
+  x.onclick = () => m.parentElement.classList.remove('open');
+  m.appendChild(x);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-bg.open').forEach(b => b.classList.remove('open'));
+});
 </script>
 </body>
 </html>
