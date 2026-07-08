@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+import uuid
 
 from app.auth import service
+from app.credentialstore import service as credentialstore_service
 from app.sync import service as sync_service
 
 
@@ -42,6 +44,17 @@ def _sync_alles(args: argparse.Namespace) -> int:
     return 1 if fouten else 0
 
 
+def _importeer_env_credentials(args: argparse.Namespace) -> int:
+    """Eenmalige overzet-hulp: de bekende .env-logins de credential-store in (zie
+    app/credentialstore/service.py::importeer_env_credentials voor welke prefixen en waarom
+    sommige bewust overgeslagen worden)."""
+    beheerder_id = uuid.UUID(args.beheerder_id)
+    resultaten = credentialstore_service.importeer_env_credentials(actor_id=beheerder_id)
+    for prefix, uitkomst in resultaten.items():
+        print(f"{prefix}: {uitkomst}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="RLZ Boekingsmodule beheer-CLI")
     subparsers = parser.add_subparsers(dest="commando", required=True)
@@ -58,12 +71,23 @@ def main(argv: list[str] | None = None) -> int:
         help="Sync Ledgers/TaxRates/Vendors/Projects voor alle administraties (nachtelijke sync).",
     )
 
+    import_parser = subparsers.add_parser(
+        "import-env-credentials",
+        help="Zet de bekende .env-logins (RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_) eenmalig "
+        "in de credential-store.",
+    )
+    import_parser.add_argument(
+        "--beheerder-id", required=True, help="UUID van de Beheerder die deze import uitvoert (audit_event-actor)."
+    )
+
     args = parser.parse_args(argv)
 
     if args.commando == "bootstrap-beheerder":
         return _bootstrap_beheerder(args)
     if args.commando == "sync-alles":
         return _sync_alles(args)
+    if args.commando == "import-env-credentials":
+        return _importeer_env_credentials(args)
     return 1
 
 

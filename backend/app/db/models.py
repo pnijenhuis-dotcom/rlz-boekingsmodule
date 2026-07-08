@@ -185,6 +185,43 @@ class Grootboekrekening(Base):
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
+class RlzCredential(Base):
+    """Credential-store voor RLZ-webservice-logins per administratie (besluit 0001: credential-
+    store is gedeeld platform-fundament). Wachtwoord versleuteld at rest via hetzelfde envelope-
+    patroon als TotpSecret (app/security/envelope.py) — geen tweede encryptie-implementatie.
+    Schrijf-only vanaf de API-kant: het wachtwoord komt nooit terug in een response of log
+    (besluit 0012) — deze kolommen worden uitsluitend intern uitgepakt om een RlzClient te
+    bouwen. Eén credential-set per administratie (administratie_id is de PK, geen los id)."""
+
+    __tablename__ = "rlz_credential"
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    webservice_username: Mapped[str]
+    wachtwoord_ciphertext: Mapped[bytes] = mapped_column(BYTEA)
+    wrapped_data_key: Mapped[bytes] = mapped_column(BYTEA)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class RlzRechtenProbe(Base):
+    """Laatste rechten-probe-resultaat per administratie (koppel-flow onboarding): welke
+    read-only endpoints een webservice-login daadwerkelijk mag aanspreken. Overschrijft bij elke
+    nieuwe probe (geen historie hier — die staat al in audit_event via de actie
+    'rechten_probe_uitgevoerd'). `rapport` is endpoint -> 'ok' | HTTP-statuscode-string."""
+
+    __tablename__ = "rlz_rechten_probe"
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    rapport: Mapped[dict] = mapped_column(JSONB)
+    uitgevoerd_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    uitgevoerd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 class AuditEvent(Base):
     """Uniform, append-only audit-schema (koppelcontract v1.5, platformbrede afspraken) —
     bron voor de WORM-export. UPDATE/DELETE zijn niet gegrant aan de app-rol (zie migratie 0001).

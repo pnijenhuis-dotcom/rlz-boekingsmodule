@@ -14,17 +14,31 @@ VASTGOED_WACHTWOORD = "test-only-wachtwoord"  # lokale testdatabase, geen echt g
 
 
 class FakeRlzClient:
-    """Duck-typed vervanger van RlzClient voor sync-unittests — geen echte HTTP-calls. Alleen
-    `.get(path)` en `.close()` worden door de sync-servicelaag gebruikt."""
+    """Duck-typed vervanger van RlzClient voor sync-/credentialstore-unittests — geen echte
+    HTTP-calls. `.get(path)`, `.close()` en `.for_administration(admin_id)` worden gebruikt
+    (de laatste door de rechten-probe, die een root- en een gescoped client onderscheidt).
+    `fouten` is een optionele {endpoint: Exception}-map om 403's etc. te simuleren."""
 
-    def __init__(self, data: dict[str, list[dict[str, Any]]]) -> None:
+    def __init__(
+        self, data: dict[str, list[dict[str, Any]]], *, fouten: dict[str, Exception] | None = None
+    ) -> None:
         self._data = data
+        self._fouten = fouten or {}
         self.closed = False
+        self.admin_id: str | None = None
         self.opgevraagde_paden: list[str] = []
 
     def get(self, path: str) -> dict[str, Any]:
         self.opgevraagde_paden.append(path)
+        if path in self._fouten:
+            raise self._fouten[path]
         return {"value": self._data.get(path, [])}
+
+    def for_administration(self, admin_id: str) -> FakeRlzClient:
+        gescoped = FakeRlzClient(self._data, fouten=self._fouten)
+        gescoped.admin_id = admin_id
+        gescoped.opgevraagde_paden = self.opgevraagde_paden  # zelfde "verbinding", gedeelde log
+        return gescoped
 
     def close(self) -> None:
         self.closed = True

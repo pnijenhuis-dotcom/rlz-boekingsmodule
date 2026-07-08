@@ -16,8 +16,8 @@ Backend:
    credential-store (envelope encryption via Secret Manager/KMS), append-only audit log in het
    **uniforme `audit_event`-schema** (v1.3), **PII gescheiden van financiële data**
    (pseudonimiseerbaar), **Row-Level Security** op administratie-scope (`SET LOCAL` per transactie).
-   Migratie 0002 + endpoints + tests staan (2026-07-06). **Besloten (Peter, 2026-07-06) — eerste
-   taken volgende sessie:**
+   Migratie 0002 + endpoints + tests staan (2026-07-06). **Credential-store gebouwd (2026-07-08)
+   — zie punt 4 hieronder.** **Besloten (Peter, 2026-07-06) — eerste taken volgende sessie:**
    - **Bootstrap-CLI voor de allereerste Beheerder — gebouwd (2026-07-08).** Uitnodigen is
      Beheerder-only, dus zonder dit was er geen manier om de eerste Beheerder aan te maken zonder
      rechtstreeks in de database te schrijven (kip-ei). **CLI-only** (`python -m app.cli
@@ -68,6 +68,42 @@ Backend:
    - JournalEntries (historie → boekingsgeheugen-seed) blijft open voor een volgende sessie —
      hoort inhoudelijk bij het boekingsgeheugen (fase-vervolg), niet bij deze read-only
      referentiedata-sync.
+   - **Credential-store + koppel-flow gebouwd (2026-07-08).** Migratie 0006:
+     `platform.rlz_credential` (webservice-login per administratie, wachtwoord versleuteld at
+     rest via hetzelfde envelope-patroon als `totp_secret` — geen tweede
+     encryptie-implementatie) + `platform.rlz_rechten_probe` (laatste rechten-check). Geen RLS
+     op beide tabellen — platformbrede beheertabellen, toegang via applicatielaag (Beheerder-only
+     endpoints voor `rlz_credential`; administratie-scope voor de probe), niet via
+     administratie-scoping zoals `grootboekrekening`. `app/rlz/credentials.py` is nu
+     **store-first met .env-fallback**: bestaande `.env`-logins blijven werken zolang niet elke
+     administratie in de store zit. Eenmalig CLI-importcommando
+     (`make import-env-credentials BEHEERDER_ID=<uuid>`) zet de bekende `.env`-logins
+     (RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_) de store in — slaat BLOw en Kempen Facilities
+     bewust over (hun volledige RLZ-adminId staat nergens in de repo, geen aanname/gok).
+     Beheer-endpoints: `PUT`/`GET /administraties/{id}/rlz-credential` (Beheerder-only,
+     wachtwoord write-only — komt nooit in een response of audit_event terug, alleen de
+     username en het feit van de wijziging).
+   - **Rechten-probe** `POST /administraties/{id}/rlz-check` (administratie-scope, geen
+     Beheerder-only — hoort bij het aansluiten van een klant, geen platformbeheer): read-only
+     probes over `Administrations` (root-client, top-level endpoint), `Ledgers`, `TaxRates`,
+     `Vendors`, `Customers`, `Projects`, `SalesInvoices`, `PurchaseInvoices`, `JournalEntries`,
+     `PaymentAccounts` (administratie-gescoped), rapport (endpoint → `ok`/HTTP-statuscode)
+     opgeslagen per administratie + audit_event. **Voor de mockup-onboarding (fase-vervolg,
+     frontend nog niet gebouwd):** dit rapport is bedoeld als directe input voor het
+     koppel-scherm bij het aansluiten van een nieuwe administratie — een tabel met per endpoint
+     een groen vinkje (ok) of een rode kruis+statuscode, plus een herkenbare hint bij bekende
+     patronen (bv. "alle documentendpoints 403 → waarschijnlijk ontbrekend
+     'documenten'-rechtenprofiel op de webservice-login, zie verkenning/16_DOORBELASTING_KEMPEN.md
+     §KEMPEN_*-ervaring"). Een "niets wijzigen"-vinkje/leesrechten-profiel-indicator kan uit
+     `is_totaalrekening`/afwezigheid van schrijfrechten-probes worden afgeleid; dat scherm zelf
+     bouwen is fase-vervolg.
+   - **Overbrugging vastgoed:** Rubicons grootboekrekeningen live gesynchroniseerd (read-only,
+     `RUBICON_*`-login, 403 rekeningen — zie
+     `tests/integration/test_sync_ledgers_read_integration.py::test_sync_ledgers_tegen_rubicon`,
+     reproduceerbaar via `make test-read-integration`) en geëxporteerd naar
+     `Platform/uitwisseling/rubicon_ledgers_2026-07-08.json` (alleen rekeningschema — code/naam/
+     soort/GUID's, geen andere data) zodat vastgoed tegen echte data kan bouwen vóór de gedeelde
+     Cloud SQL er is. Zie `Platform/uitwisseling/README.md`.
 5. **Document-pipeline (statusmachine) — fundament gebouwd (2026-07-08).** Migratie 0004:
    `boekhouding.document` (client-UUID, RLS conform besluit 0004 — `administratie_id` mag NULL
    voor de niet_toegewezen-verzamelbak, zelfde patroon als `audit_event`) + `document_gebeurtenis`

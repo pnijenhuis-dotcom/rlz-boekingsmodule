@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles import-env-credentials pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -59,3 +59,8 @@ bootstrap-beheerder: check-versions
 # handmatig, of via cron: raakt alleen administraties met werkende .env-credentials.
 sync-alles: check-versions
 	.venv/bin/python -m app.cli sync-alles
+
+# Eenmalig: de bestaande .env-logins de credential-store in. Voorbeeld:
+# make import-env-credentials BEHEERDER_ID=<uuid>
+import-env-credentials: check-versions
+	.venv/bin/python -m app.cli import-env-credentials --beheerder-id "$(BEHEERDER_ID)"

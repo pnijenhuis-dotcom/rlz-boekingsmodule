@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(REPO_ROOT / "verkenning" / ".env")
 
 UNIVERSAL_ADMIN_ID = "3d954fc7-fe8d-4067-8cfb-73b4fe48c0ac"  # geverifieerd, verkenning/api-verkenning.md
+RUBICON_ADMIN_ID = "be5e66b3-b38c-4927-85c1-670490f16e3a"  # Platform/registers/entiteiten.md
 
 
 def _credentials(prefix: str) -> tuple[str, str] | None:
@@ -48,6 +49,11 @@ def testadmin_login() -> Generator[RlzClient, None, None]:
 
 
 @pytest.fixture
+def rubicon_login() -> Generator[RlzClient, None, None]:
+    yield from _login("RUBICON")
+
+
+@pytest.fixture
 def blow_client(blow_login: RlzClient) -> RlzClient:
     administraties = blow_login.list_administrations()
     assert administraties, "GET Administrations gaf niets terug voor de BLOW-login"
@@ -70,3 +76,12 @@ def testadmin_client(testadmin_login: RlzClient) -> RlzClient:
     administraties = testadmin_login.list_administrations()
     assert administraties, "GET Administrations gaf niets terug voor de TESTADMIN-login"
     return testadmin_login.for_administration(administraties[0]["id"])
+
+
+@pytest.fixture
+def rubicon_client(rubicon_login: RlzClient) -> RlzClient:
+    administraties = rubicon_login.list_administrations()
+    assert administraties, "GET Administrations gaf niets terug voor de RUBICON-login"
+    admin_id = administraties[0]["id"]
+    assert admin_id == RUBICON_ADMIN_ID, f"Verwachtte {RUBICON_ADMIN_ID}, kreeg {admin_id}"
+    return rubicon_login.for_administration(admin_id)
