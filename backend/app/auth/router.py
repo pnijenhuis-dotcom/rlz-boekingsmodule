@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth import schemas, service
-from app.auth.deps import CurrentGebruiker, require_beheerder
+from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder
 from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -34,6 +34,16 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.environment not in ("dev", "local"),
+        samesite="strict",
+    )
 
 
 @router.post("/uitnodigingen", response_model=schemas.UitnodigingAanmakenResponse)
@@ -111,6 +121,28 @@ def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarR
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     _set_refresh_cookie(response, paar.refresh_token)
     return schemas.TokenPaarResponse(access_token=paar.access_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(request: Request, response: Response) -> None:
+    """Trekt alleen de huidige sessie (het refresh-token in de cookie) in — andere sessies van
+    de gebruiker blijven actief. Geen authenticatie vereist: moet ook werken als het access-token
+    al verlopen is, en is idempotent bij een ontbrekende/al-ongeldige cookie."""
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if refresh_token is not None:
+        service.logout(refresh_token=refresh_token)
+    _clear_refresh_cookie(response)
+
+
+@router.post("/logout-overal", status_code=status.HTTP_204_NO_CONTENT)
+def logout_overal(
+    response: Response,
+    actor: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> None:
+    """Trekt ALLE sessies van de ingelogde gebruiker in — vereist een geldig access-token (i.t.t.
+    /logout), zodat intrekken van alle sessies alleen kan met een nog-verse bewezen identiteit."""
+    service.logout_overal(gebruiker_id=actor.id)
+    _clear_refresh_cookie(response)
 
 
 @router.patch("/gebruikers/{gebruiker_id}/rol", status_code=status.HTTP_204_NO_CONTENT)

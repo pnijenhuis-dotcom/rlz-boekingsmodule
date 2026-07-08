@@ -6,5 +6,6 @@ node_modules/
 .DS_Store
 backend/.venv/
 backend/.pytest_cache/
+backend/.data/
 backend/*.egg-info/
 frontend/dist/

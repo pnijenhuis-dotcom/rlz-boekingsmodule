@@ -338,6 +338,51 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
     return paar
 
 
+def logout(*, refresh_token: str) -> None:
+    """Trekt uitsluitend het aangeboden refresh-token in — andere sessies/apparaten van de
+    gebruiker blijven actief. Idempotent en stil bij een onbekend/verlopen/al-ingetrokken token:
+    een client die twee keer uitlogt (of een verlopen sessie) hoeft geen foutmelding te zien, en
+    er valt dan ook niets meer in te trekken."""
+    try:
+        payload = decode_token(refresh_token, expected_type="refresh")
+    except TokenError:
+        return
+    gebruiker_id = uuid.UUID(payload["sub"])
+    token_hash = _hash_token(refresh_token)
+
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        rij = session.scalars(select(RefreshToken).where(RefreshToken.token_hash == token_hash)).one_or_none()
+        if rij is None or rij.ingetrokken_op is not None:
+            return
+        rij.ingetrokken_op = datetime.now(UTC)
+        record_audit_event(
+            session,
+            actor_id=gebruiker_id,
+            module="platform",
+            tabel="refresh_token",
+            record_id=rij.id,
+            actie="logout",
+            correlatie_id=uuid.uuid4(),
+        )
+
+
+def logout_overal(*, gebruiker_id: uuid.UUID) -> None:
+    """Trekt ALLE actieve refresh-tokens van de gebruiker in (elke ingelogde sessie/apparaat) —
+    zelfde intrek-mechanisme als hergebruik-detectie, hier bewust door de gebruiker zelf
+    geïnitieerd."""
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        _intrek_alle_sessies(session, gebruiker_id, now=datetime.now(UTC))
+        record_audit_event(
+            session,
+            actor_id=gebruiker_id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=gebruiker_id,
+            actie="logout_overal",
+            correlatie_id=uuid.uuid4(),
+        )
+
+
 def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol: GebruikerRol) -> None:
     """Hard (CLAUDE.md): niemand muteert zijn eigen rol, ook een Beheerder niet. Beheerder-only
     afgedwongen door de router-dependency; hier alleen de self-mutation-check, want die geldt

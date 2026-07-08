@@ -36,5 +36,10 @@ class Settings(BaseSettings):
     # MasterKeyProvider-interface). Nooit een fallback buiten dev.
     totp_master_key_b64: str | None = None
 
+    # Documentopslag (fase 1): lokaal bestandssysteem in dev, Cloud Storage-implementatie van
+    # dezelfde interface in productie (zie app/documenten/storage.py) — 7 jaar bewaarplicht.
+    document_opslag_basismap: str = "./.data/documenten"
+    document_max_bytes: int = 20 * 1024 * 1024  # 20 MB, ruim voor PDF/XML-facturen
+
 
 settings = Settings()

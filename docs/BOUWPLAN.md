@@ -43,12 +43,27 @@ Backend:
    conventie, acties (17/19/138), `$expand`-helpers. Integratietests tegen BLOW (read-only).
 4. Sync-laag per administratie: Ledgers, TaxRates, Vendors, Projects, JournalEntries (historie →
    boekingsgeheugen-seed). Cache met verversing bij gebruik.
-5. Document-pipeline (statusmachine): ontvangen → gesplitst → geëxtraheerd (AI + deterministische
-   checks: regeltelling vs totaal, duplicaatcheck via eigen query op Entity+Reference(30
-   tekens)+bedrag — RLZ's actie 138 is bewezen zonder bruikbaar signaal, besluit 0013 — +
-   deterministisch client-GUID, IBAN-wissel) → voorstel (geheugen: historie + correcties,
-   recency-gewogen) → te controleren → klaar → geboekt/afgewezen/vraag open/fout. Upload via UI;
-   e-mail intake = fase 3.
+5. **Document-pipeline (statusmachine) — fundament gebouwd (2026-07-08).** Migratie 0004:
+   `boekhouding.document` (client-UUID, RLS conform besluit 0004 — `administratie_id` mag NULL
+   voor de niet_toegewezen-verzamelbak, zelfde patroon als `audit_event`) + `document_gebeurtenis`
+   (append-only tijdlijn, voedt de mockup-tijdlijn). Statusmachine als expliciete, geteste graaf
+   (`app/documenten/statusmachine.py`, alle paren getest): ontvangen → extractie_bezig →
+   te_controleren → klaar_om_te_boeken → geboekt, zijtakken vraag_open/afgewezen/boeken_mislukt/
+   niet_toegewezen; elke overgang schrijft zowel document_gebeurtenis als audit_event, ongeldige
+   overgangen zijn een harde fout. Upload-endpoint (PDF/XML, max-size, administratie-scope
+   afgedwongen) + storage-interface (lokaal FS in dev, Cloud Storage-klaar). Sha256-duplicaatcheck
+   bij binnenkomst (per administratie) zet `mogelijk_duplicaat_van_id` — een losse vlag, geen
+   aparte status (mockup: chip "Mogelijk duplicaat van ... — beoordelen", het document doorloopt
+   gewoon de normale flow). UBL/XML wordt al deterministisch geparst naar veldvoorstellen
+   (`app/documenten/ubl.py`); PDF krijgt nog geen extractie — de AI-extractiestap zelf
+   (regeltelling vs totaal, duplicaatcheck via eigen query op Entity+Reference(30 tekens)+bedrag —
+   RLZ's actie 138 is bewezen zonder bruikbaar signaal, besluit 0013 — deterministisch client-GUID,
+   IBAN-wissel, voorstel uit het boekingsgeheugen) is een stub-hook (`_start_extractie` in
+   `app/documenten/service.py`) en landt in een fase-vervolg. **Bekend openstaand punt:** elke
+   statusovergang vereist nu een menselijke actor_id (geen systeem-actor-sentinel) — voldoende
+   zolang extractie synchroon binnen dezelfde request draait, maar een latere écht-asynchrone
+   extractieworker (queue/Cloud Tasks) heeft hier een oplossing voor nodig vóór hij gebouwd wordt.
+   Multi-factuur-PDF-splitsing en e-mail-intake blijven fase 3.
 6. Boeken: PurchaseInvoice + PDF-bijlage + Book-actie, idempotency-key, audit, RLZ-boekstuk terug.
 7. Webhook-stub "factuur geboekt" (koppelcontract §3) — payload klaar, aflevering configureerbaar.
 

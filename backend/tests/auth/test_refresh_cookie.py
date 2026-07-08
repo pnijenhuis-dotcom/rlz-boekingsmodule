@@ -64,3 +64,45 @@ def test_login_zet_refresh_cookie_met_verwachte_vlaggen(beheerder_id: uuid.UUID)
     # settings.environment default is "dev" in tests -> secure=False (anders werkt lokaal http niet,
     # zelfde gate als de JWT-secret-fallback in app/security/tokens.py).
     assert "secure" not in attributen
+
+
+def test_logout_wist_cookie_en_trekt_token_in(beheerder_id: uuid.UUID) -> None:
+    e_mail, wachtwoord, secret = _activeer_gebruiker(beheerder_id)
+    login_code = pyotp.TOTP(secret).at(time.time() + STEP_SECONDS)
+    resp = client.post("/auth/login", json={"e_mail": e_mail, "wachtwoord": wachtwoord, "totp_code": login_code})
+    assert resp.status_code == 200, resp.text
+
+    resp = client.post("/auth/logout")
+    assert resp.status_code == 204, resp.text
+    set_cookie = resp.headers.get("set-cookie", "").lower()
+    assert "refresh_token=" in set_cookie
+    assert "max-age=0" in set_cookie
+
+    resp = client.post("/auth/token/vernieuwen")
+    assert resp.status_code == 401, resp.text
+
+
+def test_logout_zonder_cookie_is_geen_fout() -> None:
+    losse_client = TestClient(app)
+    resp = losse_client.post("/auth/logout")
+    assert resp.status_code == 204
+
+
+def test_logout_overal_vereist_authenticatie() -> None:
+    losse_client = TestClient(app)
+    resp = losse_client.post("/auth/logout-overal")
+    assert resp.status_code in (401, 403)
+
+
+def test_logout_overal_via_http_trekt_sessie_in(beheerder_id: uuid.UUID) -> None:
+    e_mail, wachtwoord, secret = _activeer_gebruiker(beheerder_id)
+    login_code = pyotp.TOTP(secret).at(time.time() + STEP_SECONDS)
+    resp = client.post("/auth/login", json={"e_mail": e_mail, "wachtwoord": wachtwoord, "totp_code": login_code})
+    assert resp.status_code == 200, resp.text
+    access_token = resp.json()["access_token"]
+
+    resp = client.post("/auth/logout-overal", headers={"Authorization": f"Bearer {access_token}"})
+    assert resp.status_code == 204, resp.text
+
+    resp = client.post("/auth/token/vernieuwen")
+    assert resp.status_code == 401, resp.text

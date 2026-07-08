@@ -8,7 +8,9 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.orm import sessionmaker
 
+import app.db.session as db_session
 from app.config import settings
 
 REQUIRED_PYTHON = (3, 12)
@@ -64,6 +66,25 @@ def _migrated_test_database() -> None:
     os.environ["DATABASE_URL"] = settings.test_database_url
     command.downgrade(alembic_cfg, "base")
     command.upgrade(alembic_cfg, "head")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _service_layer_gebruikt_testdatabase() -> Generator[None, None, None]:
+    """Elke `app.*.service`-module roept scoped_session() aan zonder expliciete session_factory —
+    dat gebruikt standaard de dev-/productie-engine (settings.app_database_url). Voor de hele
+    testrun wordt die tijdelijk vervangen door de testdatabase-engine (least-privilege
+    boekhouding_app-rol, zelfde als app_engine), zodat ALLE servicelagen (auth, documenten, ...)
+    daadwerkelijk tegen boekhouding_test draaien — en meteen ook non-superuser zijn, zoals de
+    RLS-tests vereisen. Op tests/-rootniveau (niet alleen tests/auth/): elk nieuw service-module
+    onder tests/<naam>/ heeft dit anders zelf moeten herhalen."""
+    test_engine = create_engine(settings.test_app_database_url, pool_pre_ping=True)
+    origineel_engine, origineel_factory = db_session.engine, db_session.SessionLocal
+    db_session.engine = test_engine
+    db_session.SessionLocal = sessionmaker(bind=test_engine, expire_on_commit=False)
+    yield
+    db_session.engine = origineel_engine
+    db_session.SessionLocal = origineel_factory
+    test_engine.dispose()
 
 
 @pytest.fixture(autouse=True)

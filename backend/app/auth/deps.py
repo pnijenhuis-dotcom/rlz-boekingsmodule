@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 
-from app.db.models import GebruikerRol, GebruikerStatus
+from app.db.models import GebruikerAdministratie, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.security.tokens import TokenError, decode_token
 
@@ -50,4 +50,21 @@ def get_current_gebruiker(
 def require_beheerder(current: CurrentGebruiker = Depends(get_current_gebruiker)) -> CurrentGebruiker:
     if current.rol != GebruikerRol.BEHEERDER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen toegestaan voor Beheerder")
+    return current
+
+
+def vereis_administratie_scope(
+    administratie_id: uuid.UUID, current: CurrentGebruiker = Depends(get_current_gebruiker)
+) -> CurrentGebruiker:
+    """Beheerder is platform-breed (zelfde bypass als platform.current_actor_is_beheerder() in de
+    DB, migratie 0002); iedere andere rol moet een gebruiker_administratie-rij op precies déze
+    administratie hebben. De sessie wordt bewust gescoped OP `administratie_id` (niet None) — de
+    gebruiker_administratie-tabel heeft zelf RLS (migratie 0002); zonder deze scope zou de SELECT
+    hieronder voor een niet-Beheerder altijd niets teruggeven, ook als de rij echt bestaat."""
+    if current.rol == GebruikerRol.BEHEERDER:
+        return current
+    with scoped_session(administratie_id, actor_id=current.id) as session:
+        heeft_scope = session.get(GebruikerAdministratie, (current.id, administratie_id)) is not None
+    if not heeft_scope:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Geen toegang tot deze administratie")
     return current

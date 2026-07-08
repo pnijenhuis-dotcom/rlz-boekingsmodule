@@ -1,35 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Generator
 from dataclasses import dataclass
 
 import pyotp
 import pytest
-from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Engine, text
 
-import app.db.session as db_session
 from app.auth import service
-from app.config import settings
 from app.db.models import GebruikerRol
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _service_layer_gebruikt_testdatabase() -> Generator[None, None, None]:
-    """app.auth.service roept scoped_session() aan zonder expliciete session_factory — dat
-    gebruikt standaard de dev-/productie-engine (settings.app_database_url). Voor deze tests
-    wordt die tijdelijk vervangen door de testdatabase-engine (least-privilege boekhouding_app-
-    rol, zelfde als app_engine), zodat de auth-servicelaag daadwerkelijk tegen boekhouding_test
-    draait — en meteen ook non-superuser is, zoals de RLS-tests vereisen."""
-    test_engine = create_engine(settings.test_app_database_url, pool_pre_ping=True)
-    origineel_engine, origineel_factory = db_session.engine, db_session.SessionLocal
-    db_session.engine = test_engine
-    db_session.SessionLocal = sessionmaker(bind=test_engine, expire_on_commit=False)
-    yield
-    db_session.engine = origineel_engine
-    db_session.SessionLocal = origineel_factory
-    test_engine.dispose()
 
 
 @pytest.fixture
@@ -53,12 +32,19 @@ def beheerder_id(admin_engine: Engine) -> uuid.UUID:
 class ActieveGebruiker:
     """Volledig geactiveerde gebruiker (uitgenodigd -> wachtwoord -> TOTP bevestigd) — herbruikbaar
     voor tests die daadwerkelijk moeten inloggen (login()/vernieuw_token()), i.p.v. de kortere
-    `_bearer()`-shortcut die alleen een access-token nodig heeft."""
+    `_bearer()`-shortcut die alleen een access-token nodig heeft.
+
+    `activatie_paar` is de TokenPaar die bevestig_totp() al uitgeeft bij activatie — een tweede,
+    onafhankelijke sessie naast een latere login()-aanroep. Handig voor "meerdere sessies
+    tegelijk"-tests (logout scoping) zonder tegen verify_code()'s ±1-stap-venster aan te lopen:
+    twee losse login()-aanroepen vlak na elkaar hebben geen ruimte voor twee verschillende, nog
+    niet geaccepteerde TOTP-stappen binnen hetzelfde venster."""
 
     id: uuid.UUID
     e_mail: str
     wachtwoord: str
     secret: str
+    activatie_paar: service.TokenPaar
 
 
 @pytest.fixture
@@ -74,8 +60,14 @@ def actieve_gebruiker(beheerder_id: uuid.UUID) -> ActieveGebruiker:
     )
     acceptatie = service.accepteer_uitnodiging(token=resultaat.token, wachtwoord=wachtwoord)
     code = pyotp.TOTP(acceptatie.secret).now()
-    service.bevestig_totp(totp_setup_token=acceptatie.totp_setup_token, code=code)
-    return ActieveGebruiker(id=resultaat.gebruiker_id, e_mail=e_mail, wachtwoord=wachtwoord, secret=acceptatie.secret)
+    activatie_paar = service.bevestig_totp(totp_setup_token=acceptatie.totp_setup_token, code=code)
+    return ActieveGebruiker(
+        id=resultaat.gebruiker_id,
+        e_mail=e_mail,
+        wachtwoord=wachtwoord,
+        secret=acceptatie.secret,
+        activatie_paar=activatie_paar,
+    )
 
 
 @pytest.fixture
