@@ -3,10 +3,20 @@ from __future__ import annotations
 import argparse
 import sys
 import uuid
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from app.auth import service
 from app.credentialstore import service as credentialstore_service
 from app.sync import service as sync_service
+
+# Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
+# (nooit in backend/.env, zie CLAUDE.md), en niets anders laadt dat bestand als de CLI los
+# gedraaid wordt (buiten pytest, waar tests/integration/conftest.py dit al voor zijn eigen tests
+# doet). Alleen relevant voor import-env-credentials; in Cloud Run bestaat dit pad niet en is
+# load_dotenv() dan een stille no-op — echte credentials komen daar via Secret Manager-env-vars.
+load_dotenv(Path(__file__).resolve().parents[2] / "verkenning" / ".env")
 
 
 def _bootstrap_beheerder(args: argparse.Namespace) -> int:

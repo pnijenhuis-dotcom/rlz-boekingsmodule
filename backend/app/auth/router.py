@@ -145,6 +145,14 @@ def logout_overal(
     _clear_refresh_cookie(response)
 
 
+@router.get("/administraties", response_model=schemas.MijnAdministratiesResponse)
+def mijn_administraties(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.MijnAdministratiesResponse:
+    administraties = service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+    return schemas.MijnAdministratiesResponse(
+        administraties=[schemas.AdministratieResponse(id=a.id, naam=a.naam) for a in administraties]
+    )
+
+
 @router.patch("/gebruikers/{gebruiker_id}/rol", status_code=status.HTTP_204_NO_CONTENT)
 def rol_wijzigen(
     gebruiker_id: uuid.UUID,

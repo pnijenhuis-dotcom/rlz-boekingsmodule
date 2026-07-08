@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, text
 
+from app.auth import service as auth_service
 from app.config import settings
 from app.main import app
 from app.security.tokens import create_access_token
@@ -82,3 +84,107 @@ def test_upload_te_groot_bestand_geeft_413(gescoopte_gebruiker: uuid.UUID, admin
         headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
     )
     assert resp.status_code == 413
+
+
+# --- Lijst/detail/bestand ------------------------------------------------------------------
+
+
+def test_documenten_lijst_zonder_scope_faalt(gescoopte_gebruiker: uuid.UUID) -> None:
+    andere_administratie_id = uuid.uuid4()
+    resp = client.get(
+        f"/administraties/{andere_administratie_id}/documenten", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 403
+
+
+def test_documenten_lijst_bevat_geuploade_documenten(
+    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+    client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("lijst-test.pdf", b"%PDF-1.4 lijst-test", "application/pdf")},
+        headers=headers,
+    )
+    resp = client.get(f"/administraties/{administratie_id}/documenten", headers=headers)
+    assert resp.status_code == 200, resp.text
+    bestandsnamen = [d["bestandsnaam"] for d in resp.json()["documenten"]]
+    assert "lijst-test.pdf" in bestandsnamen
+
+
+def test_document_detail_bevat_tijdlijn_en_veldvoorstel(
+    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+    ubl = (
+        b'<?xml version="1.0"?><Invoice xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:'
+        b'CommonBasicComponents-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:'
+        b'CommonAggregateComponents-2"><cbc:ID>F-1</cbc:ID>'
+        b"<cac:LegalMonetaryTotal><cbc:PayableAmount>100.00</cbc:PayableAmount>"
+        b"</cac:LegalMonetaryTotal></Invoice>"
+    )
+    upload = client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("detail-test.xml", ubl, "application/xml")},
+        headers=headers,
+    )
+    document_id = upload.json()["document_id"]
+
+    resp = client.get(f"/administraties/{administratie_id}/documenten/{document_id}", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "te_controleren"
+    assert body["veldvoorstel"]["factuurnummer"] == "F-1"
+    naar_statussen = [g["naar_status"] for g in body["tijdlijn"]]
+    assert naar_statussen == ["ontvangen", "extractie_bezig", "te_controleren"]
+
+
+def test_document_detail_onbekend_document_geeft_404(
+    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    resp = client.get(
+        f"/administraties/{administratie_id}/documenten/{uuid.uuid4()}",
+        headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
+    )
+    assert resp.status_code == 404
+
+
+def test_document_bestand_download(gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
+    headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+    inhoud = b"%PDF-1.4 downloadtest-bytes"
+    upload = client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("download-test.pdf", inhoud, "application/pdf")},
+        headers=headers,
+    )
+    document_id = upload.json()["document_id"]
+
+    resp = client.get(f"/administraties/{administratie_id}/documenten/{document_id}/bestand", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.content == inhoud
+    assert resp.headers["content-type"] == "application/pdf"
+
+
+def test_documenten_lijst_cross_tenant_onzichtbaar(
+    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, admin_engine: Engine
+) -> None:
+    headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+    client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("geheim.pdf", b"%PDF-1.4 geheim", "application/pdf")},
+        headers=headers,
+    )
+
+    andere_administratie_id = uuid.uuid4()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Andere', :rlz)"),
+            {"id": andere_administratie_id, "rlz": f"rlz-{andere_administratie_id}"},
+        )
+    auth_service.voeg_scope_toe(
+        actor_id=beheerder_id, doel_gebruiker_id=gescoopte_gebruiker, administratie_id=andere_administratie_id
+    )
+
+    resp = client.get(f"/administraties/{andere_administratie_id}/documenten", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["documenten"] == []

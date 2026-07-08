@@ -41,5 +41,11 @@ class Settings(BaseSettings):
     document_opslag_basismap: str = "./.data/documenten"
     document_max_bytes: int = 20 * 1024 * 1024  # 20 MB, ruim voor PDF/XML-facturen
 
+    # CORS: frontend (Vite-dev-server) en backend draaien lokaal op verschillende poorten, dus
+    # verschillende origins. Cookies (refresh-token) vereisen expliciete origins + credentials —
+    # nooit "*" i.c.m. allow_credentials (browsers weigeren dat sowieso, en het zou de
+    # httpOnly-cookiebescherming ondermijnen als het wel kon).
+    cors_allowed_origins: list[str] = ["http://localhost:5173"]
+
 
 settings = Settings()

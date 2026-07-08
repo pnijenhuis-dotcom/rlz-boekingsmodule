@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
 from app.config import settings
@@ -45,4 +45,87 @@ async def document_uploaden(
         document_id=resultaat.document_id,
         status=resultaat.status.value,
         mogelijk_duplicaat_van=resultaat.mogelijk_duplicaat_van_id,
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/documenten",
+    response_model=schemas.DocumentListResponse,
+)
+def documenten_lijst(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DocumentListResponse:
+    documenten = service.lijst_documenten(administratie_id=administratie_id)
+    return schemas.DocumentListResponse(
+        documenten=[
+            schemas.DocumentListItemResponse(
+                id=d.id,
+                bestandsnaam=d.bestandsnaam,
+                status=d.status.value,
+                bron=d.bron.value,
+                mogelijk_duplicaat_van=d.mogelijk_duplicaat_van_id,
+                toegewezen_aan=d.toegewezen_aan,
+                aangemaakt_op=d.aangemaakt_op,
+                laatst_gewijzigd_op=d.laatst_gewijzigd_op,
+            )
+            for d in documenten
+        ]
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}",
+    response_model=schemas.DocumentDetailResponse,
+)
+def document_detail(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DocumentDetailResponse:
+    try:
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=document_id)
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    d = detail.document
+    return schemas.DocumentDetailResponse(
+        id=d.id,
+        administratie_id=d.administratie_id,
+        bestandsnaam=d.bestandsnaam,
+        status=d.status.value,
+        bron=d.bron.value,
+        mogelijk_duplicaat_van=d.mogelijk_duplicaat_van_id,
+        toegewezen_aan=d.toegewezen_aan,
+        aangemaakt_op=d.aangemaakt_op,
+        laatst_gewijzigd_op=d.laatst_gewijzigd_op,
+        veldvoorstel=detail.veldvoorstel,
+        tijdlijn=[
+            schemas.DocumentGebeurtenisResponse(
+                van_status=g.van_status.value if g.van_status else None,
+                naar_status=g.naar_status.value,
+                actor_id=g.actor_id,
+                detail=g.detail,
+                tijdstip=g.tijdstip,
+            )
+            for g in detail.gebeurtenissen
+        ],
+    )
+
+
+@router.get("/administraties/{administratie_id}/documenten/{document_id}/bestand")
+def document_bestand(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> Response:
+    try:
+        inhoud, bestandsnaam, content_type = service.haal_bijlage_op(
+            administratie_id=administratie_id, document_id=document_id
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=inhoud,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{bestandsnaam}"'},
     )

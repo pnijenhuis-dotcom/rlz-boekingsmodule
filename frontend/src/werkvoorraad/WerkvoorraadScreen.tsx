@@ -1,0 +1,186 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { apiJson } from '../api/client'
+import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
+import { StatusChip } from './StatusChip'
+import { useAdministraties } from './useAdministraties'
+
+function formatDatum(iso: string): string {
+  return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+export function WerkvoorraadScreen() {
+  const { administraties, fout: administratiesFout } = useAdministraties()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const administratieId = searchParams.get('administratie')
+  const bestandInputRef = useRef<HTMLInputElement>(null)
+
+  const [documenten, setDocumenten] = useState<DocumentListItemDto[] | null>(null)
+  const [lijstFout, setLijstFout] = useState<string | null>(null)
+  const [uploadFout, setUploadFout] = useState<string | null>(null)
+  const [uploadBericht, setUploadBericht] = useState<string | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const [sleepActief, setSleepActief] = useState(false)
+
+  useEffect(() => {
+    if (!administratieId && administraties && administraties.length > 0) {
+      setSearchParams({ administratie: administraties[0].id }, { replace: true })
+    }
+  }, [administraties, administratieId, setSearchParams])
+
+  const laadDocumenten = useCallback(() => {
+    if (!administratieId) return
+    setLijstFout(null)
+    apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
+      .then((data) => setDocumenten(data.documenten))
+      .catch((err: unknown) => setLijstFout(err instanceof Error ? err.message : 'Onbekende fout'))
+  }, [administratieId])
+
+  useEffect(() => {
+    setDocumenten(null)
+    laadDocumenten()
+  }, [laadDocumenten])
+
+  const uploadBestand = useCallback(
+    async (bestand: File) => {
+      if (!administratieId) return
+      setBezig(true)
+      setUploadFout(null)
+      setUploadBericht(null)
+      try {
+        const formData = new FormData()
+        formData.append('bestand', bestand)
+        const resultaat = await apiJson<UploadResponseDto>(`/administraties/${administratieId}/documenten`, {
+          method: 'POST',
+          body: formData,
+        })
+        setUploadBericht(
+          resultaat.mogelijk_duplicaat_van
+            ? `"${bestand.name}" geüpload — mogelijk duplicaat, gemarkeerd ter controle in de lijst.`
+            : `"${bestand.name}" geüpload en in verwerking.`,
+        )
+        laadDocumenten()
+      } catch (err) {
+        setUploadFout(err instanceof Error ? err.message : 'Upload mislukt')
+      } finally {
+        setBezig(false)
+      }
+    },
+    [administratieId, laadDocumenten],
+  )
+
+  const opBestandGekozen = (bestanden: FileList | null) => {
+    const bestand = bestanden?.[0]
+    if (bestand) void uploadBestand(bestand)
+  }
+
+  if (administratiesFout) {
+    return <div className="fout">Kon administraties niet laden: {administratiesFout}</div>
+  }
+  if (!administraties) {
+    return <p className="hint">Laden…</p>
+  }
+  if (administraties.length === 0) {
+    return <p className="hint">Geen administraties gekoppeld aan uw account.</p>
+  }
+
+  return (
+    <div>
+      <div className="topbar">
+        <h1>Werkvoorraad</h1>
+        <div className="adm-select">
+          <label htmlFor="administratie-select" style={{ margin: 0 }}>
+            Administratie
+          </label>
+          <select
+            id="administratie-select"
+            value={administratieId ?? ''}
+            onChange={(e) => setSearchParams({ administratie: e.target.value })}
+          >
+            {administraties.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.naam}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div
+        className={`upload${sleepActief ? ' dragover' : ''}`}
+        onClick={() => bestandInputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setSleepActief(true)
+        }}
+        onDragLeave={() => setSleepActief(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setSleepActief(false)
+          opBestandGekozen(e.dataTransfer.files)
+        }}
+      >
+        {bezig ? (
+          'Bezig met uploaden…'
+        ) : (
+          <>
+            Sleep hier een PDF- of UBL-bestand naartoe, of <b>blader</b>
+            <br />
+            <span style={{ fontSize: 12 }}>Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst.</span>
+          </>
+        )}
+        <input
+          ref={bestandInputRef}
+          type="file"
+          accept=".pdf,.xml"
+          style={{ display: 'none' }}
+          onChange={(e) => opBestandGekozen(e.target.files)}
+        />
+      </div>
+      {uploadFout && <div className="fout">{uploadFout}</div>}
+      {uploadBericht && <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>{uploadBericht}</div>}
+
+      <div className="panel">
+        <h2>Documenten</h2>
+        {lijstFout && <div className="fout">{lijstFout}</div>}
+        {documenten === null && !lijstFout && <p className="hint">Laden…</p>}
+        {documenten !== null && documenten.length === 0 && (
+          <p className="hint">Nog geen documenten voor deze administratie.</p>
+        )}
+        {documenten !== null && documenten.length > 0 && (
+          <table>
+            <tbody>
+              <tr>
+                <th>Document</th>
+                <th>Status</th>
+                <th>Bron</th>
+                <th>Ontvangen</th>
+              </tr>
+              {documenten.map((d) => (
+                <tr
+                  key={d.id}
+                  className="clickable"
+                  onClick={() => navigate(`/documenten/${administratieId}/${d.id}`)}
+                >
+                  <td>{d.bestandsnaam}</td>
+                  <td>
+                    <StatusChip status={d.status} />
+                    {d.mogelijk_duplicaat_van && (
+                      <>
+                        {' '}
+                        <span className="chip vraag">Mogelijk duplicaat — beoordelen</span>
+                      </>
+                    )}
+                  </td>
+                  <td>{d.bron}</td>
+                  <td>{formatDatum(d.aangemaakt_op)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}

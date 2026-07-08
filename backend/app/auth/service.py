@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
+    Administratie,
     Gebruiker,
     GebruikerAdministratie,
     GebruikerRol,
@@ -471,3 +472,22 @@ def bootstrap_eerste_beheerder(*, naam: str, e_mail: str) -> BootstrapResultaat:
         )
 
     return BootstrapResultaat(gebruiker_id=gebruiker_id, token=token, verloopt_op=verloopt_op)
+
+
+def mijn_administraties(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[Administratie]:
+    """Beheerder ziet alles (platform-breed); iedereen anders alleen de eigen
+    gebruiker_administratie-koppelingen. Vereist migratie 0007: de RLS-policy op
+    gebruiker_administratie staat sinds die migratie ook 'lees je eigen rijen' toe
+    (gebruiker_id = current_actor_id()), naast de bestaande scope-/beheerder-voorwaarden —
+    zonder die uitbreiding zou een niet-Beheerder hier altijd een lege lijst krijgen, want een
+    sessie is maar op één administratie tegelijk gescoped."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        if rol == GebruikerRol.BEHEERDER:
+            return list(session.scalars(select(Administratie).order_by(Administratie.naam)))
+        rijen = session.scalars(
+            select(Administratie)
+            .join(GebruikerAdministratie, GebruikerAdministratie.administratie_id == Administratie.id)
+            .where(GebruikerAdministratie.gebruiker_id == actor_id)
+            .order_by(Administratie.naam)
+        )
+        return list(rijen)

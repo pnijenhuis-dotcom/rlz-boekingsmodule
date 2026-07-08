@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles import-env-credentials pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles import-env-credentials run pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -64,3 +64,8 @@ sync-alles: check-versions
 # make import-env-credentials BEHEERDER_ID=<uuid>
 import-env-credentials: check-versions
 	.venv/bin/python -m app.cli import-env-credentials --beheerder-id "$(BEHEERDER_ID)"
+
+# Lokale dev-server (tegen boekhouding, niet boekhouding_test — zie app/config.py). --reload
+# herlaadt bij codewijzigingen; poort 8000 moet matchen met frontend/vite.config.ts's proxy.
+run: check-versions
+	.venv/bin/uvicorn app.main:app --reload --port 8000

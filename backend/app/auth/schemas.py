@@ -58,3 +58,12 @@ class RolWijzigenRequest(BaseModel):
 
 class ScopeToevoegenRequest(BaseModel):
     administratie_id: uuid.UUID
+
+
+class AdministratieResponse(BaseModel):
+    id: uuid.UUID
+    naam: str
+
+
+class MijnAdministratiesResponse(BaseModel):
+    administraties: list[AdministratieResponse]

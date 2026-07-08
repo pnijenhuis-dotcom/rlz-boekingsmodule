@@ -34,6 +34,12 @@ class UploadResultaat:
     mogelijk_duplicaat_van_id: uuid.UUID | None
 
 
+class DocumentNietGevonden(Exception):
+    """Onbekend document, of het bestaat wel maar valt buiten de scope van de huidige sessie —
+    RLS maakt dat onderscheid hier bewust niet zichtbaar (geen cross-tenant-signaal via een ander
+    foutbeeld dan 'niet gevonden')."""
+
+
 def _schrijf_overgang(
     session: Session,
     *,
@@ -163,3 +169,58 @@ def upload_document(
     return UploadResultaat(
         document_id=document_id, status=eind_status, mogelijk_duplicaat_van_id=mogelijk_duplicaat_van_id
     )
+
+
+def lijst_documenten(*, administratie_id: uuid.UUID) -> list[Document]:
+    with scoped_session(administratie_id) as session:
+        return list(
+            session.scalars(
+                select(Document)
+                .where(Document.administratie_id == administratie_id)
+                .order_by(Document.aangemaakt_op.desc())
+            )
+        )
+
+
+@dataclass(frozen=True)
+class DocumentDetail:
+    document: Document
+    gebeurtenissen: list[DocumentGebeurtenis]
+    veldvoorstel: dict | None
+
+
+def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDetail:
+    with scoped_session(administratie_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+
+        gebeurtenissen = list(
+            session.scalars(
+                select(DocumentGebeurtenis)
+                .where(DocumentGebeurtenis.document_id == document_id)
+                .order_by(DocumentGebeurtenis.tijdstip)
+            )
+        )
+        veldvoorstel = next(
+            (g.detail["veldvoorstel"] for g in gebeurtenissen if g.detail and "veldvoorstel" in g.detail), None
+        )
+
+    return DocumentDetail(document=document, gebeurtenissen=gebeurtenissen, veldvoorstel=veldvoorstel)
+
+
+def haal_bijlage_op(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, opslag: DocumentOpslag | None = None
+) -> tuple[bytes, str, str]:
+    """Retourneert (inhoud, bestandsnaam, content_type)."""
+    opslag = opslag or _standaard_opslag()
+    with scoped_session(administratie_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        opslag_pad = document.opslag_pad
+        bestandsnaam = document.bestandsnaam
+
+    inhoud = opslag.lezen(pad=opslag_pad)
+    content_type = "application/pdf" if bestandsnaam.lower().endswith(".pdf") else "application/xml"
+    return inhoud, bestandsnaam, content_type

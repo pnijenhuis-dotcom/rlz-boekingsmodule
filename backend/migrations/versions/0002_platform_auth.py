@@ -36,7 +36,11 @@ def upgrade() -> None:
     op.add_column("gebruiker", sa.Column("wachtwoord_hash", sa.Text(), nullable=True), schema="platform")
     op.add_column(
         "gebruiker",
-        sa.Column("rol", ENUM(*GEBRUIKER_ROL_VALUES, name="gebruiker_rol", schema="platform", create_type=False), nullable=False),
+        sa.Column(
+            "rol",
+            ENUM(*GEBRUIKER_ROL_VALUES, name="gebruiker_rol", schema="platform", create_type=False),
+            nullable=False,
+        ),
         schema="platform",
     )
     op.add_column(

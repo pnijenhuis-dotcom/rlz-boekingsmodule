@@ -1,0 +1,124 @@
+/* Shell (sidebar + main) — 1:1 uit mockup/index.html (designpass-laag, de canonieke versie). */
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 232px;
+  background: linear-gradient(180deg, #14242b 0%, #0d1a19 100%);
+  padding-top: 22px;
+  flex-shrink: 0;
+}
+
+.logo {
+  font-weight: 700;
+  color: #fff;
+  padding: 0 20px 4px;
+  font-size: 16px;
+}
+
+.sub {
+  padding: 0 20px 22px;
+  font-size: 11px;
+  color: #6e8683;
+  text-align: center;
+}
+
+.nav a {
+  display: flex;
+  justify-content: space-between;
+  margin: 2px 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 13px;
+  color: #a9bfba;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.nav a:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6efec;
+}
+
+.nav a.active {
+  background: rgba(92, 179, 168, 0.16);
+  color: #fff;
+  box-shadow: inset 3px 0 0 #5cb3a8;
+}
+
+.badge {
+  background: #e2544a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.userbox {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 26px;
+  padding: 14px 20px;
+  font-size: 12px;
+  color: #8ea0c0;
+}
+
+.userbox b {
+  color: #fff;
+  display: block;
+}
+
+.userbox button.linkbtn {
+  cursor: pointer;
+  color: #9db2d6;
+  background: none;
+  border: none;
+  font-size: 12px;
+  padding: 0;
+  margin-top: 6px;
+}
+
+.main {
+  flex: 1;
+  padding: 26px 34px;
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+h1 {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+h1 a {
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.adm-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adm-select select {
+  width: auto;
+  min-width: 220px;
+}
