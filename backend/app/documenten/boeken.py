@@ -151,6 +151,17 @@ def _boek_bij_rlz(
     return rlz_document_id, geboekt.get("ReceiptNumber")
 
 
+def _zet_boeken_mislukt(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str
+) -> None:
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        assert document is not None
+        _schrijf_overgang(
+            session, document=document, naar=DocumentStatus.BOEKEN_MISLUKT, actor_id=actor_id, detail={"fout": reden}
+        )
+
+
 def _sla_webhook_op(
     session: Session,
     *,
@@ -234,22 +245,28 @@ def boek_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_
             if _boekingen_vandaag(session, administratie_id=administratie_id) >= limiet:
                 raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} boekingen bereikt voor deze administratie")
 
-        voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-        bestand = _standaard_opslag().lezen(pad=opslag_pad)
-
         try:
+            voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+            bestand = _standaard_opslag().lezen(pad=opslag_pad)
             rlz_document_id, rlz_boekstuknummer = _boek_bij_rlz(
                 client=client, document_id=document_id, voorstel=voorstel, bestand=bestand, bestandsnaam=bestandsnaam
             )
         except RlzApiError as exc:
-            with scoped_session(administratie_id, actor_id=actor_id) as session:
-                document = session.get(Document, document_id)
-                assert document is not None
-                _schrijf_overgang(
-                    session, document=document, naar=DocumentStatus.BOEKEN_MISLUKT, actor_id=actor_id,
-                    detail={"fout": str(exc)},
-                )
+            _zet_boeken_mislukt(
+                administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, reden=str(exc)
+            )
             raise RlzBoekingMislukt(str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            # Elke andere fout tijdens de boekpoging (netwerkfout die alle retries overleeft,
+            # opslagfout bij het lezen van de bijlage, bug) mag het document nooit in limbo
+            # laten staan — dezelfde blokkerende afhandeling als een RlzApiError, alleen zonder
+            # aanname dat het per se een RLZ-fout is. De oorspronkelijke fout gaat door naar de
+            # globale exception-handler (app/main.py), die 'm loggen en er een nette melding +
+            # correlatie-id van maakt.
+            _zet_boeken_mislukt(
+                administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, reden=str(exc)
+            )
+            raise
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)

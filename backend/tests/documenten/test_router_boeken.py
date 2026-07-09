@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, text
 
 from app.beheer import service as beheer_service
 from app.documenten import boeken
@@ -256,3 +257,43 @@ class TestBoekenEndpoint:
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
         assert resp.status_code == 403
+
+    def test_boeken_onverwachte_fout_geeft_nette_500_geen_kale_internal_server_error(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """De derde kale 500 uit de kliktest, end-to-end via de HTTP-laag: een onverwachte fout
+        (geen RlzApiError) tijdens het boeken mag nooit als tekstuele "Internal Server Error" bij
+        de gebruiker komen — de globale exception-handler (app/main.py) maakt er een nette
+        Nederlandse JSON-melding + correlatie-id van, en het document komt op boeken_mislukt te
+        staan (niet in limbo). raise_server_exceptions=False: anders reraiset Starlette's
+        ServerErrorMiddleware de fout ook nog richting de testclient (bedoeld voor bv. Sentry-
+        integraties), wat deze test zou laten falen op de exception zelf i.p.v. de response."""
+        geen_raise_client = TestClient(app, raise_server_exceptions=False)
+        beheer_service.zet_boeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+        monkeypatch.setattr(
+            boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient(faal_op="put_onverwacht")
+        )
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = self._klaar_document(headers, administratie_id)
+
+        resp = geen_raise_client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers
+        )
+
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        assert "Internal Server Error" not in detail
+        assert "Er ging iets mis bij het boeken van de factuur" in detail
+
+        with admin_engine.connect() as conn:
+            document_status = conn.execute(
+                text("SELECT status FROM boekhouding.document WHERE id = :id"), {"id": document_id}
+            ).scalar_one()
+        assert document_status == "boeken_mislukt"  # niet in limbo blijven staan

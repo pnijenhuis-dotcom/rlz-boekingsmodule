@@ -55,6 +55,8 @@ class FakeBoekClient:
     ) -> SimpleNamespace:
         if self.faal_op == "put":
             raise RlzApiError(500, "PUT", "PurchaseInvoices", "PUT mislukt (simulatie)")
+        if self.faal_op == "put_onverwacht":
+            raise RuntimeError("Onverwachte fout (simulatie, geen RlzApiError)")
         self.puts.append({"id": invoice_id, "vendor_id": vendor_id, "lines": lines, "reference": reference, **extra})
         bedrag = sum(line["NetAmount"] + line["TaxAmount"] for line in lines)
         self._invoices.setdefault(

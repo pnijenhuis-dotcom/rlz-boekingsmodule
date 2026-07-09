@@ -342,6 +342,64 @@ class TestBoekDocumentRlzFout:
         assert resultaat.status == DocumentStatus.GEBOEKT
 
 
+class TestBoekDocumentOnverwachteFout:
+    def test_onverwachte_fout_zet_boeken_mislukt_en_wordt_doorgegeven(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        boeken_aan: None,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Regressietest voor een kale 500 in de UI: een RuntimeError uit de RLZ-client (dus geen
+        RlzApiError, bv. een netwerkfout die alle retries overleeft) mag het document niet in
+        limbo laten — zelfde blokkerende afhandeling als een RlzApiError, alleen zonder de
+        RlzBoekingMislukt-typering (die is voorbehouden aan écht bevestigde RLZ-fouten). De
+        oorspronkelijke fout gaat ongewijzigd door, zodat de globale exception-handler
+        (app/main.py) 'm kan loggen en er een nette melding + correlatie-id van kan maken."""
+        fake_client = FakeBoekClient(faal_op="put_onverwacht")
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
+
+        with pytest.raises(RuntimeError, match="Onverwachte fout"):
+            boeken.boek_document(
+                administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
+            )
+
+        assert _document_status(admin_engine, klaar_document) == "boeken_mislukt"
+        with admin_engine.connect() as conn:
+            detail = conn.execute(
+                text(
+                    "SELECT detail FROM boekhouding.document_gebeurtenis "
+                    "WHERE document_id = :id AND naar_status = 'boeken_mislukt'"
+                ),
+                {"id": klaar_document},
+            ).scalar_one()
+        assert "Onverwachte fout" in detail["fout"]
+
+    def test_retry_na_onverwachte_fout_kan_slagen(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        boeken_aan: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        falende_client = FakeBoekClient(faal_op="put_onverwacht")
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: falende_client)
+        with pytest.raises(RuntimeError):
+            boeken.boek_document(
+                administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
+            )
+
+        werkende_client = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: werkende_client)
+        resultaat = boeken.boek_document(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
+        )
+        assert resultaat.status == DocumentStatus.GEBOEKT
+
+
 class TestBoekDocumentOngeldigeStatus:
     def test_al_geboekt_document_kan_niet_opnieuw(
         self,

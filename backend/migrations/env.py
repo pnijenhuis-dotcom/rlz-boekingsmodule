@@ -11,7 +11,14 @@ from app.db.models import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False: fileConfig()'s default (True) zet .disabled op elke logger
+    # die op dit moment al bestaat (bv. app.main, app.rlz.client — aangemaakt zodra die modules
+    # ergens geïmporteerd zijn) en niet met naam in alembic.ini's [loggers] staat. In de testsuite
+    # draait command.upgrade() in-process (tests/conftest.py), na het importeren van app.main —
+    # zonder deze flag loggen die modules nooit meer iets, ook niet buiten migraties, voor de rest
+    # van diezelfde procesrun. Productie draait migraties in een los `alembic upgrade`-proces, dus
+    # dit raakt daar geen al-lopende app, maar de stille disable is nergens iets waard.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
