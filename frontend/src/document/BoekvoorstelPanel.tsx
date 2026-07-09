@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ApiError, apiFetch, apiJson } from '../api/client'
-import type { BoekenResponseDto, BoekvoorstelDto, BoekvoorstelMetChecksDto, CheckRapportDto } from '../api/types'
+import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
+import type {
+  BoekenResponseDto,
+  BoekvoorstelDto,
+  BoekvoorstelMetChecksDto,
+  CheckRapportDto,
+  DocumentActieResponseDto,
+} from '../api/types'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
-import { SearchableCombobox } from './SearchableCombobox'
+import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
   synchroniseerAlleCaches,
   useGrootboekOpties,
@@ -11,6 +17,31 @@ import {
   useTaxrateOpties,
   useVendorOpties,
 } from './useSyncOpties'
+
+/** Statische weergave van een gekozen optie (design-pass: read-only bij geboekt/verwijderd) —
+ * zelfde code+omschrijving-vorm als de combobox zelf toont, alleen niet interactief. */
+function optieWeergave(opties: ComboboxOptie[], id: string | null): string {
+  if (!id) return '—'
+  const optie = opties.find((o) => o.id === id)
+  if (!optie) return id
+  return optie.code ? `${optie.code} · ${optie.label}` : optie.label
+}
+
+interface StatischVeldProps {
+  label: string
+  waarde: string
+}
+
+/** Read-only equivalent van een invoerveld — géén disabled <input> (dat suggereert nog steeds
+ * dat er iets bewerkbaar is), gewoon platte tekst op dezelfde plek in de layout. */
+function StatischVeld({ label, waarde }: StatischVeldProps) {
+  return (
+    <div>
+      <label>{label}</label>
+      <p style={{ margin: 0, padding: '8px 0', fontSize: 13 }}>{waarde || '—'}</p>
+    </div>
+  )
+}
 
 interface RegelState {
   key: string
@@ -96,12 +127,13 @@ interface Props {
   documentId: string
   status: string
   onGeboekt: () => void
+  onHersteld: () => void
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
  * zoekbare GB-/btw-/project-comboboxen, harde checks zichtbaar (groen/blokkerend), live
  * aansluit-indicator, en de echte boekactie. */
-export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboekt }: Props) {
+export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboekt, onHersteld }: Props) {
   const [cacheVersie, setCacheVersie] = useState(0)
   const { opties: grootboekOpties, fout: grootboekFout, laden: grootboekLaden } = useGrootboekOpties(administratieId, cacheVersie)
   const { opties: taxrateOpties, fout: taxrateFout, laden: taxrateLaden } = useTaxrateOpties(administratieId, cacheVersie)
@@ -136,6 +168,8 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
   const [boekenBezig, setBoekenBezig] = useState(false)
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
   const [boekResultaat, setBoekResultaat] = useState<BoekenResponseDto | null>(null)
+  const [herstellenBezig, setHerstellenBezig] = useState(false)
+  const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
 
   useEffect(() => {
     let actief = true
@@ -162,7 +196,13 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
     }
   }, [administratieId, documentId])
 
-  const isBevroren = status === 'geboekt'
+  // Kliktest-fix: het boekvoorstel bleek nog bewerkbaar na boeken — de backend blokkeert dit nu
+  // hard (app/documenten/boekvoorstel.py::_BEVROREN_STATUSSEN), maar de UI hoort een onmogelijke
+  // actie niet eens aan te bieden. isReadOnly geldt voor beide bevroren statussen; alleen bij
+  // verwijderd is "herstellen" nog een geldige actie.
+  const isGeboekt = status === 'geboekt'
+  const isVerwijderd = status === 'verwijderd'
+  const isReadOnly = isGeboekt || isVerwijderd
 
   const veranderInvoer = () => setChecksActueel(false)
 
@@ -295,6 +335,22 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
     }
   }
 
+  const herstellen = async () => {
+    setHerstellenBezig(true)
+    setHerstellenFout(null)
+    try {
+      await apiPostJson<DocumentActieResponseDto>(
+        `/administraties/${administratieId}/documenten/${documentId}/herstellen`,
+        {},
+      )
+      onHersteld()
+    } catch (err) {
+      setHerstellenFout(err instanceof ApiError ? err.message : 'Herstellen mislukt.')
+    } finally {
+      setHerstellenBezig(false)
+    }
+  }
+
   const totaalAlsGetal = useMemo(() => bedragAlsGetal(totaalbedrag), [totaalbedrag])
   const somRegels = useMemo(
     () => regels.reduce((acc, r) => acc + (bedragAlsGetal(r.netto) ?? 0) + (bedragAlsGetal(r.btw) ?? 0), 0),
@@ -306,8 +362,8 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
   if (laden) return <div className="panel">Boekvoorstel laden…</div>
   if (ladenFout) return <div className="fout">Kon boekvoorstel niet laden: {ladenFout}</div>
 
-  const kanBoeken = checkRapport !== null && checksActueel && !checkRapport.geblokkeerd && !isBevroren
-  const boekenTitel = isBevroren
+  const kanBoeken = checkRapport !== null && checksActueel && !checkRapport.geblokkeerd && !isReadOnly
+  const boekenTitel = isReadOnly
     ? undefined
     : checkRapport === null
       ? 'Voer eerst de harde checks uit via "Controleren".'
@@ -321,66 +377,74 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
     <>
       <div className="panel">
         <h2>Kopgegevens</h2>
-        {synchroniserenFout && <div className="fout">Synchroniseren gaf fouten: {synchroniserenFout}</div>}
-        {!vendorLaden && vendorOpties.length === 0 && !vendorFout && (
+        {!isReadOnly && synchroniserenFout && (
+          <div className="fout">Synchroniseren gaf fouten: {synchroniserenFout}</div>
+        )}
+        {!isReadOnly && !vendorLaden && vendorOpties.length === 0 && !vendorFout && (
           <LegeCacheBanner naam="crediteuren" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
         )}
-        {vendorFout && <div className="fout">Kon crediteuren niet laden: {vendorFout}</div>}
-        <div className="grid2">
-          <SearchableCombobox
-            label="Crediteur"
-            opties={vendorOpties}
-            waarde={vendorId}
-            onWijzig={wijzigVendorId}
-            vereist
-            fout={checkRapport?.geblokkeerd && vendorId === null}
-          />
-          <div>
-            <label htmlFor="boekvoorstel-referentie">Referentie / factuurnummer</label>
-            <input
-              id="boekvoorstel-referentie"
-              value={referentie}
-              onChange={(e) => wijzigReferentie(e.target.value)}
-              disabled={isBevroren}
-            />
+        {!isReadOnly && vendorFout && <div className="fout">Kon crediteuren niet laden: {vendorFout}</div>}
+        {isReadOnly ? (
+          <div className="grid2">
+            <StatischVeld label="Crediteur" waarde={optieWeergave(vendorOpties, vendorId)} />
+            <StatischVeld label="Referentie / factuurnummer" waarde={referentie} />
+            <StatischVeld label="Factuurdatum" waarde={factuurdatum} />
+            <StatischVeld label="Totaalbedrag (incl. btw)" waarde={totaalbedrag ? `€ ${totaalbedrag}` : ''} />
           </div>
-          <div>
-            <label htmlFor="boekvoorstel-datum">Factuurdatum</label>
-            <input
-              id="boekvoorstel-datum"
-              type="date"
-              value={factuurdatum}
-              onChange={(e) => wijzigFactuurdatum(e.target.value)}
-              disabled={isBevroren}
+        ) : (
+          <div className="grid2">
+            <SearchableCombobox
+              label="Crediteur"
+              opties={vendorOpties}
+              waarde={vendorId}
+              onWijzig={wijzigVendorId}
+              vereist
+              fout={checkRapport?.geblokkeerd && vendorId === null}
             />
+            <div>
+              <label htmlFor="boekvoorstel-referentie">Referentie / factuurnummer</label>
+              <input
+                id="boekvoorstel-referentie"
+                value={referentie}
+                onChange={(e) => wijzigReferentie(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="boekvoorstel-datum">Factuurdatum</label>
+              <input
+                id="boekvoorstel-datum"
+                type="date"
+                value={factuurdatum}
+                onChange={(e) => wijzigFactuurdatum(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="boekvoorstel-totaal">Totaalbedrag (incl. btw)</label>
+              <input
+                id="boekvoorstel-totaal"
+                inputMode="decimal"
+                placeholder="1234,56"
+                title="Bijvoorbeeld 1234,56 of 1234.56"
+                value={totaalbedrag}
+                onChange={(e) => wijzigTotaalbedrag(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label htmlFor="boekvoorstel-totaal">Totaalbedrag (incl. btw)</label>
-            <input
-              id="boekvoorstel-totaal"
-              inputMode="decimal"
-              placeholder="1234,56"
-              title="Bijvoorbeeld 1234,56 of 1234.56"
-              value={totaalbedrag}
-              onChange={(e) => wijzigTotaalbedrag(e.target.value)}
-              disabled={isBevroren}
-            />
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="panel">
         <h2>Boekingsregels</h2>
-        {!grootboekLaden && grootboekOpties.length === 0 && !grootboekFout && (
+        {!isReadOnly && !grootboekLaden && grootboekOpties.length === 0 && !grootboekFout && (
           <LegeCacheBanner naam="het grootboekschema" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
         )}
-        {!taxrateLaden && taxrateOpties.length === 0 && !taxrateFout && (
+        {!isReadOnly && !taxrateLaden && taxrateOpties.length === 0 && !taxrateFout && (
           <LegeCacheBanner naam="btw-codes" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
         )}
-        {projectVerplicht && !projectLaden && projectOpties.length === 0 && (
+        {!isReadOnly && projectVerplicht && !projectLaden && projectOpties.length === 0 && (
           <LegeCacheBanner naam="projecten" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
         )}
-        {(grootboekFout || taxrateFout) && (
+        {!isReadOnly && (grootboekFout || taxrateFout) && (
           <div className="fout">Kon grootboek- en/of btw-cache niet laden — controleer of deze administratie gesynchroniseerd is.</div>
         )}
         <table className="lines boekingsregels-tabel">
@@ -413,75 +477,98 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
               return (
               <tr key={regel.key}>
                 <td>
-                  <SearchableCombobox
-                    label="Grootboek"
-                    opties={grootboekOpties}
-                    waarde={regel.ledgerId}
-                    onWijzig={(id) => wijzigRegel(regel.key, 'ledgerId', id)}
-                    vereist
-                    toonLabel={false}
-                  />
-                </td>
-                <td>
-                  <SearchableCombobox
-                    label="Btw-code"
-                    opties={taxrateOpties}
-                    waarde={regel.taxrateId}
-                    onWijzig={(id) => wijzigRegel(regel.key, 'taxrateId', id)}
-                    vereist
-                    toonLabel={false}
-                  />
-                </td>
-                {projectVerplicht && (
-                  <td>
+                  {isReadOnly ? (
+                    optieWeergave(grootboekOpties, regel.ledgerId)
+                  ) : (
                     <SearchableCombobox
-                      label="Project"
-                      opties={projectOpties}
-                      waarde={regel.projectId}
-                      onWijzig={(id) => wijzigRegel(regel.key, 'projectId', id)}
+                      label="Grootboek"
+                      opties={grootboekOpties}
+                      waarde={regel.ledgerId}
+                      onWijzig={(id) => wijzigRegel(regel.key, 'ledgerId', id)}
                       vereist
                       toonLabel={false}
-                      fout={checkRapport?.geblokkeerd && regel.projectId === null}
                     />
-                  </td>
-                )}
-                <td className="amount">
-                  <input
-                    aria-label="Netto bedrag"
-                    inputMode="decimal"
-                    title="Bijvoorbeeld 1234,56 of 1234.56"
-                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                    value={regel.netto}
-                    onChange={(e) => wijzigRegel(regel.key, 'netto', e.target.value)}
-                    disabled={isBevroren}
-                  />
-                </td>
-                <td className="amount">
-                  <input
-                    aria-label="Btw bedrag"
-                    inputMode="decimal"
-                    title="Bijvoorbeeld 1234,56 of 1234.56"
-                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                    value={regel.btw}
-                    onChange={(e) => wijzigRegel(regel.key, 'btw', e.target.value)}
-                    disabled={isBevroren}
-                  />
-                  {btwWijktAf && verwachtBtw !== null && (
-                    <div style={{ textAlign: 'right', marginTop: 4 }}>
-                      <span className="chip afwijking">Berekend: € {formatEuro(verwachtBtw)}</span>
-                    </div>
                   )}
                 </td>
                 <td>
-                  <input
-                    aria-label="Omschrijving"
-                    value={regel.omschrijving}
-                    onChange={(e) => wijzigRegel(regel.key, 'omschrijving', e.target.value)}
-                    disabled={isBevroren}
-                  />
+                  {isReadOnly ? (
+                    optieWeergave(taxrateOpties, regel.taxrateId)
+                  ) : (
+                    <SearchableCombobox
+                      label="Btw-code"
+                      opties={taxrateOpties}
+                      waarde={regel.taxrateId}
+                      onWijzig={(id) => wijzigRegel(regel.key, 'taxrateId', id)}
+                      vereist
+                      toonLabel={false}
+                    />
+                  )}
+                </td>
+                {projectVerplicht && (
+                  <td>
+                    {isReadOnly ? (
+                      optieWeergave(projectOpties, regel.projectId)
+                    ) : (
+                      <SearchableCombobox
+                        label="Project"
+                        opties={projectOpties}
+                        waarde={regel.projectId}
+                        onWijzig={(id) => wijzigRegel(regel.key, 'projectId', id)}
+                        vereist
+                        toonLabel={false}
+                        fout={checkRapport?.geblokkeerd && regel.projectId === null}
+                      />
+                    )}
+                  </td>
+                )}
+                <td className="amount">
+                  {isReadOnly ? (
+                    regel.netto || '—'
+                  ) : (
+                    <input
+                      aria-label="Netto bedrag"
+                      inputMode="decimal"
+                      title="Bijvoorbeeld 1234,56 of 1234.56"
+                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      value={regel.netto}
+                      onChange={(e) => wijzigRegel(regel.key, 'netto', e.target.value)}
+                    />
+                  )}
+                </td>
+                <td className="amount">
+                  {isReadOnly ? (
+                    regel.btw || '—'
+                  ) : (
+                    <>
+                      <input
+                        aria-label="Btw bedrag"
+                        inputMode="decimal"
+                        title="Bijvoorbeeld 1234,56 of 1234.56"
+                        style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                        value={regel.btw}
+                        onChange={(e) => wijzigRegel(regel.key, 'btw', e.target.value)}
+                      />
+                      {btwWijktAf && verwachtBtw !== null && (
+                        <div style={{ textAlign: 'right', marginTop: 4 }}>
+                          <span className="chip afwijking">Berekend: € {formatEuro(verwachtBtw)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </td>
                 <td>
-                  {!isBevroren && (
+                  {isReadOnly ? (
+                    regel.omschrijving || '—'
+                  ) : (
+                    <input
+                      aria-label="Omschrijving"
+                      value={regel.omschrijving}
+                      onChange={(e) => wijzigRegel(regel.key, 'omschrijving', e.target.value)}
+                    />
+                  )}
+                </td>
+                <td>
+                  {!isReadOnly && (
                     <button
                       type="button"
                       className="btn secondary"
@@ -497,7 +584,7 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
             })}
           </tbody>
         </table>
-        {!isBevroren && (
+        {!isReadOnly && (
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" className="btn secondary" onClick={voegRegelToe}>
               + Regel toevoegen
@@ -511,13 +598,15 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
             )}
           </div>
         )}
-        <div className="hint">
-          Grootboek- en btw-lijsten komen uit de sync-cache van deze administratie (koppelcontract §2c) — nooit
-          rechtstreeks live van RLZ.
-        </div>
+        {!isReadOnly && (
+          <div className="hint">
+            Grootboek- en btw-lijsten komen uit de sync-cache van deze administratie (koppelcontract §2c) — nooit
+            rechtstreeks live van RLZ.
+          </div>
+        )}
       </div>
 
-      {!isBevroren && (
+      {!isReadOnly && (
         <div className="panel">
           <h2>Harde checks</h2>
           {controlerenFout && <div className="fout">{controlerenFout}</div>}
@@ -561,12 +650,32 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
             Geboekt in RLZ — boekstuknummer <b>{boekResultaat.rlz_boekstuknummer}</b>
           </div>
         )}
-        {isBevroren && boekstuknummer && (
-          <div className="hint">
-            Al geboekt — RLZ-boekstuknummer <b>{boekstuknummer}</b>
-          </div>
+        {isGeboekt && (
+          <>
+            <p style={{ margin: 0, fontSize: 14 }}>
+              Geboekt in RLZ — boekstuknummer <b>{boekstuknummer ?? '—'}</b>
+            </p>
+            <p className="hint">
+              Wijzigen kan alleen via stornering in Reeleezee (actie 19); daarna komt het document hier terug als
+              concept.
+            </p>
+          </>
         )}
-        {!isBevroren && (
+        {isVerwijderd && (
+          <>
+            {herstellenFout && <div className="fout">{herstellenFout}</div>}
+            <p className="hint" style={{ marginTop: 0 }}>
+              Dit document is verwijderd — het bestand en de geschiedenis blijven bewaard. Herstellen zet het terug
+              op de status van vóór de verwijdering.
+            </p>
+            <div className="actions">
+              <button type="button" className="btn" disabled={herstellenBezig} onClick={() => void herstellen()}>
+                {herstellenBezig ? 'Bezig…' : '↺ Herstellen'}
+              </button>
+            </div>
+          </>
+        )}
+        {!isReadOnly && (
           <div className="actions">
             <button
               type="button"

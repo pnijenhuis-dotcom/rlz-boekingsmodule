@@ -95,7 +95,13 @@ describe('BoekvoorstelPanel', () => {
     })
 
     render(
-      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} />,
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
     )
 
     await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toBeInTheDocument())
@@ -141,7 +147,13 @@ describe('BoekvoorstelPanel', () => {
     })
 
     render(
-      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} />,
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
     )
     await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
     await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
@@ -175,7 +187,13 @@ describe('BoekvoorstelPanel', () => {
     })
 
     render(
-      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} />,
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
     )
     await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
     await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
@@ -195,11 +213,22 @@ describe('BoekvoorstelPanel', () => {
       },
     })
 
-    render(<BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="geboekt" onGeboekt={() => {}} />)
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="geboekt"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
 
     await waitFor(() => expect(screen.getByText('RLZ-04-00002001')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Boeken in RLZ ✓' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Referentie / factuurnummer')).toBeDisabled()
+    expect(screen.queryByRole('textbox', { name: 'Referentie / factuurnummer' })).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Wijzigen kan alleen via stornering in Reeleezee (actie 19); daarna komt het document hier terug als concept.'),
+    ).toBeInTheDocument()
   })
 
   it('design-pass taak 7: een veldwijziging na een groene controle zet de boekknop weer uit', async () => {
@@ -220,6 +249,7 @@ describe('BoekvoorstelPanel', () => {
         documentId={DOCUMENT_ID}
         status="te_controleren"
         onGeboekt={() => {}}
+        onHersteld={() => {}}
       />,
     )
     await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
@@ -244,6 +274,7 @@ describe('BoekvoorstelPanel', () => {
         documentId={DOCUMENT_ID}
         status="te_controleren"
         onGeboekt={() => {}}
+        onHersteld={() => {}}
       />,
     )
     await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
@@ -262,6 +293,7 @@ describe('BoekvoorstelPanel', () => {
         documentId={DOCUMENT_ID}
         status="te_controleren"
         onGeboekt={() => {}}
+        onHersteld={() => {}}
       />,
     )
     await waitFor(() => expect(screen.getByText('Project')).toBeInTheDocument())
@@ -294,6 +326,7 @@ describe('BoekvoorstelPanel', () => {
         documentId={DOCUMENT_ID}
         status="te_controleren"
         onGeboekt={() => {}}
+        onHersteld={() => {}}
       />,
     )
     await waitFor(() => expect(screen.getByLabelText('Totaalbedrag (incl. btw)')).toBeInTheDocument())
@@ -310,7 +343,13 @@ describe('BoekvoorstelPanel', () => {
     const gebruiker = userEvent.setup()
     installFetchMock({ taxrates: [{ id: TAXRATE_ID, naam: 'NL Hoog Tarief', percentage: '0.2100' }] })
     render(
-      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} />,
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
     )
     await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toBeInTheDocument())
 
@@ -329,7 +368,13 @@ describe('BoekvoorstelPanel', () => {
     const gebruiker = userEvent.setup()
     installFetchMock({ taxrates: [{ id: TAXRATE_ID, naam: 'NL Hoog Tarief', percentage: '0.2100' }] })
     render(
-      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} />,
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
     )
     await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toBeInTheDocument())
 
@@ -356,6 +401,7 @@ describe('BoekvoorstelPanel', () => {
         documentId={DOCUMENT_ID}
         status="te_controleren"
         onGeboekt={() => {}}
+        onHersteld={() => {}}
       />,
     )
 

@@ -321,3 +321,49 @@ class TestBoekenEndpoint:
         )
         assert resp.status_code == 409, resp.text
         assert "bewaarplicht" in resp.json()["detail"]
+
+    def test_geboekt_document_weigert_put_en_checks_via_http_en_blijft_ongewijzigd(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Kliktest-fix: het boekvoorstel bleek nog bewerkbaar na boeken. Dit test de échte
+        bescherming (backend), niet alleen dat de knoppen in de UI verborgen zijn."""
+        beheer_service.zet_boeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = self._klaar_document(headers, administratie_id)
+        boek_resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        assert boek_resp.status_code == 200, boek_resp.text
+
+        voor_de_poging = client.get(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel", headers=headers
+        ).json()
+
+        put_resp = client.put(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",
+            headers=headers,
+            json={
+                "vendor_id": str(uuid.uuid4()),
+                "referentie": "GEPOOGDE-WIJZIGING",
+                "factuurdatum": "2026-01-01",
+                "totaalbedrag": "999.99",
+                "regels": [{**_REGEL, "omschrijving": "Gepoogde wijziging"}],
+            },
+        )
+        assert put_resp.status_code == 409, put_resp.text
+        assert "geboekt" in put_resp.json()["detail"]
+
+        checks_resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel/checks", headers=headers
+        )
+        assert checks_resp.status_code == 409, checks_resp.text
+
+        na_de_poging = client.get(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel", headers=headers
+        ).json()
+        assert na_de_poging == voor_de_poging

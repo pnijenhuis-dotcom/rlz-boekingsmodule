@@ -295,6 +295,8 @@ def boekvoorstel_checks_uitvoeren(
         rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except boekvoorstel.BoekvoorstelFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _naar_check_rapport_response(rapport)
 
 

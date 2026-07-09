@@ -8,7 +8,7 @@ import pytest
 
 from app.db.session import scoped_session
 from app.documenten import boekvoorstel, service
-from app.documenten.models import DocumentStatus
+from app.documenten.models import Document, DocumentStatus
 from app.documenten.service import _schrijf_overgang
 from app.documenten.statusmachine import valideer_overgang
 from app.documenten.storage import LokaleBestandsopslag
@@ -188,8 +188,6 @@ class TestOpslaanEnOphalen:
             opslag=opslag,
         )
         with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
-            from app.documenten.models import Document
-
             document = session.get(Document, resultaat.document_id)
             assert document is not None
             valideer_overgang(document.status, DocumentStatus.KLAAR_OM_TE_BOEKEN)
@@ -213,6 +211,84 @@ class TestOpslaanEnOphalen:
     def test_onbekend_document_geeft_documentnietgevonden(self, administratie_id: uuid.UUID) -> None:
         with pytest.raises(service.DocumentNietGevonden):
             boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=uuid.uuid4())
+
+    def test_verwijderd_document_is_ook_bevroren(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur-verwijderd.pdf",
+            inhoud=b"%PDF-1.4 verwijderd",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        service.verwijder_document(
+            administratie_id=administratie_id, document_id=resultaat.document_id, actor_id=gescoopte_gebruiker
+        )
+
+        with pytest.raises(boekvoorstel.BoekvoorstelFout):
+            boekvoorstel.sla_boekvoorstel_op(
+                administratie_id=administratie_id,
+                document_id=resultaat.document_id,
+                actor_id=gescoopte_gebruiker,
+                vendor_id=uuid.uuid4(),
+                referentie="F-1",
+                factuurdatum=date(2026, 7, 1),
+                totaalbedrag=Decimal("1.00"),
+                regels=[_regel()],
+            )
+
+    def test_geboekt_document_blijft_byte_voor_byte_ongewijzigd_na_een_put_poging(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        """Niet alleen 'de aanroep faalt' — de opgeslagen kop/regels mogen ook echt niet
+        aangeraakt zijn (kliktest: het boekvoorstel bleek nog bewerkbaar na boeken)."""
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur-ongewijzigd.pdf",
+            inhoud=b"%PDF-1.4 ongewijzigd",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        oorspronkelijke_vendor_id = uuid.uuid4()
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=resultaat.document_id,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=oorspronkelijke_vendor_id,
+            referentie="ORIGINEEL",
+            factuurdatum=date(2026, 7, 1),
+            totaalbedrag=Decimal("60.50"),
+            regels=[_regel(omschrijving="Origineel")],
+        )
+        with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
+            document = session.get(Document, resultaat.document_id)
+            assert document is not None
+            valideer_overgang(document.status, DocumentStatus.KLAAR_OM_TE_BOEKEN)
+            _schrijf_overgang(
+                session, document=document, naar=DocumentStatus.KLAAR_OM_TE_BOEKEN, actor_id=gescoopte_gebruiker
+            )
+            _schrijf_overgang(session, document=document, naar=DocumentStatus.GEBOEKT, actor_id=gescoopte_gebruiker)
+
+        with pytest.raises(boekvoorstel.BoekvoorstelFout):
+            boekvoorstel.sla_boekvoorstel_op(
+                administratie_id=administratie_id,
+                document_id=resultaat.document_id,
+                actor_id=gescoopte_gebruiker,
+                vendor_id=uuid.uuid4(),
+                referentie="GEPOOGDE-WIJZIGING",
+                factuurdatum=date(2026, 6, 1),
+                totaalbedrag=Decimal("999.99"),
+                regels=[_regel(omschrijving="Gepoogde wijziging")],
+            )
+
+        na_de_poging = boekvoorstel.haal_boekvoorstel_op(
+            administratie_id=administratie_id, document_id=resultaat.document_id
+        )
+        assert na_de_poging.vendor_id == oorspronkelijke_vendor_id
+        assert na_de_poging.referentie == "ORIGINEEL"
+        assert na_de_poging.totaalbedrag == Decimal("60.50")
+        assert [r.omschrijving for r in na_de_poging.regels] == ["Origineel"]
 
 
 class TestVoerChecksUit:
@@ -279,3 +355,41 @@ class TestVoerChecksUit:
         assert not duplicaatcheck.ok
         assert "kon niet uitgevoerd worden" in duplicaatcheck.melding
         assert rapport.geblokkeerd
+
+    def test_geboekt_document_blokkeert_ook_de_checks_endpoint(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur-checks-geboekt.pdf",
+            inhoud=b"%PDF-1.4 checks-geboekt",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
+            document = session.get(Document, resultaat.document_id)
+            assert document is not None
+            _schrijf_overgang(
+                session, document=document, naar=DocumentStatus.KLAAR_OM_TE_BOEKEN, actor_id=gescoopte_gebruiker
+            )
+            _schrijf_overgang(session, document=document, naar=DocumentStatus.GEBOEKT, actor_id=gescoopte_gebruiker)
+
+        with pytest.raises(boekvoorstel.BoekvoorstelFout):
+            boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=resultaat.document_id)
+
+    def test_verwijderd_document_blokkeert_ook_de_checks_endpoint(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur-checks-verwijderd.pdf",
+            inhoud=b"%PDF-1.4 checks-verwijderd",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        service.verwijder_document(
+            administratie_id=administratie_id, document_id=resultaat.document_id, actor_id=gescoopte_gebruiker
+        )
+
+        with pytest.raises(boekvoorstel.BoekvoorstelFout):
+            boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=resultaat.document_id)

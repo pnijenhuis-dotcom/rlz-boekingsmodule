@@ -27,12 +27,23 @@ from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
 
 # Zodra het document GEBOEKT is, is het RLZ-boekstuk de bron van waarheid (CLAUDE.md, kernprincipe
-# 1) — het boekvoorstel wordt dan bevroren, geen bewerking meer via deze service.
-_BEVROREN_STATUSSEN = frozenset({DocumentStatus.GEBOEKT})
+# 1) — het boekvoorstel wordt dan bevroren, geen bewerking (PUT) of herberekening (checks) meer via
+# deze service. VERWIJDERD (soft-delete) is om een andere reden bevroren: een zachtgewist document
+# hoort niet meer bewerkt te worden vóórdat het expliciet hersteld is (service.py::herstel_document)
+# — anders zou een "verwijderd" document alsnog stiekem wijzigen terwijl het uit het zicht is.
+_BEVROREN_STATUSSEN = frozenset({DocumentStatus.GEBOEKT, DocumentStatus.VERWIJDERD})
 
 
 class BoekvoorstelFout(Exception):
     """Domeinfout in de boekvoorstel-servicelaag."""
+
+
+def _controleer_niet_bevroren(document: Document) -> None:
+    if document.status in _BEVROREN_STATUSSEN:
+        raise BoekvoorstelFout(
+            f"Document {document.id} kan niet meer gewijzigd of gecontroleerd worden "
+            f"(status: {document.status.value})"
+        )
 
 
 @dataclass(frozen=True)
@@ -212,8 +223,7 @@ def sla_boekvoorstel_op(
 ) -> BoekvoorstelData:
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = _laad_document(session, document_id=document_id)
-        if document.status in _BEVROREN_STATUSSEN:
-            raise BoekvoorstelFout(f"Document {document_id} is al geboekt — het boekvoorstel is bevroren")
+        _controleer_niet_bevroren(document)
 
         bestaand = session.get(Boekvoorstel, document_id)
         if bestaand is None:
@@ -303,6 +313,10 @@ def voer_checks_uit(
 
     Lukt het openen van die eigen verbinding niet (credential-fout, RLZ onbereikbaar), dan wordt
     dat NOOIT een onafgevangen exception (dus geen kale 500) — zie _duplicaatcheck_niet_uitgevoerd_rapport."""
+    with scoped_session(administratie_id) as session:
+        document = _laad_document(session, document_id=document_id)
+        _controleer_niet_bevroren(document)
+
     voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)

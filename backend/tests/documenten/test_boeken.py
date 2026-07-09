@@ -472,3 +472,19 @@ class TestBoekDocumentOngeldigeStatus:
             boeken.boek_document(
                 administratie_id=administratie_id, document_id=uuid.uuid4(), actor_id=gescoopte_gebruiker
             )
+
+    def test_verwijderd_document_kan_niet_geboekt_worden(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        boeken_aan: None,
+    ) -> None:
+        service.verwijder_document(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
+        )
+
+        with pytest.raises(boeken.OngeldigeBoekpoging):
+            boeken.boek_document(
+                administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
+            )

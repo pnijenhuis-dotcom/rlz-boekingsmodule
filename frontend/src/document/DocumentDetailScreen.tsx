@@ -164,6 +164,7 @@ export function DocumentDetailScreen() {
             documentId={documentId}
             status={detail.status}
             onGeboekt={laadDetail}
+            onHersteld={laadDetail}
           />
 
           <div className="panel">
