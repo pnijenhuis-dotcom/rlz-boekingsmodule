@@ -125,14 +125,46 @@ Backend:
    zolang extractie synchroon binnen dezelfde request draait, maar een latere écht-asynchrone
    extractieworker (queue/Cloud Tasks) heeft hier een oplossing voor nodig vóór hij gebouwd wordt.
    Multi-factuur-PDF-splitsing en e-mail-intake blijven fase 3.
-6. Boeken: PurchaseInvoice + PDF-bijlage + Book-actie, idempotency-key, audit, RLZ-boekstuk terug.
-7. Webhook-stub "factuur geboekt" (koppelcontract §3) — payload klaar, aflevering configureerbaar.
+6. **Boeken — gebouwd (2026-07-09).** Migratie 0008: `boekhouding.boekvoorstel`/`boekvoorstel_regel`
+   (het controlescherm-voorstel per document, RLS via het onderliggende document — zelfde
+   subquery-patroon als `document_gebeurtenis`). `app/documenten/checks.py`: de drie harde checks
+   (duplicaatquery Entity+Reference(30 tekens)+bedrag — eigen client-GUID telt niet als duplicaat
+   bij een retry; regeltelling vs factuurtotaal; verplichte velden), altijd alle drie getoond,
+   nooit stil overgeslagen. `app/documenten/boeken.py`: `boek_document()` herhaalt de checks
+   server-side (nooit de client-kant vertrouwen), dan de failsafes, dan de echte RLZ-schrijfacties
+   — deterministisch client-GUID (`app/documenten/rlz_ids.py`, UUIDv5 op document-id, óók voor de
+   PDF-bijlage) → PUT PurchaseInvoice → **PUT** `/Uploads/{uploadId}` (geverifieerd: RLZ wil hier
+   expliciet PUT, geen POST — zie verkenning/api-verkenning.md) → actie 17 → boekstuknummer terug
+   (RLZ's `ReceiptNumber`, geverifieerd al gezet bij de PUT, niet pas na boeken). Status →
+   `geboekt` met tijdlijn+audit; een RLZ-fout zet `boeken_mislukt` met de échte foutmelding, een
+   volgende poging is idempotent (zelfde client-GUID's).
+   - **Drie failsafes (CLAUDE.md-taak 2.4):** (a) `platform.administratie.boeken_ingeschakeld`
+     (per-administratie opt-in, default UIT) + `platform.boeken_instelling` (globale kill switch,
+     singleton) — nieuwe `app/beheer/`-module, Beheerder-only endpoints, beide moeten aan staan.
+     (b) Reconciliatiejob (`app/documenten/reconciliatie.py`, `make reconciliatie` /
+     `python -m app.cli reconciliatie`): vergelijkt elk lokaal `geboekt` document met de
+     werkelijke RLZ-staat (bestaat, Status=2, bedrag, boekstuknummer), rapporteert afwijkingen;
+     één kapotte administratie stopt de rest niet (zelfde patroon als `sync_alle_administraties`).
+     (c) Volumerem: `settings.max_boekingen_per_dag_per_administratie` (default 20), telt op de
+     al bestaande `document_gebeurtenis`-rijen van vandaag, geen eigen tabel nodig.
+   - **Alleen de test-administratie heeft boeken aanstaan** — voor alle andere blijft de toggle op
+     zijn default (uit) totdat een Beheerder 'm expliciet aanzet.
+7. **Webhook-stub "factuur geboekt" — gebouwd (2026-07-09).** Migratie 0009:
+   `boekhouding.webhook_uitgaand` (outbox, `afgeleverd_op` blijft NULL). `app/documenten/webhook.py`
+   bouwt en ondertekent de payload (HMAC-SHA256 over timestamp+nonce+payload, koppelcontract §3) —
+   RLZ-GUID, project-GUID, datum, bedragen per regel, GB-code, leverancier, referentie, adminId.
+   Aflevering (HTTP-push naar vastgoed) is bewust nog niet gebouwd — dat is een fase-vervolg, zodra
+   ook de "hoort dit bij een vastgoed-administratie"-filtering nodig wordt.
 
 Frontend (Vite + React, design tokens uit mockup — die blijven leidend, ook voor onderstaande
 UI-eisen):
 8. Login + 2FA, werkvoorraad (klantenlijst → klantpagina), controlescherm (PDF-viewer + voorstel +
-   correcties), vragenworkflow, afwijzen-met-reden, verzamelbak "Niet toegewezen", instellingen-lite
-   (administratie koppelen, gebruikers, eigenaren), audit log, globaal zoeken (boekingen + audit).
+   correcties) — **kopgegevens + boekingsregels + harde checks + boekactie gebouwd (2026-07-09)**,
+   zie punt 6 en `frontend/src/document/BoekvoorstelPanel.tsx` + `SearchableCombobox.tsx` (zoekbare,
+   gevirtualiseerde, debounced combobox conform de UI-eisen hieronder) — vragenworkflow,
+   afwijzen-met-reden, verzamelbak "Niet toegewezen", instellingen-lite
+   (administratie koppelen, gebruikers, eigenaren), audit log, globaal zoeken (boekingen + audit)
+   blijven open voor een volgende sessie.
    **UI-eisen (vastgesteld 2026-07-08), van toepassing op elk GB-/project-/entiteitveld:**
    - Zoekbare combobox met toetsenbordnavigatie (pijltjes, Enter, Esc) i.p.v. een kale `<select>`
      — deze velden hebben per administratie honderden tot duizenden opties (bv. Universal: 145
