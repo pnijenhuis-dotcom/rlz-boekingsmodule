@@ -46,6 +46,29 @@ class TestPerAdministratieToggle:
             service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=uuid.uuid4(), ingeschakeld=True)
 
 
+class TestProjectVerplicht:
+    def test_default_uit(self, administratie_id: uuid.UUID) -> None:
+        assert service.haal_project_verplicht_op(administratie_id=administratie_id) is False
+
+    def test_aanzetten_en_uitzetten(self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
+        assert service.haal_project_verplicht_op(administratie_id=administratie_id) is True
+
+        service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=False)
+        assert service.haal_project_verplicht_op(administratie_id=administratie_id) is False
+
+    def test_wijziging_wordt_geaudit(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
+        acties = _audit_acties(admin_engine, tabel="administratie", record_id=administratie_id)
+        assert acties == ["project_verplicht_gewijzigd"]
+
+    def test_onbekende_administratie_geeft_beheerfout(self, beheerder_id: uuid.UUID) -> None:
+        with pytest.raises(service.BeheerFout):
+            service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=uuid.uuid4(), verplicht=True)
+
+
 class TestGlobaleKillSwitch:
     def test_default_aan(self) -> None:
         assert service.haal_globale_kill_switch_op() is True

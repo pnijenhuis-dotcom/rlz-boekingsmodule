@@ -59,7 +59,9 @@ class Administratie(Base):
     """RLZ-administratie (tenant-scope). Vastgoed- en kantoorklant-administraties gemengd.
     `boeken_ingeschakeld` is de per-administratie boeken-failsafe (migratie 0008, CLAUDE.md
     "Automatisch boeken = opt-in"): default UIT, alleen een Beheerder kan 'm aanzetten. Boeken
-    is bovendien ook nog onderhevig aan de globale kill switch (zie BoekenInstelling)."""
+    is bovendien ook nog onderhevig aan de globale kill switch (zie BoekenInstelling).
+    `project_verplicht` (migratie 0010) bepaalt of de Project-kolom in het controlescherm
+    zichtbaar én verplicht/blokkerend is — default UIT."""
 
     __tablename__ = "administratie"
 
@@ -68,6 +70,7 @@ class Administratie(Base):
     rlz_admin_id: Mapped[str] = mapped_column(unique=True)
     actief: Mapped[bool] = mapped_column(default=True)
     boeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    project_verplicht: Mapped[bool] = mapped_column(default=False)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

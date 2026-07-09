@@ -24,22 +24,36 @@ const LEEG_BOEKVOORSTEL = {
   regels: [],
 }
 
-function installFetchMock(overrides: { boekvoorstel?: unknown; putResponse?: unknown; boekenResponse?: [unknown, number] }) {
+interface FetchMockOverrides {
+  boekvoorstel?: unknown
+  putResponse?: unknown
+  boekenResponse?: [unknown, number]
+  projectVerplicht?: boolean
+  grootboek?: unknown[]
+  taxrates?: unknown[]
+  vendors?: unknown[]
+  projecten?: unknown[]
+  syncAanroepen?: string[]
+}
+
+function installFetchMock(overrides: FetchMockOverrides) {
+  const grootboek = overrides.grootboek ?? [{ ledger_id: LEDGER_ID, code: '4699', naam: 'Diverse kosten', soort: 2 }]
+  const taxrates = overrides.taxrates ?? [{ id: TAXRATE_ID, naam: 'NL Hoog 21%' }]
+  const vendors = overrides.vendors ?? [{ id: VENDOR_ID, naam: 'Bouwmaat Nederland B.V.' }]
+  const projecten = overrides.projecten ?? []
+
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
-      if (url.endsWith('/grootboek')) {
-        return Promise.resolve(jsonResponse({ rekeningen: [{ ledger_id: LEDGER_ID, code: '4699', naam: 'Diverse kosten', soort: 2 }] }))
+      if (url.includes('/sync/') && init?.method === 'POST') {
+        overrides.syncAanroepen?.push(url)
+        return Promise.resolve(jsonResponse({ aangemaakt: 0, bijgewerkt: 0, verdwenen: 0 }))
       }
-      if (url.endsWith('/btw-codes')) {
-        return Promise.resolve(jsonResponse({ btw_codes: [{ id: TAXRATE_ID, naam: 'NL Hoog 21%' }] }))
-      }
-      if (url.endsWith('/crediteuren')) {
-        return Promise.resolve(jsonResponse({ crediteuren: [{ id: VENDOR_ID, naam: 'Bouwmaat Nederland B.V.' }] }))
-      }
-      if (url.endsWith('/projecten')) {
-        return Promise.resolve(jsonResponse({ projecten: [] }))
-      }
+      if (url.endsWith('/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: grootboek }))
+      if (url.endsWith('/btw-codes')) return Promise.resolve(jsonResponse({ btw_codes: taxrates }))
+      if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: vendors }))
+      if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten }))
+      if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: overrides.projectVerplicht ?? false }))
       if (url.endsWith('/boekvoorstel') && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse(overrides.boekvoorstel ?? LEEG_BOEKVOORSTEL))
       }
@@ -183,5 +197,136 @@ describe('BoekvoorstelPanel', () => {
     await waitFor(() => expect(screen.getByText('RLZ-04-00002001')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Boeken in RLZ ✓' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Referentie / factuurnummer')).toBeDisabled()
+  })
+
+  it('design-pass taak 7: een veldwijziging na een groene controle zet de boekknop weer uit', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      putResponse: {
+        boekvoorstel: LEEG_BOEKVOORSTEL,
+        checks: {
+          geblokkeerd: false,
+          resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'ok' }],
+        },
+      },
+    })
+
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeEnabled())
+
+    await gebruiker.type(screen.getByLabelText('Referentie / factuurnummer'), 'X')
+
+    expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('opnieuw'),
+    )
+    expect(screen.getByText(/verouderd/)).toBeInTheDocument()
+  })
+
+  it('design-pass taak 4: de Project-kolom is verborgen als project_verplicht uit staat', async () => {
+    installFetchMock({ projectVerplicht: false })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
+    expect(screen.queryByText('Project')).not.toBeInTheDocument()
+  })
+
+  it('design-pass taak 4: de Project-kolom is zichtbaar en verplicht als project_verplicht aan staat', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      projectVerplicht: true,
+      projecten: [{ id: 'ffffffff-0000-0000-0000-000000000006', naam: 'P-001 Testproject' }],
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('Project')).toBeInTheDocument())
+
+    const projectVeld = screen.getByLabelText(/Project/, { exact: false })
+    await gebruiker.click(projectVeld)
+    expect(screen.getByText('P-001 Testproject')).toBeInTheDocument()
+  })
+
+  it('design-pass taak 8: de live aansluit-indicator reageert op typen, zonder Controleren te klikken', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      boekvoorstel: {
+        ...LEEG_BOEKVOORSTEL,
+        regels: [
+          {
+            ledger_id: LEDGER_ID,
+            taxrate_id: TAXRATE_ID,
+            project_id: null,
+            netto_bedrag: '100,00',
+            btw_bedrag: '21,00',
+            omschrijving: null,
+          },
+        ],
+      },
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByLabelText('Totaalbedrag (incl. btw)')).toBeInTheDocument())
+
+    await gebruiker.type(screen.getByLabelText('Totaalbedrag (incl. btw)'), '121,00')
+    await waitFor(() => expect(screen.getByText(/Aansluitend/)).toBeInTheDocument())
+
+    await gebruiker.clear(screen.getByLabelText('Totaalbedrag (incl. btw)'))
+    await gebruiker.type(screen.getByLabelText('Totaalbedrag (incl. btw)'), '999,00')
+    await waitFor(() => expect(screen.getByText(/Afwijking/)).toBeInTheDocument())
+  })
+
+  it('design-pass taak 3: lege cache toont een melding met "Nu synchroniseren", die alle vier de caches verversen', async () => {
+    const gebruiker = userEvent.setup()
+    const syncAanroepen: string[] = []
+    installFetchMock({ grootboek: [], taxrates: [], vendors: [], syncAanroepen })
+
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText(/nog niet gesynchroniseerd voor crediteuren/)).toBeInTheDocument())
+    expect(screen.getByText(/nog niet gesynchroniseerd voor het grootboekschema/)).toBeInTheDocument()
+
+    const [knop] = screen.getAllByRole('button', { name: 'Nu synchroniseren' })
+    await gebruiker.click(knop)
+
+    await waitFor(() =>
+      expect(syncAanroepen.map((u) => u.split('/sync/')[1])).toEqual(
+        expect.arrayContaining(['ledgers', 'taxrates', 'vendors', 'projects']),
+      ),
+    )
   })
 })

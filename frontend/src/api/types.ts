@@ -7,12 +7,18 @@ export interface MijnAdministratiesResponseDto {
   administraties: AdministratieDto[]
 }
 
+export interface DuplicaatReferentieDto {
+  document_id: string
+  bestandsnaam: string
+  aangemaakt_op: string
+}
+
 export interface DocumentListItemDto {
   id: string
   bestandsnaam: string
   status: string
   bron: string
-  mogelijk_duplicaat_van: string | null
+  mogelijk_duplicaat_van: DuplicaatReferentieDto | null
   toegewezen_aan: string | null
   aangemaakt_op: string
   laatst_gewijzigd_op: string
@@ -36,7 +42,7 @@ export interface DocumentDetailDto {
   bestandsnaam: string
   status: string
   bron: string
-  mogelijk_duplicaat_van: string | null
+  mogelijk_duplicaat_van: DuplicaatReferentieDto | null
   toegewezen_aan: string | null
   aangemaakt_op: string
   laatst_gewijzigd_op: string
@@ -47,7 +53,7 @@ export interface DocumentDetailDto {
 export interface UploadResponseDto {
   document_id: string
   status: string
-  mogelijk_duplicaat_van: string | null
+  mogelijk_duplicaat_van: DuplicaatReferentieDto | null
 }
 
 export interface TokenPaarResponseDto {
@@ -140,4 +146,8 @@ export interface BoekenResponseDto {
   status: string
   rlz_document_id: string
   rlz_boekstuknummer: string | null
+}
+
+export interface ProjectVerplichtDto {
+  verplicht: boolean
 }

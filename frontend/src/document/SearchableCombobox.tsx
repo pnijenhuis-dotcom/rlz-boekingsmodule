@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 
 export interface ComboboxOptie {
   id: string
@@ -13,6 +14,10 @@ interface Props {
   placeholder?: string
   vereist?: boolean
   fout?: boolean
+  /** Verbergt het visuele <label>-element (bv. in een tabelkolom waar de kolomkop al het label
+   * is — design-pass taak 2: "dubbele labels weg"). De tekst blijft wel als aria-label op de
+   * input staan, voor screenreaders die geen kolomkop-context hebben. */
+  toonLabel?: boolean
 }
 
 // Sync-caches kunnen honderden tot duizenden opties bevatten (bv. Universal: 145 projecten) —
@@ -31,10 +36,28 @@ function useDebounced<T>(waarde: T, delayMs: number): T {
   return debounced
 }
 
+interface Positie {
+  top: number
+  left: number
+  width: number
+}
+
 /** Zoekbare combobox met toetsenbordnavigatie en gevirtualiseerde opties-lijst (BOUWPLAN.md,
  * UI-eisen voor elk GB-/project-/entiteitveld) — debounced lokaal filteren, geen request per
- * toetsaanslag (de sync-cache is al lokaal). */
-export function SearchableCombobox({ label, opties, waarde, onWijzig, placeholder, vereist, fout }: Props) {
+ * toetsaanslag (de sync-cache is al lokaal). De opties-lijst rendert via een React-portal naar
+ * `document.body` met een zelf-berekende `position: fixed`-plek: zo blijft hij altijd zichtbaar,
+ * ook binnen containers met `overflow: hidden` (bv. de `<table>`-stijl in components.css) die 'm
+ * anders zouden afknippen. */
+export function SearchableCombobox({
+  label,
+  opties,
+  waarde,
+  onWijzig,
+  placeholder,
+  vereist,
+  fout,
+  toonLabel = true,
+}: Props) {
   const reactId = useId()
   const inputId = `${reactId}-input`
   const listboxId = `${reactId}-listbox`
@@ -43,7 +66,9 @@ export function SearchableCombobox({ label, opties, waarde, onWijzig, placeholde
   const [zoekterm, setZoekterm] = useState('')
   const [actieveIndex, setActieveIndex] = useState(0)
   const [scrollTop, setScrollTop] = useState(0)
+  const [positie, setPositie] = useState<Positie | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   const debouncedZoekterm = useDebounced(zoekterm, 150)
@@ -61,12 +86,33 @@ export function SearchableCombobox({ label, opties, waarde, onWijzig, placeholde
     setScrollTop(0)
   }, [debouncedZoekterm])
 
+  const bijwerkenPositie = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setPositie({ top: rect.bottom, left: rect.left, width: rect.width })
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    bijwerkenPositie()
+    // capture:true zodat scroll op ELKE voorouder-container (niet alleen window) de positie
+    // bijwerkt — anders "drijft" de dropdown weg van het veld bij scrollen binnen een tabel-pane.
+    window.addEventListener('scroll', bijwerkenPositie, true)
+    window.addEventListener('resize', bijwerkenPositie)
+    return () => {
+      window.removeEventListener('scroll', bijwerkenPositie, true)
+      window.removeEventListener('resize', bijwerkenPositie)
+    }
+  }, [open, bijwerkenPositie])
+
   useEffect(() => {
     if (!open) return
     function opKlikBuiten(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const doel = e.target as Node
+      const inVeld = containerRef.current?.contains(doel)
+      const inLijst = listRef.current?.contains(doel)
+      if (!inVeld && !inLijst) setOpen(false)
     }
     document.addEventListener('mousedown', opKlikBuiten)
     return () => document.removeEventListener('mousedown', opKlikBuiten)
@@ -119,11 +165,14 @@ export function SearchableCombobox({ label, opties, waarde, onWijzig, placeholde
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
-      <label htmlFor={inputId}>
-        {label}
-        {vereist && ' *'}
-      </label>
+      {toonLabel && (
+        <label htmlFor={inputId}>
+          {label}
+          {vereist && ' *'}
+        </label>
+      )}
       <input
+        ref={inputRef}
         id={inputId}
         role="combobox"
         aria-expanded={open}
@@ -131,6 +180,7 @@ export function SearchableCombobox({ label, opties, waarde, onWijzig, placeholde
         aria-autocomplete="list"
         aria-activedescendant={actieveOptieId}
         aria-required={vereist}
+        aria-label={toonLabel ? undefined : `${label}${vereist ? ' (verplicht)' : ''}`}
         className={fout ? 'warnfield' : undefined}
         autoComplete="off"
         placeholder={placeholder ?? 'Typen om te zoeken…'}
@@ -139,71 +189,75 @@ export function SearchableCombobox({ label, opties, waarde, onWijzig, placeholde
           setOpen(true)
           setZoekterm('')
         }}
+        onClick={() => setOpen(true)}
         onChange={(e) => {
           setZoekterm(e.target.value)
           setOpen(true)
         }}
         onKeyDown={opToetsenbord}
       />
-      {open && (
-        <div
-          ref={listRef}
-          role="listbox"
-          id={listboxId}
-          aria-label={label}
-          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-          style={{
-            position: 'absolute',
-            zIndex: 20,
-            top: '100%',
-            left: 0,
-            right: 0,
-            maxHeight: ZICHTBARE_RIJEN * RIJHOOGTE,
-            overflowY: 'auto',
-            background: 'var(--panel)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            boxShadow: 'var(--shadow)',
-          }}
-        >
-          <div style={{ height: gefilterd.length * RIJHOOGTE, position: 'relative' }}>
-            {zichtbareOpties.map((optie, i) => {
-              const echteIndex = eersteIndex + i
-              return (
-                <div
-                  key={optie.id}
-                  id={`${listboxId}-${optie.id}`}
-                  role="option"
-                  aria-selected={echteIndex === actieveIndex}
-                  onMouseDown={(e) => {
-                    e.preventDefault()
-                    kiesOptie(optie)
-                  }}
-                  onMouseEnter={() => setActieveIndex(echteIndex)}
-                  style={{
-                    position: 'absolute',
-                    top: echteIndex * RIJHOOGTE,
-                    left: 0,
-                    right: 0,
-                    height: RIJHOOGTE,
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 10px',
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    background: echteIndex === actieveIndex ? 'var(--blue-bg)' : 'transparent',
-                  }}
-                >
-                  {optie.label}
-                </div>
-              )
-            })}
-            {gefilterd.length === 0 && (
-              <div style={{ padding: '8px 10px', fontSize: 12.5, color: 'var(--muted)' }}>Geen resultaten</div>
-            )}
-          </div>
-        </div>
-      )}
+      {open &&
+        positie &&
+        createPortal(
+          <div
+            ref={listRef}
+            role="listbox"
+            id={listboxId}
+            aria-label={label}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+            style={{
+              position: 'fixed',
+              zIndex: 1000,
+              top: positie.top,
+              left: positie.left,
+              width: positie.width,
+              maxHeight: ZICHTBARE_RIJEN * RIJHOOGTE,
+              overflowY: 'auto',
+              background: 'var(--panel)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              boxShadow: 'var(--shadow)',
+            }}
+          >
+            <div style={{ height: gefilterd.length * RIJHOOGTE, position: 'relative' }}>
+              {zichtbareOpties.map((optie, i) => {
+                const echteIndex = eersteIndex + i
+                return (
+                  <div
+                    key={optie.id}
+                    id={`${listboxId}-${optie.id}`}
+                    role="option"
+                    aria-selected={echteIndex === actieveIndex}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      kiesOptie(optie)
+                    }}
+                    onMouseEnter={() => setActieveIndex(echteIndex)}
+                    style={{
+                      position: 'absolute',
+                      top: echteIndex * RIJHOOGTE,
+                      left: 0,
+                      right: 0,
+                      height: RIJHOOGTE,
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0 10px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      background: echteIndex === actieveIndex ? 'var(--blue-bg)' : 'transparent',
+                    }}
+                  >
+                    {optie.label}
+                  </div>
+                )
+              })}
+              {gefilterd.length === 0 && (
+                <div style={{ padding: '8px 10px', fontSize: 12.5, color: 'var(--muted)' }}>Geen resultaten</div>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

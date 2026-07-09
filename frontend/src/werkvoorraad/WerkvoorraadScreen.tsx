@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { apiJson } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
 import { StatusChip } from './StatusChip'
@@ -7,6 +7,10 @@ import { useAdministraties } from './useAdministraties'
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function formatDatumKort(iso: string): string {
+  return new Date(iso).toLocaleDateString('nl-NL', { dateStyle: 'medium' })
 }
 
 export function WerkvoorraadScreen() {
@@ -167,10 +171,16 @@ export function WerkvoorraadScreen() {
                   <td>
                     <StatusChip status={d.status} />
                     {d.mogelijk_duplicaat_van && (
-                      <>
-                        {' '}
-                        <span className="chip vraag">Mogelijk duplicaat — beoordelen</span>
-                      </>
+                      <div style={{ marginTop: 4 }}>
+                        <span className="chip vraag">Mogelijk duplicaat</span>{' '}
+                        <Link
+                          to={`/documenten/${administratieId}/${d.mogelijk_duplicaat_van.document_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ fontSize: 11.5 }}
+                        >
+                          van {d.mogelijk_duplicaat_van.bestandsnaam} ({formatDatumKort(d.mogelijk_duplicaat_van.aangemaakt_op)})
+                        </Link>
+                      </div>
                     )}
                   </td>
                   <td>{d.bron}</td>

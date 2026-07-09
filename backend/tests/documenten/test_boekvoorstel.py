@@ -242,3 +242,40 @@ class TestVoerChecksUit:
             administratie_id=administratie_id, document_id=resultaat.document_id, client=FakeRlzClient({})
         )
         assert rapport.geblokkeerd
+
+    def test_geen_credentials_geeft_checkrapport_geen_kale_exception(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        """De `administratie_id`-fixture heeft een willekeurig rlz_admin_id zonder geregistreerde
+        credentials (app/rlz/credentials.py::BEKENDE_ADMINISTRATIES) — zonder expliciete client
+        opent voer_checks_uit() er zelf een, en dat resolven faalt hier altijd. Dat mag nooit een
+        onafgevangen GeenRlzCredentials worden (de bug uit de kliktest): de twee lokale checks
+        moeten gewoon hun echte oordeel geven, en de duplicaatcheck wordt een herkenbaar,
+        blokkerend checkresultaat."""
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur.pdf",
+            inhoud=b"%PDF-1.4 geen-credentials",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=resultaat.document_id,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=uuid.uuid4(),
+            referentie="F-1",
+            factuurdatum=date(2026, 7, 1),
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel(netto_bedrag=Decimal("100.00"), btw_bedrag=Decimal("21.00"))],
+        )
+
+        rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=resultaat.document_id)
+
+        assert [r.naam for r in rapport.resultaten] == ["Verplichte velden", "Regeltelling vs totaal", "Duplicaatcheck"]
+        verplichte_velden, regeltelling, duplicaatcheck = rapport.resultaten
+        assert verplichte_velden.ok  # lokale check, draait gewoon door zonder RLZ
+        assert regeltelling.ok  # lokale check, draait gewoon door zonder RLZ
+        assert not duplicaatcheck.ok
+        assert "kon niet uitgevoerd worden" in duplicaatcheck.melding
+        assert rapport.geblokkeerd

@@ -49,6 +49,33 @@ def test_upload_met_scope_slaagt(gescoopte_gebruiker: uuid.UUID, administratie_i
     assert body["mogelijk_duplicaat_van"] is None
 
 
+def test_duplicaat_upload_geeft_bestandsnaam_en_datum_geen_kale_uuid(
+    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    """Design-pass taak 5: de duplicaat-verwijzing moet genoeg zijn voor een klikbare link
+    (bestandsnaam + uploaddatum van het origineel), niet alleen een UUID die de gebruiker niets
+    zegt."""
+    headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+    origineel = client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("origineel.pdf", b"%PDF-1.4 zelfde-inhoud", "application/pdf")},
+        headers=headers,
+    )
+    origineel_id = origineel.json()["document_id"]
+
+    duplicaat = client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("kopie.pdf", b"%PDF-1.4 zelfde-inhoud", "application/pdf")},
+        headers=headers,
+    )
+    assert duplicaat.status_code == 201, duplicaat.text
+    referentie = duplicaat.json()["mogelijk_duplicaat_van"]
+    assert referentie is not None
+    assert referentie["document_id"] == origineel_id
+    assert referentie["bestandsnaam"] == "origineel.pdf"
+    assert "aangemaakt_op" in referentie
+
+
 def test_beheerder_kan_altijd_uploaden(beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
     resp = client.post(
         f"/administraties/{administratie_id}/documenten",
@@ -110,6 +137,25 @@ def test_documenten_lijst_bevat_geuploade_documenten(
     assert resp.status_code == 200, resp.text
     bestandsnamen = [d["bestandsnaam"] for d in resp.json()["documenten"]]
     assert "lijst-test.pdf" in bestandsnamen
+
+
+def test_documenten_lijst_verrijkt_duplicaat_met_bestandsnaam(
+    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+    client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("lijst-origineel.pdf", b"%PDF-1.4 lijst-dup", "application/pdf")},
+        headers=headers,
+    )
+    client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": ("lijst-kopie.pdf", b"%PDF-1.4 lijst-dup", "application/pdf")},
+        headers=headers,
+    )
+    resp = client.get(f"/administraties/{administratie_id}/documenten", headers=headers)
+    kopie = next(d for d in resp.json()["documenten"] if d["bestandsnaam"] == "lijst-kopie.pdf")
+    assert kopie["mogelijk_duplicaat_van"]["bestandsnaam"] == "lijst-origineel.pdf"
 
 
 def test_document_detail_bevat_tijdlijn_en_veldvoorstel(

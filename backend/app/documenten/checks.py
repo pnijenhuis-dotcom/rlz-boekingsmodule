@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from app.rlz.client import RlzClient
+from app.rlz.client import RlzApiError, RlzClient
 
 # Toegestane afronding tussen "som van de regels" en het factuurtotaal — RLZ zelf rekent met
 # centen, en het UBL-veldvoorstel/handmatige invoer kan een cent afwijken door afronding per
@@ -23,6 +23,7 @@ class CheckRegel:
     taxrate_id: uuid.UUID | None
     netto_bedrag: Decimal | None
     btw_bedrag: Decimal | None
+    project_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ def check_verplichte_velden(
     factuurdatum: date | None,
     totaalbedrag: Decimal | None,
     regels: list[CheckRegel],
+    project_verplicht: bool = False,
 ) -> CheckResultaat:
     ontbrekend: list[str] = []
     if vendor_id is None:
@@ -67,6 +69,8 @@ def check_verplichte_velden(
             ontbrekend.append(f"btw-code (regel {i})")
         if regel.netto_bedrag is None:
             ontbrekend.append(f"netto bedrag (regel {i})")
+        if project_verplicht and regel.project_id is None:
+            ontbrekend.append(f"project (regel {i})")
 
     if ontbrekend:
         return CheckResultaat("Verplichte velden", False, f"Ontbrekend: {', '.join(ontbrekend)}")
@@ -99,13 +103,23 @@ def check_duplicaat(
     op Entity+Reference(afgekapt op 30 tekens, zie RlzClient.find_purchase_invoices_by_reference)
     +bedrag. Een hit op het EIGEN client-GUID (`eigen_rlz_document_id`) is geen duplicaat maar de
     eigen, eventueel al eerder gelukte PUT — anders zou een retry na boeken_mislukt zichzelf als
-    duplicaat blokkeren."""
+    duplicaat blokkeren.
+
+    Een falende RLZ-aanroep hier mag nooit als kale 500 bij de gebruiker terechtkomen — zonder
+    duplicaatcheck is boeken net zo onverantwoord als met een echte duplicaat-hit, dus dit
+    resultaat blijft blokkerend, maar wél als een normaal (herkenbaar) checkresultaat i.p.v. een
+    onafgevangen exception die de hele PUT/checks-aanroep laat crashen."""
     if vendor_id is None or not referentie:
         return CheckResultaat("Duplicaatcheck", False, "Kan niet controleren zonder crediteur en referentie")
     bedrag = float(totaalbedrag) if totaalbedrag is not None else None
-    gevonden = client.find_purchase_invoices_by_reference(
-        vendor_id=vendor_id, reference=referentie, total_amount=bedrag
-    )
+    try:
+        gevonden = client.find_purchase_invoices_by_reference(
+            vendor_id=vendor_id, reference=referentie, total_amount=bedrag
+        )
+    except RlzApiError as exc:
+        return CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {exc}")
+    except Exception as exc:  # noqa: BLE001 — bewust breed: elke RLZ-connectiefout blokkeert, crasht nooit
+        return CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {exc}")
     anderen = [f for f in gevonden if f.get("id") != str(eigen_rlz_document_id)]
     if anderen:
         return CheckResultaat(
@@ -125,11 +139,14 @@ def voer_harde_checks_uit(
     totaalbedrag: Decimal | None,
     regels: list[CheckRegel],
     eigen_rlz_document_id: uuid.UUID,
+    project_verplicht: bool = False,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde drie rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
     de andere twee checks vaak ook zinloos (bv. geen totaalbedrag -> regeltelling kan niet
-    zinvol getoetst worden) — de UI toont ze desondanks alle drie, nooit stil overslaan."""
+    zinvol getoetst worden) — de UI toont ze desondanks alle drie, nooit stil overslaan.
+    `project_verplicht` komt uit de administratie-instelling (design-pass taak 4) — alleen dan
+    telt een ontbrekend project per regel als blokkerend."""
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -138,6 +155,7 @@ def voer_harde_checks_uit(
                 factuurdatum=factuurdatum,
                 totaalbedrag=totaalbedrag,
                 regels=regels,
+                project_verplicht=project_verplicht,
             ),
             check_regeltelling(totaalbedrag=totaalbedrag, regels=regels),
             check_duplicaat(

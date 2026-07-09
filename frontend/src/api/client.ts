@@ -88,11 +88,35 @@ export async function apiFetch(pad: string, init: RequestInit = {}): Promise<Res
   return resp
 }
 
+/** FastAPI/pydantic geeft bij een 422 geen platte `detail`-string maar een lijst
+ * `[{loc: [...], msg: "...", type: "..."}, ...]` — zonder dit uit te pakken viel de generieke
+ * foutafhandeling terug op de kale statustekst ("Unprocessable Entity"), precies de "nooit alleen
+ * 'Controleren mislukt'"-klacht uit de kliktest. `loc` bevat het veldpad (met een 'body'-prefix
+ * die niet nuttig is om te tonen). */
+function pydanticValidatiefoutenNaarTekst(detail: unknown): string | null {
+  if (!Array.isArray(detail)) return null
+  const regels = detail
+    .map((fout) => {
+      if (!fout || typeof fout !== 'object' || !('msg' in fout)) return null
+      const loc =
+        'loc' in fout && Array.isArray(fout.loc)
+          ? (fout.loc as unknown[]).filter((l) => l !== 'body').join('.')
+          : null
+      const msg = String((fout as { msg: unknown }).msg)
+      return loc ? `${loc}: ${msg}` : msg
+    })
+    .filter((regel): regel is string => regel !== null)
+  return regels.length > 0 ? regels.join('; ') : null
+}
+
 async function foutmelding(resp: Response): Promise<string> {
   try {
     const body: unknown = await resp.json()
-    if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string') {
-      return body.detail
+    if (body && typeof body === 'object' && 'detail' in body) {
+      const detail = (body as { detail: unknown }).detail
+      if (typeof detail === 'string') return detail
+      const validatiefouten = pydanticValidatiefoutenNaarTekst(detail)
+      if (validatiefouten) return validatiefouten
     }
   } catch {
     // geen JSON-body — val terug op de statustekst

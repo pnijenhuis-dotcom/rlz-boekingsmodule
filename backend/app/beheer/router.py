@@ -4,10 +4,46 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth.deps import CurrentGebruiker, require_beheerder
+from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope
 from app.beheer import schemas, service
 
 router = APIRouter(tags=["beheer"])
+
+
+@router.get(
+    "/administraties/{administratie_id}/project-instelling",
+    response_model=schemas.ProjectVerplichtDto,
+)
+def project_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.ProjectVerplichtDto:
+    """Scope-check, geen Beheerder-only: elke gebruiker die het controlescherm van deze
+    administratie mag openen, moet kunnen weten of de Project-kolom verplicht is (design-pass
+    taak 4) — dit is geen gevoelige beheerinstelling zoals de boeken-toggle."""
+    try:
+        verplicht = service.haal_project_verplicht_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.ProjectVerplichtDto(verplicht=verplicht)
+
+
+@router.put(
+    "/administraties/{administratie_id}/project-instelling",
+    response_model=schemas.ProjectVerplichtDto,
+)
+def project_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.ProjectVerplichtDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.ProjectVerplichtDto:
+    """Wijzigen blijft wél Beheerder-only, net als de boeken-toggle."""
+    try:
+        verplicht = service.zet_project_verplicht(
+            actor_id=actor.id, administratie_id=administratie_id, verplicht=invoer.verplicht
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.ProjectVerplichtDto(verplicht=verplicht)
 
 
 @router.get(

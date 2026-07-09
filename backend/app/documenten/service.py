@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -28,10 +29,35 @@ def _hash(inhoud: bytes) -> str:
 
 
 @dataclass(frozen=True)
+class DuplicaatReferentie:
+    """Genoeg om in de UI een klikbare link te tonen (design-pass taak 5) — nooit een kale UUID:
+    bestandsnaam + uploaddatum van het vermoedelijke origineel."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str
+    aangemaakt_op: datetime
+
+
+def _duplicaat_referenties_op(session: Session, document_ids: set[uuid.UUID]) -> dict[uuid.UUID, DuplicaatReferentie]:
+    """Eén query voor alle duplicaat-verwijzingen in een lijst/detail-response i.p.v. per document
+    een losse lookup."""
+    if not document_ids:
+        return {}
+    rijen = session.execute(
+        select(Document.id, Document.bestandsnaam, Document.aangemaakt_op).where(Document.id.in_(document_ids))
+    ).all()
+    return {
+        rij.id: DuplicaatReferentie(document_id=rij.id, bestandsnaam=rij.bestandsnaam, aangemaakt_op=rij.aangemaakt_op)
+        for rij in rijen
+    }
+
+
+@dataclass(frozen=True)
 class UploadResultaat:
     document_id: uuid.UUID
     status: DocumentStatus
     mogelijk_duplicaat_van_id: uuid.UUID | None
+    mogelijk_duplicaat_van: DuplicaatReferentie | None
 
 
 class DocumentNietGevonden(Exception):
@@ -165,21 +191,49 @@ def upload_document(
 
         eind_status = document.status
         mogelijk_duplicaat_van_id = document.mogelijk_duplicaat_van_id
+        mogelijk_duplicaat_van = (
+            DuplicaatReferentie(
+                document_id=bestaand.id, bestandsnaam=bestaand.bestandsnaam, aangemaakt_op=bestaand.aangemaakt_op
+            )
+            if bestaand
+            else None
+        )
 
     return UploadResultaat(
-        document_id=document_id, status=eind_status, mogelijk_duplicaat_van_id=mogelijk_duplicaat_van_id
+        document_id=document_id,
+        status=eind_status,
+        mogelijk_duplicaat_van_id=mogelijk_duplicaat_van_id,
+        mogelijk_duplicaat_van=mogelijk_duplicaat_van,
     )
 
 
-def lijst_documenten(*, administratie_id: uuid.UUID) -> list[Document]:
+@dataclass(frozen=True)
+class DocumentMetDuplicaat:
+    document: Document
+    duplicaat_referentie: DuplicaatReferentie | None
+
+
+def lijst_documenten(*, administratie_id: uuid.UUID) -> list[DocumentMetDuplicaat]:
     with scoped_session(administratie_id) as session:
-        return list(
+        documenten = list(
             session.scalars(
                 select(Document)
                 .where(Document.administratie_id == administratie_id)
                 .order_by(Document.aangemaakt_op.desc())
             )
         )
+        referenties = _duplicaat_referenties_op(
+            session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
+        )
+        return [
+            DocumentMetDuplicaat(
+                document=d,
+                duplicaat_referentie=referenties.get(d.mogelijk_duplicaat_van_id)
+                if d.mogelijk_duplicaat_van_id
+                else None,
+            )
+            for d in documenten
+        ]
 
 
 @dataclass(frozen=True)
@@ -187,6 +241,7 @@ class DocumentDetail:
     document: Document
     gebeurtenissen: list[DocumentGebeurtenis]
     veldvoorstel: dict | None
+    duplicaat_referentie: DuplicaatReferentie | None
 
 
 def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDetail:
@@ -205,8 +260,20 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
         veldvoorstel = next(
             (g.detail["veldvoorstel"] for g in gebeurtenissen if g.detail and "veldvoorstel" in g.detail), None
         )
+        duplicaat_referentie = (
+            _duplicaat_referenties_op(session, {document.mogelijk_duplicaat_van_id}).get(
+                document.mogelijk_duplicaat_van_id
+            )
+            if document.mogelijk_duplicaat_van_id
+            else None
+        )
 
-    return DocumentDetail(document=document, gebeurtenissen=gebeurtenissen, veldvoorstel=veldvoorstel)
+    return DocumentDetail(
+        document=document,
+        gebeurtenissen=gebeurtenissen,
+        veldvoorstel=veldvoorstel,
+        duplicaat_referentie=duplicaat_referentie,
+    )
 
 
 def haal_bijlage_op(

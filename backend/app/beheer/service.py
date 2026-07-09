@@ -54,6 +54,37 @@ def zet_boeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID,
         return ingeschakeld
 
 
+def haal_project_verplicht_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.project_verplicht
+
+
+def zet_project_verplicht(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, verplicht: bool) -> bool:
+    """Design-pass taak 4: bepaalt of de Project-kolom in het controlescherm zichtbaar/verplicht
+    is voor deze administratie — Beheerder-only (router), audit als bij boeken_ingeschakeld."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.project_verplicht
+        administratie.project_verplicht = verplicht
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="project_verplicht_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"project_verplicht": oud},
+            nieuwe_waarde={"project_verplicht": verplicht},
+        )
+        return verplicht
+
+
 def haal_globale_kill_switch_op() -> bool:
     with scoped_session(None) as session:
         instelling = session.get(BoekenInstelling, True)

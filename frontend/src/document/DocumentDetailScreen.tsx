@@ -10,6 +10,10 @@ function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
+function formatDatumKort(iso: string): string {
+  return new Date(iso).toLocaleDateString('nl-NL', { dateStyle: 'medium' })
+}
+
 function veldnaam(sleutel: string): string {
   const namen: Record<string, string> = {
     factuurnummer: 'Factuurnummer',
@@ -23,9 +27,29 @@ function veldnaam(sleutel: string): string {
   return namen[sleutel] ?? sleutel
 }
 
+/** Puur cosmetisch: legt de XML in nette, ingesprongen regels voor de bron-weergave (geen
+ * DOM-parsing/uitvoering — React rendert dit altijd als platte tekst in een <pre>, dus geen
+ * XSS-risico). Werkt op basis van eenvoudige tag-grenzen; bedoeld voor leesbaarheid, geen
+ * volwaardige XML-formatter. */
+function formatteerXml(xml: string): string {
+  const zonderWhitespaceTussenTags = xml.replace(/>\s*</g, '><').trim()
+  const tokens = zonderWhitespaceTussenTags.split(/(?=<)/g).filter(Boolean)
+  let diepte = 0
+  const regels: string[] = []
+  for (const token of tokens) {
+    const isSluitend = token.startsWith('</')
+    const isZelfsluitendOfDeclaratie = /\/>\s*$/.test(token) || token.startsWith('<?')
+    if (isSluitend) diepte = Math.max(0, diepte - 1)
+    regels.push('  '.repeat(diepte) + token)
+    if (!isSluitend && !isZelfsluitendOfDeclaratie) diepte += 1
+  }
+  return regels.join('\n')
+}
+
 interface Bijlage {
   url: string
   contentType: string
+  xmlTekst: string | null
 }
 
 export function DocumentDetailScreen() {
@@ -55,8 +79,10 @@ export function DocumentDetailScreen() {
     void apiFetch(`/administraties/${administratieId}/documenten/${documentId}/bestand`).then(async (resp) => {
       if (!resp.ok || !actief) return
       const blob = await resp.blob()
+      const contentType = resp.headers.get('content-type') ?? 'application/octet-stream'
       objectUrl = URL.createObjectURL(blob)
-      setBijlage({ url: objectUrl, contentType: resp.headers.get('content-type') ?? 'application/octet-stream' })
+      const xmlTekst = contentType.includes('xml') ? formatteerXml(await blob.text()) : null
+      if (actief) setBijlage({ url: objectUrl, contentType, xmlTekst })
     })
 
     return () => {
@@ -80,15 +106,26 @@ export function DocumentDetailScreen() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 380px', minWidth: 320 }}>
+      <div className="review">
+        <div className="docpane">
           <div className="panel">
             <h2>Bijlage</h2>
             {!bijlage && <p className="hint">Bijlage laden…</p>}
             {bijlage?.contentType.includes('pdf') && (
-              <embed src={bijlage.url} type="application/pdf" width="100%" height="500" />
+              <object data={bijlage.url} type="application/pdf" width="100%" height="640">
+                <p className="hint">
+                  Geen inline PDF-weergave in deze browser —{' '}
+                  <a href={bijlage.url} download={detail.bestandsnaam}>
+                    open het bestand direct
+                  </a>
+                  .
+                </p>
+              </object>
             )}
-            {bijlage && !bijlage.contentType.includes('pdf') && (
+            {bijlage?.xmlTekst !== null && bijlage?.xmlTekst !== undefined && (
+              <pre className="xml-bron">{bijlage.xmlTekst}</pre>
+            )}
+            {bijlage && !bijlage.contentType.includes('pdf') && bijlage.xmlTekst === null && (
               <p className="hint">Geen inline weergave voor dit bestandstype.</p>
             )}
             {bijlage && (
@@ -101,7 +138,7 @@ export function DocumentDetailScreen() {
           </div>
         </div>
 
-        <div style={{ flex: '1.2 1 420px', minWidth: 320 }}>
+        <div className="formpane">
           {detail.veldvoorstel && (
             <div className="panel">
               <h2>
@@ -141,17 +178,22 @@ export function DocumentDetailScreen() {
                         </>
                       ) : (
                         <>
-                          Ontvangen (status <b>{statusLabel(g.naar_status)}</b>)
+                          Document binnengekomen — status <b>{statusLabel(g.naar_status)}</b>
+                          {detail.mogelijk_duplicaat_van && (
+                            <div className="hint" style={{ marginTop: 2 }}>
+                              Mogelijk duplicaat van{' '}
+                              <Link to={`/documenten/${administratieId}/${detail.mogelijk_duplicaat_van.document_id}`}>
+                                {detail.mogelijk_duplicaat_van.bestandsnaam} (
+                                {formatDatumKort(detail.mogelijk_duplicaat_van.aangemaakt_op)})
+                              </Link>
+                              — beoordelen
+                            </div>
+                          )}
                         </>
                       )}
                       {g.detail && 'ubl_parse_fout' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           UBL-parsefout: {String(g.detail.ubl_parse_fout)}
-                        </div>
-                      )}
-                      {g.detail && 'mogelijk_duplicaat_van' in g.detail && (
-                        <div className="hint" style={{ marginTop: 2 }}>
-                          Mogelijk duplicaat van document {String(g.detail.mogelijk_duplicaat_van)}
                         </div>
                       )}
                     </td>

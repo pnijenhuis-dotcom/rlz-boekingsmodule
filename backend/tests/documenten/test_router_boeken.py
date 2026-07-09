@@ -103,6 +103,39 @@ class TestBoekvoorstelEndpoints:
         assert resp.status_code == 200, resp.text
         assert resp.json()["checks"]["geblokkeerd"] is True
 
+    def test_put_met_nl_komma_bedragen_geeft_zelfde_checkrapport_als_punt_decimaal(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        """Design-pass P2/P3: de volledige keten met komma-notatie — vóór de fix zou dit óf een
+        422 geven, óf (na een client-side normalisatie-bug) een fout regeltelling-resultaat. Hier
+        rechtstreeks de HTTP-laag geraakt (geen mock op de pydantic-validatie), met dezelfde
+        bedragen als het punt-decimaal-equivalent in test_put_slaat_op_en_geeft_checkrapport_terug."""
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = _upload(headers, administratie_id)
+
+        resp = client.put(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",
+            headers=headers,
+            json={
+                "vendor_id": str(uuid.uuid4()),
+                "referentie": "F-1",
+                "factuurdatum": "2026-07-01",
+                "totaalbedrag": "121,00",
+                "regels": [{**_REGEL, "netto_bedrag": "100,00", "btw_bedrag": "21,00"}],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["boekvoorstel"]["totaalbedrag"] == "121.00"
+        assert body["boekvoorstel"]["regels"][0]["netto_bedrag"] == "100.00"
+        assert body["checks"]["geblokkeerd"] is False
+        assert {r["naam"] for r in body["checks"]["resultaten"]} == {
+            "Verplichte velden",
+            "Regeltelling vs totaal",
+            "Duplicaatcheck",
+        }
+        assert all(r["ok"] for r in body["checks"]["resultaten"])
+
     def test_checks_endpoint_herberekent_zonder_op_te_slaan(
         self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
     ) -> None:

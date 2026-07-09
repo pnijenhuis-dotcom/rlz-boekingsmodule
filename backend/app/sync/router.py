@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -12,20 +13,14 @@ from app.sync import schemas, service
 router = APIRouter(tags=["sync"])
 
 
-@router.post(
-    "/administraties/{administratie_id}/sync/ledgers",
-    response_model=schemas.SyncTellingResponse,
-)
-def sync_ledgers_trigger(
-    administratie_id: uuid.UUID,
-    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+def _sync_trigger(
+    sync_fn: Callable[..., service.SyncTelling], *, administratie_id: uuid.UUID
 ) -> schemas.SyncTellingResponse:
-    """On-demand trigger (koppelcontract §2c) voor de ververs-knop. Nu met gebruikers-auth +
-    administratie-scope (dezelfde dependency als document-upload); het service-to-service
-    platform-JWT voor de vastgoed-kant komt bij de Cloud-uitrol — lezen blijft altijd via de
-    gedeelde tabel, nooit via dit endpoint (§2c: "lezen nooit via endpoint")."""
+    """Gedeelde foutafhandeling voor alle vier de on-demand sync-triggers (koppelcontract §2c) —
+    lezen blijft altijd via de gedeelde tabel, nooit via dit endpoint (§2c: "lezen nooit via
+    endpoint"), dit is uitsluitend de ververs-knop."""
     try:
-        telling = service.sync_ledgers(administratie_id=administratie_id)
+        telling = sync_fn(administratie_id=administratie_id)
     except service.SyncFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except GeenRlzCredentials as exc:
@@ -35,6 +30,57 @@ def sync_ledgers_trigger(
     return schemas.SyncTellingResponse(
         aangemaakt=telling.aangemaakt, bijgewerkt=telling.bijgewerkt, verdwenen=telling.verdwenen
     )
+
+
+@router.post(
+    "/administraties/{administratie_id}/sync/ledgers",
+    response_model=schemas.SyncTellingResponse,
+)
+def sync_ledgers_trigger(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SyncTellingResponse:
+    """On-demand trigger voor de ververs-knop. Gebruikers-auth + administratie-scope (dezelfde
+    dependency als document-upload); het service-to-service platform-JWT voor de vastgoed-kant
+    komt bij de Cloud-uitrol."""
+    return _sync_trigger(service.sync_ledgers, administratie_id=administratie_id)
+
+
+@router.post(
+    "/administraties/{administratie_id}/sync/taxrates",
+    response_model=schemas.SyncTellingResponse,
+)
+def sync_taxrates_trigger(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SyncTellingResponse:
+    """Zelfde on-demand trigger als Ledgers (zie sync_ledgers_trigger hierboven), voor de
+    btw-codes-combobox in het controlescherm (design-pass taak 3)."""
+    return _sync_trigger(service.sync_taxrates, administratie_id=administratie_id)
+
+
+@router.post(
+    "/administraties/{administratie_id}/sync/vendors",
+    response_model=schemas.SyncTellingResponse,
+)
+def sync_vendors_trigger(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SyncTellingResponse:
+    """Zelfde on-demand trigger als Ledgers, voor de crediteuren-combobox."""
+    return _sync_trigger(service.sync_vendors, administratie_id=administratie_id)
+
+
+@router.post(
+    "/administraties/{administratie_id}/sync/projects",
+    response_model=schemas.SyncTellingResponse,
+)
+def sync_projects_trigger(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SyncTellingResponse:
+    """Zelfde on-demand trigger als Ledgers, voor de project-combobox."""
+    return _sync_trigger(service.sync_projects, administratie_id=administratie_id)
 
 
 @router.get("/administraties/{administratie_id}/grootboek", response_model=schemas.GrootboekLijstResponse)

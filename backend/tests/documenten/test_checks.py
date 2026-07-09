@@ -11,6 +11,7 @@ from app.documenten.checks import (
     check_verplichte_velden,
     voer_harde_checks_uit,
 )
+from app.rlz.client import RlzApiError
 
 
 class _NepRlzClient:
@@ -24,6 +25,17 @@ class _NepRlzClient:
     def find_purchase_invoices_by_reference(self, *, vendor_id, reference, total_amount=None):
         self.aanroepen.append({"vendor_id": vendor_id, "reference": reference, "total_amount": total_amount})
         return self.gevonden
+
+
+class _FoutRlzClient:
+    """Stub die altijd de meegegeven exception opgooit — simuleert een falende RLZ-aanroep
+    tijdens de duplicaatquery."""
+
+    def __init__(self, fout: Exception) -> None:
+        self.fout = fout
+
+    def find_purchase_invoices_by_reference(self, *, vendor_id, reference, total_amount=None):
+        raise self.fout
 
 
 def _regel(**overrides) -> CheckRegel:
@@ -172,6 +184,36 @@ class TestDuplicaat:
         )
         assert client.aanroepen[0]["reference"] == lange_referentie  # afkappen zit in RlzClient zelf
         assert client.aanroepen[0]["total_amount"] == 121.0
+
+    def test_rlz_fout_geeft_blokkerend_checkresultaat_geen_exception(self) -> None:
+        """Een falende RLZ-aanroep tijdens de duplicaatquery mag nooit als kale 500 bij de
+        gebruiker komen (kliktest-bug) — zonder duplicaatcheck is boeken net zo onverantwoord als
+        met een echte hit, dus dit blijft blokkerend, maar als een normaal checkresultaat."""
+        client = _FoutRlzClient(RlzApiError(502, "GET", "PurchaseInvoices", "RLZ tijdelijk onbereikbaar"))
+        resultaat = check_duplicaat(
+            client=client,
+            vendor_id=uuid.uuid4(),
+            referentie="F-1",
+            totaalbedrag=Decimal("121.00"),
+            eigen_rlz_document_id=uuid.uuid4(),
+        )
+        assert not resultaat.ok
+        assert "kon niet uitgevoerd worden" in resultaat.melding
+        assert "onbereikbaar" in resultaat.melding
+
+    def test_onverwachte_fout_geeft_ook_blokkerend_checkresultaat(self) -> None:
+        """Ook een fout die geen RlzApiError is (bv. een connectiefout dieper in httpx) mag niet
+        als onafgevangen exception naar boven komen — bewust breed gevangen."""
+        client = _FoutRlzClient(RuntimeError("onverwachte connectiefout"))
+        resultaat = check_duplicaat(
+            client=client,
+            vendor_id=uuid.uuid4(),
+            referentie="F-1",
+            totaalbedrag=Decimal("121.00"),
+            eigen_rlz_document_id=uuid.uuid4(),
+        )
+        assert not resultaat.ok
+        assert "kon niet uitgevoerd worden" in resultaat.melding
 
 
 class TestVoerHardeChecksUit:

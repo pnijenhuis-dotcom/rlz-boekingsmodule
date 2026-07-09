@@ -9,8 +9,16 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db.audit import record_audit_event
+from app.db.models import Administratie
 from app.db.session import scoped_session
-from app.documenten.checks import CheckRapport, CheckRegel, voer_harde_checks_uit
+from app.documenten.checks import (
+    CheckRapport,
+    CheckRegel,
+    CheckResultaat,
+    check_regeltelling,
+    check_verplichte_velden,
+    voer_harde_checks_uit,
+)
 from app.documenten.models import Boekvoorstel, BoekvoorstelRegel, Document, DocumentGebeurtenis, DocumentStatus
 from app.documenten.rlz_ids import rlz_purchase_invoice_id
 from app.documenten.service import DocumentNietGevonden
@@ -246,6 +254,44 @@ def sla_boekvoorstel_op(
     return haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
 
 
+def _naar_check_regels(voorstel: BoekvoorstelData) -> list[CheckRegel]:
+    return [
+        CheckRegel(
+            ledger_id=r.ledger_id,
+            taxrate_id=r.taxrate_id,
+            project_id=r.project_id,
+            netto_bedrag=r.netto_bedrag,
+            btw_bedrag=r.btw_bedrag,
+        )
+        for r in voorstel.regels
+    ]
+
+
+def _duplicaatcheck_niet_uitgevoerd_rapport(
+    *, voorstel: BoekvoorstelData, project_verplicht: bool, reden: str
+) -> CheckRapport:
+    """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
+    fout, netwerkfout) — vóórdat check_duplicaat() de kans krijgt zijn eigen RlzApiError-vangnet te
+    gebruiken (app/documenten/checks.py). De twee lokale checks (geen RLZ nodig) draaien gewoon
+    door; alleen de duplicaatcheck wordt een blokkerend, herkenbaar checkresultaat — nooit een
+    kale 500 bij de gebruiker."""
+    regels = _naar_check_regels(voorstel)
+    return CheckRapport(
+        (
+            check_verplichte_velden(
+                vendor_id=voorstel.vendor_id,
+                referentie=voorstel.referentie,
+                factuurdatum=voorstel.factuurdatum,
+                totaalbedrag=voorstel.totaalbedrag,
+                regels=regels,
+                project_verplicht=project_verplicht,
+            ),
+            check_regeltelling(totaalbedrag=voorstel.totaalbedrag, regels=regels),
+            CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"),
+        )
+    )
+
+
 def voer_checks_uit(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID, client: RlzClient | None = None
 ) -> CheckRapport:
@@ -253,13 +299,24 @@ def voer_checks_uit(
     gelden over wat de controleur daadwerkelijk heeft bevestigd) en toetst de drie harde checks
     (app/documenten/checks.py). `client=None` opent een eigen RlzClient voor deze administratie
     (store/`.env`-credential-resolutie, zie app/rlz/credentials.py) — een aanroeper met een al
-    open verbinding (bv. de boek-actie zelf) geeft 'm door om niet twee keer in te loggen."""
+    open verbinding (bv. de boek-actie zelf) geeft 'm door om niet twee keer in te loggen.
+
+    Lukt het openen van die eigen verbinding niet (credential-fout, RLZ onbereikbaar), dan wordt
+    dat NOOIT een onafgevangen exception (dus geen kale 500) — zie _duplicaatcheck_niet_uitgevoerd_rapport."""
     voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        project_verplicht = administratie.project_verplicht if administratie else False
 
     eigen_client = client is None
     if client is None:
-        rlz_admin_id = rlz_admin_id_voor(administratie_id)
-        client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+        try:
+            rlz_admin_id = rlz_admin_id_voor(administratie_id)
+            client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+        except Exception as exc:  # noqa: BLE001 — bewust breed, zie de docstring hierboven
+            return _duplicaatcheck_niet_uitgevoerd_rapport(
+                voorstel=voorstel, project_verplicht=project_verplicht, reden=str(exc)
+            )
     try:
         return voer_harde_checks_uit(
             client=client,
@@ -267,13 +324,9 @@ def voer_checks_uit(
             referentie=voorstel.referentie,
             factuurdatum=voorstel.factuurdatum,
             totaalbedrag=voorstel.totaalbedrag,
-            regels=[
-                CheckRegel(
-                    ledger_id=r.ledger_id, taxrate_id=r.taxrate_id, netto_bedrag=r.netto_bedrag, btw_bedrag=r.btw_bedrag
-                )
-                for r in voorstel.regels
-            ],
+            regels=_naar_check_regels(voorstel),
             eigen_rlz_document_id=rlz_purchase_invoice_id(document_id),
+            project_verplicht=project_verplicht,
         )
     finally:
         if eigen_client:

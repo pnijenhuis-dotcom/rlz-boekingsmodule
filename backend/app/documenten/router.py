@@ -9,7 +9,6 @@ from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
 from app.config import settings
 from app.documenten import boeken, boekvoorstel, schemas, service
 from app.documenten.checks import CheckRapport
-from app.rlz.client import RlzApiError
 from app.rlz.credentials import GeenRlzCredentials
 
 router = APIRouter(tags=["documenten"])
@@ -19,6 +18,16 @@ def _naar_check_rapport_response(rapport: CheckRapport) -> schemas.CheckRapportR
     return schemas.CheckRapportResponse(
         geblokkeerd=rapport.geblokkeerd,
         resultaten=[schemas.CheckResultaatDto(naam=r.naam, ok=r.ok, melding=r.melding) for r in rapport.resultaten],
+    )
+
+
+def _naar_duplicaat_response(
+    referentie: service.DuplicaatReferentie | None,
+) -> schemas.DuplicaatReferentieResponse | None:
+    if referentie is None:
+        return None
+    return schemas.DuplicaatReferentieResponse(
+        document_id=referentie.document_id, bestandsnaam=referentie.bestandsnaam, aangemaakt_op=referentie.aangemaakt_op
     )
 
 
@@ -44,6 +53,7 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         ],
     )
 
+
 _TOEGESTANE_SUFFIXEN = {".pdf", ".xml"}
 
 
@@ -58,9 +68,7 @@ async def document_uploaden(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentUploadResponse:
     if not bestand.filename or Path(bestand.filename).suffix.lower() not in _TOEGESTANE_SUFFIXEN:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Alleen PDF- of XML-bestanden"
-        )
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Alleen PDF- of XML-bestanden")
 
     inhoud = await bestand.read()
     if not inhoud:
@@ -77,7 +85,7 @@ async def document_uploaden(
     return schemas.DocumentUploadResponse(
         document_id=resultaat.document_id,
         status=resultaat.status.value,
-        mogelijk_duplicaat_van=resultaat.mogelijk_duplicaat_van_id,
+        mogelijk_duplicaat_van=_naar_duplicaat_response(resultaat.mogelijk_duplicaat_van),
     )
 
 
@@ -89,20 +97,20 @@ def documenten_lijst(
     administratie_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentListResponse:
-    documenten = service.lijst_documenten(administratie_id=administratie_id)
+    items = service.lijst_documenten(administratie_id=administratie_id)
     return schemas.DocumentListResponse(
         documenten=[
             schemas.DocumentListItemResponse(
-                id=d.id,
-                bestandsnaam=d.bestandsnaam,
-                status=d.status.value,
-                bron=d.bron.value,
-                mogelijk_duplicaat_van=d.mogelijk_duplicaat_van_id,
-                toegewezen_aan=d.toegewezen_aan,
-                aangemaakt_op=d.aangemaakt_op,
-                laatst_gewijzigd_op=d.laatst_gewijzigd_op,
+                id=item.document.id,
+                bestandsnaam=item.document.bestandsnaam,
+                status=item.document.status.value,
+                bron=item.document.bron.value,
+                mogelijk_duplicaat_van=_naar_duplicaat_response(item.duplicaat_referentie),
+                toegewezen_aan=item.document.toegewezen_aan,
+                aangemaakt_op=item.document.aangemaakt_op,
+                laatst_gewijzigd_op=item.document.laatst_gewijzigd_op,
             )
-            for d in documenten
+            for item in items
         ]
     )
 
@@ -127,7 +135,7 @@ def document_detail(
         bestandsnaam=d.bestandsnaam,
         status=d.status.value,
         bron=d.bron.value,
-        mogelijk_duplicaat_van=d.mogelijk_duplicaat_van_id,
+        mogelijk_duplicaat_van=_naar_duplicaat_response(detail.duplicaat_referentie),
         toegewezen_aan=d.toegewezen_aan,
         aangemaakt_op=d.aangemaakt_op,
         laatst_gewijzigd_op=d.laatst_gewijzigd_op,
@@ -216,12 +224,9 @@ def boekvoorstel_opslaan(
     except boekvoorstel.BoekvoorstelFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    try:
-        rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
-    except GeenRlzCredentials as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except RlzApiError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    # voer_checks_uit() vangt credential-/RLZ-fouten zelf af (app/documenten/boekvoorstel.py) —
+    # het resultaat is altijd een CheckRapport, nooit een onafgevangen RlzApiError/GeenRlzCredentials.
+    rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
 
     return schemas.BoekvoorstelMetChecksResponse(
         boekvoorstel=_naar_boekvoorstel_response(data), checks=_naar_check_rapport_response(rapport)
@@ -238,15 +243,12 @@ def boekvoorstel_checks_uitvoeren(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.CheckRapportResponse:
     """Herbereken de harde checks over het al opgeslagen voorstel, zonder het te wijzigen — bv.
-    om na boeken_mislukt te zien of een duplicaatcheck of regeltelling inmiddels weer klopt."""
+    om na boeken_mislukt te zien of een duplicaatcheck of regeltelling inmiddels weer klopt.
+    voer_checks_uit() vangt credential-/RLZ-fouten zelf af — altijd een CheckRapport terug."""
     try:
         rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except GeenRlzCredentials as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except RlzApiError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return _naar_check_rapport_response(rapport)
 
 

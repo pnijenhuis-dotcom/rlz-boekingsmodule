@@ -66,6 +66,62 @@ def test_sync_trigger_zonder_credentials_geeft_503(
     assert resp.status_code == 503
 
 
+# --- Sync-triggers voor de overige drie caches (design-pass taak 3) ------------------------
+
+
+def test_sync_taxrates_trigger_slaagt(
+    monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    monkeypatch.setattr(
+        "app.sync.service.client_voor_rlz_admin_id",
+        lambda rlz_admin_id: FakeRlzClient({"TaxRates": [{"id": str(uuid.uuid4()), "Name": "NL Hoog 21%"}]}),
+    )
+    resp = client.post(
+        f"/administraties/{administratie_id}/sync/taxrates", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"aangemaakt": 1, "bijgewerkt": 0, "verdwenen": 0}
+
+
+def test_sync_vendors_trigger_slaagt(
+    monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    monkeypatch.setattr(
+        "app.sync.service.client_voor_rlz_admin_id",
+        lambda rlz_admin_id: FakeRlzClient(
+            {"Vendors": [{"id": str(uuid.uuid4()), "Name": "Leverancier X", "IsArchived": False}]}
+        ),
+    )
+    resp = client.post(
+        f"/administraties/{administratie_id}/sync/vendors", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"aangemaakt": 1, "bijgewerkt": 0, "verdwenen": 0}
+
+
+def test_sync_projects_trigger_slaagt(
+    monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    monkeypatch.setattr(
+        "app.sync.service.client_voor_rlz_admin_id",
+        lambda rlz_admin_id: FakeRlzClient(
+            {"Projects": [{"id": str(uuid.uuid4()), "Name": "Project Y", "IsActive": True}]}
+        ),
+    )
+    resp = client.post(
+        f"/administraties/{administratie_id}/sync/projects", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"aangemaakt": 1, "bijgewerkt": 0, "verdwenen": 0}
+
+
+def test_sync_taxrates_trigger_zonder_scope_faalt(gescoopte_gebruiker: uuid.UUID) -> None:
+    resp = client.post(
+        f"/administraties/{uuid.uuid4()}/sync/taxrates", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 403
+
+
 # --- Leeslijsten voor het controlescherm (CLAUDE.md-taak 2.1) ------------------------------
 
 
