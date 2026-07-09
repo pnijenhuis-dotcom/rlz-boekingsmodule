@@ -140,6 +140,51 @@ class TestBoekDocumentGelukt:
         assert eerste.rlz_document_id == boeken.rlz_purchase_invoice_id(klaar_document)
 
 
+class TestBoekDocumentRegelZonderBtw:
+    def test_regel_zonder_btw_bedrag_boekt_toch(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        boeken_aan: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Reproductie van de echte 500 uit de kliktest (correlatie-id 2764beb6-..., dev-database):
+        een regel zonder btw_bedrag (verlegde btw/vrijgesteld — een geldige case, de harde checks
+        eisen dit veld bewust niet af, zie checks.py::check_verplichte_velden) liet
+        `float(regel.btw_bedrag)` op None crashen in _regels_naar_rlz_lines(). De vorige sessie's
+        generieke except-fix zorgde al dat dit niet meer als kale 500/limbo eindigde, maar de
+        onderliggende oorzaak stond nog open — dit is de fix + regressietest daarvoor."""
+        fake_client = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
+
+        resultaat_upload = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur-verlegd.pdf",
+            inhoud=b"%PDF-1.4 verlegde btw",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=resultaat_upload.document_id,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=uuid.uuid4(),
+            referentie=f"F-{resultaat_upload.document_id}",
+            factuurdatum=date(2026, 7, 1),
+            totaalbedrag=Decimal("23.23"),
+            regels=[_regel(netto_bedrag=Decimal("23.23"), btw_bedrag=None)],
+        )
+
+        resultaat = boeken.boek_document(
+            administratie_id=administratie_id, document_id=resultaat_upload.document_id, actor_id=gescoopte_gebruiker
+        )
+
+        assert resultaat.status == DocumentStatus.GEBOEKT
+        assert fake_client.puts[0]["lines"][0]["TaxAmount"] == 0.0
+        assert fake_client.puts[0]["lines"][0]["NetAmount"] == 23.23
+
+
 class TestBoekDocumentGeblokkeerdDoorChecks:
     def test_ontbrekende_velden_blokkeert_met_rapport(
         self,

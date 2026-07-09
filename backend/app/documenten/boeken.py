@@ -107,11 +107,15 @@ def _rlz_client_voor(administratie_id: uuid.UUID) -> RlzClient:
 def _regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
     lines: list[dict] = []
     for regel in voorstel.regels:
+        # btw_bedrag mag None zijn (de harde checks eisen 'm niet af, zie
+        # checks.py::check_verplichte_velden) — een geldige case bij bv. verlegde btw of een
+        # vrijgestelde regel, niet alleen een ontbrekend-veld-bug. netto_bedrag ís altijd gevuld
+        # op dit punt (dat check wél af, en boek_document() draait de checks eerst).
         line: dict = {
             "Account": {"id": str(regel.ledger_id)},
             "TaxRate": {"id": str(regel.taxrate_id)},
             "NetAmount": float(regel.netto_bedrag),
-            "TaxAmount": float(regel.btw_bedrag),
+            "TaxAmount": float(regel.btw_bedrag or 0),
         }
         if regel.project_id is not None:
             line["Project"] = {"id": str(regel.project_id)}
