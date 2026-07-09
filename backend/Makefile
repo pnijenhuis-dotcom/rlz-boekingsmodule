@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles reconciliatie import-env-credentials run pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status import-env-credentials run pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -69,6 +69,19 @@ reconciliatie: check-versions
 # make import-env-credentials BEHEERDER_ID=<uuid>
 import-env-credentials: check-versions
 	.venv/bin/python -m app.cli import-env-credentials --beheerder-id "$(BEHEERDER_ID)"
+
+# Boeken-failsafe (a), per-administratie toggle — hetzelfde patroon als bootstrap-beheerder qua
+# BEHEERDER_ID-parameter (audit_event-actor). Voorbeeld:
+# make boeken-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
+boeken-aan: check-versions
+	.venv/bin/python -m app.cli boeken-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+boeken-uit: check-versions
+	.venv/bin/python -m app.cli boeken-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+# Overzicht: globale kill switch + per-administratie boeken-toggle (+ effectieve status).
+boeken-status: check-versions
+	.venv/bin/python -m app.cli boeken-status
 
 # Lokale dev-server (tegen boekhouding, niet boekhouding_test — zie app/config.py). --reload
 # herlaadt bij codewijzigingen; poort 8000 moet matchen met frontend/vite.config.ts's proxy.

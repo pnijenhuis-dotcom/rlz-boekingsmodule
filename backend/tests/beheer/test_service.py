@@ -46,6 +46,20 @@ class TestPerAdministratieToggle:
             service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=uuid.uuid4(), ingeschakeld=True)
 
 
+class TestOverzichtBoekenStatus:
+    def test_geeft_naam_en_toggle_per_administratie(self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
+
+        overzicht = service.overzicht_boeken_status()
+
+        item = next(i for i in overzicht if i.administratie_id == administratie_id)
+        assert item.boeken_ingeschakeld is True
+        assert item.naam
+
+    def test_leeg_zonder_administraties(self) -> None:
+        assert service.overzicht_boeken_status() == []
+
+
 class TestProjectVerplicht:
     def test_default_uit(self, administratie_id: uuid.UUID) -> None:
         assert service.haal_project_verplicht_op(administratie_id=administratie_id) is False

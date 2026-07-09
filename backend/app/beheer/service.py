@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
+
+from sqlalchemy import select
 
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling
@@ -52,6 +55,25 @@ def zet_boeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID,
             nieuwe_waarde={"boeken_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
+
+
+@dataclass(frozen=True)
+class AdministratieBoekenStatus:
+    administratie_id: uuid.UUID
+    naam: str
+    boeken_ingeschakeld: bool
+
+
+def overzicht_boeken_status() -> list[AdministratieBoekenStatus]:
+    """Voor `make boeken-status` (CLI-overzicht, geen endpoint — dit is een beheerhandeling
+    zonder ingelogde gebruiker) — de globale kill switch zelf haalt de aanroeper apart op via
+    haal_globale_kill_switch_op(), 'effectief aan' is beide tegelijk."""
+    with scoped_session(None) as session:
+        rijen = session.scalars(select(Administratie).order_by(Administratie.naam))
+        return [
+            AdministratieBoekenStatus(administratie_id=r.id, naam=r.naam, boeken_ingeschakeld=r.boeken_ingeschakeld)
+            for r in rijen
+        ]
 
 
 def haal_project_verplicht_op(*, administratie_id: uuid.UUID) -> bool:

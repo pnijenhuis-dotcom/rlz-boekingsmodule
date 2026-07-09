@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.auth import service
+from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
 from app.documenten import reconciliatie
 from app.sync import service as sync_service
@@ -84,6 +85,56 @@ def _reconciliatie(args: argparse.Namespace) -> int:
     return 1 if (fouten or afwijkingen_totaal) else 0
 
 
+def _zet_boeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Boeken-failsafe (a), per-administratie deel — hergebruikt app.beheer.service (zelfde
+    servicefunctie als het instellingen-scherm straks aanroept), met de Beheerder als actor
+    (zelfde patroon als bootstrap-beheerder/import-env-credentials: BEHEERDER_ID-parameter),
+    dus met het gebruikelijke audit_event erbij."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_boeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"boeken_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    if resultaat and not beheer_service.haal_globale_kill_switch_op():
+        print("WAARSCHUWING: de globale kill switch staat uit — boeken blijft effectief uit tot die ook aan staat.")
+    return 0
+
+
+def _boeken_aan(args: argparse.Namespace) -> int:
+    return _zet_boeken(args, ingeschakeld=True)
+
+
+def _boeken_uit(args: argparse.Namespace) -> int:
+    return _zet_boeken(args, ingeschakeld=False)
+
+
+def _boeken_status(args: argparse.Namespace) -> int:
+    kill_switch_aan = beheer_service.haal_globale_kill_switch_op()
+    print(f"Globale kill switch: {'AAN' if kill_switch_aan else 'UIT'}")
+    print()
+    overzicht = beheer_service.overzicht_boeken_status()
+    if not overzicht:
+        print("(geen administraties geregistreerd)")
+        return 0
+    print(f"{'toggle':<6} {'effectief':<11} administratie")
+    for item in overzicht:
+        effectief_aan = kill_switch_aan and item.boeken_ingeschakeld
+        print(
+            f"{'AAN' if item.boeken_ingeschakeld else 'uit':<6} "
+            f"{'AAN' if effectief_aan else 'uit':<11} {item.administratie_id}  {item.naam}"
+        )
+    return 0
+
+
 def _importeer_env_credentials(args: argparse.Namespace) -> int:
     """Eenmalige overzet-hulp: de bekende .env-logins de credential-store in (zie
     app/credentialstore/service.py::importeer_env_credentials voor welke prefixen en waarom
@@ -116,6 +167,29 @@ def main(argv: list[str] | None = None) -> int:
         help="Vergelijk geboekte documenten met de werkelijke RLZ-staat en rapporteer afwijkingen.",
     )
 
+    boeken_aan_parser = subparsers.add_parser(
+        "boeken-aan",
+        help="Zet de boeken-toggle AAN voor één administratie (failsafe a, per-administratie deel).",
+    )
+    boeken_aan_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    boeken_aan_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+
+    boeken_uit_parser = subparsers.add_parser(
+        "boeken-uit",
+        help="Zet de boeken-toggle UIT voor één administratie.",
+    )
+    boeken_uit_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    boeken_uit_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+
+    subparsers.add_parser(
+        "boeken-status",
+        help="Overzicht: globale kill switch + per-administratie boeken-toggle.",
+    )
+
     import_parser = subparsers.add_parser(
         "import-env-credentials",
         help="Zet de bekende .env-logins (RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_) eenmalig "
@@ -133,6 +207,12 @@ def main(argv: list[str] | None = None) -> int:
         return _sync_alles(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
+    if args.commando == "boeken-aan":
+        return _boeken_aan(args)
+    if args.commando == "boeken-uit":
+        return _boeken_uit(args)
+    if args.commando == "boeken-status":
+        return _boeken_status(args)
     if args.commando == "import-env-credentials":
         return _importeer_env_credentials(args)
     return 1

@@ -165,6 +165,12 @@ UI-eisen):
    afwijzen-met-reden, verzamelbak "Niet toegewezen", instellingen-lite
    (administratie koppelen, gebruikers, eigenaren), audit log, globaal zoeken (boekingen + audit)
    blijven open voor een volgende sessie.
+   - **Openstaand (2026-07-09): het instellingen-scherm is de échte UI voor de drie toggles.**
+     De mockup's administraties-tab (project verplicht / boeken-toggle / globale kill switch) is
+     nog niet gebouwd — tot die tijd zijn `make boeken-aan`/`boeken-uit`/`boeken-status`
+     (`app/cli.py`, hergebruikt `app.beheer.service`) en de `PUT`-endpoints zelf (curl/Postman)
+     het enige beheerpad. Die CLI-commando's blijven ook daarna nuttig (server-toegang zonder
+     ingelogde sessie, bv. bij een incident), maar worden geen vervanging voor het scherm.
    **UI-eisen (vastgesteld 2026-07-08), van toepassing op elk GB-/project-/entiteitveld:**
    - Zoekbare combobox met toetsenbordnavigatie (pijltjes, Enter, Esc) i.p.v. een kale `<select>`
      — deze velden hebben per administratie honderden tot duizenden opties (bv. Universal: 145
