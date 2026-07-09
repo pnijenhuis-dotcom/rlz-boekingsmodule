@@ -89,6 +89,30 @@ describe('SearchableCombobox', () => {
     expect(screen.getByRole('combobox', { name: 'Grootboek' })).toHaveValue('4699 · Diverse algemene kosten')
   })
 
+  it('optie met een code toont die vet vóór de omschrijving, en zet ze samen als invoerwaarde', async () => {
+    const gebruiker = userEvent.setup()
+    function Wrapper() {
+      const [waarde, setWaarde] = useState<string | null>(null)
+      return (
+        <SearchableCombobox
+          label="Btw-code"
+          opties={[{ id: '1', code: '21%', label: 'NL, Hoog Tarief' }]}
+          waarde={waarde}
+          onWijzig={setWaarde}
+        />
+      )
+    }
+    render(<Wrapper />)
+    await gebruiker.click(screen.getByRole('combobox', { name: 'Btw-code' }))
+
+    const code = screen.getByText('21%')
+    expect(code.className).toContain('combobox-optie-code')
+    expect(screen.getByText('NL, Hoog Tarief')).toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('option', { name: /21%.*NL, Hoog Tarief/ }))
+    expect(screen.getByRole('combobox', { name: 'Btw-code' })).toHaveValue('21% · NL, Hoog Tarief')
+  })
+
   it('toonLabel=false verbergt het zichtbare label maar behoudt de aria-label', () => {
     render(
       <SearchableCombobox label="Grootboek" opties={OPTIES} waarde={null} onWijzig={() => {}} toonLabel={false} />,

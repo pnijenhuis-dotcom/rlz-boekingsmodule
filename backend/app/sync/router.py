@@ -105,7 +105,7 @@ def taxrate_lijst(
 ) -> schemas.TaxrateLijstResponse:
     codes = service.lijst_taxrates(administratie_id=administratie_id)
     return schemas.TaxrateLijstResponse(
-        btw_codes=[schemas.TaxrateOptieResponse(id=t.id, naam=t.naam) for t in codes]
+        btw_codes=[schemas.TaxrateOptieResponse(id=t.id, naam=t.naam, percentage=t.percentage) for t in codes]
     )
 
 

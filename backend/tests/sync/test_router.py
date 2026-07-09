@@ -150,6 +150,26 @@ def test_grootboek_lijst_geeft_gesyncte_rekeningen(
     assert codes == ["4699"]
 
 
+def test_btw_codes_lijst_geeft_percentage_mee(
+    monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    """Design-pass taak 3: percentage moet door de lees-endpoint heen komen — de frontend gebruikt
+    dit als "code" in de combobox en om het btw-bedrag automatisch af te leiden."""
+    taxrate = {"id": str(uuid.uuid4()), "Name": "NL Hoog Tarief", "Percentage": 0.21}
+    monkeypatch.setattr(
+        "app.sync.service.client_voor_rlz_admin_id", lambda rlz_admin_id: FakeRlzClient({"TaxRates": [taxrate]})
+    )
+    client.post(
+        f"/administraties/{administratie_id}/sync/taxrates", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+
+    resp = client.get(
+        f"/administraties/{administratie_id}/btw-codes", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["btw_codes"] == [{"id": taxrate["id"], "naam": "NL Hoog Tarief", "percentage": "0.2100"}]
+
+
 def test_crediteuren_lijst_zonder_scope_faalt(gescoopte_gebruiker: uuid.UUID) -> None:
     resp = client.get(
         f"/administraties/{uuid.uuid4()}/crediteuren", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")

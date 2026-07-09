@@ -234,3 +234,96 @@ def test_documenten_lijst_cross_tenant_onzichtbaar(
     resp = client.get(f"/administraties/{andere_administratie_id}/documenten", headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.json()["documenten"] == []
+
+
+def _upload(headers: dict[str, str], administratie_id: uuid.UUID, *, bestandsnaam: str = "te-verwijderen.pdf") -> str:
+    resp = client.post(
+        f"/administraties/{administratie_id}/documenten",
+        files={"bestand": (bestandsnaam, b"%PDF-1.4 " + uuid.uuid4().bytes, "application/pdf")},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["document_id"]
+
+
+class TestDocumentVerwijderenEnHerstellen:
+    def test_verwijderen_geeft_status_verwijderd_en_verdwijnt_uit_de_lijst(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = _upload(headers, administratie_id)
+
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen",
+            json={"reden": "Foute administratie geselecteerd"},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"document_id": document_id, "status": "verwijderd"}
+
+        lijst = client.get(f"/administraties/{administratie_id}/documenten", headers=headers).json()["documenten"]
+        assert document_id not in {d["id"] for d in lijst}
+
+    def test_verwijderen_zonder_reden_mag(self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = _upload(headers, administratie_id)
+
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
+        )
+        assert resp.status_code == 200, resp.text
+
+    def test_toon_verwijderd_zet_hem_er_weer_bij(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = _upload(headers, administratie_id)
+        client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
+        )
+
+        resp = client.get(f"/administraties/{administratie_id}/documenten?toon_verwijderd=true", headers=headers)
+        assert document_id in {d["id"] for d in resp.json()["documenten"]}
+
+    def test_herstellen_zet_hem_terug_op_de_vorige_status(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = _upload(headers, administratie_id)
+        client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
+        )
+
+        resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/herstellen", headers=headers)
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"document_id": document_id, "status": "te_controleren"}
+
+        lijst = client.get(f"/administraties/{administratie_id}/documenten", headers=headers).json()["documenten"]
+        assert document_id in {d["id"] for d in lijst}
+
+    def test_herstellen_van_niet_verwijderd_document_geeft_409(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = _upload(headers, administratie_id)
+
+        resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/herstellen", headers=headers)
+        assert resp.status_code == 409
+
+    def test_verwijderen_zonder_scope_faalt(self, gescoopte_gebruiker: uuid.UUID) -> None:
+        resp = client.post(
+            f"/administraties/{uuid.uuid4()}/documenten/{uuid.uuid4()}/verwijderen",
+            json={},
+            headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
+        )
+        assert resp.status_code == 403
+
+    def test_verwijderen_onbekend_document_geeft_404(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{uuid.uuid4()}/verwijderen",
+            json={},
+            headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
+        )
+        assert resp.status_code == 404

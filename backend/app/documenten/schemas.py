@@ -42,6 +42,18 @@ class DocumentUploadResponse(BaseModel):
     mogelijk_duplicaat_van: DuplicaatReferentieResponse | None = None
 
 
+class VerwijderenInput(BaseModel):
+    """Design-pass taak 4: de reden is optioneel (bevestigingsdialoog laat 'm leeg toe), maar
+    wordt hoe dan ook in de tijdlijn/audit_event vastgelegd."""
+
+    reden: str | None = None
+
+
+class DocumentActieResponse(BaseModel):
+    document_id: uuid.UUID
+    status: str
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str

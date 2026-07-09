@@ -4,6 +4,7 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -124,8 +125,15 @@ def _project_waarden(record: dict[str, Any]) -> dict[str, Any]:
 def _taxrate_waarden(record: dict[str, Any]) -> dict[str, Any]:
     # TaxRate's officiële resource-model-documentatie gaf herhaaldelijk een serverfout (geen
     # bevestigd veldnamen) — best-effort op de gebruikelijke naam-velden, brondata is het vangnet.
+    # Percentage is inmiddels wél empirisch geverifieerd (design-pass taak 3, migratie 0011): komt
+    # betrouwbaar mee als fractie (0.21 voor 21%).
     naam = record.get("Name") or record.get("Description")
-    return {"naam": naam, "brondata": record}
+    percentage = record.get("Percentage")
+    return {
+        "naam": naam,
+        "percentage": Decimal(str(percentage)) if percentage is not None else None,
+        "brondata": record,
+    }
 
 
 def _sync_generiek(

@@ -4,6 +4,18 @@ import { createPortal } from 'react-dom'
 export interface ComboboxOptie {
   id: string
   label: string
+  /** Korte, opvallende sleutel vóór de omschrijving (bv. de grootboekcode of het btw-percentage)
+   * — design-pass taak 2: "optie-rijen met code vet + omschrijving". Optioneel: niet elke
+   * entiteit (crediteuren/projecten) heeft zoiets. */
+  code?: string
+  /** Btw-percentage als fractie (0.21 voor 21%) — alleen gezet door useTaxrateOpties, puur
+   * doorgeefluik voor BoekvoorstelPanel's automatische btw-afleiding (design-pass taak 3).
+   * SearchableCombobox zelf doet niets met dit veld. */
+  percentage?: number
+}
+
+function weergaveTekst(optie: ComboboxOptie): string {
+  return optie.code ? `${optie.code} · ${optie.label}` : optie.label
 }
 
 interface Props {
@@ -40,6 +52,7 @@ interface Positie {
   top: number
   left: number
   width: number
+  maxWidth: number
 }
 
 /** Zoekbare combobox met toetsenbordnavigatie en gevirtualiseerde opties-lijst (BOUWPLAN.md,
@@ -78,7 +91,9 @@ export function SearchableCombobox({
   const gefilterd = useMemo(() => {
     const term = debouncedZoekterm.trim().toLowerCase()
     if (!term) return opties
-    return opties.filter((o) => o.label.toLowerCase().includes(term))
+    return opties.filter(
+      (o) => o.label.toLowerCase().includes(term) || (o.code?.toLowerCase().includes(term) ?? false),
+    )
   }, [opties, debouncedZoekterm])
 
   useEffect(() => {
@@ -90,7 +105,14 @@ export function SearchableCombobox({
     const el = inputRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    setPositie({ top: rect.bottom, left: rect.left, width: rect.width })
+    // Breedte >= het invoerveld (design-pass taak 2) — de lijst mag breder worden om "code +
+    // omschrijving" leesbaar te tonen, tot de rand van het venster (met een kleine marge).
+    setPositie({
+      top: rect.bottom,
+      left: rect.left,
+      width: rect.width,
+      maxWidth: Math.max(rect.width, window.innerWidth - rect.left - 12),
+    })
   }, [])
 
   useEffect(() => {
@@ -184,7 +206,7 @@ export function SearchableCombobox({
         className={fout ? 'warnfield' : undefined}
         autoComplete="off"
         placeholder={placeholder ?? 'Typen om te zoeken…'}
-        value={open ? zoekterm : geselecteerd?.label ?? ''}
+        value={open ? zoekterm : geselecteerd ? weergaveTekst(geselecteerd) : ''}
         onFocus={() => {
           setOpen(true)
           setZoekterm('')
@@ -204,19 +226,17 @@ export function SearchableCombobox({
             role="listbox"
             id={listboxId}
             aria-label={label}
+            className="combobox-listbox"
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
             style={{
               position: 'fixed',
               zIndex: 1000,
               top: positie.top,
               left: positie.left,
-              width: positie.width,
-              maxHeight: ZICHTBARE_RIJEN * RIJHOOGTE,
-              overflowY: 'auto',
-              background: 'var(--panel)',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              boxShadow: 'var(--shadow)',
+              minWidth: positie.width,
+              maxWidth: positie.maxWidth,
+              width: 'max-content',
+              maxHeight: ZICHTBARE_RIJEN * RIJHOOGTE + 8,
             }}
           >
             <div style={{ height: gefilterd.length * RIJHOOGTE, position: 'relative' }}>
@@ -233,27 +253,15 @@ export function SearchableCombobox({
                       kiesOptie(optie)
                     }}
                     onMouseEnter={() => setActieveIndex(echteIndex)}
-                    style={{
-                      position: 'absolute',
-                      top: echteIndex * RIJHOOGTE,
-                      left: 0,
-                      right: 0,
-                      height: RIJHOOGTE,
-                      display: 'flex',
-                      alignItems: 'center',
-                      padding: '0 10px',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      background: echteIndex === actieveIndex ? 'var(--blue-bg)' : 'transparent',
-                    }}
+                    className={`combobox-optie${echteIndex === actieveIndex ? ' actief' : ''}`}
+                    style={{ position: 'absolute', top: echteIndex * RIJHOOGTE, left: 0, right: 0, height: RIJHOOGTE }}
                   >
-                    {optie.label}
+                    {optie.code && <span className="combobox-optie-code">{optie.code}</span>}
+                    <span>{optie.label}</span>
                   </div>
                 )
               })}
-              {gefilterd.length === 0 && (
-                <div style={{ padding: '8px 10px', fontSize: 12.5, color: 'var(--muted)' }}>Geen resultaten</div>
-              )}
+              {gefilterd.length === 0 && <div className="combobox-leeg">Geen resultaten</div>}
             </div>
           </div>,
           document.body,

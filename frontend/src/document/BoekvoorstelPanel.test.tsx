@@ -107,8 +107,11 @@ describe('BoekvoorstelPanel', () => {
 
     const [grootboekVeld] = screen.getAllByLabelText('Grootboek', { exact: false })
     await gebruiker.click(grootboekVeld)
-    await waitFor(() => expect(screen.getByText('4699 · Diverse kosten')).toBeInTheDocument())
-    await gebruiker.click(screen.getByText('4699 · Diverse kosten'))
+    // Design-pass taak 2: code (4699) en omschrijving (Diverse kosten) staan als losse
+    // elementen in de rij (code vet) — geen aparte "·"-tekstnode meer om op te matchen.
+    await waitFor(() => expect(screen.getByRole('option', { name: /4699.*Diverse kosten/ })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('option', { name: /4699.*Diverse kosten/ }))
+    expect(grootboekVeld).toHaveValue('4699 · Diverse kosten')
 
     const [btwVeld] = screen.getAllByLabelText('Btw-code', { exact: false })
     await gebruiker.click(btwVeld)
@@ -301,6 +304,45 @@ describe('BoekvoorstelPanel', () => {
     await gebruiker.clear(screen.getByLabelText('Totaalbedrag (incl. btw)'))
     await gebruiker.type(screen.getByLabelText('Totaalbedrag (incl. btw)'), '999,00')
     await waitFor(() => expect(screen.getByText(/Afwijking/)).toBeInTheDocument())
+  })
+
+  it('design-pass taak 3: btw-bedrag wordt automatisch afgeleid uit netto x taxrate-percentage', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({ taxrates: [{ id: TAXRATE_ID, naam: 'NL Hoog Tarief', percentage: '0.2100' }] })
+    render(
+      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} />,
+    )
+    await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toBeInTheDocument())
+
+    const [btwCodeVeld] = screen.getAllByLabelText('Btw-code', { exact: false })
+    await gebruiker.click(btwCodeVeld)
+    await waitFor(() => expect(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ }))
+
+    await gebruiker.type(screen.getByLabelText('Netto bedrag'), '100,00')
+
+    expect(screen.getByLabelText('Btw bedrag')).toHaveValue('21,00')
+    expect(screen.queryByText(/Berekend:/)).not.toBeInTheDocument()
+  })
+
+  it('design-pass taak 3: een handmatig ingevoerd btw-bedrag wordt nooit overschreven, maar krijgt een afwijking-hint', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({ taxrates: [{ id: TAXRATE_ID, naam: 'NL Hoog Tarief', percentage: '0.2100' }] })
+    render(
+      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} />,
+    )
+    await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toBeInTheDocument())
+
+    await gebruiker.type(screen.getByLabelText('Btw bedrag'), '5,00')
+
+    const [btwCodeVeld] = screen.getAllByLabelText('Btw-code', { exact: false })
+    await gebruiker.click(btwCodeVeld)
+    await waitFor(() => expect(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ }))
+    await gebruiker.type(screen.getByLabelText('Netto bedrag'), '100,00')
+
+    expect(screen.getByLabelText('Btw bedrag')).toHaveValue('5,00')
+    expect(screen.getByText('Berekend: € 21,00')).toBeInTheDocument()
   })
 
   it('design-pass taak 3: lege cache toont een melding met "Nu synchroniseren", die alle vier de caches verversen', async () => {

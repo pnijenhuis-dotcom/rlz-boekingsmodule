@@ -13,7 +13,7 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.documenten.models import Document, DocumentBron, DocumentGebeurtenis, DocumentStatus
-from app.documenten.statusmachine import valideer_overgang
+from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
 from app.documenten.storage import DocumentOpslag, LokaleBestandsopslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
 
@@ -64,6 +64,17 @@ class DocumentNietGevonden(Exception):
     """Onbekend document, of het bestaat wel maar valt buiten de scope van de huidige sessie —
     RLS maakt dat onderscheid hier bewust niet zichtbaar (geen cross-tenant-signaal via een ander
     foutbeeld dan 'niet gevonden')."""
+
+
+class VerwijderenNietToegestaan(Exception):
+    """Design-pass taak 4: blokkerende regel bij het verwijderen — in de praktijk altijd omdat
+    het document al geboekt is (bewaarplicht). De statusmachine blokkeert dit zelf al (GEBOEKT
+    heeft geen uitgaande overgangen), maar deze klasse geeft er een specifieke, uitlegbare fout
+    voor i.p.v. de generieke OngeldigeStatusovergang-tekst."""
+
+
+class DocumentNietVerwijderd(Exception):
+    """Herstellen kan alleen een document dat daadwerkelijk op status verwijderd staat."""
 
 
 def _schrijf_overgang(
@@ -213,14 +224,16 @@ class DocumentMetDuplicaat:
     duplicaat_referentie: DuplicaatReferentie | None
 
 
-def lijst_documenten(*, administratie_id: uuid.UUID) -> list[DocumentMetDuplicaat]:
+def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
+    """`toon_verwijderd=False` (default) verbergt zachtgewiste documenten uit de normale
+    werkvoorraad — de "toon verwijderde"-filter (design-pass taak 4) zet dit aan om ze er weer
+    naast te zien (voor het herstelpad), nooit een apart, exclusief lijstje."""
     with scoped_session(administratie_id) as session:
+        voorwaarden = [Document.administratie_id == administratie_id]
+        if not toon_verwijderd:
+            voorwaarden.append(Document.status != DocumentStatus.VERWIJDERD)
         documenten = list(
-            session.scalars(
-                select(Document)
-                .where(Document.administratie_id == administratie_id)
-                .order_by(Document.aangemaakt_op.desc())
-            )
+            session.scalars(select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc()))
         )
         referenties = _duplicaat_referenties_op(
             session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
@@ -274,6 +287,67 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
         veldvoorstel=veldvoorstel,
         duplicaat_referentie=duplicaat_referentie,
     )
+
+
+def verwijder_document(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str | None = None
+) -> DocumentStatus:
+    """Soft-delete (design-pass taak 4): status -> verwijderd, bestand en record blijven bestaan.
+    Bewaart de status van vóór de verwijdering in de tijdlijn (`detail.vorige_status`) — dat is
+    waar herstel_document() naar teruggaat. Reden is optioneel, maar staat áltijd (ook als None)
+    in de tijdlijn/audit_event, net als bij een reguliere overgang."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        if document.status == DocumentStatus.GEBOEKT:
+            raise VerwijderenNietToegestaan("Geboekte documenten kunnen niet verwijderd worden (bewaarplicht).")
+
+        vorige_status = document.status
+        try:
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.VERWIJDERD,
+                actor_id=actor_id,
+                detail={"reden": reden, "vorige_status": vorige_status.value},
+            )
+        except OngeldigeStatusovergang as exc:
+            raise VerwijderenNietToegestaan(str(exc)) from exc
+        return document.status
+
+
+def herstel_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID) -> DocumentStatus:
+    """Zet een zachtgewist document terug op de status van vóór de verwijdering (uit de tijdlijn,
+    `detail.vorige_status` — zie verwijder_document) — nooit een vast startpunt (bv. altijd
+    te_controleren), anders verliest een herstel van bv. boeken_mislukt zijn context."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        if document.status != DocumentStatus.VERWIJDERD:
+            raise DocumentNietVerwijderd(f"Document staat niet op verwijderd (status: {document.status.value})")
+
+        laatste_verwijdering = session.scalars(
+            select(DocumentGebeurtenis)
+            .where(
+                DocumentGebeurtenis.document_id == document_id,
+                DocumentGebeurtenis.naar_status == DocumentStatus.VERWIJDERD,
+            )
+            .order_by(DocumentGebeurtenis.tijdstip.desc())
+        ).first()
+        if (
+            laatste_verwijdering is None
+            or not laatste_verwijdering.detail
+            or "vorige_status" not in laatste_verwijdering.detail
+        ):
+            raise DocumentNietVerwijderd("Kan de vorige status niet terugvinden in de tijdlijn")
+
+        vorige_status = DocumentStatus(laatste_verwijdering.detail["vorige_status"])
+        _schrijf_overgang(
+            session, document=document, naar=vorige_status, actor_id=actor_id, detail={"herstel_van": "verwijderd"}
+        )
+        return document.status
 
 
 def haal_bijlage_op(

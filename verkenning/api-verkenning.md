@@ -194,6 +194,20 @@ vendor `f56b1c00-856e-41d2-a400-894e090f1251`; facturen A (`fe46f0d6-9b34-406d-8
 `TEST-DUP-A`, geboekt geweest + gestorneerd), C (`4f5ff019-f85f-4785-9383-50abb6cbfcda`,
 `TEST-DUP-CONTROL`, nooit geboekt).
 
+## TaxRate.Percentage — empirisch geverifieerd (11 juli 2026, design-pass taak 3)
+
+`GET TaxRates` geeft betrouwbaar een `Percentage`-veld terug (fractie, bv. `0.21` voor 21%,
+`0.0` voor 0%/vrijgesteld/verlegd) — geverifieerd op de live sync-data van meerdere
+administraties (BLOw, Universal, de RLZ-test-administratie), niet alleen een PoC. Dit weerspreekt
+niets van de eerdere aanname in `app/sync/models.py` dat TaxRate's officiële resource-model-
+documentatie een serverfout gaf (dat blijft zo voor de documentatie-pagina zelf) — het veld
+werkt gewoon in de praktijk. Nu apart gemodelleerd (`taxrate_cache.percentage`, migratie 0011)
+i.p.v. alleen in `brondata`, nodig om het btw-bedrag automatisch af te leiden (netto ×
+percentage) in het controlescherm. Andere velden op TaxRate die ook meekwamen maar (nog) niet
+gebruikt worden: `IsExcempt` (vrijgesteld), `IsRelayed` (verlegd), `IsMixed`, `TaxKind` —
+potentieel relevant voor een latere "btw verlegd is de norm in de bouwketen"-suggestie
+(CLAUDE.md), niet meegenomen in deze ronde.
+
 ## Rate-limit-observatie (5 juli 2026, tegen BLOw B.V, read-only)
 
 20 opeenvolgende `GET Ledgers`-requests, sequentieel (geen parallelisme): alle 200, gemiddeld

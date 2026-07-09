@@ -95,9 +95,10 @@ async def document_uploaden(
 )
 def documenten_lijst(
     administratie_id: uuid.UUID,
+    toon_verwijderd: bool = False,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentListResponse:
-    items = service.lijst_documenten(administratie_id=administratie_id)
+    items = service.lijst_documenten(administratie_id=administratie_id, toon_verwijderd=toon_verwijderd)
     return schemas.DocumentListResponse(
         documenten=[
             schemas.DocumentListItemResponse(
@@ -170,6 +171,51 @@ def document_bestand(
         media_type=content_type,
         headers={"Content-Disposition": f'inline; filename="{bestandsnaam}"'},
     )
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/verwijderen",
+    response_model=schemas.DocumentActieResponse,
+)
+def document_verwijderen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.VerwijderenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DocumentActieResponse:
+    """Soft-delete (design-pass taak 4) — nooit een echte DELETE-route: het record en bestand
+    blijven bestaan, alleen de status verandert (zie service.py::verwijder_document)."""
+    try:
+        nieuwe_status = service.verwijder_document(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except service.VerwijderenNietToegestaan as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.DocumentActieResponse(document_id=document_id, status=nieuwe_status.value)
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/herstellen",
+    response_model=schemas.DocumentActieResponse,
+)
+def document_herstellen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DocumentActieResponse:
+    """Zet een zachtgewist document terug op de status van vóór de verwijdering (design-pass
+    taak 4, "toon verwijderde"-filter met herstelknop)."""
+    try:
+        nieuwe_status = service.herstel_document(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except service.DocumentNietVerwijderd as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.DocumentActieResponse(document_id=document_id, status=nieuwe_status.value)
 
 
 @router.get(

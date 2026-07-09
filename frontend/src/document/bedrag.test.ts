@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bedragAlsGetal, normaliseerBedrag } from './bedrag'
+import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 
 describe('normaliseerBedrag', () => {
   it('laat al-genormaliseerd punt-decimaal ongewijzigd', () => {
@@ -38,5 +38,21 @@ describe('bedragAlsGetal', () => {
   it('geeft null voor leeg of onherkenbare invoer', () => {
     expect(bedragAlsGetal('')).toBeNull()
     expect(bedragAlsGetal('abc')).toBeNull()
+  })
+})
+
+describe('berekenBtwBedrag', () => {
+  it('berekent netto x percentage', () => {
+    expect(berekenBtwBedrag(100, 0.21)).toBe(21)
+    expect(berekenBtwBedrag(23.23, 0)).toBe(0)
+  })
+
+  it('rondt af op 2 decimalen', () => {
+    expect(berekenBtwBedrag(10.1, 0.21)).toBe(2.12) // 2.121 -> 2.12
+    expect(berekenBtwBedrag(33.33, 0.09)).toBe(3.0) // 2.9997 -> 3.00
+  })
+
+  it('werkt met een laag tarief en negatieve bedragen (creditnota)', () => {
+    expect(berekenBtwBedrag(-50, 0.09)).toBe(-4.5)
   })
 })

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import Engine, text
@@ -123,6 +124,35 @@ def test_sync_taxrates_valt_terug_op_brondata(administratie_id: uuid.UUID, admin
         ).one()
     assert naam == "NL Hoog 21%"
     assert brondata["id"] == str(taxrate_id)
+
+
+def test_sync_taxrates_slaat_percentage_apart_op(administratie_id: uuid.UUID, admin_engine: Engine) -> None:
+    """Design-pass taak 3: percentage komt betrouwbaar mee in RLZ's TaxRate-respons (empirisch
+    geverifieerd, migratie 0011) en wordt apart opgeslagen — nodig om het btw-bedrag automatisch
+    te kunnen afleiden in het controlescherm."""
+    taxrate_id = uuid.uuid4()
+    client = FakeRlzClient({"TaxRates": [{"id": str(taxrate_id), "Name": "NL Hoog Tarief", "Percentage": 0.21}]})
+    service.sync_taxrates(administratie_id=administratie_id, client=client)
+
+    with admin_engine.connect() as conn:
+        percentage = conn.execute(
+            text("SELECT percentage FROM boekhouding.taxrate_cache WHERE administratie_id = :aid AND id = :id"),
+            {"aid": administratie_id, "id": taxrate_id},
+        ).scalar_one()
+    assert percentage == Decimal("0.21")
+
+
+def test_sync_taxrates_zonder_percentage_laat_het_veld_leeg(administratie_id: uuid.UUID, admin_engine: Engine) -> None:
+    taxrate_id = uuid.uuid4()
+    client = FakeRlzClient({"TaxRates": [{"id": str(taxrate_id), "Name": "Onbekend tarief"}]})
+    service.sync_taxrates(administratie_id=administratie_id, client=client)
+
+    with admin_engine.connect() as conn:
+        percentage = conn.execute(
+            text("SELECT percentage FROM boekhouding.taxrate_cache WHERE administratie_id = :aid AND id = :id"),
+            {"aid": administratie_id, "id": taxrate_id},
+        ).scalar_one()
+    assert percentage is None
 
 
 def test_sync_alles_voor_administratie_gebruikt_een_gedeelde_client(

@@ -297,3 +297,27 @@ class TestBoekenEndpoint:
                 text("SELECT status FROM boekhouding.document WHERE id = :id"), {"id": document_id}
             ).scalar_one()
         assert document_status == "boeken_mislukt"  # niet in limbo blijven staan
+
+    def test_geboekt_document_kan_niet_verwijderd_worden_via_http(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Design-pass taak 4, hard geëist: bewaarplicht geldt ook via de echte HTTP-laag, niet
+        alleen op de servicefunctie."""
+        beheer_service.zet_boeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = self._klaar_document(headers, administratie_id)
+        boek_resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        assert boek_resp.status_code == 200, boek_resp.text
+
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
+        )
+        assert resp.status_code == 409, resp.text
+        assert "bewaarplicht" in resp.json()["detail"]

@@ -25,9 +25,25 @@ def test_ongeldige_overgang_faalt(van: DocumentStatus, naar: DocumentStatus) -> 
         valideer_overgang(van, naar)
 
 
-def test_terminale_statussen_hebben_geen_uitgaande_overgangen() -> None:
-    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.AFGEWEZEN] == frozenset()
+def test_geboekt_is_de_enige_echt_terminale_status() -> None:
+    """Bewaarplicht (design-pass taak 4): een geboekt document kan naar geen andere status meer,
+    óók niet naar verwijderd. Elke andere status (zelfs afgewezen) heeft nog altijd minstens
+    verwijderd als uitgang."""
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset()
+    for van in DocumentStatus:
+        if van in (DocumentStatus.GEBOEKT, DocumentStatus.VERWIJDERD):
+            continue
+        assert DocumentStatus.VERWIJDERD in _TOEGESTANE_OVERGANGEN[van], f"{van} kan niet verwijderd worden"
+
+
+def test_verwijderd_kan_terug_naar_elke_status_die_er_ook_naartoe_mag() -> None:
+    """herstel_document() zet een document terug op zijn status van vóór de verwijdering — dat
+    moet voor elke mogelijke 'vorige status' een toegestane overgang zijn, anders faalt een
+    geldig herstel op de statusmachine zelf."""
+    bronnen_van_verwijderd = {
+        van for van, toegestaan in _TOEGESTANE_OVERGANGEN.items() if DocumentStatus.VERWIJDERD in toegestaan
+    }
+    assert bronnen_van_verwijderd <= _TOEGESTANE_OVERGANGEN[DocumentStatus.VERWIJDERD]
 
 
 def test_elke_status_staat_in_de_overgangstabel() -> None:

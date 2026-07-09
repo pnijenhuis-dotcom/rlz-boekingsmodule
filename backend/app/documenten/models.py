@@ -25,8 +25,10 @@ class DocumentStatus(enum.StrEnum):
     """Hoofdpad: ontvangen -> extractie_bezig -> te_controleren -> klaar_om_te_boeken -> geboekt.
     Zijtakken: vraag_open (blokkeert boeken), afgewezen (verplichte reden, eindstatus),
     boeken_mislukt (RLZ-fout, retry mogelijk), niet_toegewezen (verzamelbak — geen administratie
-    gekoppeld, zie Document.administratie_id). Toegestane overgangen: zie
-    app/documenten/statusmachine.py — nooit hier of elders losse status-writes."""
+    gekoppeld, zie Document.administratie_id), verwijderd (soft-delete, design-pass taak 4: bewust
+    géén harde delete — "niets verdwijnt stil" — bestand en record blijven bestaan, alleen
+    geboekte documenten kunnen hier nooit naartoe vanwege de bewaarplicht). Toegestane overgangen:
+    zie app/documenten/statusmachine.py — nooit hier of elders losse status-writes."""
 
     ONTVANGEN = "ontvangen"
     EXTRACTIE_BEZIG = "extractie_bezig"
@@ -37,6 +39,7 @@ class DocumentStatus(enum.StrEnum):
     AFGEWEZEN = "afgewezen"
     BOEKEN_MISLUKT = "boeken_mislukt"
     NIET_TOEGEWEZEN = "niet_toegewezen"
+    VERWIJDERD = "verwijderd"
 
 
 def _enum_waarden(python_enum: type[enum.StrEnum]) -> list[str]:

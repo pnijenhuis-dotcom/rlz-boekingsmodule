@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type { BoekenResponseDto, BoekvoorstelDto, BoekvoorstelMetChecksDto, CheckRapportDto } from '../api/types'
-import { bedragAlsGetal, normaliseerBedrag } from './bedrag'
+import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { SearchableCombobox } from './SearchableCombobox'
 import {
   synchroniseerAlleCaches,
@@ -19,11 +19,25 @@ interface RegelState {
   projectId: string | null
   netto: string
   btw: string
+  /** Design-pass taak 3: zodra de gebruiker zelf iets in het btw-veld typt, stopt de automatische
+   * afleiding (netto x taxrate-percentage) met dat veld te overschrijven — "overschrijfbaar", dus
+   * één keer aangeraakt blijft het van de gebruiker. Een geladen regel met een al opgeslagen
+   * btw-bedrag telt ook als "handmatig" (kan een eerdere handmatige invoer zijn geweest). */
+  btwHandmatig: boolean
   omschrijving: string
 }
 
 function nieuweRegel(): RegelState {
-  return { key: crypto.randomUUID(), ledgerId: null, taxrateId: null, projectId: null, netto: '', btw: '', omschrijving: '' }
+  return {
+    key: crypto.randomUUID(),
+    ledgerId: null,
+    taxrateId: null,
+    projectId: null,
+    netto: '',
+    btw: '',
+    btwHandmatig: false,
+    omschrijving: '',
+  }
 }
 
 function regelsUitDto(dto: BoekvoorstelDto): RegelState[] {
@@ -35,6 +49,7 @@ function regelsUitDto(dto: BoekvoorstelDto): RegelState[] {
     projectId: r.project_id,
     netto: r.netto_bedrag ?? '',
     btw: r.btw_bedrag ?? '',
+    btwHandmatig: Boolean(r.btw_bedrag),
     omschrijving: r.omschrijving ?? '',
   }))
 }
@@ -90,6 +105,11 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
   const [cacheVersie, setCacheVersie] = useState(0)
   const { opties: grootboekOpties, fout: grootboekFout, laden: grootboekLaden } = useGrootboekOpties(administratieId, cacheVersie)
   const { opties: taxrateOpties, fout: taxrateFout, laden: taxrateLaden } = useTaxrateOpties(administratieId, cacheVersie)
+  const percentageMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const optie of taxrateOpties) if (optie.percentage !== undefined) map[optie.id] = optie.percentage
+    return map
+  }, [taxrateOpties])
   const { opties: vendorOpties, fout: vendorFout, laden: vendorLaden } = useVendorOpties(administratieId, cacheVersie)
   const { opties: projectOpties, laden: projectLaden } = useProjectOpties(administratieId, cacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId)
@@ -164,7 +184,23 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
   }
 
   const wijzigRegel = (key: string, veld: keyof RegelState, waarde: string | null) => {
-    setRegels((huidig) => huidig.map((r) => (r.key === key ? { ...r, [veld]: waarde } : r)))
+    setRegels((huidig) =>
+      huidig.map((r) => {
+        if (r.key !== key) return r
+        const bijgewerkt = { ...r, [veld]: waarde }
+        if (veld === 'btw') {
+          // Rechtstreekse invoer in het btw-veld zelf — vanaf nu is dit veld van de gebruiker;
+          // leegmaken laat de automatische afleiding weer meedraaien (design-pass taak 3).
+          bijgewerkt.btwHandmatig = waarde !== ''
+        } else if ((veld === 'netto' || veld === 'taxrateId') && !bijgewerkt.btwHandmatig) {
+          // Nog niet handmatig aangeraakt: btw-bedrag blijft live meebewegen met netto/percentage.
+          const percentage = bijgewerkt.taxrateId ? percentageMap[bijgewerkt.taxrateId] : undefined
+          const netto = bedragAlsGetal(bijgewerkt.netto)
+          bijgewerkt.btw = percentage !== undefined && netto !== null ? formatEuro(berekenBtwBedrag(netto, percentage)) : ''
+        }
+        return bijgewerkt
+      }),
+    )
     veranderInvoer()
   }
 
@@ -363,11 +399,18 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
               <th>Btw-code</th>
               {projectVerplicht && <th>Project</th>}
               <th className="amount">Netto</th>
-              <th className="amount">Btw</th>
+              <th className="amount">Btw-bedrag</th>
               <th>Omschrijving</th>
               <th />
             </tr>
-            {regels.map((regel) => (
+            {regels.map((regel) => {
+              const percentage = regel.taxrateId ? percentageMap[regel.taxrateId] : undefined
+              const nettoAlsGetal = bedragAlsGetal(regel.netto)
+              const verwachtBtw =
+                percentage !== undefined && nettoAlsGetal !== null ? berekenBtwBedrag(nettoAlsGetal, percentage) : null
+              const huidigBtw = bedragAlsGetal(regel.btw)
+              const btwWijktAf = verwachtBtw !== null && (huidigBtw === null || Math.abs(huidigBtw - verwachtBtw) > 0.005)
+              return (
               <tr key={regel.key}>
                 <td>
                   <SearchableCombobox
@@ -423,6 +466,11 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
                     onChange={(e) => wijzigRegel(regel.key, 'btw', e.target.value)}
                     disabled={isBevroren}
                   />
+                  {btwWijktAf && verwachtBtw !== null && (
+                    <div style={{ textAlign: 'right', marginTop: 4 }}>
+                      <span className="chip afwijking">Berekend: € {formatEuro(verwachtBtw)}</span>
+                    </div>
+                  )}
                 </td>
                 <td>
                   <input
@@ -445,7 +493,8 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
                   )}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
         {!isBevroren && (

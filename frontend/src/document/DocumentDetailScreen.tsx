@@ -110,24 +110,26 @@ export function DocumentDetailScreen() {
         <div className="docpane">
           <div className="panel">
             <h2>Bijlage</h2>
-            {!bijlage && <p className="hint">Bijlage laden…</p>}
-            {bijlage?.contentType.includes('pdf') && (
-              <object data={bijlage.url} type="application/pdf" width="100%" height="640">
-                <p className="hint">
-                  Geen inline PDF-weergave in deze browser —{' '}
-                  <a href={bijlage.url} download={detail.bestandsnaam}>
-                    open het bestand direct
-                  </a>
-                  .
-                </p>
-              </object>
-            )}
-            {bijlage?.xmlTekst !== null && bijlage?.xmlTekst !== undefined && (
-              <pre className="xml-bron">{bijlage.xmlTekst}</pre>
-            )}
-            {bijlage && !bijlage.contentType.includes('pdf') && bijlage.xmlTekst === null && (
-              <p className="hint">Geen inline weergave voor dit bestandstype.</p>
-            )}
+            <div className="bijlage-inhoud">
+              {!bijlage && <p className="hint">Bijlage laden…</p>}
+              {bijlage?.contentType.includes('pdf') && (
+                <object data={bijlage.url} type="application/pdf">
+                  <p className="hint">
+                    Geen inline PDF-weergave in deze browser —{' '}
+                    <a href={bijlage.url} download={detail.bestandsnaam}>
+                      open het bestand direct
+                    </a>
+                    .
+                  </p>
+                </object>
+              )}
+              {bijlage?.xmlTekst !== null && bijlage?.xmlTekst !== undefined && (
+                <pre className="xml-bron">{bijlage.xmlTekst}</pre>
+              )}
+              {bijlage && !bijlage.contentType.includes('pdf') && bijlage.xmlTekst === null && (
+                <p className="hint">Geen inline weergave voor dit bestandstype.</p>
+              )}
+            </div>
             {bijlage && (
               <p style={{ marginTop: 10 }}>
                 <a className="btn secondary" href={bijlage.url} download={detail.bestandsnaam}>

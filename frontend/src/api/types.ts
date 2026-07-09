@@ -56,6 +56,11 @@ export interface UploadResponseDto {
   mogelijk_duplicaat_van: DuplicaatReferentieDto | null
 }
 
+export interface DocumentActieResponseDto {
+  document_id: string
+  status: string
+}
+
 export interface TokenPaarResponseDto {
   access_token: string
   token_type: string
@@ -81,6 +86,9 @@ export interface GrootboekLijstDto {
 export interface TaxrateOptieDto {
   id: string
   naam: string | null
+  /** Fractie als string, bv. "0.2100" voor 21% (Decimal-serialisatie, zie api/client.ts). Null
+   * als RLZ geen percentage teruggaf voor deze btw-code. */
+  percentage: string | null
 }
 
 export interface TaxrateLijstDto {

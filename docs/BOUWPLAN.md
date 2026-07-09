@@ -165,6 +165,20 @@ UI-eisen):
    afwijzen-met-reden, verzamelbak "Niet toegewezen", instellingen-lite
    (administratie koppelen, gebruikers, eigenaren), audit log, globaal zoeken (boekingen + audit)
    blijven open voor een volgende sessie.
+   - **Design-pass na Peters derde kliktest (2026-07-11, mijlpaal: twee echte boekingen gelukt)
+     — vier punten afgerond:** PDF-preview vult nu de volledige beschikbare viewport-hoogte
+     (sticky, `calc(100vh - 52px)`, geen restruimte meer onder de bijlage); de portal-listbox van
+     `SearchableCombobox` is naar mockup-niveau gebracht (panel/border/schaduw, optie-rijen met
+     code vet + omschrijving — GB-code, en nu ook het btw-percentage als code); btw-bedrag wordt
+     automatisch afgeleid (netto × taxrate-percentage, `TaxRateCache.percentage` — migratie 0011,
+     empirisch geverifieerd op RLZ's live respons) en blijft overschrijfbaar met een oranje
+     "Berekend: € ..."-hint bij afwijking; documenten kunnen zacht verwijderd worden vanuit de
+     werkvoorraad (prullenbak-icoon → bevestigingsdialoog met optionele reden → status
+     `verwijderd`, migratie 0012 — bestand/record blijven bestaan, "toon verwijderde"-filter +
+     herstelknop zet ze terug op hun status van vóór de verwijdering; geboekte documenten blijven
+     hard onverwijderbaar, bewaarplicht). Zie `app/documenten/statusmachine.py` (VERWIJDERD is de
+     enige status die nog overal — behalve vanuit GEBOEKT — een uitgang naartoe heeft) en
+     `app/documenten/service.py::verwijder_document`/`herstel_document`.
    - **Openstaand (2026-07-09): het instellingen-scherm is de échte UI voor de drie toggles.**
      De mockup's administraties-tab (project verplicht / boeken-toggle / globale kill switch) is
      nog niet gebouwd — tot die tijd zijn `make boeken-aan`/`boeken-uit`/`boeken-status`

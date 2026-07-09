@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { apiJson } from '../api/client'
-import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
+import { ApiError, apiJson, apiPostJson } from '../api/client'
+import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
 import { StatusChip } from './StatusChip'
 import { useAdministraties } from './useAdministraties'
+import { VerwijderDialog } from './VerwijderDialog'
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
@@ -26,6 +27,12 @@ export function WerkvoorraadScreen() {
   const [uploadBericht, setUploadBericht] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
   const [sleepActief, setSleepActief] = useState(false)
+  const [toonVerwijderd, setToonVerwijderd] = useState(false)
+  const [verwijderenVoor, setVerwijderenVoor] = useState<DocumentListItemDto | null>(null)
+  const [verwijderenBezig, setVerwijderenBezig] = useState(false)
+  const [verwijderenFout, setVerwijderenFout] = useState<string | null>(null)
+  const [herstellenBezig, setHerstellenBezig] = useState<string | null>(null)
+  const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
 
   useEffect(() => {
     if (!administratieId && administraties && administraties.length > 0) {
@@ -36,10 +43,12 @@ export function WerkvoorraadScreen() {
   const laadDocumenten = useCallback(() => {
     if (!administratieId) return
     setLijstFout(null)
-    apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
+    apiJson<DocumentListResponseDto>(
+      `/administraties/${administratieId}/documenten${toonVerwijderd ? '?toon_verwijderd=true' : ''}`,
+    )
       .then((data) => setDocumenten(data.documenten))
       .catch((err: unknown) => setLijstFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [administratieId])
+  }, [administratieId, toonVerwijderd])
 
   useEffect(() => {
     setDocumenten(null)
@@ -77,6 +86,41 @@ export function WerkvoorraadScreen() {
   const opBestandGekozen = (bestanden: FileList | null) => {
     const bestand = bestanden?.[0]
     if (bestand) void uploadBestand(bestand)
+  }
+
+  const verwijderen = async (reden: string) => {
+    if (!administratieId || !verwijderenVoor) return
+    setVerwijderenBezig(true)
+    setVerwijderenFout(null)
+    try {
+      await apiPostJson<DocumentActieResponseDto>(
+        `/administraties/${administratieId}/documenten/${verwijderenVoor.id}/verwijderen`,
+        { reden: reden || null },
+      )
+      setVerwijderenVoor(null)
+      laadDocumenten()
+    } catch (err) {
+      setVerwijderenFout(err instanceof ApiError ? err.message : 'Verwijderen mislukt.')
+    } finally {
+      setVerwijderenBezig(false)
+    }
+  }
+
+  const herstellen = async (documentId: string) => {
+    if (!administratieId) return
+    setHerstellenBezig(documentId)
+    setHerstellenFout(null)
+    try {
+      await apiPostJson<DocumentActieResponseDto>(
+        `/administraties/${administratieId}/documenten/${documentId}/herstellen`,
+        {},
+      )
+      laadDocumenten()
+    } catch (err) {
+      setHerstellenFout(err instanceof ApiError ? err.message : 'Herstellen mislukt.')
+    } finally {
+      setHerstellenBezig(null)
+    }
   }
 
   if (administratiesFout) {
@@ -146,11 +190,25 @@ export function WerkvoorraadScreen() {
       {uploadBericht && <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>{uploadBericht}</div>}
 
       <div className="panel">
-        <h2>Documenten</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ margin: 0 }}>Documenten</h2>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
+            <input
+              type="checkbox"
+              style={{ width: 'auto' }}
+              checked={toonVerwijderd}
+              onChange={(e) => setToonVerwijderd(e.target.checked)}
+            />
+            Toon verwijderde documenten
+          </label>
+        </div>
         {lijstFout && <div className="fout">{lijstFout}</div>}
+        {herstellenFout && <div className="fout">{herstellenFout}</div>}
         {documenten === null && !lijstFout && <p className="hint">Laden…</p>}
         {documenten !== null && documenten.length === 0 && (
-          <p className="hint">Nog geen documenten voor deze administratie.</p>
+          <p className="hint">
+            {toonVerwijderd ? 'Geen documenten voor deze administratie.' : 'Nog geen documenten voor deze administratie.'}
+          </p>
         )}
         {documenten !== null && documenten.length > 0 && (
           <table>
@@ -160,37 +218,82 @@ export function WerkvoorraadScreen() {
                 <th>Status</th>
                 <th>Bron</th>
                 <th>Ontvangen</th>
+                <th />
               </tr>
-              {documenten.map((d) => (
-                <tr
-                  key={d.id}
-                  className="clickable"
-                  onClick={() => navigate(`/documenten/${administratieId}/${d.id}`)}
-                >
-                  <td>{d.bestandsnaam}</td>
-                  <td>
-                    <StatusChip status={d.status} />
-                    {d.mogelijk_duplicaat_van && (
-                      <div style={{ marginTop: 4 }}>
-                        <span className="chip vraag">Mogelijk duplicaat</span>{' '}
-                        <Link
-                          to={`/documenten/${administratieId}/${d.mogelijk_duplicaat_van.document_id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ fontSize: 11.5 }}
+              {documenten.map((d) => {
+                const isVerwijderd = d.status === 'verwijderd'
+                const isGeboekt = d.status === 'geboekt'
+                return (
+                  <tr
+                    key={d.id}
+                    className="clickable"
+                    onClick={() => navigate(`/documenten/${administratieId}/${d.id}`)}
+                  >
+                    <td>{d.bestandsnaam}</td>
+                    <td>
+                      <StatusChip status={d.status} />
+                      {d.mogelijk_duplicaat_van && (
+                        <div style={{ marginTop: 4 }}>
+                          <span className="chip vraag">Mogelijk duplicaat</span>{' '}
+                          <Link
+                            to={`/documenten/${administratieId}/${d.mogelijk_duplicaat_van.document_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ fontSize: 11.5 }}
+                          >
+                            van {d.mogelijk_duplicaat_van.bestandsnaam} ({formatDatumKort(d.mogelijk_duplicaat_van.aangemaakt_op)})
+                          </Link>
+                        </div>
+                      )}
+                    </td>
+                    <td>{d.bron}</td>
+                    <td>{formatDatum(d.aangemaakt_op)}</td>
+                    <td>
+                      {isVerwijderd ? (
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          disabled={herstellenBezig === d.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void herstellen(d.id)
+                          }}
                         >
-                          van {d.mogelijk_duplicaat_van.bestandsnaam} ({formatDatumKort(d.mogelijk_duplicaat_van.aangemaakt_op)})
-                        </Link>
-                      </div>
-                    )}
-                  </td>
-                  <td>{d.bron}</td>
-                  <td>{formatDatum(d.aangemaakt_op)}</td>
-                </tr>
-              ))}
+                          {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          aria-label="Document verwijderen"
+                          disabled={isGeboekt}
+                          title={isGeboekt ? 'Geboekte documenten kunnen niet verwijderd worden (bewaarplicht).' : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setVerwijderenFout(null)
+                            setVerwijderenVoor(d)
+                          }}
+                        >
+                          🗑
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
       </div>
+
+      {verwijderenVoor && (
+        <VerwijderDialog
+          bestandsnaam={verwijderenVoor.bestandsnaam}
+          bezig={verwijderenBezig}
+          fout={verwijderenFout}
+          onBevestigen={(reden) => void verwijderen(reden)}
+          onAnnuleren={() => setVerwijderenVoor(null)}
+        />
+      )}
     </div>
   )
 }

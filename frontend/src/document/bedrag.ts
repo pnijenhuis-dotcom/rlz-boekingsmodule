@@ -20,3 +20,11 @@ export function bedragAlsGetal(invoer: string): number | null {
   const getal = Number(genormaliseerd)
   return Number.isFinite(getal) ? getal : null
 }
+
+/** Btw-bedrag afleiden uit netto x percentage (design-pass taak 3) — code voor cijfers, geen AI:
+ * een zuivere berekening op de al-gesynchroniseerde taxrate-percentage, geen extractie. Rondt af
+ * op 2 decimalen (het voorstel is altijd overschrijfbaar, dus geen noodzaak voor bankersrounding
+ * of een expliciete afrondingsrichting). `percentage` is de fractie (0.21 voor 21%), niet 21. */
+export function berekenBtwBedrag(netto: number, percentage: number): number {
+  return Math.round(netto * percentage * 100) / 100
+}

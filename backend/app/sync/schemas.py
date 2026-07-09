@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -25,6 +26,7 @@ class GrootboekLijstResponse(BaseModel):
 class TaxrateOptieResponse(BaseModel):
     id: uuid.UUID
     naam: str | None
+    percentage: Decimal | None
 
 
 class TaxrateLijstResponse(BaseModel):
