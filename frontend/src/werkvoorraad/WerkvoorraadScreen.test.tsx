@@ -132,16 +132,26 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByText(/Fout/)).toBeInTheDocument())
   })
 
-  it('hard: het prullenbak-icoon is uitgeschakeld voor een geboekt document (bewaarplicht)', async () => {
+  it('hard: het prullenbak-icoon wordt helemaal niet getoond voor een geboekt document (bewaarplicht)', async () => {
     installFetchMock({
       documenten: [document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'geboekte-factuur.pdf', status: 'geboekt' })],
     })
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('geboekte-factuur.pdf')).toBeInTheDocument())
-    const knop = screen.getByRole('button', { name: 'Document verwijderen' })
-    expect(knop).toBeDisabled()
-    expect(knop).toHaveAttribute('title', expect.stringContaining('bewaarplicht'))
+    expect(screen.queryByRole('button', { name: 'Document verwijderen' })).not.toBeInTheDocument()
+  })
+
+  it('hard: het prullenbak-icoon wordt ook niet getoond bij een lopende accordering', async () => {
+    installFetchMock({
+      documenten: [
+        document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'ter-accordering.pdf', status: 'ter_accordering' }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('ter-accordering.pdf')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Document verwijderen' })).not.toBeInTheDocument()
   })
 
   it('"toon verwijderde documenten" haalt de lijst met toon_verwijderd=true op en toont een herstelknop', async () => {

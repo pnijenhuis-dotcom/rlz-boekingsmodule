@@ -222,7 +222,9 @@ export function WerkvoorraadScreen() {
               </tr>
               {documenten.map((d) => {
                 const isVerwijderd = d.status === 'verwijderd'
-                const isGeboekt = d.status === 'geboekt'
+                // Backend blokkeert dit al hard (bewaarplicht/lopende accordering) — de UI mag de
+                // onmogelijke actie dan niet eens aanbieden, ook niet als disabled-knop.
+                const kanNietVerwijderdWorden = d.status === 'geboekt' || d.status === 'ter_accordering'
                 return (
                   <tr
                     key={d.id}
@@ -261,20 +263,20 @@ export function WerkvoorraadScreen() {
                           {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          aria-label="Document verwijderen"
-                          disabled={isGeboekt}
-                          title={isGeboekt ? 'Geboekte documenten kunnen niet verwijderd worden (bewaarplicht).' : undefined}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setVerwijderenFout(null)
-                            setVerwijderenVoor(d)
-                          }}
-                        >
-                          🗑
-                        </button>
+                        !kanNietVerwijderdWorden && (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            aria-label="Document verwijderen"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setVerwijderenFout(null)
+                              setVerwijderenVoor(d)
+                            }}
+                          >
+                            🗑
+                          </button>
+                        )
                       )}
                     </td>
                   </tr>
