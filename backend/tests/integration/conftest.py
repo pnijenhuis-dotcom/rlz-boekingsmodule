@@ -8,6 +8,8 @@ import pytest
 from dotenv import load_dotenv
 
 from app.rlz.client import RlzClient
+from tests.auth.conftest import beheerder_id  # noqa: F401
+from tests.documenten.conftest import _opslag_naar_tmp, gescoopte_gebruiker, opslag  # noqa: F401
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(REPO_ROOT / "verkenning" / ".env")

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, Numeric, func
 from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -97,3 +98,65 @@ class DocumentGebeurtenis(Base):
     actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
     tijdstip: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Boekvoorstel(Base):
+    """Kopgegevens van het controlescherm-boekvoorstel (migratie 0008) — één per document. Alle
+    velden zijn nullable in de DB (een half ingevuld voorstel mag bewaard worden terwijl de
+    controleur nog aan het werk is); de harde checks (app/documenten/checks.py) bepalen of het
+    voorstel al *boekbaar* is, niet het schema. `vendor_id`/`ledger_id`/`taxrate_id`/`project_id`
+    zijn RLZ-GUID's (Vendor/Ledger/TaxRate/Project) — bewust geen FK naar de eigen caches (die
+    zijn per-administratie samengestelde PK's en puur read-side, geen brondata om op te FK'en).
+    `rlz_boekstuknummer` is RLZ's `ReceiptNumber` (geverifieerd: al gezet bij de PUT, niet pas na
+    boeken — zie verkenning/api-verkenning.md), leeg totdat de eerste PUT gelukt is."""
+
+    __tablename__ = "boekvoorstel"
+    __table_args__ = {"schema": "boekhouding"}
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), primary_key=True
+    )
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    referentie: Mapped[str | None] = mapped_column(default=None)
+    factuurdatum: Mapped[date | None] = mapped_column(default=None)
+    totaalbedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    rlz_boekstuknummer: Mapped[str | None] = mapped_column(default=None)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class BoekvoorstelRegel(Base):
+    """Eén boekingsregel binnen een Boekvoorstel. `volgnummer` bepaalt de weergave-/PUT-volgorde
+    (geen betekenis in RLZ zelf, puur voor een stabiele, voorspelbare regelvolgorde in het
+    controlescherm en de RLZ-PUT)."""
+
+    __tablename__ = "boekvoorstel_regel"
+    __table_args__ = {"schema": "boekhouding"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.boekvoorstel.document_id")
+    )
+    volgnummer: Mapped[int]
+    ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    netto_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    btw_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    omschrijving: Mapped[str | None] = mapped_column(default=None)
+
+
+class WebhookUitgaand(Base):
+    """Outbox voor het "factuur geboekt"-webhook-stub (migratie 0009, koppelcontract §3): de
+    getekende payload ligt hier per boeking al vast, aflevering (HTTP-push) is een fase-vervolg.
+    `afgeleverd_op` blijft NULL totdat die job bestaat — geen achtergrondproces zet 'm nu."""
+
+    __tablename__ = "webhook_uitgaand"
+    __table_args__ = {"schema": "boekhouding"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    event: Mapped[str]
+    payload: Mapped[dict] = mapped_column(JSONB)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    afgeleverd_op: Mapped[datetime | None] = mapped_column(default=None)

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { apiFetch, apiJson } from '../api/client'
 import type { DocumentDetailDto } from '../api/types'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { statusLabel } from '../werkvoorraad/status'
+import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
@@ -33,14 +34,18 @@ export function DocumentDetailScreen() {
   const [fout, setFout] = useState<string | null>(null)
   const [bijlage, setBijlage] = useState<Bijlage | null>(null)
 
-  useEffect(() => {
+  const laadDetail = useCallback(() => {
     if (!administratieId || !documentId) return
-    setDetail(null)
     setFout(null)
     apiJson<DocumentDetailDto>(`/administraties/${administratieId}/documenten/${documentId}`)
       .then(setDetail)
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
   }, [administratieId, documentId])
+
+  useEffect(() => {
+    setDetail(null)
+    laadDetail()
+  }, [laadDetail])
 
   useEffect(() => {
     if (!administratieId || !documentId) return
@@ -61,7 +66,7 @@ export function DocumentDetailScreen() {
   }, [administratieId, documentId])
 
   if (fout) return <div className="fout">Kon document niet laden: {fout}</div>
-  if (!detail) return <p className="hint">Laden…</p>
+  if (!administratieId || !documentId || !detail) return <p className="hint">Laden…</p>
 
   return (
     <div>
@@ -115,6 +120,13 @@ export function DocumentDetailScreen() {
             </div>
           )}
 
+          <BoekvoorstelPanel
+            administratieId={administratieId}
+            documentId={documentId}
+            status={detail.status}
+            onGeboekt={laadDetail}
+          />
+
           <div className="panel">
             <h2>Tijdlijn</h2>
             <table className="lines">
@@ -147,12 +159,6 @@ export function DocumentDetailScreen() {
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <div className="actions">
-            <button className="btn green" disabled title="Boekflow volgt in een volgende sessie">
-              Boeken in RLZ ✓
-            </button>
           </div>
         </div>
       </div>

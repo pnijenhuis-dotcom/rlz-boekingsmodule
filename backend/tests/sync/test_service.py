@@ -51,9 +51,7 @@ def test_sync_ledgers_markeert_verdwenen_en_herstelt_bij_terugkeer(
     blijvend = _ledger_record(code="4000", naam="Blijft")
     verdwijnend = _ledger_record(code="4500", naam="Verdwijnt straks")
 
-    service.sync_ledgers(
-        administratie_id=administratie_id, client=FakeRlzClient({"Ledgers": [blijvend, verdwijnend]})
-    )
+    service.sync_ledgers(administratie_id=administratie_id, client=FakeRlzClient({"Ledgers": [blijvend, verdwijnend]}))
     rijen = _grootboek_rijen(admin_engine, administratie_id)
     assert len(rijen) == 2
     assert all(verdwenen_op is None for *_, verdwenen_op in rijen)
@@ -105,9 +103,7 @@ def test_sync_projects_slaat_naam_en_actief_vlag_op(administratie_id: uuid.UUID,
 
     with admin_engine.connect() as conn:
         naam, is_actief = conn.execute(
-            text(
-                "SELECT naam, is_actief FROM boekhouding.project_cache WHERE administratie_id = :aid AND id = :id"
-            ),
+            text("SELECT naam, is_actief FROM boekhouding.project_cache WHERE administratie_id = :aid AND id = :id"),
             {"aid": administratie_id, "id": project_id},
         ).one()
     assert naam == "26001 Rotterdam (Kempen)"
@@ -122,9 +118,7 @@ def test_sync_taxrates_valt_terug_op_brondata(administratie_id: uuid.UUID, admin
 
     with admin_engine.connect() as conn:
         naam, brondata = conn.execute(
-            text(
-                "SELECT naam, brondata FROM boekhouding.taxrate_cache WHERE administratie_id = :aid AND id = :id"
-            ),
+            text("SELECT naam, brondata FROM boekhouding.taxrate_cache WHERE administratie_id = :aid AND id = :id"),
             {"aid": administratie_id, "id": taxrate_id},
         ).one()
     assert naam == "NL Hoog 21%"
@@ -158,3 +152,55 @@ def test_sync_onbekende_administratie_geeft_syncfout() -> None:
     faalt zodra de administratie niet bestaat (vóórdat er ooit een echte RlzClient wordt geopend)."""
     with pytest.raises(service.SyncFout, match="Onbekende administratie"):
         service.sync_ledgers(administratie_id=uuid.uuid4())
+
+
+class TestLeeslijstenVoorControlescherm:
+    """CLAUDE.md-taak 2.1: de GB-/btw-/crediteuren-/projectcomboboxen lezen uit deze
+    sync-caches — totaalrekeningen en verdwenen rijen horen niet in de keuzelijst."""
+
+    def test_grootboek_filtert_totaalrekening_en_verdwenen(
+        self, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        zichtbaar = _ledger_record(code="4000", naam="Zichtbaar")
+        totaal = _ledger_record(code="4999", naam="Totaalrekening")
+        totaal["IsTotalAccount"] = True
+        verdwenen = _ledger_record(code="4500", naam="Verdwenen")
+        service.sync_ledgers(
+            administratie_id=administratie_id, client=FakeRlzClient({"Ledgers": [zichtbaar, totaal, verdwenen]})
+        )
+        # Tweede sync zonder 'verdwenen' -> verdwenen_uit_bron_op wordt gezet.
+        service.sync_ledgers(administratie_id=administratie_id, client=FakeRlzClient({"Ledgers": [zichtbaar, totaal]}))
+
+        rekeningen = service.lijst_grootboek(administratie_id=administratie_id)
+        assert [r.code for r in rekeningen] == ["4000"]
+
+    def test_taxrates_filtert_verdwenen(self, administratie_id: uuid.UUID) -> None:
+        blijvend_id, verdwijnend_id = uuid.uuid4(), uuid.uuid4()
+        service.sync_taxrates(
+            administratie_id=administratie_id,
+            client=FakeRlzClient(
+                {"TaxRates": [{"id": str(blijvend_id), "Name": "21%"}, {"id": str(verdwijnend_id), "Name": "9%"}]}
+            ),
+        )
+        service.sync_taxrates(
+            administratie_id=administratie_id,
+            client=FakeRlzClient({"TaxRates": [{"id": str(blijvend_id), "Name": "21%"}]}),
+        )
+
+        codes = service.lijst_taxrates(administratie_id=administratie_id)
+        assert [c.id for c in codes] == [blijvend_id]
+
+    def test_vendors_en_projecten_geven_alleen_niet_verdwenen_terug(self, administratie_id: uuid.UUID) -> None:
+        vendor_id = uuid.uuid4()
+        service.sync_vendors(
+            administratie_id=administratie_id,
+            client=FakeRlzClient({"Vendors": [{"id": str(vendor_id), "Name": "Leverancier X", "IsArchived": False}]}),
+        )
+        project_id = uuid.uuid4()
+        service.sync_projects(
+            administratie_id=administratie_id,
+            client=FakeRlzClient({"Projects": [{"id": str(project_id), "Name": "Project Y", "IsActive": True}]}),
+        )
+
+        assert [v.id for v in service.lijst_vendors(administratie_id=administratie_id)] == [vendor_id]
+        assert [p.id for p in service.lijst_projects(administratie_id=administratie_id)] == [project_id]

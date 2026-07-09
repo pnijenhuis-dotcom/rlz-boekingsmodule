@@ -64,3 +64,46 @@ def test_sync_trigger_zonder_credentials_geeft_503(
         f"/administraties/{administratie_id}/sync/ledgers", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
     )
     assert resp.status_code == 503
+
+
+# --- Leeslijsten voor het controlescherm (CLAUDE.md-taak 2.1) ------------------------------
+
+
+def test_grootboek_lijst_geeft_gesyncte_rekeningen(
+    monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    ledger = {
+        "id": str(uuid.uuid4()),
+        "AccountNumber": "4699",
+        "Description": "Diverse algemene kosten",
+        "AccountType": 2,
+        "IsTotalAccount": False,
+    }
+    monkeypatch.setattr(
+        "app.sync.service.client_voor_rlz_admin_id", lambda rlz_admin_id: FakeRlzClient({"Ledgers": [ledger]})
+    )
+    client.post(
+        f"/administraties/{administratie_id}/sync/ledgers", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+
+    resp = client.get(
+        f"/administraties/{administratie_id}/grootboek", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 200, resp.text
+    codes = [r["code"] for r in resp.json()["rekeningen"]]
+    assert codes == ["4699"]
+
+
+def test_crediteuren_lijst_zonder_scope_faalt(gescoopte_gebruiker: uuid.UUID) -> None:
+    resp = client.get(
+        f"/administraties/{uuid.uuid4()}/crediteuren", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    )
+    assert resp.status_code == 403
+
+
+def test_lege_lijsten_zijn_gewoon_leeg_geen_fout(gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
+    headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+    assert client.get(f"/administraties/{administratie_id}/grootboek", headers=headers).json()["rekeningen"] == []
+    assert client.get(f"/administraties/{administratie_id}/btw-codes", headers=headers).json()["btw_codes"] == []
+    assert client.get(f"/administraties/{administratie_id}/crediteuren", headers=headers).json()["crediteuren"] == []
+    assert client.get(f"/administraties/{administratie_id}/projecten", headers=headers).json()["projecten"] == []

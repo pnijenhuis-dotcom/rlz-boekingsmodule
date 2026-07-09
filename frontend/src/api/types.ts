@@ -60,3 +60,84 @@ export interface UitnodigingAccepterenResponseDto {
   otpauth_uri: string
   secret: string
 }
+
+export interface GrootboekOptieDto {
+  ledger_id: string
+  code: string
+  naam: string
+  soort: number
+}
+
+export interface GrootboekLijstDto {
+  rekeningen: GrootboekOptieDto[]
+}
+
+export interface TaxrateOptieDto {
+  id: string
+  naam: string | null
+}
+
+export interface TaxrateLijstDto {
+  btw_codes: TaxrateOptieDto[]
+}
+
+export interface VendorOptieDto {
+  id: string
+  naam: string | null
+}
+
+export interface VendorLijstDto {
+  crediteuren: VendorOptieDto[]
+}
+
+export interface ProjectOptieDto {
+  id: string
+  naam: string | null
+}
+
+export interface ProjectLijstDto {
+  projecten: ProjectOptieDto[]
+}
+
+export interface BoekvoorstelRegelDto {
+  ledger_id: string | null
+  taxrate_id: string | null
+  project_id: string | null
+  netto_bedrag: string | null
+  btw_bedrag: string | null
+  omschrijving: string | null
+}
+
+export interface BoekvoorstelDto {
+  document_id: string
+  vendor_id: string | null
+  referentie: string | null
+  factuurdatum: string | null
+  totaalbedrag: string | null
+  rlz_boekstuknummer: string | null
+  opgeslagen: boolean
+  regels: BoekvoorstelRegelDto[]
+}
+
+export interface CheckResultaatDto {
+  naam: string
+  ok: boolean
+  melding: string
+}
+
+export interface CheckRapportDto {
+  geblokkeerd: boolean
+  resultaten: CheckResultaatDto[]
+}
+
+export interface BoekvoorstelMetChecksDto {
+  boekvoorstel: BoekvoorstelDto
+  checks: CheckRapportDto
+}
+
+export interface BoekenResponseDto {
+  document_id: string
+  status: string
+  rlz_document_id: string
+  rlz_boekstuknummer: string | null
+}

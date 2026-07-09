@@ -158,6 +158,16 @@ body.dark .chip.geboekt {
   color: var(--purple);
 }
 
+.chip.ok {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.chip.blokkerend {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
 .upload {
   border: 2px dashed #cdd3de;
   border-radius: var(--radius);

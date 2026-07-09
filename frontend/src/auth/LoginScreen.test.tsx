@@ -32,4 +32,23 @@ describe('LoginScreen', () => {
     expect(screen.getByLabelText('TOTP-code')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Inloggen' })).toBeInTheDocument()
   })
+
+  it('toont een nette melding i.p.v. de kale proxy-fout als de backend onbereikbaar is', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(null, { status: 502, statusText: 'Bad Gateway' }))),
+    )
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <LoginScreen />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    const melding = await screen.findByText(/backend is momenteel niet bereikbaar/i)
+    expect(melding).toBeInTheDocument()
+    expect(screen.queryByText('Bad Gateway')).not.toBeInTheDocument()
+  })
 })

@@ -200,6 +200,17 @@ class RlzClient:
         }
         return self.put(f"ManualJournals/{journal_id}", body, params={"autoCorrect": str(auto_correct).lower()})
 
+    def upload_bijlage(
+        self, entity_path: str, entity_id: uuid.UUID, *, upload_id: uuid.UUID, filename: str, content_base64: str
+    ) -> httpx.Response:
+        """PDF/XML-bijlage bij een document (bv. `PurchaseInvoices/{id}`). Geverifieerd
+        (verkenning/api-verkenning.md "Boekstuknummer, factuurdatum en /Uploads"): RLZ wil hier
+        expliciet PUT, geen POST (405 "Must use PUT instead of POST") — zelfde client-GUID-vorm als
+        de documenten zelf. `upload_id` is de eigen client-GUID voor de bijlage (apart van
+        `entity_id`, dat het document zelf is)."""
+        body = {"id": str(upload_id), "FileName": filename, "Content": content_base64}
+        return self.put(f"{entity_path}/{entity_id}/Uploads/{upload_id}", body)
+
     def book_purchase_invoice(self, invoice_id: uuid.UUID) -> httpx.Response:
         return self.post_action(f"PurchaseInvoices/{invoice_id}", ACTION_BOOK)
 

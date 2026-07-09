@@ -35,3 +35,49 @@ def sync_ledgers_trigger(
     return schemas.SyncTellingResponse(
         aangemaakt=telling.aangemaakt, bijgewerkt=telling.bijgewerkt, verdwenen=telling.verdwenen
     )
+
+
+@router.get("/administraties/{administratie_id}/grootboek", response_model=schemas.GrootboekLijstResponse)
+def grootboek_lijst(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.GrootboekLijstResponse:
+    """Voedt de GB-combobox in het controlescherm (CLAUDE.md-taak 2.1) — uit de gedeelde
+    `platform.grootboekrekening`-sync, nooit rechtstreeks van RLZ (lezen gaat altijd via de
+    sync-cache, koppelcontract §2c)."""
+    rekeningen = service.lijst_grootboek(administratie_id=administratie_id)
+    return schemas.GrootboekLijstResponse(
+        rekeningen=[
+            schemas.GrootboekOptieResponse(ledger_id=r.ledger_id, code=r.code, naam=r.naam, soort=r.soort)
+            for r in rekeningen
+        ]
+    )
+
+
+@router.get("/administraties/{administratie_id}/btw-codes", response_model=schemas.TaxrateLijstResponse)
+def taxrate_lijst(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.TaxrateLijstResponse:
+    codes = service.lijst_taxrates(administratie_id=administratie_id)
+    return schemas.TaxrateLijstResponse(
+        btw_codes=[schemas.TaxrateOptieResponse(id=t.id, naam=t.naam) for t in codes]
+    )
+
+
+@router.get("/administraties/{administratie_id}/crediteuren", response_model=schemas.VendorLijstResponse)
+def vendor_lijst(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.VendorLijstResponse:
+    vendors = service.lijst_vendors(administratie_id=administratie_id)
+    return schemas.VendorLijstResponse(
+        crediteuren=[schemas.VendorOptieResponse(id=v.id, naam=v.naam) for v in vendors]
+    )
+
+
+@router.get("/administraties/{administratie_id}/projecten", response_model=schemas.ProjectLijstResponse)
+def project_lijst(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.ProjectLijstResponse:
+    projecten = service.lijst_projects(administratie_id=administratie_id)
+    return schemas.ProjectLijstResponse(
+        projecten=[schemas.ProjectOptieResponse(id=p.id, naam=p.naam) for p in projecten]
+    )

@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ApiError, apiPostJson } from '../api/client'
+import { ApiError, apiPostJson, BACKEND_ONBEREIKBAAR_MELDING } from '../api/client'
 import type { TokenPaarResponseDto } from '../api/types'
 import { useAuth } from './AuthContext'
 
 export function LoginScreen() {
-  const { inloggen } = useAuth()
+  const { inloggen, backendOnbereikbaar } = useAuth()
   const navigate = useNavigate()
   const [eMail, setEMail] = useState('')
   const [wachtwoord, setWachtwoord] = useState('')
@@ -37,6 +37,7 @@ export function LoginScreen() {
       <div className="panel auth-card">
         <h1>Inloggen</h1>
         <div className="sub">RLZ Boekingsmodule</div>
+        {backendOnbereikbaar && !fout && <div className="fout">{BACKEND_ONBEREIKBAAR_MELDING}</div>}
         {fout && <div className="fout">{fout}</div>}
         <form onSubmit={(e) => void inzenden(e)}>
           <div className="row">

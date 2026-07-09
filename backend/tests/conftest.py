@@ -90,11 +90,22 @@ def _service_layer_gebruikt_testdatabase() -> Generator[None, None, None]:
 @pytest.fixture(autouse=True)
 def _clean_tables() -> Generator[None, None, None]:
     """Leegt de tabellen vóór elke test — de migratie zelf draait maar één keer per sessie
-    (`_migrated_test_database`), dus zonder dit lekt data van de ene test naar de volgende."""
+    (`_migrated_test_database`), dus zonder dit lekt data van de ene test naar de volgende.
+
+    `platform.gebruiker CASCADE` vaagt ook `platform.boeken_instelling` weg (de kill-switch-
+    singleton heeft een nullable FK naar gebruiker via `gewijzigd_door`) — die rij hoort echter
+    net als een migratie-seed altijd te bestaan (migratie 0008 zet 'm precies één keer), dus wordt
+    'm hier hersteld i.p.v. per boeken-test opnieuw te moeten aanmaken."""
     engine = create_engine(settings.test_database_url)
     with engine.begin() as conn:
         conn.execute(
             text("TRUNCATE TABLE platform.audit_event, platform.administratie, platform.gebruiker CASCADE")
+        )
+        conn.execute(
+            text(
+                "INSERT INTO platform.boeken_instelling (singleton, globaal_ingeschakeld) VALUES (true, true) "
+                "ON CONFLICT (singleton) DO NOTHING"
+            )
         )
     engine.dispose()
     yield

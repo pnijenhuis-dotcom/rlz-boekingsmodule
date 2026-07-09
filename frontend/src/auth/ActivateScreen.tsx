@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ApiError, apiPostJson } from '../api/client'
+import { QRCodeSVG } from 'qrcode.react'
+import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { TokenPaarResponseDto, UitnodigingAccepterenResponseDto } from '../api/types'
 import { useAuth } from './AuthContext'
 
@@ -61,22 +62,15 @@ export function ActivateScreen() {
     setFout(null)
     setBezig(true)
     try {
-      const resp = await fetch('/auth/totp/bevestigen', {
+      const paar = await apiJson<TokenPaarResponseDto>('/auth/totp/bevestigen', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${enrollment.totp_setup_token}` },
         body: JSON.stringify({ code }),
       })
-      if (!resp.ok) {
-        const body: unknown = await resp.json().catch(() => null)
-        const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null
-        throw new Error(typeof detail === 'string' ? detail : 'TOTP-bevestiging mislukt.')
-      }
-      const paar = (await resp.json()) as TokenPaarResponseDto
       inloggen(paar)
       navigate('/')
     } catch (err) {
-      setFout(err instanceof Error ? err.message : 'Onbekende fout.')
+      setFout(err instanceof ApiError ? err.message : 'TOTP-bevestiging mislukt.')
     } finally {
       setBezig(false)
     }
@@ -124,10 +118,20 @@ export function ActivateScreen() {
           <form onSubmit={(e) => void totpInzenden(e)}>
             <p className="hint" style={{ marginTop: 0 }}>
               Voeg dit account toe aan een authenticator-app (bv. Google Authenticator, 1Password) — scan de
-              onderstaande sleutel handmatig in, of tik op de link op hetzelfde toestel.
+              onderstaande QR-code, of gebruik de geheime sleutel als scannen niet lukt.
             </p>
+            <div className="row" style={{ alignItems: 'center' }}>
+              <span id="activeer-qr-label">QR-code voor de authenticator-app</span>
+              <div
+                role="img"
+                aria-labelledby="activeer-qr-label"
+                style={{ background: '#fff', padding: 12, borderRadius: 8, width: 'fit-content' }}
+              >
+                <QRCodeSVG value={enrollment.otpauth_uri} size={180} />
+              </div>
+            </div>
             <div className="row">
-              <span id="activeer-secret-label">Geheime sleutel</span>
+              <span id="activeer-secret-label">Geheime sleutel (terugval als scannen niet lukt)</span>
               <div className="secret-blok" aria-labelledby="activeer-secret-label">
                 {formatteerSecret(enrollment.secret)}
               </div>

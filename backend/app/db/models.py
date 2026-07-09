@@ -56,7 +56,10 @@ _GEBRUIKER_STATUS_ENUM = ENUM(
 
 
 class Administratie(Base):
-    """RLZ-administratie (tenant-scope). Vastgoed- en kantoorklant-administraties gemengd."""
+    """RLZ-administratie (tenant-scope). Vastgoed- en kantoorklant-administraties gemengd.
+    `boeken_ingeschakeld` is de per-administratie boeken-failsafe (migratie 0008, CLAUDE.md
+    "Automatisch boeken = opt-in"): default UIT, alleen een Beheerder kan 'm aanzetten. Boeken
+    is bovendien ook nog onderhevig aan de globale kill switch (zie BoekenInstelling)."""
 
     __tablename__ = "administratie"
 
@@ -64,6 +67,7 @@ class Administratie(Base):
     naam: Mapped[str]
     rlz_admin_id: Mapped[str] = mapped_column(unique=True)
     actief: Mapped[bool] = mapped_column(default=True)
+    boeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
@@ -220,6 +224,23 @@ class RlzRechtenProbe(Base):
     rapport: Mapped[dict] = mapped_column(JSONB)
     uitgevoerd_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     uitgevoerd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class BoekenInstelling(Base):
+    """Globale boeken-kill switch (migratie 0008, CLAUDE.md-failsafe (a)): Beheerder-only,
+    singleton (precies één rij, afgedwongen door de CHECK op `singleton`). Werkt AANVULLEND op
+    Administratie.boeken_ingeschakeld — boeken kan alleen als BEIDE aan staan; deze schakelaar is
+    de snelle, platformbrede noodstop die niet per administratie afzonderlijk omgezet hoeft te
+    worden."""
+
+    __tablename__ = "boeken_instelling"
+
+    singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
+    globaal_ingeschakeld: Mapped[bool] = mapped_column(default=True)
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class AuditEvent(Base):

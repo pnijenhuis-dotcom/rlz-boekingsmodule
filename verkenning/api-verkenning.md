@@ -168,6 +168,26 @@ principe 5, CLAUDE.md):
 gedrag van actie 138, of ontbreekt er server-side configuratie/rechten om het functioneel te
 maken?
 
+## Boekstuknummer, factuurdatum en `/Uploads` (geverifieerd 9 juli 2026, boekflow)
+
+PoC tegen de RLZ-test-administratie (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), testdocument
+`Reference` beginnend met `TEST-POC-`, meteen na het experiment gestorneerd (actie 19) —
+consistent met "niets hard verwijderen in externe systemen".
+
+- **Factuurdatum**: veld `Date` op `PurchaseInvoices` (ISO-datetime, bv. `"2026-07-01T00:00:00"`)
+  — meegegeven bij de `PUT` en ongewijzigd terugleesbaar. Niet te verwarren met `BookDate`
+  (automatisch de dag van boeken) of `DueDate` (afgeleid, betaaltermijn).
+- **Boekstuknummer**: veld `ReceiptNumber` (bv. `"RLZ-04-00002001"`) — wordt al bij de `PUT`
+  (concept, Status 1) toegekend, niet pas bij boeken (Status 2); blijft ongewijzigd na actie 17.
+  Dit is het nummer dat we als "RLZ-boekstuknummer" teruglaten zien in de werkvoorraad.
+- **`/Uploads` (PDF-bijlage), exacte vorm**: **`PUT` — niet `POST`** (RLZ geeft `405 "Must use PUT
+  instead of POST"` op een `POST`). Client-GUID-vorm, net als de documenten zelf:
+  `PUT {adminId}/PurchaseInvoices/{invoiceId}/Uploads/{uploadId}` met body
+  `{"id": "<uploadId>", "FileName": "<naam.pdf>", "Content": "<base64>"}` → `204`. Terugleesbaar
+  via `GET .../Uploads/{uploadId}`: `{id, CreateDate, FileName, Token, LogicalFileType,
+  PhysicalFileType}` — `Content` komt niet terug in de GET (verwacht, geen bijlage-inhoud in een
+  metadata-response). Geïmplementeerd als `RlzClient.upload_bijlage()`.
+
 Achtergebleven testdocumenten uit dit experiment (nooit verwijderd, alle concept ná stornering):
 vendor `f56b1c00-856e-41d2-a400-894e090f1251`; facturen A (`fe46f0d6-9b34-406d-8cd4-f55e603c2e26`,
 `TEST-DUP-A`, geboekt geweest + gestorneerd), B (`14e1b412-d367-4ad1-bc08-ff5537ae10bf`,

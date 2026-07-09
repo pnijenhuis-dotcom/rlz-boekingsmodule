@@ -47,5 +47,16 @@ class Settings(BaseSettings):
     # httpOnly-cookiebescherming ondermijnen als het wel kon).
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
+    # Webhook-stub "factuur geboekt" (koppelcontract §3, app/documenten/webhook.py): HMAC-secret
+    # voor het ondertekenen van uitgaande payloads. Aflevering zelf staat nog uit (fase-vervolg),
+    # maar de payload wordt al getekend zodat het schema/de handtekeningvorm nu al klopt. Nooit
+    # een fallback buiten dev — zelfde bewaking als jwt_secret/totp_master_key_b64.
+    webhook_hmac_secret: str | None = None
+
+    # Boeken-failsafe (c), volumerem (CLAUDE.md: "config, default laag"): max. aantal boekingen
+    # per administratie per kalenderdag. Bewust laag — dit is een noodrem tegen een runaway-bug
+    # of verkeerd geconfigureerde automatische boeking, geen normale-bedrijfsvoering-limiet.
+    max_boekingen_per_dag_per_administratie: int = 20
+
 
 settings = Settings()
