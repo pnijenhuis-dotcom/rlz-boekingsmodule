@@ -11,6 +11,29 @@ router = APIRouter(tags=["beheer"])
 
 
 @router.get(
+    "/instellingen/administraties",
+    response_model=schemas.AdministratieInstellingenLijstDto,
+)
+def administratie_instellingen_lijst(
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.AdministratieInstellingenLijstDto:
+    """Instellingen-scherm (design-pass taak 3): alle administraties met beide schakelaars in
+    één response — Beheerder-only, net als de losse per-administratie/globale endpoints."""
+    overzicht = service.overzicht_administratie_instellingen()
+    return schemas.AdministratieInstellingenLijstDto(
+        administraties=[
+            schemas.AdministratieInstellingenDto(
+                id=r.administratie_id,
+                naam=r.naam,
+                boeken_ingeschakeld=r.boeken_ingeschakeld,
+                project_verplicht=r.project_verplicht,
+            )
+            for r in overzicht
+        ]
+    )
+
+
+@router.get(
     "/administraties/{administratie_id}/project-instelling",
     response_model=schemas.ProjectVerplichtDto,
 )

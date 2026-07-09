@@ -15,6 +15,11 @@ export function Shell() {
           <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Werkvoorraad
           </NavLink>
+          {rol === 'beheerder' && (
+            <NavLink to="/instellingen" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+              Instellingen
+            </NavLink>
+          )}
         </div>
         <div className="userbox">
           <b>{rol ?? 'Ingelogd'}</b>

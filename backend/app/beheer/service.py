@@ -76,6 +76,32 @@ def overzicht_boeken_status() -> list[AdministratieBoekenStatus]:
         ]
 
 
+@dataclass(frozen=True)
+class AdministratieInstellingen:
+    administratie_id: uuid.UUID
+    naam: str
+    boeken_ingeschakeld: bool
+    project_verplicht: bool
+
+
+def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
+    """Voor het instellingen-scherm (design-pass taak 3): beide schakelaars per administratie in
+    één keer, i.p.v. de losse per-administratie GET-endpoints hierboven N keer aan te roepen.
+    Los van `overzicht_boeken_status()` (CLI, alleen boeken_ingeschakeld) gehouden — dat commando
+    hoeft niet mee te veranderen als deze lijst een derde kolom krijgt."""
+    with scoped_session(None) as session:
+        rijen = session.scalars(select(Administratie).order_by(Administratie.naam))
+        return [
+            AdministratieInstellingen(
+                administratie_id=r.id,
+                naam=r.naam,
+                boeken_ingeschakeld=r.boeken_ingeschakeld,
+                project_verplicht=r.project_verplicht,
+            )
+            for r in rijen
+        ]
+
+
 def haal_project_verplicht_op(*, administratie_id: uuid.UUID) -> bool:
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)

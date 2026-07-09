@@ -1,5 +1,7 @@
 import logging
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +11,8 @@ from app.auth.router import router as auth_router
 from app.beheer.router import router as beheer_router
 from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
+from app.db import session as db_session
+from app.db.migratie_guard import controleer_migratie_versie
 from app.documenten.router import router as documenten_router
 from app.sync.router import router as sync_router
 
@@ -42,7 +46,20 @@ def _actie_omschrijving(request: Request) -> str:
     return "het verwerken van je aanvraag"
 
 
-app = FastAPI(title="RLZ Boekingsmodule")
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Migratie-guard (CLAUDE.md-taak "geen raadsel-500 door een gemiste migratie meer"): stopt
+    de startup hard (fail-fast, default) of logt alleen een waarschuwing (settings.migratie_
+    guard_fail_fast=False) als de database niet op de laatste migratie uit de repo staat. Draait
+    vóór de eerste request wordt geaccepteerd — uvicorn start dan niet op bij een fail-fast-fout.
+    Verwijst naar `db_session.engine` (module-attribuut, niet een losse import) zodat dit ook de
+    testdatabase-engine ziet als tests/conftest.py::_service_layer_gebruikt_testdatabase 'm heeft
+    vervangen — zelfde reden als waarom scoped_session() dat ook nooit als losse import doet."""
+    controleer_migratie_versie(db_session.engine, fail_fast=settings.migratie_guard_fail_fast)
+    yield
+
+
+app = FastAPI(title="RLZ Boekingsmodule", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,

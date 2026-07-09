@@ -159,3 +159,18 @@ export interface BoekenResponseDto {
 export interface ProjectVerplichtDto {
   verplicht: boolean
 }
+
+export interface BoekenIngeschakeldDto {
+  ingeschakeld: boolean
+}
+
+export interface AdministratieInstellingenDto {
+  id: string
+  naam: string
+  boeken_ingeschakeld: boolean
+  project_verplicht: boolean
+}
+
+export interface AdministratieInstellingenLijstDto {
+  administraties: AdministratieInstellingenDto[]
+}

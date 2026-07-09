@@ -3,6 +3,7 @@ import { ActivateScreen } from './auth/ActivateScreen'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { LoginScreen } from './auth/LoginScreen'
 import { DocumentDetailScreen } from './document/DocumentDetailScreen'
+import { InstellingenScreen } from './instellingen/InstellingenScreen'
 import { Shell } from './shell/Shell'
 import { WerkvoorraadScreen } from './werkvoorraad/WerkvoorraadScreen'
 
@@ -25,6 +26,7 @@ function BeschermdeRoutes() {
       <Route element={<Shell />}>
         <Route path="/" element={<WerkvoorraadScreen />} />
         <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
+        <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

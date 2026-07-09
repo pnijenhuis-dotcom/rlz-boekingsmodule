@@ -58,5 +58,12 @@ class Settings(BaseSettings):
     # of verkeerd geconfigureerde automatische boeking, geen normale-bedrijfsvoering-limiet.
     max_boekingen_per_dag_per_administratie: int = 20
 
+    # Migratie-guard bij startup (app/db/migratie_guard.py): default fail-fast, zodat een gemiste
+    # `make migrate` nooit meer een raadsel-500 wordt maar een duidelijke weigering om te starten.
+    # "waarschuwen" is een bewuste uitzondering voor latere productie-scenario's (bv. een korte
+    # periode tijdens een gefaseerde rollout waarin oude en nieuwe containers naast elkaar draaien
+    # tegen hetzelfde schema) — niet de default, alleen expliciet aanzetten.
+    migratie_guard_fail_fast: bool = True
+
 
 settings = Settings()

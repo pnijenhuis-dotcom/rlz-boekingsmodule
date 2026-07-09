@@ -14,6 +14,26 @@ def _bearer(gebruiker_id: uuid.UUID, *, rol: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(gebruiker_id, rol=rol)}"}
 
 
+def test_niet_beheerder_kan_instellingen_lijst_niet_zien(gescoopte_gebruiker: uuid.UUID) -> None:
+    resp = client.get("/instellingen/administraties", headers=_bearer(gescoopte_gebruiker, rol="boekhouding"))
+    assert resp.status_code == 403
+
+
+def test_beheerder_krijgt_instellingen_lijst_met_beide_schakelaars(
+    beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    headers = _bearer(beheerder_id, rol="beheerder")
+    client.put(f"/administraties/{administratie_id}/boeken-instelling", headers=headers, json={"ingeschakeld": True})
+    client.put(f"/administraties/{administratie_id}/project-instelling", headers=headers, json={"verplicht": True})
+
+    resp = client.get("/instellingen/administraties", headers=headers)
+    assert resp.status_code == 200, resp.text
+    rijen = resp.json()["administraties"]
+    rij = next(r for r in rijen if r["id"] == str(administratie_id))
+    assert rij["boeken_ingeschakeld"] is True
+    assert rij["project_verplicht"] is True
+
+
 def test_niet_beheerder_kan_toggle_niet_zien(gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
     resp = client.get(
         f"/administraties/{administratie_id}/boeken-instelling", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
