@@ -184,8 +184,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   bestand, het bouwplan of het koppelcontract bijgewerkt moeten worden — inconsistenties tussen
   afspraken zelf ook signaleren.
 
-- Peter is opdrachtgever én vakinhoudelijk scherp: wees proactief, benoem zwakke punten direct,
-  onderbouw keuzes, vind gaten vóór hij ze vindt. Geen lege complimenten.
+- **Werkwijze/rol/samenwerking met Peter: zie `../Platform/WERKWIJZE.md` (canoniek, bindend, lees
+  bij sessiestart — besluit 0014).** Kort: denk als de beste developer/front-end-specialist/
+  architect/analist/accountant ineen; proactief en kritisch (geen lege complimenten, onderbouw,
+  zeg het als Peter iets mist); bronnen eerst; vind gaten vóór hij ze vindt. Volledige, actuele
+  versie staat uitsluitend in WERKWIJZE.md.
 - Nederlands in UI en documentatie; code/comments Engels.
 - Tests verplicht op geldlogica (mapping, totalen, idempotentie, statusmachine) vóór UI-polish.
 - Elke schrijfactie naar RLZ eerst tegen een testadministratie of met TEST-referentie + akkoord.
