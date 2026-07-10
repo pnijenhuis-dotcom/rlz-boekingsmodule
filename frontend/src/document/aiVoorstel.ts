@@ -16,6 +16,9 @@ export interface AiControle {
   onparseerbaar: string[]
   lage_zekerheid: string[]
   bsn_verwijderd: number
+  /** True = de regelset is mogelijk incompleet (chunking kreeg het niet aantoonbaar compleet) —
+   * bij projectadministraties komt zo'n voorstel er überhaupt niet (handmatig_afmaken). */
+  onvolledig: boolean
 }
 
 export interface AiVoorstel {
@@ -31,7 +34,8 @@ export interface AiVoorstel {
   regelaantal: number
   regels: AiRegelVoorstel[]
   zekerheid: Record<string, number>
-  regel_zekerheid: Record<string, number>[]
+  /** Eén zekerheidsscore per regel (compact schema, 2026-07-10). */
+  regel_zekerheid: number[]
   zekerheid_drempel: number
   vendor_suggestie: { vendor_id: string; match: 'exact' | 'fuzzy' } | null
   controle: AiControle

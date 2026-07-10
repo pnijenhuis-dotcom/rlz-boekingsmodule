@@ -23,6 +23,7 @@ _NIET_GEBOEKTE_STATUSSEN = frozenset(
         DocumentStatus.AFGEWEZEN,
         DocumentStatus.BOEKEN_MISLUKT,
         DocumentStatus.NIET_TOEGEWEZEN,
+        DocumentStatus.HANDMATIG_AFMAKEN,
     }
 )
 
@@ -36,7 +37,15 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
         }
     ),
     DocumentStatus.EXTRACTIE_BEZIG: frozenset(
-        {DocumentStatus.TE_CONTROLEREN, DocumentStatus.VRAAG_OPEN, DocumentStatus.AFGEWEZEN, DocumentStatus.VERWIJDERD}
+        {
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.VRAAG_OPEN,
+            DocumentStatus.AFGEWEZEN,
+            DocumentStatus.VERWIJDERD,
+            # Waarborg projectadministratie (migratie 0015): regelset niet aantoonbaar compleet
+            # bij projectplicht — blokkerend, geen (totalen-only) voorstel.
+            DocumentStatus.HANDMATIG_AFMAKEN,
+        }
     ),
     DocumentStatus.TE_CONTROLEREN: frozenset(
         {
@@ -66,6 +75,18 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     ),
     DocumentStatus.BOEKEN_MISLUKT: frozenset(
         {DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.TE_CONTROLEREN, DocumentStatus.VERWIJDERD}
+    ),
+    # Handmatig afmaken gedraagt zich verder als te_controleren (de controleur vult álles zelf
+    # in; de harde checks — project verplicht per regel, regelsom — blijven de poort naar
+    # boeken), plus de weg terug naar extractie_bezig voor een nieuwe extractiepoging.
+    DocumentStatus.HANDMATIG_AFMAKEN: frozenset(
+        {
+            DocumentStatus.EXTRACTIE_BEZIG,
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            DocumentStatus.VRAAG_OPEN,
+            DocumentStatus.AFGEWEZEN,
+            DocumentStatus.VERWIJDERD,
+        }
     ),
     DocumentStatus.AFGEWEZEN: frozenset({DocumentStatus.VERWIJDERD}),
     DocumentStatus.GEBOEKT: frozenset(),

@@ -28,14 +28,17 @@ def _regel(
     zekerheid: float = 0.95,
 ) -> AiRegel:
     return AiRegel(
-        omschrijving=_veld(omschrijving, zekerheid),
-        netto_bedrag=_veld(netto, zekerheid),
-        btw_bedrag=_veld(btw, zekerheid),
-        hoeveelheid=_veld(hoeveelheid, zekerheid),
+        omschrijving=omschrijving,
+        netto_bedrag=netto,
+        btw_bedrag=btw,
+        hoeveelheid=hoeveelheid,
+        zekerheid=zekerheid,
     )
 
 
-def _extractie(kop_overrides: dict | None = None, regels: list[AiRegel] | None = None) -> AiFactuurExtractie:
+def _extractie(
+    kop_overrides: dict | None = None, regels: list[AiRegel] | None = None, volledig: bool = True
+) -> AiFactuurExtractie:
     kop = {
         "leverancier_naam": _veld("Bouwmaat Nederland B.V."),
         "factuurnummer": _veld("F-2026-001"),
@@ -47,7 +50,9 @@ def _extractie(kop_overrides: dict | None = None, regels: list[AiRegel] | None =
         "btw_bedrag": _veld("21.00"),
     }
     kop.update(kop_overrides or {})
-    return AiFactuurExtractie(kop=kop, regels=regels if regels is not None else [_regel()], bsn_verwijderd=0)
+    return AiFactuurExtractie(
+        kop=kop, regels=regels if regels is not None else [_regel()], bsn_verwijderd=0, volledig=volledig
+    )
 
 
 class TestParseBedrag:
@@ -155,10 +160,12 @@ class TestBouwVeldvoorstel:
         assert voorstel["vendor_suggestie"] == {"vendor_id": str(vendor.id), "match": "exact"}
         assert voorstel["regels"][0]["taxrate_id"] == str(taxrate.id)
         assert voorstel["zekerheid"]["factuurnummer"] == 0.95
+        assert voorstel["regel_zekerheid"] == [0.95]
         assert voorstel["zekerheid_drempel"] == 0.8
         assert voorstel["controle"]["regelsom_wijkt_af"] is False
         assert voorstel["controle"]["onparseerbaar"] == []
         assert voorstel["controle"]["lage_zekerheid"] == []
+        assert voorstel["controle"]["onvolledig"] is False
 
     def test_onparseerbaar_veld_blijft_leeg_en_wordt_benoemd(self) -> None:
         extractie = _extractie({"totaal_incl": _veld("honderd euro")})
@@ -185,6 +192,19 @@ class TestBouwVeldvoorstel:
         assert voorstel["controle"]["regelsom"] is None
         assert voorstel["controle"]["regelsom_wijkt_af"] is None
         assert "netto_bedrag (regel 1)" in voorstel["controle"]["onparseerbaar"]
+
+    def test_lage_regelzekerheid_wordt_gemarkeerd(self) -> None:
+        extractie = _extractie(regels=[_regel(zekerheid=0.95), _regel("Vage regel", zekerheid=0.4)])
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=[], zekerheid_drempel=0.8)
+        assert voorstel["regel_zekerheid"] == [0.95, 0.4]
+        assert "regel 2" in voorstel["controle"]["lage_zekerheid"]
+        assert "regel 1" not in voorstel["controle"]["lage_zekerheid"]
+
+    def test_onvolledige_extractie_wordt_gesignaleerd(self) -> None:
+        # Alleen relevant voor niet-projectplicht-administraties: bij projectplicht komt dit
+        # voorstel er überhaupt niet (documenten/service blokkeert naar handmatig_afmaken).
+        voorstel = bouw_veldvoorstel(_extractie(volledig=False), vendors=[], taxrates=[], zekerheid_drempel=0.8)
+        assert voorstel["controle"]["onvolledig"] is True
 
     def test_grootboek_wordt_nooit_gesuggereerd(self) -> None:
         # Boekingsgeheugen is sessie 2 — tot die tijd geen enkele GB-suggestie (geen gok).

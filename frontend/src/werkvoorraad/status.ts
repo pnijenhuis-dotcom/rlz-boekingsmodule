@@ -9,6 +9,7 @@ export const STATUS_LABELS: Record<string, string> = {
   afgewezen: 'Afgewezen',
   boeken_mislukt: 'Boeken mislukt',
   niet_toegewezen: 'Niet toegewezen',
+  handmatig_afmaken: 'Handmatig afmaken',
   verwijderd: 'Verwijderd',
 }
 
@@ -22,6 +23,7 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   afgewezen: 'vraag',
   boeken_mislukt: 'vraag',
   niet_toegewezen: 'vraag',
+  handmatig_afmaken: 'vraag',
   verwijderd: 'geboekt',
 }
 

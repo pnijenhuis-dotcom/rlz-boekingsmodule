@@ -197,15 +197,15 @@ def bouw_veldvoorstel(
     vendor_id, vendor_match = match_vendor(leverancier_naam, vendors)
 
     regels: list[dict] = []
-    regel_zekerheid: list[dict[str, float]] = []
+    regel_zekerheid: list[float] = []
     regelsom = Decimal(0)
     regelsom_compleet = True
     for index, regel in enumerate(extractie.regels, start=1):
-        netto = parse_bedrag(regel.netto_bedrag.waarde)
-        btw = parse_bedrag(regel.btw_bedrag.waarde)
-        if regel.netto_bedrag.waarde is not None and netto is None:
+        netto = parse_bedrag(regel.netto_bedrag)
+        btw = parse_bedrag(regel.btw_bedrag)
+        if regel.netto_bedrag is not None and netto is None:
             onparseerbaar.append(f"netto_bedrag (regel {index})")
-        if regel.btw_bedrag.waarde is not None and btw is None:
+        if regel.btw_bedrag is not None and btw is None:
             onparseerbaar.append(f"btw_bedrag (regel {index})")
         if netto is None:
             regelsom_compleet = False
@@ -213,21 +213,16 @@ def bouw_veldvoorstel(
         taxrate_id = match_taxrate(netto, btw, taxrates)
         regels.append(
             {
-                "omschrijving": regel.omschrijving.waarde,
+                "omschrijving": regel.omschrijving,
                 "netto_bedrag": _bedrag_str(netto),
                 "btw_bedrag": _bedrag_str(btw),
-                "hoeveelheid": regel.hoeveelheid.waarde,
+                "hoeveelheid": regel.hoeveelheid,
                 "taxrate_id": str(taxrate_id) if taxrate_id else None,
             }
         )
-        regel_zekerheid.append(
-            {
-                "omschrijving": regel.omschrijving.zekerheid,
-                "netto_bedrag": regel.netto_bedrag.zekerheid,
-                "btw_bedrag": regel.btw_bedrag.zekerheid,
-                "hoeveelheid": regel.hoeveelheid.zekerheid,
-            }
-        )
+        regel_zekerheid.append(regel.zekerheid)
+        if regel.zekerheid < zekerheid_drempel:
+            lage_zekerheid.append(f"regel {index}")
 
     regelsom_wijkt_af: bool | None = None
     if regels and regelsom_compleet and totaal_incl is not None:
@@ -259,5 +254,10 @@ def bouw_veldvoorstel(
             "onparseerbaar": onparseerbaar,
             "lage_zekerheid": lage_zekerheid,
             "bsn_verwijderd": extractie.bsn_verwijderd,
+            # True = ook chunking kreeg de regelset niet aantoonbaar compleet — bij
+            # projectadministraties komt dit voorstel er überhaupt niet (documenten/service
+            # blokkeert dan), bij andere administraties is dit het oranje signaal voor de
+            # controleur naast de regelsom-check.
+            "onvolledig": not extractie.volledig,
         },
     }

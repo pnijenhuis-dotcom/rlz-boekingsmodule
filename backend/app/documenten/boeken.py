@@ -23,7 +23,14 @@ from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
 
 _KAN_BOEKPOGING_STARTEN_VANUIT = frozenset(
-    {DocumentStatus.TE_CONTROLEREN, DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.BOEKEN_MISLUKT}
+    {
+        DocumentStatus.TE_CONTROLEREN,
+        DocumentStatus.KLAAR_OM_TE_BOEKEN,
+        DocumentStatus.BOEKEN_MISLUKT,
+        # Handmatig afmaken (migratie 0015): de controleur heeft alles zelf ingevuld — de harde
+        # checks (project verplicht per regel, regelsom) blijven onverkort de poort.
+        DocumentStatus.HANDMATIG_AFMAKEN,
+    }
 )
 
 

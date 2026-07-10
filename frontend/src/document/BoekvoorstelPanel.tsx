@@ -7,7 +7,7 @@ import type {
   CheckRapportDto,
   DocumentActieResponseDto,
 } from '../api/types'
-import { alsAiVoorstel, zekerheidPct, type AiRegelVoorstel, type AiVoorstel } from './aiVoorstel'
+import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
@@ -77,22 +77,12 @@ function nieuweRegel(): RegelState {
   }
 }
 
-/** Laagste zekerheid van de regelvelden waarvoor de AI daadwerkelijk een waarde voorstelde —
- * lege velden tellen niet mee (een ontbrekende hoeveelheid zegt niets over de gelezen bedragen). */
-function regelAiScore(zekerheid: Record<string, number> | undefined, regel: AiRegelVoorstel): number | null {
-  if (!zekerheid) return null
-  const scores: number[] = []
-  for (const veld of ['omschrijving', 'netto_bedrag', 'btw_bedrag'] as const) {
-    if (regel[veld] !== null && zekerheid[veld] !== undefined) scores.push(zekerheid[veld])
-  }
-  return scores.length > 0 ? Math.min(...scores) : null
-}
-
 function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[] {
   if (dto.regels.length === 0) return [nieuweRegel()]
+  // Sinds het compacte schema (2026-07-10) levert de AI één zekerheidsscore per regel.
   const aiScores =
     ai && ai.regels.length === dto.regels.length
-      ? ai.regels.map((regel, i) => regelAiScore(ai.regel_zekerheid[i], regel))
+      ? dto.regels.map((_, i) => ai.regel_zekerheid[i] ?? null)
       : null
   return dto.regels.map((r, i) => ({
     key: crypto.randomUUID(),

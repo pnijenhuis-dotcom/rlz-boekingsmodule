@@ -179,6 +179,31 @@ Backend:
      gedrag (default uit = nul AI-verkeer), voorstel-boekt-nooit-automatisch. Echte-API-test
      achter de aparte `ai_integration`-marker (`make test-ai-integration`, synthetische factuur,
      skipt zonder key) — nooit in de kale run.
+   - **Groottevrij-besluit (2026-07-10, Peter): grote facturen robuust, projectadministratie
+     gewaarborgd.** Vier onderdelen:
+     (1) **Compact uitvoerschema**: korte JSON-keys op de API-draad (kop/kz + regels als
+     {o,n,b,h,z}), één zekerheidsgetal per kopveld en per regel, prompt verbiedt het echoën van
+     documenttekst — een normale factuur blijft daarmee ruim binnen het tokenbudget. Alleen het
+     draadformaat is compact; intern en richting tijdlijn/frontend blijven de volledige
+     veldnamen. Tokenmeting per extractie (input/output/aanroepen/chunked + regelaantal) gaat
+     als `ai_metriek` de tijdlijn in én de log.
+     (2) **Adaptieve chunking**: eerst één aanroep; kapt die af (stop_reason=max_tokens), dan
+     automatisch chunked — kop in één call (schrijft meteen de prompt-cache op het
+     document-block; de regel-calls lezen 'm tegen ~0.1x inputprijs), regels per indexblok van
+     25 met halvering bij afkap (ondergrens 5), deterministische merge in documentvolgorde met
+     naad-ontdubbeling. Geen handmatige drempel — het schaalt op factuurgrootte; elke deelstap
+     houdt streaming + SDK-retries. Vangnet: max ~40 regel-calls per document.
+     (3) **Harde waarborg projectadministratie** (migratie 0015, status `handmatig_afmaken`):
+     krijgt chunking de regelset niet aantoonbaar compleet bij een administratie met
+     projectplicht (dat dekt vandaag ook de centrale-inkoopcase — zelfde toggle), dan eindigt
+     het document blokkerend op handmatig_afmaken mét uitlegbare melding, tijdlijn en audit —
+     er wordt bewust GEEN (totalen-only) voorstel opgeslagen dat regeldetail/projecttoerekening
+     zou laten wegvallen. Vanuit die status: alles handmatig invullen (de harde checks — project
+     verplicht per regel, regelsom vs. totaal — blijven de poort naar boeken) of opnieuw
+     extraheren. Zonder projectplicht krijgt de controleur het gedeeltelijke voorstel wél, met
+     een oranje onvolledig-signaal naast de bestaande regelsom-check.
+     (4) De deterministische controlelaag is ongewijzigd de rekenlaag: samengevoegde regelsom
+     vs. factuurtotaal, afwijking oranje — AI stelt voor, boekt nooit.
    - **Sessie 2 (open): het boekingsgeheugen** — RLZ-historie (JournalEntries) + app-correcties
      als bron voor GB-/btw-/leverancier-defaults; pas daarna worden GB-suggesties zinvol.
 6. **Boeken — gebouwd (2026-07-09).** Migratie 0008: `boekhouding.boekvoorstel`/`boekvoorstel_regel`

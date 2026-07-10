@@ -96,6 +96,12 @@ function AiVoorstelPanel({ voorstel }: AiVoorstelPanelProps) {
           </tr>
         </tbody>
       </table>
+      {controle.onvolledig && (
+        <div className="hint" style={{ color: 'var(--orange)' }}>
+          De regelset is mogelijk incompleet (extractie kon niet aantoonbaar alle regels ophalen) — controleer
+          de regels tegen de bijlage; de regelsom-check hierboven is daarbij het vangnet.
+        </div>
+      )}
       {controle.bsn_verwijderd > 0 && (
         <div className="hint" style={{ color: 'var(--orange)' }}>
           AVG-filter: {controle.bsn_verwijderd} BSN-patroon
@@ -142,13 +148,16 @@ interface Bijlage {
   xmlTekst: string | null
 }
 
-/** Laatste extractie-uitkomst: de ai_extractie_fout van de meest recente overgang naar
- * te_controleren, of null als de laatste extractie een voorstel opleverde (of er geen was). */
-function laatsteExtractieFout(detail: DocumentDetailDto): string | null {
+/** Laatste extractie-uitkomst: de foutmelding (ai_extractie_fout) of onvolledig-melding
+ * (ai_extractie_onvolledig, waarborg projectadministratie) van de meest recente overgang naar
+ * te_controleren of handmatig_afmaken — null als de laatste extractie een voorstel opleverde. */
+function laatsteExtractieProbleem(detail: DocumentDetailDto): string | null {
   for (let i = detail.tijdlijn.length - 1; i >= 0; i--) {
     const g = detail.tijdlijn[i]
-    if (g.naar_status === 'te_controleren') {
-      return g.detail && 'ai_extractie_fout' in g.detail ? String(g.detail.ai_extractie_fout) : null
+    if (g.naar_status === 'te_controleren' || g.naar_status === 'handmatig_afmaken') {
+      if (g.detail && 'ai_extractie_fout' in g.detail) return String(g.detail.ai_extractie_fout)
+      if (g.detail && 'ai_extractie_onvolledig' in g.detail) return String(g.detail.ai_extractie_onvolledig)
+      return null
     }
   }
   return null
@@ -198,7 +207,8 @@ export function DocumentDetailScreen() {
   if (fout) return <div className="fout">Kon document niet laden: {fout}</div>
   if (!administratieId || !documentId || !detail) return <p className="hint">Laden…</p>
 
-  const extractieFout = laatsteExtractieFout(detail)
+  const extractieProbleem = laatsteExtractieProbleem(detail)
+  const isHandmatigAfmaken = detail.status === 'handmatig_afmaken'
 
   const opnieuwExtraheren = async () => {
     setOpnieuwBezig(true)
@@ -263,13 +273,16 @@ export function DocumentDetailScreen() {
         </div>
 
         <div className="formpane">
-          {extractieFout && detail.status === 'te_controleren' && (
+          {extractieProbleem && (detail.status === 'te_controleren' || isHandmatigAfmaken) && (
             <div className="panel">
               <h2>
-                AI-extractie mislukt <span className="chip afwijking">handmatig of opnieuw</span>
+                {isHandmatigAfmaken ? 'Handmatig afmaken' : 'AI-extractie mislukt'}{' '}
+                <span className={`chip ${isHandmatigAfmaken ? 'blokkerend' : 'afwijking'}`}>
+                  {isHandmatigAfmaken ? 'regelset onvolledig — geen voorstel' : 'handmatig of opnieuw'}
+                </span>
               </h2>
               <p className="hint" style={{ marginTop: 0 }}>
-                {extractieFout}
+                {extractieProbleem}
               </p>
               {opnieuwFout && <div className="fout">{opnieuwFout}</div>}
               <div className="actions">
@@ -357,6 +370,11 @@ export function DocumentDetailScreen() {
                       {g.detail && 'ai_extractie_overgeslagen' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           AI-extractie overgeslagen: {aiOvergeslagenLabel(String(g.detail.ai_extractie_overgeslagen))}
+                        </div>
+                      )}
+                      {g.detail && 'ai_extractie_onvolledig' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--red)' }}>
+                          {String(g.detail.ai_extractie_onvolledig)}
                         </div>
                       )}
                     </td>

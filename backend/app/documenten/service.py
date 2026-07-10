@@ -139,6 +139,7 @@ def _start_extractie(session: Session, *, document: Document, actor_id: uuid.UUI
     _schrijf_overgang(session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=actor_id)
 
     detail: dict | None = None
+    doel_status = DocumentStatus.TE_CONTROLEREN
     suffix = Path(document.bestandsnaam).suffix.lower()
     if suffix == _UBL_SUFFIX:
         inhoud = opslag.lezen(pad=document.opslag_pad)
@@ -148,31 +149,63 @@ def _start_extractie(session: Session, *, document: Document, actor_id: uuid.UUI
         except GeenGeldigeUbl as exc:
             detail = {"ubl_parse_fout": str(exc)}
     elif suffix == _PDF_SUFFIX:
-        detail = _ai_extractie_detail(session, document=document, opslag=opslag)
+        detail, blokkeer = _ai_extractie_detail(session, document=document, opslag=opslag)
+        if blokkeer:
+            # Waarborg projectadministratie (migratie 0015): regelset niet aantoonbaar compleet
+            # bij projectplicht — blokkerende status, bewust GEEN (totalen-only) voorstel.
+            doel_status = DocumentStatus.HANDMATIG_AFMAKEN
 
-    _schrijf_overgang(session, document=document, naar=DocumentStatus.TE_CONTROLEREN, actor_id=actor_id, detail=detail)
+    _schrijf_overgang(session, document=document, naar=doel_status, actor_id=actor_id, detail=detail)
 
 
-def _ai_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> dict:
-    """AI-route voor PDF's: AVG-gate → Claude-extractie → deterministische controlelaag. De AI
-    levert uitsluitend een voorstel (veld-suggesties met zekerheidsscores); boeken blijft altijd
-    een menselijke actie via het controlescherm + harde checks. Vendor-/btw-suggesties komen
-    alléén uit de eigen sync-caches (kandidatenlijsten hieronder), nooit uit de AI zelf."""
+def _ai_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> tuple[dict, bool]:
+    """AI-route voor PDF's: AVG-gate → Claude-extractie (adaptieve chunking bij afkap) →
+    deterministische controlelaag. De AI levert uitsluitend een voorstel (veld-suggesties met
+    zekerheidsscores); boeken blijft altijd een menselijke actie via het controlescherm + harde
+    checks. Vendor-/btw-suggesties komen alléén uit de eigen sync-caches, nooit uit de AI zelf.
+
+    Retourneert (tijdlijn-detail, blokkeer): blokkeer=True is de harde waarborg voor
+    projectadministraties — de regelset is niet aantoonbaar compleet en er wordt géén voorstel
+    opgeslagen dat regeldetail/projecttoerekening zou laten wegvallen; het document eindigt op
+    handmatig_afmaken (de aanroeper zet die status)."""
     if document.administratie_id is None:
-        return {"ai_extractie_overgeslagen": "geen_administratie"}
+        return {"ai_extractie_overgeslagen": "geen_administratie"}, False
     administratie = session.get(Administratie, document.administratie_id)
     if administratie is None or not administratie.ai_extractie_ingeschakeld:
         # AVG-gate (migratie 0014): default UIT — dit document gaat niet naar de Claude API.
-        return {"ai_extractie_overgeslagen": "ai_extractie_uitgeschakeld"}
+        return {"ai_extractie_overgeslagen": "ai_extractie_uitgeschakeld"}, False
     if not settings.anthropic_api_key:
-        return {"ai_extractie_overgeslagen": "geen_api_key"}
+        return {"ai_extractie_overgeslagen": "geen_api_key"}, False
 
     inhoud = opslag.lezen(pad=document.opslag_pad)
     try:
         extractie = extractie_service.extraheer_inkoopfactuur(inhoud)
     except Exception as exc:  # noqa: BLE001 — bewust breed: een AI-fout mag de upload nooit laten falen
         logger.exception("AI-extractie mislukt voor document %s", document.id)
-        return {"ai_extractie_fout": str(exc)}
+        return {"ai_extractie_fout": str(exc)}, False
+
+    metriek = {
+        **(extractie.metriek.als_dict() if extractie.metriek else {}),
+        "regels": len(extractie.regels),
+    }
+
+    if not extractie.volledig and administratie.project_verplicht:
+        # Waarborg projectadministratie: hier eindigt de AI-route hard — geen voorstel, wel een
+        # uitlegbare melding + metriek in de tijdlijn (audit loopt mee via de statusovergang).
+        logger.warning(
+            "AI-extractie onvolledig voor document %s bij projectplicht-administratie %s — handmatig afmaken",
+            document.id,
+            document.administratie_id,
+        )
+        return {
+            "ai_extractie_onvolledig": (
+                "De AI-extractie kreeg de factuurregels niet aantoonbaar compleet (ook niet in "
+                "delen). Deze administratie vereist projecttoerekening per regel — het voorstel is "
+                "daarom niet overgenomen. Vul de boekingsregels handmatig in of probeer de "
+                "extractie opnieuw."
+            ),
+            "ai_metriek": metriek,
+        }, True
 
     vendors = [
         extractie_controle.VendorKandidaat(id=rij.id, naam=rij.naam or "")
@@ -199,7 +232,7 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
         taxrates=taxrates,
         zekerheid_drempel=settings.ai_extractie_zekerheid_drempel,
     )
-    return {"veldvoorstel": voorstel}
+    return {"veldvoorstel": voorstel, "ai_metriek": metriek}, False
 
 
 def upload_document(
@@ -432,7 +465,7 @@ def herextraheer_document(
     te_controleren -> extractie_bezig -> te_controleren, met tijdlijn + audit_event per stap;
     ook de AVG-gate en de key-check gelden onverkort opnieuw. Alleen voor PDF's (UBL is
     deterministisch — opnieuw parsen levert per definitie hetzelfde op) en alleen vanaf
-    te_controleren (daarna is het voorstel mensenwerk)."""
+    te_controleren of handmatig_afmaken (daarna is het voorstel mensenwerk)."""
     opslag = opslag or _standaard_opslag()
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
@@ -440,9 +473,10 @@ def herextraheer_document(
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
         if Path(document.bestandsnaam).suffix.lower() != _PDF_SUFFIX:
             raise HerextractieNietToegestaan("Opnieuw extraheren kan alleen voor PDF's (UBL is deterministisch).")
-        if document.status != DocumentStatus.TE_CONTROLEREN:
+        if document.status not in (DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN):
             raise HerextractieNietToegestaan(
-                f"Opnieuw extraheren kan alleen vanaf te_controleren (status: {document.status.value})."
+                "Opnieuw extraheren kan alleen vanaf te_controleren of handmatig_afmaken "
+                f"(status: {document.status.value})."
             )
         _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
         return document.status
