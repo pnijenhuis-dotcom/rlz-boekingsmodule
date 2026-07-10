@@ -17,6 +17,15 @@ def rlz_purchase_invoice_id(document_id: uuid.UUID) -> uuid.UUID:
     return uuid.uuid5(_NAMESPACE, str(document_id))
 
 
+def rlz_vendor_id(administratie_id: uuid.UUID, naam: str) -> uuid.UUID:
+    """Deterministisch client-GUID voor een vanuit de app aangemaakte RLZ-crediteur (fix 2
+    2026-07-10: "nieuwe crediteur aanmaken in RLZ" vanaf het controlescherm). Functie van
+    administratie + genormaliseerde naam: twee keer op de knop drukken voor dezelfde naam raakt
+    dezelfde RLZ-vendor (PUT is idempotent), nooit een duplicaat-crediteur."""
+    genormaliseerd = " ".join(naam.split()).lower()
+    return uuid.uuid5(_NAMESPACE, f"vendor:{administratie_id}:{genormaliseerd}")
+
+
 def rlz_upload_id(document_id: uuid.UUID) -> uuid.UUID:
     """Zelfde idempotentie-redenering als rlz_purchase_invoice_id(), voor de PDF-bijlage
     (`RlzClient.upload_bijlage`): een retry na boeken_mislukt uploadt niet telkens een nieuwe

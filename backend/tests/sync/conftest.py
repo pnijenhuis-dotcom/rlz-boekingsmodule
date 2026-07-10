@@ -27,6 +27,7 @@ class FakeRlzClient:
         self.closed = False
         self.admin_id: str | None = None
         self.opgevraagde_paden: list[str] = []
+        self.aangemaakte_vendors: list[tuple[Any, str]] = []
 
     def get(self, path: str) -> dict[str, Any]:
         self.opgevraagde_paden.append(path)
@@ -34,10 +35,16 @@ class FakeRlzClient:
             raise self._fouten[path]
         return {"value": self._data.get(path, [])}
 
+    def put_vendor(self, vendor_id: Any, *, name: str, payment_due_days: int | None = None) -> None:
+        """Voor de crediteur-aanmaakflow (fix 2, 2026-07-10): registreert de schrijfactie zodat
+        tests kunnen verifiëren dát en waarmee er naar RLZ geschreven zou zijn."""
+        self.aangemaakte_vendors.append((vendor_id, name))
+
     def for_administration(self, admin_id: str) -> FakeRlzClient:
         gescoped = FakeRlzClient(self._data, fouten=self._fouten)
         gescoped.admin_id = admin_id
         gescoped.opgevraagde_paden = self.opgevraagde_paden  # zelfde "verbinding", gedeelde log
+        gescoped.aangemaakte_vendors = self.aangemaakte_vendors
         return gescoped
 
     def close(self) -> None:

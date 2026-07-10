@@ -151,9 +151,18 @@ Backend:
    - `service.py`: PDF (base64 document-block, bestaande opslag-seam) → strak JSON-schema voor
      kop (leverancier, factuurnummer, factuur-/vervaldatum, totalen, btw) + regels
      (omschrijving, netto, btw, hoeveelheid), per veld een zekerheidsscore 0..1 (geclampt in
-     code). **AVG hard:** prompt verbiedt BSN's in de output én `bsn.py` (elfproef-post-filter)
-     verwijdert deterministisch elk 8/9-cijferig BSN-patroon vóór persistentie — alleen het
-     áántal verwijderingen wordt bewaard, nooit het nummer.
+     code). **AVG hard:** prompt verbiedt BSN's in de output én `bsn.py` verwijdert
+     deterministisch BSN's vóór persistentie — alleen het áántal verwijderingen wordt bewaard,
+     nooit het nummer. **Correctie (2026-07-10, Peters controle van een echte factuur,
+     20260064.pdf): de eerste versie ("elfproef-post-filter" op elk veld) was te grof** — een
+     9-cijferig factuurnummer dat toevallig de elfproef doorstaat werd gemaskeerd en vernielde
+     daarmee juist controleursdata. Het filter is nu context-vereist (elfproef ÉN een
+     BSN-contextwoord — BSN/burgerservicenummer/sofinummer — nabij het getal, waarbij een
+     dichterbij staand ander label zoals factuurnummer/IBAN wint) en draait uitsluitend op
+     vrije-tekstvelden (leveranciersnaam, regelomschrijving) — nooit op gestructureerde velden
+     (factuurnummer, datums, bedragen, hoeveelheid), die zijn per definitie geen BSN. Vangnet
+     voor de losse-BSN-zonder-label-case blijft de promptinstructie + Cloud DLP
+     (platformverbetering 4).
    - `controle.py`: deterministische controlelaag (geen AI in de cijfers, pure functies zoals
      checks.py): bedragen/datums valide parsen of leeg laten + benoemen (`onparseerbaar`),
      regelsom vs. gelezen totaal, leverancier exact/fuzzy (genormaliseerd op rechtsvorm) matchen
@@ -247,6 +256,41 @@ Backend:
      tijdlijn + audit_event, routing op byte- én paginadrempel, projectwaarborg via de worker,
      worker-fout/verwijderd-document, herstart-herstel, en de kleine factuur die synchroon
      blijft. Frontend: polling aan/uit, banner, systeem-chip.
+5d. **Controlescherm-fixes na Peters controle van echte facturen — gebouwd (2026-07-11).** Drie
+   bevindingen uit de kliktest met echte facturen (20260063/20260064.pdf); fix 1 (BSN-filter
+   context-vereist) staat hierboven bij 5b.
+   - **Fix 2 — crediteur-voorstel zonder cache-match:** las de AI de leveranciersnaam maar matcht
+     de cache niet (uniek), dan is het crediteur-veld nooit meer kaal-leeg: een klikbaar
+     voorstelblok toont de gelezen naam + zekerheid met twee acties. (a) **Koppelen aan een
+     bestaande crediteur**: maximaal drie fuzzy-suggesties uit de vendor-cache
+     (`crediteurSuggesties.ts`, Dice-bigram op genormaliseerde naam — zelfde
+     rechtsvorm-normalisatie als de backend-controlelaag; puur presentatie-ordening, de klik
+     blijft de keuze). (b) **"Nieuwe crediteur aanmaken in RLZ"** met de naam voorgevuld:
+     `POST /administraties/{id}/crediteuren` → `sync/service.maak_crediteur_aan` — idempotent
+     client-GUID (UUIDv5 op administratie + genormaliseerde naam, dubbele klik raakt dezelfde
+     RLZ-vendor), eigen duplicaatcheck op naam (409 draagt de bestaande vendor_id; de frontend
+     selecteert die dan gewoon), en **dezelfde schrijf-failsafe-poort als boeken** (toggle per
+     administratie + globale kill switch) — audit_event `crediteur_aangemaakt_in_rlz`, cache-rij
+     direct kiesbaar, eerstvolgende vendors-sync verrijkt met RLZ's volledige record. Directe
+     cache-match blijft automatisch voorvullen (bestaand gedrag).
+   - **Fix 3 — regels standaard samengevoegd, splitsen als keuze:** het controlescherm toont bij
+     een meerregelig voorstel standaard ÉÉN samengevoegde boekingsregel (deterministisch berekend:
+     netto = gelezen totaal excl., btw = gelezen btw of incl−excl, vangnet = som van volledig
+     geparste regels — nooit een gedeeltelijke som; btw-code alleen bij uniforme suggestie) met
+     een vinkje **"Splitsen per regel"**; beide weergaven bewaren hun eigen invoer bij het
+     schakelen. De keuze reist mee met opslaan en wordt per (administratie, crediteur) onthouden
+     (migratie 0017 `boekhouding.leverancier_voorkeur`, RLS, audit alleen bij échte wijziging).
+     **Harde uitzondering: projectplicht** (dekt ook centrale inkoop — zelfde toggle) blijft
+     per-regel verplicht: samenvoegen niet toegestaan, geen vinkje, en een meegegeven keuze wordt
+     bij opslaan genegeerd (geen stiekeme voorkeur-rij). **De AI blijft altijd alle regels
+     extraheren** — samenvoegen is puur de weergave-/boekvorm; gesplitst prefillt altijd uit het
+     volledige AI-voorstel.
+   - Tests: BSN (elfproef-doorstaand factuurnummer blijft ongemoeid — op bsn- én servicelaag),
+     crediteur-aanmaken (idempotent GUID, duplicaat-409 met vendor_id, failsafe-poort, audit),
+     samenvoegen (default aan, één-regel-berekening incl. vangnetten, voorkeur onthouden over
+     documenten heen, projectplicht-uitzondering, audit-éénmaligheid, API-niveau response-velden),
+     frontend (voorstelblok met zekerheid, koppelen, aanmaken incl. 409-pad, vinkje + schakelen
+     zonder invoerverlies, PUT-voorkeur, projectplicht zonder vinkje).
 6. **Boeken — gebouwd (2026-07-09).** Migratie 0008: `boekhouding.boekvoorstel`/`boekvoorstel_regel`
    (het controlescherm-voorstel per document, RLS via het onderliggende document — zelfde
    subquery-patroon als `document_gebeurtenis`). `app/documenten/checks.py`: de drie harde checks

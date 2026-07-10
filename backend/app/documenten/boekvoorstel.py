@@ -19,7 +19,14 @@ from app.documenten.checks import (
     check_verplichte_velden,
     voer_harde_checks_uit,
 )
-from app.documenten.models import Boekvoorstel, BoekvoorstelRegel, Document, DocumentGebeurtenis, DocumentStatus
+from app.documenten.models import (
+    Boekvoorstel,
+    BoekvoorstelRegel,
+    Document,
+    DocumentGebeurtenis,
+    DocumentStatus,
+    LeverancierVoorkeur,
+)
 from app.documenten.rlz_ids import rlz_purchase_invoice_id
 from app.documenten.service import DocumentNietGevonden
 from app.rlz.client import RlzClient
@@ -66,6 +73,15 @@ class BoekvoorstelData:
     rlz_boekstuknummer: str | None
     opgeslagen: bool
     regels: list[BoekvoorstelRegelData]
+    # Fix 3 (2026-07-10): regels standaard samengevoegd tot één boekingsregel, keuze per
+    # leverancier onthouden (LeverancierVoorkeur). `samenvoegen_toegestaan` is False bij
+    # projectplicht (hard: project per regel, samenvoegen kan daar niet); `regels_samenvoegen`
+    # is de effectieve stand voor dit document (voorkeur van deze crediteur, default AAN);
+    # `samengevoegde_regel` is de deterministisch berekende één-regel-variant (None als er
+    # geen veldvoorstel met bruikbare totalen is).
+    regels_samenvoegen: bool = True
+    samenvoegen_toegestaan: bool = True
+    samengevoegde_regel: BoekvoorstelRegelData | None = None
 
 
 def _als_decimal(waarde: str | None) -> Decimal | None:
@@ -153,6 +169,82 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
     ]
 
 
+def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
+    """Eén boekingsregel voor het hele factuurbedrag (fix 3, mockup: "één grootboek voor het
+    hele factuurbedrag"): netto = gelezen totaal excl., btw = gelezen btw-bedrag (of incl −
+    excl), met als vangnet de deterministische som van de geëxtraheerde regels — alleen als álle
+    regelbedragen geparst zijn, nooit een gedeeltelijke som. Grootboek blijft leeg
+    (boekingsgeheugen = sessie 2); btw-code alleen als alle regels dezelfde cache-suggestie
+    dragen. De AI blijft altijd alle regels extraheren — dit is puur de weergave-/boekvorm."""
+    regels = [r for r in veldvoorstel.get("regels") or [] if isinstance(r, dict)]
+
+    netto = _als_decimal(veldvoorstel.get("totaal_excl"))
+    if netto is None and regels:
+        netto_bedragen = [_als_decimal(r.get("netto_bedrag")) for r in regels]
+        if all(bedrag is not None for bedrag in netto_bedragen):
+            netto = sum(netto_bedragen, Decimal(0))
+    if netto is None:
+        return None
+
+    btw = _als_decimal(veldvoorstel.get("btw_bedrag"))
+    if btw is None:
+        totaal_incl = _als_decimal(veldvoorstel.get("totaal_incl"))
+        if totaal_incl is not None:
+            btw = totaal_incl - netto
+    if btw is None and regels:
+        btw_bedragen = [_als_decimal(r.get("btw_bedrag")) for r in regels]
+        if all(bedrag is not None for bedrag in btw_bedragen):
+            btw = sum(btw_bedragen, Decimal(0))
+
+    taxrate_ids = {r.get("taxrate_id") for r in regels}
+    taxrate_id = _als_uuid(next(iter(taxrate_ids))) if len(taxrate_ids) == 1 else None
+
+    omschrijving = None
+    if regels:
+        factuurnummer = veldvoorstel.get("factuurnummer")
+        omschrijving = (
+            f"Factuur {factuurnummer} — samengevoegd ({len(regels)} regels)"
+            if factuurnummer
+            else f"Samengevoegd ({len(regels)} regels)"
+        )
+
+    return BoekvoorstelRegelData(
+        ledger_id=None,
+        taxrate_id=taxrate_id,
+        project_id=None,
+        netto_bedrag=netto,
+        btw_bedrag=btw,
+        omschrijving=omschrijving,
+    )
+
+
+def _project_verplicht(administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        return administratie.project_verplicht if administratie else False
+
+
+def _voorkeur_samenvoegen(
+    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None
+) -> bool | None:
+    if vendor_id is None:
+        return None
+    voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
+    return voorkeur.regels_samenvoegen if voorkeur else None
+
+
+def _laatste_veldvoorstel(session: Session, document_id: uuid.UUID) -> dict | None:
+    """Nieuwste wint: na "opnieuw extraheren" is de laatste extractie de actuele."""
+    return next(
+        (
+            g.detail["veldvoorstel"]
+            for g in reversed(_gebeurtenissen_van(session, document_id))
+            if g.detail and "veldvoorstel" in g.detail
+        ),
+        None,
+    )
+
+
 def _laad_document(session: Session, *, document_id: uuid.UUID) -> Document:
     document = session.get(Document, document_id)
     if document is None:
@@ -165,8 +257,23 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
     voorstel op basis van het UBL-veldvoorstel (CLAUDE.md-taak 2.1: "veldvoorstellen (UBL)
     vooringevuld waar aanwezig"). PDF-documenten hebben geen UBL-veldvoorstel en krijgen dus een
     volledig leeg voorstel — de controleur vult alles handmatig in."""
+    project_verplicht = _project_verplicht(administratie_id)
+
     with scoped_session(administratie_id) as session:
         _laad_document(session, document_id=document_id)
+        veldvoorstel = _laatste_veldvoorstel(session, document_id)
+
+        def samenvoeg_velden(vendor_id: uuid.UUID | None) -> dict:
+            """Fix 3: effectieve samenvoeg-stand (projectplicht = hard gesplitst; anders de
+            onthouden leverancier-voorkeur, default AAN) + de berekende één-regel-variant."""
+            if project_verplicht:
+                return {"regels_samenvoegen": False, "samenvoegen_toegestaan": False, "samengevoegde_regel": None}
+            voorkeur = _voorkeur_samenvoegen(session, administratie_id=administratie_id, vendor_id=vendor_id)
+            return {
+                "regels_samenvoegen": voorkeur if voorkeur is not None else True,
+                "samenvoegen_toegestaan": True,
+                "samengevoegde_regel": _samengevoegde_regel(veldvoorstel) if veldvoorstel else None,
+            }
 
         bestaand = session.get(Boekvoorstel, document_id)
         if bestaand is not None:
@@ -194,19 +301,11 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                     )
                     for r in regels
                 ],
+                **samenvoeg_velden(bestaand.vendor_id),
             )
 
         # Geen opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of
-        # het AI-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), indien aanwezig. Nieuwste
-        # wint: na "opnieuw extraheren" is de laatste extractie de actuele.
-        veldvoorstel = next(
-            (
-                g.detail["veldvoorstel"]
-                for g in reversed(_gebeurtenissen_van(session, document_id))
-                if g.detail and "veldvoorstel" in g.detail
-            ),
-            None,
-        )
+        # het AI-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), indien aanwezig.
         if veldvoorstel is None:
             return BoekvoorstelData(
                 document_id=document_id,
@@ -217,6 +316,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 rlz_boekstuknummer=None,
                 opgeslagen=False,
                 regels=[],
+                **samenvoeg_velden(None),
             )
 
         # AI-voorstellen dragen een vendor-suggestie uit de controlelaag (exacte of fuzzy match
@@ -237,6 +337,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             rlz_boekstuknummer=None,
             opgeslagen=False,
             regels=_regels_prefill(veldvoorstel),
+            **samenvoeg_velden(vendor_id),
         )
 
 
@@ -260,7 +361,12 @@ def sla_boekvoorstel_op(
     factuurdatum: date | None,
     totaalbedrag: Decimal | None,
     regels: list[BoekvoorstelRegelData],
+    regels_samenvoegen: bool | None = None,
 ) -> BoekvoorstelData:
+    """`regels_samenvoegen` (fix 3) is de weergavekeuze van de controleur op het moment van
+    opslaan — die wordt als voorkeur per (administratie, crediteur) onthouden. None = niet
+    meegegeven (bv. oude client of geen crediteur gekozen): voorkeur blijft ongemoeid. Bij
+    projectplicht wordt de keuze genegeerd — daar is per-regel hard."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = _laad_document(session, document_id=document_id)
         _controleer_niet_bevroren(document)
@@ -289,6 +395,15 @@ def sla_boekvoorstel_op(
                 )
             )
 
+        if regels_samenvoegen is not None and vendor_id is not None and not _project_verplicht(administratie_id):
+            _onthoud_voorkeur_samenvoegen(
+                session,
+                administratie_id=administratie_id,
+                vendor_id=vendor_id,
+                actor_id=actor_id,
+                regels_samenvoegen=regels_samenvoegen,
+            )
+
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -302,6 +417,43 @@ def sla_boekvoorstel_op(
         )
 
     return haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+
+
+def _onthoud_voorkeur_samenvoegen(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    regels_samenvoegen: bool,
+) -> None:
+    """Upsert van de leverancier-voorkeur (fix 3). Alleen een échte wijziging krijgt een
+    audit_event — elke opslaan-actie herhaalt de actuele stand, dat is geen handeling op de
+    voorkeur zelf."""
+    voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
+    oud = voorkeur.regels_samenvoegen if voorkeur else None
+    if oud == regels_samenvoegen:
+        return
+    if voorkeur is None:
+        session.add(
+            LeverancierVoorkeur(
+                administratie_id=administratie_id, vendor_id=vendor_id, regels_samenvoegen=regels_samenvoegen
+            )
+        )
+    else:
+        voorkeur.regels_samenvoegen = regels_samenvoegen
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="leverancier_voorkeur",
+        record_id=vendor_id,
+        actie="leverancier_voorkeur_samenvoegen_gewijzigd",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde={"regels_samenvoegen": oud} if oud is not None else None,
+        nieuwe_waarde={"regels_samenvoegen": regels_samenvoegen},
+        administratie_id=administratie_id,
+    )
 
 
 def _naar_check_regels(voorstel: BoekvoorstelData) -> list[CheckRegel]:

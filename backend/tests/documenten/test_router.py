@@ -327,3 +327,53 @@ class TestDocumentVerwijderenEnHerstellen:
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
         assert resp.status_code == 404
+
+
+class TestBoekvoorstelSamenvoegVeldenViaApi:
+    """Fix 3 (2026-07-10) op API-niveau: de drie samenvoeg-velden moeten écht in de JSON-response
+    zitten (de servicelaag had ze al, maar de router-mapping is een aparte schakel) en de
+    PUT-keuze moet als voorkeur doorwerken."""
+
+    def test_get_bevat_samenvoeg_velden_en_put_onthoudt_de_keuze(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        from tests.documenten.test_ubl import _VOORBEELD_UBL
+
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        upload = client.post(
+            f"/administraties/{administratie_id}/documenten",
+            files={"bestand": ("factuur.xml", _VOORBEELD_UBL, "text/xml")},
+            headers=headers,
+        )
+        assert upload.status_code == 201, upload.text
+        document_id = upload.json()["document_id"]
+
+        resp = client.get(f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel", headers=headers)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["regels_samenvoegen"] is True
+        assert body["samenvoegen_toegestaan"] is True
+        assert body["samengevoegde_regel"] is not None
+        assert body["samengevoegde_regel"]["netto_bedrag"] == "1526.20"
+        assert body["samengevoegde_regel"]["btw_bedrag"] == "320.50"
+
+        vendor_id = str(uuid.uuid4())
+        put = client.put(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",
+            json={
+                "vendor_id": vendor_id,
+                "referentie": "F-1",
+                "factuurdatum": "2026-07-01",
+                "totaalbedrag": "1846.70",
+                "regels_samenvoegen": False,
+                "regels": [],
+            },
+            headers=headers,
+        )
+        assert put.status_code == 200, put.text
+        assert put.json()["boekvoorstel"]["regels_samenvoegen"] is False
+
+        opnieuw = client.get(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel", headers=headers
+        )
+        assert opnieuw.json()["regels_samenvoegen"] is False

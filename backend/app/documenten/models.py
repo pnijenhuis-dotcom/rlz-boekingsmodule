@@ -158,6 +158,25 @@ class BoekvoorstelRegel(Base):
     omschrijving: Mapped[str | None] = mapped_column(default=None)
 
 
+class LeverancierVoorkeur(Base):
+    """Weergave-/boekvoorkeur per crediteur per administratie (migratie 0017, fix 3 2026-07-10):
+    onthoudt of de controleur de factuurregels van deze leverancier samengevoegd (één
+    boekingsregel) of gesplitst wil zien — mockup: "standaard aan · keuze wordt per leverancier
+    onthouden". Bewust geen FK naar vendor_cache (de voorkeur overleeft een sync-verdwijning);
+    bij projectplicht wordt deze voorkeur genegeerd én nooit op samenvoegen gezet
+    (app/documenten/boekvoorstel.py — project per regel is daar hard)."""
+
+    __tablename__ = "leverancier_voorkeur"
+    __table_args__ = {"schema": "boekhouding"}
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    regels_samenvoegen: Mapped[bool]
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 class WebhookUitgaand(Base):
     """Outbox voor het "factuur geboekt"-webhook-stub (migratie 0009, koppelcontract §3): de
     getekende payload ligt hier per boeking al vast, aflevering (HTTP-push) is een fase-vervolg.

@@ -42,6 +42,10 @@ class VendorLijstResponse(BaseModel):
     crediteuren: list[VendorOptieResponse]
 
 
+class NieuweCrediteurInput(BaseModel):
+    naam: str
+
+
 class ProjectOptieResponse(BaseModel):
     id: uuid.UUID
     naam: str | None

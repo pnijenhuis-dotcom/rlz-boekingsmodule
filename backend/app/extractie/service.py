@@ -212,16 +212,34 @@ class _Genormaliseerd:
     bsn_verwijderd: int = 0
 
 
-def _schoon_tekst(waarde: Any) -> tuple[str | None, int]:
-    """Waarde defensief naar (geschoonde string of None, aantal verwijderde BSN's)."""
+# Alleen vrije-tekstvelden gaan door het BSN-post-filter. Gestructureerde velden (factuurnummer,
+# datums, bedragen, valuta, hoeveelheid) zijn per definitie geen BSN — het filter erop loslaten
+# maskeerde een echt factuurnummer dat toevallig de elfproef doorstond (fix 2026-07-10, Peters
+# controle van een echte factuur). Zie ook app/extractie/bsn.py: het filter zelf eist bovendien
+# BSN-context.
+_VRIJE_TEKST_KOP_KEYS = frozenset({"lev"})
+_VRIJE_TEKST_REGEL_KEYS = frozenset({"o"})
+
+
+def _als_tekst(waarde: Any) -> str | None:
+    """Waarde defensief naar een gestripte string of None — zonder BSN-filter."""
     if waarde is None:
-        return None, 0
+        return None
     if not isinstance(waarde, str):
         waarde = str(waarde)
     waarde = waarde.strip()
-    if not waarde:
+    return waarde or None
+
+
+def _schoon_tekst(waarde: Any, *, bsn_filter: bool) -> tuple[str | None, int]:
+    """Waarde defensief naar (string of None, aantal verwijderde BSN's); het BSN-filter draait
+    uitsluitend op vrije-tekstvelden (zie _VRIJE_TEKST_*_KEYS hierboven)."""
+    tekst = _als_tekst(waarde)
+    if tekst is None:
         return None, 0
-    return verwijder_bsns(waarde)
+    if not bsn_filter:
+        return tekst, 0
+    return verwijder_bsns(tekst)
 
 
 def _als_zekerheid(ruw: Any) -> float:
@@ -233,7 +251,7 @@ def _normaliseer_kop(data: dict[str, Any], uit: _Genormaliseerd) -> None:
     kop_ruw = data.get("kop") if isinstance(data.get("kop"), dict) else {}
     kz_ruw = data.get("kz") if isinstance(data.get("kz"), dict) else {}
     for key, veldnaam in _KOP_KEYS.items():
-        waarde, bsn = _schoon_tekst(kop_ruw.get(key))
+        waarde, bsn = _schoon_tekst(kop_ruw.get(key), bsn_filter=key in _VRIJE_TEKST_KOP_KEYS)
         uit.bsn_verwijderd += bsn
         uit.kop[veldnaam] = AiVeld(waarde=waarde, zekerheid=_als_zekerheid(kz_ruw.get(key)))
 
@@ -246,7 +264,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
             continue
         waarden: dict[str, str | None] = {}
         for key in ("o", "n", "b", "h"):
-            waarde, bsn = _schoon_tekst(ruwe_regel.get(key))
+            waarde, bsn = _schoon_tekst(ruwe_regel.get(key), bsn_filter=key in _VRIJE_TEKST_REGEL_KEYS)
             uit.bsn_verwijderd += bsn
             waarden[key] = waarde
         uit.regels.append(

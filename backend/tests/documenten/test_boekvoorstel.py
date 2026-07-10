@@ -5,7 +5,9 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import Engine, text
 
+from app.beheer import service as beheer_service
 from app.db.session import scoped_session
 from app.documenten import boekvoorstel, service
 from app.documenten.models import Document, DocumentStatus
@@ -393,3 +395,237 @@ class TestVoerChecksUit:
 
         with pytest.raises(boekvoorstel.BoekvoorstelFout):
             boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=resultaat.document_id)
+
+
+class TestSamengevoegdeRegel:
+    """Fix 3 (2026-07-10): de deterministisch berekende één-regel-variant. Pure functie op het
+    veldvoorstel-dict — geld = code, dus elk rekenpad expliciet getest."""
+
+    def test_gebruikt_gelezen_totalen_en_telt_regels_in_de_omschrijving(self) -> None:
+        regel = boekvoorstel._samengevoegde_regel(
+            {
+                "factuurnummer": "F-2026-042",
+                "totaal_excl": "100.00",
+                "totaal_incl": "121.00",
+                "btw_bedrag": "21.00",
+                "regels": [
+                    {"netto_bedrag": "60.00", "btw_bedrag": "12.60", "taxrate_id": None},
+                    {"netto_bedrag": "40.00", "btw_bedrag": "8.40", "taxrate_id": None},
+                ],
+            }
+        )
+        assert regel is not None
+        assert regel.netto_bedrag == Decimal("100.00")
+        assert regel.btw_bedrag == Decimal("21.00")
+        assert regel.omschrijving == "Factuur F-2026-042 — samengevoegd (2 regels)"
+        assert regel.ledger_id is None  # boekingsgeheugen = latere sessie, geen GB-gok
+
+    def test_btw_valt_terug_op_incl_min_excl(self) -> None:
+        regel = boekvoorstel._samengevoegde_regel({"totaal_excl": "1526.20", "totaal_incl": "1846.70"})
+        assert regel is not None
+        assert regel.netto_bedrag == Decimal("1526.20")
+        assert regel.btw_bedrag == Decimal("320.50")
+
+    def test_vangnet_som_van_regels_alleen_bij_volledig_geparste_bedragen(self) -> None:
+        compleet = boekvoorstel._samengevoegde_regel(
+            {
+                "regels": [
+                    {"netto_bedrag": "60.00", "btw_bedrag": "12.60"},
+                    {"netto_bedrag": "40.00", "btw_bedrag": "8.40"},
+                ]
+            }
+        )
+        assert compleet is not None
+        assert compleet.netto_bedrag == Decimal("100.00")
+        assert compleet.btw_bedrag == Decimal("21.00")
+
+        # Eén onparseerbaar regelbedrag: nooit een gedeeltelijke som doorgeven.
+        onvolledig = boekvoorstel._samengevoegde_regel({"regels": [{"netto_bedrag": "60.00"}, {"netto_bedrag": None}]})
+        assert onvolledig is None
+
+    def test_btw_code_alleen_bij_uniforme_suggestie_over_alle_regels(self) -> None:
+        taxrate_id = uuid.uuid4()
+        uniform = boekvoorstel._samengevoegde_regel(
+            {
+                "totaal_excl": "100.00",
+                "totaal_incl": "121.00",
+                "regels": [
+                    {"netto_bedrag": "60.00", "taxrate_id": str(taxrate_id)},
+                    {"netto_bedrag": "40.00", "taxrate_id": str(taxrate_id)},
+                ],
+            }
+        )
+        assert uniform is not None and uniform.taxrate_id == taxrate_id
+
+        gemengd = boekvoorstel._samengevoegde_regel(
+            {
+                "totaal_excl": "100.00",
+                "totaal_incl": "121.00",
+                "regels": [
+                    {"netto_bedrag": "60.00", "taxrate_id": str(taxrate_id)},
+                    {"netto_bedrag": "40.00", "taxrate_id": str(uuid.uuid4())},
+                ],
+            }
+        )
+        assert gemengd is not None and gemengd.taxrate_id is None
+
+    def test_zonder_bruikbare_totalen_geen_samengevoegde_regel(self) -> None:
+        assert boekvoorstel._samengevoegde_regel({}) is None
+        assert boekvoorstel._samengevoegde_regel({"totaal_excl": "geen bedrag"}) is None
+
+
+class TestRegelsSamenvoegen:
+    """Fix 3: standaard één samengevoegde boekingsregel, keuze per (administratie, crediteur)
+    onthouden; projectplicht blijft hard per-regel."""
+
+    def _upload_ubl(
+        self, administratie_id: uuid.UUID, actor_id: uuid.UUID, opslag: LokaleBestandsopslag, naam: str
+    ) -> uuid.UUID:
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=naam,
+            inhoud=_VOORBEELD_UBL + f"<!-- {naam} -->".encode(),
+            actor_id=actor_id,
+            opslag=opslag,
+        )
+        return resultaat.document_id
+
+    def test_default_samengevoegd_met_berekende_een_regel_variant(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        document_id = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "default.xml")
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert data.regels_samenvoegen is True
+        assert data.samenvoegen_toegestaan is True
+        assert data.samengevoegde_regel is not None
+        # De voorbeeld-UBL: excl 1526.20, incl 1846.70 (zie test_ubl.py).
+        assert data.samengevoegde_regel.netto_bedrag == Decimal("1526.20")
+        assert data.samengevoegde_regel.btw_bedrag == Decimal("320.50")
+
+    def test_voorkeur_wordt_per_crediteur_onthouden_over_documenten_heen(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        vendor_id = uuid.uuid4()
+        doc1 = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "voorkeur-1.xml")
+        doc2 = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "voorkeur-2.xml")
+
+        # Controleur splitst bij document 1 → voorkeur voor deze crediteur wordt "gesplitst".
+        na_splitsen = boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=doc1,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="F-1",
+            factuurdatum=date(2026, 7, 1),
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel()],
+            regels_samenvoegen=False,
+        )
+        assert na_splitsen.regels_samenvoegen is False
+
+        # Document 2, zelfde crediteur, keuze niet meegegeven (None) → de onthouden voorkeur telt.
+        ander_document = boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=doc2,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="F-2",
+            factuurdatum=date(2026, 7, 2),
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel()],
+        )
+        assert ander_document.regels_samenvoegen is False
+
+        # Terug naar samenvoegen bij document 1 → geldt ook weer voor document 2.
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=doc1,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="F-1",
+            factuurdatum=date(2026, 7, 1),
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel()],
+            regels_samenvoegen=True,
+        )
+        opnieuw = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=doc2)
+        assert opnieuw.regels_samenvoegen is True
+
+    def test_projectplicht_blokkeert_samenvoegen_hard(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
+        document_id = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "projectplicht.xml")
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert data.samenvoegen_toegestaan is False
+        assert data.regels_samenvoegen is False
+        assert data.samengevoegde_regel is None
+
+    def test_projectplicht_negeert_de_meegegeven_keuze_bij_opslaan(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        """Bij projectplicht wordt géén voorkeur-rij gezet — gaat de plicht later uit, dan geldt
+        gewoon de default (samenvoegen aan), niet een stiekem opgeslagen keuze."""
+        beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
+        vendor_id = uuid.uuid4()
+        document_id = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "plicht-keuze.xml")
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="F-1",
+            factuurdatum=date(2026, 7, 1),
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel()],
+            regels_samenvoegen=False,
+        )
+        beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=False)
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+        assert data.regels_samenvoegen is True  # geen voorkeur-rij ontstaan tijdens de projectplicht
+
+    def test_alleen_een_echte_voorkeurwijziging_krijgt_een_audit_event(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+    ) -> None:
+        vendor_id = uuid.uuid4()
+        document_id = self._upload_ubl(administratie_id, gescoopte_gebruiker, opslag, "audit.xml")
+
+        def _sla_op(samenvoegen: bool) -> None:
+            boekvoorstel.sla_boekvoorstel_op(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=gescoopte_gebruiker,
+                vendor_id=vendor_id,
+                referentie="F-1",
+                factuurdatum=date(2026, 7, 1),
+                totaalbedrag=Decimal("121.00"),
+                regels=[_regel()],
+                regels_samenvoegen=samenvoegen,
+            )
+
+        _sla_op(False)
+        _sla_op(False)  # herhaalde opslaan-actie met dezelfde stand = geen handeling op de voorkeur
+        _sla_op(True)
+
+        with admin_engine.connect() as conn:
+            events = conn.execute(
+                text(
+                    "SELECT oude_waarde, nieuwe_waarde FROM platform.audit_event "
+                    "WHERE actie = 'leverancier_voorkeur_samenvoegen_gewijzigd' AND record_id = :rid "
+                    "ORDER BY tijdstip"
+                ),
+                {"rid": vendor_id},
+            ).all()
+        assert len(events) == 2

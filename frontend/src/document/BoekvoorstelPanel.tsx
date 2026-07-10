@@ -4,11 +4,14 @@ import type {
   BoekenResponseDto,
   BoekvoorstelDto,
   BoekvoorstelMetChecksDto,
+  BoekvoorstelRegelDto,
   CheckRapportDto,
   DocumentActieResponseDto,
+  VendorOptieDto,
 } from '../api/types'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
+import { crediteurSuggesties } from './crediteurSuggesties'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
   synchroniseerAlleCaches,
@@ -77,14 +80,8 @@ function nieuweRegel(): RegelState {
   }
 }
 
-function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[] {
-  if (dto.regels.length === 0) return [nieuweRegel()]
-  // Sinds het compacte schema (2026-07-10) levert de AI één zekerheidsscore per regel.
-  const aiScores =
-    ai && ai.regels.length === dto.regels.length
-      ? dto.regels.map((_, i) => ai.regel_zekerheid[i] ?? null)
-      : null
-  return dto.regels.map((r, i) => ({
+function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = null): RegelState {
+  return {
     key: crypto.randomUUID(),
     ledgerId: r.ledger_id,
     taxrateId: r.taxrate_id,
@@ -93,7 +90,36 @@ function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[]
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
     omschrijving: r.omschrijving ?? '',
-    aiZekerheid: aiScores ? aiScores[i] : null,
+    aiZekerheid,
+  }
+}
+
+function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[] {
+  if (dto.regels.length === 0) return [nieuweRegel()]
+  // Sinds het compacte schema (2026-07-10) levert de AI één zekerheidsscore per regel.
+  const aiScores =
+    ai && ai.regels.length === dto.regels.length
+      ? dto.regels.map((_, i) => ai.regel_zekerheid[i] ?? null)
+      : null
+  return dto.regels.map((r, i) => regelUitDtoRegel(r, aiScores ? aiScores[i] : null))
+}
+
+/** Fix 3: de per-regel-variant rechtstreeks uit het AI-veldvoorstel — nodig als het voorstel in
+ * samengevoegde vorm is opgeslagen (dto.regels is dan de ene samengevoegde regel) en de
+ * controleur alsnog wil splitsen. De AI blijft altijd alle regels extraheren; deze prefill is
+ * daardoor altijd beschikbaar zolang er een AI-voorstel is. */
+function regelsUitAi(ai: AiVoorstel): RegelState[] {
+  if (ai.regels.length === 0) return [nieuweRegel()]
+  return ai.regels.map((r, i) => ({
+    key: crypto.randomUUID(),
+    ledgerId: null,
+    taxrateId: r.taxrate_id,
+    projectId: null,
+    netto: r.netto_bedrag ?? '',
+    btw: r.btw_bedrag ?? '',
+    btwHandmatig: Boolean(r.btw_bedrag),
+    omschrijving: r.omschrijving ?? '',
+    aiZekerheid: ai.regel_zekerheid[i] ?? null,
   }))
 }
 
@@ -197,6 +223,19 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
   const [regels, setRegels] = useState<RegelState[]>([nieuweRegel()])
   const [boekstuknummer, setBoekstuknummer] = useState<string | null>(null)
 
+  // Fix 3: standaard één samengevoegde boekingsregel, vinkje "splitsen per regel" — keuze wordt
+  // per (administratie, crediteur) onthouden (backend LeverancierVoorkeur). De inactieve modus
+  // bewaart zijn eigen regels zodat heen-en-weer schakelen geen invoer weggooit. Bij projectplicht
+  // is samenvoegen hard uitgesloten (samenvoegen_toegestaan=false van de backend).
+  const [regelsSamenvoegen, setRegelsSamenvoegen] = useState(true)
+  const [samenvoegenToegestaan, setSamenvoegenToegestaan] = useState(true)
+  const [samenvoegenBeschikbaar, setSamenvoegenBeschikbaar] = useState(false)
+  const [inactieveRegels, setInactieveRegels] = useState<RegelState[]>([])
+
+  // Fix 2: "nieuwe crediteur aanmaken in RLZ" vanaf het voorstelblok onder het crediteur-veld.
+  const [crediteurAanmakenBezig, setCrediteurAanmakenBezig] = useState(false)
+  const [crediteurAanmakenFout, setCrediteurAanmakenFout] = useState<string | null>(null)
+
   const [checkRapport, setCheckRapport] = useState<CheckRapportDto | null>(null)
   // Design-pass taak 7: elke veldwijziging maakt het laatste checkresultaat ongeldig voor de
   // ACTUELE invoer — de knop "Boeken" mag dan niet meer aan staan, ook al was het vorige resultaat
@@ -224,7 +263,28 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
         setFactuurdatum(dto.factuurdatum ?? '')
         setTotaalbedrag(dto.totaalbedrag ?? '')
         setBoekstuknummer(dto.rlz_boekstuknummer)
-        setRegels(regelsUitDto(dto, aiPrefill ? ai : null))
+
+        // Fix 3: bepaal de gesplitste én de samengevoegde variant, en welke actief start.
+        const opgeslagenSamengevoegd = dto.opgeslagen && dto.regels_samenvoegen && dto.samenvoegen_toegestaan
+        const gesplitst = opgeslagenSamengevoegd
+          ? ai !== null
+            ? regelsUitAi(ai) // dto.regels is hier de opgeslagen samengevoegde regel — splitsen prefillt uit het AI-voorstel
+            : [nieuweRegel()]
+          : regelsUitDto(dto, aiPrefill ? ai : null)
+        const samengevoegd = opgeslagenSamengevoegd
+          ? regelsUitDto(dto, null)
+          : dto.samengevoegde_regel
+            ? [regelUitDtoRegel(dto.samengevoegde_regel)]
+            : null
+        // Actieve modus volgt de dto-stand (voorkeur per crediteur, default samengevoegd); het
+        // vinkje verschijnt alleen als er echt iets te splitsen valt (meer dan één factuurregel).
+        const toegestaan = dto.samenvoegen_toegestaan ?? true
+        const samenvoegenActief = toegestaan && Boolean(dto.regels_samenvoegen) && samengevoegd !== null
+        setSamenvoegenToegestaan(toegestaan)
+        setSamenvoegenBeschikbaar(toegestaan && samengevoegd !== null && gesplitst.length > 1)
+        setRegelsSamenvoegen(samenvoegenActief)
+        setRegels(samenvoegenActief && samengevoegd !== null ? samengevoegd : gesplitst)
+        setInactieveRegels(samenvoegenActief || samengevoegd === null ? gesplitst : samengevoegd)
       })
       .catch((err: unknown) => {
         if (actief) setLadenFout(err instanceof Error ? err.message : 'Onbekende fout')
@@ -316,6 +376,17 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
     veranderInvoer()
   }
 
+  /** Fix 3: schakelen tussen samengevoegd en per-regel — beide modi bewaren hun eigen regels,
+   * dus heen-en-weer schakelen gooit geen invoer weg. De keuze reist mee met de eerstvolgende
+   * "Controleren" (PUT) en wordt daar als voorkeur per crediteur onthouden. */
+  const wisselSamenvoegen = (samenvoegen: boolean) => {
+    if (samenvoegen === regelsSamenvoegen) return
+    setRegelsSamenvoegen(samenvoegen)
+    setRegels(inactieveRegels)
+    setInactieveRegels(regels)
+    veranderInvoer()
+  }
+
   const verwijderRegel = (key: string) => {
     setRegels((huidig) => (huidig.length > 1 ? huidig.filter((r) => r.key !== key) : huidig))
     veranderInvoer()
@@ -324,6 +395,54 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
   const voegRegelToe = () => {
     setRegels((r) => [...r, nieuweRegel()])
     veranderInvoer()
+  }
+
+  // Fix 2: de AI las een leveranciersnaam, maar het crediteur-veld is (nog) leeg — nooit een
+  // leeg verplicht veld zonder handelingsperspectief. Voorstelblok met de gelezen naam +
+  // zekerheid, klikbare koppel-suggesties uit de cache, en "nieuwe crediteur aanmaken in RLZ".
+  const aiLeverancierNaam = ai?.leverancier_naam?.trim() || null
+  const crediteurVoorstellen = useMemo(
+    () => (aiLeverancierNaam ? crediteurSuggesties(aiLeverancierNaam, vendorOpties) : []),
+    [aiLeverancierNaam, vendorOpties],
+  )
+
+  const nieuweCrediteurAanmaken = async () => {
+    if (!aiLeverancierNaam) return
+    setCrediteurAanmakenBezig(true)
+    setCrediteurAanmakenFout(null)
+    try {
+      const resp = await apiFetch(`/administraties/${administratieId}/crediteuren`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ naam: aiLeverancierNaam }),
+      })
+      const body: unknown = await resp.json().catch(() => null)
+      if (resp.ok) {
+        const nieuw = body as VendorOptieDto
+        setCacheVersie((v) => v + 1)
+        wijzigVendorId(nieuw.id)
+        return
+      }
+      // 409 = bestond al (bv. net gesynchroniseerd): de backend stuurt de bestaande vendor_id
+      // mee — die selecteren is voor de controleur hetzelfde eindresultaat.
+      const detail = body && typeof body === 'object' ? (body as { detail?: unknown }).detail : null
+      if (resp.status === 409 && detail && typeof detail === 'object' && 'vendor_id' in detail) {
+        setCacheVersie((v) => v + 1)
+        wijzigVendorId(String((detail as { vendor_id: unknown }).vendor_id))
+        return
+      }
+      const melding =
+        typeof detail === 'string'
+          ? detail
+          : detail && typeof detail === 'object' && 'message' in detail
+            ? String((detail as { message: unknown }).message)
+            : resp.statusText || `Fout (${resp.status})`
+      setCrediteurAanmakenFout(melding)
+    } catch (err) {
+      setCrediteurAanmakenFout(err instanceof ApiError ? err.message : 'Crediteur aanmaken mislukt.')
+    } finally {
+      setCrediteurAanmakenBezig(false)
+    }
   }
 
   const nuSynchroniseren = async () => {
@@ -351,6 +470,9 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
             referentie: referentie || null,
             factuurdatum: factuurdatum || null,
             totaalbedrag: totaalbedrag ? normaliseerBedrag(totaalbedrag) : null,
+            // Fix 3: de weergavekeuze reist mee en wordt backend-side als voorkeur per
+            // (administratie, crediteur) onthouden; null = geen keuze door te geven.
+            regels_samenvoegen: samenvoegenToegestaan ? regelsSamenvoegen : null,
             regels: regels.map((r) => ({
               ledger_id: r.ledgerId,
               taxrate_id: r.taxrateId,
@@ -479,6 +601,42 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                   <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} fuzzy={aiKop.vendor.fuzzy} />
                 </div>
               )}
+              {vendorId === null && aiLeverancierNaam && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div>
+                    <span
+                      className="chip afwijking"
+                      title="De AI las deze leveranciersnaam, maar er is geen eenduidige match in de crediteuren-cache — koppel aan een bestaande crediteur of maak een nieuwe aan in RLZ."
+                    >
+                      AI las: „{aiLeverancierNaam}”
+                      {ai?.zekerheid.leverancier_naam !== undefined
+                        ? ` · ${zekerheidPct(ai.zekerheid.leverancier_naam)}`
+                        : ''}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {crediteurVoorstellen.map((s) => (
+                      <button
+                        key={s.optie.id}
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => wijzigVendorId(s.optie.id)}
+                      >
+                        Koppel aan „{s.optie.label}”
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      disabled={crediteurAanmakenBezig}
+                      onClick={() => void nieuweCrediteurAanmaken()}
+                    >
+                      {crediteurAanmakenBezig ? 'Bezig…' : `＋ Nieuwe crediteur „${aiLeverancierNaam}” aanmaken in RLZ`}
+                    </button>
+                  </div>
+                  {crediteurAanmakenFout && <div className="fout">{crediteurAanmakenFout}</div>}
+                </div>
+              )}
             </div>
             <div>
               <label htmlFor="boekvoorstel-referentie">Referentie / factuurnummer</label>
@@ -540,6 +698,23 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
         )}
         {!isReadOnly && (grootboekFout || taxrateFout) && (
           <div className="fout">Kon grootboek- en/of btw-cache niet laden — controleer of deze administratie gesynchroniseerd is.</div>
+        )}
+        {!isReadOnly && samenvoegenBeschikbaar && (
+          <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={!regelsSamenvoegen}
+                onChange={(e) => wisselSamenvoegen(!e.target.checked)}
+              />
+              Splitsen per regel
+            </label>
+            <span className="hint" style={{ margin: 0 }}>
+              {regelsSamenvoegen
+                ? `Samengevoegd tot één boekingsregel (${inactieveRegels.length} factuurregels gelezen) — keuze wordt per leverancier onthouden.`
+                : 'Losse factuurregels — keuze wordt per leverancier onthouden.'}
+            </span>
+          </div>
         )}
         <table className="lines boekingsregels-tabel">
           <colgroup>

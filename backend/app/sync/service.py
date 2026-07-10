@@ -7,11 +7,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Administratie, Grootboekrekening
+from app.db.audit import record_audit_event
+from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
+from app.documenten.rlz_ids import rlz_vendor_id
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id
 from app.sync.models import ProjectCache, TaxRateCache, VendorCache
@@ -291,6 +293,107 @@ def lijst_projects(*, administratie_id: uuid.UUID) -> list[ProjectCache]:
                 .order_by(ProjectCache.naam)
             )
         )
+
+
+class CrediteurAanmakenUitgeschakeld(Exception):
+    """RLZ-schrijf-failsafe: crediteuren aanmaken valt onder dezelfde poort als boeken (toggle
+    per administratie + globale kill switch) — het is een schrijfactie in de klantboekhouding."""
+
+
+class CrediteurBestaatAl(Exception):
+    """Er staat al een niet-verdwenen crediteur met exact deze naam in de cache."""
+
+    def __init__(self, vendor_id: uuid.UUID, naam: str) -> None:
+        self.vendor_id = vendor_id
+        self.naam = naam
+        super().__init__(f'Crediteur "{naam}" bestaat al in deze administratie')
+
+
+@dataclass(frozen=True)
+class NieuweCrediteur:
+    id: uuid.UUID
+    naam: str
+
+
+def maak_crediteur_aan(
+    *, administratie_id: uuid.UUID, actor_id: uuid.UUID, naam: str, client: RlzClient | None = None
+) -> NieuweCrediteur:
+    """Maakt een crediteur aan in RLZ (fix 2, 2026-07-10: de AI las een leverancier die nog niet
+    in de crediteuren-cache staat — het controlescherm biedt dan "nieuwe crediteur aanmaken in
+    RLZ" met de geëxtraheerde naam voorgevuld, conform de mockup-onboarding).
+
+    Idempotent en failsafe-gedekt: deterministisch client-GUID (UUIDv5 op administratie +
+    genormaliseerde naam — een dubbele klik of retry raakt dezélfde RLZ-vendor), eigen
+    duplicaatcheck op naam vóór de PUT, en dezelfde schrijf-poort als boeken (toggle per
+    administratie + globale kill switch): zolang een administratie niet expliciet voor schrijven
+    is opengezet, gaat er ook via deze route geen mutatie de klantboekhouding in. De cache-rij
+    wordt direct bijgeschreven (het veld is meteen kiesbaar); de eerstvolgende vendors-sync
+    overschrijft de minimale brondata met RLZ's volledige record."""
+    naam = " ".join(naam.split())
+    if not naam:
+        raise SyncFout("Crediteurnaam mag niet leeg zijn")
+
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise SyncFout(f"Onbekende administratie: {administratie_id}")
+        instelling = session.get(BoekenInstelling, True)
+        if not administratie.boeken_ingeschakeld or instelling is None or not instelling.globaal_ingeschakeld:
+            raise CrediteurAanmakenUitgeschakeld(
+                "Crediteuren aanmaken in RLZ staat uit voor deze administratie "
+                "(schrijf-failsafe: zelfde toggle als boeken, plus de globale kill switch)"
+            )
+
+    with scoped_session(administratie_id) as session:
+        bestaande = session.scalars(
+            select(VendorCache).where(
+                VendorCache.administratie_id == administratie_id,
+                VendorCache.verdwenen_uit_bron_op.is_(None),
+                func.lower(VendorCache.naam) == naam.lower(),
+            )
+        ).first()
+        if bestaande is not None:
+            raise CrediteurBestaatAl(bestaande.id, bestaande.naam or naam)
+
+    vendor_id = rlz_vendor_id(administratie_id, naam)
+    client, eigen_client = _open_client_indien_nodig(administratie_id, client)
+    try:
+        client.put_vendor(vendor_id, name=naam)
+    finally:
+        if eigen_client:
+            client.close()
+
+    now = datetime.now(UTC)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rij = session.get(VendorCache, (vendor_id, administratie_id))
+        if rij is None:
+            session.add(
+                VendorCache(
+                    id=vendor_id,
+                    administratie_id=administratie_id,
+                    naam=naam,
+                    is_gearchiveerd=False,
+                    brondata={"id": str(vendor_id), "Name": naam, "bron": "app_aangemaakt"},
+                    laatst_gesynchroniseerd=now,
+                    verdwenen_uit_bron_op=None,
+                )
+            )
+        else:
+            rij.naam = naam
+            rij.laatst_gesynchroniseerd = now
+            rij.verdwenen_uit_bron_op = None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="vendor_cache",
+            record_id=vendor_id,
+            actie="crediteur_aangemaakt_in_rlz",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={"naam": naam},
+            administratie_id=administratie_id,
+        )
+    return NieuweCrediteur(id=vendor_id, naam=naam)
 
 
 def sync_alle_administraties() -> dict[uuid.UUID, SyncResultaat | str]:

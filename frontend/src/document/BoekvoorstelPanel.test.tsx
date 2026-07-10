@@ -22,6 +22,9 @@ const LEEG_BOEKVOORSTEL = {
   rlz_boekstuknummer: null,
   opgeslagen: false,
   regels: [],
+  regels_samenvoegen: true,
+  samenvoegen_toegestaan: true,
+  samengevoegde_regel: null,
 }
 
 interface FetchMockOverrides {
@@ -34,6 +37,12 @@ interface FetchMockOverrides {
   vendors?: unknown[]
   projecten?: unknown[]
   syncAanroepen?: string[]
+  /** Fix 3: elke PUT-body op /boekvoorstel wordt hier (geparsed) in gepusht. */
+  putBodies?: unknown[]
+  /** Fix 2: antwoord op POST /crediteuren — [body, status]; de aangemaakte crediteur wordt bij
+   * een 201 ook aan de vendors-lijst toegevoegd zodat de refetch 'm kan tonen. */
+  crediteurAanmakenResponse?: [unknown, number]
+  crediteurAanmaakAanroepen?: unknown[]
 }
 
 function installFetchMock(overrides: FetchMockOverrides) {
@@ -51,6 +60,12 @@ function installFetchMock(overrides: FetchMockOverrides) {
       }
       if (url.endsWith('/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: grootboek }))
       if (url.endsWith('/btw-codes')) return Promise.resolve(jsonResponse({ btw_codes: taxrates }))
+      if (url.endsWith('/crediteuren') && init?.method === 'POST') {
+        overrides.crediteurAanmaakAanroepen?.push(JSON.parse(String(init.body)))
+        const [body, status] = overrides.crediteurAanmakenResponse ?? [null, 500]
+        if (status === 201 && body && typeof body === 'object') vendors.push(body)
+        return Promise.resolve(jsonResponse(body, status))
+      }
       if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: vendors }))
       if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten }))
       if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: overrides.projectVerplicht ?? false }))
@@ -58,6 +73,7 @@ function installFetchMock(overrides: FetchMockOverrides) {
         return Promise.resolve(jsonResponse(overrides.boekvoorstel ?? LEEG_BOEKVOORSTEL))
       }
       if (url.endsWith('/boekvoorstel') && init?.method === 'PUT') {
+        overrides.putBodies?.push(JSON.parse(String(init.body)))
         return Promise.resolve(jsonResponse(overrides.putResponse))
       }
       if (url.endsWith('/boeken') && init?.method === 'POST') {
@@ -416,5 +432,275 @@ describe('BoekvoorstelPanel', () => {
         expect.arrayContaining(['ledgers', 'taxrates', 'vendors', 'projects']),
       ),
     )
+  })
+
+  // ————— Fix 2 (2026-07-10): crediteur-voorstel als de AI de naam las maar de cache niet matcht —————
+
+  const AI_VOORSTEL = {
+    bron: 'ai',
+    leverancier_naam: 'Confide BV',
+    factuurnummer: 'F-1',
+    factuurdatum: '2026-07-01',
+    vervaldatum: null,
+    valuta: 'EUR',
+    totaal_excl: '100.00',
+    totaal_incl: '121.00',
+    btw_bedrag: '21.00',
+    regelaantal: 2,
+    regels: [
+      { omschrijving: 'Steigerhout', netto_bedrag: '60.00', btw_bedrag: '12.60', hoeveelheid: null, taxrate_id: null },
+      { omschrijving: 'Bezorging', netto_bedrag: '40.00', btw_bedrag: '8.40', hoeveelheid: null, taxrate_id: null },
+    ],
+    zekerheid: { leverancier_naam: 0.93 },
+    regel_zekerheid: [0.95, 0.9],
+    zekerheid_drempel: 0.8,
+    vendor_suggestie: null,
+    controle: {
+      regelsom: '121.00',
+      regelsom_wijkt_af: false,
+      onparseerbaar: [],
+      lage_zekerheid: [],
+      bsn_verwijderd: 0,
+      onvolledig: false,
+    },
+  }
+
+  const AI_BOEKVOORSTEL = {
+    ...LEEG_BOEKVOORSTEL,
+    referentie: 'F-1',
+    factuurdatum: '2026-07-01',
+    totaalbedrag: '121.00',
+    regels: [
+      { ledger_id: null, taxrate_id: null, project_id: null, netto_bedrag: '60.00', btw_bedrag: '12.60', omschrijving: 'Steigerhout' },
+      { ledger_id: null, taxrate_id: null, project_id: null, netto_bedrag: '40.00', btw_bedrag: '8.40', omschrijving: 'Bezorging' },
+    ],
+    samengevoegde_regel: {
+      ledger_id: null,
+      taxrate_id: null,
+      project_id: null,
+      netto_bedrag: '100.00',
+      btw_bedrag: '21.00',
+      omschrijving: 'Factuur F-1 — samengevoegd (2 regels)',
+    },
+  }
+
+  it('fix 2: AI-gelezen naam zonder cache-match toont een klikbaar voorstel met zekerheid, nooit alleen een leeg veld', async () => {
+    installFetchMock({ boekvoorstel: AI_BOEKVOORSTEL, vendors: [] })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={AI_VOORSTEL}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText(/AI las: „Confide BV”/)).toBeInTheDocument())
+    expect(screen.getByText(/93%/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken in RLZ/ })).toBeInTheDocument()
+  })
+
+  it('fix 2: "koppel aan bestaande" toont fuzzy-suggesties uit de cache en vult het veld bij een klik', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      boekvoorstel: AI_BOEKVOORSTEL,
+      vendors: [
+        { id: VENDOR_ID, naam: 'Confide B.V.' },
+        { id: 'eeeeeeee-0000-0000-0000-000000000099', naam: 'Technische Unie' },
+      ],
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={AI_VOORSTEL}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Koppel aan „Confide B.V.”' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Technische Unie/ })).not.toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Koppel aan „Confide B.V.”' }))
+
+    expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Confide B.V.')
+    expect(screen.queryByText(/AI las:/)).not.toBeInTheDocument()
+  })
+
+  it('fix 2: "nieuwe crediteur aanmaken in RLZ" maakt aan met de AI-naam voorgevuld en selecteert het resultaat', async () => {
+    const gebruiker = userEvent.setup()
+    const aanroepen: unknown[] = []
+    const nieuwId = 'eeeeeeee-0000-0000-0000-000000000042'
+    installFetchMock({
+      boekvoorstel: AI_BOEKVOORSTEL,
+      vendors: [],
+      crediteurAanmakenResponse: [{ id: nieuwId, naam: 'Confide BV' }, 201],
+      crediteurAanmaakAanroepen: aanroepen,
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={AI_VOORSTEL}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ })).toBeInTheDocument(),
+    )
+
+    await gebruiker.click(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ }))
+
+    await waitFor(() => expect(aanroepen).toEqual([{ naam: 'Confide BV' }]))
+    await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Confide BV'))
+    expect(screen.queryByText(/AI las:/)).not.toBeInTheDocument()
+  })
+
+  it('fix 2: een 409 "bestaat al" selecteert de bestaande crediteur in plaats van een kale fout', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      boekvoorstel: AI_BOEKVOORSTEL,
+      vendors: [{ id: VENDOR_ID, naam: 'Technische Unie' }], // geen fuzzy-match op "Confide BV"
+      crediteurAanmakenResponse: [
+        { detail: { message: 'Crediteur "Confide BV" bestaat al in deze administratie', vendor_id: VENDOR_ID } },
+        409,
+      ],
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={AI_VOORSTEL}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ })).toBeInTheDocument(),
+    )
+
+    await gebruiker.click(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ }))
+
+    await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Technische Unie'))
+  })
+
+  it('fix 2: directe cache-match (vendor_id in de dto) vult automatisch voor — geen voorstelblok', async () => {
+    installFetchMock({
+      boekvoorstel: { ...AI_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+      vendors: [{ id: VENDOR_ID, naam: 'Confide B.V.' }],
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={{ ...AI_VOORSTEL, vendor_suggestie: { vendor_id: VENDOR_ID, match: 'exact' } }}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Confide B.V.'))
+    expect(screen.queryByText(/AI las:/)).not.toBeInTheDocument()
+  })
+
+  // ————— Fix 3 (2026-07-10): standaard één samengevoegde boekingsregel + vinkje "splitsen per regel" —————
+
+  it('fix 3: toont standaard één samengevoegde regel met het vinkje, splitsen toont de losse regels', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({ boekvoorstel: AI_BOEKVOORSTEL })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={AI_VOORSTEL}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByLabelText('Splitsen per regel')).toBeInTheDocument())
+    expect(screen.getByLabelText('Splitsen per regel')).not.toBeChecked()
+    expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(1)
+    expect(screen.getByLabelText('Netto bedrag')).toHaveValue('100.00')
+    expect(screen.getByLabelText('Omschrijving')).toHaveValue('Factuur F-1 — samengevoegd (2 regels)')
+
+    await gebruiker.click(screen.getByLabelText('Splitsen per regel'))
+
+    expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(2)
+    expect(screen.getAllByLabelText('Omschrijving')[0]).toHaveValue('Steigerhout')
+
+    // Terugschakelen gooit niets weg: de samengevoegde regel staat er weer.
+    await gebruiker.click(screen.getByLabelText('Splitsen per regel'))
+    expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(1)
+    expect(screen.getByLabelText('Netto bedrag')).toHaveValue('100.00')
+  })
+
+  it('fix 3: de splitskeuze reist mee met Controleren (PUT regels_samenvoegen) zodat de voorkeur per leverancier onthouden wordt', async () => {
+    const gebruiker = userEvent.setup()
+    const putBodies: unknown[] = []
+    installFetchMock({
+      boekvoorstel: AI_BOEKVOORSTEL,
+      putBodies,
+      putResponse: {
+        boekvoorstel: AI_BOEKVOORSTEL,
+        checks: { geblokkeerd: true, resultaten: [{ naam: 'Verplichte velden', ok: false, melding: 'Ontbrekend: crediteur' }] },
+      },
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={AI_VOORSTEL}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByLabelText('Splitsen per regel')).toBeInTheDocument())
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
+    await waitFor(() => expect(putBodies).toHaveLength(1))
+    expect((putBodies[0] as { regels_samenvoegen: boolean }).regels_samenvoegen).toBe(true)
+
+    await gebruiker.click(screen.getByLabelText('Splitsen per regel'))
+    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
+    await waitFor(() => expect(putBodies).toHaveLength(2))
+    const tweede = putBodies[1] as { regels_samenvoegen: boolean; regels: unknown[] }
+    expect(tweede.regels_samenvoegen).toBe(false)
+    expect(tweede.regels).toHaveLength(2)
+  })
+
+  it('fix 3: bij projectplicht (samenvoegen_toegestaan=false) geen vinkje en hard per-regel', async () => {
+    installFetchMock({
+      projectVerplicht: true,
+      boekvoorstel: {
+        ...AI_BOEKVOORSTEL,
+        regels_samenvoegen: false,
+        samenvoegen_toegestaan: false,
+        samengevoegde_regel: null,
+      },
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={AI_VOORSTEL}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(2))
+    expect(screen.queryByLabelText('Splitsen per regel')).not.toBeInTheDocument()
   })
 })

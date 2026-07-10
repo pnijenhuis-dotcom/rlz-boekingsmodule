@@ -112,6 +112,12 @@ class BoekvoorstelResponse(BaseModel):
     rlz_boekstuknummer: str | None = None
     opgeslagen: bool
     regels: list[BoekvoorstelRegelDto]
+    # Fix 3 (2026-07-10): effectieve samenvoeg-stand voor dit document (voorkeur per crediteur,
+    # default AAN), of samenvoegen überhaupt kan (False bij projectplicht — hard per-regel) en
+    # de deterministisch berekende één-regel-variant voor de samengevoegde weergave.
+    regels_samenvoegen: bool = True
+    samenvoegen_toegestaan: bool = True
+    samengevoegde_regel: BoekvoorstelRegelDto | None = None
 
 
 class BoekvoorstelInput(BaseModel):
@@ -120,6 +126,9 @@ class BoekvoorstelInput(BaseModel):
     factuurdatum: date | None = None
     totaalbedrag: DecimalMetKomma | None = None
     regels: list[BoekvoorstelRegelDto] = []
+    # Fix 3: de weergavekeuze van de controleur bij opslaan — wordt als voorkeur per
+    # (administratie, crediteur) onthouden. None = niet meegegeven, voorkeur ongemoeid.
+    regels_samenvoegen: bool | None = None
 
 
 class CheckResultaatDto(BaseModel):

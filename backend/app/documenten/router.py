@@ -32,6 +32,17 @@ def _naar_duplicaat_response(
     )
 
 
+def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.BoekvoorstelRegelDto:
+    return schemas.BoekvoorstelRegelDto(
+        ledger_id=r.ledger_id,
+        taxrate_id=r.taxrate_id,
+        project_id=r.project_id,
+        netto_bedrag=r.netto_bedrag,
+        btw_bedrag=r.btw_bedrag,
+        omschrijving=r.omschrijving,
+    )
+
+
 def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.BoekvoorstelResponse:
     return schemas.BoekvoorstelResponse(
         document_id=data.document_id,
@@ -41,17 +52,10 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         totaalbedrag=data.totaalbedrag,
         rlz_boekstuknummer=data.rlz_boekstuknummer,
         opgeslagen=data.opgeslagen,
-        regels=[
-            schemas.BoekvoorstelRegelDto(
-                ledger_id=r.ledger_id,
-                taxrate_id=r.taxrate_id,
-                project_id=r.project_id,
-                netto_bedrag=r.netto_bedrag,
-                btw_bedrag=r.btw_bedrag,
-                omschrijving=r.omschrijving,
-            )
-            for r in data.regels
-        ],
+        regels=[_naar_regel_dto(r) for r in data.regels],
+        regels_samenvoegen=data.regels_samenvoegen,
+        samenvoegen_toegestaan=data.samenvoegen_toegestaan,
+        samengevoegde_regel=_naar_regel_dto(data.samengevoegde_regel) if data.samengevoegde_regel else None,
     )
 
 
@@ -290,6 +294,7 @@ def boekvoorstel_opslaan(
                 )
                 for r in invoer.regels
             ],
+            regels_samenvoegen=invoer.regels_samenvoegen,
         )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

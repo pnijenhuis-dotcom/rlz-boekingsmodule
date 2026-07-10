@@ -134,6 +134,12 @@ export interface BoekvoorstelDto {
   rlz_boekstuknummer: string | null
   opgeslagen: boolean
   regels: BoekvoorstelRegelDto[]
+  /** Fix 3 (2026-07-10): effectieve samenvoeg-stand (voorkeur per crediteur, default aan),
+   * of samenvoegen kan (false bij projectplicht — daar is per-regel hard) en de door de backend
+   * berekende één-regel-variant voor de samengevoegde weergave. */
+  regels_samenvoegen: boolean
+  samenvoegen_toegestaan: boolean
+  samengevoegde_regel: BoekvoorstelRegelDto | null
 }
 
 export interface CheckResultaatDto {

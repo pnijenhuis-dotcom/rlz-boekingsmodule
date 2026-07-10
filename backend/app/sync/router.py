@@ -109,6 +109,40 @@ def taxrate_lijst(
     )
 
 
+@router.post(
+    "/administraties/{administratie_id}/crediteuren",
+    response_model=schemas.VendorOptieResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def crediteur_aanmaken(
+    administratie_id: uuid.UUID,
+    invoer: schemas.NieuweCrediteurInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VendorOptieResponse:
+    """Nieuwe crediteur aanmaken in RLZ vanaf het controlescherm (fix 2, 2026-07-10) — de
+    AI-gelezen leverancier die niet in de cache staat, met de geëxtraheerde naam voorgevuld.
+    Schrijfactie in de klantboekhouding: idempotent client-GUID + duplicaatcheck + dezelfde
+    failsafe-poort als boeken (zie service.maak_crediteur_aan)."""
+    try:
+        crediteur = service.maak_crediteur_aan(administratie_id=administratie_id, actor_id=actor.id, naam=invoer.naam)
+    except service.CrediteurBestaatAl as exc:
+        # De bestaande vendor_id reist mee zodat de frontend de bestaande crediteur direct kan
+        # selecteren — een kale foutmelding zou de controleur alsnog laten zoeken in de combobox.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "vendor_id": str(exc.vendor_id)},
+        ) from exc
+    except service.CrediteurAanmakenUitgeschakeld as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except service.SyncFout as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except RlzApiError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return schemas.VendorOptieResponse(id=crediteur.id, naam=crediteur.naam)
+
+
 @router.get("/administraties/{administratie_id}/crediteuren", response_model=schemas.VendorLijstResponse)
 def vendor_lijst(
     administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)

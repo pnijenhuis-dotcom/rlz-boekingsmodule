@@ -145,9 +145,7 @@ class TestClaudeExtractieClient:
 
     def test_cache_document_zet_breakpoint_op_document_block(self) -> None:
         client, messages = _client_met(_respons(tekst="{}"))
-        client.extraheer_json_uit_pdf(
-            pdf_bytes=b"x", system="s", opdracht="o", json_schema={}, cache_document=True
-        )
+        client.extraheer_json_uit_pdf(pdf_bytes=b"x", system="s", opdracht="o", json_schema={}, cache_document=True)
         document_block = messages.laatste_kwargs["messages"][0]["content"][0]  # type: ignore[index]
         assert document_block["cache_control"] == {"type": "ephemeral"}
 
@@ -218,6 +216,19 @@ class TestExtraheerInkoopfactuurEnkeleCall:
         extractie = extraheer_inkoopfactuur(b"%PDF-1.4", client=client)
         assert "111222333" not in (extractie.regels[0].omschrijving or "")
         assert extractie.bsn_verwijderd == 1
+
+    def test_factuurnummer_dat_elfproef_doorstaat_blijft_ongemoeid(self) -> None:
+        # Fix 2026-07-10 (Peters controle, 20260064.pdf): het BSN-filter draait nooit op
+        # gestructureerde velden — een 9-cijferig factuurnummer dat toevallig de elfproef
+        # doorstaat (111222333) blijft exact zoals gelezen.
+        ruw = _ruwe_factuur()
+        ruw["kop"]["nr"] = "111222333"
+        ruw["regels"] = [_regel("Steigerhuur week 27", n="111222333")]  # ook bedragvelden nooit
+        client, _ = _client_met(_respons(tekst=json.dumps(ruw)))
+        extractie = extraheer_inkoopfactuur(b"%PDF-1.4", client=client)
+        assert extractie.kop["factuurnummer"].waarde == "111222333"
+        assert extractie.regels[0].netto_bedrag == "111222333"
+        assert extractie.bsn_verwijderd == 0
 
     def test_defensief_tegen_rare_vormen(self) -> None:
         ruw = _ruwe_factuur(regels=[{"o": "ok"}, "geen dict"])  # incomplete + kapotte regel
