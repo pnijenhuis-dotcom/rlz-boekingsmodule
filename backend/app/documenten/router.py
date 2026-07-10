@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
 from app.config import settings
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import boeken, boekvoorstel, schemas, service
 from app.documenten.checks import CheckRapport
 from app.rlz.credentials import GeenRlzCredentials
@@ -146,6 +147,7 @@ def document_detail(
                 van_status=g.van_status.value if g.van_status else None,
                 naar_status=g.naar_status.value,
                 actor_id=g.actor_id,
+                actor_is_systeem=g.actor_id == SYSTEEM_ACTOR_ID,
                 detail=g.detail,
                 tijdstip=g.tijdstip,
             )
@@ -229,7 +231,8 @@ def document_opnieuw_extraheren(
 ) -> schemas.DocumentActieResponse:
     """"Opnieuw extraheren" na een transiënte AI-fout (timeout, 529) — draait de extractie
     opnieuw zonder her-upload; AVG-gate en key-check gelden onverkort (zie
-    service.py::herextraheer_document). Synchroon, net als de upload-extractie."""
+    service.py::herextraheer_document). Klein-vs-groot-routing net als de upload: een groot
+    document komt terug met status extractie_wachtrij en wordt door de worker afgemaakt."""
     try:
         nieuwe_status = service.herextraheer_document(
             administratie_id=administratie_id, document_id=document_id, actor_id=actor.id

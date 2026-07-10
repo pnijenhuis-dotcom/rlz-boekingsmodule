@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 import app.db.session as db_session
 from app.config import settings
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 
 REQUIRED_PYTHON = (3, 12)
 REQUIRED_POSTGRES_MAJOR = 16
@@ -95,7 +96,9 @@ def _clean_tables() -> Generator[None, None, None]:
     `platform.gebruiker CASCADE` vaagt ook `platform.boeken_instelling` weg (de kill-switch-
     singleton heeft een nullable FK naar gebruiker via `gewijzigd_door`) — die rij hoort echter
     net als een migratie-seed altijd te bestaan (migratie 0008 zet 'm precies één keer), dus wordt
-    'm hier hersteld i.p.v. per boeken-test opnieuw te moeten aanmaken."""
+    'm hier hersteld i.p.v. per boeken-test opnieuw te moeten aanmaken. Zelfde geldt voor de
+    systeem-actor (migratie 0016): de truncate wist de geseedde rij, en zonder die rij falen de
+    FK's van elke worker-statusovergang."""
     engine = create_engine(settings.test_database_url)
     with engine.begin() as conn:
         conn.execute(
@@ -106,6 +109,14 @@ def _clean_tables() -> Generator[None, None, None]:
                 "INSERT INTO platform.boeken_instelling (singleton, globaal_ingeschakeld) VALUES (true, true) "
                 "ON CONFLICT (singleton) DO NOTHING"
             )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "
+                "VALUES (:id, 'Systeem (achtergrondverwerking)', 'systeem@platform.intern', "
+                "'boekhouding', 'geblokkeerd') ON CONFLICT (id) DO NOTHING"
+            ),
+            {"id": str(SYSTEEM_ACTOR_ID)},
         )
     engine.dispose()
     yield

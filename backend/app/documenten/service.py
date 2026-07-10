@@ -14,10 +14,13 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Document, DocumentBron, DocumentGebeurtenis, DocumentStatus
+from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
 from app.documenten.storage import DocumentOpslag, LokaleBestandsopslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
+from app.documenten.wachtrij import ExtractieWachtrij, InProcessExtractieWachtrij
 from app.extractie import controle as extractie_controle
 from app.extractie import service as extractie_service
 from app.sync.models import TaxRateCache, VendorCache
@@ -30,6 +33,18 @@ _PDF_SUFFIX = ".pdf"
 
 def _standaard_opslag() -> DocumentOpslag:
     return LokaleBestandsopslag(Path(settings.document_opslag_basismap))
+
+
+# Procesbrede default-wachtrij, lazy aangemaakt (na de eerste grote upload) — tests injecteren
+# hun eigen instantie via de `wachtrij`-parameter op upload/herextractie en raken deze nooit.
+_wachtrij: InProcessExtractieWachtrij | None = None
+
+
+def _standaard_wachtrij() -> ExtractieWachtrij:
+    global _wachtrij
+    if _wachtrij is None:
+        _wachtrij = InProcessExtractieWachtrij(taak=verwerk_extractie_taak)
+    return _wachtrij
 
 
 def _hash(inhoud: bytes) -> str:
@@ -129,15 +144,20 @@ def _schrijf_overgang(
 
 
 def _start_extractie(session: Session, *, document: Document, actor_id: uuid.UUID, opslag: DocumentOpslag) -> None:
-    """Draait synchroon binnen dezelfde transactie als de upload (paar seconden voor de AI-route
-    — bewust: een échte async-worker + systeem-actor is uitgesteld, zie docs/BOUWPLAN.md en de
-    docstring bij DocumentGebeurtenis). UBL/XML blijft de deterministische bron en gaat NOOIT
-    naar de AI; PDF's gaan via de Claude-route (app/extractie/), mits de AVG-gate van de
-    administratie aan staat. Elke uitkomst — voorstel, overgeslagen, fout — komt herkenbaar in de
-    tijdlijn terecht; een AI-fout laat de upload nooit falen ("niets verdwijnt stil", maar ook:
-    de mens kan altijd handmatig verder)."""
+    """Synchrone extractieroute (kleine documenten — de snelle happy-path binnen de
+    upload-/herextractie-request; grote documenten gaan via de wachtrij, zie
+    verwerk_extractie_taak). UBL/XML blijft de deterministische bron en gaat NOOIT naar de AI;
+    PDF's gaan via de Claude-route (app/extractie/), mits de AVG-gate van de administratie aan
+    staat. Elke uitkomst — voorstel, overgeslagen, fout — komt herkenbaar in de tijdlijn terecht;
+    een AI-fout laat de upload nooit falen ("niets verdwijnt stil", maar ook: de mens kan altijd
+    handmatig verder)."""
     _schrijf_overgang(session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=actor_id)
+    _rond_extractie_af(session, document=document, actor_id=actor_id, opslag=opslag)
 
+
+def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.UUID, opslag: DocumentOpslag) -> None:
+    """Tweede helft van elke extractie (synchroon én worker): bepaal het veldvoorstel/detail en
+    schrijf de eindovergang vanaf extractie_bezig."""
     detail: dict | None = None
     doel_status = DocumentStatus.TE_CONTROLEREN
     suffix = Path(document.bestandsnaam).suffix.lower()
@@ -156,6 +176,119 @@ def _start_extractie(session: Session, *, document: Document, actor_id: uuid.UUI
             doel_status = DocumentStatus.HANDMATIG_AFMAKEN
 
     _schrijf_overgang(session, document=document, naar=doel_status, actor_id=actor_id, detail=detail)
+
+
+def _groot_document_detail(session: Session, *, document: Document, inhoud: bytes) -> dict | None:
+    """Klein-vs-groot-routing (async extractie, 2026-07-10): geeft het tijdlijn-detail voor de
+    wachtrij-overgang als dit document de async-route in moet, anders None (synchroon, zoals
+    altijd). Alleen PDF's die daadwerkelijk de AI-route in gaan (AVG-gate aan + key aanwezig)
+    tellen mee — voor een overgeslagen extractie is "achtergrond" alleen maar een tragere no-op.
+    Drempels configureerbaar (settings.ai_extractie_sync_max_paginas/_bytes); lukt de
+    paginatelling niet, dan beslist bestandsgrootte alleen."""
+    if Path(document.bestandsnaam).suffix.lower() != _PDF_SUFFIX:
+        return None
+    if document.administratie_id is None:
+        return None
+    administratie = session.get(Administratie, document.administratie_id)
+    if administratie is None or not administratie.ai_extractie_ingeschakeld:
+        return None
+    if not settings.anthropic_api_key:
+        return None
+
+    paginas = tel_paginas(inhoud)
+    te_groot = len(inhoud) > settings.ai_extractie_sync_max_bytes or (
+        paginas is not None and paginas > settings.ai_extractie_sync_max_paginas
+    )
+    if not te_groot:
+        return None
+    return {"extractie_wachtrij": "groot_document", "paginas": paginas, "bytes": len(inhoud)}
+
+
+def verwerk_extractie_taak(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, opslag: DocumentOpslag | None = None
+) -> None:
+    """Worker-taak voor de extractie-wachtrij (async extractie, 2026-07-10). Elke statusovergang
+    hier draagt de SYSTEEM-actor (app/db/systeem_actor.py) — zichtbaar in tijdlijn én audit_event,
+    nooit de gebruiker die toevallig uploadde. Twee losse transacties, bewust: de
+    wachtrij→bezig-overgang commit meteen (de UI ziet "bezig" live), daarna pas de langdurige
+    extractie + eindovergang. Idempotent via de statusmachine: staat het document niet (meer) op
+    extractie_wachtrij — intussen verwijderd, of een dubbele/verouderde taak — dan is dit een
+    gelogde no-op. Faalt de afronding onverwacht (bv. opslag onbereikbaar), dan eindigt het
+    document zichtbaar op te_controleren met de fout in de tijdlijn — nooit stil blijven hangen
+    op bezig."""
+    opslag = opslag or _standaard_opslag()
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            logger.warning("Extractie-wachtrijtaak: onbekend document %s — overgeslagen", document_id)
+            return
+        if document.status != DocumentStatus.EXTRACTIE_WACHTRIJ:
+            logger.info(
+                "Extractie-wachtrijtaak: document %s staat op %s (niet extractie_wachtrij) — overgeslagen",
+                document_id,
+                document.status.value,
+            )
+            return
+        _schrijf_overgang(session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=SYSTEEM_ACTOR_ID)
+
+    try:
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, document_id)
+            if document is None:  # pragma: no cover — kan alleen bij een parallelle harde delete
+                return
+            _rond_extractie_af(session, document=document, actor_id=SYSTEEM_ACTOR_ID, opslag=opslag)
+    except Exception as exc:  # noqa: BLE001 — vangnet: het document mag nooit stil op 'bezig' blijven hangen
+        logger.exception("Extractie-worker faalde voor document %s", document_id)
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, document_id)
+            if document is not None and document.status == DocumentStatus.EXTRACTIE_BEZIG:
+                _schrijf_overgang(
+                    session,
+                    document=document,
+                    naar=DocumentStatus.TE_CONTROLEREN,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    detail={"ai_extractie_fout": str(exc)},
+                )
+
+
+def herstel_achtergebleven_extracties(*, wachtrij: ExtractieWachtrij | None = None) -> int:
+    """Startup-vangnet ("niets verdwijnt stil"): de in-process wachtrij overleeft een
+    proces-herstart niet. Documenten die in extractie_wachtrij achterbleven worden opnieuw
+    ge-enqueued; documenten die midden in een worker-run op extractie_bezig strandden gaan eerst
+    terug naar de wachtrij (systeem-actor + herkenbaar detail in de tijdlijn). Retourneert het
+    aantal opnieuw ingeplande documenten. Synchrone extracties kunnen hier nooit tussen zitten:
+    die committen hun bezig- en eindovergang in één transactie — een crash rolt de hele upload
+    terug."""
+    with scoped_session(None) as session:
+        administratie_ids = [rij.id for rij in session.scalars(select(Administratie))]
+
+    hersteld = 0
+    for administratie_id in administratie_ids:
+        te_enqueuen: list[uuid.UUID] = []
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            achtergebleven = session.scalars(
+                select(Document).where(
+                    Document.administratie_id == administratie_id,
+                    Document.status.in_((DocumentStatus.EXTRACTIE_WACHTRIJ, DocumentStatus.EXTRACTIE_BEZIG)),
+                )
+            )
+            for document in achtergebleven:
+                if document.status == DocumentStatus.EXTRACTIE_BEZIG:
+                    _schrijf_overgang(
+                        session,
+                        document=document,
+                        naar=DocumentStatus.EXTRACTIE_WACHTRIJ,
+                        actor_id=SYSTEEM_ACTOR_ID,
+                        detail={"herstel": "achtergebleven_na_herstart"},
+                    )
+                te_enqueuen.append(document.id)
+        for document_id in te_enqueuen:
+            (wachtrij or _standaard_wachtrij()).enqueue(administratie_id=administratie_id, document_id=document_id)
+        hersteld += len(te_enqueuen)
+
+    if hersteld:
+        logger.info("Achtergebleven extracties opnieuw ingepland na herstart: %s document(en)", hersteld)
+    return hersteld
 
 
 def _ai_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> tuple[dict, bool]:
@@ -243,11 +376,15 @@ def upload_document(
     actor_id: uuid.UUID,
     opslag: DocumentOpslag | None = None,
     bron: DocumentBron = DocumentBron.UPLOAD,
+    wachtrij: ExtractieWachtrij | None = None,
 ) -> UploadResultaat:
     """Slaat het bestand op, detecteert mogelijke duplicaten (sha256, binnen dezelfde
-    administratie) en start meteen de (stub-)extractie. `mogelijk_duplicaat_van_id` is een losse
-    vlag op het document — het doorloopt gewoon de normale statusmachine, met dit signaal
-    erbovenop voor de controleur (mockup: chip 'Mogelijk duplicaat van ... — beoordelen')."""
+    administratie) en start de extractie: klein = synchroon binnen deze request (snelle
+    happy-path), groot = direct de achtergrondwachtrij in (status extractie_wachtrij — de
+    response keert meteen terug, de worker doet de rest met de systeem-actor).
+    `mogelijk_duplicaat_van_id` is een losse vlag op het document — het doorloopt gewoon de
+    normale statusmachine, met dit signaal erbovenop voor de controleur (mockup: chip 'Mogelijk
+    duplicaat van ... — beoordelen')."""
     opslag = opslag or _standaard_opslag()
     document_id = uuid.uuid4()
     sha256_hash = _hash(inhoud)
@@ -297,7 +434,19 @@ def upload_document(
             administratie_id=administratie_id,
         )
 
-        _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
+        wachtrij_detail = _groot_document_detail(session, document=document, inhoud=inhoud)
+        if wachtrij_detail is not None:
+            # De wachtrij-overgang zelf draagt nog de menselijke actor (de upload is een
+            # menselijke handeling); vanaf het oppakken door de worker is alles systeem-actor.
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.EXTRACTIE_WACHTRIJ,
+                actor_id=actor_id,
+                detail=wachtrij_detail,
+            )
+        else:
+            _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
 
         eind_status = document.status
         mogelijk_duplicaat_van_id = document.mogelijk_duplicaat_van_id
@@ -308,6 +457,10 @@ def upload_document(
             if bestaand
             else None
         )
+
+    if wachtrij_detail is not None:
+        # Ná de commit — de worker mag het document pas zien als de wachtrij-status vaststaat.
+        (wachtrij or _standaard_wachtrij()).enqueue(administratie_id=administratie_id, document_id=document_id)
 
     return UploadResultaat(
         document_id=document_id,
@@ -458,15 +611,18 @@ def herextraheer_document(
     document_id: uuid.UUID,
     actor_id: uuid.UUID,
     opslag: DocumentOpslag | None = None,
+    wachtrij: ExtractieWachtrij | None = None,
 ) -> DocumentStatus:
     """"Opnieuw extraheren" (timeout-fix 2026-07-10): een transiënte AI-fout (timeout, 529) laat
     het document met een lege prefill op te_controleren achter — deze actie draait de extractie
-    opnieuw zonder her-upload. Zelfde route als de upload (_start_extractie): statusovergangen
-    te_controleren -> extractie_bezig -> te_controleren, met tijdlijn + audit_event per stap;
-    ook de AVG-gate en de key-check gelden onverkort opnieuw. Alleen voor PDF's (UBL is
-    deterministisch — opnieuw parsen levert per definitie hetzelfde op) en alleen vanaf
+    opnieuw zonder her-upload. Zelfde klein-vs-groot-routing als de upload: klein synchroon
+    (te_controleren -> extractie_bezig -> te_controleren), groot via de wachtrij — juist de
+    her-extractie van een monsterfactuur was de aanleiding voor de async-route. Tijdlijn +
+    audit_event per stap; AVG-gate en key-check gelden onverkort opnieuw. Alleen voor PDF's (UBL
+    is deterministisch — opnieuw parsen levert per definitie hetzelfde op) en alleen vanaf
     te_controleren of handmatig_afmaken (daarna is het voorstel mensenwerk)."""
     opslag = opslag or _standaard_opslag()
+    naar_wachtrij = False
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
         if document is None:
@@ -478,8 +634,24 @@ def herextraheer_document(
                 "Opnieuw extraheren kan alleen vanaf te_controleren of handmatig_afmaken "
                 f"(status: {document.status.value})."
             )
-        _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
-        return document.status
+        inhoud = opslag.lezen(pad=document.opslag_pad)
+        wachtrij_detail = _groot_document_detail(session, document=document, inhoud=inhoud)
+        if wachtrij_detail is not None:
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.EXTRACTIE_WACHTRIJ,
+                actor_id=actor_id,
+                detail=wachtrij_detail,
+            )
+            naar_wachtrij = True
+        else:
+            _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
+        eind_status = document.status
+
+    if naar_wachtrij:
+        (wachtrij or _standaard_wachtrij()).enqueue(administratie_id=administratie_id, document_id=document_id)
+    return eind_status
 
 
 def haal_bijlage_op(

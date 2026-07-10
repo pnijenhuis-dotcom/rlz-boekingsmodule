@@ -154,6 +154,47 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
     expect(screen.queryByRole('button', { name: 'Document verwijderen' })).not.toBeInTheDocument()
   })
 
+  it('pollt de lijst vanzelf zolang een document in de extractie-wachtrij of bij de worker staat', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      installFetchMock({
+        documenten: [document({ bestandsnaam: 'monsterfactuur.pdf', status: 'extractie_wachtrij' })],
+      })
+      renderScherm()
+
+      await waitFor(() => expect(screen.getByText('monsterfactuur.pdf')).toBeInTheDocument())
+      expect(screen.getByText('In wachtrij (extractie)')).toBeInTheDocument()
+
+      const lijstAanroepen = () =>
+        vi
+          .mocked(fetch)
+          .mock.calls.filter(([url]) => String(url).includes('/documenten') && !String(url).includes('/documenten/'))
+          .length
+      const voor = lijstAanroepen()
+      await vi.advanceTimersByTimeAsync(3500)
+      expect(lijstAanroepen()).toBeGreaterThan(voor)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('pollt niet als er geen lopende extracties zijn', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      installFetchMock({ documenten: [document({})] })
+      renderScherm()
+
+      await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
+      const lijstAanroepen = () =>
+        vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/documenten')).length
+      const voor = lijstAanroepen()
+      await vi.advanceTimersByTimeAsync(7000)
+      expect(lijstAanroepen()).toBe(voor)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('"toon verwijderde documenten" haalt de lijst met toon_verwijderd=true op en toont een herstelknop', async () => {
     const gebruiker = userEvent.setup()
     const herstellenAanroepen: string[] = []

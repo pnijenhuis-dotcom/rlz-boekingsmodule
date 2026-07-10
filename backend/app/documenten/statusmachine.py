@@ -16,6 +16,7 @@ class OngeldigeStatusovergang(Exception):
 _NIET_GEBOEKTE_STATUSSEN = frozenset(
     {
         DocumentStatus.ONTVANGEN,
+        DocumentStatus.EXTRACTIE_WACHTRIJ,
         DocumentStatus.EXTRACTIE_BEZIG,
         DocumentStatus.TE_CONTROLEREN,
         DocumentStatus.KLAAR_OM_TE_BOEKEN,
@@ -31,7 +32,19 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     DocumentStatus.ONTVANGEN: frozenset(
         {
             DocumentStatus.EXTRACTIE_BEZIG,
+            # Async extractie (migratie 0016): een groot document gaat bij upload direct de
+            # achtergrondwachtrij in i.p.v. synchroon te extraheren.
+            DocumentStatus.EXTRACTIE_WACHTRIJ,
             DocumentStatus.NIET_TOEGEWEZEN,
+            DocumentStatus.AFGEWEZEN,
+            DocumentStatus.VERWIJDERD,
+        }
+    ),
+    # Wachtrij: de worker pakt het op (-> bezig, systeem-actor); verwijderen/afwijzen kan nog
+    # gewoon — de worker slaat een document dat intussen niet meer op wachtrij staat over.
+    DocumentStatus.EXTRACTIE_WACHTRIJ: frozenset(
+        {
+            DocumentStatus.EXTRACTIE_BEZIG,
             DocumentStatus.AFGEWEZEN,
             DocumentStatus.VERWIJDERD,
         }
@@ -45,6 +58,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             # Waarborg projectadministratie (migratie 0015): regelset niet aantoonbaar compleet
             # bij projectplicht — blokkerend, geen (totalen-only) voorstel.
             DocumentStatus.HANDMATIG_AFMAKEN,
+            # Herstel na proces-herstart (async extractie): de in-process wachtrij overleeft een
+            # herstart niet — een document dat in 'bezig' achterbleef gaat bij startup terug de
+            # wachtrij in (systeem-actor, zichtbaar in de tijdlijn), nooit stil blijven hangen.
+            DocumentStatus.EXTRACTIE_WACHTRIJ,
         }
     ),
     DocumentStatus.TE_CONTROLEREN: frozenset(
@@ -57,6 +74,9 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             # document op te_controleren achter — de her-extractie doorloopt daarna gewoon weer
             # extractie_bezig -> te_controleren, met tijdlijn + audit zoals elke overgang.
             DocumentStatus.EXTRACTIE_BEZIG,
+            # Opnieuw extraheren van een gróót document gaat via de wachtrij (async), niet
+            # synchroon — zelfde klein-vs-groot-routing als bij de upload.
+            DocumentStatus.EXTRACTIE_WACHTRIJ,
         }
     ),
     DocumentStatus.KLAAR_OM_TE_BOEKEN: frozenset(
@@ -82,6 +102,8 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     DocumentStatus.HANDMATIG_AFMAKEN: frozenset(
         {
             DocumentStatus.EXTRACTIE_BEZIG,
+            # Zelfde reden als bij te_controleren: her-extractie van een groot document is async.
+            DocumentStatus.EXTRACTIE_WACHTRIJ,
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VRAAG_OPEN,
             DocumentStatus.AFGEWEZEN,

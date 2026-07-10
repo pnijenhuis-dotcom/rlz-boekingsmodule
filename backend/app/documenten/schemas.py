@@ -73,6 +73,9 @@ class DocumentGebeurtenisResponse(BaseModel):
     van_status: str | None
     naar_status: str
     actor_id: uuid.UUID
+    # True als de overgang door de systeem-actor is gezet (achtergrondworker, migratie 0016) —
+    # de tijdlijn toont dan herkenbaar "systeem" i.p.v. een menselijke handeling.
+    actor_is_systeem: bool = False
     detail: dict | None
     tijdstip: datetime
 

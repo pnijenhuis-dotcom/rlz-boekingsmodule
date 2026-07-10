@@ -2,9 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
+import { extractieActief } from './status'
 import { StatusChip } from './StatusChip'
 import { useAdministraties } from './useAdministraties'
 import { VerwijderDialog } from './VerwijderDialog'
+
+/** Ververs-interval zolang er documenten in extractie_wachtrij/extractie_bezig staan. */
+const EXTRACTIE_POLL_MS = 3000
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
@@ -55,6 +59,14 @@ export function WerkvoorraadScreen() {
     laadDocumenten()
   }, [laadDocumenten])
 
+  // Live extractiestatus (async extractie): zolang er documenten in de wachtrij of bij de
+  // worker staan, ververst de lijst vanzelf — de statuschip loopt mee zonder handmatige reload.
+  useEffect(() => {
+    if (!documenten?.some((d) => extractieActief(d.status))) return
+    const timer = setInterval(laadDocumenten, EXTRACTIE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [documenten, laadDocumenten])
+
   const uploadBestand = useCallback(
     async (bestand: File) => {
       if (!administratieId) return
@@ -71,7 +83,9 @@ export function WerkvoorraadScreen() {
         setUploadBericht(
           resultaat.mogelijk_duplicaat_van
             ? `"${bestand.name}" geüpload — mogelijk duplicaat, gemarkeerd ter controle in de lijst.`
-            : `"${bestand.name}" geüpload en in verwerking.`,
+            : resultaat.status === 'extractie_wachtrij'
+              ? `"${bestand.name}" geüpload — groot document, wordt op de achtergrond verwerkt. De status in de lijst loopt vanzelf mee.`
+              : `"${bestand.name}" geüpload en in verwerking.`,
         )
         laadDocumenten()
       } catch (err) {

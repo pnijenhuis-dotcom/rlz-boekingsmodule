@@ -13,6 +13,7 @@ from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
 from app.db import session as db_session
 from app.db.migratie_guard import controleer_migratie_versie
+from app.documenten import service as documenten_service
 from app.documenten.router import router as documenten_router
 from app.sync.router import router as sync_router
 
@@ -54,8 +55,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     vóór de eerste request wordt geaccepteerd — uvicorn start dan niet op bij een fail-fast-fout.
     Verwijst naar `db_session.engine` (module-attribuut, niet een losse import) zodat dit ook de
     testdatabase-engine ziet als tests/conftest.py::_service_layer_gebruikt_testdatabase 'm heeft
-    vervangen — zelfde reden als waarom scoped_session() dat ook nooit als losse import doet."""
+    vervangen — zelfde reden als waarom scoped_session() dat ook nooit als losse import doet.
+
+    Daarna het async-extractie-vangnet (2026-07-10): documenten die door een proces-herstart in
+    extractie_wachtrij/extractie_bezig achterbleven (de in-process wachtrij overleeft een
+    herstart niet) worden opnieuw ingepland — "niets verdwijnt stil"."""
     controleer_migratie_versie(db_session.engine, fail_fast=settings.migratie_guard_fail_fast)
+    documenten_service.herstel_achtergebleven_extracties()
     yield
 
 

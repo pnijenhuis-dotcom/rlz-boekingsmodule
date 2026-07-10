@@ -77,6 +77,76 @@ describe('DocumentDetailScreen — tijdlijn en duplicaat', () => {
     expect(screen.queryByText(/status \)/)).not.toBeInTheDocument()
   })
 
+  it('toont de achtergrond-banner (geen boekvoorstel-formulier) en pollt zolang de extractie loopt', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      installFetchMock({
+        id: DOCUMENT_ID,
+        administratie_id: ADMINISTRATIE_ID,
+        bestandsnaam: 'monsterfactuur.pdf',
+        status: 'extractie_wachtrij',
+        bron: 'upload',
+        mogelijk_duplicaat_van: null,
+        toegewezen_aan: null,
+        aangemaakt_op: '2026-07-10T10:00:00Z',
+        laatst_gewijzigd_op: '2026-07-10T10:00:00Z',
+        veldvoorstel: null,
+        tijdlijn: [
+          { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-07-10T10:00:00Z' },
+          {
+            van_status: 'ontvangen',
+            naar_status: 'extractie_wachtrij',
+            actor_id: 'x',
+            actor_is_systeem: false,
+            detail: { extractie_wachtrij: 'groot_document', paginas: 42, bytes: 5 * 1024 * 1024 },
+            tijdstip: '2026-07-10T10:00:01Z',
+          },
+        ],
+      })
+
+      renderScherm()
+
+      await waitFor(() => expect(screen.getByText(/Wordt op de achtergrond verwerkt/)).toBeInTheDocument())
+      expect(screen.getByText(/staat in de wachtrij voor AI-extractie/)).toBeInTheDocument()
+      expect(screen.getByText(/42 pagina's, 5\.0 MB/)).toBeInTheDocument()
+      // Geen (misleidend) boekvoorstel-formulier zolang de worker nog een voorstel gaat schrijven.
+      expect(screen.queryByText(/Boekvoorstel/)).not.toBeInTheDocument()
+
+      const detailAanroepen = () =>
+        vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith(`/documenten/${DOCUMENT_ID}`)).length
+      const voor = detailAanroepen()
+      await vi.advanceTimersByTimeAsync(3500)
+      expect(detailAanroepen()).toBeGreaterThan(voor)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('markeert overgangen van de achtergrondworker herkenbaar als systeem in de tijdlijn', async () => {
+    installFetchMock({
+      id: DOCUMENT_ID,
+      administratie_id: ADMINISTRATIE_ID,
+      bestandsnaam: 'monsterfactuur.pdf',
+      status: 'te_controleren',
+      bron: 'upload',
+      mogelijk_duplicaat_van: null,
+      toegewezen_aan: null,
+      aangemaakt_op: '2026-07-10T10:00:00Z',
+      laatst_gewijzigd_op: '2026-07-10T10:05:00Z',
+      veldvoorstel: null,
+      tijdlijn: [
+        { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-07-10T10:00:00Z' },
+        { van_status: 'extractie_wachtrij', naar_status: 'extractie_bezig', actor_id: 'sys', actor_is_systeem: true, detail: null, tijdstip: '2026-07-10T10:01:00Z' },
+        { van_status: 'extractie_bezig', naar_status: 'te_controleren', actor_id: 'sys', actor_is_systeem: true, detail: null, tijdstip: '2026-07-10T10:05:00Z' },
+      ],
+    })
+
+    renderScherm()
+
+    await waitFor(() => expect(screen.getAllByText(/systeem/)).toHaveLength(2))
+    expect(screen.getByText(/In wachtrij \(extractie\) →/)).toBeInTheDocument()
+  })
+
   it('toont een klikbare duplicaat-link met bestandsnaam en datum, geen kale UUID', async () => {
     installFetchMock({
       id: DOCUMENT_ID,

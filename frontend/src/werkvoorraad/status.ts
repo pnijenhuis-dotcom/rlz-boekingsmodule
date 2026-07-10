@@ -1,6 +1,7 @@
 // Mapping DocumentStatus (backend, app/documenten/models.py) -> label + mockup-chipklasse.
 export const STATUS_LABELS: Record<string, string> = {
   ontvangen: 'Ontvangen',
+  extractie_wachtrij: 'In wachtrij (extractie)',
   extractie_bezig: 'Extractie bezig',
   te_controleren: 'Te controleren',
   klaar_om_te_boeken: 'Klaar om te boeken',
@@ -15,6 +16,7 @@ export const STATUS_LABELS: Record<string, string> = {
 
 export const STATUS_CHIP_KLASSE: Record<string, string> = {
   ontvangen: 'ai',
+  extractie_wachtrij: 'ai',
   extractie_bezig: 'ai',
   te_controleren: 'ai',
   klaar_om_te_boeken: 'klaar',
@@ -25,6 +27,12 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   niet_toegewezen: 'vraag',
   handmatig_afmaken: 'vraag',
   verwijderd: 'geboekt',
+}
+
+/** Statussen waarin de achtergrondextractie nog loopt (async extractie): werkvoorraad en
+ * detailscherm pollen dan tot de worker klaar is — nooit een blokkerende spinner. */
+export function extractieActief(status: string): boolean {
+  return status === 'extractie_wachtrij' || status === 'extractie_bezig'
 }
 
 export function statusLabel(status: string): string {

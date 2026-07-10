@@ -3,9 +3,12 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentDetailDto } from '../api/types'
 import { StatusChip } from '../werkvoorraad/StatusChip'
-import { statusLabel } from '../werkvoorraad/status'
+import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+
+/** Ververs-interval zolang de achtergrondextractie loopt (wachtrij/bezig). */
+const EXTRACTIE_POLL_MS = 3000
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
@@ -184,6 +187,14 @@ export function DocumentDetailScreen() {
     laadDetail()
   }, [laadDetail])
 
+  // Live extractiestatus (async extractie): in wachtrij → bezig → klaar loopt vanzelf mee —
+  // geen blokkerende spinner, de gebruiker kan intussen de bijlage en tijdlijn gewoon bekijken.
+  useEffect(() => {
+    if (!detail || !extractieActief(detail.status)) return
+    const timer = setInterval(laadDetail, EXTRACTIE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [detail, laadDetail])
+
   useEffect(() => {
     if (!administratieId || !documentId) return
     let objectUrl: string | null = null
@@ -209,6 +220,7 @@ export function DocumentDetailScreen() {
 
   const extractieProbleem = laatsteExtractieProbleem(detail)
   const isHandmatigAfmaken = detail.status === 'handmatig_afmaken'
+  const achtergrondBezig = extractieActief(detail.status)
 
   const opnieuwExtraheren = async () => {
     setOpnieuwBezig(true)
@@ -273,6 +285,22 @@ export function DocumentDetailScreen() {
         </div>
 
         <div className="formpane">
+          {achtergrondBezig && (
+            <div className="panel">
+              <h2>
+                Wordt op de achtergrond verwerkt{' '}
+                <span className="chip ai">
+                  {detail.status === 'extractie_wachtrij' ? 'in wachtrij' : 'extractie bezig'}
+                </span>
+              </h2>
+              <p className="hint" style={{ marginTop: 0 }}>
+                {detail.status === 'extractie_wachtrij'
+                  ? 'Dit document staat in de wachtrij voor AI-extractie (groot document). Dit scherm ververst vanzelf zodra de verwerking start.'
+                  : 'De AI-extractie draait op de achtergrond. Dit scherm ververst vanzelf zodra het voorstel klaar is.'}
+              </p>
+            </div>
+          )}
+
           {extractieProbleem && (detail.status === 'te_controleren' || isHandmatigAfmaken) && (
             <div className="panel">
               <h2>
@@ -299,6 +327,9 @@ export function DocumentDetailScreen() {
           )}
 
           {(() => {
+            // Zolang de achtergrondextractie loopt is een (ouder) voorstel of het
+            // boekvoorstel-formulier misleidend — de worker schrijft zo een nieuw voorstel.
+            if (achtergrondBezig) return null
             const aiVoorstel = alsAiVoorstel(detail.veldvoorstel)
             if (aiVoorstel) return <AiVoorstelPanel voorstel={aiVoorstel} />
             if (!detail.veldvoorstel) return null
@@ -321,14 +352,16 @@ export function DocumentDetailScreen() {
             )
           })()}
 
-          <BoekvoorstelPanel
-            administratieId={administratieId}
-            documentId={documentId}
-            status={detail.status}
-            veldvoorstel={detail.veldvoorstel}
-            onGeboekt={laadDetail}
-            onHersteld={laadDetail}
-          />
+          {!achtergrondBezig && (
+            <BoekvoorstelPanel
+              administratieId={administratieId}
+              documentId={documentId}
+              status={detail.status}
+              veldvoorstel={detail.veldvoorstel}
+              onGeboekt={laadDetail}
+              onHersteld={laadDetail}
+            />
+          )}
 
           <div className="panel">
             <h2>Tijdlijn</h2>
@@ -341,6 +374,11 @@ export function DocumentDetailScreen() {
                       {g.van_status ? (
                         <>
                           {statusLabel(g.van_status)} → <b>{statusLabel(g.naar_status)}</b>
+                          {g.actor_is_systeem && (
+                            <span className="chip geheugen" style={{ marginLeft: 6 }} title="Achtergrondverwerking — geen menselijke handeling">
+                              ⚙ systeem
+                            </span>
+                          )}
                         </>
                       ) : (
                         <>
@@ -356,6 +394,18 @@ export function DocumentDetailScreen() {
                             </div>
                           )}
                         </>
+                      )}
+                      {g.detail && 'extractie_wachtrij' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Groot document ({typeof g.detail.paginas === 'number' ? `${g.detail.paginas} pagina's, ` : ''}
+                          {typeof g.detail.bytes === 'number' ? `${(g.detail.bytes / (1024 * 1024)).toFixed(1)} MB` : ''}) —
+                          extractie op de achtergrond
+                        </div>
+                      )}
+                      {g.detail && 'herstel' in g.detail && g.detail.herstel === 'achtergebleven_na_herstart' && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Opnieuw ingepland na een herstart van de verwerking
+                        </div>
                       )}
                       {g.detail && 'ubl_parse_fout' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>

@@ -79,6 +79,17 @@ class Settings(BaseSettings):
     # gokken" — de waarde blijft een voorstel dat Peter controleert, nooit een automatische keuze).
     ai_extractie_zekerheid_drempel: float = 0.8
 
+    # Klein-vs-groot-routing (async extractie, 2026-07-10): een PDF die op de AI-route gaat en
+    # boven één van deze drempels zit, gaat niet synchroon in de upload-request maar direct de
+    # achtergrondwachtrij in (status extractie_wachtrij) — een monsterfactuur mag het scherm
+    # nooit meer blokkeren. Onder beide drempels blijft de bestaande snelle synchrone route.
+    ai_extractie_sync_max_paginas: int = 8
+    ai_extractie_sync_max_bytes: int = 3 * 1024 * 1024  # 3 MB
+    # Overbelastingsbescherming: maximaal zoveel zware extracties tegelijk (dev: in-process
+    # threads). Bewust 1 — één grote factuur mag de machine niet plattrekken, en de wachtrij
+    # maakt wachten zichtbaar i.p.v. traag.
+    ai_extractie_worker_concurrency: int = 1
+
     # Migratie-guard bij startup (app/db/migratie_guard.py): default fail-fast, zodat een gemiste
     # `make migrate` nooit meer een raadsel-500 wordt maar een duidelijke weigering om te starten.
     # "waarschuwen" is een bewuste uitzondering voor latere productie-scenario's (bv. een korte

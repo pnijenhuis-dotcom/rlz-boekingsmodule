@@ -23,6 +23,9 @@ class DocumentBron(enum.StrEnum):
 
 class DocumentStatus(enum.StrEnum):
     """Hoofdpad: ontvangen -> extractie_bezig -> te_controleren -> klaar_om_te_boeken -> geboekt.
+    Grote documenten (async extractie, migratie 0016): ontvangen -> extractie_wachtrij ->
+    extractie_bezig -> ... — de wachtrij-status betekent "staat klaar voor de achtergrondworker",
+    de upload-request keert dan direct terug.
     Zijtakken: vraag_open (blokkeert boeken), afgewezen (verplichte reden, eindstatus),
     boeken_mislukt (RLZ-fout, retry mogelijk), niet_toegewezen (verzamelbak — geen administratie
     gekoppeld, zie Document.administratie_id), handmatig_afmaken (migratie 0015, waarborg
@@ -35,6 +38,7 @@ class DocumentStatus(enum.StrEnum):
     elders losse status-writes."""
 
     ONTVANGEN = "ontvangen"
+    EXTRACTIE_WACHTRIJ = "extractie_wachtrij"
     EXTRACTIE_BEZIG = "extractie_bezig"
     TE_CONTROLEREN = "te_controleren"
     KLAAR_OM_TE_BOEKEN = "klaar_om_te_boeken"
@@ -92,9 +96,9 @@ class Document(Base):
 class DocumentGebeurtenis(Base):
     """Append-only tijdlijn (voedt de mockup-tijdlijn: binnenkomst -> extractie -> vraag ->
     accordering -> boeking). `van_status` is NULL voor de allereerste gebeurtenis (aanmaak).
-    `actor_id` is bewust verplicht (zie service.py): er is nog geen achtergrondproces zonder
-    menselijke aanroeper in deze fase, dus geen systeem-actor-sentinel nodig — open aandachtspunt
-    voor een latere, echt-asynchrone extractieworker."""
+    `actor_id` is bewust verplicht: een menselijke handeling draagt de gebruiker, een
+    achtergrondstap draagt de vaste systeem-actor (app/db/systeem_actor.py, migratie 0016) —
+    nooit NULL, nooit de mens die de achtergrondtaak toevallig triggerde."""
 
     __tablename__ = "document_gebeurtenis"
     __table_args__ = {"schema": "boekhouding"}

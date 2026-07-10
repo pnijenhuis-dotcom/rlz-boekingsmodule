@@ -32,6 +32,9 @@ export interface DocumentGebeurtenisDto {
   van_status: string | null
   naar_status: string
   actor_id: string
+  /** True als de overgang door de achtergrondworker (systeem-actor) is gezet — de tijdlijn
+   * toont dan herkenbaar "systeem" i.p.v. een menselijke handeling. */
+  actor_is_systeem: boolean
   detail: Record<string, unknown> | null
   tijdstip: string
 }

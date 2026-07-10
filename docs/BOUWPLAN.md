@@ -117,10 +117,10 @@ Backend:
    aparte status (mockup: chip "Mogelijk duplicaat van ... — beoordelen", het document doorloopt
    gewoon de normale flow). UBL/XML wordt al deterministisch geparst naar veldvoorstellen
    (`app/documenten/ubl.py`); de AI-extractie voor PDF's is inmiddels gebouwd — zie punt 5b.
-   **Bekend openstaand punt:** elke statusovergang vereist nu een menselijke actor_id (geen
-   systeem-actor-sentinel) — voldoende zolang extractie synchroon binnen dezelfde request draait,
-   maar een latere écht-asynchrone extractieworker (queue/Cloud Tasks) heeft hier een oplossing
-   voor nodig vóór hij gebouwd wordt. Multi-factuur-PDF-splitsing en e-mail-intake blijven fase 3.
+   ~~**Bekend openstaand punt:** elke statusovergang vereist nu een menselijke actor_id (geen
+   systeem-actor-sentinel)~~ — **opgelost (2026-07-10, zie punt 5c): systeem-actor gebouwd**,
+   het patroon geldt voortaan voor alle achtergrondverwerking. Multi-factuur-PDF-splitsing en
+   e-mail-intake blijven fase 3.
 5b. **AI-extractie sessie 1 — Claude-API-extractie van inkoopfactuur-PDF's, gebouwd (2026-07-10).**
    Kernprincipe onverkort: **AI leest, code rekent, mens drukt** — de AI levert uitsluitend
    veld-suggesties met zekerheidsscores, boeken blijft mens + harde checks. Nieuw pakket
@@ -160,8 +160,8 @@ Backend:
      tegen de vendor-cache (voorstel, alleen bij uniek resultaat), btw-code-suggestie uitsluitend
      uit de taxrate-cache (uniek percentage; 0%/verlegd bewust nooit — aangifte-kritisch).
      **GB-suggesties bewust nog niet: het boekingsgeheugen is sessie 2.**
-   - Ingeplugd op `_start_extractie` — **bewust synchroon** na upload (paar seconden; de
-     async-worker + systeem-actor uit punt 5 blijft uitgesteld tot een latere sessie).
+   - Ingeplugd op `_start_extractie` — synchroon na upload voor kleine documenten (paar
+     seconden; grote documenten gaan sinds 2026-07-10 via de async-route, zie punt 5c).
      extractie_bezig → te_controleren met het voorstel als `veldvoorstel` in de tijdlijn (zelfde
      sleutel als UBL; UBL blijft de deterministische bron en gaat nooit via de AI). Elke uitkomst
      zichtbaar: voorstel, `ai_extractie_overgeslagen` (gate/key) of `ai_extractie_fout` — een
@@ -206,6 +206,47 @@ Backend:
      vs. factuurtotaal, afwijking oranje — AI stelt voor, boekt nooit.
    - **Sessie 2 (open): het boekingsgeheugen** — RLZ-historie (JournalEntries) + app-correcties
      als bron voor GB-/btw-/leverancier-defaults; pas daarna worden GB-suggesties zinvol.
+5c. **Async extractie — gebouwd (2026-07-10).** Aanleiding: de synchrone chunked extractie van
+   een uitzonderlijk grote factuur (20260063.pdf) hield het scherm 90s+ vast en belastte de
+   machine zwaar. Een groot/zwaar document bezet het scherm en de machine nu nooit meer.
+   - **Klein-vs-groot-routing** (`service._groot_document_detail`): een PDF die daadwerkelijk de
+     AI-route in gaat (AVG-gate aan + key) en boven een configureerbare drempel zit
+     (`ai_extractie_sync_max_paginas`, default 8, paginatelling via pypdf — robuust voor object
+     streams; of `ai_extractie_sync_max_bytes`, default 3 MB, tevens fallback als de telling
+     faalt) gaat bij upload én her-extractie direct naar de nieuwe status `extractie_wachtrij`
+     (migratie 0016); de request keert meteen terug. Kleine documenten houden exact de bestaande
+     snelle synchrone happy-path. Gate-uit/key-loos blijft altijd synchroon — "achtergrond" zou
+     daar alleen een tragere no-op zijn.
+   - **Wachtrij-interface, bewust cloud-klaar** (`app/documenten/wachtrij.py`): het contract is
+     payload-gedreven — `enqueue(administratie_id, document_id)`, nooit een callable of open
+     sessie — en past daarmee één-op-één op de geplande Cloud Tasks/Cloud Run-variant
+     (platformverbetering 1: taaknaam = deterministische idempotency-key uit dezelfde twee id's).
+     Dev-implementatie: in-process threadpool met configureerbare limiet
+     (`ai_extractie_worker_concurrency`, default 1 — de overbelastingsbescherming: één
+     monsterfactuur trekt de machine niet plat, volgende taken wachten in de queue). De worker
+     (`service.verwerk_extractie_taak`) is idempotent via de statusmachine: alleen een document
+     dat écht op extractie_wachtrij staat wordt opgepakt (intussen verwijderd of dubbele taak =
+     gelogde no-op); wachtrij→bezig commit apart zodat de UI "bezig" live ziet; een onverwachte
+     worker-fout eindigt zichtbaar op te_controleren met de fout in de tijdlijn. De
+     projectwaarborg (5b punt 3) loopt ongewijzigd door de gedeelde `_rond_extractie_af`.
+   - **Systeem-actor (migratie 0016, patroon voor álle achtergrondverwerking** — vastgelegd in
+     `Platform/registers/conventies.md`): elke worker-overgang draagt de vaste platform-gebruiker
+     `Systeem (achtergrondverwerking)` (UUID `...0001`, `app/db/systeem_actor.py`) in tijdlijn én
+     audit_event — nooit de gebruiker die toevallig uploadde, nooit NULL (FK's blijven gelden).
+     Kan nooit inloggen: status geblokkeerd, geen wachtwoord, geen scope. De tijdlijn-DTO kreeg
+     `actor_is_systeem`; de UI toont "⚙ systeem" bij die overgangen.
+   - **Herstart-vangnet** (`herstel_achtergebleven_extracties`, lifespan na de migratie-guard):
+     de in-process queue overleeft een herstart niet — wachtrij-documenten worden opnieuw
+     ge-enqueued, op bezig gestrande documenten gaan eerst zichtbaar terug de wachtrij in
+     (systeem-actor + detail). "Niets verdwijnt stil."
+   - **Frontend:** werkvoorraad en detailscherm pollen (3s) zolang een document in
+     wachtrij/bezig staat en verversen vanzelf — nooit een blokkerende spinner. Grote uploads
+     melden direct "wordt op de achtergrond verwerkt"; het detailscherm toont een banner en
+     verbergt intussen het (misleidende, want zo-overschreven) voorstel/boekvoorstel-formulier.
+   - Tests: async-flow end-to-end met de échte in-process worker (gemockte AI), systeem-actor in
+     tijdlijn + audit_event, routing op byte- én paginadrempel, projectwaarborg via de worker,
+     worker-fout/verwijderd-document, herstart-herstel, en de kleine factuur die synchroon
+     blijft. Frontend: polling aan/uit, banner, systeem-chip.
 6. **Boeken — gebouwd (2026-07-09).** Migratie 0008: `boekhouding.boekvoorstel`/`boekvoorstel_regel`
    (het controlescherm-voorstel per document, RLS via het onderliggende document — zelfde
    subquery-patroon als `document_gebeurtenis`). `app/documenten/checks.py`: de drie harde checks
