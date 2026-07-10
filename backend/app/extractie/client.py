@@ -85,10 +85,17 @@ class ClaudeExtractieClient:
         """Stuurt de PDF (base64 document-block) + opdracht naar Claude en geeft het
         schema-gevalideerde JSON-object terug. Elke niet-succesvolle uitkomst wordt een
         AiExtractieFout met een uitlegbare melding — nooit een kale SDK-exception richting de
-        upload-flow ("niets verdwijnt stil")."""
+        upload-flow ("niets verdwijnt stil").
+
+        Streamend (Anthropic-aanbeveling voor lange document-requests): een niet-streamende call
+        liep in de praktijk tegen de request-timeout aan (2026-07-10, echte factuur op Opus) —
+        bij streaming telt de timeout per chunk i.p.v. over de hele respons, en
+        `get_final_message()` verzamelt alsnog het complete antwoord, inclusief `stop_reason`
+        voor de max_tokens-afkapdetectie hieronder. Timeouts en connectiefouten retryt de SDK
+        zelf (APITimeoutError ⊂ APIConnectionError, gedekt door max_retries)."""
         _THROTTLE.wacht()
         try:
-            response = self._client.messages.create(
+            with self._client.messages.stream(
                 model=self._model,
                 max_tokens=settings.ai_extractie_max_tokens,
                 system=system,
@@ -109,7 +116,13 @@ class ClaudeExtractieClient:
                         ],
                     }
                 ],
-            )
+            ) as stream:
+                response = stream.get_final_message()
+        except anthropic.APITimeoutError as exc:
+            raise AiExtractieFout(
+                f"Claude API-timeout na {settings.ai_extractie_timeout_seconds:.0f}s (na SDK-retries) — "
+                "probeer het opnieuw via 'Opnieuw extraheren' of vul handmatig in."
+            ) from exc
         except anthropic.APIError as exc:
             raise AiExtractieFout(f"Claude API-fout: {exc}") from exc
         if response.stop_reason == "refusal":

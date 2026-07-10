@@ -197,11 +197,12 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             )
 
         # Geen opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of
-        # het AI-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), indien aanwezig.
+        # het AI-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), indien aanwezig. Nieuwste
+        # wint: na "opnieuw extraheren" is de laatste extractie de actuele.
         veldvoorstel = next(
             (
                 g.detail["veldvoorstel"]
-                for g in _gebeurtenissen_van(session, document_id)
+                for g in reversed(_gebeurtenissen_van(session, document_id))
                 if g.detail and "veldvoorstel" in g.detail
             ),
             None,

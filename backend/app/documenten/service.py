@@ -85,6 +85,11 @@ class DocumentNietVerwijderd(Exception):
     """Herstellen kan alleen een document dat daadwerkelijk op status verwijderd staat."""
 
 
+class HerextractieNietToegestaan(Exception):
+    """Opnieuw extraheren kan alleen voor een PDF die op te_controleren staat — de status waar
+    een (mislukte) extractie het document achterlaat. Alles daarna is mensenwerk."""
+
+
 def _schrijf_overgang(
     session: Session,
     *,
@@ -331,8 +336,11 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
                 .order_by(DocumentGebeurtenis.tijdstip)
             )
         )
+        # Nieuwste voorstel wint: na "opnieuw extraheren" kunnen er meerdere veldvoorstel-
+        # gebeurtenissen in de tijdlijn staan — de laatste extractie is de actuele.
         veldvoorstel = next(
-            (g.detail["veldvoorstel"] for g in gebeurtenissen if g.detail and "veldvoorstel" in g.detail), None
+            (g.detail["veldvoorstel"] for g in reversed(gebeurtenissen) if g.detail and "veldvoorstel" in g.detail),
+            None,
         )
         duplicaat_referentie = (
             _duplicaat_referenties_op(session, {document.mogelijk_duplicaat_van_id}).get(
@@ -408,6 +416,35 @@ def herstel_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, act
         _schrijf_overgang(
             session, document=document, naar=vorige_status, actor_id=actor_id, detail={"herstel_van": "verwijderd"}
         )
+        return document.status
+
+
+def herextraheer_document(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    opslag: DocumentOpslag | None = None,
+) -> DocumentStatus:
+    """"Opnieuw extraheren" (timeout-fix 2026-07-10): een transiënte AI-fout (timeout, 529) laat
+    het document met een lege prefill op te_controleren achter — deze actie draait de extractie
+    opnieuw zonder her-upload. Zelfde route als de upload (_start_extractie): statusovergangen
+    te_controleren -> extractie_bezig -> te_controleren, met tijdlijn + audit_event per stap;
+    ook de AVG-gate en de key-check gelden onverkort opnieuw. Alleen voor PDF's (UBL is
+    deterministisch — opnieuw parsen levert per definitie hetzelfde op) en alleen vanaf
+    te_controleren (daarna is het voorstel mensenwerk)."""
+    opslag = opslag or _standaard_opslag()
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        if Path(document.bestandsnaam).suffix.lower() != _PDF_SUFFIX:
+            raise HerextractieNietToegestaan("Opnieuw extraheren kan alleen voor PDF's (UBL is deterministisch).")
+        if document.status != DocumentStatus.TE_CONTROLEREN:
+            raise HerextractieNietToegestaan(
+                f"Opnieuw extraheren kan alleen vanaf te_controleren (status: {document.status.value})."
+            )
+        _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
         return document.status
 
 

@@ -61,10 +61,13 @@ class Settings(BaseSettings):
     # AI-extractie (fase AI-extractie sessie 1): Claude leest de PDF, code rekent, mens drukt.
     # Key uitsluitend via .env/Secret Manager (besluit 0012 — nooit in code/logs/chat); géén
     # fallback: zonder key wordt AI-extractie zichtbaar overgeslagen, nooit stil geraden.
-    # Model config-gedreven (registers/koppelingen.md, kern-AI-koppeling) — default het meest
-    # capabele reguliere model; wijzigen = alleen deze setting, geen code.
+    # Model config-gedreven (registers/koppelingen.md, kern-AI-koppeling) — wijzigen = alleen
+    # deze setting, geen code. Default Sonnet: gestructureerde factuurextractie heeft geen
+    # Opus-diepte nodig en Opus liep in de praktijk tegen de request-timeout aan bij een normale
+    # factuur (zie docs/BOUWPLAN.md 5b, timeout-fix 2026-07-10) — Sonnet is sneller én goedkoper
+    # bij gelijke kwaliteit op dit taaktype.
     anthropic_api_key: str | None = None
-    ai_extractie_model: str = "claude-opus-4-8"
+    ai_extractie_model: str = "claude-sonnet-5"
     # Ruim genoeg voor facturen met veel regels; de SDK-timeout dekt de synchrone upload-flow
     # (bewust synchroon deze fase — zie docs/BOUWPLAN.md, async-worker uitgesteld).
     ai_extractie_max_tokens: int = 16000

@@ -26,23 +26,46 @@ def _respons(
     )
 
 
-class _FakeMessages:
-    def __init__(self, respons: SimpleNamespace) -> None:
-        self._respons = respons
-        self.laatste_kwargs: dict[str, Any] | None = None
+class _FakeStream:
+    """Nabootsing van de streaming-contextmanager van de SDK: de client gebruikt
+    `messages.stream(...)` + `get_final_message()` (timeout-fix 2026-07-10), dus dat pad is
+    precies wat de mock aanbiedt. Een optionele `fout` gooit bij het openen — zoals een
+    APITimeoutError uit de SDK dat doet."""
 
-    def create(self, **kwargs: Any) -> SimpleNamespace:
-        self.laatste_kwargs = kwargs
+    def __init__(self, respons: SimpleNamespace, fout: Exception | None = None) -> None:
+        self._respons = respons
+        self._fout = fout
+
+    def __enter__(self) -> _FakeStream:
+        if self._fout is not None:
+            raise self._fout
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+    def get_final_message(self) -> SimpleNamespace:
         return self._respons
 
 
+class _FakeMessages:
+    def __init__(self, respons: SimpleNamespace, fout: Exception | None = None) -> None:
+        self._respons = respons
+        self._fout = fout
+        self.laatste_kwargs: dict[str, Any] | None = None
+
+    def stream(self, **kwargs: Any) -> _FakeStream:
+        self.laatste_kwargs = kwargs
+        return _FakeStream(self._respons, self._fout)
+
+
 class _FakeAnthropic:
-    def __init__(self, respons: SimpleNamespace) -> None:
-        self.messages = _FakeMessages(respons)
+    def __init__(self, respons: SimpleNamespace, fout: Exception | None = None) -> None:
+        self.messages = _FakeMessages(respons, fout)
 
 
-def _client_met(respons: SimpleNamespace) -> tuple[ClaudeExtractieClient, _FakeMessages]:
-    fake = _FakeAnthropic(respons)
+def _client_met(respons: SimpleNamespace, fout: Exception | None = None) -> tuple[ClaudeExtractieClient, _FakeMessages]:
+    fake = _FakeAnthropic(respons, fout)
     client = ClaudeExtractieClient(client=fake)  # type: ignore[arg-type]
     return client, fake.messages
 
@@ -95,6 +118,15 @@ class TestClaudeExtractieClient:
         # Extractie hoort niet "creatief" te zijn én het model accepteert ze niet: nooit
         # sampling-parameters meesturen.
         assert "temperature" not in kwargs
+
+    def test_timeout_wordt_uitlegbare_fout_met_herstelhint(self) -> None:
+        import anthropic
+        import httpx
+
+        timeout = anthropic.APITimeoutError(request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+        client, _ = _client_met(_respons(), fout=timeout)
+        with pytest.raises(AiExtractieFout, match="timeout.*Opnieuw extraheren"):
+            client.extraheer_json_uit_pdf(pdf_bytes=b"x", system="s", opdracht="o", json_schema={})
 
     def test_refusal_wordt_uitlegbare_fout(self) -> None:
         client, _ = _client_met(_respons(stop_reason="refusal", content=[]))

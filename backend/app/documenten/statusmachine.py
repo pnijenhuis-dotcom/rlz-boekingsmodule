@@ -44,6 +44,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.VRAAG_OPEN,
             DocumentStatus.AFGEWEZEN,
             DocumentStatus.VERWIJDERD,
+            # "Opnieuw extraheren" (timeout-fix 2026-07-10): een mislukte AI-extractie laat het
+            # document op te_controleren achter — de her-extractie doorloopt daarna gewoon weer
+            # extractie_bezig -> te_controleren, met tijdlijn + audit zoals elke overgang.
+            DocumentStatus.EXTRACTIE_BEZIG,
         }
     ),
     DocumentStatus.KLAAR_OM_TE_BOEKEN: frozenset(

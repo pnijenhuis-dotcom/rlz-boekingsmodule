@@ -219,6 +219,95 @@ class TestAiVoorstel:
         assert DocumentStatus.KLAAR_OM_TE_BOEKEN not in doorlopen
         assert DocumentStatus.GEBOEKT not in doorlopen
 
+    def test_opnieuw_extraheren_na_transiente_fout(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        ai_gate_aan: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Timeout-fix 2026-07-10: eerste extractie faalt transiënt → "opnieuw extraheren"
+        draait de route opnieuw zonder her-upload, en het nieuwste voorstel wint overal."""
+        monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+
+        def _timeout(pdf_bytes: bytes, *, client=None) -> AiFactuurExtractie:
+            raise RuntimeError("Claude API-timeout na 120s")
+
+        monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _timeout)
+        resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
+        assert "timeout" in (_extractie_detail(administratie_id, resultaat.document_id) or {}).get(
+            "ai_extractie_fout", ""
+        )
+
+        aanroepen: list[bytes] = []
+
+        def _werkt(pdf_bytes: bytes, *, client=None) -> AiFactuurExtractie:
+            aanroepen.append(pdf_bytes)
+            return _fake_extractie()
+
+        monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _werkt)
+        status = service.herextraheer_document(
+            administratie_id=administratie_id,
+            document_id=resultaat.document_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+
+        assert status == DocumentStatus.TE_CONTROLEREN
+        assert aanroepen == [_PDF]
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=resultaat.document_id)
+        # Nieuwste extractie wint: het voorstel is nu aanwezig, en de tijdlijn toont beide pogingen.
+        assert detail.veldvoorstel is not None and detail.veldvoorstel["bron"] == "ai"
+        extractie_rondes = [g for g in detail.gebeurtenissen if g.naar_status == DocumentStatus.EXTRACTIE_BEZIG]
+        assert len(extractie_rondes) == 2
+        data = boekvoorstel.haal_boekvoorstel_op(
+            administratie_id=administratie_id, document_id=resultaat.document_id
+        )
+        assert data.referentie == "F-2026-042"
+
+    def test_opnieuw_extraheren_alleen_voor_pdf_vanaf_te_controleren(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        ai_gate_aan: None,
+        fake_extraheer: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tests.documenten.test_ubl import _VOORBEELD_UBL
+
+        monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+
+        # UBL: deterministisch — opnieuw extraheren is zinloos en wordt geweigerd.
+        ubl = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur.xml",
+            inhoud=_VOORBEELD_UBL,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        with pytest.raises(service.HerextractieNietToegestaan, match="PDF"):
+            service.herextraheer_document(
+                administratie_id=administratie_id,
+                document_id=ubl.document_id,
+                actor_id=gescoopte_gebruiker,
+                opslag=opslag,
+            )
+
+        # Verkeerde status: na verwijderen staat het document niet meer op te_controleren.
+        pdf = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
+        service.verwijder_document(
+            administratie_id=administratie_id, document_id=pdf.document_id, actor_id=gescoopte_gebruiker
+        )
+        with pytest.raises(service.HerextractieNietToegestaan, match="te_controleren"):
+            service.herextraheer_document(
+                administratie_id=administratie_id,
+                document_id=pdf.document_id,
+                actor_id=gescoopte_gebruiker,
+                opslag=opslag,
+            )
+
     def test_ai_fout_is_zichtbaar_en_laat_upload_slagen(
         self,
         gescoopte_gebruiker: uuid.UUID,

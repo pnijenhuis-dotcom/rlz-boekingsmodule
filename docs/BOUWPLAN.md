@@ -127,11 +127,27 @@ Backend:
    `app/extractie/`:
    - `client.py`: config-gedreven Claude-client (kern-AI-koppeling, geregistreerd in
      `Platform/registers/koppelingen.md`) op de officiële `anthropic`-SDK — model/key uit
-     settings (`ai_extractie_model`, default `claude-opus-4-8`; `ANTHROPIC_API_KEY` via
-     .env/Secret Manager, besluit 0012, géén fallback), retry/backoff via de SDK (429/5xx),
-     eigen throttle-gate (conventie registers/conventies.md). Structured outputs
-     (`output_config.format`, json_schema) dwingen valide JSON af — geen parse-gok; refusal/
-     max_tokens/ongeldige JSON worden uitlegbare fouten.
+     settings (`ai_extractie_model`; `ANTHROPIC_API_KEY` via .env/Secret Manager, besluit 0012,
+     géén fallback), retry/backoff via de SDK (429/5xx én timeouts/connectiefouten —
+     APITimeoutError valt onder de SDK-retries), eigen throttle-gate (conventie
+     registers/conventies.md). Structured outputs (`output_config.format`, json_schema) dwingen
+     valide JSON af — geen parse-gok; refusal/max_tokens/ongeldige JSON/timeout worden
+     uitlegbare fouten.
+   - **Timeout-fix (2026-07-10, na eerste echte factuur):** de eerste versie (Opus,
+     niet-streamend, 120s timeout) liep op een normale factuur in een API-timeout; het faalpad
+     werkte correct (nette melding, document op te_controleren). Drie wijzigingen: (1) default
+     model is nu **`claude-sonnet-5`** — gestructureerde factuurextractie heeft geen Opus-diepte
+     nodig, Sonnet levert op dit taaktype gelijke kwaliteit bij duidelijk lagere latency en
+     kosten; Opus was overkill en juist de latency-bron (blijft via config kiesbaar). (2) De
+     messages-call is nu **streamend** (Anthropic-aanbeveling voor lange document-requests): de
+     timeout telt per chunk i.p.v. over de hele respons; `get_final_message()` verzamelt het
+     complete antwoord, de max_tokens-afkapdetectie blijft werken. (3) **"Opnieuw extraheren"**
+     op het controlescherm (`POST .../documenten/{id}/extractie` →
+     `service.herextraheer_document`): bij een transiënte fout (timeout, 529) draait de
+     extractie opnieuw zonder her-upload — statusgraaf kreeg daarvoor de overgang
+     te_controleren → extractie_bezig, tijdlijn + audit per stap, AVG-gate/key-check gelden
+     onverkort, alleen PDF's en alleen vanaf te_controleren; het nieuwste veldvoorstel wint in
+     detail én boekvoorstel-prefill.
    - `service.py`: PDF (base64 document-block, bestaande opslag-seam) → strak JSON-schema voor
      kop (leverancier, factuurnummer, factuur-/vervaldatum, totalen, btw) + regels
      (omschrijving, netto, btw, hoeveelheid), per veld een zekerheidsscore 0..1 (geclampt in

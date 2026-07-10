@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { apiFetch, apiJson } from '../api/client'
-import type { DocumentDetailDto } from '../api/types'
+import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
+import type { DocumentActieResponseDto, DocumentDetailDto } from '../api/types'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { statusLabel } from '../werkvoorraad/status'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
@@ -142,11 +142,25 @@ interface Bijlage {
   xmlTekst: string | null
 }
 
+/** Laatste extractie-uitkomst: de ai_extractie_fout van de meest recente overgang naar
+ * te_controleren, of null als de laatste extractie een voorstel opleverde (of er geen was). */
+function laatsteExtractieFout(detail: DocumentDetailDto): string | null {
+  for (let i = detail.tijdlijn.length - 1; i >= 0; i--) {
+    const g = detail.tijdlijn[i]
+    if (g.naar_status === 'te_controleren') {
+      return g.detail && 'ai_extractie_fout' in g.detail ? String(g.detail.ai_extractie_fout) : null
+    }
+  }
+  return null
+}
+
 export function DocumentDetailScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
   const [detail, setDetail] = useState<DocumentDetailDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bijlage, setBijlage] = useState<Bijlage | null>(null)
+  const [opnieuwBezig, setOpnieuwBezig] = useState(false)
+  const [opnieuwFout, setOpnieuwFout] = useState<string | null>(null)
 
   const laadDetail = useCallback(() => {
     if (!administratieId || !documentId) return
@@ -183,6 +197,24 @@ export function DocumentDetailScreen() {
 
   if (fout) return <div className="fout">Kon document niet laden: {fout}</div>
   if (!administratieId || !documentId || !detail) return <p className="hint">Laden…</p>
+
+  const extractieFout = laatsteExtractieFout(detail)
+
+  const opnieuwExtraheren = async () => {
+    setOpnieuwBezig(true)
+    setOpnieuwFout(null)
+    try {
+      await apiPostJson<DocumentActieResponseDto>(
+        `/administraties/${administratieId}/documenten/${documentId}/extractie`,
+        {},
+      )
+      laadDetail()
+    } catch (err) {
+      setOpnieuwFout(err instanceof ApiError ? err.message : 'Opnieuw extraheren mislukt.')
+    } finally {
+      setOpnieuwBezig(false)
+    }
+  }
 
   return (
     <div>
@@ -231,6 +263,28 @@ export function DocumentDetailScreen() {
         </div>
 
         <div className="formpane">
+          {extractieFout && detail.status === 'te_controleren' && (
+            <div className="panel">
+              <h2>
+                AI-extractie mislukt <span className="chip afwijking">handmatig of opnieuw</span>
+              </h2>
+              <p className="hint" style={{ marginTop: 0 }}>
+                {extractieFout}
+              </p>
+              {opnieuwFout && <div className="fout">{opnieuwFout}</div>}
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={opnieuwBezig}
+                  onClick={() => void opnieuwExtraheren()}
+                >
+                  {opnieuwBezig ? 'Bezig met extraheren…' : '↻ Opnieuw extraheren'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {(() => {
             const aiVoorstel = alsAiVoorstel(detail.veldvoorstel)
             if (aiVoorstel) return <AiVoorstelPanel voorstel={aiVoorstel} />

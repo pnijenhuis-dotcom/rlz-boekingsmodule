@@ -218,6 +218,29 @@ def document_herstellen(
     return schemas.DocumentActieResponse(document_id=document_id, status=nieuwe_status.value)
 
 
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/extractie",
+    response_model=schemas.DocumentActieResponse,
+)
+def document_opnieuw_extraheren(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DocumentActieResponse:
+    """"Opnieuw extraheren" na een transiënte AI-fout (timeout, 529) — draait de extractie
+    opnieuw zonder her-upload; AVG-gate en key-check gelden onverkort (zie
+    service.py::herextraheer_document). Synchroon, net als de upload-extractie."""
+    try:
+        nieuwe_status = service.herextraheer_document(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except service.HerextractieNietToegestaan as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.DocumentActieResponse(document_id=document_id, status=nieuwe_status.value)
+
+
 @router.get(
     "/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",
     response_model=schemas.BoekvoorstelResponse,
