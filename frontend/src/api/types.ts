@@ -169,6 +169,7 @@ export interface AdministratieInstellingenDto {
   naam: string
   boeken_ingeschakeld: boolean
   project_verplicht: boolean
+  ai_extractie_ingeschakeld: boolean
 }
 
 export interface AdministratieInstellingenLijstDto {

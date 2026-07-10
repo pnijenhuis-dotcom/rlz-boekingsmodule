@@ -27,6 +27,7 @@ def administratie_instellingen_lijst(
                 naam=r.naam,
                 boeken_ingeschakeld=r.boeken_ingeschakeld,
                 project_verplicht=r.project_verplicht,
+                ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
             )
             for r in overzicht
         ]
@@ -100,6 +101,40 @@ def boeken_instelling_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return schemas.BoekenIngeschakeldDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
+    "/administraties/{administratie_id}/ai-extractie-instelling",
+    response_model=schemas.AiExtractieIngeschakeldDto,
+)
+def ai_extractie_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.AiExtractieIngeschakeldDto:
+    try:
+        ingeschakeld = service.haal_ai_extractie_ingeschakeld_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.AiExtractieIngeschakeldDto(ingeschakeld=ingeschakeld)
+
+
+@router.put(
+    "/administraties/{administratie_id}/ai-extractie-instelling",
+    response_model=schemas.AiExtractieIngeschakeldDto,
+)
+def ai_extractie_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.AiExtractieIngeschakeldDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.AiExtractieIngeschakeldDto:
+    """AVG-gate voor AI-extractie (migratie 0014) — Beheerder-only; default UIT, echte
+    klantfacturen pas ná de AVG-volgorde uit docs/BOUWPLAN.md."""
+    try:
+        ingeschakeld = service.zet_ai_extractie_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.AiExtractieIngeschakeldDto(ingeschakeld=ingeschakeld)
 
 
 @router.get(

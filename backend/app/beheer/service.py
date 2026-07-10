@@ -82,6 +82,7 @@ class AdministratieInstellingen:
     naam: str
     boeken_ingeschakeld: bool
     project_verplicht: bool
+    ai_extractie_ingeschakeld: bool
 
 
 def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
@@ -97,6 +98,7 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
                 naam=r.naam,
                 boeken_ingeschakeld=r.boeken_ingeschakeld,
                 project_verplicht=r.project_verplicht,
+                ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
             )
             for r in rijen
         ]
@@ -131,6 +133,39 @@ def zet_project_verplicht(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, v
             nieuwe_waarde={"project_verplicht": verplicht},
         )
         return verplicht
+
+
+def haal_ai_extractie_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.ai_extractie_ingeschakeld
+
+
+def zet_ai_extractie_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
+    """AVG-gate voor AI-extractie (migratie 0014): alleen bij AAN gaan PDF's van deze
+    administratie naar de Claude API — default UIT, Beheerder-only (router), audit als bij
+    boeken_ingeschakeld. Echte klantfacturen pas ná DPA + EU-verwerking-bevestiging +
+    verwerkersregister (docs/BOUWPLAN.md, AVG-volgorde)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.ai_extractie_ingeschakeld
+        administratie.ai_extractie_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="ai_extractie_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"ai_extractie_ingeschakeld": oud},
+            nieuwe_waarde={"ai_extractie_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
 
 
 def haal_globale_kill_switch_op() -> bool:

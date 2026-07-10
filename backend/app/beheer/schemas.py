@@ -13,6 +13,10 @@ class ProjectVerplichtDto(BaseModel):
     verplicht: bool
 
 
+class AiExtractieIngeschakeldDto(BaseModel):
+    ingeschakeld: bool
+
+
 class AdministratieInstellingenDto(BaseModel):
     """Eén rij in het instellingen-scherm (design-pass taak 3) — dezelfde twee schakelaars als
     de losse per-administratie GET/PUT-endpoints hierboven, nu in één keer voor de hele lijst."""
@@ -21,6 +25,7 @@ class AdministratieInstellingenDto(BaseModel):
     naam: str
     boeken_ingeschakeld: bool
     project_verplicht: bool
+    ai_extractie_ingeschakeld: bool
 
 
 class AdministratieInstellingenLijstDto(BaseModel):

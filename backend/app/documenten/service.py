@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,13 +12,20 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.audit import record_audit_event
+from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.documenten.models import Document, DocumentBron, DocumentGebeurtenis, DocumentStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
 from app.documenten.storage import DocumentOpslag, LokaleBestandsopslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
+from app.extractie import controle as extractie_controle
+from app.extractie import service as extractie_service
+from app.sync.models import TaxRateCache, VendorCache
+
+logger = logging.getLogger(__name__)
 
 _UBL_SUFFIX = ".xml"
+_PDF_SUFFIX = ".pdf"
 
 
 def _standaard_opslag() -> DocumentOpslag:
@@ -116,24 +124,77 @@ def _schrijf_overgang(
 
 
 def _start_extractie(session: Session, *, document: Document, actor_id: uuid.UUID, opslag: DocumentOpslag) -> None:
-    """Stub: draait synchroon binnen dezelfde transactie als de upload — er is deze fase nog geen
-    echte achtergrondtaak/queue (zie de docstring bij DocumentGebeurtenis over de ontbrekende
-    systeem-actor voor een latere, écht-asynchrone worker). UBL/XML wordt deterministisch geparst
-    naar veldvoorstellen; andere bestandstypen (PDF) krijgen alleen de statusovergang — de
-    eigenlijke AI-extractie haakt hier in een fase-vervolg in, zonder dat deze functiesignatuur
-    hoeft te veranderen."""
+    """Draait synchroon binnen dezelfde transactie als de upload (paar seconden voor de AI-route
+    — bewust: een échte async-worker + systeem-actor is uitgesteld, zie docs/BOUWPLAN.md en de
+    docstring bij DocumentGebeurtenis). UBL/XML blijft de deterministische bron en gaat NOOIT
+    naar de AI; PDF's gaan via de Claude-route (app/extractie/), mits de AVG-gate van de
+    administratie aan staat. Elke uitkomst — voorstel, overgeslagen, fout — komt herkenbaar in de
+    tijdlijn terecht; een AI-fout laat de upload nooit falen ("niets verdwijnt stil", maar ook:
+    de mens kan altijd handmatig verder)."""
     _schrijf_overgang(session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=actor_id)
 
     detail: dict | None = None
-    if Path(document.bestandsnaam).suffix.lower() == _UBL_SUFFIX:
+    suffix = Path(document.bestandsnaam).suffix.lower()
+    if suffix == _UBL_SUFFIX:
         inhoud = opslag.lezen(pad=document.opslag_pad)
         try:
             voorstel = parseer_ubl_factuur(inhoud)
             detail = {"veldvoorstel": voorstel.als_dict()}
         except GeenGeldigeUbl as exc:
             detail = {"ubl_parse_fout": str(exc)}
+    elif suffix == _PDF_SUFFIX:
+        detail = _ai_extractie_detail(session, document=document, opslag=opslag)
 
     _schrijf_overgang(session, document=document, naar=DocumentStatus.TE_CONTROLEREN, actor_id=actor_id, detail=detail)
+
+
+def _ai_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> dict:
+    """AI-route voor PDF's: AVG-gate → Claude-extractie → deterministische controlelaag. De AI
+    levert uitsluitend een voorstel (veld-suggesties met zekerheidsscores); boeken blijft altijd
+    een menselijke actie via het controlescherm + harde checks. Vendor-/btw-suggesties komen
+    alléén uit de eigen sync-caches (kandidatenlijsten hieronder), nooit uit de AI zelf."""
+    if document.administratie_id is None:
+        return {"ai_extractie_overgeslagen": "geen_administratie"}
+    administratie = session.get(Administratie, document.administratie_id)
+    if administratie is None or not administratie.ai_extractie_ingeschakeld:
+        # AVG-gate (migratie 0014): default UIT — dit document gaat niet naar de Claude API.
+        return {"ai_extractie_overgeslagen": "ai_extractie_uitgeschakeld"}
+    if not settings.anthropic_api_key:
+        return {"ai_extractie_overgeslagen": "geen_api_key"}
+
+    inhoud = opslag.lezen(pad=document.opslag_pad)
+    try:
+        extractie = extractie_service.extraheer_inkoopfactuur(inhoud)
+    except Exception as exc:  # noqa: BLE001 — bewust breed: een AI-fout mag de upload nooit laten falen
+        logger.exception("AI-extractie mislukt voor document %s", document.id)
+        return {"ai_extractie_fout": str(exc)}
+
+    vendors = [
+        extractie_controle.VendorKandidaat(id=rij.id, naam=rij.naam or "")
+        for rij in session.scalars(
+            select(VendorCache).where(
+                VendorCache.administratie_id == document.administratie_id,
+                VendorCache.verdwenen_uit_bron_op.is_(None),
+                VendorCache.is_gearchiveerd.isnot(True),
+            )
+        )
+    ]
+    taxrates = [
+        extractie_controle.TaxRateKandidaat(id=rij.id, percentage=rij.percentage)
+        for rij in session.scalars(
+            select(TaxRateCache).where(
+                TaxRateCache.administratie_id == document.administratie_id,
+                TaxRateCache.verdwenen_uit_bron_op.is_(None),
+            )
+        )
+    ]
+    voorstel = extractie_controle.bouw_veldvoorstel(
+        extractie,
+        vendors=vendors,
+        taxrates=taxrates,
+        zekerheid_drempel=settings.ai_extractie_zekerheid_drempel,
+    )
+    return {"veldvoorstel": voorstel}
 
 
 def upload_document(

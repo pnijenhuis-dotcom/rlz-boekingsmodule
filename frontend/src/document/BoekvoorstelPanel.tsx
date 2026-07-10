@@ -7,6 +7,7 @@ import type {
   CheckRapportDto,
   DocumentActieResponseDto,
 } from '../api/types'
+import { alsAiVoorstel, zekerheidPct, type AiRegelVoorstel, type AiVoorstel } from './aiVoorstel'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
@@ -56,6 +57,10 @@ interface RegelState {
    * btw-bedrag telt ook als "handmatig" (kan een eerdere handmatige invoer zijn geweest). */
   btwHandmatig: boolean
   omschrijving: string
+  /** Laagste AI-zekerheidsscore van de vooringevulde regelvelden (alleen bij een vers, nog niet
+   * opgeslagen AI-voorstel). Elke handmatige wijziging aan de regel wist de score — dan beschrijft
+   * hij de inhoud niet meer. */
+  aiZekerheid: number | null
 }
 
 function nieuweRegel(): RegelState {
@@ -68,12 +73,28 @@ function nieuweRegel(): RegelState {
     btw: '',
     btwHandmatig: false,
     omschrijving: '',
+    aiZekerheid: null,
   }
 }
 
-function regelsUitDto(dto: BoekvoorstelDto): RegelState[] {
+/** Laagste zekerheid van de regelvelden waarvoor de AI daadwerkelijk een waarde voorstelde —
+ * lege velden tellen niet mee (een ontbrekende hoeveelheid zegt niets over de gelezen bedragen). */
+function regelAiScore(zekerheid: Record<string, number> | undefined, regel: AiRegelVoorstel): number | null {
+  if (!zekerheid) return null
+  const scores: number[] = []
+  for (const veld of ['omschrijving', 'netto_bedrag', 'btw_bedrag'] as const) {
+    if (regel[veld] !== null && zekerheid[veld] !== undefined) scores.push(zekerheid[veld])
+  }
+  return scores.length > 0 ? Math.min(...scores) : null
+}
+
+function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[] {
   if (dto.regels.length === 0) return [nieuweRegel()]
-  return dto.regels.map((r) => ({
+  const aiScores =
+    ai && ai.regels.length === dto.regels.length
+      ? ai.regels.map((regel, i) => regelAiScore(ai.regel_zekerheid[i], regel))
+      : null
+  return dto.regels.map((r, i) => ({
     key: crypto.randomUUID(),
     ledgerId: r.ledger_id,
     taxrateId: r.taxrate_id,
@@ -82,6 +103,7 @@ function regelsUitDto(dto: BoekvoorstelDto): RegelState[] {
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
     omschrijving: r.omschrijving ?? '',
+    aiZekerheid: aiScores ? aiScores[i] : null,
   }))
 }
 
@@ -122,10 +144,33 @@ function LegeCacheBanner({ naam, bezig, onSynchroniseren }: LegeCacheBannerProps
   )
 }
 
+interface AiChipProps {
+  score: number
+  drempel: number
+  fuzzy?: boolean
+}
+
+/** Zekerheidsscore van de AI-extractie bij een vooringevuld veld: oranje onder de drempel of bij
+ * een fuzzy crediteur-match ("bij twijfel oranje, nooit gokken"), anders groen. Verdwijnt zodra
+ * de controleur het veld aanpast — de score beschrijft dan de inhoud niet meer. */
+function AiChip({ score, drempel, fuzzy = false }: AiChipProps) {
+  const laag = fuzzy || score < drempel
+  return (
+    <span
+      className={`chip ${laag ? 'afwijking' : 'ok'}`}
+      title={fuzzy ? 'Crediteur benaderd op naam (fuzzy match tegen de crediteuren-cache) — controleer de keuze.' : 'Zekerheid van de AI-extractie voor dit veld.'}
+    >
+      AI {zekerheidPct(score)}
+      {fuzzy ? ' · naam benaderd' : ''}
+    </span>
+  )
+}
+
 interface Props {
   administratieId: string
   documentId: string
   status: string
+  veldvoorstel?: Record<string, unknown> | null
   onGeboekt: () => void
   onHersteld: () => void
 }
@@ -133,7 +178,11 @@ interface Props {
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
  * zoekbare GB-/btw-/project-comboboxen, harde checks zichtbaar (groen/blokkerend), live
  * aansluit-indicator, en de echte boekactie. */
-export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboekt, onHersteld }: Props) {
+export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoorstel, onGeboekt, onHersteld }: Props) {
+  const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
+  // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
+  // controleur, niet meer van de AI.
+  const [aiChipsActief, setAiChipsActief] = useState(false)
   const [cacheVersie, setCacheVersie] = useState(0)
   const { opties: grootboekOpties, fout: grootboekFout, laden: grootboekLaden } = useGrootboekOpties(administratieId, cacheVersie)
   const { opties: taxrateOpties, fout: taxrateFout, laden: taxrateLaden } = useTaxrateOpties(administratieId, cacheVersie)
@@ -178,12 +227,14 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
     apiJson<BoekvoorstelDto>(`/administraties/${administratieId}/documenten/${documentId}/boekvoorstel`)
       .then((dto) => {
         if (!actief) return
+        const aiPrefill = !dto.opgeslagen && ai !== null
+        setAiChipsActief(aiPrefill)
         setVendorId(dto.vendor_id)
         setReferentie(dto.referentie ?? '')
         setFactuurdatum(dto.factuurdatum ?? '')
         setTotaalbedrag(dto.totaalbedrag ?? '')
         setBoekstuknummer(dto.rlz_boekstuknummer)
-        setRegels(regelsUitDto(dto))
+        setRegels(regelsUitDto(dto, aiPrefill ? ai : null))
       })
       .catch((err: unknown) => {
         if (actief) setLadenFout(err instanceof Error ? err.message : 'Onbekende fout')
@@ -194,7 +245,7 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
     return () => {
       actief = false
     }
-  }, [administratieId, documentId])
+  }, [administratieId, documentId, ai])
 
   // Kliktest-fix: het boekvoorstel bleek nog bewerkbaar na boeken — de backend blokkeert dit nu
   // hard (app/documenten/boekvoorstel.py::_BEVROREN_STATUSSEN), maar de UI hoort een onmogelijke
@@ -203,6 +254,36 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
   const isGeboekt = status === 'geboekt'
   const isVerwijderd = status === 'verwijderd'
   const isReadOnly = isGeboekt || isVerwijderd
+
+  // Per kopveld: zekerheids-chip zolang de huidige invoer nog gelijk is aan wat de AI voorlas —
+  // wijzigt de controleur het veld, dan beschrijft de score de inhoud niet meer en verdwijnt hij.
+  const aiKop = useMemo(() => {
+    if (!ai || !aiChipsActief || isReadOnly) return null
+    const gelijkBedrag = (invoer: string, aiWaarde: string | null) => {
+      const a = bedragAlsGetal(invoer)
+      const b = aiWaarde !== null ? bedragAlsGetal(aiWaarde) : null
+      return a !== null && b !== null && Math.abs(a - b) < 0.005
+    }
+    return {
+      drempel: ai.zekerheid_drempel,
+      vendor:
+        ai.vendor_suggestie && vendorId === ai.vendor_suggestie.vendor_id
+          ? { score: ai.zekerheid.leverancier_naam ?? 0, fuzzy: ai.vendor_suggestie.match === 'fuzzy' }
+          : null,
+      referentie:
+        ai.factuurnummer !== null && referentie.trim() === ai.factuurnummer && ai.zekerheid.factuurnummer !== undefined
+          ? { score: ai.zekerheid.factuurnummer }
+          : null,
+      factuurdatum:
+        ai.factuurdatum !== null && factuurdatum === ai.factuurdatum && ai.zekerheid.factuurdatum !== undefined
+          ? { score: ai.zekerheid.factuurdatum }
+          : null,
+      totaalbedrag:
+        gelijkBedrag(totaalbedrag, ai.totaal_incl) && ai.zekerheid.totaal_incl !== undefined
+          ? { score: ai.zekerheid.totaal_incl }
+          : null,
+    }
+  }, [ai, aiChipsActief, isReadOnly, vendorId, referentie, factuurdatum, totaalbedrag])
 
   const veranderInvoer = () => setChecksActueel(false)
 
@@ -227,7 +308,8 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
     setRegels((huidig) =>
       huidig.map((r) => {
         if (r.key !== key) return r
-        const bijgewerkt = { ...r, [veld]: waarde }
+        // Elke handmatige wijziging: de AI-zekerheidsscore beschrijft deze regel niet meer.
+        const bijgewerkt = { ...r, [veld]: waarde, aiZekerheid: null }
         if (veld === 'btw') {
           // Rechtstreekse invoer in het btw-veld zelf — vanaf nu is dit veld van de gebruiker;
           // leegmaken laat de automatische afleiding weer meedraaien (design-pass taak 3).
@@ -393,14 +475,21 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
           </div>
         ) : (
           <div className="grid2">
-            <SearchableCombobox
-              label="Crediteur"
-              opties={vendorOpties}
-              waarde={vendorId}
-              onWijzig={wijzigVendorId}
-              vereist
-              fout={checkRapport?.geblokkeerd && vendorId === null}
-            />
+            <div>
+              <SearchableCombobox
+                label="Crediteur"
+                opties={vendorOpties}
+                waarde={vendorId}
+                onWijzig={wijzigVendorId}
+                vereist
+                fout={checkRapport?.geblokkeerd && vendorId === null}
+              />
+              {aiKop?.vendor && (
+                <div style={{ marginTop: 4 }}>
+                  <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} fuzzy={aiKop.vendor.fuzzy} />
+                </div>
+              )}
+            </div>
             <div>
               <label htmlFor="boekvoorstel-referentie">Referentie / factuurnummer</label>
               <input
@@ -408,6 +497,11 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
                 value={referentie}
                 onChange={(e) => wijzigReferentie(e.target.value)}
               />
+              {aiKop?.referentie && (
+                <div style={{ marginTop: 4 }}>
+                  <AiChip score={aiKop.referentie.score} drempel={aiKop.drempel} />
+                </div>
+              )}
             </div>
             <div>
               <label htmlFor="boekvoorstel-datum">Factuurdatum</label>
@@ -417,6 +511,11 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
                 value={factuurdatum}
                 onChange={(e) => wijzigFactuurdatum(e.target.value)}
               />
+              {aiKop?.factuurdatum && (
+                <div style={{ marginTop: 4 }}>
+                  <AiChip score={aiKop.factuurdatum.score} drempel={aiKop.drempel} />
+                </div>
+              )}
             </div>
             <div>
               <label htmlFor="boekvoorstel-totaal">Totaalbedrag (incl. btw)</label>
@@ -428,6 +527,11 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
                 value={totaalbedrag}
                 onChange={(e) => wijzigTotaalbedrag(e.target.value)}
               />
+              {aiKop?.totaalbedrag && (
+                <div style={{ marginTop: 4 }}>
+                  <AiChip score={aiKop.totaalbedrag.score} drempel={aiKop.drempel} />
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -560,11 +664,18 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, onGeboe
                   {isReadOnly ? (
                     regel.omschrijving || '—'
                   ) : (
-                    <input
-                      aria-label="Omschrijving"
-                      value={regel.omschrijving}
-                      onChange={(e) => wijzigRegel(regel.key, 'omschrijving', e.target.value)}
-                    />
+                    <>
+                      <input
+                        aria-label="Omschrijving"
+                        value={regel.omschrijving}
+                        onChange={(e) => wijzigRegel(regel.key, 'omschrijving', e.target.value)}
+                      />
+                      {aiChipsActief && regel.aiZekerheid !== null && (
+                        <div style={{ marginTop: 4 }}>
+                          <AiChip score={regel.aiZekerheid} drempel={ai?.zekerheid_drempel ?? 0.8} />
+                        </div>
+                      )}
+                    </>
                   )}
                 </td>
                 <td>

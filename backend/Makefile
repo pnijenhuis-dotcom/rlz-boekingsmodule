@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test test-write-integration test-read-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status import-env-credentials run pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit import-env-credentials run pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -50,6 +50,11 @@ test-write-integration: check-versions
 test-read-integration: check-versions
 	.venv/bin/pytest -m read_integration --override-ini='addopts=' -s
 
+# ai_integration: echte Claude-API-aanroepen (kost geld, vereist ANTHROPIC_API_KEY in
+# backend/.env) — opt-in, nooit in de kale run. Zie tests/integration/test_ai_extractie_integration.py.
+test-ai-integration: check-versions
+	.venv/bin/pytest -m ai_integration --override-ini='addopts=' -s
+
 # Eenmalig, kip-ei-oplossing: uitnodigen is zelf Beheerder-only (zie app/auth/service.py).
 # Voorbeeld: make bootstrap-beheerder NAAM="Peter Nijenhuis" EMAIL=peter@nijenhuis.nl
 bootstrap-beheerder: check-versions
@@ -82,6 +87,15 @@ boeken-uit: check-versions
 # Overzicht: globale kill switch + per-administratie boeken-toggle (+ effectieve status).
 boeken-status: check-versions
 	.venv/bin/python -m app.cli boeken-status
+
+# AVG-gate AI-extractie (migratie 0014), zelfde parameterpatroon als boeken-aan/uit. Default
+# UIT; alleen de test-administratie/eigen facturen aanzetten tot de AVG-volgorde rond is
+# (docs/BOUWPLAN.md). Voorbeeld: make ai-extractie-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
+ai-extractie-aan: check-versions
+	.venv/bin/python -m app.cli ai-extractie-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+ai-extractie-uit: check-versions
+	.venv/bin/python -m app.cli ai-extractie-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
 
 # Lokale dev-server (tegen boekhouding, niet boekhouding_test — zie app/config.py). --reload
 # herlaadt bij codewijzigingen; poort 8000 moet matchen met frontend/vite.config.ts's proxy.

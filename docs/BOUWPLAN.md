@@ -116,15 +116,55 @@ Backend:
    bij binnenkomst (per administratie) zet `mogelijk_duplicaat_van_id` — een losse vlag, geen
    aparte status (mockup: chip "Mogelijk duplicaat van ... — beoordelen", het document doorloopt
    gewoon de normale flow). UBL/XML wordt al deterministisch geparst naar veldvoorstellen
-   (`app/documenten/ubl.py`); PDF krijgt nog geen extractie — de AI-extractiestap zelf
-   (regeltelling vs totaal, duplicaatcheck via eigen query op Entity+Reference(30 tekens)+bedrag —
-   RLZ's actie 138 is bewezen zonder bruikbaar signaal, besluit 0013 — deterministisch client-GUID,
-   IBAN-wissel, voorstel uit het boekingsgeheugen) is een stub-hook (`_start_extractie` in
-   `app/documenten/service.py`) en landt in een fase-vervolg. **Bekend openstaand punt:** elke
-   statusovergang vereist nu een menselijke actor_id (geen systeem-actor-sentinel) — voldoende
-   zolang extractie synchroon binnen dezelfde request draait, maar een latere écht-asynchrone
-   extractieworker (queue/Cloud Tasks) heeft hier een oplossing voor nodig vóór hij gebouwd wordt.
-   Multi-factuur-PDF-splitsing en e-mail-intake blijven fase 3.
+   (`app/documenten/ubl.py`); de AI-extractie voor PDF's is inmiddels gebouwd — zie punt 5b.
+   **Bekend openstaand punt:** elke statusovergang vereist nu een menselijke actor_id (geen
+   systeem-actor-sentinel) — voldoende zolang extractie synchroon binnen dezelfde request draait,
+   maar een latere écht-asynchrone extractieworker (queue/Cloud Tasks) heeft hier een oplossing
+   voor nodig vóór hij gebouwd wordt. Multi-factuur-PDF-splitsing en e-mail-intake blijven fase 3.
+5b. **AI-extractie sessie 1 — Claude-API-extractie van inkoopfactuur-PDF's, gebouwd (2026-07-10).**
+   Kernprincipe onverkort: **AI leest, code rekent, mens drukt** — de AI levert uitsluitend
+   veld-suggesties met zekerheidsscores, boeken blijft mens + harde checks. Nieuw pakket
+   `app/extractie/`:
+   - `client.py`: config-gedreven Claude-client (kern-AI-koppeling, geregistreerd in
+     `Platform/registers/koppelingen.md`) op de officiële `anthropic`-SDK — model/key uit
+     settings (`ai_extractie_model`, default `claude-opus-4-8`; `ANTHROPIC_API_KEY` via
+     .env/Secret Manager, besluit 0012, géén fallback), retry/backoff via de SDK (429/5xx),
+     eigen throttle-gate (conventie registers/conventies.md). Structured outputs
+     (`output_config.format`, json_schema) dwingen valide JSON af — geen parse-gok; refusal/
+     max_tokens/ongeldige JSON worden uitlegbare fouten.
+   - `service.py`: PDF (base64 document-block, bestaande opslag-seam) → strak JSON-schema voor
+     kop (leverancier, factuurnummer, factuur-/vervaldatum, totalen, btw) + regels
+     (omschrijving, netto, btw, hoeveelheid), per veld een zekerheidsscore 0..1 (geclampt in
+     code). **AVG hard:** prompt verbiedt BSN's in de output én `bsn.py` (elfproef-post-filter)
+     verwijdert deterministisch elk 8/9-cijferig BSN-patroon vóór persistentie — alleen het
+     áántal verwijderingen wordt bewaard, nooit het nummer.
+   - `controle.py`: deterministische controlelaag (geen AI in de cijfers, pure functies zoals
+     checks.py): bedragen/datums valide parsen of leeg laten + benoemen (`onparseerbaar`),
+     regelsom vs. gelezen totaal, leverancier exact/fuzzy (genormaliseerd op rechtsvorm) matchen
+     tegen de vendor-cache (voorstel, alleen bij uniek resultaat), btw-code-suggestie uitsluitend
+     uit de taxrate-cache (uniek percentage; 0%/verlegd bewust nooit — aangifte-kritisch).
+     **GB-suggesties bewust nog niet: het boekingsgeheugen is sessie 2.**
+   - Ingeplugd op `_start_extractie` — **bewust synchroon** na upload (paar seconden; de
+     async-worker + systeem-actor uit punt 5 blijft uitgesteld tot een latere sessie).
+     extractie_bezig → te_controleren met het voorstel als `veldvoorstel` in de tijdlijn (zelfde
+     sleutel als UBL; UBL blijft de deterministische bron en gaat nooit via de AI). Elke uitkomst
+     zichtbaar: voorstel, `ai_extractie_overgeslagen` (gate/key) of `ai_extractie_fout` — een
+     AI-fout laat de upload nooit falen. Boekvoorstel-prefill neemt AI-regels, vendor- en
+     btw-suggesties over; controlescherm toont per veld/regel de zekerheid (oranje onder de
+     drempel of bij fuzzy match, chips verdwijnen zodra de controleur het veld aanraakt).
+   - **AVG-gate (migratie 0014):** `platform.administratie.ai_extractie_ingeschakeld`, default
+     UIT — zonder opt-in gaat er geen byte klantdata naar de Claude API. Beheer via
+     instellingen-scherm/endpoints + `make ai-extractie-aan/uit`. **AVG-volgorde (hard): echte
+     klantfacturen pas ná (1) DPA met Anthropic, (2) bevestiging EU-verwerking/dataresidentie,
+     (3) opname in het verwerkersregister — tot die drie rond zijn staat de gate alleen aan voor
+     de test-administratie/eigen facturen.**
+   - Tests: gemockte API (schema/refusal/afkap/JSON-fouten), BSN-filter (elfproef, maskering,
+     geen valse hits op IBAN/datums/bedragen), controlelaag-guardrails (nooit gokken), gate-
+     gedrag (default uit = nul AI-verkeer), voorstel-boekt-nooit-automatisch. Echte-API-test
+     achter de aparte `ai_integration`-marker (`make test-ai-integration`, synthetische factuur,
+     skipt zonder key) — nooit in de kale run.
+   - **Sessie 2 (open): het boekingsgeheugen** — RLZ-historie (JournalEntries) + app-correcties
+     als bron voor GB-/btw-/leverancier-defaults; pas daarna worden GB-suggesties zinvol.
 6. **Boeken — gebouwd (2026-07-09).** Migratie 0008: `boekhouding.boekvoorstel`/`boekvoorstel_regel`
    (het controlescherm-voorstel per document, RLS via het onderliggende document — zelfde
    subquery-patroon als `document_gebeurtenis`). `app/documenten/checks.py`: de drie harde checks

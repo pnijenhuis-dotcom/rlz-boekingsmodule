@@ -4,6 +4,7 @@ import { apiFetch, apiJson } from '../api/client'
 import type { DocumentDetailDto } from '../api/types'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { statusLabel } from '../werkvoorraad/status'
+import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 
 function formatDatum(iso: string): string {
@@ -18,13 +19,102 @@ function veldnaam(sleutel: string): string {
   const namen: Record<string, string> = {
     factuurnummer: 'Factuurnummer',
     factuurdatum: 'Factuurdatum',
+    vervaldatum: 'Vervaldatum',
     valuta: 'Valuta',
     totaal_excl: 'Totaal excl. btw',
     totaal_incl: 'Totaal incl. btw',
+    btw_bedrag: 'Btw-bedrag',
     leverancier_naam: 'Leverancier',
     regelaantal: 'Aantal regels',
   }
   return namen[sleutel] ?? sleutel
+}
+
+/** Vertaalslag voor de tijdlijn: waarom de AI-extractie een PDF niet heeft verwerkt. */
+function aiOvergeslagenLabel(reden: string): string {
+  const labels: Record<string, string> = {
+    ai_extractie_uitgeschakeld: 'AI-extractie staat uit voor deze administratie (AVG-gate)',
+    geen_api_key: 'geen Claude-API-key geconfigureerd',
+    geen_administratie: 'document is niet aan een administratie toegewezen',
+  }
+  return labels[reden] ?? reden
+}
+
+const AI_KOPVELDEN = [
+  'leverancier_naam',
+  'factuurnummer',
+  'factuurdatum',
+  'vervaldatum',
+  'totaal_excl',
+  'totaal_incl',
+  'btw_bedrag',
+  'valuta',
+] as const
+
+interface AiVoorstelPanelProps {
+  voorstel: AiVoorstel
+}
+
+/** Weergave van het AI-veldvoorstel: per veld de gelezen waarde + zekerheidsscore (oranje onder
+ * de drempel — "bij twijfel nooit gokken", de controleur kijkt daar extra naar), plus de
+ * signalen van de deterministische controlelaag (regelsom, onparseerbare velden, BSN-filter). */
+function AiVoorstelPanel({ voorstel }: AiVoorstelPanelProps) {
+  const controle = voorstel.controle
+  return (
+    <div className="panel">
+      <h2>
+        Veldvoorstel (AI) <span className="chip ai">AI-voorstel — mens boekt</span>
+      </h2>
+      <table className="lines">
+        <tbody>
+          {AI_KOPVELDEN.map((sleutel) => {
+            const waarde = voorstel[sleutel]
+            const score = voorstel.zekerheid[sleutel]
+            const laag = score !== undefined && score < voorstel.zekerheid_drempel
+            return (
+              <tr key={sleutel}>
+                <td style={{ color: 'var(--muted)' }}>{veldnaam(sleutel)}</td>
+                <td>{waarde ?? '—'}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {waarde !== null && score !== undefined && (
+                    <span className={`chip ${laag ? 'afwijking' : 'ok'}`}>{zekerheidPct(score)}</span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+          <tr>
+            <td style={{ color: 'var(--muted)' }}>{veldnaam('regelaantal')}</td>
+            <td>{voorstel.regelaantal}</td>
+            <td style={{ textAlign: 'right' }}>
+              {controle.regelsom !== null && controle.regelsom_wijkt_af !== null && (
+                <span className={`chip ${controle.regelsom_wijkt_af ? 'afwijking' : 'ok'}`}>
+                  {controle.regelsom_wijkt_af ? `som € ${controle.regelsom} wijkt af` : 'regelsom sluit aan'}
+                </span>
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {controle.bsn_verwijderd > 0 && (
+        <div className="hint" style={{ color: 'var(--orange)' }}>
+          AVG-filter: {controle.bsn_verwijderd} BSN-patroon
+          {controle.bsn_verwijderd === 1 ? '' : 'en'} uit de AI-output verwijderd — er is niets van
+          gepersisteerd.
+        </div>
+      )}
+      {controle.onparseerbaar.length > 0 && (
+        <div className="hint" style={{ color: 'var(--orange)' }}>
+          Gelezen maar niet overgenomen (geen valide waarde): {controle.onparseerbaar.join(', ')} — handmatig
+          invullen.
+        </div>
+      )}
+      <div className="hint">
+        De AI leest alleen voor; bedragen, datums en suggesties zijn door de controlelaag geparst en getoetst.
+        Grootboek en btw-code komen uitsluitend uit de sync-cache — boeken blijft een menselijke actie.
+      </div>
+    </div>
+  )
 }
 
 /** Puur cosmetisch: legt de XML in nette, ingesprongen regels voor de bron-weergave (geen
@@ -141,28 +231,34 @@ export function DocumentDetailScreen() {
         </div>
 
         <div className="formpane">
-          {detail.veldvoorstel && (
-            <div className="panel">
-              <h2>
-                Veldvoorstel (UBL) <span className="chip geheugen">deterministisch geparst</span>
-              </h2>
-              <table className="lines">
-                <tbody>
-                  {Object.entries(detail.veldvoorstel).map(([sleutel, waarde]) => (
-                    <tr key={sleutel}>
-                      <td style={{ color: 'var(--muted)' }}>{veldnaam(sleutel)}</td>
-                      <td>{waarde === null || waarde === undefined ? '—' : String(waarde)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {(() => {
+            const aiVoorstel = alsAiVoorstel(detail.veldvoorstel)
+            if (aiVoorstel) return <AiVoorstelPanel voorstel={aiVoorstel} />
+            if (!detail.veldvoorstel) return null
+            return (
+              <div className="panel">
+                <h2>
+                  Veldvoorstel (UBL) <span className="chip geheugen">deterministisch geparst</span>
+                </h2>
+                <table className="lines">
+                  <tbody>
+                    {Object.entries(detail.veldvoorstel).map(([sleutel, waarde]) => (
+                      <tr key={sleutel}>
+                        <td style={{ color: 'var(--muted)' }}>{veldnaam(sleutel)}</td>
+                        <td>{waarde === null || waarde === undefined ? '—' : String(waarde)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
 
           <BoekvoorstelPanel
             administratieId={administratieId}
             documentId={documentId}
             status={detail.status}
+            veldvoorstel={detail.veldvoorstel}
             onGeboekt={laadDetail}
             onHersteld={laadDetail}
           />
@@ -197,6 +293,16 @@ export function DocumentDetailScreen() {
                       {g.detail && 'ubl_parse_fout' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           UBL-parsefout: {String(g.detail.ubl_parse_fout)}
+                        </div>
+                      )}
+                      {g.detail && 'ai_extractie_fout' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }}>
+                          AI-extractie mislukt (handmatig invullen): {String(g.detail.ai_extractie_fout)}
+                        </div>
+                      )}
+                      {g.detail && 'ai_extractie_overgeslagen' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          AI-extractie overgeslagen: {aiOvergeslagenLabel(String(g.detail.ai_extractie_overgeslagen))}
                         </div>
                       )}
                     </td>

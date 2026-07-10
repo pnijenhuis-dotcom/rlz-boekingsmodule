@@ -5,7 +5,7 @@ import type { AdministratieInstellingenDto, AdministratieInstellingenLijstDto, B
 import { useAuth } from '../auth/AuthContext'
 import { BevestigDialog } from './BevestigDialog'
 
-type WijzigingType = 'kill_switch' | 'boeken' | 'project'
+type WijzigingType = 'kill_switch' | 'boeken' | 'project' | 'ai_extractie'
 
 interface PendingWijziging {
   type: WijzigingType
@@ -28,6 +28,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `Project wordt verplicht bij boeken voor "${pending.naam}" — regels zonder project blokkeren dan het boeken.`
         : `Project is niet langer verplicht bij boeken voor "${pending.naam}".`
+    case 'ai_extractie':
+      return pending.nieuweWaarde
+        ? `PDF's van "${pending.naam}" gaan voortaan voor extractie naar de Claude API (AVG-gate). Echte klantfacturen pas ná DPA + EU-verwerking + verwerkersregister — zie docs/BOUWPLAN.md.`
+        : `AI-extractie wordt uitgeschakeld voor "${pending.naam}" — PDF's worden weer volledig handmatig ingevuld.`
   }
 }
 
@@ -42,6 +46,13 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'boeken') {
     await apiJson<BoekenIngeschakeldDto>(`/administraties/${pending.administratieId}/boeken-instelling`, {
+      ...init,
+      body: JSON.stringify({ ingeschakeld: pending.nieuweWaarde }),
+    })
+    return
+  }
+  if (pending.type === 'ai_extractie') {
+    await apiJson(`/administraties/${pending.administratieId}/ai-extractie-instelling`, {
       ...init,
       body: JSON.stringify({ ingeschakeld: pending.nieuweWaarde }),
     })
@@ -108,7 +119,9 @@ export function InstellingenScreen() {
                     ...a,
                     ...(pending.type === 'boeken'
                       ? { boeken_ingeschakeld: pending.nieuweWaarde }
-                      : { project_verplicht: pending.nieuweWaarde }),
+                      : pending.type === 'ai_extractie'
+                        ? { ai_extractie_ingeschakeld: pending.nieuweWaarde }
+                        : { project_verplicht: pending.nieuweWaarde }),
                   }
                 : a,
             ) ?? null,
@@ -168,6 +181,7 @@ export function InstellingenScreen() {
                 <th>Administratie</th>
                 <th>Project verplicht bij boeken</th>
                 <th>Boeken ingeschakeld</th>
+                <th>AI-extractie (AVG-gate)</th>
               </tr>
               {administraties.map((a) => (
                 <tr key={a.id}>
@@ -206,6 +220,24 @@ export function InstellingenScreen() {
                         }
                       />
                       {a.boeken_ingeschakeld ? 'aan' : 'uit'}
+                    </label>
+                  </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        style={{ width: 'auto' }}
+                        checked={a.ai_extractie_ingeschakeld}
+                        onChange={(e) =>
+                          setPending({
+                            type: 'ai_extractie',
+                            administratieId: a.id,
+                            naam: a.naam,
+                            nieuweWaarde: e.target.checked,
+                          })
+                        }
+                      />
+                      {a.ai_extractie_ingeschakeld ? 'aan' : 'uit'}
                     </label>
                   </td>
                 </tr>

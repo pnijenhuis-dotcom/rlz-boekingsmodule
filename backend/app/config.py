@@ -58,6 +58,24 @@ class Settings(BaseSettings):
     # of verkeerd geconfigureerde automatische boeking, geen normale-bedrijfsvoering-limiet.
     max_boekingen_per_dag_per_administratie: int = 20
 
+    # AI-extractie (fase AI-extractie sessie 1): Claude leest de PDF, code rekent, mens drukt.
+    # Key uitsluitend via .env/Secret Manager (besluit 0012 — nooit in code/logs/chat); géén
+    # fallback: zonder key wordt AI-extractie zichtbaar overgeslagen, nooit stil geraden.
+    # Model config-gedreven (registers/koppelingen.md, kern-AI-koppeling) — default het meest
+    # capabele reguliere model; wijzigen = alleen deze setting, geen code.
+    anthropic_api_key: str | None = None
+    ai_extractie_model: str = "claude-opus-4-8"
+    # Ruim genoeg voor facturen met veel regels; de SDK-timeout dekt de synchrone upload-flow
+    # (bewust synchroon deze fase — zie docs/BOUWPLAN.md, async-worker uitgesteld).
+    ai_extractie_max_tokens: int = 16000
+    ai_extractie_timeout_seconds: float = 120.0
+    # Minimale tussenruimte tussen twee Claude-aanroepen (throttling-conventie voor elke
+    # koppeling-client, registers/conventies.md) — retry/backoff zelf zit in de SDK (429/5xx).
+    ai_extractie_min_interval_seconds: float = 0.5
+    # Zekerheidsscores onder deze drempel markeert het controlescherm oranje ("bij twijfel nooit
+    # gokken" — de waarde blijft een voorstel dat Peter controleert, nooit een automatische keuze).
+    ai_extractie_zekerheid_drempel: float = 0.8
+
     # Migratie-guard bij startup (app/db/migratie_guard.py): default fail-fast, zodat een gemiste
     # `make migrate` nooit meer een raadsel-500 wordt maar een duidelijke weigering om te starten.
     # "waarschuwen" is een bewuste uitzondering voor latere productie-scenario's (bv. een korte

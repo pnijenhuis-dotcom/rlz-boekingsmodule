@@ -121,6 +121,38 @@ def _regel_prefill_uit_ubl(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
     ]
 
 
+def _als_uuid(waarde: str | None) -> uuid.UUID | None:
+    if not waarde:
+        return None
+    try:
+        return uuid.UUID(waarde)
+    except ValueError:
+        return None
+
+
+def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
+    """AI-veldvoorstellen (bron "ai", app/extractie/controle.py) dragen echte factuurregels —
+    die worden één-op-één regels in het boekvoorstel, incl. de eventuele btw-code-suggestie uit
+    de sync-cache. GB (`ledger_id`) blijft bewust leeg: het boekingsgeheugen is een volgende
+    sessie, en zonder geheugen is elke GB-keuze een gok. UBL-voorstellen houden hun bestaande
+    één-regel-prefill uit de totalen."""
+    ai_regels = veldvoorstel.get("regels")
+    if not isinstance(ai_regels, list) or not ai_regels:
+        return _regel_prefill_uit_ubl(veldvoorstel)
+    return [
+        BoekvoorstelRegelData(
+            ledger_id=None,
+            taxrate_id=_als_uuid(regel.get("taxrate_id")),
+            project_id=None,
+            netto_bedrag=_als_decimal(regel.get("netto_bedrag")),
+            btw_bedrag=_als_decimal(regel.get("btw_bedrag")),
+            omschrijving=regel.get("omschrijving"),
+        )
+        for regel in ai_regels
+        if isinstance(regel, dict)
+    ]
+
+
 def _laad_document(session: Session, *, document_id: uuid.UUID) -> Document:
     document = session.get(Document, document_id)
     if document is None:
@@ -164,8 +196,9 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 ],
             )
 
-        # Geen opgeslagen voorstel: prefill uit het UBL-veldvoorstel, indien aanwezig.
-        van_ubl = next(
+        # Geen opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of
+        # het AI-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), indien aanwezig.
+        veldvoorstel = next(
             (
                 g.detail["veldvoorstel"]
                 for g in _gebeurtenissen_van(session, document_id)
@@ -173,7 +206,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             ),
             None,
         )
-        if van_ubl is None:
+        if veldvoorstel is None:
             return BoekvoorstelData(
                 document_id=document_id,
                 vendor_id=None,
@@ -185,18 +218,24 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 regels=[],
             )
 
-        vendor_id = _raad_vendor_id(
-            session, administratie_id=administratie_id, leverancier_naam=van_ubl.get("leverancier_naam")
-        )
+        # AI-voorstellen dragen een vendor-suggestie uit de controlelaag (exacte of fuzzy match
+        # tegen de vendor-cache, alleen bij een uniek resultaat); anders de bestaande exacte
+        # naammatch. In beide gevallen een voorstel dat de controleur kan overschrijven.
+        suggestie = veldvoorstel.get("vendor_suggestie")
+        vendor_id = _als_uuid(suggestie.get("vendor_id")) if isinstance(suggestie, dict) else None
+        if vendor_id is None:
+            vendor_id = _raad_vendor_id(
+                session, administratie_id=administratie_id, leverancier_naam=veldvoorstel.get("leverancier_naam")
+            )
         return BoekvoorstelData(
             document_id=document_id,
             vendor_id=vendor_id,
-            referentie=van_ubl.get("factuurnummer"),
-            factuurdatum=_als_datum(van_ubl.get("factuurdatum")),
-            totaalbedrag=_als_decimal(van_ubl.get("totaal_incl")),
+            referentie=veldvoorstel.get("factuurnummer"),
+            factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
+            totaalbedrag=_als_decimal(veldvoorstel.get("totaal_incl")),
             rlz_boekstuknummer=None,
             opgeslagen=False,
-            regels=_regel_prefill_uit_ubl(van_ubl),
+            regels=_regels_prefill(veldvoorstel),
         )
 
 

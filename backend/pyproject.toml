@@ -18,6 +18,7 @@ dependencies = [
     "pyjwt>=2.9",
     "cryptography>=43.0",
     "python-multipart>=0.0.12",
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]
@@ -54,8 +55,9 @@ testpaths = ["tests"]
 # write_integration én read_integration zijn opt-in: een kale pytest-run mag NOOIT de live RLZ-
 # testadministratie raken, ook niet alleen-lezend. Expliciet draaien: `make test-write-integration`
 # / `make test-read-integration` (of handmatig `pytest -m <marker> --override-ini='addopts='`).
-addopts = '-m "not write_integration and not read_integration"'
+addopts = '-m "not write_integration and not read_integration and not ai_integration"'
 markers = [
     "write_integration: schrijf-integratietests tegen een echte RLZ-testadministratie (skipt zonder TESTADMIN_* credentials) — opt-in, zie addopts hierboven",
     "read_integration: alleen-lezende integratietests tegen een echte RLZ-administratie (skipt zonder credentials) — ook opt-in, zie addopts hierboven",
+    "ai_integration: echte Claude-API-aanroepen (kost geld, vereist ANTHROPIC_API_KEY) — opt-in, zie addopts hierboven",
 ]

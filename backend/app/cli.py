@@ -135,6 +135,36 @@ def _boeken_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _zet_ai_extractie(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """AVG-gate voor AI-extractie (migratie 0014) — zelfde patroon als de boeken-toggle:
+    hergebruikt app.beheer.service met de Beheerder als audit_event-actor. Default UIT; bedoeld
+    om alleen de test-administratie/eigen facturen aan te zetten tot de AVG-volgorde rond is
+    (docs/BOUWPLAN.md)."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_ai_extractie_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"ai_extractie_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    return 0
+
+
+def _ai_extractie_aan(args: argparse.Namespace) -> int:
+    return _zet_ai_extractie(args, ingeschakeld=True)
+
+
+def _ai_extractie_uit(args: argparse.Namespace) -> int:
+    return _zet_ai_extractie(args, ingeschakeld=False)
+
+
 def _importeer_env_credentials(args: argparse.Namespace) -> int:
     """Eenmalige overzet-hulp: de bekende .env-logins de credential-store in (zie
     app/credentialstore/service.py::importeer_env_credentials voor welke prefixen en waarom
@@ -190,6 +220,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Overzicht: globale kill switch + per-administratie boeken-toggle.",
     )
 
+    for naam, hulp in (
+        ("ai-extractie-aan", "Zet de AI-extractie-gate (AVG) AAN voor één administratie."),
+        ("ai-extractie-uit", "Zet de AI-extractie-gate (AVG) UIT voor één administratie."),
+    ):
+        ai_parser = subparsers.add_parser(naam, help=hulp)
+        ai_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+        ai_parser.add_argument(
+            "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+        )
+
     import_parser = subparsers.add_parser(
         "import-env-credentials",
         help="Zet de bekende .env-logins (RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_) eenmalig "
@@ -213,6 +253,10 @@ def main(argv: list[str] | None = None) -> int:
         return _boeken_uit(args)
     if args.commando == "boeken-status":
         return _boeken_status(args)
+    if args.commando == "ai-extractie-aan":
+        return _ai_extractie_aan(args)
+    if args.commando == "ai-extractie-uit":
+        return _ai_extractie_uit(args)
     if args.commando == "import-env-credentials":
         return _importeer_env_credentials(args)
     return 1

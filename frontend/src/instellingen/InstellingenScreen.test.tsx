@@ -172,7 +172,9 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     installFetchMock({ rol: 'beheerder', killSwitch: true, putAanroepen })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: /kill switch/i })).toBeInTheDocument())
+    // De heading rendert al vóórdat de Promise.all met instellingen-data terug is — wacht dus op
+    // de checkbox zelf (die pas ná het laden bestaat), anders is deze test een race/flake.
+    await waitFor(() => expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0))
     const killSwitchToggle = screen.getAllByRole('checkbox')[0]
     await gebruiker.click(killSwitchToggle)
 
