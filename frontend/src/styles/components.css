@@ -223,6 +223,28 @@ textarea {
   color: var(--text);
 }
 
+/* De generieke width: 100% hierboven geldt anders óók voor checkboxes — die duwde het label
+ * "Splitsen per regel" over drie regels (Peters visuele controle 2026-07-11). */
+input[type='checkbox'] {
+  width: auto;
+  padding: 0;
+}
+
+/* Vinkje + kort label op één regel: korte UI-labels breken nooit (white-space: nowrap), het
+ * label krimpt niet mee met een lange hint ernaast (flex-shrink: 0) — de hint wikkelt eronder. */
+.vink-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -235,6 +257,13 @@ textarea:focus {
 .lines td {
   padding: 8px 10px;
   font-size: 12.5px;
+}
+
+/* Lange onafbreekbare waarden (leveranciersnamen, kenmerken, foutmeldingen) breken binnen hun
+ * cel i.p.v. de tabel breder te duwen dan het paneel — overflow-wrap grijpt alleen in als het
+ * echt niet past. Cellen met een expliciete nowrap (tijdlijn-datum) houden hun eigen stijl. */
+.lines td {
+  overflow-wrap: anywhere;
 }
 
 .actions {
@@ -261,17 +290,23 @@ textarea:focus {
 }
 
 /* Controlescherm review-split (mockup/index.html: .review/.docpane/.formpane) — de bijlage-pane
- * blijft sticky staan terwijl de (doorgaans langere) formulier-pane naast 'm scrolt. */
+ * blijft sticky staan terwijl de (doorgaans langere) formulier-pane naast 'm scrolt.
+ * Herbalans (2026-07-11, Peters visuele controle): het formulier (comboboxen + 6/7-koloms
+ * regeltabel) heeft meer breedte nodig dan de bijlage-preview — verhouding ~2:3 i.p.v. ~1:1,
+ * met een plafond op de bijlage zodat extra ruimte op brede schermen naar het formulier gaat.
+ * Geverifieerd op 1280px en 1512px zonder horizontale clipping. */
 .review {
   display: flex;
   gap: 20px;
   align-items: flex-start;
   flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .docpane {
-  flex: 1 1 380px;
-  min-width: 320px;
+  flex: 1 1 340px;
+  min-width: 300px;
+  max-width: 620px;
   position: sticky;
   top: 26px;
   /* Design-pass "PDF-preview maximaal hoog": eenmaal sticky (bij het scrollen door de langere
@@ -282,8 +317,26 @@ textarea:focus {
 }
 
 .formpane {
-  flex: 1.2 1 420px;
+  flex: 1.5 1 460px;
   min-width: 320px;
+  max-width: 100%;
+}
+
+.formpane .panel {
+  max-width: 100%;
+}
+
+/* Kopgegevens in twee kolommen (mockup .grid2 — ontbrak tot 2026-07-11 in de app-CSS, waardoor
+ * de velden gestapeld stonden en het formulier onnodig lang en krap oogde). min-width: 0 op de
+ * cellen zodat comboboxen/chips binnen hun kolom krimpen i.p.v. de grid open te duwen. */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+
+.grid2 > * {
+  min-width: 0;
 }
 
 .docpane .panel {
@@ -320,11 +373,19 @@ textarea:focus {
   white-space: pre;
 }
 
-/* Boekingsregels-tabel: vaste kolombreedtes (table-layout: fixed) zodat de tabel op 1440px
- * zonder horizontale scroll past — Omschrijving krijgt de resterende ruimte (geen <col>-breedte). */
+/* Boekingsregels-tabel: vaste kolombreedtes (table-layout: fixed) zodat de kolommen voorspelbaar
+ * verdelen — Omschrijving krijgt de resterende ruimte (geen <col>-breedte). De tabel heeft een
+ * ondergrens zodat de omschrijving-kolom nooit tot onbruikbaar wordt geknepen; wordt de pane
+ * smaller dan dat (klein venster, wrap-scenario), dan scrolt de tabel intern in .tabel-scroll —
+ * nooit clippen aan de paneelrand (Peters visuele controle 2026-07-11). */
+.tabel-scroll {
+  overflow-x: auto;
+}
+
 .boekingsregels-tabel {
   table-layout: fixed;
   width: 100%;
+  min-width: 500px;
 }
 
 .boekingsregels-tabel input,

@@ -76,8 +76,8 @@ function AiVoorstelPanel({ voorstel }: AiVoorstelPanelProps) {
             const laag = score !== undefined && score < voorstel.zekerheid_drempel
             return (
               <tr key={sleutel}>
-                <td style={{ color: 'var(--muted)' }}>{veldnaam(sleutel)}</td>
-                <td>{waarde ?? '—'}</td>
+                <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{veldnaam(sleutel)}</td>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>{waarde ?? '—'}</td>
                 <td style={{ textAlign: 'right' }}>
                   {waarde !== null && score !== undefined && (
                     <span className={`chip ${laag ? 'afwijking' : 'ok'}`}>{zekerheidPct(score)}</span>

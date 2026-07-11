@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="nl">
+  <!-- Visueel harnas voor layout-verificatie (dev-gereedschap, geen productie-entry): rendert
+       het echte controlescherm met gemockte fetch, zodat Chrome headless er screenshots van kan
+       maken zonder backend/login. Zie src/dev/visueelHarnas.tsx voor gebruik en varianten. -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visueel harnas — controlescherm</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/dev/visueelHarnas.tsx"></script>
+  </body>
+</html>

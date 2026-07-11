@@ -602,16 +602,16 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                 </div>
               )}
               {vendorId === null && aiLeverancierNaam && (
-                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div>
-                    <span
-                      className="chip afwijking"
-                      title="De AI las deze leveranciersnaam, maar er is geen eenduidige match in de crediteuren-cache — koppel aan een bestaande crediteur of maak een nieuwe aan in RLZ."
-                    >
-                      AI las: „{aiLeverancierNaam}”
-                      {ai?.zekerheid.leverancier_naam !== undefined
-                        ? ` · ${zekerheidPct(ai.zekerheid.leverancier_naam)}`
-                        : ''}
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                  {/* Chip kort (nooit meerregelig); de gelezen naam als gewone tekst die netjes
+                      binnen de grid-kolom afbreekt — een lange leveranciersnaam mag de layout
+                      nooit openduwen (Peters visuele controle 2026-07-11). */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                    {ai?.zekerheid.leverancier_naam !== undefined && (
+                      <span className="chip afwijking">AI {zekerheidPct(ai.zekerheid.leverancier_naam)}</span>
+                    )}
+                    <span style={{ fontSize: 12, color: 'var(--muted)', overflowWrap: 'anywhere', minWidth: 0 }}>
+                      AI las: „{aiLeverancierNaam}” — geen eenduidige match in de crediteuren-cache.
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -620,6 +620,7 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                         key={s.optie.id}
                         type="button"
                         className="btn secondary"
+                        style={{ maxWidth: '100%' }}
                         onClick={() => wijzigVendorId(s.optie.id)}
                       >
                         Koppel aan „{s.optie.label}”
@@ -628,6 +629,7 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                     <button
                       type="button"
                       className="btn secondary"
+                      style={{ maxWidth: '100%' }}
                       disabled={crediteurAanmakenBezig}
                       onClick={() => void nieuweCrediteurAanmaken()}
                     >
@@ -672,6 +674,7 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                 inputMode="decimal"
                 placeholder="1234,56"
                 title="Bijvoorbeeld 1234,56 of 1234.56"
+                style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                 value={totaalbedrag}
                 onChange={(e) => wijzigTotaalbedrag(e.target.value)}
               />
@@ -701,7 +704,7 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
         )}
         {!isReadOnly && samenvoegenBeschikbaar && (
           <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, cursor: 'pointer' }}>
+            <label className="vink-label">
               <input
                 type="checkbox"
                 checked={!regelsSamenvoegen}
@@ -709,22 +712,26 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
               />
               Splitsen per regel
             </label>
-            <span className="hint" style={{ margin: 0 }}>
+            <span className="hint" style={{ margin: 0, flex: '1 1 260px', minWidth: 0 }}>
               {regelsSamenvoegen
                 ? `Samengevoegd tot één boekingsregel (${inactieveRegels.length} factuurregels gelezen) — keuze wordt per leverancier onthouden.`
                 : 'Losse factuurregels — keuze wordt per leverancier onthouden.'}
             </span>
           </div>
         )}
+        <div className="tabel-scroll">
         <table className="lines boekingsregels-tabel">
           <colgroup>
-            <col style={{ width: '22%' }} />
-            <col style={{ width: '16%' }} />
-            {projectVerplicht && <col style={{ width: '14%' }} />}
+            {/* Bedragen houden vaste, ruime kolommen (geld moet altijd volledig leesbaar zijn);
+                de zoek-comboboxen mogen smaller — die tonen hun keuze desnoods afgekort en zijn
+                in de listbox alsnog volledig leesbaar. Omschrijving krijgt de rest. */}
+            <col style={{ width: '20%' }} />
+            <col style={{ width: '14%' }} />
+            {projectVerplicht && <col style={{ width: '12%' }} />}
             <col style={{ width: 84 }} />
             <col style={{ width: 84 }} />
             <col />
-            <col style={{ width: 36 }} />
+            <col style={{ width: 34 }} />
           </colgroup>
           <tbody>
             <tr>
@@ -843,11 +850,11 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                     </>
                   )}
                 </td>
-                <td>
+                <td style={{ padding: '8px 4px' }}>
                   {!isReadOnly && (
                     <button
                       type="button"
-                      className="btn secondary"
+                      className="icon-btn"
                       onClick={() => verwijderRegel(regel.key)}
                       aria-label="Regel verwijderen"
                     >
@@ -860,6 +867,7 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
             })}
           </tbody>
         </table>
+        </div>
         {!isReadOnly && (
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" className="btn secondary" onClick={voegRegelToe}>
