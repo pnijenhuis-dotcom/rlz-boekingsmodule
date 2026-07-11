@@ -123,8 +123,10 @@ describe('BoekvoorstelPanel', () => {
     await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toBeInTheDocument())
 
     await gebruiker.click(screen.getByLabelText('Crediteur', { exact: false }))
-    await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
-    await gebruiker.click(screen.getByText('Bouwmaat Nederland B.V.'))
+    // getByRole i.p.v. getByText: het breedte-anker (aria-hidden) herhaalt de langste optietekst
+    // in de DOM — de rol-query kijkt naar de toegankelijkheidsboom en ziet alleen de echte optie.
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Bouwmaat Nederland B.V.' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('option', { name: 'Bouwmaat Nederland B.V.' }))
     expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Bouwmaat Nederland B.V.')
 
     const [grootboekVeld] = screen.getAllByLabelText('Grootboek', { exact: false })
@@ -137,8 +139,8 @@ describe('BoekvoorstelPanel', () => {
 
     const [btwVeld] = screen.getAllByLabelText('Btw-code', { exact: false })
     await gebruiker.click(btwVeld)
-    await waitFor(() => expect(screen.getByText('NL Hoog 21%')).toBeInTheDocument())
-    await gebruiker.click(screen.getByText('NL Hoog 21%'))
+    await waitFor(() => expect(screen.getByRole('option', { name: 'NL Hoog 21%' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('option', { name: 'NL Hoog 21%' }))
 
     await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
 
@@ -316,7 +318,7 @@ describe('BoekvoorstelPanel', () => {
 
     const projectVeld = screen.getByLabelText(/Project/, { exact: false })
     await gebruiker.click(projectVeld)
-    expect(screen.getByText('P-001 Testproject')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'P-001 Testproject' })).toBeInTheDocument()
   })
 
   it('design-pass taak 8: de live aansluit-indicator reageert op typen, zonder Controleren te klikken', async () => {

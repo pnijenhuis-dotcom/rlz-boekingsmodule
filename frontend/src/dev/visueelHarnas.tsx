@@ -189,7 +189,15 @@ function FocusGbProef() {
         veld.focus()
         setTimeout(() => {
           const na = Math.round(window.scrollY)
-          setMeting(`scrollY vóór focus ${voor} → na ${na}${voor === na ? ' (geen sprong)' : ' — SPRONG!'}`)
+          // Echte gerenderde breedte (layout, geen jsdom): de listbox hoort dankzij het
+          // breedte-anker duidelijk breder te zijn dan het smalle tabelveld.
+          const lijst = document.querySelector<HTMLElement>('.combobox-listbox')
+          const veldBreedte = Math.round(veld.getBoundingClientRect().width)
+          const lijstBreedte = lijst ? Math.round(lijst.getBoundingClientRect().width) : 0
+          setMeting(
+            `scrollY ${voor} → ${na}${voor === na ? ' (geen sprong)' : ' — SPRONG!'} · ` +
+              `veld ${veldBreedte}px, lijst ${lijstBreedte}px${lijstBreedte > veldBreedte + 40 ? ' (verbreed)' : ' — NIET VERBREED!'}`,
+          )
         }, 400)
       }, 100)
     }, 100)

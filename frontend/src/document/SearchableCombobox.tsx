@@ -111,6 +111,26 @@ export function SearchableCombobox({
     )
   }, [opties, debouncedZoekterm])
 
+  // Breedte-anker (bugfix 2026-07-11): de gevirtualiseerde optierijen staan position:absolute
+  // en dragen daardoor NIET bij aan de max-content-breedte van de listbox — die klapte dicht
+  // naar minWidth (veldbreedte) en kapte opties af. Eén onzichtbaar, in-flow exemplaar van de
+  // (naar tekenlengte) langste optie geeft de listbox zijn echte inhoudsbreedte terug, gemeten
+  // door de browser zelf met de echte fonts/padding (zelfde CSS-klasse — geen canvas-benadering
+  // die stil uit de pas kan lopen met de stylesheet). Tekenlengte is bij proportionele fonts
+  // een benadering; het ellipsis-vangnet (components.css) dekt de zeldzame misser.
+  const breedsteOptie = useMemo(() => {
+    let beste: ComboboxOptie | null = null
+    let besteLengte = -1
+    for (const optie of gefilterd) {
+      const lengte = (optie.code ? optie.code.length + 3 : 0) + optie.label.length
+      if (lengte > besteLengte) {
+        beste = optie
+        besteLengte = lengte
+      }
+    }
+    return beste
+  }, [gefilterd])
+
   useEffect(() => {
     setActieveIndex(0)
     setScrollTop(0)
@@ -289,6 +309,12 @@ export function SearchableCombobox({
               maxHeight: positie.maxHeight,
             }}
           >
+            {breedsteOptie && (
+              <div aria-hidden="true" className="combobox-optie" style={{ height: 0, visibility: 'hidden' }}>
+                {breedsteOptie.code && <span className="combobox-optie-code">{breedsteOptie.code}</span>}
+                <span>{breedsteOptie.label}</span>
+              </div>
+            )}
             <div style={{ height: gefilterd.length * RIJHOOGTE, position: 'relative' }}>
               {zichtbareOpties.map((optie, i) => {
                 const echteIndex = eersteIndex + i

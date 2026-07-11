@@ -103,7 +103,8 @@ describe('SearchableCombobox', () => {
     }
     render(<Wrapper />)
     await gebruiker.click(screen.getByRole('combobox', { name: 'Grootboek' }))
-    await gebruiker.click(screen.getByText('4699 · Diverse algemene kosten'))
+    // Rol-query: het aria-hidden breedte-anker herhaalt deze tekst, de echte optie heeft de rol.
+    await gebruiker.click(screen.getByRole('option', { name: '4699 · Diverse algemene kosten' }))
     expect(screen.getByRole('combobox', { name: 'Grootboek' })).toHaveValue('4699 · Diverse algemene kosten')
   })
 
@@ -123,9 +124,11 @@ describe('SearchableCombobox', () => {
     render(<Wrapper />)
     await gebruiker.click(screen.getByRole('combobox', { name: 'Btw-code' }))
 
-    const code = screen.getByText('21%')
-    expect(code.className).toContain('combobox-optie-code')
-    expect(screen.getByText('NL, Hoog Tarief')).toBeInTheDocument()
+    // Binnen de échte optie (rol-query — het aria-hidden breedte-anker herhaalt dezelfde tekst).
+    const optie = screen.getByRole('option', { name: /21%.*NL, Hoog Tarief/ })
+    const code = optie.querySelector('.combobox-optie-code')
+    expect(code).not.toBeNull()
+    expect(code!.textContent).toBe('21%')
 
     await gebruiker.click(screen.getByRole('option', { name: /21%.*NL, Hoog Tarief/ }))
     expect(screen.getByRole('combobox', { name: 'Btw-code' })).toHaveValue('21% · NL, Hoog Tarief')
@@ -260,5 +263,38 @@ describe('SearchableCombobox', () => {
 
     // 800 + 320 steekt buiten 1024 → naar links geschoven tot hij past: 1024 − 8 − 320 = 696.
     expect(screen.getByRole('listbox', { name: 'Btw-code' }).style.left).toBe('696px')
+  })
+
+  it('rendert een in-flow breedte-anker met de langste optie, zodat max-content echt werkt', async () => {
+    // Bugfix 2026-07-11: de gevirtualiseerde optierijen zijn position:absolute en dragen niet
+    // bij aan de max-content-breedte — de lijst klapte dicht naar veldbreedte. Het anker (één
+    // onzichtbaar, in-flow exemplaar van de langste optie) herstelt dat.
+    //
+    // LET OP — wat deze test wél en niet bewijst: jsdom doet geen layout en rekent geen
+    // max-content, dus de echte gerenderde breedte is hier NIET te asserten. Die is geverifieerd
+    // in echt Chrome via het visuele harnas (harness.html?splitsen=1&focusgb=1 — de badge meet
+    // veld- vs lijstbreedte: 82px veld → 202px lijst). Hier borgen we het mechanisme: het anker
+    // bestaat, is in-flow (geen position:absolute zoals de virtualisatierijen), bevat de langste
+    // optie en lekt niet naar screenreaders of de optietelling.
+    const gebruiker = userEvent.setup()
+    const opties = [
+      { id: '1', code: '4699', label: 'Kort' },
+      { id: '2', code: '7000', label: 'Inkoop onderaanneming — de langste omschrijving van allemaal' },
+      { id: '3', code: '4001', label: 'Middellange omschrijving' },
+    ]
+    render(<SearchableCombobox label="Grootboek" opties={opties} waarde={null} onWijzig={() => {}} />)
+
+    await gebruiker.click(screen.getByRole('combobox', { name: 'Grootboek' }))
+
+    const listbox = screen.getByRole('listbox', { name: 'Grootboek' })
+    const anker = listbox.querySelector<HTMLElement>('[aria-hidden="true"].combobox-optie')
+    expect(anker).not.toBeNull()
+    expect(anker!.textContent).toContain('Inkoop onderaanneming — de langste omschrijving van allemaal')
+    expect(anker!.style.position).toBe('') // in-flow: dít element bepaalt de max-content-breedte
+    expect(anker!.style.visibility).toBe('hidden')
+
+    // De echte optierijen blijven gevirtualiseerd (absolute) en het anker telt niet mee als optie.
+    expect(screen.getAllByRole('option')).toHaveLength(3)
+    expect(screen.getByRole('option', { name: /Kort/ }).style.position).toBe('absolute')
   })
 })
