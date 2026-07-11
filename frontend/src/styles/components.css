@@ -404,6 +404,10 @@ textarea:focus {
   box-shadow: 0 4px 16px rgba(16, 24, 40, 0.12), 0 12px 32px rgba(16, 24, 40, 0.1);
   padding: 4px;
   overflow-y: auto;
+  /* De verschijnende/groeiende lijst mag nooit een scroll-anker worden — Chrome's scroll
+   * anchoring kan de pagina anders laten springen op het moment dat de portal opent
+   * (scroll-sprong-onderzoek 2026-07-11). */
+  overflow-anchor: none;
 }
 
 body.dark .combobox-listbox {

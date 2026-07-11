@@ -48,11 +48,22 @@ function useDebounced<T>(waarde: T, delayMs: number): T {
   return debounced
 }
 
+// Ademruimte tussen lijst en viewportrand; de lijst klapt naar boven open ("flip") zodra er
+// onder het veld minder ruimte is dan de gewenste hoogte én boven méér — en wordt in beide
+// richtingen op de beschikbare ruimte afgekapt met interne scroll, zodat hij altijd volledig
+// binnen de viewport valt (bugfix 2026-07-11: onderin het scherm vielen opties buiten beeld).
+const VIEWPORT_MARGE = 8
+const GEWENSTE_HOOGTE = ZICHTBARE_RIJEN * RIJHOOGTE + 8
+
 interface Positie {
-  top: number
+  /** Gezet bij openen naar beneden (afstand tot viewport-bovenkant). */
+  top?: number
+  /** Gezet bij openen naar boven (afstand tot viewport-ónderkant, CSS `bottom` op fixed). */
+  bottom?: number
   left: number
   width: number
   maxWidth: number
+  maxHeight: number
 }
 
 /** Zoekbare combobox met toetsenbordnavigatie en gevirtualiseerde opties-lijst (BOUWPLAN.md,
@@ -105,13 +116,24 @@ export function SearchableCombobox({
     const el = inputRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
+    // Scrollt het veld zelf (vrijwel) uit beeld, dan sluit de lijst — een fixed lijst die aan
+    // een onzichtbaar veld "vastzit" zweeft anders los door het scherm (bugfix 2026-07-11).
+    if (rect.bottom < 0 || rect.top > window.innerHeight) {
+      setOpen(false)
+      return
+    }
+    const ruimteOnder = window.innerHeight - rect.bottom - VIEWPORT_MARGE
+    const ruimteBoven = rect.top - VIEWPORT_MARGE
+    const naarBoven = ruimteOnder < GEWENSTE_HOOGTE && ruimteBoven > ruimteOnder
     // Breedte >= het invoerveld (design-pass taak 2) — de lijst mag breder worden om "code +
     // omschrijving" leesbaar te tonen, tot de rand van het venster (met een kleine marge).
     setPositie({
-      top: rect.bottom,
+      top: naarBoven ? undefined : rect.bottom,
+      bottom: naarBoven ? window.innerHeight - rect.top : undefined,
       left: rect.left,
       width: rect.width,
       maxWidth: Math.max(rect.width, window.innerWidth - rect.left - 12),
+      maxHeight: Math.max(RIJHOOGTE + 8, Math.min(GEWENSTE_HOOGTE, naarBoven ? ruimteBoven : ruimteOnder)),
     })
   }, [])
 
@@ -168,6 +190,9 @@ export function SearchableCombobox({
     }
   }
 
+  // Het render-venster volgt de wérkelijke lijsthoogte — die kan door de viewport-clamp kleiner
+  // zijn dan de acht standaardrijen, maar het venster mag nooit kleiner worden dan wat zichtbaar is.
+  const zichtbareRijen = Math.min(ZICHTBARE_RIJEN, Math.ceil((positie?.maxHeight ?? GEWENSTE_HOOGTE) / RIJHOOGTE))
   const eersteIndex = Math.max(0, Math.floor(scrollTop / RIJHOOGTE) - BUFFER)
   const laatsteIndex = Math.min(gefilterd.length, eersteIndex + ZICHTBARE_RIJEN + BUFFER * 2)
   const zichtbareOpties = gefilterd.slice(eersteIndex, laatsteIndex)
@@ -176,11 +201,14 @@ export function SearchableCombobox({
     if (!open || !listRef.current) return
     const rijTop = actieveIndex * RIJHOOGTE
     const el = listRef.current
+    // clientHeight i.p.v. de vaste acht rijen: bij een viewport-geclampte lijst is het zichtbare
+    // venster kleiner en moet de actieve rij binnen dát venster blijven.
+    const vensterHoogte = el.clientHeight || zichtbareRijen * RIJHOOGTE
     if (rijTop < el.scrollTop) el.scrollTop = rijTop
-    else if (rijTop + RIJHOOGTE > el.scrollTop + ZICHTBARE_RIJEN * RIJHOOGTE) {
-      el.scrollTop = rijTop + RIJHOOGTE - ZICHTBARE_RIJEN * RIJHOOGTE
+    else if (rijTop + RIJHOOGTE > el.scrollTop + vensterHoogte) {
+      el.scrollTop = rijTop + RIJHOOGTE - vensterHoogte
     }
-  }, [actieveIndex, open])
+  }, [actieveIndex, open, zichtbareRijen])
 
   const actieveOptieId =
     open && gefilterd[actieveIndex] ? `${listboxId}-${gefilterd[actieveIndex].id}` : undefined
@@ -232,11 +260,12 @@ export function SearchableCombobox({
               position: 'fixed',
               zIndex: 1000,
               top: positie.top,
+              bottom: positie.bottom,
               left: positie.left,
               minWidth: positie.width,
               maxWidth: positie.maxWidth,
               width: 'max-content',
-              maxHeight: ZICHTBARE_RIJEN * RIJHOOGTE + 8,
+              maxHeight: positie.maxHeight,
             }}
           >
             <div style={{ height: gefilterd.length * RIJHOOGTE, position: 'relative' }}>

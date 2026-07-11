@@ -1,8 +1,25 @@
 import { useState } from 'react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { SearchableCombobox } from './SearchableCombobox'
+
+/** jsdom geeft altijd een nul-rect — voor de positioneringstests prikken we een echte plek in
+ * de viewport op het invoerveld (jsdom: window.innerHeight = 768). */
+function zetVeldRect(veld: HTMLElement, top: number, hoogte = 30) {
+  veld.getBoundingClientRect = () =>
+    ({
+      top,
+      bottom: top + hoogte,
+      left: 40,
+      right: 240,
+      width: 200,
+      height: hoogte,
+      x: 40,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect
+}
 
 const OPTIES = [
   { id: '1', label: 'Aap' },
@@ -119,5 +136,76 @@ describe('SearchableCombobox', () => {
     )
     expect(screen.queryByText('Grootboek')).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /Grootboek/ })).toBeInTheDocument()
+  })
+
+  // ————— Positionering (bugfix 2026-07-11): flip, viewport-clamp, herpositioneren, uit beeld —————
+
+  it('opent naar beneden met ruimte onder het veld, met de hoogte op de standaard acht rijen', async () => {
+    const gebruiker = userEvent.setup()
+    render(<SearchableCombobox label="Grootboek" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+    const veld = screen.getByRole('combobox', { name: 'Grootboek' })
+    zetVeldRect(veld, 100) // ruim 600px onder het veld (innerHeight 768)
+
+    await gebruiker.click(veld)
+
+    const listbox = screen.getByRole('listbox', { name: 'Grootboek' })
+    expect(listbox.style.top).toBe('130px') // rect.bottom
+    expect(listbox.style.bottom).toBe('')
+    expect(listbox.style.maxHeight).toBe('264px') // 8 rijen × 32 + 8
+  })
+
+  it('flipt naar boven als er onder het veld onvoldoende ruimte is', async () => {
+    const gebruiker = userEvent.setup()
+    render(<SearchableCombobox label="Grootboek" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+    const veld = screen.getByRole('combobox', { name: 'Grootboek' })
+    zetVeldRect(veld, 700) // onderin: ~30px ruimte onder, ~692px boven
+
+    await gebruiker.click(veld)
+
+    const listbox = screen.getByRole('listbox', { name: 'Grootboek' })
+    // Naar boven verankerd aan de bovenkant van het veld (CSS bottom op position: fixed).
+    expect(listbox.style.bottom).toBe(`${768 - 700}px`)
+    expect(listbox.style.top).toBe('')
+  })
+
+  it('clampt de hoogte op de beschikbare ruimte zodat de lijst binnen de viewport blijft', async () => {
+    // Kleine viewport: aan géén van beide kanten past de volle lijst — hij opent dan naar de
+    // ruimste kant (onder) met de hoogte geclampt op wat daar past, en scrolt intern.
+    const origineleHoogte = window.innerHeight
+    window.innerHeight = 400
+    try {
+      const gebruiker = userEvent.setup()
+      render(<SearchableCombobox label="Grootboek" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+      const veld = screen.getByRole('combobox', { name: 'Grootboek' })
+      zetVeldRect(veld, 180) // boven 172px, onder 400−210−8 = 182px → onder wint, geclampt
+
+      await gebruiker.click(veld)
+
+      const listbox = screen.getByRole('listbox', { name: 'Grootboek' })
+      expect(listbox.style.top).toBe('210px')
+      expect(listbox.style.bottom).toBe('')
+      expect(listbox.style.maxHeight).toBe('182px')
+    } finally {
+      window.innerHeight = origineleHoogte
+    }
+  })
+
+  it('herpositioneert bij scroll en sluit zodra het veld uit beeld raakt', async () => {
+    const gebruiker = userEvent.setup()
+    render(<SearchableCombobox label="Grootboek" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+    const veld = screen.getByRole('combobox', { name: 'Grootboek' })
+    zetVeldRect(veld, 100)
+    await gebruiker.click(veld)
+    expect(screen.getByRole('listbox', { name: 'Grootboek' }).style.top).toBe('130px')
+
+    // De pagina scrolt: het veld schuift omhoog → de lijst schuift mee (geen "zwevende" lijst).
+    zetVeldRect(veld, 60)
+    fireEvent.scroll(window)
+    expect(screen.getByRole('listbox', { name: 'Grootboek' }).style.top).toBe('90px')
+
+    // Het veld scrolt (vrijwel) uit beeld → de lijst sluit in plaats van los te zweven.
+    zetVeldRect(veld, -40)
+    fireEvent.scroll(window)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 })

@@ -170,6 +170,52 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   return echteFetch(invoer, init)
 }
 
+/** Proef voor de combobox-flip + scroll-sprong (?focusgb=1): zet het eerste GB-veld in de
+ * regeltabel vlak boven de onderrand van de viewport en focust het dan programmatic — de lijst
+ * hoort naar bóven open te klappen (flip) en de pagina hoort niet te springen. De badge
+ * rechtsonder toont de gemeten scrollY vóór/na. */
+function FocusGbProef() {
+  const [meting, setMeting] = useState<string | null>(null)
+  useEffect(() => {
+    if (!PARAMS.has('focusgb')) return
+    const timer = setInterval(() => {
+      const veld = document.querySelector<HTMLInputElement>('.boekingsregels-tabel input[role="combobox"]')
+      if (!veld) return
+      clearInterval(timer)
+      const rect = veld.getBoundingClientRect()
+      window.scrollTo(0, window.scrollY + rect.bottom - window.innerHeight + 60)
+      setTimeout(() => {
+        const voor = Math.round(window.scrollY)
+        veld.focus()
+        setTimeout(() => {
+          const na = Math.round(window.scrollY)
+          setMeting(`scrollY vóór focus ${voor} → na ${na}${voor === na ? ' (geen sprong)' : ' — SPRONG!'}`)
+        }, 400)
+      }, 100)
+    }, 100)
+    return () => clearInterval(timer)
+  }, [])
+  if (!meting) return null
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        right: 8,
+        bottom: 8,
+        zIndex: 999,
+        padding: '4px 10px',
+        borderRadius: 6,
+        fontSize: 12,
+        fontWeight: 700,
+        color: '#fff',
+        background: meting.includes('SPRONG') ? '#b42318' : '#1c7a54',
+      }}
+    >
+      {meting}
+    </div>
+  )
+}
+
 /** Rode/groene badge linksonder: is de pagina breder dan de viewport (horizontale clipping)? */
 function OverflowBadge() {
   const [meting, setMeting] = useState('')
@@ -229,6 +275,7 @@ createRoot(document.getElementById('root')!).render(
         </div>
       </div>
       <OverflowBadge />
+      <FocusGbProef />
     </MemoryRouter>
   </StrictMode>,
 )
