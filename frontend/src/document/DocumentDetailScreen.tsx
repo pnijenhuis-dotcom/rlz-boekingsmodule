@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentDetailDto } from '../api/types'
+import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
@@ -56,12 +57,16 @@ const AI_KOPVELDEN = [
 
 interface AiVoorstelPanelProps {
   voorstel: AiVoorstel
+  /** UX-fix 2026-07-11: "opnieuw extraheren" ook op een gesláágd voorstel (alleen PDF's in
+   * te_controleren — de aanroeper bepaalt dat en geeft anders undefined; de klik opent eerst
+   * een bevestigingsvraag omdat de her-run het huidige voorstel overschrijft). */
+  onOpnieuwExtraheren?: () => void
 }
 
 /** Weergave van het AI-veldvoorstel: per veld de gelezen waarde + zekerheidsscore (oranje onder
  * de drempel — "bij twijfel nooit gokken", de controleur kijkt daar extra naar), plus de
  * signalen van de deterministische controlelaag (regelsom, onparseerbare velden, BSN-filter). */
-function AiVoorstelPanel({ voorstel }: AiVoorstelPanelProps) {
+function AiVoorstelPanel({ voorstel, onOpnieuwExtraheren }: AiVoorstelPanelProps) {
   const controle = voorstel.controle
   return (
     <div className="panel">
@@ -122,6 +127,13 @@ function AiVoorstelPanel({ voorstel }: AiVoorstelPanelProps) {
         De AI leest alleen voor; bedragen, datums en suggesties zijn door de controlelaag geparst en getoetst.
         Grootboek en btw-code komen uitsluitend uit de sync-cache — boeken blijft een menselijke actie.
       </div>
+      {onOpnieuwExtraheren && (
+        <div className="actions">
+          <button type="button" className="btn secondary" onClick={onOpnieuwExtraheren}>
+            ↻ Opnieuw extraheren
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -173,6 +185,9 @@ export function DocumentDetailScreen() {
   const [bijlage, setBijlage] = useState<Bijlage | null>(null)
   const [opnieuwBezig, setOpnieuwBezig] = useState(false)
   const [opnieuwFout, setOpnieuwFout] = useState<string | null>(null)
+  // UX-fix 2026-07-11: her-extractie vanaf een gesláágd voorstel vraagt eerst bevestiging —
+  // de her-run overschrijft het huidige voorstel (nieuwste extractie wint).
+  const [herExtractieBevestigen, setHerExtractieBevestigen] = useState(false)
 
   const laadDetail = useCallback(() => {
     if (!administratieId || !documentId) return
@@ -230,6 +245,7 @@ export function DocumentDetailScreen() {
         `/administraties/${administratieId}/documenten/${documentId}/extractie`,
         {},
       )
+      setHerExtractieBevestigen(false)
       laadDetail()
     } catch (err) {
       setOpnieuwFout(err instanceof ApiError ? err.message : 'Opnieuw extraheren mislukt.')
@@ -237,6 +253,11 @@ export function DocumentDetailScreen() {
       setOpnieuwBezig(false)
     }
   }
+
+  // Alleen PDF's: UBL wordt deterministisch geparst, daar valt niets opnieuw te "lezen". De
+  // backend bewaakt dit ook (alleen PDF, alleen vanaf te_controleren) — dit is de UI-kant.
+  const isPdf = detail.bestandsnaam.toLowerCase().endsWith('.pdf')
+  const magOpnieuwExtraheren = isPdf && detail.status === 'te_controleren' && !extractieProbleem
 
   return (
     <div>
@@ -331,7 +352,21 @@ export function DocumentDetailScreen() {
             // boekvoorstel-formulier misleidend — de worker schrijft zo een nieuw voorstel.
             if (achtergrondBezig) return null
             const aiVoorstel = alsAiVoorstel(detail.veldvoorstel)
-            if (aiVoorstel) return <AiVoorstelPanel voorstel={aiVoorstel} />
+            if (aiVoorstel) {
+              return (
+                <AiVoorstelPanel
+                  voorstel={aiVoorstel}
+                  onOpnieuwExtraheren={
+                    magOpnieuwExtraheren
+                      ? () => {
+                          setOpnieuwFout(null)
+                          setHerExtractieBevestigen(true)
+                        }
+                      : undefined
+                  }
+                />
+              )
+            }
             if (!detail.veldvoorstel) return null
             return (
               <div className="panel">
@@ -360,6 +395,23 @@ export function DocumentDetailScreen() {
               veldvoorstel={detail.veldvoorstel}
               onGeboekt={laadDetail}
               onHersteld={laadDetail}
+            />
+          )}
+
+          {herExtractieBevestigen && (
+            <BevestigDialog
+              titel="Opnieuw extraheren?"
+              bericht={
+                'De AI leest de PDF opnieuw en het nieuwe resultaat overschrijft het huidige ' +
+                'veldvoorstel (nieuwste extractie wint, ook in de boekvoorstel-prefill). Een al ' +
+                'opgeslagen boekvoorstel blijft bewaard.'
+              }
+              bezig={opnieuwBezig}
+              fout={opnieuwFout}
+              onBevestigen={() => void opnieuwExtraheren()}
+              onAnnuleren={() => {
+                if (!opnieuwBezig) setHerExtractieBevestigen(false)
+              }}
             />
           )}
 

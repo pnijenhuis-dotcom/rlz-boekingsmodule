@@ -11,10 +11,14 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 }
 
-function installFetchMock(detail: unknown) {
+function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: string[] }) {
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) => {
+    vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/extractie') && init?.method === 'POST') {
+        opties?.extractieAanroepen?.push(url)
+        return Promise.resolve(jsonResponse({ document_id: DOCUMENT_ID, status: 'extractie_bezig' }))
+      }
       if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
       if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
       if (url.endsWith('/boekvoorstel')) {
@@ -171,5 +175,115 @@ describe('DocumentDetailScreen — tijdlijn en duplicaat', () => {
     const link = await screen.findByRole('link', { name: /origineel\.pdf/ })
     expect(link).toHaveAttribute('href', `/documenten/${ADMINISTRATIE_ID}/${ORIGINEEL_ID}`)
     expect(screen.queryByText(ORIGINEEL_ID)).not.toBeInTheDocument()
+  })
+})
+
+// ————— UX-fix 2026-07-11: "↻ Opnieuw extraheren" ook op een gesláágd voorstel —————
+
+const AI_VOORSTEL = {
+  bron: 'ai',
+  leverancier_naam: 'Confide BV',
+  factuurnummer: 'F-1',
+  factuurdatum: '2026-07-01',
+  vervaldatum: null,
+  valuta: 'EUR',
+  totaal_excl: '100.00',
+  totaal_incl: '121.00',
+  btw_bedrag: '21.00',
+  regelaantal: 1,
+  regels: [{ omschrijving: 'Steigerhuur', netto_bedrag: '100.00', btw_bedrag: '21.00', hoeveelheid: null, taxrate_id: null }],
+  zekerheid: { leverancier_naam: 0.93 },
+  regel_zekerheid: [0.95],
+  zekerheid_drempel: 0.8,
+  vendor_suggestie: null,
+  controle: {
+    regelsom: '121.00',
+    regelsom_wijkt_af: false,
+    onparseerbaar: [],
+    lage_zekerheid: [],
+    bsn_verwijderd: 0,
+    onvolledig: false,
+  },
+}
+
+function detailMet(overrides: Record<string, unknown>) {
+  return {
+    id: DOCUMENT_ID,
+    administratie_id: ADMINISTRATIE_ID,
+    bestandsnaam: 'factuur.pdf',
+    status: 'te_controleren',
+    bron: 'upload',
+    mogelijk_duplicaat_van: null,
+    toegewezen_aan: null,
+    aangemaakt_op: '2026-07-10T10:00:00Z',
+    laatst_gewijzigd_op: '2026-07-10T10:05:00Z',
+    veldvoorstel: AI_VOORSTEL,
+    tijdlijn: [
+      { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-07-10T10:00:00Z' },
+      { van_status: 'extractie_bezig', naar_status: 'te_controleren', actor_id: 'sys', actor_is_systeem: true, detail: { veldvoorstel: AI_VOORSTEL }, tijdstip: '2026-07-10T10:05:00Z' },
+    ],
+    ...overrides,
+  }
+}
+
+describe('DocumentDetailScreen — opnieuw extraheren vanaf een geslaagd voorstel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('toont de knop bij een PDF in te_controleren en start de her-run pas na bevestiging', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const extractieAanroepen: string[] = []
+    installFetchMock(detailMet({}), { extractieAanroepen })
+
+    renderScherm()
+
+    const knop = await screen.findByRole('button', { name: '↻ Opnieuw extraheren' })
+    await gebruiker.click(knop)
+
+    // Eerst bevestigen — de her-run overschrijft het huidige voorstel.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText(/overschrijft het huidige/)).toBeInTheDocument()
+    expect(extractieAanroepen).toHaveLength(0)
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+
+    await waitFor(() => expect(extractieAanroepen).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('annuleren sluit de dialoog zonder her-run', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const extractieAanroepen: string[] = []
+    installFetchMock(detailMet({}), { extractieAanroepen })
+
+    renderScherm()
+
+    await gebruiker.click(await screen.findByRole('button', { name: '↻ Opnieuw extraheren' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Annuleren' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(extractieAanroepen).toHaveLength(0)
+  })
+
+  it('geen knop op een geboekt document, ook al is er een AI-voorstel', async () => {
+    installFetchMock(detailMet({ status: 'geboekt' }))
+
+    renderScherm()
+
+    // Het AI-voorstel-paneel staat er wél (context blijft zichtbaar), de her-run-knop niet.
+    await screen.findByText('AI-voorstel — mens boekt')
+    expect(screen.queryByRole('button', { name: '↻ Opnieuw extraheren' })).not.toBeInTheDocument()
+  })
+
+  it('geen knop op een niet-PDF (UBL is deterministisch)', async () => {
+    installFetchMock(detailMet({ bestandsnaam: 'factuur.xml' }))
+
+    renderScherm()
+
+    await screen.findByText('AI-voorstel — mens boekt')
+    expect(screen.queryByRole('button', { name: '↻ Opnieuw extraheren' })).not.toBeInTheDocument()
   })
 })
