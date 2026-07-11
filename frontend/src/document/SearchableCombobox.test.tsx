@@ -5,17 +5,18 @@ import { describe, expect, it, vi } from 'vitest'
 import { SearchableCombobox } from './SearchableCombobox'
 
 /** jsdom geeft altijd een nul-rect — voor de positioneringstests prikken we een echte plek in
- * de viewport op het invoerveld (jsdom: window.innerHeight = 768). */
-function zetVeldRect(veld: HTMLElement, top: number, hoogte = 30) {
+ * de viewport op het invoerveld (jsdom: window.innerHeight = 768, innerWidth = 1024). */
+function zetVeldRect(veld: HTMLElement, top: number, opties?: { left?: number; width?: number; hoogte?: number }) {
+  const { left = 40, width = 200, hoogte = 30 } = opties ?? {}
   veld.getBoundingClientRect = () =>
     ({
       top,
       bottom: top + hoogte,
-      left: 40,
-      right: 240,
-      width: 200,
+      left,
+      right: left + width,
+      width,
       height: hoogte,
-      x: 40,
+      x: left,
       y: top,
       toJSON: () => ({}),
     }) as DOMRect
@@ -207,5 +208,57 @@ describe('SearchableCombobox', () => {
     zetVeldRect(veld, -40)
     fireEvent.scroll(window)
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  // ————— Breedte (UI-polish 2026-07-11): leesbare opties, binnen de viewport —————
+
+  it('mag breder worden dan het veld voor leesbare opties: tot 1,6× de veldbreedte', async () => {
+    const gebruiker = userEvent.setup()
+    render(<SearchableCombobox label="Grootboek" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+    const veld = screen.getByRole('combobox', { name: 'Grootboek' })
+    zetVeldRect(veld, 100, { width: 200 })
+
+    await gebruiker.click(veld)
+
+    const listbox = screen.getByRole('listbox', { name: 'Grootboek' })
+    expect(listbox.style.minWidth).toBe('200px') // nooit smaller dan het veld
+    expect(listbox.style.maxWidth).toBe('320px') // 1,6 × 200, ruim binnen de viewport (1024)
+  })
+
+  it('valt op een smalle viewport terug op de veldbreedte (ellipsis is dan het vangnet)', async () => {
+    const origineleBreedte = window.innerWidth
+    window.innerWidth = 200
+    try {
+      const gebruiker = userEvent.setup()
+      render(<SearchableCombobox label="Grootboek" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+      const veld = screen.getByRole('combobox', { name: 'Grootboek' })
+      zetVeldRect(veld, 100, { left: 8, width: 184 })
+
+      await gebruiker.click(veld)
+
+      // Beschikbaar (200 − 16 = 184) < 1,6×veld → terug naar de veldbreedte, nooit smaller.
+      expect(screen.getByRole('listbox', { name: 'Grootboek' }).style.maxWidth).toBe('184px')
+    } finally {
+      window.innerWidth = origineleBreedte
+    }
+  })
+
+  it('schuift naar links als de gerenderde lijst rechts buiten de viewport zou steken', async () => {
+    const gebruiker = userEvent.setup()
+    render(<SearchableCombobox label="Btw-code" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+    const veld = screen.getByRole('combobox', { name: 'Btw-code' })
+    zetVeldRect(veld, 100, { left: 800, width: 200 }) // veld tegen de rechterrand (viewport 1024)
+
+    await gebruiker.click(veld)
+    const listbox = screen.getByRole('listbox', { name: 'Btw-code' })
+    expect(listbox.style.left).toBe('800px') // jsdom meet offsetWidth 0 → nog geen verschuiving
+
+    // De echte gerenderde breedte (max-content, geclampt op maxWidth) wordt pas ná de render
+    // gemeten — simuleer een lijst van 320px breed en laat de herpositionering draaien.
+    Object.defineProperty(listbox, 'offsetWidth', { value: 320, configurable: true })
+    fireEvent.scroll(window)
+
+    // 800 + 320 steekt buiten 1024 → naar links geschoven tot hij past: 1024 − 8 − 320 = 696.
+    expect(screen.getByRole('listbox', { name: 'Btw-code' }).style.left).toBe('696px')
   })
 })

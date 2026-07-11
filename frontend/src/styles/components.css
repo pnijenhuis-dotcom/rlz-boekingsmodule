@@ -425,6 +425,15 @@ body.dark .combobox-listbox {
   white-space: nowrap;
 }
 
+/* Vangnet op smalle viewports: past een lange omschrijving ook op de maximale lijstbreedte
+ * niet, dan kapt de omschrijving af met een ellipsis — de code (vet, flex-shrink: 0) blijft
+ * altijd volledig staan (UI-polish 2026-07-11). */
+.combobox-optie > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .combobox-optie.actief {
   background: var(--blue-bg);
   color: var(--accent);

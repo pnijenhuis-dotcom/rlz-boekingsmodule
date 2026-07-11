@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface ComboboxOptie {
@@ -54,6 +54,10 @@ function useDebounced<T>(waarde: T, delayMs: number): T {
 // binnen de viewport valt (bugfix 2026-07-11: onderin het scherm vielen opties buiten beeld).
 const VIEWPORT_MARGE = 8
 const GEWENSTE_HOOGTE = ZICHTBARE_RIJEN * RIJHOOGTE + 8
+// Ondergrens voor de máximale lijstbreedte: in smalle tabelkolommen (GB/btw ~80-120px) is
+// 1,6× de veldbreedte nog steeds onleesbaar — "code + omschrijving" heeft ~280px nodig.
+// `width: max-content` zorgt dat een korte lijst nooit onnodig breed rendert; dit is een cap.
+const MIN_LEESBARE_BREEDTE = 280
 
 interface Positie {
   /** Gezet bij openen naar beneden (afstand tot viewport-bovenkant). */
@@ -126,16 +130,33 @@ export function SearchableCombobox({
     const ruimteBoven = rect.top - VIEWPORT_MARGE
     const naarBoven = ruimteOnder < GEWENSTE_HOOGTE && ruimteBoven > ruimteOnder
     // Breedte >= het invoerveld (design-pass taak 2) — de lijst mag breder worden om "code +
-    // omschrijving" leesbaar te tonen, tot de rand van het venster (met een kleine marge).
+    // omschrijving" leesbaar te tonen: tot 1,6× de veldbreedte, begrensd door de viewport
+    // (UI-polish 2026-07-11: de oude grens `viewport − rect.left` kapte opties af zodra het
+    // veld rechts in het scherm stond). Op een viewport smaller dan het veld valt de lijst
+    // terug op de veldbreedte; ellipsis op de optietekst is dan het vangnet (components.css).
+    // Steekt de gerenderde lijst rechts buiten beeld, dan schuift het layout-effect hieronder
+    // hem naar links — `left` hier is het uitgangspunt, niet de eindstand.
+    const beschikbareBreedte = window.innerWidth - 2 * VIEWPORT_MARGE
     setPositie({
       top: naarBoven ? undefined : rect.bottom,
       bottom: naarBoven ? window.innerHeight - rect.top : undefined,
       left: rect.left,
       width: rect.width,
-      maxWidth: Math.max(rect.width, window.innerWidth - rect.left - 12),
+      maxWidth: Math.max(rect.width, Math.min(Math.max(rect.width * 1.6, MIN_LEESBARE_BREEDTE), beschikbareBreedte)),
       maxHeight: Math.max(RIJHOOGTE + 8, Math.min(GEWENSTE_HOOGTE, naarBoven ? ruimteBoven : ruimteOnder)),
     })
   }, [])
+
+  // Naar links schuiven als de gerenderde lijst rechts buiten de viewport steekt: de echte
+  // breedte (max-content, geclampt op maxWidth) is pas ná de render bekend, dus meten en vóór
+  // de paint corrigeren. Stabiel: zodra links klopt, verandert er niets meer.
+  useLayoutEffect(() => {
+    if (!open || !listRef.current || !positie) return
+    const breedte = listRef.current.offsetWidth
+    const maxLinks = window.innerWidth - VIEWPORT_MARGE - breedte
+    const gewenstLinks = Math.max(VIEWPORT_MARGE, Math.min(positie.left, maxLinks))
+    if (Math.abs(gewenstLinks - positie.left) > 1) setPositie({ ...positie, left: gewenstLinks })
+  }, [open, positie])
 
   useEffect(() => {
     if (!open) return
