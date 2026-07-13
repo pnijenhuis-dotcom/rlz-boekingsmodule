@@ -18,6 +18,7 @@ from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, D
 from app.documenten.rlz_ids import rlz_purchase_invoice_id, rlz_upload_id
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
 from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload, webhook_secret
+from app.geheugen.leerlus import leg_boeking_vast
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
@@ -310,6 +311,20 @@ def boek_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_
             voorstel=voorstel,
             rlz_document_id=rlz_document_id,
             rlz_boekstuknummer=rlz_boekstuknummer,
+        )
+        # Leerlus boekingsgeheugen (B5): de zojuist bevestigde boeking als bron='app'-observaties,
+        # in dezelfde transactie als de GEBOEKT-overgang — vendor/factuurdatum zijn hier altijd
+        # gevuld (afgedwongen door de harde checks die deze functie zelf herhaalde).
+        assert voorstel.vendor_id is not None and voorstel.factuurdatum is not None
+        leg_boeking_vast(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            vendor_id=voorstel.vendor_id,
+            factuurdatum=voorstel.factuurdatum,
+            boekstuk_ref=rlz_boekstuknummer,
+            regels=voorstel.regels,
+            regels_samenvoegen=voorstel.regels_samenvoegen,
         )
         record_audit_event(
             session,

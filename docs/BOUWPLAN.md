@@ -350,6 +350,41 @@ Backend:
    verzendpoging berekenen — de nu opgeslagen handtekening overleeft het replay-venster (~5 min)
    niet bij uitgestelde aflevering.
 
+7b. **Boekingsgeheugen (backend) — gebouwd + getest (2026-07-13).** CLAUDE.md: "RLZ-historie +
+   app-correcties; correcties wegen zwaarder; default voorstel, nooit blind boeken." Nieuw
+   pakket `app/geheugen/`:
+   - **Opslag (B2, migratie 0020):** `boekhouding.boeking_observatie`, append-only (geen
+     UPDATE-grant: correcties = nieuwe observaties), RLS+FORCE, index (administratie, vendor,
+     regel_sleutel). Deterministische observatie-id's (UUIDv5, eigen namespace) maken seed én
+     leerlus idempotent. `regel_sleutel` = genormaliseerde token-set van de regelomschrijving
+     (lowercase, leestekens weg, volgorde-onafhankelijk — `normalisatie.py`); raw omschrijving
+     reist mee, nooit in logs/URL's.
+   - **Seed (B3):** uit `GET PurchaseInvoices` (+`$expand=Entity`) + `/Lines`
+     (Account/TaxRate/Project) per factuur — **bewust NIET JournalEntries**: geen crediteur op
+     regel-/entry-niveau (geneste `Document($expand=Entity)` wordt stil genegeerd) en de
+     collectie bleek jaren achter te lopen (B1-verkenning 2026-07-13, api-verkenning);
+     **JournalEntries blijft gereserveerd voor memoriaal-/bankhistorie in fase 2.**
+     Recency-cap `boekingsgeheugen_seed_maanden` (default 36), bron_datum = factuurdatum,
+     idempotent/hervatbaar (transactie per factuur), overslagen expliciet geteld
+     (zonder Entity / zonder bruikbare regels). Achtergrond-batch: CLI
+     `seed-boekingsgeheugen` / `make seed-boekingsgeheugen` (Cloud Run job later), nooit
+     synchroon in een request.
+   - **Engine (B4, puur/deterministisch):** gewogen meerderheid per veld (GB/btw/project);
+     gewicht = basisgewicht(bron) × 0.5^(leeftijd/halfwaardetijd) — app (3.0) > rlz_seed (1.0),
+     halfwaardetijd default 365 dagen (settings). GB/project: leverancier-niveau primair,
+     regel-niveau verfijnt bij een gesplitste stem; btw: regel-niveau eerst met
+     leverancier-fallback — fallback en gesplitste stem ALTIJD oranje. Per veld confidence
+     (winnend/totaal gewicht) + telling; voorstellen vanaf 1 observatie maar oranje tot ≥2
+     consistente observaties óf ≥1 app-correctie. Projectvoorstel heft de harde
+     projectplicht-check nooit op (expliciet getest).
+   - **Leerlus (B5):** elke geslaagde boeking (actie 17) → observaties bron='app' in dezelfde
+     transactie als de GEBOEKT-overgang; samengevoegd → leverancier-niveau (sleutel NULL),
+     gesplitst → regel-niveau; idempotent per boekstuk (retry legt niets dubbel vast).
+   - **Expose (B6):** `POST /administraties/{id}/boekingsgeheugen/voorstel` (vendor +
+     optionele regelomschrijving in de bódy) → per veld waarde/confidence/telling/oranje/reden —
+     zelfde service voedt straks de autoboek-gate. **Geen UI in deze ronde** — het
+     controlescherm-voorstelblok is de volgende fronttaak na de IBAN-bevestigings-UI.
+
 Frontend (Vite + React, design tokens uit mockup — die blijven leidend, ook voor onderstaande
 UI-eisen):
 8. Login + 2FA, werkvoorraad (klantenlijst → klantpagina), controlescherm (PDF-viewer + voorstel +

@@ -48,7 +48,9 @@ class GeheugenVoorstel:
 _GEEN_VOORSTEL = VeldVoorstel(waarde=None, confidence=0.0, telling=0, oranje=True, reden="geen observaties")
 
 
-def _gewicht(observatie: Observatie, *, vandaag: date, halfwaardetijd_dagen: int, basisgewichten: dict[str, float]) -> float:
+def _gewicht(
+    observatie: Observatie, *, vandaag: date, halfwaardetijd_dagen: int, basisgewichten: dict[str, float]
+) -> float:
     basis = basisgewichten.get(observatie.bron, 1.0)
     leeftijd_dagen = max((vandaag - observatie.bron_datum).days, 0)
     return basis * 0.5 ** (leeftijd_dagen / halfwaardetijd_dagen)

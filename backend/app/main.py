@@ -15,6 +15,7 @@ from app.db import session as db_session
 from app.db.migratie_guard import controleer_migratie_versie
 from app.documenten import service as documenten_service
 from app.documenten.router import router as documenten_router
+from app.geheugen.router import router as geheugen_router
 from app.sync.router import router as sync_router
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(documenten_router)
 app.include_router(sync_router)
+app.include_router(geheugen_router)
 app.include_router(credentialstore_router)
 app.include_router(beheer_router)
 
