@@ -22,10 +22,27 @@ def seed_observatie_id(administratie_id: uuid.UUID, rlz_line_id: uuid.UUID | str
     return uuid.uuid5(_NAMESPACE, f"seed:{administratie_id}:{rlz_line_id}")
 
 
-def app_observatie_id(administratie_id: uuid.UUID, document_id: uuid.UUID, volgnummer: int) -> uuid.UUID:
-    """Deterministische id voor een leerlus-observatie: per geboekt document + regelvolgnummer —
-    een retry van boek_document (zelfde client-GUID's) legt dezelfde observaties nooit dubbel vast."""
-    return uuid.uuid5(_NAMESPACE, f"app:{administratie_id}:{document_id}:{volgnummer}")
+def app_observatie_id(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    volgnummer: int,
+    *,
+    gb_id: uuid.UUID,
+    btw_id: uuid.UUID | None,
+    project_id: uuid.UUID | None,
+    regel_sleutel: str | None,
+) -> uuid.UUID:
+    """Deterministische id voor een leerlus-observatie: per geboekt document + regelvolgnummer
+    + de geboekte wáárden. Een retry van boek_document (zelfde client-GUID's, zelfde waarden)
+    legt dus niets dubbel vast, maar een CORRECTIE (actie 19 -> aangepast -> opnieuw geboekt,
+    koppelcontract §7.3) krijgt een nieuwe id en wordt als nieuwe observatie geleerd — nooit
+    stil overgeslagen als "al gezien per boekstuk"; de recency-weging (bron_datum = boekdatum)
+    laat de gecorrigeerde waarde vervolgens winnen. Waarden-afleiding gewijzigd 2026-07-13,
+    vóór er productie-app-observaties bestonden — hierna geldt weer: NOOIT wijzigen."""
+    return uuid.uuid5(
+        _NAMESPACE,
+        f"app:{administratie_id}:{document_id}:{volgnummer}:{gb_id}:{btw_id}:{project_id}:{regel_sleutel}",
+    )
 
 
 class ObservatieBron(enum.StrEnum):

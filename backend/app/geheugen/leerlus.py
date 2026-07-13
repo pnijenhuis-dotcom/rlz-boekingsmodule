@@ -21,36 +21,50 @@ def leg_boeking_vast(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     vendor_id: uuid.UUID,
-    factuurdatum: date,
+    boekdatum: date,
     boekstuk_ref: str | None,
     regels: list[BoekvoorstelRegelData],
     regels_samenvoegen: bool,
 ) -> int:
     """Legt de geboekte regels vast als observaties. Samengevoegde boeking -> leverancier-niveau
     (regel_sleutel NULL: één samengevoegde regel zegt niets over regelsoorten); gesplitste
-    boeking -> regel-niveau met de genormaliseerde omschrijving als sleutel. Idempotent per
-    boekstuk: deterministische id per (document, regelvolgnummer) — een retry van boek_document
-    legt niets dubbel vast. Retourneert het aantal nieuw vastgelegde observaties."""
+    boeking -> regel-niveau met de genormaliseerde omschrijving als sleutel.
+
+    Idempotent per boekstuk-INHOUD, niet per boekstuk alleen: de deterministische id dekt ook de
+    geboekte waarden (zie app_observatie_id) — een retry met identieke waarden legt niets dubbel
+    vast, maar een correctie (actie 19 -> aanpassen -> opnieuw boeken) wordt een NIEUWE observatie
+    met de nieuwe boekdatum, zodat de recency-weging de gecorrigeerde waarde laat winnen.
+    `bron_datum` = boekdatum (het moment van menselijke bevestiging), bewust niet de factuurdatum:
+    een correctie op een oude factuur is verse kennis. Retourneert het aantal nieuwe observaties."""
     nieuw = 0
     for volgnummer, regel in enumerate(regels, start=1):
         if regel.ledger_id is None:
             continue  # kan na de harde checks niet, maar het geheugen raadt nooit een GB
-        observatie_id = app_observatie_id(administratie_id, document_id, volgnummer)
+        omschrijving = None if regels_samenvoegen else (regel.omschrijving or None)
+        regel_sleutel = normaliseer_regel_sleutel(omschrijving)
+        observatie_id = app_observatie_id(
+            administratie_id,
+            document_id,
+            volgnummer,
+            gb_id=regel.ledger_id,
+            btw_id=regel.taxrate_id,
+            project_id=regel.project_id,
+            regel_sleutel=regel_sleutel,
+        )
         if session.get(BoekingObservatie, observatie_id) is not None:
             continue
-        omschrijving = None if regels_samenvoegen else (regel.omschrijving or None)
         session.add(
             BoekingObservatie(
                 id=observatie_id,
                 administratie_id=administratie_id,
                 vendor_id=vendor_id,
-                regel_sleutel=normaliseer_regel_sleutel(omschrijving),
+                regel_sleutel=regel_sleutel,
                 regel_omschrijving_raw=omschrijving,
                 gb_id=regel.ledger_id,
                 btw_id=regel.taxrate_id,
                 project_id=regel.project_id,
                 bron=ObservatieBron.APP.value,
-                bron_datum=factuurdatum,
+                bron_datum=boekdatum,
                 boekstuk_ref=boekstuk_ref,
             )
         )

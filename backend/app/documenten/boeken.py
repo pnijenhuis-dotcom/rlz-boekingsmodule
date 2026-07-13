@@ -313,15 +313,17 @@ def boek_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_
             rlz_boekstuknummer=rlz_boekstuknummer,
         )
         # Leerlus boekingsgeheugen (B5): de zojuist bevestigde boeking als bron='app'-observaties,
-        # in dezelfde transactie als de GEBOEKT-overgang — vendor/factuurdatum zijn hier altijd
-        # gevuld (afgedwongen door de harde checks die deze functie zelf herhaalde).
-        assert voorstel.vendor_id is not None and voorstel.factuurdatum is not None
+        # in dezelfde transactie als de GEBOEKT-overgang — vendor is hier altijd gevuld
+        # (afgedwongen door de harde checks die deze functie zelf herhaalde). bron_datum =
+        # boekdatum: het moment van menselijke bevestiging, zodat een latere correctie
+        # (actie 19 -> opnieuw boeken) via recency wint van de oorspronkelijke boeking.
+        assert voorstel.vendor_id is not None
         leg_boeking_vast(
             session,
             administratie_id=administratie_id,
             document_id=document_id,
             vendor_id=voorstel.vendor_id,
-            factuurdatum=voorstel.factuurdatum,
+            boekdatum=datetime.now(UTC).date(),
             boekstuk_ref=rlz_boekstuknummer,
             regels=voorstel.regels,
             regels_samenvoegen=voorstel.regels_samenvoegen,

@@ -4,7 +4,7 @@ waarborg dat een geheugen-voorstel nooit de projectplicht-check opheft."""
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -112,7 +112,9 @@ class TestLeerlus:
         assert rij.regel_sleutel is None
         assert rij.regel_omschrijving_raw is None
         assert str(rij.gb_id) == str(GB)
-        assert rij.bron_datum == date(2026, 7, 1)  # factuurdatum, niet boekdatum
+        # bron_datum = boekdatum (moment van menselijke bevestiging), niet de factuurdatum —
+        # zo wint een latere correctie via recency.
+        assert rij.bron_datum == datetime.now(UTC).date()
         assert rij.boekstuk_ref == "RLZ-TEST-00001"
 
     def test_gesplitste_boeking_legt_regel_niveau_vast(
@@ -146,20 +148,55 @@ class TestLeerlus:
             monkeypatch=monkeypatch,
         )
         voorstel = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-        # Simuleer een retry die dezelfde boeking nogmaals vastlegt (zelfde document+regels).
+        # Simuleer een retry die dezelfde boeking nogmaals vastlegt (zelfde document+waarden) —
+        # zelfs met een andere boekdatum: de id hangt op de inhoud, niet op de datum.
         with scoped_session(administratie_id) as session:
             nieuw = leg_boeking_vast(
                 session,
                 administratie_id=administratie_id,
                 document_id=document_id,
                 vendor_id=VENDOR,
-                factuurdatum=date(2026, 7, 1),
+                boekdatum=date(2026, 7, 20),
                 boekstuk_ref="RLZ-TEST-00001",
                 regels=voorstel.regels,
                 regels_samenvoegen=voorstel.regels_samenvoegen,
             )
         assert nieuw == 0
         assert len(_observaties(admin_engine, administratie_id)) == 1
+
+    def test_correctie_na_actie_19_wordt_geleerd_niet_overgeslagen(
+        self, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, beheerder_id: uuid.UUID,
+        admin_engine: Engine, monkeypatch,
+    ) -> None:
+        """Koppelcontract §7.3-scenario: geboekt -> actie 19 (terug naar concept) -> GB
+        gecorrigeerd -> opnieuw geboekt. De gecorrigeerde waarde moet een NIEUWE observatie
+        worden (nooit stil overgeslagen als 'al gezien per boekstuk'), en via de latere
+        boekdatum wint hij de recency-weging."""
+        document_id = _boek(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            beheerder_id=beheerder_id,
+            monkeypatch=monkeypatch,
+            regels_samenvoegen=True,
+        )
+        gecorrigeerd_gb = uuid.uuid4()
+        with scoped_session(administratie_id) as session:
+            nieuw = leg_boeking_vast(
+                session,
+                administratie_id=administratie_id,
+                document_id=document_id,
+                vendor_id=VENDOR,
+                boekdatum=datetime.now(UTC).date() + timedelta(days=7),
+                boekstuk_ref="RLZ-TEST-00001",
+                regels=[_regel(ledger_id=gecorrigeerd_gb)],
+                regels_samenvoegen=True,
+            )
+        assert nieuw == 1  # correctie = nieuwe observatie, geen skip
+        assert len(_observaties(admin_engine, administratie_id)) == 2
+        voorstel = geheugen_service.voorstel_voor(administratie_id=administratie_id, vendor_id=VENDOR)
+        # Beide observaties zijn bron='app'; de gecorrigeerde is recenter en wint.
+        assert voorstel.gb.waarde == gecorrigeerd_gb
+        assert voorstel.gb.oranje  # gesplitste stem (oud vs gecorrigeerd) blijft zichtbaar oranje
 
 
 class TestExpose:
