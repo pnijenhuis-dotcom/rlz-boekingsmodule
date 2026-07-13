@@ -208,6 +208,41 @@ gebruikt worden: `IsExcempt` (vrijgesteld), `IsRelayed` (verlegd), `IsMixed`, `T
 potentieel relevant voor een latere "btw verlegd is de norm in de bouwketen"-suggestie
 (CLAUDE.md), niet meegenomen in deze ronde.
 
+**Aanvulling (13 juli 2026, e2e-boektest creditnota 20260064, test-administratie):** `IsRelayed`
+is live geverifieerd als de verlegd-vlag: "NL, BTW verlegd (hoog)" (`10a0f271-…`) heeft
+`IsRelayed: true`, `IsExcempt: false`, `Percentage: 0.0`, `TaxKind: 1` — onderscheidbaar van
+"NL, Geen BTW (Vrijgesteld)" en "NL, Nul tarief", die ook 0.0 zijn maar níét relayed. Een apart
+aangifte-rubriek-veld heeft TaxRate niet; `IsRelayed`/`IsExcempt` zijn het signaal. Dezelfde test
+bewees dat RLZ een **negatieve PurchaseInvoice (creditnota)** accepteert door de hele flow heen:
+PUT met één regel `NetAmount: -20009.34` + verlegd-TaxRate + `TaxAmount: 0`, `/Uploads`, actie 17
+→ Status 2, `BaseInvoiceAmount: -20009.34`, boekstuknummer toegekend (RLZ-04-00002014). RLZ
+leidde bovendien zelf `DueDate` af (factuurdatum + betalingstermijn crediteur), zonder dat wij
+die meestuurden.
+
+## Inkoopcreditnota = negatieve PurchaseInvoice, géén apart documenttype (13 juli 2026, read-only)
+
+Drie onafhankelijke bronnen, alle live geverifieerd tegen de test-administratie:
+
+1. **`GET /Help` (volledige routelijst)** bevat géén creditnota-route aan de inkoopkant. De enige
+   "credit"-treffers: `CreditDebits` (een kale enumeratie-collectie — id/naam/omschrijving, het
+   debet/credit-begrip zelf, aansluitend op `CreditOrDebit` in memoriaalregels), `CreditTransfers`
+   (betalingsverkeer/SEPA) en `PaymentRecommendationCreditSalesinvoicesFilters` — die laatste
+   noemt "credit salesinvoices" als filter, wat impliceert dat ook verkoopcreditnota's gewoon
+   (negatieve) SalesInvoices zijn.
+2. **`Help/ResourceModel?modelName=PurchaseInvoice`**: nul credit-gerelateerde velden in het
+   volledige veldenmodel. Wel `DocumentType`/`Type`-velden, maar de bijbehorende enum-
+   documentatiepagina's geven een serverfout (zelfde patroon als eerder bij TaxRate).
+3. **Empirisch**: onze geboekte creditnota (−20.009,34) heeft `DocumentType: 1, Type: 1` —
+   exact dezelfde waarden als reguliere positieve inkoopfacturen in dezelfde administratie.
+   RLZ onderscheidt een inkoopcreditnota dus niet op type-niveau.
+
+Conclusie: negatief boeken op PurchaseInvoices is niet een workaround maar dé representatie —
+de bestaande boeklogica is correct. Zij-observatie om nog te verifiëren: oudere, al verwerkte
+inkoopfacturen in de test-administratie staan op `Status: 3` — de aanname elders in deze notitie
+("3 = definitief memoriaal") is dus incompleet; 3 lijkt op inkoopfacturen ook voor te komen
+(vermoedelijk betaald/afgeletterd). Nog niet cruciaal, wel checken vóór statuslogica op
+RLZ-documenten gebouwd wordt.
+
 ## Rate-limit-observatie (5 juli 2026, tegen BLOw B.V, read-only)
 
 20 opeenvolgende `GET Ledgers`-requests, sequentieel (geen parallelisme): alle 200, gemiddeld

@@ -65,7 +65,9 @@ class Administratie(Base):
     `ai_extractie_ingeschakeld` (migratie 0014) is de AVG-gate voor AI-extractie: alleen bij AAN
     gaan PDF's van deze administratie naar de Claude API — default UIT; tot de AVG-volgorde rond
     is (DPA + EU-verwerking + verwerkersregister, docs/BOUWPLAN.md) alleen aan voor de
-    test-administratie/eigen facturen."""
+    test-administratie/eigen facturen.
+    `is_vastgoed` (migratie 0018) markeert een vastgoed-administratie: alleen díé krijgen bij
+    "geboekt" een webhook-outbox-rij (koppelcontract §3) — default UIT, expliciet zetten."""
 
     __tablename__ = "administratie"
 
@@ -76,6 +78,7 @@ class Administratie(Base):
     boeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     project_verplicht: Mapped[bool] = mapped_column(default=False)
     ai_extractie_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    is_vastgoed: Mapped[bool] = mapped_column(default=False)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

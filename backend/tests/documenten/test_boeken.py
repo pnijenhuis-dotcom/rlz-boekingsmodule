@@ -96,7 +96,7 @@ class TestBoekDocumentGelukt:
             ).scalar_one()
         assert boekstuk == "RLZ-TEST-00001"
 
-    def test_schrijft_webhook_outbox_rij(
+    def test_schrijft_webhook_outbox_rij_voor_vastgoed_administratie(
         self,
         klaar_document: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -105,6 +105,11 @@ class TestBoekDocumentGelukt:
         admin_engine: Engine,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET is_vastgoed = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
         fake_client = FakeBoekClient()
         monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
 
@@ -120,6 +125,33 @@ class TestBoekDocumentGelukt:
         assert event == "factuur_geboekt"
         assert payload["data"]["referentie"].startswith("F-")
         assert payload["handtekening"]
+
+    def test_geen_outbox_rij_voor_niet_vastgoed_administratie(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        boeken_aan: None,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Koppelcontract §3: de push geldt alleen voor vastgoed-administraties — een gewone
+        klant-/testadministratie (default is_vastgoed=false) boekt wél, maar krijgt géén
+        outbox-rij."""
+        fake_client = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
+
+        resultaat = boeken.boek_document(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
+        )
+
+        assert resultaat.status == DocumentStatus.GEBOEKT
+        with admin_engine.connect() as conn:
+            aantal = conn.execute(
+                text("SELECT count(*) FROM boekhouding.webhook_uitgaand WHERE document_id = :id"),
+                {"id": klaar_document},
+            ).scalar_one()
+        assert aantal == 0
 
     def test_idempotent_client_guid_bij_retry(
         self,

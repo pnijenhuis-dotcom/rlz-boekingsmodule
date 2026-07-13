@@ -184,7 +184,16 @@ def _sla_webhook_op(
     rlz_boekstuknummer: str | None,
 ) -> None:
     """Webhook-stub (koppelcontract §3, CLAUDE.md-taak 2.5): payload bouwen + ondertekenen en in
-    de outbox leggen — aflevering (HTTP-push) is een fase-vervolg, zie app/documenten/webhook.py."""
+    de outbox leggen — aflevering (HTTP-push) is een fase-vervolg, zie app/documenten/webhook.py.
+
+    Scope (hardening-audit 2026-07-13): het koppelcontract beperkt de push tot inkoopfacturen
+    van vastgoed-administraties — de outbox-rij ontstaat dus alleen als `is_vastgoed` aan staat
+    (migratie 0018). Filteren gebeurt bewust hier bij het aanmaken, niet pas in de afleveraar:
+    een rij die er nooit had mogen zijn kan dan ook nooit per ongeluk afgeleverd worden."""
+    administratie = session.get(Administratie, administratie_id)
+    if administratie is None or not administratie.is_vastgoed:
+        return
+
     vendor_naam = None
     if voorstel.vendor_id is not None:
         vendor = session.get(VendorCache, (voorstel.vendor_id, administratie_id))

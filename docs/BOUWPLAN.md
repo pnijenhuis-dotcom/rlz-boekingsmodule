@@ -296,7 +296,18 @@ Backend:
    subquery-patroon als `document_gebeurtenis`). `app/documenten/checks.py`: de drie harde checks
    (duplicaatquery Entity+Reference(30 tekens)+bedrag — eigen client-GUID telt niet als duplicaat
    bij een retry; regeltelling vs factuurtotaal; verplichte velden), altijd alle drie getoond,
-   nooit stil overgeslagen. `app/documenten/boeken.py`: `boek_document()` herhaalt de checks
+   nooit stil overgeslagen.
+   - **Checkstatus (audit 2026-07-13, gedocumenteerd ≠ gebouwd — hier actueel houden):**
+     duplicaat, regeltelling en verplichte velden (incl. projectplicht): gebouwd
+     (`app/documenten/checks.py`) + getest (`tests/documenten/test_checks.py`,
+     projectplicht via `test_boekvoorstel.py`). **Nog niet gebouwd, met implementerende fase:**
+     IBAN-wissel (open item 2026-07-13, eerstvolgende checks-bouwtaak); vraag-blokkeert-boeken +
+     afwijzen-met-verplichte-reden (statussen zitten al in `statusmachine.py` en blokkeren het
+     boekpad, maar workflow/endpoints/reden-afdwinging ontbreken → vraag/afwijs-workflow, punt 8
+     hieronder); memoriaal-saldo-0 (→ fase 2, omzet/kostprijsmemoriaal); VGB-prefixfilter
+     (→ vóórdat documenten uit gedeelde vastgoed-administraties gelezen worden);
+     per-leverancier-autoboeken-opt-in (→ vóór de eerste autoboek-functie);
+     webhook-HMAC-per-verzendpoging (→ mét de afleveraar, open item 2026-07-13). `app/documenten/boeken.py`: `boek_document()` herhaalt de checks
    server-side (nooit de client-kant vertrouwen), dan de failsafes, dan de echte RLZ-schrijfacties
    — deterministisch client-GUID (`app/documenten/rlz_ids.py`, UUIDv5 op document-id, óók voor de
    PDF-bijlage) → PUT PurchaseInvoice → **PUT** `/Uploads/{uploadId}` (geverifieerd: RLZ wil hier
@@ -319,8 +330,13 @@ Backend:
    `boekhouding.webhook_uitgaand` (outbox, `afgeleverd_op` blijft NULL). `app/documenten/webhook.py`
    bouwt en ondertekent de payload (HMAC-SHA256 over timestamp+nonce+payload, koppelcontract §3) —
    RLZ-GUID, project-GUID, datum, bedragen per regel, GB-code, leverancier, referentie, adminId.
-   Aflevering (HTTP-push naar vastgoed) is bewust nog niet gebouwd — dat is een fase-vervolg, zodra
-   ook de "hoort dit bij een vastgoed-administratie"-filtering nodig wordt.
+   Aflevering (HTTP-push naar vastgoed) is bewust nog niet gebouwd — dat is een fase-vervolg.
+   **Scope-filter gebouwd (2026-07-13, hardening-audit):** de outbox-rij ontstaat alleen nog voor
+   vastgoed-administraties (`platform.administratie.is_vastgoed`, migratie 0018 — default UIT,
+   expliciet zetten; koppelcontract §3). Gefilterd bij het aanmaken, niet pas in de afleveraar.
+   Voor de afleveraar blijft open (OPEN_ITEMS 2026-07-13): timestamp/nonce/HMAC pas bij de
+   verzendpoging berekenen — de nu opgeslagen handtekening overleeft het replay-venster (~5 min)
+   niet bij uitgestelde aflevering.
 
 Frontend (Vite + React, design tokens uit mockup — die blijven leidend, ook voor onderstaande
 UI-eisen):

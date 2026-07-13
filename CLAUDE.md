@@ -92,8 +92,25 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   controlescherm. Overal breadcrumbs, lijst→detail-patroon consistent.
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen.
-- **Automatisch boeken = opt-in per leverancier**; harde checks (duplicaat, IBAN-wissel, regeltelling
-  vs totaal) blijven áltijd blokkerend.
+- **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
+  **Status per harde/blokkerende check (gedocumenteerd ≠ gebouwd — houd dit actueel, audit
+  2026-07-13):**
+  - duplicaat (Entity+Referentie+bedrag): **gebouwd** (`backend/app/documenten/checks.py::check_duplicaat`) **+ getest**;
+  - regeltelling vs totaal: **gebouwd** (`checks.py::check_regeltelling`) **+ getest**;
+  - verplichte velden incl. projectplicht: **gebouwd** (`checks.py::check_verplichte_velden`) **+ getest**;
+  - IBAN-wissel: **gedocumenteerd, nog niet gebouwd** (open item 2026-07-13 — eerstvolgende
+    checks-bouwtaak);
+  - vraag blokkeert boeken / afwijzen-met-verplichte-reden: **half** — de statussen zitten in de
+    statusmachine (boeken kan niet vanuit `vraag_open`/`afgewezen`), maar workflow, endpoints en
+    reden-afdwinging bestaan niet → bouwen in de vraag/afwijs-workflow (fase 1-vervolg,
+    BOUWPLAN punt 8);
+  - memoriaal saldo = 0: **nog niet gebouwd** → omzet/memoriaal-fase (fase 2);
+  - VGB-prefixfilter (nooit als werkvoorraad tonen): **nog niet gebouwd** → bouwen vóórdat er
+    documenten uit gedeelde (vastgoed-)administraties gelezen worden;
+  - per-leverancier-autoboeken-opt-in: **nog niet gebouwd** (alleen de per-administratie
+    boeken-toggle bestaat) → bouwen vóór de eerste autoboek-functie;
+  - webhook-HMAC-timing (ondertekenen per verzendpoging, niet bij aanmaak): **nog niet gebouwd**
+    → mét de afleveraar (open item 2026-07-13).
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
