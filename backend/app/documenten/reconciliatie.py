@@ -16,7 +16,12 @@ from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 # Kleine afrondingstolerantie, zelfde als de regeltelling-check (app/documenten/checks.py) —
 # geen 0-tolerantie, wél klein genoeg om een echte afwijking te vangen.
 _ROND_TOLERANTIE = Decimal("0.01")
-_RLZ_STATUS_DEFINITIEF = 2
+# RLZ's DocumentStatuses-enumeratie (geverifieerd 2026-07-13, verkenning/api-verkenning.md
+# "Documentstatus definitief opgehelderd"): 1 = Tentative/Concept, 2 = Open/Openstaand,
+# 3 = Closed/Gesloten (volledig afgeletterd). Een geboekt document staat dus op 2 óf 3 —
+# alleen op 2 toetsen markeerde elke betaalde factuur als valse afwijking. Status 1 blijft
+# een échte afwijking: het document is dan (via actie 19 of handmatig) teruggezet naar concept.
+_RLZ_GEBOEKTE_STATUSSEN = frozenset({2, 3})
 
 
 @dataclass(frozen=True)
@@ -54,7 +59,7 @@ def _vergelijk_met_rlz(
         return [ReconciliatieAfwijking(document_id, rlz_document_id, "ontbreekt_in_rlz", str(exc))]
 
     afwijkingen: list[ReconciliatieAfwijking] = []
-    if invoice.get("Status") != _RLZ_STATUS_DEFINITIEF:
+    if invoice.get("Status") not in _RLZ_GEBOEKTE_STATUSSEN:
         afwijkingen.append(
             ReconciliatieAfwijking(
                 document_id, rlz_document_id, "status_niet_definitief", f"RLZ-status={invoice.get('Status')}"
@@ -82,7 +87,7 @@ def _vergelijk_met_rlz(
 
 def reconcilieer_administratie(*, administratie_id: uuid.UUID, client: RlzClient | None = None) -> ReconciliatieRapport:
     """Failsafe (b) (CLAUDE.md-taak 2.4): vergelijkt elk lokaal GEBOEKT document met de
-    werkelijke RLZ-staat (bestaat, Status=2 definitief, bedrag, boekstuknummer) — vangt gevallen
+    werkelijke RLZ-staat (bestaat, Status 2/3 = geboekt/afgeletterd, bedrag, boekstuknummer) — vangt gevallen
     waarin de boeking lokaal als geslaagd geregistreerd staat maar in RLZ zelf iets anders is
     (bv. een latere handmatige correctie in RLZ, of een netwerkfout ná de succesvolle RLZ-schrijf-
     actie maar vóór onze eigen statusovergang — theoretisch, dit rapport is het vangnet)."""

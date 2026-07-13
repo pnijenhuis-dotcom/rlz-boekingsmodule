@@ -117,9 +117,11 @@ class TestReconciliatie:
         rapport = reconciliatie.reconcilieer_administratie(administratie_id=administratie_id, client=client)
         assert [a.soort for a in rapport.afwijkingen] == ["bedrag_wijkt_af"]
 
-    def test_status_niet_definitief_wordt_gerapporteerd(
+    def test_status_1_teruggezet_naar_concept_wordt_gerapporteerd(
         self, gescoopte_gebruiker, administratie_id, opslag, beheerder_id, monkeypatch
     ) -> None:
+        """Status 1 (Tentative/Concept) op een lokaal geboekt document = échte afwijking: het is
+        in RLZ teruggezet naar concept (actie 19 of handmatig) terwijl wij 'geboekt' denken."""
         document_id = _boek_een_document(
             gescoopte_gebruiker=gescoopte_gebruiker,
             administratie_id=administratie_id,
@@ -135,6 +137,33 @@ class TestReconciliatie:
         )
         rapport = reconciliatie.reconcilieer_administratie(administratie_id=administratie_id, client=client)
         assert [a.soort for a in rapport.afwijkingen] == ["status_niet_definitief"]
+
+    def test_status_3_afgeletterd_is_geen_afwijking(
+        self, gescoopte_gebruiker, administratie_id, opslag, beheerder_id, monkeypatch
+    ) -> None:
+        """Status 3 = Closed/Gesloten (volledig afgeletterd, DocumentStatuses-enumeratie
+        2026-07-13) — de normale levensloop van een geboekte én betaalde factuur, geen drift."""
+        document_id = _boek_een_document(
+            gescoopte_gebruiker=gescoopte_gebruiker,
+            administratie_id=administratie_id,
+            opslag=opslag,
+            beheerder_id=beheerder_id,
+            monkeypatch=monkeypatch,
+        )
+        rlz_document_id = rlz_purchase_invoice_id(document_id)
+        client = FakeBoekClient(
+            bestaande_invoices={
+                str(rlz_document_id): {
+                    "Status": 3,
+                    "ReceiptNumber": "RLZ-TEST-00001",
+                    "BaseInvoiceAmount": 121.00,
+                    "BaseRemainingAmount": 0.0,
+                }
+            }
+        )
+        rapport = reconciliatie.reconcilieer_administratie(administratie_id=administratie_id, client=client)
+        assert rapport.aantal_gecontroleerd == 1
+        assert rapport.afwijkingen == ()
 
     def test_afwijkend_boekstuknummer_wordt_gerapporteerd(
         self, gescoopte_gebruiker, administratie_id, opslag, beheerder_id, monkeypatch
