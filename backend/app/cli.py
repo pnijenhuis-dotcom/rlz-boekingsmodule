@@ -11,6 +11,7 @@ from app.auth import service
 from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
 from app.documenten import reconciliatie
+from app.geheugen import seed as geheugen_seed
 from app.sync import service as sync_service
 
 # Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
@@ -176,6 +177,24 @@ def _importeer_env_credentials(args: argparse.Namespace) -> int:
     return 0
 
 
+def _seed_boekingsgeheugen(args: argparse.Namespace) -> int:
+    """Achtergrond-batch (CLI/Cloud Run job, nooit synchroon in een request): RLZ-seed van het
+    boekingsgeheugen uit PurchaseInvoices+Lines. Idempotent en hervatbaar — gewoon opnieuw
+    draaien na een afgebroken run."""
+    rapport = geheugen_seed.seed_boekingsgeheugen(
+        administratie_id=uuid.UUID(args.administratie_id),
+        maanden=args.maanden,
+    )
+    print(
+        f"Seed {rapport.administratie_id}: {rapport.aantal_facturen_bekeken} facturen bekeken, "
+        f"{rapport.aantal_facturen_geseed} geseed, {rapport.observaties_nieuw} nieuwe observaties, "
+        f"{rapport.observaties_bestonden_al} bestonden al, "
+        f"{rapport.overgeslagen_zonder_entity} overgeslagen zonder crediteur, "
+        f"{rapport.overgeslagen_zonder_bruikbare_regels} zonder bruikbare regels."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="RLZ Boekingsmodule beheer-CLI")
     subparsers = parser.add_subparsers(dest="commando", required=True)
@@ -190,6 +209,17 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser(
         "sync-alles",
         help="Sync Ledgers/TaxRates/Vendors/Projects voor alle administraties (nachtelijke sync).",
+    )
+
+    seed_parser = subparsers.add_parser(
+        "seed-boekingsgeheugen",
+        help="RLZ-seed van het boekingsgeheugen (PurchaseInvoices+Lines) voor één administratie — "
+        "idempotent, hervatbaar, achtergrond-batch.",
+    )
+    seed_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    seed_parser.add_argument(
+        "--maanden", type=int, default=None,
+        help="Recency-cap in maanden (default: settings.boekingsgeheugen_seed_maanden).",
     )
 
     subparsers.add_parser(
@@ -247,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
         return _sync_alles(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
+    if args.commando == "seed-boekingsgeheugen":
+        return _seed_boekingsgeheugen(args)
     if args.commando == "boeken-aan":
         return _boeken_aan(args)
     if args.commando == "boeken-uit":

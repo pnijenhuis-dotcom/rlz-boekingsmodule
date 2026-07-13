@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit import-env-credentials run pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit import-env-credentials run pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -64,6 +64,11 @@ bootstrap-beheerder: check-versions
 # handmatig, of via cron: raakt alleen administraties met werkende .env-credentials.
 sync-alles: check-versions
 	.venv/bin/python -m app.cli sync-alles
+
+# Boekingsgeheugen-seed (RLZ PurchaseInvoices+Lines, idempotent/hervatbaar). Voorbeeld:
+# make seed-boekingsgeheugen ADMIN_ID=<uuid> [MAANDEN=36]
+seed-boekingsgeheugen: check-versions
+	.venv/bin/python -m app.cli seed-boekingsgeheugen --administratie-id "$(ADMIN_ID)" $(if $(MAANDEN),--maanden $(MAANDEN),)
 
 # Boeken-failsafe (b): vergelijk geboekte documenten met de werkelijke RLZ-staat, los draaien of
 # via cron naast sync-alles. Exit-code 1 bij fouten of afwijkingen (CI/cron-vriendelijk).

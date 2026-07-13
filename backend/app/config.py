@@ -68,6 +68,16 @@ class Settings(BaseSettings):
     # bij gelijke kwaliteit op dit taaktype.
     anthropic_api_key: str | None = None
     ai_extractie_model: str = "claude-sonnet-5"
+
+    # Boekingsgeheugen (app/geheugen/): seed-recency-cap in maanden (alleen facturen jonger dan
+    # dit venster tellen mee in de RLZ-seed) en de weegparameters van de voorstel-engine —
+    # app-observaties (door een mens bevestigde boekingen) wegen zwaarder dan de RLZ-seed
+    # (CLAUDE.md: "correcties wegen zwaarder"), en oudere observaties tellen exponentieel
+    # minder mee (halfwaardetijd in dagen).
+    boekingsgeheugen_seed_maanden: int = 36
+    boekingsgeheugen_halfwaardetijd_dagen: int = 365
+    boekingsgeheugen_gewicht_app: float = 3.0
+    boekingsgeheugen_gewicht_rlz_seed: float = 1.0
     # Ruim genoeg voor facturen met veel regels; de SDK-timeout dekt de synchrone upload-flow
     # (bewust synchroon deze fase — zie docs/BOUWPLAN.md, async-worker uitgesteld).
     ai_extractie_max_tokens: int = 16000
