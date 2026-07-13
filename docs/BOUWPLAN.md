@@ -369,6 +369,12 @@ UI-eisen):
      hard onverwijderbaar, bewaarplicht). Zie `app/documenten/statusmachine.py` (VERWIJDERD is de
      enige status die nog overal — behalve vanuit GEBOEKT — een uitgang naartoe heeft) en
      `app/documenten/service.py::verwijder_document`/`herstel_document`.
+   - **Eerstvolgende fronttaak (2026-07-13): bevestigings-UI voor een IBAN-wisselblokkade.**
+     De IBAN-wissel-check (punt 6) toont zijn rij al generiek in het controlescherm, maar bij een
+     blokkade is er nog geen knop die `POST /administraties/{id}/crediteuren/{vendor_id}/ibans`
+     aanroept (IBAN in de body) — tot die bestaat is het endpoint zelf het enige pad om een
+     nieuw rekeningnummer te bevestigen. UI-eisen: toon het afwijkende IBAN naast de vertrouwde
+     rekening(en), bevestigen = bewuste actie met de crediteurnaam in beeld (knop op geld).
    - **Openstaand (2026-07-09): het instellingen-scherm is de échte UI voor de drie toggles.**
      De mockup's administraties-tab (project verplicht / boeken-toggle / globale kill switch) is
      nog niet gebouwd — tot die tijd zijn `make boeken-aan`/`boeken-uit`/`boeken-status`

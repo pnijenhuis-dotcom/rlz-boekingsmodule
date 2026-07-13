@@ -549,7 +549,7 @@ def voer_checks_uit(
                 reden=str(exc),
             )
     try:
-        vertrouwde_ibans, baseline_vastgelegd = leverancier_iban.seed_en_baseline_voor_checks(
+        vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = leverancier_iban.seed_en_baseline_voor_checks(
             administratie_id=administratie_id,
             vendor_id=voorstel.vendor_id,
             factuur_iban=factuur_iban,
@@ -571,6 +571,7 @@ def voer_checks_uit(
             factuur_iban=factuur_iban,
             vertrouwde_ibans=vertrouwde_ibans,
             iban_baseline_vastgelegd=baseline_vastgelegd,
+            iban_seed_mislukt=seed_mislukt,
         )
     finally:
         if eigen_client:

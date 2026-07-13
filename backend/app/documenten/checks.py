@@ -132,7 +132,11 @@ def check_duplicaat(
 
 
 def check_iban_wissel(
-    *, factuur_iban: str | None, vertrouwde_ibans: set[str], baseline_vastgelegd: bool = False
+    *,
+    factuur_iban: str | None,
+    vertrouwde_ibans: set[str],
+    baseline_vastgelegd: bool = False,
+    seed_mislukt: bool = False,
 ) -> CheckResultaat:
     """IBAN-wissel-fraudecontrole (CLAUDE.md harde checks; open item 2026-07-13). Pure functie:
     de aanroeper (app/documenten/boekvoorstel.py) levert het gevalideerde factuur-IBAN uit de
@@ -145,6 +149,9 @@ def check_iban_wissel(
     RLZ-seed) -> baseline vastgelegd, zichtbaar ter bevestiging, NIET blokkeren — er is niets om
     mee te vergelijken. (3) IBAN wijkt af van een niet-lege set -> HARD blokkeren: pas na
     menselijke bevestiging (leverancier_iban.bevestig_iban) hoort de nieuwe rekening erbij.
+    (4) Fail-closed: kon de RLZ-seed niet opgehaald worden terwijl er wél een factuur-IBAN te
+    toetsen is (`seed_mislukt`), dan blokkeert deze check op eigen titel — een wissel is dan niet
+    uit te sluiten; nooit leunen op het toeval dat de duplicaatcheck óók blokkeert.
     Meldingen tonen het IBAN gemaskeerd (privacy — het volledige nummer staat op de
     factuur-preview zelf)."""
     if factuur_iban is None:
@@ -154,6 +161,13 @@ def check_iban_wissel(
     if factuur_iban in vertrouwde_ibans:
         return CheckResultaat(
             "IBAN-wissel", True, f"IBAN {masker_iban(factuur_iban)} komt overeen met een vertrouwde rekening"
+        )
+    if seed_mislukt:
+        return CheckResultaat(
+            "IBAN-wissel",
+            False,
+            "IBAN-referentie kon niet worden opgehaald uit RLZ — een IBAN-wissel is niet uit te "
+            "sluiten; probeer opnieuw of bevestig het rekeningnummer expliciet",
         )
     if not vertrouwde_ibans:
         if baseline_vastgelegd:
@@ -188,6 +202,7 @@ def voer_harde_checks_uit(
     factuur_iban: str | None = None,
     vertrouwde_ibans: set[str] | None = None,
     iban_baseline_vastgelegd: bool = False,
+    iban_seed_mislukt: bool = False,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -212,6 +227,7 @@ def voer_harde_checks_uit(
                 factuur_iban=factuur_iban,
                 vertrouwde_ibans=vertrouwde_ibans or set(),
                 baseline_vastgelegd=iban_baseline_vastgelegd,
+                seed_mislukt=iban_seed_mislukt,
             ),
             check_duplicaat(
                 client=client,

@@ -143,29 +143,31 @@ def seed_en_baseline_voor_checks(
     factuur_iban: str | None,
     client: RlzClient,
     actor_id: uuid.UUID,
-) -> tuple[set[str], bool]:
+) -> tuple[set[str], bool, bool]:
     """Orkestratie voor de harde checks (app/documenten/boekvoorstel.py::voer_checks_uit):
-    (vertrouwde set vóór eventuele baseline, is er nu een baseline vastgelegd?).
+    (vertrouwde set vóór eventuele baseline, is er nu een baseline vastgelegd?, is de
+    RLZ-seed-poging mislukt?).
 
     Volgorde is bewust: (1) bestaande set laden; (2) leeg -> éénmalige RLZ-seed-poging
     (BankRelations); (3) nóg leeg én geldig factuur-IBAN -> baseline vastleggen. De baseline
     wordt alleen ná een gesláágde (lege) seed-poging gezet: mislukt de RLZ-aanroep, dan weten we
-    niet of RLZ een tegensprekende bankrelatie heeft, dus geen baseline — het checkrapport is in
-    dat geval toch al geblokkeerd (check_duplicaat blokkeert bij elke RLZ-storing)."""
+    niet of RLZ een tegensprekende bankrelatie heeft — geen baseline, én `seed_mislukt=True`
+    zodat check_iban_wissel zelfstandig fail-closed blokkeert (nooit leunen op de
+    duplicaatcheck)."""
     if vendor_id is None:
-        return set(), False
+        return set(), False, False
     vertrouwd = vertrouwde_ibans(administratie_id=administratie_id, vendor_id=vendor_id)
     if vertrouwd:
-        return vertrouwd, False
+        return vertrouwd, False, False
     try:
         vertrouwd = seed_uit_rlz(
             administratie_id=administratie_id, vendor_id=vendor_id, client=client, actor_id=actor_id
         )
     except RlzApiError:
-        return set(), False
+        return set(), False, True
     if vertrouwd or factuur_iban is None or not is_geldig_iban(factuur_iban):
-        return vertrouwd, False
+        return vertrouwd, False, False
     leg_baseline_vast(
         administratie_id=administratie_id, vendor_id=vendor_id, iban=factuur_iban, actor_id=actor_id
     )
-    return set(), True
+    return set(), True, False

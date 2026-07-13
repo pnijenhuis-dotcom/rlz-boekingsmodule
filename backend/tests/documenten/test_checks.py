@@ -307,6 +307,23 @@ class TestIbanWissel:
         resultaat = check_iban_wissel(factuur_iban=self._VERTROUWD, vertrouwde_ibans=set())
         assert resultaat.ok
 
+    def test_mislukte_seed_blokkeert_fail_closed(self) -> None:
+        """Lege set + mislukte RLZ-seed: de check blokkeert op eigen titel — een wissel is niet
+        uit te sluiten zonder referentie; nooit leunen op een toevallig ook-blokkerende
+        duplicaatcheck."""
+        resultaat = check_iban_wissel(
+            factuur_iban=self._VERTROUWD, vertrouwde_ibans=set(), seed_mislukt=True
+        )
+        assert not resultaat.ok
+        assert "kon niet worden opgehaald" in resultaat.melding
+        assert self._VERTROUWD not in resultaat.melding
+
+    def test_mislukte_seed_blokkeert_niet_zonder_factuur_iban(self) -> None:
+        """Zonder factuur-IBAN valt er ook bij een mislukte seed niets te wisselen — geen blok
+        op ontbrekende data (oude extracties zonder iban-veld blijven boekbaar)."""
+        resultaat = check_iban_wissel(factuur_iban=None, vertrouwde_ibans=set(), seed_mislukt=True)
+        assert resultaat.ok
+
     def test_geen_iban_op_de_factuur_is_ok(self) -> None:
         resultaat = check_iban_wissel(factuur_iban=None, vertrouwde_ibans={self._VERTROUWD})
         assert resultaat.ok

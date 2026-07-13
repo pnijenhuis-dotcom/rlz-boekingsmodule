@@ -134,7 +134,7 @@ class TestEersteKeer:
             ).scalar_one()
         assert audit == 1
 
-    def test_geen_baseline_als_rlz_seed_mislukt(
+    def test_mislukte_rlz_seed_blokkeert_op_eigen_titel_en_legt_geen_baseline_vast(
         self,
         administratie_id: uuid.UUID,
         gescoopte_gebruiker: uuid.UUID,
@@ -142,9 +142,9 @@ class TestEersteKeer:
         vendor_id: uuid.UUID,
         admin_engine: Engine,
     ) -> None:
-        """Mislukt de seed-poging, dan weten we niet of RLZ een tegensprekende bankrelatie heeft
-        — geen baseline vastleggen (het rapport is via de duplicaatcheck-afhandeling toch al
-        nooit stil-groen bij een RLZ-storing)."""
+        """Fail-closed: mislukt de seed-poging (lege set), dan weten we niet of RLZ een
+        tegensprekende bankrelatie heeft — geen baseline vastleggen én de IBAN-wissel-check
+        blokkeert ZELF, onafhankelijk van wat de duplicaatcheck doet."""
         document_id = _document_met_iban(
             administratie_id=administratie_id,
             actor_id=gescoopte_gebruiker,
@@ -157,7 +157,14 @@ class TestEersteKeer:
             document_id=document_id,
             client=FakeBoekClient(faal_op="bank_relations"),
         )
-        assert _iban_resultaat(rapport).ok
+        resultaat = _iban_resultaat(rapport)
+        assert not resultaat.ok
+        assert "kon niet worden opgehaald" in resultaat.melding
+        # Op eigen titel geblokkeerd: ook als álle andere checks groen zouden zijn, blokkeert
+        # het rapport al door deze ene rij.
+        assert rapport.geblokkeerd
+        andere = [r for r in rapport.resultaten if r.naam != "IBAN-wissel"]
+        assert all(r.ok for r in andere)
         assert _iban_rijen(admin_engine, administratie_id, vendor_id) == []
 
 
