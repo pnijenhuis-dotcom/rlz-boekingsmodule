@@ -47,6 +47,50 @@ def _actie_omschrijving(request: Request) -> str:
     return "het verwerken van je aanvraag"
 
 
+def _bouw_onverwachte_fout_response(request: Request) -> JSONResponse:
+    """Nette Nederlandse 500 + correlatie-id; volledige traceback uitsluitend naar de server-log
+    (logger.exception leest sys.exc_info(), dus aanroepen vanuit een except-blok)."""
+    correlatie_id = uuid.uuid4()
+    logger.exception("Onverwachte fout bij %s %s (correlatie-id %s)", request.method, request.url.path, correlatie_id)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Er ging iets mis bij {_actie_omschrijving(request)} — code {correlatie_id}."},
+    )
+
+
+class OnverwachteFoutVangnet:
+    """Binnenste vangnet-middleware (adoptie uit Platform/registers/verbeteringen.md, vastgoed
+    2026-07-11): zet elke onafgehandelde exception om in de nette JSON-500 — BINNEN de
+    CORS-middleware, zodat ook dat antwoord CORS-headers draagt. Zonder dit vangnet belandt een
+    onverwachte fout pas in Starlette's ServerErrorMiddleware/de globale exception-handler, en
+    die zitten BUITEN de CORS-laag: de browser ziet dan een kaal "Failed to fetch" in plaats van
+    de echte foutmelding. Puur ASGI (geen BaseHTTPMiddleware) — geen streaming-/achtergrondtaak-
+    bijwerkingen. Is de response al gestart, dan valt er niets meer te repareren en her-raisen we."""
+
+    def __init__(self, app) -> None:  # noqa: ANN001 — ASGI-app, Starlette geeft hier geen publiek type voor
+        self._app = app
+
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001 — ASGI-signatuur
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        response_gestart = False
+
+        async def bewaakte_send(message) -> None:  # noqa: ANN001 — ASGI-message
+            nonlocal response_gestart
+            if message["type"] == "http.response.start":
+                response_gestart = True
+            await send(message)
+
+        try:
+            await self._app(scope, receive, bewaakte_send)
+        except Exception:
+            if response_gestart:
+                raise
+            response = _bouw_onverwachte_fout_response(Request(scope))
+            await response(scope, receive, send)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Migratie-guard (CLAUDE.md-taak "geen raadsel-500 door een gemiste migratie meer"): stopt
@@ -66,6 +110,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="RLZ Boekingsmodule", lifespan=_lifespan)
+# Volgorde is betekenis (Starlette: láátst toegevoegde middleware = buitenste laag): het
+# fout-vangnet eerst toevoegen en CORS daarna, zodat CORS de buitenste laag is en élk antwoord
+# — ook de JSON-500 uit het vangnet — CORS-headers draagt.
+app.add_middleware(OnverwachteFoutVangnet)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -88,13 +136,10 @@ async def onverwachte_fout_handler(request: Request, exc: Exception) -> JSONResp
     Nederlandse melding met die correlatie-id — nooit de interne foutdetails. FastAPI's eigen
     HTTPException-handler heeft voorrang op deze (Starlette matcht op de meest specifieke
     geregistreerde exception-klasse), dus de bestaande domeinfout-afhandeling in de routers
-    blijft ongewijzigd werken."""
-    correlatie_id = uuid.uuid4()
-    logger.exception("Onverwachte fout bij %s %s (correlatie-id %s)", request.method, request.url.path, correlatie_id)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"Er ging iets mis bij {_actie_omschrijving(request)} — code {correlatie_id}."},
-    )
+    blijft ongewijzigd werken. In de praktijk vangt OnverwachteFoutVangnet (binnen de CORS-laag)
+    de fout al eerder af — dit blijft staan als laatste redmiddel voor wat daar ooit langs zou
+    glippen."""
+    return _bouw_onverwachte_fout_response(request)
 
 
 @app.get("/health")
