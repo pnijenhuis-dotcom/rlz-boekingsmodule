@@ -237,11 +237,33 @@ Drie onafhankelijke bronnen, alle live geverifieerd tegen de test-administratie:
    RLZ onderscheidt een inkoopcreditnota dus niet op type-niveau.
 
 Conclusie: negatief boeken op PurchaseInvoices is niet een workaround maar dé representatie —
-de bestaande boeklogica is correct. Zij-observatie om nog te verifiëren: oudere, al verwerkte
-inkoopfacturen in de test-administratie staan op `Status: 3` — de aanname elders in deze notitie
-("3 = definitief memoriaal") is dus incompleet; 3 lijkt op inkoopfacturen ook voor te komen
-(vermoedelijk betaald/afgeletterd). Nog niet cruciaal, wel checken vóór statuslogica op
-RLZ-documenten gebouwd wordt.
+de bestaande boeklogica is correct.
+
+## Documentstatus definitief opgehelderd: 1/2/3 = Concept/Openstaand/Gesloten (13 juli 2026)
+
+De zij-observatie hierboven ("verwerkte inkoopfacturen op Status 3") is uitgezocht via RLZ's
+eigen enumeratie — **`GET DocumentStatuses`** (root-route, géén `{adminId}/`-prefix; de
+admin-gescoopte vorm geeft een 404-HTML-pagina):
+
+```json
+{"id": 1, "Name": "Tentative", "Description": "Concept"}
+{"id": 2, "Name": "Open",      "Description": "Openstaand"}
+{"id": 3, "Name": "Closed",    "Description": "Gesloten"}
+```
+
+Empirisch bevestigd op de test-administratie: alle 40 recentst verwerkte inkoopfacturen met
+`Status: 3` hebben `BaseRemainingAmount: 0` en `BasePaidAmount > 0` (volledig afgeletterd);
+onze net geboekte, onbetaalde creditnota staat op `Status: 2`. **De eerdere aanname
+"2 = definitief (inkoopfactuur), 3 = definitief (memoriaal)" was dus fout**: 3 is geen
+memoriaal-variant van "definitief" maar de afgeletterd-status. Dat een memoriaal direct na
+boeken op 3 stond, komt doordat een memoriaal geen openstaand bedrag heeft (saldo 0) en dus
+meteen "Gesloten" is. Consequentie voor eigen logica: **geboekt = Status 2 óf 3** — toetsen op
+alléén `Status == 2` markeert elke betaalde factuur ten onrechte als afwijking (raakt
+`app/documenten/reconciliatie.py::_RLZ_STATUS_DEFINITIEF`, zie BOUWPLAN).
+
+Bijvangst: OData-filteren op status vereist de enum-typering — `$filter=Status eq 2` geeft een
+400 ("incompatible types 'Reeleezee.DTO.DocumentStatus' and 'Edm.Int32'"); status dus lokaal
+filteren of met de volledige enum-literal.
 
 ## Vendor-bankrelaties: `GET Vendors/{baseId}/BankRelations` (13 juli 2026, read-only)
 

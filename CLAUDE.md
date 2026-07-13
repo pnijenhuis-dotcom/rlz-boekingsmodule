@@ -61,7 +61,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   Correct (zet terug naar concept, géén apart creditdocument), 34 = verrekenen, 138 =
   duplicaatcheck (**bewezen zonder bruikbaar signaal, niet gebruiken** — zie
   verkenning/api-verkenning.md "Actie 138"), 15/16 = LinkPaymentItems/UnlinkPayment (afletteren).
-- Documentstatus: 1 = concept, 2 = definitief (inkoopfactuur), 3 = definitief (memoriaal).
+- Documentstatus (RLZ's eigen enumeratie `GET DocumentStatuses`, geverifieerd 2026-07-13):
+  **1 = Tentative/Concept, 2 = Open/Openstaand (geboekt, nog niet volledig afgeletterd),
+  3 = Closed/Gesloten (volledig betaald/afgeletterd, `BaseRemainingAmount` 0)**. De eerdere
+  aanname "2 = definitief inkoopfactuur, 3 = definitief memoriaal" was fout: 3 is geen
+  documenttype-status maar de afgeletterd-status — een memoriaal staat direct na boeken op 3
+  omdat er niets open staat (saldo 0). Let op: geboekt = Status 2 óf 3 (afhankelijk van
+  betaling), nooit alleen op 2 toetsen.
 - **PurchaseInvoices**: PUT met `Entity:{id:vendorGuid}` + `DocumentLineList` (per regel
   `Account:{id}`, `TaxRate:{id}`, `NetAmount`, `TaxAmount`, `Project:{id}`). `/Uploads` = PDF-bijlage
   (base64 `Content`). RLZ berekent totalen zelf.

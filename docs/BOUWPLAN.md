@@ -328,7 +328,14 @@ Backend:
      singleton) — nieuwe `app/beheer/`-module, Beheerder-only endpoints, beide moeten aan staan.
      (b) Reconciliatiejob (`app/documenten/reconciliatie.py`, `make reconciliatie` /
      `python -m app.cli reconciliatie`): vergelijkt elk lokaal `geboekt` document met de
-     werkelijke RLZ-staat (bestaat, Status=2, bedrag, boekstuknummer), rapporteert afwijkingen;
+     werkelijke RLZ-staat (bestaat, Status=2, bedrag, boekstuknummer), rapporteert afwijkingen.
+     **BEKEND GEBREK (statusverificatie 2026-07-13, fix wacht op go):** RLZ-status 3 blijkt
+     "Gesloten/afgeletterd" te betekenen (zie api-verkenning "Documentstatus definitief
+     opgehelderd"), niet "definitief memoriaal" — `_RLZ_STATUS_DEFINITIEF = 2` markeert dus elke
+     geboekte factuur die in RLZ betaald raakt als valse afwijking `status_niet_definitief`.
+     Fix: geboekt = Status ∈ {2, 3}; Status 1 (teruggezet naar concept) blijft wél een echte
+     afwijking. Nu nog geen productie-impact (job draait alleen handmatig, testboekingen zijn
+     onbetaald), maar repareren vóór de job in cron/Cloud Scheduler gaat;
      één kapotte administratie stopt de rest niet (zelfde patroon als `sync_alle_administraties`).
      (c) Volumerem: `settings.max_boekingen_per_dag_per_administratie` (default 20), telt op de
      al bestaande `document_gebeurtenis`-rijen van vandaag, geen eigen tabel nodig.
