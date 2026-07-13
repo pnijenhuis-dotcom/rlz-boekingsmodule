@@ -298,10 +298,18 @@ Backend:
    bij een retry; regeltelling vs factuurtotaal; verplichte velden), altijd alle drie getoond,
    nooit stil overgeslagen.
    - **Checkstatus (audit 2026-07-13, gedocumenteerd ≠ gebouwd — hier actueel houden):**
-     duplicaat, regeltelling en verplichte velden (incl. projectplicht): gebouwd
+     duplicaat, regeltelling, verplichte velden (incl. projectplicht) én IBAN-wissel: gebouwd
      (`app/documenten/checks.py`) + getest (`tests/documenten/test_checks.py`,
-     projectplicht via `test_boekvoorstel.py`). **Nog niet gebouwd, met implementerende fase:**
-     IBAN-wissel (open item 2026-07-13, eerstvolgende checks-bouwtaak); vraag-blokkeert-boeken +
+     projectplicht via `test_boekvoorstel.py`, IBAN-wissel via `test_iban_wissel.py`/
+     `tests/extractie/test_iban.py`). IBAN-wissel (2026-07-13): IBAN als gestructureerd
+     extractieveld (mod-97-validatie `app/extractie/iban.py`, buiten het BSN-filter net als het
+     factuurnummer), vertrouwde meerwaardige set per crediteur in
+     `boekhouding.leverancier_iban` (migratie 0019; bron rlz_seed uit
+     `Vendors/{id}/BankRelations` / baseline / bevestigd, audit_event per toevoeging), eerste
+     keer = baseline zonder blok (na geslaagde lege seed-poging), afwijking = hard blok tot
+     menselijke bevestiging (`POST .../crediteuren/{vendor_id}/ibans`, IBAN in body — nooit in
+     URL/logs), G-rekening/WKA: tweede bevestigde rekening is de norm, geen wissel-signaal.
+     **Nog niet gebouwd, met implementerende fase:** vraag-blokkeert-boeken +
      afwijzen-met-verplichte-reden (statussen zitten al in `statusmachine.py` en blokkeren het
      boekpad, maar workflow/endpoints/reden-afdwinging ontbreken → vraag/afwijs-workflow, punt 8
      hieronder); memoriaal-saldo-0 (→ fase 2, omzet/kostprijsmemoriaal); VGB-prefixfilter

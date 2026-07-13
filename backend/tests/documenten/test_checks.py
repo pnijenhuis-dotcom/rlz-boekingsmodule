@@ -7,6 +7,7 @@ from decimal import Decimal
 from app.documenten.checks import (
     CheckRegel,
     check_duplicaat,
+    check_iban_wissel,
     check_regeltelling,
     check_verplichte_velden,
     voer_harde_checks_uit,
@@ -229,7 +230,12 @@ class TestVoerHardeChecksUit:
             eigen_rlz_document_id=uuid.uuid4(),
         )
         assert not rapport.geblokkeerd
-        assert [r.naam for r in rapport.resultaten] == ["Verplichte velden", "Regeltelling vs totaal", "Duplicaatcheck"]
+        assert [r.naam for r in rapport.resultaten] == [
+            "Verplichte velden",
+            "Regeltelling vs totaal",
+            "IBAN-wissel",
+            "Duplicaatcheck",
+        ]
         assert all(r.ok for r in rapport.resultaten)
 
     def test_een_falende_check_blokkeert_het_hele_rapport(self) -> None:
@@ -246,8 +252,8 @@ class TestVoerHardeChecksUit:
         assert rapport.geblokkeerd
         assert not any(r.naam == "Regeltelling vs totaal" and r.ok for r in rapport.resultaten)
 
-    def test_alle_drie_checks_draaien_ook_als_de_eerste_al_faalt(self) -> None:
-        """Geen stille kortsluiting — de UI moet alle drie de rijen kunnen tonen (CLAUDE.md,
+    def test_alle_checks_draaien_ook_als_de_eerste_al_faalt(self) -> None:
+        """Geen stille kortsluiting — de UI moet alle vier de rijen kunnen tonen (CLAUDE.md,
         mockup-stijl groen/blokkerend per check)."""
         client = _NepRlzClient(gevonden=[])
         rapport = voer_harde_checks_uit(
@@ -259,4 +265,49 @@ class TestVoerHardeChecksUit:
             regels=[],
             eigen_rlz_document_id=uuid.uuid4(),
         )
-        assert len(rapport.resultaten) == 3
+        assert len(rapport.resultaten) == 4
+
+
+class TestIbanWissel:
+    """Pure checkregels (app/documenten/checks.py::check_iban_wissel) — de DB-/seed-orkestratie
+    eromheen wordt integraal getest in test_iban_wissel.py."""
+
+    _VERTROUWD = "NL91ABNA0417164300"
+    _ANDER = "BE68539007547034"
+
+    def test_matchende_iban_passeert(self) -> None:
+        resultaat = check_iban_wissel(factuur_iban=self._VERTROUWD, vertrouwde_ibans={self._VERTROUWD})
+        assert resultaat.ok
+        assert "vertrouwde rekening" in resultaat.melding
+
+    def test_tweede_bevestigde_iban_passeert(self) -> None:
+        """G-rekening/WKA-nuance: de set is meerwaardig — een tweede, bevestigde rekening is de
+        norm, geen wissel-signaal."""
+        resultaat = check_iban_wissel(
+            factuur_iban=self._ANDER, vertrouwde_ibans={self._VERTROUWD, self._ANDER}
+        )
+        assert resultaat.ok
+
+    def test_afwijkende_iban_blokkeert_hard(self) -> None:
+        resultaat = check_iban_wissel(factuur_iban=self._ANDER, vertrouwde_ibans={self._VERTROUWD})
+        assert not resultaat.ok
+        assert "wijkt af" in resultaat.melding
+        # Privacy: nooit het volledige IBAN in de melding — gemaskeerd tonen.
+        assert self._ANDER not in resultaat.melding
+
+    def test_lege_set_met_baseline_is_ok_en_benoemt_de_baseline(self) -> None:
+        resultaat = check_iban_wissel(
+            factuur_iban=self._VERTROUWD, vertrouwde_ibans=set(), baseline_vastgelegd=True
+        )
+        assert resultaat.ok
+        assert "baseline" in resultaat.melding
+        assert self._VERTROUWD not in resultaat.melding
+
+    def test_lege_set_zonder_baseline_is_ok(self) -> None:
+        resultaat = check_iban_wissel(factuur_iban=self._VERTROUWD, vertrouwde_ibans=set())
+        assert resultaat.ok
+
+    def test_geen_iban_op_de_factuur_is_ok(self) -> None:
+        resultaat = check_iban_wissel(factuur_iban=None, vertrouwde_ibans={self._VERTROUWD})
+        assert resultaat.ok
+        assert "Geen (geldig) IBAN" in resultaat.melding

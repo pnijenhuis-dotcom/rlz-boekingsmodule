@@ -81,6 +81,7 @@ class TestBoekvoorstelEndpoints:
         assert {r["naam"] for r in body["checks"]["resultaten"]} == {
             "Verplichte velden",
             "Regeltelling vs totaal",
+            "IBAN-wissel",
             "Duplicaatcheck",
         }
 
@@ -133,6 +134,7 @@ class TestBoekvoorstelEndpoints:
         assert {r["naam"] for r in body["checks"]["resultaten"]} == {
             "Verplichte velden",
             "Regeltelling vs totaal",
+            "IBAN-wissel",
             "Duplicaatcheck",
         }
         assert all(r["ok"] for r in body["checks"]["resultaten"])

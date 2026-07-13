@@ -350,10 +350,16 @@ class TestVoerChecksUit:
 
         rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=resultaat.document_id)
 
-        assert [r.naam for r in rapport.resultaten] == ["Verplichte velden", "Regeltelling vs totaal", "Duplicaatcheck"]
-        verplichte_velden, regeltelling, duplicaatcheck = rapport.resultaten
+        assert [r.naam for r in rapport.resultaten] == [
+            "Verplichte velden",
+            "Regeltelling vs totaal",
+            "IBAN-wissel",
+            "Duplicaatcheck",
+        ]
+        verplichte_velden, regeltelling, iban_wissel, duplicaatcheck = rapport.resultaten
         assert verplichte_velden.ok  # lokale check, draait gewoon door zonder RLZ
         assert regeltelling.ok  # lokale check, draait gewoon door zonder RLZ
+        assert iban_wissel.ok  # lokale check tegen de opgeslagen set — geen RLZ nodig
         assert not duplicaatcheck.ok
         assert "kon niet uitgevoerd worden" in duplicaatcheck.melding
         assert rapport.geblokkeerd

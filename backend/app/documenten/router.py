@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import boeken, boekvoorstel, schemas, service
+from app.documenten import boeken, boekvoorstel, leverancier_iban, schemas, service
 from app.documenten.checks import CheckRapport
 from app.rlz.credentials import GeenRlzCredentials
 
@@ -369,3 +369,26 @@ def document_boeken(
         rlz_document_id=resultaat.rlz_document_id,
         rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
     )
+
+
+@router.post(
+    "/administraties/{administratie_id}/crediteuren/{vendor_id}/ibans",
+    response_model=schemas.IbanBevestigdResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def leverancier_iban_bevestigen(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    invoer: schemas.IbanBevestigenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.IbanBevestigdResponse:
+    """Menselijke bevestiging van een (afwijkend) factuur-IBAN — de enige route waarlangs een
+    nieuw rekeningnummer na een IBAN-wissel-blokkade aan de vertrouwde set wordt toegevoegd
+    (app/documenten/leverancier_iban.py). Het IBAN zit in de body, nooit in de URL."""
+    try:
+        genormaliseerd = leverancier_iban.bevestig_iban(
+            administratie_id=administratie_id, vendor_id=vendor_id, iban=invoer.iban, actor_id=actor.id
+        )
+    except leverancier_iban.OngeldigIban as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return schemas.IbanBevestigdResponse(vendor_id=vendor_id, iban=genormaliseerd)

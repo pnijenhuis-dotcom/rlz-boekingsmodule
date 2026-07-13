@@ -177,6 +177,40 @@ class LeverancierVoorkeur(Base):
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
+class LeverancierIbanBron(enum.StrEnum):
+    """Hoe een IBAN in de vertrouwde set kwam (migratie 0019): RLZ_SEED = uit RLZ's
+    Vendors/{id}/BankRelations; BASELINE = eerste factuur-IBAN van een crediteur zonder seed
+    (vastgelegd, ter bevestiging getoond, niet blokkerend); BEVESTIGD = door een mens bevestigd
+    na een wissel-blokkade (bevestigd_door verplicht)."""
+
+    RLZ_SEED = "rlz_seed"
+    BASELINE = "baseline"
+    BEVESTIGD = "bevestigd"
+
+
+class LeverancierIban(Base):
+    """Vertrouwde IBAN's per crediteur per administratie (migratie 0019) — de vergelijkingsbasis
+    van de IBAN-wissel-fraudecontrole (app/documenten/checks.py::check_iban_wissel). Meerwaardig
+    per crediteur: meerdere bevestigde rekeningen (G-rekening/WKA) is de norm, geen
+    wissel-signaal. Bewust geen FK naar vendor_cache (overleeft sync-verdwijning, zelfde
+    overweging als LeverancierVoorkeur). Elke toevoeging krijgt een audit_event — zie
+    app/documenten/leverancier_iban.py."""
+
+    __tablename__ = "leverancier_iban"
+    __table_args__ = {"schema": "boekhouding"}
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    iban: Mapped[str] = mapped_column(primary_key=True)
+    bron: Mapped[str]
+    bevestigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class WebhookUitgaand(Base):
     """Outbox voor het "factuur geboekt"-webhook-stub (migratie 0009, koppelcontract §3): de
     getekende payload ligt hier per boeking al vast, aflevering (HTTP-push) is een fase-vervolg.

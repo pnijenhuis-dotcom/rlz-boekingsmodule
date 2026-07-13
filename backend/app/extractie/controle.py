@@ -7,6 +7,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from difflib import SequenceMatcher
 
+from app.extractie.iban import is_geldig_iban, normaliseer_iban
 from app.extractie.service import AiFactuurExtractie, AiVeld
 
 # Deterministische controlelaag over de AI-output (kernprincipe: AI leest, code rekent). Pure
@@ -188,6 +189,13 @@ def bouw_veldvoorstel(
     leverancier_naam = tekst_van("leverancier_naam")
     factuurnummer = tekst_van("factuurnummer")
     valuta = tekst_van("valuta")
+    # IBAN: deterministische mod-97-validatie (app/extractie/iban.py) — een ongeldig IBAN wordt
+    # gemarkeerd (onparseerbaar) en nooit doorgegeven; de IBAN-wissel-check mag alleen op een
+    # bewezen-geldig nummer draaien.
+    iban_ruw = tekst_van("iban")
+    iban = normaliseer_iban(iban_ruw) if is_geldig_iban(iban_ruw) else None
+    if iban_ruw is not None and iban is None:
+        onparseerbaar.append("iban")
     factuurdatum = datum_van("factuurdatum")
     vervaldatum = datum_van("vervaldatum")
     totaal_excl = bedrag_van("totaal_excl")
@@ -238,6 +246,7 @@ def bouw_veldvoorstel(
         "totaal_excl": _bedrag_str(totaal_excl),
         "totaal_incl": _bedrag_str(totaal_incl),
         "btw_bedrag": _bedrag_str(btw_bedrag),
+        "iban": iban,
         "regelaantal": len(regels),
         "regels": regels,
         "zekerheid": zekerheid,

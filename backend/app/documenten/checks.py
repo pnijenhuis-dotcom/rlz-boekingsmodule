@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from app.extractie.iban import masker_iban
 from app.rlz.client import RlzApiError, RlzClient
 
 # Toegestane afronding tussen "som van de regels" en het factuurtotaal — RLZ zelf rekent met
@@ -130,6 +131,50 @@ def check_duplicaat(
     return CheckResultaat("Duplicaatcheck", True, "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag")
 
 
+def check_iban_wissel(
+    *, factuur_iban: str | None, vertrouwde_ibans: set[str], baseline_vastgelegd: bool = False
+) -> CheckResultaat:
+    """IBAN-wissel-fraudecontrole (CLAUDE.md harde checks; open item 2026-07-13). Pure functie:
+    de aanroeper (app/documenten/boekvoorstel.py) levert het gevalideerde factuur-IBAN uit de
+    extractie en de vertrouwde set (app/documenten/leverancier_iban.py — RLZ-seed/baseline/
+    bevestigd) van vóór een eventuele baseline-vastlegging.
+
+    Regels op het geldpad, geen gok: (1) IBAN in de vertrouwde set -> OK — de set is meerwaardig,
+    want meerdere bevestigde rekeningen per leverancier (G-rekening/WKA, gesplitste betaling) is
+    in de bouwketen de NORM, geen wissel-signaal. (2) Set leeg (nieuwe leverancier, geen
+    RLZ-seed) -> baseline vastgelegd, zichtbaar ter bevestiging, NIET blokkeren — er is niets om
+    mee te vergelijken. (3) IBAN wijkt af van een niet-lege set -> HARD blokkeren: pas na
+    menselijke bevestiging (leverancier_iban.bevestig_iban) hoort de nieuwe rekening erbij.
+    Meldingen tonen het IBAN gemaskeerd (privacy — het volledige nummer staat op de
+    factuur-preview zelf)."""
+    if factuur_iban is None:
+        return CheckResultaat(
+            "IBAN-wissel", True, "Geen (geldig) IBAN op de factuur gelezen — geen wisselcontrole mogelijk"
+        )
+    if factuur_iban in vertrouwde_ibans:
+        return CheckResultaat(
+            "IBAN-wissel", True, f"IBAN {masker_iban(factuur_iban)} komt overeen met een vertrouwde rekening"
+        )
+    if not vertrouwde_ibans:
+        if baseline_vastgelegd:
+            return CheckResultaat(
+                "IBAN-wissel",
+                True,
+                f"Eerste IBAN voor deze crediteur ({masker_iban(factuur_iban)}) vastgelegd als "
+                "baseline — controleer het rekeningnummer op de factuur",
+            )
+        return CheckResultaat(
+            "IBAN-wissel", True, "Nog geen vertrouwde rekeningen bekend voor deze crediteur — niets te vergelijken"
+        )
+    return CheckResultaat(
+        "IBAN-wissel",
+        False,
+        f"IBAN op de factuur ({masker_iban(factuur_iban)}) wijkt af van de vertrouwde rekening(en) "
+        "van deze crediteur — mogelijke IBAN-wissel; bevestig het nieuwe rekeningnummer expliciet "
+        "voordat er geboekt kan worden",
+    )
+
+
 def voer_harde_checks_uit(
     *,
     client: RlzClient,
@@ -140,13 +185,18 @@ def voer_harde_checks_uit(
     regels: list[CheckRegel],
     eigen_rlz_document_id: uuid.UUID,
     project_verplicht: bool = False,
+    factuur_iban: str | None = None,
+    vertrouwde_ibans: set[str] | None = None,
+    iban_baseline_vastgelegd: bool = False,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
-    consistent dezelfde drie rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
-    de andere twee checks vaak ook zinloos (bv. geen totaalbedrag -> regeltelling kan niet
-    zinvol getoetst worden) — de UI toont ze desondanks alle drie, nooit stil overslaan.
+    consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
+    de andere checks vaak ook zinloos (bv. geen totaalbedrag -> regeltelling kan niet zinvol
+    getoetst worden) — de UI toont ze desondanks alle vier, nooit stil overslaan.
     `project_verplicht` komt uit de administratie-instelling (design-pass taak 4) — alleen dan
-    telt een ontbrekend project per regel als blokkerend."""
+    telt een ontbrekend project per regel als blokkerend. `factuur_iban`/`vertrouwde_ibans`/
+    `iban_baseline_vastgelegd` komen uit de orkestratie in app/documenten/boekvoorstel.py
+    (extractie + leverancier_iban-set)."""
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -158,6 +208,11 @@ def voer_harde_checks_uit(
                 project_verplicht=project_verplicht,
             ),
             check_regeltelling(totaalbedrag=totaalbedrag, regels=regels),
+            check_iban_wissel(
+                factuur_iban=factuur_iban,
+                vertrouwde_ibans=vertrouwde_ibans or set(),
+                baseline_vastgelegd=iban_baseline_vastgelegd,
+            ),
             check_duplicaat(
                 client=client,
                 vendor_id=vendor_id,

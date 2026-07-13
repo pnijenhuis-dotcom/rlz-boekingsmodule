@@ -18,6 +18,7 @@ class FakeBoekClient:
         duplicaten: list[dict[str, Any]] | None = None,
         faal_op: str | None = None,
         bestaande_invoices: dict[str, dict[str, Any]] | None = None,
+        bank_relations: list[dict[str, Any]] | None = None,
     ) -> None:
         self.duplicaten = duplicaten or []
         self.faal_op = faal_op
@@ -26,6 +27,9 @@ class FakeBoekClient:
         self.geboekte_acties: list[uuid.UUID] = []
         self.gesloten = False
         self._invoices: dict[str, dict[str, Any]] = dict(bestaande_invoices or {})
+        # RLZ-seed voor de IBAN-wissel-check (Vendors/{id}/BankRelations) — default leeg: een
+        # crediteur zonder bankrelaties, zodat bestaande boek-tests ongewijzigd blijven werken.
+        self.bank_relations = bank_relations or []
 
     def __enter__(self) -> FakeBoekClient:
         return self
@@ -81,6 +85,10 @@ class FakeBoekClient:
         return SimpleNamespace(status_code=204)
 
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if self.faal_op == "bank_relations" and path.endswith("/BankRelations"):
+            raise RlzApiError(500, "GET", path, "BankRelations mislukt (simulatie)")
+        if path.endswith("/BankRelations"):
+            return {"value": self.bank_relations}
         invoice_id = path.rsplit("/", 1)[-1]
         if invoice_id not in self._invoices:
             raise RlzApiError(404, "GET", path, "Niet gevonden (simulatie)")

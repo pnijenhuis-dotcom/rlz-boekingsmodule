@@ -152,3 +152,15 @@ class BoekenResponse(BaseModel):
     status: str
     rlz_document_id: uuid.UUID
     rlz_boekstuknummer: str | None = None
+
+
+class IbanBevestigenInput(BaseModel):
+    """IBAN-wissel-flow: het nieuwe rekeningnummer reist in de request-body, nooit in de URL
+    (privacy — URL's belanden in access-logs)."""
+
+    iban: str
+
+
+class IbanBevestigdResponse(BaseModel):
+    vendor_id: uuid.UUID
+    iban: str

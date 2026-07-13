@@ -26,6 +26,10 @@ _KOP_KEYS: dict[str, str] = {
     "excl": "totaal_excl",
     "incl": "totaal_incl",
     "btw": "btw_bedrag",
+    # IBAN van de leverancier (betaalinformatie op de factuur) — gestructureerd veld voor de
+    # IBAN-wissel-fraudecontrole (app/documenten/checks.py::check_iban_wissel). Validatie is
+    # deterministisch (app/extractie/iban.py, mod-97) in de controlelaag — nooit de AI.
+    "iban": "iban",
 }
 
 _STRING_OF_NULL: dict[str, Any] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
@@ -96,8 +100,9 @@ voorstel dat gokt.
 
 Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
 - kop: lev=leveranciersnaam, nr=factuurnummer, dat=factuurdatum, verval=vervaldatum, val=valuta,
-  excl=totaal exclusief btw, incl=totaal inclusief btw, btw=btw-bedrag — telkens zoals ze óp de factuur
-  staan, totalen dus niet zelf optellen.
+  excl=totaal exclusief btw, incl=totaal inclusief btw, btw=btw-bedrag, iban=IBAN-rekeningnummer waarop
+  de leverancier betaald wil worden (betaalinformatie op de factuur; staan er meerdere, geef dan het
+  primaire/eerstgenoemde) — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen

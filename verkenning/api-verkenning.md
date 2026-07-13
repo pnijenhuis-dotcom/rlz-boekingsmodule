@@ -243,6 +243,16 @@ inkoopfacturen in de test-administratie staan op `Status: 3` — de aanname elde
 (vermoedelijk betaald/afgeletterd). Nog niet cruciaal, wel checken vóór statuslogica op
 RLZ-documenten gebouwd wordt.
 
+## Vendor-bankrelaties: `GET Vendors/{baseId}/BankRelations` (13 juli 2026, read-only)
+
+De gedocumenteerde Vendor-/Entity-/PurchaseInvoice-resourcemodellen tonen géén IBAN-veld, maar de
+subresource `Vendors/{baseId}/BankRelations` (staat wél in de Help-routelijst) levert per
+bankrelatie o.a. `IBAN`, `SwiftCode`, `OwnerName`, `IsArchived`, `DirectDebitAuthorization` —
+live geverifieerd op meerdere crediteuren in de test-administratie (gevuld bij echte
+leveranciers; een app-aangemaakte kale vendor heeft één relatie met `IBAN: null`). Gebruikt als
+seed voor de vertrouwde-IBAN-set van de IBAN-wissel-fraudecontrole
+(app/documenten/leverancier_iban.py::seed_uit_rlz).
+
 ## Rate-limit-observatie (5 juli 2026, tegen BLOw B.V, read-only)
 
 20 opeenvolgende `GET Ledgers`-requests, sequentieel (geen parallelisme): alle 200, gemiddeld

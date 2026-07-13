@@ -98,8 +98,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   - duplicaat (Entity+Referentie+bedrag): **gebouwd** (`backend/app/documenten/checks.py::check_duplicaat`) **+ getest**;
   - regeltelling vs totaal: **gebouwd** (`checks.py::check_regeltelling`) **+ getest**;
   - verplichte velden incl. projectplicht: **gebouwd** (`checks.py::check_verplichte_velden`) **+ getest**;
-  - IBAN-wissel: **gedocumenteerd, nog niet gebouwd** (open item 2026-07-13 — eerstvolgende
-    checks-bouwtaak);
+  - IBAN-wissel: **gebouwd + getest** (2026-07-13: `checks.py::check_iban_wissel` +
+    `app/documenten/leverancier_iban.py` — vertrouwde meerwaardige set per crediteur
+    (rlz_seed uit `Vendors/{id}/BankRelations` / baseline / bevestigd), eerste keer = baseline
+    zonder blok, afwijking = hard blok tot menselijke bevestiging, G-rekening/WKA = tweede
+    bevestigde rekening is de norm; IBAN gestructureerd extractieveld, mod-97 in
+    `app/extractie/iban.py`, nooit in logs/URL's);
   - vraag blokkeert boeken / afwijzen-met-verplichte-reden: **half** — de statussen zitten in de
     statusmachine (boeken kan niet vanuit `vraag_open`/`afgewezen`), maar workflow, endpoints en
     reden-afdwinging bestaan niet → bouwen in de vraag/afwijs-workflow (fase 1-vervolg,

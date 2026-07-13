@@ -11,10 +11,13 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import leverancier_iban
 from app.documenten.checks import (
     CheckRapport,
     CheckRegel,
     CheckResultaat,
+    check_iban_wissel,
     check_regeltelling,
     check_verplichte_velden,
     voer_harde_checks_uit,
@@ -470,14 +473,25 @@ def _naar_check_regels(voorstel: BoekvoorstelData) -> list[CheckRegel]:
 
 
 def _duplicaatcheck_niet_uitgevoerd_rapport(
-    *, voorstel: BoekvoorstelData, project_verplicht: bool, reden: str
+    *,
+    administratie_id: uuid.UUID,
+    voorstel: BoekvoorstelData,
+    project_verplicht: bool,
+    factuur_iban: str | None,
+    reden: str,
 ) -> CheckRapport:
     """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
     fout, netwerkfout) — vóórdat check_duplicaat() de kans krijgt zijn eigen RlzApiError-vangnet te
-    gebruiken (app/documenten/checks.py). De twee lokale checks (geen RLZ nodig) draaien gewoon
-    door; alleen de duplicaatcheck wordt een blokkerend, herkenbaar checkresultaat — nooit een
-    kale 500 bij de gebruiker."""
+    gebruiken (app/documenten/checks.py). De lokale checks (geen RLZ nodig) draaien gewoon door,
+    inclusief de IBAN-wissel-check tegen de al opgeslagen vertrouwde set (zonder RLZ-seed of
+    baseline — die vergen een werkende verbinding); alleen de duplicaatcheck wordt een blokkerend,
+    herkenbaar checkresultaat — nooit een kale 500 bij de gebruiker."""
     regels = _naar_check_regels(voorstel)
+    vertrouwd: set[str] = set()
+    if voorstel.vendor_id is not None:
+        vertrouwd = leverancier_iban.vertrouwde_ibans(
+            administratie_id=administratie_id, vendor_id=voorstel.vendor_id
+        )
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -489,6 +503,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 project_verplicht=project_verplicht,
             ),
             check_regeltelling(totaalbedrag=voorstel.totaalbedrag, regels=regels),
+            check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd),
             CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"),
         )
     )
@@ -508,6 +523,12 @@ def voer_checks_uit(
     with scoped_session(administratie_id) as session:
         document = _laad_document(session, document_id=document_id)
         _controleer_niet_bevroren(document)
+        veldvoorstel = _laatste_veldvoorstel(session, document_id)
+
+    # Factuur-IBAN uit de extractie (gestructureerd kopveld sinds 2026-07-13); de controlelaag
+    # heeft 'm al mod-97-gevalideerd (app/extractie/controle.py) — oudere veldvoorstellen zonder
+    # iban-sleutel geven None: geen wisselcontrole mogelijk, nooit een blok op ontbrekende data.
+    factuur_iban = veldvoorstel.get("iban") if veldvoorstel else None
 
     voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     with scoped_session(None) as session:
@@ -521,9 +542,23 @@ def voer_checks_uit(
             client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
         except Exception as exc:  # noqa: BLE001 — bewust breed, zie de docstring hierboven
             return _duplicaatcheck_niet_uitgevoerd_rapport(
-                voorstel=voorstel, project_verplicht=project_verplicht, reden=str(exc)
+                administratie_id=administratie_id,
+                voorstel=voorstel,
+                project_verplicht=project_verplicht,
+                factuur_iban=factuur_iban,
+                reden=str(exc),
             )
     try:
+        vertrouwde_ibans, baseline_vastgelegd = leverancier_iban.seed_en_baseline_voor_checks(
+            administratie_id=administratie_id,
+            vendor_id=voorstel.vendor_id,
+            factuur_iban=factuur_iban,
+            client=client,
+            # Systeem-actor: seed/baseline gebeuren als bijeffect van de checks, niet als
+            # bewuste gebruikershandeling — de menselijke bevestiging (bevestig_iban) draagt
+            # wél de echte actor.
+            actor_id=SYSTEEM_ACTOR_ID,
+        )
         return voer_harde_checks_uit(
             client=client,
             vendor_id=voorstel.vendor_id,
@@ -533,6 +568,9 @@ def voer_checks_uit(
             regels=_naar_check_regels(voorstel),
             eigen_rlz_document_id=rlz_purchase_invoice_id(document_id),
             project_verplicht=project_verplicht,
+            factuur_iban=factuur_iban,
+            vertrouwde_ibans=vertrouwde_ibans,
+            iban_baseline_vastgelegd=baseline_vastgelegd,
         )
     finally:
         if eigen_client:
