@@ -70,7 +70,7 @@
 
 | Onderwerp | Status | Canonieke vindplaats |
 |---|---|---|
-| KvK-dedup (ontdubbeling relaties/crediteuren op KvK-nummer) | **uitgewerkt in sessie, geparkeerd — LET OP: de uitwerking is in géén enkele repo terug te vinden** (gecheckt 2026-07-14: RLZ, Platform, git-histories). Bij heropening: eerst de uitwerking reconstrueren en canoniek vastleggen; dit verlies is de directe aanleiding voor het pre-feature-ritueel (WERKWIJZE v1.4) | — (ontbreekt; dit register is voorlopig de enige vastlegging) |
+| KvK-crediteur-dedup (KvK-match wint, naam-fallback gemarkeerd, live RLZ-check vóór PUT, naam-normalisatie via KvK Basisprofiel, duplicaat-signalering zonder auto-samenvoegen) | **uitgewerkt, geparkeerd** — canoniek vastgelegd 2026-07-14 (na eerder sessie-verlies; aanleiding pre-feature-ritueel WERKWIJZE v1.4). Bouwen pas als de KvK-API voor RLZ beschikbaar is (rule-of-two → gedeelde platform-connector) én het RLZ-KvK-veld live geverifieerd is | `docs/ontwerp/kvk-crediteur-dedup.md` |
 
 ## Onderhoud
 
