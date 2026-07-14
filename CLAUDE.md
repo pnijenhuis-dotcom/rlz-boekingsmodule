@@ -102,34 +102,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   historie, nog niet bevestigd"), óók bij hoge stem-confidence — pas de eerste app-bevestiging van
   die waarde maakt 'm groen (`app_bevestigd` per veld in engine + voorstel-response).**
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
-  **Status per harde/blokkerende check (gedocumenteerd ≠ gebouwd — houd dit actueel, audit
-  2026-07-13):**
-  - duplicaat (Entity+Referentie+bedrag): **gebouwd** (`backend/app/documenten/checks.py::check_duplicaat`) **+ getest**;
-  - regeltelling vs totaal: **gebouwd** (`checks.py::check_regeltelling`) **+ getest**;
-  - verplichte velden incl. projectplicht: **gebouwd** (`checks.py::check_verplichte_velden`) **+ getest**;
-  - IBAN-wissel: **gebouwd + getest** (2026-07-13: `checks.py::check_iban_wissel` +
-    `app/documenten/leverancier_iban.py` — vertrouwde meerwaardige set per crediteur
-    (rlz_seed uit `Vendors/{id}/BankRelations` / baseline / bevestigd), eerste keer = baseline
-    zonder blok, afwijking = hard blok tot menselijke bevestiging, G-rekening/WKA = tweede
-    bevestigde rekening is de norm; IBAN gestructureerd extractieveld, mod-97 in
-    `app/extractie/iban.py`, nooit in logs/URL's);
-  - vraag blokkeert boeken: **gebouwd + getest** (2026-07-14, backend/PART A —
-    `app/documenten/vragen.py` + migraties 0021/0022: stellen = verplichte tekst + document naar
-    `vraag_open` (vanuit te_controleren/handmatig_afmaken/klaar_om_te_boeken), toewijzing default
-    administratie-eigenaar/override binnen scope, beantwoorden (verplicht antwoord) én intrekken
-    (reden optioneel) herstellen exact de herkomst-status (`status_voor_vraag`), één open vraag
-    per document (DB-index), audit op stellen/beantwoorden/intrekken; intrekken + stellen-vanuit-
-    klaar_om_te_boeken = bewuste mockup-uitbreidingen (BESLISSINGEN.md); UI = PART B);
-  - afwijzen-met-verplichte-reden: **half** — de status zit in de statusmachine (boeken kan niet
-    vanuit `afgewezen`), maar workflow, endpoint en reden-afdwinging bestaan niet → bouwen in de
-    afwijs-workflow (fase 1-vervolg, BOUWPLAN punt 8);
-  - memoriaal saldo = 0: **nog niet gebouwd** → omzet/memoriaal-fase (fase 2);
-  - VGB-prefixfilter (nooit als werkvoorraad tonen): **nog niet gebouwd** → bouwen vóórdat er
-    documenten uit gedeelde (vastgoed-)administraties gelezen worden;
-  - per-leverancier-autoboeken-opt-in: **nog niet gebouwd** (alleen de per-administratie
-    boeken-toggle bestaat) → bouwen vóór de eerste autoboek-functie;
-  - webhook-HMAC-timing (ondertekenen per verzendpoging, niet bij aanmaak): **nog niet gebouwd**
-    → mét de afleveraar (open item 2026-07-13).
+  **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
+  check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
+  verplichte velden, IBAN-wissel en vraag-blokkeert-boeken zijn gebouwd + getest; **nog niet
+  gebouwd:** afwijzen-workflow (reden-afdwinging), memoriaal-saldo-0 (fase 2), VGB-prefixfilter
+  (vóór gedeelde administraties), per-leverancier-autoboeken-opt-in (vóór eerste autoboek),
+  webhook-HMAC-per-verzendpoging (mét de afleveraar).
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
