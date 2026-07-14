@@ -201,8 +201,52 @@ export interface AdministratieInstellingenDto {
   boeken_ingeschakeld: boolean
   project_verplicht: boolean
   ai_extractie_ingeschakeld: boolean
+  eigenaar_gebruiker_id: string | null
 }
 
 export interface AdministratieInstellingenLijstDto {
   administraties: AdministratieInstellingenDto[]
+}
+
+/** Eén vraag over een document (vragenworkflow PART A, backend/app/documenten/vragen.py).
+ * `status_voor_vraag` is de herkomst-status: beantwoorden/intrekken zetten het document daar
+ * exact naar terug. `document_status` reist mee zodat de UI een weesvraag op een verwijderd
+ * document herkent (niet actief tonen). */
+export interface VraagDto {
+  id: string
+  document_id: string
+  document_bestandsnaam: string
+  document_status: string
+  /** Totaalbedrag uit het boekvoorstel (Decimal serialiseert als string), null zonder voorstel. */
+  totaalbedrag: string | null
+  vraag_tekst: string
+  status: 'open' | 'beantwoord' | 'ingetrokken'
+  status_voor_vraag: string
+  gesteld_door: string
+  gesteld_op: string
+  toegewezen_aan: string
+  antwoord_tekst: string | null
+  beantwoord_door: string | null
+  beantwoord_op: string | null
+  ingetrokken_door: string | null
+  ingetrokken_op: string | null
+  ingetrokken_reden: string | null
+}
+
+export interface VraagLijstDto {
+  vragen: VraagDto[]
+}
+
+/** Toewijsbare medewerker (vraagmodal): bewust alleen id + naam. */
+export interface MedewerkerDto {
+  id: string
+  naam: string
+}
+
+export interface MedewerkersLijstDto {
+  medewerkers: MedewerkerDto[]
+}
+
+export interface EigenaarDto {
+  eigenaar_gebruiker_id: string | null
 }

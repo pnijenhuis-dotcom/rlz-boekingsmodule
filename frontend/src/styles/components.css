@@ -37,6 +37,18 @@
   background: var(--green);
 }
 
+/* Mockup .btn.warn (vraag stellen / intrekken): omlijnd oranje, geen vulling. */
+.btn.warn {
+  background: var(--panel);
+  color: var(--orange);
+  border: 1px solid var(--orange);
+}
+
+.btn.warn:hover:not(:disabled) {
+  filter: none;
+  background: var(--orange-bg);
+}
+
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -549,4 +561,38 @@ body.dark .combobox-listbox {
   padding: 10px 12px;
   word-break: break-all;
   margin-bottom: 4px;
+}
+
+/* Vragen-view (mockup #vragen, .q-item/.q-answer): één vraag-blok met meta-regel, rood
+   gemarkeerde vraagtekst en een actieregel; historie krijgt opacity via inline style. */
+.q-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+}
+
+.q-item .meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.q-item .vraagtekst {
+  background: var(--red-bg);
+  border-radius: 6px;
+  padding: 9px 12px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.q-answer {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.q-answer input {
+  flex: 1;
 }

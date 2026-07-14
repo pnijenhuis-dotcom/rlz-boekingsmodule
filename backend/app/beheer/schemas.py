@@ -33,6 +33,17 @@ class AdministratieInstellingenLijstDto(BaseModel):
     administraties: list[AdministratieInstellingenDto]
 
 
+class MedewerkerDto(BaseModel):
+    """Toewijsbare medewerker (vraagmodal): bewust alleen id + naam, geen e-mail/rol."""
+
+    id: uuid.UUID
+    naam: str
+
+
+class MedewerkersLijstDto(BaseModel):
+    medewerkers: list[MedewerkerDto]
+
+
 class EigenaarDto(BaseModel):
     """Mockup Instellingen "Eigenaar (krijgt vragen)": default-toewijzing voor nieuwe vragen.
     None = geen eigenaar (vraag stellen vereist dan een expliciete toewijzing)."""

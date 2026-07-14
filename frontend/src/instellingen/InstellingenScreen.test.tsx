@@ -64,6 +64,16 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body })
         return Promise.resolve(jsonResponse(body))
       }
+      if (url.endsWith('/medewerkers')) {
+        return Promise.resolve(
+          jsonResponse({ medewerkers: [{ id: 'eeeeeeee-0000-0000-0000-000000000009', naam: 'M. de Boer' }] }),
+        )
+      }
+      if (url.endsWith('/eigenaar') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as unknown
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse(body))
+      }
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
   )
@@ -184,5 +194,25 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     await waitFor(() => expect(putAanroepen).toHaveLength(1))
     expect(putAanroepen[0].url).toBe('/instellingen/boeken-kill-switch')
     expect(putAanroepen[0].body).toEqual({ ingeschakeld: false })
+  })
+  it('eigenaar kiezen vraagt bevestiging en PUT de eigenaar (krijgt vragen)', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'beheerder', putAanroepen })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByLabelText('Eigenaar van Testklant B.V.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('Eigenaar van Testklant B.V.')).not.toBeDisabled())
+    await gebruiker.selectOptions(
+      screen.getByLabelText('Eigenaar van Testklant B.V.'),
+      'eeeeeeee-0000-0000-0000-000000000009',
+    )
+
+    expect(screen.getByText(/M\. de Boer wordt eigenaar van "Testklant B\.V\."/)).toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+
+    await waitFor(() => expect(putAanroepen).toHaveLength(1))
+    expect(putAanroepen[0].url).toBe(`/administraties/${ADMINISTRATIE_ID}/eigenaar`)
+    expect(putAanroepen[0].body).toEqual({ eigenaar_gebruiker_id: 'eeeeeeee-0000-0000-0000-000000000009' })
   })
 })

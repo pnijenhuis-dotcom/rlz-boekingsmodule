@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
-import type { DocumentActieResponseDto, DocumentDetailDto } from '../api/types'
+import type { DocumentActieResponseDto, DocumentDetailDto, VraagDto } from '../api/types'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
+import { useMedewerkers } from '../vragen/useMedewerkers'
+import { haalVragenOp } from '../vragen/vragenApi'
+import { VraagModal } from '../vragen/VraagModal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+
+/** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
+ * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
+const VRAAG_STELLEN_STATUSSEN = new Set(['te_controleren', 'handmatig_afmaken', 'klaar_om_te_boeken'])
 
 /** Ververs-interval zolang de achtergrondextractie loopt (wachtrij/bezig). */
 const EXTRACTIE_POLL_MS = 3000
@@ -188,6 +195,9 @@ export function DocumentDetailScreen() {
   // UX-fix 2026-07-11: her-extractie vanaf een gesláágd voorstel vraagt eerst bevestiging —
   // de her-run overschrijft het huidige voorstel (nieuwste extractie wint).
   const [herExtractieBevestigen, setHerExtractieBevestigen] = useState(false)
+  const [vraagModalOpen, setVraagModalOpen] = useState(false)
+  const [openVraag, setOpenVraag] = useState<VraagDto | null>(null)
+  const { naamVoor } = useMedewerkers(administratieId ?? null)
 
   const laadDetail = useCallback(() => {
     if (!administratieId || !documentId) return
@@ -209,6 +219,28 @@ export function DocumentDetailScreen() {
     const timer = setInterval(laadDetail, EXTRACTIE_POLL_MS)
     return () => clearInterval(timer)
   }, [detail, laadDetail])
+
+  // Open vraag van dit document (vragenworkflow): gevoed zodra de status vraag_open is, zodat
+  // de banner de vraagtekst + toegewezene toont in plaats van alleen een statuschip.
+  useEffect(() => {
+    if (!administratieId || !documentId || detail?.status !== 'vraag_open') {
+      setOpenVraag(null)
+      return
+    }
+    let actief = true
+    haalVragenOp(administratieId, { status: 'open', documentId })
+      .then((data) => {
+        if (actief) setOpenVraag(data.vragen[0] ?? null)
+      })
+      .catch(() => {
+        // Banner degradeert naar alleen de statuschip — de vraag zelf blijft via de
+        // vragen-view bereikbaar.
+        if (actief) setOpenVraag(null)
+      })
+    return () => {
+      actief = false
+    }
+  }, [administratieId, documentId, detail?.status])
 
   useEffect(() => {
     if (!administratieId || !documentId) return
@@ -306,6 +338,38 @@ export function DocumentDetailScreen() {
         </div>
 
         <div className="formpane">
+          {detail.status === 'vraag_open' && (
+            <div className="panel">
+              <h2>
+                Open vraag <span className="chip vraag">boeken geblokkeerd</span>
+              </h2>
+              {openVraag ? (
+                <>
+                  <div className="q-item" style={{ marginBottom: 0, border: 'none', padding: 0 }}>
+                    <div className="meta">
+                      gesteld door {naamVoor(openVraag.gesteld_door)}, {formatDatum(openVraag.gesteld_op)} ·
+                      toegewezen aan <b>{naamVoor(openVraag.toegewezen_aan)}</b>
+                    </div>
+                    <div className="vraagtekst">&ldquo;{openVraag.vraag_tekst}&rdquo;</div>
+                  </div>
+                  <div className="actions">
+                    <Link className="btn" to={`/vragen?administratie=${administratieId}&document=${documentId}`}>
+                      Beantwoorden of intrekken →
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <p className="hint" style={{ marginTop: 0 }}>
+                  Er staat een open vraag op dit document —{' '}
+                  <Link to={`/vragen?administratie=${administratieId}&document=${documentId}`}>
+                    bekijk de vraag
+                  </Link>
+                  . Boeken kan pas na beantwoording (of intrekking).
+                </p>
+              )}
+            </div>
+          )}
+
           {achtergrondBezig && (
             <div className="panel">
               <h2>
@@ -395,6 +459,21 @@ export function DocumentDetailScreen() {
               veldvoorstel={detail.veldvoorstel}
               onGeboekt={laadDetail}
               onHersteld={laadDetail}
+              onVraagStellen={
+                VRAAG_STELLEN_STATUSSEN.has(detail.status) ? () => setVraagModalOpen(true) : undefined
+              }
+            />
+          )}
+
+          {vraagModalOpen && (
+            <VraagModal
+              administratieId={administratieId}
+              documentId={documentId}
+              onGesteld={() => {
+                setVraagModalOpen(false)
+                laadDetail()
+              }}
+              onAnnuleren={() => setVraagModalOpen(false)}
             />
           )}
 
@@ -477,6 +556,23 @@ export function DocumentDetailScreen() {
                       {g.detail && 'ai_extractie_onvolledig' in g.detail && (
                         <div className="hint" style={{ marginTop: 2, color: 'var(--red)' }}>
                           {String(g.detail.ai_extractie_onvolledig)}
+                        </div>
+                      )}
+                      {g.detail && 'vraag_id' in g.detail && g.naar_status === 'vraag_open' && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Vraag gesteld door {naamVoor(g.actor_id)} — toegewezen aan{' '}
+                          {naamVoor(typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}
+                        </div>
+                      )}
+                      {g.detail && 'vraag_beantwoord' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Vraag beantwoord door {naamVoor(g.actor_id)}
+                        </div>
+                      )}
+                      {g.detail && 'vraag_ingetrokken' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Vraag ingetrokken door {naamVoor(g.actor_id)}
+                          {typeof g.detail.reden === 'string' && g.detail.reden ? ` — “${g.detail.reden}”` : ''}
                         </div>
                       )}
                     </td>

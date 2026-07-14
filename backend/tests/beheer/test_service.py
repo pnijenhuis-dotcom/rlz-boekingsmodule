@@ -133,6 +133,49 @@ class TestEigenaarInstelling:
         assert service.haal_eigenaar_op(administratie_id=administratie_id) == beheerder_id
 
 
+class TestMedewerkersLijst:
+    """Toewijsbare medewerkers (vraagmodal PART B): scope-gebruikers + actieve Beheerders,
+    nooit gebruikers zonder scope op déze administratie."""
+
+    def test_bevat_scope_gebruiker_en_beheerder_niet_de_buitenstaander(
+        self,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        buitenstaander = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "
+                    "VALUES (:id, 'Zonder scope', :mail, 'boekhouding', 'actief')"
+                ),
+                {"id": buitenstaander, "mail": f"{buitenstaander}@test.local"},
+            )
+        medewerkers = service.lijst_medewerkers(administratie_id=administratie_id)
+        ids = {m.id for m in medewerkers}
+        assert gescoopte_gebruiker in ids
+        assert beheerder_id in ids
+        assert buitenstaander not in ids
+        assert all(m.naam for m in medewerkers)
+
+    def test_inactieve_scope_gebruiker_niet_toewijsbaar(
+        self,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.gebruiker SET status = 'geblokkeerd' WHERE id = :id"),
+                {"id": gescoopte_gebruiker},
+            )
+        medewerkers = service.lijst_medewerkers(administratie_id=administratie_id)
+        assert gescoopte_gebruiker not in {m.id for m in medewerkers}
+
+
 class TestGlobaleKillSwitch:
     def test_default_aan(self) -> None:
         assert service.haal_globale_kill_switch_op() is True

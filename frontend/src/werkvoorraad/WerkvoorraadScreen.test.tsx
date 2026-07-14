@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WerkvoorraadScreen } from './WerkvoorraadScreen'
 
@@ -216,5 +216,66 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
     await gebruiker.click(screen.getByRole('button', { name: /Herstellen/ }))
     await waitFor(() => expect(herstellenAanroepen).toHaveLength(1))
     expect(herstellenAanroepen[0]).toContain(`/documenten/${VERWIJDERD_DOCUMENT_ID}/herstellen`)
+  })
+})
+
+describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
+  const EIGENAAR_ID = 'eeeeeeee-0000-0000-0000-000000000009'
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function installVraagFetchMock(documenten: unknown[]) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/auth/administraties')) {
+          return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Testklant' }] }))
+        }
+        if (url.endsWith('/medewerkers')) {
+          return Promise.resolve(jsonResponse({ medewerkers: [{ id: EIGENAAR_ID, naam: 'M. de Boer' }] }))
+        }
+        if (url.includes('/documenten') && (!init || init.method === undefined)) {
+          return Promise.resolve(jsonResponse({ documenten }))
+        }
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+  }
+
+  it('toont de vraag-open-chip, de toegewezen-naam en de open-vragen-teller', async () => {
+    installVraagFetchMock([document({ status: 'vraag_open', toegewezen_aan: EIGENAAR_ID })])
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('Vraag open')).toBeInTheDocument())
+    expect(screen.getByText('M. de Boer')).toBeInTheDocument()
+    const teller = screen.getByText('1 vraag open')
+    expect(teller.closest('a')).toHaveAttribute('href', `/vragen?administratie=${ADMINISTRATIE_ID}`)
+  })
+
+  it('klik op een vraag-regel opent de vraag (vragen-view gefilterd op het document)', async () => {
+    const gebruiker = userEvent.setup()
+    installVraagFetchMock([document({ status: 'vraag_open', toegewezen_aan: EIGENAAR_ID })])
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<WerkvoorraadScreen />} />
+          <Route path="/vragen" element={<div>vragen-view-probe</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
+    await gebruiker.click(screen.getByText('factuur.pdf'))
+    await waitFor(() => expect(screen.getByText('vragen-view-probe')).toBeInTheDocument())
+  })
+
+  it('zonder open vragen geen teller-chip', async () => {
+    installVraagFetchMock([document({})])
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
+    expect(screen.queryByText(/vraag open/)).not.toBeInTheDocument()
   })
 })

@@ -262,12 +262,23 @@ interface Props {
   veldvoorstel?: Record<string, unknown> | null
   onGeboekt: () => void
   onHersteld: () => void
+  /** Vragenworkflow (mockup: "Vraag stellen…"-knop naast de boekknop): alleen meegegeven vanuit
+   * statussen waaruit een vraag gesteld kan worden — undefined verbergt de knop. */
+  onVraagStellen?: () => void
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
  * zoekbare GB-/btw-/project-comboboxen, harde checks zichtbaar (groen/blokkerend), live
  * aansluit-indicator, en de echte boekactie. */
-export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoorstel, onGeboekt, onHersteld }: Props) {
+export function BoekvoorstelPanel({
+  administratieId,
+  documentId,
+  status,
+  veldvoorstel,
+  onGeboekt,
+  onHersteld,
+  onVraagStellen,
+}: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
   // controleur, niet meer van de AI.
@@ -1152,6 +1163,11 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
         )}
         {!isReadOnly && (
           <div className="actions">
+            {onVraagStellen && (
+              <button type="button" className="btn warn" onClick={onVraagStellen}>
+                Vraag stellen…
+              </button>
+            )}
             <button
               type="button"
               className="btn green"

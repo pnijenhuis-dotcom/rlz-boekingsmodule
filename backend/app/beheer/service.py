@@ -177,6 +177,38 @@ def zet_ai_extractie_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid
         return ingeschakeld
 
 
+@dataclass(frozen=True)
+class Medewerker:
+    id: uuid.UUID
+    naam: str
+
+
+def lijst_medewerkers(*, administratie_id: uuid.UUID) -> list[Medewerker]:
+    """Actieve gebruikers die op deze administratie toegewezen kunnen worden (vraagmodal
+    "Toewijzen aan", PART B): scope-gebruikers via de koppeltabel + alle actieve Beheerders
+    (platform-breed, zelfde bypass als overal). Sessie gescoped op de administratie: de RLS op
+    gebruiker_administratie geeft buiten die scope geen rijen — het lek-risico zit dus niet in
+    deze query maar wordt op DB-niveau afgevangen; de router doet daarbovenop de
+    vereis_administratie_scope-check op de aanroeper. Alleen id + naam — geen e-mail/rol/status
+    naar de UI (dataminimalisatie)."""
+    with scoped_session(administratie_id) as session:
+        gescoopt = session.execute(
+            select(Gebruiker.id, Gebruiker.naam)
+            .join(GebruikerAdministratie, GebruikerAdministratie.gebruiker_id == Gebruiker.id)
+            .where(
+                GebruikerAdministratie.administratie_id == administratie_id,
+                Gebruiker.status == GebruikerStatus.ACTIEF,
+            )
+        ).all()
+        beheerders = session.execute(
+            select(Gebruiker.id, Gebruiker.naam).where(
+                Gebruiker.rol == GebruikerRol.BEHEERDER, Gebruiker.status == GebruikerStatus.ACTIEF
+            )
+        ).all()
+    uniek = {rij.id: rij.naam for rij in [*gescoopt, *beheerders]}
+    return sorted((Medewerker(id=gid, naam=naam) for gid, naam in uniek.items()), key=lambda m: m.naam.lower())
+
+
 class OngeldigeEigenaar(BeheerFout):
     """De beoogde eigenaar is geen actieve gebruiker met toegang tot deze administratie."""
 

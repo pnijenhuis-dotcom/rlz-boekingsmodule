@@ -36,6 +36,22 @@ def administratie_instellingen_lijst(
 
 
 @router.get(
+    "/administraties/{administratie_id}/medewerkers",
+    response_model=schemas.MedewerkersLijstDto,
+)
+def medewerkers_lijst(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.MedewerkersLijstDto:
+    """Toewijsbare medewerkers voor de vraagmodal (PART B): scope-gebruikers + actieve
+    Beheerders — server-side scope-gecontroleerd (dependency) en op DB-niveau (RLS op de
+    koppeltabel)."""
+    medewerkers = service.lijst_medewerkers(administratie_id=administratie_id)
+    return schemas.MedewerkersLijstDto(
+        medewerkers=[schemas.MedewerkerDto(id=m.id, naam=m.naam) for m in medewerkers]
+    )
+
+
+@router.get(
     "/administraties/{administratie_id}/eigenaar",
     response_model=schemas.EigenaarDto,
 )

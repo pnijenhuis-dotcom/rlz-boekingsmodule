@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
+import { useMedewerkers } from '../vragen/useMedewerkers'
 import { extractieActief } from './status'
 import { StatusChip } from './StatusChip'
 import { useAdministraties } from './useAdministraties'
@@ -24,6 +25,7 @@ export function WerkvoorraadScreen() {
   const navigate = useNavigate()
   const administratieId = searchParams.get('administratie')
   const bestandInputRef = useRef<HTMLInputElement>(null)
+  const { naamVoor } = useMedewerkers(administratieId)
 
   const [documenten, setDocumenten] = useState<DocumentListItemDto[] | null>(null)
   const [lijstFout, setLijstFout] = useState<string | null>(null)
@@ -166,6 +168,20 @@ export function WerkvoorraadScreen() {
               </option>
             ))}
           </select>
+          {(() => {
+            // Vragen-teller (mockup klantenlijst-kolom "Vragen") — de aparte klantenlijst met
+            // tellers per klant is BOUWPLAN punt 8-vervolg; tot die er is telt de werkvoorraad
+            // van de geselecteerde administratie zelf, klikbaar naar de vragen-view.
+            const openVragen = (documenten ?? []).filter((d) => d.status === 'vraag_open').length
+            if (openVragen === 0) return null
+            return (
+              <Link to={`/vragen?administratie=${administratieId}`} style={{ textDecoration: 'none' }}>
+                <span className="chip vraag">
+                  {openVragen} {openVragen === 1 ? 'vraag' : 'vragen'} open
+                </span>
+              </Link>
+            )
+          })()}
         </div>
       </div>
 
@@ -232,6 +248,7 @@ export function WerkvoorraadScreen() {
                 <th>Status</th>
                 <th>Bron</th>
                 <th>Ontvangen</th>
+                <th>Toegewezen</th>
                 <th />
               </tr>
               {documenten.map((d) => {
@@ -239,11 +256,21 @@ export function WerkvoorraadScreen() {
                 // Backend blokkeert dit al hard (bewaarplicht/lopende accordering) — de UI mag de
                 // onmogelijke actie dan niet eens aanbieden, ook niet als disabled-knop.
                 const kanNietVerwijderdWorden = d.status === 'geboekt' || d.status === 'ter_accordering'
+                // Mockup: klik op een vraag-regel opent de vráág, niet het controlescherm — de
+                // vragen-view gefilterd op dit document. Een verwijderd document houdt de normale
+                // detailnavigatie (herstel-route), nooit een klik naar een niet-actiefbare vraag.
+                const isVraagRegel = d.status === 'vraag_open' && !isVerwijderd
                 return (
                   <tr
                     key={d.id}
                     className="clickable"
-                    onClick={() => navigate(`/documenten/${administratieId}/${d.id}`)}
+                    onClick={() =>
+                      navigate(
+                        isVraagRegel
+                          ? `/vragen?administratie=${administratieId}&document=${d.id}`
+                          : `/documenten/${administratieId}/${d.id}`,
+                      )
+                    }
                   >
                     <td>{d.bestandsnaam}</td>
                     <td>
@@ -263,6 +290,7 @@ export function WerkvoorraadScreen() {
                     </td>
                     <td>{d.bron}</td>
                     <td>{formatDatum(d.aangemaakt_op)}</td>
+                    <td>{d.toegewezen_aan ? naamVoor(d.toegewezen_aan) : '—'}</td>
                     <td>
                       {isVerwijderd ? (
                         <button

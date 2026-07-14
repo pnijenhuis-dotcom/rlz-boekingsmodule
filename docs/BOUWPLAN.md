@@ -330,6 +330,20 @@ Backend:
      "Antwoord voedt geheugen" v1 = via de bestaande boek-leerlus (correctie + boeken → app-
      observatie); **latere verrijking (genoteerd):** doorzoekbare Q&A-kennisbank per crediteur.
      Tests: `tests/documenten/test_vragen.py` + eigenaar-tests in `tests/beheer/test_service.py`.
+     **PART B (UI) — gebouwd + getest (2026-07-14, wacht op browserreview):**
+     `frontend/src/vragen/` — vragen-view (mockup #vragen: q-items, antwoord-invoer +
+     Beantwoorden, Factuur bekijken, Intrekken… met optionele reden, grijze
+     beantwoord/ingetrokken-historie, weesvraag op verwijderd document niet actief),
+     vraagmodal (mockup #vraagmodal: medewerkers-select met eigenaar als "(standaard)",
+     verplichte tekst, boeken-geblokkeerd-melding), "Vraag stellen…"-knop (btn warn) naast de
+     boekknop op het controlescherm, open-vraag-banner + tijdlijn-entries
+     (gesteld/beantwoord/ingetrokken mét naam) in het detailscherm, werkvoorraad: Toegewezen-
+     kolom + klik-op-vraag-regel → vragen-view + open-vragen-teller (de teller per klant in de
+     nog te bouwen klantenlijst blijft onderdeel van punt 8), en Instellingen: kolom
+     "Eigenaar (krijgt vragen)" met medewerkers-select + bevestigingsdialoog. Prereq-endpoint
+     `GET /administraties/{id}/medewerkers` (id+naam, scope-gecontroleerd, dataminimalisatie).
+     Vraag-lijstresponse verrijkt met `totaalbedrag` uit het boekvoorstel (mockup toont het
+     bedrag per vraag). Frontend-tests: `src/vragen/*.test.tsx` + werkvoorraad-vraagtests.
      **Nog niet gebouwd, met implementerende fase:**
      afwijzen-met-verplichte-reden (status zit al in `statusmachine.py` en blokkeert het
      boekpad, maar workflow/endpoint/reden-afdwinging ontbreken → afwijs-workflow, punt 8

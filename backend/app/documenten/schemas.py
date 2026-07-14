@@ -179,6 +179,7 @@ class VraagResponse(BaseModel):
     document_id: uuid.UUID
     document_bestandsnaam: str
     document_status: str
+    totaalbedrag: Decimal | None = None
     vraag_tekst: str
     status: str
     status_voor_vraag: str

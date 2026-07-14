@@ -3,15 +3,19 @@ import { Navigate } from 'react-router-dom'
 import { ApiError, apiJson } from '../api/client'
 import type { AdministratieInstellingenDto, AdministratieInstellingenLijstDto, BoekenIngeschakeldDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useMedewerkers } from '../vragen/useMedewerkers'
 import { BevestigDialog } from './BevestigDialog'
 
-type WijzigingType = 'kill_switch' | 'boeken' | 'project' | 'ai_extractie'
+type WijzigingType = 'kill_switch' | 'boeken' | 'project' | 'ai_extractie' | 'eigenaar'
 
 interface PendingWijziging {
   type: WijzigingType
   administratieId?: string
   naam: string
   nieuweWaarde: boolean
+  /** Alleen voor type 'eigenaar' (mockup Instellingen "Eigenaar (krijgt vragen)"). */
+  eigenaarId?: string | null
+  eigenaarNaam?: string
 }
 
 function berichtVoor(pending: PendingWijziging): string {
@@ -32,6 +36,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `PDF's van "${pending.naam}" gaan voortaan voor extractie naar de Claude API (AVG-gate). Echte klantfacturen pas ná DPA + EU-verwerking + verwerkersregister — zie docs/BOUWPLAN.md.`
         : `AI-extractie wordt uitgeschakeld voor "${pending.naam}" — PDF's worden weer volledig handmatig ingevuld.`
+    case 'eigenaar':
+      return pending.eigenaarId
+        ? `${pending.eigenaarNaam ?? 'Deze medewerker'} wordt eigenaar van "${pending.naam}" en krijgt nieuwe vragen standaard toegewezen.`
+        : `"${pending.naam}" krijgt geen eigenaar — een vraag stellen vereist dan een expliciete toewijzing.`
   }
 }
 
@@ -58,10 +66,47 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
     })
     return
   }
+  if (pending.type === 'eigenaar') {
+    await apiJson(`/administraties/${pending.administratieId}/eigenaar`, {
+      ...init,
+      body: JSON.stringify({ eigenaar_gebruiker_id: pending.eigenaarId ?? null }),
+    })
+    return
+  }
   await apiJson(`/administraties/${pending.administratieId}/project-instelling`, {
     ...init,
     body: JSON.stringify({ verplicht: pending.nieuweWaarde }),
   })
+}
+
+interface EigenaarCellProps {
+  administratie: AdministratieInstellingenDto
+  onKies: (eigenaarId: string | null, eigenaarNaam: string | undefined) => void
+}
+
+/** Eigenaar-select per administratie (mockup Instellingen "Eigenaar (krijgt vragen)"): de
+ * toewijsbare medewerkers komen per rij uit het scope-gecontroleerde medewerkers-endpoint. */
+function EigenaarCell({ administratie, onKies }: EigenaarCellProps) {
+  const { medewerkers, fout } = useMedewerkers(administratie.id)
+  if (fout) return <span className="hint" style={{ margin: 0 }}>medewerkers niet te laden</span>
+  return (
+    <select
+      aria-label={`Eigenaar van ${administratie.naam}`}
+      value={administratie.eigenaar_gebruiker_id ?? ''}
+      disabled={!medewerkers}
+      onChange={(e) => {
+        const id = e.target.value || null
+        onKies(id, medewerkers?.find((m) => m.id === id)?.naam)
+      }}
+    >
+      <option value="">— geen eigenaar —</option>
+      {(medewerkers ?? []).map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.naam}
+        </option>
+      ))}
+    </select>
+  )
 }
 
 export function InstellingenScreen() {
@@ -121,7 +166,9 @@ export function InstellingenScreen() {
                       ? { boeken_ingeschakeld: pending.nieuweWaarde }
                       : pending.type === 'ai_extractie'
                         ? { ai_extractie_ingeschakeld: pending.nieuweWaarde }
-                        : { project_verplicht: pending.nieuweWaarde }),
+                        : pending.type === 'eigenaar'
+                          ? { eigenaar_gebruiker_id: pending.eigenaarId ?? null }
+                          : { project_verplicht: pending.nieuweWaarde }),
                   }
                 : a,
             ) ?? null,
@@ -179,6 +226,7 @@ export function InstellingenScreen() {
             <tbody>
               <tr>
                 <th>Administratie</th>
+                <th>Eigenaar (krijgt vragen)</th>
                 <th>Project verplicht bij boeken</th>
                 <th>Boeken ingeschakeld</th>
                 <th>AI-extractie (AVG-gate)</th>
@@ -186,6 +234,21 @@ export function InstellingenScreen() {
               {administraties.map((a) => (
                 <tr key={a.id}>
                   <td>{a.naam}</td>
+                  <td>
+                    <EigenaarCell
+                      administratie={a}
+                      onKies={(eigenaarId, eigenaarNaam) =>
+                        setPending({
+                          type: 'eigenaar',
+                          administratieId: a.id,
+                          naam: a.naam,
+                          nieuweWaarde: eigenaarId !== null,
+                          eigenaarId,
+                          eigenaarNaam,
+                        })
+                      }
+                    />
+                  </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
                       <input

@@ -17,6 +17,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerAdministratie, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
-from app.documenten.models import Document, DocumentStatus, Vraag, VraagStatus
+from app.documenten.models import Boekvoorstel, Document, DocumentStatus, Vraag, VraagStatus
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
 from app.documenten.statusmachine import OngeldigeStatusovergang
 
@@ -86,6 +87,9 @@ class VraagData:
     document_id: uuid.UUID
     document_bestandsnaam: str
     document_status: DocumentStatus
+    # Totaalbedrag uit het boekvoorstel (mockup #vragen toont het bedrag per vraag) — None als
+    # er (nog) geen boekvoorstel is.
+    totaalbedrag: Decimal | None
     vraag_tekst: str
     status: str
     status_voor_vraag: str
@@ -100,12 +104,13 @@ class VraagData:
     ingetrokken_reden: str | None
 
 
-def _naar_data(vraag: Vraag, document: Document) -> VraagData:
+def _naar_data(vraag: Vraag, document: Document, totaalbedrag: Decimal | None) -> VraagData:
     return VraagData(
         id=vraag.id,
         document_id=vraag.document_id,
         document_bestandsnaam=document.bestandsnaam,
         document_status=document.status,
+        totaalbedrag=totaalbedrag,
         vraag_tekst=vraag.vraag_tekst,
         status=vraag.status,
         status_voor_vraag=vraag.status_voor_vraag,
@@ -223,7 +228,11 @@ def stel_vraag(
             administratie_id=administratie_id,
         )
         session.flush()
-        return _naar_data(vraag, document)
+        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id))
+
+
+def _totaalbedrag_van(session, document_id: uuid.UUID) -> Decimal | None:
+    return session.scalar(select(Boekvoorstel.totaalbedrag).where(Boekvoorstel.document_id == document_id))
 
 
 def _open_vraag_met_document(session, *, administratie_id: uuid.UUID, vraag_id: uuid.UUID) -> tuple[Vraag, Document]:
@@ -285,7 +294,7 @@ def beantwoord_vraag(
             administratie_id=administratie_id,
         )
         session.flush()
-        return _naar_data(vraag, document)
+        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id))
 
 
 def trek_vraag_in(
@@ -330,7 +339,7 @@ def trek_vraag_in(
             administratie_id=administratie_id,
         )
         session.flush()
-        return _naar_data(vraag, document)
+        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id))
 
 
 def lijst_vragen(
@@ -342,11 +351,15 @@ def lijst_vragen(
     """Vragen van één administratie, nieuwste eerst (voedt de #vragen-view en de vraag-weergave
     in het controlescherm; PART B). Optioneel gefilterd op status en/of document."""
     with scoped_session(administratie_id) as session:
-        query = select(Vraag, Document).join(Document, Vraag.document_id == Document.id)
-        query = query.where(Vraag.administratie_id == administratie_id)
+        query = (
+            select(Vraag, Document, Boekvoorstel.totaalbedrag)
+            .join(Document, Vraag.document_id == Document.id)
+            .outerjoin(Boekvoorstel, Boekvoorstel.document_id == Document.id)
+            .where(Vraag.administratie_id == administratie_id)
+        )
         if status is not None:
             query = query.where(Vraag.status == status.value)
         if document_id is not None:
             query = query.where(Vraag.document_id == document_id)
         query = query.order_by(Vraag.gesteld_op.desc())
-        return [_naar_data(vraag, document) for vraag, document in session.execute(query)]
+        return [_naar_data(vraag, document, totaalbedrag) for vraag, document, totaalbedrag in session.execute(query)]

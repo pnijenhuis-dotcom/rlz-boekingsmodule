@@ -5,6 +5,7 @@ import { LoginScreen } from './auth/LoginScreen'
 import { DocumentDetailScreen } from './document/DocumentDetailScreen'
 import { InstellingenScreen } from './instellingen/InstellingenScreen'
 import { Shell } from './shell/Shell'
+import { VragenScreen } from './vragen/VragenScreen'
 import { WerkvoorraadScreen } from './werkvoorraad/WerkvoorraadScreen'
 
 function BeschermdeRoutes() {
@@ -25,6 +26,7 @@ function BeschermdeRoutes() {
     <Routes>
       <Route element={<Shell />}>
         <Route path="/" element={<WerkvoorraadScreen />} />
+        <Route path="/vragen" element={<VragenScreen />} />
         <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>

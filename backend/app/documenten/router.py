@@ -379,6 +379,7 @@ def _naar_vraag_response(data: vragen.VraagData) -> schemas.VraagResponse:
         document_id=data.document_id,
         document_bestandsnaam=data.document_bestandsnaam,
         document_status=data.document_status.value,
+        totaalbedrag=data.totaalbedrag,
         vraag_tekst=data.vraag_tekst,
         status=data.status,
         status_voor_vraag=data.status_voor_vraag,
