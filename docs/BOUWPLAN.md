@@ -473,6 +473,20 @@ UI-eisen):
 - Vastgoedmodule-webhook live (HMAC + timestamp/nonce + schema_version; integratietest tegen de
   aparte RLZ-test-administratie, testboekingen storneren — koppelcontract v1.3 §7.3).
 - MI-dashboard-module (read-only, Financials-endpoints + read-models).
+  - **Groepsconsolidatie = pure reporting-overlay (platformbesluit 0015, 2026-07-14 — alleen
+    documenteren, hier niets bouwen vóór de MI-fase):** geconsolideerde cijfers worden alleen
+    berekend/gerapporteerd, nooit geboekt — geen consolidatie-administratie, geen
+    eliminatieboekingen in enig pakket; IC-/deelnemingseliminaties zijn rekenstappen in de
+    overlay. **Randvoorwaarden die eerdere fasen al respecteren moeten** (datamodel/autorisatie
+    niet dichttimmeren op één-entiteit-aannames): (1) consolidatie leest bóven de
+    boekhoud-backend-port → die port biedt backend-agnostische lees-ops (saldibalans per
+    entiteit per periode; groep met gemengde backends RLZ/Odoo blijft consolideerbaar);
+    (2) prerequisite: gemeenschappelijke grootboek-referentie/mapping (kandidaat RGS) —
+    `platform.grootboekrekening` per administratie moet daarheen mapbaar blijven;
+    (3) consolidatiekring-model: groep + lidmaatschap, temporeel (ingangs-/einddatum) +
+    eigendoms-% (minderheidsbelang), met een groep-scope bóven de per-administratie-scope;
+    (4) intercompany-tagging (doorbelasting/centrale inkoop, IC-leveranciersvlag, VGB-prefix)
+    is het zaad voor de eliminaties. Details: `Platform/besluiten/0015-…`.
 - Peppol-intake, hardening (rate-limit-gedrag, backup/restore, monitoring), uitrol alle klanten.
 
 ## Platform-verbeteringen (vastgesteld 2026-07-04, mogelijk gemaakt door GCP-keuze)
