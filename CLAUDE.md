@@ -198,11 +198,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
   schema-versies, entiteiten, conventies)**
+- `docs/BESLISSINGEN.md` — **statusregister per feature/onderwerp (status + canonieke vindplaats)**
 - `docs/BOUWPLAN.md` — fasering en definition of done per fase
 - `verkenning/.env` — RLZ-credentials (BLOW + Universal Steigerbouw), NOOIT committen
 
 ## Werkwijze
 
+- **`docs/BESLISSINGEN.md` is de verplichte eerste check vóór elk feature-voorstel of bouwstart**
+  (pre-feature-ritueel, `Platform/WERKWIJZE.md` v1.4): raadpleeg het register + de canonieke
+  vindplaats en benoem expliciet waar de feature al staat; goedgekeurde mockup/besluit = 1-op-1
+  voortbouwen, niet opnieuw uitvragen. **Capture-at-acceptance:** elk akkoord van Peter meteen in
+  dit register (+ canonieke plek) vastleggen, nooit alleen in de chat.
 - **Cross-projectdocumenten hebben precies één canonieke locatie**: het koppelcontract leeft als
   master in `verkenning/` van deze repo (kopie in de vastgoed-repo wordt bij elke versiebump
   gesynchroniseerd en per diff geverifieerd); `01_ARCHITECTUUR.md` en `14_ANTWOORD_AAN_RLZ.md`
