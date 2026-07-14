@@ -154,6 +154,49 @@ class BoekenResponse(BaseModel):
     rlz_boekstuknummer: str | None = None
 
 
+class VraagStellenInput(BaseModel):
+    """Vraagmodal (mockup #vraagmodal): tekst verplicht (lege vraag wordt óók in de servicelaag
+    geweigerd — deze schema-eis is de eerste poort, geen vervanging), toewijzing optioneel
+    (default: de administratie-eigenaar, "krijgt vragen")."""
+
+    vraag_tekst: str
+    toegewezen_aan: uuid.UUID | None = None
+
+
+class VraagBeantwoordenInput(BaseModel):
+    antwoord_tekst: str
+
+
+class VraagIntrekkenInput(BaseModel):
+    """Intrekken (bewuste uitbreiding op de mockup, docs/BESLISSINGEN.md): reden optioneel,
+    maar wordt hoe dan ook in het audit_event vastgelegd."""
+
+    reden: str | None = None
+
+
+class VraagResponse(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_bestandsnaam: str
+    document_status: str
+    vraag_tekst: str
+    status: str
+    status_voor_vraag: str
+    gesteld_door: uuid.UUID
+    gesteld_op: datetime
+    toegewezen_aan: uuid.UUID
+    antwoord_tekst: str | None = None
+    beantwoord_door: uuid.UUID | None = None
+    beantwoord_op: datetime | None = None
+    ingetrokken_door: uuid.UUID | None = None
+    ingetrokken_op: datetime | None = None
+    ingetrokken_reden: str | None = None
+
+
+class VraagLijstResponse(BaseModel):
+    vragen: list[VraagResponse]
+
+
 class IbanBevestigenInput(BaseModel):
     """IBAN-wissel-flow: het nieuwe rekeningnummer reist in de request-body, nooit in de URL
     (privacy — URL's belanden in access-logs)."""

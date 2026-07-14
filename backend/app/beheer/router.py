@@ -28,10 +28,49 @@ def administratie_instellingen_lijst(
                 boeken_ingeschakeld=r.boeken_ingeschakeld,
                 project_verplicht=r.project_verplicht,
                 ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
+                eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
             )
             for r in overzicht
         ]
     )
+
+
+@router.get(
+    "/administraties/{administratie_id}/eigenaar",
+    response_model=schemas.EigenaarDto,
+)
+def eigenaar_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.EigenaarDto:
+    """Scope-check, geen Beheerder-only: wie een vraag stelt moet kunnen zien wie de default-
+    toegewezene is (vraagmodal: "— eigenaar ... (standaard)")."""
+    try:
+        eigenaar = service.haal_eigenaar_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.EigenaarDto(eigenaar_gebruiker_id=eigenaar)
+
+
+@router.put(
+    "/administraties/{administratie_id}/eigenaar",
+    response_model=schemas.EigenaarDto,
+)
+def eigenaar_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.EigenaarDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.EigenaarDto:
+    """Wijzigen is Beheerder-only, net als de andere administratie-instellingen (mockup
+    Instellingen "Eigenaar (krijgt vragen)")."""
+    try:
+        eigenaar = service.zet_eigenaar(
+            actor_id=actor.id, administratie_id=administratie_id, eigenaar_gebruiker_id=invoer.eigenaar_gebruiker_id
+        )
+    except service.OngeldigeEigenaar as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.EigenaarDto(eigenaar_gebruiker_id=eigenaar)
 
 
 @router.get(

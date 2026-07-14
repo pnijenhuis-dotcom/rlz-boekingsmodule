@@ -67,7 +67,11 @@ class Administratie(Base):
     is (DPA + EU-verwerking + verwerkersregister, docs/BOUWPLAN.md) alleen aan voor de
     test-administratie/eigen facturen.
     `is_vastgoed` (migratie 0018) markeert een vastgoed-administratie: alleen díé krijgen bij
-    "geboekt" een webhook-outbox-rij (koppelcontract §3) — default UIT, expliciet zetten."""
+    "geboekt" een webhook-outbox-rij (koppelcontract §3) — default UIT, expliciet zetten.
+    `eigenaar_gebruiker_id` (migratie 0021, mockup Instellingen "Eigenaar (krijgt vragen)") is de
+    default-toewijzing voor nieuwe vragen over documenten van deze administratie — nullable: geen
+    eigenaar betekent dat vraag stellen een expliciete toewijzing vereist (zichtbare fout, geen
+    stille default)."""
 
     __tablename__ = "administratie"
 
@@ -79,6 +83,9 @@ class Administratie(Base):
     project_verplicht: Mapped[bool] = mapped_column(default=False)
     ai_extractie_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     is_vastgoed: Mapped[bool] = mapped_column(default=False)
+    eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

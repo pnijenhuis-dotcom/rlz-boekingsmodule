@@ -36,7 +36,8 @@
 | Regeltelling vs totaal | gebouwd + getest | `checks.py::check_regeltelling` |
 | Verplichte velden incl. projectplicht | gebouwd + getest | `checks.py::check_verplichte_velden` |
 | IBAN-wissel (vertrouwde meerwaardige set per crediteur, G-rekening/WKA = norm) | gebouwd + getest (2026-07-13) | `checks.py::check_iban_wissel`; `app/documenten/leverancier_iban.py`; migratie 0019; Platform OPEN_ITEMS (afgehandeld) |
-| Vraag blokkeert boeken / afwijzen-met-verplichte-reden | half: statusmachine-statussen bestaan; workflow/endpoints/reden-afdwinging niet | CLAUDE.md checkstatus; BOUWPLAN fase 1 punt 8-vervolg |
+| Vraag blokkeert boeken | **gebouwd + getest** (2026-07-14, backend/PART A) | `app/documenten/vragen.py`; migraties 0021/0022; `tests/documenten/test_vragen.py` |
+| Afwijzen-met-verplichte-reden | half: status bestaat en blokkeert boekpad; workflow/endpoint/reden-afdwinging niet | CLAUDE.md checkstatus; BOUWPLAN fase 1 punt 8-vervolg |
 | Memoriaal saldo = 0 | nog niet gebouwd → fase 2 | CLAUDE.md checkstatus |
 | VGB-prefixfilter (nooit als werkvoorraad tonen) | nog niet gebouwd → vóór lezen uit gedeelde administraties | CLAUDE.md checkstatus; koppelcontract |
 | Autoboeken opt-in per leverancier | nog niet gebouwd → vóór eerste autoboek-functie | CLAUDE.md checkstatus |
@@ -46,7 +47,8 @@
 
 | Onderwerp | Status | Canonieke vindplaats |
 |---|---|---|
-| Vragenworkflow (vraag blokkeert boeken, eigenaar per administratie, antwoord voedt geheugen, status in werkvoorraad — geen apart menu) | **goedgekeurd** (mockup-rondes) | mockup `#vragen` + `#vraagmodal`; CLAUDE.md "Vragenworkflow"; BOUWPLAN fase 1 punt 8-vervolg |
+| Vragenworkflow (vraag blokkeert boeken, eigenaar per administratie, antwoord voedt geheugen, status in werkvoorraad — geen apart menu) | **backend gebouwd + getest** (2026-07-14, PART A: record + endpoints + eigenaar-instelling + afdwinging; beantwoorden/intrekken herstellen exact de herkomst-status via `vraag.status_voor_vraag` — nooit hardgecodeerd te_controleren; "antwoord voedt geheugen" v1 via de boek-leerlus, doorzoekbare Q&A-kennisbank per crediteur = genoteerde latere verrijking); UI = PART B, nog te bouwen op mockup | mockup `#vragen` + `#vraagmodal`; CLAUDE.md "Vragenworkflow"; BOUWPLAN fase 1 punt 6 checkstatus + punt 8-vervolg; `app/documenten/vragen.py` |
+| — **Bewuste uitbreidingen op de goedgekeurde mockup** (akkoord Peter 2026-07-14): (1) **vraag intrekken** (status `ingetrokken`, reden optioneel, document terug naar herkomst) — zonder intrekken dwingt een per ongeluk gestelde vraag een pro-forma nep-antwoord af dat als échte kennis in de historie zou staan; (2) **vraag stellen vanuit `klaar_om_te_boeken`** (statusmachine-uitbreiding, incl. herstel terug naar `klaar_om_te_boeken`) — ook uit een boekklaar document kan een vraag rijzen, anders moest de controleur kunstmatig terug naar te_controleren. Boeken blijft vanuit `vraag_open` geblokkeerd | **gebouwd + getest** (2026-07-14) | `app/documenten/vragen.py`; `statusmachine.py`; migratie 0022; `tests/documenten/test_vragen.py` |
 | Afwijzen = verplichte reden, blijft zichtbaar | goedgekeurd | mockup `#afwijsmodal`; CLAUDE.md |
 | Verzamelbak "Niet toegewezen" (tenaamstelling leidend, leert, nooit auto-toewijzen bij twijfel) | goedgekeurd | mockup `#tenaamstellingmodal`/`#verdeelmodal`; CLAUDE.md |
 | E-mail intake (één adres, multi-factuur-PDF splitsen) | goedgekeurd → fase 3 | CLAUDE.md; BOUWPLAN fase 3 |

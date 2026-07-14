@@ -84,11 +84,25 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.GEBOEKT,
             DocumentStatus.BOEKEN_MISLUKT,
             DocumentStatus.TE_CONTROLEREN,
+            # Vragenworkflow (2026-07-14, bewuste uitbreiding op de mockup — zie
+            # docs/BESLISSINGEN.md): ook uit een al boekklaar document kan een vraag rijzen;
+            # zonder deze overgang moest de controleur eerst kunstmatig terug naar
+            # te_controleren. Boeken blijft vanuit vraag_open geblokkeerd.
+            DocumentStatus.VRAAG_OPEN,
             DocumentStatus.VERWIJDERD,
         }
     ),
+    # Beantwoorden/intrekken herstelt de HERKOMST-status van vóór de vraag
+    # (vraag.status_voor_vraag — app/documenten/vragen.py), nooit hardgecodeerd te_controleren:
+    # daarom staan alle drie de vraag-herkomsten hier als uitgang.
     DocumentStatus.VRAAG_OPEN: frozenset(
-        {DocumentStatus.TE_CONTROLEREN, DocumentStatus.AFGEWEZEN, DocumentStatus.VERWIJDERD}
+        {
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.HANDMATIG_AFMAKEN,
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            DocumentStatus.AFGEWEZEN,
+            DocumentStatus.VERWIJDERD,
+        }
     ),
     DocumentStatus.NIET_TOEGEWEZEN: frozenset(
         {DocumentStatus.ONTVANGEN, DocumentStatus.AFGEWEZEN, DocumentStatus.VERWIJDERD}

@@ -211,6 +211,56 @@ class LeverancierIban(Base):
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class VraagStatus(enum.StrEnum):
+    """Levenscyclus van een vraag (migratie 0022): OPEN blokkeert het boeken van het document
+    (DocumentStatus.VRAAG_OPEN); BEANTWOORD en INGETROKKEN zijn eindtoestanden — een vraag wordt
+    nooit verwijderd, ook niet na boeken (historie, mockup #vragen: "Beantwoord & geboekt").
+    INGETROKKEN (bewuste uitbreiding op de mockup, zie docs/BESLISSINGEN.md) voorkomt dat een per
+    ongeluk gestelde vraag een pro-forma nep-antwoord afdwingt."""
+
+    OPEN = "open"
+    BEANTWOORD = "beantwoord"
+    INGETROKKEN = "ingetrokken"
+
+
+class Vraag(Base):
+    """Eén vraag over een document (vragenworkflow, mockup #vragen + #vraagmodal). Precies één
+    open vraag per document tegelijk (partiële unique index, migratie 0022); eerdere beantwoorde
+    of ingetrokken vragen blijven als historie staan. `toegewezen_aan` default naar de
+    administratie-eigenaar (Administratie.eigenaar_gebruiker_id), overschrijfbaar binnen de scope
+    van de administratie — zie app/documenten/vragen.py. `status_voor_vraag` is de document-
+    status van vóór de vraag: beantwoorden/intrekken herstellen exact díé herkomst (nooit
+    hardgecodeerd te_controleren). De antwoord- en intrek-velden zijn per CHECK-constraint
+    gebonden aan de status."""
+
+    __tablename__ = "vraag"
+    __table_args__ = {"schema": "boekhouding"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    gesteld_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    gesteld_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    vraag_tekst: Mapped[str]
+    toegewezen_aan: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    # TEXT met CHECK, niet de document_status-PG-enum (zie migratie 0022 voor het waarom);
+    # app/documenten/vragen.py vertaalt van/naar DocumentStatus.
+    status_voor_vraag: Mapped[str]
+    status: Mapped[str] = mapped_column(default=VraagStatus.OPEN.value)
+    antwoord_tekst: Mapped[str | None] = mapped_column(default=None)
+    beantwoord_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    beantwoord_op: Mapped[datetime | None] = mapped_column(default=None)
+    ingetrokken_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
+    ingetrokken_reden: Mapped[str | None] = mapped_column(default=None)
+
+
 class WebhookUitgaand(Base):
     """Outbox voor het "factuur geboekt"-webhook-stub (migratie 0009, koppelcontract §3): de
     getekende payload ligt hier per boeking al vast, aflevering (HTTP-push) is een fase-vervolg.

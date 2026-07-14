@@ -26,7 +26,15 @@ class AdministratieInstellingenDto(BaseModel):
     boeken_ingeschakeld: bool
     project_verplicht: bool
     ai_extractie_ingeschakeld: bool
+    eigenaar_gebruiker_id: uuid.UUID | None = None
 
 
 class AdministratieInstellingenLijstDto(BaseModel):
     administraties: list[AdministratieInstellingenDto]
+
+
+class EigenaarDto(BaseModel):
+    """Mockup Instellingen "Eigenaar (krijgt vragen)": default-toewijzing voor nieuwe vragen.
+    None = geen eigenaar (vraag stellen vereist dan een expliciete toewijzing)."""
+
+    eigenaar_gebruiker_id: uuid.UUID | None = None

@@ -309,9 +309,30 @@ Backend:
      keer = baseline zonder blok (na geslaagde lege seed-poging), afwijking = hard blok tot
      menselijke bevestiging (`POST .../crediteuren/{vendor_id}/ibans`, IBAN in body — nooit in
      URL/logs), G-rekening/WKA: tweede bevestigde rekening is de norm, geen wissel-signaal.
-     **Nog niet gebouwd, met implementerende fase:** vraag-blokkeert-boeken +
-     afwijzen-met-verplichte-reden (statussen zitten al in `statusmachine.py` en blokkeren het
-     boekpad, maar workflow/endpoints/reden-afdwinging ontbreken → vraag/afwijs-workflow, punt 8
+     **Vragenworkflow backend — gebouwd + getest (2026-07-14, PART A; UI volgt als PART B):**
+     `boekhouding.vraag` (migratie 0022: één open vraag per document via partiële unique index,
+     CHECK's op tekst-niet-leeg en antwoord-consistentie, RLS, geen DELETE-grant — historie
+     blijft, ook na boeken) + `platform.administratie.eigenaar_gebruiker_id` (migratie 0021,
+     mockup Instellingen "Eigenaar (krijgt vragen)", GET/PUT `/administraties/{id}/eigenaar`,
+     wijzigen Beheerder-only, audit). `app/documenten/vragen.py` + endpoints: `POST
+     .../documenten/{id}/vraag` (tekst verplicht, toewijzing default eigenaar, override alleen
+     binnen scope — actieve gebruiker mét administratie-toegang of Beheerder), `POST
+     .../vragen/{id}/beantwoorden` (antwoord verplicht) en `POST .../vragen/{id}/intrekken`
+     (reden optioneel) — beantwoorden én intrekken herstellen exact de **herkomst-status** van
+     vóór de vraag (`vraag.status_voor_vraag`: te_controleren, handmatig_afmaken óf
+     klaar_om_te_boeken; nooit hardgecodeerd te_controleren), `GET .../vragen` (filter
+     status/document). **Twee bewuste uitbreidingen op de mockup (akkoord 2026-07-14, zie
+     BESLISSINGEN.md): intrekken** (voorkomt pro-forma nep-antwoorden in de historie) **en
+     stellen vanuit klaar_om_te_boeken** (statusmachine-uitbreiding, herstel terug naar
+     klaar_om_te_boeken). Boeken blijft vanuit vraag_open geweigerd (bestaande
+     `_KAN_BOEKPOGING_STARTEN_VANUIT`-poort). audit_event op stellen, beantwoorden én
+     intrekken; `document.toegewezen_aan` volgt de open vraag (werkvoorraad-kolom).
+     "Antwoord voedt geheugen" v1 = via de bestaande boek-leerlus (correctie + boeken → app-
+     observatie); **latere verrijking (genoteerd):** doorzoekbare Q&A-kennisbank per crediteur.
+     Tests: `tests/documenten/test_vragen.py` + eigenaar-tests in `tests/beheer/test_service.py`.
+     **Nog niet gebouwd, met implementerende fase:**
+     afwijzen-met-verplichte-reden (status zit al in `statusmachine.py` en blokkeert het
+     boekpad, maar workflow/endpoint/reden-afdwinging ontbreken → afwijs-workflow, punt 8
      hieronder); memoriaal-saldo-0 (→ fase 2, omzet/kostprijsmemoriaal); VGB-prefixfilter
      (→ vóórdat documenten uit gedeelde vastgoed-administraties gelezen worden);
      per-leverancier-autoboeken-opt-in (→ vóór de eerste autoboek-functie);

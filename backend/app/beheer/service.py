@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from app.db.audit import record_audit_event
-from app.db.models import Administratie, BoekenInstelling
+from app.db.models import (
+    Administratie,
+    BoekenInstelling,
+    Gebruiker,
+    GebruikerAdministratie,
+    GebruikerRol,
+    GebruikerStatus,
+)
 from app.db.session import scoped_session
 
 
@@ -83,6 +90,7 @@ class AdministratieInstellingen:
     boeken_ingeschakeld: bool
     project_verplicht: bool
     ai_extractie_ingeschakeld: bool
+    eigenaar_gebruiker_id: uuid.UUID | None
 
 
 def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
@@ -99,6 +107,7 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
                 boeken_ingeschakeld=r.boeken_ingeschakeld,
                 project_verplicht=r.project_verplicht,
                 ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
+                eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
             )
             for r in rijen
         ]
@@ -166,6 +175,58 @@ def zet_ai_extractie_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid
             nieuwe_waarde={"ai_extractie_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
+
+
+class OngeldigeEigenaar(BeheerFout):
+    """De beoogde eigenaar is geen actieve gebruiker met toegang tot deze administratie."""
+
+
+def haal_eigenaar_op(*, administratie_id: uuid.UUID) -> uuid.UUID | None:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.eigenaar_gebruiker_id
+
+
+def zet_eigenaar(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, eigenaar_gebruiker_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    """Eigenaar per administratie (mockup Instellingen "Eigenaar (krijgt vragen)") — de
+    default-toewijzing voor nieuwe vragen; Beheerder-only (router), audit als bij de andere
+    administratie-instellingen. None = eigenaar weghalen (vragen vereisen dan een expliciete
+    toewijzing). De eigenaar moet actief zijn en — tenzij Beheerder (platform-breed) — scope op
+    déze administratie hebben; daarom is de sessie hier, anders dan bij de boolean-toggles,
+    gescoped op de administratie (de gebruiker_administratie-RLS geeft buiten die scope nooit
+    een rij terug) en draagt het audit_event de administratie_id."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        if eigenaar_gebruiker_id is not None:
+            gebruiker = session.get(Gebruiker, eigenaar_gebruiker_id)
+            if gebruiker is None or gebruiker.status != GebruikerStatus.ACTIEF:
+                raise OngeldigeEigenaar(f"Eigenaar is geen actieve gebruiker: {eigenaar_gebruiker_id}")
+            if (
+                gebruiker.rol != GebruikerRol.BEHEERDER
+                and session.get(GebruikerAdministratie, (eigenaar_gebruiker_id, administratie_id)) is None
+            ):
+                raise OngeldigeEigenaar("Eigenaar heeft geen toegang tot deze administratie")
+        oud = administratie.eigenaar_gebruiker_id
+        administratie.eigenaar_gebruiker_id = eigenaar_gebruiker_id
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="eigenaar_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"eigenaar_gebruiker_id": str(oud) if oud else None},
+            nieuwe_waarde={"eigenaar_gebruiker_id": str(eigenaar_gebruiker_id) if eigenaar_gebruiker_id else None},
+            administratie_id=administratie_id,
+        )
+        return eigenaar_gebruiker_id
 
 
 def haal_globale_kill_switch_op() -> bool:

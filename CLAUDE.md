@@ -113,10 +113,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
     zonder blok, afwijking = hard blok tot menselijke bevestiging, G-rekening/WKA = tweede
     bevestigde rekening is de norm; IBAN gestructureerd extractieveld, mod-97 in
     `app/extractie/iban.py`, nooit in logs/URL's);
-  - vraag blokkeert boeken / afwijzen-met-verplichte-reden: **half** — de statussen zitten in de
-    statusmachine (boeken kan niet vanuit `vraag_open`/`afgewezen`), maar workflow, endpoints en
-    reden-afdwinging bestaan niet → bouwen in de vraag/afwijs-workflow (fase 1-vervolg,
-    BOUWPLAN punt 8);
+  - vraag blokkeert boeken: **gebouwd + getest** (2026-07-14, backend/PART A —
+    `app/documenten/vragen.py` + migraties 0021/0022: stellen = verplichte tekst + document naar
+    `vraag_open` (vanuit te_controleren/handmatig_afmaken/klaar_om_te_boeken), toewijzing default
+    administratie-eigenaar/override binnen scope, beantwoorden (verplicht antwoord) én intrekken
+    (reden optioneel) herstellen exact de herkomst-status (`status_voor_vraag`), één open vraag
+    per document (DB-index), audit op stellen/beantwoorden/intrekken; intrekken + stellen-vanuit-
+    klaar_om_te_boeken = bewuste mockup-uitbreidingen (BESLISSINGEN.md); UI = PART B);
+  - afwijzen-met-verplichte-reden: **half** — de status zit in de statusmachine (boeken kan niet
+    vanuit `afgewezen`), maar workflow, endpoint en reden-afdwinging bestaan niet → bouwen in de
+    afwijs-workflow (fase 1-vervolg, BOUWPLAN punt 8);
   - memoriaal saldo = 0: **nog niet gebouwd** → omzet/memoriaal-fase (fase 2);
   - VGB-prefixfilter (nooit als werkvoorraad tonen): **nog niet gebouwd** → bouwen vóórdat er
     documenten uit gedeelde (vastgoed-)administraties gelezen worden;

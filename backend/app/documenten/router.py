@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import boeken, boekvoorstel, leverancier_iban, schemas, service
+from app.documenten import boeken, boekvoorstel, leverancier_iban, schemas, service, vragen
 from app.documenten.checks import CheckRapport
+from app.documenten.models import VraagStatus
+from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.rlz.credentials import GeenRlzCredentials
 
 router = APIRouter(tags=["documenten"])
@@ -369,6 +371,129 @@ def document_boeken(
         rlz_document_id=resultaat.rlz_document_id,
         rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
     )
+
+
+def _naar_vraag_response(data: vragen.VraagData) -> schemas.VraagResponse:
+    return schemas.VraagResponse(
+        id=data.id,
+        document_id=data.document_id,
+        document_bestandsnaam=data.document_bestandsnaam,
+        document_status=data.document_status.value,
+        vraag_tekst=data.vraag_tekst,
+        status=data.status,
+        status_voor_vraag=data.status_voor_vraag,
+        gesteld_door=data.gesteld_door,
+        gesteld_op=data.gesteld_op,
+        toegewezen_aan=data.toegewezen_aan,
+        antwoord_tekst=data.antwoord_tekst,
+        beantwoord_door=data.beantwoord_door,
+        beantwoord_op=data.beantwoord_op,
+        ingetrokken_door=data.ingetrokken_door,
+        ingetrokken_op=data.ingetrokken_op,
+        ingetrokken_reden=data.ingetrokken_reden,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/vraag",
+    response_model=schemas.VraagResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def vraag_stellen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.VraagStellenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VraagResponse:
+    """Vraag stellen (mockup #vraagmodal): document -> vraag_open (boeken geblokkeerd tot het
+    antwoord er is), toewijzing default naar de administratie-eigenaar, overschrijfbaar binnen
+    de scope van deze administratie."""
+    try:
+        data = vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            vraag_tekst=invoer.vraag_tekst,
+            toegewezen_aan=invoer.toegewezen_aan,
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except vragen.VraagTekstVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except (vragen.GeenToewijzingMogelijk, vragen.ToegewezeneBuitenScope) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except (vragen.ErIsAlEenOpenVraag, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_vraag_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/vragen/{vraag_id}/beantwoorden",
+    response_model=schemas.VraagResponse,
+)
+def vraag_beantwoorden(
+    administratie_id: uuid.UUID,
+    vraag_id: uuid.UUID,
+    invoer: schemas.VraagBeantwoordenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VraagResponse:
+    """Antwoord vastleggen op de vraag-rij zelf (historie blijft) en het document terug naar de
+    herkomst-status van vóór de vraag (status_voor_vraag) — boeken is daarna weer bereikbaar via
+    de normale route."""
+    try:
+        data = vragen.beantwoord_vraag(
+            administratie_id=administratie_id,
+            vraag_id=vraag_id,
+            actor_id=actor.id,
+            antwoord_tekst=invoer.antwoord_tekst,
+        )
+    except (vragen.VraagNietGevonden, service.DocumentNietGevonden) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except vragen.AntwoordTekstVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except (vragen.VraagNietOpen, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_vraag_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/vragen/{vraag_id}/intrekken",
+    response_model=schemas.VraagResponse,
+)
+def vraag_intrekken(
+    administratie_id: uuid.UUID,
+    vraag_id: uuid.UUID,
+    invoer: schemas.VraagIntrekkenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VraagResponse:
+    """Open vraag intrekken (bewuste uitbreiding op de mockup, docs/BESLISSINGEN.md): de vraag
+    blijft als 'ingetrokken' in de historie staan, het document gaat terug naar de herkomst-
+    status en er kan daarna weer een nieuwe vraag gesteld worden. Reden optioneel."""
+    try:
+        data = vragen.trek_vraag_in(
+            administratie_id=administratie_id, vraag_id=vraag_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except (vragen.VraagNietGevonden, service.DocumentNietGevonden) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (vragen.VraagNietOpen, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_vraag_response(data)
+
+
+@router.get(
+    "/administraties/{administratie_id}/vragen",
+    response_model=schemas.VraagLijstResponse,
+)
+def vragen_lijst(
+    administratie_id: uuid.UUID,
+    vraag_status: VraagStatus | None = None,
+    document_id: uuid.UUID | None = None,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VraagLijstResponse:
+    """Vragen van één administratie, nieuwste eerst (voedt de #vragen-view; optioneel gefilterd
+    op status en/of document — het controlescherm haalt zo de open vraag van één document op)."""
+    data = vragen.lijst_vragen(administratie_id=administratie_id, status=vraag_status, document_id=document_id)
+    return schemas.VraagLijstResponse(vragen=[_naar_vraag_response(v) for v in data])
 
 
 @router.post(

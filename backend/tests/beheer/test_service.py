@@ -83,6 +83,56 @@ class TestProjectVerplicht:
             service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=uuid.uuid4(), verplicht=True)
 
 
+class TestEigenaarInstelling:
+    """Eigenaar per administratie (migratie 0021, vragenworkflow): default-toewijzing voor
+    nieuwe vragen — alleen een actieve gebruiker mét scope (of een Beheerder) kan eigenaar zijn."""
+
+    def test_default_geen_eigenaar(self, administratie_id: uuid.UUID) -> None:
+        assert service.haal_eigenaar_op(administratie_id=administratie_id) is None
+
+    def test_zetten_en_weghalen_met_audit(
+        self,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        service.zet_eigenaar(
+            actor_id=beheerder_id, administratie_id=administratie_id, eigenaar_gebruiker_id=gescoopte_gebruiker
+        )
+        assert service.haal_eigenaar_op(administratie_id=administratie_id) == gescoopte_gebruiker
+
+        service.zet_eigenaar(actor_id=beheerder_id, administratie_id=administratie_id, eigenaar_gebruiker_id=None)
+        assert service.haal_eigenaar_op(administratie_id=administratie_id) is None
+        acties = _audit_acties(admin_engine, tabel="administratie", record_id=administratie_id)
+        assert acties == ["eigenaar_gewijzigd", "eigenaar_gewijzigd"]
+
+    def test_eigenaar_zonder_scope_geweigerd(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        buitenstaander = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "
+                    "VALUES (:id, 'Zonder scope', :mail, 'boekhouding', 'actief')"
+                ),
+                {"id": buitenstaander, "mail": f"{buitenstaander}@test.local"},
+            )
+        with pytest.raises(service.OngeldigeEigenaar):
+            service.zet_eigenaar(
+                actor_id=beheerder_id, administratie_id=administratie_id, eigenaar_gebruiker_id=buitenstaander
+            )
+
+    def test_beheerder_mag_eigenaar_zijn_zonder_scope_rij(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        service.zet_eigenaar(
+            actor_id=beheerder_id, administratie_id=administratie_id, eigenaar_gebruiker_id=beheerder_id
+        )
+        assert service.haal_eigenaar_op(administratie_id=administratie_id) == beheerder_id
+
+
 class TestGlobaleKillSwitch:
     def test_default_aan(self) -> None:
         assert service.haal_globale_kill_switch_op() is True
