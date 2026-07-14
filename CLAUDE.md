@@ -97,7 +97,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Werkvoorraad** = klantenlijst met tellers (alleen klanten mét openstaand werk) → klantpagina →
   controlescherm. Overal breadcrumbs, lijst→detail-patroon consistent.
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
-  voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen.
+  voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
+  (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
+  historie, nog niet bevestigd"), óók bij hoge stem-confidence — pas de eerste app-bevestiging van
+  die waarde maakt 'm groen (`app_bevestigd` per veld in engine + voorstel-response).**
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
   **Status per harde/blokkerende check (gedocumenteerd ≠ gebouwd — houd dit actueel, audit
   2026-07-13):**

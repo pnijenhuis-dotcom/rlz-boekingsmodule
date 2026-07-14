@@ -43,6 +43,11 @@ interface FetchMockOverrides {
    * een 201 ook aan de vendors-lijst toegevoegd zodat de refetch 'm kan tonen. */
   crediteurAanmakenResponse?: [unknown, number]
   crediteurAanmaakAanroepen?: unknown[]
+  /** UI-koppeling boekingsgeheugen: antwoord op POST /boekingsgeheugen/voorstel (zelfde antwoord
+   * voor elke aanroep); zonder override een 404 — het scherm degradeert dan stil naar "geen
+   * voorstel". Elke request-body wordt (geparsed) in geheugenAanroepen gepusht. */
+  geheugenVoorstel?: unknown
+  geheugenAanroepen?: unknown[]
 }
 
 function installFetchMock(overrides: FetchMockOverrides) {
@@ -57,6 +62,11 @@ function installFetchMock(overrides: FetchMockOverrides) {
       if (url.includes('/sync/') && init?.method === 'POST') {
         overrides.syncAanroepen?.push(url)
         return Promise.resolve(jsonResponse({ aangemaakt: 0, bijgewerkt: 0, verdwenen: 0 }))
+      }
+      if (url.endsWith('/boekingsgeheugen/voorstel') && init?.method === 'POST') {
+        overrides.geheugenAanroepen?.push(JSON.parse(String(init.body)))
+        if (overrides.geheugenVoorstel === undefined) return Promise.resolve(new Response(null, { status: 404 }))
+        return Promise.resolve(jsonResponse(overrides.geheugenVoorstel))
       }
       if (url.endsWith('/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: grootboek }))
       if (url.endsWith('/btw-codes')) return Promise.resolve(jsonResponse({ btw_codes: taxrates }))
@@ -704,5 +714,263 @@ describe('BoekvoorstelPanel', () => {
 
     await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(2))
     expect(screen.queryByLabelText('Splitsen per regel')).not.toBeInTheDocument()
+  })
+
+  // ---- UI-koppeling boekingsgeheugen (B6) ----
+
+  const ANDER_LEDGER_ID = 'ffffffff-0000-0000-0000-000000000006'
+
+  function geheugenVeld(waarde: string | null, extra: Record<string, unknown> = {}) {
+    return { waarde, confidence: 0.9, telling: 3, oranje: false, reden: null, app_bevestigd: true, ...extra }
+  }
+
+  it('geheugen: haalt bij een bekende crediteur het voorstel op en vult lege GB/btw-velden voor (rustige chip)', async () => {
+    const geheugenAanroepen: unknown[] = []
+    installFetchMock({
+      boekvoorstel: { ...LEEG_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+      geheugenVoorstel: {
+        gb: geheugenVeld(LEDGER_ID),
+        btw: geheugenVeld(TAXRATE_ID),
+        project: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties' }),
+      },
+      geheugenAanroepen,
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('4699 · Diverse kosten'),
+    )
+    expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue('NL Hoog 21%')
+    // Eén (lege) regel zonder omschrijving → leverancier-niveau: regel_omschrijving null, in de body.
+    expect(geheugenAanroepen).toEqual([{ vendor_id: VENDOR_ID, regel_omschrijving: null }])
+    const chips = screen.getAllByText('Geheugen 90%')
+    expect(chips).toHaveLength(2)
+    for (const chip of chips) expect(chip).toHaveClass('chip', 'ok')
+  })
+
+  it('geheugen: overschrijft een al ingevulde (opgeslagen) waarde nooit en markeert de afwijking oranje', async () => {
+    const geheugenAanroepen: unknown[] = []
+    installFetchMock({
+      grootboek: [
+        { ledger_id: LEDGER_ID, code: '4699', naam: 'Diverse kosten', soort: 2 },
+        { ledger_id: ANDER_LEDGER_ID, code: '7000', naam: 'Inkoopwaarde', soort: 2 },
+      ],
+      boekvoorstel: {
+        ...LEEG_BOEKVOORSTEL,
+        opgeslagen: true,
+        vendor_id: VENDOR_ID,
+        regels_samenvoegen: false,
+        regels: [
+          {
+            ledger_id: ANDER_LEDGER_ID,
+            taxrate_id: TAXRATE_ID,
+            project_id: null,
+            netto_bedrag: '100.00',
+            btw_bedrag: '21.00',
+            omschrijving: 'Steigerhuur wk 23',
+          },
+        ],
+      },
+      geheugenVoorstel: {
+        gb: geheugenVeld(LEDGER_ID),
+        btw: geheugenVeld(TAXRATE_ID),
+        project: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties' }),
+      },
+      geheugenAanroepen,
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Geheugen: 4699 · Diverse kosten')).toBeInTheDocument())
+    // De opgeslagen keuze blijft staan — markeren, nooit overnemen.
+    expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('7000 · Inkoopwaarde')
+    expect(screen.getByText('Geheugen: 4699 · Diverse kosten')).toHaveClass('chip', 'afwijking')
+    // Gesplitste weergave → regel-niveau: de omschrijving reist mee in de body, niet in de URL.
+    expect(geheugenAanroepen).toEqual([{ vendor_id: VENDOR_ID, regel_omschrijving: 'Steigerhuur wk 23' }])
+    // De btw-code volgt het geheugen wél → rustige chip.
+    expect(screen.getByText('Geheugen 90%')).toHaveClass('chip', 'ok')
+  })
+
+  it('geheugen: laag vertrouwen → oranje chip met korte hint en volledige reden in de tooltip', async () => {
+    installFetchMock({
+      boekvoorstel: { ...LEEG_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+      geheugenVoorstel: {
+        gb: geheugenVeld(LEDGER_ID, {
+          confidence: 0.55,
+          telling: 1,
+          oranje: true,
+          reden: 'gesplitste stem; alleen rlz-historie, nog geen app-bevestiging',
+          app_bevestigd: false,
+        }),
+        btw: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties' }),
+        project: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties' }),
+      },
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Geheugen 55%')).toBeInTheDocument())
+    expect(screen.getByText('Geheugen 55%')).toHaveClass('chip', 'afwijking')
+    expect(screen.getByText('gesplitste stem; uit historie, nog niet bevestigd')).toBeInTheDocument()
+    expect(screen.getByText('Geheugen 55%')).toHaveAttribute('title', expect.stringContaining('1 observatie'))
+  })
+
+  it('geheugen: samengevoegde regel → één voorstel op leverancier-niveau (zonder omschrijving)', async () => {
+    const geheugenAanroepen: unknown[] = []
+    installFetchMock({
+      boekvoorstel: {
+        ...LEEG_BOEKVOORSTEL,
+        opgeslagen: true,
+        vendor_id: VENDOR_ID,
+        regels_samenvoegen: true,
+        regels: [
+          {
+            ledger_id: null,
+            taxrate_id: null,
+            project_id: null,
+            netto_bedrag: '100.00',
+            btw_bedrag: null,
+            omschrijving: 'Samengevoegde omschrijving',
+          },
+        ],
+      },
+      geheugenVoorstel: {
+        gb: geheugenVeld(LEDGER_ID),
+        btw: geheugenVeld(TAXRATE_ID),
+        project: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties' }),
+      },
+      geheugenAanroepen,
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('4699 · Diverse kosten'),
+    )
+    // Ondanks de aanwezige omschrijving: samengevoegd = leverancier-niveau, dus zonder omschrijving.
+    expect(geheugenAanroepen).toEqual([{ vendor_id: VENDOR_ID, regel_omschrijving: null }])
+  })
+
+  it('geheugen: een handmatige keuze wint — chip verdwijnt en er wordt niet genagd', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      grootboek: [
+        { ledger_id: LEDGER_ID, code: '4699', naam: 'Diverse kosten', soort: 2 },
+        { ledger_id: ANDER_LEDGER_ID, code: '7000', naam: 'Inkoopwaarde', soort: 2 },
+      ],
+      boekvoorstel: { ...LEEG_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+      geheugenVoorstel: {
+        gb: geheugenVeld(LEDGER_ID),
+        btw: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties' }),
+        project: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties' }),
+      },
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    const [grootboekVeld] = await waitFor(() => screen.getAllByLabelText('Grootboek', { exact: false }))
+    await waitFor(() => expect(grootboekVeld).toHaveValue('4699 · Diverse kosten'))
+    expect(screen.getByText('Geheugen 90%')).toBeInTheDocument()
+
+    await gebruiker.click(grootboekVeld)
+    await waitFor(() => expect(screen.getByRole('option', { name: /7000.*Inkoopwaarde/ })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('option', { name: /7000.*Inkoopwaarde/ }))
+
+    expect(grootboekVeld).toHaveValue('7000 · Inkoopwaarde')
+    expect(screen.queryByText('Geheugen 90%')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Geheugen:/)).not.toBeInTheDocument()
+  })
+
+  it('geheugen: seed-only (nog geen app-bevestiging) → oranje chip met hint "uit historie, nog niet bevestigd"', async () => {
+    installFetchMock({
+      boekvoorstel: { ...LEEG_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+      geheugenVoorstel: {
+        gb: geheugenVeld(LEDGER_ID, {
+          confidence: 1.0,
+          telling: 5,
+          oranje: true,
+          reden: 'alleen rlz-historie, nog geen app-bevestiging',
+          app_bevestigd: false,
+        }),
+        btw: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties', app_bevestigd: false }),
+        project: geheugenVeld(null, { confidence: 0, telling: 0, oranje: true, reden: 'geen observaties', app_bevestigd: false }),
+      },
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    // Hoge stem-confidence (100%) maar uitsluitend rlz_seed → tóch oranje (Peters ontwerp).
+    await waitFor(() => expect(screen.getByText('Geheugen 100%')).toBeInTheDocument())
+    expect(screen.getByText('Geheugen 100%')).toHaveClass('chip', 'afwijking')
+    expect(screen.getByText('uit historie, nog niet bevestigd')).toBeInTheDocument()
+  })
+
+  it('geheugen: een mislukte voorstel-call toont een rustige inline-indicatie, geen stilte en geen blokkade', async () => {
+    const gebruiker = userEvent.setup()
+    // Geen geheugenVoorstel-override → de mock antwoordt 404 op de voorstel-call.
+    installFetchMock({
+      boekvoorstel: { ...LEEG_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+      putResponse: {
+        boekvoorstel: { ...LEEG_BOEKVOORSTEL, opgeslagen: true, vendor_id: VENDOR_ID },
+        checks: { geblokkeerd: false, resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'ok' }] },
+      },
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Geheugenvoorstel niet beschikbaar')).toBeInTheDocument())
+    // Niet-blokkerend: controleren en boeken blijven gewoon werken.
+    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeEnabled())
   })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type {
   BoekenResponseDto,
@@ -7,11 +7,21 @@ import type {
   BoekvoorstelRegelDto,
   CheckRapportDto,
   DocumentActieResponseDto,
+  GeheugenVeldVoorstelDto,
+  GeheugenVoorstelDto,
   VendorOptieDto,
 } from '../api/types'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { crediteurSuggesties } from './crediteurSuggesties'
+import {
+  bepaalGeheugenChip,
+  bepaalPrefill,
+  haalGeheugenVoorstel,
+  korteReden,
+  omschrijvingSleutel,
+  type HandmatigeVelden,
+} from './geheugenVoorstel'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
   synchroniseerAlleCaches,
@@ -64,7 +74,17 @@ interface RegelState {
    * opgeslagen AI-voorstel). Elke handmatige wijziging aan de regel wist de score — dan beschrijft
    * hij de inhoud niet meer. */
   aiZekerheid: number | null
+  /** Boekingsgeheugen-koppeling: het opgehaalde voorstel dat bij deze regel hoort (leverancier-
+   * niveau bij samengevoegd, regel-niveau bij gesplitst) + welke voorstel-velden de gebruiker
+   * zelf heeft aangeraakt — die vult of markeert het geheugen daarna nooit meer. */
+  geheugen: GeheugenVoorstelDto | null
+  handmatigeVelden: HandmatigeVelden
+  /** True als de voorstel-call voor deze regel mislukte: dat mag niet op een leeg geheugen
+   * lijken ("niets verdwijnt stil") — rustige inline-indicatie, nooit blokkerend. */
+  geheugenFout: boolean
 }
+
+const GEEN_HANDMATIGE_VELDEN: HandmatigeVelden = { ledgerId: false, taxrateId: false, projectId: false }
 
 function nieuweRegel(): RegelState {
   return {
@@ -77,6 +97,9 @@ function nieuweRegel(): RegelState {
     btwHandmatig: false,
     omschrijving: '',
     aiZekerheid: null,
+    geheugen: null,
+    handmatigeVelden: GEEN_HANDMATIGE_VELDEN,
+    geheugenFout: false,
   }
 }
 
@@ -91,6 +114,9 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     btwHandmatig: Boolean(r.btw_bedrag),
     omschrijving: r.omschrijving ?? '',
     aiZekerheid,
+    geheugen: null,
+    handmatigeVelden: GEEN_HANDMATIGE_VELDEN,
+    geheugenFout: false,
   }
 }
 
@@ -120,6 +146,9 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     btwHandmatig: Boolean(r.btw_bedrag),
     omschrijving: r.omschrijving ?? '',
     aiZekerheid: ai.regel_zekerheid[i] ?? null,
+    geheugen: null,
+    handmatigeVelden: GEEN_HANDMATIGE_VELDEN,
+    geheugenFout: false,
   }))
 }
 
@@ -179,6 +208,50 @@ function AiChip({ score, drempel, fuzzy = false }: AiChipProps) {
       AI {zekerheidPct(score)}
       {fuzzy ? ' · naam benaderd' : ''}
     </span>
+  )
+}
+
+interface GeheugenChipBlokProps {
+  veld: GeheugenVeldVoorstelDto
+  huidig: string | null
+  handmatig: boolean
+  opties: ComboboxOptie[]
+}
+
+/** Geheugen-chip onder een regel-combobox (UI-koppeling boekingsgeheugen): rustig groen bij hoge
+ * confidence, oranje (bestaande afwijking-styling) bij laag vertrouwen óf wanneer de huidige
+ * (extractie- of opgeslagen) waarde afwijkt van het geheugen — markeren, nooit overnemen.
+ * Verdwijnt zodra de controleur het veld zelf aanraakt: die keuze is van de mens, de leerlus
+ * leert er bij het boeken van. Bron beknopt in de tooltip (n observaties, confidence, reden). */
+function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokProps) {
+  const stand = bepaalGeheugenChip(veld, huidig, handmatig)
+  if (!stand) return null
+  const pct = zekerheidPct(stand.confidence)
+  const bron = `Uit geheugen — ${stand.telling} observatie${stand.telling === 1 ? '' : 's'}, confidence ${pct}`
+  if (stand.soort === 'afwijkend') {
+    return (
+      <div style={{ marginTop: 4 }}>
+        <span
+          className="chip afwijking"
+          style={{ whiteSpace: 'normal', textAlign: 'left' }}
+          title={`${bron}. De huidige waarde (uit de extractie of het opgeslagen voorstel) wijkt hiervan af — controleer de keuze.`}
+        >
+          Geheugen: {optieWeergave(opties, stand.waarde)}
+        </span>
+      </div>
+    )
+  }
+  const hint = stand.oranje ? korteReden(stand.reden) : null
+  return (
+    <div style={{ marginTop: 4 }}>
+      <span
+        className={`chip ${stand.oranje ? 'afwijking' : 'ok'}`}
+        title={stand.reden ? `${bron}. Let op: ${stand.reden}.` : `${bron}.`}
+      >
+        Geheugen {pct}
+      </span>
+      {hint && <div style={{ fontSize: 11, color: 'var(--orange)', marginTop: 2 }}>{hint}</div>}
+    </div>
   )
 }
 
@@ -305,6 +378,82 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
   const isVerwijderd = status === 'verwijderd'
   const isReadOnly = isGeboekt || isVerwijderd
 
+  // UI-koppeling boekingsgeheugen (B6): zodra de crediteur bekend is (uit de extractie of een
+  // handmatige keuze), per weergavemodus het geheugenvoorstel ophalen — samengevoegd =
+  // leverancier-niveau (zonder omschrijving), gesplitst = per unieke regel-omschrijving, altijd
+  // in de request-body. Bewust géén refetch per toetsaanslag in de omschrijving: crediteur en
+  // modus zijn het signaal. De regels reizen via een ref mee zodat dit effect niet op elke
+  // regel-wijziging opnieuw vuurt. Mislukt de call, dan degradeert het scherm stil naar "geen
+  // voorstel" — de controleur kiest dan zelf, precies zoals vóór deze koppeling; de harde checks
+  // draaien onverminderd op de uiteindelijke waarden.
+  const regelsRef = useRef(regels)
+  regelsRef.current = regels
+
+  useEffect(() => {
+    if (laden || isReadOnly) return
+    if (!vendorId) {
+      // Crediteur weggehaald: chips/foutindicatie van de vorige crediteur zouden misleiden.
+      setRegels((huidig) =>
+        huidig.some((r) => r.geheugen !== null || r.geheugenFout)
+          ? huidig.map((r) => ({ ...r, geheugen: null, geheugenFout: false }))
+          : huidig,
+      )
+      return
+    }
+    let actief = true
+    const sleutels = regelsSamenvoegen
+      ? [null]
+      : [...new Set(regelsRef.current.map((r) => omschrijvingSleutel(r.omschrijving)))]
+    void Promise.all(
+      sleutels.map(async (sleutel) => {
+        try {
+          return [sleutel, await haalGeheugenVoorstel(administratieId, vendorId, sleutel)] as const
+        } catch {
+          return [sleutel, null] as const
+        }
+      }),
+    ).then((paren) => {
+      if (!actief) return
+      const voorstellen = new Map<string | null, GeheugenVoorstelDto | null>(paren)
+      const voorstelVoor = (r: RegelState) =>
+        voorstellen.get(regelsSamenvoegen ? null : omschrijvingSleutel(r.omschrijving)) ?? null
+      // Staleness vóór de functionele update bepalen: vult de prefill echt iets, dan is een
+      // eerder checkresultaat niet meer actueel (zelfde regel als elke handmatige wijziging).
+      const vultIets = regelsRef.current.some((r) => {
+        const voorstel = voorstelVoor(r)
+        return voorstel !== null && Object.keys(bepaalPrefill(r, voorstel, projectVerplicht)).length > 0
+      })
+      setRegels((huidig) =>
+        huidig.map((r) => {
+          // Regel kwam er ná het ophalen bij (sleutel onbekend): geen voorstel én geen fout.
+          if (!voorstellen.has(regelsSamenvoegen ? null : omschrijvingSleutel(r.omschrijving))) return r
+          const voorstel = voorstelVoor(r)
+          if (voorstel === null) {
+            // Call mislukt ≠ leeg geheugen: rustige inline-indicatie i.p.v. stilte.
+            return r.geheugen === null && r.geheugenFout ? r : { ...r, geheugen: null, geheugenFout: true }
+          }
+          const vulling = bepaalPrefill(r, voorstel, projectVerplicht)
+          const bijgewerkt: RegelState = { ...r, ...vulling, geheugen: voorstel, geheugenFout: false }
+          // Zelfde automatische btw-afleiding als bij een handmatige btw-code-keuze.
+          if (vulling.taxrateId && !bijgewerkt.btwHandmatig) {
+            const percentage = percentageMap[vulling.taxrateId]
+            const netto = bedragAlsGetal(bijgewerkt.netto)
+            if (percentage !== undefined && netto !== null) {
+              bijgewerkt.btw = formatEuro(berekenBtwBedrag(netto, percentage))
+            }
+          }
+          return bijgewerkt
+        }),
+      )
+      if (vultIets) setChecksActueel(false)
+    })
+    return () => {
+      actief = false
+    }
+    // Bewust smalle deps (zie comment hierboven): regels via ref, percentageMap best-effort —
+    // die opnemen zou per cache-refresh onnodige extra voorstel-requests veroorzaken.
+  }, [administratieId, documentId, vendorId, regelsSamenvoegen, laden, isReadOnly, projectVerplicht])
+
   // Per kopveld: zekerheids-chip zolang de huidige invoer nog gelijk is aan wat de AI voorlas —
   // wijzigt de controleur het veld, dan beschrijft de score de inhoud niet meer en verdwijnt hij.
   const aiKop = useMemo(() => {
@@ -360,6 +509,10 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
         if (r.key !== key) return r
         // Elke handmatige wijziging: de AI-zekerheidsscore beschrijft deze regel niet meer.
         const bijgewerkt = { ...r, [veld]: waarde, aiZekerheid: null }
+        if (veld === 'ledgerId' || veld === 'taxrateId' || veld === 'projectId') {
+          // Vanaf nu is dit veld van de mens: het boekingsgeheugen vult of markeert het nooit meer.
+          bijgewerkt.handmatigeVelden = { ...r.handmatigeVelden, [veld]: true }
+        }
         if (veld === 'btw') {
           // Rechtstreekse invoer in het btw-veld zelf — vanaf nu is dit veld van de gebruiker;
           // leegmaken laat de automatische afleiding weer meedraaien (design-pass taak 3).
@@ -756,28 +909,56 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                   {isReadOnly ? (
                     optieWeergave(grootboekOpties, regel.ledgerId)
                   ) : (
-                    <SearchableCombobox
-                      label="Grootboek"
-                      opties={grootboekOpties}
-                      waarde={regel.ledgerId}
-                      onWijzig={(id) => wijzigRegel(regel.key, 'ledgerId', id)}
-                      vereist
-                      toonLabel={false}
-                    />
+                    <>
+                      <SearchableCombobox
+                        label="Grootboek"
+                        opties={grootboekOpties}
+                        waarde={regel.ledgerId}
+                        onWijzig={(id) => wijzigRegel(regel.key, 'ledgerId', id)}
+                        vereist
+                        toonLabel={false}
+                      />
+                      {regel.geheugen && (
+                        <GeheugenChipBlok
+                          veld={regel.geheugen.gb}
+                          huidig={regel.ledgerId}
+                          handmatig={regel.handmatigeVelden.ledgerId}
+                          opties={grootboekOpties}
+                        />
+                      )}
+                      {regel.geheugenFout && (
+                        <div
+                          style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}
+                          title="Het ophalen van het boekingsgeheugen-voorstel is mislukt — handmatig invullen werkt gewoon en de harde checks draaien onverminderd."
+                        >
+                          Geheugenvoorstel niet beschikbaar
+                        </div>
+                      )}
+                    </>
                   )}
                 </td>
                 <td>
                   {isReadOnly ? (
                     optieWeergave(taxrateOpties, regel.taxrateId)
                   ) : (
-                    <SearchableCombobox
-                      label="Btw-code"
-                      opties={taxrateOpties}
-                      waarde={regel.taxrateId}
-                      onWijzig={(id) => wijzigRegel(regel.key, 'taxrateId', id)}
-                      vereist
-                      toonLabel={false}
-                    />
+                    <>
+                      <SearchableCombobox
+                        label="Btw-code"
+                        opties={taxrateOpties}
+                        waarde={regel.taxrateId}
+                        onWijzig={(id) => wijzigRegel(regel.key, 'taxrateId', id)}
+                        vereist
+                        toonLabel={false}
+                      />
+                      {regel.geheugen && (
+                        <GeheugenChipBlok
+                          veld={regel.geheugen.btw}
+                          huidig={regel.taxrateId}
+                          handmatig={regel.handmatigeVelden.taxrateId}
+                          opties={taxrateOpties}
+                        />
+                      )}
+                    </>
                   )}
                 </td>
                 {projectVerplicht && (
@@ -785,15 +966,25 @@ export function BoekvoorstelPanel({ administratieId, documentId, status, veldvoo
                     {isReadOnly ? (
                       optieWeergave(projectOpties, regel.projectId)
                     ) : (
-                      <SearchableCombobox
-                        label="Project"
-                        opties={projectOpties}
-                        waarde={regel.projectId}
-                        onWijzig={(id) => wijzigRegel(regel.key, 'projectId', id)}
-                        vereist
-                        toonLabel={false}
-                        fout={checkRapport?.geblokkeerd && regel.projectId === null}
-                      />
+                      <>
+                        <SearchableCombobox
+                          label="Project"
+                          opties={projectOpties}
+                          waarde={regel.projectId}
+                          onWijzig={(id) => wijzigRegel(regel.key, 'projectId', id)}
+                          vereist
+                          toonLabel={false}
+                          fout={checkRapport?.geblokkeerd && regel.projectId === null}
+                        />
+                        {regel.geheugen && (
+                          <GeheugenChipBlok
+                            veld={regel.geheugen.project}
+                            huidig={regel.projectId}
+                            handmatig={regel.handmatigeVelden.projectId}
+                            opties={projectOpties}
+                          />
+                        )}
+                      </>
                     )}
                   </td>
                 )}

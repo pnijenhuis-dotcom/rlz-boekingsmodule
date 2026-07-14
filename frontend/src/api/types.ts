@@ -142,6 +142,28 @@ export interface BoekvoorstelDto {
   samengevoegde_regel: BoekvoorstelRegelDto | null
 }
 
+export interface GeheugenVeldVoorstelDto {
+  waarde: string | null
+  /** Winnend gewicht / totaal gewicht van de meegewogen stemmen (0.0 zonder voorstel). */
+  confidence: number
+  /** Aantal observaties dat de winnende waarde steunt (ongewogen telling). */
+  telling: number
+  oranje: boolean
+  reden: string | null
+  /** True zodra ≥1 app-observatie de winnende waarde dekt; false = uitsluitend rlz_seed →
+   * altijd oranje met hint "uit historie, nog niet bevestigd" (Peters ontwerp 2026-07-14). */
+  app_bevestigd: boolean
+}
+
+/** Boekingsgeheugen-voorstel (B6, backend/app/geheugen/router.py): per veld (GB/btw/project) een
+ * default + confidence + oranje-vlag. Een voorstel is een default, nooit een beslissing — de
+ * harde checks (incl. projectplicht) blijven onverkort blokkerend. */
+export interface GeheugenVoorstelDto {
+  gb: GeheugenVeldVoorstelDto
+  btw: GeheugenVeldVoorstelDto
+  project: GeheugenVeldVoorstelDto
+}
+
 export interface CheckResultaatDto {
   naam: string
   ok: boolean

@@ -374,16 +374,36 @@ Backend:
      halfwaardetijd default 365 dagen (settings). GB/project: leverancier-niveau primair,
      regel-niveau verfijnt bij een gesplitste stem; btw: regel-niveau eerst met
      leverancier-fallback — fallback en gesplitste stem ALTIJD oranje. Per veld confidence
-     (winnend/totaal gewicht) + telling; voorstellen vanaf 1 observatie maar oranje tot ≥2
-     consistente observaties óf ≥1 app-correctie. Projectvoorstel heft de harde
-     projectplicht-check nooit op (expliciet getest).
+     (winnend/totaal gewicht) + telling; voorstellen vanaf 1 observatie maar **oranje zolang de
+     winnende waarde geen enkele app-observatie heeft (seed-only, `app_bevestigd` per veld in de
+     response — Peters ontwerp, aangescherpt 2026-07-14; verving "≥2 consistente observaties is
+     genoeg")**. Projectvoorstel heft de harde projectplicht-check nooit op (expliciet getest).
    - **Leerlus (B5):** elke geslaagde boeking (actie 17) → observaties bron='app' in dezelfde
      transactie als de GEBOEKT-overgang; samengevoegd → leverancier-niveau (sleutel NULL),
      gesplitst → regel-niveau; idempotent per boekstuk (retry legt niets dubbel vast).
    - **Expose (B6):** `POST /administraties/{id}/boekingsgeheugen/voorstel` (vendor +
-     optionele regelomschrijving in de bódy) → per veld waarde/confidence/telling/oranje/reden —
-     zelfde service voedt straks de autoboek-gate. **Geen UI in deze ronde** — het
-     controlescherm-voorstelblok is de volgende fronttaak na de IBAN-bevestigings-UI.
+     optionele regelomschrijving in de bódy) → per veld waarde/confidence/telling/oranje/reden/
+     app_bevestigd — zelfde service voedt straks de autoboek-gate.
+   - **UI-koppeling controlescherm — gebouwd + getest (2026-07-14)**
+     (`frontend/src/document/geheugenVoorstel.ts` + `BoekvoorstelPanel.tsx`): voorstel ophalen
+     zodra de crediteur bekend is (samengevoegd = leverancier-niveau, gesplitst = per unieke
+     regelomschrijving, altijd in de body); prefill uitsluitend lege én niet-aangeraakte velden
+     (handmatige keuze wint altijd); chips groen bij app-bevestigd/hoog vertrouwen, oranje bij
+     laag vertrouwen of afwijking t.o.v. extractie/opgeslagen waarde (markeren, nooit
+     overnemen); mislukte voorstel-call → rustige inline-indicatie "Geheugenvoorstel niet
+     beschikbaar" (nooit blokkerend, nooit stil).
+     **Latere verfijning (genoteerd 2026-07-14): voorstel-op-blur voor handmatige regels** —
+     nu krijgt een regel die ná het ophalen wordt toegevoegd (of waarvan de omschrijving daarna
+     wijzigt) geen voorstel; ophalen bij verlaten van het omschrijving-veld lost dat op zonder
+     refetch-per-toetsaanslag.
+     **Follow-ups (browserreview Peter, 2026-07-14):**
+     - **Responsive:** de rechterkolom van het controlescherm klipt onder ~1560px
+       viewportbreedte (bevestigd op 1512px) — fixen voor de gangbare laptopbreedtes
+       1440/1536.
+     - **Openstaande visuele verificatie:** de groen/oranje geheugen-chips (incl. het
+       seed-only-oranje "uit historie, nog niet bevestigd") live bevestigen zodra er een
+       factuur van een geseede crediteur in de werkvoorraad staat — kon in deze review nog
+       niet, er lag geen geschikt document klaar.
 
 Frontend (Vite + React, design tokens uit mockup — die blijven leidend, ook voor onderstaande
 UI-eisen):

@@ -36,6 +36,10 @@ class VeldVoorstel:
     oranje: bool
     # korte, omschrijving-vrije reden voor de oranje-vlag (UI-tekst is aan de frontend).
     reden: str | None = None
+    # True zodra >=1 app-observatie de winnende waarde steunt. Peters ontwerp (2026-07-14):
+    # uitsluitend rlz_seed = altijd oranje, ook bij hoge stem-confidence — vertrouwen wordt in
+    # de app verdiend, niet uit de historie afgeleid.
+    app_bevestigd: bool = False
 
 
 @dataclass(frozen=True)
@@ -45,7 +49,9 @@ class GeheugenVoorstel:
     project: VeldVoorstel
 
 
-_GEEN_VOORSTEL = VeldVoorstel(waarde=None, confidence=0.0, telling=0, oranje=True, reden="geen observaties")
+_GEEN_VOORSTEL = VeldVoorstel(
+    waarde=None, confidence=0.0, telling=0, oranje=True, reden="geen observaties", app_bevestigd=False
+)
 
 
 def _gewicht(
@@ -91,11 +97,6 @@ def _stem(
     )
 
 
-def _te_weinig_bevestiging(stem: _Stem) -> bool:
-    """Oranje tot ≥2 consistente observaties óf ≥1 app-correctie voor de winnende waarde."""
-    return stem.telling < 2 and stem.app_telling < 1
-
-
 def _veld_voorstel(stem: _Stem | None, *, extra_oranje_reden: str | None = None) -> VeldVoorstel:
     if stem is None:
         return _GEEN_VOORSTEL
@@ -106,14 +107,19 @@ def _veld_voorstel(stem: _Stem | None, *, extra_oranje_reden: str | None = None)
         # gesplitste stem is voor élk veld reden tot oranje — de winnaar is een meerderheid,
         # geen consensus.
         redenen.append("gesplitste stem")
-    if _te_weinig_bevestiging(stem):
-        redenen.append("nog te weinig bevestiging (<2 consistente observaties en geen app-correctie)")
+    app_bevestigd = stem.app_telling >= 1
+    if not app_bevestigd:
+        # Peters ontwerp (2026-07-14): uitsluitend rlz_seed blijft oranje — óók bij een hoge,
+        # eenduidige stem-confidence. De eerste app-bevestiging van deze waarde haalt 'm uit
+        # oranje. (Verving de oude, zwakkere regel "oranje tot ≥2 consistente observaties".)
+        redenen.append("alleen rlz-historie, nog geen app-bevestiging")
     return VeldVoorstel(
         waarde=stem.waarde,
         confidence=stem.confidence,
         telling=stem.telling,
         oranje=bool(redenen),
         reden="; ".join(redenen) or None,
+        app_bevestigd=app_bevestigd,
     )
 
 
@@ -134,8 +140,10 @@ def bepaal_voorstel(
       regel-niveau (observaties met dezelfde regel_sleutel), mits dat niveau stemmen heeft.
     - btw: regel-niveau eerst, leverancier-niveau als fallback — fallback en gesplitste stem
       zijn ALTIJD oranje (0%-onderscheid is aangifte-kritisch, zie CLAUDE.md).
-    - oranje tot ≥2 consistente observaties óf ≥1 app-correctie, óók bij een eenduidige stem —
-      voorstellen vanaf 1 observatie mag, vertrouwen moet verdiend worden."""
+    - oranje zolang de winnende waarde geen enkele app-observatie heeft (uitsluitend rlz_seed),
+      óók bij een eenduidige stem met hoge confidence — voorstellen vanaf 1 observatie mag,
+      vertrouwen wordt in de app verdiend (Peters ontwerp, 2026-07-14). `app_bevestigd` reist
+      per veld mee in de response."""
     halfwaardetijd = halfwaardetijd_dagen or settings.boekingsgeheugen_halfwaardetijd_dagen
     basisgewichten = {
         ObservatieBron.APP.value: gewicht_app if gewicht_app is not None else settings.boekingsgeheugen_gewicht_app,

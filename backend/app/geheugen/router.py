@@ -13,7 +13,12 @@ router = APIRouter(tags=["boekingsgeheugen"])
 
 def _naar_veld_response(veld: VeldVoorstel) -> schemas.VeldVoorstelResponse:
     return schemas.VeldVoorstelResponse(
-        waarde=veld.waarde, confidence=veld.confidence, telling=veld.telling, oranje=veld.oranje, reden=veld.reden
+        waarde=veld.waarde,
+        confidence=veld.confidence,
+        telling=veld.telling,
+        oranje=veld.oranje,
+        reden=veld.reden,
+        app_bevestigd=veld.app_bevestigd,
     )
 
 

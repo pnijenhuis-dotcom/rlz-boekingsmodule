@@ -19,6 +19,9 @@ class VeldVoorstelResponse(BaseModel):
     telling: int
     oranje: bool
     reden: str | None
+    # True zodra >=1 app-observatie de winnende waarde dekt; False = uitsluitend rlz_seed
+    # ("uit historie, nog niet bevestigd" in de UI). Peters ontwerp 2026-07-14.
+    app_bevestigd: bool
 
 
 class GeheugenVoorstelResponse(BaseModel):

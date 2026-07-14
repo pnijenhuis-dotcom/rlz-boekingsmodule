@@ -4,7 +4,7 @@ waarborg dat een geheugen-voorstel nooit de projectplicht-check opheft."""
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -179,6 +179,18 @@ class TestLeerlus:
             monkeypatch=monkeypatch,
             regels_samenvoegen=True,
         )
+        # Flaky-fix 2026-07-14: de engine klemt toekomstige bron-datums bewust op leeftijd 0
+        # (app/geheugen/engine.py::_gewicht) — een correctie met boekdatum "+7 dagen" woog dus
+        # NIET zwaarder en de UUID-tiebreak maakte de uitkomst per run willekeurig. Realistisch
+        # scenario: de oorspronkelijke boeking is ouder; dan wint de correctie écht via recency.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.boeking_observatie SET bron_datum = bron_datum - INTERVAL '30 days' "
+                    "WHERE administratie_id = :a"
+                ),
+                {"a": administratie_id},
+            )
         gecorrigeerd_gb = uuid.uuid4()
         with scoped_session(administratie_id) as session:
             nieuw = leg_boeking_vast(
@@ -186,7 +198,7 @@ class TestLeerlus:
                 administratie_id=administratie_id,
                 document_id=document_id,
                 vendor_id=VENDOR,
-                boekdatum=datetime.now(UTC).date() + timedelta(days=7),
+                boekdatum=datetime.now(UTC).date(),
                 boekstuk_ref="RLZ-TEST-00001",
                 regels=[_regel(ledger_id=gecorrigeerd_gb)],
                 regels_samenvoegen=True,

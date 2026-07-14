@@ -93,17 +93,40 @@ class TestOranjeTriggers:
         voorstel = _voorstel([_obs(gb=GB_A)])
         assert voorstel.gb.waarde == GB_A
         assert voorstel.gb.oranje
-        assert "te weinig bevestiging" in (voorstel.gb.reden or "")
+        assert "alleen rlz-historie" in (voorstel.gb.reden or "")
+        assert not voorstel.gb.app_bevestigd
 
-    def test_twee_consistente_observaties_niet_meer_oranje(self) -> None:
-        voorstel = _voorstel([_obs(gb=GB_A), _obs(gb=GB_A)])
+    def test_seed_only_blijft_oranje_ook_bij_hoge_eenduidige_confidence(self) -> None:
+        # Peters ontwerp (2026-07-14): uitsluitend rlz_seed = oranje, hoe eenduidig de stem ook
+        # is — dit verving de oude regel "≥2 consistente observaties is genoeg".
+        voorstel = _voorstel([_obs(gb=GB_A), _obs(gb=GB_A), _obs(gb=GB_A)])
         assert voorstel.gb.waarde == GB_A
-        assert not voorstel.gb.oranje
+        assert voorstel.gb.confidence == 1.0
+        assert voorstel.gb.oranje
+        assert "alleen rlz-historie" in (voorstel.gb.reden or "")
+        assert not voorstel.gb.app_bevestigd
+
+    def test_seed_only_wordt_groen_na_eerste_app_bevestiging_van_die_waarde(self) -> None:
+        seed_only = [_obs(gb=GB_A), _obs(gb=GB_A)]
+        assert _voorstel(seed_only).gb.oranje
+        bevestigd = _voorstel([*seed_only, _obs(gb=GB_A, bron="app")])
+        assert bevestigd.gb.waarde == GB_A
+        assert not bevestigd.gb.oranje
+        assert bevestigd.gb.app_bevestigd
+
+    def test_een_app_bevestiging_op_een_ANDERE_waarde_haalt_de_winnaar_niet_uit_oranje(self) -> None:
+        # De app-bevestiging moet de wínnende waarde dekken; een app-observatie op een andere
+        # GB maakt de stem bovendien gesplitst — dubbel oranje.
+        voorstel = _voorstel([_obs(gb=GB_A), _obs(gb=GB_A), _obs(gb=GB_A), _obs(gb=GB_A), _obs(gb=GB_B, bron="app")])
+        assert voorstel.gb.waarde == GB_A
+        assert voorstel.gb.oranje
+        assert not voorstel.gb.app_bevestigd
 
     def test_een_app_correctie_niet_meer_oranje(self) -> None:
         voorstel = _voorstel([_obs(gb=GB_A, bron="app")])
         assert voorstel.gb.waarde == GB_A
         assert not voorstel.gb.oranje
+        assert voorstel.gb.app_bevestigd
 
     def test_gesplitste_stem_blijft_oranje_ook_met_veel_observaties(self) -> None:
         observaties = [_obs(gb=GB_A), _obs(gb=GB_A), _obs(gb=GB_A), _obs(gb=GB_B)]
@@ -123,12 +146,12 @@ class TestBtw:
     def test_regel_niveau_gaat_voor_leverancier_niveau(self) -> None:
         observaties = [
             _obs(btw=BTW_HOOG),  # leverancier-niveau
-            _obs(btw=BTW_VERLEGD, sleutel=SLEUTEL_DIESEL),
-            _obs(btw=BTW_VERLEGD, sleutel=SLEUTEL_DIESEL),
+            _obs(btw=BTW_VERLEGD, sleutel=SLEUTEL_DIESEL, bron="app"),
+            _obs(btw=BTW_VERLEGD, sleutel=SLEUTEL_DIESEL, bron="app"),
         ]
         voorstel = _voorstel(observaties, sleutel=SLEUTEL_DIESEL)
         assert voorstel.btw.waarde == BTW_VERLEGD
-        assert not voorstel.btw.oranje  # 2 consistente regel-observaties, geen fallback
+        assert not voorstel.btw.oranje  # consistente, app-bevestigde regel-observaties, geen fallback
 
     def test_leverancier_fallback_is_altijd_oranje(self) -> None:
         # Regel-sleutel bekend, maar geen enkele observatie op dat regel-niveau -> fallback.
@@ -150,7 +173,7 @@ class TestBtw:
         assert "gesplitste stem" in (voorstel.btw.reden or "")
 
     def test_zonder_regel_sleutel_is_leverancier_niveau_primair_geen_fallback_vlag(self) -> None:
-        observaties = [_obs(btw=BTW_HOOG), _obs(btw=BTW_HOOG)]
+        observaties = [_obs(btw=BTW_HOOG, bron="app"), _obs(btw=BTW_HOOG, bron="app")]
         voorstel = _voorstel(observaties, sleutel=None)
         assert voorstel.btw.waarde == BTW_HOOG
         assert not voorstel.btw.oranje
@@ -161,15 +184,19 @@ class TestGbEnProjectVerfijning:
         observaties = [
             _obs(gb=GB_A, sleutel="heater huur"),
             _obs(gb=GB_A, sleutel="heater huur"),
-            _obs(gb=GB_B, sleutel=SLEUTEL_DIESEL),
-            _obs(gb=GB_B, sleutel=SLEUTEL_DIESEL),
+            _obs(gb=GB_B, sleutel=SLEUTEL_DIESEL, bron="app"),
+            _obs(gb=GB_B, sleutel=SLEUTEL_DIESEL, bron="app"),
         ]
         voorstel = _voorstel(observaties, sleutel=SLEUTEL_DIESEL)
         assert voorstel.gb.waarde == GB_B
-        assert not voorstel.gb.oranje  # regel-niveau is eenduidig met 2 observaties
+        assert not voorstel.gb.oranje  # regel-niveau is eenduidig én app-bevestigd
 
     def test_eenduidige_leverancier_stem_wordt_niet_verfijnd(self) -> None:
-        observaties = [_obs(gb=GB_A), _obs(gb=GB_A), _obs(gb=GB_A, sleutel=SLEUTEL_DIESEL)]
+        observaties = [
+            _obs(gb=GB_A, bron="app"),
+            _obs(gb=GB_A, bron="app"),
+            _obs(gb=GB_A, sleutel=SLEUTEL_DIESEL, bron="app"),
+        ]
         voorstel = _voorstel(observaties, sleutel=SLEUTEL_DIESEL)
         assert voorstel.gb.waarde == GB_A
         assert not voorstel.gb.oranje
