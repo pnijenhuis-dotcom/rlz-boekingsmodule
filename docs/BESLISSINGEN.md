@@ -73,6 +73,7 @@
 | Onderwerp | Status | Canonieke vindplaats |
 |---|---|---|
 | KvK-crediteur-dedup (KvK-match wint, naam-fallback gemarkeerd, live RLZ-check vóór PUT, naam-normalisatie via KvK Basisprofiel, duplicaat-signalering zonder auto-samenvoegen) | **uitgewerkt, geparkeerd** — canoniek vastgelegd 2026-07-14 (na eerder sessie-verlies; aanleiding pre-feature-ritueel WERKWIJZE v1.4). Bouwen pas als de KvK-API voor RLZ beschikbaar is (rule-of-two → gedeelde platform-connector) én het RLZ-KvK-veld live geverifieerd is | `docs/ontwerp/kvk-crediteur-dedup.md` |
+| Multi-backend boekhoud-port + Odoo-adapter (per administratie een koppeling-type; backend_type = alleen routeringssleutel, domein vertakt nooit; capability-contract + rechten-probe; Odoo 19 JSON-2-feiten vastgelegd) | **uitgewerkt / geparkeerd** — architectuur canoniek in Platform-besluit 0016 (2026-07-15); adapter bouwen bij de eerste concrete Odoo-klant | `Platform/besluiten/0016-boekhoud-backend-port-adapters.md`; `docs/ontwerp/odoo-backend-adapter.md` |
 
 ## Onderhoud
 
