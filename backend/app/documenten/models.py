@@ -49,6 +49,9 @@ class DocumentStatus(enum.StrEnum):
     BOEKEN_MISLUKT = "boeken_mislukt"
     NIET_TOEGEWEZEN = "niet_toegewezen"
     HANDMATIG_AFMAKEN = "handmatig_afmaken"
+    # Vier-ogen-accordering van een afwijkend IBAN (migratie 0024, docs/ontwerp/
+    # iban-wissel-accordering.md): boeken geblokkeerd tot een accordeur ≠ aanvrager besluit.
+    WACHT_OP_IBAN_ACCORDERING = "wacht_op_iban_accordering"
     VERWIJDERD = "verwijderd"
 
 
@@ -302,6 +305,77 @@ class Afwijzing(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     heropend_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class IbanAccorderingStatus(enum.StrEnum):
+    """Levenscyclus van een IBAN-accordering (migratie 0024): OPEN hoort bij een document op
+    DocumentStatus.WACHT_OP_IBAN_ACCORDERING; GEACCORDEERD en AFGEWEZEN zijn eindtoestanden —
+    een accordering wordt nooit verwijderd (append-only historie, zelfde principe als
+    Vraag/Afwijzing). Na een afwijzing blijft het document geblokkeerd; een nieuwe aanvraag
+    (nieuwe rij) is de enige weg vooruit."""
+
+    OPEN = "open"
+    GEACCORDEERD = "geaccordeerd"
+    AFGEWEZEN = "afgewezen"
+
+
+class IbanSoort(enum.StrEnum):
+    """Aard van de aangeboden rekening, opgegeven door de aanvrager — context voor het
+    vier-ogen-besluit (G-rekening/WKA is in de bouwketen de norm-casus). De bevestiging zelf
+    maakt de rekening vertrouwd; de vertrouwde set kent geen aparte G-rekening-klasse."""
+
+    REGULIER = "regulier"
+    G_REKENING = "g_rekening"
+
+
+class IbanAccordeur(Base):
+    """Instelling per administratie "IBAN-wissel accorderen door" (docs/ontwerp/
+    iban-wissel-accordering.md): de set medewerkers die een aangeboden IBAN-wissel mag
+    accorderen of afwijzen. Lege set → actieve beheerders. Wijzigen is Beheerder-only
+    (router-dependency) met audit_event."""
+
+    __tablename__ = "iban_accordeur"
+    __table_args__ = {"schema": "boekhouding"}
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class IbanAccordering(Base):
+    """Eén vier-ogen-accordering van een afwijkend IBAN (migratie 0024). Precies één open
+    accordering per document (partiële unique index); besliste accorderingen blijven als
+    historie staan. `status_voor_accordering` is de document-status van vóór het aanbieden:
+    accorderen herstelt exact díé herkomst (zelfde status_voor_*-patroon als
+    Vraag/Afwijzing). Vier-ogen: besloten_door ≠ aangevraagd_door, server-side afgedwongen in
+    app/documenten/iban_accordering.py én met een DB-CHECK."""
+
+    __tablename__ = "iban_accordering"
+    __table_args__ = {"schema": "boekhouding"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    nieuw_iban: Mapped[str]
+    soort: Mapped[str]
+    aangevraagd_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangevraagd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    # TEXT met CHECK, niet de document_status-PG-enum — zelfde overweging als Vraag/Afwijzing
+    # (migratie 0022: ALTER TYPE ... ADD VALUE-beperking).
+    status_voor_accordering: Mapped[str]
+    status: Mapped[str] = mapped_column(default=IbanAccorderingStatus.OPEN.value)
+    besloten_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    besloten_op: Mapped[datetime | None] = mapped_column(default=None)
+    afwijs_reden: Mapped[str | None] = mapped_column(default=None)
 
 
 class WebhookUitgaand(Base):

@@ -25,6 +25,7 @@ _NIET_GEBOEKTE_STATUSSEN = frozenset(
         DocumentStatus.BOEKEN_MISLUKT,
         DocumentStatus.NIET_TOEGEWEZEN,
         DocumentStatus.HANDMATIG_AFMAKEN,
+        DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
     }
 )
 
@@ -69,6 +70,11 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VRAAG_OPEN,
             DocumentStatus.AFGEWEZEN,
+            # IBAN-wissel vier-ogen-accordering (2026-07-15): een afwijkend IBAN aanbieden
+            # blokkeert boeken tot een accordeur ≠ aanvrager besluit — accorderen herstelt de
+            # herkomst (iban_accordering.status_voor_accordering), zelfde patroon als
+            # vraag_open/afgewezen.
+            DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
             DocumentStatus.VERWIJDERD,
             # "Opnieuw extraheren" (timeout-fix 2026-07-10): een mislukte AI-extractie laat het
             # document op te_controleren achter — de her-extractie doorloopt daarna gewoon weer
@@ -93,6 +99,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             # een al boekklaar document kan alsnog fout blijken — heropenen herstelt exact deze
             # herkomst (afwijzing.status_voor_afwijzing).
             DocumentStatus.AFGEWEZEN,
+            DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
             DocumentStatus.VERWIJDERD,
         }
     ),
@@ -125,6 +132,20 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VRAAG_OPEN,
             DocumentStatus.AFGEWEZEN,
+            DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
+            DocumentStatus.VERWIJDERD,
+        }
+    ),
+    # Accorderen herstelt de HERKOMST-status van vóór het aanbieden
+    # (iban_accordering.status_voor_accordering — app/documenten/iban_accordering.py), daarom
+    # alle drie de herkomsten als uitgang. Ná een afwijzing blijft het document op deze status
+    # (geblokkeerd, gemarkeerd verdacht); een nieuwe aanvraag is dan de enige weg vooruit —
+    # zie docs/ontwerp/iban-wissel-accordering.md.
+    DocumentStatus.WACHT_OP_IBAN_ACCORDERING: frozenset(
+        {
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.HANDMATIG_AFMAKEN,
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VERWIJDERD,
         }
     ),

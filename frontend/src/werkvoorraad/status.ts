@@ -12,6 +12,9 @@ export const STATUS_LABELS: Record<string, string> = {
   boeken_mislukt: 'Boeken mislukt',
   niet_toegewezen: 'Niet toegewezen',
   handmatig_afmaken: 'Handmatig afmaken',
+  // IBAN-wissel vier-ogen-accordering (PART A backend 2026-07-15; UI volgt in PART B) —
+  // label alvast zodat de werkvoorraad nooit de rauwe statuscode toont.
+  wacht_op_iban_accordering: 'Wacht op IBAN-accordering',
   verwijderd: 'Verwijderd',
 }
 
@@ -27,6 +30,7 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   boeken_mislukt: 'vraag',
   niet_toegewezen: 'vraag',
   handmatig_afmaken: 'vraag',
+  wacht_op_iban_accordering: 'vraag',
   verwijderd: 'geboekt',
 }
 

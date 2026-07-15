@@ -26,7 +26,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.documenten import boekvoorstel as boekvoorstel_service
-from app.documenten import leverancier_iban
+from app.documenten import iban_accordering
 from app.documenten import schemas as documenten_schemas
 from app.documenten import service as documenten_service
 from app.sync import schemas as sync_schemas
@@ -37,7 +37,10 @@ _APP_ROOT = Path(__file__).resolve().parents[2] / "app"
 # Contractregister: In/Patch-model -> service-/repo-functie die zijn velden als kwargs ontvangt.
 # Nieuw endpoint met pydantic-invoer dat naar een servicefunctie mapt? Hier registreren.
 CONTRACTEN: list[tuple[type[BaseModel], Callable]] = [
-    (documenten_schemas.IbanBevestigenInput, leverancier_iban.bevestig_iban),
+    # Vier-ogen-accordering (2026-07-15) verving het directe bevestig-endpoint
+    # (IbanBevestigenInput ↔ bevestig_iban) — aanbieden/afwijzen zijn nu de contracten.
+    (documenten_schemas.IbanAanbiedenInput, iban_accordering.bied_aan),
+    (documenten_schemas.IbanAfwijzenInput, iban_accordering.wijs_af),
     (sync_schemas.NieuweCrediteurInput, sync_service.maak_crediteur_aan),
     (documenten_schemas.BoekvoorstelInput, boekvoorstel_service.sla_boekvoorstel_op),
     (documenten_schemas.VerwijderenInput, documenten_service.verwijder_document),
@@ -82,7 +85,7 @@ class TestContractregister:
         """De opdracht eist expliciete dekking van de nieuwe IBAN-endpoints + crediteur-aanmaken —
         deze toets voorkomt dat iemand die paren ooit uit het register 'opruimt'."""
         geregistreerd = {(model, functie) for model, functie in CONTRACTEN}
-        assert (documenten_schemas.IbanBevestigenInput, leverancier_iban.bevestig_iban) in geregistreerd
+        assert (documenten_schemas.IbanAanbiedenInput, iban_accordering.bied_aan) in geregistreerd
         assert (sync_schemas.NieuweCrediteurInput, sync_service.maak_crediteur_aan) in geregistreerd
 
     def test_blinde_vlekken_zijn_geen_dode_markers(self) -> None:

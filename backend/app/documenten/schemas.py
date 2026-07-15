@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator
 
@@ -236,13 +236,48 @@ class AfwijzingResponse(BaseModel):
     heropend_op: datetime | None = None
 
 
-class IbanBevestigenInput(BaseModel):
-    """IBAN-wissel-flow: het nieuwe rekeningnummer reist in de request-body, nooit in de URL
-    (privacy — URL's belanden in access-logs)."""
+class IbanAanbiedenInput(BaseModel):
+    """IBAN-wissel vier-ogen-accordering (docs/ontwerp/iban-wissel-accordering.md): het nieuwe
+    rekeningnummer reist in de request-body, nooit in de URL (privacy — URL's belanden in
+    access-logs). `soort` is context voor de accordeur (G-rekening/WKA is de norm-casus)."""
 
-    iban: str
+    nieuw_iban: str
+    soort: Literal["regulier", "g_rekening"]
 
 
-class IbanBevestigdResponse(BaseModel):
+class IbanAfwijzenInput(BaseModel):
+    """Afwijzen van een IBAN-aanvraag: reden verplicht (schema is de eerste poort; service- en
+    DB-laag weigeren een lege reden ook)."""
+
+    reden: str
+
+
+class IbanAccorderingResponse(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_status: str
     vendor_id: uuid.UUID
-    iban: str
+    nieuw_iban: str
+    soort: str
+    status: str
+    status_voor_accordering: str
+    aangevraagd_door: uuid.UUID
+    aangevraagd_op: datetime
+    besloten_door: uuid.UUID | None = None
+    besloten_op: datetime | None = None
+    afwijs_reden: str | None = None
+
+
+class IbanAccorderingLijstResponse(BaseModel):
+    accorderingen: list[IbanAccorderingResponse]
+
+
+class IbanAccordeursResponse(BaseModel):
+    """Instelling "IBAN-wissel accorderen door" — lege lijst betekent: de actieve beheerder(s)
+    zijn de accordeurs."""
+
+    accordeurs: list[uuid.UUID]
+
+
+class IbanAccordeursInput(BaseModel):
+    accordeurs: list[uuid.UUID]

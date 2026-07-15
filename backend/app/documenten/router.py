@@ -5,12 +5,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
-from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
+from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import afwijzen, boeken, boekvoorstel, leverancier_iban, schemas, service, vragen
+from app.documenten import afwijzen, boeken, boekvoorstel, iban_accordering, leverancier_iban, schemas, service, vragen
 from app.documenten.checks import CheckRapport
-from app.documenten.models import VraagStatus
+from app.documenten.models import IbanAccorderingStatus, IbanSoort, VraagStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.rlz.credentials import GeenRlzCredentials
 
@@ -589,24 +589,165 @@ def document_heropenen(
     return _naar_afwijzing_response(data)
 
 
+# Het vroegere directe bevestig-endpoint (POST .../crediteuren/{vendor_id}/ibans) is bewust
+# verwijderd bij de vier-ogen-accordering (2026-07-15): élke gescoopte gebruiker kon er
+# eigenhandig een IBAN vertrouwd mee maken, wat de vier-ogen-waarborg zou omzeilen. De enige
+# menselijke route is nu aanbieden → accorderen door een tweede paar ogen (hieronder);
+# docs/ontwerp/iban-wissel-accordering.md, bewuste keuze 1.
+
+
+def _naar_iban_accordering_response(data: iban_accordering.AccorderingData) -> schemas.IbanAccorderingResponse:
+    return schemas.IbanAccorderingResponse(
+        id=data.id,
+        document_id=data.document_id,
+        document_status=data.document_status.value,
+        vendor_id=data.vendor_id,
+        nieuw_iban=data.nieuw_iban,
+        soort=data.soort,
+        status=data.status,
+        status_voor_accordering=data.status_voor_accordering,
+        aangevraagd_door=data.aangevraagd_door,
+        aangevraagd_op=data.aangevraagd_op,
+        besloten_door=data.besloten_door,
+        besloten_op=data.besloten_op,
+        afwijs_reden=data.afwijs_reden,
+    )
+
+
 @router.post(
-    "/administraties/{administratie_id}/crediteuren/{vendor_id}/ibans",
-    response_model=schemas.IbanBevestigdResponse,
+    "/administraties/{administratie_id}/documenten/{document_id}/iban-accordering",
+    response_model=schemas.IbanAccorderingResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def leverancier_iban_bevestigen(
+def iban_accordering_aanbieden(
     administratie_id: uuid.UUID,
-    vendor_id: uuid.UUID,
-    invoer: schemas.IbanBevestigenInput,
+    document_id: uuid.UUID,
+    invoer: schemas.IbanAanbiedenInput,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
-) -> schemas.IbanBevestigdResponse:
-    """Menselijke bevestiging van een (afwijkend) factuur-IBAN — de enige route waarlangs een
-    nieuw rekeningnummer na een IBAN-wissel-blokkade aan de vertrouwde set wordt toegevoegd
-    (app/documenten/leverancier_iban.py). Het IBAN zit in de body, nooit in de URL."""
+) -> schemas.IbanAccorderingResponse:
+    """Afwijkend IBAN aanbieden ter vier-ogen-accordering: document → wacht_op_iban_accordering
+    (boeken geblokkeerd tot een accordeur ≠ aanvrager besluit). Crediteur komt van het
+    boekvoorstel; het IBAN zit in de body, nooit in de URL."""
     try:
-        genormaliseerd = leverancier_iban.bevestig_iban(
-            administratie_id=administratie_id, vendor_id=vendor_id, iban=invoer.iban, actor_id=actor.id
+        data = iban_accordering.bied_aan(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            nieuw_iban=invoer.nieuw_iban,
+            soort=IbanSoort(invoer.soort),
         )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except leverancier_iban.OngeldigIban as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return schemas.IbanBevestigdResponse(vendor_id=vendor_id, iban=genormaliseerd)
+    except (iban_accordering.GeenCrediteurOpVoorstel, iban_accordering.IbanAlVertrouwd) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except (iban_accordering.ErIsAlEenOpenAccordering, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_iban_accordering_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/iban-accorderingen/{accordering_id}/accorderen",
+    response_model=schemas.IbanAccorderingResponse,
+)
+def iban_accordering_accorderen(
+    administratie_id: uuid.UUID,
+    accordering_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.IbanAccorderingResponse:
+    """Vier-ogen-akkoord (accordeur ≠ aanvrager, server-side afgedwongen): IBAN wordt
+    vertrouwd (bron=bevestigd), document terug naar de herkomst-status."""
+    try:
+        data = iban_accordering.accordeer(
+            administratie_id=administratie_id, accordering_id=accordering_id, actor_id=actor.id
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (iban_accordering.VierOgenGeschonden, iban_accordering.GeenBevoegdeAccordeur) as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except (iban_accordering.GeenOpenAccordering, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_iban_accordering_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/iban-accorderingen/{accordering_id}/afwijzen",
+    response_model=schemas.IbanAccorderingResponse,
+)
+def iban_accordering_afwijzen(
+    administratie_id: uuid.UUID,
+    accordering_id: uuid.UUID,
+    invoer: schemas.IbanAfwijzenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.IbanAccorderingResponse:
+    """Vier-ogen-afwijzing (zelfde accordeur-eisen): reden verplicht; het document blijft
+    geblokkeerd op wacht_op_iban_accordering en is via de afgewezen aanvraag gemarkeerd als
+    verdacht — geen automatische vervolgactie."""
+    try:
+        data = iban_accordering.wijs_af(
+            administratie_id=administratie_id, accordering_id=accordering_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except iban_accordering.AfwijsRedenVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except (iban_accordering.VierOgenGeschonden, iban_accordering.GeenBevoegdeAccordeur) as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except (iban_accordering.GeenOpenAccordering, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_iban_accordering_response(data)
+
+
+@router.get(
+    "/administraties/{administratie_id}/iban-accorderingen",
+    response_model=schemas.IbanAccorderingLijstResponse,
+)
+def iban_accorderingen_lijst(
+    administratie_id: uuid.UUID,
+    accordering_status: IbanAccorderingStatus | None = None,
+    document_id: uuid.UUID | None = None,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.IbanAccorderingLijstResponse:
+    """Accorderingen van één administratie, nieuwste eerst — optioneel gefilterd op status
+    en/of document (PART B-UI haalt zo de open aanvraag van één document op)."""
+    data = iban_accordering.lijst_accorderingen(
+        administratie_id=administratie_id, status=accordering_status, document_id=document_id
+    )
+    return schemas.IbanAccorderingLijstResponse(
+        accorderingen=[_naar_iban_accordering_response(a) for a in data]
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/iban-accordeurs",
+    response_model=schemas.IbanAccordeursResponse,
+)
+def iban_accordeurs_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.IbanAccordeursResponse:
+    """Scope-check, geen Beheerder-only: wie een IBAN aanbiedt moet kunnen zien wie er kan
+    accorderen (lege lijst = de actieve beheerders)."""
+    return schemas.IbanAccordeursResponse(
+        accordeurs=iban_accordering.haal_accordeurs_op(administratie_id=administratie_id)
+    )
+
+
+@router.put(
+    "/administraties/{administratie_id}/iban-accordeurs",
+    response_model=schemas.IbanAccordeursResponse,
+)
+def iban_accordeurs_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.IbanAccordeursInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.IbanAccordeursResponse:
+    """Instelling "IBAN-wissel accorderen door" — Beheerder-only, net als de andere
+    administratie-instellingen; elke wijziging in het audit_event."""
+    try:
+        accordeurs = iban_accordering.zet_accordeurs(
+            administratie_id=administratie_id, actor_id=actor.id, accordeurs=invoer.accordeurs
+        )
+    except iban_accordering.AccordeurBuitenScope as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return schemas.IbanAccordeursResponse(accordeurs=accordeurs)
