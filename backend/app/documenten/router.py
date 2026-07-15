@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import boeken, boekvoorstel, leverancier_iban, schemas, service, vragen
+from app.documenten import afwijzen, boeken, boekvoorstel, leverancier_iban, schemas, service, vragen
 from app.documenten.checks import CheckRapport
 from app.documenten.models import VraagStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
@@ -21,6 +21,19 @@ def _naar_check_rapport_response(rapport: CheckRapport) -> schemas.CheckRapportR
     return schemas.CheckRapportResponse(
         geblokkeerd=rapport.geblokkeerd,
         resultaten=[schemas.CheckResultaatDto(naam=r.naam, ok=r.ok, melding=r.melding) for r in rapport.resultaten],
+    )
+
+
+def _naar_afwijzing_info(data: afwijzen.AfwijzingData | None) -> schemas.AfwijzingInfoDto | None:
+    if data is None:
+        return None
+    return schemas.AfwijzingInfoDto(
+        id=data.id,
+        reden=data.reden,
+        afgewezen_door=data.afgewezen_door,
+        afgewezen_op=data.afgewezen_op,
+        toegewezen_aan=data.toegewezen_aan,
+        status_voor_afwijzing=data.status_voor_afwijzing,
     )
 
 
@@ -106,6 +119,9 @@ def documenten_lijst(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentListResponse:
     items = service.lijst_documenten(administratie_id=administratie_id, toon_verwijderd=toon_verwijderd)
+    # Werkvoorraad-chip "Afgewezen — ter controle" mét reden + wie afwees (mockup): één query
+    # voor alle open afwijzingen, geen N+1.
+    afwijzingen = afwijzen.open_afwijzingen(administratie_id=administratie_id)
     return schemas.DocumentListResponse(
         documenten=[
             schemas.DocumentListItemResponse(
@@ -117,6 +133,7 @@ def documenten_lijst(
                 toegewezen_aan=item.document.toegewezen_aan,
                 aangemaakt_op=item.document.aangemaakt_op,
                 laatst_gewijzigd_op=item.document.laatst_gewijzigd_op,
+                afwijzing=_naar_afwijzing_info(afwijzingen.get(item.document.id)),
             )
             for item in items
         ]
@@ -148,6 +165,11 @@ def document_detail(
         aangemaakt_op=d.aangemaakt_op,
         laatst_gewijzigd_op=d.laatst_gewijzigd_op,
         veldvoorstel=detail.veldvoorstel,
+        afwijzing=_naar_afwijzing_info(
+            afwijzen.open_afwijzing_van(administratie_id=administratie_id, document_id=document_id)
+            if d.status.value == "afgewezen"
+            else None
+        ),
         tijdlijn=[
             schemas.DocumentGebeurtenisResponse(
                 van_status=g.van_status.value if g.van_status else None,
@@ -495,6 +517,76 @@ def vragen_lijst(
     op status en/of document — het controlescherm haalt zo de open vraag van één document op)."""
     data = vragen.lijst_vragen(administratie_id=administratie_id, status=vraag_status, document_id=document_id)
     return schemas.VraagLijstResponse(vragen=[_naar_vraag_response(v) for v in data])
+
+
+def _naar_afwijzing_response(data: afwijzen.AfwijzingData) -> schemas.AfwijzingResponse:
+    return schemas.AfwijzingResponse(
+        id=data.id,
+        document_id=data.document_id,
+        document_status=data.document_status.value,
+        reden=data.reden,
+        status=data.status,
+        status_voor_afwijzing=data.status_voor_afwijzing,
+        afgewezen_door=data.afgewezen_door,
+        afgewezen_op=data.afgewezen_op,
+        toegewezen_aan=data.toegewezen_aan,
+        heropend_door=data.heropend_door,
+        heropend_op=data.heropend_op,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/afwijzen",
+    response_model=schemas.AfwijzingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def document_afwijzen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.AfwijzenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfwijzingResponse:
+    """Afwijzen (mockup #afwijsmodal): reden verplicht, document -> afgewezen (blijft zichtbaar
+    in de werkvoorraad als "Afgewezen — ter controle", boeken geblokkeerd), toewijzing default
+    naar de administratie-eigenaar — zelfde patroon als vraag stellen."""
+    try:
+        data = afwijzen.wijs_af(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            reden=invoer.reden,
+            toegewezen_aan=invoer.toegewezen_aan,
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except afwijzen.RedenVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except (vragen.GeenToewijzingMogelijk, vragen.ToegewezeneBuitenScope) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except OngeldigeStatusovergang as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_afwijzing_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/heropenen",
+    response_model=schemas.AfwijzingResponse,
+)
+def document_heropenen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfwijzingResponse:
+    """Heropent een afgewezen document: de afwijzing blijft als 'heropend' in de historie
+    staan, het document gaat terug naar exact de herkomst-status van vóór de afwijzing
+    (status_voor_afwijzing) — zelfde herstel-patroon als beantwoorden/intrekken van een vraag."""
+    try:
+        data = afwijzen.heropen(administratie_id=administratie_id, document_id=document_id, actor_id=actor.id)
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (afwijzen.GeenOpenAfwijzing, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_afwijzing_response(data)
 
 
 @router.post(

@@ -287,3 +287,97 @@ describe('DocumentDetailScreen — opnieuw extraheren vanaf een geslaagd voorste
     expect(screen.queryByRole('button', { name: '↻ Opnieuw extraheren' })).not.toBeInTheDocument()
   })
 })
+
+describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const AFWIJZING = {
+    id: 'ffffffff-0000-0000-0000-000000000009',
+    reden: 'niet onze bestelling, navragen bij leverancier',
+    afgewezen_door: 'x',
+    afgewezen_op: '2026-07-15T09:00:00Z',
+    toegewezen_aan: 'y',
+    status_voor_afwijzing: 'te_controleren',
+  }
+
+  function installMetHeropenen(detail: unknown, heropenAanroepen: string[]) {
+    const basis = vi.mocked(globalThis.fetch)
+    void basis
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/heropenen') && init?.method === 'POST') {
+          heropenAanroepen.push(url)
+          return Promise.resolve(jsonResponse({ id: AFWIJZING.id, status: 'heropend' }))
+        }
+        if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
+        if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
+        if (url.endsWith('/boekvoorstel')) {
+          return Promise.resolve(
+            jsonResponse({
+              document_id: DOCUMENT_ID,
+              vendor_id: null,
+              referentie: null,
+              factuurdatum: null,
+              totaalbedrag: null,
+              rlz_boekstuknummer: null,
+              opgeslagen: false,
+              regels: [],
+            }),
+          )
+        }
+        return Promise.resolve(jsonResponse({ rekeningen: [], btw_codes: [], crediteuren: [], projecten: [], verplicht: false, medewerkers: [], vragen: [] }))
+      }),
+    )
+  }
+
+  it('toont de afgewezen-banner met reden + heropenen-knop en heropent via de backend', async () => {
+    const heropenAanroepen: string[] = []
+    installMetHeropenen(
+      detailMet({
+        status: 'afgewezen',
+        afwijzing: AFWIJZING,
+        tijdlijn: [
+          { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-07-10T10:00:00Z' },
+          {
+            van_status: 'te_controleren',
+            naar_status: 'afgewezen',
+            actor_id: 'x',
+            actor_is_systeem: false,
+            detail: { afwijzing_id: AFWIJZING.id, reden: AFWIJZING.reden, toegewezen_aan: 'y', status_voor_afwijzing: 'te_controleren' },
+            tijdstip: '2026-07-15T09:00:00Z',
+          },
+        ],
+      }),
+      heropenAanroepen,
+    )
+
+    renderScherm()
+
+    // Reden zichtbaar in de banner én als tijdlijn-entry ("blijft zichtbaar" — nooit alleen
+    // een kale statuschip).
+    const redenen = await screen.findAllByText(/niet onze bestelling, navragen bij leverancier/)
+    expect(redenen.length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/Afgewezen door/)).toBeInTheDocument()
+    // Geen boekknop of afwijsknop op een al afgewezen document (read-only voorstel).
+    expect(screen.queryByRole('button', { name: /Boeken in RLZ/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Afwijzen…' })).not.toBeInTheDocument()
+
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    await gebruiker.click(screen.getByRole('button', { name: '↺ Heropenen' }))
+    await waitFor(() => expect(heropenAanroepen).toHaveLength(1))
+    expect(heropenAanroepen[0]).toContain(`/documenten/${DOCUMENT_ID}/heropenen`)
+  })
+
+  it('toont de Afwijzen…-knop in de actiebalk op een te_controleren document', async () => {
+    installMetHeropenen(detailMet({ status: 'te_controleren', afwijzing: null }), [])
+
+    renderScherm()
+
+    await screen.findByText('AI-voorstel — mens boekt')
+    expect(await screen.findByRole('button', { name: 'Afwijzen…' })).toBeInTheDocument()
+  })
+})

@@ -13,6 +13,31 @@ export interface DuplicaatReferentieDto {
   aangemaakt_op: string
 }
 
+/** Open afwijzing bij een document (mockup: chip "Afgewezen — ter controle" mét reden en wie
+ * afwees in de werkvoorraad; banner + heropenen-knop op het controlescherm). */
+export interface AfwijzingInfoDto {
+  id: string
+  reden: string
+  afgewezen_door: string
+  afgewezen_op: string
+  toegewezen_aan: string
+  status_voor_afwijzing: string
+}
+
+export interface AfwijzingDto {
+  id: string
+  document_id: string
+  document_status: string
+  reden: string
+  status: string
+  status_voor_afwijzing: string
+  afgewezen_door: string
+  afgewezen_op: string
+  toegewezen_aan: string
+  heropend_door: string | null
+  heropend_op: string | null
+}
+
 export interface DocumentListItemDto {
   id: string
   bestandsnaam: string
@@ -22,6 +47,7 @@ export interface DocumentListItemDto {
   toegewezen_aan: string | null
   aangemaakt_op: string
   laatst_gewijzigd_op: string
+  afwijzing: AfwijzingInfoDto | null
 }
 
 export interface DocumentListResponseDto {
@@ -50,6 +76,7 @@ export interface DocumentDetailDto {
   aangemaakt_op: string
   laatst_gewijzigd_op: string
   veldvoorstel: Record<string, unknown> | null
+  afwijzing: AfwijzingInfoDto | null
   tijdlijn: DocumentGebeurtenisDto[]
 }
 

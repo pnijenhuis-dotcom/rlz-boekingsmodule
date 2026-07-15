@@ -89,6 +89,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             # zonder deze overgang moest de controleur eerst kunstmatig terug naar
             # te_controleren. Boeken blijft vanuit vraag_open geblokkeerd.
             DocumentStatus.VRAAG_OPEN,
+            # Afwijzen-workflow (2026-07-15, zelfde overweging als vraag_open hierboven): ook
+            # een al boekklaar document kan alsnog fout blijken — heropenen herstelt exact deze
+            # herkomst (afwijzing.status_voor_afwijzing).
+            DocumentStatus.AFGEWEZEN,
             DocumentStatus.VERWIJDERD,
         }
     ),
@@ -124,7 +128,18 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.VERWIJDERD,
         }
     ),
-    DocumentStatus.AFGEWEZEN: frozenset({DocumentStatus.VERWIJDERD}),
+    # Heropenen (afwijzen-workflow 2026-07-15) herstelt de HERKOMST-status van vóór de afwijzing
+    # (afwijzing.status_voor_afwijzing — app/documenten/afwijzen.py), nooit hardgecodeerd
+    # te_controleren: daarom staan alle drie de afwijs-herkomsten hier als uitgang — zelfde
+    # patroon als vraag_open hierboven.
+    DocumentStatus.AFGEWEZEN: frozenset(
+        {
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.HANDMATIG_AFMAKEN,
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            DocumentStatus.VERWIJDERD,
+        }
+    ),
     DocumentStatus.GEBOEKT: frozenset(),
     DocumentStatus.VERWIJDERD: _NIET_GEBOEKTE_STATUSSEN,
 }

@@ -26,7 +26,8 @@ class DocumentStatus(enum.StrEnum):
     Grote documenten (async extractie, migratie 0016): ontvangen -> extractie_wachtrij ->
     extractie_bezig -> ... — de wachtrij-status betekent "staat klaar voor de achtergrondworker",
     de upload-request keert dan direct terug.
-    Zijtakken: vraag_open (blokkeert boeken), afgewezen (verplichte reden, eindstatus),
+    Zijtakken: vraag_open (blokkeert boeken), afgewezen (verplichte reden, blijft zichtbaar,
+    heropenen herstelt de herkomst — zie Afwijzing),
     boeken_mislukt (RLZ-fout, retry mogelijk), niet_toegewezen (verzamelbak — geen administratie
     gekoppeld, zie Document.administratie_id), handmatig_afmaken (migratie 0015, waarborg
     projectadministratie: AI-extractie kreeg de regelset niet aantoonbaar compleet bij een
@@ -259,6 +260,48 @@ class Vraag(Base):
     )
     ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
     ingetrokken_reden: Mapped[str | None] = mapped_column(default=None)
+
+
+class AfwijzingStatus(enum.StrEnum):
+    """Levenscyclus van een afwijzing (migratie 0023): OPEN hoort bij een document met
+    DocumentStatus.AFGEWEZEN ("Afgewezen — ter controle", blijft zichtbaar in de werkvoorraad,
+    boeken geblokkeerd); HEROPEND is de eindtoestand na de heropenen-actie — een afwijzing wordt
+    nooit verwijderd, de historie blijft staan (zelfde principe als Vraag)."""
+
+    OPEN = "open"
+    HEROPEND = "heropend"
+
+
+class Afwijzing(Base):
+    """Eén afwijzing van een document (CLAUDE.md "Afwijzen = verplichte reden, blijft zichtbaar",
+    mockup #afwijsmodal). Precies één open afwijzing per document tegelijk (partiële unique
+    index, migratie 0023); eerdere heropende afwijzingen blijven als historie staan. `reden` is
+    verplicht (ook op DB-niveau: CHECK niet-leeg). `toegewezen_aan` = "Ter controle naar" uit de
+    mockup-modal, default de administratie-eigenaar — zelfde patroon en scope-afdwinging als
+    Vraag (app/documenten/afwijzen.py). `status_voor_afwijzing` is de document-status van vóór
+    de afwijzing: heropenen herstelt exact díé herkomst (zelfde status_voor_*-patroon als
+    Vraag.status_voor_vraag)."""
+
+    __tablename__ = "afwijzing"
+    __table_args__ = {"schema": "boekhouding"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    afgewezen_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    afgewezen_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    reden: Mapped[str]
+    toegewezen_aan: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    # TEXT met CHECK, niet de document_status-PG-enum — zelfde overweging als Vraag (migratie
+    # 0022); app/documenten/afwijzen.py vertaalt van/naar DocumentStatus.
+    status_voor_afwijzing: Mapped[str]
+    status: Mapped[str] = mapped_column(default=AfwijzingStatus.OPEN.value)
+    heropend_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    heropend_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class WebhookUitgaand(Base):

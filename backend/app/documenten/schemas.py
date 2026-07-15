@@ -54,6 +54,18 @@ class DocumentActieResponse(BaseModel):
     status: str
 
 
+class AfwijzingInfoDto(BaseModel):
+    """Open afwijzing bij een document (mockup werkvoorraad: chip "Afgewezen — ter controle"
+    mét reden en wie afwees; controlescherm: banner + heropenen-knop)."""
+
+    id: uuid.UUID
+    reden: str
+    afgewezen_door: uuid.UUID
+    afgewezen_op: datetime
+    toegewezen_aan: uuid.UUID
+    status_voor_afwijzing: str
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
@@ -63,6 +75,8 @@ class DocumentListItemResponse(BaseModel):
     toegewezen_aan: uuid.UUID | None = None
     aangemaakt_op: datetime
     laatst_gewijzigd_op: datetime
+    # Alleen gevuld bij status 'afgewezen' met een open afwijzing-rij.
+    afwijzing: AfwijzingInfoDto | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -91,6 +105,7 @@ class DocumentDetailResponse(BaseModel):
     aangemaakt_op: datetime
     laatst_gewijzigd_op: datetime
     veldvoorstel: dict | None = None
+    afwijzing: AfwijzingInfoDto | None = None
     tijdlijn: list[DocumentGebeurtenisResponse]
 
 
@@ -196,6 +211,29 @@ class VraagResponse(BaseModel):
 
 class VraagLijstResponse(BaseModel):
     vragen: list[VraagResponse]
+
+
+class AfwijzenInput(BaseModel):
+    """Afwijsmodal (mockup #afwijsmodal): reden verplicht (lege reden wordt óók in de service-
+    én DB-laag geweigerd — deze schema-eis is de eerste poort, geen vervanging), toewijzing
+    "Ter controle naar" optioneel (default: de administratie-eigenaar)."""
+
+    reden: str
+    toegewezen_aan: uuid.UUID | None = None
+
+
+class AfwijzingResponse(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_status: str
+    reden: str
+    status: str
+    status_voor_afwijzing: str
+    afgewezen_door: uuid.UUID
+    afgewezen_op: datetime
+    toegewezen_aan: uuid.UUID
+    heropend_door: uuid.UUID | None = None
+    heropend_op: datetime | None = None
 
 
 class IbanBevestigenInput(BaseModel):

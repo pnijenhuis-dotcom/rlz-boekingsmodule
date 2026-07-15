@@ -104,8 +104,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
-  verplichte velden, IBAN-wissel en vraag-blokkeert-boeken zijn gebouwd + getest; **nog niet
-  gebouwd:** afwijzen-workflow (reden-afdwinging), memoriaal-saldo-0 (fase 2), VGB-prefixfilter
+  verplichte velden, IBAN-wissel, vraag-blokkeert-boeken en afwijzen-met-verplichte-reden zijn
+  gebouwd + getest; **nog niet gebouwd:** memoriaal-saldo-0 (fase 2), VGB-prefixfilter
   (vóór gedeelde administraties), per-leverancier-autoboeken-opt-in (vóór eerste autoboek),
   webhook-HMAC-per-verzendpoging (mét de afleveraar).
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord

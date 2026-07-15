@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
-import type { DocumentActieResponseDto, DocumentDetailDto, VraagDto } from '../api/types'
+import type { AfwijzingDto, DocumentActieResponseDto, DocumentDetailDto, VraagDto } from '../api/types'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { VraagModal } from '../vragen/VraagModal'
+import { AfwijsModal } from './AfwijsModal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
 const VRAAG_STELLEN_STATUSSEN = new Set(['te_controleren', 'handmatig_afmaken', 'klaar_om_te_boeken'])
+
+/** Statussen waaruit afgewezen kan worden (spiegel van app/documenten/afwijzen.py —
+ * zelfde herstelbare herkomsten als bij vragen; de backend blijft de waarheid). */
+const AFWIJZEN_STATUSSEN = VRAAG_STELLEN_STATUSSEN
 
 /** Ververs-interval zolang de achtergrondextractie loopt (wachtrij/bezig). */
 const EXTRACTIE_POLL_MS = 3000
@@ -197,6 +202,9 @@ export function DocumentDetailScreen() {
   const [herExtractieBevestigen, setHerExtractieBevestigen] = useState(false)
   const [vraagModalOpen, setVraagModalOpen] = useState(false)
   const [openVraag, setOpenVraag] = useState<VraagDto | null>(null)
+  const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
+  const [heropenenBezig, setHeropenenBezig] = useState(false)
+  const [heropenenFout, setHeropenenFout] = useState<string | null>(null)
   const { naamVoor } = useMedewerkers(administratieId ?? null)
 
   const laadDetail = useCallback(() => {
@@ -291,6 +299,22 @@ export function DocumentDetailScreen() {
   const isPdf = detail.bestandsnaam.toLowerCase().endsWith('.pdf')
   const magOpnieuwExtraheren = isPdf && detail.status === 'te_controleren' && !extractieProbleem
 
+  const heropenen = async () => {
+    setHeropenenBezig(true)
+    setHeropenenFout(null)
+    try {
+      await apiPostJson<AfwijzingDto>(
+        `/administraties/${administratieId}/documenten/${documentId}/heropenen`,
+        {},
+      )
+      laadDetail()
+    } catch (err) {
+      setHeropenenFout(err instanceof ApiError ? err.message : 'Heropenen mislukt.')
+    } finally {
+      setHeropenenBezig(false)
+    }
+  }
+
   return (
     <div>
       <div className="topbar">
@@ -338,6 +362,42 @@ export function DocumentDetailScreen() {
         </div>
 
         <div className="formpane">
+          {detail.status === 'afgewezen' && (
+            <div className="panel">
+              <h2>
+                Afgewezen — ter controle <span className="chip vraag">boeken geblokkeerd</span>
+              </h2>
+              {detail.afwijzing ? (
+                <div className="q-item" style={{ marginBottom: 0, border: 'none', padding: 0 }}>
+                  <div className="meta">
+                    afgewezen door {naamVoor(detail.afwijzing.afgewezen_door)},{' '}
+                    {formatDatum(detail.afwijzing.afgewezen_op)} · ter controle naar{' '}
+                    <b>{naamVoor(detail.afwijzing.toegewezen_aan)}</b>
+                  </div>
+                  <div className="vraagtekst">reden: &ldquo;{detail.afwijzing.reden}&rdquo;</div>
+                </div>
+              ) : (
+                <p className="hint" style={{ marginTop: 0 }}>
+                  Dit document is afgewezen. Het blijft zichtbaar in de werkvoorraad; boeken kan pas na
+                  heropenen.
+                </p>
+              )}
+              {heropenenFout && <div className="fout">{heropenenFout}</div>}
+              {detail.afwijzing && (
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={heropenenBezig}
+                    onClick={() => void heropenen()}
+                  >
+                    {heropenenBezig ? 'Bezig…' : '↺ Heropenen'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {detail.status === 'vraag_open' && (
             <div className="panel">
               <h2>
@@ -462,6 +522,7 @@ export function DocumentDetailScreen() {
               onVraagStellen={
                 VRAAG_STELLEN_STATUSSEN.has(detail.status) ? () => setVraagModalOpen(true) : undefined
               }
+              onAfwijzen={AFWIJZEN_STATUSSEN.has(detail.status) ? () => setAfwijsModalOpen(true) : undefined}
             />
           )}
 
@@ -474,6 +535,18 @@ export function DocumentDetailScreen() {
                 laadDetail()
               }}
               onAnnuleren={() => setVraagModalOpen(false)}
+            />
+          )}
+
+          {afwijsModalOpen && (
+            <AfwijsModal
+              administratieId={administratieId}
+              documentId={documentId}
+              onAfgewezen={() => {
+                setAfwijsModalOpen(false)
+                laadDetail()
+              }}
+              onAnnuleren={() => setAfwijsModalOpen(false)}
             />
           )}
 
@@ -573,6 +646,19 @@ export function DocumentDetailScreen() {
                         <div className="hint" style={{ marginTop: 2 }}>
                           Vraag ingetrokken door {naamVoor(g.actor_id)}
                           {typeof g.detail.reden === 'string' && g.detail.reden ? ` — “${g.detail.reden}”` : ''}
+                        </div>
+                      )}
+                      {g.detail && 'afwijzing_id' in g.detail && g.naar_status === 'afgewezen' && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Afgewezen door {naamVoor(g.actor_id)}
+                          {typeof g.detail.reden === 'string' && g.detail.reden ? ` — reden: “${g.detail.reden}”` : ''}
+                          {' '}· ter controle naar{' '}
+                          {naamVoor(typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}
+                        </div>
+                      )}
+                      {g.detail && 'afwijzing_heropend' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Heropend door {naamVoor(g.actor_id)} — terug naar de status van vóór de afwijzing
                         </div>
                       )}
                     </td>

@@ -7,7 +7,8 @@ export const STATUS_LABELS: Record<string, string> = {
   klaar_om_te_boeken: 'Klaar om te boeken',
   geboekt: 'Geboekt',
   vraag_open: 'Vraag open',
-  afgewezen: 'Afgewezen',
+  // Mockup werkvoorraad: de afgewezen-chip draagt de ter-controle-lading expliciet.
+  afgewezen: 'Afgewezen — ter controle',
   boeken_mislukt: 'Boeken mislukt',
   niet_toegewezen: 'Niet toegewezen',
   handmatig_afmaken: 'Handmatig afmaken',

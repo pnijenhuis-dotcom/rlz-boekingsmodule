@@ -265,6 +265,9 @@ interface Props {
   /** Vragenworkflow (mockup: "Vraag stellen…"-knop naast de boekknop): alleen meegegeven vanuit
    * statussen waaruit een vraag gesteld kan worden — undefined verbergt de knop. */
   onVraagStellen?: () => void
+  /** Afwijzen-workflow (mockup: "Afwijzen…"-knop in de actiebalk): zelfde patroon —
+   * alleen meegegeven vanuit statussen waaruit afgewezen kan worden. */
+  onAfwijzen?: () => void
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
@@ -278,6 +281,7 @@ export function BoekvoorstelPanel({
   onGeboekt,
   onHersteld,
   onVraagStellen,
+  onAfwijzen,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -387,7 +391,10 @@ export function BoekvoorstelPanel({
   // verwijderd is "herstellen" nog een geldige actie.
   const isGeboekt = status === 'geboekt'
   const isVerwijderd = status === 'verwijderd'
-  const isReadOnly = isGeboekt || isVerwijderd
+  // Afgewezen leest als bevroren voorstel: de banner op het detailscherm (reden + heropenen)
+  // is de enige actie — bewerken of boeken kan pas weer ná heropenen.
+  const isAfgewezen = status === 'afgewezen'
+  const isReadOnly = isGeboekt || isVerwijderd || isAfgewezen
 
   // UI-koppeling boekingsgeheugen (B6): zodra de crediteur bekend is (uit de extractie of een
   // handmatige keuze), per weergavemodus het geheugenvoorstel ophalen — samengevoegd =
@@ -1164,6 +1171,11 @@ export function BoekvoorstelPanel({
         )}
         {!isReadOnly && (
           <div className="actions">
+            {onAfwijzen && (
+              <button type="button" className="btn secondary" onClick={onAfwijzen}>
+                Afwijzen…
+              </button>
+            )}
             {onVraagStellen && (
               <button type="button" className="btn warn" onClick={onVraagStellen}>
                 Vraag stellen…

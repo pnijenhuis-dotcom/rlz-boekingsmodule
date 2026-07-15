@@ -344,10 +344,24 @@ Backend:
      `GET /administraties/{id}/medewerkers` (id+naam, scope-gecontroleerd, dataminimalisatie).
      Vraag-lijstresponse verrijkt met `totaalbedrag` uit het boekvoorstel (mockup toont het
      bedrag per vraag). Frontend-tests: `src/vragen/*.test.tsx` + werkvoorraad-vraagtests.
+     **Afwijzen-met-verplichte-reden — gebouwd + getest (2026-07-15), zelfde patronen als de
+     vragenworkflow:** `app/documenten/afwijzen.py` + migratie 0023 (afwijzing-record: reden
+     verplicht óók op DB-niveau, "Ter controle naar"-toewijzing met eigenaar-default en
+     scope-afdwinging, `status_voor_afwijzing`, één open afwijzing per document via partiële
+     unique index, historie blijft — heropend, nooit delete), endpoints
+     `POST .../documenten/{id}/afwijzen` (422 bij lege reden) + `POST .../heropenen`
+     (herstelt exact de herkomst-status), statusmachine: klaar_om_te_boeken → afgewezen en
+     afgewezen → de drie herstelbare herkomsten, audit_event op afwijzen/heropenen
+     (`document_afgewezen`/`document_heropend`), boekpoging vanuit afgewezen blijft
+     OngeldigeBoekpoging. UI 1-op-1 mockup #afwijsmodal: `AfwijsModal` (verplicht redenveld,
+     "Ter controle naar"-select met eigenaar-default), "Afwijzen…"-knop in de actiebalk,
+     afgewezen-banner met reden/wie/toegewezene + "↺ Heropenen"-knop op het controlescherm
+     (boekvoorstel read-only), werkvoorraad-chip "Afgewezen — ter controle" mét reden + wie
+     afwees (lijst-response verrijkt met `afwijzing`), tijdlijn-entries afgewezen (mét reden)
+     en heropend. Tests: `tests/documenten/test_afwijzen.py` (16) +
+     `AfwijsModal.test.tsx`/`DocumentDetailScreen.test.tsx`.
      **Nog niet gebouwd, met implementerende fase:**
-     afwijzen-met-verplichte-reden (status zit al in `statusmachine.py` en blokkeert het
-     boekpad, maar workflow/endpoint/reden-afdwinging ontbreken → afwijs-workflow, punt 8
-     hieronder); memoriaal-saldo-0 (→ fase 2, omzet/kostprijsmemoriaal); VGB-prefixfilter
+     memoriaal-saldo-0 (→ fase 2, omzet/kostprijsmemoriaal); VGB-prefixfilter
      (→ vóórdat documenten uit gedeelde vastgoed-administraties gelezen worden);
      per-leverancier-autoboeken-opt-in (→ vóór de eerste autoboek-functie);
      webhook-HMAC-per-verzendpoging (→ mét de afleveraar, open item 2026-07-13). `app/documenten/boeken.py`: `boek_document()` herhaalt de checks

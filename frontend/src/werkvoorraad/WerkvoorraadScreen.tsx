@@ -275,6 +275,11 @@ export function WerkvoorraadScreen() {
                     <td>{d.bestandsnaam}</td>
                     <td>
                       <StatusChip status={d.status} />
+                      {d.afwijzing && (
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                          reden: &ldquo;{d.afwijzing.reden}&rdquo; — {naamVoor(d.afwijzing.afgewezen_door)}
+                        </div>
+                      )}
                       {d.mogelijk_duplicaat_van && (
                         <div style={{ marginTop: 4 }}>
                           <span className="chip vraag">Mogelijk duplicaat</span>{' '}
