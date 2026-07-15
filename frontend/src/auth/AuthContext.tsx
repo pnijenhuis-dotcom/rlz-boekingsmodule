@@ -15,6 +15,10 @@ type AuthStatus = 'laden' | 'ingelogd' | 'uitgelogd'
 interface AuthContextWaarde {
   status: AuthStatus
   rol: string | null
+  /** Eigen gebruikers-id (JWT `sub`-claim) — nodig voor rol-afhankelijke UI zoals de
+   * vier-ogen-IBAN-accordering (ben ík de aanvrager/een accordeur?). De backend blijft de
+   * waarheid: elke actie wordt server-side opnieuw gecontroleerd. */
+  gebruikerId: string | null
   /** True als het laden van de app niet kon vaststellen of er een sessie is doordat de backend
    * niet bereikbaar was (i.p.v. gewoon geen geldige refresh-cookie) — zie LoginScreen voor de
    * bijbehorende melding. */
@@ -30,15 +34,22 @@ function rolUitToken(token: string): string | null {
   return typeof payload?.rol === 'string' ? payload.rol : null
 }
 
+function gebruikerIdUitToken(token: string): string | null {
+  const payload = decodeerJwtPayload(token)
+  return typeof payload?.sub === 'string' ? payload.sub : null
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('laden')
   const [rol, setRol] = useState<string | null>(null)
+  const [gebruikerId, setGebruikerId] = useState<string | null>(null)
   const [backendOnbereikbaar, setBackendOnbereikbaar] = useState(false)
 
   useEffect(() => {
     setSessieVerlopenHandler(() => {
       setStatus('uitgelogd')
       setRol(null)
+      setGebruikerId(null)
     })
 
     // Silent refresh bij het laden van de app: de httpOnly-cookie overleeft een paginaherlaad,
@@ -48,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (gelukt) {
           const token = getAccessToken()
           setRol(token ? rolUitToken(token) : null)
+          setGebruikerId(token ? gebruikerIdUitToken(token) : null)
           setStatus('ingelogd')
         } else {
           setStatus('uitgelogd')
@@ -66,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const inloggen = (paar: TokenPaarResponseDto) => {
     setAccessToken(paar.access_token)
     setRol(rolUitToken(paar.access_token))
+    setGebruikerId(gebruikerIdUitToken(paar.access_token))
     setStatus('ingelogd')
     setBackendOnbereikbaar(false)
   }
@@ -74,11 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiFetch('/auth/logout', { method: 'POST' })
     setAccessToken(null)
     setRol(null)
+    setGebruikerId(null)
     setStatus('uitgelogd')
   }
 
   return (
-    <AuthContext.Provider value={{ status, rol, backendOnbereikbaar, inloggen, uitloggen }}>
+    <AuthContext.Provider value={{ status, rol, gebruikerId, backendOnbereikbaar, inloggen, uitloggen }}>
       {children}
     </AuthContext.Provider>
   )

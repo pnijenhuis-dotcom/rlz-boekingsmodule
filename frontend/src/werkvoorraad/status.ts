@@ -12,9 +12,9 @@ export const STATUS_LABELS: Record<string, string> = {
   boeken_mislukt: 'Boeken mislukt',
   niet_toegewezen: 'Niet toegewezen',
   handmatig_afmaken: 'Handmatig afmaken',
-  // IBAN-wissel vier-ogen-accordering (PART A backend 2026-07-15; UI volgt in PART B) —
-  // label alvast zodat de werkvoorraad nooit de rauwe statuscode toont.
-  wacht_op_iban_accordering: 'Wacht op IBAN-accordering',
+  // IBAN-wissel vier-ogen-accordering (PART B 2026-07-15, chip-tekst conform de goedgekeurde
+  // flow).
+  wacht_op_iban_accordering: 'IBAN-wissel — wacht op accordering',
   verwijderd: 'Verwijderd',
 }
 

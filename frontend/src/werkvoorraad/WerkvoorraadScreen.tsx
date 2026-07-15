@@ -182,6 +182,17 @@ export function WerkvoorraadScreen() {
               </Link>
             )
           })()}
+          {(() => {
+            // IBAN-accordering-teller (vier-ogen-flow): wachtende documenten springen eruit —
+            // de rij zelf klikt door naar het document met de accordering-sectie.
+            const wachtend = (documenten ?? []).filter((d) => d.status === 'wacht_op_iban_accordering').length
+            if (wachtend === 0) return null
+            return (
+              <span className="chip blokkerend">
+                {wachtend} IBAN-{wachtend === 1 ? 'accordering' : 'accorderingen'} wachtend
+              </span>
+            )
+          })()}
         </div>
       </div>
 

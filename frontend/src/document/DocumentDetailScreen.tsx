@@ -11,6 +11,8 @@ import { VraagModal } from '../vragen/VraagModal'
 import { AfwijsModal } from './AfwijsModal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { IbanAccorderingSectie } from './IbanAccorderingSectie'
+import { SOORT_LABELS } from './ibanAccorderingApi'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
@@ -362,6 +364,14 @@ export function DocumentDetailScreen() {
         </div>
 
         <div className="formpane">
+          {detail.status === 'wacht_op_iban_accordering' && (
+            <IbanAccorderingSectie
+              administratieId={administratieId}
+              documentId={documentId}
+              onGewijzigd={laadDetail}
+            />
+          )}
+
           {detail.status === 'afgewezen' && (
             <div className="panel">
               <h2>
@@ -523,6 +533,7 @@ export function DocumentDetailScreen() {
                 VRAAG_STELLEN_STATUSSEN.has(detail.status) ? () => setVraagModalOpen(true) : undefined
               }
               onAfwijzen={AFWIJZEN_STATUSSEN.has(detail.status) ? () => setAfwijsModalOpen(true) : undefined}
+              onIbanAangeboden={VRAAG_STELLEN_STATUSSEN.has(detail.status) ? laadDetail : undefined}
             />
           )}
 
@@ -577,7 +588,17 @@ export function DocumentDetailScreen() {
                     <td>
                       {g.van_status ? (
                         <>
-                          {statusLabel(g.van_status)} → <b>{statusLabel(g.naar_status)}</b>
+                          {g.van_status === g.naar_status ? (
+                            // Tijdlijn-notitie zonder statusovergang (bv. IBAN-afwijzing of
+                            // her-aanvraag op de wachtstatus): geen misleidende "X → X"-pijl.
+                            <>
+                              Status blijft <b>{statusLabel(g.naar_status)}</b>
+                            </>
+                          ) : (
+                            <>
+                              {statusLabel(g.van_status)} → <b>{statusLabel(g.naar_status)}</b>
+                            </>
+                          )}
                           {g.actor_is_systeem && (
                             <span className="chip geheugen" style={{ marginLeft: 6 }} title="Achtergrondverwerking — geen menselijke handeling">
                               ⚙ systeem
@@ -659,6 +680,28 @@ export function DocumentDetailScreen() {
                       {g.detail && 'afwijzing_heropend' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           Heropend door {naamVoor(g.actor_id)} — terug naar de status van vóór de afwijzing
+                        </div>
+                      )}
+                      {g.detail && 'iban_aangeboden' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Afwijkend IBAN ter accordering aangeboden door {naamVoor(g.actor_id)}
+                          {typeof g.detail.soort === 'string' && (g.detail.soort === 'regulier' || g.detail.soort === 'g_rekening')
+                            ? ` (${SOORT_LABELS[g.detail.soort]})`
+                            : ''}{' '}
+                          — vier-ogen-controle, boeken geblokkeerd
+                        </div>
+                      )}
+                      {g.detail && 'iban_geaccordeerd' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          IBAN geaccordeerd door {naamVoor(g.actor_id)} — rekening toegevoegd aan de vertrouwde
+                          set, boeken weer mogelijk
+                        </div>
+                      )}
+                      {g.detail && 'iban_afgewezen' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--red)' }}>
+                          IBAN-aanvraag afgewezen door {naamVoor(g.actor_id)}
+                          {typeof g.detail.reden === 'string' && g.detail.reden ? ` — reden: “${g.detail.reden}”` : ''}{' '}
+                          — document blijft geblokkeerd
                         </div>
                       )}
                     </td>

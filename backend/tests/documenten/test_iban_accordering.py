@@ -411,6 +411,40 @@ class TestAfwijzen:
                 reden="Buiten de set",
             )
 
+    def test_afwijzing_en_heraanvraag_staan_in_de_tijdlijn(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        document_met_voorstel: uuid.UUID,
+        accordeur_id: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        """De afwijzing (wie + reden) en de nieuwe ronde zijn zichtbaar in de document-
+        geschiedenis zelf (mockup-tijdlijn), niet alleen in het audit_event — beide zonder
+        statusovergang (van=naar op de wachtstatus)."""
+        eerste = _bied_aan(administratie_id, document_met_voorstel, gescoopte_gebruiker)
+        iban_accordering.wijs_af(
+            administratie_id=administratie_id,
+            accordering_id=eerste.id,
+            actor_id=accordeur_id,
+            reden="Eerst navragen bij de leverancier",
+        )
+        _bied_aan(administratie_id, document_met_voorstel, gescoopte_gebruiker)
+        with admin_engine.connect() as conn:
+            rijen = conn.execute(
+                text(
+                    "SELECT van_status, naar_status, detail FROM boekhouding.document_gebeurtenis "
+                    "WHERE document_id = :id AND (detail ? 'iban_afgewezen' OR detail ? 'iban_aangeboden') "
+                    "ORDER BY tijdstip"
+                ),
+                {"id": document_met_voorstel},
+            ).all()
+        assert [r.detail.get("iban_aangeboden", False) or None for r in rijen] == [True, None, True]
+        afwijzing = rijen[1]
+        assert afwijzing.detail["iban_afgewezen"] is True
+        assert afwijzing.detail["reden"] == "Eerst navragen bij de leverancier"
+        assert afwijzing.van_status == afwijzing.naar_status == "wacht_op_iban_accordering"
+
     def test_na_afwijzing_kan_een_nieuwe_aanvraag_met_zelfde_herkomst(
         self,
         gescoopte_gebruiker: uuid.UUID,

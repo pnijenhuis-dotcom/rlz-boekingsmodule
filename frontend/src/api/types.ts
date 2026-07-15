@@ -38,6 +38,32 @@ export interface AfwijzingDto {
   heropend_op: string | null
 }
 
+/** Vier-ogen-IBAN-accordering (PART A-endpoints, docs/ontwerp/iban-wissel-accordering.md). */
+export interface IbanAccorderingDto {
+  id: string
+  document_id: string
+  document_status: string
+  vendor_id: string
+  nieuw_iban: string
+  soort: 'regulier' | 'g_rekening'
+  status: 'open' | 'geaccordeerd' | 'afgewezen'
+  status_voor_accordering: string
+  aangevraagd_door: string
+  aangevraagd_op: string
+  besloten_door: string | null
+  besloten_op: string | null
+  afwijs_reden: string | null
+}
+
+export interface IbanAccorderingLijstDto {
+  accorderingen: IbanAccorderingDto[]
+}
+
+/** Lege lijst betekent: de actieve beheerder(s) zijn de accordeurs. */
+export interface IbanAccordeursDto {
+  accordeurs: string[]
+}
+
 export interface DocumentListItemDto {
   id: string
   bestandsnaam: string

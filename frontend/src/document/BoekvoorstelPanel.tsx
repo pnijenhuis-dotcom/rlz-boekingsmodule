@@ -22,6 +22,7 @@ import {
   omschrijvingSleutel,
   type HandmatigeVelden,
 } from './geheugenVoorstel'
+import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
   synchroniseerAlleCaches,
@@ -268,6 +269,10 @@ interface Props {
   /** Afwijzen-workflow (mockup: "Afwijzen…"-knop in de actiebalk): zelfde patroon —
    * alleen meegegeven vanuit statussen waaruit afgewezen kan worden. */
   onAfwijzen?: () => void
+  /** IBAN-wissel vier-ogen (PART B): callback na het aanbieden van een afwijkend IBAN bij een
+   * geblokkeerde IBAN-wissel-check — het detailscherm herlaadt dan (document gaat naar
+   * wacht_op_iban_accordering en de accordering-sectie verschijnt). */
+  onIbanAangeboden?: () => void
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
@@ -282,6 +287,7 @@ export function BoekvoorstelPanel({
   onHersteld,
   onVraagStellen,
   onAfwijzen,
+  onIbanAangeboden,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -1127,6 +1133,24 @@ export function BoekvoorstelPanel({
                   ))}
                 </tbody>
               </table>
+              {onIbanAangeboden &&
+                checksActueel &&
+                checkRapport.resultaten.some((r) => r.naam === 'IBAN-wissel' && !r.ok) && (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="hint" style={{ marginTop: 0 }}>
+                      Het rekeningnummer wijkt af van de vertrouwde set van deze crediteur. Bied het aan ter
+                      <b> vier-ogen-accordering</b>: een ingestelde accordeur (nooit uzelf) beoordeelt en
+                      deblokkeert — u kunt uw eigen aanvraag niet accorderen.
+                    </div>
+                    <IbanAanbiedenVorm
+                      administratieId={administratieId}
+                      documentId={documentId}
+                      initieelIban={typeof veldvoorstel?.iban === 'string' ? veldvoorstel.iban : ''}
+                      knopTekst="Rekening ter accordering aanbieden"
+                      onAangeboden={onIbanAangeboden}
+                    />
+                  </div>
+                )}
             </>
           )}
           <div className="actions">

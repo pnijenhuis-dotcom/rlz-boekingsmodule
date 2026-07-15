@@ -3,10 +3,11 @@ import { Navigate } from 'react-router-dom'
 import { ApiError, apiJson } from '../api/client'
 import type { AdministratieInstellingenDto, AdministratieInstellingenLijstDto, BoekenIngeschakeldDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { BevestigDialog } from './BevestigDialog'
 
-type WijzigingType = 'kill_switch' | 'boeken' | 'project' | 'ai_extractie' | 'eigenaar'
+type WijzigingType = 'kill_switch' | 'boeken' | 'project' | 'ai_extractie' | 'eigenaar' | 'iban_accordeurs'
 
 interface PendingWijziging {
   type: WijzigingType
@@ -16,6 +17,10 @@ interface PendingWijziging {
   /** Alleen voor type 'eigenaar' (mockup Instellingen "Eigenaar (krijgt vragen)"). */
   eigenaarId?: string | null
   eigenaarNaam?: string
+  /** Alleen voor type 'iban_accordeurs': de volledige nieuwe accordeur-set + leesbare
+   * omschrijving van de wijziging (vier-ogen-flow, docs/ontwerp/iban-wissel-accordering.md). */
+  accordeurs?: string[]
+  accordeursOmschrijving?: string
 }
 
 function berichtVoor(pending: PendingWijziging): string {
@@ -40,6 +45,12 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.eigenaarId
         ? `${pending.eigenaarNaam ?? 'Deze medewerker'} wordt eigenaar van "${pending.naam}" en krijgt nieuwe vragen standaard toegewezen.`
         : `"${pending.naam}" krijgt geen eigenaar — een vraag stellen vereist dan een expliciete toewijzing.`
+    case 'iban_accordeurs':
+      return `${pending.accordeursOmschrijving ?? 'De IBAN-accordeurs worden gewijzigd'} voor "${pending.naam}".${
+        (pending.accordeurs?.length ?? 0) === 0
+          ? ' Zonder ingestelde accordeurs vallen IBAN-wissels terug op de beheerder(s).'
+          : ''
+      }`
   }
 }
 
@@ -71,6 +82,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
       ...init,
       body: JSON.stringify({ eigenaar_gebruiker_id: pending.eigenaarId ?? null }),
     })
+    return
+  }
+  if (pending.type === 'iban_accordeurs') {
+    await zetIbanAccordeurs(pending.administratieId ?? '', pending.accordeurs ?? [])
     return
   }
   await apiJson(`/administraties/${pending.administratieId}/project-instelling`, {
@@ -109,10 +124,82 @@ function EigenaarCell({ administratie, onKies }: EigenaarCellProps) {
   )
 }
 
+interface IbanAccordeursCellProps {
+  administratie: AdministratieInstellingenDto
+  /** Bump na een geslaagde wijziging: de cel herlaadt dan zijn set van de backend. */
+  versie: number
+  onWijzig: (nieuweSet: string[], omschrijving: string) => void
+}
+
+/** Instelling "IBAN-wissel accorderen door" (vier-ogen-flow, docs/ontwerp/
+ * iban-wissel-accordering.md): één of meer medewerkers binnen de scope; elke aan/uit is één
+ * bevestigde wijziging (PUT met de volledige nieuwe set). Lege set → zichtbaar terugvallen op
+ * de beheerder(s). */
+function IbanAccordeursCell({ administratie, versie, onWijzig }: IbanAccordeursCellProps) {
+  const { medewerkers, fout: medewerkersFout } = useMedewerkers(administratie.id)
+  const [accordeurs, setAccordeurs] = useState<string[] | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
+
+  useEffect(() => {
+    haalIbanAccordeursOp(administratie.id)
+      .then((dto) => setAccordeurs(dto.accordeurs))
+      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
+  }, [administratie.id, versie])
+
+  if (fout || medewerkersFout) {
+    return (
+      <span className="hint" style={{ margin: 0 }}>
+        accordeurs niet te laden
+      </span>
+    )
+  }
+  if (accordeurs === null || !medewerkers) {
+    return (
+      <span className="hint" style={{ margin: 0 }}>
+        Laden…
+      </span>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {medewerkers.map((m) => {
+        const ingesteld = accordeurs.includes(m.id)
+        return (
+          <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, fontSize: 12.5 }}>
+            <input
+              type="checkbox"
+              style={{ width: 'auto' }}
+              checked={ingesteld}
+              onChange={(e) => {
+                const nieuweSet = e.target.checked
+                  ? [...accordeurs, m.id]
+                  : accordeurs.filter((id) => id !== m.id)
+                onWijzig(
+                  nieuweSet,
+                  e.target.checked
+                    ? `${m.naam} wordt IBAN-accordeur`
+                    : `${m.naam} is niet langer IBAN-accordeur`,
+                )
+              }}
+            />
+            {m.naam}
+          </label>
+        )
+      })}
+      {accordeurs.length === 0 && (
+        <span className="hint" style={{ margin: 0 }}>
+          geen accordeurs ingesteld — valt terug op de beheerder(s)
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function InstellingenScreen() {
   const { rol, status } = useAuth()
 
   const [administraties, setAdministraties] = useState<AdministratieInstellingenDto[] | null>(null)
+  const [accordeursVersie, setAccordeursVersie] = useState(0)
   const [killSwitch, setKillSwitch] = useState<boolean | null>(null)
   const [laadFout, setLaadFout] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingWijziging | null>(null)
@@ -155,6 +242,8 @@ export function InstellingenScreen() {
       await voerWijzigingUit(pending)
       if (pending.type === 'kill_switch') {
         setKillSwitch(pending.nieuweWaarde)
+      } else if (pending.type === 'iban_accordeurs') {
+        setAccordeursVersie((v) => v + 1)
       } else {
         setAdministraties(
           (huidig) =>
@@ -227,6 +316,7 @@ export function InstellingenScreen() {
               <tr>
                 <th>Administratie</th>
                 <th>Eigenaar (krijgt vragen)</th>
+                <th>IBAN-wissel accorderen door</th>
                 <th>Project verplicht bij boeken</th>
                 <th>Boeken ingeschakeld</th>
                 <th>AI-extractie (AVG-gate)</th>
@@ -245,6 +335,22 @@ export function InstellingenScreen() {
                           nieuweWaarde: eigenaarId !== null,
                           eigenaarId,
                           eigenaarNaam,
+                        })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <IbanAccordeursCell
+                      administratie={a}
+                      versie={accordeursVersie}
+                      onWijzig={(nieuweSet, omschrijving) =>
+                        setPending({
+                          type: 'iban_accordeurs',
+                          administratieId: a.id,
+                          naam: a.naam,
+                          nieuweWaarde: nieuweSet.length > 0,
+                          accordeurs: nieuweSet,
+                          accordeursOmschrijving: omschrijving,
                         })
                       }
                     />

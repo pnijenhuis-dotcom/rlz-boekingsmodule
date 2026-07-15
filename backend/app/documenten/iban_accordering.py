@@ -26,6 +26,7 @@ from app.documenten.leverancier_iban import OngeldigIban, vertrouwde_ibans
 from app.documenten.models import (
     Boekvoorstel,
     Document,
+    DocumentGebeurtenis,
     DocumentStatus,
     IbanAccordering,
     IbanAccorderingStatus,
@@ -307,17 +308,33 @@ def bied_aan(
             status_voor_accordering=herkomst,
         )
         session.add(accordering)
+        gebeurtenis_detail = {
+            "iban_accordering_id": str(accordering.id),
+            "iban_aangeboden": True,
+            "soort": soort.value,
+            "status_voor_accordering": herkomst,
+        }
         if document.status != DocumentStatus.WACHT_OP_IBAN_ACCORDERING:
             _schrijf_overgang(
                 session,
                 document=document,
                 naar=DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
                 actor_id=actor_id,
-                detail={
-                    "iban_accordering_id": str(accordering.id),
-                    "soort": soort.value,
-                    "status_voor_accordering": herkomst,
-                },
+                detail=gebeurtenis_detail,
+            )
+        else:
+            # Her-aanvraag ná een afwijzing: geen statusovergang (het document stáát al op de
+            # wachtstatus), maar wél een tijdlijn-rij — de nieuwe vier-ogen-ronde mag niet
+            # onzichtbaar zijn in de documentgeschiedenis (mockup-tijdlijn: elke stap zichtbaar).
+            session.add(
+                DocumentGebeurtenis(
+                    id=uuid.uuid4(),
+                    document_id=document.id,
+                    van_status=document.status,
+                    naar_status=document.status,
+                    actor_id=actor_id,
+                    detail=gebeurtenis_detail,
+                )
             )
         session.flush()
         record_audit_event(
@@ -468,7 +485,23 @@ def wijs_af(
         accordering.besloten_op = datetime.now(UTC)
         accordering.afwijs_reden = reden_tekst
         # Bewust géén statusovergang: het document blijft geblokkeerd op
-        # wacht_op_iban_accordering (docs/ontwerp/iban-wissel-accordering.md).
+        # wacht_op_iban_accordering (docs/ontwerp/iban-wissel-accordering.md). Wél een
+        # tijdlijn-rij (van=naar): de afwijzing — wie + reden — hoort zichtbaar in de
+        # documentgeschiedenis, niet alleen in het audit_event.
+        session.add(
+            DocumentGebeurtenis(
+                id=uuid.uuid4(),
+                document_id=document.id,
+                van_status=document.status,
+                naar_status=document.status,
+                actor_id=actor_id,
+                detail={
+                    "iban_accordering_id": str(accordering.id),
+                    "iban_afgewezen": True,
+                    "reden": reden_tekst,
+                },
+            )
+        )
         record_audit_event(
             session,
             actor_id=actor_id,
