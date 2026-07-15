@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { ApiError, apiJson } from '../api/client'
-import type { AdministratieInstellingenDto, AdministratieInstellingenLijstDto, BoekenIngeschakeldDto } from '../api/types'
+import { ApiError } from '../api/client'
+import type { AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { BevestigDialog } from './BevestigDialog'
+import {
+  haalBoekenKillSwitchOp,
+  haalInstellingenAdministratiesOp,
+  zetAiExtractieInstelling,
+  zetBoekenInstelling,
+  zetBoekenKillSwitch,
+  zetEigenaar,
+  zetProjectInstelling,
+} from './instellingenApi'
 
 type WijzigingType = 'kill_switch' | 'boeken' | 'project' | 'ai_extractie' | 'eigenaar' | 'iban_accordeurs'
 
@@ -55,43 +64,29 @@ function berichtVoor(pending: PendingWijziging): string {
 }
 
 async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
-  const init = { method: 'PUT', headers: { 'Content-Type': 'application/json' } }
+  // Alle paden via instellingenApi.ts/ibanAccorderingApi.ts — nooit losse fetch-paden in het
+  // scherm (guard-test: instellingenApi.test.ts).
   if (pending.type === 'kill_switch') {
-    await apiJson<BoekenIngeschakeldDto>('/instellingen/boeken-kill-switch', {
-      ...init,
-      body: JSON.stringify({ ingeschakeld: pending.nieuweWaarde }),
-    })
+    await zetBoekenKillSwitch(pending.nieuweWaarde)
     return
   }
   if (pending.type === 'boeken') {
-    await apiJson<BoekenIngeschakeldDto>(`/administraties/${pending.administratieId}/boeken-instelling`, {
-      ...init,
-      body: JSON.stringify({ ingeschakeld: pending.nieuweWaarde }),
-    })
+    await zetBoekenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'ai_extractie') {
-    await apiJson(`/administraties/${pending.administratieId}/ai-extractie-instelling`, {
-      ...init,
-      body: JSON.stringify({ ingeschakeld: pending.nieuweWaarde }),
-    })
+    await zetAiExtractieInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'eigenaar') {
-    await apiJson(`/administraties/${pending.administratieId}/eigenaar`, {
-      ...init,
-      body: JSON.stringify({ eigenaar_gebruiker_id: pending.eigenaarId ?? null }),
-    })
+    await zetEigenaar(pending.administratieId ?? '', pending.eigenaarId ?? null)
     return
   }
   if (pending.type === 'iban_accordeurs') {
     await zetIbanAccordeurs(pending.administratieId ?? '', pending.accordeurs ?? [])
     return
   }
-  await apiJson(`/administraties/${pending.administratieId}/project-instelling`, {
-    ...init,
-    body: JSON.stringify({ verplicht: pending.nieuweWaarde }),
-  })
+  await zetProjectInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
 }
 
 interface EigenaarCellProps {
@@ -208,10 +203,7 @@ export function InstellingenScreen() {
 
   const laadAlles = useCallback(() => {
     setLaadFout(null)
-    Promise.all([
-      apiJson<AdministratieInstellingenLijstDto>('/instellingen/administraties'),
-      apiJson<BoekenIngeschakeldDto>('/instellingen/boeken-kill-switch'),
-    ])
+    Promise.all([haalInstellingenAdministratiesOp(), haalBoekenKillSwitchOp()])
       .then(([lijst, switchDto]) => {
         setAdministraties(lijst.administraties)
         setKillSwitch(switchDto.ingeschakeld)
@@ -292,6 +284,7 @@ export function InstellingenScreen() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
               <input
                 type="checkbox"
+                aria-label="Globale kill switch"
                 style={{ width: 'auto' }}
                 checked={killSwitch}
                 onChange={(e) =>
@@ -359,6 +352,7 @@ export function InstellingenScreen() {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
                       <input
                         type="checkbox"
+                        aria-label={`Project verplicht voor ${a.naam}`}
                         style={{ width: 'auto' }}
                         checked={a.project_verplicht}
                         onChange={(e) =>
@@ -377,6 +371,7 @@ export function InstellingenScreen() {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
                       <input
                         type="checkbox"
+                        aria-label={`Boeken ingeschakeld voor ${a.naam}`}
                         style={{ width: 'auto' }}
                         checked={a.boeken_ingeschakeld}
                         onChange={(e) =>
@@ -395,6 +390,7 @@ export function InstellingenScreen() {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
                       <input
                         type="checkbox"
+                        aria-label={`AI-extractie voor ${a.naam}`}
                         style={{ width: 'auto' }}
                         checked={a.ai_extractie_ingeschakeld}
                         onChange={(e) =>

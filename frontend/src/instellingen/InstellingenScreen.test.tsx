@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -32,6 +32,7 @@ function installFetchMock(opties: {
   rol: string
   administraties?: unknown[]
   killSwitch?: boolean
+  ibanAccordeurs?: string[]
   putAanroepen?: { url: string; body: unknown }[]
 }) {
   const administraties = opties.administraties ?? [administratie()]
@@ -68,6 +69,14 @@ function installFetchMock(opties: {
         return Promise.resolve(
           jsonResponse({ medewerkers: [{ id: 'eeeeeeee-0000-0000-0000-000000000009', naam: 'M. de Boer' }] }),
         )
+      }
+      if (url.endsWith('/iban-accordeurs') && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse({ accordeurs: opties.ibanAccordeurs ?? [] }))
+      }
+      if (url.endsWith('/iban-accordeurs') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as unknown
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse(body))
       }
       if (url.endsWith('/eigenaar') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as unknown
@@ -114,6 +123,36 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     expect(screen.getByRole('heading', { name: /kill switch/i })).toBeInTheDocument()
     expect(screen.queryByText('WERKVOORRAAD-SCHERM')).not.toBeInTheDocument()
   })
+
+  it('rendert de administratielijst mét het veld "IBAN-wissel accorderen door" zonder foutbanner', async () => {
+    // Regressie op de data-load-bug (browserreview 2026-07-15): de hele pagina viel om op
+    // "Kon instellingen niet laden" doordat /instellingen/* buiten de dev-proxy viel — deze
+    // test dekt de render-kant (volledige happy path incl. de accordeur-cel); de proxy-kant
+    // zelf dekt instellingenApi.test.ts.
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [administratie({ naam: 'Kempen Facilities B.V.' })],
+      ibanAccordeurs: ['eeeeeeee-0000-0000-0000-000000000009'],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('Kempen Facilities B.V.')).toBeInTheDocument())
+    expect(screen.getByText('IBAN-wissel accorderen door')).toBeInTheDocument()
+    // De accordeur-cel toont de medewerker als aangevinkte accordeur…
+    const accordeurCheckbox = await screen.findByRole('checkbox', { name: /M\. de Boer/ })
+    expect(accordeurCheckbox).toBeChecked()
+    // …en nergens een foutbanner of laad-fout.
+    expect(screen.queryByText(/Kon instellingen niet laden/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/accordeurs niet te laden/)).not.toBeInTheDocument()
+  })
+
+  it('toont de terugval op de beheerder(s) bij een lege accordeur-set', async () => {
+    installFetchMock({ rol: 'beheerder', ibanAccordeurs: [] })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('Testklant B.V.')).toBeInTheDocument())
+    expect(await screen.findByText(/valt terug op de beheerder\(s\)/)).toBeInTheDocument()
+  })
 })
 
 describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
@@ -132,9 +171,9 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('BLOW B.V.')).toBeInTheDocument())
-    const rij = screen.getByText('BLOW B.V.').closest('tr')
-    if (!rij) throw new Error('rij niet gevonden')
-    const boekenToggle = within(rij).getAllByRole('checkbox')[1]
+    // Op naam, nooit op checkbox-index: de IBAN-accordeur-kolom voegt per rij checkboxes toe
+    // en zou een index-selectie stil naar de verkeerde toggle laten wijzen.
+    const boekenToggle = screen.getByRole('checkbox', { name: 'Boeken ingeschakeld voor BLOW B.V.' })
 
     await gebruiker.click(boekenToggle)
 
@@ -163,9 +202,7 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('BLOW B.V.')).toBeInTheDocument())
-    const rij = screen.getByText('BLOW B.V.').closest('tr')
-    if (!rij) throw new Error('rij niet gevonden')
-    const projectToggle = within(rij).getAllByRole('checkbox')[0]
+    const projectToggle = screen.getByRole('checkbox', { name: 'Project verplicht voor BLOW B.V.' })
 
     await gebruiker.click(projectToggle)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
@@ -184,8 +221,7 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
 
     // De heading rendert al vóórdat de Promise.all met instellingen-data terug is — wacht dus op
     // de checkbox zelf (die pas ná het laden bestaat), anders is deze test een race/flake.
-    await waitFor(() => expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0))
-    const killSwitchToggle = screen.getAllByRole('checkbox')[0]
+    const killSwitchToggle = await screen.findByRole('checkbox', { name: 'Globale kill switch' })
     await gebruiker.click(killSwitchToggle)
 
     expect(screen.getByText(/stopgezet, ongeacht de toggle per administratie/)).toBeInTheDocument()
