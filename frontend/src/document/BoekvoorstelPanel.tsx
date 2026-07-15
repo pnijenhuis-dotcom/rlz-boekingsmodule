@@ -886,16 +886,17 @@ export function BoekvoorstelPanel({
         <div className="tabel-scroll">
         <table className="lines boekingsregels-tabel">
           <colgroup>
-            {/* Bedragen houden vaste, ruime kolommen (geld moet altijd volledig leesbaar zijn);
-                de zoek-comboboxen mogen smaller — die tonen hun keuze desnoods afgekort en zijn
-                in de listbox alsnog volledig leesbaar. Omschrijving krijgt de rest. */}
-            <col style={{ width: '20%' }} />
-            <col style={{ width: '14%' }} />
-            {projectVerplicht && <col style={{ width: '12%' }} />}
-            <col style={{ width: 84 }} />
-            <col style={{ width: 84 }} />
+            {/* Bedragen houden vaste, ruime kolommen (geld moet altijd volledig leesbaar zijn —
+                104px past "123.456,78" incl. input- en celpadding); de zoek-comboboxen mogen
+                smaller — die tonen hun keuze desnoods afgekort en zijn in de listbox alsnog
+                volledig leesbaar. Omschrijving krijgt de rest. */}
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '17%' }} />
+            {projectVerplicht && <col style={{ width: '14%' }} />}
+            <col style={{ width: 104 }} />
+            <col style={{ width: 104 }} />
             <col />
-            <col style={{ width: 34 }} />
+            <col style={{ width: 30 }} />
           </colgroup>
           <tbody>
             <tr>

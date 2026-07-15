@@ -306,7 +306,10 @@ textarea:focus {
  * Herbalans (2026-07-11, Peters visuele controle): het formulier (comboboxen + 6/7-koloms
  * regeltabel) heeft meer breedte nodig dan de bijlage-preview — verhouding ~2:3 i.p.v. ~1:1,
  * met een plafond op de bijlage zodat extra ruimte op brede schermen naar het formulier gaat.
- * Geverifieerd op 1280px en 1512px zonder horizontale clipping. */
+ * Tweede herbalans (responsive-fix 2026-07-15, BOUWPLAN punt 7b): op de gangbare
+ * laptopbreedtes 1440/1512/1536 was de formulier-pane te smal voor de regeltabel (bedragen
+ * afgekapt, chips over de kolomgrens) — bijlage-plafond omlaag en groeiverhouding verder naar
+ * het formulier. Onder ~1120px wrapt de split (flex-wrap) naar gestapelde panes. */
 .review {
   display: flex;
   gap: 20px;
@@ -316,9 +319,9 @@ textarea:focus {
 }
 
 .docpane {
-  flex: 1 1 340px;
+  flex: 1 1 320px;
   min-width: 300px;
-  max-width: 620px;
+  max-width: 560px;
   position: sticky;
   top: 26px;
   /* Design-pass "PDF-preview maximaal hoog": eenmaal sticky (bij het scrollen door de langere
@@ -329,7 +332,7 @@ textarea:focus {
 }
 
 .formpane {
-  flex: 1.5 1 460px;
+  flex: 1.8 1 480px;
   min-width: 320px;
   max-width: 100%;
 }
@@ -397,12 +400,21 @@ textarea:focus {
 .boekingsregels-tabel {
   table-layout: fixed;
   width: 100%;
-  min-width: 500px;
+  min-width: 560px;
 }
 
 .boekingsregels-tabel input,
 .boekingsregels-tabel td > div {
   min-width: 0;
+}
+
+/* Chips ín de regeltabel (geheugen, berekend-btw) wrappen binnen hun cel in plaats van als
+ * nowrap-regel de buurkolom in te steken — de celoverloop die op 1440–1536px als "klippende
+ * rechterkolom" zichtbaar was (responsive-fix 2026-07-15). Chips buiten de tabel houden de
+ * globale nowrap. */
+.boekingsregels-tabel .chip {
+  white-space: normal;
+  text-align: left;
 }
 
 /* Zoekbare combobox — portal-listbox (SearchableCombobox.tsx). Zelfde panel-taal als .panel

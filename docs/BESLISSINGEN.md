@@ -57,7 +57,7 @@
 | Klant-autorisatie à la Zenvoices (sequentiële lagen, drempels, PWA) | goedgekeurd → fase 3 | mockup `#autorisatie`; CLAUDE.md; BOUWPLAN fase 3 |
 | Projectenmodule (projectplicht hard, OVH-project, werksoort-mapping, signalen, doorbelastingscontrole op item-niveau) | goedgekeurd → fase 4 | mockup `#projecten`/`#projectdetail`; CLAUDE.md "Projecten"; BOUWPLAN fase 4; verkenning/16_DOORBELASTING_KEMPEN.md |
 | Zoeken + tijdlijn + archief (7 jaar) | goedgekeurd | mockup `#zoeken`; CLAUDE.md |
-| Responsive-fix controlescherm-rechterkolom (<~1560px klipt; doel 1440/1536) | goedgekeurd (follow-up 2026-07-14) | BOUWPLAN punt 7b follow-ups |
+| Responsive-fix controlescherm-rechterkolom (<~1560px klipt; doel 1440/1536) | **gebouwd + gemeten (2026-07-15)** — oorzaak was celoverloop in de regeltabel (vaste kolomsporen + nowrap-chips), niet een pagina-brede min-breedte; schoon op 1440/1512/1536, browserreview Peter nog open | BOUWPLAN punt 7b follow-ups (diagnose + fix-detail); `frontend/src/styles/components.css` `.review`/`.boekingsregels-tabel` |
 
 ## Platform-besluiten die deze module raken (selectie — volledig register: `Platform/besluiten/INDEX.md`)
 

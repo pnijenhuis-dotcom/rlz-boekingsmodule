@@ -33,7 +33,10 @@ function installFetchMock(opties: {
         )
       }
       if (url.endsWith('/eigenaar')) {
-        return Promise.resolve(jsonResponse({ eigenaar_gebruiker_id: opties.eigenaarId ?? EIGENAAR_ID }))
+        // Expliciete null = administratie zonder eigenaar (?? zou null stil naar de default
+        // terugvouwen en het geen-eigenaar-pad ontestbaar maken).
+        const eigenaarId = opties.eigenaarId !== undefined ? opties.eigenaarId : EIGENAAR_ID
+        return Promise.resolve(jsonResponse({ eigenaar_gebruiker_id: eigenaarId }))
       }
       if (url.endsWith('/vraag') && init?.method === 'POST') {
         opties.stelAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
@@ -71,6 +74,16 @@ describe('VraagModal (mockup #vraagmodal)', () => {
       expect(screen.getByLabelText('Toewijzen aan')).toHaveValue(EIGENAAR_ID),
     )
     expect(screen.getByText('M. de Boer — eigenaar administratie (standaard)')).toBeInTheDocument()
+  })
+
+  it('toont "— kies een medewerker —" zonder voorselectie als de administratie geen eigenaar heeft', async () => {
+    installFetchMock({ eigenaarId: null })
+    renderModal()
+
+    await waitFor(() => expect(screen.getByLabelText('Toewijzen aan')).toBeEnabled())
+    expect(screen.getByLabelText('Toewijzen aan')).toHaveValue('')
+    expect(screen.getByText('— kies een medewerker —')).toBeInTheDocument()
+    expect(screen.queryByText(/eigenaar administratie \(standaard\)/)).not.toBeInTheDocument()
   })
 
   it('versturen is uitgeschakeld zolang de vraagtekst leeg is', async () => {

@@ -432,9 +432,20 @@ Backend:
      wijzigt) geen voorstel; ophalen bij verlaten van het omschrijving-veld lost dat op zonder
      refetch-per-toetsaanslag.
      **Follow-ups (browserreview Peter, 2026-07-14):**
-     - **Responsive:** de rechterkolom van het controlescherm klipt onder ~1560px
-       viewportbreedte (bevestigd op 1512px) — fixen voor de gangbare laptopbreedtes
-       1440/1536.
+     - **Responsive — opgelost (2026-07-15):** de "klippende rechterkolom" onder ~1560px bleek
+       géén pagina-brede min-breedte (de review-split zelf is fluid; geverifieerd in Chrome
+       headless/headed, WebKit én echte Safari op 700–1800px, ook met checks-rapport, open
+       vraag en geheugen-chips) maar celoverloop bínnen de regeltabel: de vaste kolomsporen
+       (bedragen 84px, btw 14%) werden onder ~1560px zo smal dat nowrap-chips ("Geheugen 88%",
+       "Berekend: € …") de buurkolom in staken en het netto-bedrag zijn laatste cijfer afkapte.
+       Fix: bedragkolommen 84→104px (past "123.456,78"), combobox-sporen verbreed (22/17/14%),
+       chips in de regeltabel wrappen binnen hun cel, split-herbalans (bijlage-plafond
+       620→560px, groei 1.5→1.8 naar het formulier). Gemeten schoon op 1440/1512/1536 (geen
+       afgekapte bedragen, geen celoverloop, actiebalk volledig in beeld, geen interne
+       tabel-scroll); onder ~1310px interne tabel-scroll (bestaand vangnet), onder ~1120px
+       stapelt de split. Meetgereedschap: visueel harnas uitgebreid met geheugen-/vragen-/
+       checks-varianten en een overflow-boosdoener-badge (`?geheugen/vraag/checks/duplicaat/
+       rapporteer`).
      - **Openstaande visuele verificatie:** de groen/oranje geheugen-chips (incl. het
        seed-only-oranje "uit historie, nog niet bevestigd") live bevestigen zodra er een
        factuur van een geseede crediteur in de werkvoorraad staat — kon in deze review nog

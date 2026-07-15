@@ -80,7 +80,7 @@ const DETAIL = {
   bestandsnaam: '20260064 Universal Steigerbouw week 27.pdf',
   status: 'te_controleren',
   bron: 'upload',
-  mogelijk_duplicaat_van: null,
+  mogelijk_duplicaat_van: null as null | { document_id: string; bestandsnaam: string; aangemaakt_op: string },
   toegewezen_aan: null,
   aangemaakt_op: '2026-07-10T14:03:00Z',
   laatst_gewijzigd_op: '2026-07-10T14:04:00Z',
@@ -92,15 +92,24 @@ const DETAIL = {
 }
 
 // Varianten via querystring: ?splitsen=1 start in de gesplitste weergave, ?project=1 zet de
-// projectplicht aan (extra kolom, samenvoegen uitgesloten) — zo zijn alle tabelvarianten
-// zonder interactie te screenshotten.
+// projectplicht aan (extra kolom, samenvoegen uitgesloten), ?geheugen=1 koppelt de crediteur
+// vooraf zodat de geheugen-chips (incl. seed-only-oranje hint) meerenderen — zo zijn alle
+// tabelvarianten zonder interactie te screenshotten.
 const PARAMS = new URLSearchParams(window.location.search)
 const START_GESPLITST = PARAMS.has('splitsen')
 const PROJECT_VERPLICHT = PARAMS.has('project')
+const MET_GEHEUGEN = PARAMS.has('geheugen')
+// ?vraag=1: status vraag_open met een lange vraagtekst (open-vraag-banner + geblokkeerde
+// actiebalk); ?checks=1: klikt na het laden automatisch op "Controleren" zodat het checks-
+// rapport (incl. lange blokkerende meldingen zoals de IBAN-wissel) meerendert; ?duplicaat=1:
+// duplicaatverdenking met lange bestandsnaam in de tijdlijn-banner.
+const MET_VRAAG = PARAMS.has('vraag')
+const MET_CHECKS = PARAMS.has('checks')
+const MET_DUPLICAAT = PARAMS.has('duplicaat')
 
 const BOEKVOORSTEL = {
   document_id: DOCUMENT_ID,
-  vendor_id: null,
+  vendor_id: MET_GEHEUGEN ? 'eeeeeeee-0000-0000-0000-000000000001' : null,
   referentie: '202600645-2026-0917',
   factuurdatum: '2026-07-08',
   totaalbedrag: '2224.29',
@@ -134,6 +143,70 @@ const VENDORS = [
   { id: 'eeeeeeee-0000-0000-0000-000000000003', naam: 'Technische Unie' },
 ]
 
+// Geheugenvoorstel (UI-koppeling 2026-07-14) — de seed-only-oranje variant met hint-tekst, zodat
+// de breedste chip-stand ("uit historie, nog niet bevestigd") meetelt in de layout-verificatie.
+const GEHEUGEN_VOORSTEL = {
+  gb: {
+    waarde: 'cccccccc-0000-0000-0000-000000000002',
+    telling: 7,
+    confidence: 0.92,
+    oranje: true,
+    reden: 'alleen rlz-historie, nog geen app-bevestiging',
+    app_bevestigd: false,
+  },
+  btw: {
+    waarde: 'dddddddd-0000-0000-0000-000000000002',
+    telling: 5,
+    confidence: 0.88,
+    oranje: true,
+    reden: 'leverancier-fallback',
+    app_bevestigd: false,
+  },
+  project: { waarde: null, telling: 0, confidence: 0, oranje: false, reden: null, app_bevestigd: false },
+}
+
+// Vragenworkflow (PART B 2026-07-14): zonder ?vraag=1 geen open vraag — het controlescherm
+// toont dan de normale actiebalk met "Vraag stellen…" naast de boekknop.
+const MEDEWERKERS = [
+  { id: '11111111-0000-0000-0000-000000000001', naam: 'Peter Nijenhuis' },
+  { id: '11111111-0000-0000-0000-000000000002', naam: 'Medewerker Boekhouding' },
+]
+
+const OPEN_VRAAG = {
+  id: '22222222-0000-0000-0000-000000000001',
+  document_id: DOCUMENT_ID,
+  vraag_tekst:
+    'Op de factuur staat een G-rekeningsplitsing van 35% terwijl het contract met Universal 25% voorschrijft — is hier een aangepaste WKA-afspraak voor dit werk, of moet de factuur terug naar de leverancier?',
+  status: 'open',
+  gesteld_door: '11111111-0000-0000-0000-000000000001',
+  gesteld_op: '2026-07-10T15:00:00Z',
+  toegewezen_aan: '11111111-0000-0000-0000-000000000002',
+  antwoord_tekst: null,
+  beantwoord_op: null,
+}
+
+if (MET_VRAAG) DETAIL.status = 'vraag_open'
+if (MET_DUPLICAAT) {
+  DETAIL.mogelijk_duplicaat_van = {
+    document_id: 'bbbbbbbb-0000-0000-0000-000000000003',
+    bestandsnaam: '20260064 Universal Steigerbouw week 27 herzonden kopie administratie.pdf',
+    aangemaakt_op: '2026-07-09T09:00:00Z',
+  }
+}
+
+// Checks-rapport met de langste realistische meldingen (IBAN-wissel + duplicaat) — het
+// clipping-gevoeligste geval voor de rechterkolom.
+const CHECK_RAPPORT = {
+  geblokkeerd: true,
+  resultaten: [
+    { naam: 'Duplicaat', ok: false, melding: 'Er bestaat al een document met dezelfde crediteur, referentie 202600645-2026-0917 en totaalbedrag € 2.224,29 (geboekt op 2026-07-03, boekstuk 20260112) — controleer of dit een heraanlevering is.' },
+    { naam: 'Regeltelling', ok: true, melding: 'Aantal boekingsregels sluit aan op het gelezen document (3 regels).' },
+    { naam: 'Verplichte velden', ok: true, melding: 'Crediteur, referentie, factuurdatum en totaalbedrag zijn ingevuld.' },
+    { naam: 'IBAN-wissel', ok: false, melding: 'Het IBAN op deze factuur (NL91ABNA0417164300) wijkt af van het laatst bevestigde IBAN van deze crediteur (NL02RABO0123456789, bevestigd 2026-06-12) — bevestig de wijziging expliciet voordat er geboekt kan worden.' },
+    { naam: 'Vraag blokkeert boeken', ok: true, melding: 'Geen open vraag op dit document.' },
+  ],
+}
+
 const GROOTBOEK = [
   { ledger_id: 'cccccccc-0000-0000-0000-000000000001', code: '4699', naam: 'Diverse kosten', soort: 2 },
   { ledger_id: 'cccccccc-0000-0000-0000-000000000002', code: '7000', naam: 'Inkoop onderaanneming', soort: 2 },
@@ -156,6 +229,9 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   }
   if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(DETAIL))
   if (url.endsWith('/boekvoorstel') && (!init || !init.method)) return Promise.resolve(jsonResponse(BOEKVOORSTEL))
+  if (url.endsWith('/boekvoorstel') && init?.method === 'PUT') {
+    return Promise.resolve(jsonResponse({ boekvoorstel: BOEKVOORSTEL, checks: CHECK_RAPPORT }))
+  }
   if (url.endsWith('/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: GROOTBOEK }))
   if (url.endsWith('/btw-codes')) return Promise.resolve(jsonResponse({ btw_codes: TAXRATES }))
   if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: VENDORS }))
@@ -167,6 +243,9 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
     )
   }
   if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: PROJECT_VERPLICHT }))
+  if (url.endsWith('/boekingsgeheugen/voorstel')) return Promise.resolve(jsonResponse(GEHEUGEN_VOORSTEL))
+  if (url.includes('/vragen')) return Promise.resolve(jsonResponse({ vragen: MET_VRAAG ? [OPEN_VRAAG] : [] }))
+  if (url.endsWith('/medewerkers')) return Promise.resolve(jsonResponse({ medewerkers: MEDEWERKERS }))
   return echteFetch(invoer, init)
 }
 
@@ -224,27 +303,93 @@ function FocusGbProef() {
   )
 }
 
-/** Rode/groene badge linksonder: is de pagina breder dan de viewport (horizontale clipping)? */
+/** ?checks=1: klikt na het laden op "Controleren" zodat het checks-rapport meerendert —
+ * headless Chrome kan zelf niet klikken, dus het harnas doet het (zelfde patroon als
+ * FocusGbProef). */
+function AutoChecksProef() {
+  useEffect(() => {
+    if (!MET_CHECKS) return
+    const timer = setInterval(() => {
+      const knoppen = Array.from(document.querySelectorAll<HTMLButtonElement>('button.btn'))
+      const knop = knoppen.find((b) => b.textContent?.trim() === 'Controleren')
+      if (!knop) return
+      clearInterval(timer)
+      knop.click()
+    }, 100)
+    return () => clearInterval(timer)
+  }, [])
+  return null
+}
+
+/** Korte, leesbare beschrijving van een element voor de boosdoener-lijst. */
+function beschrijfElement(el: Element): string {
+  const tag = el.tagName.toLowerCase()
+  const klassen = typeof el.className === 'string' && el.className ? `.${el.className.trim().split(/\s+/).join('.')}` : ''
+  const rect = el.getBoundingClientRect()
+  return `${tag}${klassen} [${Math.round(rect.left)}..${Math.round(rect.right)}]`
+}
+
+/** Rode/groene badge linksonder: is de pagina breder dan de viewport (horizontale clipping)?
+ * Bij overflow somt de badge de diepste boosdoeners op — elementen die rechts buiten de viewport
+ * steken zónder kinderen die dat ook doen (de bladeren van de overflow-boom), zodat headless
+ * Chrome (--dump-dom) de oorzaak direct benoemt in plaats van alleen "OVERFLOW". */
 function OverflowBadge() {
   const [meting, setMeting] = useState('')
   const [overflow, setOverflow] = useState(false)
+  const [boosdoeners, setBoosdoeners] = useState<string[]>([])
   useEffect(() => {
     const meet = () => {
       const scrollBreedte = document.documentElement.scrollWidth
       const viewport = window.innerWidth
       setOverflow(scrollBreedte > viewport)
       setMeting(`scrollWidth ${scrollBreedte} / viewport ${viewport}`)
+      if (scrollBreedte <= viewport) {
+        setBoosdoeners([])
+        return
+      }
+      const uitstekend = Array.from(document.querySelectorAll('body *')).filter((el) => {
+        if (el.closest('[data-harnas-badge]')) return false
+        return el.getBoundingClientRect().right > viewport + 1
+      })
+      const bladeren = uitstekend.filter((el) => !uitstekend.some((ander) => ander !== el && el.contains(ander)))
+      setBoosdoeners(bladeren.slice(0, 8).map(beschrijfElement))
     }
+    // ?rapporteer=<poort>: post de meting naar een lokaal meetscript — voor browsers waar we
+    // niet in kunnen kijken (Safari zonder 'Allow JavaScript from Apple Events').
+    const rapporteerPoort = PARAMS.get('rapporteer')
+    const rapporteer = () => {
+      if (!rapporteerPoort) return
+      const viewport = window.innerWidth
+      const uitstekend = Array.from(document.querySelectorAll('body *')).filter((el) => {
+        if (el.closest('[data-harnas-badge]')) return false
+        const r = el.getBoundingClientRect()
+        return r.right > viewport + 1 && r.width > 0
+      })
+      const bladeren = uitstekend.filter((el) => !uitstekend.some((a) => a !== el && el.contains(a)))
+      void echteFetch(`http://localhost:${rapporteerPoort}/meting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ua: navigator.userAgent.slice(0, 80),
+          viewport,
+          scrollBreedte: document.documentElement.scrollWidth,
+          boosdoeners: bladeren.slice(0, 10).map(beschrijfElement),
+        }),
+      }).catch(() => undefined)
+    }
+    const rapporteerTimer = setInterval(rapporteer, 1500)
     meet()
     const timer = setInterval(meet, 500)
     window.addEventListener('resize', meet)
     return () => {
       clearInterval(timer)
+      clearInterval(rapporteerTimer)
       window.removeEventListener('resize', meet)
     }
   }, [])
   return (
     <div
+      data-harnas-badge
       style={{
         position: 'fixed',
         left: 8,
@@ -256,9 +401,15 @@ function OverflowBadge() {
         fontWeight: 700,
         color: '#fff',
         background: overflow ? '#b42318' : '#1c7a54',
+        maxWidth: '90vw',
       }}
     >
       {overflow ? 'OVERFLOW' : 'past'} — {meting}
+      {boosdoeners.map((b) => (
+        <div key={b} style={{ fontWeight: 400, fontSize: 11 }}>
+          → {b}
+        </div>
+      ))}
     </div>
   )
 }
@@ -284,6 +435,7 @@ createRoot(document.getElementById('root')!).render(
       </div>
       <OverflowBadge />
       <FocusGbProef />
+      <AutoChecksProef />
     </MemoryRouter>
   </StrictMode>,
 )
