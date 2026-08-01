@@ -118,13 +118,19 @@ class TestBoekDocumentGelukt:
         )
 
         with admin_engine.connect() as conn:
-            event, payload = conn.execute(
-                text("SELECT event, payload FROM boekhouding.webhook_uitgaand WHERE document_id = :id"),
+            event, payload, status = conn.execute(
+                text("SELECT event, payload, status FROM boekhouding.webhook_uitgaand WHERE document_id = :id"),
                 {"id": klaar_document},
             ).one()
         assert event == "factuur_geboekt"
         assert payload["data"]["referentie"].startswith("F-")
-        assert payload["handtekening"]
+        assert status == "openstaand"
+        # HMAC-per-verzendpoging (migratie 0025): de outbox-rij is ONGETEKEND — timestamp/nonce/
+        # handtekening berekent de afleveraar pas bij verzenden, anders wijst het ~5 min-
+        # replay-venster van de ontvanger elke uitgestelde aflevering af.
+        assert "handtekening" not in payload
+        assert "timestamp" not in payload
+        assert "nonce" not in payload
 
     def test_geen_outbox_rij_voor_niet_vastgoed_administratie(
         self,

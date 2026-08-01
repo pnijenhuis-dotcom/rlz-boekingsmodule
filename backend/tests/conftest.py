@@ -110,6 +110,14 @@ def _clean_tables() -> Generator[None, None, None]:
                 "ON CONFLICT (singleton) DO NOTHING"
             )
         )
+        # Zelfde herstel voor de webhook-aflevering-singleton (migratie 0025, FK gewijzigd_door
+        # → gebruiker dus ook door de CASCADE geraakt) — default UIT, zoals de migratie-seed.
+        conn.execute(
+            text(
+                "INSERT INTO platform.webhook_instelling (singleton, aflevering_ingeschakeld) VALUES (true, false) "
+                "ON CONFLICT (singleton) DO NOTHING"
+            )
+        )
         conn.execute(
             text(
                 "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "

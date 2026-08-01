@@ -24,7 +24,7 @@
 | Document-pipeline / statusmachine | gebouwd + getest (2026-07-08) | BOUWPLAN fase 1 punt 5; `backend/app/documenten/statusmachine.py` |
 | Boeken (PUT+client-GUID, actie 17, idempotentie, failsafes) | gebouwd + getest (2026-07-09) | BOUWPLAN fase 1 punt 6; `backend/app/documenten/boeken.py` |
 | Controlescherm (kopgegevens + regels + harde checks + boekactie) | gebouwd (2026-07-09); geheugen-UI erbij (2026-07-14) | BOUWPLAN fase 1 punt 8; `frontend/src/document/BoekvoorstelPanel.tsx` |
-| Webhook "factuur geboekt" (outbox + vastgoed-scope-filter) | gebouwd + getest (outbox 2026-07-09, scope 2026-07-13); afleveraar + HMAC-per-verzendpoging open | BOUWPLAN fase 1 punt 7; migratie 0018 `is_vastgoed`; Platform OPEN_ITEMS |
+| Webhook "factuur geboekt" (outbox + vastgoed-scope-filter + afleveraar) | **gebouwd + getest (2026-08-02)** — outbox 2026-07-09, scope 2026-07-13, afleveraar + HMAC-per-verzendpoging 2026-08-02 (OPEN_ITEMS actiepunt 2 afgehandeld): payload ongetekend in de outbox, tekenen per poging (wire-formaat ongewijzigd), status openstaand/afgeleverd/mislukt + retry/backoff/dead-letter + re-drive (mislukt → openstaand als expliciete admin-actie, CLI `webhook-redrive`), audit per poging én per re-drive, toggle default UIT + config-failsafe (geen doel-URL → openstaand, geen fout); aanzetten wacht op vastgoed's ontvanger (OPEN_ITEMS-item 2026-08-02) | BOUWPLAN fase 1 punt 7; migraties 0018/0025; `app/documenten/webhook_afleveraar.py`; koppelcontract §3 (implementatienotitie 2026-08-02) |
 | Boekingsgeheugen (seed uit RLZ-historie + leerlus + voorstel + UI-chips; correcties > historie; seed-only = oranje tot eerste app-bevestiging) | gebouwd + getest (B1–B6, 2026-07-13/14) | BOUWPLAN fase 1 punt 7b; CLAUDE.md "Boekingsgeheugen"; `backend/app/geheugen/` |
 | — openstaand daarbij: live visuele verificatie groen/oranje chips + voorstel-op-blur voor handmatige regels | goedgekeurd (follow-up) | BOUWPLAN punt 7b follow-ups (2026-07-14) |
 
@@ -41,7 +41,7 @@
 | Memoriaal saldo = 0 | nog niet gebouwd → fase 2 | CLAUDE.md checkstatus |
 | VGB-prefixfilter (nooit als werkvoorraad tonen) | nog niet gebouwd → vóór lezen uit gedeelde administraties | CLAUDE.md checkstatus; koppelcontract |
 | Autoboeken opt-in per leverancier | nog niet gebouwd → vóór eerste autoboek-functie | CLAUDE.md checkstatus |
-| Webhook-HMAC per verzendpoging (niet bij aanmaak) | nog niet gebouwd → mét de afleveraar | Platform OPEN_ITEMS (webhook-item, actiepunt 2) |
+| Webhook-HMAC per verzendpoging (niet bij aanmaak) | **gebouwd + getest (2026-08-02)**, mét de afleveraar — zie regel "Webhook 'factuur geboekt'" hierboven | migratie 0025; `app/documenten/webhook_afleveraar.py`; `tests/documenten/test_webhook_afleveraar.py`; Platform OPEN_ITEMS (afgehandeld) |
 
 ## Goedgekeurd ontwerp, nog te bouwen
 

@@ -9,6 +9,10 @@ class BoekenIngeschakeldDto(BaseModel):
     ingeschakeld: bool
 
 
+class WebhookAfleveringDto(BaseModel):
+    ingeschakeld: bool
+
+
 class ProjectVerplichtDto(BaseModel):
     verplicht: bool
 

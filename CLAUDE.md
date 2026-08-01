@@ -104,10 +104,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
-  verplichte velden, IBAN-wissel, vraag-blokkeert-boeken en afwijzen-met-verplichte-reden zijn
-  gebouwd + getest; **nog niet gebouwd:** memoriaal-saldo-0 (fase 2), VGB-prefixfilter
-  (vóór gedeelde administraties), per-leverancier-autoboeken-opt-in (vóór eerste autoboek),
-  webhook-HMAC-per-verzendpoging (mét de afleveraar).
+  verplichte velden, IBAN-wissel, vraag-blokkeert-boeken, afwijzen-met-verplichte-reden en
+  webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02) zijn gebouwd + getest;
+  **nog niet gebouwd:** memoriaal-saldo-0 (fase 2), VGB-prefixfilter
+  (vóór gedeelde administraties), per-leverancier-autoboeken-opt-in (vóór eerste autoboek).
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
@@ -209,6 +209,5 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   architect/analist/accountant ineen; proactief en kritisch (geen lege complimenten, onderbouw,
   zeg het als Peter iets mist); bronnen eerst; vind gaten vóór hij ze vindt. Volledige, actuele
   versie staat uitsluitend in WERKWIJZE.md.
-- Nederlands in UI en documentatie; code/comments Engels.
 - Tests verplicht op geldlogica (mapping, totalen, idempotentie, statusmachine) vóór UI-polish.
 - Elke schrijfactie naar RLZ eerst tegen een testadministratie of met TEST-referentie + akkoord.

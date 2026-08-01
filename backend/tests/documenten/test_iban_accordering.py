@@ -16,7 +16,6 @@ from sqlalchemy import Engine, text
 
 from app.documenten import boeken, boekvoorstel, iban_accordering, service
 from app.documenten.models import DocumentStatus, IbanAccorderingStatus, IbanSoort
-from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.documenten.storage import LokaleBestandsopslag
 from tests.documenten.test_iban_wissel import _regel
 from tests.documenten.test_vragen import _extra_gebruiker, _status, _zet_document_op

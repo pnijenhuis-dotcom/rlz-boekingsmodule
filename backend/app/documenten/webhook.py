@@ -27,7 +27,7 @@ def _resolve_webhook_secret(env: Mapping[str, str]) -> str:
         raise RuntimeError(
             f"WEBHOOK_HMAC_SECRET ontbreekt en ENVIRONMENT={environment!r} is geen dev-omgeving "
             f"({', '.join(_DEV_ENVIRONMENTS)}). Zet WEBHOOK_HMAC_SECRET (Cloud Run: via Secret "
-            "Manager) vóórdat webhook-aflevering in productie gebouwd wordt."
+            "Manager) — zonder gedeeld secret kan de afleveraar niet tekenen."
         )
     return "dev-only-insecure-webhook-hmac-secret"
 
@@ -70,7 +70,6 @@ def verifieer_handtekening(*, secret: str, payload_json: str, timestamp: str, no
 
 def bouw_factuur_geboekt_payload(
     *,
-    secret: str,
     administratie_id: uuid.UUID,
     rlz_admin_id: str,
     rlz_document_id: uuid.UUID,
@@ -80,12 +79,14 @@ def bouw_factuur_geboekt_payload(
     vendor_naam: str | None,
     referentie: str,
     regels: list[WebhookRegel],
-    nu: datetime,
 ) -> dict:
-    """Payload voor het "factuur geboekt"-event (koppelcontract §3 + CLAUDE.md-koppelvlak:
-    RLZ-GUID, project-GUID, datum, bedragen per regel, GB, leverancier, omschrijving, adminId).
-    Aflevering (HTTP-push) is een fase-vervolg — deze functie bouwt en ondertekent alleen; de
-    aanroeper (app/documenten/boeken.py) legt het resultaat vast in boekhouding.webhook_uitgaand."""
+    """ONGETEKENDE payload voor het "factuur geboekt"-event (koppelcontract §3 + CLAUDE.md-
+    koppelvlak: RLZ-GUID, project-GUID, datum, bedragen per regel, GB, leverancier, omschrijving,
+    adminId). De aanroeper (app/documenten/boeken.py) legt dit vast in
+    boekhouding.webhook_uitgaand; timestamp/nonce/handtekening horen hier bewust NIET in — die
+    berekent de afleveraar pas per verzendpoging (onderteken_voor_verzending), anders wijst het
+    ~5 min-replay-venster van de ontvanger elke aflevering later dan ~5 min na het boeken
+    (outbox-retry!) per definitie af."""
     data = {
         "administratie_id": str(administratie_id),
         "rlz_admin_id": rlz_admin_id,
@@ -106,15 +107,29 @@ def bouw_factuur_geboekt_payload(
             for regel in regels
         ],
     }
-    timestamp = nu.isoformat()
-    nonce = secrets.token_hex(16)
-    payload_json = _canonical_json(data)
-    handtekening = bereken_handtekening(secret=secret, payload_json=payload_json, timestamp=timestamp, nonce=nonce)
     return {
         "schema_version": WEBHOOK_SCHEMA_VERSION,
         "event": FACTUUR_GEBOEKT_EVENT,
+        "data": data,
+    }
+
+
+def onderteken_voor_verzending(*, payload: dict, secret: str, nu: datetime) -> dict:
+    """Teken een opgeslagen outbox-payload voor precies één verzendpoging: verse timestamp +
+    verse nonce + HMAC over (timestamp, nonce, canonieke data). Het resultaat is exact de
+    envelope die vóór de HMAC-timing-fix als geheel in de outbox stond — het wire-formaat naar
+    vastgoed is dus ongewijzigd, alleen het moment van tekenen is verschoven naar de verzending.
+    Elke poging krijgt een eigen nonce: een eerdere (mogelijk afgevangen of half-afgeleverde)
+    poging kan nooit als replay van de nieuwe gelden, en de ontvanger kan per nonce dedupliceren."""
+    timestamp = nu.isoformat()
+    nonce = secrets.token_hex(16)
+    payload_json = _canonical_json(payload["data"])
+    handtekening = bereken_handtekening(secret=secret, payload_json=payload_json, timestamp=timestamp, nonce=nonce)
+    return {
+        "schema_version": payload["schema_version"],
+        "event": payload["event"],
         "timestamp": timestamp,
         "nonce": nonce,
-        "data": data,
+        "data": payload["data"],
         "handtekening": handtekening,
     }

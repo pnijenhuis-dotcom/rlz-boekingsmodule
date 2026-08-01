@@ -14,6 +14,7 @@ from app.credentialstore.router import router as credentialstore_router
 from app.db import session as db_session
 from app.db.migratie_guard import controleer_migratie_versie
 from app.documenten import service as documenten_service
+from app.documenten import webhook_afleveraar
 from app.documenten.router import router as documenten_router
 from app.geheugen.router import router as geheugen_router
 from app.sync.router import router as sync_router
@@ -104,10 +105,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Daarna het async-extractie-vangnet (2026-07-10): documenten die door een proces-herstart in
     extractie_wachtrij/extractie_bezig achterbleven (de in-process wachtrij overleeft een
-    herstart niet) worden opnieuw ingepland — "niets verdwijnt stil"."""
+    herstart niet) worden opnieuw ingepland — "niets verdwijnt stil".
+
+    Tot slot de in-process webhook-afleveraar (2026-08-02): start alleen als er een doel-URL
+    geconfigureerd is (zonder URL valt er niets af te leveren — de failsafe laat rijen dan
+    openstaand); de toggle (platform.webhook_instelling, default UIT) wordt per iteratie
+    gecheckt. Productie draait dezelfde verwerk-functie als Cloud Scheduler-job via de CLI."""
     controleer_migratie_versie(db_session.engine, fail_fast=settings.migratie_guard_fail_fast)
     documenten_service.herstel_achtergebleven_extracties()
+    webhook_afleveraar.start_in_process_afleveraar()
     yield
+    webhook_afleveraar.stop_in_process_afleveraar()
 
 
 app = FastAPI(title="RLZ Boekingsmodule", lifespan=_lifespan)

@@ -261,6 +261,22 @@ class BoekenInstelling(Base):
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class WebhookInstelling(Base):
+    """Webhook-aflevering-toggle (migratie 0025): Beheerder-only singleton, parallel aan
+    BoekenInstelling maar met default UIT — de vastgoed-ontvanger bestaat nog niet, dus
+    outbox-rijen blijven openstaand totdat aflevering expliciet aangezet wordt. Werkt AANVULLEND
+    op de config-failsafe (geen doel-URL/secret = geen aflevering, geen fout)."""
+
+    __tablename__ = "webhook_instelling"
+
+    singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
+    aflevering_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class AuditEvent(Base):
     """Uniform, append-only audit-schema (koppelcontract v1.5, platformbrede afspraken) —
     bron voor de WORM-export. UPDATE/DELETE zijn niet gegrant aan de app-rol (zie migratie 0001).

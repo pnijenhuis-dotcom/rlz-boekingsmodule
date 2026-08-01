@@ -47,11 +47,27 @@ class Settings(BaseSettings):
     # httpOnly-cookiebescherming ondermijnen als het wel kon).
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
-    # Webhook-stub "factuur geboekt" (koppelcontract §3, app/documenten/webhook.py): HMAC-secret
-    # voor het ondertekenen van uitgaande payloads. Aflevering zelf staat nog uit (fase-vervolg),
-    # maar de payload wordt al getekend zodat het schema/de handtekeningvorm nu al klopt. Nooit
+    # Webhook "factuur geboekt" (koppelcontract §3): gedeeld HMAC-secret waarmee de afleveraar
+    # elke verzendpoging tekent (app/documenten/webhook_afleveraar.py). Lokaal via .env, in
+    # Cloud Run via Secret Manager (besluit 0012 — secretwaarden nooit in code/logs/chat). Nooit
     # een fallback buiten dev — zelfde bewaking als jwt_secret/totp_master_key_b64.
     webhook_hmac_secret: str | None = None
+
+    # Webhook-afleveraar: doel-URL van de vastgoed-ontvanger. Default None = onvoldoende
+    # geconfigureerd — de failsafe: outbox-rijen blijven dan gewoon openstaand, GEEN fout
+    # (vastgoed's ontvanger bestaat nog niet). Aflevering vereist daarnaast de expliciete
+    # toggle (platform.webhook_instelling, default UIT — parallel aan de boeken-failsafe).
+    webhook_doel_url: str | None = None
+    webhook_timeout_seconds: float = 10.0
+    # Retry/backoff per outbox-rij: exponentieel (basis * 2^(poging-1), gecapt), na
+    # webhook_max_pogingen mislukte pogingen gaat de rij zichtbaar naar 'mislukt' (dead-letter)
+    # — nooit een stille oneindige retry-lus.
+    webhook_max_pogingen: int = 8
+    webhook_backoff_basis_seconds: float = 60.0
+    webhook_backoff_max_seconds: float = 3600.0
+    # In-process poll-interval (dev; productie draait dezelfde verwerk-functie als Cloud
+    # Scheduler/Cloud Run-job via `python -m app.cli webhook-afleveren`).
+    webhook_afleveraar_interval_seconds: float = 30.0
 
     # Boeken-failsafe (c), volumerem (CLAUDE.md: "config, default laag"): max. aantal boekingen
     # per administratie per kalenderdag. Bewust laag — dit is een noodrem tegen een runaway-bug

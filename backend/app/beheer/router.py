@@ -193,6 +193,30 @@ def ai_extractie_instelling_zetten(
 
 
 @router.get(
+    "/instellingen/webhook-aflevering",
+    response_model=schemas.WebhookAfleveringDto,
+)
+def webhook_aflevering_ophalen(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas.WebhookAfleveringDto:
+    return schemas.WebhookAfleveringDto(ingeschakeld=service.haal_webhook_aflevering_ingeschakeld_op())
+
+
+@router.put(
+    "/instellingen/webhook-aflevering",
+    response_model=schemas.WebhookAfleveringDto,
+)
+def webhook_aflevering_zetten(
+    invoer: schemas.WebhookAfleveringDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.WebhookAfleveringDto:
+    """Webhook-aflevering-toggle (migratie 0025) — Beheerder-only, default UIT; naast deze
+    toggle geldt ook de config-failsafe (doel-URL + HMAC-secret, zie webhook_afleveraar.py)."""
+    try:
+        ingeschakeld = service.zet_webhook_aflevering_ingeschakeld(actor_id=actor.id, ingeschakeld=invoer.ingeschakeld)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    return schemas.WebhookAfleveringDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
     "/instellingen/boeken-kill-switch",
     response_model=schemas.BoekenIngeschakeldDto,
 )

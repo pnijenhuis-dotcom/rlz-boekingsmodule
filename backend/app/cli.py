@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from app.auth import service
 from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
-from app.documenten import reconciliatie
+from app.documenten import reconciliatie, webhook_afleveraar
 from app.geheugen import seed as geheugen_seed
 from app.sync import service as sync_service
 
@@ -166,6 +166,66 @@ def _ai_extractie_uit(args: argparse.Namespace) -> int:
     return _zet_ai_extractie(args, ingeschakeld=False)
 
 
+def _webhook_afleveren(args: argparse.Namespace) -> int:
+    """Eén verwerk-run van de webhook-afleveraar (fase-vervolg: Cloud Scheduler → Cloud Run job
+    roept dit commando aan — zelfde patroon als sync-alles). Onvoldoende geconfigureerd of
+    toggle uit = nette melding + exit 0, géén fout: rijen blijven openstaand (failsafe)."""
+    rapport = webhook_afleveraar.verwerk_openstaande_webhooks()
+    if rapport.overgeslagen_reden:
+        print(f"OVERGESLAGEN: {rapport.overgeslagen_reden}")
+        return 0
+    print(
+        f"Afgeleverd: {rapport.afgeleverd}, poging(en) mislukt: {rapport.poging_mislukt}, "
+        f"dead-letter: {rapport.dead_letter}, geweigerd (geen vastgoed): {rapport.geweigerd_geen_vastgoed}"
+    )
+    for fout in rapport.fouten:
+        print(f"FOUT  {fout}", file=sys.stderr)
+    return 1 if (rapport.dead_letter or rapport.geweigerd_geen_vastgoed) else 0
+
+
+def _webhook_redrive(args: argparse.Namespace) -> int:
+    """Re-drive van dead-letter-rijen (expliciete admin-actie, audit_event per rij): mislukt →
+    openstaand met vol retry-budget. Het normale herstel na langdurige downtime van de
+    vastgoed-ontvanger — draai daarna (of wacht op) webhook-afleveren."""
+    try:
+        beheerder_id = uuid.UUID(args.beheerder_id)
+        outbox_id = uuid.UUID(args.outbox_id) if args.outbox_id else None
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    hersteld = webhook_afleveraar.herstel_dead_letters(actor_id=beheerder_id, outbox_id=outbox_id)
+    if hersteld == 0:
+        doel = f"outbox-rij {outbox_id}" if outbox_id else "dead-letter-rijen"
+        print(f"Niets teruggezet: geen {doel} met status 'mislukt' gevonden.")
+        return 0
+    print(f"{hersteld} rij(en) teruggezet naar openstaand — de afleveraar pakt ze bij de volgende run op.")
+    return 0
+
+
+def _zet_webhook_aflevering(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Webhook-aflevering-toggle — zelfde patroon als boeken-aan/-uit: hergebruikt
+    app.beheer.service met de Beheerder als audit_event-actor. Default UIT (migratie 0025)."""
+    try:
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_webhook_aflevering_ingeschakeld(
+            actor_id=beheerder_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"webhook_aflevering_ingeschakeld={resultaat}")
+    if resultaat and webhook_afleveraar.haal_aflever_config_op() is None:
+        print(
+            "WAARSCHUWING: webhook_doel_url en/of WEBHOOK_HMAC_SECRET is niet geconfigureerd — "
+            "aflevering blijft effectief uit (rijen blijven openstaand)."
+        )
+    return 0
+
+
 def _importeer_env_credentials(args: argparse.Namespace) -> int:
     """Eenmalige overzet-hulp: de bekende .env-logins de credential-store in (zie
     app/credentialstore/service.py::importeer_env_credentials voor welke prefixen en waarom
@@ -260,6 +320,36 @@ def main(argv: list[str] | None = None) -> int:
             "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
         )
 
+    subparsers.add_parser(
+        "webhook-afleveren",
+        help="Lever openstaande webhook-outbox-rijen af aan de vastgoed-ontvanger (één run — "
+        "Cloud Scheduler/Cloud Run job-entrypoint, zelfde patroon als sync-alles).",
+    )
+
+    for naam, hulp in (
+        ("webhook-aflevering-aan", "Zet de webhook-aflevering-toggle AAN (default UIT)."),
+        ("webhook-aflevering-uit", "Zet de webhook-aflevering-toggle UIT."),
+    ):
+        webhook_parser = subparsers.add_parser(naam, help=hulp)
+        webhook_parser.add_argument(
+            "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+        )
+
+    redrive_parser = subparsers.add_parser(
+        "webhook-redrive",
+        help="Zet dead-letter-webhookrijen (status 'mislukt') terug naar openstaand (re-drive, "
+        "audit per rij) — herstel na bv. langdurige downtime van de vastgoed-ontvanger.",
+    )
+    redrive_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+    redrive_parser.add_argument(
+        "--outbox-id",
+        default=None,
+        dest="outbox_id",
+        help="Alleen deze ene outbox-rij terugzetten (default: alle dead-letters).",
+    )
+
     import_parser = subparsers.add_parser(
         "import-env-credentials",
         help="Zet de bekende .env-logins (RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_) eenmalig "
@@ -289,6 +379,14 @@ def main(argv: list[str] | None = None) -> int:
         return _ai_extractie_aan(args)
     if args.commando == "ai-extractie-uit":
         return _ai_extractie_uit(args)
+    if args.commando == "webhook-afleveren":
+        return _webhook_afleveren(args)
+    if args.commando == "webhook-aflevering-aan":
+        return _zet_webhook_aflevering(args, ingeschakeld=True)
+    if args.commando == "webhook-aflevering-uit":
+        return _zet_webhook_aflevering(args, ingeschakeld=False)
+    if args.commando == "webhook-redrive":
+        return _webhook_redrive(args)
     if args.commando == "import-env-credentials":
         return _importeer_env_credentials(args)
     return 1

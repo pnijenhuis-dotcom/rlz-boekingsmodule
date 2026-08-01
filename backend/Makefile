@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit import-env-credentials run pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -101,6 +101,23 @@ ai-extractie-aan: check-versions
 
 ai-extractie-uit: check-versions
 	.venv/bin/python -m app.cli ai-extractie-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+# Webhook-afleveraar (koppelcontract §3): één verwerk-run — Cloud Scheduler/Cloud Run
+# job-entrypoint (zelfde patroon als sync-alles). De toggle is default UIT en zonder
+# webhook_doel_url/WEBHOOK_HMAC_SECRET blijven rijen openstaand (failsafe, geen fout).
+webhook-afleveren: check-versions
+	.venv/bin/python -m app.cli webhook-afleveren
+
+webhook-aflevering-aan: check-versions
+	.venv/bin/python -m app.cli webhook-aflevering-aan --beheerder-id "$(BEHEERDER_ID)"
+
+webhook-aflevering-uit: check-versions
+	.venv/bin/python -m app.cli webhook-aflevering-uit --beheerder-id "$(BEHEERDER_ID)"
+
+# Re-drive: dead-letter-rijen terug naar openstaand (herstel na bv. langdurige downtime van de
+# vastgoed-ontvanger). Optioneel één rij: make webhook-redrive BEHEERDER_ID=<uuid> OUTBOX_ID=<uuid>
+webhook-redrive: check-versions
+	.venv/bin/python -m app.cli webhook-redrive --beheerder-id "$(BEHEERDER_ID)" $(if $(OUTBOX_ID),--outbox-id "$(OUTBOX_ID)")
 
 # Lokale dev-server (tegen boekhouding, niet boekhouding_test — zie app/config.py). --reload
 # herlaadt bij codewijzigingen; poort 8000 moet matchen met frontend/vite.config.ts's proxy.

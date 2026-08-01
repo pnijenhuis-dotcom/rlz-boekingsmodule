@@ -17,7 +17,7 @@ from app.documenten.checks import CheckRapport
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus, WebhookUitgaand
 from app.documenten.rlz_ids import rlz_purchase_invoice_id, rlz_upload_id
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
-from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload, webhook_secret
+from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
 from app.geheugen.leerlus import leg_boeking_vast
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
@@ -184,13 +184,16 @@ def _sla_webhook_op(
     rlz_document_id: uuid.UUID,
     rlz_boekstuknummer: str | None,
 ) -> None:
-    """Webhook-stub (koppelcontract §3, CLAUDE.md-taak 2.5): payload bouwen + ondertekenen en in
-    de outbox leggen — aflevering (HTTP-push) is een fase-vervolg, zie app/documenten/webhook.py.
+    """Webhook-outbox (koppelcontract §3, CLAUDE.md-taak 2.5): ONGETEKENDE payload bouwen en in
+    de outbox leggen — de afleveraar (app/documenten/webhook_afleveraar.py) tekent per
+    verzendpoging (timestamp/nonce/HMAC), anders wijst het ~5 min-replay-venster van de
+    ontvanger elke latere aflevering af.
 
     Scope (hardening-audit 2026-07-13): het koppelcontract beperkt de push tot inkoopfacturen
     van vastgoed-administraties — de outbox-rij ontstaat dus alleen als `is_vastgoed` aan staat
     (migratie 0018). Filteren gebeurt bewust hier bij het aanmaken, niet pas in de afleveraar:
-    een rij die er nooit had mogen zijn kan dan ook nooit per ongeluk afgeleverd worden."""
+    een rij die er nooit had mogen zijn kan dan ook nooit per ongeluk afgeleverd worden (de
+    afleveraar assert dit desondanks nog eens)."""
     administratie = session.get(Administratie, administratie_id)
     if administratie is None or not administratie.is_vastgoed:
         return
@@ -215,7 +218,6 @@ def _sla_webhook_op(
         )
 
     payload = bouw_factuur_geboekt_payload(
-        secret=webhook_secret(),
         administratie_id=administratie_id,
         rlz_admin_id=rlz_admin_id,
         rlz_document_id=rlz_document_id,
@@ -225,7 +227,6 @@ def _sla_webhook_op(
         vendor_naam=vendor_naam,
         referentie=voorstel.referentie or "",
         regels=webhook_regels,
-        nu=datetime.now(UTC),
     )
     session.add(WebhookUitgaand(document_id=document_id, event=payload["event"], payload=payload))
 

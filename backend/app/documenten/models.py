@@ -378,10 +378,20 @@ class IbanAccordering(Base):
     afwijs_reden: Mapped[str | None] = mapped_column(default=None)
 
 
+class WebhookStatus(enum.StrEnum):
+    """Afleverstatus van een outbox-rij (migratie 0025) — zichtbaar, nooit stil: `mislukt` is de
+    dead-letter na max pogingen en vraagt om menselijke actie, geen stille eindtoestand."""
+
+    OPENSTAAND = "openstaand"
+    AFGELEVERD = "afgeleverd"
+    MISLUKT = "mislukt"
+
+
 class WebhookUitgaand(Base):
-    """Outbox voor het "factuur geboekt"-webhook-stub (migratie 0009, koppelcontract §3): de
-    getekende payload ligt hier per boeking al vast, aflevering (HTTP-push) is een fase-vervolg.
-    `afgeleverd_op` blijft NULL totdat die job bestaat — geen achtergrondproces zet 'm nu."""
+    """Outbox voor het "factuur geboekt"-webhook (migratie 0009 + 0025, koppelcontract §3).
+    `payload` is de ONGETEKENDE envelope ({schema_version, event, data}) — timestamp/nonce/
+    handtekening berekent de afleveraar per verzendpoging (app/documenten/webhook_afleveraar.py),
+    anders wijst het ~5 min-replay-venster van de ontvanger elke uitgestelde aflevering af."""
 
     __tablename__ = "webhook_uitgaand"
     __table_args__ = {"schema": "boekhouding"}
@@ -392,3 +402,9 @@ class WebhookUitgaand(Base):
     payload: Mapped[dict] = mapped_column(JSONB)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     afgeleverd_op: Mapped[datetime | None] = mapped_column(default=None)
+    # Afleverstatus (migratie 0025): tekst + DB-CHECK i.p.v. PG-enum, waarden uit WebhookStatus.
+    status: Mapped[str] = mapped_column(default=WebhookStatus.OPENSTAAND.value)
+    pogingen: Mapped[int] = mapped_column(default=0)
+    laatste_poging_op: Mapped[datetime | None] = mapped_column(default=None)
+    laatste_fout: Mapped[str | None] = mapped_column(default=None)
+    volgende_poging_op: Mapped[datetime | None] = mapped_column(default=None)

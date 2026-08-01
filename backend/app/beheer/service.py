@@ -13,6 +13,7 @@ from app.db.models import (
     GebruikerAdministratie,
     GebruikerRol,
     GebruikerStatus,
+    WebhookInstelling,
 )
 from app.db.session import scoped_session
 
@@ -21,10 +22,11 @@ class BeheerFout(Exception):
     """Domeinfout in de beheer-servicelaag (bv. onbekende administratie)."""
 
 
-# platform.boeken_instelling is een singleton (PK is een boolean, geen UUID) — audit_event vereist
-# wél een record_id; de nil-UUID is hier een vaste, herkenbare placeholder voor "de ene globale
-# instelling-rij", nooit een echte entiteit.
+# platform.boeken_instelling en platform.webhook_instelling zijn singletons (PK is een boolean,
+# geen UUID) — audit_event vereist wél een record_id; de nil-UUID is hier een vaste, herkenbare
+# placeholder voor "de ene globale instelling-rij", nooit een echte entiteit.
 _BOEKEN_INSTELLING_RECORD_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+_WEBHOOK_INSTELLING_RECORD_ID = _BOEKEN_INSTELLING_RECORD_ID
 
 
 def haal_boeken_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
@@ -259,6 +261,37 @@ def zet_eigenaar(
             administratie_id=administratie_id,
         )
         return eigenaar_gebruiker_id
+
+
+def haal_webhook_aflevering_ingeschakeld_op() -> bool:
+    with scoped_session(None) as session:
+        instelling = session.get(WebhookInstelling, True)
+        return instelling is not None and instelling.aflevering_ingeschakeld
+
+
+def zet_webhook_aflevering_ingeschakeld(*, actor_id: uuid.UUID, ingeschakeld: bool) -> bool:
+    """Webhook-aflevering-toggle (migratie 0025) — Beheerder-only (router), zelfde patroon als
+    de globale boeken-kill-switch. Default UIT: aanzetten is een bewuste actie zodra vastgoed's
+    ontvanger bestaat; naast deze toggle geldt óók de config-failsafe (doel-URL + secret)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        instelling = session.get(WebhookInstelling, True)
+        if instelling is None:
+            raise BeheerFout("platform.webhook_instelling heeft geen rij — migratie 0025 niet toegepast?")
+        oud = instelling.aflevering_ingeschakeld
+        instelling.aflevering_ingeschakeld = ingeschakeld
+        instelling.gewijzigd_door = actor_id
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="webhook_instelling",
+            record_id=_WEBHOOK_INSTELLING_RECORD_ID,
+            actie="webhook_aflevering_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"aflevering_ingeschakeld": oud},
+            nieuwe_waarde={"aflevering_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
 
 
 def haal_globale_kill_switch_op() -> bool:

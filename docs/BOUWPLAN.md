@@ -363,8 +363,9 @@ Backend:
      **Nog niet gebouwd, met implementerende fase:**
      memoriaal-saldo-0 (→ fase 2, omzet/kostprijsmemoriaal); VGB-prefixfilter
      (→ vóórdat documenten uit gedeelde vastgoed-administraties gelezen worden);
-     per-leverancier-autoboeken-opt-in (→ vóór de eerste autoboek-functie);
-     webhook-HMAC-per-verzendpoging (→ mét de afleveraar, open item 2026-07-13). `app/documenten/boeken.py`: `boek_document()` herhaalt de checks
+     per-leverancier-autoboeken-opt-in (→ vóór de eerste autoboek-functie).
+     Webhook-HMAC-per-verzendpoging: **gebouwd + getest (2026-08-02)**, mét de afleveraar —
+     zie punt 7. `app/documenten/boeken.py`: `boek_document()` herhaalt de checks
    server-side (nooit de client-kant vertrouwen), dan de failsafes, dan de echte RLZ-schrijfacties
    — deterministisch client-GUID (`app/documenten/rlz_ids.py`, UUIDv5 op document-id, óók voor de
    PDF-bijlage) → PUT PurchaseInvoice → **PUT** `/Uploads/{uploadId}` (geverifieerd: RLZ wil hier
@@ -395,9 +396,28 @@ Backend:
    **Scope-filter gebouwd (2026-07-13, hardening-audit):** de outbox-rij ontstaat alleen nog voor
    vastgoed-administraties (`platform.administratie.is_vastgoed`, migratie 0018 — default UIT,
    expliciet zetten; koppelcontract §3). Gefilterd bij het aanmaken, niet pas in de afleveraar.
-   Voor de afleveraar blijft open (OPEN_ITEMS 2026-07-13): timestamp/nonce/HMAC pas bij de
-   verzendpoging berekenen — de nu opgeslagen handtekening overleeft het replay-venster (~5 min)
-   niet bij uitgestelde aflevering.
+   **Afleveraar + HMAC-per-verzendpoging gebouwd + getest (2026-08-02, OPEN_ITEMS actiepunt 2
+   afgehandeld).** Migratie 0025: payload ligt ONGETEKEND in de outbox ({schema_version, event,
+   data}); `app/documenten/webhook_afleveraar.py` tekent per verzendpoging (verse timestamp +
+   nonce + HMAC — het replay-venster meet nu de echte verzendtijd; wire-formaat ongewijzigd,
+   handtekeningvelden ook als headers X-Webhook-Timestamp/-Nonce/-Signature). Afleverstatus
+   zichtbaar op de rij (openstaand/afgeleverd/mislukt + pogingen/laatste_fout/volgende_poging_op),
+   retry met exponentiële backoff, dead-letter na `settings.webhook_max_pogingen`, audit_event
+   per poging (systeem-actor), FOR UPDATE SKIP LOCKED tegen dubbele aflevering. **Re-drive
+   (2026-08-02):** dead-letter is geen eindstation — `herstel_dead_letters()` (CLI/`make
+   webhook-redrive`, optioneel per rij) zet mislukte rijen als expliciete admin-actie terug naar
+   openstaand met vol retry-budget, audit_event per rij met de Beheerder als actor; het normale
+   herstel wanneer de vastgoed-ontvanger langere tijd down was. Failsafes:
+   toggle `platform.webhook_instelling` (default UIT, Beheerder-only, endpoints
+   `/instellingen/webhook-aflevering` + CLI `webhook-aflevering-aan/-uit`) én config-failsafe
+   (geen `webhook_doel_url`/`WEBHOOK_HMAC_SECRET` → rijen blijven openstaand, géén fout —
+   vastgoed's ontvanger bestaat nog niet); de afleveraar assert bovendien nogmaals de
+   vastgoed-scope (niet-vastgoed-rij → zichtbaar mislukt, nooit verzonden). Uitvoering: in-process
+   lus in dev (app-lifespan, alleen mét doel-URL), productie dezelfde verwerk-functie als Cloud
+   Scheduler/Cloud Run-job (`python -m app.cli webhook-afleveren` / `make webhook-afleveren`).
+   Tests: `tests/documenten/test_webhook_afleveraar.py` (mock-ontvanger die HMAC + replay-venster
+   + nonce-dedup écht handhaaft; kern-test: aflevering 30 min ná aanmaak wordt níét als replay
+   afgewezen) + `test_webhook.py` (ongetekende outbox-payload, wire-formaat ongewijzigd).
 
 7b. **Boekingsgeheugen (backend) — gebouwd + getest (2026-07-13).** CLAUDE.md: "RLZ-historie +
    app-correcties; correcties wegen zwaarder; default voorstel, nooit blind boeken." Nieuw
