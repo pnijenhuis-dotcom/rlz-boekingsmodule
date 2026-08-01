@@ -209,5 +209,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   architect/analist/accountant ineen; proactief en kritisch (geen lege complimenten, onderbouw,
   zeg het als Peter iets mist); bronnen eerst; vind gaten vóór hij ze vindt. Volledige, actuele
   versie staat uitsluitend in WERKWIJZE.md.
+- **Git-werkwijze (2026-08-02, zelfde opzet als de vastgoedmodule):** pushen gaat automatisch
+  via de Stop-hook in `.claude/settings.local.json` — na elke afgeronde Claude Code-run wordt
+  `git push origin main` gedraaid zodra er lokale commits zijn die origin nog niet heeft (anders
+  stil overgeslagen; bij een push-fout een melding, geen retry). `git push` blijft voor de agent
+  in de deny-lijst (incl. force/-f/--delete) — alleen de hook pusht, nooit een ad-hoc push
+  tijdens een run. Committen blijft een menselijke actie onder P. Nijenhuis.
 - Tests verplicht op geldlogica (mapping, totalen, idempotentie, statusmachine) vóór UI-polish.
 - Elke schrijfactie naar RLZ eerst tegen een testadministratie of met TEST-referentie + akkoord.
