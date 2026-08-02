@@ -166,7 +166,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (verkenning/11_KOPPELCONTRACT_DEFINITIEF.md is leidend)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.9)
 
 - Documenten van de vastgoedmodule dragen `Reference`-prefix **`VGB-`** → herkennen, nooit als
   werkvoorraad tonen.
@@ -174,6 +174,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   RLZ-GUID, project-GUID, datum, bedragen per regel, GB, leverancier, omschrijving, adminId).
 - Schrijfverdeling: zij huurfacturen + waarborg-memoriaal; wij inkoop/omzet/bank. Niemand muteert
   documenten van de ander.
+- **Vastly-verkoopfacturen (§2d, v1.9)**: e-mail-intake routeert op de vaste UBL-markering
+  `cac:AdditionalDocumentReference/cbc:ID = "VASTLY-VERKOOP"` (nooit op afzender) → omzetkant
+  (SalesInvoice). Geen/kapotte markering of NLCIUS-invalide UBL → verzamelbak "Niet toegewezen",
+  nooit stil naar inkoop. Bouw bij fase 3 (intake) + fase 2 (omzet).
+- **WOZ-zij-extractie (§2e, v1.9)**: uit de OZB-aanslag (die wij gewoon als kostenfactuur boeken)
+  extraheren wij jaargebonden WOZ-regels — mens bevestigt, waardepeildatum extraheren-en-bevestigen
+  (nooit afleiden) + deterministische plausibiliteitscheck tegen 1 jan (belastingjaar − 1) —
+  geleverd via `platform.woz_beschikking` (append-only, patroon §2c). Bouw in fase 2.
 
 ## Referenties in deze repo
 
@@ -193,10 +201,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vindplaats en benoem expliciet waar de feature al staat; goedgekeurde mockup/besluit = 1-op-1
   voortbouwen, niet opnieuw uitvragen. **Capture-at-acceptance:** elk akkoord van Peter meteen in
   dit register (+ canonieke plek) vastleggen, nooit alleen in de chat.
-- **Cross-projectdocumenten hebben precies één canonieke locatie**: het koppelcontract leeft als
-  master in `verkenning/` van deze repo (kopie in de vastgoed-repo wordt bij elke versiebump
-  gesynchroniseerd en per diff geverifieerd); `01_ARCHITECTUUR.md` en `14_ANTWOORD_AAN_RLZ.md`
-  leven uitsluitend in de vastgoed-repo. Geen derde kopieën maken.
+- **Cross-projectdocumenten hebben precies één canonieke locatie**: het koppelcontract leeft
+  sinds v1.6 (besluit 0007) als enig exemplaar in `../Platform/contracten/
+  KOPPELCONTRACT_RLZ_VASTGOED.md` — het oude kopie+sync-ritueel is afgeschaft, project-repo's
+  bevatten alleen verwijzingen; `01_ARCHITECTUUR.md` en `14_ANTWOORD_AAN_RLZ.md` leven
+  uitsluitend in de vastgoed-repo. Geen derde kopieën maken.
 - **Dit project is eigenaar van het gedeelde platform-fundament** (auth, credential-store,
   entiteitenregister, IAM, audit_event/WORM) — interface-wijzigingen alleen met akkoord van
   beide projecten en een versienummer (contract v1.5).
