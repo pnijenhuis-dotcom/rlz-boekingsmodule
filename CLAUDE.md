@@ -60,7 +60,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (per document, ook 138 — een collectie-vorm bestaat niet). Actie 17 = Book (definitief), 19 =
   Correct (zet terug naar concept, géén apart creditdocument), 34 = verrekenen, 138 =
   duplicaatcheck (**bewezen zonder bruikbaar signaal, niet gebruiken** — zie
-  verkenning/api-verkenning.md "Actie 138"), 15/16 = LinkPaymentItems/UnlinkPayment (afletteren).
+  verkenning/api-verkenning.md "Actie 138"), 15/16 = LinkPaymentItems/UnlinkPayment (afletteren
+  — **payload ongedocumenteerd, alle vormen `400 _InvalidData` (schrijf-PoC 2026-08-02);
+  supportvraag aan RLZ ligt klaar; tot dan is afletteren-tegen-open-post via de API niet
+  bouwbaar** — zie api-verkenning.md "Bankmodule schrijf-PoC").
 - Documentstatus (RLZ's eigen enumeratie `GET DocumentStatuses`, geverifieerd 2026-07-13):
   **1 = Tentative/Concept, 2 = Open/Openstaand (geboekt, nog niet volledig afgeletterd),
   3 = Closed/Gesloten (volledig betaald/afgeletterd, `BaseRemainingAmount` 0)**. De eerdere
@@ -83,7 +86,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   afschrift-koppen), **`PaymentTransactions` = dé ruwe bankmutaties** (tegenrekening-IBAN,
   omschrijving, afgeletterd-status `IsComplete`+`OpenAmount`; geverifieerd STAP 0 2026-08-02).
   `BankMutationDirectBookings` `IsSystemGenerated:true` bleek géén bruikbaar voorstel-signaal
-  (lege concept-hulzen) — zie verkenning/api-verkenning.md "Bankmodule STAP 0".
+  (lege concept-hulzen, systeem-plumbing per open mutatie) — zie verkenning/api-verkenning.md
+  "Bankmodule STAP 0". **Bank-schrijfmechanics (schrijf-PoC 2026-08-02, "Bankmodule
+  schrijf-PoC"): direct-op-grootboek = `PUT BankMutationDirectBookings/{client-guid}` met
+  `PaymentTransaction`+regels (boekt direct, Status 3, storno = actie 19); leesspoor
+  "waartegen afgeletterd" = `$expand=PaymentReferenceList($expand=Document)`; RLZ-matchvoorstel
+  = auto-gevuld `MatchedPaymentItem` (alleen exacte bedrag-match); ⚠️ `IsComplete` blijft na
+  storno stale op true — afgeletterd altijd op `OpenAmount` toetsen.**
 - Rate limits: docs "REST API limits" — exact verifiëren; client bouwt met throttling + retry/backoff.
 - Testdata (v1.3-afspraak): integratietests tegen een **aparte RLZ-test-administratie**;
   testboekingen worden **gestorneerd** (actie 19 Correct), nooit hard verwijderd — consistent met
@@ -127,8 +136,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Bank**: klantenlijst → rekening (alle `PaymentAccounts` incl. kas). Voorstel-volgorde:
   1) exacte match naam+factuurnr+**bedrag** → auto-afletteren; 2) gedeeltelijke match → bevestigen;
   3) vaste regels (geheugen; na 3× zelfde handmatige boeking regel voorstellen); 4) RLZ's eigen
-  voorstel (bron tonen — **STAP 0 2026-08-02: geen API-voedingsbron, herzien bij scherm-ontwerp**);
-  5) handmatig. Afletteren gaat NIET door de klant-accorderingsflow.
+  voorstel (bron tonen — **schrijf-PoC 2026-08-02: voedingsbron bestaat wél, auto-gevuld
+  `MatchedPaymentItem` bij exacte bedrag-match — de eerdere STAP-0-conclusie "geen voedingsbron"
+  is herzien**); 5) handmatig. Afletteren gaat NIET door de klant-accorderingsflow.
+  **Bouwstatus na schrijf-PoC: stap 1/2 (afletteren tegen open post) wacht op RLZ-supportantwoord
+  over actie 15/16; direct-op-grootboek is bouwklaar** — zie api-verkenning.md "Bankmodule
+  schrijf-PoC" (consequenties-lijst) en BESLISSINGEN "Bank schrijf-mechanics".
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA (factuurbeeld centraal,
