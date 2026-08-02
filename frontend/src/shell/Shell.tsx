@@ -15,6 +15,9 @@ export function Shell() {
           <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Werkvoorraad
           </NavLink>
+          <NavLink to="/bank" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Bank
+          </NavLink>
           <NavLink to="/vragen" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Vragen
           </NavLink>

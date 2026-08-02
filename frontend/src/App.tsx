@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ActivateScreen } from './auth/ActivateScreen'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { LoginScreen } from './auth/LoginScreen'
+import { BankDetailScreen } from './bank/BankDetailScreen'
+import { BankOverzichtScreen } from './bank/BankOverzichtScreen'
 import { DocumentDetailScreen } from './document/DocumentDetailScreen'
 import { InstellingenScreen } from './instellingen/InstellingenScreen'
 import { Shell } from './shell/Shell'
@@ -26,6 +28,8 @@ function BeschermdeRoutes() {
     <Routes>
       <Route element={<Shell />}>
         <Route path="/" element={<WerkvoorraadScreen />} />
+        <Route path="/bank" element={<BankOverzichtScreen />} />
+        <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
         <Route path="/vragen" element={<VragenScreen />} />
         <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
