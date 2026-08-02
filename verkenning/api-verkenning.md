@@ -522,8 +522,9 @@ maar wél netjes terug te draaien met 19 op dat document. Er bestaat ook
    uitvoerbaar** zolang actie 15/16 dicht zit → supportvraag verzonden vóór scherm-ontwerp;
    alternatieve sporen als het antwoord uitblijft: (a) verwachte-betaling-flow per factuur
    (werkt, maar maakt eigen bankregel — alleen zinvol zonder bankfeed), (b) betaling boeken
-   via ManualJournal op de crediteurenrekening + verrekenen (actie 34) — nog niet getest,
-   vervolg-PoC.
+   via ManualJournal op de crediteurenrekening + verrekenen (actie 34) — **getest in de
+   fallback-PoC (2 augustus 2026, zie hieronder): afgevallen** — actie 34 zit achter dezelfde
+   ongedocumenteerde-payload-muur als 15/16 en een memoriaal kan geen crediteurenpost dragen.
 3. **Direct-op-grootboek (bankkosten, rente, privé) is klaar om te bouwen** (§3), inclusief
    btw/project per regel en nette storno.
 4. G-rekening-split: representatie bestaat (meerdere `PaymentReference`s met eigen bedragen),
@@ -533,6 +534,109 @@ Blijvend in de test-administratie (bewust, verwijderen verboden): drie open TEST
 (`TEST-BANKPOC-TX1/TX2/TX3`) + één door 148 aangemaakte open regel, elk met systeemhuls;
 factuur `TEST-BANKPOC-INV1` en de 160/161- en directe-boeking-documenten staan op concept
 (Status 1).
+
+## Bankmodule FALLBACK-PoC — afletteren zonder 15/16 via ManualJournal + actie 34 (2 augustus 2026) — AFGEROND, FALLBACK NIET BOUWBAAR
+
+Vervolg op de schrijf-PoC (consequentie 2, spoor b): kan een bankmutatie tegen een open
+inkoopfactuur afgeletterd worden via een betaal-memoriaal op de crediteurenrekening +
+actie 34 (verrekenen)? Uitgevoerd tegen de test-administratie (`8dbfb856-…3fc5`), conform
+besluit 0005 alles gestorneerd via actie 19, niets verwijderd. Harness:
+`verkenning/poc_bank_fallback.py` (zelfde waarborgen als de schrijf-PoC: admin-pin,
+kill-switch, TEST-referenties `TEST-BANKFB-`, append-only audit in
+`output/bankpoc_audit.jsonl`; eigen state in `output/bankfallback_state.json`).
+Testopstelling: crediteur "TEST PoC bank-fallback — storneren", geboekte inkoopfactuur
+`TEST-BANKFB-INV1` (€121, RLZ-04-00002014, open PaymentItem), bankmutatie `TEST-BANKFB-TX1`
+(−121), betaal-memoriaal `TEST-BANKFB-MEM1` (RLZ-06-00000501), creditnota `TEST-BANKFB-CN1`
+(RLZ-04-00002015, als bewezen open tegenpost).
+
+### CONCLUSIE: afletteren-tegen-open-post kan via de publieke API in géén enkele vorm
+
+Alle drie de resterende kandidaat-routes zijn nu empirisch dichtgetest. Samen met het
+15/16-resultaat uit de schrijf-PoC betekent dit: **de crediteuren-/debiteurensubadministratie
+is via de publieke API alleen te muteren door documenten te boeken (factuur/creditnota) —
+elke koppel-, verreken- of betaalactie op bestaande open posten is onbereikbaar.** De
+supportvraag aan RLZ is daarmee niet één van de sporen maar het énige spoor; hij is
+hieronder verbreed naar 34 en 218.
+
+### 1. Actie 34 (Factuur verrekenen): zelfde muur als 15/16 — `400 _InvalidData` in elke vorm
+
+- Aangeboden op een geboekte inkoopfactuur (`GET .../Actions`: 19, **34 "Factuur
+  verrekenen"**, 109, **218 "Betaal een inkoopfactuur"** — die laatste was nog niet eerder
+  waargenomen).
+- Geprobeerd zónder tegenpost én mét een perfecte open tegenpost (geboekte creditnota
+  −121 op dezelfde crediteur, open item +121): `{Type:34}` kaal, `id` = memoriaal /
+  creditnota / creditnota-item / factuur / factuur-item, item-id in `Description`, en
+  omgekeerd (actie op de creditnota, `id` = factuur(-item)). **Alles `400 _InvalidData`** —
+  byte-hetzelfde foutbeeld als actie 15/16. RLZ verrekent een exact matchende
+  factuur+creditnota ook niet zelf (beide bleven open; het creditnota-item krijgt wel
+  `PaymentStatus 2` "onderweg", maar dat is weergave, geen geplande verrekening).
+- Help documenteert opnieuw alleen de kale `ApiAction {id, Type, Description}`.
+
+### 2. Actie 218 (Betaal een inkoopfactuur): `500 Onverwachte fout` in elke vorm
+
+Nieuw ontdekte actie, klinkt als hét betaalkanaal — maar elke vorm (`id` = bankmutatie /
+bankrekening / betaal-item, en kaal) geeft een 500 zonder detail. Onbruikbaar; meegenomen
+in de supportvraag.
+
+### 3. Een ManualJournal kan geen crediteurenpost dragen
+
+- **Regelniveau**: het `ManualJournalLine`-model (Help) heeft géén relatie-/Entity-veld;
+  een meegestuurde `Entity` op de regel wordt **stil genegeerd** (PUT 204, veld leeg bij
+  teruglezen). Het betaal-memoriaal (debet Crediteuren / credit Kruisposten, saldo 0)
+  boekt gewoon (17 → direct Status 3, niets open) maar raakt uitsluitend het grootboek:
+  géén PaymentItem, geen effect op factuur (`BaseRemainingAmount` blijft 121) of mutatie.
+- **Documentniveau**: `Entity` bestaat wél in het `ManualJournal`-model, maar
+  `PUT ManualJournals/{guid}` mét `Entity` → **`500 Onverwachte fout`** (consistent over
+  retries). Zelfde familie als de 500 op de crediteuren-koppelrekening in
+  `BankMutationDirectBookings` (schrijf-PoC §3): de subadministratie is voor deze
+  documenttypen dicht.
+- ⚠️ Lees-observatie: RLZ geeft memoriaalregels terug met **gespiegelde `CreditOrDebit`**
+  t.o.v. wat wij stuurden (regel verstuurd als `CreditOrDebit:1` + `DebitAmount` komt terug
+  als `CreditOrDebit:2` mét gevulde `DebitAmount`). De bedragvelden bleven correct — bij
+  lezen dus op `DebitAmount`/`CreditAmount` varen, niet op `CreditOrDebit`, tot RLZ dit
+  opheldert (PoC 2 uit juli nam 1=debet aan op basis van het schrijfmodel).
+- `ManualJournals/{id}/Lines` bestaat niet (404) — regels lezen via
+  `$expand=DocumentLineList($expand=Account,…)` op het document.
+
+### 4. Parkeren op Kruisposten kán, maar is geen afletteren
+
+`PUT BankMutationDirectBookings/{guid}` met regel-`Account` = Kruisposten werkt gewoon
+(document direct Status 3, mutatie `OpenAmount` 0) — anders dan de crediteuren-
+koppelrekening (500). Een bankmutatie "parkeren" om de bankwerkvoorraad leeg te krijgen is
+dus technisch mogelijk, maar de open post op de factuur blijft staan en het latere
+afletteren moet dan alsnog handmatig in de RLZ-UI — dubbel werk plus een vervuilde
+tussenrekening. **Geen bruikbaar fallback-pad**, hooguit een bewuste uitzondering.
+
+### 5. Storno-observaties (herbevestigd + nieuw)
+
+- Volledige keten netjes teruggedraaid met actie 19: factuur, creditnota, memoriaal en
+  directe boeking → Status 1; mutatie weer open (`OpenAmount` −121).
+- `IsComplete` blijft na storno opnieuw stale op `true` (vierde reproductie).
+- **Nieuw**: na storno van een directe boeking wijst de `PaymentReferenceList` van de
+  mutatie nog steeds naar dat (nu concept-)document, en dat document staat dan zelf op
+  `IsSystemGenerated: true` — het gestorneerde document neemt de rol van systeemhuls over.
+  Het leesspoor-onderscheid "echt afgeletterd vs huls" moet dus op de combinatie
+  `DocumentType 19 + Status 1` (of `OpenAmount` van de mutatie) toetsen, nooit op
+  `IsSystemGenerated` alleen.
+
+### Consequenties voor het bankmodule-ontwerp
+
+1. **Voorstel-volgorde stap 1/2 (auto-/deel-afletteren, incl. G-rekening-split) is via de
+   publieke API niet bouwbaar — er is geen fallback.** De G-rekening-deelbetaling was
+   daardoor niet eens toetsbaar: er bestaat geen enkel API-pad om ook maar één koppeling
+   te leggen. Alles hangt aan het supportantwoord van RLZ (vraag hieronder, verbreed).
+2. Tot dat antwoord er is kan de bankmodule wél: mutaties lezen + voorstellen tonen
+   (stap 3/4/5), direct-op-grootboek boeken (bankkosten e.d.), en voor
+   afletteren-tegen-open-post het voorstel klaarzetten waarna **de mens de koppeling in de
+   RLZ-UI zelf legt** (app registreert en verifieert daarna op `OpenAmount`/documentstatus).
+   Dat laatste als expliciete ontwerpkeuze aan Peter voorleggen bij het scherm-ontwerp.
+3. Verwachte-betaling-flow (148) blijft het enige volautomatische betaalspoor, maar alleen
+   voor administraties zónder bankfeed (maakt eigen bankregel).
+
+Blijvend in de test-administratie (bewust, verwijderen verboden): open TEST-mutatie
+`TEST-BANKFB-TX1`, crediteur "TEST PoC bank-fallback — storneren", en op concept (Status 1):
+factuur `TEST-BANKFB-INV1`, creditnota `TEST-BANKFB-CN1`, memoriaal `TEST-BANKFB-MEM1`
+(RLZ-06-00000501) en de Kruisposten-directboeking (RLZ-07-00002274).
 
 ## Concept-supportvraag aan Reeleezee (actie 138)
 
@@ -571,11 +675,13 @@ accountmanager) nodig.
 > (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), webservice-login AK_NijenClaude. Testdocumenten
 > herkenbaar aan `Reference` beginnend met `TEST-`.
 
-## Concept-supportvraag aan Reeleezee (acties 15/16, bankafletteren)
+## Concept-supportvraag aan Reeleezee (acties 15/16 + 34 + 218, bankafletteren/verrekenen)
 
 Openstaand, nog niet verstuurd — Peter's akkoord nodig (zelfde kanaal als de 138-vraag).
+Verbreed na de fallback-PoC (2 augustus 2026): acties 34 en 218 toegevoegd.
 
-> Onderwerp: ActionKind 15 (LinkPaymentItems) / 16 (UnlinkPayment) op PaymentTransactions —
+> Onderwerp: ActionKind 15 (LinkPaymentItems) / 16 (UnlinkPayment) op PaymentTransactions,
+> 34 (Factuur verrekenen) en 218 (Betaal een inkoopfactuur) op PurchaseInvoices —
 > welke request-body wordt verwacht?
 >
 > Wij verwerken bankmutaties via de REST-API (`/api/v1`, webservice-login) en willen een
@@ -594,18 +700,36 @@ Openstaand, nog niet verstuurd — Peter's akkoord nodig (zelfde kanaal als de 1
 > - De Help-pagina documenteert als body alleen `ApiAction {id, Type, Description}`;
 >   een `$metadata`-document is er niet, dus verder komen we niet.
 >
+> Hetzelfde beeld zien we bij het verrekenen en betalen van inkoopfacturen:
+>
+> - `POST {adminId}/PurchaseInvoices/{id}/Actions` met `{"Type": 34}` ("Factuur verrekenen")
+>   geeft altijd `400 _InvalidData` — kaal én met `id` = creditnota, creditnota-betaal-item,
+>   factuur of betaal-item, ook wanneer er op dezelfde crediteur een exact matchende geboekte
+>   creditnota met open post klaarstaat.
+> - `{"Type": 218}` ("Betaal een inkoopfactuur") geeft altijd `500 "Onverwachte fout"` —
+>   kaal én met `id` = bankmutatie, bankrekening of betaal-item.
+> - Een alternatieve route via een betaal-memoriaal vonden we ook niet: het
+>   `ManualJournalLine`-model kent geen relatie-veld (een meegestuurde `Entity` op de regel
+>   wordt stil genegeerd) en `PUT ManualJournals/{guid}` met `Entity` op documentniveau
+>   geeft `500 "Onverwachte fout"`.
+>
 > Vragen:
 > 1. Welke body (of welk voorbereidend veld/endpoint) verwachten acties 15 en 16 om het
 >    doel-`PaymentItem` aan te wijzen? Een concreet request-voorbeeld zou enorm helpen.
-> 2. Ondersteunt dit ook gedeeltelijk koppelen (één mutatie tegen een deel van een post, of
->    één post over meerdere mutaties — bv. een G-rekening-splitbetaling)? Wij zien in het
->    model `PaymentReferenceList` met `Amount` en `Sequence` per koppeling, maar die lijst
->    lijkt via PUT niet muteerbaar (wijzigingen worden stil genegeerd of geven
+> 2. Idem voor actie 34 (verrekenen van een factuur met bv. een creditnota) en actie 218
+>    (betalen van een inkoopfactuur): welke body verwachten die, en is de 500 op 218 een
+>    fout aan onze kant of een bekend probleem?
+> 3. Ondersteunt het koppelen ook gedeeltelijk afletteren (één mutatie tegen een deel van een
+>    post, of één post over meerdere mutaties — bv. een G-rekening-splitbetaling)? Wij zien
+>    in het model `PaymentReferenceList` met `Amount` en `Sequence` per koppeling, maar die
+>    lijst lijkt via PUT niet muteerbaar (wijzigingen worden stil genegeerd of geven
 >    `The request is invalid.`).
-> 3. Zijn deze acties beperkt tot bepaalde mutatiesoorten (alleen geïmporteerde regels, alleen
+> 4. Zijn deze acties beperkt tot bepaalde mutatiesoorten (alleen geïmporteerde regels, alleen
 >    verwachte regels uit betaalbatches, …)? Onze tests draaiden op via de API aangemaakte
 >    regels in onze eigen test-administratie.
+> 5. Is er, los van deze acties, een aanbevolen API-route om een open post in de
+>    crediteuren-subadministratie af te boeken tegen een bankmutatie?
 >
 > Testomgeving: RLZ-test-administratie "Administratiekantoor Nijenhuis"
 > (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), webservice-login AK_NijenClaude. Testdata
-> herkenbaar aan referenties die met `TEST-BANKPOC-` beginnen.
+> herkenbaar aan referenties die met `TEST-BANKPOC-` of `TEST-BANKFB-` beginnen.
