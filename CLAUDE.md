@@ -62,8 +62,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   duplicaatcheck (**bewezen zonder bruikbaar signaal, niet gebruiken** — zie
   verkenning/api-verkenning.md "Actie 138"), 15/16 = LinkPaymentItems/UnlinkPayment (afletteren
   — **payload ongedocumenteerd, alle vormen `400 _InvalidData` (schrijf-PoC 2026-08-02);
-  supportvraag aan RLZ ligt klaar; tot dan is afletteren-tegen-open-post via de API niet
-  bouwbaar** — zie api-verkenning.md "Bankmodule schrijf-PoC").
+  fallback-PoC 2026-08-02 sloot óók de alternatieven: actie 34 (verrekenen) zelfde
+  `_InvalidData`-muur, actie 218 (betaal inkoopfactuur) altijd 500, memoriaal kan geen
+  crediteurenpost dragen (regel-`Entity` stil genegeerd, document-`Entity` 500) —
+  afletteren-tegen-open-post kan via de API in géén enkele vorm; supportvraag (verbreed naar
+  34/218) ligt klaar** — zie api-verkenning.md "Bankmodule schrijf-PoC" + "Bankmodule
+  FALLBACK-PoC").
 - Documentstatus (RLZ's eigen enumeratie `GET DocumentStatuses`, geverifieerd 2026-07-13):
   **1 = Tentative/Concept, 2 = Open/Openstaand (geboekt, nog niet volledig afgeletterd),
   3 = Closed/Gesloten (volledig betaald/afgeletterd, `BaseRemainingAmount` 0)**. De eerdere
@@ -139,9 +143,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   voorstel (bron tonen — **schrijf-PoC 2026-08-02: voedingsbron bestaat wél, auto-gevuld
   `MatchedPaymentItem` bij exacte bedrag-match — de eerdere STAP-0-conclusie "geen voedingsbron"
   is herzien**); 5) handmatig. Afletteren gaat NIET door de klant-accorderingsflow.
-  **Bouwstatus na schrijf-PoC: stap 1/2 (afletteren tegen open post) wacht op RLZ-supportantwoord
-  over actie 15/16; direct-op-grootboek is bouwklaar** — zie api-verkenning.md "Bankmodule
-  schrijf-PoC" (consequenties-lijst) en BESLISSINGEN "Bank schrijf-mechanics".
+  **Bouwstatus na schrijf- + fallback-PoC (2026-08-02): stap 1/2 (afletteren tegen open post)
+  kan via de publieke API in géén enkele vorm — 15/16, 34 (verrekenen) én 218 (betalen) dicht,
+  memoriaal-route bestaat niet; er is geen fallback, alles wacht op het RLZ-supportantwoord
+  (vraag verbreed). Interim-lijn voor het scherm-ontwerp (voorleggen aan Peter): app zet
+  voorstel klaar, mens legt de koppeling in de RLZ-UI, app verifieert op `OpenAmount`.
+  Direct-op-grootboek is bouwklaar** — zie api-verkenning.md "Bankmodule schrijf-PoC" +
+  "Bankmodule FALLBACK-PoC" en BESLISSINGEN "Bank schrijf-mechanics"/"Bank fallback-PoC".
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA (factuurbeeld centraal,
