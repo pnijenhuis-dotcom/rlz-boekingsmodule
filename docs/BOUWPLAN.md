@@ -543,6 +543,20 @@ UI-eisen):
 - Bankmodule: PaymentAccounts/Statements lezen, voorstel-volgorde (exacte match → gedeeltelijk →
   vaste regels → RLZ-voorstel → handmatig), auto-afletteren bij naam+factuurnr+bedrag,
   regel-leren (3×), BankMutationDirectBookings schrijven. PoC afletteren (acties 15/16) eerst.
+  **→ GEBOUWD + GETEST (2026-08-02, vooruitgetrokken uit fase 2 — zie docs/BESLISSINGEN.md
+  "Bankmodule — GEBOUWD + GETEST" voor het volledige overzicht):** leeskant (migratie 0026:
+  payment_account_cache/bank_mutatie/payment_item_cache + watermark-sync), deterministische
+  matchmotor (volgorde 1–5, 3×-regelvoorstel, btw-splitsing in code), afletteren-tegen-open-post
+  als **assist-model achter één seam** (API-write onmogelijk per fallback-PoC; klaarzetten →
+  mens koppelt in RLZ-UI → sync verifieert op OpenAmount + PaymentReferenceList-leesspoor),
+  direct-op-grootboek (deterministisch client-GUID, failsafes/volumerem/duplicaatchecks, storno
+  actie 19, opt-in autoboeken per administratie via `bank_autoboeken_ingeschakeld`),
+  Vastly-event `factuur_afgeletterd` via de bestaande webhook-afleveraar (documentstatus-3-
+  detectie; koppelcontract §3-opname nog af te stemmen met vastgoed), bank-reconciliatie
+  (`make bank-reconciliatie`) en de twee schermen (mockup #bank/#bankdetail,
+  `frontend/src/bank/`). CLI/jobs: `make bank-sync` (Cloud Scheduler-entrypoint). Open:
+  browserreview Peter + akkoord op de assist-interimlijn; volautomatisch afletteren zodra RLZ
+  de 15/16-supportvraag beantwoordt (alleen de seam-body vervangen).
 - Bulk-boeken, archief-weergave, tijdlijn per boeking. **Let op (koppelcontract v1.7, §7.3):**
   actie 19 (Correct) zet een RLZ-document terug naar concept i.p.v. een apart creditdocument —
   archief/tijdlijn kunnen dus geen zichtbaar stornering-/credit-spoor uit RLZ's documentstatus

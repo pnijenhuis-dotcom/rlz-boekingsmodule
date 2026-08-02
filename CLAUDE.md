@@ -143,13 +143,22 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   voorstel (bron tonen — **schrijf-PoC 2026-08-02: voedingsbron bestaat wél, auto-gevuld
   `MatchedPaymentItem` bij exacte bedrag-match — de eerdere STAP-0-conclusie "geen voedingsbron"
   is herzien**); 5) handmatig. Afletteren gaat NIET door de klant-accorderingsflow.
-  **Bouwstatus na schrijf- + fallback-PoC (2026-08-02): stap 1/2 (afletteren tegen open post)
-  kan via de publieke API in géén enkele vorm — 15/16, 34 (verrekenen) én 218 (betalen) dicht,
-  memoriaal-route bestaat niet; er is geen fallback, alles wacht op het RLZ-supportantwoord
-  (vraag verbreed). Interim-lijn voor het scherm-ontwerp (voorleggen aan Peter): app zet
-  voorstel klaar, mens legt de koppeling in de RLZ-UI, app verifieert op `OpenAmount`.
-  Direct-op-grootboek is bouwklaar** — zie api-verkenning.md "Bankmodule schrijf-PoC" +
-  "Bankmodule FALLBACK-PoC" en BESLISSINGEN "Bank schrijf-mechanics"/"Bank fallback-PoC".
+  **Bouwstatus: bankmodule GEBOUWD + GETEST (2026-08-02, wacht op review Peter)** —
+  `backend/app/bank/` + `frontend/src/bank/` + migratie 0026. Stap 1/2/4 (afletteren tegen
+  open post) kan via de publieke API in géén enkele vorm (15/16, 34 én 218 dicht — fallback-PoC)
+  en is daarom gebouwd als **assist-model achter één seam**
+  (`app/bank/afletteren.py::voer_afletter_actie_uit`): app zet het voorstel klaar ("af te
+  letteren in Reeleezee"), mens legt de koppeling in de RLZ-UI, de sync verifieert op
+  `OpenAmount` 0 + PaymentReferenceList-leesspoor; zodra RLZ de (verbrede) supportvraag
+  beantwoordt hoeft alleen die functie-body vervangen. Stap 3/5 = direct-op-grootboek, echt
+  gebouwd (deterministisch client-GUID, failsafes + volumerem + duplicaatchecks tegen verse
+  RLZ-staat, storno actie 19 met verplichte reden); autoboeken van vaste regels = opt-in per
+  administratie (`bank_autoboeken_ingeschakeld`, default UIT, bovenop de boeken-failsafes).
+  Vastly-terugkoppeling: `factuur_afgeletterd`-event via de bestaande webhook-afleveraar
+  (detectie op documentstatus 3; formele opname in koppelcontract §3 nog af te stemmen met
+  vastgoed). Failsafe: `make bank-reconciliatie` vangt in de RLZ-UI teruggedraaide
+  boekingen/afletteringen. Zie api-verkenning.md "Bankmodule schrijf-PoC" + "Bankmodule
+  FALLBACK-PoC" en BESLISSINGEN "Bankmodule — GEBOUWD + GETEST".
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA (factuurbeeld centraal,
