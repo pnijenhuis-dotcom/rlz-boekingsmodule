@@ -14,6 +14,11 @@ from app.config import settings
 
 WEBHOOK_SCHEMA_VERSION = "1.0"
 FACTUUR_GEBOEKT_EVENT = "factuur_geboekt"
+# Tier-model-terugkoppeling naar Vastly (bankmodule, 2026-08-02): zelfde kanaal, zelfde
+# envelope/HMAC, alleen een extra event-type — géén nieuw koppelvlak. De ontvanger routeert op
+# het `event`-veld; koppelcontract §3 moet dit event nog formeel opnemen (open punt richting
+# vastgoed, zie docs/BESLISSINGEN.md "Bankmodule").
+FACTUUR_AFGELETTERD_EVENT = "factuur_afgeletterd"
 _DEV_ENVIRONMENTS = ("dev", "local")
 
 
@@ -110,6 +115,36 @@ def bouw_factuur_geboekt_payload(
     return {
         "schema_version": WEBHOOK_SCHEMA_VERSION,
         "event": FACTUUR_GEBOEKT_EVENT,
+        "data": data,
+    }
+
+
+def bouw_factuur_afgeletterd_payload(
+    *,
+    administratie_id: uuid.UUID,
+    rlz_admin_id: str,
+    rlz_document_id: uuid.UUID,
+    rlz_boekstuknummer: str | None,
+    referentie: str | None,
+    geconstateerd_op: datetime,
+) -> dict:
+    """ONGETEKENDE payload voor het "factuur afgeletterd"-event (tier-model naar Vastly): een
+    eerder via de webhook gemelde, geboekte inkoopfactuur van een vastgoed-administratie heeft
+    RLZ-documentstatus 3 (Gesloten — volledig betaald/afgeletterd) bereikt. Detectie loopt via
+    de documentstatus zelf en dekt dus zowel afletteren in de RLZ-UI (assist-model) als elke
+    toekomstige API-route. `geconstateerd_op` is het detectiemoment (onze sync), niet het
+    exacte betaalmoment — dat kent RLZ's status-veld niet."""
+    data = {
+        "administratie_id": str(administratie_id),
+        "rlz_admin_id": rlz_admin_id,
+        "rlz_document_id": str(rlz_document_id),
+        "rlz_boekstuknummer": rlz_boekstuknummer,
+        "referentie": referentie,
+        "geconstateerd_op": geconstateerd_op.isoformat(),
+    }
+    return {
+        "schema_version": WEBHOOK_SCHEMA_VERSION,
+        "event": FACTUUR_AFGELETTERD_EVENT,
         "data": data,
     }
 

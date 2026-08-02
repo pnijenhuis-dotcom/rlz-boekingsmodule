@@ -228,6 +228,73 @@ class RlzClient:
         idempotentie** — zie find_purchase_invoices_by_reference()."""
         return self.post_action(f"PurchaseInvoices/{invoice_id}", ACTION_DUPLICATE_CHECK_UNRELIABLE)
 
+    # --- bankmodule (geverifieerde vormen: api-verkenning.md "Bankmodule STAP 0" +
+    # "Bankmodule schrijf-PoC", 2 augustus 2026) ---------------------------------------------
+
+    def list_payment_accounts(self) -> list[dict[str, Any]]:
+        """Alle rekeningen incl. kas (Type 3) — één leesroute voor bank én kas."""
+        return self.get("PaymentAccounts").get("value", [])
+
+    def get_last_bank_import(self, account_id: uuid.UUID | str) -> dict[str, Any] | None:
+        """Versheid-probe per rekening (STAP 0 §3): bestandsnaam, datum, BankImportSource/-Type.
+        None bij 404 — een rekening zonder ooit een aanlevering hééft geen LastBankImport; dat is
+        de onboarding-check, geen fout."""
+        try:
+            return self.get(f"PaymentAccounts/{account_id}/LastBankImport")
+        except RlzApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+
+    def list_payment_transactions(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Ruwe bankmutaties (STAP 0 §2: dé bron, niet Statements). Geverifieerde OData-parameters:
+        `$filter=PaymentAccount/id eq {guid}` / `IsComplete eq false` / `CreateDate ge {iso}`,
+        `$orderby`, `$top`, `$count=true`, `$expand=PaymentAccount,MatchedPaymentItem,...`.
+        ⚠️ Afgeletterd-status altijd op OpenAmount toetsen — IsComplete is stale na storno."""
+        return self.get("PaymentTransactions", params=params).get("value", [])
+
+    def get_payment_transaction(self, tx_id: uuid.UUID | str, *, expand: str | None = None) -> dict[str, Any]:
+        params = {"$expand": expand} if expand else None
+        return self.get(f"PaymentTransactions/{tx_id}", params=params)
+
+    def list_payment_items(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Open posten om tegen af te letteren. Alleen de collectie-GET bestaat — per-id is 404
+        (schrijf-PoC §5); filteren dus altijd via `$filter` (bv. `Document/id eq {guid}`)."""
+        return self.get("PaymentItems", params=params).get("value", [])
+
+    def put_bank_mutation_direct_booking(
+        self,
+        booking_id: uuid.UUID,
+        *,
+        payment_transaction_id: uuid.UUID | str,
+        lines: list[dict[str, Any]],
+        description: str | None = None,
+    ) -> httpx.Response:
+        """Mutatie direct op grootboek (schrijf-PoC §3, volledig geverifieerd): boekt in één klap
+        (document meteen Status 3, reeks RLZ-07 — actie 17 is niet nodig en geeft 409) én lettert
+        de mutatie af (OpenAmount 0). Regelbedragen dragen het TEKEN VAN DE MUTATIE (PoC:
+        NetAmount = Amount van de transactie, −121 bij een afschrijving). Regelmodel kent ook
+        TaxRate/Project/Department. Terugdraaien = actie 19 op dit document
+        (correct_bank_mutation_direct_booking); de crediteuren-koppelrekening is geen geldig
+        regel-doel (500)."""
+        body: dict[str, Any] = {
+            "id": str(booking_id),
+            "PaymentTransaction": {"id": str(payment_transaction_id)},
+            "DocumentLineList": lines,
+        }
+        if description is not None:
+            body["Description"] = description
+        return self.put(f"BankMutationDirectBookings/{booking_id}", body)
+
+    def get_bank_mutation_direct_booking(self, booking_id: uuid.UUID | str) -> dict[str, Any]:
+        return self.get(f"BankMutationDirectBookings/{booking_id}")
+
+    def correct_bank_mutation_direct_booking(self, booking_id: uuid.UUID | str) -> httpx.Response:
+        """Storno van een directe bankboeking (schrijf-PoC §3): actie 19 → document terug naar
+        Status 1, mutatie weer open (OpenAmount hersteld). ⚠️ IsComplete blijft daarna stale op
+        true — nooit op dat veld toetsen."""
+        return self.post_action(f"BankMutationDirectBookings/{booking_id}", ACTION_CORRECT)
+
     def find_purchase_invoices_by_reference(
         self, *, vendor_id: uuid.UUID | str, reference: str, total_amount: float | None = None
     ) -> list[dict[str, Any]]:

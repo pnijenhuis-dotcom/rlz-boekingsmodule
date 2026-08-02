@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.auth.router import router as auth_router
+from app.bank.router import router as bank_router
 from app.beheer.router import router as beheer_router
 from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
@@ -131,6 +132,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth_router)
+app.include_router(bank_router)
 app.include_router(documenten_router)
 app.include_router(sync_router)
 app.include_router(geheugen_router)

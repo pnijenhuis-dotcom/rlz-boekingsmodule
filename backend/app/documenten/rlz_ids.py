@@ -26,6 +26,18 @@ def rlz_vendor_id(administratie_id: uuid.UUID, naam: str) -> uuid.UUID:
     return uuid.uuid5(_NAMESPACE, f"vendor:{administratie_id}:{genormaliseerd}")
 
 
+def rlz_bank_boeking_id(payment_transaction_id: uuid.UUID) -> uuid.UUID:
+    """Deterministisch client-GUID voor de RLZ-BankMutationDirectBooking die een bankmutatie
+    direct op grootboek boekt (bankmodule). Functie van de RLZ-PaymentTransaction-id: een retry
+    na een halve mislukking raakt hetzelfde RLZ-document, en de eigen duplicaatcheck in
+    app/bank/boeken.py kan aan de PaymentReferenceList zien dat een eerdere poging al slaagde
+    (het gekoppelde document draagt exact dit GUID). Elke mutatie heeft hooguit één actieve
+    directe boeking — na een storno (actie 19) is een nieuwe boekpoging opnieuw dezelfde PUT op
+    hetzelfde GUID, wat het gestorneerde concept-document hergebruikt in plaats van een tweede
+    document te laten ontstaan."""
+    return uuid.uuid5(_NAMESPACE, f"bankboeking:{payment_transaction_id}")
+
+
 def rlz_upload_id(document_id: uuid.UUID) -> uuid.UUID:
     """Zelfde idempotentie-redenering als rlz_purchase_invoice_id(), voor de PDF-bijlage
     (`RlzClient.upload_bijlage`): een retry na boeken_mislukt uploadt niet telkens een nieuwe

@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie bank-autoboeken-aan bank-autoboeken-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -74,6 +74,24 @@ seed-boekingsgeheugen: check-versions
 # via cron naast sync-alles. Exit-code 1 bij fouten of afwijkingen (CI/cron-vriendelijk).
 reconciliatie: check-versions
 	.venv/bin/python -m app.cli reconciliatie
+
+# Bank-sync (rekeningen/mutaties/open posten + afletter-verificatie + Vastly-detectie + opt-in
+# autoboeken). Alle administraties, of één: make bank-sync ADMIN_ID=<uuid>
+bank-sync: check-versions
+	.venv/bin/python -m app.cli bank-sync $(if $(ADMIN_ID),--administratie-id "$(ADMIN_ID)",)
+
+# Bank-failsafe: directe boekingen + geverifieerde afletteringen vergelijken met de werkelijke
+# RLZ-staat (OpenAmount/documentstatus — nooit IsComplete). Exit-code 1 bij afwijkingen.
+bank-reconciliatie: check-versions
+	.venv/bin/python -m app.cli bank-reconciliatie
+
+# Opt-in-toggle volautomatische bankstappen (vaste regels automatisch boeken), default UIT.
+# Voorbeeld: make bank-autoboeken-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
+bank-autoboeken-aan: check-versions
+	.venv/bin/python -m app.cli bank-autoboeken-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+bank-autoboeken-uit: check-versions
+	.venv/bin/python -m app.cli bank-autoboeken-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
 
 # Eenmalig: de bestaande .env-logins de credential-store in. Voorbeeld:
 # make import-env-credentials BEHEERDER_ID=<uuid>

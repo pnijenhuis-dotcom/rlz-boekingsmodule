@@ -8,6 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.auth import service
+from app.bank import reconciliatie as bank_reconciliatie
+from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
 from app.documenten import reconciliatie, webhook_afleveraar
@@ -84,6 +86,98 @@ def _reconciliatie(args: argparse.Namespace) -> int:
         f"{afwijkingen_totaal} afwijking(en) totaal."
     )
     return 1 if (fouten or afwijkingen_totaal) else 0
+
+
+def _bank_sync(args: argparse.Namespace) -> int:
+    """Bank-sync (rekeningen/mutaties/open posten + afletter-verificatie + Vastly-detectie +
+    opt-in autoboeken) — voor één administratie of alle (zelfde tolerantie-patroon als
+    sync-alles: één kapotte administratie stopt de rest niet). Cloud Scheduler-entrypoint."""
+    if args.administratie_id:
+        try:
+            administratie_id = uuid.UUID(args.administratie_id)
+        except ValueError as exc:
+            print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+            return 1
+        resultaten = {administratie_id: None}
+        try:
+            resultaten[administratie_id] = bank_sync_service.sync_bank_voor_administratie(
+                administratie_id=administratie_id
+            )
+        except Exception as exc:  # noqa: BLE001 — zelfde zichtbare foutafhandeling als de alle-variant
+            resultaten[administratie_id] = str(exc)
+    else:
+        resultaten = bank_sync_service.sync_bank_alle_administraties()
+
+    fouten = 0
+    for administratie_id, resultaat in resultaten.items():
+        if isinstance(resultaat, str) or resultaat is None:
+            fouten += 1
+            print(f"FOUT  {administratie_id}: {resultaat}", file=sys.stderr)
+            continue
+        print(
+            f"OK    {administratie_id}: rekeningen={resultaat.rekeningen}, mutaties={resultaat.mutaties}, "
+            f"open_posten={resultaat.open_posten}, afletteren_geverifieerd={resultaat.afletteren_geverifieerd}, "
+            f"vastly_gemeld={resultaat.vastly_gemeld}, automatisch_geboekt={resultaat.automatisch_geboekt}"
+        )
+        for fout in resultaat.automatisch_fouten:
+            print(f"      autoboek-fout: {fout}", file=sys.stderr)
+    print(f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties bank-gesynchroniseerd.")
+    return 1 if fouten else 0
+
+
+def _bank_reconciliatie(args: argparse.Namespace) -> int:
+    """Bank-failsafe: vergelijk directe boekingen en geverifieerde afletteringen met de
+    werkelijke RLZ-staat (OpenAmount/documentstatus — nooit IsComplete) en rapporteer
+    afwijkingen. Zelfde patroon als het documenten-reconciliatie-commando."""
+    resultaten = bank_reconciliatie.reconcilieer_bank_alle_administraties()
+    fouten = 0
+    afwijkingen_totaal = 0
+    for administratie_id, resultaat in resultaten.items():
+        if isinstance(resultaat, str):
+            fouten += 1
+            print(f"FOUT       {administratie_id}: {resultaat}", file=sys.stderr)
+            continue
+        gecontroleerd = resultaat.boekingen_gecontroleerd + resultaat.afletteringen_gecontroleerd
+        if not resultaat.afwijkingen:
+            print(f"OK         {administratie_id}: {gecontroleerd} gecontroleerd, geen afwijkingen")
+            continue
+        afwijkingen_totaal += len(resultaat.afwijkingen)
+        print(
+            f"AFWIJKING  {administratie_id}: {gecontroleerd} gecontroleerd, "
+            f"{len(resultaat.afwijkingen)} afwijking(en)"
+        )
+        for a in resultaat.afwijkingen:
+            print(f"    - record={a.record_id} mutatie={a.payment_transaction_id} soort={a.soort}: {a.detail}")
+    print(
+        f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties gecontroleerd, "
+        f"{afwijkingen_totaal} afwijking(en) totaal."
+    )
+    return 1 if (fouten or afwijkingen_totaal) else 0
+
+
+def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Opt-in-toggle voor de volautomatische bankstappen (vaste regels automatisch boeken) —
+    zelfde patroon als boeken-aan/-uit: Beheerder als audit_event-actor, default UIT."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_bank_autoboeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"bank_autoboeken_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    if resultaat and not beheer_service.haal_boeken_ingeschakeld_op(administratie_id=administratie_id):
+        print(
+            "WAARSCHUWING: de boeken-toggle van deze administratie staat uit — automatisch boeken "
+            "blijft effectief uit tot die (en de globale kill switch) ook aan staat."
+        )
+    return 0
 
 
 def _zet_boeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
@@ -287,6 +381,32 @@ def main(argv: list[str] | None = None) -> int:
         help="Vergelijk geboekte documenten met de werkelijke RLZ-staat en rapporteer afwijkingen.",
     )
 
+    bank_sync_parser = subparsers.add_parser(
+        "bank-sync",
+        help="Bank-sync (rekeningen/mutaties/open posten + afletter-verificatie + Vastly-detectie "
+        "+ opt-in autoboeken) voor één of alle administraties.",
+    )
+    bank_sync_parser.add_argument(
+        "--administratie-id", default=None, dest="administratie_id",
+        help="Alleen deze administratie (default: alle).",
+    )
+
+    subparsers.add_parser(
+        "bank-reconciliatie",
+        help="Vergelijk directe bankboekingen en geverifieerde afletteringen met de werkelijke "
+        "RLZ-staat (OpenAmount/documentstatus) en rapporteer afwijkingen.",
+    )
+
+    for naam, hulp in (
+        ("bank-autoboeken-aan", "Zet de bank-autoboek-toggle (vaste regels automatisch boeken) AAN."),
+        ("bank-autoboeken-uit", "Zet de bank-autoboek-toggle UIT."),
+    ):
+        bank_auto_parser = subparsers.add_parser(naam, help=hulp)
+        bank_auto_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+        bank_auto_parser.add_argument(
+            "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+        )
+
     boeken_aan_parser = subparsers.add_parser(
         "boeken-aan",
         help="Zet de boeken-toggle AAN voor één administratie (failsafe a, per-administratie deel).",
@@ -367,6 +487,14 @@ def main(argv: list[str] | None = None) -> int:
         return _sync_alles(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
+    if args.commando == "bank-sync":
+        return _bank_sync(args)
+    if args.commando == "bank-reconciliatie":
+        return _bank_reconciliatie(args)
+    if args.commando == "bank-autoboeken-aan":
+        return _zet_bank_autoboeken(args, ingeschakeld=True)
+    if args.commando == "bank-autoboeken-uit":
+        return _zet_bank_autoboeken(args, ingeschakeld=False)
     if args.commando == "seed-boekingsgeheugen":
         return _seed_boekingsgeheugen(args)
     if args.commando == "boeken-aan":

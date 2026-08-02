@@ -83,6 +83,10 @@ class Administratie(Base):
     project_verplicht: Mapped[bool] = mapped_column(default=False)
     ai_extractie_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     is_vastgoed: Mapped[bool] = mapped_column(default=False)
+    # Opt-in voor de volautomatische bankstappen (migratie 0026): vaste regels automatisch
+    # direct-op-grootboek boeken tijdens de bank-sync — default UIT, werkt bovenop de
+    # boeken-failsafes (boeken_ingeschakeld + globale kill switch, die blijven onverkort gelden).
+    bank_autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

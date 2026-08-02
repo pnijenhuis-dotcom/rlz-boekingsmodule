@@ -179,6 +179,41 @@ def zet_ai_extractie_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid
         return ingeschakeld
 
 
+def haal_bank_autoboeken_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.bank_autoboeken_ingeschakeld
+
+
+def zet_bank_autoboeken_ingeschakeld(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
+) -> bool:
+    """Opt-in voor de volautomatische bankstappen (migratie 0026): vaste regels automatisch
+    direct-op-grootboek boeken tijdens de bank-sync. Default UIT; werkt bovenop de bestaande
+    boeken-failsafes (toggle per administratie + globale kill switch — die gelden onverkort in
+    app/bank/boeken.py). Beheerder-only (router/CLI), audit als bij de andere toggles."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.bank_autoboeken_ingeschakeld
+        administratie.bank_autoboeken_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="bank_autoboeken_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"bank_autoboeken_ingeschakeld": oud},
+            nieuwe_waarde={"bank_autoboeken_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
 @dataclass(frozen=True)
 class Medewerker:
     id: uuid.UUID
