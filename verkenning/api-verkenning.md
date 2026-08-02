@@ -394,10 +394,145 @@ schrijf-PoC in fase 2.
 
 ### Openstaand voor de fase-2-schrijf-PoC (test-administratie, storneren conform besluit 0005)
 
+**→ Uitgevoerd 2 augustus 2026, zie "Bankmodule schrijf-PoC" hieronder.** Kort: punt 3 en 4
+volledig beantwoord, punt 1 en 2 stuiten op een niet-gedocumenteerde payload (supportvraag aan
+RLZ opgesteld). Twee STAP-0-conclusies zijn herzien: RLZ hééft een eigen matchvoorstel-signaal
+(`MatchedPaymentItem` wordt automatisch gevuld), en het "waartegen afgeletterd"-leesspoor
+bestaat wél (`PaymentReferenceList`).
+
 1. Actie 15/16: exacte payload en effect op `IsComplete`/`OpenAmount`/`MatchedPaymentItem`.
 2. Gedeeltelijk afletteren (G-rekening-split!) — hoe representeert RLZ een deelkoppeling.
 3. `PUT BankMutationDirectBookings/{guid}` (mutatie direct op GB boeken) — payload + effect.
 4. Het "waartegen afgeletterd"-leesspoor (punt 5 hierboven).
+
+## Bankmodule schrijf-PoC (2 augustus 2026, test-administratie) — AFGEROND
+
+Uitgevoerd tegen de RLZ-test-administratie (`8dbfb856-…3fc5`), conform besluit 0005: alles
+teruggedraaid via actie 19, niets verwijderd. Harness: `verkenning/poc_bank_schrijf.py`
+(admin-pin + kill-switch-bestand + TEST-referenties + append-only audit
+`verkenning/output/bankpoc_audit.jsonl`; aangemaakte id's in `output/bankpoc_state.json`).
+Testopstelling: crediteur "TEST PoC bankmodule — storneren", inkoopfactuur `TEST-BANKPOC-INV1`
+(€121 = 100 + 21 btw, RLZ-04-00002012), zelf aangemaakte bankmutaties `TEST-BANKPOC-TX1/TX2/TX3`
+op ING Zakelijk.
+
+### 1. Bankmutaties aanmaken: `PUT PaymentTransactions/{client-guid}` werkt
+
+Minimale payload volstaat: `{id, PaymentAccount:{id}, BookDate, Amount, Name, Reference}` → 204.
+Bruikbaar voor testdata in integratietests (productie-mutaties komen uit de bankaanlevering).
+Direct bij aanmaak doet RLZ twee dingen:
+
+- **Systeemhuls**: per open mutatie ontstaat automatisch een concept-`BankMutationDirectBooking`
+  (`IsSystemGenerated: true`, eigen reeks RLZ-09, Status 1, geen regels) mét een
+  `PaymentReference` die de volle som claimt. Dit zijn de "lege hulzen" uit STAP 0 — plumbing,
+  geen voorstel. De huls is inert: `/Actions` leeg, boeken (17) → 409, `PUT Account` erop wordt
+  stil genegeerd.
+- **Matchvoorstel**: bij een openstaand betaal-item met exact hetzelfde bedrag vult RLZ
+  `MatchedPaymentItem` automatisch (TX2 kreeg ons item zonder enige eigen actie). **Herziening
+  van de STAP-0-conclusie "stap 4 (RLZ's eigen voorstel) heeft geen voedingsbron": die is er
+  dus wél** — `MatchedPaymentItem` op open mutaties is RLZ's eigen suggestie (STAP 0 sampelde
+  alleen afgeletterde mutaties, daar is het veld leeg). Het veld is ook zelf te PUT-ten, maar
+  alleen met een exact bedrag: een deelbedrag-match wordt stil geweigerd (204 zonder effect).
+  Het is een pointer/voorstel — er gebeurt financieel niets door.
+
+### 2. Actie 15/16 (Link/UnlinkPaymentItems): payload niet gekraakt → supportvraag
+
+Alle gedocumenteerde vormen van de `ApiAction`-body geven `400 _InvalidData`, in elke staat
+(met/zonder matchvoorstel, item NotPaid én "onderweg", exact én afwijkend bedrag):
+`{Type:15}` kaal, `id` = betaal-item / factuur / mutatie-zelf / PaymentReference / nieuw GUID,
+item-id in `Description`, combinaties, form-urlencoded/multipart (415), query-parameters
+(`?id=` herbindt zelfs het route-doel naar het item → `APIActions_NotApplicable`). De
+Help-documentatie beschrijft alleen de kale `ApiAction {id, Type, Description}`; `$metadata`
+bestaat niet op deze API. Contrast: een verkeerd-toepasbare actie geeft netjes
+`APIActions_NotApplicable`, dus 15/16 zijn hier wel degelijk "van toepassing" — alleen de
+verwachte gegevens ontbreken. **Concept-supportvraag aan Reeleezee staat onderaan dit
+document.** Consequentie: afletteren-tegen-bestaande-open-post is via de publieke API nog
+niet bouwbaar; zie §6 voor wat wél kan en het vervolgspoor.
+
+### 3. Mutatie direct op grootboek (bankkosten e.d.): volledig geverifieerd ✅
+
+**`PUT BankMutationDirectBookings/{nieuw-client-guid}` met
+`{id, PaymentTransaction:{id}, Description, DocumentLineList:[{Account:{id}, NetAmount,
+Description}]}` boekt in één klap**: document meteen Status 3 (reeks RLZ-07, geen actie 17
+nodig — die geeft 409), mutatie afgeletterd (`OpenAmount` 0), `PaymentReference` wijst naar
+het nieuwe document. Regelmodel (`BankMutationDirectBookingLine`) kent ook `TaxRate`,
+`Project`, `Department` — btw en projectkoppeling per regel dus mogelijk.
+**Terugdraaien: actie 19 op het document** → Status 1, mutatie weer open (`OpenAmount`
+hersteld). Niet elke regel-`Account` mag: de crediteuren-koppelrekening (1600) + `Entity`
+gaf een 500 "Onverwachte fout" — koppelrekeningen zijn geen geldig direct-boekingsdoel.
+
+### 4. Verwachte-betaling-flow (QuickPaymentSelection + actie 148): werkt, met bijwerking
+
+- Betaal-items zijn óók zichtbaar als **"verwachte bankregels"** (Type 2, zélfde id als het
+  `PaymentItem`) via `PaymentTransactions?searchstring=…&showExpectedPaymentTransactions=true`.
+  (`$filter=Type eq 2` faalt overigens op een enum-typebug in RLZ's OData.)
+- `PUT PurchaseInvoices/{id}` met `QuickPaymentSelection:{id}` (keuze-id's uit
+  `GET …/QuickPaymentSelections`, bv. "Betaald per bank") + `PaymentAccount:{id}` → 204;
+  het betaal-item springt van PaymentStatus 1 (NotPaid) naar 2 (onderweg).
+- **`POST PaymentTransactions/{item-id}/Actions {Type:148}`** ("Boek verwachte bankregel",
+  de enige actie die de verwachte regel aanbiedt) **boekt de betaling volledig**: factuur
+  Status 2→3, `BasePaidAmount` gevuld, betaal-item weg — én RLZ maakt daarbij een **eigen
+  nieuwe bankregel** aan (Type 1, `IsImported: false`, boekdatum = vervaldatum).
+- Bruikbaar voor kas-/handmatige-betaling-flows; **niet** voor het afletteren van een échte
+  bankfeed-mutatie (de aangemaakte regel zou naast de geïmporteerde regel staan = duplicaat).
+- Terugdraaien: actie 19 op de factuur maakt óók de betaling/aflettering ongedaan (Status→1,
+  bedragen terug naar 0; de door 148 aangemaakte bankregel blijft als open regel achter met
+  een verse systeemhuls).
+
+### 5. Leesspoor "waartegen afgeletterd": `PaymentReferenceList` ✅
+
+`GET {adminId}/PaymentTransactions/{id}?$expand=PaymentReferenceList($expand=Document)` geeft
+per koppeling `{id, Sequence, Amount, PaymentReconciliationSource, Document}`:
+
+- Bij een **echt afgeletterde** mutatie wijst `Document` naar het afgeletterde document zelf
+  (onze factuur, incl. `ReceiptNumber`); `Amount` is het gekoppelde bedrag per koppeling
+  (teken t.o.v. het document: betaling van een inkoopfactuur = +121 op een −121-mutatie),
+  `Sequence` nummert meerdere koppelingen. Het model draagt dus deelkoppelingen en
+  meerdere documenten per mutatie — al is dat schrijvend nog niet bereikbaar (zie §2).
+- Bij een **open** mutatie wijst de referentie naar de systeemhuls — onderscheid maken op
+  `Document.IsSystemGenerated == true` (en/of `DocumentType 19` + Status 1).
+- Enum `GET PaymentReconciliationSources` (top-level route, niet onder `{adminId}`):
+  −1 None, 1 Reeleezee, 2 Manual, 3 CashRegister — "bron van de koppeling" voor de tijdlijn.
+- `MatchedPaymentItem` is het **voorstel**-veld, niet het spoor (STAP 0 zocht daar).
+- `PaymentItems` kent alleen een collectie-GET; per-id `GET PaymentItems/{id}` is 404 —
+  altijd filteren (`$filter=Document/id eq {guid}`).
+
+### 6. ⚠️ `IsComplete` is stale na terugdraaien — `OpenAmount` is leidend
+
+Na actie 19 op het gekoppelde document komt `OpenAmount` correct terug op het open bedrag,
+maar **`IsComplete` blijft `true`** (drie keer gereproduceerd: directe boeking, 161-document,
+factuur-storno). Voor werkvoorraad/afgeletterd-status dus altijd op
+`OpenAmount`/`BaseOpenAmount` toetsen, nooit op `IsComplete` alleen — zelfde les als
+DocumentStatus 2-vs-3 bij facturen.
+
+### Overige geverifieerde acties op bankmutaties
+
+`GET PaymentTransactions/{id}/Actions` biedt: 15/16 (zie §2), 148 (alleen zinvol op verwachte
+regels), **160 "Stel nieuw document voor" / 161 "Creëer en koppel nieuw document"**: maakt van
+de bankregel een nieuw, direct geboekt-en-afgeletterd inkoopdocument met default-rubricering
+(21%-splitsing, eigen RLZ-04-nummer) — RLZ's "boek bankregel als nieuw document"-knop. Voor
+onze flows niet bruikbaar (wij hébben de factuur al; dit zou een duplicaat-document maken),
+maar wél netjes terug te draaien met 19 op dat document. Er bestaat ook
+`GET PaymentTransactions/{id}/CancellationCandidates` (niet verder verkend).
+
+### Consequenties voor het bankmodule-ontwerp (mockup `#bankdetail`)
+
+1. **Voorstel-volgorde stap 4 herstellen**: RLZ's eigen voorstel bestaat (auto-gevuld
+   `MatchedPaymentItem` bij exacte bedrag-match) en is te tonen mét bron ("voorstel RLZ").
+2. **Stap 1/2 (auto-/deel-afletteren tegen open post) is via de publieke API nog niet
+   uitvoerbaar** zolang actie 15/16 dicht zit → supportvraag verzonden vóór scherm-ontwerp;
+   alternatieve sporen als het antwoord uitblijft: (a) verwachte-betaling-flow per factuur
+   (werkt, maar maakt eigen bankregel — alleen zinvol zonder bankfeed), (b) betaling boeken
+   via ManualJournal op de crediteurenrekening + verrekenen (actie 34) — nog niet getest,
+   vervolg-PoC.
+3. **Direct-op-grootboek (bankkosten, rente, privé) is klaar om te bouwen** (§3), inclusief
+   btw/project per regel en nette storno.
+4. G-rekening-split: representatie bestaat (meerdere `PaymentReference`s met eigen bedragen),
+   schrijfroute wacht op het 15/16-antwoord.
+
+Blijvend in de test-administratie (bewust, verwijderen verboden): drie open TEST-mutaties
+(`TEST-BANKPOC-TX1/TX2/TX3`) + één door 148 aangemaakte open regel, elk met systeemhuls;
+factuur `TEST-BANKPOC-INV1` en de 160/161- en directe-boeking-documenten staan op concept
+(Status 1).
 
 ## Concept-supportvraag aan Reeleezee (actie 138)
 
@@ -435,3 +570,42 @@ accountmanager) nodig.
 > Testomgeving: RLZ-test-administratie "Administratiekantoor Nijenhuis"
 > (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), webservice-login AK_NijenClaude. Testdocumenten
 > herkenbaar aan `Reference` beginnend met `TEST-`.
+
+## Concept-supportvraag aan Reeleezee (acties 15/16, bankafletteren)
+
+Openstaand, nog niet verstuurd — Peter's akkoord nodig (zelfde kanaal als de 138-vraag).
+
+> Onderwerp: ActionKind 15 (LinkPaymentItems) / 16 (UnlinkPayment) op PaymentTransactions —
+> welke request-body wordt verwacht?
+>
+> Wij verwerken bankmutaties via de REST-API (`/api/v1`, webservice-login) en willen een
+> (geïmporteerde) `PaymentTransaction` via de API afletteren tegen een openstaande post
+> (`PaymentItem`), zoals dat in het Reeleezee-scherm "bankmutaties verwerken" kan.
+> `GET PaymentTransactions/{id}/Actions` biedt actie 15 "Koppel een betaal item" en
+> 16 "Ontkoppel een betaal item" aan, maar elke aanroep faalt met `400 _InvalidData`:
+>
+> - `POST {adminId}/PaymentTransactions/{id}/Actions` met `{"Type": 15}` en met elke door ons
+>   bedachte vorm om het doel-betaal-item mee te geven: `id` = PaymentItem-id, factuur-id of
+>   een nieuw GUID, het item-id in `Description`, met en zonder vooraf gezet
+>   `MatchedPaymentItem` (dat veld wordt door de API zelf automatisch gevuld bij een exacte
+>   bedrag-match, en accepteert onze PUT ook — maar actie 15 blijft `_InvalidData` geven).
+> - Het betaal-item stond daarbij zowel op "Nog te betalen" als (via QuickPaymentSelection
+>   "Betaald per bank") op "onderweg"; bedragen exact gelijk én afwijkend geprobeerd.
+> - De Help-pagina documenteert als body alleen `ApiAction {id, Type, Description}`;
+>   een `$metadata`-document is er niet, dus verder komen we niet.
+>
+> Vragen:
+> 1. Welke body (of welk voorbereidend veld/endpoint) verwachten acties 15 en 16 om het
+>    doel-`PaymentItem` aan te wijzen? Een concreet request-voorbeeld zou enorm helpen.
+> 2. Ondersteunt dit ook gedeeltelijk koppelen (één mutatie tegen een deel van een post, of
+>    één post over meerdere mutaties — bv. een G-rekening-splitbetaling)? Wij zien in het
+>    model `PaymentReferenceList` met `Amount` en `Sequence` per koppeling, maar die lijst
+>    lijkt via PUT niet muteerbaar (wijzigingen worden stil genegeerd of geven
+>    `The request is invalid.`).
+> 3. Zijn deze acties beperkt tot bepaalde mutatiesoorten (alleen geïmporteerde regels, alleen
+>    verwachte regels uit betaalbatches, …)? Onze tests draaiden op via de API aangemaakte
+>    regels in onze eigen test-administratie.
+>
+> Testomgeving: RLZ-test-administratie "Administratiekantoor Nijenhuis"
+> (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), webservice-login AK_NijenClaude. Testdata
+> herkenbaar aan referenties die met `TEST-BANKPOC-` beginnen.
