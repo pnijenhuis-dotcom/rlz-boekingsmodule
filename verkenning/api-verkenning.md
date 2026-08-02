@@ -286,6 +286,119 @@ testomgeving om tegen te stresstesten). De ingebouwde client (`app/rlz/client.py
 altijd exponentiële backoff + respecteert een eventuele `Retry-After` op 429/5xx — voldoende
 robuust voor nu, los van het exacte cijfer.
 
+## Bankmodule STAP 0 — read-only verificatie bankbron (2 augustus 2026) — AFGEROND
+
+Live geverifieerd tegen de test-administratie én Rubicon Investments B.V.
+(`be5e66b3-b38c-4927-85c1-670490f16e3a`, echte administratie met dagelijkse bankaanlevering),
+uitsluitend GET-requests. Beantwoordt het open architectuurpunt uit mockup `#bankdetail`
+(Reeleezee lezen vs zelf CAMT.053/MT940 importeren).
+
+### CONCLUSIE: lezen uit Reeleezee volstaat — geen eigen CAMT/MT940-import bouwen
+
+Alles wat de bankmodule nodig heeft is read-only beschikbaar, met één belangrijke nuance
+(RLZ's "eigen voorstellen" leveren géén bruikbaar signaal, zie onder) en één randvoorwaarde:
+**de klant-administratie moet bankaanlevering in RLZ hebben** (bankkoppeling of periodieke
+MT940/CAMT-import). Zonder aanlevering is er niets te lezen — dat is een
+klant-onboarding-check (probe: `LastBankImport` + `BankGatewayState`), geen reden om zelf een
+importfunctie te bouwen. Consistent met het al-genomen besluit: optie-2-klanten lezen we uit
+RLZ; PSD2-aggregatie is exclusief Vastly's (optie 1/standalone).
+
+### 1. PaymentAccounts — rekeningen incl. kas
+
+`GET {adminId}/PaymentAccounts` geeft álle rekeningen (Rubicon en de test-administratie elk 7):
+`IBAN`, `CurrentBalance`, `LastBalanceDate`, `AccountNumber`, namen, `IsArchived`, `IsDefault`,
+plus PSD2-velden (`BankGatewayState/Type/ConsentExpirationDate` — enums `BankGatewayTypes`
+0=NonPsd2/1=Psd2, `BankGatewayStates` 0=Active…3=Deleted). `Type` = `PaymentAccountTypes`-enum:
+1 Bank, 2 CreditCard, **3 Cash (Kasdagboek)**, 4 Settling (verrekeningen), 5 Balance
+(RC-rekeningen), 6 Privé, 7 Tussenrekening, 8 Cheque. Kas is dus gewoon een PaymentAccount —
+één leesroute voor bank én kas, zoals het mockup-ontwerp aanneemt. Het resource-model kent ook
+`OpenPaymentTransactions` (teller) en `LastBankImport` (navigatie; ook als subroute
+`PaymentAccounts/{id}/LastBankImport`).
+
+### 2. Ruwe mutaties = `PaymentTransactions` (niet Statements)
+
+**`Statements` bevat alleen afschrift-koppen** (`Number`, `Date`, `Series`, `Debits`, `Credits`,
+saldi, `Complete`) — géén regels; vier kandidaat-subroutes (`/Transactions`, `/Lines`,
+`/StatementEntries`, `/PaymentTransactions`) geven alle 404. De regels leven top-level in
+**`GET {adminId}/PaymentTransactions`**, met per mutatie:
+
+- `BookDate` (datum), `Amount` (+`DebitAmount`/`CreditAmount` in het model), **`CounterAccount`
+  (tegenrekening-IBAN)**, `Name` (tegenpartijnaam), `Reference` (omschrijving/betalingskenmerk,
+  meerregelig), `TransactionId`, `Type` (`PaymentTransactionTypes`: 1 Bankregel, 2 Verwachte
+  bankregel, 3 Bank import file), `IsImported`
+- **Afgeletterd-status: `IsComplete` + `OpenAmount`/`BaseOpenAmount`** (open bedrag > 0 = nog
+  niet (volledig) afgeletterd)
+- Navigaties (werkend via `$expand`, ook genest): `PaymentAccount`, `Statement`,
+  `MatchedPaymentItem`, `Batch`
+
+OData werkt volwaardig: `$filter=PaymentAccount/id eq {guid}` (per rekening),
+`IsComplete eq false` (werkvoorraad), `CreateDate ge {iso}` (incrementele sync — pakt ook
+laat binnengekomen mutaties met oudere `BookDate`), `$count=true`, `$orderby`, `$top`.
+Gemeten op Rubicon: 2.208 mutaties totaal, historie 2022-01-01 t/m 2026-07-31 (= volledige
+levensduur van de administratie), 34 open. Bankkoppeling-/importregels hangen aan een virtueel
+"lopend afschrift" (`Number: 99999999`, datum 2070) — afschriftnummer is dus geen betrouwbare
+sleutel; de mutatie-id wél.
+
+⚠️ Er bestaat een `DELETE PaymentTransactions/{id}`-route — **nooit gebruiken** (kernprincipe 3).
+
+### 3. Aanleverpad zichtbaar per rekening (versheid-probe)
+
+`PaymentAccounts/{id}/LastBankImport` geeft bestandsnaam, datum, `ImportedLines`/`LinesToDo`,
+`BankImportSource` (0 Unknown, 1 Manual, 2 BankLink) en `BankImportType` (MT940, CAMT053,
+BankGateway, …). Rubicon draait op dagelijkse MT940-import gelabeld `Manual` (~06:04 uur, geen
+PSD2-gateway op de rekening). Voor de UI kunnen we dus per rekening tonen wáár de data vandaan
+komt en hoe vers die is — en bij onboarding checken óf er aanlevering is.
+
+### 4. RLZ's eigen voorstellen (`BankMutationDirectBookings`): bestaat, maar zonder bruikbaar signaal
+
+De eerdere aanname "`BankMutationDirectBookings` met `IsSystemGenerated:true` = RLZ's eigen
+bankvoorstellen" klopt maar half. Het ís een documenttype (`DocumentType` 19, eigen
+`ReceiptNumber`, `Status`, regels met GB-rekening, navigaties `PaymentTransaction`,
+`PaymentAccount`, `Entity`) en RLZ maakt per open bankmutatie automatisch zo'n concept aan
+(Rubicon: 34 stuks `IsSystemGenerated:true`, Status 1, bedragen matchen de open mutaties). Maar
+**inhoudelijk signaal ontbreekt**: de recentste tien hebben een lege `DocumentLineList` en lege
+omschrijving; een oudere had één regel naar "Nog te rubriceren uitgaven" (parkeerrekening). Geen
+voorgestelde GB-rekening met intelligentie, geen gekoppelde factuur, geen zekerheids-/
+confidence-veld. Ook elders in de Help-routelijst bestaat geen suggestion-/recommendation-route
+voor bankmatching (alleen `PaymentRecommendationCreditSalesinvoicesFilters`, een filter-enum).
+**Consequentie voor het goedgekeurde bankontwerp: stap 4 van de voorstel-volgorde ("RLZ's eigen
+voorstel, bron tonen") heeft via de API geen voedingsbron** — herzien bij het scherm-ontwerp
+(stap vervalt, of blijft leeg-tenzij-RLZ-het-ooit-vult). De route blijft wél relevant als
+mogelijk schrijfkanaal ("mutatie direct op grootboek boeken", voorstel-volgorde stap 3/5) —
+schrijf-PoC in fase 2.
+
+### 5. Afletteren: acties 15/16 + PaymentItems (payload nog te verifiëren, fase 2)
+
+- `ActionKinds/15` = `LinkPaymentItems` ("Koppel een betaal item"), `16` = `UnlinkPayment` —
+  beschikbaar als `POST {adminId}/PaymentTransactions/{id}/Actions`.
+- Help documenteert als body alleen de kale `ApiAction` (`id`, `Type`, `Description`) — **hoe het
+  doel-betaal-item wordt aangewezen is niet gedocumenteerd.** Werkhypothese:
+  `PUT PaymentTransactions/{id}` met `MatchedPaymentItem: {id}` (het PUT-model accepteert dat
+  veld) gevolgd door actie 15, óf de `id` in de action-body is het PaymentItem-id. **Uitsluitend
+  te verifiëren met een schrijf-PoC tegen de test-administratie (fase 2)** — niet uitgevoerd in
+  deze read-only STAP 0.
+- `GET {adminId}/PaymentItems` = de open posten om tegen af te letteren: `Amount`, `BookDate`,
+  `DueDate`, `Reference` (factuurreferentie), `Reference2` (RLZ-boekstuknummer + datum),
+  `Document`-navigatie, `PaymentStatus` (enum: 1 NotPaid, 2 AutoPaid/onderweg, 3 UserPaid,
+  4 PayCanceled, 5 PartialPaid, 6 ReceiveConfirmed).
+- `QuickPaymentSelections` (op PurchaseInvoices/SalesInvoices/ManualJournals/OpenBalances) bleek
+  géén afletter-voorstellenlijst maar een keuze-enum van drie opties ("Nog te betalen", "Wordt
+  automatisch geïncasseerd", "Betaald per bank") — het open punt 3 uit juli ("
+  QuickPaymentSelections-flow bevestigen") is daarmee beantwoord: niet het afletterkanaal.
+- **Open leespunt:** `MatchedPaymentItem` was `null` op álle gesamplede afgeletterde, geïmporteerde
+  mutaties — het "waartegen is dit afgeletterd"-spoor is read-only (nog) niet gevonden. Voor de
+  afgeletterd-terugkoppeling per factuur (o.a. tier-model naar Vastly) is dit geen blokkade: die
+  loopt via de documentstatus zelf (Status 2→3 + `BaseRemainingAmount`/`BasePaidAmount`). Voor de
+  tijdlijn-weergave ("betaald op … met mutatie …") in fase 2 verder uitzoeken — kandidaten:
+  gedrag van 15/16 in de schrijf-PoC, `JournalEntryLines` van de bankrekening.
+
+### Openstaand voor de fase-2-schrijf-PoC (test-administratie, storneren conform besluit 0005)
+
+1. Actie 15/16: exacte payload en effect op `IsComplete`/`OpenAmount`/`MatchedPaymentItem`.
+2. Gedeeltelijk afletteren (G-rekening-split!) — hoe representeert RLZ een deelkoppeling.
+3. `PUT BankMutationDirectBookings/{guid}` (mutatie direct op GB boeken) — payload + effect.
+4. Het "waartegen afgeletterd"-leesspoor (punt 5 hierboven).
+
 ## Concept-supportvraag aan Reeleezee (actie 138)
 
 Openstaand, nog niet verstuurd — Peter's akkoord + eventueel contactkanaal (support-portal/

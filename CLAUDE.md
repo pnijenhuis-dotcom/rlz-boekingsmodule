@@ -79,8 +79,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Lines lezen mét refs**: `.../Lines?$expand=Account,Project`.
 - **Sync per administratie** (nooit hardcoden): `Ledgers` (+`?search=`), `TaxRates`, `Vendors`,
   `Projects` (top-level GET; write via Customers-route — PoC nodig), `JournalEntries`/`-Lines`
-  (historie → boekingsgeheugen), `PaymentAccounts` (+`/Statements`), `BankMutationDirectBookings`
-  (RLZ's eigen bankvoorstellen, `IsSystemGenerated:true`).
+  (historie → boekingsgeheugen), `PaymentAccounts` (incl. kas, Type 3; `/Statements` = alleen
+  afschrift-koppen), **`PaymentTransactions` = dé ruwe bankmutaties** (tegenrekening-IBAN,
+  omschrijving, afgeletterd-status `IsComplete`+`OpenAmount`; geverifieerd STAP 0 2026-08-02).
+  `BankMutationDirectBookings` `IsSystemGenerated:true` bleek géén bruikbaar voorstel-signaal
+  (lege concept-hulzen) — zie verkenning/api-verkenning.md "Bankmodule STAP 0".
 - Rate limits: docs "REST API limits" — exact verifiëren; client bouwt met throttling + retry/backoff.
 - Testdata (v1.3-afspraak): integratietests tegen een **aparte RLZ-test-administratie**;
   testboekingen worden **gestorneerd** (actie 19 Correct), nooit hard verwijderd — consistent met
@@ -124,7 +127,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Bank**: klantenlijst → rekening (alle `PaymentAccounts` incl. kas). Voorstel-volgorde:
   1) exacte match naam+factuurnr+**bedrag** → auto-afletteren; 2) gedeeltelijke match → bevestigen;
   3) vaste regels (geheugen; na 3× zelfde handmatige boeking regel voorstellen); 4) RLZ's eigen
-  voorstel (bron tonen); 5) handmatig. Afletteren gaat NIET door de klant-accorderingsflow.
+  voorstel (bron tonen — **STAP 0 2026-08-02: geen API-voedingsbron, herzien bij scherm-ontwerp**);
+  5) handmatig. Afletteren gaat NIET door de klant-accorderingsflow.
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA (factuurbeeld centraal,
