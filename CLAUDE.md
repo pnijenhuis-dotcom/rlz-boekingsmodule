@@ -229,7 +229,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   deze RLZ-repo én de Platform-repo (`../Platform`, via `git -C` — twee onafhankelijke
   hook-entries, een fout in de één blokkeert de ander niet; zelfde waarborgen, nooit force).
   `git push` blijft voor de agent in de deny-lijst (incl. force/-f/--delete) — alleen de hook
-  pusht, nooit een ad-hoc push tijdens een run. Committen blijft een menselijke actie onder
-  P. Nijenhuis.
+  pusht, nooit een ad-hoc push tijdens een run. **Committen aan het einde van elke opdracht is
+  de standaard-werkwijze (2026-08-02):** Claude Code sluit elke opdracht af door het werk te
+  committen onder P. Nijenhuis, in logische, goed-gemessagede commits (feature/docs/config
+  gescheiden waar zinvol — geen blinde "commit alles"), zonder op een aparte commit-instructie
+  te wachten; de Stop-hook pusht daarna beide repo's. **Uitzondering:** zegt een opdracht
+  expliciet "niet committen, eerst review", dan wordt er niet gecommit en stopt de run voor
+  review. Force-push blijft verboden.
 - Tests verplicht op geldlogica (mapping, totalen, idempotentie, statusmachine) vóór UI-polish.
 - Elke schrijfactie naar RLZ eerst tegen een testadministratie of met TEST-referentie + akkoord.
