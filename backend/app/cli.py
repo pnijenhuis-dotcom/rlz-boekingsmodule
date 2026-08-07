@@ -14,6 +14,7 @@ from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
 from app.documenten import reconciliatie, webhook_afleveraar
 from app.geheugen import seed as geheugen_seed
+from app.omzet import reconciliatie as omzet_reconciliatie
 from app.sync import service as sync_service
 
 # Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
@@ -153,6 +154,23 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
         f"{afwijkingen_totaal} afwijking(en) totaal."
     )
     return 1 if (fouten or afwijkingen_totaal) else 0
+
+
+def _omzet_reconciliatie(args: argparse.Namespace) -> int:
+    """Omzet-failsafe: vergelijk elke omzet-boeking (verkoopfactuur + kostprijsmemoriaal) met de
+    werkelijke RLZ-staat en rapporteer afwijkingen — incl. alle half_geboekt-rijen."""
+    afwijkingen = omzet_reconciliatie.reconcilieer_alle_omzet()
+    if not afwijkingen:
+        print("OK         geen afwijkingen in de omzet-boekingen")
+        return 0
+    for afwijking in afwijkingen:
+        print(
+            f"AFWIJKING  {afwijking.administratie_id} boeking {afwijking.boeking_id} "
+            f"({afwijking.soort}): {afwijking.detail}",
+            file=sys.stderr,
+        )
+    print(f"{len(afwijkingen)} afwijking(en) gevonden", file=sys.stderr)
+    return 1
 
 
 def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
@@ -392,6 +410,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "omzet-reconciliatie",
+        help="Vergelijk omzet-boekingen (verkoopfactuur + kostprijsmemoriaal) met de werkelijke "
+        "RLZ-staat en rapporteer afwijkingen, incl. half-geboekte boekingen.",
+    )
+
+    subparsers.add_parser(
         "bank-reconciliatie",
         help="Vergelijk directe bankboekingen en geverifieerde afletteringen met de werkelijke "
         "RLZ-staat (OpenAmount/documentstatus) en rapporteer afwijkingen.",
@@ -491,6 +515,8 @@ def main(argv: list[str] | None = None) -> int:
         return _bank_sync(args)
     if args.commando == "bank-reconciliatie":
         return _bank_reconciliatie(args)
+    if args.commando == "omzet-reconciliatie":
+        return _omzet_reconciliatie(args)
     if args.commando == "bank-autoboeken-aan":
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":

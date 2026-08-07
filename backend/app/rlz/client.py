@@ -295,6 +295,78 @@ class RlzClient:
         true — nooit op dat veld toetsen."""
         return self.post_action(f"BankMutationDirectBookings/{booking_id}", ACTION_CORRECT)
 
+    # --- omzetmodule (geverifieerde vormen: api-verkenning.md "Omzetmodule STAP 0",
+    # 7 augustus 2026) --------------------------------------------------------------------------
+
+    def put_customer(self, customer_id: uuid.UUID, *, name: str) -> httpx.Response:
+        """Debiteur aanmaken/bijwerken — zelfde minimale vorm als put_vendor (STAP 0 §5:
+        geverifieerd voor de systeemdebiteur "Kasomzet")."""
+        return self.put(f"Customers/{customer_id}", {"id": str(customer_id), "Name": name})
+
+    def put_sales_invoice(
+        self,
+        invoice_id: uuid.UUID,
+        *,
+        customer_id: uuid.UUID,
+        lines: list[dict[str, Any]],
+        **extra: Any,
+    ) -> httpx.Response:
+        """Verkoopfactuur (STAP 0 §1): zelfde regelvorm als inkoop (Account/TaxRate/NetAmount/
+        TaxAmount/Description), Entity = de debiteur. ⚠️ `Reference` is hier NIET van ons — RLZ
+        overschrijft 'm met zijn eigen verkoopnummering ("RLZ-{InvoiceNumber}"); een expliciet
+        `InvoiceNumber` (int, via **extra) is wél zetbaar en is het herstel-pad wanneer boeken
+        op "Dit factuurnummer is al in gebruik" stukloopt."""
+        body: dict[str, Any] = {
+            "id": str(invoice_id),
+            "Entity": {"id": str(customer_id)},
+            "DocumentLineList": lines,
+            **extra,
+        }
+        return self.put(f"SalesInvoices/{invoice_id}", body)
+
+    def get_sales_invoice(self, invoice_id: uuid.UUID | str) -> dict[str, Any]:
+        return self.get(f"SalesInvoices/{invoice_id}")
+
+    def book_sales_invoice(self, invoice_id: uuid.UUID) -> httpx.Response:
+        return self.post_action(f"SalesInvoices/{invoice_id}", ACTION_BOOK)
+
+    def correct_sales_invoice(self, invoice_id: uuid.UUID) -> httpx.Response:
+        """Actie 19 op een geboekte verkoopfactuur → Status 1, zelfde heropen-gedrag als inkoop
+        (STAP 0 §1, geverifieerd)."""
+        return self.post_action(f"SalesInvoices/{invoice_id}", ACTION_CORRECT)
+
+    def max_sales_invoice_number(self) -> int:
+        """Hoogste InvoiceNumber in de SalesInvoices-collectie. ⚠️ De collectie ziet
+        API-aangemaakte facturen NIET (STAP 0 §2) — dit dekt dus alleen de UI-/importfacturen;
+        de aanroeper moet het eigen lokale maximum ernaast leggen (app/omzet/boeken.py)."""
+        rijen = self.get("SalesInvoices", params={"$orderby": "InvoiceNumber desc", "$top": "1"}).get("value", [])
+        if not rijen:
+            return 0
+        return int(rijen[0].get("InvoiceNumber") or 0)
+
+    def list_journal_entry_diaries(self) -> list[dict[str, Any]]:
+        """Dagboeken per administratie — het memoriaal-dagboek-GUID wordt hieruit gekozen
+        (STAP 0 §3: lijkt RLZ-breed hetzelfde systeem-GUID, maar nooit hardcoden)."""
+        return self.get("JournalEntryDiaries").get("value", [])
+
+    def get_manual_journal(self, journal_id: uuid.UUID | str) -> dict[str, Any]:
+        return self.get(f"ManualJournals/{journal_id}")
+
+    def book_manual_journal(self, journal_id: uuid.UUID) -> httpx.Response:
+        """Actie 17 op een memoriaal → Status 3 (saldo 0, niets open). RLZ weigert hier zelf een
+        niet-sluitend memoriaal met een 400 (STAP 0 §4) — onze saldo-0-check zit er als
+        fail-fast vóór."""
+        return self.post_action(f"ManualJournals/{journal_id}", ACTION_BOOK)
+
+    def correct_manual_journal(self, journal_id: uuid.UUID) -> httpx.Response:
+        return self.post_action(f"ManualJournals/{journal_id}", ACTION_CORRECT)
+
+    def find_manual_journals_by_reference(self, *, reference: str) -> list[dict[str, Any]]:
+        """RLZ-side duplicaatcheck voor de omzet-periode: de ManualJournals-collectie is (anders
+        dan SalesInvoices) wél vers en behoudt onze eigen Reference (STAP 0 §2/§3)."""
+        escaped = reference[:30].replace("'", "''")
+        return self.get("ManualJournals", params={"$filter": f"Reference eq '{escaped}'"}).get("value", [])
+
     def find_purchase_invoices_by_reference(
         self, *, vendor_id: uuid.UUID | str, reference: str, total_amount: float | None = None
     ) -> list[dict[str, Any]]:

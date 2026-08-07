@@ -18,6 +18,7 @@ from app.documenten import service as documenten_service
 from app.documenten import webhook_afleveraar
 from app.documenten.router import router as documenten_router
 from app.geheugen.router import router as geheugen_router
+from app.omzet.router import router as omzet_router
 from app.sync.router import router as sync_router
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,7 @@ app.include_router(bank_router)
 app.include_router(documenten_router)
 app.include_router(sync_router)
 app.include_router(geheugen_router)
+app.include_router(omzet_router)
 app.include_router(credentialstore_router)
 app.include_router(beheer_router)
 

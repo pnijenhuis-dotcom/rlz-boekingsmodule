@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie bank-autoboeken-aan bank-autoboeken-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie bank-autoboeken-aan bank-autoboeken-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -84,6 +84,9 @@ bank-sync: check-versions
 # RLZ-staat (OpenAmount/documentstatus — nooit IsComplete). Exit-code 1 bij afwijkingen.
 bank-reconciliatie: check-versions
 	.venv/bin/python -m app.cli bank-reconciliatie
+
+omzet-reconciliatie: check-versions
+	.venv/bin/python -m app.cli omzet-reconciliatie
 
 # Opt-in-toggle volautomatische bankstappen (vaste regels automatisch boeken), default UIT.
 # Voorbeeld: make bank-autoboeken-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>

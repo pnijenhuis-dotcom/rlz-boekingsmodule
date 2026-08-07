@@ -38,6 +38,35 @@ def rlz_bank_boeking_id(payment_transaction_id: uuid.UUID) -> uuid.UUID:
     return uuid.uuid5(_NAMESPACE, f"bankboeking:{payment_transaction_id}")
 
 
+def rlz_sales_invoice_id(document_id: uuid.UUID) -> uuid.UUID:
+    """Deterministisch client-GUID voor de RLZ-SalesInvoice van een omzetboeking (kassarapport-
+    document). Zelfde idempotentie-redenering als rlz_purchase_invoice_id — en hier extra
+    zwaarwegend: de SalesInvoices-collectie ziet API-aangemaakte facturen niet (STAP 0 §2), dus
+    GET-op-dit-GUID is het enige betrouwbare "bestaat mijn factuur al"-pad bij een retry."""
+    return uuid.uuid5(_NAMESPACE, f"salesinvoice:{document_id}")
+
+
+def rlz_kostprijs_memoriaal_id(document_id: uuid.UUID) -> uuid.UUID:
+    """Deterministisch client-GUID voor het gekoppelde kostprijsmemoriaal van dezelfde
+    omzetboeking — apart van de verkoopfactuur (twee RLZ-documenten, één logische transactie)."""
+    return uuid.uuid5(_NAMESPACE, f"kostprijsmemoriaal:{document_id}")
+
+
+def rlz_omzet_upload_id(document_id: uuid.UUID, *, doel: str) -> uuid.UUID:
+    """Client-GUID voor de PDF-bijlage bij de verkoopfactuur (`doel="verkoop"`) of het memoriaal
+    (`doel="memoriaal"`) — hetzelfde rapport hangt als bijlage aan béíde documenten (mockup),
+    maar de upload-GUID's moeten verschillen (twee documenten, twee uploads)."""
+    return uuid.uuid5(_NAMESPACE, f"omzet-upload-{doel}:{document_id}")
+
+
+def rlz_customer_id(administratie_id: uuid.UUID, naam: str) -> uuid.UUID:
+    """Deterministisch client-GUID voor een vanuit de app aangemaakte RLZ-debiteur (systeemdebiteur
+    "Kasomzet" per administratie) — zelfde vorm als rlz_vendor_id: dubbel aanmaken raakt dezelfde
+    RLZ-Customer, nooit een duplicaat."""
+    genormaliseerd = " ".join(naam.split()).lower()
+    return uuid.uuid5(_NAMESPACE, f"customer:{administratie_id}:{genormaliseerd}")
+
+
 def rlz_upload_id(document_id: uuid.UUID) -> uuid.UUID:
     """Zelfde idempotentie-redenering als rlz_purchase_invoice_id(), voor de PDF-bijlage
     (`RlzClient.upload_bijlage`): een retry na boeken_mislukt uploadt niet telkens een nieuwe
