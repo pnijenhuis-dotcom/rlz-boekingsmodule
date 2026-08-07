@@ -124,8 +124,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02), memoriaal-saldo-0
   (omzetmodule, 2026-08-07) én het VGB-prefixfilter (e-mail-intake, 2026-08-07 — dekt het
   intake-kanaal; bij een latere leesroute uit gedeelde administraties dáár opnieuw toepassen)
-  zijn gebouwd + getest; **nog niet gebouwd:** per-leverancier-autoboeken-opt-in
-  (vóór eerste autoboek).
+  zijn gebouwd + getest; **nog niet gebouwd:** per-leverancier-autoboeken-opt-in — trigger
+  aangescherpt (drift-audit 2026-08-07): vereist vóór het eerste autoboeken van
+  ínkoopfacturen; NB bank-autoboeken (opt-in per administrátie, vaste regels) is al live
+  sinds 2026-08-02 en valt buiten deze poort.
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
@@ -163,7 +165,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `Reference` = RLZ's eigen verkoopnummering (`InvoiceNumber` wel expliciet zetbaar,
   nummer-botsing bij boeken deterministisch hersteld); ⚠️ de SalesInvoices-COLLECTIE ziet
   API-aangemaakte facturen niet → duplicaatbewaking lokaal per periode (DB-uniek) + eigen
-  client-GUID + memoriaal-Reference-check; systeemdebiteur "Kasomzet" per administratie
+  client-GUID + memoriaal-Reference-check — **aanvulling Receipts-verkenning (2026-08-07): de
+  Receipts-COLLECTIE ziet ze wél (Receipt = SalesInvoice zonder Entity; dicht de blinde vlek
+  op afstand), en de omzetmotor gaat na review Peter van systeemdebiteur "Kasomzet" naar
+  entity-loze Receipts — zie api-verkenning "Omzetmodule — Receipts-verkenning"**; systeemdebiteur "Kasomzet" per administratie
   idempotent aangemaakt; kassabedragen incl. btw → splitsing in code; één-transactie-garantie
   volledig in de app (memoriaal faalt → storno verkoop, storno faalt óók → zichtbaar
   `half_geboekt` + `make omzet-reconciliatie`). Mapping-loze categorie = blokkerende check +
@@ -232,14 +237,26 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.9)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.10)
 
-- Documenten van de vastgoedmodule dragen `Reference`-prefix **`VGB-`** → herkennen, nooit als
-  werkvoorraad tonen.
+- **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
+  RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
+  §2d-mailflow, waarborg-memoriaal ná de §2d-waarborgroute, bank, projecten). Vastgoed levert
+  documenten aan via de boekhoudmail. Niemand muteert documenten van de ander.
+- Het `VGB-`-prefix is gereserveerd maar niet in gebruik (er is geen vastgoed-schrijfroute);
+  ons intake-filter blijft als failsafe staan: `VGB-`-document → nooit werkvoorraad, wél
+  zichtbaar geregistreerd.
 - Wij pushen bij "geboekt" een webhook per inkoopfactuur van vastgoed-administraties (payload:
-  RLZ-GUID, project-GUID, datum, bedragen per regel, GB, leverancier, omschrijving, adminId).
-- Schrijfverdeling: zij huurfacturen + waarborg-memoriaal; wij inkoop/omzet/bank. Niemand muteert
-  documenten van de ander.
+  rlz_document_id, referentie, adminId, datum, leverancier, regels met ledger+GB-code+bedragen —
+  de wérkelijke payload is sinds v1.10 de contractnorm); t.z.t. ook bij het boeken van een
+  VASTLY-VERKOOP-document (referentie = Vastly-factuurnummer).
+- **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
+  `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
+  + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
+  schending mét geldige markering) → omzet-werkvoorraad mét vlag "consument-afnemer" (landt bij
+  de volledige-schematron-stap); waarborg via `VASTLY-WAARBORG`-bericht (velddefinitie CONCEPT,
+  review vastgoed) — wij boeken het memoriaal; §6.4 (waarborg-GB per administratie
+  inventariseren) is een expliciete RLZ-actie vóór die bouw.
 - **Vastly-verkoopfacturen (§2d, v1.9)**: e-mail-intake routeert op de vaste UBL-markering
   `cac:AdditionalDocumentReference/cbc:ID = "VASTLY-VERKOOP"` (nooit op afzender) → omzetkant
   (SalesInvoice). Geen/kapotte markering of NLCIUS-invalide UBL → verzamelbak "Niet toegewezen",
@@ -263,7 +280,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 ## Werkwijze
 
 - **`docs/BESLISSINGEN.md` is de verplichte eerste check vóór elk feature-voorstel of bouwstart**
-  (pre-feature-ritueel, `Platform/WERKWIJZE.md` v1.4): raadpleeg het register + de canonieke
+  (pre-feature-ritueel, `Platform/WERKWIJZE.md` v1.7 — incl. de bindende
+  bron-vs-realiteit-verificatie en de periodieke drift-audit): raadpleeg het register + de canonieke
   vindplaats en benoem expliciet waar de feature al staat; goedgekeurde mockup/besluit = 1-op-1
   voortbouwen, niet opnieuw uitvragen. **Capture-at-acceptance:** elk akkoord van Peter meteen in
   dit register (+ canonieke plek) vastleggen, nooit alleen in de chat.

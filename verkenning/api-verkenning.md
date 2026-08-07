@@ -60,9 +60,14 @@ Volledige keten werkt, empirisch bevestigd:
 
 ## Open punten voor de bouw
 
-1. Exacte payloadstructuur `PUT PurchaseInvoices/{guid}` + regels + boek-action (welke action-naam).
-2. Hoe `BankMutationDirectBookings` aan een statement-regel gekoppeld wordt.
-3. Afletteren: `QuickPaymentSelections`-flow bevestigen.
+1. ✅ **Opgelost (2026-07-09):** payloadstructuur `PUT PurchaseInvoices/{guid}` + regels +
+   actie 17 — gebouwd in `app/documenten/boeken.py` (zie "Boekstuknummer, factuurdatum en
+   /Uploads").
+2. ✅ **Opgelost (2026-08-02):** `BankMutationDirectBookings` koppelt via
+   `PaymentTransaction:{id}` in de PUT-payload — zie "Bankmodule schrijf-PoC".
+3. ✅ **Opgelost (2026-08-02):** `QuickPaymentSelections` is géén afletterkanaal (zie
+   "Bankmodule schrijf-PoC" §4); afletteren-tegen-open-post kan via de API in geen enkele vorm
+   (FALLBACK-PoC) — assist-seam gebouwd, supportvraag uit.
 4. Rate limits (docs-pagina "REST API limits") — deels geobserveerd, zie hieronder; exacte
    drempel nog niet bepaald.
 5. ⚠️ De RLZ-Blow-login lijkt de productie-administratie van klant BLOW B.V. — schrijf-acties in de PoC alléén op een testadministratie.
@@ -367,7 +372,7 @@ voorstel, bron tonen") heeft via de API geen voedingsbron** — herzien bij het 
 mogelijk schrijfkanaal ("mutatie direct op grootboek boeken", voorstel-volgorde stap 3/5) —
 schrijf-PoC in fase 2.
 
-### 5. Afletteren: acties 15/16 + PaymentItems (payload nog te verifiëren, fase 2)
+### 5. Afletteren: acties 15/16 + PaymentItems (BEANTWOORD 2026-08-02 — niet bouwbaar via de API, zie "Bankmodule FALLBACK-PoC")
 
 - `ActionKinds/15` = `LinkPaymentItems` ("Koppel een betaal item"), `16` = `UnlinkPayment` —
   beschikbaar als `POST {adminId}/PaymentTransactions/{id}/Actions`.

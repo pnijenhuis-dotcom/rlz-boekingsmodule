@@ -120,7 +120,8 @@ Backend:
    ~~**Bekend openstaand punt:** elke statusovergang vereist nu een menselijke actor_id (geen
    systeem-actor-sentinel)~~ — **opgelost (2026-07-10, zie punt 5c): systeem-actor gebouwd**,
    het patroon geldt voortaan voor alle achtergrondverwerking. Multi-factuur-PDF-splitsing en
-   e-mail-intake blijven fase 3.
+   e-mail-intake blijven fase 3 → **vooruitgetrokken en GEBOUWD + GETEST 2026-08-07** (zie de
+   fase-3-sectie verderop; drift-correctie 2026-08-07).
 5b. **AI-extractie sessie 1 — Claude-API-extractie van inkoopfactuur-PDF's, gebouwd (2026-07-10).**
    Kernprincipe onverkort: **AI leest, code rekent, mens drukt** — de AI levert uitsluitend
    veld-suggesties met zekerheidsscores, boeken blijft mens + harde checks. Nieuw pakket
@@ -360,10 +361,13 @@ Backend:
      afwees (lijst-response verrijkt met `afwijzing`), tijdlijn-entries afgewezen (mét reden)
      en heropend. Tests: `tests/documenten/test_afwijzen.py` (16) +
      `AfwijsModal.test.tsx`/`DocumentDetailScreen.test.tsx`.
-     **Nog niet gebouwd, met implementerende fase:**
-     memoriaal-saldo-0 (→ fase 2, omzet/kostprijsmemoriaal); VGB-prefixfilter
-     (→ vóórdat documenten uit gedeelde vastgoed-administraties gelezen worden);
-     per-leverancier-autoboeken-opt-in (→ vóór de eerste autoboek-functie).
+     **Nog niet gebouwd (bijgewerkt drift-audit 2026-08-07):**
+     alleen de per-leverancier-autoboeken-opt-in (→ vóór het eerste autoboeken van
+     ínkoopfacturen; bank-autoboeken per administratie is al live sinds 2026-08-02).
+     Inmiddels WÉL gebouwd + getest (2026-08-07): memoriaal-saldo-0
+     (`app/omzet/checks.py::check_memoriaal_saldo_0`) en het VGB-prefixfilter
+     (`app/documenten/ubl.py::is_vgb_document` + intake-routing) — het filter dekt het
+     intake-kanaal; een latere leesroute uit gedeelde administraties past het dáár opnieuw toe.
      Webhook-HMAC-per-verzendpoging: **gebouwd + getest (2026-08-02)**, mét de afleveraar —
      zie punt 7. `app/documenten/boeken.py`: `boek_document()` herhaalt de checks
    server-side (nooit de client-kant vertrouwen), dan de failsafes, dan de echte RLZ-schrijfacties
@@ -411,7 +415,8 @@ Backend:
    toggle `platform.webhook_instelling` (default UIT, Beheerder-only, endpoints
    `/instellingen/webhook-aflevering` + CLI `webhook-aflevering-aan/-uit`) én config-failsafe
    (geen `webhook_doel_url`/`WEBHOOK_HMAC_SECRET` → rijen blijven openstaand, géén fout —
-   vastgoed's ontvanger bestaat nog niet); de afleveraar assert bovendien nogmaals de
+   de ontvanger bestaat sinds 2026-08-02 (`POST /webhooks/rlz`, vastgoed); alleen de
+   URL/secret-uitwisseling wacht op de hosting-fase); de afleveraar assert bovendien nogmaals de
    vastgoed-scope (niet-vastgoed-rij → zichtbaar mislukt, nooit verzonden). Uitvoering: in-process
    lus in dev (app-lifespan, alleen mét doel-URL), productie dezelfde verwerk-functie als Cloud
    Scheduler/Cloud Run-job (`python -m app.cli webhook-afleveren` / `make webhook-afleveren`).
@@ -490,10 +495,13 @@ UI-eisen):
 8. Login + 2FA, werkvoorraad (klantenlijst → klantpagina), controlescherm (PDF-viewer + voorstel +
    correcties) — **kopgegevens + boekingsregels + harde checks + boekactie gebouwd (2026-07-09)**,
    zie punt 6 en `frontend/src/document/BoekvoorstelPanel.tsx` + `SearchableCombobox.tsx` (zoekbare,
-   gevirtualiseerde, debounced combobox conform de UI-eisen hieronder) — vragenworkflow,
-   afwijzen-met-reden, verzamelbak "Niet toegewezen", instellingen-lite
-   (administratie koppelen, gebruikers, eigenaren), audit log, globaal zoeken (boekingen + audit)
-   blijven open voor een volgende sessie.
+   gevirtualiseerde, debounced combobox conform de UI-eisen hieronder). **Bijgewerkt
+   (drift-audit 2026-08-07) — inmiddels gebouwd:** vragenworkflow (`frontend/src/vragen/`),
+   afwijzen-met-reden (`AfwijsModal.tsx`), verzamelbak "Niet toegewezen"
+   (`frontend/src/intake/VerzamelbakPaneel.tsx`) en het instellingen-scherm
+   (`InstellingenScreen.tsx`, incl. eigenaar-select + IBAN-accordeurs + intake-AI-toggle).
+   **Blijven open:** gebruikersbeheer, administratie-koppelscherm, audit-log-scherm en globaal
+   zoeken (boekingen + audit).
    - **Design-pass na Peters derde kliktest (2026-07-11, mijlpaal: twee echte boekingen gelukt)
      — vier punten afgerond:** PDF-preview vult nu de volledige beschikbare viewport-hoogte
      (sticky, `calc(100vh - 52px)`, geen restruimte meer onder de bijlage); de portal-listbox van
@@ -508,16 +516,15 @@ UI-eisen):
      hard onverwijderbaar, bewaarplicht). Zie `app/documenten/statusmachine.py` (VERWIJDERD is de
      enige status die nog overal — behalve vanuit GEBOEKT — een uitgang naartoe heeft) en
      `app/documenten/service.py::verwijder_document`/`herstel_document`.
-   - **Eerstvolgende fronttaak (2026-07-13): bevestigings-UI voor een IBAN-wisselblokkade.**
-     De IBAN-wissel-check (punt 6) toont zijn rij al generiek in het controlescherm, maar bij een
-     blokkade is er nog geen knop die `POST /administraties/{id}/crediteuren/{vendor_id}/ibans`
-     aanroept (IBAN in de body) — tot die bestaat is het endpoint zelf het enige pad om een
-     nieuw rekeningnummer te bevestigen. UI-eisen: toon het afwijkende IBAN naast de vertrouwde
-     rekening(en), bevestigen = bewuste actie met de crediteurnaam in beeld (knop op geld).
-   - **Openstaand (2026-07-09): het instellingen-scherm is de échte UI voor de drie toggles.**
-     De mockup's administraties-tab (project verplicht / boeken-toggle / globale kill switch) is
-     nog niet gebouwd — tot die tijd zijn `make boeken-aan`/`boeken-uit`/`boeken-status`
-     (`app/cli.py`, hergebruikt `app.beheer.service`) en de `PUT`-endpoints zelf (curl/Postman)
+   - ~~Eerstvolgende fronttaak (2026-07-13): bevestigings-UI voor een IBAN-wisselblokkade~~ —
+     **gebouwd 2026-07-15** als vier-ogen-accordering-UI
+     (`frontend/src/document/IbanAccorderingSectie.tsx` + `ibanAccorderingApi.ts`, zie
+     BESLISSINGEN); visuele browserreview blijft open (drift-correctie 2026-08-07).
+   - ~~Openstaand (2026-07-09): het instellingen-scherm is de échte UI voor de drie toggles~~ —
+     **gebouwd** (`frontend/src/instellingen/InstellingenScreen.tsx`: kill switch, project
+     verplicht, boeken per administratie, AI-extractie, intake-AI, eigenaar, IBAN-accordeurs;
+     drift-correctie 2026-08-07). `make boeken-aan`/`boeken-uit`/`boeken-status`
+     (`app/cli.py`, hergebruikt `app.beheer.service`) en de `PUT`-endpoints blijven
      het enige beheerpad. Die CLI-commando's blijven ook daarna nuttig (server-toegang zonder
      ingelogde sessie, bv. bij een incident), maar worden geen vervanging voor het scherm.
    **UI-eisen (vastgesteld 2026-07-08), van toepassing op elk GB-/project-/entiteitveld:**
@@ -644,7 +651,7 @@ volstaat), multi-region (cross-region backup volstaat), AlloyDB (alleen MI-groei
 | # | Wat | Fase |
 |---|-----|------|
 | 1 | Rate limits exact | 1 |
-| 2 | Afletteren via acties 15/16 + QuickPaymentSelections | 2 |
+| 2 | ~~Afletteren via acties 15/16 + QuickPaymentSelections~~ — afgehandeld 2026-08-02: QuickPaymentSelections ≠ afletterkanaal; 15/16 + 34 + 218 definitief dicht (FALLBACK-PoC), gebouwd als assist-seam; openstaand = alleen het RLZ-supportantwoord | 2 ✅ |
 | 3 | Projects-write (PUT via Customers-route) | 4 |
 | 4 | CodeEventSubscriptions (RLZ-events) | 5 |
 | 5 | Waarborg-GB per vastgoed-administratie | 5 |
