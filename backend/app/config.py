@@ -122,6 +122,20 @@ class Settings(BaseSettings):
     omzet_marge_bandbreedte_procentpunt: float = 30.0
     omzet_marge_historie_boekingen: int = 8
 
+    # E-mail-intake (fase 3). intake_ai_ingeschakeld is de AVG-gate voor AI op nog-niet-
+    # toegewezen documenten (tenaamstelling-lezen + multi-factuur-splitsingsdetectie): op dat
+    # moment is er nog geen administratie, dus de per-administratie-gate kan niet gelden —
+    # default UIT: zonder opt-in gaat er geen intake-byte naar de Claude API en valt elke
+    # niet-eenduidige PDF gewoon in de verzamelbak (mens wijst toe, daarna geldt de normale
+    # per-administratie-gate). IMAP-instellingen zijn de LIVE-FETCH-SEAM (app/intake/postvak.py):
+    # None = niet geconfigureerd, de .eml-upload is dan het enige intake-kanaal; de echte
+    # IMAP/Cloud Scheduler-koppeling wordt bij de GCP-uitrol geactiveerd.
+    intake_ai_ingeschakeld: bool = False
+    intake_imap_host: str | None = None
+    intake_imap_gebruiker: str | None = None
+    intake_imap_wachtwoord: str | None = None
+    intake_postvak_adres: str | None = None
+
     # Migratie-guard bij startup (app/db/migratie_guard.py): default fail-fast, zodat een gemiste
     # `make migrate` nooit meer een raadsel-500 wordt maar een duidelijke weigering om te starten.
     # "waarschuwen" is een bewuste uitzondering voor latere productie-scenario's (bv. een korte

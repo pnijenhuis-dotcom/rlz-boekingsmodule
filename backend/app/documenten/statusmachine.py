@@ -115,8 +115,17 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.VERWIJDERD,
         }
     ),
+    # Verzamelbak (e-mail-intake, migratie 0028): toewijzen zet het document terug op
+    # ontvangen (waarna de normale extractieflow start), "hoort niet bij ons" = afgewezen met
+    # verplichte reden, en een bevestigde multi-factuur-splitsing maakt het bron-document
+    # terminaal gesplitst (de kinderen doorlopen elk de normale flow).
     DocumentStatus.NIET_TOEGEWEZEN: frozenset(
-        {DocumentStatus.ONTVANGEN, DocumentStatus.AFGEWEZEN, DocumentStatus.VERWIJDERD}
+        {
+            DocumentStatus.ONTVANGEN,
+            DocumentStatus.AFGEWEZEN,
+            DocumentStatus.VERWIJDERD,
+            DocumentStatus.GESPLITST,
+        }
     ),
     DocumentStatus.BOEKEN_MISLUKT: frozenset(
         {DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.TE_CONTROLEREN, DocumentStatus.VERWIJDERD}
@@ -162,6 +171,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
         }
     ),
     DocumentStatus.GEBOEKT: frozenset(),
+    DocumentStatus.GESPLITST: frozenset(),
     DocumentStatus.VERWIJDERD: _NIET_GEBOEKTE_STATUSSEN,
 }
 

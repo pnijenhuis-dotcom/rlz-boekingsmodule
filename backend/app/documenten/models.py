@@ -30,6 +30,9 @@ class DocumentSoort(enum.StrEnum):
 
     INKOOPFACTUUR = "inkoopfactuur"
     KASSARAPPORT = "kassarapport"
+    # §2d (koppelcontract): Vastly-verkoopfactuur uit de e-mail-intake (UBL-markering
+    # VASTLY-VERKOOP) — de omzetkant boekt 'm als SalesInvoice (migratie 0028).
+    VERKOOPFACTUUR = "verkoopfactuur"
 
 
 class DocumentStatus(enum.StrEnum):
@@ -64,6 +67,10 @@ class DocumentStatus(enum.StrEnum):
     # iban-wissel-accordering.md): boeken geblokkeerd tot een accordeur ≠ aanvrager besluit.
     WACHT_OP_IBAN_ACCORDERING = "wacht_op_iban_accordering"
     VERWIJDERD = "verwijderd"
+    # E-mail-intake (migratie 0028): terminale status van een bron-PDF waarvan de bevestigde
+    # multi-factuur-splitsing kind-documenten heeft opgeleverd — het origineel blijft bestaan
+    # en terugvindbaar, de kinderen doorlopen elk de normale flow.
+    GESPLITST = "gesplitst"
 
 
 def _enum_waarden(python_enum: type[enum.StrEnum]) -> list[str]:
@@ -106,6 +113,22 @@ class Document(Base):
         UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
     )
     opslag_pad: Mapped[str]
+    # E-mail-intake-herkomst (migratie 0028): welk bericht, wie mailde (afzender = hint) en de
+    # gelezen tenaamstelling (leidend voor toewijzing). De suggestie-velden dragen de beste
+    # niet-eenduidige match voor de verzamelbak-UI — een suggestie, nooit een stille toewijzing.
+    intake_bericht_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.intake_bericht.id"), default=None
+    )
+    afzender_hint: Mapped[str | None] = mapped_column(default=None)
+    tenaamstelling: Mapped[str | None] = mapped_column(default=None)
+    toewijzing_suggestie_administratie_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), default=None
+    )
+    toewijzing_suggestie_bron: Mapped[str | None] = mapped_column(default=None)
+    # Splitsing-kind: verwijzing naar het bron-document (paginabereik in de tijdlijn).
+    gesplitst_uit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
+    )
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     laatst_gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -421,3 +444,9 @@ class WebhookUitgaand(Base):
     laatste_poging_op: Mapped[datetime | None] = mapped_column(default=None)
     laatste_fout: Mapped[str | None] = mapped_column(default=None)
     volgende_poging_op: Mapped[datetime | None] = mapped_column(default=None)
+
+# Metadata-registratie: Document.intake_bericht_id draagt een FK naar boekhouding.intake_bericht
+# (migratie 0028) — die tabel moet in Base.metadata staan vóór SQLAlchemy de Document-mapper
+# configureert, óók als de aanroeper alleen dit module importeert. Onderaan i.p.v. bovenaan om
+# elke schijn van een importcyclus te vermijden (app/intake/models.py importeert alleen Base).
+from app.intake import models as _intake_models  # noqa: E402, F401

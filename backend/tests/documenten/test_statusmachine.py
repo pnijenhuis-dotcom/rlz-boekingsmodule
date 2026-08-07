@@ -25,13 +25,16 @@ def test_ongeldige_overgang_faalt(van: DocumentStatus, naar: DocumentStatus) -> 
         valideer_overgang(van, naar)
 
 
-def test_geboekt_is_de_enige_echt_terminale_status() -> None:
+def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     """Bewaarplicht (design-pass taak 4): een geboekt document kan naar geen andere status meer,
-    óók niet naar verwijderd. Elke andere status (zelfs afgewezen) heeft nog altijd minstens
-    verwijderd als uitgang."""
+    óók niet naar verwijderd. Sinds de e-mail-intake (migratie 0028) geldt hetzelfde voor een
+    gesplitst bron-document: de kind-documenten verwijzen ernaar (gesplitst_uit_id) — het
+    origineel verwijderen zou hun herkomst breken. Elke andere status (zelfs afgewezen) heeft
+    nog altijd minstens verwijderd als uitgang."""
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset()
+    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GESPLITST] == frozenset()
     for van in DocumentStatus:
-        if van in (DocumentStatus.GEBOEKT, DocumentStatus.VERWIJDERD):
+        if van in (DocumentStatus.GEBOEKT, DocumentStatus.GESPLITST, DocumentStatus.VERWIJDERD):
             continue
         assert DocumentStatus.VERWIJDERD in _TOEGESTANE_OVERGANGEN[van], f"{van} kan niet verwijderd worden"
 

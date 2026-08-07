@@ -14,6 +14,7 @@ from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
 from app.documenten import reconciliatie, webhook_afleveraar
 from app.geheugen import seed as geheugen_seed
+from app.intake.postvak import ImapPostvakBron, PostvakNietGeconfigureerd
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.sync import service as sync_service
 
@@ -171,6 +172,20 @@ def _omzet_reconciliatie(args: argparse.Namespace) -> int:
         )
     print(f"{len(afwijkingen)} afwijking(en) gevonden", file=sys.stderr)
     return 1
+
+
+
+def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
+    """E-mail-intake: leest de geconfigureerde postvak-bron leeg. De live IMAP-fetch is een
+    bewuste seam die bij de GCP-uitrol wordt geactiveerd — tot die tijd meldt dit commando dat
+    expliciet (geen stille no-op); de .eml-upload (POST /intake/eml) is het werkende kanaal."""
+    try:
+        for _ in ImapPostvakBron().nieuwe_berichten():
+            pass  # pragma: no cover — pas bereikbaar zodra de seam geactiveerd is
+    except PostvakNietGeconfigureerd as exc:
+        print(f"SEAM       {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
@@ -410,6 +425,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "intake-postvak-verwerken",
+        help="Haal nieuwe berichten uit het centrale postvak en verwerk ze (LIVE-FETCH-SEAM: "
+        "meldt tot de GCP-uitrol expliciet dat de IMAP-koppeling nog niet actief is).",
+    )
+
+    subparsers.add_parser(
         "omzet-reconciliatie",
         help="Vergelijk omzet-boekingen (verkoopfactuur + kostprijsmemoriaal) met de werkelijke "
         "RLZ-staat en rapporteer afwijkingen, incl. half-geboekte boekingen.",
@@ -517,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
         return _bank_reconciliatie(args)
     if args.commando == "omzet-reconciliatie":
         return _omzet_reconciliatie(args)
+    if args.commando == "intake-postvak-verwerken":
+        return _intake_postvak_verwerken(args)
     if args.commando == "bank-autoboeken-aan":
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":
