@@ -121,8 +121,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
   verplichte velden, IBAN-wissel, vraag-blokkeert-boeken, afwijzen-met-verplichte-reden en
-  webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02) zijn gebouwd + getest;
-  **nog niet gebouwd:** memoriaal-saldo-0 (fase 2), VGB-prefixfilter
+  webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02) én memoriaal-saldo-0
+  (omzetmodule, 2026-08-07) zijn gebouwd + getest; **nog niet gebouwd:** VGB-prefixfilter
   (vóór gedeelde administraties), per-leverancier-autoboeken-opt-in (vóór eerste autoboek).
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
@@ -137,6 +137,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,
   duplicaatbewaking per periode, plausibiliteitscheck (marge vs historie). BLOW: cannabisomzet =
   "NL, Geen BTW (Vrijgesteld)" — bewust géén 0%-tarief (aangifte-rubriek).
+  **Bouwstatus: omzetmodule GEBOUWD + GETEST (2026-08-07, wacht op review Peter)** — migratie
+  0027 + `backend/app/omzet/` + `frontend/src/omzet/`; details BESLISSINGEN "Omzetmodule —
+  GEBOUWD + GETEST". STAP 0-feiten (api-verkenning "Omzetmodule STAP 0"): SalesInvoice-
+  `Reference` = RLZ's eigen verkoopnummering (`InvoiceNumber` wel expliciet zetbaar,
+  nummer-botsing bij boeken deterministisch hersteld); ⚠️ de SalesInvoices-COLLECTIE ziet
+  API-aangemaakte facturen niet → duplicaatbewaking lokaal per periode (DB-uniek) + eigen
+  client-GUID + memoriaal-Reference-check; systeemdebiteur "Kasomzet" per administratie
+  idempotent aangemaakt; kassabedragen incl. btw → splitsing in code; één-transactie-garantie
+  volledig in de app (memoriaal faalt → storno verkoop, storno faalt óók → zichtbaar
+  `half_geboekt` + `make omzet-reconciliatie`). Mapping-loze categorie = blokkerende check +
+  automatische vraag. De SalesInvoice-motor is herbruikbaar gebouwd voor de
+  Vastly-verkoopfactuur-routing (§2d, fase 3).
 - **Bank**: klantenlijst → rekening (alle `PaymentAccounts` incl. kas). Voorstel-volgorde:
   1) exacte match naam+factuurnr+**bedrag** → auto-afletteren; 2) gedeeltelijke match → bevestigen;
   3) vaste regels (geheugen; na 3× zelfde handmatige boeking regel voorstellen); 4) RLZ's eigen

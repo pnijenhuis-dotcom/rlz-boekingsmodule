@@ -540,6 +540,19 @@ UI-eisen):
 - Omzetflow: kassarapport-herkenning (profiel per administratie, periode uit rapport,
   duplicaat per periode, plausibiliteit), SalesInvoice + gekoppelde kostprijsmemoriaal als één
   transactie, systeemdebiteur per administratie. Pilot: BLOW Margerapport.
+  **→ GEBOUWD + GETEST (2026-08-07 — zie docs/BESLISSINGEN.md "Omzetmodule — GEBOUWD + GETEST"
+  voor het volledige overzicht):** STAP 0 verifieerde het write-path eerst tegen de
+  test-administratie (api-verkenning "Omzetmodule STAP 0" — kernbevindingen: SalesInvoice-
+  Reference is RLZ's eigen nummering, de SalesInvoices-collectie ziet API-facturen niet →
+  duplicaatbewaking lokaal per periode; saldo≠0-memoriaal wordt door RLZ zelf geweigerd bij
+  actie 17). Gebouwd: migratie 0027 (document.soort + mapping/instelling/voorstel/
+  omzet_boeking incl. DB-unieke periode-index), rapport-extractie + deterministische
+  controlelaag, categorie→GB+btw-mapping met automatische mapping-vraag, zes harde checks
+  (incl. de nieuwe memoriaal-saldo-0), de boekmotor (herbruikbare SalesInvoice-motor voor
+  Vastly §2d, Kasomzet-aanmaak, nummer-herstel, storno-bij-halve-boeking → anders zichtbaar
+  half_geboekt), omzet-reconciliatie (`make omzet-reconciliatie`) en het omzetreview-scherm
+  (mockup #omzetreview) + werkvoorraad-integratie. Open: browserreview Peter; geen user-facing
+  storno van een geboekte omzetboeking (correctie in RLZ → reconciliatie signaleert).
 - Bankmodule: PaymentAccounts/Statements lezen, voorstel-volgorde (exacte match → gedeeltelijk →
   vaste regels → RLZ-voorstel → handmatig), auto-afletteren bij naam+factuurnr+bedrag,
   regel-leren (3×), BankMutationDirectBookings schrijven. PoC afletteren (acties 15/16) eerst.
