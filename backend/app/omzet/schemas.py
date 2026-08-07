@@ -6,9 +6,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from app.schemas_basis import StrikteInvoer
-
 from app.documenten.schemas import CheckRapportResponse
+from app.schemas_basis import StrikteInvoer
 
 
 class OmzetRegelDto(BaseModel):
