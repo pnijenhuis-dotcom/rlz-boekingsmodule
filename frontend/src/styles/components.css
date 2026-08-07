@@ -683,3 +683,60 @@ body.dark .combobox-listbox {
   border-left: 1px solid var(--border);
   padding-left: 12px;
 }
+
+/* DatePicker (Vastly-port e, 2026-08-07): react-day-picker gethematiseerd op de eigen tokens —
+   volgt licht/donker automatisch. De component importeert react-day-picker/style.css zelf. */
+.datepicker input {
+  min-width: 0;
+}
+.datepicker-knop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+.datepicker-knop:hover:not([disabled]) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.datepicker-popover {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px;
+  z-index: 50;
+}
+.rdp-root {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  --rdp-today-color: var(--accent);
+  --rdp-day-width: 34px;
+  --rdp-day-height: 34px;
+  --rdp-day_button-width: 34px;
+  --rdp-day_button-height: 34px;
+  font-size: 13px;
+  color: var(--text);
+}
+.rdp-root .rdp-selected .rdp-day_button {
+  background: var(--accent);
+  color: var(--panel);
+  border: none;
+}
+.rdp-root .rdp-day_button:hover:not([disabled]) {
+  background: var(--blue-bg);
+  border-radius: 8px;
+}
+.rdp-root .rdp-caption_label,
+.rdp-root .rdp-weekday {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.rdp-root .rdp-chevron {
+  fill: var(--muted);
+}

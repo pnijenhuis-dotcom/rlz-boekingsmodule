@@ -22,6 +22,7 @@ import {
   omschrijvingSleutel,
   type HandmatigeVelden,
 } from './geheugenVoorstel'
+import { DatePicker } from '../ui/DatePicker'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
@@ -832,11 +833,10 @@ export function BoekvoorstelPanel({
             </div>
             <div>
               <label htmlFor="boekvoorstel-datum">Factuurdatum</label>
-              <input
+              <DatePicker
                 id="boekvoorstel-datum"
-                type="date"
-                value={factuurdatum}
-                onChange={(e) => wijzigFactuurdatum(e.target.value)}
+                value={factuurdatum || null}
+                onChange={(v) => wijzigFactuurdatum(v ?? '')}
               />
               {aiKop?.factuurdatum && (
                 <div style={{ marginTop: 4 }}>

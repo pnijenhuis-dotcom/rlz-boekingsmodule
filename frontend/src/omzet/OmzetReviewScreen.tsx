@@ -12,6 +12,7 @@ import type {
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit } from './omzetApi'
 
 /** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's. */
@@ -307,12 +308,11 @@ export function OmzetReviewScreen() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
               <div>
                 <label htmlFor="periode-start">Periode van</label>
-                <input
+                <DatePicker
                   id="periode-start"
-                  type="date"
-                  value={periodeStart}
-                  onChange={(e) => {
-                    setPeriodeStart(e.target.value)
+                  value={periodeStart || null}
+                  onChange={(v) => {
+                    setPeriodeStart(v ?? '')
                     setChecksActueel(false)
                   }}
                   disabled={isGeboekt}
@@ -320,12 +320,11 @@ export function OmzetReviewScreen() {
               </div>
               <div>
                 <label htmlFor="periode-eind">t/m</label>
-                <input
+                <DatePicker
                   id="periode-eind"
-                  type="date"
-                  value={periodeEind}
-                  onChange={(e) => {
-                    setPeriodeEind(e.target.value)
+                  value={periodeEind || null}
+                  onChange={(v) => {
+                    setPeriodeEind(v ?? '')
                     setChecksActueel(false)
                   }}
                   disabled={isGeboekt}
