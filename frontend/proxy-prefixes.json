@@ -1,0 +1,17 @@
+{
+  "_toelichting": "GEGENEREERD uit de backend-router — nooit met de hand bewerken. Verversen: (cd backend && .venv/bin/python -m app.proxy_prefixes). Drift-guards: backend tests/unit/test_proxy_prefixes_dump.py, frontend src/api/proxyDekking.test.ts.",
+  "segmenten": [
+    "/administraties",
+    "/auth",
+    "/bank",
+    "/health",
+    "/instellingen",
+    "/intake",
+    "/verzamelbak",
+    "/werkvoorraad"
+  ],
+  "exacte_paden": [
+    "/health",
+    "/verzamelbak"
+  ]
+}
