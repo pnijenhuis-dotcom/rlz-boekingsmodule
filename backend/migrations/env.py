@@ -6,6 +6,17 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# ÁLLE model-modules importeren zodat Base.metadata compleet is (afsluitroutine-adoptie
+# 2026-08-07): `alembic check`/autogenerate vergelijkt anders tegen een half model en stelt
+# foute drops voor. Base zelf komt uit app.db.models (platform: gebruikers/auth/instellingen);
+# de overige modules registreren hun tabellen op diezelfde Base bij import. De guard-test
+# (tests/unit/test_migratie_metadata_guard.py) faalt als hier een model-module ontbreekt.
+import app.bank.models  # noqa: F401
+import app.documenten.models  # noqa: F401
+import app.geheugen.models  # noqa: F401
+import app.intake.models  # noqa: F401
+import app.omzet.models  # noqa: F401
+import app.sync.models  # noqa: F401
 from app.db.models import Base
 
 config = context.config

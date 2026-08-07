@@ -300,3 +300,23 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   review. Force-push blijft verboden.
 - Tests verplicht op geldlogica (mapping, totalen, idempotentie, statusmachine) vóór UI-polish.
 - Elke schrijfactie naar RLZ eerst tegen een testadministratie of met TEST-referentie + akkoord.
+
+## Migraties (afsluit-routine, verplicht — vastgoed-patroon geadopteerd 2026-08-07)
+
+Een taak die een Alembic-migratie bevat is pas "af" als **alle drie** aantoonbaar gedaan zijn:
+1. `make migrate` (alembic upgrade head) is gedraaid tegen de **dev-database** (`boekhouding`),
+   niet alleen `boekhouding_test` — toon de upgrade-output (Running upgrade X -> Y) in de sessie.
+2. Het geraakte endpoint geeft **live een 200** op de draaiende backend (curl tegen poort 8000),
+   gecontroleerd ná de upgrade. NB de migratie-guard in de lifespan stopt een draaiende
+   `--reload`-uvicorn zodra het migratiebestand vóór de upgrade in de repo staat — dat is
+   bedoeld gedrag; na `make migrate` de reload opnieuw triggeren of `make run` herstarten.
+3. De referentie-dump is ververst en meegecommit: `scripts/dump_schema.sh` (dumpt
+   `boekhouding_test` @ head naar `backend/migrations/schema_referentie.sql`). Alembic blijft
+   de bron van waarheid; de dump is een leesbaarheids-/reviewreferentie, nooit met de hand
+   bewerken.
+Hangt de upgrade langer dan ~15 seconden: **expliciet melden** (waarschijnlijk houdt een
+draaiend proces een lock vast, Peter stopt dat dan even) — nooit stil blijven wachten.
+Migraties blijven schema-only (pure DDL); data-backfills zijn losse, expliciete stappen.
+Bewaking: `migrations/env.py` importeert álle model-modules (Base.metadata compleet — anders is
+`alembic check`/autogenerate onbetrouwbaar); `tests/unit/test_migratie_metadata_guard.py` faalt
+als daar een module ontbreekt of als model en gemigreerde database uit de pas lopen.
