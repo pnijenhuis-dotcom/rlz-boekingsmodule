@@ -2,7 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, apiPostJson, BACKEND_ONBEREIKBAAR_MELDING } from '../api/client'
 import type { TokenPaarResponseDto } from '../api/types'
+import { FormFouten, useFormFouten } from '../ui/FormFouten'
 import { useAuth } from './AuthContext'
+
+const LOGIN_VELD_LABELS: Record<string, string> = {
+  'login-email': 'E-mailadres',
+  'login-wachtwoord': 'Wachtwoord',
+  'login-totp': 'TOTP-code',
+}
 
 export function LoginScreen() {
   const { inloggen, backendOnbereikbaar } = useAuth()
@@ -12,9 +19,11 @@ export function LoginScreen() {
   const [totpCode, setTotpCode] = useState('')
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
+  const { fouten: veldFouten, controleer } = useFormFouten(LOGIN_VELD_LABELS)
 
-  const inzenden = async (e: FormEvent) => {
+  const inzenden = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (!controleer(e.currentTarget)) return
     setFout(null)
     setBezig(true)
     try {
@@ -39,7 +48,8 @@ export function LoginScreen() {
         <div className="sub">RLZ Boekingsmodule</div>
         {backendOnbereikbaar && !fout && <div className="fout">{BACKEND_ONBEREIKBAAR_MELDING}</div>}
         {fout && <div className="fout">{fout}</div>}
-        <form onSubmit={(e) => void inzenden(e)}>
+        <FormFouten fouten={veldFouten} />
+        <form noValidate onSubmit={(e) => void inzenden(e)}>
           <div className="row">
             <label htmlFor="login-email">E-mailadres</label>
             <input

@@ -3,10 +3,17 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { TokenPaarResponseDto, UitnodigingAccepterenResponseDto } from '../api/types'
+import { FormFouten, useFormFouten } from '../ui/FormFouten'
 import { useAuth } from './AuthContext'
 
 function formatteerSecret(secret: string): string {
   return secret.match(/.{1,4}/g)?.join(' ') ?? secret
+}
+
+const ACTIVEER_VELD_LABELS: Record<string, string> = {
+  'activeer-wachtwoord': 'Nieuw wachtwoord',
+  'activeer-bevestiging': 'Bevestig wachtwoord',
+  'activeer-code': 'Code uit de authenticator-app',
 }
 
 export function ActivateScreen() {
@@ -22,6 +29,7 @@ export function ActivateScreen() {
   const [code, setCode] = useState('')
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
+  const { fouten: veldFouten, controleer } = useFormFouten(ACTIVEER_VELD_LABELS)
 
   if (!token) {
     return (
@@ -34,8 +42,9 @@ export function ActivateScreen() {
     )
   }
 
-  const wachtwoordInzenden = async (e: FormEvent) => {
+  const wachtwoordInzenden = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (!controleer(e.currentTarget)) return
     setFout(null)
     if (wachtwoord !== bevestiging) {
       setFout('Wachtwoorden komen niet overeen.')
@@ -56,9 +65,10 @@ export function ActivateScreen() {
     }
   }
 
-  const totpInzenden = async (e: FormEvent) => {
+  const totpInzenden = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!enrollment) return
+    if (!controleer(e.currentTarget)) return
     setFout(null)
     setBezig(true)
     try {
@@ -82,9 +92,10 @@ export function ActivateScreen() {
         <h1>Account activeren</h1>
         <div className="sub">RLZ Boekingsmodule</div>
         {fout && <div className="fout">{fout}</div>}
+        <FormFouten fouten={veldFouten} />
 
         {stap === 'wachtwoord' && (
-          <form onSubmit={(e) => void wachtwoordInzenden(e)}>
+          <form noValidate onSubmit={(e) => void wachtwoordInzenden(e)}>
             <div className="row">
               <label htmlFor="activeer-wachtwoord">Nieuw wachtwoord (minimaal 12 tekens)</label>
               <input
@@ -115,7 +126,7 @@ export function ActivateScreen() {
         )}
 
         {stap === 'totp' && enrollment && (
-          <form onSubmit={(e) => void totpInzenden(e)}>
+          <form noValidate onSubmit={(e) => void totpInzenden(e)}>
             <p className="hint" style={{ marginTop: 0 }}>
               Voeg dit account toe aan een authenticator-app (bv. Google Authenticator, 1Password) — scan de
               onderstaande QR-code, of gebruik de geheime sleutel als scannen niet lukt.
