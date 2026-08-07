@@ -71,6 +71,9 @@ class DocumentListItemResponse(BaseModel):
     bestandsnaam: str
     status: str
     bron: str
+    # 'inkoopfactuur' | 'kassarapport' (migratie 0027) — de werkvoorraad routeert een
+    # kassarapport naar het omzetreview-scherm en toont de omzetboeking-chip.
+    soort: str = "inkoopfactuur"
     mogelijk_duplicaat_van: DuplicaatReferentieResponse | None = None
     toegewezen_aan: uuid.UUID | None = None
     aangemaakt_op: datetime
@@ -100,6 +103,7 @@ class DocumentDetailResponse(BaseModel):
     bestandsnaam: str
     status: str
     bron: str
+    soort: str = "inkoopfactuur"
     mogelijk_duplicaat_van: DuplicaatReferentieResponse | None = None
     toegewezen_aan: uuid.UUID | None = None
     aangemaakt_op: datetime

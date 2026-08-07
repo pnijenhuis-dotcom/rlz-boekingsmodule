@@ -21,6 +21,17 @@ class DocumentBron(enum.StrEnum):
     EMAIL = "email"
 
 
+class DocumentSoort(enum.StrEnum):
+    """Documentsoort-discriminator (migratie 0027): een kassarapport doorloopt dezelfde
+    statusmachine en werkvoorraad als een inkoopfactuur, maar krijgt de rapport-extractie
+    (app/extractie/rapport.py) en het omzetreview-scherm (mockup #omzetreview) i.p.v. de
+    inkoopflow. In de DB TEXT + CHECK — geen PG-enum, zodat een later derde soort geen
+    ALTER TYPE nodig heeft (zelfde overweging als vraag.status, migratie 0022)."""
+
+    INKOOPFACTUUR = "inkoopfactuur"
+    KASSARAPPORT = "kassarapport"
+
+
 class DocumentStatus(enum.StrEnum):
     """Hoofdpad: ontvangen -> extractie_bezig -> te_controleren -> klaar_om_te_boeken -> geboekt.
     Grote documenten (async extractie, migratie 0016): ontvangen -> extractie_wachtrij ->
@@ -83,6 +94,8 @@ class Document(Base):
         UUID(as_uuid=True), ForeignKey("platform.administratie.id"), default=None
     )
     bron: Mapped[DocumentBron] = mapped_column(_DOCUMENT_BRON_ENUM)
+    # TEXT met CHECK (migratie 0027), waarden uit DocumentSoort — zie die docstring.
+    soort: Mapped[str] = mapped_column(default=DocumentSoort.INKOOPFACTUUR.value)
     bestandsnaam: Mapped[str]
     sha256_hash: Mapped[str]
     status: Mapped[DocumentStatus] = mapped_column(_DOCUMENT_STATUS_ENUM, default=DocumentStatus.ONTVANGEN)

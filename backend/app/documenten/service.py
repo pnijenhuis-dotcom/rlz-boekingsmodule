@@ -15,7 +15,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten.models import Document, DocumentBron, DocumentGebeurtenis, DocumentStatus
+from app.documenten.models import Document, DocumentBron, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
 from app.documenten.storage import DocumentOpslag, LokaleBestandsopslag
@@ -161,7 +161,12 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
     detail: dict | None = None
     doel_status = DocumentStatus.TE_CONTROLEREN
     suffix = Path(document.bestandsnaam).suffix.lower()
-    if suffix == _UBL_SUFFIX:
+    if document.soort == DocumentSoort.KASSARAPPORT.value:
+        # Omzetmodule (fase 2): kassarapporten krijgen de rapport-extractie
+        # (app/extractie/rapport.py) — zelfde AVG-gate, eigen schema/controlelaag; de
+        # projectplicht-waarborg is hier niet van toepassing (geen regels met projecttoerekening).
+        detail = _rapport_extractie_detail(session, document=document, opslag=opslag)
+    elif suffix == _UBL_SUFFIX:
         inhoud = opslag.lezen(pad=document.opslag_pad)
         try:
             voorstel = parseer_ubl_factuur(inhoud)
@@ -237,6 +242,8 @@ def verwerk_extractie_taak(
             if document is None:  # pragma: no cover — kan alleen bij een parallelle harde delete
                 return
             _rond_extractie_af(session, document=document, actor_id=SYSTEEM_ACTOR_ID, opslag=opslag)
+            soort = document.soort
+        _na_extractie_hook(administratie_id=administratie_id, document_id=document_id, soort=soort)
     except Exception as exc:  # noqa: BLE001 — vangnet: het document mag nooit stil op 'bezig' blijven hangen
         logger.exception("Extractie-worker faalde voor document %s", document_id)
         with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
@@ -368,6 +375,51 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
     return {"veldvoorstel": voorstel, "ai_metriek": metriek}, False
 
 
+def _rapport_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> dict:
+    """AI-route voor kassarapporten (omzetmodule): AVG-gate → rapport-extractie →
+    deterministische controlelaag (app/extractie/rapport.py). Zelfde uitkomst-conventie als
+    _ai_extractie_detail: voorstel, overgeslagen of fout — altijd herkenbaar in de tijdlijn,
+    een AI-fout laat de upload nooit falen."""
+    from app.extractie import rapport as rapport_extractie  # lokaal: houdt de importgraaf klein
+
+    if document.administratie_id is None:
+        return {"ai_extractie_overgeslagen": "geen_administratie"}
+    administratie = session.get(Administratie, document.administratie_id)
+    if administratie is None or not administratie.ai_extractie_ingeschakeld:
+        return {"ai_extractie_overgeslagen": "ai_extractie_uitgeschakeld"}
+    if not settings.anthropic_api_key:
+        return {"ai_extractie_overgeslagen": "geen_api_key"}
+
+    inhoud = opslag.lezen(pad=document.opslag_pad)
+    try:
+        extractie = rapport_extractie.extraheer_kassarapport(inhoud)
+    except Exception as exc:  # noqa: BLE001 — bewust breed: een AI-fout mag de upload nooit laten falen
+        logger.exception("Rapport-extractie mislukt voor document %s", document.id)
+        return {"ai_extractie_fout": str(exc)}
+
+    voorstel = rapport_extractie.bouw_rapport_veldvoorstel(
+        extractie, zekerheid_drempel=settings.ai_extractie_zekerheid_drempel
+    )
+    return {"veldvoorstel": voorstel}
+
+
+def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.UUID, soort: str) -> None:
+    """Ná de commit van een afgeronde extractie (upload, her-extractie én worker): voor
+    kassarapporten de automatische mapping-vraag ("nieuwe categorie zonder mapping → regel
+    blokkerend + automatische vraag", CLAUDE.md-omzetbesluit). Bewust post-commit: de vraag-
+    service opent zijn eigen transactie en moet de zojuist geschreven status/tijdlijn zien.
+    Faalt de hook, dan is dat een gelogde waarschuwing — de blokkerende mapping-check op het
+    reviewscherm blijft de harde poort, de vraag is de signalering eromheen."""
+    if soort != DocumentSoort.KASSARAPPORT.value or administratie_id is None:
+        return
+    from app.omzet import autovraag  # lokaal: voorkomt een importcyclus omzet ↔ documenten
+
+    try:
+        autovraag.stel_mapping_vraag_indien_nodig(administratie_id=administratie_id, document_id=document_id)
+    except Exception:  # noqa: BLE001 — signalering mag de upload/worker nooit laten falen
+        logger.exception("Automatische mapping-vraag mislukt voor document %s", document_id)
+
+
 def upload_document(
     *,
     administratie_id: uuid.UUID,
@@ -376,6 +428,7 @@ def upload_document(
     actor_id: uuid.UUID,
     opslag: DocumentOpslag | None = None,
     bron: DocumentBron = DocumentBron.UPLOAD,
+    soort: DocumentSoort = DocumentSoort.INKOOPFACTUUR,
     wachtrij: ExtractieWachtrij | None = None,
 ) -> UploadResultaat:
     """Slaat het bestand op, detecteert mogelijke duplicaten (sha256, binnen dezelfde
@@ -403,6 +456,7 @@ def upload_document(
             id=document_id,
             administratie_id=administratie_id,
             bron=bron,
+            soort=soort.value,
             bestandsnaam=bestandsnaam,
             sha256_hash=sha256_hash,
             status=DocumentStatus.ONTVANGEN,
@@ -461,6 +515,8 @@ def upload_document(
     if wachtrij_detail is not None:
         # Ná de commit — de worker mag het document pas zien als de wachtrij-status vaststaat.
         (wachtrij or _standaard_wachtrij()).enqueue(administratie_id=administratie_id, document_id=document_id)
+    else:
+        _na_extractie_hook(administratie_id=administratie_id, document_id=document_id, soort=soort.value)
 
     return UploadResultaat(
         document_id=document_id,
@@ -648,9 +704,12 @@ def herextraheer_document(
         else:
             _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
         eind_status = document.status
+        soort = document.soort
 
     if naar_wachtrij:
         (wachtrij or _standaard_wachtrij()).enqueue(administratie_id=administratie_id, document_id=document_id)
+    else:
+        _na_extractie_hook(administratie_id=administratie_id, document_id=document_id, soort=soort)
     return eind_status
 
 

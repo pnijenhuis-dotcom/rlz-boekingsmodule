@@ -3,14 +3,14 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import afwijzen, boeken, boekvoorstel, iban_accordering, leverancier_iban, schemas, service, vragen
 from app.documenten.checks import CheckRapport
-from app.documenten.models import IbanAccorderingStatus, IbanSoort, VraagStatus
+from app.documenten.models import DocumentSoort, IbanAccorderingStatus, IbanSoort, VraagStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.rlz.credentials import GeenRlzCredentials
 
@@ -85,10 +85,22 @@ _TOEGESTANE_SUFFIXEN = {".pdf", ".xml"}
 async def document_uploaden(
     administratie_id: uuid.UUID,
     bestand: UploadFile = File(...),
+    soort: str = Form("inkoopfactuur"),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentUploadResponse:
     if not bestand.filename or Path(bestand.filename).suffix.lower() not in _TOEGESTANE_SUFFIXEN:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Alleen PDF- of XML-bestanden")
+    try:
+        document_soort = DocumentSoort(soort)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Onbekende documentsoort: {soort}"
+        ) from None
+    # Een kassarapport is altijd een PDF-scan/export — UBL is een factuurformaat, geen rapport.
+    if document_soort == DocumentSoort.KASSARAPPORT and Path(bestand.filename).suffix.lower() != ".pdf":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Een kassarapport moet een PDF zijn"
+        )
 
     inhoud = await bestand.read()
     if not inhoud:
@@ -101,6 +113,7 @@ async def document_uploaden(
         bestandsnaam=bestand.filename,
         inhoud=inhoud,
         actor_id=actor.id,
+        soort=document_soort,
     )
     return schemas.DocumentUploadResponse(
         document_id=resultaat.document_id,
@@ -129,6 +142,7 @@ def documenten_lijst(
                 bestandsnaam=item.document.bestandsnaam,
                 status=item.document.status.value,
                 bron=item.document.bron.value,
+                soort=item.document.soort,
                 mogelijk_duplicaat_van=_naar_duplicaat_response(item.duplicaat_referentie),
                 toegewezen_aan=item.document.toegewezen_aan,
                 aangemaakt_op=item.document.aangemaakt_op,
@@ -160,6 +174,7 @@ def document_detail(
         bestandsnaam=d.bestandsnaam,
         status=d.status.value,
         bron=d.bron.value,
+        soort=d.soort,
         mogelijk_duplicaat_van=_naar_duplicaat_response(detail.duplicaat_referentie),
         toegewezen_aan=d.toegewezen_aan,
         aangemaakt_op=d.aangemaakt_op,
