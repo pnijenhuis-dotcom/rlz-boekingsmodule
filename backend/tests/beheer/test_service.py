@@ -186,3 +186,50 @@ class TestGlobaleKillSwitch:
 
         service.zet_globale_kill_switch(actor_id=beheerder_id, ingeschakeld=True)
         assert service.haal_globale_kill_switch_op() is True
+
+
+class TestIntakeAiToggle:
+    """Intake-AI-toggle (migratie 0029): platform-brede AVG-gate, default UIT; de env-setting is
+    uitsluitend fallback zolang de singleton-rij ontbreekt."""
+
+    def test_default_uit(self) -> None:
+        assert service.haal_intake_ai_ingeschakeld_op() is False
+        assert service.intake_ai_effectief_ingeschakeld() is False
+
+    def test_aanzetten_en_uitzetten_met_audit(self, beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
+        service.zet_intake_ai_ingeschakeld(actor_id=beheerder_id, ingeschakeld=True)
+        assert service.haal_intake_ai_ingeschakeld_op() is True
+        assert service.intake_ai_effectief_ingeschakeld() is True
+
+        service.zet_intake_ai_ingeschakeld(actor_id=beheerder_id, ingeschakeld=False)
+        assert service.intake_ai_effectief_ingeschakeld() is False
+
+        acties = _audit_acties(
+            admin_engine, tabel="intake_instelling", record_id=uuid.UUID("00000000-0000-0000-0000-000000000000")
+        )
+        assert acties == ["intake_ai_ingeschakeld_gewijzigd", "intake_ai_ingeschakeld_gewijzigd"]
+
+    def test_db_rij_is_leidend_boven_env(self, monkeypatch) -> None:
+        # De rij bestaat (migratie-seed, hersteld door _clean_tables) en staat UIT — een
+        # aan-gezette env-setting mag daar niet doorheen prikken.
+        monkeypatch.setattr(service.settings, "intake_ai_ingeschakeld", True)
+        assert service.intake_ai_effectief_ingeschakeld() is False
+
+    def test_env_is_fallback_zonder_rij(self, admin_engine: Engine, monkeypatch) -> None:
+        from sqlalchemy import text as sql_text
+
+        monkeypatch.setattr(service.settings, "intake_ai_ingeschakeld", True)
+        with admin_engine.begin() as conn:
+            conn.execute(sql_text("DELETE FROM platform.intake_instelling"))
+        try:
+            assert service.intake_ai_effectief_ingeschakeld() is True
+            with pytest.raises(service.BeheerFout):
+                service.haal_intake_ai_ingeschakeld_op()
+        finally:
+            with admin_engine.begin() as conn:
+                conn.execute(
+                    sql_text(
+                        "INSERT INTO platform.intake_instelling (singleton, ai_ingeschakeld) "
+                        "VALUES (true, false) ON CONFLICT (singleton) DO NOTHING"
+                    )
+                )

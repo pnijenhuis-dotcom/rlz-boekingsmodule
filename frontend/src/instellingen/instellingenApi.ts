@@ -25,6 +25,17 @@ export function zetBoekenKillSwitch(ingeschakeld: boolean): Promise<BoekenIngesc
   })
 }
 
+export function haalIntakeAiInstellingOp(): Promise<BoekenIngeschakeldDto> {
+  return apiJson<BoekenIngeschakeldDto>('/instellingen/intake-ai')
+}
+
+export function zetIntakeAiInstelling(ingeschakeld: boolean): Promise<BoekenIngeschakeldDto> {
+  return apiJson<BoekenIngeschakeldDto>('/instellingen/intake-ai', {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function zetBoekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/boeken-instelling`, {
     ...PUT_JSON,

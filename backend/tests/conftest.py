@@ -118,6 +118,13 @@ def _clean_tables() -> Generator[None, None, None]:
                 "ON CONFLICT (singleton) DO NOTHING"
             )
         )
+        # En voor de intake-AI-singleton (migratie 0029) — default UIT, zoals de migratie-seed.
+        conn.execute(
+            text(
+                "INSERT INTO platform.intake_instelling (singleton, ai_ingeschakeld) VALUES (true, false) "
+                "ON CONFLICT (singleton) DO NOTHING"
+            )
+        )
         conn.execute(
             text(
                 "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "

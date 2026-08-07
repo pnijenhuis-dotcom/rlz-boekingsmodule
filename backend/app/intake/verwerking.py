@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
+from app.beheer import service as beheer_service
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
@@ -240,9 +241,11 @@ def _verwerk_pdf(
     intake_bericht_id: uuid.UUID,
     opslag: DocumentOpslag | None,
 ) -> BijlageResultaat:
-    if not settings.intake_ai_ingeschakeld or not settings.anthropic_api_key:
+    if not beheer_service.intake_ai_effectief_ingeschakeld() or not settings.anthropic_api_key:
         # AVG-gate intake (platform-breed, default UIT): zonder opt-in geen intake-byte naar de
         # Claude API — het document valt zichtbaar in de verzamelbak, een mens wijst toe.
+        # Sinds migratie 0029 is dit een Beheerder-instelling (platform.intake_instelling);
+        # de env-setting is alleen nog fallback zolang die rij ontbreekt.
         document_id = documenten_service.registreer_niet_toegewezen_document(
             bestandsnaam=bijlage.bestandsnaam,
             inhoud=bijlage.inhoud,
@@ -301,12 +304,18 @@ def _verwerk_pdf(
         afzender_hint=afzender,
     )
     with scoped_session(None, actor_id=actor_id) as session:
-        session.add(
-            IntakeSplitsing(
-                bron_document_id=document_id,
-                voorstel={"paginas": paginas, "facturen": [s.als_dict() for s in segmenten]},
+        # Herverwerking van een afgebroken run: het bron-document (idempotent op sha256) kan al
+        # een splitsingsvoorstel dragen — dan geen tweede rij toevoegen.
+        bestaande_splitsing = session.scalars(
+            select(IntakeSplitsing).where(IntakeSplitsing.bron_document_id == document_id)
+        ).first()
+        if bestaande_splitsing is None:
+            session.add(
+                IntakeSplitsing(
+                    bron_document_id=document_id,
+                    voorstel={"paginas": paginas, "facturen": [s.als_dict() for s in segmenten]},
+                )
             )
-        )
     return BijlageResultaat(
         bestandsnaam=bijlage.bestandsnaam,
         uitkomst="splitsingsvoorstel",
@@ -329,31 +338,45 @@ def verwerk_eml(
     except GeenGeldigeEml as exc:
         raise GeenGeldigIntakeBericht(str(exc)) from exc
 
+    herverwerking = False
     if mail.message_id:
         with scoped_session(None) as session:
             bestaand = session.scalars(
                 select(IntakeBericht).where(IntakeBericht.message_id == mail.message_id)
             ).first()
             if bestaand is not None:
-                return IntakeResultaat(bericht_id=bestaand.id, al_eerder_verwerkt=True)
+                if (bestaand.detail or {}).get("verwerking") != "bezig":
+                    return IntakeResultaat(bericht_id=bestaand.id, al_eerder_verwerkt=True)
+                # Blijven hangen op "bezig" = een eerder afgebroken run (crash/kill vóór het
+                # eindresultaat op de rij stond) — dat is geen "al verwerkt": her-upload moet
+                # HERVERWERKEN, niet vroeg terugkeren. Bijlagen die de vorige poging al wél
+                # als document registreerde, worden niet gedupliceerd: de documentenservice is
+                # idempotent op (intake_bericht_id, sha256) — zie documenten/service.py.
+                herverwerking = True
 
     # Het bericht-record ontstaat vóór de bijlage-verwerking: de document-rijen dragen een FK
     # naar dit bericht (herkomst) en elke bijlage committert in zijn eigen transactie. Het
     # verwerkingsresultaat wordt ná afloop op de rij gezet.
-    bericht_id = uuid.uuid4()
+    bericht_id = bestaand.id if herverwerking else uuid.uuid4()
     with scoped_session(None, actor_id=actor_id) as session:
-        session.add(
-            IntakeBericht(
-                id=bericht_id,
-                message_id=mail.message_id,
-                afzender=mail.afzender,
-                onderwerp=mail.onderwerp,
-                bron=bron,
-                ontvangen_op=mail.ontvangen_op,
-                verwerkt_door=actor_id,
-                detail={"bijlagen": [], "verwerking": "bezig"},
+        if herverwerking:
+            bericht = session.get(IntakeBericht, bericht_id)
+            assert bericht is not None
+            bericht.verwerkt_door = actor_id
+            bericht.detail = {"bijlagen": [], "verwerking": "bezig", "herverwerking": True}
+        else:
+            session.add(
+                IntakeBericht(
+                    id=bericht_id,
+                    message_id=mail.message_id,
+                    afzender=mail.afzender,
+                    onderwerp=mail.onderwerp,
+                    bron=bron,
+                    ontvangen_op=mail.ontvangen_op,
+                    verwerkt_door=actor_id,
+                    detail={"bijlagen": [], "verwerking": "bezig"},
+                )
             )
-        )
 
     resultaten: list[BijlageResultaat] = []
     for bijlage in mail.bijlagen:
@@ -397,6 +420,7 @@ def verwerk_eml(
                 "afzender": mail.afzender,
                 "bijlagen": len(mail.bijlagen),
                 "uitkomsten": [r.uitkomst for r in resultaten],
+                "herverwerking": herverwerking,
             },
             administratie_id=None,
         )

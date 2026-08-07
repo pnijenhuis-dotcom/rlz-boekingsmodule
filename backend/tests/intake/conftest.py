@@ -88,6 +88,14 @@ def bouw_eml(
 
 
 @pytest.fixture
+def intake_ai_aan(admin_engine: Engine) -> None:
+    """Zet de intake-AI-gate AAN via de platform-instelling (migratie 0029) — de DB-rij is
+    leidend, dus een settings-monkeypatch volstaat sinds die migratie niet meer."""
+    with admin_engine.begin() as conn:
+        conn.execute(text("UPDATE platform.intake_instelling SET ai_ingeschakeld = true"))
+
+
+@pytest.fixture
 def administratie_heet_blow(administratie_id: uuid.UUID, admin_engine: Engine) -> uuid.UUID:  # noqa: F811
     """De testadministratie heet 'BLOW B.V.' — de exacte tenaamstelling-match uit de fixtures."""
     with admin_engine.begin() as conn:

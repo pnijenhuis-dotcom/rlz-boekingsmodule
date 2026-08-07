@@ -281,6 +281,22 @@ class WebhookInstelling(Base):
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class IntakeInstelling(Base):
+    """Intake-AI-toggle (migratie 0029): Beheerder-only singleton, zelfde patroon als
+    WebhookInstelling — default UIT (AVG-gate: zonder opt-in gaat er geen intake-byte naar de
+    Claude API). De env-setting `intake_ai_ingeschakeld` is uitsluitend fallback als deze rij
+    ontbreekt (zie beheer/service.py::intake_ai_effectief_ingeschakeld)."""
+
+    __tablename__ = "intake_instelling"
+
+    singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
+    ai_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class AuditEvent(Base):
     """Uniform, append-only audit-schema (koppelcontract v1.5, platformbrede afspraken) —
     bron voor de WORM-export. UPDATE/DELETE zijn niet gegrant aan de app-rol (zie migratie 0001).

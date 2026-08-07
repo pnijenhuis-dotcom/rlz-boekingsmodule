@@ -329,6 +329,23 @@ def _webhook_redrive(args: argparse.Namespace) -> int:
     return 0
 
 
+def _zet_intake_ai(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Intake-AI-toggle (migratie 0029) — zelfde patroon als webhook-aflevering-aan/-uit.
+    Default UIT (AVG-gate voor AI op nog-niet-toegewezen intake-documenten)."""
+    try:
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_intake_ai_ingeschakeld(actor_id=beheerder_id, ingeschakeld=ingeschakeld)
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"intake_ai_ingeschakeld={resultaat}")
+    return 0
+
+
 def _zet_webhook_aflevering(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Webhook-aflevering-toggle — zelfde patroon als boeken-aan/-uit: hergebruikt
     app.beheer.service met de Beheerder als audit_event-actor. Default UIT (migratie 0025)."""
@@ -494,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
     for naam, hulp in (
         ("webhook-aflevering-aan", "Zet de webhook-aflevering-toggle AAN (default UIT)."),
         ("webhook-aflevering-uit", "Zet de webhook-aflevering-toggle UIT."),
+        ("intake-ai-aan", "Zet de intake-AI-toggle AAN (AVG-gate, default UIT — migratie 0029)."),
+        ("intake-ai-uit", "Zet de intake-AI-toggle UIT."),
     ):
         webhook_parser = subparsers.add_parser(naam, help=hulp)
         webhook_parser.add_argument(
@@ -562,6 +581,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_webhook_aflevering(args, ingeschakeld=True)
     if args.commando == "webhook-aflevering-uit":
         return _zet_webhook_aflevering(args, ingeschakeld=False)
+    if args.commando == "intake-ai-aan":
+        return _zet_intake_ai(args, ingeschakeld=True)
+    if args.commando == "intake-ai-uit":
+        return _zet_intake_ai(args, ingeschakeld=False)
     if args.commando == "webhook-redrive":
         return _webhook_redrive(args)
     if args.commando == "import-env-credentials":

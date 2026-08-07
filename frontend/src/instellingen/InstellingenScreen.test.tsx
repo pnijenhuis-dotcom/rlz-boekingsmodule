@@ -32,11 +32,13 @@ function installFetchMock(opties: {
   rol: string
   administraties?: unknown[]
   killSwitch?: boolean
+  intakeAi?: boolean
   ibanAccordeurs?: string[]
   putAanroepen?: { url: string; body: unknown }[]
 }) {
   const administraties = opties.administraties ?? [administratie()]
   let killSwitch = opties.killSwitch ?? true
+  let intakeAi = opties.intakeAi ?? false
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -48,6 +50,15 @@ function installFetchMock(opties: {
       }
       if (url === '/instellingen/boeken-kill-switch' && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ ingeschakeld: killSwitch }))
+      }
+      if (url === '/instellingen/intake-ai' && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse({ ingeschakeld: intakeAi }))
+      }
+      if (url === '/instellingen/intake-ai' && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as { ingeschakeld: boolean }
+        intakeAi = body.ingeschakeld
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse({ ingeschakeld: intakeAi }))
       }
       if (url === '/instellingen/boeken-kill-switch' && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as { ingeschakeld: boolean }
@@ -231,6 +242,25 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     expect(putAanroepen[0].url).toBe('/instellingen/boeken-kill-switch')
     expect(putAanroepen[0].body).toEqual({ ingeschakeld: false })
   })
+  it('de intake-AI-toggle (AVG-gate) vraagt bevestiging en PUT naar /instellingen/intake-ai', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'beheerder', intakeAi: false, putAanroepen })
+    renderScherm()
+
+    const intakeAiToggle = await screen.findByRole('checkbox', { name: 'Intake-AI ingeschakeld' })
+    expect(intakeAiToggle).not.toBeChecked()
+    await gebruiker.click(intakeAiToggle)
+
+    expect(screen.getByText(/naar de Claude API \(platform-brede AVG-gate\)/)).toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+
+    await waitFor(() => expect(putAanroepen).toHaveLength(1))
+    expect(putAanroepen[0].url).toBe('/instellingen/intake-ai')
+    expect(putAanroepen[0].body).toEqual({ ingeschakeld: true })
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Intake-AI ingeschakeld' })).toBeChecked())
+  })
+
   it('eigenaar kiezen vraagt bevestiging en PUT de eigenaar (krijgt vragen)', async () => {
     const gebruiker = userEvent.setup()
     const putAanroepen: { url: string; body: unknown }[] = []

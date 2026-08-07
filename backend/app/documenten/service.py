@@ -448,6 +448,26 @@ def upload_document(
     sha256_hash = _hash(inhoud)
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
+        if intake_bericht_id is not None:
+            # Intake-herverwerking (afgebroken "bezig"-run wordt opnieuw aangeboden): dezelfde
+            # bijlage van hetzélfde bericht is al een document — teruggeven, niet dupliceren.
+            # Bewust alleen binnen één intake_bericht_id: dezelfde bytes uit een ánder bericht
+            # blijven een nieuw document (met de gewone mogelijk-duplicaat-vlag hieronder).
+            al_geregistreerd = session.scalars(
+                select(Document).where(
+                    Document.intake_bericht_id == intake_bericht_id,
+                    Document.sha256_hash == sha256_hash,
+                    Document.administratie_id == administratie_id,
+                )
+            ).first()
+            if al_geregistreerd is not None:
+                return UploadResultaat(
+                    document_id=al_geregistreerd.id,
+                    status=al_geregistreerd.status,
+                    mogelijk_duplicaat_van_id=al_geregistreerd.mogelijk_duplicaat_van_id,
+                    mogelijk_duplicaat_van=None,
+                )
+
         bestaand = session.scalars(
             select(Document)
             .where(Document.administratie_id == administratie_id, Document.sha256_hash == sha256_hash)
@@ -558,6 +578,22 @@ def registreer_niet_toegewezen_document(
     toewijzing, onder de AVG-gate van de gekozen administratie."""
     opslag = opslag or _standaard_opslag()
     document_id = uuid.uuid4()
+    sha256_hash = _hash(inhoud)
+
+    if intake_bericht_id is not None:
+        # Zelfde intake-herverwerkings-idempotentie als upload_document: dezelfde bijlage van
+        # hetzelfde bericht die al in de verzamelbak ligt niet nogmaals registreren.
+        with scoped_session(None) as session:
+            al_geregistreerd = session.scalars(
+                select(Document).where(
+                    Document.intake_bericht_id == intake_bericht_id,
+                    Document.sha256_hash == sha256_hash,
+                    Document.administratie_id.is_(None),
+                )
+            ).first()
+            if al_geregistreerd is not None:
+                return al_geregistreerd.id
+
     opslag_pad = f"niet_toegewezen/{document_id}{Path(bestandsnaam).suffix.lower()}"
     opslag.opslaan(pad=opslag_pad, inhoud=inhoud)
 
@@ -568,7 +604,7 @@ def registreer_niet_toegewezen_document(
             bron=bron,
             soort=soort.value,
             bestandsnaam=bestandsnaam,
-            sha256_hash=_hash(inhoud),
+            sha256_hash=sha256_hash,
             status=DocumentStatus.ONTVANGEN,
             opslag_pad=opslag_pad,
             intake_bericht_id=intake_bericht_id,

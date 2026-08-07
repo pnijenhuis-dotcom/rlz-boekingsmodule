@@ -109,13 +109,12 @@ class TestVerzamelbak:
 
 @pytest.fixture
 def splitsingsvoorstel(
-    administratie_heet_blow: uuid.UUID, gescoopte_gebruiker: uuid.UUID, monkeypatch
+    administratie_heet_blow: uuid.UUID, gescoopte_gebruiker: uuid.UUID, intake_ai_aan: None, monkeypatch
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """(bron_document_id, splitsing_id) — een 3-pagina-PDF met twee herkende facturen."""
     from app.config import settings
     from app.extractie.splitsing import FactuurSegment
 
-    monkeypatch.setattr(settings, "intake_ai_ingeschakeld", True)
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(
         verwerking.splitsing_extractie,

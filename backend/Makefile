@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie bank-autoboeken-aan bank-autoboeken-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop
+.PHONY: check-versions venv install migrate test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie bank-autoboeken-aan bank-autoboeken-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -134,6 +134,14 @@ webhook-aflevering-aan: check-versions
 
 webhook-aflevering-uit: check-versions
 	.venv/bin/python -m app.cli webhook-aflevering-uit --beheerder-id "$(BEHEERDER_ID)"
+
+# Intake-AI-toggle (migratie 0029): de platform-brede AVG-gate voor AI op nog-niet-toegewezen
+# intake-documenten (tenaamstelling + splitsingsdetectie). Default UIT; env is alleen fallback.
+intake-ai-aan: check-versions
+	.venv/bin/python -m app.cli intake-ai-aan --beheerder-id "$(BEHEERDER_ID)"
+
+intake-ai-uit: check-versions
+	.venv/bin/python -m app.cli intake-ai-uit --beheerder-id "$(BEHEERDER_ID)"
 
 # Re-drive: dead-letter-rijen terug naar openstaand (herstel na bv. langdurige downtime van de
 # vastgoed-ontvanger). Optioneel één rij: make webhook-redrive BEHEERDER_ID=<uuid> OUTBOX_ID=<uuid>

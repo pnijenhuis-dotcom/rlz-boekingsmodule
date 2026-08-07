@@ -13,6 +13,10 @@ class WebhookAfleveringDto(BaseModel):
     ingeschakeld: bool
 
 
+class IntakeAiDto(BaseModel):
+    ingeschakeld: bool
+
+
 class ProjectVerplichtDto(BaseModel):
     verplicht: bool
 

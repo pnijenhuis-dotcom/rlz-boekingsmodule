@@ -106,3 +106,26 @@ def test_beheerder_kan_kill_switch_zetten(beheerder_id: uuid.UUID) -> None:
 
     resp = client.get("/instellingen/boeken-kill-switch", headers=headers)
     assert resp.json() == {"ingeschakeld": False}
+
+
+def test_niet_beheerder_kan_intake_ai_niet_zetten(gescoopte_gebruiker: uuid.UUID) -> None:
+    resp = client.put(
+        "/instellingen/intake-ai",
+        headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
+        json={"ingeschakeld": True},
+    )
+    assert resp.status_code == 403
+
+
+def test_beheerder_kan_intake_ai_zetten_en_lezen(beheerder_id: uuid.UUID) -> None:
+    headers = _bearer(beheerder_id, rol="beheerder")
+    resp = client.get("/instellingen/intake-ai", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ingeschakeld": False}
+
+    resp = client.put("/instellingen/intake-ai", headers=headers, json={"ingeschakeld": True})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ingeschakeld": True}
+
+    resp = client.get("/instellingen/intake-ai", headers=headers)
+    assert resp.json() == {"ingeschakeld": True}

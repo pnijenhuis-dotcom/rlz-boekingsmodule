@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
     Administratie,
@@ -13,6 +14,7 @@ from app.db.models import (
     GebruikerAdministratie,
     GebruikerRol,
     GebruikerStatus,
+    IntakeInstelling,
     WebhookInstelling,
 )
 from app.db.session import scoped_session
@@ -325,6 +327,53 @@ def zet_webhook_aflevering_ingeschakeld(*, actor_id: uuid.UUID, ingeschakeld: bo
             correlatie_id=uuid.uuid4(),
             oude_waarde={"aflevering_ingeschakeld": oud},
             nieuwe_waarde={"aflevering_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
+def haal_intake_ai_ingeschakeld_op() -> bool:
+    """De opgeslagen instelling (zonder env-fallback) — voor het Beheerder-scherm/CLI: wat daar
+    staat is wat een Beheerder heeft gezet, niet het effectieve resultaat van een deploy-config."""
+    with scoped_session(None) as session:
+        instelling = session.get(IntakeInstelling, True)
+        if instelling is None:
+            raise BeheerFout("platform.intake_instelling heeft geen rij — migratie 0029 niet toegepast?")
+        return instelling.ai_ingeschakeld
+
+
+def intake_ai_effectief_ingeschakeld() -> bool:
+    """De AVG-gate die de intake-verwerking raadpleegt: DB-instelling leidend; de env-setting
+    `intake_ai_ingeschakeld` is uitsluitend FALLBACK als de rij ontbreekt (migratie 0029 nog
+    niet toegepast — bv. een los script tegen een oude database). Default dus UIT."""
+    with scoped_session(None) as session:
+        instelling = session.get(IntakeInstelling, True)
+        if instelling is None:
+            return settings.intake_ai_ingeschakeld
+        return instelling.ai_ingeschakeld
+
+
+def zet_intake_ai_ingeschakeld(*, actor_id: uuid.UUID, ingeschakeld: bool) -> bool:
+    """Intake-AI-toggle (migratie 0029) — Beheerder-only (router/CLI), zelfde patroon als de
+    webhook-aflevering-toggle. Default UIT: aanzetten is de bewuste AVG-opt-in waarmee
+    nog-niet-toegewezen intake-PDF's (tenaamstelling + splitsingsdetectie) naar de Claude API
+    mogen; de per-administratie-gate blijft daarnaast onverkort gelden ná toewijzing."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        instelling = session.get(IntakeInstelling, True)
+        if instelling is None:
+            raise BeheerFout("platform.intake_instelling heeft geen rij — migratie 0029 niet toegepast?")
+        oud = instelling.ai_ingeschakeld
+        instelling.ai_ingeschakeld = ingeschakeld
+        instelling.gewijzigd_door = actor_id
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="intake_instelling",
+            record_id=_BOEKEN_INSTELLING_RECORD_ID,
+            actie="intake_ai_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"ai_ingeschakeld": oud},
+            nieuwe_waarde={"ai_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
 

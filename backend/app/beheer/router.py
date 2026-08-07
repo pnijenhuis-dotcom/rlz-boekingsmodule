@@ -217,6 +217,34 @@ def webhook_aflevering_zetten(
 
 
 @router.get(
+    "/instellingen/intake-ai",
+    response_model=schemas.IntakeAiDto,
+)
+def intake_ai_ophalen(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas.IntakeAiDto:
+    try:
+        return schemas.IntakeAiDto(ingeschakeld=service.haal_intake_ai_ingeschakeld_op())
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+
+@router.put(
+    "/instellingen/intake-ai",
+    response_model=schemas.IntakeAiDto,
+)
+def intake_ai_zetten(
+    invoer: schemas.IntakeAiDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.IntakeAiDto:
+    """Intake-AI-toggle (migratie 0029) — Beheerder-only, default UIT: de platform-brede
+    AVG-gate voor AI op nog-niet-toegewezen intake-documenten. Env-setting is alleen fallback
+    zolang de migratie ontbreekt."""
+    try:
+        ingeschakeld = service.zet_intake_ai_ingeschakeld(actor_id=actor.id, ingeschakeld=invoer.ingeschakeld)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    return schemas.IntakeAiDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
     "/instellingen/boeken-kill-switch",
     response_model=schemas.BoekenIngeschakeldDto,
 )

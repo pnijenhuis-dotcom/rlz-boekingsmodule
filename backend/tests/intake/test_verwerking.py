@@ -125,9 +125,9 @@ class TestPdfRouting:
         administratie_heet_blow: uuid.UUID,
         gescoopte_gebruiker: uuid.UUID,
         admin_engine: Engine,
+        intake_ai_aan: None,
         monkeypatch,
     ) -> None:
-        monkeypatch.setattr(settings, "intake_ai_ingeschakeld", True)
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
         monkeypatch.setattr(
             verwerking.splitsing_extractie,
@@ -155,9 +155,9 @@ class TestPdfRouting:
         administratie_heet_blow: uuid.UUID,
         gescoopte_gebruiker: uuid.UUID,
         admin_engine: Engine,
+        intake_ai_aan: None,
         monkeypatch,
     ) -> None:
-        monkeypatch.setattr(settings, "intake_ai_ingeschakeld", True)
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
         monkeypatch.setattr(
             verwerking.splitsing_extractie,
@@ -172,9 +172,8 @@ class TestPdfRouting:
         assert rij.administratie_id == administratie_heet_blow
 
     def test_ai_fout_valt_terug_op_verzamelbak(
-        self, gescoopte_gebruiker: uuid.UUID, monkeypatch
+        self, gescoopte_gebruiker: uuid.UUID, intake_ai_aan: None, monkeypatch
     ) -> None:
-        monkeypatch.setattr(settings, "intake_ai_ingeschakeld", True)
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
 
         def faal(inhoud, paginas, client=None):
@@ -201,6 +200,78 @@ class TestBerichtVerwerking:
         assert tweede.al_eerder_verwerkt
         assert tweede.bericht_id == eerste.bericht_id
         assert tweede.bijlagen == []
+
+    def test_hangend_op_bezig_wordt_herverwerkt_niet_vroeg_teruggekeerd(
+        self, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Het intake-lek (fix 2026-08-07): een bericht waarvan de run crashte vóór het
+        eindresultaat op de rij stond (detail blijft {"verwerking": "bezig"}) moet bij
+        her-upload HERVERWERKT worden — zonder de al-geregistreerde bijlage te dupliceren."""
+        eml = bouw_eml(
+            message_id="<hangend@test.local>",
+            bijlagen=[("factuur.xml", bouw_ubl(klant="BLOW Holding"), "application", "xml")],
+        )
+        eerste = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+        # Simuleer de afgebroken run: het eindresultaat is nooit geschreven.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.intake_bericht "
+                    "SET detail = '{\"bijlagen\": [], \"verwerking\": \"bezig\"}'::jsonb "
+                    "WHERE id = :id"
+                ),
+                {"id": eerste.bericht_id},
+            )
+
+        tweede = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+
+        assert not tweede.al_eerder_verwerkt
+        assert tweede.bericht_id == eerste.bericht_id
+        assert [r.uitkomst for r in tweede.bijlagen] == ["verzamelbak"]
+        # Idempotent op (intake_bericht_id, sha256): zelfde document, geen duplicaat.
+        assert tweede.bijlagen[0].document_id == eerste.bijlagen[0].document_id
+        with admin_engine.connect() as conn:
+            aantal = conn.execute(
+                text("SELECT count(*) FROM boekhouding.document WHERE intake_bericht_id = :id"),
+                {"id": eerste.bericht_id},
+            ).scalar_one()
+            detail = conn.execute(
+                text("SELECT detail FROM boekhouding.intake_bericht WHERE id = :id"),
+                {"id": eerste.bericht_id},
+            ).scalar_one()
+        assert aantal == 1
+        assert detail.get("verwerking") != "bezig"
+        assert detail["bijlagen"][0]["uitkomst"] == "verzamelbak"
+
+    def test_herverwerking_dupliceert_ook_toegewezen_documenten_niet(
+        self, administratie_heet_blow: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        eml = bouw_eml(
+            message_id="<hangend-toegewezen@test.local>",
+            bijlagen=[("factuur.xml", bouw_ubl(klant="BLOW B.V."), "application", "xml")],
+        )
+        eerste = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+        assert [r.uitkomst for r in eerste.bijlagen] == ["toegewezen"]
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.intake_bericht "
+                    "SET detail = '{\"bijlagen\": [], \"verwerking\": \"bezig\"}'::jsonb "
+                    "WHERE id = :id"
+                ),
+                {"id": eerste.bericht_id},
+            )
+
+        tweede = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+
+        assert not tweede.al_eerder_verwerkt
+        assert tweede.bijlagen[0].document_id == eerste.bijlagen[0].document_id
+        with admin_engine.connect() as conn:
+            aantal = conn.execute(
+                text("SELECT count(*) FROM boekhouding.document WHERE intake_bericht_id = :id"),
+                {"id": eerste.bericht_id},
+            ).scalar_one()
+        assert aantal == 1
 
     def test_onverwerkbaar_bijlagetype_zichtbaar_geregistreerd(
         self, gescoopte_gebruiker: uuid.UUID

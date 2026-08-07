@@ -9,14 +9,16 @@ import { BevestigDialog } from './BevestigDialog'
 import {
   haalBoekenKillSwitchOp,
   haalInstellingenAdministratiesOp,
+  haalIntakeAiInstellingOp,
   zetAiExtractieInstelling,
   zetBoekenInstelling,
   zetBoekenKillSwitch,
   zetEigenaar,
+  zetIntakeAiInstelling,
   zetProjectInstelling,
 } from './instellingenApi'
 
-type WijzigingType = 'kill_switch' | 'boeken' | 'project' | 'ai_extractie' | 'eigenaar' | 'iban_accordeurs'
+type WijzigingType = 'kill_switch' | 'intake_ai' | 'boeken' | 'project' | 'ai_extractie' | 'eigenaar' | 'iban_accordeurs'
 
 interface PendingWijziging {
   type: WijzigingType
@@ -38,6 +40,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? 'Boeken wordt platformbreed weer mogelijk (nog steeds ook afhankelijk van de boeken-toggle per administratie).'
         : 'Boeken wordt voor ALLE administraties direct stopgezet, ongeacht de toggle per administratie.'
+    case 'intake_ai':
+      return pending.nieuweWaarde
+        ? 'Nog-niet-toegewezen intake-PDF\'s (verzamelbak) gaan voortaan voor tenaamstelling en splitsingsdetectie naar de Claude API (platform-brede AVG-gate). Echte klantdocumenten pas ná DPA + EU-verwerking + verwerkersregister — zie docs/BOUWPLAN.md.'
+        : 'Intake-AI wordt uitgeschakeld — élke niet-eenduidige PDF valt weer zichtbaar in de verzamelbak en wordt handmatig toegewezen.'
     case 'boeken':
       return pending.nieuweWaarde
         ? `Boeken wordt ingeschakeld voor "${pending.naam}".`
@@ -68,6 +74,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   // scherm (guard-test: instellingenApi.test.ts).
   if (pending.type === 'kill_switch') {
     await zetBoekenKillSwitch(pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'intake_ai') {
+    await zetIntakeAiInstelling(pending.nieuweWaarde)
     return
   }
   if (pending.type === 'boeken') {
@@ -196,6 +206,7 @@ export function InstellingenScreen() {
   const [administraties, setAdministraties] = useState<AdministratieInstellingenDto[] | null>(null)
   const [accordeursVersie, setAccordeursVersie] = useState(0)
   const [killSwitch, setKillSwitch] = useState<boolean | null>(null)
+  const [intakeAi, setIntakeAi] = useState<boolean | null>(null)
   const [laadFout, setLaadFout] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingWijziging | null>(null)
   const [bezig, setBezig] = useState(false)
@@ -203,10 +214,11 @@ export function InstellingenScreen() {
 
   const laadAlles = useCallback(() => {
     setLaadFout(null)
-    Promise.all([haalInstellingenAdministratiesOp(), haalBoekenKillSwitchOp()])
-      .then(([lijst, switchDto]) => {
+    Promise.all([haalInstellingenAdministratiesOp(), haalBoekenKillSwitchOp(), haalIntakeAiInstellingOp()])
+      .then(([lijst, switchDto, intakeAiDto]) => {
         setAdministraties(lijst.administraties)
         setKillSwitch(switchDto.ingeschakeld)
+        setIntakeAi(intakeAiDto.ingeschakeld)
       })
       .catch((err: unknown) => setLaadFout(err instanceof Error ? err.message : 'Onbekende fout'))
   }, [])
@@ -234,6 +246,8 @@ export function InstellingenScreen() {
       await voerWijzigingUit(pending)
       if (pending.type === 'kill_switch') {
         setKillSwitch(pending.nieuweWaarde)
+      } else if (pending.type === 'intake_ai') {
+        setIntakeAi(pending.nieuweWaarde)
       } else if (pending.type === 'iban_accordeurs') {
         setAccordeursVersie((v) => v + 1)
       } else {
@@ -292,6 +306,33 @@ export function InstellingenScreen() {
                 }
               />
               {killSwitch ? 'aan' : 'uit'}
+            </label>
+          )}
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Intake-AI (AVG-gate, platform-breed)</h2>
+            <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
+              Bepaalt of nog-niet-toegewezen intake-PDF&apos;s (verzamelbak) voor tenaamstelling en
+              multi-factuur-splitsingsdetectie naar de Claude API mogen. Staat los van de AI-extractie
+              per administratie hieronder, die pas ná toewijzing geldt.
+            </p>
+          </div>
+          {intakeAi !== null && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+              <input
+                type="checkbox"
+                aria-label="Intake-AI ingeschakeld"
+                style={{ width: 'auto' }}
+                checked={intakeAi}
+                onChange={(e) =>
+                  setPending({ type: 'intake_ai', naam: 'intake-AI', nieuweWaarde: e.target.checked })
+                }
+              />
+              {intakeAi ? 'aan' : 'uit'}
             </label>
           )}
         </div>

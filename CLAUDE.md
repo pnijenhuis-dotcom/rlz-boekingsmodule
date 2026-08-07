@@ -145,9 +145,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   geactiveerd wordt. Routing per bijlage: kapotte/NLCIUS-invalide UBL → verzamelbak (§2d-
   failsafe), VGB → genegeerd-maar-zichtbaar, VASTLY-VERKOOP → soort 'verkoopfactuur' (boekpad =
   open vervolg op de herbruikbare SalesInvoice-motor), inkoop-UBL → tenaamstelling-toewijzing,
-  PDF → intake-AI achter de platform-brede AVG-gate `intake_ai_ingeschakeld` (default UIT).
-  Multi-factuur-splitsing: AI-voorstel ALTIJD eerst ter controle, bevestigen = deterministische
-  pypdf-splitsing, bron-document terminaal `gesplitst`.
+  PDF → intake-AI achter de platform-brede AVG-gate `intake_ai_ingeschakeld` (default UIT;
+  sinds migratie 0029 een Beheerder-instelling `platform.intake_instelling` — knop op
+  Instellingen + `make intake-ai-aan/-uit`, env-setting alleen nog fallback zolang die rij
+  ontbreekt). Her-upload van een bericht dat op "bezig" bleef hangen (afgebroken run) wordt
+  herverwerkt i.p.v. vroeg terug te keren, idempotent op (intake_bericht_id, sha256) —
+  fix 2026-08-07. Multi-factuur-splitsing: AI-voorstel ALTIJD eerst ter controle, bevestigen =
+  deterministische pypdf-splitsing, bron-document terminaal `gesplitst`.
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,
