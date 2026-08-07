@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
+import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
+import { verwerkEml } from '../intake/intakeApi'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { extractieActief } from './status'
 import { StatusChip } from './StatusChip'
@@ -34,6 +36,8 @@ export function WerkvoorraadScreen() {
   const [bezig, setBezig] = useState(false)
   const [sleepActief, setSleepActief] = useState(false)
   const [toonVerwijderd, setToonVerwijderd] = useState(false)
+  // Hersleutel voor het verzamelbak-paneel: ophogen forceert een refetch (na .eml-upload).
+  const [verzamelbakVersie, setVerzamelbakVersie] = useState(0)
   // Omzetmodule: soort van de eerstvolgende upload — 'kassarapport' gaat de rapport-extractie
   // en het omzetreview-scherm in i.p.v. de inkoopflow.
   const [uploadSoort, setUploadSoort] = useState<'inkoopfactuur' | 'kassarapport'>('inkoopfactuur')
@@ -79,6 +83,21 @@ export function WerkvoorraadScreen() {
       setUploadFout(null)
       setUploadBericht(null)
       try {
+        if (bestand.name.toLowerCase().endsWith('.eml')) {
+          // E-mail-intake: een doorgestuurde/geëxporteerde mail — zelfde verwerking als het
+          // centrale postvak (bijlagen worden gerouteerd; niet-eenduidig -> verzamelbak).
+          const resultaat = await verwerkEml(bestand)
+          setUploadBericht(
+            resultaat.al_eerder_verwerkt
+              ? `"${bestand.name}" was al eerder verwerkt (zelfde Message-ID) — niets dubbel gedaan.`
+              : `"${bestand.name}" verwerkt: ${resultaat.bijlagen
+                  .map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`)
+                  .join('; ') || 'geen bijlagen gevonden'}.`,
+          )
+          setVerzamelbakVersie((v) => v + 1)
+          laadDocumenten()
+          return
+        }
         const formData = new FormData()
         formData.append('bestand', bestand)
         formData.append('soort', uploadSoort)
@@ -218,7 +237,7 @@ export function WerkvoorraadScreen() {
           'Bezig met uploaden…'
         ) : (
           <>
-            Sleep hier een PDF- of UBL-bestand naartoe, of <b>blader</b>
+            Sleep hier een PDF-, UBL- of .eml-bestand (doorgestuurde mail) naartoe, of <b>blader</b>
             <br />
             <span style={{ fontSize: 12 }}>Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst.</span>
             <br />
@@ -242,13 +261,19 @@ export function WerkvoorraadScreen() {
         <input
           ref={bestandInputRef}
           type="file"
-          accept=".pdf,.xml"
+          accept=".pdf,.xml,.eml"
           style={{ display: 'none' }}
           onChange={(e) => opBestandGekozen(e.target.files)}
         />
       </div>
       {uploadFout && <div className="fout">{uploadFout}</div>}
       {uploadBericht && <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>{uploadBericht}</div>}
+
+      <VerzamelbakPaneel
+        key={verzamelbakVersie}
+        administraties={administraties}
+        onGewijzigd={() => laadDocumenten()}
+      />
 
       <div className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
