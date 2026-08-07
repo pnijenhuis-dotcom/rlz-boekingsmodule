@@ -6,7 +6,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -41,6 +42,13 @@ class AuthError(Exception):
     """Domeinfout in de auth-flow. De reden is hier expliciet (niet generiek) zodat tests scherp
     kunnen assert-en; de router vertaalt dit naar de HTTP-respons en houdt inlog-/TOTP-fouten
     bewust generiek naar de client toe, om account-/2FA-status-enumeratie te voorkomen."""
+
+
+class RotatieBezetError(Exception):
+    """De rij-lock op het aangeboden refresh-token kwam niet binnen de lock-timeout vrij — een
+    andere rotatie van hetzelfde token is nog bezig. Bewust GEEN AuthError: dit is geen ongeldige
+    sessie (401 zou de client uitloggen) maar een tijdelijke botsing; de router vertaalt dit naar
+    een 409 zodat de client kort kan wachten en één keer opnieuw proberen."""
 
 
 def _hash_token(token: str) -> str:
@@ -280,11 +288,28 @@ def login(*, e_mail: str, wachtwoord: str, totp_code: str, ip_adres: str | None 
     return paar
 
 
+def _is_lock_timeout(exc: OperationalError) -> bool:
+    """SQLSTATE 55P03 (lock_not_available) = de `SET LOCAL lock_timeout` sloeg toe. Andere
+    OperationalErrors (verbinding weg e.d.) horen gewoon door te bubbelen."""
+    orig = getattr(exc, "orig", None)
+    return getattr(orig, "sqlstate", None) == "55P03"
+
+
 def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenPaar:
     """Rotatie bij elke aanroep (Auth-0010-b punt 1): het aangeboden token wordt verbruikt-
     gemarkeerd en vervangen door een nieuwe. Wordt hetzelfde token een tweede keer aangeboden
-    (gebruikt_op of ingetrokken_op al gezet), dan is dat hergebruik van een gestolen/gelekt token
-    — alle actieve sessies van de gebruiker worden dan preventief ingetrokken.
+    (gebruikt_op of ingetrokken_op al gezet), dan is dat in beginsel hergebruik van een
+    gestolen/gelekt token — alle actieve sessies van de gebruiker worden dan preventief
+    ingetrokken.
+
+    Race-tolerantie (browserreview 2026-08-07): één browser kan legitiem twee vernieuwen-calls
+    tegelijk sturen (dubbel React-effect, meerdere tabs met dezelfde cookie). Daarom (1) wordt de
+    tokenrij met FOR UPDATE gelezen zodat gelijktijdige rotaties serialiseren i.p.v. dubbel
+    uitgeven, met een lock_timeout zodat een wachter nooit eeuwig blokkeert (RotatieBezetError →
+    409, geen uitlog); en (2) geldt een korte grace-periode: hergebruik bínnen
+    `refresh_hergebruik_grace_seconds` na de rotatie is een race, geen diefstal — de verliezer
+    krijgt een vers sibling-token (zelfde voorganger, wél ge-audit), zónder revoke-all. Ná de
+    grace-periode is de replay-bescherming onverkort: revoke-all + 401.
 
     Zelfde reden als in login(): de revoke-all + audit-schrijving bij hergebruik mogen niet
     verloren gaan doordat deze functie voor de aanroeper een fout meldt — dus wordt hier nooit
@@ -296,37 +321,74 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
         raise AuthError(str(exc)) from exc
     gebruiker_id = uuid.UUID(payload["sub"])
     token_hash = _hash_token(refresh_token)
-    now = datetime.now(UTC)
 
     faal_reden: str | None = None
     paar: TokenPaar | None = None
 
-    with scoped_session(None) as session:
-        rij = session.scalars(select(RefreshToken).where(RefreshToken.token_hash == token_hash)).one_or_none()
-        if rij is None:
-            faal_reden = "onbekend"
-        elif rij.gebruikt_op is not None or rij.ingetrokken_op is not None:
-            _intrek_alle_sessies(session, gebruiker_id, now=now)
-            record_audit_event(
-                session,
-                actor_id=gebruiker_id,
-                module="platform",
-                tabel="refresh_token",
-                record_id=rij.id,
-                actie="refresh_token_hergebruik_gedetecteerd",
-                correlatie_id=uuid.uuid4(),
-                nieuwe_waarde=_login_metadata(ip_adres),
+    try:
+        with scoped_session(None) as session:
+            session.execute(
+                text("SELECT set_config('lock_timeout', :ms, true)"),
+                {"ms": f"{settings.refresh_rotatie_lock_timeout_ms}ms"},
             )
-            faal_reden = "hergebruik"
-        elif rij.verloopt_op < now:
-            faal_reden = "verlopen"
-        else:
-            gebruiker = session.get(Gebruiker, gebruiker_id)
-            if gebruiker is None or gebruiker.status != GebruikerStatus.ACTIEF:
-                faal_reden = "inactief"
+            # FOR UPDATE: een gelijktijdige rotatie van hetzelfde token wacht hier tot de winnaar
+            # gecommit heeft en leest daarna de gecommitte staat (gebruikt_op gezet) — de
+            # grace-tak hieronder handelt dat netjes af. `now` pas ná het verkrijgen van de lock
+            # bepalen, anders telt de wachttijd op de winnaar mee in de grace-vergelijking.
+            rij = session.scalars(
+                select(RefreshToken).where(RefreshToken.token_hash == token_hash).with_for_update()
+            ).one_or_none()
+            now = datetime.now(UTC)
+            if rij is None:
+                faal_reden = "onbekend"
+            elif rij.gebruikt_op is not None or rij.ingetrokken_op is not None:
+                grace = timedelta(seconds=settings.refresh_hergebruik_grace_seconds)
+                binnen_grace = (
+                    rij.ingetrokken_op is None and rij.gebruikt_op is not None and now - rij.gebruikt_op <= grace
+                )
+                gebruiker = session.get(Gebruiker, gebruiker_id)
+                if binnen_grace and gebruiker is not None and gebruiker.status == GebruikerStatus.ACTIEF:
+                    record_audit_event(
+                        session,
+                        actor_id=gebruiker_id,
+                        module="platform",
+                        tabel="refresh_token",
+                        record_id=rij.id,
+                        actie="refresh_token_hergebruik_binnen_grace",
+                        correlatie_id=uuid.uuid4(),
+                        nieuwe_waarde=_login_metadata(ip_adres),
+                    )
+                    paar = _issue_token_paar(
+                        session, gebruiker_id=gebruiker_id, rol=gebruiker.rol, voorganger_id=rij.id
+                    )
+                else:
+                    _intrek_alle_sessies(session, gebruiker_id, now=now)
+                    record_audit_event(
+                        session,
+                        actor_id=gebruiker_id,
+                        module="platform",
+                        tabel="refresh_token",
+                        record_id=rij.id,
+                        actie="refresh_token_hergebruik_gedetecteerd",
+                        correlatie_id=uuid.uuid4(),
+                        nieuwe_waarde=_login_metadata(ip_adres),
+                    )
+                    faal_reden = "hergebruik"
+            elif rij.verloopt_op < now:
+                faal_reden = "verlopen"
             else:
-                rij.gebruikt_op = now
-                paar = _issue_token_paar(session, gebruiker_id=gebruiker_id, rol=gebruiker.rol, voorganger_id=rij.id)
+                gebruiker = session.get(Gebruiker, gebruiker_id)
+                if gebruiker is None or gebruiker.status != GebruikerStatus.ACTIEF:
+                    faal_reden = "inactief"
+                else:
+                    rij.gebruikt_op = now
+                    paar = _issue_token_paar(
+                        session, gebruiker_id=gebruiker_id, rol=gebruiker.rol, voorganger_id=rij.id
+                    )
+    except OperationalError as exc:
+        if _is_lock_timeout(exc):
+            raise RotatieBezetError("Een andere vernieuwing van deze sessie is nog bezig") from exc
+        raise
 
     if paar is None:
         foutmeldingen = {

@@ -56,17 +56,56 @@ async function ruweFetch(pad: string, init: RequestInit): Promise<Response> {
   }
 }
 
-/** Stille refresh via de httpOnly-cookie — geen TOTP nodig zolang de cookie geldig is. Gooit
- * BackendOnbereikbaarError door (in plaats van 'm als gewone mislukte refresh te behandelen) zodat
- * de aanroeper (AuthContext, bij het laden van de app) dat kan onderscheiden van "gewoon niet
- * ingelogd" en een nette melding kan tonen i.p.v. stil op het login-scherm te belanden. */
-export async function verversSessie(): Promise<boolean> {
-  const resp = await ruweFetch('/auth/token/vernieuwen', { method: 'POST' })
+/** Refresh mag nooit eeuwig hangen (browserreview 2026-08-07: eindeloos "Laden…" bij een
+ * pending vernieuwen-call) — na deze termijn geldt de backend als onbereikbaar. Eigen
+ * AbortController + setTimeout i.p.v. AbortSignal.timeout(), zodat tests met fake timers kunnen
+ * sturen. */
+export const REFRESH_TIMEOUT_MS = 10_000
+
+function timeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), ms)
+  return controller.signal
+}
+
+async function voerVerversUit(): Promise<boolean> {
+  let resp = await ruweFetch('/auth/token/vernieuwen', {
+    method: 'POST',
+    signal: timeoutSignal(REFRESH_TIMEOUT_MS),
+  })
+  if (resp.status === 409) {
+    // Rotatie-botsing (backend hield de rij-lock vast voor een parallelle vernieuwing, bv. een
+    // tweede tab): geen uitlog-signaal — kort wachten en precies één keer opnieuw proberen.
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    resp = await ruweFetch('/auth/token/vernieuwen', {
+      method: 'POST',
+      signal: timeoutSignal(REFRESH_TIMEOUT_MS),
+    })
+  }
   if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
   if (!resp.ok) return false
   const body = (await resp.json()) as { access_token: string }
   accessToken = body.access_token
   return true
+}
+
+let refreshInFlight: Promise<boolean> | null = null
+
+/** Stille refresh via de httpOnly-cookie — geen TOTP nodig zolang de cookie geldig is. Gooit
+ * BackendOnbereikbaarError door (in plaats van 'm als gewone mislukte refresh te behandelen) zodat
+ * de aanroeper (AuthContext, bij het laden van de app) dat kan onderscheiden van "gewoon niet
+ * ingelogd" en een nette melding kan tonen i.p.v. stil op het login-scherm te belanden.
+ *
+ * Single-flight (browserreview 2026-08-07): één pageload kan meerdere aanroepers tegelijk hebben
+ * (dubbel React-effect onder StrictMode, 401-retries van parallelle fetches). Twee parallelle
+ * POSTs met dezelfde cookie raken server-side de hergebruik-detectie — daarom delen alle
+ * gelijktijdige aanroepers hier één in-flight promise; er loopt nooit meer dan één
+ * vernieuwen-request tegelijk vanuit dit tabblad. */
+export function verversSessie(): Promise<boolean> {
+  refreshInFlight ??= voerVerversUit().finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
 }
 
 const GEEN_RETRY_PADEN = new Set(['/auth/login', '/auth/token/vernieuwen', '/auth/logout'])
@@ -124,10 +163,20 @@ async function foutmelding(resp: Response): Promise<string> {
   return resp.statusText || `Fout (${resp.status})`
 }
 
+export const GEEN_JSON_MELDING =
+  'De server gaf een onverwacht antwoord. Probeer het opnieuw; blijft dit gebeuren, neem dan contact op met de ' +
+  'beheerder.'
+
 export async function apiJson<T>(pad: string, init: RequestInit = {}): Promise<T> {
   const resp = await apiFetch(pad, init)
   if (!resp.ok) throw new ApiError(resp.status, await foutmelding(resp))
   if (resp.status === 204) return undefined as T
+  // Vangnet op de proxy-bugklasse (browserreview 2026-08-07, derde herhaling): een pad dat
+  // buiten de dev-proxy valt krijgt Vite's SPA-fallback — index.html met status 200. Zonder deze
+  // check lekt dat als rauwe parserfout ("Unexpected token '<'") naar de UI; nu wordt het een
+  // nette ApiError. De guard-test src/api/proxyDekking.test.ts hoort dit al in CI te vangen.
+  const contentType = resp.headers.get('content-type') ?? ''
+  if (!contentType.includes('json')) throw new ApiError(resp.status, GEEN_JSON_MELDING)
   return (await resp.json()) as T
 }
 

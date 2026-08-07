@@ -31,6 +31,18 @@ class Settings(BaseSettings):
     jwt_refresh_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 dagen
     jwt_totp_setup_ttl_seconds: int = 600  # 10 min, alleen voor de TOTP-enrollment-stap
 
+    # Race-tolerante hergebruik-detectie (browserreview 2026-08-07): twee parallelle
+    # vernieuwen-calls uit dezelfde browser (dubbel useEffect/StrictMode, meerdere tabs) zijn
+    # geen tokendiefstal. Een tweede aanbieding van hetzelfde token bínnen dit venster krijgt
+    # een vers sibling-token i.p.v. revoke-all; erná geldt hergebruik onverkort als
+    # replay-signaal en gaan alle sessies dicht (Auth-0010-b). Elk binnen-grace-hergebruik
+    # wordt wél ge-audit — observeerbaar, nooit stil.
+    refresh_hergebruik_grace_seconds: int = 10
+    # Rij-lock-timeout op de rotatie-transactie (SELECT ... FOR UPDATE): een gelijktijdige
+    # rotatie van hetzelfde token wacht kort op de winnaar en krijgt daarna een deterministisch
+    # antwoord — nooit een eeuwig pending request (browserreview 2026-08-07: hang).
+    refresh_rotatie_lock_timeout_ms: int = 5000
+
     # Envelope-encryption masterkey (base64, 32 bytes) voor totp_secret at rest. Lokaal via .env;
     # in Cloud Run via Secret Manager/KMS (zie app/security/envelope.py voor het wrap-vervangbare
     # MasterKeyProvider-interface). Nooit een fallback buiten dev.

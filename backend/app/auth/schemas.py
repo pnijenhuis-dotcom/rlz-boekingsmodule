@@ -5,9 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas_basis import StrikteInvoer
-
 from app.db.models import GebruikerRol
+from app.schemas_basis import StrikteInvoer
 
 
 class UitnodigingAanmakenRequest(StrikteInvoer):

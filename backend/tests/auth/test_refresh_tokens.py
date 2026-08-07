@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import Engine, text
 
 from app.auth import service
+from app.config import settings
 from app.security.tokens import create_refresh_token
 from app.security.totp import STEP_SECONDS
 from tests.auth.conftest import ActieveGebruiker
@@ -130,13 +131,30 @@ def test_refresh_token_roteert_bij_elke_aanroep(actieve_gebruiker: ActieveGebrui
     assert derde.refresh_token != tweede.refresh_token
 
 
-def test_refresh_token_hergebruik_trekt_alle_sessies_in(
+def _verschuif_gebruikt_op_naar_verleden(admin_engine: Engine, refresh_token: str, *, seconden: int) -> None:
+    """Zet gebruikt_op terug in de tijd — simuleert hergebruik ná de grace-periode zonder in de
+    test echt te hoeven wachten."""
+    token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE platform.refresh_token SET gebruikt_op = gebruikt_op - make_interval(secs => :s) "
+                "WHERE token_hash = :h"
+            ),
+            {"s": seconden, "h": token_hash},
+        )
+
+
+def test_refresh_token_hergebruik_na_grace_trekt_alle_sessies_in(
     actieve_gebruiker: ActieveGebruiker, admin_engine: Engine
 ) -> None:
     eerste = _login(actieve_gebruiker)
     tweede = service.vernieuw_token(refresh_token=eerste.refresh_token)  # rotatie: eerste is nu "gebruikt"
+    _verschuif_gebruikt_op_naar_verleden(
+        admin_engine, eerste.refresh_token, seconden=settings.refresh_hergebruik_grace_seconds + 5
+    )
 
-    # Het al-geroteerde token opnieuw aanbieden = hergebruik-signaal.
+    # Het al-geroteerde token ná de grace-periode opnieuw aanbieden = hergebruik-signaal (replay).
     with pytest.raises(service.AuthError, match="al gebruikt"):
         service.vernieuw_token(refresh_token=eerste.refresh_token)
 
@@ -164,6 +182,40 @@ def _refresh_token_id(admin_engine: Engine, refresh_token: str) -> uuid.UUID:
         return conn.execute(
             text("SELECT id FROM platform.refresh_token WHERE token_hash = :h"), {"h": token_hash}
         ).scalar_one()
+
+
+def test_hergebruik_binnen_grace_geeft_sibling_zonder_revoke_all(
+    actieve_gebruiker: ActieveGebruiker, admin_engine: Engine
+) -> None:
+    """Race-tolerantie (browserreview 2026-08-07): twee vernieuwen-calls vlak na elkaar met
+    hetzelfde token (dubbel React-effect, tweede tab) zijn geen diefstal. De verliezer krijgt een
+    vers sibling-paar, de winnaar blijft bruikbaar, en er wordt niets ingetrokken — wél een
+    audit-spoor."""
+    eerste = _login(actieve_gebruiker)
+    winnaar = service.vernieuw_token(refresh_token=eerste.refresh_token)
+
+    # Direct opnieuw aanbieden = binnen de grace-periode → sibling-paar i.p.v. revoke-all.
+    verliezer = service.vernieuw_token(refresh_token=eerste.refresh_token)
+    assert verliezer.refresh_token != winnaar.refresh_token
+
+    assert "refresh_token_hergebruik_binnen_grace" in _audit_acties(
+        admin_engine, tabel="refresh_token", record_id=_refresh_token_id(admin_engine, eerste.refresh_token)
+    )
+
+    # Beide sessies blijven werkend: winnaar én sibling roteren gewoon door.
+    assert service.vernieuw_token(refresh_token=winnaar.refresh_token).access_token
+    assert service.vernieuw_token(refresh_token=verliezer.refresh_token).access_token
+
+
+def test_hergebruik_van_ingetrokken_token_blijft_hard_falen_ook_binnen_grace(
+    actieve_gebruiker: ActieveGebruiker, admin_engine: Engine
+) -> None:
+    """De grace-periode geldt alleen voor een net-geroteerd token — een expliciet ingetrokken
+    token (logout/revoke-all) mag er nooit doorheen."""
+    paar = _login(actieve_gebruiker)
+    service.logout(refresh_token=paar.refresh_token)
+    with pytest.raises(service.AuthError):
+        service.vernieuw_token(refresh_token=paar.refresh_token)
 
 
 def test_refresh_token_verlopen_faalt(actieve_gebruiker: ActieveGebruiker, admin_engine: Engine) -> None:

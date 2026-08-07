@@ -117,6 +117,10 @@ def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarR
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token cookie aangeleverd")
     try:
         paar = service.vernieuw_token(refresh_token=refresh_token, ip_adres=_client_ip(request))
+    except service.RotatieBezetError as exc:
+        # Bewust géén 401: de sessie is niet ongeldig, een parallelle rotatie hield de rij-lock
+        # langer vast dan de lock-timeout. De client mag kort wachten en één keer opnieuw proberen.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     _set_refresh_cookie(response, paar.refresh_token)
