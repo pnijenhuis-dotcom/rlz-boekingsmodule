@@ -116,6 +116,12 @@ class Settings(BaseSettings):
     # maakt wachten zichtbaar i.p.v. traag.
     ai_extractie_worker_concurrency: int = 1
 
+    # Omzetmodule (fase 2): marge-plausibiliteitscheck — maximale afwijking (in procentpunten)
+    # van de marge t.o.v. het historisch gemiddelde van de laatste geboekte omzetperiodes.
+    # Blokkerend buiten de bandbreedte (harde check). Historie-venster in aantal boekingen.
+    omzet_marge_bandbreedte_procentpunt: float = 30.0
+    omzet_marge_historie_boekingen: int = 8
+
     # Migratie-guard bij startup (app/db/migratie_guard.py): default fail-fast, zodat een gemiste
     # `make migrate` nooit meer een raadsel-500 wordt maar een duidelijke weigering om te starten.
     # "waarschuwen" is een bewuste uitzondering voor latere productie-scenario's (bv. een korte
