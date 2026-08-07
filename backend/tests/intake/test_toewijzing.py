@@ -113,3 +113,34 @@ class TestBepaalToewijzing:
         with scoped_session(None) as session:
             besluit = bepaal_toewijzing(session, tenaamstelling="Dubbelzinnig BV", afzender=None)
         assert besluit.administratie_id == tweede_admin
+
+
+class TestNoOpSemantiek:
+    """Vastly-port (g), 2026-08-07 — "veld/waarde aanwezig ≠ gewijzigd" gepind: dezelfde
+    handmatige toewijzing nogmaals vastleggen is een no-op (geen extra regelrijen, geen extra
+    audit_event). NB de beheer-toggles auditen bewust wél elke herbevestiging — dat is een
+    gedocumenteerde uitzondering (app/beheer/service.py), geen gemiste toepassing."""
+
+    def test_zelfde_toewijzing_opnieuw_leren_is_no_op(
+        self, administratie_heet_blow: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine
+    ) -> None:
+        from sqlalchemy import text
+
+        for _ in range(2):
+            with scoped_session(None, actor_id=gescoopte_gebruiker) as session:
+                leer_toewijzing(
+                    session,
+                    administratie_id=administratie_heet_blow,
+                    actor_id=gescoopte_gebruiker,
+                    tenaamstelling="BLOW Holding",
+                    afzender="info@blow.nl",
+                )
+        with admin_engine.connect() as conn:
+            regels = conn.execute(
+                text("SELECT count(*) FROM boekhouding.toewijzing_regel WHERE actief")
+            ).scalar_one()
+            audits = conn.execute(
+                text("SELECT count(*) FROM platform.audit_event WHERE tabel = 'toewijzing_regel'")
+            ).scalar_one()
+        assert regels == 2  # één tenaamstelling-regel + één afzender-regel, géén duplicaten
+        assert audits == 2  # alleen de eerste keer per regel — herbevestigen is geen handeling
