@@ -69,6 +69,8 @@ export interface DocumentListItemDto {
   bestandsnaam: string
   status: string
   bron: string
+  /** 'inkoopfactuur' | 'kassarapport' — kassarapport routeert naar het omzetreview-scherm. */
+  soort: string
   mogelijk_duplicaat_van: DuplicaatReferentieDto | null
   toegewezen_aan: string | null
   aangemaakt_op: string
@@ -97,6 +99,7 @@ export interface DocumentDetailDto {
   bestandsnaam: string
   status: string
   bron: string
+  soort: string
   mogelijk_duplicaat_van: DuplicaatReferentieDto | null
   toegewezen_aan: string | null
   aangemaakt_op: string
@@ -302,4 +305,68 @@ export interface MedewerkersLijstDto {
 
 export interface EigenaarDto {
   eigenaar_gebruiker_id: string | null
+}
+
+/* ---------- Omzetmodule (kassarapporten, mockup #omzetreview) ---------- */
+
+export interface OmzetRegelDto {
+  categorie: string
+  categorie_sleutel: string | null
+  omzet_bedrag: string | null
+  kostprijs_bedrag: string | null
+  omzet_ledger_id: string | null
+  taxrate_id: string | null
+  kostprijs_ledger_id: string | null
+  /** 'mapping' (onthouden) | 'nieuw' (blokkerend tot ingesteld) | 'opgeslagen'. */
+  herkomst: string
+}
+
+export interface OmzetVoorstelDto {
+  document_id: string
+  periode_start: string | null
+  periode_eind: string | null
+  rapport_totaal_omzet: string | null
+  rapport_totaal_kostprijs: string | null
+  /** In code berekend (omzet / kostprijs × 100), nooit door de AI. */
+  marge_pct: string | null
+  regels: OmzetRegelDto[]
+  voorraad_ledger_id: string | null
+  kasomzet_naam: string | null
+  opgeslagen: boolean
+  rapport_titel: string | null
+  entiteit_naam: string | null
+}
+
+export interface OmzetVoorstelMetChecksDto {
+  voorstel: OmzetVoorstelDto
+  checks: CheckRapportDto
+}
+
+export interface OmzetRegelInputDto {
+  categorie: string
+  omzet_bedrag: string | null
+  kostprijs_bedrag: string | null
+  omzet_ledger_id: string | null
+  taxrate_id: string | null
+  kostprijs_ledger_id: string | null
+}
+
+export interface OmzetVoorstelInputDto {
+  periode_start: string | null
+  periode_eind: string | null
+  rapport_totaal_omzet: string | null
+  rapport_totaal_kostprijs: string | null
+  regels: OmzetRegelInputDto[]
+  voorraad_ledger_id: string | null
+  mapping_onthouden: boolean
+}
+
+export interface OmzetBoekenResponseDto {
+  document_id: string
+  status: string
+  verkoop_rlz_id: string
+  verkoop_referentie: string | null
+  verkoop_boekstuknummer: string | null
+  memoriaal_rlz_id: string | null
+  memoriaal_boekstuknummer: string | null
 }

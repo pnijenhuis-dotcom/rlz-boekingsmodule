@@ -34,6 +34,9 @@ export function WerkvoorraadScreen() {
   const [bezig, setBezig] = useState(false)
   const [sleepActief, setSleepActief] = useState(false)
   const [toonVerwijderd, setToonVerwijderd] = useState(false)
+  // Omzetmodule: soort van de eerstvolgende upload — 'kassarapport' gaat de rapport-extractie
+  // en het omzetreview-scherm in i.p.v. de inkoopflow.
+  const [uploadSoort, setUploadSoort] = useState<'inkoopfactuur' | 'kassarapport'>('inkoopfactuur')
   const [verwijderenVoor, setVerwijderenVoor] = useState<DocumentListItemDto | null>(null)
   const [verwijderenBezig, setVerwijderenBezig] = useState(false)
   const [verwijderenFout, setVerwijderenFout] = useState<string | null>(null)
@@ -78,6 +81,7 @@ export function WerkvoorraadScreen() {
       try {
         const formData = new FormData()
         formData.append('bestand', bestand)
+        formData.append('soort', uploadSoort)
         const resultaat = await apiJson<UploadResponseDto>(`/administraties/${administratieId}/documenten`, {
           method: 'POST',
           body: formData,
@@ -96,7 +100,7 @@ export function WerkvoorraadScreen() {
         setBezig(false)
       }
     },
-    [administratieId, laadDocumenten],
+    [administratieId, laadDocumenten, uploadSoort],
   )
 
   const opBestandGekozen = (bestanden: FileList | null) => {
@@ -217,6 +221,22 @@ export function WerkvoorraadScreen() {
             Sleep hier een PDF- of UBL-bestand naartoe, of <b>blader</b>
             <br />
             <span style={{ fontSize: 12 }}>Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst.</span>
+            <br />
+            <label
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 8 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              Documentsoort
+              <select
+                aria-label="Documentsoort voor upload"
+                style={{ width: 'auto' }}
+                value={uploadSoort}
+                onChange={(e) => setUploadSoort(e.target.value as 'inkoopfactuur' | 'kassarapport')}
+              >
+                <option value="inkoopfactuur">Inkoopfactuur</option>
+                <option value="kassarapport">Kassarapport (omzetboeking)</option>
+              </select>
+            </label>
           </>
         )}
         <input
@@ -271,6 +291,9 @@ export function WerkvoorraadScreen() {
                 // vragen-view gefilterd op dit document. Een verwijderd document houdt de normale
                 // detailnavigatie (herstel-route), nooit een klik naar een niet-actiefbare vraag.
                 const isVraagRegel = d.status === 'vraag_open' && !isVerwijderd
+                // Omzetmodule: een kassarapport opent het omzetreview-scherm (mockup
+                // #omzetreview), niet het inkoop-controlescherm.
+                const isKassarapport = d.soort === 'kassarapport'
                 return (
                   <tr
                     key={d.id}
@@ -279,12 +302,15 @@ export function WerkvoorraadScreen() {
                       navigate(
                         isVraagRegel
                           ? `/vragen?administratie=${administratieId}&document=${d.id}`
-                          : `/documenten/${administratieId}/${d.id}`,
+                          : isKassarapport
+                            ? `/omzet/${administratieId}/${d.id}`
+                            : `/documenten/${administratieId}/${d.id}`,
                       )
                     }
                   >
                     <td>{d.bestandsnaam}</td>
                     <td>
+                      {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
                       <StatusChip status={d.status} />
                       {d.afwijzing && (
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
