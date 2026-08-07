@@ -806,3 +806,101 @@ RLZ kent geen enkele transactionele koppeling ertussen. De één-transactie-gara
 volledig uit de app: idempotente GUID's, vaste boekvolgorde, en bij een halve mislukking óf
 storno (actie 19) van de eerste helft óf een zichtbare "half geboekt"-foutstatus + herstel-
 retry — nooit stil één helft laten staan.
+
+## Omzetmodule — Receipts-verkenning: "losse inkomstenboeking" zonder debiteur (7 augustus 2026) — GESLAAGD
+
+Aanleiding: UI-walkthrough Peter+Claude 2026-08-07 — RLZ-UI "Verkopen → Boekingen" =
+documenttype Receipts; de UI schrijft alles via `POST /api/v1/{adminId}/Receipts/actions`.
+Rosetta-steen: concept RLZ-01-00000395 (Reference RLZ-11, € 12,10 incl., 21%, GB 8000
+"Omzet 1", géén relatie), in de UI aangemaakt en hier via de API ontleed. PoC-script:
+`verkenning/poc_receipts_schrijf.py`; audit `output/receiptspoc_audit.jsonl`, id's
+`output/receiptspoc_state.json`. Alle testboekingen gestorneerd (actie 19, geverifieerd:
+TaxSources weer leeg); de rosetta-steen en concepten blijven bewust staan.
+
+### 1. Wat een "Receipt" werkelijk is (rosetta-ontleding, read-only)
+
+- **Een Receipt ís een SalesInvoice zonder `Entity`** (`Entity: null`): DocumentType 10,
+  `DocumentCategory` "Verkoopfactuur (Omzet)" (`9138fa50-…`, systeem-categorie) met
+  `DocumentBinder` "Inkomsten" (`invoice`). Regels zijn gewone verkoopregels
+  (`Account` + `TaxRate` + `NetAmount`/`TaxAmount`, `InvoiceLineType` 4) — zelfde reeks
+  (RLZ-01) als verkoopfacturen.
+- **Routes**: er bestaat GÉÉN `Receipts/{id}` — alleen `{adminId}/Receipts` (collectie),
+  `Receipts/Actions` (collectie-niveau) en `Receipts/Totals`. Het individuele document is
+  volledig leesbaar via `SalesInvoices/{id}` mét
+  `$expand=DocumentLineList($expand=Account,TaxRate),TaxSummaryList,PaymentTermList`.
+  De Receipts-collectie zelf expandeert die lijsten NIET (blijven null).
+- ⚠️ **De Receipts-collectie ziet óók API-aangemaakte documenten** — anders dan de
+  SalesInvoices-collectie (blinde vlek uit "Omzetmodule STAP 0"). Getest met de
+  API-gemaakte vergelijkingsfactuur: 1 treffer op `Receipts?$filter=id eq …`. De
+  duplicaatbewaking-op-afstand kan hiermee dus wél (aanvulling op de lokale DB-bewaking).
+
+### 2. Schrijfvorm: POST Receipts/Actions is met Basic Auth NIET bruikbaar; PUT SalesInvoices zonder Entity WEL
+
+`POST {adminId}/Receipts/Actions` met webservice-Basic-Auth, alle geprobeerde vormen →
+`400 {"Message":"The request is invalid."}` (of kale 400): document-als-body,
+`{Type: 1, …document}`, `{Type: 0/17, Document: {…}}`, `{Document: {…}}`, `{Value: {…}}`.
+De UI-route loopt vermoedelijk op sessie-auth met een ander envelop-formaat; voor ons
+irrelevant, want:
+
+**`PUT SalesInvoices/{client-guid}` ZONDER `Entity` werkt gewoon** (payload: id, Description,
+Date, `DocumentCategory {id: 9138fa50-…}`, DocumentLineList) → 204, concept Status 1, eigen
+ReceiptNumber (RLZ-01-00000396), `Entity: null`. Boeken = normale actie 17 op
+`SalesInvoices/{id}` → Status 2, RLZ kent zelf het volgende `InvoiceNumber` toe (90003 —
+in deze run géén nummer-botsing; het bekende herstel-pad uit Omzetmodule STAP 0 blijft:
+botsing → hoogste `InvoiceNumber` uit de Receipts-collectie + 1 expliciet zetten, opnieuw 17).
+
+### 3. BESLISSENDE CHECK — btw landt correct in de aangifte, identiek aan een SalesInvoice
+
+Concept-btw-aangifte (`TaxDeclarations/1d7b1fa1-…`, periode vanaf 2026-07-01, TaxSources
+vooraf leeg). Na boeken van de entity-loze boeking (€ 10 + € 2,10):
+`TaxSources` → `{DeclaredAmount: 2.1, NetAmount: 10.0, TaxAmount: 2.1, DocumentType: 10,
+VATSourceCategory: 1}` — zelfde rubriek-categorie (1 = omzet hoog) en bedragvorm als een
+geboekte SalesInvoice mét debiteur (vergelijkingsmeting eerder die dag: identieke entry,
+DocumentType 10). RLZ toont entity-loze boekingen in de aangifte-bron als "Onbekende klant".
+
+Gemengd rapport (BLOW-case) in één document: regel 1 vrijgesteld (`4c8a31dd-…` "NL, Geen BTW
+(Vrijgesteld)", € 50, btw 0) + regel 2 21% (€ 100 + € 21) → beide regels blijven staan
+(multi-regel werkt bij SalesInvoices/Receipts gewoon — anders dan bij
+BankMutationDirectBookings, zie hieronder), TaxSummaryList per tarief, boekt op € 171.
+Aangifte: alléén de 21%-regel verschijnt (correct — vrijgestelde omzet hoort niet in de
+btw-aangifte); de vrijgestelde regel komt nergens als rubriek terecht.
+
+### 4. Betaling-veld: kaal `PaymentAccount` in de PUT wordt stil genegeerd; QuickPaymentSelection "Betaald met contant" + actie 148 werkt volledig
+
+- `PUT SalesInvoices/{id}` mét `PaymentAccount: {id: kas}` in de payload → 204, maar geen
+  effect (PaymentTermList onveranderd, geen koppeling) — stil genegeerd veld.
+- Wél werkend (zelfde mechaniek als de verwachte-betaling-flow uit de bank-schrijf-PoC):
+  `GET SalesInvoices/{id}/QuickPaymentSelections` geeft de UI-keuzes ("Betaald per bank",
+  "Betaald met PIN", …, **"Betaald met contant"** `b1f1beac-…`). `PUT` van
+  `{QuickPaymentSelection: {id}, PaymentAccount: {id: KAS (Type 3)}}` → 204; daarna actie 17
+  → Status 2 met een verwacht betaal-item (`PaymentItems`, PaymentStatus 2); **actie 148 op
+  dat betaal-item → 204: document Status 3, BasePaidAmount gevuld, en RLZ maakt ZELF de
+  kas-PaymentTransaction aan** (€ 24,20, OpenAmount 0). Voor de KAS is de bekende
+  "maakt eigen bankregel aan"-bijwerking precies gewenst gedrag (kas heeft geen feed).
+- ⚠️ Reconciliatie-detail: na storno (19) van het document blijft die door RLZ aangemaakte
+  kas-transactie STAAN (OpenAmount terug op 24,20, IsComplete stale true — zelfde stale-
+  gedrag als bekend). Storno van een contant-geboekte Receipt laat dus een open kas-regel
+  achter die een mens (of de reconciliatie) moet opruimen/herkoppelen.
+
+### 5. Vergelijkingsmateriaal: de achterhaalde kas-directboeking-PoC (zelfde dag)
+
+De eerdere STAP-0 via `BankMutationDirectBookings` tegen de kas (script
+`verkenning/poc_kasomzet_direct.py`, audit `output/kaspoc_audit.jsonl`) blijft als meting
+bruikbaar: (a) directboeking op omzet-GB + TaxRate zonder Entity boekt óók direct (Status 3)
+en landt óók correct als `VATSourceCategory: 1` in TaxSources (DocumentType 19); (b) ⚠️
+**multi-regel wordt daar STIL gereduceerd tot de laatste regel** (ook met expliciete
+regel-id's — één regel per directboeking; deelboekingen tegen dezelfde PaymentTransaction
+werken wel en sluiten de mutatie op OpenAmount 0); (c) totaalrekening als regel-Account →
+duidelijke 400 "…is een Totaalrekening…"; (d) vrijgesteld-tarief solo boekt prima en blijft
+terecht buiten de aangifte. Alles gestorneerd; één concept-huls (MIX1) bleek later door RLZ
+zelf opgeruimd (404) — concept-directboekingen zijn kennelijk niet permanent. De vier
+kas-test-PaymentTransactions (TEST-KASPOC-*) blijven bewust staan.
+
+### Conclusie voor de omzetmotor (BOUWEN = VERVOLGOPDRACHT, na review Peter)
+
+Stap 2 + 4 zijn geslaagd → de omzetmotor kan van SalesInvoice+systeemdebiteur-"Kasomzet"
+naar **entity-loze Receipts** (zelfde PUT-route, `DocumentCategory` "Verkoopfactuur (Omzet)",
+Entity weglaten): geen dummy-debiteur meer nodig, btw-aangifte identiek, multi-regel intact,
+en optioneel de contant/kas-koppeling via QuickPaymentSelection + 148. De
+`DocumentCategory`-id is administratie-specifiek te syncen (systeem-categorie met
+`HasSystemId: true` — per administratie ophalen, nooit hardcoden).
