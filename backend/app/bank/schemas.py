@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.schemas_basis import StrikteInvoer
+
 # --- bank-overzicht (klantenlijst) ---------------------------------------------------------------
 
 
@@ -118,7 +120,7 @@ class MutatiesResponse(BaseModel):
 # --- acties --------------------------------------------------------------------------------------
 
 
-class AfletterKlaarzettenInput(BaseModel):
+class AfletterKlaarzettenInput(StrikteInvoer):
     payment_item_id: uuid.UUID
 
 
@@ -127,7 +129,7 @@ class AfletterKlaarzettenResponse(BaseModel):
     uitkomst: str
 
 
-class DirectBoekenRegelInput(BaseModel):
+class DirectBoekenRegelInput(StrikteInvoer):
     ledger_id: uuid.UUID
     netto_bedrag: Decimal
     btw_bedrag: Decimal | None = None
@@ -136,7 +138,7 @@ class DirectBoekenRegelInput(BaseModel):
     omschrijving: str | None = None
 
 
-class DirectBoekenInput(BaseModel):
+class DirectBoekenInput(StrikteInvoer):
     regels: list[DirectBoekenRegelInput] = Field(min_length=1)
     omschrijving: str | None = None
     # Herkomst voor de audit/regelteller: 'handmatig' of 'vaste_regel' (akkoord op een
@@ -154,7 +156,7 @@ class DirectBoekenResponse(BaseModel):
     vaste_regel_aangemaakt: bool
 
 
-class StornoInput(BaseModel):
+class StornoInput(StrikteInvoer):
     reden: str = Field(min_length=1)
 
 
@@ -185,7 +187,7 @@ class BankRegelLijstResponse(BaseModel):
     regels: list[BankRegelResponse]
 
 
-class NieuweBankRegelInput(BaseModel):
+class NieuweBankRegelInput(StrikteInvoer):
     tegenpartij_naam: str = Field(min_length=1)
     tegenrekening_iban: str | None = None
     ledger_id: uuid.UUID

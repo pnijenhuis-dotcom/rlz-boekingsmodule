@@ -5,8 +5,10 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas_basis import StrikteInvoer
 
-class CredentialUpsertRequest(BaseModel):
+
+class CredentialUpsertRequest(StrikteInvoer):
     webservice_username: str
     wachtwoord: str
 

@@ -5,10 +5,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas_basis import StrikteInvoer
+
 from app.db.models import GebruikerRol
 
 
-class UitnodigingAanmakenRequest(BaseModel):
+class UitnodigingAanmakenRequest(StrikteInvoer):
     naam: str = Field(min_length=1)
     e_mail: str = Field(min_length=3)
     rol: GebruikerRol
@@ -22,7 +24,7 @@ class UitnodigingAanmakenResponse(BaseModel):
     verloopt_op: datetime
 
 
-class UitnodigingAccepterenRequest(BaseModel):
+class UitnodigingAccepterenRequest(StrikteInvoer):
     token: str
     wachtwoord: str
 
@@ -33,7 +35,7 @@ class UitnodigingAccepterenResponse(BaseModel):
     secret: str
 
 
-class TotpBevestigenRequest(BaseModel):
+class TotpBevestigenRequest(StrikteInvoer):
     code: str
 
 
@@ -46,17 +48,17 @@ class TokenPaarResponse(BaseModel):
     token_type: str = "bearer"
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(StrikteInvoer):
     e_mail: str
     wachtwoord: str
     totp_code: str
 
 
-class RolWijzigenRequest(BaseModel):
+class RolWijzigenRequest(StrikteInvoer):
     rol: GebruikerRol
 
 
-class ScopeToevoegenRequest(BaseModel):
+class ScopeToevoegenRequest(StrikteInvoer):
     administratie_id: uuid.UUID
 
 

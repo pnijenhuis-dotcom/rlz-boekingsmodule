@@ -5,6 +5,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
+from app.schemas_basis import StrikteInvoer
+
 
 class SyncTellingResponse(BaseModel):
     aangemaakt: int
@@ -42,7 +44,7 @@ class VendorLijstResponse(BaseModel):
     crediteuren: list[VendorOptieResponse]
 
 
-class NieuweCrediteurInput(BaseModel):
+class NieuweCrediteurInput(StrikteInvoer):
     naam: str
 
 

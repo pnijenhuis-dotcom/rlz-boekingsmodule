@@ -233,3 +233,38 @@ class TestIntakeAiToggle:
                         "VALUES (true, false) ON CONFLICT (singleton) DO NOTHING"
                     )
                 )
+
+
+class TestPersistentiePerInstelbaarVeld:
+    """Vastly-port (b), 2026-08-07: elk instelbaar veld heeft een eigen zetten→lezen-round-trip.
+    ai_extractie, bank_autoboeken en webhook_aflevering werden tot nu toe alleen als setup-helper
+    in andere tests aangeroepen — een veld dat stil niet persisteert (de Vastly-checkbox-bug)
+    viel dan nergens."""
+
+    def test_ai_extractie_ingeschakeld_persisteert(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        assert service.haal_ai_extractie_ingeschakeld_op(administratie_id=administratie_id) is False
+        service.zet_ai_extractie_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+        assert service.haal_ai_extractie_ingeschakeld_op(administratie_id=administratie_id) is True
+        overzicht = service.overzicht_administratie_instellingen()
+        rij = next(r for r in overzicht if r.administratie_id == administratie_id)
+        assert rij.ai_extractie_ingeschakeld is True
+
+    def test_bank_autoboeken_ingeschakeld_persisteert(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        assert service.haal_bank_autoboeken_ingeschakeld_op(administratie_id=administratie_id) is False
+        service.zet_bank_autoboeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+        assert service.haal_bank_autoboeken_ingeschakeld_op(administratie_id=administratie_id) is True
+
+    def test_webhook_aflevering_ingeschakeld_persisteert(self, beheerder_id: uuid.UUID) -> None:
+        assert service.haal_webhook_aflevering_ingeschakeld_op() is False
+        service.zet_webhook_aflevering_ingeschakeld(actor_id=beheerder_id, ingeschakeld=True)
+        assert service.haal_webhook_aflevering_ingeschakeld_op() is True
+        service.zet_webhook_aflevering_ingeschakeld(actor_id=beheerder_id, ingeschakeld=False)
+        assert service.haal_webhook_aflevering_ingeschakeld_op() is False

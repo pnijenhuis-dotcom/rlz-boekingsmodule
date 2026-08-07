@@ -4,8 +4,10 @@ import uuid
 
 from pydantic import BaseModel
 
+from app.schemas_basis import StrikteInvoer
 
-class GeheugenVoorstelInput(BaseModel):
+
+class GeheugenVoorstelInput(StrikteInvoer):
     """De regelomschrijving reist in de request-body, nooit in de URL (zelfde privacy-regel als
     IBAN's: URL's belanden in access-logs)."""
 

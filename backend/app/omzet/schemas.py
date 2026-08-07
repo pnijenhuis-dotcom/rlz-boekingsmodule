@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
+from app.schemas_basis import StrikteInvoer
+
 from app.documenten.schemas import CheckRapportResponse
 
 
@@ -42,7 +44,7 @@ class OmzetVoorstelMetChecksResponse(BaseModel):
     checks: CheckRapportResponse
 
 
-class OmzetRegelInputDto(BaseModel):
+class OmzetRegelInputDto(StrikteInvoer):
     categorie: str
     omzet_bedrag: Decimal | None = None
     kostprijs_bedrag: Decimal | None = None
@@ -51,7 +53,7 @@ class OmzetRegelInputDto(BaseModel):
     kostprijs_ledger_id: uuid.UUID | None = None
 
 
-class OmzetVoorstelInput(BaseModel):
+class OmzetVoorstelInput(StrikteInvoer):
     periode_start: date | None = None
     periode_eind: date | None = None
     rapport_totaal_omzet: Decimal | None = None

@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas_basis import StrikteInvoer
+
 
 class IntakeBijlageResultaatDto(BaseModel):
     bestandsnaam: str
@@ -47,25 +49,25 @@ class VerzamelbakLijstResponse(BaseModel):
     items: list[VerzamelbakItemDto]
 
 
-class ToewijzenInput(BaseModel):
+class ToewijzenInput(StrikteInvoer):
     administratie_id: uuid.UUID
 
 
-class HoortNietBijOnsInput(BaseModel):
+class HoortNietBijOnsInput(StrikteInvoer):
     reden: str
 
 
-class SplitsDeelInputDto(BaseModel):
+class SplitsDeelInputDto(StrikteInvoer):
     start_pagina: int
     eind_pagina: int
     tenaamstelling: str | None = None
 
 
-class SplitsingBevestigenInput(BaseModel):
+class SplitsingBevestigenInput(StrikteInvoer):
     delen: list[SplitsDeelInputDto]
 
 
-class SplitsingAfwijzenInput(BaseModel):
+class SplitsingAfwijzenInput(StrikteInvoer):
     reden: str | None = None
 
 

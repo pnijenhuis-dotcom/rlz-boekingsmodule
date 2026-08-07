@@ -7,6 +7,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator
 
+from app.schemas_basis import StrikteInvoer
+
 
 def _naar_decimal_met_komma(waarde: object) -> object:
     """Accepteert zowel '1234.56' als NL-notatie '1.234,56' — de frontend normaliseert vóór
@@ -42,7 +44,7 @@ class DocumentUploadResponse(BaseModel):
     mogelijk_duplicaat_van: DuplicaatReferentieResponse | None = None
 
 
-class VerwijderenInput(BaseModel):
+class VerwijderenInput(StrikteInvoer):
     """Design-pass taak 4: de reden is optioneel (bevestigingsdialoog laat 'm leeg toe), maar
     wordt hoe dan ook in de tijdlijn/audit_event vastgelegd."""
 
@@ -139,7 +141,7 @@ class BoekvoorstelResponse(BaseModel):
     samengevoegde_regel: BoekvoorstelRegelDto | None = None
 
 
-class BoekvoorstelInput(BaseModel):
+class BoekvoorstelInput(StrikteInvoer):
     vendor_id: uuid.UUID | None = None
     referentie: str | None = None
     factuurdatum: date | None = None
@@ -173,7 +175,7 @@ class BoekenResponse(BaseModel):
     rlz_boekstuknummer: str | None = None
 
 
-class VraagStellenInput(BaseModel):
+class VraagStellenInput(StrikteInvoer):
     """Vraagmodal (mockup #vraagmodal): tekst verplicht (lege vraag wordt óók in de servicelaag
     geweigerd — deze schema-eis is de eerste poort, geen vervanging), toewijzing optioneel
     (default: de administratie-eigenaar, "krijgt vragen")."""
@@ -182,11 +184,11 @@ class VraagStellenInput(BaseModel):
     toegewezen_aan: uuid.UUID | None = None
 
 
-class VraagBeantwoordenInput(BaseModel):
+class VraagBeantwoordenInput(StrikteInvoer):
     antwoord_tekst: str
 
 
-class VraagIntrekkenInput(BaseModel):
+class VraagIntrekkenInput(StrikteInvoer):
     """Intrekken (bewuste uitbreiding op de mockup, docs/BESLISSINGEN.md): reden optioneel,
     maar wordt hoe dan ook in het audit_event vastgelegd."""
 
@@ -217,7 +219,7 @@ class VraagLijstResponse(BaseModel):
     vragen: list[VraagResponse]
 
 
-class AfwijzenInput(BaseModel):
+class AfwijzenInput(StrikteInvoer):
     """Afwijsmodal (mockup #afwijsmodal): reden verplicht (lege reden wordt óók in de service-
     én DB-laag geweigerd — deze schema-eis is de eerste poort, geen vervanging), toewijzing
     "Ter controle naar" optioneel (default: de administratie-eigenaar)."""
@@ -240,7 +242,7 @@ class AfwijzingResponse(BaseModel):
     heropend_op: datetime | None = None
 
 
-class IbanAanbiedenInput(BaseModel):
+class IbanAanbiedenInput(StrikteInvoer):
     """IBAN-wissel vier-ogen-accordering (docs/ontwerp/iban-wissel-accordering.md): het nieuwe
     rekeningnummer reist in de request-body, nooit in de URL (privacy — URL's belanden in
     access-logs). `soort` is context voor de accordeur (G-rekening/WKA is de norm-casus)."""
@@ -249,7 +251,7 @@ class IbanAanbiedenInput(BaseModel):
     soort: Literal["regulier", "g_rekening"]
 
 
-class IbanAfwijzenInput(BaseModel):
+class IbanAfwijzenInput(StrikteInvoer):
     """Afwijzen van een IBAN-aanvraag: reden verplicht (schema is de eerste poort; service- en
     DB-laag weigeren een lege reden ook)."""
 
@@ -283,5 +285,5 @@ class IbanAccordeursResponse(BaseModel):
     accordeurs: list[uuid.UUID]
 
 
-class IbanAccordeursInput(BaseModel):
+class IbanAccordeursInput(StrikteInvoer):
     accordeurs: list[uuid.UUID]

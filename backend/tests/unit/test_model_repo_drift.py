@@ -51,6 +51,11 @@ CONTRACTEN: list[tuple[type[BaseModel], Callable]] = [
 # hieronder controleert bovendien dat elke vermelding hier écht **kwargs heeft (geen dode marker).
 BLINDE_VLEKKEN: set[Callable] = set()
 
+# Parameters die niet uit de request-body maar uit de route/auth komen (padparameter, ingelogde
+# gebruiker, scope) — de omgekeerde drift-toets (verplichte parameter zonder modelveld) slaat
+# die over. Nieuw route-geleverd argument? Hier toevoegen, met deze motivering als lat.
+ROUTE_GELEVERD: set[str] = {"actor_id", "administratie_id", "document_id", "accordering_id"}
+
 
 def _parameters_van(functie: Callable) -> tuple[set[str], bool]:
     """(parameternamen, heeft **kwargs) van de signatuur."""
@@ -78,6 +83,28 @@ class TestContractregister:
                     f"{model.__name__} -> {functie.__module__}.{functie.__qualname__}: veld(en) "
                     f"{sorted(ontbrekend)} bestaan niet in de signatuur — model en repo-functie "
                     "zijn uit de pas (drift)"
+                )
+        assert not fouten, "\n".join(fouten)
+
+    def test_verplichte_parameters_hebben_een_modelveld(self) -> None:
+        """De OMGEKEERDE richting (Vastly-port b, 2026-08-07): een verplichte functieparameter
+        die niet route-geleverd is en géén modelveld heeft, betekent dat elke aanroep via dit
+        model per definitie een TypeError wordt — dezelfde drift, andere kant op."""
+        fouten: list[str] = []
+        for model, functie in CONTRACTEN:
+            signatuur = inspect.signature(functie)
+            verplicht = {
+                naam
+                for naam, p in signatuur.parameters.items()
+                if p.default is inspect.Parameter.empty
+                and p.kind not in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
+            }
+            ontbrekend = verplicht - ROUTE_GELEVERD - set(model.model_fields)
+            if ontbrekend:
+                fouten.append(
+                    f"{model.__name__} -> {functie.__module__}.{functie.__qualname__}: verplichte "
+                    f"parameter(s) {sorted(ontbrekend)} hebben geen modelveld en zijn niet "
+                    "route-geleverd (ROUTE_GELEVERD) — drift in de omgekeerde richting"
                 )
         assert not fouten, "\n".join(fouten)
 
@@ -140,3 +167,56 @@ class TestAstSweep:
             "**model_dump()-spread(s) gevonden buiten het contractregister — registreer het "
             "(model, functie)-paar in tests/unit/test_model_repo_drift.py::CONTRACTEN:\n" + "\n".join(onbekend)
         )
+
+
+class TestStrikteInvoer:
+    """`extra="forbid"` op elk request-body-model (Vastly-port b, 2026-08-07): een onbekend of
+    verkeerd gespeld veld is een 422 mét veldnaam, nooit stil genegeerd. De sweep vindt modellen
+    op naamconventie (In/Input/Patch/Request/Invoer + de beheer-Dto's die als PUT-body dienen);
+    een nieuw request-model dat niet van app.schemas_basis.StrikteInvoer erft, faalt hier."""
+
+    _NAAMPATROON = ("Input", "Request", "Patch", "Invoer", "InputDto")
+    # Dto's die (ook) als request-body dienen maar de naamconventie niet volgen.
+    _EXPLICIET = {
+        "app.beheer.schemas": {
+            "BoekenIngeschakeldDto",
+            "WebhookAfleveringDto",
+            "IntakeAiDto",
+            "ProjectVerplichtDto",
+            "AiExtractieIngeschakeldDto",
+            "EigenaarDto",
+        },
+    }
+
+    def _request_modellen(self) -> list[type[BaseModel]]:
+        import importlib
+
+        modellen: list[type[BaseModel]] = []
+        for pad in sorted(_APP_ROOT.rglob("schemas*.py")):
+            module_naam = ".".join(pad.relative_to(_APP_ROOT.parent).with_suffix("").parts)
+            module = importlib.import_module(module_naam)
+            expliciet = self._EXPLICIET.get(module_naam, set())
+            for naam in dir(module):
+                obj = getattr(module, naam)
+                if not (isinstance(obj, type) and issubclass(obj, BaseModel) and obj is not BaseModel):
+                    continue
+                if obj.__module__ != module_naam:
+                    continue  # re-export uit een andere module — daar getoetst
+                if naam.endswith(self._NAAMPATROON) or naam in expliciet:
+                    modellen.append(obj)
+        return modellen
+
+    def test_sweep_vindt_de_bekende_modellen(self) -> None:
+        namen = {m.__name__ for m in self._request_modellen()}
+        # Steekproef over de modules heen — beschermt tegen een sweep die stil niets vindt.
+        assert {"BoekvoorstelInput", "LoginRequest", "DirectBoekenInput", "ToewijzenInput",
+                "OmzetVoorstelInput", "IntakeAiDto", "NieuweCrediteurInput"} <= namen
+
+    def test_elk_request_model_weigert_onbekende_velden(self) -> None:
+        fouten = [
+            f"{m.__module__}.{m.__name__}: model_config extra={m.model_config.get('extra')!r} — "
+            "erf van app.schemas_basis.StrikteInvoer"
+            for m in self._request_modellen()
+            if m.model_config.get("extra") != "forbid"
+        ]
+        assert not fouten, "\n".join(fouten)

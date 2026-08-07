@@ -4,24 +4,26 @@ import uuid
 
 from pydantic import BaseModel
 
+from app.schemas_basis import StrikteInvoer
 
-class BoekenIngeschakeldDto(BaseModel):
+
+class BoekenIngeschakeldDto(StrikteInvoer):
     ingeschakeld: bool
 
 
-class WebhookAfleveringDto(BaseModel):
+class WebhookAfleveringDto(StrikteInvoer):
     ingeschakeld: bool
 
 
-class IntakeAiDto(BaseModel):
+class IntakeAiDto(StrikteInvoer):
     ingeschakeld: bool
 
 
-class ProjectVerplichtDto(BaseModel):
+class ProjectVerplichtDto(StrikteInvoer):
     verplicht: bool
 
 
-class AiExtractieIngeschakeldDto(BaseModel):
+class AiExtractieIngeschakeldDto(StrikteInvoer):
     ingeschakeld: bool
 
 
@@ -52,7 +54,7 @@ class MedewerkersLijstDto(BaseModel):
     medewerkers: list[MedewerkerDto]
 
 
-class EigenaarDto(BaseModel):
+class EigenaarDto(StrikteInvoer):
     """Mockup Instellingen "Eigenaar (krijgt vragen)": default-toewijzing voor nieuwe vragen.
     None = geen eigenaar (vraag stellen vereist dan een expliciete toewijzing)."""
 
