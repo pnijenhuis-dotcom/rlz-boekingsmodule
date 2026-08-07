@@ -121,17 +121,33 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
   verplichte velden, IBAN-wissel, vraag-blokkeert-boeken, afwijzen-met-verplichte-reden en
-  webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02) én memoriaal-saldo-0
-  (omzetmodule, 2026-08-07) zijn gebouwd + getest; **nog niet gebouwd:** VGB-prefixfilter
-  (vóór gedeelde administraties), per-leverancier-autoboeken-opt-in (vóór eerste autoboek).
+  webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02), memoriaal-saldo-0
+  (omzetmodule, 2026-08-07) én het VGB-prefixfilter (e-mail-intake, 2026-08-07 — dekt het
+  intake-kanaal; bij een latere leesroute uit gedeelde administraties dáár opnieuw toepassen)
+  zijn gebouwd + getest; **nog niet gebouwd:** per-leverancier-autoboeken-opt-in
+  (vóór eerste autoboek).
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
 - **Verzamelbak "Niet toegewezen"**: alles wat niet eenduidig aan een administratie koppelt
   (tenaamstelling leidend, afzender = hint); leert van handmatige toewijzingen; "hoort niet bij
   ons" met reden. Nooit auto-toewijzen bij twijfel.
+  **Bouwstatus: GEBOUWD + GETEST (2026-08-07, met de e-mail-intake)** — migratie 0028 +
+  `backend/app/intake/` + `frontend/src/intake/`; details BESLISSINGEN "E-mail-intake +
+  verzamelbak — GEBOUWD + GETEST". Eigen naamnormalisatie: "Holding" blijft onderscheidend
+  (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
+  tenaamstelling-signaal.
 - **E-mail intake**: één centraal adres, splitsen van multi-factuur-PDF's op factuurgrenzen,
   toewijzen op tenaamstelling.
+  **Bouwstatus: GEBOUWD + GETEST (2026-08-07)** — .eml-upload (`POST /intake/eml` + werkvoorraad-
+  uploadzone) is het werkende kanaal, idempotent op Message-ID; de live IMAP-fetch is een
+  gemarkeerde seam (`app/intake/postvak.py` + intake_imap_*-settings) die bij de GCP-uitrol
+  geactiveerd wordt. Routing per bijlage: kapotte/NLCIUS-invalide UBL → verzamelbak (§2d-
+  failsafe), VGB → genegeerd-maar-zichtbaar, VASTLY-VERKOOP → soort 'verkoopfactuur' (boekpad =
+  open vervolg op de herbruikbare SalesInvoice-motor), inkoop-UBL → tenaamstelling-toewijzing,
+  PDF → intake-AI achter de platform-brede AVG-gate `intake_ai_ingeschakeld` (default UIT).
+  Multi-factuur-splitsing: AI-voorstel ALTIJD eerst ter controle, bevestigen = deterministische
+  pypdf-splitsing, bron-document terminaal `gesplitst`.
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,

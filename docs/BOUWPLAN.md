@@ -585,6 +585,13 @@ UI-eisen):
   voor huurder-accounts t.b.v. vastgoed native app) + push als platform-service met topics per
   module — moet af vóór vastgoed-fase 3.
 - E-mail intake (centraal adres, IMAP/Graph), multi-factuur-PDF-splitsing, verzamelbak-leren.
+  **→ GEBOUWD + GETEST (2026-08-07, vooruitgetrokken — zie docs/BESLISSINGEN.md "E-mail-intake +
+  verzamelbak — GEBOUWD + GETEST"):** migratie 0028, `app/intake/` (eml-parsing, routing §2d/VGB/
+  tenaamstelling, toewijzings-geheugen, splitsing-ter-controle, verzamelbak-acties),
+  intake-AI-gate (default UIT), verzamelbak-paneel + .eml-upload in de werkvoorraad.
+  **Open:** live IMAP/Cloud Scheduler-fetch = gemarkeerde seam (activeren bij de GCP-uitrol);
+  verkoopfactuur-reviewscherm/boekpad voor Vastly-documenten (keuzes aan Peter voorgelegd);
+  "verkeerde tenaamstelling"-mailflow wacht op platform-e-mailverzending.
 - Rollenmodel volledig (module-zichtbaarheid per rol).
 
 ## Fase 4 — Projectenmodule
