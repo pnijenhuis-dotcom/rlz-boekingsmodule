@@ -130,7 +130,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    # Expliciete methodenlijst i.p.v. "*" (Vastly-regressie 2026-07-14, geport 2026-08-07):
+    # een wildcard verbergt dat een methode ontbreekt tot een preflight in de browser faalt —
+    # met een "Failed to fetch" zonder serverlog-regel als enige symptoom. De preflight-
+    # regressietest (tests/unit/test_cors_foutantwoorden.py) toetst élke methode hieronder.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 app.include_router(auth_router)

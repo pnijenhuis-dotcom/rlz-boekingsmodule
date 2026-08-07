@@ -59,3 +59,25 @@ class TestCorsOpFoutantwoorden:
             client.get(kapotte_route, headers={"Origin": _ORIGIN})
         assert any("Onverwachte fout" in record.getMessage() for record in caplog.records)
         assert any(record.exc_info is not None for record in caplog.records)
+
+
+class TestCorsPreflightMethoden:
+    """Preflight-regressietest (geport uit Vastly 2026-08-07): elke methode die de frontend
+    gebruikt moet expliciet in allow_methods staan — een ontbrekende methode faalt in de browser
+    als een geweigerde preflight ("Failed to fetch") zonder enige serverlog-regel. Bewust een
+    expliciete lijst in app/main.py i.p.v. "*": de test benoemt dan precies welke methode mist."""
+
+    @pytest.mark.parametrize("methode", ["GET", "POST", "PUT", "PATCH", "DELETE"])
+    def test_preflight_staat_gebruikte_methoden_toe(self, methode: str) -> None:
+        client = TestClient(app)
+        response = client.options(
+            "/instellingen/intake-ai",
+            headers={
+                "Origin": _ORIGIN,
+                "Access-Control-Request-Method": methode,
+                "Access-Control-Request-Headers": "content-type,authorization",
+            },
+        )
+        assert response.status_code == 200, f"{methode}: {response.text}"
+        assert methode in response.headers.get("access-control-allow-methods", "")
+        assert response.headers.get("access-control-allow-origin") == _ORIGIN
