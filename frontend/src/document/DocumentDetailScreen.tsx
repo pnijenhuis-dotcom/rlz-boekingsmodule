@@ -321,7 +321,8 @@ export function DocumentDetailScreen() {
     <div>
       <div className="topbar">
         <h1>
-          <Link to="/">← Werkvoorraad</Link> <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/</span>{' '}
+          <Link to={`/?administratie=${administratieId}`}>← Werkvoorraad</Link>{' '}
+          <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/</span>{' '}
           {detail.bestandsnaam}
         </h1>
         <div className="adm-select">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
+import { FoutMelding } from '../ui/FoutMelding'
 import {
   bevestigSplitsing,
   haalVerzamelbakOp,
@@ -58,7 +59,13 @@ export function VerzamelbakPaneel({
 
   if (items === null || items.length === 0) {
     // Mockup: leeg = paneel onzichtbaar. Een laadfout tonen we wel — nooit stil.
-    return fout ? <div className="fout">Verzamelbak niet beschikbaar: {fout}</div> : null
+    return fout ? (
+      <FoutMelding
+        melding='De verzamelbak "Niet toegewezen" kon niet geladen worden.'
+        detail={fout}
+        onOpnieuw={laad}
+      />
+    ) : null
   }
 
   return (

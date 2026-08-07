@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { FoutMelding } from '../ui/FoutMelding'
 import { haalBankOverzicht, type BankKlantDto } from './bankApi'
 
 function formatDatumKort(iso: string | null): string {
@@ -15,9 +16,12 @@ export function BankOverzichtScreen() {
   const navigate = useNavigate()
   const [klanten, setKlanten] = useState<BankKlantDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
+  const [herlaadTeller, setHerlaadTeller] = useState(0)
 
   useEffect(() => {
     let actief = true
+    setFout(null)
+    setKlanten(null)
     haalBankOverzicht()
       .then((data) => {
         if (actief) setKlanten(data.klanten)
@@ -28,20 +32,26 @@ export function BankOverzichtScreen() {
     return () => {
       actief = false
     }
-  }, [])
+  }, [herlaadTeller])
 
   if (fout) {
     return (
-      <div className="panel" style={{ margin: 24 }}>
-        <p className="hint">Bank-overzicht kon niet geladen worden: {fout}</p>
+      <div style={{ margin: 24 }}>
+        <FoutMelding
+          melding="Het bank-overzicht kon niet geladen worden."
+          detail={fout}
+          onOpnieuw={() => setHerlaadTeller((t) => t + 1)}
+        />
       </div>
     )
   }
   if (klanten === null) {
     return (
-      <p className="hint" style={{ padding: 24 }}>
-        Laden…
-      </p>
+      <div className="panel" style={{ margin: 24 }} aria-busy="true">
+        <span className="skeleton" style={{ width: '35%', marginBottom: 10 }} />
+        <span className="skeleton" style={{ width: '65%', marginBottom: 6 }} />
+        <span className="skeleton" style={{ width: '55%' }} />
+      </div>
     )
   }
 
