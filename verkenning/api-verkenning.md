@@ -733,3 +733,76 @@ Verbreed na de fallback-PoC (2 augustus 2026): acties 34 en 218 toegevoegd.
 > Testomgeving: RLZ-test-administratie "Administratiekantoor Nijenhuis"
 > (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), webservice-login AK_NijenClaude. Testdata
 > herkenbaar aan referenties die met `TEST-BANKPOC-` of `TEST-BANKFB-` beginnen.
+
+## Omzetmodule STAP 0 — write-path SalesInvoice + ManualJournal + Kasomzet (7 augustus 2026) — GESLAAGD, geen blockers
+
+Uitgevoerd tegen de test-administratie (`8dbfb856-…3fc5`) met `verkenning/poc_omzet_schrijf.py`
+(zelfde waarborgen als de bank-PoC's: admin-pin, kill switch, TEST-referenties, audit-JSONL in
+`output/omzetpoc_audit.jsonl`, opruimen via actie 19). Alles gestorneerd; de testdebiteur en de
+concept-documenten blijven bewust staan (nooit delete).
+
+### 1. SalesInvoice: PUT + /Uploads + actie 17 werken — mét twee verrassingen
+
+- `PUT SalesInvoices/{client-guid}` met `Entity:{id: customerGuid}` + `DocumentLineList`
+  (per regel `Account`, `TaxRate`, `NetAmount`, `TaxAmount`, `Description`) + `Date`
+  (ISO-datetime) → 204. RLZ berekent totalen zelf (100+21+50+10,50 → `BaseInvoiceAmount`
+  181,50 ✓). `ReceiptNumber` (RLZ-01-reeks) al gezet bij de PUT, zelfde als inkoop.
+- `PUT SalesInvoices/{id}/Uploads/{upload-guid}` (PDF-bijlage) → 204, zelfde vorm als inkoop.
+- **⚠️ `Reference` is bij SalesInvoices NIET van ons**: RLZ overschrijft de meegegeven waarde
+  met zijn eigen verkoopnummering (`RLZ-{InvoiceNumber}`, prefix uit de
+  administratie-instellingen). `InvoiceNumber` (int) is wél expliciet zetbaar via PUT.
+- **⚠️ Auto-toegekend `InvoiceNumber` kan botsen bij boeken**: RLZ's nummerteller stond in de
+  test-administratie op 1 terwijl er een geboekte `RLZ-1` uit 2014 (import) bestond → actie 17
+  gaf `400 "Dit factuurnummer is al in gebruik"`. Na expliciete `PUT {id, InvoiceNumber: 90001}`
+  (partiële PUT liet de regels intact) boekte actie 17 wél: Status 2, open post 181,50.
+  Bouwlijn: RLZ's nummer laten toekennen; bij deze specifieke 400 een deterministische
+  herstel-PUT met expliciet nummer, daarna zichtbare boekfout.
+- Actie 19 op een geboekte SalesInvoice → Status 1 (zelfde heropen-gedrag als inkoop/memoriaal).
+
+### 2. ⚠️ De SalesInvoices-COLLECTIE ziet API-aangemaakte facturen niet
+
+`GET SalesInvoices` (collectie) toont uitsluitend de historische (UI-/import-)facturen —
+ons via de API aangemaakte en geboekte document verschijnt er niet in, ook niet na 45s, zelfs
+niet met `$filter=id eq {guid}` (terwijl `GET SalesInvoices/{guid}` het document gewoon geeft,
+en de PurchaseInvoices- en ManualJournals-collecties wél vers zijn — TEST-BANKPOC-INV1 en
+TEST-OMZETPOC-MEM1 direct vindbaar op `$filter=Reference eq …`).
+**Consequentie: een RLZ-side duplicaatquery à la `find_purchase_invoices_by_reference` bestaat
+voor de verkoopkant niet.** Duplicaatbewaking omzet = (a) lokaal per (administratie, periode),
+(b) idempotente client-GUID's + GET-op-eigen-GUID als retry-inhaal, (c) RLZ-side check op de
+gekoppelde kostprijsmemoriaal-Reference (ManualJournals-collectie is wél betrouwbaar).
+Handmatig in de RLZ-UI geboekte omzet voor dezelfde periode is via de API dus niet
+detecteerbaar op de verkoopfactuur — beperking benoemd in het reviewscherm-ontwerp.
+
+### 3. ManualJournal: her-verificatie PoC 2 tegen de test-administratie, nu mét bijlage
+
+- `PUT ManualJournals/{client-guid}?autoCorrect=false` met `JournalEntryDiary:{id}` + regels
+  (`CreditOrDebit` 1=debet/2=credit, `DebitAmount`/`CreditAmount`) → 204, `BalanceAmount` 0.
+  Dagboek "Systeemboek voor Algemene Memoriaalboekingen" heeft in de test-administratie
+  hetzelfde GUID als bij BLOW (`b4407a30-6f3d-f7f6-be6c-e2a8ba43ab1e`) — lijkt een RLZ-breed
+  systeem-GUID, maar blijft per administratie opgevraagd worden (nooit hardcoden).
+- `PUT ManualJournals/{id}/Uploads/{upload-guid}` → 204 (bijlage-mechanisme ook hier bevestigd).
+- Actie 17 → **Status 3** (saldo 0, niets open — conform de DocumentStatus-semantiek),
+  `ReceiptNumber` RLZ-06-reeks, `Reference` blijft de ónze (TEST-OMZETPOC-MEM1) — anders dan
+  bij SalesInvoices. Actie 19 → Status 1.
+
+### 4. Saldo ≠ 0: RLZ accepteert de PUT, maar weigert boeken
+
+Niet-sluitend memoriaal (debet 10 / credit 7, `autoCorrect=false`): PUT → 204, concept met
+`BalanceAmount` −3,00 (teken: credit − debet). Actie 17 → `400 "De credit- en debetbedragen
+van de regels zijn niet aan elkaar gelijk …"`. **Onze harde check memoriaal-saldo-0 is dus een
+dubbele waarborg (fail-fast in het reviewscherm), RLZ dwingt het bij boeken zelf ook af.**
+
+### 5. Systeemdebiteur "Kasomzet": bestaat niet per definitie — aanmaken werkt als bij crediteuren
+
+Geen Customer met "Kasomzet" in de test-administratie. `PUT Customers/{client-guid}`
+`{id, Name}` → 204, `EntityKind` 1, `DueDays` 14 default — exact dezelfde vorm als
+Vendors-aanmaak (fix 2-patroon). Bouwlijn: per administratie bij de eerste omzetboeking de
+systeemdebiteur idempotent aanmaken (deterministisch UUIDv5 op administratie+naam).
+
+### 6. "Als één transactie" is per definitie ónze verantwoordelijkheid
+
+Elke stap (PUT verkoop, PUT memoriaal, uploads, twee keer actie 17) is een losse HTTP-call;
+RLZ kent geen enkele transactionele koppeling ertussen. De één-transactie-garantie komt dus
+volledig uit de app: idempotente GUID's, vaste boekvolgorde, en bij een halve mislukking óf
+storno (actie 19) van de eerste helft óf een zichtbare "half geboekt"-foutstatus + herstel-
+retry — nooit stil één helft laten staan.
