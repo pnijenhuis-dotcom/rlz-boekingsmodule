@@ -430,6 +430,11 @@ def upload_document(
     bron: DocumentBron = DocumentBron.UPLOAD,
     soort: DocumentSoort = DocumentSoort.INKOOPFACTUUR,
     wachtrij: ExtractieWachtrij | None = None,
+    # E-mail-intake-herkomst (migratie 0028) — alleen gevuld voor documenten uit de intake.
+    intake_bericht_id: uuid.UUID | None = None,
+    afzender_hint: str | None = None,
+    tenaamstelling: str | None = None,
+    gesplitst_uit_id: uuid.UUID | None = None,
 ) -> UploadResultaat:
     """Slaat het bestand op, detecteert mogelijke duplicaten (sha256, binnen dezelfde
     administratie) en start de extractie: klein = synchroon binnen deze request (snelle
@@ -462,6 +467,10 @@ def upload_document(
             status=DocumentStatus.ONTVANGEN,
             mogelijk_duplicaat_van_id=bestaand.id if bestaand else None,
             opslag_pad=opslag_pad,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender_hint,
+            tenaamstelling=tenaamstelling,
+            gesplitst_uit_id=gesplitst_uit_id,
         )
         session.add(document)
         session.flush()
@@ -524,6 +533,109 @@ def upload_document(
         mogelijk_duplicaat_van_id=mogelijk_duplicaat_van_id,
         mogelijk_duplicaat_van=mogelijk_duplicaat_van,
     )
+
+
+def registreer_niet_toegewezen_document(
+    *,
+    bestandsnaam: str,
+    inhoud: bytes,
+    actor_id: uuid.UUID,
+    reden: str,
+    bron: DocumentBron = DocumentBron.EMAIL,
+    soort: DocumentSoort = DocumentSoort.INKOOPFACTUUR,
+    opslag: DocumentOpslag | None = None,
+    intake_bericht_id: uuid.UUID | None = None,
+    afzender_hint: str | None = None,
+    tenaamstelling: str | None = None,
+    gesplitst_uit_id: uuid.UUID | None = None,
+    suggestie_administratie_id: uuid.UUID | None = None,
+    suggestie_bron: str | None = None,
+) -> uuid.UUID:
+    """Verzamelbak-intake (e-mail-intake, migratie 0028): een document dat niet eenduidig aan een
+    administratie te koppelen is — administratie_id NULL, status niet_toegewezen, mét de reden en
+    de beste suggestie zichtbaar. "Niets verdwijnt stil": élk niet-toewijsbaar document wordt een
+    rij die een mens in de verzamelbak ziet. Extractie start hier bewust NIET — die draait pas na
+    toewijzing, onder de AVG-gate van de gekozen administratie."""
+    opslag = opslag or _standaard_opslag()
+    document_id = uuid.uuid4()
+    opslag_pad = f"niet_toegewezen/{document_id}{Path(bestandsnaam).suffix.lower()}"
+    opslag.opslaan(pad=opslag_pad, inhoud=inhoud)
+
+    with scoped_session(None, actor_id=actor_id) as session:
+        document = Document(
+            id=document_id,
+            administratie_id=None,
+            bron=bron,
+            soort=soort.value,
+            bestandsnaam=bestandsnaam,
+            sha256_hash=_hash(inhoud),
+            status=DocumentStatus.ONTVANGEN,
+            opslag_pad=opslag_pad,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender_hint,
+            tenaamstelling=tenaamstelling,
+            gesplitst_uit_id=gesplitst_uit_id,
+            toewijzing_suggestie_administratie_id=suggestie_administratie_id,
+            toewijzing_suggestie_bron=suggestie_bron,
+        )
+        session.add(document)
+        session.flush()
+        session.add(
+            DocumentGebeurtenis(
+                id=uuid.uuid4(),
+                document_id=document_id,
+                van_status=None,
+                naar_status=DocumentStatus.ONTVANGEN,
+                actor_id=actor_id,
+                detail={"intake": reden},
+            )
+        )
+        _schrijf_overgang(
+            session,
+            document=document,
+            naar=DocumentStatus.NIET_TOEGEWEZEN,
+            actor_id=actor_id,
+            detail={"reden": reden, "tenaamstelling": tenaamstelling, "afzender": afzender_hint},
+        )
+    return document_id
+
+
+def start_extractie_na_toewijzing(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    opslag: DocumentOpslag | None = None,
+    wachtrij: ExtractieWachtrij | None = None,
+) -> DocumentStatus:
+    """Tweede helft van een verzamelbak-toewijzing: het document staat inmiddels op ONTVANGEN
+    mét administratie — vanaf hier exact dezelfde klein-vs-groot-extractieroute als een verse
+    upload (incl. AVG-gate van de gekozen administratie en de kassarapport-hook)."""
+    opslag = opslag or _standaard_opslag()
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        inhoud = opslag.lezen(pad=document.opslag_pad)
+        wachtrij_detail = _groot_document_detail(session, document=document, inhoud=inhoud)
+        if wachtrij_detail is not None:
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.EXTRACTIE_WACHTRIJ,
+                actor_id=actor_id,
+                detail=wachtrij_detail,
+            )
+        else:
+            _start_extractie(session, document=document, actor_id=actor_id, opslag=opslag)
+        eind_status = document.status
+        soort = document.soort
+
+    if wachtrij_detail is not None:
+        (wachtrij or _standaard_wachtrij()).enqueue(administratie_id=administratie_id, document_id=document_id)
+    else:
+        _na_extractie_hook(administratie_id=administratie_id, document_id=document_id, soort=soort)
+    return eind_status
 
 
 @dataclass(frozen=True)

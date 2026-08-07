@@ -244,6 +244,14 @@ def boek_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
         if document.status not in _KAN_BOEKPOGING_STARTEN_VANUIT:
             raise OngeldigeBoekpoging(f"Document staat op status {document.status.value}, kan niet boeken")
+        # Poort op documentsoort (migratie 0027/0028): deze motor boekt uitsluitend
+        # PurchaseInvoices — een kassarapport gaat via app/omzet/boeken.py, een
+        # Vastly-verkoopfactuur (§2d) via het (nog te bouwen) verkoopfactuur-reviewpad op de
+        # omzetmotor. Nooit stil het verkeerde documenttype in de inkoop-motor.
+        if document.soort != "inkoopfactuur":
+            raise OngeldigeBoekpoging(
+                f"Document heeft soort {document.soort} — deze boekactie is alleen voor inkoopfacturen"
+            )
         bestandsnaam = document.bestandsnaam
         opslag_pad = document.opslag_pad
         rlz_admin_id = rlz_admin_id_voor(administratie_id)
