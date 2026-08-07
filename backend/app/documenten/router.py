@@ -5,7 +5,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
-from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope
+from app.auth import service as auth_service
+from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder, vereis_administratie_scope
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import afwijzen, boeken, boekvoorstel, iban_accordering, leverancier_iban, schemas, service, vragen
@@ -122,6 +123,35 @@ async def document_uploaden(
     )
 
 
+@router.get("/werkvoorraad/overzicht", response_model=schemas.WerkvoorraadOverzichtResponse)
+def werkvoorraad_overzicht(
+    actor: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> schemas.WerkvoorraadOverzichtResponse:
+    """Werkvoorraad-klantenlijst met tellers (mockup #werkvoorraad "Overzicht per klant") —
+    uitsluitend administraties binnen de scope van de gebruiker (zelfde bron als
+    GET /auth/administraties; zelfde patroon als GET /bank/overzicht). Alle administraties komen
+    mee; de frontend toont alleen klanten mét openstaand werk en vermeldt het aantal verborgen."""
+    administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+    klanten = service.werkvoorraad_overzicht(
+        administratie_ids_met_naam=[(a.id, a.naam) for a in administraties]
+    )
+    return schemas.WerkvoorraadOverzichtResponse(
+        klanten=[
+            schemas.WerkvoorraadKlantResponse(
+                administratie_id=k.administratie_id,
+                naam=k.naam,
+                te_controleren=k.te_controleren,
+                klaar_om_te_boeken=k.klaar_om_te_boeken,
+                vragen=k.vragen,
+                afgewezen=k.afgewezen,
+                bij_klant=k.bij_klant,
+                iban_wachtend=k.iban_wachtend,
+            )
+            for k in klanten
+        ]
+    )
+
+
 @router.get(
     "/administraties/{administratie_id}/documenten",
     response_model=schemas.DocumentListResponse,
@@ -148,6 +178,9 @@ def documenten_lijst(
                 aangemaakt_op=item.document.aangemaakt_op,
                 laatst_gewijzigd_op=item.document.laatst_gewijzigd_op,
                 afwijzing=_naar_afwijzing_info(afwijzingen.get(item.document.id)),
+                leverancier=item.leverancier,
+                totaalbedrag=item.totaalbedrag,
+                factuurdatum=item.factuurdatum,
             )
             for item in items
         ]

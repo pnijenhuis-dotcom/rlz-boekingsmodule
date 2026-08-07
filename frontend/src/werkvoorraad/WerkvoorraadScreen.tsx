@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
 import { verwerkEml } from '../intake/intakeApi'
+import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
-import { extractieActief } from './status'
+import { Klantenlijst } from './Klantenlijst'
+import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
 import { useAdministraties } from './useAdministraties'
 import { VerwijderDialog } from './VerwijderDialog'
@@ -21,11 +23,161 @@ function formatDatumKort(iso: string): string {
   return new Date(iso).toLocaleDateString('nl-NL', { dateStyle: 'medium' })
 }
 
+function formatBedrag(bedrag: string | null): string {
+  if (bedrag === null) return '—'
+  const numeriek = Number(bedrag)
+  if (Number.isNaN(numeriek)) return '—'
+  return numeriek.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })
+}
+
+/** Mockup-flow (browserreview 2026-08-07 punt 3): de werkvoorraad opent als klantenlijst met
+ * tellers (#werkvoorraad); een klik op een klant opent de documentenlijst van die administratie
+ * (#klantpagina) met breadcrumb terug. De verzamelbak en de .eml-intake zijn administratie-
+ * overstijgend en horen bij de klantenlijst-ingang. */
 export function WerkvoorraadScreen() {
   const { administraties, fout: administratiesFout } = useAdministraties()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const administratieId = searchParams.get('administratie')
+
+  if (administratiesFout) {
+    return (
+      <FoutMelding
+        melding="Uw administraties konden niet geladen worden. Controleer de verbinding en probeer het opnieuw."
+        detail={administratiesFout}
+        onOpnieuw={() => window.location.reload()}
+      />
+    )
+  }
+  if (!administraties) {
+    return (
+      <div className="panel" aria-busy="true">
+        <span className="skeleton" style={{ width: '40%', marginBottom: 10 }} />
+        <span className="skeleton" style={{ width: '70%' }} />
+      </div>
+    )
+  }
+  if (administraties.length === 0) {
+    return <p className="hint">Geen administraties gekoppeld aan uw account.</p>
+  }
+
+  if (!administratieId) {
+    return <WerkvoorraadIngang administraties={administraties} />
+  }
+  const administratie = administraties.find((a) => a.id === administratieId)
+  return (
+    <Klantpagina
+      administratieId={administratieId}
+      administratieNaam={administratie?.naam ?? 'Onbekende administratie'}
+      administraties={administraties}
+    />
+  )
+}
+
+function WerkvoorraadIngang({ administraties }: { administraties: { id: string; naam: string }[] }) {
+  const [uploadFout, setUploadFout] = useState<string | null>(null)
+  const [uploadBericht, setUploadBericht] = useState<string | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const [sleepActief, setSleepActief] = useState(false)
+  const [verzamelbakVersie, setVerzamelbakVersie] = useState(0)
+  const bestandInputRef = useRef<HTMLInputElement>(null)
+
+  const uploadEml = useCallback(async (bestand: File) => {
+    if (!bestand.name.toLowerCase().endsWith('.eml')) {
+      setUploadFout(
+        `"${bestand.name}" is geen .eml-bestand. PDF's en UBL horen bij een klant: open eerst de klant in de lijst hieronder en upload daar.`,
+      )
+      return
+    }
+    setBezig(true)
+    setUploadFout(null)
+    setUploadBericht(null)
+    try {
+      const resultaat = await verwerkEml(bestand)
+      setUploadBericht(
+        resultaat.al_eerder_verwerkt
+          ? `"${bestand.name}" was al eerder verwerkt (zelfde Message-ID) — niets dubbel gedaan.`
+          : `"${bestand.name}" verwerkt: ${resultaat.bijlagen
+              .map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`)
+              .join('; ') || 'geen bijlagen gevonden'}.`,
+      )
+      setVerzamelbakVersie((v) => v + 1)
+    } catch (err) {
+      setUploadFout(err instanceof Error ? err.message : 'Verwerken van de mail is mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }, [])
+
+  return (
+    <div>
+      <div className="topbar">
+        <h1>Werkvoorraad</h1>
+      </div>
+
+      <div
+        className={`upload${sleepActief ? ' dragover' : ''}`}
+        onClick={() => bestandInputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setSleepActief(true)
+        }}
+        onDragLeave={() => setSleepActief(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setSleepActief(false)
+          const bestand = e.dataTransfer.files?.[0]
+          if (bestand) void uploadEml(bestand)
+        }}
+      >
+        {bezig ? (
+          'Bezig met verwerken…'
+        ) : (
+          <>
+            Sleep hier een doorgestuurde mail (.eml) naartoe, of <b>blader</b>
+            <br />
+            <span style={{ fontSize: 12 }}>
+              Bijlagen worden automatisch aan de juiste klant toegewezen; wat niet eenduidig koppelt komt in
+              &ldquo;Niet toegewezen&rdquo; hieronder. Losse PDF&rsquo;s of UBL uploadt u bij de klant zelf.
+            </span>
+          </>
+        )}
+        <input
+          ref={bestandInputRef}
+          type="file"
+          accept=".eml"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const bestand = e.target.files?.[0]
+            if (bestand) void uploadEml(bestand)
+          }}
+        />
+      </div>
+      {uploadFout && <FoutMelding melding={uploadFout} />}
+      {uploadBericht && (
+        <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>
+          {uploadBericht}
+        </div>
+      )}
+
+      <VerzamelbakPaneel key={verzamelbakVersie} administraties={administraties} onGewijzigd={() => {}} />
+
+      <Klantenlijst administraties={administraties} />
+    </div>
+  )
+}
+
+const STATUSFILTER_ALLE = 'alle'
+
+function Klantpagina({
+  administratieId,
+  administratieNaam,
+  administraties,
+}: {
+  administratieId: string
+  administratieNaam: string
+  administraties: { id: string; naam: string }[]
+}) {
+  const navigate = useNavigate()
   const bestandInputRef = useRef<HTMLInputElement>(null)
   const { naamVoor } = useMedewerkers(administratieId)
 
@@ -36,6 +188,8 @@ export function WerkvoorraadScreen() {
   const [bezig, setBezig] = useState(false)
   const [sleepActief, setSleepActief] = useState(false)
   const [toonVerwijderd, setToonVerwijderd] = useState(false)
+  const [zoekterm, setZoekterm] = useState('')
+  const [statusFilter, setStatusFilter] = useState(STATUSFILTER_ALLE)
   // Hersleutel voor het verzamelbak-paneel: ophogen forceert een refetch (na .eml-upload).
   const [verzamelbakVersie, setVerzamelbakVersie] = useState(0)
   // Omzetmodule: soort van de eerstvolgende upload — 'kassarapport' gaat de rapport-extractie
@@ -47,14 +201,7 @@ export function WerkvoorraadScreen() {
   const [herstellenBezig, setHerstellenBezig] = useState<string | null>(null)
   const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!administratieId && administraties && administraties.length > 0) {
-      setSearchParams({ administratie: administraties[0].id }, { replace: true })
-    }
-  }, [administraties, administratieId, setSearchParams])
-
   const laadDocumenten = useCallback(() => {
-    if (!administratieId) return
     setLijstFout(null)
     apiJson<DocumentListResponseDto>(
       `/administraties/${administratieId}/documenten${toonVerwijderd ? '?toon_verwijderd=true' : ''}`,
@@ -78,7 +225,6 @@ export function WerkvoorraadScreen() {
 
   const uploadBestand = useCallback(
     async (bestand: File) => {
-      if (!administratieId) return
       setBezig(true)
       setUploadFout(null)
       setUploadBericht(null)
@@ -128,7 +274,7 @@ export function WerkvoorraadScreen() {
   }
 
   const verwijderen = async (reden: string) => {
-    if (!administratieId || !verwijderenVoor) return
+    if (!verwijderenVoor) return
     setVerwijderenBezig(true)
     setVerwijderenFout(null)
     try {
@@ -146,7 +292,6 @@ export function WerkvoorraadScreen() {
   }
 
   const herstellen = async (documentId: string) => {
-    if (!administratieId) return
     setHerstellenBezig(documentId)
     setHerstellenFout(null)
     try {
@@ -162,39 +307,36 @@ export function WerkvoorraadScreen() {
     }
   }
 
-  if (administratiesFout) {
-    return <div className="fout">Kon administraties niet laden: {administratiesFout}</div>
-  }
-  if (!administraties) {
-    return <p className="hint">Laden…</p>
-  }
-  if (administraties.length === 0) {
-    return <p className="hint">Geen administraties gekoppeld aan uw account.</p>
-  }
+  // Zoekveld + statusfilter (mockup #klantpagina: "Zoek op leverancier, bedrag, factuurnr…").
+  const gefilterd = useMemo(() => {
+    if (documenten === null) return null
+    const term = zoekterm.trim().toLowerCase()
+    return documenten.filter((d) => {
+      if (statusFilter !== STATUSFILTER_ALLE && d.status !== statusFilter) return false
+      if (!term) return true
+      const doorzoekbaar = [d.bestandsnaam, d.leverancier ?? '', d.totaalbedrag ?? '', statusLabel(d.status)]
+        .join(' ')
+        .toLowerCase()
+      return doorzoekbaar.includes(term)
+    })
+  }, [documenten, zoekterm, statusFilter])
+
+  const aanwezigeStatussen = useMemo(
+    () => Array.from(new Set((documenten ?? []).map((d) => d.status))).sort(),
+    [documenten],
+  )
 
   return (
     <div>
       <div className="topbar">
-        <h1>Werkvoorraad</h1>
+        <h1>
+          <Link to="/" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+            ← Werkvoorraad
+          </Link>{' '}
+          <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/</span> {administratieNaam}
+        </h1>
         <div className="adm-select">
-          <label htmlFor="administratie-select" style={{ margin: 0 }}>
-            Administratie
-          </label>
-          <select
-            id="administratie-select"
-            value={administratieId ?? ''}
-            onChange={(e) => setSearchParams({ administratie: e.target.value })}
-          >
-            {administraties.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.naam}
-              </option>
-            ))}
-          </select>
           {(() => {
-            // Vragen-teller (mockup klantenlijst-kolom "Vragen") — de aparte klantenlijst met
-            // tellers per klant is BOUWPLAN punt 8-vervolg; tot die er is telt de werkvoorraad
-            // van de geselecteerde administratie zelf, klikbaar naar de vragen-view.
             const openVragen = (documenten ?? []).filter((d) => d.status === 'vraag_open').length
             if (openVragen === 0) return null
             return (
@@ -206,8 +348,6 @@ export function WerkvoorraadScreen() {
             )
           })()}
           {(() => {
-            // IBAN-accordering-teller (vier-ogen-flow): wachtende documenten springen eruit —
-            // de rij zelf klikt door naar het document met de accordering-sectie.
             const wachtend = (documenten ?? []).filter((d) => d.status === 'wacht_op_iban_accordering').length
             if (wachtend === 0) return null
             return (
@@ -266,18 +406,18 @@ export function WerkvoorraadScreen() {
           onChange={(e) => opBestandGekozen(e.target.files)}
         />
       </div>
-      {uploadFout && <div className="fout">{uploadFout}</div>}
-      {uploadBericht && <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>{uploadBericht}</div>}
+      {uploadFout && <FoutMelding melding={uploadFout} />}
+      {uploadBericht && (
+        <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>
+          {uploadBericht}
+        </div>
+      )}
 
-      <VerzamelbakPaneel
-        key={verzamelbakVersie}
-        administraties={administraties}
-        onGewijzigd={() => laadDocumenten()}
-      />
+      <VerzamelbakPaneel key={verzamelbakVersie} administraties={administraties} onGewijzigd={() => laadDocumenten()} />
 
       <div className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h2 style={{ margin: 0 }}>Documenten</h2>
+          <h2 style={{ margin: 0 }}>Openstaande zaken</h2>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
             <input
               type="checkbox"
@@ -288,26 +428,73 @@ export function WerkvoorraadScreen() {
             Toon verwijderde documenten
           </label>
         </div>
-        {lijstFout && <div className="fout">{lijstFout}</div>}
-        {herstellenFout && <div className="fout">{herstellenFout}</div>}
-        {documenten === null && !lijstFout && <p className="hint">Laden…</p>}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            placeholder="Zoek op leverancier, bedrag, bestandsnaam…"
+            aria-label="Zoek in documenten"
+            style={{ maxWidth: 300 }}
+            value={zoekterm}
+            onChange={(e) => setZoekterm(e.target.value)}
+          />
+          <select
+            aria-label="Filter op status"
+            style={{ width: 'auto' }}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value={STATUSFILTER_ALLE}>Alle statussen</option>
+            {aanwezigeStatussen.map((s) => (
+              <option key={s} value={s}>
+                {statusLabel(s)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {lijstFout && (
+          <FoutMelding
+            melding="De documentenlijst kon niet geladen worden."
+            detail={lijstFout}
+            onOpnieuw={laadDocumenten}
+          />
+        )}
+        {herstellenFout && <FoutMelding melding={herstellenFout} />}
+        {documenten === null && !lijstFout && (
+          <table aria-busy="true">
+            <tbody>
+              {Array.from({ length: 4 }, (_, r) => (
+                <tr key={r} aria-hidden="true">
+                  {Array.from({ length: 6 }, (_, k) => (
+                    <td key={k}>
+                      <span className="skeleton" style={{ width: k === 0 ? '70%' : '50%' }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         {documenten !== null && documenten.length === 0 && (
           <p className="hint">
-            {toonVerwijderd ? 'Geen documenten voor deze administratie.' : 'Nog geen documenten voor deze administratie.'}
+            Nog geen documenten voor deze administratie. Sleep een factuur in het uploadvak hierboven of stuur een
+            mail door als .eml-bestand.
           </p>
         )}
-        {documenten !== null && documenten.length > 0 && (
+        {documenten !== null && documenten.length > 0 && gefilterd !== null && gefilterd.length === 0 && (
+          <p className="hint">Geen documenten die aan de zoekterm of het statusfilter voldoen.</p>
+        )}
+        {gefilterd !== null && gefilterd.length > 0 && (
           <table>
             <tbody>
               <tr>
                 <th>Document</th>
+                <th>Leverancier</th>
+                <th>Factuurdatum</th>
+                <th className="amount">Bedrag (incl. btw)</th>
                 <th>Status</th>
-                <th>Bron</th>
-                <th>Ontvangen</th>
                 <th>Toegewezen</th>
                 <th />
               </tr>
-              {documenten.map((d) => {
+              {gefilterd.map((d) => {
                 const isVerwijderd = d.status === 'verwijderd'
                 // Backend blokkeert dit al hard (bewaarplicht/lopende accordering) — de UI mag de
                 // onmogelijke actie dan niet eens aanbieden, ook niet als disabled-knop.
@@ -333,7 +520,15 @@ export function WerkvoorraadScreen() {
                       )
                     }
                   >
-                    <td>{d.bestandsnaam}</td>
+                    <td>
+                      {d.bestandsnaam}
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                        {d.bron} · {formatDatum(d.aangemaakt_op)}
+                      </div>
+                    </td>
+                    <td>{d.leverancier ?? '—'}</td>
+                    <td>{d.factuurdatum ? formatDatumKort(d.factuurdatum) : '—'}</td>
+                    <td className="amount">{formatBedrag(d.totaalbedrag)}</td>
                     <td>
                       {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
                       <StatusChip status={d.status} />
@@ -355,8 +550,6 @@ export function WerkvoorraadScreen() {
                         </div>
                       )}
                     </td>
-                    <td>{d.bron}</td>
-                    <td>{formatDatum(d.aangemaakt_op)}</td>
                     <td>{d.toegewezen_aan ? naamVoor(d.toegewezen_aan) : '—'}</td>
                     <td>
                       {isVerwijderd ? (

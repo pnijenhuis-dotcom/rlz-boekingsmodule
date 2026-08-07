@@ -82,6 +82,26 @@ class DocumentListItemResponse(BaseModel):
     laatst_gewijzigd_op: datetime
     # Alleen gevuld bij status 'afgewezen' met een open afwijzing-rij.
     afwijzing: AfwijzingInfoDto | None = None
+    # Kopgegevens uit boekvoorstel/extractie (mockup #klantpagina: kolommen Leverancier +
+    # Bedrag) — None zolang de extractie nog loopt of niets gevonden is.
+    leverancier: str | None = None
+    totaalbedrag: Decimal | None = None
+    factuurdatum: date | None = None
+
+
+class WerkvoorraadKlantResponse(BaseModel):
+    administratie_id: uuid.UUID
+    naam: str
+    te_controleren: int
+    klaar_om_te_boeken: int
+    vragen: int
+    afgewezen: int
+    bij_klant: int
+    iban_wachtend: int
+
+
+class WerkvoorraadOverzichtResponse(BaseModel):
+    klanten: list[WerkvoorraadKlantResponse]
 
 
 class DocumentListResponse(BaseModel):

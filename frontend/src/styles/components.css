@@ -120,6 +120,27 @@ td.amount {
   font-weight: 600;
 }
 
+/* Laad-skeleton (browserreview 2026-08-07 punt 3): rustig pulserende balk op de plek waar de
+   inhoud komt, per lijst — geen kale "Laden…"-regel meer als enige signaal. */
+.skeleton {
+  display: block;
+  height: 14px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted) 22%, transparent);
+  animation: skeleton-puls 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-puls {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

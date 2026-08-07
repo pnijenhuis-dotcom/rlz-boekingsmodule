@@ -76,10 +76,31 @@ export interface DocumentListItemDto {
   aangemaakt_op: string
   laatst_gewijzigd_op: string
   afwijzing: AfwijzingInfoDto | null
+  /** Kopgegevens uit boekvoorstel/extractie (mockup-kolommen Leverancier + Bedrag) — null
+   * zolang er nog niets geëxtraheerd of opgeslagen is. Bedrag als string (Decimal). */
+  leverancier: string | null
+  totaalbedrag: string | null
+  factuurdatum: string | null
 }
 
 export interface DocumentListResponseDto {
   documenten: DocumentListItemDto[]
+}
+
+/** Werkvoorraad-klantenlijst met tellers (mockup #werkvoorraad "Overzicht per klant"). */
+export interface WerkvoorraadKlantDto {
+  administratie_id: string
+  naam: string
+  te_controleren: number
+  klaar_om_te_boeken: number
+  vragen: number
+  afgewezen: number
+  bij_klant: number
+  iban_wachtend: number
+}
+
+export interface WerkvoorraadOverzichtDto {
+  klanten: WerkvoorraadKlantDto[]
 }
 
 export interface DocumentGebeurtenisDto {

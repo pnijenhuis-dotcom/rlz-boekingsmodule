@@ -4,10 +4,11 @@ import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -15,7 +16,14 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten.models import Document, DocumentBron, DocumentGebeurtenis, DocumentSoort, DocumentStatus
+from app.documenten.models import (
+    Boekvoorstel,
+    Document,
+    DocumentBron,
+    DocumentGebeurtenis,
+    DocumentSoort,
+    DocumentStatus,
+)
 from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
 from app.documenten.storage import DocumentOpslag, LokaleBestandsopslag
@@ -674,10 +682,36 @@ def start_extractie_na_toewijzing(
     return eind_status
 
 
+def _als_decimal_of_none(waarde: object) -> Decimal | None:
+    """Veldvoorstel-waarden komen als string/None uit de JSONB-tijdlijn — nooit gokken bij
+    onbruikbare invoer, de kolom blijft dan gewoon leeg (weergave, geen geldlogica)."""
+    if waarde is None:
+        return None
+    try:
+        return Decimal(str(waarde))
+    except (ArithmeticError, ValueError):
+        return None
+
+
+def _als_datum_of_none(waarde: object) -> date | None:
+    if not isinstance(waarde, str):
+        return None
+    try:
+        return date.fromisoformat(waarde)
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True)
 class DocumentMetDuplicaat:
     document: Document
     duplicaat_referentie: DuplicaatReferentie | None
+    # Kopgegevens voor de werkvoorraad-documentenlijst (mockup #klantpagina: kolommen
+    # Leverancier + Bedrag): uit het opgeslagen boekvoorstel, of anders het laatste
+    # extractie-veldvoorstel — None zolang er nog geen van beide is.
+    leverancier: str | None = None
+    totaalbedrag: Decimal | None = None
+    factuurdatum: date | None = None
 
 
 def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
@@ -694,15 +728,151 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
         referenties = _duplicaat_referenties_op(
             session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
         )
-        return [
-            DocumentMetDuplicaat(
-                document=d,
-                duplicaat_referentie=referenties.get(d.mogelijk_duplicaat_van_id)
-                if d.mogelijk_duplicaat_van_id
-                else None,
+        # Kopgegevens per document in drie bulk-queries (geen N+1): opgeslagen boekvoorstellen,
+        # de vendornamen uit de cache, en — voor documenten zónder opgeslagen voorstel — het
+        # laatste extractie-veldvoorstel uit de tijdlijn (zelfde bron als de controlescherm-
+        # prefill in boekvoorstel.py::_laatste_veldvoorstel).
+        document_ids = [d.id for d in documenten]
+        voorstellen: dict[uuid.UUID, Boekvoorstel] = (
+            {
+                v.document_id: v
+                for v in session.scalars(select(Boekvoorstel).where(Boekvoorstel.document_id.in_(document_ids)))
+            }
+            if document_ids
+            else {}
+        )
+        vendor_ids = {v.vendor_id for v in voorstellen.values() if v.vendor_id is not None}
+        vendor_namen: dict[uuid.UUID, str | None] = (
+            dict(
+                session.execute(
+                    select(VendorCache.id, VendorCache.naam).where(
+                        VendorCache.administratie_id == administratie_id, VendorCache.id.in_(vendor_ids)
+                    )
+                ).all()
             )
-            for d in documenten
-        ]
+            if vendor_ids
+            else {}
+        )
+        veldvoorstellen: dict[uuid.UUID, dict] = {}
+        zonder_voorstel = [d_id for d_id in document_ids if d_id not in voorstellen]
+        if zonder_voorstel:
+            # Oplopend op tijdstip; de laatste schrijver per document wint ("opnieuw extraheren"
+            # = nieuwste extractie is de actuele — zelfde regel als het controlescherm).
+            for gebeurtenis in session.scalars(
+                select(DocumentGebeurtenis)
+                .where(
+                    DocumentGebeurtenis.document_id.in_(zonder_voorstel),
+                    DocumentGebeurtenis.detail.has_key("veldvoorstel"),
+                )
+                .order_by(DocumentGebeurtenis.tijdstip)
+            ):
+                veldvoorstellen[gebeurtenis.document_id] = gebeurtenis.detail["veldvoorstel"]
+
+        def _kop(document_id: uuid.UUID) -> tuple[str | None, Decimal | None, date | None]:
+            voorstel = voorstellen.get(document_id)
+            if voorstel is not None:
+                naam = vendor_namen.get(voorstel.vendor_id) if voorstel.vendor_id else None
+                return naam, voorstel.totaalbedrag, voorstel.factuurdatum
+            veldvoorstel = veldvoorstellen.get(document_id)
+            if veldvoorstel is None:
+                return None, None, None
+            return (
+                veldvoorstel.get("leverancier_naam") or None,
+                _als_decimal_of_none(veldvoorstel.get("totaal_incl")),
+                _als_datum_of_none(veldvoorstel.get("factuurdatum")),
+            )
+
+        resultaat = []
+        for d in documenten:
+            leverancier, totaalbedrag, factuurdatum = _kop(d.id)
+            resultaat.append(
+                DocumentMetDuplicaat(
+                    document=d,
+                    duplicaat_referentie=referenties.get(d.mogelijk_duplicaat_van_id)
+                    if d.mogelijk_duplicaat_van_id
+                    else None,
+                    leverancier=leverancier,
+                    totaalbedrag=totaalbedrag,
+                    factuurdatum=factuurdatum,
+                )
+            )
+        return resultaat
+
+
+# Statusbuckets voor de werkvoorraad-klantenlijst (mockup #werkvoorraad "Overzicht per klant").
+# boeken_mislukt telt bewust mee als "te controleren": het vraagt om menselijke actie en mag
+# nooit stil in een verborgen bucket vallen.
+_TE_CONTROLEREN_STATUSSEN = {
+    DocumentStatus.ONTVANGEN,
+    DocumentStatus.EXTRACTIE_WACHTRIJ,
+    DocumentStatus.EXTRACTIE_BEZIG,
+    DocumentStatus.TE_CONTROLEREN,
+    DocumentStatus.HANDMATIG_AFMAKEN,
+    DocumentStatus.BOEKEN_MISLUKT,
+}
+
+
+@dataclass(frozen=True)
+class WerkvoorraadKlant:
+    administratie_id: uuid.UUID
+    naam: str
+    te_controleren: int
+    klaar_om_te_boeken: int
+    vragen: int
+    afgewezen: int
+    bij_klant: int
+    iban_wachtend: int
+
+    @property
+    def heeft_openstaand_werk(self) -> bool:
+        return (
+            self.te_controleren
+            + self.klaar_om_te_boeken
+            + self.vragen
+            + self.afgewezen
+            + self.bij_klant
+            + self.iban_wachtend
+        ) > 0
+
+
+def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, str]]) -> list[WerkvoorraadKlant]:
+    """Tellers per administratie voor de werkvoorraad-klantenlijst (mockup #werkvoorraad). De
+    aanroeper (router) levert uitsluitend administraties binnen de scope van de gebruiker aan —
+    zelfde patroon als bank_overzicht. Alle administraties komen mee (ook zonder openstaand
+    werk); de frontend verbergt de lege en toont alleen het aantal verborgen klanten."""
+    klanten: list[WerkvoorraadKlant] = []
+    for administratie_id, naam in administratie_ids_met_naam:
+        with scoped_session(administratie_id) as session:
+            per_status = dict(
+                session.execute(
+                    select(Document.status, func.count())
+                    .where(
+                        Document.administratie_id == administratie_id,
+                        # Terminale statussen tellen niet als openstaand werk: geboekt,
+                        # verwijderd en gesplitst (de kinderen van een splitsing tellen zelf).
+                        Document.status.notin_(
+                            [DocumentStatus.VERWIJDERD, DocumentStatus.GEBOEKT, DocumentStatus.GESPLITST]
+                        ),
+                    )
+                    .group_by(Document.status)
+                ).all()
+            )
+        klanten.append(
+            WerkvoorraadKlant(
+                administratie_id=administratie_id,
+                naam=naam,
+                te_controleren=sum(per_status.get(s, 0) for s in _TE_CONTROLEREN_STATUSSEN),
+                klaar_om_te_boeken=per_status.get(DocumentStatus.KLAAR_OM_TE_BOEKEN, 0),
+                vragen=per_status.get(DocumentStatus.VRAAG_OPEN, 0),
+                afgewezen=per_status.get(DocumentStatus.AFGEWEZEN, 0),
+                # Klant-accordering ("Ter accordering", mockup-kolom "Bij klant") is nog niet
+                # gebouwd — kolom bestaat al in het contract zodat de UI 1-op-1 de mockup volgt;
+                # zodra die statusmachine-tak er is telt hij hier mee.
+                bij_klant=0,
+                iban_wachtend=per_status.get(DocumentStatus.WACHT_OP_IBAN_ACCORDERING, 0),
+            )
+        )
+    return klanten
 
 
 @dataclass(frozen=True)

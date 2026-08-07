@@ -64,9 +64,11 @@ function installFetchMock(opties: MockOpties) {
   )
 }
 
+/** De klantpagina (documentenlijst) leeft sinds de mockup-flow (browserreview 2026-08-07
+ * punt 3) achter ?administratie=… — de kale werkvoorraad-route toont de klantenlijst. */
 function renderScherm() {
   return render(
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}`]}>
       <WerkvoorraadScreen />
     </MemoryRouter>,
   )
@@ -163,7 +165,8 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
       renderScherm()
 
       await waitFor(() => expect(screen.getByText('monsterfactuur.pdf')).toBeInTheDocument())
-      expect(screen.getByText('In wachtrij (extractie)')).toBeInTheDocument()
+      // De statustekst staat ook als optie in het statusfilter — minstens één zichtbare chip.
+      expect(screen.getAllByText('In wachtrij (extractie)').length).toBeGreaterThan(0)
 
       const lijstAanroepen = () =>
         vi
@@ -248,7 +251,8 @@ describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
     installVraagFetchMock([document({ status: 'vraag_open', toegewezen_aan: EIGENAAR_ID })])
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('Vraag open')).toBeInTheDocument())
+    // De statustekst staat ook als optie in het statusfilter — minstens één zichtbare chip.
+    await waitFor(() => expect(screen.getAllByText('Vraag open').length).toBeGreaterThan(0))
     expect(screen.getByText('M. de Boer')).toBeInTheDocument()
     const teller = screen.getByText('1 vraag open')
     expect(teller.closest('a')).toHaveAttribute('href', `/vragen?administratie=${ADMINISTRATIE_ID}`)
@@ -258,7 +262,7 @@ describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
     const gebruiker = userEvent.setup()
     installVraagFetchMock([document({ status: 'vraag_open', toegewezen_aan: EIGENAAR_ID })])
     render(
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}`]}>
         <Routes>
           <Route path="/" element={<WerkvoorraadScreen />} />
           <Route path="/vragen" element={<div>vragen-view-probe</div>} />
@@ -277,5 +281,166 @@ describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     expect(screen.queryByText(/vraag open/)).not.toBeInTheDocument()
+  })
+})
+
+describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserreview 2026-08-07)', () => {
+  const TWEEDE_ADMINISTRATIE_ID = 'ffffffff-0000-0000-0000-000000000005'
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function klant(overrides: Record<string, unknown>) {
+    return {
+      administratie_id: ADMINISTRATIE_ID,
+      naam: 'Testklant',
+      te_controleren: 0,
+      klaar_om_te_boeken: 0,
+      vragen: 0,
+      afgewezen: 0,
+      bij_klant: 0,
+      iban_wachtend: 0,
+      ...overrides,
+    }
+  }
+
+  function installOverzichtMock(klanten: unknown[], bankKlanten: unknown[] = []) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.endsWith('/auth/administraties')) {
+          return Promise.resolve(
+            jsonResponse({
+              administraties: [
+                { id: ADMINISTRATIE_ID, naam: 'Testklant' },
+                { id: TWEEDE_ADMINISTRATIE_ID, naam: 'Klant Zonder Werk' },
+              ],
+            }),
+          )
+        }
+        if (url.endsWith('/werkvoorraad/overzicht')) {
+          return Promise.resolve(jsonResponse({ klanten }))
+        }
+        if (url.endsWith('/bank/overzicht')) {
+          return Promise.resolve(jsonResponse({ klanten: bankKlanten }))
+        }
+        if (url.endsWith('/verzamelbak')) {
+          return Promise.resolve(jsonResponse({ items: [] }))
+        }
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+  }
+
+  function renderIngang() {
+    return render(
+      <MemoryRouter initialEntries={['/']}>
+        <WerkvoorraadScreen />
+      </MemoryRouter>,
+    )
+  }
+
+  it('toont alleen klanten mét openstaand werk en meldt het aantal verborgen', async () => {
+    installOverzichtMock([
+      klant({ te_controleren: 2, klaar_om_te_boeken: 1 }),
+      klant({ administratie_id: TWEEDE_ADMINISTRATIE_ID, naam: 'Klant Zonder Werk' }),
+    ])
+    renderIngang()
+
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.queryByText('Klant Zonder Werk')).not.toBeInTheDocument()
+    expect(screen.getByText(/1 klant zonder openstaande zaken \(verborgen\)/)).toBeInTheDocument()
+  })
+
+  it('klik op een klant opent de documentenlijst van die administratie (klantpagina)', async () => {
+    const gebruiker = userEvent.setup()
+    installOverzichtMock([klant({ te_controleren: 1 })])
+    renderIngang()
+
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    await gebruiker.click(screen.getByText('Testklant'))
+    // Klantpagina: breadcrumb terug + documentenlijst-kop.
+    await waitFor(() => expect(screen.getByText('← Werkvoorraad')).toBeInTheDocument())
+    expect(screen.getByText('Openstaande zaken')).toBeInTheDocument()
+  })
+
+  it('bank-teller komt uit het bank-overzicht en een bankfout blokkeert de lijst niet', async () => {
+    installOverzichtMock(
+      [klant({ te_controleren: 1 })],
+      [{ administratie_id: ADMINISTRATIE_ID, naam: 'Testklant', open_mutaties: 3 }],
+    )
+    renderIngang()
+
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it('lege staat: alles bij — geen tabelinhoud, wél een duidelijke melding', async () => {
+    installOverzichtMock([klant({}), klant({ administratie_id: TWEEDE_ADMINISTRATIE_ID, naam: 'Klant Zonder Werk' })])
+    renderIngang()
+
+    await waitFor(() => expect(screen.getByText(/Geen openstaand werk/)).toBeInTheDocument())
+  })
+})
+
+describe('Klantpagina — kolommen, zoekveld en statusfilter (mockup #klantpagina)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('toont leverancier, factuurdatum en bedrag uit de extractie', async () => {
+    installFetchMock({
+      documenten: [
+        document({
+          leverancier: 'Bouwmaat Nederland B.V.',
+          totaalbedrag: '1847.23',
+          factuurdatum: '2026-06-29',
+        }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
+    expect(screen.getByText(/1\.847,23/)).toBeInTheDocument()
+    expect(screen.getByText('29 jun 2026')).toBeInTheDocument()
+  })
+
+  it('zoekveld filtert op leverancier; statusfilter op status', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      documenten: [
+        document({ id: DOCUMENT_ID, bestandsnaam: 'a.pdf', leverancier: 'Eneco Zakelijk' }),
+        document({
+          id: GEBOEKT_DOCUMENT_ID,
+          bestandsnaam: 'b.pdf',
+          leverancier: 'Technische Unie',
+          status: 'klaar_om_te_boeken',
+        }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('a.pdf')).toBeInTheDocument())
+    expect(screen.getByText('b.pdf')).toBeInTheDocument()
+
+    await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'eneco')
+    expect(screen.getByText('a.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('b.pdf')).not.toBeInTheDocument()
+
+    await gebruiker.clear(screen.getByLabelText('Zoek in documenten'))
+    await gebruiker.selectOptions(screen.getByLabelText('Filter op status'), 'klaar_om_te_boeken')
+    expect(screen.queryByText('a.pdf')).not.toBeInTheDocument()
+    expect(screen.getByText('b.pdf')).toBeInTheDocument()
+  })
+
+  it('lege zoekresultaten geven een duidelijke melding, geen lege tabel', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({ documenten: [document({})] })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
+    await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'bestaat-niet-xyz')
+    expect(screen.getByText(/Geen documenten die aan de zoekterm/)).toBeInTheDocument()
   })
 })
