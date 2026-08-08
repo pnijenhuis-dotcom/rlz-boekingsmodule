@@ -1,7 +1,8 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import proxyPrefixes from './proxy-prefixes.json'
+import proxyPrefixes from './proxy-prefixes.json' with { type: 'json' }
+import { bouwProxyMap } from './proxyRegels.ts'
 
 const BACKEND = 'http://localhost:8000'
 
@@ -19,10 +20,9 @@ const BACKEND = 'http://localhost:8000'
 // Segment-keys krijgen bewust een slash-suffix ('/instellingen/'): het kale segment kan een
 // SPA-route zijn en een document-navigatie mag nooit naar de backend. Paden die de backend
 // exact op één segment serveert (bv. /verzamelbak) staan apart in exacte_paden.
-const proxy = Object.fromEntries([
-  ...proxyPrefixes.segmenten.map((segment) => [`${segment}/`, BACKEND]),
-  ...proxyPrefixes.exacte_paden.map((pad) => [pad, BACKEND]),
-])
+// Opbouw + document-navigatie-bypass (randgeval /bank/ met trailing slash, kliktest
+// 2026-08-08) leven in proxyRegels.ts, getest via src/api/proxyDekking.test.ts.
+const proxy = bouwProxyMap(proxyPrefixes, BACKEND)
 
 // https://vite.dev/config/
 export default defineConfig({

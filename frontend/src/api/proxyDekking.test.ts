@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import type { IncomingMessage } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import proxyPrefixes from '../../proxy-prefixes.json'
+import { bouwProxyMap, isDocumentNavigatie } from '../../proxyRegels'
 
 /** Structurele guard op de proxy-bugklasse (derde herhaling, browserreview 2026-08-07): een
  * API-pad dat buiten de dev-proxy valt krijgt in dev stil Vite's SPA-fallback (index.html,
@@ -72,6 +74,42 @@ describe('dev-proxy-dekking over álle bronbestanden', () => {
     expect(isGedekt('/bank/overzicht')).toBe(true)
     expect(isGedekt('/verzamelbak')).toBe(true)
     expect(isGedekt('/intake/eml')).toBe(true)
+  })
+
+  describe('regressie kliktest 2026-08-08: document-navigatie naar /bank/ blijft SPA', () => {
+    // Navigatie mét trailing slash (/bank/) matcht de segment-key 'bank/' en kwam als kale
+    // backend-404-JSON bij de gebruiker. De bypass moet document-navigaties de SPA laten
+    // serveren en fetch/XHR gewoon blijven proxien.
+    const navigatieHeaders = {
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'sec-fetch-dest': 'document',
+    }
+    const fetchHeaders = { accept: 'application/json', 'sec-fetch-dest': 'empty' }
+    const downloadHeaders = { accept: '*/*', 'sec-fetch-dest': 'empty' }
+
+    it('herkent een document-navigatie alleen aan Accept text/html ÉN sec-fetch-dest=document', () => {
+      expect(isDocumentNavigatie(navigatieHeaders)).toBe(true)
+      expect(isDocumentNavigatie(fetchHeaders)).toBe(false)
+      expect(isDocumentNavigatie(downloadHeaders)).toBe(false)
+      expect(isDocumentNavigatie({})).toBe(false)
+    })
+
+    it('elke proxy-entry heeft de bypass: navigatie → /index.html, fetch → geproxied', () => {
+      const proxy = bouwProxyMap(proxyPrefixes, 'http://localhost:8000')
+      expect(Object.keys(proxy).length).toBeGreaterThan(0)
+      expect(Object.keys(proxy)).toContain('/bank/')
+      for (const [key, entry] of Object.entries(proxy)) {
+        expect(entry.target, `entry "${key}" mist target`).toBe('http://localhost:8000')
+        expect(
+          entry.bypass({ headers: navigatieHeaders } as unknown as IncomingMessage),
+          `entry "${key}": document-navigatie moet de SPA krijgen`,
+        ).toBe('/index.html')
+        expect(
+          entry.bypass({ headers: fetchHeaders } as unknown as IncomingMessage),
+          `entry "${key}": fetch/XHR moet geproxied blijven`,
+        ).toBeUndefined()
+      }
+    })
   })
 
   it('geen SPA-route wordt door een exacte proxy-key geschaduwd (document-navigatie blijft SPA)', () => {

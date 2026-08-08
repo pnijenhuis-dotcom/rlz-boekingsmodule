@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { ActivateScreen } from './auth/ActivateScreen'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { LoginScreen } from './auth/LoginScreen'
@@ -41,7 +41,13 @@ function BeschermdeRoutes() {
   )
 }
 
+// Trailing slash → variant zonder (randgeval kliktest 2026-08-08: /bank/ is geen route en de
+// dev-proxy behandelt zulke paden anders dan /bank). Redirect vóór de route-matching, query blijft.
 function AppRoutes() {
+  const { pathname, search } = useLocation()
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    return <Navigate to={`${pathname.replace(/\/+$/, '')}${search}`} replace />
+  }
   return (
     <Routes>
       <Route path="/login" element={<LoginScreen />} />
