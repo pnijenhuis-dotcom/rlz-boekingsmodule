@@ -13,6 +13,7 @@ import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
+import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
@@ -207,6 +208,7 @@ export function DocumentDetailScreen() {
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
   const [heropenenBezig, setHeropenenBezig] = useState(false)
   const [heropenenFout, setHeropenenFout] = useState<string | null>(null)
+  const splitter = useReviewSplitter()
   const { naamVoor } = useMedewerkers(administratieId ?? null)
 
   const laadDetail = useCallback(() => {
@@ -330,10 +332,15 @@ export function DocumentDetailScreen() {
         </div>
       </div>
 
-      <div className="review">
+      <div className="review" ref={splitter.containerRef} style={splitter.stijl}>
         <div className="docpane">
           <div className="panel">
-            <h2>Bijlage</h2>
+            <div
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}
+            >
+              <h2 style={{ margin: 0 }}>Bijlage</h2>
+              <ReviewVergrootKnop splitter={splitter} />
+            </div>
             <div className="bijlage-inhoud">
               {!bijlage && <p className="hint">Bijlage laden…</p>}
               {bijlage?.contentType.includes('pdf') && (
@@ -363,6 +370,8 @@ export function DocumentDetailScreen() {
             )}
           </div>
         </div>
+
+        <ReviewSplitter splitter={splitter} />
 
         <div className="formpane">
           {detail.status === 'wacht_op_iban_accordering' && (
