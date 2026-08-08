@@ -96,7 +96,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `PaymentTransaction`+regels (boekt direct, Status 3, storno = actie 19); leesspoor
   "waartegen afgeletterd" = `$expand=PaymentReferenceList($expand=Document)`; RLZ-matchvoorstel
   = auto-gevuld `MatchedPaymentItem` (alleen exacte bedrag-match); ⚠️ `IsComplete` blijft na
-  storno stale op true — afgeletterd altijd op `OpenAmount` toetsen.**
+  storno stale op true — afgeletterd altijd op `OpenAmount` toetsen.** ⚠️ Versheid-probe
+  `LastBankImport` antwoordt "geen aanlevering" in drie vormen (404, `400 _InvalidData` op
+  kas/verrekeningen/RC/archief, `200`+HTML op een bankrekening zonder ooit een import) en
+  RLZ-systeemrekeningen dragen vaste GUID's identiek over administraties — rekening-GUID
+  alleen samen met administratie-id gebruiken (kliktest-fix 2026-08-08, api-verkenning
+  "LastBankImport per rekeningtype").
 - Rate limits: docs "REST API limits" — exact verifiëren; client bouwt met throttling + retry/backoff.
 - Testdata (v1.3-afspraak): integratietests tegen een **aparte RLZ-test-administratie**;
   testboekingen worden **gestorneerd** (actie 19 Correct), nooit hard verwijderd — consistent met

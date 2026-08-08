@@ -353,6 +353,8 @@ sleutel; de mutatie-id wél.
 BankGateway, …). Rubicon draait op dagelijkse MT940-import gelabeld `Manual` (~06:04 uur, geen
 PSD2-gateway op de rekening). Voor de UI kunnen we dus per rekening tonen wáár de data vandaan
 komt en hoe vers die is — en bij onboarding checken óf er aanlevering is.
+**⚠️ Aanvulling 2026-08-08: de probe antwoordt op de meeste rekeningen NIET met 404 maar met
+`400 _InvalidData` of zelfs een HTML-pagina — zie "LastBankImport per rekeningtype" verderop.**
 
 ### 4. RLZ's eigen voorstellen (`BankMutationDirectBookings`): bestaat, maar zonder bruikbaar signaal
 
@@ -909,3 +911,45 @@ Entity weglaten): geen dummy-debiteur meer nodig, btw-aangifte identiek, multi-r
 en optioneel de contant/kas-koppeling via QuickPaymentSelection + 148. De
 `DocumentCategory`-id is administratie-specifiek te syncen (systeem-categorie met
 `HasSystemId: true` — per administratie ophalen, nooit hardcoden).
+
+## LastBankImport per rekeningtype + RLZ-systeemrekening-GUID's (8 augustus 2026) — kliktest-fix bank-sync
+
+Aanleiding: `make bank-sync` faalde op 0/3 administraties (kliktest Peter 2026-08-08). Oorzaak:
+de versheid-probe `GET PaymentAccounts/{id}/LastBankImport` gooide op meerdere rekeningen een
+fout die de hele administratie-sync afbrak. Read-only geverifieerd over alle rekeningen van
+alle drie de administraties (Universal, Rubicon, test-administratie).
+
+### 1. De probe kent drie "geen aanlevering"-antwoorden — 404 is de zeldzaamste
+
+| Situatie | Antwoord |
+|---|---|
+| Bankrekening (Type 1), actieve aanlevering | `200` + JSON (bestandsnaam, datum, ImportedLines, …) |
+| Kas (3), Verrekeningen (4), RC/privé (5) | `400 {"Message":"_InvalidData"}` — **altijd**, op elke administratie |
+| Gearchiveerde rekening (`IsArchived: true`), ook Type 1 | `400 _InvalidData` |
+| Bankrekening (Type 1) die nooit een import zag (bv. Spaarrekening) | ⚠️ **`200` mét een HTML-foutpagina als body** (geen JSON!) |
+
+Alle drie betekenen hetzelfde: er is geen bankaanlevering (te zien). De client
+(`app/rlz/client.py::get_last_bank_import`) vertaalt ze alle drie naar `None`; een 400 met een
+ándere body blijft een echte fout. De sync probet rekeningtypes 3/4/5 en gearchiveerde
+rekeningen niet eens meer, en heeft een failsafe: een onverwacht falende probe markeert de
+rekening zichtbaar (`laatste_import_probe_fout`, migratie 0030) en laat de rest van de sync
+doordraaien — een probe mag nooit meer een hele administratie-sync afbreken.
+Regressietests: `tests/unit/test_rlz_client_bank_probe.py` + `tests/bank/test_sync.py`.
+
+### 2. RLZ-systeemrekeningen hebben VASTE GUID's, identiek over administraties heen
+
+De standaardrekeningen die RLZ bij elke administratie aanmaakt dragen overal hetzelfde id —
+het zijn template-GUID's, géén gedeelde rekeningen (de data erachter is gewoon per
+administratie gescheiden):
+
+- `33f82534-4a00-…` — kas-type (Type 3; heet "Kas" bij Universal, "Overloop" bij Rubicon)
+- `6612f68f-e781-…` — "Verrekeningen" (Type 4)
+- `3e506870-e3b5-…` — "Privé betaalde facturen" (Type 5, standaard gearchiveerd)
+- `4526f136-58da-…` / `e7f43cd2-9520-…` — RC-rekeningen (Type 5)
+- `055ad4bc-f9e1-…` — de default-bankrekening (Type 1; "Universal Steigerbouw B.V." bij
+  Universal, "Rubicon Investments B.V." bij Rubicon)
+
+**Consequentie:** een rekening-GUID identificeert alléén samen met de administratie-id — nooit
+een rekening cross-administratie op GUID opzoeken of ontdubbelen. Onze
+`payment_account_cache` heeft niet voor niets een samengestelde sleutel (id, administratie_id);
+dat patroon aanhouden bij alles wat naar PaymentAccounts verwijst.
