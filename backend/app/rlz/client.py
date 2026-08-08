@@ -237,14 +237,21 @@ class RlzClient:
 
     def get_last_bank_import(self, account_id: uuid.UUID | str) -> dict[str, Any] | None:
         """Versheid-probe per rekening (STAP 0 §3): bestandsnaam, datum, BankImportSource/-Type.
-        None bij 404 — een rekening zonder ooit een aanlevering hééft geen LastBankImport; dat is
-        de onboarding-check, geen fout."""
+        None = "geen aanlevering" (de onboarding-check, geen fout) — dat antwoord komt in drie
+        vormen (live geverifieerd 2026-08-08, api-verkenning.md "LastBankImport per
+        rekeningtype"): 404; `400 _InvalidData` op rekeningtypes zonder aanleverpad (kas 3,
+        verrekeningen 4, RC/privé 5) én op gearchiveerde bankrekeningen; en HTTP 200 met een
+        HTML-pagina i.p.v. JSON op een bankrekening die nooit een import heeft gehad."""
         try:
-            return self.get(f"PaymentAccounts/{account_id}/LastBankImport")
+            response = self._request("GET", f"PaymentAccounts/{account_id}/LastBankImport")
         except RlzApiError as exc:
-            if exc.status_code == 404:
+            if exc.status_code == 404 or (exc.status_code == 400 and "_InvalidData" in exc.body):
                 return None
             raise
+        try:
+            return response.json()
+        except ValueError:
+            return None
 
     def list_payment_transactions(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Ruwe bankmutaties (STAP 0 §2: dé bron, niet Statements). Geverifieerde OData-parameters:

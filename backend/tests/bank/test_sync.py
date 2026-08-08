@@ -12,7 +12,7 @@ from app.bank import sync
 from tests.bank.conftest import FakeBankClient
 
 
-def _account_record(*, naam: str = "ING zakelijk", rekening_type: int = 1) -> dict:
+def _account_record(*, naam: str = "ING zakelijk", rekening_type: int = 1, is_archived: bool = False) -> dict:
     return {
         "id": str(uuid.uuid4()),
         "Name": naam,
@@ -20,7 +20,7 @@ def _account_record(*, naam: str = "ING zakelijk", rekening_type: int = 1) -> di
         "Type": rekening_type,
         "CurrentBalance": 48212.90,
         "LastBalanceDate": "2026-07-31T00:00:00",
-        "IsArchived": False,
+        "IsArchived": is_archived,
         "BankGatewayState": None,
         "BankGatewayType": 0,
     }
@@ -66,6 +66,81 @@ def test_sync_accounts_met_versheid_probe(administratie_id: uuid.UUID, admin_eng
         ).all()
     assert rijen[0] == ("ING zakelijk", 1, Decimal("48212.90"), True)
     assert rijen[1][0] == "Kas" and rijen[1][3] is False  # kas: geen import — geen fout
+
+
+def test_probe_slaat_rekeningen_zonder_aanleverpad_over(administratie_id: uuid.UUID) -> None:
+    """Kliktest-fix 2026-08-08: kas (3), verrekeningen (4), RC/privé (5) en gearchiveerde
+    rekeningen geven bewezen 400 op LastBankImport — die worden niet eens geprobed."""
+    bank = _account_record()
+    kas = _account_record(naam="Kas", rekening_type=3)
+    verrekeningen = _account_record(naam="Verrekeningen", rekening_type=4)
+    rc = _account_record(naam="RC Beheer B.V.", rekening_type=5)
+    archief = _account_record(naam="Oude betaalrekening", is_archived=True)
+    client = FakeBankClient(
+        accounts=[bank, kas, verrekeningen, rc, archief],
+        last_imports={bank["id"]: {"FileName": "x.940", "Date": "2026-07-31T06:04:00"}},
+    )
+    telling = sync.sync_payment_accounts(administratie_id=administratie_id, client=client)
+    assert telling.aangemaakt == 5
+    assert client.import_probes == [bank["id"]]
+
+
+def test_falende_probe_breekt_sync_niet_af_en_is_zichtbaar(
+    administratie_id: uuid.UUID, admin_engine: Engine
+) -> None:
+    """Failsafe (kliktest 2026-08-08, make bank-sync → 0/3): één kapotte versheid-probe mag
+    nooit de administratie-sync afbreken — de rekening wordt zichtbaar gemarkeerd
+    (laatste_import_probe_fout), de bestaande versheid blijft staan en de rest draait door.
+    Regressie: een onverwachte 400 uit de probe hoort hier ook doorheen te komen."""
+    from app.rlz.client import RlzApiError
+
+    goed = _account_record(naam="Knab Zakelijk")
+    kapot = _account_record(naam="ING zakelijk")
+    versheid = {"FileName": "eerder.940", "Date": "2026-07-01T06:00:00"}
+
+    # Ronde 1: beide probes slagen — de kapotte rekening heeft dan al een bekende versheid.
+    client = FakeBankClient(
+        accounts=[goed, kapot],
+        last_imports={goed["id"]: {"FileName": "x.940"}, kapot["id"]: versheid},
+    )
+    sync.sync_payment_accounts(administratie_id=administratie_id, client=client)
+
+    # Ronde 2: de probe op één rekening faalt met een onverwachte 400.
+    client.last_imports[kapot["id"]] = RlzApiError(
+        400, "GET", f"PaymentAccounts/{kapot['id']}/LastBankImport", '{"Message":"iets anders"}'
+    )
+    telling = sync.sync_payment_accounts(administratie_id=administratie_id, client=client)
+    assert telling.bijgewerkt == 2  # de sync liep gewoon door
+
+    with admin_engine.connect() as conn:
+        rijen = {
+            naam: (fout, bestand)
+            for naam, fout, bestand in conn.execute(
+                text(
+                    "SELECT naam, laatste_import_probe_fout, laatste_import ->> 'FileName' "
+                    "FROM boekhouding.payment_account_cache WHERE administratie_id = :aid"
+                ),
+                {"aid": administratie_id},
+            ).all()
+        }
+    fout, bestand = rijen["ING zakelijk"]
+    assert fout is not None and "400" in fout
+    assert bestand == "eerder.940"  # laatst-bekende versheid blijft staan
+    assert rijen["Knab Zakelijk"][0] is None
+
+    # Ronde 3: probe herstelt — de markering verdwijnt en de versheid wordt ververst.
+    client.last_imports[kapot["id"]] = {"FileName": "nieuw.940"}
+    sync.sync_payment_accounts(administratie_id=administratie_id, client=client)
+    with admin_engine.connect() as conn:
+        fout, bestand = conn.execute(
+            text(
+                "SELECT laatste_import_probe_fout, laatste_import ->> 'FileName' "
+                "FROM boekhouding.payment_account_cache WHERE administratie_id = :aid AND naam = 'ING zakelijk'"
+            ),
+            {"aid": administratie_id},
+        ).one()
+    assert fout is None
+    assert bestand == "nieuw.940"
 
 
 def test_mutatie_sync_is_incrementeel_op_create_date(

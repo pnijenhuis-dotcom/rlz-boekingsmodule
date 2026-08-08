@@ -411,6 +411,16 @@ export function BankDetailScreen() {
         </div>
       )}
 
+      {huidigeRekening?.probe_fout && (
+        <div className="panel">
+          <p className="hint" style={{ color: 'var(--orange)' }}>
+            ⚠️ De versheid van de bankaanlevering op deze rekening kon niet worden opgehaald (probe mislukt) —
+            de getoonde importdatum kan verouderd zijn. De synchronisatie zelf is gewoon doorgegaan; probeer het
+            later opnieuw met “Verversen uit Reeleezee”.
+          </p>
+        </div>
+      )}
+
       {rekeningen && rekeningen.ooit_gesynchroniseerd && !rekeningen.heeft_bankaanlevering && (
         <div className="panel">
           <p className="hint">

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0029
+-- Migratie-head bij deze dump: 0030
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -708,7 +708,8 @@ CREATE TABLE boekhouding.payment_account_cache (
     laatste_import jsonb,
     brondata jsonb NOT NULL,
     laatst_gesynchroniseerd timestamp with time zone DEFAULT now() NOT NULL,
-    verdwenen_uit_bron_op timestamp with time zone
+    verdwenen_uit_bron_op timestamp with time zone,
+    laatste_import_probe_fout text
 );
 
 ALTER TABLE ONLY boekhouding.payment_account_cache FORCE ROW LEVEL SECURITY;

@@ -92,6 +92,7 @@ class Rekening:
     open_mutaties: int
     heeft_aanlevering: bool
     laatste_import: dict | None
+    probe_fout: str | None
 
 
 @dataclass(frozen=True)
@@ -153,6 +154,7 @@ def rekeningen_overzicht(*, administratie_id: uuid.UUID) -> RekeningOverzicht:
                 open_mutaties=tellers.get(rij.id, 0),
                 heeft_aanlevering=heeft_aanlevering,
                 laatste_import=rij.laatste_import,
+                probe_fout=rij.laatste_import_probe_fout,
             )
         )
     return RekeningOverzicht(

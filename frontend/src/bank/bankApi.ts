@@ -35,6 +35,9 @@ export interface RekeningDto {
   open_mutaties: number
   heeft_aanlevering: boolean
   laatste_import: LaatsteImportDto | null
+  /** Gevuld = de laatste versheid-probe faalde onverwacht; laatste_import is dan de
+   *  laatst-bekende (mogelijk verouderde) waarde. */
+  probe_fout: string | null
 }
 
 export interface RekeningenDto {

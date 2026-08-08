@@ -21,7 +21,7 @@ class FakeBankClient:
         self,
         *,
         accounts: list[dict[str, Any]] | None = None,
-        last_imports: dict[str, dict | None] | None = None,
+        last_imports: dict[str, dict | None | Exception] | None = None,
         transacties: dict[str, dict[str, Any]] | None = None,
         items: list[dict[str, Any]] | None = None,
         invoices: dict[str, dict[str, Any]] | None = None,
@@ -35,6 +35,7 @@ class FakeBankClient:
         self.faal_op = faal_op
         self.direct_bookings: dict[str, dict[str, Any]] = {}
         self.correcties: list[str] = []
+        self.import_probes: list[str] = []
         self.lijst_params: list[dict[str, Any] | None] = []
         self.gesloten = False
 
@@ -56,7 +57,11 @@ class FakeBankClient:
         return self.accounts
 
     def get_last_bank_import(self, account_id: Any) -> dict | None:
-        return self.last_imports.get(str(account_id))
+        self.import_probes.append(str(account_id))
+        waarde = self.last_imports.get(str(account_id))
+        if isinstance(waarde, Exception):
+            raise waarde
+        return waarde
 
     def list_payment_transactions(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         self.lijst_params.append(params)

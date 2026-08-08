@@ -98,10 +98,28 @@ class BankSyncResultaat:
 
 # --- 1. rekeningen ---------------------------------------------------------------------------
 
+# PaymentAccountTypes waarop een bankaanlevering aantoonbaar niet kán bestaan (live geverifieerd
+# 2026-08-08, api-verkenning.md "LastBankImport per rekeningtype"): kas (3), verrekeningen (4)
+# en RC/privé (5) geven altijd `400 _InvalidData` op de probe. Overige types (ook onbekende)
+# worden wél geprobed — de client vertaalt 400 _InvalidData daar zelf naar None.
+_REKENING_TYPES_ZONDER_AANLEVERPAD = {3, 4, 5}
 
-def _account_waarden(record: dict[str, Any], laatste_imports: dict[uuid.UUID, dict | None]) -> dict[str, Any]:
+
+@dataclass(frozen=True)
+class _ProbeMislukt:
+    """Versheid-probe faalde (failsafe kliktest-fix 2026-08-08): de fout wordt zichtbaar op de
+    rekening-rij gezet en de rest van de sync draait door — een kapotte probe mag nooit de hele
+    administratie-sync afbreken. De bestaande `laatste_import` blijft staan (stale versheid is
+    informatiever dan geen)."""
+
+    fout: str
+
+
+def _account_waarden(
+    record: dict[str, Any], laatste_imports: dict[uuid.UUID, dict | None | _ProbeMislukt]
+) -> dict[str, Any]:
     record_id = uuid.UUID(str(record["id"]))
-    return {
+    waarden: dict[str, Any] = {
         "naam": record.get("Name") or record.get("Description"),
         "iban": record.get("IBAN"),
         "rekening_type": record.get("Type"),
@@ -110,23 +128,43 @@ def _account_waarden(record: dict[str, Any], laatste_imports: dict[uuid.UUID, di
         "is_gearchiveerd": record.get("IsArchived"),
         "gateway_state": record.get("BankGatewayState"),
         "gateway_type": record.get("BankGatewayType"),
-        "laatste_import": laatste_imports.get(record_id),
         "brondata": record,
     }
+    probe = laatste_imports.get(record_id)
+    if isinstance(probe, _ProbeMislukt):
+        # `laatste_import` bewust weglaten: een bestaande rij houdt zijn laatst-bekende
+        # versheid (een nieuwe rij start op de kolom-default NULL).
+        waarden["laatste_import_probe_fout"] = probe.fout
+    else:
+        waarden["laatste_import"] = probe
+        waarden["laatste_import_probe_fout"] = None
+    return waarden
 
 
 def sync_payment_accounts(*, administratie_id: uuid.UUID, client: RlzClient) -> SyncTelling:
     accounts = client.list_payment_accounts()
 
-    # Versheid-probe per rekening (STAP 0 §3) — 404/None = nooit een aanlevering gezien, dat is
-    # juist het onboarding-signaal, geen fout. Alleen niet-gearchiveerde rekeningen proben.
-    laatste_imports: dict[uuid.UUID, dict | None] = {}
+    # Versheid-probe per rekening (STAP 0 §3) — None = nooit een aanlevering gezien, dat is
+    # juist het onboarding-signaal, geen fout. Alleen proben waar een aanlevering kán bestaan:
+    # niet-gearchiveerd (gearchiveerd geeft 400) én geen kas/verrekeningen/RC-type.
+    laatste_imports: dict[uuid.UUID, dict | None | _ProbeMislukt] = {}
     for record in accounts:
         record_id = uuid.UUID(str(record["id"]))
-        if record.get("IsArchived"):
+        if record.get("IsArchived") or record.get("Type") in _REKENING_TYPES_ZONDER_AANLEVERPAD:
             laatste_imports[record_id] = None
             continue
-        laatste_imports[record_id] = client.get_last_bank_import(record_id)
+        try:
+            laatste_imports[record_id] = client.get_last_bank_import(record_id)
+        except Exception as exc:  # noqa: BLE001 — failsafe: één kapotte probe mag de sync niet afbreken
+            logger.warning(
+                "Bank-sync %s: versheid-probe mislukt voor rekening %s (Type=%s) — rekening "
+                "gemarkeerd, sync draait door: %s",
+                administratie_id,
+                record_id,
+                record.get("Type"),
+                exc,
+            )
+            laatste_imports[record_id] = _ProbeMislukt(fout=str(exc))
 
     now = datetime.now(UTC)
     with scoped_session(administratie_id) as session:

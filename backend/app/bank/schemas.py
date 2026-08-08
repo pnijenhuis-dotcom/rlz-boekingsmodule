@@ -46,6 +46,9 @@ class RekeningResponse(BaseModel):
     open_mutaties: int
     heeft_aanlevering: bool
     laatste_import: LaatsteImportResponse | None
+    # Failsafe kliktest-fix 2026-08-08: gevuld = de laatste versheid-probe faalde onverwacht;
+    # `laatste_import` is dan de laatst-bekende (mogelijk verouderde) waarde.
+    probe_fout: str | None = None
 
 
 class RekeningenResponse(BaseModel):

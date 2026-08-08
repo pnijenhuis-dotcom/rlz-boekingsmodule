@@ -25,6 +25,7 @@ const rekening = {
   open_mutaties: 1,
   heeft_aanlevering: true,
   laatste_import: { datum: '2026-07-31', bron: '1', type: 'MT940', bestandsnaam: 'x.940' },
+  probe_fout: null,
 }
 
 function mutatie(overrides: Record<string, unknown> = {}) {

@@ -47,6 +47,10 @@ class PaymentAccountCache(Base):
     # none_as_null: een rekening zónder aanlevering moet echt SQL NULL zijn (de onboarding-check
     # toetst op IS NULL), niet een JSON-'null'-waarde.
     laatste_import: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), default=None)
+    # Failsafe kliktest-fix 2026-08-08: NULL = probe ok; anders de fouttekst van de laatst
+    # mislukte versheid-probe. `laatste_import` blijft dan op de laatst-bekende waarde staan
+    # (stale versheid is informatiever dan geen) — de UI toont de fout naast die waarde.
+    laatste_import_probe_fout: Mapped[str | None] = mapped_column(default=None)
     brondata: Mapped[dict] = mapped_column(JSONB)
     laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)

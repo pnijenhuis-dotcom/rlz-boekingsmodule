@@ -73,6 +73,7 @@ def rekeningen(
                 open_mutaties=r.open_mutaties,
                 heeft_aanlevering=r.heeft_aanlevering,
                 laatste_import=_laatste_import_response(r.laatste_import),
+                probe_fout=r.probe_fout,
             )
             for r in overzicht.rekeningen
         ],
