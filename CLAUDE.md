@@ -164,21 +164,27 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,
   duplicaatbewaking per periode, plausibiliteitscheck (marge vs historie). BLOW: cannabisomzet =
   "NL, Geen BTW (Vrijgesteld)" — bewust géén 0%-tarief (aangifte-rubriek).
-  **Bouwstatus: omzetmodule GEBOUWD + GETEST (2026-08-07, wacht op review Peter)** — migratie
-  0027 + `backend/app/omzet/` + `frontend/src/omzet/`; details BESLISSINGEN "Omzetmodule —
-  GEBOUWD + GETEST". STAP 0-feiten (api-verkenning "Omzetmodule STAP 0"): SalesInvoice-
+  **Bouwstatus: omzetmodule GEBOUWD + GETEST (2026-08-07); boekt sinds 2026-08-09 als
+  entity-loze Receipts (besluit Peter 2026-08-08 — kasomzet = losse boeking, geen
+  dummy-debiteur)** — migraties 0027 + 0031, `backend/app/omzet/` + `frontend/src/omzet/`;
+  details BESLISSINGEN "Omzetmodule — GEBOUWD + GETEST". Kernfeiten (api-verkenning
+  "Omzetmodule STAP 0" + "Receipts-verkenning" incl. aanvulling 2026-08-09): verkoopboeking =
+  PUT SalesInvoices zónder Entity, mét administratie-specifieke DocumentCategory
+  "Verkoopfactuur (Omzet)" (selectie DocumentType 10 + naam, GUID gecachet in
+  omzet_instelling, nooit hardcoden; ⚠️ HasSystemId is dáár geen bruikbaar selectieveld);
   `Reference` = RLZ's eigen verkoopnummering (`InvoiceNumber` wel expliciet zetbaar,
-  nummer-botsing bij boeken deterministisch hersteld); ⚠️ de SalesInvoices-COLLECTIE ziet
-  API-aangemaakte facturen niet → duplicaatbewaking lokaal per periode (DB-uniek) + eigen
-  client-GUID + memoriaal-Reference-check — **aanvulling Receipts-verkenning (2026-08-07): de
-  Receipts-COLLECTIE ziet ze wél (Receipt = SalesInvoice zonder Entity; dicht de blinde vlek
-  op afstand), en de omzetmotor gaat na review Peter van systeemdebiteur "Kasomzet" naar
-  entity-loze Receipts — zie api-verkenning "Omzetmodule — Receipts-verkenning"**; systeemdebiteur "Kasomzet" per administratie
-  idempotent aangemaakt; kassabedragen incl. btw → splitsing in code; één-transactie-garantie
-  volledig in de app (memoriaal faalt → storno verkoop, storno faalt óók → zichtbaar
-  `half_geboekt` + `make omzet-reconciliatie`). Mapping-loze categorie = blokkerende check +
-  automatische vraag. De SalesInvoice-motor is herbruikbaar gebouwd voor de
-  Vastly-verkoopfactuur-routing (§2d, fase 3).
+  nummer-botsing deterministisch hersteld — InvoiceNumber is op de Receipts-collectie niet
+  filter-/sorteerbaar, dus herstel blijft max(SalesInvoices-collectie, lokaal)+1);
+  duplicaatbewaking = lokaal per periode (DB-uniek) + eigen client-GUID +
+  memoriaal-Reference-check + Receipts-Description-check (deterministische periode-omschrijving
+  `OMZ-…-VK`; de Receipts-collectie ziet — anders dan SalesInvoices — óók API-documenten). De
+  systeemdebiteur "Kasomzet" wordt niet meer aangemaakt (instelling-kolommen gemarkeerd
+  vervallen; bestaande RLZ-debiteuren blijven staan — nooit verwijderen). Kassabedragen incl.
+  btw → splitsing in code; één-transactie-garantie volledig in de app (memoriaal faalt →
+  storno verkoop, storno faalt óók → zichtbaar `half_geboekt` + `make omzet-reconciliatie`).
+  Mapping-loze categorie = blokkerende check + automatische vraag. De SalesInvoice-motor
+  blijft herbruikbaar (customer_id optioneel) voor de Vastly-verkoopfactuur-routing (§2d,
+  fase 3, dan mét Entity).
 - **Bank**: klantenlijst → rekening (alle `PaymentAccounts` incl. kas). Voorstel-volgorde:
   1) exacte match naam+factuurnr+**bedrag** → auto-afletteren; 2) gedeeltelijke match → bevestigen;
   3) vaste regels (geheugen; na 3× zelfde handmatige boeking regel voorstellen); 4) RLZ's eigen

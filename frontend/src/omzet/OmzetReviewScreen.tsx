@@ -415,9 +415,9 @@ export function OmzetReviewScreen() {
                 ))}
                 <tr>
                   <td colSpan={3}>
-                    <b>Debiteur: {voorstel.kasomzet_naam ?? 'Kasomzet'} (systeemdebiteur)</b>{' '}
+                    <b>Losse verkoopboeking — zonder debiteur</b>{' '}
                     <span className="hint" style={{ display: 'inline' }}>
-                      — wordt bij de eerste boeking automatisch in RLZ aangemaakt
+                      — boekt in RLZ als &ldquo;Verkopen → Boekingen&rdquo; (geen dummy-debiteur)
                     </span>
                   </td>
                   <td className="amount">

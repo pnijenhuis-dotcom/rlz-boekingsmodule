@@ -63,7 +63,6 @@ function voorstel(overrides: Record<string, unknown> = {}) {
       },
     ],
     voorraad_ledger_id: null,
-    kasomzet_naam: null,
     opgeslagen: false,
     rapport_titel: 'Margerapport',
     entiteit_naam: 'BLOW B.V.',

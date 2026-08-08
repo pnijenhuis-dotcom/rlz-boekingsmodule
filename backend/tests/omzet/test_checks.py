@@ -170,6 +170,7 @@ class TestDuplicaatPeriode:
             periode_eind=date(2025, 9, 21),
             bestaande_periodes=[(date(2025, 9, 8), date(2025, 9, 14))],
             rlz_memoriaal_hits=0,
+            rlz_verkoop_hits=0,
         )
         assert resultaat.ok
 
@@ -179,6 +180,7 @@ class TestDuplicaatPeriode:
             periode_eind=date(2025, 9, 21),
             bestaande_periodes=[(date(2025, 9, 20), date(2025, 9, 26))],
             rlz_memoriaal_hits=0,
+            rlz_verkoop_hits=0,
         )
         assert not resultaat.ok
         assert "2025-09-20" in resultaat.melding
@@ -189,6 +191,7 @@ class TestDuplicaatPeriode:
             periode_eind=date(2025, 9, 21),
             bestaande_periodes=[],
             rlz_memoriaal_hits=1,
+            rlz_verkoop_hits=0,
         )
         assert not resultaat.ok
 
@@ -198,14 +201,39 @@ class TestDuplicaatPeriode:
             periode_eind=date(2025, 9, 21),
             bestaande_periodes=[],
             rlz_memoriaal_hits=None,
+            rlz_verkoop_hits=0,
         )
         assert not resultaat.ok
 
     def test_zonder_periode_blokkeert(self) -> None:
         resultaat = check_duplicaat_periode(
-            periode_start=None, periode_eind=None, bestaande_periodes=[], rlz_memoriaal_hits=0
+            periode_start=None, periode_eind=None, bestaande_periodes=[], rlz_memoriaal_hits=0, rlz_verkoop_hits=0
         )
         assert not resultaat.ok
+
+    def test_rlz_verkoop_hit_blokkeert(self) -> None:
+        """Receipts-verkenning: de verkoop-kant is sindsdien wél op afstand te bevragen — een
+        vreemde Receipt met onze periode-omschrijving blokkeert."""
+        resultaat = check_duplicaat_periode(
+            periode_start=date(2025, 9, 15),
+            periode_eind=date(2025, 9, 21),
+            bestaande_periodes=[],
+            rlz_memoriaal_hits=0,
+            rlz_verkoop_hits=1,
+        )
+        assert not resultaat.ok
+        assert "verkoopboeking" in resultaat.melding
+
+    def test_rlz_verkoop_check_niet_uitvoerbaar_blokkeert_fail_closed(self) -> None:
+        resultaat = check_duplicaat_periode(
+            periode_start=date(2025, 9, 15),
+            periode_eind=date(2025, 9, 21),
+            bestaande_periodes=[],
+            rlz_memoriaal_hits=0,
+            rlz_verkoop_hits=None,
+        )
+        assert not resultaat.ok
+        assert "kon niet uitgevoerd worden" in resultaat.melding
 
 
 class TestMargePlausibiliteit:
@@ -264,6 +292,7 @@ class TestVoerOmzetChecksUit:
             rapport_totaal_kostprijs=None,
             bestaande_periodes=[],
             rlz_memoriaal_hits=0,
+            rlz_verkoop_hits=0,
             historische_marges=[],
             bandbreedte_procentpunt=Decimal("30"),
         )
@@ -281,6 +310,7 @@ class TestVoerOmzetChecksUit:
             rapport_totaal_kostprijs=None,
             bestaande_periodes=[],
             rlz_memoriaal_hits=0,
+            rlz_verkoop_hits=0,
             historische_marges=[],
             bandbreedte_procentpunt=Decimal("30"),
         )

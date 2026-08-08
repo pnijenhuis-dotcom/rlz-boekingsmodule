@@ -352,7 +352,6 @@ export interface OmzetVoorstelDto {
   marge_pct: string | null
   regels: OmzetRegelDto[]
   voorraad_ledger_id: string | null
-  kasomzet_naam: string | null
   opgeslagen: boolean
   rapport_titel: string | null
   entiteit_naam: string | null

@@ -32,7 +32,6 @@ class OmzetVoorstelResponse(BaseModel):
     marge_pct: Decimal | None = None
     regels: list[OmzetRegelDto]
     voorraad_ledger_id: uuid.UUID | None = None
-    kasomzet_naam: str | None = None
     opgeslagen: bool
     rapport_titel: str | None = None
     entiteit_naam: str | None = None

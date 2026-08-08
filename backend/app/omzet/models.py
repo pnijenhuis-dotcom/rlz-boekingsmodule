@@ -41,11 +41,11 @@ class OmzetCategorieMapping(Base):
 
 
 class OmzetInstelling(Base):
-    """Omzetconfig per administratie (migratie 0027): de RLZ-GUID van de systeemdebiteur
-    "Kasomzet" (idempotent aangemaakt bij de eerste boeking — STAP 0 §5: bestaat niet per
-    definitie), de voorraad-tegenrekening van het kostprijsmemoriaal en het gecachte
-    memoriaal-dagboek-GUID (per administratie opgevraagd via JournalEntryDiaries, nooit
-    hardcoden — STAP 0 §3)."""
+    """Omzetconfig per administratie (migratie 0027 + 0031): de voorraad-tegenrekening van het
+    kostprijsmemoriaal en de gecachte administratie-specifieke RLZ-GUID's — het
+    memoriaal-dagboek (JournalEntryDiaries, STAP 0 §3) en de DocumentCategory "Verkoopfactuur
+    (Omzet)" voor de entity-loze Receipt-boeking (Receipts-verkenning); beide per administratie
+    opgevraagd, nooit hardcoden."""
 
     __tablename__ = "omzet_instelling"
     __table_args__ = {"schema": "boekhouding"}
@@ -53,10 +53,14 @@ class OmzetInstelling(Base):
     administratie_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
     )
+    # VERVALLEN (besluit Peter 2026-08-08, omzetmotor → entity-loze Receipts): de systeemdebiteur
+    # "Kasomzet" wordt niet meer aangemaakt of gebruikt. Kolommen blijven als historisch spoor
+    # voor administraties waar de debiteur al bestond — RLZ-data wordt nooit verwijderd.
     kasomzet_customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     kasomzet_naam: Mapped[str | None] = mapped_column(default=None)
     voorraad_ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     memoriaal_diary_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    verkoop_categorie_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 

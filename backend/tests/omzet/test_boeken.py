@@ -73,8 +73,16 @@ class TestBoekOmzetGelukt:
         assert verkoop["Status"] == 2
         assert memoriaal["Status"] == 3
         assert {u["pad"] for u in client.uploads} == {"SalesInvoices", "ManualJournals"}
-        # Systeemdebiteur idempotent aangemaakt; verkoopregels vrijgesteld (geen btw-splitsing).
-        assert len(client.customers) == 1
+        # Entity-loze Receipt (besluit 2026-08-08): géén debiteur aangemaakt, wél de
+        # administratie-specifieke categorie "Verkoopfactuur (Omzet)" + de deterministische
+        # periode-omschrijving (het anker van de duplicaatbewaking-op-afstand).
+        assert not client.customers
+        assert verkoop["Entity"] is None
+        assert verkoop["DocumentCategory"] == {"id": "9138fa50-d8be-4b6f-9d39-ce5bb2e67f86"}
+        from app.omzet.voorstel import verkoop_omschrijving
+
+        assert verkoop["Description"] == verkoop_omschrijving(PERIODE_START, PERIODE_EIND)
+        # Verkoopregels vrijgesteld (geen btw-splitsing).
         assert all(line["TaxAmount"] == 0.0 for line in verkoop["DocumentLineList"])
         assert sum(line["NetAmount"] for line in verkoop["DocumentLineList"]) == pytest.approx(22463.36)
         # Memoriaal sluit: debet kostprijs per categorie, credit voorraad totaal.
@@ -306,6 +314,28 @@ class TestFailsafes:
             boeken.boek_omzet_document(
                 administratie_id=administratie_id, document_id=boekbaar_document, actor_id=gescoopte_gebruiker
             )
+
+    def test_ontbrekende_verkoop_categorie_faalt_zichtbaar_voor_de_verkoop_put(
+        self,
+        boekbaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        boeken_aan: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """De categorie "Verkoopfactuur (Omzet)" hoort in elke administratie te bestaan; ontbreekt
+        (of dubbelt) ze, dan een duidelijke boekfout vóór er iets in RLZ geschreven is — nooit
+        een entity-loze PUT zonder categorie proberen."""
+        client = FakeOmzetClient()
+        monkeypatch.setattr(
+            FakeOmzetClient, "DOCUMENT_CATEGORIES", [{"id": str(uuid.uuid4()), "Name": "Anders", "DocumentType": 10}]
+        )
+        _patch_client(monkeypatch, client)
+        with pytest.raises(boeken.RlzBoekingMislukt, match="Verkoopfactuur \\(Omzet\\)"):
+            boeken.boek_omzet_document(
+                administratie_id=administratie_id, document_id=boekbaar_document, actor_id=gescoopte_gebruiker
+            )
+        assert not client.sales_invoices and not client.manual_journals
 
     def test_dubbel_boeken_geweigerd_na_geboekt(
         self,

@@ -70,7 +70,6 @@ class OmzetVoorstelData:
     marge_pct: Decimal | None
     regels: list[OmzetRegelData]
     voorraad_ledger_id: uuid.UUID | None
-    kasomzet_naam: str | None
     opgeslagen: bool
     rapport_titel: str | None = None
     entiteit_naam: str | None = None
@@ -152,7 +151,6 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
         veldvoorstel = _laatste_veldvoorstel(session, document_id) or {}
         instelling = _instelling(session, administratie_id)
         voorraad_ledger_id = instelling.voorraad_ledger_id if instelling else None
-        kasomzet_naam = instelling.kasomzet_naam if instelling else None
         mappings = actieve_mappings(session, administratie_id=administratie_id)
 
         bestaand = session.get(OmzetVoorstel, document_id)
@@ -187,7 +185,6 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
                 ),
                 regels=regels,
                 voorraad_ledger_id=voorraad_ledger_id,
-                kasomzet_naam=kasomzet_naam,
                 opgeslagen=True,
                 rapport_titel=veldvoorstel.get("rapport_titel"),
                 entiteit_naam=veldvoorstel.get("entiteit_naam"),
@@ -214,7 +211,6 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
             marge_pct=omzet_checks.bereken_marge_pct(totaal_omzet=totaal_omzet, totaal_kostprijs=totaal_kostprijs),
             regels=regels,
             voorraad_ledger_id=voorraad_ledger_id,
-            kasomzet_naam=kasomzet_naam,
             opgeslagen=False,
             rapport_titel=veldvoorstel.get("rapport_titel"),
             entiteit_naam=veldvoorstel.get("entiteit_naam"),
@@ -338,6 +334,15 @@ def memoriaal_referentie(periode_start: date, periode_eind: date) -> str:
     return f"OMZ-{periode_start:%Y%m%d}-{periode_eind:%Y%m%d}-KP"
 
 
+def verkoop_omschrijving(periode_start: date, periode_eind: date) -> str:
+    """Deterministische, periode-gebonden Description van de entity-loze verkoopboeking —
+    zelfde principe als memoriaal_referentie: een tweede document over dezelfde periode krijgt
+    dezelfde omschrijving en valt daarmee door de Receipts-duplicaatcheck (de collectie ziet
+    óók API-documenten en is op Description filterbaar — Receipts-verkenning + read-only
+    verificatie 2026-08-09)."""
+    return f"OMZ-{periode_start:%Y%m%d}-{periode_eind:%Y%m%d}-VK"
+
+
 def bouw_memoriaal_regels(*, regels: list[OmzetRegelData] | list[OmzetRegelInput]) -> list[omzet_checks.MemoriaalRegel]:
     """Het kostprijsmemoriaal zoals het geboekt gaat worden (debet kostprijs per categorie,
     credit voorraad voor het totaal) in check-vorm — de saldo-0-check toetst wat er écht naar
@@ -417,32 +422,47 @@ def voer_omzet_checks_uit(
         periodes = _bestaande_periodes(session, administratie_id=administratie_id, document_id=document_id)
 
     rlz_hits: int | None = None
+    rlz_verkoop_hits: int | None = None
     if voorstel.periode_start is not None and voorstel.periode_eind is not None:
         referentie = memoriaal_referentie(voorstel.periode_start, voorstel.periode_eind)
+        omschrijving = verkoop_omschrijving(voorstel.periode_start, voorstel.periode_eind)
         eigen_memoriaal_id = None
+        eigen_verkoop_id = None
         with scoped_session(administratie_id) as session:
             eigen = session.scalars(select(OmzetBoeking).where(OmzetBoeking.document_id == document_id)).first()
             eigen_memoriaal_id = str(eigen.memoriaal_rlz_id) if eigen else None
+            eigen_verkoop_id = str(eigen.verkoop_rlz_id) if eigen else None
         eigen_client = client is None
         try:
             if client is None:
                 rlz_admin_id = rlz_admin_id_voor(administratie_id)
                 client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
-            gevonden = client.find_manual_journals_by_reference(reference=referentie)
-            # Een hit op ons EIGEN memoriaal-GUID (retry na een eerdere poging) is geen duplicaat.
-            from app.documenten.rlz_ids import rlz_kostprijs_memoriaal_id
+            from app.documenten.rlz_ids import rlz_kostprijs_memoriaal_id, rlz_sales_invoice_id
 
+            # Memoriaal-kant: vreemde ManualJournals met onze periode-referentie. Een hit op ons
+            # EIGEN GUID (retry na een eerdere poging) is geen duplicaat.
+            gevonden = client.find_manual_journals_by_reference(reference=referentie)
             eigen_ids = {str(rlz_kostprijs_memoriaal_id(document_id))}
             if eigen_memoriaal_id:
                 eigen_ids.add(eigen_memoriaal_id)
             rlz_hits = len([m for m in gevonden if m.get("id") not in eigen_ids])
+            # Verkoop-kant (Receipts-verkenning: de Receipts-collectie ziet — anders dan
+            # SalesInvoices — óók API-documenten): vreemde Receipts met onze deterministische
+            # periode-omschrijving in Description.
+            receipts = client.find_receipts_by_description(description=omschrijving)
+            eigen_verkoop_ids = {str(rlz_sales_invoice_id(document_id))}
+            if eigen_verkoop_id:
+                eigen_verkoop_ids.add(eigen_verkoop_id)
+            rlz_verkoop_hits = len([r for r in receipts if r.get("id") not in eigen_verkoop_ids])
         except Exception as exc:  # noqa: BLE001 — fail-closed: check wordt blokkerend, crasht nooit
             logger.warning("RLZ-duplicaatcheck omzet kon niet uitgevoerd worden: %s", exc)
             rlz_hits = None
+            rlz_verkoop_hits = None
         finally:
             if eigen_client and client is not None:
                 client.close()
 
+    periode_compleet = bool(voorstel.periode_start and voorstel.periode_eind)
     return omzet_checks.voer_omzet_checks_uit(
         periode_start=voorstel.periode_start,
         periode_eind=voorstel.periode_eind,
@@ -452,7 +472,8 @@ def voer_omzet_checks_uit(
         rapport_totaal_omzet=voorstel.rapport_totaal_omzet,
         rapport_totaal_kostprijs=voorstel.rapport_totaal_kostprijs,
         bestaande_periodes=periodes,
-        rlz_memoriaal_hits=rlz_hits if voorstel.periode_start and voorstel.periode_eind else 0,
+        rlz_memoriaal_hits=rlz_hits if periode_compleet else 0,
+        rlz_verkoop_hits=rlz_verkoop_hits if periode_compleet else 0,
         historische_marges=historie,
         bandbreedte_procentpunt=Decimal(str(settings.omzet_marge_bandbreedte_procentpunt)),
     )

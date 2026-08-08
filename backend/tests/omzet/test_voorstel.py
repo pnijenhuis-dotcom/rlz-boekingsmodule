@@ -167,6 +167,47 @@ class TestChecksOrkestratie:
         duplicaat = next(r for r in rapport.resultaten if r.naam == "Duplicaat per periode")
         assert not duplicaat.ok
 
+    def test_rlz_receipts_duplicaat_hit_blokkeert(
+        self,
+        kassarapport_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+    ) -> None:
+        """Receipts-verkenning: de verkoop-kant is op afstand te bevragen — een vreemde Receipt
+        met onze periode-omschrijving blokkeert; onze eigen (retry-)boeking niet."""
+        from app.documenten.rlz_ids import rlz_sales_invoice_id
+        from app.omzet.voorstel import verkoop_omschrijving
+
+        sla_compleet_voorstel_op(
+            administratie_id=administratie_id,
+            document_id=kassarapport_document,
+            actor_id=gescoopte_gebruiker,
+            omzet_ledger_id=uuid.uuid4(),
+            taxrate_id=uuid.uuid4(),
+            kostprijs_ledger_id=uuid.uuid4(),
+            voorraad_ledger_id=uuid.uuid4(),
+        )
+        omschrijving = verkoop_omschrijving(date(2025, 9, 15), date(2025, 9, 21))
+        # Eigen GUID met dezelfde omschrijving (retry-scenario) telt NIET als duplicaat…
+        eigen = FakeOmzetClient()
+        eigen.sales_invoices[str(rlz_sales_invoice_id(kassarapport_document))] = {
+            "id": str(rlz_sales_invoice_id(kassarapport_document)),
+            "Description": omschrijving,
+        }
+        rapport = voorstel_service.voer_omzet_checks_uit(
+            administratie_id=administratie_id, document_id=kassarapport_document, client=eigen
+        )
+        duplicaat = next(r for r in rapport.resultaten if r.naam == "Duplicaat per periode")
+        assert duplicaat.ok
+        # …een vreemde Receipt met die omschrijving wél.
+        vreemd = FakeOmzetClient(receipt_duplicaten=[{"id": str(uuid.uuid4()), "Description": omschrijving}])
+        rapport = voorstel_service.voer_omzet_checks_uit(
+            administratie_id=administratie_id, document_id=kassarapport_document, client=vreemd
+        )
+        duplicaat = next(r for r in rapport.resultaten if r.naam == "Duplicaat per periode")
+        assert not duplicaat.ok
+        assert "verkoopboeking" in duplicaat.melding
+
     def test_rlz_fout_blokkeert_fail_closed_zonder_crash(
         self,
         kassarapport_document: uuid.UUID,

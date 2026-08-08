@@ -133,9 +133,20 @@ def sla_compleet_voorstel_op(
 
 class FakeOmzetClient:
     """Duck-typed vervanger van RlzClient voor de omzet-boekmotor-tests (geen echte HTTP).
-    Simuleert het geverifieerde STAP 0-gedrag: SalesInvoice-PUT kent auto-InvoiceNumbers toe
-    (te laag startend = de nummer-botsing uit de PoC), boeken van een niet-sluitend memoriaal
-    weigert, actie 19 zet Status terug naar 1."""
+    Simuleert het geverifieerde STAP 0- en Receipts-verkenning-gedrag: SalesInvoice-PUT kent
+    auto-InvoiceNumbers toe (te laag startend = de nummer-botsing uit de PoC), entity-loos
+    boeken kan (Receipt), de Receipts-collectie ziet API-documenten en is op Description
+    filterbaar, boeken van een niet-sluitend memoriaal weigert, actie 19 zet Status terug
+    naar 1."""
+
+    # Read-only geverifieerd 2026-08-09: 4 DocumentType-10-categorieën per administratie,
+    # naam "Verkoopfactuur (Omzet)" is daarbinnen uniek.
+    DOCUMENT_CATEGORIES = [
+        {"id": "1e2fb935-08b3-4547-aee7-07a6c3c160a2", "Name": "Diverse opbrengsten", "DocumentType": 10},
+        {"id": "1b65bc7a-6af1-492a-a8db-f1ae75dbdf2a", "Name": "Door te belasten kosten", "DocumentType": 10},
+        {"id": "9138fa50-d8be-4b6f-9d39-ce5bb2e67f86", "Name": "Verkoopfactuur (Omzet)", "DocumentType": 10},
+        {"id": "f86654c6-bc80-421c-b0ce-2dcae4c0a491", "Name": "Kasomzet", "DocumentType": 19},
+    ]
 
     def __init__(
         self,
@@ -144,11 +155,13 @@ class FakeOmzetClient:
         nummer_botsing: bool = False,
         collectie_max_nummer: int = 371,
         memoriaal_duplicaten: list[dict[str, Any]] | None = None,
+        receipt_duplicaten: list[dict[str, Any]] | None = None,
     ) -> None:
         self.faal_op = faal_op
         self.nummer_botsing = nummer_botsing
         self.collectie_max_nummer = collectie_max_nummer
         self.memoriaal_duplicaten = memoriaal_duplicaten or []
+        self.receipt_duplicaten = receipt_duplicaten or []
         self.customers: dict[str, dict[str, Any]] = {}
         self.sales_invoices: dict[str, dict[str, Any]] = {}
         self.manual_journals: dict[str, dict[str, Any]] = {}
@@ -170,15 +183,27 @@ class FakeOmzetClient:
     def for_administration(self, admin_id: str) -> FakeOmzetClient:
         return self
 
-    # -- debiteur ---------------------------------------------------------------------------------
+    # -- debiteur (niet meer door de omzetmotor gebruikt — entity-loze Receipts sinds besluit
+    # 2026-08-08; blijft voor de Vastly-verkooproute die wél een debiteur kent) -------------------
     def put_customer(self, customer_id: uuid.UUID, *, name: str) -> None:
         if self.faal_op == "customer":
             raise RlzApiError(500, "PUT", f"Customers/{customer_id}", "Onverwachte fout (simulatie)")
         self.customers[str(customer_id)] = {"id": str(customer_id), "Name": name}
 
-    # -- verkoopfactuur ---------------------------------------------------------------------------
+    # -- verkoopboeking (SalesInvoice mét debiteur of entity-loze Receipt) ------------------------
+    def list_document_categories(self) -> list[dict[str, Any]]:
+        if self.faal_op == "categorieen":
+            raise RlzApiError(500, "GET", "DocumentCategories", "Onverwachte fout (simulatie)")
+        return list(self.DOCUMENT_CATEGORIES)
+
     def put_sales_invoice(
-        self, invoice_id: uuid.UUID, *, customer_id: uuid.UUID, lines: list[dict], **extra: Any
+        self,
+        invoice_id: uuid.UUID,
+        *,
+        customer_id: uuid.UUID | None,
+        lines: list[dict],
+        document_category_id: uuid.UUID | None = None,
+        **extra: Any,
     ) -> None:
         if self.faal_op == "verkoop_put":
             raise RlzApiError(500, "PUT", f"SalesInvoices/{invoice_id}", "Onverwachte fout (simulatie)")
@@ -193,7 +218,9 @@ class FakeOmzetClient:
             "InvoiceNumber": nummer,
             "Reference": f"RLZ-{nummer}",
             "ReceiptNumber": "RLZ-01-00000393",
-            "Entity": {"id": str(customer_id)},
+            "Entity": {"id": str(customer_id)} if customer_id is not None else None,
+            "DocumentCategory": {"id": str(document_category_id)} if document_category_id is not None else None,
+            "Description": extra.get("Description"),
             "DocumentLineList": lines,
             "Date": extra.get("Date"),
         }
@@ -284,6 +311,14 @@ class FakeOmzetClient:
             raise RlzApiError(500, "GET", "ManualJournals", "Onverwachte fout (simulatie)")
         eigen = [m for m in self.manual_journals.values() if m.get("Reference") == reference]
         return self.memoriaal_duplicaten + eigen
+
+    def find_receipts_by_description(self, *, description: str) -> list[dict[str, Any]]:
+        """Receipts-verkenning §1: de collectie ziet óók API-aangemaakte documenten en is op
+        Description filterbaar (read-only geverifieerd 2026-08-09)."""
+        if self.faal_op == "receipts_duplicaatcheck":
+            raise RlzApiError(500, "GET", "Receipts", "Onverwachte fout (simulatie)")
+        eigen = [s for s in self.sales_invoices.values() if s.get("Description") == description]
+        return self.receipt_duplicaten + eigen
 
     # -- gedeeld ----------------------------------------------------------------------------------
     def upload_bijlage(

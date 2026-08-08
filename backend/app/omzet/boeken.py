@@ -1,23 +1,29 @@
-"""Omzet-boekmotor: SalesInvoice + gekoppeld kostprijsmemoriaal als ÉÉN logische transactie.
+"""Omzet-boekmotor: entity-loze Receipt + gekoppeld kostprijsmemoriaal als ÉÉN logische transactie.
+
+Kasomzet boekt als entity-loze SalesInvoice (= Receipt, RLZ-UI "Verkopen → Boekingen") —
+besluit Peter 2026-08-08, Receipts-verkenning 2026-08-07: geen dummy-debiteur "Kasomzet" meer;
+zelfde PUT-route, `Entity` weggelaten, mét de administratie-specifieke DocumentCategory
+"Verkoopfactuur (Omzet)". Btw-aangifte-gedrag is bewezen identiek (verkenning §3).
 
 RLZ kent geen cross-call-atomiciteit (STAP 0 §6) — de één-transactie-garantie komt volledig
 hieruit:
 - Deterministische client-GUID's per document (rlz_sales_invoice_id / rlz_kostprijs_memoriaal_id):
   elke retry raakt exact dezelfde twee RLZ-documenten, nooit een duplicaat.
-- Vaste volgorde: eerst de verkoopfactuur, dan het memoriaal. Faalt het memoriaal ná een
+- Vaste volgorde: eerst de verkoopboeking, dan het memoriaal. Faalt het memoriaal ná een
   geboekte verkoop, dan wordt de verkoop gestorneerd (actie 19); faalt óók die storno, dan
   ontstaat de zichtbare foutstatus HALF_GEBOEKT (omzet_boeking-rij + boeken_mislukt op het
   document + omzet-reconciliatie) — nooit stil één helft laten staan.
-- Retry-inhaal via GET-op-eigen-GUID: de SalesInvoices-collectie ziet API-facturen niet
-  (STAP 0 §2), dus het eigen GUID is daar het enige betrouwbare "bestaat mijn factuur al"-pad.
+- Retry-inhaal via GET-op-eigen-GUID (SalesInvoices/{id} leest ook een Receipt); duplicaten
+  van ándere documenten vangt de lokale periode-bewaking plus — sinds de Receipts-verkenning —
+  de Receipts-collectie-check op de deterministische periode-omschrijving (Description).
 
-De verkoopfactuur-motor (`_boek_verkoopfactuur`) is bewust generiek gehouden (klant, regels,
+De verkoopmotor (`_boek_verkoopfactuur`) is bewust generiek gehouden (klant optioneel, regels,
 datum, bijlage — geen kassarapport-aannames): dit is de GEDEELDE SalesInvoice-boekmotor waar de
-Vastly-verkoopfactuur-routing (koppelcontract §2d, fase 3) op aansluit.
+Vastly-verkoopfactuur-routing (koppelcontract §2d, fase 3, mét Entity) op aansluit.
 
 Failsafes: zelfde poorten als het inkoop-boeken (checks server-side herhalen, toggle per
 administratie + globale kill switch, volumerem — gedeeld geteld over álle boekingen van de
-administratie) plus de idempotente systeemdebiteur-aanmaak ("Kasomzet", STAP 0 §5).
+administratie).
 """
 
 from __future__ import annotations
@@ -48,7 +54,6 @@ from app.documenten.boeken import (
 )
 from app.documenten.models import Document, DocumentStatus
 from app.documenten.rlz_ids import (
-    rlz_customer_id,
     rlz_kostprijs_memoriaal_id,
     rlz_omzet_upload_id,
     rlz_sales_invoice_id,
@@ -59,6 +64,7 @@ from app.omzet.voorstel import (
     OmzetVoorstelData,
     haal_omzet_voorstel_op,
     memoriaal_referentie,
+    verkoop_omschrijving,
     voer_omzet_checks_uit,
 )
 from app.rlz.client import RlzApiError, RlzClient
@@ -66,7 +72,11 @@ from app.sync.models import TaxRateCache
 
 logger = logging.getLogger(__name__)
 
-KASOMZET_NAAM = "Kasomzet"
+# De administratie-specifieke DocumentCategory van entity-loze Receipts (Receipts-verkenning;
+# read-only geverifieerd 2026-08-09: 4 DocumentType-10-categorieën, deze naam is daarbinnen
+# uniek en HasSystemId is — anders dan eerst aangenomen — geen bruikbaar selectieveld).
+VERKOOP_OMZET_CATEGORIE_NAAM = "Verkoopfactuur (Omzet)"
+_VERKOOP_DOCUMENTTYPE = 10
 
 # RLZ's foutmelding bij een botsend verkoopnummer (STAP 0 §1) — het signaal voor het
 # deterministische nummer-herstel hieronder.
@@ -152,37 +162,37 @@ def _memoriaal_lines(voorstel: OmzetVoorstelData) -> list[dict]:
     return lines
 
 
-def _zorg_voor_kasomzet_debiteur(*, client: RlzClient, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> uuid.UUID:
-    """Idempotente aanmaak van de systeemdebiteur "Kasomzet" (STAP 0 §5: bestaat niet per
-    definitie). Deterministisch GUID (administratie + naam) — een dubbele aanroep raakt dezelfde
-    RLZ-Customer. Eenmaal aangemaakt wordt het GUID in omzet_instelling bewaard."""
+def _zorg_voor_verkoop_categorie(*, client: RlzClient, administratie_id: uuid.UUID) -> uuid.UUID:
+    """De DocumentCategory "Verkoopfactuur (Omzet)" van deze administratie — verplicht op de
+    entity-loze Receipt-PUT (Receipts-verkenning §2). Per administratie opgehaald (GUID nooit
+    hardcoden — LastBankImport-les: systeem-GUID's lijken identiek over administraties, maar
+    daar bouwen we nooit op) en daarna gecachet in omzet_instelling, zelfde patroon als het
+    memoriaal-dagboek."""
     with scoped_session(administratie_id) as session:
         instelling = session.get(OmzetInstelling, administratie_id)
-        if instelling is not None and instelling.kasomzet_customer_id is not None:
-            return instelling.kasomzet_customer_id
+        if instelling is not None and instelling.verkoop_categorie_id is not None:
+            return instelling.verkoop_categorie_id
 
-    customer_id = rlz_customer_id(administratie_id, KASOMZET_NAAM)
-    client.put_customer(customer_id, name=KASOMZET_NAAM)
+    kandidaten = [
+        c
+        for c in client.list_document_categories()
+        if c.get("DocumentType") == _VERKOOP_DOCUMENTTYPE and c.get("Name") == VERKOOP_OMZET_CATEGORIE_NAAM
+    ]
+    if len(kandidaten) != 1:
+        raise RlzBoekingMislukt(
+            f'DocumentCategory "{VERKOOP_OMZET_CATEGORIE_NAAM}" (DocumentType {_VERKOOP_DOCUMENTTYPE}) niet '
+            f"eenduidig gevonden in deze administratie ({len(kandidaten)} treffers) — "
+            "de entity-loze verkoopboeking kan niet geboekt worden"
+        )
+    categorie_id = uuid.UUID(kandidaten[0]["id"])
 
-    with scoped_session(administratie_id, actor_id=actor_id) as session:
+    with scoped_session(administratie_id) as session:
         instelling = session.get(OmzetInstelling, administratie_id)
         if instelling is None:
             instelling = OmzetInstelling(administratie_id=administratie_id)
             session.add(instelling)
-        instelling.kasomzet_customer_id = customer_id
-        instelling.kasomzet_naam = KASOMZET_NAAM
-        record_audit_event(
-            session,
-            actor_id=actor_id,
-            module="boekhouding",
-            tabel="omzet_instelling",
-            record_id=administratie_id,
-            actie="kasomzet_debiteur_aangemaakt_in_rlz",
-            correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"customer_id": str(customer_id), "naam": KASOMZET_NAAM},
-            administratie_id=administratie_id,
-        )
-    return customer_id
+        instelling.verkoop_categorie_id = categorie_id
+    return categorie_id
 
 
 def _zorg_voor_memoriaal_dagboek(*, client: RlzClient, administratie_id: uuid.UUID) -> uuid.UUID:
@@ -232,18 +242,23 @@ def _boek_verkoopfactuur(
     *,
     client: RlzClient,
     rlz_id: uuid.UUID,
-    customer_id: uuid.UUID,
+    customer_id: uuid.UUID | None,
     lines: list[dict],
     datum_iso: str,
     upload_id: uuid.UUID,
     bestandsnaam: str,
     bestand: bytes,
     lokaal_max_invoice_number: int,
+    categorie_id: uuid.UUID | None = None,
+    omschrijving: str | None = None,
 ) -> tuple[int | None, str | None, str | None]:
     """Generieke SalesInvoice-boekmotor (herbruikbaar — Vastly-routing fase 3, koppelcontract
-    §2d): PUT → bijlage → actie 17, met (a) retry-inhaal via GET-op-eigen-GUID en (b) het
-    deterministische nummer-herstel voor RLZ's "factuurnummer al in gebruik" (STAP 0 §1: RLZ's
-    eigen nummerteller kan botsen met import-historie). Retourneert
+    §2d, dan mét customer_id): PUT → bijlage → actie 17, met (a) retry-inhaal via
+    GET-op-eigen-GUID en (b) het deterministische nummer-herstel voor RLZ's "factuurnummer al
+    in gebruik" (STAP 0 §1: RLZ's eigen nummerteller kan botsen met import-historie).
+    `customer_id=None` + `categorie_id` = de entity-loze Receipt-vorm (Receipts-verkenning §2);
+    `omschrijving` wordt de Description — voor kasomzet de deterministische periode-omschrijving
+    waar de duplicaatbewaking-op-afstand op filtert. Retourneert
     (invoice_number, referentie, boekstuknummer)."""
 
     def _huidige_staat() -> dict | None:
@@ -260,7 +275,10 @@ def _boek_verkoopfactuur(
         return bestaand.get("InvoiceNumber"), bestaand.get("Reference"), bestaand.get("ReceiptNumber")
 
     body_extra: dict = {"Date": datum_iso}
-    client.put_sales_invoice(rlz_id, customer_id=customer_id, lines=lines, **body_extra)
+    if omschrijving is not None:
+        body_extra["Description"] = omschrijving
+    put_extra: dict = {"document_category_id": categorie_id} if categorie_id is not None else {}
+    client.put_sales_invoice(rlz_id, customer_id=customer_id, lines=lines, **put_extra, **body_extra)
     client.upload_bijlage(
         "SalesInvoices",
         rlz_id,
@@ -275,14 +293,18 @@ def _boek_verkoopfactuur(
             raise
         # Nummer-herstel (STAP 0 §1): RLZ's auto-nummer botst (teller loopt achter op de
         # import-historie). Deterministisch nieuw nummer = max(RLZ-collectie, eigen lokale
-        # boekingen) + 1; één herstelpoging, daarna zichtbare boekfout.
+        # boekingen) + 1; één herstelpoging, daarna zichtbare boekfout. (De Receipts-collectie
+        # ziet wél alles maar kent InvoiceNumber niet als filter-/sorteerveld — read-only
+        # geverifieerd 2026-08-09 — dus dit blijft het herstel-pad.)
         nieuw_nummer = max(client.max_sales_invoice_number(), lokaal_max_invoice_number) + 1
         logger.warning(
             "Verkoopnummer-botsing op SalesInvoice %s — herstel met expliciet InvoiceNumber %s",
             rlz_id,
             nieuw_nummer,
         )
-        client.put_sales_invoice(rlz_id, customer_id=customer_id, lines=lines, InvoiceNumber=nieuw_nummer, **body_extra)
+        client.put_sales_invoice(
+            rlz_id, customer_id=customer_id, lines=lines, InvoiceNumber=nieuw_nummer, **put_extra, **body_extra
+        )
         client.book_sales_invoice(rlz_id)
 
     geboekt = client.get_sales_invoice(rlz_id)
@@ -431,9 +453,7 @@ def boek_omzet_document(
 
         try:
             bestand = _standaard_opslag().lezen(pad=opslag_pad)
-            customer_id = _zorg_voor_kasomzet_debiteur(
-                client=client, administratie_id=administratie_id, actor_id=actor_id
-            )
+            categorie_id = _zorg_voor_verkoop_categorie(client=client, administratie_id=administratie_id)
             diary_id = (
                 _zorg_voor_memoriaal_dagboek(client=client, administratie_id=administratie_id)
                 if memoriaal_lines
@@ -442,7 +462,9 @@ def boek_omzet_document(
             verkoop_nummer, verkoop_ref, verkoop_boekstuk = _boek_verkoopfactuur(
                 client=client,
                 rlz_id=verkoop_rlz_id,
-                customer_id=customer_id,
+                customer_id=None,  # entity-loze Receipt — besluit Peter 2026-08-08
+                categorie_id=categorie_id,
+                omschrijving=verkoop_omschrijving(voorstel.periode_start, voorstel.periode_eind),
                 lines=_verkoop_lines(voorstel, _taxrate_percentages(administratie_id)),
                 datum_iso=datum_iso,
                 upload_id=rlz_omzet_upload_id(document_id, doel="verkoop"),

@@ -12,9 +12,10 @@ Vier checks, vaste volgorde (de UI toont ze altijd alle vier, nooit stil oversla
    memoriaal zelf óók bij actie 17 (STAP 0 §4) — deze check is de fail-fast vóór de API-call,
    de RLZ-weigering het vangnet erachter.
 Daarnaast twee checks met context van buiten (aangeleverd door de orkestratie):
-5. Duplicaat per periode — lokaal overlap-onderzoek (STAP 0 §2: de SalesInvoices-collectie
-   ziet API-facturen niet, dus lokaal is hier de primaire waarborg) + de RLZ-side
-   memoriaal-Reference-hit die de orkestratie aanlevert (fail-closed bij een RLZ-fout).
+5. Duplicaat per periode — lokaal overlap-onderzoek (primaire waarborg, DB-uniek) + twee
+   RLZ-side hits die de orkestratie aanlevert (fail-closed bij een RLZ-fout): de
+   memoriaal-Reference-check én — sinds de Receipts-verkenning — de Receipts-Description-check
+   op de verkoop-kant (die collectie ziet, anders dan SalesInvoices, óók API-documenten).
 6. Marge-plausibiliteit vs eigen historie (mockup-membanner) — blokkerend buiten de bandbreedte.
 """
 
@@ -176,13 +177,16 @@ def check_duplicaat_periode(
     periode_eind: date | None,
     bestaande_periodes: list[tuple[date, date]],
     rlz_memoriaal_hits: int | None,
+    rlz_verkoop_hits: int | None,
 ) -> CheckResultaat:
     """Duplicaatbewaking per periode. `bestaande_periodes` = de niet-gestorneerde omzet-boekingen
     van deze administratie (exclusief dit document zelf) — élke overlap blokkeert, niet alleen een
     exacte match. `rlz_memoriaal_hits` = het aantal vreemde ManualJournals in RLZ met onze
-    deterministische periode-referentie (None = de RLZ-check kon niet uitgevoerd worden →
-    fail-closed, zelfde lijn als de inkoop-duplicaatcheck). De verkoopfactuur-kant is via de API
-    niet te bevragen (STAP 0 §2: de collectie ziet API-facturen niet) — vandaar lokaal primair."""
+    deterministische periode-referentie; `rlz_verkoop_hits` = het aantal vreemde Receipts met
+    onze periode-omschrijving in Description (Receipts-verkenning: die collectie ziet — anders
+    dan SalesInvoices — óók API-documenten, dus de verkoop-kant is sindsdien wél op afstand te
+    bevragen). None = de betreffende RLZ-check kon niet uitgevoerd worden → fail-closed, zelfde
+    lijn als de inkoop-duplicaatcheck. Lokaal blijft primair (DB-uniek per periode)."""
     if periode_start is None or periode_eind is None:
         return CheckResultaat("Duplicaat per periode", False, "Kan niet controleren zonder complete periode")
     overlappend = [
@@ -195,17 +199,23 @@ def check_duplicaat_periode(
             False,
             f"Periode overlapt met al geboekte omzetperiode(s): {beschrijving}",
         )
-    if rlz_memoriaal_hits is None:
+    if rlz_memoriaal_hits is None or rlz_verkoop_hits is None:
         return CheckResultaat(
             "Duplicaat per periode",
             False,
-            "RLZ-duplicaatcheck op het kostprijsmemoriaal kon niet uitgevoerd worden — probeer opnieuw",
+            "RLZ-duplicaatcheck (memoriaal + verkoopboeking) kon niet uitgevoerd worden — probeer opnieuw",
         )
     if rlz_memoriaal_hits > 0:
         return CheckResultaat(
             "Duplicaat per periode",
             False,
             f"{rlz_memoriaal_hits} bestaand(e) memoriaal/memorialen in RLZ met de referentie van deze periode",
+        )
+    if rlz_verkoop_hits > 0:
+        return CheckResultaat(
+            "Duplicaat per periode",
+            False,
+            f"{rlz_verkoop_hits} bestaande verkoopboeking(en) in RLZ met de omschrijving van deze periode",
         )
     return CheckResultaat("Duplicaat per periode", True, "Periode nog niet geboekt — geen duplicaat")
 
@@ -267,6 +277,7 @@ def voer_omzet_checks_uit(
     rapport_totaal_kostprijs: Decimal | None,
     bestaande_periodes: list[tuple[date, date]],
     rlz_memoriaal_hits: int | None,
+    rlz_verkoop_hits: int | None,
     historische_marges: list[Decimal],
     bandbreedte_procentpunt: Decimal,
 ) -> CheckRapport:
@@ -297,6 +308,7 @@ def voer_omzet_checks_uit(
                 periode_eind=periode_eind,
                 bestaande_periodes=bestaande_periodes,
                 rlz_memoriaal_hits=rlz_memoriaal_hits,
+                rlz_verkoop_hits=rlz_verkoop_hits,
             ),
             check_marge_plausibiliteit(
                 totaal_omzet=rapport_totaal_omzet,

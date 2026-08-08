@@ -51,7 +51,6 @@ def _naar_voorstel_response(data: voorstel.OmzetVoorstelData) -> schemas.OmzetVo
             for r in data.regels
         ],
         voorraad_ledger_id=data.voorraad_ledger_id,
-        kasomzet_naam=data.kasomzet_naam,
         opgeslagen=data.opgeslagen,
         rapport_titel=data.rapport_titel,
         entiteit_naam=data.entiteit_naam,

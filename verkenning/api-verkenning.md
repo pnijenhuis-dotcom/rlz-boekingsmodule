@@ -912,6 +912,28 @@ en optioneel de contant/kas-koppeling via QuickPaymentSelection + 148. De
 `DocumentCategory`-id is administratie-specifiek te syncen (systeem-categorie met
 `HasSystemId: true` — per administratie ophalen, nooit hardcoden).
 
+### Aanvulling read-only verificatie 2026-08-09 (bouw omzetmotor → Receipts)
+
+Drie punten gemeten op de test-administratie vóór de ombouw (BLOK 1, besluit Peter 2026-08-08):
+
+1. **Categorie-selectie**: `GET DocumentCategories` (46 stuks) — ⚠️ de "Verkoopfactuur
+   (Omzet)"-categorie heeft `HasSystemId: false` (de aanname hierboven "systeem-categorie met
+   HasSystemId: true" klopt dus niet; er bestaat ook een aparte categorie "Kasomzet" met
+   DocumentType 19 en wél HasSystemId true — niet de onze). Deterministische selectie:
+   **`DocumentType == 10` + `Name == "Verkoopfactuur (Omzet)"`** — er zijn 4
+   DocumentType-10-categorieën (Diverse opbrengsten, Door te belasten kosten, Verkoopfactuur
+   (Omzet), BTW Prive bijdrage auto), de naam is daarbinnen uniek. GUID per administratie
+   ophalen + cachen (`omzet_instelling.verkoop_categorie_id`), nooit hardcoden.
+2. **Duplicaatbewaking-op-afstand**: de Receipts-collectie geeft `Description` terug én is er
+   op filterbaar (`$filter=Description eq '…'` → correcte treffers). De motor zet daarom de
+   deterministische periode-omschrijving (`OMZ-YYYYMMDD-YYYYMMDD-VK`) in Description; de
+   duplicaatcheck telt vreemde hits (eigen GUID uitgesloten) — fail-closed naast de lokale
+   DB-bewaking en de memoriaal-Reference-check.
+3. **Nummer-herstel**: `InvoiceNumber` is op de Receipts-collectie GEEN filter-/sorteerveld
+   (`$orderby`/`$filter` → 400 "Could not find a property named 'InvoiceNumber' on type
+   'Reeleezee.DTO.Document.Document'" — het veld zit wél in de response-JSON). Het herstel-pad
+   blijft dus max(SalesInvoices-collectie-max, eigen lokale max) + 1.
+
 ## LastBankImport per rekeningtype + RLZ-systeemrekening-GUID's (8 augustus 2026) — kliktest-fix bank-sync
 
 Aanleiding: `make bank-sync` faalde op 0/3 administraties (kliktest Peter 2026-08-08). Oorzaak:

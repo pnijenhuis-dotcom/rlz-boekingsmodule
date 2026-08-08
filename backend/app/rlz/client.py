@@ -314,21 +314,28 @@ class RlzClient:
         self,
         invoice_id: uuid.UUID,
         *,
-        customer_id: uuid.UUID,
+        customer_id: uuid.UUID | None,
         lines: list[dict[str, Any]],
+        document_category_id: uuid.UUID | None = None,
         **extra: Any,
     ) -> httpx.Response:
         """Verkoopfactuur (STAP 0 §1): zelfde regelvorm als inkoop (Account/TaxRate/NetAmount/
-        TaxAmount/Description), Entity = de debiteur. ⚠️ `Reference` is hier NIET van ons — RLZ
-        overschrijft 'm met zijn eigen verkoopnummering ("RLZ-{InvoiceNumber}"); een expliciet
-        `InvoiceNumber` (int, via **extra) is wél zetbaar en is het herstel-pad wanneer boeken
-        op "Dit factuurnummer is al in gebruik" stukloopt."""
+        TaxAmount/Description), Entity = de debiteur. `customer_id=None` = de entity-loze vorm
+        (Receipt, RLZ-UI "Verkopen → Boekingen" — Receipts-verkenning 2026-08-07): dan hoort er
+        een `document_category_id` bij ("Verkoopfactuur (Omzet)", per administratie opgehaald,
+        nooit hardcoden). ⚠️ `Reference` is hier NIET van ons — RLZ overschrijft 'm met zijn
+        eigen verkoopnummering ("RLZ-{InvoiceNumber}"); een expliciet `InvoiceNumber` (int, via
+        **extra) is wél zetbaar en is het herstel-pad wanneer boeken op "Dit factuurnummer is al
+        in gebruik" stukloopt."""
         body: dict[str, Any] = {
             "id": str(invoice_id),
-            "Entity": {"id": str(customer_id)},
             "DocumentLineList": lines,
             **extra,
         }
+        if customer_id is not None:
+            body["Entity"] = {"id": str(customer_id)}
+        if document_category_id is not None:
+            body["DocumentCategory"] = {"id": str(document_category_id)}
         return self.put(f"SalesInvoices/{invoice_id}", body)
 
     def get_sales_invoice(self, invoice_id: uuid.UUID | str) -> dict[str, Any]:
@@ -345,11 +352,30 @@ class RlzClient:
     def max_sales_invoice_number(self) -> int:
         """Hoogste InvoiceNumber in de SalesInvoices-collectie. ⚠️ De collectie ziet
         API-aangemaakte facturen NIET (STAP 0 §2) — dit dekt dus alleen de UI-/importfacturen;
-        de aanroeper moet het eigen lokale maximum ernaast leggen (app/omzet/boeken.py)."""
+        de aanroeper moet het eigen lokale maximum ernaast leggen (app/omzet/boeken.py). De
+        Receipts-collectie ziet wél alles maar kent InvoiceNumber niet als filter-/sorteerveld
+        (400 "Could not find a property named 'InvoiceNumber'" — read-only geverifieerd
+        2026-08-09), dus collectie-max + lokaal max blijft het herstel-pad."""
         rijen = self.get("SalesInvoices", params={"$orderby": "InvoiceNumber desc", "$top": "1"}).get("value", [])
         if not rijen:
             return 0
         return int(rijen[0].get("InvoiceNumber") or 0)
+
+    def list_document_categories(self) -> list[dict[str, Any]]:
+        """DocumentCategories per administratie — bron voor de "Verkoopfactuur (Omzet)"-categorie
+        van entity-loze Receipts (Receipts-verkenning; selectie op DocumentType 10 + Name,
+        read-only geverifieerd 2026-08-09: 4 type-10-categorieën, naam is daarbinnen uniek;
+        ⚠️ HasSystemId is er false — géén bruikbaar selectieveld, anders dan de verkenning
+        eerst aannam). GUID nooit hardcoden: per administratie ophalen en cachen."""
+        return self.get("DocumentCategories").get("value", [])
+
+    def find_receipts_by_description(self, *, description: str) -> list[dict[str, Any]]:
+        """Duplicaatbewaking-op-afstand voor de omzetmotor: de Receipts-collectie ziet — anders
+        dan SalesInvoices — óók API-aangemaakte documenten (Receipts-verkenning §1) en is op
+        Description filterbaar (read-only geverifieerd 2026-08-09). Wij zetten de
+        deterministische periode-omschrijving in Description; een vreemde hit = duplicaat."""
+        veilig = description.replace("'", "''")
+        return self.get("Receipts", params={"$filter": f"Description eq '{veilig}'"}).get("value", [])
 
     def list_journal_entry_diaries(self) -> list[dict[str, Any]]:
         """Dagboeken per administratie — het memoriaal-dagboek-GUID wordt hieruit gekozen
