@@ -161,6 +161,9 @@ class BankAfletterOpdracht(Base):
     status: Mapped[str] = mapped_column(default=AfletterOpdrachtStatus.KLAARGEZET.value)
     klaargezet_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     klaargezet_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Laatste keer dat de verificatieronde deze opdracht controleerde terwijl de mutatie in RLZ
+    # nog open stond (migratie 0032) — voedt de UI-chip "wacht op verificatie" vs "klaargezet".
+    laatste_verificatie_poging_op: Mapped[datetime | None] = mapped_column(default=None)
     geverifieerd_op: Mapped[datetime | None] = mapped_column(default=None)
     verificatie_detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
     ingetrokken_door: Mapped[uuid.UUID | None] = mapped_column(

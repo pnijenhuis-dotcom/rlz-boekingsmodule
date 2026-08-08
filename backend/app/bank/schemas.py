@@ -89,11 +89,44 @@ class VoorstelResponse(BaseModel):
     regels: list[BoekRegelResponse]
 
 
+class AfletterKoppelingResponse(BaseModel):
+    """Eén werkelijke koppeling uit het PaymentReferenceList-leesspoor (hulzen al uitgefilterd)."""
+
+    rlz_document_id: str | None = None
+    boekstuknummer: str | None = None
+    bedrag: Decimal | None = None
+
+
 class AfletterOpdrachtResponse(BaseModel):
+    """Levenscyclus van één afletter-opdracht (kliktest 2026-08-08): de UI leidt de chip af uit
+    status + laatste_verificatie_poging_op ("klaargezet" vs "wacht op verificatie") en toont bij
+    geverifieerd het resultaat (koppelingen + voorstel_gevolgd — false = afwijkend gevolgd)."""
+
     id: uuid.UUID
     status: str
     payment_item_id: uuid.UUID | None
     klaargezet_op: datetime
+    laatste_verificatie_poging_op: datetime | None = None
+    geverifieerd_op: datetime | None = None
+    voorstel_gevolgd: bool | None = None
+    koppelingen: list[AfletterKoppelingResponse] = []
+
+
+class AfletterHistorieRegelResponse(BaseModel):
+    """Opdracht mét mutatie-context voor de levenscyclus-lijst per rekening."""
+
+    opdracht: AfletterOpdrachtResponse
+    boekdatum: date | None
+    tegenpartij_naam: str | None
+    bedrag: Decimal | None
+
+
+class AfletterHistorieResponse(BaseModel):
+    opdrachten: list[AfletterHistorieRegelResponse]
+
+
+class AfletterVerifieerResponse(BaseModel):
+    geverifieerd: int
 
 
 class RegelVoorstelResponse(BaseModel):

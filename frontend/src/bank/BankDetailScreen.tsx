@@ -5,11 +5,15 @@ import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   boekDirect,
+  haalAfletterOpdrachten,
   haalMutaties,
   haalRekeningen,
   synchroniseerBank,
   trekAfletterenIn,
+  verifieerAfletteren,
   zetAfletterenKlaar,
+  type AfletterHistorieRegelDto,
+  type AfletterOpdrachtDto,
   type MutatieDto,
   type RekeningenDto,
   type VoorstelDto,
@@ -28,6 +32,34 @@ function formatDatumKort(iso: string | null): string {
 
 function chipKlasse(voorstel: VoorstelDto): string {
   return voorstel.kleur === 'groen' ? 'chip geheugen' : 'chip ai'
+}
+
+function formatTijdstip(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/** Levenscyclus-chip van een afletter-opdracht (kliktest 2026-08-08): klaargezet → wacht op
+ * verificatie → geverifieerd / afwijkend gevolgd; ingetrokken blijft zichtbaar in de historie. */
+function AfletterStatusChip({ opdracht }: { opdracht: AfletterOpdrachtDto }) {
+  if (opdracht.status === 'geverifieerd') {
+    return opdracht.voorstel_gevolgd === false ? (
+      <span className="chip ai">Afwijkend gevolgd — in RLZ anders gekoppeld dan het voorstel</span>
+    ) : (
+      <span className="chip geheugen">Geverifieerd — afgeletterd in RLZ (open bedrag 0)</span>
+    )
+  }
+  if (opdracht.status === 'ingetrokken') {
+    return <span className="chip">Ingetrokken</span>
+  }
+  return opdracht.laatste_verificatie_poging_op ? (
+    <span className="chip vraag">
+      Wacht op verificatie — laatst gecontroleerd {formatTijdstip(opdracht.laatste_verificatie_poging_op)}, nog
+      open in RLZ
+    </span>
+  ) : (
+    <span className="chip vraag">Klaargezet — nog niet geverifieerd</span>
+  )
 }
 
 /** Handmatig-boeken-formulier per mutatie (voorstel-volgorde stap 5, of correctie op een
@@ -207,7 +239,7 @@ function MutatieRij({
       <td>
         {opdracht ? (
           <>
-            <span className="chip vraag">Af te letteren in Reeleezee — wacht op verificatie</span>{' '}
+            <AfletterStatusChip opdracht={opdracht} />{' '}
             <button
               className="btn secondary"
               disabled={bezig}
@@ -215,6 +247,10 @@ function MutatieRij({
             >
               Intrekken
             </button>
+            <p className="hint" style={{ marginTop: 4 }}>
+              Klaargezet — leg de koppeling in Reeleezee (RLZ toont daar meestal zelf de matchsuggestie); de
+              eerstvolgende bank-sync verifieert automatisch, of gebruik “Nu verifiëren” hieronder.
+            </p>
           </>
         ) : isAfletterVoorstel ? (
           <button
@@ -287,9 +323,11 @@ export function BankDetailScreen() {
 
   const [rekeningen, setRekeningen] = useState<RekeningenDto | null>(null)
   const [mutaties, setMutaties] = useState<MutatieDto[] | null>(null)
+  const [afletterHistorie, setAfletterHistorie] = useState<AfletterHistorieRegelDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [syncBezig, setSyncBezig] = useState(false)
   const [syncMelding, setSyncMelding] = useState<string | null>(null)
+  const [verifieerBezig, setVerifieerBezig] = useState(false)
 
   const klantNaam = useMemo(
     () => administraties?.find((a) => a.id === administratieId)?.naam ?? '…',
@@ -318,10 +356,14 @@ export function BankDetailScreen() {
     haalMutaties(administratieId, rekeningId)
       .then((data) => setMutaties(data.mutaties))
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
+    haalAfletterOpdrachten(administratieId, rekeningId)
+      .then((data) => setAfletterHistorie(data.opdrachten))
+      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
   }, [administratieId, rekeningId])
 
   useEffect(() => {
     setMutaties(null)
+    setAfletterHistorie(null)
     laadMutaties()
   }, [laadMutaties])
 
@@ -329,6 +371,25 @@ export function BankDetailScreen() {
     laadRekeningen()
     laadMutaties()
   }, [laadRekeningen, laadMutaties])
+
+  const verifieerNu = async () => {
+    if (!administratieId || !rekeningId) return
+    setVerifieerBezig(true)
+    setSyncMelding(null)
+    try {
+      const resultaat = await verifieerAfletteren(administratieId, rekeningId)
+      setSyncMelding(
+        resultaat.geverifieerd > 0
+          ? `Verificatie gedraaid: ${resultaat.geverifieerd} aflettering(en) geverifieerd.`
+          : 'Verificatie gedraaid: nog geen aflettering afgerond in Reeleezee — de opdracht(en) blijven wachten.',
+      )
+      verversAlles()
+    } catch (err) {
+      setSyncMelding(err instanceof Error ? err.message : 'Verificatie mislukt')
+    } finally {
+      setVerifieerBezig(false)
+    }
+  }
 
   const sync = async () => {
     if (!administratieId) return
@@ -451,8 +512,16 @@ export function BankDetailScreen() {
       <div className="panel">
         <h2>Onverwerkte bankmutaties</h2>
         <div className="actions" style={{ marginBottom: 8 }}>
-          <button className="btn secondary" onClick={() => void sync()} disabled={syncBezig}>
+          <button className="btn secondary" onClick={() => void sync()} disabled={syncBezig || verifieerBezig}>
             {syncBezig ? 'Synchroniseren…' : '⟳ Verversen uit Reeleezee'}
+          </button>
+          <button
+            className="btn secondary"
+            onClick={() => void verifieerNu()}
+            disabled={syncBezig || verifieerBezig}
+            title="Controleert alleen de klaargezette afletter-opdrachten van deze rekening bij Reeleezee (geen volledige synchronisatie)"
+          >
+            {verifieerBezig ? 'Verifiëren…' : '✓ Nu verifiëren'}
           </button>
           {rekeningen?.laatste_sync_op && (
             <span className="hint">
@@ -498,6 +567,58 @@ export function BankDetailScreen() {
           niet door de klant-accorderingsflow.
         </div>
       </div>
+
+      {afletterHistorie !== null && afletterHistorie.length > 0 && (
+        <div className="panel">
+          <h2>Afletteren via Reeleezee — levenscyclus</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Tegenpartij</th>
+                <th className="amount">Bedrag</th>
+                <th>Status</th>
+                <th>Tijdlijn / resultaat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {afletterHistorie.map((regel) => (
+                <tr key={regel.opdracht.id}>
+                  <td>{formatDatumKort(regel.boekdatum)}</td>
+                  <td>{regel.tegenpartij_naam ?? 'Onbekende tegenpartij'}</td>
+                  <td className="amount">{formatBedrag(regel.bedrag)}</td>
+                  <td>
+                    <AfletterStatusChip opdracht={regel.opdracht} />
+                  </td>
+                  <td>
+                    <div className="hint">
+                      Klaargezet {formatTijdstip(regel.opdracht.klaargezet_op)}
+                      {regel.opdracht.geverifieerd_op &&
+                        ` → geverifieerd ${formatTijdstip(regel.opdracht.geverifieerd_op)}`}
+                      {!regel.opdracht.geverifieerd_op &&
+                        regel.opdracht.laatste_verificatie_poging_op &&
+                        ` → laatst gecontroleerd ${formatTijdstip(regel.opdracht.laatste_verificatie_poging_op)} (nog open)`}
+                    </div>
+                    {regel.opdracht.koppelingen.length > 0 && (
+                      <div className="hint">
+                        Afgeletterd tegen:{' '}
+                        {regel.opdracht.koppelingen
+                          .map((k) => `${k.boekstuknummer ?? k.rlz_document_id ?? '?'}${k.bedrag ? ` (${formatBedrag(k.bedrag)})` : ''}`)
+                          .join(', ')}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="hint">
+            Klaargezette opdrachten worden bij elke bank-sync (en met “Nu verifiëren”) tegen Reeleezee
+            gecontroleerd; geverifieerd = het open bedrag in RLZ is 0. “Afwijkend gevolgd” betekent: in RLZ is
+            tegen iets anders afgeletterd dan het voorstel — zichtbaar, nooit stil.
+          </div>
+        </div>
+      )}
     </>
   )
 }

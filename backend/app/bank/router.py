@@ -29,6 +29,29 @@ def _vertaal_rlz_fouten(exc: Exception) -> HTTPException:
     raise exc
 
 
+def _afletter_opdracht_response(opdracht) -> schemas.AfletterOpdrachtResponse:
+    """Volledige levenscyclus in het DTO (kliktest 2026-08-08): status + poging-stempel +
+    verificatieresultaat uit verificatie_detail (koppelingen, voorstel_gevolgd)."""
+    detail = opdracht.verificatie_detail or {}
+    return schemas.AfletterOpdrachtResponse(
+        id=opdracht.id,
+        status=opdracht.status,
+        payment_item_id=opdracht.payment_item_id,
+        klaargezet_op=opdracht.klaargezet_op,
+        laatste_verificatie_poging_op=opdracht.laatste_verificatie_poging_op,
+        geverifieerd_op=opdracht.geverifieerd_op,
+        voorstel_gevolgd=detail.get("voorstel_gevolgd"),
+        koppelingen=[
+            schemas.AfletterKoppelingResponse(
+                rlz_document_id=k.get("rlz_document_id"),
+                boekstuknummer=k.get("boekstuknummer"),
+                bedrag=k.get("bedrag"),
+            )
+            for k in detail.get("koppelingen") or []
+        ],
+    )
+
+
 @router.get("/bank/overzicht", response_model=schemas.BankOverzichtResponse)
 def bank_overzicht(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.BankOverzichtResponse:
     """Bank-klantenlijst (mockup #bank) — uitsluitend administraties binnen de scope van de
@@ -156,12 +179,7 @@ def mutaties(
                 tegenrekening_iban=item.mutatie.tegenrekening_iban,
                 voorstel=_voorstel_response(item),
                 afletter_opdracht=(
-                    schemas.AfletterOpdrachtResponse(
-                        id=item.afletter_opdracht.id,
-                        status=item.afletter_opdracht.status,
-                        payment_item_id=item.afletter_opdracht.payment_item_id,
-                        klaargezet_op=item.afletter_opdracht.klaargezet_op,
-                    )
+                    _afletter_opdracht_response(item.afletter_opdracht)
                     if item.afletter_opdracht is not None
                     else None
                 ),
@@ -179,6 +197,55 @@ def mutaties(
             for item in items
         ]
     )
+
+
+@router.get(
+    "/administraties/{administratie_id}/bank/rekeningen/{rekening_id}/afletter-opdrachten",
+    response_model=schemas.AfletterHistorieResponse,
+)
+def afletter_opdrachten(
+    administratie_id: uuid.UUID,
+    rekening_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfletterHistorieResponse:
+    """Levenscyclus-lijst van afletter-opdrachten per rekening (kliktest 2026-08-08 "lijkt niets
+    te doen"): ook geverifieerde/ingetrokken opdrachten blijven zichtbaar — een geverifieerde
+    mutatie is niet meer open en verdween daardoor stil uit de mutatielijst."""
+    overzichten = afletteren.afletter_opdrachten_voor_rekening(
+        administratie_id=administratie_id, payment_account_id=rekening_id
+    )
+    return schemas.AfletterHistorieResponse(
+        opdrachten=[
+            schemas.AfletterHistorieRegelResponse(
+                opdracht=_afletter_opdracht_response(o.opdracht),
+                boekdatum=o.boekdatum,
+                tegenpartij_naam=o.tegenpartij_naam,
+                bedrag=o.bedrag,
+            )
+            for o in overzichten
+        ]
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/rekeningen/{rekening_id}/verifieer-afletteren",
+    response_model=schemas.AfletterVerifieerResponse,
+)
+def verifieer_afletteren(
+    administratie_id: uuid.UUID,
+    rekening_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfletterVerifieerResponse:
+    """De "nu verifiëren"-knop: draait alléén de verificatieronde voor de klaargezette
+    opdrachten van deze rekening (RLZ-GET's + lokale statusovergang — geen writes, geen
+    volledige sync)."""
+    try:
+        geverifieerd = afletteren.verifieer_voor_rekening(
+            administratie_id=administratie_id, payment_account_id=rekening_id
+        )
+    except (GeenRlzCredentials, RlzApiError) as exc:
+        raise _vertaal_rlz_fouten(exc) from exc
+    return schemas.AfletterVerifieerResponse(geverifieerd=geverifieerd)
 
 
 @router.post("/administraties/{administratie_id}/bank/sync", response_model=schemas.BankSyncResponse)

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0031
+-- Migratie-head bij deze dump: 0032
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -243,6 +243,7 @@ CREATE TABLE boekhouding.bank_afletter_opdracht (
     verificatie_detail jsonb,
     ingetrokken_door uuid,
     ingetrokken_op timestamp with time zone,
+    laatste_verificatie_poging_op timestamp with time zone,
     CONSTRAINT bank_afletter_opdracht_intrekking_consistent CHECK (((status = 'ingetrokken'::text) = (ingetrokken_op IS NOT NULL))),
     CONSTRAINT bank_afletter_opdracht_status_geldig CHECK ((status = ANY (ARRAY['klaargezet'::text, 'geverifieerd'::text, 'ingetrokken'::text]))),
     CONSTRAINT bank_afletter_opdracht_verificatie_consistent CHECK (((status = 'geverifieerd'::text) = (geverifieerd_op IS NOT NULL)))

@@ -194,21 +194,28 @@ def _is_systeemhuls(document: dict[str, Any] | None) -> bool:
     return document.get("DocumentType") == 19 and document.get("Status") == 1
 
 
-def verifieer_openstaande_opdrachten(*, administratie_id: uuid.UUID, client: RlzClient) -> int:
-    """Verificatiestap van het assist-model (draait in elke bank-sync): voor elke klaargezette
-    opdracht de mutatie vers bij RLZ ophalen; OpenAmount == 0 → geverifieerd, mét het
+def verifieer_openstaande_opdrachten(
+    *, administratie_id: uuid.UUID, client: RlzClient, payment_account_id: uuid.UUID | None = None
+) -> int:
+    """Verificatiestap van het assist-model (draait in elke bank-sync; met `payment_account_id`
+    ook on-demand per rekening — de "nu verifiëren"-knop): voor elke klaargezette opdracht de
+    mutatie vers bij RLZ ophalen; OpenAmount == 0 → geverifieerd, mét het
     PaymentReferenceList-leesspoor ("waartegen wérkelijk afgeletterd", hulzen uitgefilterd) in
-    verificatie_detail. Nog open → blijft gewoon klaargezet staan. Systeem-actor: dit is
-    achtergrondverwerking, niet de gebruiker die toevallig synct."""
+    verificatie_detail. Nog open → blijft klaargezet staan, mét een zichtbare
+    laatste_verificatie_poging_op-stempel (UI-chip "wacht op verificatie", kliktest 2026-08-08).
+    Systeem-actor: dit is achtergrondverwerking, niet de gebruiker die toevallig synct."""
     with scoped_session(administratie_id) as session:
-        opdracht_ids = list(
-            session.scalars(
-                select(BankAfletterOpdracht.id).where(
-                    BankAfletterOpdracht.administratie_id == administratie_id,
-                    BankAfletterOpdracht.status == AfletterOpdrachtStatus.KLAARGEZET.value,
-                )
-            )
+        query = select(BankAfletterOpdracht.id).where(
+            BankAfletterOpdracht.administratie_id == administratie_id,
+            BankAfletterOpdracht.status == AfletterOpdrachtStatus.KLAARGEZET.value,
         )
+        if payment_account_id is not None:
+            query = query.join(
+                BankMutatie,
+                (BankMutatie.id == BankAfletterOpdracht.payment_transaction_id)
+                & (BankMutatie.administratie_id == BankAfletterOpdracht.administratie_id),
+            ).where(BankMutatie.payment_account_id == payment_account_id)
+        opdracht_ids = list(session.scalars(query))
 
     geverifieerd = 0
     for opdracht_id in opdracht_ids:
@@ -221,7 +228,10 @@ def verifieer_openstaande_opdrachten(*, administratie_id: uuid.UUID, client: Rlz
             )
             open_amount = vers.get("OpenAmount")
             if open_amount is None or float(open_amount) != 0.0:
-                continue  # mens is nog niet in RLZ geweest — volgende sync opnieuw
+                # Mens is nog niet in RLZ geweest — volgende ronde opnieuw; wél de poging
+                # zichtbaar stempelen (chip "wacht op verificatie — laatst gecontroleerd …").
+                opdracht.laatste_verificatie_poging_op = datetime.now(UTC)
+                continue
 
             koppelingen = [
                 {
@@ -240,6 +250,7 @@ def verifieer_openstaande_opdrachten(*, administratie_id: uuid.UUID, client: Rlz
             )
             nu = datetime.now(UTC)
             opdracht.status = AfletterOpdrachtStatus.GEVERIFIEERD.value
+            opdracht.laatste_verificatie_poging_op = nu
             opdracht.geverifieerd_op = nu
             opdracht.verificatie_detail = {
                 "koppelingen": koppelingen,
@@ -272,3 +283,63 @@ def verifieer_openstaande_opdrachten(*, administratie_id: uuid.UUID, client: Rlz
                     opdracht.id,
                 )
     return geverifieerd
+
+
+def verifieer_voor_rekening(*, administratie_id: uuid.UUID, payment_account_id: uuid.UUID) -> int:
+    """De "nu verifiëren"-knop (kliktest 2026-08-08): draait alléén de verificatieronde voor de
+    klaargezette opdrachten van één rekening — geen volledige bank-sync, geen RLZ-writes (puur
+    GET's + lokale statusovergang). Opent zelf een client, zelfde resolutie als de sync."""
+    from app.sync.service import _open_client_indien_nodig
+
+    client, eigen_client = _open_client_indien_nodig(administratie_id, None)
+    try:
+        return verifieer_openstaande_opdrachten(
+            administratie_id=administratie_id, client=client, payment_account_id=payment_account_id
+        )
+    finally:
+        if eigen_client:
+            client.close()
+
+
+@dataclass(frozen=True)
+class AfletterOpdrachtOverzicht:
+    """Eén opdracht mét de mutatie-context voor de UI-levenscyclus (chips + resultaat)."""
+
+    opdracht: BankAfletterOpdracht
+    boekdatum: Any
+    tegenpartij_naam: str | None
+    bedrag: Any
+
+
+def afletter_opdrachten_voor_rekening(
+    *, administratie_id: uuid.UUID, payment_account_id: uuid.UUID, limiet: int = 25
+) -> list[AfletterOpdrachtOverzicht]:
+    """Levenscyclus-lijst per rekening (kliktest 2026-08-08 "lijkt niets te doen"): ook
+    geverifieerde en ingetrokken opdrachten blijven zichtbaar — een geverifieerde mutatie is
+    niet meer "open" en verdween daardoor stil uit de mutatielijst. Recentste eerst."""
+    with scoped_session(administratie_id) as session:
+        rijen = session.execute(
+            select(BankAfletterOpdracht, BankMutatie)
+            .join(
+                BankMutatie,
+                (BankMutatie.id == BankAfletterOpdracht.payment_transaction_id)
+                & (BankMutatie.administratie_id == BankAfletterOpdracht.administratie_id),
+            )
+            .where(
+                BankAfletterOpdracht.administratie_id == administratie_id,
+                BankMutatie.payment_account_id == payment_account_id,
+            )
+            .order_by(BankAfletterOpdracht.klaargezet_op.desc())
+            .limit(limiet)
+        ).all()
+        resultaat = [
+            AfletterOpdrachtOverzicht(
+                opdracht=opdracht,
+                boekdatum=mutatie.boekdatum,
+                tegenpartij_naam=mutatie.tegenpartij_naam,
+                bedrag=mutatie.bedrag,
+            )
+            for opdracht, mutatie in rijen
+        ]
+        session.expunge_all()
+        return resultaat

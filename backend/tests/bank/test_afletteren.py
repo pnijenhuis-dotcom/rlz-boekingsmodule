@@ -71,7 +71,7 @@ def test_klaarzetten_weigert_tweede_opdracht_en_gesloten_mutatie(
         )
 
 
-def test_verificatie_wacht_zolang_mutatie_open_is(
+def test_verificatie_wacht_zolang_mutatie_open_is_en_stempelt_de_poging(
     administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
 ) -> None:
     mutatie_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
@@ -85,6 +85,75 @@ def test_verificatie_wacht_zolang_mutatie_open_is(
     )
     assert afletteren.verifieer_openstaande_opdrachten(administratie_id=administratie_id, client=client) == 0
     assert _opdrachten(admin_engine, administratie_id)[0][0] == "klaargezet"
+    # Kliktest 2026-08-08: de poging is zichtbaar gestempeld — de UI kan "wacht op verificatie
+    # (laatst gecontroleerd …, nog open in RLZ)" tonen i.p.v. een status die niets lijkt te doen.
+    with admin_engine.connect() as conn:
+        poging = conn.execute(
+            text(
+                "SELECT laatste_verificatie_poging_op FROM boekhouding.bank_afletter_opdracht "
+                "WHERE administratie_id = :aid"
+            ),
+            {"aid": administratie_id},
+        ).scalar_one()
+    assert poging is not None
+
+
+def test_verificatie_per_rekening_raakt_alleen_die_rekening(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
+) -> None:
+    """De "nu verifiëren"-knop verifieert per rekening — een klaargezette opdracht op een andere
+    rekening blijft onaangeroerd (en de fake zou er ook op stukgelopen zijn: geen transactie)."""
+    rekening_a, rekening_b = uuid.uuid4(), uuid.uuid4()
+    mutatie_a = maak_bank_mutatie(admin_engine, administratie_id=administratie_id, payment_account_id=rekening_a)
+    mutatie_b = maak_bank_mutatie(admin_engine, administratie_id=administratie_id, payment_account_id=rekening_b)
+    item_id = maak_payment_item(admin_engine, administratie_id=administratie_id)
+    for mutatie_id in (mutatie_a, mutatie_b):
+        afletteren.zet_klaar_voor_afletteren(
+            administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+            payment_item_id=item_id, actor_id=beheerder_id,
+        )
+    client = FakeBankClient(
+        transacties={str(mutatie_a): {"id": str(mutatie_a), "OpenAmount": 0, "PaymentReferenceList": []}}
+    )
+    geverifieerd = afletteren.verifieer_openstaande_opdrachten(
+        administratie_id=administratie_id, client=client, payment_account_id=rekening_a
+    )
+    assert geverifieerd == 1
+    statussen = {rij[0] for rij in _opdrachten(admin_engine, administratie_id)}
+    assert statussen == {"geverifieerd", "klaargezet"}
+
+
+def test_opdrachten_voor_rekening_levert_levenscyclus_lijst(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
+) -> None:
+    """Geverifieerde opdrachten verdwenen stil uit de open-mutatielijst (kliktest 2026-08-08) —
+    deze lijst houdt ze zichtbaar, mét mutatie-context."""
+    rekening = uuid.uuid4()
+    mutatie_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id, payment_account_id=rekening)
+    item_id = maak_payment_item(admin_engine, administratie_id=administratie_id)
+    afletteren.zet_klaar_voor_afletteren(
+        administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+        payment_item_id=item_id, actor_id=beheerder_id,
+    )
+    client = FakeBankClient(
+        transacties={str(mutatie_id): {"id": str(mutatie_id), "OpenAmount": 0, "PaymentReferenceList": []}}
+    )
+    afletteren.verifieer_openstaande_opdrachten(administratie_id=administratie_id, client=client)
+
+    lijst = afletteren.afletter_opdrachten_voor_rekening(
+        administratie_id=administratie_id, payment_account_id=rekening
+    )
+    assert len(lijst) == 1
+    assert lijst[0].opdracht.status == "geverifieerd"
+    assert lijst[0].opdracht.geverifieerd_op is not None
+    assert lijst[0].tegenpartij_naam == "Testpartij B.V."
+    # Andere rekening: leeg.
+    assert (
+        afletteren.afletter_opdrachten_voor_rekening(
+            administratie_id=administratie_id, payment_account_id=uuid.uuid4()
+        )
+        == []
+    )
 
 
 def test_verificatie_legt_leesspoor_vast_en_filtert_hulzen(

@@ -75,11 +75,35 @@ export interface VoorstelDto {
   regels: BoekRegelDto[]
 }
 
+export interface AfletterKoppelingDto {
+  rlz_document_id: string | null
+  boekstuknummer: string | null
+  bedrag: string | null
+}
+
 export interface AfletterOpdrachtDto {
   id: string
   status: string
   payment_item_id: string | null
   klaargezet_op: string
+  /** Gevuld zodra de verificatieronde de opdracht controleerde terwijl de mutatie nog open
+   *  stond — chip "wacht op verificatie" i.p.v. "klaargezet". */
+  laatste_verificatie_poging_op: string | null
+  geverifieerd_op: string | null
+  /** false = de mens koppelde in RLZ iets anders dan het voorstel ("afwijkend gevolgd"). */
+  voorstel_gevolgd: boolean | null
+  koppelingen: AfletterKoppelingDto[]
+}
+
+export interface AfletterHistorieRegelDto {
+  opdracht: AfletterOpdrachtDto
+  boekdatum: string | null
+  tegenpartij_naam: string | null
+  bedrag: string | null
+}
+
+export interface AfletterHistorieDto {
+  opdrachten: AfletterHistorieRegelDto[]
 }
 
 export interface RegelVoorstelDto {
@@ -148,6 +172,21 @@ export function haalMutaties(administratieId: string, rekeningId: string): Promi
 
 export function synchroniseerBank(administratieId: string): Promise<BankSyncResultaatDto> {
   return apiJson<BankSyncResultaatDto>(`/administraties/${administratieId}/bank/sync`, { method: 'POST' })
+}
+
+export function haalAfletterOpdrachten(administratieId: string, rekeningId: string): Promise<AfletterHistorieDto> {
+  return apiJson<AfletterHistorieDto>(
+    `/administraties/${administratieId}/bank/rekeningen/${rekeningId}/afletter-opdrachten`,
+  )
+}
+
+export function verifieerAfletteren(
+  administratieId: string,
+  rekeningId: string,
+): Promise<{ geverifieerd: number }> {
+  return apiJson(`/administraties/${administratieId}/bank/rekeningen/${rekeningId}/verifieer-afletteren`, {
+    method: 'POST',
+  })
 }
 
 export function zetAfletterenKlaar(

@@ -53,12 +53,28 @@ function mutatie(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function afletterOpdracht(overrides: Record<string, unknown> = {}) {
+  return {
+    id: OPDRACHT_ID,
+    status: 'klaargezet',
+    payment_item_id: ITEM_ID,
+    klaargezet_op: '2026-08-02T10:00:00Z',
+    laatste_verificatie_poging_op: null,
+    geverifieerd_op: null,
+    voorstel_gevolgd: null,
+    koppelingen: [],
+    ...overrides,
+  }
+}
+
 interface MockOpties {
   mutaties?: unknown[]
   rekeningenBody?: Record<string, unknown>
+  afletterOpdrachten?: unknown[]
   klaarzettenAanroepen?: { url: string; body: unknown }[]
   intrekkenAanroepen?: string[]
   boekenAanroepen?: { url: string; body: unknown }[]
+  verifieerAanroepen?: string[]
 }
 
 function installFetchMock(opties: MockOpties = {}) {
@@ -81,6 +97,13 @@ function installFetchMock(opties: MockOpties = {}) {
       }
       if (url.includes('/mutaties') && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ mutaties: opties.mutaties ?? [mutatie()] }))
+      }
+      if (url.includes('/afletter-opdrachten') && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse({ opdrachten: opties.afletterOpdrachten ?? [] }))
+      }
+      if (url.includes('/verifieer-afletteren') && init?.method === 'POST') {
+        opties.verifieerAanroepen?.push(url)
+        return Promise.resolve(jsonResponse({ geverifieerd: 1 }))
       }
       if (url.includes('/afletteren-klaarzetten') && init?.method === 'POST') {
         opties.klaarzettenAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
@@ -145,26 +168,87 @@ describe('BankDetailScreen', () => {
     expect(klaarzettenAanroepen[0].body).toEqual({ payment_item_id: ITEM_ID })
   })
 
-  it('toont een klaargezette opdracht als wachtend op verificatie, met intrekken', async () => {
+  it('toont een klaargezette opdracht met instructie-staat en intrekken', async () => {
     const intrekkenAanroepen: string[] = []
     installFetchMock({
       intrekkenAanroepen,
+      mutaties: [mutatie({ afletter_opdracht: afletterOpdracht() })],
+    })
+    renderScherm()
+
+    expect(await screen.findByText('Klaargezet — nog niet geverifieerd')).toBeInTheDocument()
+    // Instructie-staat (kliktest 2026-08-08): vertelt wat de mens in RLZ moet doen en dat de
+    // sync daarna automatisch verifieert.
+    expect(screen.getByText(/leg de koppeling in Reeleezee/)).toBeInTheDocument()
+    expect(screen.getByText(/eerstvolgende bank-sync verifieert automatisch/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Intrekken' }))
+    await waitFor(() => expect(intrekkenAanroepen).toHaveLength(1))
+  })
+
+  it('toont "wacht op verificatie" zodra er een verificatiepoging is geweest', async () => {
+    installFetchMock({
       mutaties: [
         mutatie({
-          afletter_opdracht: {
-            id: OPDRACHT_ID,
-            status: 'klaargezet',
-            payment_item_id: ITEM_ID,
-            klaargezet_op: '2026-08-02T10:00:00Z',
-          },
+          afletter_opdracht: afletterOpdracht({ laatste_verificatie_poging_op: '2026-08-08T09:15:00Z' }),
         }),
       ],
     })
     renderScherm()
 
-    expect(await screen.findByText(/Af te letteren in Reeleezee — wacht op verificatie/)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Intrekken' }))
-    await waitFor(() => expect(intrekkenAanroepen).toHaveLength(1))
+    expect(await screen.findByText(/Wacht op verificatie — laatst gecontroleerd/)).toBeInTheDocument()
+    expect(screen.getByText(/nog\s+open in RLZ/)).toBeInTheDocument()
+  })
+
+  it('draait de verificatieronde met de "Nu verifiëren"-knop en meldt het resultaat', async () => {
+    const verifieerAanroepen: string[] = []
+    installFetchMock({ verifieerAanroepen })
+    renderScherm()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Nu verifiëren/ }))
+
+    await waitFor(() => expect(verifieerAanroepen).toHaveLength(1))
+    expect(verifieerAanroepen[0]).toContain(`/bank/rekeningen/${REKENING_ID}/verifieer-afletteren`)
+    expect(await screen.findByText(/1 aflettering\(en\) geverifieerd/)).toBeInTheDocument()
+  })
+
+  it('toont de levenscyclus-sectie met geverifieerd resultaat en afwijkend-gevolgd', async () => {
+    installFetchMock({
+      mutaties: [],
+      afletterOpdrachten: [
+        {
+          opdracht: afletterOpdracht({
+            status: 'geverifieerd',
+            geverifieerd_op: '2026-08-08T12:00:00Z',
+            voorstel_gevolgd: true,
+            koppelingen: [{ rlz_document_id: 'x', boekstuknummer: 'RLZ-04-00002012', bedrag: '1847.23' }],
+          }),
+          boekdatum: '2026-07-01',
+          tegenpartij_naam: 'Bouwmaat Nederland B.V.',
+          bedrag: '-1847.23',
+        },
+        {
+          opdracht: afletterOpdracht({
+            id: 'ffffffff-0000-0000-0000-000000000007',
+            status: 'geverifieerd',
+            geverifieerd_op: '2026-08-08T12:00:00Z',
+            voorstel_gevolgd: false,
+            koppelingen: [{ rlz_document_id: 'y', boekstuknummer: 'RLZ-04-00002099', bedrag: null }],
+          }),
+          boekdatum: '2026-07-02',
+          tegenpartij_naam: 'Andere partij',
+          bedrag: '-10.00',
+        },
+      ],
+    })
+    renderScherm()
+
+    expect(await screen.findByText('Afletteren via Reeleezee — levenscyclus')).toBeInTheDocument()
+    expect(screen.getByText(/Geverifieerd — afgeletterd in RLZ/)).toBeInTheDocument()
+    expect(screen.getByText(/RLZ-04-00002012/)).toBeInTheDocument()
+    // Afwijkend gevolgd = zichtbaar, nooit stil (mens koppelde in RLZ iets anders dan het voorstel).
+    expect(screen.getByText(/Afwijkend gevolgd — in RLZ anders gekoppeld/)).toBeInTheDocument()
+    // Tijdlijn: klaargezet → geverifieerd met tijdstippen.
+    expect(screen.getAllByText(/Klaargezet .*→ geverifieerd/).length).toBeGreaterThan(0)
   })
 
   it('boekt een vaste-regel-voorstel direct met de meegeleverde regels', async () => {
