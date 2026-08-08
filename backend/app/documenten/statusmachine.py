@@ -90,6 +90,9 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.GEBOEKT,
             DocumentStatus.BOEKEN_MISLUKT,
             DocumentStatus.TE_CONTROLEREN,
+            # Klant-accorderingsflow (migratie 0033): administratie met accordering aan —
+            # de boekknop wordt "Ter accordering", het document gaat naar de klant.
+            DocumentStatus.TER_ACCORDERING,
             # Vragenworkflow (2026-07-14, bewuste uitbreiding op de mockup — zie
             # docs/BESLISSINGEN.md): ook uit een al boekklaar document kan een vraag rijzen;
             # zonder deze overgang moest de controleur eerst kunstmatig terug naar
@@ -170,6 +173,12 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.VERWIJDERD,
         }
     ),
+    # Klant-accordering (migratie 0033): terug naar klaar_om_te_boeken bij het laatste akkoord
+    # (waarna de boekmotor met alle harde checks draait) of bij intrekken door het kantoor;
+    # afwijzen door de accordeur loopt via datzelfde terugzetten + het bestaande
+    # afwijzen-met-verplichte-reden (heropenen brengt het document dan terug in de kantoorbak).
+    # Bewust NIET naar VERWIJDERD: een document dat bij de klant ligt haal je eerst terug.
+    DocumentStatus.TER_ACCORDERING: frozenset({DocumentStatus.KLAAR_OM_TE_BOEKEN}),
     DocumentStatus.GEBOEKT: frozenset(),
     DocumentStatus.GESPLITST: frozenset(),
     DocumentStatus.VERWIJDERD: _NIET_GEBOEKTE_STATUSSEN,

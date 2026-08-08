@@ -15,6 +15,8 @@ export const STATUS_LABELS: Record<string, string> = {
   // IBAN-wissel vier-ogen-accordering (PART B 2026-07-15, chip-tekst conform de goedgekeurde
   // flow).
   wacht_op_iban_accordering: 'IBAN-wissel — wacht op accordering',
+  // Klant-accorderingsflow (migratie 0033): mockup-kolom "Bij klant".
+  ter_accordering: 'Bij klant — ter accordering',
   verwijderd: 'Verwijderd',
 }
 
@@ -31,6 +33,7 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   niet_toegewezen: 'vraag',
   handmatig_afmaken: 'vraag',
   wacht_op_iban_accordering: 'vraag',
+  ter_accordering: 'geheugen',
   verwijderd: 'geboekt',
 }
 

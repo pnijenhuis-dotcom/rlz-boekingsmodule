@@ -5,6 +5,7 @@ import type { AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { useMedewerkers } from '../vragen/useMedewerkers'
+import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
 import {
   haalBoekenKillSwitchOp,
@@ -452,6 +453,10 @@ export function InstellingenScreen() {
           </table>
         )}
       </div>
+
+      {administraties !== null && (
+        <AccorderingInstellingen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
+      )}
 
       {pending && (
         <BevestigDialog

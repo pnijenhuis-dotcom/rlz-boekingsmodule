@@ -10,6 +10,7 @@ import { haalVragenOp } from '../vragen/vragenApi'
 import { VraagModal } from '../vragen/VraagModal'
 import { AfwijsModal } from './AfwijsModal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
+import { AccorderingSectie } from './AccorderingSectie'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
@@ -381,6 +382,14 @@ export function DocumentDetailScreen() {
               onGewijzigd={laadDetail}
             />
           )}
+
+          <AccorderingSectie
+            administratieId={administratieId}
+            documentId={documentId}
+            documentStatus={detail.status}
+            onGewijzigd={laadDetail}
+          />
+
 
           {detail.status === 'afgewezen' && (
             <div className="panel">

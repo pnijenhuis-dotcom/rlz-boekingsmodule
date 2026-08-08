@@ -130,7 +130,7 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'Kempen Facilities B.V.' })] })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('Kempen Facilities B.V.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
     expect(screen.getByRole('heading', { name: /kill switch/i })).toBeInTheDocument()
     expect(screen.queryByText('WERKVOORRAAD-SCHERM')).not.toBeInTheDocument()
   })
@@ -147,7 +147,7 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('Kempen Facilities B.V.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
     expect(screen.getByText('IBAN-wissel accorderen door')).toBeInTheDocument()
     // De accordeur-cel toont de medewerker als aangevinkte accordeur…
     const accordeurCheckbox = await screen.findByRole('checkbox', { name: /M\. de Boer/ })
@@ -161,7 +161,7 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     installFetchMock({ rol: 'beheerder', ibanAccordeurs: [] })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('Testklant B.V.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('Testklant B.V.').length).toBeGreaterThan(0))
     expect(await screen.findByText(/valt terug op de beheerder\(s\)/)).toBeInTheDocument()
   })
 })
@@ -181,7 +181,7 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('BLOW B.V.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('BLOW B.V.').length).toBeGreaterThan(0))
     // Op naam, nooit op checkbox-index: de IBAN-accordeur-kolom voegt per rij checkboxes toe
     // en zou een index-selectie stil naar de verkeerde toggle laten wijzen.
     const boekenToggle = screen.getByRole('checkbox', { name: 'Boeken ingeschakeld voor BLOW B.V.' })
@@ -212,7 +212,7 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('BLOW B.V.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('BLOW B.V.').length).toBeGreaterThan(0))
     const projectToggle = screen.getByRole('checkbox', { name: 'Project verplicht voor BLOW B.V.' })
 
     await gebruiker.click(projectToggle)

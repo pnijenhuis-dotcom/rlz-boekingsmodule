@@ -211,6 +211,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA (factuurbeeld centraal,
   akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open).
+  **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
+  `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,
+  accorderingssectie controlescherm, "Bij klant"-teller); incl. staande goedkeuring (besluit
+  2026-08-08: per accordeur+leverancier+exact bedrag, automatisch akkoord mét audit+tijdlijn,
+  intrekbaar — harde checks blijven onverkort) en direct-boeken-blokkade zodra de toggle aan
+  staat. Details BESLISSINGEN "Klant-accorderingsflow — GEBOUWD + GETEST". De accordeur-PWA
+  zelf (mobile-first), e-maillink-goedkeuren en push zijn het open fase 3-vervolg.
 - **Projecten** (module, zichtbaar per rol + per administratie-toggle): project verplicht = hard
   blokkerend, géén "geen project"-optie; overhead → intern OVH-project (uitgesloten van bewaking).
   Budget uit offerte-ontleding (status offerte ≠ opdracht; meerwerk = aparte budgetversie).

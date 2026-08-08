@@ -865,10 +865,9 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 klaar_om_te_boeken=per_status.get(DocumentStatus.KLAAR_OM_TE_BOEKEN, 0),
                 vragen=per_status.get(DocumentStatus.VRAAG_OPEN, 0),
                 afgewezen=per_status.get(DocumentStatus.AFGEWEZEN, 0),
-                # Klant-accordering ("Ter accordering", mockup-kolom "Bij klant") is nog niet
-                # gebouwd — kolom bestaat al in het contract zodat de UI 1-op-1 de mockup volgt;
-                # zodra die statusmachine-tak er is telt hij hier mee.
-                bij_klant=0,
+                # Klant-accordering (migratie 0033): "Bij klant" = documenten die op één of
+                # meer accorderingslagen wachten.
+                bij_klant=per_status.get(DocumentStatus.TER_ACCORDERING, 0),
                 iban_wachtend=per_status.get(DocumentStatus.WACHT_OP_IBAN_ACCORDERING, 0),
             )
         )

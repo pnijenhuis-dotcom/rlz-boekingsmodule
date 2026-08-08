@@ -341,6 +341,9 @@ export function BoekvoorstelPanel({
   const [boekenBezig, setBoekenBezig] = useState(false)
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
   const [boekResultaat, setBoekResultaat] = useState<BoekenResponseDto | null>(null)
+  // Klant-accordering (migratie 0033): staat de toggle aan, dan wordt de boekknop
+  // "Ter accordering" — direct boeken is server-side sowieso dicht (AccorderingVereist).
+  const [accorderingAan, setAccorderingAan] = useState(false)
   const [herstellenBezig, setHerstellenBezig] = useState(false)
   const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
 
@@ -401,7 +404,10 @@ export function BoekvoorstelPanel({
   // Afgewezen leest als bevroren voorstel: de banner op het detailscherm (reden + heropenen)
   // is de enige actie — bewerken of boeken kan pas weer ná heropenen.
   const isAfgewezen = status === 'afgewezen'
-  const isReadOnly = isGeboekt || isVerwijderd || isAfgewezen
+  // Klant-accordering (migratie 0033): een document dat bij de klant ligt is bevroren — de
+  // accorderingssectie op het detailscherm (stappen + intrekken) is daar de enige actie.
+  const isTerAccordering = status === 'ter_accordering'
+  const isReadOnly = isGeboekt || isVerwijderd || isAfgewezen || isTerAccordering
 
   // UI-koppeling boekingsgeheugen (B6): zodra de crediteur bekend is (uit de extractie of een
   // handmatige keuze), per weergavemodus het geheugenvoorstel ophalen — samengevoegd =
@@ -671,15 +677,40 @@ export function BoekvoorstelPanel({
     }
   }
 
+  useEffect(() => {
+    let actief = true
+    apiJson<{ ingeschakeld: boolean }>(`/administraties/${administratieId}/accordering/instellingen`)
+      .then((dto) => {
+        if (actief) setAccorderingAan(dto.ingeschakeld)
+      })
+      .catch(() => {
+        // Stil degraderen naar de gewone boekknop — de server blokkeert direct boeken toch hard.
+        if (actief) setAccorderingAan(false)
+      })
+    return () => {
+      actief = false
+    }
+  }, [administratieId])
+
   const boeken = async () => {
     setBoekenBezig(true)
     setBoekenFout(null)
     try {
-      const resp = await apiFetch(`/administraties/${administratieId}/documenten/${documentId}/boeken`, {
-        method: 'POST',
-      })
+      // Accordering aan → de knop biedt het document ter accordering aan (zelfde 409-vorm bij
+      // geblokkeerde checks als de boek-route); staande goedkeuringen kunnen direct tot boeken
+      // leiden (alles_akkoord + geboekt in de response).
+      const pad = accorderingAan
+        ? `/administraties/${administratieId}/accordering/documenten/${documentId}/aanbieden`
+        : `/administraties/${administratieId}/documenten/${documentId}/boeken`
+      const resp = await apiFetch(pad, { method: 'POST' })
       const body: unknown = await resp.json().catch(() => null)
 
+      if (resp.ok && accorderingAan) {
+        const resultaat = body as { geboekt: boolean; boek_fout: string | null; alles_akkoord: boolean }
+        if (resultaat.boek_fout) setBoekenFout(resultaat.boek_fout)
+        onGeboekt()
+        return
+      }
       if (resp.ok) {
         const resultaat = body as BoekenResponseDto
         setBoekResultaat(resultaat)
@@ -1212,7 +1243,7 @@ export function BoekvoorstelPanel({
               title={boekenTitel}
               onClick={() => void boeken()}
             >
-              {boekenBezig ? 'Bezig…' : 'Boeken in RLZ ✓'}
+              {boekenBezig ? 'Bezig…' : accorderingAan ? 'Ter accordering →' : 'Boeken in RLZ ✓'}
             </button>
           </div>
         )}

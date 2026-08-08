@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0032
+-- Migratie-head bij deze dump: 0033
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -66,7 +66,8 @@ CREATE TYPE boekhouding.document_status AS ENUM (
     'verwijderd',
     'gesplitst',
     'handmatig_afmaken',
-    'wacht_op_iban_accordering'
+    'wacht_op_iban_accordering',
+    'ter_accordering'
 );
 
 
@@ -199,6 +200,48 @@ CREATE FUNCTION platform.current_administratie_id() RETURNS uuid
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: accordering_laag; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.accordering_laag (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    volgnummer integer NOT NULL,
+    accordeur_gebruiker_id uuid NOT NULL,
+    bedrag_drempel numeric(14,2),
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gedeactiveerd_door uuid,
+    gedeactiveerd_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.accordering_laag FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: accordering_stap; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.accordering_stap (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    accordering_id uuid NOT NULL,
+    volgnummer integer NOT NULL,
+    accordeur_gebruiker_id uuid NOT NULL,
+    bedrag_drempel numeric(14,2),
+    vereist boolean DEFAULT true NOT NULL,
+    besluit text,
+    besluit_bron text,
+    staande_regel_id uuid,
+    reden text,
+    besloten_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.accordering_stap FORCE ROW LEVEL SECURITY;
+
 
 --
 -- Name: afwijzing; Type: TABLE; Schema: boekhouding; Owner: -
@@ -446,6 +489,24 @@ CREATE TABLE boekhouding.document (
 );
 
 ALTER TABLE ONLY boekhouding.document FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: document_accordering; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.document_accordering (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    status text DEFAULT 'open'::text NOT NULL,
+    aangeboden_door uuid NOT NULL,
+    aangeboden_op timestamp with time zone DEFAULT now() NOT NULL,
+    afgerond_op timestamp with time zone,
+    detail jsonb
+);
+
+ALTER TABLE ONLY boekhouding.document_accordering FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -757,6 +818,27 @@ ALTER TABLE ONLY boekhouding.project_cache FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: staande_goedkeuring; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.staande_goedkeuring (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    accordeur_gebruiker_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    leverancier_naam text,
+    bedrag numeric(14,2) NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bron_document_id uuid,
+    ingetrokken_door uuid,
+    ingetrokken_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: taxrate_cache; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -877,7 +959,8 @@ CREATE TABLE platform.administratie (
     ai_extractie_ingeschakeld boolean DEFAULT false NOT NULL,
     is_vastgoed boolean DEFAULT false NOT NULL,
     eigenaar_gebruiker_id uuid,
-    bank_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL
+    bank_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
+    accordering_ingeschakeld boolean DEFAULT false NOT NULL
 );
 
 
@@ -1084,6 +1167,22 @@ CREATE TABLE public.alembic_version (
 
 
 --
+-- Name: accordering_laag accordering_laag_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_laag
+    ADD CONSTRAINT accordering_laag_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: accordering_stap accordering_stap_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_stap
+    ADD CONSTRAINT accordering_stap_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: afwijzing afwijzing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -1161,6 +1260,14 @@ ALTER TABLE ONLY boekhouding.boekvoorstel
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel
     ADD CONSTRAINT boekvoorstel_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: document_accordering document_accordering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_accordering
+    ADD CONSTRAINT document_accordering_pkey PRIMARY KEY (id);
 
 
 --
@@ -1289,6 +1396,14 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 ALTER TABLE ONLY boekhouding.project_cache
     ADD CONSTRAINT project_cache_pkey PRIMARY KEY (id, administratie_id);
+
+
+--
+-- Name: staande_goedkeuring staande_goedkeuring_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring
+    ADD CONSTRAINT staande_goedkeuring_pkey PRIMARY KEY (id);
 
 
 --
@@ -1490,6 +1605,20 @@ CREATE UNIQUE INDEX iban_accordering_een_open_per_document ON boekhouding.iban_a
 
 
 --
+-- Name: ix_accordering_laag_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_accordering_laag_administratie_id ON boekhouding.accordering_laag USING btree (administratie_id);
+
+
+--
+-- Name: ix_accordering_stap_accordering_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_accordering_stap_accordering_id ON boekhouding.accordering_stap USING btree (accordering_id);
+
+
+--
 -- Name: ix_bank_boeking_regel_boeking_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -1522,6 +1651,13 @@ CREATE INDEX ix_boeking_observatie_admin_vendor_sleutel ON boekhouding.boeking_o
 --
 
 CREATE INDEX ix_boekvoorstel_regel_document_id ON boekhouding.boekvoorstel_regel USING btree (document_id);
+
+
+--
+-- Name: ix_document_accordering_document_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_document_accordering_document_id ON boekhouding.document_accordering USING btree (document_id);
 
 
 --
@@ -1595,6 +1731,13 @@ CREATE INDEX ix_project_cache_administratie_id ON boekhouding.project_cache USIN
 
 
 --
+-- Name: ix_staande_goedkeuring_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_staande_goedkeuring_administratie_id ON boekhouding.staande_goedkeuring USING btree (administratie_id);
+
+
+--
 -- Name: ix_taxrate_cache_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -1620,6 +1763,13 @@ CREATE INDEX ix_webhook_uitgaand_document_id ON boekhouding.webhook_uitgaand USI
 --
 
 CREATE INDEX ix_webhook_uitgaand_openstaand ON boekhouding.webhook_uitgaand USING btree (volgende_poging_op) WHERE (status = 'openstaand'::text);
+
+
+--
+-- Name: uq_document_accordering_open; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_document_accordering_open ON boekhouding.document_accordering USING btree (document_id) WHERE (status = 'open'::text);
 
 
 --
@@ -1753,6 +1903,62 @@ CREATE TRIGGER trg_audit_gebruiker_administratie_insert AFTER INSERT ON platform
 --
 
 CREATE TRIGGER trg_audit_gebruiker_rol_wijziging AFTER UPDATE ON platform.gebruiker FOR EACH ROW EXECUTE FUNCTION platform.audit_gebruiker_rol_wijziging();
+
+
+--
+-- Name: accordering_laag accordering_laag_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_laag
+    ADD CONSTRAINT accordering_laag_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_laag accordering_laag_accordeur_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_laag
+    ADD CONSTRAINT accordering_laag_accordeur_gebruiker_id_fkey FOREIGN KEY (accordeur_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_laag accordering_laag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_laag
+    ADD CONSTRAINT accordering_laag_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: accordering_laag accordering_laag_gedeactiveerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_laag
+    ADD CONSTRAINT accordering_laag_gedeactiveerd_door_fkey FOREIGN KEY (gedeactiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_stap accordering_stap_accordering_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_stap
+    ADD CONSTRAINT accordering_stap_accordering_id_fkey FOREIGN KEY (accordering_id) REFERENCES boekhouding.document_accordering(id);
+
+
+--
+-- Name: accordering_stap accordering_stap_accordeur_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_stap
+    ADD CONSTRAINT accordering_stap_accordeur_gebruiker_id_fkey FOREIGN KEY (accordeur_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_stap accordering_stap_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_stap
+    ADD CONSTRAINT accordering_stap_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -1913,6 +2119,30 @@ ALTER TABLE ONLY boekhouding.boekvoorstel
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel
     ADD CONSTRAINT boekvoorstel_regel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.boekvoorstel(document_id);
+
+
+--
+-- Name: document_accordering document_accordering_aangeboden_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_accordering
+    ADD CONSTRAINT document_accordering_aangeboden_door_fkey FOREIGN KEY (aangeboden_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: document_accordering document_accordering_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_accordering
+    ADD CONSTRAINT document_accordering_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: document_accordering document_accordering_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_accordering
+    ADD CONSTRAINT document_accordering_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
 
 
 --
@@ -2180,6 +2410,38 @@ ALTER TABLE ONLY boekhouding.project_cache
 
 
 --
+-- Name: staande_goedkeuring staande_goedkeuring_accordeur_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring
+    ADD CONSTRAINT staande_goedkeuring_accordeur_gebruiker_id_fkey FOREIGN KEY (accordeur_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: staande_goedkeuring staande_goedkeuring_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring
+    ADD CONSTRAINT staande_goedkeuring_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: staande_goedkeuring staande_goedkeuring_bron_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring
+    ADD CONSTRAINT staande_goedkeuring_bron_document_id_fkey FOREIGN KEY (bron_document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: staande_goedkeuring staande_goedkeuring_ingetrokken_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring
+    ADD CONSTRAINT staande_goedkeuring_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: taxrate_cache taxrate_cache_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2420,6 +2682,32 @@ ALTER TABLE ONLY platform.webhook_instelling
 
 
 --
+-- Name: accordering_laag; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.accordering_laag ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: accordering_laag accordering_laag_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY accordering_laag_scope ON boekhouding.accordering_laag USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: accordering_stap; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.accordering_stap ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: accordering_stap accordering_stap_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY accordering_stap_scope ON boekhouding.accordering_stap USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: afwijzing; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -2566,6 +2854,19 @@ CREATE POLICY boekvoorstel_scope ON boekhouding.boekvoorstel USING ((EXISTS ( SE
 --
 
 ALTER TABLE boekhouding.document ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: document_accordering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.document_accordering ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: document_accordering document_accordering_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY document_accordering_scope ON boekhouding.document_accordering USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
 
 --
 -- Name: document document_administratie_scope; Type: POLICY; Schema: boekhouding; Owner: -
@@ -2779,6 +3080,19 @@ ALTER TABLE boekhouding.project_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY project_cache_scope ON boekhouding.project_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: staande_goedkeuring; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.staande_goedkeuring ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: staande_goedkeuring staande_goedkeuring_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY staande_goedkeuring_scope ON boekhouding.staande_goedkeuring USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

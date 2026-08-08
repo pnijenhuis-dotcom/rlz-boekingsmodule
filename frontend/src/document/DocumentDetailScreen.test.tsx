@@ -19,6 +19,11 @@ function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: strin
         opties?.extractieAanroepen?.push(url)
         return Promise.resolve(jsonResponse({ document_id: DOCUMENT_ID, status: 'extractie_bezig' }))
       }
+      // Klant-accordering: vóór de documenten-match — /accordering/documenten/{id} eindigt óók
+      // op /documenten/{id}.
+      if (url.includes('/accordering/instellingen'))
+        return Promise.resolve(jsonResponse({ ingeschakeld: false, lagen: [] }))
+      if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))
       if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
       if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
       if (url.endsWith('/boekvoorstel')) {
@@ -312,6 +317,9 @@ describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () 
           heropenAanroepen.push(url)
           return Promise.resolve(jsonResponse({ id: AFWIJZING.id, status: 'heropend' }))
         }
+        if (url.includes('/accordering/instellingen'))
+          return Promise.resolve(jsonResponse({ ingeschakeld: false, lagen: [] }))
+        if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))
         if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
         if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
         if (url.endsWith('/boekvoorstel')) {

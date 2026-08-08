@@ -66,6 +66,10 @@ class DocumentStatus(enum.StrEnum):
     # Vier-ogen-accordering van een afwijkend IBAN (migratie 0024, docs/ontwerp/
     # iban-wissel-accordering.md): boeken geblokkeerd tot een accordeur ≠ aanvrager besluit.
     WACHT_OP_IBAN_ACCORDERING = "wacht_op_iban_accordering"
+    # Klant-accorderingsflow (migratie 0033, mockup #autorisatie): "Bij klant" — het document
+    # wacht op één of meer accorderingslagen; ná het laatste akkoord boekt de motor automatisch
+    # mét alle harde checks opnieuw (app/accordering/service.py).
+    TER_ACCORDERING = "ter_accordering"
     VERWIJDERD = "verwijderd"
     # E-mail-intake (migratie 0028): terminale status van een bron-PDF waarvan de bevestigde
     # multi-factuur-splitsing kind-documenten heeft opgeleverd — het origineel blijft bestaan

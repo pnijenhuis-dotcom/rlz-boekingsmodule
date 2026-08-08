@@ -587,6 +587,12 @@ UI-eisen):
 
 - Autorisatiemodule: accordeurs, sequentiële lagen met drempels, "Ter accordering"-flow,
   goedkeuren via e-maillink, PWA (installeerbaar, push: direct + dagelijks 09:00).
+  **→ Backend + kantoor-UI GEBOUWD + GETEST (2026-08-09, zie docs/BESLISSINGEN.md
+  "Klant-accorderingsflow — GEBOUWD + GETEST"):** migratie 0033, `app/accordering/`,
+  statusmachine-tak ter_accordering, staande goedkeuring (besluit 2026-08-08), scope-veilige
+  PWA-endpoints (wachtrij/akkoord/afwijzen), Instellingen-sectie + "Bij klant"-teller +
+  accorderingshistorie op het controlescherm. **Open:** de accordeur-PWA zelf (apart
+  mobile-first ontwerp), e-maillink-goedkeuren, push-notificaties.
 - Platform-auth-uitbreiding (besluit 0010, akkoord 2026-07-05): auth-niveau per rol (TOTP
   verplicht voor kantoor/beheer/accordeur; mobiele token-flow + biometrie + Sign in with Apple
   voor huurder-accounts t.b.v. vastgoed native app) + push als platform-service met topics per

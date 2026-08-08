@@ -54,6 +54,12 @@ class BoekenUitgeschakeld(BoekenFout):
     uit — CLAUDE.md: 'boeken-toggle per administratie + globale kill switch'."""
 
 
+class AccorderingVereist(BoekenFout):
+    """Klant-accordering staat aan voor deze administratie (migratie 0033): direct boeken is
+    server-side geblokkeerd tot alle vereiste accorderingslagen akkoord zijn — de boekknop
+    hoort "Ter accordering" te zijn; na het laatste akkoord boekt de flow zelf."""
+
+
 class VolumeremBereikt(BoekenFout):
     """Failsafe (c): de dagelijkse boekingslimiet voor deze administratie is bereikt."""
 
@@ -255,6 +261,20 @@ def boek_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_
         bestandsnaam = document.bestandsnaam
         opslag_pad = document.opslag_pad
         rlz_admin_id = rlz_admin_id_voor(administratie_id)
+
+    # Klant-accorderingspoort (migratie 0033, server-side — nooit de client-knop vertrouwen):
+    # staat accordering aan, dan mag deze motor alleen draaien mét een afgeronde ronde (de
+    # accorderingsflow roept 'm dan zelf aan na het laatste akkoord, of een retry na boekfout).
+    # Lazy import: accordering.service gebruikt deze module — geen kringimport op moduleniveau.
+    from app.accordering import service as accordering_service
+
+    if accordering_service.is_accordering_ingeschakeld(administratie_id=administratie_id):
+        with scoped_session(administratie_id) as session:
+            if not accordering_service.heeft_afgeronde_accordering(session, document_id=document_id):
+                raise AccorderingVereist(
+                    "Klant-accordering staat aan voor deze administratie — bied het document ter "
+                    "accordering aan; na het laatste akkoord wordt automatisch geboekt"
+                )
 
     with _rlz_client_voor(administratie_id) as client:
         rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, client=client)

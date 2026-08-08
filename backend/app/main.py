@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.accordering.router import router as accordering_router
 from app.auth.router import router as auth_router
 from app.bank.router import router as bank_router
 from app.beheer.router import router as beheer_router
@@ -138,6 +139,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth_router)
+app.include_router(accordering_router)
 app.include_router(bank_router)
 app.include_router(documenten_router)
 app.include_router(sync_router)

@@ -34,9 +34,27 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset()
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GESPLITST] == frozenset()
     for van in DocumentStatus:
-        if van in (DocumentStatus.GEBOEKT, DocumentStatus.GESPLITST, DocumentStatus.VERWIJDERD):
+        if van in (
+            DocumentStatus.GEBOEKT,
+            DocumentStatus.GESPLITST,
+            DocumentStatus.VERWIJDERD,
+            # Klant-accordering (migratie 0033): een document dat bij de klant ligt is bewust
+            # niet direct verwijderbaar — eerst intrekken (→ klaar_om_te_boeken), dan pas.
+            DocumentStatus.TER_ACCORDERING,
+        ):
             continue
         assert DocumentStatus.VERWIJDERD in _TOEGESTANE_OVERGANGEN[van], f"{van} kan niet verwijderd worden"
+
+
+def test_ter_accordering_kan_alleen_terug_naar_de_kantoorbak() -> None:
+    """Klant-accordering (migratie 0033): de enige uitgang is klaar_om_te_boeken — het laatste
+    akkoord (waarna de boekmotor zelf boekt), intrekken door het kantoor én de afwijs-route
+    (die eerst terugzet en dan het bestaande afwijzen-patroon volgt) lopen daar allemaal
+    doorheen; nooit rechtstreeks naar geboekt of verwijderd."""
+    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.TER_ACCORDERING] == frozenset(
+        {DocumentStatus.KLAAR_OM_TE_BOEKEN}
+    )
+    assert DocumentStatus.TER_ACCORDERING in _TOEGESTANE_OVERGANGEN[DocumentStatus.KLAAR_OM_TE_BOEKEN]
 
 
 def test_verwijderd_kan_terug_naar_elke_status_die_er_ook_naartoe_mag() -> None:
