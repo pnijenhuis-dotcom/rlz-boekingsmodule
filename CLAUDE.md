@@ -42,6 +42,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   Beheerder-rol (initieel alleen Peter), server-side gecontroleerd. **Niemand kan zijn eigen rol
   of scope muteren, ook een Beheerder niet** (tweede beheerder aanwijzen kan alleen door een
   andere beheerder). Elke rol-/scope-wijziging in het append-only audit_event.
+  **Platformbesluit 0019 (2026-08-08): identiteit gedeeld, autorisatie per module** — elke
+  module een eigen rollen-/rechtenstructuur (nooit één gedeelde enum); gebouwd als
+  `platform.gebruiker_module_rol` + `platform.gebruiker_entiteit` (migratie 0034, RLS dwingt
+  de mutatieregels ook op DB-niveau af); RLZ's eigen rol-enum ongewijzigd, convergentie t.z.t.
+  op eigen tempo.
 - **Platformbrede afspraken (koppelcontract v1.3 + 14_ANTWOORD_AAN_RLZ, bindend):**
   uniform `audit_event`-schema (timestamptz, actor=platform-user-id, module, tabel+record-id,
   actie, oude+nieuwe waarde JSON, correlatie-id) als bron voor de WORM-export; **PII gescheiden
@@ -261,7 +266,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.10)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.11)
 
 - **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
   RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
@@ -278,9 +283,19 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
   schending mét geldige markering) → omzet-werkvoorraad mét vlag "consument-afnemer" (landt bij
-  de volledige-schematron-stap); waarborg via `VASTLY-WAARBORG`-bericht (velddefinitie CONCEPT,
-  review vastgoed) — wij boeken het memoriaal; §6.4 (waarborg-GB per administratie
-  inventariseren) is een expliciete RLZ-actie vóór die bouw.
+  de volledige-schematron-stap); waarborg via `VASTLY-WAARBORG`-bericht (velddefinitie
+  **DEFINITIEF v1.11**, incl. `bericht_id`-idempotentiesleutel) — wij boeken het memoriaal;
+  §6.4 is **uitgevoerd (2026-08-09)**: Rubicon-waarborg-GB = 0204 "Waarborgsommen"
+  (RLZ-template-rekening; inventarisatie herhalen per nieuwe vastgoed-administratie).
+- **v1.11-addenda (2026-08-09, besluiten Peter 2026-08-08):** §2d-creditnota's (apart UBL
+  CreditNote-document 381 mét VASTLY-VERKOOP-markering + BillingReference-herleiding →
+  creditboeking omzetkant; bouw bij het verkoopfactuur-boekpad, gate vastgoed-kant dicht tot
+  wij herkennen) en de §3-`factuur_afgeletterd`-velddefinitie DEFINITIEF (cumulatief
+  betaald_bedrag + open_bedrag, volgnummer, ont_afgeletterd expliciet, tier-vlag per
+  administratie; bron altijd OpenAmount, idempotent per document+volgnummer — bouw bij de
+  bankfase, event UIT tot activatie). Vastly-verkoopfacturen boeken op de **échte huurder als
+  RLZ-debiteur** (idempotente debiteur-aanmaak uit de UBL, besluit Peter 2026-08-08 — geen
+  verzameldebiteur; zie BESLISSINGEN).
 - **Vastly-verkoopfacturen (§2d, v1.9)**: e-mail-intake routeert op de vaste UBL-markering
   `cac:AdditionalDocumentReference/cbc:ID = "VASTLY-VERKOOP"` (nooit op afzender) → omzetkant
   (SalesInvoice). Geen/kapotte markering of NLCIUS-invalide UBL → verzamelbak "Niet toegewezen",
