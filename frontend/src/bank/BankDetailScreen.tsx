@@ -11,7 +11,9 @@ import {
   synchroniseerBank,
   trekAfletterenIn,
   verifieerAfletteren,
+  voerAfletterOpdrachtUit,
   zetAfletterenKlaar,
+  type AfletterActieResultaatDto,
   type AfletterHistorieRegelDto,
   type AfletterOpdrachtDto,
   type MutatieDto,
@@ -40,7 +42,8 @@ function formatTijdstip(iso: string | null): string {
 }
 
 /** Levenscyclus-chip van een afletter-opdracht (kliktest 2026-08-08): klaargezet → wacht op
- * verificatie → geverifieerd / afwijkend gevolgd; ingetrokken blijft zichtbaar in de historie. */
+ * verificatie → geverifieerd / afwijkend gevolgd; ingetrokken blijft zichtbaar in de historie.
+ * Sinds afletteren-via-de-API (2026-08-09) is "klaargezet" de fallback-staat ná een API-fout. */
 function AfletterStatusChip({ opdracht }: { opdracht: AfletterOpdrachtDto }) {
   if (opdracht.status === 'geverifieerd') {
     return opdracht.voorstel_gevolgd === false ? (
@@ -58,8 +61,22 @@ function AfletterStatusChip({ opdracht }: { opdracht: AfletterOpdrachtDto }) {
       open in RLZ
     </span>
   ) : (
-    <span className="chip vraag">Klaargezet — nog niet geverifieerd</span>
+    <span className="chip vraag">Klaargezet — nog niet gekoppeld</span>
   )
+}
+
+/** Eén melding voor beide afletter-uitkomsten: succes = koppeling direct via de API gelegd én
+ * geverifieerd; fallback = opdracht staat klaar, fout zichtbaar (nooit stil). */
+function afletterUitkomstMelding(resultaat: AfletterActieResultaatDto): { tekst: string; isFout: boolean } {
+  if (resultaat.uitkomst === 'afgeletterd_via_api') {
+    return { tekst: 'Afgeletterd — koppeling direct in Reeleezee gelegd en geverifieerd.', isFout: false }
+  }
+  return {
+    tekst:
+      `De API-koppeling is niet gelukt${resultaat.fout ? ` (${resultaat.fout})` : ''} — de opdracht staat ` +
+      'klaar; probeer “Nu afletteren” opnieuw of leg de koppeling in Reeleezee, de eerstvolgende sync verifieert.',
+    isFout: true,
+  }
 }
 
 /** Handmatig-boeken-formulier per mutatie (voorstel-volgorde stap 5, of correctie op een
@@ -174,10 +191,12 @@ function MutatieRij({
   administratieId,
   mutatie,
   onVerversen,
+  onMelding,
 }: {
   administratieId: string
   mutatie: MutatieDto
   onVerversen: () => void
+  onMelding: (tekst: string) => void
 }) {
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
@@ -194,6 +213,27 @@ function MutatieRij({
       onVerversen()
     } catch (err) {
       setActieFout(err instanceof Error ? err.message : 'Actie mislukt')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  /** Afletteren via de echte API (klaarzetten of "Nu afletteren" op een bestaande opdracht):
+   * succes → melding op schermniveau (de rij verdwijnt na verversen); fallback → fout in de rij,
+   * de opdracht blijft klaarstaan. */
+  const letterAf = async (actie: () => Promise<AfletterActieResultaatDto>) => {
+    setBezig(true)
+    setActieFout(null)
+    try {
+      const melding = afletterUitkomstMelding(await actie())
+      if (melding.isFout) {
+        setActieFout(melding.tekst)
+      } else {
+        onMelding(melding.tekst)
+      }
+      onVerversen()
+    } catch (err) {
+      setActieFout(err instanceof Error ? err.message : 'Afletteren mislukt')
     } finally {
       setBezig(false)
     }
@@ -240,6 +280,15 @@ function MutatieRij({
         {opdracht ? (
           <>
             <AfletterStatusChip opdracht={opdracht} />{' '}
+            {opdracht.status === 'klaargezet' && (
+              <button
+                className="btn green"
+                disabled={bezig}
+                onClick={() => void letterAf(() => voerAfletterOpdrachtUit(administratieId, opdracht.id))}
+              >
+                Nu afletteren ✓
+              </button>
+            )}{' '}
             <button
               className="btn secondary"
               disabled={bezig}
@@ -247,20 +296,16 @@ function MutatieRij({
             >
               Intrekken
             </button>
-            <p className="hint" style={{ marginTop: 4 }}>
-              Klaargezet — leg de koppeling in Reeleezee (RLZ toont daar meestal zelf de matchsuggestie); de
-              eerstvolgende bank-sync verifieert automatisch, of gebruik “Nu verifiëren” hieronder.
-            </p>
           </>
         ) : isAfletterVoorstel ? (
           <button
             className="btn green"
             disabled={bezig}
             onClick={() =>
-              void doe(() => zetAfletterenKlaar(administratieId, mutatie.id, voorstel.payment_item_id ?? ''))
+              void letterAf(() => zetAfletterenKlaar(administratieId, mutatie.id, voorstel.payment_item_id ?? ''))
             }
           >
-            Klaarzetten voor RLZ ✓
+            Afletteren ✓
           </button>
         ) : voorstel.soort === 'vaste_regel' && voorstel.regels.length > 0 ? (
           <button
@@ -312,9 +357,10 @@ function MutatieRij({
 }
 
 /** Bankdetail per klant (mockup #bankdetail): bankpicker over alle PaymentAccounts incl. kas,
- * saldo + versheid, mutatielijst met voorstel + herkomst-chip. Afletteren-tegen-open-post is het
- * assist-model ("klaarzetten voor RLZ", verificatie via sync); direct-op-grootboek boekt echt.
- * Afletteren gaat NIET door de klant-accorderingsflow. */
+ * saldo + versheid, mutatielijst met voorstel + herkomst-chip. Afletteren-tegen-open-post gaat
+ * sinds 2026-08-09 via de echte API (koppeling direct gelegd + geverifieerd); faalt de API, dan
+ * blijft de opdracht klaarstaan ("Nu afletteren" / mens in RLZ, sync verifieert — fallback).
+ * Direct-op-grootboek boekt echt. Afletteren gaat NIET door de klant-accorderingsflow. */
 export function BankDetailScreen() {
   const { administratieId } = useParams<{ administratieId: string }>()
   const { administraties } = useAdministraties()
@@ -328,6 +374,8 @@ export function BankDetailScreen() {
   const [syncBezig, setSyncBezig] = useState(false)
   const [syncMelding, setSyncMelding] = useState<string | null>(null)
   const [verifieerBezig, setVerifieerBezig] = useState(false)
+  const [afletterBezigId, setAfletterBezigId] = useState<string | null>(null)
+  const [afletterMelding, setAfletterMelding] = useState<{ tekst: string; isFout: boolean } | null>(null)
 
   const klantNaam = useMemo(
     () => administraties?.find((a) => a.id === administratieId)?.naam ?? '…',
@@ -372,6 +420,22 @@ export function BankDetailScreen() {
     laadMutaties()
   }, [laadRekeningen, laadMutaties])
 
+  /** "Nu afletteren" vanuit de levenscyclus-lijst: voert een eerder klaargezette opdracht alsnog
+   * via de API uit; de uitkomst (succes of fallback-fout) landt zichtbaar in dezelfde sectie. */
+  const voerOpdrachtUit = async (opdrachtId: string) => {
+    if (!administratieId) return
+    setAfletterBezigId(opdrachtId)
+    setAfletterMelding(null)
+    try {
+      setAfletterMelding(afletterUitkomstMelding(await voerAfletterOpdrachtUit(administratieId, opdrachtId)))
+      verversAlles()
+    } catch (err) {
+      setAfletterMelding({ tekst: err instanceof Error ? err.message : 'Afletteren mislukt', isFout: true })
+    } finally {
+      setAfletterBezigId(null)
+    }
+  }
+
   const verifieerNu = async () => {
     if (!administratieId || !rekeningId) return
     setVerifieerBezig(true)
@@ -401,6 +465,9 @@ export function BankDetailScreen() {
         `${resultaat.mutaties_nieuw} nieuwe mutaties`,
         `${resultaat.afletteren_geverifieerd} aflettering(en) geverifieerd`,
       ]
+      if (resultaat.automatisch_afgeletterd > 0)
+        delen.push(`${resultaat.automatisch_afgeletterd} automatisch afgeletterd`)
+      if (resultaat.afletter_fouten.length > 0) delen.push(`${resultaat.afletter_fouten.length} afletter-fout(en)`)
       if (resultaat.automatisch_geboekt > 0) delen.push(`${resultaat.automatisch_geboekt} automatisch geboekt`)
       if (resultaat.automatisch_fouten.length > 0) delen.push(`${resultaat.automatisch_fouten.length} autoboek-fout(en)`)
       setSyncMelding(`Gesynchroniseerd: ${delen.join(', ')}.`)
@@ -553,24 +620,31 @@ export function BankDetailScreen() {
                   administratieId={administratieId}
                   mutatie={mutatie}
                   onVerversen={verversAlles}
+                  onMelding={setSyncMelding}
                 />
               ))}
             </tbody>
           </table>
         )}
         <div className="hint">
-          Volgorde: 1) <b>exacte match</b> (referentie + bedrag) en 2) gedeeltelijke match → voorstel{' '}
-          <b>klaarzetten</b>: de koppeling zelf leg je in Reeleezee (de app verifieert daarna automatisch op het
-          open bedrag — afletteren via de API is nog dicht, supportvraag loopt); 3) vaste regel uit het geheugen en
-          5) handmatig → <b>direct op grootboek</b> geboekt vanuit de app; 4) Reeleezee's eigen voorstel wordt
-          getoond mét bron. Na 3× dezelfde handmatige boeking stelt de app een vaste regel voor. Afletteren gaat
-          niet door de klant-accorderingsflow.
+          Volgorde: 1) <b>exacte match</b> (referentie + bedrag) en 2) gedeeltelijke match →{' '}
+          <b>afletteren</b>: de app legt de koppeling direct via de API in Reeleezee en verifieert meteen op het
+          open bedrag; lukt dat niet, dan blijft de opdracht klaarstaan (“Nu afletteren” of handmatig in
+          Reeleezee, de eerstvolgende sync verifieert); 3) vaste regel uit het geheugen en 5) handmatig →{' '}
+          <b>direct op grootboek</b> geboekt vanuit de app; 4) Reeleezee's eigen voorstel wordt getoond mét bron.
+          Na 3× dezelfde handmatige boeking stelt de app een vaste regel voor. Afletteren gaat niet door de
+          klant-accorderingsflow.
         </div>
       </div>
 
       {afletterHistorie !== null && afletterHistorie.length > 0 && (
         <div className="panel">
           <h2>Afletteren via Reeleezee — levenscyclus</h2>
+          {afletterMelding && (
+            <p className="hint" style={afletterMelding.isFout ? { color: 'var(--red)' } : undefined}>
+              {afletterMelding.tekst}
+            </p>
+          )}
           <table>
             <thead>
               <tr>
@@ -589,6 +663,18 @@ export function BankDetailScreen() {
                   <td className="amount">{formatBedrag(regel.bedrag)}</td>
                   <td>
                     <AfletterStatusChip opdracht={regel.opdracht} />
+                    {regel.opdracht.status === 'klaargezet' && (
+                      <>
+                        {' '}
+                        <button
+                          className="btn green"
+                          disabled={afletterBezigId !== null}
+                          onClick={() => void voerOpdrachtUit(regel.opdracht.id)}
+                        >
+                          {afletterBezigId === regel.opdracht.id ? 'Afletteren…' : 'Nu afletteren ✓'}
+                        </button>
+                      </>
+                    )}
                   </td>
                   <td>
                     <div className="hint">
@@ -613,8 +699,9 @@ export function BankDetailScreen() {
             </tbody>
           </table>
           <div className="hint">
-            Klaargezette opdrachten worden bij elke bank-sync (en met “Nu verifiëren”) tegen Reeleezee
-            gecontroleerd; geverifieerd = het open bedrag in RLZ is 0. “Afwijkend gevolgd” betekent: in RLZ is
+            Klaargezette opdrachten (fallback ná een API-fout) letter je alsnog af met “Nu afletteren”, of je
+            legt de koppeling in Reeleezee; ze worden bij elke bank-sync (en met “Nu verifiëren”) tegen Reeleezee
+            gecontroleerd. Geverifieerd = het open bedrag in RLZ is 0. “Afwijkend gevolgd” betekent: in RLZ is
             tegen iets anders afgeletterd dan het voorstel — zichtbaar, nooit stil.
           </div>
         </div>

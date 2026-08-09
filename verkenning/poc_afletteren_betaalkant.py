@@ -382,11 +382,144 @@ def stap_cleanup(c: PocClient) -> None:
         _dump("Probe-TX na cleanup", _tx_staat(c, tx))
 
 
+def _koppel_body(
+    *, item_id: str, linked_amount: float, is_completely_paid: bool = False,
+    correction_method: int = 1, actie_type: int = 15,
+) -> dict[str, Any]:
+    """Exact de door Peter gevangen UI-body (DevTools-capture 2026-08-09, api-verkenning
+    "Afletteren betaal-kant — BODY GEVANGEN"): actie 15 op de PAYMENTTRANSACTION met
+    PaymentItemList + LinkedAmount (teken van de mutatie) + IsCompletelyPaid +
+    PaymentCorrectionMethod."""
+    return {
+        "Type": actie_type,
+        "PaymentItemList": [{"id": item_id}],
+        "LinkedAmount": linked_amount,
+        "IsCompletelyPaid": is_completely_paid,
+        "PaymentCorrectionMethod": correction_method,
+    }
+
+
+def _item_staat(c: PocClient, item_id: str) -> dict[str, Any]:
+    items = c.get("PaymentItems", **{"$filter": f"id eq {item_id}"})["value"]
+    if not items:
+        return {"id": item_id, "status": "NIET GEVONDEN"}
+    i = items[0]
+    return {k: i.get(k) for k in ("id", "OpenAmount", "Amount", "PaymentStatus", "Description")}
+
+
+def stap_replay(c: PocClient) -> None:
+    """DEEL 1b (vervolgopdracht 2026-08-09): replay van de gevangen body op het verse paar uit
+    `setup` — verwacht 204 + OpenAmount 0 op mutatie én post + PaymentReferenceList-leesspoor."""
+    state = _state()
+    tx = state.get("probe_tx")
+    item = state.get("item_id")
+    if not tx or not item:
+        raise SystemExit("Geen probe_tx/item_id in state — eerst stap setup draaien.")
+    voor = _tx_staat(c, tx)
+    _dump("TX vóór replay", voor)
+    _dump("PaymentItem vóór replay", _item_staat(c, item))
+    if (voor["OpenAmount"] or 0) == 0:
+        raise SystemExit("OpenAmount is al 0 — eerst terugdraaien (stap ontkoppel of cleanup).")
+
+    body = _koppel_body(item_id=item, linked_amount=voor["OpenAmount"])
+    status = c.post_raw_actions(f"PaymentTransactions/{tx}", body)
+    na = _tx_staat(c, tx)
+    print(f"\n→ replay gevangen body: status {status}, OpenAmount {voor['OpenAmount']} → {na['OpenAmount']}")
+    _dump("TX ná replay", na)
+    _dump("PaymentItem ná replay", _item_staat(c, item))
+    if (na["OpenAmount"] or 0) == 0:
+        state["werkende_body"] = {"label": "capture-replay Type 15 + PaymentItemList", "body": body}
+        _save_state(state)
+        print("\nSUCCES: OpenAmount 0 — body canoniek bevestigd met Basic Auth. Nu stap ontkoppel/deel.")
+    else:
+        print("\nGEEN effect — rapporteren en stoppen (deel 2 vervalt).")
+
+
+def stap_ontkoppel(c: PocClient) -> None:
+    """DEEL 1c-4: de tegenhanger — Type 16 in dezelfde vorm; verwacht: OpenAmount komt terug
+    op mutatie én post."""
+    state = _state()
+    tx = state["probe_tx"]
+    item = state["item_id"]
+    voor = _tx_staat(c, tx)
+    _dump("TX vóór ontkoppelen", voor)
+    body = _koppel_body(item_id=item, linked_amount=voor.get("Amount") or 0, actie_type=16)
+    status = c.post_raw_actions(f"PaymentTransactions/{tx}", body)
+    na = _tx_staat(c, tx)
+    print(f"\n→ ontkoppel (Type 16, zelfde vorm): status {status}, OpenAmount {voor['OpenAmount']} → {na['OpenAmount']}")
+    _dump("TX ná ontkoppelen", na)
+    _dump("PaymentItem ná ontkoppelen", _item_staat(c, item))
+    if (na["OpenAmount"] or 0) != 0:
+        state["ontkoppel_body"] = {"label": "Type 16 + PaymentItemList", "body": body}
+        _save_state(state)
+        print("\nSUCCES: mutatie weer open — ontkoppel-vorm canoniek.")
+    else:
+        # Variant: kaal Type 16 zonder lijst, of met LinkedAmount 0 — één alternatieve poging.
+        alt = {"Type": 16, "PaymentItemList": [{"id": item}]}
+        status = c.post_raw_actions(f"PaymentTransactions/{tx}", alt)
+        na = _tx_staat(c, tx)
+        print(f"\n→ ontkoppel-variant zonder LinkedAmount: status {status}, OpenAmount → {na['OpenAmount']}")
+        if (na["OpenAmount"] or 0) != 0:
+            state["ontkoppel_body"] = {"label": "Type 16 + PaymentItemList (zonder LinkedAmount)", "body": alt}
+            _save_state(state)
+
+
+def stap_deel(c: PocClient) -> None:
+    """DEEL 1c-1: deelbetaling — LinkedAmount kleiner dan het openstaande bedrag; verwacht:
+    OpenAmount daalt met precies dat deel op mutatie én post (G-rekening-case)."""
+    state = _state()
+    tx = state["probe_tx"]
+    item = state["item_id"]
+    voor = _tx_staat(c, tx)
+    _dump("TX vóór deelkoppeling", voor)
+    if (voor["OpenAmount"] or 0) == 0:
+        raise SystemExit("OpenAmount is al 0 — eerst ontkoppelen.")
+    deel = round((voor["OpenAmount"] or 0) / 2, 2)
+    body = _koppel_body(item_id=item, linked_amount=deel)
+    status = c.post_raw_actions(f"PaymentTransactions/{tx}", body)
+    na = _tx_staat(c, tx)
+    print(f"\n→ deelkoppeling {deel}: status {status}, OpenAmount {voor['OpenAmount']} → {na['OpenAmount']}")
+    _dump("TX ná deelkoppeling", na)
+    _dump("PaymentItem ná deelkoppeling", _item_staat(c, item))
+
+
+def stap_dicht(c: PocClient) -> None:
+    """DEEL 1c-2: IsCompletelyPaid=true bij een DEEL-koppeling — sluit RLZ de post ondanks het
+    restant (betalingsverschil-afboeking)? Draaien vanaf een volledig open paar: LinkedAmount =
+    de helft, IsCompletelyPaid=true → verwacht óf post dicht (verschil afgeboekt) óf gewoon
+    deel. Daarna terugdraaien (stap ontkoppel + evt. storno)."""
+    state = _state()
+    tx = state["probe_tx"]
+    item = state["item_id"]
+    voor = _tx_staat(c, tx)
+    _dump("TX vóór dicht-poging", voor)
+    _dump("PaymentItem vóór dicht-poging", _item_staat(c, item))
+    if (voor["OpenAmount"] or 0) == 0:
+        raise SystemExit("Mutatie is dicht — deze stap vereist een open paar (eerst ontkoppel).")
+    deel = round((voor["OpenAmount"] or 0) / 2, 2)
+    body = _koppel_body(item_id=item, linked_amount=deel, is_completely_paid=True)
+    status = c.post_raw_actions(f"PaymentTransactions/{tx}", body)
+    na = _tx_staat(c, tx)
+    print(f"\n→ IsCompletelyPaid=true bij deel {deel}: status {status}, "
+          f"OpenAmount {voor['OpenAmount']} → {na['OpenAmount']}")
+    _dump("TX ná dicht-poging", na)
+    _dump("PaymentItem ná dicht-poging (post dicht ondanks restant = verschil afgeboekt?)", _item_staat(c, item))
+    inv = state.get("invoice_id")
+    if inv:
+        f = c.get(f"PurchaseInvoices/{inv}")
+        _dump("Factuur ná dicht-poging", {k: f.get(k) for k in (
+            "Status", "BaseInvoiceAmount", "BaseRemainingAmount", "BasePaidAmount")})
+
+
 STAPPEN = {
     "inspect": stap_inspect,
     "actionkinds": stap_actionkinds,
     "setup": stap_setup,
     "probe": stap_probe,
+    "replay": stap_replay,
+    "deel": stap_deel,
+    "dicht": stap_dicht,
+    "ontkoppel": stap_ontkoppel,
     "verify": stap_verify,
     "cleanup": stap_cleanup,
 }

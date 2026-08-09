@@ -137,9 +137,20 @@ export interface BankSyncResultaatDto {
   open_ververst: number
   open_posten_bijgewerkt: number
   afletteren_geverifieerd: number
+  automatisch_afgeletterd: number
+  afletter_fouten: string[]
   vastly_gemeld: number
   automatisch_geboekt: number
   automatisch_fouten: string[]
+}
+
+/** Response van afletteren-klaarzetten én voer-uit: `afgeletterd_via_api` = koppeling direct via
+ *  de API gelegd + geverifieerd; `wacht_op_mens_in_rlz` = fallback ná een API-fout (`fout` gevuld,
+ *  nooit stil) — de opdracht staat dan klaar voor "Nu afletteren" of de mens in de RLZ-UI. */
+export interface AfletterActieResultaatDto {
+  opdracht_id: string
+  uitkomst: 'afgeletterd_via_api' | 'wacht_op_mens_in_rlz'
+  fout: string | null
 }
 
 export interface DirectBoekenRegelInputDto {
@@ -193,9 +204,18 @@ export function zetAfletterenKlaar(
   administratieId: string,
   mutatieId: string,
   paymentItemId: string,
-): Promise<{ opdracht_id: string; uitkomst: string }> {
+): Promise<AfletterActieResultaatDto> {
   return apiPostJson(`/administraties/${administratieId}/bank/mutaties/${mutatieId}/afletteren-klaarzetten`, {
     payment_item_id: paymentItemId,
+  })
+}
+
+export function voerAfletterOpdrachtUit(
+  administratieId: string,
+  opdrachtId: string,
+): Promise<AfletterActieResultaatDto> {
+  return apiJson(`/administraties/${administratieId}/bank/afletter-opdrachten/${opdrachtId}/voer-uit`, {
+    method: 'POST',
   })
 }
 

@@ -161,8 +161,12 @@ class AfletterKlaarzettenInput(StrikteInvoer):
 
 
 class AfletterKlaarzettenResponse(BaseModel):
+    """`uitkomst`: afgeletterd_via_api (koppeling gelegd + direct geverifieerd) of
+    wacht_op_mens_in_rlz (assist-fallback ná een API-fout — zie `fout`, nooit stil)."""
+
     opdracht_id: uuid.UUID
     uitkomst: str
+    fout: str | None = None
 
 
 class DirectBoekenRegelInput(StrikteInvoer):
@@ -203,6 +207,8 @@ class BankSyncResponse(BaseModel):
     open_ververst: int
     open_posten_bijgewerkt: int
     afletteren_geverifieerd: int
+    automatisch_afgeletterd: int = 0
+    afletter_fouten: list[str] = []
     vastly_gemeld: int
     automatisch_geboekt: int
     automatisch_fouten: list[str]

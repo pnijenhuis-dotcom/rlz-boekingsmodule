@@ -1146,3 +1146,40 @@ SalesInvoice-motor nieuw doet. Test-administratie, alles gestorneerd (actie 19);
    entity-facturen (getest op id én Description). Marker-vormen zijn zelf-afsluitend tegen
    prefix-botsingen: verkoop `VASTLY-VERKOOP {nr} ·`, credit `VASTLY-CREDIT {nr} ·` (disjuncte
    soortprefix + terminator ná het nummer), omzet `OMZ-YYYYMMDD-YYYYMMDD-VK` (vaste lengte).
+
+### Afletteren betaal-kant — REPLAY GESLAAGD, AFLETTEREN GEKRAAKT (9 augustus 2026, STAP-0-replay op de DevTools-capture)
+
+Replay van de door Peter gevangen UI-body op de test-administratie (script
+`poc_afletteren_betaalkant.py`, stappen setup/replay/deel/dicht/ontkoppel/cleanup; audit
+`output/afletterpoc_audit.jsonl`; alles teruggedraaid met actie 19 — de kale test-TX'en
+TX5/TX6 blijven bewust staan):
+
+1. **De gevangen body werkt met Basic Auth** — auth was nooit de blokkade, de body-vorm was
+   het: `POST PaymentTransactions/{tx}/Actions {Type: 15, PaymentItemList: [{id}],
+   LinkedAmount: <teken van de mutatie>, IsCompletelyPaid: false, PaymentCorrectionMethod: 1}`
+   → 204, `OpenAmount` −153,67 → 0 op mutatie én post, `MatchedPaymentItem` leeg,
+   `PaymentReferenceList` wijst naar de échte factuur (DocumentType 1). Het gekoppelde
+   PaymentItem verdwijnt uit de open-items-collectie.
+2. **Deelbetaling (G-rekening-case) klopt exact**: `LinkedAmount` −50,00 op een post van
+   −105,42 → mutatie-open −55,42, factuur `BasePaidAmount` 50,00 / `BaseRemainingAmount`
+   55,42. ⚠️ **Het restant krijgt een NIEUW PaymentItem-id** — het oude id geeft daarna
+   404 `_NotFound`; vóór elke koppeling verse open-items lezen.
+3. **`IsCompletelyPaid: true` = betalingsverschil-afboeking**: restant-koppeling van −55,00
+   op een post van 55,42 mét true → post DICHT (factuur Status 3, `BaseRemainingAmount` 0,
+   betaald geregistreerd 105,00 — 0,42 afgeboekt als verschil), de mutatie houdt −0,42 open.
+4. **`PaymentCorrectionMethod`**: niet read-only afleidbaar — het Help-model van `ApiAction`
+   kent alléén id/Type/Description (alle vier de extra velden zijn ongedocumenteerd). Waarde
+   gepind op 1 (de UI-waarde); nooit blind variëren.
+5. **Ontkoppelen (Type 16) werkt NIET**: de capture-vorm geeft 204-zonder-effect, elke
+   variant (referentie-id, positief bedrag, PaymentReferenceList, DocumentList, zonder
+   LinkedAmount) geeft `400 _InvalidData`. Terugdraaien blijft **storno (actie 19)** van het
+   gekoppelde document. ⚠️ Nieuw leesfeit: bij een méérvoudig/deels gekoppelde mutatie laat
+   die storno de koppelingen als systeemhulzen (DocumentType 19, Status 1) op de mutatie
+   achter — `OpenAmount` komt dan NIET volledig terug (TX6 bleef op −0,42); een enkelvoudige
+   volledige koppeling (TX5) kwam wél volledig open. Reconciliatie-aandachtspunt.
+6. **Consequentie (seam-swap 2026-08-09):** `app/bank/afletteren.py::voer_afletter_actie_uit`
+   legt de koppeling nu écht via de API (`RlzClient.link_payment_item`) mét directe
+   verificatie; assist = expliciete fallback bij een API-fout. Stap 1 (exacte match) lettert
+   automatisch af in de bank-sync achter `bank_autoboeken_ingeschakeld` + eigen volumerem;
+   stap 2 (deelmatch) blijft één-klik. De open supportvraag aan Reeleezee is hiermee
+   **beantwoord door eigen capture** — een supportantwoord is alleen nog ter bevestiging.

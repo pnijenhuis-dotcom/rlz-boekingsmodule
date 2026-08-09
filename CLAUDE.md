@@ -65,20 +65,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (per document, ook 138 — een collectie-vorm bestaat niet). Actie 17 = Book (definitief), 19 =
   Correct (zet terug naar concept, géén apart creditdocument), 34 = verrekenen, 138 =
   duplicaatcheck (**bewezen zonder bruikbaar signaal, niet gebruiken** — zie
-  verkenning/api-verkenning.md "Actie 138"), 15/16 = LinkPaymentItems/UnlinkPayment (afletteren
-  — **payload ongedocumenteerd, alle vormen `400 _InvalidData` (schrijf-PoC 2026-08-02);
-  fallback-PoC 2026-08-02 sloot óók de alternatieven: actie 34 (verrekenen) zelfde
-  `_InvalidData`-muur, actie 218 (betaal inkoopfactuur) altijd 500, memoriaal kan geen
-  crediteurenpost dragen (regel-`Entity` stil genegeerd, document-`Entity` 500) —
-  afletteren-tegen-open-post kan via de API in géén enkele vorm; supportvraag (verbreed naar
-  34/218) ligt klaar** — zie api-verkenning.md "Bankmodule schrijf-PoC" + "Bankmodule
-  FALLBACK-PoC". **Betaal-kant-STAP-0 (2026-08-09, n.a.v. UI-walkthrough 2026-08-08): óók de
-  UI-route `POST PaymentTransactions/{id}/actions` nog niet gekraakt — actie-universum op een
-  mutatie is exact {15,16,116,148,160,161} (sweep 1–250); nieuw ontdekt ongedocumenteerd
-  `ApiAction`-veld `PaymentItemList` wordt geaccepteerd (204) maar zonder effect; actie 161
-  koppelt wél maar aan een nieuw aangemaakt document (vals positief). Auth is niet de
-  blokkade. Vervolg: UI-body via DevTools capturen; supportvraag aangescherpt. Zie
-  api-verkenning "Afletteren betaal-kant STAP-0"**).
+  verkenning/api-verkenning.md "Actie 138"), 15 = LinkPaymentItems (afletteren — **GEKRAAKT
+  2026-08-09 via de betaal-kant**: DevTools-capture Peter + STAP-0-replay; de werkende vorm is
+  `POST PaymentTransactions/{tx}/Actions {Type:15, PaymentItemList:[{id}], LinkedAmount:
+  <teken van de mutatie>, IsCompletelyPaid, PaymentCorrectionMethod:1}` — actie 15 hoort op de
+  PAYMENTTRANSACTION, niet het document (dáár liepen alle eerdere PoC's stuk); deelbetaling =
+  deel-LinkedAmount (⚠️ restant krijgt een NIEUW PaymentItem-id), `IsCompletelyPaid:true` =
+  betalingsverschil-afboeking (post dicht ondanks restant), `PaymentCorrectionMethod`
+  ongedocumenteerd → gepind op 1. **Type 16 ontkoppelt in géén enkele vorm** — terugdraaien =
+  storno actie 19 (⚠️ een deels-gekoppelde mutatie houdt daarna huls-koppelingen: OpenAmount
+  komt niet volledig terug — reconciliatie-aandachtspunt). Motor: `RlzClient.link_payment_item`
+  + `app/bank/afletteren.py`; supportvraag beantwoord door eigen capture, supportantwoord
+  alleen nog ter bevestiging. Zie api-verkenning "Afletteren betaal-kant — REPLAY GESLAAGD"**).
 - Documentstatus (RLZ's eigen enumeratie `GET DocumentStatuses`, geverifieerd 2026-07-13):
   **1 = Tentative/Concept, 2 = Open/Openstaand (geboekt, nog niet volledig afgeletterd),
   3 = Closed/Gesloten (volledig betaald/afgeletterd, `BaseRemainingAmount` 0)**. De eerdere
@@ -223,17 +221,21 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   voorstel (bron tonen — **schrijf-PoC 2026-08-02: voedingsbron bestaat wél, auto-gevuld
   `MatchedPaymentItem` bij exacte bedrag-match — de eerdere STAP-0-conclusie "geen voedingsbron"
   is herzien**); 5) handmatig. Afletteren gaat NIET door de klant-accorderingsflow.
-  **Bouwstatus: bankmodule GEBOUWD + GETEST (2026-08-02, wacht op review Peter)** —
-  `backend/app/bank/` + `frontend/src/bank/` + migratie 0026. Stap 1/2/4 (afletteren tegen
-  open post) kan via de publieke API in géén enkele vorm (15/16, 34 én 218 dicht — fallback-PoC)
-  en is daarom gebouwd als **assist-model achter één seam**
-  (`app/bank/afletteren.py::voer_afletter_actie_uit`): app zet het voorstel klaar ("af te
-  letteren in Reeleezee"), mens legt de koppeling in de RLZ-UI, de sync verifieert op
-  `OpenAmount` 0 + PaymentReferenceList-leesspoor; zodra RLZ de (verbrede) supportvraag
-  beantwoordt hoeft alleen die functie-body vervangen. Stap 3/5 = direct-op-grootboek, echt
-  gebouwd (deterministisch client-GUID, failsafes + volumerem + duplicaatchecks tegen verse
-  RLZ-staat, storno actie 19 met verplichte reden); autoboeken van vaste regels = opt-in per
-  administratie (`bank_autoboeken_ingeschakeld`, default UIT, bovenop de boeken-failsafes).
+  **Bouwstatus: bankmodule GEBOUWD + GETEST (2026-08-02); afletteren-tegen-open-post sinds
+  2026-08-09 ÉCHT via de API (seam-swap na de capture-replay — zie "Reeleezee API" hierboven
+  en BESLISSINGEN "Afletteren-tegen-open-post: GEKRAAKT")** — `backend/app/bank/` +
+  `frontend/src/bank/` + migratie 0026. De seam
+  (`app/bank/afletteren.py::voer_afletter_actie_uit`) legt de koppeling via
+  `RlzClient.link_payment_item` mét directe verificatie (OpenAmount-hertoets +
+  PaymentReferenceList-leesspoor); het assist-pad is de expliciete FALLBACK bij een API-fout
+  (opdracht blijft zichtbaar klaargezet mét foutmelding; de sync-verificatie dekt die route).
+  Stap 1 (exacte match) lettert automatisch af tijdens de bank-sync achter de opt-in
+  `bank_autoboeken_ingeschakeld` + eigen volumerem, vóór de vaste regels; zonder opt-in en
+  voor stap 2 (deelmatch, LinkedAmount = min(|mutatie|,|post|)) is het één-klik — nooit auto.
+  Stap 3/5 = direct-op-grootboek, echt gebouwd (deterministisch client-GUID, failsafes +
+  volumerem + duplicaatchecks tegen verse RLZ-staat, storno actie 19 met verplichte reden);
+  autoboeken van vaste regels = opt-in per administratie (zelfde vlag, default UIT, bovenop
+  de boeken-failsafes).
   Vastly-terugkoppeling: `factuur_afgeletterd`-event via de bestaande webhook-afleveraar
   (detectie op documentstatus 3; formele opname in koppelcontract §3 nog af te stemmen met
   vastgoed). Failsafe: `make bank-reconciliatie` vangt in de RLZ-UI teruggedraaide

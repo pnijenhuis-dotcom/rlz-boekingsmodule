@@ -268,6 +268,8 @@ def bank_sync_trigger(
         open_ververst=resultaat.mutaties.open_ververst,
         open_posten_bijgewerkt=resultaat.open_posten.aangemaakt + resultaat.open_posten.bijgewerkt,
         afletteren_geverifieerd=resultaat.afletteren_geverifieerd,
+        automatisch_afgeletterd=resultaat.automatisch_afgeletterd,
+        afletter_fouten=resultaat.afletter_fouten,
         vastly_gemeld=resultaat.vastly_gemeld,
         automatisch_geboekt=resultaat.automatisch_geboekt,
         automatisch_fouten=resultaat.automatisch_fouten,
@@ -301,7 +303,36 @@ def afletteren_klaarzetten(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except afletteren.AfletterFout as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return schemas.AfletterKlaarzettenResponse(opdracht_id=uitvoering.opdracht_id, uitkomst=uitvoering.uitkomst)
+    return schemas.AfletterKlaarzettenResponse(
+        opdracht_id=uitvoering.opdracht_id, uitkomst=uitvoering.uitkomst, fout=uitvoering.fout
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/afletter-opdrachten/{opdracht_id}/voer-uit",
+    response_model=schemas.AfletterKlaarzettenResponse,
+)
+def afletteren_voer_uit(
+    administratie_id: uuid.UUID,
+    opdracht_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfletterKlaarzettenResponse:
+    """'Nu afletteren' op een eerder klaargezette opdracht (assist-tijdperk of na een
+    API-fout): legt de koppeling via de echte API (capture-replay 2026-08-09) mét directe
+    verificatie — de RLZ-UI-instructie is daarmee vervallen."""
+    try:
+        uitvoering = afletteren.voer_bestaande_opdracht_uit(
+            administratie_id=administratie_id, opdracht_id=opdracht_id, actor_id=actor.id
+        )
+    except afletteren.OpdrachtNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except afletteren.AfletterFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.AfletterKlaarzettenResponse(
+        opdracht_id=uitvoering.opdracht_id, uitkomst=uitvoering.uitkomst, fout=uitvoering.fout
+    )
 
 
 @router.post(

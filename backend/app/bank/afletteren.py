@@ -1,37 +1,43 @@
-"""Afletteren-tegen-open-post — assist-model achter één uitvoerings-seam.
+"""Afletteren-tegen-open-post — GEKRAAKT via de betaal-kant (seam-swap 2026-08-09).
 
-Feitelijke stand (fallback-PoC 2026-08-02, api-verkenning.md): de koppeling tussen een
-bankmutatie en een bestaande open post kan via de publieke RLZ-API in GÉÉN enkele vorm gelegd
-worden — acties 15/16 (Link/UnlinkPaymentItems), 34 (verrekenen) en 218 (betalen) zitten alle
-achter een ongedocumenteerde-payload-muur of geven 500, en een memoriaal kan geen
-crediteurenpost dragen. De supportvraag aan RLZ (verbreed) ligt klaar.
+Feitelijke stand: de koppeling wordt gelegd met `POST PaymentTransactions/{tx}/Actions`
+`{Type: 15, PaymentItemList: [{id}], LinkedAmount, IsCompletelyPaid, PaymentCorrectionMethod}`
+— de UI-body die Peter op 2026-08-09 via DevTools ving en die de STAP-0-replay met Basic Auth
+bevestigde (api-verkenning "Afletteren betaal-kant — REPLAY GESLAAGD"): 204, OpenAmount → 0
+op mutatie én post, leesspoor naar de échte factuur; deelbetaling via een deel-LinkedAmount
+(G-rekening-case) klopt exact aan beide kanten. ⚠️ Twee harde randfeiten: ná een deelkoppeling
+krijgt het restant een NIEUW PaymentItem-id, en Type 16 ontkoppelt in géén enkele vorm —
+terugdraaien blijft storno (actie 19) van het document, gevangen door de bank-reconciliatie.
 
-Daarom het assist-model (interim-ontwerplijn, ter review bij Peter):
-1. de app zet het matchvoorstel klaar → mutatie gemarkeerd "af te letteren in Reeleezee";
-2. de mens legt de koppeling in de RLZ-UI zelf (waar RLZ al pre-matcht);
-3. de eerstvolgende sync VERIFIEERT op `OpenAmount == 0` en legt via het
-   PaymentReferenceList-leesspoor vast waartegen er wérkelijk is afgeletterd — wijkt dat af van
-   het voorstel, dan is dat zichtbaar in `verificatie_detail`, nooit stil.
+DE SEAM: `voer_afletter_actie_uit` blijft het enige punt waar "wat er gebeurt bij afletteren"
+besloten wordt — nu de echte API-koppeling mét directe verificatie (OpenAmount-hertoets +
+PaymentReferenceList-leesspoor, zelfde leespatroon als het assist-model). Het assist-pad is de
+EXPLICIETE FALLBACK bij een API-fout: de opdracht blijft dan zichtbaar "klaargezet" staan mét
+de foutmelding (nooit stil), de mens kan alsnog in de RLZ-UI koppelen of het later opnieuw
+proberen; `verifieer_openstaande_opdrachten` (elke sync) bevestigt die route zoals voorheen.
 
-DE SEAM: `voer_afletter_actie_uit` is het enige punt waar "wat er gebeurt bij afletteren"
-besloten wordt. Vandaag markeert hij alleen (assist). Zodra RLZ het 15/16-antwoord levert kan
-hier de echte API-write in — aanroepers (router, toekomstige autoflow) veranderen dan niet."""
+Voorstel-volgorde nu écht: stap 1 (exacte match) lettert AUTOMATISCH af tijdens de bank-sync,
+maar uitsluitend achter de bestaande opt-in per administratie (`bank_autoboeken_ingeschakeld`)
+en een eigen volumerem-teller (zelfde daglimiet als boekingen); zonder opt-in — en voor stap 2
+(deelmatch) áltijd — is het een één-klik-uitvoering vanuit de module."""
 
 from __future__ import annotations
 
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.bank.models import AfletterOpdrachtStatus, BankAfletterOpdracht, BankMutatie, PaymentItemCache
+from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.rlz.client import RlzClient
+from app.rlz.client import RlzApiError, RlzClient
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +68,33 @@ class OpdrachtNietGevonden(AfletterFout):
 
 @dataclass(frozen=True)
 class AfletterUitvoering:
-    """Uitkomst van de seam: wat er met de afletter-actie is gebeurd. `wacht_op_mens_in_rlz`
-    is de assist-uitkomst; een toekomstige API-write-implementatie retourneert
-    `afgeletterd_via_api` en dan kan de aanroeper de verificatiestap overslaan."""
+    """Uitkomst van de seam. `afgeletterd_via_api` = koppeling gelegd én direct geverifieerd;
+    `wacht_op_mens_in_rlz` = de assist-fallback (API-fout — zie `fout`, nooit stil): de
+    opdracht blijft klaargezet, de mens koppelt in de RLZ-UI óf probeert het later opnieuw."""
 
     uitkomst: str  # "wacht_op_mens_in_rlz" | "afgeletterd_via_api"
     opdracht_id: uuid.UUID
+    fout: str | None = None
+
+
+def bereken_linked_amount(open_mutatie: Decimal, post_bedrag: Decimal | None) -> Decimal:
+    """LinkedAmount draagt het TEKEN van de mutatie (capture + replay: afschrijving negatief);
+    de grootte is nooit meer dan wat er aan beide kanten open staat — een verzamelbetaling
+    (|mutatie| > |post|) koppelt het postbedrag (deel van de mutatie blijft open), een
+    G-rekening-deelbetaling (|mutatie| < |post|) koppelt het mutatiebedrag (post blijft deels
+    open, het restant krijgt bij RLZ een nieuw PaymentItem-id)."""
+    teken = Decimal(1) if open_mutatie > 0 else Decimal(-1)
+    grootte = abs(open_mutatie)
+    if post_bedrag is not None:
+        grootte = min(grootte, abs(post_bedrag))
+    return teken * grootte
+
+
+def _open_eigen_client(administratie_id: uuid.UUID) -> RlzClient:
+    from app.sync.service import _open_client_indien_nodig
+
+    client, _ = _open_client_indien_nodig(administratie_id, None)
+    return client
 
 
 def zet_klaar_voor_afletteren(
@@ -77,39 +104,48 @@ def zet_klaar_voor_afletteren(
     payment_item_id: uuid.UUID,
     actor_id: uuid.UUID,
     voorstel_detail: dict[str, Any] | None = None,
+    client: RlzClient | None = None,
 ) -> AfletterUitvoering:
-    """Publieke ingang voor de afletter-actie (router + matchvoorstel-akkoord). Valideert
-    deterministisch en delegeert de uitvoering aan de seam."""
-    with scoped_session(administratie_id, actor_id=actor_id) as session:
-        mutatie = session.get(BankMutatie, (payment_transaction_id, administratie_id))
-        if mutatie is None:
-            raise MutatieNietGevonden(f"Onbekende bankmutatie: {payment_transaction_id}")
-        if mutatie.open_bedrag is None or mutatie.open_bedrag == 0:
-            raise MutatieNietOpen("Deze mutatie heeft geen open bedrag meer — er valt niets af te letteren")
+    """Publieke ingang voor de afletter-actie (router, autoflow, matchvoorstel-akkoord).
+    Valideert deterministisch en delegeert de uitvoering aan de seam."""
+    eigen_client = client is None
+    if client is None:
+        client = _open_eigen_client(administratie_id)
+    try:
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            mutatie = session.get(BankMutatie, (payment_transaction_id, administratie_id))
+            if mutatie is None:
+                raise MutatieNietGevonden(f"Onbekende bankmutatie: {payment_transaction_id}")
+            if mutatie.open_bedrag is None or mutatie.open_bedrag == 0:
+                raise MutatieNietOpen("Deze mutatie heeft geen open bedrag meer — er valt niets af te letteren")
 
-        item = session.get(PaymentItemCache, (payment_item_id, administratie_id))
-        if item is None or item.verdwenen_uit_bron_op is not None:
-            raise OpenPostNietGevonden(f"Open post {payment_item_id} staat niet (meer) in de cache")
+            item = session.get(PaymentItemCache, (payment_item_id, administratie_id))
+            if item is None or item.verdwenen_uit_bron_op is not None:
+                raise OpenPostNietGevonden(f"Open post {payment_item_id} staat niet (meer) in de cache")
 
-        bestaande = session.scalars(
-            select(BankAfletterOpdracht).where(
-                BankAfletterOpdracht.administratie_id == administratie_id,
-                BankAfletterOpdracht.payment_transaction_id == payment_transaction_id,
-                BankAfletterOpdracht.status == AfletterOpdrachtStatus.KLAARGEZET.value,
+            bestaande = session.scalars(
+                select(BankAfletterOpdracht).where(
+                    BankAfletterOpdracht.administratie_id == administratie_id,
+                    BankAfletterOpdracht.payment_transaction_id == payment_transaction_id,
+                    BankAfletterOpdracht.status == AfletterOpdrachtStatus.KLAARGEZET.value,
+                )
+            ).first()
+            if bestaande is not None:
+                raise OpdrachtBestaatAl("Er staat al een klaargezette afletter-opdracht voor deze mutatie")
+
+            return voer_afletter_actie_uit(
+                session=session,
+                administratie_id=administratie_id,
+                payment_transaction_id=payment_transaction_id,
+                payment_item_id=payment_item_id,
+                rlz_document_id=item.rlz_document_id,
+                actor_id=actor_id,
+                voorstel_detail=voorstel_detail,
+                client=client,
             )
-        ).first()
-        if bestaande is not None:
-            raise OpdrachtBestaatAl("Er staat al een klaargezette afletter-opdracht voor deze mutatie")
-
-        return voer_afletter_actie_uit(
-            session=session,
-            administratie_id=administratie_id,
-            payment_transaction_id=payment_transaction_id,
-            payment_item_id=payment_item_id,
-            rlz_document_id=item.rlz_document_id,
-            actor_id=actor_id,
-            voorstel_detail=voorstel_detail,
-        )
+    finally:
+        if eigen_client:
+            client.close()
 
 
 def voer_afletter_actie_uit(
@@ -121,11 +157,12 @@ def voer_afletter_actie_uit(
     rlz_document_id: uuid.UUID | None,
     actor_id: uuid.UUID,
     voorstel_detail: dict[str, Any] | None,
+    client: RlzClient,
 ) -> AfletterUitvoering:
-    """DE SEAM (zie moduledocstring): vandaag assist-only — opdracht 'klaargezet' + audit; de
-    mens lettert af in de RLZ-UI en verifieer_openstaande_opdrachten() bevestigt daarna. De
-    toekomstige upgrade (RLZ beantwoordt de 15/16-supportvraag) vervangt uitsluitend deze
-    functie-body door de API-write + directe verificatie."""
+    """DE SEAM (zie moduledocstring): registreert de opdracht en legt de koppeling via de
+    échte API (actie 15 op de PaymentTransaction, capture-replay 2026-08-09) mét directe
+    verificatie. Faalt de API-call, dan blijft de opdracht als assist-fallback zichtbaar
+    'klaargezet' staan mét de foutmelding — nooit stil."""
     opdracht = BankAfletterOpdracht(
         administratie_id=administratie_id,
         payment_transaction_id=payment_transaction_id,
@@ -149,11 +186,226 @@ def voer_afletter_actie_uit(
             "payment_transaction_id": str(payment_transaction_id),
             "payment_item_id": str(payment_item_id),
             "rlz_document_id": str(rlz_document_id) if rlz_document_id else None,
-            "uitvoering": "assist_in_rlz_ui",
+            "uitvoering": "api_koppeling",
         },
         administratie_id=administratie_id,
     )
-    return AfletterUitvoering(uitkomst="wacht_op_mens_in_rlz", opdracht_id=opdracht.id)
+    return _probeer_api_koppeling(
+        session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id, client=client
+    )
+
+
+def _als_decimal(waarde: Any) -> Decimal | None:
+    if waarde is None:
+        return None
+    try:
+        return Decimal(str(waarde)).quantize(Decimal("0.01"))
+    except InvalidOperation:
+        return None
+
+
+def _probeer_api_koppeling(
+    *,
+    session,
+    administratie_id: uuid.UUID,
+    opdracht: BankAfletterOpdracht,
+    actor_id: uuid.UUID,
+    client: RlzClient,
+) -> AfletterUitvoering:
+    """De API-koppeling + directe verificatie voor één (bestaande, klaargezette) opdracht —
+    gedeeld door de seam en de 'nu afletteren'-actie op oudere assist-opdrachten."""
+    mutatie = session.get(BankMutatie, (opdracht.payment_transaction_id, administratie_id))
+    item = (
+        session.get(PaymentItemCache, (opdracht.payment_item_id, administratie_id))
+        if opdracht.payment_item_id
+        else None
+    )
+    if mutatie is None or mutatie.open_bedrag in (None, 0) or opdracht.payment_item_id is None:
+        return _api_fout(
+            session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
+            fout="mutatie heeft lokaal geen open bedrag (meer) of de opdracht mist een doel-post",
+        )
+    linked = bereken_linked_amount(mutatie.open_bedrag, item.bedrag if item else None)
+    try:
+        client.link_payment_item(
+            opdracht.payment_transaction_id,
+            payment_item_id=opdracht.payment_item_id,
+            linked_amount=float(linked),
+        )
+        vers = client.get_payment_transaction(
+            opdracht.payment_transaction_id, expand="PaymentReferenceList($expand=Document)"
+        )
+    except RlzApiError as exc:
+        # ⚠️ Bekende 404-oorzaak: een verouderd PaymentItem-id (na een eerdere deelkoppeling
+        # krijgt het restant een NIEUW id — replay-STAP-0). Vers syncen lost dat op.
+        return _api_fout(
+            session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
+            fout=f"RLZ-koppeling mislukt: {exc}",
+        )
+
+    open_na = _als_decimal(vers.get("OpenAmount"))
+    koppelingen = [
+        {
+            "rlz_document_id": (ref.get("Document") or {}).get("id"),
+            "boekstuknummer": (ref.get("Document") or {}).get("ReceiptNumber"),
+            "bedrag": ref.get("Amount"),
+            "volgorde": ref.get("Sequence"),
+            "bron": ref.get("PaymentReconciliationSource"),
+        }
+        for ref in vers.get("PaymentReferenceList") or []
+        if not _is_systeemhuls(ref.get("Document"))
+    ]
+    doel_gekoppeld = opdracht.rlz_document_id is not None and any(
+        k["rlz_document_id"] == str(opdracht.rlz_document_id) for k in koppelingen
+    )
+    if not doel_gekoppeld and (open_na is None or open_na != 0):
+        # 204-zonder-effect (bekend RLZ-gedrag bij een niet-passende body) — nooit stil.
+        return _api_fout(
+            session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
+            fout="RLZ accepteerde de koppel-actie (204) maar de koppeling is niet zichtbaar — "
+            "opdracht blijft klaargezet (assist-fallback)",
+        )
+
+    nu = datetime.now(UTC)
+    opdracht.status = AfletterOpdrachtStatus.GEVERIFIEERD.value
+    opdracht.laatste_verificatie_poging_op = nu
+    opdracht.geverifieerd_op = nu
+    opdracht.verificatie_detail = {
+        "koppelingen": koppelingen,
+        "voorstel_gevolgd": doel_gekoppeld,
+        "uitvoering": "api",
+        "linked_amount": str(linked),
+        "open_restant": str(open_na) if open_na is not None else None,
+    }
+    mutatie.open_bedrag = open_na
+    mutatie.laatst_gesynchroniseerd = nu
+    if item is not None and open_na == 0 and abs(linked) == abs(item.bedrag or linked):
+        # Volledige koppeling: de post is dicht — cache direct bijwerken (de sync bevestigt).
+        item.verdwenen_uit_bron_op = nu
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="bank_afletter_opdracht",
+        record_id=opdracht.id,
+        actie="afgeletterd_via_api",
+        correlatie_id=uuid.uuid4(),
+        nieuwe_waarde={
+            "payment_transaction_id": str(opdracht.payment_transaction_id),
+            "payment_item_id": str(opdracht.payment_item_id),
+            "linked_amount": str(linked),
+            "open_restant": str(open_na) if open_na is not None else None,
+            "koppelingen": koppelingen,
+        },
+        administratie_id=administratie_id,
+    )
+    return AfletterUitvoering(uitkomst="afgeletterd_via_api", opdracht_id=opdracht.id)
+
+
+def _api_fout(
+    *, session, administratie_id: uuid.UUID, opdracht: BankAfletterOpdracht, actor_id: uuid.UUID, fout: str
+) -> AfletterUitvoering:
+    """Assist-fallback: opdracht blijft klaargezet, fout zichtbaar in audit + response."""
+    logger.warning("Afletter-API-koppeling niet gelukt voor opdracht %s: %s", opdracht.id, fout)
+    opdracht.laatste_verificatie_poging_op = datetime.now(UTC)
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="bank_afletter_opdracht",
+        record_id=opdracht.id,
+        actie="afletteren_api_fout",
+        correlatie_id=uuid.uuid4(),
+        nieuwe_waarde={"fout": fout[:500]},
+        administratie_id=administratie_id,
+    )
+    return AfletterUitvoering(uitkomst="wacht_op_mens_in_rlz", opdracht_id=opdracht.id, fout=fout)
+
+
+def voer_bestaande_opdracht_uit(
+    *, administratie_id: uuid.UUID, opdracht_id: uuid.UUID, actor_id: uuid.UUID, client: RlzClient | None = None
+) -> AfletterUitvoering:
+    """'Nu afletteren' op een eerder (assist-tijdperk of na een API-fout) klaargezette
+    opdracht: dezelfde API-koppeling + directe verificatie als de seam."""
+    eigen_client = client is None
+    if client is None:
+        client = _open_eigen_client(administratie_id)
+    try:
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            opdracht = session.get(BankAfletterOpdracht, opdracht_id)
+            if opdracht is None or opdracht.administratie_id != administratie_id:
+                raise OpdrachtNietGevonden(f"Onbekende afletter-opdracht: {opdracht_id}")
+            if opdracht.status != AfletterOpdrachtStatus.KLAARGEZET.value:
+                raise AfletterFout(f"Opdracht staat op {opdracht.status!r} — alleen klaargezette opdrachten")
+            return _probeer_api_koppeling(
+                session=session, administratie_id=administratie_id, opdracht=opdracht,
+                actor_id=actor_id, client=client,
+            )
+    finally:
+        if eigen_client:
+            client.close()
+
+
+def _api_afletteringen_vandaag(session, *, administratie_id: uuid.UUID) -> int:
+    """Eigen volumerem-teller voor de automatische afletter-stap (zelfde daglimiet als
+    boekingen; elke geldstroom-actie zijn eigen teller — zelfde afweging als de bank-boekingen)."""
+    vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(BankAfletterOpdracht)
+            .where(
+                BankAfletterOpdracht.administratie_id == administratie_id,
+                BankAfletterOpdracht.klaargezet_door == SYSTEEM_ACTOR_ID,
+                BankAfletterOpdracht.klaargezet_op >= vandaag_begin,
+            )
+        )
+        or 0
+    )
+
+
+def verwerk_exacte_matches_automatisch(
+    *, administratie_id: uuid.UUID, client: RlzClient
+) -> tuple[int, list[str]]:
+    """Voorstel-volgorde stap 1, nu écht automatisch (achter `bank_autoboeken_ingeschakeld`,
+    gecontroleerd door de aanroeper in de sync): alle open mutaties met een EXACTE match
+    (referentie + bedrag — groen) worden via de API afgeletterd, systeem-actor, mét de eigen
+    volumerem. Stap 2 (deelmatch) blijft bewust één-klik-bevestigen — nooit automatisch.
+    Fouten per mutatie worden verzameld, één kapotte mutatie stopt de rest niet."""
+    from app.bank import voorstellen
+    from app.bank.matchmotor import VoorstelSoort
+
+    limiet = settings.max_boekingen_per_dag_per_administratie
+    gedaan = 0
+    fouten: list[str] = []
+    for kandidaat in voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id):
+        if kandidaat.voorstel.soort != VoorstelSoort.EXACTE_MATCH:
+            continue
+        if kandidaat.voorstel.payment_item_id is None or kandidaat.afletter_opdracht is not None:
+            continue
+        with scoped_session(administratie_id) as session:
+            if _api_afletteringen_vandaag(session, administratie_id=administratie_id) >= limiet:
+                fouten.append(
+                    f"volumerem: dagelijkse limiet van {limiet} automatische afletteringen bereikt"
+                )
+                break
+        try:
+            uitvoering = zet_klaar_voor_afletteren(
+                administratie_id=administratie_id,
+                payment_transaction_id=kandidaat.mutatie.id,
+                payment_item_id=kandidaat.voorstel.payment_item_id,
+                actor_id=SYSTEEM_ACTOR_ID,
+                voorstel_detail={"soort": kandidaat.voorstel.soort.value, "bron": kandidaat.voorstel.bron},
+                client=client,
+            )
+        except AfletterFout as exc:
+            fouten.append(f"mutatie {kandidaat.mutatie.id}: {exc}")
+            continue
+        if uitvoering.uitkomst == "afgeletterd_via_api":
+            gedaan += 1
+        else:
+            fouten.append(f"mutatie {kandidaat.mutatie.id}: {uitvoering.fout or 'niet gelukt'}")
+    return gedaan, fouten
 
 
 def trek_afletter_opdracht_in(

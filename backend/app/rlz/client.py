@@ -16,6 +16,8 @@ BASE_URL = "https://apps.reeleezee.nl/api/v1"
 ACTION_BOOK = 17
 ACTION_CORRECT = 19
 ACTION_SETTLE = 34
+# Afletteren betaal-kant (REPLAY GESLAAGD 2026-08-09): actie 15 op de PaymentTransaction.
+ACTION_LINK_PAYMENT_ITEMS = 15
 # Bewezen zonder waarneembaar effect (verkenning/api-verkenning.md "Actie 138" en "Boekt RLZ..."):
 # geen enkel geval (concept/geboekt, duplicaat/uniek) laat een verschil zien in respons of
 # document, en Book (17) blokkeert duplicaten ook zelf niet. Niet gebruiken voor idempotentie —
@@ -292,6 +294,36 @@ class RlzClient:
         if description is not None:
             body["Description"] = description
         return self.put(f"BankMutationDirectBookings/{booking_id}", body)
+
+    def link_payment_item(
+        self,
+        transaction_id: uuid.UUID | str,
+        *,
+        payment_item_id: uuid.UUID | str,
+        linked_amount: float,
+        is_completely_paid: bool = False,
+        payment_correction_method: int = 1,
+    ) -> httpx.Response:
+        """Afletteren-tegen-open-post — GEKRAAKT via de betaal-kant (DevTools-capture Peter +
+        STAP-0-replay 2026-08-09, api-verkenning "Afletteren betaal-kant — REPLAY GESLAAGD"):
+        actie 15 hoort op de PAYMENTTRANSACTION (niet het document) mét de ongedocumenteerde
+        velden `PaymentItemList` (de open post), `LinkedAmount` (draagt het TEKEN van de
+        mutatie; deel-bedrag = deelbetaling, G-rekening-case), `IsCompletelyPaid` (true = post
+        sluiten ondanks restant, betalingsverschil-afboeking) en `PaymentCorrectionMethod`
+        (gepind op 1, de UI-waarde — semantiek ongedocumenteerd, nooit blind variëren).
+        ⚠️ Ná een deelkoppeling krijgt het RESTANT een NIEUW PaymentItem-id (het oude geeft
+        404 _NotFound). ⚠️ Type 16 ontkoppelt in géén enkele vorm — terugdraaien blijft storno
+        (actie 19) van het gekoppelde document; bij een deels gekoppelde factuur laat die
+        storno huls-koppelingen op de mutatie achter (OpenAmount komt niet volledig terug —
+        reconciliatie-aandachtspunt)."""
+        return self.post_action(
+            f"PaymentTransactions/{transaction_id}",
+            ACTION_LINK_PAYMENT_ITEMS,
+            PaymentItemList=[{"id": str(payment_item_id)}],
+            LinkedAmount=linked_amount,
+            IsCompletelyPaid=is_completely_paid,
+            PaymentCorrectionMethod=payment_correction_method,
+        )
 
     def get_bank_mutation_direct_booking(self, booking_id: uuid.UUID | str) -> dict[str, Any]:
         return self.get(f"BankMutationDirectBookings/{booking_id}")

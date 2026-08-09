@@ -69,15 +69,22 @@ function afletterOpdracht(overrides: Record<string, unknown> = {}) {
 
 interface MockOpties {
   mutaties?: unknown[]
+  /** Gevuld = de mutaties-GET geeft ná een klaarzetten-POST deze lijst terug (fallback-flow:
+   * de rij toont dan de klaargezette opdracht met "Nu afletteren"). */
+  mutatiesNaKlaarzetten?: unknown[]
   rekeningenBody?: Record<string, unknown>
   afletterOpdrachten?: unknown[]
   klaarzettenAanroepen?: { url: string; body: unknown }[]
+  klaarzettenResponse?: { opdracht_id: string; uitkomst: string; fout: string | null }
+  voerUitAanroepen?: string[]
+  voerUitResponse?: { opdracht_id: string; uitkomst: string; fout: string | null }
   intrekkenAanroepen?: string[]
   boekenAanroepen?: { url: string; body: unknown }[]
   verifieerAanroepen?: string[]
 }
 
 function installFetchMock(opties: MockOpties = {}) {
+  let klaargezet = false
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -96,7 +103,9 @@ function installFetchMock(opties: MockOpties = {}) {
         )
       }
       if (url.includes('/mutaties') && (!init || init.method === undefined)) {
-        return Promise.resolve(jsonResponse({ mutaties: opties.mutaties ?? [mutatie()] }))
+        const lijst =
+          klaargezet && opties.mutatiesNaKlaarzetten ? opties.mutatiesNaKlaarzetten : opties.mutaties ?? [mutatie()]
+        return Promise.resolve(jsonResponse({ mutaties: lijst }))
       }
       if (url.includes('/afletter-opdrachten') && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ opdrachten: opties.afletterOpdrachten ?? [] }))
@@ -107,7 +116,21 @@ function installFetchMock(opties: MockOpties = {}) {
       }
       if (url.includes('/afletteren-klaarzetten') && init?.method === 'POST') {
         opties.klaarzettenAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
-        return Promise.resolve(jsonResponse({ opdracht_id: OPDRACHT_ID, uitkomst: 'wacht_op_mens_in_rlz' }, 201))
+        klaargezet = true
+        return Promise.resolve(
+          jsonResponse(
+            opties.klaarzettenResponse ?? { opdracht_id: OPDRACHT_ID, uitkomst: 'afgeletterd_via_api', fout: null },
+            201,
+          ),
+        )
+      }
+      if (url.includes('/voer-uit') && init?.method === 'POST') {
+        opties.voerUitAanroepen?.push(url)
+        return Promise.resolve(
+          jsonResponse(
+            opties.voerUitResponse ?? { opdracht_id: OPDRACHT_ID, uitkomst: 'afgeletterd_via_api', fout: null },
+          ),
+        )
       }
       if (url.includes('/intrekken') && init?.method === 'POST') {
         opties.intrekkenAanroepen?.push(url)
@@ -157,18 +180,52 @@ describe('BankDetailScreen', () => {
     expect(screen.getByText(/Saldo/)).toBeInTheDocument()
   })
 
-  it('zet een afletter-voorstel klaar voor Reeleezee (assist-model)', async () => {
+  it('lettert een voorstel direct af via de API en meldt succes (uitkomst afgeletterd_via_api)', async () => {
     const klaarzettenAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ klaarzettenAanroepen })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: /Klaarzetten voor RLZ/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Afletteren ✓' }))
 
     await waitFor(() => expect(klaarzettenAanroepen).toHaveLength(1))
+    expect(klaarzettenAanroepen[0].url).toContain(`/bank/mutaties/${MUTATIE_ID}/afletteren-klaarzetten`)
     expect(klaarzettenAanroepen[0].body).toEqual({ payment_item_id: ITEM_ID })
+    expect(
+      await screen.findByText(/Afgeletterd — koppeling direct in Reeleezee gelegd en geverifieerd/),
+    ).toBeInTheDocument()
   })
 
-  it('toont een klaargezette opdracht met instructie-staat en intrekken', async () => {
+  it('fallback: API-fout bij afletteren toont de fout, daarna lettert "Nu afletteren" alsnog af', async () => {
+    const klaarzettenAanroepen: { url: string; body: unknown }[] = []
+    const voerUitAanroepen: string[] = []
+    installFetchMock({
+      klaarzettenAanroepen,
+      voerUitAanroepen,
+      klaarzettenResponse: {
+        opdracht_id: OPDRACHT_ID,
+        uitkomst: 'wacht_op_mens_in_rlz',
+        fout: 'RLZ gaf 400 _InvalidData',
+      },
+      mutatiesNaKlaarzetten: [mutatie({ afletter_opdracht: afletterOpdracht() })],
+    })
+    renderScherm()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Afletteren ✓' }))
+
+    // Fout zichtbaar (nooit stil), mét handelingsperspectief; de opdracht staat klaar.
+    expect(await screen.findByText(/De API-koppeling is niet gelukt \(RLZ gaf 400 _InvalidData\)/)).toBeInTheDocument()
+    expect(screen.getByText(/probeer “Nu afletteren” opnieuw of leg de koppeling in Reeleezee/)).toBeInTheDocument()
+
+    // "Nu afletteren" roept het voer-uit-endpoint aan en meldt bij succes hetzelfde als de directe route.
+    await userEvent.click(await screen.findByRole('button', { name: 'Nu afletteren ✓' }))
+    await waitFor(() => expect(voerUitAanroepen).toHaveLength(1))
+    expect(voerUitAanroepen[0]).toContain(`/bank/afletter-opdrachten/${OPDRACHT_ID}/voer-uit`)
+    expect(
+      await screen.findByText(/Afgeletterd — koppeling direct in Reeleezee gelegd en geverifieerd/),
+    ).toBeInTheDocument()
+  })
+
+  it('toont een klaargezette opdracht met "Nu afletteren" en intrekken (geen RLZ-instructie meer)', async () => {
     const intrekkenAanroepen: string[] = []
     installFetchMock({
       intrekkenAanroepen,
@@ -176,11 +233,10 @@ describe('BankDetailScreen', () => {
     })
     renderScherm()
 
-    expect(await screen.findByText('Klaargezet — nog niet geverifieerd')).toBeInTheDocument()
-    // Instructie-staat (kliktest 2026-08-08): vertelt wat de mens in RLZ moet doen en dat de
-    // sync daarna automatisch verifieert.
-    expect(screen.getByText(/leg de koppeling in Reeleezee/)).toBeInTheDocument()
-    expect(screen.getByText(/eerstvolgende bank-sync verifieert automatisch/)).toBeInTheDocument()
+    expect(await screen.findByText('Klaargezet — nog niet gekoppeld')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Nu afletteren ✓' })).toBeInTheDocument()
+    // De oude instructie-staat ("leg de koppeling in Reeleezee; de sync verifieert") is vervangen.
+    expect(screen.queryByText(/eerstvolgende bank-sync verifieert automatisch/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Intrekken' }))
     await waitFor(() => expect(intrekkenAanroepen).toHaveLength(1))
   })
@@ -211,10 +267,19 @@ describe('BankDetailScreen', () => {
     expect(await screen.findByText(/1 aflettering\(en\) geverifieerd/)).toBeInTheDocument()
   })
 
-  it('toont de levenscyclus-sectie met geverifieerd resultaat en afwijkend-gevolgd', async () => {
+  it('toont de levenscyclus-sectie met geverifieerd resultaat, afwijkend-gevolgd en "Nu afletteren"', async () => {
+    const voerUitAanroepen: string[] = []
+    const KLAARGEZET_ID = 'ffffffff-0000-0000-0000-000000000008'
     installFetchMock({
+      voerUitAanroepen,
       mutaties: [],
       afletterOpdrachten: [
+        {
+          opdracht: afletterOpdracht({ id: KLAARGEZET_ID }),
+          boekdatum: '2026-07-03',
+          tegenpartij_naam: 'Nog te koppelen partij',
+          bedrag: '-99.00',
+        },
         {
           opdracht: afletterOpdracht({
             status: 'geverifieerd',
@@ -249,6 +314,14 @@ describe('BankDetailScreen', () => {
     expect(screen.getByText(/Afwijkend gevolgd — in RLZ anders gekoppeld/)).toBeInTheDocument()
     // Tijdlijn: klaargezet → geverifieerd met tijdstippen.
     expect(screen.getAllByText(/Klaargezet .*→ geverifieerd/).length).toBeGreaterThan(0)
+
+    // Klaargezette opdracht in de lijst heeft de "Nu afletteren"-knop → voer-uit-endpoint.
+    await userEvent.click(screen.getByRole('button', { name: 'Nu afletteren ✓' }))
+    await waitFor(() => expect(voerUitAanroepen).toHaveLength(1))
+    expect(voerUitAanroepen[0]).toContain(`/bank/afletter-opdrachten/${KLAARGEZET_ID}/voer-uit`)
+    expect(
+      await screen.findByText(/Afgeletterd — koppeling direct in Reeleezee gelegd en geverifieerd/),
+    ).toBeInTheDocument()
   })
 
   it('boekt een vaste-regel-voorstel direct met de meegeleverde regels', async () => {

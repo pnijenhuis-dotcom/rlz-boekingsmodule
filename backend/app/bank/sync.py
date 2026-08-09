@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -94,6 +94,10 @@ class BankSyncResultaat:
     vastly_gemeld: int
     automatisch_geboekt: int
     automatisch_fouten: list[str]
+    # Voorstel-volgorde stap 1, écht automatisch sinds de seam-swap (capture-replay
+    # 2026-08-09) — zelfde opt-in als het vaste-regels-autoboeken, eigen volumerem-teller.
+    automatisch_afgeletterd: int = 0
+    afletter_fouten: list[str] = field(default_factory=list)
 
 
 # --- 1. rekeningen ---------------------------------------------------------------------------
@@ -366,7 +370,15 @@ def sync_bank_voor_administratie(
             if administratie is None:
                 raise SyncFout(f"Onbekende administratie: {administratie_id}")
             autoboeken = administratie.bank_autoboeken_ingeschakeld
+        automatisch_afgeletterd = 0
+        afletter_fouten: list[str] = []
         if autoboeken:
+            # Stap 1 (exacte match) éérst automatisch afletteren — dan pas de vaste regels:
+            # een mutatie met een exacte open-post-match mag nooit door een vaste regel
+            # direct-op-grootboek geboekt worden ("nooit óver een open-post-match heen").
+            automatisch_afgeletterd, afletter_fouten = afletteren.verwerk_exacte_matches_automatisch(
+                administratie_id=administratie_id, client=client
+            )
             # Import hier i.p.v. bovenaan: boeken.py importeert de matchmotor die op deze
             # module-laag niets nodig heeft, maar een top-level import zou een kringetje
             # sync -> boeken -> voorstellen -> sync riskeren zodra voorstellen sync-standen leest.
@@ -384,6 +396,8 @@ def sync_bank_voor_administratie(
             vastly_gemeld=vastly_gemeld,
             automatisch_geboekt=automatisch_geboekt,
             automatisch_fouten=automatisch_fouten,
+            automatisch_afgeletterd=automatisch_afgeletterd,
+            afletter_fouten=afletter_fouten,
         )
     finally:
         if eigen_client:

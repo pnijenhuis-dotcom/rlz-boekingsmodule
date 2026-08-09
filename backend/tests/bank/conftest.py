@@ -26,6 +26,7 @@ class FakeBankClient:
         items: list[dict[str, Any]] | None = None,
         invoices: dict[str, dict[str, Any]] | None = None,
         faal_op: str | None = None,
+        item_documenten: dict[str, str] | None = None,
     ) -> None:
         self.accounts = accounts or []
         self.last_imports = last_imports or {}
@@ -38,6 +39,10 @@ class FakeBankClient:
         self.import_probes: list[str] = []
         self.lijst_params: list[dict[str, Any] | None] = []
         self.gesloten = False
+        # Afletteren via de betaal-kant (replay-STAP-0 2026-08-09): item-id -> document-id
+        # voor het PaymentReferenceList-leesspoor dat link_payment_item opbouwt.
+        self.item_documenten = {str(k): str(v) for k, v in (item_documenten or {}).items()}
+        self.links: list[dict[str, Any]] = []
 
     # -- contextmanager + verbinding ------------------------------------------------------------
     def __enter__(self) -> FakeBankClient:
@@ -89,6 +94,49 @@ class FakeBankClient:
                 raise RlzApiError(404, "GET", path, "Niet gevonden (simulatie)")
             return self.invoices[entiteit_id]
         raise RlzApiError(404, "GET", path, "Onbekend pad (simulatie)")
+
+    def link_payment_item(
+        self,
+        transaction_id: Any,
+        *,
+        payment_item_id: Any,
+        linked_amount: float,
+        is_completely_paid: bool = False,
+        payment_correction_method: int = 1,
+    ) -> None:
+        """Gedrag exact conform de replay-STAP-0 (2026-08-09): OpenAmount daalt met het
+        gekoppelde bedrag, het leesspoor krijgt een echte document-referentie; een verouderd
+        item-id geeft 404 _NotFound (restant kreeg bij RLZ een nieuw id)."""
+        if self.faal_op == "link":
+            raise RlzApiError(400, "POST", f"PaymentTransactions/{transaction_id}/Actions", "_InvalidData (simulatie)")
+        if self.faal_op == "link_stale_item":
+            raise RlzApiError(404, "POST", f"PaymentTransactions/{transaction_id}/Actions", "_NotFound (simulatie)")
+        record = self.transacties.get(str(transaction_id))
+        if record is None:
+            raise RlzApiError(404, "POST", f"PaymentTransactions/{transaction_id}/Actions", "Niet gevonden (simulatie)")
+        self.links.append({
+            "transaction_id": str(transaction_id), "payment_item_id": str(payment_item_id),
+            "linked_amount": linked_amount, "is_completely_paid": is_completely_paid,
+            "payment_correction_method": payment_correction_method,
+        })
+        if self.faal_op == "link_zonder_effect":
+            return  # 204-zonder-effect (bekend RLZ-gedrag bij een niet-passende body)
+        open_amount = float(record.get("OpenAmount") or 0)
+        record["OpenAmount"] = round(open_amount - linked_amount, 2)
+        refs = record.setdefault("PaymentReferenceList", [])
+        refs.append({
+            "id": str(uuid.uuid4()),
+            "Sequence": len(refs) + 1,
+            "Amount": -linked_amount,
+            "PaymentReconciliationSource": 2,
+            "Document": {
+                "id": self.item_documenten.get(str(payment_item_id), str(uuid.uuid4())),
+                "ReceiptNumber": "RLZ-04-TEST",
+                "DocumentType": 1,
+                "Status": 3,
+                "IsSystemGenerated": False,
+            },
+        })
 
     # -- schrijfkant -----------------------------------------------------------------------------
     def put_bank_mutation_direct_booking(

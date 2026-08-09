@@ -61,6 +61,7 @@ def test_teruggedraaide_aflettering_wordt_gerapporteerd(
     afletteren.zet_klaar_voor_afletteren(
         administratie_id=administratie_id, payment_transaction_id=mutatie_id,
         payment_item_id=item_id, actor_id=beheerder_id,
+        client=FakeBankClient(faal_op="link"),
     )
     client = FakeBankClient(
         transacties={str(mutatie_id): {"id": str(mutatie_id), "OpenAmount": 0, "PaymentReferenceList": []}}

@@ -119,7 +119,8 @@ def _bank_sync(args: argparse.Namespace) -> int:
         print(
             f"OK    {administratie_id}: rekeningen={resultaat.rekeningen}, mutaties={resultaat.mutaties}, "
             f"open_posten={resultaat.open_posten}, afletteren_geverifieerd={resultaat.afletteren_geverifieerd}, "
-            f"vastly_gemeld={resultaat.vastly_gemeld}, automatisch_geboekt={resultaat.automatisch_geboekt}"
+            f"vastly_gemeld={resultaat.vastly_gemeld}, automatisch_geboekt={resultaat.automatisch_geboekt}, "
+            f"automatisch_afgeletterd={resultaat.automatisch_afgeletterd}"
         )
         for fout in resultaat.automatisch_fouten:
             print(f"      autoboek-fout: {fout}", file=sys.stderr)
