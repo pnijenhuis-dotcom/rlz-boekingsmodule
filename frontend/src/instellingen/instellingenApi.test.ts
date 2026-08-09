@@ -5,10 +5,12 @@ import { haalMedewerkersOp } from '../vragen/vragenApi'
 import {
   haalBoekenKillSwitchOp,
   haalInstellingenAdministratiesOp,
+  haalLeveranciersAutoboeken,
   zetAiExtractieInstelling,
   zetBoekenInstelling,
   zetBoekenKillSwitch,
   zetEigenaar,
+  zetLeverancierAutoboeken,
   zetProjectInstelling,
 } from './instellingenApi'
 
@@ -37,6 +39,11 @@ const HELPER_AANROEPEN: Array<{ naam: string; roep: () => Promise<unknown> }> = 
   { naam: 'zetProjectInstelling', roep: () => zetProjectInstelling(ADMINISTRATIE_ID, true) },
   { naam: 'zetAiExtractieInstelling', roep: () => zetAiExtractieInstelling(ADMINISTRATIE_ID, true) },
   { naam: 'zetEigenaar', roep: () => zetEigenaar(ADMINISTRATIE_ID, null) },
+  { naam: 'haalLeveranciersAutoboeken', roep: () => haalLeveranciersAutoboeken(ADMINISTRATIE_ID) },
+  {
+    naam: 'zetLeverancierAutoboeken',
+    roep: () => zetLeverancierAutoboeken(ADMINISTRATIE_ID, 'bbbbbbbb-0000-0000-0000-000000000002', true),
+  },
   { naam: 'haalIbanAccordeursOp', roep: () => haalIbanAccordeursOp(ADMINISTRATIE_ID) },
   { naam: 'zetIbanAccordeurs', roep: () => zetIbanAccordeurs(ADMINISTRATIE_ID, []) },
   { naam: 'haalMedewerkersOp', roep: () => haalMedewerkersOp(ADMINISTRATIE_ID) },

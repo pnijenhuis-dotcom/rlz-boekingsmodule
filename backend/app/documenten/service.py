@@ -420,7 +420,19 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
     reviewscherm blijft de harde poort, de vraag is de signalering eromheen."""
     if administratie_id is None:
         return
-    if soort == DocumentSoort.KASSARAPPORT.value:
+    if soort == DocumentSoort.INKOOPFACTUUR.value:
+        # Autoboeken-opt-in per leverancier (blok 2, 2026-08-09): post-commit, systeem-actor;
+        # elke uitkomst geauditeerd zodra de opt-in aanstaat. Een fout hier mag de
+        # upload/worker nooit laten falen — het document blijft dan gewoon mensenwerk.
+        from app.documenten import autoboeken  # lokaal: houdt de importgraaf klein
+
+        try:
+            autoboeken.probeer_autoboeken_na_extractie(
+                administratie_id=administratie_id, document_id=document_id
+            )
+        except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
+            logger.exception("Autoboeken-poging mislukt voor document %s", document_id)
+    elif soort == DocumentSoort.KASSARAPPORT.value:
         from app.omzet import autovraag  # lokaal: voorkomt een importcyclus omzet ↔ documenten
 
         try:
@@ -724,6 +736,9 @@ class DocumentMetDuplicaat:
     leverancier: str | None = None
     totaalbedrag: Decimal | None = None
     factuurdatum: date | None = None
+    # Autoboeken-opt-in (blok 2, 2026-08-09): True wanneer de GEBOEKT-overgang het
+    # `automatisch_geboekt`-detail draagt — voedt de werkvoorraad-chip en het filter.
+    automatisch_geboekt: bool = False
 
 
 def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
@@ -765,6 +780,19 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
             if vendor_ids
             else {}
         )
+        # Automatisch-geboekt-markering (bulk): documenten met een GEBOEKT-overgang die het
+        # autoboeken-detail draagt (app/documenten/autoboeken.py via boek_document).
+        automatisch_geboekt_ids: set[uuid.UUID] = set()
+        if document_ids:
+            automatisch_geboekt_ids = set(
+                session.scalars(
+                    select(DocumentGebeurtenis.document_id).where(
+                        DocumentGebeurtenis.document_id.in_(document_ids),
+                        DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
+                        DocumentGebeurtenis.detail.has_key("automatisch_geboekt"),
+                    )
+                )
+            )
         veldvoorstellen: dict[uuid.UUID, dict] = {}
         zonder_voorstel = [d_id for d_id in document_ids if d_id not in voorstellen]
         if zonder_voorstel:
@@ -806,6 +834,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     leverancier=leverancier,
                     totaalbedrag=totaalbedrag,
                     factuurdatum=factuurdatum,
+                    automatisch_geboekt=d.id in automatisch_geboekt_ids,
                 )
             )
         return resultaat

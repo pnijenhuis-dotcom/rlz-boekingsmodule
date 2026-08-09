@@ -237,7 +237,13 @@ def _sla_webhook_op(
     session.add(WebhookUitgaand(document_id=document_id, event=payload["event"], payload=payload))
 
 
-def boek_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID) -> BoekResultaat:
+def boek_document(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    extra_overgang_detail: dict | None = None,
+) -> BoekResultaat:
     """De boekactie (CLAUDE.md-taak 2.3): harde checks herhalen (nooit de client-kant vertrouwen),
     dan de twee resterende failsafes (toggle+kill switch, volumerem), dan pas de echte RLZ-
     schrijfacties. Een blokkerende check/failsafe laat de status ongewijzigd, bùiten het
@@ -330,7 +336,14 @@ def boek_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_
             document=document,
             naar=DocumentStatus.GEBOEKT,
             actor_id=actor_id,
-            detail={"rlz_document_id": str(rlz_document_id), "rlz_boekstuknummer": rlz_boekstuknummer},
+            # extra_overgang_detail: herkomst-markering van de aanroeper (autoboeken zet hier
+            # `automatisch_geboekt` — zichtbaar in tijdlijn + queryable voor het
+            # werkvoorraad-filter) — nooit de kernvelden overschrijven.
+            detail={
+                **(extra_overgang_detail or {}),
+                "rlz_document_id": str(rlz_document_id),
+                "rlz_boekstuknummer": rlz_boekstuknummer,
+            },
         )
         _sla_webhook_op(
             session,

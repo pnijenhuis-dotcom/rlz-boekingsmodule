@@ -167,6 +167,9 @@ function WerkvoorraadIngang({ administraties }: { administraties: { id: string; 
 }
 
 const STATUSFILTER_ALLE = 'alle'
+/** Sentinel voor het autoboeken-filter — met prefix, zodat het nooit met een echte
+ * DocumentStatus-waarde uit de backend kan botsen. */
+const STATUSFILTER_AUTOMATISCH = '__automatisch_geboekt'
 
 function Klantpagina({
   administratieId,
@@ -312,7 +315,11 @@ function Klantpagina({
     if (documenten === null) return null
     const term = zoekterm.trim().toLowerCase()
     return documenten.filter((d) => {
-      if (statusFilter !== STATUSFILTER_ALLE && d.status !== statusFilter) return false
+      // Autoboeken-filter: eigenschap-filter naast de statusfilters (chip "automatisch") —
+      // werkt op de al geladen lijst, geboekte documenten zitten daar al in.
+      if (statusFilter === STATUSFILTER_AUTOMATISCH) {
+        if (!d.automatisch_geboekt) return false
+      } else if (statusFilter !== STATUSFILTER_ALLE && d.status !== statusFilter) return false
       if (!term) return true
       const doorzoekbaar = [d.bestandsnaam, d.leverancier ?? '', d.totaalbedrag ?? '', statusLabel(d.status)]
         .join(' ')
@@ -325,6 +332,10 @@ function Klantpagina({
     () => Array.from(new Set((documenten ?? []).map((d) => d.status))).sort(),
     [documenten],
   )
+
+  // Zelfde geest als aanwezigeStatussen: de filteroptie "Automatisch geboekt" alleen tonen als
+  // er ook echt automatisch geboekte documenten in de lijst staan.
+  const heeftAutomatischGeboekt = useMemo(() => (documenten ?? []).some((d) => d.automatisch_geboekt), [documenten])
 
   return (
     <div>
@@ -448,6 +459,7 @@ function Klantpagina({
                 {statusLabel(s)}
               </option>
             ))}
+            {heeftAutomatischGeboekt && <option value={STATUSFILTER_AUTOMATISCH}>Automatisch geboekt</option>}
           </select>
         </div>
         {lijstFout && (
@@ -538,6 +550,12 @@ function Klantpagina({
                       {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
                       {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}
                       <StatusChip status={d.status} />
+                      {d.automatisch_geboekt && (
+                        <>
+                          {' '}
+                          <span className="chip geheugen">automatisch</span>
+                        </>
+                      )}
                       {d.afwijzing && (
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
                           reden: &ldquo;{d.afwijzing.reden}&rdquo; — {naamVoor(d.afwijzing.afgewezen_door)}

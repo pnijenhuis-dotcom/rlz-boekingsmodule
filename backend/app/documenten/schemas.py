@@ -87,6 +87,23 @@ class DocumentListItemResponse(BaseModel):
     leverancier: str | None = None
     totaalbedrag: Decimal | None = None
     factuurdatum: date | None = None
+    # Autoboeken (blok 2, 2026-08-09): geboekt zonder menselijke boek-klik (opt-in leverancier)
+    # — voedt de werkvoorraad-chip "automatisch" en het filter "automatisch geboekt".
+    automatisch_geboekt: bool = False
+
+
+class LeverancierAutoboekenDto(BaseModel):
+    vendor_id: uuid.UUID
+    naam: str | None
+    autoboeken_ingeschakeld: bool
+
+
+class LeverancierAutoboekenLijstResponse(BaseModel):
+    leveranciers: list[LeverancierAutoboekenDto]
+
+
+class LeverancierAutoboekenInput(StrikteInvoer):
+    ingeschakeld: bool
 
 
 class WerkvoorraadKlantResponse(BaseModel):

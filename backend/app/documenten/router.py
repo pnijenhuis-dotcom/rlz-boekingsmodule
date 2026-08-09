@@ -181,9 +181,67 @@ def documenten_lijst(
                 leverancier=item.leverancier,
                 totaalbedrag=item.totaalbedrag,
                 factuurdatum=item.factuurdatum,
+                automatisch_geboekt=item.automatisch_geboekt,
             )
             for item in items
         ]
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/leveranciers-autoboeken",
+    response_model=schemas.LeverancierAutoboekenLijstResponse,
+)
+def leveranciers_autoboeken_lijst(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.LeverancierAutoboekenLijstResponse:
+    from app.documenten import autoboeken
+
+    return schemas.LeverancierAutoboekenLijstResponse(
+        leveranciers=[
+            schemas.LeverancierAutoboekenDto(
+                vendor_id=rij.vendor_id,
+                naam=rij.naam,
+                autoboeken_ingeschakeld=rij.autoboeken_ingeschakeld,
+            )
+            for rij in autoboeken.lijst_leverancier_autoboeken(administratie_id=administratie_id)
+        ]
+    )
+
+
+@router.put(
+    "/administraties/{administratie_id}/leveranciers/{vendor_id}/autoboeken-instelling",
+    response_model=schemas.LeverancierAutoboekenDto,
+)
+def leverancier_autoboeken_zetten(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    invoer: schemas.LeverancierAutoboekenInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.LeverancierAutoboekenDto:
+    """Beheerder-only (CLAUDE.md-poort): de opt-in vervangt alleen de menselijke boek-klik —
+    de harde checks en failsafes blijven bij het automatisch boeken onverkort blokkerend."""
+    from app.documenten import autoboeken
+
+    ingeschakeld = autoboeken.zet_leverancier_autoboeken(
+        administratie_id=administratie_id,
+        vendor_id=vendor_id,
+        actor_id=actor.id,
+        ingeschakeld=invoer.ingeschakeld,
+    )
+    with_naam = next(
+        (
+            rij
+            for rij in autoboeken.lijst_leverancier_autoboeken(administratie_id=administratie_id)
+            if rij.vendor_id == vendor_id
+        ),
+        None,
+    )
+    return schemas.LeverancierAutoboekenDto(
+        vendor_id=vendor_id,
+        naam=with_naam.naam if with_naam else None,
+        autoboeken_ingeschakeld=ingeschakeld,
     )
 
 

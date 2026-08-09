@@ -23,6 +23,7 @@ function document(overrides: Record<string, unknown>) {
     toegewezen_aan: null,
     aangemaakt_op: '2026-07-09T10:00:00Z',
     laatst_gewijzigd_op: '2026-07-09T10:00:00Z',
+    automatisch_geboekt: false,
     ...overrides,
   }
 }
@@ -442,5 +443,64 @@ describe('Klantpagina — kolommen, zoekveld en statusfilter (mockup #klantpagin
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'bestaat-niet-xyz')
     expect(screen.getByText(/Geen documenten die aan de zoekterm/)).toBeInTheDocument()
+  })
+})
+
+describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-in per leverancier)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('een automatisch geboekt document toont de chip "automatisch" naast de statuschip', async () => {
+    installFetchMock({
+      documenten: [
+        document({
+          id: GEBOEKT_DOCUMENT_ID,
+          bestandsnaam: 'auto-factuur.pdf',
+          status: 'geboekt',
+          automatisch_geboekt: true,
+        }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('auto-factuur.pdf')).toBeInTheDocument())
+    const chip = screen.getByText('automatisch')
+    expect(chip).toHaveClass('chip')
+    // Naast de statuschip: de geboekt-status blijft gewoon zichtbaar.
+    expect(screen.getAllByText('Geboekt').length).toBeGreaterThan(0)
+  })
+
+  it('het statusfilter krijgt de optie "Automatisch geboekt" en filtert op de eigenschap', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      documenten: [
+        document({ id: DOCUMENT_ID, bestandsnaam: 'handmatig.pdf', status: 'geboekt' }),
+        document({
+          id: GEBOEKT_DOCUMENT_ID,
+          bestandsnaam: 'auto-factuur.pdf',
+          status: 'geboekt',
+          automatisch_geboekt: true,
+        }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('handmatig.pdf')).toBeInTheDocument())
+    await gebruiker.selectOptions(screen.getByLabelText('Filter op status'), 'Automatisch geboekt')
+
+    expect(screen.queryByText('handmatig.pdf')).not.toBeInTheDocument()
+    expect(screen.getByText('auto-factuur.pdf')).toBeInTheDocument()
+  })
+
+  it('zonder automatisch geboekte documenten geen chip en geen filteroptie (aanwezigeStatussen-patroon)', async () => {
+    installFetchMock({ documenten: [document({ status: 'geboekt' })] })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
+    expect(screen.queryByText('automatisch')).not.toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText<HTMLSelectElement>('Filter op status')).queryByText('Automatisch geboekt'),
+    ).not.toBeInTheDocument()
   })
 })

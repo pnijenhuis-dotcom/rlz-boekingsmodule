@@ -1,5 +1,10 @@
 import { apiJson } from '../api/client'
-import type { AdministratieInstellingenLijstDto, BoekenIngeschakeldDto } from '../api/types'
+import type {
+  AdministratieInstellingenLijstDto,
+  BoekenIngeschakeldDto,
+  LeverancierAutoboekenDto,
+  LeverancierAutoboekenLijstDto,
+} from '../api/types'
 
 /** Alle instellingen-verkeer op één plek (zelfde patroon als vragenApi.ts/ibanAccorderingApi.ts),
  * met absolute, door de dev-proxy gedekte paden — de guard-test instellingenApi.test.ts toetst
@@ -55,6 +60,26 @@ export function zetAiExtractieInstelling(administratieId: string, ingeschakeld: 
     ...PUT_JSON,
     body: JSON.stringify({ ingeschakeld }),
   })
+}
+
+/** Autoboeken-opt-in per leverancier (lezen: iedere medewerker binnen de scope). */
+export function haalLeveranciersAutoboeken(administratieId: string): Promise<LeverancierAutoboekenLijstDto> {
+  return apiJson<LeverancierAutoboekenLijstDto>(`/administraties/${administratieId}/leveranciers-autoboeken`)
+}
+
+/** Autoboeken-opt-in zetten (Beheerder-only — backend geeft 403 voor andere rollen). */
+export function zetLeverancierAutoboeken(
+  administratieId: string,
+  vendorId: string,
+  ingeschakeld: boolean,
+): Promise<LeverancierAutoboekenDto> {
+  return apiJson<LeverancierAutoboekenDto>(
+    `/administraties/${administratieId}/leveranciers/${vendorId}/autoboeken-instelling`,
+    {
+      ...PUT_JSON,
+      body: JSON.stringify({ ingeschakeld }),
+    },
+  )
 }
 
 export function zetEigenaar(administratieId: string, eigenaarGebruikerId: string | null): Promise<unknown> {

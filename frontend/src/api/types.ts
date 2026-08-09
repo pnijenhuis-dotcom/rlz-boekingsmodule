@@ -81,10 +81,26 @@ export interface DocumentListItemDto {
   leverancier: string | null
   totaalbedrag: string | null
   factuurdatum: string | null
+  /** Autoboeken-opt-in per leverancier: geboekt zónder menselijke boek-klik — voedt de
+   * werkvoorraad-chip "automatisch" en het filter "Automatisch geboekt". */
+  automatisch_geboekt: boolean
 }
 
 export interface DocumentListResponseDto {
   documenten: DocumentListItemDto[]
+}
+
+/** Autoboeken-opt-in per leverancier (Instellingen, Beheerder-only — CLAUDE.md-poort vóór het
+ * eerste autoboeken van inkoopfacturen). Naam kan null zijn zolang de vendor-sync geen naam
+ * kent. */
+export interface LeverancierAutoboekenDto {
+  vendor_id: string
+  naam: string | null
+  autoboeken_ingeschakeld: boolean
+}
+
+export interface LeverancierAutoboekenLijstDto {
+  leveranciers: LeverancierAutoboekenDto[]
 }
 
 /** Werkvoorraad-klantenlijst met tellers (mockup #werkvoorraad "Overzicht per klant"). */

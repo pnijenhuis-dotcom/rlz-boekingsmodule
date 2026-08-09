@@ -218,6 +218,11 @@ class LeverancierVoorkeur(Base):
     )
     vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     regels_samenvoegen: Mapped[bool]
+    # Autoboeken-opt-in per leverancier (migratie 0036, CLAUDE.md-poort "vereist vóór het
+    # eerste autoboeken van inkoopfacturen"): default UIT, alleen door een Beheerder te
+    # wijzigen, elke wijziging in audit_event. De harde checks + failsafes blijven bij het
+    # automatisch boeken onverkort blokkerend (app/documenten/autoboeken.py).
+    autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 

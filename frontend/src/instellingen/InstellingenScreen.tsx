@@ -7,6 +7,7 @@ import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorde
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
+import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import {
   haalBoekenKillSwitchOp,
   haalInstellingenAdministratiesOp,
@@ -456,6 +457,10 @@ export function InstellingenScreen() {
 
       {administraties !== null && (
         <AccorderingInstellingen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
+      )}
+
+      {administraties !== null && (
+        <LeverancierAutoboeken administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
       )}
 
       {pending && (
