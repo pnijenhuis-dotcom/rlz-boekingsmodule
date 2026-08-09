@@ -62,6 +62,7 @@ function afletterOpdracht(overrides: Record<string, unknown> = {}) {
     laatste_verificatie_poging_op: null,
     geverifieerd_op: null,
     voorstel_gevolgd: null,
+    uitvoering: null,
     koppelingen: [],
     ...overrides,
   }
@@ -322,6 +323,46 @@ describe('BankDetailScreen', () => {
     expect(
       await screen.findByText(/Afgeletterd — koppeling direct in Reeleezee gelegd en geverifieerd/),
     ).toBeInTheDocument()
+  })
+
+  it('toont "al afgeletterd in RLZ" als geverifieerd-zonder-fout (kliktest 2026-08-09)', async () => {
+    // Randgeval: "Nu afletteren" op een opdracht waarvan de mutatie intussen al in RLZ was
+    // afgeletterd — vroeger een kale 404, nu een succes-melding + eigen chip.
+    const voerUitAanroepen: string[] = []
+    installFetchMock({
+      voerUitAanroepen,
+      voerUitResponse: { opdracht_id: OPDRACHT_ID, uitkomst: 'al_afgeletterd_in_rlz', fout: null },
+      mutaties: [],
+      afletterOpdrachten: [
+        {
+          opdracht: afletterOpdracht({ id: OPDRACHT_ID }),
+          boekdatum: '2026-07-03',
+          tegenpartij_naam: 'Al gekoppelde partij',
+          bedrag: '-99.00',
+        },
+        {
+          opdracht: afletterOpdracht({
+            id: 'ffffffff-0000-0000-0000-000000000009',
+            status: 'geverifieerd',
+            geverifieerd_op: '2026-08-09T12:00:00Z',
+            voorstel_gevolgd: true,
+            uitvoering: 'al_afgeletterd_in_rlz',
+            koppelingen: [{ rlz_document_id: 'z', boekstuknummer: 'RLZ-04-00002100', bedrag: '99.00' }],
+          }),
+          boekdatum: '2026-07-04',
+          tegenpartij_naam: 'Eerder al gekoppelde partij',
+          bedrag: '-99.00',
+        },
+      ],
+    })
+    renderScherm()
+
+    // De eerder-geverifieerde opdracht draagt de eigen chip.
+    expect(await screen.findByText(/Geverifieerd — al afgeletterd in RLZ/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nu afletteren ✓' }))
+    await waitFor(() => expect(voerUitAanroepen).toHaveLength(1))
+    expect(await screen.findByText(/Al afgeletterd in Reeleezee — de opdracht is als geverifieerd/)).toBeInTheDocument()
   })
 
   it('boekt een vaste-regel-voorstel direct met de meegeleverde regels', async () => {

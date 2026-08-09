@@ -69,10 +69,12 @@ class OpdrachtNietGevonden(AfletterFout):
 @dataclass(frozen=True)
 class AfletterUitvoering:
     """Uitkomst van de seam. `afgeletterd_via_api` = koppeling gelegd én direct geverifieerd;
-    `wacht_op_mens_in_rlz` = de assist-fallback (API-fout — zie `fout`, nooit stil): de
-    opdracht blijft klaargezet, de mens koppelt in de RLZ-UI óf probeert het later opnieuw."""
+    `al_afgeletterd_in_rlz` = de vooraf-toets zag de mutatie al dicht in RLZ (kliktest
+    2026-08-09) — geverifieerd zonder nieuwe koppeling, geen fout; `wacht_op_mens_in_rlz` =
+    de assist-fallback (API-fout — zie `fout`, nooit stil): de opdracht blijft klaargezet,
+    de mens koppelt in de RLZ-UI óf probeert het later opnieuw."""
 
-    uitkomst: str  # "wacht_op_mens_in_rlz" | "afgeletterd_via_api"
+    uitkomst: str  # "wacht_op_mens_in_rlz" | "afgeletterd_via_api" | "al_afgeletterd_in_rlz"
     opdracht_id: uuid.UUID
     fout: str | None = None
 
@@ -225,7 +227,47 @@ def _probeer_api_koppeling(
             session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
             fout="mutatie heeft lokaal geen open bedrag (meer) of de opdracht mist een doel-post",
         )
-    linked = bereken_linked_amount(mutatie.open_bedrag, item.bedrag if item else None)
+
+    # Vooraf-toets tegen de ACTUELE RLZ-staat (kliktest Peter 2026-08-09: "Nu afletteren" op een
+    # mutatie die intussen al in RLZ was afgeletterd gaf een kale 404 _NotFound): de lokale cache
+    # kan achterlopen op RLZ. Al dicht → "geverifieerd — al afgeletterd in RLZ", geen fout.
+    try:
+        vers_vooraf = client.get_payment_transaction(
+            opdracht.payment_transaction_id, expand="PaymentReferenceList($expand=Document)"
+        )
+    except RlzApiError as exc:
+        return _api_fout(
+            session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
+            fout=f"RLZ-staat opvragen mislukt: {exc}",
+        )
+    open_vooraf = _als_decimal(vers_vooraf.get("OpenAmount"))
+    if open_vooraf == 0:
+        return _markeer_al_afgeletterd(
+            session=session, administratie_id=administratie_id, opdracht=opdracht,
+            actor_id=actor_id, mutatie=mutatie, vers=vers_vooraf,
+        )
+    # Tweede deel van de vooraf-toets: bestaat de aangewezen post nog als open item in RLZ?
+    # (Een gekoppeld item verdwijnt uit de open-items-collectie en het restant van een
+    # deelkoppeling krijgt een NIEUW id — replay-STAP-0; de link-call zou anders kaal 404'en.)
+    try:
+        open_item_ids = {str(rij.get("id")) for rij in client.list_payment_items()}
+    except RlzApiError as exc:
+        return _api_fout(
+            session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
+            fout=f"open posten opvragen mislukt: {exc}",
+        )
+    if str(opdracht.payment_item_id) not in open_item_ids:
+        return _api_fout(
+            session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
+            fout="de aangewezen open post bestaat niet (meer) als open item in RLZ — mogelijk "
+            "elders (deels) betaald of na een deelkoppeling vervangen door een nieuw item-id; "
+            "draai de bank-sync en zet het voorstel opnieuw klaar",
+        )
+
+    # De verse RLZ-stand is leidend voor het te koppelen bedrag (de lokale cache kan een
+    # tussentijdse deelkoppeling gemist hebben).
+    linked = bereken_linked_amount(open_vooraf if open_vooraf is not None else mutatie.open_bedrag,
+                                   item.bedrag if item else None)
     try:
         client.link_payment_item(
             opdracht.payment_transaction_id,
@@ -236,25 +278,15 @@ def _probeer_api_koppeling(
             opdracht.payment_transaction_id, expand="PaymentReferenceList($expand=Document)"
         )
     except RlzApiError as exc:
-        # ⚠️ Bekende 404-oorzaak: een verouderd PaymentItem-id (na een eerdere deelkoppeling
-        # krijgt het restant een NIEUW id — replay-STAP-0). Vers syncen lost dat op.
+        # Race-vangnet: de vooraf-toets dekt de bekende 404-oorzaken (al afgeletterd,
+        # verouderd item-id), maar tussen toets en call kan RLZ alsnog veranderen.
         return _api_fout(
             session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
             fout=f"RLZ-koppeling mislukt: {exc}",
         )
 
     open_na = _als_decimal(vers.get("OpenAmount"))
-    koppelingen = [
-        {
-            "rlz_document_id": (ref.get("Document") or {}).get("id"),
-            "boekstuknummer": (ref.get("Document") or {}).get("ReceiptNumber"),
-            "bedrag": ref.get("Amount"),
-            "volgorde": ref.get("Sequence"),
-            "bron": ref.get("PaymentReconciliationSource"),
-        }
-        for ref in vers.get("PaymentReferenceList") or []
-        if not _is_systeemhuls(ref.get("Document"))
-    ]
+    koppelingen = _lees_koppelingen(vers)
     doel_gekoppeld = opdracht.rlz_document_id is not None and any(
         k["rlz_document_id"] == str(opdracht.rlz_document_id) for k in koppelingen
     )
@@ -300,6 +332,69 @@ def _probeer_api_koppeling(
         administratie_id=administratie_id,
     )
     return AfletterUitvoering(uitkomst="afgeletterd_via_api", opdracht_id=opdracht.id)
+
+
+def _lees_koppelingen(vers: dict[str, Any]) -> list[dict[str, Any]]:
+    """Het PaymentReferenceList-leesspoor ("waartegen wérkelijk afgeletterd"), hulzen
+    uitgefilterd — gedeeld door de directe verificatie, de vooraf-toets en de sync-verificatie."""
+    return [
+        {
+            "rlz_document_id": (ref.get("Document") or {}).get("id"),
+            "boekstuknummer": (ref.get("Document") or {}).get("ReceiptNumber"),
+            "bedrag": ref.get("Amount"),
+            "volgorde": ref.get("Sequence"),
+            "bron": ref.get("PaymentReconciliationSource"),
+        }
+        for ref in vers.get("PaymentReferenceList") or []
+        if not _is_systeemhuls(ref.get("Document"))
+    ]
+
+
+def _markeer_al_afgeletterd(
+    *,
+    session,
+    administratie_id: uuid.UUID,
+    opdracht: BankAfletterOpdracht,
+    actor_id: uuid.UUID,
+    mutatie: BankMutatie,
+    vers: dict[str, Any],
+) -> AfletterUitvoering:
+    """De vooraf-toets zag de mutatie al dicht in RLZ (kliktest Peter 2026-08-09): geen fout,
+    geen nieuwe koppeling — de opdracht wordt "geverifieerd — al afgeletterd in RLZ" mét het
+    leesspoor als bewijs en de tijdlijn-stempel (klaargezet → geverifieerd). Wijkt de werkelijke
+    koppeling af van het voorstel, dan is dat zichtbaar via voorstel_gevolgd=false."""
+    koppelingen = _lees_koppelingen(vers)
+    voorstel_gevolgd = opdracht.rlz_document_id is not None and any(
+        k["rlz_document_id"] == str(opdracht.rlz_document_id) for k in koppelingen
+    )
+    nu = datetime.now(UTC)
+    opdracht.status = AfletterOpdrachtStatus.GEVERIFIEERD.value
+    opdracht.laatste_verificatie_poging_op = nu
+    opdracht.geverifieerd_op = nu
+    opdracht.verificatie_detail = {
+        "koppelingen": koppelingen,
+        "voorstel_gevolgd": voorstel_gevolgd,
+        "uitvoering": "al_afgeletterd_in_rlz",
+    }
+    mutatie.open_bedrag = Decimal(0)
+    mutatie.laatst_gesynchroniseerd = nu
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="bank_afletter_opdracht",
+        record_id=opdracht.id,
+        actie="afletteren_geverifieerd",
+        correlatie_id=uuid.uuid4(),
+        nieuwe_waarde={
+            "payment_transaction_id": str(opdracht.payment_transaction_id),
+            "koppelingen": koppelingen,
+            "voorstel_gevolgd": voorstel_gevolgd,
+            "uitvoering": "al_afgeletterd_in_rlz",
+        },
+        administratie_id=administratie_id,
+    )
+    return AfletterUitvoering(uitkomst="al_afgeletterd_in_rlz", opdracht_id=opdracht.id)
 
 
 def _api_fout(
@@ -401,7 +496,9 @@ def verwerk_exacte_matches_automatisch(
         except AfletterFout as exc:
             fouten.append(f"mutatie {kandidaat.mutatie.id}: {exc}")
             continue
-        if uitvoering.uitkomst == "afgeletterd_via_api":
+        # "al afgeletterd in RLZ" (vooraf-toets) is óók een geslaagde uitkomst — de opdracht is
+        # geverifieerd, alleen zonder nieuwe koppeling.
+        if uitvoering.uitkomst in ("afgeletterd_via_api", "al_afgeletterd_in_rlz"):
             gedaan += 1
         else:
             fouten.append(f"mutatie {kandidaat.mutatie.id}: {uitvoering.fout or 'niet gelukt'}")
@@ -485,17 +582,7 @@ def verifieer_openstaande_opdrachten(
                 opdracht.laatste_verificatie_poging_op = datetime.now(UTC)
                 continue
 
-            koppelingen = [
-                {
-                    "rlz_document_id": (ref.get("Document") or {}).get("id"),
-                    "boekstuknummer": (ref.get("Document") or {}).get("ReceiptNumber"),
-                    "bedrag": ref.get("Amount"),
-                    "volgorde": ref.get("Sequence"),
-                    "bron": ref.get("PaymentReconciliationSource"),
-                }
-                for ref in vers.get("PaymentReferenceList") or []
-                if not _is_systeemhuls(ref.get("Document"))
-            ]
+            koppelingen = _lees_koppelingen(vers)
             voorstel_gevolgd = (
                 opdracht.rlz_document_id is not None
                 and any(k["rlz_document_id"] == str(opdracht.rlz_document_id) for k in koppelingen)

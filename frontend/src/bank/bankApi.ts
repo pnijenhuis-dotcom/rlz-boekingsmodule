@@ -92,6 +92,9 @@ export interface AfletterOpdrachtDto {
   geverifieerd_op: string | null
   /** false = de mens koppelde in RLZ iets anders dan het voorstel ("afwijkend gevolgd"). */
   voorstel_gevolgd: boolean | null
+  /** 'api' = koppeling door de app gelegd; 'al_afgeletterd_in_rlz' = de vooraf-toets zag de
+   *  mutatie al dicht in RLZ (kliktest 2026-08-09); null = sync-verificatie. */
+  uitvoering: string | null
   koppelingen: AfletterKoppelingDto[]
 }
 
@@ -145,11 +148,13 @@ export interface BankSyncResultaatDto {
 }
 
 /** Response van afletteren-klaarzetten én voer-uit: `afgeletterd_via_api` = koppeling direct via
- *  de API gelegd + geverifieerd; `wacht_op_mens_in_rlz` = fallback ná een API-fout (`fout` gevuld,
- *  nooit stil) — de opdracht staat dan klaar voor "Nu afletteren" of de mens in de RLZ-UI. */
+ *  de API gelegd + geverifieerd; `al_afgeletterd_in_rlz` = de mutatie bleek in RLZ al afgeletterd
+ *  (vooraf-toets, kliktest 2026-08-09) — geverifieerd zonder nieuwe koppeling, geen fout;
+ *  `wacht_op_mens_in_rlz` = fallback ná een API-fout (`fout` gevuld, nooit stil) — de opdracht
+ *  staat dan klaar voor "Nu afletteren" of de mens in de RLZ-UI. */
 export interface AfletterActieResultaatDto {
   opdracht_id: string
-  uitkomst: 'afgeletterd_via_api' | 'wacht_op_mens_in_rlz'
+  uitkomst: 'afgeletterd_via_api' | 'al_afgeletterd_in_rlz' | 'wacht_op_mens_in_rlz'
   fout: string | null
 }
 

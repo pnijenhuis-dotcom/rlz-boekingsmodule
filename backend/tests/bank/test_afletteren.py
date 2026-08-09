@@ -296,6 +296,8 @@ def _werkende_fake(mutatie_id: uuid.UUID, item_id: uuid.UUID, rlz_document_id: u
         transacties={
             str(mutatie_id): {"id": str(mutatie_id), "OpenAmount": -121.0, "PaymentReferenceList": []}
         },
+        # De vooraf-toets (kliktest 2026-08-09) eist dat de post nog als open item in RLZ staat.
+        items=[{"id": str(item_id)}],
         item_documenten={str(item_id): str(rlz_document_id)},
     )
 
@@ -339,12 +341,20 @@ def test_afletteren_via_api_koppelt_en_verifieert_direct(
 def test_api_fout_valt_zichtbaar_terug_op_assist(
     administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
 ) -> None:
+    """Race-vangnet: de vooraf-toets was nog groen, maar de link-call zelf faalt alsnog (404 op
+    een nét verouderd item-id) — zichtbare fout, opdracht blijft klaargezet."""
     mutatie_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
     item_id = maak_payment_item(admin_engine, administratie_id=administratie_id)
     uitvoering = afletteren.zet_klaar_voor_afletteren(
         administratie_id=administratie_id, payment_transaction_id=mutatie_id,
         payment_item_id=item_id, actor_id=beheerder_id,
-        client=FakeBankClient(faal_op="link_stale_item"),  # 404 = verouderd item-id (replay-les)
+        client=FakeBankClient(
+            transacties={
+                str(mutatie_id): {"id": str(mutatie_id), "OpenAmount": -121.0, "PaymentReferenceList": []}
+            },
+            items=[{"id": str(item_id)}],
+            faal_op="link_stale_item",  # 404 = verouderd item-id (replay-les)
+        ),
     )
     assert uitvoering.uitkomst == "wacht_op_mens_in_rlz"
     assert "mislukt" in (uitvoering.fout or "")
@@ -366,6 +376,7 @@ def test_204_zonder_effect_is_zichtbare_fout(
         transacties={
             str(mutatie_id): {"id": str(mutatie_id), "OpenAmount": -121.0, "PaymentReferenceList": []}
         },
+        items=[{"id": str(item_id)}],
         faal_op="link_zonder_effect",
     )
     uitvoering = afletteren.zet_klaar_voor_afletteren(
@@ -374,6 +385,95 @@ def test_204_zonder_effect_is_zichtbare_fout(
     )
     assert uitvoering.uitkomst == "wacht_op_mens_in_rlz"
     assert "niet zichtbaar" in (uitvoering.fout or "")
+    assert _opdrachten(admin_engine, administratie_id)[0][0] == "klaargezet"
+
+
+def test_al_afgeletterd_in_rlz_wordt_geverifieerd_zonder_fout(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
+) -> None:
+    """Kliktest Peter 2026-08-09: "Nu afletteren" op een opdracht waarvan de mutatie intussen
+    al in RLZ was afgeletterd gaf een kale 404 _NotFound. De vooraf-toets vangt dit nu: al
+    dicht in RLZ → "geverifieerd — al afgeletterd in RLZ" mét leesspoor en tijdlijn, geen
+    fout en geen link-call."""
+    rlz_document_id = uuid.uuid4()
+    mutatie_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
+    item_id = maak_payment_item(
+        admin_engine, administratie_id=administratie_id, rlz_document_id=rlz_document_id
+    )
+    eerste = afletteren.zet_klaar_voor_afletteren(
+        administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+        payment_item_id=item_id, actor_id=beheerder_id,
+        client=FakeBankClient(faal_op="link"),
+    )
+    assert eerste.uitkomst == "wacht_op_mens_in_rlz"
+
+    # Intussen in RLZ afgeletterd (door de mens in de RLZ-UI), tegen het voorstel-document.
+    fake = FakeBankClient(
+        transacties={
+            str(mutatie_id): {
+                "id": str(mutatie_id),
+                "OpenAmount": 0,
+                "PaymentReferenceList": [
+                    {"Sequence": 1, "Amount": 121.0, "PaymentReconciliationSource": 2,
+                     "Document": {"id": str(rlz_document_id), "Status": 3, "DocumentType": 4,
+                                  "ReceiptNumber": "RLZ-04-00002099"}},
+                ],
+            }
+        }
+    )
+    tweede = afletteren.voer_bestaande_opdracht_uit(
+        administratie_id=administratie_id, opdracht_id=eerste.opdracht_id,
+        actor_id=beheerder_id, client=fake,
+    )
+    assert tweede.uitkomst == "al_afgeletterd_in_rlz"
+    assert tweede.fout is None
+    assert fake.links == []  # geen nieuwe koppel-actie richting RLZ
+
+    status, detail = _opdrachten(admin_engine, administratie_id)[0]
+    assert status == "geverifieerd"
+    assert detail["uitvoering"] == "al_afgeletterd_in_rlz"
+    assert detail["voorstel_gevolgd"] is True
+    assert detail["koppelingen"][0]["rlz_document_id"] == str(rlz_document_id)
+    with admin_engine.connect() as conn:
+        open_bedrag = conn.execute(
+            text("SELECT open_bedrag FROM boekhouding.bank_mutatie WHERE id = :id"), {"id": mutatie_id}
+        ).scalar_one()
+        geverifieerd_op = conn.execute(
+            text(
+                "SELECT geverifieerd_op FROM boekhouding.bank_afletter_opdracht "
+                "WHERE administratie_id = :aid"
+            ),
+            {"aid": administratie_id},
+        ).scalar_one()
+        audits = conn.execute(
+            text("SELECT COUNT(*) FROM platform.audit_event WHERE actie = 'afletteren_geverifieerd'")
+        ).scalar_one()
+    assert open_bedrag == 0
+    assert geverifieerd_op is not None  # tijdlijn-entry klaargezet → geverifieerd
+    assert audits == 1
+
+
+def test_verdwenen_open_post_geeft_zichtbare_fout_zonder_link_call(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
+) -> None:
+    """Tweede deel van de vooraf-toets: mutatie nog open in RLZ, maar de aangewezen post staat
+    niet (meer) in de open-items-collectie (elders betaald of nieuw item-id na deelkoppeling) —
+    duidelijke fout vóór de link-call, geen kale 404."""
+    mutatie_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
+    item_id = maak_payment_item(admin_engine, administratie_id=administratie_id)
+    fake = FakeBankClient(
+        transacties={
+            str(mutatie_id): {"id": str(mutatie_id), "OpenAmount": -121.0, "PaymentReferenceList": []}
+        },
+        items=[],  # de post is in RLZ geen open item meer
+    )
+    uitvoering = afletteren.zet_klaar_voor_afletteren(
+        administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+        payment_item_id=item_id, actor_id=beheerder_id, client=fake,
+    )
+    assert uitvoering.uitkomst == "wacht_op_mens_in_rlz"
+    assert "open post bestaat niet" in (uitvoering.fout or "")
+    assert fake.links == []
     assert _opdrachten(admin_engine, administratie_id)[0][0] == "klaargezet"
 
 
@@ -429,6 +529,7 @@ def test_exacte_matches_automatisch_achter_optin_en_volumerem(
             str(exact): {"id": str(exact), "OpenAmount": -121.0, "PaymentReferenceList": []},
             str(deel): {"id": str(deel), "OpenAmount": -50.0, "PaymentReferenceList": []},
         },
+        items=[{"id": str(item_id)}],
         item_documenten={str(item_id): str(rlz_document_id)},
     )
     gedaan, fouten = afletteren.verwerk_exacte_matches_automatisch(
@@ -456,10 +557,11 @@ def test_exacte_matches_automatisch_achter_optin_en_volumerem(
         admin_engine, administratie_id=administratie_id,
         omschrijving="betaling F-2026-0643", bedrag="-99.00",
     )
-    maak_payment_item(
+    item2 = maak_payment_item(
         admin_engine, administratie_id=administratie_id, referentie="F-2026-0643", bedrag="99.00",
     )
     fake.transacties[str(nogmaals)] = {"id": str(nogmaals), "OpenAmount": -99.0, "PaymentReferenceList": []}
+    fake.items.append({"id": str(item2)})
     gedaan2, fouten2 = afletteren.verwerk_exacte_matches_automatisch(
         administratie_id=administratie_id, client=fake
     )

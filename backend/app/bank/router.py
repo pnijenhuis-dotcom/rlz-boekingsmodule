@@ -41,6 +41,7 @@ def _afletter_opdracht_response(opdracht) -> schemas.AfletterOpdrachtResponse:
         laatste_verificatie_poging_op=opdracht.laatste_verificatie_poging_op,
         geverifieerd_op=opdracht.geverifieerd_op,
         voorstel_gevolgd=detail.get("voorstel_gevolgd"),
+        uitvoering=detail.get("uitvoering"),
         koppelingen=[
             schemas.AfletterKoppelingResponse(
                 rlz_document_id=k.get("rlz_document_id"),

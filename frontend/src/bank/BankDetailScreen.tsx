@@ -46,11 +46,13 @@ function formatTijdstip(iso: string | null): string {
  * Sinds afletteren-via-de-API (2026-08-09) is "klaargezet" de fallback-staat ná een API-fout. */
 function AfletterStatusChip({ opdracht }: { opdracht: AfletterOpdrachtDto }) {
   if (opdracht.status === 'geverifieerd') {
-    return opdracht.voorstel_gevolgd === false ? (
-      <span className="chip ai">Afwijkend gevolgd — in RLZ anders gekoppeld dan het voorstel</span>
-    ) : (
-      <span className="chip geheugen">Geverifieerd — afgeletterd in RLZ (open bedrag 0)</span>
-    )
+    if (opdracht.voorstel_gevolgd === false) {
+      return <span className="chip ai">Afwijkend gevolgd — in RLZ anders gekoppeld dan het voorstel</span>
+    }
+    if (opdracht.uitvoering === 'al_afgeletterd_in_rlz') {
+      return <span className="chip geheugen">Geverifieerd — al afgeletterd in RLZ</span>
+    }
+    return <span className="chip geheugen">Geverifieerd — afgeletterd in RLZ (open bedrag 0)</span>
   }
   if (opdracht.status === 'ingetrokken') {
     return <span className="chip">Ingetrokken</span>
@@ -65,11 +67,18 @@ function AfletterStatusChip({ opdracht }: { opdracht: AfletterOpdrachtDto }) {
   )
 }
 
-/** Eén melding voor beide afletter-uitkomsten: succes = koppeling direct via de API gelegd én
- * geverifieerd; fallback = opdracht staat klaar, fout zichtbaar (nooit stil). */
+/** Eén melding voor de afletter-uitkomsten: succes = koppeling direct via de API gelegd én
+ * geverifieerd; al afgeletterd = de vooraf-toets zag de mutatie al dicht in RLZ (kliktest
+ * 2026-08-09, geen fout); fallback = opdracht staat klaar, fout zichtbaar (nooit stil). */
 function afletterUitkomstMelding(resultaat: AfletterActieResultaatDto): { tekst: string; isFout: boolean } {
   if (resultaat.uitkomst === 'afgeletterd_via_api') {
     return { tekst: 'Afgeletterd — koppeling direct in Reeleezee gelegd en geverifieerd.', isFout: false }
+  }
+  if (resultaat.uitkomst === 'al_afgeletterd_in_rlz') {
+    return {
+      tekst: 'Al afgeletterd in Reeleezee — de opdracht is als geverifieerd gemarkeerd, er was geen nieuwe koppeling nodig.',
+      isFout: false,
+    }
   }
   return {
     tekst:

@@ -109,6 +109,9 @@ class AfletterOpdrachtResponse(BaseModel):
     laatste_verificatie_poging_op: datetime | None = None
     geverifieerd_op: datetime | None = None
     voorstel_gevolgd: bool | None = None
+    # Hoe de verificatie tot stand kwam: "api" (koppeling door ons gelegd),
+    # "al_afgeletterd_in_rlz" (vooraf-toets, kliktest 2026-08-09) of None (sync-verificatie).
+    uitvoering: str | None = None
     koppelingen: list[AfletterKoppelingResponse] = []
 
 
@@ -161,8 +164,10 @@ class AfletterKlaarzettenInput(StrikteInvoer):
 
 
 class AfletterKlaarzettenResponse(BaseModel):
-    """`uitkomst`: afgeletterd_via_api (koppeling gelegd + direct geverifieerd) of
-    wacht_op_mens_in_rlz (assist-fallback ná een API-fout — zie `fout`, nooit stil)."""
+    """`uitkomst`: afgeletterd_via_api (koppeling gelegd + direct geverifieerd),
+    al_afgeletterd_in_rlz (vooraf-toets zag de mutatie al dicht in RLZ — geverifieerd zonder
+    nieuwe koppeling, kliktest 2026-08-09) of wacht_op_mens_in_rlz (assist-fallback ná een
+    API-fout — zie `fout`, nooit stil)."""
 
     opdracht_id: uuid.UUID
     uitkomst: str
