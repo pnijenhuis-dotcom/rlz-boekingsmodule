@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Accordeur-app — mockup (mobiel leading)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== Zelfde design tokens als mockup/index.html (designpass) ===== */
+  :root {
+    --bg: #f5f7f7; --panel: #ffffff; --border: #e5e9e8;
+    --text: #16181d; --muted: #647572; --accent: #2e6660;
+    --green: #1c7a54; --green-bg: #e6f4ee;
+    --orange: #b45309; --orange-bg: #fdf3e3;
+    --red: #b42318; --red-bg: #fceceb;
+    --blue-bg: #e6f0ee; --purple: #6941c6; --purple-bg: #f1ecfb;
+    --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 4px rgba(16,24,40,.05);
+    --focus: rgba(46,102,96,.18);
+  }
+  body.dark {
+    --bg: #0e1514; --panel: #16211f; --border: #263533;
+    --text: #e6ecea; --muted: #8ba09b; --accent: #5cb3a8;
+    --green: #34c08b; --green-bg: #123227;
+    --orange: #e9a23b; --orange-bg: #372a12;
+    --red: #ee6c62; --red-bg: #3a1e1b;
+    --blue-bg: #1a2e2b; --purple: #ab8ffc; --purple-bg: #28203f;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --focus: rgba(92,179,168,.28);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: 'Inter', -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.01em;
+    background: var(--bg); color: var(--text); font-size: 14px; min-height: 100vh;
+  }
+
+  /* ===== Mobiel is leading: de app vult het scherm op ≤430px.
+         Desktop (>580px) is de afgeleide: zelfde app in een telefoonkader + zijnotitie. ===== */
+  .stage { min-height: 100vh; display: flex; justify-content: center; }
+  .phone { width: 100%; max-width: 430px; background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; position: relative; }
+  .desknote { display: none; }
+  @media (min-width: 581px) {
+    body { background: color-mix(in srgb, var(--bg) 80%, #9fb3af); padding: 28px 16px; }
+    .stage { gap: 28px; align-items: flex-start; }
+    .phone {
+      border: 12px solid #1d2523; border-radius: 40px; min-height: 780px; max-height: 860px;
+      overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.35); flex-shrink: 0;
+    }
+    .desknote { display: block; max-width: 330px; font-size: 13px; line-height: 1.6; color: var(--text);
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 18px 20px; }
+    .desknote h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 12px; }
+    .desknote p { margin-bottom: 10px; }
+    .desknote .k { color: var(--muted); }
+  }
+
+  /* ===== App-chrome ===== */
+  .apphead {
+    padding: 14px 16px 10px; background: linear-gradient(180deg, #14242b 0%, #0d1a19 100%);
+    color: #e6efec; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    position: sticky; top: 0; z-index: 20;
+  }
+  .apphead .who { font-size: 11px; color: #a9bfba; }
+  .apphead b { font-size: 14px; display: block; color: #fff; }
+  .apphead b span { color: #7fd0c5; }
+  .headbtns { display: flex; gap: 6px; }
+  .iconbtn {
+    background: rgba(255,255,255,.08); border: none; color: #cfe0dc; width: 34px; height: 34px;
+    border-radius: 10px; font-size: 15px; cursor: pointer; flex-shrink: 0;
+  }
+  .iconbtn:hover { background: rgba(255,255,255,.16); }
+  .content { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: 24px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ===== Chips (zelfde patroon: statusdot) ===== */
+  .chip { display: inline-block; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .chip::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: currentColor; }
+  .chip.wacht { background: var(--blue-bg); color: var(--accent); }
+  .chip.staand { background: var(--purple-bg); color: var(--purple); }
+  .chip.klaar { background: var(--green-bg); color: var(--green); }
+
+  /* ===== Wachtrij: documentrij als kaartcomponent (besluit 2026-08-07 punt 3) ===== */
+  .pushnote {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow);
+    padding: 10px 12px; font-size: 11.5px; line-height: 1.45; color: var(--muted); margin-bottom: 14px;
+    display: flex; gap: 9px; align-items: flex-start;
+  }
+  .pushnote .t { font-size: 15px; }
+  .pushnote b { color: var(--text); }
+  .qcount { font-size: 12.5px; color: var(--muted); margin: 2px 2px 10px; }
+  .qcard {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px 16px; margin-bottom: 10px; cursor: pointer; display: flex; justify-content: space-between;
+    gap: 10px; align-items: center; transition: border-color .12s, transform .05s;
+  }
+  .qcard:active { transform: scale(.99); }
+  .qcard:hover { border-color: var(--accent); }
+  .qcard .lev { font-weight: 700; font-size: 14.5px; }
+  .qcard .meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .qcard .amt { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .qcard .arrow { color: var(--muted); font-size: 16px; }
+  .leeg { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .leeg .big { font-size: 44px; margin-bottom: 12px; }
+  .leeg b { color: var(--text); font-size: 16px; display: block; margin-bottom: 6px; }
+
+  /* ===== Review: factuurbeeld centraal ===== */
+  .revtop { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .revtop .terug { background: none; border: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0; }
+  .revtop .tel { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .docpane {
+    background: #3f4247; border-radius: var(--radius); padding: 14px; min-height: 330px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fakepdf { background: #fff; width: 100%; max-width: 330px; min-height: 300px; padding: 18px; font-size: 11px; color: #333; box-shadow: 0 4px 14px rgba(0,0,0,.4); border-radius: 2px; }
+  .fakepdf h3 { margin-bottom: 2px; font-size: 13px; }
+  .fakepdf .sub { color: #888; font-size: 10px; }
+  .fakepdf .fr { display: flex; justify-content: space-between; margin: 3px 0; }
+  .fakepdf hr { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
+  .fakepdf .zoom { margin-top: 12px; color: #aaa; font-size: 9px; }
+  .boekinfo {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 11px 14px; margin-top: 10px; font-size: 12.5px; line-height: 1.5;
+  }
+  .boekinfo .k { color: var(--muted); }
+  .staandnote {
+    background: var(--purple-bg); border-radius: 10px; padding: 9px 12px; margin-top: 8px;
+    font-size: 11.5px; line-height: 1.5; color: var(--purple); display: flex; gap: 8px;
+  }
+
+  /* ===== Actiebalk binnen duimbereik (sticky onderin) ===== */
+  .actionbar {
+    position: sticky; bottom: 0; background: linear-gradient(180deg, transparent, var(--bg) 26%);
+    padding: 16px 16px 18px; display: none; gap: 10px; z-index: 15;
+  }
+  .actionbar.zichtbaar { display: flex; }
+  .btn {
+    border: none; border-radius: 12px; font-weight: 700; font-size: 15px; padding: 15px 10px;
+    cursor: pointer; font-family: inherit; transition: filter .12s, transform .05s; flex: 1;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.groen { background: var(--green); color: #fff; }
+  .btn.afwijs { background: var(--panel); color: var(--red); border: 1.5px solid var(--red); }
+  .btn.klein { font-size: 13px; padding: 10px 14px; flex: none; }
+  .btn.secundair { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+  .btn.paars { background: var(--purple); color: #fff; }
+
+  /* ===== Sheets (bottom sheet = mobiel patroon voor popups) ===== */
+  .sheet-bg { display: none; position: absolute; inset: 0; background: rgba(15,23,42,.5); z-index: 40; align-items: flex-end; }
+  .sheet-bg.open { display: flex; }
+  .sheet {
+    background: var(--panel); border-radius: 18px 18px 0 0; padding: 20px 18px 24px; width: 100%;
+    box-shadow: 0 -10px 40px rgba(0,0,0,.3); animation: opschuiven .18s ease-out;
+  }
+  @keyframes opschuiven { from { transform: translateY(30px); opacity: .6; } to { transform: none; opacity: 1; } }
+  .sheet h2 { font-size: 15px; margin-bottom: 10px; }
+  .sheet .uitleg { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin-bottom: 12px; }
+  .sheet textarea {
+    width: 100%; min-height: 88px; padding: 10px; border: 1px solid var(--border); border-radius: 10px;
+    font-family: inherit; font-size: 14px; background: var(--panel); color: var(--text); resize: vertical;
+  }
+  .sheet textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+  .sheet .rij { display: flex; gap: 10px; margin-top: 14px; }
+  .verplicht { font-size: 11px; color: var(--red); font-weight: 600; margin-top: 5px; display: none; }
+  .verplicht.zichtbaar { display: block; }
+
+  /* ===== Biometrie-step-up (stub) ===== */
+  .bio { text-align: center; padding: 6px 0 4px; }
+  .bio .icoon {
+    width: 74px; height: 74px; border-radius: 50%; background: var(--blue-bg); color: var(--accent);
+    font-size: 34px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;
+  }
+  .bio .icoon.ok { background: var(--green-bg); color: var(--green); }
+  .bio b { font-size: 15px; display: block; margin-bottom: 6px; }
+  .bio .sub { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .stub { display: inline-block; margin-top: 10px; font-size: 10.5px; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 4px 10px; }
+
+  /* ===== Staande goedkeuringen (beheer) ===== */
+  .sg-item {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 13px 15px; margin-bottom: 10px;
+  }
+  .sg-item .kop { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .sg-item .lev { font-weight: 700; }
+  .sg-item .amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sg-item .meta { font-size: 11.5px; color: var(--muted); margin: 5px 0 9px; line-height: 1.45; }
+  .sg-leeg { font-size: 12.5px; color: var(--muted); text-align: center; padding: 28px 12px; }
+  .uitlegblok {
+    background: var(--orange-bg); border-radius: 10px; padding: 10px 13px; font-size: 11.5px;
+    line-height: 1.55; color: var(--orange); margin-bottom: 14px;
+  }
+
+  .toast {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; background: #14242b; color: #e6efec;
+    padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 600; box-shadow: 0 6px 24px rgba(0,0,0,.35);
+    opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 60; white-space: nowrap;
+  }
+  .toast.zichtbaar { opacity: 1; }
+
+  .mock-note { position: fixed; bottom: 12px; right: 14px; background: #17223b; color: #9db2d6; font-size: 11px; padding: 6px 12px; border-radius: 14px; opacity: .85; font-weight: 600; letter-spacing: .02em; z-index: 99; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="phone" id="phone">
+
+    <div class="apphead">
+      <div>
+        <b>RLZ <span>Goedkeuren</span></b>
+        <div class="who">BLOW B.V. · S. Bakker (laag 1)</div>
+      </div>
+      <div class="headbtns">
+        <button class="iconbtn" title="Staande goedkeuringen" onclick="toon('beheer')">✓✓</button>
+        <button class="iconbtn" title="Licht/donker" onclick="document.body.classList.toggle('dark')">◐</button>
+      </div>
+    </div>
+
+    <div class="content" id="content">
+
+      <!-- ================= WACHTRIJ ================= -->
+      <div class="view active" id="wachtrij">
+        <div class="pushnote"><span class="t">🔔</span>
+          <div><b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.<br>
+          "Goedemorgen! Er wachten nog <b id="pushteller">3 facturen</b> op je akkoord."</div>
+        </div>
+        <div class="qcount" id="qcount">3 facturen wachten op je akkoord</div>
+        <div id="qlijst"></div>
+        <div class="leeg" id="qleeg" style="display:none">
+          <div class="big">✓</div>
+          <b>Alles afgehandeld</b>
+          Er staat niets meer voor je klaar. Je krijgt een melding zodra er een nieuwe factuur op je akkoord wacht.
+        </div>
+      </div>
+
+      <!-- ================= REVIEW (factuurbeeld centraal) ================= -->
+      <div class="view" id="review">
+        <div class="revtop">
+          <button class="terug" onclick="toon('wachtrij')">‹ Wachtrij</button>
+          <span class="tel" id="revteller">1 van 3</span>
+        </div>
+        <div class="docpane">
+          <div class="fakepdf" id="pdf"></div>
+        </div>
+        <div class="boekinfo" id="boekinfo"></div>
+        <div class="staandnote" id="staandhint" style="display:none">
+          <span>✓✓</span><div>Je keurde eerder een factuur van deze leverancier met <b>exact hetzelfde bedrag</b> goed. Na dit akkoord kun je een staande goedkeuring instellen.</div>
+        </div>
+      </div>
+
+      <!-- ================= BEHEER STAANDE GOEDKEURINGEN ================= -->
+      <div class="view" id="beheer">
+        <div class="revtop">
+          <button class="terug" onclick="toon('wachtrij')">‹ Wachtrij</button>
+        </div>
+        <h2 style="font-size:16px;margin-bottom:10px">Staande goedkeuringen</h2>
+        <div class="uitlegblok">Een staande goedkeuring vervangt alléén jouw akkoord-klik — nooit de controles van het kantoor. Duplicaat-, IBAN- en regelchecks blijven elke factuur blokkeren als er iets afwijkt. Wijkt het bedrag ook maar één cent af, dan komt de factuur gewoon bij je terug.</div>
+        <div id="sglijst"></div>
+        <div class="sg-leeg" id="sgleeg">Je hebt nog geen staande goedkeuringen.<br>Je kunt er een instellen bij het akkoord op een terugkerende factuur met een vast bedrag.</div>
+      </div>
+
+    </div>
+
+    <!-- Actiebalk (alleen in review) -->
+    <div class="actionbar" id="actionbar">
+      <button class="btn afwijs" onclick="openAfwijzen()">Afwijzen</button>
+      <button class="btn groen" onclick="openBio()">Akkoord ✓</button>
+    </div>
+
+    <!-- ================= SHEET: AFWIJZEN MET VERPLICHTE REDEN ================= -->
+    <div class="sheet-bg" id="sheetAfwijzen">
+      <div class="sheet">
+        <h2>Factuur afwijzen</h2>
+        <div class="uitleg">Een reden is <b>verplicht</b>. Je afwijzing gaat mét reden terug naar de werkvoorraad van het kantoor ("Afgewezen — ter controle") — er verdwijnt nooit iets stil.</div>
+        <textarea id="redenveld" placeholder="Bijv.: dit werk is nog niet opgeleverd — factuur is te vroeg gestuurd"></textarea>
+        <div class="verplicht" id="redenfout">Vul eerst een reden in — zonder reden kan er niet afgewezen worden.</div>
+        <div class="rij">
+          <button class="btn secundair" onclick="sluit('sheetAfwijzen')">Annuleren</button>
+          <button class="btn afwijs" onclick="bevestigAfwijzen()">Afwijzen met reden</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= SHEET: BIOMETRIE-STEP-UP (STUB) ================= -->
+    <div class="sheet-bg" id="sheetBio">
+      <div class="sheet">
+        <div class="bio">
+          <div class="icoon" id="bioicoon">☉</div>
+          <b id="biotitel">Bevestig je akkoord</b>
+          <div class="sub" id="biosub">Face ID / vingerafdruk — de biometrische bevestiging zit op de akkoord-actie zélf, niet op het inloggen. Eén keer inloggen, daarna blijf je ingelogd.</div>
+          <span class="stub">stub — in de app: passkey/WebAuthn</span>
+        </div>
+        <div class="rij">
+          <button class="btn secundair" onclick="sluit('sheetBio')">Annuleren</button>
+          <button class="btn groen" id="bioknop" onclick="bioBevestigd()">Simuleer biometrie</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= SHEET: STAANDE GOEDKEURING VOORSTELLEN ================= -->
+    <div class="sheet-bg" id="sheetStaand">
+      <div class="sheet">
+        <h2>Voortaan automatisch akkoord?</h2>
+        <div class="uitleg" id="staanduitleg"></div>
+        <div class="uitlegblok" style="margin-bottom:0">De controles van het kantoor (duplicaat, IBAN-wissel, regels) blijven élke factuur toetsen — een staande goedkeuring vervangt alleen jouw klik. Elk automatisch akkoord komt met vermelding in de tijdlijn en het audit log. Je kunt de regel hier altijd intrekken.</div>
+        <div class="rij">
+          <button class="btn secundair" onclick="sluitStaand(false)">Nee, alleen deze</button>
+          <button class="btn paars" onclick="sluitStaand(true)">Ja, sta toe</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <!-- ================= DESKTOP = AFGELEIDE ================= -->
+  <div class="desknote">
+    <h2>Accordeur-app — mockup</h2>
+    <p><b>Mobiel is leading</b> (besluit 2026-08-08): ~99% van de accordeurs gebruikt straks uitsluitend de telefoon. Wat je hiernaast ziet ís het ontwerp; deze desktop-weergave is de afgeleide.</p>
+    <p class="k">Scope bewust smal: alléén de accordeer-wachtrij — factuurbeeld + akkoord/afwijzen. Geen werkvoorraad, lijsten of instellingen (dat is de web-app van het kantoor). Boven de duim: één kaartlijst, factuurbeeld centraal, acties onderin binnen duimbereik, akkoord → automatisch de volgende.</p>
+    <p class="k">Klik door: <b>wachtrij → factuur → Akkoord</b> (biometrie-stub) of <b>Afwijzen</b> (verplichte reden). De 2e factuur van Essent heeft exact hetzelfde bedrag als een eerder akkoord — na dat akkoord stelt de app een <b>staande goedkeuring</b> voor. Beheer/intrekken via ✓✓ rechtsboven.</p>
+    <p class="k">Beoordeel op het mobiele breakpoint: maak het venster smaller dan ~580px of open dit bestand op een telefoon.</p>
+  </div>
+</div>
+
+<div class="mock-note">MOCKUP · accordeur-flow · ter beoordeling</div>
+
+<script>
+  // ===== Demodata: wachtrij van S. Bakker (laag 1) =====
+  // Essent stond vorige maand óók op € 847,00 en werd toen door S. Bakker goedgekeurd
+  // → bij akkoord op #2 volgt het staande-goedkeuring-voorstel (2e identieke factuur).
+  const facturen = [
+    { id: 1, lev: "Growshop De Toekomst", nr: "2026-0221", datum: "30-06-2026", omschrijving: "Kweekbenodigdheden div.", netto: "€ 2.049,59", btw: "Btw 21% — € 430,41", totaal: "€ 2.480,00", boeking: "Inkopen Headshop · btw 21%", verval: "vervalt 30-07", herhaald: false },
+    { id: 2, lev: "Essent Zakelijk", nr: "E-2026-07-8841", datum: "01-07-2026", omschrijving: "Energie juli — vast contract", netto: "€ 700,00", btw: "Btw 21% — € 147,00", totaal: "€ 847,00", boeking: "Gas, water en elektra · btw 21%", verval: "vervalt 15-07", herhaald: true },
+    { id: 3, lev: "Verpakkingen Noord B.V.", nr: "VN-10388", datum: "02-07-2026", omschrijving: "Gripzakken + etiketten", netto: "€ 391,74", btw: "Btw 21% — € 82,26", totaal: "€ 474,00", boeking: "Verpakkingsmateriaal · btw 21%", verval: "vervalt 01-08", herhaald: false }
+  ];
+  let wachtrij = [...facturen];
+  let huidige = null;
+  let totaalStart = facturen.length;
+  const staande = []; // { lev, bedrag, sinds }
+
+  function eur(f) { return f.totaal; }
+
+  function renderWachtrij() {
+    const lijst = document.getElementById('qlijst');
+    lijst.innerHTML = '';
+    wachtrij.forEach(f => {
+      const kaart = document.createElement('div');
+      kaart.className = 'qcard';
+      kaart.onclick = () => openReview(f);
+      kaart.innerHTML = `<div><div class="lev">${f.lev}</div><div class="meta">nr. ${f.nr} · ${f.datum}` +
+        (f.herhaald ? ` · <span class="chip staand">zelfde bedrag als vorige</span>` : ``) +
+        `</div></div><div style="display:flex;align-items:center;gap:10px"><span class="amt">${f.totaal}</span><span class="arrow">›</span></div>`;
+      lijst.appendChild(kaart);
+    });
+    const n = wachtrij.length;
+    document.getElementById('qcount').textContent = n === 1 ? '1 factuur wacht op je akkoord' : `${n} facturen wachten op je akkoord`;
+    document.getElementById('pushteller').textContent = n === 1 ? '1 factuur' : `${n} facturen`;
+    document.getElementById('qcount').style.display = n ? '' : 'none';
+    document.querySelector('.pushnote').style.display = n ? '' : 'none';
+    document.getElementById('qleeg').style.display = n ? 'none' : '';
+  }
+
+  function openReview(f) {
+    huidige = f;
+    document.getElementById('pdf').innerHTML =
+      `<h3>FACTUUR — ${f.lev}</h3><span class="sub">nr. ${f.nr} · ${f.datum}</span><hr>` +
+      `<div class="fr"><span>${f.omschrijving}</span><span>${f.netto}</span></div>` +
+      `<div class="fr"><span>${f.btw.split(' — ')[0]}</span><span>${f.btw.split(' — ')[1]}</span></div><hr>` +
+      `<div class="fr"><b>Totaal</b><b>${f.totaal}</b></div>` +
+      `<div class="zoom">(volledige PDF, zoombaar — knijp of dubbeltik)</div>`;
+    document.getElementById('boekinfo').innerHTML =
+      `Boeking: <b>${f.boeking}</b><br><span class="k">${f.totaal} · ${f.verval}</span>`;
+    document.getElementById('staandhint').style.display = f.herhaald ? 'flex' : 'none';
+    document.getElementById('revteller').textContent = `${totaalStart - wachtrij.length + 1} van ${totaalStart}`;
+    toon('review');
+  }
+
+  function toon(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.getElementById('actionbar').classList.toggle('zichtbaar', id === 'review');
+    if (id === 'wachtrij') renderWachtrij();
+    if (id === 'beheer') renderStaande();
+    document.getElementById('content').scrollTop = 0;
+  }
+
+  // ===== Afwijzen met verplichte reden =====
+  function openAfwijzen() {
+    document.getElementById('redenveld').value = '';
+    document.getElementById('redenfout').classList.remove('zichtbaar');
+    document.getElementById('sheetAfwijzen').classList.add('open');
+  }
+  function bevestigAfwijzen() {
+    const reden = document.getElementById('redenveld').value.trim();
+    if (!reden) { document.getElementById('redenfout').classList.add('zichtbaar'); return; }
+    sluit('sheetAfwijzen');
+    naVerwerking(`Afgewezen — met reden terug naar het kantoor`);
+  }
+
+  // ===== Biometrie-step-up (stub) op de akkoord-actie zélf =====
+  function openBio() {
+    document.getElementById('bioicoon').className = 'icoon';
+    document.getElementById('bioicoon').textContent = '☉';
+    document.getElementById('biotitel').textContent = 'Bevestig je akkoord';
+    document.getElementById('bioknop').style.display = '';
+    document.getElementById('sheetBio').classList.add('open');
+  }
+  function bioBevestigd() {
+    const icoon = document.getElementById('bioicoon');
+    icoon.className = 'icoon ok'; icoon.textContent = '✓';
+    document.getElementById('biotitel').textContent = 'Akkoord vastgelegd';
+    document.getElementById('bioknop').style.display = 'none';
+    setTimeout(() => {
+      sluit('sheetBio');
+      if (huidige && huidige.herhaald) { stelStaandVoor(); }
+      else { naVerwerking('Akkoord ✓'); }
+    }, 550);
+  }
+
+  // ===== Staande goedkeuring: voorstel na 2e identieke factuur =====
+  function stelStaandVoor() {
+    document.getElementById('staanduitleg').innerHTML =
+      `Dit is de <b>tweede factuur van ${huidige.lev} met exact ${huidige.totaal}</b> die je goedkeurt. ` +
+      `Wil je een staande goedkeuring instellen? Elke volgende factuur van ${huidige.lev} met <b>exact ${huidige.totaal}</b> wordt dan automatisch namens jou geaccordeerd. Elk ander bedrag komt gewoon bij je terug.`;
+    document.getElementById('sheetStaand').classList.add('open');
+  }
+  function sluitStaand(ja) {
+    sluit('sheetStaand');
+    if (ja) {
+      staande.push({ lev: huidige.lev, bedrag: huidige.totaal, sinds: 'vandaag' });
+      naVerwerking(`Akkoord ✓ · staande goedkeuring ingesteld`);
+    } else {
+      naVerwerking('Akkoord ✓');
+    }
+  }
+
+  // ===== Beheer / intrekken =====
+  function renderStaande() {
+    const lijst = document.getElementById('sglijst');
+    lijst.innerHTML = '';
+    staande.forEach((r, i) => {
+      const el = document.createElement('div');
+      el.className = 'sg-item';
+      el.innerHTML = `<div class="kop"><span class="lev">${r.lev}</span><span class="amt">${r.bedrag}</span></div>` +
+        `<div class="meta">Automatisch akkoord bij exact dit bedrag · ingesteld ${r.sinds} · elke toepassing zichtbaar in tijdlijn + audit log</div>` +
+        `<button class="btn klein afwijs" onclick="trekIn(${i})">Intrekken</button>`;
+      lijst.appendChild(el);
+    });
+    document.getElementById('sgleeg').style.display = staande.length ? 'none' : '';
+  }
+  function trekIn(i) {
+    staande.splice(i, 1);
+    renderStaande();
+    toast('Staande goedkeuring ingetrokken');
+  }
+
+  // ===== Flow: verwerkt → automatisch de volgende =====
+  function naVerwerking(melding) {
+    wachtrij = wachtrij.filter(f => f.id !== huidige.id);
+    toast(melding);
+    if (wachtrij.length) {
+      setTimeout(() => openReview(wachtrij[0]), 350);
+    } else {
+      setTimeout(() => toon('wachtrij'), 350);
+    }
+  }
+
+  function sluit(id) { document.getElementById(id).classList.remove('open'); }
+  let toastTimer = null;
+  function toast(txt) {
+    const t = document.getElementById('toast');
+    t.textContent = txt; t.classList.add('zichtbaar');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('zichtbaar'), 1900);
+  }
+
+  renderWachtrij();
+</script>
+</body>
+</html>
