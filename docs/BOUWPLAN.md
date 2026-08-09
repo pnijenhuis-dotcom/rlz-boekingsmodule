@@ -581,7 +581,10 @@ UI-eisen):
   actie 19 (Correct) zet een RLZ-document terug naar concept i.p.v. een apart creditdocument —
   archief/tijdlijn kunnen dus geen zichtbaar stornering-/credit-spoor uit RLZ's documentstatus
   lezen. Het correctiespoor ("wanneer gestorneerd, door wie, waarom") moet uit ons eigen
-  `audit_event` komen. Nu nog niet uitwerken — check bij het bouwen van dit scherm.
+  `audit_event` komen. **→ Archief + globaal zoeken GEBOUWD + GETEST (2026-08-09, blok 4
+  grote opdracht — zie docs/BESLISSINGEN.md "Zoeken + archief"):** `backend/app/zoeken/` +
+  `frontend/src/zoeken/`, scope-veilig per administratie; het correctiespoor komt conform
+  §7.3 uit de eigen tijdlijn/audit (nooit RLZ-status). Bulk-boeken blijft open.
 
 ## Fase 3 — Klantportaal + intake
 
@@ -603,8 +606,10 @@ UI-eisen):
   tenaamstelling, toewijzings-geheugen, splitsing-ter-controle, verzamelbak-acties),
   intake-AI-gate (default UIT), verzamelbak-paneel + .eml-upload in de werkvoorraad.
   **Open:** live IMAP/Cloud Scheduler-fetch = gemarkeerde seam (activeren bij de GCP-uitrol);
-  verkoopfactuur-reviewscherm/boekpad voor Vastly-documenten (keuzes aan Peter voorgelegd);
-  "verkeerde tenaamstelling"-mailflow wacht op platform-e-mailverzending.
+  "verkeerde tenaamstelling"-mailflow wacht op platform-e-mailverzending. Het
+  verkoopfactuur-reviewscherm/boekpad is GEBOUWD + GETEST (2026-08-09, blok 1 grote
+  opdracht — migratie 0035, `app/verkoop/`, incl. échte-huurder-debiteur, GB-uit-UBL,
+  CreditNote-381-gate en factuur_geboekt-webhook; zie docs/BESLISSINGEN.md).
 - Rollenmodel volledig (module-zichtbaarheid per rol).
 
 ## Fase 4 — Projectenmodule

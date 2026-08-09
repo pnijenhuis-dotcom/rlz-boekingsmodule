@@ -140,10 +140,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02), memoriaal-saldo-0
   (omzetmodule, 2026-08-07) én het VGB-prefixfilter (e-mail-intake, 2026-08-07 — dekt het
   intake-kanaal; bij een latere leesroute uit gedeelde administraties dáár opnieuw toepassen)
-  zijn gebouwd + getest; **nog niet gebouwd:** per-leverancier-autoboeken-opt-in — trigger
-  aangescherpt (drift-audit 2026-08-07): vereist vóór het eerste autoboeken van
-  ínkoopfacturen; NB bank-autoboeken (opt-in per administrátie, vaste regels) is al live
-  sinds 2026-08-02 en valt buiten deze poort.
+  zijn gebouwd + getest; **per-leverancier-autoboeken-opt-in: GEBOUWD + GETEST (2026-08-09,
+  migratie 0036 + `app/documenten/autoboeken.py`)** — boekt ná extractie uitsluitend bij
+  opt-in aan (Beheerder-only, default UIT) + harde checks groen + voorstel volledig uit
+  app-bevestigd boekingsgeheugen (seed-only/oranje weigert) + geen mogelijk-duplicaat/open
+  vraag/afwijzing; volumerem en accorderingspoort onverkort; elk geval geauditeerd +
+  tijdlijn-/werkvoorraadmarkering "automatisch". NB bank-autoboeken (opt-in per
+  administrátie, vaste regels) staat hier los van (live sinds 2026-08-02).
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
@@ -161,8 +164,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   uploadzone) is het werkende kanaal, idempotent op Message-ID; de live IMAP-fetch is een
   gemarkeerde seam (`app/intake/postvak.py` + intake_imap_*-settings) die bij de GCP-uitrol
   geactiveerd wordt. Routing per bijlage: kapotte/NLCIUS-invalide UBL → verzamelbak (§2d-
-  failsafe), VGB → genegeerd-maar-zichtbaar, VASTLY-VERKOOP → soort 'verkoopfactuur' (boekpad =
-  open vervolg op de herbruikbare SalesInvoice-motor), inkoop-UBL → tenaamstelling-toewijzing,
+  failsafe), VGB → genegeerd-maar-zichtbaar, VASTLY-VERKOOP → soort 'verkoopfactuur' (het
+  boekpad is sinds 2026-08-09 GEBOUWD — zie "Verkoopfactuur-boekpad" hieronder; een 381-
+  CreditNote zit achter de config-gate `creditnota_381_ingeschakeld`, default UIT — gate
+  dicht = zichtbaar in de verzamelbak), inkoop-UBL → tenaamstelling-toewijzing,
   PDF → intake-AI achter de platform-brede AVG-gate `intake_ai_ingeschakeld` (default UIT;
   sinds migratie 0029 een Beheerder-instelling `platform.intake_instelling` — knop op
   Instellingen + `make intake-ai-aan/-uit`, env-setting alleen nog fallback zolang die rij
@@ -187,15 +192,31 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   nummer-botsing deterministisch hersteld — InvoiceNumber is op de Receipts-collectie niet
   filter-/sorteerbaar, dus herstel blijft max(SalesInvoices-collectie, lokaal)+1);
   duplicaatbewaking = lokaal per periode (DB-uniek) + eigen client-GUID +
-  memoriaal-Reference-check + Receipts-Description-check (deterministische periode-omschrijving
-  `OMZ-…-VK`; de Receipts-collectie ziet — anders dan SalesInvoices — óók API-documenten). De
+  memoriaal-Reference-check + Receipts-prefix-check (deterministische periode-marker
+  `OMZ-…-VK` als PREFIX in regel 1 + `startswith`-filter — **verkoop-STAP-0 2026-08-09: RLZ
+  negeert de document-Description en leidt 'm af uit de éérste regel-Description**; de
+  Receipts-collectie ziet — anders dan SalesInvoices — óók API-documenten). De
   systeemdebiteur "Kasomzet" wordt niet meer aangemaakt (instelling-kolommen gemarkeerd
   vervallen; bestaande RLZ-debiteuren blijven staan — nooit verwijderen). Kassabedragen incl.
   btw → splitsing in code; één-transactie-garantie volledig in de app (memoriaal faalt →
   storno verkoop, storno faalt óók → zichtbaar `half_geboekt` + `make omzet-reconciliatie`).
   Mapping-loze categorie = blokkerende check + automatische vraag. De SalesInvoice-motor
-  blijft herbruikbaar (customer_id optioneel) voor de Vastly-verkoopfactuur-routing (§2d,
-  fase 3, dan mét Entity).
+  blijft herbruikbaar (customer_id optioneel) — het Vastly-verkooppad hieronder draait erop.
+- **Verkoopfactuur-boekpad (Vastly, §2d)** — **GEBOUWD + GETEST (2026-08-09)**: migratie 0035 +
+  `backend/app/verkoop/` + `frontend/src/verkoop/`; details BESLISSINGEN
+  "Vastly-verkoopfactuur-boekpad". Boekt een VASTLY-VERKOOP-document als SalesInvoice MÉT
+  Entity = de échte huurder (idempotente debiteur-aanmaak uit de UBL: lookup-vóór-PUT +
+  deterministisch client-GUID — géén verzameldebiteur, besluit Peter 2026-08-08); GB per
+  regel deterministisch uit `cbc:AccountingCost` (onbekende code = blokkerend + automatische
+  vraag; ontbrekende code = mens kiest), btw uit de UBL-regels (ondubbelzinnige
+  percentage-match, anders mens); harde checks conform inkoop + creditnota-herleiding;
+  duplicaatbewaking lokaal DB-uniek per (administratie, Vastly-nummer, soort) + Receipts-
+  prefix-check (marker `VASTLY-VERKOOP {nr} ·` in regel 1). CreditNote 381 = negatieve
+  tegenboeking op dezelfde debiteur, herkenning achter config-gate
+  `creditnota_381_ingeschakeld` (default UIT). `factuur_geboekt`-webhook vuurt óók hier
+  (referentie = Vastly-factuurnummer). STAP-0-feiten: api-verkenning "Verkoopfactuur-boekpad
+  STAP-0" (o.a. Entity alleen zichtbaar mét `$expand`; document-Description afgeleid van
+  regel 1). Open: verificatie tegen échte Vastly-golden-case-UBL's (nog niet aangeleverd).
 - **Bank**: klantenlijst → rekening (alle `PaymentAccounts` incl. kas). Voorstel-volgorde:
   1) exacte match naam+factuurnr+**bedrag** → auto-afletteren; 2) gedeeltelijke match → bevestigen;
   3) vaste regels (geheugen; na 3× zelfde handmatige boeking regel voorstellen); 4) RLZ's eigen
@@ -239,6 +260,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Projectcode-generatie** volgens naamconventie van de klant (bijv. Universal: "26xxx Plaats
   (Opdrachtgever)"), synct bij aanmaken naar RLZ.
 - **Zoeken**: globaal over boekingen (incl. archief + RLZ-boekstuk + PDF), accorderingshistorie
+  — **GEBOUWD + GETEST (2026-08-09)**: `backend/app/zoeken/` + `frontend/src/zoeken/`,
+  scope-veilig per administratie (RLS + server-side), doorzoekt kopgegevens + lokaal
+  aanwezige extractietekst (veldvoorstel — bewust geen nieuwe AI-calls), vragen en
+  accorderingshistorie inline, audit-sectie conform mockup #zoeken. Zie hieronder;
+  archiefweergave per administratie idem gebouwd.
   inline, vragen, audit. **Tijdlijn** per boeking (binnenkomst → extractie → vraag → accordering →
   boeking, met datum+tijd).
 - **Archief**: geboekte documenten 7 jaar terugvindbaar met PDF (bewaarplicht).
@@ -277,8 +303,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   zichtbaar geregistreerd.
 - Wij pushen bij "geboekt" een webhook per inkoopfactuur van vastgoed-administraties (payload:
   rlz_document_id, referentie, adminId, datum, leverancier, regels met ledger+GB-code+bedragen —
-  de wérkelijke payload is sinds v1.10 de contractnorm); t.z.t. ook bij het boeken van een
-  VASTLY-VERKOOP-document (referentie = Vastly-factuurnummer).
+  de wérkelijke payload is sinds v1.10 de contractnorm); **sinds 2026-08-09 óók bij het boeken
+  van een VASTLY-VERKOOP-document** (referentie = Vastly-factuurnummer; velden `soort` +
+  `debiteur` i.p.v. `leverancier` — formele §3-opname van die verkoop-veldvorm is een open
+  contract-actie, zie Platform OPEN_ITEMS).
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
@@ -289,17 +317,21 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (RLZ-template-rekening; inventarisatie herhalen per nieuwe vastgoed-administratie).
 - **v1.11-addenda (2026-08-09, besluiten Peter 2026-08-08):** §2d-creditnota's (apart UBL
   CreditNote-document 381 mét VASTLY-VERKOOP-markering + BillingReference-herleiding →
-  creditboeking omzetkant; bouw bij het verkoopfactuur-boekpad, gate vastgoed-kant dicht tot
-  wij herkennen) en de §3-`factuur_afgeletterd`-velddefinitie DEFINITIEF (cumulatief
-  betaald_bedrag + open_bedrag, volgnummer, ont_afgeletterd expliciet, tier-vlag per
-  administratie; bron altijd OpenAmount, idempotent per document+volgnummer — bouw bij de
-  bankfase, event UIT tot activatie). Vastly-verkoopfacturen boeken op de **échte huurder als
-  RLZ-debiteur** (idempotente debiteur-aanmaak uit de UBL, besluit Peter 2026-08-08 — geen
-  verzameldebiteur; zie BESLISSINGEN).
+  creditboeking omzetkant) — **herkenning + creditboekpad GEBOUWD (2026-08-09)** achter onze
+  config-gate `creditnota_381_ingeschakeld` (default UIT; activatievolgorde met vastgoeds
+  CREDITNOTA_381_ACTIEF via OPEN_ITEMS, golden-case-verificatie open); de
+  §3-`factuur_afgeletterd`-velddefinitie DEFINITIEF — **payload GEBOUWD (2026-08-09,
+  schema_version 2.0)**: cumulatief betaald_bedrag + open_bedrag uit BaseRemainingAmount,
+  volgnummer, ont_afgeletterd expliciet, tier-vlag `afgeletterd_event_ingeschakeld` per
+  administratie (migratie 0037) — event blijft UIT tot vastgoeds verwerker.
+  Vastly-verkoopfacturen boeken op de **échte huurder als RLZ-debiteur** (idempotente
+  debiteur-aanmaak uit de UBL, besluit Peter 2026-08-08 — geen verzameldebiteur; GEBOUWD, zie
+  BESLISSINGEN).
 - **Vastly-verkoopfacturen (§2d, v1.9)**: e-mail-intake routeert op de vaste UBL-markering
   `cac:AdditionalDocumentReference/cbc:ID = "VASTLY-VERKOOP"` (nooit op afzender) → omzetkant
   (SalesInvoice). Geen/kapotte markering of NLCIUS-invalide UBL → verzamelbak "Niet toegewezen",
-  nooit stil naar inkoop. Bouw bij fase 3 (intake) + fase 2 (omzet).
+  nooit stil naar inkoop. Intake gebouwd 2026-08-07; boekpad gebouwd 2026-08-09 (zie
+  "Verkoopfactuur-boekpad" hierboven).
 - **WOZ-zij-extractie (§2e, v1.9)**: uit de OZB-aanslag (die wij gewoon als kostenfactuur boeken)
   extraheren wij jaargebonden WOZ-regels — mens bevestigt, waardepeildatum extraheren-en-bevestigen
   (nooit afleiden) + deterministische plausibiliteitscheck tegen 1 jan (belastingjaar − 1) —
@@ -308,6 +340,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 ## Referenties in deze repo
 
 - `mockup/index.html` — goedgekeurde UI (alle schermen, klikbaar; design tokens = CSS-variabelen)
+- `mockup/accordeur.html` — klikbare mobile-first accordeur-app-mockup (blok 5, 2026-08-09;
+  ter beoordeling Peter op het mobiele breakpoint — bouw start pas na akkoord)
 - `verkenning/api-verkenning.md` — alle geverifieerde API-feiten + PoC-resultaten
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
