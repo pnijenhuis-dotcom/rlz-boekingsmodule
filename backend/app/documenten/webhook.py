@@ -14,11 +14,18 @@ from app.config import settings
 
 WEBHOOK_SCHEMA_VERSION = "1.0"
 FACTUUR_GEBOEKT_EVENT = "factuur_geboekt"
-# Tier-model-terugkoppeling naar Vastly (bankmodule, 2026-08-02): zelfde kanaal, zelfde
-# envelope/HMAC, alleen een extra event-type — géén nieuw koppelvlak. De ontvanger routeert op
-# het `event`-veld; koppelcontract §3 moet dit event nog formeel opnemen (open punt richting
-# vastgoed, zie docs/BESLISSINGEN.md "Bankmodule").
+# Tier-model-terugkoppeling naar Vastly (koppelcontract §3, velddefinitie DEFINITIEF v1.11):
+# zelfde kanaal, zelfde envelope/HMAC, eigen event-type én een EIGEN schemaversie
+# (registers/schema-versions.md: de v1.10-payload zonder bedragen is vervallen, de bump is
+# verplicht zodat een ontvanger op de oude versie expliciet weigert i.p.v. verkeerd parsen).
 FACTUUR_AFGELETTERD_EVENT = "factuur_afgeletterd"
+AFGELETTERD_SCHEMA_VERSION = "2.0"
+
+# Scenario-enum van het afgeletterd-event (§3 v1.11): deelbetalingen genereren wél een event
+# (G-rekening-split is de standaardcase) en ont-afletteren is expliciet — nooit stil.
+AFGELETTERD_SCENARIO_VOLLEDIG = "afgeletterd"
+AFGELETTERD_SCENARIO_DEEL = "deel_afgeletterd"
+AFGELETTERD_SCENARIO_ONT = "ont_afgeletterd"
 _DEV_ENVIRONMENTS = ("dev", "local")
 
 
@@ -175,24 +182,40 @@ def bouw_factuur_afgeletterd_payload(
     rlz_document_id: uuid.UUID,
     rlz_boekstuknummer: str | None,
     referentie: str | None,
-    geconstateerd_op: datetime,
+    volgnummer: int,
+    betaald_bedrag: Decimal,
+    open_bedrag: Decimal,
+    scenario: str,
+    afgeletterd_op: datetime,
 ) -> dict:
-    """ONGETEKENDE payload voor het "factuur afgeletterd"-event (tier-model naar Vastly): een
-    eerder via de webhook gemelde, geboekte inkoopfactuur van een vastgoed-administratie heeft
-    RLZ-documentstatus 3 (Gesloten — volledig betaald/afgeletterd) bereikt. Detectie loopt via
-    de documentstatus zelf en dekt dus zowel afletteren in de RLZ-UI (assist-model) als elke
-    toekomstige API-route. `geconstateerd_op` is het detectiemoment (onze sync), niet het
-    exacte betaalmoment — dat kent RLZ's status-veld niet."""
+    """ONGETEKENDE payload voor het "factuur afgeletterd"-event — velddefinitie DEFINITIEF
+    (koppelcontract §3 v1.11, besluit Peter 2026-08-08):
+
+    - `betaald_bedrag` is CUMULATIEF betaald en `open_bedrag` wat er nog open staat — bron is
+      altijd `BaseRemainingAmount`/OpenAmount, nooit `IsComplete` (bewezen stale na
+      terugdraaien, api-verkenning schrijf-PoC).
+    - `volgnummer` loopt per document monotoon op bij élke standwijziging; de ontvanger is
+      idempotent per (rlz_document_id, volgnummer) — herlevering = no-op, en een gemiste
+      tussenstand is onschadelijk omdat de bedragen cumulatief zijn.
+    - `scenario`: afgeletterd | deel_afgeletterd (G-rekening-split = standaardcase) |
+      ont_afgeletterd (in de RLZ-UI teruggedraaid — expliciet, nooit stil).
+    - `afgeletterd_op` is het waarnemingsmoment van de standwijziging (onze sync).
+    - Eigen `schema_version` (2.0): de v1.10-payload zonder bedragen is vervallen — een
+      ontvanger op de oude versie weigert expliciet i.p.v. verkeerd parsen."""
     data = {
         "administratie_id": str(administratie_id),
         "rlz_admin_id": rlz_admin_id,
         "rlz_document_id": str(rlz_document_id),
         "rlz_boekstuknummer": rlz_boekstuknummer,
         "referentie": referentie,
-        "geconstateerd_op": geconstateerd_op.isoformat(),
+        "volgnummer": volgnummer,
+        "betaald_bedrag": str(betaald_bedrag),
+        "open_bedrag": str(open_bedrag),
+        "scenario": scenario,
+        "afgeletterd_op": afgeletterd_op.isoformat(),
     }
     return {
-        "schema_version": WEBHOOK_SCHEMA_VERSION,
+        "schema_version": AFGELETTERD_SCHEMA_VERSION,
         "event": FACTUUR_AFGELETTERD_EVENT,
         "data": data,
     }

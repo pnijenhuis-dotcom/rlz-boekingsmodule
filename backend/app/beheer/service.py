@@ -189,6 +189,33 @@ def haal_bank_autoboeken_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool
         return administratie.bank_autoboeken_ingeschakeld
 
 
+def zet_afgeletterd_event_ingeschakeld(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
+) -> bool:
+    """Tier-vlag voor het factuur_afgeletterd-event (migratie 0037, koppelcontract §3 v1.11
+    punt 5 + besluit 0018): het event wordt uitsluitend aangemaakt voor administraties met
+    deze vlag. Default UIT — activatie wacht op vastgoeds verwerker; de aflevering zelf staat
+    daarnaast achter platform.webhook_instelling (default UIT)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.afgeletterd_event_ingeschakeld
+        administratie.afgeletterd_event_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="afgeletterd_event_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"afgeletterd_event_ingeschakeld": oud},
+            nieuwe_waarde={"afgeletterd_event_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
 def zet_bank_autoboeken_ingeschakeld(
     *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
 ) -> bool:

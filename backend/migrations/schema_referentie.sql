@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0035
+-- Migratie-head bij deze dump: 0037
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -727,7 +727,8 @@ CREATE TABLE boekhouding.leverancier_voorkeur (
     administratie_id uuid NOT NULL,
     vendor_id uuid NOT NULL,
     regels_samenvoegen boolean NOT NULL,
-    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    autoboeken_ingeschakeld boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY boekhouding.leverancier_voorkeur FORCE ROW LEVEL SECURITY;
@@ -1123,7 +1124,8 @@ CREATE TABLE platform.administratie (
     is_vastgoed boolean DEFAULT false NOT NULL,
     eigenaar_gebruiker_id uuid,
     bank_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
-    accordering_ingeschakeld boolean DEFAULT false NOT NULL
+    accordering_ingeschakeld boolean DEFAULT false NOT NULL,
+    afgeletterd_event_ingeschakeld boolean DEFAULT false NOT NULL
 );
 
 

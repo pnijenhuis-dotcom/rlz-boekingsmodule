@@ -91,6 +91,11 @@ class Administratie(Base):
     # default UIT. Aan = de boekknop wordt "Ter accordering" en direct boeken is server-side
     # geblokkeerd tot alle vereiste lagen akkoord zijn (app/accordering/service.py).
     accordering_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Tier-vlag (migratie 0037, platformbesluit 0018 + koppelcontract §3 v1.11): het
+    # `factuur_afgeletterd`-event wordt uitsluitend aangemaakt voor administraties met deze
+    # vlag (tier-model optie 2: Vastly + boekingsmodule) — aparte kolom naast is_vastgoed,
+    # default UIT; activatie wacht op vastgoeds verwerker.
+    afgeletterd_event_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

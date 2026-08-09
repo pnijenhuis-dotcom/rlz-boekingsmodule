@@ -188,6 +188,26 @@ def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
     return 0
 
 
+def _zet_afgeletterd_event(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Tier-vlag voor het factuur_afgeletterd-event (koppelcontract §3 v1.11 punt 5, besluit
+    0018) — default UIT; activatie wacht op vastgoeds verwerker."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_afgeletterd_event_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"afgeletterd_event_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    return 0
+
+
 def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Opt-in-toggle voor de volautomatische bankstappen (vaste regels automatisch boeken) —
     zelfde patroon als boeken-aan/-uit: Beheerder als audit_event-actor, default UIT."""
@@ -462,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     for naam, hulp in (
         ("bank-autoboeken-aan", "Zet de bank-autoboek-toggle (vaste regels automatisch boeken) AAN."),
         ("bank-autoboeken-uit", "Zet de bank-autoboek-toggle UIT."),
+        ("afgeletterd-event-aan", "Zet de tier-vlag voor het factuur_afgeletterd-event AAN (§3 v1.11)."),
+        ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
     ):
         bank_auto_parser = subparsers.add_parser(naam, help=hulp)
         bank_auto_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
@@ -563,6 +585,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":
         return _zet_bank_autoboeken(args, ingeschakeld=False)
+    if args.commando == "afgeletterd-event-aan":
+        return _zet_afgeletterd_event(args, ingeschakeld=True)
+    if args.commando == "afgeletterd-event-uit":
+        return _zet_afgeletterd_event(args, ingeschakeld=False)
     if args.commando == "seed-boekingsgeheugen":
         return _seed_boekingsgeheugen(args)
     if args.commando == "boeken-aan":

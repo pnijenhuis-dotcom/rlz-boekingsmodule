@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie bank-autoboeken-aan bank-autoboeken-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie bank-autoboeken-aan bank-autoboeken-uit afgeletterd-event-aan afgeletterd-event-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -100,6 +100,13 @@ bank-autoboeken-aan: check-versions
 
 bank-autoboeken-uit: check-versions
 	.venv/bin/python -m app.cli bank-autoboeken-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+# Tier-vlag factuur_afgeletterd-event (koppelcontract §3 v1.11; activatie wacht op vastgoed)
+afgeletterd-event-aan: check-versions
+	.venv/bin/python -m app.cli afgeletterd-event-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+afgeletterd-event-uit: check-versions
+	.venv/bin/python -m app.cli afgeletterd-event-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
 
 # Eenmalig: de bestaande .env-logins de credential-store in. Voorbeeld:
 # make import-env-credentials BEHEERDER_ID=<uuid>
