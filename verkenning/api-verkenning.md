@@ -1089,3 +1089,28 @@ API niet na te bootsen: `IsImported` niet zetbaar, geen Statements-write).
    conceptvraag onderaan dit document).
 3. Tot die tijd: assist-model blijft; seam `app/bank/afletteren.py::voer_afletter_actie_uit`
    ongewijzigd.
+
+### Afletteren betaal-kant — BODY GEVANGEN (9 augustus 2026, DevTools-capture Peter, Rubicon-UI)
+
+De ontbrekende action-body van de UI-knop "Koppelen" (zie "Afletteren betaal-kant STAP-0"):
+
+    POST /api/v1/{adminId}/PaymentTransactions/{txId}/actions   -> 204
+    {
+      "Type": 15,
+      "PaymentItemList": [{ "id": "<PaymentItem-id>" }],
+      "LinkedAmount": -151.25,
+      "IsCompletelyPaid": false,
+      "PaymentCorrectionMethod": 1
+    }
+
+Waargenomen op twee koppelingen (tx 19251249-… en 2ffa7259-…, beide 204, koppeling aantoonbaar
+verwerkt). Duiding: actie 15 (LinkPaymentItems) was al die tijd het juiste nummer, maar hoort op
+de PAYMENTTRANSACTION, niet op het document (alle eerdere _InvalidData-PoC's zaten op de
+factuur-kant); `PaymentItemList` = de open post(en) — die id's syncen wij al
+(payment_item_cache); `LinkedAmount` draagt het teken van de mutatie (afschrijving negatief);
+`IsCompletelyPaid` en `PaymentCorrectionMethod` (hier false / 1) zijn vermoedelijk de
+betalingsverschil-afhandeling — semantiek per STAP-0 vaststellen. NB de eerdere kale
+`{Type:15}`-sweep gaf 204-zonder-effect: de extra velden zijn dus dragend. Initiator in de UI is
+xhook.min.js (Reeleezee hookt zelf fetch/XHR — verklaart waarom onze in-page interceptor niets
+ving). Vervolg: STAP-0 replay met Basic Auth op de TEST-administratie → daarna seam-swap
+(voer_afletter_actie_uit). Ontkoppel-variant (vermoedelijk Type 16) in dezelfde STAP-0 vangen.
