@@ -335,11 +335,14 @@ def memoriaal_referentie(periode_start: date, periode_eind: date) -> str:
 
 
 def verkoop_omschrijving(periode_start: date, periode_eind: date) -> str:
-    """Deterministische, periode-gebonden Description van de entity-loze verkoopboeking —
-    zelfde principe als memoriaal_referentie: een tweede document over dezelfde periode krijgt
-    dezelfde omschrijving en valt daarmee door de Receipts-duplicaatcheck (de collectie ziet
-    óók API-documenten en is op Description filterbaar — Receipts-verkenning + read-only
-    verificatie 2026-08-09)."""
+    """Deterministische, periode-gebonden duplicaat-marker van de entity-loze verkoopboeking —
+    zelfde principe als memoriaal_referentie: een tweede document over dezelfde periode raakt
+    dezelfde marker en valt daarmee door de Receipts-duplicaatcheck (de collectie ziet óók
+    API-documenten — Receipts-verkenning). ⚠️ Sinds verkoop-STAP-0 (2026-08-09) staat de marker
+    als PREFIX in regel 1 van de boeking en filtert de check op startswith: RLZ negeert de
+    document-Description en leidt 'm af uit de éérste regel-Description — een marker die alleen
+    op documentniveau gezet wordt landt dus nooit in de collectie. Prefix-botsing kan niet:
+    het formaat heeft een vaste lengte (OMZ-YYYYMMDD-YYYYMMDD-VK)."""
     return f"OMZ-{periode_start:%Y%m%d}-{periode_eind:%Y%m%d}-VK"
 
 
@@ -448,8 +451,10 @@ def voer_omzet_checks_uit(
             rlz_hits = len([m for m in gevonden if m.get("id") not in eigen_ids])
             # Verkoop-kant (Receipts-verkenning: de Receipts-collectie ziet — anders dan
             # SalesInvoices — óók API-documenten): vreemde Receipts met onze deterministische
-            # periode-omschrijving in Description.
-            receipts = client.find_receipts_by_description(description=omschrijving)
+            # periode-marker. Startswith, niet exact: RLZ leidt de document-Description af uit
+            # de éérste regel-Description (verkoop-STAP-0 2026-08-09), dus de marker staat als
+            # prefix in regel 1 van de boeking.
+            receipts = client.find_receipts_by_description_prefix(prefix=omschrijving)
             eigen_verkoop_ids = {str(rlz_sales_invoice_id(document_id))}
             if eigen_verkoop_id:
                 eigen_verkoop_ids.add(eigen_verkoop_id)

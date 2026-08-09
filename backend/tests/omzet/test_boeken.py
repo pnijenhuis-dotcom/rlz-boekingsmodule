@@ -81,7 +81,12 @@ class TestBoekOmzetGelukt:
         assert verkoop["DocumentCategory"] == {"id": "9138fa50-d8be-4b6f-9d39-ce5bb2e67f86"}
         from app.omzet.voorstel import verkoop_omschrijving
 
-        assert verkoop["Description"] == verkoop_omschrijving(PERIODE_START, PERIODE_EIND)
+        # Verkoop-STAP-0 (2026-08-09): RLZ leidt de document-Description af uit regel 1 —
+        # de marker staat daarom als prefix in de eerste regel (en de fake bootst dat na).
+        assert verkoop["Description"].startswith(verkoop_omschrijving(PERIODE_START, PERIODE_EIND))
+        assert verkoop["DocumentLineList"][0]["Description"].startswith(
+            verkoop_omschrijving(PERIODE_START, PERIODE_EIND)
+        )
         # Verkoopregels vrijgesteld (geen btw-splitsing).
         assert all(line["TaxAmount"] == 0.0 for line in verkoop["DocumentLineList"])
         assert sum(line["NetAmount"] for line in verkoop["DocumentLineList"]) == pytest.approx(22463.36)

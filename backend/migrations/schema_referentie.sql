@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0034
+-- Migratie-head bij deze dump: 0035
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -987,6 +987,76 @@ ALTER TABLE ONLY boekhouding.vendor_cache FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: verkoop_boeking; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.verkoop_boeking (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    factuurnummer text NOT NULL,
+    is_creditnota boolean DEFAULT false NOT NULL,
+    totaalbedrag_incl numeric(14,2) NOT NULL,
+    debiteur_customer_id uuid NOT NULL,
+    debiteur_naam text NOT NULL,
+    verkoop_rlz_id uuid NOT NULL,
+    verkoop_invoice_number integer,
+    verkoop_referentie text,
+    verkoop_boekstuknummer text,
+    status text DEFAULT 'geboekt'::text NOT NULL,
+    geboekt_door uuid NOT NULL,
+    geboekt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gestorneerd_door uuid,
+    gestorneerd_op timestamp with time zone,
+    storno_reden text,
+    CONSTRAINT verkoop_boeking_factuurnummer_niet_leeg CHECK ((factuurnummer <> ''::text)),
+    CONSTRAINT verkoop_boeking_status_geldig CHECK ((status = ANY (ARRAY['geboekt'::text, 'gestorneerd'::text]))),
+    CONSTRAINT verkoop_boeking_storno_consistent CHECK (((status = 'gestorneerd'::text) = (gestorneerd_op IS NOT NULL)))
+);
+
+ALTER TABLE ONLY boekhouding.verkoop_boeking FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: verkoop_voorstel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.verkoop_voorstel (
+    document_id uuid NOT NULL,
+    debiteur_naam text,
+    factuurnummer text,
+    factuurdatum date,
+    totaalbedrag_incl numeric(14,2),
+    is_creditnota boolean DEFAULT false NOT NULL,
+    gecrediteerd_factuurnummer text,
+    rlz_boekstuknummer text,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.verkoop_voorstel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: verkoop_voorstel_regel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.verkoop_voorstel_regel (
+    id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    volgnummer integer NOT NULL,
+    omschrijving text,
+    netto_bedrag numeric(14,2),
+    btw_bedrag numeric(14,2),
+    gb_code text,
+    ledger_id uuid,
+    taxrate_id uuid
+);
+
+ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: vraag; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1550,6 +1620,30 @@ ALTER TABLE ONLY boekhouding.vendor_cache
 
 
 --
+-- Name: verkoop_boeking verkoop_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_boeking
+    ADD CONSTRAINT verkoop_boeking_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: verkoop_voorstel verkoop_voorstel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_voorstel
+    ADD CONSTRAINT verkoop_voorstel_pkey PRIMARY KEY (document_id);
+
+
+--
+-- Name: verkoop_voorstel_regel verkoop_voorstel_regel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel
+    ADD CONSTRAINT verkoop_voorstel_regel_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: vraag vraag_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -1887,6 +1981,20 @@ CREATE INDEX ix_vendor_cache_administratie_id ON boekhouding.vendor_cache USING 
 
 
 --
+-- Name: ix_verkoop_boeking_document_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_verkoop_boeking_document_id ON boekhouding.verkoop_boeking USING btree (document_id);
+
+
+--
+-- Name: ix_verkoop_voorstel_regel_document_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_verkoop_voorstel_regel_document_id ON boekhouding.verkoop_voorstel_regel USING btree (document_id);
+
+
+--
 -- Name: ix_webhook_uitgaand_document_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -1961,6 +2069,13 @@ CREATE UNIQUE INDEX ux_omzet_mapping_actief_per_categorie ON boekhouding.omzet_c
 --
 
 CREATE UNIQUE INDEX ux_toewijzing_regel_actief ON boekhouding.toewijzing_regel USING btree (soort, sleutel) WHERE actief;
+
+
+--
+-- Name: ux_verkoop_boeking_actief_per_factuurnummer; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_verkoop_boeking_actief_per_factuurnummer ON boekhouding.verkoop_boeking USING btree (administratie_id, factuurnummer, is_creditnota) WHERE (status = 'geboekt'::text);
 
 
 --
@@ -2638,6 +2753,54 @@ ALTER TABLE ONLY boekhouding.vendor_cache
 
 
 --
+-- Name: verkoop_boeking verkoop_boeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_boeking
+    ADD CONSTRAINT verkoop_boeking_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: verkoop_boeking verkoop_boeking_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_boeking
+    ADD CONSTRAINT verkoop_boeking_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: verkoop_boeking verkoop_boeking_geboekt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_boeking
+    ADD CONSTRAINT verkoop_boeking_geboekt_door_fkey FOREIGN KEY (geboekt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: verkoop_boeking verkoop_boeking_gestorneerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_boeking
+    ADD CONSTRAINT verkoop_boeking_gestorneerd_door_fkey FOREIGN KEY (gestorneerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: verkoop_voorstel verkoop_voorstel_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_voorstel
+    ADD CONSTRAINT verkoop_voorstel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: verkoop_voorstel_regel verkoop_voorstel_regel_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel
+    ADD CONSTRAINT verkoop_voorstel_regel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.verkoop_voorstel(document_id);
+
+
+--
 -- Name: vraag vraag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3304,6 +3467,53 @@ ALTER TABLE boekhouding.vendor_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY vendor_cache_scope ON boekhouding.vendor_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: verkoop_boeking; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.verkoop_boeking ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: verkoop_boeking verkoop_boeking_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY verkoop_boeking_scope ON boekhouding.verkoop_boeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: verkoop_voorstel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.verkoop_voorstel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: verkoop_voorstel_regel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.verkoop_voorstel_regel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: verkoop_voorstel_regel verkoop_voorstel_regel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY verkoop_voorstel_regel_scope ON boekhouding.verkoop_voorstel_regel USING ((EXISTS ( SELECT 1
+   FROM boekhouding.document d
+  WHERE ((d.id = verkoop_voorstel_regel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM boekhouding.document d
+  WHERE ((d.id = verkoop_voorstel_regel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+
+
+--
+-- Name: verkoop_voorstel verkoop_voorstel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY verkoop_voorstel_scope ON boekhouding.verkoop_voorstel USING ((EXISTS ( SELECT 1
+   FROM boekhouding.document d
+  WHERE ((d.id = verkoop_voorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM boekhouding.document d
+  WHERE ((d.id = verkoop_voorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
 
 
 --

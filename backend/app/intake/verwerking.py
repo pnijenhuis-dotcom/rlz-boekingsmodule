@@ -189,6 +189,26 @@ def _verwerk_xml(
         )
 
     if is_vastly_verkoop(voorstel):
+        if voorstel.is_creditnota and not settings.creditnota_381_ingeschakeld:
+            # §2d-creditnota's (v1.11): de herkenning zit achter een eigen config-gate
+            # (default UIT — volgorde-afspraak met vastgoeds CREDITNOTA_381_ACTIEF). Zolang de
+            # gate dicht is valt een binnenkomende 381 zichtbaar in de verzamelbak, nooit stil.
+            document_id = documenten_service.registreer_niet_toegewezen_document(
+                bestandsnaam=bijlage.bestandsnaam,
+                inhoud=bijlage.inhoud,
+                actor_id=actor_id,
+                reden="creditnote_381_gate_uit: CreditNote-herkenning nog niet geactiveerd "
+                "(config creditnota_381_ingeschakeld)",
+                soort=DocumentSoort.VERKOOPFACTUUR,
+                opslag=opslag,
+                intake_bericht_id=intake_bericht_id,
+                afzender_hint=afzender,
+                tenaamstelling=voorstel.leverancier_naam,
+            )
+            return BijlageResultaat(
+                bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id,
+                detail="creditnote_381_gate_uit",
+            )
         ontbrekend = nlcius_kernvelden_ontbrekend(voorstel)
         if ontbrekend:
             document_id = documenten_service.registreer_niet_toegewezen_document(

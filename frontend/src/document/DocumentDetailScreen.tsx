@@ -157,8 +157,9 @@ function AiVoorstelPanel({ voorstel, onOpnieuwExtraheren }: AiVoorstelPanelProps
 /** Puur cosmetisch: legt de XML in nette, ingesprongen regels voor de bron-weergave (geen
  * DOM-parsing/uitvoering — React rendert dit altijd als platte tekst in een <pre>, dus geen
  * XSS-risico). Werkt op basis van eenvoudige tag-grenzen; bedoeld voor leesbaarheid, geen
- * volwaardige XML-formatter. */
-function formatteerXml(xml: string): string {
+ * volwaardige XML-formatter. Geëxporteerd voor hergebruik in het verkoopreview-scherm
+ * (UBL-bron in het linkerpaneel). */
+export function formatteerXml(xml: string): string {
   const zonderWhitespaceTussenTags = xml.replace(/>\s*</g, '><').trim()
   const tokens = zonderWhitespaceTussenTags.split(/(?=<)/g).filter(Boolean)
   let diepte = 0

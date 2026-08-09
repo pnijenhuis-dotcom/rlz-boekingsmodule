@@ -119,6 +119,55 @@ def bouw_factuur_geboekt_payload(
     }
 
 
+def bouw_factuur_geboekt_verkoop_payload(
+    *,
+    administratie_id: uuid.UUID,
+    rlz_admin_id: str,
+    rlz_document_id: uuid.UUID,
+    rlz_boekstuknummer: str | None,
+    factuurdatum: date,
+    customer_id: uuid.UUID,
+    debiteur_naam: str | None,
+    referentie: str,
+    is_creditnota: bool,
+    regels: list[WebhookRegel],
+) -> dict:
+    """ONGETEKENDE payload voor het "factuur geboekt"-event bij een VASTLY-VERKOOP-boeking
+    (koppelcontract §3 v1.10: `referentie` = het Vastly-factuurnummer — vastgoeds koppelsleutel
+    naar de eigen huurfactuur; bevestigd v1.11 punt 6). Zelfde event + envelope als de
+    inkoopvariant; de tegenpartij is hier een debiteur (`debiteur` i.p.v. `leverancier`) en
+    `soort` maakt de stroom expliciet herkenbaar voor de ontvanger. De formele opname van deze
+    verkoop-veldvorm in §3 is een open contract-actie (vastgoed verwerkt nu alleen de
+    verkoop-badge op `referentie`); aflevering staat sowieso default UIT."""
+    data = {
+        "soort": "verkoopfactuur",
+        "administratie_id": str(administratie_id),
+        "rlz_admin_id": rlz_admin_id,
+        "rlz_document_id": str(rlz_document_id),
+        "rlz_boekstuknummer": rlz_boekstuknummer,
+        "datum": factuurdatum.isoformat(),
+        "debiteur": {"customer_id": str(customer_id), "naam": debiteur_naam},
+        "referentie": referentie,
+        "is_creditnota": is_creditnota,
+        "regels": [
+            {
+                "ledger_id": str(regel.ledger_id),
+                "grootboek_code": regel.grootboek_code,
+                "project_id": str(regel.project_id) if regel.project_id else None,
+                "netto_bedrag": str(regel.netto_bedrag),
+                "btw_bedrag": str(regel.btw_bedrag),
+                "omschrijving": regel.omschrijving,
+            }
+            for regel in regels
+        ],
+    }
+    return {
+        "schema_version": WEBHOOK_SCHEMA_VERSION,
+        "event": FACTUUR_GEBOEKT_EVENT,
+        "data": data,
+    }
+
+
 def bouw_factuur_afgeletterd_payload(
     *,
     administratie_id: uuid.UUID,

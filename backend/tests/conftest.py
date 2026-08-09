@@ -59,12 +59,30 @@ def pytest_configure(config: pytest.Config) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def _migrated_test_database() -> None:
-    """Reset boekhouding_test naar een schone, volledig gemigreerde staat vóór de testrun."""
+    """Reset boekhouding_test naar een schone, volledig gemigreerde staat vóór de testrun.
+
+    De data van de vórige run wordt eerst geleegd (zelfde TRUNCATE als _clean_tables — die
+    draait pas ná deze fixture): een downgrade-replay over achtergebleven rijen kan anders
+    stranden op een strakkere oude CHECK-constraint (bv. 0028's document_soort_geldig zonder
+    'verkoopfactuur' over een achtergebleven verkoopfactuur-rij van de laatste test)."""
     alembic_cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
     import os
 
     os.environ["DATABASE_URL"] = settings.test_database_url
+    engine = create_engine(settings.test_database_url)
+    with engine.begin() as conn:
+        bestaat = conn.execute(
+            text(
+                "SELECT to_regclass('platform.administratie') IS NOT NULL "
+                "AND to_regclass('platform.gebruiker') IS NOT NULL"
+            )
+        ).scalar()
+        if bestaat:
+            conn.execute(
+                text("TRUNCATE TABLE platform.audit_event, platform.administratie, platform.gebruiker CASCADE")
+            )
+    engine.dispose()
     command.downgrade(alembic_cfg, "base")
     command.upgrade(alembic_cfg, "head")
 

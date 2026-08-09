@@ -506,6 +506,9 @@ function Klantpagina({
                 // Omzetmodule: een kassarapport opent het omzetreview-scherm (mockup
                 // #omzetreview), niet het inkoop-controlescherm.
                 const isKassarapport = d.soort === 'kassarapport'
+                // Verkoopmodule: een Vastly-verkoopfactuur (VASTLY-VERKOOP-UBL, §2d) opent het
+                // verkoopreview-scherm.
+                const isVerkoopfactuur = d.soort === 'verkoopfactuur'
                 return (
                   <tr
                     key={d.id}
@@ -516,7 +519,9 @@ function Klantpagina({
                           ? `/vragen?administratie=${administratieId}&document=${d.id}`
                           : isKassarapport
                             ? `/omzet/${administratieId}/${d.id}`
-                            : `/documenten/${administratieId}/${d.id}`,
+                            : isVerkoopfactuur
+                              ? `/verkoop/${administratieId}/${d.id}`
+                              : `/documenten/${administratieId}/${d.id}`,
                       )
                     }
                   >
@@ -531,6 +536,7 @@ function Klantpagina({
                     <td className="amount">{formatBedrag(d.totaalbedrag)}</td>
                     <td>
                       {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
+                      {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}
                       <StatusChip status={d.status} />
                       {d.afwijzing && (
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>

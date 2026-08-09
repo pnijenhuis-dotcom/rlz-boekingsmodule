@@ -148,6 +148,14 @@ class Settings(BaseSettings):
     intake_imap_wachtwoord: str | None = None
     intake_postvak_adres: str | None = None
 
+    # CreditNote-381-herkenning (koppelcontract §2d-creditnota's v1.11): config-gate, default
+    # UIT. De volgorde-afspraak in het contract: vastgoed verstuurt géén 381-documenten
+    # (CREDITNOTA_381_ACTIEF dicht) totdat wij de herkenning gebouwd hebben en dat bevestigen —
+    # deze gate is ónze kant van die handshake. Zolang UIT valt een binnenkomende 381 mét
+    # VASTLY-VERKOOP-markering zichtbaar in de verzamelbak (nooit stil), zodat een te vroege
+    # activatie aan vastgoed-kant nooit ongezien verwerkt wordt.
+    creditnota_381_ingeschakeld: bool = False
+
     # Migratie-guard bij startup (app/db/migratie_guard.py): default fail-fast, zodat een gemiste
     # `make migrate` nooit meer een raadsel-500 wordt maar een duidelijke weigering om te starten.
     # "waarschuwen" is een bewuste uitzondering voor latere productie-scenario's (bv. een korte

@@ -110,24 +110,32 @@ def _taxrate_percentages(administratie_id: uuid.UUID) -> dict[uuid.UUID, Decimal
         return {rij.id: rij.percentage for rij in rijen}
 
 
-def _verkoop_lines(voorstel: OmzetVoorstelData, percentages: dict[uuid.UUID, Decimal | None]) -> list[dict]:
+def _verkoop_lines(
+    voorstel: OmzetVoorstelData, percentages: dict[uuid.UUID, Decimal | None], *, marker: str
+) -> list[dict]:
     """Verkoopregels per categorie. Kassarapport-bedragen zijn kassabedragen (inclusief btw) —
     de btw-splitsing gebeurt hier deterministisch op het percentage uit de taxrate-cache
     (app/bank/matchmotor.splits_incl_bedrag: som is per constructie exact het rapportbedrag).
-    Vrijgesteld/0% → geen splitsing, TaxAmount 0 (BLOW-case)."""
+    Vrijgesteld/0% → geen splitsing, TaxAmount 0 (BLOW-case).
+
+    De deterministische periode-marker (verkoop_omschrijving) staat als PREFIX in de Description
+    van regel 1: RLZ negeert de document-Description op SalesInvoices en leidt 'm af uit de
+    éérste regel-Description (verkoop-STAP-0 2026-08-09) — zonder deze prefix zou de
+    Receipts-duplicaatcheck nooit een treffer zien."""
     lines: list[dict] = []
     for regel in voorstel.regels:
         if regel.omzet_bedrag is None:
             continue
         assert regel.omzet_ledger_id is not None and regel.taxrate_id is not None  # checks draaiden al
         netto, btw = splits_incl_bedrag(regel.omzet_bedrag, percentages.get(regel.taxrate_id))
+        omschrijving = regel.categorie if lines else f"{marker} · {regel.categorie}"
         lines.append(
             {
                 "Account": {"id": str(regel.omzet_ledger_id)},
                 "TaxRate": {"id": str(regel.taxrate_id)},
                 "NetAmount": float(netto),
                 "TaxAmount": float(btw),
-                "Description": regel.categorie,
+                "Description": omschrijving,
             }
         )
     return lines
@@ -446,6 +454,7 @@ def boek_omzet_document(
 
         voorstel = haal_omzet_voorstel_op(administratie_id=administratie_id, document_id=document_id)
         assert voorstel.periode_start is not None and voorstel.periode_eind is not None  # checks
+        periode_marker = verkoop_omschrijving(voorstel.periode_start, voorstel.periode_eind)
         verkoop_rlz_id = rlz_sales_invoice_id(document_id)
         memoriaal_rlz_id = rlz_kostprijs_memoriaal_id(document_id)
         datum_iso = f"{voorstel.periode_eind.isoformat()}T00:00:00"
@@ -464,8 +473,11 @@ def boek_omzet_document(
                 rlz_id=verkoop_rlz_id,
                 customer_id=None,  # entity-loze Receipt — besluit Peter 2026-08-08
                 categorie_id=categorie_id,
-                omschrijving=verkoop_omschrijving(voorstel.periode_start, voorstel.periode_eind),
-                lines=_verkoop_lines(voorstel, _taxrate_percentages(administratie_id)),
+                # NB de document-Description wordt door RLZ genegeerd/afgeleid van regel 1
+                # (verkoop-STAP-0 2026-08-09) — de marker zit dáárom als prefix in regel 1;
+                # deze parameter blijft gezet voor het geval RLZ dit ooit herstelt.
+                omschrijving=periode_marker,
+                lines=_verkoop_lines(voorstel, _taxrate_percentages(administratie_id), marker=periode_marker),
                 datum_iso=datum_iso,
                 upload_id=rlz_omzet_upload_id(document_id, doel="verkoop"),
                 bestandsnaam=bestandsnaam,

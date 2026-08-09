@@ -418,14 +418,26 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
     service opent zijn eigen transactie en moet de zojuist geschreven status/tijdlijn zien.
     Faalt de hook, dan is dat een gelogde waarschuwing — de blokkerende mapping-check op het
     reviewscherm blijft de harde poort, de vraag is de signalering eromheen."""
-    if soort != DocumentSoort.KASSARAPPORT.value or administratie_id is None:
+    if administratie_id is None:
         return
-    from app.omzet import autovraag  # lokaal: voorkomt een importcyclus omzet ↔ documenten
+    if soort == DocumentSoort.KASSARAPPORT.value:
+        from app.omzet import autovraag  # lokaal: voorkomt een importcyclus omzet ↔ documenten
 
-    try:
-        autovraag.stel_mapping_vraag_indien_nodig(administratie_id=administratie_id, document_id=document_id)
-    except Exception:  # noqa: BLE001 — signalering mag de upload/worker nooit laten falen
-        logger.exception("Automatische mapping-vraag mislukt voor document %s", document_id)
+        try:
+            autovraag.stel_mapping_vraag_indien_nodig(administratie_id=administratie_id, document_id=document_id)
+        except Exception:  # noqa: BLE001 — signalering mag de upload/worker nooit laten falen
+            logger.exception("Automatische mapping-vraag mislukt voor document %s", document_id)
+    elif soort == DocumentSoort.VERKOOPFACTUUR.value:
+        # §2d-GB-uitbreiding (v1.10): onbekende AccountingCost-code → blokkerende check +
+        # automatische vraag; zelfde no-op-vangnet als de omzet-mappingvraag.
+        from app.verkoop import autovraag as verkoop_autovraag  # lokaal: importcyclus vermijden
+
+        try:
+            verkoop_autovraag.stel_gb_code_vraag_indien_nodig(
+                administratie_id=administratie_id, document_id=document_id
+            )
+        except Exception:  # noqa: BLE001 — signalering mag de upload/worker nooit laten falen
+            logger.exception("Automatische GB-code-vraag mislukt voor document %s", document_id)
 
 
 def upload_document(

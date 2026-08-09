@@ -220,7 +220,9 @@ class FakeOmzetClient:
             "ReceiptNumber": "RLZ-01-00000393",
             "Entity": {"id": str(customer_id)} if customer_id is not None else None,
             "DocumentCategory": {"id": str(document_category_id)} if document_category_id is not None else None,
-            "Description": extra.get("Description"),
+            # Verkoop-STAP-0 (2026-08-09): RLZ negeert de document-Description en leidt 'm af
+            # uit de éérste regel-Description — de fake bootst dat gedrag exact na.
+            "Description": (lines[0].get("Description") if lines else None),
             "DocumentLineList": lines,
             "Date": extra.get("Date"),
         }
@@ -312,13 +314,16 @@ class FakeOmzetClient:
         eigen = [m for m in self.manual_journals.values() if m.get("Reference") == reference]
         return self.memoriaal_duplicaten + eigen
 
-    def find_receipts_by_description(self, *, description: str) -> list[dict[str, Any]]:
-        """Receipts-verkenning §1: de collectie ziet óók API-aangemaakte documenten en is op
-        Description filterbaar (read-only geverifieerd 2026-08-09)."""
+    def find_receipts_by_description_prefix(self, *, prefix: str) -> list[dict[str, Any]]:
+        """Receipts-verkenning §1 + verkoop-STAP-0 (2026-08-09): de collectie ziet óók
+        API-aangemaakte documenten en is op Description filterbaar (incl. startswith); RLZ
+        leidt de document-Description af uit de éérste regel-Description — deze fake bootst
+        dat af in put_sales_invoice."""
         if self.faal_op == "receipts_duplicaatcheck":
             raise RlzApiError(500, "GET", "Receipts", "Onverwachte fout (simulatie)")
-        eigen = [s for s in self.sales_invoices.values() if s.get("Description") == description]
-        return self.receipt_duplicaten + eigen
+        eigen = [s for s in self.sales_invoices.values() if (s.get("Description") or "").startswith(prefix)]
+        vooraf = [r for r in self.receipt_duplicaten if (r.get("Description") or "").startswith(prefix)]
+        return vooraf + eigen
 
     # -- gedeeld ----------------------------------------------------------------------------------
     def upload_bijlage(

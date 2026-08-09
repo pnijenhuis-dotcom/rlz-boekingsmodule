@@ -390,3 +390,64 @@ export interface OmzetBoekenResponseDto {
   memoriaal_rlz_id: string | null
   memoriaal_boekstuknummer: string | null
 }
+
+/* ---------- Verkoopmodule (Vastly VASTLY-VERKOOP-facturen, koppelcontract §2d) ---------- */
+
+export interface VerkoopRegelDto {
+  volgnummer: number
+  omschrijving: string | null
+  /** Decimals serialiseren als string — bedragen nooit als JS-float over de lijn. */
+  netto_bedrag: string | null
+  btw_bedrag: string | null
+  /** RLZ-grootboekcode uit de UBL (cbc:AccountingCost, BT-133). */
+  gb_code: string | null
+  ledger_id: string | null
+  taxrate_id: string | null
+  /** 'bekend' | 'onbekend' (code niet in de grootboek-cache) | 'ontbreekt' (geen code in de UBL). */
+  gb_code_status: string
+  /** 'ubl' (deterministisch uit de UBL gelezen) | 'opgeslagen' (eerder door een mens bevestigd). */
+  herkomst: string
+}
+
+export interface VerkoopVoorstelDto {
+  document_id: string
+  debiteur_naam: string | null
+  factuurnummer: string | null
+  factuurdatum: string | null
+  totaalbedrag_incl: string | null
+  is_creditnota: boolean
+  gecrediteerd_factuurnummer: string | null
+  regels: VerkoopRegelDto[]
+  opgeslagen: boolean
+  rlz_boekstuknummer: string | null
+}
+
+export interface VerkoopVoorstelMetChecksDto {
+  voorstel: VerkoopVoorstelDto
+  checks: CheckRapportDto
+}
+
+export interface VerkoopRegelInputDto {
+  omschrijving: string | null
+  netto_bedrag: string | null
+  btw_bedrag: string | null
+  gb_code: string | null
+  ledger_id: string | null
+  taxrate_id: string | null
+}
+
+export interface VerkoopVoorstelInputDto {
+  debiteur_naam: string | null
+  factuurnummer: string | null
+  factuurdatum: string | null
+  totaalbedrag_incl: string | null
+  regels: VerkoopRegelInputDto[]
+}
+
+export interface VerkoopBoekenResponseDto {
+  document_id: string
+  status: string
+  verkoop_rlz_id: string
+  verkoop_referentie: string | null
+  verkoop_boekstuknummer: string | null
+}

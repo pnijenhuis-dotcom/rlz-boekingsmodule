@@ -1114,3 +1114,35 @@ betalingsverschil-afhandeling — semantiek per STAP-0 vaststellen. NB de eerder
 xhook.min.js (Reeleezee hookt zelf fetch/XHR — verklaart waarom onze in-page interceptor niets
 ving). Vervolg: STAP-0 replay met Basic Auth op de TEST-administratie → daarna seam-swap
 (voer_afletter_actie_uit). Ontkoppel-variant (vermoedelijk Type 16) in dezelfde STAP-0 vangen.
+
+## Verkoopfactuur-boekpad STAP-0 — SalesInvoice mét Entity + creditvariant (9 augustus 2026) — GESLAAGD, mét twee nieuwe API-feiten
+
+Blok 1e van de verkoopfactuur-bouw (koppelcontract §2d): live verificatie van wat de gedeelde
+SalesInvoice-motor nieuw doet. Test-administratie, alles gestorneerd (actie 19); script
+`verkenning/poc_verkoop_schrijf.py`, audit `output/verkooppoc_audit.jsonl`. De testdebiteur
+"TEST-VERKOOPPOC Huurder" en twee PROBE-concepten blijven bewust staan (nooit verwijderen).
+
+1. **Idempotente debiteur-aanmaak werkt volledig**: `GET Customers?$filter=Name eq '…'` ziet
+   API-aangemaakte debiteuren (lookup-vóór-PUT dus betrouwbaar), `PUT Customers/{client-guid}`
+   maakt aan, herhaal-PUT met zelfde GUID is een no-op. Patroon crediteur-aanmaken bevestigd.
+2. **SalesInvoice mét `Entity` boekt gewoon** (PUT → actie 17 → Status 2, RLZ-nummering 90006);
+   ⚠️ het kale `GET SalesInvoices/{id}` toont `Entity: null` — de debiteur is alleen zichtbaar
+   mét `$expand=Entity` (hij stáát er wel; niet op het kale veld toetsen).
+3. **Creditvariant bevestigd**: negatieve regelbedragen op dezelfde debiteur → concept
+   `BaseInvoiceAmount -121.00`, actie 17 → Status 2, storno 19 → Status 1. Verkoopcreditnota =
+   negatieve SalesInvoice, geen apart documenttype (consistent met de inkoopkant).
+4. **⚠️ NIEUW API-FEIT — RLZ negeert de document-`Description` op SalesInvoices** en leidt hem
+   af uit de ÉÉRSTE regel-Description (één regel zonder Description → document-Description
+   null; twee regels → "regel een"; een kale herstel-PUT met alleen Description heeft géén
+   effect). Gevolg: een duplicaat-marker die alleen op documentniveau gezet wordt landt nooit
+   in de Receipts-collectie. **Dit raakte óók de omzetmotor** (de periode-omschrijving
+   `OMZ-…-VK` stond alleen op documentniveau → de Receipts-duplicaatcheck-op-afstand kon nooit
+   een treffer zien; de lokale DB-unieke periode-bewaking + memoriaal-Reference-check bleven de
+   werkende waarborgen). Fix in beide motoren (2026-08-09): de deterministische marker staat nu
+   als PREFIX in de Description van regel 1.
+5. **`startswith(...)` én `contains(...)` werken als Receipts-`$filter`** — de duplicaatcheck
+   filtert nu op `startswith(Description,'<marker>')`
+   (`RlzClient.find_receipts_by_description_prefix`). De Receipts-collectie ziet ook
+   entity-facturen (getest op id én Description). Marker-vormen zijn zelf-afsluitend tegen
+   prefix-botsingen: verkoop `VASTLY-VERKOOP {nr} ·`, credit `VASTLY-CREDIT {nr} ·` (disjuncte
+   soortprefix + terminator ná het nummer), omzet `OMZ-YYYYMMDD-YYYYMMDD-VK` (vaste lengte).

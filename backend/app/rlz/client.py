@@ -310,6 +310,15 @@ class RlzClient:
         geverifieerd voor de systeemdebiteur "Kasomzet")."""
         return self.put(f"Customers/{customer_id}", {"id": str(customer_id), "Name": name})
 
+    def find_customers_by_name(self, *, name: str) -> list[dict[str, Any]]:
+        """Debiteur-duplicaatcheck vóór de idempotente PUT (verkoopfactuur-boekpad, besluit
+        Peter 2026-08-08: debiteur = de échte huurder, patroon crediteur-aanmaken): bestaande
+        debiteuren met exact deze naam. ⚠️ Of de Customers-collectie API-aangemaakte debiteuren
+        ziet is per STAP-0 (poc_verkoop_schrijf.py) geverifieerd; ziet ze 'm niet, dan vangt de
+        deterministische client-GUID (rlz_customer_id) het alsnog idempotent af."""
+        veilig = name.replace("'", "''")
+        return self.get("Customers", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
+
     def put_sales_invoice(
         self,
         invoice_id: uuid.UUID,
@@ -369,13 +378,17 @@ class RlzClient:
         eerst aannam). GUID nooit hardcoden: per administratie ophalen en cachen."""
         return self.get("DocumentCategories").get("value", [])
 
-    def find_receipts_by_description(self, *, description: str) -> list[dict[str, Any]]:
-        """Duplicaatbewaking-op-afstand voor de omzetmotor: de Receipts-collectie ziet — anders
-        dan SalesInvoices — óók API-aangemaakte documenten (Receipts-verkenning §1) en is op
-        Description filterbaar (read-only geverifieerd 2026-08-09). Wij zetten de
-        deterministische periode-omschrijving in Description; een vreemde hit = duplicaat."""
-        veilig = description.replace("'", "''")
-        return self.get("Receipts", params={"$filter": f"Description eq '{veilig}'"}).get("value", [])
+    def find_receipts_by_description_prefix(self, *, prefix: str) -> list[dict[str, Any]]:
+        """Duplicaatbewaking-op-afstand voor de verkoop-/omzetmotor: de Receipts-collectie ziet —
+        anders dan SalesInvoices — óók API-aangemaakte documenten (Receipts-verkenning §1) en is
+        op Description filterbaar, incl. `startswith` (verkoop-STAP-0 2026-08-09). ⚠️ RLZ negeert
+        de document-Description op SalesInvoices en leidt 'm af uit de éérste regel-Description
+        (verkoop-STAP-0) — de deterministische marker staat daarom als PREFIX in regel 1 en de
+        check filtert op startswith; een vreemde hit = duplicaat."""
+        veilig = prefix.replace("'", "''")
+        return self.get(
+            "Receipts", params={"$filter": f"startswith(Description,'{veilig}')"}
+        ).get("value", [])
 
     def list_journal_entry_diaries(self) -> list[dict[str, Any]]:
         """Dagboeken per administratie — het memoriaal-dagboek-GUID wordt hieruit gekozen
