@@ -467,3 +467,74 @@ export interface VerkoopBoekenResponseDto {
   verkoop_referentie: string | null
   verkoop_boekstuknummer: string | null
 }
+
+/* ---------- Zoeken + Archief (mockup #zoeken, backend/app/zoeken/router.py) ---------- */
+
+export interface ZoekVraagHitDto {
+  vraag_tekst: string
+  antwoord_tekst: string | null
+  status: string
+}
+
+/** Accorderingsstap bij een zoekresultaat — besluit 'akkoord' | 'afgewezen' | null (open),
+ * besluit_bron bv. 'staande_goedkeuring' (automatisch akkoord). */
+export interface ZoekAccorderingHitDto {
+  volgnummer: number
+  accordeur_naam: string | null
+  besluit: string | null
+  besluit_bron: string | null
+  besloten_op: string | null
+}
+
+export interface ZoekDocumentHitDto {
+  document_id: string
+  administratie_id: string
+  administratie_naam: string
+  /** 'inkoopfactuur' | 'kassarapport' | 'verkoopfactuur' — bepaalt het reviewscherm. */
+  soort: string
+  status: string
+  bestandsnaam: string
+  leverancier: string | null
+  referentie: string | null
+  rlz_boekstuknummer: string | null
+  /** Decimal serialiseert als string — bedragen nooit als JS-float over de lijn. */
+  totaalbedrag: string | null
+  factuurdatum: string | null
+  aangemaakt_op: string
+  automatisch_geboekt: boolean
+  vragen: ZoekVraagHitDto[]
+  accordering: ZoekAccorderingHitDto[]
+}
+
+export interface ZoekAuditHitDto {
+  tijdstip: string
+  actor_naam: string | null
+  actie: string
+  administratie_naam: string
+  detail: Record<string, unknown> | null
+}
+
+export interface ZoekResponseDto {
+  term: string
+  documenten: ZoekDocumentHitDto[]
+  audit: ZoekAuditHitDto[]
+}
+
+/** Geboekt document in het archief (bewaarplicht 7 jaar) — PDF/UBL via het bestaande
+ * bestand-endpoint. */
+export interface ArchiefDocumentDto {
+  document_id: string
+  soort: string
+  bestandsnaam: string
+  leverancier: string | null
+  referentie: string | null
+  rlz_boekstuknummer: string | null
+  totaalbedrag: string | null
+  factuurdatum: string | null
+  geboekt_op: string | null
+  automatisch_geboekt: boolean
+}
+
+export interface ArchiefResponseDto {
+  documenten: ArchiefDocumentDto[]
+}

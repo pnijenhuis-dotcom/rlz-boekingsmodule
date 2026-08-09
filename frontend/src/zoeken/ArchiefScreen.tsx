@@ -1,0 +1,197 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { apiFetch } from '../api/client'
+import type { ArchiefDocumentDto } from '../api/types'
+import { FoutMelding } from '../ui/FoutMelding'
+import { useAdministraties } from '../werkvoorraad/useAdministraties'
+import { formatBedrag, formatDatum, formatDatumKort } from './format'
+import { reviewPad } from './reviewPad'
+import { haalArchiefOp } from './zoekenApi'
+
+/** Blob-URL's van geopende PDF's na een ruime marge weer vrijgeven — het nieuwe tabblad heeft
+ * het bestand dan allang geladen. */
+const BLOB_OPRUIM_MS = 60_000
+
+/** Archief per administratie (mockup #zoeken-hint + CLAUDE.md "Archief"): geboekte documenten
+ * 7 jaar terugvindbaar mét PDF (bewaarplicht). Rij-klik opent het reviewscherm van de juiste
+ * soort; de PDF/UBL komt via het bestaande bestand-endpoint als blob in een nieuw tabblad. */
+export function ArchiefScreen() {
+  const navigate = useNavigate()
+  const { administraties, fout: administratiesFout } = useAdministraties()
+  const [administratieId, setAdministratieId] = useState('')
+  const [documenten, setDocumenten] = useState<ArchiefDocumentDto[] | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
+  const [bestandFout, setBestandFout] = useState<string | null>(null)
+  const [herlaad, setHerlaad] = useState(0)
+
+  // Eén administratie in scope (bv. klant-accordeur): meteen die kiezen, geen lege select.
+  useEffect(() => {
+    if (administraties?.length === 1) setAdministratieId(administraties[0].id)
+  }, [administraties])
+
+  useEffect(() => {
+    if (!administratieId) {
+      setDocumenten(null)
+      return
+    }
+    setDocumenten(null)
+    setFout(null)
+    let actief = true
+    haalArchiefOp(administratieId)
+      .then((data) => {
+        if (actief) setDocumenten(data.documenten)
+      })
+      .catch((err: unknown) => {
+        if (actief) setFout(err instanceof Error ? err.message : 'Onbekende fout')
+      })
+    return () => {
+      actief = false
+    }
+  }, [administratieId, herlaad])
+
+  const openBestand = async (doc: ArchiefDocumentDto) => {
+    setBestandFout(null)
+    try {
+      const resp = await apiFetch(`/administraties/${administratieId}/documenten/${doc.document_id}/bestand`)
+      if (!resp.ok) throw new Error(`Bestand ophalen mislukt (${resp.status})`)
+      const url = URL.createObjectURL(await resp.blob())
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), BLOB_OPRUIM_MS)
+    } catch (err) {
+      setBestandFout(
+        err instanceof Error ? `${doc.bestandsnaam}: ${err.message}` : `${doc.bestandsnaam}: openen mislukt.`,
+      )
+    }
+  }
+
+  if (administratiesFout) {
+    return (
+      <FoutMelding
+        melding="Uw administraties konden niet geladen worden. Controleer de verbinding en probeer het opnieuw."
+        detail={administratiesFout}
+        onOpnieuw={() => window.location.reload()}
+      />
+    )
+  }
+
+  return (
+    <div>
+      <div className="topbar">
+        <h1>Archief</h1>
+        <div className="adm-select">
+          <label htmlFor="archief-administratie-select" style={{ margin: 0 }}>
+            Administratie
+          </label>
+          <select
+            id="archief-administratie-select"
+            value={administratieId}
+            onChange={(e) => setAdministratieId(e.target.value)}
+            disabled={!administraties}
+          >
+            <option value="">— kies een administratie —</option>
+            {(administraties ?? []).map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.naam}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="panel">
+        {!administratieId && (
+          <p className="hint">
+            Kies een administratie om het archief te openen: alle geboekte documenten, 7 jaar terugvindbaar mét PDF
+            (bewaarplicht).
+          </p>
+        )}
+
+        {administratieId && fout && (
+          <FoutMelding
+            melding="Het archief kon niet geladen worden."
+            detail={fout}
+            onOpnieuw={() => setHerlaad((h) => h + 1)}
+          />
+        )}
+        {bestandFout && <FoutMelding melding={bestandFout} />}
+
+        {administratieId && !fout && documenten === null && (
+          <table aria-busy="true">
+            <tbody>
+              {Array.from({ length: 4 }, (_, r) => (
+                <tr key={r} aria-hidden="true">
+                  {Array.from({ length: 6 }, (_, k) => (
+                    <td key={k}>
+                      <span className="skeleton" style={{ width: k === 0 ? '70%' : '50%' }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {administratieId && documenten !== null && documenten.length === 0 && (
+          <p className="hint">
+            Nog geen geboekte documenten voor deze administratie. Zodra er geboekt wordt, blijft elk stuk hier 7 jaar
+            terugvindbaar mét PDF (bewaarplicht).
+          </p>
+        )}
+
+        {administratieId && documenten !== null && documenten.length > 0 && (
+          <table>
+            <tbody>
+              <tr>
+                <th>Document</th>
+                <th>Referentie</th>
+                <th>Boekstuk</th>
+                <th className="amount">Bedrag</th>
+                <th>Geboekt op</th>
+                <th />
+              </tr>
+              {documenten.map((doc) => (
+                <tr
+                  key={doc.document_id}
+                  className="clickable"
+                  onClick={() => navigate(reviewPad(doc.soort, administratieId, doc.document_id))}
+                >
+                  <td>
+                    {doc.leverancier ?? doc.bestandsnaam}
+                    {doc.leverancier && (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{doc.bestandsnaam}</div>
+                    )}
+                  </td>
+                  <td>{doc.referentie ?? '—'}</td>
+                  <td>{doc.rlz_boekstuknummer ?? '—'}</td>
+                  <td className="amount">{formatBedrag(doc.totaalbedrag)}</td>
+                  <td>
+                    {doc.geboekt_op ? formatDatum(doc.geboekt_op) : formatDatumKort(doc.factuurdatum)}
+                    {doc.automatisch_geboekt && (
+                      <>
+                        {' '}
+                        <span className="chip geheugen">automatisch</span>
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`PDF openen van ${doc.bestandsnaam}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void openBestand(doc)
+                      }}
+                    >
+                      PDF
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}

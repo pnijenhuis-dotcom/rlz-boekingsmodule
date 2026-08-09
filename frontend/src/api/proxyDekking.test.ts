@@ -112,16 +112,30 @@ describe('dev-proxy-dekking over álle bronbestanden', () => {
     })
   })
 
-  it('geen SPA-route wordt door een exacte proxy-key geschaduwd (document-navigatie blijft SPA)', () => {
+  it('een SPA-route mag alleen met een exacte proxy-key samenvallen als de navigatie-bypass de SPA serveert', () => {
+    // Sinds het zoekscherm is /zoeken bewust allebei: SPA-route én exact backend-pad
+    // (GET /zoeken?term=…). Dat is veilig zolang de proxy-entry een document-navigatie de SPA
+    // laat serveren (bypass, kliktest 2026-08-08) en fetch/XHR geproxied blijft — dat laatste
+    // dekt de bypass-test hierboven al voor élke entry. Deze guard eist voor elke botsing
+    // expliciet een werkende navigatie-bypass i.p.v. de botsing blind te verbieden.
     const appBron = fs.readFileSync(path.join(SRC, 'App.tsx'), 'utf8')
     const spaRoutes = Array.from(appBron.matchAll(/path="(\/[^"*]*)"/g), (m) => m[1])
     expect(spaRoutes.length).toBeGreaterThan(0)
+    const proxy = bouwProxyMap(proxyPrefixes, 'http://localhost:8000')
+    const navigatieHeaders = {
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'sec-fetch-dest': 'document',
+    }
     for (const route of spaRoutes) {
       const topSegment = `/${route.split('/')[1] ?? ''}`
+      if (!proxyPrefixes.exacte_paden.includes(topSegment)) continue
+      const entry = proxy[topSegment]
+      expect(entry, `exact backend-pad "${topSegment}" mist een proxy-entry`).toBeDefined()
       expect(
-        proxyPrefixes.exacte_paden.includes(topSegment),
-        `SPA-route "${route}" botst met exact backend-pad "${topSegment}" — document-navigatie zou naar de backend gaan`,
-      ).toBe(false)
+        entry.bypass({ headers: navigatieHeaders } as unknown as IncomingMessage),
+        `SPA-route "${route}" botst met exact backend-pad "${topSegment}" zonder werkende navigatie-bypass — ` +
+          'document-navigatie zou naar de backend gaan',
+      ).toBe('/index.html')
     }
   })
 })

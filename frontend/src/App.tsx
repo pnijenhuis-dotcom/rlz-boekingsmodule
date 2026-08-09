@@ -11,6 +11,8 @@ import { Shell } from './shell/Shell'
 import { VerkoopReviewScreen } from './verkoop/VerkoopReviewScreen'
 import { VragenScreen } from './vragen/VragenScreen'
 import { WerkvoorraadScreen } from './werkvoorraad/WerkvoorraadScreen'
+import { ArchiefScreen } from './zoeken/ArchiefScreen'
+import { ZoekenScreen } from './zoeken/ZoekenScreen'
 
 function BeschermdeRoutes() {
   const { status } = useAuth()
@@ -33,6 +35,8 @@ function BeschermdeRoutes() {
         <Route path="/bank" element={<BankOverzichtScreen />} />
         <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
         <Route path="/vragen" element={<VragenScreen />} />
+        <Route path="/zoeken" element={<ZoekenScreen />} />
+        <Route path="/archief" element={<ArchiefScreen />} />
         <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
         <Route path="/omzet/:administratieId/:documentId" element={<OmzetReviewScreen />} />
         <Route path="/verkoop/:administratieId/:documentId" element={<VerkoopReviewScreen />} />

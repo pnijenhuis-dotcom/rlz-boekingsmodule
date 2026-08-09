@@ -9,10 +9,12 @@
     "/instellingen",
     "/intake",
     "/verzamelbak",
-    "/werkvoorraad"
+    "/werkvoorraad",
+    "/zoeken"
   ],
   "exacte_paden": [
     "/health",
-    "/verzamelbak"
+    "/verzamelbak",
+    "/zoeken"
   ]
 }

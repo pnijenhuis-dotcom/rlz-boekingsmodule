@@ -23,6 +23,7 @@ from app.intake.router import router as intake_router
 from app.omzet.router import router as omzet_router
 from app.sync.router import router as sync_router
 from app.verkoop.router import router as verkoop_router
+from app.zoeken.router import router as zoeken_router
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,7 @@ app.include_router(sync_router)
 app.include_router(geheugen_router)
 app.include_router(omzet_router)
 app.include_router(verkoop_router)
+app.include_router(zoeken_router)
 app.include_router(intake_router)
 app.include_router(credentialstore_router)
 app.include_router(beheer_router)
