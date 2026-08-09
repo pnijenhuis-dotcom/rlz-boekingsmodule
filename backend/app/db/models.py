@@ -134,6 +134,40 @@ class GebruikerAdministratie(Base):
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class GebruikerModuleRol(Base):
+    """Rol per gebruiker per module (platformbesluit 0019 "Identiteit gedeeld, autorisatie per
+    module", migratie 0034). Rol is TEXT met een CHECK per module — bewust géén gedeelde enum;
+    module 'vastgoed' kent superadmin/eigenaar/kantoor. RLZ's eigen `Gebruiker.rol`-enum blijft
+    staan tot de convergentie (besluit 0019 punt 4). Mutaties: RLS dwingt op DB-niveau af dat
+    alleen een module-beheerder schrijft en nooit op zijn eigen gebruiker_id; audit-trigger op
+    elke mutatie (hard falen zonder actor). Bootstrap van de eerste module-beheerder loopt via
+    de migratie-eigenaar (RLS ENABLE, niet FORCE — zie migratie 0034)."""
+
+    __tablename__ = "gebruiker_module_rol"
+
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    module: Mapped[str] = mapped_column(primary_key=True)
+    rol: Mapped[str]
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class GebruikerEntiteit(Base):
+    """Scope-koppeltabel vastgoed-eigendom (besluit 0019, migratie 0034) — analoog aan
+    GebruikerAdministratie. `entiteit_id` bewust zonder FK: vastgoed-entiteiten leven in de
+    vastgoed-database, niet in het platform-schema. RLS: eigen rijen lezen of
+    vastgoed-module-beheerder; muteren alleen module-beheerder en nooit de eigen scope."""
+
+    __tablename__ = "gebruiker_entiteit"
+
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    entiteit_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class Uitnodiging(Base):
     """Eenmalige uitnodigingslink (72u geldig). Alleen `token_hash` wordt opgeslagen — het
     plaintext-token gaat naar de gebruiker (e-mail, buiten scope van deze migratie) en is daarna

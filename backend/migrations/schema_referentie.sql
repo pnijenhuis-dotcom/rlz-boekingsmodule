@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0033
+-- Migratie-head bij deze dump: 0034
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -96,6 +96,24 @@ CREATE TYPE platform.gebruiker_status AS ENUM (
 
 
 --
+-- Name: actor_is_module_beheerder(text); Type: FUNCTION; Schema: platform; Owner: -
+--
+
+CREATE FUNCTION platform.actor_is_module_beheerder(p_module text) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'platform', 'pg_temp'
+    AS $$
+            SELECT EXISTS (
+                SELECT 1 FROM platform.gebruiker_module_rol r
+                WHERE r.gebruiker_id = platform.current_actor_id()
+                  AND r.module = p_module
+                  AND r.rol = CASE p_module WHEN 'vastgoed' THEN 'superadmin' ELSE NULL END
+            )
+            OR (p_module = 'boekhouding' AND platform.current_actor_is_beheerder())
+        $$;
+
+
+--
 -- Name: audit_gebruiker_administratie_wijziging(); Type: FUNCTION; Schema: platform; Owner: -
 --
 
@@ -127,6 +145,81 @@ CREATE FUNCTION platform.audit_gebruiker_administratie_wijziging() RETURNS trigg
             INSERT INTO platform.audit_event
                 (id, actor_id, module, tabel, record_id, actie, oude_waarde, nieuwe_waarde, correlatie_id)
             VALUES (gen_random_uuid(), v_actor, 'platform', 'gebruiker_administratie', v_record, v_actie, v_oude, v_nieuwe, gen_random_uuid());
+            RETURN COALESCE(NEW, OLD);
+        END;
+        $$;
+
+
+--
+-- Name: audit_gebruiker_entiteit_wijziging(); Type: FUNCTION; Schema: platform; Owner: -
+--
+
+CREATE FUNCTION platform.audit_gebruiker_entiteit_wijziging() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'platform', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor uuid;
+            v_record uuid;
+            v_actie text;
+            v_oude jsonb;
+            v_nieuwe jsonb;
+        BEGIN
+            v_actor := platform.current_actor_id();
+            IF v_actor IS NULL THEN
+                RAISE EXCEPTION 'app.current_actor_id niet gezet — entiteit-scope-wijziging vereist een bekende actor voor audit_event';
+            END IF;
+            IF TG_OP = 'INSERT' THEN
+                v_record := NEW.gebruiker_id; v_actie := 'entiteit_scope_toegevoegd';
+                v_oude := NULL; v_nieuwe := jsonb_build_object('entiteit_id', NEW.entiteit_id);
+            ELSE
+                v_record := OLD.gebruiker_id; v_actie := 'entiteit_scope_verwijderd';
+                v_oude := jsonb_build_object('entiteit_id', OLD.entiteit_id); v_nieuwe := NULL;
+            END IF;
+            INSERT INTO platform.audit_event
+                (id, actor_id, module, tabel, record_id, actie, oude_waarde, nieuwe_waarde, correlatie_id)
+            VALUES (gen_random_uuid(), v_actor, 'vastgoed', 'gebruiker_entiteit', v_record, v_actie,
+                    v_oude, v_nieuwe, gen_random_uuid());
+            RETURN COALESCE(NEW, OLD);
+        END;
+        $$;
+
+
+--
+-- Name: audit_gebruiker_module_rol_wijziging(); Type: FUNCTION; Schema: platform; Owner: -
+--
+
+CREATE FUNCTION platform.audit_gebruiker_module_rol_wijziging() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'platform', 'pg_temp'
+    AS $$
+        DECLARE
+            v_actor uuid;
+            v_module text;
+            v_record uuid;
+            v_actie text;
+            v_oude jsonb;
+            v_nieuwe jsonb;
+        BEGIN
+            v_actor := platform.current_actor_id();
+            IF v_actor IS NULL THEN
+                RAISE EXCEPTION 'app.current_actor_id niet gezet — module-rol-wijziging vereist een bekende actor voor audit_event';
+            END IF;
+            IF TG_OP = 'INSERT' THEN
+                v_module := NEW.module; v_record := NEW.gebruiker_id; v_actie := 'module_rol_toegevoegd';
+                v_oude := NULL; v_nieuwe := jsonb_build_object('module', NEW.module, 'rol', NEW.rol);
+            ELSIF TG_OP = 'UPDATE' THEN
+                v_module := NEW.module; v_record := NEW.gebruiker_id; v_actie := 'module_rol_gewijzigd';
+                v_oude := jsonb_build_object('module', OLD.module, 'rol', OLD.rol);
+                v_nieuwe := jsonb_build_object('module', NEW.module, 'rol', NEW.rol);
+            ELSE
+                v_module := OLD.module; v_record := OLD.gebruiker_id; v_actie := 'module_rol_verwijderd';
+                v_oude := jsonb_build_object('module', OLD.module, 'rol', OLD.rol); v_nieuwe := NULL;
+            END IF;
+            INSERT INTO platform.audit_event
+                (id, actor_id, module, tabel, record_id, actie, oude_waarde, nieuwe_waarde, correlatie_id)
+            VALUES (gen_random_uuid(), v_actor, v_module, 'gebruiker_module_rol', v_record, v_actie,
+                    v_oude, v_nieuwe, gen_random_uuid());
             RETURN COALESCE(NEW, OLD);
         END;
         $$;
@@ -1042,6 +1135,32 @@ ALTER TABLE ONLY platform.gebruiker_administratie FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: gebruiker_entiteit; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.gebruiker_entiteit (
+    gebruiker_id uuid NOT NULL,
+    entiteit_id uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY platform.gebruiker_entiteit FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: gebruiker_module_rol; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.gebruiker_module_rol (
+    gebruiker_id uuid NOT NULL,
+    module text NOT NULL,
+    rol text NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_gebruiker_module_rol_geldig CHECK (((module = 'vastgoed'::text) AND (rol = ANY (ARRAY['superadmin'::text, 'eigenaar'::text, 'kantoor'::text]))))
+);
+
+
+--
 -- Name: grootboekrekening; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -1495,6 +1614,22 @@ ALTER TABLE ONLY platform.gebruiker
 
 
 --
+-- Name: gebruiker_entiteit gebruiker_entiteit_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.gebruiker_entiteit
+    ADD CONSTRAINT gebruiker_entiteit_pkey PRIMARY KEY (gebruiker_id, entiteit_id);
+
+
+--
+-- Name: gebruiker_module_rol gebruiker_module_rol_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.gebruiker_module_rol
+    ADD CONSTRAINT gebruiker_module_rol_pkey PRIMARY KEY (gebruiker_id, module);
+
+
+--
 -- Name: gebruiker gebruiker_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -1864,6 +1999,13 @@ CREATE INDEX ix_audit_event_tijdstip ON platform.audit_event USING btree (tijdst
 
 
 --
+-- Name: ix_gebruiker_entiteit_entiteit_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_gebruiker_entiteit_entiteit_id ON platform.gebruiker_entiteit USING btree (entiteit_id);
+
+
+--
 -- Name: ix_grootboekrekening_administratie_id; Type: INDEX; Schema: platform; Owner: -
 --
 
@@ -1896,6 +2038,20 @@ CREATE TRIGGER trg_audit_gebruiker_administratie_delete AFTER DELETE ON platform
 --
 
 CREATE TRIGGER trg_audit_gebruiker_administratie_insert AFTER INSERT ON platform.gebruiker_administratie FOR EACH ROW EXECUTE FUNCTION platform.audit_gebruiker_administratie_wijziging();
+
+
+--
+-- Name: gebruiker_entiteit trg_audit_gebruiker_entiteit; Type: TRIGGER; Schema: platform; Owner: -
+--
+
+CREATE TRIGGER trg_audit_gebruiker_entiteit AFTER INSERT OR DELETE ON platform.gebruiker_entiteit FOR EACH ROW EXECUTE FUNCTION platform.audit_gebruiker_entiteit_wijziging();
+
+
+--
+-- Name: gebruiker_module_rol trg_audit_gebruiker_module_rol; Type: TRIGGER; Schema: platform; Owner: -
+--
+
+CREATE TRIGGER trg_audit_gebruiker_module_rol AFTER INSERT OR DELETE OR UPDATE ON platform.gebruiker_module_rol FOR EACH ROW EXECUTE FUNCTION platform.audit_gebruiker_module_rol_wijziging();
 
 
 --
@@ -2586,6 +2742,22 @@ ALTER TABLE ONLY platform.gebruiker_administratie
 
 
 --
+-- Name: gebruiker_entiteit gebruiker_entiteit_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.gebruiker_entiteit
+    ADD CONSTRAINT gebruiker_entiteit_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: gebruiker_module_rol gebruiker_module_rol_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.gebruiker_module_rol
+    ADD CONSTRAINT gebruiker_module_rol_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: grootboekrekening grootboekrekening_administratie_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -3188,6 +3360,67 @@ ALTER TABLE platform.gebruiker_administratie ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY gebruiker_administratie_scope ON platform.gebruiker_administratie USING (((administratie_id = platform.current_administratie_id()) OR platform.current_actor_is_beheerder() OR (gebruiker_id = platform.current_actor_id()))) WITH CHECK (((administratie_id = platform.current_administratie_id()) OR platform.current_actor_is_beheerder()));
+
+
+--
+-- Name: gebruiker_entiteit; Type: ROW SECURITY; Schema: platform; Owner: -
+--
+
+ALTER TABLE platform.gebruiker_entiteit ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: gebruiker_entiteit gebruiker_entiteit_delete; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY gebruiker_entiteit_delete ON platform.gebruiker_entiteit FOR DELETE USING ((platform.actor_is_module_beheerder('vastgoed'::text) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id())));
+
+
+--
+-- Name: gebruiker_entiteit gebruiker_entiteit_insert; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY gebruiker_entiteit_insert ON platform.gebruiker_entiteit FOR INSERT WITH CHECK ((platform.actor_is_module_beheerder('vastgoed'::text) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id())));
+
+
+--
+-- Name: gebruiker_entiteit gebruiker_entiteit_lees; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY gebruiker_entiteit_lees ON platform.gebruiker_entiteit FOR SELECT USING (((gebruiker_id = platform.current_actor_id()) OR platform.actor_is_module_beheerder('vastgoed'::text)));
+
+
+--
+-- Name: gebruiker_module_rol; Type: ROW SECURITY; Schema: platform; Owner: -
+--
+
+ALTER TABLE platform.gebruiker_module_rol ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: gebruiker_module_rol gebruiker_module_rol_delete; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY gebruiker_module_rol_delete ON platform.gebruiker_module_rol FOR DELETE USING ((platform.actor_is_module_beheerder(module) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id())));
+
+
+--
+-- Name: gebruiker_module_rol gebruiker_module_rol_insert; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY gebruiker_module_rol_insert ON platform.gebruiker_module_rol FOR INSERT WITH CHECK ((platform.actor_is_module_beheerder(module) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id())));
+
+
+--
+-- Name: gebruiker_module_rol gebruiker_module_rol_lees; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY gebruiker_module_rol_lees ON platform.gebruiker_module_rol FOR SELECT USING (((gebruiker_id = platform.current_actor_id()) OR platform.actor_is_module_beheerder(module)));
+
+
+--
+-- Name: gebruiker_module_rol gebruiker_module_rol_update; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY gebruiker_module_rol_update ON platform.gebruiker_module_rol FOR UPDATE USING ((platform.actor_is_module_beheerder(module) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id()))) WITH CHECK ((platform.actor_is_module_beheerder(module) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id())));
 
 
 --
