@@ -229,6 +229,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `RlzClient.link_payment_item` mét directe verificatie (OpenAmount-hertoets +
   PaymentReferenceList-leesspoor); het assist-pad is de expliciete FALLBACK bij een API-fout
   (opdracht blijft zichtbaar klaargezet mét foutmelding; de sync-verificatie dekt die route).
+  Vóór elke link-call een vooraf-toets tegen de ACTUELE RLZ-staat (kliktest-fix 2026-08-09:
+  "Nu afletteren" op een intussen al afgeletterde mutatie gaf een kale 404 — géén
+  casing-probleem, client gepind op de bewezen `/Actions`-vorm): mutatie al dicht →
+  "geverifieerd — al afgeletterd in RLZ" (geen fout, eigen chip), doel-post niet meer in de
+  open-items-collectie → duidelijke fout vóór de call; verse OpenAmount leidend voor
+  LinkedAmount.
   Stap 1 (exacte match) lettert automatisch af tijdens de bank-sync achter de opt-in
   `bank_autoboeken_ingeschakeld` + eigen volumerem, vóór de vaste regels; zonder opt-in en
   voor stap 2 (deelmatch, LinkedAmount = min(|mutatie|,|post|)) is het één-klik — nooit auto.

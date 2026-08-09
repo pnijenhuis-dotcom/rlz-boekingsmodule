@@ -1183,3 +1183,12 @@ TX5/TX6 blijven bewust staan):
    automatisch af in de bank-sync achter `bank_autoboeken_ingeschakeld` + eigen volumerem;
    stap 2 (deelmatch) blijft één-klik. De open supportvraag aan Reeleezee is hiermee
    **beantwoord door eigen capture** — een supportantwoord is alleen nog ter bevestiging.
+7. **Randgeval 404 op "Nu afletteren" (kliktest Peter 2026-08-09 middag) — URL-casing
+   uitgesloten:** de UI POST't naar `PaymentTransactions/{id}/actions` (kleine a), maar deze
+   replay slaagde met `/Actions` (hoofdletter A, `post_raw_actions`) — de client staat dus al
+   op de bewezen vorm en is daarop gepind (`tests/unit/test_rlz_client_afletteren_url.py`).
+   De 404 kwam volledig uit de verouderde lokale staat: de mutatie was intussen in RLZ
+   afgeletterd, waardoor het doel-PaymentItem uit de open-items-collectie was verdwenen
+   (zie punt 2: verdwenen/vervangen item-id → `404 _NotFound`). Fix: vooraf-toets tegen de
+   actuele RLZ-staat vóór elke link-call (`OpenAmount` 0 → "geverifieerd — al afgeletterd in
+   RLZ", geen fout; post niet meer open → duidelijke fout vóór de call).
