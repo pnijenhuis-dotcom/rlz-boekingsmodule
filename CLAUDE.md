@@ -67,7 +67,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   crediteurenpost dragen (regel-`Entity` stil genegeerd, document-`Entity` 500) —
   afletteren-tegen-open-post kan via de API in géén enkele vorm; supportvraag (verbreed naar
   34/218) ligt klaar** — zie api-verkenning.md "Bankmodule schrijf-PoC" + "Bankmodule
-  FALLBACK-PoC").
+  FALLBACK-PoC". **Betaal-kant-STAP-0 (2026-08-09, n.a.v. UI-walkthrough 2026-08-08): óók de
+  UI-route `POST PaymentTransactions/{id}/actions` nog niet gekraakt — actie-universum op een
+  mutatie is exact {15,16,116,148,160,161} (sweep 1–250); nieuw ontdekt ongedocumenteerd
+  `ApiAction`-veld `PaymentItemList` wordt geaccepteerd (204) maar zonder effect; actie 161
+  koppelt wél maar aan een nieuw aangemaakt document (vals positief). Auth is niet de
+  blokkade. Vervolg: UI-body via DevTools capturen; supportvraag aangescherpt. Zie
+  api-verkenning "Afletteren betaal-kant STAP-0"**).
 - Documentstatus (RLZ's eigen enumeratie `GET DocumentStatuses`, geverifieerd 2026-07-13):
   **1 = Tentative/Concept, 2 = Open/Openstaand (geboekt, nog niet volledig afgeletterd),
   3 = Closed/Gesloten (volledig betaald/afgeletterd, `BaseRemainingAmount` 0)**. De eerdere

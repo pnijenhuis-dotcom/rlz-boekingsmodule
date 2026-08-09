@@ -741,6 +741,20 @@ Verbreed na de fallback-PoC (2 augustus 2026): acties 34 en 218 toegevoegd.
 > (`8dbfb856-d75b-4ec3-9124-c8b739fe3bc5`), webservice-login AK_NijenClaude. Testdata
 > herkenbaar aan referenties die met `TEST-BANKPOC-` of `TEST-BANKFB-` beginnen.
 
+**Aanscherping n.a.v. de betaal-kant-STAP-0 (9 augustus 2026) — toevoegen aan de vraag vóór
+verzending:**
+
+> Aanvulling: wij hebben inmiddels ontdekt dat het `ApiAction`-model op
+> `POST {adminId}/PaymentTransactions/{id}/Actions` een ongedocumenteerd veld
+> `PaymentItemList` accepteert: `{"Type": 15, "PaymentItemList": [{"id": "<paymentItemId>"}]}`
+> geeft `204` (elke andere veldnaam geeft `400 _InvalidData`), maar er gebeurt daarna niets —
+> `OpenAmount`, `PaymentReferenceList` en de doelfactuur blijven ongewijzigd. Ook varianten
+> met `Amount` per item, het volledige PaymentItem-object of een vers item (PaymentStatus 1)
+> hebben geen effect. Ter vergelijking: actie 161 ("Creëer en koppel nieuw document") werkt
+> op dezelfde route en login wél direct. Wat mist er in onze `PaymentItemList`-aanroep om
+> een bestaand open item te koppelen — of is die werking beperkt tot geïmporteerde
+> mutaties/afschriftregels? Testreferenties van deze ronde: `TEST-AFLETTERPOC-`.
+
 ## Omzetmodule STAP 0 — write-path SalesInvoice + ManualJournal + Kasomzet (7 augustus 2026) — GESLAAGD, geen blockers
 
 Uitgevoerd tegen de test-administratie (`8dbfb856-…3fc5`) met `verkenning/poc_omzet_schrijf.py`
@@ -975,3 +989,103 @@ administratie gescheiden):
 een rekening cross-administratie op GUID opzoeken of ontdubbelen. Onze
 `payment_account_cache` heeft niet voor niets een samengestelde sleutel (id, administratie_id);
 dat patroon aanhouden bij alles wat naar PaymentAccounts verwijst.
+
+## Afletteren via de betaal-kant — UI-walkthrough (8 augustus 2026, meegekeken via extensie)
+
+**DOORBRAAK: afletteren-tegen-open-post gaat via de PaymentTransaction, niet via het document.**
+De RLZ-UI ("Kas & Bank" → mutatie → groene suggestie → knop **Koppelen**) vuurt:
+
+  `POST /api/v1/{adminId}/PaymentTransactions/{transactionId}/actions`  → **204**
+
+gevolgd door een GET-refetch van diezelfde PaymentTransaction met
+`$expand=...,MatchedPaymentItem($expand=...)`. RLZ's eigen matchsuggestie zit dus al als
+`MatchedPaymentItem` op de mutatie; de Koppelen-actie **accepteert** die match en lettert af.
+
+Dit verklaart waarom ALLE eerdere schrijf-PoC's faalden: die zaten op de DOCUMENT-kant
+(acties 15/16 LinkPaymentItems, 34 verrekenen, 218 betalen op PurchaseInvoices/SalesInvoices/
+ManualJournals → `_InvalidData`/500). De UI lettert af via de BETAAL-kant
+(`PaymentTransactions/{id}/actions`), een route die we nooit beproefd hebben.
+
+Waargenomen (Rubicon, 2026-08-08, transactie 19251249-1a85-4274-90b8-f88f6c67d4dc): status 204;
+totaal-afgeboekt sprong van €37,29 naar €188,54 (koppeling €151,25 verwerkt).
+
+**Nog onbekend (in-page fetch-interceptor werd geblokkeerd, vermoedelijk CSP/early-bound fetch —
+netwerklog toont geen body):** de exacte action-body (het `Type`-nummer, en of `MatchedPaymentItem`
+of een PaymentItem-id meegestuurd moet worden, of dat de reeds-gezette MatchedPaymentItem volstaat).
+→ STAP-0 op de TEST-administratie: `POST PaymentTransactions/{id}/actions` met Basic Auth,
+`{Type: n}` voor de plausibele actienummers, op een mutatie die een MatchedPaymentItem draagt;
+toets op `OpenAmount` 0. Werkt het met Basic Auth → seam `voer_afletter_actie_uit` vervangen →
+stap 1 van de voorstel-volgorde lettert voortaan automatisch af. Werkt Basic Auth niet →
+sessie-only endpoint, assist-model blijft.
+
+## Afletteren betaal-kant STAP-0 (9 augustus 2026, test-administratie) — UITGEVOERD, body nog niet gekraakt
+
+Harness: `verkenning/poc_afletteren_betaalkant.py` (zelfde waarborgen als de bank-PoC's:
+admin-pin, kill switch, TEST-referenties, append-only audit `output/afletterpoc_audit.jsonl`,
+storno-only cleanup). Testpaar: verse factuur TEST-AFLETTERPOC-INV1 (€153,67, geboekt →
+open PaymentItem) + verse mutatie TEST-AFLETTERPOC-TX5 (−153,67) — `MatchedPaymentItem`
+vulde direct automatisch (bevestigt het schrijf-PoC-beeld). Alles na afloop teruggedraaid
+en eindstaat geverifieerd (factuur + 161-document op concept, TX weer open, geen open items).
+
+### Hoofdconclusie
+
+**De exacte koppel-body is óók in deze STAP-0 niet gevonden — maar de zoekruimte is nu
+uitputtend in kaart en er zijn drie nieuwe feiten die de supportvraag en een volgende
+UI-capture veel scherper maken.** Het assist-model blijft tot die tijd staan.
+
+### Nieuwe feiten
+
+1. **Volledige actie-inventaris op een PaymentTransaction (sweep Type 1–250, kaal):** alleen
+   15 en 16 antwoorden `_InvalidData` ("van toepassing, data ontbreekt"), alleen **116, 160 en
+   161** geven `204`; 148 `APIActions_NotApplicable`; ál het andere is 400-ruis. Er bestaat
+   dus géén verborgen "accepteer matchvoorstel"-actienummer dat we gemist hebben.
+2. **Het `ApiAction`-model heeft een ongedocumenteerd veld `PaymentItemList`.** Herkennings-
+   probe: elk ander verzonnen veld (`Bogus`, `PaymentItems`, `PaymentReference`, `Document`,
+   …) → `_InvalidData`; `PaymentItemList` → **204**. Sterker: `{Type:15, id:<guid>}` is
+   `_InvalidData`, maar mét `PaymentItemList` erbij wordt dezelfde body geaccepteerd — de
+   validatie leest het veld dus echt. **Maar het effect blijft in élke vorm uit** (OpenAmount,
+   PaymentReferenceList en factuur onveranderd): entries als `{id}`, `{id, Amount}` (beide
+   tekens), volledig item-object, vers item (PaymentStatus 1) én na id/Description-combinaties.
+   Geen async effect (staat blijft ook later ongewijzigd).
+3. **Actie 161 kaal ("Creëer en koppel nieuw document") wérkt financieel met Basic Auth:**
+   204 → OpenAmount 0, `PaymentReferenceList` wijst naar een NIEUW aangemaakt, direct geboekt
+   inkoopdocument (Status 3). Dat is dus een vals positief voor afletteren-tegen-open-post
+   (onze factuur bleef gewoon open), maar het bewijst dat **auth niet de blokkade is**: de
+   actions-route kan met de webservice-login boekhoudkundige effecten hebben. Actie 160
+   ("Stel nieuw document voor") en 116 geven 204 zonder waarneembaar effect; 161-storno
+   (actie 19 op het nieuwe document) zet OpenAmount terug en het matchvoorstel komt vanzelf
+   terug — terugdraaipad dus geverifieerd.
+
+### Overige uitsluitingen (deze ronde)
+
+- Query-parameter-vormen (`?type=`, `?actionType=`, `?paymentItemId=`) en lege/array-bodies: 400.
+- `PUT PaymentTransactions/{id}` met `PaymentReferenceList` naar de factuur: bindt niet
+  ("request is invalid"); `IsImported: true` wordt stil genegeerd (blijft false) — een
+  PUT-aangemaakte mutatie is en blijft Type 1/niet-geïmporteerd.
+- BMDB-document als koppel-vehikel: `PUT BankMutationDirectBookings` met
+  `PaymentReferenceList` → bindt niet; met `Entity` (crediteur) → `500 Onverwachte fout`
+  (zelfde muur als document-`Entity` op het memoriaal, fallback-PoC).
+- De systeemhuls (DocumentType 19) biedt zelf **geen** acties (`GET .../Actions` = leeg).
+- `ActionKinds/{n}` geeft (nu) 404 op de admin-scope; de nummers komen uit
+  `GET PaymentTransactions/{id}/Actions`.
+- ⚠️ Bijvangst: na een koppel+storno-cyclus komt het PaymentItem terug met **PaymentStatus 4
+  (PayCanceled)**; een vers item (status 1) vereist storno + herboeken van de factuur. Voor
+  latere experimenten relevant — en mogelijk verklaart zo'n status-eis ook stille no-ops.
+
+### Openstaande verklaring + vervolg
+
+De UI-waarneming (204 mét koppeling aan een bestáánd document) is met Basic Auth niet
+gereproduceerd. Meest waarschijnlijke verklaringen: (a) de UI stuurt een body-vorm die wij
+niet geraden hebben (met `PaymentItemList` in een specifieke gedaante), of (b) de handler
+gedraagt zich anders op echte geïmporteerde mutaties (Statement/afschrift-context — via de
+API niet na te bootsen: `IsImported` niet zetbaar, geen Statements-write).
+
+**Vervolg (concreet):**
+1. Bij de eerstvolgende gelegenheid in de RLZ-UI de Koppelen-request **via DevTools →
+   Network → Payload** capturen (geen fetch-interceptor nodig; "Copy as cURL" pakt de body
+   mee). Nu we weten dat het veld `PaymentItemList` heet, is één blik op de echte payload
+   waarschijnlijk genoeg.
+2. Supportvraag aan RLZ aangescherpt met de `PaymentItemList`-ontdekking (zie de bijgewerkte
+   conceptvraag onderaan dit document).
+3. Tot die tijd: assist-model blijft; seam `app/bank/afletteren.py::voer_afletter_actie_uit`
+   ongewijzigd.
