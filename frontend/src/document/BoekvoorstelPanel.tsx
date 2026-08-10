@@ -22,6 +22,7 @@ import {
   omschrijvingSleutel,
   type HandmatigeVelden,
 } from './geheugenVoorstel'
+import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
@@ -33,6 +34,7 @@ import {
   useTaxrateOpties,
   useVendorOpties,
 } from './useSyncOpties'
+import { useAutoChecks } from './useAutoChecks'
 
 /** Statische weergave van een gekozen optie (design-pass: read-only bij geboekt/verwijderd) —
  * zelfde code+omschrijving-vorm als de combobox zelf toont, alleen niet interactief. */
@@ -336,8 +338,13 @@ export function BoekvoorstelPanel({
   // ACTUELE invoer — de knop "Boeken" mag dan niet meer aan staan, ook al was het vorige resultaat
   // groen. De rijen blijven zichtbaar (context), maar duidelijk gemarkeerd als verouderd.
   const [checksActueel, setChecksActueel] = useState(false)
-  const [controlerenBezig, setControlerenBezig] = useState(false)
   const [controlerenFout, setControlerenFout] = useState<string | null>(null)
+  // Blok B 2026-08-10: geen "Controleren"-knop meer — checks draaien automatisch (bij openen
+  // read-only, na elke wijziging gedebounced opslaan + checks); een server-side geblokkeerde
+  // boekactie toont de gefaalde checks in een pop-up.
+  const [wijzigingsVersie, setWijzigingsVersie] = useState(0)
+  const wijzigingsVersieRef = useRef(0)
+  const [popupChecks, setPopupChecks] = useState<{ melding: string | null; checks: CheckRapportDto } | null>(null)
   const [boekenBezig, setBoekenBezig] = useState(false)
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
   const [boekResultaat, setBoekResultaat] = useState<BoekenResponseDto | null>(null)
@@ -515,7 +522,11 @@ export function BoekvoorstelPanel({
     }
   }, [ai, aiChipsActief, isReadOnly, vendorId, referentie, factuurdatum, totaalbedrag])
 
-  const veranderInvoer = () => setChecksActueel(false)
+  const veranderInvoer = () => {
+    setChecksActueel(false)
+    wijzigingsVersieRef.current += 1
+    setWijzigingsVersie(wijzigingsVersieRef.current)
+  }
 
   const wijzigVendorId = (id: string | null) => {
     setVendorId(id)
@@ -638,11 +649,13 @@ export function BoekvoorstelPanel({
     setSynchroniserenBezig(false)
   }
 
+  /** Opslaan + checks in één PUT — draait automatisch (gedebounced) na elke wijziging;
+   * dit was de vroegere "Controleren"-knop. */
   const controleren = async () => {
-    setControlerenBezig(true)
     setControlerenFout(null)
     setBoekenFout(null)
     setBoekResultaat(null)
+    const versieBijStart = wijzigingsVersieRef.current
     try {
       const resultaat = await apiJson<BoekvoorstelMetChecksDto>(
         `/administraties/${administratieId}/documenten/${documentId}/boekvoorstel`,
@@ -668,12 +681,29 @@ export function BoekvoorstelPanel({
           }),
         },
       )
-      setCheckRapport(resultaat.checks)
-      setChecksActueel(true)
+      if (wijzigingsVersieRef.current === versieBijStart) {
+        setCheckRapport(resultaat.checks)
+        setChecksActueel(true)
+      }
     } catch (err) {
-      setControlerenFout(err instanceof ApiError ? err.message : 'Controleren mislukt.')
-    } finally {
-      setControlerenBezig(false)
+      setControlerenFout(err instanceof ApiError ? err.message : 'Checks uitvoeren mislukt.')
+    }
+  }
+
+  /** Checks bij openen: read-only over het al opgeslagen voorstel, zonder te schrijven
+   * (POST …/boekvoorstel/checks). Een document zonder opgeslagen voorstel geeft gewoon een
+   * rapport over de prefill; een fout laat het paneel leeg — de debounce-run herstelt dat. */
+  const checksBijOpenen = async () => {
+    const versieBijStart = wijzigingsVersieRef.current
+    const rapport = await apiJson<CheckRapportDto>(
+      `/administraties/${administratieId}/documenten/${documentId}/boekvoorstel/checks`,
+      { method: 'POST' },
+    )
+    // Vorm-validatie: alleen een écht CheckRapport toepassen — een onverwacht antwoord laat
+    // het paneel in de neutrale beginstand (de debounce-run herstelt dat na een wijziging).
+    if (wijzigingsVersieRef.current === versieBijStart && rapport && Array.isArray(rapport.resultaten)) {
+      setCheckRapport(rapport)
+      setChecksActueel(true)
     }
   }
 
@@ -725,9 +755,12 @@ export function BoekvoorstelPanel({
       const detail = body && typeof body === 'object' ? (body as { detail?: unknown }).detail : null
       if (resp.status === 409 && detail && typeof detail === 'object' && 'checks' in detail) {
         const { message, checks } = detail as { message?: string; checks: unknown }
-        setCheckRapport(checks as BoekvoorstelMetChecksDto['checks'])
+        const rapport = checks as BoekvoorstelMetChecksDto['checks']
+        setCheckRapport(rapport)
         setChecksActueel(true)
-        setBoekenFout(message ?? 'Boeken geblokkeerd door harde checks — zie de checks hierboven.')
+        // Blok B: de server-side herdraaide checks blokkeren → pop-up met de concrete
+        // gefaalde check(s); de inline lijst blijft daarnaast staan.
+        setPopupChecks({ melding: message ?? null, checks: rapport })
       } else {
         setBoekenFout(typeof detail === 'string' ? detail : resp.statusText || `Fout (${resp.status})`)
       }
@@ -762,6 +795,15 @@ export function BoekvoorstelPanel({
   const aansluitVerschil = totaalAlsGetal === null ? null : somRegels - totaalAlsGetal
   const aansluit = aansluitVerschil === null ? null : Math.abs(aansluitVerschil) <= 0.01
 
+  // Blok B 2026-08-10: checks draaien automatisch — bij openen (read-only) en gedebounced na
+  // elke wijziging (opslaan + checks via de bestaande PUT). Geen "Controleren"-knop meer.
+  const { checksBezig } = useAutoChecks({
+    actief: !laden && ladenFout === null && !isReadOnly,
+    wijzigingsVersie,
+    bijOpenen: checksBijOpenen,
+    bijWijziging: controleren,
+  })
+
   if (laden) return <div className="panel">Boekvoorstel laden…</div>
   if (ladenFout) return <div className="fout">Kon boekvoorstel niet laden: {ladenFout}</div>
 
@@ -769,9 +811,9 @@ export function BoekvoorstelPanel({
   const boekenTitel = isReadOnly
     ? undefined
     : checkRapport === null
-      ? 'Voer eerst de harde checks uit via "Controleren".'
+      ? 'De harde checks draaien automatisch — boeken kan zodra alle checks groen zijn.'
       : !checksActueel
-        ? 'Er zijn wijzigingen sinds de laatste controle — klik opnieuw op "Controleren".'
+        ? 'Er zijn wijzigingen sinds de laatste controle — de checks draaien zo automatisch opnieuw.'
         : checkRapport.geblokkeerd
           ? 'Boeken geblokkeerd — een of meer harde checks zijn niet groen.'
           : undefined
@@ -1139,14 +1181,27 @@ export function BoekvoorstelPanel({
 
       {!isReadOnly && (
         <div className="panel">
-          <h2>Harde checks</h2>
+          <h2>
+            Harde checks{' '}
+            {checksBezig ? (
+              <span className="chip vraag">checks worden uitgevoerd…</span>
+            ) : checkRapport !== null && checksActueel ? (
+              <span className={`chip ${checkRapport.geblokkeerd ? 'blokkerend' : 'ok'}`}>
+                {checkRapport.geblokkeerd ? 'blokkerend' : 'alle checks groen'}
+              </span>
+            ) : (
+              <span className="chip">automatisch</span>
+            )}
+          </h2>
           {controlerenFout && <div className="fout">{controlerenFout}</div>}
-          {checkRapport === null && <p className="hint">Klik op "Controleren" om de harde checks uit te voeren.</p>}
+          {checkRapport === null && !checksBezig && (
+            <p className="hint">De harde checks draaien automatisch — bij het openen en na elke wijziging.</p>
+          )}
           {checkRapport && (
             <>
-              {!checksActueel && (
+              {!checksActueel && !checksBezig && (
                 <div className="hint" style={{ color: 'var(--orange)' }}>
-                  Wijzigingen sinds de laatste controle — dit resultaat is verouderd. Klik opnieuw op "Controleren".
+                  Wijzigingen sinds de laatste controle — de checks draaien zo automatisch opnieuw.
                 </div>
               )}
               <table className="lines">
@@ -1184,11 +1239,6 @@ export function BoekvoorstelPanel({
                 )}
             </>
           )}
-          <div className="actions">
-            <button type="button" className="btn secondary" disabled={controlerenBezig} onClick={() => void controleren()}>
-              {controlerenBezig ? 'Bezig…' : 'Controleren'}
-            </button>
-          </div>
         </div>
       )}
 
@@ -1248,6 +1298,13 @@ export function BoekvoorstelPanel({
           </div>
         )}
       </div>
+      {popupChecks && (
+        <ChecksPopup
+          melding={popupChecks.melding}
+          checks={popupChecks.checks}
+          onSluiten={() => setPopupChecks(null)}
+        />
+      )}
     </>
   )
 }

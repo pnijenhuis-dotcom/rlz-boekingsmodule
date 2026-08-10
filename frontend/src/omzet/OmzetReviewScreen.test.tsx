@@ -193,7 +193,7 @@ describe('OmzetReviewScreen', () => {
     expect(body.regels).toHaveLength(2)
   })
 
-  it('boekknop is geblokkeerd tot de checks groen zijn, daarna boekt hij en toont boekstuknummers', async () => {
+  it('draait de checks automatisch bij openen (read-only) en de boekknop wordt vanzelf bruikbaar', async () => {
     const putAanroepen: { url: string; body: unknown }[] = []
     const checksAanroepen: string[] = []
     const boekenAanroepen: string[] = []
@@ -201,12 +201,12 @@ describe('OmzetReviewScreen', () => {
     renderScherm()
     await screen.findByText(/Rapport herkend:/)
 
-    const boekKnop = screen.getByRole('button', { name: /Boeken in RLZ/ })
-    expect(boekKnop).toBeDisabled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Controleren' }))
+    // Geen knop en geen menselijke handeling: het rapport verschijnt vanzelf bij openen.
     await screen.findByText(/Memoriaal sluit/)
+    expect(screen.queryByRole('button', { name: 'Controleren' })).not.toBeInTheDocument()
     expect(checksAanroepen).toHaveLength(1)
+    // Bij openen wordt er NIET opgeslagen (read-only checks over voorstel/prefill).
+    expect(putAanroepen).toHaveLength(0)
 
     await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ/ })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /Boeken in RLZ/ }))
@@ -217,7 +217,23 @@ describe('OmzetReviewScreen', () => {
     expect(screen.getByText('RLZ-06-00000502')).toBeInTheDocument()
   })
 
-  it('toont het meegestuurde checkrapport bij een 409-blokkade van de boekactie', async () => {
+  it('een wijziging triggert gedebounced automatisch opslaan + checks', async () => {
+    const putAanroepen: { url: string; body: unknown }[] = []
+    const checksAanroepen: string[] = []
+    installFetchMock({ putAanroepen, checksAanroepen })
+    renderScherm()
+    await screen.findByText(/Rapport herkend:/)
+    await screen.findByText(/Memoriaal sluit/)
+    expect(checksAanroepen).toHaveLength(1)
+
+    await userEvent.type(screen.getByLabelText('Rapport-totaal omzet'), '1')
+
+    // Debounce (800 ms) → automatisch opslaan + checks, zonder klik.
+    await waitFor(() => expect(putAanroepen.length).toBeGreaterThanOrEqual(1), { timeout: 4000 })
+    await waitFor(() => expect(checksAanroepen.length).toBeGreaterThanOrEqual(2), { timeout: 4000 })
+  })
+
+  it('toont een pop-up met de concrete gefaalde checks bij een 409-blokkade van de boekactie', async () => {
     const putAanroepen: { url: string; body: unknown }[] = []
     const checksAanroepen: string[] = []
     const boekenAanroepen: string[] = []
@@ -244,12 +260,15 @@ describe('OmzetReviewScreen', () => {
     renderScherm()
     await screen.findByText(/Rapport herkend:/)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Controleren' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ/ })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /Boeken in RLZ/ }))
 
-    expect(await screen.findByText(/Boeken geblokkeerd door harde checks/)).toBeInTheDocument()
-    expect(screen.getByText(/Periode overlapt/)).toBeInTheDocument()
+    // Blok B: server-side blokkade → POP-UP met de concrete gefaalde check(s).
+    const dialoog = await screen.findByRole('dialog')
+    expect(dialoog).toHaveTextContent('Boeken geblokkeerd door harde checks')
+    expect(dialoog).toHaveTextContent('Periode overlapt')
+    await userEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('een geboekt document is read-only', async () => {

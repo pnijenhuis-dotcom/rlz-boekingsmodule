@@ -48,6 +48,10 @@ interface FetchMockOverrides {
    * voorstel". Elke request-body wordt (geparsed) in geheugenAanroepen gepusht. */
   geheugenVoorstel?: unknown
   geheugenAanroepen?: unknown[]
+  /** Blok B: antwoord op POST /boekvoorstel/checks (de read-only open-run van de automatische
+   * checks); zonder override een 404 — het paneel blijft dan in de neutrale beginstand. */
+  checksResponse?: unknown
+  checksAanroepen?: string[]
 }
 
 function installFetchMock(overrides: FetchMockOverrides) {
@@ -79,6 +83,11 @@ function installFetchMock(overrides: FetchMockOverrides) {
       if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: vendors }))
       if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten }))
       if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: overrides.projectVerplicht ?? false }))
+      if (url.endsWith('/boekvoorstel/checks') && init?.method === 'POST') {
+        overrides.checksAanroepen?.push(url)
+        if (overrides.checksResponse === undefined) return Promise.resolve(new Response(null, { status: 404 }))
+        return Promise.resolve(jsonResponse(overrides.checksResponse))
+      }
       if (url.endsWith('/boekvoorstel') && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse(overrides.boekvoorstel ?? LEEG_BOEKVOORSTEL))
       }
@@ -104,7 +113,7 @@ describe('BoekvoorstelPanel', () => {
     vi.unstubAllGlobals()
   })
 
-  it('vult crediteur/GB/btw-comboboxen met de sync-cache en toont groene checks na controleren', async () => {
+  it('vult crediteur/GB/btw-comboboxen met de sync-cache en toont automatisch groene checks na wijzigingen', async () => {
     const gebruiker = userEvent.setup()
     installFetchMock({
       putResponse: {
@@ -152,25 +161,22 @@ describe('BoekvoorstelPanel', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'NL Hoog 21%' })).toBeInTheDocument())
     await gebruiker.click(screen.getByRole('option', { name: 'NL Hoog 21%' }))
 
-    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
-
-    await waitFor(() => expect(screen.getAllByText('OK')).toHaveLength(3))
+    // Blok B: geen "Controleren"-knop — de wijzigingen hierboven triggeren gedebounced
+    // automatisch opslaan + checks.
+    expect(screen.queryByRole('button', { name: 'Controleren' })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByText('OK')).toHaveLength(3), { timeout: 4000 })
     expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeEnabled()
   })
 
-  it('toont de blokkerende check en houdt de boekknop uit als de checks falen', async () => {
-    const gebruiker = userEvent.setup()
+  it('toont de blokkerende check (automatische open-run) en houdt de boekknop uit als de checks falen', async () => {
     installFetchMock({
-      putResponse: {
-        boekvoorstel: LEEG_BOEKVOORSTEL,
-        checks: {
-          geblokkeerd: true,
-          resultaten: [
-            { naam: 'Verplichte velden', ok: false, melding: 'Ontbrekend: crediteur' },
-            { naam: 'Regeltelling vs totaal', ok: false, melding: 'Geen factuurtotaal ingevuld' },
-            { naam: 'Duplicaatcheck', ok: false, melding: 'Kan niet controleren' },
-          ],
-        },
+      checksResponse: {
+        geblokkeerd: true,
+        resultaten: [
+          { naam: 'Verplichte velden', ok: false, melding: 'Ontbrekend: crediteur' },
+          { naam: 'Regeltelling vs totaal', ok: false, melding: 'Geen factuurtotaal ingevuld' },
+          { naam: 'Duplicaatcheck', ok: false, melding: 'Kan niet controleren' },
+        ],
       },
     })
 
@@ -183,9 +189,7 @@ describe('BoekvoorstelPanel', () => {
         onHersteld={() => {}}
       />,
     )
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
-
+    // De open-run draait vanzelf — zonder enige klik verschijnt het rapport.
     await waitFor(() => expect(screen.getAllByText('Blokkerend')).toHaveLength(3))
     expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeDisabled()
   })
@@ -212,6 +216,7 @@ describe('BoekvoorstelPanel', () => {
         { document_id: DOCUMENT_ID, status: 'geboekt', rlz_document_id: 'x', rlz_boekstuknummer: 'RLZ-04-00002001' },
         200,
       ],
+      checksResponse: { geblokkeerd: false, resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'ok' }] },
     })
 
     render(
@@ -223,8 +228,7 @@ describe('BoekvoorstelPanel', () => {
         onHersteld={() => {}}
       />,
     )
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
+    // De automatische open-run maakt de boekknop bruikbaar zonder klik.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeEnabled())
 
     await gebruiker.click(screen.getByRole('button', { name: 'Boeken in RLZ ✓' }))
@@ -269,6 +273,7 @@ describe('BoekvoorstelPanel', () => {
           resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'ok' }],
         },
       },
+      checksResponse: { geblokkeerd: false, resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'ok' }] },
     })
 
     render(
@@ -280,8 +285,6 @@ describe('BoekvoorstelPanel', () => {
         onHersteld={() => {}}
       />,
     )
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeEnabled())
 
     await gebruiker.type(screen.getByLabelText('Referentie / factuurnummer'), 'X')
@@ -291,7 +294,7 @@ describe('BoekvoorstelPanel', () => {
       'title',
       expect.stringContaining('opnieuw'),
     )
-    expect(screen.getByText(/verouderd/)).toBeInTheDocument()
+    expect(screen.getByText(/draaien zo automatisch opnieuw/)).toBeInTheDocument()
   })
 
   it('design-pass taak 4: de Project-kolom is verborgen als project_verplicht uit staat', async () => {
@@ -305,7 +308,7 @@ describe('BoekvoorstelPanel', () => {
         onHersteld={() => {}}
       />,
     )
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Controleren' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Harde checks')).toBeInTheDocument())
     expect(screen.queryByText('Project')).not.toBeInTheDocument()
   })
 
@@ -656,7 +659,7 @@ describe('BoekvoorstelPanel', () => {
     expect(screen.getByLabelText('Netto bedrag')).toHaveValue('100.00')
   })
 
-  it('fix 3: de splitskeuze reist mee met Controleren (PUT regels_samenvoegen) zodat de voorkeur per leverancier onthouden wordt', async () => {
+  it('fix 3: de splitskeuze reist mee met de automatische opslaan+checks-run (PUT regels_samenvoegen)', async () => {
     const gebruiker = userEvent.setup()
     const putBodies: unknown[] = []
     installFetchMock({
@@ -679,16 +682,12 @@ describe('BoekvoorstelPanel', () => {
     )
     await waitFor(() => expect(screen.getByLabelText('Splitsen per regel')).toBeInTheDocument())
 
-    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
-    await waitFor(() => expect(putBodies).toHaveLength(1))
-    expect((putBodies[0] as { regels_samenvoegen: boolean }).regels_samenvoegen).toBe(true)
-
+    // Blok B: de splitskeuze-wijziging triggert vanzelf de gedebouncede opslaan+checks-PUT.
     await gebruiker.click(screen.getByLabelText('Splitsen per regel'))
-    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
-    await waitFor(() => expect(putBodies).toHaveLength(2))
-    const tweede = putBodies[1] as { regels_samenvoegen: boolean; regels: unknown[] }
-    expect(tweede.regels_samenvoegen).toBe(false)
-    expect(tweede.regels).toHaveLength(2)
+    await waitFor(() => expect(putBodies.length).toBeGreaterThanOrEqual(1), { timeout: 4000 })
+    const laatste = putBodies[putBodies.length - 1] as { regels_samenvoegen: boolean; regels: unknown[] }
+    expect(laatste.regels_samenvoegen).toBe(false)
+    expect(laatste.regels).toHaveLength(2)
   })
 
   it('fix 3: bij projectplicht (samenvoegen_toegestaan=false) geen vinkje en hard per-regel', async () => {
@@ -969,8 +968,10 @@ describe('BoekvoorstelPanel', () => {
     )
 
     await waitFor(() => expect(screen.getByText('Geheugenvoorstel niet beschikbaar')).toBeInTheDocument())
-    // Niet-blokkerend: controleren en boeken blijven gewoon werken.
-    await gebruiker.click(screen.getByRole('button', { name: 'Controleren' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeEnabled())
+    // Niet-blokkerend: een wijziging triggert de automatische checks en boeken blijft werken.
+    await gebruiker.type(screen.getByLabelText('Referentie / factuurnummer'), 'F-1')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeEnabled(), {
+      timeout: 4000,
+    })
   })
 })

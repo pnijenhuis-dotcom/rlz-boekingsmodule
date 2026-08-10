@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type {
@@ -12,7 +12,9 @@ import type {
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { formatteerXml } from '../document/DocumentDetailScreen'
 import { SearchableCombobox } from '../document/SearchableCombobox'
+import { useAutoChecks } from '../document/useAutoChecks'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { haalVerkoopVoorstelOp, slaVerkoopVoorstelOp, voerVerkoopChecksUit } from './verkoopApi'
 
@@ -91,13 +93,22 @@ export function VerkoopReviewScreen() {
   const [opslaanBezig, setOpslaanBezig] = useState(false)
   const [opslaanFout, setOpslaanFout] = useState<string | null>(null)
   const [checkRapport, setCheckRapport] = useState<CheckRapportDto | null>(null)
-  const [controlerenBezig, setControlerenBezig] = useState(false)
   const [boekenBezig, setBoekenBezig] = useState(false)
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
   const [boekResultaat, setBoekResultaat] = useState<VerkoopBoekenResponseDto | null>(null)
-  // Elke wijziging maakt een eerder checkresultaat verouderd — zelfde patroon als het
-  // controlescherm: het rapport blijft zichtbaar maar telt niet meer als groen licht.
+  // Elke wijziging maakt een eerder checkresultaat verouderd — het rapport blijft zichtbaar
+  // maar telt niet meer als groen licht; de checks draaien daarna automatisch opnieuw
+  // (blok B 2026-08-10: geen "Checks uitvoeren"-knop meer).
   const [checksActueel, setChecksActueel] = useState(false)
+  const [wijzigingsVersie, setWijzigingsVersie] = useState(0)
+  const wijzigingsVersieRef = useRef(0)
+  const [popupChecks, setPopupChecks] = useState<{ melding: string | null; checks: CheckRapportDto } | null>(null)
+
+  const markeerGewijzigd = useCallback(() => {
+    setChecksActueel(false)
+    wijzigingsVersieRef.current += 1
+    setWijzigingsVersie(wijzigingsVersieRef.current)
+  }, [])
 
   const grootboek = useGrootboekOpties(administratieId ?? '')
   const btwCodes = useTaxrateOpties(administratieId ?? '')
@@ -163,7 +174,7 @@ export function VerkoopReviewScreen() {
 
   const wijzigRegel = (index: number, wijziging: Partial<RegelStaat>) => {
     setRegels((huidig) => huidig.map((regel, i) => (i === index ? { ...regel, ...wijziging } : regel)))
-    setChecksActueel(false)
+    markeerGewijzigd()
   }
 
   const bouwInvoer = (): VerkoopVoorstelInputDto => ({
@@ -185,9 +196,12 @@ export function VerkoopReviewScreen() {
     if (!administratieId || !documentId) return false
     setOpslaanBezig(true)
     setOpslaanFout(null)
+    // Versie vóór het versturen vastleggen: typt de gebruiker dóór terwijl de save loopt, dan
+    // mag de response de verse invoer niet overschrijven (de volgende debounce-run pakt 'm op).
+    const versieBijVersturen = wijzigingsVersieRef.current
     try {
       const data = await slaVerkoopVoorstelOp(administratieId, documentId, bouwInvoer())
-      neemVoorstelOver(data)
+      if (wijzigingsVersieRef.current === versieBijVersturen) neemVoorstelOver(data)
       return true
     } catch (err) {
       setOpslaanFout(err instanceof ApiError ? err.message : 'Opslaan mislukt.')
@@ -197,20 +211,32 @@ export function VerkoopReviewScreen() {
     }
   }
 
-  const controleren = async () => {
+  /** Checks bij openen: read-only over het opgeslagen voorstel óf de prefill — zonder opslaan
+   * (blok B 2026-08-10: checks draaien automatisch, geen knop). */
+  const checksBijOpenen = useCallback(async () => {
     if (!administratieId || !documentId) return
-    setControlerenBezig(true)
-    setOpslaanFout(null)
-    try {
-      // Checks gelden over wat er opgeslagen is — eerst opslaan, dan toetsen.
-      if (!(await opslaan())) return
-      const resultaat = await voerVerkoopChecksUit(administratieId, documentId)
+    const versieBijStart = wijzigingsVersieRef.current
+    const resultaat = await voerVerkoopChecksUit(administratieId, documentId)
+    if (wijzigingsVersieRef.current === versieBijStart) {
       setCheckRapport(resultaat.checks)
       setChecksActueel(true)
+    }
+  }, [administratieId, documentId])
+
+  /** Checks na een wijziging (gedebounced): opslaan + checks — exact wat de vroegere
+   * "Checks uitvoeren"-knop deed, zonder menselijke handeling. */
+  const checksBijWijziging = async () => {
+    if (!administratieId || !documentId) return
+    const versieBijStart = wijzigingsVersieRef.current
+    if (!(await opslaan())) return
+    try {
+      const resultaat = await voerVerkoopChecksUit(administratieId, documentId)
+      if (wijzigingsVersieRef.current === versieBijStart) {
+        setCheckRapport(resultaat.checks)
+        setChecksActueel(true)
+      }
     } catch (err) {
-      setOpslaanFout(err instanceof ApiError ? err.message : 'Controleren mislukt.')
-    } finally {
-      setControlerenBezig(false)
+      setOpslaanFout(err instanceof ApiError ? err.message : 'Checks uitvoeren mislukt.')
     }
   }
 
@@ -238,7 +264,9 @@ export function VerkoopReviewScreen() {
         const { melding, checks } = detailBody as { melding?: string; checks: CheckRapportDto }
         setCheckRapport(checks)
         setChecksActueel(true)
-        setBoekenFout(melding ?? 'Boeken geblokkeerd door harde checks — zie de checks hierboven.')
+        // Blok B: de server-side herdraaide checks blokkeren → pop-up met de concrete
+        // gefaalde check(s); de inline lijst blijft daarnaast staan.
+        setPopupChecks({ melding: melding ?? null, checks })
       } else {
         setBoekenFout(typeof detailBody === 'string' ? detailBody : resp.statusText || `Fout (${resp.status})`)
       }
@@ -248,6 +276,16 @@ export function VerkoopReviewScreen() {
       setBoekenBezig(false)
     }
   }
+
+  // Blok B 2026-08-10: checks draaien automatisch — bij openen (read-only) en gedebounced na
+  // elke wijziging (opslaan + checks). Geen "Checks uitvoeren"-knop meer.
+  const { checksBezig } = useAutoChecks({
+    actief:
+      detail !== null && voorstel !== null && detail.status !== 'geboekt' && detail.status !== 'verwijderd',
+    wijzigingsVersie,
+    bijOpenen: checksBijOpenen,
+    bijWijziging: checksBijWijziging,
+  })
 
   if (laadFout) return <div className="fout">Kon verkoopfactuur niet laden: {laadFout}</div>
   if (!detail || !voorstel || !administratieId || !documentId) return <p className="hint">Laden…</p>
@@ -339,7 +377,7 @@ export function VerkoopReviewScreen() {
                   value={debiteurNaam}
                   onChange={(e) => {
                     setDebiteurNaam(e.target.value)
-                    setChecksActueel(false)
+                    markeerGewijzigd()
                   }}
                   disabled={isGeboekt}
                 />
@@ -351,7 +389,7 @@ export function VerkoopReviewScreen() {
                   value={factuurnummer}
                   onChange={(e) => {
                     setFactuurnummer(e.target.value)
-                    setChecksActueel(false)
+                    markeerGewijzigd()
                   }}
                   disabled={isGeboekt}
                 />
@@ -363,7 +401,7 @@ export function VerkoopReviewScreen() {
                   value={factuurdatum || null}
                   onChange={(v) => {
                     setFactuurdatum(v ?? '')
-                    setChecksActueel(false)
+                    markeerGewijzigd()
                   }}
                   disabled={isGeboekt}
                 />
@@ -376,7 +414,7 @@ export function VerkoopReviewScreen() {
                   value={totaalIncl}
                   onChange={(e) => {
                     setTotaalIncl(e.target.value)
-                    setChecksActueel(false)
+                    markeerGewijzigd()
                   }}
                   disabled={isGeboekt}
                 />
@@ -519,16 +557,28 @@ export function VerkoopReviewScreen() {
           </div>
 
           <div className="panel">
-            <h2>Harde checks</h2>
-            {checkRapport === null && (
-              <p className="hint">Klik op &quot;Checks uitvoeren&quot; om de harde checks uit te voeren.</p>
+            <h2>
+              Harde checks{' '}
+              {checksBezig ? (
+                <span className="chip vraag">checks worden uitgevoerd…</span>
+              ) : checkRapport !== null && checksActueel ? (
+                <span className={`chip ${checkRapport.geblokkeerd ? 'blokkerend' : 'ok'}`}>
+                  {checkRapport.geblokkeerd ? 'blokkerend' : 'alle checks groen'}
+                </span>
+              ) : (
+                <span className="chip">automatisch</span>
+              )}
+            </h2>
+            {checkRapport === null && !checksBezig && (
+              <p className="hint">
+                De harde checks draaien automatisch — bij het openen en na elke wijziging.
+              </p>
             )}
             {checkRapport && (
               <>
-                {!checksActueel && (
+                {!checksActueel && !checksBezig && (
                   <div className="hint" style={{ color: 'var(--orange)' }}>
-                    Wijzigingen sinds de laatste controle — dit resultaat is verouderd. Klik opnieuw op
-                    &quot;Checks uitvoeren&quot;.
+                    Wijzigingen sinds de laatste controle — de checks draaien zo automatisch opnieuw.
                   </div>
                 )}
                 <table className="lines">
@@ -589,21 +639,13 @@ export function VerkoopReviewScreen() {
                 </button>
                 <button
                   type="button"
-                  className="btn secondary"
-                  disabled={controlerenBezig || boekenBezig}
-                  onClick={() => void controleren()}
-                >
-                  {controlerenBezig ? 'Bezig…' : 'Checks uitvoeren'}
-                </button>
-                <button
-                  type="button"
                   className="btn green"
                   disabled={!isBoekbaar || !checksGroen || boekenBezig}
                   title={
                     !isBoekbaar
                       ? `Boeken kan niet vanuit status ${detail.status}`
                       : !checksGroen
-                        ? 'Voer eerst de harde checks uit (alle checks moeten OK zijn)'
+                        ? 'De harde checks draaien automatisch — boeken kan zodra alle checks groen zijn'
                         : 'Boekt de verkoopfactuur in RLZ op de échte huurder als debiteur'
                   }
                   onClick={() => void boeken()}
@@ -615,6 +657,13 @@ export function VerkoopReviewScreen() {
           </div>
         </div>
       </div>
+      {popupChecks && (
+        <ChecksPopup
+          melding={popupChecks.melding}
+          checks={popupChecks.checks}
+          onSluiten={() => setPopupChecks(null)}
+        />
+      )}
     </div>
   )
 }

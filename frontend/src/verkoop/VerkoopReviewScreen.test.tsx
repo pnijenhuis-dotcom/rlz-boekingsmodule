@@ -259,7 +259,7 @@ describe('VerkoopReviewScreen', () => {
     expect(await screen.findByText(/Creditnota — crediteert VF-2026-0005/)).toBeInTheDocument()
   })
 
-  it('checks uitvoeren slaat eerst op en toont een blokkerende check; boeken blijft geblokkeerd', async () => {
+  it('draait de checks automatisch bij openen (read-only, zonder opslaan) en toont een blokkerende check', async () => {
     const putAanroepen: { url: string; body: unknown }[] = []
     const checksAanroepen: string[] = []
     installFetchMock({
@@ -277,33 +277,36 @@ describe('VerkoopReviewScreen', () => {
         }),
     })
     renderScherm()
-    await screen.findByText(/UBL-verkoopfactuur/)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Checks uitvoeren' }))
-
+    // Geen knop en geen menselijke handeling: het rapport verschijnt vanzelf.
     expect(await screen.findByText(/onbekende grootboekcode \(9999\)/)).toBeInTheDocument()
-    expect(screen.getByText('Blokkerend')).toBeInTheDocument()
-    expect(putAanroepen).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /Checks uitvoeren/ })).not.toBeInTheDocument()
     expect(checksAanroepen).toHaveLength(1)
+    // Bij openen wordt er NIET opgeslagen (read-only checks over voorstel/prefill).
+    expect(putAanroepen).toHaveLength(0)
     expect(screen.getByRole('button', { name: /Boeken in RLZ/ })).toBeDisabled()
   })
 
-  it('boekknop is geblokkeerd tot de checks groen zijn, daarna boekt hij en toont het boekstuknummer', async () => {
+  it('een wijziging triggert gedebounced automatisch opslaan + checks; daarna boekt de boekknop', async () => {
     const putAanroepen: { url: string; body: unknown }[] = []
     const checksAanroepen: string[] = []
     const boekenAanroepen: string[] = []
     installFetchMock({ putAanroepen, checksAanroepen, boekenAanroepen })
     renderScherm()
     await screen.findByText(/UBL-verkoopfactuur/)
-
-    const boekKnop = screen.getByRole('button', { name: /Boeken in RLZ/ })
-    expect(boekKnop).toBeDisabled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Checks uitvoeren' }))
+    // De open-run is klaar zodra het groene resultaat er staat.
     await screen.findByText(/Alle regels hebben een bekende grootboekrekening/)
     expect(checksAanroepen).toHaveLength(1)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ/ })).toBeEnabled())
+    await userEvent.type(screen.getByLabelText('Factuurnummer'), '9')
+
+    // Debounce (800 ms) → automatisch opslaan + checks, zonder klik.
+    await waitFor(() => expect(putAanroepen.length).toBeGreaterThanOrEqual(1), { timeout: 4000 })
+    await waitFor(() => expect(checksAanroepen.length).toBeGreaterThanOrEqual(2), { timeout: 4000 })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ/ })).toBeEnabled(), {
+      timeout: 4000,
+    })
     await userEvent.click(screen.getByRole('button', { name: /Boeken in RLZ/ }))
 
     await screen.findByText(/Geboekt in RLZ — verkoopfactuur/)
@@ -311,7 +314,7 @@ describe('VerkoopReviewScreen', () => {
     expect(screen.getByText('RLZ-01-00000442')).toBeInTheDocument()
   })
 
-  it('toont het meegestuurde checkrapport bij een 409-blokkade van de boekactie', async () => {
+  it('toont een pop-up met de concrete gefaalde checks bij een 409-blokkade van de boekactie', async () => {
     const putAanroepen: { url: string; body: unknown }[] = []
     const checksAanroepen: string[] = []
     const boekenAanroepen: string[] = []
@@ -337,13 +340,15 @@ describe('VerkoopReviewScreen', () => {
     })
     renderScherm()
     await screen.findByText(/UBL-verkoopfactuur/)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Checks uitvoeren' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ/ })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /Boeken in RLZ/ }))
 
-    expect(await screen.findByText(/Boeken geblokkeerd door harde checks/)).toBeInTheDocument()
-    expect(screen.getByText(/is al geboekt in RLZ/)).toBeInTheDocument()
+    // Blok B: de server-side herdraaide checks blokkeren → POP-UP met de gefaalde check(s).
+    const dialoog = await screen.findByRole('dialog')
+    expect(dialoog).toHaveTextContent('Boeken geblokkeerd door harde checks')
+    expect(dialoog).toHaveTextContent('is al geboekt in RLZ')
+    await userEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('een geboekt document is read-only en toont het RLZ-boekstuknummer', async () => {
