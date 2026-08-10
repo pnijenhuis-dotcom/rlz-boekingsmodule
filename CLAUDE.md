@@ -167,8 +167,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   geactiveerd wordt. Routing per bijlage: kapotte/NLCIUS-invalide UBL → verzamelbak (§2d-
   failsafe), VGB → genegeerd-maar-zichtbaar, VASTLY-VERKOOP → soort 'verkoopfactuur' (het
   boekpad is sinds 2026-08-09 GEBOUWD — zie "Verkoopfactuur-boekpad" hieronder; een 381-
-  CreditNote zit achter de config-gate `creditnota_381_ingeschakeld`, default UIT — gate
-  dicht = zichtbaar in de verzamelbak), inkoop-UBL → tenaamstelling-toewijzing,
+  CreditNote zit achter de config-gate `creditnota_381_ingeschakeld` — AAN sinds 2026-08-10
+  na de golden-case-verificatie; uit-zetten kan via de env-var, gate dicht = zichtbaar in de
+  verzamelbak), inkoop-UBL → tenaamstelling-toewijzing,
   PDF → intake-AI achter de platform-brede AVG-gate `intake_ai_ingeschakeld` (default UIT;
   sinds migratie 0029 een Beheerder-instelling `platform.intake_instelling` — knop op
   Instellingen + `make intake-ai-aan/-uit`, env-setting alleen nog fallback zolang die rij
@@ -214,10 +215,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   duplicaatbewaking lokaal DB-uniek per (administratie, Vastly-nummer, soort) + Receipts-
   prefix-check (marker `VASTLY-VERKOOP {nr} ·` in regel 1). CreditNote 381 = negatieve
   tegenboeking op dezelfde debiteur, herkenning achter config-gate
-  `creditnota_381_ingeschakeld` (default UIT). `factuur_geboekt`-webhook vuurt óók hier
+  `creditnota_381_ingeschakeld` (AAN sinds 2026-08-10). `factuur_geboekt`-webhook vuurt óók hier
   (referentie = Vastly-factuurnummer). STAP-0-feiten: api-verkenning "Verkoopfactuur-boekpad
   STAP-0" (o.a. Entity alleen zichtbaar mét `$expand`; document-Description afgeleid van
-  regel 1). Open: verificatie tegen échte Vastly-golden-case-UBL's (nog niet aangeleverd).
+  regel 1). Golden-case-verificatie tegen de échte Vastly-UBL's: UITGEVOERD 2026-08-10
+  (blok D — intake-routing 4×380 + 2×381 én live boek-/credit-/stornocyclus op de
+  TEST-administratie; zie BESLISSINGEN).
 - **Bank**: klantenlijst → rekening (alle `PaymentAccounts` incl. kas). Voorstel-volgorde:
   1) exacte match naam+factuurnr+**bedrag** → auto-afletteren; 2) gedeeltelijke match → bevestigen;
   3) vaste regels (geheugen; na 3× zelfde handmatige boeking regel voorstellen); 4) RLZ's eigen
@@ -329,8 +332,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **v1.11-addenda (2026-08-09, besluiten Peter 2026-08-08):** §2d-creditnota's (apart UBL
   CreditNote-document 381 mét VASTLY-VERKOOP-markering + BillingReference-herleiding →
   creditboeking omzetkant) — **herkenning + creditboekpad GEBOUWD (2026-08-09)** achter onze
-  config-gate `creditnota_381_ingeschakeld` (default UIT; activatievolgorde met vastgoeds
-  CREDITNOTA_381_ACTIEF via OPEN_ITEMS, golden-case-verificatie open); de
+  config-gate `creditnota_381_ingeschakeld` (AAN sinds 2026-08-10 — golden-cases geverifieerd,
+  activatievolgorde stap 2 gezet; vastgoed mag CREDITNOTA_381_ACTIEF openen); de
   §3-`factuur_afgeletterd`-velddefinitie DEFINITIEF — **payload GEBOUWD (2026-08-09,
   schema_version 2.0)**: cumulatief betaald_bedrag + open_bedrag uit BaseRemainingAmount,
   volgnummer, ont_afgeletterd expliciet, tier-vlag `afgeletterd_event_ingeschakeld` per

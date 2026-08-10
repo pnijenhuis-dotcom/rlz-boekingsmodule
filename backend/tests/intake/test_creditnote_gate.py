@@ -1,5 +1,6 @@
-"""CreditNote-381-intake (§2d-creditnota's v1.11): herkenning achter de eigen config-gate
-(default UIT — volgorde-afspraak met vastgoeds CREDITNOTA_381_ACTIEF)."""
+"""CreditNote-381-intake (§2d-creditnota's v1.11): herkenning achter de eigen config-gate.
+Sinds 2026-08-10 default AAN (golden-case-verificatie geslaagd, activatievolgorde stap 2);
+beide standen blijven getest — uit-zetten kan altijd via de env-var."""
 
 from __future__ import annotations
 
@@ -22,11 +23,14 @@ def _verwerk(inhoud: bytes, actor_id: uuid.UUID, opslag: LokaleBestandsopslag):
 
 
 class TestCreditnoteGate:
+    def test_gate_aan_is_de_default_sinds_de_golden_case_verificatie(self) -> None:
+        # Activatievolgorde stap 2 (2026-08-10): golden-cases geverifieerd → gate default AAN.
+        assert settings.creditnota_381_ingeschakeld is True
+
     def test_gate_uit_valt_zichtbaar_in_verzamelbak(
-        self, gescoopte_gebruiker: uuid.UUID, opslag: LokaleBestandsopslag
+        self, monkeypatch: pytest.MonkeyPatch, gescoopte_gebruiker: uuid.UUID, opslag: LokaleBestandsopslag
     ) -> None:
-        # Default: settings.creditnota_381_ingeschakeld is False.
-        assert settings.creditnota_381_ingeschakeld is False
+        monkeypatch.setattr(settings, "creditnota_381_ingeschakeld", False)
         resultaat = _verwerk(bouw_vastly_creditnote_ubl(), gescoopte_gebruiker, opslag)
         [bijlage] = resultaat.bijlagen
         assert bijlage.uitkomst == "verzamelbak"

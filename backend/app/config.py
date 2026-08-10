@@ -148,13 +148,16 @@ class Settings(BaseSettings):
     intake_imap_wachtwoord: str | None = None
     intake_postvak_adres: str | None = None
 
-    # CreditNote-381-herkenning (koppelcontract §2d-creditnota's v1.11): config-gate, default
-    # UIT. De volgorde-afspraak in het contract: vastgoed verstuurt géén 381-documenten
-    # (CREDITNOTA_381_ACTIEF dicht) totdat wij de herkenning gebouwd hebben en dat bevestigen —
-    # deze gate is ónze kant van die handshake. Zolang UIT valt een binnenkomende 381 mét
-    # VASTLY-VERKOOP-markering zichtbaar in de verzamelbak (nooit stil), zodat een te vroege
-    # activatie aan vastgoed-kant nooit ongezien verwerkt wordt.
-    creditnota_381_ingeschakeld: bool = False
+    # CreditNote-381-herkenning (koppelcontract §2d-creditnota's v1.11): config-gate.
+    # AAN sinds 2026-08-10 (blok D grote opdracht): de golden-case-verificatie tegen de échte
+    # Vastly-UBL's is geslaagd (intake-routing + creditboekpad + storno, zie
+    # tests/intake/test_golden_cases_vastly.py en tests/integration/
+    # test_golden_cases_write_integration.py) — daarmee is stap 2 van de activatievolgorde
+    # (OPEN_ITEMS 2026-08-09) gezet en mag vastgoed CREDITNOTA_381_ACTIEF openen. De failsafes
+    # blijven onverkort: kapotte markering/NLCIUS-invalide → verzamelbak, herleiding naar een
+    # geboekt origineel is een blokkerende check. Uit-zetten kan altijd via de env-var
+    # (CREDITNOTA_381_INGESCHAKELD=false) — dan valt een 381 weer zichtbaar in de verzamelbak.
+    creditnota_381_ingeschakeld: bool = True
 
     # Migratie-guard bij startup (app/db/migratie_guard.py): default fail-fast, zodat een gemiste
     # `make migrate` nooit meer een raadsel-500 wordt maar een duidelijke weigering om te starten.
