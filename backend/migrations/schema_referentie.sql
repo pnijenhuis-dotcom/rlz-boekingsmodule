@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0037
+-- Migratie-head bij deze dump: 0038
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1019,6 +1019,22 @@ ALTER TABLE ONLY boekhouding.verkoop_boeking FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: verkoop_btw_voorkeur; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.verkoop_btw_voorkeur (
+    administratie_id uuid NOT NULL,
+    btw_categorie text NOT NULL,
+    percentage_fractie numeric(6,4) NOT NULL,
+    taxrate_id uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.verkoop_btw_voorkeur FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: verkoop_voorstel; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1627,6 +1643,14 @@ ALTER TABLE ONLY boekhouding.vendor_cache
 
 ALTER TABLE ONLY boekhouding.verkoop_boeking
     ADD CONSTRAINT verkoop_boeking_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: verkoop_btw_voorkeur verkoop_btw_voorkeur_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_btw_voorkeur
+    ADD CONSTRAINT verkoop_btw_voorkeur_pkey PRIMARY KEY (administratie_id, btw_categorie, percentage_fractie);
 
 
 --
@@ -2787,6 +2811,14 @@ ALTER TABLE ONLY boekhouding.verkoop_boeking
 
 
 --
+-- Name: verkoop_btw_voorkeur verkoop_btw_voorkeur_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verkoop_btw_voorkeur
+    ADD CONSTRAINT verkoop_btw_voorkeur_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: verkoop_voorstel verkoop_voorstel_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3482,6 +3514,19 @@ ALTER TABLE boekhouding.verkoop_boeking ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY verkoop_boeking_scope ON boekhouding.verkoop_boeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: verkoop_btw_voorkeur; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.verkoop_btw_voorkeur ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: verkoop_btw_voorkeur verkoop_btw_voorkeur_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY verkoop_btw_voorkeur_scope ON boekhouding.verkoop_btw_voorkeur USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

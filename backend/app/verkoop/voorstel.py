@@ -23,9 +23,16 @@ from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, 
 from app.documenten.service import DocumentNietGevonden
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+from app.sync import btw as btw_eenheid
 from app.sync.models import TaxRateCache
 from app.verkoop import checks as verkoop_checks
-from app.verkoop.models import VerkoopBoeking, VerkoopBoekingStatus, VerkoopVoorstel, VerkoopVoorstelRegel
+from app.verkoop.models import (
+    VerkoopBoeking,
+    VerkoopBoekingStatus,
+    VerkoopBtwVoorkeur,
+    VerkoopVoorstel,
+    VerkoopVoorstelRegel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +61,29 @@ class VerkoopRegelData:
     gb_code_status: str
     # Herkomst voor de UI-chips: 'ubl' (deterministisch uit de UBL geresolved) of 'opgeslagen'.
     herkomst: str
+    # Factuur-btw (blok A 2026-08-10): de UBL-brongegevens + het resolutieresultaat. Btw is
+    # nooit een vrije menselijke waardekeuze — vergrendeld zodra de factuur 'm bepaalt;
+    # `btw_kandidaten` draagt bij echte ambiguïteit de toegestane keuzeset (eenmalige keuze,
+    # daarna onthouden per administratie).
+    btw_categorie: str | None = None
+    btw_percentage_ubl: Decimal | None = None
+    btw_vergrendeld: bool = False
+    # 'factuur' (eenduidige match) of 'onthouden' (ambigu, eerder gekozen) — None = niet
+    # deterministisch bepaald (mens kiest).
+    btw_bron: str | None = None
+    btw_kandidaten: tuple[uuid.UUID, ...] = ()
+
+
+@dataclass(frozen=True)
+class BtwResolutie:
+    """Uitkomst van de deterministische factuur-btw → RLZ-tarief-afleiding voor één regel."""
+
+    taxrate_id: uuid.UUID | None
+    vergrendeld: bool
+    bron: str | None  # 'factuur' | 'onthouden' | None
+    kandidaten: tuple[uuid.UUID, ...]
+    categorie: str | None
+    percentage_ubl: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -137,25 +167,62 @@ def _resolve_gb_code(
     return None, "onbekend"
 
 
-def _resolve_btw_percentage(
-    session: Session, *, administratie_id: uuid.UUID, percentage: str | None
-) -> uuid.UUID | None:
-    """Btw uit de UBL-regel (ClassifiedTaxCategory/Percent) → TaxRate-GUID, uitsluitend bij een
-    ondubbelzinnige match op percentage in de actieve taxrate-cache. Meerdere kandidaten (bv.
-    21% regulier vs 21% verlegd) of geen match → None: de mens kiest — nooit gokken."""
+def _resolve_btw(
+    session: Session, *, administratie_id: uuid.UUID, categorie: str | None, percentage: str | None
+) -> BtwResolutie:
+    """Factuur-btw (ClassifiedTaxCategory.ID {S/E/Z/AE} + Percent) → RLZ-tarief, deterministisch
+    en NOOIT op percentage alleen (blok A 2026-08-10; eenhedennormalisatie in app/sync/btw.py —
+    de cache draagt de fractie, de UBL een percentage). Uitkomsten:
+
+    - precies één actief tarief dekt categorie + percentage → vergrendeld (bron 'factuur');
+    - meerdere tarieven dekken 'm (echte ambiguïteit, bv. hoog vs hoog-vooruit) → de per
+      administratie onthouden keuze (verkoop_btw_voorkeur) als die nog in de kandidatenset zit
+      (bron 'onthouden'), anders kiest de mens één keer uit de kandidaten;
+    - geen categorie/onbekende categorie of geen dekkend tarief → niet vergrendeld, mens kiest
+      (de harde btw-check blijft de poort: een keuze die de factuur-btw niet dekt blokkeert)."""
     pct = _als_decimal(percentage)
-    if pct is None:
-        return None
+    code = btw_eenheid.normaliseer_categorie(categorie)
+    fractie = btw_eenheid.factuur_fractie(code, pct)
+    if code is None or fractie is None:
+        return BtwResolutie(
+            taxrate_id=None, vergrendeld=False, bron=None, kandidaten=(), categorie=code, percentage_ubl=pct
+        )
     rijen = session.scalars(
         select(TaxRateCache).where(
             TaxRateCache.administratie_id == administratie_id,
             TaxRateCache.verdwenen_uit_bron_op.is_(None),
-            TaxRateCache.percentage == pct,
         )
     ).all()
-    if len(rijen) == 1:
-        return rijen[0].id
-    return None
+    kandidaten = tuple(
+        rij.id
+        for rij in rijen
+        if btw_eenheid.taxrate_dekt_factuur_btw(
+            categorie=code,
+            factuur_pct=pct,
+            taxrate_percentage=rij.percentage,
+            is_verlegd=btw_eenheid.taxrate_vlaggen(rij.brondata)[0],
+            is_vrijgesteld=btw_eenheid.taxrate_vlaggen(rij.brondata)[1],
+        )
+    )
+    if len(kandidaten) == 1:
+        return BtwResolutie(
+            taxrate_id=kandidaten[0], vergrendeld=True, bron="factuur",
+            kandidaten=kandidaten, categorie=code, percentage_ubl=pct,
+        )
+    if len(kandidaten) > 1:
+        voorkeur = session.get(VerkoopBtwVoorkeur, (administratie_id, code, fractie))
+        if voorkeur is not None and voorkeur.taxrate_id in kandidaten:
+            return BtwResolutie(
+                taxrate_id=voorkeur.taxrate_id, vergrendeld=True, bron="onthouden",
+                kandidaten=kandidaten, categorie=code, percentage_ubl=pct,
+            )
+        return BtwResolutie(
+            taxrate_id=None, vergrendeld=False, bron=None,
+            kandidaten=kandidaten, categorie=code, percentage_ubl=pct,
+        )
+    return BtwResolutie(
+        taxrate_id=None, vergrendeld=False, bron=None, kandidaten=(), categorie=code, percentage_ubl=pct
+    )
 
 
 def verkoop_omschrijving_vastly(factuurnummer: str, *, is_creditnota: bool) -> str:
@@ -182,6 +249,11 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
         _laad_verkoopfactuur(session, document_id=document_id)
         veldvoorstel = _laatste_veldvoorstel(session, document_id) or {}
 
+        ubl_per_volgnummer: dict[int, dict] = {}
+        for i, ubl_regel in enumerate(veldvoorstel.get("ubl_regels") or [], start=1):
+            if isinstance(ubl_regel, dict):
+                ubl_per_volgnummer[int(ubl_regel.get("volgnummer") or i)] = ubl_regel
+
         bestaand = session.get(VerkoopVoorstel, document_id)
         if bestaand is not None:
             regels_orm = session.scalars(
@@ -197,6 +269,16 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
                     status = "bekend"
                 else:
                     _, status = _resolve_gb_code(session, administratie_id=administratie_id, code=r.gb_code)
+                # De btw-resolutie draait óók over opgeslagen regels opnieuw (de UBL blijft de
+                # bron): een vergrendelde regel toont ALTIJD het geresolvede tarief — ook als
+                # een ouder opgeslagen voorstel (vóór de vergrendeling) iets anders droeg.
+                ubl_regel = ubl_per_volgnummer.get(r.volgnummer, {})
+                resolutie = _resolve_btw(
+                    session,
+                    administratie_id=administratie_id,
+                    categorie=ubl_regel.get("btw_categorie"),
+                    percentage=ubl_regel.get("btw_percentage"),
+                )
                 regels.append(
                     VerkoopRegelData(
                         volgnummer=r.volgnummer,
@@ -205,9 +287,14 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
                         btw_bedrag=r.btw_bedrag,
                         gb_code=r.gb_code,
                         ledger_id=r.ledger_id,
-                        taxrate_id=r.taxrate_id,
+                        taxrate_id=resolutie.taxrate_id if resolutie.vergrendeld else r.taxrate_id,
                         gb_code_status=status,
                         herkomst="opgeslagen",
+                        btw_categorie=resolutie.categorie,
+                        btw_percentage_ubl=resolutie.percentage_ubl,
+                        btw_vergrendeld=resolutie.vergrendeld,
+                        btw_bron=resolutie.bron,
+                        btw_kandidaten=resolutie.kandidaten,
                     )
                 )
             return VerkoopVoorstelData(
@@ -234,7 +321,14 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
             pct = _als_decimal(r.get("btw_percentage"))
             btw = None
             if netto is not None and pct is not None:
+                # NB pct is hier het UBL-percentage (21.00) — bewust /100, niet de fractie.
                 btw = (netto * pct / Decimal(100)).quantize(Decimal("0.01"))
+            resolutie = _resolve_btw(
+                session,
+                administratie_id=administratie_id,
+                categorie=r.get("btw_categorie"),
+                percentage=r.get("btw_percentage"),
+            )
             regels.append(
                 VerkoopRegelData(
                     volgnummer=int(r.get("volgnummer") or len(regels) + 1),
@@ -243,11 +337,14 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
                     btw_bedrag=btw,
                     gb_code=r.get("gb_code"),
                     ledger_id=ledger_id,
-                    taxrate_id=_resolve_btw_percentage(
-                        session, administratie_id=administratie_id, percentage=r.get("btw_percentage")
-                    ),
+                    taxrate_id=resolutie.taxrate_id,
                     gb_code_status=status,
                     herkomst="ubl",
+                    btw_categorie=resolutie.categorie,
+                    btw_percentage_ubl=resolutie.percentage_ubl,
+                    btw_vergrendeld=resolutie.vergrendeld,
+                    btw_bron=resolutie.bron,
+                    btw_kandidaten=resolutie.kandidaten,
                 )
             )
         gecrediteerd = veldvoorstel.get("gecrediteerde_factuurnummers") or []
@@ -262,6 +359,54 @@ def haal_verkoop_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.U
             regels=regels,
             opgeslagen=False,
         )
+
+
+def _onthoud_btw_keuze(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    resolutie: BtwResolutie,
+    taxrate_id: uuid.UUID,
+) -> None:
+    """Bij echte ambiguïteit wordt de eerste menselijke keuze per administratie onthouden
+    (boekingsgeheugen-patroon) — de volgende factuur met dezelfde categorie + hetzelfde
+    percentage vult automatisch én vergrendeld (bron 'onthouden'). Elke zetting geauditeerd."""
+    fractie = btw_eenheid.factuur_fractie(resolutie.categorie, resolutie.percentage_ubl)
+    if resolutie.categorie is None or fractie is None:  # pragma: no cover — kandidaten impliceert beide
+        return
+    voorkeur = session.get(VerkoopBtwVoorkeur, (administratie_id, resolutie.categorie, fractie))
+    oude_waarde = None
+    if voorkeur is None:
+        session.add(
+            VerkoopBtwVoorkeur(
+                administratie_id=administratie_id,
+                btw_categorie=resolutie.categorie,
+                percentage_fractie=fractie,
+                taxrate_id=taxrate_id,
+            )
+        )
+    elif voorkeur.taxrate_id != taxrate_id:
+        oude_waarde = {"taxrate_id": str(voorkeur.taxrate_id)}
+        voorkeur.taxrate_id = taxrate_id
+    else:
+        return  # ongewijzigd — geen nieuwe audit-rij (waarde aanwezig ≠ gewijzigd)
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="verkoop_btw_voorkeur",
+        record_id=administratie_id,
+        actie="verkoop_btw_voorkeur_onthouden",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde=oude_waarde,
+        nieuwe_waarde={
+            "btw_categorie": resolutie.categorie,
+            "percentage_fractie": str(fractie),
+            "taxrate_id": str(taxrate_id),
+        },
+        administratie_id=administratie_id,
+    )
 
 
 @dataclass(frozen=True)
@@ -308,8 +453,47 @@ def sla_verkoop_voorstel_op(
         bestaand.is_creditnota = bool(veldvoorstel.get("is_creditnota"))
         bestaand.gecrediteerd_factuurnummer = gecrediteerd[0] if gecrediteerd else None
 
+        ubl_per_volgnummer: dict[int, dict] = {}
+        for i, ubl_regel in enumerate(veldvoorstel.get("ubl_regels") or [], start=1):
+            if isinstance(ubl_regel, dict):
+                ubl_per_volgnummer[int(ubl_regel.get("volgnummer") or i)] = ubl_regel
+
         session.execute(delete(VerkoopVoorstelRegel).where(VerkoopVoorstelRegel.document_id == document_id))
         for i, regel in enumerate(regels, start=1):
+            # Btw is nooit een vrije menselijke waardekeuze (blok A 2026-08-10, factuur is
+            # wettelijk leidend): de server herleidt per regel opnieuw en is de poort —
+            # een client die een vergrendelde regel toch anders instuurt is een bug/bypass.
+            ubl_regel = ubl_per_volgnummer.get(i, {})
+            resolutie = _resolve_btw(
+                session,
+                administratie_id=administratie_id,
+                categorie=ubl_regel.get("btw_categorie"),
+                percentage=ubl_regel.get("btw_percentage"),
+            )
+            taxrate_id = regel.taxrate_id
+            if resolutie.vergrendeld:
+                if taxrate_id is not None and taxrate_id != resolutie.taxrate_id:
+                    raise VerkoopVoorstelFout(
+                        f"Regel {i}: de btw-code volgt uit de factuur (categorie "
+                        f"{resolutie.categorie}, {resolutie.percentage_ubl}%) en is vergrendeld "
+                        "— een andere btw-code kiezen kan niet"
+                    )
+                taxrate_id = resolutie.taxrate_id
+            elif resolutie.kandidaten:
+                if taxrate_id is not None and taxrate_id not in resolutie.kandidaten:
+                    raise VerkoopVoorstelFout(
+                        f"Regel {i}: de gekozen btw-code dekt de factuur-btw (categorie "
+                        f"{resolutie.categorie}, {resolutie.percentage_ubl}%) niet — kies één "
+                        "van de passende tarieven"
+                    )
+                if taxrate_id is not None:
+                    _onthoud_btw_keuze(
+                        session,
+                        administratie_id=administratie_id,
+                        actor_id=actor_id,
+                        resolutie=resolutie,
+                        taxrate_id=taxrate_id,
+                    )
             session.add(
                 VerkoopVoorstelRegel(
                     document_id=document_id,
@@ -319,7 +503,7 @@ def sla_verkoop_voorstel_op(
                     btw_bedrag=regel.btw_bedrag,
                     gb_code=regel.gb_code,
                     ledger_id=regel.ledger_id,
-                    taxrate_id=regel.taxrate_id,
+                    taxrate_id=taxrate_id,
                 )
             )
 
@@ -379,20 +563,44 @@ def _origineel_geboekt(session: Session, *, administratie_id: uuid.UUID, factuur
     ) > 0
 
 
-def _naar_check_regels(regels: list[VerkoopRegelData]) -> list[verkoop_checks.VerkoopCheckRegel]:
-    return [
-        verkoop_checks.VerkoopCheckRegel(
-            volgnummer=r.volgnummer,
-            omschrijving=r.omschrijving,
-            netto_bedrag=r.netto_bedrag,
-            btw_bedrag=r.btw_bedrag,
-            gb_code=r.gb_code,
-            ledger_id_bekend=r.ledger_id is not None,
-            taxrate_id_bekend=r.taxrate_id is not None,
-            gb_code_status=r.gb_code_status,
+def _naar_check_regels(
+    regels: list[VerkoopRegelData], taxrates: dict[uuid.UUID, TaxRateCache]
+) -> list[verkoop_checks.VerkoopCheckRegel]:
+    check_regels = []
+    for r in regels:
+        rij = taxrates.get(r.taxrate_id) if r.taxrate_id is not None else None
+        is_verlegd, is_vrijgesteld = btw_eenheid.taxrate_vlaggen(rij.brondata if rij is not None else None)
+        check_regels.append(
+            verkoop_checks.VerkoopCheckRegel(
+                volgnummer=r.volgnummer,
+                omschrijving=r.omschrijving,
+                netto_bedrag=r.netto_bedrag,
+                btw_bedrag=r.btw_bedrag,
+                gb_code=r.gb_code,
+                ledger_id_bekend=r.ledger_id is not None,
+                taxrate_id_bekend=r.taxrate_id is not None,
+                gb_code_status=r.gb_code_status,
+                btw_categorie=r.btw_categorie,
+                btw_percentage_ubl=r.btw_percentage_ubl,
+                taxrate_percentage=rij.percentage if rij is not None else None,
+                taxrate_is_verlegd=is_verlegd,
+                taxrate_is_vrijgesteld=is_vrijgesteld,
+                taxrate_in_cache=rij is not None,
+            )
         )
-        for r in regels
-    ]
+    return check_regels
+
+
+def _actieve_taxrates(session: Session, *, administratie_id: uuid.UUID) -> dict[uuid.UUID, TaxRateCache]:
+    return {
+        rij.id: rij
+        for rij in session.scalars(
+            select(TaxRateCache).where(
+                TaxRateCache.administratie_id == administratie_id,
+                TaxRateCache.verdwenen_uit_bron_op.is_(None),
+            )
+        )
+    }
 
 
 def voer_verkoop_checks_uit(
@@ -409,6 +617,7 @@ def voer_verkoop_checks_uit(
             raise VerkoopVoorstelFout(
                 f"Document {document_id} kan niet meer gecontroleerd worden (status: {document.status.value})"
             )
+        taxrates = _actieve_taxrates(session, administratie_id=administratie_id)
         lokale_hits = 0
         origineel = False
         if voorstel.factuurnummer:
@@ -455,7 +664,7 @@ def voer_verkoop_checks_uit(
         factuurnummer=voorstel.factuurnummer,
         factuurdatum=voorstel.factuurdatum,
         totaalbedrag_incl=voorstel.totaalbedrag_incl,
-        regels=_naar_check_regels(voorstel.regels),
+        regels=_naar_check_regels(voorstel.regels, taxrates),
         lokale_duplicaat_hits=lokale_hits,
         rlz_duplicaat_hits=rlz_hits,
         is_creditnota=voorstel.is_creditnota,

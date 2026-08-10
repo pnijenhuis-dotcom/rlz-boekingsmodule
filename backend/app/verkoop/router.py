@@ -48,6 +48,11 @@ def _naar_voorstel_response(data: voorstel.VerkoopVoorstelData) -> schemas.Verko
                 taxrate_id=r.taxrate_id,
                 gb_code_status=r.gb_code_status,
                 herkomst=r.herkomst,
+                btw_categorie=r.btw_categorie,
+                btw_percentage_ubl=r.btw_percentage_ubl,
+                btw_vergrendeld=r.btw_vergrendeld,
+                btw_bron=r.btw_bron,
+                btw_kandidaten=list(r.btw_kandidaten),
             )
             for r in data.regels
         ],

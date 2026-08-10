@@ -29,6 +29,13 @@ interface RegelStaat {
   taxrateId: string | null
   gbCodeStatus: string
   herkomst: string
+  /** Factuur-btw (blok A 2026-08-10): vergrendeld = de code volgt uit de factuur (wettelijk
+   * leidend) en is hier niet te wijzigen; kandidaten = de keuzeset bij echte ambiguïteit. */
+  btwCategorie: string | null
+  btwPercentageUbl: string | null
+  btwVergrendeld: boolean
+  btwBron: string | null
+  btwKandidaten: string[]
 }
 
 function naarRegelStaat(regel: VerkoopRegelDto): RegelStaat {
@@ -42,7 +49,18 @@ function naarRegelStaat(regel: VerkoopRegelDto): RegelStaat {
     taxrateId: regel.taxrate_id,
     gbCodeStatus: regel.gb_code_status,
     herkomst: regel.herkomst,
+    btwCategorie: regel.btw_categorie ?? null,
+    btwPercentageUbl: regel.btw_percentage_ubl ?? null,
+    btwVergrendeld: regel.btw_vergrendeld ?? false,
+    btwBron: regel.btw_bron ?? null,
+    btwKandidaten: regel.btw_kandidaten ?? [],
   }
+}
+
+/** Leesbare factuur-btw-aanduiding, bv. "S · 21%" — het UBL-percentage is al een percentage. */
+function factuurBtwLabel(regel: RegelStaat): string {
+  const pct = regel.btwPercentageUbl != null ? `${Number(regel.btwPercentageUbl)}%` : null
+  return [regel.btwCategorie, pct].filter(Boolean).join(' · ')
 }
 
 function formatBedrag(waarde: number): string {
@@ -417,14 +435,49 @@ export function VerkoopReviewScreen() {
                       />
                     </td>
                     <td>
-                      <SearchableCombobox
-                        label={`Btw-code regel ${regel.volgnummer}`}
-                        toonLabel={false}
-                        opties={btwCodes.opties}
-                        waarde={regel.taxrateId}
-                        onWijzig={(id) => wijzigRegel(index, { taxrateId: id })}
-                        placeholder="Kies btw-code…"
-                      />
+                      {regel.btwVergrendeld ? (
+                        // Btw is nooit een vrije menselijke waardekeuze — de factuur bepaalt
+                        // (blok A 2026-08-10); de server dwingt dit ook af.
+                        <div>
+                          {btwCodes.opties.find((o) => o.id === regel.taxrateId)?.label ?? regel.taxrateId}
+                          <div>
+                            <span
+                              className="chip ok"
+                              title="De btw-code volgt uit de factuur (categorie + percentage) en is niet te wijzigen"
+                            >
+                              {regel.btwBron === 'onthouden'
+                                ? `uit factuur (${factuurBtwLabel(regel)}) · onthouden keuze`
+                                : `uit factuur (${factuurBtwLabel(regel)}) 🔒`}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <SearchableCombobox
+                            label={`Btw-code regel ${regel.volgnummer}`}
+                            toonLabel={false}
+                            opties={
+                              regel.btwKandidaten.length > 0
+                                ? btwCodes.opties.filter((o) => regel.btwKandidaten.includes(o.id))
+                                : btwCodes.opties
+                            }
+                            waarde={regel.taxrateId}
+                            onWijzig={(id) => wijzigRegel(index, { taxrateId: id })}
+                            placeholder="Kies btw-code…"
+                          />
+                          {regel.btwKandidaten.length > 1 && (
+                            <div>
+                              <span
+                                className="chip vraag"
+                                title="Meerdere RLZ-tarieven dekken de factuur-btw — de keuze wordt per administratie onthouden"
+                              >
+                                {regel.btwKandidaten.length} passende tarieven ({factuurBtwLabel(regel)}) — kies
+                                één keer
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </td>
                     <td className="amount">
                       <input

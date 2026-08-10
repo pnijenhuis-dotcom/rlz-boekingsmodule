@@ -20,6 +20,14 @@ class VerkoopRegelDto(BaseModel):
     taxrate_id: uuid.UUID | None
     gb_code_status: str
     herkomst: str
+    # Factuur-btw (blok A 2026-08-10): vergrendeld = de btw-code volgt deterministisch uit de
+    # factuur (bron 'factuur' of 'onthouden') en is in de UI niet te wijzigen; bij echte
+    # ambiguïteit draagt `btw_kandidaten` de toegestane keuzeset (eenmalig kiezen → onthouden).
+    btw_categorie: str | None = None
+    btw_percentage_ubl: Decimal | None = None
+    btw_vergrendeld: bool = False
+    btw_bron: str | None = None
+    btw_kandidaten: list[uuid.UUID] = []
 
 
 class VerkoopVoorstelResponse(BaseModel):

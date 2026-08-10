@@ -13,6 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.documenten.checks import CheckRapport, CheckResultaat
+from app.sync import btw as btw_eenheid
 
 _ROND_TOLERANTIE = Decimal("0.01")
 
@@ -30,6 +31,16 @@ class VerkoopCheckRegel:
     # niet in het rekeningschema van deze administratie — blokkerend, §2d), of 'ontbreekt'
     # (geen AccountingCost — géén fout, mens kiest; de verplichte-velden-check dekt dit).
     gb_code_status: str = "ontbreekt"
+    # Factuur-btw per regel (blok A 2026-08-10): de UBL-brongegevens (categorie {S/E/Z/AE} +
+    # percentage in UBL-vorm, 21.00) en de eigenschappen van de GEKOZEN taxrate uit de
+    # sync-cache (percentage als canonieke fractie, 0.2100 — app/sync/btw.py). `taxrate_in_cache`
+    # False = gekozen code bestaat niet (meer) in de actieve cache → fail-closed blokkerend.
+    btw_categorie: str | None = None
+    btw_percentage_ubl: Decimal | None = None
+    taxrate_percentage: Decimal | None = None
+    taxrate_is_verlegd: bool = False
+    taxrate_is_vrijgesteld: bool = False
+    taxrate_in_cache: bool = True
 
 
 def check_verplichte_velden_verkoop(
@@ -106,6 +117,65 @@ def check_gb_codes_bekend(*, regels: list[VerkoopCheckRegel]) -> CheckResultaat:
             "deze administratie): " + "; ".join(onbekend),
         )
     return CheckResultaat(naam="gb_code_bekend", ok=True, melding="Alle GB-codes uit de UBL zijn bekend")
+
+
+def check_btw_uit_factuur(*, regels: list[VerkoopCheckRegel]) -> CheckResultaat:
+    """Blok A-c (hard, blokkerend): de geboekte btw per regel moet exact de factuur-btw zijn —
+    categorie én bedrag (de factuur is wettelijk leidend, wetgeving-bevinding Peter
+    2026-08-09/10). Per regel met factuur-btw-informatie:
+
+    1. de gekozen RLZ-taxrate dekt de UBL-categorie + het percentage (nooit op percentage
+       alleen: 21% regulier ≠ 21% verlegd) — eenhedennormalisatie via app/sync/btw.py;
+    2. het btw-bedrag is netto × UBL-percentage (afgerond op centen, tolerantie € 0,01).
+
+    Een regel zónder gekozen taxrate of zónder netto valt onder de verplichte-velden-check
+    (geen dubbele melding); een regel zonder factuur-btw-informatie (geen categorie) is hier
+    n.v.t. — de mens kiest daar vrij en dit is dan geen afwijking van de factuur."""
+    afwijkingen: list[str] = []
+    for r in regels:
+        if btw_eenheid.normaliseer_categorie(r.btw_categorie) is None:
+            continue  # geen (ondersteunde) factuur-btw-informatie — vrije keuze, geen toets
+        if not r.taxrate_id_bekend or r.netto_bedrag is None:
+            continue  # verplichte velden dekt dit al blokkerend
+        if not r.taxrate_in_cache:
+            afwijkingen.append(
+                f"regel {r.volgnummer}: de gekozen btw-code staat niet (meer) in de actieve "
+                "btw-cache — synchroniseer en kies opnieuw"
+            )
+            continue
+        if not btw_eenheid.taxrate_dekt_factuur_btw(
+            categorie=r.btw_categorie,
+            factuur_pct=r.btw_percentage_ubl,
+            taxrate_percentage=r.taxrate_percentage,
+            is_verlegd=r.taxrate_is_verlegd,
+            is_vrijgesteld=r.taxrate_is_vrijgesteld,
+        ):
+            pct_tekst = f"{r.btw_percentage_ubl}%" if r.btw_percentage_ubl is not None else "zonder percentage"
+            afwijkingen.append(
+                f"regel {r.volgnummer}: de gekozen btw-code dekt de factuur-btw niet "
+                f"(factuur: categorie {r.btw_categorie}, {pct_tekst})"
+            )
+            continue
+        fractie = btw_eenheid.factuur_fractie(r.btw_categorie, r.btw_percentage_ubl)
+        if fractie is None:
+            continue  # geen percentage bepaalbaar (S zonder Percent) — categorie-toets was al de poort
+        verwacht = (r.netto_bedrag * fractie).quantize(Decimal("0.01"))
+        werkelijk = r.btw_bedrag if r.btw_bedrag is not None else Decimal("0.00")
+        if abs(werkelijk - verwacht) > _ROND_TOLERANTIE:
+            afwijkingen.append(
+                f"regel {r.volgnummer}: btw-bedrag {werkelijk} wijkt af van de factuur-btw "
+                f"{verwacht} ({r.netto_bedrag} × {r.btw_percentage_ubl}%)"
+            )
+    if afwijkingen:
+        return CheckResultaat(
+            naam="btw_uit_factuur",
+            ok=False,
+            melding="Geboekte btw wijkt af van de factuur (blokkerend — de factuur is wettelijk "
+            "leidend): " + "; ".join(afwijkingen),
+        )
+    return CheckResultaat(
+        naam="btw_uit_factuur", ok=True, melding="Btw per regel komt overeen met de factuur (categorie + bedrag)"
+    )
 
 
 def check_duplicaat_verkoop(
@@ -195,6 +265,7 @@ def voer_verkoop_checks_uit(
         ),
         check_regelsom_verkoop(totaalbedrag_incl=totaalbedrag_incl, regels=regels),
         check_gb_codes_bekend(regels=regels),
+        check_btw_uit_factuur(regels=regels),
         check_duplicaat_verkoop(
             lokale_hits=lokale_duplicaat_hits,
             rlz_hits=rlz_duplicaat_hits,

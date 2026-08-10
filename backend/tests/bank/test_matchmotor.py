@@ -224,3 +224,19 @@ def test_splits_incl_bedrag_som_klopt_altijd_over_een_bereik() -> None:
         bedrag = Decimal(centen) / 100
         netto, btw = splits_incl_bedrag(bedrag, pct)
         assert netto + btw == bedrag
+
+
+def test_splits_incl_bedrag_echte_syncvorm_fractie() -> None:
+    """Geldlogica-verificatie blok A 2026-08-10: de splitsing hanteert de fractie zoals de
+    échte sync die levert (TaxRateCache.percentage = 0.2100, bronformaat Numeric(6,4))."""
+    netto, btw = splits_incl_bedrag(Decimal("121.00"), Decimal("0.2100"))
+    assert (netto, btw) == (Decimal("100.00"), Decimal("21.00"))
+
+
+def test_splits_incl_bedrag_weigert_ubl_percentagevorm() -> None:
+    """Eenheids-guard: een UBL-percentage (21.00) i.p.v. de fractie zou het geld stil verminken
+    (121 / 22 i.p.v. 121 / 1,21) — hard falen, nooit stil doorrekenen."""
+    with pytest.raises(ValueError, match="fractie"):
+        splits_incl_bedrag(Decimal("121.00"), Decimal("21.00"))
+    with pytest.raises(ValueError, match="fractie"):
+        splits_incl_bedrag(Decimal("121.00"), Decimal("1"))

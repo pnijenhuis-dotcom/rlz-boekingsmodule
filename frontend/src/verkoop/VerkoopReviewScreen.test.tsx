@@ -52,6 +52,11 @@ function voorstel(overrides: Record<string, unknown> = {}) {
         taxrate_id: TAXRATE_ID,
         gb_code_status: 'bekend',
         herkomst: 'ubl',
+        btw_categorie: 'S',
+        btw_percentage_ubl: '21.00',
+        btw_vergrendeld: true,
+        btw_bron: 'factuur',
+        btw_kandidaten: [],
       },
       {
         volgnummer: 2,
@@ -63,6 +68,11 @@ function voorstel(overrides: Record<string, unknown> = {}) {
         taxrate_id: null,
         gb_code_status: 'onbekend',
         herkomst: 'ubl',
+        btw_categorie: 'S',
+        btw_percentage_ubl: '21.00',
+        btw_vergrendeld: false,
+        btw_bron: null,
+        btw_kandidaten: [],
       },
     ],
     opgeslagen: false,
@@ -205,6 +215,41 @@ describe('VerkoopReviewScreen', () => {
     renderScherm()
 
     expect(await screen.findByText('geen GB-code — kies zelf')).toBeInTheDocument()
+  })
+
+  it('vergrendelt de btw-code die uit de factuur volgt (geen combobox, wél de bron-chip)', async () => {
+    installFetchMock()
+    renderScherm()
+
+    // Regel 1 is vergrendeld: chip met de factuur-btw, geen vrije keuze meer (blok A 2026-08-10).
+    expect(await screen.findByText(/uit factuur \(S · 21%\)/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Btw-code regel 1')).not.toBeInTheDocument()
+    // Regel 2 (niet deterministisch) houdt de combobox.
+    expect(screen.getByLabelText('Btw-code regel 2')).toBeInTheDocument()
+  })
+
+  it('toont bij echte ambiguïteit de kandidaten-chip met eenmalige-keuze-uitleg', async () => {
+    const body = voorstel()
+    ;(body.regels as Record<string, unknown>[])[1] = {
+      ...(body.regels as Record<string, unknown>[])[1],
+      btw_kandidaten: [TAXRATE_ID, 'dddddddd-0000-0000-0000-000000000005'],
+    }
+    installFetchMock({ voorstelBody: body })
+    renderScherm()
+
+    expect(await screen.findByText(/2 passende tarieven \(S · 21%\) — kies\s+één keer/)).toBeInTheDocument()
+  })
+
+  it('toont de onthouden-keuze-chip wanneer de code uit het administratie-geheugen komt', async () => {
+    const body = voorstel()
+    ;(body.regels as Record<string, unknown>[])[0] = {
+      ...(body.regels as Record<string, unknown>[])[0],
+      btw_bron: 'onthouden',
+    }
+    installFetchMock({ voorstelBody: body })
+    renderScherm()
+
+    expect(await screen.findByText(/uit factuur \(S · 21%\) · onthouden keuze/)).toBeInTheDocument()
   })
 
   it('toont de creditnota-chip met het gecrediteerde factuurnummer', async () => {

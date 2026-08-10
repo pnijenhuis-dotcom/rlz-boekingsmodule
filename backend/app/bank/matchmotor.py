@@ -292,7 +292,16 @@ def splits_incl_bedrag(bedrag: Decimal, btw_percentage: Decimal | None) -> tuple
     """Splitst een inclusief mutatiebedrag in (netto, btw) bij een gegeven btw-fractie (0.21
     voor 21% — de vorm waarin TaxRateCache.percentage staat). Afronding half-up op de netto;
     btw = bedrag − netto zodat de som ALTIJD exact het mutatiebedrag is (geen centverlies).
-    Werkt tekenvast voor negatieve (afschrijving) én positieve bedragen."""
+    Werkt tekenvast voor negatieve (afschrijving) én positieve bedragen.
+
+    Eenheids-guard (geldlogica-verificatie 2026-08-10, app/sync/btw.py): de fractie is de
+    canonieke eenheid — een waarde ≥ 1 kan alleen een per ongeluk doorgegeven UBL-percentage
+    (21.00) zijn en zou het geld stil verminken (121 / 22 i.p.v. 121 / 1,21). Hard falen."""
+    if btw_percentage is not None and btw_percentage >= 1:
+        raise ValueError(
+            f"btw_percentage moet de fractie zijn (0.21 voor 21%), kreeg {btw_percentage} — "
+            "vermoedelijk een UBL-percentage; normaliseer via app.sync.btw.ubl_percent_naar_fractie"
+        )
     if not btw_percentage:
         return bedrag, Decimal("0.00")
     netto = (bedrag / (1 + btw_percentage)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

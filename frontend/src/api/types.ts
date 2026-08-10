@@ -423,6 +423,17 @@ export interface VerkoopRegelDto {
   gb_code_status: string
   /** 'ubl' (deterministisch uit de UBL gelezen) | 'opgeslagen' (eerder door een mens bevestigd). */
   herkomst: string
+  /** Factuur-btw (blok A 2026-08-10): UNCL5305-categorie uit de UBL (S/E/Z/AE) of null. */
+  btw_categorie: string | null
+  /** Het UBL-percentage (21.00) als string — puur weergave; de fractie-normalisatie is server-side. */
+  btw_percentage_ubl: string | null
+  /** True = de btw-code volgt deterministisch uit de factuur en is niet te wijzigen. */
+  btw_vergrendeld: boolean
+  /** 'factuur' | 'onthouden' (eerder gekozen bij ambiguïteit) | null. */
+  btw_bron: string | null
+  /** Bij echte ambiguïteit (≥ 2 passende RLZ-tarieven): de toegestane keuzeset — eenmalig
+   * kiezen, daarna onthouden per administratie. */
+  btw_kandidaten: string[]
 }
 
 export interface VerkoopVoorstelDto {

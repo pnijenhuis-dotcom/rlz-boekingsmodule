@@ -136,9 +136,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
   verplichte velden, IBAN-wissel, vraag-blokkeert-boeken, afwijzen-met-verplichte-reden en
   webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02), memoriaal-saldo-0
-  (omzetmodule, 2026-08-07) én het VGB-prefixfilter (e-mail-intake, 2026-08-07 — dekt het
+  (omzetmodule, 2026-08-07), het VGB-prefixfilter (e-mail-intake, 2026-08-07 — dekt het
   intake-kanaal; bij een latere leesroute uit gedeelde administraties dáár opnieuw toepassen)
-  zijn gebouwd + getest; **per-leverancier-autoboeken-opt-in: GEBOUWD + GETEST (2026-08-09,
+  én btw-per-regel-=-factuur-btw (verkoop, blok A 2026-08-10 — categorie {S/E/Z/AE} + bedrag,
+  eenhedennormalisatie fractie↔percentage in `app/sync/btw.py`, btw in het verkoopvoorstel
+  auto-ingevuld + VERGRENDELD, ambiguïteit = eenmalige onthouden keuze per administratie,
+  migratie 0038) zijn gebouwd + getest; **per-leverancier-autoboeken-opt-in: GEBOUWD + GETEST (2026-08-09,
   migratie 0036 + `app/documenten/autoboeken.py`)** — boekt ná extractie uitsluitend bij
   opt-in aan (Beheerder-only, default UIT) + harde checks groen + voorstel volledig uit
   app-bevestigd boekingsgeheugen (seed-only/oranje weigert) + geen mogelijk-duplicaat/open

@@ -63,6 +63,28 @@ class VerkoopVoorstelRegel(Base):
     taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
 
 
+class VerkoopBtwVoorkeur(Base):
+    """Onthouden btw-codekeuze per administratie bij ECHTE ambiguïteit (blok A 2026-08-10,
+    migratie 0038): ≥ 2 actieve RLZ-tarieven dekken dezelfde factuur-btw (identieke categorie +
+    percentage, bv. "NL, Hoog Tarief" naast "NL, Hoog Tarief (vooruit)"). De eerste menselijke
+    keuze wordt hier per (categorie, fractie) onthouden — boekingsgeheugen-patroon, nooit per
+    factuur opnieuw. `percentage_fractie` is de CANONIEKE fractie (app/sync/btw.py: 0.2100 =
+    21%). De voorkeur wordt bij gebruik altijd hergetoetst tegen de actuele kandidatenset —
+    een verdwenen of niet-meer-passend tarief valt terug op 'mens kiest'."""
+
+    __tablename__ = "verkoop_btw_voorkeur"
+    __table_args__ = {"schema": "boekhouding"}
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    btw_categorie: Mapped[str] = mapped_column(primary_key=True)
+    percentage_fractie: Mapped[Decimal] = mapped_column(Numeric(6, 4), primary_key=True)
+    taxrate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 class VerkoopBoekingStatus(enum.StrEnum):
     GEBOEKT = "geboekt"
     GESTORNEERD = "gestorneerd"

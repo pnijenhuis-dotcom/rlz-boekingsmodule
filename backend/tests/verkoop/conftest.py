@@ -173,7 +173,14 @@ def bouw_vastly_creditnote_ubl(
 @pytest.fixture
 def rekeningschema(administratie_id: uuid.UUID) -> None:  # noqa: F811
     """Rekeningschema + btw-cache voor de GB-code- en btw-resolutie: code 8000 (opbrengsten,
-    boekbaar), code 0800 (totaalrekening — nooit boekbaar), 21% (uniek) en 0%."""
+    boekbaar), code 0800 (totaalrekening — nooit boekbaar), 21% (uniek, standaard) en
+    vrijgesteld.
+
+    ⚠️ BRONFORMAAT-regel (verbeteringen.md 2026-08-09): de taxrate-fixtures dragen exact het
+    RLZ-bronformaat — `percentage` als FRACTIE (0.2100 = 21%, zoals `GET TaxRates` levert) en
+    `brondata` in de vorm van een echte API-respons (incl. `IsRelayed`/`IsExcempt`, RLZ's eigen
+    spelling). Nooit handgeschreven waarden in het formaat dat de code verwacht — dat maskeerde
+    de btw-automatch-mismatch tot 2026-08-09."""
     with scoped_session(administratie_id) as session:
         session.add(
             Grootboekrekening(
@@ -190,13 +197,17 @@ def rekeningschema(administratie_id: uuid.UUID) -> None:  # noqa: F811
         session.add(
             TaxRateCache(
                 id=TAXRATE_21_ID, administratie_id=administratie_id,
-                naam="21% NL", percentage=Decimal("21.00"), brondata={},
+                naam="NL, Hoog Tarief", percentage=Decimal("0.2100"),
+                brondata={"Name": "NL, Hoog Tarief", "Percentage": 0.21,
+                          "IsRelayed": False, "IsExcempt": False, "IsMixed": False, "TaxKind": 1},
             )
         )
         session.add(
             TaxRateCache(
                 id=TAXRATE_0_ID, administratie_id=administratie_id,
-                naam="NL, Geen BTW (Vrijgesteld)", percentage=Decimal("0.00"), brondata={},
+                naam="NL, Geen BTW (Vrijgesteld)", percentage=Decimal("0.0000"),
+                brondata={"Name": "NL, Geen BTW (Vrijgesteld)", "Percentage": 0.0,
+                          "IsRelayed": False, "IsExcempt": True, "IsMixed": False, "TaxKind": 1},
             )
         )
 
