@@ -141,6 +141,147 @@ def _wijs_toe_of_verzamelbak(
     )
 
 
+def _verwerk_waarborg(
+    bijlage: IntakeBijlage,
+    *,
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID,
+    opslag: DocumentOpslag | None,
+) -> BijlageResultaat:
+    """VASTLY-WAARBORG-bericht (§2d-waarborgroute DEFINITIEF v1.11, blok E 2026-08-10): geen
+    factuurstuk maar een klein deterministisch XML-bericht — herkenning op het root-element,
+    toewijzing op de verhuurder-tenaamstelling (adminId = hint), idempotent op `bericht_id`.
+    Failsafe: onherkenbaar/incompleet of niet-toewijsbaar → verzamelbak, nooit stil."""
+    from app.documenten.waarborg_xml import (
+        OngeldigWaarborgBericht,
+        parseer_waarborg_bericht,
+        waarborg_velden_ontbrekend,
+    )
+    from app.intake.toewijzing import bepaal_toewijzing
+    from app.waarborg.models import WaarborgBericht
+
+    def _verzamelbak(reden: str) -> BijlageResultaat:
+        document_id = documenten_service.registreer_niet_toegewezen_document(
+            bestandsnaam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            actor_id=actor_id,
+            reden=reden,
+            soort=DocumentSoort.WAARBORG,
+            opslag=opslag,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender,
+        )
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id, detail=reden
+        )
+
+    try:
+        bericht = parseer_waarborg_bericht(bijlage.inhoud)
+    except OngeldigWaarborgBericht as exc:
+        return _verzamelbak(f"waarborg_invalide: {exc}")
+    ontbrekend = waarborg_velden_ontbrekend(bericht)
+    if ontbrekend:
+        return _verzamelbak(f"waarborg_invalide: ontbrekend {', '.join(ontbrekend)}")
+
+    with scoped_session(None) as session:
+        besluit = bepaal_toewijzing(session, tenaamstelling=bericht.verhuurder_entiteit, afzender=afzender)
+    if besluit.administratie_id is None:
+        return _verzamelbak(
+            f"waarborg_niet_toewijsbaar: verhuurder-entiteit '{bericht.verhuurder_entiteit}' "
+            "is geen eenduidige administratie"
+        )
+    administratie_id = besluit.administratie_id
+
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        bestaand = session.scalar(
+            select(WaarborgBericht).where(WaarborgBericht.bericht_id == bericht.bericht_id)
+        )
+        if bestaand is not None:
+            # Idempotentiesleutel (v1.11): zelfde bericht_id = zelfde bericht — nooit een
+            # tweede document of boeking; zichtbaar in het intake-resultaat + audit.
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="waarborg_bericht",
+                record_id=bestaand.document_id,
+                actie="waarborg_duplicaat_genegeerd",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde={"bericht_id": str(bericht.bericht_id), "bestandsnaam": bijlage.bestandsnaam},
+                administratie_id=administratie_id,
+            )
+            return BijlageResultaat(
+                bestandsnaam=bijlage.bestandsnaam,
+                uitkomst="waarborg_duplicaat",
+                document_id=bestaand.document_id,
+                detail=f"bericht_id {bericht.bericht_id} al verwerkt (idempotent, v1.11)",
+            )
+        # Plausibiliteits-signaal (v1.11): identieke kernvelden onder een ánder bericht_id =
+        # waarschuwing, geen stille dedup — het nieuwe bericht wordt gewoon verwerkt.
+        zelfde_kern = session.scalar(
+            select(WaarborgBericht).where(
+                WaarborgBericht.administratie_id == administratie_id,
+                WaarborgBericht.contract_referentie == bericht.contract_referentie,
+                WaarborgBericht.richting == bericht.richting,
+                WaarborgBericht.datum == bericht.datum,
+                WaarborgBericht.bedrag == bericht.bedrag,
+            )
+        )
+        if zelfde_kern is not None:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="waarborg_bericht",
+                record_id=zelfde_kern.document_id,
+                actie="waarborg_zelfde_kernvelden_signaal",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde={
+                    "nieuw_bericht_id": str(bericht.bericht_id),
+                    "bestaand_bericht_id": str(zelfde_kern.bericht_id),
+                    "contract_referentie": bericht.contract_referentie,
+                },
+                administratie_id=administratie_id,
+            )
+
+    resultaat = documenten_service.upload_document(
+        administratie_id=administratie_id,
+        bestandsnaam=bijlage.bestandsnaam,
+        inhoud=bijlage.inhoud,
+        actor_id=actor_id,
+        opslag=opslag,
+        bron=DocumentBron.EMAIL,
+        soort=DocumentSoort.WAARBORG,
+        intake_bericht_id=intake_bericht_id,
+        afzender_hint=afzender,
+        tenaamstelling=bericht.verhuurder_entiteit,
+    )
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        session.add(
+            WaarborgBericht(
+                document_id=resultaat.document_id,
+                administratie_id=administratie_id,
+                bericht_id=bericht.bericht_id,
+                schema_versie=bericht.schema_versie,
+                verhuurder_entiteit=bericht.verhuurder_entiteit,
+                rlz_admin_id_hint=bericht.rlz_admin_id_hint,
+                contract_referentie=bericht.contract_referentie,
+                huurder=bericht.huurder,
+                bedrag=bericht.bedrag,
+                richting=bericht.richting,
+                datum=bericht.datum,
+                balans_gb_code=bericht.balans_gb_code,
+            )
+        )
+    return BijlageResultaat(
+        bestandsnaam=bijlage.bestandsnaam,
+        uitkomst="toegewezen",
+        document_id=resultaat.document_id,
+        detail=f"{besluit.bron} → {administratie_id} (waarborg)",
+    )
+
+
 def _verwerk_xml(
     bijlage: IntakeBijlage,
     *,
@@ -149,6 +290,17 @@ def _verwerk_xml(
     intake_bericht_id: uuid.UUID,
     opslag: DocumentOpslag | None,
 ) -> BijlageResultaat:
+    from app.documenten.waarborg_xml import is_waarborg_xml
+
+    if is_waarborg_xml(bijlage.inhoud):
+        # §2d-waarborgroute (v1.11): eigen root-element, geen UBL — vóór de UBL-parse.
+        return _verwerk_waarborg(
+            bijlage,
+            afzender=afzender,
+            actor_id=actor_id,
+            intake_bericht_id=intake_bericht_id,
+            opslag=opslag,
+        )
     try:
         voorstel = parseer_ubl_factuur(bijlage.inhoud)
     except GeenGeldigeUbl as exc:

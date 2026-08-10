@@ -67,6 +67,13 @@ def rlz_customer_id(administratie_id: uuid.UUID, naam: str) -> uuid.UUID:
     return uuid.uuid5(_NAMESPACE, f"customer:{administratie_id}:{genormaliseerd}")
 
 
+def rlz_waarborg_memoriaal_id(document_id: uuid.UUID) -> uuid.UUID:
+    """Deterministisch client-GUID voor het waarborg-memoriaal (§2d-waarborgroute v1.11) —
+    zelfde idempotentie-redenering als rlz_kostprijs_memoriaal_id: een retry na een halve
+    mislukking raakt hetzelfde RLZ-ManualJournal, nooit een tweede."""
+    return uuid.uuid5(_NAMESPACE, f"waarborgmemoriaal:{document_id}")
+
+
 def rlz_upload_id(document_id: uuid.UUID) -> uuid.UUID:
     """Zelfde idempotentie-redenering als rlz_purchase_invoice_id(), voor de PDF-bijlage
     (`RlzClient.upload_bijlage`): een retry na boeken_mislukt uploadt niet telkens een nieuwe

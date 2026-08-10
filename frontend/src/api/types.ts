@@ -479,6 +479,34 @@ export interface VerkoopBoekenResponseDto {
   verkoop_boekstuknummer: string | null
 }
 
+/* ---------- Waarborg (§2d-waarborgroute v1.11, backend/app/waarborg/router.py) ---------- */
+
+export interface WaarborgVoorstelDto {
+  document_id: string
+  bericht_id: string
+  verhuurder_entiteit: string
+  contract_referentie: string
+  huurder: string
+  /** Decimals serialiseren als string — bedragen nooit als JS-float over de lijn. */
+  bedrag: string
+  richting: string
+  datum: string
+  balans_gb_code: string
+  balans_ledger_id: string | null
+  /** 'bekend' | 'onbekend' (blokkerend — code uit het bericht bestaat niet in dit schema). */
+  balans_gb_status: string
+  tegenrekening_ledger_id: string | null
+  status: string
+  rlz_boekstuknummer: string | null
+}
+
+export interface WaarborgBoekenResponseDto {
+  document_id: string
+  status: string
+  memoriaal_rlz_id: string
+  rlz_boekstuknummer: string | null
+}
+
 /* ---------- Zoeken + Archief (mockup #zoeken, backend/app/zoeken/router.py) ---------- */
 
 export interface ZoekVraagHitDto {

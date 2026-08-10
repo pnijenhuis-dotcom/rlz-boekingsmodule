@@ -174,6 +174,28 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
         # (app/extractie/rapport.py) — zelfde AVG-gate, eigen schema/controlelaag; de
         # projectplicht-waarborg is hier niet van toepassing (geen regels met projecttoerekening).
         detail = _rapport_extractie_detail(session, document=document, opslag=opslag)
+    elif document.soort == DocumentSoort.WAARBORG.value:
+        # §2d-waarborgroute (v1.11): het bericht is deterministische XML — de velden komen als
+        # veldvoorstel in de tijdlijn (zoeken/archief), de werkstaat leeft in waarborg_bericht.
+        from app.documenten.waarborg_xml import OngeldigWaarborgBericht, parseer_waarborg_bericht
+
+        inhoud = opslag.lezen(pad=document.opslag_pad)
+        try:
+            bericht = parseer_waarborg_bericht(inhoud)
+            detail = {
+                "veldvoorstel": {
+                    "waarborg_bericht_id": str(bericht.bericht_id) if bericht.bericht_id else None,
+                    "verhuurder_entiteit": bericht.verhuurder_entiteit,
+                    "contract_referentie": bericht.contract_referentie,
+                    "huurder": bericht.huurder,
+                    "bedrag": str(bericht.bedrag) if bericht.bedrag is not None else None,
+                    "richting": bericht.richting,
+                    "datum": bericht.datum.isoformat() if bericht.datum else None,
+                    "balans_gb_code": bericht.balans_gb_code,
+                }
+            }
+        except OngeldigWaarborgBericht as exc:
+            detail = {"waarborg_parse_fout": str(exc)}
     elif suffix == _UBL_SUFFIX:
         inhoud = opslag.lezen(pad=document.opslag_pad)
         try:

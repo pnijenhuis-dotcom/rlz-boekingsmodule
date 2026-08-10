@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0038
+-- Migratie-head bij deze dump: 0039
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -578,7 +578,7 @@ CREATE TABLE boekhouding.document (
     toewijzing_suggestie_administratie_id uuid,
     toewijzing_suggestie_bron text,
     gesplitst_uit_id uuid,
-    CONSTRAINT document_soort_geldig CHECK ((soort = ANY (ARRAY['inkoopfactuur'::text, 'kassarapport'::text, 'verkoopfactuur'::text])))
+    CONSTRAINT document_soort_geldig CHECK ((soort = ANY (ARRAY['inkoopfactuur'::text, 'kassarapport'::text, 'verkoopfactuur'::text, 'waarborg'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.document FORCE ROW LEVEL SECURITY;
@@ -1100,6 +1100,38 @@ CREATE TABLE boekhouding.vraag (
 );
 
 ALTER TABLE ONLY boekhouding.vraag FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: waarborg_bericht; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.waarborg_bericht (
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    bericht_id uuid NOT NULL,
+    schema_versie text,
+    verhuurder_entiteit text NOT NULL,
+    rlz_admin_id_hint text,
+    contract_referentie text NOT NULL,
+    huurder text NOT NULL,
+    bedrag numeric(12,2) NOT NULL,
+    richting text NOT NULL,
+    datum date NOT NULL,
+    balans_gb_code text NOT NULL,
+    tegenrekening_ledger_id uuid,
+    status text DEFAULT 'open'::text NOT NULL,
+    rlz_boekstuknummer text,
+    geboekt_door uuid,
+    geboekt_op timestamp with time zone,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT waarborg_bedrag_positief CHECK ((bedrag > (0)::numeric)),
+    CONSTRAINT waarborg_richting_geldig CHECK ((richting = ANY (ARRAY['ontvangst'::text, 'terugbetaling'::text]))),
+    CONSTRAINT waarborg_status_geldig CHECK ((status = ANY (ARRAY['open'::text, 'geboekt'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.waarborg_bericht FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -1675,6 +1707,22 @@ ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel
 
 ALTER TABLE ONLY boekhouding.vraag
     ADD CONSTRAINT vraag_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: waarborg_bericht waarborg_bericht_bericht_id_key; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.waarborg_bericht
+    ADD CONSTRAINT waarborg_bericht_bericht_id_key UNIQUE (bericht_id);
+
+
+--
+-- Name: waarborg_bericht waarborg_bericht_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.waarborg_bericht
+    ADD CONSTRAINT waarborg_bericht_pkey PRIMARY KEY (document_id);
 
 
 --
@@ -2883,6 +2931,30 @@ ALTER TABLE ONLY boekhouding.vraag
 
 
 --
+-- Name: waarborg_bericht waarborg_bericht_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.waarborg_bericht
+    ADD CONSTRAINT waarborg_bericht_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: waarborg_bericht waarborg_bericht_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.waarborg_bericht
+    ADD CONSTRAINT waarborg_bericht_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: waarborg_bericht waarborg_bericht_geboekt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.waarborg_bericht
+    ADD CONSTRAINT waarborg_bericht_geboekt_door_fkey FOREIGN KEY (geboekt_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: webhook_uitgaand webhook_uitgaand_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3574,6 +3646,19 @@ ALTER TABLE boekhouding.vraag ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY vraag_scope ON boekhouding.vraag USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: waarborg_bericht; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.waarborg_bericht ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: waarborg_bericht waarborg_bericht_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY waarborg_bericht_scope ON boekhouding.waarborg_bericht USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

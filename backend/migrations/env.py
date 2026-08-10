@@ -19,6 +19,7 @@ import app.intake.models  # noqa: F401
 import app.omzet.models  # noqa: F401
 import app.sync.models  # noqa: F401
 import app.verkoop.models  # noqa: F401
+import app.waarborg.models  # noqa: F401
 from app.db.models import Base
 
 config = context.config

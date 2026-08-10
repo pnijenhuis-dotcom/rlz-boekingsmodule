@@ -30,6 +30,9 @@ class DocumentSoort(enum.StrEnum):
 
     INKOOPFACTUUR = "inkoopfactuur"
     KASSARAPPORT = "kassarapport"
+    # VASTLY-WAARBORG-bericht (§2d-waarborgroute v1.11, migratie 0039): geen factuurstuk maar
+    # een klein deterministisch XML-bericht; boekt als ManualJournal op de balansrekening.
+    WAARBORG = "waarborg"
     # §2d (koppelcontract): Vastly-verkoopfactuur uit de e-mail-intake (UBL-markering
     # VASTLY-VERKOOP) — de omzetkant boekt 'm als SalesInvoice (migratie 0028).
     VERKOOPFACTUUR = "verkoopfactuur"

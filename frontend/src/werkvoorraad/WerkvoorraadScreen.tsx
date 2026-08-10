@@ -521,6 +521,9 @@ function Klantpagina({
                 // Verkoopmodule: een Vastly-verkoopfactuur (VASTLY-VERKOOP-UBL, §2d) opent het
                 // verkoopreview-scherm.
                 const isVerkoopfactuur = d.soort === 'verkoopfactuur'
+                // Waarborg-route (§2d v1.11): een VASTLY-WAARBORG-bericht opent het
+                // waarborg-reviewscherm (memoriaal-boekpad).
+                const isWaarborg = d.soort === 'waarborg'
                 return (
                   <tr
                     key={d.id}
@@ -533,7 +536,9 @@ function Klantpagina({
                             ? `/omzet/${administratieId}/${d.id}`
                             : isVerkoopfactuur
                               ? `/verkoop/${administratieId}/${d.id}`
-                              : `/documenten/${administratieId}/${d.id}`,
+                              : isWaarborg
+                                ? `/waarborg/${administratieId}/${d.id}`
+                                : `/documenten/${administratieId}/${d.id}`,
                       )
                     }
                   >
@@ -549,6 +554,7 @@ function Klantpagina({
                     <td>
                       {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
                       {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}
+                      {isWaarborg && <span className="chip klaar">waarborg</span>}{' '}
                       <StatusChip status={d.status} />
                       {d.automatisch_geboekt && (
                         <>

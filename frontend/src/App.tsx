@@ -9,6 +9,7 @@ import { InstellingenScreen } from './instellingen/InstellingenScreen'
 import { OmzetReviewScreen } from './omzet/OmzetReviewScreen'
 import { Shell } from './shell/Shell'
 import { VerkoopReviewScreen } from './verkoop/VerkoopReviewScreen'
+import { WaarborgReviewScreen } from './waarborg/WaarborgReviewScreen'
 import { VragenScreen } from './vragen/VragenScreen'
 import { WerkvoorraadScreen } from './werkvoorraad/WerkvoorraadScreen'
 import { ArchiefScreen } from './zoeken/ArchiefScreen'
@@ -40,6 +41,7 @@ function BeschermdeRoutes() {
         <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
         <Route path="/omzet/:administratieId/:documentId" element={<OmzetReviewScreen />} />
         <Route path="/verkoop/:administratieId/:documentId" element={<VerkoopReviewScreen />} />
+        <Route path="/waarborg/:administratieId/:documentId" element={<WaarborgReviewScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

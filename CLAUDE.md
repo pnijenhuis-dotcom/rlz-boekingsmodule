@@ -326,9 +326,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
   schending mét geldige markering) → omzet-werkvoorraad mét vlag "consument-afnemer" (landt bij
   de volledige-schematron-stap); waarborg via `VASTLY-WAARBORG`-bericht (velddefinitie
-  **DEFINITIEF v1.11**, incl. `bericht_id`-idempotentiesleutel) — wij boeken het memoriaal;
+  **DEFINITIEF v1.11**, incl. `bericht_id`-idempotentiesleutel) — wij boeken het memoriaal:
+  **intake + boekpad GEBOUWD + GETEST (2026-08-10/11, blok E; migratie 0039,
+  `app/documenten/waarborg_xml.py` + `backend/app/waarborg/` + `frontend/src/waarborg/`)** —
+  herkenning op root `VastlyWaarborg` (schema-versie 1.0, elementvorm bij de parser),
+  idempotent op bericht_id, saldo-0-memoriaal op de balans_gb_code (ontvangst = credit =
+  verplichting), tegenrekening = mens kiest; STAP-0 tegen de test-administratie uitgevoerd
+  incl. storno; vastgoed bouwt de verzendkant (OPEN_ITEMS 2026-08-10);
   §6.4 is **uitgevoerd (2026-08-09)**: Rubicon-waarborg-GB = 0204 "Waarborgsommen"
-  (RLZ-template-rekening; inventarisatie herhalen per nieuwe vastgoed-administratie).
+  (RLZ-template-rekening; inventarisatie herhalen per nieuwe vastgoed-administratie —
+  0204 live bevestigd in de test-administratie, STAP-0 2026-08-10).
 - **v1.11-addenda (2026-08-09, besluiten Peter 2026-08-08):** §2d-creditnota's (apart UBL
   CreditNote-document 381 mét VASTLY-VERKOOP-markering + BillingReference-herleiding →
   creditboeking omzetkant) — **herkenning + creditboekpad GEBOUWD (2026-08-09)** achter onze
