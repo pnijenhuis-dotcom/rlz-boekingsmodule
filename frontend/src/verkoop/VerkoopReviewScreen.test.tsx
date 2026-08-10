@@ -1,8 +1,23 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { VerkoopReviewScreen } from './VerkoopReviewScreen'
+
+// Node 22+ schaduwt window.localStorage in de jsdom-testomgeving met zijn eigen (lege)
+// experimental global — in-memory vervanger, zelfde patroon als ReviewSplitter.test.tsx.
+beforeAll(() => {
+  const opslag = new Map<string, string>()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (sleutel: string) => opslag.get(sleutel) ?? null,
+      setItem: (sleutel: string, waarde: string) => void opslag.set(sleutel, String(waarde)),
+      removeItem: (sleutel: string) => void opslag.delete(sleutel),
+      clear: () => opslag.clear(),
+    },
+  })
+})
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 const DOCUMENT_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -349,6 +364,47 @@ describe('VerkoopReviewScreen', () => {
     expect(dialoog).toHaveTextContent('is al geboekt in RLZ')
     await userEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('blok C: de "breed"-schakelaar stapelt de layout en bewaart de voorkeur in localStorage', async () => {
+    window.localStorage.removeItem('rlz.verkoop.breedGestapeld')
+    installFetchMock()
+    const { container } = renderScherm()
+    await screen.findByText(/UBL-verkoopfactuur/)
+
+    // Standaard: naast elkaar (splitter aanwezig, geen gestapelde klasse).
+    expect(container.querySelector('.review.review-gestapeld')).toBeNull()
+    expect(container.querySelector('.review-splitter')).not.toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: '⬒ Breed' }))
+    expect(container.querySelector('.review.review-gestapeld')).not.toBeNull()
+    expect(container.querySelector('.review-splitter')).toBeNull()
+    expect(window.localStorage.getItem('rlz.verkoop.breedGestapeld')).toBe('1')
+
+    await userEvent.click(screen.getByRole('button', { name: '◫ Naast elkaar' }))
+    expect(container.querySelector('.review.review-gestapeld')).toBeNull()
+    expect(window.localStorage.getItem('rlz.verkoop.breedGestapeld')).toBe('0')
+  })
+
+  it('blok C: de bewaarde "breed"-voorkeur wordt bij openen hersteld', async () => {
+    window.localStorage.setItem('rlz.verkoop.breedGestapeld', '1')
+    installFetchMock()
+    const { container } = renderScherm()
+    await screen.findByText(/UBL-verkoopfactuur/)
+
+    expect(container.querySelector('.review.review-gestapeld')).not.toBeNull()
+    window.localStorage.removeItem('rlz.verkoop.breedGestapeld')
+  })
+
+  it('blok C: de regel-omschrijving is een 2-regelig doorloopveld met de volledige tekst als hover-title', async () => {
+    installFetchMock()
+    renderScherm()
+    await screen.findByText(/UBL-verkoopfactuur/)
+
+    const veld = screen.getByLabelText('Omschrijving regel 1')
+    expect(veld.tagName).toBe('TEXTAREA')
+    expect(veld).toHaveAttribute('rows', '2')
+    expect(veld).toHaveAttribute('title', 'Huur augustus 2026')
   })
 
   it('een geboekt document is read-only en toont het RLZ-boekstuknummer', async () => {

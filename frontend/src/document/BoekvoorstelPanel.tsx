@@ -24,6 +24,7 @@ import {
 } from './geheugenVoorstel'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
+import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
@@ -1126,10 +1127,10 @@ export function BoekvoorstelPanel({
                     regel.omschrijving || '—'
                   ) : (
                     <>
-                      <input
-                        aria-label="Omschrijving"
-                        value={regel.omschrijving}
-                        onChange={(e) => wijzigRegel(regel.key, 'omschrijving', e.target.value)}
+                      <RegelOmschrijvingVeld
+                        ariaLabel="Omschrijving"
+                        waarde={regel.omschrijving}
+                        onWijzig={(waarde) => wijzigRegel(regel.key, 'omschrijving', waarde)}
                       />
                       {aiChipsActief && regel.aiZekerheid !== null && (
                         <div style={{ marginTop: 4 }}>

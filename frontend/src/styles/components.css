@@ -804,3 +804,40 @@ body.dark .combobox-listbox {
 .rdp-root .rdp-chevron {
   fill: var(--muted);
 }
+
+/* Regel-omschrijvingen zonder afkappen (blok C 2026-08-10, kliktest Peter): het veld loopt
+ * door op 2 regels i.p.v. één afgekapte input-regel; de volledige tekst zit in de title
+ * (hover). Erft de invoer-basisstijl (input/textarea-blok hierboven). */
+.regel-omschrijving-veld {
+  resize: none;
+  min-height: 0;
+  line-height: 1.35;
+  overflow: hidden;
+  display: block;
+  width: 100%;
+}
+
+/* Verkoop-review "breed"-stand (blok C 2026-08-10): gestapeld i.p.v. naast elkaar — de
+ * regel-tabel op volledige breedte boven, de bijlage-viewer eronder. De voorkeur leeft in
+ * localStorage (VerkoopReviewScreen); de splitter heeft gestapeld geen functie. */
+.review.review-gestapeld {
+  flex-direction: column;
+}
+
+.review.review-gestapeld .formpane {
+  order: 1;
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.review.review-gestapeld .docpane {
+  order: 2;
+  flex: 1 1 100%;
+  width: 100%;
+  position: static;
+  height: 70vh;
+}
+
+.review.review-gestapeld .review-splitter {
+  display: none;
+}

@@ -23,23 +23,31 @@ const STANDAARD_PCT = 50
 const VERGROOT_PCT = 70
 const TOETS_STAP_PCT = 2
 
+/** Per-scherm-instelbaar (blok C 2026-08-10): het verkoopscherm deelt het splitter-patroon
+ * maar heeft een eigen voorkeurssleutel en een smallere standaard-viewer (meer ruimte voor de
+ * regel-tabel). Zonder opties gedraagt de hook zich exact als op het controlescherm. */
+export interface ReviewSplitterOpties {
+  opslagSleutel?: string
+  standaardPct?: number
+}
+
 function klem(pct: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, pct))
 }
 
-function bewaardeBreedte(): number {
+function bewaardeBreedte(sleutel: string, standaard: number): number {
   try {
-    const bewaard = Number(window.localStorage.getItem(OPSLAG_SLEUTEL))
+    const bewaard = Number(window.localStorage.getItem(sleutel))
     if (Number.isFinite(bewaard) && bewaard >= MIN_PCT && bewaard <= MAX_PCT) return bewaard
   } catch {
     // localStorage kan geblokkeerd zijn (private mode) — dan gewoon de standaard.
   }
-  return STANDAARD_PCT
+  return standaard
 }
 
-function bewaarBreedte(pct: number): void {
+function bewaarBreedte(sleutel: string, pct: number): void {
   try {
-    window.localStorage.setItem(OPSLAG_SLEUTEL, String(Math.round(pct * 10) / 10))
+    window.localStorage.setItem(sleutel, String(Math.round(pct * 10) / 10))
   } catch {
     // Niet kunnen bewaren is geen fout — de sessie werkt gewoon door.
   }
@@ -56,9 +64,11 @@ export interface ReviewSplitterState {
   onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void
 }
 
-export function useReviewSplitter(): ReviewSplitterState {
+export function useReviewSplitter(opties: ReviewSplitterOpties = {}): ReviewSplitterState {
+  const opslagSleutel = opties.opslagSleutel ?? OPSLAG_SLEUTEL
+  const standaardPct = klem(opties.standaardPct ?? STANDAARD_PCT)
   const containerElement = useRef<HTMLDivElement | null>(null)
-  const laatstePct = useRef<number>(bewaardeBreedte())
+  const laatstePct = useRef<number>(bewaardeBreedte(opslagSleutel, standaardPct))
   const [breedtePct, setBreedtePct] = useState<number>(laatstePct.current)
   const [slepen, setSlepen] = useState(false)
   const [vergroot, setVergroot] = useState(false)
@@ -91,13 +101,13 @@ export function useReviewSplitter(): ReviewSplitterState {
         window.removeEventListener('pointerup', los)
         window.removeEventListener('pointercancel', los)
         setSlepen(false)
-        bewaarBreedte(laatstePct.current)
+        bewaarBreedte(opslagSleutel, laatstePct.current)
       }
       window.addEventListener('pointermove', beweeg)
       window.addEventListener('pointerup', los)
       window.addEventListener('pointercancel', los)
     },
-    [zetBreedte],
+    [zetBreedte, opslagSleutel],
   )
 
   const onKeyDown = useCallback(
@@ -107,9 +117,9 @@ export function useReviewSplitter(): ReviewSplitterState {
       setVergroot(false)
       const richting = event.key === 'ArrowLeft' ? -1 : 1
       zetBreedte(laatstePct.current + richting * TOETS_STAP_PCT)
-      bewaarBreedte(laatstePct.current)
+      bewaarBreedte(opslagSleutel, laatstePct.current)
     },
-    [zetBreedte],
+    [zetBreedte, opslagSleutel],
   )
 
   const toggleVergroot = useCallback(() => setVergroot((huidig) => !huidig), [])

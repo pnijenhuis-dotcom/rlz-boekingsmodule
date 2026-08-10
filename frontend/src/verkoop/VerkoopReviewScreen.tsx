@@ -16,6 +16,8 @@ import { useAutoChecks } from '../document/useAutoChecks'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
+import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
+import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
 import { haalVerkoopVoorstelOp, slaVerkoopVoorstelOp, voerVerkoopChecksUit } from './verkoopApi'
 
 /** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's.
@@ -73,6 +75,9 @@ function formatBedrag(waarde: number): string {
  * zelfde set als het omzetreview-scherm. */
 const BOEKBARE_STATUSSEN = new Set(['te_controleren', 'klaar_om_te_boeken', 'boeken_mislukt', 'handmatig_afmaken'])
 
+/** Voorkeurssleutel voor de "breed"-stand (gestapelde layout) — blok C 2026-08-10. */
+const BREED_OPSLAG_SLEUTEL = 'rlz.verkoop.breedGestapeld'
+
 export function VerkoopReviewScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
 
@@ -109,6 +114,29 @@ export function VerkoopReviewScreen() {
     wijzigingsVersieRef.current += 1
     setWijzigingsVersie(wijzigingsVersieRef.current)
   }, [])
+
+  // Blok C 2026-08-10: naast-elkaar blijft standaard, maar op verkoop krijgt de regel-tabel
+  // meer ruimte (viewer-default 35%); de "breed"-schakelaar stapelt (regel-tabel volledige
+  // breedte boven, viewer eronder) mét voorkeur in localStorage.
+  const splitter = useReviewSplitter({ opslagSleutel: 'rlz.verkoop.docpaneBreedtePct', standaardPct: 35 })
+  const [breedGestapeld, setBreedGestapeld] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(BREED_OPSLAG_SLEUTEL) === '1'
+    } catch {
+      return false
+    }
+  })
+  const wisselBreed = () => {
+    setBreedGestapeld((huidig) => {
+      const nieuw = !huidig
+      try {
+        window.localStorage.setItem(BREED_OPSLAG_SLEUTEL, nieuw ? '1' : '0')
+      } catch {
+        // Niet kunnen bewaren is geen fout — de sessie werkt gewoon door.
+      }
+      return nieuw
+    })
+  }
 
   const grootboek = useGrootboekOpties(administratieId ?? '')
   const btwCodes = useTaxrateOpties(administratieId ?? '')
@@ -345,9 +373,30 @@ export function VerkoopReviewScreen() {
         </div>
       )}
 
-      <div className="review">
+      <div
+        className={breedGestapeld ? 'review review-gestapeld' : 'review'}
+        ref={splitter.containerRef}
+        style={splitter.stijl}
+      >
         <div className="docpane">
           <div className="panel">
+            <div className="actions" style={{ marginBottom: 8 }}>
+              {!breedGestapeld && <ReviewVergrootKnop splitter={splitter} />}
+              <button
+                type="button"
+                className="btn secondary"
+                style={{ padding: '3px 10px', fontSize: 12 }}
+                onClick={wisselBreed}
+                aria-pressed={breedGestapeld}
+                title={
+                  breedGestapeld
+                    ? 'Terug naar naast elkaar (regel-tabel naast het brondocument)'
+                    : 'Breed: regel-tabel op volledige breedte, brondocument eronder'
+                }
+              >
+                {breedGestapeld ? '◫ Naast elkaar' : '⬒ Breed'}
+              </button>
+            </div>
             <div className="bijlage-inhoud">
               {!bijlageUrl && <p className="hint">Bijlage laden…</p>}
               {xmlTekst !== null && <pre className="xml-bron">{xmlTekst}</pre>}
@@ -363,6 +412,7 @@ export function VerkoopReviewScreen() {
             </div>
           </div>
         </div>
+        {!breedGestapeld && <ReviewSplitter splitter={splitter} />}
 
         <div className="formpane">
           <div className="panel">
@@ -437,10 +487,10 @@ export function VerkoopReviewScreen() {
                 {regels.map((regel, index) => (
                   <tr key={regel.volgnummer}>
                     <td>
-                      <input
-                        aria-label={`Omschrijving regel ${regel.volgnummer}`}
-                        value={regel.omschrijving}
-                        onChange={(e) => wijzigRegel(index, { omschrijving: e.target.value })}
+                      <RegelOmschrijvingVeld
+                        ariaLabel={`Omschrijving regel ${regel.volgnummer}`}
+                        waarde={regel.omschrijving}
+                        onWijzig={(waarde) => wijzigRegel(index, { omschrijving: waarde })}
                         disabled={isGeboekt}
                       />
                       {regel.herkomst === 'ubl' && (
