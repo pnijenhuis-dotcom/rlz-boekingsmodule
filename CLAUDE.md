@@ -306,7 +306,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.11)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.12)
 
 - **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
   RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
@@ -319,8 +319,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   rlz_document_id, referentie, adminId, datum, leverancier, regels met ledger+GB-code+bedragen —
   de wérkelijke payload is sinds v1.10 de contractnorm); **sinds 2026-08-09 óók bij het boeken
   van een VASTLY-VERKOOP-document** (referentie = Vastly-factuurnummer; velden `soort` +
-  `debiteur` i.p.v. `leverancier` — formele §3-opname van die verkoop-veldvorm is een open
-  contract-actie, zie Platform OPEN_ITEMS).
+  `debiteur` i.p.v. `leverancier` — sinds v1.12 (2026-08-10) formeel als norm in §3
+  opgenomen).
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
