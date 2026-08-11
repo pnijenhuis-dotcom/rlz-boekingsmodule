@@ -33,6 +33,11 @@
     --focus: rgba(46,102,96,.18);
   }
   * { box-sizing: border-box; margin: 0; }
+  /* iOS-autozoom-preventie (iPhone-review Peter 2026-08-11): élk formulierveld ≥ 16px —
+     onder 16px zoomt iOS Safari in bij focus en blijft die zoom na het sluiten hangen.
+     Structureel hier afgedwongen; bewust GEEN maximum-scale-hack in de viewport-meta
+     (dat breekt de toegankelijkheid). Bouwvereiste voor de echte PWA vanaf dag één. */
+  input, textarea, select { font-size: 16px; }
   body {
     font-family: 'Inter', -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.01em;
     background: var(--bg); color: var(--text); font-size: 14px; min-height: 100vh;
@@ -152,7 +157,9 @@
   .btn.secundair { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
   .btn.paars { background: var(--purple); color: #fff; }
 
-  /* ===== Sheets (bottom sheet = mobiel patroon voor popups) ===== */
+  /* ===== Sheets (bottom sheet = mobiel patroon voor popups) — de open sheet beweegt
+         mee met window.visualViewport zodat veld + knoppen boven het iOS-toetsenbord
+         blijven (iPhone-review Peter 2026-08-11, zie script onderaan) ===== */
   .sheet-bg { display: none; position: absolute; inset: 0; background: rgba(15,23,42,.5); z-index: 40; align-items: flex-end; }
   .sheet-bg.open { display: flex; }
   .sheet {
@@ -164,7 +171,8 @@
   .sheet .uitleg { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin-bottom: 12px; }
   .sheet textarea {
     width: 100%; min-height: 88px; padding: 10px; border: 1px solid var(--border); border-radius: 10px;
-    font-family: inherit; font-size: 14px; background: var(--panel); color: var(--text); resize: vertical;
+    font-family: inherit; font-size: 16px; /* ≥16px = geen iOS-autozoom (11-08) */
+    background: var(--panel); color: var(--text); resize: vertical;
   }
   .sheet textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
   .sheet .rij { display: flex; gap: 10px; margin-top: 14px; }
@@ -334,6 +342,7 @@
     <p class="k">Klik door: <b>Face ID-ontgrendeling → wachtrij → factuur → Akkoord</b> (direct, geen extra check) of <b>Afwijzen</b> (verplichte reden). De 2e factuur van Essent heeft exact hetzelfde bedrag als een eerder akkoord — na dat akkoord stelt de app een <b>staande goedkeuring</b> voor. Beheer/intrekken via ✓✓ rechtsboven.</p>
     <p class="k"><b>Inloggen &amp; beveiliging — auth-cadans (besluiten 2026-08-11):</b> volledige login alléén bij eerste gebruik, op een nieuw/onbekend apparaat of ná 7 dagen inactiviteit (accordeurs loggen 1-2×/week in — gebruiksgemak voorop). Face ID (passkey/WebAuthn) één keer bij elke app-opening, geldig tot de app sluit (koude start = nieuwe check); <b>géén biometrie per losse actie</b> — de akkoord-knop werkt direct. Het kantoor kan een accordeur/apparaat server-side intrekken (kill-switch). Staande goedkeuringen lopen zonder extra check.</p>
     <p class="k"><b>Dark mode is de default</b> (systeemvolgend bij het openen); ◐ rechtsboven schakelt handmatig om.</p>
+    <p class="k"><b>iOS-toetsenbordles (iPhone-review Peter 11-08):</b> alle formuliervelden ≥16px (voorkomt de iOS-autozoom die na sluiten bleef hangen — bewust géén maximum-scale-hack, toegankelijkheid) én de afwijzen-dialoog als bottom-sheet gepositioneerd op <b>window.visualViewport</b>, zodat redenveld + afwijzen-knop altijd boven het toetsenbord blijven (fallback zonder visualViewport: scrollIntoView bij focus). <b>Bouwvereiste voor de echte PWA vanaf dag één.</b></p>
     <p class="k">Beoordeel op het mobiele breakpoint: maak het venster smaller dan ~580px of open dit bestand op een telefoon.</p>
   </div>
 </div>
@@ -405,6 +414,31 @@
     document.getElementById('redenveld').value = '';
     document.getElementById('redenfout').classList.remove('zichtbaar');
     document.getElementById('sheetAfwijzen').classList.add('open');
+    schuifSheetBovenToetsenbord(); // staat het toetsenbord al open, dan meteen goed positioneren
+  }
+
+  // ===== iOS-toetsenbordfix (iPhone-review Peter 2026-08-11) =====
+  // De open bottom-sheet volgt window.visualViewport: opent het toetsenbord, dan schuift
+  // de sheet precies zóveel omhoog dat het redenveld én de afwijzen-knop eronder zichtbaar
+  // blijven. De autozoom zelf is structureel voorkomen met ≥16px op alle formuliervelden —
+  // bewust géén maximum-scale-hack (toegankelijkheid). Bouwvereiste voor de echte PWA.
+  function schuifSheetBovenToetsenbord() {
+    const sheet = document.querySelector('.sheet-bg.open .sheet');
+    if (!sheet) return;
+    const vv = window.visualViewport;
+    // Hoeveel van de layout-viewport wordt onderaan afgedekt (toetsenbord e.d.)?
+    const afgedekt = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    sheet.style.transform = afgedekt ? `translateY(-${afgedekt}px)` : '';
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', schuifSheetBovenToetsenbord);
+    window.visualViewport.addEventListener('scroll', schuifSheetBovenToetsenbord);
+  } else {
+    // Fallback voor browsers zónder visualViewport: scroll bij focus het veld
+    // mét de knoppenrij eronder in beeld.
+    document.getElementById('redenveld').addEventListener('focus', () =>
+      setTimeout(() => document.querySelector('#sheetAfwijzen .rij')
+        .scrollIntoView({ block: 'end', behavior: 'smooth' }), 250));
   }
   function bevestigAfwijzen() {
     const reden = document.getElementById('redenveld').value.trim();
@@ -484,7 +518,14 @@
     }
   }
 
-  function sluit(id) { document.getElementById(id).classList.remove('open'); }
+  function sluit(id) {
+    const bg = document.getElementById(id);
+    bg.classList.remove('open');
+    const veld = bg.querySelector('textarea, input, select');
+    if (veld) veld.blur(); // toetsenbord dicht bij sluiten — geen hangende viewport
+    const sheet = bg.querySelector('.sheet');
+    if (sheet) sheet.style.transform = ''; // toetsenbord-offset resetten
+  }
   let toastTimer = null;
   function toast(txt) {
     const t = document.getElementById('toast');
