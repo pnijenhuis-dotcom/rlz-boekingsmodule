@@ -1,10 +1,13 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   haalAccorderingInstellingen,
   haalAccorderingKandidaten,
+  haalApparaten,
   haalStaandeRegels,
+  trekApparaatIn,
   trekStaandeRegelIn,
   zetAccorderingInstellingen,
+  type ApparaatDto,
   type KandidaatDto,
   type StaandeRegelDto,
 } from '../accordering/accorderingApi'
@@ -12,6 +15,108 @@ import {
 interface LaagInvoer {
   accordeurId: string
   drempel: string
+}
+
+function formatMoment(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/** Geregistreerde apparaten (passkeys) per accordeur + kill-switch (blok 1c/4 accordeur-PWA,
+ * besluit 2026-08-11): intrekken trekt de passkey én alle sessies van dat apparaat per direct
+ * in (server-side, geauditeerd). Beheerder-only — het endpoint weigert andere rollen. */
+function AccordeurApparaten({ kandidaten }: { kandidaten: KandidaatDto[] }) {
+  const [perGebruiker, setPerGebruiker] = useState<Record<string, ApparaatDto[]>>({})
+  const [fout, setFout] = useState<string | null>(null)
+
+  const laad = useCallback(() => {
+    setFout(null)
+    Promise.all(kandidaten.map(async (k) => [k.id, (await haalApparaten(k.id)).apparaten] as const))
+      .then((paren) => setPerGebruiker(Object.fromEntries(paren)))
+      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Apparaten laden mislukt'))
+  }, [kandidaten])
+
+  useEffect(() => {
+    if (kandidaten.length > 0) laad()
+  }, [kandidaten, laad])
+
+  const intrekken = async (apparaatId: string) => {
+    setFout(null)
+    try {
+      await trekApparaatIn(apparaatId)
+      laad()
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : 'Intrekken mislukt')
+    }
+  }
+
+  if (kandidaten.length === 0) return null
+  const rijen = kandidaten.flatMap((k) => (perGebruiker[k.id] ?? []).map((a) => ({ kandidaat: k, apparaat: a })))
+
+  return (
+    <>
+      <h3 style={{ margin: '6px 0 0' }}>Geregistreerde apparaten (passkeys)</h3>
+      {fout && <div className="fout">{fout}</div>}
+      {rijen.length === 0 ? (
+        <p className="hint" style={{ margin: 0 }}>
+          Nog geen geregistreerde apparaten — een accordeur registreert zijn toestel bij de activering of de
+          eerste login.
+        </p>
+      ) : (
+        <>
+          <table>
+            <thead>
+              <tr>
+                <th>Accordeur</th>
+                <th>Apparaat</th>
+                <th>Geregistreerd</th>
+                <th>Laatst gebruikt</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rijen.map(({ kandidaat, apparaat }) => (
+                <tr key={apparaat.id}>
+                  <td>{kandidaat.naam}</td>
+                  <td>
+                    {apparaat.apparaat_naam ?? 'Onbekend apparaat'}
+                    {apparaat.is_dev_stub && <span className="chip"> dev-stub</span>}
+                  </td>
+                  <td>{formatMoment(apparaat.aangemaakt_op)}</td>
+                  <td>{formatMoment(apparaat.laatst_gebruikt_op)}</td>
+                  <td>
+                    {apparaat.ingetrokken_op ? (
+                      <span className="chip">ingetrokken</span>
+                    ) : (
+                      <span className="chip geheugen">actief</span>
+                    )}
+                  </td>
+                  <td>
+                    {!apparaat.ingetrokken_op && (
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => void intrekken(apparaat.id)}
+                      >
+                        Toegang intrekken
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="hint" style={{ margin: 0 }}>
+            Intrekken (kill-switch) blokkeert dit apparaat per direct: de passkey én alle lopende sessies
+            vervallen — de accordeur kan alleen opnieuw beginnen via wachtwoord + nieuwe registratie.
+          </div>
+        </>
+      )}
+    </>
+  )
 }
 
 /** Accordering-beheer voor één administratie (mockup #autorisatie, Beheerder-only): toggle,
@@ -211,6 +316,7 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
               </div>
             </>
           )}
+          <AccordeurApparaten kandidaten={kandidaten} />
         </div>
       ) : null}
     </details>

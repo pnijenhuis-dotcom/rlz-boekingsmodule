@@ -185,10 +185,10 @@ describe('GoedkeurenFlow', () => {
     renderFlow()
 
     expect(await screen.findByText('Voordat je begint')).toBeInTheDocument()
-    // Placeholder is ingevuld met de administratienaam.
-    expect(screen.getByText(/facturen van BLOW B.V. te beoordelen/)).toBeInTheDocument()
+    // Placeholder is ingevuld met de administratienaam (tekst laadt asynchroon).
+    expect(await screen.findByText(/facturen van BLOW B\.V\. te beoordelen/)).toBeInTheDocument()
 
-    const knop = screen.getByRole('button', { name: 'Akkoord en beginnen' })
+    const knop = await screen.findByRole('button', { name: 'Akkoord en beginnen' })
     expect(knop).toBeDisabled() // zonder vinkje geen akkoord
     await userEvent.click(screen.getByRole('checkbox'))
     await userEvent.click(knop)

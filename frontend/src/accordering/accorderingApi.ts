@@ -104,3 +104,23 @@ export function trekStaandeRegelIn(administratieId: string, regelId: string): Pr
     method: 'POST',
   })
 }
+
+// --- apparaatbeheer / kill-switch (blok 4 accordeur-PWA, Beheerder-only) -------------------------
+
+export interface ApparaatDto {
+  id: string
+  apparaat_naam: string | null
+  is_dev_stub: boolean
+  aangemaakt_op: string
+  laatst_gebruikt_op: string | null
+  ingetrokken_op: string | null
+}
+
+export function haalApparaten(gebruikerId: string): Promise<{ apparaten: ApparaatDto[] }> {
+  return apiJson(`/auth/gebruikers/${gebruikerId}/apparaten`)
+}
+
+/** Kill-switch: trekt de passkey én alle sessies van dit apparaat per direct in. */
+export function trekApparaatIn(apparaatId: string): Promise<void> {
+  return apiJson(`/auth/apparaten/${apparaatId}/intrekken`, { method: 'POST' })
+}
