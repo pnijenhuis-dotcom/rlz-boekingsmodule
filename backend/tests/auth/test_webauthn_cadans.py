@@ -138,6 +138,32 @@ def test_wachtrij_vereist_voorwaarden_akkoord(beheerder_id: uuid.UUID) -> None:
     assert resp.status_code == 200, resp.text
 
 
+def test_staande_regels_vereisen_voorwaarden_akkoord(
+    beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    """Nazorg 2026-08-11: het ✓✓-beheer (lijst + intrekken) zit achter dezelfde
+    voorwaarden-poort als wachtrij/akkoord/afwijzen — een accordeur zonder vastgelegd akkoord
+    kan er niet bij; kantoor-rollen raakt de poort niet."""
+    _, _, access_token = _activeer_accordeur(beheerder_id, administratie_id)
+    headers = _bearer(access_token)
+    basis = f"/administraties/{administratie_id}/accordering/staande-regels"
+
+    resp = client.get(basis, headers=headers)
+    assert resp.status_code == 403 and resp.json()["detail"] == "voorwaarden_akkoord_vereist"
+    resp = client.post(f"{basis}/{uuid.uuid4()}/intrekken", headers=headers)
+    assert resp.status_code == 403 and resp.json()["detail"] == "voorwaarden_akkoord_vereist"
+
+    # Kantoor (Beheerder) heeft de informatieplicht-laag niet: gewoon toegang.
+    resp = client.get(basis, headers=_beheerder_bearer(beheerder_id))
+    assert resp.status_code == 200, resp.text
+
+    # Ná het akkoord is het ✓✓-beheer open voor de accordeur.
+    assert client.post("/auth/accordeur/voorwaarden-akkoord", headers=headers).status_code == 204
+    resp = client.get(basis, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["regels"] == []
+
+
 def test_voorwaarden_akkoord_geweigerd_voor_kantoorrol(beheerder_id: uuid.UUID) -> None:
     resp = client.post("/auth/accordeur/voorwaarden-akkoord", headers=_beheerder_bearer(beheerder_id))
     assert resp.status_code == 403

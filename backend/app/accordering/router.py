@@ -310,6 +310,10 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
 def staande_regels(
     administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
 ) -> schemas.StaandeRegelsResponse:
+    """Zelfde voorwaarden-poort als wachtrij/akkoord/afwijzen (nazorg 2026-08-11): het
+    ✓✓-beheer is onderdeel van de accordeur-flow en hoort niet open te staan vóór het
+    akkoord. Kantoor-rollen raakt de poort niet."""
+    _vereis_voorwaarden_akkoord(actor)
     regels, namen = service.staande_regels(administratie_id=administratie_id)
     return schemas.StaandeRegelsResponse(
         regels=[
@@ -339,6 +343,7 @@ def staande_regel_intrekken(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> None:
     """Intrekbaar door kantoor én door de accordeur zelf (besluit 2026-08-08)."""
+    _vereis_voorwaarden_akkoord(actor)
     try:
         service.trek_staande_regel_in(administratie_id=administratie_id, regel_id=regel_id, actor_id=actor.id)
     except DocumentNietGevonden as exc:
