@@ -93,6 +93,8 @@ class WachtrijItemResponse(BaseModel):
     totaalbedrag: Decimal | None
     aangeboden_op: datetime
     laag_volgnummer: int
+    boeking_omschrijving: str | None = None
+    staande_regel_kandidaat: bool = False
 
 
 class WachtrijResponse(BaseModel):

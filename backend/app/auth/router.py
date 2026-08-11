@@ -5,9 +5,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.auth import schemas, service
+from app.auth import schemas, service, voorwaarden, webauthn_service
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder
 from app.config import settings
+from app.db.models import GebruikerRol
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer(auto_error=True)
@@ -16,15 +17,18 @@ REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/auth/token/vernieuwen"
 
 
-def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+def _set_refresh_cookie(response: Response, paar: service.TokenPaar) -> None:
     """httpOnly+Secure+SameSite (Auth-0010-b punt 1) — nooit leesbaar voor JS, dus nooit via
-    localStorage lekbaar. Path beperkt tot het refresh-endpoint: de browser stuurt hem nergens
-    anders naartoe. secure=False alleen in dev/local (zelfde gate als de JWT-secret-fallback in
+    localStorage lekbaar. Path beperkt tot het refresh-endpoint (de ontgrendel-endpoints van de
+    accordeur-cadans leven bewust ónder dit pad — RFC 6265-prefix-match — zodat de scope niet
+    verruimd hoeft te worden): de browser stuurt hem nergens anders naartoe. max_age volgt de
+    TTL van het uitgegeven token (accordeur 7 dagen sliding, overige rollen 30 dagen).
+    secure=False alleen in dev/local (zelfde gate als de JWT-secret-fallback in
     app/security/tokens.py) — anders werkt lokaal draaien over http niet."""
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
-        value=refresh_token,
-        max_age=settings.jwt_refresh_ttl_seconds,
+        value=paar.refresh_token,
+        max_age=paar.refresh_ttl_seconds or settings.jwt_refresh_ttl_seconds,
         httponly=True,
         secure=settings.environment not in ("dev", "local"),
         samesite="strict",
@@ -75,9 +79,11 @@ def uitnodiging_accepteren(
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return schemas.UitnodigingAccepterenResponse(
+        soort=resultaat.soort,
         totp_setup_token=resultaat.totp_setup_token,
         otpauth_uri=resultaat.otpauth_uri,
         secret=resultaat.secret,
+        passkey_setup_token=resultaat.passkey_setup_token,
     )
 
 
@@ -91,7 +97,7 @@ def totp_bevestigen(
         paar = service.bevestig_totp(totp_setup_token=credentials.credentials, code=payload.code)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar.refresh_token)
+    _set_refresh_cookie(response, paar)
     return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
@@ -106,7 +112,7 @@ def login(payload: schemas.LoginRequest, request: Request, response: Response) -
         )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar.refresh_token)
+    _set_refresh_cookie(response, paar)
     return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
@@ -123,7 +129,7 @@ def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarR
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar.refresh_token)
+    _set_refresh_cookie(response, paar)
     return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
@@ -193,3 +199,217 @@ def scope_verwijderen(
         service.verwijder_scope(actor_id=actor.id, doel_gebruiker_id=gebruiker_id, administratie_id=administratie_id)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+# --- accordeur-cadans: passkeys/WebAuthn (migratie 0040, besluit 2026-08-11) ----------------------
+
+
+def _passkey_setup_gebruiker(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> uuid.UUID:
+    """Bearer = het passkey_setup-token uit de wachtwoordstap (accordeur-login) of de
+    activeringsflow — machtigt uitsluitend het afronden van registratie/assertion."""
+    try:
+        return webauthn_service.gebruiker_id_uit_passkey_setup(credentials.credentials)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+
+@router.get("/webauthn/config", response_model=schemas.WebauthnConfigResponse)
+def webauthn_config() -> schemas.WebauthnConfigResponse:
+    """Publiek: de PWA moet vóór de login weten of de dev-stub actief is (LAN-IP-kliktest heeft
+    geen secure context, dus geen echte WebAuthn). Bevat geen gevoelige informatie."""
+    return schemas.WebauthnConfigResponse(
+        dev_stub=webauthn_service.dev_stub_actief(), rp_id=settings.webauthn_rp_id
+    )
+
+
+@router.post("/accordeur/login", response_model=schemas.AccordeurLoginResponse)
+def accordeur_login(
+    payload: schemas.AccordeurLoginRequest, request: Request
+) -> schemas.AccordeurLoginResponse:
+    """Wachtwoordstap van de volledige accordeur-login (eerste gebruik / nieuw apparaat / ná 7
+    dagen inactiviteit). Kantoor-rollen blijven op /auth/login (wachtwoord + TOTP)."""
+    try:
+        resultaat = webauthn_service.start_accordeur_login(
+            e_mail=payload.e_mail, wachtwoord=payload.wachtwoord, ip_adres=_client_ip(request)
+        )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    return schemas.AccordeurLoginResponse(
+        passkey_setup_token=resultaat.passkey_setup_token, heeft_passkeys=resultaat.heeft_passkeys
+    )
+
+
+@router.post("/webauthn/registratie/opties", response_model=schemas.WebauthnOptiesResponse)
+def webauthn_registratie_opties(
+    gebruiker_id: uuid.UUID = Depends(_passkey_setup_gebruiker),
+) -> schemas.WebauthnOptiesResponse:
+    try:
+        return schemas.WebauthnOptiesResponse(opties=webauthn_service.registratie_opties(gebruiker_id=gebruiker_id))
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/webauthn/registratie/voltooien", response_model=schemas.TokenPaarResponse)
+def webauthn_registratie_voltooien(
+    payload: schemas.WebauthnRegistratieVoltooienRequest,
+    request: Request,
+    response: Response,
+    gebruiker_id: uuid.UUID = Depends(_passkey_setup_gebruiker),
+) -> schemas.TokenPaarResponse:
+    """Rondt de registratie van dít apparaat af en logt meteen in (apparaat-gebonden sessie)."""
+    try:
+        if payload.dev_stub:
+            resultaat = webauthn_service.voltooi_registratie_stub(
+                gebruiker_id=gebruiker_id, apparaat_naam=payload.apparaat_naam, ip_adres=_client_ip(request)
+            )
+        else:
+            if payload.credential is None:
+                raise service.AuthError("WebAuthn-response ontbreekt")
+            resultaat = webauthn_service.voltooi_registratie(
+                gebruiker_id=gebruiker_id,
+                credential=payload.credential,
+                apparaat_naam=payload.apparaat_naam,
+                ip_adres=_client_ip(request),
+            )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    _set_refresh_cookie(response, resultaat.token_paar)
+    return schemas.TokenPaarResponse(access_token=resultaat.token_paar.access_token)
+
+
+@router.post("/webauthn/login/opties", response_model=schemas.WebauthnOptiesResponse)
+def webauthn_login_opties(
+    gebruiker_id: uuid.UUID = Depends(_passkey_setup_gebruiker),
+) -> schemas.WebauthnOptiesResponse:
+    """Assertion-options voor de volledige login op een bekend apparaat (2e factor)."""
+    try:
+        return schemas.WebauthnOptiesResponse(opties=webauthn_service.assertie_opties(gebruiker_id=gebruiker_id))
+    except webauthn_service.GeenPasskeys as exc:
+        # Eigen status zodat de client deterministisch naar de registratie-flow kan (nieuw
+        # apparaat) — geen 401 (sessie niet ongeldig) en geen generieke 400.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/webauthn/login/voltooien", response_model=schemas.TokenPaarResponse)
+def webauthn_login_voltooien(
+    payload: schemas.WebauthnAssertieVoltooienRequest,
+    request: Request,
+    response: Response,
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> schemas.TokenPaarResponse:
+    try:
+        paar = webauthn_service.login_met_assertie(
+            passkey_setup_token=credentials.credentials,
+            credential=payload.credential,
+            dev_stub=payload.dev_stub,
+            ip_adres=_client_ip(request),
+        )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    _set_refresh_cookie(response, paar)
+    return schemas.TokenPaarResponse(access_token=paar.access_token)
+
+
+@router.post("/token/vernieuwen/ontgrendel-opties", response_model=schemas.WebauthnOptiesResponse)
+def ontgrendel_opties(request: Request) -> schemas.WebauthnOptiesResponse:
+    """App-opening (bekend apparaat, sessie nog geldig): assertion-options op basis van de
+    refresh-cookie. Bewust ónder het /auth/token/vernieuwen-pad: de httpOnly-cookie is
+    path-gebonden en de scope blijft zo ongewijzigd smal."""
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if refresh_token is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token cookie aangeleverd")
+    try:
+        gebruiker_id = webauthn_service.gebruiker_id_uit_geldig_refresh_token(refresh_token)
+        return schemas.WebauthnOptiesResponse(opties=webauthn_service.assertie_opties(gebruiker_id=gebruiker_id))
+    except webauthn_service.GeenPasskeys as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+
+@router.post("/token/vernieuwen/ontgrendelen", response_model=schemas.TokenPaarResponse)
+def ontgrendelen(
+    payload: schemas.WebauthnAssertieVoltooienRequest, request: Request, response: Response
+) -> schemas.TokenPaarResponse:
+    """Rondt de app-opening af: assertion verifiëren (éénmaal per opening, besluit 2026-08-11)
+    en daarná de refresh-cookie roteren via de bestaande race-tolerante rotatie."""
+    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if refresh_token is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token cookie aangeleverd")
+    try:
+        webauthn_service.ontgrendel_assertie(
+            refresh_token=refresh_token,
+            credential=payload.credential,
+            dev_stub=payload.dev_stub,
+            ip_adres=_client_ip(request),
+        )
+        paar = service.vernieuw_token(refresh_token=refresh_token, ip_adres=_client_ip(request))
+    except service.RotatieBezetError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    _set_refresh_cookie(response, paar)
+    return schemas.TokenPaarResponse(access_token=paar.access_token)
+
+
+# --- apparaatbeheer / kill-switch (kantoor) -------------------------------------------------------
+
+
+@router.get("/gebruikers/{gebruiker_id}/apparaten", response_model=schemas.ApparatenResponse)
+def apparaten_van_gebruiker(
+    gebruiker_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.ApparatenResponse:
+    """Beheerder-only (kill-switch-beheer op Instellingen → accordering)."""
+    return schemas.ApparatenResponse(
+        apparaten=[
+            schemas.ApparaatResponse(
+                id=a.id,
+                apparaat_naam=a.apparaat_naam,
+                is_dev_stub=a.is_dev_stub,
+                aangemaakt_op=a.aangemaakt_op,
+                laatst_gebruikt_op=a.laatst_gebruikt_op,
+                ingetrokken_op=a.ingetrokken_op,
+            )
+            for a in webauthn_service.apparaten_van(gebruiker_id=gebruiker_id)
+        ]
+    )
+
+
+@router.post("/apparaten/{apparaat_id}/intrekken", status_code=status.HTTP_204_NO_CONTENT)
+def apparaat_intrekken(
+    apparaat_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    """Kill-switch: trekt de passkey-credential + alle gebonden sessies van dit apparaat in."""
+    try:
+        webauthn_service.trek_apparaat_in(actor_id=actor.id, apparaat_id=apparaat_id)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# --- voorwaarden + privacyverklaring-akkoord (activeringsflow accordeur) --------------------------
+
+
+@router.get("/accordeur/voorwaarden", response_model=schemas.VoorwaardenResponse)
+def accordeur_voorwaarden(
+    actor: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> schemas.VoorwaardenResponse:
+    administraties = service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+    return schemas.VoorwaardenResponse(
+        tekst_versie=voorwaarden.AKKOORD_TEKST_VERSIE,
+        tekst=voorwaarden.AKKOORD_TEKST,
+        akkoord_gegeven=voorwaarden.heeft_akkoord(gebruiker_id=actor.id),
+        administratie_namen=[a.naam for a in administraties],
+    )
+
+
+@router.post("/accordeur/voorwaarden-akkoord", status_code=status.HTTP_204_NO_CONTENT)
+def accordeur_voorwaarden_akkoord(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> None:
+    """Alleen zinvol (en toegestaan) voor de rol klant-accordeur — kantoor-rollen hebben deze
+    informatieplicht-laag niet."""
+    if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor de rol klant-accordeur"
+        )
+    voorwaarden.leg_akkoord_vast(gebruiker_id=actor.id)

@@ -10,7 +10,7 @@ import jwt
 from app.config import settings
 
 _DEV_ENVIRONMENTS = ("dev", "local")
-TokenType = Literal["access", "refresh", "totp_setup"]
+TokenType = Literal["access", "refresh", "totp_setup", "passkey_setup"]
 
 
 class TokenError(Exception):
@@ -59,13 +59,24 @@ def _issue(
 
 
 def create_access_token(
-    gebruiker_id: uuid.UUID, *, rol: str, ttl_seconds: int | None = None, now: float | None = None
+    gebruiker_id: uuid.UUID,
+    *,
+    rol: str,
+    ttl_seconds: int | None = None,
+    now: float | None = None,
+    apparaat_id: uuid.UUID | None = None,
 ) -> str:
+    """`apparaat_id` (migratie 0040) reist mee als claim zodat de kill-switch per apparaat ook
+    binnen de access-TTL bijt: deps.get_current_gebruiker toetst de credential-status per
+    request, net zoals rol/status daar al per request uit de DB komen."""
+    extra: dict[str, Any] = {"rol": rol}
+    if apparaat_id is not None:
+        extra["apparaat"] = str(apparaat_id)
     return _issue(
         gebruiker_id=gebruiker_id,
         token_type="access",
         ttl_seconds=ttl_seconds if ttl_seconds is not None else settings.jwt_access_ttl_seconds,
-        extra={"rol": rol},
+        extra=extra,
         now=now,
     )
 
@@ -88,6 +99,20 @@ def create_totp_setup_token(
         gebruiker_id=gebruiker_id,
         token_type="totp_setup",
         ttl_seconds=ttl_seconds if ttl_seconds is not None else settings.jwt_totp_setup_ttl_seconds,
+        now=now,
+    )
+
+
+def create_passkey_setup_token(
+    gebruiker_id: uuid.UUID, *, ttl_seconds: int | None = None, now: float | None = None
+) -> str:
+    """Tussentoken ná een geslaagde wachtwoordstap (accordeur-login op een nieuw apparaat, of de
+    activeringsflow) — machtigt uitsluitend het afronden van de passkey-registratie/-assertion,
+    nooit een API-call (geen access-type)."""
+    return _issue(
+        gebruiker_id=gebruiker_id,
+        token_type="passkey_setup",
+        ttl_seconds=ttl_seconds if ttl_seconds is not None else settings.jwt_passkey_setup_ttl_seconds,
         now=now,
     )
 

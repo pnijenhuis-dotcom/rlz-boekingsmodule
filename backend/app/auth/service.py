@@ -21,6 +21,7 @@ from app.db.models import (
     RefreshToken,
     TotpSecret,
     Uitnodiging,
+    WebauthnCredential,
 )
 from app.db.session import scoped_session
 from app.security.envelope import unwrap_secret, wrap_secret
@@ -28,6 +29,7 @@ from app.security.passwords import hash_password, verify_password
 from app.security.tokens import (
     TokenError,
     create_access_token,
+    create_passkey_setup_token,
     create_refresh_token,
     create_totp_setup_token,
     decode_token,
@@ -106,16 +108,24 @@ def maak_uitnodiging(
 
 @dataclass(frozen=True)
 class AcceptatieResultaat:
-    totp_setup_token: str
-    otpauth_uri: str
-    secret: str
+    """`soort` bepaalt de tweede stap van de activatie: 'totp' (kantoor-rollen, bestaand) of
+    'passkey' (klant-accordeur, besluit auth-cadans 2026-08-11 — de passkey-registratie op het
+    apparaat vervangt de TOTP-stap; velden van de andere variant zijn dan None)."""
+
+    soort: str
+    totp_setup_token: str | None = None
+    otpauth_uri: str | None = None
+    secret: str | None = None
+    passkey_setup_token: str | None = None
 
 
 def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat:
-    """Token -> wachtwoord zetten -> TOTP-secret genereren (nog niet bevestigd). Activatie volgt
-    pas na bevestig_totp(). Het token is hierna altijd verbruikt, ook als een latere stap
-    (TOTP-bevestiging) faalt — een mislukte enrollment betekent een nieuwe uitnodiging, geen
-    herbruikbaar token (consistent met "eenmalig")."""
+    """Token -> wachtwoord zetten -> tweede factor voorbereiden. Kantoor-rollen: TOTP-secret
+    genereren (nog niet bevestigd), activatie volgt pas na bevestig_totp(). Klant-accordeur:
+    status wacht_op_passkey + een passkey_setup-token — activatie volgt pas na de
+    passkey-registratie (app/auth/webauthn_service.py). Het token is hierna altijd verbruikt,
+    ook als een latere stap faalt — een mislukte enrollment betekent een nieuwe uitnodiging,
+    geen herbruikbaar token (consistent met "eenmalig")."""
     if len(wachtwoord) < MIN_WACHTWOORD_LENGTE:
         raise AuthError(f"Wachtwoord moet minimaal {MIN_WACHTWOORD_LENGTE} tekens zijn")
 
@@ -135,9 +145,15 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
         assert gebruiker is not None  # FK garandeert dit
 
         gebruiker.wachtwoord_hash = hash_password(wachtwoord)
-        gebruiker.status = GebruikerStatus.WACHT_OP_TOTP
         uitnodiging.gebruikt_op = now
 
+        if gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR:
+            gebruiker.status = GebruikerStatus.WACHT_OP_PASSKEY
+            return AcceptatieResultaat(
+                soort="passkey", passkey_setup_token=create_passkey_setup_token(gebruiker.id)
+            )
+
+        gebruiker.status = GebruikerStatus.WACHT_OP_TOTP
         secret = generate_secret()
         ciphertext, wrapped_key = wrap_secret(secret.encode())
         session.add(
@@ -147,6 +163,7 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
         gebruiker_id = gebruiker.id
 
     return AcceptatieResultaat(
+        soort="totp",
         totp_setup_token=create_totp_setup_token(gebruiker_id),
         otpauth_uri=build_otpauth_uri(secret, account_name=e_mail),
         secret=secret,
@@ -157,26 +174,46 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
 class TokenPaar:
     access_token: str
     refresh_token: str
+    # Cookie-max_age hoort bij de TTL van dít token (accordeur = 7 dagen sliding, besluit
+    # 2026-08-11; overige rollen 30 dagen) — de router mag niet blind de platform-default zetten.
+    refresh_ttl_seconds: int = 0
+
+
+def _refresh_ttl_voor(rol: GebruikerRol) -> int:
+    """Accordeur-cadans (besluit 2026-08-11): 7 dagen sliding voor klant-accordeurs — elke
+    rotatie geeft een vers token met deze TTL, dus 7 dagen zónder gebruik = volledige login."""
+    if rol == GebruikerRol.KLANT_ACCORDEUR:
+        return settings.jwt_refresh_ttl_accordeur_seconds
+    return settings.jwt_refresh_ttl_seconds
 
 
 def _issue_token_paar(
-    session: Session, *, gebruiker_id: uuid.UUID, rol: GebruikerRol, voorganger_id: uuid.UUID | None = None
+    session: Session,
+    *,
+    gebruiker_id: uuid.UUID,
+    rol: GebruikerRol,
+    voorganger_id: uuid.UUID | None = None,
+    apparaat_id: uuid.UUID | None = None,
 ) -> TokenPaar:
     """Enige plek die een refresh-token uitgeeft: naast het JWT ook de bijbehorende hash
     vastleggen in `refresh_token`, anders is rotatie/hergebruik-detectie niet mogelijk voor dit
-    token. `voorganger_id` legt de rotatieketen vast (None bij een verse login/activatie)."""
-    access_token = create_access_token(gebruiker_id, rol=rol.value)
-    refresh_token = create_refresh_token(gebruiker_id)
+    token. `voorganger_id` legt de rotatieketen vast (None bij een verse login/activatie);
+    `apparaat_id` bindt de sessie aan een geregistreerd apparaat (passkey — migratie 0040) en
+    reist ook als claim in het access-token mee (kill-switch per request, zie deps)."""
+    ttl_seconds = _refresh_ttl_voor(rol)
+    access_token = create_access_token(gebruiker_id, rol=rol.value, apparaat_id=apparaat_id)
+    refresh_token = create_refresh_token(gebruiker_id, ttl_seconds=ttl_seconds)
     session.add(
         RefreshToken(
             id=uuid.uuid4(),
             gebruiker_id=gebruiker_id,
             token_hash=_hash_token(refresh_token),
             voorganger_id=voorganger_id,
-            verloopt_op=datetime.now(UTC) + timedelta(seconds=settings.jwt_refresh_ttl_seconds),
+            apparaat_id=apparaat_id,
+            verloopt_op=datetime.now(UTC) + timedelta(seconds=ttl_seconds),
         )
     )
-    return TokenPaar(access_token=access_token, refresh_token=refresh_token)
+    return TokenPaar(access_token=access_token, refresh_token=refresh_token, refresh_ttl_seconds=ttl_seconds)
 
 
 def _intrek_alle_sessies(session: Session, gebruiker_id: uuid.UUID, *, now: datetime) -> None:
@@ -339,8 +376,20 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
                 select(RefreshToken).where(RefreshToken.token_hash == token_hash).with_for_update()
             ).one_or_none()
             now = datetime.now(UTC)
+            # Kill-switch per apparaat (migratie 0040): een sessie die aan een ingetrokken
+            # passkey-credential hangt, wordt bij de eerstvolgende rotatie hard geweigerd —
+            # vóór de gebruikt_op-tak, anders zou een grace-race op een ingetrokken apparaat
+            # alsnog een vers token opleveren.
+            apparaat_ingetrokken = False
+            if rij is not None and rij.apparaat_id is not None:
+                credential = session.get(WebauthnCredential, rij.apparaat_id)
+                apparaat_ingetrokken = credential is None or credential.ingetrokken_op is not None
             if rij is None:
                 faal_reden = "onbekend"
+            elif apparaat_ingetrokken:
+                if rij.ingetrokken_op is None:
+                    rij.ingetrokken_op = now
+                faal_reden = "apparaat_ingetrokken"
             elif rij.gebruikt_op is not None or rij.ingetrokken_op is not None:
                 grace = timedelta(seconds=settings.refresh_hergebruik_grace_seconds)
                 binnen_grace = (
@@ -359,7 +408,11 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
                         nieuwe_waarde=_login_metadata(ip_adres),
                     )
                     paar = _issue_token_paar(
-                        session, gebruiker_id=gebruiker_id, rol=gebruiker.rol, voorganger_id=rij.id
+                        session,
+                        gebruiker_id=gebruiker_id,
+                        rol=gebruiker.rol,
+                        voorganger_id=rij.id,
+                        apparaat_id=rij.apparaat_id,
                     )
                 else:
                     _intrek_alle_sessies(session, gebruiker_id, now=now)
@@ -383,7 +436,11 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
                 else:
                     rij.gebruikt_op = now
                     paar = _issue_token_paar(
-                        session, gebruiker_id=gebruiker_id, rol=gebruiker.rol, voorganger_id=rij.id
+                        session,
+                        gebruiker_id=gebruiker_id,
+                        rol=gebruiker.rol,
+                        voorganger_id=rij.id,
+                        apparaat_id=rij.apparaat_id,
                     )
     except OperationalError as exc:
         if _is_lock_timeout(exc):
@@ -396,6 +453,7 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
             "hergebruik": "Refresh-token al gebruikt — alle sessies zijn ter voorzorg beëindigd",
             "verlopen": "Refresh-token verlopen",
             "inactief": "Account niet (meer) actief",
+            "apparaat_ingetrokken": "Toegang voor dit apparaat is ingetrokken",
         }
         raise AuthError(foutmeldingen.get(faal_reden, "Ongeldig refresh-token"))
     return paar

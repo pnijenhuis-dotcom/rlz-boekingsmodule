@@ -26,21 +26,36 @@ def get_current_gebruiker(
 ) -> CurrentGebruiker:
     """Decodeert het access-token en haalt de ACTUELE rol/status uit de DB — nooit de claim in
     het token blindelings vertrouwen. Een access-token is kortlevend (15 min), maar een
-    rol-downgrade of blokkering moet niet tot dan kunnen blijven gelden."""
+    rol-downgrade of blokkering moet niet tot dan kunnen blijven gelden. Draagt het token een
+    apparaat-claim (passkey-sessie, migratie 0040), dan geldt hetzelfde voor de
+    kill-switch: een ingetrokken apparaat valt per direct uit, niet pas bij de volgende
+    refresh."""
     try:
         payload = decode_token(credentials.credentials, expected_type="access")
     except TokenError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
     gebruiker_id = uuid.UUID(payload["sub"])
+    apparaat_claim = payload.get("apparaat")
     with scoped_session(None) as session:
         row = session.execute(
             text("SELECT rol, status FROM platform.gebruiker WHERE id = :id"),
             {"id": gebruiker_id},
         ).first()
+        apparaat_ingetrokken = False
+        if apparaat_claim is not None:
+            cred_row = session.execute(
+                text("SELECT ingetrokken_op FROM platform.webauthn_credential WHERE id = :id"),
+                {"id": uuid.UUID(apparaat_claim)},
+            ).first()
+            apparaat_ingetrokken = cred_row is None or cred_row[0] is not None
 
     if row is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Onbekende gebruiker")
+    if apparaat_ingetrokken:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Toegang voor dit apparaat is ingetrokken"
+        )
     rol_waarde, status_waarde = row
     if status_waarde != GebruikerStatus.ACTIEF.value:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account niet actief")

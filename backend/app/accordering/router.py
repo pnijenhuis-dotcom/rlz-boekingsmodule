@@ -14,10 +14,26 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.accordering import schemas, service
 from app.auth import service as auth_service
+from app.auth import voorwaarden
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder, vereis_administratie_scope
+from app.db.models import GebruikerRol
 from app.documenten.service import DocumentNietGevonden
 
 router = APIRouter(tags=["accordering"])
+
+VOORWAARDEN_AKKOORD_VEREIST = "voorwaarden_akkoord_vereist"
+
+
+def _vereis_voorwaarden_akkoord(actor: CurrentGebruiker) -> None:
+    """Activeringsflow-poort (docs/avg/05 + blok 3 accordeur-PWA): een klant-accordeur zonder
+    vastgelegd akkoord op de actuele voorwaarden-/privacytekst krijgt geen wachtrij en kan geen
+    besluiten nemen — server-side afgedwongen, de PWA toont dan het akkoord-scherm. Kantoor-
+    rollen hebben deze informatieplicht-laag niet (zij zien de wachtrij-endpoints toch al niet
+    als accordeur)."""
+    if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
+        return
+    if not voorwaarden.heeft_akkoord(gebruiker_id=actor.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=VOORWAARDEN_AKKOORD_VEREIST)
 
 
 def _vertaal(exc: service.AccorderingFout) -> HTTPException:
@@ -187,6 +203,7 @@ def akkoord(
 ) -> schemas.BesluitResponse:
     """Akkoord van de accordeur die aan de beurt is (PWA-endpoint). Optioneel mét staande
     goedkeuring voor toekomstige facturen van deze leverancier bij exact dit bedrag."""
+    _vereis_voorwaarden_akkoord(actor)
     try:
         resultaat = service.geef_akkoord(
             administratie_id=administratie_id,
@@ -211,6 +228,7 @@ def afwijzen(
 ) -> schemas.AccorderingResponse:
     """Afwijzen door de accordeur — verplichte reden (popup-principe); komt met reden terug in
     de werkvoorraad via het bestaande afwijzen-patroon."""
+    _vereis_voorwaarden_akkoord(actor)
     try:
         data = service.wijs_af(
             administratie_id=administratie_id, document_id=document_id, actor_id=actor.id, reden=invoer.reden
@@ -260,6 +278,7 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
     """De accordeer-wachtrij van de ingelogde gebruiker (PWA-endpoint, scope-aanscherping
     2026-08-08: uitsluitend de wachtrij). Administraties komen uit de eigen scope-bron —
     geen scope = geen data, RLS dwingt dat op DB-niveau nogmaals af."""
+    _vereis_voorwaarden_akkoord(actor)
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     items = service.wachtrij_voor_accordeur(
         actor_id=actor.id, administratie_ids=[a.id for a in administraties]
@@ -276,6 +295,8 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
                 totaalbedrag=item.totaalbedrag,
                 aangeboden_op=item.aangeboden_op,
                 laag_volgnummer=item.laag_volgnummer,
+                boeking_omschrijving=item.boeking_omschrijving,
+                staande_regel_kandidaat=item.staande_regel_kandidaat,
             )
             for item in items
         ]

@@ -856,6 +856,95 @@ class WachtrijItem:
     totaalbedrag: Decimal | None
     aangeboden_op: datetime
     laag_volgnummer: int
+    # PWA-review (mockup accordeur.html): compacte weergave van de voorgestelde boeking
+    # ("Inkopen Headshop · btw 21%") — géén volledige regelweergave, scope bewust smal.
+    boeking_omschrijving: str | None = None
+    # Mockup-flow "staande goedkeuring na 2e identieke factuur": déze accordeur gaf eerder
+    # handmatig akkoord op zelfde leverancier + exact bedrag, en er is nog geen actieve regel.
+    staande_regel_kandidaat: bool = False
+
+
+def _boeking_omschrijving(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+    """Eerste boekingsregel als leesbare samenvatting: grootboeknaam + btw-naam, met een
+    "+n regels"-suffix bij meer regels (de accordeur beoordeelt de factuur, niet de codering —
+    besluit scope-aanscherping 2026-08-08)."""
+    from app.db.models import Grootboekrekening
+    from app.documenten.models import BoekvoorstelRegel
+    from app.sync.models import TaxRateCache
+
+    regels = list(
+        session.scalars(
+            select(BoekvoorstelRegel)
+            .where(BoekvoorstelRegel.document_id == document_id)
+            .order_by(BoekvoorstelRegel.volgnummer)
+        )
+    )
+    if not regels:
+        return None
+    eerste = regels[0]
+    delen: list[str] = []
+    if eerste.ledger_id is not None:
+        grootboek = session.get(Grootboekrekening, (eerste.ledger_id, administratie_id))
+        if grootboek is not None:
+            delen.append(grootboek.naam)
+    if eerste.taxrate_id is not None:
+        taxrate = session.get(TaxRateCache, (eerste.taxrate_id, administratie_id))
+        if taxrate is not None and taxrate.naam:
+            delen.append(taxrate.naam)
+    if not delen:
+        return None
+    samenvatting = " · ".join(delen)
+    if len(regels) > 1:
+        samenvatting += f" · +{len(regels) - 1} regels"
+    return samenvatting
+
+
+def _is_staande_regel_kandidaat(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    accordeur_id: uuid.UUID,
+    document_id: uuid.UUID,
+    vendor_id: uuid.UUID | None,
+    totaalbedrag: Decimal | None,
+) -> bool:
+    """True als déze accordeur eerder HANDMATIG akkoord gaf op een ander document van dezelfde
+    leverancier met exact hetzelfde bedrag, en er nog geen actieve staande regel voor die
+    combinatie bestaat — dan stelt de PWA ná het akkoord de staande goedkeuring voor."""
+    if vendor_id is None or totaalbedrag is None:
+        return False
+    bestaande_regel = session.scalars(
+        select(StaandeGoedkeuring.id).where(
+            StaandeGoedkeuring.administratie_id == administratie_id,
+            StaandeGoedkeuring.accordeur_gebruiker_id == accordeur_id,
+            StaandeGoedkeuring.vendor_id == vendor_id,
+            StaandeGoedkeuring.bedrag == totaalbedrag,
+            StaandeGoedkeuring.actief.is_(True),
+        )
+    ).first()
+    if bestaande_regel is not None:
+        return False
+    eerdere = session.scalars(
+        select(DocumentAccordering).where(
+            DocumentAccordering.administratie_id == administratie_id,
+            DocumentAccordering.document_id != document_id,
+        )
+    ).all()
+    for accordering in eerdere:
+        detail = accordering.detail or {}
+        if detail.get("vendor_id") != str(vendor_id):
+            continue
+        eerder_bedrag = _als_decimal(detail.get("totaalbedrag"))
+        if eerder_bedrag is None or eerder_bedrag != totaalbedrag:
+            continue
+        for stap in _stappen_van(session, accordering.id):
+            if (
+                stap.accordeur_gebruiker_id == accordeur_id
+                and stap.besluit == StapBesluit.AKKOORD.value
+                and stap.besluit_bron == StapBesluitBron.HANDMATIG.value
+            ):
+                return True
+    return False
 
 
 def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid.UUID]) -> list[WachtrijItem]:
@@ -895,6 +984,17 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
                         totaalbedrag=voorstel.totaalbedrag if voorstel else None,
                         aangeboden_op=accordering.aangeboden_op,
                         laag_volgnummer=volgende.volgnummer,
+                        boeking_omschrijving=_boeking_omschrijving(
+                            session, administratie_id=administratie_id, document_id=accordering.document_id
+                        ),
+                        staande_regel_kandidaat=_is_staande_regel_kandidaat(
+                            session,
+                            administratie_id=administratie_id,
+                            accordeur_id=actor_id,
+                            document_id=accordering.document_id,
+                            vendor_id=voorstel.vendor_id if voorstel else None,
+                            totaalbedrag=voorstel.totaalbedrag if voorstel else None,
+                        ),
                     )
                 )
     items.sort(key=lambda i: i.aangeboden_op)

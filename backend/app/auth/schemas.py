@@ -29,9 +29,14 @@ class UitnodigingAccepterenRequest(StrikteInvoer):
 
 
 class UitnodigingAccepterenResponse(BaseModel):
-    totp_setup_token: str
-    otpauth_uri: str
-    secret: str
+    """`soort` bepaalt de tweede activatiestap: 'totp' (kantoor-rollen; totp-velden gevuld) of
+    'passkey' (klant-accordeur; passkey_setup_token gevuld — besluit auth-cadans 2026-08-11)."""
+
+    soort: str
+    totp_setup_token: str | None = None
+    otpauth_uri: str | None = None
+    secret: str | None = None
+    passkey_setup_token: str | None = None
 
 
 class TotpBevestigenRequest(StrikteInvoer):
@@ -51,6 +56,69 @@ class LoginRequest(StrikteInvoer):
     e_mail: str
     wachtwoord: str
     totp_code: str
+
+
+class AccordeurLoginRequest(StrikteInvoer):
+    e_mail: str
+    wachtwoord: str
+
+
+class AccordeurLoginResponse(BaseModel):
+    """Wachtwoordstap geslaagd; de client rondt af met een passkey-assertion (bekend apparaat)
+    of -registratie (nieuw apparaat). Het setup-token machtigt uitsluitend die afronding."""
+
+    passkey_setup_token: str
+    heeft_passkeys: bool
+
+
+class WebauthnConfigResponse(BaseModel):
+    """Publiek (geen auth): de PWA moet vóór het inlogscherm weten of de dev-stub actief is —
+    op een LAN-IP (geen secure context) bestaat window.PublicKeyCredential niet en is de stub
+    de enige kliktest-route. Bevat bewust geen secrets."""
+
+    dev_stub: bool
+    rp_id: str
+
+
+class WebauthnRegistratieVoltooienRequest(StrikteInvoer):
+    """`credential` = de JSON-geserialiseerde PublicKeyCredential uit de browser (registratie).
+    `dev_stub` = expliciet gemarkeerde dev-fallback (alleen werkzaam buiten productie)."""
+
+    credential: dict | None = None
+    apparaat_naam: str | None = None
+    dev_stub: bool = False
+
+
+class WebauthnAssertieVoltooienRequest(StrikteInvoer):
+    credential: dict | None = None
+    dev_stub: bool = False
+
+
+class WebauthnOptiesResponse(BaseModel):
+    """`opties` is de door py_webauthn geserialiseerde options-JSON (registratie of assertie) —
+    als string doorgegeven zodat de byte-exacte challenge-encoding intact blijft."""
+
+    opties: str
+
+
+class ApparaatResponse(BaseModel):
+    id: uuid.UUID
+    apparaat_naam: str | None
+    is_dev_stub: bool
+    aangemaakt_op: datetime
+    laatst_gebruikt_op: datetime | None
+    ingetrokken_op: datetime | None
+
+
+class ApparatenResponse(BaseModel):
+    apparaten: list[ApparaatResponse]
+
+
+class VoorwaardenResponse(BaseModel):
+    tekst_versie: str
+    tekst: str
+    akkoord_gegeven: bool
+    administratie_namen: list[str]
 
 
 class RolWijzigenRequest(StrikteInvoer):

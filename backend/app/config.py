@@ -31,6 +31,28 @@ class Settings(BaseSettings):
     jwt_refresh_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 dagen
     jwt_totp_setup_ttl_seconds: int = 600  # 10 min, alleen voor de TOTP-enrollment-stap
 
+    # Accordeur-cadans (besluit Peter 2026-08-11): aparte, kortere refresh-TTL voor de rol
+    # klant-accordeur. Sliding per rotatie (elke vernieuwing geeft een vers token met deze TTL),
+    # dus "ná 7 dagen inactiviteit = volledige login" volgt hier direct uit — actieve gebruikers
+    # blijven ingelogd, een stilliggend apparaat valt na 7 dagen terug op wachtwoord + passkey.
+    jwt_refresh_ttl_accordeur_seconds: int = 60 * 60 * 24 * 7  # 7 dagen
+    # TTL van het tussentoken ná de wachtwoordstap van de accordeur-login/activatie — alleen
+    # geldig om de passkey-registratie of -assertion af te ronden (zelfde idee als totp_setup).
+    jwt_passkey_setup_ttl_seconds: int = 600
+    # WebAuthn Relying Party: rp_id moet het registreerbare domein zijn waarop de app draait
+    # (dev: localhost; GCP: het productiedomein via env). Origins = exact wat de browser als
+    # origin meestuurt (dev: de Vite-server; de backend op 8000 voor echte-HTTP-tests).
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_naam: str = "RLZ Goedkeuren"
+    webauthn_origins: list[str] = ["http://localhost:5173", "http://localhost:8000"]
+    webauthn_challenge_ttl_seconds: int = 300
+    # Dev-fallback voor de secure-context-beperking (WebAuthn werkt alleen op https/localhost —
+    # een telefoontest via LAN-IP kan dus géén echte passkey doen). Default UIT en HARD
+    # onwerkzaam buiten dev/local (zie app/auth/webauthn_service.py::dev_stub_actief): een
+    # stub-registratie/-assertie wordt zichtbaar gemarkeerd (is_dev_stub) en in productie
+    # geweigerd, ongeacht deze setting. Zie BESLISSINGEN "Accordeur-PWA".
+    auth_biometrie_dev_stub: bool = False
+
     # Race-tolerante hergebruik-detectie (browserreview 2026-08-07): twee parallelle
     # vernieuwen-calls uit dezelfde browser (dubbel useEffect/StrictMode, meerdere tabs) zijn
     # geen tokendiefstal. Een tweede aanbieding van hetzelfde token bínnen dit venster krijgt

@@ -20,6 +20,9 @@ dependencies = [
     "python-multipart>=0.0.12",
     "anthropic>=0.40",
     "pypdf>=5.1",
+    # Passkeys accordeur-PWA (blok 1, 2026-08-11): server-side WebAuthn-verificatie.
+    # Bewezen implementatie (duo-labs/Cisco), BSD-3-Clause, actief onderhouden (3.x).
+    "webauthn>=3.0",
 ]
 
 [project.optional-dependencies]

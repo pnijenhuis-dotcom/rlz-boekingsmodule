@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0039
+-- Migratie-head bij deze dump: 0040
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -91,7 +91,8 @@ CREATE TYPE platform.gebruiker_status AS ENUM (
     'uitgenodigd',
     'wacht_op_totp',
     'actief',
-    'geblokkeerd'
+    'geblokkeerd',
+    'wacht_op_passkey'
 );
 
 
@@ -1157,6 +1158,18 @@ ALTER TABLE ONLY boekhouding.webhook_uitgaand FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: accordeur_akkoord; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.accordeur_akkoord (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    tekst_versie text NOT NULL,
+    akkoord_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: administratie; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -1323,7 +1336,8 @@ CREATE TABLE platform.refresh_token (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     verloopt_op timestamp with time zone NOT NULL,
     gebruikt_op timestamp with time zone,
-    ingetrokken_op timestamp with time zone
+    ingetrokken_op timestamp with time zone,
+    apparaat_id uuid
 );
 
 
@@ -1380,6 +1394,43 @@ CREATE TABLE platform.uitnodiging (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     verloopt_op timestamp with time zone NOT NULL,
     gebruikt_op timestamp with time zone
+);
+
+
+--
+-- Name: webauthn_challenge; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.webauthn_challenge (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    soort text NOT NULL,
+    challenge bytea NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verloopt_op timestamp with time zone NOT NULL,
+    gebruikt_op timestamp with time zone,
+    CONSTRAINT ck_webauthn_challenge_soort CHECK ((soort = ANY (ARRAY['registratie'::text, 'assertie'::text])))
+);
+
+
+--
+-- Name: webauthn_credential; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.webauthn_credential (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    credential_id bytea NOT NULL,
+    public_key bytea NOT NULL,
+    sign_count bigint DEFAULT '0'::bigint NOT NULL,
+    aaguid text,
+    transports jsonb,
+    apparaat_naam text,
+    is_dev_stub boolean DEFAULT false NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    laatst_gebruikt_op timestamp with time zone,
+    ingetrokken_op timestamp with time zone,
+    ingetrokken_door uuid
 );
 
 
@@ -1734,6 +1785,14 @@ ALTER TABLE ONLY boekhouding.webhook_uitgaand
 
 
 --
+-- Name: accordeur_akkoord accordeur_akkoord_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_akkoord
+    ADD CONSTRAINT accordeur_akkoord_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: administratie administratie_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -1875,6 +1934,38 @@ ALTER TABLE ONLY platform.uitnodiging
 
 ALTER TABLE ONLY platform.uitnodiging
     ADD CONSTRAINT uitnodiging_token_hash_key UNIQUE (token_hash);
+
+
+--
+-- Name: accordeur_akkoord uq_accordeur_akkoord_versie; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_akkoord
+    ADD CONSTRAINT uq_accordeur_akkoord_versie UNIQUE (gebruiker_id, tekst_versie);
+
+
+--
+-- Name: webauthn_challenge webauthn_challenge_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.webauthn_challenge
+    ADD CONSTRAINT webauthn_challenge_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: webauthn_credential webauthn_credential_credential_id_key; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.webauthn_credential
+    ADD CONSTRAINT webauthn_credential_credential_id_key UNIQUE (credential_id);
+
+
+--
+-- Name: webauthn_credential webauthn_credential_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.webauthn_credential
+    ADD CONSTRAINT webauthn_credential_pkey PRIMARY KEY (id);
 
 
 --
@@ -2202,6 +2293,13 @@ CREATE INDEX ix_grootboekrekening_administratie_id ON platform.grootboekrekening
 
 
 --
+-- Name: ix_refresh_token_apparaat_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_refresh_token_apparaat_id ON platform.refresh_token USING btree (apparaat_id);
+
+
+--
 -- Name: ix_refresh_token_gebruiker_id; Type: INDEX; Schema: platform; Owner: -
 --
 
@@ -2213,6 +2311,20 @@ CREATE INDEX ix_refresh_token_gebruiker_id ON platform.refresh_token USING btree
 --
 
 CREATE INDEX ix_uitnodiging_gebruiker_id ON platform.uitnodiging USING btree (gebruiker_id);
+
+
+--
+-- Name: ix_webauthn_challenge_gebruiker_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_webauthn_challenge_gebruiker_id ON platform.webauthn_challenge USING btree (gebruiker_id);
+
+
+--
+-- Name: ix_webauthn_credential_gebruiker_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_webauthn_credential_gebruiker_id ON platform.webauthn_credential USING btree (gebruiker_id);
 
 
 --
@@ -2963,6 +3075,14 @@ ALTER TABLE ONLY boekhouding.webhook_uitgaand
 
 
 --
+-- Name: accordeur_akkoord accordeur_akkoord_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_akkoord
+    ADD CONSTRAINT accordeur_akkoord_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: administratie administratie_eigenaar_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -3043,6 +3163,14 @@ ALTER TABLE ONLY platform.intake_instelling
 
 
 --
+-- Name: refresh_token refresh_token_apparaat_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.refresh_token
+    ADD CONSTRAINT refresh_token_apparaat_id_fkey FOREIGN KEY (apparaat_id) REFERENCES platform.webauthn_credential(id);
+
+
+--
 -- Name: refresh_token refresh_token_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -3112,6 +3240,30 @@ ALTER TABLE ONLY platform.uitnodiging
 
 ALTER TABLE ONLY platform.uitnodiging
     ADD CONSTRAINT uitnodiging_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: webauthn_challenge webauthn_challenge_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.webauthn_challenge
+    ADD CONSTRAINT webauthn_challenge_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: webauthn_credential webauthn_credential_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.webauthn_credential
+    ADD CONSTRAINT webauthn_credential_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: webauthn_credential webauthn_credential_ingetrokken_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.webauthn_credential
+    ADD CONSTRAINT webauthn_credential_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
 
 
 --

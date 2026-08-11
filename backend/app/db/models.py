@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, MetaData, SmallInteger, func
+from sqlalchemy import BigInteger, ForeignKey, MetaData, SmallInteger, func
 from sqlalchemy.dialects.postgresql import BYTEA, ENUM, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -27,10 +27,13 @@ class GebruikerRol(enum.StrEnum):
 class GebruikerStatus(enum.StrEnum):
     """Statusmachine: uitgenodigd -> (wachtwoord gezet) -> wacht_op_totp -> (TOTP bevestigd) ->
     actief. geblokkeerd is een aparte eindstatus, door een Beheerder gezet (niet in deze fase
-    geautomatiseerd)."""
+    geautomatiseerd). wacht_op_passkey (migratie 0040) is de accordeur-variant van
+    wacht_op_totp: de accordeur-activeringsflow vervangt de TOTP-stap door passkey-registratie
+    (de passkey ís de tweede factor op het apparaat — besluit auth-cadans 2026-08-11)."""
 
     UITGENODIGD = "uitgenodigd"
     WACHT_OP_TOTP = "wacht_op_totp"
+    WACHT_OP_PASSKEY = "wacht_op_passkey"
     ACTIEF = "actief"
     GEBLOKKEERD = "geblokkeerd"
 
@@ -206,10 +209,75 @@ class RefreshToken(Base):
     voorganger_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.refresh_token.id"), default=None
     )
+    # Device-binding (migratie 0040, accordeur-cadans): sessie hoort bij dit geregistreerde
+    # apparaat; de kill-switch trekt credential + alle gebonden tokens in. NULL = geen
+    # apparaatbinding (kantoor-login met TOTP).
+    apparaat_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.webauthn_credential.id"), default=None
+    )
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     verloopt_op: Mapped[datetime]
     gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
     ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class WebauthnCredential(Base):
+    """Passkey per GEBRUIKER+APPARAAT (migratie 0040, besluit auth-cadans 2026-08-11): de
+    publieke sleutel van een geregistreerd apparaat. Draagt de nieuw/onbekend-apparaat-detectie
+    (geen actieve credential = volledige login + registratie) én de kantoor-kill-switch
+    (`ingetrokken_op` — trekt samen met de gebonden refresh-tokens de toegang van precies dit
+    apparaat in). `is_dev_stub` markeert de expliciete dev-fallback (auth_biometrie_dev_stub,
+    alleen buiten productie — WebAuthn vereist https/localhost, dus een LAN-IP-kliktest kan
+    geen echte passkey registreren)."""
+
+    __tablename__ = "webauthn_credential"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    credential_id: Mapped[bytes] = mapped_column(BYTEA, unique=True)
+    public_key: Mapped[bytes] = mapped_column(BYTEA)
+    sign_count: Mapped[int] = mapped_column(BigInteger, default=0)
+    aaguid: Mapped[str | None] = mapped_column(default=None)
+    transports: Mapped[dict | list | None] = mapped_column(JSONB, default=None)
+    apparaat_naam: Mapped[str | None] = mapped_column(default=None)
+    is_dev_stub: Mapped[bool] = mapped_column(default=False)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    laatst_gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
+    ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
+    ingetrokken_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+
+
+class WebauthnChallenge(Base):
+    """Eénmalige server-side WebAuthn-challenge (registratie of assertie) — de client krijgt de
+    challenge in de options en moet 'm ondertekend terugbrengen; na gebruik wordt de rij
+    verbrand (`gebruikt_op`), nooit hergebruikt (replay-bescherming)."""
+
+    __tablename__ = "webauthn_challenge"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    soort: Mapped[str]
+    challenge: Mapped[bytes] = mapped_column(BYTEA)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verloopt_op: Mapped[datetime]
+    gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class AccordeurAkkoord(Base):
+    """Vastlegging voorwaarden + privacyverklaring-akkoord in de accordeur-activeringsflow
+    (docs/avg/05-activatie-checklist.md bijlage A — informatielaag, géén AVG-vervanging).
+    Append-only: wie/wanneer/tekstversie; een nieuwe tekstversie vraagt een nieuw akkoord.
+    Zonder akkoord op de actuele tekstversie geen toegang tot de accordeer-wachtrij
+    (server-side afgedwongen in app/accordering/router.py)."""
+
+    __tablename__ = "accordeur_akkoord"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    tekst_versie: Mapped[str]
+    akkoord_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class TotpSecret(Base):
