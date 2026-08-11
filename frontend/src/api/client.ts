@@ -108,7 +108,7 @@ export function verversSessie(): Promise<boolean> {
   return refreshInFlight
 }
 
-const GEEN_RETRY_PADEN = new Set(['/auth/login', '/auth/token/vernieuwen', '/auth/logout'])
+const GEEN_RETRY_PADEN = new Set(['/auth/login', '/auth/token/vernieuwen', '/auth/token/vernieuwen/logout'])
 
 /** Eén automatische refresh-poging bij een 401 — daarna geeft de aanroeper het zelf op. */
 export async function apiFetch(pad: string, init: RequestInit = {}): Promise<Response> {

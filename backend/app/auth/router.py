@@ -133,11 +133,16 @@ def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarR
     return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/token/vernieuwen/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(request: Request, response: Response) -> None:
     """Trekt alleen de huidige sessie (het refresh-token in de cookie) in — andere sessies van
     de gebruiker blijven actief. Geen authenticatie vereist: moet ook werken als het access-token
-    al verlopen is, en is idempotent bij een ontbrekende/al-ongeldige cookie."""
+    al verlopen is, en is idempotent bij een ontbrekende/al-ongeldige cookie.
+
+    Leeft bewust ónder het cookie-pad /auth/token/vernieuwen (zelfde RFC 6265-truc als de
+    ontgrendel-endpoints): de refresh-cookie is path-gebonden en bereikte het oude /auth/logout
+    in een echte browser nooit — de server-side intrekking gebeurde daardoor feitelijk niet
+    (nazorg-fix 2026-08-11; TestClient negeert path-matching, vandaar dat geen test dit zag)."""
     refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
     if refresh_token is not None:
         service.logout(refresh_token=refresh_token)

@@ -72,7 +72,9 @@ def test_logout_wist_cookie_en_trekt_token_in(beheerder_id: uuid.UUID) -> None:
     resp = client.post("/auth/login", json={"e_mail": e_mail, "wachtwoord": wachtwoord, "totp_code": login_code})
     assert resp.status_code == 200, resp.text
 
-    resp = client.post("/auth/logout")
+    # NB: TestClient negeert cookie-path-matching; dat de cookie het endpoint over échte HTTP
+    # bereikt (en de intrekking dus echt gebeurt) bewijst tests/e2e/test_logout_e2e.py.
+    resp = client.post("/auth/token/vernieuwen/logout")
     assert resp.status_code == 204, resp.text
     set_cookie = resp.headers.get("set-cookie", "").lower()
     assert "refresh_token=" in set_cookie
@@ -84,7 +86,7 @@ def test_logout_wist_cookie_en_trekt_token_in(beheerder_id: uuid.UUID) -> None:
 
 def test_logout_zonder_cookie_is_geen_fout() -> None:
     losse_client = TestClient(app)
-    resp = losse_client.post("/auth/logout")
+    resp = losse_client.post("/auth/token/vernieuwen/logout")
     assert resp.status_code == 204
 
 

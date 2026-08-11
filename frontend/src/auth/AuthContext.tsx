@@ -84,7 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const uitloggen = async () => {
-    await apiFetch('/auth/logout', { method: 'POST' })
+    // Onder het cookie-pad (/auth/token/vernieuwen): alleen dáár stuurt de browser de
+    // path-gebonden refresh-cookie mee, anders wordt er server-side niets ingetrokken.
+    await apiFetch('/auth/token/vernieuwen/logout', { method: 'POST' })
     setAccessToken(null)
     setRol(null)
     setGebruikerId(null)
