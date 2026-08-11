@@ -107,6 +107,12 @@
 | Actie 19 Correct = zelfde document terug naar concept, géén creditdocument | geverifieerd (2026-07-06) | verkenning/api-verkenning.md "Actie 19 Correct"; koppelcontract §7.3 |
 | DocumentStatus-semantiek (1=concept, 2=open, 3=afgeletterd; geboekt = 2 óf 3) | geverifieerd (2026-07-13) | CLAUDE.md "Reeleezee API"; verkenning/api-verkenning.md |
 
+## AVG / compliance
+
+| Onderwerp | Status | Canonieke vindplaats |
+|---|---|---|
+| **AVG-compliance — voorbereidingspakket (besluit Peter 2026-08-11):** documenten + register + activatiechecklist, géén code; de poort vóór AI-extractie op echte klantdata en vóór klantdata in de cloud (GCP sept). Vijf documenten: (1) verwerkingsregister art. 30 (7 verwerkingen, TOM's, doorgifte-/CLOUD Act-notitie), (2) subverwerkers-checklist met web-geverifieerde DPA-links (Anthropic: DPA automatisch in Commercial ToS + SCC's, ZDR aanvragen — let op: modelwissel kan ZDR breken; Google: CDPA + SCC's/DPF, CMEK-herzieningsmoment = besluit 0003; Reeleezee = Exact Reeleezee sinds 2017, actuele verwerkersovereenkomst bij Exact opvragen), (3) rolbepaling: kantoor = zelfstandig verwerkingsverantwoordelijke voor administratievoering (NBA/NOB-richtsnoeren) → partijen zijn verwerkers ván het kantoor, geen verwerkersovereenkomst mét klanten nodig maar wél informatieplicht — concept-tekstblok klantovereenkomst bijgesloten, (4) DPIA-lichte toets AI-extractie (risico's, geborgde mitigaties incl. BSN-hardregel/gate-default-UIT/mens-in-de-lus, restrisico's: vrije-tekst-PII naar VS, datalek-procedure nog te beleggen), (5) activatie-checklist stap 0→3 (welke DPA rond moet zijn vóór `intake_ai_ingeschakeld` / cloud / opt-ins). Bronverificatie web 2026-08-11 | **concept — wacht op juridische toetsing Peter** | `docs/avg/` (README + 01 t/m 05); besluit 0003 (CLOUD Act-herziening), besluit 0004 (pseudonimisering), CLAUDE.md "AVG hard principe" |
+
 ## Geparkeerd / waarschuwing
 
 | Onderwerp | Status | Canonieke vindplaats |
