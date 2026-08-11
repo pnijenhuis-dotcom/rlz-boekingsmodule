@@ -118,7 +118,11 @@ describe('dev-proxy-dekking over álle bronbestanden', () => {
     // laat serveren (bypass, kliktest 2026-08-08) en fetch/XHR geproxied blijft — dat laatste
     // dekt de bypass-test hierboven al voor élke entry. Deze guard eist voor elke botsing
     // expliciet een werkende navigatie-bypass i.p.v. de botsing blind te verbieden.
-    const appBron = fs.readFileSync(path.join(SRC, 'App.tsx'), 'utf8')
+    // Routes leven sinds de accordeur-PWA (code splitting 2026-08-11) in twee chunks:
+    // App.tsx bevat alleen de chunk-splitsing, KantoorApp.tsx de echte SPA-routes.
+    const appBron =
+      fs.readFileSync(path.join(SRC, 'App.tsx'), 'utf8') +
+      fs.readFileSync(path.join(SRC, 'KantoorApp.tsx'), 'utf8')
     const spaRoutes = Array.from(appBron.matchAll(/path="(\/[^"*]*)"/g), (m) => m[1])
     expect(spaRoutes.length).toBeGreaterThan(0)
     const proxy = bouwProxyMap(proxyPrefixes, 'http://localhost:8000')

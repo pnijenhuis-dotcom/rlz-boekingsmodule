@@ -163,9 +163,13 @@ export interface TokenPaarResponseDto {
 }
 
 export interface UitnodigingAccepterenResponseDto {
-  totp_setup_token: string
-  otpauth_uri: string
-  secret: string
+  /** 'totp' (kantoor-rollen; totp-velden gevuld) of 'passkey' (klant-accordeur;
+   * passkey_setup_token gevuld — accordeur-activeringsflow, besluit 2026-08-11). */
+  soort: 'totp' | 'passkey'
+  totp_setup_token: string | null
+  otpauth_uri: string | null
+  secret: string | null
+  passkey_setup_token: string | null
 }
 
 export interface GrootboekOptieDto {

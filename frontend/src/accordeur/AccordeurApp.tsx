@@ -1,0 +1,143 @@
+// Accordeur-PWA — eigen minimale shell op /accordeur (géén kantoor-navigatie; route-based
+// code splitting: dit bestand is een lazy chunk, zie App.tsx). Mockup/accordeur.html is het
+// goedgekeurde ontwerp (eindakkoord Peter 2026-08-11): mobiel leading, dark default
+// (systeemvolgend, ◐ = handmatige override), biometrie-ontgrendeling bij app-opening.
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Navigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
+import type { TokenPaarResponseDto } from '../api/types'
+import './accordeur.css'
+import { AccordeurLogin } from './AccordeurLogin'
+import { AccordeurActiveren } from './AccordeurActiveren'
+import { GoedkeurenFlow } from './GoedkeurenFlow'
+import { Ontgrendel } from './Ontgrendel'
+
+const ONTGRENDELD_VLAG = 'accordeur-ontgrendeld'
+const THEMA_SLEUTEL = 'accordeur-thema'
+
+type ThemaKeuze = 'donker' | 'licht' | null
+
+/** Dark = default, systeemvolgend bij openen; handmatige override in localStorage
+ * (besluit Peter 2026-08-11, mobiele review). */
+function useThema(): { licht: boolean; wissel: () => void } {
+  const [keuze, setKeuze] = useState<ThemaKeuze>(() => {
+    const bewaard = localStorage.getItem(THEMA_SLEUTEL)
+    return bewaard === 'licht' || bewaard === 'donker' ? bewaard : null
+  })
+  const [systeemLicht, setSysteemLicht] = useState(
+    () => window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-color-scheme: light)')
+    if (!mq) return
+    const luister = (e: MediaQueryListEvent) => setSysteemLicht(e.matches)
+    mq.addEventListener('change', luister)
+    return () => mq.removeEventListener('change', luister)
+  }, [])
+  const licht = keuze === null ? systeemLicht : keuze === 'licht'
+  const wissel = useCallback(() => {
+    const nieuw: ThemaKeuze = licht ? 'donker' : 'licht'
+    localStorage.setItem(THEMA_SLEUTEL, nieuw)
+    setKeuze(nieuw)
+  }, [licht])
+  return { licht, wissel }
+}
+
+/** PWA-installeerbaarheid zonder service worker: manifest + iOS-metatags worden alleen op de
+ * /accordeur-route geïnjecteerd. Bewust géén service worker (service-worker-les 2026-07-13:
+ * een achtergebleven SW kaapt requests op een gedeelde dev-origin) — iOS-thuisscherm-
+ * installatie én Chrome-installatie werken zonder; push (wél SW nodig) is expliciet
+ * GCP-fase. */
+function useManifest(): void {
+  useEffect(() => {
+    const vorigeTitel = document.title
+    document.title = 'RLZ Goedkeuren'
+    const elementen: HTMLElement[] = []
+    const voegLink = (rel: string, href: string) => {
+      const el = document.createElement('link')
+      el.rel = rel
+      el.href = href
+      document.head.appendChild(el)
+      elementen.push(el)
+    }
+    const voegMeta = (naam: string, inhoud: string) => {
+      const el = document.createElement('meta')
+      el.name = naam
+      el.content = inhoud
+      document.head.appendChild(el)
+      elementen.push(el)
+    }
+    voegLink('manifest', '/accordeur.webmanifest')
+    voegLink('apple-touch-icon', '/icons/apple-touch-icon-accordeur.png')
+    voegMeta('apple-mobile-web-app-capable', 'yes')
+    voegMeta('apple-mobile-web-app-status-bar-style', 'black-translucent')
+    voegMeta('theme-color', '#0e1514')
+    return () => {
+      elementen.forEach((el) => el.remove())
+      document.title = vorigeTitel
+    }
+  }, [])
+}
+
+export default function AccordeurApp() {
+  const { status, rol, inloggen } = useAuth()
+  const location = useLocation()
+  const { licht, wissel } = useThema()
+  useManifest()
+
+  // "Geldig tot de app sluit": sessionStorage overleeft een reload binnen dezelfde
+  // app-sessie, maar niet een koude start — precies de cadans (besluit 2026-08-11). De échte
+  // verificatie is server-side (assertion + audit); dit vlaggetje bepaalt alleen wanneer het
+  // ontgrendel-scherm terugkomt.
+  const [ontgrendeld, setOntgrendeld] = useState(() => sessionStorage.getItem(ONTGRENDELD_VLAG) === '1')
+  const [forceerLogin, setForceerLogin] = useState(false)
+
+  const naIngelogd = useCallback(
+    (paar: TokenPaarResponseDto) => {
+      inloggen(paar)
+      sessionStorage.setItem(ONTGRENDELD_VLAG, '1')
+      setOntgrendeld(true)
+      setForceerLogin(false)
+    },
+    [inloggen],
+  )
+
+  const activatieToken = useMemo(() => {
+    const state = location.state as { passkeySetupToken?: string } | null
+    return location.pathname.endsWith('/activeren') ? (state?.passkeySetupToken ?? null) : null
+  }, [location])
+
+  if (status === 'ingelogd' && rol !== null && rol !== 'klant_accordeur') {
+    // Kantoor-rollen horen in de web-app; de PWA is uitsluitend de accordeer-wachtrij.
+    return <Navigate to="/" replace />
+  }
+
+  let inhoud: React.ReactNode
+  if (activatieToken) {
+    inhoud = <AccordeurActiveren passkeySetupToken={activatieToken} naIngelogd={naIngelogd} />
+  } else if (status === 'laden') {
+    inhoud = (
+      <div className="acc-vol">
+        <div className="acc-appnaam">
+          RLZ <span>Goedkeuren</span>
+        </div>
+        <div className="acc-bio">
+          <div className="acc-sub">Laden…</div>
+        </div>
+      </div>
+    )
+  } else if (status === 'uitgelogd' || forceerLogin) {
+    inhoud = <AccordeurLogin naIngelogd={naIngelogd} />
+  } else if (!ontgrendeld) {
+    inhoud = <Ontgrendel naOntgrendeld={naIngelogd} naarLogin={() => setForceerLogin(true)} />
+  } else {
+    inhoud = <GoedkeurenFlow wisselThema={wissel} />
+  }
+
+  return (
+    <div className="acc" data-thema={licht ? 'licht' : undefined}>
+      <div className="acc-phone">{inhoud}</div>
+    </div>
+  )
+}

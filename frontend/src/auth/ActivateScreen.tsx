@@ -56,6 +56,14 @@ export function ActivateScreen() {
         token,
         wachtwoord,
       })
+      if (resultaat.soort === 'passkey') {
+        // Klant-accordeur (besluit auth-cadans 2026-08-11): geen TOTP maar passkey-registratie
+        // — die stap leeft in de accordeur-PWA-chunk, mét voorwaarden-akkoord erna (blok 3).
+        void navigate('/accordeur/activeren', {
+          state: { passkeySetupToken: resultaat.passkey_setup_token },
+        })
+        return
+      }
       setEnrollment(resultaat)
       setStap('totp')
     } catch (err) {
@@ -74,7 +82,7 @@ export function ActivateScreen() {
     try {
       const paar = await apiJson<TokenPaarResponseDto>('/auth/totp/bevestigen', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${enrollment.totp_setup_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${enrollment.totp_setup_token ?? ''}` },
         body: JSON.stringify({ code }),
       })
       inloggen(paar)
@@ -138,15 +146,15 @@ export function ActivateScreen() {
                 aria-labelledby="activeer-qr-label"
                 style={{ background: '#fff', padding: 12, borderRadius: 8, width: 'fit-content' }}
               >
-                <QRCodeSVG value={enrollment.otpauth_uri} size={180} />
+                <QRCodeSVG value={enrollment.otpauth_uri ?? ''} size={180} />
               </div>
             </div>
             <div className="row">
               <span id="activeer-secret-label">Geheime sleutel (terugval als scannen niet lukt)</span>
               <div className="secret-blok" aria-labelledby="activeer-secret-label">
-                {formatteerSecret(enrollment.secret)}
+                {formatteerSecret(enrollment.secret ?? '')}
               </div>
-              <a href={enrollment.otpauth_uri} style={{ fontSize: 12 }}>
+              <a href={enrollment.otpauth_uri ?? '#'} style={{ fontSize: 12 }}>
                 otpauth-link openen in authenticator-app
               </a>
             </div>

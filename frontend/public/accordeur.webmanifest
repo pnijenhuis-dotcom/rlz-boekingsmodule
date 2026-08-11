@@ -1,0 +1,17 @@
+{
+  "name": "RLZ Goedkeuren",
+  "short_name": "Goedkeuren",
+  "description": "Facturen goedkeuren voor Administratiekantoor Nijenhuis",
+  "id": "/accordeur",
+  "start_url": "/accordeur",
+  "scope": "/accordeur",
+  "display": "standalone",
+  "background_color": "#0e1514",
+  "theme_color": "#0e1514",
+  "lang": "nl",
+  "icons": [
+    { "src": "/icons/accordeur-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/accordeur-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/accordeur-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
