@@ -169,6 +169,43 @@ def test_voorwaarden_akkoord_geweigerd_voor_kantoorrol(beheerder_id: uuid.UUID) 
     assert resp.status_code == 403
 
 
+def test_verlopen_challenges_worden_opgeruimd(beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
+    """Challenge-huishouding (nazorg 2026-08-11): verlopen rijen worden bij elke nieuwe
+    challenge-insert verwijderd (geen aparte job nodig); verse rijen blijven staan. Draait
+    via de router zodat óók de DELETE-grant van de app-rol getoetst wordt (migratie 0041)."""
+    e_mail, _, _ = _activeer_accordeur(beheerder_id)
+    with admin_engine.begin() as conn:
+        gebruiker_id = conn.execute(
+            text("SELECT id FROM platform.gebruiker WHERE e_mail = :mail"), {"mail": e_mail}
+        ).scalar_one()
+        conn.execute(
+            text(
+                "INSERT INTO platform.webauthn_challenge (id, gebruiker_id, soort, challenge, verloopt_op) "
+                "VALUES (:id, :g, 'assertie', :ch, :verlopen)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "g": gebruiker_id,
+                "ch": b"verlopen-testchallenge",
+                "verlopen": datetime.now(UTC) - timedelta(hours=1),
+            },
+        )
+
+    # Nieuwe assertion-options -> _maak_challenge -> huishouding draait mee.
+    resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": WACHTWOORD})
+    assert resp.status_code == 200, resp.text
+    resp = client.post("/auth/webauthn/login/opties", headers=_bearer(resp.json()["passkey_setup_token"]))
+    assert resp.status_code == 200, resp.text
+
+    with admin_engine.connect() as conn:
+        rijen = conn.execute(
+            text("SELECT verloopt_op FROM platform.webauthn_challenge WHERE gebruiker_id = :g"),
+            {"g": gebruiker_id},
+        ).all()
+    assert rijen, "de verse challenge hoort te blijven staan"
+    assert all(rij.verloopt_op > datetime.now(UTC) for rij in rijen), "verlopen rij niet opgeruimd"
+
+
 def test_assertie_challenge_is_eenmalig(beheerder_id: uuid.UUID) -> None:
     """Replay-bescherming: dezelfde ondertekende assertion een tweede keer aanbieden faalt (de
     server-side challenge is verbrand)."""

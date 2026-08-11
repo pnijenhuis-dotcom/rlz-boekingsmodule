@@ -28,7 +28,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 from webauthn import (
     generate_authentication_options,
@@ -80,6 +80,11 @@ def dev_stub_actief() -> bool:
 
 
 def _maak_challenge(session: Session, *, gebruiker_id: uuid.UUID, soort: str) -> bytes:
+    # Huishouding (nazorg 2026-08-11): verlopen rijen — verbruikt óf nooit gebruikt — zijn
+    # per definitie waardeloos (_verbruik_challenge weigert ze toch al op verloopt_op) en
+    # zouden anders eeuwig aangroeien. Opruimen bij elke insert houdt de tabel klein zonder
+    # aparte scheduled job; de TTL is kort (settings.webauthn_challenge_ttl_seconds).
+    session.execute(delete(WebauthnChallenge).where(WebauthnChallenge.verloopt_op < datetime.now(UTC)))
     challenge = secrets.token_bytes(32)
     session.add(
         WebauthnChallenge(
