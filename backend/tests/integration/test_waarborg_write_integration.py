@@ -48,9 +48,9 @@ def administratie_id(admin_engine: Engine) -> uuid.UUID:
 def _tegenrekening(administratie_id: uuid.UUID) -> uuid.UUID:
     """Een boekbare balansrekening ≠ 0204 uit het échte rekeningschema — voorkeur Kruisposten
     (het parkeer-patroon uit de bank-PoC), anders de eerste boekbare activa-rekening."""
-    from app.db.models import Grootboekrekening as GB
-
     from sqlalchemy import select
+
+    from app.db.models import Grootboekrekening as GB
 
     with scoped_session(administratie_id) as session:
         rijen = session.scalars(

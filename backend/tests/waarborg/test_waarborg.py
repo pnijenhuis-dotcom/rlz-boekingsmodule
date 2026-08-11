@@ -8,7 +8,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Engine, text
 
 from app.db.session import scoped_session
 from app.documenten import boeken as documenten_boeken

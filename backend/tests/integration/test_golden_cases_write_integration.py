@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine, text
 
-from app.documenten.models import DocumentSoort, DocumentStatus
 from app.documenten import service as documenten_service
+from app.documenten.models import DocumentSoort, DocumentStatus
 from app.documenten.rlz_ids import rlz_sales_invoice_id
 from app.documenten.storage import LokaleBestandsopslag
 from app.rlz.client import RlzClient

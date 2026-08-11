@@ -19,7 +19,6 @@ from sqlalchemy import Engine, text
 from app.config import settings
 from app.db.models import Grootboekrekening
 from app.db.session import scoped_session
-from app.documenten.models import DocumentSoort
 from app.documenten.storage import LokaleBestandsopslag
 from app.intake import verwerking
 from app.sync.models import TaxRateCache
