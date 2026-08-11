@@ -7,26 +7,30 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  /* ===== Zelfde design tokens als mockup/index.html (designpass) ===== */
+  /* ===== Zelfde design tokens als mockup/index.html (designpass).
+         DARK = DEFAULT (besluit Peter 2026-08-11, mobiele review): systeemvolgend bij het
+         openen, ◐ rechtsboven = handmatige override. ===== */
   :root {
-    --bg: #f5f7f7; --panel: #ffffff; --border: #e5e9e8;
-    --text: #16181d; --muted: #647572; --accent: #2e6660;
-    --green: #1c7a54; --green-bg: #e6f4ee;
-    --orange: #b45309; --orange-bg: #fdf3e3;
-    --red: #b42318; --red-bg: #fceceb;
-    --blue-bg: #e6f0ee; --purple: #6941c6; --purple-bg: #f1ecfb;
-    --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 4px rgba(16,24,40,.05);
-    --focus: rgba(46,102,96,.18);
-  }
-  body.dark {
+    color-scheme: dark;
     --bg: #0e1514; --panel: #16211f; --border: #263533;
     --text: #e6ecea; --muted: #8ba09b; --accent: #5cb3a8;
     --green: #34c08b; --green-bg: #123227;
     --orange: #e9a23b; --orange-bg: #372a12;
     --red: #ee6c62; --red-bg: #3a1e1b;
     --blue-bg: #1a2e2b; --purple: #ab8ffc; --purple-bg: #28203f;
-    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,.4);
     --focus: rgba(92,179,168,.28);
+  }
+  body.licht {
+    color-scheme: light;
+    --bg: #f5f7f7; --panel: #ffffff; --border: #e5e9e8;
+    --text: #16181d; --muted: #647572; --accent: #2e6660;
+    --green: #1c7a54; --green-bg: #e6f4ee;
+    --orange: #b45309; --orange-bg: #fdf3e3;
+    --red: #b42318; --red-bg: #fceceb;
+    --blue-bg: #e6f0ee; --purple: #6941c6; --purple-bg: #f1ecfb;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 4px rgba(16,24,40,.05);
+    --focus: rgba(46,102,96,.18);
   }
   * { box-sizing: border-box; margin: 0; }
   body {
@@ -167,7 +171,17 @@
   .verplicht { font-size: 11px; color: var(--red); font-weight: 600; margin-top: 5px; display: none; }
   .verplicht.zichtbaar { display: block; }
 
-  /* ===== Biometrie-step-up (stub) ===== */
+  /* ===== Face ID bij APP-OPENING (simulatie) — één keer per opening, nooit per actie
+         (besluit Peter 2026-08-11; verving de eerdere step-up op de akkoord-knop) ===== */
+  .unlock {
+    position: absolute; inset: 0; z-index: 90; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px; padding: 28px 24px; text-align: center;
+  }
+  .unlock.weg { display: none; }
+  .unlock .appnaam { font-size: 18px; font-weight: 800; }
+  .unlock .appnaam span { color: var(--accent); }
+  .unlock .btn { flex: none; width: 100%; max-width: 260px; }
   .bio { text-align: center; padding: 6px 0 4px; }
   .bio .icoon {
     width: 74px; height: 74px; border-radius: 50%; background: var(--blue-bg); color: var(--accent);
@@ -215,7 +229,7 @@
       </div>
       <div class="headbtns">
         <button class="iconbtn" title="Staande goedkeuringen" onclick="toon('beheer')">✓✓</button>
-        <button class="iconbtn" title="Licht/donker" onclick="document.body.classList.toggle('dark')">◐</button>
+        <button class="iconbtn" title="Licht/donker (handmatige override — dark is default)" onclick="wisselThema()">◐</button>
       </div>
     </div>
 
@@ -267,7 +281,7 @@
     <!-- Actiebalk (alleen in review) -->
     <div class="actionbar" id="actionbar">
       <button class="btn afwijs" onclick="openAfwijzen()">Afwijzen</button>
-      <button class="btn groen" onclick="openBio()">Akkoord ✓</button>
+      <button class="btn groen" onclick="akkoord()">Akkoord ✓</button>
     </div>
 
     <!-- ================= SHEET: AFWIJZEN MET VERPLICHTE REDEN ================= -->
@@ -280,22 +294,6 @@
         <div class="rij">
           <button class="btn secundair" onclick="sluit('sheetAfwijzen')">Annuleren</button>
           <button class="btn afwijs" onclick="bevestigAfwijzen()">Afwijzen met reden</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ================= SHEET: BIOMETRIE-STEP-UP (STUB) ================= -->
-    <div class="sheet-bg" id="sheetBio">
-      <div class="sheet">
-        <div class="bio">
-          <div class="icoon" id="bioicoon">☉</div>
-          <b id="biotitel">Bevestig je akkoord</b>
-          <div class="sub" id="biosub">Face ID / vingerafdruk — de biometrische bevestiging zit op de akkoord-actie zélf, niet op het inloggen. Eén keer inloggen, daarna blijf je ingelogd.</div>
-          <span class="stub">stub — in de app: passkey/WebAuthn</span>
-        </div>
-        <div class="rij">
-          <button class="btn secundair" onclick="sluit('sheetBio')">Annuleren</button>
-          <button class="btn groen" id="bioknop" onclick="bioBevestigd()">Simuleer biometrie</button>
         </div>
       </div>
     </div>
@@ -314,6 +312,18 @@
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- ================= APP-OPENING: FACE ID (simulatie, één keer per opening) ================= -->
+    <div class="unlock" id="unlock">
+      <div class="appnaam">RLZ <span>Goedkeuren</span></div>
+      <div class="bio">
+        <div class="icoon" id="bioicoon">☉</div>
+        <b id="biotitel">Ontgrendel met Face ID</b>
+        <div class="sub">Één keer bij het openen van de app — daarna werkt alles direct, ook de akkoord-knop. Sluit je de app helemaal, dan ontgrendel je bij de volgende start opnieuw.</div>
+        <span class="stub">simulatie — in de app: passkey/WebAuthn · volledige login alleen bij eerste gebruik, een nieuw apparaat of ná 7 dagen inactiviteit</span>
+      </div>
+      <button class="btn groen" id="bioknop" onclick="ontgrendel()">Simuleer Face ID</button>
+    </div>
   </div>
 
   <!-- ================= DESKTOP = AFGELEIDE ================= -->
@@ -321,7 +331,9 @@
     <h2>Accordeur-app — mockup</h2>
     <p><b>Mobiel is leading</b> (besluit 2026-08-08): ~99% van de accordeurs gebruikt straks uitsluitend de telefoon. Wat je hiernaast ziet ís het ontwerp; deze desktop-weergave is de afgeleide.</p>
     <p class="k">Scope bewust smal: alléén de accordeer-wachtrij — factuurbeeld + akkoord/afwijzen. Geen werkvoorraad, lijsten of instellingen (dat is de web-app van het kantoor). Boven de duim: één kaartlijst, factuurbeeld centraal, acties onderin binnen duimbereik, akkoord → automatisch de volgende.</p>
-    <p class="k">Klik door: <b>wachtrij → factuur → Akkoord</b> (biometrie-stub) of <b>Afwijzen</b> (verplichte reden). De 2e factuur van Essent heeft exact hetzelfde bedrag als een eerder akkoord — na dat akkoord stelt de app een <b>staande goedkeuring</b> voor. Beheer/intrekken via ✓✓ rechtsboven.</p>
+    <p class="k">Klik door: <b>Face ID-ontgrendeling → wachtrij → factuur → Akkoord</b> (direct, geen extra check) of <b>Afwijzen</b> (verplichte reden). De 2e factuur van Essent heeft exact hetzelfde bedrag als een eerder akkoord — na dat akkoord stelt de app een <b>staande goedkeuring</b> voor. Beheer/intrekken via ✓✓ rechtsboven.</p>
+    <p class="k"><b>Inloggen &amp; beveiliging — auth-cadans (besluiten 2026-08-11):</b> volledige login alléén bij eerste gebruik, op een nieuw/onbekend apparaat of ná 7 dagen inactiviteit (accordeurs loggen 1-2×/week in — gebruiksgemak voorop). Face ID (passkey/WebAuthn) één keer bij elke app-opening, geldig tot de app sluit (koude start = nieuwe check); <b>géén biometrie per losse actie</b> — de akkoord-knop werkt direct. Het kantoor kan een accordeur/apparaat server-side intrekken (kill-switch). Staande goedkeuringen lopen zonder extra check.</p>
+    <p class="k"><b>Dark mode is de default</b> (systeemvolgend bij het openen); ◐ rechtsboven schakelt handmatig om.</p>
     <p class="k">Beoordeel op het mobiele breakpoint: maak het venster smaller dan ~580px of open dit bestand op een telefoon.</p>
   </div>
 </div>
@@ -401,24 +413,27 @@
     naVerwerking(`Afgewezen — met reden terug naar het kantoor`);
   }
 
-  // ===== Biometrie-step-up (stub) op de akkoord-actie zélf =====
-  function openBio() {
-    document.getElementById('bioicoon').className = 'icoon';
-    document.getElementById('bioicoon').textContent = '☉';
-    document.getElementById('biotitel').textContent = 'Bevestig je akkoord';
-    document.getElementById('bioknop').style.display = '';
-    document.getElementById('sheetBio').classList.add('open');
+  // ===== Thema: dark = default, systeemvolgend bij het openen (besluit 2026-08-11);
+  //       ◐ rechtsboven = handmatige override =====
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+    document.body.classList.add('licht');
   }
-  function bioBevestigd() {
+  function wisselThema() { document.body.classList.toggle('licht'); }
+
+  // ===== Face ID bij APP-OPENING (simulatie) — geldig tot de app sluit, nooit per actie
+  //       (besluit 2026-08-11; verving de step-up op de akkoord-knop) =====
+  function ontgrendel() {
     const icoon = document.getElementById('bioicoon');
     icoon.className = 'icoon ok'; icoon.textContent = '✓';
-    document.getElementById('biotitel').textContent = 'Akkoord vastgelegd';
+    document.getElementById('biotitel').textContent = 'Ontgrendeld';
     document.getElementById('bioknop').style.display = 'none';
-    setTimeout(() => {
-      sluit('sheetBio');
-      if (huidige && huidige.herhaald) { stelStaandVoor(); }
-      else { naVerwerking('Akkoord ✓'); }
-    }, 550);
+    setTimeout(() => document.getElementById('unlock').classList.add('weg'), 550);
+  }
+
+  // ===== Akkoord: werkt direct — de biometrie zit op de app-opening, niet op de actie =====
+  function akkoord() {
+    if (huidige && huidige.herhaald) { stelStaandVoor(); }
+    else { naVerwerking('Akkoord ✓'); }
   }
 
   // ===== Staande goedkeuring: voorstel na 2e identieke factuur =====
