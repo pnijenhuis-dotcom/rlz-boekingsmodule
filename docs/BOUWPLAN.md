@@ -594,8 +594,15 @@ UI-eisen):
   "Klant-accorderingsflow — GEBOUWD + GETEST"):** migratie 0033, `app/accordering/`,
   statusmachine-tak ter_accordering, staande goedkeuring (besluit 2026-08-08), scope-veilige
   PWA-endpoints (wachtrij/akkoord/afwijzen), Instellingen-sectie + "Bij klant"-teller +
-  accorderingshistorie op het controlescherm. **Open:** de accordeur-PWA zelf (apart
-  mobile-first ontwerp), e-maillink-goedkeuren, push-notificaties.
+  accorderingshistorie op het controlescherm.
+  **→ Accordeur-PWA + auth-cadans GEBOUWD + GETEST (2026-08-11, zie docs/BESLISSINGEN.md
+  "Accordeur-PWA + auth-cadans — GEBOUWD + GETEST"):** migratie 0040 (passkeys/WebAuthn per
+  gebruiker+apparaat, 7-dagen-sliding-TTL accordeur, kill-switch, voorwaarden-akkoord),
+  `app/auth/webauthn_service.py`, `frontend/src/accordeur/` (mockup 1-op-1, eigen lazy
+  chunk, installeerbaar zonder SW), activeringsflow wachtwoord → passkey → voorwaarden,
+  apparatenbeheer op Instellingen; kliktest-seed `backend/scripts/kliktest_accordeur_seed.py`.
+  **Open:** kliktest Peter, e-maillink-goedkeuren, push-notificaties + echte passkeys op
+  https (GCP-fase), challenge-huishouding.
 - Platform-auth-uitbreiding (besluit 0010, akkoord 2026-07-05): auth-niveau per rol (TOTP
   verplicht voor kantoor/beheer/accordeur; mobiele token-flow + biometrie + Sign in with Apple
   voor huurder-accounts t.b.v. vastgoed native app) + push als platform-service met topics per

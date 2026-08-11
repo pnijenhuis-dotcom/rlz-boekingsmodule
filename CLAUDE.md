@@ -36,6 +36,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `boekhouding` (deze module). Vastgoedmodule krijgt `vastgoed`, MI-dashboard later `mi`.
 - Auth: e-mailuitnodiging (eenmalige link 72 u) + wachtwoord + **TOTP-2FA verplicht**, JWT-sessies.
   Rollen: Beheerder / Boekhouding+Projecten / Boekhouding / Klant-accordeur (scope: eigen administratie).
+  **Uitzondering klant-accordeur (besluit + gebouwd 2026-08-11, migratie 0040): passkey/WebAuthn
+  i.p.v. TOTP** — publieke sleutel per gebruiker+apparaat (py_webauthn), volledige login alleen
+  bij eerste gebruik / nieuw apparaat / ná 7 dagen inactiviteit (sliding 7-dagen-refresh-TTL),
+  passkey-assertion éénmaal per app-opening, GEEN biometrie per actie; kantoor-kill-switch per
+  apparaat (bijt per request + bij rotatie + bij assertion); dev-stub `auth_biometrie_dev_stub`
+  voor LAN-kliktests (WebAuthn vereist https/localhost), hard onwerkzaam buiten dev. Zie
+  BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD".
 - **Autorisatie (hard, bevestigd 2026-07-06):** klanten-scope per medewerker via koppeltabel
   gebruiker↔administraties, afgedwongen door RLS (DB-niveau) + server-side checks — geen scope =
   geen data, ook niet via bugs in de app-laag. Rol- en scope-wijzigingen exclusief door de
@@ -262,8 +269,15 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   accorderingssectie controlescherm, "Bij klant"-teller); incl. staande goedkeuring (besluit
   2026-08-08: per accordeur+leverancier+exact bedrag, automatisch akkoord mét audit+tijdlijn,
   intrekbaar — harde checks blijven onverkort) en direct-boeken-blokkade zodra de toggle aan
-  staat. Details BESLISSINGEN "Klant-accorderingsflow — GEBOUWD + GETEST". De accordeur-PWA
-  zelf (mobile-first), e-maillink-goedkeuren en push zijn het open fase 3-vervolg.
+  staat. Details BESLISSINGEN "Klant-accorderingsflow — GEBOUWD + GETEST".
+  **De accordeur-PWA zelf: GEBOUWD + GETEST (2026-08-11, kliktest Peter open)** —
+  `frontend/src/accordeur/` op /accordeur (eigen lazy chunk, geen kantoor-bundels; mockup
+  `mockup/accordeur.html` 1-op-1; ≥16px-velden + visualViewport-sheets + dark default;
+  PDF lazy via pdfjs-dist; installeerbaar zónder service worker), activeringsflow
+  wachtwoord → passkey → voorwaarden/privacyverklaring-akkoord (server-side afgedwongen,
+  `platform.accordeur_akkoord` + audit), apparatenbeheer/kill-switch op Instellingen.
+  Zie BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD". E-maillink-goedkeuren en push
+  (incl. service worker) zijn het open GCP-vervolg.
 - **Projecten** (module, zichtbaar per rol + per administratie-toggle): project verplicht = hard
   blokkerend, géén "geen project"-optie; overhead → intern OVH-project (uitgesloten van bewaking).
   Budget uit offerte-ontleding (status offerte ≠ opdracht; meerwerk = aparte budgetversie).

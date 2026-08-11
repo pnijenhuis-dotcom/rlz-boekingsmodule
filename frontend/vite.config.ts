@@ -34,6 +34,12 @@ export default defineConfig({
     // veroorzaakten eerder spookbugs (verbeteringen.md 2026-07-13).
     port: 5173,
     strictPort: true,
+    // LAN-bereikbaar voor de telefoon-kliktest van de accordeur-PWA (slot 2026-08-11): de
+    // dev-server luistert ook op het LAN-IP; de proxy naar de backend blijft server-side
+    // (localhost:8000), dus de telefoon hoeft alleen déze poort te bereiken. NB op een LAN-IP
+    // is er geen secure context — echte passkeys werken daar niet; daarvoor is de expliciet
+    // gemarkeerde dev-stub (backend AUTH_BIOMETRIE_DEV_STUB=true, alleen dev).
+    host: true,
     proxy,
   },
   test: {
