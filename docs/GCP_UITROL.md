@@ -1,10 +1,13 @@
 # GCP-uitroldraaiboek — RLZ Boekingsmodule
 
-> **Status: draaiboek, geen uitvoering.** Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
+> **Status: alle 10 beslispunten BESLIST (Peter 2026-08-12) — F0 klaar om te draaien.**
+> Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
 > de PDL Powerhouse-organisatie** (zelfde org als vastgoeds `vastly-504108`, nadrukkelijk NIET
 > hetzelfde project); **tempo = zo snel mogelijk live**; de **AVG-poort geldt alleen voor echte
 > klantdata** — infra-opbouw en draaien met de TEST-administratie/eigen kantoordata mag eerder
-> (parallel spoor). Kaders: koppelcontract §2b (Cloud Run / Cloud SQL / Secret Manager /
+> (parallel spoor). De besluiten op de 10 beslispunten staan in de tabel onderaan en zijn in de
+> fase-teksten verwerkt; het **F0-uitvoeringspakket** staat in `scripts/gcp/f0_fundament.sh`
+> (zie §F0-uitvoering). Kaders: koppelcontract §2b (Cloud Run / Cloud SQL / Secret Manager /
 > Storage / Scheduler, `europe-west4`), CLAUDE.md-hostbesluit v1.2, docs/avg/05-activatie-
 > checklist stap 2 (= de cloud-gate), Platform OPEN_ITEMS (GCP-uitrol-item + identiteit-eerst),
 > en vastgoeds week-1-patronen (WIF + SA's + Artifact Registry, project `vastly-504108`).
@@ -18,10 +21,11 @@
 
 1. **Identiteit-eerst-check (OPEN_ITEMS-item, no-regret):** project, billing, domein en secrets
    hangen onder de juiste **juridische entiteit** (de PDL Powerhouse-org, niet een
-   privé-account). Vastleggen welk account org-/projectowner is. *(Peter)*
-2. **Project aanmaken** in de PDL Powerhouse-org. **Naamvoorstel: `rlz-boekhouding`**
+   privé-account). **Besloten (beslispunt 2): owner = het org-beheeraccount van de PDL
+   Powerhouse-org, hetzelfde account als bij `vastly-504108`.** *(Peter)*
+2. **Project aanmaken** in de PDL Powerhouse-org. **Besloten (beslispunt 1): `rlz-boekhouding`**
    (project-ID krijgt zo nodig een cijfersuffix, zelfde patroon als `vastly-504108`).
-   Billing-account van de org koppelen. *(Peter, beslispunt 1)*
+   Billing-account van de org koppelen. *(Peter)*
 3. **Regio-pin `europe-west4`** voor álles + **Organization Policy op EU-locaties**
    (`constraints/gcp.resourceLocations`) — dit is meteen een vinkje van AVG-stap 2; op
    org-niveau bestaat die policy mogelijk al door vastgoed — controleren, anders op
@@ -33,12 +37,32 @@
    - `jobs@` — runtime van de Cloud Run-jobs (zelfde grondhouding, plus wat de sync/afleveraar
      nodig heeft);
    - `deploy@` — deployen via **Workload Identity Federation** naar het vastgoed-patroon
-     (GitHub Actions zonder langlevende keys; Artifact Registry writer + Cloud Run deployer).
+     (GitHub Actions zonder langlevende keys; Artifact Registry writer + Cloud Run deployer;
+     **besloten — beslispunt 10: WIF/GitHub Actions, repo-conditie op
+     `pnijenhuis-dotcom/rlz-boekingsmodule`**).
    *(Code bereidt gcloud-commando's voor, Peter voert uit als owner)*
 5. **Artifact Registry**: één Docker-repository in `europe-west4`. *(Code)*
 
 **Verificatie F0:** project zichtbaar onder de org met billing; `gcloud`-lijst van de drie SA's
 met hun rollen; een dummy-image gepusht naar de registry via WIF (bewijst de deploy-keten).
+
+### F0-uitvoering (klaar om te draaien)
+
+Het volledige commandopakket staat in **`scripts/gcp/f0_fundament.sh`** — genummerd, elk
+commando met één regel uitleg én de bijbehorende verificatiestap. **Peter draait het als
+org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voert niets uit.
+
+- **In te vullen door Peter (bovenin het script, het script weigert te draaien zolang de
+  placeholders staan):** `ORG_ID` (`gcloud organizations list`) en `BILLING_ACCOUNT_ID`
+  (`gcloud billing accounts list`). De GitHub-repo staat er al in
+  (`pnijenhuis-dotcom/rlz-boekingsmodule` — even checken dat dit de repo is waar de
+  deploy-workflow gaat leven).
+- Het script **controleert eerst of de EU-locatie-org-policy al op org-niveau bestaat**
+  (mogelijk gezet door vastgoed) en zet 'm anders op projectniveau.
+- Secret- en bucket-bindings voor `run-backend@`/`jobs@` zijn bewust **niet** in F0 opgenomen:
+  die zijn per-resource en horen bij F1 (de secrets en de bucket bestaan dan pas).
+- Na afloop print het script de **projectnummer- en WIF-provider-resourcenamen**; daarmee
+  bouwt Code de GitHub Actions-testworkflow voor de dummy-push (de laatste F0-verificatie).
 
 ## F1 — Data (Cloud SQL, secrets, documenten)
 
@@ -64,17 +88,18 @@ met hun rollen; een dummy-image gepusht naar de registry via WIF (bewijst de dep
    wrap-vervangbaar. Twee smaken:
    - (a) masterkey als Secret Manager-secret (zelfde model als nu, snelste route);
    - (b) **Cloud KMS**-provider implementeren (masterkey verlaat KMS nooit) — dit is de
-     §2b-contractnorm. **Aanbeveling: (b) meteen doen** — het is een kleine, geïsoleerde
-     provider-implementatie en scheelt een migratieronde later. *(Beslispunt 8; Code)*
+     §2b-contractnorm. **Besloten (beslispunt 8): (b) meteen** — kleine, geïsoleerde
+     provider-implementatie, scheelt een migratieronde later; **de masterkey-continuïteit
+     (kanttekening hieronder) wordt expliciet in het migratiescript geborgd**. *(Code)*
    - ⚠️ **Masterkey-continuïteit bij datamigratie:** de bestaande credential-store-rijen en
      TOTP-secrets zijn met de lokale masterkey gewrapt. Bij de DB-overzet (ná F5) moet óf
      dezelfde masterkey mee naar Secret Manager/KMS, óf er komt een expliciete
      herversleutel-stap (unwrap-met-oud, wrap-met-nieuw). Stilzwijgend een verse key = alle
      credentials en TOTP's onbruikbaar. Dit borgen in het migratiescript. *(Code)*
 4. **Cloud Storage-bucket documenten** (`europe-west4`): **retentiebeleid 7 jaar**
-   (bewaarplicht) op de bucket. **Beslispunt 7: retentie *unlocked* starten** (verwijderen kan
-   dan alleen nog door een admin; *locked* = 7 jaar onherroepelijk, ook bij een foutupload) —
-   aanbeveling: unlocked, heroverwegen bij het WORM-export-besluit. Versioning aan.
+   (bewaarplicht) op de bucket. **Besloten (beslispunt 7): retentie *unlocked*** (verwijderen
+   kan dan alleen nog door een admin; *locked* = 7 jaar onherroepelijk, ook bij een
+   foutupload) — heroverwegen bij het WORM-export-besluit. Versioning aan.
 5. **Cloud Storage-implementatie van het opslag-interface** (`app/documenten/storage.py` heeft
    de seam: interface + lokale implementatie): GCS-variant bouwen + testen. *(Code)*
 6. **Migratiepad bestaande data — twee tranches, expliciet gescheiden door de F5-poort:**
@@ -111,11 +136,17 @@ GCS-implementatie; retentiebeleid zichtbaar op de bucket.
    1-op-1 hetzelfde padmodel; CORS verdwijnt (`cors_allowed_origins` leeg), het
    refresh-cookie en de WebAuthn-origins worden één domein, en de PWA en de API delen één
    host. Alternatieven (aparte static-service, GCS+CDN) geven bij dit gebruikersaantal alleen
-   extra bewegende delen. *(Beslispunt 4 — akkoord op deze keuze; Code bouwt)*
-3. **Domein + https (KRITIEK PAD):** domeinnaam kiezen *(beslispunt 3 — bv.
-   `boekhouding.kempengroep.nl`; DNS bij Peter)*, Cloud Run domain mapping + managed
-   certificaat. **https ontgrendelt de échte passkeys** voor de accordeur-PWA (secure
-   context): `webauthn_rp_id` = het domein, `webauthn_origins` = `https://<domein>`,
+   extra bewegende delen. *(Besloten — beslispunt 4: same-origin; Code bouwt)*
+3. **Domein + https (KRITIEK PAD) — besloten (beslispunt 3):** het domein
+   **`administratiekantoornijenhuis.nl` is al in bezit** — geen registratie nodig. De app
+   draait op het subdomein **`app.administratiekantoornijenhuis.nl`** (Cloud Run domain
+   mapping + managed certificaat; DNS bij Peter); **de apex blijft vrij voor de
+   kantoorwebsite**. **F2-bouwvereiste WebAuthn-config:** `webauthn_rp_id` = het
+   **APEX-domein** `administratiekantoornijenhuis.nl` (níét het subdomein), zodat de
+   passkeys op álle subdomeinen geldig blijven (RP ID mag een registrable suffix van de
+   origin zijn — een later tweede subdomein breekt dan geen bestaande passkeys);
+   `webauthn_origins` = `https://app.administratiekantoornijenhuis.nl`.
+   **https ontgrendelt de échte passkeys** voor de accordeur-PWA (secure context);
    dev-stub blijft hard onwerkzaam (`ENVIRONMENT=production`). Ook de PWA-installatie bij
    klanten kan pas dan.
 4. **Productie-config:** `ENVIRONMENT=production` (alle dev-fallback-guards bijten dan),
@@ -144,10 +175,10 @@ alleen verpakking.
    lokaal zág je exit 1, in de cloud is een falende job stil. Cloud Monitoring-alert op
    job-failure/exit≠0 → e-mail naar kantoor. Zonder dit vinkje is F3 niet af. *(Code)*
 3. **IMAP-intake activeren** (de gemarkeerde seam + `intake_imap_*`-settings):
-   **beslispunt 5 — providerkeuze postvak** (waar draait de boekhoudmail: bestaande
-   kantoor-mailprovider met DPA, of een apart postvak). AVG-checklist D (DPA provider) hoort
-   erbij; tot dit rond is blijft de .eml-upload gewoon het werkende kanaal — er valt niets om.
-   *(Peter kiest, Code activeert)*
+   **besloten (beslispunt 5): de bestaande kantoor-mailprovider.** Voorwaarde vóór
+   activering: **AVG-checklist D (DPA provider) afronden** — tot die check rond is blijft de
+   .eml-upload gewoon het werkende kanaal, er valt niets om. *(Code activeert ná de
+   DPA-check)*
 4. **De lokale dagelijkse run vervalt** zodra de scheduler-jobs draaien en de alerting staat —
    niet eerder (geen gat tussen oud en nieuw vangnet).
 
@@ -171,8 +202,9 @@ de lokale backend. Zie het OPEN_ITEMS-webhook-item voor de afspraken.
    worden alsnog geldig afgeleverd (tekenen-per-verzendpoging) → aflevering + dead-letter-pad
    controleren (`make webhook-redrive` bestaat voor herstel).
 3. **Tier-vlaggen `afgeletterd_event_ingeschakeld`** per optie-2-administratie aanzetten
-   (`make afgeletterd-event-aan`, schema_version 2.0) — **beslispunt 9: welke administraties**
-   (de optie-2-lijst is een commerciële keuze van Peter).
+   (`make afgeletterd-event-aan`, schema_version 2.0) — **besloten (beslispunt 9): alleen
+   Rubicon**; uitbreiding gebeurt per onboarding-moment van een nieuwe
+   vastgoed-administratie, geen bulk-activatie.
 4. De boekhoudmail-verhuizing aan vastgoed-kant raakt ons niet: routing loopt op de
    UBL-markering, nooit op afzender (geverifieerd, zie OPEN_ITEMS-antwoord 2026-08-12).
 
@@ -191,7 +223,9 @@ eerder). De poort = **AVG-activatie-checklist stap 2, integraal**:
 - [ ] **regio-borging** aantoonbaar (alles `europe-west4` + Org Policy — staat sinds F0);
 - [ ] **herzieningsmoment CLOUD Act** (besluit 0003) uitgevoerd: **CMEK en/of client-side
       documentversleuteling beoordeeld, uitkomst als platformbesluit vastgelegd**
-      *(beslispunt 6 — het zwaarste open besluit van deze uitrol)*;
+      *(besloten — beslispunt 6: het memo wordt bij F5 voorbereid, met als lean-lijn
+      **CMEK aan bij go-live** en client-side documentversleuteling alleen op klantverzoek;
+      het memo formaliseert dit als platformbesluit)*;
 - [ ] retentie/PITR-instellingen gedocumenteerd (staat technisch sinds F1);
 - [ ] verwerkersovereenkomst **Exact Reeleezee** bevestigd + gearchiveerd;
 - [ ] IMAP-provider-DPA rond (checklist D, hoort bij F3);
@@ -219,17 +253,17 @@ F4 (webhooks vastgoed) ── onafhankelijk spoor, kan zelfs vóór F0 (lokale b
 - **Bewust NIET parallel:** klantdata-migratie vóór de F5-poort — dat is precies wat de poort
   verbiedt.
 
-## Beslispunten die op Peter wachten
+## Beslispunten — ALLE 10 BESLIST (Peter, 2026-08-12)
 
-| # | Beslispunt | Fase | Voorstel |
+| # | Beslispunt | Fase | Besluit |
 |---|---|---|---|
-| 1 | Projectnaam/-ID | F0 | `rlz-boekhouding` |
-| 2 | Owner-account (identiteit-eerst: juridische entiteit) | F0 | zelfde org-beheer als `vastly-504108` |
-| 3 | Productiedomein | F2 | bv. `boekhouding.kempengroep.nl` (DNS bij Peter) |
-| 4 | Frontend-hosting | F2 | same-origin uit de backend-container (onderbouwing in F2.2) |
-| 5 | IMAP-provider boekhoudmail (+ DPA, checklist D) | F3 | bestaande kantoor-mailprovider als de DPA klopt |
-| 6 | CMEK / client-side documentversleuteling (besluit 0003-herziening) | F5 | beoordeling voorbereiden als apart memo; uitkomst = platformbesluit |
-| 7 | Bucket-retentie locked/unlocked | F1 | unlocked starten, heroverwegen bij WORM-export |
-| 8 | Masterkey: Cloud KMS meteen (contractnorm §2b) of Secret Manager eerst | F1 | KMS meteen |
-| 9 | Optie-2-administraties voor `afgeletterd_event_ingeschakeld` | F4 | lijst aanleveren |
-| 10 | Deploy-pipeline: GitHub Actions + WIF (vastgoed-patroon) of handmatig `gcloud` | F0 | WIF-patroon hergebruiken |
+| 1 | Projectnaam/-ID | F0 | **`rlz-boekhouding`** (ID-cijfersuffix alleen bij botsing) |
+| 2 | Owner-account (identiteit-eerst: juridische entiteit) | F0 | **het org-beheeraccount van de PDL Powerhouse-org** — zelfde account als `vastly-504108` |
+| 3 | Productiedomein | F2 | **`app.administratiekantoornijenhuis.nl`** — domein al in bezit (geen registratie); apex vrij voor de website; **WebAuthn RP ID = het apex-domein** (F2-bouwvereiste, zie F2.3) |
+| 4 | Frontend-hosting | F2 | **same-origin uit de backend-container** (onderbouwing in F2.2) |
+| 5 | IMAP-provider boekhoudmail (+ DPA, checklist D) | F3 | **bestaande kantoor-mailprovider**; DPA-check (checklist D) vóór activering |
+| 6 | CMEK / client-side documentversleuteling (besluit 0003-herziening) | F5 | **memo bij F5; lean-lijn: CMEK aan bij go-live, client-side versleuteling alleen op klantverzoek** — uitkomst als platformbesluit |
+| 7 | Bucket-retentie locked/unlocked | F1 | **unlocked** starten; heroverwegen bij het WORM-export-besluit |
+| 8 | Masterkey: Cloud KMS meteen (contractnorm §2b) of Secret Manager eerst | F1 | **Cloud KMS meteen**; masterkey-continuïteit expliciet in het migratiescript |
+| 9 | Optie-2-administraties voor `afgeletterd_event_ingeschakeld` | F4 | **alleen Rubicon**; uitbreiding per onboarding-moment |
+| 10 | Deploy-pipeline | F0 | **GitHub Actions + WIF naar vastgoed-patroon**, repo-conditie op `pnijenhuis-dotcom/rlz-boekingsmodule` |
