@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Any, Protocol
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -56,10 +56,72 @@ class LocalMasterKeyProvider:
         return aesgcm.decrypt(nonce, ciphertext, None)
 
 
+def _crc32c(data: bytes) -> int:
+    import google_crc32c  # transitieve dependency van de google-cloud-clients; lazy zodat
+    # dev-paden zonder KMS dit nooit importeren.
+
+    return int(google_crc32c.value(data))
+
+
+class KmsMasterKeyProvider:
+    """Cloud KMS-implementatie van MasterKeyProvider (GCP-draaiboek F1.3, beslispunt 8:
+    KMS meteen — koppelcontract §2b-norm). De masterkey verlaat KMS nooit: wrap = KMS-Encrypt
+    over de 32-byte data-key, unwrap = KMS-Decrypt. `sleutel_naam` is de volledige
+    CryptoKey-resourcenaam (projects/.../locations/europe-west4/keyRings/.../cryptoKeys/...).
+    Authenticatie via Application Default Credentials (Cloud Run: de service-SA).
+    CRC32C-integriteitschecks conform de KMS-documentatie — verdediging-in-de-diepte bovenop
+    TLS; een mislukte check is een harde fout, nooit stil doorgaan met een corrupte key.
+    `client` is injecteerbaar voor tests (fake-KMS draait de unit-tests, geen netwerk)."""
+
+    def __init__(self, sleutel_naam: str, *, client: Any | None = None) -> None:
+        if client is None:  # pragma: no cover — echte client alleen buiten tests
+            from google.cloud import kms
+
+            client = kms.KeyManagementServiceClient()
+        self._client = client
+        self._sleutel_naam = sleutel_naam
+
+    def wrap(self, data_key: bytes) -> bytes:
+        respons = self._client.encrypt(
+            request={
+                "name": self._sleutel_naam,
+                "plaintext": data_key,
+                "plaintext_crc32c": _crc32c(data_key),
+            }
+        )
+        if not respons.verified_plaintext_crc32c or _crc32c(respons.ciphertext) != respons.ciphertext_crc32c:
+            raise RuntimeError("KMS-encrypt-integriteitscheck mislukt (CRC32C) — wrap geweigerd.")
+        return bytes(respons.ciphertext)
+
+    def unwrap(self, wrapped: bytes) -> bytes:
+        respons = self._client.decrypt(
+            request={
+                "name": self._sleutel_naam,
+                "ciphertext": wrapped,
+                "ciphertext_crc32c": _crc32c(wrapped),
+            }
+        )
+        if _crc32c(respons.plaintext) != respons.plaintext_crc32c:
+            raise RuntimeError("KMS-decrypt-integriteitscheck mislukt (CRC32C) — unwrap geweigerd.")
+        return bytes(respons.plaintext)
+
+
+def standaard_masterkey_provider() -> MasterKeyProvider:
+    """Config-gedreven keuze (draaiboek F1.3): `KMS_MASTERKEY_SLEUTEL` gezet = Cloud KMS,
+    anders de lokale provider (dev-default; buiten dev eist die zelf TOTP_MASTER_KEY — zie
+    _resolve_master_key). Op sleutelnaam en niet op ENVIRONMENT, zodat de KMS-route ook vóór
+    de cutover tegen een test-keyring te draaien is."""
+    from app.config import settings
+
+    if settings.kms_masterkey_sleutel:
+        return KmsMasterKeyProvider(settings.kms_masterkey_sleutel)
+    return LocalMasterKeyProvider()
+
+
 def wrap_secret(plaintext: bytes, *, provider: MasterKeyProvider | None = None) -> tuple[bytes, bytes]:
     """Envelope encryption: verse data-key per secret; de masterkey wrapt uitsluitend de
     data-key, nooit de data zelf direct. Retourneert (ciphertext, wrapped_data_key)."""
-    provider = provider or LocalMasterKeyProvider()
+    provider = provider or standaard_masterkey_provider()
     data_key = os.urandom(32)
     aesgcm = AESGCM(data_key)
     nonce = os.urandom(12)
@@ -69,7 +131,7 @@ def wrap_secret(plaintext: bytes, *, provider: MasterKeyProvider | None = None) 
 
 
 def unwrap_secret(ciphertext: bytes, wrapped_data_key: bytes, *, provider: MasterKeyProvider | None = None) -> bytes:
-    provider = provider or LocalMasterKeyProvider()
+    provider = provider or standaard_masterkey_provider()
     data_key = provider.unwrap(wrapped_data_key)
     aesgcm = AESGCM(data_key)
     nonce, actual_ciphertext = ciphertext[:12], ciphertext[12:]

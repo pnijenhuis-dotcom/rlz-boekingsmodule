@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     # in Cloud Run via Secret Manager/KMS (zie app/security/envelope.py voor het wrap-vervangbare
     # MasterKeyProvider-interface). Nooit een fallback buiten dev.
     totp_master_key_b64: str | None = None
+    # Cloud KMS-masterkeyprovider (GCP-draaiboek F1.3, beslispunt 8 — §2b-norm): volledige
+    # CryptoKey-resourcenaam gezet = wrap/unwrap via KMS (masterkey verlaat KMS nooit), leeg =
+    # LocalMasterKeyProvider (dev). Overstap op bestaande data vereist het herversleutel-script
+    # (scripts/herversleutel_masterkey.py) — een verse key zonder die stap maakt de
+    # credential-store en TOTP-secrets onbruikbaar.
+    kms_masterkey_sleutel: str | None = None
 
     # Documentopslag (fase 1): lokaal bestandssysteem in dev, Cloud Storage-implementatie van
     # dezelfde interface in productie (zie app/documenten/storage.py) — 7 jaar bewaarplicht.

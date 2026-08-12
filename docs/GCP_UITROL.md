@@ -88,9 +88,12 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
    wrap-vervangbaar. Twee smaken:
    - (a) masterkey als Secret Manager-secret (zelfde model als nu, snelste route);
    - (b) **Cloud KMS**-provider implementeren (masterkey verlaat KMS nooit) — dit is de
-     §2b-contractnorm. **Besloten (beslispunt 8): (b) meteen** — kleine, geïsoleerde
-     provider-implementatie, scheelt een migratieronde later; **de masterkey-continuïteit
-     (kanttekening hieronder) wordt expliciet in het migratiescript geborgd**. *(Code)*
+     §2b-contractnorm. **Besloten (beslispunt 8): (b) meteen** — **GEBOUWD + GETEST
+     (2026-08-13):** `KmsMasterKeyProvider` in `app/security/envelope.py`, config-gedreven
+     via `KMS_MASTERKEY_SLEUTEL` (volledige CryptoKey-resourcenaam; leeg = lokale provider,
+     dev-default), CRC32C-integriteitschecks conform de KMS-docs, unit-tests met
+     fake-KMS-client (`tests/unit/test_envelope_kms.py`). *(Rest: keyring/key aanmaken +
+     SA-binding encrypt/decrypt — F1-uitvoering)*
    - ⚠️ **Masterkey-continuïteit bij datamigratie:** de bestaande credential-store-rijen en
      TOTP-secrets zijn met de lokale masterkey gewrapt. Bij de DB-overzet (ná F5) moet óf
      dezelfde masterkey mee naar Secret Manager/KMS, óf er komt een expliciete
