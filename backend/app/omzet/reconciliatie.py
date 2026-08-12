@@ -34,17 +34,27 @@ class OmzetAfwijking:
     detail: str
 
 
-def _controleer_rlz_document(*, client: RlzClient, pad: str, rlz_id: uuid.UUID, label: str) -> str | None:
-    """None = in orde; anders de afwijkingsomschrijving."""
+def _controleer_rlz_document(
+    *, client: RlzClient, pad: str, rlz_id: uuid.UUID, label: str
+) -> tuple[str, str] | None:
+    """None = in orde; anders (soort, omschrijving).
+
+    De soort was tot 2026-08-12 voor alles `rlz_afwijking` — één emmer voor drie totaal
+    verschillende situaties. Nu apart, omdat de vervolgactie per geval verschilt: een verdwenen
+    document is boekhoudkundig werk, een teruggedraaide status is beoordelen-en-navolgen, en een
+    mislukte controle zegt alleen dat de verbinding stuk was."""
     try:
         doc = client.get(f"{pad}/{rlz_id}")
     except RlzApiError as exc:
         if exc.status_code == 404:
-            return f"{label} {rlz_id} bestaat niet (meer) in RLZ"
-        return f"{label} {rlz_id} kon niet opgehaald worden: {exc}"
+            return "ontbreekt_in_rlz", f"{label} {rlz_id} bestaat niet (meer) in RLZ"
+        return "controle_mislukt", f"{label} {rlz_id} kon niet opgehaald worden: {exc}"
     status = doc.get("Status")
     if status not in _GEBOEKTE_STATUSSEN:
-        return f"{label} {rlz_id} staat in RLZ op Status {status} (teruggedraaid naar concept?)"
+        return (
+            "status_niet_definitief",
+            f"{label} {rlz_id} staat in RLZ op Status {status} (teruggedraaid naar concept?)",
+        )
     return None
 
 
@@ -84,30 +94,45 @@ def reconcilieer_omzet(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
             ):
                 if rlz_id is None:
                     continue
-                detail = _controleer_rlz_document(client=client, pad=pad, rlz_id=rlz_id, label=label)
-                if detail is not None:
+                bevinding = _controleer_rlz_document(client=client, pad=pad, rlz_id=rlz_id, label=label)
+                if bevinding is not None:
+                    soort, detail = bevinding
                     afwijkingen.append(
                         OmzetAfwijking(
                             administratie_id=administratie_id,
                             boeking_id=boeking.id,
                             document_id=boeking.document_id,
-                            soort="rlz_afwijking",
+                            soort=soort,
                             detail=f"Periode {boeking.periode_start} t/m {boeking.periode_eind}: {detail}",
                         )
                     )
     return afwijkingen
 
 
-def reconcilieer_alle_omzet() -> list[OmzetAfwijking]:
+@dataclass(frozen=True)
+class OmzetReconciliatieResultaat:
+    """Afwijkingen én mislukte administraties. Die tweede helft bestond niet tot 2026-08-12: een
+    administratie waarvan de reconciliatie omviel (credentials, RLZ-storing) werd alleen
+    weggelogd, waarna het commando vrolijk "geen afwijkingen" meldde en exit 0 gaf. Een vangrail
+    die bij een storing groen licht geeft, is erger dan geen vangrail."""
+
+    afwijkingen: list[OmzetAfwijking]
+    fouten: dict[uuid.UUID, str]
+
+
+def reconcilieer_alle_omzet() -> OmzetReconciliatieResultaat:
     """Alle administraties; één kapotte administratie (credentials, RLZ-storing) stopt de rest
-    niet — zelfde patroon als sync_alle_administraties."""
+    niet — zelfde patroon als sync_alle_administraties — maar wordt wél teruggegeven zodat de
+    aanroeper hem zichtbaar maakt en de exit-code op 1 zet."""
     with scoped_session(None) as session:
         administratie_ids = [rij.id for rij in session.scalars(select(Administratie))]
 
     alle: list[OmzetAfwijking] = []
+    fouten: dict[uuid.UUID, str] = {}
     for administratie_id in administratie_ids:
         try:
             alle.extend(reconcilieer_omzet(administratie_id))
-        except Exception:  # noqa: BLE001 — rapporteren en door, nooit de hele run stoppen
+        except Exception as exc:  # noqa: BLE001 — rapporteren en door, nooit de hele run stoppen
             logger.exception("Omzet-reconciliatie mislukt voor administratie %s", administratie_id)
-    return alle
+            fouten[administratie_id] = str(exc)
+    return OmzetReconciliatieResultaat(afwijkingen=alle, fouten=fouten)

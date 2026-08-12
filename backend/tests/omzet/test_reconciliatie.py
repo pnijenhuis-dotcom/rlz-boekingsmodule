@@ -98,7 +98,7 @@ class TestReconcilieerOmzet:
 
         afwijkingen = reconciliatie.reconcilieer_omzet(administratie_id)
         assert len(afwijkingen) == 1
-        assert afwijkingen[0].soort == "rlz_afwijking"
+        assert afwijkingen[0].soort == "status_niet_definitief"
         assert "Status 1" in afwijkingen[0].detail
 
     def test_verdwenen_memoriaal_wordt_gemeld(
@@ -120,6 +120,7 @@ class TestReconcilieerOmzet:
 
         afwijkingen = reconciliatie.reconcilieer_omzet(administratie_id)
         assert len(afwijkingen) == 1
+        assert afwijkingen[0].soort == "ontbreekt_in_rlz"
         assert "bestaat niet" in afwijkingen[0].detail
 
     def test_half_geboekt_wordt_altijd_gemeld(

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0041
+-- Migratie-head bij deze dump: 0043
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -913,6 +913,31 @@ ALTER TABLE ONLY boekhouding.project_cache FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: reconciliatie_acceptatie; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.reconciliatie_acceptatie (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    bron text NOT NULL,
+    record_id uuid NOT NULL,
+    soort text NOT NULL,
+    vingerafdruk text NOT NULL,
+    detail text NOT NULL,
+    reden text NOT NULL,
+    geaccepteerd_door uuid NOT NULL,
+    geaccepteerd_op timestamp with time zone DEFAULT now() NOT NULL,
+    ingetrokken_door uuid,
+    ingetrokken_op timestamp with time zone,
+    CONSTRAINT reconciliatie_acceptatie_bron_geldig CHECK ((bron = ANY (ARRAY['documenten'::text, 'bank'::text, 'omzet'::text]))),
+    CONSTRAINT reconciliatie_acceptatie_intrekking_compleet CHECK (((ingetrokken_op IS NULL) = (ingetrokken_door IS NULL))),
+    CONSTRAINT reconciliatie_acceptatie_reden_gevuld CHECK ((length(btrim(reden)) >= 5))
+);
+
+ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: staande_goedkeuring; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1186,7 +1211,12 @@ CREATE TABLE platform.administratie (
     eigenaar_gebruiker_id uuid,
     bank_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
     accordering_ingeschakeld boolean DEFAULT false NOT NULL,
-    afgeletterd_event_ingeschakeld boolean DEFAULT false NOT NULL
+    afgeletterd_event_ingeschakeld boolean DEFAULT false NOT NULL,
+    reconciliatie_uitgesloten boolean DEFAULT false NOT NULL,
+    reconciliatie_uitsluiting_reden text,
+    reconciliatie_uitgesloten_op timestamp with time zone,
+    reconciliatie_uitgesloten_door uuid,
+    CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5))))
 );
 
 
@@ -1689,6 +1719,14 @@ ALTER TABLE ONLY boekhouding.project_cache
 
 
 --
+-- Name: reconciliatie_acceptatie reconciliatie_acceptatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
+    ADD CONSTRAINT reconciliatie_acceptatie_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: staande_goedkeuring staande_goedkeuring_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2171,6 +2209,13 @@ CREATE INDEX ix_webhook_uitgaand_document_id ON boekhouding.webhook_uitgaand USI
 --
 
 CREATE INDEX ix_webhook_uitgaand_openstaand ON boekhouding.webhook_uitgaand USING btree (volgende_poging_op) WHERE (status = 'openstaand'::text);
+
+
+--
+-- Name: reconciliatie_acceptatie_actief_uniek; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX reconciliatie_acceptatie_actief_uniek ON boekhouding.reconciliatie_acceptatie USING btree (administratie_id, bron, vingerafdruk) WHERE (ingetrokken_op IS NULL);
 
 
 --
@@ -2867,6 +2912,30 @@ ALTER TABLE ONLY boekhouding.project_cache
 
 
 --
+-- Name: reconciliatie_acceptatie reconciliatie_acceptatie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
+    ADD CONSTRAINT reconciliatie_acceptatie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: reconciliatie_acceptatie reconciliatie_acceptatie_geaccepteerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
+    ADD CONSTRAINT reconciliatie_acceptatie_geaccepteerd_door_fkey FOREIGN KEY (geaccepteerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: reconciliatie_acceptatie reconciliatie_acceptatie_ingetrokken_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
+    ADD CONSTRAINT reconciliatie_acceptatie_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: staande_goedkeuring staande_goedkeuring_accordeur_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3088,6 +3157,14 @@ ALTER TABLE ONLY platform.accordeur_akkoord
 
 ALTER TABLE ONLY platform.administratie
     ADD CONSTRAINT administratie_eigenaar_gebruiker_id_fkey FOREIGN KEY (eigenaar_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: administratie administratie_reconciliatie_uitgesloten_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.administratie
+    ADD CONSTRAINT administratie_reconciliatie_uitgesloten_door_fkey FOREIGN KEY (reconciliatie_uitgesloten_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -3673,6 +3750,19 @@ ALTER TABLE boekhouding.project_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY project_cache_scope ON boekhouding.project_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: reconciliatie_acceptatie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.reconciliatie_acceptatie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: reconciliatie_acceptatie reconciliatie_acceptatie_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY reconciliatie_acceptatie_scope ON boekhouding.reconciliatie_acceptatie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

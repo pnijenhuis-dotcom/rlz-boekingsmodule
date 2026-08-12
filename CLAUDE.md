@@ -436,8 +436,10 @@ Een taak die een Alembic-migratie bevat is pas "af" als **alle drie** aantoonbaa
    gecontroleerd ná de upgrade. NB de migratie-guard in de lifespan stopt een draaiende
    `--reload`-uvicorn zodra het migratiebestand vóór de upgrade in de repo staat — dat is
    bedoeld gedrag; na `make migrate` de reload opnieuw triggeren of `make run` herstarten.
-3. De referentie-dump is ververst en meegecommit: `scripts/dump_schema.sh` (dumpt
-   `boekhouding_test` @ head naar `backend/migrations/schema_referentie.sql`). Alembic blijft
+3. De referentie-dump is ververst en meegecommit: `scripts/dump_schema.sh` — **vanuit de
+   REPO-ROOT draaien, niet vanuit `backend/`** (het script staat in `<repo>/scripts/`; vanuit
+   backend/ geeft het "no such file or directory" — 2026-08-12). Dumpt `boekhouding_test` @ head
+   naar `backend/migrations/schema_referentie.sql`. Alembic blijft
    de bron van waarheid; de dump is een leesbaarheids-/reviewreferentie, nooit met de hand
    bewerken.
 Hangt de upgrade langer dan ~15 seconden: **expliciet melden** (waarschijnlijk houdt een

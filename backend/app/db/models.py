@@ -102,6 +102,17 @@ class Administratie(Base):
     eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
+    # Reconciliatie-uitsluiting (migratie 0043, besluit Peter 2026-08-12): deze administratie
+    # telt niet mee in de EXIT-CODE van de dagelijkse reconciliaties. Bewust géén filter op het
+    # rapport zelf — de bevindingen blijven zichtbaar onder de markering UITGESLOTEN, anders
+    # wordt een echte fout in bv. de test-administratie (waar schrijftests op draaien) onzichtbaar.
+    # Reden is verplicht zodra de vlag aan staat (DB-CHECK), mét actor en moment.
+    reconciliatie_uitgesloten: Mapped[bool] = mapped_column(default=False)
+    reconciliatie_uitsluiting_reden: Mapped[str | None] = mapped_column(default=None)
+    reconciliatie_uitgesloten_op: Mapped[datetime | None] = mapped_column(default=None)
+    reconciliatie_uitgesloten_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

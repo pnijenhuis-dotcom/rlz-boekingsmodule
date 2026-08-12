@@ -8,6 +8,7 @@ from app.beheer import service as beheer_service
 from app.documenten import boeken, boekvoorstel, reconciliatie, service
 from app.documenten.rlz_ids import rlz_purchase_invoice_id
 from app.documenten.storage import LokaleBestandsopslag
+from app.rlz.client import RlzApiError
 from tests.documenten.fake_rlz_client import FakeBoekClient
 
 
@@ -183,6 +184,30 @@ class TestReconciliatie:
         )
         rapport = reconciliatie.reconcilieer_administratie(administratie_id=administratie_id, client=client)
         assert [a.soort for a in rapport.afwijkingen] == ["boekstuknummer_wijkt_af"]
+
+    def test_niet_404_fout_is_controle_mislukt_en_geen_verdwenen_document(
+        self, gescoopte_gebruiker, administratie_id, opslag, beheerder_id, monkeypatch
+    ) -> None:
+        """Een 500/401/timeout zegt niets over het document, alleen over de verbinding. Die als
+        `ontbreekt_in_rlz` melden (het gedrag tot 2026-08-12) laat een RLZ-storing eruitzien als
+        een administratie vol verdwenen boekingen — precies het valse alarm dat een vangrail
+        ongeloofwaardig maakt."""
+        _boek_een_document(
+            gescoopte_gebruiker=gescoopte_gebruiker,
+            administratie_id=administratie_id,
+            opslag=opslag,
+            beheerder_id=beheerder_id,
+            monkeypatch=monkeypatch,
+        )
+
+        class KapotteVerbinding:
+            def get(self, path: str, **_kwargs):
+                raise RlzApiError(500, "GET", path, "Internal Server Error (simulatie)")
+
+        rapport = reconciliatie.reconcilieer_administratie(
+            administratie_id=administratie_id, client=KapotteVerbinding()
+        )
+        assert [a.soort for a in rapport.afwijkingen] == ["controle_mislukt"]
 
     def test_reconcilieer_alle_administraties_geeft_een_rapport_per_administratie(
         self, administratie_id: uuid.UUID

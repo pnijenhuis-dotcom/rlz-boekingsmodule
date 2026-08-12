@@ -56,7 +56,13 @@ def _vergelijk_met_rlz(
     try:
         invoice = client.get(f"PurchaseInvoices/{rlz_document_id}")
     except RlzApiError as exc:
-        return [ReconciliatieAfwijking(document_id, rlz_document_id, "ontbreekt_in_rlz", str(exc))]
+        # Alleen een échte 404 betekent "dit document bestaat niet (meer) in RLZ". Elke andere
+        # fout (500, 401 na een credential-rotatie, een uitgeputte rate-limit-retry) zegt niets
+        # over het document en werd vóór 2026-08-12 tóch als `ontbreekt_in_rlz` gerapporteerd —
+        # één kapotte verbinding zag er dan uit als een administratie vol verdwenen boekingen.
+        # `controle_mislukt` is een andere vraag met een ander antwoord: eerst de verbinding.
+        soort = "ontbreekt_in_rlz" if exc.status_code == 404 else "controle_mislukt"
+        return [ReconciliatieAfwijking(document_id, rlz_document_id, soort, str(exc))]
 
     afwijkingen: list[ReconciliatieAfwijking] = []
     if invoice.get("Status") not in _RLZ_GEBOEKTE_STATUSSEN:

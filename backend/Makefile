@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie bank-autoboeken-aan bank-autoboeken-uit afgeletterd-event-aan afgeletterd-event-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit afgeletterd-event-aan afgeletterd-event-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -92,6 +92,37 @@ bank-reconciliatie: check-versions
 
 omzet-reconciliatie: check-versions
 	.venv/bin/python -m app.cli omzet-reconciliatie
+
+# DE dagelijkse vangrail: alle drie in één run. Bewust géén `make a && make b && make c` —
+# die keten sloeg de rest over zodra de eerste afwijkingen vond, precies op de dag dat je de
+# andere twee het hardst nodig had. Exit 1 zodra één blok afwijkingen of fouten meldt.
+reconciliatie-alles: check-versions
+	.venv/bin/python -m app.cli reconciliatie-alles
+
+# Beoordeelde afwijking bewust laten staan (blijft zichtbaar, telt niet meer mee in de exit-code).
+# Voorbeeld: make reconciliatie-accepteer BRON=documenten ADMIN_ID=<uuid> VAF=<vingerafdruk> \
+#   REDEN="kliktest-documenten na storno in de RLZ-UI opgeruimd" BEHEERDER_ID=<uuid>
+reconciliatie-accepteer: check-versions
+	.venv/bin/python -m app.cli reconciliatie-accepteer --bron "$(BRON)" --administratie-id "$(ADMIN_ID)" \
+		--vingerafdruk "$(VAF)" --reden "$(REDEN)" --beheerder-id "$(BEHEERDER_ID)"
+
+reconciliatie-intrekken: check-versions
+	.venv/bin/python -m app.cli reconciliatie-intrekken --bron "$(BRON)" --administratie-id "$(ADMIN_ID)" \
+		--vingerafdruk "$(VAF)" --reden "$(REDEN)" --beheerder-id "$(BEHEERDER_ID)"
+
+reconciliatie-acceptaties: check-versions
+	.venv/bin/python -m app.cli reconciliatie-acceptaties --administratie-id "$(ADMIN_ID)"
+
+# Administratie niet laten meetellen in de exit-code (bevindingen blijven zichtbaar als
+# UITGESLOTEN) — bedoeld voor de test-administratie. Voorbeeld:
+# make reconciliatie-uitsluiten ADMIN_ID=<uuid> REDEN="test-administratie" BEHEERDER_ID=<uuid>
+reconciliatie-uitsluiten: check-versions
+	.venv/bin/python -m app.cli reconciliatie-uitsluiten --administratie-id "$(ADMIN_ID)" \
+		--reden "$(REDEN)" --beheerder-id "$(BEHEERDER_ID)"
+
+reconciliatie-insluiten: check-versions
+	.venv/bin/python -m app.cli reconciliatie-insluiten --administratie-id "$(ADMIN_ID)" \
+		--beheerder-id "$(BEHEERDER_ID)"
 
 # Opt-in-toggle volautomatische bankstappen (vaste regels automatisch boeken), default UIT.
 # Voorbeeld: make bank-autoboeken-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>

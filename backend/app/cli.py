@@ -16,6 +16,8 @@ from app.documenten import reconciliatie, webhook_afleveraar
 from app.geheugen import seed as geheugen_seed
 from app.intake.postvak import ImapPostvakBron, PostvakNietGeconfigureerd
 from app.omzet import reconciliatie as omzet_reconciliatie
+from app.reconciliatie import service as acceptatie_service
+from app.reconciliatie.models import ReconciliatieBron
 from app.sync import service as sync_service
 
 # Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
@@ -61,31 +63,69 @@ def _sync_alles(args: argparse.Namespace) -> int:
     return 1 if fouten else 0
 
 
+def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
+    """Eén rapportregel, zónder eigen prefix (de aanroeper bepaalt inspringing/stream). De
+    vingerafdruk staat er altijd bij: dat is de sleutel waarmee een beoordeelde afwijking
+    geaccepteerd — of weer ingetrokken — wordt."""
+    kop = f"{kern} soort={beoordeeld.soort} [vaf:{beoordeeld.vingerafdruk}]: {beoordeeld.detail}"
+    if beoordeeld.acceptatie is None:
+        return kop
+    geaccepteerd_op = beoordeeld.acceptatie.geaccepteerd_op.date().isoformat()
+    return f"GEACCEPTEERD {kop} — reden: {beoordeeld.acceptatie.reden} (sinds {geaccepteerd_op})"
+
+
 def _reconciliatie(args: argparse.Namespace) -> int:
     """Boeken-failsafe (b) (CLAUDE.md-taak 2.4): vergelijk elk lokaal GEBOEKT document met de
     werkelijke RLZ-staat en rapporteer afwijkingen. Eén administratie zonder werkende
-    credentials laat de rest niet stoppen — zie reconcilieer_alle_administraties()."""
+    credentials laat de rest niet stoppen — zie reconcilieer_alle_administraties().
+
+    Geaccepteerde afwijkingen (migratie 0042) blijven zichtbaar maar tellen niet mee in de
+    exit-code: onderdrukken doen we nooit, alarmeren over een beoordeelde situatie ook niet."""
     resultaten = reconciliatie.reconcilieer_alle_administraties()
+    uitgesloten = acceptatie_service.uitgesloten_administraties()
     fouten = 0
     afwijkingen_totaal = 0
+    geaccepteerd_totaal = 0
     for administratie_id, resultaat in resultaten.items():
+        uitsluiting = uitgesloten.get(administratie_id)
         if isinstance(resultaat, str):
+            if uitsluiting:
+                print(f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})")
+                continue
             fouten += 1
             print(f"FOUT       {administratie_id}: {resultaat}", file=sys.stderr)
             continue
         if not resultaat.afwijkingen:
             print(f"OK         {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, geen afwijkingen")
             continue
-        afwijkingen_totaal += len(resultaat.afwijkingen)
-        print(
-            f"AFWIJKING  {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "
-            f"{len(resultaat.afwijkingen)} afwijking(en)"
+        beoordeeld = acceptatie_service.beoordeel(
+            bron=ReconciliatieBron.DOCUMENTEN,
+            administratie_id=administratie_id,
+            afwijkingen=[(a.document_id, a.soort, a.detail) for a in resultaat.afwijkingen],
         )
-        for a in resultaat.afwijkingen:
-            print(f"    - document={a.document_id} rlz_document={a.rlz_document_id} soort={a.soort}: {a.detail}")
+        open_afwijkingen = [b for b in beoordeeld if b.telt_mee]
+        if uitsluiting:
+            # Zichtbaar blijven, niet meetellen: de bevindingen worden gewoon getoond zodat een
+            # échte fout hier niet onzichtbaar wordt (besluit 0043).
+            print(
+                f"UITGESLOTEN {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "
+                f"{len(open_afwijkingen)} bevinding(en) — telt niet mee ({uitsluiting})"
+            )
+            for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
+                print(f"    - {_regel(f'document={a.document_id} rlz_document={a.rlz_document_id}', b)}")
+            continue
+        afwijkingen_totaal += len(open_afwijkingen)
+        geaccepteerd_totaal += len(beoordeeld) - len(open_afwijkingen)
+        kop = "AFWIJKING " if open_afwijkingen else "OK        "
+        print(
+            f"{kop} {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "
+            f"{len(open_afwijkingen)} afwijking(en), {len(beoordeeld) - len(open_afwijkingen)} geaccepteerd"
+        )
+        for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
+            print(f"    - {_regel(f'document={a.document_id} rlz_document={a.rlz_document_id}', b)}")
     print(
         f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties gecontroleerd, "
-        f"{afwijkingen_totaal} afwijking(en) totaal."
+        f"{afwijkingen_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd)."
     )
     return 1 if (fouten or afwijkingen_totaal) else 0
 
@@ -133,10 +173,16 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
     werkelijke RLZ-staat (OpenAmount/documentstatus — nooit IsComplete) en rapporteer
     afwijkingen. Zelfde patroon als het documenten-reconciliatie-commando."""
     resultaten = bank_reconciliatie.reconcilieer_bank_alle_administraties()
+    uitgesloten = acceptatie_service.uitgesloten_administraties()
     fouten = 0
     afwijkingen_totaal = 0
+    geaccepteerd_totaal = 0
     for administratie_id, resultaat in resultaten.items():
+        uitsluiting = uitgesloten.get(administratie_id)
         if isinstance(resultaat, str):
+            if uitsluiting:
+                print(f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})")
+                continue
             fouten += 1
             print(f"FOUT       {administratie_id}: {resultaat}", file=sys.stderr)
             continue
@@ -144,16 +190,32 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
         if not resultaat.afwijkingen:
             print(f"OK         {administratie_id}: {gecontroleerd} gecontroleerd, geen afwijkingen")
             continue
-        afwijkingen_totaal += len(resultaat.afwijkingen)
-        print(
-            f"AFWIJKING  {administratie_id}: {gecontroleerd} gecontroleerd, "
-            f"{len(resultaat.afwijkingen)} afwijking(en)"
+        beoordeeld = acceptatie_service.beoordeel(
+            bron=ReconciliatieBron.BANK,
+            administratie_id=administratie_id,
+            afwijkingen=[(a.record_id, a.soort, a.detail) for a in resultaat.afwijkingen],
         )
-        for a in resultaat.afwijkingen:
-            print(f"    - record={a.record_id} mutatie={a.payment_transaction_id} soort={a.soort}: {a.detail}")
+        open_afwijkingen = [b for b in beoordeeld if b.telt_mee]
+        if uitsluiting:
+            print(
+                f"UITGESLOTEN {administratie_id}: {gecontroleerd} gecontroleerd, "
+                f"{len(open_afwijkingen)} bevinding(en) — telt niet mee ({uitsluiting})"
+            )
+            for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
+                print(f"    - {_regel(f'record={a.record_id} mutatie={a.payment_transaction_id}', b)}")
+            continue
+        afwijkingen_totaal += len(open_afwijkingen)
+        geaccepteerd_totaal += len(beoordeeld) - len(open_afwijkingen)
+        kop = "AFWIJKING " if open_afwijkingen else "OK        "
+        print(
+            f"{kop} {administratie_id}: {gecontroleerd} gecontroleerd, "
+            f"{len(open_afwijkingen)} afwijking(en), {len(beoordeeld) - len(open_afwijkingen)} geaccepteerd"
+        )
+        for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
+            print(f"    - {_regel(f'record={a.record_id} mutatie={a.payment_transaction_id}', b)}")
     print(
         f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties gecontroleerd, "
-        f"{afwijkingen_totaal} afwijking(en) totaal."
+        f"{afwijkingen_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd)."
     )
     return 1 if (fouten or afwijkingen_totaal) else 0
 
@@ -161,19 +223,206 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
 def _omzet_reconciliatie(args: argparse.Namespace) -> int:
     """Omzet-failsafe: vergelijk elke omzet-boeking (verkoopfactuur + kostprijsmemoriaal) met de
     werkelijke RLZ-staat en rapporteer afwijkingen — incl. alle half_geboekt-rijen."""
-    afwijkingen = omzet_reconciliatie.reconcilieer_alle_omzet()
-    if not afwijkingen:
-        print("OK         geen afwijkingen in de omzet-boekingen")
-        return 0
-    for afwijking in afwijkingen:
-        print(
-            f"AFWIJKING  {afwijking.administratie_id} boeking {afwijking.boeking_id} "
-            f"({afwijking.soort}): {afwijking.detail}",
-            file=sys.stderr,
+    resultaat = omzet_reconciliatie.reconcilieer_alle_omzet()
+    uitgesloten = acceptatie_service.uitgesloten_administraties()
+    echte_fouten = {aid: fout for aid, fout in resultaat.fouten.items() if aid not in uitgesloten}
+    for administratie_id, fout in resultaat.fouten.items():
+        if administratie_id in uitgesloten:
+            print(f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})")
+            continue
+        print(f"FOUT       {administratie_id}: {fout}", file=sys.stderr)
+
+    open_totaal = 0
+    geaccepteerd_totaal = 0
+    per_administratie: dict[uuid.UUID, list[omzet_reconciliatie.OmzetAfwijking]] = {}
+    for afwijking in resultaat.afwijkingen:
+        per_administratie.setdefault(afwijking.administratie_id, []).append(afwijking)
+
+    for administratie_id, afwijkingen in per_administratie.items():
+        beoordeeld = acceptatie_service.beoordeel(
+            bron=ReconciliatieBron.OMZET,
+            administratie_id=administratie_id,
+            afwijkingen=[(a.boeking_id, a.soort, a.detail) for a in afwijkingen],
         )
-    print(f"{len(afwijkingen)} afwijking(en) gevonden", file=sys.stderr)
+        for a, b in zip(afwijkingen, beoordeeld, strict=True):
+            regel = _regel(f"{administratie_id} boeking={a.boeking_id}", b)
+            if administratie_id in uitgesloten:
+                print(f"UITGESLOTEN {regel} — telt niet mee ({uitgesloten[administratie_id]})")
+            elif b.telt_mee:
+                open_totaal += 1
+                print(f"AFWIJKING  {regel}", file=sys.stderr)
+            else:
+                geaccepteerd_totaal += 1
+                print(f"OK         {regel}")
+
+    if not echte_fouten and not open_totaal:
+        print(f"OK         geen afwijkingen in de omzet-boekingen ({geaccepteerd_totaal} geaccepteerd)")
+        return 0
+    print(
+        f"{open_totaal} afwijking(en) en {len(echte_fouten)} mislukte administratie(s) gevonden "
+        f"({geaccepteerd_totaal} geaccepteerd)",
+        file=sys.stderr,
+    )
     return 1
 
+
+
+def _reconciliatie_alles(args: argparse.Namespace) -> int:
+    """Alle drie de reconciliaties in één run. Bestaat omdat de handmatige `&&`-keten precies
+    het verkeerde deed: viel de eerste om, dan draaiden de andere twee niet — juist op een dag
+    waarop er iets aan de hand is verloor je zo de omzet-controle (half_geboekt) helemaal.
+    Hier stopt niets vroegtijdig; de exit-code is 1 zodra één blok afwijkingen of fouten meldt."""
+    blokken = (
+        ("bank", _bank_reconciliatie),
+        ("documenten", _reconciliatie),
+        ("omzet", _omzet_reconciliatie),
+    )
+    exitcodes: dict[str, int] = {}
+    for naam, functie in blokken:
+        print(f"\n=== {naam}-reconciliatie ===")
+        try:
+            exitcodes[naam] = functie(args)
+        except Exception as exc:  # noqa: BLE001 — een omgevallen blok mag de rest nooit stoppen
+            print(f"FOUT       {naam}-reconciliatie viel om: {exc}", file=sys.stderr)
+            exitcodes[naam] = 1
+
+    print("\n=== samenvatting ===")
+    for naam, code in exitcodes.items():
+        print(f"{'OK       ' if code == 0 else 'ACTIE    '} {naam}-reconciliatie (exit {code})")
+    return 1 if any(exitcodes.values()) else 0
+
+
+def _huidige_afwijkingen(*, bron: str, administratie_id: uuid.UUID) -> list[tuple[uuid.UUID, str, str]]:
+    """De afwijkingen zoals ze op dit moment gelden, per bron genormaliseerd tot
+    (record_id, soort, detail). Accepteren gaat bewust via een verse run: je kunt daardoor
+    alleen iets accepteren dat er écht is, en record_id/soort/detail komen uit de bron zelf in
+    plaats van uit een overgetypte terminalregel."""
+    if bron == ReconciliatieBron.DOCUMENTEN:
+        rapport = reconciliatie.reconcilieer_administratie(administratie_id=administratie_id)
+        return [(a.document_id, a.soort, a.detail) for a in rapport.afwijkingen]
+    if bron == ReconciliatieBron.BANK:
+        bank_rapport = bank_reconciliatie.reconcilieer_bank(administratie_id=administratie_id)
+        return [(a.record_id, a.soort, a.detail) for a in bank_rapport.afwijkingen]
+    return [(a.boeking_id, a.soort, a.detail) for a in omzet_reconciliatie.reconcilieer_omzet(administratie_id)]
+
+
+def _reconciliatie_accepteer(args: argparse.Namespace) -> int:
+    """Markeer één beoordeelde afwijking als bewust-blijvend (verplichte reden + audit).
+    De afwijking blijft in elk rapport staan, alleen niet meer in de exit-code."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+
+    items = _huidige_afwijkingen(bron=args.bron, administratie_id=administratie_id)
+    gevonden = [
+        (record_id, soort, detail)
+        for record_id, soort, detail in items
+        if acceptatie_service.vingerafdruk(bron=args.bron, soort=soort, detail=detail) == args.vingerafdruk
+    ]
+    if not gevonden:
+        print(
+            f"FOUT: geen actuele {args.bron}-afwijking met vingerafdruk {args.vingerafdruk} in deze "
+            "administratie. Draai de reconciliatie opnieuw — een afwijking die verdwenen of "
+            "veranderd is, hoort niet geaccepteerd te worden.",
+            file=sys.stderr,
+        )
+        for record_id, soort, detail in items:
+            vaf = acceptatie_service.vingerafdruk(bron=args.bron, soort=soort, detail=detail)
+            print(f"    actueel: [vaf:{vaf}] record={record_id} soort={soort}", file=sys.stderr)
+        return 1
+
+    record_id, soort, detail = gevonden[0]
+    try:
+        acceptatie_id = acceptatie_service.accepteer(
+            administratie_id=administratie_id,
+            bron=args.bron,
+            record_id=record_id,
+            soort=soort,
+            detail=detail,
+            reden=args.reden,
+            beheerder_id=beheerder_id,
+        )
+    except acceptatie_service.AcceptatieFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Geaccepteerd: {args.bron}/{soort} [vaf:{args.vingerafdruk}] record={record_id} "
+        f"(acceptatie {acceptatie_id})"
+    )
+    print("De afwijking blijft zichtbaar in het rapport, maar zet de exit-code niet meer op 1.")
+    return 0
+
+
+def _reconciliatie_intrekken(args: argparse.Namespace) -> int:
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        acceptatie_id = acceptatie_service.trek_in(
+            administratie_id=administratie_id,
+            bron=args.bron,
+            vingerafdruk_waarde=args.vingerafdruk,
+            reden=args.reden,
+            beheerder_id=beheerder_id,
+        )
+    except acceptatie_service.AcceptatieFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"Acceptatie {acceptatie_id} ingetrokken — de afwijking telt vanaf de volgende run weer mee.")
+    return 0
+
+
+def _zet_reconciliatie_uitsluiting(args: argparse.Namespace, *, uitgesloten: bool) -> int:
+    """Administratie wel/niet meetellen in de exit-code van de dagelijkse reconciliaties
+    (migratie 0043). Bevindingen blijven in beide gevallen zichtbaar in het rapport."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        beheer_service.zet_reconciliatie_uitgesloten(
+            actor_id=beheerder_id,
+            administratie_id=administratie_id,
+            uitgesloten=uitgesloten,
+            reden=getattr(args, "reden", None),
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    if uitgesloten:
+        print(f"Administratie {administratie_id} telt niet meer mee in de reconciliatie-exit-code.")
+        print("De bevindingen blijven zichtbaar in het rapport onder de markering UITGESLOTEN.")
+    else:
+        print(f"Administratie {administratie_id} telt weer volledig mee in de reconciliaties.")
+    return 0
+
+
+def _reconciliatie_acceptaties(args: argparse.Namespace) -> int:
+    """Overzicht van de actieve acceptaties, zodat ze nooit uit beeld raken doordat de afwijking
+    zelf even niet optreedt."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    rijen = acceptatie_service.actieve_acceptaties_overzicht(administratie_id=administratie_id)
+    if not rijen:
+        print("Geen actieve acceptaties voor deze administratie.")
+        return 0
+    for rij in rijen:
+        print(
+            f"[vaf:{rij.vingerafdruk}] bron={rij.bron} soort={rij.soort} record={rij.record_id} "
+            f"sinds {rij.geaccepteerd_op.date().isoformat()} — {rij.reden}"
+        )
+    return 0
 
 
 def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
@@ -480,6 +729,66 @@ def main(argv: list[str] | None = None) -> int:
         "RLZ-staat (OpenAmount/documentstatus) en rapporteer afwijkingen.",
     )
 
+    subparsers.add_parser(
+        "reconciliatie-alles",
+        help="Draai alle drie de reconciliaties (bank, documenten, omzet) in één run — stopt "
+        "nooit vroegtijdig, exit 1 zodra één blok afwijkingen of fouten meldt.",
+    )
+
+    accepteer_parser = subparsers.add_parser(
+        "reconciliatie-accepteer",
+        help="Markeer één beoordeelde afwijking als bewust-blijvend (verplichte reden + audit): "
+        "blijft zichtbaar in het rapport, telt niet meer mee in de exit-code.",
+    )
+    accepteer_parser.add_argument("--bron", required=True, choices=[b.value for b in ReconciliatieBron])
+    accepteer_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    accepteer_parser.add_argument(
+        "--vingerafdruk", required=True, help="De [vaf:...]-waarde uit de rapportregel."
+    )
+    accepteer_parser.add_argument("--reden", required=True, help="Waarom deze afwijking blijft staan.")
+    accepteer_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+
+    intrekken_parser = subparsers.add_parser(
+        "reconciliatie-intrekken",
+        help="Trek een acceptatie terug — de afwijking telt vanaf de volgende run weer mee "
+        "(de rij blijft bestaan, niets wordt verwijderd).",
+    )
+    intrekken_parser.add_argument("--bron", required=True, choices=[b.value for b in ReconciliatieBron])
+    intrekken_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    intrekken_parser.add_argument("--vingerafdruk", required=True)
+    intrekken_parser.add_argument("--reden", required=True, help="Waarom de acceptatie vervalt.")
+    intrekken_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+
+    acceptaties_parser = subparsers.add_parser(
+        "reconciliatie-acceptaties",
+        help="Toon de actieve acceptaties van één administratie.",
+    )
+    acceptaties_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+
+    uitsluiten_parser = subparsers.add_parser(
+        "reconciliatie-uitsluiten",
+        help="Laat een administratie niet meer meetellen in de exit-code van de reconciliaties "
+        "(bevindingen blijven zichtbaar als UITGESLOTEN) — bedoeld voor de test-administratie.",
+    )
+    uitsluiten_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    uitsluiten_parser.add_argument("--reden", required=True, help="Waarom deze administratie niet meetelt.")
+    uitsluiten_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+
+    insluiten_parser = subparsers.add_parser(
+        "reconciliatie-insluiten",
+        help="Draai de uitsluiting terug: de administratie telt weer volledig mee.",
+    )
+    insluiten_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    insluiten_parser.add_argument(
+        "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+    )
+
     for naam, hulp in (
         ("bank-autoboeken-aan", "Zet de bank-autoboek-toggle (vaste regels automatisch boeken) AAN."),
         ("bank-autoboeken-uit", "Zet de bank-autoboek-toggle UIT."),
@@ -580,6 +889,18 @@ def main(argv: list[str] | None = None) -> int:
         return _bank_reconciliatie(args)
     if args.commando == "omzet-reconciliatie":
         return _omzet_reconciliatie(args)
+    if args.commando == "reconciliatie-alles":
+        return _reconciliatie_alles(args)
+    if args.commando == "reconciliatie-accepteer":
+        return _reconciliatie_accepteer(args)
+    if args.commando == "reconciliatie-intrekken":
+        return _reconciliatie_intrekken(args)
+    if args.commando == "reconciliatie-acceptaties":
+        return _reconciliatie_acceptaties(args)
+    if args.commando == "reconciliatie-uitsluiten":
+        return _zet_reconciliatie_uitsluiting(args, uitgesloten=True)
+    if args.commando == "reconciliatie-insluiten":
+        return _zet_reconciliatie_uitsluiting(args, uitgesloten=False)
     if args.commando == "intake-postvak-verwerken":
         return _intake_postvak_verwerken(args)
     if args.commando == "bank-autoboeken-aan":

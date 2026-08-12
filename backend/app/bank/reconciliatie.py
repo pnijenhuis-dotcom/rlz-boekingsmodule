@@ -86,9 +86,11 @@ def reconcilieer_bank(*, administratie_id: uuid.UUID, client: RlzClient | None =
             try:
                 document = client.get_bank_mutation_direct_booking(rlz_document_id)
             except RlzApiError as exc:
-                afwijkingen.append(
-                    BankAfwijking(boeking_id, payment_transaction_id, "document_ontbreekt_in_rlz", str(exc))
-                )
+                # Zelfde scheiding als in de documenten-reconciliatie (2026-08-12): alleen een
+                # 404 is "weg uit RLZ"; alle andere fouten zeggen iets over de verbinding, niet
+                # over de boeking, en krijgen daarom een eigen soort met een andere vervolgactie.
+                soort = "document_ontbreekt_in_rlz" if exc.status_code == 404 else "controle_mislukt"
+                afwijkingen.append(BankAfwijking(boeking_id, payment_transaction_id, soort, str(exc)))
                 continue
             if document.get("Status") != _STATUS_GESLOTEN:
                 afwijkingen.append(
@@ -105,9 +107,8 @@ def reconcilieer_bank(*, administratie_id: uuid.UUID, client: RlzClient | None =
             try:
                 mutatie = client.get_payment_transaction(payment_transaction_id)
             except RlzApiError as exc:
-                afwijkingen.append(
-                    BankAfwijking(opdracht_id, payment_transaction_id, "mutatie_niet_leesbaar", str(exc))
-                )
+                soort = "mutatie_ontbreekt_in_rlz" if exc.status_code == 404 else "controle_mislukt"
+                afwijkingen.append(BankAfwijking(opdracht_id, payment_transaction_id, soort, str(exc)))
                 continue
             open_amount = mutatie.get("OpenAmount")
             if open_amount is not None and float(open_amount) != 0.0:

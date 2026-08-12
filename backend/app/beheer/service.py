@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -66,6 +67,49 @@ def zet_boeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID,
             nieuwe_waarde={"boeken_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
+
+
+def zet_reconciliatie_uitgesloten(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, uitgesloten: bool, reden: str | None
+) -> bool:
+    """Sluit een administratie uit van de EXIT-CODE van de dagelijkse reconciliaties (migratie
+    0043, besluit Peter 2026-08-12 — bedoeld voor de test-administratie, die permanent
+    testboekingen draagt die een mens in de RLZ-UI opruimt).
+
+    Wat het NIET doet: de administratie uit het rapport filteren. De reconciliatie draait
+    gewoon en toont de bevindingen onder de markering UITGESLOTEN. Dat is het verschil tussen
+    "ik weet dat hier ruis zit" en "ik kijk hier niet meer" — het tweede zou een echte fout in
+    precies de administratie waarop schrijftests draaien onzichtbaar maken.
+
+    Reden verplicht bij aanzetten (ook als DB-CHECK), audit altijd. Beheerder-only: de CLI
+    levert de actor, de router-dependency doet de rolcheck zoals bij de andere toggles."""
+    if uitgesloten and len((reden or "").strip()) < 5:
+        raise BeheerFout("Uitsluiten van een administratie vereist een inhoudelijke reden")
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.reconciliatie_uitgesloten
+        oude_reden = administratie.reconciliatie_uitsluiting_reden
+        administratie.reconciliatie_uitgesloten = uitgesloten
+        administratie.reconciliatie_uitsluiting_reden = reden.strip() if (uitgesloten and reden) else None
+        administratie.reconciliatie_uitgesloten_op = datetime.now(UTC) if uitgesloten else None
+        administratie.reconciliatie_uitgesloten_door = actor_id if uitgesloten else None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="reconciliatie_uitsluiting_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"reconciliatie_uitgesloten": oud, "reden": oude_reden},
+            nieuwe_waarde={
+                "reconciliatie_uitgesloten": uitgesloten,
+                "reden": administratie.reconciliatie_uitsluiting_reden,
+            },
+        )
+        return uitgesloten
 
 
 @dataclass(frozen=True)
