@@ -8,9 +8,10 @@ import { haalVoorwaarden, legVoorwaardenAkkoordVast, type VoorwaardenDto } from 
 
 interface Props {
   naAkkoord: () => void
+  uitloggen: () => Promise<void>
 }
 
-export function VoorwaardenScherm({ naAkkoord }: Props) {
+export function VoorwaardenScherm({ naAkkoord, uitloggen }: Props) {
   const [voorwaarden, setVoorwaarden] = useState<VoorwaardenDto | null>(null)
   const [aangevinkt, setAangevinkt] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
@@ -44,6 +45,11 @@ export function VoorwaardenScherm({ naAkkoord }: Props) {
 
   return (
     <div className="acc-vol" style={{ justifyContent: 'flex-start', paddingTop: 40 }}>
+      {/* Wie niet akkoord gaat moet er ook uit kunnen: zonder deze knop laat de fail-closed-gate
+          alleen "app sluiten" over en blijft de server-sessie leven (randgeval 2026-08-12). */}
+      <button className="acc-iconbtn" title="Uitloggen" aria-label="Uitloggen" onClick={() => void uitloggen()}>
+        ⏻
+      </button>
       <div className="acc-appnaam">
         RLZ <span>Goedkeuren</span>
       </div>

@@ -216,4 +216,43 @@ describe('GoedkeurenFlow', () => {
 
     expect(await screen.findByText('1 factuur wacht op je akkoord')).toBeInTheDocument()
   })
+
+  it('biedt op het voorwaarden-scherm een uitlog-knop — wie niet accepteert houdt geen levende sessie (fix 2026-08-12)', async () => {
+    const routes = basisRoutes([ITEM])
+    routes['/accordering/wachtrij'] = () => jsonResponse({ detail: 'voorwaarden_akkoord_vereist' }, 403)
+    routes['/auth/accordeur/voorwaarden'] = () =>
+      jsonResponse({
+        tekst_versie: '2026-08-11-concept-v1',
+        tekst: '1. Gebruiksvoorwaarden.',
+        akkoord_gegeven: false,
+        administratie_namen: ['BLOW B.V.'],
+      })
+    stubFetch(routes)
+    const uitloggen = vi.fn(() => Promise.resolve())
+    renderFlow(uitloggen)
+
+    expect(await screen.findByText('Voordat je begint')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    expect(uitloggen).toHaveBeenCalledTimes(1)
+  })
+
+  it('meldt een mislukt uitloggen óók op het voorwaarden-scherm zichtbaar (zelfde toast als de header)', async () => {
+    const routes = basisRoutes([ITEM])
+    routes['/accordering/wachtrij'] = () => jsonResponse({ detail: 'voorwaarden_akkoord_vereist' }, 403)
+    routes['/auth/accordeur/voorwaarden'] = () =>
+      jsonResponse({
+        tekst_versie: '2026-08-11-concept-v1',
+        tekst: '1. Gebruiksvoorwaarden.',
+        akkoord_gegeven: false,
+        administratie_namen: ['BLOW B.V.'],
+      })
+    stubFetch(routes)
+    renderFlow(() => Promise.reject(new Error('backend plat')))
+
+    expect(await screen.findByText('Voordat je begint')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    expect(
+      await screen.findByText('Uitloggen mislukte — server niet bereikbaar, probeer het opnieuw'),
+    ).toBeInTheDocument()
+  })
 })

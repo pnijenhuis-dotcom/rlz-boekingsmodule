@@ -315,7 +315,14 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   }
 
   if (voorwaardenNodig) {
-    return <VoorwaardenScherm naAkkoord={() => void laadWachtrij()} />
+    // Zelfde uitlog-flow + toast als in de app-header: ook wie de voorwaarden NIET accepteert
+    // kan de server-sessie netjes beëindigen (fail-closed-gate zonder uitgang, fix 2026-08-12).
+    return (
+      <>
+        <VoorwaardenScherm naAkkoord={() => void laadWachtrij()} uitloggen={doeUitloggen} />
+        {toast && <div className="acc-toast">{toast}</div>}
+      </>
+    )
   }
 
   const teller = items.length

@@ -459,6 +459,20 @@
   text-align: center;
   overflow-y: auto;
 }
+/* Uitlog op de volledige-schermstaat (voorwaarden-gate, fix 2026-08-12): zelfde ⏻ als in de
+   app-header, maar met thema-tokens — de headerknop leunt op de donkere gradient en zou in
+   het lichte thema op de acc-vol-achtergrond onzichtbaar zijn. */
+.acc-vol .acc-iconbtn {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 12px;
+  background: var(--acc-panel);
+  border: 1px solid var(--acc-border);
+  color: var(--acc-muted);
+}
+.acc-vol .acc-iconbtn:hover {
+  background: var(--acc-blue-bg);
+}
 .acc-vol .acc-appnaam {
   font-size: 18px;
   font-weight: 800;
