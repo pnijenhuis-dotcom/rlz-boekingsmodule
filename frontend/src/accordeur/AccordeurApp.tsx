@@ -81,7 +81,7 @@ function useManifest(): void {
 }
 
 export default function AccordeurApp() {
-  const { status, rol, inloggen } = useAuth()
+  const { status, rol, inloggen, uitloggen } = useAuth()
   const location = useLocation()
   const { licht, wissel } = useThema()
   useManifest()
@@ -102,6 +102,16 @@ export default function AccordeurApp() {
     },
     [inloggen],
   )
+
+  // Uitloggen (kliktest 2026-08-12): trekt server-side de refresh-sessie in via het
+  // cookie-pad (/auth/token/vernieuwen/logout, zie AuthContext) en zet de PWA terug naar
+  // het login-scherm; het ontgrendeld-vlaggetje gaat mee weg zodat een volgende sessie
+  // altijd opnieuw bij login/ontgrendelen begint.
+  const uitloggenAccordeur = useCallback(async () => {
+    await uitloggen()
+    sessionStorage.removeItem(ONTGRENDELD_VLAG)
+    setOntgrendeld(false)
+  }, [uitloggen])
 
   const activatieToken = useMemo(() => {
     const state = location.state as { passkeySetupToken?: string } | null
@@ -132,7 +142,7 @@ export default function AccordeurApp() {
   } else if (!ontgrendeld) {
     inhoud = <Ontgrendel naOntgrendeld={naIngelogd} naarLogin={() => setForceerLogin(true)} />
   } else {
-    inhoud = <GoedkeurenFlow wisselThema={wissel} />
+    inhoud = <GoedkeurenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} />
   }
 
   return (

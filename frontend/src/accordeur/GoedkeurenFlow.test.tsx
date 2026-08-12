@@ -53,11 +53,11 @@ function basisRoutes(items: WachtrijItemDto[]): FetchAntwoorden {
   }
 }
 
-function renderFlow() {
+function renderFlow(uitloggen: () => Promise<void> = () => Promise.resolve()) {
   return render(
     <MemoryRouter>
       <AuthProvider>
-        <GoedkeurenFlow wisselThema={() => {}} />
+        <GoedkeurenFlow wisselThema={() => {}} uitloggen={uitloggen} />
       </AuthProvider>
     </MemoryRouter>,
   )
@@ -161,6 +161,27 @@ describe('GoedkeurenFlow', () => {
     expect(await screen.findByText('Voortaan automatisch akkoord?')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Ja, sta toe' }))
     await waitFor(() => expect(staandeVlag).toBe(true))
+  })
+
+  it('heeft een uitlog-knop in de header die de sessie beëindigt (kliktest 2026-08-12)', async () => {
+    stubFetch(basisRoutes([ITEM]))
+    const uitloggen = vi.fn(() => Promise.resolve())
+    renderFlow(uitloggen)
+
+    await screen.findByText('1 factuur wacht op je akkoord')
+    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    expect(uitloggen).toHaveBeenCalledTimes(1)
+  })
+
+  it('meldt een mislukt uitloggen zichtbaar i.p.v. stil te falen', async () => {
+    stubFetch(basisRoutes([ITEM]))
+    renderFlow(() => Promise.reject(new Error('backend plat')))
+
+    await screen.findByText('1 factuur wacht op je akkoord')
+    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    expect(
+      await screen.findByText('Uitloggen mislukte — server niet bereikbaar, probeer het opnieuw'),
+    ).toBeInTheDocument()
   })
 
   it('toont het voorwaarden-scherm zolang de server de wachtrij weigert (blok 3, fail-closed)', async () => {

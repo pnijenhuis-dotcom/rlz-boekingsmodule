@@ -147,9 +147,10 @@ function StaandSheet({ item, onKeuze }: StaandSheetProps) {
 
 interface Props {
   wisselThema: () => void
+  uitloggen: () => Promise<void>
 }
 
-export function GoedkeurenFlow({ wisselThema }: Props) {
+export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const { gebruikerId } = useAuth()
   const [weergave, setWeergave] = useState<Weergave>('wachtrij')
   const [items, setItems] = useState<WachtrijItemDto[]>([])
@@ -293,6 +294,16 @@ export function GoedkeurenFlow({ wisselThema }: Props) {
     }
   }, [gebruikerId])
 
+  const doeUitloggen = async () => {
+    try {
+      await uitloggen()
+    } catch {
+      // Backend onbereikbaar (of andere fout): de sessie is dan niet ingetrokken — blijf in
+      // de app en meld het, in lijn met "niets verdwijnt stil".
+      toon('Uitloggen mislukte — server niet bereikbaar, probeer het opnieuw')
+    }
+  }
+
   const trekIn = async (regel: StaandeRegelDto & { administratie_id: string }) => {
     try {
       await trekStaandeRegelIn(regel.administratie_id, regel.id)
@@ -332,6 +343,9 @@ export function GoedkeurenFlow({ wisselThema }: Props) {
           </button>
           <button className="acc-iconbtn" title="Licht/donker (dark is default)" onClick={wisselThema}>
             ◐
+          </button>
+          <button className="acc-iconbtn" title="Uitloggen" aria-label="Uitloggen" onClick={() => void doeUitloggen()}>
+            ⏻
           </button>
         </div>
       </div>
