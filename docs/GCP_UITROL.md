@@ -94,11 +94,16 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
      dev-default), CRC32C-integriteitschecks conform de KMS-docs, unit-tests met
      fake-KMS-client (`tests/unit/test_envelope_kms.py`). *(Rest: keyring/key aanmaken +
      SA-binding encrypt/decrypt — F1-uitvoering)*
-   - ⚠️ **Masterkey-continuïteit bij datamigratie:** de bestaande credential-store-rijen en
-     TOTP-secrets zijn met de lokale masterkey gewrapt. Bij de DB-overzet (ná F5) moet óf
-     dezelfde masterkey mee naar Secret Manager/KMS, óf er komt een expliciete
-     herversleutel-stap (unwrap-met-oud, wrap-met-nieuw). Stilzwijgend een verse key = alle
-     credentials en TOTP's onbruikbaar. Dit borgen in het migratiescript. *(Code)*
+   - ⚠️ **Masterkey-continuïteit bij datamigratie — GEBORGD (script gebouwd + getest
+     2026-08-13):** `scripts/herversleutel_masterkey.py` (logica
+     `app/security/herversleutel.py`) doet unwrap-met-oud → wrap-met-nieuw over
+     `platform.rlz_credential` + `platform.totp_secret` (webauthn n.v.t. — publieke
+     sleutels). Default DRY-RUN met tellingen; `--uitvoeren` schrijft alleen als álle
+     rijen slagen (één transactie); classificatie is bewijs-gedreven (kandidaat-key moet
+     de ciphertext echt ontsleutelen) en daarmee hervatbaar/idempotent; een guard-test
+     alarmeert zodra een nieuwe tabel met `wrapped_data_key` buiten het script valt.
+     Hoofdroute: `--van lokaal --naar kms` (KMS_MASTERKEY_SLEUTEL). Dry-run tegen de
+     dev-database uitgevoerd: 3 credentials + 2 TOTP-secrets herkend, 0 mislukt.
 4. **Cloud Storage-bucket documenten** (`europe-west4`): **retentiebeleid 7 jaar**
    (bewaarplicht) op de bucket. **Besloten (beslispunt 7): retentie *unlocked*** (verwijderen
    kan dan alleen nog door een admin; *locked* = 7 jaar onherroepelijk, ook bij een
