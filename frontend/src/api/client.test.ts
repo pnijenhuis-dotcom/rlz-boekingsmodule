@@ -78,21 +78,74 @@ describe('verversSessie — single-flight (browserreview 2026-08-07)', () => {
 
   it('hangt nooit eeuwig: na de timeout wordt het een BackendOnbereikbaarError', async () => {
     const client = await verseClient()
-    // Stub die, net als echte fetch, pas faalt wanneer het AbortSignal afgaat.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        (_url: string, init?: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            init?.signal?.addEventListener('abort', () => reject(new DOMException('afgebroken', 'AbortError')))
-          }),
-      ),
-    )
+    stubHangendeFetch()
 
     const belofte = client.verversSessie()
     const verwachting = expect(belofte).rejects.toBeInstanceOf(client.BackendOnbereikbaarError)
-    await vi.advanceTimersByTimeAsync(client.REFRESH_TIMEOUT_MS + 100)
+    await vi.advanceTimersByTimeAsync(client.REQUEST_TIMEOUT_MS + 100)
     await verwachting
+  })
+})
+
+/** Stub die, net als echte fetch, nooit resolvet en pas faalt wanneer het AbortSignal afgaat. */
+function stubHangendeFetch() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('afgebroken', 'AbortError')))
+        }),
+    ),
+  )
+}
+
+describe('timeout op álle requests (kliktest 2026-08-12: oneindig "Bezig…" bij dode backend)', () => {
+  it.each([
+    ['/auth/uitnodigingen/accepteren'],
+    ['/auth/login'],
+    ['/auth/totp/bevestigen'],
+  ])('%s hangt nooit eeuwig — na de timeout een nette onbereikbaar-melding', async (pad) => {
+    const client = await verseClient()
+    stubHangendeFetch()
+
+    const belofte = client.apiPostJson(pad, { veld: 'x' })
+    const verwachting = expect(belofte).rejects.toThrow(client.BACKEND_ONBEREIKBAAR_MELDING)
+    await vi.advanceTimersByTimeAsync(client.REQUEST_TIMEOUT_MS + 100)
+    await verwachting
+  })
+
+  it('kaleAuthFetch (setup-token/cookie-pad) krijgt dezelfde timeout', async () => {
+    const client = await verseClient()
+    stubHangendeFetch()
+
+    const belofte = client.kaleAuthFetch('/auth/webauthn/login/voltooien', { method: 'POST' })
+    const verwachting = expect(belofte).rejects.toBeInstanceOf(client.BackendOnbereikbaarError)
+    await vi.advanceTimersByTimeAsync(client.REQUEST_TIMEOUT_MS + 100)
+    await verwachting
+  })
+
+  it('kaleAuthFetch vertaalt een 502/503/504 van de proxy naar BackendOnbereikbaarError', async () => {
+    const client = await verseClient()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 503 })))
+    await expect(client.kaleAuthFetch('/auth/token/vernieuwen/ontgrendelen')).rejects.toBeInstanceOf(
+      client.BackendOnbereikbaarError,
+    )
+  })
+
+  it('de timeout breekt een al binnengekomen response niet meer af (grote body, bv. PDF-blob)', async () => {
+    const client = await verseClient()
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      init?.signal?.addEventListener('abort', () => {
+        throw new Error('abort had geannuleerd moeten zijn na de response')
+      })
+      return Promise.resolve(jsonResponse({ ok: true }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(client.apiJson('/documenten/x/bestand')).resolves.toEqual({ ok: true })
+    // Ver voorbij de timeout: de abort-timer is bij de response al opgeruimd.
+    await vi.advanceTimersByTimeAsync(client.REQUEST_TIMEOUT_MS * 2)
   })
 })
 

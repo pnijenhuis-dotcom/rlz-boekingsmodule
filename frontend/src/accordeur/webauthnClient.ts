@@ -3,7 +3,7 @@
 // handmatig van/naar ArrayBuffers i.p.v. PublicKeyCredential.parseCreationOptionsFromJSON
 // (pas Safari 17.4+/Chrome 129+ — handmatig dekt ook oudere toestellen).
 
-import { apiJson, apiPostJson } from '../api/client'
+import { apiJson, apiPostJson, kaleAuthFetch } from '../api/client'
 import type { TokenPaarResponseDto } from '../api/types'
 
 export interface WebauthnConfigDto {
@@ -143,12 +143,14 @@ export function accordeurLogin(eMail: string, wachtwoord: string): Promise<Accor
   return apiPostJson('/auth/accordeur/login', { e_mail: eMail, wachtwoord })
 }
 
+/** Via kaleAuthFetch (niet apiFetch): het setup-token vervangt hier het access-token, en een
+ * niet-antwoordende backend moet een nette BackendOnbereikbaarError worden i.p.v. een
+ * eeuwig hangende submit (kliktest 2026-08-12). */
 function metSetupToken(pad: string, token: string, body: unknown): Promise<Response> {
-  return fetch(pad, {
+  return kaleAuthFetch(pad, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
-    credentials: 'include',
   })
 }
 
@@ -191,10 +193,7 @@ export async function loginVoltooien(
 /** App-opening (bekend apparaat): assertion-options op de refresh-cookie. 401 = sessie
  * verlopen (ná 7 dagen) → volledige login; 409 = geen passkeys → registratie. */
 export async function ontgrendelOpties(): Promise<{ status: number; opties: string | null; detail: string }> {
-  const resp = await fetch('/auth/token/vernieuwen/ontgrendel-opties', {
-    method: 'POST',
-    credentials: 'include',
-  })
+  const resp = await kaleAuthFetch('/auth/token/vernieuwen/ontgrendel-opties', { method: 'POST' })
   const body: unknown = await resp.json().catch(() => null)
   if (!resp.ok) {
     const detail =
@@ -208,11 +207,10 @@ export async function ontgrendelen(payload: {
   credential?: Record<string, unknown>
   dev_stub?: boolean
 }): Promise<TokenPaarResponseDto> {
-  const resp = await fetch('/auth/token/vernieuwen/ontgrendelen', {
+  const resp = await kaleAuthFetch('/auth/token/vernieuwen/ontgrendelen', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'include',
   })
   return alsJson<TokenPaarResponseDto>(resp)
 }

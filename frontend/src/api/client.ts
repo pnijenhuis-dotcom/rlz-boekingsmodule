@@ -44,43 +44,56 @@ export class BackendOnbereikbaarError extends ApiError {
   }
 }
 
-async function ruweFetch(pad: string, init: RequestInit): Promise<Response> {
-  const headers = new Headers(init.headers)
-  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+/** Géén request mag eeuwig hangen (kliktest 2026-08-12: oneindig "Bezig…" op de activatie
+ * doordat de backend niet antwoordde) — de refresh-timeout van 2026-08-07 geldt daarom voor
+ * álle requests. Eigen AbortController + setTimeout i.p.v. AbortSignal.timeout(), zodat tests
+ * met fake timers kunnen sturen. */
+export const REQUEST_TIMEOUT_MS = 10_000
+
+async function fetchMetTimeout(pad: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(pad, { ...init, headers, credentials: 'include' })
+    if (init.signal) return await fetch(pad, init)
+    // clearTimeout ná de response-headers: de timeout bewaakt "server antwoordt niet", niet
+    // het daarna binnenstromen van een grote body (PDF-blob) — die zou anders halverwege
+    // afgebroken worden.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    try {
+      return await fetch(pad, { ...init, signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
   } catch {
-    // fetch() gooit alleen bij een echte netwerkfout (geen enkele HTTP-response mogelijk) —
-    // een 502 van de dev-proxy komt hier niet binnen, dat is een gewone (niet-ok) Response.
+    // fetch() gooit alleen bij een echte netwerkfout of de abort hierboven (geen enkele
+    // HTTP-response) — een 502 van de dev-proxy komt hier niet binnen, dat is een gewone
+    // (niet-ok) Response.
     throw new BackendOnbereikbaarError()
   }
 }
 
-/** Refresh mag nooit eeuwig hangen (browserreview 2026-08-07: eindeloos "Laden…" bij een
- * pending vernieuwen-call) — na deze termijn geldt de backend als onbereikbaar. Eigen
- * AbortController + setTimeout i.p.v. AbortSignal.timeout(), zodat tests met fake timers kunnen
- * sturen. */
-export const REFRESH_TIMEOUT_MS = 10_000
+function ruweFetch(pad: string, init: RequestInit): Promise<Response> {
+  const headers = new Headers(init.headers)
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  return fetchMetTimeout(pad, { ...init, headers, credentials: 'include' })
+}
 
-function timeoutSignal(ms: number): AbortSignal {
-  const controller = new AbortController()
-  setTimeout(() => controller.abort(), ms)
-  return controller.signal
+/** Voor auth-endpoints buiten de access-token-flow (accordeur: setup-token in een eigen
+ * Authorization-header, of alleen de refresh-cookie): zelfde timeout- en onbereikbaar-
+ * vertaling als apiFetch, maar zonder het in-memory access-token (dat zou een meegegeven
+ * setup-token overschrijven) en zonder 401-refresh-retry. */
+export async function kaleAuthFetch(pad: string, init: RequestInit = {}): Promise<Response> {
+  const resp = await fetchMetTimeout(pad, { ...init, credentials: 'include' })
+  if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
+  return resp
 }
 
 async function voerVerversUit(): Promise<boolean> {
-  let resp = await ruweFetch('/auth/token/vernieuwen', {
-    method: 'POST',
-    signal: timeoutSignal(REFRESH_TIMEOUT_MS),
-  })
+  let resp = await ruweFetch('/auth/token/vernieuwen', { method: 'POST' })
   if (resp.status === 409) {
     // Rotatie-botsing (backend hield de rij-lock vast voor een parallelle vernieuwing, bv. een
     // tweede tab): geen uitlog-signaal — kort wachten en precies één keer opnieuw proberen.
     await new Promise((resolve) => setTimeout(resolve, 300))
-    resp = await ruweFetch('/auth/token/vernieuwen', {
-      method: 'POST',
-      signal: timeoutSignal(REFRESH_TIMEOUT_MS),
-    })
+    resp = await ruweFetch('/auth/token/vernieuwen', { method: 'POST' })
   }
   if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
   if (!resp.ok) return false
