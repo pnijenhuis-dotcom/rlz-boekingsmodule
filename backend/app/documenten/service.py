@@ -26,7 +26,8 @@ from app.documenten.models import (
 )
 from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
-from app.documenten.storage import DocumentOpslag, LokaleBestandsopslag
+from app.documenten import storage
+from app.documenten.storage import DocumentOpslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
 from app.documenten.wachtrij import ExtractieWachtrij, InProcessExtractieWachtrij
 from app.extractie import controle as extractie_controle
@@ -40,7 +41,8 @@ _PDF_SUFFIX = ".pdf"
 
 
 def _standaard_opslag() -> DocumentOpslag:
-    return LokaleBestandsopslag(Path(settings.document_opslag_basismap))
+    # Config-gedreven (GCS in productie, bestandssysteem in dev) — zie storage.standaard_opslag.
+    return storage.standaard_opslag()
 
 
 # Procesbrede default-wachtrij, lazy aangemaakt (na de eerste grote upload) — tests injecteren

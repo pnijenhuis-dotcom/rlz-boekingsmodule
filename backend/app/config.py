@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     # dezelfde interface in productie (zie app/documenten/storage.py) — 7 jaar bewaarplicht.
     document_opslag_basismap: str = "./.data/documenten"
     document_max_bytes: int = 20 * 1024 * 1024  # 20 MB, ruim voor PDF/XML-facturen
+    # GCS-backend (GCP-draaiboek F1.5): bucketnaam gezet = documentopslag via Cloud Storage
+    # (app/documenten/storage.py::GcsDocumentOpslag, ADC-authenticatie), leeg = lokaal
+    # bestandssysteem. De 7-jaars-retentie zit op de bucket zelf (F1.4), niet in de app.
+    document_gcs_bucket: str | None = None
 
     # CORS: frontend (Vite-dev-server) en backend draaien lokaal op verschillende poorten, dus
     # verschillende origins. Cookies (refresh-token) vereisen expliciete origins + credentials —

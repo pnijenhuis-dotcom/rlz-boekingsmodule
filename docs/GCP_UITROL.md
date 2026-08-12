@@ -100,8 +100,13 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
    (bewaarplicht) op de bucket. **Besloten (beslispunt 7): retentie *unlocked*** (verwijderen
    kan dan alleen nog door een admin; *locked* = 7 jaar onherroepelijk, ook bij een
    foutupload) — heroverwegen bij het WORM-export-besluit. Versioning aan.
-5. **Cloud Storage-implementatie van het opslag-interface** (`app/documenten/storage.py` heeft
-   de seam: interface + lokale implementatie): GCS-variant bouwen + testen. *(Code)*
+5. **Cloud Storage-implementatie van het opslag-interface** — **GEBOUWD + GETEST
+   (2026-08-13):** `GcsDocumentOpslag` in `app/documenten/storage.py`, config-gedreven via
+   `DOCUMENT_GCS_BUCKET` (leeg = lokaal bestandssysteem, dev-default; factory
+   `storage.standaard_opslag()`), NotFound→FileNotFoundError-pariteit + zelfde
+   pad-vangrail; contracttests draaien élke test tegen beide implementaties
+   (`tests/documenten/test_storage.py`, fake-GCS-client). *(Rest van F1.5: bucket zelf
+   aanmaken + ADC/SA-binding — Peter/F1-uitvoering)*
 6. **Migratiepad bestaande data — twee tranches, expliciet gescheiden door de F5-poort:**
    - *vóór F5:* alleen schema + TEST-administratie/eigen kantoordata (verse sync — RLZ is de
      bron van waarheid, caches zijn caches);

@@ -23,6 +23,12 @@ dependencies = [
     # Passkeys accordeur-PWA (blok 1, 2026-08-11): server-side WebAuthn-verificatie.
     # Bewezen implementatie (duo-labs/Cisco), BSD-3-Clause, actief onderhouden (3.x).
     "webauthn>=3.0",
+    # GCP-uitrol (draaiboek F1, 2026-08-13): documentopslag (GcsDocumentOpslag) en de
+    # Cloud KMS-masterkeyprovider (§2b-norm). Runtime-dependencies van het productiebeeld;
+    # lokaal blijven bestandssysteem + LocalMasterKeyProvider de default en worden deze
+    # clients nooit aangeraakt (lazy imports, tests draaien tegen fakes).
+    "google-cloud-storage>=2.18",
+    "google-cloud-kms>=3.0",
 ]
 
 [project.optional-dependencies]
