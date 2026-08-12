@@ -1192,3 +1192,41 @@ TX5/TX6 blijven bewust staan):
    (zie punt 2: verdwenen/vervangen item-id → `404 _NotFound`). Fix: vooraf-toets tegen de
    actuele RLZ-staat vóór elke link-call (`OpenAmount` 0 → "geverifieerd — al afgeletterd in
    RLZ", geen fout; post niet meer open → duidelijke fout vóór de call).
+
+## Doorbelasting STAP-0 — tweezijdige motor gesimuleerd (13 augustus 2026, test-administratie) — GESLAAGD
+
+BLOK 0b van de doorbelastingsbouw (besluit Peter 2026-08-13; canoniek patroon:
+`verkenning/16_DOORBELASTING_KEMPEN.md` incl. de nieuwe §2c-spiegelkantverificatie via
+Rubicon). Script: `verkenning/poc_doorbelasting_schrijf.py` (PoC-waarborgen: admin-pin,
+kill switch, TEST-referenties, append-only audit `output/doorbpoc_audit.jsonl`, storno na
+afloop — Facilities-productie is NIET beschreven). Alles tegen de test-administratie
+`8dbfb856-…`; beide kanten gesimuleerd binnen die ene administratie (de motor gebruikt
+straks twee administraties — de mechanics per kant zijn identiek).
+
+1. **Idempotente crediteur-aanmaak + direct gebruik (de motor-voorwaarde voor de eerste
+   spiegel per doelentiteit): WERKT.** `PUT Vendors/{uuid5}` met alleen `{id, Name}` →
+   herhaal-PUT idempotent; de verse vendor is **direct** terugleesbaar via
+   `Vendors?$filter=Name eq '…'` én direct bruikbaar als `Entity` van een PurchaseInvoice
+   in dezelfde run (geen vertraging/verversing nodig). Debiteur-kant idem
+   (lookup-vóór-PUT-patroon van `zorg_voor_debiteur` bevestigd).
+2. **Bron-kant (Kempen-patroon exact): WERKT.** SalesInvoice mét Entity + twee regels —
+   kostenregel met bron-referentie in de omschrijving van regel 1 (document-Description
+   wordt daaruit afgeleid, bekend feit) + losse regel "Provisie 5% over nettobedrag",
+   beide GB 8000 / 21% — boekt via actie 17 naar Status 2; `InvoiceNumber`/`Reference`
+   (`RLZ-{nr}`) direct terugleesbaar. RLZ rekent het totaal zelf correct op (127,05 =
+   105,00 netto + 22,05 btw).
+3. **Spiegel-kant met gedeelde referentie: WERKT.** PurchaseInvoice met `Reference` = het
+   verkoopnummer van de bron-factuur (zoals Rubicon de 247xxxxx-nummers van Facilities
+   draagt, §2c) → boekt naar Status 2; de eigen duplicaatquery
+   (`Entity/id eq … and Reference eq '…'`) vindt exact 1 treffer. **Volgorde-consequentie
+   voor de motor:** het verkoopnummer bestaat pas ná het boeken van de bron-kant — de
+   spiegel-referentie kan dus pas in stap 2 worden bepaald (bron eerst, dan spiegel; bij
+   falen van de spiegel: storno bron of open taak, half-geboekt-patroon omzetmotor).
+4. **Storno-cyclus beide kanten: WERKT.** Actie 19 in motor-volgorde (spiegel eerst, dan
+   bron): beide documenten van Status 2 → 1 (concept), geen creditdocument (bekend gedrag).
+5. **Rekeningschema-verschil bevestigd:** GB `4604` heet in de test-administratie "Kosten
+   rechtsbijstandverzekering", bij Rubicon "Administratiekosten" — kosten-GB's zijn per
+   administratie verschillend ondanks gelijke nummers. De motor mag de doel-kosten-GB dus
+   nooit op nummer hardcoden: eerste keer per doelentiteit = mens kiest, daarna leert het
+   boekingsgeheugen (conform opdracht blok 1c). TaxRate-GUID 21% (`1e44993a-…`) is wél
+   administratie-overstijgend identiek (opnieuw bevestigd, nu ook in Rubicon).

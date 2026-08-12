@@ -8,6 +8,16 @@
 
 ## 0. Belangrijke beperking: geen spiegelkant-verificatie mogelijk
 
+> **AANVULLING 2026-08-13 (BLOK 0a doorbelastingsbouw): de spiegelkant is alsnog geverifieerd
+> voor één doelentiteit — Rubicon Investments B.V.** (read-only via de app-credential-store;
+> Rubicon is sinds de waarborg-inventarisatie onboarded). Zie de nieuwe §2c hieronder. De
+> beperking blijft staan voor de overige doelentiteiten (Veldhoven/Oirschot Recreatie, Molenhof,
+> Kempen Chalets, …): geen logins, dus onbevestigd of dáár hetzelfde patroon geldt — Rubicon
+> ontvangt in de steekproef uitsluitend de maandelijkse Bloxs-software-doorbelasting en is
+> mogelijk niet representatief voor de recreatie-BV's met veel bouwkosten. Peter levert
+> webservice-logins voor minimaal 2 recreatie-doelentiteiten na (afhankelijkheid, blokkeert de
+> bouw niet: de motor werkt tot die tijd met bron-kant + open spiegel-taak).
+
 **Stap 2c (spiegelkant in 2 doelentiteiten: crediteur Facilities, kosten-GB's, btw) is niet
 uitgevoerd.** KEMPEN_* ziet uitsluitend Kempen Facilities B.V. zelf — geen enkele login in
 `verkenning/.env` heeft toegang tot de doelentiteiten (Veldhoven Recreatie, Oirschot Recreatie,
@@ -130,6 +140,41 @@ RC-rekening functioneert **als vervangende debiteurenrekening** voor groepsklant
 loopt via de lopende rekening-courant, niet via een aparte betaling/aflettering. Dit is relevant
 voor de boekingsmodule: **voor intercompany-doelentiteiten is de "afgeletterd"-status niet de juiste
 graadmeter voor afgehandeld** — het saldo leeft door op de RC, wordt niet per factuur vereffend.
+
+### 2c — Spiegelkant geverifieerd via Rubicon Investments B.V. (BLOK 0a, 2026-08-13)
+
+Read-only via de app-credential-store (Rubicon is onboarded, administratie
+`be5e66b3-b38c-4927-85c1-670490f16e3a`). Bevindingen:
+
+- **Crediteur-record**: "Kempen Facilities B.V." bestaat als Vendor in Rubicon —
+  `d51c26fe-8b05-4034-bcc7-002847342c7f` (EntityKind 2). Eén record, geen duplicaten.
+- **Volume**: 19 inkoopfacturen van Facilities (maandelijkse Bloxs-software-doorbelasting,
+  jan 2025 – jul 2026). `Reference` aan de Rubicon-kant = Facilities' verkoopnummer
+  (247xxxxx-reeks) — de spiegel deelt dus de referentie, bruikbaar voor reconciliatie.
+- **Kosten-GB('s), géén activering**: alle regels op AccountType-2-kostenrekeningen —
+  kostenregel op een passende kostenrekening (2025 t/m mei 2026: `4604 Administratiekosten`;
+  jun/jul 2026: `4410 Contributies/abonnementen` — de mens hercodeert dus per aard van de
+  kosten), provisieregel op een **eigen rekening `4808 "Provisie Kempen facilities"`**. Geen
+  enkele regel op een activarekening (AccountType 3) in de volledige steekproef → geen
+  activering bij deze doelentiteit.
+- **Btw-behandeling**: regels dragen TaxRate `1e44993a-15f6-419f-87e5-3e31ac3d9383` = 21% hoog
+  (zelfde vaste systeem-GUID als in Facilities/test — bevestigt opnieuw dat TaxRate-GUID's
+  administratie-overstijgend identiek zijn); NetAmount excl. btw op de kostenrekening,
+  TaxAmount apart → **reguliere aftrekbare voorbelasting**, geen btw-in-de-kosten.
+- **Provisie-variant**: meestal de losse regel "Provisie 5% over nettobedrag" (spiegel van
+  §2a), maar okt+dec 2025 zit de provisie **verwerkt in de kostenregel** (312,90 = 298,00 +
+  14,90; zelfde factuurtotaal, één regel). Het huidige patroon (2026) is consequent de losse
+  regel — de motor bouwt op het huidige patroon; de eenregel-variant is archief.
+- **⚠️ RC geldt hier NIET**: Rubicon heeft **geen** RC-rekening voor Kempen Facilities
+  (`Ledgers?search=RC`: alleen `1602 RC Inpensas Beheer` + generieke `1603/1604`), en de
+  facturen worden **per stuk vereffend** (BasePaidAmount = vol, `PaymentReferenceList`-
+  koppeling aanwezig; alleen de nieuwste staat open op Status 2). De RC-afhandeling uit §2b is
+  dus een **bron-kant-praktijk (Facilities' debiteurenkant) die per doelentiteit verschilt** —
+  de intercompany-vlag moet daarom per mapping-rij instelbaar zijn, niet globaal.
+- **Representativiteit**: Rubicon ontvangt in deze periode uitsluitend de Bloxs-doorbelasting.
+  Of de recreatie-BV's (veel bouw-/onderhoudskosten, mogelijk investeringen) hetzelfde
+  kosten-GB-/activeringspatroon volgen is hiermee NIET bevestigd — blijft open tot Peter
+  logins levert (§0-aanvulling).
 
 ### 2e — Personeel en investeringen apart?
 
