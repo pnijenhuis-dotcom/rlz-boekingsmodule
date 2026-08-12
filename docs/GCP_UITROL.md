@@ -63,6 +63,11 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
   die zijn per-resource en horen bij F1 (de secrets en de bucket bestaan dan pas).
 - Na afloop print het script de **projectnummer- en WIF-provider-resourcenamen**; daarmee
   bouwt Code de GitHub Actions-testworkflow voor de dummy-push (de laatste F0-verificatie).
+- **Deploy-workflow-SKELET staat klaar (2026-08-13):** `.github/workflows/deploy.yml` —
+  workflow_dispatch-only + expliciete VUL-IN-guard (weigert zolang PROJECT_NUMBER uit F0
+  niet is ingevuld), WIF-auth zonder SA-keys, en de bindende volgorde build → push →
+  migratie-job (`rlz-migratie`, zelfde beeld, `alembic upgrade head`) → revisie live.
+  Activeren = F0-waarden invullen + push-trigger openzetten (staat er als commentaar in).
 
 ## F1 — Data (Cloud SQL, secrets, documenten)
 
@@ -121,12 +126,39 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
    - *ná F5:* de échte overzet: `pg_dump`/restore van de lokale dev-DB (audit log,
      boekingsgeheugen-bevestigingen, werkvoorraad, acceptaties en accordeur-akkoorden zijn
      géén cache en moeten mee), documenten via `gsutil rsync` uit `./.data/documenten`,
-     masterkey-continuïteit uit punt 3. Draaiboekje + verificatiequery's (rijtellingen,
-     documenttellingen per administratie) als los script. *(Code)*
+     masterkey-continuïteit uit punt 3. **Verificatiescript GEBOUWD (2026-08-13):**
+     `scripts/gcp/datamigratie_check.py` (rijtellingen per tabel over platform+boekhouding
+     én per-administratie-tellingen voor élke tabel met `administratie_id` — generiek via
+     information_schema, een nieuwe tabel valt nooit stil buiten de check; alembic-versie
+     moet identiek zijn; exit 1 bij elk verschil). Stappenplan: zie **"F1.6-stappenplan
+     datamigratie tranche 2"** hieronder.
 
 **Verificatie F1:** `alembic upgrade head` schoon tegen de nieuwe instantie; de
 metadata-guard-test groen tegen dat schema; een testdocument geüpload + teruggelezen via de
 GCS-implementatie; retentiebeleid zichtbaar op de bucket.
+
+### F1.6-stappenplan datamigratie tranche 2 (ná F5 — de échte overzet)
+
+Volgorde is bindend; elke stap heeft een expliciete verificatie vóór de volgende begint.
+
+1. **Freeze bron:** lokale backend + dagelijkse run stoppen; geen boekingen/sync tijdens de
+   overzet (RLZ zelf draait gewoon door — dat is de bron van waarheid, geen probleem).
+2. **Dump + restore:** `pg_dump --format=custom` van de lokale `boekhouding` →
+   `pg_restore` in de Cloud SQL-database (schema's staan er al via de Alembic-keten uit
+   F1.1 — restore met `--data-only --disable-triggers`, of een verse database en
+   full-restore; kies één smaak en verifieer de alembic_version).
+3. **Documenten:** `gsutil -m rsync -r ./.data/documenten gs://<bucket>` — eerst met `-n`
+   (droogloop) en de aantallen vergelijken met `boekhouding.document`.
+4. **Masterkey-continuïteit (F1.3):** `scripts/herversleutel_masterkey.py --van lokaal
+   --naar kms` — eerst dry-run (verwacht: 0 mislukt), dan `--uitvoeren`. De OUDE
+   TOTP_MASTER_KEY pas weggooien nadat stap 6 groen is.
+5. **Verificatie:** `scripts/gcp/datamigratie_check.py` met BRON=lokaal, DOEL=Cloud SQL —
+   exit 0 vereist (rijtellingen + per-administratie-tellingen + alembic-versie).
+6. **Functionele proef op doel:** kantoor-login (TOTP werkt = herversleuteling bewezen),
+   RLZ-sync van één administratie (credential-store bewezen), één documentweergave uit de
+   bucket (GCS-pad bewezen).
+7. **Cutover:** Cloud Scheduler-jobs aan (F3), lokale cron uit — pas nadat de
+   job-failure-alerting staat (F3.2, "geen gat tussen oud en nieuw vangnet").
 
 ## F2 — Services (backend, frontend, domein/https)
 
