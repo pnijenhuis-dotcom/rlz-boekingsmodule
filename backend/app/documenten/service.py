@@ -16,6 +16,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import storage
 from app.documenten.models import (
     Boekvoorstel,
     Document,
@@ -26,7 +27,6 @@ from app.documenten.models import (
 )
 from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
-from app.documenten import storage
 from app.documenten.storage import DocumentOpslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
 from app.documenten.wachtrij import ExtractieWachtrij, InProcessExtractieWachtrij
