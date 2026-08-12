@@ -119,16 +119,20 @@ GCS-implementatie; retentiebeleid zichtbaar op de bucket.
 
 **Afhankelijk van:** F1 (DB + secrets moeten bestaan).
 
-1. **Containerisatie-stand: er is nog GEEN backend-Dockerfile** (het `docker/`-mapje bevat
-   alleen postgres-init voor lokale dev; docker-compose draait alleen Postgres). Te bouwen:
-   - `backend/Dockerfile` (Python-slim, dependencies uit pyproject, uvicorn zonder
-     `--reload`);
+1. **Containerisatie: `backend/Dockerfile` GEBOUWD + lokaal geverifieerd (2026-08-13)** —
+   Python 3.12-slim (pariteit met `make check-versions`), dependencies uit pyproject
+   (aparte cache-laag via stdlib-tomllib), uvicorn zonder `--reload` op `$PORT`
+   (Cloud Run-contract, exec/PID 1), non-root `appuser`; `.env`/tests/dev-data buiten het
+   beeld (`backend/.dockerignore` — besluit 0012). Verificatie: docker build + container
+   tegen de lokale Postgres → `/health` 200 mét migratie-guard-passage.
    - migratiestap in de deploy: **eerst `alembic upgrade head` als aparte job/stap, dán de
-     nieuwe revisie live** — de bestaande migratie-guard (fail-fast) is precies de vangrail
-     die een vergeten upgrade tegenhoudt;
+     nieuwe revisie live** — hetzelfde beeld, ander commando
+     (`docker run <image> alembic upgrade head`, lokaal geverifieerd); de migratie-guard
+     (fail-fast) blijft de vangrail die een vergeten upgrade tegenhoudt;
    - de in-process dev-lussen (extractie-wachtrij, webhook-afleveraar-poller) zijn in Cloud
      Run met scale-to-zero onbetrouwbaar → productie draait die functies als jobs (F3), de
-     dev-lus blijft dev. *(Code)*
+     dev-lus blijft dev. NB de docker-compose-kop zegt "Docker niet geïnstalleerd op deze
+     machine" — sinds 2026-08-13 is Docker er wél (29.x); compose blijft alleen-Postgres.
 2. **Frontend-hosting — aanbeveling: same-origin, uit de backend-container.** De backend
    serveert de statische Vite-build (FastAPI StaticFiles + SPA-fallback; hashed assets
    immutable-cache, `index.html` no-cache). Onderbouwing: dev draait al same-origin via de
