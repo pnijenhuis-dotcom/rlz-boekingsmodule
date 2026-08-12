@@ -260,6 +260,42 @@ def zet_afgeletterd_event_ingeschakeld(
         return ingeschakeld
 
 
+def haal_doorbelasting_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.doorbelasting_ingeschakeld
+
+
+def zet_doorbelasting_ingeschakeld(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
+) -> bool:
+    """Toggle voor de actie "Doorbelasten…" op geboekte inkoopfacturen van deze
+    BRON-administratie (migratie 0044, besluit Peter 2026-08-13). Default UIT; in de praktijk
+    alleen Kempen Facilities aan. Beheerder-only (router/CLI), audit als bij de andere
+    toggles; de doel-kant heeft geen eigen vlag — die wordt afgedwongen via de
+    mapping-whitelist."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.doorbelasting_ingeschakeld
+        administratie.doorbelasting_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="doorbelasting_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"doorbelasting_ingeschakeld": oud},
+            nieuwe_waarde={"doorbelasting_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
 def zet_bank_autoboeken_ingeschakeld(
     *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
 ) -> bool:

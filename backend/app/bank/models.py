@@ -107,6 +107,11 @@ class PaymentItemCache(Base):
     referentie2: Mapped[str | None] = mapped_column(default=None)
     rlz_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     payment_status: Mapped[int | None] = mapped_column(SmallInteger, default=None)
+    # Tegenpartij van de open post (migratie 0045, geneste expand Document($expand=Entity)) —
+    # basis voor de intercompany-uitsluiting (RC-consequentie doorbelasting, verkenning/16 §2b).
+    # NULL voor rijen van vóór 0045 tot de eerstvolgende sync-ronde.
+    entity_guid: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    entity_naam: Mapped[str | None] = mapped_column(default=None)
     brondata: Mapped[dict] = mapped_column(JSONB)
     laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)

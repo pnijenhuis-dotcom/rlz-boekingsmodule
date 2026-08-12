@@ -79,3 +79,30 @@ def rlz_upload_id(document_id: uuid.UUID) -> uuid.UUID:
     (`RlzClient.upload_bijlage`): een retry na boeken_mislukt uploadt niet telkens een nieuwe
     bijlage naast de vorige, maar overschrijft (PUT) dezelfde."""
     return uuid.uuid5(_NAMESPACE, f"upload:{document_id}")
+
+
+def rlz_doorbelasting_verkoop_id(document_id: uuid.UUID, doel_customer_guid: uuid.UUID) -> uuid.UUID:
+    """Deterministisch client-GUID voor de doorbelastings-verkoopfactuur in de BRON-administratie
+    (Kempen-doorbelasting, per (bron-factuur, doelentiteit, kant) — opdracht blok 1d). De
+    doelentiteit is geïdentificeerd door haar Customer-GUID in de bron (stabiel RLZ-gegeven,
+    overleeft her-aanmaak van de mapping-rij). Bewust een eigen prefix, nooit
+    rlz_sales_invoice_id hergebruiken: dat GUID is al vergeven aan het document zelf zodra dat
+    óók via de verkoopmotor loopt."""
+    return uuid.uuid5(_NAMESPACE, f"doorbelasting-verkoop:{document_id}:{doel_customer_guid}")
+
+
+def rlz_doorbelasting_spiegel_id(document_id: uuid.UUID, doel_customer_guid: uuid.UUID) -> uuid.UUID:
+    """Deterministisch client-GUID voor de spiegel-inkoopfactuur in de DOEL-administratie —
+    zelfde sleutel als de verkoopkant, eigen prefix (twee RLZ-documenten, één logische
+    transactie; zelfde patroon als verkoop+kostprijsmemoriaal in de omzetmotor)."""
+    return uuid.uuid5(_NAMESPACE, f"doorbelasting-spiegel:{document_id}:{doel_customer_guid}")
+
+
+def rlz_doorbelasting_upload_id(
+    document_id: uuid.UUID, doel_customer_guid: uuid.UUID, *, kant: str
+) -> uuid.UUID:
+    """Client-GUID voor de PDF-bijlage (het originele bron-inkoopdocument) aan de
+    doorbelastings-verkoopfactuur (`kant="verkoop"`) of de spiegel-inkoopfactuur
+    (`kant="spiegel"`) — zelfde bijlage aan beide kanten, twee upload-GUID's
+    (patroon rlz_omzet_upload_id)."""
+    return uuid.uuid5(_NAMESPACE, f"doorbelasting-upload-{kant}:{document_id}:{doel_customer_guid}")

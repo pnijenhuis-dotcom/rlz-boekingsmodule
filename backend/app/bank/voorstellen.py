@@ -26,6 +26,22 @@ from app.db.session import scoped_session
 from app.sync.models import TaxRateCache
 
 
+def intercompany_entity_guids(session, *, administratie_id: uuid.UUID) -> set[uuid.UUID]:
+    """De entity-GUID's die in deze administratie als intercompany gelden (gevoed door de
+    doorbelasting-mapping, migratie 0045). Lokale import: bank kent doorbelasting verder niet."""
+    from app.doorbelasting.models import IntercompanyTegenpartij
+
+    return {
+        rij.entity_guid
+        for rij in session.scalars(
+            select(IntercompanyTegenpartij).where(
+                IntercompanyTegenpartij.administratie_id == administratie_id,
+                IntercompanyTegenpartij.actief.is_(True),
+            )
+        )
+    }
+
+
 @dataclass(frozen=True)
 class MatchContext:
     open_mutaties: list[matchmotor.MutatieGegevens]
@@ -73,6 +89,14 @@ def laad_matchcontext(
                 )
             )
         )
+        # RC-consequentie doorbelasting (blok 2, verkenning/16 §2b): open posten van
+        # intercompany-tegenpartijen lopen via de rekening-courant en horen in géén enkel
+        # afletter-voorstel — hier filteren betekent: onzichtbaar voor alle vier de
+        # voorstelsoorten én voor de auto-afletterlus. De fail-closed-poort voor een
+        # handmatige poging zit daarnaast in afletteren.zet_klaar_voor_afletteren.
+        ic_guids = intercompany_entity_guids(session, administratie_id=administratie_id)
+        if ic_guids:
+            posten = [p for p in posten if p.entity_guid not in ic_guids]
         regels = list(
             session.scalars(
                 select(BankRegel).where(

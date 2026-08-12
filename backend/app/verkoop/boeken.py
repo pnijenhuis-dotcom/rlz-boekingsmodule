@@ -101,6 +101,8 @@ def _lokaal_max_verkoop_invoice_number(administratie_id: uuid.UUID) -> int:
     """Het lokale deel van het nummer-herstel, over ÁLLE eigen SalesInvoice-boekingen van deze
     administratie: de omzet-Receipts (omzet_boeking) én de Vastly-verkoopboekingen hier —
     de RLZ-collectie ziet geen van beide (omzet-STAP-0)."""
+    from app.doorbelasting.models import DoorbelastingBoeking
+
     with scoped_session(administratie_id) as session:
         eigen_max = session.scalar(
             select(VerkoopBoeking.verkoop_invoice_number)
@@ -111,7 +113,18 @@ def _lokaal_max_verkoop_invoice_number(administratie_id: uuid.UUID) -> int:
             .order_by(VerkoopBoeking.verkoop_invoice_number.desc())
             .limit(1)
         )
-    return max(eigen_max or 0, _lokaal_max_invoice_number(administratie_id))
+        # sinds 0044 telt óók de doorbelastingsmotor eigen SalesInvoice-nummers uit —
+        # zonder deze tak kan het nummer-herstel hier botsen met een doorbelastingsfactuur
+        doorbelasting_max = session.scalar(
+            select(DoorbelastingBoeking.verkoop_invoice_number)
+            .where(
+                DoorbelastingBoeking.administratie_id == administratie_id,
+                DoorbelastingBoeking.verkoop_invoice_number.isnot(None),
+            )
+            .order_by(DoorbelastingBoeking.verkoop_invoice_number.desc())
+            .limit(1)
+        )
+    return max(eigen_max or 0, doorbelasting_max or 0, _lokaal_max_invoice_number(administratie_id))
 
 
 def _sla_verkoop_webhook_op(

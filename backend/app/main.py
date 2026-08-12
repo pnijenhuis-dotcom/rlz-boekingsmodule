@@ -18,6 +18,7 @@ from app.db.migratie_guard import controleer_migratie_versie
 from app.documenten import service as documenten_service
 from app.documenten import webhook_afleveraar
 from app.documenten.router import router as documenten_router
+from app.doorbelasting.router import router as doorbelasting_router
 from app.geheugen.router import router as geheugen_router
 from app.intake.router import router as intake_router
 from app.omzet.router import router as omzet_router
@@ -150,6 +151,7 @@ app.include_router(geheugen_router)
 app.include_router(omzet_router)
 app.include_router(verkoop_router)
 app.include_router(waarborg_router)
+app.include_router(doorbelasting_router)
 app.include_router(zoeken_router)
 app.include_router(intake_router)
 app.include_router(credentialstore_router)

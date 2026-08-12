@@ -14,6 +14,7 @@ from sqlalchemy import engine_from_config, pool
 import app.accordering.models  # noqa: F401
 import app.bank.models  # noqa: F401
 import app.documenten.models  # noqa: F401
+import app.doorbelasting.models  # noqa: F401
 import app.geheugen.models  # noqa: F401
 import app.intake.models  # noqa: F401
 import app.omzet.models  # noqa: F401

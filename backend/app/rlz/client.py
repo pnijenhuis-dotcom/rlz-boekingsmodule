@@ -351,6 +351,16 @@ class RlzClient:
         veilig = name.replace("'", "''")
         return self.get("Customers", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
 
+    def find_vendors_by_name(self, *, name: str) -> list[dict[str, Any]]:
+        """Crediteur-lookup vóór de idempotente PUT in een DOEL-administratie (doorbelasting:
+        de spiegel-inkoopfactuur draagt crediteur "Kempen Facilities B.V." — lookup-vóór-PUT
+        zoals zorg_voor_debiteur, maar dan tegen de Vendors-collectie van de doel-administratie
+        i.p.v. de lokale VendorCache, die voor een net-onboarde doel-administratie leeg kan
+        zijn). STAP-0 (poc_doorbelasting_schrijf.py, 2026-08-13): een verse vendor is direct
+        via dit filter terugleesbaar én direct bruikbaar als Entity."""
+        veilig = name.replace("'", "''")
+        return self.get("Vendors", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
+
     def put_sales_invoice(
         self,
         invoice_id: uuid.UUID,

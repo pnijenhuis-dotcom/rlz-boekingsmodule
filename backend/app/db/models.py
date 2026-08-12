@@ -99,6 +99,11 @@ class Administratie(Base):
     # vlag (tier-model optie 2: Vastly + boekingsmodule) — aparte kolom naast is_vastgoed,
     # default UIT; activatie wacht op vastgoeds verwerker.
     afgeletterd_event_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Doorbelasting-toggle (migratie 0044, besluit Peter 2026-08-13): de actie "Doorbelasten…"
+    # bestaat alleen op BRON-administraties met deze vlag aan (default UIT; in de praktijk
+    # alleen Kempen Facilities). De doel-kant heeft geen vlag nodig: doorbelasten náár een
+    # administratie wordt afgedwongen via de mapping-whitelist (doorbelasting_mapping).
+    doorbelasting_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

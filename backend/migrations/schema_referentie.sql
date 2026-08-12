@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0043
+-- Migratie-head bij deze dump: 0045
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -621,6 +621,115 @@ ALTER TABLE ONLY boekhouding.document_gebeurtenis FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: doorbelasting_boeking; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.doorbelasting_boeking (
+    id uuid NOT NULL,
+    run_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    mapping_id uuid NOT NULL,
+    doel_administratie_id uuid,
+    status text DEFAULT 'geboekt'::text NOT NULL,
+    netto_totaal numeric(14,2) NOT NULL,
+    provisie_bedrag numeric(14,2) NOT NULL,
+    btw_bedrag numeric(14,2) NOT NULL,
+    verkoop_rlz_id uuid NOT NULL,
+    verkoop_referentie text,
+    verkoop_invoice_number integer,
+    spiegel_rlz_id uuid NOT NULL,
+    spiegel_geboekt_op timestamp with time zone,
+    half_geboekt_detail jsonb,
+    storno_reden text,
+    geboekt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT doorbelasting_boeking_status CHECK ((status = ANY (ARRAY['geboekt'::text, 'spiegel_open'::text, 'half_geboekt'::text, 'gestorneerd'::text]))),
+    CONSTRAINT doorbelasting_boeking_storno_reden CHECK (((status <> 'gestorneerd'::text) OR ((storno_reden IS NOT NULL) AND (length(btrim(storno_reden)) >= 5))))
+);
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: doorbelasting_instelling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.doorbelasting_instelling (
+    administratie_id uuid NOT NULL,
+    provisie_percentage numeric(5,2) DEFAULT 5.00 NOT NULL,
+    btw_taxrate_id uuid,
+    omzet_ledger_id uuid,
+    provisie_omzet_ledger_id uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT doorbelasting_instelling_provisie_bereik CHECK (((provisie_percentage >= (0)::numeric) AND (provisie_percentage <= (100)::numeric)))
+);
+
+ALTER TABLE ONLY boekhouding.doorbelasting_instelling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: doorbelasting_mapping; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.doorbelasting_mapping (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    doelentiteit_naam text NOT NULL,
+    doel_customer_guid uuid NOT NULL,
+    doel_administratie_id uuid,
+    intercompany boolean DEFAULT true NOT NULL,
+    provisie_kosten_ledger_id uuid,
+    laatste_kosten_ledger_id uuid,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.doorbelasting_mapping FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: doorbelasting_regel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.doorbelasting_regel (
+    id uuid NOT NULL,
+    run_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    bron_regel_id uuid NOT NULL,
+    mapping_id uuid NOT NULL,
+    percentage numeric(5,2) NOT NULL,
+    netto_deel numeric(14,2) NOT NULL,
+    doel_kosten_ledger_id uuid,
+    CONSTRAINT doorbelasting_regel_pct_bereik CHECK (((percentage > (0)::numeric) AND (percentage <= (100)::numeric)))
+);
+
+ALTER TABLE ONLY boekhouding.doorbelasting_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: doorbelasting_run; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.doorbelasting_run (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    status text DEFAULT 'concept'::text NOT NULL,
+    laatste_fout jsonb,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    geboekt_op timestamp with time zone,
+    CONSTRAINT doorbelasting_run_status CHECK ((status = ANY (ARRAY['concept'::text, 'geboekt'::text, 'gestorneerd'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.doorbelasting_run FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: iban_accordering; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -700,6 +809,25 @@ CREATE TABLE boekhouding.intake_splitsing (
 );
 
 ALTER TABLE ONLY boekhouding.intake_splitsing FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: intercompany_tegenpartij; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.intercompany_tegenpartij (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    entity_guid uuid NOT NULL,
+    naam text NOT NULL,
+    bron text DEFAULT 'doorbelasting_mapping'::text NOT NULL,
+    mapping_id uuid,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.intercompany_tegenpartij FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -889,7 +1017,9 @@ CREATE TABLE boekhouding.payment_item_cache (
     payment_status smallint,
     brondata jsonb NOT NULL,
     laatst_gesynchroniseerd timestamp with time zone DEFAULT now() NOT NULL,
-    verdwenen_uit_bron_op timestamp with time zone
+    verdwenen_uit_bron_op timestamp with time zone,
+    entity_guid uuid,
+    entity_naam text
 );
 
 ALTER TABLE ONLY boekhouding.payment_item_cache FORCE ROW LEVEL SECURITY;
@@ -929,7 +1059,7 @@ CREATE TABLE boekhouding.reconciliatie_acceptatie (
     geaccepteerd_op timestamp with time zone DEFAULT now() NOT NULL,
     ingetrokken_door uuid,
     ingetrokken_op timestamp with time zone,
-    CONSTRAINT reconciliatie_acceptatie_bron_geldig CHECK ((bron = ANY (ARRAY['documenten'::text, 'bank'::text, 'omzet'::text]))),
+    CONSTRAINT reconciliatie_acceptatie_bron_geldig CHECK ((bron = ANY (ARRAY['documenten'::text, 'bank'::text, 'omzet'::text, 'doorbelasting'::text]))),
     CONSTRAINT reconciliatie_acceptatie_intrekking_compleet CHECK (((ingetrokken_op IS NULL) = (ingetrokken_door IS NULL))),
     CONSTRAINT reconciliatie_acceptatie_reden_gevuld CHECK ((length(btrim(reden)) >= 5))
 );
@@ -1216,6 +1346,7 @@ CREATE TABLE platform.administratie (
     reconciliatie_uitsluiting_reden text,
     reconciliatie_uitgesloten_op timestamp with time zone,
     reconciliatie_uitgesloten_door uuid,
+    doorbelasting_ingeschakeld boolean DEFAULT false NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5))))
 );
 
@@ -1607,6 +1738,62 @@ ALTER TABLE ONLY boekhouding.document
 
 
 --
+-- Name: doorbelasting_boeking doorbelasting_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking
+    ADD CONSTRAINT doorbelasting_boeking_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: doorbelasting_instelling doorbelasting_instelling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_instelling
+    ADD CONSTRAINT doorbelasting_instelling_pkey PRIMARY KEY (administratie_id);
+
+
+--
+-- Name: doorbelasting_mapping doorbelasting_mapping_doel_uniek; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_mapping
+    ADD CONSTRAINT doorbelasting_mapping_doel_uniek UNIQUE (administratie_id, doel_customer_guid);
+
+
+--
+-- Name: doorbelasting_mapping doorbelasting_mapping_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_mapping
+    ADD CONSTRAINT doorbelasting_mapping_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: doorbelasting_regel doorbelasting_regel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_regel
+    ADD CONSTRAINT doorbelasting_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: doorbelasting_regel doorbelasting_regel_uniek; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_regel
+    ADD CONSTRAINT doorbelasting_regel_uniek UNIQUE (run_id, bron_regel_id, mapping_id);
+
+
+--
+-- Name: doorbelasting_run doorbelasting_run_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_run
+    ADD CONSTRAINT doorbelasting_run_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: iban_accordering iban_accordering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -1636,6 +1823,22 @@ ALTER TABLE ONLY boekhouding.intake_bericht
 
 ALTER TABLE ONLY boekhouding.intake_splitsing
     ADD CONSTRAINT intake_splitsing_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: intercompany_tegenpartij intercompany_tegenpartij_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intercompany_tegenpartij
+    ADD CONSTRAINT intercompany_tegenpartij_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: intercompany_tegenpartij intercompany_tegenpartij_uniek; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intercompany_tegenpartij
+    ADD CONSTRAINT intercompany_tegenpartij_uniek UNIQUE (administratie_id, entity_guid);
 
 
 --
@@ -2027,6 +2230,20 @@ ALTER TABLE ONLY public.alembic_version
 --
 
 CREATE UNIQUE INDEX afwijzing_een_open_per_document ON boekhouding.afwijzing USING btree (document_id) WHERE (status = 'open'::text);
+
+
+--
+-- Name: doorbelasting_boeking_doc_doel_uniek; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX doorbelasting_boeking_doc_doel_uniek ON boekhouding.doorbelasting_boeking USING btree (document_id, mapping_id) WHERE (status <> 'gestorneerd'::text);
+
+
+--
+-- Name: doorbelasting_run_document_actief_uniek; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX doorbelasting_run_document_actief_uniek ON boekhouding.doorbelasting_run USING btree (document_id) WHERE (status <> 'gestorneerd'::text);
 
 
 --
@@ -2712,6 +2929,142 @@ ALTER TABLE ONLY boekhouding.document
 
 
 --
+-- Name: doorbelasting_boeking doorbelasting_boeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking
+    ADD CONSTRAINT doorbelasting_boeking_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: doorbelasting_boeking doorbelasting_boeking_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking
+    ADD CONSTRAINT doorbelasting_boeking_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: doorbelasting_boeking doorbelasting_boeking_doel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking
+    ADD CONSTRAINT doorbelasting_boeking_doel_administratie_id_fkey FOREIGN KEY (doel_administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: doorbelasting_boeking doorbelasting_boeking_geboekt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking
+    ADD CONSTRAINT doorbelasting_boeking_geboekt_door_fkey FOREIGN KEY (geboekt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: doorbelasting_boeking doorbelasting_boeking_mapping_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking
+    ADD CONSTRAINT doorbelasting_boeking_mapping_id_fkey FOREIGN KEY (mapping_id) REFERENCES boekhouding.doorbelasting_mapping(id);
+
+
+--
+-- Name: doorbelasting_boeking doorbelasting_boeking_run_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_boeking
+    ADD CONSTRAINT doorbelasting_boeking_run_id_fkey FOREIGN KEY (run_id) REFERENCES boekhouding.doorbelasting_run(id);
+
+
+--
+-- Name: doorbelasting_instelling doorbelasting_instelling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_instelling
+    ADD CONSTRAINT doorbelasting_instelling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: doorbelasting_mapping doorbelasting_mapping_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_mapping
+    ADD CONSTRAINT doorbelasting_mapping_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: doorbelasting_mapping doorbelasting_mapping_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_mapping
+    ADD CONSTRAINT doorbelasting_mapping_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: doorbelasting_mapping doorbelasting_mapping_doel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_mapping
+    ADD CONSTRAINT doorbelasting_mapping_doel_administratie_id_fkey FOREIGN KEY (doel_administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: doorbelasting_regel doorbelasting_regel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_regel
+    ADD CONSTRAINT doorbelasting_regel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: doorbelasting_regel doorbelasting_regel_bron_regel_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_regel
+    ADD CONSTRAINT doorbelasting_regel_bron_regel_id_fkey FOREIGN KEY (bron_regel_id) REFERENCES boekhouding.boekvoorstel_regel(id);
+
+
+--
+-- Name: doorbelasting_regel doorbelasting_regel_mapping_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_regel
+    ADD CONSTRAINT doorbelasting_regel_mapping_id_fkey FOREIGN KEY (mapping_id) REFERENCES boekhouding.doorbelasting_mapping(id);
+
+
+--
+-- Name: doorbelasting_regel doorbelasting_regel_run_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_regel
+    ADD CONSTRAINT doorbelasting_regel_run_id_fkey FOREIGN KEY (run_id) REFERENCES boekhouding.doorbelasting_run(id);
+
+
+--
+-- Name: doorbelasting_run doorbelasting_run_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_run
+    ADD CONSTRAINT doorbelasting_run_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: doorbelasting_run doorbelasting_run_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_run
+    ADD CONSTRAINT doorbelasting_run_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: doorbelasting_run doorbelasting_run_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_run
+    ADD CONSTRAINT doorbelasting_run_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
 -- Name: iban_accordering iban_accordering_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2781,6 +3134,14 @@ ALTER TABLE ONLY boekhouding.intake_splitsing
 
 ALTER TABLE ONLY boekhouding.intake_splitsing
     ADD CONSTRAINT intake_splitsing_bron_document_id_fkey FOREIGN KEY (bron_document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: intercompany_tegenpartij intercompany_tegenpartij_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intercompany_tegenpartij
+    ADD CONSTRAINT intercompany_tegenpartij_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -3563,6 +3924,71 @@ CREATE POLICY document_gebeurtenis_scope ON boekhouding.document_gebeurtenis USI
 
 
 --
+-- Name: doorbelasting_boeking; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.doorbelasting_boeking ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: doorbelasting_boeking doorbelasting_boeking_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY doorbelasting_boeking_scope ON boekhouding.doorbelasting_boeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: doorbelasting_instelling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.doorbelasting_instelling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: doorbelasting_instelling doorbelasting_instelling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY doorbelasting_instelling_scope ON boekhouding.doorbelasting_instelling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: doorbelasting_mapping; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.doorbelasting_mapping ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: doorbelasting_mapping doorbelasting_mapping_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY doorbelasting_mapping_scope ON boekhouding.doorbelasting_mapping USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: doorbelasting_regel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.doorbelasting_regel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: doorbelasting_regel doorbelasting_regel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY doorbelasting_regel_scope ON boekhouding.doorbelasting_regel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: doorbelasting_run; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.doorbelasting_run ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: doorbelasting_run doorbelasting_run_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY doorbelasting_run_scope ON boekhouding.doorbelasting_run USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: iban_accordering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -3612,6 +4038,19 @@ ALTER TABLE boekhouding.intake_splitsing ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY intake_splitsing_scope ON boekhouding.intake_splitsing USING (true) WITH CHECK (true);
+
+
+--
+-- Name: intercompany_tegenpartij; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.intercompany_tegenpartij ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: intercompany_tegenpartij intercompany_tegenpartij_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY intercompany_tegenpartij_scope ON boekhouding.intercompany_tegenpartij USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

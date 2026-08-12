@@ -13,6 +13,8 @@ from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
 from app.documenten import reconciliatie, webhook_afleveraar
+from app.doorbelasting import reconciliatie as doorbelasting_reconciliatie
+from app.doorbelasting import service as doorbelasting_service
 from app.geheugen import seed as geheugen_seed
 from app.intake.postvak import ImapPostvakBron, PostvakNietGeconfigureerd
 from app.omzet import reconciliatie as omzet_reconciliatie
@@ -267,6 +269,69 @@ def _omzet_reconciliatie(args: argparse.Namespace) -> int:
 
 
 
+def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
+    """Doorbelasting-failsafe: vergelijk elke doorbelastings-boeking (verkoopfactuur in de bron
+    + spiegel-inkoopfactuur in het doel) met de werkelijke RLZ-staat — incl. alle
+    half_geboekt-rijen en verouderde open spiegel-taken."""
+    resultaat = doorbelasting_reconciliatie.reconcilieer_alle_doorbelasting()
+    uitgesloten = acceptatie_service.uitgesloten_administraties()
+    echte_fouten = {aid: fout for aid, fout in resultaat.fouten.items() if aid not in uitgesloten}
+    for administratie_id, fout in resultaat.fouten.items():
+        if administratie_id in uitgesloten:
+            print(f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})")
+            continue
+        print(f"FOUT       {administratie_id}: {fout}", file=sys.stderr)
+
+    open_totaal = 0
+    geaccepteerd_totaal = 0
+    per_administratie: dict[uuid.UUID, list[doorbelasting_reconciliatie.DoorbelastingAfwijking]] = {}
+    for afwijking in resultaat.afwijkingen:
+        per_administratie.setdefault(afwijking.administratie_id, []).append(afwijking)
+
+    for administratie_id, afwijkingen in per_administratie.items():
+        beoordeeld = acceptatie_service.beoordeel(
+            bron=ReconciliatieBron.DOORBELASTING,
+            administratie_id=administratie_id,
+            afwijkingen=[(a.boeking_id, a.soort, a.detail) for a in afwijkingen],
+        )
+        for a, b in zip(afwijkingen, beoordeeld, strict=True):
+            regel = _regel(f"{administratie_id} boeking={a.boeking_id}", b)
+            if administratie_id in uitgesloten:
+                print(f"UITGESLOTEN {regel} — telt niet mee ({uitgesloten[administratie_id]})")
+            elif b.telt_mee:
+                open_totaal += 1
+                print(f"AFWIJKING  {regel}", file=sys.stderr)
+            else:
+                geaccepteerd_totaal += 1
+                print(f"OK         {regel}")
+
+    if not echte_fouten and not open_totaal:
+        print(f"OK         geen afwijkingen in de doorbelastingen ({geaccepteerd_totaal} geaccepteerd)")
+        return 0
+    print(
+        f"{open_totaal} afwijking(en) en {len(echte_fouten)} mislukte administratie(s) gevonden "
+        f"({geaccepteerd_totaal} geaccepteerd)",
+        file=sys.stderr,
+    )
+    return 1
+
+
+def _doorbelasting_seed_kempen(args: argparse.Namespace) -> int:
+    """Losse, expliciete seed-stap (migraties zijn schema-only): de whitelist doelentiteit ↔
+    Customer-GUID uit verkenning/16 §1 voor de opgegeven BRON-administratie. Idempotent."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    toegevoegd = doorbelasting_service.seed_kempen_mappings(
+        administratie_id=administratie_id, actor_id=beheerder_id
+    )
+    print(f"OK         {toegevoegd} mapping(s) toegevoegd ({len(doorbelasting_service.KEMPEN_SEED)} totaal in de seed)")
+    return 0
+
+
 def _reconciliatie_alles(args: argparse.Namespace) -> int:
     """Alle drie de reconciliaties in één run. Bestaat omdat de handmatige `&&`-keten precies
     het verkeerde deed: viel de eerste om, dan draaiden de andere twee niet — juist op een dag
@@ -276,6 +341,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         ("bank", _bank_reconciliatie),
         ("documenten", _reconciliatie),
         ("omzet", _omzet_reconciliatie),
+        ("doorbelasting", _doorbelasting_reconciliatie),
     )
     exitcodes: dict[str, int] = {}
     for naam, functie in blokken:
@@ -303,6 +369,11 @@ def _huidige_afwijkingen(*, bron: str, administratie_id: uuid.UUID) -> list[tupl
     if bron == ReconciliatieBron.BANK:
         bank_rapport = bank_reconciliatie.reconcilieer_bank(administratie_id=administratie_id)
         return [(a.record_id, a.soort, a.detail) for a in bank_rapport.afwijkingen]
+    if bron == ReconciliatieBron.DOORBELASTING:
+        return [
+            (a.boeking_id, a.soort, a.detail)
+            for a in doorbelasting_reconciliatie.reconcilieer_doorbelasting(administratie_id)
+        ]
     return [(a.boeking_id, a.soort, a.detail) for a in omzet_reconciliatie.reconcilieer_omzet(administratie_id)]
 
 
@@ -730,9 +801,24 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "doorbelasting-reconciliatie",
+        help="Vergelijk doorbelastings-boekingen (verkoopfactuur bron + spiegel-inkoopfactuur "
+        "doel) met de werkelijke RLZ-staat — incl. half-geboekte rijen en verouderde open "
+        "spiegel-taken.",
+    )
+
+    seed_kempen_parser = subparsers.add_parser(
+        "doorbelasting-seed-kempen",
+        help="Seed de doorbelasting-whitelist (doelentiteit ↔ Customer-GUID, verkenning/16 §1) "
+        "voor een BRON-administratie — idempotent, losse stap (migraties zijn schema-only).",
+    )
+    seed_kempen_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    seed_kempen_parser.add_argument("--beheerder-id", required=True, dest="beheerder_id")
+
+    subparsers.add_parser(
         "reconciliatie-alles",
-        help="Draai alle drie de reconciliaties (bank, documenten, omzet) in één run — stopt "
-        "nooit vroegtijdig, exit 1 zodra één blok afwijkingen of fouten meldt.",
+        help="Draai alle vier de reconciliaties (bank, documenten, omzet, doorbelasting) in één "
+        "run — stopt nooit vroegtijdig, exit 1 zodra één blok afwijkingen of fouten meldt.",
     )
 
     accepteer_parser = subparsers.add_parser(
@@ -889,6 +975,10 @@ def main(argv: list[str] | None = None) -> int:
         return _bank_reconciliatie(args)
     if args.commando == "omzet-reconciliatie":
         return _omzet_reconciliatie(args)
+    if args.commando == "doorbelasting-reconciliatie":
+        return _doorbelasting_reconciliatie(args)
+    if args.commando == "doorbelasting-seed-kempen":
+        return _doorbelasting_seed_kempen(args)
     if args.commando == "reconciliatie-alles":
         return _reconciliatie_alles(args)
     if args.commando == "reconciliatie-accepteer":

@@ -19,6 +19,7 @@ class ReconciliatieBron(enum.StrEnum):
     DOCUMENTEN = "documenten"
     BANK = "bank"
     OMZET = "omzet"
+    DOORBELASTING = "doorbelasting"
 
 
 class ReconciliatieAcceptatie(Base):

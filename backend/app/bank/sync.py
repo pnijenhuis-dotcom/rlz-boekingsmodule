@@ -318,6 +318,15 @@ def sync_payment_transactions(*, administratie_id: uuid.UUID, client: RlzClient)
 
 
 def _item_waarden(record: dict[str, Any]) -> dict[str, Any]:
+    # Tegenpartij via de geneste expand Document($expand=Entity) — geverifieerd 2026-08-13
+    # (STAP-0 IC-uitsluiting): basis voor de intercompany-uitsluiting in de matchcontext.
+    entity = (record.get("Document") or {}).get("Entity") or {}
+    entity_guid: uuid.UUID | None = None
+    if entity.get("id"):
+        try:
+            entity_guid = uuid.UUID(str(entity["id"]))
+        except ValueError:
+            entity_guid = None
     return {
         "bedrag": _decimal(record.get("Amount")),
         "boekdatum": _datum(record.get("BookDate")),
@@ -326,12 +335,14 @@ def _item_waarden(record: dict[str, Any]) -> dict[str, Any]:
         "referentie2": record.get("Reference2"),
         "rlz_document_id": _nav_id(record, "Document"),
         "payment_status": record.get("PaymentStatus"),
+        "entity_guid": entity_guid,
+        "entity_naam": entity.get("Name"),
         "brondata": record,
     }
 
 
 def sync_payment_items(*, administratie_id: uuid.UUID, client: RlzClient) -> SyncTelling:
-    items = client.list_payment_items(params={"$expand": "Document"})
+    items = client.list_payment_items(params={"$expand": "Document($expand=Entity)"})
     now = datetime.now(UTC)
     with scoped_session(administratie_id) as session:
         return _upsert_en_markeer_verdwenen(

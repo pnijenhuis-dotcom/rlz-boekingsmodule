@@ -193,6 +193,41 @@ def ai_extractie_instelling_zetten(
 
 
 @router.get(
+    "/administraties/{administratie_id}/doorbelasting-instelling",
+    response_model=schemas.DoorbelastingIngeschakeldDto,
+)
+def doorbelasting_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.DoorbelastingIngeschakeldDto:
+    """Scope-check, geen Beheerder-only: de UI moet per administratie weten of de actie
+    "Doorbelasten…" bestaat (zelfde overweging als de project-instelling)."""
+    try:
+        ingeschakeld = service.haal_doorbelasting_ingeschakeld_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.DoorbelastingIngeschakeldDto(ingeschakeld=ingeschakeld)
+
+
+@router.put(
+    "/administraties/{administratie_id}/doorbelasting-instelling",
+    response_model=schemas.DoorbelastingIngeschakeldDto,
+)
+def doorbelasting_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.DoorbelastingIngeschakeldDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.DoorbelastingIngeschakeldDto:
+    """Doorbelasting-toggle (migratie 0044) — Beheerder-only, default UIT."""
+    try:
+        ingeschakeld = service.zet_doorbelasting_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.DoorbelastingIngeschakeldDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
     "/instellingen/webhook-aflevering",
     response_model=schemas.WebhookAfleveringDto,
 )

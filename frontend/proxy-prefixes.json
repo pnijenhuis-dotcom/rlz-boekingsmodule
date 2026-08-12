@@ -5,6 +5,7 @@
     "/administraties",
     "/auth",
     "/bank",
+    "/doorbelasting",
     "/health",
     "/instellingen",
     "/intake",

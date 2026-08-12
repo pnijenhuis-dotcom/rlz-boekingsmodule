@@ -62,6 +62,11 @@ class OpdrachtBestaatAl(AfletterFout):
     """Er staat al een klaargezette afletter-opdracht voor deze mutatie."""
 
 
+class IntercompanyPostUitgesloten(AfletterFout):
+    """De doel-post is van een intercompany-tegenpartij (doorbelasting-mapping, blok 2):
+    afhandeling loopt via de rekening-courant, aflettering is uitgesloten — óók handmatig."""
+
+
 class OpdrachtNietGevonden(AfletterFout):
     pass
 
@@ -124,6 +129,20 @@ def zet_klaar_voor_afletteren(
             item = session.get(PaymentItemCache, (payment_item_id, administratie_id))
             if item is None or item.verdwenen_uit_bron_op is not None:
                 raise OpenPostNietGevonden(f"Open post {payment_item_id} staat niet (meer) in de cache")
+            # Fail-closed vangrail (blok 2 doorbelasting, verkenning/16 §2b): een
+            # intercompany-post loopt via de rekening-courant en mag óók bij een handmatige
+            # poging nooit afgeletterd worden — de matchcontext filtert 'm al uit elk
+            # voorstel, dit vangt de rechtstreekse API-route.
+            from app.bank.voorstellen import intercompany_entity_guids
+
+            if item.entity_guid is not None and item.entity_guid in intercompany_entity_guids(
+                session, administratie_id=administratie_id
+            ):
+                raise IntercompanyPostUitgesloten(
+                    f"Open post {payment_item_id} is van een intercompany-tegenpartij "
+                    f"({item.entity_naam or item.entity_guid}) — afhandeling loopt via de "
+                    "rekening-courant, niet via aflettering"
+                )
 
             bestaande = session.scalars(
                 select(BankAfletterOpdracht).where(

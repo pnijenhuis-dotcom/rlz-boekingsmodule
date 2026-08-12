@@ -27,6 +27,10 @@ class AiExtractieIngeschakeldDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class DoorbelastingIngeschakeldDto(StrikteInvoer):
+    ingeschakeld: bool
+
+
 class AdministratieInstellingenDto(BaseModel):
     """Eén rij in het instellingen-scherm (design-pass taak 3) — dezelfde twee schakelaars als
     de losse per-administratie GET/PUT-endpoints hierboven, nu in één keer voor de hele lijst."""
