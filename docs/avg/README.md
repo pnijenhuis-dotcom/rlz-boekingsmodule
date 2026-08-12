@@ -19,5 +19,11 @@ september 2026).
 Word-bundel voor verzending aan de jurist: `AVG-pakket-ter-toetsing-2026-08-11.docx`
 (memo + alle documenten in één bestand).
 
+**De .md-bestanden zijn canoniek; de .docx-bestanden zijn gegenereerde verzend-artefacten**
+— verversen via `backend/.venv/bin/python scripts/genereer_avg_docx.py <bron.md> <doel.docx>`,
+nooit met de hand in Word bewerken (2026-08-13: een Word-hersave van de
+verwerkersovereenkomst-docx introduceerde precies zo'n zwevende binary-wijziging, incl.
+per ongeluk getikte tekst; opgelost door regeneratie uit de ongewijzigde md).
+
 Status: **concept — wacht op juridische toetsing Peter** (zie `docs/BESLISSINGEN.md`, onderwerp
 "AVG-compliance"). Bronverificatie van de externe links: 2026-08-11 (web).

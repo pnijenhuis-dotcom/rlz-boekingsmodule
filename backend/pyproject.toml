@@ -36,6 +36,9 @@ dev = [
     "pytest>=8.0",
     "pytest-env>=1.1",
     "ruff>=0.7",
+    # Docs-tooling: md → docx voor het AVG-pakket (scripts/genereer_avg_docx.py) — de .md is
+    # canoniek, de .docx een gegenereerd verzend-artefact.
+    "markdown>=3.6",
 ]
 
 [build-system]
