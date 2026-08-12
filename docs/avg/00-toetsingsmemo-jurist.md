@@ -50,6 +50,12 @@ positionering, en is de concept-akkoordtekst bruikbaar?
 van deze omvang (bv. privacyverklaring website, register verwerkingen buiten de module,
 geheimhoudingsbedingen personeel)?
 
+**Vraag 9 (groepsstructuur).** De software en de hosting (Google Cloud-organisatie) zijn
+eigendom van PDL Powerhouse B.V.; de verwerkingsverantwoordelijke voor de klantdata is het
+kantoor. Als kantoor en PDL verschillende rechtspersonen zijn: volstaat een intra-groep
+verwerkersovereenkomst tussen kantoor en PDL (PDL als hosting-/softwareverwerker), en heeft u
+daar een modeltekst voor? Zo ja, dan hoort PDL ook als verwerker in het register (document 1).
+
 ## Volgorde-afhankelijkheid
 
 Wij activeren de AI-functie en de cloud-migratie pas ná uw akkoord op vragen 1, 3 en 4
