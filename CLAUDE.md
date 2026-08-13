@@ -272,7 +272,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   crediteur-aanmaak, Reference = verkoopnummer — bron éérst, STAP-0 2026-08-13),
   half-geboekt-patroon omzetmotor + `spiegel_open`-taak bij niet-onboarded doel (nooit stil
   half), storno beide kanten (reden verplicht), `make doorbelasting-reconciliatie` (vierde
-  bron in reconciliatie-alles). **Spiegelkant geverifieerd via Rubicon (§2c)**: kosten-GB's
+  bron in reconciliatie-alles). **Spiegel-webhook (akkoord Peter 2026-08-14, gebouwd + getest
+  zelfde dag, migratie 0046)**: een spiegel-inkoopfactuur in een `is_vastgoed`-doel vuurt óók
+  `factuur_geboekt` (standaard inkoop-veldvorm, leverancier = Kempen Facilities, referentie =
+  spiegel-Reference) — `webhook_uitgaand.administratie_id` draagt dan de dóél-administratie
+  (document_id blijft het bron-document); afleveraar levert per coalesce onder het doel,
+  nooit dubbel. Koppelcontract v1.13 §3 "Doorbelasting-spiegelkant". **Spiegelkant geverifieerd via Rubicon (§2c)**: kosten-GB's
   type 2 (géén activering), 21% aftrekbare voorbelasting, eigen provisierekening 4808;
   ⚠️ RC geldt dáár niet → **intercompany-vlag per mapping-rij** (blok 2, migratie 0045):
   IC-open-posten uit álle afletter-voorstellen + fail-closed poort
@@ -340,7 +345,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.12)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.13)
 
 - **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
   RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
@@ -354,7 +359,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   de wérkelijke payload is sinds v1.10 de contractnorm); **sinds 2026-08-09 óók bij het boeken
   van een VASTLY-VERKOOP-document** (referentie = Vastly-factuurnummer; velden `soort` +
   `debiteur` i.p.v. `leverancier` — sinds v1.12 (2026-08-10) formeel als norm in §3
-  opgenomen).
+  opgenomen); **en sinds 2026-08-14 óók voor doorbelasting-spiegel-inkoopfacturen in
+  vastgoed-doeladministraties** (v1.13 §3, standaard inkoop-veldvorm — zie
+  "Kempen-doorbelasting" hierboven).
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
