@@ -2,15 +2,19 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { AdministratieDto, WerkvoorraadKlantDto } from '../api/types'
 import { haalBankOverzicht } from '../bank/bankApi'
+import { haalSpiegelTakenOp } from '../doorbelasting/doorbelastingApi'
 import { FoutMelding } from '../ui/FoutMelding'
 import { haalWerkvoorraadOverzichtOp } from './werkvoorraadApi'
 
 /** Werkvoorraad-ingang (mockup #werkvoorraad "Overzicht per klant"): alleen klanten mét
  * openstaand werk, elke teller klikbaar. De bank-kolom komt uit het bank-overzicht (aparte
- * fetch) — als die faalt blijft de rest van de lijst gewoon bruikbaar. */
+ * fetch) — als die faalt blijft de rest van de lijst gewoon bruikbaar. De spiegel-taken-teller
+ * (Kempen-doorbelasting) volgt hetzelfde faalvriendelijke patroon: fetch per administratie,
+ * een fout telt als "geen data" en de kolom verschijnt alleen als er ergens een open taak is. */
 
 interface KlantRij extends WerkvoorraadKlantDto {
   bank_open: number | null
+  spiegel_taken: number | null
 }
 
 function heeftOpenstaandWerk(k: KlantRij): boolean {
@@ -21,7 +25,8 @@ function heeftOpenstaandWerk(k: KlantRij): boolean {
       k.afgewezen +
       k.bij_klant +
       k.iban_wachtend +
-      (k.bank_open ?? 0) >
+      (k.bank_open ?? 0) +
+      (k.spiegel_taken ?? 0) >
     0
   )
 }
@@ -62,17 +67,29 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
     let actueel = true
     setFout(null)
     setKlanten(null)
-    // Bank-tellers zijn verrijking: een bankfout mag de klantenlijst niet blokkeren.
+    // Bank- en spiegel-tellers zijn verrijking: een fout daar mag de klantenlijst niet blokkeren.
     const bankBelofte = haalBankOverzicht().catch(() => null)
+    const spiegelBelofte = Promise.all(
+      administraties.map(async (a) => {
+        try {
+          const taken = await haalSpiegelTakenOp(a.id)
+          return [a.id, taken.length] as const
+        } catch {
+          return [a.id, null] as const
+        }
+      }),
+    )
     haalWerkvoorraadOverzichtOp()
       .then(async (overzicht) => {
-        const bank = await bankBelofte
+        const [bank, spiegel] = await Promise.all([bankBelofte, spiegelBelofte])
         if (!actueel) return
         const bankPerAdministratie = new Map((bank?.klanten ?? []).map((b) => [b.administratie_id, b.open_mutaties]))
+        const spiegelPerAdministratie = new Map(spiegel)
         setKlanten(
           overzicht.klanten.map((k) => ({
             ...k,
             bank_open: bank ? (bankPerAdministratie.get(k.administratie_id) ?? 0) : null,
+            spiegel_taken: spiegelPerAdministratie.get(k.administratie_id) ?? null,
           })),
         )
       })
@@ -82,10 +99,13 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
     return () => {
       actueel = false
     }
-  }, [herlaadTeller])
+  }, [herlaadTeller, administraties])
 
   const zichtbaar = (klanten ?? []).filter(heeftOpenstaandWerk)
   const verborgen = (klanten?.length ?? 0) - zichtbaar.length
+  // Kolom alleen bij data (Kempen-doorbelasting is voor één administratie relevant — de rest
+  // van het kantoor moet geen lege kolom zien).
+  const toonSpiegel = (klanten ?? []).some((k) => (k.spiegel_taken ?? 0) > 0)
 
   return (
     <div className="panel">
@@ -108,6 +128,7 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
               <th>Afgewezen</th>
               <th>Bij klant (goedkeuring)</th>
               <th>Bank</th>
+              {toonSpiegel && <th>Spiegel-taken</th>}
             </tr>
             {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
             {zichtbaar.map((k) => (
@@ -154,6 +175,11 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
                 >
                   {k.bank_open === null ? '—' : <Teller waarde={k.bank_open} chipKlasse="ai" />}
                 </td>
+                {toonSpiegel && (
+                  <td title="Open spiegel-taken (doorbelasting): bron geboekt, spiegel-inkoopfactuur in de doel-administratie nog niet">
+                    {k.spiegel_taken === null ? '—' : <Teller waarde={k.spiegel_taken} chipKlasse="vraag" />}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

@@ -214,6 +214,10 @@ export interface ProjectLijstDto {
 }
 
 export interface BoekvoorstelRegelDto {
+  /** DB-id van de opgeslagen boekvoorstel-regel — de doorbelasting-verdeling verwijst hiernaar
+   * als `bron_regel_id`. Null voor prefill-regels die nog niet opgeslagen zijn (op een geboekt
+   * document dus altijd gevuld). */
+  id: string | null
   ledger_id: string | null
   taxrate_id: string | null
   project_id: string | null
@@ -580,4 +584,107 @@ export interface ArchiefDocumentDto {
 
 export interface ArchiefResponseDto {
   documenten: ArchiefDocumentDto[]
+}
+
+/* --- Kempen-doorbelasting (blok 3, besluit Peter 2026-08-13) --------------------------------
+ * Spiegel van backend/app/doorbelasting/schemas.py; Decimals reizen als strings (punt-decimaal).
+ */
+
+export interface DoorbelastingInstellingDto {
+  administratie_id: string
+  provisie_percentage: string
+  btw_taxrate_id: string | null
+  omzet_ledger_id: string | null
+  provisie_omzet_ledger_id: string | null
+}
+
+export interface DoorbelastingInstellingInputDto {
+  provisie_percentage: string
+  btw_taxrate_id: string | null
+  omzet_ledger_id: string | null
+  provisie_omzet_ledger_id: string | null
+}
+
+export interface DoorbelastingMappingDto {
+  id: string
+  doelentiteit_naam: string
+  doel_customer_guid: string
+  /** null = doelentiteit nog niet onboarded (geen eigen administratie in het platform). */
+  doel_administratie_id: string | null
+  intercompany: boolean
+  provisie_kosten_ledger_id: string | null
+  laatste_kosten_ledger_id: string | null
+  actief: boolean
+}
+
+/** Partial-mutatie: alleen meegegeven velden wijzigen (backend: exclude_unset). */
+export interface DoorbelastingMappingWijzigingDto {
+  doel_administratie_id?: string | null
+  intercompany?: boolean
+  provisie_kosten_ledger_id?: string | null
+  actief?: boolean
+}
+
+export interface DoorbelastingVerdeelRegelDto {
+  id: string
+  bron_regel_id: string
+  mapping_id: string
+  percentage: string
+  /** Server-berekend netto-deel (grootste-rest) — de client rekent nooit zelf bindend. */
+  netto_deel: string
+  doel_kosten_ledger_id: string | null
+}
+
+export interface DoorbelastingVerdeelRegelInputDto {
+  bron_regel_id: string
+  mapping_id: string
+  percentage: string
+  doel_kosten_ledger_id: string | null
+}
+
+export interface DoorbelastingPreviewDto {
+  mapping_id: string
+  doelentiteit_naam: string
+  onboarded: boolean
+  netto_totaal: string
+  provisie_bedrag: string
+  btw_bedrag: string
+  /** Status van een bestaande niet-gestorneerde boeking voor deze doelentiteit, anders null. */
+  boeking_status: string | null
+  /** Boeking-id bij een bestaande niet-gestorneerde boeking — sleutel voor de storno- en
+   * spiegel-taak-acties; null zolang er voor deze doelentiteit niets geboekt is. */
+  boeking_id: string | null
+}
+
+export interface DoorbelastingRunDto {
+  id: string
+  document_id: string
+  status: string
+  laatste_fout: Record<string, unknown> | null
+  regels: DoorbelastingVerdeelRegelDto[]
+  previews: DoorbelastingPreviewDto[]
+  checks: CheckRapportDto
+}
+
+/** Resultaat van (spiegel-)boeken/storno: status per doelentiteit (mapping-id → status). */
+export interface DoorbelastingBoekResultaatDto {
+  per_doelentiteit: Record<string, string>
+}
+
+export interface SpiegelTaakDto {
+  boeking_id: string
+  document_id: string
+  mapping_id: string
+  doelentiteit_naam: string
+  netto_totaal: string
+  provisie_bedrag: string
+  verkoop_referentie: string | null
+  aangemaakt_op: string
+}
+
+/** GB-toewijzing voor een open spiegel-taak (gaten-scan-fix 2026-08-13): alleen GB's, nooit
+ * bedragen/percentages — de verdeling zelf is bevroren zodra er geboekt is. */
+export interface SpiegelDoelGbsInputDto {
+  regel_gbs: Record<string, string>
+  provisie_kosten_ledger_id?: string
 }

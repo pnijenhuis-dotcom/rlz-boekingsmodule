@@ -1,6 +1,7 @@
 // Kantoor-web-app (alles behalve /accordeur) — een eigen lazy chunk zodat de accordeur-PWA
 // géén kantoor-bundels laadt (performance-budget accordeur-PWA, BESLISSINGEN punt 4).
 
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ActivateScreen } from './auth/ActivateScreen'
 import { useAuth } from './auth/AuthContext'
@@ -17,6 +18,12 @@ import { VragenScreen } from './vragen/VragenScreen'
 import { WerkvoorraadScreen } from './werkvoorraad/WerkvoorraadScreen'
 import { ArchiefScreen } from './zoeken/ArchiefScreen'
 import { ZoekenScreen } from './zoeken/ZoekenScreen'
+
+// Kempen-doorbelasting (blok 3): lazy — het reviewscherm is alleen relevant voor de enkele
+// administratie mét doorbelasting; de rest van het kantoor laadt deze chunk nooit.
+const DoorbelastingReviewScreen = lazy(() =>
+  import('./doorbelasting/DoorbelastingReviewScreen').then((m) => ({ default: m.DoorbelastingReviewScreen })),
+)
 
 function BeschermdeRoutes() {
   const { status, rol } = useAuth()
@@ -49,6 +56,14 @@ function BeschermdeRoutes() {
         <Route path="/omzet/:administratieId/:documentId" element={<OmzetReviewScreen />} />
         <Route path="/verkoop/:administratieId/:documentId" element={<VerkoopReviewScreen />} />
         <Route path="/waarborg/:administratieId/:documentId" element={<WaarborgReviewScreen />} />
+        <Route
+          path="/doorbelasting/:administratieId/:documentId"
+          element={
+            <Suspense fallback={<p className="hint">Laden…</p>}>
+              <DoorbelastingReviewScreen />
+            </Suspense>
+          }
+        />
         <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

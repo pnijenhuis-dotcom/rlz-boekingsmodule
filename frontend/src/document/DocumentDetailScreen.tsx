@@ -8,6 +8,7 @@ import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { VraagModal } from '../vragen/VraagModal'
+import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { AfwijsModal } from './AfwijsModal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
@@ -556,6 +557,15 @@ export function DocumentDetailScreen() {
               onIbanAangeboden={VRAAG_STELLEN_STATUSSEN.has(detail.status) ? laadDetail : undefined}
             />
           )}
+
+          {/* Kempen-doorbelasting (blok 3): actie op een GEBOEKTE inkoopfactuur — de sectie
+              gate zichzelf (status + soort + toggle per administratie, faalvriendelijk). */}
+          <DoorbelastenSectie
+            administratieId={administratieId}
+            documentId={documentId}
+            status={detail.status}
+            soort={detail.soort}
+          />
 
           {vraagModalOpen && (
             <VraagModal

@@ -4,6 +4,7 @@ import { ApiError } from '../api/client'
 import type { AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
+import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstellingen'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
@@ -461,6 +462,10 @@ export function InstellingenScreen() {
 
       {administraties !== null && (
         <LeverancierAutoboeken administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
+      )}
+
+      {administraties !== null && (
+        <DoorbelastingInstellingen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
       )}
 
       {pending && (
