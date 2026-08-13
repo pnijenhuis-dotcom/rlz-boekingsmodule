@@ -328,14 +328,15 @@ def boek_doorbelasting_run(
     eigen_bron_client = bron_client is None
     if bron_client is None:
         bron_client = _rlz_client_voor(administratie_id)
+    eigen_doel_clients = doel_client_factory is None
     if doel_client_factory is None:
         doel_client_factory = _rlz_client_voor
 
     resultaat: dict[str, str] = {}
+    doel_clients: dict[uuid.UUID, RlzClient] = {}
     try:
         _rechten_probe(bron_client, label="bron-administratie")
         # rechten-probe voor elk onboarded doel vóór de eerste write
-        doel_clients: dict[uuid.UUID, RlzClient] = {}
         for mapping_id in te_boeken:
             mapping = mappings[mapping_id]
             if mapping.doel_administratie_id is not None:
@@ -376,20 +377,33 @@ def boek_doorbelasting_run(
     finally:
         if eigen_bron_client:
             bron_client.close()
+        if eigen_doel_clients:
+            # verbindings-lek-fix (testbevinding 2026-08-13): zelf-geopende doel-clients ook
+            # sluiten — geïnjecteerde factories beheren hun eigen levensduur
+            for doel_client in doel_clients.values():
+                doel_client.close()
 
-    # run-status bijwerken: geboekt zodra élke doelentiteit een niet-gestorneerde boeking heeft
+    # run-status bijwerken: GEBOEKT zodra élke doelentiteit een áfgeronde boeking heeft
+    # (geboekt of bewuste open spiegel-taak). Een half_geboekt-rij houdt de run bewust op
+    # concept: er staat menselijk herstelwerk open (reconciliatie-signaal) — de rij zelf
+    # blokkeert intussen via de duplicaatbewaking elke nieuwe boekpoging over de halve heen.
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         run = session.get(DoorbelastingRun, run_id)
-        geboekt_mappings = {
+        afgeronde_mappings = {
             b.mapping_id
             for b in session.scalars(
                 select(DoorbelastingBoeking).where(
                     DoorbelastingBoeking.document_id == run.document_id,
-                    DoorbelastingBoeking.status != DoorbelastingBoekingStatus.GESTORNEERD.value,
+                    DoorbelastingBoeking.status.in_(
+                        (
+                            DoorbelastingBoekingStatus.GEBOEKT.value,
+                            DoorbelastingBoekingStatus.SPIEGEL_OPEN.value,
+                        )
+                    ),
                 )
             )
         }
-        if {r.mapping_id for r in regels} <= geboekt_mappings:
+        if {r.mapping_id for r in regels} <= afgeronde_mappings:
             run.status = DoorbelastingRunStatus.GEBOEKT.value
             run.geboekt_op = datetime.now(UTC)
     return resultaat

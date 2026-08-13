@@ -62,6 +62,7 @@ def _naar_run_response(data: service.RunReviewData) -> schemas.RunResponse:
                 provisie_bedrag=p.provisie_bedrag,
                 btw_bedrag=p.btw_bedrag,
                 boeking_status=p.boeking_status,
+                boeking_id=p.boeking_id,
             )
             for p in data.previews
         ],
@@ -142,6 +143,23 @@ def mapping_wijzigen(
 
 
 # --- run + verdeling + boeken (scope-gebonden) ---------------------------------------------
+
+
+@router.get(
+    "/doorbelasting/{administratie_id}/documenten/{document_id}/run", response_model=schemas.RunResponse
+)
+def run_voor_document(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.RunResponse:
+    """Read-only leesroute voor het documentdetail-scherm: 404 als er (nog) geen run is —
+    louter openen van een geboekt document maakt niets aan (de POST is de gebruikersactie)."""
+    run = service.vind_run(administratie_id=administratie_id, document_id=document_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Geen doorbelasting-run voor dit document")
+    data = service.review_data(administratie_id=administratie_id, run_id=run.id)
+    return _naar_run_response(data)
 
 
 @router.post(
@@ -254,6 +272,29 @@ def spiegel_taken(
         )
         for t in taken
     ]
+
+
+@router.put(
+    "/doorbelasting/{administratie_id}/boekingen/{boeking_id}/doel-gbs",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def spiegel_doel_gbs_zetten(
+    administratie_id: uuid.UUID,
+    boeking_id: uuid.UUID,
+    body: schemas.SpiegelDoelGbsRequest,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    """GB-toewijzing voor een open spiegel-taak (de verdeling is bevroren; alleen GB's)."""
+    try:
+        service.zet_spiegel_doel_gbs(
+            administratie_id=administratie_id,
+            boeking_id=boeking_id,
+            actor_id=actor.id,
+            regel_gbs=body.regel_gbs,
+            provisie_kosten_ledger_id=body.provisie_kosten_ledger_id,
+        )
+    except service.DoorbelastingFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post(

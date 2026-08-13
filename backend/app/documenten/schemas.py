@@ -153,6 +153,9 @@ class DocumentDetailResponse(BaseModel):
 
 
 class BoekvoorstelRegelDto(BaseModel):
+    # DB-id van de opgeslagen regel — sleutel voor de doorbelasting-verdeling (bron_regel_id);
+    # None voor prefill-regels die nog niet opgeslagen zijn.
+    id: uuid.UUID | None = None
     ledger_id: uuid.UUID | None = None
     taxrate_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None

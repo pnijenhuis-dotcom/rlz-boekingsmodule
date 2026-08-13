@@ -64,6 +64,10 @@ class BoekvoorstelRegelData:
     netto_bedrag: Decimal | None
     btw_bedrag: Decimal | None
     omschrijving: str | None
+    # DB-id van de opgeslagen regel (boekvoorstel_regel.id) — alleen gevuld voor persisted
+    # regels; prefills (AI/UBL, nog niet opgeslagen) hebben er geen. De doorbelasting-verdeling
+    # (blok 3) sleutelt hierop (bron_regel_id), en die bestaat alleen op GEBOEKTE documenten.
+    id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -301,6 +305,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                         netto_bedrag=r.netto_bedrag,
                         btw_bedrag=r.btw_bedrag,
                         omschrijving=r.omschrijving,
+                        id=r.id,
                     )
                     for r in regels
                 ],

@@ -223,14 +223,16 @@ def maak_payment_item(
     bedrag: str = "121.00",
     referentie: str | None = "F-2026-0642",
     rlz_document_id: uuid.UUID | None = None,
+    entity_guid: uuid.UUID | None = None,
+    entity_naam: str | None = None,
 ) -> uuid.UUID:
     item_id = uuid.uuid4()
     with admin_engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO boekhouding.payment_item_cache "
-                "(id, administratie_id, bedrag, referentie, rlz_document_id, brondata) "
-                "VALUES (:id, :aid, :bedrag, :ref, :doc, '{}')"
+                "(id, administratie_id, bedrag, referentie, rlz_document_id, entity_guid, entity_naam, brondata) "
+                "VALUES (:id, :aid, :bedrag, :ref, :doc, :entity, :entity_naam, '{}')"
             ),
             {
                 "id": item_id,
@@ -238,9 +240,33 @@ def maak_payment_item(
                 "bedrag": bedrag,
                 "ref": referentie,
                 "doc": rlz_document_id or uuid.uuid4(),
+                "entity": entity_guid,
+                "entity_naam": entity_naam,
             },
         )
     return item_id
+
+
+def maak_intercompany_tegenpartij(
+    admin_engine: Engine,
+    *,
+    administratie_id: uuid.UUID,  # noqa: F811
+    entity_guid: uuid.UUID,
+    naam: str = "Veldhoven Recreatie B.V.",
+    actief: bool = True,
+) -> uuid.UUID:
+    """IC-rij zoals de doorbelasting-service die onderhoudt (migratie 0045, blok 2)."""
+    rij_id = uuid.uuid4()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO boekhouding.intercompany_tegenpartij "
+                "(id, administratie_id, entity_guid, naam, actief) "
+                "VALUES (:id, :aid, :entity, :naam, :actief)"
+            ),
+            {"id": rij_id, "aid": administratie_id, "entity": entity_guid, "naam": naam, "actief": actief},
+        )
+    return rij_id
 
 
 @pytest.fixture

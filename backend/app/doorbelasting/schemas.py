@@ -74,6 +74,7 @@ class DoelentiteitPreviewResponse(BaseModel):
     provisie_bedrag: Decimal
     btw_bedrag: Decimal
     boeking_status: str | None
+    boeking_id: uuid.UUID | None
 
 
 class RunResponse(BaseModel):
@@ -105,3 +106,10 @@ class SpiegelTaakResponse(BaseModel):
 
 class StornoRequest(StrikteInvoer):
     reden: str = Field(min_length=5)
+
+
+class SpiegelDoelGbsRequest(StrikteInvoer):
+    """GB-toewijzing voor een open spiegel-taak: alleen GB's, nooit bedragen/percentages."""
+
+    regel_gbs: dict[uuid.UUID, uuid.UUID]
+    provisie_kosten_ledger_id: uuid.UUID | None = None

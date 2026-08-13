@@ -309,6 +309,23 @@ class VerdeelRegelInvoerData:
     doel_kosten_ledger_id: uuid.UUID | None
 
 
+def vind_run(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> DoorbelastingRun | None:
+    """Read-only variant (frontend-bevinding 2026-08-13): het documentdetail-scherm moet een
+    bestaande run kunnen tonen zónder er bij het louter openen één aan te maken —
+    start_of_haal_run is de expliciete gebruikersactie, dit de leesroute."""
+    with scoped_session(administratie_id) as session:
+        run = session.scalars(
+            select(DoorbelastingRun).where(
+                DoorbelastingRun.administratie_id == administratie_id,
+                DoorbelastingRun.document_id == document_id,
+                DoorbelastingRun.status != DoorbelastingRunStatus.GESTORNEERD.value,
+            )
+        ).one_or_none()
+        if run is not None:
+            session.expunge(run)
+        return run
+
+
 def start_of_haal_run(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
 ) -> DoorbelastingRun:
@@ -453,6 +470,7 @@ class DoelentiteitPreview:
     provisie_bedrag: Decimal
     btw_bedrag: Decimal
     boeking_status: str | None  # status van een bestaande niet-gestorneerde boeking
+    boeking_id: uuid.UUID | None  # id daarvan — nodig voor storno/spiegel-acties in de UI
 
 
 @dataclass(frozen=True)
@@ -521,7 +539,7 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
             )
         }
         boekingen = {
-            b.mapping_id: b.status
+            b.mapping_id: (b.status, b.id)
             for b in session.scalars(
                 select(DoorbelastingBoeking).where(
                     DoorbelastingBoeking.run_id == run_id,
@@ -552,6 +570,7 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
                 (btw_over(r.netto_deel, btw_pct) for r in invoer if r.mapping_id == mapping_id),
                 Decimal(0),
             ) + btw_over(provisie, btw_pct)
+            boeking_status, boeking_id = boekingen.get(mapping_id, (None, None))
             previews.append(
                 DoelentiteitPreview(
                     mapping_id=mapping_id,
@@ -560,12 +579,75 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
                     netto_totaal=netto,
                     provisie_bedrag=provisie,
                     btw_bedrag=btw,
-                    boeking_status=boekingen.get(mapping_id),
+                    boeking_status=boeking_status,
+                    boeking_id=boeking_id,
                 )
             )
         regels = list(session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == run_id)))
         session.expunge_all()
         return RunReviewData(run=run, regels=regels, previews=previews, rapport=rapport)
+
+
+def zet_spiegel_doel_gbs(
+    *,
+    administratie_id: uuid.UUID,
+    boeking_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    regel_gbs: dict[uuid.UUID, uuid.UUID],
+    provisie_kosten_ledger_id: uuid.UUID | None = None,
+) -> None:
+    """Gerichte GB-toewijzing voor een open spiegel-taak (gaten-scan 2026-08-13): de verdeling
+    zelf is bevroren zodra er geboekt is (bedragen mogen nooit meer schuiven), maar de
+    doel-kosten-GB's per verdeelregel en de provisie-GB op de mapping zijn juist pas kiesbaar
+    ná onboarding van de doel-administratie — zonder deze route zou een spiegel_open-taak
+    permanent vastzitten. Muteert uitsluitend GB-velden, nooit percentages of bedragen."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        boeking = session.get(DoorbelastingBoeking, boeking_id)
+        if boeking is None or boeking.administratie_id != administratie_id:
+            raise DoorbelastingFout("Onbekende doorbelastings-boeking")
+        if boeking.status != DoorbelastingBoekingStatus.SPIEGEL_OPEN.value:
+            raise DoorbelastingFout("Doel-GB's zijn alleen te zetten op een open spiegel-taak")
+        regels = {
+            r.id: r
+            for r in session.scalars(
+                select(DoorbelastingRegel).where(
+                    DoorbelastingRegel.run_id == boeking.run_id,
+                    DoorbelastingRegel.mapping_id == boeking.mapping_id,
+                )
+            )
+        }
+        onbekend = set(regel_gbs) - set(regels)
+        if onbekend:
+            raise DoorbelastingFout(f"Onbekende verdeelregel(s) voor deze spiegel-taak: {sorted(map(str, onbekend))}")
+        oud = {
+            str(rid): (str(r.doel_kosten_ledger_id) if r.doel_kosten_ledger_id else None)
+            for rid, r in regels.items()
+        }
+        for regel_id, ledger_id in regel_gbs.items():
+            regels[regel_id].doel_kosten_ledger_id = ledger_id
+        if provisie_kosten_ledger_id is not None:
+            mapping = session.get(DoorbelastingMapping, boeking.mapping_id)
+            if mapping is not None:
+                mapping.provisie_kosten_ledger_id = provisie_kosten_ledger_id
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=_MODULE,
+            tabel="doorbelasting_boeking",
+            record_id=boeking_id,
+            actie="doorbelasting_spiegel_gbs_gezet",
+            correlatie_id=boeking.document_id,
+            oude_waarde=oud,
+            nieuwe_waarde={
+                **{str(rid): str(lid) for rid, lid in regel_gbs.items()},
+                **(
+                    {"provisie_kosten_ledger_id": str(provisie_kosten_ledger_id)}
+                    if provisie_kosten_ledger_id is not None
+                    else {}
+                ),
+            },
+            administratie_id=administratie_id,
+        )
 
 
 def open_spiegel_taken(*, administratie_id: uuid.UUID) -> list[DoorbelastingBoeking]:

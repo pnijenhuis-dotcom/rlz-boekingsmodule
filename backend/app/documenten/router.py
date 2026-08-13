@@ -50,6 +50,7 @@ def _naar_duplicaat_response(
 
 def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.BoekvoorstelRegelDto:
     return schemas.BoekvoorstelRegelDto(
+        id=r.id,
         ledger_id=r.ledger_id,
         taxrate_id=r.taxrate_id,
         project_id=r.project_id,
