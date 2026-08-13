@@ -26,14 +26,14 @@ import base64
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
 
 from app.config import settings
 from app.db.audit import record_audit_event
-from app.db.models import Administratie
+from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
 from app.documenten.boeken import (
     BoekenUitgeschakeld,
@@ -41,7 +41,13 @@ from app.documenten.boeken import (
     _is_boeken_toegestaan,
     _rlz_client_voor,
 )
-from app.documenten.models import Boekvoorstel, BoekvoorstelRegel, Document, DocumentGebeurtenis
+from app.documenten.models import (
+    Boekvoorstel,
+    BoekvoorstelRegel,
+    Document,
+    DocumentGebeurtenis,
+    WebhookUitgaand,
+)
 from app.documenten.rlz_ids import (
     rlz_doorbelasting_spiegel_id,
     rlz_doorbelasting_upload_id,
@@ -49,6 +55,7 @@ from app.documenten.rlz_ids import (
     rlz_vendor_id,
 )
 from app.documenten.service import _standaard_opslag
+from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
 from app.doorbelasting.checks import voer_doorbelasting_checks_uit
 from app.doorbelasting.geld import btw_over, provisie_over
 from app.doorbelasting.models import (
@@ -179,6 +186,100 @@ def _zorg_voor_crediteur_in_doel(
     vendor_id = rlz_vendor_id(doel_administratie_id, naam)
     client.put_vendor(vendor_id, name=naam)
     return vendor_id
+
+
+def _spiegel_regelspec(
+    *,
+    regels: list[DoorbelastingRegel],
+    bron_regels: dict[uuid.UUID, BoekvoorstelRegel],
+    omschrijving_basis: str,
+    btw_pct: Decimal,
+    provisie: Decimal,
+    provisie_btw: Decimal,
+    provisie_kosten_ledger_id: uuid.UUID,
+    provisie_omschrijving: str,
+) -> list[tuple[uuid.UUID, Decimal, Decimal, str]]:
+    """Eén regelspecificatie (ledger, netto, btw, omschrijving) voor de spiegel-inkoopfactuur,
+    als enige bron voor zowel de RLZ-DocumentLineList als de webhook-regels — wat geboekt
+    wordt en wat aan vastgoed gemeld wordt kan zo nooit uit elkaar lopen."""
+    spec: list[tuple[uuid.UUID, Decimal, Decimal, str]] = []
+    for r in regels:
+        bron_regel = bron_regels[r.bron_regel_id]
+        omschrijving = omschrijving_basis
+        if bron_regel.omschrijving:
+            omschrijving = f"{omschrijving_basis} — {bron_regel.omschrijving}"[:200]
+        spec.append((r.doel_kosten_ledger_id, r.netto_deel, btw_over(r.netto_deel, btw_pct), omschrijving))
+    spec.append((provisie_kosten_ledger_id, provisie, provisie_btw, provisie_omschrijving))
+    return spec
+
+
+def _spiegel_lines_van_spec(
+    spec: list[tuple[uuid.UUID, Decimal, Decimal, str]], *, btw_taxrate_id: uuid.UUID
+) -> list[dict]:
+    return [
+        {
+            "Account": {"id": str(ledger_id)},
+            "TaxRate": {"id": str(btw_taxrate_id)},
+            "NetAmount": float(netto),
+            "TaxAmount": float(btw),
+            "Description": omschrijving,
+        }
+        for ledger_id, netto, btw, omschrijving in spec
+    ]
+
+
+def _bouw_spiegel_webhook_payload(
+    *,
+    doel_administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    leverancier_naam: str,
+    spiegel_rlz_id: uuid.UUID,
+    spiegel_boekstuknummer: str | None,
+    referentie: str,
+    factuurdatum: date,
+    regelspec: list[tuple[uuid.UUID, Decimal, Decimal, str]],
+) -> dict | None:
+    """ONGETEKENDE `factuur_geboekt`-payload voor een spiegel-inkoopfactuur in een
+    vastgoed-doel-administratie (besluit Peter 2026-08-14, koppelcontract §3: het event geldt
+    voor élke geboekte inkoopfactuur van een vastgoed-administratie, óók buiten de
+    document-pipeline; leverancier = de bron-administratie, i.c. Kempen Facilities). None als
+    de doel-administratie geen vastgoed-administratie is — zelfde aanmaak-filter als
+    documenten/boeken.py::_sla_webhook_op: een rij die er niet hoort ontstaat niet.
+
+    Standaard inkoop-veldvorm, geen eigen variant: `referentie` = de spiegel-Reference (het
+    verkoopnummer van de bron-kant), `rlz_document_id` = de spiegel-GUID in de
+    doel-administratie. De GB-codes komen uit de ledger-cache van de dóél-administratie
+    (eigen scope — RLS laat die niet vanuit de bron-sessie lezen)."""
+    with scoped_session(None) as session:
+        doel = session.get(Administratie, doel_administratie_id)
+        if doel is None or not doel.is_vastgoed:
+            return None
+        rlz_admin_id = doel.rlz_admin_id
+    webhook_regels: list[WebhookRegel] = []
+    with scoped_session(doel_administratie_id) as session:
+        for ledger_id, netto, btw, omschrijving in regelspec:
+            grootboek = session.get(Grootboekrekening, (ledger_id, doel_administratie_id))
+            webhook_regels.append(
+                WebhookRegel(
+                    ledger_id=ledger_id,
+                    grootboek_code=grootboek.code if grootboek else "",
+                    project_id=None,
+                    netto_bedrag=netto,
+                    btw_bedrag=btw,
+                    omschrijving=omschrijving,
+                )
+            )
+    return bouw_factuur_geboekt_payload(
+        administratie_id=doel_administratie_id,
+        rlz_admin_id=rlz_admin_id,
+        rlz_document_id=spiegel_rlz_id,
+        rlz_boekstuknummer=spiegel_boekstuknummer,
+        factuurdatum=factuurdatum,
+        vendor_id=vendor_id,
+        vendor_naam=leverancier_naam,
+        referentie=referentie,
+        regels=webhook_regels,
+    )
 
 
 def _rechten_probe(client: RlzClient, *, label: str) -> None:
@@ -481,7 +582,12 @@ def _boek_voor_doelentiteit(
         lokaal_max_invoice_number=_lokaal_max_doorbelasting_invoice_number(administratie_id),
     )
 
-    def _leg_boeking_vast(status: DoorbelastingBoekingStatus, *, half_detail: dict | None = None) -> None:
+    def _leg_boeking_vast(
+        status: DoorbelastingBoekingStatus,
+        *,
+        half_detail: dict | None = None,
+        webhook_payload: dict | None = None,
+    ) -> None:
         with scoped_session(administratie_id, actor_id=actor_id) as session:
             boeking = DoorbelastingBoeking(
                 run_id=run_id,
@@ -502,6 +608,18 @@ def _boek_voor_doelentiteit(
                 geboekt_door=actor_id,
             )
             session.add(boeking)
+            if webhook_payload is not None:
+                # Outbox in dezelfde transactie als de boeking (patroon documenten/boeken.py):
+                # document_id = het bron-document (FK + traceerbaarheid), administratie_id =
+                # de doel-administratie — de afleveraar levert 'm dáár af (migratie 0046).
+                session.add(
+                    WebhookUitgaand(
+                        document_id=document_id,
+                        administratie_id=mapping.doel_administratie_id,
+                        event=webhook_payload["event"],
+                        payload=webhook_payload,
+                    )
+                )
             run = session.get(DoorbelastingRun, run_id)
             _wis_fout(session, run, mapping.id)
             # geheugen-v1: onthoud de laatst gebruikte doel-kosten-GB als voorstel
@@ -565,35 +683,21 @@ def _boek_voor_doelentiteit(
                     mapping_id=mapping.id,
                     actief=True,
                 )
-        spiegel_lines: list[dict] = []
-        for r in regels:
-            bron_regel = bron_regels[r.bron_regel_id]
-            omschrijving = omschrijving_basis
-            if bron_regel.omschrijving:
-                omschrijving = f"{omschrijving_basis} — {bron_regel.omschrijving}"[:200]
-            spiegel_lines.append(
-                {
-                    "Account": {"id": str(r.doel_kosten_ledger_id)},
-                    "TaxRate": {"id": str(instelling["btw_taxrate_id"])},
-                    "NetAmount": float(r.netto_deel),
-                    "TaxAmount": float(btw_over(r.netto_deel, btw_pct)),
-                    "Description": omschrijving,
-                }
-            )
-        spiegel_lines.append(
-            {
-                "Account": {"id": str(mapping.provisie_kosten_ledger_id)},
-                "TaxRate": {"id": str(instelling["btw_taxrate_id"])},
-                "NetAmount": float(provisie),
-                "TaxAmount": float(provisie_btw),
-                "Description": f"Provisie {provisie_pct_tekst}% over nettobedrag",
-            }
+        spiegel_spec = _spiegel_regelspec(
+            regels=regels,
+            bron_regels=bron_regels,
+            omschrijving_basis=omschrijving_basis,
+            btw_pct=btw_pct,
+            provisie=provisie,
+            provisie_btw=provisie_btw,
+            provisie_kosten_ledger_id=mapping.provisie_kosten_ledger_id,
+            provisie_omschrijving=f"Provisie {provisie_pct_tekst}% over nettobedrag",
         )
-        _boek_spiegel_inkoop(
+        spiegel_boekstuknummer = _boek_spiegel_inkoop(
             client=doel_client,
             rlz_id=spiegel_rlz_id,
             vendor_id=vendor_id,
-            lines=spiegel_lines,
+            lines=_spiegel_lines_van_spec(spiegel_spec, btw_taxrate_id=instelling["btw_taxrate_id"]),
             referentie=verkoop_referentie or f"DOORB-{invoice_number}",
             datum_iso=datum_iso,
             upload_id=rlz_doorbelasting_upload_id(document_id, mapping.doel_customer_guid, kant="spiegel"),
@@ -620,7 +724,20 @@ def _boek_voor_doelentiteit(
             f"Spiegel-inkoopfactuur mislukt ({spiegel_fout}); de verkoopfactuur is gestorneerd — niets half"
         ) from spiegel_fout
 
-    _leg_boeking_vast(DoorbelastingBoekingStatus.GEBOEKT)
+    # Spiegel-webhook (besluit Peter 2026-08-14): een vastgoed-doel-administratie krijgt óók
+    # het `factuur_geboekt`-event — payload buiten de boeking-transactie opgebouwd (eigen
+    # doel-scope-reads), de outbox-rij erbinnen (zelfde atomaire outbox-garantie als inkoop).
+    webhook_payload = _bouw_spiegel_webhook_payload(
+        doel_administratie_id=mapping.doel_administratie_id,
+        vendor_id=vendor_id,
+        leverancier_naam=bron_administratie_naam,
+        spiegel_rlz_id=spiegel_rlz_id,
+        spiegel_boekstuknummer=spiegel_boekstuknummer,
+        referentie=verkoop_referentie or f"DOORB-{invoice_number}",
+        factuurdatum=date.fromisoformat(datum_iso[:10]),
+        regelspec=spiegel_spec,
+    )
+    _leg_boeking_vast(DoorbelastingBoekingStatus.GEBOEKT, webhook_payload=webhook_payload)
     return DoorbelastingBoekingStatus.GEBOEKT.value
 
 
@@ -726,39 +843,25 @@ def boek_spiegel_alsnog(
                     actief=True,
                 )
         omschrijving_basis = " ".join(x for x in (leverancier, bron_referentie) if x)
-        lines: list[dict] = []
-        for r in regels:
-            bron_regel = bron_regels[r.bron_regel_id]
-            omschrijving = omschrijving_basis
-            if bron_regel.omschrijving:
-                omschrijving = f"{omschrijving_basis} — {bron_regel.omschrijving}"[:200]
-            lines.append(
-                {
-                    "Account": {"id": str(r.doel_kosten_ledger_id)},
-                    "TaxRate": {"id": str(btw_taxrate_id)},
-                    "NetAmount": float(r.netto_deel),
-                    "TaxAmount": float(btw_over(r.netto_deel, btw_pct)),
-                    "Description": omschrijving,
-                }
-            )
-        provisie_btw = btw_over(boeking.provisie_bedrag, btw_pct)
-        lines.append(
-            {
-                "Account": {"id": str(provisie_kosten_ledger_id)},
-                "TaxRate": {"id": str(btw_taxrate_id)},
-                "NetAmount": float(boeking.provisie_bedrag),
-                "TaxAmount": float(provisie_btw),
-                "Description": "Provisie over nettobedrag (doorbelasting)",
-            }
+        spiegel_spec = _spiegel_regelspec(
+            regels=regels,
+            bron_regels=bron_regels,
+            omschrijving_basis=omschrijving_basis,
+            btw_pct=btw_pct,
+            provisie=boeking.provisie_bedrag,
+            provisie_btw=btw_over(boeking.provisie_bedrag, btw_pct),
+            provisie_kosten_ledger_id=provisie_kosten_ledger_id,
+            provisie_omschrijving="Provisie over nettobedrag (doorbelasting)",
         )
         bestand = _standaard_opslag().lezen(pad=opslag_pad)
-        _boek_spiegel_inkoop(
+        boekdatum = datetime.now(UTC).date()
+        spiegel_boekstuknummer = _boek_spiegel_inkoop(
             client=doel_client,
             rlz_id=boeking.spiegel_rlz_id,
             vendor_id=vendor_id,
-            lines=lines,
+            lines=_spiegel_lines_van_spec(spiegel_spec, btw_taxrate_id=btw_taxrate_id),
             referentie=boeking.verkoop_referentie or f"DOORB-{boeking.verkoop_invoice_number}",
-            datum_iso=f"{datetime.now(UTC).date().isoformat()}T00:00:00",
+            datum_iso=f"{boekdatum.isoformat()}T00:00:00",
             upload_id=rlz_doorbelasting_upload_id(boeking.document_id, doel_customer_guid, kant="spiegel"),
             bestandsnaam=bestandsnaam,
             bestand=bestand,
@@ -767,11 +870,33 @@ def boek_spiegel_alsnog(
         if eigen_client:
             doel_client.close()
 
+    # Spiegel-webhook, zelfde regel als de motor (besluit Peter 2026-08-14): het alsnog-boeken
+    # van een open spiegel-taak in een vastgoed-doel-administratie meldt zich óók bij vastgoed.
+    webhook_payload = _bouw_spiegel_webhook_payload(
+        doel_administratie_id=doel_administratie_id,
+        vendor_id=vendor_id,
+        leverancier_naam=bron_administratie_naam,
+        spiegel_rlz_id=boeking.spiegel_rlz_id,
+        spiegel_boekstuknummer=spiegel_boekstuknummer,
+        referentie=boeking.verkoop_referentie or f"DOORB-{boeking.verkoop_invoice_number}",
+        factuurdatum=boekdatum,
+        regelspec=spiegel_spec,
+    )
+
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         boeking = session.get(DoorbelastingBoeking, boeking_id)
         boeking.status = DoorbelastingBoekingStatus.GEBOEKT.value
         boeking.doel_administratie_id = doel_administratie_id
         boeking.spiegel_geboekt_op = datetime.now(UTC)
+        if webhook_payload is not None:
+            session.add(
+                WebhookUitgaand(
+                    document_id=boeking.document_id,
+                    administratie_id=doel_administratie_id,
+                    event=webhook_payload["event"],
+                    payload=webhook_payload,
+                )
+            )
         document = session.get(Document, boeking.document_id)
         _tijdlijn(
             session,

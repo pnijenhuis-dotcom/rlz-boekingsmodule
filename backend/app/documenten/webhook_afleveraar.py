@@ -11,9 +11,11 @@ Failsafes ("niets verdwijnt stil", maar ook: nooit per ongeluk pushen):
 - Geen doel-URL of geen HMAC-secret → onvoldoende geconfigureerd: rijen blijven openstaand,
   GEEN fout — vastgoed's ontvanger bestaat nog niet, dit is de verwachte begintoestand.
 - Expliciete toggle (platform.webhook_instelling, default UIT) parallel aan de boeken-failsafe.
-- Alleen vastgoed-administratie-rijen (al gefilterd bij aanmaak, boeken.py::_sla_webhook_op) —
-  hier nogmaals ge-assert: een rij van een niet-vastgoed-administratie wordt nooit verzonden
-  maar zichtbaar op 'mislukt' gezet, met audit_event.
+- Alleen vastgoed-administratie-rijen (al gefilterd bij aanmaak: boeken.py::_sla_webhook_op,
+  verkoop-variant, en het doorbelasting-spiegelpad doorbelasting/boeken.py — dat laatste zet
+  webhook_uitgaand.administratie_id op de dóél-administratie, migratie 0046) — hier nogmaals
+  ge-assert: een rij van een niet-vastgoed-administratie wordt nooit verzonden maar zichtbaar
+  op 'mislukt' gezet, met audit_event.
 - Fout bij verzenden = retry met exponentiële backoff; na max pogingen zichtbaar 'mislukt'
   (dead-letter). Elke poging (gelukt, mislukt, geweigerd) krijgt een audit_event met de
   systeem-actor. Dead-letter is géén eindstation: herstel_dead_letters() (CLI webhook-redrive)
@@ -36,7 +38,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import settings
 from app.db.audit import record_audit_event
@@ -245,12 +247,17 @@ def verwerk_openstaande_webhooks(
     with httpx.Client(transport=transport, timeout=settings.webhook_timeout_seconds) as client:
         for administratie_id, is_vastgoed in administraties:
             with scoped_session(administratie_id) as session:
+                # Outer join + coalesce (migratie 0046): een rij met eigen administratie_id
+                # (doorbelasting-spiegel) hoort bij DIE administratie — het bron-document is
+                # onder deze scope niet eens zichtbaar (RLS), vandaar outer i.p.v. inner join.
+                # De coalesce sluit 'm tegelijk uit onder de bron-administratie: nooit dubbel.
                 rij_ids = list(
                     session.scalars(
                         select(WebhookUitgaand.id)
-                        .join(Document, WebhookUitgaand.document_id == Document.id)
+                        .outerjoin(Document, WebhookUitgaand.document_id == Document.id)
                         .where(
-                            Document.administratie_id == administratie_id,
+                            func.coalesce(WebhookUitgaand.administratie_id, Document.administratie_id)
+                            == administratie_id,
                             WebhookUitgaand.status == WebhookStatus.OPENSTAAND.value,
                             (WebhookUitgaand.volgende_poging_op.is_(None))
                             | (WebhookUitgaand.volgende_poging_op <= nu),
@@ -291,9 +298,10 @@ def herstel_dead_letters(*, actor_id: uuid.UUID, outbox_id: uuid.UUID | None = N
         with scoped_session(administratie_id, actor_id=actor_id) as session:
             query = (
                 select(WebhookUitgaand)
-                .join(Document, WebhookUitgaand.document_id == Document.id)
+                .outerjoin(Document, WebhookUitgaand.document_id == Document.id)
                 .where(
-                    Document.administratie_id == administratie_id,
+                    func.coalesce(WebhookUitgaand.administratie_id, Document.administratie_id)
+                    == administratie_id,
                     WebhookUitgaand.status == WebhookStatus.MISLUKT.value,
                 )
                 .with_for_update(of=WebhookUitgaand, skip_locked=True)

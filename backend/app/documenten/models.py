@@ -439,13 +439,20 @@ class WebhookUitgaand(Base):
     """Outbox voor het "factuur geboekt"-webhook (migratie 0009 + 0025, koppelcontract §3).
     `payload` is de ONGETEKENDE envelope ({schema_version, event, data}) — timestamp/nonce/
     handtekening berekent de afleveraar per verzendpoging (app/documenten/webhook_afleveraar.py),
-    anders wijst het ~5 min-replay-venster van de ontvanger elke uitgestelde aflevering af."""
+    anders wijst het ~5 min-replay-venster van de ontvanger elke uitgestelde aflevering af.
+    `administratie_id` (migratie 0046): NULL = het event hoort bij de administratie van het
+    document (inkoop/verkoop-pad); gevuld = de administratie waar het event over gaat terwijl
+    `document_id` een document van een ándere administratie is — het doorbelasting-spiegelpad
+    (document_id = bron-document, administratie_id = doel-administratie)."""
 
     __tablename__ = "webhook_uitgaand"
     __table_args__ = {"schema": "boekhouding"}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    administratie_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), default=None
+    )
     event: Mapped[str]
     payload: Mapped[dict] = mapped_column(JSONB)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())

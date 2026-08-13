@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0045
+-- Migratie-head bij deze dump: 0046
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1306,6 +1306,7 @@ CREATE TABLE boekhouding.webhook_uitgaand (
     laatste_poging_op timestamp with time zone,
     laatste_fout text,
     volgende_poging_op timestamp with time zone,
+    administratie_id uuid,
     CONSTRAINT webhook_uitgaand_status_geldig CHECK ((status = ANY (ARRAY['openstaand'::text, 'afgeleverd'::text, 'mislukt'::text])))
 );
 
@@ -2415,6 +2416,13 @@ CREATE INDEX ix_verkoop_voorstel_regel_document_id ON boekhouding.verkoop_voorst
 
 
 --
+-- Name: ix_webhook_uitgaand_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_webhook_uitgaand_administratie_id ON boekhouding.webhook_uitgaand USING btree (administratie_id);
+
+
+--
 -- Name: ix_webhook_uitgaand_document_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -3497,6 +3505,14 @@ ALTER TABLE ONLY boekhouding.waarborg_bericht
 
 
 --
+-- Name: webhook_uitgaand webhook_uitgaand_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.webhook_uitgaand
+    ADD CONSTRAINT webhook_uitgaand_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: webhook_uitgaand webhook_uitgaand_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4352,11 +4368,11 @@ ALTER TABLE boekhouding.webhook_uitgaand ENABLE ROW LEVEL SECURITY;
 -- Name: webhook_uitgaand webhook_uitgaand_scope; Type: POLICY; Schema: boekhouding; Owner: -
 --
 
-CREATE POLICY webhook_uitgaand_scope ON boekhouding.webhook_uitgaand USING ((EXISTS ( SELECT 1
+CREATE POLICY webhook_uitgaand_scope ON boekhouding.webhook_uitgaand USING ((((administratie_id IS NOT NULL) AND (administratie_id = platform.current_administratie_id())) OR (EXISTS ( SELECT 1
    FROM boekhouding.document d
-  WHERE ((d.id = webhook_uitgaand.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
+  WHERE ((d.id = webhook_uitgaand.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))))) WITH CHECK ((((administratie_id IS NOT NULL) AND (administratie_id = platform.current_administratie_id())) OR (EXISTS ( SELECT 1
    FROM boekhouding.document d
-  WHERE ((d.id = webhook_uitgaand.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+  WHERE ((d.id = webhook_uitgaand.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))));
 
 
 --
