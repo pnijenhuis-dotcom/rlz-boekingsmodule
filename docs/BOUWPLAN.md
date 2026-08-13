@@ -586,6 +586,20 @@ UI-eisen):
   `frontend/src/zoeken/`, scope-veilig per administratie; het correctiespoor komt conform
   §7.3 uit de eigen tijdlijn/audit (nooit RLZ-status). Bulk-boeken blijft open.
 
+- **Kempen-doorbelasting (besluit Peter 2026-08-13: hoort bij de livegang; canoniek
+  verkenning/16_DOORBELASTING_KEMPEN.md).** Tweezijdige motor op het huidige patroon
+  (granulair per document, kostenregel(s) + losse 5%-provisieregel, vlak 21%): actie
+  "Doorbelasten…" op een GEBOEKTE inkoopfactuur → reviewscherm met percentage-verdeling per
+  regel (exact 100%, grootste-rest-centen) → per doelentiteit een verkoopfactuur in de bron
+  (Entity = customer-GUID uit de geseede mapping-whitelist) + spiegel-inkoopfactuur in de
+  doel-administratie (idempotente crediteur-aanmaak, Reference = verkoopnummer),
+  half-geboekt-patroon + open spiegel-taak bij niet-onboarded doel, storno beide kanten,
+  eigen reconciliatie (vierde bron). RC-consequentie: IC-vlag per mapping-rij →
+  open posten uitgesloten van alle afletter-voorstellen + fail-closed poort (migratie 0045).
+  **→ blokken 0–2 GEBOUWD (2026-08-13, migraties 0044/0045 + STAP-0's; zie BESLISSINGEN
+  "KEMPEN-DOORBELASTING"); blok 3 (UI) + motor-tests in aanbouw. Afhankelijkheid Peter:
+  webservice-logins doelentiteiten (tot dan bron-kant + open taak).**
+
 ## Fase 3 — Klantportaal + intake
 
 - Autorisatiemodule: accordeurs, sequentiële lagen met drempels, "Ter accordering"-flow,

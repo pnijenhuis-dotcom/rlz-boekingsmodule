@@ -260,6 +260,26 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vastgoed). Failsafe: `make bank-reconciliatie` vangt in de RLZ-UI teruggedraaide
   boekingen/afletteringen. Zie api-verkenning.md "Bankmodule schrijf-PoC" + "Bankmodule
   FALLBACK-PoC" en BESLISSINGEN "Bankmodule — GEBOUWD + GETEST".
+- **Kempen-doorbelasting (besluit Peter 2026-08-13, hoort bij de livegang; canoniek
+  `verkenning/16_DOORBELASTING_KEMPEN.md` + BESLISSINGEN "KEMPEN-DOORBELASTING")**: tweezijdige
+  motor op het HUIDIGE patroon (2025/2026, granulair per document; historie = archief). Actie
+  "Doorbelasten…" op een GEBOEKTE inkoopfactuur (toggle per bron-administratie, default UIT —
+  alleen Kempen Facilities; NB bewuste afwijking van de mockup-boekflow-trigger) →
+  regelverdeling in % (exact 100%, grootste-rest-centen) over de geseede mapping-whitelist
+  (doelentiteit ↔ customer-GUID, server-side afgedwongen, `make doorbelasting-seed-kempen`) →
+  per doelentiteit: verkoopfactuur in de bron (kostenregels + losse provisieregel, provisie-%
+  en vlak btw-tarief als config) + spiegel-inkoopfactuur in de doel-administratie (idempotente
+  crediteur-aanmaak, Reference = verkoopnummer — bron éérst, STAP-0 2026-08-13),
+  half-geboekt-patroon omzetmotor + `spiegel_open`-taak bij niet-onboarded doel (nooit stil
+  half), storno beide kanten (reden verplicht), `make doorbelasting-reconciliatie` (vierde
+  bron in reconciliatie-alles). **Spiegelkant geverifieerd via Rubicon (§2c)**: kosten-GB's
+  type 2 (géén activering), 21% aftrekbare voorbelasting, eigen provisierekening 4808;
+  ⚠️ RC geldt dáár niet → **intercompany-vlag per mapping-rij** (blok 2, migratie 0045):
+  IC-open-posten uit álle afletter-voorstellen + fail-closed poort
+  (`IntercompanyPostUitgesloten`); `payment_item_cache.entity_guid` via geneste expand
+  `Document($expand=Entity)`. Bouwstatus: blokken 0–2 gebouwd 2026-08-13 (migraties
+  0044/0045), UI + motor-tests in afronding — zie BESLISSINGEN. Afhankelijkheid Peter:
+  webservice-logins doelentiteiten (elke bestaande login is single-administratie).
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA (factuurbeeld centraal,
