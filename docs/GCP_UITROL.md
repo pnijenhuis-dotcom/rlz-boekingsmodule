@@ -1,7 +1,7 @@
 # GCP-uitroldraaiboek — RLZ Boekingsmodule
 
-> **Status: F0 UITGEVOERD (2026-08-14, projectnummer 652591056217) — slotverificatie =
-> de `deploy-test`-workflow-run (zie §F0-uitvoering); F1 UITGEVOERD (2026-08-14 —
+> **Status: F0 FORMEEL AF (2026-08-14, projectnummer 652591056217 — slotverificatie
+> deploy-test-run #1 GROEN, zie §F0-uitvoering); F1 UITGEVOERD (2026-08-14 —
 > migratie 0001→0047 + GCS/KMS-verificatie geslaagd, zie §F1 — UITGEVOERD). Volgende: F2.**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
 > dag te ver (commits én GCP-timestamps bewijzen 2026-08-14).
@@ -93,11 +93,11 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
   serviceAccountUser van deploy@ op beide runtime-SA's), WIF-provider ACTIVE met de
   repo-conditie, registry `rlz` (Docker, europe-west4), billing aan, effectieve
   EU-locatie-org-policy dekt het project.
-- **Slotverificatie (enige openstaande F0-punt):** `.github/workflows/deploy-test.yml`
-  (workflow_dispatch) pusht een dummy-image via WIF naar de registry. **Peter triggert
-  'm eenmalig** (GitHub → Actions → deploy-test → Run workflow) zodra deze commit op
-  GitHub staat — run groen = F0 bewezen af, dan hier afvinken. `deploy.yml` heeft de
-  F0-waarden inmiddels ingevuld (blijft dispatch-only tot F2).
+- **Slotverificatie UITGEVOERD (2026-08-14): deploy-test-run #1 GROEN** (Success, 48 s;
+  door Peter getriggerd via GitHub → Actions → deploy-test) — het dummy-image staat via
+  WIF in de registry, daarmee is de hele deploy-keten (GitHub Actions → WIF → Artifact
+  Registry) bewezen. **F0 is hiermee formeel AF.** `deploy.yml` heeft de F0-waarden
+  ingevuld (blijft dispatch-only tot F2).
 
 ## F1 — Data (Cloud SQL, secrets, documenten)
 
