@@ -15,9 +15,9 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 | Partij | Rol | Wanneer nodig | Status |
 |---|---|---|---|
 | Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14), ZDR-verzoek ingediend |
-| Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de GCP-uitrol (klantdata in de cloud) | ⬜ open |
-| Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ⬜ te bevestigen |
-| E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (GCP-uitrol) | ⬜ leverancierskeuze open |
+| Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | 🔶 lopend — infra + regio-borging staan; CDPA-versie+datum archiveren (Peter) + CMEK-besluit 0021 (wacht op akkoord) open |
+| Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | 🔶 lopend — Exact-MKB-PDF's gearchiveerd (2026-08-14, `docs/`); toepasselijkheid op Reeleezee bevestigen (Peter) |
+| E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (F3.4) | 🔶 keuze gemaakt (bestaande kantoor-mailprovider, GCP-beslispunt 5, 2026-08-12) — DPA-check + mailbox/app-wachtwoord open |
 
 ---
 
@@ -111,11 +111,16 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 
 **Acties Peter:**
 
-- [ ] Google Cloud-organisatie/billing opzetten; CDPA-versie + acceptatiedatum vastleggen.
-- [ ] Data-locatie `europe-west4` per service configureren en een Organization Policy
-      (resource location restriction) op EU zetten.
-- [ ] Herzieningsmoment CMEK/client-side encryptie uitvoeren vóór go-live (besluit 0003) en
-      de uitkomst als platformbesluit vastleggen.
+- [x] Google Cloud-organisatie/billing opzetten — **gedaan (F0, 2026-08-14):** project
+      `rlz-boekhouding` onder de PDL Powerhouse-org, billing gekoppeld;
+      ⬜ CDPA-versie + acceptatiedatum nog vastleggen/archiveren (console →
+      ondernemingsvoorwaarden, of de CDPA-pagina als PDF).
+- [x] Data-locatie `europe-west4` per service + Organization Policy op EU-locaties —
+      **gedaan + geverifieerd (F0/F1, 2026-08-14):** alle resources in `europe-west4`,
+      EU-org-policy effectief op het project (describe-bewijs in het F5-poortdossier).
+- [x] Herzieningsmoment CMEK/client-side encryptie (besluit 0003) — **memo opgesteld
+      2026-08-14** (voorstel-platformbesluit 0021, lean-lijn CMEK-aan-bij-go-live);
+      ⬜ akkoord Peter + daarna uitvoering vóór tranche 2 en INDEX-regel.
 - [ ] Googles subverwerkerslijst (via het CDPA) archiveren.
 
 ---

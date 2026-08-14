@@ -39,6 +39,10 @@ TEST-administratie).
 
 ## Stap 2 — vóór de GCP-uitrol (klantdata in de cloud, gepland september 2026)
 
+> ➡️ **Deze stap is de F5-poort.** Het afvinkbare bewijsdossier (per punt:
+> bewijs/vindplaats + wie + status) is **[08-f5-poortdossier.md](08-f5-poortdossier.md)**
+> — status dáár bijhouden, dit lijstje blijft de normtekst.
+
 - [ ] **Google Cloud CDPA** geaccepteerd; versie + datum gearchiveerd (checklist B).
 - [ ] **Regio-borging**: alle services in `europe-west4`; Organization Policy op EU-locaties.
 - [ ] **Herzieningsmoment CLOUD Act uitgevoerd** (besluit 0003): CMEK en/of client-side

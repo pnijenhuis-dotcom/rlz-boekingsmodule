@@ -15,6 +15,8 @@ september 2026).
 | 4 | [04-dpia-lichte-toets-ai-extractie.md](04-dpia-lichte-toets-ai-extractie.md) | DPIA-lichte toets op de AI-extractie: risico's, geborgde mitigaties, restrisico's |
 | 5 | [05-activatie-checklist.md](05-activatie-checklist.md) | Volgorde waarin de gates aangezet mogen worden en wat er per gate rond moet zijn |
 | 6 | [06-datalek-procedure.md](06-datalek-procedure.md) | Datalek-procedure (meldplicht art. 33/34 AVG), kantoorbreed, incl. rollen en meldstappen |
+| 7 | [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md) | Concept intra-groep verwerkersovereenkomst kantoor ↔ PDL Powerhouse B.V. (jurist-vraag 9) |
+| 8 | [08-f5-poortdossier.md](08-f5-poortdossier.md) | Afvinkbaar bewijsdossier voor de F5-go-live-poort (= stap 2 van doc 5): per punt bewijs/vindplaats + wie + status |
 
 Word-bundel voor verzending aan de jurist: `AVG-pakket-ter-toetsing-2026-08-11.docx`
 (memo + alle documenten in één bestand).
@@ -30,5 +32,8 @@ nooit met de hand in Word bewerken (2026-08-13: een Word-hersave van de
 verwerkersovereenkomst-docx introduceerde precies zo'n zwevende binary-wijziging, incl.
 per ongeluk getikte tekst; opgelost door regeneratie uit de ongewijzigde md).
 
-Status: **concept — wacht op juridische toetsing Peter** (zie `docs/BESLISSINGEN.md`, onderwerp
-"AVG-compliance"). Bronverificatie van de externe links: 2026-08-11 (web).
+Status: **juridische toetsing afgerond — jurist-akkoord 2026-08-12** (alle 9 toetsvragen; zie
+`docs/BESLISSINGEN.md`, onderwerp "AVG-compliance"). De activatie-checklist (doc 5) is sindsdien
+de operationele leidraad; het F5-poortdossier (doc 8) is de afvinkplek voor de go-live-poort.
+Bronverificatie van de externe links: 2026-08-11 (web); cloudconfiguratie-feiten: 2026-08-14
+(read-only describe).

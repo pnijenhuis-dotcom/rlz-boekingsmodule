@@ -13,7 +13,7 @@
 | Verwerkingsverantwoordelijke | Administratiekantoor Nijenhuis (rolbepaling: zie [03-verwerker-vs-verantwoordelijke.md](03-verwerker-vs-verantwoordelijke.md) — het kantoor is voor de administratievoering zelfstandig verwerkingsverantwoordelijke) |
 | Contactpersoon | P. Nijenhuis |
 | Functionaris gegevensbescherming | n.v.t. (geen FG-plicht verwacht; juridisch toetsen) |
-| Verwerkers (via de module) | Anthropic (Claude API — AI-extractie), Exact Reeleezee (boekhoudpakket, bron van waarheid), Google Cloud EMEA (vanaf GCP-uitrol: hosting, database, documentopslag) — details en contractstatus: [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) |
+| Verwerkers (via de module) | Anthropic Ireland, Limited (Claude API — AI-extractie; contractspartij EEA), Exact Reeleezee (boekhoudpakket, bron van waarheid), PDL Powerhouse B.V. (eigenaar software + hosting — intra-groep verwerkersovereenkomst, concept [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md), jurist-akkoord vraag 9 2026-08-12), Google Cloud EMEA Ltd. (hosting/database/documentopslag — subverwerker ván PDL; cloudomgeving staat sinds 2026-08-14, klantdata pas ná de F5-poort), e-mailprovider intake-postvak (volgt bij IMAP-activatie, checklist D) — details en contractstatus: [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) |
 | Doorgifte buiten de EER | Ja, naar de VS (Anthropic Claude API). Zie §9 (doorgifte-/CLOUD Act-notitie) |
 
 ## 1. Overzicht verwerkingen
@@ -114,27 +114,57 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
   (afwijzen = verplichte reden; API-fout = zichtbare foutstatus + retry).
 - **Pseudonimisering**: PII gescheiden van financiële data; verwijderverzoek = pseudonimiseren
   ná relatie-einde + 7 jaar (besluit 0004).
-- **Hosting (na uitrol)**: Google Cloud `europe-west4`, Cloud SQL met HA + PITR, Cloud Storage
-  met retentiebeleid (7 jaar), Cloud Scheduler/Run-jobs; lokale dev via Docker Compose.
+- **Hosting (werkelijke cloudconfiguratie, geverifieerd 2026-08-14 — klantdata pas ná de
+  F5-poort):** Google Cloud-project `rlz-boekhouding` (PDL Powerhouse-organisatie), alles in
+  `europe-west4`, geborgd door een **Organization Policy op EU-locaties**
+  (`constraints/gcp.resourceLocations`, effectief op het project — describe-bewijs in het
+  F5-poortdossier). **Cloud SQL** PostgreSQL 16 REGIONAL (HA) met PITR (7 dagen
+  transactielogs) + dagelijkse backups 02:00. **Cloud Storage-bucket**
+  `rlz-boekhouding-documenten`: retentiebeleid 7 jaar (220.903.200 s, *unlocked* —
+  GCP-beslispunt 7), versioning aan, public-access-prevention enforced, uniform
+  bucket-level access. **Cloud KMS** keyring `rlz`, key `masterkey` (jaarrotatie): de
+  envelope-encryptie van de credential-store draait op KMS-gewrapte data-keys
+  (`KmsMasterKeyProvider`); overige secrets in **Secret Manager** (replicatie
+  `europe-west4`). Toegang via least-privilege service-accounts (aparte runtime-SA's
+  service/jobs, deploy via Workload Identity Federation zonder langlevende keys).
+  Achtergrondwerk via Cloud Scheduler + Cloud Run-jobs mét job-failure-alerting.
+  Lokale dev via Docker Compose. **CMEK**: beoordeeld bij het CLOUD-Act-herzieningsmoment
+  — zie §9 punt 2.
 
 ## 9. Doorgifte- en CLOUD Act-notitie
 
-1. **Anthropic (Claude API)** — verwerking vindt plaats in de VS (er is voor de standaard API
-   geen EU-verwerkingsregio; stand webverificatie 2026-08-11). Grondslag doorgifte: de EU
-   Standard Contractual Clauses (2021) die in Anthropics DPA zijn opgenomen (module 2
-   controller→processor); controleer bij ondertekening tevens of Anthropic actueel
-   gecertificeerd is onder het EU-U.S. Data Privacy Framework (DPF-register). Mitigaties:
-   gate default UIT, BSN-filter, dataminimalisatie, zero-data-retention-optie (zie checklist).
+1. **Anthropic (Claude API)** — contractspartij voor EEA-klanten is **Anthropic Ireland,
+   Limited** (Commercial Terms of Service, versie effective 17-06-2025, gearchiveerd
+   2026-08-14), maar de **verwerking zelf vindt plaats in de VS** (geen EU-verwerkingsregio
+   voor de standaard API; stand webverificatie 2026-08-11). Grondslag doorgifte: de EU
+   Standard Contractual Clauses (2021) in Anthropics DPA (versie effective 24-02-2025,
+   gearchiveerd 2026-08-14; module 2 controller→processor). De gearchiveerde Terms
+   bevestigen: **geen training op Customer Content** (§B). **Zero data retention:
+   aangevraagd, loopt** (status 2026-08-14) — uitkomst archiveren in de checklist;
+   DPF-registercheck op Anthropic staat nog open (actie Peter, checklist A). Mitigaties:
+   gate default UIT, BSN-filter, dataminimalisatie, AI-kostengrens met fail-closed poort.
 2. **Google Cloud** — verwerking in `europe-west4` (Nederland), maar Google LLC valt als
    Amerikaanse moeder onder de CLOUD Act: Amerikaanse autoriteiten kunnen in uitzonderlijke
    gevallen verstrekking vorderen, ook van EU-data. Dit risico is **geaccepteerd bij
-   platformbesluit 0003 (2026-07-04) mét een contractueel herzieningsmoment vóór go-live**:
-   dan wordt CMEK (customer-managed encryption keys) en/of client-side documentversleuteling
-   voor klantboekhouddata beoordeeld. Doorgifte-grondslag voor eventuele support-toegang
-   vanuit de VS: SCC's in Googles Cloud Data Processing Addendum + EU-U.S. Data Privacy
-   Framework (Google is DPF-gecertificeerd sinds september 2023).
+   platformbesluit 0003 (2026-07-04) mét een contractueel herzieningsmoment vóór go-live.
+   Dat herzieningsmoment is uitgevoerd (memo 2026-08-14):** voorstel-platformbesluit 0021
+   (`Platform/besluiten/0021-cmek-clientside-documentversleuteling.md`) — **CMEK aan bij
+   go-live** (Cloud SQL-herbouw mét CMEK vóór de klantdata-migratie + default-KMS-key op de
+   documentenbucket), client-side documentversleuteling alleen op expliciet klantverzoek;
+   wacht op akkoord Peter. NB het memo benoemt eerlijk dat CMEK zeggenschap/intrekbaarheid
+   en audit toevoegt, geen absolute CLOUD-Act-immuniteit (de key blijft in Cloud KMS).
+   Doorgifte-grondslag voor eventuele support-toegang vanuit de VS: SCC's in Googles Cloud
+   Data Processing Addendum + EU-U.S. Data Privacy Framework (Google is DPF-gecertificeerd
+   sinds september 2023). CDPA-versie + acceptatiedatum archiveren = actie Peter
+   (checklist B).
 3. **Exact Reeleezee** — Nederlandse leverancier, hosting in de EU (bevestigen bij het
-   opvragen van de actuele verwerkersovereenkomst — zie checklist).
+   opvragen van de actuele verwerkersovereenkomst — zie checklist; de Exact-MKB-PDF's
+   versie 1.5/2021 + bijlage 1.6/2022 zijn gearchiveerd in `docs/`, toepasselijkheid op
+   Reeleezee-abonnementen nog door Exact te bevestigen).
+4. **E-mailprovider intake-postvak** — wordt pas verwerker bij activering van de live
+   IMAP-fetch (keuze: bestaande kantoor-mailprovider, GCP-beslispunt 5); DPA-check
+   (checklist D) is een harde voorwaarde vóór activering — tot die tijd is de .eml-upload
+   het kanaal en is er geen doorgifte.
 
 ## 10. Rechten van betrokkenen
 
