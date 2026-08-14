@@ -1275,4 +1275,36 @@ heeft per administratie een bestaand customer-anker nodig om de PUT-route te kun
 Keuze + onderbouwing: zie docs/BESLISSINGEN.md "Route A — projectaanmaak" (systeemanker per
 administratie, idempotent aangemaakt; bewust bespreekpunt richting Peter omdat het
 kasomzet-besluit "geen dummy-debiteur" hier niet 1-op-1 opgaat — RLZ's route dwingt een
-customer af).
+customer af). **Inmiddels BESLOTEN (Peter 2026-08-14)** — zie de nazorg-sectie
+"Projectgebruik op vreemde documentregels" hieronder én BESLISSINGEN "Systeemanker route A".
+
+## Projectgebruik op vreemde documentregels — route-A-nazorg (14 augustus 2026, test-administratie) — GESLAAGD
+
+Nazorg-verificatie bij route A (opdracht Peter 2026-08-14): een pand-project hangt
+noodgedwongen onder het systeemanker "Pandprojecten (systeem)" (de schrijfroute dwingt een
+customer af — zie STAP-0 hierboven), maar het bestaansrecht van die projecten is
+kostenregistratie op INKOOPfacturen van willekeurige leveranciers (kostenflow-omkering §3a:
+pand = `project_id` per regel). De vraag: bindt RLZ een project regel-technisch aan zijn
+customer? Script: `verkenning/poc_project_regelgebruik.py` (zelfde waarborgen; audit
+`output/projectregelpoc_audit.jsonl`); alles tegen de test-administratie `8dbfb856-…`.
+
+1. **Anker-binding bevestigd**: `Projects?$filter=Name eq 'TEST-ROUTE-A Pand Dorpsstraat 1'
+   &$expand=Customer` → precies één hit, Customer = "Pandprojecten (systeem)"
+   (`d2102424-9862-5254-8e54-87d4ef9fc706`, het route-A-live-verificatie-anker).
+2. **Concept op een vreemde entiteit**: `PUT PurchaseInvoices/{client-guid}` met Entity = de
+   bewezen PoC-vendor (`f7a74265-…`, níét het anker) en op de regel `Project:{id}` van het
+   anker-gebonden project → **204**; teruglezen via `Lines?$expand=Account,Project` toont de
+   volledige Project-ref op de regel. **RLZ legt géén entiteit-beperking op projectgebruik**
+   — de customer-binding van de schrijfroute is puur een ophangpunt, geen scope.
+3. **Boeken**: actie 17 → 204, Status 1→2; de Project-ref op de regel **overleeft het
+   boeken** ongewijzigd.
+4. **Storno** (testdata-afspraak v1.3): actie 19 → 204, Status 2→1; ref blijft ook dan
+   staan. Testdocument `TEST-PROJECTREGELPOC-1` (id `dcd59047-2810-52aa-bf92-45e9eaad71d4`)
+   blijft als concept staan (nooit verwijderen).
+
+**Conclusie: route A's premisse is bewezen** — anker-gebonden projecten zijn onbeperkt
+bruikbaar op documentregels van elke entiteit, vóór én ná boeken. De keerzijde (op het
+anker zélf mag nooit geboekt worden) is dezelfde dag afgedwongen als blokkerende check:
+`check_geen_ankerdebiteur` in het verkoop-checksrapport + fail-closed slot in
+`zorg_voor_debiteur` (naam- én GUID-toets, vangt ook een in RLZ hernoemd anker) + de
+whitelist-toets in de doorbelasting-checks (`app/projecten/anker.py` is de ene bron).
