@@ -13,6 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.documenten.checks import CheckRapport, CheckResultaat
+from app.projecten.anker import ANKER_CUSTOMER_NAAM, is_anker_naam
 from app.sync import btw as btw_eenheid
 
 _ROND_TOLERANTIE = Decimal("0.01")
@@ -178,6 +179,23 @@ def check_btw_uit_factuur(*, regels: list[VerkoopCheckRegel]) -> CheckResultaat:
     )
 
 
+def check_geen_ankerdebiteur(*, debiteur_naam: str | None) -> CheckResultaat:
+    """Route-A-nazorg (besluit Peter 2026-08-14): het projectanker "Pandprojecten (systeem)"
+    is een route-technisch ophangpunt en krijgt NOOIT een boeking — een UBL die het anker als
+    afnemer draagt is per definitie fout geadresseerd. Naam-toets genormaliseerd
+    (app/projecten/anker.py); het tweede slot zit fail-closed in zorg_voor_debiteur."""
+    if is_anker_naam(debiteur_naam):
+        return CheckResultaat(
+            naam="geen_ankerdebiteur",
+            ok=False,
+            melding=f"'{ANKER_CUSTOMER_NAAM}' is het systeemanker voor pand-projecten (route A) "
+            "en mag nooit een boeking krijgen — kies de echte afnemer",
+        )
+    return CheckResultaat(
+        naam="geen_ankerdebiteur", ok=True, melding="Debiteur is niet het projectanker-systeemrecord"
+    )
+
+
 def check_duplicaat_verkoop(
     *,
     lokale_hits: int,
@@ -266,6 +284,7 @@ def voer_verkoop_checks_uit(
         check_regelsom_verkoop(totaalbedrag_incl=totaalbedrag_incl, regels=regels),
         check_gb_codes_bekend(regels=regels),
         check_btw_uit_factuur(regels=regels),
+        check_geen_ankerdebiteur(debiteur_naam=debiteur_naam),
         check_duplicaat_verkoop(
             lokale_hits=lokale_duplicaat_hits,
             rlz_hits=rlz_duplicaat_hits,

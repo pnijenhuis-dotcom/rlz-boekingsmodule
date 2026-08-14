@@ -64,6 +64,7 @@ from app.documenten.webhook import (
     bouw_factuur_gestorneerd_payload,
 )
 from app.doorbelasting.checks import voer_doorbelasting_checks_uit
+from app.projecten.anker import anker_customer_id
 from app.doorbelasting.geld import btw_over, provisie_over
 from app.doorbelasting.models import (
     DoorbelastingBoeking,
@@ -368,6 +369,7 @@ def boek_doorbelasting_run(
             provisie_percentage=instelling.provisie_percentage,
             btw_taxrate_id=instelling.btw_taxrate_id,
             omzet_ledger_id=instelling.omzet_ledger_id,
+            anker_customer_guid=anker_customer_id(administratie_id),
         )
         if rapport.geblokkeerd:
             raise BoekenGeblokkeerdDoorChecks(rapport)

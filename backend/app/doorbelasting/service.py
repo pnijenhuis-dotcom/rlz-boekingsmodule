@@ -26,6 +26,7 @@ from app.doorbelasting.checks import (
     voer_doorbelasting_checks_uit,
 )
 from app.doorbelasting.geld import provisie_over, verdeel_grootste_rest
+from app.projecten.anker import anker_customer_id
 from app.doorbelasting.models import (
     DoorbelastingBoeking,
     DoorbelastingBoekingStatus,
@@ -495,6 +496,7 @@ def _check_invoer(
             actief=m.actief,
             doel_administratie_id=m.doel_administratie_id,
             provisie_kosten_ledger_id=m.provisie_kosten_ledger_id,
+            doel_customer_guid=m.doel_customer_guid,
         )
         for m in session.scalars(
             select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == run.administratie_id)
@@ -531,6 +533,7 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
             provisie_percentage=instelling.provisie_percentage,
             btw_taxrate_id=instelling.btw_taxrate_id,
             omzet_ledger_id=instelling.omzet_ledger_id,
+            anker_customer_guid=anker_customer_id(administratie_id),
         )
         naam_per_mapping = {
             m.id: m

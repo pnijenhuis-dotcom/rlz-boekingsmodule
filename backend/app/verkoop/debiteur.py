@@ -13,6 +13,7 @@ import uuid
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.documenten.rlz_ids import rlz_customer_id
+from app.projecten.anker import ANKER_CUSTOMER_NAAM, anker_customer_id, is_anker_naam
 from app.rlz.client import RlzClient
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,13 @@ def zorg_voor_debiteur(
     naam = " ".join(naam.split())
     if not naam:
         raise DebiteurAanmakenMislukt("Debiteurnaam is leeg")
+    if is_anker_naam(naam):
+        # Tweede slot naast check_geen_ankerdebiteur (route-A-besluit 2026-08-14): het
+        # projectanker krijgt nooit een boeking, dus ook nooit via dit aanmaak-/lookup-pad.
+        raise DebiteurAanmakenMislukt(
+            f"'{ANKER_CUSTOMER_NAAM}' is het projectanker-systeemrecord (route A) — "
+            "hier mag nooit op geboekt worden"
+        )
 
     try:
         bestaand = client.find_customers_by_name(name=naam)
@@ -50,7 +58,13 @@ def zorg_voor_debiteur(
         raise DebiteurAanmakenMislukt(f"Debiteur-duplicaatcheck kon niet uitgevoerd worden: {exc}") from exc
 
     if len(bestaand) == 1:
-        return uuid.UUID(bestaand[0]["id"])
+        gevonden = uuid.UUID(bestaand[0]["id"])
+        if gevonden == anker_customer_id(administratie_id):
+            raise DebiteurAanmakenMislukt(
+                f"De gevonden RLZ-debiteur is het projectanker '{ANKER_CUSTOMER_NAAM}' "
+                "(route A) — hier mag nooit op geboekt worden"
+            )
+        return gevonden
     if len(bestaand) > 1:
         raise DebiteurAanmakenMislukt(
             f"Meerdere bestaande RLZ-debiteuren heten exact '{naam}' ({len(bestaand)}) — "

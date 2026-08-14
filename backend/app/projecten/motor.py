@@ -10,9 +10,10 @@ Kernontwerp:
 - De schrijfroute vereist een bestaande customer als route-anker (`PUT Customers/{baseId}/
   Projects/{id}`; 404 onder een onbekende customer) en het project is écht aan die customer
   gebonden. De aanvraag draagt geen customer → per administratie één idempotent aangemaakt
-  SYSTEEMANKER (ANKER_CUSTOMER_NAAM, patroon zorg_voor_debiteur). NB bewust bespreekpunt
-  richting Peter (BESLISSINGEN "Route A"): het kasomzet-besluit "geen dummy-debiteur" gaat
-  hier niet 1-op-1 op — RLZ's route dwingt een customer af; het anker krijgt nooit boekingen.
+  SYSTEEMANKER (app/projecten/anker.py, patroon zorg_voor_debiteur). Besluit Peter
+  2026-08-14 (BESLISSINGEN "Systeemanker route A"): het kasomzet-besluit "geen dummy-debiteur"
+  gaat hier niet 1-op-1 op — RLZ's route dwingt een customer af; het anker krijgt NOOIT
+  boekingen (blokkerende checks in verkoop/doorbelasting + slot in zorg_voor_debiteur).
 - `IsActive: true` expliciet in de PUT (STAP-0: default is false — het project zou anders
   onzichtbaar/inactief zijn).
 - project_cache wordt direct ná succes bijgewerkt (geen wachtend sync-venster): het verse
@@ -31,6 +32,7 @@ from typing import Any
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.documenten.rlz_ids import rlz_customer_id, rlz_pand_project_id
+from app.projecten.anker import ANKER_CUSTOMER_NAAM
 from app.projecten.models import ProjectAanvraagStatus
 from app.projecten.naamconventie import vorm_projectnaam
 from app.rlz.client import RlzClient
@@ -39,10 +41,10 @@ from app.sync.models import ProjectCache
 
 logger = logging.getLogger(__name__)
 
-# Het per-administratie systeemanker waar pand-projecten onder hangen. Naam is bewust
-# herkenbaar systeem-achtig: hij verschijnt in RLZ's debiteurenlijst maar krijgt nooit een
-# boeking. NOOIT wijzigen zonder migratiepad — de lookup-vóór-PUT zoekt op exact deze naam.
-ANKER_CUSTOMER_NAAM = "Pandprojecten (systeem)"
+# Het per-administratie systeemanker waar pand-projecten onder hangen leeft in
+# app/projecten/anker.py (naam + GUID-toetsen — de boekpaden importeren dáár, zonder deze
+# motor mee te trekken); hier her-geëxporteerd voor de bestaande aanroepers/tests.
+__all__ = ["ANKER_CUSTOMER_NAAM"]
 
 
 class ProjectAanmakenMislukt(Exception):

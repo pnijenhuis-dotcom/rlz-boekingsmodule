@@ -46,6 +46,9 @@ class MappingInvoer:
     actief: bool
     doel_administratie_id: uuid.UUID | None
     provisie_kosten_ledger_id: uuid.UUID | None
+    # Route-A-nazorg (besluit 2026-08-14): het RLZ-customer-GUID waarop de verkoopfactuur in
+    # de bron geboekt wordt — nodig voor de anker-toets (check_geen_ankerdebiteur).
+    doel_customer_guid: uuid.UUID | None = None
 
 
 def check_verdeling_100(regels: list[VerdeelRegelInvoer]) -> CheckResultaat:
@@ -147,6 +150,36 @@ def check_onboarded_doelen_boekbaar(
     return CheckResultaat(naam=naam, ok=True, melding="Onboarded doelen zijn direct boekbaar")
 
 
+def check_geen_ankerdebiteur(
+    regels: list[VerdeelRegelInvoer],
+    mappings: dict[uuid.UUID, MappingInvoer],
+    *,
+    anker_customer_guid: uuid.UUID | None,
+) -> CheckResultaat:
+    """Route-A-nazorg (besluit Peter 2026-08-14): het projectanker "Pandprojecten (systeem)"
+    krijgt NOOIT een boeking — een whitelist-rij die (per vergissing) het anker-GUID draagt
+    blokkeert dus onvoorwaardelijk. De orkestratie levert het deterministische anker-GUID van
+    de bron-administratie aan (app/projecten/anker.py::anker_customer_id); None = geen toets
+    mogelijk, dan telt de check als geslaagd-op-naamloze-basis — bewust niet fail-closed,
+    want het GUID is puur lokaal berekenbaar en ontbreekt alleen in oude testinvoer."""
+    naam = "Geen boeking op het projectanker"
+    if anker_customer_guid is None:
+        return CheckResultaat(naam=naam, ok=True, melding="Anker-toets zonder GUID overgeslagen")
+    geraakt = [
+        str(mapping_id)
+        for mapping_id in sorted({r.mapping_id for r in regels}, key=str)
+        if (m := mappings.get(mapping_id)) is not None and m.doel_customer_guid == anker_customer_guid
+    ]
+    if geraakt:
+        return CheckResultaat(
+            naam=naam,
+            ok=False,
+            melding="Doelentiteit verwijst naar het projectanker 'Pandprojecten (systeem)' "
+            "(route A) — daar mag nooit op geboekt worden: " + "; ".join(geraakt),
+        )
+    return CheckResultaat(naam=naam, ok=True, melding="Geen doelentiteit verwijst naar het projectanker")
+
+
 def voer_doorbelasting_checks_uit(
     *,
     regels: list[VerdeelRegelInvoer],
@@ -155,6 +188,7 @@ def voer_doorbelasting_checks_uit(
     btw_taxrate_id: uuid.UUID | None,
     omzet_ledger_id: uuid.UUID | None,
     verwachte_totalen_per_mapping: dict[uuid.UUID, tuple[Decimal, Decimal]] | None = None,
+    anker_customer_guid: uuid.UUID | None = None,
 ) -> CheckRapport:
     return CheckRapport(
         resultaten=(
@@ -168,5 +202,6 @@ def voer_doorbelasting_checks_uit(
                 regels, mappings, btw_taxrate_id=btw_taxrate_id, omzet_ledger_id=omzet_ledger_id
             ),
             check_onboarded_doelen_boekbaar(regels, mappings),
+            check_geen_ankerdebiteur(regels, mappings, anker_customer_guid=anker_customer_guid),
         )
     )
