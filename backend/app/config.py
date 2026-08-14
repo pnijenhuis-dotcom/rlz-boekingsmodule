@@ -1,5 +1,7 @@
 from decimal import Decimal
+from urllib.parse import quote_plus
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +27,19 @@ class Settings(BaseSettings):
 
     # Omgeving voor secret-fallback-guards (zie app/security/envelope.py, migraties/0001).
     environment: str = "dev"
+
+    # Cloud SQL-verbinding (GCP-draaiboek F2): de F1-secrets zijn losse wachtwoorden
+    # (APP_DB_PASSWORD, DB_OWNER_WACHTWOORD), de app verwacht volledige URL's — deze drie
+    # settings composeren die in de validator hieronder. `cloud_sql_verbinding` = de
+    # instance-connection-name (project:regio:instantie); Cloud Run mount die als unix-socket
+    # onder /cloudsql/. Leeg = lokale dev, de URL-defaults hierboven/hieronder blijven gelden.
+    # De service krijgt alléén app_db_wachtwoord (least privilege), de migratie-job alléén
+    # db_owner_wachtwoord — de andere URL blijft dan de (in de cloud onbruikbare, luid
+    # falende) dev-default; dat is bewust, nooit stil de verkeerde rol gebruiken.
+    cloud_sql_verbinding: str | None = None
+    cloud_sql_database: str = "boekhouding"
+    app_db_wachtwoord: str | None = None
+    db_owner_wachtwoord: str | None = None
 
     # JWT-signing (HS256). Lokaal via .env; in Cloud Run via Secret Manager. Nooit een fallback
     # buiten dev — zie app/security/tokens.py::_resolve_jwt_secret.
@@ -86,6 +101,13 @@ class Settings(BaseSettings):
     # (app/documenten/storage.py::GcsDocumentOpslag, ADC-authenticatie), leeg = lokaal
     # bestandssysteem. De 7-jaars-retentie zit op de bucket zelf (F1.4), niet in de app.
     document_gcs_bucket: str | None = None
+
+    # Same-origin frontend-serving (GCP-draaiboek F2.2, beslispunt 4): pad naar de Vite-build
+    # (dist). Gezet = de backend serveert de SPA zelf (app/static_frontend.py — hashed assets
+    # immutable, index.html no-cache, SPA-fallback met dezelfde bypass-regels als de dev-proxy).
+    # Leeg = dev (Vite-dev-server + proxy). In het productiebeeld bakt de Dockerfile de build
+    # naar /app/static en zet FRONTEND_DIST_MAP daarop.
+    frontend_dist_map: str | None = None
 
     # CORS: frontend (Vite-dev-server) en backend draaien lokaal op verschillende poorten, dus
     # verschillende origins. Cookies (refresh-token) vereisen expliciete origins + credentials —
@@ -220,6 +242,34 @@ class Settings(BaseSettings):
     # periode tijdens een gefaseerde rollout waarin oude en nieuwe containers naast elkaar draaien
     # tegen hetzelfde schema) — niet de default, alleen expliciet aanzetten.
     migratie_guard_fail_fast: bool = True
+
+    @model_validator(mode="after")
+    def _composeer_cloud_sql_urls(self) -> "Settings":
+        """Cloud SQL-URL-compositie (F2): met een gezette `cloud_sql_verbinding` worden de
+        database-URL's opgebouwd uit de losse wachtwoord-secrets — unix-socket via de
+        `?host=/cloudsql/...`-vorm (psycopg). Wachtwoorden ge-URL-encodeerd (de gegenereerde
+        secrets bevatten base64-tekens als + en /). Fail-closed: een verbinding zonder énig
+        wachtwoord is een configuratiefout — hard weigeren, nooit stil op de dev-defaults
+        doorstarten."""
+        if not self.cloud_sql_verbinding:
+            return self
+        if not self.app_db_wachtwoord and not self.db_owner_wachtwoord:
+            raise ValueError(
+                "cloud_sql_verbinding is gezet maar er is geen app_db_wachtwoord of "
+                "db_owner_wachtwoord — minstens één van beide secrets is vereist."
+            )
+        socket_query = f"?host=/cloudsql/{self.cloud_sql_verbinding}"
+        if self.app_db_wachtwoord:
+            self.app_database_url = (
+                f"postgresql+psycopg://boekhouding_app:{quote_plus(self.app_db_wachtwoord)}"
+                f"@/{self.cloud_sql_database}{socket_query}"
+            )
+        if self.db_owner_wachtwoord:
+            self.database_url = (
+                f"postgresql+psycopg://postgres:{quote_plus(self.db_owner_wachtwoord)}"
+                f"@/{self.cloud_sql_database}{socket_query}"
+            )
+        return self
 
 
 settings = Settings()

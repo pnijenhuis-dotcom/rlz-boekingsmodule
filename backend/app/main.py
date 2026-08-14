@@ -22,6 +22,7 @@ from app.doorbelasting.router import router as doorbelasting_router
 from app.geheugen.router import router as geheugen_router
 from app.intake.router import router as intake_router
 from app.omzet.router import router as omzet_router
+from app.static_frontend import activeer_frontend_serving
 from app.sync.router import router as sync_router
 from app.verkoop.router import router as verkoop_router
 from app.waarborg.router import router as waarborg_router
@@ -175,3 +176,9 @@ async def onverwachte_fout_handler(request: Request, exc: Exception) -> JSONResp
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Same-origin frontend-serving (F2, beslispunt 4) — als allerlaatste, ná álle routes: de
+# SPA-fallback is een catch-all en mag nooit een echte API-route voor de voeten lopen.
+# Doet niets zolang frontend_dist_map leeg is (dev: Vite-dev-server + proxy).
+activeer_frontend_serving(app)

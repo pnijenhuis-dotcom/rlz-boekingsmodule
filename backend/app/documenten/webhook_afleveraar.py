@@ -382,8 +382,16 @@ _afleveraar: InProcessWebhookAfleveraar | None = None
 def start_in_process_afleveraar() -> None:
     """Gestart vanuit de app-lifespan (app/main.py), alleen als er een doel-URL geconfigureerd
     is — zonder URL valt er niets af te leveren en is een pollende thread alleen maar ruis
-    (de config-failsafe laat rijen dan sowieso openstaand)."""
+    (de config-failsafe laat rijen dan sowieso openstaand).
+
+    In productie start de lus bewust NIET (GCP-draaiboek F2.4): Cloud Run throttlet CPU buiten
+    request-afhandeling en schaalt naar nul, dus een pollende achtergrondthread is daar
+    onbetrouwbaar — de aflevering draait er als Cloud Scheduler → Cloud Run-job op dezelfde
+    verwerk-functie (`python -m app.cli webhook-afleveren`, F3)."""
     global _afleveraar
+    if settings.environment == "production":
+        logger.info("In-process webhook-afleveraar niet gestart (production — Cloud Run-job levert af, F3)")
+        return
     if not settings.webhook_doel_url or _afleveraar is not None:
         return
     _afleveraar = InProcessWebhookAfleveraar()

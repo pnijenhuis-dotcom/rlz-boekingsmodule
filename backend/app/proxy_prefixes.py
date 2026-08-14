@@ -28,6 +28,12 @@ JSON_PAD = Path(__file__).resolve().parents[2] / "frontend" / "proxy-prefixes.js
 # Documentatie-/schema-routes die de browser-frontend nooit aanroept.
 _UITGESLOTEN = {"/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"}
 
+# Route-pad van de SPA-fallback (app/static_frontend.py, F2 same-origin-serving). Leeft hier
+# als constante zodat _alle_paden 'm kan uitsluiten zonder circulaire import: de fallback is
+# per definitie géén API-route en zou anders als onzin-segment in de proxy-dump belanden
+# zodra iemand frontend_dist_map in dev aanzet.
+SPA_FALLBACK_PAD = "/{spa_pad:path}"
+
 
 def _alle_paden(app: FastAPI) -> set[str]:
     """Alle geregistreerde route-paden, ook die van include_router-subrouters (deze
@@ -42,8 +48,8 @@ def _alle_paden(app: FastAPI) -> set[str]:
                 paden.add(prefix + sub.path)
     # Underscore-prefix = intern/test-only (bv. de /_test-route die de CORS-vangnettest aan de
     # gedeelde app hangt) — hoort nooit in de browser-proxy en zou de drift-guard
-    # volgorde-afhankelijk maken.
-    return {pad for pad in paden if not pad.startswith("/_")} - _UITGESLOTEN
+    # volgorde-afhankelijk maken. De SPA-fallback (F2) is evenmin een API-route.
+    return {pad for pad in paden if not pad.startswith("/_") and pad != SPA_FALLBACK_PAD} - _UITGESLOTEN
 
 
 def bereken_prefixes(app: FastAPI) -> dict[str, object]:
