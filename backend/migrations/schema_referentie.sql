@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0048
+-- Migratie-head bij deze dump: 0049
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1471,7 +1471,8 @@ CREATE TABLE platform.gebruiker (
     gepseudonimiseerd_op timestamp with time zone,
     wachtwoord_hash text,
     rol platform.gebruiker_rol NOT NULL,
-    status platform.gebruiker_status DEFAULT 'uitgenodigd'::platform.gebruiker_status NOT NULL
+    status platform.gebruiker_status DEFAULT 'uitgenodigd'::platform.gebruiker_status NOT NULL,
+    CONSTRAINT ck_gebruiker_e_mail_lowercase CHECK ((e_mail = lower(e_mail)))
 );
 
 

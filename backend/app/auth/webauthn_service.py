@@ -46,6 +46,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
+from app.auth.normalisatie import normaliseer_e_mail
 from app.auth.service import AuthError, TokenPaar, _hash_token, _issue_token_paar, _login_metadata
 from app.config import settings
 from app.db.audit import record_audit_event
@@ -149,6 +150,7 @@ def start_accordeur_login(*, e_mail: str, wachtwoord: str, ip_adres: str | None 
     inloggen om een afgebroken activatie (wachtwoord gezet, registratie nooit afgemaakt) af te
     ronden — er is dan nog geen andere weg naar een werkend account."""
     generic_error = "Ongeldige inloggegevens"
+    e_mail = normaliseer_e_mail(e_mail)
     faal_gebruiker_id: uuid.UUID | None = None
     resultaat: AccordeurLoginResultaat | None = None
 

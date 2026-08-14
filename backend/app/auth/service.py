@@ -10,6 +10,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.auth.normalisatie import normaliseer_e_mail
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
@@ -81,6 +82,7 @@ def maak_uitnodiging(
 ) -> UitnodigingResultaat:
     """Beheerder-only (afgedwongen door de router-dependency, niet hier — zie deps.require_beheerder).
     Genereert een eenmalig token; alleen de hash ervan wordt opgeslagen (zie Uitnodiging)."""
+    e_mail = normaliseer_e_mail(e_mail)
     gebruiker_id = uuid.uuid4()
     token = secrets.token_urlsafe(32)
     verloopt_op = datetime.now(UTC) + INVITE_TTL
@@ -270,6 +272,7 @@ def login(*, e_mail: str, wachtwoord: str, totp_code: str, ip_adres: str | None 
     `scoped_session` rolt bij een exception de hele transactie terug — inclusief een audit-schrijving
     die er middenin zou staan."""
     generic_error = "Ongeldige inloggegevens"
+    e_mail = normaliseer_e_mail(e_mail)
     faal_actie: str | None = None
     faal_gebruiker_id: uuid.UUID | None = None
     paar: TokenPaar | None = None
@@ -552,6 +555,7 @@ def bootstrap_eerste_beheerder(*, naam: str, e_mail: str) -> BootstrapResultaat:
 
     Schrijft zelf een audit_event: de rol-wijzigingstrigger (migratie 0002) vuurt alleen op
     UPDATE van een bestaande rij, niet op deze allereerste INSERT."""
+    e_mail = normaliseer_e_mail(e_mail)
     with scoped_session(None) as session:
         bestaat_al = session.scalars(select(Gebruiker.id).where(Gebruiker.rol == GebruikerRol.BEHEERDER)).first()
         if bestaat_al is not None:

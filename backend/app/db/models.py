@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, ForeignKey, MetaData, Numeric, SmallInteger, func
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, MetaData, Numeric, SmallInteger, func
 from sqlalchemy.dialects.postgresql import BYTEA, ENUM, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -129,6 +129,10 @@ class Gebruiker(Base):
     """
 
     __tablename__ = "gebruiker"
+    # E-mail altijd in de genormaliseerde (lowercase) vorm — migratie 0049. De CHECK maakt de
+    # bestaande unique-index dé index op de genormaliseerde vorm en laat een schrijfpad dat
+    # app.auth.normalisatie vergeet hard falen i.p.v. stil een case-gevoelig account maken.
+    __table_args__ = (CheckConstraint("e_mail = lower(e_mail)", name="ck_gebruiker_e_mail_lowercase"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     naam: Mapped[str]

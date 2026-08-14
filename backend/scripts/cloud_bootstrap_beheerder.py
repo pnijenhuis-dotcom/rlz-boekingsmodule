@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 STANDAARD_APP_URL = "https://app.administratiekantoornijenhuis.nl"
 STANDAARD_NAAM = "Peter Nijenhuis"
-STANDAARD_EMAIL = "Peter@ak-nijenhuis.nl"
+STANDAARD_EMAIL = "peter@ak-nijenhuis.nl"  # lowercase = de genormaliseerde vorm (migratie 0049)
 
 
 def _controleer_database_doel() -> None:
