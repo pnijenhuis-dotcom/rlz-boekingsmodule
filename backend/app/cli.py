@@ -100,6 +100,7 @@ def _reconciliatie(args: argparse.Namespace) -> int:
     fouten = 0
     afwijkingen_totaal = 0
     geaccepteerd_totaal = 0
+    geaccepteerd_uitgesloten = 0
     for administratie_id, resultaat in resultaten.items():
         uitsluiting = uitgesloten.get(administratie_id)
         if isinstance(resultaat, str):
@@ -120,10 +121,14 @@ def _reconciliatie(args: argparse.Namespace) -> int:
         open_afwijkingen = [b for b in beoordeeld if b.telt_mee]
         if uitsluiting:
             # Zichtbaar blijven, niet meetellen: de bevindingen worden gewoon getoond zodat een
-            # échte fout hier niet onzichtbaar wordt (besluit 0043).
+            # échte fout hier niet onzichtbaar wordt (besluit 0043). De geaccepteerd-telling loopt
+            # hier wél mee (aparte teller in de slotregel) — "telt niet mee in de exit-code" mag
+            # niet verworden tot "telt nergens mee".
+            geaccepteerd_uitgesloten += len(beoordeeld) - len(open_afwijkingen)
             print(
                 f"UITGESLOTEN {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "
-                f"{len(open_afwijkingen)} bevinding(en) — telt niet mee ({uitsluiting})"
+                f"{len(open_afwijkingen)} open, {len(beoordeeld) - len(open_afwijkingen)} geaccepteerd "
+                f"— telt niet mee ({uitsluiting})"
             )
             for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
                 print(f"    - {_regel(f'document={a.document_id} rlz_document={a.rlz_document_id}', b)}")
@@ -137,9 +142,14 @@ def _reconciliatie(args: argparse.Namespace) -> int:
         )
         for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
             print(f"    - {_regel(f'document={a.document_id} rlz_document={a.rlz_document_id}', b)}")
+    uitgesloten_naschrift = (
+        f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
+        if geaccepteerd_uitgesloten
+        else ""
+    )
     print(
         f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties gecontroleerd, "
-        f"{afwijkingen_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd)."
+        f"{afwijkingen_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd{uitgesloten_naschrift})."
     )
 
     # Storno-detectie (koppelcontract §3 v1.14, randvraag c): een RLZ-UI-storno op een geboekte
@@ -202,6 +212,7 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
     fouten = 0
     afwijkingen_totaal = 0
     geaccepteerd_totaal = 0
+    geaccepteerd_uitgesloten = 0
     for administratie_id, resultaat in resultaten.items():
         uitsluiting = uitgesloten.get(administratie_id)
         if isinstance(resultaat, str):
@@ -222,9 +233,13 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
         )
         open_afwijkingen = [b for b in beoordeeld if b.telt_mee]
         if uitsluiting:
+            # Zelfde zichtbaarheids-fix als de documenten-variant: geaccepteerd-telling loopt mee
+            # in een aparte teller, alleen de exit-code negeert de uitgesloten administratie.
+            geaccepteerd_uitgesloten += len(beoordeeld) - len(open_afwijkingen)
             print(
                 f"UITGESLOTEN {administratie_id}: {gecontroleerd} gecontroleerd, "
-                f"{len(open_afwijkingen)} bevinding(en) — telt niet mee ({uitsluiting})"
+                f"{len(open_afwijkingen)} open, {len(beoordeeld) - len(open_afwijkingen)} geaccepteerd "
+                f"— telt niet mee ({uitsluiting})"
             )
             for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
                 print(f"    - {_regel(f'record={a.record_id} mutatie={a.payment_transaction_id}', b)}")
@@ -238,9 +253,14 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
         )
         for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
             print(f"    - {_regel(f'record={a.record_id} mutatie={a.payment_transaction_id}', b)}")
+    uitgesloten_naschrift = (
+        f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
+        if geaccepteerd_uitgesloten
+        else ""
+    )
     print(
         f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties gecontroleerd, "
-        f"{afwijkingen_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd)."
+        f"{afwijkingen_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd{uitgesloten_naschrift})."
     )
     return 1 if (fouten or afwijkingen_totaal) else 0
 
