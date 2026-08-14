@@ -5,7 +5,12 @@
 > migratie 0001→0047 + GCS/KMS-verificatie geslaagd, zie §F1 — UITGEVOERD);
 > F2 FORMEEL AF (2026-08-14); F3 UITGEVOERD (2026-08-14, zie §F3-uitvoering —
 > alerting + 4 jobs + scheduler staan, per job een handmatige run geverifieerd;
-> IMAP bewust inactief tot DPA-check; open: alertmail-ontvangst bevestigen (Peter)).**
+> IMAP bewust inactief tot DPA-check; open: alertmail-ontvangst bevestigen (Peter));
+> F3.3 rapportage-teller GEFIXT (2026-08-14 — cutover-voorwaarde dicht);
+> F5-VOORBEREIDING UITGEVOERD (2026-08-14): CMEK-memo = voorstel-besluit 0021 (wacht op
+> akkoord Peter), verwerkingsregister §8/§9 bijgewerkt, poortdossier
+> `docs/avg/08-f5-poortdossier.md` — stand 4/8 ✅; rest = Peters archiefklikken +
+> CMEK-besluit.**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
 > dag te ver (commits én GCP-timestamps bewijzen 2026-08-14).
 > Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
@@ -496,10 +501,16 @@ te wachten (`F3_IMAGE_OVERRIDE`; de volgende deploy-run trekt de beelden weer ge
   (deploy.yml op de ubuntu-runner heeft dit niet nodig). (2) `gcloud --args -m,...` leest de
   `-m` als eigen flag — altijd de `--args=`-vorm. (3) de Monitoring-API heeft een eigen
   filtersyntax; idempotentie-checks op displayName lokaal matchen, niet via `--filter`.
-- **Blijft open binnen F3:** punt 3 (rapportage-teller, voorwaarde vóór de
-  alerting-CUTOVER — zie BESLISSINGEN "Rapportage-bug reconciliatie"), punt 4
-  (IMAP-activatie ná DPA) en punt 5 (lokale dagelijkse run blijft het echte vangnet tot
-  cutover F1.6 stap 7, ná F5 — jobs draaien tot tranche 2 als infrastructuurbewijs/no-op).
+- **Blijft open binnen F3:** ~~punt 3 (rapportage-teller)~~ — **GEFIXT + GETEST bij de
+  F5-voorbereiding (2026-08-14):** de uitgesloten-tak van de documenten- én bank-variant
+  telt geaccepteerde afwijkingen nu mee in een aparte teller ("X open, Y geaccepteerd —
+  telt niet mee") en de slotregel benoemt de uitgesloten geaccepteerd-telling apart; de
+  exit-code is ongewijzigd (besluit 0043). Tests:
+  `tests/reconciliatie/test_rapportage_teller_cli.py` (4, incl. de voorheen ongedekte
+  uitgesloten-tak). **De cutover-voorwaarde uit punt 3 is daarmee dicht.** Nog open:
+  punt 4 (IMAP-activatie ná DPA) en punt 5 (lokale dagelijkse run blijft het echte
+  vangnet tot cutover F1.6 stap 7, ná F5 — jobs draaien tot tranche 2 als
+  infrastructuurbewijs/no-op).
 
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
@@ -540,24 +551,34 @@ vastgoed-kant; een `factuur_afgeletterd` 2.0-event op een tier-administratie ide
 
 Er gaat **geen enkele echte klantadministratie** de cloud in vóór deze poort dicht is
 (besluit Peter 2026-08-12: de AVG-poort zit exact hier — testdata/eigen administratie mocht
-eerder). De poort = **AVG-activatie-checklist stap 2, integraal**:
+eerder). De poort = **AVG-activatie-checklist stap 2, integraal**. **Het afvinkbare
+bewijsdossier (per punt: bewijs/vindplaats + wie + status) is
+`docs/avg/08-f5-poortdossier.md` — status dáár bijhouden**; de lijst hieronder blijft de
+normtekst (stand 2026-08-14, F5-voorbereiding):
 
-- [ ] Google Cloud **CDPA** geaccepteerd, versie + datum gearchiveerd;
-- [ ] **regio-borging** aantoonbaar (alles `europe-west4` + Org Policy — staat sinds F0);
-- [ ] **herzieningsmoment CLOUD Act** (besluit 0003) uitgevoerd: **CMEK en/of client-side
-      documentversleuteling beoordeeld, uitkomst als platformbesluit vastgelegd**
-      *(besloten — beslispunt 6: het memo wordt bij F5 voorbereid, met als lean-lijn
-      **CMEK aan bij go-live** en client-side documentversleuteling alleen op klantverzoek;
-      het memo formaliseert dit als platformbesluit)*;
-- [ ] retentie/PITR-instellingen gedocumenteerd (staat technisch sinds F1);
-- [ ] verwerkersovereenkomst **Exact Reeleezee** bevestigd + gearchiveerd;
-- [ ] IMAP-provider-DPA rond (checklist D, hoort bij F3);
-- [ ] verwerkingsregister §8/§9 bijgewerkt op de wérkelijke cloudconfiguratie;
-- [ ] identiteit-eerst-check afgerond genoteerd (uit F0).
+- [ ] Google Cloud **CDPA** geaccepteerd, versie + datum gearchiveerd *(Peter — open)*;
+- [x] **regio-borging** aantoonbaar (alles `europe-west4` + Org Policy — describe-bewijs
+      in het poortdossier, 2026-08-14);
+- [ ] **herzieningsmoment CLOUD Act** (besluit 0003) uitgevoerd: **memo OPGESTELD
+      (2026-08-14)** als voorstel-platformbesluit
+      `Platform/besluiten/0021-cmek-clientside-documentversleuteling.md` — lean-lijn
+      bevestigd (**CMEK aan bij go-live**, herbouw `rlz-sql` mét CMEK vóór tranche 2
+      becijferd op ~1 dagdeel; client-side documentversleuteling alleen op klantverzoek);
+      **wacht op akkoord Peter**, daarna uitvoering + INDEX-regel;
+- [x] retentie/PITR-instellingen gedocumenteerd (technisch sinds F1; als poortbewijs
+      vastgelegd in het dossier, describe 2026-08-14);
+- [ ] verwerkersovereenkomst **Exact Reeleezee** bevestigd + gearchiveerd *(PDF's
+      gearchiveerd 2026-08-14; bevestiging toepasselijkheid door Exact — Peter)*;
+- [ ] IMAP-provider-DPA rond (checklist D, hoort bij F3) *(keuze gemaakt; DPA-check +
+      mailbox — Peter)*;
+- [x] verwerkingsregister §8/§9 bijgewerkt op de wérkelijke cloudconfiguratie
+      (2026-08-14, incl. subverwerkers-checklist-consistentie + PDL in §0);
+- [x] identiteit-eerst-check afgerond genoteerd (uit F0 — dossier punt 8).
 
 Daarna, als sluitstuk: de **datamigratie-tranche 2** uit F1.6 (DB-dump/restore mét
 masterkey-continuïteit, documenten-rsync, verificatiequery's) en de omschakeling van het
-kantoor naar het productiedomein.
+kantoor naar het productiedomein. ⚠️ Volgorde-koppeling: bij akkoord op CMEK-voorstel 0021
+komt de Cloud SQL-herbouw **vóór** tranche 2 (CMEK kan alleen bij instantie-aanmaak).
 
 ## Kritieke pad & parallelsporen
 
