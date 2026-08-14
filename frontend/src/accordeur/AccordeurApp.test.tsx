@@ -97,3 +97,40 @@ describe('AccordeurApp — uitloggen', () => {
     expect(sessionStorage.getItem('accordeur-ontgrendeld')).toBeNull()
   })
 })
+
+describe('AccordeurApp — activeren zonder setup-token (kliktest 2026-08-15)', () => {
+  it('toont "Sessie verlopen" + één actie naar het login-scherm i.p.v. een dode knop', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((invoer: RequestInfo | URL) => {
+        const pad = String(invoer).split('?')[0]
+        switch (pad) {
+          case '/auth/token/vernieuwen':
+            // Geen refresh-cookie tijdens de activatieflow: uitgelogd.
+            return Promise.resolve(jsonResponse({ detail: 'geen sessie' }, 401))
+          case '/auth/webauthn/config':
+            return Promise.resolve(jsonResponse({ dev_stub: false, rp_id: 'localhost' }))
+          default:
+            return Promise.resolve(new Response(null, { status: 404 }))
+        }
+      }),
+    )
+
+    // /activeren zonder navigation-state = de refresh-situatie: het setup-token is weg.
+    render(
+      <MemoryRouter initialEntries={['/accordeur/activeren']}>
+        <AuthProvider>
+          <AccordeurApp />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Sessie verlopen')).toBeInTheDocument()
+    // Geen registratieknoppen op het token-loze pad — dat was de stil-falende knop.
+    expect(screen.queryByRole('button', { name: /Passkey aanmaken|Registreren/ })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Opnieuw inloggen' }))
+    // De nieuwe-apparaat-route (login met e-mail + wachtwoord) vangt de registratie daarna op.
+    expect(await screen.findByRole('button', { name: 'Inloggen' })).toBeInTheDocument()
+  })
+})

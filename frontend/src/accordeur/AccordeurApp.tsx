@@ -4,7 +4,7 @@
 // (systeemvolgend, ◐ = handmatige override), biometrie-ontgrendeling bij app-opening.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import type { TokenPaarResponseDto } from '../api/types'
 import './accordeur.css'
@@ -113,10 +113,21 @@ export default function AccordeurApp() {
     setOntgrendeld(false)
   }, [uitloggen])
 
+  const opActiveren = location.pathname.endsWith('/activeren')
   const activatieToken = useMemo(() => {
     const state = location.state as { passkeySetupToken?: string } | null
-    return location.pathname.endsWith('/activeren') ? (state?.passkeySetupToken ?? null) : null
-  }, [location])
+    return opActiveren ? (state?.passkeySetupToken ?? null) : null
+  }, [location, opActiveren])
+
+  // Token-loos /activeren (kliktest 2026-08-15): het setup-token leeft alleen in de
+  // navigation-state en is na een refresh weg — zonder deze branch viel de app stil terug
+  // op de status-branches. Eén duidelijke actie: opnieuw inloggen; de nieuwe-apparaat-route
+  // (AccordeurLogin → passkey_setup_token) vangt de registratie daarna gewoon op.
+  const navigate = useNavigate()
+  const naarLoginNaVerlopenSessie = useCallback(() => {
+    setForceerLogin(true)
+    void navigate('/accordeur', { replace: true })
+  }, [navigate])
 
   if (status === 'ingelogd' && rol !== null && rol !== 'klant_accordeur') {
     // Kantoor-rollen horen in de web-app; de PWA is uitsluitend de accordeer-wachtrij.
@@ -126,6 +137,25 @@ export default function AccordeurApp() {
   let inhoud: React.ReactNode
   if (activatieToken) {
     inhoud = <AccordeurActiveren passkeySetupToken={activatieToken} naIngelogd={naIngelogd} />
+  } else if (opActiveren) {
+    inhoud = (
+      <div className="acc-vol">
+        <div className="acc-appnaam">
+          RLZ <span>Goedkeuren</span>
+        </div>
+        <div className="acc-bio">
+          <div className="acc-icoon">☉</div>
+          <b>Sessie verlopen</b>
+          <div className="acc-sub">
+            Deze activatiestap is verlopen (bijvoorbeeld door de pagina te verversen). Log opnieuw
+            in met je e-mailadres en wachtwoord — daarna kun je dit apparaat direct registreren.
+          </div>
+        </div>
+        <button className="acc-btn groen" onClick={naarLoginNaVerlopenSessie}>
+          Opnieuw inloggen
+        </button>
+      </div>
+    )
   } else if (status === 'laden') {
     inhoud = (
       <div className="acc-vol">
