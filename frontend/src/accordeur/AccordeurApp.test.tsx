@@ -98,6 +98,52 @@ describe('AccordeurApp — uitloggen', () => {
   })
 })
 
+describe('AccordeurApp — beginscherm (feedback Peter 2026-08-14)', () => {
+  it('"Ontgrendelen" is de enige primaire knop; "Opnieuw inloggen" is een tekstlink, geen knop', async () => {
+    // jsdom heeft geen PublicKeyCredential — stub zodat het echte-passkey-pad rendert.
+    vi.stubGlobal('PublicKeyCredential', class {})
+    vi.stubGlobal('isSecureContext', true)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((invoer: RequestInfo | URL) => {
+        const pad = String(invoer).split('?')[0]
+        switch (pad) {
+          case '/auth/token/vernieuwen':
+            return Promise.resolve(
+              jsonResponse({ access_token: fakeToken({ rol: 'klant_accordeur', sub: 'u1' }) }),
+            )
+          case '/auth/webauthn/config':
+            return Promise.resolve(jsonResponse({ dev_stub: false, rp_id: 'localhost' }))
+          default:
+            return Promise.resolve(new Response(null, { status: 404 }))
+        }
+      }),
+    )
+    // Ontgrendeld-vlag bewust NIET gezet: verse app-opening → beginscherm.
+
+    render(
+      <MemoryRouter initialEntries={['/accordeur']}>
+        <AuthProvider>
+          <AccordeurApp />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    const ontgrendelKnop = await screen.findByRole('button', { name: 'Ontgrendelen' })
+    expect(ontgrendelKnop.className).toContain('acc-btn')
+
+    // De nooduitgang blijft bestaan (passkey kwijt/ander account/kill-switch), maar is
+    // gedegradeerd tot subtiele tekstlink — precies één acc-btn op het scherm.
+    const opnieuw = screen.getByRole('button', { name: 'Opnieuw inloggen' })
+    expect(opnieuw.className).toContain('acc-tekstlink')
+    expect(opnieuw.className).not.toContain('acc-btn')
+    expect(document.querySelectorAll('.acc-btn')).toHaveLength(1)
+
+    await userEvent.click(opnieuw)
+    expect(await screen.findByRole('button', { name: 'Inloggen' })).toBeInTheDocument()
+  })
+})
+
 describe('AccordeurApp — activeren zonder setup-token (kliktest 2026-08-15)', () => {
   it('toont "Sessie verlopen" + één actie naar het login-scherm i.p.v. een dode knop', async () => {
     vi.stubGlobal(

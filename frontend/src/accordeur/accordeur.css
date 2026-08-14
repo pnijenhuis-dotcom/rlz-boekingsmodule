@@ -376,6 +376,23 @@
   background: var(--acc-purple);
   color: #fff;
 }
+/* Subtiele tekstlink onder de primaire knop (beginscherm: "Opnieuw inloggen" —
+   nooduitgang, geen tweede knop; feedback Peter 14-08). */
+.acc-tekstlink {
+  background: none;
+  border: none;
+  color: var(--acc-muted);
+  font-size: 13px;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 6px 10px;
+  align-self: center;
+}
+.acc-tekstlink:hover {
+  color: var(--acc-text);
+}
 
 /* ===== Bottom sheets — de open sheet volgt window.visualViewport (toetsenbord-proof,
        iPhone-review 11-08; zie useSheetBovenToetsenbord) ===== */

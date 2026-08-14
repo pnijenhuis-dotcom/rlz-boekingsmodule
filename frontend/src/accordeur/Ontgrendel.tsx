@@ -96,8 +96,10 @@ export function Ontgrendel({ naOntgrendeld, naarLogin }: Props) {
           de beheerder de dev-stub aan te zetten voor een lokale test.
         </div>
       )}
+      {/* Nooduitgang (passkey kwijt/geweigerd, ander account, kill-switch) — bewust een subtiele
+          tekstlink, geen tweede knop: "Ontgrendelen" is de enige primaire actie (Peter 14-08). */}
       {!gelukt && (
-        <button className="acc-btn secundair" onClick={naarLogin}>
+        <button className="acc-tekstlink" onClick={naarLogin}>
           Opnieuw inloggen
         </button>
       )}
