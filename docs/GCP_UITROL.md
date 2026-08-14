@@ -503,9 +503,16 @@ te wachten (`F3_IMAGE_OVERRIDE`; de volgende deploy-run trekt de beelden weer ge
 
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
+> **Uitvoering: `docs/F4_ACTIVATIE_RUNBOOK.md` is het cutover-draaiboek (F4-voorbereiding
+> 2026-08-14 — alles t/m de laatste knop staat klaar: secret-slots + bindings via
+> `scripts/gcp/f4_koppelvlak.sh`, kanaaltest `scripts/f4_kanaaltest.py`, fail-closed
+> geverifieerd; wat vastgoed aanlevert staat in Platform/OPEN_ITEMS "F4-cutover-pakket").**
+
 **Afhankelijk van:** vastgoeds backend live op `api.vastly.software` (hun week 2/3) — **níét van
 onze F0–F3**: webhooks versturen vereist alleen uitgaande https, dus dit kan desnoods al vanaf
-de lokale backend. Zie het OPEN_ITEMS-webhook-item voor de afspraken.
+de lokale backend. Zie het OPEN_ITEMS-webhook-item voor de afspraken. NB het ínkomende kanaal
+(route A) draait wél op de cloud-service; end-to-end-livegang daarvan hangt aan de werk-DB
+(zie de kanttekening "route A vóór tranche 2" in het runbook).
 
 1. Vastgoed levert de publieke endpoint-URL (`POST /webhooks/rlz`) + het gedeelde
    HMAC-secret via het Secret Manager-patroon (besluit 0012). **Ontvangstvoorkeur:** secret
