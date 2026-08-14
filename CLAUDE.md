@@ -362,7 +362,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.14)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.15)
 
 - **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
   RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
@@ -394,9 +394,19 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   harde eis vastgoed-S2): `module_storno` = direct event in de storno-transactie
   (doorbelasting-spiegel), `rlz_ui_detectie` = `app/documenten/storno_detectie.py` in het
   reconciliatie-CLI-commando — **latentie = reconciliatie-cadans (nu dagelijks ≤ 24 u),
-  expliciet in §3b**; geen event zonder eerder geboekt-event. Verschoven bouwitem route A
-  (projectaanmaak-naar-RLZ on-demand, §5): bestaat nog NIET — gepland in BOUWPLAN fase 4
-  (STAP-0-PoC → motor → synchroon aanvraag-koppelvlak), vóór vastgoed-S2.
+  expliciet in §3b**; geen event zonder eerder geboekt-event.
+- **Route A — projectaanmaak-naar-RLZ on-demand (§5, v1.15 — GEBOUWD + GETEST + LIVE
+  GEVERIFIEERD 2026-08-14):** `POST /koppelvlak/vastgoed/projectaanvragen` (`app/projecten/`,
+  migratie 0048) — HMAC+timestamp+nonce met EIGEN inkomend secret
+  (`PROJECTAANVRAAG_HMAC_SECRET`, uitwisseling bij F4), `bericht_id`-idempotentie, harde
+  is_vastgoed-scope, synchroon `rlz_project_id`+definitieve projectnaam. Motor: UUIDv5 op
+  administratie+pand_referentie, lookup-vóór-PUT (RLZ-naam wint — PUT is create-or-update!),
+  naamconventie-poorten (BAG-id §2.1 = weigeren), systeemanker-debiteur "Pandprojecten
+  (systeem)" per administratie (de RLZ-route `PUT Customers/{baseId}/Projects/{id}` dwingt
+  een customer af; ⚠️ IsActive default false → motor zet expliciet true — STAP-0-feiten:
+  api-verkenning "Projects-schrijfroute STAP-0"), directe project_cache-upsert. Open:
+  aanroepkant vastgoed (OPEN_ITEMS); `project_verplicht`-activatie = S2-moment (gereedheid
+  geverifieerd: default UIT, Beheerder-only, check leest live).
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
