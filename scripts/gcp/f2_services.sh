@@ -45,7 +45,26 @@ if ! gcloud run services describe "${SERVICE}" --region="${REGION}" >/dev/null 2
 fi
 echo "   service ${SERVICE} bestaat."
 
-echo "== 3. Domain mapping ${DOMEIN} → ${SERVICE} =="
+echo "== 3. Publieke toegang (allUsers → roles/run.invoker) =="
+# Deploy-run #2-les (2026-08-14): deploy@ heeft bewust alleen run.developer (F0 4.5,
+# least privilege) en die rol mist run.services.setIamPolicy — het
+# `--allow-unauthenticated` in deploy.yml kan de binding dus NIET zelf zetten (gcloud
+# waarschuwt slechts, de run blijft groen, de service antwoordt 403). Eénmalig hier
+# zetten door het owner-account; de binding is service-niveau en overleeft elke
+# volgende revisie. De app heeft eigen auth (JWT + TOTP/passkeys) en de accordeur-PWA
+# moet publiek bereikbaar zijn — zelfde onderbouwing als de flag in deploy.yml.
+if gcloud run services get-iam-policy "${SERVICE}" --region="${REGION}" \
+     --format="value(bindings.members)" 2>/dev/null | grep -q "allUsers"; then
+  echo "   allUsers-invoker staat al — overgeslagen."
+else
+  gcloud run services add-iam-policy-binding "${SERVICE}" \
+    --region="${REGION}" \
+    --member="allUsers" \
+    --role="roles/run.invoker"
+  echo "   gezet. Verifieer: curl -s -o /dev/null -w '%{http_code}' https://<run.app-URL>/health → 200"
+fi
+
+echo "== 4. Domain mapping ${DOMEIN} → ${SERVICE} =="
 if gcloud beta run domain-mappings describe --domain="${DOMEIN}" --region="${REGION}" >/dev/null 2>&1; then
   echo "   mapping bestaat al — overgeslagen."
 else
@@ -55,7 +74,7 @@ else
     --region="${REGION}"
 fi
 
-echo "== 4. DNS-records (Peter zet deze bij de domeinbeheerder) =="
+echo "== 5. DNS-records (Peter zet deze bij de domeinbeheerder) =="
 gcloud beta run domain-mappings describe --domain="${DOMEIN}" --region="${REGION}" \
   --format="table(status.resourceRecords[].name,status.resourceRecords[].type,status.resourceRecords[].rrdata)"
 echo

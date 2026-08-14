@@ -105,7 +105,11 @@ jobs:
       # blijven geldig op alle subdomeinen), origin = het app-subdomein; CORS leeg
       # (same-origin, beslispunt 4). ^@^ = gcloud's eigen delimiter-escape zodat
       # JSON-lijstwaarden veilig zijn. --allow-unauthenticated: de app heeft eigen auth
-      # (JWT + TOTP/passkeys), de accordeur-PWA moet publiek bereikbaar zijn.
+      # (JWT + TOTP/passkeys), de accordeur-PWA moet publiek bereikbaar zijn. NB (les
+      # run #2): deploy@ (run.developer) mist run.services.setIamPolicy — de flag kan
+      # de allUsers-binding niet zélf zetten (gcloud waarschuwt, run blijft groen); de
+      # binding wordt éénmalig gezet in f2_services.sh stap 3 (owner) en de flag vindt
+      # 'm daarna al staan.
       - name: Cloud Run-revisie uitrollen
         run: |
           gcloud run deploy rlz-backend \

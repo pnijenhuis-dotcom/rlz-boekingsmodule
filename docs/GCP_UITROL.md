@@ -358,13 +358,33 @@ Gebouwd + lokaal geverifieerd (18 nieuwe unit-tests, suite 1338 groen):
   GCS-bucket + KMS-sleutel; concurrency-groep (nooit twee deploys door elkaar);
   volgorde migratie-job → revisie onverkort.
 - **`scripts/gcp/f2_services.sh` (Peter):** idempotent — domein-verificatie-check
-  (`gcloud domains verify` zo nodig), domain mapping `app.administratiekantoornijenhuis.nl`
+  (`gcloud domains verify` zo nodig), **allUsers-invoker op de service (stap 3, zie de
+  run-#2-les hieronder)**, domain mapping `app.administratiekantoornijenhuis.nl`
   → `rlz-backend`, print de te zetten DNS-records (managed certificaat daarna automatisch).
 
-**Open (volgorde):** (1) eerste deploy-run groen — triggert vanzelf bij de push van deze
-commit (GitHub → Actions → deploy); de service werkt dan al op de run.app-URL (TOTP-login;
-échte passkeys pas ná het domein). (2) Peter: `f2_services.sh` + CNAME zetten.
-(3) F2-slotverificatie hierboven afvinken.
+**Deploy-run #1 GEFAALD + GEFIXT (2026-08-14).** Beeld bouwen/pushen slaagde; de
+migratie-job stierf bij het LADEN van de revisiebestanden: 0001 deed de
+APP_DB_PASSWORD-resolutie op module-niveau, en Alembic importeert álle revisies bij élke
+upgrade — óók op head. **LES, bindend voor alle migratiebestanden: env-var-resolutie nooit
+op module-niveau, altijd lazy bínnen upgrade()** — het bestand moet importeerbaar zijn in
+elke omgeving, ook zonder de secrets van die specifieke migratie. Fix (commit a778636):
+resolutie naar bínnen `upgrade()` (geen DDL-/gedragswijziging, alleen het import-moment —
+enige revisie met dit patroon) + APP_DB_PASSWORD alsnog gemount in de migratie-job
+(run-jobs@ had de accessor al, F1 1.4).
+
+**Deploy-run #2: migratie-job + revisie-uitrol GROEN — service bestaat, maar antwoordt
+403 (2026-08-14).** `--allow-unauthenticated` kon de allUsers-invoker niet zetten:
+deploy@ heeft bewust alleen `run.developer` (F0 4.5) en die mist
+`run.services.setIamPolicy`. **LES: gcloud waarschuwt hier slechts en de run blijft
+GROEN — een geslaagde deploy-run bewijst dus níét dat de service publiek bereikbaar is;
+/health-curl is de echte toets.** Structurele keuze: deploy@ NIET verbreden naar
+run.admin (least privilege intact); de binding is service-niveau, éénmalig door het
+owner-account (f2_services.sh stap 3, idempotent) en overleeft elke volgende revisie.
+
+**Open (volgorde):** (1) Peter: `gcloud auth login` (lokale gcloud-auth is verlopen) +
+`f2_services.sh` — stap 3 zet de invoker, daarna /health-verificatie op de run.app-URL
+(TOTP-login werkt dan al; échte passkeys pas ná het domein) + CNAME zetten.
+(2) F2-slotverificatie hierboven afvinken.
 
 ## F3 — Jobs (Scheduler → Cloud Run jobs)
 
