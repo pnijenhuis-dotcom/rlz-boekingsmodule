@@ -128,8 +128,10 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
   `europe-west4`). Toegang via least-privilege service-accounts (aparte runtime-SA's
   service/jobs, deploy via Workload Identity Federation zonder langlevende keys).
   Achtergrondwerk via Cloud Scheduler + Cloud Run-jobs mét job-failure-alerting.
-  Lokale dev via Docker Compose. **CMEK**: beoordeeld bij het CLOUD-Act-herzieningsmoment
-  — zie §9 punt 2.
+  Lokale dev via Docker Compose. **CMEK: actief (besluit 0021, akkoord Peter 2026-08-15)** —
+  Cloud SQL herbouwd als `rlz-sql2` mét CMEK-key `cmek-sql`, documentenbucket met
+  default-CMEK-key `cmek-documenten` (beide op keyring `rlz`, jaarrotatie, nooit destroy);
+  zie §9 punt 2 en het F5-poortdossier punt 3 voor het describe-bewijs.
 
 ## 9. Doorgifte- en CLOUD Act-notitie
 
@@ -147,12 +149,15 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
    Amerikaanse moeder onder de CLOUD Act: Amerikaanse autoriteiten kunnen in uitzonderlijke
    gevallen verstrekking vorderen, ook van EU-data. Dit risico is **geaccepteerd bij
    platformbesluit 0003 (2026-07-04) mét een contractueel herzieningsmoment vóór go-live.
-   Dat herzieningsmoment is uitgevoerd (memo 2026-08-14):** voorstel-platformbesluit 0021
-   (`Platform/besluiten/0021-cmek-clientside-documentversleuteling.md`) — **CMEK aan bij
-   go-live** (Cloud SQL-herbouw mét CMEK vóór de klantdata-migratie + default-KMS-key op de
-   documentenbucket), client-side documentversleuteling alleen op expliciet klantverzoek;
-   wacht op akkoord Peter. NB het memo benoemt eerlijk dat CMEK zeggenschap/intrekbaarheid
-   en audit toevoegt, geen absolute CLOUD-Act-immuniteit (de key blijft in Cloud KMS).
+   Dat herzieningsmoment is uitgevoerd:** platformbesluit 0021 (memo 2026-08-14, **akkoord
+   Peter gestempeld 2026-08-15, uitvoering 2026-08-14** —
+   `Platform/besluiten/0021-cmek-clientside-documentversleuteling.md`): **CMEK actief** —
+   Cloud SQL herbouwd als `rlz-sql2` mét CMEK (key `cmek-sql`) vóór de klantdata-migratie,
+   default-CMEK-key `cmek-documenten` op de documentenbucket (nieuwe objecten; alleen het
+   F1-verificatie-testobject blijft Google-default — geen klantdata, gedocumenteerd);
+   client-side documentversleuteling alleen op expliciet klantverzoek. NB het besluit
+   benoemt eerlijk dat CMEK zeggenschap/intrekbaarheid en audit toevoegt, geen absolute
+   CLOUD-Act-immuniteit (de key blijft in Cloud KMS).
    Doorgifte-grondslag voor eventuele support-toegang vanuit de VS: SCC's in Googles Cloud
    Data Processing Addendum + EU-U.S. Data Privacy Framework (Google is DPF-gecertificeerd
    sinds september 2023). CDPA-versie + acceptatiedatum archiveren = actie Peter

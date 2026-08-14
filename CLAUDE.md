@@ -30,8 +30,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `boekhouding`; secrets via **Google Secret Manager** (credential-store: envelope encryption met
   KMS-gewrapte data-keys); documenten (7 jaar bewaarplicht) in **Cloud Storage** met retentie;
   achtergrondwerk (signalering, sync, e-mail-intake) via **Cloud Scheduler + Cloud Run jobs**.
-  Docker Compose = lokale dev. CLOUD Act geaccepteerd; herzieningsmoment vóór go-live (inbreng:
-  CMEK/client-side documentversleuteling voor klantboekhouddata).
+  Docker Compose = lokale dev. CLOUD Act geaccepteerd; het herzieningsmoment vóór go-live is
+  **uitgevoerd als platformbesluit 0021 (akkoord 2026-08-15): CMEK actief** — Cloud SQL
+  `rlz-sql2` mét CMEK-key + default-CMEK-key op de documentenbucket (keys `cmek-sql`/
+  `cmek-documenten` op keyring `rlz`, jaarrotatie, nooit destroy); client-side
+  documentversleuteling alleen op expliciet klantverzoek.
 - DB-schema's: `platform` (gebruikers, rollen, administraties, credential-store, audit log),
   `boekhouding` (deze module). Vastgoedmodule krijgt `vastgoed`, MI-dashboard later `mi`.
 - Auth: e-mailuitnodiging (eenmalige link 72 u) + wachtwoord + **TOTP-2FA verplicht**, JWT-sessies.

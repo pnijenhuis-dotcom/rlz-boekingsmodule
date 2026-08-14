@@ -7,10 +7,12 @@
 > alerting + 4 jobs + scheduler staan, per job een handmatige run geverifieerd;
 > IMAP bewust inactief tot DPA-check; open: alertmail-ontvangst bevestigen (Peter));
 > F3.3 rapportage-teller GEFIXT (2026-08-14 — cutover-voorwaarde dicht);
-> F5-VOORBEREIDING UITGEVOERD (2026-08-14): CMEK-memo = voorstel-besluit 0021 (wacht op
-> akkoord Peter), verwerkingsregister §8/§9 bijgewerkt, poortdossier
-> `docs/avg/08-f5-poortdossier.md` — stand 4/8 ✅; rest = Peters archiefklikken +
-> CMEK-besluit.**
+> F5-VOORBEREIDING UITGEVOERD (2026-08-14): CMEK-memo = voorstel-besluit 0021,
+> verwerkingsregister §8/§9 bijgewerkt, poortdossier `docs/avg/08-f5-poortdossier.md`;
+> CMEK-BESLUIT 0021 BESLOTEN (akkoord Peter gestempeld 2026-08-15) + UITGEVOERD
+> (2026-08-14, zie §F5-CMEK-uitvoering): Cloud SQL herbouwd als `rlz-sql2` mét CMEK,
+> bucket-default-key gezet, volledige F1-herverificatie groen, oude `rlz-sql` opgeruimd —
+> poortdossier-stand 5/8 ✅; rest = Peters archiefklikken.**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
 > dag te ver (commits én GCP-timestamps bewijzen 2026-08-14).
 > Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
@@ -402,7 +404,7 @@ was het destijds `python -m app.cli bootstrap-beheerder`). Het cloud-recept
 uitnodigingsflow — patroon kliktest_accordeur_seed):
 
 ```bash
-cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql --port 5434 &   # poort 5434, F1-conventie
+cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql2 --port 5434 &   # poort 5434, F1-conventie (rlz-sql2 sinds besluit 0021)
 cd backend
 APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:$(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434/boekhouding" \
   .venv/bin/python scripts/cloud_bootstrap_beheerder.py --app-url https://<run.app-URL of app-domein>
@@ -559,12 +561,12 @@ normtekst (stand 2026-08-14, F5-voorbereiding):
 - [ ] Google Cloud **CDPA** geaccepteerd, versie + datum gearchiveerd *(Peter — open)*;
 - [x] **regio-borging** aantoonbaar (alles `europe-west4` + Org Policy — describe-bewijs
       in het poortdossier, 2026-08-14);
-- [ ] **herzieningsmoment CLOUD Act** (besluit 0003) uitgevoerd: **memo OPGESTELD
-      (2026-08-14)** als voorstel-platformbesluit
-      `Platform/besluiten/0021-cmek-clientside-documentversleuteling.md` — lean-lijn
-      bevestigd (**CMEK aan bij go-live**, herbouw `rlz-sql` mét CMEK vóór tranche 2
-      becijferd op ~1 dagdeel; client-side documentversleuteling alleen op klantverzoek);
-      **wacht op akkoord Peter**, daarna uitvoering + INDEX-regel;
+- [x] **herzieningsmoment CLOUD Act** (besluit 0003) uitgevoerd: **platformbesluit 0021
+      BESLOTEN (akkoord Peter gestempeld 2026-08-15) + UITGEVOERD (2026-08-14)** —
+      CMEK aan bij go-live (Cloud SQL herbouwd als `rlz-sql2` mét key `cmek-sql`,
+      bucket-default-key `cmek-documenten`), client-side documentversleuteling alleen op
+      klantverzoek; describe-bewijs in het poortdossier punt 3, uitvoeringsdetail in
+      §F5-CMEK-uitvoering hieronder;
 - [x] retentie/PITR-instellingen gedocumenteerd (technisch sinds F1; als poortbewijs
       vastgelegd in het dossier, describe 2026-08-14);
 - [ ] verwerkersovereenkomst **Exact Reeleezee** bevestigd + gearchiveerd *(PDF's
@@ -577,8 +579,46 @@ normtekst (stand 2026-08-14, F5-voorbereiding):
 
 Daarna, als sluitstuk: de **datamigratie-tranche 2** uit F1.6 (DB-dump/restore mét
 masterkey-continuïteit, documenten-rsync, verificatiequery's) en de omschakeling van het
-kantoor naar het productiedomein. ⚠️ Volgorde-koppeling: bij akkoord op CMEK-voorstel 0021
-komt de Cloud SQL-herbouw **vóór** tranche 2 (CMEK kan alleen bij instantie-aanmaak).
+kantoor naar het productiedomein. De volgorde-koppeling (CMEK-herbouw vóór tranche 2 —
+CMEK kan alleen bij instantie-aanmaak) is **uitgevoerd**: zie §F5-CMEK-uitvoering.
+
+### F5-CMEK-uitvoering — UITGEVOERD (2026-08-14; besluit 0021, akkoord gestempeld 2026-08-15)
+
+Uitvoeringsplan §6 van het besluit, volgorde bindend, alles gedraaid met het
+org-owner-account (idempotente scripts, F0-les):
+
+1. **`scripts/gcp/f5_cmek.sh`**: keys `cmek-sql` + `cmek-documenten` op keyring `rlz`
+   (jaarrotatie, **nooit destroy** — key weg = data + backups definitief weg);
+   service-agent-bindings (⚠️ twee lessen: de Cloud SQL-service-agent bestaat pas na
+   `gcloud beta services identity create` — fout nooit wegslikken, binding kort retryen
+   op IAM-propagatie; de GCS-agent provisioneer je mét binding in één stap via
+   `gcloud storage service-agent --authorize-cmek`); **`rlz-sql2`** aangemaakt met het
+   f1_data.sh-recept + `--disk-encryption-key` (PG16, REGIONAL, PITR 7 d, backups 02:00);
+   postgres-wachtwoord uit het bestaande secret (secrets zijn instantie-onafhankelijk —
+   niets geroteerd); bucket-default-key gezet (nieuwe objecten CMEK; alleen het oude
+   F1-testobject blijft Google-default — geen klantdata, gedocumenteerd).
+2. **Configflips** (de 4 plekken uit besluit 0021 §3.3): `deploy.yml` `CLOUD_SQL`,
+   `f1_migratie.sh`, `f3_jobs.sh`, docstrings `backend/scripts/cloud_*.py`
+   (+ `test_config_cloud_sql.py` cosmetisch).
+3. **Volledige F1-herverificatie GROEN (2026-08-14):** Alembic 0001→head = **0049**
+   via de Auth Proxy, metadata-guard **69 == 69** tabellen, rol `boekhouding_app`
+   aanwezig; `f1_verificatie.py` geslaagd (GCS byte-identiek + KMS-envelope-pad);
+   nieuw testobject draagt `kms_key` = `cmek-documenten/cryptoKeyVersions/1`.
+4. **Service + 5 jobs omgehangen** naar `rlz-sql2` (eenmalige `gcloud run … update`,
+   zelfde waarden als de deploy.yml-flip — de volgende push-deploy convergeert);
+   `/health` **200** op run.app én `https://app.administratiekantoornijenhuis.nl`;
+   handmatige `rlz-sync`-run exit 0 ("0/0 administraties" — verse database, bedoeld).
+5. **Bootstrap-Beheerder opnieuw** (verse database): activeerlink uitgegeven aan Peter
+   (72 u; wachtwoord + TOTP opnieuw — verse omgeving, bedoeld). ⚠️ De eerdere
+   iPhone-passkey van de accordeur-seed is een **wees** geworden (de publieke sleutel
+   stond in de oude database): accordeur-seed + passkey-herregistratie opnieuw ná Peters
+   activeerklik (het seed-script eist een actieve Beheerder als actor — bewuste failsafe).
+6. **Oude `rlz-sql` verwijderd** ná groene verificatie (`scripts/gcp/f5_cmek_opruimen.sh`,
+   guards: rlz-sql2 RUNNABLE + CMEK + service aantoonbaar omgehangen). Motivatie
+   (uitzondering op "niets verwijderen" expliciet gemaakt): eigen lege infra-testinstantie
+   — uitsluitend schema + bootstrap/seed, géén klantdata, geen extern systeem; alles
+   herproduceerbaar met bestaande scripts; laten staan = ~€2/dag + een verwarrende
+   niet-CMEK-instantie. Instantienaam ~1 week gereserveerd bij Google.
 
 ## Kritieke pad & parallelsporen
 

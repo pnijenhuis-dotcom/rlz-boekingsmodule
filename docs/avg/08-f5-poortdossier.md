@@ -13,17 +13,17 @@
 |---|---|---|---|
 | 1 | Google Cloud CDPA geaccepteerd, versie + datum gearchiveerd | Peter | ⬜ open |
 | 2 | Regio-borging aantoonbaar (`europe-west4` + EU-org-policy) | Code | ✅ 2026-08-14 |
-| 3 | Herzieningsmoment CLOUD Act (besluit 0003): CMEK/client-side beoordeeld, uitkomst als platformbesluit | Code (memo) + Peter (besluit) + beiden (uitvoering) | 🔶 memo klaar, wacht op akkoord |
+| 3 | Herzieningsmoment CLOUD Act (besluit 0003): CMEK/client-side beoordeeld, uitkomst als platformbesluit | Code (memo) + Peter (besluit) + beiden (uitvoering) | ✅ besluit 0021 (akkoord 2026-08-15) + uitgevoerd 2026-08-14 |
 | 4 | Retentie/PITR-instellingen gedocumenteerd | Code | ✅ 2026-08-14 |
 | 5 | Verwerkersovereenkomst Exact Reeleezee bevestigd + gearchiveerd | Peter | 🔶 PDF's gearchiveerd, bevestiging open |
 | 6 | IMAP-provider-DPA rond (checklist D) | Peter | 🔶 keuze gemaakt, DPA-check open |
 | 7 | Verwerkingsregister §8/§9 bijgewerkt op de werkelijke cloudconfiguratie | Code | ✅ 2026-08-14 |
 | 8 | Identiteit-eerst-check afgerond genoteerd (uit F0) | Peter (uitgevoerd) + Code (genoteerd) | ✅ 2026-08-14 |
 
-**Poort dicht = 8/8 ✅.** Daarna pas: datamigratie tranche 2 (GCP_UITROL §F1.6) en de
-omschakeling van het kantoor naar het productiedomein. NB punt 3 heeft een
-volgorde-afhankelijkheid met tranche 2: bij akkoord op CMEK moet de Cloud SQL-herbouw
-**vóór** de tranche-2-dump/restore gebeuren (CMEK kan alleen bij instantie-aanmaak).
+**Poort dicht = 8/8 ✅ — stand nu 5/8.** Daarna pas: datamigratie tranche 2 (GCP_UITROL
+§F1.6) en de omschakeling van het kantoor naar het productiedomein. De volgorde-
+afhankelijkheid van punt 3 met tranche 2 (CMEK-herbouw vóór de dump/restore — CMEK kan
+alleen bij instantie-aanmaak) is **opgelost**: `rlz-sql2` staat mét CMEK, vóór tranche 2.
 
 ---
 
@@ -63,21 +63,41 @@ Cloud Run-service + jobs + Artifact Registry `europe-west4` (F0/F2/F3-uitvoering
 GCP_UITROL). Secrets met user-managed replicatie `europe-west4` (F1 — 'automatic' botst
 bewust met deze org-policy, dat is de policy die zijn werk doet).
 
-## 3. Herzieningsmoment CLOUD Act (besluit 0003) — 🔶 memo klaar, besluit open
+## 3. Herzieningsmoment CLOUD Act (besluit 0003) — ✅ besloten + uitgevoerd
 
-- **Memo opgesteld 2026-08-14** (beslispunt 6): voorstel-platformbesluit
-  **`Platform/besluiten/0021-cmek-clientside-documentversleuteling.md`** — aanbeveling
-  conform de lean-lijn: **CMEK aan bij go-live** (Cloud SQL-herbouw mét CMEK vóór
-  tranche 2 — becijferd op ~1 dagdeel zolang er geen klantdata staat — + default-KMS-key
-  op de bestaande documentenbucket), **client-side documentversleuteling alleen op
-  expliciet klantverzoek**. Het memo adresseert de technische realiteit (CMEK op Cloud SQL
-  kan uitsluitend bij aanmaak; instantie draagt nu alleen schema + seed) en weegt eerlijk
-  wat CMEK toevoegt (zeggenschap/intrekbaarheid/audit — geen extra cryptografische
-  sterkte, beperkt CLOUD-Act-verweer zolang de key in Cloud KMS leeft).
-- ⬜ **Akkoord Peter** op het voorstel (of gemotiveerd afwijken — ook dát is een geldig
-  besluit 0003-herzieningsresultaat, dan als eigen INDEX-regel vastleggen).
-- ⬜ Ná akkoord: uitvoeringsplan §6 van het memo (keys, `rlz-sql2`, bucket-default-key,
-  verificaties) + INDEX-regel 0021 + register §9 en dit dossier bijwerken.
+- **Memo opgesteld 2026-08-14** (beslispunt 6): platformbesluit
+  **`Platform/besluiten/0021-cmek-clientside-documentversleuteling.md`** — lean-lijn:
+  **CMEK aan bij go-live**, **client-side documentversleuteling alleen op expliciet
+  klantverzoek**. Eerlijke weging in het memo: zeggenschap/intrekbaarheid/audit — geen
+  extra cryptografische sterkte, beperkt CLOUD-Act-verweer zolang de key in Cloud KMS leeft.
+- ✅ **Akkoord Peter (gestempeld 2026-08-15)** — INDEX-regel 0021 gezet, memo-status BESLOTEN.
+- ✅ **Uitvoeringsplan §6 uitgevoerd (2026-08-14, `scripts/gcp/f5_cmek.sh`):** twee keys op
+  keyring `rlz` (jaarrotatie, nooit destroy) mét service-agent-bindings; Cloud SQL herbouwd
+  als **`rlz-sql2`** mét CMEK (Alembic 0001→head = 0049, metadata-guard 69==69, GCS/KMS-
+  verificatie GESLAAGD, `/health` 200 op run.app + productiedomein, handmatige `rlz-sync`-run
+  exit 0); bucket-default-key gezet; service + 5 jobs omgehangen; oude `rlz-sql` verwijderd
+  ná groene verificatie (`f5_cmek_opruimen.sh`, gemotiveerd: eigen lege testinstantie —
+  schema + bootstrap/seed, géén klantdata, geen extern systeem).
+
+  Describe-bewijs (2026-08-14):
+
+  ```
+  $ gcloud sql instances describe rlz-sql2 --format="yaml(...)"
+  diskEncryptionConfiguration:
+    kmsKeyName: projects/rlz-boekhouding/locations/europe-west4/keyRings/rlz/cryptoKeys/cmek-sql
+  settings: {availabilityType: REGIONAL, backupConfiguration: {pointInTimeRecoveryEnabled: true,
+             startTime: "02:00", transactionLogRetentionDays: 7}}
+
+  $ gcloud storage buckets describe gs://rlz-boekhouding-documenten --format="value(default_kms_key)"
+  projects/rlz-boekhouding/locations/europe-west4/keyRings/rlz/cryptoKeys/cmek-documenten
+
+  $ gcloud storage objects describe gs://…/verificatie/f1-20260814-162915-c73e5404.txt --format="value(kms_key)"
+  projects/…/cryptoKeys/cmek-documenten/cryptoKeyVersions/1   ← nieuw object daadwerkelijk CMEK
+  ```
+
+  NB het oudere F1-verificatie-testobject blijft Google-default versleuteld (retentie
+  verbiedt verwijderen; geen klantdata — gedocumenteerd in besluit 0021 §3). Alle
+  klantdocumenten komen ná tranche 2 dus onder CMEK binnen.
 
 ## 4. Retentie/PITR gedocumenteerd — ✅ (Code, 2026-08-14)
 
@@ -146,7 +166,7 @@ is onderdeel van de livegang-administratie.
 ## Peters openstaande klikken, verzameld (kopieerbaar lijstje)
 
 1. **CDPA-versie + acceptatiedatum** archiveren (punt 1) + Googles subverwerkerslijst.
-2. **Akkoord (of afwijzing) op CMEK-voorstel 0021** (punt 3) — daarna uitvoering samen.
+2. ~~Akkoord op CMEK-voorstel 0021~~ — **gedaan**: akkoord 2026-08-15, uitgevoerd (punt 3 ✅).
 3. **DPF-registercheck Anthropic** + Anthropic-subverwerkerslijst archiveren
    (checklist A — geen F5-poortpunt maar stap-1-punt, zelfde archiveersessie).
 4. **Reeleezee-bevestiging** toepasselijke VWO-versie (punt 5).
