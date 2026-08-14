@@ -42,6 +42,7 @@ from app.documenten.boeken import (
     _rlz_client_voor,
     _zet_boeken_mislukt,
 )
+from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.models import Document, DocumentSoort, DocumentStatus, WebhookUitgaand
 from app.documenten.rlz_ids import rlz_sales_invoice_id, rlz_upload_id
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
@@ -169,6 +170,7 @@ def _sla_verkoop_webhook_op(
         debiteur_naam=voorstel.debiteur_naam,
         referentie=voorstel.factuurnummer,
         is_creditnota=voorstel.is_creditnota,
+        volgnummer=volgend_volgnummer(session, document_id=document_id, rlz_document_id=rlz_document_id),
         regels=webhook_regels,
     )
     session.add(WebhookUitgaand(document_id=document_id, event=payload["event"], payload=payload))

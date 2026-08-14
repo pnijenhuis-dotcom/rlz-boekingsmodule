@@ -122,6 +122,7 @@ def _maak_outbox_rij(
         vendor_id=uuid.uuid4(),
         vendor_naam="Test Leverancier",
         referentie=f"F-{resultaat.document_id}",
+        volgnummer=1,
         regels=[
             WebhookRegel(
                 ledger_id=uuid.uuid4(),

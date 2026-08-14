@@ -12,7 +12,7 @@ from app.bank import reconciliatie as bank_reconciliatie
 from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
-from app.documenten import reconciliatie, webhook_afleveraar
+from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
 from app.doorbelasting import reconciliatie as doorbelasting_reconciliatie
 from app.doorbelasting import service as doorbelasting_service
 from app.geheugen import seed as geheugen_seed
@@ -129,6 +129,17 @@ def _reconciliatie(args: argparse.Namespace) -> int:
         f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties gecontroleerd, "
         f"{afwijkingen_totaal} afwijking(en) totaal ({geaccepteerd_totaal} geaccepteerd)."
     )
+
+    # Storno-detectie (koppelcontract §3 v1.14, randvraag c): een RLZ-UI-storno op een geboekte
+    # inkoopfactuur van een vastgoed-administratie → factuur_gestorneerd-outbox-event. Bewust in
+    # dit commando: de reconciliatie-cadans ís de contract-latentie van de detectie-bron.
+    for administratie_id, storno_resultaat in storno_detectie.detecteer_en_meld_gestorneerd_alle().items():
+        if isinstance(storno_resultaat, str):
+            fouten += 1
+            print(f"FOUT       storno-detectie {administratie_id}: {storno_resultaat}", file=sys.stderr)
+        elif storno_resultaat:
+            print(f"STORNO     {administratie_id}: {storno_resultaat} factuur_gestorneerd-event(s) aangemaakt")
+
     return 1 if (fouten or afwijkingen_totaal) else 0
 
 

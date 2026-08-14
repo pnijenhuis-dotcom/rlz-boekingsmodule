@@ -12,6 +12,7 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
+from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus, WebhookUitgaand
@@ -232,6 +233,9 @@ def _sla_webhook_op(
         vendor_id=voorstel.vendor_id,
         vendor_naam=vendor_naam,
         referentie=voorstel.referentie or "",
+        # Boekstand-reeks (v1.14): een herboeking ná storno (zelfde deterministische
+        # client-GUID) krijgt zo een hoger volgnummer dan de eerdere boeking/storno.
+        volgnummer=volgend_volgnummer(session, document_id=document_id, rlz_document_id=rlz_document_id),
         regels=webhook_regels,
     )
     session.add(WebhookUitgaand(document_id=document_id, event=payload["event"], payload=payload))

@@ -41,6 +41,7 @@ from app.documenten.boeken import (
     _is_boeken_toegestaan,
     _rlz_client_voor,
 )
+from app.documenten.boekstand import laatste_boekstand_rij, stand_van_rij, volgend_volgnummer
 from app.documenten.models import (
     Boekvoorstel,
     BoekvoorstelRegel,
@@ -55,7 +56,13 @@ from app.documenten.rlz_ids import (
     rlz_vendor_id,
 )
 from app.documenten.service import _standaard_opslag
-from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
+from app.documenten.webhook import (
+    FACTUUR_GEBOEKT_EVENT,
+    GESTORNEERD_BRON_MODULE,
+    WebhookRegel,
+    bouw_factuur_geboekt_payload,
+    bouw_factuur_gestorneerd_payload,
+)
 from app.doorbelasting.checks import voer_doorbelasting_checks_uit
 from app.doorbelasting.geld import btw_over, provisie_over
 from app.doorbelasting.models import (
@@ -230,6 +237,7 @@ def _spiegel_lines_van_spec(
 
 def _bouw_spiegel_webhook_payload(
     *,
+    bron_document_id: uuid.UUID,
     doel_administratie_id: uuid.UUID,
     vendor_id: uuid.UUID,
     leverancier_naam: str,
@@ -269,6 +277,11 @@ def _bouw_spiegel_webhook_payload(
                     omschrijving=omschrijving,
                 )
             )
+        # Boekstand-reeks per spiegel (v1.14): na een storno + nieuwe run hergebruikt het
+        # deterministische spiegel-GUID hetzelfde rlz_document_id — het volgnummer maakt de
+        # herboeking voor vastgoed onderscheidbaar. Doel-scope ziet de eerdere spiegel-rijen
+        # via de administratie_id-kolom (RLS, migratie 0046).
+        volgnummer = volgend_volgnummer(session, document_id=bron_document_id, rlz_document_id=spiegel_rlz_id)
     return bouw_factuur_geboekt_payload(
         administratie_id=doel_administratie_id,
         rlz_admin_id=rlz_admin_id,
@@ -278,6 +291,7 @@ def _bouw_spiegel_webhook_payload(
         vendor_id=vendor_id,
         vendor_naam=leverancier_naam,
         referentie=referentie,
+        volgnummer=volgnummer,
         regels=webhook_regels,
     )
 
@@ -728,6 +742,7 @@ def _boek_voor_doelentiteit(
     # het `factuur_geboekt`-event — payload buiten de boeking-transactie opgebouwd (eigen
     # doel-scope-reads), de outbox-rij erbinnen (zelfde atomaire outbox-garantie als inkoop).
     webhook_payload = _bouw_spiegel_webhook_payload(
+        bron_document_id=document_id,
         doel_administratie_id=mapping.doel_administratie_id,
         vendor_id=vendor_id,
         leverancier_naam=bron_administratie_naam,
@@ -873,6 +888,7 @@ def boek_spiegel_alsnog(
     # Spiegel-webhook, zelfde regel als de motor (besluit Peter 2026-08-14): het alsnog-boeken
     # van een open spiegel-taak in een vastgoed-doel-administratie meldt zich óók bij vastgoed.
     webhook_payload = _bouw_spiegel_webhook_payload(
+        bron_document_id=boeking.document_id,
         doel_administratie_id=doel_administratie_id,
         vendor_id=vendor_id,
         leverancier_naam=bron_administratie_naam,
@@ -922,6 +938,47 @@ def boek_spiegel_alsnog(
         session.flush()
         session.expunge(boeking)
         return boeking
+
+
+def _meld_spiegel_gestorneerd(
+    session,
+    *,
+    document_id: uuid.UUID,
+    doel_administratie_id: uuid.UUID | None,
+    spiegel_rlz_id: uuid.UUID,
+    reden: str,
+) -> None:
+    """`factuur_gestorneerd` voor de spiegel-kant (koppelcontract §3 v1.14, kostenflow-randvraag
+    c): alleen als de spiegel eerder een factuur_geboekt-event kreeg (vastgoed-doel) én de
+    laatste boekstand geboekt is — anders valt er bij vastgoed niets te corrigeren. De
+    kop-velden (rlz_admin_id, boekstuknummer, referentie) komen uit die laatste geboekt-stand:
+    exact wat de ontvanger kent. Bron-scope ziet de spiegel-rijen via de document-clausule van
+    de RLS (migratie 0046); de nieuwe rij passeert de WITH CHECK via dezelfde clausule."""
+    if doel_administratie_id is None:
+        return
+    rij = laatste_boekstand_rij(session, document_id=document_id, rlz_document_id=spiegel_rlz_id)
+    if rij is None or rij.event != FACTUUR_GEBOEKT_EVENT:
+        return
+    data = (rij.payload or {}).get("data") or {}
+    payload = bouw_factuur_gestorneerd_payload(
+        administratie_id=doel_administratie_id,
+        rlz_admin_id=data.get("rlz_admin_id") or "",
+        rlz_document_id=spiegel_rlz_id,
+        rlz_boekstuknummer=data.get("rlz_boekstuknummer"),
+        referentie=data.get("referentie"),
+        volgnummer=stand_van_rij(rij) + 1,
+        bron=GESTORNEERD_BRON_MODULE,
+        reden=reden,
+        gestorneerd_op=datetime.now(UTC),
+    )
+    session.add(
+        WebhookUitgaand(
+            document_id=document_id,
+            administratie_id=doel_administratie_id,
+            event=payload["event"],
+            payload=payload,
+        )
+    )
 
 
 def storno_doorbelasting_boeking(
@@ -987,6 +1044,15 @@ def storno_doorbelasting_boeking(
         boeking = session.get(DoorbelastingBoeking, boeking_id)
         boeking.status = DoorbelastingBoekingStatus.GESTORNEERD.value
         boeking.storno_reden = reden.strip()
+        # Storno-event naar vastgoed (v1.14, randvraag c) — in dezelfde transactie als de
+        # statuswijziging: geen storno zonder melding, geen melding zonder storno.
+        _meld_spiegel_gestorneerd(
+            session,
+            document_id=boeking.document_id,
+            doel_administratie_id=doel_administratie_id,
+            spiegel_rlz_id=spiegel_rlz_id,
+            reden=reden.strip(),
+        )
         run = session.get(DoorbelastingRun, boeking.run_id)
         nog_actief = session.scalar(
             select(func.count())

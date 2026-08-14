@@ -9,11 +9,15 @@ import pytest
 
 from app.documenten.webhook import (
     FACTUUR_GEBOEKT_EVENT,
+    FACTUUR_GESTORNEERD_EVENT,
+    GESTORNEERD_BRON_RLZ_UI,
+    GESTORNEERD_SCHEMA_VERSION,
     WEBHOOK_SCHEMA_VERSION,
     WebhookRegel,
     _resolve_webhook_secret,
     bereken_handtekening,
     bouw_factuur_geboekt_payload,
+    bouw_factuur_gestorneerd_payload,
     onderteken_voor_verzending,
     verifieer_handtekening,
 )
@@ -31,6 +35,7 @@ def _payload() -> dict:
         vendor_id=uuid.uuid4(),
         vendor_naam="Test Leverancier",
         referentie="F-2026-001",
+        volgnummer=1,
         regels=[
             WebhookRegel(
                 ledger_id=uuid.uuid4(),
@@ -85,11 +90,86 @@ def test_data_bevat_de_koppelcontract_velden() -> None:
         "datum",
         "leverancier",
         "referentie",
+        "volgnummer",
         "regels",
     ):
         assert veld in data
     assert data["regels"][0]["grootboek_code"] == "4699"
     assert data["regels"][0]["netto_bedrag"] == "100.00"
+    assert data["volgnummer"] == 1
+
+
+def test_schema_version_is_gebumpt_naar_1_1_door_het_volgnummer() -> None:
+    """Koppelcontract v1.14 (kostenflow-randvraag b): het volgnummer is een wire-wijziging —
+    de versie MOET mee, anders parst een ontvanger op 1.0 stilzwijgend verkeerd."""
+    assert WEBHOOK_SCHEMA_VERSION == "1.1"
+
+
+def test_negatieve_regelbedragen_gaan_ongewijzigd_de_wire_op() -> None:
+    """Randvraag (a): een inkoop-creditnota is een negatieve PurchaseInvoice (api-verkenning
+    13-07) — het event vuurt in de standaard veldvorm met negatieve bedragen, geen aparte vlag."""
+    payload = bouw_factuur_geboekt_payload(
+        administratie_id=uuid.uuid4(),
+        rlz_admin_id="rlz-admin-1",
+        rlz_document_id=uuid.uuid4(),
+        rlz_boekstuknummer="RLZ-04-00002002",
+        factuurdatum=datetime(2026, 7, 1).date(),
+        vendor_id=uuid.uuid4(),
+        vendor_naam="Test Leverancier",
+        referentie="CN-2026-001",
+        volgnummer=1,
+        regels=[
+            WebhookRegel(
+                ledger_id=uuid.uuid4(),
+                grootboek_code="4699",
+                project_id=None,
+                netto_bedrag=Decimal("-100.00"),
+                btw_bedrag=Decimal("-21.00"),
+                omschrijving="Creditnota",
+            )
+        ],
+    )
+    regel = payload["data"]["regels"][0]
+    assert regel["netto_bedrag"] == "-100.00"
+    assert regel["btw_bedrag"] == "-21.00"
+
+
+def test_gestorneerd_payload_bevat_de_contract_velden() -> None:
+    """Randvraag (c): eigen event + eigen schemaversie, volgnummer in dezelfde reeks als
+    factuur_geboekt, bron expliciet (module_storno | rlz_ui_detectie)."""
+    rlz_document_id = uuid.uuid4()
+    payload = bouw_factuur_gestorneerd_payload(
+        administratie_id=uuid.uuid4(),
+        rlz_admin_id="rlz-admin-1",
+        rlz_document_id=rlz_document_id,
+        rlz_boekstuknummer="RLZ-04-00002001",
+        referentie="F-2026-001",
+        volgnummer=2,
+        bron=GESTORNEERD_BRON_RLZ_UI,
+        reden=None,
+        gestorneerd_op=_NU,
+    )
+    assert payload["schema_version"] == GESTORNEERD_SCHEMA_VERSION == "1.0"
+    assert payload["event"] == FACTUUR_GESTORNEERD_EVENT == "factuur_gestorneerd"
+    data = payload["data"]
+    assert set(data.keys()) == {
+        "administratie_id",
+        "rlz_admin_id",
+        "rlz_document_id",
+        "rlz_boekstuknummer",
+        "referentie",
+        "volgnummer",
+        "bron",
+        "reden",
+        "gestorneerd_op",
+    }
+    assert data["rlz_document_id"] == str(rlz_document_id)
+    assert data["volgnummer"] == 2
+    assert data["bron"] == "rlz_ui_detectie"
+    assert data["reden"] is None
+    assert data["gestorneerd_op"] == _NU.isoformat()
+    # zelfde ongetekende-outbox-regel als factuur_geboekt: tekenen doet de afleveraar
+    assert set(payload.keys()) == {"schema_version", "event", "data"}
 
 
 def test_handtekening_verifieert_met_hetzelfde_secret() -> None:

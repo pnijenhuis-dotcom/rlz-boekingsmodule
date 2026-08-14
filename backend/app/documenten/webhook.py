@@ -12,8 +12,22 @@ from decimal import Decimal
 
 from app.config import settings
 
-WEBHOOK_SCHEMA_VERSION = "1.0"
+# 1.1 (koppelcontract v1.14, kostenflow-randvraag b): `volgnummer` per boekstand in de data —
+# per rlz_document_id monotoon oplopend over factuur_geboekt- én factuur_gestorneerd-events
+# (één reeks, app/documenten/boekstand.py). Ontvanger: idempotent per (rlz_document_id,
+# volgnummer), hoogste volgnummer wint; 1.0-events zonder volgnummer gelden als volgnummer 0.
+WEBHOOK_SCHEMA_VERSION = "1.1"
 FACTUUR_GEBOEKT_EVENT = "factuur_geboekt"
+# Storno-event (koppelcontract v1.14, kostenflow-randvraag c — harde eis vastgoed-S2): zelfde
+# kanaal/envelope/HMAC, eigen event-naam + eigen schemaversie; het volgnummer zit in dezelfde
+# reeks als factuur_geboekt zodat de ontvanger boeken→storno→herboeken kan ordenen.
+FACTUUR_GESTORNEERD_EVENT = "factuur_gestorneerd"
+GESTORNEERD_SCHEMA_VERSION = "1.0"
+# Twee bronnen, eerlijk benoemd in de payload: een storno vanuit deze module is een direct
+# event; een storno in de RLZ-UI wordt pas bij de eerstvolgende reconciliatie-run gezien
+# (latentie = reconciliatie-cadans, expliciet in koppelcontract §3).
+GESTORNEERD_BRON_MODULE = "module_storno"
+GESTORNEERD_BRON_RLZ_UI = "rlz_ui_detectie"
 # Tier-model-terugkoppeling naar Vastly (koppelcontract §3, velddefinitie DEFINITIEF v1.11):
 # zelfde kanaal, zelfde envelope/HMAC, eigen event-type én een EIGEN schemaversie
 # (registers/schema-versions.md: de v1.10-payload zonder bedragen is vervallen, de bump is
@@ -90,6 +104,7 @@ def bouw_factuur_geboekt_payload(
     vendor_id: uuid.UUID,
     vendor_naam: str | None,
     referentie: str,
+    volgnummer: int,
     regels: list[WebhookRegel],
 ) -> dict:
     """ONGETEKENDE payload voor het "factuur geboekt"-event (koppelcontract §3 + CLAUDE.md-
@@ -107,6 +122,7 @@ def bouw_factuur_geboekt_payload(
         "datum": factuurdatum.isoformat(),
         "leverancier": {"vendor_id": str(vendor_id), "naam": vendor_naam},
         "referentie": referentie,
+        "volgnummer": volgnummer,
         "regels": [
             {
                 "ledger_id": str(regel.ledger_id),
@@ -137,6 +153,7 @@ def bouw_factuur_geboekt_verkoop_payload(
     debiteur_naam: str | None,
     referentie: str,
     is_creditnota: bool,
+    volgnummer: int,
     regels: list[WebhookRegel],
 ) -> dict:
     """ONGETEKENDE payload voor het "factuur geboekt"-event bij een VASTLY-VERKOOP-boeking
@@ -156,6 +173,7 @@ def bouw_factuur_geboekt_verkoop_payload(
         "debiteur": {"customer_id": str(customer_id), "naam": debiteur_naam},
         "referentie": referentie,
         "is_creditnota": is_creditnota,
+        "volgnummer": volgnummer,
         "regels": [
             {
                 "ledger_id": str(regel.ledger_id),
@@ -171,6 +189,48 @@ def bouw_factuur_geboekt_verkoop_payload(
     return {
         "schema_version": WEBHOOK_SCHEMA_VERSION,
         "event": FACTUUR_GEBOEKT_EVENT,
+        "data": data,
+    }
+
+
+def bouw_factuur_gestorneerd_payload(
+    *,
+    administratie_id: uuid.UUID,
+    rlz_admin_id: str,
+    rlz_document_id: uuid.UUID,
+    rlz_boekstuknummer: str | None,
+    referentie: str | None,
+    volgnummer: int,
+    bron: str,
+    reden: str | None,
+    gestorneerd_op: datetime,
+) -> dict:
+    """ONGETEKENDE payload voor het "factuur gestorneerd"-event (koppelcontract §3 v1.14,
+    kostenflow-randvraag c — harde eis vóór vastgoeds auto-bevestiging S2):
+
+    - `volgnummer` zit in DEZELFDE reeks als factuur_geboekt (per rlz_document_id): boeken=1,
+      storno=2, herboeken=3 … — de ontvanger is idempotent per (rlz_document_id, volgnummer)
+      en de hoogste stand wint, ongeacht afleveringsvolgorde.
+    - `bron`: module_storno (storno vanuit deze module — direct event) of rlz_ui_detectie
+      (actie 19 in de RLZ-UI, gezien door de reconciliatie — latentie = reconciliatie-cadans,
+      expliciet in het contract; nooit stil).
+    - `reden` alleen gevuld bij module_storno (daar is de reden verplicht); een RLZ-UI-storno
+      draagt geen reden — RLZ registreert die niet.
+    - `gestorneerd_op` is het actie- (module) of waarnemingsmoment (detectie)."""
+    data = {
+        "administratie_id": str(administratie_id),
+        "rlz_admin_id": rlz_admin_id,
+        "rlz_document_id": str(rlz_document_id),
+        "rlz_boekstuknummer": rlz_boekstuknummer,
+        "referentie": referentie,
+        "volgnummer": volgnummer,
+        "bron": bron,
+        "reden": reden,
+        "gestorneerd_op": gestorneerd_op.isoformat(),
+    }
+    return {
+        "schema_version": GESTORNEERD_SCHEMA_VERSION,
+        "event": FACTUUR_GESTORNEERD_EVENT,
         "data": data,
     }
 

@@ -22,7 +22,7 @@ from app.documenten.models import WebhookStatus, WebhookUitgaand
 from app.documenten.rlz_ids import rlz_doorbelasting_spiegel_id
 from app.documenten.webhook_afleveraar import verwerk_openstaande_webhooks
 from app.doorbelasting import service as doorbelasting_service
-from app.doorbelasting.boeken import boek_doorbelasting_run, boek_spiegel_alsnog
+from app.doorbelasting.boeken import boek_doorbelasting_run, boek_spiegel_alsnog, storno_doorbelasting_boeking
 from app.doorbelasting.models import DoorbelastingRegel
 from tests.documenten.test_webhook_afleveraar import DOEL_URL, GEDEELD_SECRET, MockOntvanger
 from tests.doorbelasting.conftest import (
@@ -171,6 +171,99 @@ class TestSpiegelWebhookOutbox:
         _zet_vastgoed(admin_engine, opzet.doel_administratie_id)
         _boek(opzet, beheerder_id, doel=FakeDoorbelastingClient(faal_op={"spiegel_boek", "storno_verkoop"}))
         assert _outbox_rijen(opzet.doel_administratie_id) == []
+
+
+class TestSpiegelStornoEvent:
+    """Module-storno = direct `factuur_gestorneerd`-event (koppelcontract §3 v1.14, randvraag
+    c): de spiegel-kant meldde eerder geboekt bij vastgoed, dus de storno meldt zich óók —
+    zelfde boekstand-reeks, bron `module_storno`, reden verplicht meegeleverd."""
+
+    def _storneer(self, opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID) -> None:
+        boeking = haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+        storno_doorbelasting_boeking(
+            administratie_id=opzet.administratie_id,
+            boeking_id=boeking.id,
+            actor_id=beheerder_id,
+            reden="Verkeerde verdeelsleutel gebruikt",
+            bron_client=FakeDoorbelastingClient(),
+            doel_client=FakeDoorbelastingClient(),
+        )
+
+    def test_storno_van_vastgoed_spiegel_vuurt_gestorneerd_in_zelfde_reeks(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        opzet = onboarded_opzet
+        _zet_vastgoed(admin_engine, opzet.doel_administratie_id)
+        _vul_doel_ledger_cache(opzet.doel_administratie_id)
+        _boek(opzet, beheerder_id, doel=FakeDoorbelastingClient())
+        self._storneer(opzet, beheerder_id)
+
+        rijen = _outbox_rijen(opzet.doel_administratie_id)
+        assert [r.event for r in rijen] == ["factuur_geboekt", "factuur_gestorneerd"]
+        geboekt, gestorneerd = rijen[0].payload["data"], rijen[1].payload["data"]
+        assert rijen[1].administratie_id == opzet.doel_administratie_id
+        assert rijen[1].document_id == opzet.document_id
+        assert gestorneerd["rlz_document_id"] == geboekt["rlz_document_id"]
+        assert (geboekt["volgnummer"], gestorneerd["volgnummer"]) == (1, 2)
+        assert gestorneerd["bron"] == "module_storno"
+        assert gestorneerd["reden"] == "Verkeerde verdeelsleutel gebruikt"
+        # kop-velden identiek aan wat de ontvanger bij geboekt kreeg
+        assert gestorneerd["rlz_boekstuknummer"] == geboekt["rlz_boekstuknummer"]
+        assert gestorneerd["referentie"] == geboekt["referentie"]
+        assert gestorneerd["rlz_admin_id"] == geboekt["rlz_admin_id"]
+
+    def test_storno_zonder_vastgoed_doel_vuurt_niets(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        _boek(opzet, beheerder_id, doel=FakeDoorbelastingClient())
+        self._storneer(opzet, beheerder_id)
+        assert _outbox_rijen(opzet.doel_administratie_id) == []
+        assert _outbox_rijen(opzet.administratie_id) == []
+
+    def test_herboeking_na_storno_krijgt_volgnummer_3(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Randvraag (b) bewezen op het bestaande pad: een nieuwe run op hetzelfde bron-document
+        hergebruikt het deterministische spiegel-GUID — hetzelfde rlz_document_id komt opnieuw
+        langs, mét hoger volgnummer, zodat de ontvanger de herboeking niet als duplicaat wegdedupt."""
+        opzet = onboarded_opzet
+        _zet_vastgoed(admin_engine, opzet.doel_administratie_id)
+        _vul_doel_ledger_cache(opzet.doel_administratie_id)
+        _boek(opzet, beheerder_id, doel=FakeDoorbelastingClient())
+        self._storneer(opzet, beheerder_id)
+
+        from app.doorbelasting.service import VerdeelRegelInvoerData
+        from tests.doorbelasting.conftest import DOEL_KOSTEN_LEDGER_ID, start_run_met_verdeling
+
+        nieuwe_run = start_run_met_verdeling(
+            administratie_id=opzet.administratie_id,
+            document_id=opzet.document_id,
+            actor_id=beheerder_id,
+            regels=[
+                VerdeelRegelInvoerData(
+                    bron_regel_id=opzet.regel_ids[0],
+                    mapping_id=opzet.mapping.id,
+                    percentage=Decimal("100"),
+                    doel_kosten_ledger_id=DOEL_KOSTEN_LEDGER_ID,
+                )
+            ],
+        )
+        boek_doorbelasting_run(
+            administratie_id=opzet.administratie_id,
+            run_id=nieuwe_run.id,
+            actor_id=beheerder_id,
+            bron_client=FakeDoorbelastingClient(),
+            doel_client_factory=lambda _aid: FakeDoorbelastingClient(),
+        )
+        rijen = _outbox_rijen(opzet.doel_administratie_id)
+        assert [(r.event, r.payload["data"]["volgnummer"]) for r in rijen] == [
+            ("factuur_geboekt", 1),
+            ("factuur_gestorneerd", 2),
+            ("factuur_geboekt", 3),
+        ]
+        # zelfde rlz_document_id door de hele reeks (deterministisch spiegel-GUID)
+        assert len({r.payload["data"]["rlz_document_id"] for r in rijen}) == 1
 
 
 class TestSpiegelWebhookAflevering:
