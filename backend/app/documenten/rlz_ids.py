@@ -98,6 +98,15 @@ def rlz_doorbelasting_spiegel_id(document_id: uuid.UUID, doel_customer_guid: uui
     return uuid.uuid5(_NAMESPACE, f"doorbelasting-spiegel:{document_id}:{doel_customer_guid}")
 
 
+def rlz_pand_project_id(administratie_id: uuid.UUID, pand_referentie: str) -> uuid.UUID:
+    """Deterministisch client-GUID voor het RLZ-project van een vastgoed-pand (route A,
+    koppelcontract §5): functie van administratie + vastgoeds stabiele pand-referentie —
+    bewust NIET de (hernoembare) naam, zodat een tweede aanvraag voor hetzelfde pand altijd
+    hetzelfde RLZ-project raakt, ook als de naam-invoer intussen anders gespeld is."""
+    genormaliseerd = " ".join(pand_referentie.split()).lower()
+    return uuid.uuid5(_NAMESPACE, f"pandproject:{administratie_id}:{genormaliseerd}")
+
+
 def rlz_doorbelasting_upload_id(
     document_id: uuid.UUID, doel_customer_guid: uuid.UUID, *, kant: str
 ) -> uuid.UUID:

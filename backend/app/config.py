@@ -137,6 +137,16 @@ class Settings(BaseSettings):
     # Scheduler/Cloud Run-job via `python -m app.cli webhook-afleveren`).
     webhook_afleveraar_interval_seconds: float = 30.0
 
+    # Inkomend projectaanvraag-koppelvlak (route A, koppelcontract §5 v1.15): EIGEN secret voor
+    # dit inkomende kanaal — bewust niet het uitgaande webhook_hmac_secret hergebruiken (twee
+    # richtingen, twee secrets; compromittering van de één raakt de ander niet). Uitwisseling
+    # met vastgoed t.z.t. samen met de F4-secretuitwisseling; zonder secret buiten dev weigert
+    # het endpoint zichtbaar (503), nooit een stil fallback.
+    projectaanvraag_hmac_secret: str | None = None
+    # Replay-venster van het inkomende kanaal (~5 min, koppelcontract-patroon HMAC + timestamp
+    # + nonce): een aanvraag met een timestamp buiten dit venster wordt geweigerd.
+    projectaanvraag_replay_venster_seconds: float = 300.0
+
     # Boeken-failsafe (c), volumerem (CLAUDE.md: "config, default laag"): max. aantal boekingen
     # per administratie per kalenderdag. Bewust laag — dit is een noodrem tegen een runaway-bug
     # of verkeerd geconfigureerde automatische boeking, geen normale-bedrijfsvoering-limiet.

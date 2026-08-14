@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0047
+-- Migratie-head bij deze dump: 0048
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1043,6 +1043,26 @@ ALTER TABLE ONLY boekhouding.project_cache FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: projectaanvraag; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.projectaanvraag (
+    bericht_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    nonce text NOT NULL,
+    pand_referentie text NOT NULL,
+    naam_invoer text NOT NULL,
+    projectnaam text NOT NULL,
+    rlz_project_id uuid NOT NULL,
+    status text NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT projectaanvraag_status_geldig CHECK ((status = ANY (ARRAY['aangemaakt'::text, 'bestond_al'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.projectaanvraag FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: reconciliatie_acceptatie; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1966,6 +1986,22 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 ALTER TABLE ONLY boekhouding.project_cache
     ADD CONSTRAINT project_cache_pkey PRIMARY KEY (id, administratie_id);
+
+
+--
+-- Name: projectaanvraag projectaanvraag_nonce_key; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.projectaanvraag
+    ADD CONSTRAINT projectaanvraag_nonce_key UNIQUE (nonce);
+
+
+--
+-- Name: projectaanvraag projectaanvraag_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.projectaanvraag
+    ADD CONSTRAINT projectaanvraag_pkey PRIMARY KEY (bericht_id);
 
 
 --
@@ -3358,6 +3394,14 @@ ALTER TABLE ONLY boekhouding.project_cache
 
 
 --
+-- Name: projectaanvraag projectaanvraag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.projectaanvraag
+    ADD CONSTRAINT projectaanvraag_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: reconciliatie_acceptatie reconciliatie_acceptatie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4290,6 +4334,19 @@ ALTER TABLE boekhouding.project_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY project_cache_scope ON boekhouding.project_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: projectaanvraag; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.projectaanvraag ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: projectaanvraag projectaanvraag_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY projectaanvraag_scope ON boekhouding.projectaanvraag USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

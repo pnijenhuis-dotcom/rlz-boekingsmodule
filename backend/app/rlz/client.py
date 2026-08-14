@@ -351,6 +351,36 @@ class RlzClient:
         veilig = name.replace("'", "''")
         return self.get("Customers", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
 
+    def get_project(self, project_id: uuid.UUID | str) -> dict[str, Any] | None:
+        """Project op id, of None bij 404 — de lookup-vóór-PUT van de projectaanmaak-motor
+        (route A). Andere fouten blijven gewoon een RlzApiError (fail-closed bij de aanroeper)."""
+        try:
+            return self.get(f"Projects/{project_id}")
+        except RlzApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+
+    def find_projects_by_name(self, *, name: str) -> list[dict[str, Any]]:
+        """Naam-conflictcheck vóór de projectaanmaak (route A): bestaat er al een project met
+        exact deze naam onder een ánder GUID, dan stopt de motor fail-closed (mens lost op in
+        RLZ — nooit twee gelijknamige projecten laten ontstaan). Projects-STAP-0 (2026-08-14):
+        een API-aangemaakt project is direct via de top-level collectie terugleesbaar."""
+        veilig = name.replace("'", "''")
+        return self.get("Projects", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
+
+    def put_customer_project(
+        self, customer_id: uuid.UUID, project_id: uuid.UUID, *, name: str, is_active: bool = True
+    ) -> httpx.Response:
+        """Project aanmaken/bijwerken — Projects-STAP-0 (2026-08-14, poc_projects_schrijf.py):
+        de ENIGE schrijfroute is `PUT Customers/{baseId}/Projects/{id}` (geen top-level PUT);
+        de baseId-customer moet bestaan (404 bij een onbekende) en het project is daarna écht
+        aan die customer gebonden ($expand=Customer). ⚠️ Zonder expliciet `IsActive` staat een
+        vers project op false — daarom hier default true. Respons is 204 zonder body: het
+        resultaat altijd terugleesbaar via get_project()."""
+        body = {"id": str(project_id), "Name": name, "IsActive": is_active}
+        return self.put(f"Customers/{customer_id}/Projects/{project_id}", body)
+
     def find_vendors_by_name(self, *, name: str) -> list[dict[str, Any]]:
         """Crediteur-lookup vóór de idempotente PUT in een DOEL-administratie (doorbelasting:
         de spiegel-inkoopfactuur draagt crediteur "Kempen Facilities B.V." — lookup-vóór-PUT
