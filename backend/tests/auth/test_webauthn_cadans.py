@@ -250,9 +250,14 @@ def test_registratie_challenge_verlopen_faalt(beheerder_id: uuid.UUID, admin_eng
     assert "challenge" in resp.json()["detail"].lower()
 
 
-def test_dev_stub_hard_vergrendeld_zonder_setting(beheerder_id: uuid.UUID) -> None:
+def test_dev_stub_hard_vergrendeld_zonder_setting(
+    beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """De stub is dubbel vergrendeld: zonder auth_biometrie_dev_stub=True wordt een
     stub-registratie geweigerd, ongeacht de omgeving."""
+    # Expliciet pinnen: de suite draait tegen de echte dev-.env, waar de stub voor
+    # LAN-kliktests aan kán staan — de test toetst het uit-pad, niet de lokale config.
+    monkeypatch.setattr(settings, "auth_biometrie_dev_stub", False)
     _, token = _nodig_accordeur_uit(beheerder_id)
     resp = client.post("/auth/uitnodigingen/accepteren", json={"token": token, "wachtwoord": WACHTWOORD})
     setup = _bearer(resp.json()["passkey_setup_token"])
