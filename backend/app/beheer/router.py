@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.aikosten import service as aikosten_service
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope
 from app.beheer import schemas, service
 
@@ -46,9 +47,7 @@ def medewerkers_lijst(
     Beheerders — server-side scope-gecontroleerd (dependency) en op DB-niveau (RLS op de
     koppeltabel)."""
     medewerkers = service.lijst_medewerkers(administratie_id=administratie_id)
-    return schemas.MedewerkersLijstDto(
-        medewerkers=[schemas.MedewerkerDto(id=m.id, naam=m.naam) for m in medewerkers]
-    )
+    return schemas.MedewerkersLijstDto(medewerkers=[schemas.MedewerkerDto(id=m.id, naam=m.naam) for m in medewerkers])
 
 
 @router.get(
@@ -277,6 +276,45 @@ def intake_ai_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
     return schemas.IntakeAiDto(ingeschakeld=ingeschakeld)
+
+
+def _ai_kosten_status_dto() -> schemas.AiKostenStatusDto:
+    status_ = aikosten_service.haal_status_op()
+    return schemas.AiKostenStatusDto(
+        maand=status_.maand.strftime("%Y-%m"),
+        verbruik_eur=f"{status_.verbruik_eur:.2f}",
+        limiet_eur=f"{status_.limiet_eur:.2f}",
+        percentage=status_.percentage,
+        waarschuwing_80=status_.waarschuwing_80_op is not None,
+        limiet_bereikt=status_.limiet_bereikt_op is not None,
+        geblokkeerd=status_.geblokkeerd,
+    )
+
+
+@router.get(
+    "/instellingen/ai-kosten",
+    response_model=schemas.AiKostenStatusDto,
+)
+def ai_kosten_status(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas.AiKostenStatusDto:
+    """AI-kostenmeter (besluit 2026-08-14): verbruik van de lopende kalendermaand
+    (Europe/Amsterdam), limiet, percentage en de eenmalige meldingen — het verbruiksblok op
+    Instellingen naast de AI-gate-knop, en de bron voor de werkvoorraad-banner."""
+    return _ai_kosten_status_dto()
+
+
+@router.put(
+    "/instellingen/ai-kosten-limiet",
+    response_model=schemas.AiKostenStatusDto,
+)
+def ai_kosten_limiet_zetten(
+    invoer: schemas.AiKostenLimietInput, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.AiKostenStatusDto:
+    """Maandlimiet aanpassen — Beheerder-only, wijziging in het audit_event (migratie 0047)."""
+    try:
+        service.zet_ai_kosten_maandlimiet(actor_id=actor.id, maandlimiet_eur=invoer.maandlimiet_eur)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    return _ai_kosten_status_dto()
 
 
 @router.get(

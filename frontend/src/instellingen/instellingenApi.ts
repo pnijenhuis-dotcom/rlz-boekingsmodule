@@ -41,6 +41,29 @@ export function zetIntakeAiInstelling(ingeschakeld: boolean): Promise<BoekenInge
   })
 }
 
+/** AI-kostenmeter (besluit 2026-08-14): verbruik/limiet van de lopende kalendermaand
+ * (Europe/Amsterdam). Bedragen als string — Decimal-precisie uit de backend, nooit float. */
+export interface AiKostenStatusDto {
+  maand: string
+  verbruik_eur: string
+  limiet_eur: string
+  percentage: number
+  waarschuwing_80: boolean
+  limiet_bereikt: boolean
+  geblokkeerd: boolean
+}
+
+export function haalAiKostenStatusOp(): Promise<AiKostenStatusDto> {
+  return apiJson<AiKostenStatusDto>('/instellingen/ai-kosten')
+}
+
+export function zetAiKostenLimiet(maandlimietEur: string): Promise<AiKostenStatusDto> {
+  return apiJson<AiKostenStatusDto>('/instellingen/ai-kosten-limiet', {
+    ...PUT_JSON,
+    body: JSON.stringify({ maandlimiet_eur: maandlimietEur }),
+  })
+}
+
 export function zetBoekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/boeken-instelling`, {
     ...PUT_JSON,

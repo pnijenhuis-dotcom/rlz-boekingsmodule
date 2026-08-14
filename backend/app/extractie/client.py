@@ -10,6 +10,7 @@ from typing import Any
 
 import anthropic
 
+from app.aikosten.service import AiVerbruikReferentie, controleer_poort, registreer_verbruik
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -77,8 +78,12 @@ class ClaudeExtractieClient:
         api_key: str | None = None,
         model: str | None = None,
         client: anthropic.Anthropic | None = None,
+        verbruik_referentie: AiVerbruikReferentie | None = None,
     ) -> None:
         self._model = model or settings.ai_extractie_model
+        # AI-kostenmeter (besluit 2026-08-14): de referentie (document/intake-bericht + bron)
+        # waaronder élke aanroep van deze client-instantie in platform.ai_gebruik landt.
+        self._verbruik_referentie = verbruik_referentie
         if client is not None:
             self._client = client
             return
@@ -130,6 +135,11 @@ class ClaudeExtractieClient:
         }
         if cache_document:
             document_block["cache_control"] = {"type": "ephemeral"}
+        # Harde kostenpoort (besluit 2026-08-14) vóór élke AI-call — hier in de client zodat geen
+        # enkel aanroeppad (inkoop, rapport, splitsing, ook individuele chunk-calls) eromheen kan.
+        # AiKostenLimietBereikt/AiKostenModelOnbekend propageren naar de aanroeper, die het
+        # document zichtbaar op het handmatige pad zet ("niets verdwijnt stil").
+        controleer_poort(model=self._model)
         _THROTTLE.wacht()
         try:
             with self._client.messages.stream(
@@ -151,6 +161,20 @@ class ClaudeExtractieClient:
         usage = response.usage
         input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
         output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        cache_schrijf_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        cache_lees_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+
+        # Kostenmeter: élke gedane aanroep wordt gelogd met de wérkelijke usage — vóór elke
+        # branch (ook afkap en refusal kosten tokens). Faalt de registratie, dan propageert dat
+        # als zichtbare fout: liever een mislukte extractie dan een ongemeten call.
+        registreer_verbruik(
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_schrijf_tokens=cache_schrijf_tokens,
+            cache_lees_tokens=cache_lees_tokens,
+            referentie=self._verbruik_referentie,
+        )
 
         if response.stop_reason == "refusal":
             raise AiExtractieFout("Claude weigerde dit document te verwerken (stop_reason=refusal).")

@@ -17,6 +17,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from app.aikosten.service import AiVerbruikReferentie
 from app.extractie.bsn import verwijder_bsns
 from app.extractie.client import AiExtractieFout, ClaudeExtractieClient
 
@@ -122,12 +123,16 @@ def valideer_segmenten(segmenten: list[FactuurSegment], *, paginas: int) -> str 
 
 
 def detecteer_facturen(
-    pdf_bytes: bytes, *, paginas: int, client: ClaudeExtractieClient | None = None
+    pdf_bytes: bytes,
+    *,
+    paginas: int,
+    client: ClaudeExtractieClient | None = None,
+    verbruik_referentie: AiVerbruikReferentie | None = None,
 ) -> list[FactuurSegment]:
     """Eén Claude-aanroep → gevalideerde segmenten. Elke ongeldige uitkomst (afkap, ongeldige
     bereiken) is een AiExtractieFout — de aanroeper vangt 'm en routeert naar de verzamelbak,
     nooit een stille gok."""
-    client = client or ClaudeExtractieClient()
+    client = client or ClaudeExtractieClient(verbruik_referentie=verbruik_referentie)
     antwoord = client.extraheer_json_uit_pdf(
         pdf_bytes=pdf_bytes, system=SYSTEM_PROMPT, opdracht=OPDRACHT, json_schema=SPLITSING_SCHEMA
     )

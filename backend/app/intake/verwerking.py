@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
+from app.aikosten.service import AiKostenLimietBereikt, AiVerbruikReferentie
 from app.beheer import service as beheer_service
 from app.config import settings
 from app.db.audit import record_audit_event
@@ -194,9 +195,7 @@ def _verwerk_waarborg(
     administratie_id = besluit.administratie_id
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        bestaand = session.scalar(
-            select(WaarborgBericht).where(WaarborgBericht.bericht_id == bericht.bericht_id)
-        )
+        bestaand = session.scalar(select(WaarborgBericht).where(WaarborgBericht.bericht_id == bericht.bericht_id))
         if bestaand is not None:
             # Idempotentiesleutel (v1.11): zelfde bericht_id = zelfde bericht — nooit een
             # tweede document of boeking; zichtbaar in het intake-resultaat + audit.
@@ -315,7 +314,9 @@ def _verwerk_xml(
             afzender_hint=afzender,
         )
         return BijlageResultaat(
-            bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id,
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="verzamelbak",
+            document_id=document_id,
             detail=f"ubl_invalide: {exc}",
         )
 
@@ -358,7 +359,9 @@ def _verwerk_xml(
                 tenaamstelling=voorstel.leverancier_naam,
             )
             return BijlageResultaat(
-                bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id,
+                bestandsnaam=bijlage.bestandsnaam,
+                uitkomst="verzamelbak",
+                document_id=document_id,
                 detail="creditnote_381_gate_uit",
             )
         ontbrekend = nlcius_kernvelden_ontbrekend(voorstel)
@@ -375,7 +378,9 @@ def _verwerk_xml(
                 tenaamstelling=voorstel.leverancier_naam,
             )
             return BijlageResultaat(
-                bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id,
+                bestandsnaam=bijlage.bestandsnaam,
+                uitkomst="verzamelbak",
+                document_id=document_id,
                 detail=f"vastly_nlcius_invalide: {', '.join(ontbrekend)}",
             )
         # Verkoopfactuur: ónze entiteit is de LEVERANCIER op de factuur — dáárop toewijzen.
@@ -428,13 +433,38 @@ def _verwerk_pdf(
             afzender_hint=afzender,
         )
         return BijlageResultaat(
-            bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id,
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="verzamelbak",
+            document_id=document_id,
             detail="intake_ai_uitgeschakeld",
         )
 
     paginas = tel_paginas(bijlage.inhoud)
     try:
-        segmenten = splitsing_extractie.detecteer_facturen(bijlage.inhoud, paginas=paginas or 1)
+        segmenten = splitsing_extractie.detecteer_facturen(
+            bijlage.inhoud,
+            paginas=paginas or 1,
+            verbruik_referentie=AiVerbruikReferentie(bron="intake_splitsing", intake_bericht_id=intake_bericht_id),
+        )
+    except AiKostenLimietBereikt:
+        # AI-kostengrens (besluit 2026-08-14): zelfde zichtbare pad als intake_ai_uitgeschakeld —
+        # het document valt in de verzamelbak met eigen reden, een mens wijst toe.
+        logger.warning("AI-maandlimiet bereikt — splitsingsdetectie overgeslagen voor %s", bijlage.bestandsnaam)
+        document_id = documenten_service.registreer_niet_toegewezen_document(
+            bestandsnaam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            actor_id=actor_id,
+            reden="ai_limiet_bereikt",
+            opslag=opslag,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender,
+        )
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="verzamelbak",
+            document_id=document_id,
+            detail="ai_limiet_bereikt",
+        )
     except Exception as exc:  # noqa: BLE001 — élke AI-fout → verzamelbak, nooit een gok of crash
         logger.warning("Intake-splitsingsdetectie mislukt voor %s: %s", bijlage.bestandsnaam, exc)
         document_id = documenten_service.registreer_niet_toegewezen_document(
@@ -447,7 +477,9 @@ def _verwerk_pdf(
             afzender_hint=afzender,
         )
         return BijlageResultaat(
-            bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id,
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="verzamelbak",
+            document_id=document_id,
             detail=f"splitsingsdetectie_mislukt: {exc}",
         )
 
@@ -513,9 +545,7 @@ def verwerk_eml(
     herverwerking = False
     if mail.message_id:
         with scoped_session(None) as session:
-            bestaand = session.scalars(
-                select(IntakeBericht).where(IntakeBericht.message_id == mail.message_id)
-            ).first()
+            bestaand = session.scalars(select(IntakeBericht).where(IntakeBericht.message_id == mail.message_id)).first()
             if bestaand is not None:
                 if (bestaand.detail or {}).get("verwerking") != "bezig":
                     return IntakeResultaat(bericht_id=bestaand.id, al_eerder_verwerkt=True)
@@ -555,15 +585,21 @@ def verwerk_eml(
         if bijlage.is_xml:
             resultaten.append(
                 _verwerk_xml(
-                    bijlage, afzender=mail.afzender, actor_id=actor_id,
-                    intake_bericht_id=bericht_id, opslag=opslag,
+                    bijlage,
+                    afzender=mail.afzender,
+                    actor_id=actor_id,
+                    intake_bericht_id=bericht_id,
+                    opslag=opslag,
                 )
             )
         elif bijlage.is_pdf:
             resultaten.append(
                 _verwerk_pdf(
-                    bijlage, afzender=mail.afzender, actor_id=actor_id,
-                    intake_bericht_id=bericht_id, opslag=opslag,
+                    bijlage,
+                    afzender=mail.afzender,
+                    actor_id=actor_id,
+                    intake_bericht_id=bericht_id,
+                    opslag=opslag,
                 )
             )
         else:

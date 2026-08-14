@@ -57,6 +57,7 @@ function aiOvergeslagenLabel(reden: string): string {
     ai_extractie_uitgeschakeld: 'AI-extractie staat uit voor deze administratie (AVG-gate)',
     geen_api_key: 'geen Claude-API-key geconfigureerd',
     geen_administratie: 'document is niet aan een administratie toegewezen',
+    ai_limiet_bereikt: 'AI-maandlimiet bereikt — handmatig verwerken',
   }
   return labels[reden] ?? reden
 }

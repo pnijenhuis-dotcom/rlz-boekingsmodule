@@ -59,7 +59,7 @@ def fake_extraheer(monkeypatch: pytest.MonkeyPatch):
     AI ging."""
     aanroepen: list[bytes] = []
 
-    def _fake(pdf_bytes: bytes, *, client=None) -> AiFactuurExtractie:
+    def _fake(pdf_bytes: bytes, *, client=None, verbruik_referentie=None) -> AiFactuurExtractie:
         aanroepen.append(pdf_bytes)
         return _fake_extractie()
 
@@ -226,7 +226,7 @@ class TestAiVoorstel:
         draait de route opnieuw zonder her-upload, en het nieuwste voorstel wint overal."""
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
 
-        def _timeout(pdf_bytes: bytes, *, client=None) -> AiFactuurExtractie:
+        def _timeout(pdf_bytes: bytes, *, client=None, verbruik_referentie=None) -> AiFactuurExtractie:
             raise RuntimeError("Claude API-timeout na 120s")
 
         monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _timeout)
@@ -237,7 +237,7 @@ class TestAiVoorstel:
 
         aanroepen: list[bytes] = []
 
-        def _werkt(pdf_bytes: bytes, *, client=None) -> AiFactuurExtractie:
+        def _werkt(pdf_bytes: bytes, *, client=None, verbruik_referentie=None) -> AiFactuurExtractie:
             aanroepen.append(pdf_bytes)
             return _fake_extractie()
 
@@ -315,7 +315,7 @@ class TestAiVoorstel:
 
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
 
-        def _met_metriek(pdf_bytes: bytes, *, client=None) -> AiFactuurExtractie:
+        def _met_metriek(pdf_bytes: bytes, *, client=None, verbruik_referentie=None) -> AiFactuurExtractie:
             basis = _fake_extractie()
             return AiFactuurExtractie(
                 kop=basis.kop,
@@ -357,7 +357,7 @@ class TestWaarborgProjectadministratie:
         )
         monkeypatch.setattr(
             "app.extractie.service.extraheer_inkoopfactuur",
-            lambda pdf_bytes, *, client=None: _fake_extractie(volledig=False),
+            lambda pdf_bytes, *, client=None, verbruik_referentie=None: _fake_extractie(volledig=False),
         )
 
         resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
@@ -386,7 +386,7 @@ class TestWaarborgProjectadministratie:
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
         monkeypatch.setattr(
             "app.extractie.service.extraheer_inkoopfactuur",
-            lambda pdf_bytes, *, client=None: _fake_extractie(volledig=False),
+            lambda pdf_bytes, *, client=None, verbruik_referentie=None: _fake_extractie(volledig=False),
         )
 
         resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
@@ -411,7 +411,7 @@ class TestWaarborgProjectadministratie:
         )
         monkeypatch.setattr(
             "app.extractie.service.extraheer_inkoopfactuur",
-            lambda pdf_bytes, *, client=None: _fake_extractie(volledig=False),
+            lambda pdf_bytes, *, client=None, verbruik_referentie=None: _fake_extractie(volledig=False),
         )
         resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
         assert resultaat.status == DocumentStatus.HANDMATIG_AFMAKEN
@@ -419,7 +419,7 @@ class TestWaarborgProjectadministratie:
         # Tweede poging krijgt de regelset wél compleet → normaal voorstel, te_controleren.
         monkeypatch.setattr(
             "app.extractie.service.extraheer_inkoopfactuur",
-            lambda pdf_bytes, *, client=None: _fake_extractie(volledig=True),
+            lambda pdf_bytes, *, client=None, verbruik_referentie=None: _fake_extractie(volledig=True),
         )
         status = service.herextraheer_document(
             administratie_id=administratie_id,
@@ -443,7 +443,7 @@ class TestWaarborgProjectadministratie:
     ) -> None:
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
 
-        def _kapot(pdf_bytes: bytes, *, client=None) -> AiFactuurExtractie:
+        def _kapot(pdf_bytes: bytes, *, client=None, verbruik_referentie=None) -> AiFactuurExtractie:
             raise RuntimeError("Claude API-fout: 529 overloaded")
 
         monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _kapot)

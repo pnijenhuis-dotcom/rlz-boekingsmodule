@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.aikosten.service import AiVerbruikReferentie
 from app.extractie.bsn import verwijder_bsns
 from app.extractie.client import ClaudeExtractieClient
 
@@ -333,7 +334,10 @@ def _chunked_regels(
 
 
 def extraheer_inkoopfactuur(
-    pdf_bytes: bytes, *, client: ClaudeExtractieClient | None = None
+    pdf_bytes: bytes,
+    *,
+    client: ClaudeExtractieClient | None = None,
+    verbruik_referentie: AiVerbruikReferentie | None = None,
 ) -> AiFactuurExtractie:
     """Stuurt de PDF naar Claude en normaliseert het resultaat naar AiFactuurExtractie.
 
@@ -346,7 +350,7 @@ def extraheer_inkoopfactuur(
 
     De deterministische controlelaag (app/extractie/controle.py) parst en toetst daarna — deze
     functie voegt zelf geen interpretatie toe, behalve het verplichte BSN-post-filter."""
-    client = client or ClaudeExtractieClient()
+    client = client or ClaudeExtractieClient(verbruik_referentie=verbruik_referentie)
     teller = _Teller()
     uit = _Genormaliseerd()
 

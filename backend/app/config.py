@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -159,6 +161,27 @@ class Settings(BaseSettings):
     # threads). Bewust 1 — één grote factuur mag de machine niet plattrekken, en de wachtrij
     # maakt wachten zichtbaar i.p.v. traag.
     ai_extractie_worker_concurrency: int = 1
+
+    # AI-kostenmeter (besluit Peter 2026-08-14, migratie 0047): deterministische maandgrens op de
+    # Anthropic-API-kosten voor intake-AI (extractie + splitsing) — "code voor cijfers": kosten
+    # worden in code berekend uit deze gepinde prijstabel × gepinde USD→EUR-koers, nooit geschat
+    # en nooit door AI. De limiet zelf leeft als Beheerder-instelling in de DB
+    # (platform.ai_kosten_instelling); deze env-setting is uitsluitend fallback als die rij
+    # ontbreekt. Koers bewust conservatief op 1,00 (EUR/USD ligt daar in de praktijk onder — de
+    # meter overschat dus eerder dan dat hij onderschat). Prijzen = Anthropic-stickerprijzen
+    # (USD per miljoen tokens, web-geverifieerd 2026-08-14; introductiekortingen bewust
+    # genegeerd — conservatief). Cache-multipliers (schrijf 1,25×, lees 0,10× van de inputprijs,
+    # 5-minuten-TTL zoals de client gebruikt) staan als constanten in app/aikosten/service.py.
+    # Een model dat hier niet in staat = fail-closed: de poort blokkeert de call.
+    # Tweede laag (klikwerk Peter, geen code): spend-limit ~$110 in de Anthropic-console.
+    ai_kosten_maandlimiet_eur: Decimal = Decimal("100")
+    ai_kosten_usd_eur_koers: Decimal = Decimal("1.00")
+    ai_kosten_prijzen_usd_per_mtok: dict[str, dict[str, Decimal]] = {
+        "claude-sonnet-5": {"input": Decimal("3.00"), "output": Decimal("15.00")},
+        "claude-opus-5": {"input": Decimal("5.00"), "output": Decimal("25.00")},
+        "claude-opus-4-8": {"input": Decimal("5.00"), "output": Decimal("25.00")},
+        "claude-haiku-4-5": {"input": Decimal("1.00"), "output": Decimal("5.00")},
+    }
 
     # Omzetmodule (fase 2): marge-plausibiliteitscheck — maximale afwijking (in procentpunten)
     # van de marge t.o.v. het historisch gemiddelde van de laatste geboekte omzetperiodes.

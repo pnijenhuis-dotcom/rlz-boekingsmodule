@@ -23,6 +23,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.aikosten.service import AiVerbruikReferentie
 from app.extractie.bsn import verwijder_bsns
 from app.extractie.client import AiExtractieFout, ClaudeExtractieClient
 
@@ -149,10 +150,15 @@ def _als_zekerheid(ruw: Any) -> float:
     return min(max(zekerheid, 0.0), 1.0)
 
 
-def extraheer_kassarapport(pdf_bytes: bytes, *, client: ClaudeExtractieClient | None = None) -> AiRapportExtractie:
+def extraheer_kassarapport(
+    pdf_bytes: bytes,
+    *,
+    client: ClaudeExtractieClient | None = None,
+    verbruik_referentie: AiVerbruikReferentie | None = None,
+) -> AiRapportExtractie:
     """Stuurt het kassarapport naar Claude en normaliseert het resultaat. Eén aanroep — een
     afgekapte respons is bij een éénpagina-rapport een zichtbare fout, geen chunking-signaal."""
-    client = client or ClaudeExtractieClient()
+    client = client or ClaudeExtractieClient(verbruik_referentie=verbruik_referentie)
     antwoord = client.extraheer_json_uit_pdf(
         pdf_bytes=pdf_bytes, system=SYSTEM_PROMPT, opdracht=OPDRACHT, json_schema=RAPPORT_SCHEMA
     )

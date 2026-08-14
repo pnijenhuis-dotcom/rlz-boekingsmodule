@@ -10,18 +10,29 @@ import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import {
+  haalAiKostenStatusOp,
   haalBoekenKillSwitchOp,
   haalInstellingenAdministratiesOp,
   haalIntakeAiInstellingOp,
   zetAiExtractieInstelling,
+  zetAiKostenLimiet,
   zetBoekenInstelling,
   zetBoekenKillSwitch,
   zetEigenaar,
   zetIntakeAiInstelling,
   zetProjectInstelling,
+  type AiKostenStatusDto,
 } from './instellingenApi'
 
-type WijzigingType = 'kill_switch' | 'intake_ai' | 'boeken' | 'project' | 'ai_extractie' | 'eigenaar' | 'iban_accordeurs'
+type WijzigingType =
+  | 'kill_switch'
+  | 'intake_ai'
+  | 'boeken'
+  | 'project'
+  | 'ai_extractie'
+  | 'eigenaar'
+  | 'iban_accordeurs'
+  | 'ai_kosten_limiet'
 
 interface PendingWijziging {
   type: WijzigingType
@@ -35,6 +46,8 @@ interface PendingWijziging {
    * omschrijving van de wijziging (vier-ogen-flow, docs/ontwerp/iban-wissel-accordering.md). */
   accordeurs?: string[]
   accordeursOmschrijving?: string
+  /** Alleen voor type 'ai_kosten_limiet': de nieuwe maandlimiet in EUR (string, Decimal-precisie). */
+  limietEur?: string
 }
 
 function berichtVoor(pending: PendingWijziging): string {
@@ -69,6 +82,8 @@ function berichtVoor(pending: PendingWijziging): string {
           ? ' Zonder ingestelde accordeurs vallen IBAN-wissels terug op de beheerder(s).'
           : ''
       }`
+    case 'ai_kosten_limiet':
+      return `De AI-kosten-maandlimiet wordt € ${pending.limietEur ?? '?'} per kalendermaand. Boven de limiet wordt AI-verwerking geblokkeerd en volgen documenten het handmatige pad.`
   }
 }
 
@@ -97,6 +112,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'iban_accordeurs') {
     await zetIbanAccordeurs(pending.administratieId ?? '', pending.accordeurs ?? [])
+    return
+  }
+  if (pending.type === 'ai_kosten_limiet') {
+    await zetAiKostenLimiet(pending.limietEur ?? '')
     return
   }
   await zetProjectInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
@@ -210,6 +229,8 @@ export function InstellingenScreen() {
   const [accordeursVersie, setAccordeursVersie] = useState(0)
   const [killSwitch, setKillSwitch] = useState<boolean | null>(null)
   const [intakeAi, setIntakeAi] = useState<boolean | null>(null)
+  const [aiKosten, setAiKosten] = useState<AiKostenStatusDto | null>(null)
+  const [limietInvoer, setLimietInvoer] = useState('')
   const [laadFout, setLaadFout] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingWijziging | null>(null)
   const [bezig, setBezig] = useState(false)
@@ -217,11 +238,18 @@ export function InstellingenScreen() {
 
   const laadAlles = useCallback(() => {
     setLaadFout(null)
-    Promise.all([haalInstellingenAdministratiesOp(), haalBoekenKillSwitchOp(), haalIntakeAiInstellingOp()])
-      .then(([lijst, switchDto, intakeAiDto]) => {
+    Promise.all([
+      haalInstellingenAdministratiesOp(),
+      haalBoekenKillSwitchOp(),
+      haalIntakeAiInstellingOp(),
+      haalAiKostenStatusOp(),
+    ])
+      .then(([lijst, switchDto, intakeAiDto, aiKostenDto]) => {
         setAdministraties(lijst.administraties)
         setKillSwitch(switchDto.ingeschakeld)
         setIntakeAi(intakeAiDto.ingeschakeld)
+        setAiKosten(aiKostenDto)
+        setLimietInvoer(aiKostenDto.limiet_eur)
       })
       .catch((err: unknown) => setLaadFout(err instanceof Error ? err.message : 'Onbekende fout'))
   }, [])
@@ -251,6 +279,14 @@ export function InstellingenScreen() {
         setKillSwitch(pending.nieuweWaarde)
       } else if (pending.type === 'intake_ai') {
         setIntakeAi(pending.nieuweWaarde)
+      } else if (pending.type === 'ai_kosten_limiet') {
+        // Verse status ophalen: percentage/blokkade hangen van de nieuwe limiet af.
+        haalAiKostenStatusOp()
+          .then((dto) => {
+            setAiKosten(dto)
+            setLimietInvoer(dto.limiet_eur)
+          })
+          .catch(() => undefined)
       } else if (pending.type === 'iban_accordeurs') {
         setAccordeursVersie((v) => v + 1)
       } else {
@@ -336,6 +372,58 @@ export function InstellingenScreen() {
                 }
               />
               {intakeAi ? 'aan' : 'uit'}
+            </label>
+          )}
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>AI-kosten (maandlimiet)</h2>
+            <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
+              Wérkelijke Anthropic-API-kosten van intake-AI deze kalendermaand, deterministisch berekend uit de
+              token-usage per aanroep. Boven de limiet wordt AI-verwerking geblokkeerd en volgen documenten het
+              handmatige pad (&quot;AI-limiet bereikt — handmatig verwerken&quot;).
+            </p>
+            {aiKosten && (
+              <p style={{ marginTop: 8, marginBottom: 0 }} data-testid="ai-kosten-verbruik">
+                <strong>
+                  {aiKosten.maand}: € {aiKosten.verbruik_eur} van € {aiKosten.limiet_eur} ({aiKosten.percentage}%)
+                </strong>
+                {aiKosten.limiet_bereikt ? (
+                  <span style={{ color: 'var(--red)', marginLeft: 8 }}>
+                    Limiet bereikt — AI-verwerking geblokkeerd tot de nieuwe maand of een hogere limiet.
+                  </span>
+                ) : aiKosten.waarschuwing_80 ? (
+                  <span style={{ color: 'var(--orange, #b45309)', marginLeft: 8 }}>
+                    Waarschuwing: 80% van de maandlimiet bereikt.
+                  </span>
+                ) : null}
+              </p>
+            )}
+          </div>
+          {aiKosten && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
+              €
+              <input
+                type="number"
+                aria-label="AI-kosten maandlimiet in euro"
+                min="1"
+                step="1"
+                style={{ width: 90 }}
+                value={limietInvoer}
+                onChange={(e) => setLimietInvoer(e.target.value)}
+              />
+              <button
+                type="button"
+                disabled={!limietInvoer || Number(limietInvoer) <= 0 || limietInvoer === aiKosten.limiet_eur}
+                onClick={() =>
+                  setPending({ type: 'ai_kosten_limiet', naam: 'AI-kosten-maandlimiet', nieuweWaarde: true, limietEur: limietInvoer })
+                }
+              >
+                Limiet wijzigen
+              </button>
             </label>
           )}
         </div>

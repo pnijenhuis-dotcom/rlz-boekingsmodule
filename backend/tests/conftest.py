@@ -122,6 +122,9 @@ def _clean_tables() -> Generator[None, None, None]:
         conn.execute(
             text("TRUNCATE TABLE platform.audit_event, platform.administratie, platform.gebruiker CASCADE")
         )
+        # AI-kostenmeter (migratie 0047): FK-loos, dus buiten de CASCADE — apart legen zodat
+        # verbruik/meldingen van de ene test nooit de poort van de volgende dichtzetten.
+        conn.execute(text("TRUNCATE TABLE platform.ai_gebruik, platform.ai_kosten_maandstatus"))
         conn.execute(
             text(
                 "INSERT INTO platform.boeken_instelling (singleton, globaal_ingeschakeld) VALUES (true, true) "
@@ -140,6 +143,13 @@ def _clean_tables() -> Generator[None, None, None]:
         conn.execute(
             text(
                 "INSERT INTO platform.intake_instelling (singleton, ai_ingeschakeld) VALUES (true, false) "
+                "ON CONFLICT (singleton) DO NOTHING"
+            )
+        )
+        # En voor de AI-kosten-singleton (migratie 0047) — default € 100, zoals de migratie-seed.
+        conn.execute(
+            text(
+                "INSERT INTO platform.ai_kosten_instelling (singleton, maandlimiet_eur) VALUES (true, 100) "
                 "ON CONFLICT (singleton) DO NOTHING"
             )
         )

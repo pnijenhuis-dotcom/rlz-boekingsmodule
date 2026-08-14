@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas_basis import StrikteInvoer
 
@@ -17,6 +18,23 @@ class WebhookAfleveringDto(StrikteInvoer):
 
 class IntakeAiDto(StrikteInvoer):
     ingeschakeld: bool
+
+
+class AiKostenStatusDto(BaseModel):
+    """Verbruiksblok Instellingen + werkvoorraad-banner (AI-kostenmeter, besluit 2026-08-14).
+    Bedragen als string (Decimal-precisie, nooit float-drift richting de UI)."""
+
+    maand: str  # "2026-08"
+    verbruik_eur: str
+    limiet_eur: str
+    percentage: int
+    waarschuwing_80: bool
+    limiet_bereikt: bool
+    geblokkeerd: bool
+
+
+class AiKostenLimietInput(StrikteInvoer):
+    maandlimiet_eur: Decimal = Field(gt=0, le=Decimal("100000"))
 
 
 class ProjectVerplichtDto(StrikteInvoer):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 
@@ -10,6 +11,7 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
     Administratie,
+    AiKostenInstelling,
     BoekenInstelling,
     Gebruiker,
     GebruikerAdministratie,
@@ -233,9 +235,7 @@ def haal_bank_autoboeken_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool
         return administratie.bank_autoboeken_ingeschakeld
 
 
-def zet_afgeletterd_event_ingeschakeld(
-    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
-) -> bool:
+def zet_afgeletterd_event_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
     """Tier-vlag voor het factuur_afgeletterd-event (migratie 0037, koppelcontract §3 v1.11
     punt 5 + besluit 0018): het event wordt uitsluitend aangemaakt voor administraties met
     deze vlag. Default UIT — activatie wacht op vastgoeds verwerker; de aflevering zelf staat
@@ -268,9 +268,7 @@ def haal_doorbelasting_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
         return administratie.doorbelasting_ingeschakeld
 
 
-def zet_doorbelasting_ingeschakeld(
-    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
-) -> bool:
+def zet_doorbelasting_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
     """Toggle voor de actie "Doorbelasten…" op geboekte inkoopfacturen van deze
     BRON-administratie (migratie 0044, besluit Peter 2026-08-13). Default UIT; in de praktijk
     alleen Kempen Facilities aan. Beheerder-only (router/CLI), audit als bij de andere
@@ -296,9 +294,7 @@ def zet_doorbelasting_ingeschakeld(
         return ingeschakeld
 
 
-def zet_bank_autoboeken_ingeschakeld(
-    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
-) -> bool:
+def zet_bank_autoboeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
     """Opt-in voor de volautomatische bankstappen (migratie 0026): vaste regels automatisch
     direct-op-grootboek boeken tijdens de bank-sync. Default UIT; werkt bovenop de bestaande
     boeken-failsafes (toggle per administratie + globale kill switch — die gelden onverkort in
@@ -457,6 +453,31 @@ def intake_ai_effectief_ingeschakeld() -> bool:
         if instelling is None:
             return settings.intake_ai_ingeschakeld
         return instelling.ai_ingeschakeld
+
+
+def zet_ai_kosten_maandlimiet(*, actor_id: uuid.UUID, maandlimiet_eur: Decimal) -> Decimal:
+    """AI-kosten-maandlimiet (migratie 0047, besluit Peter 2026-08-14) — Beheerder-only
+    (router), zelfde patroon als de intake-AI-toggle: wijziging in het audit_event. De harde
+    poort (app/aikosten/service.py) leest deze instelling bij élke AI-call."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        instelling = session.get(AiKostenInstelling, True)
+        if instelling is None:
+            raise BeheerFout("platform.ai_kosten_instelling heeft geen rij — migratie 0047 niet toegepast?")
+        oud = instelling.maandlimiet_eur
+        instelling.maandlimiet_eur = maandlimiet_eur
+        instelling.gewijzigd_door = actor_id
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="ai_kosten_instelling",
+            record_id=_BOEKEN_INSTELLING_RECORD_ID,
+            actie="ai_kosten_maandlimiet_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"maandlimiet_eur": str(oud)},
+            nieuwe_waarde={"maandlimiet_eur": str(maandlimiet_eur)},
+        )
+        return maandlimiet_eur
 
 
 def zet_intake_ai_ingeschakeld(*, actor_id: uuid.UUID, ingeschakeld: bool) -> bool:

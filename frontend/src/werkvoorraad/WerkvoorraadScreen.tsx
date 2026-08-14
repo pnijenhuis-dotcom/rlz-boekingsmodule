@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, UploadResponseDto } from '../api/types'
+import { useAuthOptioneel } from '../auth/AuthContext'
+import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/instellingenApi'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
 import { verwerkEml } from '../intake/intakeApi'
 import { FoutMelding } from '../ui/FoutMelding'
@@ -73,6 +75,36 @@ export function WerkvoorraadScreen() {
   )
 }
 
+/** AI-kostenmelding (besluit 2026-08-14): de werkvoorraad is het bestaande meldingskanaal — bij
+ * ≥80% van de maandlimiet een waarschuwing, bij 100% de blokkade-melding. Alleen voor de
+ * Beheerder (het status-endpoint is Beheerder-only; de limiet is een Beheerder-instelling). */
+function AiKostenBanner() {
+  const rol = useAuthOptioneel()?.rol ?? null
+  const [status, setStatus] = useState<AiKostenStatusDto | null>(null)
+  useEffect(() => {
+    if (rol !== 'beheerder') return
+    haalAiKostenStatusOp()
+      .then(setStatus)
+      .catch(() => undefined) // melding is best-effort; de harde poort zit in de backend
+  }, [rol])
+  if (!status || (!status.waarschuwing_80 && !status.limiet_bereikt)) return null
+  if (status.limiet_bereikt) {
+    return (
+      <div className="fout" role="alert" style={{ marginBottom: 12 }}>
+        AI-maandlimiet bereikt ({status.maand}: € {status.verbruik_eur} van € {status.limiet_eur}) —
+        AI-verwerking is geblokkeerd; nieuwe documenten volgen het handmatige pad. Limiet aanpassen kan op
+        Instellingen.
+      </div>
+    )
+  }
+  return (
+    <div className="hint" role="status" style={{ marginBottom: 12, color: 'var(--orange, #b45309)' }}>
+      AI-kosten op {status.percentage}% van de maandlimiet ({status.maand}: € {status.verbruik_eur} van €{' '}
+      {status.limiet_eur}) — bij 100% wordt AI-verwerking geblokkeerd.
+    </div>
+  )
+}
+
 function WerkvoorraadIngang({ administraties }: { administraties: { id: string; naam: string }[] }) {
   const [uploadFout, setUploadFout] = useState<string | null>(null)
   const [uploadBericht, setUploadBericht] = useState<string | null>(null)
@@ -113,6 +145,8 @@ function WerkvoorraadIngang({ administraties }: { administraties: { id: string; 
       <div className="topbar">
         <h1>Werkvoorraad</h1>
       </div>
+
+      <AiKostenBanner />
 
       <div
         className={`upload${sleepActief ? ' dragover' : ''}`}

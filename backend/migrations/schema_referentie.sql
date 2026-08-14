@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0046
+-- Migratie-head bij deze dump: 0047
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1353,6 +1353,52 @@ CREATE TABLE platform.administratie (
 
 
 --
+-- Name: ai_gebruik; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.ai_gebruik (
+    id uuid NOT NULL,
+    tijdstip timestamp with time zone DEFAULT now() NOT NULL,
+    maand date NOT NULL,
+    model character varying NOT NULL,
+    bron character varying NOT NULL,
+    document_id uuid,
+    intake_bericht_id uuid,
+    input_tokens bigint NOT NULL,
+    output_tokens bigint NOT NULL,
+    cache_schrijf_tokens bigint NOT NULL,
+    cache_lees_tokens bigint NOT NULL,
+    kosten_eur numeric(12,6) NOT NULL,
+    CONSTRAINT ai_gebruik_kosten_niet_negatief CHECK ((kosten_eur >= (0)::numeric))
+);
+
+
+--
+-- Name: ai_kosten_instelling; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.ai_kosten_instelling (
+    singleton boolean DEFAULT true NOT NULL,
+    maandlimiet_eur numeric(12,2) DEFAULT 100 NOT NULL,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ai_kosten_instelling_limiet_niet_negatief CHECK ((maandlimiet_eur >= (0)::numeric)),
+    CONSTRAINT ai_kosten_instelling_singleton CHECK (singleton)
+);
+
+
+--
+-- Name: ai_kosten_maandstatus; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.ai_kosten_maandstatus (
+    maand date NOT NULL,
+    waarschuwing_80_op timestamp with time zone,
+    limiet_bereikt_op timestamp with time zone
+);
+
+
+--
 -- Name: audit_event; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -2051,6 +2097,30 @@ ALTER TABLE ONLY platform.administratie
 
 
 --
+-- Name: ai_gebruik ai_gebruik_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.ai_gebruik
+    ADD CONSTRAINT ai_gebruik_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ai_kosten_instelling ai_kosten_instelling_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.ai_kosten_instelling
+    ADD CONSTRAINT ai_kosten_instelling_pkey PRIMARY KEY (singleton);
+
+
+--
+-- Name: ai_kosten_maandstatus ai_kosten_maandstatus_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.ai_kosten_maandstatus
+    ADD CONSTRAINT ai_kosten_maandstatus_pkey PRIMARY KEY (maand);
+
+
+--
 -- Name: audit_event audit_event_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -2560,6 +2630,13 @@ CREATE INDEX ix_gebruiker_entiteit_entiteit_id ON platform.gebruiker_entiteit US
 --
 
 CREATE INDEX ix_grootboekrekening_administratie_id ON platform.grootboekrekening USING btree (administratie_id);
+
+
+--
+-- Name: ix_platform_ai_gebruik_maand; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_platform_ai_gebruik_maand ON platform.ai_gebruik USING btree (maand);
 
 
 --
@@ -3542,6 +3619,14 @@ ALTER TABLE ONLY platform.administratie
 
 ALTER TABLE ONLY platform.administratie
     ADD CONSTRAINT administratie_reconciliatie_uitgesloten_door_fkey FOREIGN KEY (reconciliatie_uitgesloten_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: ai_kosten_instelling ai_kosten_instelling_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.ai_kosten_instelling
+    ADD CONSTRAINT ai_kosten_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
 
 
 --

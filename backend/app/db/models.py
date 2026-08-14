@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import BigInteger, ForeignKey, MetaData, SmallInteger, func
+from sqlalchemy import BigInteger, ForeignKey, MetaData, Numeric, SmallInteger, func
 from sqlalchemy.dialects.postgresql import BYTEA, ENUM, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -422,6 +423,61 @@ class IntakeInstelling(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class AiGebruik(Base):
+    """AI-kostenmeter (besluit Peter 2026-08-14, migratie 0047): append-only log van élke
+    Anthropic-aanroep, met de wérkelijke token-usage uit de API-response (input/output/cache) en
+    de in code berekende kosten (gepinde prijstabel × gepinde USD→EUR-koers — "code voor cijfers",
+    geen schattingen). UPDATE/DELETE zijn niet gegrant aan de app-rol (zelfde patroon als
+    audit_event).
+
+    `maand` = eerste dag van de kalendermaand in Europe/Amsterdam, in code bepaald bij het
+    schrijven (app/aikosten/service.py) — de maandcumulatie en de harde poort draaien op deze
+    kolom, nooit op een timezone-berekening in SQL. `document_id`/`intake_bericht_id` zijn bewust
+    FK-loze referenties: platform (fundament) wijst niet hard naar de boekhouding-laag."""
+
+    __tablename__ = "ai_gebruik"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tijdstip: Mapped[datetime] = mapped_column(server_default=func.now())
+    maand: Mapped[date] = mapped_column(index=True)
+    model: Mapped[str]
+    bron: Mapped[str]
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    intake_bericht_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    input_tokens: Mapped[int] = mapped_column(BigInteger)
+    output_tokens: Mapped[int] = mapped_column(BigInteger)
+    cache_schrijf_tokens: Mapped[int] = mapped_column(BigInteger)
+    cache_lees_tokens: Mapped[int] = mapped_column(BigInteger)
+    kosten_eur: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+
+
+class AiKostenInstelling(Base):
+    """Maandlimiet AI-kosten (migratie 0047): Beheerder-only singleton, zelfde patroon als
+    IntakeInstelling. Default € 100/kalendermaand (besluit Peter 2026-08-14); de env-setting
+    `ai_kosten_maandlimiet_eur` is uitsluitend fallback als deze rij ontbreekt."""
+
+    __tablename__ = "ai_kosten_instelling"
+
+    singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
+    maandlimiet_eur: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("100"))
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class AiKostenMaandstatus(Base):
+    """Eenmaligheid van de kostenmeldingen per kalendermaand (migratie 0047): de 80%-waarschuwing
+    en de limiet-bereikt-melding worden elk hoogstens één keer per maand gezet (tijdstip = wanneer
+    de drempel voor het eerst werd geraakt); een nieuwe maand begint blanco."""
+
+    __tablename__ = "ai_kosten_maandstatus"
+
+    maand: Mapped[date] = mapped_column(primary_key=True)
+    waarschuwing_80_op: Mapped[datetime | None] = mapped_column(default=None)
+    limiet_bereikt_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class AuditEvent(Base):

@@ -54,6 +54,34 @@ function installFetchMock(opties: {
       if (url === '/instellingen/intake-ai' && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ ingeschakeld: intakeAi }))
       }
+      if (url === '/instellingen/ai-kosten' && (!init || init.method === undefined)) {
+        return Promise.resolve(
+          jsonResponse({
+            maand: '2026-08',
+            verbruik_eur: '12.34',
+            limiet_eur: '100.00',
+            percentage: 12,
+            waarschuwing_80: false,
+            limiet_bereikt: false,
+            geblokkeerd: false,
+          }),
+        )
+      }
+      if (url === '/instellingen/ai-kosten-limiet' && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as { maandlimiet_eur: string }
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(
+          jsonResponse({
+            maand: '2026-08',
+            verbruik_eur: '12.34',
+            limiet_eur: body.maandlimiet_eur,
+            percentage: 12,
+            waarschuwing_80: false,
+            limiet_bereikt: false,
+            geblokkeerd: false,
+          }),
+        )
+      }
       if (url === '/instellingen/intake-ai' && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as { ingeschakeld: boolean }
         intakeAi = body.ingeschakeld

@@ -105,3 +105,10 @@ export function useAuth(): AuthContextWaarde {
   if (!ctx) throw new Error('useAuth moet binnen AuthProvider gebruikt worden')
   return ctx
 }
+
+/** Als useAuth, maar zonder harde Provider-eis: voor optionele franje (bv. de AI-kostenbanner in
+ * de werkvoorraad) die ook gerenderd kan worden waar geen AuthProvider staat — dan gewoon niets
+ * tonen i.p.v. crashen. Gebruik voor alles dat van de rol afhángt gewoon useAuth. */
+export function useAuthOptioneel(): AuthContextWaarde | null {
+  return useContext(AuthContext)
+}

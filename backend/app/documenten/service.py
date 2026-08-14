@@ -11,6 +11,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.aikosten.service import AiKostenLimietBereikt, AiVerbruikReferentie
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
@@ -351,7 +352,15 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
 
     inhoud = opslag.lezen(pad=document.opslag_pad)
     try:
-        extractie = extractie_service.extraheer_inkoopfactuur(inhoud)
+        extractie = extractie_service.extraheer_inkoopfactuur(
+            inhoud,
+            verbruik_referentie=AiVerbruikReferentie(bron="inkoop_extractie", document_id=document.id),
+        )
+    except AiKostenLimietBereikt:
+        # AI-kostengrens (besluit 2026-08-14): zelfde zichtbare pad als de AVG-gate-uit — het
+        # document valt niet stil weg maar gaat het handmatige spoor in, met eigen chip.
+        logger.warning("AI-maandlimiet bereikt — extractie overgeslagen voor document %s", document.id)
+        return {"ai_extractie_overgeslagen": "ai_limiet_bereikt"}, False
     except Exception as exc:  # noqa: BLE001 — bewust breed: een AI-fout mag de upload nooit laten falen
         logger.exception("AI-extractie mislukt voor document %s", document.id)
         return {"ai_extractie_fout": str(exc)}, False
@@ -424,7 +433,14 @@ def _rapport_extractie_detail(session: Session, *, document: Document, opslag: D
 
     inhoud = opslag.lezen(pad=document.opslag_pad)
     try:
-        extractie = rapport_extractie.extraheer_kassarapport(inhoud)
+        extractie = rapport_extractie.extraheer_kassarapport(
+            inhoud,
+            verbruik_referentie=AiVerbruikReferentie(bron="rapport_extractie", document_id=document.id),
+        )
+    except AiKostenLimietBereikt:
+        # AI-kostengrens (besluit 2026-08-14): zelfde zichtbare pad als de AVG-gate-uit.
+        logger.warning("AI-maandlimiet bereikt — rapport-extractie overgeslagen voor document %s", document.id)
+        return {"ai_extractie_overgeslagen": "ai_limiet_bereikt"}
     except Exception as exc:  # noqa: BLE001 — bewust breed: een AI-fout mag de upload nooit laten falen
         logger.exception("Rapport-extractie mislukt voor document %s", document.id)
         return {"ai_extractie_fout": str(exc)}
@@ -451,9 +467,7 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
         from app.documenten import autoboeken  # lokaal: houdt de importgraaf klein
 
         try:
-            autoboeken.probeer_autoboeken_na_extractie(
-                administratie_id=administratie_id, document_id=document_id
-            )
+            autoboeken.probeer_autoboeken_na_extractie(administratie_id=administratie_id, document_id=document_id)
         except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
             logger.exception("Autoboeken-poging mislukt voor document %s", document_id)
     elif soort == DocumentSoort.KASSARAPPORT.value:
@@ -773,9 +787,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
         voorwaarden = [Document.administratie_id == administratie_id]
         if not toon_verwijderd:
             voorwaarden.append(Document.status != DocumentStatus.VERWIJDERD)
-        documenten = list(
-            session.scalars(select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc()))
-        )
+        documenten = list(session.scalars(select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc())))
         referenties = _duplicaat_referenties_op(
             session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
         )
@@ -1051,7 +1063,7 @@ def herextraheer_document(
     opslag: DocumentOpslag | None = None,
     wachtrij: ExtractieWachtrij | None = None,
 ) -> DocumentStatus:
-    """"Opnieuw extraheren" (timeout-fix 2026-07-10): een transiënte AI-fout (timeout, 529) laat
+    """ "Opnieuw extraheren" (timeout-fix 2026-07-10): een transiënte AI-fout (timeout, 529) laat
     het document met een lege prefill op te_controleren achter — deze actie draait de extractie
     opnieuw zonder her-upload. Zelfde klein-vs-groot-routing als de upload: klein synchroon
     (te_controleren -> extractie_bezig -> te_controleren), groot via de wachtrij — juist de
