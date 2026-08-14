@@ -11,7 +11,7 @@ script; het eenmalige token in de link is het ontworpen kanaal, patroon
 kliktest_accordeur_seed).
 
 Draaien (zie GCP_UITROL §F2-slotverificatie voor het volledige recept):
-    cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql --port 5434 &
+    cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql2 --port 5434 &
     APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:<APP_DB_PASSWORD>@127.0.0.1:5434/boekhouding" \
         .venv/bin/python scripts/cloud_bootstrap_beheerder.py --app-url https://<service-url>
 

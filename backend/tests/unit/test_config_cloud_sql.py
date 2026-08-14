@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app.config import Settings
 
-VERBINDING = "rlz-boekhouding:europe-west4:rlz-sql"
+VERBINDING = "rlz-boekhouding:europe-west4:rlz-sql2"
 
 
 def _settings(**kwargs) -> Settings:

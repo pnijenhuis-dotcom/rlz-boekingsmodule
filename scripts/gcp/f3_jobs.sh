@@ -34,7 +34,7 @@ JOBS_SA="run-jobs@${PROJECT_ID}.iam.gserviceaccount.com"
 ALERT_EMAIL="Peter@ak-nijenhuis.nl"              # kantoor-adres (zelfde als bootstrap-Beheerder)
 POLICY_NAAM="RLZ Cloud Run job-failure (F3.2)"
 KANAAL_NAAM="RLZ kantoor-e-mail (job-alerts)"
-CLOUD_SQL="rlz-boekhouding:europe-west4:rlz-sql"
+CLOUD_SQL="rlz-boekhouding:europe-west4:rlz-sql2"   # F5/besluit 0021: CMEK-herbouw
 
 # Job → CLI-commando → scheduler-cadans (draaiboektabel §F3). De cadansen: sync 03:00,
 # reconciliaties 06:30 (Europe/Amsterdam), afleveraar elke 5 min, intake elke 10 min.

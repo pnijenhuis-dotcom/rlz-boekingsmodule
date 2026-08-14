@@ -40,9 +40,10 @@ env:
   #   Deploy-SA:     deploy@$PROJECT_ID.iam.gserviceaccount.com
   #   Registry:      $REGION-docker.pkg.dev/$PROJECT_ID/rlz
   IMAGE: europe-west4-docker.pkg.dev/rlz-boekhouding/rlz/backend
-  # Cloud SQL instance-connection-name (F1: instantie rlz-sql) — de app composeert hier
-  # samen met het wachtwoord-secret de database-URL uit (app/config.py, F2).
-  CLOUD_SQL: rlz-boekhouding:europe-west4:rlz-sql
+  # Cloud SQL instance-connection-name (F5/besluit 0021: instantie rlz-sql2, herbouwd
+  # mét CMEK — de oude rlz-sql is na de groene verificatie opgeruimd) — de app composeert
+  # hier samen met het wachtwoord-secret de database-URL uit (app/config.py, F2).
+  CLOUD_SQL: rlz-boekhouding:europe-west4:rlz-sql2
 
 permissions:
   contents: read

@@ -31,7 +31,7 @@
 set -euo pipefail
 
 PROJECT_ID="rlz-boekhouding"
-SQL_INSTANCE="rlz-sql"
+SQL_INSTANCE="rlz-sql2"   # F5/besluit 0021: CMEK-herbouw (was rlz-sql t/m 2026-08-14)
 DB_NAAM="boekhouding"
 PROXY_POORT="5434"
 

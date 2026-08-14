@@ -14,7 +14,7 @@ tranche-2-restore van de lokale data naar de cloud — bewust, niets hiervan hoe
 
 Draaien (patroon + failsafes cloud_bootstrap_beheerder.py — expliciete APP_DATABASE_URL,
 poort 5433 geweigerd, geen .env geladen, herdraaibaar):
-    cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql --port 5434 &
+    cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql2 --port 5434 &
     APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:\
 $(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434/boekhouding" \
         .venv/bin/python scripts/cloud_seed_accordeur.py --app-url https://<service-url>
