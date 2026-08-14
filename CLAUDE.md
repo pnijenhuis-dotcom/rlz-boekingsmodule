@@ -151,7 +151,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   én btw-per-regel-=-factuur-btw (verkoop, blok A 2026-08-10 — categorie {S/E/Z/AE} + bedrag,
   eenhedennormalisatie fractie↔percentage in `app/sync/btw.py`, btw in het verkoopvoorstel
   auto-ingevuld + VERGRENDELD, ambiguïteit = eenmalige onthouden keuze per administratie,
-  migratie 0038) zijn gebouwd + getest; **per-leverancier-autoboeken-opt-in: GEBOUWD + GETEST (2026-08-09,
+  migratie 0038) én nooit-boeken-op-ankerdebiteur (route-A-nazorg 2026-08-14: verkoop-checks
+  + `zorg_voor_debiteur`-slot + doorbelasting-whitelist-toets, bron `app/projecten/anker.py`)
+  zijn gebouwd + getest; **per-leverancier-autoboeken-opt-in: GEBOUWD + GETEST (2026-08-09,
   migratie 0036 + `app/documenten/autoboeken.py`)** — boekt ná extractie uitsluitend bij
   opt-in aan (Beheerder-only, default UIT) + harde checks groen + voorstel volledig uit
   app-bevestigd boekingsgeheugen (seed-only/oranje weigert) + geen mogelijk-duplicaat/open
@@ -404,9 +406,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   naamconventie-poorten (BAG-id §2.1 = weigeren), systeemanker-debiteur "Pandprojecten
   (systeem)" per administratie (de RLZ-route `PUT Customers/{baseId}/Projects/{id}` dwingt
   een customer af; ⚠️ IsActive default false → motor zet expliciet true — STAP-0-feiten:
-  api-verkenning "Projects-schrijfroute STAP-0"), directe project_cache-upsert. Open:
-  aanroepkant vastgoed (OPEN_ITEMS); `project_verplicht`-activatie = S2-moment (gereedheid
-  geverifieerd: default UIT, Beheerder-only, check leest live).
+  api-verkenning "Projects-schrijfroute STAP-0"), directe project_cache-upsert.
+  **Systeemanker BESLOTEN + nazorg gebouwd (2026-08-14, BESLISSINGEN "Systeemanker route
+  A")**: naam bevestigd, anker krijgt NOOIT boekingen — blokkerende check
+  `check_geen_ankerdebiteur` (verkoop-rapport + fail-closed slot `zorg_voor_debiteur` op
+  naam én GUID + doorbelasting-whitelist-toets; ene bron `app/projecten/anker.py`); PoC
+  bewees dat anker-gebonden projecten onbeperkt bruikbaar zijn op documentregels van
+  vreemde entiteiten, ook door boeken/storno heen (api-verkenning "Projectgebruik op
+  vreemde documentregels"). Open: aanroepkant vastgoed (OPEN_ITEMS);
+  `project_verplicht`-activatie = S2-moment (gereedheid geverifieerd: default UIT,
+  Beheerder-only, check leest live).
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
