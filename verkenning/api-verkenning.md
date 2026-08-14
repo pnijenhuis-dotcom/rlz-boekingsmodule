@@ -1231,7 +1231,17 @@ straks twee administraties — de mechanics per kant zijn identiek).
    boekingsgeheugen (conform opdracht blok 1c). TaxRate-GUID 21% (`1e44993a-…`) is wél
    administratie-overstijgend identiek (opnieuw bevestigd, nu ook in Rubicon).
 
-## Projects-schrijfroute STAP-0 — PUT via Customers-route (14 augustus 2026, test-administratie) — GESLAAGD
+## Projects-schrijfroute STAP-0 — PUT via Customers-route (14 augustus 2026, test-administratie) — GESLAAGD, CONCLUSIE §1 GECORRIGEERD
+
+> ⚠️ **CORRECTIE (zelfde dag, screencheck Peter):** de conclusie in §1 hieronder — "de
+> Customers-route is de enige schrijfvorm" — is FOUT gebleken. Peters browsercapture in de
+> Universal-administratie + de Basic-Auth-hertest bewezen een klant-loze top-level
+> `PUT {adminId}/Projects/{id}`, die de Help-lijst níét kent. De fout: deze PoC bewees dat de
+> Customers-route wérkt, niet dat er geen andere bestaat, en de Help-lijst is géén volledig
+> route-inventaris. Zie de sectie "Projects klant-loze schrijfroute (browsercapture Peter +
+> hertest)" hieronder — die is leidend voor de motor. De overige feiten van deze STAP-0
+> (create-or-update, IsActive-default false, customer-binding vía deze route, 404-foutpad)
+> blijven geldig en zijn in de hertest herbevestigd.
 
 Verificatie #3 uit het BOUWPLAN (route A, koppelcontract §5/§6.1 v1.14 — projectaanmaak
 on-demand voor vastgoed). Script: `verkenning/poc_projects_schrijf.py` (PoC-waarborgen:
@@ -1308,3 +1318,55 @@ anker zélf mag nooit geboekt worden) is dezelfde dag afgedwongen als blokkerend
 `check_geen_ankerdebiteur` in het verkoop-checksrapport + fail-closed slot in
 `zorg_voor_debiteur` (naam- én GUID-toets, vangt ook een in RLZ hernoemd anker) + de
 whitelist-toets in de doorbelasting-checks (`app/projecten/anker.py` is de ene bron).
+
+## Projects klant-loze schrijfroute (browsercapture Peter + hertest) — 14 augustus 2026 — WERKT, motor omgebouwd
+
+Aanleiding: Peters live browsercapture in de Universal-administratie (derde UI-correctie op
+een RLZ-aanname): de RLZ-UI maakt een project ZONDER klant aan via
+`PUT https://apps.reeleezee.nl/api/v1/{adminId}/Projects/{guid}?$expand=*($levels=max)` → 200,
+géén Customers-segment (testproject "TEST-LOSPROJECT screencheck", inmiddels inactief). De
+capture droeg alleen method/URL/status (payload onbekend, UI = sessie-auth) — deze hertest
+(`verkenning/poc_projects_toplevel.py`, Basic Auth, test-administratie `8dbfb856-…`, zelfde
+PoC-waarborgen) beantwoordt de API-vorm. De STAP-0-conclusie "Customers-route is de enige
+schrijfvorm" is hiermee gecorrigeerd (zie de correctie-kop dáár); les: **een geslaagde PoC op
+route X bewijst nooit de afwezigheid van route Y, en de Help-lijst is géén volledig
+route-inventaris** (WERKWIJZE v1.8 + registers/verbeteringen.md 2026-08-14).
+
+1. **De route werkt via Basic Auth, minimale body**: `PUT {adminId}/Projects/{client-guid}`
+   met `{id, Name}` → **204** (leeg; teruglezen met GET — zelfde patroon als elders). Géén
+   `$expand`-query nodig; die in de capture bepaalt vermoedelijk alleen de responsvorm van
+   de UI. Het project is direct top-level zichtbaar (collectie: 1 treffer).
+2. **Het project is écht klant-loos**: `$expand=Customer` → `Customer: null`. De baseId van
+   de Customers-route is dus een ophangpunt dat je wel of niet kiest — geen vereiste.
+3. **`IsActive`-default opnieuw false** bij minimale body (verder identiek aan STAP-0:
+   IsBillable false, Description "Onbekend", BeginDate vandaag, EndDate +5 jaar) — de motor
+   blijft `IsActive: true` expliciet meesturen.
+4. **PUT = create-or-update, idempotent op zelfde body** (herbevestigd): zelfde GUID + zelfde
+   body → 204, collectie blijft 1; zelfde GUID + andere naam → 204 en de naam is gewijzigd.
+   Lookup-vóór-PUT blijft dus verplicht in de motor.
+5. **⚠️ NIEUW — harde naamlengte-limiet: 50 tekens** (kolom `PRJNAM`): 50 → 204, 51 →
+   `400 "Waarde … voor kolom PRJNAM in tabel PRJ is te lang"`. De naamconventie-poort
+   (`MAX_NAAM_LENGTE`) is van 120 naar 50 gezet zodat dit een deterministische 400
+   `naam_ongeldig` naar vastgoed is i.p.v. een 502-RLZ-fout achteraf.
+6. **Klant-loos gedraagt zich op documentregels identiek aan anker-gebonden**: concept-
+   PurchaseInvoice op de bewezen PoC-vendor met het project op de regel → 204; ref intact
+   ná boeken (17) én storno (19). ⚠️ Opvallend: het project stond tijdens deze hele cyclus
+   op `IsActive: false` — **RLZ weigert een inactief project niet op documentregels via de
+   API** (relevant voor toekomstige eigen checks; de RLZ-UI verbergt inactieve projecten
+   vermoedelijk alleen). Testdocument `TEST-LOSPROJECTPOC-1` blijft als concept staan.
+7. **De top-level PUT werkt óók als update op een vía de Customers-route aangemaakt project**
+   (TEST-ROUTE-A op IsActive:false gezet); de bestaande customer-binding blijft daarbij
+   intact — de twee routes muteren hetzelfde record.
+8. **⚠️ Customer archiveren kan NIET via de API**: `PUT Customers/{id}` met `IsArchived: true`
+   én met `RecordStatus: 1` geven beide 204 maar het record verandert niet (stil genegeerd).
+   Het anker "Pandprojecten (systeem)" in de test-administratie blijft daarom bestaan
+   (nooit verwijderen); deactiveren kan alleen een mens in de RLZ-UI.
+
+**Consequentie motor (gebouwd zelfde dag):** `RlzClient.put_project` (top-level) vervangt
+`put_customer_project`; het systeemanker verdwijnt uit het aanmaakpad (geen
+`zorg_voor_anker_customer` meer), de anker-checklaag (`app/projecten/anker.py`) blijft als
+vangnet zolang er ergens een anker-debiteur bestaat. Koppelvlak §5 extern ongewijzigd.
+Opruiming teststand: hertest-project + `TEST-ROUTE-A Pand Dorpsstraat 1` op IsActive:false
+(archief-vlag = het correctiemechanisme voor projecten); concept-PoC-documenten
+(`TEST-PROJECTREGELPOC-1`, `TEST-LOSPROJECTPOC-1`) blijven conform testdata-afspraak v1.3
+als concept staan.
