@@ -15,12 +15,15 @@
 #   2. alembic upgrade head als postgres (owner-rol: DDL/migraties); migratie
 #      0001 maakt de least-privilege-rol boekhouding_app aan met APP_DB_PASSWORD
 #      uit Secret Manager — precies de twee rollen zoals lokaal
-#   3. metadata-guard tegen dat schema: `alembic check` (zelfde vergelijking als
-#      tests/unit/test_migratie_metadata_guard.py). ⚠️ NOOIT pytest met
+#   3. metadata-guard tegen dat schema: dezelfde tabelniveau-vergelijking als
+#      tests/unit/test_migratie_metadata_guard.py, inline (⚠️ NOOIT pytest met
 #      TEST_DATABASE_URL op de cloud-database richten: tests/conftest.py
-#      TRUNCATE't de testdatabase — alembic check is de veilige, gelijkwaardige
-#      toets (env.py importeert álle model-modules, dus de vergelijking is
-#      volledig)
+#      TRUNCATE't de testdatabase). NB `alembic check` is hier bewust NIET de
+#      toets (les F1-uitvoering 2026-08-14): die vergelijkt óók type-
+#      representaties en index-declaraties en faalt op pre-existente
+#      model↔DDL-drift (DateTime() vs timestamptz, Text vs String, ix_-indexes
+#      alleen in migraties) — identiek lokaal én cloud (genormaliseerde diff
+#      byte-gelijk geverifieerd), dus geen cloud-signaal.
 #   4. alembic_version tonen (verwacht: head)
 #
 # Wachtwoorden komen uit Secret Manager en worden nooit geëchood (besluit 0012).
@@ -66,8 +69,44 @@ cd "${BACKEND}"
 echo "== alembic upgrade head (toon 'Running upgrade X -> Y'-regels) =="
 .venv/bin/alembic upgrade head
 
-echo "== metadata-guard: alembic check (model == gemigreerde cloud-database) =="
-.venv/bin/alembic check
+echo "== metadata-guard: tabelniveau-vergelijking model == gemigreerde cloud-database =="
+# Zelfde vergelijking als tests/unit/test_migratie_metadata_guard.py, maar tegen
+# DATABASE_URL (de cloud-database) i.p.v. de testdatabase. Zie kopcommentaar
+# waarom `alembic check` hier niet bruikbaar is.
+.venv/bin/python - <<'PY'
+import importlib
+import os
+from pathlib import Path
+
+from sqlalchemy import create_engine, inspect
+
+BEWUST_ZONDER_MODEL = {"platform.alembic_version", "public.alembic_version"}
+
+for pad in sorted(Path("app").rglob("models.py")):
+    importlib.import_module(".".join(pad.with_suffix("").parts))
+from app.db.models import Base
+
+meta_tabellen = {f"{t.schema}.{t.name}" for t in Base.metadata.tables.values()}
+engine = create_engine(os.environ["DATABASE_URL"])
+try:
+    inspector = inspect(engine)
+    db_tabellen = {
+        f"{schema}.{tabel}"
+        for schema in ("platform", "boekhouding")
+        for tabel in inspector.get_table_names(schema=schema)
+    } - BEWUST_ZONDER_MODEL
+finally:
+    engine.dispose()
+
+zonder_model = sorted(db_tabellen - meta_tabellen)
+zonder_migratie = sorted(meta_tabellen - db_tabellen)
+if zonder_model or zonder_migratie:
+    raise SystemExit(
+        f"METADATA-GUARD FAALT — in cloud-DB zonder model: {zonder_model}; "
+        f"in model zonder cloud-tabel: {zonder_migratie}"
+    )
+print(f"OK: {len(meta_tabellen)} modeltabellen == {len(db_tabellen)} cloud-tabellen (platform+boekhouding).")
+PY
 
 echo "== alembic_version in de cloud-database =="
 .venv/bin/python - <<'PY'
