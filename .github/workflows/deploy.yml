@@ -1,40 +1,55 @@
-# Deploy-workflow (GCP-draaiboek F1.6/F2, beslispunt 10: GitHub Actions + WIF naar
-# vastgoed-patroon). F0-waarden ingevuld (F0 uitgevoerd 2026-08-15). NOG NIET ACTIEF:
-# draait uitsluitend handmatig (workflow_dispatch) en veronderstelt de Cloud Run-job
-# `rlz-migratie` + service `rlz-backend` — die bestaan pas in F2; eerder draaien faalt
-# expliciet op de migratiestap (bewust: nooit stil een revisie zonder migratie).
+# Deploy-workflow (GCP-draaiboek F2, beslispunt 10: GitHub Actions + WIF naar
+# vastgoed-patroon). ACTIEF sinds F2 (2026-08-14): elke push naar main bouwt het beeld
+# (backend + frontend-build, same-origin — beslispunt 4), draait éérst de migratie-job en
+# rolt dán de nieuwe revisie uit. `gcloud run jobs deploy` / `gcloud run deploy` zijn
+# create-or-update: de eerste run maakt job `rlz-migratie` en service `rlz-backend` zelf
+# aan (F0-les: idempotent vanaf het begin), met de volledige runtime-config hieronder —
+# de config is daarmee versiebeheerd in git, niet klikwerk in de console.
 #
 # Geen langlevende service-account-keys: authenticatie via Workload Identity Federation
 # (pool `github`, provider `github-oidc`, harde repo-conditie op
-# pnijenhuis-dotcom/rlz-boekingsmodule — zie f0_fundament.sh stap 5).
+# pnijenhuis-dotcom/rlz-boekingsmodule — zie f0_fundament.sh stap 5, F0-run 2026-08-14).
 #
 # Deploy-volgorde is het draaiboek-patroon (F2.1): eerst de migratie-job (alembic upgrade
 # head) uit het NIEUWE beeld, dán pas de nieuwe revisie live. De migratie-guard in de
 # backend-lifespan is de vangrail als deze volgorde ooit geschonden wordt.
+#
+# Secrets (besluit 0012): uitsluitend als Secret Manager-verwijzing (--set-secrets), nooit
+# als waarde in deze file of in env-vars. WEBHOOK_HMAC_SECRET en ANTHROPIC_API_KEY hebben
+# bewust nog géén versie (F4-uitwisseling resp. AI-gate-klikwerk) — pas mounten wanneer er
+# een versie is, anders faalt de revisie-start op een leeg secret.
 
 name: deploy
 
 on:
   workflow_dispatch: {}
-  # Activering (F2, ná de dummy-push-verificatie): onderstaande push-trigger openzetten.
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 env:
-  # ---- F0-waarden (F0-run 2026-08-15, slot van scripts/gcp/f0_hervat3.sh) ----
+  # ---- F0-waarden (F0-run 2026-08-14, slot van scripts/gcp/f0_hervat3.sh) ----
   PROJECT_ID: rlz-boekhouding
   PROJECT_NUMBER: "652591056217"
   REGION: europe-west4
   # ------------------------------------------------------------------------
-  # Afgeleiden (zelfde namen als het F0-script aanmaakt — niet aanpassen):
+  # Afgeleiden (zelfde namen als de F0/F1-scripts aanmaken — niet aanpassen):
   #   WIF-provider:  projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github-oidc
   #   Deploy-SA:     deploy@$PROJECT_ID.iam.gserviceaccount.com
   #   Registry:      $REGION-docker.pkg.dev/$PROJECT_ID/rlz
   IMAGE: europe-west4-docker.pkg.dev/rlz-boekhouding/rlz/backend
+  # Cloud SQL instance-connection-name (F1: instantie rlz-sql) — de app composeert hier
+  # samen met het wachtwoord-secret de database-URL uit (app/config.py, F2).
+  CLOUD_SQL: rlz-boekhouding:europe-west4:rlz-sql
 
 permissions:
   contents: read
   id-token: write # vereist voor WIF (OIDC-token richting Google STS)
+
+concurrency:
+  # Nooit twee deploys door elkaar (migratie-job + revisie-uitrol zijn een volgorde);
+  # een nieuwere push wacht netjes op de lopende run.
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -52,29 +67,54 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
       - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-      - name: Backend-image bouwen en pushen
+      - name: Image bouwen en pushen (backend + frontend-build, context = repo-root)
         run: |
-          docker build -t "${IMAGE}:${GITHUB_SHA}" backend
+          docker build -f backend/Dockerfile -t "${IMAGE}:${GITHUB_SHA}" .
           docker push "${IMAGE}:${GITHUB_SHA}"
 
       # Draaiboek-patroon F2.1: eerst migreren (aparte Cloud Run-job, zelfde beeld,
-      # command-override `alembic upgrade head`), dán de revisie live. De job
-      # `rlz-migratie` wordt in F2 aangemaakt; tot die tijd faalt deze stap expliciet —
-      # nooit stil een revisie uitrollen zonder migratiestap.
-      - name: Migratie-job draaien (alembic upgrade head)
+      # command-override `alembic upgrade head`), dán de revisie live. run-jobs@ is de
+      # enige SA met toegang tot DB_OWNER_WACHTWOORD (F1, least privilege); de app
+      # composeert daar met CLOUD_SQL_VERBINDING de owner-URL uit. max-retries 0: een
+      # gefaalde migratie nooit stil herhalen, de run faalt zichtbaar.
+      - name: Migratie-job bijwerken + draaien (alembic upgrade head)
         run: |
-          gcloud run jobs update rlz-migratie \
+          gcloud run jobs deploy rlz-migratie \
             --image "${IMAGE}:${GITHUB_SHA}" \
             --region "${REGION}" \
-            --project "${PROJECT_ID}"
+            --project "${PROJECT_ID}" \
+            --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --set-cloudsql-instances "${CLOUD_SQL}" \
+            --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL}" \
+            --set-secrets "DB_OWNER_WACHTWOORD=DB_OWNER_WACHTWOORD:latest" \
+            --command alembic \
+            --args upgrade,head \
+            --max-retries 0 \
+            --task-timeout 900 \
+            --quiet
           gcloud run jobs execute rlz-migratie \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
             --wait
 
+      # Runtime-config als code (F2.3/F2.4): ENVIRONMENT=production laat alle
+      # dev-fallback-guards bijten (Secure-cookies, geen dev-stub, geen in-process
+      # afleveraar-lus); WebAuthn RP ID = het APEX-domein (F2-bouwvereiste — passkeys
+      # blijven geldig op alle subdomeinen), origin = het app-subdomein; CORS leeg
+      # (same-origin, beslispunt 4). ^@^ = gcloud's eigen delimiter-escape zodat
+      # JSON-lijstwaarden veilig zijn. --allow-unauthenticated: de app heeft eigen auth
+      # (JWT + TOTP/passkeys), de accordeur-PWA moet publiek bereikbaar zijn.
       - name: Cloud Run-revisie uitrollen
         run: |
           gcloud run deploy rlz-backend \
             --image "${IMAGE}:${GITHUB_SHA}" \
             --region "${REGION}" \
-            --project "${PROJECT_ID}"
+            --project "${PROJECT_ID}" \
+            --service-account "run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --set-cloudsql-instances "${CLOUD_SQL}" \
+            --allow-unauthenticated \
+            --memory 1Gi \
+            --cpu 1 \
+            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[]@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
+            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest" \
+            --quiet

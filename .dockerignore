@@ -1,0 +1,26 @@
+# Docker-build-context = repo-root (backend/Dockerfile, F2.2 same-origin). Allowlist-opzet:
+# eerst alles uitsluiten, dan alleen backend/ en frontend/ toelaten, en dáárbinnen weer
+# uitsluiten wat nooit het beeld in mag (.env: secrets — besluit 0012) of alleen de context
+# opblaast. De COPY's in de Dockerfile zijn al selectief; dit is de tweede vangrail én de
+# snelheidswinst. NB verkenning/.env (RLZ-credentials) valt onder de eerste regel.
+*
+!backend
+!frontend
+
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/.venv
+backend/.data
+backend/.pytest_cache
+backend/.ruff_cache
+backend/tests
+
+frontend/node_modules
+frontend/dist
+frontend/.env
+frontend/.env.*
+
+**/__pycache__
+**/*.pyc
+**/.DS_Store
