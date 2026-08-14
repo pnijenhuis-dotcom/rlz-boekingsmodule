@@ -14,7 +14,7 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 
 | Partij | Rol | Wanneer nodig | Status |
 |---|---|---|---|
-| Anthropic PBC | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | ⬜ open |
+| Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14), ZDR-verzoek ingediend |
 | Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de GCP-uitrol (klantdata in de cloud) | ⬜ open |
 | Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ⬜ te bevestigen |
 | E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (GCP-uitrol) | ⬜ leverancierskeuze open |
@@ -22,6 +22,25 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 ---
 
 ## A. Anthropic (Claude API)
+
+**Gearchiveerde brondocumenten (aangeleverd door Peter, 2026-08-14 — in deze map):**
+
+- `Commercial Terms of Service _ Anthropic.pdf` — webprint 14-08-2026 van
+  <https://www.anthropic.com/legal/commercial-terms>, versie **effective 17 juni 2025**
+  (datum uit de PDF geverifieerd).
+- `Data Processing Addendum _ Anthropic.pdf` — webprint 14-08-2026 van
+  <https://www.anthropic.com/legal/data-processing-addendum>, versie
+  **effective 24 februari 2025** (datum uit de PDF geverifieerd).
+- Kernpunten uit de gearchiveerde versies (opgave Peter bij aanlevering):
+  - **Contractspartij voor EEA-klanten is Anthropic Ireland, Limited** (per de Commercial
+    Terms). NB: de contractuele wederpartij is daarmee een EU-entiteit, maar de verwerking
+    zelf vindt nog steeds in de VS plaats — de SCC's/doorgifte-analyse hieronder blijft
+    onverkort relevant.
+  - **Geen training op Customer Content** — Commercial Terms **§B (Customer Content)**.
+    Daarmee is de verifieer-opdracht bij punt 1 hieronder ingevuld voor de gearchiveerde
+    versie van 17-06-2025; her-verifiëren bij een nieuwe Terms-versie.
+  - **ZDR-verzoek is ingediend en loopt** (status 2026-08-14); uitkomst + eventuele
+    ZDR-overeenkomst hier archiveren zodra rond.
 
 **Hoe de DPA werkt (geverifieerd 2026-08-11):**
 
@@ -40,7 +59,8 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 1. **Default (zonder ZDR):** Anthropic bewaart API-in- en output een beperkte periode voor
    misbruik-/veiligheidsmonitoring (volgens Anthropics documentatie doorgaans max. 30 dagen);
    Anthropic traint volgens de Commercial Terms **niet** op API-data van zakelijke klanten —
-   verifieer die clausule in de actuele Terms bij acceptatie.
+   geverifieerd in de gearchiveerde Terms-versie van 17-06-2025 (§B Customer Content, zie
+   "Gearchiveerde brondocumenten" hierboven); her-verifiëren bij een nieuwe Terms-versie.
 2. **Zero Data Retention (ZDR) — aan te vragen:** voorkomt dat prompts/responses überhaupt
    worden opgeslagen. ZDR is een aparte afspraak voor gekwalificeerde commerciële
    API-klanten; aanvragen via Anthropic sales/support (verwijzing in het Privacy Center:
@@ -55,8 +75,10 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 **Acties Peter:**
 
 - [ ] Betaald Anthropic-API-account (organisatie) — Commercial Terms accepteren = DPA rond;
-      datum + versie van de geaccepteerde Terms vastleggen in dit dossier.
-- [ ] ZDR aanvragen, óf bewust en gedocumenteerd de default-retentie accepteren.
+      de Terms-versie (effective 17-06-2025) en DPA-versie (effective 24-02-2025) zijn
+      gearchiveerd (2026-08-14); acceptatiedatum van het account nog vastleggen.
+- [x] ZDR aanvragen — **verzoek ingediend, loopt** (status 2026-08-14); ⬜ uitkomst
+      vastleggen + eventuele ZDR-overeenkomst archiveren zodra rond.
 - [ ] DPF-register checken op Anthropic (extra doorgiftegrondslag) en noteren.
 - [ ] Subverwerkerslijst van Anthropic (in de DPA) doorlopen en archiveren.
 

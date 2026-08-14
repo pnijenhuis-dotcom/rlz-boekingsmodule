@@ -19,6 +19,11 @@ september 2026).
 Word-bundel voor verzending aan de jurist: `AVG-pakket-ter-toetsing-2026-08-11.docx`
 (memo + alle documenten in één bestand).
 
+Gearchiveerde brondocumenten (aangeleverd door Peter, 2026-08-14): de Anthropic
+**Commercial Terms of Service** (effective 17-06-2025) en het **Data Processing Addendum**
+(effective 24-02-2025) als PDF-webprints — kernpunten en status in checklist A van
+[02-subverwerkers-checklist.md](02-subverwerkers-checklist.md).
+
 **De .md-bestanden zijn canoniek; de .docx-bestanden zijn gegenereerde verzend-artefacten**
 — verversen via `backend/.venv/bin/python scripts/genereer_avg_docx.py <bron.md> <doel.docx>`,
 nooit met de hand in Word bewerken (2026-08-13: een Word-hersave van de
