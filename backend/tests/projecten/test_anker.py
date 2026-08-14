@@ -1,6 +1,9 @@
-"""Route-A-nazorg (besluit Peter 2026-08-14): het systeemanker "Pandprojecten (systeem)"
-krijgt nooit een boeking — naam-/GUID-toetsen plus de blokkerende checks in de boekpaden
-(verkoop-checkrapport, zorg_voor_debiteur-slot, doorbelasting-whitelist-toets)."""
+"""Anker-VANGNET (route A): een bestaand systeemanker "Pandprojecten (systeem)" krijgt nooit
+een boeking — naam-/GUID-toetsen plus de blokkerende checks in de boekpaden
+(verkoop-checkrapport, zorg_voor_debiteur-slot, doorbelasting-whitelist-toets). Sinds de
+klant-loze schrijfroute (hertest 2026-08-14) maakt de motor geen ankers meer aan; het vangnet
+blijft zolang er nog een anker-debiteur in een administratie bestaat (zie app/projecten/
+anker.py)."""
 
 from __future__ import annotations
 
@@ -28,11 +31,6 @@ class TestAnkerNaamEnGuid:
     def test_anker_guid_is_deterministisch_per_administratie(self) -> None:
         assert anker.anker_customer_id(ADMINISTRATIE_ID) == anker.anker_customer_id(ADMINISTRATIE_ID)
         assert anker.anker_customer_id(ADMINISTRATIE_ID) != anker.anker_customer_id(uuid.uuid4())
-
-    def test_motor_hergebruikt_dezelfde_naamconstante(self) -> None:
-        from app.projecten import motor
-
-        assert motor.ANKER_CUSTOMER_NAAM == anker.ANKER_CUSTOMER_NAAM
 
 
 class TestVerkoopCheck:

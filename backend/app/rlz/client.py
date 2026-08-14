@@ -369,17 +369,21 @@ class RlzClient:
         veilig = name.replace("'", "''")
         return self.get("Projects", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
 
-    def put_customer_project(
-        self, customer_id: uuid.UUID, project_id: uuid.UUID, *, name: str, is_active: bool = True
+    def put_project(
+        self, project_id: uuid.UUID, *, name: str, is_active: bool = True
     ) -> httpx.Response:
-        """Project aanmaken/bijwerken — Projects-STAP-0 (2026-08-14, poc_projects_schrijf.py):
-        de ENIGE schrijfroute is `PUT Customers/{baseId}/Projects/{id}` (geen top-level PUT);
-        de baseId-customer moet bestaan (404 bij een onbekende) en het project is daarna écht
-        aan die customer gebonden ($expand=Customer). ⚠️ Zonder expliciet `IsActive` staat een
-        vers project op false — daarom hier default true. Respons is 204 zonder body: het
-        resultaat altijd terugleesbaar via get_project()."""
+        """Project aanmaken/bijwerken — klant-loze TOP-LEVEL route (hertest 2026-08-14 ná
+        browsercapture Peter, poc_projects_toplevel.py): `PUT {adminId}/Projects/{id}` werkt
+        gewoon via Basic Auth, zónder Customer ($expand=Customer → null). ⚠️ De Help-lijst
+        kent deze route niet — Help is géén volledig route-inventaris. De eerdere conclusie
+        "Customers-route is de enige schrijfvorm" (Projects-STAP-0) is hiermee gecorrigeerd;
+        de Customers-route bestaat óók nog (api-verkenning). Gedrag identiek aan STAP-0:
+        PUT = create-or-update (zelfde GUID + andere naam muteert — lookup-vóór-PUT blijft),
+        ⚠️ zonder expliciet `IsActive` staat een vers project op false (daarom default true),
+        ⚠️ naam >50 tekens = 400 (kolom PRJNAM — de naamconventie-poort zit ervóór). Respons
+        is 204 zonder body: het resultaat altijd terugleesbaar via get_project()."""
         body = {"id": str(project_id), "Name": name, "IsActive": is_active}
-        return self.put(f"Customers/{customer_id}/Projects/{project_id}", body)
+        return self.put(f"Projects/{project_id}", body)
 
     def find_vendors_by_name(self, *, name: str) -> list[dict[str, Any]]:
         """Crediteur-lookup vóór de idempotente PUT in een DOEL-administratie (doorbelasting:

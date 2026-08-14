@@ -1,8 +1,8 @@
-"""Fixtures voor de route-A-projectaanmaak (koppelcontract §5 v1.15): een nep-RlzClient met
-het STAP-0-gedrag van de Projects-schrijfroute (poc_projects_schrijf.py, 2026-08-14) — het
-project is customer-gebonden, PUT onder een onbekende customer is 404, PUT is create-or-update
-en een minimaal aangemaakt project zou IsActive:false krijgen (de motor moet 'm dus expliciet
-op true zetten)."""
+"""Fixtures voor de route-A-projectaanmaak (koppelcontract §5): een nep-RlzClient met het
+geverifieerde gedrag van de klant-loze top-level Projects-schrijfroute (hertest 2026-08-14,
+poc_projects_toplevel.py) — PUT zonder customer werkt, PUT is create-or-update en een
+minimaal aangemaakt project zou IsActive:false krijgen (de motor moet 'm dus expliciet op
+true zetten)."""
 
 from __future__ import annotations
 
@@ -17,14 +17,12 @@ from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
 
 
 class FakeProjectClient:
-    """Simuleert precies de STAP-0-feiten; telt de schrijfacties zodat idempotentie-tests
+    """Simuleert precies de hertest-feiten; telt de schrijfacties zodat idempotentie-tests
     kunnen asserten dat een tweede aanvraag géén tweede PUT doet."""
 
     def __init__(self) -> None:
-        self.customers: dict[str, str] = {}  # id → naam
         self.projects: dict[str, dict[str, Any]] = {}  # id → record
         self.put_project_aanroepen = 0
-        self.put_customer_aanroepen = 0
         self.faal_bij_put_project = False
         self.faal_bij_lookup = False
         self.gesloten = False
@@ -38,28 +36,21 @@ class FakeProjectClient:
     def find_projects_by_name(self, *, name: str) -> list[dict[str, Any]]:
         return [p for p in self.projects.values() if p.get("Name") == name]
 
-    def find_customers_by_name(self, *, name: str) -> list[dict[str, Any]]:
-        return [{"id": cid, "Name": n} for cid, n in self.customers.items() if n == name]
-
-    # --- schrijfroutes --------------------------------------------------------------------
-    def put_customer(self, customer_id: uuid.UUID, *, name: str) -> None:
-        self.put_customer_aanroepen += 1
-        self.customers[str(customer_id)] = name
-
-    def put_customer_project(
-        self, customer_id: uuid.UUID, project_id: uuid.UUID, *, name: str, is_active: bool = True
+    # --- schrijfroute ---------------------------------------------------------------------
+    def put_project(
+        self, project_id: uuid.UUID, *, name: str, is_active: bool = True
     ) -> None:
         if self.faal_bij_put_project:
-            raise RlzApiError(500, "PUT", f"/Customers/{customer_id}/Projects/{project_id}", "kapot")
-        if str(customer_id) not in self.customers:
-            # STAP-0 §4: PUT onder een niet-bestaande customer → 404, er ontstaat niets.
-            raise RlzApiError(404, "PUT", f"/Customers/{customer_id}/Projects/{project_id}", "_NotFound")
+            raise RlzApiError(500, "PUT", f"/Projects/{project_id}", "kapot")
+        if len(name) > 50:
+            # Hertest: RLZ weigert >50 tekens hard (kolom PRJNAM) — 400.
+            raise RlzApiError(400, "PUT", f"/Projects/{project_id}", "PRJNAM te lang")
         self.put_project_aanroepen += 1
         self.projects[str(project_id)] = {
             "id": str(project_id),
             "Name": name,
             "IsActive": is_active,
-            "_customer": str(customer_id),
+            "Customer": None,  # klant-loos — $expand=Customer geeft null (hertest)
         }
 
     def close(self) -> None:

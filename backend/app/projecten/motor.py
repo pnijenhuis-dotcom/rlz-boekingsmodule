@@ -1,21 +1,19 @@
-"""Idempotente projectaanmaak-naar-RLZ (route A, koppelcontract §5 v1.15; BOUWPLAN fase 4,
-verschoven bouwitem — STAP-0-feiten: verkenning/api-verkenning.md "Projects-schrijfroute
-STAP-0", 2026-08-14).
+"""Idempotente projectaanmaak-naar-RLZ (route A, koppelcontract §5; BOUWPLAN fase 4).
+Schrijfroute-feiten: verkenning/api-verkenning.md "Projects klant-loze schrijfroute
+(browsercapture Peter + hertest)", 2026-08-14 — de correctie op de eerdere STAP-0-conclusie.
 
 Kernontwerp:
 - Deterministisch client-GUID (rlz_pand_project_id: UUIDv5 over administratie + vastgoeds
-  stabiele pand-referentie) + lookup-vóór-PUT tegen de ACTUELE RLZ-staat. STAP-0 bewees dat
-  een herhaal-PUT met afwijkende body muteert (PUT = create-or-update), dus bij een bestaand
-  project wordt NOOIT opnieuw gePUT — de bestaande RLZ-staat wint, inclusief de naam.
-- De schrijfroute vereist een bestaande customer als route-anker (`PUT Customers/{baseId}/
-  Projects/{id}`; 404 onder een onbekende customer) en het project is écht aan die customer
-  gebonden. De aanvraag draagt geen customer → per administratie één idempotent aangemaakt
-  SYSTEEMANKER (app/projecten/anker.py, patroon zorg_voor_debiteur). Besluit Peter
-  2026-08-14 (BESLISSINGEN "Systeemanker route A"): het kasomzet-besluit "geen dummy-debiteur"
-  gaat hier niet 1-op-1 op — RLZ's route dwingt een customer af; het anker krijgt NOOIT
-  boekingen (blokkerende checks in verkoop/doorbelasting + slot in zorg_voor_debiteur).
-- `IsActive: true` expliciet in de PUT (STAP-0: default is false — het project zou anders
-  onzichtbaar/inactief zijn).
+  stabiele pand-referentie) + lookup-vóór-PUT tegen de ACTUELE RLZ-staat. De hertest bevestigde
+  het STAP-0-gedrag: een herhaal-PUT met afwijkende body muteert (PUT = create-or-update), dus
+  bij een bestaand project wordt NOOIT opnieuw gePUT — de bestaande RLZ-staat wint, incl. naam.
+- De schrijfroute is de klant-loze top-level `PUT {adminId}/Projects/{id}` (screencheck Peter
+  2026-08-14 + Basic-Auth-hertest): een project heeft GEEN customer nodig. Het systeemanker
+  "Pandprojecten (systeem)" verdwijnt daarmee uit het aanmaakpad; de anker-checklaag
+  (app/projecten/anker.py) blijft als vangnet staan zolang er nog een anker-debiteur in een
+  administratie bestaat (archiveren van een Customer kan niet via de API — hertest).
+- `IsActive: true` expliciet in de PUT (hertest: default is opnieuw false — het project zou
+  anders onzichtbaar/inactief zijn; NB RLZ wéígert een inactief project niet op documentregels).
 - project_cache wordt direct ná succes bijgewerkt (geen wachtend sync-venster): het verse
   RLZ-record wordt teruggelezen (de PUT-respons is 204 zonder body) en geüpsert.
 - Failsafes: naam-conflict (zelfde naam, ander GUID) en elke RLZ-fout zijn zichtbare,
@@ -31,8 +29,7 @@ from typing import Any
 
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
-from app.documenten.rlz_ids import rlz_customer_id, rlz_pand_project_id
-from app.projecten.anker import ANKER_CUSTOMER_NAAM
+from app.documenten.rlz_ids import rlz_pand_project_id
 from app.projecten.models import ProjectAanvraagStatus
 from app.projecten.naamconventie import vorm_projectnaam
 from app.rlz.client import RlzClient
@@ -40,11 +37,6 @@ from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import ProjectCache
 
 logger = logging.getLogger(__name__)
-
-# Het per-administratie systeemanker waar pand-projecten onder hangen leeft in
-# app/projecten/anker.py (naam + GUID-toetsen — de boekpaden importeren dáár, zonder deze
-# motor mee te trekken); hier her-geëxporteerd voor de bestaande aanroepers/tests.
-__all__ = ["ANKER_CUSTOMER_NAAM"]
 
 
 class ProjectAanmakenMislukt(Exception):
@@ -102,38 +94,6 @@ def _upsert_project_cache(
             rij.verdwenen_uit_bron_op = None
 
 
-def _zorg_voor_anker_customer(
-    *, client: RlzClient, administratie_id: uuid.UUID, actor_id: uuid.UUID
-) -> uuid.UUID:
-    """Vindt of maakt het systeemanker, idempotent (patroon zorg_voor_debiteur): lookup op
-    exacte naam vóór de PUT, deterministisch client-GUID (rlz_customer_id) als vangnet.
-    Meerdere naamgenoten = fout (mens lost op) — nooit gokken onder welke het project hangt."""
-    bestaand = client.find_customers_by_name(name=ANKER_CUSTOMER_NAAM)
-    if len(bestaand) == 1:
-        return uuid.UUID(bestaand[0]["id"])
-    if len(bestaand) > 1:
-        raise ProjectAanmakenMislukt(
-            f"Meerdere RLZ-debiteuren heten exact '{ANKER_CUSTOMER_NAAM}' ({len(bestaand)}) — "
-            "los de dubbeling eerst op in Reeleezee"
-        )
-
-    anker_id = rlz_customer_id(administratie_id, ANKER_CUSTOMER_NAAM)
-    client.put_customer(anker_id, name=ANKER_CUSTOMER_NAAM)
-    with scoped_session(administratie_id, actor_id=actor_id) as session:
-        record_audit_event(
-            session,
-            actor_id=actor_id,
-            module="boekhouding",
-            tabel="projectaanvraag",
-            record_id=anker_id,
-            actie="projectanker_customer_aangemaakt_in_rlz",
-            correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"customer_id": str(anker_id), "naam": ANKER_CUSTOMER_NAAM},
-            administratie_id=administratie_id,
-        )
-    return anker_id
-
-
 def maak_pand_project_aan(
     *,
     administratie_id: uuid.UUID,
@@ -158,8 +118,8 @@ def maak_pand_project_aan(
             raise ProjectAanmakenMislukt(f"Project-lookup in RLZ mislukt: {exc}") from exc
 
         if bestaand is not None:
-            # RLZ-staat wint: geen herhaal-PUT (die zou muteren — STAP-0 §5), de werkelijke
-            # naam gaat terug in het antwoord. Cache wél verversen met de actuele staat.
+            # RLZ-staat wint: geen herhaal-PUT (die zou muteren — create-or-update), de
+            # werkelijke naam gaat terug in het antwoord. Cache wél verversen.
             _upsert_project_cache(
                 administratie_id=administratie_id, project_id=project_id, record=bestaand
             )
@@ -177,13 +137,8 @@ def maak_pand_project_aan(
             raise ProjectNaamConflict(naam, str(naamgenoten[0].get("id")))
 
         try:
-            anker_id = _zorg_voor_anker_customer(
-                client=client, administratie_id=administratie_id, actor_id=actor_id
-            )
-            client.put_customer_project(anker_id, project_id, name=naam, is_active=True)
+            client.put_project(project_id, name=naam, is_active=True)
             vers = client.get_project(project_id)
-        except ProjectAanmakenMislukt:
-            raise
         except Exception as exc:  # noqa: BLE001 — élke RLZ-fout is een zichtbare foutstatus
             raise ProjectAanmakenMislukt(f"Projectaanmaak in RLZ mislukt: {exc}") from exc
         if vers is None:
@@ -206,7 +161,6 @@ def maak_pand_project_aan(
                     "rlz_project_id": str(project_id),
                     "projectnaam": naam,
                     "pand_referentie": pand_referentie,
-                    "anker_customer_id": str(anker_id),
                 },
                 administratie_id=administratie_id,
             )

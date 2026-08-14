@@ -1,5 +1,6 @@
 """Geldlogica-tests voor de idempotente projectaanmaak (route A): idempotentie, fail-closed
-foutpaden, anker-hergebruik en de directe project_cache-bijwerking."""
+foutpaden en de directe project_cache-bijwerking — op de klant-loze top-level schrijfroute
+(hertest 2026-08-14; het systeemanker is uit het aanmaakpad verdwenen)."""
 
 from __future__ import annotations
 
@@ -38,10 +39,10 @@ def test_aanmaak_zet_is_active_en_vult_cache(
     assert resultaat.projectnaam == NAAM
     assert resultaat.rlz_project_id == rlz_pand_project_id(administratie_id, PAND_REF)
     project = fake_rlz.projects[str(resultaat.rlz_project_id)]
-    # STAP-0 §6: zonder expliciet IsActive:true zou het project inactief zijn.
+    # Hertest §c: zonder expliciet IsActive:true zou het project inactief zijn.
     assert project["IsActive"] is True
-    # Het project hangt onder het systeemanker (STAP-0 §3: écht customer-gebonden).
-    assert fake_rlz.customers[project["_customer"]] == motor.ANKER_CUSTOMER_NAAM
+    # Klant-loze route (hertest §e): het project hangt onder GEEN enkele customer.
+    assert project["Customer"] is None
     with scoped_session(administratie_id) as session:
         rij = session.get(ProjectCache, (resultaat.rlz_project_id, administratie_id))
         assert rij is not None and rij.naam == NAAM and rij.is_actief is True
@@ -55,8 +56,8 @@ def test_tweede_aanvraag_zelfde_pand_is_zelfde_project_geen_duplicaat(
 
     assert tweede.status is ProjectAanvraagStatus.BESTOND_AL
     assert tweede.rlz_project_id == eerste.rlz_project_id
-    # De RLZ-staat wint: geen herhaal-PUT (die zou muteren, STAP-0 §5) en de naam blijft die
-    # van het bestaande project.
+    # De RLZ-staat wint: geen herhaal-PUT (die zou muteren — create-or-update, hertest §d)
+    # en de naam blijft die van het bestaande project.
     assert fake_rlz.put_project_aanroepen == 1
     assert tweede.projectnaam == NAAM
     assert len(fake_rlz.projects) == 1
@@ -97,24 +98,12 @@ def test_lookup_fout_blokkeert_voor_de_put(
     assert fake_rlz.put_project_aanroepen == 0
 
 
-def test_bestaand_anker_wordt_hergebruikt(
+def test_aanmaak_maakt_geen_customer_aan(
     administratie_id: uuid.UUID, beheerder_id: uuid.UUID, fake_rlz: FakeProjectClient
 ) -> None:
-    bestaand_anker = str(uuid.uuid4())
-    fake_rlz.customers[bestaand_anker] = motor.ANKER_CUSTOMER_NAAM
+    """De klant-loze route (hertest 2026-08-14): het aanmaakpad raakt Customers niet meer —
+    zou de motor tóch een customer-call doen, dan faalt dit hard op de fake (AttributeError)."""
+    _maak(administratie_id, beheerder_id, fake_rlz)
 
-    resultaat = _maak(administratie_id, beheerder_id, fake_rlz)
-
-    assert fake_rlz.put_customer_aanroepen == 0
-    assert fake_rlz.projects[str(resultaat.rlz_project_id)]["_customer"] == bestaand_anker
-
-
-def test_twee_ankers_is_fout_nooit_gokken(
-    administratie_id: uuid.UUID, beheerder_id: uuid.UUID, fake_rlz: FakeProjectClient
-) -> None:
-    fake_rlz.customers[str(uuid.uuid4())] = motor.ANKER_CUSTOMER_NAAM
-    fake_rlz.customers[str(uuid.uuid4())] = motor.ANKER_CUSTOMER_NAAM
-
-    with pytest.raises(motor.ProjectAanmakenMislukt, match="Meerdere"):
-        _maak(administratie_id, beheerder_id, fake_rlz)
-    assert fake_rlz.put_project_aanroepen == 0
+    assert not hasattr(fake_rlz, "put_customer")
+    assert not hasattr(fake_rlz, "find_customers_by_name")

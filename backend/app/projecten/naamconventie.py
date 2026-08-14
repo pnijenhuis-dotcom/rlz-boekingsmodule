@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import re
 
-# Ruim boven elke redelijke pandnaam, ver onder wat een UI/RLZ-lijst nog leesbaar toont.
-MAX_NAAM_LENGTE = 120
+# RLZ's harde kolomlimiet (PRJNAM): 50 tekens → 204, 51 → 400 "te lang" (hertest 2026-08-14,
+# poc_projects_toplevel.py). De poort zit hiermee exact op RLZ's grens, zodat een te lange
+# invoer een deterministische 400 naar vastgoed is i.p.v. een 502-RLZ-fout achteraf.
+MAX_NAAM_LENGTE = 50
 
 _BAG_ID_PATROON = re.compile(r"\d{16,}")
 
