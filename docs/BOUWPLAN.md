@@ -639,13 +639,18 @@ UI-eisen):
   on-demand voor vastgoed — GEBOUWD + GETEST + LIVE GEVERIFIEERD (2026-08-14, opdracht Peter;
   koppelcontract → v1.15, zie docs/BESLISSINGEN.md "ROUTE A"):** alle vier de stappen gedaan —
   1. **STAP-0-PoC ✅** (`verkenning/poc_projects_schrijf.py`, api-verkenning
-     "Projects-schrijfroute STAP-0"): enige schrijfroute = `PUT Customers/{baseId}/Projects/
-     {client-guid}`, project customer-gebonden, PUT = create-or-update, ⚠️ IsActive default
-     false; archief-vlag = IsActive via PUT (werkt beide kanten); testproject blijft staan.
+     "Projects-schrijfroute STAP-0"): PUT = create-or-update, ⚠️ IsActive default false;
+     archief-vlag = IsActive via PUT (werkt beide kanten); testproject blijft staan.
+     ⚠️ De deelconclusie "enige schrijfroute = Customers-route" is dezelfde dag
+     GECORRIGEERD (screencheck Peter + hertest `poc_projects_toplevel.py`): er bestaat een
+     klant-loze top-level `PUT {adminId}/Projects/{id}` — api-verkenning "Projects
+     klant-loze schrijfroute"; bonus-feit naamlimiet 50 tekens (PRJNAM).
   2. **Schrijfmotor ✅** (`app/projecten/motor.py`, migratie 0048): UUIDv5 op
      administratie+pand_referentie, lookup-vóór-PUT (RLZ-naam wint, nooit herhaal-PUT),
-     naamconventie-motor mét §2.1-BAG-poort, systeemanker-debiteur "Pandprojecten (systeem)"
-     per administratie (RLZ-route dwingt een customer af), directe project_cache-upsert, audit.
+     naamconventie-motor mét §2.1-BAG-poort + 50-tekens-poort, KLANT-LOZE top-level PUT
+     (sinds de correctie 14-08; het systeemanker "Pandprojecten (systeem)" is uit het
+     aanmaakpad vervallen — de nooit-boeken-checks blijven als vangnet, BESLISSINGEN
+     "Systeemanker route A"), directe project_cache-upsert, audit.
   3. **Aanvraag-koppelvlak ✅**: vormkeuze = platform-endpoint op de RLZ-backend (de
      §5-voorkeur) — `POST /koppelvlak/vastgoed/projectaanvragen`, HMAC+timestamp+nonce met
      EIGEN inkomend secret, bericht_id-idempotentie, is_vastgoed-scope hard, synchroon
@@ -704,6 +709,6 @@ volstaat), multi-region (cross-region backup volstaat), AlloyDB (alleen MI-groei
 |---|-----|------|
 | 1 | Rate limits exact | 1 |
 | 2 | ~~Afletteren via acties 15/16 + QuickPaymentSelections~~ — afgehandeld 2026-08-02: QuickPaymentSelections ≠ afletterkanaal; 15/16 + 34 + 218 definitief dicht (FALLBACK-PoC), gebouwd als assist-seam; openstaand = alleen het RLZ-supportantwoord | 2 ✅ |
-| 3 | ~~Projects-write (PUT via Customers-route)~~ — **uitgevoerd 2026-08-14 (route A STAP-0, api-verkenning "Projects-schrijfroute STAP-0")** | 4→ ✅ |
+| 3 | ~~Projects-write (PUT via Customers-route)~~ — **uitgevoerd 2026-08-14 (route A STAP-0) + gecorrigeerd zelfde dag: de klant-loze top-level PUT is de motor-route (api-verkenning "Projects klant-loze schrijfroute")** | 4→ ✅ |
 | 4 | CodeEventSubscriptions (RLZ-events) | 5 |
 | 5 | Waarborg-GB per vastgoed-administratie | 5 |

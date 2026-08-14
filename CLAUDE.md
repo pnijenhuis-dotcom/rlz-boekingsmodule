@@ -104,7 +104,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   Gebruikt voor kostprijsboekingen (gekoppeld aan omzetboeking, zelfde PDF-bijlage).
 - **Lines lezen mét refs**: `.../Lines?$expand=Account,Project`.
 - **Sync per administratie** (nooit hardcoden): `Ledgers` (+`?search=`), `TaxRates`, `Vendors`,
-  `Projects` (top-level GET; write via Customers-route — PoC nodig), `JournalEntries`/`-Lines`
+  `Projects` (top-level GET; write = klant-loze top-level PUT, hertest 2026-08-14 —
+  api-verkenning "Projects klant-loze schrijfroute"; de Customers-route bestaat óók maar is
+  niet de enige vorm), `JournalEntries`/`-Lines`
   (historie → boekingsgeheugen), `PaymentAccounts` (incl. kas, Type 3; `/Statements` = alleen
   afschrift-koppen), **`PaymentTransactions` = dé ruwe bankmutaties** (tegenrekening-IBAN,
   omschrijving, afgeletterd-status `IsComplete`+`OpenAmount`; geverifieerd STAP 0 2026-08-02).
@@ -152,7 +154,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   eenhedennormalisatie fractie↔percentage in `app/sync/btw.py`, btw in het verkoopvoorstel
   auto-ingevuld + VERGRENDELD, ambiguïteit = eenmalige onthouden keuze per administratie,
   migratie 0038) én nooit-boeken-op-ankerdebiteur (route-A-nazorg 2026-08-14: verkoop-checks
-  + `zorg_voor_debiteur`-slot + doorbelasting-whitelist-toets, bron `app/projecten/anker.py`)
+  + `zorg_voor_debiteur`-slot + doorbelasting-whitelist-toets, bron `app/projecten/anker.py` —
+  sinds de klant-loze schrijfroute (zelfde dag) een VANGNET: de motor maakt geen ankers meer
+  aan, de checks blijven zolang er ergens een anker-debiteur bestaat)
   zijn gebouwd + getest; **per-leverancier-autoboeken-opt-in: GEBOUWD + GETEST (2026-08-09,
   migratie 0036 + `app/documenten/autoboeken.py`)** — boekt ná extractie uitsluitend bij
   opt-in aan (Beheerder-only, default UIT) + harde checks groen + voorstel volledig uit
@@ -397,23 +401,27 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (doorbelasting-spiegel), `rlz_ui_detectie` = `app/documenten/storno_detectie.py` in het
   reconciliatie-CLI-commando — **latentie = reconciliatie-cadans (nu dagelijks ≤ 24 u),
   expliciet in §3b**; geen event zonder eerder geboekt-event.
-- **Route A — projectaanmaak-naar-RLZ on-demand (§5, v1.15 — GEBOUWD + GETEST + LIVE
+- **Route A — projectaanmaak-naar-RLZ on-demand (§5, v1.16 — GEBOUWD + GETEST + LIVE
   GEVERIFIEERD 2026-08-14):** `POST /koppelvlak/vastgoed/projectaanvragen` (`app/projecten/`,
   migratie 0048) — HMAC+timestamp+nonce met EIGEN inkomend secret
   (`PROJECTAANVRAAG_HMAC_SECRET`, uitwisseling bij F4), `bericht_id`-idempotentie, harde
   is_vastgoed-scope, synchroon `rlz_project_id`+definitieve projectnaam. Motor: UUIDv5 op
   administratie+pand_referentie, lookup-vóór-PUT (RLZ-naam wint — PUT is create-or-update!),
-  naamconventie-poorten (BAG-id §2.1 = weigeren), systeemanker-debiteur "Pandprojecten
-  (systeem)" per administratie (de RLZ-route `PUT Customers/{baseId}/Projects/{id}` dwingt
-  een customer af; ⚠️ IsActive default false → motor zet expliciet true — STAP-0-feiten:
-  api-verkenning "Projects-schrijfroute STAP-0"), directe project_cache-upsert.
-  **Systeemanker BESLOTEN + nazorg gebouwd (2026-08-14, BESLISSINGEN "Systeemanker route
-  A")**: naam bevestigd, anker krijgt NOOIT boekingen — blokkerende check
+  naamconventie-poorten (BAG-id §2.1 = weigeren; naamlimiet 50 tekens = RLZ's harde
+  PRJNAM-grens, hertest 14-08), **KLANT-LOZE top-level `PUT {adminId}/Projects/{id}`**
+  (screencheck-correctie Peter 2026-08-14: de STAP-0-conclusie "Customers-route is de enige
+  schrijfvorm" was fout — Basic-Auth-hertest bevestigde de route; ⚠️ IsActive default false →
+  motor zet expliciet true; ⚠️ de Help-lijst is géén volledig route-inventaris — feiten:
+  api-verkenning "Projects klant-loze schrijfroute"), directe project_cache-upsert.
+  **Systeemanker VERVALLEN uit het aanmaakpad (heropend + afgesloten 2026-08-14,
+  BESLISSINGEN "Systeemanker route A")**: de motor maakt geen anker-debiteuren
+  "Pandprojecten (systeem)" meer aan; bestaande ankers blijven staan (Customer archiveren
+  kan niet via de API — hertest; nooit verwijderen) en reeds anker-gebonden projecten
+  blijven bruikbaar (PoC: eigenaarschap is geen scope, óók door boeken/storno heen —
+  api-verkenning "Projectgebruik op vreemde documentregels"). De blokkerende check
   `check_geen_ankerdebiteur` (verkoop-rapport + fail-closed slot `zorg_voor_debiteur` op
-  naam én GUID + doorbelasting-whitelist-toets; ene bron `app/projecten/anker.py`); PoC
-  bewees dat anker-gebonden projecten onbeperkt bruikbaar zijn op documentregels van
-  vreemde entiteiten, ook door boeken/storno heen (api-verkenning "Projectgebruik op
-  vreemde documentregels"). Open: aanroepkant vastgoed (OPEN_ITEMS);
+  naam én GUID + doorbelasting-whitelist-toets; ene bron `app/projecten/anker.py`) blijft
+  als VANGNET zolang er ergens een anker bestaat. Open: aanroepkant vastgoed (OPEN_ITEMS);
   `project_verplicht`-activatie = S2-moment (gereedheid geverifieerd: default UIT,
   Beheerder-only, check leest live).
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
