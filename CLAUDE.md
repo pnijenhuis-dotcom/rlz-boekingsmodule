@@ -187,6 +187,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   herverwerkt i.p.v. vroeg terug te keren, idempotent op (intake_bericht_id, sha256) —
   fix 2026-08-07. Multi-factuur-splitsing: AI-voorstel ALTIJD eerst ter controle, bevestigen =
   deterministische pypdf-splitsing, bron-document terminaal `gesplitst`.
+- **AI-kostengrens intake (besluit Peter 2026-08-14, GEBOUWD + GETEST zelfde dag, migratie
+  0047)**: Anthropic-API-kosten voor intake-AI max € 100 per kalendermaand (Europe/Amsterdam) —
+  deterministische kostenmeter (`backend/app/aikosten/`): élke Claude-call append-only gelogd
+  met wérkelijke token-usage (incl. cache), kosten in code uit gepinde prijstabel × gepinde
+  USD→EUR-koers 1,00 (conservatief), harde poort vóór élke call ín de client (≥ limiet = call
+  niet doen; onbekend model fail-closed). Boven de grens NOOIT stil wegvallen: zelfde pad als
+  intake_ai=uit (verzamelbak-reden/chip "AI-limiet bereikt — handmatig verwerken"); 80%- en
+  100%-melding éénmalig per maand (werkvoorraad-banner + audit); limiet Beheerder-only op
+  Instellingen (verbruiksblok naast de AI-gate-knop). Tweede laag = klikwerk Peter: spend-limit
+  ~$110 in de Anthropic-console. Zie BESLISSINGEN "AI-KOSTENGRENS INTAKE".
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,
