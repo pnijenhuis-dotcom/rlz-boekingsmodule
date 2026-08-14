@@ -9,12 +9,15 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.config import settings as app_settings
 from app.db.session import scoped_session
 from app.documenten.webhook import _canonical_json, bereken_handtekening
 from app.main import app
 from app.projecten.models import ProjectAanvraag
+from app.projecten.router import _resolve_projectaanvraag_secret
 from tests.projecten.conftest import FakeProjectClient
 
 client = TestClient(app)
@@ -205,3 +208,45 @@ def test_rlz_fout_is_zichtbare_502_en_geen_registratie(
     resp2 = client.post(ENDPOINT, json=herhaal)
     assert resp2.status_code == 200
     assert resp2.json()["status"] == "aangemaakt"
+
+
+class TestSecretFailClosed:
+    """F4-voorbereiding (2026-08-14): het inkomende kanaal mag buiten dev nooit stil op het
+    dev-secret terugvallen — zelfde bewaking als het webhook-/JWT-secret (spiegel van
+    tests/documenten/test_webhook.py::TestResolveWebhookSecret)."""
+
+    def test_dev_zonder_secret_valt_terug_op_dev_secret(self) -> None:
+        assert _resolve_projectaanvraag_secret({}) == DEV_SECRET
+        assert _resolve_projectaanvraag_secret({"ENVIRONMENT": "local"}) == DEV_SECRET
+
+    def test_expliciet_secret_wint_altijd(self) -> None:
+        assert _resolve_projectaanvraag_secret({"PROJECTAANVRAAG_HMAC_SECRET": "s3cret"}) == "s3cret"
+        assert (
+            _resolve_projectaanvraag_secret(
+                {"PROJECTAANVRAAG_HMAC_SECRET": "s3cret", "ENVIRONMENT": "production"}
+            )
+            == "s3cret"
+        )
+
+    @pytest.mark.parametrize("environment", ["production", "staging", "iets-anders"])
+    def test_faalt_hard_buiten_dev_zonder_secret(self, environment: str) -> None:
+        with pytest.raises(RuntimeError):
+            _resolve_projectaanvraag_secret({"ENVIRONMENT": environment})
+
+    def test_lege_string_telt_als_ontbrekend(self) -> None:
+        with pytest.raises(RuntimeError):
+            _resolve_projectaanvraag_secret(
+                {"PROJECTAANVRAAG_HMAC_SECRET": "", "ENVIRONMENT": "production"}
+            )
+
+    def test_endpoint_weigert_503_zonder_secret_buiten_dev(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fail-closed op het endpoint zelf: geen secret buiten dev = zichtbare 503
+        `niet_geconfigureerd`, vóór élke verwerking van de body — nooit stil verifiëren
+        tegen het dev-fallback-secret."""
+        monkeypatch.setattr(app_settings, "projectaanvraag_hmac_secret", None)
+        monkeypatch.setattr(app_settings, "environment", "production")
+        resp = client.post(ENDPOINT, json={})
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["code"] == "niet_geconfigureerd"

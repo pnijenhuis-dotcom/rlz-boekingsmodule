@@ -15,9 +15,12 @@
 # backend-lifespan is de vangrail als deze volgorde ooit geschonden wordt.
 #
 # Secrets (besluit 0012): uitsluitend als Secret Manager-verwijzing (--set-secrets), nooit
-# als waarde in deze file of in env-vars. WEBHOOK_HMAC_SECRET en ANTHROPIC_API_KEY hebben
-# bewust nog géén versie (F4-uitwisseling resp. AI-gate-klikwerk) — pas mounten wanneer er
-# een versie is, anders faalt de revisie-start op een leeg secret.
+# als waarde in deze file of in env-vars. WEBHOOK_HMAC_SECRET, PROJECTAANVRAAG_HMAC_SECRET
+# en ANTHROPIC_API_KEY hebben bewust nog géén versie (F4-uitwisseling resp. AI-gate-
+# klikwerk) — pas mounten wanneer er een versie is, anders faalt de revisie-start op een
+# leeg secret. De exacte F4-activatie-editie (PROJECTAANVRAAG_HMAC_SECRET op de service;
+# WEBHOOK_HMAC_SECRET + WEBHOOK_DOEL_URL alléén op de afleveraar-job) staat in
+# docs/F4_ACTIVATIE_RUNBOOK.md stap 8.
 
 name: deploy
 
