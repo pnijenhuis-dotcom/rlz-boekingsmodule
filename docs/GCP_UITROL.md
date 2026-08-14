@@ -1,6 +1,8 @@
 # GCP-uitroldraaiboek — RLZ Boekingsmodule
 
-> **Status: alle 10 beslispunten BESLIST (Peter 2026-08-12) — F0 klaar om te draaien.**
+> **Status: F0 UITGEVOERD (2026-08-15, projectnummer 652591056217) — slotverificatie =
+> de `deploy-test`-workflow-run (zie §F0-uitvoering); F1-uitvoeringspakket staat klaar
+> (`scripts/gcp/f1_data.sh`, zie §F1-uitvoering).**
 > Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
 > de PDL Powerhouse-organisatie** (zelfde org als vastgoeds `vastly-504108`, nadrukkelijk NIET
 > hetzelfde project); **tempo = zo snel mogelijk live**; de **AVG-poort geldt alleen voor echte
@@ -34,7 +36,7 @@
    - `run-backend@` — runtime van de Cloud Run-service (Cloud SQL Client,
      Secret Manager accessor op alléén de eigen secrets, Storage objectAdmin op alléén de
      documentenbucket);
-   - `jobs@` — runtime van de Cloud Run-jobs (zelfde grondhouding, plus wat de sync/afleveraar
+   - `run-jobs@` — runtime van de Cloud Run-jobs (zelfde grondhouding, plus wat de sync/afleveraar
      nodig heeft);
    - `deploy@` — deployen via **Workload Identity Federation** naar het vastgoed-patroon
      (GitHub Actions zonder langlevende keys; Artifact Registry writer + Cloud Run deployer;
@@ -59,7 +61,7 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
   deploy-workflow gaat leven).
 - Het script **controleert eerst of de EU-locatie-org-policy al op org-niveau bestaat**
   (mogelijk gezet door vastgoed) en zet 'm anders op projectniveau.
-- Secret- en bucket-bindings voor `run-backend@`/`jobs@` zijn bewust **niet** in F0 opgenomen:
+- Secret- en bucket-bindings voor `run-backend@`/`run-jobs@` zijn bewust **niet** in F0 opgenomen:
   die zijn per-resource en horen bij F1 (de secrets en de bucket bestaan dan pas).
 - Na afloop print het script de **projectnummer- en WIF-provider-resourcenamen**; daarmee
   bouwt Code de GitHub Actions-testworkflow voor de dummy-push (de laatste F0-verificatie).
@@ -68,6 +70,32 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
   niet is ingevuld), WIF-auth zonder SA-keys, en de bindende volgorde build → push →
   migratie-job (`rlz-migratie`, zelfde beeld, `alembic upgrade head`) → revisie live.
   Activeren = F0-waarden invullen + push-trigger openzetten (staat er als commentaar in).
+
+#### F0 — UITGEVOERD (2026-08-15)
+
+- **Gedraaid door Peter (org-owner).** De eerste run liep vast op niet-idempotente
+  `create`-commando's (met `set -e` stopt het script op een al bestaande resource — halve
+  uitrol, drie hervatpogingen). **LES, bindend voor alle volgende fundament-scripts:
+  idempotent vanaf het begin — describe-vóór-create op élke resource.** De idempotente
+  afronding staat in `scripts/gcp/f0_hervat3.sh` (herdraaibaar); `f0_fundament.sh` blijft
+  het volledige genummerde naslagpakket. `f1_data.sh` volgt het patroon vanaf regel één.
+- **Hernoeming:** de jobs-SA heet **`run-jobs@`** (Google eist 6–30 tekens voor
+  SA-namen; `jobs` was te kort) — overal doorgevoerd, incl. F3 hieronder.
+- **Uitkomst-waarden (resourcenamen, geen secrets):** `PROJECT_ID=rlz-boekhouding`,
+  `PROJECT_NUMBER=652591056217`, `WIF_PROVIDER=projects/652591056217/locations/global/
+  workloadIdentityPools/github/providers/github-oidc`,
+  `DEPLOY_SA=deploy@rlz-boekhouding.iam.gserviceaccount.com`,
+  `REGISTRY=europe-west4-docker.pkg.dev/rlz-boekhouding/rlz`.
+- **Read-only geverifieerd (Code, gcloud 2026-08-15):** drie SA's mét draaiboek-rollen
+  (cloudsql.client ×2; artifactregistry.writer + run.developer op deploy@;
+  serviceAccountUser van deploy@ op beide runtime-SA's), WIF-provider ACTIVE met de
+  repo-conditie, registry `rlz` (Docker, europe-west4), billing aan, effectieve
+  EU-locatie-org-policy dekt het project.
+- **Slotverificatie (enige openstaande F0-punt):** `.github/workflows/deploy-test.yml`
+  (workflow_dispatch) pusht een dummy-image via WIF naar de registry. **Peter triggert
+  'm eenmalig** (GitHub → Actions → deploy-test → Run workflow) zodra deze commit op
+  GitHub staat — run groen = F0 bewezen af, dan hier afvinken. `deploy.yml` heeft de
+  F0-waarden inmiddels ingevuld (blijft dispatch-only tot F2).
 
 ## F1 — Data (Cloud SQL, secrets, documenten)
 
@@ -136,6 +164,52 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
 **Verificatie F1:** `alembic upgrade head` schoon tegen de nieuwe instantie; de
 metadata-guard-test groen tegen dat schema; een testdocument geüpload + teruggelezen via de
 GCS-implementatie; retentiebeleid zichtbaar op de bucket.
+
+### F1-uitvoering (klaar om te draaien — pakket gebouwd 2026-08-15)
+
+Verdeling strikt: **Peter draait `scripts/gcp/f1_data.sh`** (alles wat gcloud is;
+idempotent conform de F0-les — describe-vóór-create, herdraaibaar na elke deelfout);
+**Code draait daarna de migratie + verificaties.** Volgorde:
+
+1. **`scripts/gcp/f1_data.sh`** *(Peter, org-owner; Cloud SQL-aanmaak duurt 10–20 min —
+   normaal, niet afbreken)*. Gedocumenteerde keuzes die het draaiboek open liet:
+   - Cloud SQL-instantie **`rlz-sql`**, tier `db-custom-1-3840` (kleinste HA-waardige
+     Enterprise-tier; verticaal schalen kan later zonder herbouw), PG16 gepind, REGIONAL
+     (HA) + PITR (7 dagen transactielogs) + backups 02:00; **publiek IP zónder authorized
+     networks** — verbinden kan alleen via de Cloud SQL Auth Proxy/connector (privé-IP zou
+     een VPC-connector vergen: extra bewegende delen, zelfde afweging als beslispunt 4).
+   - Secrets (user-managed replicatie `europe-west4` — 'automatic' botst met de
+     EU-org-policy): `JWT_SECRET` (**vers gegenereerd**, nooit de dev-waarde),
+     `TOTP_MASTER_KEY` (vers; met KMS actief alleen het fallback-slot van envelope.py),
+     `DB_OWNER_WACHTWOORD` + `APP_DB_PASSWORD` (gegenereerd, URL-safe),
+     `WEBHOOK_HMAC_SECRET` + `ANTHROPIC_API_KEY` (interactief; Enter = container zonder
+     versie, waarde volgt later — HMAC komt van vastgoed, F4). Waarden nooit in
+     code/logs/chat (besluit 0012). `secretAccessor` per secret voor `run-backend@` +
+     `run-jobs@`; `DB_OWNER_WACHTWOORD` alléén voor `run-jobs@` (migratie-job).
+   - KMS: keyring **`rlz`**, key **`masterkey`** (`europe-west4`, rotatie 1×/jaar — oude
+     versies blijven ontsleutelbaar, geen herversleuteling nodig bij KMS-interne rotatie);
+     encrypt/decrypt-binding voor beide runtime-SA's + het uitvoerende account (t.b.v. de
+     verificatie). **`KMS_MASTERKEY_SLEUTEL` = `projects/rlz-boekhouding/locations/
+     europe-west4/keyRings/rlz/cryptoKeys/masterkey`** (resourcenaam, geen secret).
+   - Bucket **`rlz-boekhouding-documenten`**: retentie 7 jaar (220.903.200 s)
+     **unlocked** (beslispunt 7 — nooit `retention lock` draaien), versioning aan, uniform
+     bucket-level access + public-access-prevention, `objectAdmin` bucket-scoped voor
+     alléén de twee runtime-SA's. `DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten`.
+2. **`scripts/gcp/f1_migratie.sh`** *(Code/Peter, lokaal)* — **verbindingsroute: Cloud SQL
+   Auth Proxy** (`brew install cloud-sql-proxy`, poort 5434; 5433 = lokale PG16). Draait
+   `alembic upgrade head` als `postgres` (owner) — migratie 0001 maakt `boekhouding_app`
+   aan met `APP_DB_PASSWORD` uit Secret Manager (precies de twee rollen zoals lokaal) —
+   en daarna **`alembic check` als metadata-guard tegen dat schema**. ⚠️ De
+   pytest-metadata-guard mag NIET met `TEST_DATABASE_URL` op de cloud-database gericht
+   worden: `tests/conftest.py` TRUNCATE't de testdatabase; `alembic check` is de
+   gelijkwaardige, veilige toets (env.py importeert álle model-modules).
+3. **`backend/.venv/bin/python scripts/gcp/f1_verificatie.py`** *(Code)* — GCS-upload +
+   teruglezen via `GcsDocumentOpslag` tegen de echte bucket (testobject blijft staan:
+   retentie verbiedt verwijderen — bedoeld) én KMS-wrap/unwrap-rondje + volledig
+   envelope-pad via `KmsMasterKeyProvider` tegen de echte key. ADC vooraf:
+   `gcloud auth application-default login`.
+4. **Géén klantdata** (tranche 1): alleen schema + straks de TEST-administratie — de
+   F5-poort verbiedt de rest; datamigratie tranche 2 komt ná F5 (stappenplan hieronder).
 
 ### F1.6-stappenplan datamigratie tranche 2 (ná F5 — de échte overzet)
 
@@ -218,7 +292,7 @@ alleen verpakking.
 | Webhook-afleveraar | `python -m app.cli webhook-afleveren` | elke 5 min |
 | E-mail-intake (IMAP-fetch) | intake-CLI op de seam `app/intake/postvak.py` | elke 10 min |
 
-1. **Cloud Scheduler → Cloud Run jobs** onder `jobs@`; per job een eigen definitie zodat een
+1. **Cloud Scheduler → Cloud Run jobs** onder `run-jobs@`; per job een eigen definitie zodat een
    hangende sync nooit de afleveraar blokkeert. *(Code)*
 2. **Alerting is onderdeel van deze fase, geen nazorg:** de reconciliatie is een vangrail —
    lokaal zág je exit 1, in de cloud is een falende job stil. Cloud Monitoring-alert op
@@ -253,7 +327,7 @@ de lokale backend. Zie het OPEN_ITEMS-webhook-item voor de afspraken.
 1. Vastgoed levert de publieke endpoint-URL (`POST /webhooks/rlz`) + het gedeelde
    HMAC-secret via het Secret Manager-patroon (besluit 0012). **Ontvangstvoorkeur:** secret
    als Secret Manager-verwijzing in `vastly-504108`, met `secretAccessor` voor onze
-   `run-backend@`/`jobs@`-SA's (zelfde org, dus één bron, rotatie op één plek); zolang ons
+   `run-backend@`/`run-jobs@`-SA's (zelfde org, dus één bron, rotatie op één plek); zolang ons
    project er nog niet is: eenmalige veilige overdracht door Peter (heeft beide kanten) naar
    onze lokale `.env` — waarde nooit in chat/git.
 2. Onze kant, **doorlooptijd ≤ 1 werkdag na ontvangst URL + secret**: `webhook_doel_url` +
