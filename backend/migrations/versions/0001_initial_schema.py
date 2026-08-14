@@ -47,10 +47,12 @@ def _resolve_app_role_password(env: Mapping[str, str]) -> str:
     return "devpassword"
 
 
-APP_ROLE_PASSWORD = _resolve_app_role_password(os.environ)
-
-
 def upgrade() -> None:
+    # Lazy (pas bij uitvoeren, niet bij importeren): Alembic importeert álle revisies bij
+    # elke upgrade, óók als deze al gedraaid is — resolutie op module-niveau zou dan in
+    # elke omgeving zonder APP_DB_PASSWORD falen (bv. de Cloud Run-migratie-job op head).
+    app_role_password = _resolve_app_role_password(os.environ)
+
     op.execute("CREATE SCHEMA IF NOT EXISTS platform")
     op.execute("CREATE SCHEMA IF NOT EXISTS boekhouding")
 
@@ -141,7 +143,7 @@ def upgrade() -> None:
         DO $$
         BEGIN
             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
-                CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_ROLE_PASSWORD}';
+                CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{app_role_password}';
             END IF;
         END
         $$

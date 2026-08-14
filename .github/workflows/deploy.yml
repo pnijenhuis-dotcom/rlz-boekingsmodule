@@ -75,8 +75,10 @@ jobs:
       # Draaiboek-patroon F2.1: eerst migreren (aparte Cloud Run-job, zelfde beeld,
       # command-override `alembic upgrade head`), dán de revisie live. run-jobs@ is de
       # enige SA met toegang tot DB_OWNER_WACHTWOORD (F1, least privilege); de app
-      # composeert daar met CLOUD_SQL_VERBINDING de owner-URL uit. max-retries 0: een
-      # gefaalde migratie nooit stil herhalen, de run faalt zichtbaar.
+      # composeert daar met CLOUD_SQL_VERBINDING de owner-URL uit. APP_DB_PASSWORD hoort
+      # hier óók: migraties die de app-rol/grants raken (0001) lezen 'm, en run-jobs@
+      # heeft de accessor al (F1 1.4). max-retries 0: een gefaalde migratie nooit stil
+      # herhalen, de run faalt zichtbaar.
       - name: Migratie-job bijwerken + draaien (alembic upgrade head)
         run: |
           gcloud run jobs deploy rlz-migratie \
@@ -86,7 +88,7 @@ jobs:
             --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
             --set-cloudsql-instances "${CLOUD_SQL}" \
             --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL}" \
-            --set-secrets "DB_OWNER_WACHTWOORD=DB_OWNER_WACHTWOORD:latest" \
+            --set-secrets "DB_OWNER_WACHTWOORD=DB_OWNER_WACHTWOORD:latest,APP_DB_PASSWORD=APP_DB_PASSWORD:latest" \
             --command alembic \
             --args upgrade,head \
             --max-retries 0 \
