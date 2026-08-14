@@ -15,7 +15,7 @@ from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
 from app.documenten.rlz_ids import rlz_vendor_id
 from app.rlz.client import RlzClient
-from app.rlz.credentials import client_voor_rlz_admin_id
+from app.rlz.credentials import GeenRlzCredentials, client_voor_rlz_admin_id
 from app.sync.models import ProjectCache, TaxRateCache, VendorCache
 
 # Voor het controlescherm (GB-/btw-/crediteur-/project-comboboxen, CLAUDE.md-taak 2.1): verdwenen
@@ -396,18 +396,25 @@ def maak_crediteur_aan(
     return NieuweCrediteur(id=vendor_id, naam=naam)
 
 
-def sync_alle_administraties() -> dict[uuid.UUID, SyncResultaat | str]:
+def sync_alle_administraties() -> dict[uuid.UUID, SyncResultaat | GeenRlzCredentials | str]:
     """Nachtelijke sync (fase-vervolg: Cloud Scheduler -> Cloud Run job roept dit aan; lokaal via
     `make sync-alles`/`python -m app.cli sync-alles`, zie Makefile). Eén administratie zonder
     (werkende) credentials laat de rest niet stuklopen — het resultaat-dict zet de foutmelding
-    als string op die administratie_id, in plaats van de hele run af te breken."""
+    als string op die administratie_id, in plaats van de hele run af te breken.
+
+    Een administratie zónder geregistreerde credential (store noch .env) is niet kapot maar
+    niet-onboarded (bv. de cloud-seed-testadministratie, F3): die komt als GeenRlzCredentials
+    terug zodat de CLI 'm zichtbaar OVERSLAAT zonder de exit-code te raken — een échte
+    credential-/API-fout blijft een string en dus een fout."""
     with scoped_session(None) as session:
         administratie_ids = [row.id for row in session.scalars(select(Administratie))]
 
-    resultaten: dict[uuid.UUID, SyncResultaat | str] = {}
+    resultaten: dict[uuid.UUID, SyncResultaat | GeenRlzCredentials | str] = {}
     for administratie_id in administratie_ids:
         try:
             resultaten[administratie_id] = sync_alles_voor_administratie(administratie_id=administratie_id)
+        except GeenRlzCredentials as exc:
+            resultaten[administratie_id] = exc
         except Exception as exc:  # noqa: BLE001 — bewust breed: één kapotte administratie mag de rest niet raken
             resultaten[administratie_id] = str(exc)
     return resultaten

@@ -20,6 +20,7 @@ from app.intake.postvak import ImapPostvakBron, PostvakNietGeconfigureerd
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.reconciliatie import service as acceptatie_service
 from app.reconciliatie.models import ReconciliatieBron
+from app.rlz.credentials import GeenRlzCredentials
 from app.sync import service as sync_service
 
 # Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
@@ -52,7 +53,15 @@ def _sync_alles(args: argparse.Namespace) -> int:
     stoppen — zie sync_alle_administraties()."""
     resultaten = sync_service.sync_alle_administraties()
     fouten = 0
+    overgeslagen = 0
     for administratie_id, resultaat in resultaten.items():
+        if isinstance(resultaat, GeenRlzCredentials):
+            # Niet-onboarded (geen credential in store noch .env, bv. de cloud-seed-
+            # testadministratie) — zichtbaar overslaan, telt niet als fout (F3: de nachtelijke
+            # cloud-job mag hier niet permanent rood op staan; échte fouten blijven exit 1).
+            overgeslagen += 1
+            print(f"OVERGESLAGEN {administratie_id}: {resultaat}")
+            continue
         if isinstance(resultaat, str):
             fouten += 1
             print(f"FOUT  {administratie_id}: {resultaat}", file=sys.stderr)
@@ -61,7 +70,10 @@ def _sync_alles(args: argparse.Namespace) -> int:
             f"OK    {administratie_id}: ledgers={resultaat.ledgers}, taxrates={resultaat.taxrates}, "
             f"vendors={resultaat.vendors}, projects={resultaat.projects}"
         )
-    print(f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties gesynchroniseerd.")
+    kern = f"{len(resultaten) - fouten - overgeslagen}/{len(resultaten)} administraties gesynchroniseerd."
+    if overgeslagen:
+        kern += f" ({overgeslagen} overgeslagen: geen credential geregistreerd)"
+    print(f"\n{kern}")
     return 1 if fouten else 0
 
 
