@@ -2,7 +2,9 @@
 
 > **Status: F0 FORMEEL AF (2026-08-14, projectnummer 652591056217 — slotverificatie
 > deploy-test-run #1 GROEN, zie §F0-uitvoering); F1 UITGEVOERD (2026-08-14 —
-> migratie 0001→0047 + GCS/KMS-verificatie geslaagd, zie §F1 — UITGEVOERD). Volgende: F2.**
+> migratie 0001→0047 + GCS/KMS-verificatie geslaagd, zie §F1 — UITGEVOERD);
+> F2 CODE-KANT GEBOUWD (2026-08-14, zie §F2-uitvoering — deploy-workflow ACTIEF op push;
+> open: eerste deploy-run groen + domein/DNS via `f2_services.sh` (Peter) + slotverificatie).**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
 > dag te ver (commits én GCP-timestamps bewijzen 2026-08-14).
 > Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
@@ -319,6 +321,50 @@ Volgorde is bindend; elke stap heeft een expliciete verificatie vóór de volgen
 **Verificatie F2:** health-endpoint 200 via `https://<domein>`; kantoor-login incl. TOTP;
 **een échte passkey-registratie + ontgrendeling op een telefoon** (geen stub, hét bewijs dat
 de https-keten klopt); PDF-weergave uit de GCS-bucket; accordeur-PWA installeerbaar.
+
+### F2-uitvoering (Code-kant GEBOUWD 2026-08-14)
+
+Gebouwd + lokaal geverifieerd (18 nieuwe unit-tests, suite 1338 groen):
+
+- **Same-origin-serving (F2.2):** `backend/app/static_frontend.py` — catch-all die als
+  allerlaatste route registreert en de dev-proxy-regels 1-op-1 spiegelt
+  (`frontend/proxyRegels.ts`): bestaand build-bestand serveren (hashed `/assets/*` een jaar
+  immutable, al het niet-gehashte incl. `index.html`/PWA-manifest no-cache) → document-
+  navigatie (Accept text/html + Sec-Fetch-Dest document) altijd de SPA → fetch naar een
+  onbekend pad ónder een API-segment = JSON-404 (de "Unexpected token '<'"-bugklasse) →
+  rest = SPA-fallback. API-segmenten komen uit `app/proxy_prefixes.py` (zelfde bron als de
+  dev-proxy, berekend bij activatie — geen handmatig lijstje); traversal-guard
+  (resolve + is_relative_to); activatie via `FRONTEND_DIST_MAP`, leeg = dev; gezette map
+  zonder build = harde startup-weigering.
+- **Cloud SQL-URL-compositie:** de F1-secrets zijn losse wachtwoorden, de app verwacht
+  URL's — `app/config.py` composeert ze uit `CLOUD_SQL_VERBINDING` +
+  `APP_DB_WACHTWOORD`/`DB_OWNER_WACHTWOORD` (unix-socket `?host=/cloudsql/...`, wachtwoord
+  ge-URL-encodeerd, fail-closed bij verbinding-zonder-wachtwoord). Service krijgt alléén het
+  app-wachtwoord, de migratie-job alléén het owner-wachtwoord (least privilege, F1-bindings).
+- **Productie-gates (F2.4):** in-process webhook-afleveraar start niet bij
+  `ENVIRONMENT=production` (Cloud Run-jobs leveren af, F3); Secure/httpOnly/SameSite op het
+  refresh-cookie zat er al — nu ook per test geborgd.
+- **Dockerfile multi-stage:** node:26-stage bouwt de Vite-build → `/app/static` in het
+  Python 3.12-beeld; **build-context = repo-root** (`docker build -f backend/Dockerfile .`),
+  `.dockerignore` verhuisd naar de root (allowlist; `verkenning/.env` valt buiten de context).
+  Containerverificatie: /health 200 mét migratie-guard, index no-cache, asset immutable,
+  `/bank/`-navigatie → SPA, `/bank/onzin`-fetch → JSON-404, geen `.env`/tests in het beeld.
+- **`deploy.yml` ACTIEF (push naar main):** create-or-update (`gcloud run jobs deploy` +
+  `gcloud run deploy`) — de éérste run maakt `rlz-migratie` en `rlz-backend` zelf aan, mét
+  volledige runtime-config als code: SA's, Cloud SQL, secret-verwijzingen
+  (APP_DB_PASSWORD/JWT_SECRET/TOTP_MASTER_KEY; WEBHOOK_HMAC_SECRET + ANTHROPIC_API_KEY
+  bewust NIET gemount — geen versie, mounten zou de revisie-start breken),
+  `WEBAUTHN_RP_ID`=apex + origin=app-subdomein (F2.3-bouwvereiste), CORS leeg,
+  GCS-bucket + KMS-sleutel; concurrency-groep (nooit twee deploys door elkaar);
+  volgorde migratie-job → revisie onverkort.
+- **`scripts/gcp/f2_services.sh` (Peter):** idempotent — domein-verificatie-check
+  (`gcloud domains verify` zo nodig), domain mapping `app.administratiekantoornijenhuis.nl`
+  → `rlz-backend`, print de te zetten DNS-records (managed certificaat daarna automatisch).
+
+**Open (volgorde):** (1) eerste deploy-run groen — triggert vanzelf bij de push van deze
+commit (GitHub → Actions → deploy); de service werkt dan al op de run.app-URL (TOTP-login;
+échte passkeys pas ná het domein). (2) Peter: `f2_services.sh` + CNAME zetten.
+(3) F2-slotverificatie hierboven afvinken.
 
 ## F3 — Jobs (Scheduler → Cloud Run jobs)
 
