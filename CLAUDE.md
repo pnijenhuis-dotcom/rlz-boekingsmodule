@@ -43,6 +43,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   apparaat (bijt per request + bij rotatie + bij assertion); dev-stub `auth_biometrie_dev_stub`
   voor LAN-kliktests (WebAuthn vereist https/localhost), hard onwerkzaam buiten dev. Zie
   BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD".
+  **Platformbesluit 0020 (2026-08-15, samen met vastgoed): passkeys worden de EERSTE
+  authenticatielijn voor álle rollen; wachtwoord + TOTP wordt terugval/herstel.**
+  Kantoor-passkeys bouwen bij de GCP-fase (WebAuthn vergt https); accordeurs hebben het al.
 - **Autorisatie (hard, bevestigd 2026-07-06):** klanten-scope per medewerker via koppeltabel
   gebruiker↔administraties, afgedwongen door RLS (DB-niveau) + server-side checks — geen scope =
   geen data, ook niet via bugs in de app-laag. Rol- en scope-wijzigingen exclusief door de
@@ -287,8 +290,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   webservice-logins doelentiteiten (elke bestaande login is single-administratie).
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
-  akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA (factuurbeeld centraal,
-  akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open).
+  akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
+  (besluit Peter 2026-08-15: de accordeur-app wordt óók uitgebracht als native App Store- én
+  Google Play-app; de gebouwde PWA/webcode is de basis via een native schil, bv. Capacitor —
+  PWA blijft interim + terugval; aandachtspunten native passkey-integratie (WebAuthn in een
+  webview is beperkt) en store-accounts onder de juiste entiteit; planning ná GCP). Factuurbeeld
+  centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,
   accorderingssectie controlescherm, "Bij klant"-teller); incl. staande goedkeuring (besluit
