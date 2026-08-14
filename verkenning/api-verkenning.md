@@ -1230,3 +1230,49 @@ straks twee administraties — de mechanics per kant zijn identiek).
    nooit op nummer hardcoden: eerste keer per doelentiteit = mens kiest, daarna leert het
    boekingsgeheugen (conform opdracht blok 1c). TaxRate-GUID 21% (`1e44993a-…`) is wél
    administratie-overstijgend identiek (opnieuw bevestigd, nu ook in Rubicon).
+
+## Projects-schrijfroute STAP-0 — PUT via Customers-route (14 augustus 2026, test-administratie) — GESLAAGD
+
+Verificatie #3 uit het BOUWPLAN (route A, koppelcontract §5/§6.1 v1.14 — projectaanmaak
+on-demand voor vastgoed). Script: `verkenning/poc_projects_schrijf.py` (PoC-waarborgen:
+admin-pin, kill switch, TEST-naam, append-only audit `output/projectspoc_audit.jsonl`,
+NOOIT DELETE). Alles tegen de test-administratie `8dbfb856-…`. Realisme vooraf bevestigd:
+een project kent GEEN actie 19 (acties zijn document-gebonden) — het testproject
+`TEST-PROJECTPOC Pand Dorpsstraat 1` (id `4861d1d3-f963-5d9a-b2c9-1ae876a1f676`) blijft
+bewust staan, `IsActive` is aan het eind teruggezet op `true`.
+
+1. **Schrijfroute bevestigd: `PUT {adminId}/Customers/{baseId}/Projects/{client-guid}`** met
+   minimale body `{id, Name}` → **204** (lege respons — de motor leest het resultaat dus
+   altijd terug met een GET ná de PUT). De Help-lijst (`output/help.html`) kent **géén
+   top-level `PUT Projects/{id}`** — de Customers-route is de enige schrijfvorm; er bestaat
+   ook een DELETE, die wij per hard principe nooit gebruiken.
+2. **Het project is direct top-level zichtbaar**: `GET {adminId}/Projects/{id}` en de
+   collectie tonen het record meteen (zelfde run, geen verversing nodig) — de bestaande
+   lees-sync (`project_cache`) pikt API-aangemaakte projecten dus gewoon op, en de motor kan
+   de cache direct zelf bijwerken.
+3. **Het project is écht customer-gebonden — de baseId is géén decoratief route-anker**:
+   `GET Customers/{andere}/Projects/{id}` → 404 `_NotFound`, en `$expand=Customer` op het
+   project toont de eigenaar-customer volledig. Het kale projectrecord draagt geen
+   Customer-veld — de relatie is alleen via `$expand` zichtbaar.
+4. **PUT onder een niet-bestaande customer → 404 `_NotFound`, er ontstaat niets** (schoon
+   foutpad, geen zwerfproject). De anker-customer moet dus bestaan vóór de project-PUT —
+   lookup-vóór-PUT op de customer hoort in de motor.
+5. **Herhaalde PUT met zelfde GUID + zelfde body → 204, géén duplicaat** (collectie blijft
+   op 1 treffer). **PUT is create-or-update**: zelfde GUID met gewijzigde `Name` → 204 en
+   de naam is aangepast. Idempotentie op deterministisch client-GUID werkt dus, maar een
+   herhaal-PUT met afwijkende body muteert — de motor doet daarom lookup-vóór-PUT en PUT
+   alleen bij afwezigheid (patroon debiteur-/crediteur-aanmaak).
+6. **Defaults bij minimale body — LET OP: `IsActive` staat na aanmaak op `false`**
+   (verder: `IsBillable:false`, `Description:"Onbekend"`, `BeginDate` = vandaag,
+   `EndDate` = +5 jaar, budgetvelden leeg). De motor stuurt `IsActive: true` expliciet mee,
+   anders is het project in RLZ onzichtbaar/inactief voor gebruik.
+7. **`IsActive` is via PUT beide kanten zetbaar** (false → true → bevestigd in de respons):
+   de archief-vlag is daarmee het correctiemechanisme voor projecten (geen storno mogelijk;
+   "verwijderen" bestaat voor ons niet).
+
+**Consequentie motorontwerp:** de aanvraag van vastgoed draagt geen customer, dus de motor
+heeft per administratie een bestaand customer-anker nodig om de PUT-route te kunnen vormen.
+Keuze + onderbouwing: zie docs/BESLISSINGEN.md "Route A — projectaanmaak" (systeemanker per
+administratie, idempotent aangemaakt; bewust bespreekpunt richting Peter omdat het
+kasomzet-besluit "geen dummy-debiteur" hier niet 1-op-1 opgaat — RLZ's route dwingt een
+customer af).
