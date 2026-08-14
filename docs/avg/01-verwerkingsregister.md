@@ -128,7 +128,7 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
   `europe-west4`). Toegang via least-privilege service-accounts (aparte runtime-SA's
   service/jobs, deploy via Workload Identity Federation zonder langlevende keys).
   Achtergrondwerk via Cloud Scheduler + Cloud Run-jobs mét job-failure-alerting.
-  Lokale dev via Docker Compose. **CMEK: actief (besluit 0021, akkoord Peter 2026-08-15)** —
+  Lokale dev via Docker Compose. **CMEK: actief (besluit 0021, akkoord Peter 2026-08-14)** —
   Cloud SQL herbouwd als `rlz-sql2` mét CMEK-key `cmek-sql`, documentenbucket met
   default-CMEK-key `cmek-documenten` (beide op keyring `rlz`, jaarrotatie, nooit destroy);
   zie §9 punt 2 en het F5-poortdossier punt 3 voor het describe-bewijs.
@@ -150,7 +150,7 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
    gevallen verstrekking vorderen, ook van EU-data. Dit risico is **geaccepteerd bij
    platformbesluit 0003 (2026-07-04) mét een contractueel herzieningsmoment vóór go-live.
    Dat herzieningsmoment is uitgevoerd:** platformbesluit 0021 (memo 2026-08-14, **akkoord
-   Peter gestempeld 2026-08-15, uitvoering 2026-08-14** —
+   Peter + uitvoering 2026-08-14** —
    `Platform/besluiten/0021-cmek-clientside-documentversleuteling.md`): **CMEK actief** —
    Cloud SQL herbouwd als `rlz-sql2` mét CMEK (key `cmek-sql`) vóór de klantdata-migratie,
    default-CMEK-key `cmek-documenten` op de documentenbucket (nieuwe objecten; alleen het

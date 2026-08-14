@@ -13,7 +13,7 @@
 |---|---|---|---|
 | 1 | Google Cloud CDPA geaccepteerd, versie + datum gearchiveerd | Peter | ⬜ open |
 | 2 | Regio-borging aantoonbaar (`europe-west4` + EU-org-policy) | Code | ✅ 2026-08-14 |
-| 3 | Herzieningsmoment CLOUD Act (besluit 0003): CMEK/client-side beoordeeld, uitkomst als platformbesluit | Code (memo) + Peter (besluit) + beiden (uitvoering) | ✅ besluit 0021 (akkoord 2026-08-15) + uitgevoerd 2026-08-14 |
+| 3 | Herzieningsmoment CLOUD Act (besluit 0003): CMEK/client-side beoordeeld, uitkomst als platformbesluit | Code (memo) + Peter (besluit) + beiden (uitvoering) | ✅ besluit 0021 (akkoord 2026-08-14) + uitgevoerd 2026-08-14 |
 | 4 | Retentie/PITR-instellingen gedocumenteerd | Code | ✅ 2026-08-14 |
 | 5 | Verwerkersovereenkomst Exact Reeleezee bevestigd + gearchiveerd | Peter | 🔶 PDF's gearchiveerd, bevestiging open |
 | 6 | IMAP-provider-DPA rond (checklist D) | Peter | 🔶 keuze gemaakt, DPA-check open |
@@ -70,7 +70,8 @@ bewust met deze org-policy, dat is de policy die zijn werk doet).
   **CMEK aan bij go-live**, **client-side documentversleuteling alleen op expliciet
   klantverzoek**. Eerlijke weging in het memo: zeggenschap/intrekbaarheid/audit — geen
   extra cryptografische sterkte, beperkt CLOUD-Act-verweer zolang de key in Cloud KMS leeft.
-- ✅ **Akkoord Peter (gestempeld 2026-08-15)** — INDEX-regel 0021 gezet, memo-status BESLOTEN.
+- ✅ **Akkoord Peter (2026-08-14)** — INDEX-regel 0021 gezet, memo-status BESLOTEN
+  (eerder abusievelijk als 2026-08-15 gestempeld; datumcorrectie Peter 2026-08-14).
 - ✅ **Uitvoeringsplan §6 uitgevoerd (2026-08-14, `scripts/gcp/f5_cmek.sh`):** twee keys op
   keyring `rlz` (jaarrotatie, nooit destroy) mét service-agent-bindings; Cloud SQL herbouwd
   als **`rlz-sql2`** mét CMEK (Alembic 0001→head = 0049, metadata-guard 69==69, GCS/KMS-
@@ -166,7 +167,7 @@ is onderdeel van de livegang-administratie.
 ## Peters openstaande klikken, verzameld (kopieerbaar lijstje)
 
 1. **CDPA-versie + acceptatiedatum** archiveren (punt 1) + Googles subverwerkerslijst.
-2. ~~Akkoord op CMEK-voorstel 0021~~ — **gedaan**: akkoord 2026-08-15, uitgevoerd (punt 3 ✅).
+2. ~~Akkoord op CMEK-voorstel 0021~~ — **gedaan**: akkoord 2026-08-14, uitgevoerd (punt 3 ✅).
 3. **DPF-registercheck Anthropic** + Anthropic-subverwerkerslijst archiveren
    (checklist A — geen F5-poortpunt maar stap-1-punt, zelfde archiveersessie).
 4. **Reeleezee-bevestiging** toepasselijke VWO-versie (punt 5).

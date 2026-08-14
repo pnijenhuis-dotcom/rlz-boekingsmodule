@@ -9,12 +9,14 @@
 > F3.3 rapportage-teller GEFIXT (2026-08-14 — cutover-voorwaarde dicht);
 > F5-VOORBEREIDING UITGEVOERD (2026-08-14): CMEK-memo = voorstel-besluit 0021,
 > verwerkingsregister §8/§9 bijgewerkt, poortdossier `docs/avg/08-f5-poortdossier.md`;
-> CMEK-BESLUIT 0021 BESLOTEN (akkoord Peter gestempeld 2026-08-15) + UITGEVOERD
+> CMEK-BESLUIT 0021 BESLOTEN (akkoord Peter 2026-08-14) + UITGEVOERD
 > (2026-08-14, zie §F5-CMEK-uitvoering): Cloud SQL herbouwd als `rlz-sql2` mét CMEK,
 > bucket-default-key gezet, volledige F1-herverificatie groen, oude `rlz-sql` opgeruimd —
 > poortdossier-stand 5/8 ✅; rest = Peters archiefklikken.**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
-> dag te ver (commits én GCP-timestamps bewijzen 2026-08-14).
+> dag te ver (commits én GCP-timestamps bewijzen 2026-08-14). Dat gold óók voor de
+> akkoorddatum van besluit 0021: correctie Peter 2026-08-14 — de "15-08" zat in de
+> aangeleverde opdrachttekst, werkelijke akkoorddatum = 2026-08-14.
 > Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
 > de PDL Powerhouse-organisatie** (zelfde org als vastgoeds `vastly-504108`, nadrukkelijk NIET
 > hetzelfde project); **tempo = zo snel mogelijk live**; de **AVG-poort geldt alleen voor echte
@@ -562,7 +564,7 @@ normtekst (stand 2026-08-14, F5-voorbereiding):
 - [x] **regio-borging** aantoonbaar (alles `europe-west4` + Org Policy — describe-bewijs
       in het poortdossier, 2026-08-14);
 - [x] **herzieningsmoment CLOUD Act** (besluit 0003) uitgevoerd: **platformbesluit 0021
-      BESLOTEN (akkoord Peter gestempeld 2026-08-15) + UITGEVOERD (2026-08-14)** —
+      BESLOTEN (akkoord Peter 2026-08-14) + UITGEVOERD (2026-08-14)** —
       CMEK aan bij go-live (Cloud SQL herbouwd als `rlz-sql2` mét key `cmek-sql`,
       bucket-default-key `cmek-documenten`), client-side documentversleuteling alleen op
       klantverzoek; describe-bewijs in het poortdossier punt 3, uitvoeringsdetail in
@@ -582,7 +584,7 @@ masterkey-continuïteit, documenten-rsync, verificatiequery's) en de omschakelin
 kantoor naar het productiedomein. De volgorde-koppeling (CMEK-herbouw vóór tranche 2 —
 CMEK kan alleen bij instantie-aanmaak) is **uitgevoerd**: zie §F5-CMEK-uitvoering.
 
-### F5-CMEK-uitvoering — UITGEVOERD (2026-08-14; besluit 0021, akkoord gestempeld 2026-08-15)
+### F5-CMEK-uitvoering — UITGEVOERD (2026-08-14; besluit 0021, akkoord 2026-08-14)
 
 Uitvoeringsplan §6 van het besluit, volgorde bindend, alles gedraaid met het
 org-owner-account (idempotente scripts, F0-les):

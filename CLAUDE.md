@@ -31,7 +31,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   KMS-gewrapte data-keys); documenten (7 jaar bewaarplicht) in **Cloud Storage** met retentie;
   achtergrondwerk (signalering, sync, e-mail-intake) via **Cloud Scheduler + Cloud Run jobs**.
   Docker Compose = lokale dev. CLOUD Act geaccepteerd; het herzieningsmoment vóór go-live is
-  **uitgevoerd als platformbesluit 0021 (akkoord 2026-08-15): CMEK actief** — Cloud SQL
+  **uitgevoerd als platformbesluit 0021 (akkoord 2026-08-14): CMEK actief** — Cloud SQL
   `rlz-sql2` mét CMEK-key + default-CMEK-key op de documentenbucket (keys `cmek-sql`/
   `cmek-documenten` op keyring `rlz`, jaarrotatie, nooit destroy); client-side
   documentversleuteling alleen op expliciet klantverzoek.
