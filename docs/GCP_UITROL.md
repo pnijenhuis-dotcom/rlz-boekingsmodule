@@ -223,12 +223,22 @@ alleen verpakking.
 2. **Alerting is onderdeel van deze fase, geen nazorg:** de reconciliatie is een vangrail —
    lokaal zág je exit 1, in de cloud is een falende job stil. Cloud Monitoring-alert op
    job-failure/exit≠0 → e-mail naar kantoor. Zonder dit vinkje is F3 niet af. *(Code)*
-3. **IMAP-intake activeren** (de gemarkeerde seam + `intake_imap_*`-settings):
+3. **Rapportage-teller repareren vóór de alerting-cutover** (bevinding dagelijkse run 2026-08-14,
+   BESLISSINGEN "Rapportage-bug reconciliatie"): acceptaties op een **uitgesloten** administratie
+   tellen niet mee in de slotregel (`0 geaccepteerd` terwijl er GEACCEPTEERD-regels boven staan;
+   per-administratieregel meldt `0 bevinding(en)` met bevindingen eronder). Lokaal las Peter het
+   rapport zelf en zag hij de tegenspraak; in de cloud is de slotregel — samen met de exit-code —
+   het enige dat een mens onder ogen krijgt, en een vangrail die zichzelf verkeerd samenvat is
+   precies wat je in een stille omgeving niet wilt. Fix zit in `app/cli.py` (uitgesloten-tak van
+   de documenten- en bank-variant), is klein en migratieloos. **Voorwaarde vóór punt 4** — het
+   raakt de exit-code niet, dus het blokkeert F3 niet, maar de cutover naar het cloud-vangnet
+   vindt niet plaats op een rapport dat "0 geaccepteerd" liegt. *(Code)*
+4. **IMAP-intake activeren** (de gemarkeerde seam + `intake_imap_*`-settings):
    **besloten (beslispunt 5): de bestaande kantoor-mailprovider.** Voorwaarde vóór
    activering: **AVG-checklist D (DPA provider) afronden** — tot die check rond is blijft de
    .eml-upload gewoon het werkende kanaal, er valt niets om. *(Code activeert ná de
    DPA-check)*
-4. **De lokale dagelijkse run vervalt** zodra de scheduler-jobs draaien en de alerting staat —
+5. **De lokale dagelijkse run vervalt** zodra de scheduler-jobs draaien en de alerting staat —
    niet eerder (geen gat tussen oud en nieuw vangnet).
 
 **Verificatie F3:** elke job één keer handmatig getriggerd met zichtbaar resultaat in de logs;
