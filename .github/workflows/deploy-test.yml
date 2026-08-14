@@ -1,0 +1,56 @@
+# F0-slotverificatie (GCP-draaiboek §F0): bewijs de hele deploy-keten door via
+# Workload Identity Federation (geen SA-keys) een dummy-image naar Artifact
+# Registry te pushen. Slaagt deze run, dan is F0 aantoonbaar af.
+#
+# Draaien: GitHub → Actions → "deploy-test" → "Run workflow" (workflow_dispatch).
+# De workflow moet daarvoor op de default branch (main) op GitHub staan.
+#
+# Waarden uit de F0-run (2026-08-15, slot van scripts/gcp/f0_hervat3.sh) — dit
+# zijn resourcenamen, geen secrets:
+#   PROJECT_ID     = rlz-boekhouding
+#   PROJECT_NUMBER = 652591056217
+#   WIF-provider   = projects/652591056217/locations/global/workloadIdentityPools/github/providers/github-oidc
+#   Deploy-SA      = deploy@rlz-boekhouding.iam.gserviceaccount.com
+#   Registry       = europe-west4-docker.pkg.dev/rlz-boekhouding/rlz
+
+name: deploy-test
+
+on:
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: europe-west4-docker.pkg.dev/rlz-boekhouding/rlz
+
+permissions:
+  contents: read
+  id-token: write # vereist voor WIF (OIDC-token richting Google STS)
+
+jobs:
+  dummy-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticatie via WIF (geen SA-keys)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/652591056217/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: deploy@rlz-boekhouding.iam.gserviceaccount.com
+
+      - name: gcloud + docker-auth op de registry
+        uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker europe-west4-docker.pkg.dev --quiet
+
+      - name: Dummy-image bouwen en pushen
+        run: |
+          mkdir dummy && cd dummy
+          cat > Dockerfile <<'EOF'
+          FROM busybox:stable
+          LABEL org.opencontainers.image.description="F0-deploy-keten-verificatie RLZ Boekingsmodule (wegwerp-image)"
+          CMD ["echo", "F0 deploy-keten OK"]
+          EOF
+          docker build -t "${REGISTRY}/deploy-test:run-${GITHUB_RUN_ID}" .
+          docker push "${REGISTRY}/deploy-test:run-${GITHUB_RUN_ID}"
+
+      - name: Verificatie — image zichtbaar in de registry
+        run: |
+          gcloud artifacts docker images list "${REGISTRY}/deploy-test" \
+            --include-tags --format="table(package,tags,createTime)"

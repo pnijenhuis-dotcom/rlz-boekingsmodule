@@ -1,7 +1,8 @@
-# Deploy-workflow — SKELET (GCP-draaiboek F1.6/F2, beslispunt 10: GitHub Actions + WIF
-# naar vastgoed-patroon). NOG NIET ACTIEF: draait uitsluitend handmatig (workflow_dispatch)
-# en weigert zolang de F0-invulwaarden hieronder op VUL-IN staan. Peter's F0-run
-# (scripts/gcp/f0_fundament.sh) print aan het slot precies deze waarden.
+# Deploy-workflow (GCP-draaiboek F1.6/F2, beslispunt 10: GitHub Actions + WIF naar
+# vastgoed-patroon). F0-waarden ingevuld (F0 uitgevoerd 2026-08-15). NOG NIET ACTIEF:
+# draait uitsluitend handmatig (workflow_dispatch) en veronderstelt de Cloud Run-job
+# `rlz-migratie` + service `rlz-backend` — die bestaan pas in F2; eerder draaien faalt
+# expliciet op de migratiestap (bewust: nooit stil een revisie zonder migratie).
 #
 # Geen langlevende service-account-keys: authenticatie via Workload Identity Federation
 # (pool `github`, provider `github-oidc`, harde repo-conditie op
@@ -20,9 +21,9 @@ on:
   #   branches: [main]
 
 env:
-  # ---- F0-invulwaarden (uit het slot van scripts/gcp/f0_fundament.sh) ----
+  # ---- F0-waarden (F0-run 2026-08-15, slot van scripts/gcp/f0_hervat3.sh) ----
   PROJECT_ID: rlz-boekhouding
-  PROJECT_NUMBER: "VUL-IN" # bv. 123456789012
+  PROJECT_NUMBER: "652591056217"
   REGION: europe-west4
   # ------------------------------------------------------------------------
   # Afgeleiden (zelfde namen als het F0-script aanmaakt — niet aanpassen):
@@ -39,14 +40,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Guard — skelet nog niet ingevuld
-        run: |
-          if [ "${PROJECT_NUMBER}" = "VUL-IN" ]; then
-            echo "::error::Dit is het deploy-SKELET: PROJECT_NUMBER staat nog op VUL-IN." \
-                 "Draai eerst scripts/gcp/f0_fundament.sh (F0) en vul de env-waarden bovenin in."
-            exit 1
-          fi
-
       - uses: actions/checkout@v4
 
       - name: Authenticatie via WIF (geen SA-keys)
