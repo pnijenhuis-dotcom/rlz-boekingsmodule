@@ -3,8 +3,9 @@
 > **Status: F0 FORMEEL AF (2026-08-14, projectnummer 652591056217 — slotverificatie
 > deploy-test-run #1 GROEN, zie §F0-uitvoering); F1 UITGEVOERD (2026-08-14 —
 > migratie 0001→0047 + GCS/KMS-verificatie geslaagd, zie §F1 — UITGEVOERD);
-> F2 CODE-KANT GEBOUWD (2026-08-14, zie §F2-uitvoering — deploy-workflow ACTIEF op push;
-> open: eerste deploy-run groen + domein/DNS via `f2_services.sh` (Peter) + slotverificatie).**
+> F2 FORMEEL AF (2026-08-14); F3 UITGEVOERD (2026-08-14, zie §F3-uitvoering —
+> alerting + 4 jobs + scheduler staan, per job een handmatige run geverifieerd;
+> IMAP bewust inactief tot DPA-check; open: alertmail-ontvangst bevestigen (Peter)).**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
 > dag te ver (commits én GCP-timestamps bewijzen 2026-08-14).
 > Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
@@ -381,11 +382,10 @@ GROEN — een geslaagde deploy-run bewijst dus níét dat de service publiek ber
 run.admin (least privilege intact); de binding is service-niveau, éénmalig door het
 owner-account (f2_services.sh stap 3, idempotent) en overleeft elke volgende revisie.
 
-**Open (volgorde):** (1) Peter: `gcloud auth login` (lokale gcloud-auth is verlopen) +
-`f2_services.sh` — stap 3 zet de invoker, daarna /health-verificatie op de run.app-URL
-(TOTP-login werkt dan al; échte passkeys pas ná het domein) + CNAME zetten.
-(2) Bootstrap eerste Beheerder (hieronder) — zonder dit account is de login-verificatie
-niet uitvoerbaar. (3) F2-slotverificatie hierboven afvinken.
+**F2 FORMEEL AF (2026-08-14).** De open punten zijn uitgevoerd: `f2_services.sh` gedraaid
+(invoker + domain mapping), DNS gezet — live geverifieerd bij de F3-run (2026-08-14):
+`/health` → **200** op de run.app-URL én op `https://app.administratiekantoornijenhuis.nl`
+(managed certificaat actief).
 
 ### Bootstrap eerste Beheerder — élke verse omgeving kent dit moment
 
@@ -451,6 +451,55 @@ alleen verpakking.
 
 **Verificatie F3:** elke job één keer handmatig getriggerd met zichtbaar resultaat in de logs;
 een geforceerde failure (verkeerde env) levert daadwerkelijk een alertmail op.
+
+### F3-uitvoering — UITGEVOERD (2026-08-14)
+
+Verdeling conform F2-patroon: **job-definities = config-as-code in `deploy.yml`** (stap
+"F3-jobs bijwerken": create-or-update op elke push, zelfde beeld als de service, per job een
+eigen definitie — run-jobs@, alléén het app-DB-wachtwoord + KMS-masterkey-pad, CLI-commando
+als `--command python --args=-m,app.cli,<commando>`); **`scripts/gcp/f3_jobs.sh`** (owner,
+idempotent, describe-vóór-create) doet wat deploy@ niet mag/kan: alerting, IAM, scheduler,
+secret-slot — plus een eenmalige job-bootstrap zodat F3 niet op de eerstvolgende push hoefde
+te wachten (`F3_IMAGE_OVERRIDE`; de volgende deploy-run trekt de beelden weer gelijk).
+
+- **F3.2 alerting stond EERST (opdracht 2026-08-14, geen gat tussen oud en nieuw vangnet):**
+  notificatiekanaal `RLZ kantoor-e-mail (job-alerts)` → `Peter@ak-nijenhuis.nl`
+  (channels/4756600988219015933) + policy `RLZ Cloud Run job-failure (F3.2)`
+  (alertPolicies/18237971923707230913): metric
+  `run.googleapis.com/job/completed_task_attempt_count` met `result=failed`, groepering per
+  jobnaam, één failure is genoeg (duration 0s — vangrail, geen ruisfilter); dekt
+  scheduler-runs én handmatige runs.
+- **Jobs + cadans (draaiboektabel):** `rlz-sync` (03:00), `rlz-reconciliatie` (06:30),
+  `rlz-webhook-afleveraar` (elke 5 min), `rlz-intake-imap` (elke 10 min, scheduler meteen
+  GEPAUZEERD) — alle Europe/Amsterdam, Scheduler → `jobs/<naam>:run` met OAuth als run-jobs@
+  (job-scoped `roles/run.invoker`). Secret-slot `INTAKE_IMAP_WACHTWOORD` staat klaar zónder
+  versie + accessor voor run-jobs@; activatie (F3.4) = versie toevoegen, `INTAKE_IMAP_*`-envs
+  aan de job hangen (deploy.yml), scheduler resumen — pas ná mailbox + app-wachtwoord +
+  DPA-check (checklist D).
+- **No-op-borging seed-testdata:** de cloud-DB draagt de credential-loze seed-administratie
+  (SEED-PASSKEYTEST); `sync-alles` telde die als FOUT (exit 1) — de nachtelijke job zou
+  permanent rood staan en de verse alerting elke nacht laten afgaan. Fix (wél een kleine
+  gedragswijziging, bewust): `GeenRlzCredentials` = niet-onboarded → zichtbare
+  OVERGESLAGEN-regel + aparte teller, exit 0 (zelfde patroon als webhook-afleveren); élke
+  andere fout blijft exit 1. De reconciliaties/afleveraar hadden hun no-op-pad al
+  (kortsluiten zonder geboekte documenten resp. "OVERGESLAGEN: toggle uit").
+- **Verificatie per job (handmatige runs, 2026-08-14):** `rlz-sync` GROEN
+  ("0/1 administraties gesynchroniseerd. (1 overgeslagen: geen credential geregistreerd)");
+  `rlz-reconciliatie` GROEN (alle vier blokken OK, samenvatting zichtbaar);
+  `rlz-webhook-afleveraar` GROEN ("OVERGESLAGEN: aflevering staat uit", exit 0);
+  `rlz-intake-imap` FAALT BEWUST met de expliciete SEAM-melding (exit 1) — dat is meteen de
+  geforceerde-failure-test voor de alerting (failed-metric geverifieerd). **Open vinkje:
+  Peter bevestigt de alertmail-ontvangst** — pas dan is F3.2 aantoonbaar rond.
+- **Lessen:** (1) lokaal gebouwde beelden zijn arm64 (Apple Silicon) en docker's
+  containerd-store pusht een OCI-index mét attestation-manifest — Cloud Run weigert beide;
+  lokale override-builds altijd `--platform linux/amd64 --provenance=false --sbom=false`
+  (deploy.yml op de ubuntu-runner heeft dit niet nodig). (2) `gcloud --args -m,...` leest de
+  `-m` als eigen flag — altijd de `--args=`-vorm. (3) de Monitoring-API heeft een eigen
+  filtersyntax; idempotentie-checks op displayName lokaal matchen, niet via `--filter`.
+- **Blijft open binnen F3:** punt 3 (rapportage-teller, voorwaarde vóór de
+  alerting-CUTOVER — zie BESLISSINGEN "Rapportage-bug reconciliatie"), punt 4
+  (IMAP-activatie ná DPA) en punt 5 (lokale dagelijkse run blijft het echte vangnet tot
+  cutover F1.6 stap 7, ná F5 — jobs draaien tot tranche 2 als infrastructuurbewijs/no-op).
 
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
