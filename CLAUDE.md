@@ -46,7 +46,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   apparaat (bijt per request + bij rotatie + bij assertion); dev-stub `auth_biometrie_dev_stub`
   voor LAN-kliktests (WebAuthn vereist https/localhost), hard onwerkzaam buiten dev. Zie
   BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD".
-  **Platformbesluit 0020 (2026-08-15, samen met vastgoed): passkeys worden de EERSTE
+  **Platformbesluit 0020 (2026-08-14, samen met vastgoed): passkeys worden de EERSTE
   authenticatielijn voor álle rollen; wachtwoord + TOTP wordt terugval/herstel.**
   Kantoor-passkeys bouwen bij de GCP-fase (WebAuthn vergt https); accordeurs hebben het al.
 - **Autorisatie (hard, bevestigd 2026-07-06):** klanten-scope per medewerker via koppeltabel
@@ -310,7 +310,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
-  (besluit Peter 2026-08-15: de accordeur-app wordt óók uitgebracht als native App Store- én
+  (besluit Peter 2026-08-14: de accordeur-app wordt óók uitgebracht als native App Store- én
   Google Play-app; de gebouwde PWA/webcode is de basis via een native schil, bv. Capacitor —
   PWA blijft interim + terugval; aandachtspunten native passkey-integratie (WebAuthn in een
   webview is beperkt) en store-accounts onder de juiste entiteit; planning ná GCP). Factuurbeeld
