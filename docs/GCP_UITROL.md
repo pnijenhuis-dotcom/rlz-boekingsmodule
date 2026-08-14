@@ -384,7 +384,35 @@ owner-account (f2_services.sh stap 3, idempotent) en overleeft elke volgende rev
 **Open (volgorde):** (1) Peter: `gcloud auth login` (lokale gcloud-auth is verlopen) +
 `f2_services.sh` — stap 3 zet de invoker, daarna /health-verificatie op de run.app-URL
 (TOTP-login werkt dan al; échte passkeys pas ná het domein) + CNAME zetten.
-(2) F2-slotverificatie hierboven afvinken.
+(2) Bootstrap eerste Beheerder (hieronder) — zonder dit account is de login-verificatie
+niet uitvoerbaar. (3) F2-slotverificatie hierboven afvinken.
+
+### Bootstrap eerste Beheerder — élke verse omgeving kent dit moment
+
+Een verse omgeving (lege database) heeft nog geen enkele gebruiker, dus de normale
+Beheerder-only uitnodigingsflow kan nergens beginnen — dit bootstrap-moment hoort daarom
+structureel bij elke nieuwe omgeving (cloud nu, een eventuele latere staging idem; lokaal
+was het destijds `python -m app.cli bootstrap-beheerder`). Het cloud-recept
+(**`backend/scripts/cloud_bootstrap_beheerder.py`**, hergebruikt de bestaande
+uitnodigingsflow — patroon kliktest_accordeur_seed):
+
+```bash
+cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql --port 5434 &   # poort 5434, F1-conventie
+cd backend
+APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:$(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434/boekhouding" \
+  .venv/bin/python scripts/cloud_bootstrap_beheerder.py --app-url https://<run.app-URL of app-domein>
+```
+
+- Maakt (idempotent) de eerste Beheerder aan — Peter, `Peter@ak-nijenhuis.nl` — en print de
+  **activeerlink** (eenmalig token, 72 u). Peter stelt via die link **wachtwoord + TOTP
+  opnieuw in**: de cloud is een verse omgeving, dat hoort zo (bewust geen hergebruik van
+  lokale secrets). Er staat nooit een wachtwoord in de output.
+- Herdraaien kan: link verlopen zonder activatie → verse link; Beheerder al actief → script
+  doet niets. Failsafes: weigert zonder expliciete `APP_DATABASE_URL` én weigert poort 5433
+  (lokale PG16) — het raakt dus nooit stil de dev-database.
+- NB de datamigratie tranche 2 (F1.6) overschrijft deze verse cloud-gebruikerstabel met de
+  lokale dump — dit bootstrap-account dient de F2/F3-verificatiefase; ná de overzet geldt
+  gewoon het lokale accountbestand weer.
 
 ## F3 — Jobs (Scheduler → Cloud Run jobs)
 
