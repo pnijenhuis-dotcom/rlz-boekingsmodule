@@ -11,24 +11,30 @@
 #   2. benodigde API's aanzetten
 #   3. EU-locatie-org-policy: eerst checken of vastgoed 'm al op org-niveau
 #      heeft gezet, anders op projectniveau zetten
-#   4. drie service-accounts (run-backend@ / jobs@ / deploy@) met exact de
+#   4. drie service-accounts (run-backend@ / run-jobs@ / deploy@) met exact de
 #      F0-rollen uit het draaiboek (secret-/bucket-bindings volgen in F1)
 #   5. WIF-pool + GitHub-OIDC-provider met repo-conditie (vastgoed-patroon)
 #   6. Artifact Registry (Docker) in europe-west4
 #   7. verificaties + de resourcenamen die Code nodig heeft voor de
 #      dummy-push-testworkflow (de laatste F0-verificatiestap)
 #
-# Het script is idempotent bedoeld maar niet gegarandeerd: bij een herstart na
-# een deelfout melden "already exists"-fouten zich vanzelf — die stap dan
-# overslaan (commando's stuk voor stuk draaien kan ook, ze zijn genummerd).
+# ⚠️ LES UIT DE UITVOERING (2026-08-15): dit script was NIET idempotent —
+# `set -e` + een `create` op een al bestaande resource = script stopt halverwege
+# en de uitrol blijft half staan (drie hervatpogingen nodig). Fundament-scripts
+# schrijven we voortaan vanaf het begin idempotent: describe-vóór-create op
+# élke resource, zodat herdraaien altijd veilig is. De idempotente afronding
+# die F0 daadwerkelijk compleet maakte staat in `f0_hervat3.sh`; dit script
+# blijft staan als het volledige, genummerde F0-naslagpakket (incl. project-
+# aanmaak + org-policy, die in de hervatting niet meer nodig waren).
+# f1_data.sh (F1) volgt het idempotente patroon vanaf regel één.
 # =============================================================================
 set -euo pipefail
 
 # ----------------------------------------------------------------------------
 # IN TE VULLEN DOOR PETER (het script weigert te draaien met placeholders):
 # ----------------------------------------------------------------------------
-ORG_ID="INVULLEN"                 # gcloud organizations list  → kolom ID (cijfers)
-BILLING_ACCOUNT_ID="INVULLEN"     # gcloud billing accounts list → bv. 01ABCD-EF2345-6789AB
+ORG_ID="273731008371"             # org vastly.software — afgelezen uit de console 2026-08-15
+BILLING_ACCOUNT_ID="019A81-D30602-A2EFE4"  # "My Billing Account" (actief) — console 2026-08-15
 
 # Al besloten / vooringevuld — alleen aanpassen als de werkelijkheid afwijkt:
 PROJECT_ID="rlz-boekhouding"      # beslispunt 1 (cijfersuffix alleen bij ID-botsing)
@@ -121,8 +127,8 @@ gcloud org-policies describe gcp.resourceLocations --project="${PROJECT_ID}" --e
 gcloud iam service-accounts create run-backend \
   --display-name="RLZ backend runtime (Cloud Run service)"
 
-# 4.2 jobs@ — runtime van de Cloud Run-jobs (sync, reconciliatie, afleveraar, intake).
-gcloud iam service-accounts create jobs \
+# 4.2 run-jobs@ (NB "jobs" faalt: SA-naam moet 6-30 tekens zijn) — runtime van de Cloud Run-jobs (sync, reconciliatie, afleveraar, intake).
+gcloud iam service-accounts create run-jobs \
   --display-name="RLZ jobs runtime (Cloud Run jobs)"
 
 # 4.3 deploy@ — CI/CD via GitHub Actions + WIF (geen langlevende keys).
@@ -134,7 +140,7 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/cloudsql.client" --condition=None
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-  --member="serviceAccount:jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --member="serviceAccount:run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/cloudsql.client" --condition=None
 
 # 4.5 deploy@: images pushen naar Artifact Registry + Cloud Run-revisies uitrollen.
@@ -146,14 +152,14 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --role="roles/run.developer" --condition=None
 
 # 4.6 deploy@ mag de twee runtime-SA's "gebruiken" (vereist om een Cloud
-#     Run-service/job uit te rollen die als run-backend@/jobs@ draait) —
+#     Run-service/job uit te rollen die als run-backend@/run-jobs@ draait) —
 #     bewust op SA-niveau gebonden, niet projectbreed.
 gcloud iam service-accounts add-iam-policy-binding \
   "run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
   --member="serviceAccount:deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 gcloud iam service-accounts add-iam-policy-binding \
-  "jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
+  "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
   --member="serviceAccount:deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 
