@@ -635,10 +635,30 @@ UI-eisen):
 
 ## Fase 4 — Projectenmodule
 
-- Projects-write PoC, projectregister per klant (archief-toggle), projectdetail (werksoorten,
-  weekanalyse, m²-voortgang, meerwerk-tab, integrale marge + dekkingscontrole), offerte-ontleding
-  → budgetversies (offerte/opdracht-status), projectcode-generatie, OVH-project bij inrichting,
-  dagelijkse signalering naar werkvoorraad.
+- **VERSCHOVEN BOUWITEM (v1.14 route A, kostenflow-omkering 2026-08-14): projectaanmaak-naar-RLZ
+  on-demand voor vastgoed — uit fase 4 naar voren gehaald als eigen, afgebakend item.**
+  Bron-vs-realiteit-stand: alleen de lees-sync (`project_cache`) bestaat; er is géén
+  schrijfroute — niet stil aannemen dat die er is. Afbakening (koppelcontract §5 v1.14):
+  1. **STAP-0-PoC** `PUT Customers/{id}/Projects` tegen de RLZ-test-administratie (verificatie
+     #3 hieronder): werkende vorm vaststellen (client-GUID, verplichte velden, respons),
+     resultaat in api-verkenning.md, testproject storneren kan niet (projecten hebben geen
+     actie 19) → naamconventie `TEST-…` + archief-vlag onderzoeken.
+  2. **Schrijfmotor**: `RlzClient`-methode + deterministisch client-GUID (UUIDv5), idempotente
+     lookup-vóór-PUT (patroon debiteur-/crediteur-aanmaak), `project_cache`-update in dezelfde
+     flow (geen wachtend sync-venster), audit_event.
+  3. **Aanvraag-koppelvlak vastgoed** (past bij "vastgoed schrijft niet in RLZ", v1.10):
+     vastgoed dient een aanvraag in (projectnaam volgens conventie + administratie), wij maken
+     aan en antwoorden **synchroon** met `reeleezee_project_id`. Vormkeuze bij de bouw:
+     platform-endpoint op de RLZ-backend (voorkeur — synchroon antwoord zit al in de
+     §5-afspraak) óf platformtabel met verwerker; besluit + veldvorm dan als contract-notitie.
+  4. **Tests**: idempotentie (tweede aanvraag zelfde pand = zelfde GUID, geen tweede project),
+     scope (alleen vastgoed-administraties), failsafes (RLZ-fout = zichtbare foutstatus).
+  Niet blokkerend voor vastgoeds schaduwfase (leer-lus overbrugt) — inplannen vóór hun S2-poort
+  samen met de `project_verplicht`-activatie.
+- Projects-write PoC (= stap 1 hierboven), projectregister per klant (archief-toggle),
+  projectdetail (werksoorten, weekanalyse, m²-voortgang, meerwerk-tab, integrale marge +
+  dekkingscontrole), offerte-ontleding → budgetversies (offerte/opdracht-status),
+  projectcode-generatie, OVH-project bij inrichting, dagelijkse signalering naar werkvoorraad.
 - Pilot: Universal Steigerbouw (60 actieve projecten).
 
 ## Fase 5 — Integraties & schaal
@@ -684,6 +704,6 @@ volstaat), multi-region (cross-region backup volstaat), AlloyDB (alleen MI-groei
 |---|-----|------|
 | 1 | Rate limits exact | 1 |
 | 2 | ~~Afletteren via acties 15/16 + QuickPaymentSelections~~ — afgehandeld 2026-08-02: QuickPaymentSelections ≠ afletterkanaal; 15/16 + 34 + 218 definitief dicht (FALLBACK-PoC), gebouwd als assist-seam; openstaand = alleen het RLZ-supportantwoord | 2 ✅ |
-| 3 | Projects-write (PUT via Customers-route) | 4 |
+| 3 | Projects-write (PUT via Customers-route) — **geprioriteerd 2026-08-14 (route A): stap 1 van het verschoven bouwitem hierboven, vóór vastgoed-S2** | 4→ |
 | 4 | CodeEventSubscriptions (RLZ-events) | 5 |
 | 5 | Waarborg-GB per vastgoed-administratie | 5 |

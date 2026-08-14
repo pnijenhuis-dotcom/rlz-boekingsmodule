@@ -345,7 +345,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.13)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.14)
 
 - **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
   RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
@@ -362,6 +362,24 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   opgenomen); **en sinds 2026-08-14 óók voor doorbelasting-spiegel-inkoopfacturen in
   vastgoed-doeladministraties** (v1.13 §3, standaard inkoop-veldvorm — zie
   "Kempen-doorbelasting" hierboven).
+- **Kostenflow-omkering + boekstand-events (v1.14, 2026-08-14 — GEBOUWD + GETEST):** Vastly's
+  eigen kostenintake vervalt voor RLZ-administraties, kostenregels komen uitsluitend via
+  `factuur_geboekt` binnen (§3a; pand = `project_id` per regel via §2.1 + de bestaande
+  `project_verplicht`-vlag, activatie samen met vastgoed-S2). Drie §3-uitbreidingen (de
+  kostenflow-randvragen a/b/c): (a) **creditnota-norm inkoop** — negatieve PurchaseInvoice →
+  event in de standaard veldvorm met negatieve regelbedragen, geen vlag, eigen
+  rlz_document_id; (b) **`volgnummer` per boekstand** in `factuur_geboekt` (schema 1.0→**1.1**):
+  één monotone reeks per rlz_document_id over geboekt- én gestorneerd-events
+  (`app/documenten/boekstand.py`, stand leeft in de outbox-rijen — geen extra tabel),
+  ontvanger idempotent per (rlz_document_id, volgnummer), hoogste wint, 1.0-events = stand 0 —
+  herboeking-op-zelfde-GUID is reëel (doorbelasting-spiegel na storno + nieuwe run);
+  (c) **nieuw event `factuur_gestorneerd`** (eigen schema 1.0, zelfde kanaal/outbox/HMAC —
+  harde eis vastgoed-S2): `module_storno` = direct event in de storno-transactie
+  (doorbelasting-spiegel), `rlz_ui_detectie` = `app/documenten/storno_detectie.py` in het
+  reconciliatie-CLI-commando — **latentie = reconciliatie-cadans (nu dagelijks ≤ 24 u),
+  expliciet in §3b**; geen event zonder eerder geboekt-event. Verschoven bouwitem route A
+  (projectaanmaak-naar-RLZ on-demand, §5): bestaat nog NIET — gepland in BOUWPLAN fase 4
+  (STAP-0-PoC → motor → synchroon aanvraag-koppelvlak), vóór vastgoed-S2.
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
