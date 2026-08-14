@@ -1,8 +1,10 @@
 # GCP-uitroldraaiboek — RLZ Boekingsmodule
 
-> **Status: F0 UITGEVOERD (2026-08-15, projectnummer 652591056217) — slotverificatie =
-> de `deploy-test`-workflow-run (zie §F0-uitvoering); F1-uitvoeringspakket staat klaar
-> (`scripts/gcp/f1_data.sh`, zie §F1-uitvoering).**
+> **Status: F0 UITGEVOERD (2026-08-14, projectnummer 652591056217) — slotverificatie =
+> de `deploy-test`-workflow-run (zie §F0-uitvoering); F1 UITGEVOERD (2026-08-14 —
+> migratie 0001→0047 + GCS/KMS-verificatie geslaagd, zie §F1 — UITGEVOERD). Volgende: F2.**
+> NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
+> dag te ver (commits én GCP-timestamps bewijzen 2026-08-14).
 > Besluiten Peter 2026-08-12: **eigen RLZ-project binnen
 > de PDL Powerhouse-organisatie** (zelfde org als vastgoeds `vastly-504108`, nadrukkelijk NIET
 > hetzelfde project); **tempo = zo snel mogelijk live**; de **AVG-poort geldt alleen voor echte
@@ -71,7 +73,7 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
   migratie-job (`rlz-migratie`, zelfde beeld, `alembic upgrade head`) → revisie live.
   Activeren = F0-waarden invullen + push-trigger openzetten (staat er als commentaar in).
 
-#### F0 — UITGEVOERD (2026-08-15)
+#### F0 — UITGEVOERD (2026-08-14)
 
 - **Gedraaid door Peter (org-owner).** De eerste run liep vast op niet-idempotente
   `create`-commando's (met `set -e` stopt het script op een al bestaande resource — halve
@@ -86,7 +88,7 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
   workloadIdentityPools/github/providers/github-oidc`,
   `DEPLOY_SA=deploy@rlz-boekhouding.iam.gserviceaccount.com`,
   `REGISTRY=europe-west4-docker.pkg.dev/rlz-boekhouding/rlz`.
-- **Read-only geverifieerd (Code, gcloud 2026-08-15):** drie SA's mét draaiboek-rollen
+- **Read-only geverifieerd (Code, gcloud 2026-08-14):** drie SA's mét draaiboek-rollen
   (cloudsql.client ×2; artifactregistry.writer + run.developer op deploy@;
   serviceAccountUser van deploy@ op beide runtime-SA's), WIF-provider ACTIVE met de
   repo-conditie, registry `rlz` (Docker, europe-west4), billing aan, effectieve
@@ -165,7 +167,7 @@ org-owner** (Cloud Shell of lokale `gcloud` met het org-beheeraccount); Code voe
 metadata-guard-test groen tegen dat schema; een testdocument geüpload + teruggelezen via de
 GCS-implementatie; retentiebeleid zichtbaar op de bucket.
 
-### F1-uitvoering (klaar om te draaien — pakket gebouwd 2026-08-15)
+### F1-uitvoering (pakket gebouwd 2026-08-14; uitgevoerd 2026-08-14 — zie hieronder)
 
 Verdeling strikt: **Peter draait `scripts/gcp/f1_data.sh`** (alles wat gcloud is;
 idempotent conform de F0-les — describe-vóór-create, herdraaibaar na elke deelfout);
@@ -199,10 +201,12 @@ idempotent conform de F0-les — describe-vóór-create, herdraaibaar na elke de
    Auth Proxy** (`brew install cloud-sql-proxy`, poort 5434; 5433 = lokale PG16). Draait
    `alembic upgrade head` als `postgres` (owner) — migratie 0001 maakt `boekhouding_app`
    aan met `APP_DB_PASSWORD` uit Secret Manager (precies de twee rollen zoals lokaal) —
-   en daarna **`alembic check` als metadata-guard tegen dat schema**. ⚠️ De
+   en daarna **de tabelniveau-metadata-guard tegen dat schema** (zelfde vergelijking als
+   `tests/unit/test_migratie_metadata_guard.py`, inline in het script). ⚠️ De
    pytest-metadata-guard mag NIET met `TEST_DATABASE_URL` op de cloud-database gericht
-   worden: `tests/conftest.py` TRUNCATE't de testdatabase; `alembic check` is de
-   gelijkwaardige, veilige toets (env.py importeert álle model-modules).
+   worden: `tests/conftest.py` TRUNCATE't de testdatabase. ⚠️ En `alembic check` is hier
+   — anders dan eerder gedacht — GEEN gelijkwaardige toets: zie de les onder
+   "F1 — UITGEVOERD".
 3. **`backend/.venv/bin/python scripts/gcp/f1_verificatie.py`** *(Code)* — GCS-upload +
    teruglezen via `GcsDocumentOpslag` tegen de echte bucket (testobject blijft staan:
    retentie verbiedt verwijderen — bedoeld) én KMS-wrap/unwrap-rondje + volledig
@@ -210,6 +214,42 @@ idempotent conform de F0-les — describe-vóór-create, herdraaibaar na elke de
    `gcloud auth application-default login`.
 4. **Géén klantdata** (tranche 1): alleen schema + straks de TEST-administratie — de
    F5-poort verbiedt de rest; datamigratie tranche 2 komt ná F5 (stappenplan hieronder).
+
+#### F1 — UITGEVOERD (2026-08-14)
+
+- **F1.1/F1.2 (migratie + rollen):** `f1_migratie.sh` gedraaid via de Cloud SQL Auth Proxy —
+  Alembic 0001→head schoon; slotcontrole in de cloud-database: **`alembic_version = 0047`**
+  (= head), **rol `boekhouding_app` aanwezig**, metadata-guard groen
+  (**68 modeltabellen == 68 cloud-tabellen**, platform+boekhouding).
+- **LES metadata-guard: `alembic check` is NIET de gelijkwaardige toets** die het
+  script-commentaar beloofde. Het vergelijkt óók type-representaties en index-declaraties
+  en faalt op pre-existente model↔DDL-drift (modellen: `DateTime()`/`String`; migraties:
+  `timestamptz`/`TEXT`; `ix_`-indexes alleen in migraties gedeclareerd). Bewijs dat dit
+  géén cloud-signaal is: `alembic check` faalt tegen de lokale dev-database met een —
+  na normalisatie van geheugenadressen — **byte-identieke** diff (129.639 tekens).
+  `f1_migratie.sh` draait daarom nu de échte guard-test-vergelijking (tabelniveau) inline.
+  Open punt (laag, nice-to-have): de model-type-drift ooit gelijktrekken zodat
+  `alembic check`/autogenerate weer signaalwaarde krijgt — tot die tijd autogenerate-output
+  altijd handmatig schiften (dat was al de werkwijze).
+- **LES ADC-quota-project:** de eerste KMS-call faalde met 403 `SERVICE_DISABLED` tegen
+  project `vastly-504108` — ADC droeg nog dat quota-project (attributie van de call, niet
+  de resource). Fix: `gcloud auth application-default set-quota-project rlz-boekhouding`.
+  GCS had er geen last van; KMS wel. Bij een toekomstige ADC-herlogin dit meteen meenemen.
+- **F1.3/F1.4/F1.5 (verificatie GCS + KMS):** `f1_verificatie.py` GESLAAGD — testobject
+  geüpload + byte-identiek teruggelezen via `GcsDocumentOpslag` tegen
+  `gs://rlz-boekhouding-documenten` (object blijft staan — retentie verbiedt verwijderen,
+  bedoeld); KMS-wrap/unwrap-rondje + volledig envelope-pad (`wrap_secret`/`unwrap_secret`)
+  via `KmsMasterKeyProvider` tegen de echte `masterkey`. Bucketstaat read-only
+  geverifieerd: **retentiebeleid 220.903.200 s (7 jaar) zichtbaar en effectief
+  (2026-08-14), unlocked; versioning aan; public-access-prevention enforced; uniform
+  bucket-level access aan.**
+- **Bewust open (geen F1-blocker):** `WEBHOOK_HMAC_SECRET` en `ANTHROPIC_API_KEY` zijn
+  containers zonder versie (HMAC volgt bij de F4-uitwisseling met vastgoed; de API-key bij
+  het AI-gate-klikwerk). Tranche 1 = alleen schema — géén klantdata (F5-poort).
+
+**F1-verificatie-eisen uit het draaiboek — alle vier aantoonbaar gedaan:** upgrade schoon ✓,
+metadata-guard groen tegen dat schema ✓, testdocument geüpload + teruggelezen ✓,
+retentiebeleid zichtbaar op de bucket ✓.
 
 ### F1.6-stappenplan datamigratie tranche 2 (ná F5 — de échte overzet)
 
