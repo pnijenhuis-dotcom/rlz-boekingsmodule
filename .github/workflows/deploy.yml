@@ -124,3 +124,35 @@ jobs:
             --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[]@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest" \
             --quiet
+
+      # F3-jobs (draaiboek §F3): de bestaande CLI-commando's zijn de entrypoints — zelfde
+      # beeld als de service, per job een eigen definitie (een hangende sync blokkeert nooit
+      # de afleveraar). Config-as-code, zelfde patroon als rlz-migratie hierboven; de
+      # Scheduler-cadans + alerting + IAM staan in scripts/gcp/f3_jobs.sh (owner, eenmalig).
+      # run-jobs@ + alléén het app-DB-wachtwoord (least privilege); masterkey-unwrap loopt
+      # via KMS (credential-store), TOTP-secret is hier niet nodig. INTAKE_IMAP_*-settings
+      # bewust afwezig: de IMAP-seam blijft inactief tot de DPA-check (F3.4) — de job meldt
+      # dat expliciet (exit 1) en zijn scheduler staat gepauzeerd.
+      - name: F3-jobs bijwerken (zelfde beeld, CLI-entrypoints)
+        run: |
+          for JOB in \
+            "rlz-sync|sync-alles|3600" \
+            "rlz-reconciliatie|reconciliatie-alles|3600" \
+            "rlz-webhook-afleveraar|webhook-afleveren|600" \
+            "rlz-intake-imap|intake-postvak-verwerken|900" \
+          ; do
+            NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"
+            gcloud run jobs deploy "${NAAM}" \
+              --image "${IMAGE}:${GITHUB_SHA}" \
+              --region "${REGION}" \
+              --project "${PROJECT_ID}" \
+              --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
+              --set-cloudsql-instances "${CLOUD_SQL}" \
+              --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
+              --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest" \
+              --command python \
+              --args="-m,app.cli,${CLI}" \
+              --max-retries 0 \
+              --task-timeout "${TIMEOUT}" \
+              --quiet
+          done
