@@ -24,11 +24,9 @@ class BekendeAdministratie:
 
 
 # TIJDELIJK: BLOw ontbreekt bewust — het volledige RLZ-adminId staat nergens in de repo
-# (registers/entiteiten.md toont het afgekapt), dus geen aanname/gok hier. NIJENHUIS
-# (Administratiekantoor Nijenhuis C.V.) ontbreekt óók bewust: de RLZ_NIJENHUIS_-login gaf bij de
-# onboarding-batch 2026-08-15 een 401 — adminId kon niet geverifieerd worden; toevoegen zodra
-# Peter de credential herstelt. Nieuwe administraties hier toevoegen zodra het volledige adminId
-# bevestigd is (admin-pin: list_administrations() moet exact deze ene administratie tonen).
+# (registers/entiteiten.md toont het afgekapt), dus geen aanname/gok hier. Nieuwe administraties
+# hier toevoegen zodra het volledige adminId bevestigd is (admin-pin: list_administrations()
+# moet exact deze ene administratie tonen).
 BEKENDE_ADMINISTRATIES: tuple[BekendeAdministratie, ...] = (
     BekendeAdministratie(
         prefix="UNIVERSAL", rlz_admin_id="3d954fc7-fe8d-4067-8cfb-73b4fe48c0ac", naam="Universal Steigerbouw B.V."
@@ -73,6 +71,13 @@ BEKENDE_ADMINISTRATIES: tuple[BekendeAdministratie, ...] = (
     ),
     BekendeAdministratie(
         prefix="SHUTO", rlz_admin_id="44fb7376-49a5-4c2c-908d-8da14fafdc6f", naam="Stichting Shuto"
+    ),
+    # Na-onboarding 2026-08-15: bij de batch gaf deze login een 401; na credential-herstel door
+    # Peter dezelfde dag alsnog onboarded (adminId live geverifieerd via admin-pin, probe 10/10).
+    BekendeAdministratie(
+        prefix="NIJENHUIS",
+        rlz_admin_id="97ac3a99-da88-4084-b163-06e23d329e05",
+        naam="Administratiekantoor Nijenhuis C.V.",
     ),
 )
 _PREFIX_PER_RLZ_ADMIN_ID: dict[str, str] = {a.rlz_admin_id: a.prefix for a in BEKENDE_ADMINISTRATIES}

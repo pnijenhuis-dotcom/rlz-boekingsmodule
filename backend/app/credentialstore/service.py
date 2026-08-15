@@ -86,9 +86,9 @@ def haal_credential_metadata_op(*, administratie_id: uuid.UUID) -> CredentialMet
 
 
 # Legacy-vijf + de onboarding-batch 15-08 (lijst Peter; env-vorm RLZ_{PREFIX}_GEBRUIKER/-
-# _WACHTWOORD — zie app/rlz/credentials.py::lees_env_login). NIJENHUIS ontbreekt bewust
-# (401 bij de batch — geen geverifieerd adminId); RLZ (BLOw) en KEMPEN blijven staan als
-# legacy-skips zolang hun registry-rij ontbreekt.
+# _WACHTWOORD — zie app/rlz/credentials.py::lees_env_login) + NIJENHUIS (na-onboarding
+# 15-08, ná credential-herstel — 401 bij de batch zelf). RLZ (BLOw) en KEMPEN blijven staan
+# als legacy-skips zolang hun registry-rij ontbreekt.
 _TE_IMPORTEREN_PREFIXEN = (
     "RLZ",
     "UNIVERSAL",
@@ -105,6 +105,7 @@ _TE_IMPORTEREN_PREFIXEN = (
     "OVB",
     "VELDHOVEN",
     "SHUTO",
+    "NIJENHUIS",
 )
 
 

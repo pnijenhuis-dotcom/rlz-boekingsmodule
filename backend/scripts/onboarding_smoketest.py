@@ -43,6 +43,7 @@ AUDIT_PAD = REPO / "verkenning" / "output" / "onboarding_smoketest_audit.jsonl"
 BATCH_CODES = (
     "ARVUM", "MEYER", "ELISSEN", "FACILITIES", "MOLENHOFB",
     "MOLENHOFV", "OIRSCHOT", "OVB", "VELDHOVEN", "SHUTO",
+    "NIJENHUIS",  # na-onboarding 15-08 (401 bij de batch, zelfde dag hersteld)
 )
 
 
