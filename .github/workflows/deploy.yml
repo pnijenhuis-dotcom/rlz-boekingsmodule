@@ -146,6 +146,7 @@ jobs:
             "rlz-reconciliatie|reconciliatie-alles|3600" \
             "rlz-webhook-afleveraar|webhook-afleveren|600" \
             "rlz-intake-imap|intake-postvak-verwerken|900" \
+            "rlz-accordeur-herinneringen|accordeur-herinneringen|600" \
           ; do
             NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"
             gcloud run jobs deploy "${NAAM}" \
@@ -171,3 +172,32 @@ jobs:
             --update-env-vars "INTAKE_IMAP_HOST=imap.gmail.com,INTAKE_IMAP_POORT=993,INTAKE_IMAP_GEBRUIKER=facturen@ak-nijenhuis.nl,INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl" \
             --update-secrets "INTAKE_IMAP_WACHTWOORD=INTAKE_IMAP_WACHTWOORD:latest" \
             --quiet
+          # Accordeur-notificaties (berichten-bouwsteen 2026-08-15): SMTP-mail (Google
+          # Workspace, app-wachtwoord) + Web Push (VAPID). Secret-slots + accessors komen uit
+          # scripts/gcp/notificaties_infra.sh (owner); zolang die nog niet gedraaid is, faalt
+          # deze update — dan alleen een zichtbare LET-OP, geen rode deploy (de job draait dan
+          # geconfigureerd-loos: mail/push falen fail-zichtbaar, nooit stil). Afzenderadres
+          # berichten@ak-nijenhuis.nl is het VOORSTEL — adreskeuze ligt bij Peter (BESLISSINGEN
+          # "Accordeur-notificaties"); wijzigt dat, dan alleen deze envs aanpassen.
+          gcloud run jobs update rlz-accordeur-herinneringen \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=berichten@ak-nijenhuis.nl,BERICHTEN_AFZENDER=berichten@ak-nijenhuis.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
+            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
+            --quiet \
+          || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — rlz-accordeur-herinneringen draait zonder mail-/pushconfig (fail-zichtbaar)."
+
+      # Notificatie-config op de service (uitnodigingsmail via de API + VAPID-publieke sleutel
+      # voor het subscribe-endpoint; de private key blijft bewust alléén op de job — least
+      # privilege). Aparte update-stap: --update-* raakt de bestaande envset niet, en zolang de
+      # secret-slots ontbreken faalt alleen deze stap zichtbaar terwijl de vorige revisie live
+      # blijft — mail_verzonden=false + mail_fout in de uitnodiging-respons is dan de terugval.
+      - name: Notificatie-config service (mail + VAPID-publiek)
+        run: |
+          gcloud run services update rlz-backend \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=berichten@ak-nijenhuis.nl,BERICHTEN_AFZENDER=berichten@ak-nijenhuis.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
+            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
+            --quiet \
+          || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — service draait zonder mail-/pushconfig (fail-zichtbaar: uitnodiging-respons meldt mail_fout, push-config-endpoint geeft null)."

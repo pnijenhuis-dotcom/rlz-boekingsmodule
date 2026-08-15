@@ -43,6 +43,11 @@ JOBS=(
   "rlz-reconciliatie|reconciliatie-alles|3600|30 6 * * *"
   "rlz-webhook-afleveraar|webhook-afleveren|600|*/5 * * * *"
   "rlz-intake-imap|intake-postvak-verwerken|900|*/10 * * * *"
+  # Accordeur-herinneringen (berichten-bouwsteen 2026-08-15, mockup-besluit "dagelijkse push
+  # 09:00 alleen bij >0 open"). Secret-slots/accessors: scripts/gcp/notificaties_infra.sh;
+  # scheduler start GEPAUZEERD (zie onder) tot de live-verificatie (mail + push op Peters
+  # iPhone) rond is.
+  "rlz-accordeur-herinneringen|accordeur-herinneringen|600|0 9 * * *"
 )
 
 gcloud config set project "${PROJECT_ID}" --quiet
@@ -174,11 +179,13 @@ for REGELS in "${JOBS[@]}"; do
 done
 
 echo "== 6. Scheduler-cadans per job (draaiboektabel; IMAP meteen gepauzeerd) =="
+HERINNERINGEN_NIEUW=0
 for REGELS in "${JOBS[@]}"; do
   IFS='|' read -r NAAM _CLI _TIMEOUT CADANS <<< "${REGELS}"
   if gcloud scheduler jobs describe "${NAAM}" --location="${REGION}" >/dev/null 2>&1; then
     echo "   scheduler ${NAAM} bestaat al — overgeslagen."
   else
+    [ "${NAAM}" = "rlz-accordeur-herinneringen" ] && HERINNERINGEN_NIEUW=1
     gcloud scheduler jobs create http "${NAAM}" \
       --location="${REGION}" \
       --schedule="${CADANS}" \
@@ -194,6 +201,14 @@ done
 # IMAP-intake: bouwen maar NIET activeren (opdracht 2026-08-14) — pauzeren is idempotent.
 gcloud scheduler jobs pause rlz-intake-imap --location="${REGION}" --quiet >/dev/null
 echo "   rlz-intake-imap GEPAUZEERD (activatie ná mailbox + app-wachtwoord + DPA-check)."
+# Accordeur-herinneringen: gepauzeerd tot de notificatie-secrets staan én de
+# live-verificatie (één echte push + één echte mail) rond is — resume gebeurt in
+# scripts/gcp/notificaties_infra.sh. Alleen bij verse aanmaak pauzeren: een herdraai van
+# dit script mag een al-geactiveerde cadans nooit terugpauzeren.
+if [ "${HERINNERINGEN_NIEUW}" = "1" ]; then
+  gcloud scheduler jobs pause rlz-accordeur-herinneringen --location="${REGION}" --quiet >/dev/null
+  echo "   rlz-accordeur-herinneringen GEPAUZEERD (activatie via notificaties_infra.sh)."
+fi
 
 echo
 echo "Klaar. Verificatie F3 (draaiboek): per job één handmatige run —"
