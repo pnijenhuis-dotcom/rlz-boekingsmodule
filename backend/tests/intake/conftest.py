@@ -77,7 +77,7 @@ def bouw_eml(
     """bijlagen: (bestandsnaam, inhoud, maintype, subtype)."""
     mail = EmailMessage()
     mail["From"] = f"Bouwmaat <{afzender}>"
-    mail["To"] = "facturen@kempengroep.nl"
+    mail["To"] = "facturen@ak-nijenhuis.nl"
     mail["Subject"] = onderwerp
     mail["Date"] = "Thu, 07 Aug 2026 09:00:00 +0200"
     mail["Message-ID"] = message_id or f"<{uuid.uuid4()}@test.local>"

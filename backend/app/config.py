@@ -226,11 +226,14 @@ class Settings(BaseSettings):
     # moment is er nog geen administratie, dus de per-administratie-gate kan niet gelden —
     # default UIT: zonder opt-in gaat er geen intake-byte naar de Claude API en valt elke
     # niet-eenduidige PDF gewoon in de verzamelbak (mens wijst toe, daarna geldt de normale
-    # per-administratie-gate). IMAP-instellingen zijn de LIVE-FETCH-SEAM (app/intake/postvak.py):
-    # None = niet geconfigureerd, de .eml-upload is dan het enige intake-kanaal; de echte
-    # IMAP/Cloud Scheduler-koppeling wordt bij de GCP-uitrol geactiveerd.
+    # per-administratie-gate). IMAP-instellingen = de live postvak-fetch (app/intake/postvak.py,
+    # F3.4 geactiveerd 2026-08-15): het centrale adres is facturen@ak-nijenhuis.nl op Google
+    # Workspace (imap.gmail.com, SSL 993, app-wachtwoord via Secret Manager
+    # INTAKE_IMAP_WACHTWOORD — envs op de rlz-intake-imap-job, zie deploy.yml). None = niet
+    # geconfigureerd (lokale dev), de .eml-upload is dan het intake-kanaal.
     intake_ai_ingeschakeld: bool = False
     intake_imap_host: str | None = None
+    intake_imap_poort: int = 993
     intake_imap_gebruiker: str | None = None
     intake_imap_wachtwoord: str | None = None
     intake_postvak_adres: str | None = None

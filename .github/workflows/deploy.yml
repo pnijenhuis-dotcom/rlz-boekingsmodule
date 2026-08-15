@@ -134,9 +134,11 @@ jobs:
       # de afleveraar). Config-as-code, zelfde patroon als rlz-migratie hierboven; de
       # Scheduler-cadans + alerting + IAM staan in scripts/gcp/f3_jobs.sh (owner, eenmalig).
       # run-jobs@ + alléén het app-DB-wachtwoord (least privilege); masterkey-unwrap loopt
-      # via KMS (credential-store), TOTP-secret is hier niet nodig. INTAKE_IMAP_*-settings
-      # bewust afwezig: de IMAP-seam blijft inactief tot de DPA-check (F3.4) — de job meldt
-      # dat expliciet (exit 1) en zijn scheduler staat gepauzeerd.
+      # via KMS (credential-store), TOTP-secret is hier niet nodig. De rlz-intake-imap-job
+      # krijgt ná de lus zijn INTAKE_IMAP_*-envs + wachtwoord-secret (F3.4, geactiveerd
+      # 2026-08-15 na de Workspace-DPA-check): --set-env-vars in de lus VERVANGT de hele
+      # envset, dus de update-stap moet ná elke deploy opnieuw draaien — vandaar in dezelfde
+      # step, direct erachter.
       - name: F3-jobs bijwerken (zelfde beeld, CLI-entrypoints)
         run: |
           for JOB in \
@@ -160,3 +162,12 @@ jobs:
               --task-timeout "${TIMEOUT}" \
               --quiet
           done
+          # F3.4 — live IMAP-intake (facturen@ak-nijenhuis.nl op Google Workspace, SSL 993).
+          # Het app-wachtwoord leeft uitsluitend in Secret Manager (INTAKE_IMAP_WACHTWOORD,
+          # versie door Peter); de scheduler-pauze is de aan/uit-knop van de fetch.
+          gcloud run jobs update rlz-intake-imap \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --update-env-vars "INTAKE_IMAP_HOST=imap.gmail.com,INTAKE_IMAP_POORT=993,INTAKE_IMAP_GEBRUIKER=facturen@ak-nijenhuis.nl,INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl" \
+            --update-secrets "INTAKE_IMAP_WACHTWOORD=INTAKE_IMAP_WACHTWOORD:latest" \
+            --quiet

@@ -12,11 +12,13 @@ from app.bank import reconciliatie as bank_reconciliatie
 from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
 from app.credentialstore import service as credentialstore_service
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
 from app.doorbelasting import reconciliatie as doorbelasting_reconciliatie
 from app.doorbelasting import service as doorbelasting_service
 from app.geheugen import seed as geheugen_seed
-from app.intake.postvak import ImapPostvakBron, PostvakNietGeconfigureerd
+from app.intake import verwerking as intake_verwerking
+from app.intake.postvak import ImapPostvakBron, PostvakFout, PostvakNietGeconfigureerd
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.reconciliatie import service as acceptatie_service
 from app.reconciliatie.models import ReconciliatieBron
@@ -540,16 +542,47 @@ def _reconciliatie_acceptaties(args: argparse.Namespace) -> int:
 
 
 def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
-    """E-mail-intake: leest de geconfigureerde postvak-bron leeg. De live IMAP-fetch is een
-    bewuste seam die bij de GCP-uitrol wordt geactiveerd — tot die tijd meldt dit commando dat
-    expliciet (geen stille no-op); de .eml-upload (POST /intake/eml) is het werkende kanaal."""
+    """E-mail-intake (F3.4): leest het centrale IMAP-postvak leeg en verwerkt elk bericht via
+    exact hetzelfde codepad als de .eml-upload (verwerk_eml, idempotent op Message-ID). Actor =
+    de systeem-actor (achtergrondverwerking zonder mens). Een ongeldig bericht (geen parsebare
+    .eml) wordt zichtbaar overgeslagen én in het postvak als gelezen gemarkeerd (geen eeuwige
+    retry-lus) — de run eindigt dan wel op exit 1 zodat de job-failure-alert bijt; een
+    verwerkingscrash laat het bericht ongelezen staan (volgende run = retry)."""
+    verwerkt = al_eerder = fouten = 0
     try:
-        for _ in ImapPostvakBron().nieuwe_berichten():
-            pass  # pragma: no cover — pas bereikbaar zodra de seam geactiveerd is
+        for inhoud in ImapPostvakBron().nieuwe_berichten():
+            try:
+                resultaat = intake_verwerking.verwerk_eml(
+                    inhoud, actor_id=SYSTEEM_ACTOR_ID, bron="imap"
+                )
+            except intake_verwerking.GeenGeldigIntakeBericht as exc:
+                fouten += 1
+                print(
+                    f"FOUT  ongeldig bericht overgeslagen (blijft in het postvak, "
+                    f"gemarkeerd als gelezen): {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            if resultaat.al_eerder_verwerkt:
+                al_eerder += 1
+                print(f"AL-VERWERKT {resultaat.bericht_id}")
+            else:
+                verwerkt += 1
+                bijlagen = ", ".join(f"{r.bestandsnaam}={r.uitkomst}" for r in resultaat.bijlagen)
+                print(
+                    f"VERWERKT {resultaat.bericht_id}: {len(resultaat.bijlagen)} bijlage(n)"
+                    + (f" — {bijlagen}" if bijlagen else "")
+                )
     except PostvakNietGeconfigureerd as exc:
-        print(f"SEAM       {exc}", file=sys.stderr)
+        print(f"NIET-GECONFIGUREERD {exc}", file=sys.stderr)
         return 1
-    return 0
+    except PostvakFout as exc:
+        print(f"FOUT  {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Postvak verwerkt: {verwerkt} nieuw, {al_eerder} al eerder verwerkt, {fouten} ongeldig."
+    )
+    return 1 if fouten else 0
 
 
 def _zet_afgeletterd_event(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
@@ -827,8 +860,9 @@ def main(argv: list[str] | None = None) -> int:
 
     subparsers.add_parser(
         "intake-postvak-verwerken",
-        help="Haal nieuwe berichten uit het centrale postvak en verwerk ze (LIVE-FETCH-SEAM: "
-        "meldt tot de GCP-uitrol expliciet dat de IMAP-koppeling nog niet actief is).",
+        help="Haal ongelezen berichten uit het centrale IMAP-postvak (facturen@ak-nijenhuis.nl) "
+        "en verwerk ze idempotent via het intake-codepad (F3.4; zonder INTAKE_IMAP_*-settings "
+        "meldt het commando expliciet dat de bron niet geconfigureerd is).",
     )
 
     subparsers.add_parser(
