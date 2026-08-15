@@ -355,9 +355,15 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   installatie-/updatepad ongewijzigd; subscriptie per apparaat, kill-switch trekt push mee in;
   permissie alleen vanuit expliciete klik). **HARD PRINCIPE: maillinks zijn deep-links naar de
   PWA (`/accordeur?document=<id>`) — goedkeuren-zonder-inloggen/one-click-token bestaat bewust
-  NIET** (zou de passkey-laag omzeilen). Open: live-verificatie + afzender-adreskeuze bij Peter
-  (scheduler gepauzeerd tot dan; `scripts/gcp/notificaties_infra.sh`), directe push bij nieuwe
-  factuur.
+  NIET** (zou de passkey-laag omzeilen). **Afzenderadres beslist (Peter 2026-08-15):
+  facturen@ak-nijenhuis.nl (géén aparte gebruiker/licentie) mét Reply-To
+  p.nijenhuis@kempengroep.nl — menselijke antwoorden blijven zo buiten de intake; auto-replies
+  op facturen@ zijn geaccepteerde zichtbare ruis.** Live-verificatie loopt via het gebundelde
+  interactieve `scripts/gcp/notificaties_afronden.sh` (slots + VAPID-generatie +
+  wachtwoord-invoer + deploy + job-run + verificatie-gegate scheduler-resume in één gang;
+  open TEST-accordering voor het passkeytest-account is geseed in de cloud-DB,
+  `backend/scripts/cloud_seed_accordering.py`). Open: die live-verificatie (scheduler
+  gepauzeerd tot dan), directe push bij nieuwe factuur.
 - **Projecten** (module, zichtbaar per rol + per administratie-toggle): project verplicht = hard
   blokkerend, géén "geen project"-optie; overhead → intern OVH-project (uitgesloten van bewaking).
   Budget uit offerte-ontleding (status offerte ≠ opdracht; meerwerk = aparte budgetversie).
@@ -545,6 +551,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   te wachten; de Stop-hook pusht daarna beide repo's. **Uitzondering:** zegt een opdracht
   expliciet "niet committen, eerst review", dan wordt er niet gecommit en stopt de run voor
   review. Force-push blijft verboden.
+- **Pre-commit-vangnet frontend (procesnotitie Peter 2026-08-15, les verbeteringen.md 12-08
+  vastgoed; aanleiding: deploys #23/#24 rood op een TS-fout die bij het committen gevangen had
+  moeten worden):** vóór élke frontend-rakende commit draait `tsc -b` over de VOLLEDIGE actuele
+  werkboom — nooit een eerder groen resultaat citeren als er daarna nog geschreven is.
+  Afgedwongen door het git-pre-commit-hook `scripts/git-hooks/pre-commit` (per kloon eenmalig
+  installeren: `ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit` — op deze Mac
+  gedaan 2026-08-15); `--no-verify` alleen met expliciete reden.
 - Tests verplicht op geldlogica (mapping, totalen, idempotentie, statusmachine) vóór UI-polish.
 - Elke schrijfactie naar RLZ eerst tegen een testadministratie of met TEST-referentie + akkoord.
 
