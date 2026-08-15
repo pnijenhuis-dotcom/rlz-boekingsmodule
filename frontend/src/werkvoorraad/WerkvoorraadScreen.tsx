@@ -472,7 +472,19 @@ function Klantpagina({
       <VerzamelbakPaneel key={verzamelbakVersie} administraties={administraties} onGewijzigd={() => laadDocumenten()} />
 
       <div className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        {/* flexWrap (responsive-fix 2026-08-15, tweede ronde): op smalle vensters wringt het
+         * toon-verwijderd-vinkje anders tegen de titel — dan valt het eronder i.p.v. te
+         * overlappen. */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '4px 10px',
+            marginBottom: 14,
+          }}
+        >
           <h2 style={{ margin: 0 }}>Openstaande zaken</h2>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
             <input

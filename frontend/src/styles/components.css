@@ -470,6 +470,34 @@ textarea:focus {
   overflow-x: auto;
 }
 
+/* Zichtbare scroll-affordance (responsive-melding Peter 2026-08-15, tweede ronde): macOS
+ * verbergt overlay-scrollbars tot er gescrold wordt, waardoor een intern scrollende tabel
+ * eruitzag als een kapot geklipte layout (halve chips, verdwenen kolommen). Een dunne, altijd
+ * zichtbare balk in de bestaande kleurtaal maakt het scrollen vindbaar; zonder overloop
+ * verschijnt er niets. NB de standaard-props scrollbar-width/-color hier NIET combineren met
+ * de webkit-regels: Chrome laat de standaard-props dan voorgaan en die renderen weer als
+ * onzichtbare overlay (headless-verificatie 2026-08-15) — vandaar de @supports-splitsing. */
+.tabel-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tabel-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.tabel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  /* Firefox: kent de webkit-pseudo's niet — dáár wel de standaard-props. */
+  .tabel-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
 .boekingsregels-tabel {
   table-layout: fixed;
   width: 100%;
