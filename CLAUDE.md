@@ -48,7 +48,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD".
   **Platformbesluit 0020 (2026-08-14, samen met vastgoed): passkeys worden de EERSTE
   authenticatielijn voor álle rollen; wachtwoord + TOTP wordt terugval/herstel.**
-  Kantoor-passkeys bouwen bij de GCP-fase (WebAuthn vergt https); accordeurs hebben het al.
+  **Kantoor-passkeys: GEBOUWD + GETEST (2026-08-15)** — tweede afnemer van de 0040-bouwstenen,
+  geen nieuwe migratie: registratie ná login op Instellingen → beveiliging (élke kantoor-rol,
+  meerdere apparaten, zonder platform-pin, géén nieuw token-paar), éénstaps-login e-mail →
+  assertion mét UV (usernameless mag niet, 0022-lijn; geen passkey = generiek 409 → stil terug
+  naar wachtwoord+TOTP, dat pad is ongewijzigd), standaard kantoor-JWT-semantiek maar wél
+  apparaat-gebonden (kill-switch bijt per request); intrekken = eigenaar-of-Beheerder (niet-eigen
+  = 404), laatste passkey intrekken sluit nooit buiten; kantoor-endpoints weigeren accordeurs
+  (403 — hun eigen flow houdt de wachtwoordstap). Zie BESLISSINGEN "KANTOOR-PASSKEYS".
 - **Autorisatie (hard, bevestigd 2026-07-06):** klanten-scope per medewerker via koppeltabel
   gebruiker↔administraties, afgedwongen door RLS (DB-niveau) + server-side checks — geen scope =
   geen data, ook niet via bugs in de app-laag. Rol- en scope-wijzigingen exclusief door de
