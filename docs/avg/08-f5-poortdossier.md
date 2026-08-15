@@ -15,12 +15,12 @@
 | 2 | Regio-borging aantoonbaar (`europe-west4` + EU-org-policy) | Code | ✅ 2026-08-14 |
 | 3 | Herzieningsmoment CLOUD Act (besluit 0003): CMEK/client-side beoordeeld, uitkomst als platformbesluit | Code (memo) + Peter (besluit) + beiden (uitvoering) | ✅ besluit 0021 (akkoord 2026-08-14) + uitgevoerd 2026-08-14 |
 | 4 | Retentie/PITR-instellingen gedocumenteerd | Code | ✅ 2026-08-14 |
-| 5 | Verwerkersovereenkomst Exact Reeleezee bevestigd + gearchiveerd | Peter | 🔶 PDF's gearchiveerd, bevestiging open |
+| 5 | Verwerkersovereenkomst Exact Reeleezee bevestigd + gearchiveerd | Peter | ✅ 2026-08-15 — bevestiging Exact 2026-08-14, `Bevestiging versie RLZ.pdf` |
 | 6 | IMAP-provider-DPA rond (checklist D) | Peter | 🔶 keuze gemaakt, DPA-check open |
 | 7 | Verwerkingsregister §8/§9 bijgewerkt op de werkelijke cloudconfiguratie | Code | ✅ 2026-08-14 |
 | 8 | Identiteit-eerst-check afgerond genoteerd (uit F0) | Peter (uitgevoerd) + Code (genoteerd) | ✅ 2026-08-14 |
 
-**Poort dicht = 8/8 ✅ — stand nu 5/8.** Daarna pas: datamigratie tranche 2 (GCP_UITROL
+**Poort dicht = 8/8 ✅ — stand nu 6/8.** Daarna pas: datamigratie tranche 2 (GCP_UITROL
 §F1.6) en de omschakeling van het kantoor naar het productiedomein. De volgorde-
 afhankelijkheid van punt 3 met tranche 2 (CMEK-herbouw vóór de dump/restore — CMEK kan
 alleen bij instantie-aanmaak) is **opgelost**: `rlz-sql2` staat mét CMEK, vóór tranche 2.
@@ -118,16 +118,22 @@ beschrijving); hier de instellingen als poortbewijs (describe 2026-08-14):
 Bewaartermijn-samenhang: de 7-jaarsretentie op de bucket implementeert de fiscale
 bewaarplicht uit het verwerkingsregister (doc 1, per-verwerking "Bewaartermijn").
 
-## 5. Verwerkersovereenkomst Exact Reeleezee — 🔶 (Peter)
+## 5. Verwerkersovereenkomst Exact Reeleezee — ✅ bevestigd + gearchiveerd (2026-08-15)
 
 - ✅ Gearchiveerd (2026-08-14, aangeleverd door Peter, in `docs/`):
   `E-MKB-VWO-VERWERKING-VAN-PERSOONSGEGEVENS-2021.pdf` (VWO versie 1.5, 2021),
   `E-MKB-BIJLAGE-VERWERKERSOVEREENKOMST-202207.pdf` (bijlage versie 1.6, 2022),
   `Exact-Online-Voorwaarden-Nederland.pdf`.
-- ⬜ **Bevestiging Exact Reeleezee** dat déze documenten (of welke versie dan wél) op de
-  Reeleezee-abonnementen van toepassing zijn — de PDF's zijn op de Exact-MKB/Exact
-  Online-lijn geschreven (checklist C). Incl. EU-hostingbevestiging + check dat de
-  API-toegang (webservice-logins) onder dezelfde voorwaarden valt.
+- ✅ **Bevestiging Exact Reeleezee ontvangen + gearchiveerd**: Exact-support
+  (Nele Lannoo, supportcase@exact.com) bevestigt per e-mail van **2026-08-14** op de
+  expliciete vraag van Peter dat verwerkersovereenkomst **versie 1.5/1.6 de juiste
+  versie** is voor de Reeleezee-abonnementen — mail-PDF gearchiveerd 2026-08-15 als
+  `docs/avg/Bevestiging versie RLZ.pdf`.
+- ⚠️ Restpunten (geen poortblokkade — het poortpunt "bevestigd + gearchiveerd" is
+  vervuld, maar deze twee subchecks uit checklist C dekt de bevestiging niet expliciet):
+  EU-hosting/datalocatie expliciet bevestigen (staat mogelijk al in bijlage 1.6 —
+  nalopen) en checken dat de API-toegang (webservice-logins) onder dezelfde
+  voorwaarden valt. Bijgehouden in `02-subverwerkers-checklist.md` C.
 
 ## 6. IMAP-provider-DPA (checklist D) — 🔶 (Peter)
 
@@ -170,5 +176,7 @@ is onderdeel van de livegang-administratie.
 2. ~~Akkoord op CMEK-voorstel 0021~~ — **gedaan**: akkoord 2026-08-14, uitgevoerd (punt 3 ✅).
 3. **DPF-registercheck Anthropic** + Anthropic-subverwerkerslijst archiveren
    (checklist A — geen F5-poortpunt maar stap-1-punt, zelfde archiveersessie).
-4. **Reeleezee-bevestiging** toepasselijke VWO-versie (punt 5).
+4. ~~Reeleezee-bevestiging toepasselijke VWO-versie~~ — **gedaan**: bevestiging Exact
+   2026-08-14, gearchiveerd 2026-08-15 (punt 5 ✅; restpunten EU-hosting + API-voorwaarden
+   in checklist C).
 5. **facturen@-mailbox + app-wachtwoord + DPA-check mailprovider** (punt 6).

@@ -16,7 +16,7 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 |---|---|---|---|
 | Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14), ZDR-verzoek ingediend |
 | Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | 🔶 lopend — infra + regio-borging staan; CDPA-versie+datum archiveren (Peter) + CMEK-besluit 0021 (wacht op akkoord) open |
-| Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | 🔶 lopend — Exact-MKB-PDF's gearchiveerd (2026-08-14, `docs/`); toepasselijkheid op Reeleezee bevestigen (Peter) |
+| Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ✅ bevestigd — VWO 1.5/1.6 van toepassing (Exact-support 2026-08-14, `Bevestiging versie RLZ.pdf`); restpunten: EU-hosting expliciet + API-voorwaarden (sectie C) |
 | E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (F3.4) | 🔶 keuze gemaakt (bestaande kantoor-mailprovider, GCP-beslispunt 5, 2026-08-12) — DPA-check + mailbox/app-wachtwoord open |
 
 ---
@@ -136,9 +136,12 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
   (subverwerkers/beveiligingsmaatregelen), o.a.:
   - Verwerkersovereenkomst (versie 1.5, 2021): <https://files.exact.com/static/downloads/information-security/E-MKB-VWO-VERWERKING-VAN-PERSOONSGEGEVENS-2021.pdf>
   - Bijlage bij verwerkersovereenkomst (versie 1.6, 2022): <https://files.exact.com/static/downloads/information-security/E-MKB-BIJLAGE-VERWERKERSOVEREENKOMST-202207.pdf>
-- ⚠️ Deze documenten zijn op de Exact-MKB/Exact Online-lijn geschreven; **welke versie
+- ~~⚠️ Deze documenten zijn op de Exact-MKB/Exact Online-lijn geschreven; welke versie
   formeel op Reeleezee-abonnementen van toepassing is, moet bij Exact Reeleezee worden
-  nagevraagd** — de gevonden PDF's zijn mogelijk niet de actuele of niet de Reeleezee-variant.
+  nagevraagd~~ — **OPGELOST (2026-08-14):** Exact-support (Nele Lannoo,
+  supportcase@exact.com) bevestigt op Peters expliciete vraag dat **versie 1.5/1.6
+  inderdaad de juiste versie** is voor de Reeleezee-abonnementen. Mail-PDF gearchiveerd
+  2026-08-15: `docs/avg/Bevestiging versie RLZ.pdf`.
 - Kanttekening bij de rol: als het kantoor zelfstandig verantwoordelijke is en Reeleezee de
   software levert waarin het kantoor de administratie voert, is Reeleezee verwerker van het
   kantoor. De webservice-logins per administratie (waarmee déze module in RLZ schrijft)
@@ -146,9 +149,13 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 
 **Acties Peter:**
 
-- [ ] Bij Exact Reeleezee de actuele, op Reeleezee toepasselijke verwerkersovereenkomst
-      opvragen (of bevestigen dat die al in de bestaande abonnementsvoorwaarden zit) en
-      archiveren, incl. subverwerkerslijst en datalocatie (EU-hosting bevestigen).
+- [x] Toepasselijke verwerkersovereenkomst bevestigd + gearchiveerd — Exact-support
+      bevestigt 2026-08-14 dat **VWO versie 1.5 + bijlage 1.6** op de
+      Reeleezee-abonnementen van toepassing zijn (`docs/avg/Bevestiging versie RLZ.pdf`,
+      gearchiveerd 2026-08-15); de VWO-PDF's zelf al gearchiveerd 2026-08-14 (`docs/`).
+      De bijlage 1.6 bevat de subverwerkerslijst/beveiligingsmaatregelen.
+- [ ] Restpunt: EU-hosting/datalocatie expliciet bevestigen — nalopen of bijlage 1.6
+      dit al vastlegt; zo niet, kort navragen bij Exact (zelfde support-case).
 - [ ] Controleren of de API-toegang (webservice-logins) onder dezelfde voorwaarden valt.
 
 ---
