@@ -13,8 +13,14 @@
 > (2026-08-14, zie §F5-CMEK-uitvoering): Cloud SQL herbouwd als `rlz-sql2` mét CMEK,
 > bucket-default-key gezet, volledige F1-herverificatie groen, oude `rlz-sql` opgeruimd —
 > poortdossier-stand 7/8 ✅ (2026-08-15: CDPA versie 8 juni 2026 gearchiveerd — punt 1 ✅;
-> Exact-VWO-bevestiging gearchiveerd — punt 5 ✅); rest = punt 6, IMAP-provider-DPA
-> (Peter).**
+> Exact-VWO-bevestiging gearchiveerd — punt 5 ✅);
+> **F5-POORT DICHT: 8/8 ✅ (2026-08-15 — punt 6 IMAP-provider-DPA rond: Google Workspace,
+> geldende DPA = de CDPA; zie poortdossier punt 6). Tranche 2 (§F1.6) is daarmee
+> vrijgegeven — uitvoering zodra Peter het go-live-moment kiest.**
+> **F3.4 IMAP-ACTIVATIE UITGEVOERD (2026-08-15, zie §F3.4-uitvoering): live IMAP-fetch
+> gebouwd (echte imaplib-bron i.p.v. de seam-stub) + job-config in deploy.yml
+> (facturen@ak-nijenhuis.nl, imap.gmail.com SSL 993); resterende klikken: app-wachtwoord
+> in het secret (Peter), scheduler-resume + handmatige groene run + livetest.**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
 > dag te ver (commits én GCP-timestamps bewijzen 2026-08-14). Dat gold óók voor de
 > akkoorddatum van besluit 0021: correctie Peter 2026-08-14 — de "15-08" zat in de
@@ -513,10 +519,43 @@ te wachten (`F3_IMAGE_OVERRIDE`; de volgende deploy-run trekt de beelden weer ge
   telt niet mee") en de slotregel benoemt de uitgesloten geaccepteerd-telling apart; de
   exit-code is ongewijzigd (besluit 0043). Tests:
   `tests/reconciliatie/test_rapportage_teller_cli.py` (4, incl. de voorheen ongedekte
-  uitgesloten-tak). **De cutover-voorwaarde uit punt 3 is daarmee dicht.** Nog open:
-  punt 4 (IMAP-activatie ná DPA) en punt 5 (lokale dagelijkse run blijft het echte
-  vangnet tot cutover F1.6 stap 7, ná F5 — jobs draaien tot tranche 2 als
-  infrastructuurbewijs/no-op).
+  uitgesloten-tak). **De cutover-voorwaarde uit punt 3 is daarmee dicht.**
+  ~~Punt 4 (IMAP-activatie ná DPA)~~ — **UITGEVOERD 2026-08-15, zie §F3.4-uitvoering.**
+  Nog open: punt 5 (lokale dagelijkse run blijft het echte vangnet tot cutover F1.6
+  stap 7, ná F5 — jobs draaien tot tranche 2 als infrastructuurbewijs/no-op).
+
+### F3.4-uitvoering — live IMAP-intake geactiveerd (2026-08-15)
+
+Voorwaarde was checklist D (mailprovider-DPA) — **rond 2026-08-15** (poortdossier punt 6:
+Google Workspace; de geldende Workspace-DPA is de CDPA, zelfde gearchiveerde document als
+poortpunt 1). Mailbox: **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter 2026-08-15 —
+bewust kort, niet het app-domein).
+
+- **Code (dezelfde dag):** `ImapPostvakBron` is geen seam-stub meer maar de echte
+  imaplib-koppeling (`app/intake/postvak.py`): SELECT INBOX → UID SEARCH **UNSEEN** →
+  per bericht `BODY.PEEK[]` (ophalen zet géén gelezen-vlag) → verwerken → pas ná
+  geslaagde verwerking `+FLAGS \Seen`. Crash tijdens verwerking = bericht blijft
+  ongelezen = volgende run is de retry; dubbel ophalen kan nooit dubbel verwerken
+  (`verwerk_eml` is idempotent op Message-ID — zelfde codepad als de .eml-upload).
+  CLI `intake-postvak-verwerken` verwerkt als **systeem-actor** (bron `imap`), meldt
+  per bericht VERWERKT/AL-VERWERKT, en een onparsebaar bericht wordt zichtbaar
+  overgeslagen (gemarkeerd gelezen tegen een eeuwige retry-lus) mét exit 1 zodat de
+  F3.2-alert bijt. Tests: `tests/intake/test_postvak_imap.py` (9).
+- **Config-as-code (deploy.yml):** de `rlz-intake-imap`-job krijgt ná de job-lus
+  `INTAKE_IMAP_HOST=imap.gmail.com`, `INTAKE_IMAP_POORT=993`,
+  `INTAKE_IMAP_GEBRUIKER=facturen@ak-nijenhuis.nl`, `INTAKE_POSTVAK_ADRES=idem` +
+  secret `INTAKE_IMAP_WACHTWOORD:latest` (aparte update-stap: de `--set-env-vars` in
+  de lus vervangt de envset per push, de update zet ze er direct weer op).
+- **Resterende klikken (volgorde bindend):** (1) Peter zet het app-wachtwoord van de
+  mailbox in het slot: `gcloud secrets versions add INTAKE_IMAP_WACHTWOORD
+  --data-file=-` (waarde via stdin, nooit als argument/in chat) — kan meteen, maar de
+  job kan 'm pas gebruiken ná de eerstvolgende groene deploy; (2) scheduler-resume
+  `rlz-intake-imap` + één handmatige groene run; (3) livetest: één echte factuur-PDF
+  naar `facturen@ak-nijenhuis.nl`, verifiëren dat het bericht idempotent binnenkomt
+  (AI-gate staat uit → verzamelbak/handmatige route is het verwachte pad).
+  NB tot tranche 2 landt intake-mail in de **cloud-DB** (het kantoor werkt nog lokaal)
+  — bewust: dit is het infrastructuurbewijs, de lokale .eml-upload blijft het
+  werkkanaal tot de cutover.
 
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
@@ -578,8 +617,10 @@ normtekst (stand 2026-08-14, F5-voorbereiding):
 - [x] verwerkersovereenkomst **Exact Reeleezee** bevestigd + gearchiveerd — bevestiging
       Exact 2026-08-14, gearchiveerd 2026-08-15 (`docs/avg/Bevestiging versie RLZ.pdf`,
       dossier punt 5; restpunten EU-hosting + API-voorwaarden in checklist C);
-- [ ] IMAP-provider-DPA rond (checklist D, hoort bij F3) *(keuze gemaakt; DPA-check +
-      mailbox — Peter)*;
+- [x] IMAP-provider-DPA rond (checklist D, hoort bij F3) — **rond 2026-08-15**: Google
+      Workspace, mailbox `facturen@ak-nijenhuis.nl`; de geldende Workspace-DPA is de
+      **CDPA** (zelfde gearchiveerde document als het CDPA-punt hierboven — dekt
+      Workspace expliciet; dossier punt 6);
 - [x] verwerkingsregister §8/§9 bijgewerkt op de wérkelijke cloudconfiguratie
       (2026-08-14, incl. subverwerkers-checklist-consistentie + PDL in §0);
 - [x] identiteit-eerst-check afgerond genoteerd (uit F0 — dossier punt 8).
@@ -655,7 +696,7 @@ F4 (webhooks vastgoed) ── onafhankelijk spoor, kan zelfs vóór F0 (lokale b
 | 2 | Owner-account (identiteit-eerst: juridische entiteit) | F0 | **het org-beheeraccount van de PDL Powerhouse-org** — zelfde account als `vastly-504108` |
 | 3 | Productiedomein | F2 | **`app.administratiekantoornijenhuis.nl`** — domein al in bezit (geen registratie); apex vrij voor de website; **WebAuthn RP ID = het apex-domein** (F2-bouwvereiste, zie F2.3) |
 | 4 | Frontend-hosting | F2 | **same-origin uit de backend-container** (onderbouwing in F2.2) |
-| 5 | IMAP-provider boekhoudmail (+ DPA, checklist D) | F3 | **bestaande kantoor-mailprovider**; DPA-check (checklist D) vóór activering |
+| 5 | IMAP-provider boekhoudmail (+ DPA, checklist D) | F3 | **bestaande kantoor-mailprovider = Google Workspace**; DPA-check rond 2026-08-15 (= CDPA), mailbox `facturen@ak-nijenhuis.nl`, geactiveerd — §F3.4-uitvoering |
 | 6 | CMEK / client-side documentversleuteling (besluit 0003-herziening) | F5 | **memo bij F5; lean-lijn: CMEK aan bij go-live, client-side versleuteling alleen op klantverzoek** — uitkomst als platformbesluit |
 | 7 | Bucket-retentie locked/unlocked | F1 | **unlocked** starten; heroverwegen bij het WORM-export-besluit |
 | 8 | Masterkey: Cloud KMS meteen (contractnorm §2b) of Secret Manager eerst | F1 | **Cloud KMS meteen**; masterkey-continuïteit expliciet in het migratiescript |

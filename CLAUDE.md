@@ -178,12 +178,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   verzamelbak — GEBOUWD + GETEST". Eigen naamnormalisatie: "Holding" blijft onderscheidend
   (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
   tenaamstelling-signaal.
-- **E-mail intake**: één centraal adres, splitsen van multi-factuur-PDF's op factuurgrenzen,
-  toewijzen op tenaamstelling.
+- **E-mail intake**: één centraal adres — **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter
+  2026-08-15, bewust kort; Google Workspace) — splitsen van multi-factuur-PDF's op
+  factuurgrenzen, toewijzen op tenaamstelling.
   **Bouwstatus: GEBOUWD + GETEST (2026-08-07)** — .eml-upload (`POST /intake/eml` + werkvoorraad-
-  uploadzone) is het werkende kanaal, idempotent op Message-ID; de live IMAP-fetch is een
-  gemarkeerde seam (`app/intake/postvak.py` + intake_imap_*-settings) die bij de GCP-uitrol
-  geactiveerd wordt. Routing per bijlage: kapotte/NLCIUS-invalide UBL → verzamelbak (§2d-
+  uploadzone) is het werkende kanaal, idempotent op Message-ID; **de live IMAP-fetch is
+  GEACTIVEERD (F3.4, 2026-08-15)**: echte imaplib-bron in `app/intake/postvak.py` (UNSEEN +
+  BODY.PEEK, gelezen-vlag pas ná geslaagde verwerking = crash-veilige retry, zelfde
+  idempotente codepad als de upload, systeem-actor, bron `imap`), job-config in deploy.yml
+  (imap.gmail.com SSL 993, wachtwoord via secret `INTAKE_IMAP_WACHTWOORD`) — zie GCP_UITROL
+  §F3.4-uitvoering; de .eml-upload blijft het lokale werkkanaal tot tranche 2. Routing per bijlage: kapotte/NLCIUS-invalide UBL → verzamelbak (§2d-
   failsafe), VGB → genegeerd-maar-zichtbaar, VASTLY-VERKOOP → soort 'verkoopfactuur' (het
   boekpad is sinds 2026-08-09 GEBOUWD — zie "Verkoopfactuur-boekpad" hieronder; een 381-
   CreditNote zit achter de config-gate `creditnota_381_ingeschakeld` — AAN sinds 2026-08-10
