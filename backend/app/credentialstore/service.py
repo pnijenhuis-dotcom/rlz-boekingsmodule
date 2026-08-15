@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,7 +10,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, RlzCredential, RlzRechtenProbe
 from app.db.session import scoped_session
 from app.rlz.client import RlzApiError, RlzClient
-from app.rlz.credentials import BEKENDE_ADMINISTRATIES, BekendeAdministratie, open_root_client
+from app.rlz.credentials import BEKENDE_ADMINISTRATIES, BekendeAdministratie, lees_env_login, open_root_client
 from app.security.envelope import wrap_secret
 
 
@@ -86,7 +85,27 @@ def haal_credential_metadata_op(*, administratie_id: uuid.UUID) -> CredentialMet
         )
 
 
-_TE_IMPORTEREN_PREFIXEN = ("RLZ", "UNIVERSAL", "TESTADMIN", "KEMPEN", "RUBICON")
+# Legacy-vijf + de onboarding-batch 15-08 (lijst Peter; env-vorm RLZ_{PREFIX}_GEBRUIKER/-
+# _WACHTWOORD — zie app/rlz/credentials.py::lees_env_login). NIJENHUIS ontbreekt bewust
+# (401 bij de batch — geen geverifieerd adminId); RLZ (BLOw) en KEMPEN blijven staan als
+# legacy-skips zolang hun registry-rij ontbreekt.
+_TE_IMPORTEREN_PREFIXEN = (
+    "RLZ",
+    "UNIVERSAL",
+    "TESTADMIN",
+    "KEMPEN",
+    "RUBICON",
+    "ARVUM",
+    "MEYER",
+    "ELISSEN",
+    "FACILITIES",
+    "MOLENHOFB",
+    "MOLENHOFV",
+    "OIRSCHOT",
+    "OVB",
+    "VELDHOVEN",
+    "SHUTO",
+)
 
 
 def _zorg_voor_administratie(bekend: BekendeAdministratie) -> uuid.UUID:
@@ -102,20 +121,20 @@ def _zorg_voor_administratie(bekend: BekendeAdministratie) -> uuid.UUID:
 
 
 def importeer_env_credentials(*, actor_id: uuid.UUID) -> dict[str, str]:
-    """Eenmalige overzet-hulp (CLI, zie app/cli.py): de bekende .env-logins de store in. Skipt
-    (met duidelijke reden) prefixen zonder geregistreerd RLZ-adminId (BLOw, Kempen Facilities —
-    zie app/rlz/credentials.py::BEKENDE_ADMINISTRATIES, hun volledige adminId staat nergens in de
-    repo) en prefixen zonder gevulde env-vars. Maakt de platform.administratie-rij aan als die
-    nog niet bestaat (naar analogie van het bootstrap-CLI-patroon: eenmalig, CLI-only, geen
-    seed-logica in migraties)."""
+    """Overzet-hulp (CLI, zie app/cli.py): de bekende .env-logins de store in. Skipt (met
+    duidelijke reden) prefixen zonder geregistreerd RLZ-adminId (BLOw via prefix RLZ; KEMPEN =
+    de legacy-prefix van Facilities, dat sinds de onboarding-batch 15-08 onder FACILITIES
+    geregistreerd staat) en prefixen zonder gevulde env-vars. Maakt de
+    platform.administratie-rij aan als die nog niet bestaat (naar analogie van het
+    bootstrap-CLI-patroon: eenmalig, CLI-only, geen seed-logica in migraties)."""
     bekend_per_prefix = {a.prefix: a for a in BEKENDE_ADMINISTRATIES}
     resultaten: dict[str, str] = {}
     for prefix in _TE_IMPORTEREN_PREFIXEN:
-        username = os.environ.get(f"{prefix}_USERNAME")
-        wachtwoord = os.environ.get(f"{prefix}_PASSWORD")
-        if not username or not wachtwoord:
+        login = lees_env_login(prefix)
+        if login is None:
             resultaten[prefix] = "overgeslagen: env-vars niet gevuld"
             continue
+        username, wachtwoord = login
         bekend = bekend_per_prefix.get(prefix)
         if bekend is None:
             resultaten[prefix] = "overgeslagen: geen geregistreerd RLZ-adminId voor deze prefix"
