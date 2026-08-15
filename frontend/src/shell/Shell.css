@@ -116,6 +116,10 @@ h1 a {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Responsive-fix 2026-08-15: statuschips ("x vragen open", "x IBAN-accorderingen wachtend")
+   * wikkelen op smalle vensters onder elkaar i.p.v. de topbar uit te duwen — zelfde
+   * app-side wrap als .topbar hierboven (de mockup kent geen smal breakpoint). */
+  flex-wrap: wrap;
 }
 
 .adm-select select {

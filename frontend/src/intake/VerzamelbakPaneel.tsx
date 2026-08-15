@@ -72,139 +72,145 @@ export function VerzamelbakPaneel({
     <div className="panel" style={{ borderLeft: '3px solid var(--orange)' }}>
       <h2>Niet toegewezen — handmatig koppelen ({items.length})</h2>
       {fout && <div className="fout">{fout}</div>}
-      <table>
-        <tbody>
-          <tr>
-            <th>Document</th>
-            <th>Binnengekomen via</th>
-            <th>Tenaamstelling / suggestie</th>
-            <th>Toewijzen aan</th>
-            <th />
-          </tr>
-          {items.map((item) => {
-            const suggestieNaam = administraties.find((a) => a.id === item.suggestie_administratie_id)?.naam
-            const gekozen = keuze[item.document_id] ?? item.suggestie_administratie_id ?? ''
-            return (
-              <tr key={item.document_id}>
-                <td>
-                  {item.bestandsnaam}
-                  {item.soort !== 'inkoopfactuur' && (
-                    <div>
-                      <span className="chip klaar">{item.soort}</span>
-                    </div>
-                  )}
-                  {item.splitsing_voorstel && (
-                    <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-                      Splitsingsvoorstel: {item.splitsing_voorstel.length} facturen —{' '}
-                      {item.splitsing_voorstel
-                        .map((s) => `p.${s.start_pagina}-${s.eind_pagina} ${s.tenaamstelling ?? '?'}`)
-                        .join(' · ')}
-                    </div>
-                  )}
-                </td>
-                <td>
-                  {item.bron === 'email' ? 'e-mail' : 'upload'}
-                  {item.afzender_hint ? ` · ${item.afzender_hint}` : ''}
-                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{formatDatum(item.aangemaakt_op)}</div>
-                </td>
-                <td>
-                  {item.tenaamstelling ? (
-                    <span>&ldquo;{item.tenaamstelling}&rdquo;</span>
-                  ) : (
-                    <span className="chip vraag">geen tenaamstelling gelezen</span>
-                  )}
-                  {suggestieNaam && (
-                    <div>
-                      <span className="chip ai">suggestie: {suggestieNaam}</span>
-                    </div>
-                  )}
-                </td>
-                <td>
-                  {item.splitsing_voorstel ? (
-                    <span className="hint" style={{ margin: 0 }}>
-                      eerst de splitsing beoordelen
-                    </span>
-                  ) : (
-                    <select
-                      aria-label={`Toewijzen aan voor ${item.bestandsnaam}`}
-                      value={gekozen}
-                      onChange={(e) => setKeuze((k) => ({ ...k, [item.document_id]: e.target.value }))}
-                    >
-                      <option value="">— kies administratie —</option>
-                      {administraties.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.naam}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </td>
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  {item.splitsing_voorstel && item.splitsing_id ? (
-                    <>
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ padding: '5px 12px' }}
-                        disabled={bezig === item.document_id}
-                        onClick={() =>
-                          void actie(item.document_id, () =>
-                            bevestigSplitsing(
-                              item.splitsing_id!,
-                              item.splitsing_voorstel!.map((s) => ({
-                                start_pagina: s.start_pagina,
-                                eind_pagina: s.eind_pagina,
-                                tenaamstelling: s.tenaamstelling,
-                              })),
-                            ),
-                          )
-                        }
+      {/* .tabel-scroll (responsive-fix 2026-08-15): vijf kolommen + toewijzen-select en
+          actieknoppen maken de tabel op smalle vensters breder dan het paneel — intern
+          scrollen i.p.v. door de paneelrand klippen (zelfde patroon als de
+          boekingsregels-tabel; de mockup kent geen smal breakpoint). */}
+      <div className="tabel-scroll">
+        <table>
+          <tbody>
+            <tr>
+              <th>Document</th>
+              <th>Binnengekomen via</th>
+              <th>Tenaamstelling / suggestie</th>
+              <th>Toewijzen aan</th>
+              <th />
+            </tr>
+            {items.map((item) => {
+              const suggestieNaam = administraties.find((a) => a.id === item.suggestie_administratie_id)?.naam
+              const gekozen = keuze[item.document_id] ?? item.suggestie_administratie_id ?? ''
+              return (
+                <tr key={item.document_id}>
+                  <td>
+                    {item.bestandsnaam}
+                    {item.soort !== 'inkoopfactuur' && (
+                      <div>
+                        <span className="chip klaar">{item.soort}</span>
+                      </div>
+                    )}
+                    {item.splitsing_voorstel && (
+                      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+                        Splitsingsvoorstel: {item.splitsing_voorstel.length} facturen —{' '}
+                        {item.splitsing_voorstel
+                          .map((s) => `p.${s.start_pagina}-${s.eind_pagina} ${s.tenaamstelling ?? '?'}`)
+                          .join(' · ')}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    {item.bron === 'email' ? 'e-mail' : 'upload'}
+                    {item.afzender_hint ? ` · ${item.afzender_hint}` : ''}
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{formatDatum(item.aangemaakt_op)}</div>
+                  </td>
+                  <td>
+                    {item.tenaamstelling ? (
+                      <span>&ldquo;{item.tenaamstelling}&rdquo;</span>
+                    ) : (
+                      <span className="chip vraag">geen tenaamstelling gelezen</span>
+                    )}
+                    {suggestieNaam && (
+                      <div>
+                        <span className="chip ai">suggestie: {suggestieNaam}</span>
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    {item.splitsing_voorstel ? (
+                      <span className="hint" style={{ margin: 0 }}>
+                        eerst de splitsing beoordelen
+                      </span>
+                    ) : (
+                      <select
+                        aria-label={`Toewijzen aan voor ${item.bestandsnaam}`}
+                        value={gekozen}
+                        onChange={(e) => setKeuze((k) => ({ ...k, [item.document_id]: e.target.value }))}
                       >
-                        Splitsing bevestigen ✓
-                      </button>{' '}
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        style={{ padding: '5px 12px' }}
-                        disabled={bezig === item.document_id}
-                        onClick={() =>
-                          void actie(item.document_id, () => wijsSplitsingAf(item.splitsing_id!, null))
-                        }
-                      >
-                        Is één factuur
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ padding: '5px 12px' }}
-                        disabled={!gekozen || bezig === item.document_id}
-                        onClick={() => void actie(item.document_id, () => wijsToe(item.document_id, gekozen))}
-                      >
-                        Toewijzen ✓
-                      </button>{' '}
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        style={{ padding: '5px 12px' }}
-                        disabled={bezig === item.document_id}
-                        onClick={() => {
-                          setReden('')
-                          setRedenVoor(item)
-                        }}
-                      >
-                        Hoort niet bij ons
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+                        <option value="">— kies administratie —</option>
+                        {administraties.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.naam}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {item.splitsing_voorstel && item.splitsing_id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ padding: '5px 12px' }}
+                          disabled={bezig === item.document_id}
+                          onClick={() =>
+                            void actie(item.document_id, () =>
+                              bevestigSplitsing(
+                                item.splitsing_id!,
+                                item.splitsing_voorstel!.map((s) => ({
+                                  start_pagina: s.start_pagina,
+                                  eind_pagina: s.eind_pagina,
+                                  tenaamstelling: s.tenaamstelling,
+                                })),
+                              ),
+                            )
+                          }
+                        >
+                          Splitsing bevestigen ✓
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          style={{ padding: '5px 12px' }}
+                          disabled={bezig === item.document_id}
+                          onClick={() =>
+                            void actie(item.document_id, () => wijsSplitsingAf(item.splitsing_id!, null))
+                          }
+                        >
+                          Is één factuur
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ padding: '5px 12px' }}
+                          disabled={!gekozen || bezig === item.document_id}
+                          onClick={() => void actie(item.document_id, () => wijsToe(item.document_id, gekozen))}
+                        >
+                          Toewijzen ✓
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          style={{ padding: '5px 12px' }}
+                          disabled={bezig === item.document_id}
+                          onClick={() => {
+                            setReden('')
+                            setRedenVoor(item)
+                          }}
+                        >
+                          Hoort niet bij ons
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       <div className="hint">
         Alles wat de intake niet eenduidig aan een administratie kan koppelen komt hier terecht — er raakt
         nooit iets kwijt. Elke handmatige toewijzing wordt onthouden: dezelfde tenaamstelling of afzender

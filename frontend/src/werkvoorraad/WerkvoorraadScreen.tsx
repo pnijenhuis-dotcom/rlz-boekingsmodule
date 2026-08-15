@@ -427,7 +427,18 @@ function Klantpagina({
             <span style={{ fontSize: 12 }}>Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst.</span>
             <br />
             <label
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 8 }}
+              // flexWrap + maxWidth (responsive-fix 2026-08-15): op smalle vensters wikkelt de
+              // select onder het label i.p.v. buiten de uploadzone te steken.
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+                maxWidth: '100%',
+                gap: 6,
+                fontSize: 12,
+                marginTop: 8,
+              }}
               onClick={(e) => e.stopPropagation()}
             >
               Documentsoort
@@ -505,19 +516,21 @@ function Klantpagina({
         )}
         {herstellenFout && <FoutMelding melding={herstellenFout} />}
         {documenten === null && !lijstFout && (
-          <table aria-busy="true">
-            <tbody>
-              {Array.from({ length: 4 }, (_, r) => (
-                <tr key={r} aria-hidden="true">
-                  {Array.from({ length: 6 }, (_, k) => (
-                    <td key={k}>
-                      <span className="skeleton" style={{ width: k === 0 ? '70%' : '50%' }} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="tabel-scroll">
+            <table aria-busy="true">
+              <tbody>
+                {Array.from({ length: 4 }, (_, r) => (
+                  <tr key={r} aria-hidden="true">
+                    {Array.from({ length: 6 }, (_, k) => (
+                      <td key={k}>
+                        <span className="skeleton" style={{ width: k === 0 ? '70%' : '50%' }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         {documenten !== null && documenten.length === 0 && (
           <p className="hint">
@@ -529,127 +542,133 @@ function Klantpagina({
           <p className="hint">Geen documenten die aan de zoekterm of het statusfilter voldoen.</p>
         )}
         {gefilterd !== null && gefilterd.length > 0 && (
-          <table>
-            <tbody>
-              <tr>
-                <th>Document</th>
-                <th>Leverancier</th>
-                <th>Factuurdatum</th>
-                <th className="amount">Bedrag (incl. btw)</th>
-                <th>Status</th>
-                <th>Toegewezen</th>
-                <th />
-              </tr>
-              {gefilterd.map((d) => {
-                const isVerwijderd = d.status === 'verwijderd'
-                // Backend blokkeert dit al hard (bewaarplicht/lopende accordering) — de UI mag de
-                // onmogelijke actie dan niet eens aanbieden, ook niet als disabled-knop.
-                const kanNietVerwijderdWorden = d.status === 'geboekt' || d.status === 'ter_accordering'
-                // Mockup: klik op een vraag-regel opent de vráág, niet het controlescherm — de
-                // vragen-view gefilterd op dit document. Een verwijderd document houdt de normale
-                // detailnavigatie (herstel-route), nooit een klik naar een niet-actiefbare vraag.
-                const isVraagRegel = d.status === 'vraag_open' && !isVerwijderd
-                // Omzetmodule: een kassarapport opent het omzetreview-scherm (mockup
-                // #omzetreview), niet het inkoop-controlescherm.
-                const isKassarapport = d.soort === 'kassarapport'
-                // Verkoopmodule: een Vastly-verkoopfactuur (VASTLY-VERKOOP-UBL, §2d) opent het
-                // verkoopreview-scherm.
-                const isVerkoopfactuur = d.soort === 'verkoopfactuur'
-                // Waarborg-route (§2d v1.11): een VASTLY-WAARBORG-bericht opent het
-                // waarborg-reviewscherm (memoriaal-boekpad).
-                const isWaarborg = d.soort === 'waarborg'
-                return (
-                  <tr
-                    key={d.id}
-                    className="clickable"
-                    onClick={() =>
-                      navigate(
-                        isVraagRegel
-                          ? `/vragen?administratie=${administratieId}&document=${d.id}`
-                          : isKassarapport
-                            ? `/omzet/${administratieId}/${d.id}`
-                            : isVerkoopfactuur
-                              ? `/verkoop/${administratieId}/${d.id}`
-                              : isWaarborg
-                                ? `/waarborg/${administratieId}/${d.id}`
-                                : `/documenten/${administratieId}/${d.id}`,
-                      )
-                    }
-                  >
-                    <td>
-                      {d.bestandsnaam}
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                        {d.bron} · {formatDatum(d.aangemaakt_op)}
-                      </div>
-                    </td>
-                    <td>{d.leverancier ?? '—'}</td>
-                    <td>{d.factuurdatum ? formatDatumKort(d.factuurdatum) : '—'}</td>
-                    <td className="amount">{formatBedrag(d.totaalbedrag)}</td>
-                    <td>
-                      {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
-                      {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}
-                      {isWaarborg && <span className="chip klaar">waarborg</span>}{' '}
-                      <StatusChip status={d.status} />
-                      {d.automatisch_geboekt && (
-                        <>
-                          {' '}
-                          <span className="chip geheugen">automatisch</span>
-                        </>
-                      )}
-                      {d.afwijzing && (
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                          reden: &ldquo;{d.afwijzing.reden}&rdquo; — {naamVoor(d.afwijzing.afgewezen_door)}
+          // .tabel-scroll (responsive-fix 2026-08-15): zeven kolommen + nowrap-statuschips
+          // maken de tabel op smalle vensters breder dan het paneel — intern scrollen i.p.v.
+          // door de paneelrand klippen (zelfde patroon als de boekingsregels-tabel; de mockup
+          // kent geen smal breakpoint).
+          <div className="tabel-scroll">
+            <table>
+              <tbody>
+                <tr>
+                  <th>Document</th>
+                  <th>Leverancier</th>
+                  <th>Factuurdatum</th>
+                  <th className="amount">Bedrag (incl. btw)</th>
+                  <th>Status</th>
+                  <th>Toegewezen</th>
+                  <th />
+                </tr>
+                {gefilterd.map((d) => {
+                  const isVerwijderd = d.status === 'verwijderd'
+                  // Backend blokkeert dit al hard (bewaarplicht/lopende accordering) — de UI mag de
+                  // onmogelijke actie dan niet eens aanbieden, ook niet als disabled-knop.
+                  const kanNietVerwijderdWorden = d.status === 'geboekt' || d.status === 'ter_accordering'
+                  // Mockup: klik op een vraag-regel opent de vráág, niet het controlescherm — de
+                  // vragen-view gefilterd op dit document. Een verwijderd document houdt de normale
+                  // detailnavigatie (herstel-route), nooit een klik naar een niet-actiefbare vraag.
+                  const isVraagRegel = d.status === 'vraag_open' && !isVerwijderd
+                  // Omzetmodule: een kassarapport opent het omzetreview-scherm (mockup
+                  // #omzetreview), niet het inkoop-controlescherm.
+                  const isKassarapport = d.soort === 'kassarapport'
+                  // Verkoopmodule: een Vastly-verkoopfactuur (VASTLY-VERKOOP-UBL, §2d) opent het
+                  // verkoopreview-scherm.
+                  const isVerkoopfactuur = d.soort === 'verkoopfactuur'
+                  // Waarborg-route (§2d v1.11): een VASTLY-WAARBORG-bericht opent het
+                  // waarborg-reviewscherm (memoriaal-boekpad).
+                  const isWaarborg = d.soort === 'waarborg'
+                  return (
+                    <tr
+                      key={d.id}
+                      className="clickable"
+                      onClick={() =>
+                        navigate(
+                          isVraagRegel
+                            ? `/vragen?administratie=${administratieId}&document=${d.id}`
+                            : isKassarapport
+                              ? `/omzet/${administratieId}/${d.id}`
+                              : isVerkoopfactuur
+                                ? `/verkoop/${administratieId}/${d.id}`
+                                : isWaarborg
+                                  ? `/waarborg/${administratieId}/${d.id}`
+                                  : `/documenten/${administratieId}/${d.id}`,
+                        )
+                      }
+                    >
+                      <td>
+                        {d.bestandsnaam}
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                          {d.bron} · {formatDatum(d.aangemaakt_op)}
                         </div>
-                      )}
-                      {d.mogelijk_duplicaat_van && (
-                        <div style={{ marginTop: 4 }}>
-                          <span className="chip vraag">Mogelijk duplicaat</span>{' '}
-                          <Link
-                            to={`/documenten/${administratieId}/${d.mogelijk_duplicaat_van.document_id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ fontSize: 11.5 }}
-                          >
-                            van {d.mogelijk_duplicaat_van.bestandsnaam} ({formatDatumKort(d.mogelijk_duplicaat_van.aangemaakt_op)})
-                          </Link>
-                        </div>
-                      )}
-                    </td>
-                    <td>{d.toegewezen_aan ? naamVoor(d.toegewezen_aan) : '—'}</td>
-                    <td>
-                      {isVerwijderd ? (
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          disabled={herstellenBezig === d.id}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void herstellen(d.id)
-                          }}
-                        >
-                          {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
-                        </button>
-                      ) : (
-                        !kanNietVerwijderdWorden && (
+                      </td>
+                      <td>{d.leverancier ?? '—'}</td>
+                      <td>{d.factuurdatum ? formatDatumKort(d.factuurdatum) : '—'}</td>
+                      <td className="amount">{formatBedrag(d.totaalbedrag)}</td>
+                      <td>
+                        {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
+                        {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}
+                        {isWaarborg && <span className="chip klaar">waarborg</span>}{' '}
+                        <StatusChip status={d.status} />
+                        {d.automatisch_geboekt && (
+                          <>
+                            {' '}
+                            <span className="chip geheugen">automatisch</span>
+                          </>
+                        )}
+                        {d.afwijzing && (
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                            reden: &ldquo;{d.afwijzing.reden}&rdquo; — {naamVoor(d.afwijzing.afgewezen_door)}
+                          </div>
+                        )}
+                        {d.mogelijk_duplicaat_van && (
+                          <div style={{ marginTop: 4 }}>
+                            <span className="chip vraag">Mogelijk duplicaat</span>{' '}
+                            <Link
+                              to={`/documenten/${administratieId}/${d.mogelijk_duplicaat_van.document_id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ fontSize: 11.5 }}
+                            >
+                              van {d.mogelijk_duplicaat_van.bestandsnaam} ({formatDatumKort(d.mogelijk_duplicaat_van.aangemaakt_op)})
+                            </Link>
+                          </div>
+                        )}
+                      </td>
+                      <td>{d.toegewezen_aan ? naamVoor(d.toegewezen_aan) : '—'}</td>
+                      <td>
+                        {isVerwijderd ? (
                           <button
                             type="button"
                             className="icon-btn"
-                            aria-label="Document verwijderen"
+                            disabled={herstellenBezig === d.id}
                             onClick={(e) => {
                               e.stopPropagation()
-                              setVerwijderenFout(null)
-                              setVerwijderenVoor(d)
+                              void herstellen(d.id)
                             }}
                           >
-                            🗑
+                            {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
                           </button>
-                        )
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                        ) : (
+                          !kanNietVerwijderdWorden && (
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              aria-label="Document verwijderen"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setVerwijderenFout(null)
+                                setVerwijderenVoor(d)
+                              }}
+                            >
+                              🗑
+                            </button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

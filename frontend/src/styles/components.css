@@ -256,6 +256,15 @@ textarea {
   color: var(--text);
 }
 
+/* 1:1 uit de mockup-designpass-laag ("Uniforme dropdowns": max-width: 100% +
+ * text-overflow: ellipsis) — ontbrak hier tot de responsive-fix 2026-08-15, waardoor een
+ * select met brede opties (bv. "Kassarapport (omzetboeking)") op smalle vensters buiten zijn
+ * container stak in plaats van af te kappen met een ellipsis. */
+select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
 /* De generieke width: 100% hierboven geldt anders óók voor checkboxes — die duwde het label
  * "Splitsen per regel" over drie regels (Peters visuele controle 2026-07-11). */
 input[type='checkbox'] {

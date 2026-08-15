@@ -118,72 +118,78 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
         />
       )}
       {!fout && (
-        <table>
-          <tbody>
-            <tr>
-              <th>Administratie</th>
-              <th>Te controleren</th>
-              <th>Klaar om te boeken</th>
-              <th>Vragen</th>
-              <th>Afgewezen</th>
-              <th>Bij klant (goedkeuring)</th>
-              <th>Bank</th>
-              {toonSpiegel && <th>Spiegel-taken</th>}
-            </tr>
-            {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
-            {zichtbaar.map((k) => (
-              <tr
-                key={k.administratie_id}
-                className="clickable"
-                onClick={() => navigate(`/?administratie=${k.administratie_id}`)}
-              >
-                <td>
-                  <b>{k.naam}</b>{' '}
-                  {k.iban_wachtend > 0 && (
-                    <span className="chip blokkerend">
-                      {k.iban_wachtend} IBAN-{k.iban_wachtend === 1 ? 'accordering' : 'accorderingen'}
-                    </span>
-                  )}
-                </td>
-                <td>
-                  <Teller waarde={k.te_controleren} chipKlasse="ai" />
-                </td>
-                <td>
-                  <Teller waarde={k.klaar_om_te_boeken} chipKlasse="klaar" />
-                </td>
-                <td
-                  onClick={(e) => {
-                    if (k.vragen === 0) return
-                    e.stopPropagation()
-                    navigate(`/vragen?administratie=${k.administratie_id}`)
-                  }}
-                >
-                  <Teller waarde={k.vragen} chipKlasse="vraag" />
-                </td>
-                <td>
-                  <Teller waarde={k.afgewezen} chipKlasse="vraag" />
-                </td>
-                <td>
-                  <Teller waarde={k.bij_klant} chipKlasse="geheugen" />
-                </td>
-                <td
-                  onClick={(e) => {
-                    if (!k.bank_open) return
-                    e.stopPropagation()
-                    navigate(`/bank/${k.administratie_id}`)
-                  }}
-                >
-                  {k.bank_open === null ? '—' : <Teller waarde={k.bank_open} chipKlasse="ai" />}
-                </td>
-                {toonSpiegel && (
-                  <td title="Open spiegel-taken (doorbelasting): bron geboekt, spiegel-inkoopfactuur in de doel-administratie nog niet">
-                    {k.spiegel_taken === null ? '—' : <Teller waarde={k.spiegel_taken} chipKlasse="vraag" />}
-                  </td>
-                )}
+        // .tabel-scroll (responsive-fix 2026-08-15): de tellerkolommen + nowrap-chips maken de
+        // tabel op smalle vensters breder dan het paneel — dan scrolt de tabel intern i.p.v.
+        // door de paneelrand te klippen (zelfde patroon als de boekingsregels-tabel; de mockup
+        // kent geen smal breakpoint).
+        <div className="tabel-scroll">
+          <table>
+            <tbody>
+              <tr>
+                <th>Administratie</th>
+                <th>Te controleren</th>
+                <th>Klaar om te boeken</th>
+                <th>Vragen</th>
+                <th>Afgewezen</th>
+                <th>Bij klant (goedkeuring)</th>
+                <th>Bank</th>
+                {toonSpiegel && <th>Spiegel-taken</th>}
               </tr>
-            ))}
-          </tbody>
-        </table>
+              {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
+              {zichtbaar.map((k) => (
+                <tr
+                  key={k.administratie_id}
+                  className="clickable"
+                  onClick={() => navigate(`/?administratie=${k.administratie_id}`)}
+                >
+                  <td>
+                    <b>{k.naam}</b>{' '}
+                    {k.iban_wachtend > 0 && (
+                      <span className="chip blokkerend">
+                        {k.iban_wachtend} IBAN-{k.iban_wachtend === 1 ? 'accordering' : 'accorderingen'}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    <Teller waarde={k.te_controleren} chipKlasse="ai" />
+                  </td>
+                  <td>
+                    <Teller waarde={k.klaar_om_te_boeken} chipKlasse="klaar" />
+                  </td>
+                  <td
+                    onClick={(e) => {
+                      if (k.vragen === 0) return
+                      e.stopPropagation()
+                      navigate(`/vragen?administratie=${k.administratie_id}`)
+                    }}
+                  >
+                    <Teller waarde={k.vragen} chipKlasse="vraag" />
+                  </td>
+                  <td>
+                    <Teller waarde={k.afgewezen} chipKlasse="vraag" />
+                  </td>
+                  <td>
+                    <Teller waarde={k.bij_klant} chipKlasse="geheugen" />
+                  </td>
+                  <td
+                    onClick={(e) => {
+                      if (!k.bank_open) return
+                      e.stopPropagation()
+                      navigate(`/bank/${k.administratie_id}`)
+                    }}
+                  >
+                    {k.bank_open === null ? '—' : <Teller waarde={k.bank_open} chipKlasse="ai" />}
+                  </td>
+                  {toonSpiegel && (
+                    <td title="Open spiegel-taken (doorbelasting): bron geboekt, spiegel-inkoopfactuur in de doel-administratie nog niet">
+                      {k.spiegel_taken === null ? '—' : <Teller waarde={k.spiegel_taken} chipKlasse="vraag" />}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {klanten !== null && !fout && zichtbaar.length === 0 && (
         <p className="hint">
