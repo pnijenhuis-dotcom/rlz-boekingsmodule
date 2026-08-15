@@ -11,6 +11,7 @@ from app.accordering.router import router as accordering_router
 from app.auth.router import router as auth_router
 from app.bank.router import router as bank_router
 from app.beheer.router import router as beheer_router
+from app.berichten.router import router as berichten_router
 from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
 from app.db import session as db_session
@@ -146,6 +147,7 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(accordering_router)
+app.include_router(berichten_router)
 app.include_router(bank_router)
 app.include_router(documenten_router)
 app.include_router(sync_router)

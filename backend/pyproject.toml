@@ -29,6 +29,10 @@ dependencies = [
     # clients nooit aangeraakt (lazy imports, tests draaien tegen fakes).
     "google-cloud-storage>=2.18",
     "google-cloud-kms>=3.0",
+    # Accordeur-notificaties (2026-08-15): Web Push-verzending (VAPID + RFC 8291-encryptie).
+    # Mozilla-services-bibliotheek, MPL-2.0, de referentie-implementatie in Python; trekt
+    # py-vapid mee (gebruikt door scripts/genereer_vapid_sleutels.py).
+    "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]

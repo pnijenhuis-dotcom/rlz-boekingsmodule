@@ -774,6 +774,16 @@ def trek_apparaat_in(
             .where(RefreshToken.apparaat_id == apparaat_id, RefreshToken.ingetrokken_op.is_(None))
             .values(ingetrokken_op=now)
         )
+        # Kill-switch dekt óók het pushkanaal (berichten-bouwsteen, migratie 0050): een
+        # ingetrokken apparaat mag geen notificaties meer ontvangen. Lokale import: berichten
+        # importeert niets uit auth, maar zo blijft de laadvolgorde sowieso ontkoppeld.
+        from app.berichten.models import PushSubscriptie
+
+        session.execute(
+            update(PushSubscriptie)
+            .where(PushSubscriptie.apparaat_id == apparaat_id, PushSubscriptie.ingetrokken_op.is_(None))
+            .values(ingetrokken_op=now, ingetrokken_reden="kill_switch")
+        )
         record_audit_event(
             session,
             actor_id=actor_id,

@@ -19,6 +19,11 @@ class CurrentGebruiker:
     id: uuid.UUID
     rol: GebruikerRol
     status: GebruikerStatus
+    # Apparaat-claim uit het access-token (passkey-sessie, migratie 0040) — None bij een
+    # TOTP-sessie zonder apparaatbinding. Gebruikt door de push-subscriptie-endpoints
+    # (berichten-bouwsteen): een subscriptie hoort bij precies dit geregistreerde apparaat,
+    # zodat de kill-switch 'm mee intrekt.
+    apparaat_id: uuid.UUID | None = None
 
 
 def get_current_gebruiker(
@@ -59,7 +64,12 @@ def get_current_gebruiker(
     rol_waarde, status_waarde = row
     if status_waarde != GebruikerStatus.ACTIEF.value:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account niet actief")
-    return CurrentGebruiker(id=gebruiker_id, rol=GebruikerRol(rol_waarde), status=GebruikerStatus(status_waarde))
+    return CurrentGebruiker(
+        id=gebruiker_id,
+        rol=GebruikerRol(rol_waarde),
+        status=GebruikerStatus(status_waarde),
+        apparaat_id=uuid.UUID(apparaat_claim) if apparaat_claim is not None else None,
+    )
 
 
 def require_beheerder(current: CurrentGebruiker = Depends(get_current_gebruiker)) -> CurrentGebruiker:

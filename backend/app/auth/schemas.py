@@ -21,6 +21,11 @@ class UitnodigingAanmakenResponse(BaseModel):
     gebruiker_id: uuid.UUID
     token: str
     verloopt_op: datetime
+    # Mailkanaal (berichten-bouwsteen 2026-08-15): de uitnodiging gaat per mail; lukt dat niet
+    # (niet geconfigureerd of verzendfout) dan is dat ZICHTBAAR en blijft handmatig link delen
+    # de terugval — de link (token) zit hoe dan ook in deze respons.
+    mail_verzonden: bool = False
+    mail_fout: str | None = None
 
 
 class UitnodigingAccepterenRequest(StrikteInvoer):

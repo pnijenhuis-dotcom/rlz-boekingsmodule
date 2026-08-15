@@ -11,6 +11,7 @@ from app.auth import service
 from app.bank import reconciliatie as bank_reconciliatie
 from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
+from app.berichten import herinneringen
 from app.credentialstore import service as credentialstore_service
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
@@ -585,6 +586,27 @@ def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
     return 1 if fouten else 0
 
 
+def _accordeur_herinneringen(args: argparse.Namespace) -> int:
+    """Dagelijkse 09:00-herinnering (Cloud Scheduler-job `rlz-accordeur-herinneringen`,
+    mockup-besluit "dagelijkse push 09:00 alleen bij >0 open"). Idempotent per dag per
+    accordeur; 0 open werk = exit 0 met zichtbare tellers (F3-les: een niets-te-doen-run is
+    geen failure). Exit 1 alleen bij échte fouten (verzending mislukt, bezig-blijver,
+    volumerem) — dan bijt de F3.2-job-failure-alert."""
+    rapport = herinneringen.verstuur_dagelijkse_herinneringen()
+    for fout in rapport.fouten:
+        print(f"FOUT  {fout}" if rapport.is_fout else f"LET-OP {fout}", file=sys.stderr)
+    print(
+        "Herinneringen: "
+        f"{rapport.verzonden_push} push, {rapport.verzonden_mail} e-mail, "
+        f"{rapport.al_verzonden} al verzonden vandaag, "
+        f"{rapport.overgeslagen_geen_kanaal} overgeslagen (geen kanaal), "
+        f"{rapport.geen_open_werk} accordeur(s) zonder open werk, "
+        f"{rapport.mislukt} mislukt, {rapport.onafgemaakt} onafgemaakt, "
+        f"{rapport.subscripties_vervallen} subscriptie(s) vervallen gemarkeerd."
+    )
+    return 1 if rapport.is_fout else 0
+
+
 def _zet_afgeletterd_event(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Tier-vlag voor het factuur_afgeletterd-event (koppelcontract §3 v1.11 punt 5, besluit
     0018) — default UIT; activatie wacht op vastgoeds verwerker."""
@@ -866,6 +888,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "accordeur-herinneringen",
+        help="Dagelijkse accordeur-herinnering (09:00 Europe/Amsterdam): push of e-mail bij >0 "
+        "openstaande accorderingen — idempotent per dag per accordeur, volumerem, fail-zichtbaar.",
+    )
+
+    subparsers.add_parser(
         "omzet-reconciliatie",
         help="Vergelijk omzet-boekingen (verkoopfactuur + kostprijsmemoriaal) met de werkelijke "
         "RLZ-staat en rapporteer afwijkingen, incl. half-geboekte boekingen.",
@@ -1070,6 +1098,8 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_reconciliatie_uitsluiting(args, uitgesloten=False)
     if args.commando == "intake-postvak-verwerken":
         return _intake_postvak_verwerken(args)
+    if args.commando == "accordeur-herinneringen":
+        return _accordeur_herinneringen(args)
     if args.commando == "bank-autoboeken-aan":
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":

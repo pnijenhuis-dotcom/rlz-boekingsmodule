@@ -7,6 +7,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth import schemas, service, voorwaarden, webauthn_service
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder
+from app.berichten import mail as berichten_mail
+from app.berichten import uitnodigingsmail
 from app.config import settings
 from app.db.models import GebruikerRol
 
@@ -62,11 +64,28 @@ def uitnodiging_aanmaken(
         rol=payload.rol,
         administratie_ids=payload.administratie_ids,
     )
+    # Uitnodiging per mail (berichten-bouwsteen 2026-08-15). Fail-zichtbaar, niet fail-hard:
+    # de uitnodiging bestaat al (en de link zit in de respons), dus een mailfout mag het
+    # aanmaken niet terugdraaien — hij moet alleen nooit stil zijn.
+    mail_verzonden = False
+    mail_fout: str | None = None
+    try:
+        uitnodigingsmail.verstuur_uitnodigingsmail(
+            naam=payload.naam,
+            e_mail=payload.e_mail,
+            token=resultaat.token,
+            verloopt_op=resultaat.verloopt_op,
+        )
+        mail_verzonden = True
+    except berichten_mail.MailFout as exc:
+        mail_fout = str(exc)
     return schemas.UitnodigingAanmakenResponse(
         uitnodiging_id=resultaat.uitnodiging_id,
         gebruiker_id=resultaat.gebruiker_id,
         token=resultaat.token,
         verloopt_op=resultaat.verloopt_op,
+        mail_verzonden=mail_verzonden,
+        mail_fout=mail_fout,
     )
 
 

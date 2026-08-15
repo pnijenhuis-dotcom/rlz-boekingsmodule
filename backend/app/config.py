@@ -238,6 +238,41 @@ class Settings(BaseSettings):
     intake_imap_wachtwoord: str | None = None
     intake_postvak_adres: str | None = None
 
+    # Berichten-bouwsteen (accordeur-notificaties, 2026-08-15): gedeeld uitgaand mailkanaal via
+    # de bestaande Google Workspace (SMTP + app-wachtwoord — zelfde provider-lijn als de
+    # IMAP-intake, DPA rond 2026-08-15). Bedient de dagelijkse accordeur-herinnering én de
+    # uitnodigingsflow (accordeur- en kantooruitnodigingen per mail i.p.v. handmatig link
+    # kopiëren). None = niet geconfigureerd (lokale dev): verzenden faalt dan ZICHTBAAR
+    # (MailNietGeconfigureerd) — nooit stil. Wachtwoord via Secret Manager
+    # (BERICHTEN_SMTP_WACHTWOORD). Afzenderadres: voorstel berichten@ak-nijenhuis.nl —
+    # adreskeuze ligt als vraag bij Peter (zie BESLISSINGEN "Accordeur-notificaties").
+    berichten_smtp_host: str | None = None
+    berichten_smtp_poort: int = 465
+    berichten_smtp_gebruiker: str | None = None
+    berichten_smtp_wachtwoord: str | None = None
+    berichten_afzender: str | None = None  # default: berichten_smtp_gebruiker
+    berichten_afzender_naam: str = "Administratiekantoor Nijenhuis"
+
+    # Basis-URL van de app voor links in uitgaande berichten (uitnodigingslink, PWA-deep-link).
+    # Dev = de Vite-dev-server; productie = het https-domein (F2 domain mapping). HARD PRINCIPE
+    # (BESLISSINGEN "Accordeur-notificaties"): een maillink is altijd een deep-link naar de app
+    # — de auth-cadans (passkey bij opening) blijft de poort; goedkeuren-vanuit-de-mail (met of
+    # zonder token) bestaat bewust niet.
+    app_basis_url: str = "http://localhost:5173"
+
+    # Web Push (accordeur-PWA): VAPID-sleutelpaar (scripts/genereer_vapid_sleutels.py — private
+    # key via Secret Manager PUSH_VAPID_PRIVATE_KEY, public key is geen geheim). Niet gezet =
+    # push niet geconfigureerd: subscriben faalt zichtbaar en de herinnering valt terug op
+    # e-mail. `push_vapid_onderwerp` is de contact-claim richting de push-diensten (RFC 8292).
+    push_vapid_private_key: str | None = None
+    push_vapid_public_key: str | None = None
+    push_vapid_onderwerp: str = "mailto:berichten@ak-nijenhuis.nl"
+
+    # Volumerem op de herinnering-job (noodrem-patroon, zelfde grondhouding als
+    # max_boekingen_per_dag_per_administratie): max. verzonden berichten per run — daarboven
+    # stopt de run zichtbaar (exit 1 -> F3.2-job-failure-alert), nooit stil doorpompen.
+    herinnering_max_berichten_per_run: int = 50
+
     # CreditNote-381-herkenning (koppelcontract §2d-creditnota's v1.11): config-gate.
     # AAN sinds 2026-08-10 (blok D grote opdracht): de golden-case-verificatie tegen de échte
     # Vastly-UBL's is geslaagd (intake-routing + creditboekpad + storno, zie

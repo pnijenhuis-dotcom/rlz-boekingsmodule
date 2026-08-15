@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0049
+-- Migratie-head bij deze dump: 0050
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1346,6 +1346,25 @@ CREATE TABLE platform.accordeur_akkoord (
 
 
 --
+-- Name: accordeur_herinnering; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.accordeur_herinnering (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    datum date NOT NULL,
+    aantal_open integer NOT NULL,
+    status text DEFAULT 'bezig'::text NOT NULL,
+    kanaal text,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verzonden_op timestamp with time zone,
+    detail jsonb,
+    CONSTRAINT ck_accordeur_herinnering_kanaal CHECK (((kanaal IS NULL) OR (kanaal = ANY (ARRAY['push'::text, 'e-mail'::text])))),
+    CONSTRAINT ck_accordeur_herinnering_status CHECK ((status = ANY (ARRAY['bezig'::text, 'verzonden'::text, 'mislukt'::text, 'overgeslagen'::text])))
+);
+
+
+--
 -- Name: administratie; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -1550,6 +1569,25 @@ CREATE TABLE platform.intake_instelling (
     gewijzigd_door uuid,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT intake_instelling_singleton CHECK (singleton)
+);
+
+
+--
+-- Name: push_subscriptie; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.push_subscriptie (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    apparaat_id uuid NOT NULL,
+    endpoint text NOT NULL,
+    p256dh text NOT NULL,
+    auth text NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    laatst_gebruikt_op timestamp with time zone,
+    ingetrokken_op timestamp with time zone,
+    ingetrokken_reden text,
+    CONSTRAINT ck_push_subscriptie_reden CHECK (((ingetrokken_reden IS NULL) OR (ingetrokken_reden = ANY (ARRAY['gebruiker'::text, 'kill_switch'::text, 'vervallen'::text]))))
 );
 
 
@@ -2118,6 +2156,14 @@ ALTER TABLE ONLY platform.accordeur_akkoord
 
 
 --
+-- Name: accordeur_herinnering accordeur_herinnering_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_herinnering
+    ADD CONSTRAINT accordeur_herinnering_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: administratie administratie_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -2230,6 +2276,22 @@ ALTER TABLE ONLY platform.intake_instelling
 
 
 --
+-- Name: push_subscriptie push_subscriptie_endpoint_key; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.push_subscriptie
+    ADD CONSTRAINT push_subscriptie_endpoint_key UNIQUE (endpoint);
+
+
+--
+-- Name: push_subscriptie push_subscriptie_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.push_subscriptie
+    ADD CONSTRAINT push_subscriptie_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: refresh_token refresh_token_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -2291,6 +2353,14 @@ ALTER TABLE ONLY platform.uitnodiging
 
 ALTER TABLE ONLY platform.accordeur_akkoord
     ADD CONSTRAINT uq_accordeur_akkoord_versie UNIQUE (gebruiker_id, tekst_versie);
+
+
+--
+-- Name: accordeur_herinnering uq_accordeur_herinnering_dag; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_herinnering
+    ADD CONSTRAINT uq_accordeur_herinnering_dag UNIQUE (gebruiker_id, datum);
 
 
 --
@@ -2674,6 +2744,20 @@ CREATE INDEX ix_grootboekrekening_administratie_id ON platform.grootboekrekening
 --
 
 CREATE INDEX ix_platform_ai_gebruik_maand ON platform.ai_gebruik USING btree (maand);
+
+
+--
+-- Name: ix_push_subscriptie_apparaat_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_push_subscriptie_apparaat_id ON platform.push_subscriptie USING btree (apparaat_id);
+
+
+--
+-- Name: ix_push_subscriptie_gebruiker_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_push_subscriptie_gebruiker_id ON platform.push_subscriptie USING btree (gebruiker_id);
 
 
 --
@@ -3651,6 +3735,14 @@ ALTER TABLE ONLY platform.accordeur_akkoord
 
 
 --
+-- Name: accordeur_herinnering accordeur_herinnering_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_herinnering
+    ADD CONSTRAINT accordeur_herinnering_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: administratie administratie_eigenaar_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -3744,6 +3836,22 @@ ALTER TABLE ONLY platform.grootboekrekening
 
 ALTER TABLE ONLY platform.intake_instelling
     ADD CONSTRAINT intake_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: push_subscriptie push_subscriptie_apparaat_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.push_subscriptie
+    ADD CONSTRAINT push_subscriptie_apparaat_id_fkey FOREIGN KEY (apparaat_id) REFERENCES platform.webauthn_credential(id);
+
+
+--
+-- Name: push_subscriptie push_subscriptie_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.push_subscriptie
+    ADD CONSTRAINT push_subscriptie_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
 
 
 --

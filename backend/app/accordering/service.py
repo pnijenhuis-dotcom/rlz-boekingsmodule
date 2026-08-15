@@ -1001,6 +1001,31 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
     return items
 
 
+def aantallen_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    """Per accordeur het aantal open documenten waar híj/zij nu aan de beurt is, voor één
+    administratie — de selectiebron van de dagelijkse herinnering (berichten-bouwsteen):
+    exact dezelfde aan-de-beurt-definitie als de wachtrij (eerstvolgende open vereiste stap),
+    zodat teller en wachtrij nooit uiteenlopen. Bewust zonder de zware per-item-verrijking
+    van wachtrij_voor_accordeur (de herinnering heeft alleen het aantal nodig)."""
+    aantallen: dict[uuid.UUID, int] = {}
+    with scoped_session(administratie_id) as session:
+        open_rondes = list(
+            session.scalars(
+                select(DocumentAccordering).where(
+                    DocumentAccordering.administratie_id == administratie_id,
+                    DocumentAccordering.status == AccorderingStatus.OPEN.value,
+                )
+            )
+        )
+        for accordering in open_rondes:
+            volgende = _eerstvolgende_open_stap(_stappen_van(session, accordering.id))
+            if volgende is not None:
+                aantallen[volgende.accordeur_gebruiker_id] = (
+                    aantallen.get(volgende.accordeur_gebruiker_id, 0) + 1
+                )
+    return aantallen
+
+
 @dataclass(frozen=True)
 class AccordeurKandidaat:
     id: uuid.UUID
