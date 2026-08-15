@@ -160,12 +160,13 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
    CLOUD-Act-immuniteit (de key blijft in Cloud KMS).
    Doorgifte-grondslag voor eventuele support-toegang vanuit de VS: SCC's in Googles Cloud
    Data Processing Addendum + EU-U.S. Data Privacy Framework (Google is DPF-gecertificeerd
-   sinds september 2023). CDPA-versie + acceptatiedatum archiveren = actie Peter
-   (checklist B).
-3. **Exact Reeleezee** — Nederlandse leverancier, hosting in de EU (bevestigen bij het
-   opvragen van de actuele verwerkersovereenkomst — zie checklist; de Exact-MKB-PDF's
-   versie 1.5/2021 + bijlage 1.6/2022 zijn gearchiveerd in `docs/`, toepasselijkheid op
-   Reeleezee-abonnementen nog door Exact te bevestigen).
+   sinds september 2023). CDPA gearchiveerd 2026-08-15: **versie 8 juni 2026**
+   (`docs/avg/nl-cloud-data-processing-addendum-customers.pdf`, F5-poortpunt 1 ✅);
+   restpunt checklist B: Googles subverwerkerslijst archiveren.
+3. **Exact Reeleezee** — Nederlandse leverancier, hosting in de EU (expliciet bevestigen =
+   restpunt checklist C; de Exact-MKB-PDF's versie 1.5/2021 + bijlage 1.6/2022 zijn
+   gearchiveerd in `docs/`; toepasselijkheid op Reeleezee-abonnementen **bevestigd door
+   Exact-support 2026-08-14** — `docs/avg/Bevestiging versie RLZ.pdf`, F5-poortpunt 5 ✅).
 4. **E-mailprovider intake-postvak** — wordt pas verwerker bij activering van de live
    IMAP-fetch (keuze: bestaande kantoor-mailprovider, GCP-beslispunt 5); DPA-check
    (checklist D) is een harde voorwaarde vóór activering — tot die tijd is de .eml-upload

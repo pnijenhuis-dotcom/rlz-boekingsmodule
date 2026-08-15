@@ -15,7 +15,7 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 | Partij | Rol | Wanneer nodig | Status |
 |---|---|---|---|
 | Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14), ZDR-verzoek ingediend |
-| Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | 🔶 lopend — infra + regio-borging staan; CDPA-versie+datum archiveren (Peter) + CMEK-besluit 0021 (wacht op akkoord) open |
+| Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | ✅ vrijwel rond — CDPA versie 8 juni 2026 gearchiveerd 2026-08-15 (`nl-cloud-data-processing-addendum-customers.pdf`); CMEK-besluit 0021 akkoord + uitgevoerd 2026-08-14; restpunt: Googles subverwerkerslijst archiveren |
 | Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ✅ bevestigd — VWO 1.5/1.6 van toepassing (Exact-support 2026-08-14, `Bevestiging versie RLZ.pdf`); restpunten: EU-hosting expliciet + API-voorwaarden (sectie C) |
 | E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (F3.4) | 🔶 keuze gemaakt (bestaande kantoor-mailprovider, GCP-beslispunt 5, 2026-08-12) — DPA-check + mailbox/app-wachtwoord open |
 
@@ -112,15 +112,19 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 **Acties Peter:**
 
 - [x] Google Cloud-organisatie/billing opzetten — **gedaan (F0, 2026-08-14):** project
-      `rlz-boekhouding` onder de PDL Powerhouse-org, billing gekoppeld;
-      ⬜ CDPA-versie + acceptatiedatum nog vastleggen/archiveren (console →
-      ondernemingsvoorwaarden, of de CDPA-pagina als PDF).
+      `rlz-boekhouding` onder de PDL Powerhouse-org, billing gekoppeld.
+- [x] CDPA-versie + acceptatiedatum vastleggen/archiveren — **gedaan (2026-08-15):**
+      Nederlandse webprint gearchiveerd als
+      `docs/avg/nl-cloud-data-processing-addendum-customers.pdf`, **versie 8 juni 2026**
+      (versieregel uit de PDF geverifieerd); acceptatie via de org-overeenkomst,
+      voor dit project geëffectueerd bij F0 (2026-08-14). F5-poortpunt 1 ✅.
 - [x] Data-locatie `europe-west4` per service + Organization Policy op EU-locaties —
       **gedaan + geverifieerd (F0/F1, 2026-08-14):** alle resources in `europe-west4`,
       EU-org-policy effectief op het project (describe-bewijs in het F5-poortdossier).
-- [x] Herzieningsmoment CMEK/client-side encryptie (besluit 0003) — **memo opgesteld
-      2026-08-14** (voorstel-platformbesluit 0021, lean-lijn CMEK-aan-bij-go-live);
-      ⬜ akkoord Peter + daarna uitvoering vóór tranche 2 en INDEX-regel.
+- [x] Herzieningsmoment CMEK/client-side encryptie (besluit 0003) — **gedaan:** memo +
+      **akkoord Peter + uitvoering 2026-08-14** (platformbesluit 0021, INDEX-regel gezet;
+      `rlz-sql2` mét CMEK + default-CMEK-key op de documentenbucket — bewijs in het
+      F5-poortdossier punt 3).
 - [ ] Googles subverwerkerslijst (via het CDPA) archiveren.
 
 ---

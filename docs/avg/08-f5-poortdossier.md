@@ -11,7 +11,7 @@
 
 | # | Poortpunt | Wie | Status |
 |---|---|---|---|
-| 1 | Google Cloud CDPA geaccepteerd, versie + datum gearchiveerd | Peter | ⬜ open |
+| 1 | Google Cloud CDPA geaccepteerd, versie + datum gearchiveerd | Peter | ✅ 2026-08-15 — versie 8 juni 2026, `nl-cloud-data-processing-addendum-customers.pdf` |
 | 2 | Regio-borging aantoonbaar (`europe-west4` + EU-org-policy) | Code | ✅ 2026-08-14 |
 | 3 | Herzieningsmoment CLOUD Act (besluit 0003): CMEK/client-side beoordeeld, uitkomst als platformbesluit | Code (memo) + Peter (besluit) + beiden (uitvoering) | ✅ besluit 0021 (akkoord 2026-08-14) + uitgevoerd 2026-08-14 |
 | 4 | Retentie/PITR-instellingen gedocumenteerd | Code | ✅ 2026-08-14 |
@@ -20,24 +20,28 @@
 | 7 | Verwerkingsregister §8/§9 bijgewerkt op de werkelijke cloudconfiguratie | Code | ✅ 2026-08-14 |
 | 8 | Identiteit-eerst-check afgerond genoteerd (uit F0) | Peter (uitgevoerd) + Code (genoteerd) | ✅ 2026-08-14 |
 
-**Poort dicht = 8/8 ✅ — stand nu 6/8.** Daarna pas: datamigratie tranche 2 (GCP_UITROL
+**Poort dicht = 8/8 ✅ — stand nu 7/8; alleen punt 6 (IMAP-provider-DPA) is nog open.** Daarna pas: datamigratie tranche 2 (GCP_UITROL
 §F1.6) en de omschakeling van het kantoor naar het productiedomein. De volgorde-
 afhankelijkheid van punt 3 met tranche 2 (CMEK-herbouw vóór de dump/restore — CMEK kan
 alleen bij instantie-aanmaak) is **opgelost**: `rlz-sql2` staat mét CMEK, vóór tranche 2.
 
 ---
 
-## 1. Google Cloud CDPA — versie + datum gearchiveerd *(Peter — ⬜)*
+## 1. Google Cloud CDPA — ✅ versie + datum gearchiveerd (2026-08-15)
 
 Het CDPA is automatisch onderdeel van de Google Cloud-overeenkomst (acceptatie bij het
-aangaan van het account). Vast te leggen: **welke CDPA-versie** gold bij acceptatie +
-**acceptatiedatum**, gearchiveerd als PDF in `docs/avg/`.
+aangaan van het account/de overeenkomst — geen aparte handtekening).
 
-- Route: Cloud Console → ondernemingsvoorwaarden, of
-  <https://cloud.google.com/terms/data-processing-addendum> als PDF-print.
-- Meteen meenemen (zelfde klik): **Googles subverwerkerslijst** archiveren
-  (checklist B, laatste actiepunt).
-- Vindplaats na afronding: PDF hier in de map + regel in `02-subverwerkers-checklist.md` B.
+- ✅ **Gearchiveerd 2026-08-15** (aangeleverd door Peter):
+  `docs/avg/nl-cloud-data-processing-addendum-customers.pdf` — Nederlandse webprint van
+  <https://cloud.google.com/terms/data-processing-addendum>, **"Versie: 8 juni 2026"**
+  (versieregel uit de PDF zelf geverifieerd).
+- **Acceptatie:** loopt via de Google Cloud-overeenkomst van de PDL Powerhouse-organisatie;
+  voor dit project geëffectueerd bij de F0-uitvoering (project `rlz-boekhouding` aangemaakt
+  + billing gekoppeld, **2026-08-14**). De versie van 8 juni 2026 is de op dat moment én bij
+  archivering geldende CDPA-versie.
+- ⚠️ Restpunt (geen poortblokkade, checklist B laatste actiepunt): **Googles
+  subverwerkerslijst** (via het CDPA) nog archiveren.
 
 ## 2. Regio-borging — ✅ aantoonbaar (Code, 2026-08-14)
 
@@ -172,7 +176,9 @@ is onderdeel van de livegang-administratie.
 
 ## Peters openstaande klikken, verzameld (kopieerbaar lijstje)
 
-1. **CDPA-versie + acceptatiedatum** archiveren (punt 1) + Googles subverwerkerslijst.
+1. ~~CDPA-versie + acceptatiedatum archiveren~~ — **gedaan**: versie 8 juni 2026
+   gearchiveerd 2026-08-15 (punt 1 ✅); **Googles subverwerkerslijst** archiveren staat
+   nog open (checklist B, geen poortpunt).
 2. ~~Akkoord op CMEK-voorstel 0021~~ — **gedaan**: akkoord 2026-08-14, uitgevoerd (punt 3 ✅).
 3. **DPF-registercheck Anthropic** + Anthropic-subverwerkerslijst archiveren
    (checklist A — geen F5-poortpunt maar stap-1-punt, zelfde archiveersessie).

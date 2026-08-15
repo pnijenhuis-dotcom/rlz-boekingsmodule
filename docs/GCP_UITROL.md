@@ -12,7 +12,9 @@
 > CMEK-BESLUIT 0021 BESLOTEN (akkoord Peter 2026-08-14) + UITGEVOERD
 > (2026-08-14, zie §F5-CMEK-uitvoering): Cloud SQL herbouwd als `rlz-sql2` mét CMEK,
 > bucket-default-key gezet, volledige F1-herverificatie groen, oude `rlz-sql` opgeruimd —
-> poortdossier-stand 5/8 ✅; rest = Peters archiefklikken.**
+> poortdossier-stand 7/8 ✅ (2026-08-15: CDPA versie 8 juni 2026 gearchiveerd — punt 1 ✅;
+> Exact-VWO-bevestiging gearchiveerd — punt 5 ✅); rest = punt 6, IMAP-provider-DPA
+> (Peter).**
 > NB datumcorrectie 2026-08-14: eerdere "2026-08-15"-stempels in dit document waren een
 > dag te ver (commits én GCP-timestamps bewijzen 2026-08-14). Dat gold óók voor de
 > akkoorddatum van besluit 0021: correctie Peter 2026-08-14 — de "15-08" zat in de
@@ -560,7 +562,9 @@ bewijsdossier (per punt: bewijs/vindplaats + wie + status) is
 `docs/avg/08-f5-poortdossier.md` — status dáár bijhouden**; de lijst hieronder blijft de
 normtekst (stand 2026-08-14, F5-voorbereiding):
 
-- [ ] Google Cloud **CDPA** geaccepteerd, versie + datum gearchiveerd *(Peter — open)*;
+- [x] Google Cloud **CDPA** geaccepteerd, versie + datum gearchiveerd — **versie
+      8 juni 2026**, gearchiveerd 2026-08-15
+      (`docs/avg/nl-cloud-data-processing-addendum-customers.pdf`, dossier punt 1);
 - [x] **regio-borging** aantoonbaar (alles `europe-west4` + Org Policy — describe-bewijs
       in het poortdossier, 2026-08-14);
 - [x] **herzieningsmoment CLOUD Act** (besluit 0003) uitgevoerd: **platformbesluit 0021
@@ -571,8 +575,9 @@ normtekst (stand 2026-08-14, F5-voorbereiding):
       §F5-CMEK-uitvoering hieronder;
 - [x] retentie/PITR-instellingen gedocumenteerd (technisch sinds F1; als poortbewijs
       vastgelegd in het dossier, describe 2026-08-14);
-- [ ] verwerkersovereenkomst **Exact Reeleezee** bevestigd + gearchiveerd *(PDF's
-      gearchiveerd 2026-08-14; bevestiging toepasselijkheid door Exact — Peter)*;
+- [x] verwerkersovereenkomst **Exact Reeleezee** bevestigd + gearchiveerd — bevestiging
+      Exact 2026-08-14, gearchiveerd 2026-08-15 (`docs/avg/Bevestiging versie RLZ.pdf`,
+      dossier punt 5; restpunten EU-hosting + API-voorwaarden in checklist C);
 - [ ] IMAP-provider-DPA rond (checklist D, hoort bij F3) *(keuze gemaakt; DPA-check +
       mailbox — Peter)*;
 - [x] verwerkingsregister §8/§9 bijgewerkt op de wérkelijke cloudconfiguratie
