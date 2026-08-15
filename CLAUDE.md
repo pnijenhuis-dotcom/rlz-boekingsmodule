@@ -323,8 +323,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   geseed + live geverifieerd, per rij provisie-GB (4173/4808) + IC-vlag (álle 5 doelen hebben
   RC Kempen Facilities — anders dan Rubicon, dus IC=true; alleen Rubicon-rij false; §2c-vervolg
   in verkenning/16), toggle AAN alleen Facilities. ⚠️ Drie doelen activeren deels op
-  AccountType-3-rekeningen (spiegelverdeler kiest dan een activarekening). Open: kliktest Peter
-  (TEST-factuur staat klaar) + NIJENHUIS-credential (401).
+  AccountType-3-rekeningen (spiegelverdeler kiest dan een activarekening). NIJENHUIS
+  (kantoor-administratie) na credential-herstel zelfde dag alsnog onboarded — 11/11. Open:
+  kliktest Peter (TEST-factuur staat klaar).
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
