@@ -226,10 +226,12 @@ def _actieve_credentials(session: Session, gebruiker_id: uuid.UUID) -> list[Weba
     )
 
 
-def registratie_opties(*, gebruiker_id: uuid.UUID) -> str:
+def registratie_opties(*, gebruiker_id: uuid.UUID, alleen_platform_authenticator: bool = True) -> str:
     """PublicKeyCredentialCreationOptions (JSON) voor het registreren van dít apparaat.
     user_verification=REQUIRED: de biometrie-/pincodecheck van het OS is precies het punt van
-    de cadans. Platform-authenticator: de passkey hoort bij de telefoon zelf."""
+    de cadans. Platform-authenticator (accordeur-default): de passkey hoort bij de telefoon
+    zelf; kantoor-registratie (besluit 0020) zet dit uit — op een desktop zijn ook
+    beveiligingssleutels en cross-device/QR-passkeys legitiem."""
     with scoped_session(None) as session:
         gebruiker = session.get(Gebruiker, gebruiker_id)
         if gebruiker is None:
@@ -246,7 +248,7 @@ def registratie_opties(*, gebruiker_id: uuid.UUID) -> str:
                 PublicKeyCredentialDescriptor(id=c.credential_id) for c in bestaande if not c.is_dev_stub
             ],
             authenticator_selection=AuthenticatorSelectionCriteria(
-                authenticator_attachment=AuthenticatorAttachment.PLATFORM,
+                authenticator_attachment=AuthenticatorAttachment.PLATFORM if alleen_platform_authenticator else None,
                 resident_key=ResidentKeyRequirement.PREFERRED,
                 user_verification=UserVerificationRequirement.REQUIRED,
             ),
@@ -260,6 +262,49 @@ class RegistratieResultaat:
     apparaat_id: uuid.UUID
 
 
+def _verifieer_en_bewaar_credential(
+    session: Session, *, gebruiker_id: uuid.UUID, credential: dict, apparaat_naam: str | None
+) -> WebauthnCredential:
+    """Gedeelde registratie-kern (accordeur + kantoor): attestation verifiëren tegen de
+    server-side challenge en de publieke sleutel per GEBRUIKER+APPARAAT opslaan."""
+    verwachte_challenge = _verbruik_challenge(
+        session,
+        gebruiker_id=gebruiker_id,
+        soort="registratie",
+        challenge=_challenge_uit_client_data(credential),
+    )
+    try:
+        verificatie = verify_registration_response(
+            credential=credential,
+            expected_challenge=verwachte_challenge,
+            expected_rp_id=settings.webauthn_rp_id,
+            expected_origin=list(settings.webauthn_origins),
+            require_user_verification=True,
+        )
+    except InvalidRegistrationResponse as exc:
+        raise AuthError(f"Passkey-registratie geweigerd: {exc}") from exc
+
+    bestaat = session.scalars(
+        select(WebauthnCredential).where(WebauthnCredential.credential_id == verificatie.credential_id)
+    ).first()
+    if bestaat is not None:
+        raise AuthError("Deze passkey is al geregistreerd")
+
+    rij = WebauthnCredential(
+        id=uuid.uuid4(),
+        gebruiker_id=gebruiker_id,
+        credential_id=verificatie.credential_id,
+        public_key=verificatie.credential_public_key,
+        sign_count=verificatie.sign_count,
+        aaguid=str(verificatie.aaguid) if verificatie.aaguid else None,
+        transports=credential.get("response", {}).get("transports"),
+        apparaat_naam=apparaat_naam,
+        laatst_gebruikt_op=datetime.now(UTC),
+    )
+    session.add(rij)
+    return rij
+
+
 def voltooi_registratie(
     *, gebruiker_id: uuid.UUID, credential: dict, apparaat_naam: str | None, ip_adres: str | None = None
 ) -> RegistratieResultaat:
@@ -270,42 +315,9 @@ def voltooi_registratie(
         gebruiker = session.get(Gebruiker, gebruiker_id)
         if gebruiker is None or gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
             raise AuthError("Account niet (meer) actief")
-
-        verwachte_challenge = _verbruik_challenge(
-            session,
-            gebruiker_id=gebruiker_id,
-            soort="registratie",
-            challenge=_challenge_uit_client_data(credential),
+        rij = _verifieer_en_bewaar_credential(
+            session, gebruiker_id=gebruiker_id, credential=credential, apparaat_naam=apparaat_naam
         )
-        try:
-            verificatie = verify_registration_response(
-                credential=credential,
-                expected_challenge=verwachte_challenge,
-                expected_rp_id=settings.webauthn_rp_id,
-                expected_origin=list(settings.webauthn_origins),
-                require_user_verification=True,
-            )
-        except InvalidRegistrationResponse as exc:
-            raise AuthError(f"Passkey-registratie geweigerd: {exc}") from exc
-
-        bestaat = session.scalars(
-            select(WebauthnCredential).where(WebauthnCredential.credential_id == verificatie.credential_id)
-        ).first()
-        if bestaat is not None:
-            raise AuthError("Deze passkey is al geregistreerd")
-
-        rij = WebauthnCredential(
-            id=uuid.uuid4(),
-            gebruiker_id=gebruiker_id,
-            credential_id=verificatie.credential_id,
-            public_key=verificatie.credential_public_key,
-            sign_count=verificatie.sign_count,
-            aaguid=str(verificatie.aaguid) if verificatie.aaguid else None,
-            transports=credential.get("response", {}).get("transports"),
-            apparaat_naam=apparaat_naam,
-            laatst_gebruikt_op=datetime.now(UTC),
-        )
-        session.add(rij)
         return _rond_registratie_af(session, gebruiker, rij, ip_adres=ip_adres)
 
 
@@ -523,6 +535,190 @@ def ontgrendel_assertie(
             _voltooi_assertie(session, gebruiker_id=gebruiker_id, credential=credential, ip_adres=ip_adres)
 
 
+# --- kantoor-passkeys (platformbesluit 0020: passkeys eerste lijn, wachtwoord+TOTP terugval) ------
+#
+# Tweede afnemer van de accordeur-bouwstenen (migratie 0040) — géén nieuw auth-systeem: zelfde
+# credential-/challenge-tabellen, zelfde kill-switch-lagen, zelfde dev-stub-vergrendeling. De
+# verschillen zijn bewust klein: (1) registratie gebeurt ín een bestaande sessie (ná TOTP-login,
+# Instellingen → beveiliging) en geeft dus géén nieuw token-paar uit; (2) de passkey-login is
+# één stap (assertion mét user verification = bezit + biometrie/pincode — de wachtwoordstap van
+# de accordeur-flow vervalt, wachtwoord+TOTP blijft het volwaardige terugvalpad); (3) de
+# sessiesemantiek blijft de bestaande kantoor-JWT (standaard refresh-TTL, geen 7-dagen-cadans,
+# geen ontgrendel-assertion per app-opening) — de passkey vervangt alléén de inlogstap.
+
+
+def _is_kantoorrol(rol: GebruikerRol) -> bool:
+    """Kantoor = elke rol behalve klant-accordeur; accordeurs houden hun eigen flow (wachtwoord +
+    passkey, 7-dagen-cadans) en mogen de éénstaps-kantoor-login niet gebruiken — dat zou hun
+    wachtwoordstap omzeilen."""
+    return rol != GebruikerRol.KLANT_ACCORDEUR
+
+
+def voltooi_kantoor_registratie(
+    *,
+    gebruiker_id: uuid.UUID,
+    credential: dict | None,
+    apparaat_naam: str | None,
+    dev_stub: bool = False,
+    ip_adres: str | None = None,
+) -> ApparaatData:
+    """Registratie vanaf Instellingen → beveiliging (ingelogde kantoorgebruiker): credential
+    opslaan + audit, maar GEEN nieuw token-paar — de lopende sessie blijft gewoon staan. De
+    passkey gaat pas een sessie dragen bij de eerstvolgende passkey-login."""
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        gebruiker = session.get(Gebruiker, gebruiker_id)
+        if gebruiker is None or gebruiker.status != GebruikerStatus.ACTIEF:
+            raise AuthError("Account niet (meer) actief")
+        if not _is_kantoorrol(gebruiker.rol):
+            raise AuthError("Alleen voor kantoor-rollen — accordeurs registreren via de goedkeur-app")
+        if dev_stub:
+            if not dev_stub_actief():
+                raise AuthError("Biometrie-dev-stub is niet actief")
+            rij = WebauthnCredential(
+                id=uuid.uuid4(),
+                gebruiker_id=gebruiker_id,
+                credential_id=secrets.token_bytes(16),
+                public_key=b"dev-stub",
+                sign_count=0,
+                apparaat_naam=apparaat_naam,
+                is_dev_stub=True,
+                laatst_gebruikt_op=datetime.now(UTC),
+            )
+            session.add(rij)
+        else:
+            if credential is None:
+                raise AuthError("WebAuthn-response ontbreekt")
+            rij = _verifieer_en_bewaar_credential(
+                session, gebruiker_id=gebruiker_id, credential=credential, apparaat_naam=apparaat_naam
+            )
+        record_audit_event(
+            session,
+            actor_id=gebruiker_id,
+            module="platform",
+            tabel="webauthn_credential",
+            record_id=rij.id,
+            actie="passkey_geregistreerd",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "apparaat_naam": rij.apparaat_naam,
+                "is_dev_stub": rij.is_dev_stub,
+                **(_login_metadata(ip_adres) or {}),
+            },
+        )
+        session.flush()
+        session.refresh(rij)  # aangemaakt_op komt uit de server_default
+        return ApparaatData(
+            id=rij.id,
+            apparaat_naam=rij.apparaat_naam,
+            is_dev_stub=rij.is_dev_stub,
+            aangemaakt_op=rij.aangemaakt_op,
+            laatst_gebruikt_op=rij.laatst_gebruikt_op,
+            ingetrokken_op=rij.ingetrokken_op,
+        )
+
+
+@dataclass(frozen=True)
+class KantoorLoginOpties:
+    # opties=None kan alleen samen met dev_stub=True: er is geen echte passkey maar wél een
+    # stub-credential in een actieve dev-stub-omgeving — de client rondt dan af met dev_stub.
+    opties: str | None
+    dev_stub: bool
+
+
+def kantoor_login_opties(*, e_mail: str) -> KantoorLoginOpties:
+    """Eerste lijn van de kantoor-login (besluit 0020): assertion-options op e-mailadres —
+    usernameless mag niet (0022/0006-lijn), de gebruikersnaam blijft het startpunt. GeenPasskeys
+    is bewust het ENIGE onderscheidbare faalpad: een onbekend adres, een accordeur, een
+    niet-actieve gebruiker en een passkey-loze kantoorgebruiker antwoorden identiek — dit
+    endpoint geeft dus alleen prijs "dit adres heeft een bruikbare kantoor-passkey", nooit of
+    een account bestaat. De client valt bij GeenPasskeys terug op wachtwoord + TOTP (het
+    ongewijzigde /auth/login-pad)."""
+    e_mail = normaliseer_e_mail(e_mail)
+    generieke_fout = "Geen passkey voor dit adres — log in met wachtwoord + TOTP"
+    with scoped_session(None) as session:
+        gebruiker = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == e_mail)).one_or_none()
+        if (
+            gebruiker is None
+            or not _is_kantoorrol(gebruiker.rol)
+            or gebruiker.status != GebruikerStatus.ACTIEF
+        ):
+            raise GeenPasskeys(generieke_fout)
+        alle = _actieve_credentials(session, gebruiker.id)
+        echte = [c for c in alle if not c.is_dev_stub]
+        stub_beschikbaar = dev_stub_actief() and any(c.is_dev_stub for c in alle)
+        if not echte:
+            if stub_beschikbaar:
+                return KantoorLoginOpties(opties=None, dev_stub=True)
+            raise GeenPasskeys(generieke_fout)
+        opties = generate_authentication_options(
+            rp_id=settings.webauthn_rp_id,
+            challenge=_maak_challenge(session, gebruiker_id=gebruiker.id, soort="assertie"),
+            allow_credentials=[PublicKeyCredentialDescriptor(id=c.credential_id) for c in echte],
+            user_verification=UserVerificationRequirement.REQUIRED,
+        )
+    return KantoorLoginOpties(opties=options_to_json(opties), dev_stub=stub_beschikbaar)
+
+
+def login_met_kantoor_passkey(
+    *, e_mail: str, credential: dict | None, dev_stub: bool = False, ip_adres: str | None = None
+) -> TokenPaar:
+    """Volledige kantoor-login in één stap: de assertion mét verplichte user verification is
+    bezit + biometrie/pincode (twee factoren). Zelfde generieke fout als service.login() —
+    geen account-enumeratie. De uitgegeven sessie volgt de bestaande kantoor-JWT-semantiek
+    (standaard refresh-TTL via _refresh_ttl_voor), alleen nu apparaat-gebonden: de
+    kill-switch bijt per request (deps) én bij elke rotatie."""
+    generic_error = "Ongeldige inloggegevens"
+    e_mail = normaliseer_e_mail(e_mail)
+    faal_gebruiker_id: uuid.UUID | None = None
+    paar: TokenPaar | None = None
+
+    with scoped_session(None) as session:
+        gebruiker = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == e_mail)).one_or_none()
+        if gebruiker is None:
+            pass
+        elif not _is_kantoorrol(gebruiker.rol) or gebruiker.status != GebruikerStatus.ACTIEF:
+            faal_gebruiker_id = gebruiker.id
+        else:
+            if dev_stub:
+                rij = _voltooi_assertie_stub(session, gebruiker_id=gebruiker.id, ip_adres=ip_adres)
+            else:
+                if credential is None:
+                    raise AuthError("WebAuthn-response ontbreekt")
+                rij = _voltooi_assertie(
+                    session, gebruiker_id=gebruiker.id, credential=credential, ip_adres=ip_adres
+                )
+            record_audit_event(
+                session,
+                actor_id=gebruiker.id,
+                module="platform",
+                tabel="gebruiker",
+                record_id=gebruiker.id,
+                actie="login_geslaagd",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde=_login_metadata(ip_adres),
+            )
+            paar = _issue_token_paar(session, gebruiker_id=gebruiker.id, rol=gebruiker.rol, apparaat_id=rij.id)
+
+    # Zelfde patroon als service.login(): het faal-audit-event in een eigen, ná de hoofdtransactie
+    # gestarte transactie — een raise binnen het with-blok zou de audit-rij mee terugrollen.
+    if faal_gebruiker_id is not None:
+        with scoped_session(None, actor_id=faal_gebruiker_id) as log_session:
+            record_audit_event(
+                log_session,
+                actor_id=faal_gebruiker_id,
+                module="platform",
+                tabel="gebruiker",
+                record_id=faal_gebruiker_id,
+                actie="login_mislukt",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde=_login_metadata(ip_adres),
+            )
+
+    if paar is None:
+        raise AuthError(generic_error)
+    return paar
+
+
 # --- apparaatbeheer / kill-switch -----------------------------------------------------------------
 
 
@@ -556,13 +752,17 @@ def apparaten_van(*, gebruiker_id: uuid.UUID) -> list[ApparaatData]:
         ]
 
 
-def trek_apparaat_in(*, actor_id: uuid.UUID, apparaat_id: uuid.UUID) -> None:
-    """Kantoor-kill-switch (Beheerder-only via de router): trekt de passkey-credential én alle
-    eraan gebonden actieve refresh-tokens in — het apparaat valt binnen de access-TTL óók per
-    request uit (deps toetst de apparaat-claim). Idempotent op een al-ingetrokken apparaat."""
+def trek_apparaat_in(
+    *, actor_id: uuid.UUID, apparaat_id: uuid.UUID, alleen_van_gebruiker: uuid.UUID | None = None
+) -> None:
+    """Kill-switch: trekt de passkey-credential én alle eraan gebonden actieve refresh-tokens
+    in — het apparaat valt binnen de access-TTL óók per request uit (deps toetst de
+    apparaat-claim). Idempotent op een al-ingetrokken apparaat. `alleen_van_gebruiker`
+    (kantoor-passkeys 0020): niet-Beheerders mogen uitsluitend hun éigen apparaten intrekken —
+    een niet-eigen apparaat antwoordt als "onbekend" (zelfde fout, geen bestaans-lek)."""
     with scoped_session(None, actor_id=actor_id) as session:
         rij = session.get(WebauthnCredential, apparaat_id)
-        if rij is None:
+        if rij is None or (alleen_van_gebruiker is not None and rij.gebruiker_id != alleen_van_gebruiker):
             raise AuthError("Onbekend apparaat")
         if rij.ingetrokken_op is not None:
             return
@@ -589,6 +789,38 @@ def trek_apparaat_in(*, actor_id: uuid.UUID, apparaat_id: uuid.UUID) -> None:
                 "ingetrokken_op": now.isoformat(),
             },
         )
+
+
+@dataclass(frozen=True)
+class KantoorApparaatData(ApparaatData):
+    gebruiker_id: uuid.UUID
+    gebruiker_naam: str
+
+
+def kantoor_apparaten() -> list[KantoorApparaatData]:
+    """Alle passkey-apparaten van kantoor-rollen, mét gebruikersnaam (Beheerder-only via de
+    router) — het beheerder-overzicht op Instellingen → beveiliging; accordeur-apparaten hebben
+    hun eigen overzicht per administratie (AccorderingInstellingen)."""
+    with scoped_session(None) as session:
+        rijen = session.execute(
+            select(WebauthnCredential, Gebruiker.naam)
+            .join(Gebruiker, Gebruiker.id == WebauthnCredential.gebruiker_id)
+            .where(Gebruiker.rol != GebruikerRol.KLANT_ACCORDEUR)
+            .order_by(Gebruiker.naam, WebauthnCredential.aangemaakt_op.desc())
+        ).all()
+        return [
+            KantoorApparaatData(
+                id=r.id,
+                apparaat_naam=r.apparaat_naam,
+                is_dev_stub=r.is_dev_stub,
+                aangemaakt_op=r.aangemaakt_op,
+                laatst_gebruikt_op=r.laatst_gebruikt_op,
+                ingetrokken_op=r.ingetrokken_op,
+                gebruiker_id=r.gebruiker_id,
+                gebruiker_naam=naam,
+            )
+            for r, naam in rijen
+        ]
 
 
 def is_apparaat_ingetrokken(apparaat_id: uuid.UUID) -> bool:

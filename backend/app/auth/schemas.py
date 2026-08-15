@@ -114,6 +114,36 @@ class ApparatenResponse(BaseModel):
     apparaten: list[ApparaatResponse]
 
 
+class KantoorPasskeyLoginOptiesRequest(StrikteInvoer):
+    """Kantoor-passkey-login stap 1 (besluit 0020): usernameless mag niet (0022/0006-lijn) —
+    het e-mailadres blijft het startpunt van elke login."""
+
+    e_mail: str
+
+
+class KantoorPasskeyOptiesResponse(BaseModel):
+    """`opties` = assertion-options-JSON; None kan alleen samen met dev_stub=True (er is enkel
+    een stub-credential in een actieve dev-stub-omgeving — de client rondt af met dev_stub)."""
+
+    opties: str | None
+    dev_stub: bool
+
+
+class KantoorPasskeyLoginVoltooienRequest(StrikteInvoer):
+    e_mail: str
+    credential: dict | None = None
+    dev_stub: bool = False
+
+
+class KantoorApparaatResponse(ApparaatResponse):
+    gebruiker_id: uuid.UUID
+    gebruiker_naam: str
+
+
+class KantoorApparatenResponse(BaseModel):
+    apparaten: list[KantoorApparaatResponse]
+
+
 class VoorwaardenResponse(BaseModel):
     tekst_versie: str
     tekst: str

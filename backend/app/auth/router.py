@@ -359,6 +359,137 @@ def ontgrendelen(
     return schemas.TokenPaarResponse(access_token=paar.access_token)
 
 
+# --- kantoor-passkeys (platformbesluit 0020: eerste authenticatielijn, TOTP = terugval) -----------
+
+
+def _vereis_kantoorrol(actor: CurrentGebruiker) -> None:
+    """Accordeurs hebben hun eigen registratie-/loginflow (wachtwoord + passkey, 7-dagen-cadans);
+    de kantoor-endpoints zouden hun wachtwoordstap omzeilen."""
+    if actor.rol == GebruikerRol.KLANT_ACCORDEUR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor kantoor-rollen"
+        )
+
+
+@router.post("/webauthn/kantoor/registratie/opties", response_model=schemas.WebauthnOptiesResponse)
+def kantoor_registratie_opties(
+    actor: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> schemas.WebauthnOptiesResponse:
+    """Passkey toevoegen vanaf Instellingen → beveiliging (ná TOTP- of passkey-login): gewone
+    ingelogde sessie is de machtiging — geen apart setup-token nodig. Zonder platform-pin:
+    op een desktop zijn ook beveiligingssleutels en cross-device/QR-passkeys legitiem."""
+    _vereis_kantoorrol(actor)
+    try:
+        return schemas.WebauthnOptiesResponse(
+            opties=webauthn_service.registratie_opties(
+                gebruiker_id=actor.id, alleen_platform_authenticator=False
+            )
+        )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/webauthn/kantoor/registratie/voltooien", response_model=schemas.ApparaatResponse)
+def kantoor_registratie_voltooien(
+    payload: schemas.WebauthnRegistratieVoltooienRequest,
+    request: Request,
+    actor: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> schemas.ApparaatResponse:
+    """Rondt de registratie af zónder nieuw token-paar: de lopende sessie blijft staan, de
+    passkey draagt pas een sessie bij de eerstvolgende passkey-login."""
+    _vereis_kantoorrol(actor)
+    try:
+        apparaat = webauthn_service.voltooi_kantoor_registratie(
+            gebruiker_id=actor.id,
+            credential=payload.credential,
+            apparaat_naam=payload.apparaat_naam,
+            dev_stub=payload.dev_stub,
+            ip_adres=_client_ip(request),
+        )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return schemas.ApparaatResponse(
+        id=apparaat.id,
+        apparaat_naam=apparaat.apparaat_naam,
+        is_dev_stub=apparaat.is_dev_stub,
+        aangemaakt_op=apparaat.aangemaakt_op,
+        laatst_gebruikt_op=apparaat.laatst_gebruikt_op,
+        ingetrokken_op=apparaat.ingetrokken_op,
+    )
+
+
+@router.post("/webauthn/kantoor/login/opties", response_model=schemas.KantoorPasskeyOptiesResponse)
+def kantoor_login_opties(payload: schemas.KantoorPasskeyLoginOptiesRequest) -> schemas.KantoorPasskeyOptiesResponse:
+    """Eerste lijn van het kantoor-loginscherm (besluit 0020). 409 = geen bruikbare passkey —
+    de client valt terug op wachtwoord + TOTP; het antwoord is identiek voor onbekend adres,
+    accordeur, niet-actief account en passkey-loze gebruiker (geen account-enumeratie)."""
+    try:
+        resultaat = webauthn_service.kantoor_login_opties(e_mail=payload.e_mail)
+    except webauthn_service.GeenPasskeys as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return schemas.KantoorPasskeyOptiesResponse(opties=resultaat.opties, dev_stub=resultaat.dev_stub)
+
+
+@router.post("/webauthn/kantoor/login/voltooien", response_model=schemas.TokenPaarResponse)
+def kantoor_login_voltooien(
+    payload: schemas.KantoorPasskeyLoginVoltooienRequest, request: Request, response: Response
+) -> schemas.TokenPaarResponse:
+    try:
+        paar = webauthn_service.login_met_kantoor_passkey(
+            e_mail=payload.e_mail,
+            credential=payload.credential,
+            dev_stub=payload.dev_stub,
+            ip_adres=_client_ip(request),
+        )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    _set_refresh_cookie(response, paar)
+    return schemas.TokenPaarResponse(access_token=paar.access_token)
+
+
+@router.get("/mijn/apparaten", response_model=schemas.ApparatenResponse)
+def mijn_apparaten(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.ApparatenResponse:
+    """Eigen passkey-apparaten (elke rol): naam, registratiedatum, laatst gebruikt, status."""
+    return schemas.ApparatenResponse(
+        apparaten=[
+            schemas.ApparaatResponse(
+                id=a.id,
+                apparaat_naam=a.apparaat_naam,
+                is_dev_stub=a.is_dev_stub,
+                aangemaakt_op=a.aangemaakt_op,
+                laatst_gebruikt_op=a.laatst_gebruikt_op,
+                ingetrokken_op=a.ingetrokken_op,
+            )
+            for a in webauthn_service.apparaten_van(gebruiker_id=actor.id)
+        ]
+    )
+
+
+@router.get("/apparaten/kantoor", response_model=schemas.KantoorApparatenResponse)
+def kantoor_apparaten_overzicht(
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.KantoorApparatenResponse:
+    """Beheerder-overzicht van álle kantoor-passkey-apparaten (intrekken kan per rij via het
+    bestaande intrekken-endpoint — Beheerder mag óók andermans apparaten intrekken)."""
+    return schemas.KantoorApparatenResponse(
+        apparaten=[
+            schemas.KantoorApparaatResponse(
+                id=a.id,
+                apparaat_naam=a.apparaat_naam,
+                is_dev_stub=a.is_dev_stub,
+                aangemaakt_op=a.aangemaakt_op,
+                laatst_gebruikt_op=a.laatst_gebruikt_op,
+                ingetrokken_op=a.ingetrokken_op,
+                gebruiker_id=a.gebruiker_id,
+                gebruiker_naam=a.gebruiker_naam,
+            )
+            for a in webauthn_service.kantoor_apparaten()
+        ]
+    )
+
+
 # --- apparaatbeheer / kill-switch (kantoor) -------------------------------------------------------
 
 
@@ -384,11 +515,19 @@ def apparaten_van_gebruiker(
 
 @router.post("/apparaten/{apparaat_id}/intrekken", status_code=status.HTTP_204_NO_CONTENT)
 def apparaat_intrekken(
-    apparaat_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+    apparaat_id: uuid.UUID, actor: CurrentGebruiker = Depends(get_current_gebruiker)
 ) -> None:
-    """Kill-switch: trekt de passkey-credential + alle gebonden sessies van dit apparaat in."""
+    """Kill-switch: trekt de passkey-credential + alle gebonden sessies van dit apparaat in.
+    Beheerder mag elk apparaat (óók andermans — kantoor-passkeys 0020); iedere andere rol
+    uitsluitend de eigen apparaten — een niet-eigen apparaat antwoordt 404 (geen bestaans-lek).
+    De laatste passkey intrekken sluit nooit buiten: wachtwoord + TOTP blijft het terugvalpad
+    (accordeurs: wachtwoord + nieuwe registratie)."""
     try:
-        webauthn_service.trek_apparaat_in(actor_id=actor.id, apparaat_id=apparaat_id)
+        webauthn_service.trek_apparaat_in(
+            actor_id=actor.id,
+            apparaat_id=apparaat_id,
+            alleen_van_gebruiker=None if actor.rol == GebruikerRol.BEHEERDER else actor.id,
+        )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
