@@ -338,8 +338,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   PDF lazy via pdfjs-dist; installeerbaar zónder service worker), activeringsflow
   wachtwoord → passkey → voorwaarden/privacyverklaring-akkoord (server-side afgedwongen,
   `platform.accordeur_akkoord` + audit), apparatenbeheer/kill-switch op Instellingen.
-  Zie BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD". E-maillink-goedkeuren en push
-  (incl. service worker) zijn het open GCP-vervolg.
+  Zie BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD".
+  **Notificaties: GEBOUWD + GETEST (2026-08-15, BESLISSINGEN "ACCORDEUR-NOTIFICATIES")** —
+  gedeeld SMTP-mailkanaal (`app/berichten/`, Google Workspace, fail-zichtbaar; bedient óók de
+  uitnodigingsmail), dagelijkse 09:00-herinnering (job `rlz-accordeur-herinneringen`, alleen
+  bij >0 open, idempotent per dag per accordeur, migratie 0050), Web Push via
+  `public/accordeur-sw.js` (scope /accordeur, UITSLUITEND push — geen fetch-handler/caching,
+  installatie-/updatepad ongewijzigd; subscriptie per apparaat, kill-switch trekt push mee in;
+  permissie alleen vanuit expliciete klik). **HARD PRINCIPE: maillinks zijn deep-links naar de
+  PWA (`/accordeur?document=<id>`) — goedkeuren-zonder-inloggen/one-click-token bestaat bewust
+  NIET** (zou de passkey-laag omzeilen). Open: live-verificatie + afzender-adreskeuze bij Peter
+  (scheduler gepauzeerd tot dan; `scripts/gcp/notificaties_infra.sh`), directe push bij nieuwe
+  factuur.
 - **Projecten** (module, zichtbaar per rol + per administratie-toggle): project verplicht = hard
   blokkerend, géén "geen project"-optie; overhead → intern OVH-project (uitgesloten van bewaking).
   Budget uit offerte-ontleding (status offerte ≠ opdracht; meerwerk = aparte budgetversie).

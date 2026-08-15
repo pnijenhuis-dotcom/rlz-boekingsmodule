@@ -442,6 +442,7 @@ alleen verpakking.
 | Reconciliaties (documenten + bank + omzet) | `python -m app.cli reconciliatie-alles` | dagelijks 06:30 |
 | Webhook-afleveraar | `python -m app.cli webhook-afleveren` | elke 5 min |
 | E-mail-intake (IMAP-fetch) | intake-CLI op de seam `app/intake/postvak.py` | elke 10 min |
+| Accordeur-herinneringen (push/mail, toegevoegd 2026-08-15 — zie §F3.5) | `python -m app.cli accordeur-herinneringen` | dagelijks 09:00 |
 
 1. **Cloud Scheduler → Cloud Run jobs** onder `run-jobs@`; per job een eigen definitie zodat een
    hangende sync nooit de afleveraar blokkeert. *(Code)*
@@ -556,6 +557,23 @@ bewust kort, niet het app-domein).
   NB tot tranche 2 landt intake-mail in de **cloud-DB** (het kantoor werkt nog lokaal)
   — bewust: dit is het infrastructuurbewijs, de lokale .eml-upload blijft het
   werkkanaal tot de cutover.
+
+### F3.5 — accordeur-herinneringen (toegevoegd 2026-08-15, berichten-bouwsteen)
+
+Job `rlz-accordeur-herinneringen` (dagelijks 09:00 Europe/Amsterdam, mockup-besluit "dagelijkse
+push 09:00 alleen bij >0 open") — canoniek: BESLISSINGEN "ACCORDEUR-NOTIFICATIES". Opzet volgt
+F3 1-op-1: definitie in deploy.yml (job-lus + eigen update-stap voor de BERICHTEN_*/PUSH_*-envs
+en -secrets, guarded zolang de slots ontbreken), IAM + scheduler in `scripts/gcp/f3_jobs.sh`
+(scheduler start GEPAUZEERD), secret-slots + accessors + activatiestappen in
+**`scripts/gcp/notificaties_infra.sh`** (owner, idempotent). Secrets:
+`BERICHTEN_SMTP_WACHTWOORD` (Workspace-app-wachtwoord verzendadres — voorstel
+berichten@ak-nijenhuis.nl, adreskeuze bij Peter), `PUSH_VAPID_PRIVATE_KEY` (alléén run-jobs@),
+`PUSH_VAPID_PUBLIC_KEY` (ook run-backend@ — het subscribe-endpoint); waarden via stdin, nooit
+als argument. De service krijgt in een eigen guarded stap dezelfde SMTP-config (uitnodigings-
+mail) + de publieke sleutel. Idempotent per dag per accordeur (migratie 0050); 0 open werk =
+exit 0 (F3-les). **Activatievolgorde:** notificaties_infra.sh → secret-versies → deploy → één
+handmatige run + live-verificatie (één échte push op Peters iPhone-PWA + één échte mail) →
+scheduler resume.
 
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
