@@ -13,7 +13,7 @@
 | Verwerkingsverantwoordelijke | Administratiekantoor Nijenhuis (rolbepaling: zie [03-verwerker-vs-verantwoordelijke.md](03-verwerker-vs-verantwoordelijke.md) — het kantoor is voor de administratievoering zelfstandig verwerkingsverantwoordelijke) |
 | Contactpersoon | P. Nijenhuis |
 | Functionaris gegevensbescherming | n.v.t. (geen FG-plicht verwacht; juridisch toetsen) |
-| Verwerkers (via de module) | Anthropic Ireland, Limited (Claude API — AI-extractie; contractspartij EEA), Exact Reeleezee (boekhoudpakket, bron van waarheid), PDL Powerhouse B.V. (eigenaar software + hosting — intra-groep verwerkersovereenkomst, concept [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md), jurist-akkoord vraag 9 2026-08-12), Google Cloud EMEA Ltd. (hosting/database/documentopslag — subverwerker ván PDL; cloudomgeving staat sinds 2026-08-14, klantdata pas ná de F5-poort), e-mailprovider intake-postvak (volgt bij IMAP-activatie, checklist D) — details en contractstatus: [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) |
+| Verwerkers (via de module) | Anthropic Ireland, Limited (Claude API — AI-extractie; contractspartij EEA), Exact Reeleezee (boekhoudpakket, bron van waarheid), PDL Powerhouse B.V. (eigenaar software + hosting — intra-groep verwerkersovereenkomst, concept [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md), jurist-akkoord vraag 9 2026-08-12), Google Cloud EMEA Ltd. (hosting/database/documentopslag — subverwerker ván PDL; cloudomgeving staat sinds 2026-08-14, klantdata pas ná de F5-poort), Google Workspace (e-mailprovider intake-postvak `facturen@ak-nijenhuis.nl` — sinds IMAP-activatie 2026-08-15, DPA = CDPA, checklist D) — details en contractstatus: [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) |
 | Doorgifte buiten de EER | Ja, naar de VS (Anthropic Claude API). Zie §9 (doorgifte-/CLOUD Act-notitie) |
 
 ## 1. Overzicht verwerkingen
@@ -48,7 +48,7 @@
 | Grondslag | Als V1 |
 | Betrokkenen | Afzenders van e-mail (leveranciers, klanten); personen genoemd in bijlagen |
 | Gegevens | E-mailadres afzender, Message-ID, bijlagen (facturen/UBL/PDF); niet-PDF/XML-bijlagen worden geregistreerd maar niet verwerkt |
-| Ontvangers/verwerkers | Anthropic alléén bij PDF-extractie/splitsingsvoorstel en alléén als de AVG-gate `intake_ai_ingeschakeld` AAN staat (Beheerder-instelling, default UIT, elke wijziging in het audit log); e-mailprovider van het intake-postvak (IMAP — leverancier te bepalen bij GCP-uitrol, zie checklist) |
+| Ontvangers/verwerkers | Anthropic alléén bij PDF-extractie/splitsingsvoorstel en alléén als de AVG-gate `intake_ai_ingeschakeld` AAN staat (Beheerder-instelling, default UIT, elke wijziging in het audit log); e-mailprovider van het intake-postvak (Google Workspace, `facturen@ak-nijenhuis.nl` — DPA = CDPA, checklist D rond 2026-08-15) |
 | Bewaartermijn | Als V1; berichten die "niet bij ons horen" worden afgewezen met reden en blijven zichtbaar geregistreerd (niets verdwijnt stil) |
 
 ## 4. V3 — Omzet-/kassarapportverwerking
@@ -142,8 +142,12 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
    Standard Contractual Clauses (2021) in Anthropics DPA (versie effective 24-02-2025,
    gearchiveerd 2026-08-14; module 2 controller→processor). De gearchiveerde Terms
    bevestigen: **geen training op Customer Content** (§B). **Zero data retention:
-   aangevraagd, loopt** (status 2026-08-14) — uitkomst archiveren in de checklist;
-   DPF-registercheck op Anthropic staat nog open (actie Peter, checklist A). Mitigaties:
+   aangevraagd, loopt** (status 2026-08-14) — uitkomst archiveren in de checklist.
+   **DPF-registercheck uitgevoerd 2026-08-15, uitkomst negatief** (geen treffer op
+   "Anthropic" — webprint `docs/avg/Data Privacy Framework.pdf`): Anthropic is niet
+   DPF-gecertificeerd, de SCC's dragen de doorgifte dus alleen; opslaglocatie VS
+   herbevestigd via het Privacy Center-artikel van 16-06-2026 (gearchiveerd, checklist A).
+   Mitigaties:
    gate default UIT, BSN-filter, dataminimalisatie, AI-kostengrens met fail-closed poort.
 2. **Google Cloud** — verwerking in `europe-west4` (Nederland), maar Google LLC valt als
    Amerikaanse moeder onder de CLOUD Act: Amerikaanse autoriteiten kunnen in uitzonderlijke
@@ -162,15 +166,17 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
    Data Processing Addendum + EU-U.S. Data Privacy Framework (Google is DPF-gecertificeerd
    sinds september 2023). CDPA gearchiveerd 2026-08-15: **versie 8 juni 2026**
    (`docs/avg/nl-cloud-data-processing-addendum-customers.pdf`, F5-poortpunt 1 ✅);
-   restpunt checklist B: Googles subverwerkerslijst archiveren.
+   subverwerkerslijsten gearchiveerd 2026-08-15 (GCP + Workspace, checklist B/D).
 3. **Exact Reeleezee** — Nederlandse leverancier, hosting in de EU (expliciet bevestigen =
    restpunt checklist C; de Exact-MKB-PDF's versie 1.5/2021 + bijlage 1.6/2022 zijn
    gearchiveerd in `docs/`; toepasselijkheid op Reeleezee-abonnementen **bevestigd door
    Exact-support 2026-08-14** — `docs/avg/Bevestiging versie RLZ.pdf`, F5-poortpunt 5 ✅).
-4. **E-mailprovider intake-postvak** — wordt pas verwerker bij activering van de live
-   IMAP-fetch (keuze: bestaande kantoor-mailprovider, GCP-beslispunt 5); DPA-check
-   (checklist D) is een harde voorwaarde vóór activering — tot die tijd is de .eml-upload
-   het kanaal en is er geen doorgifte.
+4. **E-mailprovider intake-postvak: Google Workspace** (bestaande kantoor-mailprovider,
+   GCP-beslispunt 5; mailbox `facturen@ak-nijenhuis.nl`) — verwerker sinds de
+   IMAP-activatie (F3.4, 2026-08-15). DPA-check (checklist D) **rond 2026-08-15**: de
+   geldende Workspace-verwerkersvoorwaarden zijn het **CDPA** — hetzelfde gearchiveerde
+   document als punt 2 hierboven (versie 8 juni 2026, dekt Workspace expliciet);
+   doorgifte-grondslag identiek (SCC's in het CDPA + DPF).
 
 ## 10. Rechten van betrokkenen
 

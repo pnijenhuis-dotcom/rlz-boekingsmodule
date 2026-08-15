@@ -14,10 +14,10 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 
 | Partij | Rol | Wanneer nodig | Status |
 |---|---|---|---|
-| Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14), ZDR-verzoek ingediend |
-| Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | ✅ vrijwel rond — CDPA versie 8 juni 2026 gearchiveerd 2026-08-15 (`nl-cloud-data-processing-addendum-customers.pdf`); CMEK-besluit 0021 akkoord + uitgevoerd 2026-08-14; restpunt: Googles subverwerkerslijst archiveren |
+| Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14); DPF-check gedaan 2026-08-15 (negatief — SCC's dragen alleen); ZDR-verzoek ingediend; open: ZDR-uitkomst + subverwerkerslijst |
+| Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | ✅ vrijwel rond — CDPA versie 8 juni 2026 gearchiveerd 2026-08-15 (`nl-cloud-data-processing-addendum-customers.pdf`); CMEK-besluit 0021 akkoord + uitgevoerd 2026-08-14; subverwerkerslijst gearchiveerd 2026-08-15 — **rond** |
 | Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ✅ bevestigd — VWO 1.5/1.6 van toepassing (Exact-support 2026-08-14, `Bevestiging versie RLZ.pdf`); restpunten: EU-hosting expliciet + API-voorwaarden (sectie C) |
-| E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (F3.4) | 🔶 keuze gemaakt (bestaande kantoor-mailprovider, GCP-beslispunt 5, 2026-08-12) — DPA-check + mailbox/app-wachtwoord open |
+| E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (F3.4) | ✅ rond 2026-08-15 — Google Workspace, mailbox `facturen@ak-nijenhuis.nl`; geldende DPA = de CDPA (zelfde gearchiveerde document als checklist B — dekt Workspace expliciet); zie D |
 
 ---
 
@@ -50,9 +50,18 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
   accepteert daarmee de DPA. Er is geen aparte handtekening nodig.
 - Officiële DPA: <https://www.anthropic.com/legal/data-processing-addendum>
 - Uitleg Anthropic Privacy Center: <https://privacy.claude.com/en/articles/7996862-how-do-i-view-and-sign-your-data-processing-addendum-dpa>
-- Verwerking vindt plaats in de **VS** (geen EU-regio voor de standaard API); doorgifte rust op
-  de SCC's in de DPA. Controleer bij ondertekening of Anthropic in het EU-U.S.
-  Data-Privacy-Framework-register staat (extra grondslag).
+- Verwerking vindt plaats in de **VS**; doorgifte rust op de SCC's in de DPA.
+  **Opslaglocatie geverifieerd + gearchiveerd (2026-08-15):** Anthropic Privacy
+  Center-artikel "Where are your servers located?" (versie 16 juni 2026, webprint
+  `docs/avg/Where are your servers located? … | Anthropic Privacy Center.pdf`) —
+  verkeer kan default via US/Europa/Azië/Australië routeren, maar **data wordt
+  opgeslagen in de VS**; de SCC-analyse blijft dus onverkort gelden.
+- **DPF-registercheck: UITGEVOERD 2026-08-15, uitkomst NEGATIEF** — query "Anthropic" op
+  <https://dataprivacyframework.gov/list> geeft "Query returned no results" (webprint
+  gearchiveerd: `docs/avg/Data Privacy Framework.pdf`). Anthropic is dus **niet**
+  DPF-gecertificeerd; er is géén extra doorgiftegrondslag naast de SCC's — de SCC's in de
+  DPA (+ ZDR als mitigatie) dragen de doorgifte alleen. Periodiek herchecken (DPF-status
+  kan wijzigen).
 
 **Zero data retention / data-handling — exact wat te kiezen:**
 
@@ -79,7 +88,9 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
       gearchiveerd (2026-08-14); acceptatiedatum van het account nog vastleggen.
 - [x] ZDR aanvragen — **verzoek ingediend, loopt** (status 2026-08-14); ⬜ uitkomst
       vastleggen + eventuele ZDR-overeenkomst archiveren zodra rond.
-- [ ] DPF-register checken op Anthropic (extra doorgiftegrondslag) en noteren.
+- [x] DPF-register checken op Anthropic (extra doorgiftegrondslag) en noteren — **gedaan
+      2026-08-15, uitkomst negatief** (geen treffer; webprint `Data Privacy Framework.pdf`
+      gearchiveerd — grondslag blijft uitsluitend de SCC's, zie hierboven).
 - [ ] Subverwerkerslijst van Anthropic (in de DPA) doorlopen en archiveren.
 
 ---
@@ -125,7 +136,12 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
       **akkoord Peter + uitvoering 2026-08-14** (platformbesluit 0021, INDEX-regel gezet;
       `rlz-sql2` mét CMEK + default-CMEK-key op de documentenbucket — bewijs in het
       F5-poortdossier punt 3).
-- [ ] Googles subverwerkerslijst (via het CDPA) archiveren.
+- [x] Googles subverwerkerslijst (via het CDPA) archiveren — **gedaan (2026-08-15):**
+      webprint van de actuele lijst gearchiveerd als
+      `docs/avg/Google Cloud Platform Subprocessors | Google Cloud.pdf` (58 p, "Current",
+      <https://cloud.google.com/terms/subprocessors>); voor het Workspace-intake-postvak
+      idem `docs/avg/Google Workspace Terms Of Service – Subprocessors.pdf`
+      (35 p, last modified 23 juli 2026 — zie D).
 
 ---
 
@@ -164,9 +180,26 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 
 ---
 
-## D. E-mailprovider intake-postvak (PM)
+## D. E-mailprovider intake-postvak — ✅ rond (2026-08-15)
 
-De live IMAP-fetch is een gemarkeerde seam die pas bij de GCP-uitrol wordt geactiveerd. De
-leverancier van het centrale intake-adres is dan een verwerker (e-mail bevat facturen met
-persoonsgegevens). Bij de leverancierskeuze: EU-hosting of DPA met SCC's vereisen; keuze en
-DPA-status hier aanvullen vóór activering.
+De leverancier van het centrale intake-adres is een verwerker (e-mail bevat facturen met
+persoonsgegevens); deze check moest rond zijn vóór activering van de live IMAP-fetch (F3.4).
+
+- [x] Providerkeuze: **Google Workspace** (bestaande kantoor-mailprovider,
+      GCP-beslispunt 5, 2026-08-12).
+- [x] Mailbox: **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter 2026-08-15 — bewust kort;
+      niet het app-domein administratiekantoornijenhuis.nl).
+- [x] DPA gearchiveerd: de geldende verwerkersvoorwaarden voor Workspace zijn het
+      **Cloud Data Processing Addendum (CDPA)** — hetzelfde document als checklist B
+      (`docs/avg/nl-cloud-data-processing-addendum-customers.pdf`, versie 8 juni 2026);
+      Workspace staat er expliciet in scope (definities, datacenterlocaties, subverwerkers,
+      ISO-certificeringen — tekstueel geverifieerd 2026-08-15). SCC's/doorgifte lopen via
+      dezelfde CDPA-mechaniek als bij checklist B. Aanvullend gearchiveerd als context:
+      `docs/avg/Google Workspace Terms of Service – Google Workspace.pdf` = de oude losse
+      Workspace-DPA (24-09-2021), door Google gemarkeerd als vervangen archiefversie.
+- [x] Toegangsvorm: IMAP met een **app-wachtwoord** op de mailbox (alleen dit ene
+      account), wachtwoord uitsluitend in Secret Manager (`INTAKE_IMAP_WACHTWOORD`).
+      Activatie-uitvoering: GCP_UITROL §F3.4-uitvoering.
+- [x] Workspace-subverwerkerslijst gearchiveerd (2026-08-15):
+      `docs/avg/Google Workspace Terms Of Service – Subprocessors.pdf` (last modified
+      23 juli 2026, <https://workspace.google.com/terms/subprocessors/>).

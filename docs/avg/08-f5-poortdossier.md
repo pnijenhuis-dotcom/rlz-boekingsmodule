@@ -16,14 +16,18 @@
 | 3 | Herzieningsmoment CLOUD Act (besluit 0003): CMEK/client-side beoordeeld, uitkomst als platformbesluit | Code (memo) + Peter (besluit) + beiden (uitvoering) | ✅ besluit 0021 (akkoord 2026-08-14) + uitgevoerd 2026-08-14 |
 | 4 | Retentie/PITR-instellingen gedocumenteerd | Code | ✅ 2026-08-14 |
 | 5 | Verwerkersovereenkomst Exact Reeleezee bevestigd + gearchiveerd | Peter | ✅ 2026-08-15 — bevestiging Exact 2026-08-14, `Bevestiging versie RLZ.pdf` |
-| 6 | IMAP-provider-DPA rond (checklist D) | Peter | 🔶 keuze gemaakt, DPA-check open |
+| 6 | IMAP-provider-DPA rond (checklist D) | Peter | ✅ 2026-08-15 — Google Workspace; geldende DPA = de al gearchiveerde CDPA (punt 1, dekt Workspace expliciet) |
 | 7 | Verwerkingsregister §8/§9 bijgewerkt op de werkelijke cloudconfiguratie | Code | ✅ 2026-08-14 |
 | 8 | Identiteit-eerst-check afgerond genoteerd (uit F0) | Peter (uitgevoerd) + Code (genoteerd) | ✅ 2026-08-14 |
 
-**Poort dicht = 8/8 ✅ — stand nu 7/8; alleen punt 6 (IMAP-provider-DPA) is nog open.** Daarna pas: datamigratie tranche 2 (GCP_UITROL
-§F1.6) en de omschakeling van het kantoor naar het productiedomein. De volgorde-
-afhankelijkheid van punt 3 met tranche 2 (CMEK-herbouw vóór de dump/restore — CMEK kan
-alleen bij instantie-aanmaak) is **opgelost**: `rlz-sql2` staat mét CMEK, vóór tranche 2.
+**DE POORT IS DICHT: 8/8 ✅ (2026-08-15, met het afvinken van punt 6).** Daarmee is
+**datamigratie tranche 2 (GCP_UITROL §F1.6) formeel vrijgegeven** — uitvoering zodra Peter
+het go-live-moment kiest — gevolgd door de omschakeling van het kantoor naar het
+productiedomein. De volgorde-afhankelijkheid van punt 3 met tranche 2 (CMEK-herbouw vóór de
+dump/restore — CMEK kan alleen bij instantie-aanmaak) is **opgelost**: `rlz-sql2` staat mét
+CMEK, vóór tranche 2. NB de poort borgt de AVG-kant; open restpunten die géén poortpunt
+zijn (subverwerkerslijsten, checklist-C-subchecks) staan per punt hieronder en in
+`02-subverwerkers-checklist.md`.
 
 ---
 
@@ -40,8 +44,10 @@ aangaan van het account/de overeenkomst — geen aparte handtekening).
   voor dit project geëffectueerd bij de F0-uitvoering (project `rlz-boekhouding` aangemaakt
   + billing gekoppeld, **2026-08-14**). De versie van 8 juni 2026 is de op dat moment én bij
   archivering geldende CDPA-versie.
-- ⚠️ Restpunt (geen poortblokkade, checklist B laatste actiepunt): **Googles
-  subverwerkerslijst** (via het CDPA) nog archiveren.
+- ✅ Restpunt gedicht (2026-08-15): **Googles subverwerkerslijsten gearchiveerd** —
+  `Google Cloud Platform Subprocessors | Google Cloud.pdf` (GCP, "Current") én
+  `Google Workspace Terms Of Service – Subprocessors.pdf` (Workspace, 23-07-2026);
+  checklist B/D.
 
 ## 2. Regio-borging — ✅ aantoonbaar (Code, 2026-08-14)
 
@@ -139,15 +145,26 @@ bewaarplicht uit het verwerkingsregister (doc 1, per-verwerking "Bewaartermijn")
   nalopen) en checken dat de API-toegang (webservice-logins) onder dezelfde
   voorwaarden valt. Bijgehouden in `02-subverwerkers-checklist.md` C.
 
-## 6. IMAP-provider-DPA (checklist D) — 🔶 (Peter)
+## 6. IMAP-provider-DPA (checklist D) — ✅ rond (2026-08-15)
 
-- ✅ Providerkeuze: **bestaande kantoor-mailprovider** (GCP-beslispunt 5, 2026-08-12).
-- ⬜ facturen@-mailbox aanmaken + app-wachtwoord; ⬜ DPA/verwerkersvoorwaarden van de
-  mailprovider checken + archiveren (checklist D).
-- NB dit punt blokkeert **F3.4 (IMAP-activatie)** — de F5-poort zelf vermeldt het als
-  poortpunt, maar tot activering is de .eml-upload het kanaal en gaat er geen
-  klantdata door de provider heen. Technisch klaar: scheduler gepauzeerd, secret-slot
-  `INTAKE_IMAP_WACHTWOORD` wacht op een versie (F3-uitvoering).
+- ✅ Providerkeuze: **bestaande kantoor-mailprovider = Google Workspace** (de
+  ak-nijenhuis.nl-Workspace; GCP-beslispunt 5, 2026-08-12).
+- ✅ Mailbox aangemaakt: **`facturen@ak-nijenhuis.nl`** (bewuste adreskeuze Peter
+  2026-08-15 — korter; nadrukkelijk niet het app-domein administratiekantoornijenhuis.nl).
+- ✅ **DPA-check**: de geldende verwerkersvoorwaarden voor Google Workspace zijn sinds
+  Googles samenvoeging het **Cloud Data Processing Addendum (CDPA)** — exact het document
+  dat voor poortpunt 1 al is gearchiveerd
+  (`nl-cloud-data-processing-addendum-customers.pdf`, versie 8 juni 2026); de CDPA-tekst
+  benoemt Google Workspace expliciet in scope (definities, datacenterlocaties,
+  subverwerkers, certificeringen — tekstueel geverifieerd 2026-08-15). Aanvullend
+  gearchiveerd (aangeleverd Peter 2026-08-15):
+  `Google Workspace Terms of Service – Google Workspace.pdf` — dit is de **oude, losse
+  Workspace-"Data Processing Amendment"** (last modified 24-09-2021), door Google zelf
+  gemarkeerd als archiefversie en vervangen door de CDPA; bewaard als context, de CDPA is
+  het geldende document. De oude losse DPA-URL bestaat niet meer (404-check 2026-08-15).
+- NB het app-wachtwoord in het secret-slot `INTAKE_IMAP_WACHTWOORD` is een
+  **activatiestap (F3.4)**, geen poortpunt: tot dat moment draait de fetch simpelweg niet
+  en is de .eml-upload het kanaal. Activatie-uitvoering: GCP_UITROL §F3.4-uitvoering.
 
 ## 7. Verwerkingsregister §8/§9 bijgewerkt — ✅ (Code, 2026-08-14)
 
@@ -176,13 +193,17 @@ is onderdeel van de livegang-administratie.
 
 ## Peters openstaande klikken, verzameld (kopieerbaar lijstje)
 
-1. ~~CDPA-versie + acceptatiedatum archiveren~~ — **gedaan**: versie 8 juni 2026
-   gearchiveerd 2026-08-15 (punt 1 ✅); **Googles subverwerkerslijst** archiveren staat
-   nog open (checklist B, geen poortpunt).
+1. ~~CDPA-versie + acceptatiedatum archiveren~~ — **gedaan** (punt 1 ✅);
+   ~~Googles subverwerkerslijst~~ — **gedaan 2026-08-15** (GCP + Workspace gearchiveerd,
+   checklist B/D).
 2. ~~Akkoord op CMEK-voorstel 0021~~ — **gedaan**: akkoord 2026-08-14, uitgevoerd (punt 3 ✅).
-3. **DPF-registercheck Anthropic** + Anthropic-subverwerkerslijst archiveren
-   (checklist A — geen F5-poortpunt maar stap-1-punt, zelfde archiveersessie).
+3. ~~DPF-registercheck Anthropic~~ — **gedaan 2026-08-15, uitkomst negatief** (geen
+   DPF-vermelding; SCC's dragen de doorgifte alleen — checklist A + register §9);
+   **Anthropic-subverwerkerslijst archiveren staat nog open** (checklist A).
 4. ~~Reeleezee-bevestiging toepasselijke VWO-versie~~ — **gedaan**: bevestiging Exact
    2026-08-14, gearchiveerd 2026-08-15 (punt 5 ✅; restpunten EU-hosting + API-voorwaarden
    in checklist C).
-5. **facturen@-mailbox + app-wachtwoord + DPA-check mailprovider** (punt 6).
+5. ~~facturen@-mailbox + DPA-check mailprovider~~ — **gedaan** (punt 6 ✅ 2026-08-15:
+   `facturen@ak-nijenhuis.nl`, DPA = CDPA). Rest alleen de **activatieklik F3.4**: het
+   app-wachtwoord in het secret-slot zetten —
+   `gcloud secrets versions add INTAKE_IMAP_WACHTWOORD --data-file=-` (waarde via stdin).

@@ -42,6 +42,8 @@ TEST-administratie).
 > ➡️ **Deze stap is de F5-poort.** Het afvinkbare bewijsdossier (per punt:
 > bewijs/vindplaats + wie + status) is **[08-f5-poortdossier.md](08-f5-poortdossier.md)**
 > — status dáár bijhouden, dit lijstje blijft de normtekst.
+> **Stand 2026-08-15: de poort is DICHT (8/8 ✅ in het dossier)** — datamigratie
+> tranche 2 is vrijgegeven zodra Peter het go-live-moment kiest.
 
 - [ ] **Google Cloud CDPA** geaccepteerd; versie + datum gearchiveerd (checklist B).
 - [ ] **Regio-borging**: alle services in `europe-west4`; Organization Policy op EU-locaties.
@@ -52,7 +54,7 @@ TEST-administratie).
 - [ ] **Exact Reeleezee**: actuele verwerkersovereenkomst bevestigd en gearchiveerd
       (checklist C) — formeel losstaand van GCP, maar vóór livegang afronden.
 - [ ] **IMAP-postvak**: providerkeuze gemaakt + DPA rond (checklist D) — vóór activering van
-      de live e-mail-fetch (de seam in `app/intake/postvak.py`).
+      de live e-mail-fetch (`app/intake/postvak.py`).
 - [ ] Verwerkingsregister §8/§9 bijgewerkt op de werkelijke cloudconfiguratie.
 
 ## Stap 3 — opt-ins per administratie (ná stap 1 en 2)

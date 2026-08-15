@@ -21,10 +21,19 @@ september 2026).
 Word-bundel voor verzending aan de jurist: `AVG-pakket-ter-toetsing-2026-08-11.docx`
 (memo + alle documenten in één bestand).
 
-Gearchiveerde brondocumenten (aangeleverd door Peter, 2026-08-14): de Anthropic
-**Commercial Terms of Service** (effective 17-06-2025) en het **Data Processing Addendum**
-(effective 24-02-2025) als PDF-webprints — kernpunten en status in checklist A van
-[02-subverwerkers-checklist.md](02-subverwerkers-checklist.md).
+Gearchiveerde brondocumenten (PDF-webprints, aangeleverd door Peter; kernpunten en status
+per partij in [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md)):
+
+- **Anthropic** (2026-08-14/15): Commercial Terms of Service (effective 17-06-2025),
+  Data Processing Addendum (effective 24-02-2025), Privacy Center "Where are your servers
+  located?" (16-06-2026, opslag VS) en de DPF-registercheck (15-08-2026, géén treffer —
+  niet DPF-gecertificeerd).
+- **Google** (2026-08-15): Cloud Data Processing Addendum NL (versie 8 juni 2026 — geldt
+  voor GCP én Workspace, dus ook voor het intake-postvak), GCP-subverwerkerslijst,
+  Workspace-subverwerkerslijst (23-07-2026) en de oude losse Workspace-DPA (24-09-2021,
+  door Google vervangen — alleen context).
+- **Exact Reeleezee** (2026-08-14/15): VWO 1.5 + bijlage 1.6 (in `docs/`) en de
+  supportbevestiging `Bevestiging versie RLZ.pdf`.
 
 **De .md-bestanden zijn canoniek; de .docx-bestanden zijn gegenereerde verzend-artefacten**
 — verversen via `backend/.venv/bin/python scripts/genereer_avg_docx.py <bron.md> <doel.docx>`,
