@@ -254,3 +254,37 @@ doorbelasting_regel
 
 **Vervolgstap**: credentials voor minstens 2 doelentiteiten aanvragen bij Peter om §2c alsnog te
 verifiëren, vóórdat dit datamodel als basis voor bouwwerk wordt gebruikt.
+
+## 2c-vervolg — spiegelkant geverifieerd bij de VIJF recreatie-/vastgoeddoelen (onboarding-batch 2026-08-15)
+
+De open afhankelijkheid uit §0 ("Peter levert logins voor minimaal 2 recreatie-doelentiteiten")
+is met de onboarding-batch 15-08 vervuld: Molenhof Beheer, Molenhof Verhuur, Oirschot Recreatie,
+Oirschot Vastgoed Beheer en Veldhoven Recreatie zijn read-only geverifieerd (nieuwste 3
+Facilities-inkoopfacturen per doel, Lines mét `$expand=Account,TaxRate`, Ledgers-search RC +
+provisie). Bevindingen naast het Rubicon-beeld:
+
+| Doel | Crediteur Facilities | Kosten-GB-patroon | Provisierekening | RC Kempen Facilities |
+|---|---|---|---|---|
+| Molenhof Beheer | "Kempen Facilities B.V" (⚠️ zónder punt) | **deels AccountType 3** (0103 Verbouwing) naast type 2 (4310) | 4808 "Provisie Kempen faciliteits" (⚠️ typo) | **16045** |
+| Molenhof Verhuur | "Kempen Facilities B.V." | **deels type 3** (0109 Bedrijfsinventaris) naast type 2 (7049) | 4808 | **16042** |
+| Oirschot Recreatie | "Kempen Facilities B.V." | volledig type 2 (4113/40511/4050) — conform Rubicon | **4173** (niet 4808) | **16041** |
+| Oirschot Vastgoed Beheer | "Kempen Facilities B.V." | **deels type 3** (01051 Groepsverblijf, 0103, 0109) | 4808 | **16048** |
+| Veldhoven Recreatie | "Kempen Facilities B.V." | volledig type 2 (40311/4164/4181) — conform Rubicon | **4173** (niet 4808) | **16041** |
+
+Consequenties (verwerkt in de mapping-config 15-08):
+1. **RC bestaat bij álle vijf** — ANDERS dan Rubicon. `intercompany=true` (default) is hier dus
+   correct (IC-open-posten uit afletter-voorstellen, fail-closed poort); **alleen de
+   Rubicon-mapping-rij staat op `intercompany=false`** (per-stuk vereffend, geen RC — §2c).
+2. **Activering op de spiegelkant is bij drie doelen reëel** (Verbouwing/Bedrijfsinventaris/
+   Groepsverblijf, AccountType 3) — het Rubicon-beeld "geen activering" is dus NIET
+   representatief voor de recreatie-BV's. De motor kan dit aan (doel-kosten-GB per verdeelregel
+   = menskeuze; `laatste_kosten_ledger_id` is alleen geheugen), maar het is een instructiepunt
+   voor wie verdeelt: investeringsposten in de doelen op de activarekening zetten.
+3. **Provisierekening verschilt per doel**: 4173 (Oirschot Recreatie, Veldhoven) vs 4808
+   (Molenhof ×2, OVB, Rubicon) — per mapping-rij gezet (`provisie_kosten_ledger_id`).
+4. Btw: reguliere aftrekbare voorbelasting 21% (zelfde systeem-GUID `1e44993a-…`), provisie als
+   losse regel "Provisie 5% over nettobedrag" — conform Rubicon/huidig patroon. NB een
+   `$expand=TaxRate` geeft hier alleen de id terug (geen Percentage-property) — niet verwarren
+   met "geen btw".
+5. Facilities' bron-verkoopkant boekt beide regels (kosten + provisie) op **8000 "Omzet 1"** →
+   bron-instelling: omzet-GB 8000, provisie-GB leeg (= zelfde GB), 5%, btw 21%.
