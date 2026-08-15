@@ -18,6 +18,7 @@ actie waarna accordeurs opnieuw moeten subscriben."""
 from __future__ import annotations
 
 import base64
+import sys
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -33,6 +34,12 @@ def main() -> None:
     publiek = sleutel.public_key().public_bytes(
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
     )
+    if "--kaal" in sys.argv:
+        # Machine-leesbaar (scripts/gcp/notificaties_afronden.sh): regel 1 = private,
+        # regel 2 = public — niets anders op stdout, zodat piping veilig is.
+        print(_b64url(prive))
+        print(_b64url(publiek))
+        return
     print("PUSH_VAPID_PRIVATE_KEY (geheim — Secret Manager/.env, nooit in chat/logs):")
     print(f"  {_b64url(prive)}")
     print("PUSH_VAPID_PUBLIC_KEY (geen geheim — env-var, applicationServerKey):")

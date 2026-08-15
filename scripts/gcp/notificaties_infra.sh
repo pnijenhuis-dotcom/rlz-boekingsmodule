@@ -2,6 +2,10 @@
 # =============================================================================
 # Accordeur-notificaties — infra (berichten-bouwsteen 2026-08-15).
 #
+# NB: voor de VOLLEDIGE afronding (slots + VAPID-generatie + wachtwoord-invoer +
+# deploy + job-run + scheduler-resume in één interactieve gang) is er sinds
+# 2026-08-15 scripts/gcp/notificaties_afronden.sh — dat omvat dit script.
+#
 # WIE DRAAIT DIT: het org-owner-account (Peter) — secret-slots, IAM-accessors en
 # scheduler-resume vergen rechten die deploy@ bewust niet heeft (zelfde grondhouding als
 # scripts/gcp/f3_jobs.sh). IDEMPOTENT: describe-vóór-create op elke resource.
@@ -18,9 +22,10 @@
 #   3. Ná de live-verificatie: scheduler rlz-accordeur-herinneringen hervatten.
 #
 # VOORAF NODIG (handwerk Peter, geen gcloud):
-#   - Verzendadres kiezen (voorstel: berichten@ak-nijenhuis.nl — wijzigt het adres, pas dan
-#     ook de BERICHTEN_*-envs in .github/workflows/deploy.yml aan) + mailbox/alias aanmaken
-#     in Google Workspace + app-wachtwoord genereren (zelfde route als facturen@, F3.4).
+#   - Verzendadres = facturen@ak-nijenhuis.nl (BESLUIT Peter 2026-08-15: geen aparte
+#     gebruiker/licentie; Reply-To p.nijenhuis@kempengroep.nl houdt antwoorden buiten de
+#     intake). App-wachtwoord genereren op het facturen@-account (label "RLZ berichten" —
+#     apart van het IMAP-app-wachtwoord, zodat roteren onafhankelijk kan).
 #   - VAPID-sleutelpaar genereren: backend/.venv/bin/python scripts/genereer_vapid_sleutels.py
 #     (éénmalig; een nieuwe private key maakt alle bestaande push-subscripties ongeldig).
 #
