@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Pre-commit-vangnet (procesnotitie Peter 2026-08-15, les Platform/registers/verbeteringen.md
+# 11/12-08 vastgoed): deploys #23/#24 faalden op een TS-buildfout die al bij het committen
+# gevangen had moeten worden. Raakt de commit frontend-bestanden, dan draait tsc -b over de
+# VOLLEDIGE actuele werkboom (niet alleen de staged bestanden — een eerder groen resultaat
+# telt niet als er daarna nog geschreven is). Rood = commit geblokkeerd.
+#
+# Installatie (eenmalig per kloon, versiebeheerde bron):
+#   ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+# Bewust omzeilen kan alleen expliciet met git commit --no-verify (niet doen zonder reden).
+set -euo pipefail
+
+if git diff --cached --name-only | grep -q '^frontend/'; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+  echo "pre-commit: frontend geraakt — tsc -b over de volledige werkboom…"
+  if ! (cd "${REPO_ROOT}/frontend" && npx tsc -b); then
+    echo >&2
+    echo "pre-commit: tsc -b FAALT — commit geblokkeerd (les verbeteringen.md 12-08:" >&2
+    echo "een TS-fout hoort bij het committen gevangen te worden, niet bij de deploy)." >&2
+    exit 1
+  fi
+  echo "pre-commit: tsc -b groen."
+fi
