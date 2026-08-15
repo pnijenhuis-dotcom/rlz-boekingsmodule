@@ -2,12 +2,16 @@
 // factuurbeeld centraal met voorgestelde boeking → Akkoord (direct, → automatisch volgende) /
 // Afwijzen (bottom-sheet, verplichte reden) → lege staat. Staande-goedkeuring-voorstel ná
 // akkoord op identiek leverancier+bedrag; ✓✓-beheerscherm met intrekken. Scope bewust alléén
-// de wachtrij (besluit 2026-08-08). NB de dagelijkse-pushherinnering uit de mockup is bewust
-// nog NIET opgenomen: push is expliciet GCP-fase — een belofte tonen die niet bestaat zou
-// misleiden (afwijking gedocumenteerd in BESLISSINGEN).
+// de wachtrij (besluit 2026-08-08). De dagelijkse-herinnering-banner uit de mockup is sinds
+// 2026-08-15 wél opgenomen (push bestaat nu — berichten-bouwsteen): permissie wordt alléén
+// gevraagd vanuit een expliciete klik (voorstel ná het voorwaarden-akkoord + de knop in de
+// banner), nooit rauw bij het laden. ?document=<id> is de deep-link uit mail/push — alleen
+// navigatie; de auth-cadans blijft de poort.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { haalMeldingenStatus, pushOndersteund, zetMeldingenAan, zetMeldingenUit, type MeldingenStatus } from './pushClient'
 import type { StaandeRegelDto } from '../accordering/accorderingApi'
 import {
   datumWeergave,
@@ -170,6 +174,10 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [administratieNamen, setAdministratieNamen] = useState<string[]>([])
   const [staandeRegels, setStaandeRegels] = useState<(StaandeRegelDto & { administratie_id: string })[]>([])
+  const [meldingen, setMeldingen] = useState<MeldingenStatus | null>(null)
+  const [meldingenVoorstel, setMeldingenVoorstel] = useState(false)
+  const [meldingenBezig, setMeldingenBezig] = useState(false)
+  const [zoekParams, setZoekParams] = useSearchParams()
 
   const toon = useCallback((tekst: string) => {
     setToast(tekst)
@@ -202,7 +210,35 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     haalMijnAdministraties()
       .then(({ administraties }) => setAdministratieNamen(administraties.map((a) => a.naam)))
       .catch(() => setAdministratieNamen([]))
+    haalMeldingenStatus()
+      .then(setMeldingen)
+      .catch(() => setMeldingen(null))
   }, [laadWachtrij])
+
+  const meldingenAanzetten = useCallback(async () => {
+    setMeldingenBezig(true)
+    try {
+      const status = await zetMeldingenAan()
+      setMeldingen(status)
+      if (status === 'aan') toon('Meldingen staan aan')
+      else if (status === 'geweigerd') toon('Meldingen geblokkeerd in de browserinstellingen')
+    } catch {
+      toon('Meldingen aanzetten mislukte — probeer het opnieuw')
+    } finally {
+      setMeldingenBezig(false)
+    }
+  }, [toon])
+
+  const meldingenUitzetten = useCallback(async () => {
+    setMeldingenBezig(true)
+    try {
+      await zetMeldingenUit()
+      setMeldingen('uit')
+      toon('Meldingen staan uit')
+    } finally {
+      setMeldingenBezig(false)
+    }
+  }, [toon])
 
   // Factuurbeeld lazy per geopend document; blob-URL netjes opruimen.
   useEffect(() => {
@@ -227,6 +263,23 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     setHuidige(item)
     setWeergave('review')
   }
+
+  // Deep-link uit mail/pushmelding (?document=<id>): open dat document zodra de wachtrij er
+  // is — staat het er niet (meer) in, dan gewoon de wachtrij (al afgehandeld/ingetrokken).
+  // Alleen navigatiesuiker: de ontgrendel-/voorwaardenpoorten zijn dan al gepasseerd.
+  const deepLinkVerwerkt = useRef(false)
+  useEffect(() => {
+    if (laden || deepLinkVerwerkt.current) return
+    const documentId = zoekParams.get('document')
+    if (!documentId) return
+    deepLinkVerwerkt.current = true
+    const doel = items.find((i) => i.document_id === documentId)
+    if (doel) openReview(doel)
+    const rest = new URLSearchParams(zoekParams)
+    rest.delete('document')
+    setZoekParams(rest, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [laden, items, zoekParams, setZoekParams])
 
   const naVerwerking = (melding: string, verwerktItem: WachtrijItemDto) => {
     const rest = items.filter((i) => i.document_id !== verwerktItem.document_id)
@@ -319,9 +372,57 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     // kan de server-sessie netjes beëindigen (fail-closed-gate zonder uitgang, fix 2026-08-12).
     return (
       <>
-        <VoorwaardenScherm naAkkoord={() => void laadWachtrij()} uitloggen={doeUitloggen} />
+        <VoorwaardenScherm
+          naAkkoord={() => {
+            void laadWachtrij()
+            // Meldingen-voorstel op het logische moment (ná het voorwaarden-akkoord in de
+            // activeringsflow) — de status komt vers van de server, want vóór het akkoord
+            // weigert de notificatie-config-endpoint (fail-closed poort).
+            haalMeldingenStatus()
+              .then((status) => {
+                setMeldingen(status)
+                if (status === 'uit') setMeldingenVoorstel(true)
+              })
+              .catch(() => setMeldingen(null))
+          }}
+          uitloggen={doeUitloggen}
+        />
         {toast && <div className="acc-toast">{toast}</div>}
       </>
+    )
+  }
+
+  if (meldingenVoorstel && meldingen === 'uit') {
+    // Eénmalig voorstel in de activeringsflow — de browserpermissie komt pas ná deze
+    // expliciete klik (nooit rauw bij het laden); "Niet nu" laat de knop in de wachtrij-banner
+    // als tweede kans staan.
+    return (
+      <div className="acc-vol">
+        <div className="acc-appnaam">
+          RLZ <span>Goedkeuren</span>
+        </div>
+        <div className="acc-bio">
+          <div className="acc-icoon">🔔</div>
+          <b>Meldingen aanzetten?</b>
+          <div className="acc-sub">
+            Eén dagelijkse herinnering om 09:00 — alléén als er iets op je akkoord wacht, nooit ruis.
+            Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding zelf.
+          </div>
+        </div>
+        <button
+          className="acc-btn groen"
+          disabled={meldingenBezig}
+          onClick={() => {
+            void meldingenAanzetten().then(() => setMeldingenVoorstel(false))
+          }}
+        >
+          {meldingenBezig ? 'Bezig…' : 'Zet meldingen aan'}
+        </button>
+        <button className="acc-btn secundair" onClick={() => setMeldingenVoorstel(false)}>
+          Niet nu
+        </button>
+        {toast && <div className="acc-toast">{toast}</div>}
+      </div>
     )
   }
 
@@ -367,6 +468,41 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 <button className="acc-btn klein secundair" onClick={() => void laadWachtrij()}>
                   Opnieuw
                 </button>
+              </div>
+            )}
+            {!laden && !fout && meldingen === 'uit' && (
+              <div className="acc-pushnote">
+                <span className="t">🔔</span>
+                <div>
+                  <b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.
+                  <br />
+                  <button className="acc-btn klein groen" disabled={meldingenBezig} onClick={() => void meldingenAanzetten()}>
+                    {meldingenBezig ? 'Bezig…' : 'Zet meldingen aan'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {!laden && !fout && meldingen === 'geweigerd' && (
+              <div className="acc-pushnote">
+                <span className="t">🔕</span>
+                <div>
+                  Meldingen zijn <b>geblokkeerd in je browserinstellingen</b> — sta ze daar toe om de
+                  dagelijkse herinnering (09:00, alleen bij openstaand werk) te ontvangen.
+                </div>
+              </div>
+            )}
+            {!laden && !fout && meldingen === 'aan' && teller > 0 && (
+              <div className="acc-pushnote">
+                <span className="t">🔔</span>
+                <div>
+                  <b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.
+                  <br />
+                  "Goedemorgen! Er {teller === 1 ? 'wacht' : 'wachten'} nog <b>{teller === 1 ? '1 factuur' : `${teller} facturen`}</b> op je akkoord."
+                  <br />
+                  <button className="acc-tekstlink" disabled={meldingenBezig} onClick={() => void meldingenUitzetten()}>
+                    meldingen uitzetten
+                  </button>
+                </div>
               </div>
             )}
             {!laden && !fout && teller > 0 && (
