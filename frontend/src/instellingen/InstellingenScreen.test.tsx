@@ -122,6 +122,16 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body })
         return Promise.resolve(jsonResponse(body))
       }
+      // Beveiliging-sectie (kantoor-passkeys, besluit 0020) — voor élke kantoor-rol.
+      if (url === '/auth/mijn/apparaten') {
+        return Promise.resolve(jsonResponse({ apparaten: [] }))
+      }
+      if (url === '/auth/webauthn/config') {
+        return Promise.resolve(jsonResponse({ dev_stub: false, rp_id: 'localhost' }))
+      }
+      if (url === '/auth/apparaten/kantoor') {
+        return Promise.resolve(jsonResponse({ apparaten: [] }))
+      }
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
   )
@@ -145,11 +155,11 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     vi.unstubAllGlobals()
   })
 
-  it('een niet-Beheerder wordt weggestuurd en ziet het scherm niet', async () => {
+  it('een niet-Beheerder ziet alléén de Beveiliging-sectie (eigen passkeys, besluit 0020)', async () => {
     installFetchMock({ rol: 'boekhouding' })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('WERKVOORRAAD-SCHERM')).toBeInTheDocument())
+    expect(await screen.findByRole('heading', { name: /Beveiliging — passkeys/ })).toBeInTheDocument()
     expect(screen.queryByText('Administraties')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /kill switch/i })).not.toBeInTheDocument()
   })

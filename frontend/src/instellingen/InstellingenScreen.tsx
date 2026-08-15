@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -8,6 +7,7 @@ import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstell
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
+import { BeveiligingInstellingen } from './BeveiligingInstellingen'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import {
   haalAiKostenStatusOp,
@@ -258,15 +258,24 @@ export function InstellingenScreen() {
     if (rol === 'beheerder') laadAlles()
   }, [rol, laadAlles])
 
-  // Backend dwingt dit al af op elk endpoint hieronder — dit is de UI-kant: niet-Beheerders zien
-  // het scherm niet eens (design-pass taak 3), geen kale 403 of lege tabel. Wacht op `status` (niet
-  // alleen `rol`) zodat dit ook correct is als dit scherm ooit los van App.tsx's status==='laden'-
-  // gate gemount wordt — anders redirect het al vóórdat de stille sessie-refresh de rol kent.
+  // Backend dwingt dit al af op elk endpoint hieronder — dit is de UI-kant. Sinds de
+  // kantoor-passkeys (besluit 0020) is Instellingen voor élke kantoor-rol bereikbaar, maar een
+  // niet-Beheerder ziet uitsluitend de Beveiliging-sectie (eigen passkeys) — de beheer-secties
+  // renderen niet eens (design-pass taak 3: geen kale 403 of lege tabel). Wacht op `status`
+  // (niet alleen `rol`) zodat dit ook correct is los van App.tsx's status==='laden'-gate.
   if (status === 'laden') {
     return <p className="hint">Laden…</p>
   }
-  if (rol !== 'beheerder') {
-    return <Navigate to="/" replace />
+  const isBeheerder = rol === 'beheerder'
+  if (!isBeheerder) {
+    return (
+      <div>
+        <div className="topbar">
+          <h1>Instellingen</h1>
+        </div>
+        <BeveiligingInstellingen isBeheerder={false} />
+      </div>
+    )
   }
 
   const bevestigen = async () => {
@@ -321,6 +330,8 @@ export function InstellingenScreen() {
       <div className="topbar">
         <h1>Instellingen</h1>
       </div>
+
+      <BeveiligingInstellingen isBeheerder />
 
       {laadFout && <div className="fout">Kon instellingen niet laden: {laadFout}</div>}
 

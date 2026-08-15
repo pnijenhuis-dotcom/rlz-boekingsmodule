@@ -27,11 +27,11 @@ export function Shell() {
           <NavLink to="/archief" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Archief
           </NavLink>
-          {rol === 'beheerder' && (
-            <NavLink to="/instellingen" className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Instellingen
-            </NavLink>
-          )}
+          {/* Sinds kantoor-passkeys (besluit 0020) voor élke kantoor-rol: niet-Beheerders zien
+              er alleen de Beveiliging-sectie (eigen passkeys). */}
+          <NavLink to="/instellingen" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Instellingen
+          </NavLink>
         </div>
         <div className="userbox">
           <b>{rol ?? 'Ingelogd'}</b>
