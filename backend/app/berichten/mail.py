@@ -50,6 +50,10 @@ def bouw_bericht(*, naar: str, onderwerp: str, tekst: str) -> EmailMessage:
     bericht["From"] = _afzender()
     bericht["To"] = naar
     bericht["Subject"] = onderwerp
+    # Mailbesluit Peter 2026-08-15: afzender = facturen@ (intake-postvak, geen extra licentie),
+    # maar menselijke antwoorden horen bij een mens — de Reply-To stuurt ze buiten de intake om.
+    if settings.berichten_reply_to:
+        bericht["Reply-To"] = settings.berichten_reply_to
     bericht.set_content(tekst)
     return bericht
 

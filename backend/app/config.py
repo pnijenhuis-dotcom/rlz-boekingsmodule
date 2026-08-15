@@ -244,14 +244,21 @@ class Settings(BaseSettings):
     # uitnodigingsflow (accordeur- en kantooruitnodigingen per mail i.p.v. handmatig link
     # kopiëren). None = niet geconfigureerd (lokale dev): verzenden faalt dan ZICHTBAAR
     # (MailNietGeconfigureerd) — nooit stil. Wachtwoord via Secret Manager
-    # (BERICHTEN_SMTP_WACHTWOORD). Afzenderadres: voorstel berichten@ak-nijenhuis.nl —
-    # adreskeuze ligt als vraag bij Peter (zie BESLISSINGEN "Accordeur-notificaties").
+    # (BERICHTEN_SMTP_WACHTWOORD). Afzenderadres (besluit Peter 2026-08-15): facturen@
+    # ak-nijenhuis.nl — géén aparte gebruiker/licentie voor berichten@; menselijke antwoorden
+    # blijven via de Reply-To buiten het intake-postvak, auto-replies die tóch op facturen@
+    # binnenkomen zijn geaccepteerde zichtbare ruis (de intake herkent ze niet als factuur →
+    # verzamelbak). Zie BESLISSINGEN "Accordeur-notificaties — mailbesluit".
     berichten_smtp_host: str | None = None
     berichten_smtp_poort: int = 465
     berichten_smtp_gebruiker: str | None = None
     berichten_smtp_wachtwoord: str | None = None
     berichten_afzender: str | None = None  # default: berichten_smtp_gebruiker
     berichten_afzender_naam: str = "Administratiekantoor Nijenhuis"
+    # Reply-To voor álle uitgaande mail: antwoorden van mensen horen bij Peter, niet in het
+    # intake-postvak (mailbesluit 2026-08-15). None = geen Reply-To-header (antwoorden gaan
+    # dan naar het afzenderadres).
+    berichten_reply_to: str | None = None
 
     # Basis-URL van de app voor links in uitgaande berichten (uitnodigingslink, PWA-deep-link).
     # Dev = de Vite-dev-server; productie = het https-domein (F2 domain mapping). HARD PRINCIPE

@@ -177,12 +177,13 @@ jobs:
           # scripts/gcp/notificaties_infra.sh (owner); zolang die nog niet gedraaid is, faalt
           # deze update — dan alleen een zichtbare LET-OP, geen rode deploy (de job draait dan
           # geconfigureerd-loos: mail/push falen fail-zichtbaar, nooit stil). Afzenderadres
-          # berichten@ak-nijenhuis.nl is het VOORSTEL — adreskeuze ligt bij Peter (BESLISSINGEN
-          # "Accordeur-notificaties"); wijzigt dat, dan alleen deze envs aanpassen.
+          # (besluit Peter 2026-08-15): facturen@ak-nijenhuis.nl — géén aparte gebruiker/
+          # licentie; Reply-To p.nijenhuis@kempengroep.nl houdt menselijke antwoorden buiten
+          # het intake-postvak, auto-replies dáár zijn geaccepteerde zichtbare ruis.
           gcloud run jobs update rlz-accordeur-herinneringen \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=berichten@ak-nijenhuis.nl,BERICHTEN_AFZENDER=berichten@ak-nijenhuis.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
+            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
             --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
             --quiet \
           || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — rlz-accordeur-herinneringen draait zonder mail-/pushconfig (fail-zichtbaar)."
@@ -197,7 +198,7 @@ jobs:
           gcloud run services update rlz-backend \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=berichten@ak-nijenhuis.nl,BERICHTEN_AFZENDER=berichten@ak-nijenhuis.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
+            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
             --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
             --quiet \
           || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — service draait zonder mail-/pushconfig (fail-zichtbaar: uitnodiging-respons meldt mail_fout, push-config-endpoint geeft null)."

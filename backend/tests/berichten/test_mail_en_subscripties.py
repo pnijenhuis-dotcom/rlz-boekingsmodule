@@ -23,11 +23,21 @@ class TestMailKanaal:
             mail.verzend_mail(naar="x@test.local", onderwerp="t", tekst="t")
 
     def test_bericht_bouw(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(settings, "berichten_smtp_gebruiker", "berichten@ak-nijenhuis.nl")
+        monkeypatch.setattr(settings, "berichten_smtp_gebruiker", "facturen@ak-nijenhuis.nl")
         bericht = mail.bouw_bericht(naar="a@test.local", onderwerp="Onderwerp", tekst="Inhoud")
         assert bericht["To"] == "a@test.local"
-        assert "berichten@ak-nijenhuis.nl" in bericht["From"]
+        assert "facturen@ak-nijenhuis.nl" in bericht["From"]
         assert bericht.get_content().strip() == "Inhoud"
+        # Zonder geconfigureerde Reply-To géén header — antwoorden gaan dan naar de afzender.
+        assert bericht["Reply-To"] is None
+
+    def test_reply_to_houdt_antwoorden_buiten_de_intake(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Mailbesluit Peter 2026-08-15: afzender = facturen@ (intake-postvak), maar menselijke
+        antwoorden horen via de Reply-To bij Peter terecht te komen — nooit in de intake."""
+        monkeypatch.setattr(settings, "berichten_smtp_gebruiker", "facturen@ak-nijenhuis.nl")
+        monkeypatch.setattr(settings, "berichten_reply_to", "p.nijenhuis@kempengroep.nl")
+        bericht = mail.bouw_bericht(naar="a@test.local", onderwerp="Onderwerp", tekst="Inhoud")
+        assert bericht["Reply-To"] == "p.nijenhuis@kempengroep.nl"
 
     def test_activeerlink_bestaande_linkvorm(self) -> None:
         assert activeerlink("tok123") == f"{settings.app_basis_url.rstrip('/')}/activeren?token=tok123"
