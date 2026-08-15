@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { haalMeldingenStatus, pushOndersteund, zetMeldingenAan, zetMeldingenUit, type MeldingenStatus } from './pushClient'
+import { haalMeldingenStatus, zetMeldingenAan, zetMeldingenUit, type MeldingenStatus } from './pushClient'
 import type { StaandeRegelDto } from '../accordering/accorderingApi'
 import {
   datumWeergave,
