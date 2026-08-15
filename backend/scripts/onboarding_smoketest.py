@@ -12,6 +12,14 @@ Waarborgen (PoC-protocol, verkenning/poc_doorbelasting_schrijf.py):
 - NOOIT verwijderen: opruimen = actie 19 (document blijft als concept staan).
 - Append-only audit-JSONL: verkenning/output/onboarding_smoketest_audit.jsonl.
 
+SLOTSTAP — MENS-CHECK (les kliktest-blokkade 2026-08-15, BESLISSINGEN "ONBOARDING-MENS-CHECK"):
+onboarding is pas AF als een kantoorgebruiker de administratie ook écht in de app ziet — niet
+alleen deze API-smoketest. Concreet ná de batch, ingelogd als kantoorgebruiker in de app:
+Archief → kies de administratie → de TEST-ONB-boeking staat er; Zoeken → de TEST-referentie
+vindt 'm. NB verwachtingen die de check anders doen lezen: de werkvoorraad verbergt klanten
+zónder openstaand werk (een geboekte TEST-factuur telt niet mee) en zoeken matcht
+documentvelden, geen administratienamen.
+
 Draaien: backend/.venv/bin/python scripts/onboarding_smoketest.py [CODE ...] (default: alle)."""
 
 from __future__ import annotations
