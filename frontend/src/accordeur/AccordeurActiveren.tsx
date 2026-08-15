@@ -8,6 +8,9 @@ import type { TokenPaarResponseDto } from '../api/types'
 import {
   apparaatNaam,
   haalWebauthnConfig,
+  loginOpties,
+  loginVoltooien,
+  ondertekenAssertie,
   registratieOpties,
   registratieVoltooien,
   registreerPasskey,
@@ -44,10 +47,30 @@ export function AccordeurActiveren({ passkeySetupToken, naIngelogd }: Props) {
         })
       } else {
         const opties = await registratieOpties(passkeySetupToken)
-        paar = await registratieVoltooien(passkeySetupToken, {
-          credential: await registreerPasskey(opties),
-          apparaat_naam: apparaatNaam(),
-        })
+        try {
+          paar = await registratieVoltooien(passkeySetupToken, {
+            credential: await registreerPasskey(opties),
+            apparaat_naam: apparaatNaam(),
+          })
+        } catch (registratieFout) {
+          // Zelfherstel (kliktest Peter 2026-08-15, 2e reproductie): was de registratie
+          // server-side al gelukt, dan weigert de authenticator een tweede registratie via
+          // excludeCredentials met een NotAllowedError. Diezelfde fout is ook "geannuleerd"
+          // (WebAuthn maakt dat bewust ononderscheidbaar), dus de server is de waarheid:
+          // een assertion slaagt alléén als dít apparaat al een geregistreerde passkey
+          // draagt — dan loggen we daarmee in en schakelt de flow gewoon door.
+          if (!(registratieFout instanceof DOMException && registratieFout.name === 'NotAllowedError')) {
+            throw registratieFout
+          }
+          try {
+            const assertieOpties = await loginOpties(passkeySetupToken)
+            paar = await loginVoltooien(passkeySetupToken, {
+              credential: await ondertekenAssertie(assertieOpties),
+            })
+          } catch {
+            throw registratieFout
+          }
+        }
       }
       naIngelogd(paar)
     } catch (err) {

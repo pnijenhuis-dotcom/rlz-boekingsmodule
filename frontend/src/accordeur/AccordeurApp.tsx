@@ -83,6 +83,7 @@ function useManifest(): void {
 export default function AccordeurApp() {
   const { status, rol, inloggen, uitloggen } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const { licht, wissel } = useThema()
   useManifest()
 
@@ -99,8 +100,13 @@ export default function AccordeurApp() {
       sessionStorage.setItem(ONTGRENDELD_VLAG, '1')
       setOntgrendeld(true)
       setForceerLogin(false)
+      // Vanaf /activeren expliciet DOOR naar de flow (kliktest Peter 2026-08-15, 2e
+      // reproductie): zonder deze navigatie bleef het scherm ná een geslaagde registratie
+      // op de registratiestap staan — het setup-token in de navigation-state won het in de
+      // render-vertakking van de ingelogde status, en niets ruimde de /activeren-route op.
+      if (location.pathname.endsWith('/activeren')) void navigate('/accordeur', { replace: true })
     },
-    [inloggen],
+    [inloggen, location.pathname, navigate],
   )
 
   // Uitloggen (kliktest 2026-08-12): trekt server-side de refresh-sessie in via het
@@ -123,7 +129,6 @@ export default function AccordeurApp() {
   // navigation-state en is na een refresh weg — zonder deze branch viel de app stil terug
   // op de status-branches. Eén duidelijke actie: opnieuw inloggen; de nieuwe-apparaat-route
   // (AccordeurLogin → passkey_setup_token) vangt de registratie daarna gewoon op.
-  const navigate = useNavigate()
   const naarLoginNaVerlopenSessie = useCallback(() => {
     setForceerLogin(true)
     void navigate('/accordeur', { replace: true })
@@ -137,6 +142,25 @@ export default function AccordeurApp() {
   let inhoud: React.ReactNode
   if (activatieToken) {
     inhoud = <AccordeurActiveren passkeySetupToken={activatieToken} naIngelogd={naIngelogd} />
+  } else if (opActiveren && status !== 'uitgelogd') {
+    // Zelfherstel (kliktest 2026-08-15, 2e reproductie): scherm herladen ná een geslaagde
+    // registratie = token-loos /activeren mét een levende sessie (de silent refresh op de
+    // httpOnly-cookie is de server-side waarheid). Dan is "Sessie verlopen" fout — door naar
+    // de flow (voorwaarden-poort zit fail-closed in GoedkeurenFlow; koude start → Ontgrendel).
+    // Tijdens status 'laden' rendert de Navigate nog niet: eerst weten of de sessie leeft.
+    inhoud =
+      status === 'ingelogd' ? (
+        <Navigate to="/accordeur" replace />
+      ) : (
+        <div className="acc-vol">
+          <div className="acc-appnaam">
+            RLZ <span>Goedkeuren</span>
+          </div>
+          <div className="acc-bio">
+            <div className="acc-sub">Laden…</div>
+          </div>
+        </div>
+      )
   } else if (opActiveren) {
     inhoud = (
       <div className="acc-vol">
