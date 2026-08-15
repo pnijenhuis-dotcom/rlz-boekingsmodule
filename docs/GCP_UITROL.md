@@ -615,6 +615,9 @@ org-owner-account (idempotente scripts, F0-les):
    iPhone-passkey van de accordeur-seed is een **wees** geworden (de publieke sleutel
    stond in de oude database): accordeur-seed + passkey-herregistratie opnieuw ná Peters
    activeerklik (het seed-script eist een actieve Beheerder als actor — bewuste failsafe).
+   **Seed opnieuw gedraaid 2026-08-15** (Beheerder was actief; proxy op `--gcloud-auth`,
+   ADC verlopen): test-administratie + accordeur-account staan in `rlz-sql2`, verse
+   activeerlink (72 u) aan Peter — open: passkey-herregistratie op de iPhone.
 6. **Oude `rlz-sql` verwijderd** ná groene verificatie (`scripts/gcp/f5_cmek_opruimen.sh`,
    guards: rlz-sql2 RUNNABLE + CMEK + service aantoonbaar omgehangen). Motivatie
    (uitzondering op "niets verwijderen" expliciet gemaakt): eigen lege infra-testinstantie
