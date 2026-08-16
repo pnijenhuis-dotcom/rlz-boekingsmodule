@@ -16,7 +16,7 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 |---|---|---|---|
 | Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14); DPF-check gedaan 2026-08-15 (negatief — SCC's dragen alleen); ZDR-verzoek ingediend; open: ZDR-uitkomst + subverwerkerslijst |
 | Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | ✅ vrijwel rond — CDPA versie 8 juni 2026 gearchiveerd 2026-08-15 (`nl-cloud-data-processing-addendum-customers.pdf`); CMEK-besluit 0021 akkoord + uitgevoerd 2026-08-14; subverwerkerslijst gearchiveerd 2026-08-15 — **rond** |
-| Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ✅ bevestigd — VWO 1.5/1.6 van toepassing (Exact-support 2026-08-14, `Bevestiging versie RLZ.pdf`); restpunten: EU-hosting expliciet + API-voorwaarden (sectie C) |
+| Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ✅ rond — VWO 1.5/1.6 van toepassing (Exact-support 2026-08-14, `Bevestiging versie RLZ.pdf`); EU/EER-datalocatie + API onder dezelfde VWO bevestigd (Exact-support 2026-08-15, `Maile exact bevestiging.pdf`) |
 | E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (F3.4) | ✅ rond 2026-08-15 — Google Workspace, mailbox `facturen@ak-nijenhuis.nl`; geldende DPA = de CDPA (zelfde gearchiveerde document als checklist B — dekt Workspace expliciet); zie D |
 
 ---
@@ -174,9 +174,14 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
       Reeleezee-abonnementen van toepassing zijn (`docs/avg/Bevestiging versie RLZ.pdf`,
       gearchiveerd 2026-08-15); de VWO-PDF's zelf al gearchiveerd 2026-08-14 (`docs/`).
       De bijlage 1.6 bevat de subverwerkerslijst/beveiligingsmaatregelen.
-- [ ] Restpunt: EU-hosting/datalocatie expliciet bevestigen — nalopen of bijlage 1.6
-      dit al vastlegt; zo niet, kort navragen bij Exact (zelfde support-case).
-- [ ] Controleren of de API-toegang (webservice-logins) onder dezelfde voorwaarden valt.
+- [x] Restpunt EU-hosting/datalocatie — **bevestigd (2026-08-15):** Exact-support
+      (Nele Lannoo, zelfde support-case) bevestigt op Peters expliciete vervolgvraag
+      ("Beide vragen kan ik bevestigen") dat opslag én verwerking van de
+      Reeleezee-administratiedata volledig binnen de EU/EER plaatsvinden — mail-PDF
+      gearchiveerd 2026-08-16: `docs/avg/Maile exact bevestiging.pdf`.
+- [x] API-toegang (webservice-logins) — **bevestigd (2026-08-15), zelfde mail:** valt
+      onder dezelfde verwerkersovereenkomst en voorwaarden als het reguliere gebruik
+      (`docs/avg/Maile exact bevestiging.pdf`). Sectie C is daarmee volledig rond.
 
 ---
 

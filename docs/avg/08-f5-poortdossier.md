@@ -139,11 +139,12 @@ bewaarplicht uit het verwerkingsregister (doc 1, per-verwerking "Bewaartermijn")
   expliciete vraag van Peter dat verwerkersovereenkomst **versie 1.5/1.6 de juiste
   versie** is voor de Reeleezee-abonnementen — mail-PDF gearchiveerd 2026-08-15 als
   `docs/avg/Bevestiging versie RLZ.pdf`.
-- ⚠️ Restpunten (geen poortblokkade — het poortpunt "bevestigd + gearchiveerd" is
-  vervuld, maar deze twee subchecks uit checklist C dekt de bevestiging niet expliciet):
-  EU-hosting/datalocatie expliciet bevestigen (staat mogelijk al in bijlage 1.6 —
-  nalopen) en checken dat de API-toegang (webservice-logins) onder dezelfde
-  voorwaarden valt. Bijgehouden in `02-subverwerkers-checklist.md` C.
+- ✅ **Restpunten gedicht (bevestiging 2026-08-15, gearchiveerd 2026-08-16):**
+  Exact-support (Nele Lannoo, zelfde support-case) bevestigt op Peters twee
+  vervolgvragen ("Beide vragen kan ik bevestigen") dat (1) opslag en verwerking van de
+  Reeleezee-administratiedata volledig binnen de EU/EER plaatsvinden én (2) de
+  API-/webservice-toegang onder dezelfde verwerkersovereenkomst en voorwaarden valt —
+  mail-PDF: `docs/avg/Maile exact bevestiging.pdf`. Checklist C is daarmee volledig ✅.
 
 ## 6. IMAP-provider-DPA (checklist D) — ✅ rond (2026-08-15)
 
@@ -201,9 +202,10 @@ is onderdeel van de livegang-administratie.
    DPF-vermelding; SCC's dragen de doorgifte alleen — checklist A + register §9);
    **Anthropic-subverwerkerslijst archiveren staat nog open** (checklist A).
 4. ~~Reeleezee-bevestiging toepasselijke VWO-versie~~ — **gedaan**: bevestiging Exact
-   2026-08-14, gearchiveerd 2026-08-15 (punt 5 ✅; restpunten EU-hosting + API-voorwaarden
-   in checklist C).
+   2026-08-14, gearchiveerd 2026-08-15 (punt 5 ✅); ~~restpunten EU-hosting +
+   API-voorwaarden~~ — **gedaan**: beide bevestigd 2026-08-15, gearchiveerd 2026-08-16
+   (`Maile exact bevestiging.pdf` — checklist C volledig ✅).
 5. ~~facturen@-mailbox + DPA-check mailprovider~~ — **gedaan** (punt 6 ✅ 2026-08-15:
-   `facturen@ak-nijenhuis.nl`, DPA = CDPA). Rest alleen de **activatieklik F3.4**: het
-   app-wachtwoord in het secret-slot zetten —
-   `gcloud secrets versions add INTAKE_IMAP_WACHTWOORD --data-file=-` (waarde via stdin).
+   `facturen@ak-nijenhuis.nl`, DPA = CDPA). ~~Activatieklik F3.4 (app-wachtwoord in het
+   secret-slot)~~ — **gedaan 2026-08-15**: de live IMAP-fetch draait
+   (GCP_UITROL §F3.4-uitvoering).
