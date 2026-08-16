@@ -144,7 +144,7 @@ bewaarplicht uit het verwerkingsregister (doc 1, per-verwerking "Bewaartermijn")
   vervolgvragen ("Beide vragen kan ik bevestigen") dat (1) opslag en verwerking van de
   Reeleezee-administratiedata volledig binnen de EU/EER plaatsvinden én (2) de
   API-/webservice-toegang onder dezelfde verwerkersovereenkomst en voorwaarden valt —
-  mail-PDF: `docs/avg/Maile exact bevestiging.pdf`. Checklist C is daarmee volledig ✅.
+  mail-PDF: `docs/avg/Bevestiging Exact EU-datalocatie en API-toegang 2026-08-15.pdf`. Checklist C is daarmee volledig ✅.
 
 ## 6. IMAP-provider-DPA (checklist D) — ✅ rond (2026-08-15)
 
@@ -204,7 +204,7 @@ is onderdeel van de livegang-administratie.
 4. ~~Reeleezee-bevestiging toepasselijke VWO-versie~~ — **gedaan**: bevestiging Exact
    2026-08-14, gearchiveerd 2026-08-15 (punt 5 ✅); ~~restpunten EU-hosting +
    API-voorwaarden~~ — **gedaan**: beide bevestigd 2026-08-15, gearchiveerd 2026-08-16
-   (`Maile exact bevestiging.pdf` — checklist C volledig ✅).
+   (`Bevestiging Exact EU-datalocatie en API-toegang 2026-08-15.pdf` — checklist C volledig ✅).
 5. ~~facturen@-mailbox + DPA-check mailprovider~~ — **gedaan** (punt 6 ✅ 2026-08-15:
    `facturen@ak-nijenhuis.nl`, DPA = CDPA). ~~Activatieklik F3.4 (app-wachtwoord in het
    secret-slot)~~ — **gedaan 2026-08-15**: de live IMAP-fetch draait
