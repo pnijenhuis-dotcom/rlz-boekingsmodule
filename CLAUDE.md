@@ -369,8 +369,21 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   RC Kempen Facilities — anders dan Rubicon, dus IC=true; alleen Rubicon-rij false; §2c-vervolg
   in verkenning/16), toggle AAN alleen Facilities. ⚠️ Drie doelen activeren deels op
   AccountType-3-rekeningen (spiegelverdeler kiest dan een activarekening). NIJENHUIS
-  (kantoor-administratie) na credential-herstel zelfde dag alsnog onboarded — 11/11. Open:
-  kliktest Peter (TEST-factuur staat klaar).
+  (kantoor-administratie) na credential-herstel zelfde dag alsnog onboarded — 11/11.
+  **Kliktest Peter UITGEVOERD (2026-08-16, volledige cyclus geslaagd; nazorg in twee rondes
+  — BESLISSINGEN "Doorbelasting-kliktest-nazorg" (ronde 1: opslag-bug + client-validatie) en
+  "ronde 2")**: "verkopen op concept" = correct gedrag ná Peters eigen storno;
+  RLZ-UI-vindbaarheids-hypothese (ontbrekende DocumentCategory) WEERLEGD — beide kanten
+  krijgen automatisch de categorie/boekstuk-reeks van Peters historische praktijk
+  (api-verkenning "DocumentCategory & boekstuk-reeksen": reeks-prefix volgt de categorie;
+  Verkopen→Facturen-lijst toont API-facturen sowieso niet, dat is RLZ-collectie-gedrag);
+  storno beide kanten geverifieerd (5 spiegels Status 1; bron-concepten daarna handmatig in
+  de RLZ-UI verwijderd — bevestiging Peter open). **Randgeval storno-ná-btw-aangifte
+  (vraag Peter 15-08) ONDERZOCHT: RLZ weigert actie 19 NIET** — het verschuift de
+  terugdraai-btw zelf als negatieve TaxSource naar de eerstvolgende open aangifte-periode
+  (api-verkenning "Actie 19 in een periode met ingediende btw-aangifte"); foutvertaling +
+  alles-of-niets-zorg vervallen; pre-storno-waarschuwing, suppletie-signaal > € 1.000 en
+  tegenboek-pad GEPARKEERD voor een eigen ontwerp-/UX-ronde (apart akkoord).
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps

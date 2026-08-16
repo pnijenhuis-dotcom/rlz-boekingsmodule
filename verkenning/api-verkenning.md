@@ -1370,3 +1370,80 @@ Opruiming teststand: hertest-project + `TEST-ROUTE-A Pand Dorpsstraat 1` op IsAc
 (archief-vlag = het correctiemechanisme voor projecten); concept-PoC-documenten
 (`TEST-PROJECTREGELPOC-1`, `TEST-LOSPROJECTPOC-1`) blijven conform testdata-afspraak v1.3
 als concept staan.
+
+## DocumentCategory & boekstuk-reeksen — kliktest-nazorg doorbelasting (16 augustus 2026) — GEVERIFIEERD
+
+Aanleiding: kliktest-bevinding Peter (spiegel-inkoopfacturen niet zichtbaar onder RLZ-UI
+"Inkopen/uitgaven", doorbelasting-verkoopfacturen niet onder "Verkopen/facturen"), met als
+werkhypothese "DocumentCategory ontbreekt" (omzetmodule-les). **De hypothese is weerlegd** —
+read-only vergelijking over Facilities, Molenhof Beheer, Rubicon en de test-administratie,
+plus één schrijfexperiment (TEST-DOORB-CAT-01, test-administratie, geboekt + gestorneerd):
+
+1. **RLZ kent zélf een DocumentCategory toe** aan API-geboekte documenten zonder expliciete
+   categorie. PurchaseInvoices krijgen een per administratie afgeleide type-1-categorie
+   (Facilities/doelen: "Overige kosten"; test-administratie bij GB 4302: "Verkoopkosten" —
+   de afleiding verschilt dus per administratie/GB, er is geen vaste default). SalesInvoices
+   mét Entity krijgen automatisch **"Verkoopfactuur (Omzet)" (type 10)** — exact dezelfde
+   categorie als Peters eigen (UI-)verkoopfacturen, incl. de historische
+   doorbelasting-facturen van Facilities.
+2. **Het boekstuknummer-prefix (`RLZ-XX-…`) volgt de categorie, niet het documenttype**:
+   "Overige kosten" → `RLZ-04`, "Algemene kosten" → `RLZ-17`, "Verkoopfactuur (Omzet)" →
+   `RLZ-01`, memoriaal → `RLZ-06`, bank → `RLZ-07`, btw-aangifte → `RLZ-05`. Het volgnummer
+   erachter is één administratie-brede reeks (opeenvolgende boekingen in verschillende
+   prefixen kregen …2027 en …2028). UI-geboekte facturen met "Overige kosten" krijgen óók
+   `RLZ-04` — het prefix onderscheidt dus NIET "API vs UI".
+3. **DocumentCategory is op PurchaseInvoices gewoon PUT-baar** (body
+   `DocumentCategory: {id: …}`, zelfde vorm als SalesInvoices), overleeft boeken en stuurt
+   het prefix (experiment: expliciet "Algemene kosten" → `RLZ-17-00002027`).
+4. **De spiegel-inkoopfacturen van de motor zijn identiek aan Peters historische praktijk**:
+   de échte 2025/2026-spiegels in Rubicon (crediteur Kempen Facilities, referentie =
+   verkoopnummer) dragen óók "Overige kosten" + `RLZ-04`. Er valt aan de spiegel-kant dus
+   niets te "repareren" met een categorie.
+5. **Verkopen → Facturen-lijst**: de niet-vindbaarheid van API-verkoopfacturen dáár is
+   consistent met het bestaande feit dat de SalesInvoices-COLLECTIE API-aangemaakte facturen
+   niet ziet (Omzetmodule STAP 0 §2); GET-op-id werkt wel, en de Receipts-collectie (RLZ-UI
+   "Verkopen → Boekingen") ziet ze wél. Met een categorie is dat niet te veranderen —
+   vervolgpad is een screencheck/browsercapture van de Facturen-lijst-request of een
+   supportvraag.
+
+NB leesspoor kliktest zelf: de vijf bron-verkoopfacturen van de kliktest (24713188–24713192)
+zijn ná Peters storno volledig uit RLZ verdwenen (404 op GET-op-id, geen treffer in de
+Receipts-collectie op datum of omschrijving) — verwijderen kan alleen een mens in de RLZ-UI
+en alleen op een concept, wat indirect bevestigt dat de storno ze eerst naar Status 1 zette.
+De vijf spiegel-inkoopfacturen staan alle vijf geverifieerd op Status 1.
+
+## Actie 19 in een periode met ingediende btw-aangifte — GEEN weigering; RLZ verschuift de btw zelf (16 augustus 2026, test-administratie) — GESLAAGD
+
+Vraag Peter (15-08): wat doet RLZ bij een storno op een document in een periode waarvan de
+btw-aangifte al is ingediend? Drie schrijfexperimenten tegen de test-administratie
+(TEST-STORNO-AANGIFTE-01/-02/-03, alle drie als concept achtergelaten conform
+testdata-afspraak):
+
+- **Aangifte-leesroute**: `GET TaxDeclarations` (DocumentType 7) per administratie;
+  `StartDate`/`Date` = periode, statusmodel analoog aan documenten: **1 = concept,
+  2 = ingediend/open, 3 = afgehandeld**. `GET TaxDeclarations/{id}/TaxSources` = de
+  bron-regels (per document: NetAmount/TaxAmount/DocumentType/VATSourceCategory).
+  Test-administratie: 2023-Q1 = Status 2; 2018-Q3 en ouder = Status 3.
+- **Boeken in een ingediende periode wordt NIET geweigerd**: PUT + actie 17 met
+  `Date: 2023-02-15` (Q1-2023 ingediend) → 204/geboekt. `BookDate` wordt de systeemdatum
+  (vandaag), `Date` blijft de factuurdatum. **De TaxSource landt automatisch in de
+  eerstvolgende NIET-ingediende aangifte-periode** (onze +2,10 verscheen in de
+  2023-Q2-aangifte, niet in Q1) — RLZ's ingebouwde suppletie-verschuiving.
+- **Actie 19 wordt NIET geweigerd — geen foutcode, geen melding**: 204 en Status 1, in álle
+  drie varianten: inkoopfactuur in een Status-2-periode, inkoopfactuur in een
+  Status-3-periode (2018-Q3) én verkoopfactuur in een Status-2-periode. De ingediende
+  aangifte zelf blijft ongewijzigd: RLZ verwerkt de terugdraai als **negatieve TaxSource in
+  de eerstvolgende open periode**. Historisch bewijs in de test-administratie: de
+  Q2-2023-aangifte draagt negatieve spiegel-sources (−93,73 / −160,68 / −67,50, gedateerd
+  2023-03-31) die exact de ingediende Q1-posten spiegelen — storno's van ná de indiening.
+  Stond de source al in een open periode, dan verdwijnt hij bij storno gewoon (geen
+  negatieve rij).
+
+**Consequentie app**: de geplande foutvertaling ("storno geweigerd: periode zit in een
+ingediende btw-aangifte") vervalt — er ís geen RLZ-fout om te vertalen, dus ook het
+alles-of-niets-risico voor de doorbelasting-storno (één kant geweigerd → half) kan uit deze
+hoek niet ontstaan. De boekhoudkundige keerzijde is reëel: zo'n storno creëert stil een
+suppletie-effect in de eerstvolgende open aangifte. Signalering daarvan (pre-storno-
+waarschuwing op basis van TaxDeclarations-status + het suppletie-signaal > € 1.000 + het
+tegenboek-pad) is bewust GEPARKEERD voor een eigen ontwerp-/UX-ronde — zie BESLISSINGEN
+"Doorbelasting-kliktest-nazorg ronde 2".
