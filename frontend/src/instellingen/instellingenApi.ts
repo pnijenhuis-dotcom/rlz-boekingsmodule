@@ -78,6 +78,15 @@ export function zetProjectInstelling(administratieId: string, verplicht: boolean
   })
 }
 
+/** Autoboek-opt-in VASTLY-VERKOOP (migratie 0051) — Beheerder-only; aanzetten kan alleen
+ * voor vastgoed-administraties (backend geeft dan 409). */
+export function zetVerkoopAutoboekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
+  return apiJson(`/administraties/${administratieId}/verkoop-autoboeken-instelling`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function zetAiExtractieInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/ai-extractie-instelling`, {
     ...PUT_JSON,

@@ -177,7 +177,14 @@ def _sla_verkoop_webhook_op(
 
 
 def boek_verkoop_document(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    # Zelfde idioom als de inkoopmotor (documenten/boeken.py): het autoboek-pad geeft hier
+    # {"automatisch_geboekt": True, ...} mee — de GEBOEKT-tijdlijnregel draagt dat detail en
+    # voedt de werkvoorraad-chip "automatisch" + het filter (query op has_key).
+    extra_overgang_detail: dict | None = None,
 ) -> VerkoopBoekResultaat:
     """De verkoop-boekactie: zelfde poortvolgorde als inkoop/omzet — statuspoort + soortpoort,
     harde checks server-side herhalen, klaar_om_te_boeken in eigen transactie, failsafes
@@ -298,6 +305,7 @@ def boek_verkoop_document(
                 "rlz_boekstuknummer": boekstuknummer,
                 "soort": "verkoopfactuur",
                 "is_creditnota": voorstel.is_creditnota,
+                **(extra_overgang_detail or {}),
             },
         )
         _sla_verkoop_webhook_op(

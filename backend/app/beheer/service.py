@@ -141,6 +141,10 @@ class AdministratieInstellingen:
     project_verplicht: bool
     ai_extractie_ingeschakeld: bool
     eigenaar_gebruiker_id: uuid.UUID | None
+    # Verkoop-autoboeken (migratie 0051): de kolom is alleen bedienbaar voor
+    # is_vastgoed-administraties — de UI heeft beide velden nodig om dat te tonen.
+    is_vastgoed: bool = False
+    verkoop_autoboeken_ingeschakeld: bool = False
 
 
 def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
@@ -158,6 +162,8 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
                 project_verplicht=r.project_verplicht,
                 ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
                 eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
+                is_vastgoed=r.is_vastgoed,
+                verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
             )
             for r in rijen
         ]
@@ -315,6 +321,48 @@ def zet_bank_autoboeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: u
             correlatie_id=uuid.uuid4(),
             oude_waarde={"bank_autoboeken_ingeschakeld": oud},
             nieuwe_waarde={"bank_autoboeken_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
+def haal_verkoop_autoboeken_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.verkoop_autoboeken_ingeschakeld
+
+
+def zet_verkoop_autoboeken_ingeschakeld(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
+) -> bool:
+    """Autoboek-opt-in voor VASTLY-VERKOOP-documenten (migratie 0051, besluit Peter 2026-08-15,
+    automatisering-first). Default UIT; Beheerder-only (router/CLI). Aanzetten kan uitsluitend
+    voor is_vastgoed-administraties — alleen dáár bestaan VASTLY-VERKOOP-documenten, en een
+    opt-in op een gewone administratie zou een slapende vlag zonder betekenis zijn (uitzetten
+    kan altijd, ook als is_vastgoed intussen is teruggedraaid). De boeken-failsafes (toggle per
+    administratie + globale kill switch + volumerem) gelden onverkort in de verkoop-boekmotor."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        if ingeschakeld and not administratie.is_vastgoed:
+            raise BeheerFout(
+                "Verkoop-autoboeken kan alleen aan voor vastgoed-administraties (is_vastgoed) — "
+                "alleen dáár komen VASTLY-VERKOOP-documenten binnen"
+            )
+        oud = administratie.verkoop_autoboeken_ingeschakeld
+        administratie.verkoop_autoboeken_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="verkoop_autoboeken_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"verkoop_autoboeken_ingeschakeld": oud},
+            nieuwe_waarde={"verkoop_autoboeken_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
 

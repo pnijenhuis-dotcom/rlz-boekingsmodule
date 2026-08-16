@@ -30,6 +30,8 @@ def administratie_instellingen_lijst(
                 project_verplicht=r.project_verplicht,
                 ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
                 eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
+                is_vastgoed=r.is_vastgoed,
+                verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
             )
             for r in overzicht
         ]
@@ -224,6 +226,41 @@ def doorbelasting_instelling_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return schemas.DoorbelastingIngeschakeldDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
+    "/administraties/{administratie_id}/verkoop-autoboeken-instelling",
+    response_model=schemas.VerkoopAutoboekenDto,
+)
+def verkoop_autoboeken_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.VerkoopAutoboekenDto:
+    try:
+        ingeschakeld = service.haal_verkoop_autoboeken_ingeschakeld_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.VerkoopAutoboekenDto(ingeschakeld=ingeschakeld)
+
+
+@router.put(
+    "/administraties/{administratie_id}/verkoop-autoboeken-instelling",
+    response_model=schemas.VerkoopAutoboekenDto,
+)
+def verkoop_autoboeken_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.VerkoopAutoboekenDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.VerkoopAutoboekenDto:
+    """Autoboek-opt-in VASTLY-VERKOOP (migratie 0051) — Beheerder-only, default UIT; aanzetten
+    kan alleen voor is_vastgoed-administraties (service dwingt af → 409, geen stille no-op)."""
+    try:
+        ingeschakeld = service.zet_verkoop_autoboeken_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        code = status.HTTP_409_CONFLICT if "is_vastgoed" in str(exc) else status.HTTP_404_NOT_FOUND
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    return schemas.VerkoopAutoboekenDto(ingeschakeld=ingeschakeld)
 
 
 @router.get(

@@ -24,6 +24,8 @@ function administratie(overrides: Record<string, unknown> = {}) {
     naam: 'Testklant B.V.',
     boeken_ingeschakeld: false,
     project_verplicht: false,
+    is_vastgoed: false,
+    verkoop_autoboeken_ingeschakeld: false,
     ...overrides,
   }
 }
@@ -95,6 +97,11 @@ function installFetchMock(opties: {
         return Promise.resolve(jsonResponse({ ingeschakeld: killSwitch }))
       }
       if (url.endsWith('/boeken-instelling') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as unknown
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse(body))
+      }
+      if (url.endsWith('/verkoop-autoboeken-instelling') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as unknown
         opties.putAanroepen?.push({ url, body })
         return Promise.resolve(jsonResponse(body))
@@ -238,6 +245,39 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     expect(putAanroepen[0].url).toContain(`/administraties/${ADMINISTRATIE_ID}/boeken-instelling`)
     expect(putAanroepen[0].body).toEqual({ ingeschakeld: true })
     await waitFor(() => expect(boekenToggle).toBeChecked())
+  })
+
+  it('verkoop-autoboeken: schakelaar alleen bij vastgoed-administraties, bevestigen PUT de instelling', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [
+        administratie({ naam: 'Rubicon Investments B.V.', is_vastgoed: true }),
+        administratie({ id: 'aaaaaaaa-0000-0000-0000-000000000002', naam: 'BLOW B.V.' }),
+      ],
+      putAanroepen,
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getAllByText('Rubicon Investments B.V.').length).toBeGreaterThan(0))
+    // Niet-vastgoed heeft géén schakelaar in deze kolom (VASTLY-VERKOOP bestaat daar niet).
+    expect(
+      screen.queryByRole('checkbox', { name: 'Autoboeken Vastly-verkoop voor BLOW B.V.' }),
+    ).not.toBeInTheDocument()
+
+    const toggle = screen.getByRole('checkbox', { name: 'Autoboeken Vastly-verkoop voor Rubicon Investments B.V.' })
+    await gebruiker.click(toggle)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText(/boeken voortaan automatisch zodra álles groen is/)).toBeInTheDocument()
+    expect(putAanroepen).toHaveLength(0)
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(putAanroepen).toHaveLength(1)
+    expect(putAanroepen[0].url).toContain(`/administraties/${ADMINISTRATIE_ID}/verkoop-autoboeken-instelling`)
+    expect(putAanroepen[0].body).toEqual({ ingeschakeld: true })
+    await waitFor(() => expect(toggle).toBeChecked())
   })
 
   it('annuleren sluit de dialoog zonder een aanroep te doen en laat de toggle ongewijzigd', async () => {

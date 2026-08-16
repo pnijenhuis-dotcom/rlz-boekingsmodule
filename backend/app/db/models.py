@@ -91,6 +91,12 @@ class Administratie(Base):
     # direct-op-grootboek boeken tijdens de bank-sync — default UIT, werkt bovenop de
     # boeken-failsafes (boeken_ingeschakeld + globale kill switch, die blijven onverkort gelden).
     bank_autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Autoboek-opt-in voor VASTLY-VERKOOP-documenten (migratie 0051, besluit Peter 2026-08-15,
+    # automatisering-first): ná intake + deterministische verwerking boekt een verkoopfactuur
+    # automatisch, uitsluitend wanneer álles groen is (app/verkoop/autoboeken.py). Default UIT;
+    # aanzetten kan alleen voor is_vastgoed-administraties (beheer-service dwingt dat af) en de
+    # boeken-failsafes (boeken_ingeschakeld + globale kill switch + volumerem) gelden onverkort.
+    verkoop_autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     # Klant-accorderingsflow (migratie 0033, mockup #autorisatie): optioneel per administratie,
     # default UIT. Aan = de boekknop wordt "Ter accordering" en direct boeken is server-side
     # geblokkeerd tot alle vereiste lagen akkoord zijn (app/accordering/service.py).

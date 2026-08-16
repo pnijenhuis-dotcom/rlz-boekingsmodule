@@ -652,6 +652,32 @@ def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int
     return 0
 
 
+def _zet_verkoop_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Autoboek-opt-in voor VASTLY-VERKOOP-documenten (migratie 0051, automatisering-first) —
+    zelfde patroon als bank-autoboeken: Beheerder als audit_event-actor, default UIT; aanzetten
+    kan alleen voor is_vastgoed-administraties (beheer-service dwingt af)."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_verkoop_autoboeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"verkoop_autoboeken_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    if resultaat and not beheer_service.haal_boeken_ingeschakeld_op(administratie_id=administratie_id):
+        print(
+            "WAARSCHUWING: de boeken-toggle van deze administratie staat uit — automatisch boeken "
+            "blijft effectief uit tot die (en de globale kill switch) ook aan staat."
+        )
+    return 0
+
+
 def _zet_boeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Boeken-failsafe (a), per-administratie deel — hergebruikt app.beheer.service (zelfde
     servicefunctie als het instellingen-scherm straks aanroept), met de Beheerder als actor
@@ -983,6 +1009,8 @@ def main(argv: list[str] | None = None) -> int:
     for naam, hulp in (
         ("bank-autoboeken-aan", "Zet de bank-autoboek-toggle (vaste regels automatisch boeken) AAN."),
         ("bank-autoboeken-uit", "Zet de bank-autoboek-toggle UIT."),
+        ("verkoop-autoboeken-aan", "Zet de verkoop-autoboek-toggle (VASTLY-VERKOOP automatisch boeken) AAN."),
+        ("verkoop-autoboeken-uit", "Zet de verkoop-autoboek-toggle UIT."),
         ("afgeletterd-event-aan", "Zet de tier-vlag voor het factuur_afgeletterd-event AAN (§3 v1.11)."),
         ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
     ):
@@ -1104,6 +1132,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":
         return _zet_bank_autoboeken(args, ingeschakeld=False)
+    if args.commando == "verkoop-autoboeken-aan":
+        return _zet_verkoop_autoboeken(args, ingeschakeld=True)
+    if args.commando == "verkoop-autoboeken-uit":
+        return _zet_verkoop_autoboeken(args, ingeschakeld=False)
     if args.commando == "afgeletterd-event-aan":
         return _zet_afgeletterd_event(args, ingeschakeld=True)
     if args.commando == "afgeletterd-event-uit":

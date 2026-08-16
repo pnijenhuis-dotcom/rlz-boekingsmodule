@@ -303,6 +303,10 @@ export interface AdministratieInstellingenDto {
   project_verplicht: boolean
   ai_extractie_ingeschakeld: boolean
   eigenaar_gebruiker_id: string | null
+  /** Verkoop-autoboeken (migratie 0051): de schakelaar bestaat alleen voor
+   * vastgoed-administraties — daarbuiten toont de kolom een streepje. */
+  is_vastgoed: boolean
+  verkoop_autoboeken_ingeschakeld: boolean
 }
 
 export interface AdministratieInstellingenLijstDto {

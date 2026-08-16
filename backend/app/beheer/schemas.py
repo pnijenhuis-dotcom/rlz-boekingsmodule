@@ -49,6 +49,10 @@ class DoorbelastingIngeschakeldDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class VerkoopAutoboekenDto(StrikteInvoer):
+    ingeschakeld: bool
+
+
 class AdministratieInstellingenDto(BaseModel):
     """Eén rij in het instellingen-scherm (design-pass taak 3) — dezelfde twee schakelaars als
     de losse per-administratie GET/PUT-endpoints hierboven, nu in één keer voor de hele lijst."""
@@ -59,6 +63,10 @@ class AdministratieInstellingenDto(BaseModel):
     project_verplicht: bool
     ai_extractie_ingeschakeld: bool
     eigenaar_gebruiker_id: uuid.UUID | None = None
+    # Verkoop-autoboeken (migratie 0051): alleen bedienbaar wanneer is_vastgoed — de UI toont
+    # de schakelaar uitsluitend voor vastgoed-administraties.
+    is_vastgoed: bool = False
+    verkoop_autoboeken_ingeschakeld: bool = False
 
 
 class AdministratieInstellingenLijstDto(BaseModel):

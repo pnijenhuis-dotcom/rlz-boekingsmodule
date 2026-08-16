@@ -23,6 +23,7 @@ import {
   zetEigenaar,
   zetIntakeAiInstelling,
   zetProjectInstelling,
+  zetVerkoopAutoboekenInstelling,
   type AiKostenStatusDto,
 } from './instellingenApi'
 
@@ -32,6 +33,7 @@ type WijzigingType =
   | 'boeken'
   | 'project'
   | 'ai_extractie'
+  | 'verkoop_autoboeken'
   | 'eigenaar'
   | 'iban_accordeurs'
   | 'ai_kosten_limiet'
@@ -74,6 +76,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `PDF's van "${pending.naam}" gaan voortaan voor extractie naar de Claude API (AVG-gate). Echte klantfacturen pas ná DPA + EU-verwerking + verwerkersregister — zie docs/BOUWPLAN.md.`
         : `AI-extractie wordt uitgeschakeld voor "${pending.naam}" — PDF's worden weer volledig handmatig ingevuld.`
+    case 'verkoop_autoboeken':
+      return pending.nieuweWaarde
+        ? `Vastly-verkoopfacturen van "${pending.naam}" boeken voortaan automatisch zodra álles groen is (harde checks, ondubbelzinnige GB-codes en btw uit de UBL, geen vraag of duplicaatsignaal). Elk ander geval blijft gewoon in de werkvoorraad; elke automatische boeking is gemarkeerd en geauditeerd.`
+        : `Verkoop-autoboeken wordt uitgeschakeld voor "${pending.naam}" — elke Vastly-verkoopfactuur wacht weer op een menselijke boek-klik.`
     case 'eigenaar':
       return pending.eigenaarId
         ? `${pending.eigenaarNaam ?? 'Deze medewerker'} wordt eigenaar van "${pending.naam}" en krijgt nieuwe vragen standaard toegewezen.`
@@ -106,6 +112,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'ai_extractie') {
     await zetAiExtractieInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'verkoop_autoboeken') {
+    await zetVerkoopAutoboekenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'eigenaar') {
@@ -311,9 +321,11 @@ export function InstellingenScreen() {
                       ? { boeken_ingeschakeld: pending.nieuweWaarde }
                       : pending.type === 'ai_extractie'
                         ? { ai_extractie_ingeschakeld: pending.nieuweWaarde }
-                        : pending.type === 'eigenaar'
-                          ? { eigenaar_gebruiker_id: pending.eigenaarId ?? null }
-                          : { project_verplicht: pending.nieuweWaarde }),
+                        : pending.type === 'verkoop_autoboeken'
+                          ? { verkoop_autoboeken_ingeschakeld: pending.nieuweWaarde }
+                          : pending.type === 'eigenaar'
+                            ? { eigenaar_gebruiker_id: pending.eigenaarId ?? null }
+                            : { project_verplicht: pending.nieuweWaarde }),
                   }
                 : a,
             ) ?? null,
@@ -472,6 +484,7 @@ export function InstellingenScreen() {
                 <th>Project verplicht bij boeken</th>
                 <th>Boeken ingeschakeld</th>
                 <th>AI-extractie (AVG-gate)</th>
+                <th>Autoboeken Vastly-verkoop</th>
               </tr>
               {administraties.map((a) => (
                 <tr key={a.id} className={selectie.includes(a.id) ? 'geselecteerd' : undefined}>
@@ -568,6 +581,29 @@ export function InstellingenScreen() {
                       />
                       {a.ai_extractie_ingeschakeld ? 'aan' : 'uit'}
                     </label>
+                  </td>
+                  <td>
+                    {a.is_vastgoed ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                        <Switch
+                          aria-label={`Autoboeken Vastly-verkoop voor ${a.naam}`}
+                          checked={a.verkoop_autoboeken_ingeschakeld}
+                          onChange={(e) =>
+                            setPending({
+                              type: 'verkoop_autoboeken',
+                              administratieId: a.id,
+                              naam: a.naam,
+                              nieuweWaarde: e.target.checked,
+                            })
+                          }
+                        />
+                        {a.verkoop_autoboeken_ingeschakeld ? 'aan' : 'uit'}
+                      </label>
+                    ) : (
+                      <span className="hint" title="Alleen voor vastgoed-administraties (Vastly-verkoopfacturen)">
+                        —
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -478,6 +478,20 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
         except Exception:  # noqa: BLE001 — signalering mag de upload/worker nooit laten falen
             logger.exception("Automatische mapping-vraag mislukt voor document %s", document_id)
     elif soort == DocumentSoort.VERKOOPFACTUUR.value:
+        # Verkoop-autoboeken-opt-in (besluit Peter 2026-08-15, migratie 0051): éérst de
+        # autoboek-poging (post-commit, systeem-actor; elke uitkomst geauditeerd zodra de
+        # opt-in aanstaat) — een weigering laat het document gewoon in de werkvoorraad en
+        # daarná stelt de autovraag zo nodig alsnog de onbekende-GB-code-vraag. Andersom zou
+        # de vraag de status verzetten en de weigering onzichtbaar (None) maken.
+        from app.verkoop import autoboeken as verkoop_autoboeken  # lokaal: importcyclus vermijden
+
+        try:
+            verkoop_autoboeken.probeer_verkoop_autoboeken_na_intake(
+                administratie_id=administratie_id, document_id=document_id
+            )
+        except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
+            logger.exception("Verkoop-autoboeken-poging mislukt voor document %s", document_id)
+
         # §2d-GB-uitbreiding (v1.10): onbekende AccountingCost-code → blokkerende check +
         # automatische vraag; zelfde no-op-vangnet als de omzet-mappingvraag.
         from app.verkoop import autovraag as verkoop_autovraag  # lokaal: importcyclus vermijden
