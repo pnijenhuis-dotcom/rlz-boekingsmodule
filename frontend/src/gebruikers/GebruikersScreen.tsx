@@ -6,8 +6,10 @@ import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
+  blokkeerGebruiker,
   haalApparatenVan,
   haalGebruikersOp,
+  heractiveerGebruiker,
   mailUitnodigingOpnieuw,
   rolLabel,
   trekApparaatIn,
@@ -67,6 +69,7 @@ export function GebruikersScreen() {
     null,
   )
   const [killSwitchVoor, setKillSwitchVoor] = useState<{ gebruiker: GebruikerOverzichtDto; groep: ApparaatGroep } | null>(null)
+  const [blokkade, setBlokkade] = useState<{ gebruiker: GebruikerOverzichtDto; actie: 'blokkeren' | 'heractiveren' } | null>(null)
   const [actieBezig, setActieBezig] = useState(false)
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [opnieuwBezig, setOpnieuwBezig] = useState<string | null>(null)
@@ -174,6 +177,55 @@ export function GebruikersScreen() {
     }
   }
 
+  async function bevestigBlokkade() {
+    if (!blokkade) return
+    setActieBezig(true)
+    setActieFout(null)
+    try {
+      if (blokkade.actie === 'blokkeren') {
+        await blokkeerGebruiker(blokkade.gebruiker.id)
+        meld(`${blokkade.gebruiker.naam} is per direct geblokkeerd — alle sessies zijn beëindigd.`)
+      } else {
+        await heractiveerGebruiker(blokkade.gebruiker.id)
+        meld(`${blokkade.gebruiker.naam} is geheractiveerd en kan weer inloggen.`)
+      }
+      setBlokkade(null)
+      laad()
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'Actie mislukt.')
+    } finally {
+      setActieBezig(false)
+    }
+  }
+
+  /** Blokkeer-/heractiveer-knop in de actiekolom — nooit bij het eigen account (server-side
+   * eveneens geweigerd; de UI biedt de onmogelijke actie niet aan). */
+  function blokkadeKnop(g: GebruikerOverzichtDto) {
+    if (g.id === gebruikerId) return null
+    if (g.status === 'geblokkeerd') {
+      return (
+        <Button variant="secundair" maat="klein" onClick={() => setBlokkade({ gebruiker: g, actie: 'heractiveren' })}>
+          Heractiveren
+        </Button>
+      )
+    }
+    return (
+      <Button variant="warn-omlijnd" maat="klein" onClick={() => setBlokkade({ gebruiker: g, actie: 'blokkeren' })}>
+        Blokkeren
+      </Button>
+    )
+  }
+
+  function blokkadeDetail(g: GebruikerOverzichtDto) {
+    if (g.status !== 'geblokkeerd' || !g.geblokkeerd_op) return null
+    return (
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+        sinds {new Date(g.geblokkeerd_op).toLocaleDateString('nl-NL')}
+        {g.geblokkeerd_door_naam ? ` door ${g.geblokkeerd_door_naam}` : ''}
+      </div>
+    )
+  }
+
   if (rol !== 'beheerder') {
     return <p className="hint">Gebruikersbeheer is alleen toegankelijk voor de Beheerder-rol.</p>
   }
@@ -275,7 +327,12 @@ export function GebruikersScreen() {
                       </td>
                       <td>
                         {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
-                        {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
+                        {g.status === 'geblokkeerd' && (
+                          <>
+                            <Badge variant="danger">geblokkeerd</Badge>
+                            {blokkadeDetail(g)}
+                          </>
+                        )}
                         {openUitnodiging && (
                           <Badge variant="stil">uitnodiging — {formatVerloop(g.open_uitnodiging_verloopt_op!)}</Badge>
                         )}
@@ -304,7 +361,8 @@ export function GebruikersScreen() {
                           >
                             eigen rol/scope wijzigt alleen een ándere Beheerder
                           </span>
-                        )}
+                        )}{' '}
+                        {blokkadeKnop(g)}
                       </td>
                     </tr>
                   )
@@ -351,6 +409,13 @@ export function GebruikersScreen() {
                     <tr key={g.id}>
                       <td>
                         <b>{g.naam}</b>
+                        {g.status === 'geblokkeerd' && (
+                          <>
+                            {' '}
+                            <Badge variant="danger">geblokkeerd</Badge>
+                            {blokkadeDetail(g)}
+                          </>
+                        )}
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
                       </td>
                       <td>
@@ -394,7 +459,8 @@ export function GebruikersScreen() {
                           >
                             {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
                           </Button>
-                        )}
+                        )}{' '}
+                        {blokkadeKnop(g)}
                       </td>
                     </tr>
                   )
@@ -446,6 +512,24 @@ export function GebruikersScreen() {
             setRolWijziging(null)
             setActieFout(null)
             laad()
+          }}
+        />
+      )}
+
+      {blokkade && (
+        <BevestigDialog
+          titel={blokkade.actie === 'blokkeren' ? 'Gebruiker blokkeren' : 'Gebruiker heractiveren'}
+          bericht={
+            blokkade.actie === 'blokkeren'
+              ? `${blokkade.gebruiker.naam} wordt per direct geblokkeerd: inloggen wordt geweigerd, alle sessies vervallen en passkeys zijn onbruikbaar zolang de blokkade staat. Heractiveren kan altijd — er wordt niets verwijderd. De actie wordt geauditeerd.`
+              : `${blokkade.gebruiker.naam} kan na heractivering weer inloggen (bestaande passkeys werken weer; oude sessies komen niet terug). De actie wordt geauditeerd.`
+          }
+          bezig={actieBezig}
+          fout={actieFout}
+          onBevestigen={() => void bevestigBlokkade()}
+          onAnnuleren={() => {
+            setBlokkade(null)
+            setActieFout(null)
           }}
         />
       )}

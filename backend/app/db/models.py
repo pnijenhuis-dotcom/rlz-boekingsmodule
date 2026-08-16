@@ -151,6 +151,15 @@ class Gebruiker(Base):
     rol: Mapped[GebruikerRol] = mapped_column(_GEBRUIKER_ROL_ENUM)
     status: Mapped[GebruikerStatus] = mapped_column(_GEBRUIKER_STATUS_ENUM, default=GebruikerStatus.UITGENODIGD)
 
+    # Blokkade (migratie 0052, beheer-mini 2026-08-16). status_voor_blokkade bewaart de status
+    # van vóór de blokkade zodat heractiveren een half-geactiveerde gebruiker exact daarheen
+    # terugzet — nooit naar 'actief' zonder credentials.
+    geblokkeerd_op: Mapped[datetime | None] = mapped_column(default=None)
+    geblokkeerd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    status_voor_blokkade: Mapped[str | None] = mapped_column(default=None)
+
 
 class GebruikerAdministratie(Base):
     """Scope-koppeltabel (CLAUDE.md, hard): klanten-scope per medewerker. Administratie-gebonden

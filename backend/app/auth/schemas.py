@@ -188,6 +188,9 @@ class GebruikerOverzichtResponse(BaseModel):
     open_uitnodiging_verloopt_op: datetime | None
     # Alleen zinvol gevuld voor klant-accordeurs (0 voor kantoorrollen).
     staande_goedkeuringen: int
+    # Alleen gevuld bij status 'geblokkeerd' (migratie 0052).
+    geblokkeerd_op: datetime | None
+    geblokkeerd_door_naam: str | None
 
 
 class GebruikersLijstResponse(BaseModel):

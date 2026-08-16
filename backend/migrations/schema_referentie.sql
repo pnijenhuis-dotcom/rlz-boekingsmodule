@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0051
+-- Migratie-head bij deze dump: 0052
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1492,6 +1492,9 @@ CREATE TABLE platform.gebruiker (
     wachtwoord_hash text,
     rol platform.gebruiker_rol NOT NULL,
     status platform.gebruiker_status DEFAULT 'uitgenodigd'::platform.gebruiker_status NOT NULL,
+    geblokkeerd_op timestamp with time zone,
+    geblokkeerd_door uuid,
+    status_voor_blokkade text,
     CONSTRAINT ck_gebruiker_e_mail_lowercase CHECK ((e_mail = lower(e_mail)))
 );
 
@@ -3813,6 +3816,14 @@ ALTER TABLE ONLY platform.gebruiker_administratie
 
 ALTER TABLE ONLY platform.gebruiker_entiteit
     ADD CONSTRAINT gebruiker_entiteit_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: gebruiker gebruiker_geblokkeerd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.gebruiker
+    ADD CONSTRAINT gebruiker_geblokkeerd_door_fkey FOREIGN KEY (geblokkeerd_door) REFERENCES platform.gebruiker(id);
 
 
 --

@@ -207,6 +207,8 @@ def gebruikers_lijst(actor: CurrentGebruiker = Depends(require_beheerder)) -> sc
                 aantal_passkeys=item.aantal_passkeys,
                 open_uitnodiging_verloopt_op=item.open_uitnodiging_verloopt_op,
                 staande_goedkeuringen=staande.get(item.id, 0),
+                geblokkeerd_op=item.geblokkeerd_op,
+                geblokkeerd_door_naam=item.geblokkeerd_door_naam,
             )
             for item in items
         ]
@@ -256,6 +258,31 @@ def rol_wijzigen(
         service.wijzig_rol(actor_id=actor.id, doel_gebruiker_id=gebruiker_id, nieuwe_rol=payload.rol)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/gebruikers/{gebruiker_id}/blokkeren", status_code=status.HTTP_204_NO_CONTENT)
+def gebruiker_blokkeren(
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> None:
+    """Blokkeer een gebruiker (beheer-mini 2026-08-16): login geweigerd, sessies/refresh per
+    direct dood, passkeys onbruikbaar zolang de blokkade staat. Guards (eigen account,
+    systeem-actor, laatste actieve Beheerder) zitten server-side in de service."""
+    try:
+        service.blokkeer_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/gebruikers/{gebruiker_id}/heractiveren", status_code=status.HTTP_204_NO_CONTENT)
+def gebruiker_heractiveren(
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> None:
+    try:
+        service.heractiveer_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/gebruikers/{gebruiker_id}/scope", status_code=status.HTTP_204_NO_CONTENT)

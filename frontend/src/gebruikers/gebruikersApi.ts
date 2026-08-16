@@ -14,6 +14,8 @@ export interface GebruikerOverzichtDto {
   aantal_passkeys: number
   open_uitnodiging_verloopt_op: string | null
   staande_goedkeuringen: number
+  geblokkeerd_op: string | null
+  geblokkeerd_door_naam: string | null
 }
 
 export interface GebruikersLijstDto {
@@ -80,6 +82,14 @@ export async function voegScopeToe(gebruikerId: string, administratieId: string)
 
 export async function verwijderScope(gebruikerId: string, administratieId: string): Promise<void> {
   await apiJson(`/auth/gebruikers/${gebruikerId}/scope/${administratieId}`, { method: 'DELETE' })
+}
+
+export async function blokkeerGebruiker(gebruikerId: string): Promise<void> {
+  await apiPostJson(`/auth/gebruikers/${gebruikerId}/blokkeren`, {})
+}
+
+export async function heractiveerGebruiker(gebruikerId: string): Promise<void> {
+  await apiPostJson(`/auth/gebruikers/${gebruikerId}/heractiveren`, {})
 }
 
 export function haalApparatenVan(gebruikerId: string): Promise<{ apparaten: ApparaatDto[] }> {

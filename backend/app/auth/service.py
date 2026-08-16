@@ -530,6 +530,103 @@ def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol:
         gebruiker.rol = nieuwe_rol
 
 
+def _tel_overige_actieve_beheerders(session: Session, *, behalve_gebruiker_id: uuid.UUID) -> int:
+    """Aantal actieve Beheerders buiten het doelaccount. De systeem-actor telt nooit mee (die is
+    technisch en staat zelf op geblokkeerd), gepseudonimiseerde accounts evenmin."""
+    return session.scalar(
+        select(func.count())
+        .select_from(Gebruiker)
+        .where(
+            Gebruiker.rol == GebruikerRol.BEHEERDER,
+            Gebruiker.status == GebruikerStatus.ACTIEF,
+            Gebruiker.gepseudonimiseerd_op.is_(None),
+            Gebruiker.id != behalve_gebruiker_id,
+            Gebruiker.id != SYSTEEM_ACTOR_ID,
+        )
+    )
+
+
+def blokkeer_gebruiker(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID) -> None:
+    """Blokkeer een gebruiker (beheer-mini 2026-08-16). Status → geblokkeerd bijt per direct op
+    álle paden: deps.py hertoetst per request, de refresh-rotatie weigert, en elk login-pad
+    (wachtwoord+TOTP én alle WebAuthn-vormen) eist status actief — passkeys blijven geregistreerd
+    maar zijn onbruikbaar zolang de blokkade staat (kill-switch-semantiek, omkeerbaar).
+    Alle lopende sessies/refresh-tokens gaan per direct dood.
+
+    Waarborgen (server-side, onvoorwaardelijk): eigen account nooit, systeem-actor nooit,
+    de laatste actieve Beheerder nooit."""
+    if actor_id == doel_gebruiker_id:
+        raise AuthError("Kan het eigen account niet blokkeren")
+    _weiger_systeem_actor(doel_gebruiker_id)
+    now = datetime.now(UTC)
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, doel_gebruiker_id)
+        if gebruiker is None or gebruiker.gepseudonimiseerd_op is not None:
+            raise AuthError("Onbekende gebruiker")
+        if gebruiker.status == GebruikerStatus.GEBLOKKEERD:
+            raise AuthError("Gebruiker is al geblokkeerd")
+        if (
+            gebruiker.rol == GebruikerRol.BEHEERDER
+            and gebruiker.status == GebruikerStatus.ACTIEF
+            and _tel_overige_actieve_beheerders(session, behalve_gebruiker_id=doel_gebruiker_id) == 0
+        ):
+            raise AuthError("De laatste actieve Beheerder kan niet geblokkeerd worden")
+        oude_status = gebruiker.status
+        gebruiker.status_voor_blokkade = oude_status.value
+        gebruiker.status = GebruikerStatus.GEBLOKKEERD
+        gebruiker.geblokkeerd_op = now
+        gebruiker.geblokkeerd_door = actor_id
+        _intrek_alle_sessies(session, doel_gebruiker_id, now=now)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=doel_gebruiker_id,
+            actie="gebruiker_geblokkeerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"status": oude_status.value},
+            nieuwe_waarde={"status": GebruikerStatus.GEBLOKKEERD.value},
+        )
+
+
+def heractiveer_gebruiker(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID) -> None:
+    """Hef een blokkade op. De gebruiker keert terug naar de status van vóór de blokkade
+    (status_voor_blokkade) — een half-geactiveerd account gaat dus terug de activatieflow in,
+    nooit naar 'actief' zonder credentials. Sessies komen niet terug: opnieuw inloggen."""
+    if actor_id == doel_gebruiker_id:
+        raise AuthError("Kan het eigen account niet heractiveren")
+    _weiger_systeem_actor(doel_gebruiker_id)
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, doel_gebruiker_id)
+        if gebruiker is None or gebruiker.gepseudonimiseerd_op is not None:
+            raise AuthError("Onbekende gebruiker")
+        if gebruiker.status != GebruikerStatus.GEBLOKKEERD:
+            raise AuthError("Gebruiker is niet geblokkeerd")
+        # status_voor_blokkade is altijd gezet door blokkeer_gebruiker; de fallback 'actief'
+        # bestaat alleen voor rijen die buiten de app om op geblokkeerd zijn gezet.
+        doel_status = (
+            GebruikerStatus(gebruiker.status_voor_blokkade)
+            if gebruiker.status_voor_blokkade
+            else GebruikerStatus.ACTIEF
+        )
+        gebruiker.status = doel_status
+        gebruiker.status_voor_blokkade = None
+        gebruiker.geblokkeerd_op = None
+        gebruiker.geblokkeerd_door = None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=doel_gebruiker_id,
+            actie="gebruiker_geheractiveerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"status": GebruikerStatus.GEBLOKKEERD.value},
+            nieuwe_waarde={"status": doel_status.value},
+        )
+
+
 def voeg_scope_toe(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
     if actor_id == doel_gebruiker_id:
         raise AuthError("Kan de eigen scope niet wijzigen")
@@ -644,6 +741,8 @@ class GebruikerOverzicht:
     heeft_totp: bool
     aantal_passkeys: int
     open_uitnodiging_verloopt_op: datetime | None
+    geblokkeerd_op: datetime | None
+    geblokkeerd_door_naam: str | None
 
 
 def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
@@ -681,6 +780,14 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
                 .group_by(Uitnodiging.gebruiker_id)
             ).all()
         )
+        # Naam van de blokkeerder apart opgehaald: die kan zelf gepseudonimiseerd of de
+        # systeem-actor zijn en dus buiten de lijst hierboven vallen.
+        blokkeerder_ids = {g.geblokkeerd_door for g in gebruikers if g.geblokkeerd_door is not None}
+        blokkeerder_namen = (
+            dict(session.execute(select(Gebruiker.id, Gebruiker.naam).where(Gebruiker.id.in_(blokkeerder_ids))).all())
+            if blokkeerder_ids
+            else {}
+        )
         session.expunge_all()
 
     scope_per_gebruiker: dict[uuid.UUID, list[uuid.UUID]] = {}
@@ -698,6 +805,10 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
             heeft_totp=g.id in totp_ids,
             aantal_passkeys=passkeys.get(g.id, 0),
             open_uitnodiging_verloopt_op=open_uitnodigingen.get(g.id),
+            geblokkeerd_op=g.geblokkeerd_op,
+            geblokkeerd_door_naam=(
+                blokkeerder_namen.get(g.geblokkeerd_door) if g.geblokkeerd_door is not None else None
+            ),
         )
         for g in gebruikers
     ]
