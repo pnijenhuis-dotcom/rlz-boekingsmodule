@@ -117,6 +117,48 @@ class TestSlaVerdelingOp:
         assert per_mapping[mappings[2].id] == D("82.22")
         assert sum(per_mapping.values()) == D("411.10")
 
+    def test_opnieuw_opslaan_zelfde_combinaties_bewaart_gekozen_gbs(
+        self,
+        run_met_drie_mappings: tuple[uuid.UUID, uuid.UUID, list[DoorbelastingMapping]],
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+    ) -> None:
+        """Kliktest-bevinding Peter 2026-08-16 (TEST-ONB-KLIKTEST-01): eerst de percentages
+        opslaan en daarna de doel-kosten-GB's kiezen en opnieuw opslaan. De tweede opslag
+        vervangt dezelfde (run, bron-regel, mapping)-combinaties en mag niet stranden op de
+        unieke index doordat de nieuwe rijen vóór de deletes geflusht worden — de gekozen
+        GB's moeten de database bereiken en de verdeling blijft compleet."""
+        run_id, bron_regel_id, mappings = run_met_drie_mappings
+
+        def invoer(gb_per_mapping: dict[uuid.UUID, uuid.UUID | None]) -> list[VerdeelRegelInvoerData]:
+            return [
+                VerdeelRegelInvoerData(
+                    bron_regel_id=bron_regel_id,
+                    mapping_id=m.id,
+                    percentage=pct,
+                    doel_kosten_ledger_id=gb_per_mapping[m.id],
+                )
+                for m, pct in zip(mappings, [D("50"), D("30"), D("20")], strict=True)
+            ]
+
+        doorbelasting_service.sla_verdeling_op(
+            administratie_id=administratie_id,
+            run_id=run_id,
+            actor_id=beheerder_id,
+            regels=invoer({m.id: None for m in mappings}),
+        )
+        gekozen_gbs = {m.id: uuid.uuid4() for m in mappings}
+        regels = doorbelasting_service.sla_verdeling_op(
+            administratie_id=administratie_id,
+            run_id=run_id,
+            actor_id=beheerder_id,
+            regels=invoer(gekozen_gbs),
+        )
+        assert {r.mapping_id: r.doel_kosten_ledger_id for r in regels} == gekozen_gbs
+        # en de herlezen run-staat draagt de GB's óók (niet alleen de return-waarde)
+        data = doorbelasting_service.review_data(administratie_id=administratie_id, run_id=run_id)
+        assert {r.mapping_id: r.doel_kosten_ledger_id for r in data.regels} == gekozen_gbs
+
     def test_whitelist_weigert_onbekende_mapping(
         self,
         run_met_drie_mappings: tuple[uuid.UUID, uuid.UUID, list[DoorbelastingMapping]],

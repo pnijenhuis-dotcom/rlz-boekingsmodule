@@ -426,6 +426,11 @@ def sla_verdeling_op(
 
         for oud in session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == run_id)):
             session.delete(oud)
+        # De deletes moeten de database bereiken vóór de vervangende rijen: SQLAlchemy flusht
+        # inserts vóór deletes, en een heropslag hergebruikt dezelfde (run, bron-regel,
+        # mapping)-combinaties — zonder deze flush klapt de unieke index
+        # doorbelasting_regel_uniek (kliktest-bevinding Peter 2026-08-16).
+        session.flush()
 
         nieuw: list[DoorbelastingRegel] = []
         # grootste-rest per bron-regel, in stabiele invoervolgorde per regel

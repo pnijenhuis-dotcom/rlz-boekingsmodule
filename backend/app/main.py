@@ -47,6 +47,11 @@ _ACTIE_PER_ROUTE: dict[tuple[str, str], str] = {
     ): "het uitvoeren van de checks",
     ("POST", "/administraties/{administratie_id}/documenten/{document_id}/boeken"): "het boeken van de factuur",
     ("POST", "/administraties/{administratie_id}/documenten"): "het uploaden van het document",
+    (
+        "PUT",
+        "/doorbelasting/{administratie_id}/runs/{run_id}/verdeling",
+    ): "het opslaan van de verdeling",
+    ("POST", "/doorbelasting/{administratie_id}/runs/{run_id}/boeken"): "het doorbelasten",
 }
 
 
