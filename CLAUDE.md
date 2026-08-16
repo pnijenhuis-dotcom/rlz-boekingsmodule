@@ -391,7 +391,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   — btw-netto-nul). Suppletie-signaal > € 1.000 en tegenboek-pad blijven GEPARKEERD voor een
   eigen ontwerp-/UX-ronde (apart akkoord). Kliktest-herstart geverifieerd (BESLISSINGEN
   "KLIKTEST-HERSTART"): her-PUT op een bestaand concept vervángt de DocumentLineList (live
-  bewezen, api-verkenning "Her-PUT op een bestaand concept").
+  bewezen, api-verkenning "Her-PUT op een bestaand concept"). **Kliktest 2 strandde alsnog
+  op de bijlage-upload (nazorg ronde 3, gefikst + getest 2026-08-16): RLZ's /Uploads kent
+  géén her-PUT** (bestaand GUID = 400, verbruikt GUID van een verwijderd document = 404;
+  api-verkenning "Uploads bij een herstart-boekcyclus") — bijlage-idempotentie loopt sindsdien
+  in álle motoren via `app/rlz/bijlage.py::zorg_voor_bijlage` (aanwezigheids-check via de
+  Uploads-leesroute + deterministische cyclus-GUID's).
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
