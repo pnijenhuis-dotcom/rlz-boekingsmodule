@@ -71,6 +71,11 @@ function somPercentages(rijen: VerdeelRij[]): number {
   return Math.round(som * 100) / 100
 }
 
+/** Percentage-getal voor weergave: 2 decimalen tegen floating-point-ruis, NL-komma. */
+function formatPct(x: number): string {
+  return String(Math.round(x * 100) / 100).replace('.', ',')
+}
+
 /** Reviewscherm Kempen-doorbelasting (blok 3, route /doorbelasting/:administratieId/:documentId):
  * per bron-regel een percentage-verdeling over de whitelist-doelentiteiten (verdeelmodal-
  * mechanica uit de mockup, 1-op-1 leidend), server-berekende netto-delen na "Verdeling
@@ -182,6 +187,13 @@ export function DoorbelastingReviewScreen() {
   const rijenZonderEntiteit = Object.values(verdeling)
     .flat()
     .filter((rij) => rij.mappingId === null).length
+
+  // Kliktest-bevinding Peter 2026-08-16: opslaan/boeken pas aanbieden als elke verdeelde
+  // regel exact op 100% sluit — de teller per regel laat live zien wat er nog open staat.
+  // Een regel zónder verdeelrijen blijft gewoon "niet doorbelast" (geen blokkade).
+  const verdelingOnvolledig = Object.values(verdeling).some(
+    (rijen) => rijen.length > 0 && somPercentages(rijen) !== 100,
+  )
 
   const opslaan = async () => {
     setOpslaanBezig(true)
@@ -314,8 +326,14 @@ export function DoorbelastingReviewScreen() {
                   <span className="chip geheugen">niet doorbelast</span>
                 ) : som === 100 ? (
                   <span className="chip ok">100% ✓</span>
+                ) : som < 100 ? (
+                  <span className="chip afwijking">
+                    {formatPct(som)}% — nog {formatPct(100 - som)}% te verdelen
+                  </span>
                 ) : (
-                  <span className="chip afwijking">{String(som).replace('.', ',')}% — moet exact 100% zijn</span>
+                  <span className="chip afwijking">
+                    {formatPct(som)}% — {formatPct(som - 100)}% te veel
+                  </span>
                 )}
               </div>
               {rijen.length > 0 && (
@@ -453,7 +471,12 @@ export function DoorbelastingReviewScreen() {
               <button
                 type="button"
                 className="btn secondary"
-                disabled={opslaanBezig || boekenBezig || regelIdsOntbreken}
+                disabled={opslaanBezig || boekenBezig || regelIdsOntbreken || verdelingOnvolledig}
+                title={
+                  verdelingOnvolledig
+                    ? 'Elke verdeelde regel moet exact op 100% sluiten — zie de teller per regel'
+                    : undefined
+                }
                 onClick={() => void opslaan()}
               >
                 {opslaanBezig ? 'Bezig…' : 'Verdeling opslaan'}
@@ -466,8 +489,8 @@ export function DoorbelastingReviewScreen() {
             </div>
             <p className="hint" style={{ marginBottom: 0 }}>
               De server berekent de netto-delen bindend (grootste-rest-methode): de som van de delen is
-              altijd exact het regelbedrag. Percentages die niet op 100% sluiten mogen opgeslagen worden
-              (werkstaat), maar blokkeren het boeken als harde check.
+              altijd exact het regelbedrag. Opslaan kan zodra elke verdeelde regel exact op 100% sluit
+              (de teller per regel telt live mee); de harde check server-side blijft daarbovenop staan.
             </p>
           </>
         )}
@@ -590,13 +613,15 @@ export function DoorbelastingReviewScreen() {
             <button
               type="button"
               className="btn green"
-              disabled={!checksGroen || boekenBezig || opslaanBezig}
+              disabled={!checksGroen || boekenBezig || opslaanBezig || verdelingOnvolledig}
               title={
-                gewijzigd
-                  ? 'Sla de verdeling eerst op — de server herberekent de delen en de checks'
-                  : run.checks.geblokkeerd
-                    ? 'Doorbelasten geblokkeerd — een of meer harde checks zijn niet groen'
-                    : 'Boekt per doelentiteit de verkoopfactuur (bron) + spiegel-inkoopfactuur (doel)'
+                verdelingOnvolledig
+                  ? 'Elke verdeelde regel moet exact op 100% sluiten — zie de teller per regel'
+                  : gewijzigd
+                    ? 'Sla de verdeling eerst op — de server herberekent de delen en de checks'
+                    : run.checks.geblokkeerd
+                      ? 'Doorbelasten geblokkeerd — een of meer harde checks zijn niet groen'
+                      : 'Boekt per doelentiteit de verkoopfactuur (bron) + spiegel-inkoopfactuur (doel)'
               }
               onClick={() => void boeken()}
             >

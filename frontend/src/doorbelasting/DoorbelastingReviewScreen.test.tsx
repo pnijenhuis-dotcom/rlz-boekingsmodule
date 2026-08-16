@@ -224,13 +224,39 @@ describe('DoorbelastingReviewScreen', () => {
     expect(screen.getByText('niet doorbelast')).toBeInTheDocument()
   })
 
-  it('markeert een verdeling die niet op 100% sluit', async () => {
+  it('markeert een verdeling die niet op 100% sluit mét resterend-teller en houdt opslaan uit', async () => {
     const nietSluitend = runMetVerdeling()
     nietSluitend.regels = [nietSluitend.regels[0]] // alleen de 50%-regel
     installFetchMock({ run: nietSluitend })
     renderScherm()
 
-    expect(await screen.findByText('50% — moet exact 100% zijn')).toBeInTheDocument()
+    expect(await screen.findByText('50% — nog 50% te verdelen')).toBeInTheDocument()
+    // Kliktest-bevinding Peter 2026-08-16: geen opslaan/boeken zolang het totaal ≠ 100% is.
+    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Doorbelasten in RLZ ✓' })).toBeDisabled()
+  })
+
+  it('telt live mee bij het invullen: te veel → teller, exact 100% → opslaan weer aan', async () => {
+    installFetchMock()
+    renderScherm()
+    const gebruiker = userEvent.setup()
+
+    // Startsituatie: 50/50 = 100% — opslaan beschikbaar.
+    expect(await screen.findByText('100% ✓')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeEnabled()
+
+    // Eén percentage ophogen naar 70 → 120% totaal: teller "te veel" + opslaan uit.
+    const pctVelden = screen.getAllByLabelText('Percentage voor Multiplex 18mm (12×)')
+    await gebruiker.clear(pctVelden[0])
+    await gebruiker.type(pctVelden[0], '70')
+    expect(screen.getByText('120% — 20% te veel')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeDisabled()
+
+    // Terug naar 50 → weer exact 100%: teller weg, opslaan aan.
+    await gebruiker.clear(pctVelden[0])
+    await gebruiker.type(pctVelden[0], '50')
+    expect(screen.getByText('100% ✓')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeEnabled()
   })
 
   it('houdt de boekknop uit zolang de harde checks blokkeren', async () => {
