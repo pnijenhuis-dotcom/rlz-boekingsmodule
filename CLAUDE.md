@@ -382,8 +382,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (vraag Peter 15-08) ONDERZOCHT: RLZ weigert actie 19 NIET** — het verschuift de
   terugdraai-btw zelf als negatieve TaxSource naar de eerstvolgende open aangifte-periode
   (api-verkenning "Actie 19 in een periode met ingediende btw-aangifte"); foutvertaling +
-  alles-of-niets-zorg vervallen; pre-storno-waarschuwing, suppletie-signaal > € 1.000 en
-  tegenboek-pad GEPARKEERD voor een eigen ontwerp-/UX-ronde (apart akkoord).
+  alles-of-niets-zorg vervallen. **Vervolg-besluit Peter 15-08, GEBOUWD + GETEST 2026-08-16:
+  harde STORNO-BLOKKADE ná ingediende aangifte** — poort `app/rlz/aangifte.py` (TaxDeclarations
+  Status 2/3 dekt de boekdatum = storno geblokkeerd, fail-closed bij onleesbaarheid, 404/
+  concept vrij) vóór álle bestaande storno-paden: bank-direct én doorbelasting (alles-of-niets
+  over bron + doel, per kant zichtbaar waarom; UI-knop disabled mét melding via de
+  storno-toets-leesroute; interne rollback-storno's ín een boek-transactie bewust niet gepoort
+  — btw-netto-nul). Suppletie-signaal > € 1.000 en tegenboek-pad blijven GEPARKEERD voor een
+  eigen ontwerp-/UX-ronde (apart akkoord). Kliktest-herstart geverifieerd (BESLISSINGEN
+  "KLIKTEST-HERSTART"): her-PUT op een bestaand concept vervángt de DocumentLineList (live
+  bewezen, api-verkenning "Her-PUT op een bestaand concept").
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
