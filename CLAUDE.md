@@ -193,6 +193,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vraag/afwijzing; volumerem en accorderingspoort onverkort; elk geval geauditeerd +
   tijdlijn-/werkvoorraadmarkering "automatisch". NB bank-autoboeken (opt-in per
   administrátie, vaste regels) staat hier los van (live sinds 2026-08-02).
+  **Automatisering-first (principe Peter, vastgelegd 2026-08-16, WERKWIJZE v1.10):
+  mens-op-de-knop is een testfase-drempel en afwijkings-vangnet, geen einddoel — elk
+  deterministisch pad krijgt een autoboek-opt-in volgens dit vaste patroon (default UIT,
+  harde checks blokkerend, volumerem, 'automatisch'-markering + audit, storno als terugweg).
+  Derde afnemer: verkoop-autoboeken (2026-08-16, zie "Verkoopfactuur-boekpad"); afweging
+  omzetrapporten + doorbelasting-spiegels gedocumenteerd in BESLISSINGEN
+  ("Autoboek-afweging overige deterministische paden") — bouw vergt apart akkoord.**
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
@@ -280,6 +287,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   regel 1). Golden-case-verificatie tegen de échte Vastly-UBL's: UITGEVOERD 2026-08-10
   (blok D — intake-routing 4×380 + 2×381 én live boek-/credit-/stornocyclus op de
   TEST-administratie; zie BESLISSINGEN).
+  **Verkoop-autoboeken (besluit Peter 15-08, GEBOUWD + GETEST 2026-08-16, migratie 0051 +
+  `app/verkoop/autoboeken.py`)**: opt-in per is_vastgoed-administratie
+  (`verkoop_autoboeken_ingeschakeld`, Beheerder-only, default UIT — aanzetten kan alléén
+  bij is_vastgoed) — ná intake boekt het document automatisch uitsluitend als álles groen
+  is: harde checks, per regel GB-code 'bekend' én btw vergrendeld uit de UBL (bron
+  'factuur' of de eerder mens-bevestigde 'onthouden'-keuze), geen open
+  vraag/afwijzing/duplicaatsignaal, geen mens-opgeslagen voorstel; creditnota's alleen via
+  de groene herleiding-check. Elk ander geval → werkvoorraad, nooit stil; elke poging
+  geauditeerd, GEBOEKT draagt `automatisch_geboekt` (chip "automatisch"), webhook identiek.
+  Toggle op Instellingen + `make verkoop-autoboeken-aan/-uit`; staat overal UIT
+  (testperiode) tot Peter per administratie activeert. Zie BESLISSINGEN
+  "VERKOOP-AUTOBOEKEN OPT-IN".
 - **Bank**: klantenlijst → rekening (alle `PaymentAccounts` incl. kas). Voorstel-volgorde:
   1) exacte match naam+factuurnr+**bedrag** → auto-afletteren; 2) gedeeltelijke match → bevestigen;
   3) vaste regels (geheugen; na 3× zelfde handmatige boeking regel voorstellen); 4) RLZ's eigen
