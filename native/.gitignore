@@ -1,0 +1,17 @@
+node_modules/
+ios/App/build/
+ios/App/Pods/
+ios/DerivedData/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+
+# Door `cap sync` gegenereerd uit ../frontend/dist — nooit met de hand bewerken, niet committen.
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins/
+ios/capacitor-cordova-ios-plugins/

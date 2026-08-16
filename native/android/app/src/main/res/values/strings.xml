@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RLZ Goedkeuren</string>
+    <string name="title_activity_main">RLZ Goedkeuren</string>
+    <string name="package_name">nl.aknijenhuis.goedkeuren</string>
+    <string name="custom_url_scheme">nl.aknijenhuis.goedkeuren</string>
+</resources>

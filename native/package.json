@@ -1,0 +1,20 @@
+{
+  "name": "rlz-accordeur-native",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Capacitor-schil rond de accordeur-PWA (voorverkenning store-apps, besluit Peter 2026-08-14). Raakt de webcode niet: webDir wijst naar ../frontend/dist.",
+  "scripts": {
+    "bouw-web": "cd ../frontend && npm run build",
+    "sync": "cap sync",
+    "ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
