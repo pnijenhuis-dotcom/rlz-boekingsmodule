@@ -10,15 +10,17 @@ import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
-import { Select, Switch } from '../ui/basis'
+import { Button, Select, Switch } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   haalDoorbelastingInstellingOp,
   haalDoorbelastingMappingsOp,
   haalDoorbelastingToggleOp,
+  haalOpruimlijstOp,
   wijzigDoorbelastingMapping,
   zetDoorbelastingInstelling,
   zetDoorbelastingToggle,
+  type OpruimlijstDto,
 } from './doorbelastingApi'
 import { formatPercentage } from './status'
 import { useDoelGrootboek } from './useDoelGrootboek'
@@ -380,6 +382,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
         hier staat in het audit log.
       </p>
 
+      <Opruimlijst administratieId={administratieId} />
+
       {pending && (
         <BevestigDialog
           titel="Doorbelasting-instelling wijzigen?"
@@ -393,6 +397,78 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
           }}
         />
       )}
+    </div>
+  )
+}
+
+/** Opruimlijst achtergebleven RLZ-concepten (hygiëne-run 2026-08-16): gestorneerde/vervallen
+ * doorbelasting-runs laten in RLZ Status-1-concepten achter (actie 19 verwijdert niet). De app
+ * verwijdert NOOIT iets in RLZ (kernprincipe 3, expliciet herbevestigd) — dit lijstje is puur
+ * informatief: handmatig opruimen in de RLZ-UI, indien gewenst. Live scan op knopdruk (geen
+ * auto-load: elke scan doet echte RLZ-calls). */
+function Opruimlijst({ administratieId }: { administratieId: string }) {
+  const [lijst, setLijst] = useState<OpruimlijstDto | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  async function scan() {
+    setBezig(true)
+    setFout(null)
+    try {
+      setLijst(await haalOpruimlijstOp(administratieId))
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Scan mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <h3 style={{ marginBottom: 4 }}>Achtergebleven RLZ-concepten</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Storno (actie 19) zet een document terug naar concept — het blijft in Reeleezee staan. Deze
+        scan zoekt concepten van gestorneerde of mislukte doorbelastingen, beide kanten. De app
+        verwijdert nooit iets in Reeleezee; opruimen kan handmatig in de RLZ-UI, indien gewenst.
+      </p>
+      <Button variant="secundair" maat="klein" disabled={bezig} onClick={() => void scan()}>
+        {bezig ? 'Bezig met scannen…' : lijst ? 'Opnieuw scannen' : 'Zoek achtergebleven concepten'}
+      </Button>
+      {fout && <FoutMelding melding="De opruimscan kon niet uitgevoerd worden." detail={fout} />}
+      {lijst && lijst.kandidaten.length === 0 && lijst.fouten.length === 0 && (
+        <p className="hint">Geen achtergebleven concepten gevonden.</p>
+      )}
+      {lijst && lijst.kandidaten.length > 0 && (
+        <div className="tabel-scroll" style={{ marginTop: 8 }}>
+          <table>
+            <tbody>
+              <tr>
+                <th>Kant</th>
+                <th>Referentie / RLZ-id</th>
+                <th>Reden</th>
+                <th>Detail</th>
+              </tr>
+              {lijst.kandidaten.map((k) => (
+                <tr key={`${k.kant}-${k.rlz_id}`}>
+                  <td>{k.kant === 'verkoop_bron' ? 'verkoop (bron)' : 'spiegel (doel)'}</td>
+                  <td>
+                    <b>{k.referentie ?? '—'}</b>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{k.rlz_id}</div>
+                  </td>
+                  <td>{k.reden === 'gestorneerd' ? 'gestorneerd' : 'mislukte boekpoging'}</td>
+                  <td>{k.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {lijst &&
+        lijst.fouten.map((f) => (
+          <p key={f} className="hint" style={{ color: 'var(--warn, inherit)' }}>
+            Niet controleerbaar: {f}
+          </p>
+        ))}
     </div>
   )
 }

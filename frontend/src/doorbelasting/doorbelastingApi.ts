@@ -165,3 +165,25 @@ export function stornoDoorbelastingBoeking(
     { reden },
   )
 }
+
+// --- Opruimlijst achtergebleven RLZ-concepten (hygiëne-run 2026-08-16) ---------------------------
+
+export interface OpruimKandidaatDto {
+  concept_administratie_id: string
+  kant: string // 'verkoop_bron' | 'spiegel_doel'
+  rlz_id: string
+  document_id: string
+  referentie: string | null
+  reden: string // 'gestorneerd' | 'vervallen_run'
+  detail: string
+}
+
+export interface OpruimlijstDto {
+  kandidaten: OpruimKandidaatDto[]
+  fouten: string[]
+}
+
+/** Live scan tegen RLZ (klein volume) — Beheerder-only; de app verwijdert nooit iets in RLZ. */
+export function haalOpruimlijstOp(administratieId: string): Promise<OpruimlijstDto> {
+  return apiJson<OpruimlijstDto>(`/doorbelasting/${administratieId}/opruimlijst`)
+}

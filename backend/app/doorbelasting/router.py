@@ -253,6 +253,34 @@ def run_boeken(
 # --- open spiegel-taken + storno -----------------------------------------------------------
 
 
+@router.get("/doorbelasting/{administratie_id}/opruimlijst", response_model=schemas.OpruimlijstResponse)
+def opruimlijst(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.OpruimlijstResponse:
+    """Achtergebleven RLZ-concepten van gestorneerde/vervallen doorbelasting-runs — live scan
+    tegen RLZ (klein volume). Informatief lijstje "handmatig opruimen indien gewenst"; de app
+    verwijdert nooit iets in RLZ. Beheerder-only (leeft op Instellingen → Doorbelasting)."""
+    from app.doorbelasting import reconciliatie
+
+    resultaat = reconciliatie.verzamel_opruimlijst(administratie_id)
+    return schemas.OpruimlijstResponse(
+        kandidaten=[
+            schemas.OpruimKandidaatResponse(
+                concept_administratie_id=k.concept_administratie_id,
+                kant=k.kant,
+                rlz_id=k.rlz_id,
+                document_id=k.document_id,
+                referentie=k.referentie,
+                reden=k.reden,
+                detail=k.detail,
+            )
+            for k in resultaat.kandidaten
+        ],
+        fouten=resultaat.fouten,
+    )
+
+
 @router.get("/doorbelasting/{administratie_id}/spiegel-taken", response_model=list[schemas.SpiegelTaakResponse])
 def spiegel_taken(
     administratie_id: uuid.UUID,

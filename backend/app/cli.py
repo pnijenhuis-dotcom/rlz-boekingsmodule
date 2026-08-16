@@ -351,6 +351,23 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
                 geaccepteerd_totaal += 1
                 print(f"OK         {regel}")
 
+    # Opruimlijst (hygiëne-run 2026-08-16): achtergebleven RLZ-concepten van gestorneerde/
+    # vervallen runs — puur informatief (LET-OP), telt NOOIT mee in de exit-code. De app
+    # verwijdert nooit iets in RLZ (kernprincipe 3); opruimen is klikwerk van een mens in de
+    # RLZ-UI, "indien gewenst". Ook zichtbaar op Instellingen → Doorbelasting.
+    opruim = doorbelasting_reconciliatie.verzamel_alle_opruimlijsten()
+    for kandidaat in opruim.kandidaten:
+        print(
+            f"LET-OP     opruim-kandidaat [{kandidaat.reden}] {kandidaat.kant} {kandidaat.rlz_id} "
+            f"in administratie {kandidaat.concept_administratie_id} "
+            f"(document {kandidaat.document_id}{f', ref {kandidaat.referentie}' if kandidaat.referentie else ''}) "
+            f"— {kandidaat.detail}; handmatig opruimen in de RLZ-UI indien gewenst"
+        )
+    for fout in opruim.fouten:
+        print(f"LET-OP     opruimlijst: {fout}")
+    if opruim.kandidaten:
+        print(f"LET-OP     {len(opruim.kandidaten)} achtergebleven RLZ-concept(en) — informatief, geen fout")
+
     if not echte_fouten and not open_totaal:
         print(f"OK         geen afwijkingen in de doorbelastingen ({geaccepteerd_totaal} geaccepteerd)")
         return 0

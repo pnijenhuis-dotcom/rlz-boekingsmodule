@@ -93,6 +93,25 @@ class BoekResultaatResponse(BaseModel):
     per_doelentiteit: dict[str, str]
 
 
+class OpruimKandidaatResponse(BaseModel):
+    """Achtergebleven RLZ-concept van een gestorneerde/vervallen doorbelasting (hygiëne-run
+    2026-08-16) — informatief: opruimen is klikwerk van een mens in de RLZ-UI, de app
+    verwijdert nooit (kernprincipe 3)."""
+
+    concept_administratie_id: uuid.UUID
+    kant: str  # 'verkoop_bron' | 'spiegel_doel'
+    rlz_id: uuid.UUID
+    document_id: uuid.UUID
+    referentie: str | None
+    reden: str  # 'gestorneerd' | 'vervallen_run'
+    detail: str
+
+
+class OpruimlijstResponse(BaseModel):
+    kandidaten: list[OpruimKandidaatResponse]
+    fouten: list[str]
+
+
 class SpiegelTaakResponse(BaseModel):
     boeking_id: uuid.UUID
     document_id: uuid.UUID
