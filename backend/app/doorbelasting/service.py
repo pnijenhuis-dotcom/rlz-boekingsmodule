@@ -26,7 +26,6 @@ from app.doorbelasting.checks import (
     voer_doorbelasting_checks_uit,
 )
 from app.doorbelasting.geld import provisie_over, verdeel_grootste_rest
-from app.projecten.anker import anker_customer_id
 from app.doorbelasting.models import (
     DoorbelastingBoeking,
     DoorbelastingBoekingStatus,
@@ -37,6 +36,7 @@ from app.doorbelasting.models import (
     DoorbelastingRunStatus,
     IntercompanyTegenpartij,
 )
+from app.projecten.anker import anker_customer_id
 
 
 def upsert_intercompany_tegenpartij(

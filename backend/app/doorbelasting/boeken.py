@@ -64,7 +64,6 @@ from app.documenten.webhook import (
     bouw_factuur_gestorneerd_payload,
 )
 from app.doorbelasting.checks import voer_doorbelasting_checks_uit
-from app.projecten.anker import anker_customer_id
 from app.doorbelasting.geld import btw_over, provisie_over
 from app.doorbelasting.models import (
     DoorbelastingBoeking,
@@ -82,6 +81,7 @@ from app.doorbelasting.service import (
     upsert_intercompany_tegenpartij,
 )
 from app.omzet.boeken import _boek_verkoopfactuur
+from app.projecten.anker import anker_customer_id
 from app.rlz.client import RlzApiError, RlzClient
 from app.sync.models import TaxRateCache, VendorCache
 
