@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { LeverancierAutoboekenDto } from '../api/types'
+import { Select, Switch } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { BevestigDialog } from './BevestigDialog'
 import { haalLeveranciersAutoboeken, zetLeverancierAutoboeken } from './instellingenApi'
@@ -85,9 +86,8 @@ export function LeverancierAutoboeken({
         Opt-in per leverancier: facturen die alle harde checks doorstaan én volledig op bevestigd
         boekingsgeheugen steunen, worden dan zonder boek-klik geboekt. Kies eerst een administratie.
       </p>
-      <select
+      <Select
         aria-label="Administratie voor automatisch boeken"
-        style={{ width: 'auto' }}
         value={administratieId}
         onChange={(e) => setAdministratieId(e.target.value)}
       >
@@ -97,7 +97,7 @@ export function LeverancierAutoboeken({
             {a.naam}
           </option>
         ))}
-      </select>
+      </Select>
 
       {laadFout && (
         <FoutMelding
@@ -127,10 +127,8 @@ export function LeverancierAutoboeken({
                   <td>{naam}</td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                      <input
-                        type="checkbox"
+                      <Switch
                         aria-label={`Automatisch boeken voor ${naam}`}
-                        style={{ width: 'auto' }}
                         checked={l.autoboeken_ingeschakeld}
                         onChange={(e) =>
                           setPending({ vendorId: l.vendor_id, naam, nieuweWaarde: e.target.checked })

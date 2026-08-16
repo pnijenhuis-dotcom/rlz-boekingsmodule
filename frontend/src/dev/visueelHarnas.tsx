@@ -322,23 +322,33 @@ function AutoChecksProef() {
   return null
 }
 
+// ?donker=1 — dark mode voor headless verificatie (thema.ts-klassepatroon).
+if (PARAMS.has('donker')) {
+  document.documentElement.classList.add('dark')
+  document.body.classList.add('dark')
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MemoryRouter initialEntries={[`/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`]}>
       <div className="app">
-        <div className="sidebar">
+        <nav className="sidebar">
           <div className="logo">
-            RLZ <span style={{ opacity: 0.6, fontWeight: 400 }}>Boekingsmodule</span>
+            <div className="logo-mark">N</div>
+            <div>
+              <b>Nijenhuis</b>
+              <small>Boekingsmodule</small>
+            </div>
           </div>
-          <div className="sub">Administratiekantoor Nijenhuis</div>
-          <div className="nav">
-            <a className="active">Werkvoorraad</a>
-          </div>
-        </div>
+          <div className="nav-kop">Werk</div>
+          <a className="nav-item actief">Werkvoorraad</a>
+        </nav>
         <div className="main">
-          <Routes>
-            <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
-          </Routes>
+          <div className="content">
+            <Routes>
+              <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
+            </Routes>
+          </div>
         </div>
       </div>
       <OverflowBadge />

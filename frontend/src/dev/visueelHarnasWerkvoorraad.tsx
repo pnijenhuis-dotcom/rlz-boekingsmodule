@@ -247,23 +247,33 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
 const PARAMS = new URLSearchParams(window.location.search)
 const START_URL = PARAMS.has('klant') ? `/?administratie=${ADMIN_1}` : '/'
 
+// ?donker=1 — dark mode voor headless verificatie (thema.ts-klassepatroon).
+if (new URLSearchParams(window.location.search).has('donker')) {
+  document.documentElement.classList.add('dark')
+  document.body.classList.add('dark')
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MemoryRouter initialEntries={[START_URL]}>
       <div className="app">
-        <div className="sidebar">
+        <nav className="sidebar">
           <div className="logo">
-            RLZ <span style={{ opacity: 0.6, fontWeight: 400 }}>Boekingsmodule</span>
+            <div className="logo-mark">N</div>
+            <div>
+              <b>Nijenhuis</b>
+              <small>Boekingsmodule</small>
+            </div>
           </div>
-          <div className="sub">Administratiekantoor Nijenhuis</div>
-          <div className="nav">
-            <a className="active">Werkvoorraad</a>
-          </div>
-        </div>
+          <div className="nav-kop">Werk</div>
+          <a className="nav-item actief">Werkvoorraad</a>
+        </nav>
         <div className="main">
-          <Routes>
-            <Route path="/" element={<WerkvoorraadScreen />} />
-          </Routes>
+          <div className="content">
+            <Routes>
+              <Route path="/" element={<WerkvoorraadScreen />} />
+            </Routes>
+          </div>
         </div>
       </div>
       <OverflowBadge />

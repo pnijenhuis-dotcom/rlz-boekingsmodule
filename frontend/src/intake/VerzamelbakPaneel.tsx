@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
+import { Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   bevestigSplitsing,
@@ -130,7 +131,7 @@ export function VerzamelbakPaneel({
                         eerst de splitsing beoordelen
                       </span>
                     ) : (
-                      <select
+                      <Select
                         aria-label={`Toewijzen aan voor ${item.bestandsnaam}`}
                         value={gekozen}
                         onChange={(e) => setKeuze((k) => ({ ...k, [item.document_id]: e.target.value }))}
@@ -141,7 +142,7 @@ export function VerzamelbakPaneel({
                             {a.naam}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     )}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>

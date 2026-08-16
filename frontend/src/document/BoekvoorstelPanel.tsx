@@ -22,6 +22,7 @@ import {
   omschrijvingSleutel,
   type HandmatigeVelden,
 } from './geheugenVoorstel'
+import { Checkbox } from '../ui/basis'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
@@ -956,11 +957,7 @@ export function BoekvoorstelPanel({
         {!isReadOnly && samenvoegenBeschikbaar && (
           <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <label className="vink-label">
-              <input
-                type="checkbox"
-                checked={!regelsSamenvoegen}
-                onChange={(e) => wisselSamenvoegen(!e.target.checked)}
-              />
+              <Checkbox checked={!regelsSamenvoegen} onChange={(e) => wisselSamenvoegen(!e.target.checked)} />
               Splitsen per regel
             </label>
             <span className="hint" style={{ margin: 0, flex: '1 1 260px', minWidth: 0 }}>

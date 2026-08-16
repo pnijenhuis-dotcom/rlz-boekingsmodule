@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { SearchableCombobox } from '../document/SearchableCombobox'
+import { Checkbox, Select } from '../ui/basis'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
@@ -175,12 +176,7 @@ function HandmatigBoekenForm({
         <input value={omschrijving} onChange={(e) => setOmschrijving(e.target.value)} />
       </label>
       <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-        <input
-          type="checkbox"
-          style={{ width: 'auto' }}
-          checked={regelOpslaan}
-          onChange={(e) => setRegelOpslaan(e.target.checked)}
-        />
+        <Checkbox checked={regelOpslaan} onChange={(e) => setRegelOpslaan(e.target.checked)} />
         Onthoud als vaste regel voor {mutatie.tegenpartij_naam ?? 'deze tegenpartij'}
       </label>
       {fout && <p className="hint" style={{ color: 'var(--red)' }}>{fout}</p>}
@@ -510,7 +506,7 @@ export function BankDetailScreen() {
           <span className="bp-icon">🏦</span>
           <div>
             <label htmlFor="bank-rekening-select">Rekening</label>
-            <select
+            <Select
               id="bank-rekening-select"
               value={rekeningId ?? ''}
               onChange={(e) => setSearchParams({ rekening: e.target.value })}
@@ -521,7 +517,7 @@ export function BankDetailScreen() {
                   {rekening.iban ? ` · ${rekening.iban}` : ''} — {rekening.open_mutaties} open
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           {huidigeRekening && (
             <span className="bp-saldo">

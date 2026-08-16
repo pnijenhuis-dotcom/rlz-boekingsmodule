@@ -6,6 +6,7 @@ import { useAuthOptioneel } from '../auth/AuthContext'
 import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/instellingenApi'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
 import { verwerkEml } from '../intake/intakeApi'
+import { Checkbox, Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { Klantenlijst } from './Klantenlijst'
@@ -442,15 +443,14 @@ function Klantpagina({
               onClick={(e) => e.stopPropagation()}
             >
               Documentsoort
-              <select
+              <Select
                 aria-label="Documentsoort voor upload"
-                style={{ width: 'auto' }}
                 value={uploadSoort}
                 onChange={(e) => setUploadSoort(e.target.value as 'inkoopfactuur' | 'kassarapport')}
               >
                 <option value="inkoopfactuur">Inkoopfactuur</option>
                 <option value="kassarapport">Kassarapport (omzetboeking)</option>
-              </select>
+              </Select>
             </label>
           </>
         )}
@@ -487,12 +487,7 @@ function Klantpagina({
         >
           <h2 style={{ margin: 0 }}>Openstaande zaken</h2>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
-            <input
-              type="checkbox"
-              style={{ width: 'auto' }}
-              checked={toonVerwijderd}
-              onChange={(e) => setToonVerwijderd(e.target.checked)}
-            />
+            <Checkbox checked={toonVerwijderd} onChange={(e) => setToonVerwijderd(e.target.checked)} />
             Toon verwijderde documenten
           </label>
         </div>
@@ -504,9 +499,8 @@ function Klantpagina({
             value={zoekterm}
             onChange={(e) => setZoekterm(e.target.value)}
           />
-          <select
+          <Select
             aria-label="Filter op status"
-            style={{ width: 'auto' }}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -517,7 +511,7 @@ function Klantpagina({
               </option>
             ))}
             {heeftAutomatischGeboekt && <option value={STATUSFILTER_AUTOMATISCH}>Automatisch geboekt</option>}
-          </select>
+          </Select>
         </div>
         {lijstFout && (
           <FoutMelding

@@ -11,6 +11,7 @@ import {
   type KandidaatDto,
   type StaandeRegelDto,
 } from '../accordering/accorderingApi'
+import { Select, Switch } from '../ui/basis'
 
 interface LaagInvoer {
   accordeurId: string
@@ -200,12 +201,7 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
       ) : geladen ? (
         <div style={{ display: 'grid', gap: 10, padding: '6px 0 12px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-            <input
-              type="checkbox"
-              style={{ width: 'auto' }}
-              checked={ingeschakeld}
-              onChange={(e) => setIngeschakeld(e.target.checked)}
-            />
+            <Switch checked={ingeschakeld} onChange={(e) => setIngeschakeld(e.target.checked)} />
             Goedkeuring door klant vereist (boekknop wordt &ldquo;Ter accordering&rdquo;)
           </label>
           {kandidaten.length === 0 && (
@@ -217,7 +213,7 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
           {lagen.map((laag, index) => (
             <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span style={{ minWidth: 52 }}>Laag {index + 1}</span>
-              <select
+              <Select
                 aria-label={`Accordeur laag ${index + 1}`}
                 value={laag.accordeurId}
                 onChange={(e) =>
@@ -232,7 +228,7 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
                     {k.naam}
                   </option>
                 ))}
-              </select>
+              </Select>
               <input
                 aria-label={`Bedragdrempel laag ${index + 1}`}
                 placeholder="drempel (leeg = alle facturen)"

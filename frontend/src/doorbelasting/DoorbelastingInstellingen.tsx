@@ -10,6 +10,7 @@ import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
+import { Select, Switch } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   haalDoorbelastingInstellingOp,
@@ -52,9 +53,8 @@ export function DoorbelastingInstellingen({
         (default uit), provisie-instellingen en de server-side afgedwongen whitelist van
         doelentiteiten. Kies eerst een administratie.
       </p>
-      <select
+      <Select
         aria-label="Administratie voor doorbelasting"
-        style={{ width: 'auto' }}
         value={administratieId}
         onChange={(e) => setAdministratieId(e.target.value)}
       >
@@ -64,7 +64,7 @@ export function DoorbelastingInstellingen({
             {a.naam}
           </option>
         ))}
-      </select>
+      </Select>
       {administratieId && (
         <DoorbelastingAdministratie
           key={administratieId}
@@ -192,10 +192,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
   return (
     <div style={{ marginTop: 12 }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 12px' }}>
-        <input
-          type="checkbox"
+        <Switch
           aria-label={`Doorbelasting ingeschakeld voor ${naam}`}
-          style={{ width: 'auto' }}
           checked={ingeschakeld}
           onChange={(e) => setPending({ type: 'toggle', nieuweWaarde: e.target.checked })}
         />
@@ -306,10 +304,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
                     </td>
                     <td>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                        <input
-                          type="checkbox"
+                        <Switch
                           aria-label={`Intercompany voor ${m.doelentiteit_naam}`}
-                          style={{ width: 'auto' }}
                           checked={m.intercompany}
                           onChange={(e) =>
                             setPending({
@@ -354,10 +350,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
                     </td>
                     <td>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                        <input
-                          type="checkbox"
+                        <Switch
                           aria-label={`Actief voor ${m.doelentiteit_naam}`}
-                          style={{ width: 'auto' }}
                           checked={m.actief}
                           onChange={(e) =>
                             setPending({

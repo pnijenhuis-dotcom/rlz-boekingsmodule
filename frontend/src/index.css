@@ -1,6 +1,58 @@
-@import './styles/tokens.css';
-@import './styles/components.css';
-@import './shell/Shell.css';
+/* Tailwind v4 (designsysteem-fundament, fase 1 kantoor-modernisering 2026-08-15) — bewust
+   ZONDER preflight (tailwindcss/preflight.css): de bestaande scherm-CSS en de accordeur-PWA
+   leunen op browser-defaults (h1/p-marges, native controls); de reset zou alle bestaande
+   schermen herstylen, en fase 1 is "geen gedragswijziging". Utilities + theme volstaan voor
+   de nieuwe componentenset; bij de fase-2-verbouwing wordt per scherm expliciet gestyled. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+/* De bestaande scherm-CSS in layer(base): binnen de laag verandert er niets aan onderlinge
+   volgorde/specificiteit, maar utilities (latere laag) kunnen element-globals (table, input,
+   label, …) overschrijven — ongelaagde CSS zou anders altijd van elke utility winnen. */
+@import './styles/tokens.css' layer(base);
+@import './styles/controls.css' layer(base);
+@import './styles/components.css' layer(base);
+@import './shell/Shell.css' layer(base);
+
+/* Dark mode volgt de klasse `dark` (thema.ts zet die op <html> + <body>), niet het
+   systeem-mediaquery — de gebruikerskeuze wint (Vastly-patroon, mockup-akkoord 15-08). */
+@custom-variant dark (&:is(.dark *));
+
+/* Semantische tokens → Tailwind-kleuren (bg-panel, text-muted, ring-ring, …).
+   `inline` zodat de utilities rechtstreeks naar de CSS-variabelen verwijzen en live
+   meeschakelen met het thema. */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-foreground: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent-bg: var(--accent-bg);
+  --color-ring: var(--ring);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-purple: var(--purple);
+  --color-purple-bg: var(--purple-bg);
+  --color-white: #ffffff;
+  --radius-md: var(--radius-sm);
+  --radius-lg: var(--radius);
+  --font-sans: var(--font);
+  --shadow-kaart: var(--shadow);
+  --shadow-zweef: var(--shadow-lg);
+}
 
 * {
   box-sizing: border-box;

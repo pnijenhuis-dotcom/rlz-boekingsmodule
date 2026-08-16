@@ -1,0 +1,294 @@
+/* Form-controls — 1:1 uit mockup/kantoor-modern.html (designpass-norm, akkoord Peter
+   2026-08-15). Bewust native elementen met styling (appearance: none) i.p.v. Radix-primitives:
+   de mockup-norm ís een gestylede native control, en native semantiek houdt de bestaande
+   testsuite (userEvent.selectOptions, toBeChecked) én formulier-a11y intact. De React-wrappers
+   staan in src/ui/basis/. */
+
+/* Checkbox (.cb) */
+.cb {
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  flex-shrink: 0;
+  transition: all 0.1s;
+  margin: 0;
+  padding: 0;
+}
+
+.cb:hover {
+  border-color: var(--primary);
+}
+
+.cb:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.cb:checked::after {
+  content: '✓';
+  color: var(--primary-fg);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.cb:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.cb:indeterminate {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.cb:indeterminate::after {
+  content: '—';
+  color: var(--primary-fg);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.cb:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Switch (.switch — een checkbox met schuifje) */
+.switch {
+  appearance: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 99px;
+  background: var(--border);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  vertical-align: middle;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2.5px;
+  left: 3px;
+  width: 15px;
+  height: 15px;
+  border-radius: 99px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: left 0.15s;
+}
+
+.switch:checked {
+  background: var(--ok);
+}
+
+.switch:checked::after {
+  left: 16px;
+}
+
+.switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dark .switch::after {
+  background: #dfe7e5;
+}
+
+/* Select (.sel — native select met eigen pijl) */
+.sel {
+  appearance: none;
+  padding: 7px 30px 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' fill='none' stroke='%238a9793' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E")
+    no-repeat right 10px center;
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  min-width: 130px;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  width: auto;
+}
+
+.sel:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.sel:focus-visible,
+.sel:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.sel:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Segment-filter */
+.segment {
+  display: inline-flex;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2.5px;
+  gap: 2px;
+}
+
+.segment button {
+  border: none;
+  background: none;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 500;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.segment button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.segment button.actief {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+/* Zoekbare multiselect (.ms — schaalbaar tot 50+ opties) + scope-chips */
+.ms {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.ms input[type='text'] {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 8px 11px;
+  font-size: 12.5px;
+  background: var(--panel-2);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.ms input[type='text']:focus,
+.ms input[type='text']:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--border);
+  border-bottom-color: var(--primary);
+}
+
+.ms .ms-lijst {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.ms .ms-optie {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  margin: 0;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.ms .ms-optie:hover {
+  background: var(--panel-2);
+}
+
+.ms .ms-optie small {
+  color: var(--faint);
+  margin-left: auto;
+}
+
+.ms .ms-leeg {
+  padding: 10px 11px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.ms-gekozen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 4px 11px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-family: inherit;
+}
+
+.ms-gekozen .scope-chip {
+  background: var(--accent-bg);
+  color: var(--primary);
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.ms-gekozen .scope-chip button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 700;
+  opacity: 0.7;
+  padding: 0 2px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ms-gekozen .scope-chip button:hover {
+  opacity: 1;
+}
+
+.ms-gekozen .scope-chip button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+  border-radius: 4px;
+}

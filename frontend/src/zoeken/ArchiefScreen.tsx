@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 import type { ArchiefDocumentDto } from '../api/types'
+import { Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { formatBedrag, formatDatum, formatDatumKort } from './format'
@@ -82,7 +83,7 @@ export function ArchiefScreen() {
           <label htmlFor="archief-administratie-select" style={{ margin: 0 }}>
             Administratie
           </label>
-          <select
+          <Select
             id="archief-administratie-select"
             value={administratieId}
             onChange={(e) => setAdministratieId(e.target.value)}
@@ -94,7 +95,7 @@ export function ArchiefScreen() {
                 {a.naam}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

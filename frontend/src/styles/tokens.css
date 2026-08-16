@@ -1,50 +1,83 @@
-/* Design tokens 1:1 overgenomen uit mockup/index.html (canonieke UI, #designpass-laag —
-   dat is de laatst-gewonnen versie in de mockup's eigen CSS-cascade). Wijzigingen aan tokens
-   gaan via de mockup, niet hier los. */
+/* Semantische design tokens — 1:1 uit mockup/kantoor-modern.html (designpass-norm, akkoord
+   Peter 2026-08-15). Wijzigingen aan tokens gaan via de mockup, niet hier los.
+   De oude mockup/index.html-namen (--accent/--green/--orange/--red/--blue-bg) blijven als
+   aliassen staan zodat de bestaande scherm-CSS ongewijzigd blijft werken; nieuw werk gebruikt
+   de semantische namen. Dark mode: thema.ts zet de klasse `dark` op <html> én <body>
+   (keuze wint, anders systeem) — de .dark-tokens hieronder zijn daarmee levend. */
 :root {
-  --bg: #f5f7f7;
+  --bg: #f4f7f6;
   --panel: #ffffff;
-  --border: #e5e9e8;
-  --text: #16181d;
-  --muted: #647572;
-  --accent: #2e6660;
-  --green: #1c7a54;
-  --green-bg: #e6f4ee;
-  --orange: #b45309;
-  --orange-bg: #fdf3e3;
-  --red: #b42318;
-  --red-bg: #fceceb;
-  --blue-bg: #e6f0ee;
+  --panel-2: #fafcfb;
+  --border: #e3e9e7;
+  --text: #15201d;
+  --muted: #5f6f6b;
+  --faint: #8a9793;
+  --primary: #2e6660;
+  --primary-hover: #25534e;
+  --primary-fg: #ffffff;
+  --accent-bg: #e9f2f0;
+  --ring: rgba(46, 102, 96, 0.35);
+  --ok: #1c7a54;
+  --ok-bg: #e4f4ec;
+  --warn: #b45309;
+  --warn-bg: #fdf3e3;
+  --danger: #b42318;
+  --danger-bg: #fceceb;
+  --info: #3548a5;
+  --info-bg: #eaeefb;
   --purple: #6941c6;
   --purple-bg: #f1ecfb;
   --radius: 12px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 4px rgba(16, 24, 40, 0.05);
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(21, 32, 29, 0.05), 0 4px 16px rgba(21, 32, 29, 0.06);
+  --shadow-lg: 0 8px 40px rgba(21, 32, 29, 0.18);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Aliassen voor de bestaande scherm-CSS (oude mockup/index.html-namen). */
+  --accent: var(--primary);
+  --green: var(--ok);
+  --green-bg: var(--ok-bg);
+  --orange: var(--warn);
+  --orange-bg: var(--warn-bg);
+  --red: var(--danger);
+  --red-bg: var(--danger-bg);
+  --blue-bg: var(--accent-bg);
 }
 
-body.dark {
+.dark {
   --bg: #0e1514;
   --panel: #16211f;
-  --border: #263533;
-  --text: #d7dfdc;
-  --muted: #8ba09b;
-  --accent: #5cb3a8;
-  --green: #34c08b;
-  --green-bg: #123227;
-  --orange: #e9a23b;
-  --orange-bg: #372a12;
-  --red: #ee6c62;
-  --red-bg: #3a1e1b;
-  --blue-bg: #1a2e2b;
-  --purple: #ab8ffc;
-  --purple-bg: #28203f;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --panel-2: #121b1a;
+  --border: #263431;
+  --text: #e6ecea;
+  --muted: #93a4a0;
+  --faint: #6a7a76;
+  --primary: #57b3a7;
+  --primary-hover: #6ac4b8;
+  --primary-fg: #0c1513;
+  --accent-bg: #1c2e2b;
+  --ring: rgba(87, 179, 167, 0.35);
+  --ok: #4ecb94;
+  --ok-bg: #152f24;
+  --warn: #e5a04c;
+  --warn-bg: #33260f;
+  --danger: #f08579;
+  --danger-bg: #361713;
+  --info: #93a6f5;
+  --info-bg: #1a2038;
+  --purple: #b39af0;
+  --purple-bg: #251b3d;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font);
   letter-spacing: -0.01em;
   font-size: 13.5px;
+  line-height: 1.45;
   background: var(--bg);
   color: var(--text);
 }

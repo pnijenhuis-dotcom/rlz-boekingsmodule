@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import proxyPrefixes from './proxy-prefixes.json' with { type: 'json' }
 import { bouwProxyMap } from './proxyRegels.ts'
 
@@ -26,7 +27,7 @@ const proxy = bouwProxyMap(proxyPrefixes, BACKEND)
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     // Vaste poort per project (Platform/registers/conventies.md, afspraak 2026-08-07:
     // RLZ = 5173, Vastly = 5174). strictPort: liever hard falen dan stil uitwijken naar een

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { VraagDto } from '../api/types'
+import { Select } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { useMedewerkers } from './useMedewerkers'
 import { beantwoordVraag, haalEigenaarOp, haalVragenOp, trekVraagIn } from './vragenApi'
@@ -220,7 +221,7 @@ export function VragenScreen() {
           <label htmlFor="vragen-administratie-select" style={{ margin: 0 }}>
             Administratie
           </label>
-          <select
+          <Select
             id="vragen-administratie-select"
             value={administratieId ?? ''}
             onChange={(e) => setSearchParams({ administratie: e.target.value })}
@@ -230,7 +231,7 @@ export function VragenScreen() {
                 {a.naam}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

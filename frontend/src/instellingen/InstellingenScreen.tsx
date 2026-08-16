@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
+import { Checkbox, Select, Switch } from '../ui/basis'
 import type { AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
@@ -132,7 +133,7 @@ function EigenaarCell({ administratie, onKies }: EigenaarCellProps) {
   const { medewerkers, fout } = useMedewerkers(administratie.id)
   if (fout) return <span className="hint" style={{ margin: 0 }}>medewerkers niet te laden</span>
   return (
-    <select
+    <Select
       aria-label={`Eigenaar van ${administratie.naam}`}
       value={administratie.eigenaar_gebruiker_id ?? ''}
       disabled={!medewerkers}
@@ -147,7 +148,7 @@ function EigenaarCell({ administratie, onKies }: EigenaarCellProps) {
           {m.naam}
         </option>
       ))}
-    </select>
+    </Select>
   )
 }
 
@@ -193,9 +194,7 @@ function IbanAccordeursCell({ administratie, versie, onWijzig }: IbanAccordeursC
         const ingesteld = accordeurs.includes(m.id)
         return (
           <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, fontSize: 12.5 }}>
-            <input
-              type="checkbox"
-              style={{ width: 'auto' }}
+            <Checkbox
               checked={ingesteld}
               onChange={(e) => {
                 const nieuweSet = e.target.checked
@@ -346,10 +345,8 @@ export function InstellingenScreen() {
           </div>
           {killSwitch !== null && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-              <input
-                type="checkbox"
+              <Switch
                 aria-label="Globale kill switch"
-                style={{ width: 'auto' }}
                 checked={killSwitch}
                 onChange={(e) =>
                   setPending({ type: 'kill_switch', naam: 'kill switch', nieuweWaarde: e.target.checked })
@@ -373,10 +370,8 @@ export function InstellingenScreen() {
           </div>
           {intakeAi !== null && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-              <input
-                type="checkbox"
+              <Switch
                 aria-label="Intake-AI ingeschakeld"
-                style={{ width: 'auto' }}
                 checked={intakeAi}
                 onChange={(e) =>
                   setPending({ type: 'intake_ai', naam: 'intake-AI', nieuweWaarde: e.target.checked })
@@ -493,10 +488,8 @@ export function InstellingenScreen() {
                   </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                      <input
-                        type="checkbox"
+                      <Switch
                         aria-label={`Project verplicht voor ${a.naam}`}
-                        style={{ width: 'auto' }}
                         checked={a.project_verplicht}
                         onChange={(e) =>
                           setPending({
@@ -512,10 +505,8 @@ export function InstellingenScreen() {
                   </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                      <input
-                        type="checkbox"
+                      <Switch
                         aria-label={`Boeken ingeschakeld voor ${a.naam}`}
-                        style={{ width: 'auto' }}
                         checked={a.boeken_ingeschakeld}
                         onChange={(e) =>
                           setPending({
@@ -531,10 +522,8 @@ export function InstellingenScreen() {
                   </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                      <input
-                        type="checkbox"
+                      <Switch
                         aria-label={`AI-extractie voor ${a.naam}`}
-                        style={{ width: 'auto' }}
                         checked={a.ai_extractie_ingeschakeld}
                         onChange={(e) =>
                           setPending({

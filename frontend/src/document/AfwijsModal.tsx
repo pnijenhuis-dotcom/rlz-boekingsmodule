@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError, apiPostJson } from '../api/client'
 import type { AfwijzingDto } from '../api/types'
+import { Select } from '../ui/basis'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalEigenaarOp } from '../vragen/vragenApi'
 
@@ -82,8 +83,9 @@ export function AfwijsModal({ administratieId, documentId, onAfgewezen, onAnnule
         </div>
         <div className="row">
           <label htmlFor="afwijs-toewijzen">Ter controle naar</label>
-          <select
+          <Select
             id="afwijs-toewijzen"
+            className="w-full"
             value={toegewezenAan}
             disabled={!medewerkers || !eigenaarGeladen}
             onChange={(e) => setToegewezenAan(e.target.value)}
@@ -95,7 +97,7 @@ export function AfwijsModal({ administratieId, documentId, onAfgewezen, onAnnule
                 {m.id === eigenaarId ? ' — eigenaar administratie (standaard)' : ''}
               </option>
             ))}
-          </select>
+          </Select>
           {medewerkersFout && <div className="fout">Kon medewerkers niet laden: {medewerkersFout}</div>}
         </div>
         <p className="hint" style={{ marginTop: 0 }}>

@@ -11,6 +11,7 @@ import type {
 } from '../api/types'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
+import { Select } from '../ui/basis'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
@@ -345,7 +346,7 @@ export function DoorbelastingReviewScreen() {
                               {bevroren ? (
                                 (mapping?.doelentiteit_naam ?? '—')
                               ) : (
-                                <select
+                                <Select
                                   aria-label={`Doelentiteit voor ${bron.omschrijving}`}
                                   value={rij.mappingId ?? ''}
                                   onChange={(e) => {
@@ -360,7 +361,7 @@ export function DoorbelastingReviewScreen() {
                                       {m.doelentiteit_naam}
                                     </option>
                                   ))}
-                                </select>
+                                </Select>
                               )}
                             </td>
                             <td>

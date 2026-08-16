@@ -54,6 +54,21 @@
   cursor: not-allowed;
 }
 
+/* A11y-basis (fase 1 modernisering): zichtbare focus-ring op alle knopvormen — geen
+ * outline: none zonder vervanging. */
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.linkbtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+tr.clickable:focus-visible,
+.upload:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px var(--ring);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);

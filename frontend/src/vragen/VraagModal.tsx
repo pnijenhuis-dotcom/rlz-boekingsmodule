@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { VraagDto } from '../api/types'
+import { Select } from '../ui/basis'
 import { useMedewerkers } from './useMedewerkers'
 import { haalEigenaarOp, stelVraag } from './vragenApi'
 
@@ -71,8 +72,9 @@ export function VraagModal({ administratieId, documentId, onGesteld, onAnnuleren
         <h2 id="vraag-modal-titel">Vraag stellen over deze factuur</h2>
         <div className="row">
           <label htmlFor="vraag-toewijzen">Toewijzen aan</label>
-          <select
+          <Select
             id="vraag-toewijzen"
+            className="w-full"
             value={toegewezenAan}
             disabled={!medewerkers || !eigenaarGeladen}
             onChange={(e) => setToegewezenAan(e.target.value)}
@@ -84,7 +86,7 @@ export function VraagModal({ administratieId, documentId, onGesteld, onAnnuleren
                 {m.id === eigenaarId ? ' — eigenaar administratie (standaard)' : ''}
               </option>
             ))}
-          </select>
+          </Select>
           {medewerkersFout && <div className="fout">Kon medewerkers niet laden: {medewerkersFout}</div>}
         </div>
         <div className="row">

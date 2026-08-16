@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { IbanAccorderingDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { Select } from '../ui/basis'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import {
   accordeerIban,
@@ -68,14 +69,15 @@ export function IbanAanbiedenVorm({
         </div>
         <div>
           <label htmlFor="iban-aanbieden-soort">Soort rekening</label>
-          <select
+          <Select
             id="iban-aanbieden-soort"
+            className="w-full"
             value={soort}
             onChange={(e) => setSoort(e.target.value as 'regulier' | 'g_rekening')}
           >
             <option value="regulier">{SOORT_LABELS.regulier}</option>
             <option value="g_rekening">{SOORT_LABELS.g_rekening}</option>
-          </select>
+          </Select>
         </div>
       </div>
       {fout && <div className="fout">{fout}</div>}
