@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RLZ Boekingsmodule — moderniserings-mockup (kantoor-console)</title>
+<!-- ============================================================
+     MOCKUP kantoor-modernisering (2026-08-15, ter beoordeling Peter)
+     Doel: vormgeving/componenten naar platform-fundament (Vastly-
+     generatie: semantische tokens, dark mode, Radix-achtige controls,
+     bulk-bediening, gebruikersbeheer). Structuur/flows = bestaande
+     goedgekeurde mockup; dit is de designpass eroverheen.
+     Klikbaar: navigatie links, thema-toggle rechtsboven, bulk-selectie
+     in Instellingen, uitnodig-modal in Gebruikers, toasts.
+     ============================================================ -->
+<style>
+  /* ---------- SEMANTISCHE TOKENS (licht) ---------- */
+  :root{
+    --bg:#f4f7f6; --panel:#ffffff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-hover:#25534e; --primary-fg:#ffffff;
+    --accent-bg:#e9f2f0; --ring:rgba(46,102,96,.35);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+    --shadow-lg:0 8px 40px rgba(21,32,29,.18);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  /* ---------- DARK ---------- */
+  html.dark{
+    --bg:#0e1514; --panel:#16211f; --panel-2:#121b1a; --border:#26343156;
+    --border:#263431; --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --primary:#57b3a7; --primary-hover:#6ac4b8; --primary-fg:#0c1513;
+    --accent-bg:#1c2e2b; --ring:rgba(87,179,167,.35);
+    --ok:#4ecb94; --ok-bg:#15302484; --ok-bg:#152f24; --warn:#e5a04c; --warn-bg:#33260f;
+    --danger:#f08579; --danger-bg:#361713; --info:#93a6f5; --info-bg:#1a2038;
+    --purple:#b39af0; --purple-bg:#251b3d;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+    --shadow-lg:0 8px 40px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13.5px;letter-spacing:-.01em;line-height:1.45}
+  button{font-family:inherit}
+
+  /* ---------- SHELL ---------- */
+  .shell{display:flex;min-height:100vh}
+  .sidebar{width:236px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh}
+  .logo{display:flex;align-items:center;gap:10px;padding:4px 10px 18px}
+  .logo-mark{width:30px;height:30px;border-radius:9px;background:var(--primary);color:var(--primary-fg);display:grid;place-items:center;font-weight:700;font-size:13px}
+  .logo b{font-size:14px;letter-spacing:-.02em}
+  .logo small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+  .nav-kop{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);padding:14px 10px 4px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;color:var(--muted);cursor:pointer;border:1px solid transparent;font-size:13px;background:none;width:100%;text-align:left}
+  .nav-item:hover{background:var(--panel-2);color:var(--text)}
+  .nav-item.actief{background:var(--accent-bg);color:var(--primary);border-color:color-mix(in srgb,var(--primary) 25%,transparent);font-weight:600}
+  html.dark .nav-item.actief{color:var(--primary)}
+  .nav-item .ico{width:17px;text-align:center;opacity:.85}
+  .nav-item .tel{margin-left:auto;background:var(--warn-bg);color:var(--warn);font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px}
+  .sidebar .onder{margin-top:auto;padding:10px;font-size:11.5px;color:var(--faint)}
+
+  .main{flex:1;min-width:0}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:20}
+  .zoek{flex:1;max-width:460px;position:relative}
+  .zoek input{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);color:var(--text);font-size:13px}
+  .zoek input:focus-visible{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--ring)}
+  .zoek .lens{position:absolute;left:11px;top:8px;color:var(--faint)}
+  .zoek kbd{position:absolute;right:9px;top:7px;font-family:inherit;font-size:10.5px;color:var(--faint);border:1px solid var(--border);border-radius:5px;padding:1px 5px;background:var(--panel)}
+  .topbar .spacer{flex:1}
+  .adm-chip{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);border:1px solid var(--border);padding:6px 12px;border-radius:99px;background:var(--panel-2)}
+  .avatar{width:32px;height:32px;border-radius:99px;background:var(--accent-bg);color:var(--primary);display:grid;place-items:center;font-weight:600;font-size:12px;border:1px solid var(--border);cursor:pointer}
+
+  .content{padding:26px;max-width:1240px}
+  .pagina-kop{display:flex;align-items:flex-end;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+  .pagina-kop h1{font-size:19px;letter-spacing:-.02em}
+  .pagina-kop .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .pagina-kop .acties{margin-left:auto;display:flex;gap:8px}
+
+  /* ---------- COMPONENTEN ---------- */
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer;transition:background .12s}
+  .btn:hover{background:var(--primary-hover)}
+  .btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+  .btn.secundair{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.secundair:hover{background:var(--panel-2)}
+  .btn.ghost{background:none;color:var(--muted)}
+  .btn.ghost:hover{background:var(--panel-2);color:var(--text)}
+  .btn.gevaar{background:var(--danger);color:#fff}
+  .btn.klein{padding:5px 11px;font-size:12px;border-radius:7px}
+  .icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:15px}
+  .icon-btn:hover{color:var(--text);background:var(--panel-2)}
+
+  .kaart{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .kaart-kop{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .kaart-kop h2{font-size:14px;letter-spacing:-.01em}
+  .kaart-kop .uitleg{color:var(--muted);font-size:12px;width:100%;font-weight:400}
+  .kaart-kop .rechts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .kaart-body{padding:18px}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:20px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+  .kpi .lbl{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .kpi .waarde{font-size:22px;font-weight:700;letter-spacing:-.03em;margin-top:4px}
+  .kpi .delta{font-size:11.5px;margin-top:2px}
+  .kpi .delta.ok{color:var(--ok)} .kpi .delta.warn{color:var(--warn)}
+  .kpi.klik{cursor:pointer} .kpi.klik:hover{border-color:var(--primary)}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .badge.warn{background:var(--warn-bg);color:var(--warn)}
+  .badge.danger{background:var(--danger-bg);color:var(--danger)}
+  .badge.info{background:var(--info-bg);color:var(--info)}
+  .badge.paars{background:var(--purple-bg);color:var(--purple)}
+  .badge.stil{background:var(--panel-2);color:var(--muted);border:1px solid var(--border)}
+  .stip{width:6px;height:6px;border-radius:99px;background:currentColor;display:inline-block}
+
+  .tabel-scroll{overflow-x:auto;border-radius:0 0 var(--radius) var(--radius)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:600}
+  td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tbody tr{transition:background .1s}
+  tbody tr:hover{background:var(--panel-2)}
+  tbody tr.geselecteerd{background:var(--accent-bg)}
+  td .hoofd{font-weight:600} td .sub{color:var(--muted);font-size:11.5px;margin-top:1px}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+
+  /* custom checkbox */
+  .cb{appearance:none;width:17px;height:17px;border:1.5px solid var(--border);border-radius:5px;background:var(--panel);cursor:pointer;display:inline-grid;place-items:center;vertical-align:middle;flex-shrink:0;transition:all .1s}
+  .cb:hover{border-color:var(--primary)}
+  .cb:checked{background:var(--primary);border-color:var(--primary)}
+  .cb:checked::after{content:'✓';color:var(--primary-fg);font-size:11px;font-weight:800}
+  .cb:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+  .cb:indeterminate{background:var(--primary);border-color:var(--primary)}
+  .cb:indeterminate::after{content:'—';color:var(--primary-fg);font-size:10px;font-weight:800}
+
+  /* switch */
+  .switch{appearance:none;width:34px;height:20px;border-radius:99px;background:var(--border);cursor:pointer;position:relative;transition:background .15s;flex-shrink:0;vertical-align:middle}
+  .switch::after{content:'';position:absolute;top:2.5px;left:3px;width:15px;height:15px;border-radius:99px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+  .switch:checked{background:var(--ok)}
+  .switch:checked::after{left:16px}
+  .switch:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+  html.dark .switch::after{background:#dfe7e5}
+
+  /* custom select */
+  .sel{appearance:none;padding:7px 30px 7px 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' fill='none' stroke='%238a9793' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;color:var(--text);font-size:12.5px;font-family:inherit;cursor:pointer;min-width:130px}
+  .sel:hover{border-color:var(--primary)}
+  .sel:focus-visible{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--ring)}
+
+  .segment{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:2.5px;gap:2px}
+  .segment button{border:none;background:none;padding:5px 13px;font-size:12.5px;border-radius:7px;color:var(--muted);cursor:pointer;font-weight:500}
+  .segment button.actief{background:var(--panel);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
+
+  /* bulkbalk */
+  .bulkbalk{display:none;align-items:center;gap:12px;padding:10px 18px;background:var(--accent-bg);border-bottom:1px solid var(--border);font-size:13px}
+  .bulkbalk.zichtbaar{display:flex}
+  .bulkbalk b{color:var(--primary)}
+  .bulkbalk .knoppen{display:flex;gap:8px;flex-wrap:wrap}
+  .bulkbalk .sluit{margin-left:auto}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(10,16,15,.5);display:none;place-items:center;z-index:60;backdrop-filter:blur(2px)}
+  .modal-bg.open{display:grid}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg);width:min(480px,92vw);padding:22px}
+  .modal h3{font-size:15px;margin-bottom:4px}
+  .modal .uitleg{color:var(--muted);font-size:12.5px;margin-bottom:16px}
+  .veld{margin-bottom:13px}
+  .veld label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+  .veld input[type=email],.veld input[type=text]{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px}
+  .veld input:focus-visible{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--ring)}
+  .veld .hint{font-size:11.5px;color:var(--faint);margin-top:4px}
+  .scope-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+  .scope-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--border);border-radius:99px;padding:4px 11px;cursor:pointer;background:var(--panel-2);color:var(--muted)}
+  .scope-chip.aan{background:var(--accent-bg);color:var(--primary);border-color:color-mix(in srgb,var(--primary) 35%,transparent);font-weight:600}
+  /* zoekbare multiselect (schaalbaar tot 50+ administraties) */
+  .ms{border:1px solid var(--border);border-radius:9px;background:var(--panel);overflow:hidden}
+  .ms input[type=text]{width:100%;border:none;border-bottom:1px solid var(--border);padding:8px 11px;font-size:12.5px;background:var(--panel-2);color:var(--text)}
+  .ms input[type=text]:focus-visible{outline:none}
+  .ms .lijst{max-height:150px;overflow-y:auto}
+  .ms .optie{display:flex;align-items:center;gap:9px;padding:7px 11px;font-size:12.5px;cursor:pointer;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)}
+  .ms .optie:hover{background:var(--panel-2)}
+  .ms .optie small{color:var(--faint);margin-left:auto}
+  .ms-gekozen{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+  .ms-gekozen .scope-chip{background:var(--accent-bg);color:var(--primary);font-weight:600;border-color:color-mix(in srgb,var(--primary) 35%,transparent)}
+  .ms-gekozen .scope-chip b{cursor:pointer;opacity:.7}
+  .modal .voet{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+
+  /* toast */
+  .toasts{position:fixed;bottom:22px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:80}
+  .toast{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;box-shadow:var(--shadow-lg);padding:11px 16px;font-size:12.5px;display:flex;gap:9px;align-items:center;animation:toastin .18s ease-out}
+  .toast.warn{border-left-color:var(--warn)}
+  @keyframes toastin{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+
+  .rijlink{color:var(--primary);font-weight:600;cursor:pointer;text-decoration:none}
+  .rijlink:hover{text-decoration:underline}
+  .leeg{padding:34px;text-align:center;color:var(--faint);font-size:12.5px}
+  .scherm{display:none} .scherm.actief{display:block}
+  .apparaat{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:2px 8px;margin-right:5px}
+
+  @media(max-width:1024px){
+    .sidebar{width:64px;padding:18px 8px}
+    .sidebar .logo b,.sidebar .nav-item span.txt,.sidebar .nav-kop,.sidebar .onder,.sidebar .nav-item .tel{display:none}
+    .nav-item{justify-content:center}
+    .content{padding:16px}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ================= SIDEBAR ================= -->
+  <nav class="sidebar">
+    <div class="logo"><div class="logo-mark">N</div><div><b>Nijenhuis</b><small>Boekingsmodule</small></div></div>
+    <div class="nav-kop">Werk</div>
+    <button class="nav-item actief" data-scherm="werkvoorraad"><span class="ico">▦</span><span class="txt">Werkvoorraad</span><span class="tel">12</span></button>
+    <!-- IA-besluit-voorstel (feedback Peter 15-08): Vragen en Bank zijn geen eigen tabbladen
+         meer — alles van één klant leeft op de klantpagina; kantoor-brede dwarsdoorsneden
+         via de klikbare KPI-kaarten bovenaan de werkvoorraad. -->
+    <div class="nav-kop">Inzicht</div>
+    <button class="nav-item" onclick="toast('Mockup: scherm buiten scope van deze designpass','warn')"><span class="ico">🔍</span><span class="txt">Zoeken</span></button>
+    <button class="nav-item" onclick="toast('Mockup: scherm buiten scope van deze designpass','warn')"><span class="ico">🗂</span><span class="txt">Archief</span></button>
+    <div class="nav-kop">Beheer</div>
+    <button class="nav-item" data-scherm="gebruikers"><span class="ico">👥</span><span class="txt">Gebruikers</span></button>
+    <button class="nav-item" data-scherm="instellingen"><span class="ico">⚙️</span><span class="txt">Instellingen</span></button>
+    <div class="onder">RLZ Boekingsmodule<br>mockup kantoor-modernisering</div>
+  </nav>
+
+  <div class="main">
+    <!-- ================= TOPBAR ================= -->
+    <div class="topbar">
+      <div class="zoek">
+        <span class="lens">🔍</span>
+        <input placeholder="Zoek op klant, referentie, leverancier, bedrag of boekstuk…">
+        <kbd>⌘K</kbd>
+      </div>
+      <div class="spacer"></div>
+      <div class="adm-chip"><span class="stip" style="color:var(--ok)"></span> 11 administraties · sync 06:00</div>
+      <button class="icon-btn" id="themaKnop" title="Licht/donker" aria-label="Thema wisselen">◐</button>
+      <div class="avatar" title="Peter Nijenhuis — Beheerder">PN</div>
+    </div>
+
+    <div class="content">
+
+    <!-- ================= SCHERM: WERKVOORRAAD ================= -->
+    <section class="scherm actief" id="scherm-werkvoorraad">
+      <div class="pagina-kop">
+        <div><h1>Werkvoorraad</h1><div class="sub">Alles wat vandaag aandacht vraagt, over alle administraties heen.</div></div>
+        <div class="acties">
+          <div class="segment">
+            <button class="actief">Openstaand</button><button>Bij klant</button><button>Afgewezen</button><button>Alles</button>
+          </div>
+          <button class="btn secundair klein">⬆ Upload</button>
+        </div>
+      </div>
+
+      <!-- KPI's zijn klikbaar = kantoor-brede dwarsdoorsnede (filter over alle klanten);
+           AI-kosten weggehaald uit de werkvloer (leeft alleen nog op Instellingen, Beheerder). -->
+      <div class="kpis">
+        <div class="kpi klik" onclick="toast('Filter: alle te verwerken documenten over alle klanten')"><div class="lbl"><span class="stip" style="color:var(--warn)"></span> Te verwerken</div><div class="waarde">12</div><div class="delta warn">4 wachten &gt; 3 dagen</div></div>
+        <div class="kpi klik" onclick="toast('Filter: alle open vragen over alle klanten')"><div class="lbl"><span class="stip" style="color:var(--danger)"></span> Open vragen</div><div class="waarde">3</div><div class="delta warn">1 blokkeert boeken</div></div>
+        <div class="kpi klik" onclick="toast('Filter: alle af te letteren bankmutaties over alle klanten')"><div class="lbl"><span class="stip" style="color:var(--info)"></span> Bank af te letteren</div><div class="waarde">7</div><div class="delta">3 met matchvoorstel</div></div>
+        <div class="kpi klik" onclick="toast('Filter: alles wat bij klanten ter accordering ligt')"><div class="lbl"><span class="stip" style="color:var(--purple)"></span> Bij klant</div><div class="waarde">5</div><div class="delta">oudste: 2 dagen</div></div>
+      </div>
+
+      <!-- upload-dropzone terug (feedback Peter: sleep-upload van de oude werkvoorraad behouden) -->
+      <div class="kaart" style="margin-bottom:16px;border-style:dashed;background:var(--panel-2)">
+        <div style="padding:20px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer" onclick="toast('Mockup: bestandskiezer opent')">
+          ⬆ &nbsp;<b>Sleep PDF's of e-mails hierheen</b> — of klik om te kiezen · meerdere tegelijk mag · toewijzing op tenaamstelling
+        </div>
+      </div>
+
+      <div class="kaart">
+        <div class="kaart-kop">
+          <h2>Klanten met openstaand werk</h2>
+          <div class="rechts">
+            <select class="sel"><option>Sorteer: meeste openstaand</option><option>Sorteer: oudste eerst</option><option>Sorteer: naam A–Z</option></select>
+          </div>
+        </div>
+        <div class="tabel-scroll">
+          <table>
+            <thead><tr><th>Klant</th><th>Te verwerken</th><th>Vragen</th><th>Bij klant</th><th>Oudste stuk</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><div class="hoofd">Universal Steigerbouw B.V.</div><div class="sub">laatste sync 06:02 · 87 projecten</div></td><td class="num">6</td><td class="num">2</td><td class="num">3</td><td>4 dagen</td><td><span class="badge warn"><span class="stip"></span> Actie nodig</span></td><td><a class="rijlink">Openen →</a></td></tr>
+              <tr><td><div class="hoofd">BLOW B.V.</div><div class="sub">laatste sync 06:04 · omzetrapport klaar</div></td><td class="num">3</td><td class="num">0</td><td class="num">1</td><td>2 dagen</td><td><span class="badge warn"><span class="stip"></span> Actie nodig</span></td><td><a class="rijlink">Openen →</a></td></tr>
+              <tr><td><div class="hoofd">Kempen Facilities B.V.</div><div class="sub">doorbelasting actief · 5 doelen</div></td><td class="num">2</td><td class="num">1</td><td class="num">0</td><td>1 dag</td><td><span class="badge info"><span class="stip"></span> Doorbelasting klaar</span></td><td><a class="rijlink">Openen →</a></td></tr>
+              <tr style="cursor:pointer" onclick="toonKlant()"><td><div class="hoofd">Rubicon Vastgoed B.V.</div><div class="sub">vastgoed-koppeling · bank bij</div></td><td class="num">1</td><td class="num">1</td><td class="num">1</td><td>vandaag</td><td><span class="badge ok"><span class="stip"></span> Op schema</span></td><td><a class="rijlink">Openen →</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="leeg" style="border-top:1px solid var(--border)">7 klanten zonder openstaande zaken — <a class="rijlink" onclick="toast('Mockup: toont alle klanten')">toon alles</a></div>
+      </div>
+    </section>
+
+    <!-- ================= SCHERM: KLANTPAGINA (NIEUW — feedback Peter punt 7) =================
+         Eén klant, álles wat openstaat: documenten, vragen, bank, accordering. Geen aparte
+         Vragen-/Bank-tabbladen meer nodig voor het dagelijkse werk. -->
+    <section class="scherm" id="scherm-klant">
+      <div class="pagina-kop">
+        <div>
+          <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> Rubicon Vastgoed B.V.</div>
+          <h1>Rubicon Vastgoed B.V.</h1>
+          <div class="sub">Laatste sync 06:04 · vastgoed-koppeling actief · eigenaar vragen: Peter</div>
+        </div>
+        <div class="acties"><button class="btn secundair klein" onclick="toast('Mockup: sync gestart voor deze administratie')">⟳ Sync nu</button></div>
+      </div>
+
+      <!-- per-klant KPI's (feedback Peter punt 2: het KPI-niveau leeft óók per klant) -->
+      <div class="kpis">
+        <div class="kpi"><div class="lbl"><span class="stip" style="color:var(--warn)"></span> Te verwerken</div><div class="waarde">1</div></div>
+        <div class="kpi"><div class="lbl"><span class="stip" style="color:var(--danger)"></span> Vragen</div><div class="waarde">1</div><div class="delta warn">blokkeert boeken</div></div>
+        <div class="kpi"><div class="lbl"><span class="stip" style="color:var(--info)"></span> Bank af te letteren</div><div class="waarde">3</div><div class="delta">1 matchvoorstel</div></div>
+        <div class="kpi"><div class="lbl"><span class="stip" style="color:var(--purple)"></span> Bij klant</div><div class="waarde">1</div><div class="delta">sinds gisteren</div></div>
+      </div>
+
+      <!-- upload gericht op déze klant -->
+      <div class="kaart" style="margin-bottom:16px;border-style:dashed;background:var(--panel-2)">
+        <div style="padding:14px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer" onclick="toast('Mockup: upload direct toegewezen aan Rubicon')">⬆ Sleep PDF's hierheen voor <b>Rubicon</b> — meteen toegewezen, geen verzamelbak</div>
+      </div>
+
+      <!-- Documenten: zelfde schaalregel als bank — per soort een stand, werken in het deelscherm -->
+      <div class="kaart" style="margin-bottom:16px">
+        <div class="kaart-kop"><h2>Te verwerken documenten</h2><span class="badge warn">41 open</span></div>
+        <div class="tabel-scroll"><table>
+          <thead><tr><th>Soort</th><th class="num">Open</th><th class="num">Voorstel groen</th><th>Oudste</th><th></th></tr></thead>
+          <tbody>
+            <tr style="cursor:pointer" onclick="toonDocs()"><td><div class="hoofd">Inkoopfacturen</div><div class="sub">6 via facturen@ vandaag</div></td><td class="num">34</td><td class="num" style="color:var(--ok);font-weight:600">21</td><td>4 dagen</td><td><a class="rijlink">Verwerken →</a></td></tr>
+            <tr><td><div class="hoofd">Omzetrapporten</div></td><td class="num">2</td><td class="num">2</td><td>2 dagen</td><td><a class="rijlink">Verwerken →</a></td></tr>
+            <tr><td><div class="hoofd">Verkoopfacturen</div><div class="sub">Vastly-huurfacturen</div></td><td class="num">5</td><td class="num" style="color:var(--ok);font-weight:600">5</td><td>vandaag</td><td><a class="rijlink">Verwerken →</a></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="kaart" style="margin-bottom:16px">
+        <div class="kaart-kop"><h2>Openstaande vragen</h2><span class="badge danger">1</span></div>
+        <div class="tabel-scroll"><table>
+          <thead><tr><th>Vraag</th><th>Bij</th><th>Sinds</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><div class="hoofd">Nieuwe kostenpost "servicekosten VvE" — welk grootboek?</div><div class="sub">blokkeert factuur 2026-1181</div></td><td>Peter</td><td>2 dagen</td><td><a class="rijlink" onclick="toast('Mockup: vraagdialoog opent')">Beantwoorden →</a></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <!-- Schaalregel (feedback Peter): de klantpagina is een OVERZICHT — per sectie max ±5
+           regels inline, daarboven teller + eigen deelscherm. Bank altijd per rekening. -->
+      <div class="kaart" style="margin-bottom:16px">
+        <div class="kaart-kop"><h2>Bank — af te letteren</h2><span class="badge info">63 open</span>
+          <div class="uitleg">Per rekening een eigen afletterscherm — de klantpagina toont alleen de stand.</div>
+        </div>
+        <div class="tabel-scroll"><table>
+          <thead><tr><th>Rekening</th><th class="num">Open mutaties</th><th class="num">Matchvoorstellen</th><th>Bij t/m</th><th></th></tr></thead>
+          <tbody>
+            <tr style="cursor:pointer" onclick="toonBank()"><td><div class="hoofd">NL91 RABO … 4471</div><div class="sub">zakelijk</div></td><td class="num">30</td><td class="num" style="color:var(--ok);font-weight:600">12</td><td>14-08</td><td><a class="rijlink">Afletteren →</a></td></tr>
+            <tr><td><div class="hoofd">NL45 RABO … 9920</div><div class="sub">spaarrekening</div></td><td class="num">2</td><td class="num">1</td><td>14-08</td><td><a class="rijlink">Afletteren →</a></td></tr>
+            <tr><td><div class="hoofd">NL10 INGB … 2277</div><div class="sub">G-rekening</div></td><td class="num">28</td><td class="num" style="color:var(--ok);font-weight:600">9</td><td>13-08</td><td><a class="rijlink">Afletteren →</a></td></tr>
+            <tr><td><div class="hoofd">Kas</div><div class="sub">contant</div></td><td class="num">3</td><td class="num">0</td><td>12-08</td><td><a class="rijlink">Afletteren →</a></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="kaart">
+        <div class="kaart-kop"><h2>Bij klant ter accordering</h2><span class="badge paars">1</span></div>
+        <div class="tabel-scroll"><table>
+          <thead><tr><th>Document</th><th class="num">Bedrag</th><th>Accordeur</th><th>Sinds</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><div class="hoofd">Factuur 2026-1179 — Installatiebedrijf Vos</div></td><td class="num">€ 2.140,00</td><td>R. de Groot <span class="apparaat">📱 push gehad 09:00</span></td><td>gisteren</td><td><a class="rijlink" onclick="toast('Herinnering verstuurd aan R. de Groot')">Herinner</a></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ================= SCHERM: DOCUMENTEN-DEELSCHERM (één soort, gefocust werken) ================= -->
+    <section class="scherm" id="scherm-docs">
+      <div class="pagina-kop">
+        <div>
+          <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> <a class="rijlink" onclick="toonKlant()">Rubicon Vastgoed B.V.</a> <span style="color:var(--faint)">›</span> Inkoopfacturen</div>
+          <h1>Inkoopfacturen — te verwerken</h1>
+          <div class="sub">34 open · 21 met volledig groen voorstel · oudste 4 dagen</div>
+        </div>
+        <div class="acties">
+          <div class="segment"><button class="actief">Alle (34)</button><button>Groen voorstel (21)</button><button>Met vraag (2)</button><button>Oudste eerst</button></div>
+        </div>
+      </div>
+      <div class="kaart">
+        <div class="tabel-scroll"><table>
+          <thead><tr><th>Document</th><th>Leverancier</th><th class="num">Bedrag</th><th>Voorstel</th><th>Checks</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><div class="hoofd">Factuur 2026-1184</div><div class="sub">via facturen@ · 09:12</div></td><td>Bouwmaat Eindhoven</td><td class="num">€ 842,16</td><td><span class="badge ok">volledig groen</span></td><td><span class="badge ok">7/7</span></td><td><a class="rijlink">Controleren →</a></td></tr>
+            <tr><td><div class="hoofd">Factuur 88122</div><div class="sub">via facturen@ · 08:41</div></td><td>Floor Bouwliften</td><td class="num">€ 1.512,50</td><td><span class="badge warn">2 velden uit historie</span></td><td><span class="badge ok">7/7</span></td><td><a class="rijlink">Controleren →</a></td></tr>
+            <tr><td><div class="hoofd">Factuur VVE-2026-08</div><div class="sub">upload Peter · gisteren</div></td><td>VvE Dorpsstraat</td><td class="num">€ 418,00</td><td><span class="badge danger">vraag open — blokkeert</span></td><td><span class="badge warn">6/7</span></td><td><a class="rijlink">Controleren →</a></td></tr>
+            <tr><td colspan="6" class="leeg">… nog 31 documenten (mockup toont er 3)</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ================= SCHERM: BANK-DEELSCHERM (één rekening, gefocust werken) ================= -->
+    <section class="scherm" id="scherm-bank">
+      <div class="pagina-kop">
+        <div>
+          <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> <a class="rijlink" onclick="toonKlant()">Rubicon Vastgoed B.V.</a> <span style="color:var(--faint)">›</span> NL91 RABO … 4471</div>
+          <h1>Afletteren — NL91 RABO … 4471</h1>
+          <div class="sub">30 open mutaties · 12 met matchvoorstel · bij t/m 14-08</div>
+        </div>
+        <div class="acties">
+          <div class="segment"><button class="actief">Alle (30)</button><button>Met voorstel (12)</button><button>Zonder (18)</button></div>
+        </div>
+      </div>
+      <div class="kaart">
+        <div class="tabel-scroll"><table>
+          <thead><tr><th>Mutatie</th><th class="num">Bedrag</th><th>Voorstel</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><div class="hoofd">Huur augustus — Jansen Beheer</div><div class="sub">14-08 · NL22 INGB … 8102</div></td><td class="num">€ 1.250,00</td><td><span class="badge ok">exacte match: factuur 2026-0007</span></td><td><a class="rijlink" onclick="toast('Afgeletterd — direct geverifieerd in RLZ')">Nu afletteren</a></td></tr>
+            <tr><td><div class="hoofd">Gemeente Eindhoven OZB</div><div class="sub">13-08</div></td><td class="num">− € 418,00</td><td><span class="badge warn">deelmatch — bevestigen</span></td><td><a class="rijlink">Bekijken →</a></td></tr>
+            <tr><td><div class="hoofd">Storting kruispost</div><div class="sub">13-08</div></td><td class="num">€ 500,00</td><td><span class="badge stil">geen voorstel</span></td><td><a class="rijlink">Boeken →</a></td></tr>
+            <tr><td colspan="4" class="leeg">… nog 27 mutaties (mockup toont er 3)</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ================= SCHERM: INSTELLINGEN ================= -->
+    <section class="scherm" id="scherm-instellingen">
+      <div class="pagina-kop">
+        <div><h1>Instellingen</h1><div class="sub">Platform-instellingen en bediening per administratie.</div></div>
+      </div>
+
+      <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+        <div class="kpi"><div class="lbl">Boeken — globale kill switch</div><div style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" class="switch" checked aria-label="Boeken globaal"> <span style="font-size:12.5px">Boeken staat <b style="color:var(--ok)">aan</b></span></div></div>
+        <div class="kpi"><div class="lbl">Intake-AI (AVG-gate)</div><div style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" class="switch" aria-label="Intake AI"> <span style="font-size:12.5px">Uit — wacht op ZDR-akkoord</span></div></div>
+        <div class="kpi"><div class="lbl">AI-kostenlimiet</div><div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span class="waarde" style="font-size:16px">€ 100</span><span style="font-size:11.5px;color:var(--muted)">/maand · verbruik € 14,20</span><button class="btn ghost klein" style="margin-left:auto">Wijzig</button></div></div>
+      </div>
+
+      <div class="kaart">
+        <div class="kaart-kop">
+          <h2>Administraties</h2>
+          <div class="rechts">
+            <select class="sel"><option>Alle rollen</option><option>Klant</option><option>Doorbelasting-doel</option><option>Bron</option></select>
+          </div>
+          <div class="uitleg">Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.</div>
+        </div>
+
+        <div class="bulkbalk" id="bulkbalk">
+          <b><span id="bulkTeller">0</span> geselecteerd</b>
+          <div class="knoppen">
+            <button class="btn klein" onclick="bulkActie('Boeken AAN')">Boeken aan</button>
+            <button class="btn klein secundair" onclick="bulkActie('Boeken UIT')">Boeken uit</button>
+            <button class="btn klein secundair" onclick="bulkActie('AI-extractie AAN')">AI aan</button>
+            <button class="btn klein secundair" onclick="bulkActie('Eigenaar toewijzen')">Eigenaar toewijzen…</button>
+          </div>
+          <button class="btn ghost klein sluit" onclick="wisSelectie()">✕ selectie wissen</button>
+        </div>
+
+        <div class="tabel-scroll">
+          <table id="admTabel">
+            <thead><tr>
+              <th style="width:36px"><input type="checkbox" class="cb" id="selAlles" aria-label="Alles selecteren"></th>
+              <th>Administratie</th><th>Rol</th><th>Eigenaar (vragen)</th><th>Boeken</th><th>AI-extractie</th><th>Project verplicht</th>
+            </tr></thead>
+            <tbody>
+              <tr><td><input type="checkbox" class="cb rijsel"></td><td><div class="hoofd">Kempen Facilities B.V.</div><div class="sub">doorbelasting-bron</div></td><td><span class="badge paars">Bron</span></td><td><select class="sel" style="min-width:110px"><option>Peter</option><option>—</option></select></td><td><input type="checkbox" class="switch" checked></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch"></td></tr>
+              <tr><td><input type="checkbox" class="cb rijsel"></td><td><div class="hoofd">Universal Steigerbouw B.V.</div></td><td><span class="badge stil">Klant</span></td><td><select class="sel" style="min-width:110px"><option>Peter</option></select></td><td><input type="checkbox" class="switch" checked></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch" checked></td></tr>
+              <tr><td><input type="checkbox" class="cb rijsel"></td><td><div class="hoofd">Molenhof Beheer B.V.</div><div class="sub">doorbelasting-doel · IC</div></td><td><span class="badge info">Doel</span></td><td><select class="sel" style="min-width:110px"><option>—</option><option>Peter</option></select></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch"></td></tr>
+              <tr><td><input type="checkbox" class="cb rijsel"></td><td><div class="hoofd">Molenhof Verhuur B.V.</div><div class="sub">doorbelasting-doel · IC</div></td><td><span class="badge info">Doel</span></td><td><select class="sel" style="min-width:110px"><option>—</option></select></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch"></td></tr>
+              <tr><td><input type="checkbox" class="cb rijsel"></td><td><div class="hoofd">ARVUM B.V.</div><div class="sub">Vastly-kandidaat</div></td><td><span class="badge stil">Klant</span></td><td><select class="sel" style="min-width:110px"><option>—</option></select></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch"></td><td><input type="checkbox" class="switch"></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="leeg" style="border-top:1px solid var(--border)">nog 6 administraties — <a class="rijlink">toon alles</a></div>
+      </div>
+    </section>
+
+    <!-- ================= SCHERM: GEBRUIKERS (NIEUW) ================= -->
+    <section class="scherm" id="scherm-gebruikers">
+      <div class="pagina-kop">
+        <div><h1>Gebruikers &amp; toegang</h1><div class="sub">Medewerkers, rollen, administratie-scope en apparaten — met audit op elke wijziging.</div></div>
+        <div class="acties"><button class="btn" onclick="openModal()">+ Medewerker uitnodigen</button></div>
+      </div>
+
+      <div class="kaart">
+        <div class="kaart-kop"><h2>Kantoorgebruikers</h2>
+          <div class="rechts"><select class="sel"><option>Alle rollen</option><option>Beheerder</option><option>Boekhouding + Projecten</option><option>Boekhouding</option></select></div>
+        </div>
+        <div class="tabel-scroll">
+          <table>
+            <thead><tr><th>Gebruiker</th><th>Rol</th><th>Scope</th><th>Beveiliging</th><th>Laatst actief</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="hoofd">Peter Nijenhuis</div><div class="sub">p.nijenhuis@kempengroep.nl</div></td>
+                <td><span class="badge paars">Beheerder</span></td>
+                <td><span class="badge stil">alle administraties</span></td>
+                <td><span class="apparaat">🔑 MacBook</span><span class="apparaat">🔑 iPhone</span><span class="apparaat">🔐 TOTP</span></td>
+                <td>nu</td>
+                <td><a class="rijlink" onclick="toast('Eigen rol/scope kan alleen een andere Beheerder wijzigen','warn')">Beheer →</a></td>
+              </tr>
+              <tr>
+                <td><div class="hoofd">Demi (voorbeeld)</div><div class="sub">demi@ak-nijenhuis.nl</div></td>
+                <td><select class="sel" style="min-width:150px"><option>Boekhouding</option><option>Boekhouding + Projecten</option><option>Beheerder</option></select></td>
+                <td><span class="badge info">4 administraties</span> <a class="rijlink" style="font-size:12px">wijzig</a></td>
+                <td><span class="apparaat">🔐 TOTP</span><span class="badge warn" style="font-size:10.5px">geen passkey</span></td>
+                <td>—</td>
+                <td><a class="rijlink">Beheer →</a></td>
+              </tr>
+              <tr>
+                <td><div class="hoofd">Uitnodiging verstuurd</div><div class="sub">j.jansen@voorbeeld.nl · verloopt over 68 uur</div></td>
+                <td><span class="badge stil">Boekhouding</span></td>
+                <td><span class="badge info">2 administraties</span></td>
+                <td><span class="badge stil">wacht op activatie</span></td>
+                <td>—</td>
+                <td><a class="rijlink" onclick="toast('Uitnodiging opnieuw gemaild aan j.jansen@voorbeeld.nl')">Opnieuw mailen</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="kaart" style="margin-top:16px">
+        <div class="kaart-kop"><h2>Klant-accordeurs</h2>
+          <div class="rechts"><button class="btn klein" onclick="openAccModal()">+ Accordeur uitnodigen</button></div>
+          <div class="uitleg">Accordeurs gebruiken de mobiele app met passkey. Eén accordeur kan meerdere administraties bedienen — de wachtrij voegt alles samen.</div>
+        </div>
+        <div class="tabel-scroll">
+          <table>
+            <thead><tr><th>Accordeur</th><th>Administraties</th><th>Apparaten</th><th>Staande goedkeuringen</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><div class="hoofd">R. de Groot (voorbeeld)</div><div class="sub">r.degroot@molenhof.nl</div></td><td><span class="badge info">Molenhof Beheer</span> <span class="badge info">Molenhof Verhuur</span></td><td><span class="apparaat">📱 iPhone · passkey</span></td><td class="num">2 <a class="rijlink" style="font-size:11.5px">bekijk</a></td><td><a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
+              <tr><td><div class="hoofd">Testaccount passkeytest</div><div class="sub">accordeur-passkeytest@ak-nijenhuis.nl</div></td><td><span class="badge stil">SEED-PASSKEYTEST</span></td><td><span class="apparaat">📱 iPhone · 15-08</span></td><td class="num">0</td><td><a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- ================= MODAL: UITNODIGEN ================= -->
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)sluitModal()">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Medewerker uitnodigen</h3>
+    <div class="uitleg">De uitnodiging wordt gemaild (eenmalige link, 72 uur geldig). Activatie = wachtwoord + passkey.</div>
+    <div class="veld"><label>E-mailadres</label><input type="email" placeholder="naam@ak-nijenhuis.nl"></div>
+    <div class="veld"><label>Rol</label>
+      <select class="sel" style="width:100%"><option>Boekhouding</option><option>Boekhouding + Projecten</option><option>Beheerder</option></select>
+      <div class="hint">Boekhouding: verwerken &amp; boeken · +Projecten: ook projectbewaking · Beheerder: alles incl. instellingen</div>
+    </div>
+    <div class="veld"><label>Administratie-scope <span style="color:var(--faint);font-weight:400">(minstens één — zonder scope ziet iemand niets)</span></label>
+      <div class="ms">
+        <input type="text" placeholder="Zoek administratie… (typ om te filteren)">
+        <div class="lijst">
+          <label class="optie"><input type="checkbox" class="cb" checked> Universal Steigerbouw B.V. <small>klant</small></label>
+          <label class="optie"><input type="checkbox" class="cb" checked> BLOW B.V. <small>klant</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> Kempen Facilities B.V. <small>bron</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> Rubicon Vastgoed B.V. <small>klant</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> ARVUM B.V. <small>klant</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> Molenhof Beheer B.V. <small>doel</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> Molenhof Verhuur B.V. <small>doel</small></label>
+        </div>
+      </div>
+      <div class="ms-gekozen"><span class="scope-chip">Universal Steigerbouw <b>✕</b></span><span class="scope-chip">BLOW <b>✕</b></span></div>
+      <div class="hint">Schaalbaar tot 50+ administraties: zoeken, aanvinken, gekozen items als chips eronder.</div>
+    </div>
+    <div class="voet">
+      <button class="btn secundair" onclick="sluitModal()">Annuleren</button>
+      <button class="btn" onclick="sluitModal();toast('Uitnodiging gemaild — zichtbaar in de lijst tot activatie')">Verstuur uitnodiging</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL: ACCORDEUR UITNODIGEN (feedback Peter punt 4+6) ================= -->
+<div class="modal-bg" id="accModalBg" onclick="if(event.target===this)sluitAccModal()">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Accordeur uitnodigen</h3>
+    <div class="uitleg">De accordeur krijgt een activatiemail voor de mobiele app (wachtwoord → passkey → voorwaarden). Meerdere administraties mag — de wachtrij toont alles bij elkaar.</div>
+    <div class="veld"><label>Naam</label><input type="text" placeholder="R. de Groot"></div>
+    <div class="veld"><label>E-mailadres</label><input type="email" placeholder="naam@klantbedrijf.nl"></div>
+    <div class="veld"><label>Administraties <span style="color:var(--faint);font-weight:400">(minstens één — wachtrij voegt alles samen)</span></label>
+      <div class="ms">
+        <input type="text" placeholder="Zoek administratie…">
+        <div class="lijst">
+          <label class="optie"><input type="checkbox" class="cb" checked> Molenhof Beheer B.V. <small>doel</small></label>
+          <label class="optie"><input type="checkbox" class="cb" checked> Molenhof Verhuur B.V. <small>doel</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> Oirschot Recreatie B.V. <small>doel</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> Oirschot Vastgoed Beheer B.V. <small>doel</small></label>
+          <label class="optie"><input type="checkbox" class="cb"> Veldhoven Recreatie B.V. <small>doel</small></label>
+        </div>
+      </div>
+      <div class="ms-gekozen"><span class="scope-chip">Molenhof Beheer <b>✕</b></span><span class="scope-chip">Molenhof Verhuur <b>✕</b></span></div>
+    </div>
+    <div class="veld"><label>Accorderingslaag</label>
+      <select class="sel" style="width:100%"><option>Laag 1 — alles</option><option>Laag 2 — boven drempelbedrag</option></select>
+      <div class="hint">Drempels en volgorde stel je per administratie in onder Instellingen → accordering.</div>
+    </div>
+    <div class="voet">
+      <button class="btn secundair" onclick="sluitAccModal()">Annuleren</button>
+      <button class="btn" onclick="sluitAccModal();toast('Uitnodiging gemaild — accordeur verschijnt in de lijst tot activatie')">Verstuur uitnodiging</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+  // thema (mechanisme = Vastly-patroon: keuze wint, anders systeem)
+  const themaKnop=document.getElementById('themaKnop');
+  const opgeslagen=localStorage.getItem('rlz-mockup-thema');
+  if(opgeslagen==='donker'||(!opgeslagen&&matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
+  themaKnop.onclick=()=>{const d=document.documentElement.classList.toggle('dark');localStorage.setItem('rlz-mockup-thema',d?'donker':'licht');};
+
+  // navigatie
+  document.querySelectorAll('.nav-item[data-scherm]').forEach(k=>k.onclick=()=>{
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('actief'));k.classList.add('actief');
+    document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('actief'));
+    document.getElementById('scherm-'+k.dataset.scherm).classList.add('actief');
+  });
+
+  // bulk-selectie
+  const rijsels=[...document.querySelectorAll('.rijsel')],selAlles=document.getElementById('selAlles'),
+        balk=document.getElementById('bulkbalk'),teller=document.getElementById('bulkTeller');
+  function updateBulk(){const n=rijsels.filter(c=>c.checked).length;teller.textContent=n;
+    balk.classList.toggle('zichtbaar',n>0);
+    rijsels.forEach(c=>c.closest('tr').classList.toggle('geselecteerd',c.checked));
+    selAlles.checked=n===rijsels.length;selAlles.indeterminate=n>0&&n<rijsels.length;}
+  rijsels.forEach(c=>c.onchange=updateBulk);
+  selAlles.onchange=()=>{rijsels.forEach(c=>c.checked=selAlles.checked);updateBulk();};
+  function wisSelectie(){rijsels.forEach(c=>c.checked=false);updateBulk();}
+  function bulkActie(naam){const n=rijsels.filter(c=>c.checked).length;
+    toast(`${naam} toegepast op ${n} administraties — geauditeerd`);wisSelectie();}
+
+  // scope-chips
+  document.querySelectorAll('.scope-chip').forEach(c=>c.onclick=()=>c.classList.toggle('aan'));
+
+  // klantpagina (feedback Peter punt 7: klant-centrisch)
+  function toonKlant(){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('actief'));
+    document.getElementById('scherm-klant').classList.add('actief');scrollTo(0,0);}
+  function terugWerkvoorraad(){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('actief'));
+    document.getElementById('scherm-werkvoorraad').classList.add('actief');}
+  function toonBank(){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('actief'));
+    document.getElementById('scherm-bank').classList.add('actief');scrollTo(0,0);}
+  function toonDocs(){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('actief'));
+    document.getElementById('scherm-docs').classList.add('actief');scrollTo(0,0);}
+
+  // modals + toast
+  function openModal(){document.getElementById('modalBg').classList.add('open')}
+  function sluitModal(){document.getElementById('modalBg').classList.remove('open')}
+  function openAccModal(){document.getElementById('accModalBg').classList.add('open')}
+  function sluitAccModal(){document.getElementById('accModalBg').classList.remove('open')}
+  addEventListener('keydown',e=>{if(e.key==='Escape'){sluitModal();sluitAccModal();}});
+  function toast(txt,soort){const t=document.createElement('div');t.className='toast'+(soort==='warn'?' warn':'');
+    t.textContent=txt;document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),3600);}
+</script>
+</body>
+</html>

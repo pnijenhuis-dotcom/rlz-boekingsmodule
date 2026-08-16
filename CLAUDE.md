@@ -148,6 +148,19 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 
 - **Werkvoorraad** = klantenlijst met tellers (alleen klanten mét openstaand werk) → klantpagina →
   controlescherm. Overal breadcrumbs, lijst→detail-patroon consistent.
+- **Kantoor-frontend-modernisering (designronde Peter 2026-08-15, 4 iteratierondes —
+  BESLISSINGEN "Kantoor-frontend-modernisering"):** de kantoor-UI migreert naar het
+  platform-fundament (Vastly-generatie: Tailwind v4 + semantische tokens, shadcn-stijl-
+  componenten op Radix, thema.ts-dark-mode "keuze wint, anders systeem") mét het bestaande
+  RLZ-palet; `mockup/kantoor-modern.html` = de norm voor vormgeving, componenten en IA,
+  `mockup/index.html` blijft de bron voor flows/inhoud. **IA-besluit klant-centrisch, drie
+  lagen:** klantpagina = STANDEN (documenten per soort, bank per rekening — alleen tellers),
+  deelscherm = WERKEN (één soort/rekening, segment-filters), controlescherm = één document;
+  Vragen-/Bank-tabbladen vervallen, kantoorbrede dwarsdoorsneden via klikbare KPI-kaarten
+  bovenaan de werkvoorraad; oude URL's redirecten. Toon-regel: bakken-/soorten-regels alleen
+  bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). Sleep-upload blijft op
+  werkvoorraad (tenaamstelling) én klantpagina (direct toegewezen). Bouw in 3 fases (1
+  designsysteem, 2 IA-verbouwing, 3 Gebruikers & toegang + bulk).
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
@@ -501,7 +514,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 
 ## Referenties in deze repo
 
-- `mockup/index.html` — goedgekeurde UI (alle schermen, klikbaar; design tokens = CSS-variabelen)
+- `mockup/index.html` — goedgekeurde UI (alle schermen, klikbaar) — bron voor flows/inhoud
+- `mockup/kantoor-modern.html` — **designpass-norm kantoor-UI (akkoord Peter 2026-08-15):
+  vormgeving, componenten en IA; semantische design tokens = de bron voor de frontend-tokens**
 - `mockup/accordeur.html` — klikbare mobile-first accordeur-app-mockup (blok 5, 2026-08-09;
   ter beoordeling Peter op het mobiele breakpoint — bouw start pas na akkoord)
 - `verkenning/api-verkenning.md` — alle geverifieerde API-feiten + PoC-resultaten
@@ -515,8 +530,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 ## Werkwijze
 
 - **`docs/BESLISSINGEN.md` is de verplichte eerste check vóór elk feature-voorstel of bouwstart**
-  (pre-feature-ritueel, `Platform/WERKWIJZE.md` v1.7 — incl. de bindende
-  bron-vs-realiteit-verificatie en de periodieke drift-audit): raadpleeg het register + de canonieke
+  (pre-feature-ritueel, `Platform/WERKWIJZE.md` v1.9 — incl. de bindende
+  bron-vs-realiteit-verificatie, de periodieke drift-audit én de **UX-review vóór elke
+  bouwopdracht met scherm-/UX-impact** (besluit Peter 2026-08-15: past het in de bestaande
+  IA? mockup-aanpassing nodig? — zichtbaar blok vóór de bouw)): raadpleeg het register + de canonieke
   vindplaats en benoem expliciet waar de feature al staat; goedgekeurde mockup/besluit = 1-op-1
   voortbouwen, niet opnieuw uitvragen. **Capture-at-acceptance:** elk akkoord van Peter meteen in
   dit register (+ canonieke plek) vastleggen, nooit alleen in de chat.
