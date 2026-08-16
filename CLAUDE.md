@@ -159,8 +159,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   Vragen-/Bank-tabbladen vervallen, kantoorbrede dwarsdoorsneden via klikbare KPI-kaarten
   bovenaan de werkvoorraad; oude URL's redirecten. Toon-regel: bakken-/soorten-regels alleen
   bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). Sleep-upload blijft op
-  werkvoorraad (tenaamstelling) én klantpagina (direct toegewezen). Bouw in 3 fases (1
-  designsysteem, 2 IA-verbouwing, 3 Gebruikers & toegang + bulk).
+  werkvoorraad (tenaamstelling) én klantpagina (direct toegewezen). **GEBOUWD + GETEST in 3
+  fases (2026-08-16, kliktest Peter open):** fase 1 designsysteem (Tailwind v4 zónder
+  preflight, tokens + `ui/thema.ts` + componentenset `ui/basis/`, controls gemigreerd), fase
+  2 IA-verbouwing (KPI-dwarsdoorsneden, klantpagina-standen, deelschermen, redirects —
+  verificatiepunt accordeur-multi-administratie bewezen met backend-test: wachtrij én
+  09:00-herinnering voegen administraties samen), fase 3 Gebruikers & toegang
+  (`/auth/gebruikers` + uitnodiging-opnieuw-endpoint, scherm `/gebruikers`) + bulkbediening
+  Instellingen. Details per fase: BESLISSINGEN "Kantoor-frontend-modernisering".
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
