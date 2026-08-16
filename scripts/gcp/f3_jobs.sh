@@ -16,12 +16,12 @@
 # tussen oud en nieuw vangnet; de lokale dagelijkse run blijft het echte vangnet tot de
 # cutover (F1.6 stap 7, ná F5).
 #
-# IMAP-INTAKE: gebouwd maar NIET actief — de job bestaat, zijn scheduler wordt hier
-# meteen GEPAUZEERD aangemaakt en het secret-slot INTAKE_IMAP_WACHTWOORD staat klaar
-# zonder versie. Activeren kan pas ná Peters facturen@-mailbox + app-wachtwoord +
-# DPA-check (AVG-checklist D): secret-versie toevoegen, INTAKE_IMAP_*-env-vars aan de
-# job hangen (deploy.yml), scheduler resumen. Tot die tijd meldt de job de inactieve
-# seam expliciet (exit 1) — bewust, geen stille no-op.
+# IMAP-INTAKE: LIVE sinds 2026-08-15 (F3.4 — echte imaplib-bron, secret-versie gevuld,
+# INTAKE_IMAP_*-env-vars via deploy.yml). Alleen een VERS aangemaakte scheduler start
+# hier gepauzeerd (zelfde guard als rlz-accordeur-herinneringen): een kale bootstrap
+# heeft eerst een deploy-run nodig die de env-vars aan de job hangt — daarna handmatig
+# resumen. Een herdraai raakt de actieve cadans NIET (les 2026-08-16: het oude
+# onvoorwaardelijke pauzeren zette de live intake stil; Peter herstelde met resume).
 #
 # IDEMPOTENT (F0-les 2026-08-14): describe-vóór-create op élke resource — herdraaien
 # na een deelfout is altijd veilig.
@@ -93,7 +93,7 @@ else
 {
   "displayName": "${POLICY_NAAM}",
   "documentation": {
-    "content": "Een Cloud Run-job in ${PROJECT_ID} is gefaald (exit ≠ 0). Logs: Console → Cloud Run → Jobs → <jobnaam> → Logs. Context: docs/GCP_UITROL.md §F3. NB rlz-intake-imap is tot de DPA-check bewust inactief (seam-melding = exit 1) en zijn scheduler staat gepauzeerd — een alert dáárover betekent dat iemand de job handmatig draaide.",
+    "content": "Een Cloud Run-job in ${PROJECT_ID} is gefaald (exit ≠ 0). Logs: Console → Cloud Run → Jobs → <jobnaam> → Logs. Context: docs/GCP_UITROL.md §F3.",
     "mimeType": "text/markdown"
   },
   "combiner": "OR",
@@ -126,13 +126,13 @@ EOF
   echo "   policy aangemaakt → meldt naar ${ALERT_EMAIL}."
 fi
 
-echo "== 3. Secret-slot IMAP (klaarzetten zonder versie — activatie ná DPA-check) =="
+echo "== 3. Secret-slot IMAP (idempotent; de versie is sinds F3.4 gevuld) =="
 if gcloud secrets describe INTAKE_IMAP_WACHTWOORD >/dev/null 2>&1; then
   echo "   secret INTAKE_IMAP_WACHTWOORD bestaat al."
 else
   gcloud secrets create INTAKE_IMAP_WACHTWOORD \
     --replication-policy=user-managed --locations="${REGION}"
-  echo "   secret-slot aangemaakt (géén versie — de job mount 'm pas bij activatie)."
+  echo "   secret-slot aangemaakt (versie toevoegen hoort bij de activatiestap, §F3.4)."
 fi
 gcloud secrets add-iam-policy-binding INTAKE_IMAP_WACHTWOORD \
   --member="serviceAccount:${JOBS_SA}" \
@@ -178,14 +178,16 @@ for REGELS in "${JOBS[@]}"; do
   echo "   ${NAAM}: invoker staat."
 done
 
-echo "== 6. Scheduler-cadans per job (draaiboektabel; IMAP meteen gepauzeerd) =="
+echo "== 6. Scheduler-cadans per job (draaiboektabel; verse cadansen starten gepauzeerd) =="
 HERINNERINGEN_NIEUW=0
+IMAP_NIEUW=0
 for REGELS in "${JOBS[@]}"; do
   IFS='|' read -r NAAM _CLI _TIMEOUT CADANS <<< "${REGELS}"
   if gcloud scheduler jobs describe "${NAAM}" --location="${REGION}" >/dev/null 2>&1; then
     echo "   scheduler ${NAAM} bestaat al — overgeslagen."
   else
     [ "${NAAM}" = "rlz-accordeur-herinneringen" ] && HERINNERINGEN_NIEUW=1
+    [ "${NAAM}" = "rlz-intake-imap" ] && IMAP_NIEUW=1
     gcloud scheduler jobs create http "${NAAM}" \
       --location="${REGION}" \
       --schedule="${CADANS}" \
@@ -198,9 +200,14 @@ for REGELS in "${JOBS[@]}"; do
     echo "   scheduler ${NAAM} aangemaakt (${CADANS} Europe/Amsterdam)."
   fi
 done
-# IMAP-intake: bouwen maar NIET activeren (opdracht 2026-08-14) — pauzeren is idempotent.
-gcloud scheduler jobs pause rlz-intake-imap --location="${REGION}" --quiet >/dev/null
-echo "   rlz-intake-imap GEPAUZEERD (activatie ná mailbox + app-wachtwoord + DPA-check)."
+# IMAP-intake: LIVE sinds 2026-08-15 (F3.4). Alleen bij verse aanmaak pauzeren — een
+# herdraai mag de actieve cadans nooit terugpauzeren (les 2026-08-16: het oude
+# onvoorwaardelijke pauzeren zette de live intake stil). Resume ná de eerste
+# deploy-run die de INTAKE_IMAP_*-env-vars aan de job hangt.
+if [ "${IMAP_NIEUW}" = "1" ]; then
+  gcloud scheduler jobs pause rlz-intake-imap --location="${REGION}" --quiet >/dev/null
+  echo "   rlz-intake-imap GEPAUZEERD (verse aanmaak — resumen ná de eerste deploy-run)."
+fi
 # Accordeur-herinneringen: gepauzeerd tot de notificatie-secrets staan én de
 # live-verificatie (één echte push + één echte mail) rond is — resume gebeurt in
 # scripts/gcp/notificaties_infra.sh. Alleen bij verse aanmaak pauzeren: een herdraai van
@@ -215,6 +222,6 @@ echo "Klaar. Verificatie F3 (draaiboek): per job één handmatige run —"
 echo "  gcloud run jobs execute rlz-sync                --region=${REGION} --wait   # groen"
 echo "  gcloud run jobs execute rlz-reconciliatie       --region=${REGION} --wait   # groen"
 echo "  gcloud run jobs execute rlz-webhook-afleveraar  --region=${REGION} --wait   # groen (OVERGESLAGEN: toggle uit)"
-echo "  gcloud run jobs execute rlz-intake-imap         --region=${REGION} --wait   # FAALT bewust (seam) = alert-test"
-echo "De gefaalde intake-run is meteen de geforceerde-failure-test: binnen ~5-10 min hoort"
-echo "een alertmail op ${ALERT_EMAIL} te landen (policy '${POLICY_NAAM}')."
+echo "  gcloud run jobs execute rlz-intake-imap         --region=${REGION} --wait   # groen (live sinds F3.4)"
+echo "NB de oude geforceerde-failure-test (intake-seam faalde bewust) bestaat niet meer —"
+echo "de alertketen is op de F3-run 2026-08-14 bewezen (policy '${POLICY_NAAM}' → ${ALERT_EMAIL})."
