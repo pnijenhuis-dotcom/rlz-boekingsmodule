@@ -25,6 +25,7 @@ from app.db.models import (
     WebauthnCredential,
 )
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.security.envelope import unwrap_secret, wrap_secret
 from app.security.passwords import hash_password, verify_password
 from app.security.tokens import (
@@ -507,12 +508,21 @@ def logout_overal(*, gebruiker_id: uuid.UUID) -> None:
         )
 
 
+def _weiger_systeem_actor(doel_gebruiker_id: uuid.UUID) -> None:
+    """De systeem-actor (achtergrondverwerking, app/db/systeem_actor.py) is een technische
+    gebruiker-rij voor FK's op audit/tijdlijn — nooit een beheerbaar account. Rol- of
+    scope-mutatie erop is altijd een fout (controls-review 2026-08-16)."""
+    if doel_gebruiker_id == SYSTEEM_ACTOR_ID:
+        raise AuthError("De systeemgebruiker kan niet gewijzigd worden")
+
+
 def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol: GebruikerRol) -> None:
     """Hard (CLAUDE.md): niemand muteert zijn eigen rol, ook een Beheerder niet. Beheerder-only
     afgedwongen door de router-dependency; hier alleen de self-mutation-check, want die geldt
     onvoorwaardelijk — ook als een toekomstige aanroeper deze functie ooit los aanroept."""
     if actor_id == doel_gebruiker_id:
         raise AuthError("Kan de eigen rol niet wijzigen")
+    _weiger_systeem_actor(doel_gebruiker_id)
     with scoped_session(None, actor_id=actor_id) as session:
         gebruiker = session.get(Gebruiker, doel_gebruiker_id)
         if gebruiker is None:
@@ -523,6 +533,7 @@ def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol:
 def voeg_scope_toe(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
     if actor_id == doel_gebruiker_id:
         raise AuthError("Kan de eigen scope niet wijzigen")
+    _weiger_systeem_actor(doel_gebruiker_id)
     with scoped_session(None, actor_id=actor_id) as session:
         bestaat_al = session.get(GebruikerAdministratie, (doel_gebruiker_id, administratie_id))
         if bestaat_al is None:
@@ -532,6 +543,7 @@ def voeg_scope_toe(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, adminis
 def verwijder_scope(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
     if actor_id == doel_gebruiker_id:
         raise AuthError("Kan de eigen scope niet wijzigen")
+    _weiger_systeem_actor(doel_gebruiker_id)
     with scoped_session(None, actor_id=actor_id) as session:
         rij = session.get(GebruikerAdministratie, (doel_gebruiker_id, administratie_id))
         if rij is not None:
@@ -637,12 +649,16 @@ class GebruikerOverzicht:
 def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
     """Gebruikerslijst voor Gebruikers & toegang — Beheerder-only (router-dependency; de
     RLS-beheerder-bypass op gebruiker_administratie maakt de scope-kolom platform-breed
-    leesbaar). Gepseudonimiseerde gebruikers (AVG) blijven buiten de lijst."""
+    leesbaar). Gepseudonimiseerde gebruikers (AVG) blijven buiten de lijst, net als de
+    systeem-actor (achtergrondverwerking — een technische rij, geen beheerbaar account;
+    controls-review 2026-08-16: hij verscheen als muteerbare rij in Gebruikers & toegang)."""
     now = datetime.now(UTC)
     with scoped_session(None, actor_id=actor_id) as session:
         gebruikers = list(
             session.scalars(
-                select(Gebruiker).where(Gebruiker.gepseudonimiseerd_op.is_(None)).order_by(Gebruiker.naam)
+                select(Gebruiker)
+                .where(Gebruiker.gepseudonimiseerd_op.is_(None), Gebruiker.id != SYSTEEM_ACTOR_ID)
+                .order_by(Gebruiker.naam)
             )
         )
         scope_rijen = session.execute(

@@ -42,6 +42,7 @@ function installMock(opties: {
   gebruikers?: unknown[]
   postAanroepen?: string[]
   mailVerzonden?: boolean
+  apparaten?: unknown[]
 }) {
   vi.stubGlobal(
     'fetch',
@@ -71,7 +72,7 @@ function installMock(opties: {
       if (url.includes('/apparaten') && (!init || init.method === undefined)) {
         return Promise.resolve(
           jsonResponse({
-            apparaten: [
+            apparaten: opties.apparaten ?? [
               {
                 id: 'app-1',
                 apparaat_naam: 'iPhone van R.',
@@ -200,6 +201,49 @@ describe('GebruikersScreen', () => {
     expect(screen.getByText(/per direct geblokkeerd/)).toBeInTheDocument()
     await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await waitFor(() => expect(posts).toContain('/auth/apparaten/app-1/intrekken'))
+  })
+
+  it('dubbele dev-stub-credentials tonen als één apparaat en de kill-switch trekt ze állemaal in', async () => {
+    const posts: string[] = []
+    const stub = {
+      apparaat_naam: 'LAN-telefoon (dev-stub)',
+      is_dev_stub: true,
+      aangemaakt_op: '2026-08-11T10:00:00Z',
+      laatst_gebruikt_op: null,
+      ingetrokken_op: null,
+    }
+    installMock({
+      gebruikers: [
+        gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur', aantal_passkeys: 1 }),
+      ],
+      postAanroepen: posts,
+      apparaten: [
+        { ...stub, id: 'stub-1' },
+        { ...stub, id: 'stub-2' },
+        {
+          id: 'echt-1',
+          apparaat_naam: 'iPhone van R.',
+          is_dev_stub: false,
+          aangemaakt_op: '2026-08-11T10:00:00Z',
+          laatst_gebruikt_op: null,
+          ingetrokken_op: null,
+        },
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText(/LAN-telefoon \(dev-stub\)/)).toBeInTheDocument())
+    // Eén chip voor de gedupliceerde stub, de echte passkey blijft een eigen rij.
+    expect(screen.getAllByText(/LAN-telefoon/)).toHaveLength(1)
+    expect(screen.getByText(/iPhone van R\./)).toBeInTheDocument()
+
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.click(screen.getAllByRole('button', { name: 'Kill-switch' })[0])
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    // Beide onderliggende credentials worden ingetrokken — nooit stil eentje laten staan.
+    await waitFor(() => expect(posts).toContain('/auth/apparaten/stub-1/intrekken'))
+    expect(posts).toContain('/auth/apparaten/stub-2/intrekken')
+    expect(posts).not.toContain('/auth/apparaten/echt-1/intrekken')
   })
 
   it('een niet-Beheerder krijgt een nette melding, geen lege tabel', async () => {

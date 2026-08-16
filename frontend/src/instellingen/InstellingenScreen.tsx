@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
-import { Checkbox, Select, Switch } from '../ui/basis'
+import { Button, Checkbox, Select, Switch } from '../ui/basis'
 import type { AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
@@ -350,8 +350,10 @@ export function InstellingenScreen() {
       {laadFout && <div className="fout">Kon instellingen niet laden: {laadFout}</div>}
 
       <div className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
+        {/* flexWrap + nowrap-label (kliktest 2026-08-16, ~1170px): de switch mét aan/uit-label
+            wikkelt onder de tekst i.p.v. rechts uit het paneel te clippen. */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ minWidth: 0, flex: '1 1 320px' }}>
             <h2 style={{ margin: 0 }}>Boeken — globale kill switch</h2>
             <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
               Platformbrede noodstop: staat deze uit, dan kan er nergens geboekt worden, ongeacht de toggle per
@@ -359,7 +361,7 @@ export function InstellingenScreen() {
             </p>
           </div>
           {killSwitch !== null && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
               <Switch
                 aria-label="Globale kill switch"
                 checked={killSwitch}
@@ -374,8 +376,8 @@ export function InstellingenScreen() {
       </div>
 
       <div className="panel" style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ minWidth: 0, flex: '1 1 320px' }}>
             <h2 style={{ margin: 0 }}>Intake-AI (AVG-gate, platform-breed)</h2>
             <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
               Bepaalt of nog-niet-toegewezen intake-PDF&apos;s (verzamelbak) voor tenaamstelling en
@@ -384,7 +386,7 @@ export function InstellingenScreen() {
             </p>
           </div>
           {intakeAi !== null && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
               <Switch
                 aria-label="Intake-AI ingeschakeld"
                 checked={intakeAi}
@@ -399,8 +401,8 @@ export function InstellingenScreen() {
       </div>
 
       <div className="panel" style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-          <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: '1 1 320px' }}>
             <h2 style={{ margin: 0 }}>AI-kosten (maandlimiet)</h2>
             <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
               Wérkelijke Anthropic-API-kosten van intake-AI deze kalendermaand, deterministisch berekend uit de
@@ -436,15 +438,17 @@ export function InstellingenScreen() {
                 value={limietInvoer}
                 onChange={(e) => setLimietInvoer(e.target.value)}
               />
-              <button
-                type="button"
+              {/* Button-component i.p.v. kale <button> (kliktest 2026-08-16): de ongestylede
+                  browser-default oogde in dark als disabled terwijl de knop actief was. */}
+              <Button
+                variant="secundair"
                 disabled={!limietInvoer || Number(limietInvoer) <= 0 || limietInvoer === aiKosten.limiet_eur}
                 onClick={() =>
                   setPending({ type: 'ai_kosten_limiet', naam: 'AI-kosten-maandlimiet', nieuweWaarde: true, limietEur: limietInvoer })
                 }
               >
                 Limiet wijzigen
-              </button>
+              </Button>
             </label>
           )}
         </div>
@@ -467,6 +471,9 @@ export function InstellingenScreen() {
             onWisSelectie={() => setSelectie([])}
             onGereed={laadAlles}
           />
+          {/* .tabel-scroll (kliktest 2026-08-16, ~1170px): acht kolommen clipten rechts buiten
+              het paneel zonder scroll — brede inhoud scrolt intern, nooit paginabreed. */}
+          <div className="tabel-scroll">
           <table>
             <tbody>
               <tr>
@@ -532,7 +539,7 @@ export function InstellingenScreen() {
                     />
                   </td>
                   <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
                       <Switch
                         aria-label={`Project verplicht voor ${a.naam}`}
                         checked={a.project_verplicht}
@@ -549,7 +556,7 @@ export function InstellingenScreen() {
                     </label>
                   </td>
                   <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
                       <Switch
                         aria-label={`Boeken ingeschakeld voor ${a.naam}`}
                         checked={a.boeken_ingeschakeld}
@@ -566,7 +573,7 @@ export function InstellingenScreen() {
                     </label>
                   </td>
                   <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
                       <Switch
                         aria-label={`AI-extractie voor ${a.naam}`}
                         checked={a.ai_extractie_ingeschakeld}
@@ -584,7 +591,7 @@ export function InstellingenScreen() {
                   </td>
                   <td>
                     {a.is_vastgoed ? (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
                         <Switch
                           aria-label={`Autoboeken Vastly-verkoop voor ${a.naam}`}
                           checked={a.verkoop_autoboeken_ingeschakeld}
@@ -609,6 +616,7 @@ export function InstellingenScreen() {
               ))}
             </tbody>
           </table>
+          </div>
           </>
         )}
       </div>

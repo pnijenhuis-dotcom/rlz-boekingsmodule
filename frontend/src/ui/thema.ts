@@ -6,13 +6,24 @@ export type Thema = 'licht' | 'donker'
 
 const OPSLAG_SLEUTEL = 'rlz-thema'
 
+/* localStorage kan ontbreken of gooien (vitest-jsdom zonder storage, Safari private mode) —
+ * het thema mag daar nooit op omvallen: zonder opslag geen onthouden keuze, verder alles
+ * gewoon werkend (initThema draait sinds 2026-08-16 op moduleniveau, vóór React). */
 export function leesOpgeslagenThema(): Thema | null {
-  const opgeslagen = localStorage.getItem(OPSLAG_SLEUTEL)
-  return opgeslagen === 'licht' || opgeslagen === 'donker' ? opgeslagen : null
+  try {
+    const opgeslagen = window.localStorage.getItem(OPSLAG_SLEUTEL)
+    return opgeslagen === 'licht' || opgeslagen === 'donker' ? opgeslagen : null
+  } catch {
+    return null
+  }
 }
 
 export function bewaarThema(thema: Thema) {
-  localStorage.setItem(OPSLAG_SLEUTEL, thema)
+  try {
+    window.localStorage.setItem(OPSLAG_SLEUTEL, thema)
+  } catch {
+    // Geen opslag = keuze geldt alleen deze sessie — bewust stil, dit is een nice-to-have.
+  }
 }
 
 export function systeemThema(): Thema {

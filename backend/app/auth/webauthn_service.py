@@ -325,13 +325,29 @@ def voltooi_registratie_stub(
     *, gebruiker_id: uuid.UUID, apparaat_naam: str | None, ip_adres: str | None = None
 ) -> RegistratieResultaat:
     """Dev-stub-registratie (zie moduledocstring): geen crypto, wel exact dezelfde flow en
-    vastlegging — zichtbaar gemarkeerd met is_dev_stub. Hard geweigerd buiten dev/local."""
+    vastlegging — zichtbaar gemarkeerd met is_dev_stub. Hard geweigerd buiten dev/local.
+
+    Idempotent op (gebruiker, apparaat_naam): een échte passkey wordt door excludeCredentials
+    tegen herregistratie beschermd, de stub niet — elke her-activering maakte een nieuwe rij
+    aan, waardoor hetzelfde stub-apparaat dubbel in de apparaatlijsten stond (controls-review
+    2026-08-16). Een bestaande actieve stub-rij wordt hergebruikt i.p.v. gedupliceerd."""
     if not dev_stub_actief():
         raise AuthError("Biometrie-dev-stub is niet actief")
     with scoped_session(None, actor_id=gebruiker_id) as session:
         gebruiker = session.get(Gebruiker, gebruiker_id)
         if gebruiker is None or gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
             raise AuthError("Account niet (meer) actief")
+        bestaande = session.scalars(
+            select(WebauthnCredential).where(
+                WebauthnCredential.gebruiker_id == gebruiker_id,
+                WebauthnCredential.is_dev_stub.is_(True),
+                WebauthnCredential.apparaat_naam == apparaat_naam,
+                WebauthnCredential.ingetrokken_op.is_(None),
+            )
+        ).first()
+        if bestaande is not None:
+            bestaande.laatst_gebruikt_op = datetime.now(UTC)
+            return _rond_registratie_af(session, gebruiker, bestaande, ip_adres=ip_adres)
         rij = WebauthnCredential(
             id=uuid.uuid4(),
             gebruiker_id=gebruiker_id,

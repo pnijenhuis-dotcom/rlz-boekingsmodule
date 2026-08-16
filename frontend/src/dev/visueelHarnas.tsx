@@ -228,6 +228,10 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   if (url.endsWith('/bestand')) {
     return Promise.resolve(new Response(MINI_PDF, { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
   }
+  // Vóór de documenten-branch: de accordering-route eindigt óók op /documenten/{id} en kreeg
+  // anders de document-DTO terug — AccorderingSectie crashte daarop en het hele harnas
+  // renderde leeg (sweep-fix 2026-08-16). null = geen accordering aangeboden.
+  if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))
   if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(DETAIL))
   if (url.endsWith('/boekvoorstel') && (!init || !init.method)) return Promise.resolve(jsonResponse(BOEKVOORSTEL))
   if (url.endsWith('/boekvoorstel') && init?.method === 'PUT') {

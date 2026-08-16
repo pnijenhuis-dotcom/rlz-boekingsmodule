@@ -38,6 +38,9 @@ function ApparatenTabel({
   onIntrekken: (apparaatId: string) => void
 }) {
   return (
+    // .tabel-scroll (kliktest 2026-08-16, ~1170px): kolommen en de Intrekken-knop clipten
+    // rechts buiten het paneel zonder scroll — brede inhoud scrolt intern.
+    <div className="tabel-scroll">
     <table>
       <thead>
         <tr>
@@ -77,6 +80,7 @@ function ApparatenTabel({
         ))}
       </tbody>
     </table>
+    </div>
   )
 }
 

@@ -286,8 +286,12 @@ select {
 }
 
 /* De generieke width: 100% hierboven geldt anders óók voor checkboxes — die duwde het label
- * "Splitsen per regel" over drie regels (Peters visuele controle 2026-07-11). */
-input[type='checkbox'] {
+ * "Splitsen per regel" over drie regels (Peters visuele controle 2026-07-11).
+ * De designsysteem-controls (.cb/.switch, controls.css) expliciet uitgezonderd: dit
+ * attribuut-selector won binnen layer(base) op specificiteit van hun klasse-selectors,
+ * waardoor width: auto de appearance:none-controls liet inklappen tot 1-2px-spijltjes
+ * (kliktest Peter 2026-08-16). */
+input[type='checkbox']:not(.cb):not(.switch) {
   width: auto;
   padding: 0;
 }
@@ -307,7 +311,9 @@ input[type='checkbox'] {
   cursor: pointer;
 }
 
-input:focus,
+/* .cb/.switch uitgezonderd (zelfde specificiteitsbotsing als hierboven): die hebben hun eigen
+ * focus-visible-ring in controls.css en horen bij een muisklik geen accent-rand te krijgen. */
+input:focus:not(.cb):not(.switch),
 select:focus,
 textarea:focus {
   outline: none;

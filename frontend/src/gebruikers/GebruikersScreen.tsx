@@ -29,6 +29,29 @@ function formatVerloop(iso: string): string {
   return uren <= 1 ? 'verloopt binnen een uur' : `verloopt over ${uren} uur`
 }
 
+interface ApparaatGroep {
+  naam: string
+  isDevStub: boolean
+  /** Alle credential-id's achter deze weergave-rij — de kill-switch trekt ze ÁLLE in. */
+  ids: string[]
+}
+
+/** Dev-stub-registraties maakten vóór de bron-fix (2026-08-16) per activering een nieuwe
+ * credential-rij aan, waardoor hetzelfde stub-apparaat dubbel in de lijst stond. Weergave
+ * groepeert identieke stubs op naam; de kill-switch raakt dan álle onderliggende credentials —
+ * nooit een actieve credential verbergen buiten bereik van de knop. Echte passkeys worden
+ * nooit gegroepeerd: twee apparaten met dezelfde naam zijn daar echt twee apparaten. */
+function groepeerApparaten(apparaten: ApparaatDto[]): ApparaatGroep[] {
+  const groepen: ApparaatGroep[] = []
+  for (const apparaat of apparaten) {
+    const naam = apparaat.apparaat_naam ?? 'apparaat'
+    const bestaande = apparaat.is_dev_stub ? groepen.find((g) => g.isDevStub && g.naam === naam) : undefined
+    if (bestaande) bestaande.ids.push(apparaat.id)
+    else groepen.push({ naam, isDevStub: apparaat.is_dev_stub, ids: [apparaat.id] })
+  }
+  return groepen
+}
+
 export function GebruikersScreen() {
   const { gebruikerId, rol } = useAuth()
   const { administraties, fout: administratiesFout } = useAdministraties()
@@ -43,7 +66,7 @@ export function GebruikersScreen() {
   const [rolWijziging, setRolWijziging] = useState<{ gebruiker: GebruikerOverzichtDto; nieuweRol: string } | null>(
     null,
   )
-  const [killSwitchVoor, setKillSwitchVoor] = useState<{ gebruiker: GebruikerOverzichtDto; apparaat: ApparaatDto } | null>(null)
+  const [killSwitchVoor, setKillSwitchVoor] = useState<{ gebruiker: GebruikerOverzichtDto; groep: ApparaatGroep } | null>(null)
   const [actieBezig, setActieBezig] = useState(false)
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [opnieuwBezig, setOpnieuwBezig] = useState<string | null>(null)
@@ -129,9 +152,13 @@ export function GebruikersScreen() {
     setActieBezig(true)
     setActieFout(null)
     try {
-      await trekApparaatIn(killSwitchVoor.apparaat.id)
+      // Eén weergave-rij kan meerdere credentials dragen (gegroepeerde dev-stubs) — allemaal
+      // intrekken, anders blijft er stil een werkende credential achter.
+      for (const id of killSwitchVoor.groep.ids) {
+        await trekApparaatIn(id)
+      }
       meld(
-        `Kill-switch: "${killSwitchVoor.apparaat.apparaat_naam ?? 'apparaat'}" van ${killSwitchVoor.gebruiker.naam} is per direct geblokkeerd.`,
+        `Kill-switch: "${killSwitchVoor.groep.naam}" van ${killSwitchVoor.gebruiker.naam} is per direct geblokkeerd.`,
       )
       setApparatenPer((huidig) => {
         const kopie = { ...huidig }
@@ -316,7 +343,9 @@ export function GebruikersScreen() {
                   <th />
                 </tr>
                 {accordeurs.map((g) => {
-                  const apparaten = (apparatenPer[g.id] ?? []).filter((a) => a.ingetrokken_op === null)
+                  const apparaten = groepeerApparaten(
+                    (apparatenPer[g.id] ?? []).filter((a) => a.ingetrokken_op === null),
+                  )
                   const openUitnodiging = g.status === 'uitgenodigd' && g.open_uitnodiging_verloopt_op
                   return (
                     <tr key={g.id}>
@@ -338,16 +367,16 @@ export function GebruikersScreen() {
                             {openUitnodiging ? 'wacht op activatie' : 'geen actieve apparaten'}
                           </span>
                         )}
-                        {apparaten.map((apparaat) => (
-                          <span key={apparaat.id} style={{ whiteSpace: 'nowrap' }}>
+                        {apparaten.map((groep) => (
+                          <span key={groep.ids[0]} style={{ whiteSpace: 'nowrap' }}>
                             <span className="apparaat-chip">
-                              📱 {apparaat.apparaat_naam ?? 'apparaat'}
-                              {apparaat.is_dev_stub ? ' (dev-stub)' : ''}
+                              📱 {groep.naam}
+                              {groep.isDevStub ? ' (dev-stub)' : ''}
                             </span>{' '}
                             <Button
                               variant="ghost"
                               maat="klein"
-                              onClick={() => setKillSwitchVoor({ gebruiker: g, apparaat })}
+                              onClick={() => setKillSwitchVoor({ gebruiker: g, groep })}
                             >
                               Kill-switch
                             </Button>{' '}
@@ -424,7 +453,7 @@ export function GebruikersScreen() {
       {killSwitchVoor && (
         <BevestigDialog
           titel="Kill-switch — apparaat blokkeren"
-          bericht={`"${killSwitchVoor.apparaat.apparaat_naam ?? 'Apparaat'}" van ${killSwitchVoor.gebruiker.naam} wordt per direct geblokkeerd: de passkey en alle sessies van dit apparaat vervallen. De accordeur kan met wachtwoord + nieuwe registratie weer verder — niemand raakt buitengesloten.`}
+          bericht={`"${killSwitchVoor.groep.naam}" van ${killSwitchVoor.gebruiker.naam} wordt per direct geblokkeerd: de passkey en alle sessies van dit apparaat vervallen. De accordeur kan met wachtwoord + nieuwe registratie weer verder — niemand raakt buitengesloten.`}
           bezig={actieBezig}
           fout={actieFout}
           onBevestigen={() => void bevestigKillSwitch()}

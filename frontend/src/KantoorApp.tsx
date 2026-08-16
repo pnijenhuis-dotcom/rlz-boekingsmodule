@@ -1,7 +1,7 @@
 // Kantoor-web-app (alles behalve /accordeur) — een eigen lazy chunk zodat de accordeur-PWA
 // géén kantoor-bundels laadt (performance-budget accordeur-PWA, BESLISSINGEN punt 4).
 
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
 import { initThema } from './ui/thema'
 import { ActivateScreen } from './auth/ActivateScreen'
@@ -90,14 +90,14 @@ function BeschermdeRoutes() {
   )
 }
 
-export default function KantoorApp() {
-  // Thema (fase 1 modernisering): keuze wint, anders systeem — hier zodat óók de login-/
-  // activatieroutes buiten de Shell meteen het juiste thema dragen. De accordeur-PWA heeft
-  // een eigen, losstaand thema en zit niet onder deze app.
-  useEffect(() => {
-    initThema()
-  }, [])
+// Thema (fase 1 modernisering): keuze wint, anders systeem — op moduleniveau, VÓÓR de eerste
+// render: als effect draaide het ná de kinder-renders, waardoor de ThemaKnop een verouderde
+// stand las en de topbar even in het verkeerde thema flitste (kliktest 2026-08-16). Geldt zo
+// óók voor de login-/activatieroutes buiten de Shell. De accordeur-PWA heeft een eigen,
+// losstaand thema en importeert deze module niet.
+initThema()
 
+export default function KantoorApp() {
   return (
     <Routes>
       <Route path="/login" element={<LoginScreen />} />
