@@ -248,9 +248,11 @@ idempotent conform de F0-les — describe-vóór-create, herdraaibaar na elke de
   géén cloud-signaal is: `alembic check` faalt tegen de lokale dev-database met een —
   na normalisatie van geheugenadressen — **byte-identieke** diff (129.639 tekens).
   `f1_migratie.sh` draait daarom nu de échte guard-test-vergelijking (tabelniveau) inline.
-  Open punt (laag, nice-to-have): de model-type-drift ooit gelijktrekken zodat
-  `alembic check`/autogenerate weer signaalwaarde krijgt — tot die tijd autogenerate-output
-  altijd handmatig schiften (dat was al de werkwijze).
+  ~~Open punt (laag, nice-to-have): de model-type-drift ooit gelijktrekken~~ — **UITGEVOERD
+  (hygiëne-run 2026-08-16): type_annotation_map op de Base (str→TEXT,
+  datetime→timestamptz) + 51 index-/4 unique-declaraties + 2 tabel-comments in de modellen;
+  `alembic check` is sindsdien schoon en autogenerate heeft weer signaalwaarde.** De
+  tabelniveau-guard in f1_migratie.sh blijft staan (onafhankelijke, snelle cloud-toets).
 - **LES ADC-quota-project:** de eerste KMS-call faalde met 403 `SERVICE_DISABLED` tegen
   project `vastly-504108` — ADC droeg nog dat quota-project (attributie van de call, niet
   de resource). Fix: `gcloud auth application-default set-quota-project rlz-boekhouding`.

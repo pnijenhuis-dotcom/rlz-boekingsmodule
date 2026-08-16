@@ -18,12 +18,12 @@
 #   3. metadata-guard tegen dat schema: dezelfde tabelniveau-vergelijking als
 #      tests/unit/test_migratie_metadata_guard.py, inline (⚠️ NOOIT pytest met
 #      TEST_DATABASE_URL op de cloud-database richten: tests/conftest.py
-#      TRUNCATE't de testdatabase). NB `alembic check` is hier bewust NIET de
-#      toets (les F1-uitvoering 2026-08-14): die vergelijkt óók type-
-#      representaties en index-declaraties en faalt op pre-existente
-#      model↔DDL-drift (DateTime() vs timestamptz, Text vs String, ix_-indexes
-#      alleen in migraties) — identiek lokaal én cloud (genormaliseerde diff
-#      byte-gelijk geverifieerd), dus geen cloud-signaal.
+#      TRUNCATE't de testdatabase). NB `alembic check` was hier eerder bewust
+#      NIET de toets (les F1-uitvoering 2026-08-14: pre-existente model↔DDL-
+#      representatiedrift); die drift is in de hygiëne-run 2026-08-16
+#      gelijkgetrokken (type_annotation_map + index-declaraties in de
+#      modellen) — `alembic check` is sindsdien schoon, maar deze snelle
+#      tabelniveau-vergelijking blijft als onafhankelijke cloud-toets staan.
 #   4. alembic_version tonen (verwacht: head)
 #
 # Wachtwoorden komen uit Secret Manager en worden nooit geëchood (besluit 0012).
