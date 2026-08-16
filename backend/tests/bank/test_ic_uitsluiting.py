@@ -12,7 +12,9 @@ from sqlalchemy import Engine
 from app.bank import afletteren, voorstellen
 from app.bank.matchmotor import VoorstelSoort
 from app.bank.sync import _item_waarden
-from tests.auth.conftest import actieve_gebruiker, administratie_id, beheerder_id  # noqa: F401
+
+# actieve_gebruiker/administratie_id/beheerder_id komen via tests/bank/conftest.py (herexport
+# uit tests/auth) — een directe import hier botst met de testparameters (ruff F811, 16-08).
 from tests.bank.conftest import (  # noqa: F401
     FakeBankClient,
     maak_bank_mutatie,

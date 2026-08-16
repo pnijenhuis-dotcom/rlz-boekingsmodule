@@ -21,15 +21,12 @@ from app.documenten import service as documenten_service
 from app.documenten.models import Document, DocumentStatus
 from app.documenten.service import _schrijf_overgang
 from app.documenten.storage import LokaleBestandsopslag
-from tests.berichten.conftest import (  # noqa: F401
-    accordeur_1,
-    actieve_gebruiker,
-    administratie_id,
-    beheerder_id,
-    gescoopte_gebruiker,
-    opslag,
-    zet_schema,
-)
+
+# Fixtures (accordeur_1, administratie_id, opslag, …) komen automatisch uit
+# tests/berichten/conftest.py (zelfde package) — expliciete imports botsen met de
+# gelijknamige testparameters (ruff F811, hygiëne-run 16-08); alleen de niet-fixture-helper
+# zet_schema wordt geïmporteerd.
+from tests.berichten.conftest import zet_schema
 from tests.berichten.test_herinneringen import mail_log  # noqa: F401
 from tests.documenten.conftest import _opslag_naar_tmp  # noqa: F401
 

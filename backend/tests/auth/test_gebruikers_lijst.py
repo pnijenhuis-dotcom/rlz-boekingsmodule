@@ -11,7 +11,9 @@ from sqlalchemy import Engine, text
 
 from app.auth import service
 from app.db.models import GebruikerRol
-from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
+
+# Fixtures (administratie_id, beheerder_id) komen automatisch uit tests/auth/conftest.py —
+# een expliciete import botst met de gelijknamige testparameters (ruff F811, hygiëne-run 16-08).
 
 
 def _vind(items: list[service.GebruikerOverzicht], gebruiker_id: uuid.UUID) -> service.GebruikerOverzicht:

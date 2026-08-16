@@ -162,7 +162,9 @@ class TestPdfRouting:
         monkeypatch.setattr(
             verwerking.splitsing_extractie,
             "detecteer_facturen",
-            lambda inhoud, paginas, client=None, verbruik_referentie=None: [FactuurSegment(1, 1, "BLOW B.V.", "Bouwmaat", "F-1", 0.95)],
+            lambda inhoud, paginas, client=None, verbruik_referentie=None: [
+                FactuurSegment(1, 1, "BLOW B.V.", "Bouwmaat", "F-1", 0.95)
+            ],
         )
         eml = bouw_eml(bijlagen=[("factuur.pdf", bouw_pdf(1), "application", "pdf")])
         resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
