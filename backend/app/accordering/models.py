@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, func
+from sqlalchemy import ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,7 +44,12 @@ class DocumentHerinnering(Base):
     claim-vóór-verzenden zoals platform.accordeur_herinnering."""
 
     __tablename__ = "document_herinnering"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_document_herinnering_document_id", "document_id"),
+        Index("ix_document_herinnering_administratie_id", "administratie_id"),
+        Index("uq_document_herinnering_dag", "document_id", "datum", unique=True),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
@@ -73,7 +78,10 @@ class AccorderingLaag(Base):
     > € 1.000"). Append-only: deactiveren i.p.v. verwijderen."""
 
     __tablename__ = "accordering_laag"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_accordering_laag_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
@@ -94,7 +102,16 @@ class DocumentAccordering(Base):
     index). `detail` draagt vrije context (bv. totaalbedrag/leverancier op aanbied-moment)."""
 
     __tablename__ = "document_accordering"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_document_accordering_document_id", "document_id"),
+        Index(
+            "uq_document_accordering_open",
+            "document_id",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
@@ -112,7 +129,10 @@ class AccorderingStap(Base):
     staande-regel-verwijzing en afwijsreden."""
 
     __tablename__ = "accordering_stap"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_accordering_stap_accordering_id", "accordering_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
@@ -137,7 +157,10 @@ class StaandeGoedkeuring(Base):
     blokkerend — de regel vervangt alleen de akkoord-klik."""
 
     __tablename__ = "staande_goedkeuring"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_staande_goedkeuring_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))

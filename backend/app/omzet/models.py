@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, func
+from sqlalchemy import ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,7 +21,16 @@ class OmzetCategorieMapping(Base):
     (historie blijft); een nieuwe mapping voor dezelfde sleutel deactiveert de oude."""
 
     __tablename__ = "omzet_categorie_mapping"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ux_omzet_mapping_actief_per_categorie",
+            "administratie_id",
+            "categorie_sleutel",
+            unique=True,
+            postgresql_where=text("actief"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
@@ -91,7 +100,10 @@ class OmzetVoorstelRegel(Base):
     (app/omzet/mapping.py::normaliseer_categorie_sleutel)."""
 
     __tablename__ = "omzet_voorstel_regel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_omzet_voorstel_regel_document_id", "document_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(
@@ -127,7 +139,18 @@ class OmzetBoeking(Base):
     (eigen status ↔ werkelijke RLZ-staat van beide documenten)."""
 
     __tablename__ = "omzet_boeking"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_omzet_boeking_document_id", "document_id"),
+        Index(
+            "ux_omzet_boeking_actief_per_periode",
+            "administratie_id",
+            "periode_start",
+            "periode_eind",
+            unique=True,
+            postgresql_where=text("status IN ('geboekt', 'half_geboekt')"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))

@@ -5,13 +5,36 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, MetaData, Numeric, SmallInteger, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    MetaData,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import BYTEA, ENUM, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     metadata = MetaData(schema="platform")
+
+    # Representatie-drift-fix (hygiëne-run 2026-08-16): de migraties schrijven TEXT en
+    # timestamptz, maar kale Mapped[str]/Mapped[datetime] leidde tot VARCHAR/TIMESTAMP-zonder-
+    # tijdzone in Base.metadata — waardoor `alembic check`/autogenerate op élke kolom aansloeg
+    # en geen signaalwaarde had (GCP_UITROL "LES metadata-guard"). Deze map maakt de modellen
+    # de DDL-representatie ín, zonder één functionele schemawijziging.
+    type_annotation_map = {
+        str: Text(),
+        datetime: DateTime(timezone=True),
+    }
 
 
 class GebruikerRol(enum.StrEnum):
@@ -138,7 +161,13 @@ class Gebruiker(Base):
     # E-mail altijd in de genormaliseerde (lowercase) vorm — migratie 0049. De CHECK maakt de
     # bestaande unique-index dé index op de genormaliseerde vorm en laat een schrijfpad dat
     # app.auth.normalisatie vergeet hard falen i.p.v. stil een case-gevoelig account maken.
-    __table_args__ = (CheckConstraint("e_mail = lower(e_mail)", name="ck_gebruiker_e_mail_lowercase"),)
+    __table_args__ = (
+        CheckConstraint("e_mail = lower(e_mail)", name="ck_gebruiker_e_mail_lowercase"),
+        {
+            "comment": "PII van platformgebruikers. Bevat nooit financiële velden — die leven "
+            "uitsluitend in het boekhouding-schema."
+        },
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     naam: Mapped[str]
@@ -204,6 +233,7 @@ class GebruikerEntiteit(Base):
     vastgoed-module-beheerder; muteren alleen module-beheerder en nooit de eigen scope."""
 
     __tablename__ = "gebruiker_entiteit"
+    __table_args__ = (Index("ix_gebruiker_entiteit_entiteit_id", "entiteit_id"),)
 
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
@@ -218,6 +248,7 @@ class Uitnodiging(Base):
     nergens anders herleidbaar dan via de hash."""
 
     __tablename__ = "uitnodiging"
+    __table_args__ = (Index("ix_uitnodiging_gebruiker_id", "gebruiker_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -238,6 +269,10 @@ class RefreshToken(Base):
     de hergebruik-check zelf (die leunt op gebruikt_op/ingetrokken_op)."""
 
     __tablename__ = "refresh_token"
+    __table_args__ = (
+        Index("ix_refresh_token_gebruiker_id", "gebruiker_id"),
+        Index("ix_refresh_token_apparaat_id", "apparaat_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -267,6 +302,7 @@ class WebauthnCredential(Base):
     geen echte passkey registreren)."""
 
     __tablename__ = "webauthn_credential"
+    __table_args__ = (Index("ix_webauthn_credential_gebruiker_id", "gebruiker_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -291,6 +327,7 @@ class WebauthnChallenge(Base):
     verbrand (`gebruikt_op`), nooit hergebruikt (replay-bescherming)."""
 
     __tablename__ = "webauthn_challenge"
+    __table_args__ = (Index("ix_webauthn_challenge_gebruiker_id", "gebruiker_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -309,6 +346,7 @@ class AccordeurAkkoord(Base):
     (server-side afgedwongen in app/accordering/router.py)."""
 
     __tablename__ = "accordeur_akkoord"
+    __table_args__ = (UniqueConstraint("gebruiker_id", "tekst_versie", name="uq_accordeur_akkoord_versie"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -329,7 +367,7 @@ class TotpSecret(Base):
     )
     secret_ciphertext: Mapped[bytes] = mapped_column(BYTEA)
     wrapped_data_key: Mapped[bytes] = mapped_column(BYTEA)
-    laatste_stap: Mapped[int | None] = mapped_column(default=None)
+    laatste_stap: Mapped[int | None] = mapped_column(BigInteger, default=None)
     bevestigd_op: Mapped[datetime | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
@@ -345,6 +383,7 @@ class Grootboekrekening(Base):
     verwijderen; komt hij terug, gaat de kolom terug naar NULL)."""
 
     __tablename__ = "grootboekrekening"
+    __table_args__ = (Index("ix_grootboekrekening_administratie_id", "administratie_id"),)
 
     ledger_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -461,8 +500,10 @@ class AiGebruik(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tijdstip: Mapped[datetime] = mapped_column(server_default=func.now())
     maand: Mapped[date] = mapped_column(index=True)
-    model: Mapped[str]
-    bron: Mapped[str]
+    # Bewust String (VARCHAR): zo staan ze in migratie 0047 — de enige twee niet-TEXT
+    # tekstkolommen; expliciet gepind zodat de type_annotation_map (str -> Text) ze niet raakt.
+    model: Mapped[str] = mapped_column(String())
+    bron: Mapped[str] = mapped_column(String())
     document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     intake_bericht_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     input_tokens: Mapped[int] = mapped_column(BigInteger)
@@ -505,6 +546,16 @@ class AuditEvent(Base):
     """
 
     __tablename__ = "audit_event"
+    __table_args__ = (
+        Index("ix_audit_event_administratie_id", "administratie_id"),
+        Index("ix_audit_event_tabel_record", "tabel", "record_id"),
+        Index("ix_audit_event_correlatie_id", "correlatie_id"),
+        Index("ix_audit_event_tijdstip", "tijdstip"),
+        {
+            "comment": "Append-only audit-log (bron voor de WORM-export). UPDATE/DELETE zijn niet "
+            "gegrant aan de app-rol — zie GRANTs onderaan deze migratie."
+        },
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tijdstip: Mapped[datetime] = mapped_column(server_default=func.now())

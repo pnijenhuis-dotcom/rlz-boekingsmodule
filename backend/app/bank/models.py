@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, SmallInteger, func
+from sqlalchemy import ForeignKey, Index, Numeric, SmallInteger, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,7 +30,10 @@ class PaymentAccountCache(Base):
     (BankGatewayStates 0=Active…3=Deleted, BankGatewayTypes 0=NonPsd2/1=Psd2)."""
 
     __tablename__ = "payment_account_cache"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_payment_account_cache_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -66,7 +69,16 @@ class BankMutatie(Base):
     (kernprincipe 3 — er bestaat een DELETE-route bij RLZ, die gebruiken we nooit)."""
 
     __tablename__ = "bank_mutatie"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_bank_mutatie_administratie_id", "administratie_id"),
+        Index(
+            "ix_bank_mutatie_open",
+            "administratie_id",
+            "payment_account_id",
+            postgresql_where=text("open_bedrag IS NOT NULL AND open_bedrag <> 0"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -94,7 +106,10 @@ class PaymentItemCache(Base):
     `verdwenen_uit_bron_op` — zelfde patroon als de sync-caches, nooit hard verwijderen."""
 
     __tablename__ = "payment_item_cache"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_payment_item_cache_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -153,7 +168,16 @@ class BankAfletterOpdracht(Base):
     opdracht per mutatie (partiële unique index, migratie 0026); historie blijft staan."""
 
     __tablename__ = "bank_afletter_opdracht"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ux_bank_afletter_opdracht_open",
+            "administratie_id",
+            "payment_transaction_id",
+            unique=True,
+            postgresql_where=text("status = 'klaargezet'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -202,7 +226,16 @@ class BankBoeking(Base):
     payment_transaction_id maar een partiële ("één GEBOEKTE per mutatie", migratie 0026)."""
 
     __tablename__ = "bank_boeking"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ux_bank_boeking_actief_per_mutatie",
+            "administratie_id",
+            "payment_transaction_id",
+            unique=True,
+            postgresql_where=text("status = 'geboekt'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -229,7 +262,10 @@ class BankBoekingRegel(Base):
     mutatiebedrag dekken — hard afgedwongen in app/bank/boeken.py, code rekent, nooit AI."""
 
     __tablename__ = "bank_boeking_regel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_bank_boeking_regel_boeking_id", "bank_boeking_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     bank_boeking_id: Mapped[uuid.UUID] = mapped_column(
@@ -253,7 +289,16 @@ class BankRegel(Base):
     i.p.v. verwijderen (`actief`), historie blijft."""
 
     __tablename__ = "bank_regel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ux_bank_regel_actief_per_tegenpartij",
+            "administratie_id",
+            "tegenpartij_sleutel",
+            unique=True,
+            postgresql_where=text("actief"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(

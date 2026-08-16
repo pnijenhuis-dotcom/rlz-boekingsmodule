@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, func
+from sqlalchemy import ForeignKey, Index, Numeric, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,7 +49,10 @@ class DoorbelastingMapping(Base):
     gebruikt per doelentiteit; het regel-niveau kiest de mens per verdeelregel)."""
 
     __tablename__ = "doorbelasting_mapping"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "doel_customer_guid", name="doorbelasting_mapping_doel_uniek"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -102,7 +105,10 @@ class IntercompanyTegenpartij(Base):
     de vlag volgt mapping.intercompany/actief)."""
 
     __tablename__ = "intercompany_tegenpartij"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "entity_guid", name="intercompany_tegenpartij_uniek"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -125,7 +131,15 @@ class DoorbelastingRun(Base):
     spoor"); een geslaagde (deel)boeking wist zijn eigen ingang."""
 
     __tablename__ = "doorbelasting_run"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "doorbelasting_run_document_actief_uniek",
+            "document_id",
+            unique=True,
+            postgresql_where=text("status != 'gestorneerd'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -152,7 +166,10 @@ class DoorbelastingRegel(Base):
     niet onboarded is — mens kiest vóór de spiegel geboekt wordt)."""
 
     __tablename__ = "doorbelasting_regel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        UniqueConstraint("run_id", "bron_regel_id", "mapping_id", name="doorbelasting_regel_uniek"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(
@@ -181,7 +198,16 @@ class DoorbelastingBoeking(Base):
     het omzetmotor-patroon (fouten + hersteladvies, JSONB)."""
 
     __tablename__ = "doorbelasting_boeking"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "doorbelasting_boeking_doc_doel_uniek",
+            "document_id",
+            "mapping_id",
+            unique=True,
+            postgresql_where=text("status != 'gestorneerd'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(

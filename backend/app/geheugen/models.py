@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, Index, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,7 +62,15 @@ class BoekingObservatie(Base):
     of sync-verdwijning overleven — de engine stelt voor, de checks/controleur valideren."""
 
     __tablename__ = "boeking_observatie"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ix_boeking_observatie_admin_vendor_sleutel",
+            "administratie_id",
+            "vendor_id",
+            "regel_sleutel",
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(

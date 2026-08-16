@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, Index, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,7 +44,17 @@ class ReconciliatieAcceptatie(Base):
     met verplichte reden in de werkvoorraad."""
 
     __tablename__ = "reconciliatie_acceptatie"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "reconciliatie_acceptatie_actief_uniek",
+            "administratie_id",
+            "bron",
+            "vingerafdruk",
+            unique=True,
+            postgresql_where=text("ingetrokken_op IS NULL"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(

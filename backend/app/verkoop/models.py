@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, func
+from sqlalchemy import ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,7 +48,10 @@ class VerkoopVoorstelRegel(Base):
     dat gebeurd is."""
 
     __tablename__ = "verkoop_voorstel_regel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_verkoop_voorstel_regel_document_id", "document_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(
@@ -98,7 +101,18 @@ class VerkoopBoeking(Base):
     gecrediteerde factuurnummer hier als geboekt bekend is."""
 
     __tablename__ = "verkoop_boeking"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_verkoop_boeking_document_id", "document_id"),
+        Index(
+            "ux_verkoop_boeking_actief_per_factuurnummer",
+            "administratie_id",
+            "factuurnummer",
+            "is_creditnota",
+            unique=True,
+            postgresql_where=text("status = 'geboekt'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))

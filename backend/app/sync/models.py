@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, func
+from sqlalchemy import ForeignKey, Index, Numeric, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,7 +25,10 @@ from app.db.models import Base
 
 class TaxRateCache(Base):
     __tablename__ = "taxrate_cache"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_taxrate_cache_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -40,7 +43,10 @@ class TaxRateCache(Base):
 
 class VendorCache(Base):
     __tablename__ = "vendor_cache"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_vendor_cache_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -55,7 +61,10 @@ class VendorCache(Base):
 
 class ProjectCache(Base):
     __tablename__ = "project_cache"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_project_cache_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID] = mapped_column(

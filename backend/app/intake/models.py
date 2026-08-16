@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, Index, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,7 +18,15 @@ class IntakeBericht(Base):
     werkvoorraad-document werd (VGB-genegeerd, niet-verwerkbaar type): "niets verdwijnt stil"."""
 
     __tablename__ = "intake_bericht"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ux_intake_bericht_message_id",
+            "message_id",
+            unique=True,
+            postgresql_where=text("message_id IS NOT NULL"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     message_id: Mapped[str | None] = mapped_column(default=None)
@@ -45,7 +53,16 @@ class ToewijzingRegel(Base):
     verzamelbak; deactiveren i.p.v. verwijderen (historie blijft)."""
 
     __tablename__ = "toewijzing_regel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ux_toewijzing_regel_actief",
+            "soort",
+            "sleutel",
+            unique=True,
+            postgresql_where=text("actief"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     soort: Mapped[str]
@@ -75,7 +92,15 @@ class IntakeSplitsing(Base):
     {start_pagina, eind_pagina, tenaamstelling, leverancier, factuurnummer, zekerheid}."""
 
     __tablename__ = "intake_splitsing"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "ux_intake_splitsing_open_per_document",
+            "bron_document_id",
+            unique=True,
+            postgresql_where=text("status = 'voorgesteld'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     bron_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))

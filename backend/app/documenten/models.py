@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, func
+from sqlalchemy import ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -101,7 +101,12 @@ class Document(Base):
     controleur (zie mockup: chip 'Mogelijk duplicaat van ... — beoordelen')."""
 
     __tablename__ = "document"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_document_administratie_id", "administratie_id"),
+        Index("ix_document_administratie_hash", "administratie_id", "sha256_hash"),
+        Index("ix_document_status", "status"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     administratie_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -148,7 +153,11 @@ class DocumentGebeurtenis(Base):
     nooit NULL, nooit de mens die de achtergrondtaak toevallig triggerde."""
 
     __tablename__ = "document_gebeurtenis"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_document_gebeurtenis_document_id", "document_id"),
+        Index("ix_document_gebeurtenis_tijdstip", "tijdstip"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
@@ -190,7 +199,10 @@ class BoekvoorstelRegel(Base):
     controlescherm en de RLZ-PUT)."""
 
     __tablename__ = "boekvoorstel_regel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_boekvoorstel_regel_document_id", "document_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(
@@ -286,7 +298,15 @@ class Vraag(Base):
     gebonden aan de status."""
 
     __tablename__ = "vraag"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "vraag_een_open_per_document",
+            "document_id",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -334,7 +354,15 @@ class Afwijzing(Base):
     Vraag.status_voor_vraag)."""
 
     __tablename__ = "afwijzing"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "afwijzing_een_open_per_document",
+            "document_id",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -403,7 +431,15 @@ class IbanAccordering(Base):
     app/documenten/iban_accordering.py én met een DB-CHECK."""
 
     __tablename__ = "iban_accordering"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index(
+            "iban_accordering_een_open_per_document",
+            "document_id",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(
@@ -446,7 +482,16 @@ class WebhookUitgaand(Base):
     (document_id = bron-document, administratie_id = doel-administratie)."""
 
     __tablename__ = "webhook_uitgaand"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        Index("ix_webhook_uitgaand_document_id", "document_id"),
+        Index("ix_webhook_uitgaand_administratie_id", "administratie_id"),
+        Index(
+            "ix_webhook_uitgaand_openstaand",
+            "volgende_poging_op",
+            postgresql_where=text("status = 'openstaand'"),
+        ),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))

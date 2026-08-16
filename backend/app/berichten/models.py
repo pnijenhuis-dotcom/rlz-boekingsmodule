@@ -10,7 +10,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import ForeignKey, UniqueConstraint, func
+from sqlalchemy import ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,7 +25,11 @@ class PushSubscriptie(Base):
     géén geheimen van ons, wel per subscriptie uniek."""
 
     __tablename__ = "push_subscriptie"
-    __table_args__ = {"schema": "platform"}
+    __table_args__ = (
+        Index("ix_push_subscriptie_gebruiker_id", "gebruiker_id"),
+        Index("ix_push_subscriptie_apparaat_id", "apparaat_id"),
+        {"schema": "platform"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -94,6 +98,7 @@ class AccordeurNieuwGemeld(Base):
     __tablename__ = "accordeur_nieuw_gemeld"
     __table_args__ = (
         UniqueConstraint("gebruiker_id", "document_id", name="uq_accordeur_nieuw_gemeld"),
+        Index("ix_accordeur_nieuw_gemeld_gebruiker_id", "gebruiker_id"),
         {"schema": "platform"},
     )
 
