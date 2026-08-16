@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -615,3 +615,158 @@ def mijn_administraties(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[Admin
             .order_by(Administratie.naam)
         )
         return list(rijen)
+
+
+@dataclass(frozen=True)
+class GebruikerOverzicht:
+    """Eén rij op het scherm Gebruikers & toegang (fase 3 modernisering, designronde 15-08).
+    Dataminimalisatie: alleen bestaans-/statusfeiten over de beveiliging (heeft TOTP, aantal
+    actieve passkeys) — nooit secret- of credentialmateriaal."""
+
+    id: uuid.UUID
+    naam: str
+    e_mail: str
+    rol: GebruikerRol
+    status: GebruikerStatus
+    administratie_ids: list[uuid.UUID]
+    heeft_totp: bool
+    aantal_passkeys: int
+    open_uitnodiging_verloopt_op: datetime | None
+
+
+def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
+    """Gebruikerslijst voor Gebruikers & toegang — Beheerder-only (router-dependency; de
+    RLS-beheerder-bypass op gebruiker_administratie maakt de scope-kolom platform-breed
+    leesbaar). Gepseudonimiseerde gebruikers (AVG) blijven buiten de lijst."""
+    now = datetime.now(UTC)
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruikers = list(
+            session.scalars(
+                select(Gebruiker).where(Gebruiker.gepseudonimiseerd_op.is_(None)).order_by(Gebruiker.naam)
+            )
+        )
+        scope_rijen = session.execute(
+            select(GebruikerAdministratie.gebruiker_id, GebruikerAdministratie.administratie_id)
+        ).all()
+        totp_ids = set(
+            session.scalars(select(TotpSecret.gebruiker_id).where(TotpSecret.bevestigd_op.is_not(None)))
+        )
+        passkeys = dict(
+            session.execute(
+                select(WebauthnCredential.gebruiker_id, func.count())
+                .where(WebauthnCredential.ingetrokken_op.is_(None))
+                .group_by(WebauthnCredential.gebruiker_id)
+            ).all()
+        )
+        open_uitnodigingen = dict(
+            session.execute(
+                select(Uitnodiging.gebruiker_id, func.max(Uitnodiging.verloopt_op))
+                .where(Uitnodiging.gebruikt_op.is_(None), Uitnodiging.verloopt_op > now)
+                .group_by(Uitnodiging.gebruiker_id)
+            ).all()
+        )
+        session.expunge_all()
+
+    scope_per_gebruiker: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for gebruiker_id, administratie_id in scope_rijen:
+        scope_per_gebruiker.setdefault(gebruiker_id, []).append(administratie_id)
+
+    return [
+        GebruikerOverzicht(
+            id=g.id,
+            naam=g.naam,
+            e_mail=g.e_mail,
+            rol=g.rol,
+            status=g.status,
+            administratie_ids=scope_per_gebruiker.get(g.id, []),
+            heeft_totp=g.id in totp_ids,
+            aantal_passkeys=passkeys.get(g.id, 0),
+            open_uitnodiging_verloopt_op=open_uitnodigingen.get(g.id),
+        )
+        for g in gebruikers
+    ]
+
+
+def staande_goedkeuringen_per_accordeur(*, administratie_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Aantal actieve staande goedkeuringen per accordeur, opgeteld over de administraties.
+    Per administratie een eigen gescoopte transactie: boekhouding.staande_goedkeuring heeft een
+    strikte per-administratie-RLS zonder beheerder-bypass (migratie 0033) — zelfde looppatroon
+    als de dagelijkse herinnering."""
+    from app.accordering.models import StaandeGoedkeuring
+
+    totalen: dict[uuid.UUID, int] = {}
+    for administratie_id in administratie_ids:
+        with scoped_session(administratie_id) as session:
+            rijen = session.execute(
+                select(StaandeGoedkeuring.accordeur_gebruiker_id, func.count())
+                .where(
+                    StaandeGoedkeuring.administratie_id == administratie_id,
+                    StaandeGoedkeuring.actief.is_(True),
+                    StaandeGoedkeuring.ingetrokken_op.is_(None),
+                )
+                .group_by(StaandeGoedkeuring.accordeur_gebruiker_id)
+            ).all()
+        for accordeur_id, aantal in rijen:
+            totalen[accordeur_id] = totalen.get(accordeur_id, 0) + aantal
+    return totalen
+
+
+@dataclass(frozen=True)
+class VernieuwdeUitnodiging:
+    resultaat: UitnodigingResultaat
+    naam: str
+    e_mail: str
+
+
+def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> VernieuwdeUitnodiging:
+    """"Opnieuw mailen" (Gebruikers & toegang): het oorspronkelijke token bestaat alleen als
+    hash, dus opnieuw versturen = een nieuw token uitgeven. Oudere nog-open uitnodigingen van
+    dezelfde gebruiker verlopen per direct (één werkende link tegelijk); de handeling zelf gaat
+    het append-only audit_event in. Alleen voor gebruikers die nog in de uitnodigingsfase
+    zitten — een (deels) geactiveerd account krijgt nooit een verse activatielink."""
+    token = secrets.token_urlsafe(32)
+    verloopt_op = datetime.now(UTC) + INVITE_TTL
+    uitnodiging_id = uuid.uuid4()
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, gebruiker_id)
+        if gebruiker is None or gebruiker.gepseudonimiseerd_op is not None:
+            raise AuthError("Onbekende gebruiker")
+        if gebruiker.status != GebruikerStatus.UITGENODIGD:
+            raise AuthError("Alleen een nog niet geactiveerde uitnodiging kan opnieuw gemaild worden")
+        naam, e_mail = gebruiker.naam, gebruiker.e_mail
+        nu = datetime.now(UTC)
+        session.execute(
+            update(Uitnodiging)
+            .where(
+                Uitnodiging.gebruiker_id == gebruiker_id,
+                Uitnodiging.gebruikt_op.is_(None),
+                Uitnodiging.verloopt_op > nu,
+            )
+            .values(verloopt_op=nu)
+        )
+        session.add(
+            Uitnodiging(
+                id=uitnodiging_id,
+                gebruiker_id=gebruiker_id,
+                token_hash=_hash_token(token),
+                aangemaakt_door=actor_id,
+                verloopt_op=verloopt_op,
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="platform.uitnodiging",
+            record_id=uitnodiging_id,
+            actie="uitnodiging_opnieuw_gemaild",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={"gebruiker_id": str(gebruiker_id), "verloopt_op": verloopt_op.isoformat()},
+        )
+    return VernieuwdeUitnodiging(
+        resultaat=UitnodigingResultaat(
+            uitnodiging_id=uitnodiging_id, gebruiker_id=gebruiker_id, token=token, verloopt_op=verloopt_op
+        ),
+        naam=naam,
+        e_mail=e_mail,
+    )

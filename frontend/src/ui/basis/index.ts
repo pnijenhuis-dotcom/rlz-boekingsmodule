@@ -12,5 +12,5 @@ export { Dialog, DialogTrigger, DialogClose, DialogContent, DialogTitle, DialogD
 export { DataTable, CelHoofdSub, type Kolom } from './DataTable'
 export { FormField } from './FormField'
 export { Skeleton } from './Skeleton'
-export { ToastProvider, useToast, type ToastSoort } from './Toast'
+export { ToastProvider, useToast, useToastOptioneel, type ToastSoort } from './Toast'
 export { MultiSelect, type MultiSelectOptie } from './MultiSelect'

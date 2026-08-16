@@ -9,6 +9,7 @@ import { useAuth } from './auth/AuthContext'
 import { LoginScreen } from './auth/LoginScreen'
 import { BankDetailScreen } from './bank/BankDetailScreen'
 import { DocumentDetailScreen } from './document/DocumentDetailScreen'
+import { GebruikersScreen } from './gebruikers/GebruikersScreen'
 import { InstellingenScreen } from './instellingen/InstellingenScreen'
 import { OmzetReviewScreen } from './omzet/OmzetReviewScreen'
 import { Shell } from './shell/Shell'
@@ -81,6 +82,7 @@ function BeschermdeRoutes() {
             </Suspense>
           }
         />
+        <Route path="/gebruikers" element={<GebruikersScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

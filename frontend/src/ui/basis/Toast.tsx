@@ -24,6 +24,15 @@ export function useToast(): ToastContextWaarde {
   return ctx
 }
 
+const NOOP_TOAST: ToastContextWaarde = { meld: () => undefined }
+
+/** Als useToast, maar zonder harde Provider-eis (zelfde patroon als useAuthOptioneel): voor
+ * schermen die ook los van de Shell gerenderd worden (tests, visuele harnassen) — de toast is
+ * franje bovenop zichtbare statuswijzigingen, nooit het enige spoor van een actie. */
+export function useToastOptioneel(): ToastContextWaarde {
+  return React.useContext(ToastContext) ?? NOOP_TOAST
+}
+
 const TOON_MS = 3600
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {

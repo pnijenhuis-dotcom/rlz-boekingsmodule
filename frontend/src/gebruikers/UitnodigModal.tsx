@@ -1,0 +1,140 @@
+import { useState } from 'react'
+import type { AdministratieDto } from '../api/types'
+import { ApiError } from '../api/client'
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  FormField,
+  MultiSelect,
+  Select,
+} from '../ui/basis'
+import { nodigUit, type UitnodigingResultaatDto } from './gebruikersApi'
+
+/* Uitnodig-modal (mockup #modal medewerker/accordeur, fase 3 15-08) — op de bestaande
+ * uitnodigingsflow (POST /auth/uitnodigingen, mailt al; fail-zichtbaar bij een mailfout). */
+export function UitnodigModal({
+  soort,
+  administraties,
+  open,
+  onSluiten,
+  onUitgenodigd,
+}: {
+  soort: 'medewerker' | 'accordeur'
+  administraties: AdministratieDto[]
+  open: boolean
+  onSluiten: () => void
+  onUitgenodigd: (resultaat: UitnodigingResultaatDto) => void
+}) {
+  const [naam, setNaam] = useState('')
+  const [eMail, setEMail] = useState('')
+  const [rol, setRol] = useState(soort === 'accordeur' ? 'klant_accordeur' : 'boekhouding')
+  const [scope, setScope] = useState<string[]>([])
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  const isAccordeur = soort === 'accordeur'
+  const scopeVerplicht = isAccordeur || rol !== 'beheerder'
+
+  async function verstuur() {
+    setBezig(true)
+    setFout(null)
+    try {
+      const resultaat = await nodigUit({
+        naam: naam.trim(),
+        e_mail: eMail.trim(),
+        rol: isAccordeur ? 'klant_accordeur' : rol,
+        administratie_ids: scope,
+      })
+      onUitgenodigd(resultaat)
+      setNaam('')
+      setEMail('')
+      setScope([])
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Uitnodigen mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  const kanVersturen = naam.trim() !== '' && eMail.trim().includes('@') && (!scopeVerplicht || scope.length > 0)
+
+  return (
+    <Dialog open={open} onOpenChange={(nieuwOpen) => !nieuwOpen && !bezig && onSluiten()}>
+      <DialogContent>
+        <DialogTitle>{isAccordeur ? 'Accordeur uitnodigen' : 'Medewerker uitnodigen'}</DialogTitle>
+        <DialogDescription>
+          {isAccordeur
+            ? 'De accordeur krijgt een activatiemail voor de mobiele app (wachtwoord → passkey → voorwaarden). Meerdere administraties mag — de wachtrij toont alles bij elkaar.'
+            : 'De uitnodiging wordt gemaild (eenmalige link, 72 uur geldig). Activatie = wachtwoord + tweede factor.'}
+        </DialogDescription>
+        <FormField label="Naam" htmlFor="uitnodig-naam">
+          <input
+            id="uitnodig-naam"
+            type="text"
+            value={naam}
+            onChange={(e) => setNaam(e.target.value)}
+            placeholder={isAccordeur ? 'R. de Groot' : 'Voor- en achternaam'}
+          />
+        </FormField>
+        <FormField label="E-mailadres" htmlFor="uitnodig-email">
+          <input
+            id="uitnodig-email"
+            type="email"
+            value={eMail}
+            onChange={(e) => setEMail(e.target.value)}
+            placeholder={isAccordeur ? 'naam@klantbedrijf.nl' : 'naam@ak-nijenhuis.nl'}
+          />
+        </FormField>
+        {!isAccordeur && (
+          <FormField
+            label="Rol"
+            htmlFor="uitnodig-rol"
+            hint="Boekhouding: verwerken & boeken · +Projecten: ook projectbewaking · Beheerder: alles incl. instellingen en gebruikersbeheer"
+          >
+            <Select id="uitnodig-rol" className="w-full" value={rol} onChange={(e) => setRol(e.target.value)}>
+              <option value="boekhouding">Boekhouding</option>
+              <option value="boekhouding_projecten">Boekhouding + Projecten</option>
+              <option value="beheerder">Beheerder</option>
+            </Select>
+          </FormField>
+        )}
+        <FormField
+          label={isAccordeur ? 'Administraties' : 'Administratie-scope'}
+          hint={
+            rol === 'beheerder' && !isAccordeur
+              ? 'Een Beheerder is platform-breed — scope is niet nodig.'
+              : isAccordeur
+                ? 'Minstens één — de wachtrij voegt alles samen.'
+                : 'Minstens één — zonder scope ziet iemand niets.'
+          }
+        >
+          <MultiSelect
+            opties={administraties.map((a) => ({ waarde: a.id, label: a.naam }))}
+            waarden={scope}
+            onChange={setScope}
+            zoekPlaceholder="Zoek administratie… (typ om te filteren)"
+          />
+        </FormField>
+        {isAccordeur && (
+          <p className="hint" style={{ marginTop: 0 }}>
+            Accorderingslagen en drempels stel je per administratie in onder Instellingen → accordering.
+          </p>
+        )}
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          <Button variant="secundair" onClick={onSluiten} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button onClick={() => void verstuur()} disabled={bezig || !kanVersturen}>
+            {bezig ? 'Bezig…' : 'Verstuur uitnodiging'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

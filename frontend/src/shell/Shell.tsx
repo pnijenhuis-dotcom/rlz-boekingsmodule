@@ -41,6 +41,9 @@ export function Shell() {
           <NavItem to="/zoeken">Zoeken</NavItem>
           <NavItem to="/archief">Archief</NavItem>
           <div className="nav-kop">Beheer</div>
+          {/* Gebruikers & toegang (fase 3, 15-08) is Beheerder-only — het endpoint weigert
+              andere rollen, dus het menu-item verschijnt daar ook niet. */}
+          {rol === 'beheerder' && <NavItem to="/gebruikers">Gebruikers</NavItem>}
           {/* Sinds kantoor-passkeys (besluit 0020) voor élke kantoor-rol: niet-Beheerders zien
               er alleen de Beveiliging-sectie (eigen passkeys). */}
           <NavItem to="/instellingen">Instellingen</NavItem>

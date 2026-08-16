@@ -126,6 +126,11 @@ tr.clickable:hover {
   background: color-mix(in srgb, var(--accent) 5%, var(--panel));
 }
 
+/* Bulk-rijselectie (fase 3 modernisering — mockup tbody tr.geselecteerd). */
+tr.geselecteerd td {
+  background: var(--accent-bg);
+}
+
 .amount {
   text-align: right;
   font-variant-numeric: tabular-nums;

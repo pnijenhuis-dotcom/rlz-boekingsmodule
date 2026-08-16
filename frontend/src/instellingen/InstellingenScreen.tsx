@@ -8,6 +8,7 @@ import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstell
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
+import { BulkBediening } from './BulkBediening'
 import { BeveiligingInstellingen } from './BeveiligingInstellingen'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import {
@@ -234,6 +235,8 @@ export function InstellingenScreen() {
   const [pending, setPending] = useState<PendingWijziging | null>(null)
   const [bezig, setBezig] = useState(false)
   const [wijzigenFout, setWijzigenFout] = useState<string | null>(null)
+  // Bulk-rijselectie (fase 3 modernisering 15-08): ids van geselecteerde administraties.
+  const [selectie, setSelectie] = useState<string[]>([])
 
   const laadAlles = useCallback(() => {
     setLaadFout(null)
@@ -437,14 +440,32 @@ export function InstellingenScreen() {
 
       <div className="panel" style={{ marginTop: 16 }}>
         <h2 style={{ marginTop: 0 }}>Administraties</h2>
+        <p className="hint" style={{ marginTop: 4 }}>
+          Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
+        </p>
         {administraties === null && !laadFout && <p className="hint">Laden…</p>}
         {administraties !== null && administraties.length === 0 && (
           <p className="hint">Nog geen administraties gekoppeld.</p>
         )}
         {administraties !== null && administraties.length > 0 && (
+          <>
+          <BulkBediening
+            administraties={administraties}
+            geselecteerd={selectie}
+            onWisSelectie={() => setSelectie([])}
+            onGereed={laadAlles}
+          />
           <table>
             <tbody>
               <tr>
+                <th style={{ width: 36 }}>
+                  <Checkbox
+                    aria-label="Alle administraties selecteren"
+                    checked={selectie.length === administraties.length}
+                    indeterminate={selectie.length > 0 && selectie.length < administraties.length}
+                    onChange={(e) => setSelectie(e.target.checked ? administraties.map((a) => a.id) : [])}
+                  />
+                </th>
                 <th>Administratie</th>
                 <th>Eigenaar (krijgt vragen)</th>
                 <th>IBAN-wissel accorderen door</th>
@@ -453,7 +474,18 @@ export function InstellingenScreen() {
                 <th>AI-extractie (AVG-gate)</th>
               </tr>
               {administraties.map((a) => (
-                <tr key={a.id}>
+                <tr key={a.id} className={selectie.includes(a.id) ? 'geselecteerd' : undefined}>
+                  <td>
+                    <Checkbox
+                      aria-label={`Selecteer ${a.naam}`}
+                      checked={selectie.includes(a.id)}
+                      onChange={(e) =>
+                        setSelectie((huidig) =>
+                          e.target.checked ? [...huidig, a.id] : huidig.filter((id) => id !== a.id),
+                        )
+                      }
+                    />
+                  </td>
                   <td>{a.naam}</td>
                   <td>
                     <EigenaarCell
@@ -541,6 +573,7 @@ export function InstellingenScreen() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
 

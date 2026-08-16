@@ -171,3 +171,24 @@ class AdministratieResponse(BaseModel):
 
 class MijnAdministratiesResponse(BaseModel):
     administraties: list[AdministratieResponse]
+
+
+class GebruikerOverzichtResponse(BaseModel):
+    """Rij op Gebruikers & toegang (fase 3 modernisering 15-08) — alleen bestaans-/statusfeiten
+    over de beveiliging, nooit secret- of credentialmateriaal."""
+
+    id: uuid.UUID
+    naam: str
+    e_mail: str
+    rol: GebruikerRol
+    status: str
+    administratie_ids: list[uuid.UUID]
+    heeft_totp: bool
+    aantal_passkeys: int
+    open_uitnodiging_verloopt_op: datetime | None
+    # Alleen zinvol gevuld voor klant-accordeurs (0 voor kantoorrollen).
+    staande_goedkeuringen: int
+
+
+class GebruikersLijstResponse(BaseModel):
+    gebruikers: list[GebruikerOverzichtResponse]

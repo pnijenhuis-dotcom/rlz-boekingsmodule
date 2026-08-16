@@ -320,3 +320,107 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     expect(putAanroepen[0].body).toEqual({ eigenaar_gebruiker_id: 'eeeeeeee-0000-0000-0000-000000000009' })
   })
 })
+
+describe('InstellingenScreen — bulkbediening administraties (fase 3 modernisering 15-08)', () => {
+  const TWEEDE_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('rijselectie toont de bulkbalk; "Boeken aan" vraagt één bevestiging en PUT per administratie', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [
+        administratie({ naam: 'Kempen Facilities B.V.' }),
+        administratie({ id: TWEEDE_ID, naam: 'Molenhof Beheer B.V.' }),
+      ],
+      putAanroepen,
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
+    // Zonder selectie geen bulkbalk.
+    expect(screen.queryByRole('toolbar', { name: 'Bulk-bediening' })).not.toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Selecteer Kempen Facilities B.V.' }))
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Selecteer Molenhof Beheer B.V.' }))
+    expect(screen.getByRole('toolbar', { name: 'Bulk-bediening' })).toBeInTheDocument()
+    expect(screen.getByText('2 geselecteerd')).toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Boeken aan' }))
+    // Eén bevestigingsdialoog per bulkactie — nog niets uitgevoerd vóór bevestigen.
+    expect(putAanroepen).toHaveLength(0)
+    expect(screen.getByText(/Bulkactie: Boeken AAN/)).toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(putAanroepen).toHaveLength(2))
+    expect(putAanroepen.map((p) => p.url).sort()).toEqual([
+      `/administraties/${ADMINISTRATIE_ID}/boeken-instelling`,
+      `/administraties/${TWEEDE_ID}/boeken-instelling`,
+    ])
+    expect(putAanroepen.every((p) => (p.body as { ingeschakeld: boolean }).ingeschakeld)).toBe(true)
+    // Selectie is gewist na de actie.
+    await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Bulk-bediening' })).not.toBeInTheDocument())
+  })
+
+  it('"alles selecteren" selecteert alle rijen; selectie wissen haalt de balk weg', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [
+        administratie({ naam: 'Kempen Facilities B.V.' }),
+        administratie({ id: TWEEDE_ID, naam: 'Molenhof Beheer B.V.' }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Alle administraties selecteren' }))
+    expect(screen.getByText('2 geselecteerd')).toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: '✕ selectie wissen' }))
+    expect(screen.queryByRole('toolbar', { name: 'Bulk-bediening' })).not.toBeInTheDocument()
+  })
+
+  it('een deels mislukte bulkactie toont de mislukte administraties zichtbaar (niets stil)', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [
+        administratie({ naam: 'Kempen Facilities B.V.' }),
+        administratie({ id: TWEEDE_ID, naam: 'Molenhof Beheer B.V.' }),
+      ],
+      putAanroepen,
+    })
+    // Tweede administratie faalt op de PUT.
+    const basisFetch = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === `/administraties/${TWEEDE_ID}/boeken-instelling` && init?.method === 'PUT') {
+          return Promise.resolve(
+            new Response(JSON.stringify({ detail: 'geen RLZ-credentials' }), {
+              status: 409,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          )
+        }
+        return (basisFetch as typeof fetch)(url as string, init)
+      }),
+    )
+    renderScherm()
+
+    await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Alle administraties selecteren' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Boeken aan' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+
+    await waitFor(() => expect(screen.getByText(/Niet alles gelukt/)).toBeInTheDocument())
+    expect(screen.getByText(/Molenhof Beheer B\.V\.: geen RLZ-credentials/)).toBeInTheDocument()
+    // De geslaagde administratie is wél doorgevoerd.
+    expect(putAanroepen.some((p) => p.url === `/administraties/${ADMINISTRATIE_ID}/boeken-instelling`)).toBe(true)
+  })
+})

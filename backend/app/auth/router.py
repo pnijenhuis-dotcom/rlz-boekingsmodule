@@ -187,6 +187,65 @@ def mijn_administraties(actor: CurrentGebruiker = Depends(get_current_gebruiker)
     )
 
 
+@router.get("/gebruikers", response_model=schemas.GebruikersLijstResponse)
+def gebruikers_lijst(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas.GebruikersLijstResponse:
+    """Gebruikers & toegang (fase 3 modernisering, designronde 15-08) — Beheerder-only.
+    Staande-goedkeuring-tellers per accordeur komen per administratie (strikte RLS) mee."""
+    items = service.lijst_gebruikers(actor_id=actor.id)
+    administraties = service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+    staande = service.staande_goedkeuringen_per_accordeur(administratie_ids=[a.id for a in administraties])
+    return schemas.GebruikersLijstResponse(
+        gebruikers=[
+            schemas.GebruikerOverzichtResponse(
+                id=item.id,
+                naam=item.naam,
+                e_mail=item.e_mail,
+                rol=item.rol,
+                status=item.status.value,
+                administratie_ids=item.administratie_ids,
+                heeft_totp=item.heeft_totp,
+                aantal_passkeys=item.aantal_passkeys,
+                open_uitnodiging_verloopt_op=item.open_uitnodiging_verloopt_op,
+                staande_goedkeuringen=staande.get(item.id, 0),
+            )
+            for item in items
+        ]
+    )
+
+
+@router.post("/gebruikers/{gebruiker_id}/uitnodiging-opnieuw", response_model=schemas.UitnodigingAanmakenResponse)
+def uitnodiging_opnieuw_mailen(
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.UitnodigingAanmakenResponse:
+    """"Opnieuw mailen" op Gebruikers & toegang: nieuw eenmalig token (oude open links verlopen
+    per direct), zelfde fail-zichtbare mailafhandeling als het aanmaken."""
+    try:
+        vernieuwd = service.vernieuw_uitnodiging(actor_id=actor.id, gebruiker_id=gebruiker_id)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    mail_verzonden = False
+    mail_fout: str | None = None
+    try:
+        uitnodigingsmail.verstuur_uitnodigingsmail(
+            naam=vernieuwd.naam,
+            e_mail=vernieuwd.e_mail,
+            token=vernieuwd.resultaat.token,
+            verloopt_op=vernieuwd.resultaat.verloopt_op,
+        )
+        mail_verzonden = True
+    except berichten_mail.MailFout as exc:
+        mail_fout = str(exc)
+    return schemas.UitnodigingAanmakenResponse(
+        uitnodiging_id=vernieuwd.resultaat.uitnodiging_id,
+        gebruiker_id=vernieuwd.resultaat.gebruiker_id,
+        token=vernieuwd.resultaat.token,
+        verloopt_op=vernieuwd.resultaat.verloopt_op,
+        mail_verzonden=mail_verzonden,
+        mail_fout=mail_fout,
+    )
+
+
 @router.patch("/gebruikers/{gebruiker_id}/rol", status_code=status.HTTP_204_NO_CONTENT)
 def rol_wijzigen(
     gebruiker_id: uuid.UUID,

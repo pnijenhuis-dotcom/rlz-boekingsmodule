@@ -292,3 +292,17 @@
   box-shadow: 0 0 0 2px var(--ring);
   border-radius: 4px;
 }
+
+/* Apparaat-/beveiligingschip (mockup .apparaat — Gebruikers & toegang) */
+.apparaat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-right: 5px;
+  white-space: nowrap;
+}
