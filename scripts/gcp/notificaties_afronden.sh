@@ -30,7 +30,8 @@ REGION="europe-west4"
 JOBS_SA="run-jobs@${PROJECT_ID}.iam.gserviceaccount.com"
 BACKEND_SA="run-backend@${PROJECT_ID}.iam.gserviceaccount.com"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-VAPID_GEN="${REPO_ROOT}/backend/.venv/bin/python ${REPO_ROOT}/scripts/genereer_vapid_sleutels.py"
+VAPID_PY="${REPO_ROOT}/backend/.venv/bin/python"
+VAPID_SCRIPT="${REPO_ROOT}/scripts/genereer_vapid_sleutels.py"
 
 gcloud config set project "${PROJECT_ID}" --quiet
 
@@ -79,7 +80,7 @@ elif $PRIV_BESTAAT || $PUB_BESTAAT; then
   echo "   alsnog toevoegen, óf beide versies disablen en dit script opnieuw draaien."
   exit 1
 else
-  SLEUTELS="$(${VAPID_GEN} --kaal)"
+  SLEUTELS="$("${VAPID_PY}" "${VAPID_SCRIPT}" --kaal)"
   PRIV="$(echo "${SLEUTELS}" | sed -n 1p)"
   PUB="$(echo "${SLEUTELS}" | sed -n 2p)"
   printf '%s' "${PRIV}" | gcloud secrets versions add PUSH_VAPID_PRIVATE_KEY --data-file=- >/dev/null
