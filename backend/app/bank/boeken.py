@@ -45,6 +45,7 @@ from app.db.models import Administratie, BoekenInstelling
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.rlz_ids import rlz_bank_boeking_id
+from app.rlz.aangifte import AangiftePoort, blokkeer_bij_ingediende_aangifte
 from app.rlz.client import RlzApiError, RlzClient
 
 logger = logging.getLogger(__name__)
@@ -369,6 +370,15 @@ def storno_bank_boeking(
             raise BankBoekenFout(f"Boeking staat op {boeking.status!r} en kan niet gestorneerd worden")
         payment_transaction_id = boeking.payment_transaction_id
         rlz_document_id = boeking.rlz_document_id
+
+    # Aangifte-poort (besluit Peter 2026-08-15): valt de boekdatum van het geboekte document
+    # in een INGEDIENDE btw-aangifte, dan blokkeert de storno — RLZ zou 'm accepteren maar de
+    # btw stil naar de volgende open aangifte schuiven (suppletie-effect); handmatige
+    # tegenboeking is dan de route. Fail-closed, vóór de correct-call.
+    toets = AangiftePoort(client).toets_document(
+        lambda: client.get_bank_mutation_direct_booking(rlz_document_id), kant="bankboeking"
+    )
+    blokkeer_bij_ingediende_aangifte([toets])
 
     try:
         client.correct_bank_mutation_direct_booking(rlz_document_id)

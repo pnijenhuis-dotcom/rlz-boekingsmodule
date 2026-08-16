@@ -113,3 +113,24 @@ class SpiegelDoelGbsRequest(StrikteInvoer):
 
     regel_gbs: dict[uuid.UUID, uuid.UUID]
     provisie_kosten_ledger_id: uuid.UUID | None = None
+
+
+class KantToetsDto(BaseModel):
+    """Eén kant van de storno-aangifte-toets (bron-verkoop of doel-spiegel) — per kant
+    zichtbaar waarom een storno geblokkeerd is (opdracht 2026-08-16)."""
+
+    kant: str
+    toegestaan: bool
+    reden: str | None
+
+
+class BoekingStornoToetsDto(BaseModel):
+    toegestaan: bool
+    melding: str | None  # de vaste blokkade-melding zodra één kant blokkeert
+    kanten: list[KantToetsDto]
+
+
+class StornoToetsResponse(BaseModel):
+    """Per niet-gestorneerde boeking van het document: mag de storno-knop aan?"""
+
+    per_boeking: dict[uuid.UUID, BoekingStornoToetsDto]

@@ -82,7 +82,9 @@ from app.doorbelasting.service import (
 )
 from app.omzet.boeken import _boek_verkoopfactuur
 from app.projecten.anker import anker_customer_id
+from app.rlz.aangifte import AangiftePoort, KantToets, blokkeer_bij_ingediende_aangifte
 from app.rlz.client import RlzApiError, RlzClient
+from app.rlz.credentials import GeenRlzCredentials
 from app.sync.models import TaxRateCache, VendorCache
 
 logger = logging.getLogger(__name__)
@@ -1009,27 +1011,45 @@ def storno_doorbelasting_boeking(
         doel_administratie_id = boeking.doel_administratie_id
         verkoop_rlz_id, spiegel_rlz_id = boeking.verkoop_rlz_id, boeking.spiegel_rlz_id
 
-    # spiegel eerst (alleen als die kant geboekt is)
-    if oude_status in (DoorbelastingBoekingStatus.GEBOEKT.value,) and doel_administratie_id is not None:
-        eigen_doel = doel_client is None
-        if doel_client is None:
-            doel_client = _rlz_client_voor(doel_administratie_id)
-        try:
-            doel_client.correct_purchase_invoice(spiegel_rlz_id)
-        except RlzApiError as exc:
-            if exc.status_code != 404:
-                raise DoorbelastingFout(
-                    f"Storno spiegel-inkoopfactuur bij {doelentiteit_naam} faalde ({exc.status_code}) — "
-                    "boeking blijft staan, niets half teruggedraaid"
-                ) from exc
-        finally:
-            if eigen_doel:
-                doel_client.close()
-
+    spiegel_geboekt = (
+        oude_status == DoorbelastingBoekingStatus.GEBOEKT.value and doel_administratie_id is not None
+    )
+    eigen_doel = doel_client is None
     eigen_bron = bron_client is None
+    if spiegel_geboekt and doel_client is None:
+        doel_client = _rlz_client_voor(doel_administratie_id)
     if bron_client is None:
         bron_client = _rlz_client_voor(administratie_id)
     try:
+        # Aangifte-poort (besluit Peter 2026-08-15): BEIDE kanten toetsen vóór de eerste
+        # RLZ-write — alles-of-niets: valt de bron-verkoop óf de doel-spiegel in een
+        # ingediende btw-aangifte, dan gaat er aan géén van beide kanten iets terug (per
+        # kant zichtbaar waarom). Fail-closed bij onleesbare aangifte-status.
+        toetsen = [
+            AangiftePoort(bron_client).toets_document(
+                lambda: bron_client.get(f"SalesInvoices/{verkoop_rlz_id}"),
+                kant="verkoopfactuur (bron-administratie)",
+            )
+        ]
+        if spiegel_geboekt:
+            toetsen.append(
+                AangiftePoort(doel_client).toets_document(
+                    lambda: doel_client.get(f"PurchaseInvoices/{spiegel_rlz_id}"),
+                    kant=f"spiegel-inkoopfactuur ({doelentiteit_naam})",
+                )
+            )
+        blokkeer_bij_ingediende_aangifte(toetsen)
+
+        # spiegel eerst (alleen als die kant geboekt is)
+        if spiegel_geboekt:
+            try:
+                doel_client.correct_purchase_invoice(spiegel_rlz_id)
+            except RlzApiError as exc:
+                if exc.status_code != 404:
+                    raise DoorbelastingFout(
+                        f"Storno spiegel-inkoopfactuur bij {doelentiteit_naam} faalde ({exc.status_code}) — "
+                        "boeking blijft staan, niets half teruggedraaid"
+                    ) from exc
         try:
             bron_client.correct_sales_invoice(verkoop_rlz_id)
         except RlzApiError as exc:
@@ -1039,6 +1059,8 @@ def storno_doorbelasting_boeking(
                     "teruggedraaid; herstel de verkoop-kant en probeer opnieuw"
                 ) from exc
     finally:
+        if eigen_doel and doel_client is not None:
+            doel_client.close()
         if eigen_bron:
             bron_client.close()
 
@@ -1092,3 +1114,94 @@ def storno_doorbelasting_boeking(
         session.flush()
         session.expunge(boeking)
         return boeking
+
+
+def storno_toets_voor_document(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    bron_client: RlzClient | None = None,
+    doel_client_factory: Callable[[uuid.UUID], RlzClient] | None = None,
+) -> dict[uuid.UUID, list[KantToets]]:
+    """Aangifte-poort als LEESROUTE voor de UI (opdracht: de storno-knop is uitgeschakeld
+    mét melding — geen klikbare knop die pas server-side faalt): per niet-gestorneerde
+    boeking van dit document exact dezelfde toetsen die storno_doorbelasting_boeking straks
+    hard afdwingt. Fail-closed: elke fout (credentials, onleesbaar document of onleesbare
+    aangifte-status) wordt een geblokkeerde kant — nooit een 500 op het detailscherm.
+    TaxDeclarations wordt per administratie éénmaal gelezen (poort-cache)."""
+    with scoped_session(administratie_id) as session:
+        boekingen = list(
+            session.scalars(
+                select(DoorbelastingBoeking).where(
+                    DoorbelastingBoeking.document_id == document_id,
+                    DoorbelastingBoeking.administratie_id == administratie_id,
+                    DoorbelastingBoeking.status != DoorbelastingBoekingStatus.GESTORNEERD.value,
+                )
+            )
+        )
+        namen = {
+            m.id: m.doelentiteit_naam
+            for m in session.scalars(
+                select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == administratie_id)
+            )
+        }
+        snapshot = [
+            (b.id, b.status, b.doel_administratie_id, b.verkoop_rlz_id, b.spiegel_rlz_id, namen.get(b.mapping_id, "?"))
+            for b in boekingen
+        ]
+    if not snapshot:
+        return {}
+
+    eigen_bron = bron_client is None
+    if bron_client is None:
+        bron_client = _rlz_client_voor(administratie_id)
+    eigen_doel_clients = doel_client_factory is None
+    if doel_client_factory is None:
+        doel_client_factory = _rlz_client_voor
+
+    resultaat: dict[uuid.UUID, list[KantToets]] = {}
+    bron_poort = AangiftePoort(bron_client)
+    doel_clients: dict[uuid.UUID, RlzClient] = {}
+    doel_poorten: dict[uuid.UUID, AangiftePoort | None] = {}  # None = credentials-fout (fail-closed)
+    try:
+        for boeking_id, status, doel_administratie_id, verkoop_rlz_id, spiegel_rlz_id, naam in snapshot:
+            toetsen = [
+                bron_poort.toets_document(
+                    lambda v=verkoop_rlz_id: bron_client.get(f"SalesInvoices/{v}"),
+                    kant="verkoopfactuur (bron-administratie)",
+                )
+            ]
+            if status == DoorbelastingBoekingStatus.GEBOEKT.value and doel_administratie_id is not None:
+                kant = f"spiegel-inkoopfactuur ({naam})"
+                if doel_administratie_id not in doel_poorten:
+                    try:
+                        client = doel_client_factory(doel_administratie_id)
+                        doel_clients[doel_administratie_id] = client
+                        doel_poorten[doel_administratie_id] = AangiftePoort(client)
+                    except GeenRlzCredentials:
+                        doel_poorten[doel_administratie_id] = None
+                poort = doel_poorten[doel_administratie_id]
+                if poort is None:
+                    toetsen.append(
+                        KantToets(
+                            kant=kant,
+                            toegestaan=False,
+                            reden="geen RLZ-credentials voor de doel-administratie — storno uit voorzorg geblokkeerd",
+                        )
+                    )
+                else:
+                    doel_client = doel_clients[doel_administratie_id]
+                    toetsen.append(
+                        poort.toets_document(
+                            lambda s=spiegel_rlz_id, c=doel_client: c.get(f"PurchaseInvoices/{s}"),
+                            kant=kant,
+                        )
+                    )
+            resultaat[boeking_id] = toetsen
+    finally:
+        if eigen_bron:
+            bron_client.close()
+        if eigen_doel_clients:
+            for client in doel_clients.values():
+                client.close()
+    return resultaat

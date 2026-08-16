@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DoorbelastingMappingDto, DoorbelastingRunDto, SpiegelTaakDto } from '../api/types'
+import type { DoorbelastingMappingDto, DoorbelastingRunDto, SpiegelTaakDto, StornoToetsDto } from '../api/types'
 import { DoorbelastenSectie } from './DoorbelastenSectie'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -74,6 +74,23 @@ interface MockOpties {
   volgorde?: string[]
   /** registreert POST's op de run-route — de sectie mag die nooit doen (leesroute = GET) */
   postAanroepen?: string[]
+  /** Aangifte-poort-toets: default alles toegestaan voor elke boeking in run + taken;
+   * 'fout' laat de GET met een 500 falen (fail-closed-pad). */
+  stornoToets?: StornoToetsDto | 'fout'
+}
+
+/** Default-toets: elke boeking-id uit de run-previews en spiegel-taken is toegestaan —
+ * bestaande tests toetsen de storno-flow zelf, niet de aangifte-blokkade. */
+function standaardStornoToets(opties: MockOpties): StornoToetsDto {
+  const ids = [
+    ...(opties.run ?? run()).previews.map((p) => p.boeking_id).filter((id): id is string => id !== null),
+    ...(opties.taken ?? []).map((t) => t.boeking_id),
+  ]
+  return {
+    per_boeking: Object.fromEntries(
+      ids.map((id) => [id, { toegestaan: true, melding: null, kanten: [] }]),
+    ),
+  }
 }
 
 function installFetchMock(opties: MockOpties = {}) {
@@ -99,6 +116,12 @@ function installFetchMock(opties: MockOpties = {}) {
       }
       if (url.endsWith('/spiegel-taken')) {
         return Promise.resolve(jsonResponse(opties.taken ?? []))
+      }
+      if (url.endsWith(`/documenten/${DOCUMENT_ID}/storno-toets`)) {
+        if (opties.stornoToets === 'fout') {
+          return Promise.resolve(jsonResponse({ detail: 'RLZ onbereikbaar' }, 502))
+        }
+        return Promise.resolve(jsonResponse(opties.stornoToets ?? standaardStornoToets(opties)))
       }
       if (url.endsWith(`/doorbelasting/${ADMINISTRATIE_ID}/mappings`)) {
         return Promise.resolve(jsonResponse(opties.mappings ?? []))
@@ -252,7 +275,10 @@ describe('DoorbelastenSectie', () => {
     renderSectie()
     const gebruiker = userEvent.setup()
 
-    await gebruiker.click(await screen.findByRole('button', { name: 'Storneren…' }))
+    // De knop is fail-closed uitgeschakeld tot de aangifte-toets binnen is.
+    const openKnop = await screen.findByRole('button', { name: 'Storneren…' })
+    await waitFor(() => expect(openKnop).toBeEnabled())
+    await gebruiker.click(openKnop)
     const stornoKnop = screen.getByRole('button', { name: 'Storneren' })
     // Reden verplicht (≥5 tekens): zonder reden blijft de knop uit.
     expect(stornoKnop).toBeDisabled()
@@ -262,6 +288,84 @@ describe('DoorbelastenSectie', () => {
     await waitFor(() => expect(stornoAanroepen).toHaveLength(1))
     expect(stornoAanroepen[0].url).toContain(`/boekingen/${BOEKING_GEBOEKT}/storno`)
     expect(stornoAanroepen[0].body).toEqual({ reden: 'dubbel doorbelast' })
+  })
+
+  it('blokkeert de storno-knop mét melding als de btw-aangifte van de periode is ingediend', async () => {
+    const stornoAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      stornoAanroepen,
+      run: run({
+        previews: [
+          {
+            mapping_id: MAPPING_GEBOEKT,
+            doelentiteit_naam: 'Kempen Chalets B.V.',
+            onboarded: true,
+            netto_totaal: '762.00',
+            provisie_bedrag: '38.10',
+            btw_bedrag: '168.02',
+            boeking_status: 'geboekt',
+            boeking_id: BOEKING_GEBOEKT,
+          },
+        ],
+      }),
+      stornoToets: {
+        per_boeking: {
+          [BOEKING_GEBOEKT]: {
+            toegestaan: false,
+            melding:
+              'BTW-aangifte over deze periode is definitief ingediend — wijzigingen handmatig verwerken (tegenboeking)',
+            kanten: [
+              { kant: 'verkoopfactuur (bron-administratie)', toegestaan: true, reden: null },
+              {
+                kant: 'spiegel-inkoopfactuur (Kempen Chalets B.V.)',
+                toegestaan: false,
+                reden: 'boekdatum 2026-03-15 valt in de ingediende btw-aangifte 2026-01-01 t/m 2026-03-31',
+              },
+            ],
+          },
+        },
+      },
+    })
+    renderSectie()
+    const gebruiker = userEvent.setup()
+
+    const knop = await screen.findByRole('button', { name: 'Storneren…' })
+    // De melding verschijnt zodra de toets binnen is — de knop blijft dan definitief uit.
+    expect(
+      await screen.findByText(/BTW-aangifte over deze periode is definitief ingediend/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/spiegel-inkoopfactuur \(Kempen Chalets B\.V\.\):/)).toBeInTheDocument()
+    expect(knop).toBeDisabled()
+    await gebruiker.click(knop)
+    expect(screen.queryByRole('button', { name: 'Storneren' })).not.toBeInTheDocument()
+    expect(stornoAanroepen).toHaveLength(0)
+  })
+
+  it('houdt de storno-knop fail-closed uit als de aangifte-toets niet te laden is', async () => {
+    installFetchMock({
+      stornoToets: 'fout',
+      run: run({
+        previews: [
+          {
+            mapping_id: MAPPING_GEBOEKT,
+            doelentiteit_naam: 'Kempen Chalets B.V.',
+            onboarded: true,
+            netto_totaal: '762.00',
+            provisie_bedrag: '38.10',
+            btw_bedrag: '168.02',
+            boeking_status: 'geboekt',
+            boeking_id: BOEKING_GEBOEKT,
+          },
+        ],
+      }),
+    })
+    renderSectie()
+
+    const knop = await screen.findByRole('button', { name: 'Storneren…' })
+    await waitFor(() =>
+      expect(knop).toHaveAttribute('title', 'Btw-aangifte-toets niet te laden — storno uit voorzorg geblokkeerd'),
+    )
+    expect(knop).toBeDisabled()
   })
 
   it('spiegel-taak: eerst doel-gbs PUT, dan spiegel-boeken POST (gaten-scan-flow)', async () => {

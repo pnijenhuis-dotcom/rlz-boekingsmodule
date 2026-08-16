@@ -675,6 +675,26 @@ export interface DoorbelastingBoekResultaatDto {
   per_doelentiteit: Record<string, string>
 }
 
+/** Eén kant van de storno-aangifte-toets (bron-verkoop of doel-spiegel); `reden` verklaart
+ * een blokkade per kant (besluit Peter 2026-08-15: storno geblokkeerd zodra de periode in
+ * een ingediende btw-aangifte valt — handmatige tegenboeking is dan de route). */
+export interface StornoToetsKantDto {
+  kant: string
+  toegestaan: boolean
+  reden: string | null
+}
+
+export interface StornoToetsBoekingDto {
+  toegestaan: boolean
+  melding: string | null
+  kanten: StornoToetsKantDto[]
+}
+
+/** Per niet-gestorneerde boeking van een document: mag de storno-knop aan? */
+export interface StornoToetsDto {
+  per_boeking: Record<string, StornoToetsBoekingDto>
+}
+
 export interface SpiegelTaakDto {
   boeking_id: string
   document_id: string

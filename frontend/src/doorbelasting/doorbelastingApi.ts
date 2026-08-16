@@ -10,6 +10,7 @@ import type {
   DoorbelastingVerdeelRegelInputDto,
   SpiegelDoelGbsInputDto,
   SpiegelTaakDto,
+  StornoToetsDto,
 } from '../api/types'
 
 /** Alle doorbelasting-verkeer op één plek (zelfde patroon als verkoopApi.ts/instellingenApi.ts),
@@ -140,6 +141,16 @@ export function boekSpiegelAlsnog(
   return apiPostJson<DoorbelastingBoekResultaatDto>(
     `/doorbelasting/${administratieId}/boekingen/${boekingId}/spiegel-boeken`,
     {},
+  )
+}
+
+/** Aangifte-poort als leesroute (2026-08-16): per boeking van dit document of de storno-knop
+ * aan mag — geblokkeerd zodra één kant (bron-verkoop óf doel-spiegel) in een ingediende
+ * btw-aangifte valt. De server-side check op de POST blijft de echte poort; de UI schakelt de
+ * knop uit mét melding en behandelt élke laadfout fail-closed (knop uit). */
+export function haalStornoToetsOp(administratieId: string, documentId: string): Promise<StornoToetsDto> {
+  return apiJson<StornoToetsDto>(
+    `/doorbelasting/${administratieId}/documenten/${documentId}/storno-toets`,
   )
 }
 

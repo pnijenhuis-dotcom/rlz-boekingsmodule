@@ -351,8 +351,12 @@ class FakeDoorbelastingClient:
         logboek: list[tuple[str, str]] | None = None,
         bestaande_vendors: list[dict[str, Any]] | None = None,
         collectie_max_nummer: int = 371,
+        aangiften: list[dict[str, Any]] | None = None,
     ) -> None:
         self.faal_op: set[str] = {faal_op} if isinstance(faal_op, str) else set(faal_op or ())
+        # Btw-aangiften voor de storno-aangifte-poort (default: géén ingediende aangiften);
+        # faal_op "aangiften" simuleert een onleesbare collectie (fail-closed-pad).
+        self.aangiften = aangiften or []
         self.logboek = logboek if logboek is not None else []
         self.bestaande_vendors = bestaande_vendors or []
         self.collectie_max_nummer = collectie_max_nummer
@@ -369,6 +373,12 @@ class FakeDoorbelastingClient:
     # -- verbinding ---------------------------------------------------------------------
     def close(self) -> None:
         self.gesloten = True
+
+    # -- btw-aangiften (storno-aangifte-poort, app/rlz/aangifte.py) -----------------------
+    def list_tax_declarations(self) -> list[dict[str, Any]]:
+        if "aangiften" in self.faal_op:
+            raise RlzApiError(500, "GET", "TaxDeclarations", "Niet leesbaar (simulatie)")
+        return self.aangiften
 
     # -- rauwe GET (rechten-probe + PurchaseInvoices-leespad) ----------------------------
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:

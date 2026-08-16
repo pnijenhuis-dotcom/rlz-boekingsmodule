@@ -27,6 +27,7 @@ from app.doorbelasting.boeken import (
     boek_doorbelasting_run,
     boek_spiegel_alsnog,
     storno_doorbelasting_boeking,
+    storno_toets_voor_document,
 )
 from app.doorbelasting.models import (
     DoorbelastingBoekingStatus,
@@ -35,6 +36,7 @@ from app.doorbelasting.models import (
     IntercompanyTegenpartij,
 )
 from app.doorbelasting.service import DoorbelastingFout, VerdeelRegelInvoerData
+from app.rlz.aangifte import StornoGeblokkeerdDoorAangifte
 from tests.doorbelasting.conftest import (
     DOEL_KOSTEN_LEDGER_ID,
     PROVISIE_KOSTEN_LEDGER_ID,
@@ -437,6 +439,125 @@ class TestStorno:
         # niets teruggedraaid
         assert bron.verkoop_correcties == []
         assert doel.spiegel_correcties == []
+
+
+# Dekt élke datum — de motor boekt op de systeemdatum, dus dit simuleert "de boekperiode valt
+# in een ingediende btw-aangifte" zonder aan de motor-datum te hoeven draaien.
+_AANGIFTE_ALLES_INGEDIEND = {"Status": 2, "StartDate": "2000-01-01T00:00:00", "Date": "2099-12-31T00:00:00"}
+_AANGIFTE_CONCEPT = {"Status": 1, "StartDate": "2000-01-01T00:00:00", "Date": "2099-12-31T00:00:00"}
+
+
+class TestStornoAangiftePoort:
+    """Storno-blokkade ná ingediende btw-aangifte (besluit Peter 2026-08-15): alles-of-niets
+    vóór de eerste RLZ-write, fail-closed, en de leesroute voor de UI-knop."""
+
+    def _geboekte_boeking(
+        self, opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID, *, bron: FakeDoorbelastingClient,
+        doel: FakeDoorbelastingClient,
+    ):
+        _boek(opzet, beheerder_id, bron=bron, doel=doel)
+        return haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+
+    def test_bron_kant_in_ingediende_periode_blokkeert_zonder_writes(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        bron = FakeDoorbelastingClient(aangiften=[_AANGIFTE_ALLES_INGEDIEND])
+        doel = FakeDoorbelastingClient()
+        boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
+
+        with pytest.raises(StornoGeblokkeerdDoorAangifte) as excinfo:
+            storno_doorbelasting_boeking(
+                administratie_id=opzet.administratie_id, boeking_id=boeking.id,
+                actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
+                bron_client=bron, doel_client=doel,
+            )
+        # alles-of-niets: aan géén van beide kanten is iets teruggedraaid, boeking blijft staan
+        assert bron.verkoop_correcties == []
+        assert doel.spiegel_correcties == []
+        boeking_na = haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+        assert boeking_na.status == DoorbelastingBoekingStatus.GEBOEKT.value
+        assert any(not t.toegestaan and "verkoopfactuur" in t.kant for t in excinfo.value.kanten)
+
+    def test_doel_kant_in_ingediende_periode_blokkeert_ook_de_bron(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        bron = FakeDoorbelastingClient(aangiften=[_AANGIFTE_CONCEPT])
+        doel = FakeDoorbelastingClient(aangiften=[_AANGIFTE_ALLES_INGEDIEND])
+        boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
+
+        with pytest.raises(StornoGeblokkeerdDoorAangifte) as excinfo:
+            storno_doorbelasting_boeking(
+                administratie_id=opzet.administratie_id, boeking_id=boeking.id,
+                actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
+                bron_client=bron, doel_client=doel,
+            )
+        assert bron.verkoop_correcties == []
+        assert doel.spiegel_correcties == []
+        geblokkeerd = [t for t in excinfo.value.kanten if not t.toegestaan]
+        assert len(geblokkeerd) == 1
+        assert "spiegel-inkoopfactuur" in geblokkeerd[0].kant
+
+    def test_onleesbare_aangifte_status_is_fail_closed(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        bron = FakeDoorbelastingClient(faal_op="aangiften")
+        doel = FakeDoorbelastingClient()
+        boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
+        with pytest.raises(StornoGeblokkeerdDoorAangifte):
+            storno_doorbelasting_boeking(
+                administratie_id=opzet.administratie_id, boeking_id=boeking.id,
+                actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
+                bron_client=bron, doel_client=doel,
+            )
+        assert bron.verkoop_correcties == []
+        assert doel.spiegel_correcties == []
+
+    def test_concept_aangifte_blokkeert_niet(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        bron = FakeDoorbelastingClient(aangiften=[_AANGIFTE_CONCEPT])
+        doel = FakeDoorbelastingClient(aangiften=[_AANGIFTE_CONCEPT])
+        boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
+        gestorneerd = storno_doorbelasting_boeking(
+            administratie_id=opzet.administratie_id, boeking_id=boeking.id,
+            actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
+            bron_client=bron, doel_client=doel,
+        )
+        assert gestorneerd.status == DoorbelastingBoekingStatus.GESTORNEERD.value
+
+    def test_storno_toets_voor_document_rapporteert_per_boeking_en_kant(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        bron = FakeDoorbelastingClient(aangiften=[_AANGIFTE_CONCEPT])
+        doel = FakeDoorbelastingClient(aangiften=[_AANGIFTE_ALLES_INGEDIEND])
+        boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
+
+        per_boeking = storno_toets_voor_document(
+            administratie_id=opzet.administratie_id, document_id=opzet.document_id,
+            bron_client=bron, doel_client_factory=lambda _aid: doel,
+        )
+        assert set(per_boeking) == {boeking.id}
+        toetsen = per_boeking[boeking.id]
+        assert [t.toegestaan for t in toetsen] == [True, False]
+        assert "spiegel-inkoopfactuur" in toetsen[1].kant
+        assert "ingediende btw-aangifte" in (toetsen[1].reden or "")
+
+    def test_storno_toets_zonder_boekingen_is_leeg_en_raakt_rlz_niet(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        bron = FakeDoorbelastingClient()
+        per_boeking = storno_toets_voor_document(
+            administratie_id=opzet.administratie_id, document_id=opzet.document_id,
+            bron_client=bron, doel_client_factory=lambda _aid: FakeDoorbelastingClient(),
+        )
+        assert per_boeking == {}
+        assert bron.probes == 0
 
 
 class TestSpiegelAlsnog:

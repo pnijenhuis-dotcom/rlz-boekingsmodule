@@ -328,6 +328,14 @@ class RlzClient:
     def get_bank_mutation_direct_booking(self, booking_id: uuid.UUID | str) -> dict[str, Any]:
         return self.get(f"BankMutationDirectBookings/{booking_id}")
 
+    def list_tax_declarations(self) -> list[dict[str, Any]]:
+        """Btw-aangiften van de administratie (DocumentType 7) — de leesroute van de
+        storno-aangifte-poort (app/rlz/aangifte.py). Statusmodel analoog aan documenten:
+        1 = concept, 2 = ingediend, 3 = afgehandeld; `StartDate`/`Date` = periodegrenzen
+        (live geverifieerd 2026-08-16, api-verkenning "Actie 19 in een periode met
+        ingediende btw-aangifte")."""
+        return self.get("TaxDeclarations").get("value", [])
+
     def correct_bank_mutation_direct_booking(self, booking_id: uuid.UUID | str) -> httpx.Response:
         """Storno van een directe bankboeking (schrijf-PoC §3): actie 19 → document terug naar
         Status 1, mutatie weer open (OpenAmount hersteld). ⚠️ IsComplete blijft daarna stale op

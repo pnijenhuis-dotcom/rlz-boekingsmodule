@@ -10,6 +10,7 @@ from app.documenten.checks import CheckRapport
 from app.documenten.schemas import CheckRapportResponse, CheckResultaatDto
 from app.doorbelasting import boeken, schemas, service
 from app.doorbelasting.models import DoorbelastingMapping, DoorbelastingRegel
+from app.rlz.aangifte import STORNO_BLOKKADE_MELDING, StornoGeblokkeerdDoorAangifte
 from app.rlz.credentials import GeenRlzCredentials
 
 router = APIRouter(tags=["doorbelasting"])
@@ -336,8 +337,44 @@ def boeking_storneren(
             actor_id=actor.id,
             reden=body.reden,
         )
+    except StornoGeblokkeerdDoorAangifte as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.detail_tekst()) from exc
     except GeenRlzCredentials as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.DoorbelastingFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return schemas.BoekResultaatResponse(per_doelentiteit={str(boeking.mapping_id): boeking.status})
+
+
+@router.get(
+    "/doorbelasting/{administratie_id}/documenten/{document_id}/storno-toets",
+    response_model=schemas.StornoToetsResponse,
+)
+def storno_toets(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.StornoToetsResponse:
+    """Aangifte-poort als leesroute (opdracht 2026-08-16): de UI schakelt de storno-knop uit
+    mét melding zodra één kant in een ingediende btw-aangifte valt — de POST hierboven blijft
+    de echte poort. Fail-closed: geen credentials voor de bron = alles geblokkeerd (409 komt
+    hier niet voor terug; de UI behandelt élke fout als geblokkeerd)."""
+    try:
+        per_boeking = boeken.storno_toets_voor_document(
+            administratie_id=administratie_id, document_id=document_id
+        )
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.StornoToetsResponse(
+        per_boeking={
+            boeking_id: schemas.BoekingStornoToetsDto(
+                toegestaan=all(t.toegestaan for t in toetsen),
+                melding=None if all(t.toegestaan for t in toetsen) else STORNO_BLOKKADE_MELDING,
+                kanten=[
+                    schemas.KantToetsDto(kant=t.kant, toegestaan=t.toegestaan, reden=t.reden)
+                    for t in toetsen
+                ],
+            )
+            for boeking_id, toetsen in per_boeking.items()
+        }
+    )

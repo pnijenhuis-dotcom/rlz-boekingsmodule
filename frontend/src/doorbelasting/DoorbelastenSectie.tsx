@@ -7,6 +7,8 @@ import type {
   DoorbelastingRunDto,
   DoorbelastingVerdeelRegelDto,
   SpiegelTaakDto,
+  StornoToetsBoekingDto,
+  StornoToetsDto,
 } from '../api/types'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
@@ -16,6 +18,7 @@ import {
   haalDoorbelastingRunVoorDocumentOp,
   haalDoorbelastingToggleOp,
   haalSpiegelTakenOp,
+  haalStornoToetsOp,
   zetSpiegelDoelGbs,
 } from './doorbelastingApi'
 import { StornoModal } from './StornoModal'
@@ -73,6 +76,9 @@ function DoorbelastenInhoud({ administratieId, documentId }: InhoudProps) {
   const [fout, setFout] = useState<string | null>(null)
   const [versie, setVersie] = useState(0)
   const [stornoDoel, setStornoDoel] = useState<{ boekingId: string; naam: string } | null>(null)
+  // Aangifte-poort-toets (besluit Peter 2026-08-15): 'laden' tot de server geantwoord heeft,
+  // 'fout' bij élke laadfout — beide houden de storno-knop fail-closed uitgeschakeld.
+  const [stornoToets, setStornoToets] = useState<StornoToetsDto | 'laden' | 'fout'>('laden')
 
   useEffect(() => {
     let actief = true
@@ -93,6 +99,24 @@ function DoorbelastenInhoud({ administratieId, documentId }: InhoudProps) {
       })
       .catch((err: unknown) => {
         if (actief) setFout(err instanceof ApiError ? err.message : 'Doorbelasting-status niet te laden.')
+      })
+    return () => {
+      actief = false
+    }
+  }, [administratieId, documentId, versie])
+
+  useEffect(() => {
+    // Eigen (tragere) request — de toets leest live RLZ-staat per kant. Los van de run-load,
+    // zodat de sectie zelf direct rendert; tot het antwoord binnen is blijft de knop uit.
+    let actief = true
+    setStornoToets('laden')
+    haalStornoToetsOp(administratieId, documentId)
+      .then((dto) => {
+        if (actief) setStornoToets(dto)
+      })
+      .catch(() => {
+        // Fail-closed: geen toets = geen storno-knop (de server-side poort is de echte check).
+        if (actief) setStornoToets('fout')
       })
     return () => {
       actief = false
@@ -165,6 +189,12 @@ function DoorbelastenInhoud({ administratieId, documentId }: InhoudProps) {
                   {boekingen.map((p) => {
                     const chip = boekingStatusChip(p.boeking_status ?? '')
                     const stornoId = boekingIdVoor(p)
+                    // Fail-closed: 'laden'/'fout' én een ontbrekende toets voor deze boeking
+                    // houden de knop uit — alleen een expliciet toegestane toets geeft 'm vrij.
+                    const toets: StornoToetsBoekingDto | 'laden' | 'fout' =
+                      stornoToets === 'laden' || stornoToets === 'fout'
+                        ? stornoToets
+                        : (stornoId && stornoToets.per_boeking[stornoId]) || 'fout'
                     return (
                       <SectieBoekingRij
                         key={p.mapping_id}
@@ -175,6 +205,7 @@ function DoorbelastenInhoud({ administratieId, documentId }: InhoudProps) {
                         taak={taakPerMapping.get(p.mapping_id) ?? null}
                         mapping={mappingPerId.get(p.mapping_id) ?? null}
                         regels={run.regels.filter((r) => r.mapping_id === p.mapping_id)}
+                        stornoToets={toets}
                         onStorno={stornoId ? () => setStornoDoel({ boekingId: stornoId, naam: p.doelentiteit_naam }) : null}
                         onGewijzigd={herlaad}
                       />
@@ -227,6 +258,8 @@ interface RijProps {
   taak: SpiegelTaakDto | null
   mapping: DoorbelastingMappingDto | null
   regels: DoorbelastingVerdeelRegelDto[]
+  /** Aangifte-poort-toets voor deze boeking: 'laden'/'fout' = knop fail-closed uit. */
+  stornoToets: StornoToetsBoekingDto | 'laden' | 'fout'
   /** null = geen boeking-id beschikbaar → geen storno-knop (nooit een knop die alleen kan falen). */
   onStorno: (() => void) | null
   onGewijzigd: () => void
@@ -240,10 +273,21 @@ function SectieBoekingRij({
   taak,
   mapping,
   regels,
+  stornoToets,
   onStorno,
   onGewijzigd,
 }: RijProps) {
   const isSpiegelOpen = preview.boeking_status === 'spiegel_open'
+  const stornoToegestaan = stornoToets !== 'laden' && stornoToets !== 'fout' && stornoToets.toegestaan
+  const stornoTitel =
+    stornoToets === 'laden'
+      ? 'Btw-aangifte-toets wordt geladen…'
+      : stornoToets === 'fout'
+        ? 'Btw-aangifte-toets niet te laden — storno uit voorzorg geblokkeerd'
+        : (stornoToets.melding ?? 'Storneert de verkoopfactuur én de spiegel-inkoopfactuur (reden verplicht)')
+  // Geblokkeerd = een expliciet server-antwoord "niet toegestaan" — dan hoort er een
+  // zichtbare melding onder de rij (besluit Peter 2026-08-15), niet alleen een title.
+  const blokkade = stornoToets !== 'laden' && stornoToets !== 'fout' && !stornoToets.toegestaan ? stornoToets : null
   return (
     <>
       <tr>
@@ -257,12 +301,34 @@ function SectieBoekingRij({
         </td>
         <td>
           {onStorno && (
-            <button type="button" className="btn secondary" onClick={onStorno}>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={!stornoToegestaan}
+              title={stornoTitel}
+              onClick={stornoToegestaan ? onStorno : undefined}
+            >
               Storneren…
             </button>
           )}
         </td>
       </tr>
+      {onStorno && blokkade && (
+        <tr>
+          <td colSpan={5} style={{ paddingTop: 0 }}>
+            <div className="hint" style={{ margin: 0, color: 'var(--orange)' }}>
+              {blokkade.melding}
+              {blokkade.kanten
+                .filter((k) => !k.toegestaan && k.reden)
+                .map((k) => (
+                  <div key={k.kant} style={{ fontSize: 12 }}>
+                    {k.kant}: {k.reden}
+                  </div>
+                ))}
+            </div>
+          </td>
+        </tr>
+      )}
       {isSpiegelOpen && taak && (
         <tr>
           <td colSpan={5} style={{ paddingTop: 0 }}>

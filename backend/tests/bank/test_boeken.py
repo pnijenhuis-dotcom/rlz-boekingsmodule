@@ -14,6 +14,7 @@ from app.bank.boeken import BankBoekingBron, BankBoekRegelInput
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.rlz_ids import rlz_bank_boeking_id
+from app.rlz.aangifte import StornoGeblokkeerdDoorAangifte
 from tests.bank.conftest import FakeBankClient, maak_bank_mutatie
 
 
@@ -244,6 +245,53 @@ def test_storno_zonder_reden_weigert(
             administratie_id=administratie_id, boeking_id=resultaat.boeking_id,
             actor_id=beheerder_id, reden="  ", client=client,
         )
+
+
+def test_storno_geblokkeerd_als_boekdatum_in_ingediende_aangifte_valt(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID, boeken_aan: None
+) -> None:
+    """Aangifte-poort (besluit Peter 2026-08-15): de fake-boekdatum (2026-08-10) valt in een
+    ingediende (Status 2) aangifte-periode → storno geweigerd vóór de correct-call."""
+    mutatie_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
+    client = FakeBankClient(
+        transacties={str(mutatie_id): _tx_record(mutatie_id)},
+        aangiften=[{"Status": 2, "StartDate": "2026-07-01T00:00:00", "Date": "2026-09-30T00:00:00"}],
+    )
+    resultaat = boeken.boek_mutatie_direct(
+        administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+        regels=_regels(), actor_id=beheerder_id, client=client,
+    )
+    with pytest.raises(StornoGeblokkeerdDoorAangifte):
+        boeken.storno_bank_boeking(
+            administratie_id=administratie_id, boeking_id=resultaat.boeking_id,
+            actor_id=beheerder_id, reden="verkeerde rubricering", client=client,
+        )
+    # geen correct-call gedaan, lokale status onaangeroerd
+    assert client.correcties == []
+    with admin_engine.connect() as conn:
+        status = conn.execute(
+            text("SELECT status FROM boekhouding.bank_boeking WHERE id = :id"),
+            {"id": resultaat.boeking_id},
+        ).scalar_one()
+    assert status == "geboekt"
+
+
+def test_storno_fail_closed_als_aangiften_niet_leesbaar_zijn(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID, boeken_aan: None
+) -> None:
+    mutatie_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
+    client = FakeBankClient(transacties={str(mutatie_id): _tx_record(mutatie_id)}, faal_op=None)
+    resultaat = boeken.boek_mutatie_direct(
+        administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+        regels=_regels(), actor_id=beheerder_id, client=client,
+    )
+    client.faal_op = "aangiften"
+    with pytest.raises(StornoGeblokkeerdDoorAangifte):
+        boeken.storno_bank_boeking(
+            administratie_id=administratie_id, boeking_id=resultaat.boeking_id,
+            actor_id=beheerder_id, reden="verkeerde rubricering", client=client,
+        )
+    assert client.correcties == []
 
 
 # --- volautomatische verwerking (opt-in) -----------------------------------------------------------

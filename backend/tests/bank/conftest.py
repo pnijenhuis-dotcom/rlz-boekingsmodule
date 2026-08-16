@@ -27,9 +27,12 @@ class FakeBankClient:
         invoices: dict[str, dict[str, Any]] | None = None,
         faal_op: str | None = None,
         item_documenten: dict[str, str] | None = None,
+        aangiften: list[dict[str, Any]] | None = None,
     ) -> None:
         self.accounts = accounts or []
         self.last_imports = last_imports or {}
+        # Btw-aangiften voor de storno-aangifte-poort (default: géén ingediende aangiften).
+        self.aangiften = aangiften or []
         self.transacties = {str(k): v for k, v in (transacties or {}).items()}
         self.items = items or []
         self.invoices = {str(k): v for k, v in (invoices or {}).items()}
@@ -156,6 +159,9 @@ class FakeBankClient:
             "DocumentType": 19,
             "DocumentLineList": lines,
             "Description": description,
+            # RLZ leidt de documentdatum af van de transactie (schrijf-PoC §3) — de
+            # aangifte-poort toetst dáárop.
+            "Date": self.transacties.get(str(payment_transaction_id), {}).get("Date") or "2026-08-10T00:00:00",
         }
         self.direct_bookings[str(booking_id)] = document
         tx = self.transacties[str(payment_transaction_id)]
@@ -165,7 +171,15 @@ class FakeBankClient:
         ]
 
     def get_bank_mutation_direct_booking(self, booking_id: Any) -> dict[str, Any]:
-        return self.direct_bookings[str(booking_id)]
+        record = self.direct_bookings.get(str(booking_id))
+        if record is None:
+            raise RlzApiError(404, "GET", f"BankMutationDirectBookings/{booking_id}", "Niet gevonden (simulatie)")
+        return record
+
+    def list_tax_declarations(self) -> list[dict[str, Any]]:
+        if self.faal_op == "aangiften":
+            raise RlzApiError(500, "GET", "TaxDeclarations", "Niet leesbaar (simulatie)")
+        return self.aangiften
 
     def correct_bank_mutation_direct_booking(self, booking_id: Any) -> None:
         if self.faal_op == "correct":

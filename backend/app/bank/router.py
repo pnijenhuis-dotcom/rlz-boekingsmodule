@@ -9,6 +9,7 @@ from app.auth.deps import CurrentGebruiker, get_current_gebruiker, vereis_admini
 from app.bank import afletteren, boeken, schemas, service, sync, voorstellen
 from app.bank.models import BankMutatie
 from app.db.session import scoped_session
+from app.rlz.aangifte import StornoGeblokkeerdDoorAangifte
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import GeenRlzCredentials, client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.service import SyncFout
@@ -460,6 +461,8 @@ def storno(
             )
     except boeken.BankBoekingNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except StornoGeblokkeerdDoorAangifte as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.detail_tekst()) from exc
     except boeken.RlzBankBoekingMislukt as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     except boeken.BankBoekenFout as exc:
