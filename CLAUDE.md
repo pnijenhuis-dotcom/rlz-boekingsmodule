@@ -166,7 +166,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   verificatiepunt accordeur-multi-administratie bewezen met backend-test: wachtrij én
   09:00-herinnering voegen administraties samen), fase 3 Gebruikers & toegang
   (`/auth/gebruikers` + uitnodiging-opnieuw-endpoint, scherm `/gebruikers`) + bulkbediening
-  Instellingen. Details per fase: BESLISSINGEN "Kantoor-frontend-modernisering".
+  Instellingen. **Gebruiker blokkeren/heractiveren: GEBOUWD + GETEST (2026-08-16, migratie
+  0052)** — blokkade bijt per direct op álle paden (sessies/refresh dood, passkeys onbruikbaar
+  maar geregistreerd = omkeerbaar), guards server-side (eigen account/systeem-actor/laatste
+  actieve Beheerder nooit), heractiveren zet de status van vóór de blokkade terug; audit op
+  beide. Zie BESLISSINGEN "BEHEER-MINI". Details per fase: BESLISSINGEN "Kantoor-frontend-modernisering".
   **Nazorg controls-review UITGEVOERD (2026-08-16, bevindingen kliktest Peter):** switch/
   checkbox-inklap (specificiteitsbotsing legacy-CSS vs `.cb`/`.switch`), switch-track-contrast
   (mockup-norm mee bijgewerkt), paneel-clipping ~1170px (tabel-scroll), thema-toggle-race,
@@ -396,14 +400,21 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   géén her-PUT** (bestaand GUID = 400, verbruikt GUID van een verwijderd document = 404;
   api-verkenning "Uploads bij een herstart-boekcyclus") — bijlage-idempotentie loopt sindsdien
   in álle motoren via `app/rlz/bijlage.py::zorg_voor_bijlage` (aanwezigheids-check via de
-  Uploads-leesroute + deterministische cyclus-GUID's).
+  Uploads-leesroute + deterministische cyclus-GUID's). **Opruimlijst achtergebleven
+  RLZ-concepten (2026-08-16): de doorbelasting-reconciliatie signaleert Status-1-concepten
+  van gestorneerde/vervallen runs (beide kanten, informatief — nooit exit 1) + scanknop op
+  Instellingen → Doorbelasting; de app verwijdert NOOIT in RLZ (kernprincipe 3, expliciet
+  herbevestigd door Peter) — opruimen is klikwerk in de RLZ-UI, indien gewenst.**
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
   (besluit Peter 2026-08-14: de accordeur-app wordt óók uitgebracht als native App Store- én
   Google Play-app; de gebouwde PWA/webcode is de basis via een native schil, bv. Capacitor —
   PWA blijft interim + terugval; aandachtspunten native passkey-integratie (WebAuthn in een
-  webview is beperkt) en store-accounts onder de juiste entiteit; planning ná GCP). Factuurbeeld
+  webview is beperkt) en store-accounts onder de juiste entiteit; planning ná GCP —
+  **voorverkenning UITGEVOERD 2026-08-16: Capacitor-schil staat in `native/` (webcode niet
+  geraakt), beslispuntenrapport `verkenning/17_NATIVE_STORE_APP_ACCORDEUR.md` = basis voor
+  het go/no-go-bouwbesluit**). Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,
@@ -434,7 +445,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   wachtwoord-invoer + deploy + job-run + verificatie-gegate scheduler-resume in één gang;
   open TEST-accordering voor het passkeytest-account is geseed in de cloud-DB,
   `backend/scripts/cloud_seed_accordering.py`). Open: die live-verificatie (scheduler
-  gepauzeerd tot dan), directe push bij nieuwe factuur.
+  gepauzeerd tot dan).
+  **Handmatige herinner-knop: GEBOUWD + GETEST (2026-08-16, migratie 0053)** — kantoor
+  stuurt per direct een extra herinnering aan de accordeur die aan de beurt is
+  (klantpagina-paneel + accorderingssectie, "laatst herinnerd" zichtbaar; max 1 per
+  document per dag, audit + tijdlijn). **Nieuwe-facturen-bundelmelding: GEBOUWD + GETEST
+  (2026-08-16, besluit Peter 16-08 — expliciet géén melding per factuur; migratie 0054)**:
+  job `rlz-nieuwe-facturen` (~elke 10 min) bundelt nieuw klaargezet werk per accordeur tot
+  één bericht ("Er staan N facturen voor u klaar", N = totaal openstaand); idempotent per
+  (accordeur, document) — nooit dubbel; stille uren 20:00–08:00 Europe/Amsterdam; de
+  09:00-herinnering blijft ongewijzigd en telt integraal; scheduler start gepauzeerd tot de
+  notificatie-live-verificatie. Zie BESLISSINGEN "NIEUWE-FACTUREN-BUNDELMELDING" +
+  GCP_UITROL §F3.6.
 - **Projecten** (module, zichtbaar per rol + per administratie-toggle): project verplicht = hard
   blokkerend, géén "geen project"-optie; overhead → intern OVH-project (uitgesloten van bewaking).
   Budget uit offerte-ontleding (status offerte ≠ opdracht; meerwerk = aparte budgetversie).
@@ -634,6 +656,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   installeren: `ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit` — op deze Mac
   gedaan 2026-08-15); `--no-verify` alleen met expliciete reden.
 - Tests verplicht op geldlogica (mapping, totalen, idempotentie, statusmachine) vóór UI-polish.
+  **Vaste testconfig (hygiëne-run 2026-08-16, "de webauthn-les"):** de suite draait op de
+  code-defaults voor álle settings behalve de vier database-URL's (borging in
+  tests/conftest.py + vangnet `tests/unit/test_vaste_testconfig.py`) — een test die een
+  afwijkende waarde nodig heeft, pint die zelf via monkeypatch; fixtures muteren `settings`
+  nooit direct. **`alembic check` is sinds 2026-08-16 weer een bruikbaar signaal**
+  (representatie-drift gelijkgetrokken via type_annotation_map + index-declaraties).
 - Elke schrijfactie naar RLZ eerst tegen een testadministratie of met TEST-referentie + akkoord.
 
 ## Migraties (afsluit-routine, verplicht — vastgoed-patroon geadopteerd 2026-08-07)
