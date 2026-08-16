@@ -1447,3 +1447,38 @@ suppletie-effect in de eerstvolgende open aangifte. Signalering daarvan (pre-sto
 waarschuwing op basis van TaxDeclarations-status + het suppletie-signaal > € 1.000 + het
 tegenboek-pad) is bewust GEPARKEERD voor een eigen ontwerp-/UX-ronde — zie BESLISSINGEN
 "Doorbelasting-kliktest-nazorg ronde 2".
+
+## Her-PUT op een bestaand concept VERVANGT DocumentLineList (16 augustus 2026, test-administratie) — GESLAAGD
+
+Aanleiding: de kliktest-herstart van TEST-ONB-KLIKTEST-01. De vijf spiegel-inkoopfacturen
+staan ná Peters storno nog als concept (Status 1) in de doel-administraties; een nieuwe
+doorbelasting-run doet via de motor-idempotentie (GET-op-eigen-GUID → Status niet 2/3 → PUT)
+een **her-PUT op hetzelfde deterministische GUID mét DocumentLineList**. Nergens was
+geverifieerd of RLZ die regels dan vervángt of stápelt (dubbele bedragen). Experiment
+(poc_herput_en_aangiftepoort.py `herput`, PurchaseInvoice TEST-HERPUT-01,
+0bd2d2d1-741b-5b9d-a6fe-23d99bb92e6d):
+
+1. PUT (2 regels, € 12,71 incl.) → boek 17 → Status 2, 2 regels.
+2. Storno 19 → Status 1, regels intact (consistent met het bekende actie-19-gedrag).
+3. **Her-PUT zelfde GUID, zelfde DocumentLineList → nog steeds 2 regels, € 12,71** — geen
+   stapeling; boek 17 → Status 2, bedragen correct; afgesloten met storno 19 (concept blijft
+   staan, testdata-afspraak).
+4. **Bewijs vervang-semantiek** (niet slechts idempotentie): her-PUT op het concept met een
+   ÁNDERE regelset (1 regel, € 8,47 incl.) → document draagt daarna exact 1 regel, totaal
+   € 8,47. PUT op een bestaand document vervangt de DocumentLineList dus integraal.
+
+Consequentie: de herstart van een doorbelasting-run over bestaande concept-spiegels heen is
+veilig (correcte bedragen, ook bij een gewijzigde verdeling); hetzelfde geldt voor elk
+retry-/her-PUT-pad in de motoren.
+
+## Aangifte-leesroute + bankdocument-datum voor de storno-poort (16 augustus 2026) — bevestigd
+
+Voor de storno-blokkade ná ingediende btw-aangifte (besluit Peter 15-08, zie BESLISSINGEN):
+
+- `GET TaxDeclarations` (test-administratie, 54 rijen): elke rij draagt `Status`
+  (1 concept / 2 ingediend / 3 afgehandeld) + `StartDate`/`Date` als periodegrenzen; geen
+  enkele ingediende rij zonder leesbare periode. Leesroute in de client:
+  `RlzClient.list_tax_declarations`; poort: `app/rlz/aangifte.py` (fail-closed).
+- `BankMutationDirectBookings`-documenten dragen een bruikbaar `Date`-veld (afgeleid van de
+  transactiedatum) — de bank-storno-poort toetst dáárop; ontbreekt het veld dan blokkeert de
+  poort fail-closed.
