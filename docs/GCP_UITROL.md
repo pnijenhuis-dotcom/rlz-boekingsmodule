@@ -703,6 +703,18 @@ org-owner-account (idempotente scripts, F0-les):
    herproduceerbaar met bestaande scripts; laten staan = ~€2/dag + een verwarrende
    niet-CMEK-instantie. Instantienaam ~1 week gereserveerd bij Google.
 
+## F6 — default compute service account afknijpen (hygiëne-run 2026-08-16, klikwerk Peter)
+
+Google's automatisch aangemaakte default compute SA
+(`652591056217-compute@developer.gserviceaccount.com`) heeft standaard projectbreed
+**Editor** en wordt door onze uitrol nergens gebruikt (alles draait op run-backend@/
+run-jobs@/deploy@ — F0-least-privilege). Draaiboek: **`scripts/gcp/f6_default_compute_sa.sh`**
+(owner, idempotent — describe-vóór-mutatie): (1) verifieert fail-closed dat geen Cloud
+Run-service/-job op het default-SA draait, (2) haalt roles/editor eraf, (3) schakelt het SA
+uit (omkeerbaar met `enable`; verwijderen bewust niet). Mocht ooit iets stilletjes op het
+default-SA leunen (bv. een legacy Cloud Build-pad), dan faalt dat vanaf dan zichtbaar —
+terugweg is één enable-commando + een eigen SA voor die dienst.
+
 ## Kritieke pad & parallelsporen
 
 ```
