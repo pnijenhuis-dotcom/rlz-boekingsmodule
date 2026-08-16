@@ -167,6 +167,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   09:00-herinnering voegen administraties samen), fase 3 Gebruikers & toegang
   (`/auth/gebruikers` + uitnodiging-opnieuw-endpoint, scherm `/gebruikers`) + bulkbediening
   Instellingen. Details per fase: BESLISSINGEN "Kantoor-frontend-modernisering".
+  **Nazorg controls-review UITGEVOERD (2026-08-16, bevindingen kliktest Peter):** switch/
+  checkbox-inklap (specificiteitsbotsing legacy-CSS vs `.cb`/`.switch`), switch-track-contrast
+  (mockup-norm mee bijgewerkt), paneel-clipping ~1170px (tabel-scroll), thema-toggle-race,
+  systeem-actor uit gebruikersbeheer (mét server-side guard), dev-stub-apparaat-deduplicatie —
+  zie BESLISSINGEN "Nazorg controls-review". Regressie-vangnet: `frontend/scripts/
+  overflow_sweep.sh` (alle visuele harnassen × 1440/1170/1024/768 × licht/donker — geen
+  horizontale pagina-overflow; vastgoed-sweep-patroon).
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
