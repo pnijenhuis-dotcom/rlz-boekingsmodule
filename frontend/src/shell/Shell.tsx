@@ -30,12 +30,13 @@ export function Shell() {
               <small>Boekingsmodule</small>
             </div>
           </div>
+          {/* IA-besluit 15-08: Vragen en Bank zijn geen eigen tabbladen meer — alles van één
+              klant leeft op de klantpagina; kantoorbrede dwarsdoorsneden via de klikbare
+              KPI-kaarten bovenaan de werkvoorraad. */}
           <div className="nav-kop">Werk</div>
           <NavItem to="/" end>
             Werkvoorraad
           </NavItem>
-          <NavItem to="/bank">Bank</NavItem>
-          <NavItem to="/vragen">Vragen</NavItem>
           <div className="nav-kop">Inzicht</div>
           <NavItem to="/zoeken">Zoeken</NavItem>
           <NavItem to="/archief">Archief</NavItem>

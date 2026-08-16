@@ -241,11 +241,58 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   if (url.endsWith('/verzamelbak')) return Promise.resolve(jsonResponse(VERZAMELBAK))
   if (url.includes('/documenten')) return Promise.resolve(jsonResponse(DOCUMENTEN))
   if (url.endsWith('/medewerkers')) return Promise.resolve(jsonResponse(MEDEWERKERS))
+  // Klantpagina = standen (IA-verbouwing 15-08): bank per rekening + open vragen.
+  if (url.includes('/rekeningen')) {
+    return Promise.resolve(
+      jsonResponse({
+        rekeningen: [
+          { id: 'rek-1', naam: 'Rabobank zakelijk', iban: 'NL02RABO0123456789', open_mutaties: 12 },
+          { id: 'rek-2', naam: 'G-rekening', iban: 'NL10INGB0000002277', open_mutaties: 3 },
+          { id: 'rek-3', naam: 'Kas', iban: null, open_mutaties: 0 },
+        ],
+        laatste_sync_op: null,
+        ooit_gesynchroniseerd: true,
+        heeft_bankaanlevering: true,
+      }),
+    )
+  }
+  if (url.includes('/vragen')) {
+    return Promise.resolve(
+      jsonResponse({
+        vragen: [
+          {
+            id: 'vraag-1',
+            document_id: 'doc-1',
+            document_bestandsnaam: 'factuur_vve_dorpsstraat.pdf',
+            document_status: 'vraag_open',
+            totaalbedrag: '418.00',
+            vraag_tekst: 'Nieuwe kostenpost "servicekosten VvE" — welk grootboek?',
+            status: 'open',
+            status_voor_vraag: 'te_controleren',
+            gesteld_door: 'g-1',
+            gesteld_op: '2026-08-14T09:00:00Z',
+            toegewezen_aan: 'g-2',
+            antwoord_tekst: null,
+            beantwoord_door: null,
+            beantwoord_op: null,
+            ingetrokken_door: null,
+            ingetrokken_op: null,
+            ingetrokken_reden: null,
+          },
+        ],
+      }),
+    )
+  }
   return echteFetch(invoer, init)
 }
 
 const PARAMS = new URLSearchParams(window.location.search)
-const START_URL = PARAMS.has('klant') ? `/?administratie=${ADMIN_1}` : '/'
+// IA-verbouwing 15-08: ?klant=1 = klantpagina (standen), ?docs=1 = documenten-deelscherm.
+const START_URL = PARAMS.has('docs')
+  ? `/?administratie=${ADMIN_1}&sectie=documenten`
+  : PARAMS.has('klant')
+    ? `/?administratie=${ADMIN_1}`
+    : '/'
 
 // ?donker=1 — dark mode voor headless verificatie (thema.ts-klassepatroon).
 if (new URLSearchParams(window.location.search).has('donker')) {

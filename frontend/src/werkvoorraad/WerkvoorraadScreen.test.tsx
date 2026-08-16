@@ -65,11 +65,11 @@ function installFetchMock(opties: MockOpties) {
   )
 }
 
-/** De klantpagina (documentenlijst) leeft sinds de mockup-flow (browserreview 2026-08-07
- * punt 3) achter ?administratie=… — de kale werkvoorraad-route toont de klantenlijst. */
+/** IA-verbouwing (designronde 15-08): de documentenlijst is het WERKEN-deelscherm achter
+ * ?administratie=…&sectie=documenten — de kale klant-URL toont de STANDEN-klantpagina. */
 function renderScherm() {
   return render(
-    <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}`]}>
+    <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}&sectie=documenten`]}>
       <WerkvoorraadScreen />
     </MemoryRouter>,
   )
@@ -240,6 +240,9 @@ describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
         if (url.endsWith('/medewerkers')) {
           return Promise.resolve(jsonResponse({ medewerkers: [{ id: EIGENAAR_ID, naam: 'M. de Boer' }] }))
         }
+        if (url.includes('/vragen')) {
+          return Promise.resolve(jsonResponse({ vragen: [] }))
+        }
         if (url.includes('/documenten') && (!init || init.method === undefined)) {
           return Promise.resolve(jsonResponse({ documenten }))
         }
@@ -248,32 +251,31 @@ describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
     )
   }
 
-  it('toont de vraag-open-chip, de toegewezen-naam en de open-vragen-teller', async () => {
+  it('toont de vraag-open-chip, de toegewezen-naam en het vraag-segment met teller', async () => {
     installVraagFetchMock([document({ status: 'vraag_open', toegewezen_aan: EIGENAAR_ID })])
     renderScherm()
 
-    // De statustekst staat ook als optie in het statusfilter — minstens één zichtbare chip.
+    // De statustekst staat als chip in de rij én als segment-filter met teller.
     await waitFor(() => expect(screen.getAllByText('Vraag open').length).toBeGreaterThan(0))
     expect(screen.getByText('M. de Boer')).toBeInTheDocument()
-    const teller = screen.getByText('1 vraag open')
-    expect(teller.closest('a')).toHaveAttribute('href', `/vragen?administratie=${ADMINISTRATIE_ID}`)
+    expect(screen.getByRole('button', { name: 'Vraag open (1)' })).toBeInTheDocument()
   })
 
-  it('klik op een vraag-regel opent de vraag (vragen-view gefilterd op het document)', async () => {
+  it('klik op een vraag-regel opent de vraag (vragen-deelscherm gefilterd op het document)', async () => {
     const gebruiker = userEvent.setup()
     installVraagFetchMock([document({ status: 'vraag_open', toegewezen_aan: EIGENAAR_ID })])
     render(
-      <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}`]}>
+      <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}&sectie=documenten`]}>
         <Routes>
           <Route path="/" element={<WerkvoorraadScreen />} />
-          <Route path="/vragen" element={<div>vragen-view-probe</div>} />
         </Routes>
       </MemoryRouter>,
     )
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     await gebruiker.click(screen.getByText('factuur.pdf'))
-    await waitFor(() => expect(screen.getByText('vragen-view-probe')).toBeInTheDocument())
+    // Het vragen-deelscherm (sectie=vragen) rendert binnen dezelfde route.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Openstaande vragen' })).toBeInTheDocument())
   })
 
   it('zonder open vragen geen teller-chip', async () => {
@@ -329,6 +331,12 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
         if (url.endsWith('/verzamelbak')) {
           return Promise.resolve(jsonResponse({ items: [] }))
         }
+        if (url.includes('/vragen')) {
+          return Promise.resolve(jsonResponse({ vragen: [] }))
+        }
+        if (url.includes('/documenten')) {
+          return Promise.resolve(jsonResponse({ documenten: [] }))
+        }
         return Promise.resolve(new Response(null, { status: 404 }))
       }),
     )
@@ -354,16 +362,16 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
     expect(screen.getByText(/1 klant zonder openstaande zaken \(verborgen\)/)).toBeInTheDocument()
   })
 
-  it('klik op een klant opent de documentenlijst van die administratie (klantpagina)', async () => {
+  it('klik op een klant opent de klantpagina met standen (IA-verbouwing 15-08)', async () => {
     const gebruiker = userEvent.setup()
     installOverzichtMock([klant({ te_controleren: 1 })])
     renderIngang()
 
     await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
     await gebruiker.click(screen.getByText('Testklant'))
-    // Klantpagina: breadcrumb terug + documentenlijst-kop.
-    await waitFor(() => expect(screen.getByText('← Werkvoorraad')).toBeInTheDocument())
-    expect(screen.getByText('Openstaande zaken')).toBeInTheDocument()
+    // Klantpagina = STANDEN: breadcrumb terug + standen-kop.
+    await waitFor(() => expect(screen.getByText('Te verwerken documenten')).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: 'Werkvoorraad' })).toBeInTheDocument()
   })
 
   it('bank-teller komt uit het bank-overzicht en een bankfout blokkeert de lijst niet', async () => {
@@ -374,7 +382,20 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
     renderIngang()
 
     await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
-    expect(screen.getByText('3')).toBeInTheDocument()
+    // Bank-teller staat in de lijst én telt mee in de KPI-kaart — minstens één zichtbaar.
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
+  })
+
+  it('de KPI-kaarten zijn klikbaar en openen de kantoorbrede dwarsdoorsnede', async () => {
+    const gebruiker = userEvent.setup()
+    installOverzichtMock([klant({ te_controleren: 2, vragen: 1 })])
+    renderIngang()
+
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: /Open vragen/ }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Open vragen — alle klanten' })).toBeInTheDocument(),
+    )
   })
 
   it('lege staat: alles bij — geen tabelinhoud, wél een duidelijke melding', async () => {
@@ -430,7 +451,8 @@ describe('Klantpagina — kolommen, zoekveld en statusfilter (mockup #klantpagin
     expect(screen.queryByText('b.pdf')).not.toBeInTheDocument()
 
     await gebruiker.clear(screen.getByLabelText('Zoek in documenten'))
-    await gebruiker.selectOptions(screen.getByLabelText('Filter op status'), 'klaar_om_te_boeken')
+    // Statusfilter = segment-knoppen (mockup #scherm-docs, IA-verbouwing 15-08).
+    await gebruiker.click(screen.getByRole('button', { name: 'Klaar om te boeken (1)' }))
     expect(screen.queryByText('a.pdf')).not.toBeInTheDocument()
     expect(screen.getByText('b.pdf')).toBeInTheDocument()
   })
@@ -487,7 +509,7 @@ describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-i
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('handmatig.pdf')).toBeInTheDocument())
-    await gebruiker.selectOptions(screen.getByLabelText('Filter op status'), 'Automatisch geboekt')
+    await gebruiker.click(screen.getByRole('button', { name: 'Automatisch geboekt' }))
 
     expect(screen.queryByText('handmatig.pdf')).not.toBeInTheDocument()
     expect(screen.getByText('auto-factuur.pdf')).toBeInTheDocument()
@@ -499,8 +521,6 @@ describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-i
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     expect(screen.queryByText('automatisch')).not.toBeInTheDocument()
-    expect(
-      within(screen.getByLabelText<HTMLSelectElement>('Filter op status')).queryByText('Automatisch geboekt'),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Automatisch geboekt' })).not.toBeInTheDocument()
   })
 })

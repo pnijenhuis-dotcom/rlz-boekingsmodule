@@ -496,12 +496,21 @@ export function BankDetailScreen() {
   return (
     <>
       <div className="topbar">
-        <h1>
-          <Link to="/bank" style={{ color: 'var(--accent)' }}>
-            ← Bank
-          </Link>{' '}
-          <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/</span> {klantNaam}
-        </h1>
+        {/* IA-verbouwing 15-08: het bank-tabblad is weg — dit rekening-afletterscherm hangt
+            onder de klantpagina (breadcrumb Werkvoorraad › klant › Bank). */}
+        <div>
+          <div className="mb-1 text-[12.5px] text-muted">
+            <Link to="/" className="text-primary no-underline hover:underline">
+              Werkvoorraad
+            </Link>{' '}
+            <span className="text-faint">›</span>{' '}
+            <Link to={`/?administratie=${administratieId}`} className="text-primary no-underline hover:underline">
+              {klantNaam}
+            </Link>{' '}
+            <span className="text-faint">›</span> Bank
+          </div>
+          <h1>Afletteren — {klantNaam}</h1>
+        </div>
         <div className="bankpicker">
           <span className="bp-icon">🏦</span>
           <div>

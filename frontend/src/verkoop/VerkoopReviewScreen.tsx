@@ -368,7 +368,7 @@ export function VerkoopReviewScreen() {
           <div className="icon">❓</div>
           <div>
             Er staat een open vraag op deze factuur — boeken is geblokkeerd tot de vraag beantwoord of
-            ingetrokken is (zie <Link to={`/vragen?administratie=${administratieId}&document=${documentId}`}>Vragen</Link>).
+            ingetrokken is (zie <Link to={`/?administratie=${administratieId}&sectie=vragen&document=${documentId}`}>Vragen</Link>).
           </div>
         </div>
       )}

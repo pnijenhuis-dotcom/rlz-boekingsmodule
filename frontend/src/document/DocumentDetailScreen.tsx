@@ -445,7 +445,7 @@ export function DocumentDetailScreen() {
                     <div className="vraagtekst">&ldquo;{openVraag.vraag_tekst}&rdquo;</div>
                   </div>
                   <div className="actions">
-                    <Link className="btn" to={`/vragen?administratie=${administratieId}&document=${documentId}`}>
+                    <Link className="btn" to={`/?administratie=${administratieId}&sectie=vragen&document=${documentId}`}>
                       Beantwoorden of intrekken →
                     </Link>
                   </div>
@@ -453,7 +453,7 @@ export function DocumentDetailScreen() {
               ) : (
                 <p className="hint" style={{ marginTop: 0 }}>
                   Er staat een open vraag op dit document —{' '}
-                  <Link to={`/vragen?administratie=${administratieId}&document=${documentId}`}>
+                  <Link to={`/?administratie=${administratieId}&sectie=vragen&document=${documentId}`}>
                     bekijk de vraag
                   </Link>
                   . Boeken kan pas na beantwoording (of intrekking).

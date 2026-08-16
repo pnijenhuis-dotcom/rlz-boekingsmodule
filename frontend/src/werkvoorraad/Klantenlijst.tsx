@@ -1,35 +1,10 @@
-import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { AdministratieDto, WerkvoorraadKlantDto } from '../api/types'
-import { haalBankOverzicht } from '../bank/bankApi'
-import { haalSpiegelTakenOp } from '../doorbelasting/doorbelastingApi'
 import { FoutMelding } from '../ui/FoutMelding'
-import { haalWerkvoorraadOverzichtOp } from './werkvoorraadApi'
+import { heeftOpenstaandWerk, type KlantRij } from './useWerkvoorraadData'
 
 /** Werkvoorraad-ingang (mockup #werkvoorraad "Overzicht per klant"): alleen klanten mét
- * openstaand werk, elke teller klikbaar. De bank-kolom komt uit het bank-overzicht (aparte
- * fetch) — als die faalt blijft de rest van de lijst gewoon bruikbaar. De spiegel-taken-teller
- * (Kempen-doorbelasting) volgt hetzelfde faalvriendelijke patroon: fetch per administratie,
- * een fout telt als "geen data" en de kolom verschijnt alleen als er ergens een open taak is. */
-
-interface KlantRij extends WerkvoorraadKlantDto {
-  bank_open: number | null
-  spiegel_taken: number | null
-}
-
-function heeftOpenstaandWerk(k: KlantRij): boolean {
-  return (
-    k.te_controleren +
-      k.klaar_om_te_boeken +
-      k.vragen +
-      k.afgewezen +
-      k.bij_klant +
-      k.iban_wachtend +
-      (k.bank_open ?? 0) +
-      (k.spiegel_taken ?? 0) >
-    0
-  )
-}
+ * openstaand werk, elke teller klikbaar. De data komt sinds de IA-verbouwing (fase 2) uit de
+ * gedeelde hook useWerkvoorraadData — de KPI-rij erboven telt op dezelfde rijen. */
 
 function Teller({ waarde, chipKlasse, label }: { waarde: number; chipKlasse: string; label?: string }) {
   if (waarde === 0) return <>—</>
@@ -57,50 +32,18 @@ function SkeletonRijen({ kolommen, rijen }: { kolommen: number; rijen: number })
   )
 }
 
-export function Klantenlijst({ administraties }: { administraties: AdministratieDto[] }) {
+export function Klantenlijst({
+  klanten,
+  fout,
+  onHerlaad,
+  totaalAdministraties,
+}: {
+  klanten: KlantRij[] | null
+  fout: string | null
+  onHerlaad: () => void
+  totaalAdministraties: number
+}) {
   const navigate = useNavigate()
-  const [klanten, setKlanten] = useState<KlantRij[] | null>(null)
-  const [fout, setFout] = useState<string | null>(null)
-  const [herlaadTeller, setHerlaadTeller] = useState(0)
-
-  useEffect(() => {
-    let actueel = true
-    setFout(null)
-    setKlanten(null)
-    // Bank- en spiegel-tellers zijn verrijking: een fout daar mag de klantenlijst niet blokkeren.
-    const bankBelofte = haalBankOverzicht().catch(() => null)
-    const spiegelBelofte = Promise.all(
-      administraties.map(async (a) => {
-        try {
-          const taken = await haalSpiegelTakenOp(a.id)
-          return [a.id, taken.length] as const
-        } catch {
-          return [a.id, null] as const
-        }
-      }),
-    )
-    haalWerkvoorraadOverzichtOp()
-      .then(async (overzicht) => {
-        const [bank, spiegel] = await Promise.all([bankBelofte, spiegelBelofte])
-        if (!actueel) return
-        const bankPerAdministratie = new Map((bank?.klanten ?? []).map((b) => [b.administratie_id, b.open_mutaties]))
-        const spiegelPerAdministratie = new Map(spiegel)
-        setKlanten(
-          overzicht.klanten.map((k) => ({
-            ...k,
-            bank_open: bank ? (bankPerAdministratie.get(k.administratie_id) ?? 0) : null,
-            spiegel_taken: spiegelPerAdministratie.get(k.administratie_id) ?? null,
-          })),
-        )
-      })
-      .catch((err: unknown) => {
-        if (actueel) setFout(err instanceof Error ? err.message : 'Onbekende fout')
-      })
-    return () => {
-      actueel = false
-    }
-  }, [herlaadTeller, administraties])
-
   const zichtbaar = (klanten ?? []).filter(heeftOpenstaandWerk)
   const verborgen = (klanten?.length ?? 0) - zichtbaar.length
   // Kolom alleen bij data (Kempen-doorbelasting is voor één administratie relevant — de rest
@@ -110,18 +53,11 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
   return (
     <div className="panel">
       <h2>Overzicht per klant</h2>
-      {fout && (
-        <FoutMelding
-          melding="De klantenlijst kon niet geladen worden."
-          detail={fout}
-          onOpnieuw={() => setHerlaadTeller((t) => t + 1)}
-        />
-      )}
+      {fout && <FoutMelding melding="De klantenlijst kon niet geladen worden." detail={fout} onOpnieuw={onHerlaad} />}
       {!fout && (
         // .tabel-scroll (responsive-fix 2026-08-15): de tellerkolommen + nowrap-chips maken de
         // tabel op smalle vensters breder dan het paneel — dan scrolt de tabel intern i.p.v.
-        // door de paneelrand te klippen (zelfde patroon als de boekingsregels-tabel; de mockup
-        // kent geen smal breakpoint).
+        // door de paneelrand te klippen.
         <div className="tabel-scroll">
           <table>
             <tbody>
@@ -160,7 +96,7 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
                     onClick={(e) => {
                       if (k.vragen === 0) return
                       e.stopPropagation()
-                      navigate(`/vragen?administratie=${k.administratie_id}`)
+                      navigate(`/?administratie=${k.administratie_id}&sectie=vragen`)
                     }}
                   >
                     <Teller waarde={k.vragen} chipKlasse="vraag" />
@@ -193,8 +129,8 @@ export function Klantenlijst({ administraties }: { administraties: Administratie
       )}
       {klanten !== null && !fout && zichtbaar.length === 0 && (
         <p className="hint">
-          Geen openstaand werk — alle {administraties.length}{' '}
-          {administraties.length === 1 ? 'administratie is' : 'administraties zijn'} bij. Nieuwe documenten of
+          Geen openstaand werk — alle {totaalAdministraties}{' '}
+          {totaalAdministraties === 1 ? 'administratie is' : 'administraties zijn'} bij. Nieuwe documenten of
           bankmutaties verschijnen hier vanzelf.
         </p>
       )}

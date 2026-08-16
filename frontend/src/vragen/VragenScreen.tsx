@@ -164,6 +164,10 @@ export function VragenScreen() {
   const [searchParams, setSearchParams] = useSearchParams()
   const administratieId = searchParams.get('administratie')
   const documentFilter = searchParams.get('document')
+  // Deelscherm-context (IA-verbouwing 15-08): op `/?administratie=…&sectie=vragen` moet elke
+  // interne parameterwissel de sectie behouden — anders valt de gebruiker terug op de standen.
+  const sectie = searchParams.get('sectie')
+  const metSectie = (params: Record<string, string>) => (sectie ? { ...params, sectie } : params)
 
   const [vragen, setVragen] = useState<VraagDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
@@ -172,9 +176,14 @@ export function VragenScreen() {
 
   useEffect(() => {
     if (!administratieId && administraties && administraties.length > 0) {
-      setSearchParams({ administratie: administraties[0].id }, { replace: true })
+      setSearchParams(
+        sectie
+          ? { administratie: administraties[0].id, sectie }
+          : { administratie: administraties[0].id },
+        { replace: true },
+      )
     }
-  }, [administraties, administratieId, setSearchParams])
+  }, [administraties, administratieId, sectie, setSearchParams])
 
   const laadVragen = useCallback(() => {
     if (!administratieId) return
@@ -216,7 +225,24 @@ export function VragenScreen() {
   return (
     <div>
       <div className="topbar">
-        <h1>Openstaande vragen</h1>
+        <div>
+          {sectie && administratieId && (
+            <div className="mb-1 text-[12.5px] text-muted">
+              <Link to="/" className="text-primary no-underline hover:underline">
+                Werkvoorraad
+              </Link>{' '}
+              <span className="text-faint">›</span>{' '}
+              <Link
+                to={`/?administratie=${administratieId}`}
+                className="text-primary no-underline hover:underline"
+              >
+                {administraties.find((a) => a.id === administratieId)?.naam ?? 'Klant'}
+              </Link>{' '}
+              <span className="text-faint">›</span> Vragen
+            </div>
+          )}
+          <h1>Openstaande vragen</h1>
+        </div>
         <div className="adm-select">
           <label htmlFor="vragen-administratie-select" style={{ margin: 0 }}>
             Administratie
@@ -224,7 +250,7 @@ export function VragenScreen() {
           <Select
             id="vragen-administratie-select"
             value={administratieId ?? ''}
-            onChange={(e) => setSearchParams({ administratie: e.target.value })}
+            onChange={(e) => setSearchParams(metSectie({ administratie: e.target.value }))}
           >
             {administraties.map((a) => (
               <option key={a.id} value={a.id}>
@@ -241,7 +267,7 @@ export function VragenScreen() {
           <button
             type="button"
             className="linkbtn"
-            onClick={() => setSearchParams(administratieId ? { administratie: administratieId } : {})}
+            onClick={() => setSearchParams(administratieId ? metSectie({ administratie: administratieId }) : {})}
           >
             toon alle vragen
           </button>
