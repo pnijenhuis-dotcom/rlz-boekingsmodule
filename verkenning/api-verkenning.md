@@ -1482,3 +1482,38 @@ Voor de storno-blokkade ná ingediende btw-aangifte (besluit Peter 15-08, zie BE
 - `BankMutationDirectBookings`-documenten dragen een bruikbaar `Date`-veld (afgeleid van de
   transactiedatum) — de bank-storno-poort toetst dáárop; ontbreekt het veld dan blokkeert de
   poort fail-closed.
+
+## Uploads bij een herstart-boekcyclus — /Uploads kent GÉÉN her-PUT (16 augustus 2026, test-administratie + productie-waarneming) — GESLAAGD
+
+Aanleiding: kliktest 2 van TEST-ONB-KLIKTEST-01 strandde per doelentiteit op
+`PUT SalesInvoices/{id}/Uploads/{uploadId}` → **404 `_NotFound`** — direct ná een geslaagde
+her-PUT van het document zelf. Reconstructie: Peter had de vijf bron-verkoop-concepten van
+cyclus 1 handmatig in de RLZ-UI verwijderd; run 2 herschiep het document via PUT op het
+deterministische GUID (dat werkt), maar het deterministische upload-GUID was in cyclus 1 al
+verbruikt. De aanname in `rlz_ids.py::rlz_upload_id` ("een retry ... overschrijft (PUT)
+dezelfde bijlage") was nooit tegen de live API getest en is FOUT.
+
+Experiment (poc_upload_herstart.py, PurchaseInvoice TEST-HERPUT-01, mini-PDF's):
+
+1. **`GET .../Uploads` is een betrouwbare aanwezigheids-check**: 200 + lijst (0 → 1 → 2
+   correct meegegroeid), werkt op PurchaseInvoices, SalesInvoices (leeg bevestigd op de
+   herschapen productie-concepten) én ManualJournals (read-only geverifieerd), in concept-
+   én geboekte staat.
+2. Upload met een vers GUID → 204 (zoals bekend).
+3. **HER-PUT op een bestaand upload-GUID (levend document) → `400 _InvalidData`** — géén
+   overschrijven; het document houdt de oorspronkelijke bijlage (FileName ongewijzigd).
+4. Een **tweede bijlage naast de eerste** (vers GUID) → 204, lijst = 2 — meerdere bijlagen
+   per document kunnen dus wél.
+5. **Bijlagen overleven boek (17), storno (19) én een her-PUT van het document** (die
+   vervangt alleen de DocumentLineList — lijst bleef 2).
+6. Productie-waarneming (run 2, Facilities): een upload-GUID dat verbruikt is op een
+   intussen VERWIJDERD document geeft op het herschapen document **404 `_NotFound`** (dus
+   400 = GUID bestaat nog, 404 = GUID verbruikt-en-weg; beide betekenen "onbruikbaar").
+
+Consequentie (fix zelfde dag): bijlage-idempotentie loopt via de LEESROUTE, niet via
+PUT-overschrijven — `app/rlz/bijlage.py::zorg_voor_bijlage` (alle vier motoren: inkoop,
+verkoop/omzet, memoriaal, doorbelasting-spiegel): bijlage al aanwezig = overslaan (dekt de
+herstart op een storno-concept én de crash-retry); lijst leeg → PUT met het basis-GUID; bij
+400/404 door naar een deterministisch cyclus-GUID (`uuid5` over het basis-GUID, begrensd op
+5 cycli, daarna zichtbare fout). Onleesbare Uploads-lijst = fail-open naar gewoon uploaden
+(een dubbele bijlage is cosmetisch, een gestrande boeking niet).
