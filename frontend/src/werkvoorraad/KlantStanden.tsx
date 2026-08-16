@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { haalLaatstHerinnerd, herinnerAccordeur } from '../accordering/accorderingApi'
 import { apiJson } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
 import { verwerkEml } from '../intake/intakeApi'
-import { Badge, Select } from '../ui/basis'
+import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
@@ -31,11 +32,15 @@ export function KlantStanden({
 }) {
   const navigate = useNavigate()
   const { naamVoor } = useMedewerkers(administratieId)
+  const { meld } = useToastOptioneel()
   const [documenten, setDocumenten] = useState<DocumentListItemDto[] | null>(null)
   const [documentenFout, setDocumentenFout] = useState<string | null>(null)
   const [rekeningen, setRekeningen] = useState<RekeningenDto | null>(null)
   const [rekeningenGeladen, setRekeningenGeladen] = useState(false)
   const [vragen, setVragen] = useState<VraagDto[] | null>(null)
+  const [laatstHerinnerd, setLaatstHerinnerd] = useState<Record<string, string>>({})
+  const [herinnerBezig, setHerinnerBezig] = useState<string | null>(null)
+  const [herinnerFout, setHerinnerFout] = useState<string | null>(null)
 
   const laadDocumenten = useCallback(() => {
     setDocumentenFout(null)
@@ -71,10 +76,31 @@ export function KlantStanden({
       .catch(() => {
         if (actueel) setVragen(null)
       })
+    // "Laatst herinnerd" bij het accorderingspaneel — verrijking, fout blokkeert niets.
+    setLaatstHerinnerd({})
+    haalLaatstHerinnerd(administratieId)
+      .then((data) => {
+        if (actueel) setLaatstHerinnerd(data.laatst_herinnerd)
+      })
+      .catch(() => undefined)
     return () => {
       actueel = false
     }
   }, [administratieId])
+
+  async function herinneren(documentId: string) {
+    setHerinnerBezig(documentId)
+    setHerinnerFout(null)
+    try {
+      const resultaat = await herinnerAccordeur(administratieId, documentId)
+      setLaatstHerinnerd((huidig) => ({ ...huidig, [documentId]: resultaat.verzonden_op }))
+      meld(`Herinnering verstuurd aan ${resultaat.accordeur_naam} (${resultaat.kanaal}).`)
+    } catch (err) {
+      setHerinnerFout(err instanceof Error ? err.message : 'Herinneren mislukt.')
+    } finally {
+      setHerinnerBezig(null)
+    }
+  }
 
   const open = useMemo(() => (documenten ?? []).filter(isOpenstaand), [documenten])
   const standen: SoortStand[] = useMemo(() => {
@@ -318,6 +344,7 @@ export function KlantStanden({
             <h2 style={{ margin: 0 }}>Bij klant ter accordering</h2>
             <Badge variant="paars">{terAccordering.length}</Badge>
           </div>
+          {herinnerFout && <FoutMelding melding={herinnerFout} />}
           <div className="tabel-scroll">
             <table>
               <tbody>
@@ -326,6 +353,8 @@ export function KlantStanden({
                   <th>Leverancier</th>
                   <th className="amount">Bedrag</th>
                   <th>Sinds</th>
+                  <th>Laatst herinnerd</th>
+                  <th />
                 </tr>
                 {terAccordering.map((d) => (
                   <tr key={d.id} className="clickable" onClick={() => navigate(documentRoute(administratieId, d))}>
@@ -335,6 +364,27 @@ export function KlantStanden({
                     <td>{d.leverancier ?? '—'}</td>
                     <td className="amount">{formatBedrag(d.totaalbedrag)}</td>
                     <td>{ouderdomLabel(d.laatst_gewijzigd_op)}</td>
+                    <td>
+                      {laatstHerinnerd[d.id]
+                        ? new Date(laatstHerinnerd[d.id]).toLocaleString('nl-NL', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })
+                        : '—'}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <Button
+                        variant="secundair"
+                        maat="klein"
+                        disabled={herinnerBezig === d.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void herinneren(d.id)
+                        }}
+                      >
+                        {herinnerBezig === d.id ? 'Bezig…' : 'Herinner'}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

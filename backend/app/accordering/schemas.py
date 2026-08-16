@@ -67,6 +67,21 @@ class AccorderingResponse(BaseModel):
     stappen: list[StapResponse]
 
 
+class HerinneringResponse(BaseModel):
+    """Uitkomst van een handmatige herinnering (beheer-mini 2026-08-16, migratie 0053)."""
+
+    document_id: uuid.UUID
+    accordeur_naam: str
+    verzonden_op: datetime
+    kanaal: str
+
+
+class HerinneringenOverzichtResponse(BaseModel):
+    """document_id -> laatste geslaagde handmatige herinnering ("laatst herinnerd")."""
+
+    laatst_herinnerd: dict[uuid.UUID, datetime]
+
+
 class AkkoordInput(StrikteInvoer):
     staande_regel_aanmaken: bool = False
 

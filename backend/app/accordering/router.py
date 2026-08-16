@@ -12,7 +12,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.accordering import schemas, service
+from app.accordering import herinnering, schemas, service
 from app.auth import service as auth_service
 from app.auth import voorwaarden
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder, vereis_administratie_scope
@@ -41,6 +41,10 @@ def _vertaal(exc: service.AccorderingFout) -> HTTPException:
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     if isinstance(exc, service.GeenOpenAccordering):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, herinnering.AlHerinnerdVandaag):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, herinnering.HerinneringVerzendingMislukt):
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
@@ -257,6 +261,48 @@ def intrekken(
     except service.AccorderingFout as exc:
         raise _vertaal(exc) from exc
     return _accordering_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/accordering/documenten/{document_id}/herinneren",
+    response_model=schemas.HerinneringResponse,
+)
+def herinneren(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.HerinneringResponse:
+    """Handmatige extra herinnering (push, anders mail) aan de accordeur die aan de beurt is —
+    max één per document per dag, geauditeerd (beheer-mini 2026-08-16)."""
+    try:
+        resultaat = herinnering.stuur_handmatige_herinnering(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            actor_rol=actor.rol.value,
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.HerinneringResponse(
+        document_id=resultaat.document_id,
+        accordeur_naam=resultaat.accordeur_naam,
+        verzonden_op=resultaat.verzonden_op,
+        kanaal=resultaat.kanaal,
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/accordering/herinneringen",
+    response_model=schemas.HerinneringenOverzichtResponse,
+)
+def herinneringen_overzicht(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.HerinneringenOverzichtResponse:
+    """"Laatst herinnerd" per document (klantpagina-paneel + accorderingssectie)."""
+    return schemas.HerinneringenOverzichtResponse(
+        laatst_herinnerd=herinnering.laatst_herinnerd_per_document(administratie_id=administratie_id)
+    )
 
 
 @router.get(

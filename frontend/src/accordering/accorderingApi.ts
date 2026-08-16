@@ -95,6 +95,24 @@ export function trekAccorderingIn(administratieId: string, documentId: string): 
   return apiPostJson(`/administraties/${administratieId}/accordering/documenten/${documentId}/intrekken`, {})
 }
 
+// --- handmatige herinnering per document (beheer-mini 2026-08-16) --------------------------------
+
+export interface HerinneringResultaatDto {
+  document_id: string
+  accordeur_naam: string
+  verzonden_op: string
+  kanaal: string
+}
+
+export function herinnerAccordeur(administratieId: string, documentId: string): Promise<HerinneringResultaatDto> {
+  return apiPostJson(`/administraties/${administratieId}/accordering/documenten/${documentId}/herinneren`, {})
+}
+
+/** document_id -> laatste geslaagde handmatige herinnering ("laatst herinnerd"). */
+export function haalLaatstHerinnerd(administratieId: string): Promise<{ laatst_herinnerd: Record<string, string> }> {
+  return apiJson(`/administraties/${administratieId}/accordering/herinneringen`)
+}
+
 export function haalStaandeRegels(administratieId: string): Promise<{ regels: StaandeRegelDto[] }> {
   return apiJson(`/administraties/${administratieId}/accordering/staande-regels`)
 }

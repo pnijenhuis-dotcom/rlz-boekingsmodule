@@ -31,15 +31,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.accordering import service as accordering_service
-from app.berichten import mail, push
-from app.berichten.models import (
-    AccordeurHerinnering,
-    HerinneringKanaal,
-    HerinneringStatus,
-    PushSubscriptie,
-)
+from app.berichten import verzending
+from app.berichten.models import AccordeurHerinnering, HerinneringKanaal, HerinneringStatus
 from app.config import settings
-from app.db.models import Administratie, Gebruiker, GebruikerRol, GebruikerStatus, WebauthnCredential
+from app.db.models import Administratie, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 
@@ -115,31 +110,6 @@ def _actieve_accordeurs() -> list[Gebruiker]:
         return sorted(rijen, key=lambda g: str(g.id))
 
 
-def _actieve_subscripties(gebruiker_id: uuid.UUID) -> list[PushSubscriptie]:
-    """Actieve subscripties van niet-ingetrokken apparaten — de kill-switch bijt dus óók hier,
-    zelfs als het intrekken van de subscriptie-rij ooit zou ontbreken (dubbele borging)."""
-    with scoped_session(None) as session:
-        rijen = session.scalars(
-            select(PushSubscriptie)
-            .join(WebauthnCredential, WebauthnCredential.id == PushSubscriptie.apparaat_id)
-            .where(
-                PushSubscriptie.gebruiker_id == gebruiker_id,
-                PushSubscriptie.ingetrokken_op.is_(None),
-                WebauthnCredential.ingetrokken_op.is_(None),
-            )
-        ).all()
-        session.expunge_all()
-        return list(rijen)
-
-
-def markeer_subscriptie_vervallen(subscriptie_id: uuid.UUID) -> None:
-    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
-        rij = session.get(PushSubscriptie, subscriptie_id)
-        if rij is not None and rij.ingetrokken_op is None:
-            rij.ingetrokken_op = datetime.now(UTC)
-            rij.ingetrokken_reden = "vervallen"
-
-
 @dataclass(frozen=True)
 class _Claim:
     herinnering_id: uuid.UUID | None
@@ -192,38 +162,19 @@ def _rond_dagrij_af(
 def _verstuur_voor_accordeur(
     gebruiker: Gebruiker, aantal: int, rapport: HerinneringRapport
 ) -> tuple[HerinneringStatus, HerinneringKanaal | None, dict | None]:
-    """Push eerst (alle actieve subscripties), anders e-mail. Retourneert (status, kanaal, detail)."""
+    """Push eerst (alle actieve subscripties), anders e-mail — gedeelde kanaalkeuze in
+    app/berichten/verzending.py. Retourneert (status, kanaal, detail)."""
     onderwerp, pushtekst, mailtekst = bericht_teksten(aantal)
-    subscripties = _actieve_subscripties(gebruiker.id)
-    push_gelukt = 0
-    push_fouten: list[str] = []
-    if subscripties and push.is_geconfigureerd():
-        for subscriptie in subscripties:
-            try:
-                push.verzend_push(
-                    subscriptie,
-                    payload={"titel": "RLZ Goedkeuren", "tekst": pushtekst, "url": "/accordeur", "aantal": aantal},
-                )
-                push_gelukt += 1
-            except push.PushSubscriptieVervallen:
-                markeer_subscriptie_vervallen(subscriptie.id)
-                rapport.subscripties_vervallen += 1
-            except push.PushFout as exc:
-                push_fouten.append(str(exc))
-    if push_gelukt:
-        return HerinneringStatus.VERZONDEN, HerinneringKanaal.PUSH, {"subscripties": push_gelukt}
-    # Terugval: e-mail met hetzelfde bericht (ook wanneer álle subscripties vervallen bleken).
-    if not gebruiker.e_mail:
-        return HerinneringStatus.OVERGESLAGEN, None, {"reden": "geen mailadres en geen subscriptie"}
-    try:
-        mail.verzend_mail(naar=gebruiker.e_mail, onderwerp=onderwerp, tekst=mailtekst)
-    except mail.MailFout as exc:
-        detail = {"fout": str(exc)}
-        if push_fouten:
-            detail["push_fouten"] = push_fouten
-        return HerinneringStatus.MISLUKT, None, detail
-    detail = {"na_push_fouten": push_fouten} if push_fouten else None
-    return HerinneringStatus.VERZONDEN, HerinneringKanaal.E_MAIL, detail
+    uitkomst = verzending.verstuur_push_anders_mail(
+        gebruiker,
+        onderwerp=onderwerp,
+        pushtekst=pushtekst,
+        mailtekst=mailtekst,
+        url="/accordeur",
+        extra_payload={"aantal": aantal},
+    )
+    rapport.subscripties_vervallen += uitkomst.subscripties_vervallen
+    return uitkomst.status, uitkomst.kanaal, uitkomst.detail
 
 
 def verstuur_dagelijkse_herinneringen(*, vandaag: date | None = None) -> HerinneringRapport:

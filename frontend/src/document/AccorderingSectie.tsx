@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   haalAccorderingVanDocument,
+  haalLaatstHerinnerd,
+  herinnerAccordeur,
   trekAccorderingIn,
   type AccorderingDto,
   type AccorderingStapDto,
@@ -49,11 +51,17 @@ export function AccorderingSectie({
   const [accordering, setAccordering] = useState<AccorderingDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
+  const [herinnerBezig, setHerinnerBezig] = useState(false)
+  const [laatstHerinnerd, setLaatstHerinnerd] = useState<string | null>(null)
 
   const laad = useCallback(() => {
     haalAccorderingVanDocument(administratieId, documentId)
       .then(setAccordering)
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
+    // "Laatst herinnerd" is verrijking — een fout hier blokkeert de sectie niet.
+    haalLaatstHerinnerd(administratieId)
+      .then((data) => setLaatstHerinnerd(data.laatst_herinnerd[documentId] ?? null))
+      .catch(() => undefined)
   }, [administratieId, documentId])
 
   useEffect(laad, [laad, documentStatus])
@@ -68,6 +76,19 @@ export function AccorderingSectie({
       setFout(err instanceof Error ? err.message : 'Intrekken mislukt')
     } finally {
       setBezig(false)
+    }
+  }
+
+  const herinneren = async () => {
+    setHerinnerBezig(true)
+    setFout(null)
+    try {
+      const resultaat = await herinnerAccordeur(administratieId, documentId)
+      setLaatstHerinnerd(resultaat.verzonden_op)
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : 'Herinneren mislukt')
+    } finally {
+      setHerinnerBezig(false)
     }
   }
 
@@ -116,12 +137,16 @@ export function AccorderingSectie({
       </table>
       <div className="hint">
         Aangeboden {formatTijdstip(accordering.aangeboden_op)}
-        {accordering.afgerond_op && ` · afgerond ${formatTijdstip(accordering.afgerond_op)}`} — na het laatste
+        {accordering.afgerond_op && ` · afgerond ${formatTijdstip(accordering.afgerond_op)}`}
+        {laatstHerinnerd && ` · laatst herinnerd ${formatTijdstip(laatstHerinnerd)}`} — na het laatste
         akkoord boekt de motor automatisch, mét alle harde checks opnieuw.
       </div>
       {fout && <div className="fout">{fout}</div>}
       {accordering.status === 'open' && (
         <div className="actions">
+          <button type="button" className="btn secondary" disabled={herinnerBezig} onClick={() => void herinneren()}>
+            {herinnerBezig ? 'Bezig…' : 'Herinner accordeur'}
+          </button>
           <button type="button" className="btn secondary" disabled={bezig} onClick={() => void intrekken()}>
             {bezig ? 'Bezig…' : 'Terughalen uit accordering'}
           </button>

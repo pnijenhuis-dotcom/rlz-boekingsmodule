@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0052
+-- Migratie-head bij deze dump: 0053
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -618,6 +618,29 @@ CREATE TABLE boekhouding.document_gebeurtenis (
 );
 
 ALTER TABLE ONLY boekhouding.document_gebeurtenis FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: document_herinnering; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.document_herinnering (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    accordeur_gebruiker_id uuid NOT NULL,
+    datum date NOT NULL,
+    status text DEFAULT 'bezig'::text NOT NULL,
+    kanaal text,
+    detail jsonb,
+    verzonden_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verzonden_op timestamp with time zone,
+    CONSTRAINT ck_document_herinnering_kanaal CHECK (((kanaal IS NULL) OR (kanaal = ANY (ARRAY['push'::text, 'e-mail'::text])))),
+    CONSTRAINT ck_document_herinnering_status CHECK ((status = ANY (ARRAY['bezig'::text, 'verzonden'::text, 'mislukt'::text, 'overgeslagen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.document_herinnering FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -1840,6 +1863,14 @@ ALTER TABLE ONLY boekhouding.document_gebeurtenis
 
 
 --
+-- Name: document_herinnering document_herinnering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_herinnering
+    ADD CONSTRAINT document_herinnering_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: document document_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2520,6 +2551,20 @@ CREATE INDEX ix_document_gebeurtenis_tijdstip ON boekhouding.document_gebeurteni
 
 
 --
+-- Name: ix_document_herinnering_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_document_herinnering_administratie_id ON boekhouding.document_herinnering USING btree (administratie_id);
+
+
+--
+-- Name: ix_document_herinnering_document_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_document_herinnering_document_id ON boekhouding.document_herinnering USING btree (document_id);
+
+
+--
 -- Name: ix_document_status; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -2629,6 +2674,13 @@ CREATE UNIQUE INDEX reconciliatie_acceptatie_actief_uniek ON boekhouding.reconci
 --
 
 CREATE UNIQUE INDEX uq_document_accordering_open ON boekhouding.document_accordering USING btree (document_id) WHERE (status = 'open'::text);
+
+
+--
+-- Name: uq_document_herinnering_dag; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_document_herinnering_dag ON boekhouding.document_herinnering USING btree (document_id, datum);
 
 
 --
@@ -3104,6 +3156,38 @@ ALTER TABLE ONLY boekhouding.document_gebeurtenis
 
 ALTER TABLE ONLY boekhouding.document
     ADD CONSTRAINT document_gesplitst_uit_id_fkey FOREIGN KEY (gesplitst_uit_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: document_herinnering document_herinnering_accordeur_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_herinnering
+    ADD CONSTRAINT document_herinnering_accordeur_gebruiker_id_fkey FOREIGN KEY (accordeur_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: document_herinnering document_herinnering_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_herinnering
+    ADD CONSTRAINT document_herinnering_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: document_herinnering document_herinnering_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_herinnering
+    ADD CONSTRAINT document_herinnering_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: document_herinnering document_herinnering_verzonden_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document_herinnering
+    ADD CONSTRAINT document_herinnering_verzonden_door_fkey FOREIGN KEY (verzonden_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -4187,6 +4271,19 @@ CREATE POLICY document_gebeurtenis_scope ON boekhouding.document_gebeurtenis USI
   WHERE ((d.id = document_gebeurtenis.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM boekhouding.document d
   WHERE ((d.id = document_gebeurtenis.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+
+
+--
+-- Name: document_herinnering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.document_herinnering ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: document_herinnering document_herinnering_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY document_herinnering_scope ON boekhouding.document_herinnering USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

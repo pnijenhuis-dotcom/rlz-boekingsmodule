@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import ForeignKey, Numeric, func
@@ -35,6 +35,28 @@ class AccorderingStatus(enum.StrEnum):
 class StapBesluit(enum.StrEnum):
     AKKOORD = "akkoord"
     AFGEWEZEN = "afgewezen"
+
+
+class DocumentHerinnering(Base):
+    """Handmatige herinnering per document (migratie 0053, beheer-mini 2026-08-16): kantoor
+    stuurt de accordeur die aan de beurt is per direct een extra bericht (push, anders mail).
+    Dagrem via de unieke index (document_id, datum) — datum is de Europe/Amsterdam-kalenderdag;
+    claim-vóór-verzenden zoals platform.accordeur_herinnering."""
+
+    __tablename__ = "document_herinnering"
+    __table_args__ = {"schema": "boekhouding"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    accordeur_gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    datum: Mapped[date] = mapped_column()
+    status: Mapped[str] = mapped_column(default="bezig")
+    kanaal: Mapped[str | None] = mapped_column(default=None)
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    verzonden_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verzonden_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class StapBesluitBron(enum.StrEnum):
