@@ -13,11 +13,12 @@ from tests.auth.conftest import actieve_gebruiker, administratie_id, beheerder_i
 
 
 @pytest.fixture(autouse=True)
-def _opslag_naar_tmp(tmp_path: Path) -> None:
+def _opslag_naar_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """De router gebruikt service._standaard_opslag() (settings.document_opslag_basismap) —
     zonder dit zou een HTTP-niveau uploadtest echt naar backend/.data/documenten schrijven i.p.v.
-    een tijdelijke testmap."""
-    settings.document_opslag_basismap = str(tmp_path / "documenten")
+    een tijdelijke testmap. Via monkeypatch (hygiëne-run 2026-08-16): de oude directe toewijzing
+    lekte de tmp-map naar alle latere tests — het vaste-testconfig-vangnet ving dat."""
+    monkeypatch.setattr(settings, "document_opslag_basismap", str(tmp_path / "documenten"))
 
 
 @pytest.fixture

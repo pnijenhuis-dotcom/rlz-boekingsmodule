@@ -38,6 +38,10 @@ def test_gebruiker_heeft_geen_financiele_kolommen(admin_engine: Engine) -> None:
         "wachtwoord_hash",
         "rol",
         "status",
+        # Blokkade-administratie (migratie 0052, beheer-mini 2026-08-16) — geen financiële data.
+        "geblokkeerd_op",
+        "geblokkeerd_door",
+        "status_voor_blokkade",
     }
     assert not (columns & financial_hints)
 

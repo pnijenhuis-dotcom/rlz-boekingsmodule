@@ -11,8 +11,22 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 import app.db.session as db_session
-from app.config import settings
+from app.config import Settings, settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+# --- Vaste testconfig (hygiëne-run 2026-08-16, "de webauthn-les") -------------------------------
+# De suite leunde op backend/.env: een dev-instelling (bv. auth_biometrie_dev_stub aan voor
+# LAN-kliktests) kon tests op schone main laten falen — omgevingsafhankelijkheid, geen
+# flakiness (commit 7debe0a). Daarom draait de suite sindsdien met de CODE-DEFAULTS voor álle
+# settings behalve de vier database-URL's (lokale credentials/CI blijven omgevingsafhankelijk;
+# échte omgevingsvariabelen winnen nog steeds — 12-factor, nodig voor CI). Tests die een
+# afwijkende waarde nodig hebben, pinnen die zelf met monkeypatch — dat blijft de norm.
+_DB_VELDEN = ("database_url", "app_database_url", "test_database_url", "test_app_database_url")
+_schone_settings = Settings(_env_file=None)
+for _veld in Settings.model_fields:
+    if _veld not in _DB_VELDEN:
+        setattr(settings, _veld, getattr(_schone_settings, _veld))
+del _schone_settings
 
 REQUIRED_PYTHON = (3, 12)
 REQUIRED_POSTGRES_MAJOR = 16
