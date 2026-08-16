@@ -83,6 +83,7 @@ from app.doorbelasting.service import (
 from app.omzet.boeken import _boek_verkoopfactuur
 from app.projecten.anker import anker_customer_id
 from app.rlz.aangifte import AangiftePoort, KantToets, blokkeer_bij_ingediende_aangifte
+from app.rlz.bijlage import zorg_voor_bijlage
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import GeenRlzCredentials
 from app.sync.models import TaxRateCache, VendorCache
@@ -166,7 +167,8 @@ def _boek_spiegel_inkoop(
 
     client.put_purchase_invoice(rlz_id, vendor_id=vendor_id, lines=lines, reference=referentie, Date=datum_iso)
     if bestand:
-        client.upload_bijlage(
+        zorg_voor_bijlage(
+            client,
             "PurchaseInvoices",
             rlz_id,
             upload_id=upload_id,

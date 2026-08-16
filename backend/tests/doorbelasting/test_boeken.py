@@ -441,6 +441,87 @@ class TestStorno:
         assert doel.spiegel_correcties == []
 
 
+class TestHerstartNaStornoEnUiVerwijdering:
+    """Regressie kliktest 2 TEST-ONB-KLIKTEST-01 (2026-08-16): storno beide kanten → Peter
+    verwijdert de bron-verkoop-concepten handmatig in de RLZ-UI (spiegel-concepten blijven
+    staan mét hun bijlage) → nieuwe run op hetzelfde document. De bug: de her-upload op het
+    deterministische (in cyclus 1 verbruikte) upload-GUID gaf 404 _NotFound, waardoor élke
+    doelentiteit op "mislukt" strandde en de bron-verkopen als concept zónder PDF
+    achterbleven. De fix (app/rlz/bijlage.py): aanwezigheids-check via de Uploads-leesroute
+    + deterministisch cyclus-GUID bij een verbruikt basis-GUID."""
+
+    def test_herstart_boekt_beide_kanten_met_bijlage_en_zonder_duplicaat(
+        self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
+    ) -> None:
+        from app.documenten.rlz_ids import rlz_doorbelasting_upload_id
+        from app.rlz.bijlage import cyclus_upload_id
+
+        opzet = onboarded_opzet
+        bron, doel = FakeDoorbelastingClient(), FakeDoorbelastingClient()
+        verkoop_id = rlz_doorbelasting_verkoop_id(opzet.document_id, opzet.mapping.doel_customer_guid)
+        spiegel_id = rlz_doorbelasting_spiegel_id(opzet.document_id, opzet.mapping.doel_customer_guid)
+
+        # cyclus 1: boeken + storno beide kanten (concepten blijven staan, bijlagen ook)
+        _boek(opzet, beheerder_id, bron=bron, doel=doel)
+        boeking = haal_boekingen(opzet.administratie_id, opzet.run.id)[0]
+        storno_doorbelasting_boeking(
+            administratie_id=opzet.administratie_id,
+            boeking_id=boeking.id,
+            actor_id=beheerder_id,
+            reden="Kliktest: cyclus 1 terugdraaien",
+            bron_client=bron,
+            doel_client=doel,
+        )
+        # Peter verwijdert het bron-verkoop-concept in de RLZ-UI; de spiegel blijft concept
+        bron.verwijder_document_in_rlz_ui("SalesInvoices", verkoop_id)
+        assert bron.get(f"SalesInvoices/{verkoop_id}/Uploads")["value"] == []
+        assert len(doel.get(f"PurchaseInvoices/{spiegel_id}/Uploads")["value"]) == 1
+
+        # cyclus 2: nieuwe run (de oude is gestorneerd), zelfde verdeling
+        run2 = start_run_met_verdeling(
+            administratie_id=opzet.administratie_id,
+            document_id=opzet.document_id,
+            actor_id=beheerder_id,
+            regels=[
+                VerdeelRegelInvoerData(
+                    bron_regel_id=opzet.regel_ids[0],
+                    mapping_id=opzet.mapping.id,
+                    percentage=D("100"),
+                    doel_kosten_ledger_id=DOEL_KOSTEN_LEDGER_ID,
+                )
+            ],
+        )
+        assert run2.id != opzet.run.id
+        opzet2 = DoorbelastingOpzet(
+            administratie_id=opzet.administratie_id,
+            doel_administratie_id=opzet.doel_administratie_id,
+            document_id=opzet.document_id,
+            regel_ids=opzet.regel_ids,
+            mapping=opzet.mapping,
+            run=run2,
+        )
+        resultaat = _boek(opzet2, beheerder_id, bron=bron, doel=doel)
+        assert resultaat == {str(opzet.mapping.id): DoorbelastingBoekingStatus.GEBOEKT.value}
+
+        # bron-verkoop opnieuw aangemaakt, GEBOEKT en mét precies één bijlage — op het
+        # deterministische cyclus-1-GUID (het basis-GUID is verbruikt door de verwijdering)
+        assert bron.sales_invoices[str(verkoop_id)]["Status"] == 2
+        verkoop_uploads = bron.get(f"SalesInvoices/{verkoop_id}/Uploads")["value"]
+        basis = rlz_doorbelasting_upload_id(opzet.document_id, opzet.mapping.doel_customer_guid, kant="verkoop")
+        assert [u["upload_id"] for u in verkoop_uploads] == [str(cyclus_upload_id(basis, 1))]
+
+        # spiegel her-geboekt zonder tweede bijlage (aanwezigheids-check slaat de upload over)
+        assert doel.purchase_invoices[str(spiegel_id)]["Status"] == 2
+        assert len(doel.get(f"PurchaseInvoices/{spiegel_id}/Uploads")["value"]) == 1
+
+        # run 2 GEBOEKT zonder achtergebleven fout; geen halve staat
+        run_na = haal_run(opzet.administratie_id, run2.id)
+        assert run_na.status == DoorbelastingRunStatus.GEBOEKT.value
+        assert run_na.laatste_fout is None
+        statussen = sorted(b.status for b in haal_boekingen(opzet.administratie_id, run2.id))
+        assert statussen == [DoorbelastingBoekingStatus.GEBOEKT.value]
+
+
 # Dekt élke datum — de motor boekt op de systeemdatum, dus dit simuleert "de boekperiode valt
 # in een ingediende btw-aangifte" zonder aan de motor-datum te hoeven draaien.
 _AANGIFTE_ALLES_INGEDIEND = {"Status": 2, "StartDate": "2000-01-01T00:00:00", "Date": "2099-12-31T00:00:00"}

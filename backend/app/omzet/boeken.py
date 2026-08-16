@@ -67,6 +67,7 @@ from app.omzet.voorstel import (
     verkoop_omschrijving,
     voer_omzet_checks_uit,
 )
+from app.rlz.bijlage import zorg_voor_bijlage
 from app.rlz.client import RlzApiError, RlzClient
 from app.sync.models import TaxRateCache
 
@@ -287,7 +288,8 @@ def _boek_verkoopfactuur(
         body_extra["Description"] = omschrijving
     put_extra: dict = {"document_category_id": categorie_id} if categorie_id is not None else {}
     client.put_sales_invoice(rlz_id, customer_id=customer_id, lines=lines, **put_extra, **body_extra)
-    client.upload_bijlage(
+    zorg_voor_bijlage(
+        client,
         "SalesInvoices",
         rlz_id,
         upload_id=upload_id,
@@ -343,7 +345,8 @@ def _boek_memoriaal(
         return bestaand.get("ReceiptNumber")
 
     client.put_manual_journal(rlz_id, diary_id=diary_id, lines=lines, Reference=referentie, Date=datum_iso)
-    client.upload_bijlage(
+    zorg_voor_bijlage(
+        client,
         "ManualJournals",
         rlz_id,
         upload_id=upload_id,

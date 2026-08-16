@@ -75,9 +75,11 @@ def rlz_waarborg_memoriaal_id(document_id: uuid.UUID) -> uuid.UUID:
 
 
 def rlz_upload_id(document_id: uuid.UUID) -> uuid.UUID:
-    """Zelfde idempotentie-redenering als rlz_purchase_invoice_id(), voor de PDF-bijlage
-    (`RlzClient.upload_bijlage`): een retry na boeken_mislukt uploadt niet telkens een nieuwe
-    bijlage naast de vorige, maar overschrijft (PUT) dezelfde."""
+    """Basis-GUID voor de PDF-bijlage. ⚠️ RLZ's /Uploads kent GEEN her-PUT/overschrijven
+    (STAP-0 "Uploads bij een herstart-boekcyclus" 2026-08-16: her-PUT = 400, verbruikt GUID
+    van een verwijderd document = 404) — retry-idempotentie loopt daarom via
+    `app.rlz.bijlage.zorg_voor_bijlage` (aanwezigheids-check + deterministische
+    cyclus-GUID's over dit basis-GUID), nooit via een kale her-PUT."""
     return uuid.uuid5(_NAMESPACE, f"upload:{document_id}")
 
 
@@ -113,5 +115,6 @@ def rlz_doorbelasting_upload_id(
     """Client-GUID voor de PDF-bijlage (het originele bron-inkoopdocument) aan de
     doorbelastings-verkoopfactuur (`kant="verkoop"`) of de spiegel-inkoopfactuur
     (`kant="spiegel"`) — zelfde bijlage aan beide kanten, twee upload-GUID's
-    (patroon rlz_omzet_upload_id)."""
+    (patroon rlz_omzet_upload_id). Net als rlz_upload_id een BASIS-GUID: her-PUT bestaat
+    niet op /Uploads, herstart-cycli lopen via `app.rlz.bijlage.zorg_voor_bijlage`."""
     return uuid.uuid5(_NAMESPACE, f"doorbelasting-upload-{kant}:{document_id}:{doel_customer_guid}")

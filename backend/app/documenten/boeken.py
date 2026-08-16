@@ -20,6 +20,7 @@ from app.documenten.rlz_ids import rlz_purchase_invoice_id, rlz_upload_id
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
 from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
 from app.geheugen.leerlus import leg_boeking_vast
+from app.rlz.bijlage import zorg_voor_bijlage
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
@@ -158,7 +159,8 @@ def _boek_bij_rlz(
         # en /Uploads"); een kale datumstring is nooit tegen de live API getest.
         Date=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
     )
-    client.upload_bijlage(
+    zorg_voor_bijlage(
+        client,
         "PurchaseInvoices",
         rlz_document_id,
         upload_id=rlz_upload_id(document_id),

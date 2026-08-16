@@ -364,6 +364,10 @@ class FakeDoorbelastingClient:
         self.purchase_invoices: dict[str, dict[str, Any]] = {}
         self.vendors: dict[str, dict[str, Any]] = {}
         self.uploads: list[dict[str, Any]] = []
+        # STAP-0 "Uploads bij een herstart-boekcyclus" (2026-08-16): een upload-GUID is
+        # eenmalig — her-PUT op een bestaand GUID = 400 _InvalidData; een GUID dat verbruikt
+        # is op een intussen verwijderd document = 404 _NotFound.
+        self.verbruikte_upload_ids: set[str] = set()
         self.verkoop_correcties: list[str] = []
         self.spiegel_correcties: list[str] = []
         self.probes = 0
@@ -388,6 +392,14 @@ class FakeDoorbelastingClient:
             self.probes += 1
             return {"value": [{"id": "00000000-0000-0000-0000-000000000001"}]}
         soort, _, doc_id = path.partition("/")
+        if doc_id.endswith("/Uploads"):
+            # Uploads-leesroute (STAP-0 2026-08-16: bruikbaar als aanwezigheids-check)
+            entity_id = doc_id.removesuffix("/Uploads")
+            return {
+                "value": [
+                    u for u in self.uploads if u["pad"] == soort and u["entity_id"] == entity_id
+                ]
+            }
         bron = {"PurchaseInvoices": self.purchase_invoices, "SalesInvoices": self.sales_invoices}.get(soort)
         if bron is None:
             raise AssertionError(f"Onverwachte GET in de fake: {path}")
@@ -494,4 +506,19 @@ class FakeDoorbelastingClient:
     def upload_bijlage(
         self, entity_path: str, entity_id: uuid.UUID, *, upload_id: uuid.UUID, filename: str, content_base64: str
     ) -> None:
+        sleutel = str(upload_id)
+        if sleutel in self.verbruikte_upload_ids:
+            pad = f"{entity_path}/{entity_id}/Uploads/{upload_id}"
+            if any(u["upload_id"] == sleutel for u in self.uploads):
+                raise RlzApiError(400, "PUT", pad, '{"Message":"_InvalidData"}')
+            raise RlzApiError(404, "PUT", pad, '{"Message":"_NotFound"}')
+        self.verbruikte_upload_ids.add(sleutel)
         self.uploads.append({"pad": entity_path, "entity_id": str(entity_id), "upload_id": str(upload_id)})
+
+    def verwijder_document_in_rlz_ui(self, soort: str, doc_id: uuid.UUID | str) -> None:
+        """Simuleert Peters handmatige verwijdering in de RLZ-UI (het kliktest-2-scenario):
+        het document en zijn bijlagen verdwijnen, maar de verbruikte upload-GUID's blijven
+        onbruikbaar (productie-waarneming: her-PUT op zo'n GUID geeft 404 _NotFound)."""
+        bron = {"PurchaseInvoices": self.purchase_invoices, "SalesInvoices": self.sales_invoices}[soort]
+        del bron[str(doc_id)]
+        self.uploads = [u for u in self.uploads if not (u["pad"] == soort and u["entity_id"] == str(doc_id))]
