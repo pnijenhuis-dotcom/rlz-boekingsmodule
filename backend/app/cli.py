@@ -11,7 +11,7 @@ from app.auth import service
 from app.bank import reconciliatie as bank_reconciliatie
 from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
-from app.berichten import herinneringen
+from app.berichten import herinneringen, nieuwe_facturen
 from app.credentialstore import service as credentialstore_service
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
@@ -607,6 +607,29 @@ def _accordeur_herinneringen(args: argparse.Namespace) -> int:
     return 1 if rapport.is_fout else 0
 
 
+def _nieuwe_facturen_melden(args: argparse.Namespace) -> int:
+    """Nieuwe-facturen-bundelmelding (Cloud Scheduler-job `rlz-nieuwe-facturen`, ~elke 10 min;
+    besluit Peter 2026-08-16: geen melding per factuur — bundelen per accordeur). Stille uren
+    (20:00–08:00 Europe/Amsterdam) en 0-nieuw-runs zijn exit 0 met zichtbare tellers; exit 1
+    alleen bij échte fouten (verzending mislukt, bezig-blijver, volumerem) — F3.2-alert."""
+    rapport = nieuwe_facturen.verstuur_nieuwe_facturen_meldingen()
+    if rapport.stille_uren:
+        print("Stille uren (20:00–08:00 Europe/Amsterdam) — geen meldingen verstuurd.")
+        return 0
+    for fout in rapport.fouten:
+        print(f"FOUT  {fout}" if rapport.is_fout else f"LET-OP {fout}", file=sys.stderr)
+    print(
+        "Nieuwe-facturen-meldingen: "
+        f"{rapport.verzonden_push} push, {rapport.verzonden_mail} e-mail, "
+        f"{rapport.gemelde_documenten} document(en) nieuw gemeld, "
+        f"{rapport.accordeurs_zonder_nieuw} accordeur(s) zonder nieuw werk, "
+        f"{rapport.overgeslagen_geen_kanaal} overgeslagen (geen kanaal), "
+        f"{rapport.mislukt} mislukt, {rapport.onafgemaakt} onafgemaakt, "
+        f"{rapport.subscripties_vervallen} subscriptie(s) vervallen gemarkeerd."
+    )
+    return 1 if rapport.is_fout else 0
+
+
 def _zet_afgeletterd_event(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Tier-vlag voor het factuur_afgeletterd-event (koppelcontract §3 v1.11 punt 5, besluit
     0018) — default UIT; activatie wacht op vastgoeds verwerker."""
@@ -920,6 +943,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "nieuwe-facturen-melden",
+        help="Nieuwe-facturen-bundelmelding (~elke 10 min): één bericht per accordeur zodra er "
+        "nieuw werk klaarstaat — idempotent per (accordeur, document), stille uren 20:00–08:00, "
+        "volumerem, fail-zichtbaar.",
+    )
+
+    subparsers.add_parser(
         "omzet-reconciliatie",
         help="Vergelijk omzet-boekingen (verkoopfactuur + kostprijsmemoriaal) met de werkelijke "
         "RLZ-staat en rapporteer afwijkingen, incl. half-geboekte boekingen.",
@@ -1128,6 +1158,8 @@ def main(argv: list[str] | None = None) -> int:
         return _intake_postvak_verwerken(args)
     if args.commando == "accordeur-herinneringen":
         return _accordeur_herinneringen(args)
+    if args.commando == "nieuwe-facturen-melden":
+        return _nieuwe_facturen_melden(args)
     if args.commando == "bank-autoboeken-aan":
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":

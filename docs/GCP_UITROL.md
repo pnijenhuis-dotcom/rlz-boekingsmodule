@@ -443,6 +443,7 @@ alleen verpakking.
 | Webhook-afleveraar | `python -m app.cli webhook-afleveren` | elke 5 min |
 | E-mail-intake (IMAP-fetch) | intake-CLI op de seam `app/intake/postvak.py` | elke 10 min |
 | Accordeur-herinneringen (push/mail, toegevoegd 2026-08-15 — zie §F3.5) | `python -m app.cli accordeur-herinneringen` | dagelijks 09:00 |
+| Nieuwe-facturen-bundelmelding (toegevoegd 2026-08-16 — zie §F3.6) | `python -m app.cli nieuwe-facturen-melden` | elke 10 min, 08:00–20:00 |
 
 1. **Cloud Scheduler → Cloud Run jobs** onder `run-jobs@`; per job een eigen definitie zodat een
    hangende sync nooit de afleveraar blokkeert. *(Code)*
@@ -574,6 +575,19 @@ mail) + de publieke sleutel. Idempotent per dag per accordeur (migratie 0050); 0
 exit 0 (F3-les). **Activatievolgorde:** notificaties_infra.sh → secret-versies → deploy → één
 handmatige run + live-verificatie (één échte push op Peters iPhone-PWA + één échte mail) →
 scheduler resume.
+
+### F3.6 — nieuwe-facturen-bundelmelding (toegevoegd 2026-08-16, besluit Peter 16-08)
+
+Job `rlz-nieuwe-facturen` (CLI `nieuwe-facturen-melden`, cadans `*/10 8-19 * * *`
+Europe/Amsterdam) — canoniek: BESLISSINGEN "NIEUWE-FACTUREN-BUNDELMELDING". Bundelt per
+accordeur het NIEUW klaargezette werk sinds de vorige melding tot één bericht ("Er staan N
+facturen voor u klaar", N = totaal openstaand); idempotent per (accordeur, document) via
+`platform.accordeur_nieuw_gemeld` (migratie 0054, nooit dubbel voor hetzelfde document);
+stille uren 20:00–08:00 dubbel afgedwongen (cron dekt alleen de meldingsuren én de code
+weigert zelf); volumerem; 0 nieuw = exit 0 (F3-les). Zelfde notificatie-config als F3.5
+(eigen guarded update-stap in deploy.yml, zelfde secrets); scheduler start GEPAUZEERD —
+resume samen met/na de F3.5-live-verificatie. De 09:00-herinnering blijft ongewijzigd en
+telt integraal.
 
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 

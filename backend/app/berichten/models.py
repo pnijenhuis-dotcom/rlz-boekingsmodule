@@ -82,3 +82,26 @@ class AccordeurHerinnering(Base):
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     verzonden_op: Mapped[datetime | None] = mapped_column(default=None)
     detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+
+class AccordeurNieuwGemeld(Base):
+    """Idempotentie-log van de nieuwe-facturen-bundelmelding (migratie 0054, besluit Peter
+    2026-08-16: géén melding per factuur — bundelen): één rij per (accordeur, document), uniek.
+    Een document wordt nooit tweemaal aan dezelfde accordeur gemeld — ook niet als het later
+    opnieuw ter accordering komt (afwijzen + opnieuw aanbieden). Claim-vóór-verzenden zoals
+    accordeur_herinnering."""
+
+    __tablename__ = "accordeur_nieuw_gemeld"
+    __table_args__ = (
+        UniqueConstraint("gebruiker_id", "document_id", name="uq_accordeur_nieuw_gemeld"),
+        {"schema": "platform"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    status: Mapped[str] = mapped_column(default=HerinneringStatus.BEZIG.value)
+    kanaal: Mapped[str | None] = mapped_column(default=None)
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verzonden_op: Mapped[datetime | None] = mapped_column(default=None)

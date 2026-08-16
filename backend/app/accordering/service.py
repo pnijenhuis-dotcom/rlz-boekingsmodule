@@ -1001,13 +1001,12 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
     return items
 
 
-def aantallen_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, int]:
-    """Per accordeur het aantal open documenten waar híj/zij nu aan de beurt is, voor één
-    administratie — de selectiebron van de dagelijkse herinnering (berichten-bouwsteen):
+def documenten_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, list[uuid.UUID]]:
+    """Per accordeur de document-id's waar híj/zij nu aan de beurt is, voor één administratie —
     exact dezelfde aan-de-beurt-definitie als de wachtrij (eerstvolgende open vereiste stap),
-    zodat teller en wachtrij nooit uiteenlopen. Bewust zonder de zware per-item-verrijking
-    van wachtrij_voor_accordeur (de herinnering heeft alleen het aantal nodig)."""
-    aantallen: dict[uuid.UUID, int] = {}
+    zodat teller, wachtrij en meldingen nooit uiteenlopen. Selectiebron van de dagelijkse
+    herinnering (via aantallen_aan_de_beurt) én de nieuwe-facturen-bundelmelding."""
+    per_accordeur: dict[uuid.UUID, list[uuid.UUID]] = {}
     with scoped_session(administratie_id) as session:
         open_rondes = list(
             session.scalars(
@@ -1020,10 +1019,16 @@ def aantallen_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, in
         for accordering in open_rondes:
             volgende = _eerstvolgende_open_stap(_stappen_van(session, accordering.id))
             if volgende is not None:
-                aantallen[volgende.accordeur_gebruiker_id] = (
-                    aantallen.get(volgende.accordeur_gebruiker_id, 0) + 1
-                )
-    return aantallen
+                per_accordeur.setdefault(volgende.accordeur_gebruiker_id, []).append(accordering.document_id)
+    return per_accordeur
+
+
+def aantallen_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    """Aantalvariant van documenten_aan_de_beurt (de herinnering heeft alleen het aantal nodig)."""
+    return {
+        accordeur_id: len(document_ids)
+        for accordeur_id, document_ids in documenten_aan_de_beurt(administratie_id=administratie_id).items()
+    }
 
 
 @dataclass(frozen=True)

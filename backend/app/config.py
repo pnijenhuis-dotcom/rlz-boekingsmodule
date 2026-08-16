@@ -280,6 +280,10 @@ class Settings(BaseSettings):
     # stopt de run zichtbaar (exit 1 -> F3.2-job-failure-alert), nooit stil doorpompen.
     herinnering_max_berichten_per_run: int = 50
 
+    # Volumerem op de nieuwe-facturen-bundelmelding (job ~elke 10 min, besluit Peter 2026-08-16;
+    # zelfde noodrem-patroon als hierboven).
+    nieuwe_facturen_max_berichten_per_run: int = 50
+
     # CreditNote-381-herkenning (koppelcontract §2d-creditnota's v1.11): config-gate.
     # AAN sinds 2026-08-10 (blok D grote opdracht): de golden-case-verificatie tegen de échte
     # Vastly-UBL's is geslaagd (intake-routing + creditboekpad + storno, zie

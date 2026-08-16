@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0053
+-- Migratie-head bij deze dump: 0054
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1388,6 +1388,24 @@ CREATE TABLE platform.accordeur_herinnering (
 
 
 --
+-- Name: accordeur_nieuw_gemeld; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.accordeur_nieuw_gemeld (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    status text DEFAULT 'bezig'::text NOT NULL,
+    kanaal text,
+    detail jsonb,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verzonden_op timestamp with time zone,
+    CONSTRAINT ck_accordeur_nieuw_gemeld_kanaal CHECK (((kanaal IS NULL) OR (kanaal = ANY (ARRAY['push'::text, 'e-mail'::text])))),
+    CONSTRAINT ck_accordeur_nieuw_gemeld_status CHECK ((status = ANY (ARRAY['bezig'::text, 'verzonden'::text, 'mislukt'::text, 'overgeslagen'::text])))
+);
+
+
+--
 -- Name: administratie; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -2199,6 +2217,14 @@ ALTER TABLE ONLY platform.accordeur_herinnering
 
 
 --
+-- Name: accordeur_nieuw_gemeld accordeur_nieuw_gemeld_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
+    ADD CONSTRAINT accordeur_nieuw_gemeld_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: administratie administratie_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -2396,6 +2422,14 @@ ALTER TABLE ONLY platform.accordeur_akkoord
 
 ALTER TABLE ONLY platform.accordeur_herinnering
     ADD CONSTRAINT uq_accordeur_herinnering_dag UNIQUE (gebruiker_id, datum);
+
+
+--
+-- Name: accordeur_nieuw_gemeld uq_accordeur_nieuw_gemeld; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
+    ADD CONSTRAINT uq_accordeur_nieuw_gemeld UNIQUE (gebruiker_id, document_id);
 
 
 --
@@ -2751,6 +2785,13 @@ CREATE UNIQUE INDEX ux_verkoop_boeking_actief_per_factuurnummer ON boekhouding.v
 --
 
 CREATE UNIQUE INDEX vraag_een_open_per_document ON boekhouding.vraag USING btree (document_id) WHERE (status = 'open'::text);
+
+
+--
+-- Name: ix_accordeur_nieuw_gemeld_gebruiker_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_accordeur_nieuw_gemeld_gebruiker_id ON platform.accordeur_nieuw_gemeld USING btree (gebruiker_id);
 
 
 --
@@ -3828,6 +3869,22 @@ ALTER TABLE ONLY platform.accordeur_akkoord
 
 ALTER TABLE ONLY platform.accordeur_herinnering
     ADD CONSTRAINT accordeur_herinnering_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordeur_nieuw_gemeld accordeur_nieuw_gemeld_document_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
+    ADD CONSTRAINT accordeur_nieuw_gemeld_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: accordeur_nieuw_gemeld accordeur_nieuw_gemeld_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
+    ADD CONSTRAINT accordeur_nieuw_gemeld_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
 
 
 --

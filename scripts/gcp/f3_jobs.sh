@@ -48,6 +48,11 @@ JOBS=(
   # scheduler start GEPAUZEERD (zie onder) tot de live-verificatie (mail + push op Peters
   # iPhone) rond is.
   "rlz-accordeur-herinneringen|accordeur-herinneringen|600|0 9 * * *"
+  # Nieuwe-facturen-bundelmelding (besluit Peter 2026-08-16: géén melding per factuur —
+  # bundelen per accordeur, ~elke 10 min). De cron dekt alleen de meldingsuren; de code
+  # dwingt de stille uren (20:00–08:00 Europe/Amsterdam) bovendien zelf af. Scheduler start
+  # GEPAUZEERD (zie onder) tot de notificatie-live-verificatie rond is.
+  "rlz-nieuwe-facturen|nieuwe-facturen-melden|600|*/10 8-19 * * *"
 )
 
 gcloud config set project "${PROJECT_ID}" --quiet
@@ -181,6 +186,7 @@ done
 echo "== 6. Scheduler-cadans per job (draaiboektabel; verse cadansen starten gepauzeerd) =="
 HERINNERINGEN_NIEUW=0
 IMAP_NIEUW=0
+NIEUWE_FACTUREN_NIEUW=0
 for REGELS in "${JOBS[@]}"; do
   IFS='|' read -r NAAM _CLI _TIMEOUT CADANS <<< "${REGELS}"
   if gcloud scheduler jobs describe "${NAAM}" --location="${REGION}" >/dev/null 2>&1; then
@@ -188,6 +194,7 @@ for REGELS in "${JOBS[@]}"; do
   else
     [ "${NAAM}" = "rlz-accordeur-herinneringen" ] && HERINNERINGEN_NIEUW=1
     [ "${NAAM}" = "rlz-intake-imap" ] && IMAP_NIEUW=1
+    [ "${NAAM}" = "rlz-nieuwe-facturen" ] && NIEUWE_FACTUREN_NIEUW=1
     gcloud scheduler jobs create http "${NAAM}" \
       --location="${REGION}" \
       --schedule="${CADANS}" \
@@ -215,6 +222,12 @@ fi
 if [ "${HERINNERINGEN_NIEUW}" = "1" ]; then
   gcloud scheduler jobs pause rlz-accordeur-herinneringen --location="${REGION}" --quiet >/dev/null
   echo "   rlz-accordeur-herinneringen GEPAUZEERD (activatie via notificaties_infra.sh)."
+fi
+# Nieuwe-facturen-bundelmelding: zelfde activatievoorwaarde als de herinnering (notificatie-
+# secrets + live-verificatie); alleen bij verse aanmaak pauzeren, nooit terugpauzeren.
+if [ "${NIEUWE_FACTUREN_NIEUW}" = "1" ]; then
+  gcloud scheduler jobs pause rlz-nieuwe-facturen --location="${REGION}" --quiet >/dev/null
+  echo "   rlz-nieuwe-facturen GEPAUZEERD (resume samen met/na de notificatie-live-verificatie)."
 fi
 
 echo
