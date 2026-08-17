@@ -287,6 +287,22 @@ class Settings(BaseSettings):
     push_vapid_public_key: str | None = None
     push_vapid_onderwerp: str = "mailto:berichten@ak-nijenhuis.nl"
 
+    # Native push voor de store-apps (fase 3, verkenning/17 (b): APNs direct voor iOS + FCM
+    # voor Android, achter één adapterlaag in app/berichten/push.py). Niet gezet = die soort
+    # niet geconfigureerd: verzending valt per gebruiker terug op e-mail (zelfde patroon als
+    # VAPID hierboven), registreren van zo'n subscriptie weigert zichtbaar.
+    # APNs: token-based auth met de .p8-sleutel uit het Apple Developer-account (PDL) —
+    # private key via Secret Manager APNS_KEY_P8; topic = de bundle-id (native_app_bundle_id),
+    # team-id = apple_team_id (fase 2-setting). Sandbox alleen voor TestFlight-/Xcode-builds.
+    apns_key_p8: str | None = None
+    apns_key_id: str = ""
+    apns_sandbox: bool = False
+    # FCM (HTTP v1): service-account-JSON van het Firebase-project (Secret Manager
+    # FCM_SERVICE_ACCOUNT_JSON; project-id zit in de JSON). AVG-notitie: gegevensstroom via
+    # Google — payload bevat alleen aantal + deep-link, nooit financiële details (zelfde
+    # dataminimalisatie als het lockscreen-principe van Web Push).
+    fcm_service_account_json: str | None = None
+
     # Volumerem op de herinnering-job (noodrem-patroon, zelfde grondhouding als
     # max_boekingen_per_dag_per_administratie): max. verzonden berichten per run — daarboven
     # stopt de run zichtbaar (exit 1 -> F3.2-job-failure-alert), nooit stil doorpompen.

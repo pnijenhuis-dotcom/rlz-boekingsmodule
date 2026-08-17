@@ -1,15 +1,22 @@
-// Web Push-client van de accordeur-PWA (berichten-bouwsteen 2026-08-15).
+// Push-client van de accordeur-app (berichten-bouwsteen 2026-08-15; native seam fase 3).
 //
-// Registreert public/accordeur-sw.js op scope /accordeur (bewust: alléén push, geen
-// fetch-handler/caching — de SW-les blijft geldig, zie main.tsx) en beheert de
-// PushSubscription bij de backend (/notificaties/push/*). De permissieprompt komt NOOIT rauw
-// bij het laden: alleen vanuit een expliciete gebruikersactie (activeringsflow ná het
-// voorwaarden-akkoord, of de meldingen-knop in de wachtrij).
+// Web (PWA): registreert public/accordeur-sw.js op scope /accordeur (bewust: alléén push,
+// geen fetch-handler/caching — de SW-les blijft geldig, zie main.tsx) en beheert de
+// PushSubscription bij de backend (/notificaties/push/*).
+// Native (Capacitor-schil, fase 3): geen service worker/Web Push in de webview — het
+// APNs-/FCM-device-token gaat via nativePush.ts naar /notificaties/push/subscripties/native;
+// de aan-status leeft lokaal (marker met het token, zelfde kennisniveau als de
+// browser-subscription op het webpad).
+// Beide paden: de permissieprompt komt NOOIT rauw bij het laden — alleen vanuit een
+// expliciete gebruikersactie (activeringsflow ná het voorwaarden-akkoord, of de
+// meldingen-knop in de wachtrij).
 
-import { apiJson, apiPostJson } from '../api/client'
+import { apiJson, apiPostJson, ApiError } from '../api/client'
+import { haalDeviceToken, nativePushPlugin, nativePushSoort } from './nativePush'
 
 const SW_PAD = '/accordeur-sw.js'
 const SW_SCOPE = '/accordeur'
+const NATIVE_TOKEN_SLEUTEL = 'accordeur_native_push_token'
 
 export type MeldingenStatus =
   | 'niet-ondersteund' // geen SW/Push API (of iOS zonder thuisscherm-installatie)
@@ -39,7 +46,59 @@ async function huidigeSubscription(): Promise<PushSubscription | null> {
   return bestaande.pushManager.getSubscription()
 }
 
+// ---- native pad (Capacitor-schil) ----------------------------------------------------------------
+
+function bewaardNativeToken(): string | null {
+  try {
+    return localStorage.getItem(NATIVE_TOKEN_SLEUTEL)
+  } catch {
+    return null
+  }
+}
+
+async function nativeMeldingenStatus(plugin: NonNullable<ReturnType<typeof nativePushPlugin>>): Promise<MeldingenStatus> {
+  const permissie = await plugin.checkPermissions().catch(() => null)
+  if (!permissie) return 'niet-ondersteund'
+  if (permissie.receive === 'denied') return 'geweigerd'
+  return permissie.receive === 'granted' && bewaardNativeToken() ? 'aan' : 'uit'
+}
+
+async function nativeMeldingenAan(plugin: NonNullable<ReturnType<typeof nativePushPlugin>>): Promise<MeldingenStatus> {
+  const permissie = await plugin.requestPermissions()
+  if (permissie.receive !== 'granted') return permissie.receive === 'denied' ? 'geweigerd' : 'uit'
+  const token = await haalDeviceToken(plugin)
+  try {
+    await apiPostJson('/notificaties/push/subscripties/native', { soort: nativePushSoort(), token })
+  } catch (fout) {
+    // 409 = deze soort is (nog) niet geconfigureerd op de server — zelfde nette status als
+    // het webpad zonder VAPID-sleutels.
+    if (fout instanceof ApiError && fout.status === 409) return 'niet-geconfigureerd'
+    throw fout
+  }
+  try {
+    localStorage.setItem(NATIVE_TOKEN_SLEUTEL, token)
+  } catch {
+    // Geen localStorage (privéstand): de subscriptie werkt, alleen de lokale aan-status niet.
+  }
+  return 'aan'
+}
+
+async function nativeMeldingenUit(): Promise<void> {
+  const token = bewaardNativeToken()
+  if (!token) return
+  await apiPostJson('/notificaties/push/subscripties/intrekken', { endpoint: token }).catch(() => {})
+  try {
+    localStorage.removeItem(NATIVE_TOKEN_SLEUTEL)
+  } catch {
+    // zie boven
+  }
+}
+
+// ---- publieke API (kiest web- of native pad) -----------------------------------------------------
+
 export async function haalMeldingenStatus(): Promise<MeldingenStatus> {
+  const plugin = nativePushPlugin()
+  if (plugin) return nativeMeldingenStatus(plugin)
   if (!pushOndersteund()) return 'niet-ondersteund'
   if (Notification.permission === 'denied') return 'geweigerd'
   try {
@@ -54,6 +113,8 @@ export async function haalMeldingenStatus(): Promise<MeldingenStatus> {
 
 /** Meldingen aanzetten — alleen aanroepen vanuit een gebruikersklik (permissieprompt). */
 export async function zetMeldingenAan(): Promise<MeldingenStatus> {
+  const plugin = nativePushPlugin()
+  if (plugin) return nativeMeldingenAan(plugin)
   if (!pushOndersteund()) return 'niet-ondersteund'
   const { publieke_sleutel } = await apiJson<{ publieke_sleutel: string | null }>('/notificaties/push/config')
   if (!publieke_sleutel) return 'niet-geconfigureerd'
@@ -79,6 +140,7 @@ export async function zetMeldingenAan(): Promise<MeldingenStatus> {
 }
 
 export async function zetMeldingenUit(): Promise<void> {
+  if (nativePushPlugin()) return nativeMeldingenUit()
   const subscription = await huidigeSubscription()
   if (!subscription) return
   const endpoint = subscription.endpoint

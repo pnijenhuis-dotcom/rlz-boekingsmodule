@@ -11,6 +11,7 @@ import './accordeur.css'
 import { AccordeurLogin } from './AccordeurLogin'
 import { AccordeurActiveren } from './AccordeurActiveren'
 import { GoedkeurenFlow } from './GoedkeurenFlow'
+import { installeerNativeTapAfhandeling } from './nativePush'
 import { Ontgrendel } from './Ontgrendel'
 
 const ONTGRENDELD_VLAG = 'accordeur-ontgrendeld'
@@ -93,6 +94,12 @@ export default function AccordeurApp() {
   // ontgrendel-scherm terugkomt.
   const [ontgrendeld, setOntgrendeld] = useState(() => sessionStorage.getItem(ONTGRENDELD_VLAG) === '1')
   const [forceerLogin, setForceerLogin] = useState(false)
+
+  // Native schil (fase 3): melding-tap → /accordeur-deep-link. No-op buiten de schil;
+  // de auth-cadans blijft de poort (de app opent gewoon op ontgrendelen/login).
+  useEffect(() => {
+    installeerNativeTapAfhandeling()
+  }, [])
 
   const naIngelogd = useCallback(
     (paar: TokenPaarResponseDto) => {

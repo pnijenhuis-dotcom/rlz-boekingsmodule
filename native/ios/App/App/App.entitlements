@@ -11,5 +11,9 @@
 	<array>
 		<string>webcredentials:administratiekantoornijenhuis.nl</string>
 	</array>
+	<!-- Native push (fase 3): APNs. Xcode/het provisioning-profiel zet dit bij een
+	     TestFlight-/App Store-build automatisch om naar 'production'. -->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>

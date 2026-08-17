@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from app.berichten.models import PushSubscriptie
+from app.berichten.models import PushSoort, PushSubscriptie
 from app.db.audit import record_audit_event
 from app.db.models import WebauthnCredential
 from app.db.session import scoped_session
@@ -31,6 +31,11 @@ class OnbekendeSubscriptie(BerichtenFout):
     pass
 
 
+class OngeldigeSubscriptie(BerichtenFout):
+    """Soort/sleutel-combinatie klopt niet (webpush vereist p256dh+auth, native juist niet) —
+    zelfde regel als de DB-check van migratie 0055, maar dan als nette 400."""
+
+
 @dataclass(frozen=True)
 class SubscriptieData:
     id: uuid.UUID
@@ -39,13 +44,26 @@ class SubscriptieData:
 
 
 def registreer_subscriptie(
-    *, gebruiker_id: uuid.UUID, apparaat_id: uuid.UUID | None, endpoint: str, p256dh: str, auth: str
+    *,
+    gebruiker_id: uuid.UUID,
+    apparaat_id: uuid.UUID | None,
+    endpoint: str,
+    p256dh: str | None,
+    auth: str | None,
+    soort: str = PushSoort.WEBPUSH.value,
 ) -> SubscriptieData:
-    """Idempotent op endpoint: dezelfde browser die opnieuw subscribed (zelfde endpoint) krijgt
-    zijn bestaande rij terug (sleutels + binding ververst, intrekking opgeheven — de browser
-    bewijst met deze aanroep dat de subscription weer/nog leeft)."""
+    """Idempotent op endpoint (webpush: de push-URL van de browser; native: het device-token):
+    hetzelfde apparaat dat opnieuw registreert krijgt zijn bestaande rij terug (sleutels +
+    binding ververst, intrekking opgeheven — de aanroep zelf bewijst dat het kanaal weer/nog
+    leeft). Soorten (fase 3): webpush vereist de RFC 8291-sleutels, apns/fcm juist niet."""
     if apparaat_id is None:
         raise ApparaatVereist("Meldingen kunnen alleen aangezet worden vanuit een apparaat-gebonden sessie.")
+    if soort not in (PushSoort.WEBPUSH.value, PushSoort.APNS.value, PushSoort.FCM.value):
+        raise OngeldigeSubscriptie(f"Onbekende subscriptie-soort: {soort}")
+    if soort == PushSoort.WEBPUSH.value and (not p256dh or not auth):
+        raise OngeldigeSubscriptie("Web-Push-subscriptie zonder p256dh/auth-sleutels.")
+    if soort != PushSoort.WEBPUSH.value and (p256dh or auth):
+        raise OngeldigeSubscriptie("Native subscriptie (apns/fcm) draagt geen p256dh/auth-sleutels.")
     with scoped_session(None, actor_id=gebruiker_id) as session:
         credential = session.get(WebauthnCredential, apparaat_id)
         if credential is None or credential.ingetrokken_op is not None or credential.gebruiker_id != gebruiker_id:
@@ -54,7 +72,12 @@ def registreer_subscriptie(
         actie = "push_subscriptie_bijgewerkt"
         if rij is None:
             rij = PushSubscriptie(
-                gebruiker_id=gebruiker_id, apparaat_id=apparaat_id, endpoint=endpoint, p256dh=p256dh, auth=auth
+                gebruiker_id=gebruiker_id,
+                apparaat_id=apparaat_id,
+                soort=soort,
+                endpoint=endpoint,
+                p256dh=p256dh,
+                auth=auth,
             )
             session.add(rij)
             session.flush()
@@ -62,6 +85,7 @@ def registreer_subscriptie(
         else:
             rij.gebruiker_id = gebruiker_id
             rij.apparaat_id = apparaat_id
+            rij.soort = soort
             rij.p256dh = p256dh
             rij.auth = auth
             rij.ingetrokken_op = None
@@ -74,7 +98,7 @@ def registreer_subscriptie(
             record_id=rij.id,
             actie=actie,
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"apparaat_id": str(apparaat_id), "endpoint": endpoint[:120]},
+            nieuwe_waarde={"apparaat_id": str(apparaat_id), "soort": soort, "endpoint": endpoint[:120]},
         )
         return SubscriptieData(id=rij.id, endpoint=rij.endpoint, aangemaakt_op=rij.aangemaakt_op)
 

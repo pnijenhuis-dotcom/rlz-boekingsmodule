@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0054
+-- Migratie-head bij deze dump: 0055
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1626,13 +1626,16 @@ CREATE TABLE platform.push_subscriptie (
     gebruiker_id uuid NOT NULL,
     apparaat_id uuid NOT NULL,
     endpoint text NOT NULL,
-    p256dh text NOT NULL,
-    auth text NOT NULL,
+    p256dh text,
+    auth text,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     laatst_gebruikt_op timestamp with time zone,
     ingetrokken_op timestamp with time zone,
     ingetrokken_reden text,
-    CONSTRAINT ck_push_subscriptie_reden CHECK (((ingetrokken_reden IS NULL) OR (ingetrokken_reden = ANY (ARRAY['gebruiker'::text, 'kill_switch'::text, 'vervallen'::text]))))
+    soort text DEFAULT 'webpush'::text NOT NULL,
+    CONSTRAINT ck_push_subscriptie_reden CHECK (((ingetrokken_reden IS NULL) OR (ingetrokken_reden = ANY (ARRAY['gebruiker'::text, 'kill_switch'::text, 'vervallen'::text])))),
+    CONSTRAINT ck_push_subscriptie_sleutels_bij_soort CHECK ((((soort = 'webpush'::text) AND (p256dh IS NOT NULL) AND (auth IS NOT NULL)) OR ((soort = ANY (ARRAY['apns'::text, 'fcm'::text])) AND (p256dh IS NULL) AND (auth IS NULL)))),
+    CONSTRAINT ck_push_subscriptie_soort CHECK ((soort = ANY (ARRAY['webpush'::text, 'apns'::text, 'fcm'::text])))
 );
 
 

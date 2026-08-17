@@ -59,6 +59,42 @@ def subscriptie_registreren(
     return schemas.PushSubscriptieResponse(id=data.id, endpoint=data.endpoint, aangemaakt_op=data.aangemaakt_op)
 
 
+@router.post(
+    "/push/subscripties/native",
+    response_model=schemas.PushSubscriptieResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def natieve_subscriptie_registreren(
+    payload: schemas.NatieveSubscriptieRequest,
+    actor: CurrentGebruiker = Depends(_vereis_accordeur_met_akkoord),
+) -> schemas.PushSubscriptieResponse:
+    """Native store-app (fase 3): registreert het APNs-/FCM-device-token als subscriptie —
+    zelfde apparaat-binding, kill-switch en audit als Web Push. Fail-closed: een soort zonder
+    serverconfiguratie weigert zichtbaar (409) i.p.v. tokens te verzamelen die nooit bediend
+    worden."""
+    from app.berichten import push as push_kanaal
+
+    if not push_kanaal.is_geconfigureerd(payload.soort):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Native push ({payload.soort}) is niet geconfigureerd op deze omgeving",
+        )
+    try:
+        data = service.registreer_subscriptie(
+            gebruiker_id=actor.id,
+            apparaat_id=actor.apparaat_id,
+            endpoint=payload.token,
+            p256dh=None,
+            auth=None,
+            soort=payload.soort,
+        )
+    except service.ApparaatVereist as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except service.OngeldigeSubscriptie as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return schemas.PushSubscriptieResponse(id=data.id, endpoint=data.endpoint, aangemaakt_op=data.aangemaakt_op)
+
+
 @router.post("/push/subscripties/intrekken", status_code=status.HTTP_204_NO_CONTENT)
 def subscriptie_intrekken(
     payload: schemas.PushSubscriptieIntrekkenRequest,

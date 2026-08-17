@@ -41,4 +41,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         config.delegateClass = SceneDelegate.self
         return config
     }
+
+    // Native push (fase 3): APNs-token-forwarding naar @capacitor/push-notifications —
+    // de standaard Capacitor-koppeling (docs "Push Notifications iOS setup"). Zonder deze
+    // twee hooks krijgt de webcode nooit het registration-/registrationError-event.
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications,
+                                        object: deviceToken)
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications,
+                                        object: error)
+    }
 }

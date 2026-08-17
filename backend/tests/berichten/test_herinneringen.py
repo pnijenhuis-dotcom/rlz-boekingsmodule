@@ -35,7 +35,7 @@ def mail_log(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
 @pytest.fixture
 def push_log(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     verzonden: list[dict] = []
-    monkeypatch.setattr(push, "is_geconfigureerd", lambda: True)
+    monkeypatch.setattr(push, "is_geconfigureerd", lambda soort="webpush": True)
 
     def _fake(subscriptie: PushSubscriptie, *, payload: dict) -> None:
         verzonden.append({"endpoint": subscriptie.endpoint, "payload": payload})
@@ -190,7 +190,7 @@ class TestKanaalkeuze:
     ) -> None:
         apparaat = maak_apparaat(admin_engine, accordeur_1)
         subscriptie_id = maak_subscriptie(accordeur_1, apparaat, "https://push.example/dood")
-        monkeypatch.setattr(push, "is_geconfigureerd", lambda: True)
+        monkeypatch.setattr(push, "is_geconfigureerd", lambda soort="webpush": True)
 
         def _vervallen(subscriptie: PushSubscriptie, *, payload: dict) -> None:
             raise push.PushSubscriptieVervallen("410")

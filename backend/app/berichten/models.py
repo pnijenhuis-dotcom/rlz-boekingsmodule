@@ -17,12 +17,23 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.models import Base
 
 
+class PushSoort(enum.StrEnum):
+    """WEBPUSH = browser/PWA (pywebpush, endpoint = push-URL van de browser); APNS/FCM =
+    native store-apps (fase 3, endpoint = device-token). Adapterkeuze in app/berichten/push.py."""
+
+    WEBPUSH = "webpush"
+    APNS = "apns"
+    FCM = "fcm"
+
+
 class PushSubscriptie(Base):
-    """Web-Push-subscriptie per GEBRUIKER+APPARAAT (naast de apparaten-administratie van
+    """Push-subscriptie per GEBRUIKER+APPARAAT (naast de apparaten-administratie van
     migratie 0040): de kill-switch die een apparaat intrekt, trekt óók deze subscripties in
-    (app/auth/webauthn_service.py::trek_apparaat_in). `endpoint` is de unieke push-URL die de
-    browser uitgeeft; p256dh/auth zijn de encryptiesleutels van de subscription (RFC 8291) —
-    géén geheimen van ons, wel per subscriptie uniek."""
+    (app/auth/webauthn_service.py::trek_apparaat_in) — voor álle soorten. Web Push: `endpoint`
+    is de unieke push-URL van de browser, p256dh/auth de encryptiesleutels van de subscription
+    (RFC 8291) — géén geheimen van ons, wel per subscriptie uniek. Native (apns/fcm, migratie
+    0055): `endpoint` draagt het device-token, sleutels bestaan daar niet (NULL — de
+    DB-check dwingt de combinatie af)."""
 
     __tablename__ = "push_subscriptie"
     __table_args__ = (
@@ -36,9 +47,10 @@ class PushSubscriptie(Base):
     apparaat_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.webauthn_credential.id")
     )
+    soort: Mapped[str] = mapped_column(default=PushSoort.WEBPUSH.value, server_default="webpush")
     endpoint: Mapped[str] = mapped_column(unique=True)
-    p256dh: Mapped[str]
-    auth: Mapped[str]
+    p256dh: Mapped[str | None] = mapped_column(default=None)
+    auth: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     laatst_gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
     ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)

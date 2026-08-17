@@ -210,7 +210,39 @@ ontgrendel-flow op een echt toestel — is het kliktest-blok hieronder.
 5. Android idem zodra Play Console + upload-keystore bestaan (assetlinks +
    apk-key-hash-origin eerst).
 
-### Fase 3 (APNs/FCM), fase 4 (API-base + Keychain-refresh), fase 5 (store-gereedheid)
+### Fase 3 — native push: GEBOUWD + GETEST serverzijde/webcode (2026-08-17); ontvangst = kliktest
 
-Nog niet gestart — volgorde conform de GO-opdracht; fase 3/4 hebben elk een eigen
-ontwerpnotitie-moment (subscriptie-soort serverzijde resp. auth-serviceniveau).
+Route conform (b) hierboven: **APNs direct voor iOS + FCM voor Android, achter één
+adapterlaag** — de AVG-afweging valt daarmee zo klein mogelijk uit (Firebase alleen voor
+Android-bezorging; payload uitsluitend aantal + deep-link, nooit financiële details).
+
+- **Serverzijde (lokaal getest, migratie 0055 volledig afgerond incl. dev-upgrade + dump):**
+  `platform.push_subscriptie` heeft een `soort` (webpush | apns | fcm; native: endpoint =
+  device-token, geen RFC 8291-sleutels — DB-check dwingt de combinatie af). Adapters
+  `app/berichten/apns.py` (HTTP/2 via httpx[http2], ES256-JWT met de .p8, ~50 min hergebruikt;
+  BadDeviceToken/Unregistered → vervallen) en `fcm.py` (HTTP v1, service-account via
+  google-auth; UNREGISTERED → vervallen); dispatch per soort in `push.py` — `verzending.py`
+  (dagelijkse 09:00, bundelmelding, herinner-knop) merkt níéts: zelfde
+  push-anders-mail-keuze, native telt gewoon mee. Kill-switch bewezen over native rijen
+  (zelfde apparaat-binding; test). Registratie: `POST /notificaties/push/subscripties/native`
+  {soort, token} — zelfde voorwaarden-/apparaat-poorten en audit als Web Push; fail-closed
+  409 zolang de soort niet geconfigureerd is (geen tokens verzamelen die nooit bediend worden).
+- **Webcode (lokaal getest):** `nativePush.ts` (bridge-globals, zelfde patroon als
+  nativePasskey) + native pad in `pushClient.ts` — permissie alleen vanuit de expliciete
+  klik, register()-token mét timeout (nooit eeuwig "Bezig…"), tap opent uitsluitend
+  /accordeur-deep-links (auth-cadans blijft de poort), uitzetten trekt het token server-side
+  in. Schil: `@capacitor/push-notifications` 8.1.2 geïnstalleerd + `cap sync` geverifieerd
+  (iOS SPM + Android gradle), AppDelegate-token-forwarding + `aps-environment`-entitlement.
+- **Config (deploy, pas bij activatie):** APNs `APNS_KEY_P8` (Secret Manager) +
+  `APNS_KEY_ID` (+ `APPLE_TEAM_ID` uit fase 2, `APNS_SANDBOX` voor TestFlight); FCM
+  `FCM_SERVICE_ACCOUNT_JSON` (Firebase-project — Peters klikwerk, ná Play Console).
+- **Kliktest-blok fase 3 (zelfde sessie als fase 2 kan):** .p8-sleutel aanmaken in het
+  Apple-account → secrets zetten → melding-aanzetten-flow in de app → `make`-run van de
+  herinnering-job → melding komt binnen op het toestel → tap opent het document →
+  kill-switch op Instellingen → melding komt níét meer binnen. Android idem ná
+  Firebase-project + google-services.json in `native/android/app/`.
+
+### Fase 4 (API-base + Keychain-refresh), fase 5 (store-gereedheid)
+
+Nog niet gestart — fase 4 raakt het auth-serviceniveau (bearer-refresh voor
+apparaat-gebonden sessies) en krijgt een eigen ontwerpmoment.

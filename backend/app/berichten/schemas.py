@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas_basis import StrikteInvoer
 
@@ -31,3 +32,11 @@ class PushSubscriptieResponse(BaseModel):
 
 class PushSubscriptieIntrekkenRequest(StrikteInvoer):
     endpoint: str
+
+
+class NatieveSubscriptieRequest(StrikteInvoer):
+    """Native store-app (fase 3): het APNs-/FCM-device-token van dit apparaat. Intrekken loopt
+    via het bestaande intrekken-endpoint met het token als endpoint."""
+
+    soort: Literal["apns", "fcm"]
+    token: str = Field(min_length=8, max_length=4096)

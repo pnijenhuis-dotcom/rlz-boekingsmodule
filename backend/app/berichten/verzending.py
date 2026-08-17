@@ -72,11 +72,16 @@ def verstuur_push_anders_mail(
     push_gelukt = 0
     vervallen = 0
     push_fouten: list[str] = []
-    if subscripties and push.is_geconfigureerd():
+    if subscripties:
         payload = {"titel": "RLZ Goedkeuren", "tekst": pushtekst, "url": url}
         if extra_payload:
             payload.update(extra_payload)
         for subscriptie in subscripties:
+            # Per soort geconfigureerd? (fase 3: webpush | apns | fcm) — een niet-
+            # geconfigureerde soort telt niet als fout, zelfde stille-terugval-semantiek als
+            # de oude VAPID-poort; de adapterlaag kiest zelf het juiste kanaal.
+            if not push.is_geconfigureerd(subscriptie.soort):
+                continue
             try:
                 push.verzend_push(subscriptie, payload=payload)
                 push_gelukt += 1
