@@ -18,6 +18,7 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A1E27F010000000000000002 /* NatievePasskeyPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E27F010000000000000001 /* NatievePasskeyPlugin.swift */; };
 		A1E27F010000000000000004 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E27F010000000000000003 /* MainViewController.swift */; };
+		A1E27F010000000000000007 /* VeiligeOpslagPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E27F010000000000000006 /* VeiligeOpslagPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 		A1E27F010000000000000001 /* NatievePasskeyPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NatievePasskeyPlugin.swift; sourceTree = "<group>"; };
 		A1E27F010000000000000003 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		A1E27F010000000000000005 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		A1E27F010000000000000006 /* VeiligeOpslagPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeiligeOpslagPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +74,7 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				A1E27F010000000000000001 /* NatievePasskeyPlugin.swift */,
 				A1E27F010000000000000003 /* MainViewController.swift */,
+				A1E27F010000000000000006 /* VeiligeOpslagPlugin.swift */,
 				A1E27F010000000000000005 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -170,6 +173,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				A1E27F010000000000000002 /* NatievePasskeyPlugin.swift in Sources */,
 				A1E27F010000000000000004 /* MainViewController.swift in Sources */,
+				A1E27F010000000000000007 /* VeiligeOpslagPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

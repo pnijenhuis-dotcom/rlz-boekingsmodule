@@ -52,6 +52,35 @@ def _clear_refresh_cookie(response: Response) -> None:
     )
 
 
+# Native store-app (fase 4, verkenning/17 (d) route 2): de Capacitor-webview (origin
+# capacitor://localhost) kan de SameSite=Strict-cookie niet dragen — daar leeft het
+# refresh-token in Keychain/Keystore en reist het als header.
+NATIVE_CLIENT_HEADER = "X-Native-Client"
+REFRESH_HEADER = "X-Refresh-Token"
+
+
+def _is_native_client(request: Request) -> bool:
+    return request.headers.get(NATIVE_CLIENT_HEADER) == "1" or REFRESH_HEADER in request.headers
+
+
+def _lees_refresh_token(request: Request) -> str | None:
+    """Cookie eerst (web-pad, ongewijzigd); anders de native header. Beide dragen exact
+    hetzelfde token-formaat — service-laag en rotatie merken geen verschil."""
+    return request.cookies.get(REFRESH_COOKIE_NAME) or request.headers.get(REFRESH_HEADER)
+
+
+def _lever_token_paar(request: Request, response: Response, paar: service.TokenPaar) -> schemas.TokenPaarResponse:
+    """Web: refresh-token uitsluitend als httpOnly-cookie (Auth-0010-b — nooit in de body).
+    Native: het paar in de body (de app bewaart het refresh-token in secure native storage),
+    géén cookie erbij — één kanaal per client. De body-vorm vergt de expliciete
+    native-aankondiging; een web-context zonder die header krijgt het token dus nooit te
+    lezen, ook niet via een XSS die dit endpoint aanroept (de cookie blijft httpOnly)."""
+    if _is_native_client(request):
+        return schemas.TokenPaarResponse(access_token=paar.access_token, refresh_token=paar.refresh_token)
+    _set_refresh_cookie(response, paar)
+    return schemas.TokenPaarResponse(access_token=paar.access_token)
+
+
 @router.post("/uitnodigingen", response_model=schemas.UitnodigingAanmakenResponse)
 def uitnodiging_aanmaken(
     payload: schemas.UitnodigingAanmakenRequest,
@@ -109,6 +138,7 @@ def uitnodiging_accepteren(
 @router.post("/totp/bevestigen", response_model=schemas.TokenPaarResponse)
 def totp_bevestigen(
     payload: schemas.TotpBevestigenRequest,
+    request: Request,
     response: Response,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> schemas.TokenPaarResponse:
@@ -116,8 +146,7 @@ def totp_bevestigen(
         paar = service.bevestig_totp(totp_setup_token=credentials.credentials, code=payload.code)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar)
-    return schemas.TokenPaarResponse(access_token=paar.access_token)
+    return _lever_token_paar(request, response, paar)
 
 
 @router.post("/login", response_model=schemas.TokenPaarResponse)
@@ -131,15 +160,14 @@ def login(payload: schemas.LoginRequest, request: Request, response: Response) -
         )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar)
-    return schemas.TokenPaarResponse(access_token=paar.access_token)
+    return _lever_token_paar(request, response, paar)
 
 
 @router.post("/token/vernieuwen", response_model=schemas.TokenPaarResponse)
 def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarResponse:
-    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    refresh_token = _lees_refresh_token(request)
     if refresh_token is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token cookie aangeleverd")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token aangeleverd")
     try:
         paar = service.vernieuw_token(refresh_token=refresh_token, ip_adres=_client_ip(request))
     except service.RotatieBezetError as exc:
@@ -148,8 +176,7 @@ def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarR
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar)
-    return schemas.TokenPaarResponse(access_token=paar.access_token)
+    return _lever_token_paar(request, response, paar)
 
 
 @router.post("/token/vernieuwen/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -162,7 +189,7 @@ def logout(request: Request, response: Response) -> None:
     ontgrendel-endpoints): de refresh-cookie is path-gebonden en bereikte het oude /auth/logout
     in een echte browser nooit — de server-side intrekking gebeurde daardoor feitelijk niet
     (nazorg-fix 2026-08-11; TestClient negeert path-matching, vandaar dat geen test dit zag)."""
-    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    refresh_token = _lees_refresh_token(request)
     if refresh_token is not None:
         service.logout(refresh_token=refresh_token)
     _clear_refresh_cookie(response)
@@ -383,8 +410,7 @@ def webauthn_registratie_voltooien(
             )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _set_refresh_cookie(response, resultaat.token_paar)
-    return schemas.TokenPaarResponse(access_token=resultaat.token_paar.access_token)
+    return _lever_token_paar(request, response, resultaat.token_paar)
 
 
 @router.post("/webauthn/login/opties", response_model=schemas.WebauthnOptiesResponse)
@@ -418,8 +444,7 @@ def webauthn_login_voltooien(
         )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar)
-    return schemas.TokenPaarResponse(access_token=paar.access_token)
+    return _lever_token_paar(request, response, paar)
 
 
 @router.post("/token/vernieuwen/ontgrendel-opties", response_model=schemas.WebauthnOptiesResponse)
@@ -427,9 +452,9 @@ def ontgrendel_opties(request: Request) -> schemas.WebauthnOptiesResponse:
     """App-opening (bekend apparaat, sessie nog geldig): assertion-options op basis van de
     refresh-cookie. Bewust ónder het /auth/token/vernieuwen-pad: de httpOnly-cookie is
     path-gebonden en de scope blijft zo ongewijzigd smal."""
-    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    refresh_token = _lees_refresh_token(request)
     if refresh_token is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token cookie aangeleverd")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token aangeleverd")
     try:
         gebruiker_id = webauthn_service.gebruiker_id_uit_geldig_refresh_token(refresh_token)
         return schemas.WebauthnOptiesResponse(opties=webauthn_service.assertie_opties(gebruiker_id=gebruiker_id))
@@ -445,9 +470,9 @@ def ontgrendelen(
 ) -> schemas.TokenPaarResponse:
     """Rondt de app-opening af: assertion verifiëren (éénmaal per opening, besluit 2026-08-11)
     en daarná de refresh-cookie roteren via de bestaande race-tolerante rotatie."""
-    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    refresh_token = _lees_refresh_token(request)
     if refresh_token is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token cookie aangeleverd")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token aangeleverd")
     try:
         webauthn_service.ontgrendel_assertie(
             refresh_token=refresh_token,
@@ -460,8 +485,7 @@ def ontgrendelen(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar)
-    return schemas.TokenPaarResponse(access_token=paar.access_token)
+    return _lever_token_paar(request, response, paar)
 
 
 # --- kantoor-passkeys (platformbesluit 0020: eerste authenticatielijn, TOTP = terugval) -----------
@@ -550,8 +574,7 @@ def kantoor_login_voltooien(
         )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    _set_refresh_cookie(response, paar)
-    return schemas.TokenPaarResponse(access_token=paar.access_token)
+    return _lever_token_paar(request, response, paar)
 
 
 @router.get("/mijn/apparaten", response_model=schemas.ApparatenResponse)

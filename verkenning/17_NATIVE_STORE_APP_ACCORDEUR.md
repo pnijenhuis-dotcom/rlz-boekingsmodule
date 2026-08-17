@@ -242,7 +242,34 @@ Android-bezorging; payload uitsluitend aantal + deep-link, nooit financiële det
   kill-switch op Instellingen → melding komt níét meer binnen. Android idem ná
   Firebase-project + google-services.json in `native/android/app/`.
 
-### Fase 4 (API-base + Keychain-refresh), fase 5 (store-gereedheid)
+### Fase 4 — gebundelde assets + bearer-refresh Keychain/Keystore: GEBOUWD + GETEST (2026-08-17)
 
-Nog niet gestart — fase 4 raakt het auth-serviceniveau (bearer-refresh voor
-apparaat-gebonden sessies) en krijgt een eigen ontwerpmoment.
+Route 2 uit (d): een échte app met gebundelde assets — geen remote-wrapper.
+
+- **Backend (getest, web-contract bewaakt):** de vernieuwen-familie accepteert het
+  refresh-token óók als `X-Refresh-Token`-header; een client die zich expliciet als native
+  aandient (`X-Native-Client: 1` of een header-token) krijgt het token-paar in de body en
+  GÉÉN cookie (één kanaal per client; `_lever_token_paar`/`_lees_refresh_token` in
+  `app/auth/router.py`). Rotatie/grace/kill-switch: exact dezelfde service-laag. Het webpad
+  is byte-voor-byte ongewijzigd: zonder native-aankondiging bestaat `refresh_token` niet
+  eens in de response-body (serializer-guard + tests) — een web-XSS kan het token dus nog
+  steeds niet lezen (cookie blijft httpOnly).
+- **Webcode (getest):** `VITE_API_BASE` in `api/client.ts` (native bundel →
+  `frontend/.env.native`, build via `npm run bouw-web` = `--mode native`; web/dev
+  ongewijzigd root-relatief); `api/nativeSessie.ts` = brug naar de eigen
+  VeiligeOpslag-plugin; de refresh-flow stuurt in de schil het Keychain-token als header en
+  bewaart het geroteerde token uit de body; AuthContext bewaart/wist het token bij
+  inloggen/uitloggen; startroute: native opent op /accordeur (main.tsx).
+- **Native (geschreven, compileert pas met Xcode/Android-SDK — zelfde eerlijke status als
+  fase 2):** `VeiligeOpslagPlugin.swift` (Keychain, AfterFirstUnlockThisDeviceOnly — nooit
+  in backups) en `VeiligeOpslagPlugin.java` (EncryptedSharedPreferences, Keystore-gedekt);
+  eigen dunne plugins, geen community-pakket in de auth-kern.
+- **Kliktest-blok fase 4 (zit in de fase-2-sessie):** volledige cyclus op het toestel —
+  login → app hard afsluiten → opnieuw openen → ontgrendelen met passkey zónder nieuwe
+  login (bewijst Keychain-refresh); kill-switch op Instellingen → app valt per direct terug
+  naar login. Vooraf: VITE_API_BASE-domein bevestigen (apex-routing naar Cloud Run).
+
+### Fase 5 (store-gereedheid)
+
+Nog niet gestart — iconen/splash, privacylabels, reviewnotities, TestFlight/interne track;
+kan pas echt af mét de store-accounts (parallel klikwerk Peter).

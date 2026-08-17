@@ -8,6 +8,7 @@ import {
   setSessieVerlopenHandler,
   verversSessie,
 } from '../api/client'
+import { bewaarNatiefRefreshToken, wisNatiefRefreshToken } from '../api/nativeSessie'
 import type { TokenPaarResponseDto } from '../api/types'
 
 type AuthStatus = 'laden' | 'ingelogd' | 'uitgelogd'
@@ -81,12 +82,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGebruikerId(gebruikerIdUitToken(paar.access_token))
     setStatus('ingelogd')
     setBackendOnbereikbaar(false)
+    // Native schil (fase 4): het refresh-token uit de body naar de Keychain/Keystore — de
+    // volgende app-opening ontgrendelt dan gewoon i.p.v. een volledige login te eisen.
+    if (paar.refresh_token) void bewaarNatiefRefreshToken(paar.refresh_token)
   }
 
   const uitloggen = async () => {
     // Onder het cookie-pad (/auth/token/vernieuwen): alleen dáár stuurt de browser de
     // path-gebonden refresh-cookie mee, anders wordt er server-side niets ingetrokken.
+    // Native reist het token als header (client.ts) — zelfde endpoint, zelfde intrekking.
     await apiFetch('/auth/token/vernieuwen/logout', { method: 'POST' })
+    await wisNatiefRefreshToken()
     setAccessToken(null)
     setRol(null)
     setGebruikerId(null)

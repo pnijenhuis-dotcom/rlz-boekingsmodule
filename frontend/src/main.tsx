@@ -22,6 +22,18 @@ if ('serviceWorker' in navigator) {
     .catch(() => {})
 }
 
+// Startroute native schil (store-app fase 4): de Capacitor-app laadt index.html op '/' —
+// dat is de kántoor-route. De accordeur-app hoort op /accordeur te openen; vóór de eerste
+// render zodat de router meteen goed start. Web: no-op.
+declare global {
+  interface Window {
+    Capacitor?: { isNativePlatform?: () => boolean }
+  }
+}
+if (window.Capacitor?.isNativePlatform?.() && window.location.pathname === '/') {
+  window.history.replaceState(null, '', '/accordeur')
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

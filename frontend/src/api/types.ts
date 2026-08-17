@@ -160,6 +160,9 @@ export interface DocumentActieResponseDto {
 export interface TokenPaarResponseDto {
   access_token: string
   token_type: string
+  /** Alleen in de native schil (fase 4, X-Native-Client): het refresh-token voor
+   * Keychain/Keystore — web-responses dragen dit veld niet (cookie-only, Auth-0010-b). */
+  refresh_token?: string | null
 }
 
 export interface UitnodigingAccepterenResponseDto {

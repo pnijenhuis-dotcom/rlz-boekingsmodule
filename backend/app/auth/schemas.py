@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 from app.db.models import GebruikerRol
 from app.schemas_basis import StrikteInvoer
@@ -49,12 +49,28 @@ class TotpBevestigenRequest(StrikteInvoer):
 
 
 class TokenPaarResponse(BaseModel):
-    """Bevat bewust geen refresh_token: die gaat uitsluitend als httpOnly-cookie mee
-    (Auth-0010-b punt 1) — nooit in de JSON-body, anders kan een frontend hem alsnog in
-    localStorage zetten en is het hele punt van httpOnly weg."""
+    """Voor web-clients bevat dit bewust geen refresh_token: die gaat uitsluitend als
+    httpOnly-cookie mee (Auth-0010-b punt 1) — nooit in de JSON-body, anders kan een frontend
+    hem alsnog in localStorage zetten en is het hele punt van httpOnly weg.
+
+    Uitzondering (native store-app, fase 4 — verkenning/17 (d) route 2): de Capacitor-webview
+    kan de SameSite-cookie niet dragen; ALLEEN wanneer de client zich expliciet als native
+    aandient (X-Native-Client-header of een header-aangeleverd refresh-token, zie
+    router._lever_token_paar) gaat `refresh_token` in de body mee en bewaart de app hem in
+    Keychain/Keystore — er wordt dan géén cookie gezet (één kanaal per client)."""
 
     access_token: str
     token_type: str = "bearer"
+    refresh_token: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _zonder_leeg_refresh_token(self, handler):  # noqa: ANN001, ANN202
+        """Web-responses dragen het veld überhaupt niet (contract-guard in de tests): alleen
+        de native vorm serialiseert refresh_token."""
+        data = handler(self)
+        if data.get("refresh_token") is None:
+            data.pop("refresh_token", None)
+        return data
 
 
 class LoginRequest(StrikteInvoer):

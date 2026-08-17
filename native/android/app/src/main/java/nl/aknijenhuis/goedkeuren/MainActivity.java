@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // In-app-plugins registreren vóór de bridge laadt (Capacitor-conventie).
         registerPlugin(NatievePasskeyPlugin.class);
+        registerPlugin(VeiligeOpslagPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

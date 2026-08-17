@@ -1,8 +1,32 @@
 // Access-token leeft alleen in het geheugen van dit module — NOOIT in localStorage (OWASP,
 // zelfde reden als de httpOnly-refresh-cookie aan de backend-kant, zie Auth-0010-b). Een
-// paginaherlaad verliest 'm bewust; verversSessie() haalt 'm dan terug via de refresh-cookie.
+// paginaherlaad verliest 'm bewust; verversSessie() haalt 'm dan terug via de refresh-cookie
+// (web) of het Keychain/Keystore-refresh-token via de X-Refresh-Token-header (native schil,
+// fase 4 — de SameSite-cookie werkt niet in de Capacitor-webview).
+import { bewaarNatiefRefreshToken, haalNatiefRefreshToken, natieveSessieBeschikbaar } from './nativeSessie'
+
 let accessToken: string | null = null
 let sessieVerlopenHandler: (() => void) | null = null
+
+/** Native schil (fase 4): alle paden zijn root-relatief; in de app-bundel wijst
+ * VITE_API_BASE naar het productiedomein (capacitor://localhost heeft geen backend).
+ * Web/dev: leeg → ongewijzigd gedrag (dev-proxy/zelfde origin). */
+const API_BASE: string = (import.meta.env?.VITE_API_BASE as string | undefined) ?? ''
+
+function apiUrl(pad: string): string {
+  return API_BASE ? `${API_BASE}${pad}` : pad
+}
+
+/** Native aankondiging + het header-refresh-token voor de vernieuwen-familie (het pad-prefix
+ * spiegelt bewust het cookie-path van de backend). Web: no-op. */
+async function metNatieveAuthHeaders(pad: string, headers: Headers): Promise<void> {
+  if (!natieveSessieBeschikbaar()) return
+  headers.set('X-Native-Client', '1')
+  if (pad.startsWith('/auth/token/vernieuwen')) {
+    const token = await haalNatiefRefreshToken()
+    if (token) headers.set('X-Refresh-Token', token)
+  }
+}
 
 export function setAccessToken(token: string | null): void {
   accessToken = token
@@ -52,14 +76,14 @@ export const REQUEST_TIMEOUT_MS = 10_000
 
 async function fetchMetTimeout(pad: string, init: RequestInit): Promise<Response> {
   try {
-    if (init.signal) return await fetch(pad, init)
+    if (init.signal) return await fetch(apiUrl(pad), init)
     // clearTimeout ná de response-headers: de timeout bewaakt "server antwoordt niet", niet
     // het daarna binnenstromen van een grote body (PDF-blob) — die zou anders halverwege
     // afgebroken worden.
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
-      return await fetch(pad, { ...init, signal: controller.signal })
+      return await fetch(apiUrl(pad), { ...init, signal: controller.signal })
     } finally {
       clearTimeout(timer)
     }
@@ -71,9 +95,12 @@ async function fetchMetTimeout(pad: string, init: RequestInit): Promise<Response
   }
 }
 
-function ruweFetch(pad: string, init: RequestInit): Promise<Response> {
+async function ruweFetch(pad: string, init: RequestInit): Promise<Response> {
   const headers = new Headers(init.headers)
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  // Alleen awaiten in de native schil: op het webpad start fetch in dezelfde tick (het
+  // single-flight-contract van verversSessie leunt daarop — zie client.test.ts).
+  if (natieveSessieBeschikbaar()) await metNatieveAuthHeaders(pad, headers)
   return fetchMetTimeout(pad, { ...init, headers, credentials: 'include' })
 }
 
@@ -82,7 +109,9 @@ function ruweFetch(pad: string, init: RequestInit): Promise<Response> {
  * vertaling als apiFetch, maar zonder het in-memory access-token (dat zou een meegegeven
  * setup-token overschrijven) en zonder 401-refresh-retry. */
 export async function kaleAuthFetch(pad: string, init: RequestInit = {}): Promise<Response> {
-  const resp = await fetchMetTimeout(pad, { ...init, credentials: 'include' })
+  const headers = new Headers(init.headers)
+  if (natieveSessieBeschikbaar()) await metNatieveAuthHeaders(pad, headers)
+  const resp = await fetchMetTimeout(pad, { ...init, headers, credentials: 'include' })
   if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
   return resp
 }
@@ -97,8 +126,11 @@ async function voerVerversUit(): Promise<boolean> {
   }
   if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
   if (!resp.ok) return false
-  const body = (await resp.json()) as { access_token: string }
+  const body = (await resp.json()) as { access_token: string; refresh_token?: string }
   accessToken = body.access_token
+  // Native (fase 4): de rotatie levert het nieuwe refresh-token in de body — meteen naar de
+  // Keychain/Keystore, anders is de sessie na de volgende app-start alsnog weg.
+  if (body.refresh_token) await bewaarNatiefRefreshToken(body.refresh_token)
   return true
 }
 
