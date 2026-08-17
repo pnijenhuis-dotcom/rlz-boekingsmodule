@@ -591,6 +591,16 @@ weigert zelf); volumerem; 0 nieuw = exit 0 (F3-les). Zelfde notificatie-config a
 resume samen met/na de F3.5-live-verificatie. De 09:00-herinnering blijft ongewijzigd en
 telt integraal.
 
+**Live-verificatie (harnas 2026-08-17, na de diagnose "geen push" — dat bleek correct
+gedrag: run in stille uren + TEST-document al goedgekeurd):** één commando, herhaalbaar,
+tussen 08:00 en 20:00 NL draaien:
+`scripts/gcp/nieuwe_facturen_verificatie.sh` — zet zelf de uitgangssituatie klaar
+(TEST-ACC-NOTIF-01 opnieuw ter accordering + gemeld-claim-reset, prep
+`backend/scripts/cloud_verificatie_nieuwe_facturen.py`), draait de job met `--wait` en
+toont de joblog. Verwacht: push "Er staat 1 factuur voor u klaar." + logregel
+"1 push, 0 e-mail, 1 document(en) nieuw gemeld". Daarna scheduler hervatten:
+`gcloud scheduler jobs resume rlz-nieuwe-facturen --location europe-west4`.
+
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
 > **Uitvoering: `docs/F4_ACTIVATIE_RUNBOOK.md` is het cutover-draaiboek (F4-voorbereiding
