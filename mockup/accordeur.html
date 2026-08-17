@@ -237,6 +237,9 @@
       </div>
       <div class="headbtns">
         <button class="iconbtn" title="Staande goedkeuringen" onclick="toon('beheer')">✓✓</button>
+        <!-- 🔔-hoekje (UX-besluit Peter 17-08): dé blijvende plek om meldingen aan/uit te
+             zetten nu de wachtrij-kaart eenmalig is — discreet, naast de themaknop. -->
+        <button class="iconbtn" title="Meldingen" onclick="openMeldingen()">🔔</button>
         <button class="iconbtn" title="Licht/donker (handmatige override — dark is default)" onclick="wisselThema()">◐</button>
       </div>
     </div>
@@ -245,9 +248,18 @@
 
       <!-- ================= WACHTRIJ ================= -->
       <div class="view active" id="wachtrij">
-        <div class="pushnote"><span class="t">🔔</span>
+        <!-- UX-BESLUIT PETER 17-08: de meldingen-kaart is EENMALIG, nooit permanent. Het
+             voorstel hoort in de activeringsflow (direct ná het voorwaarden-akkoord); deze
+             kaart verschijnt alleen op een apparaat dat die flow al doorliep en nog géén
+             onthouden keuze heeft. Elke uitkomst — aan, "niet nu", of mislukt (eerlijke
+             fout-toast + één herkansing) — wordt PER APPARAAT onthouden (native en PWA zijn
+             aparte apparaten) en laat de kaart blijvend verdwijnen: de wachtrij is voor
+             facturen. Later (om)zetten kan discreet via het 🔔-hoekje rechtsboven.
+             Kill-switch-semantiek ongewijzigd (kantoor trekt per apparaat server-side in). -->
+        <div class="pushnote" id="meldingenkaart"><span class="t">🔔</span>
           <div><b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.<br>
-          "Goedemorgen! Er wachten nog <b id="pushteller">3 facturen</b> op je akkoord."</div>
+          <button class="btn klein groen" style="margin-top:7px" onclick="meldingenAanKaart()">Zet meldingen aan</button>
+          <button class="btn klein secundair" style="margin-top:7px" onclick="meldingenNietNu()">Niet nu</button></div>
         </div>
         <div class="qcount" id="qcount">3 facturen wachten op je akkoord</div>
         <div id="qlijst"></div>
@@ -319,6 +331,19 @@
       </div>
     </div>
 
+    <!-- ================= SHEET: MELDINGEN (het discrete 🔔-hoekje, besluit 17-08) ================= -->
+    <div class="sheet-bg" id="sheetMeldingen">
+      <div class="sheet">
+        <h2>Meldingen</h2>
+        <div class="uitleg">Eén dagelijkse herinnering om 09:00 — alléén als er iets op je akkoord wacht, nooit ruis. Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding zelf.</div>
+        <div class="uitlegblok" id="meldingenstatus">Meldingen staan <b>uit</b> op dit apparaat.</div>
+        <div class="rij">
+          <button class="btn secundair" onclick="sluit('sheetMeldingen')">Sluiten</button>
+          <button class="btn groen" id="meldingenknop" onclick="meldingenToggle()">Zet meldingen aan</button>
+        </div>
+      </div>
+    </div>
+
     <div class="toast" id="toast"></div>
 
     <!-- ================= APP-OPENING: FACE ID (simulatie, één keer per opening) =================
@@ -382,9 +407,9 @@
     });
     const n = wachtrij.length;
     document.getElementById('qcount').textContent = n === 1 ? '1 factuur wacht op je akkoord' : `${n} facturen wachten op je akkoord`;
-    document.getElementById('pushteller').textContent = n === 1 ? '1 factuur' : `${n} facturen`;
     document.getElementById('qcount').style.display = n ? '' : 'none';
-    document.querySelector('.pushnote').style.display = n ? '' : 'none';
+    // Eenmalige kaart (besluit 17-08): weg zodra er een keuze onthouden is — of niets open staat.
+    document.getElementById('meldingenkaart').style.display = (n && !meldingenKeuze) ? '' : 'none';
     document.getElementById('qleeg').style.display = n ? 'none' : '';
   }
 
@@ -529,6 +554,28 @@
     const sheet = bg.querySelector('.sheet');
     if (sheet) sheet.style.transform = ''; // toetsenbord-offset resetten
   }
+  // ===== Meldingen (UX-besluit Peter 17-08): eenmalige kaart + 🔔-hoekje =====
+  // In de echte app: keuze per apparaat in localStorage ('aan'/'uit'/'mislukt' — native en
+  // PWA zijn aparte apparaten), mislukken = eerlijke fout-toast + precies één herkansing.
+  let meldingenAanStaat = false;
+  let meldingenKeuze = null; // onthouden uitkomst; élke uitkomst verbergt de kaart blijvend
+  function meldingenAanKaart() { meldingenAanStaat = true; meldingenKeuze = 'aan'; toast('Meldingen staan aan'); renderWachtrij(); }
+  function meldingenNietNu() { meldingenKeuze = 'uit'; renderWachtrij(); }
+  function openMeldingen() { bijwerkMeldingenSheet(); document.getElementById('sheetMeldingen').classList.add('open'); }
+  function bijwerkMeldingenSheet() {
+    document.getElementById('meldingenstatus').innerHTML =
+      meldingenAanStaat ? 'Meldingen staan <b>aan</b> op dit apparaat.' : 'Meldingen staan <b>uit</b> op dit apparaat.';
+    const k = document.getElementById('meldingenknop');
+    k.textContent = meldingenAanStaat ? 'Meldingen uitzetten' : 'Zet meldingen aan';
+    k.className = meldingenAanStaat ? 'btn afwijs' : 'btn groen';
+  }
+  function meldingenToggle() {
+    meldingenAanStaat = !meldingenAanStaat;
+    meldingenKeuze = meldingenAanStaat ? 'aan' : 'uit';
+    toast(meldingenAanStaat ? 'Meldingen staan aan' : 'Meldingen staan uit');
+    bijwerkMeldingenSheet(); renderWachtrij();
+  }
+
   let toastTimer = null;
   function toast(txt) {
     const t = document.getElementById('toast');

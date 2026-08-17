@@ -448,7 +448,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   bij >0 open, idempotent per dag per accordeur, migratie 0050), Web Push via
   `public/accordeur-sw.js` (scope /accordeur, UITSLUITEND push — geen fetch-handler/caching,
   installatie-/updatepad ongewijzigd; subscriptie per apparaat, kill-switch trekt push mee in;
-  permissie alleen vanuit expliciete klik). **HARD PRINCIPE: maillinks zijn deep-links naar de
+  permissie alleen vanuit expliciete klik). **Meldingen-kaart eenmalig (UX-besluit Peter
+  2026-08-17): voorstel éénmalig in de activeringsflow (ná voorwaarden-akkoord), keuze per
+  apparaat onthouden (óók "nee"; mislukt = eerlijke fout + één herkansing) — wachtrij blijft
+  schoon, later (om)zetten via het 🔔-hoekje; kill-switch ongewijzigd.** **HARD PRINCIPE: maillinks zijn deep-links naar de
   PWA (`/accordeur?document=<id>`) — goedkeuren-zonder-inloggen/one-click-token bestaat bewust
   NIET** (zou de passkey-laag omzeilen). **Afzenderadres beslist (Peter 2026-08-15):
   facturen@ak-nijenhuis.nl (géén aparte gebruiker/licentie) mét Reply-To
