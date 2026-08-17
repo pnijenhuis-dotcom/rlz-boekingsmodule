@@ -17,6 +17,32 @@ import { haalDeviceToken, nativePushPlugin, nativePushSoort } from './nativePush
 const SW_PAD = '/accordeur-sw.js'
 const SW_SCOPE = '/accordeur'
 const NATIVE_TOKEN_SLEUTEL = 'accordeur_native_push_token'
+const KEUZE_SLEUTEL = 'accordeur_meldingen_keuze'
+
+/** Onthouden meldingen-uitkomst van dit apparaat (UX-besluit Peter 2026-08-17): het
+ * éénmalige voorstel (activeringsflow of de eenmalige wachtrij-kaart) verdwijnt na élke
+ * uitkomst — aan, uit (óók een "nee"), of mislukt-na-herkansing. localStorage is per
+ * browserprofiel resp. per native webview → de keuze is vanzelf per apparaat (native en
+ * PWA zijn aparte apparaten). Later alsnog (om)zetten kan altijd via het 🔔-hoekje. */
+export type MeldingenKeuze = 'aan' | 'uit' | 'mislukt'
+
+export function bewaardeMeldingenKeuze(): MeldingenKeuze | null {
+  try {
+    const waarde = localStorage.getItem(KEUZE_SLEUTEL)
+    return waarde === 'aan' || waarde === 'uit' || waarde === 'mislukt' ? waarde : null
+  } catch {
+    return null
+  }
+}
+
+export function bewaarMeldingenKeuze(keuze: MeldingenKeuze): void {
+  try {
+    localStorage.setItem(KEUZE_SLEUTEL, keuze)
+  } catch {
+    // Geen localStorage (privéstand): dan blijft het voorstel op dit apparaat terugkomen —
+    // vervelend maar eerlijk; er is niets om de keuze in te bewaren.
+  }
+}
 
 export type MeldingenStatus =
   | 'niet-ondersteund' // geen SW/Push API (of iOS zonder thuisscherm-installatie)

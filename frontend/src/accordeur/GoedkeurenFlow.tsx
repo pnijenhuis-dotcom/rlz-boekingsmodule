@@ -2,11 +2,13 @@
 // factuurbeeld centraal met voorgestelde boeking → Akkoord (direct, → automatisch volgende) /
 // Afwijzen (bottom-sheet, verplichte reden) → lege staat. Staande-goedkeuring-voorstel ná
 // akkoord op identiek leverancier+bedrag; ✓✓-beheerscherm met intrekken. Scope bewust alléén
-// de wachtrij (besluit 2026-08-08). De dagelijkse-herinnering-banner uit de mockup is sinds
-// 2026-08-15 wél opgenomen (push bestaat nu — berichten-bouwsteen): permissie wordt alléén
-// gevraagd vanuit een expliciete klik (voorstel ná het voorwaarden-akkoord + de knop in de
-// banner), nooit rauw bij het laden. ?document=<id> is de deep-link uit mail/push — alleen
-// navigatie; de auth-cadans blijft de poort.
+// de wachtrij (besluit 2026-08-08). Meldingen (UX-besluit Peter 2026-08-17): éénmalig
+// voorstel in de activeringsflow (ná het voorwaarden-akkoord) resp. één eenmalige
+// wachtrij-kaart voor apparaten die die flow al doorliepen; élke uitkomst (aan, "niet nu",
+// mislukt-na-één-herkansing) wordt per apparaat onthouden en daarna blijft de wachtrij
+// schoon — beheer via het 🔔-hoekje naast de themaknop. Permissie wordt alléén gevraagd
+// vanuit een expliciete klik, nooit rauw bij het laden. ?document=<id> is de deep-link uit
+// mail/push — alleen navigatie; de auth-cadans blijft de poort.
 //
 // SNELHEIDSLAAG (harde ontwerpeis Peter, 2026-08-17 — geldt ook voor de native schil die deze
 // code bundelt): (a) wachtrij + metadata staan vooraf geladen; (b) het factuurbeeld van de
@@ -21,7 +23,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { haalMeldingenStatus, zetMeldingenAan, zetMeldingenUit, type MeldingenStatus } from './pushClient'
+import {
+  bewaardeMeldingenKeuze,
+  bewaarMeldingenKeuze,
+  haalMeldingenStatus,
+  zetMeldingenAan,
+  zetMeldingenUit,
+  type MeldingenKeuze,
+  type MeldingenStatus,
+} from './pushClient'
 import type { StaandeRegelDto } from '../accordering/accorderingApi'
 import {
   datumWeergave,
@@ -166,6 +176,73 @@ function StaandSheet({ item, onKeuze }: StaandSheetProps) {
   )
 }
 
+interface MeldingenSheetProps {
+  status: MeldingenStatus | null
+  bezig: boolean
+  onAanzetten: () => void
+  onUitzetten: () => void
+  onSluit: () => void
+}
+
+/** Het discrete meldingen-hoekje (🔔 naast de themaknop — UX-besluit Peter 2026-08-17):
+ * dé plek om meldingen later alsnog aan of uit te zetten nu de wachtrij schoon blijft.
+ * Kill-switch-semantiek ongewijzigd: het kantoor kan een apparaat server-side blijven
+ * intrekken, ongeacht wat hier staat. */
+function MeldingenSheet({ status, bezig, onAanzetten, onUitzetten, onSluit }: MeldingenSheetProps) {
+  const sheetRef = useSheetBovenToetsenbord(true)
+  return (
+    <div className="acc-sheet-bg">
+      <div className="acc-sheet" ref={sheetRef}>
+        <h2>Meldingen</h2>
+        <div className="acc-uitleg">
+          Eén dagelijkse herinnering om 09:00 — alléén als er iets op je akkoord wacht, nooit ruis.
+          Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding zelf.
+        </div>
+        {status === 'aan' && (
+          <div className="acc-uitlegblok">
+            Meldingen staan <b>aan</b> op dit apparaat.
+          </div>
+        )}
+        {status === 'uit' && (
+          <div className="acc-uitlegblok">
+            Meldingen staan <b>uit</b> op dit apparaat.
+          </div>
+        )}
+        {status === 'geweigerd' && (
+          <div className="acc-uitlegblok">
+            Meldingen zijn <b>geblokkeerd in je toestel- of browserinstellingen</b> — sta ze daar eerst
+            toe, en zet ze daarna hier aan.
+          </div>
+        )}
+        {status === 'niet-geconfigureerd' && (
+          <div className="acc-uitlegblok">Meldingen zijn op deze server (nog) niet ingericht.</div>
+        )}
+        {(status === 'niet-ondersteund' || status === null) && (
+          <div className="acc-uitlegblok">
+            Meldingen worden in deze browser niet ondersteund. Op een iPhone: zet de app eerst op je
+            beginscherm.
+          </div>
+        )}
+        <div className="acc-rij">
+          <button className="acc-btn secundair" onClick={onSluit}>
+            Sluiten
+          </button>
+          {status === 'aan' && (
+            <button className="acc-btn afwijs" disabled={bezig} onClick={onUitzetten}>
+              {bezig ? 'Bezig…' : 'Meldingen uitzetten'}
+            </button>
+          )}
+          {status === 'uit' && (
+            <button className="acc-btn groen" disabled={bezig} onClick={onAanzetten}>
+              {bezig ? 'Bezig…' : 'Zet meldingen aan'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Factuurbeeld via de prefetchcache — óók verborgen gemonteerd voor de eerstvolgende factuur,
  * zodat blob + pdf.js-render al klaarstaan vóór de gebruiker daar aankomt. */
 function FactuurBeeld({ item }: { item: WachtrijItemDto }) {
@@ -223,6 +300,13 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const [meldingen, setMeldingen] = useState<MeldingenStatus | null>(null)
   const [meldingenVoorstel, setMeldingenVoorstel] = useState(false)
   const [meldingenBezig, setMeldingenBezig] = useState(false)
+  // Onthouden uitkomst per apparaat (UX-besluit Peter 2026-08-17): zodra er een keuze ligt
+  // (aan/uit/mislukt) verschijnt het voorstel nergens meer — alleen het 🔔-hoekje blijft.
+  const [meldingenKeuze, setMeldingenKeuze] = useState<MeldingenKeuze | null>(() => bewaardeMeldingenKeuze())
+  const [meldingenSheetOpen, setMeldingenSheetOpen] = useState(false)
+  // Eén herkansing bij een mislukte aanzet-poging in het éénmalige voorstel; daarna is
+  // "mislukt" de onthouden uitkomst (eerlijke fout-toast, geen permanente banner).
+  const meldingenMislukt = useRef(0)
   const [zoekParams, setZoekParams] = useSearchParams()
 
   const toon = useCallback((tekst: string) => {
@@ -288,34 +372,68 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     return () => besluitVerzender.zetLuisteraar(null)
   }, [toon])
 
-  const meldingenAanzetten = useCallback(async () => {
+  const legKeuzeVast = useCallback((keuze: MeldingenKeuze) => {
+    bewaarMeldingenKeuze(keuze)
+    setMeldingenKeuze(keuze)
+  }, [])
+
+  /** Aanzetten mét keuze-vastlegging: 'aan' en 'geweigerd' zijn definitieve uitkomsten
+   * (kaart/voorstel verdwijnt); een exception is 'fout' — de aanroeper bepaalt of er nog
+   * een herkansing is (éénmalig voorstel) of dat het gewoon een losse poging was (🔔-hoekje). */
+  const meldingenAanzetten = useCallback(async (): Promise<MeldingenStatus | 'fout'> => {
     setMeldingenBezig(true)
     try {
       const status = await zetMeldingenAan()
       setMeldingen(status)
-      if (status === 'aan') toon('Meldingen staan aan')
-      else if (status === 'geweigerd') toon('Meldingen geblokkeerd in de browserinstellingen')
+      if (status === 'aan') {
+        legKeuzeVast('aan')
+        toon('Meldingen staan aan')
+      } else if (status === 'geweigerd') {
+        legKeuzeVast('uit')
+        toon('Meldingen geblokkeerd — sta ze toe in je toestel- of browserinstellingen')
+      }
+      return status
     } catch (fout) {
       // De echte reden tonen (bewijs-push-diagnose 2026-08-17: de native registratie strandde
       // op het toestel en de generieke toast verstopte wélke stap faalde — permissie, de
       // push-dienst-registratie of de server-call).
       const reden = fout instanceof Error && fout.message ? ` (${fout.message})` : ''
       toon(`Meldingen aanzetten mislukte — probeer het opnieuw${reden}`)
+      return 'fout'
     } finally {
       setMeldingenBezig(false)
     }
-  }, [toon])
+  }, [legKeuzeVast, toon])
+
+  /** Het éénmalige voorstel (activeringsflow of de eenmalige wachtrij-kaart): élke uitkomst
+   * sluit het voorstel definitief, behalve de éérste mislukte poging (één herkansing). */
+  const eenmaligAanzetten = useCallback(async () => {
+    const uitkomst = await meldingenAanzetten()
+    if (uitkomst === 'fout') {
+      if (meldingenMislukt.current >= 1) {
+        legKeuzeVast('mislukt')
+        setMeldingenVoorstel(false)
+      } else {
+        meldingenMislukt.current += 1
+      }
+      return
+    }
+    // 'aan'/'geweigerd' hebben hun keuze al vastgelegd; niet-ondersteund/niet-geconfigureerd
+    // verbergen zichzelf via de status — het voorstel gaat in alle gevallen dicht.
+    setMeldingenVoorstel(false)
+  }, [legKeuzeVast, meldingenAanzetten])
 
   const meldingenUitzetten = useCallback(async () => {
     setMeldingenBezig(true)
     try {
       await zetMeldingenUit()
       setMeldingen('uit')
+      legKeuzeVast('uit')
       toon('Meldingen staan uit')
     } finally {
       setMeldingenBezig(false)
     }
-  }, [toon])
+  }, [legKeuzeVast, toon])
 
   const openReview = (item: WachtrijItem) => {
     setHuidige(item)
@@ -448,11 +566,12 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
             void laadWachtrij()
             // Meldingen-voorstel op het logische moment (ná het voorwaarden-akkoord in de
             // activeringsflow) — de status komt vers van de server, want vóór het akkoord
-            // weigert de notificatie-config-endpoint (fail-closed poort).
+            // weigert de notificatie-config-endpoint (fail-closed poort). Eénmalig: ligt er
+            // op dit apparaat al een uitkomst (aan/uit/mislukt), dan nooit meer voorstellen.
             haalMeldingenStatus()
               .then((status) => {
                 setMeldingen(status)
-                if (status === 'uit') setMeldingenVoorstel(true)
+                if (status === 'uit' && bewaardeMeldingenKeuze() === null) setMeldingenVoorstel(true)
               })
               .catch(() => setMeldingen(null))
           }}
@@ -464,9 +583,10 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   }
 
   if (meldingenVoorstel && meldingen === 'uit') {
-    // Eénmalig voorstel in de activeringsflow — de browserpermissie komt pas ná deze
-    // expliciete klik (nooit rauw bij het laden); "Niet nu" laat de knop in de wachtrij-banner
-    // als tweede kans staan.
+    // Eénmalig voorstel in de activeringsflow (UX-besluit Peter 2026-08-17) — de
+    // browserpermissie komt pas ná deze expliciete klik (nooit rauw bij het laden). Elke
+    // uitkomst wordt per apparaat onthouden, óók "Niet nu"; mislukken geeft een eerlijke
+    // fout-toast + precies één herkansing. Later alsnog aanzetten kan via het 🔔-hoekje.
     return (
       <div className="acc-vol">
         <div className="acc-appnaam">
@@ -477,19 +597,20 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
           <b>Meldingen aanzetten?</b>
           <div className="acc-sub">
             Eén dagelijkse herinnering om 09:00 — alléén als er iets op je akkoord wacht, nooit ruis.
-            Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding zelf.
+            Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding zelf. Later aanzetten kan
+            altijd nog via 🔔 rechtsboven.
           </div>
         </div>
-        <button
-          className="acc-btn groen"
-          disabled={meldingenBezig}
-          onClick={() => {
-            void meldingenAanzetten().then(() => setMeldingenVoorstel(false))
-          }}
-        >
+        <button className="acc-btn groen" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
           {meldingenBezig ? 'Bezig…' : 'Zet meldingen aan'}
         </button>
-        <button className="acc-btn secundair" onClick={() => setMeldingenVoorstel(false)}>
+        <button
+          className="acc-btn secundair"
+          onClick={() => {
+            legKeuzeVast('uit')
+            setMeldingenVoorstel(false)
+          }}
+        >
           Niet nu
         </button>
         {toast && <div className="acc-toast">{toast}</div>}
@@ -520,6 +641,21 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
           >
             ✓✓
           </button>
+          <button
+            className="acc-iconbtn"
+            title="Meldingen"
+            aria-label="Meldingen"
+            onClick={() => {
+              // Vers ophalen bij het openen: de permissie kan intussen in de toestel-/
+              // browserinstellingen gewijzigd zijn.
+              haalMeldingenStatus()
+                .then(setMeldingen)
+                .catch(() => {})
+              setMeldingenSheetOpen(true)
+            }}
+          >
+            🔔
+          </button>
           <button className="acc-iconbtn" title="Licht/donker (dark is default)" onClick={wisselThema}>
             ◐
           </button>
@@ -541,37 +677,22 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 </button>
               </div>
             )}
-            {!laden && !fout && meldingen === 'uit' && (
+            {/* Eénmalige meldingen-kaart (UX-besluit Peter 2026-08-17): alléén zolang er op
+                dit apparaat nog géén uitkomst onthouden is (dekt apparaten die de
+                activeringsflow al vóór dit voorstel doorliepen). Na élke uitkomst — aan,
+                "niet nu", of mislukt-na-herkansing — blijft de wachtrij schoon; beheer
+                loopt dan via het 🔔-hoekje. De geweigerd-/aan-banners zijn bewust weg. */}
+            {!laden && !fout && meldingen === 'uit' && meldingenKeuze === null && (
               <div className="acc-pushnote">
                 <span className="t">🔔</span>
                 <div>
                   <b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.
                   <br />
-                  <button className="acc-btn klein groen" disabled={meldingenBezig} onClick={() => void meldingenAanzetten()}>
+                  <button className="acc-btn klein groen" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
                     {meldingenBezig ? 'Bezig…' : 'Zet meldingen aan'}
-                  </button>
-                </div>
-              </div>
-            )}
-            {!laden && !fout && meldingen === 'geweigerd' && (
-              <div className="acc-pushnote">
-                <span className="t">🔕</span>
-                <div>
-                  Meldingen zijn <b>geblokkeerd in je browserinstellingen</b> — sta ze daar toe om de
-                  dagelijkse herinnering (09:00, alleen bij openstaand werk) te ontvangen.
-                </div>
-              </div>
-            )}
-            {!laden && !fout && meldingen === 'aan' && teller > 0 && (
-              <div className="acc-pushnote">
-                <span className="t">🔔</span>
-                <div>
-                  <b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.
-                  <br />
-                  "Goedemorgen! Er {teller === 1 ? 'wacht' : 'wachten'} nog <b>{teller === 1 ? '1 factuur' : `${teller} facturen`}</b> op je akkoord."
-                  <br />
-                  <button className="acc-tekstlink" disabled={meldingenBezig} onClick={() => void meldingenUitzetten()}>
-                    meldingen uitzetten
+                  </button>{' '}
+                  <button className="acc-tekstlink" onClick={() => legKeuzeVast('uit')}>
+                    niet nu
                   </button>
                 </div>
               </div>
@@ -729,6 +850,15 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       )}
 
       {afwijsOpen && <AfwijsSheet onAnnuleer={() => setAfwijsOpen(false)} onBevestig={(reden) => afwijzen(reden)} />}
+      {meldingenSheetOpen && (
+        <MeldingenSheet
+          status={meldingen}
+          bezig={meldingenBezig}
+          onAanzetten={() => void meldingenAanzetten()}
+          onUitzetten={() => void meldingenUitzetten()}
+          onSluit={() => setMeldingenSheetOpen(false)}
+        />
+      )}
       {staandOpen && huidige && (
         <StaandSheet
           item={huidige}
