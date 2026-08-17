@@ -570,10 +570,14 @@ en -secrets, guarded zolang de slots ontbreken), IAM + scheduler in `scripts/gcp
 (scheduler start GEPAUZEERD), secret-slots + accessors + activatiestappen in
 **`scripts/gcp/notificaties_infra.sh`** (owner, idempotent). Secrets:
 `BERICHTEN_SMTP_WACHTWOORD` (Workspace-app-wachtwoord verzendadres — voorstel
-berichten@ak-nijenhuis.nl, adreskeuze bij Peter), `PUSH_VAPID_PRIVATE_KEY` (alléén run-jobs@),
-`PUSH_VAPID_PUBLIC_KEY` (ook run-backend@ — het subscribe-endpoint); waarden via stdin, nooit
+berichten@ak-nijenhuis.nl, adreskeuze bij Peter), `PUSH_VAPID_PRIVATE_KEY` (~~alléén
+run-jobs@~~ **HERZIEN 2026-08-17, bewijs-push-502: óók run-backend@** — de handmatige
+herinner-knop (migratie 0053) pusht per direct vanuit de service; zonder private key werd
+webpush daar stil overgeslagen en strandde de herinnering op de mail-terugval; accessor +
+service-mount in deploy.yml en notificaties_afronden.sh bijgewerkt), `PUSH_VAPID_PUBLIC_KEY`
+(ook run-backend@ — het subscribe-endpoint); waarden via stdin, nooit
 als argument. De service krijgt in een eigen guarded stap dezelfde SMTP-config (uitnodigings-
-mail) + de publieke sleutel. Idempotent per dag per accordeur (migratie 0050); 0 open werk =
+mail) + het VAPID-paar. Idempotent per dag per accordeur (migratie 0050); 0 open werk =
 exit 0 (F3-les). **Activatievolgorde:** notificaties_infra.sh → secret-versies → deploy → één
 handmatige run + live-verificatie (één échte push op Peters iPhone-PWA + één échte mail) →
 scheduler resume.
