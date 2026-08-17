@@ -118,7 +118,10 @@ jobs:
       # WEBAUTHN_ORIGINS (iOS-passkey-assertions dragen de rp_id-origin, niet het
       # app-subdomein) en capacitor://localhost in CORS (de iOS-webview-origin; de
       # Android-origin https://localhost volgt pas in de Android-ronde, samen met de
-      # apk-key-hash-origin).
+      # apk-key-hash-origin). APPLE_TEAM_ID (PDL-team, signing-ronde 2026-08-17) activeert
+      # de AASA-leesroute app/auth/wellknown.py op het app-subdomein (referentie; de
+      # bindende AASA staat als statisch bestand op de WordPress-apex) en is t.z.t. óók
+      # de APNs-issuer (fase 3). Geen geheim — staat sowieso in de publieke AASA.
       - name: Cloud Run-revisie uitrollen
         run: |
           gcloud run deploy rlz-backend \
@@ -130,7 +133,7 @@ jobs:
             --allow-unauthenticated \
             --memory 1Gi \
             --cpu 1 \
-            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\"]@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
+            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest" \
             --quiet
 
