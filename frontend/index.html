@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: vereist om env(safe-area-inset-*) te vullen in de native
+         Capacitor-webview (edge-to-edge; kliktest-bevinding 2026-08-17 — kop onder de
+         iOS-statusbalk). In de browser/PWA en op desktop verandert dit niets zichtbaars:
+         de accordeur-CSS rekent overal al met env()-paddings. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>RLZ Boekingsmodule</title>
   </head>
   <body>
