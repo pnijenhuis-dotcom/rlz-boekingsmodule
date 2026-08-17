@@ -676,7 +676,10 @@ UI-eisen):
      gebouwde m² per project; invoer door de medewerker zelf óf een teamleider namens meerdere
      (rol-instelbaar); project-scope per medewerker (kantoor wijst toe — de dropdown toont
      alleen eigen projecten). Goedkeurflow: manager keurt uren+productie goed/af en kan
-     aanpassen. Wekelijkse cyclus: ná goedkeuring melding aan de medewerker met het te
+     aanpassen. **Verduidelijking Peter 17-08: de door ons gecontroleerde/goedgekeurde uren
+     WORDEN de getekende urenstaat — dé bron van waarheid voor de factuurmatch; afgekeurde
+     invoer = afgewezen, er bestaat geen tussenvorm.** Wekelijkse cyclus: ná goedkeuring
+     melding aan de medewerker met het te
      factureren aantal uren; binnenkomende ZZP-facturen in RLZ automatisch matchen tegen de
      gekeurde urenlijst → bij match automatisch boeken op project (het vaste autoboek-patroon:
      harde checks blijven blokkerend, 'automatisch'-markering + audit), bij mismatch afwijzen
@@ -693,6 +696,12 @@ UI-eisen):
      zodra onderdeel 1 data levert; (b) AI-berekening benodigde m² uit PDF-/CAD-tekeningen —
      EXPERIMENT-status: altijd voorstel + mensbevestiging (nooit autonoom meten), samen
      finetunen op een golden-set echte tekeningen; apart go/no-go-moment.
+     **Doorgroeipad (verduidelijking Peter 17-08): ná bewezen betrouwbaarheid (orde ~100
+     correcte runs) mag het experiment doorgroeien naar een autoboek-achtige opt-in conform
+     het automatisering-first-principe (WERKWIJZE v1.10): default UIT, harde checks
+     blokkerend, volumerem, 'automatisch'-markering + audit, storno als terugweg — die
+     doorgroei vergt een eigen akkoord (het go/no-go hierboven betreft alleen het
+     experiment zelf).**
 
 ## Fase 5 — Integraties & schaal
 
