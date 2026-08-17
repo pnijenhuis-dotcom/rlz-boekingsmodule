@@ -1,10 +1,13 @@
 # Store-gereedheid "RLZ Goedkeuren" (fase 5)
 
-**Status 2026-08-17:** alles wat zonder store-accounts kan is klaar (iconen/splash uit één
-SVG-bron via `scripts/genereer_assets.sh`, naamgeving, dit dossier). Publicatie wacht op
-Peters accounts (Apple Developer + Play Console onder PDL Powerhouse B.V., D-U-N-S 1–2 wk).
-Bundle-id definitief: `nl.aknijenhuis.goedkeuren` (akkoord Peter bij het GO-besluit 16-08 —
-permanent, nooit meer wijzigen).
+**Status 2026-08-17:** alles tot aan de kliktest-blokken is klaar (iconen/splash uit één
+SVG-bron via `scripts/genereer_assets.sh`, naamgeving, dit dossier). **De store-accounts
+BESTAAN al (correctie Peter 2026-08-17): Apple Developer én Play Console onder PDL
+Powerhouse zijn actief (Vastly-app draait eronder), incl. D-U-N-S — geen kritiek pad bij
+derden.** Publicatie wacht alleen nog op de kliktest-blokken (verkenning/17) + de
+app-registraties onder het bestaande PDL-team. Bundle-id definitief:
+`nl.aknijenhuis.goedkeuren` (akkoord Peter bij het GO-besluit 16-08 — permanent, nooit meer
+wijzigen; registreren onder het bestaande team).
 
 ## 1. Wat de app is (voor reviewnotities en listing)
 
@@ -54,13 +57,16 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
 
 ## 5. Checklist tot publicatie (volgorde)
 
-1. **Peter:** Apple Developer-organisatie (PDL, D-U-N-S) + Play Console ($25, KvK) — loopt.
+1. **Peter:** ~~accounts aanmaken~~ **VERVALLEN** (bestaan al onder PDL Powerhouse, actief —
+   correctie 2026-08-17). Rest: nieuwe app-registratie in App Store Connect (bundle-id
+   `nl.aknijenhuis.goedkeuren` onder het bestaande team) + nieuwe app in Play Console.
 2. Xcode installeren → fase 2/3/4-kliktest-blokken (verkenning/17): compile, passkeys op
    toestel, push-ontvangst, koude-herstart-ontgrendeling. Dáár horen ook:
    `apple_team_id`/AASA live, APNs .p8 + secrets, VITE_API_BASE-domein bevestigen.
 3. `npm run bouw-web && npx cap sync` → archive/upload naar **TestFlight** (interne testers:
-   Peter + kantoor); Android: upload-keystore aanmaken (Play App Signing aan), **gesloten
-   test ≥ 12 testers / 14 dagen** (Play-eis nieuwe accounts — accordeurs als testgroep) +
+   Peter + kantoor); Android: upload-keystore aanmaken (Play App Signing aan), **interne/
+   gesloten test** (de ≥ 12 testers/14 dagen-eis geldt alleen persoonlijke accounts — het
+   PDL-organisatieaccount valt daarbuiten; de accordeurs blijven de testgroep) +
    `assetlinks.json` met de definitieve signing-hash + `android:apk-key-hash:`-origin in
    `webauthn_origins`.
 4. Store-listing (NL): naam "RLZ Goedkeuren", ondertitel "Facturen goedkeuren —

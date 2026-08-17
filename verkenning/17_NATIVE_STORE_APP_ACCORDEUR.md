@@ -94,18 +94,24 @@ niet in een WKWebView. Voor de store-apps is native push nodig:
 
 ## (c) Wat Peter moet regelen
 
-1. **Apple Developer Program** onder de juiste entiteit (**PDL**): organisatie-account
-   (€ 99/jr) vergt een **D-U-N-S-nummer** van PDL + een Apple-ID op een PDL-adres; doorloop
-   duurt soms 1–2 weken (D-U-N-S-verificatie) — vroeg starten. Nodig vóór: signing voor
-   echte toestellen/TestFlight, Associated Domains, APNs-sleutel (.p8).
-2. **Google Play Console** onder PDL: eenmalig $ 25, organisatie-verificatie (KvK-gegevens);
-   sinds 2024 vereist Play voor nieuwe developer-accounts een **gesloten test met ≥ 12
-   testers gedurende 14 dagen** vóór productie-release — de accordeurs zelf kunnen die
-   testgroep zijn, maar plan het in.
-3. **Bundle-id-voorstel:** `nl.aknijenhuis.goedkeuren` (staat zo in de schil; consistent met
-   ak-nijenhuis.nl en kort). Alternatief `nl.administratiekantoornijenhuis.goedkeuren` als de
-   store-vermelding strikt de apex moet volgen. Eén keuze, daarna nooit meer wijzigen
-   (bundle-id is permanent per app). **Beslispunt.**
+> **CORRECTIE 2026-08-17 (Peter, ná het fase-1–5-eindrapport): de store-accounts BESTAAN
+> al.** Apple Developer én Google Play Console onder **PDL Powerhouse** zijn actief (de
+> Vastly-app draait eronder), inclusief D-U-N-S. Het "kritieke pad bij derden" (D-U-N-S-
+> doorloop 1–2 weken, organisatie-verificaties) is daarmee VERVALLEN — wat rest is klikwerk
+> onder de bestaande accounts. De punten hieronder zijn hierop bijgewerkt.
+
+1. ~~Apple Developer Program aanvragen~~ **BESTAAT AL** (organisatie-account PDL Powerhouse,
+   actief incl. D-U-N-S). Rest-klikwerk: toegang/rol voor deze app + nieuwe app-registratie
+   in App Store Connect met bundle-id `nl.aknijenhuis.goedkeuren` onder het bestaande team;
+   APNs-sleutel (.p8) aanmaken kan per direct.
+2. ~~Google Play Console aanvragen~~ **BESTAAT AL** (PDL Powerhouse, actief). NB de
+   "gesloten test ≥ 12 testers / 14 dagen"-eis geldt alleen voor ná nov 2023 aangemaakte
+   pérsoonlijke accounts — het PDL-organisatieaccount valt daarbuiten. Een eigen
+   interne/gesloten testronde met de accordeurs blijft de bedoeling, maar is geen
+   Play-poort meer.
+3. **Bundle-id:** `nl.aknijenhuis.goedkeuren` — **DEFINITIEF** (akkoord Peter bij het
+   GO-besluit 2026-08-16; staat zo in de schil), te registreren onder het bestaande
+   PDL-team. Bundle-id is permanent per app — nooit meer wijzigen.
 4. **Signing:** met Xcode "automatically manage signing" onder het PDL-team; voor CI-builds
    later een distributiecertificaat + App Store Connect API-key. Android: een upload-keystore
    (Play App Signing beheert de echte release-key — aanrader).
@@ -145,7 +151,8 @@ niet in een WKWebView. Voor de store-apps is native push nodig:
 
 ## Voorstel vervolgstappen (ná go-besluit Peter)
 
-1. Peter: Apple-/Play-accounts (c1/c2, langste doorlooptijd eerst) + bundle-id-keuze.
+1. ~~Peter: Apple-/Play-accounts~~ VERVALLEN (correctie 2026-08-17: accounts bestaan al
+   onder PDL Powerhouse) — rest: app-registraties + signing onder het bestaande team (c).
 2. Bouwblok 1: API-base + native refresh-flow (d) — raakt backend-auth, eigen ontwerpnotitie.
 3. Bouwblok 2: native passkey-plugin + Associated Domains/assetlinks (a).
 4. Bouwblok 3: APNs/FCM-adapter + subscriptie-soort (b) — hergebruikt de berichten-laag.
@@ -194,13 +201,14 @@ Gebouwd (route 1 uit dit rapport, eigen dunne plugin — geen community-pakket i
 Command Line Tools, geen Android-SDK). Het bewijs van fase 2 — activerings- én
 ontgrendel-flow op een echt toestel — is het kliktest-blok hieronder.
 
-**Kliktest-blok fase 2 (Peter + Claude, kan pas als het Apple Developer-account er is):**
+**Kliktest-blok fase 2 (Peter + Claude; het Apple-account bestaat al — correctie
+2026-08-17 — dus dit blok kan zodra Xcode geïnstalleerd is):**
 1. Xcode installeren (App Store, ~12 GB) → `cd native && npm install && npm run bouw-web &&
    npx cap sync && npx cap open ios`; eerste compile-ronde is verwacht werk (Swift is
    ongecompileerd geschreven).
-2. Signing onder het PDL-team + capability Associated Domains (het entitlement staat al in
-   het project — met een gratis personal team faalt device-signing hierop, dus deze test
-   wacht écht op het account).
+2. Signing onder het bestaande PDL-team + capability Associated Domains (het entitlement
+   staat al in het project — met een gratis personal team faalt device-signing hierop,
+   dus altijd via het PDL-team; deze app als nieuwe app-registratie onder dat team).
 3. Backend-productieconfig: `apple_team_id` zetten → AASA live op de apex controleren
    (`curl https://administratiekantoornijenhuis.nl/.well-known/apple-app-site-association`).
    NB: de apex moet naar onze backend routeren vóór iOS de koppeling kan valideren.
@@ -235,7 +243,8 @@ Android-bezorging; payload uitsluitend aantal + deep-link, nooit financiële det
   (iOS SPM + Android gradle), AppDelegate-token-forwarding + `aps-environment`-entitlement.
 - **Config (deploy, pas bij activatie):** APNs `APNS_KEY_P8` (Secret Manager) +
   `APNS_KEY_ID` (+ `APPLE_TEAM_ID` uit fase 2, `APNS_SANDBOX` voor TestFlight); FCM
-  `FCM_SERVICE_ACCOUNT_JSON` (Firebase-project — Peters klikwerk, ná Play Console).
+  `FCM_SERVICE_ACCOUNT_JSON` (Firebase-project — Peters klikwerk; het Play Console-account
+  bestaat al, correctie 2026-08-17).
 - **Kliktest-blok fase 3 (zelfde sessie als fase 2 kan):** .p8-sleutel aanmaken in het
   Apple-account → secrets zetten → melding-aanzetten-flow in de app → `make`-run van de
   herinnering-job → melding komt binnen op het toestel → tap opent het document →
@@ -269,9 +278,10 @@ Route 2 uit (d): een échte app met gebundelde assets — geen remote-wrapper.
   login (bewijst Keychain-refresh); kill-switch op Instellingen → app valt per direct terug
   naar login. Vooraf: VITE_API_BASE-domein bevestigen (apex-routing naar Cloud Run).
 
-### Fase 5 — store-gereedheid: VOORBEREID (2026-08-17); publicatie wacht op de accounts
+### Fase 5 — store-gereedheid: VOORBEREID (2026-08-17); publicatie wacht op de kliktest-blokken
 
-Alles wat zonder store-accounts kan, staat klaar:
+De store-accounts bestaan al (correctie 2026-08-17, zie (c)) — geen kritiek pad bij derden;
+alles tot aan de kliktest-blokken staat klaar:
 
 - **Iconen + splash** voor beide schillen, herhaalbaar gegenereerd uit de canonieke
   accordeur-icoon-SVG via `native/scripts/genereer_assets.sh` (qlmanage, geen extra
@@ -282,7 +292,8 @@ Alles wat zonder store-accounts kan, staat klaar:
 - **`native/STORE_GEREEDHEID.md` (canoniek voor deze fase):** privacy nutrition labels
   (App Store) + Data safety (Play) voor-ingevuld, reviewnotities (demo-accordeur op de
   TEST-administratie, pushpermissie-uitleg, 4.2-onderbouwing), publicatie-checklist in
-  volgorde (TestFlight; Play gesloten test ≥ 12 testers/14 dagen; assetlinks +
-  apk-key-hash-origin ná de keystore), versiebeleid.
+  volgorde (TestFlight; Play interne/gesloten test — de 12-testers-eis geldt het
+  PDL-organisatieaccount niet, zie (c); assetlinks + apk-key-hash-origin ná de keystore),
+  versiebeleid.
 - Open taakjes die bij de checklist horen: privacyverklaring als publieke URL,
   demo-account voor review, screenshots — allemaal ná de kliktest-blokken.
