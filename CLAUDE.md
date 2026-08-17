@@ -414,7 +414,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   webview is beperkt) en store-accounts onder de juiste entiteit; planning ná GCP —
   **voorverkenning UITGEVOERD 2026-08-16: Capacitor-schil staat in `native/` (webcode niet
   geraakt), beslispuntenrapport `verkenning/17_NATIVE_STORE_APP_ACCORDEUR.md` = basis voor
-  het go/no-go-bouwbesluit**). Factuurbeeld
+  het go/no-go-bouwbesluit; GO Peter 2026-08-16 (aanbevolen route: native-passkey-plugin +
+  APNs/FCM + gebundelde assets + bearer-refresh Keychain/Keystore, bundle-id
+  `nl.aknijenhuis.goedkeuren`) — fase 1 (snelheidslaag PWA) GEBOUWD + GETEST 2026-08-17:
+  optimistisch akkoord/afwijzen (achtergrond-verzendrij met begrensde retry, definitief
+  mislukt = zichtbaar terug in de rij), prefetch/prerender van de eerstvolgende factuur,
+  backend-idempotente besluit-herhaling (`_herhaald_besluit`), dubbeltik-vangnet — zie
+  BESLISSINGEN "NATIVE-APP FASE 1"**). Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,

@@ -7,6 +7,16 @@
 // gevraagd vanuit een expliciete klik (voorstel ná het voorwaarden-akkoord + de knop in de
 // banner), nooit rauw bij het laden. ?document=<id> is de deep-link uit mail/push — alleen
 // navigatie; de auth-cadans blijft de poort.
+//
+// SNELHEIDSLAAG (harde ontwerpeis Peter, 2026-08-17 — geldt ook voor de native schil die deze
+// code bundelt): (a) wachtrij + metadata staan vooraf geladen; (b) het factuurbeeld van de
+// eerstvolgende factuur wordt verborgen vooruit gemonteerd (prefetch + prerender via
+// factuurCache) zodat de overgang na een besluit direct is; (c) akkoord/afwijzen is
+// optimistisch — de UI gaat per direct door, besluitVerzender stuurt op de achtergrond met
+// retry (backend-idempotent); faalt het definitief, dan komt het document ZICHTBAAR terug in
+// de rij mét melding — nooit stil verloren; (d) het boeken-na-laatste-akkoord draait
+// server-side in diezelfde achtergrond-call en blokkeert de accordeur dus nooit (een boekfout
+// is kantoor-werkvoorraad, niet accordeur-frictie).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -16,20 +26,27 @@ import type { StaandeRegelDto } from '../accordering/accorderingApi'
 import {
   datumWeergave,
   eurWeergave,
-  geefAkkoord,
-  haalFactuurBlob,
   haalMijnAdministraties,
   haalStaandeRegels,
   haalWachtrij,
   isVoorwaardenVereist,
   trekStaandeRegelIn,
-  wijsAf,
   type WachtrijItemDto,
 } from './accordeurApi'
+import { besluitVerzender, type BesluitOpdracht } from './besluitQueue'
+import { factuurCache } from './pdfCache'
 import { PdfWeergave } from './PdfWeergave'
 import { VoorwaardenScherm } from './VoorwaardenScherm'
 
 type Weergave = 'wachtrij' | 'review' | 'beheer'
+
+/** Wachtrij-item + lokale terugkeer-melding na een definitief mislukte verzending. */
+type WachtrijItem = WachtrijItemDto & { verzend_fout?: string }
+
+/** Dubbeltik-vangnet op de geld-knoppen: de overgang naar de volgende factuur is instant —
+ * een onbedoelde tweede tik (typisch < 300 ms na de eerste) zou anders de VOLGENDE factuur
+ * ongezien besluiten. Elke factuur verdient een bewuste klik; dit remt de weergave niet. */
+export const OVERGANGS_GUARD_MS = 300
 
 /** iOS-toetsenbordfix (iPhone-review Peter 2026-08-11, bouwvereiste): de open bottom-sheet
  * volgt window.visualViewport zodat redenveld + knoppen boven het toetsenbord blijven.
@@ -149,6 +166,37 @@ function StaandSheet({ item, onKeuze }: StaandSheetProps) {
   )
 }
 
+/** Factuurbeeld via de prefetchcache — óók verborgen gemonteerd voor de eerstvolgende factuur,
+ * zodat blob + pdf.js-render al klaarstaan vóór de gebruiker daar aankomt. */
+function FactuurBeeld({ item }: { item: WachtrijItemDto }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [laden, setLaden] = useState(true)
+  const [fout, setFout] = useState<string | null>(null)
+
+  useEffect(() => {
+    let actief = true
+    setUrl(null)
+    setLaden(true)
+    setFout(null)
+    factuurCache
+      .haal(item.administratie_id, item.document_id)
+      .then((blobUrl) => {
+        if (actief) setUrl(blobUrl)
+      })
+      .catch(() => {
+        if (actief) setFout('Het factuurbeeld kon niet geladen worden.')
+      })
+      .finally(() => {
+        if (actief) setLaden(false)
+      })
+    return () => {
+      actief = false
+    }
+  }, [item.administratie_id, item.document_id])
+
+  return <PdfWeergave blobUrl={url} laden={laden} fout={fout} />
+}
+
 interface Props {
   wisselThema: () => void
   uitloggen: () => Promise<void>
@@ -157,21 +205,19 @@ interface Props {
 export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const { gebruikerId } = useAuth()
   const [weergave, setWeergave] = useState<Weergave>('wachtrij')
-  const [items, setItems] = useState<WachtrijItemDto[]>([])
+  const [items, setItems] = useState<WachtrijItem[]>([])
   const [totaalStart, setTotaalStart] = useState(0)
   const [verwerkt, setVerwerkt] = useState(0)
   const [laden, setLaden] = useState(true)
   const [fout, setFout] = useState<string | null>(null)
   const [voorwaardenNodig, setVoorwaardenNodig] = useState(false)
-  const [huidige, setHuidige] = useState<WachtrijItemDto | null>(null)
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  const [pdfLaden, setPdfLaden] = useState(false)
-  const [pdfFout, setPdfFout] = useState<string | null>(null)
+  const [huidige, setHuidige] = useState<WachtrijItem | null>(null)
   const [afwijsOpen, setAfwijsOpen] = useState(false)
   const [staandOpen, setStaandOpen] = useState(false)
-  const [besluitBezig, setBesluitBezig] = useState(false)
+  const [onderweg, setOnderweg] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const laatsteOvergang = useRef(0)
   const [administratieNamen, setAdministratieNamen] = useState<string[]>([])
   const [staandeRegels, setStaandeRegels] = useState<(StaandeRegelDto & { administratie_id: string })[]>([])
   const [meldingen, setMeldingen] = useState<MeldingenStatus | null>(null)
@@ -190,8 +236,11 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     setFout(null)
     try {
       const { items: nieuw } = await haalWachtrij()
-      setItems(nieuw)
-      setTotaalStart(nieuw.length)
+      // Besluiten die nog onderweg zijn naar de server (optimistisch verwerkt) horen niet
+      // terug in de lijst — komen ze definitief niet aan, dan zet de mislukt-melding ze terug.
+      const zichtbaar = nieuw.filter((i) => !besluitVerzender.isOnderweg(i.document_id))
+      setItems(zichtbaar)
+      setTotaalStart(zichtbaar.length)
       setVerwerkt(0)
       setVoorwaardenNodig(false)
     } catch (err) {
@@ -214,6 +263,30 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       .then(setMeldingen)
       .catch(() => setMeldingen(null))
   }, [laadWachtrij])
+
+  // Terugkeer-kanaal van de achtergrond-verzender: definitief mislukt = document zichtbaar
+  // terug vooraan de rij mét melding (nooit stil verloren).
+  useEffect(() => {
+    besluitVerzender.zetLuisteraar({
+      onDefinitiefMislukt: (opdracht: BesluitOpdracht, voorwaarden: boolean) => {
+        setItems((vorige) =>
+          vorige.some((i) => i.document_id === opdracht.item.document_id)
+            ? vorige
+            : [{ ...opdracht.item, verzend_fout: 'niet verzonden — opnieuw beoordelen' }, ...vorige],
+        )
+        setVerwerkt((v) => Math.max(0, v - 1))
+        if (voorwaarden) setVoorwaardenNodig(true)
+        toon(
+          opdracht.soort === 'akkoord'
+            ? 'Akkoord versturen mislukte — de factuur staat terug in je wachtrij'
+            : 'Afwijzen versturen mislukte — de factuur staat terug in je wachtrij',
+        )
+      },
+      onAantalOnderwegGewijzigd: setOnderweg,
+    })
+    setOnderweg(besluitVerzender.aantalOnderweg())
+    return () => besluitVerzender.zetLuisteraar(null)
+  }, [toon])
 
   const meldingenAanzetten = useCallback(async () => {
     setMeldingenBezig(true)
@@ -240,26 +313,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     }
   }, [toon])
 
-  // Factuurbeeld lazy per geopend document; blob-URL netjes opruimen.
-  useEffect(() => {
-    if (!huidige) return
-    let vorige: string | null = null
-    setPdfLaden(true)
-    setPdfFout(null)
-    setPdfUrl(null)
-    haalFactuurBlob(huidige.administratie_id, huidige.document_id)
-      .then((url) => {
-        vorige = url
-        setPdfUrl(url)
-      })
-      .catch(() => setPdfFout('Het factuurbeeld kon niet geladen worden.'))
-      .finally(() => setPdfLaden(false))
-    return () => {
-      if (vorige) URL.revokeObjectURL(vorige)
-    }
-  }, [huidige])
-
-  const openReview = (item: WachtrijItemDto) => {
+  const openReview = (item: WachtrijItem) => {
     setHuidige(item)
     setWeergave('review')
   }
@@ -281,54 +335,61 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [laden, items, zoekParams, setZoekParams])
 
-  const naVerwerking = (melding: string, verwerktItem: WachtrijItemDto) => {
+  // Prefetch-venster: in review de huidige + eerstvolgende factuur, op de wachtrij vast de
+  // eerste — verborgen gemonteerd (prerender), al het andere wordt gesnoeid (geheugenrem).
+  const volgende: WachtrijItem | null = huidige
+    ? (items[items.findIndex((i) => i.document_id === huidige.document_id) + 1] ?? null)
+    : null
+  const venster: WachtrijItem[] =
+    weergave === 'review' && huidige
+      ? [huidige, ...(volgende && volgende.document_id !== huidige.document_id ? [volgende] : [])]
+      : items.length > 0
+        ? [items[0]]
+        : []
+  const vensterSleutel = venster.map((i) => i.document_id).join(',')
+  useEffect(() => {
+    factuurCache.snoei(vensterSleutel ? vensterSleutel.split(',') : [])
+  }, [vensterSleutel])
+
+  /** Optimistische verwerking: item per direct uit de rij, volgende factuur per direct open —
+   * de server-call loopt intussen op de achtergrond (besluitVerzender, met retry). */
+  const naVerwerking = (melding: string, verwerktItem: WachtrijItem) => {
+    laatsteOvergang.current = Date.now()
     const rest = items.filter((i) => i.document_id !== verwerktItem.document_id)
     setItems(rest)
     setVerwerkt((v) => v + 1)
     toon(melding)
-    if (rest.length > 0) {
-      setTimeout(() => openReview(rest[0]), 350)
+    if (rest.length > 0 && weergave === 'review') {
+      openReview(rest[0])
     } else {
       setHuidige(null)
-      setTimeout(() => setWeergave('wachtrij'), 350)
+      setWeergave('wachtrij')
     }
   }
 
-  const akkoord = async (staandeRegelAanmaken: boolean) => {
-    if (!huidige || besluitBezig) return
-    setBesluitBezig(true)
-    try {
-      await geefAkkoord(huidige.administratie_id, huidige.document_id, staandeRegelAanmaken)
-      naVerwerking(staandeRegelAanmaken ? 'Akkoord ✓ · staande goedkeuring ingesteld' : 'Akkoord ✓', huidige)
-    } catch (err) {
-      if (isVoorwaardenVereist(err)) setVoorwaardenNodig(true)
-      else toon('Akkoord vastleggen mislukte — probeer het opnieuw')
-    } finally {
-      setBesluitBezig(false)
-    }
+  const binnenOvergangsGuard = () => Date.now() - laatsteOvergang.current < OVERGANGS_GUARD_MS
+
+  const akkoord = (staandeRegelAanmaken: boolean) => {
+    if (!huidige || besluitVerzender.isOnderweg(huidige.document_id)) return
+    const { verzend_fout: _weg, ...schoon } = huidige
+    besluitVerzender.verstuur({ item: schoon, soort: 'akkoord', staandeRegelAanmaken, reden: null })
+    naVerwerking(staandeRegelAanmaken ? 'Akkoord ✓ · staande goedkeuring ingesteld' : 'Akkoord ✓', huidige)
   }
 
   const akkoordKnop = () => {
-    if (!huidige) return
+    if (!huidige || binnenOvergangsGuard()) return
     // Staande-goedkeuring-voorstel ná de akkoord-keuze op de 2e identieke factuur (mockup):
     // één API-call, de keuze in de sheet bepaalt de staande_regel_aanmaken-vlag.
     if (huidige.staande_regel_kandidaat) setStaandOpen(true)
-    else void akkoord(false)
+    else akkoord(false)
   }
 
-  const afwijzen = async (reden: string) => {
-    if (!huidige || besluitBezig) return
-    setBesluitBezig(true)
+  const afwijzen = (reden: string) => {
+    if (!huidige || besluitVerzender.isOnderweg(huidige.document_id)) return
     setAfwijsOpen(false)
-    try {
-      await wijsAf(huidige.administratie_id, huidige.document_id, reden)
-      naVerwerking('Afgewezen — met reden terug naar het kantoor', huidige)
-    } catch (err) {
-      if (isVoorwaardenVereist(err)) setVoorwaardenNodig(true)
-      else toon('Afwijzen mislukte — probeer het opnieuw')
-    } finally {
-      setBesluitBezig(false)
-    }
+    const { verzend_fout: _weg, ...schoon } = huidige
+    besluitVerzender.verstuur({ item: schoon, soort: 'afwijzen', staandeRegelAanmaken: false, reden })
+    naVerwerking('Afgewezen — met reden terug naar het kantoor', huidige)
   }
 
   const laadStaandeRegels = useCallback(async () => {
@@ -348,6 +409,12 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   }, [gebruikerId])
 
   const doeUitloggen = async () => {
+    if (besluitVerzender.aantalOnderweg() > 0) {
+      // Uitloggen trekt de sessie in — besluiten die nog onderweg zijn zouden dan pas bij de
+      // volgende login zichtbaar terugkomen. Even laten uitrazen (seconden) is veiliger.
+      toon('Nog besluiten onderweg naar de server — een moment…')
+      return
+    }
     try {
       await uitloggen()
     } catch {
@@ -515,6 +582,12 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                       <div className="acc-meta">
                         {item.referentie ? `nr. ${item.referentie} · ` : ''}
                         {datumWeergave(item.factuurdatum)}
+                        {item.verzend_fout && (
+                          <>
+                            {' · '}
+                            <span className="acc-chip fout">{item.verzend_fout}</span>
+                          </>
+                        )}
                         {item.staande_regel_kandidaat && (
                           <>
                             {' · '}
@@ -539,20 +612,42 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 akkoord wacht.
               </div>
             )}
+            {onderweg > 0 && (
+              <div className="acc-onderweg">
+                {onderweg === 1 ? '1 besluit wordt' : `${onderweg} besluiten worden`} op de achtergrond
+                verzonden…
+              </div>
+            )}
           </div>
         )}
 
         {weergave === 'review' && huidige && (
+          <div className="acc-revtop">
+            <button className="acc-terug" onClick={() => setWeergave('wachtrij')}>
+              ‹ Wachtrij
+            </button>
+            <span className="acc-tel">
+              {verwerkt + 1} van {totaalStart}
+            </span>
+          </div>
+        )}
+
+        {/* Het factuurvenster blijft over weergave-wissels heen gemonteerd (stabiele keys):
+            het verborgen exemplaar van de eerstvolgende factuur is al gefetcht én gerenderd
+            wanneer die opent — de overgang is daardoor direct (snelheidslaag b/e). */}
+        <div style={weergave === 'review' ? undefined : { display: 'none' }}>
+          {venster.map((item) => {
+            const actief = weergave === 'review' && huidige?.document_id === item.document_id
+            return (
+              <div key={item.document_id} style={actief ? undefined : { display: 'none' }} aria-hidden={!actief}>
+                <FactuurBeeld item={item} />
+              </div>
+            )
+          })}
+        </div>
+
+        {weergave === 'review' && huidige && (
           <div>
-            <div className="acc-revtop">
-              <button className="acc-terug" onClick={() => setWeergave('wachtrij')}>
-                ‹ Wachtrij
-              </button>
-              <span className="acc-tel">
-                {verwerkt + 1} van {totaalStart}
-              </span>
-            </div>
-            <PdfWeergave blobUrl={pdfUrl} laden={pdfLaden} fout={pdfFout} />
             <div className="acc-boekinfo">
               Boeking: <b>{huidige.boeking_omschrijving ?? '—'}</b>
               <br />
@@ -615,22 +710,27 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
 
       {weergave === 'review' && huidige && (
         <div className="acc-actionbar">
-          <button className="acc-btn afwijs" disabled={besluitBezig} onClick={() => setAfwijsOpen(true)}>
+          <button
+            className="acc-btn afwijs"
+            onClick={() => {
+              if (!binnenOvergangsGuard()) setAfwijsOpen(true)
+            }}
+          >
             Afwijzen
           </button>
-          <button className="acc-btn groen" disabled={besluitBezig} onClick={akkoordKnop}>
-            {besluitBezig ? 'Bezig…' : 'Akkoord ✓'}
+          <button className="acc-btn groen" onClick={akkoordKnop}>
+            Akkoord ✓
           </button>
         </div>
       )}
 
-      {afwijsOpen && <AfwijsSheet onAnnuleer={() => setAfwijsOpen(false)} onBevestig={(reden) => void afwijzen(reden)} />}
+      {afwijsOpen && <AfwijsSheet onAnnuleer={() => setAfwijsOpen(false)} onBevestig={(reden) => afwijzen(reden)} />}
       {staandOpen && huidige && (
         <StaandSheet
           item={huidige}
           onKeuze={(staandeRegel) => {
             setStaandOpen(false)
-            void akkoord(staandeRegel)
+            akkoord(staandeRegel)
           }}
         />
       )}

@@ -1,12 +1,16 @@
 // Schermtests accordeur-PWA (mockup accordeur.html): wachtrij → review → akkoord/afwijzen,
 // verplichte-reden-poort, staande-goedkeuring-voorstel en de voorwaarden-gate (blok 3).
+// Sinds de snelheidslaag (2026-08-17) óók: het optimistische pad (per direct door naar de
+// volgende factuur), de zichtbare fout-terugkeer en het dubbeltik-vangnet.
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
-import { GoedkeurenFlow } from './GoedkeurenFlow'
+import { GoedkeurenFlow, OVERGANGS_GUARD_MS } from './GoedkeurenFlow'
+import { besluitVerzender } from './besluitQueue'
+import { factuurCache } from './pdfCache'
 import type { WachtrijItemDto } from './accordeurApi'
 
 const ITEM: WachtrijItemDto = {
@@ -23,7 +27,7 @@ const ITEM: WachtrijItemDto = {
   staande_regel_kandidaat: false,
 }
 
-type FetchAntwoorden = Record<string, (init?: RequestInit) => Response>
+type FetchAntwoorden = Record<string, (init?: RequestInit) => Response | Promise<Response>>
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -67,6 +71,9 @@ describe('GoedkeurenFlow', () => {
   beforeEach(() => {
     // jsdom heeft geen createObjectURL; het factuurbeeld zelf test PdfWeergave niet mee.
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} }))
+    // Module-singletons van de snelheidslaag schoon per test (geen lekkende verzendrij/cache).
+    besluitVerzender.resetVoorTests()
+    factuurCache.resetVoorTests()
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -161,6 +168,125 @@ describe('GoedkeurenFlow', () => {
     expect(await screen.findByText('Voortaan automatisch akkoord?')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Ja, sta toe' }))
     await waitFor(() => expect(staandeVlag).toBe(true))
+  })
+
+  it('gaat na akkoord per direct door naar de volgende factuur — vóór de server antwoordt (optimistisch pad)', async () => {
+    const item2: WachtrijItemDto = {
+      ...ITEM,
+      document_id: 'd2',
+      leverancier_naam: 'Gamma Bouwstoffen',
+      referentie: 'G-2026-118',
+      boeking_omschrijving: 'Bouwmaterialen · btw 21%',
+    }
+    const routes = basisRoutes([ITEM, item2])
+    routes['/administraties/a1/documenten/d2/bestand'] = () =>
+      new Response(new Blob(['%PDF-1.4'], { type: 'application/pdf' }), { status: 200 })
+    // De akkoord-call blijft hangen: de server antwoordt (nog) niet.
+    routes['/administraties/a1/accordering/documenten/d1/akkoord'] = () => new Promise<Response>(() => {})
+    stubFetch(routes)
+    renderFlow()
+
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+    expect(await screen.findByText('1 van 2')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
+
+    // Zonder server-antwoord staat de VOLGENDE factuur al open (harde ontwerpeis: klik-klik-klik).
+    expect(screen.getByText('Bouwmaterialen · btw 21%')).toBeInTheDocument()
+    expect(screen.getByText('2 van 2')).toBeInTheDocument()
+    expect(besluitVerzender.isOnderweg('d1')).toBe(true)
+  })
+
+  it('toont op de wachtrij hoeveel besluiten nog op de achtergrond verzonden worden', async () => {
+    const routes = basisRoutes([ITEM])
+    routes['/administraties/a1/accordering/documenten/d1/akkoord'] = () => new Promise<Response>(() => {})
+    stubFetch(routes)
+    renderFlow()
+
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+    await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
+
+    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(screen.getByText(/1 besluit wordt op de achtergrond verzonden/)).toBeInTheDocument()
+  })
+
+  it('zet een definitief mislukt akkoord ZICHTBAAR terug in de wachtrij mét melding (nooit stil verloren)', async () => {
+    const routes = basisRoutes([ITEM])
+    routes['/administraties/a1/accordering/documenten/d1/akkoord'] = () =>
+      jsonResponse({ detail: 'Deze factuur wacht op een andere accordeur (sequentiële lagen)' }, 403)
+    stubFetch(routes)
+    renderFlow()
+
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+    await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
+
+    // De factuur komt terug in de rij, met melding + fout-chip — en telt weer mee.
+    expect(
+      await screen.findByText('Akkoord versturen mislukte — de factuur staat terug in je wachtrij'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Essent Zakelijk')).toBeInTheDocument()
+    expect(screen.getByText('niet verzonden — opnieuw beoordelen')).toBeInTheDocument()
+    expect(screen.getByText('1 factuur wacht op je akkoord')).toBeInTheDocument()
+    expect(besluitVerzender.isOnderweg('d1')).toBe(false)
+  })
+
+  it('afwijzen is óók optimistisch: direct door, de reden gaat op de achtergrond mee', async () => {
+    let afgewezenMet: string | null = null
+    const routes = basisRoutes([ITEM])
+    routes['/administraties/a1/accordering/documenten/d1/afwijzen'] = (init) => {
+      afgewezenMet = (JSON.parse(String(init?.body)) as { reden: string }).reden
+      return new Promise<Response>(() => {})
+    }
+    stubFetch(routes)
+    renderFlow()
+
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+    await userEvent.click(screen.getByRole('button', { name: 'Afwijzen' }))
+    await userEvent.type(screen.getByLabelText('Reden van afwijzing'), 'Werk nog niet opgeleverd')
+    await userEvent.click(screen.getByRole('button', { name: 'Afwijzen met reden' }))
+
+    // Direct de lege staat, terwijl de server nog niet geantwoord heeft.
+    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    await waitFor(() => expect(afgewezenMet).toBe('Werk nog niet opgeleverd'))
+  })
+
+  it('dubbeltik-vangnet: een tweede tik direct na de overgang besluit nooit de volgende factuur blind', async () => {
+    const item2: WachtrijItemDto = {
+      ...ITEM,
+      document_id: 'd2',
+      leverancier_naam: 'Gamma Bouwstoffen',
+      boeking_omschrijving: 'Bouwmaterialen · btw 21%',
+    }
+    const geaccordeerd: string[] = []
+    const routes = basisRoutes([ITEM, item2])
+    routes['/administraties/a1/documenten/d2/bestand'] = () =>
+      new Response(new Blob(['%PDF-1.4'], { type: 'application/pdf' }), { status: 200 })
+    const akkoordRoute = (documentId: string) => () => {
+      geaccordeerd.push(documentId)
+      return jsonResponse({
+        accordering: { id: 'x', document_id: documentId, status: 'afgerond', aangeboden_op: '', afgerond_op: null, stappen: [] },
+        alles_akkoord: true,
+        geboekt: true,
+        boek_fout: null,
+        staande_regel_id: null,
+      })
+    }
+    routes['/administraties/a1/accordering/documenten/d1/akkoord'] = akkoordRoute('d1')
+    routes['/administraties/a1/accordering/documenten/d2/akkoord'] = akkoordRoute('d2')
+    stubFetch(routes)
+    renderFlow()
+
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+    const knop = screen.getByRole('button', { name: 'Akkoord ✓' })
+    await userEvent.click(knop)
+    await userEvent.click(knop) // onbedoelde dubbeltik, binnen de guard-periode
+
+    await waitFor(() => expect(geaccordeerd).toEqual(['d1']))
+    expect(screen.getByText('Bouwmaterialen · btw 21%')).toBeInTheDocument() // factuur 2 staat open, onbeslist
+
+    // Ná de guard-periode werkt de knop gewoon weer.
+    await new Promise((resolve) => setTimeout(resolve, OVERGANGS_GUARD_MS + 50))
+    await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
+    await waitFor(() => expect(geaccordeerd).toEqual(['d1', 'd2']))
   })
 
   it('heeft een uitlog-knop in de header die de sessie beëindigt (kliktest 2026-08-12)', async () => {

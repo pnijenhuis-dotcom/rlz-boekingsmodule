@@ -550,6 +550,38 @@ def _pas_staande_regels_toe_en_rond_af(
 # --- besluiten (accordeur) -----------------------------------------------------------------------
 
 
+def _laatste_accordering(session: Session, document_id: uuid.UUID) -> DocumentAccordering | None:
+    return session.scalars(
+        select(DocumentAccordering)
+        .where(DocumentAccordering.document_id == document_id)
+        .order_by(DocumentAccordering.aangeboden_op.desc())
+    ).first()
+
+
+def _herhaald_besluit(
+    session: Session, *, document_id: uuid.UUID, actor_id: uuid.UUID, besluit: StapBesluit
+) -> tuple[DocumentAccordering, list[AccorderingStap]] | None:
+    """Idempotentie-anker voor het optimistische PWA-pad (kernprincipe 5, snelheidslaag
+    2026-08-17): de PWA verstuurt besluiten op de achtergrond mét retry — een herhaalde POST
+    (eerste response verloren, bv. timeout terwijl de boekmotor nog draaide) mag nooit
+    stuklopen op NietAanDeBeurt/GeenOpenAccordering en nooit dubbel doorwerken (geen tweede
+    staande regel, geen tweede boekronde, geen dubbel audit-event). Alleen de LAATSTE
+    accorderingsronde telt: een later opnieuw aangeboden document begint een verse ronde en
+    die vraagt gewoon een nieuw besluit."""
+    laatste = _laatste_accordering(session, document_id)
+    if laatste is None:
+        return None
+    stappen = _stappen_van(session, laatste.id)
+    for stap in stappen:
+        if (
+            stap.accordeur_gebruiker_id == actor_id
+            and stap.besluit == besluit.value
+            and stap.besluit_bron == StapBesluitBron.HANDMATIG.value
+        ):
+            return laatste, stappen
+    return None
+
+
 def _stap_aan_de_beurt_voor(
     session: Session, *, document_id: uuid.UUID, actor_id: uuid.UUID
 ) -> tuple[DocumentAccordering, AccorderingStap, list[AccorderingStap]]:
@@ -577,6 +609,28 @@ def geef_akkoord(
     bedrag (zichtbaar + intrekbaar; harde checks blijven onverkort)."""
     staande_regel_id: uuid.UUID | None = None
     with scoped_session(administratie_id, actor_id=actor_id) as session:
+        herhaald = _herhaald_besluit(
+            session, document_id=document_id, actor_id=actor_id, besluit=StapBesluit.AKKOORD
+        )
+        if herhaald is not None:
+            # Herhaalde POST van een al vastgelegd akkoord: huidige stand teruggeven, niets
+            # opnieuw doen. `geboekt` uit de werkelijke documentstatus; een eventueel bij de
+            # eerste call aangemaakte staande regel wordt teruggevonden, nooit gedupliceerd.
+            laatste, laatste_stappen = herhaald
+            bestaande_regel = session.scalars(
+                select(StaandeGoedkeuring).where(
+                    StaandeGoedkeuring.bron_document_id == document_id,
+                    StaandeGoedkeuring.accordeur_gebruiker_id == actor_id,
+                )
+            ).first()
+            document = session.get(Document, document_id)
+            return AkkoordResultaat(
+                accordering=_naar_data(session, laatste, laatste_stappen),
+                alles_akkoord=laatste.status == AccorderingStatus.AFGEROND.value,
+                geboekt=document is not None and document.status == DocumentStatus.GEBOEKT.value,
+                boek_fout=None,
+                staande_regel_id=bestaande_regel.id if bestaande_regel is not None else None,
+            )
         accordering, stap, stappen = _stap_aan_de_beurt_voor(
             session, document_id=document_id, actor_id=actor_id
         )
@@ -738,6 +792,14 @@ def wijs_af(
         raise RedenVerplicht("Afwijzen zonder reden is niet toegestaan")
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
+        herhaald = _herhaald_besluit(
+            session, document_id=document_id, actor_id=actor_id, besluit=StapBesluit.AFGEWEZEN
+        )
+        if herhaald is not None:
+            # Herhaalde POST van een al vastgelegde afwijzing: de eerste reden staat, niets
+            # opnieuw doen (geen tweede afwijs-ronde in de werkvoorraad, geen dubbel audit-event).
+            laatste, laatste_stappen = herhaald
+            return _naar_data(session, laatste, laatste_stappen)
         accordering, stap, stappen = _stap_aan_de_beurt_voor(
             session, document_id=document_id, actor_id=actor_id
         )

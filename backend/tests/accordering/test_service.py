@@ -497,3 +497,214 @@ class TestWachtrij:
             item.document_id
             for item in service.wachtrij_voor_accordeur(actor_id=accordeur_2, administratie_ids=[administratie_id])
         ] == [klaar_document]
+
+
+class TestIdempotenteBesluitHerhaling:
+    """Snelheidslaag PWA (2026-08-17): de client verstuurt besluiten optimistisch op de
+    achtergrond mét retry — een herhaalde POST (response verloren) moet idempotent slagen,
+    zonder dubbele doorwerking (staande regel, boekronde, audit)."""
+
+    def _audit_teller(self, admin_engine: Engine, actie: str) -> int:
+        with admin_engine.connect() as conn:
+            return conn.execute(
+                text("SELECT count(*) FROM platform.audit_event WHERE actie = :a"), {"a": actie}
+            ).scalar_one()
+
+    def test_herhaald_tussenakkoord_is_idempotent(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        accordeur_2: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        zet_schema(
+            administratie_id=administratie_id,
+            beheerder_id=beheerder_id,
+            lagen=[_laag(1, accordeur_1), _laag(2, accordeur_2)],
+        )
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=gescoopte_gebruiker,
+            actor_rol="boekhouding",
+        )
+        eerste = service.geef_akkoord(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1
+        )
+        assert eerste.alles_akkoord is False
+        voor = self._audit_teller(admin_engine, "accordering_akkoord")
+
+        # De retry loopt vroeger stuk op NietAanDeBeurt (laag 2 is aan de beurt) — nu idempotent.
+        herhaald = service.geef_akkoord(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1
+        )
+        assert herhaald.alles_akkoord is False
+        assert herhaald.geboekt is False
+        assert [s.besluit for s in herhaald.accordering.stappen] == ["akkoord", None]
+        assert self._audit_teller(admin_engine, "accordering_akkoord") == voor
+
+    def test_herhaald_laatste_akkoord_boekt_niet_opnieuw(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        boeken_aan: None,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Realistische verloren response: het laatste akkoord boekt (RLZ-call in de request)
+        en de client timet uit — de retry moet succes melden zónder tweede boekronde."""
+        fake = _patch_rlz(monkeypatch)
+        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=gescoopte_gebruiker,
+            actor_rol="boekhouding",
+        )
+        eerste = service.geef_akkoord(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1
+        )
+        assert eerste.geboekt is True
+        voor_afgerond = self._audit_teller(admin_engine, "accordering_afgerond")
+
+        herhaald = service.geef_akkoord(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1
+        )
+        assert herhaald.alles_akkoord is True
+        assert herhaald.geboekt is True  # uit de werkelijke documentstatus
+        assert document_status(admin_engine, klaar_document) == "geboekt"
+        assert len(fake.puts) == 1  # géén tweede RLZ-write
+        assert self._audit_teller(admin_engine, "accordering_afgerond") == voor_afgerond
+
+    def test_herhaald_akkoord_dupliceert_geen_staande_regel(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        boeken_aan: None,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _patch_rlz(monkeypatch)
+        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=gescoopte_gebruiker,
+            actor_rol="boekhouding",
+        )
+        eerste = service.geef_akkoord(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=accordeur_1,
+            staande_regel_aanmaken=True,
+        )
+        assert eerste.staande_regel_id is not None
+
+        herhaald = service.geef_akkoord(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=accordeur_1,
+            staande_regel_aanmaken=True,
+        )
+        assert herhaald.staande_regel_id == eerste.staande_regel_id
+        with admin_engine.connect() as conn:
+            aantal = conn.execute(
+                text("SELECT count(*) FROM boekhouding.staande_goedkeuring WHERE bron_document_id = :d"),
+                {"d": klaar_document},
+            ).scalar_one()
+        assert aantal == 1
+
+    def test_herhaald_afwijzen_is_idempotent_eerste_reden_staat(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=gescoopte_gebruiker,
+            actor_rol="boekhouding",
+        )
+        service.wijs_af(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=accordeur_1,
+            reden="Bedrag klopt niet",
+        )
+        voor = self._audit_teller(admin_engine, "accordering_afgewezen")
+
+        herhaald = service.wijs_af(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=accordeur_1,
+            reden="Bedrag klopt niet",
+        )
+        assert herhaald.status == "afgewezen"
+        assert herhaald.stappen[0].reden == "Bedrag klopt niet"
+        assert self._audit_teller(admin_engine, "accordering_afgewezen") == voor
+        with admin_engine.connect() as conn:
+            aantal_afwijzingen = conn.execute(
+                text("SELECT count(*) FROM boekhouding.afwijzing WHERE document_id = :d"),
+                {"d": klaar_document},
+            ).scalar_one()
+        assert aantal_afwijzingen == 1
+
+    def test_verse_ronde_na_intrekken_vraagt_gewoon_een_nieuw_besluit(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        accordeur_2: uuid.UUID,
+    ) -> None:
+        """De idempotentie kijkt uitsluitend naar de LAATSTE ronde: na intrekken + opnieuw
+        aanbieden telt het oude akkoord niet — de verse ronde vraagt een nieuwe klik."""
+        zet_schema(
+            administratie_id=administratie_id,
+            beheerder_id=beheerder_id,
+            lagen=[_laag(1, accordeur_1), _laag(2, accordeur_2)],
+        )
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=gescoopte_gebruiker,
+            actor_rol="boekhouding",
+        )
+        service.geef_akkoord(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1
+        )
+        service.trek_accordering_in(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=gescoopte_gebruiker,
+            actor_rol="boekhouding",
+        )
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id,
+            document_id=klaar_document,
+            actor_id=gescoopte_gebruiker,
+            actor_rol="boekhouding",
+        )
+        # De verse ronde staat open op laag 1 — een akkoord van accordeur_1 besluit de NIEUWE
+        # stap (geen short-circuit op de oude ronde).
+        resultaat = service.geef_akkoord(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1
+        )
+        assert resultaat.alles_akkoord is False
+        assert [s.besluit for s in resultaat.accordering.stappen] == ["akkoord", None]
+        assert resultaat.accordering.stappen[1].aan_de_beurt is True
