@@ -8,7 +8,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        // MainViewController (niet de kale CAPBridgeViewController): registreert de in-app-
+        // plugins NatievePasskey + VeiligeOpslag in capacitorDidLoad. De storyboard-verwijzing
+        // alleen is niet genoeg — deze programmatische root-VC omzeilt het storyboard
+        // (compile-ronde 2026-08-17: plugins ontbraken in de JS-bridge tot deze regel).
+        window?.rootViewController = MainViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
