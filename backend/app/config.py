@@ -70,6 +70,18 @@ class Settings(BaseSettings):
     # geweigerd, ongeacht deze setting. Zie BESLISSINGEN "Accordeur-PWA".
     auth_biometrie_dev_stub: bool = False
 
+    # Native store-app fase 2 (GO Peter 2026-08-16): passkey-domeinkoppeling voor de
+    # Capacitor-apps. iOS valideert het Associated-Domains-entitlement tegen
+    # /.well-known/apple-app-site-association, Android de signing-key tegen
+    # /.well-known/assetlinks.json — beide op de apex (rp_id, besluit 0022), geserveerd door
+    # app/auth/wellknown.py. Fail-closed: leeg = 404 (geen halve of foute koppeling
+    # publiceren). Waarden komen bij de store-accounts van Peter (PDL): het Apple-team-id en
+    # de sha256-vingerafdruk(ken) van de Android-signing-key. NB Android-login vergt straks
+    # óók de origin `android:apk-key-hash:<b64url-sha256>` in webauthn_origins (deploy-config).
+    apple_team_id: str = ""
+    native_app_bundle_id: str = "nl.aknijenhuis.goedkeuren"
+    android_cert_sha256_vingerafdrukken: list[str] = []
+
     # Race-tolerante hergebruik-detectie (browserreview 2026-08-07): twee parallelle
     # vernieuwen-calls uit dezelfde browser (dubbel useEffect/StrictMode, meerdere tabs) zijn
     # geen tokendiefstal. Een tweede aanbieding van hetzelfde token bínnen dit venster krijgt

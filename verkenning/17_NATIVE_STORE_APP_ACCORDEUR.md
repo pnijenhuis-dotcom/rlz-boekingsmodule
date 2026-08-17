@@ -4,6 +4,12 @@
 het go/no-go-bouwbesluit (besluit Peter 2026-08-14: store-apps zsm, PWA blijft interim +
 terugval; BESLISSINGEN "Mobiele bouwstenen accordeur-PWA" punt 8, platformbesluit 0010/0020/0022).
 
+> **GO (besluit Peter 2026-08-16): bouw gestart langs de aanbevolen route** — native-
+> passkey-plugin + APNs/FCM + gebundelde assets + bearer-refresh in Keychain/Keystore, géén
+> remote-wrapper; bundle-id `nl.aknijenhuis.goedkeuren` akkoord. Bouwstatus per fase +
+> kliktest-blokken: zie "Bouwstatus (ná GO)" onderaan dit rapport. Statusregister:
+> BESLISSINGEN "NATIVE-APP FASE …".
+
 **Wat er nu staat (deze run, GEEN publicatie):** map `native/` met een werkende
 Capacitor 8-schil rond de bestaande PWA-build — `capacitor.config.ts`
 (appId-vóórstel `nl.aknijenhuis.goedkeuren`, appName "RLZ Goedkeuren",
@@ -144,3 +150,67 @@ niet in een WKWebView. Voor de store-apps is native push nodig:
 3. Bouwblok 2: native passkey-plugin + Associated Domains/assetlinks (a).
 4. Bouwblok 3: APNs/FCM-adapter + subscriptie-soort (b) — hergebruikt de berichten-laag.
 5. TestFlight/gesloten Play-test met de echte accordeurs; PWA blijft parallel live.
+
+---
+
+## Bouwstatus (ná GO, bijgehouden per fase)
+
+### Fase 1 — snelheidslaag PWA: GEBOUWD + GETEST (2026-08-17)
+
+In de bestaande accordeur-chunk (native schil + web-terugval profiteren automatisch):
+optimistisch akkoord/afwijzen via een achtergrond-verzendrij met begrensde retry
+(`besluitQueue.ts`; definitief mislukt = zichtbaar terug in de rij), prefetch + prerender
+van de eerstvolgende factuur (`pdfCache.ts` + verborgen vooruit-gemonteerd factuurbeeld),
+backend-idempotente besluit-herhaling (`accordering/service.py::_herhaald_besluit` — maakt
+de retries veilig), dubbeltik-vangnet 300 ms. Details: BESLISSINGEN "NATIVE-APP FASE 1".
+
+### Fase 2 — native passkey-plugin: CODE STAAT (2026-08-17), bewijs = kliktest echt toestel
+
+Gebouwd (route 1 uit dit rapport, eigen dunne plugin — geen community-pakket in de auth-kern):
+
+- **Webcode-seam** (lokaal getest, 8 tests): `frontend/src/accordeur/nativePasskey.ts`
+  detecteert de plugin via de Capacitor-bridge-globals (géén @capacitor-dependency in de
+  webcode; fail-closed — half plugin-oppervlak of niet-native = webpad);
+  `webauthnClient.ts` routeert `registreerPasskey`/`ondertekenAssertie`/`webauthnBeschikbaar`
+  door de plugin wanneer die er is. Options-JSON erin, credential-JSON eruit — backend en
+  schermen (activeren, login, ontgrendel) merken het verschil niet; de auth-cadans blijft
+  exact blok 2.
+- **iOS**: `native/ios/App/App/NatievePasskeyPlugin.swift` (ASAuthorizationController;
+  registratie + assertie, base64url-vertaling, annuleren = 'geannuleerd', iOS 16-poort,
+  excludeCredentials vanaf 17.4), registratie via `MainViewController.swift`
+  (capacitorDidLoad → registerPluginInstance; Main.storyboard wijst ernaar), Associated
+  Domains-entitlement `App.entitlements` (webcredentials: apex) gewired in het Xcode-project.
+- **Android**: `NatievePasskeyPlugin.java` (androidx.credentials Credential Manager —
+  registrationResponseJson/authenticationResponseJson zijn al de juiste WebAuthn-vorm),
+  registratie in MainActivity, dependencies in app/build.gradle.
+- **Backend** (lokaal getest, 4 tests): `app/auth/wellknown.py` serveert
+  `/.well-known/apple-app-site-association` + `/.well-known/assetlinks.json` — fail-closed
+  404 zolang `apple_team_id` resp. `android_cert_sha256_vingerafdrukken` leeg zijn
+  (config.py). `webauthn_origins` (lijst) hoeft niet verbouwd: iOS stuurt de apex-origin
+  (staat er in productie al in); Android vergt t.z.t. `android:apk-key-hash:<b64url-sha256>`
+  erbij (deploy-config, kan pas als de signing-key bestaat).
+
+**NIET lokaal verifieerbaar (eerlijk gemeld):** Swift/Java compileren hier niet (alleen
+Command Line Tools, geen Android-SDK). Het bewijs van fase 2 — activerings- én
+ontgrendel-flow op een echt toestel — is het kliktest-blok hieronder.
+
+**Kliktest-blok fase 2 (Peter + Claude, kan pas als het Apple Developer-account er is):**
+1. Xcode installeren (App Store, ~12 GB) → `cd native && npm install && npm run bouw-web &&
+   npx cap sync && npx cap open ios`; eerste compile-ronde is verwacht werk (Swift is
+   ongecompileerd geschreven).
+2. Signing onder het PDL-team + capability Associated Domains (het entitlement staat al in
+   het project — met een gratis personal team faalt device-signing hierop, dus deze test
+   wacht écht op het account).
+3. Backend-productieconfig: `apple_team_id` zetten → AASA live op de apex controleren
+   (`curl https://administratiekantoornijenhuis.nl/.well-known/apple-app-site-association`).
+   NB: de apex moet naar onze backend routeren vóór iOS de koppeling kan valideren.
+4. Op het toestel: activeringsflow (wachtwoord → passkey-registratie in de native prompt →
+   voorwaarden) én koude herstart → ontgrendel-assertion; bestaande PWA-passkey van
+   hetzelfde account moet het in de app ook doen (zelfde rp_id).
+5. Android idem zodra Play Console + upload-keystore bestaan (assetlinks +
+   apk-key-hash-origin eerst).
+
+### Fase 3 (APNs/FCM), fase 4 (API-base + Keychain-refresh), fase 5 (store-gereedheid)
+
+Nog niet gestart — volgorde conform de GO-opdracht; fase 3/4 hebben elk een eigen
+ontwerpnotitie-moment (subscriptie-soort serverzijde resp. auth-serviceniveau).

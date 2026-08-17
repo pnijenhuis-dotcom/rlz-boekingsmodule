@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.accordering.router import router as accordering_router
 from app.auth.router import router as auth_router
+from app.auth.wellknown import router as wellknown_router
 from app.bank.router import router as bank_router
 from app.beheer.router import router as beheer_router
 from app.berichten.router import router as berichten_router
@@ -151,6 +152,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth_router)
+app.include_router(wellknown_router)
 app.include_router(accordering_router)
 app.include_router(berichten_router)
 app.include_router(bank_router)

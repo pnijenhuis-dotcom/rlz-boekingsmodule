@@ -2,9 +2,17 @@
 // De options-JSON komt byte-exact van py_webauthn (base64url-strings); we converteren hier
 // handmatig van/naar ArrayBuffers i.p.v. PublicKeyCredential.parseCreationOptionsFromJSON
 // (pas Safari 17.4+/Chrome 129+ — handmatig dekt ook oudere toestellen).
+//
+// NATIVE SEAM (store-app fase 2, 2026-08-17): in de Capacitor-schil bestaat
+// navigator.credentials niet (WKWebView heeft geen WebAuthn — verkenning/17). Draait de app
+// native, dan lopen create/get via de NatievePasskey-plugin (ASAuthorizationController /
+// Credential Manager) — zelfde options-JSON erin, zelfde credential-JSON eruit, dus de
+// backend (py_webauthn) én de schermen merken het verschil niet. rp_id blijft de apex
+// (besluit 0022): bestaande passkeys van PWA-gebruikers blijven in de native app geldig.
 
 import { apiJson, apiPostJson, kaleAuthFetch } from '../api/client'
 import type { TokenPaarResponseDto } from '../api/types'
+import { natievePasskeyPlugin } from './nativePasskey'
 
 export interface WebauthnConfigDto {
   dev_stub: boolean
@@ -21,8 +29,10 @@ export function haalWebauthnConfig(): Promise<WebauthnConfigDto> {
 }
 
 /** Secure-context-check: op een LAN-IP (telefoontest zonder https) bestaat de API niet —
- * de dev-stub (server-side gemarkeerd + vergrendeld buiten dev) is dan de enige route. */
+ * de dev-stub (server-side gemarkeerd + vergrendeld buiten dev) is dan de enige route.
+ * In de native schil is de plugin de beschikbaarheidsbron (de webview heeft geen WebAuthn). */
 export function webauthnBeschikbaar(): boolean {
+  if (natievePasskeyPlugin() !== null) return true
   return typeof window !== 'undefined' && 'PublicKeyCredential' in window && window.isSecureContext
 }
 
@@ -48,8 +58,14 @@ interface CredentialDescriptorJson {
 }
 
 /** navigator.credentials.create() op py_webauthn-registratie-options; geeft de
- * JSON-geserialiseerde response terug zoals de backend die verwacht. */
+ * JSON-geserialiseerde response terug zoals de backend die verwacht. Native: via de plugin,
+ * die exact dezelfde credential-JSON teruggeeft. */
 export async function registreerPasskey(optiesJson: string): Promise<Record<string, unknown>> {
+  const plugin = natievePasskeyPlugin()
+  if (plugin) {
+    const { credentialJson } = await plugin.registreer({ optiesJson })
+    return JSON.parse(credentialJson) as Record<string, unknown>
+  }
   const opties = JSON.parse(optiesJson) as {
     challenge: string
     rp: PublicKeyCredentialRpEntity
@@ -89,8 +105,13 @@ export async function registreerPasskey(optiesJson: string): Promise<Record<stri
 }
 
 /** navigator.credentials.get() op py_webauthn-assertie-options (Face ID/Touch ID/pincode —
- * de OS-fallbacks zitten in WebAuthn zelf). */
+ * de OS-fallbacks zitten in WebAuthn zelf). Native: via de plugin. */
 export async function ondertekenAssertie(optiesJson: string): Promise<Record<string, unknown>> {
+  const plugin = natievePasskeyPlugin()
+  if (plugin) {
+    const { credentialJson } = await plugin.onderteken({ optiesJson })
+    return JSON.parse(credentialJson) as Record<string, unknown>
+  }
   const opties = JSON.parse(optiesJson) as {
     challenge: string
     timeout?: number

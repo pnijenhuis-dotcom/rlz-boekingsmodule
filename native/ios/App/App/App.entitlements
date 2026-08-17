@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Passkeys op de apex (besluit 0022: rp_id = administratiekantoornijenhuis.nl) — iOS
+	     valideert dit tegen /.well-known/apple-app-site-association op dat domein (de backend
+	     serveert die route, app/auth/wellknown.py). NB: dit entitlement vergt het betaalde
+	     Apple Developer-account (PDL); op een gratis personal team faalt device-signing hierop
+	     — voor een kale simulatortest kan het entitlement tijdelijk uit de build-instelling. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:administratiekantoornijenhuis.nl</string>
+	</array>
+</dict>
+</plist>
