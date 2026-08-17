@@ -665,6 +665,34 @@ UI-eisen):
   dekkingscontrole), offerte-ontleding → budgetversies (offerte/opdracht-status),
   projectcode-generatie, OVH-project bij inrichting, dagelijkse signalering naar werkvoorraad.
 - Pilot: Universal Steigerbouw (60 actieve projecten).
+- **FASE-4-UITBREIDING PROJECTADMINISTRATIE UNIVERSAL (wensen Peter 2026-08-17 — CAPTURE, geen
+  bouw):** alles ná go-live/tranche 2; elk onderdeel start t.z.t. met een eigen
+  UX-/ontwerpronde (WERKWIJZE v1.9-regel). Bouwt voort op de urenstaat-praktijklessen uit
+  `verkenning/12_DOCUMENTANALYSE_UNIVERSAL.md` (urenstaat = eigen documenttype gekoppeld aan
+  project+week, getekende staat als toetsbron voor de ZZP-inkoopfactuur, "geparkeerde uren" =
+  wacht-op-akkoord, m²-voortgang uit factuurregels — zie ook CLAUDE.md "Praktijklessen uit
+  echte documenten"). Drie onderdelen:
+  1. **MODULE UREN & PRODUCTIE (web-app):** ZZP'ers/medewerkers registreren per dag uren én
+     gebouwde m² per project; invoer door de medewerker zelf óf een teamleider namens meerdere
+     (rol-instelbaar); project-scope per medewerker (kantoor wijst toe — de dropdown toont
+     alleen eigen projecten). Goedkeurflow: manager keurt uren+productie goed/af en kan
+     aanpassen. Wekelijkse cyclus: ná goedkeuring melding aan de medewerker met het te
+     factureren aantal uren; binnenkomende ZZP-facturen in RLZ automatisch matchen tegen de
+     gekeurde urenlijst → bij match automatisch boeken op project (het vaste autoboek-patroon:
+     harde checks blijven blokkerend, 'automatisch'-markering + audit), bij mismatch afwijzen
+     + automatische mail aan de medewerker met de reden. Ontwerp-aandachtspunten t.z.t.:
+     nieuwe externe gebruikersklasse (auth via de bestaande passkey-bouwstenen; rollen
+     medewerker/teamleider/manager), AVG-/verwerkingsregister-uitbreiding, koppeling met de
+     fase-4-urenstaat-lessen (getekende staat vs factuur).
+  2. **Universal Nederland (zusterbedrijf, steiger-inhuur):** geen menselijke verificatie —
+     invullen via de bestaande per-leverancier-autoboek-opt-in (migratie 0036,
+     `app/documenten/autoboeken.py`); harde checks blijven onverkort;
+     intercompany-aandachtspunt zoals bij Kempen (IC-vlag/RC-verhoudingen).
+  3. **MODULE TEKENING-CALCULATIE, geknipt in twee delen:** (a) deterministische m²-bewaking
+     inkoop-vs-gebouwd (bonnen vs de productie-registraties uit onderdeel 1) — gewone bouw
+     zodra onderdeel 1 data levert; (b) AI-berekening benodigde m² uit PDF-/CAD-tekeningen —
+     EXPERIMENT-status: altijd voorstel + mensbevestiging (nooit autonoom meten), samen
+     finetunen op een golden-set echte tekeningen; apart go/no-go-moment.
 
 ## Fase 5 — Integraties & schaal
 
