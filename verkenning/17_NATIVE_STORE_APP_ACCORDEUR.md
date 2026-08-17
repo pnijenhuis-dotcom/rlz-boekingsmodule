@@ -197,26 +197,41 @@ Gebouwd (route 1 uit dit rapport, eigen dunne plugin — geen community-pakket i
   (staat er in productie al in); Android vergt t.z.t. `android:apk-key-hash:<b64url-sha256>`
   erbij (deploy-config, kan pas als de signing-key bestaat).
 
-**NIET lokaal verifieerbaar (eerlijk gemeld):** Swift/Java compileren hier niet (alleen
-Command Line Tools, geen Android-SDK). Het bewijs van fase 2 — activerings- én
-ontgrendel-flow op een echt toestel — is het kliktest-blok hieronder.
+**iOS-COMPILE-RONDE UITGEVOERD (2026-08-17, Xcode 26.6 — BESLISSINGEN "NATIVE-APP
+iOS-COMPILE-RONDE"):** simulator-build groen op de eerste poging (nul Swift-fouten),
+runtime-smoke OK. **Bug gevonden + gefikst:** `SceneDelegate` zette een kale
+`CAPBridgeViewController()` als root waardoor `MainViewController.capacitorDidLoad` — en
+dus de registratie van NatievePasskey/VeiligeOpslag — nooit draaide (met een
+webview-probe bewezen: plugins ontbraken in `Capacitor.Plugins`; beide seams zouden op
+het toestel stil zijn teruggevallen op het kapotte webpad). Ná de fix bewezen: beide
+plugins in de bridge én live `To Native → VeiligeOpslag haal` bij de opstart-refresh.
+Kliktest-prep-correcties in dezelfde ronde: apex-origin in `WEBAUTHN_ORIGINS` (de claim
+hierboven "staat er in productie al in" was drift — deploy.yml had alleen het
+app-subdomein), `capacitor://localhost` in `CORS_ALLOWED_ORIGINS` (stond op `[]`),
+`VITE_API_BASE` definitief het app-subdomein. Java/Android-SDK ontbreken op deze Mac —
+Android-compile in de eigen ronde.
 
-**Kliktest-blok fase 2 (Peter + Claude; het Apple-account bestaat al — correctie
-2026-08-17 — dus dit blok kan zodra Xcode geïnstalleerd is):**
-1. Xcode installeren (App Store, ~12 GB) → `cd native && npm install && npm run bouw-web &&
-   npx cap sync && npx cap open ios`; eerste compile-ronde is verwacht werk (Swift is
-   ongecompileerd geschreven).
+**Kliktest-blok fase 2 (Peter + Claude — Xcode staat er, compile-ronde is gedaan;
+resterend):**
+1. ~~Xcode installeren + eerste compile-ronde~~ UITGEVOERD 2026-08-17 (zie hierboven).
 2. Signing onder het bestaande PDL-team + capability Associated Domains (het entitlement
    staat al in het project — met een gratis personal team faalt device-signing hierop,
    dus altijd via het PDL-team; deze app als nieuwe app-registratie onder dat team).
-3. Backend-productieconfig: `apple_team_id` zetten → AASA live op de apex controleren
-   (`curl https://administratiekantoornijenhuis.nl/.well-known/apple-app-site-association`).
-   NB: de apex moet naar onze backend routeren vóór iOS de koppeling kan valideren.
+3. Backend-productieconfig: `apple_team_id` zetten (Cloud Run-env — maakt de
+   AASA-leesroute op het app-subdomein actief als referentie) én — omdat de apex bewust
+   de WordPress-site draait en NIET naar Cloud Run routeert (productiedomein-besluit
+   GCP_UITROL; de eerdere aanname hier was fout) — de AASA als STATISCH bestand op de
+   WordPress-hosting van de apex plaatsen: pad
+   `/.well-known/apple-app-site-association` (zonder extensie), inhoud
+   `{"webcredentials":{"apps":["<TEAMID>.nl.aknijenhuis.goedkeuren"]}}`, HTTPS zonder
+   redirect; verifiëren met
+   `curl https://administratiekantoornijenhuis.nl/.well-known/apple-app-site-association`.
+   Voor Android t.z.t. idem `assetlinks.json`.
 4. Op het toestel: activeringsflow (wachtwoord → passkey-registratie in de native prompt →
    voorwaarden) én koude herstart → ontgrendel-assertion; bestaande PWA-passkey van
    hetzelfde account moet het in de app ook doen (zelfde rp_id).
-5. Android idem zodra Play Console + upload-keystore bestaan (assetlinks +
-   apk-key-hash-origin eerst).
+5. Android idem zodra upload-keystore bestaat (assetlinks + apk-key-hash-origin eerst;
+   Play Console-account bestaat al).
 
 ### Fase 3 — native push: GEBOUWD + GETEST serverzijde/webcode (2026-08-17); ontvangst = kliktest
 
@@ -276,7 +291,9 @@ Route 2 uit (d): een échte app met gebundelde assets — geen remote-wrapper.
 - **Kliktest-blok fase 4 (zit in de fase-2-sessie):** volledige cyclus op het toestel —
   login → app hard afsluiten → opnieuw openen → ontgrendelen met passkey zónder nieuwe
   login (bewijst Keychain-refresh); kill-switch op Instellingen → app valt per direct terug
-  naar login. Vooraf: VITE_API_BASE-domein bevestigen (apex-routing naar Cloud Run).
+  naar login. Vooraf: ~~VITE_API_BASE-domein bevestigen~~ BESLIST 2026-08-17:
+  `https://app.administratiekantoornijenhuis.nl` (de apex draait de WordPress-site en
+  routeert niet naar Cloud Run — zie de fase-2-compile-ronde-notitie hierboven).
 
 ### Fase 5 — store-gereedheid: VOORBEREID (2026-08-17); publicatie wacht op de kliktest-blokken
 
