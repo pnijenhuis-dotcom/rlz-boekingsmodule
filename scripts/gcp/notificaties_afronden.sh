@@ -59,11 +59,15 @@ maak_slot BERICHTEN_SMTP_WACHTWOORD
 geef_accessor BERICHTEN_SMTP_WACHTWOORD "${JOBS_SA}"
 geef_accessor BERICHTEN_SMTP_WACHTWOORD "${BACKEND_SA}"
 maak_slot PUSH_VAPID_PRIVATE_KEY
-geef_accessor PUSH_VAPID_PRIVATE_KEY "${JOBS_SA}"   # bewust GEEN run-backend@ (least privilege)
+geef_accessor PUSH_VAPID_PRIVATE_KEY "${JOBS_SA}"
+# HERZIEN 2026-08-17 (bewijs-push-502): óók run-backend@ — de handmatige herinner-knop
+# (migratie 0053) pusht per direct vanuit de service; "alléén de job" liet webpush daar stil
+# wegvallen. deploy.yml mount de private key sindsdien ook op de service.
+geef_accessor PUSH_VAPID_PRIVATE_KEY "${BACKEND_SA}"
 maak_slot PUSH_VAPID_PUBLIC_KEY
 geef_accessor PUSH_VAPID_PUBLIC_KEY "${JOBS_SA}"
 geef_accessor PUSH_VAPID_PUBLIC_KEY "${BACKEND_SA}"
-echo "   accessors staan (jobs: alle drie; backend: wachtwoord + publieke sleutel)."
+echo "   accessors staan (jobs én backend: alle drie)."
 
 echo
 echo "== Stap 2/6: VAPID-sleutelpaar (zelf genereren, bestaande versies respecteren) =="

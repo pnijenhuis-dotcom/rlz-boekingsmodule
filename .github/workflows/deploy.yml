@@ -221,18 +221,21 @@ jobs:
             || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — ${NJOB} verstuurt native push nog niet (webpush/mail ongemoeid)."
           done
 
-      # Notificatie-config op de service (uitnodigingsmail via de API + VAPID-publieke sleutel
-      # voor het subscribe-endpoint; de private key blijft bewust alléén op de job — least
-      # privilege). Aparte update-stap: --update-* raakt de bestaande envset niet, en zolang de
-      # secret-slots ontbreken faalt alleen deze stap zichtbaar terwijl de vorige revisie live
-      # blijft — mail_verzonden=false + mail_fout in de uitnodiging-respons is dan de terugval.
-      - name: Notificatie-config service (mail + VAPID-publiek)
+      # Notificatie-config op de service (uitnodigingsmail via de API + het volledige
+      # VAPID-paar). "Private key alléén op de job" (least privilege, notificaties-uitrol
+      # 2026-08-15) is HERZIEN 2026-08-17: de handmatige herinner-knop (migratie 0053)
+      # verstuurt per direct vanuit de service — zonder private key werd webpush daar stil
+      # overgeslagen en strandde de bewijs-push op de mail-terugval. Aparte update-stap:
+      # --update-* raakt de bestaande envset niet, en zolang de secret-slots ontbreken faalt
+      # alleen deze stap zichtbaar terwijl de vorige revisie live blijft —
+      # mail_verzonden=false + mail_fout in de uitnodiging-respons is dan de terugval.
+      - name: Notificatie-config service (mail + VAPID-paar)
         run: |
           gcloud run services update rlz-backend \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
             --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
-            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
+            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
             --quiet \
           || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — service draait zonder mail-/pushconfig (fail-zichtbaar: uitnodiging-respons meldt mail_fout, push-config-endpoint geeft null)."
           # APNs óók op de service: het native-registratie-endpoint is fail-closed 409 zolang
