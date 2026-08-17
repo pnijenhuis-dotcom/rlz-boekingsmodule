@@ -90,6 +90,10 @@ def verstuur_push_anders_mail(
                 vervallen += 1
             except push.PushFout as exc:
                 push_fouten.append(str(exc))
+            except Exception as exc:  # noqa: BLE001 — adaptercrash (bug/dependency) mag de
+                # aanroepende request nooit doden (bewijs-push-502 2026-08-17): zichtbaar in
+                # detail, mail-terugval loopt gewoon door.
+                push_fouten.append(f"{type(exc).__name__}: {exc}")
     if push_gelukt:
         return VerzendUitkomst(
             HerinneringStatus.VERZONDEN, HerinneringKanaal.PUSH, {"subscripties": push_gelukt}, vervallen
@@ -101,8 +105,9 @@ def verstuur_push_anders_mail(
         )
     try:
         mail.verzend_mail(naar=gebruiker.e_mail, onderwerp=onderwerp, tekst=mailtekst)
-    except mail.MailFout as exc:
-        detail: dict = {"fout": str(exc)}
+    except Exception as exc:  # noqa: BLE001 — MailFout én onverwachte crash: beide een
+        # zichtbare mislukt-uitkomst, nooit een unhandled exception de request in.
+        detail: dict = {"fout": str(exc) if isinstance(exc, mail.MailFout) else f"{type(exc).__name__}: {exc}"}
         if push_fouten:
             detail["push_fouten"] = push_fouten
         return VerzendUitkomst(HerinneringStatus.MISLUKT, None, detail, vervallen)

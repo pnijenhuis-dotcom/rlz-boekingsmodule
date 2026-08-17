@@ -318,3 +318,79 @@ class TestVerzendingMetNativeSubscriptie:
         with scoped_session(None) as session:
             rij = session.get(PushSubscriptie, data.id)
             assert rij.ingetrokken_op is not None and rij.ingetrokken_reden == "vervallen"
+
+
+class TestVerzendlaagOverleeftAdaptercrash:
+    """Bewijs-push-502 (2026-08-17): een crash ín een push-/mailadapter mag nooit als
+    unhandled exception de aanroepende request in — de uitkomst is altijd een zichtbare
+    VerzendUitkomst (mail-terugval of mislukt-met-detail), zodat het herinneren-endpoint
+    de dagrem-claim netjes afrondt in plaats van op 'bezig' te blijven hangen."""
+
+    def _gebruiker(self, accordeur_1: uuid.UUID):
+        with scoped_session(None) as session:
+            from app.db.models import Gebruiker
+
+            gebruiker = session.get(Gebruiker, accordeur_1)
+            session.expunge(gebruiker)
+        return gebruiker
+
+    def _apns_subscriptie(self, admin_engine: Engine, accordeur_1: uuid.UUID) -> None:
+        apparaat = maak_apparaat(admin_engine, accordeur_1)
+        berichten_service.registreer_subscriptie(
+            gebruiker_id=accordeur_1,
+            apparaat_id=apparaat,
+            endpoint="apns-tok-crash",
+            p256dh=None,
+            auth=None,
+            soort="apns",
+        )
+
+    def test_adaptercrash_valt_zichtbaar_terug_op_mail(
+        self, accordeur_1: uuid.UUID, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.berichten import mail
+
+        self._apns_subscriptie(admin_engine, accordeur_1)
+        monkeypatch.setattr(apns, "is_geconfigureerd", lambda: True)
+
+        def crash(token: str, *, titel: str, tekst: str, url: str) -> None:
+            raise RuntimeError("http2-stack kapot")  # géén PushFout — rauwe adapterbug
+
+        monkeypatch.setattr(apns, "verzend_apns", crash)
+        gemaild: list[str] = []
+        monkeypatch.setattr(mail, "verzend_mail", lambda *, naar, onderwerp, tekst: gemaild.append(naar))
+
+        uitkomst = verzending.verstuur_push_anders_mail(
+            self._gebruiker(accordeur_1), onderwerp="o", pushtekst="p", mailtekst="m", url="/accordeur"
+        )
+        assert uitkomst.status == HerinneringStatus.VERZONDEN
+        assert uitkomst.kanaal == HerinneringKanaal.E_MAIL
+        assert gemaild
+        # De crash is zichtbaar in het detail — nooit stil weggeslikt.
+        assert uitkomst.detail is not None
+        assert any("RuntimeError" in fout for fout in uitkomst.detail["na_push_fouten"])
+
+    def test_adaptercrash_en_mailcrash_geeft_mislukt_nooit_exception(
+        self, accordeur_1: uuid.UUID, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.berichten import mail
+
+        self._apns_subscriptie(admin_engine, accordeur_1)
+        monkeypatch.setattr(apns, "is_geconfigureerd", lambda: True)
+
+        def crash(token: str, *, titel: str, tekst: str, url: str) -> None:
+            raise RuntimeError("http2-stack kapot")
+
+        def mailcrash(*, naar: str, onderwerp: str, tekst: str) -> None:
+            raise ValueError("onverwachte encodingbug")  # géén MailFout
+
+        monkeypatch.setattr(apns, "verzend_apns", crash)
+        monkeypatch.setattr(mail, "verzend_mail", mailcrash)
+
+        uitkomst = verzending.verstuur_push_anders_mail(
+            self._gebruiker(accordeur_1), onderwerp="o", pushtekst="p", mailtekst="m", url="/accordeur"
+        )
+        assert uitkomst.status == HerinneringStatus.MISLUKT
+        assert uitkomst.detail is not None
+        assert "ValueError" in uitkomst.detail["fout"]
+        assert any("RuntimeError" in fout for fout in uitkomst.detail["push_fouten"])

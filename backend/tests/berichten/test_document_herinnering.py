@@ -193,3 +193,15 @@ def test_laatst_herinnerd_per_document(
     )
     kaart = herinnering.laatst_herinnerd_per_document(administratie_id=administratie_id)
     assert kaart == {ter_accordering_bij_1: resultaat.verzonden_op}
+
+
+def test_verzendfout_vertaalt_nooit_naar_gateway_status() -> None:
+    """Bewijs-push-502 (2026-08-17): 502/503/504 leest de frontend (én de loadbalancer-laag)
+    als "backend niet bereikbaar" — een mislukte bezorging is een applicatie-uitkomst mét
+    reden en moet dus buiten de gateway-statussen blijven (424, detail zichtbaar)."""
+    from app.accordering.router import _vertaal
+
+    fout = _vertaal(herinnering.HerinneringVerzendingMislukt("mail down — opnieuw proberen mag"))
+    assert fout.status_code == 424
+    assert "opnieuw proberen mag" in fout.detail
+    assert fout.status_code not in (502, 503, 504)

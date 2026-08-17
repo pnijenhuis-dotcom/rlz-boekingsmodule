@@ -44,7 +44,11 @@ def _vertaal(exc: service.AccorderingFout) -> HTTPException:
     if isinstance(exc, herinnering.AlHerinnerdVandaag):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, herinnering.HerinneringVerzendingMislukt):
-        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        # Bewust GEEN 502 (bewijs-push 2026-08-17): de gateway-statussen (502/503/504) worden
+        # door de frontend én de loadbalancer als "backend niet bereikbaar" gelezen — een
+        # mislukte bezorging is een nette applicatie-uitkomst mét reden. 424 Failed Dependency:
+        # het verzoek zelf klopte, de afhankelijke bezorging (push/mail) faalde; opnieuw mag.
+        return HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=str(exc))
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 

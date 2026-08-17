@@ -132,6 +132,32 @@ describe('timeout op álle requests (kliktest 2026-08-12: oneindig "Bezig…" bi
       client.BackendOnbereikbaarError,
     )
   })
+})
+
+describe('eigen 502 met JSON-detail ≠ gateway-fout (bewijs-push-kliktest 2026-08-17)', () => {
+  it('apiJson toont het detail van een backend-502 in plaats van de onbereikbaar-melding', async () => {
+    // De backend gebruikt 502 bewust als applicatiefout mét reden (RLZ-fout in sync/bank/
+    // omzet/doorbelasting) — die reden mag nooit achter "backend niet bereikbaar" verdwijnen.
+    const client = await verseClient()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ detail: 'RLZ weigerde de boeking (409/xyz)' }, 502)),
+    )
+    const belofte = client.apiJson('/administraties/x/sync')
+    await expect(belofte).rejects.toThrow('RLZ weigerde de boeking (409/xyz)')
+    await expect(belofte).rejects.not.toBeInstanceOf(client.BackendOnbereikbaarError)
+  })
+
+  it('een kale gateway-502 (HTML/lege body) blijft wél BackendOnbereikbaarError', async () => {
+    const client = await verseClient()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html>Bad Gateway</html>', { status: 502 })),
+    )
+    await expect(client.apiJson('/werkvoorraad/overzicht')).rejects.toBeInstanceOf(
+      client.BackendOnbereikbaarError,
+    )
+  })
 
   it('de timeout breekt een al binnengekomen response niet meer af (grote body, bv. PDF-blob)', async () => {
     const client = await verseClient()

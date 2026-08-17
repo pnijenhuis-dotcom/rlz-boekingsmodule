@@ -295,8 +295,12 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       setMeldingen(status)
       if (status === 'aan') toon('Meldingen staan aan')
       else if (status === 'geweigerd') toon('Meldingen geblokkeerd in de browserinstellingen')
-    } catch {
-      toon('Meldingen aanzetten mislukte — probeer het opnieuw')
+    } catch (fout) {
+      // De echte reden tonen (bewijs-push-diagnose 2026-08-17: de native registratie strandde
+      // op het toestel en de generieke toast verstopte wélke stap faalde — permissie, de
+      // push-dienst-registratie of de server-call).
+      const reden = fout instanceof Error && fout.message ? ` (${fout.message})` : ''
+      toon(`Meldingen aanzetten mislukte — probeer het opnieuw${reden}`)
     } finally {
       setMeldingenBezig(false)
     }

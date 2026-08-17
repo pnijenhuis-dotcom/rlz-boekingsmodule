@@ -59,6 +59,22 @@ function isBackendOnbereikbaarStatus(status: number): boolean {
   return status === 502 || status === 503 || status === 504
 }
 
+/** Maar: onze eigen backend gebruikt 502 óók als bewuste applicatiefout mét JSON-detail
+ * (RLZ-fout in sync/bank/omzet/doorbelasting). Een échte gateway-fout (LB, dev-proxy) heeft
+ * nooit zo'n body — alleen dán is "backend niet bereikbaar" de juiste melding (bewijs-push-
+ * kliktest 2026-08-17: een detail-dragende 502 verscheen als onbereikbaar-melding en
+ * verstopte de echte reden). */
+async function gooiAlsBackendOnbereikbaar(resp: Response): Promise<void> {
+  if (!isBackendOnbereikbaarStatus(resp.status)) return
+  try {
+    const body: unknown = await resp.clone().json()
+    if (body && typeof body === 'object' && 'detail' in body) return
+  } catch {
+    // geen JSON-body → gateway
+  }
+  throw new BackendOnbereikbaarError()
+}
+
 /** Netwerkfout (bv. backend echt plat, geen proxy-response) én de 502/503/504-gatewaystatus delen
  * dezelfde gebruikersmelding — het onderscheid tussen "geen verbinding" en "verbinding maar geen
  * backend erachter" is voor de eindgebruiker niet relevant. */
@@ -112,7 +128,7 @@ export async function kaleAuthFetch(pad: string, init: RequestInit = {}): Promis
   const headers = new Headers(init.headers)
   if (natieveSessieBeschikbaar()) await metNatieveAuthHeaders(pad, headers)
   const resp = await fetchMetTimeout(pad, { ...init, headers, credentials: 'include' })
-  if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
+  await gooiAlsBackendOnbereikbaar(resp)
   return resp
 }
 
@@ -124,7 +140,7 @@ async function voerVerversUit(): Promise<boolean> {
     await new Promise((resolve) => setTimeout(resolve, 300))
     resp = await ruweFetch('/auth/token/vernieuwen', { method: 'POST' })
   }
-  if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
+  await gooiAlsBackendOnbereikbaar(resp)
   if (!resp.ok) return false
   const body = (await resp.json()) as { access_token: string; refresh_token?: string }
   accessToken = body.access_token
@@ -158,12 +174,12 @@ const GEEN_RETRY_PADEN = new Set(['/auth/login', '/auth/token/vernieuwen', '/aut
 /** Eén automatische refresh-poging bij een 401 — daarna geeft de aanroeper het zelf op. */
 export async function apiFetch(pad: string, init: RequestInit = {}): Promise<Response> {
   let resp = await ruweFetch(pad, init)
-  if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
+  await gooiAlsBackendOnbereikbaar(resp)
   if (resp.status === 401 && !GEEN_RETRY_PADEN.has(pad)) {
     const ververst = await verversSessie()
     if (ververst) {
       resp = await ruweFetch(pad, init)
-      if (isBackendOnbereikbaarStatus(resp.status)) throw new BackendOnbereikbaarError()
+      await gooiAlsBackendOnbereikbaar(resp)
     } else {
       accessToken = null
       sessieVerlopenHandler?.()
