@@ -205,6 +205,21 @@ jobs:
             --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
             --quiet \
           || echo "LET OP: notificatie-secrets nog niet klaargezet — rlz-nieuwe-facturen draait zonder mail-/pushconfig (fail-zichtbaar)."
+          # Native push fase 3 (kliktest-ronde 2026-08-17): APNs op de twee notificatie-jobs.
+          # APNS_KEY_P8 + APNS_KEY_ID zijn Secret Manager-slots (scripts/gcp/apns_afronden.sh
+          # — het Key ID is geen geheim maar leeft dáár zodat deploy.yml waarde-vrij blijft).
+          # APNS_SANDBOX=true zolang de geïnstalleerde build dev-signed is (aps-environment
+          # 'development' praat uitsluitend met sandbox-APNs); bij de TestFlight-/App Store-
+          # build op false zetten — dit is dezelfde omslag als het provisioning-profiel maakt.
+          for NJOB in rlz-accordeur-herinneringen rlz-nieuwe-facturen; do
+            gcloud run jobs update "${NJOB}" \
+              --region "${REGION}" \
+              --project "${PROJECT_ID}" \
+              --update-env-vars "APNS_SANDBOX=true,APPLE_TEAM_ID=VRQP26CX43" \
+              --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
+              --quiet \
+            || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — ${NJOB} verstuurt native push nog niet (webpush/mail ongemoeid)."
+          done
 
       # Notificatie-config op de service (uitnodigingsmail via de API + VAPID-publieke sleutel
       # voor het subscribe-endpoint; de private key blijft bewust alléén op de job — least
@@ -220,3 +235,14 @@ jobs:
             --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
             --quiet \
           || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — service draait zonder mail-/pushconfig (fail-zichtbaar: uitnodiging-respons meldt mail_fout, push-config-endpoint geeft null)."
+          # APNs óók op de service: het native-registratie-endpoint is fail-closed 409 zolang
+          # APNs daar niet geconfigureerd is, en de handmatige herinner-knop verstuurt per
+          # direct vanuit de service. Eigen || zodat een ontbrekend APNs-slot de mailconfig
+          # hierboven niet meesleept. APNS_SANDBOX: zie de job-stap (dev-build = true).
+          gcloud run services update rlz-backend \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --update-env-vars "APNS_SANDBOX=true" \
+            --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
+            --quiet \
+          || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — native-pushregistratie blijft fail-closed 409, web/PWA ongemoeid."
