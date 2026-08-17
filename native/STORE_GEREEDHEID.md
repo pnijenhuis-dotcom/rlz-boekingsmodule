@@ -63,17 +63,23 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
 2. Xcode installeren → fase 2/3/4-kliktest-blokken (verkenning/17): compile, passkeys op
    toestel, push-ontvangst, koude-herstart-ontgrendeling. Dáár horen ook:
    `apple_team_id`/AASA live, APNs .p8 + secrets, VITE_API_BASE-domein bevestigen.
-3. `npm run bouw-web && npx cap sync` → archive/upload naar **TestFlight** (interne testers:
+3. ⚠️ **Bij de eerste TestFlight-build: `APNS_SANDBOX` op `false`** (deploy.yml, twee
+   plekken — jobs + service). De kliktest-configuratie staat op `true` omdat een dev-signed
+   Xcode-build (`aps-environment: development`) uitsluitend met sandbox-APNs praat;
+   TestFlight/App Store-builds krijgen automatisch `production` en hun tokens werken alléén
+   tegen productie-APNs. Vergeten = pushes falen met BadDeviceToken (fail-zichtbaar in de
+   job-logs, nooit stil).
+4. `npm run bouw-web && npx cap sync` → archive/upload naar **TestFlight** (interne testers:
    Peter + kantoor); Android: upload-keystore aanmaken (Play App Signing aan), **interne/
    gesloten test** (de ≥ 12 testers/14 dagen-eis geldt alleen persoonlijke accounts — het
    PDL-organisatieaccount valt daarbuiten; de accordeurs blijven de testgroep) +
    `assetlinks.json` met de definitieve signing-hash + `android:apk-key-hash:`-origin in
    `webauthn_origins`.
-4. Store-listing (NL): naam "RLZ Goedkeuren", ondertitel "Facturen goedkeuren —
+5. Store-listing (NL): naam "RLZ Goedkeuren", ondertitel "Facturen goedkeuren —
    Administratiekantoor Nijenhuis", screenshots van wachtrij/review/lege staat (donker
    thema), privacy-URL (bestaande accordeur-privacyverklaring — zelfde tekst als het
    voorwaarden-scherm in de app, moet als publieke URL beschikbaar zijn: klein taakje).
-5. Ná review-akkoord: gefaseerde uitrol; PWA blijft parallel live als terugval (besluit
+6. Ná review-akkoord: gefaseerde uitrol; PWA blijft parallel live als terugval (besluit
    14-08) — accordeurs migreren op eigen tempo, passkeys blijven geldig (zelfde rp_id).
 
 ## 6. Versiebeleid

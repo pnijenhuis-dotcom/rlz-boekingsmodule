@@ -171,7 +171,24 @@ van de eerstvolgende factuur (`pdfCache.ts` + verborgen vooruit-gemonteerd factu
 backend-idempotente besluit-herhaling (`accordering/service.py::_herhaald_besluit` — maakt
 de retries veilig), dubbeltik-vangnet 300 ms. Details: BESLISSINGEN "NATIVE-APP FASE 1".
 
-### Fase 2 — native passkey-plugin: CODE STAAT (2026-08-17), bewijs = kliktest echt toestel
+### Fase 2 — native passkey-plugin: BEWEZEN OP ECHT TOESTEL (kliktest Peter 2026-08-17)
+
+**Kliktest ronde 1 (Peter, echt iPhone-toestel, 2026-08-17):** passkey-registratie én login
+werken met de echte native Face ID-prompt — de AASA/entitlement-keten klopt live (fase 2-kern
+bewezen). De akkoord-flow met de hergeboden testfactuur voelt zoals bedoeld (fase 1 op toestel
+bevestigd). Koude herstart (app wegvegen → openen → alleen Face ID) staat nog open in de
+ronde 2-checklist onderaan. **Bevinding + fix (zelfde dag):** de app-kop liep onder de
+iOS-statusbalk door — de viewport-meta miste `viewport-fit=cover`, waardoor
+`env(safe-area-inset-*)` in de edge-to-edge Capacitor-webview overal 0 was (de PWA schuift
+zelf onder de statusbalk vandaan, dáár viel het niet op). Structureel gefikst: viewport-meta
+(`frontend/index.html`, PWA/desktop onveranderd — de CSS rekende al overal met env()),
+sweep over álle accordeur-schermen (`.acc-content`-onderrand, `.acc-vol`-schermen incl.
+inline-override VoorwaardenScherm, zijranden landschap), statusbalk-tekst wit
+(Info.plist `UIStatusBarStyleLightContent` — spiegel van de PWA-`theme_color`) mét donkere
+statusbalk-cap op de themavolgende vol-schermen (`.acc-vol::before`), zodat de klok in het
+lichte thema leesbaar blijft. Actiebalk/sheets onderaan: de bestaande
+`env(safe-area-inset-bottom)`-paddings zijn door de meta-fix actief geworden — home-indicator
+gedekt. Bundel herbouwd + `cap sync ios` gedraaid; zichtcontrole = ronde 2.
 
 Gebouwd (route 1 uit dit rapport, eigen dunne plugin — geen community-pakket in de auth-kern):
 
@@ -211,25 +228,15 @@ app-subdomein), `capacitor://localhost` in `CORS_ALLOWED_ORIGINS` (stond op `[]`
 `VITE_API_BASE` definitief het app-subdomein. Java/Android-SDK ontbreken op deze Mac —
 Android-compile in de eigen ronde.
 
-**Kliktest-blok fase 2 (Peter + Claude — Xcode staat er, compile-ronde is gedaan;
-resterend):**
+**Kliktest-blok fase 2 — AFGEROND op de koude-herstart-check na (kliktest 2026-08-17):**
 1. ~~Xcode installeren + eerste compile-ronde~~ UITGEVOERD 2026-08-17 (zie hierboven).
-2. Signing onder het bestaande PDL-team + capability Associated Domains (het entitlement
-   staat al in het project — met een gratis personal team faalt device-signing hierop,
-   dus altijd via het PDL-team; deze app als nieuwe app-registratie onder dat team).
-3. Backend-productieconfig: `apple_team_id` zetten (Cloud Run-env — maakt de
-   AASA-leesroute op het app-subdomein actief als referentie) én — omdat de apex bewust
-   de WordPress-site draait en NIET naar Cloud Run routeert (productiedomein-besluit
-   GCP_UITROL; de eerdere aanname hier was fout) — de AASA als STATISCH bestand op de
-   WordPress-hosting van de apex plaatsen: pad
-   `/.well-known/apple-app-site-association` (zonder extensie), inhoud
-   `{"webcredentials":{"apps":["<TEAMID>.nl.aknijenhuis.goedkeuren"]}}`, HTTPS zonder
-   redirect; verifiëren met
-   `curl https://administratiekantoornijenhuis.nl/.well-known/apple-app-site-association`.
-   Voor Android t.z.t. idem `assetlinks.json`.
-4. Op het toestel: activeringsflow (wachtwoord → passkey-registratie in de native prompt →
-   voorwaarden) én koude herstart → ontgrendel-assertion; bestaande PWA-passkey van
-   hetzelfde account moet het in de app ook doen (zelfde rp_id).
+2. ~~Signing onder het PDL-team + Associated Domains~~ UITGEVOERD (commit 2732d12).
+3. ~~apple_team_id in productieconfig + statische AASA op de WordPress-apex~~ UITGEVOERD
+   (commit 7bd9f57 + kliktest-bewijs: de native prompt kwam, dus iOS heeft de AASA
+   geaccepteerd). Voor Android t.z.t. idem `assetlinks.json`.
+4. ~~Activeringsflow: passkey-registratie + login in de native Face ID-prompt~~ BEWEZEN
+   (kliktest ronde 1). Koude herstart → alleen ontgrendel-assertion: staat in de ronde
+   2-checklist (hoort formeel bij het fase 4-bewijs).
 5. Android idem zodra upload-keystore bestaat (assetlinks + apk-key-hash-origin eerst;
    Play Console-account bestaat al).
 
@@ -260,10 +267,16 @@ Android-bezorging; payload uitsluitend aantal + deep-link, nooit financiële det
   `APNS_KEY_ID` (+ `APPLE_TEAM_ID` uit fase 2, `APNS_SANDBOX` voor TestFlight); FCM
   `FCM_SERVICE_ACCOUNT_JSON` (Firebase-project — Peters klikwerk; het Play Console-account
   bestaat al, correctie 2026-08-17).
-- **Kliktest-blok fase 3 (zelfde sessie als fase 2 kan):** .p8-sleutel aanmaken in het
-  Apple-account → secrets zetten → melding-aanzetten-flow in de app → `make`-run van de
-  herinnering-job → melding komt binnen op het toestel → tap opent het document →
-  kill-switch op Instellingen → melding komt níét meer binnen. Android idem ná
+- **Kliktest-blok fase 3 — KLAARGEZET (2026-08-17):** het volledige pad is gebundeld in
+  `scripts/gcp/apns_afronden.sh` (stdin-patroon, idempotent — zelfde grondhouding als
+  notificaties_afronden.sh): .p8-aanmaakinstructies (Developer-portaal → Keys, níét App
+  Store Connect), secret-slots APNS_KEY_P8 + APNS_KEY_ID + accessors (jobs én backend —
+  registratie-endpoint + handmatige herinner-knop draaien in de service), directe
+  service-/job-updates (spiegel van de nieuwe deploy.yml-stappen), verificatiepoort met
+  één handmatige run van rlz-accordeur-herinneringen. ⚠️ `APNS_SANDBOX=true` zolang de
+  geïnstalleerde build dev-signed is (aps-environment 'development' = sandbox-APNs);
+  TestFlight/App Store = false — staat als comment in deploy.yml en in
+  STORE_GEREEDHEID. Bewijs op het toestel = ronde 2-checklist hieronder. Android idem ná
   Firebase-project + google-services.json in `native/android/app/`.
 
 ### Fase 4 — gebundelde assets + bearer-refresh Keychain/Keystore: GEBOUWD + GETEST (2026-08-17)
@@ -314,3 +327,37 @@ alles tot aan de kliktest-blokken staat klaar:
   versiebeleid.
 - Open taakjes die bij de checklist horen: privacyverklaring als publieke URL,
   demo-account voor review, screenshots — allemaal ná de kliktest-blokken.
+
+### Kliktest-checklist ronde 2 (klaargezet 2026-08-17 — alles in één rondje aftikbaar)
+
+Vooraf, in deze volgorde:
+1. `scripts/gcp/apns_afronden.sh` draaien (owner-account) — het script dicteert eerst de
+   .p8-aanmaakstappen (Developer-portaal → Keys) en zet daarna slots, config en de
+   bewijs-push klaar. Stap 4 (bewijs-push) kan pas ná punt 3 hieronder.
+2. Nieuwe build op het toestel: Xcode → Run (de bundel met de safe-area-fix + Info.plist-
+   statusbalkwijziging is al ge-`cap sync`'d; even Product → Clean hoeft niet).
+3. Open accordering aanwezig? Zo niet: `backend/scripts/cloud_seed_accordering.py`
+   (docstring = draaiboek) — de meldingen-flow én de herinnering-job hebben ≥1 open
+   accordering nodig.
+
+Aftiklijst op het toestel:
+- [ ] **Safe-area (de ronde 1-bevinding):** kop start ónder de klok/notch (statusbalktekst
+      wit op de donkere kop); actiebalk Akkoord/Afwijzen vrij van de home-indicator; afwijs-
+      en staande-goedkeuring-sheets idem; login-/ontgrendel-/voorwaardenscherm netjes binnen
+      de randen — ook even in het lichte thema (◐): klok leesbaar op de donkere cap.
+- [ ] **Koude herstart (fase 4-bewijs, stond nog open):** app wegvegen → opnieuw openen →
+      alleen Face ID-ontgrendeling, GEEN wachtwoord (bewijst Keychain-refresh-token).
+- [ ] **Meldingen aan** via de meldingen-kaart op de wachtrij → iOS-toestemmingsprompt →
+      registratie slaagt (geen 409 meer na apns_afronden.sh stap 3).
+- [ ] **Bewijs-push (fase 3):** apns_afronden.sh stap 4 (run herinnering-job) → banner komt
+      binnen op het toestel → tap opent de app op het document (deep-link, ná ontgrendeling —
+      goedkeuren-vanuit-de-melding bestaat bewust niet). Alternatief bij "vandaag al
+      herinnerd": handmatige herinner-knop in de kantoor-UI.
+- [ ] **Kill-switch (fase 3+4-bewijs):** kantoor-UI → Instellingen → apparaat intrekken →
+      app valt per direct terug naar login én er komt géén push meer binnen (nieuwe
+      job-run of herinner-knop = stil voor dit apparaat).
+- [ ] **Bestaande PWA-passkey** van hetzelfde account werkt óók in de app (zelfde rp_id) —
+      als dat in ronde 1 nog niet expliciet is gezien.
+
+Ná groen: uitkomsten vastleggen (BESLISSINGEN + dit rapport), daarna fase 5-publicatiepad
+(TestFlight — dáár `APNS_SANDBOX=false`, zie deploy.yml-comment + STORE_GEREEDHEID).
