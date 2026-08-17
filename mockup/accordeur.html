@@ -321,7 +321,10 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- ================= APP-OPENING: FACE ID (simulatie, één keer per opening) ================= -->
+    <!-- ================= APP-OPENING: FACE ID (simulatie, één keer per opening) =================
+         In de echte app start de passkey-prompt AUTOMATISCH bij het tonen van dit scherm
+         (klik-klik-besluit Peter 2026-08-17: openen → Face ID → binnen, nul onnodige tikken);
+         de knop blijft staan als herkansing (prompt weggedrukt/gefaald — dan geen foutmelding). -->
     <div class="unlock" id="unlock">
       <div class="appnaam">RLZ <span>Goedkeuren</span></div>
       <div class="bio">
@@ -340,7 +343,7 @@
     <p><b>Mobiel is leading</b> (besluit 2026-08-08): ~99% van de accordeurs gebruikt straks uitsluitend de telefoon. Wat je hiernaast ziet ís het ontwerp; deze desktop-weergave is de afgeleide.</p>
     <p class="k">Scope bewust smal: alléén de accordeer-wachtrij — factuurbeeld + akkoord/afwijzen. Geen werkvoorraad, lijsten of instellingen (dat is de web-app van het kantoor). Boven de duim: één kaartlijst, factuurbeeld centraal, acties onderin binnen duimbereik, akkoord → automatisch de volgende.</p>
     <p class="k">Klik door: <b>Face ID-ontgrendeling → wachtrij → factuur → Akkoord</b> (direct, geen extra check) of <b>Afwijzen</b> (verplichte reden). De 2e factuur van Essent heeft exact hetzelfde bedrag als een eerder akkoord — na dat akkoord stelt de app een <b>staande goedkeuring</b> voor. Beheer/intrekken via ✓✓ rechtsboven.</p>
-    <p class="k"><b>Inloggen &amp; beveiliging — auth-cadans (besluiten 2026-08-11):</b> volledige login alléén bij eerste gebruik, op een nieuw/onbekend apparaat of ná 7 dagen inactiviteit (accordeurs loggen 1-2×/week in — gebruiksgemak voorop). Face ID (passkey/WebAuthn) één keer bij elke app-opening, geldig tot de app sluit (koude start = nieuwe check); <b>géén biometrie per losse actie</b> — de akkoord-knop werkt direct. Het kantoor kan een accordeur/apparaat server-side intrekken (kill-switch). Staande goedkeuringen lopen zonder extra check.</p>
+    <p class="k"><b>Inloggen &amp; beveiliging — auth-cadans (besluiten 2026-08-11):</b> volledige login alléén bij eerste gebruik, op een nieuw/onbekend apparaat of ná 7 dagen inactiviteit (accordeurs loggen 1-2×/week in — gebruiksgemak voorop). Face ID (passkey/WebAuthn) één keer bij elke app-opening, geldig tot de app sluit (koude start = nieuwe check); <b>de prompt start automatisch bij het tonen van het ontgrendelscherm</b> (klik-klik-besluit 2026-08-17 — de knop blijft de herkansing); <b>géén biometrie per losse actie</b> — de akkoord-knop werkt direct. Het kantoor kan een accordeur/apparaat server-side intrekken (kill-switch). Staande goedkeuringen lopen zonder extra check.</p>
     <p class="k"><b>Dark mode is de default</b> (systeemvolgend bij het openen); ◐ rechtsboven schakelt handmatig om.</p>
     <p class="k"><b>iOS-toetsenbordles (iPhone-review Peter 11-08):</b> alle formuliervelden ≥16px (voorkomt de iOS-autozoom die na sluiten bleef hangen — bewust géén maximum-scale-hack, toegankelijkheid) én de afwijzen-dialoog als bottom-sheet gepositioneerd op <b>window.visualViewport</b>, zodat redenveld + afwijzen-knop altijd boven het toetsenbord blijven (fallback zonder visualViewport: scrollIntoView bij focus). <b>Bouwvereiste voor de echte PWA vanaf dag één.</b></p>
     <p class="k">Beoordeel op het mobiele breakpoint: maak het venster smaller dan ~580px of open dit bestand op een telefoon.</p>

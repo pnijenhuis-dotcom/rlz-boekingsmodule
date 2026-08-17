@@ -101,39 +101,79 @@ describe('AccordeurApp — uitloggen', () => {
   })
 })
 
-describe('AccordeurApp — beginscherm (feedback Peter 2026-08-14)', () => {
-  it('"Ontgrendelen" is de enige primaire knop; "Opnieuw inloggen" is een tekstlink, geen knop', async () => {
+// ---- beginscherm: auto-assertion bij tonen (klik-klik-besluit Peter 2026-08-17) ----------------
+// De passkey-prompt start automatisch zodra het ontgrendelscherm verschijnt; de knop blijft
+// staan als herkansing (prompt weggedrukt/gefaald) en "Opnieuw inloggen" blijft de tekstlink-
+// nooduitgang (feedback Peter 2026-08-14 — enige primaire knop).
+
+/** Fetch-mock voor het beginscherm (levende sessie): refresh 200 → Ontgrendel rendert. */
+function stubBeginschermFetch(overrides: Record<string, () => Promise<Response>> = {}): string[] {
+  const aangeroepen: string[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((invoer: RequestInfo | URL, init?: RequestInit) => {
+      const pad = String(invoer).split('?')[0]
+      aangeroepen.push(`${init?.method ?? 'GET'} ${pad}`)
+      if (overrides[pad]) return overrides[pad]()
+      switch (pad) {
+        case '/auth/token/vernieuwen':
+          return Promise.resolve(
+            jsonResponse({ access_token: fakeToken({ rol: 'klant_accordeur', sub: 'u1' }) }),
+          )
+        case '/auth/webauthn/config':
+          return Promise.resolve(jsonResponse({ dev_stub: false, rp_id: 'localhost' }))
+        case '/auth/token/vernieuwen/ontgrendel-opties':
+          return Promise.resolve(jsonResponse({ opties: ASSERTIE_OPTIES }))
+        case '/auth/token/vernieuwen/ontgrendelen':
+          return Promise.resolve(
+            jsonResponse({ access_token: fakeToken({ rol: 'klant_accordeur', sub: 'u1' }) }),
+          )
+        case '/accordering/wachtrij':
+          return Promise.resolve(jsonResponse({ items: [] }))
+        case '/auth/administraties':
+          return Promise.resolve(jsonResponse({ administraties: [{ id: 'a1', naam: 'BLOW B.V.' }] }))
+        default:
+          return Promise.resolve(new Response(null, { status: 404 }))
+      }
+    }),
+  )
+  return aangeroepen
+}
+
+function renderBeginscherm() {
+  // Ontgrendeld-vlag bewust NIET gezet: verse app-opening → beginscherm.
+  return render(
+    <MemoryRouter initialEntries={['/accordeur']}>
+      <AuthProvider>
+        <AccordeurApp />
+      </AuthProvider>
+    </MemoryRouter>,
+  )
+}
+
+describe('AccordeurApp — beginscherm met auto-assertion (besluiten Peter 2026-08-14 + 2026-08-17)', () => {
+  it('auto-prompt weggedrukt → géén foutmelding, "Ontgrendelen" blijft de enige primaire knop, tekstlink intact', async () => {
     // jsdom heeft geen PublicKeyCredential — stub zodat het echte-passkey-pad rendert.
     vi.stubGlobal('PublicKeyCredential', class {})
     vi.stubGlobal('isSecureContext', true)
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((invoer: RequestInfo | URL) => {
-        const pad = String(invoer).split('?')[0]
-        switch (pad) {
-          case '/auth/token/vernieuwen':
-            return Promise.resolve(
-              jsonResponse({ access_token: fakeToken({ rol: 'klant_accordeur', sub: 'u1' }) }),
-            )
-          case '/auth/webauthn/config':
-            return Promise.resolve(jsonResponse({ dev_stub: false, rp_id: 'localhost' }))
-          default:
-            return Promise.resolve(new Response(null, { status: 404 }))
-        }
-      }),
-    )
-    // Ontgrendeld-vlag bewust NIET gezet: verse app-opening → beginscherm.
+    const get = vi.fn(async () => {
+      await new Promise((klaar) => setTimeout(klaar, 0))
+      throw new DOMException('prompt weggedrukt', 'NotAllowedError')
+    })
+    Object.defineProperty(window.navigator, 'credentials', {
+      configurable: true,
+      value: { create: vi.fn(), get },
+    })
+    stubBeginschermFetch()
 
-    render(
-      <MemoryRouter initialEntries={['/accordeur']}>
-        <AuthProvider>
-          <AccordeurApp />
-        </AuthProvider>
-      </MemoryRouter>,
-    )
+    renderBeginscherm()
 
+    // De assertion start zónder tik zodra het scherm verschijnt (klik-klik-principe)…
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    // …en het wegdrukken van die auto-prompt is geen fout: knop klaar als herkansing.
     const ontgrendelKnop = await screen.findByRole('button', { name: 'Ontgrendelen' })
     expect(ontgrendelKnop.className).toContain('acc-btn')
+    expect(document.querySelector('.acc-fout')).toBeNull()
 
     // De nooduitgang blijft bestaan (passkey kwijt/ander account/kill-switch), maar is
     // gedegradeerd tot subtiele tekstlink — precies één acc-btn op het scherm.
@@ -144,6 +184,82 @@ describe('AccordeurApp — beginscherm (feedback Peter 2026-08-14)', () => {
 
     await userEvent.click(opnieuw)
     expect(await screen.findByRole('button', { name: 'Inloggen' })).toBeInTheDocument()
+  })
+
+  it('auto-assertion slaagt → zonder één tik door naar de flow (openen → Face ID → binnen)', async () => {
+    vi.stubGlobal('PublicKeyCredential', class {})
+    vi.stubGlobal('isSecureContext', true)
+    const get = vi.fn(async () => {
+      await new Promise((klaar) => setTimeout(klaar, 0))
+      return fakeAssertie()
+    })
+    Object.defineProperty(window.navigator, 'credentials', {
+      configurable: true,
+      value: { create: vi.fn(), get },
+    })
+    const aangeroepen = stubBeginschermFetch()
+
+    renderBeginscherm()
+
+    expect(await screen.findByText('Alles afgehandeld', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(aangeroepen).toContain('POST /auth/token/vernieuwen/ontgrendelen')
+    // Eén auto-poging, geen dubbele Face ID-prompt (StrictMode-guard).
+    expect(get).toHaveBeenCalledTimes(1)
+  })
+
+  it('herkansing: auto-prompt weggedrukt, daarna knop-tik → tweede assertion → binnen', async () => {
+    vi.stubGlobal('PublicKeyCredential', class {})
+    vi.stubGlobal('isSecureContext', true)
+    const get = vi
+      .fn(async () => {
+        await new Promise((klaar) => setTimeout(klaar, 0))
+        return fakeAssertie()
+      })
+      .mockImplementationOnce(async () => {
+        await new Promise((klaar) => setTimeout(klaar, 0))
+        throw new DOMException('prompt weggedrukt', 'NotAllowedError')
+      })
+    Object.defineProperty(window.navigator, 'credentials', {
+      configurable: true,
+      value: { create: vi.fn(), get },
+    })
+    stubBeginschermFetch()
+
+    renderBeginscherm()
+
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    await userEvent.click(await screen.findByRole('button', { name: 'Ontgrendelen' }))
+    expect(await screen.findByText('Alles afgehandeld', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('sessie verlopen (401 op de options) → automatisch het login-scherm, zonder tik', async () => {
+    vi.stubGlobal('PublicKeyCredential', class {})
+    vi.stubGlobal('isSecureContext', true)
+    Object.defineProperty(window.navigator, 'credentials', {
+      configurable: true,
+      value: { create: vi.fn(), get: vi.fn() },
+    })
+    stubBeginschermFetch({
+      '/auth/token/vernieuwen/ontgrendel-opties': () =>
+        Promise.resolve(jsonResponse({ detail: 'sessie verlopen' }, 401)),
+    })
+
+    renderBeginscherm()
+
+    expect(await screen.findByRole('button', { name: 'Inloggen' })).toBeInTheDocument()
+  })
+
+  it('dev-stub (LAN-kliktest zonder WebAuthn) → auto-ontgrendelen voor flow-pariteit', async () => {
+    // Géén PublicKeyCredential-stub: het stub-pad rendert alleen als echte WebAuthn ontbreekt.
+    const aangeroepen = stubBeginschermFetch({
+      '/auth/webauthn/config': () => Promise.resolve(jsonResponse({ dev_stub: true, rp_id: 'localhost' })),
+    })
+
+    renderBeginscherm()
+
+    expect(await screen.findByText('Alles afgehandeld', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(aangeroepen).toContain('POST /auth/token/vernieuwen/ontgrendelen')
   })
 })
 

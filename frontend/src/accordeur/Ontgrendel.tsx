@@ -3,7 +3,7 @@
 // (besluit Peter 2026-08-11). 401 op de options = sessie verlopen (ná 7 dagen) → volledige
 // login; 409 = geen passkey op dit account → volledige login mét registratie.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TokenPaarResponseDto } from '../api/types'
 import {
   haalWebauthnConfig,
@@ -32,7 +32,7 @@ export function Ontgrendel({ naOntgrendeld, naarLogin }: Props) {
 
   const echteWebauthn = webauthnBeschikbaar()
 
-  const start = async (metStub: boolean) => {
+  const start = async (metStub: boolean, opts?: { stil?: boolean }) => {
     setFout(null)
     setBezig(true)
     try {
@@ -55,11 +55,34 @@ export function Ontgrendel({ naOntgrendeld, naarLogin }: Props) {
       setGelukt(true)
       setTimeout(() => naOntgrendeld(paar), 450)
     } catch (err) {
-      setFout(err instanceof Error ? err.message : 'Ontgrendelen mislukt — probeer het opnieuw.')
+      // Een weggedrukte/gefaalde AUTO-prompt is geen fout van de gebruiker — geen rode
+      // melding, de knop staat klaar als herkansing. Een mislukte knop-poging meldt wél.
+      if (!opts?.stil) {
+        setFout(err instanceof Error ? err.message : 'Ontgrendelen mislukt — probeer het opnieuw.')
+      }
     } finally {
       setBezig(false)
     }
   }
+
+  // Klik-klik-principe (besluit Peter 2026-08-17): de passkey-assertion start automatisch
+  // zodra het ontgrendelscherm verschijnt — openen → Face ID → binnen, nul onnodige tikken.
+  // Eén auto-poging per app-opening (ref overleeft óók StrictMode-double-effects — geen
+  // dubbele Face ID-prompt in dev); de dev-stub doet mee voor flow-pariteit in kliktests.
+  // Weigert het platform een assertion zonder gebruikersgebaar (ouder iOS-Safari), dan faalt
+  // de auto-poging stil en is de knop het gewone pad — 401/409 routeren ook automatisch
+  // gewoon naar het login-scherm, identiek aan de knop.
+  const autoGestart = useRef(false)
+  useEffect(() => {
+    if (autoGestart.current) return
+    if (echteWebauthn) {
+      autoGestart.current = true
+      void start(false, { stil: true })
+    } else if (devStub) {
+      autoGestart.current = true
+      void start(true, { stil: true })
+    }
+  }, [echteWebauthn, devStub])
 
   return (
     <div className="acc-vol">
