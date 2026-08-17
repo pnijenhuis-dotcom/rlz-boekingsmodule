@@ -421,13 +421,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   GEBOUWD+GETEST (optimistisch akkoord/afwijzen via achtergrond-verzendrij met begrensde
   retry, definitief mislukt = zichtbaar terug in de rij; prefetch/prerender eerstvolgende
   factuur; backend-idempotente besluit-herhaling `_herhaald_besluit`; dubbeltik-vangnet);
-  fase 2 native passkey-plugin CODE STAAT (eigen dunne Swift/Java-plugin, webcode-seam
-  getest, well-known-routes fail-closed — bewijs = kliktest echt toestel ná Apple-account);
-  fase 3 native push GEBOUWD+GETEST server/webcode (migratie 0055 subscriptie-soort
-  apns/fcm, adapters, kill-switch dekt web én native — ontvangst = kliktest); fase 4
-  GEBOUWD+GETEST (VITE_API_BASE, bearer-refresh via X-Refresh-Token +
-  Keychain/Keystore-plugins, web-contract ongewijzigd + bewaakt); fase 5 VOORBEREID
-  (`native/STORE_GEREEDHEID.md`, assets uit één SVG-bron)**). Factuurbeeld
+  fase 2 native passkey-plugin (eigen dunne Swift/Java-plugin, webcode-seam getest,
+  well-known-routes fail-closed); fase 3 native push (migratie 0055 subscriptie-soort
+  apns/fcm, adapters, kill-switch dekt web én native); fase 4 (VITE_API_BASE,
+  bearer-refresh via X-Refresh-Token + Keychain/Keystore-plugins, web-contract ongewijzigd
+  + bewaakt); fase 5 VOORBEREID (`native/STORE_GEREEDHEID.md`, assets uit één SVG-bron).**
+  **Kliktests echt iPhone-toestel rondes 1+2 (2026-08-17) VOLLEDIG GROEN — fases 1–4
+  BEWEZEN OP TOESTEL** (passkey-Face-ID, koude-herstart-Keychain-refresh, safe-area,
+  meldingen-flow + APNs-push + deep-link, PWA-passkey in native, kill-switch — BESLISSINGEN
+  "NATIVE KLIKTEST RONDE 1/2"); volgende halte: TestFlight (mét `APNS_SANDBOX=false` als
+  expliciete stap) + de Android/Firebase-ronde). Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,

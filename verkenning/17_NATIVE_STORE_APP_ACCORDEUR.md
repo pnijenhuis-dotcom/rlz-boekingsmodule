@@ -162,7 +162,7 @@ niet in een WKWebView. Voor de store-apps is native push nodig:
 
 ## Bouwstatus (ná GO, bijgehouden per fase)
 
-### Fase 1 — snelheidslaag PWA: GEBOUWD + GETEST (2026-08-17)
+### Fase 1 — snelheidslaag PWA: GEBOUWD + GETEST; BEWEZEN OP TOESTEL (kliktest ronde 1, 2026-08-17)
 
 In de bestaande accordeur-chunk (native schil + web-terugval profiteren automatisch):
 optimistisch akkoord/afwijzen via een achtergrond-verzendrij met begrensde retry
@@ -228,19 +228,22 @@ app-subdomein), `capacitor://localhost` in `CORS_ALLOWED_ORIGINS` (stond op `[]`
 `VITE_API_BASE` definitief het app-subdomein. Java/Android-SDK ontbreken op deze Mac —
 Android-compile in de eigen ronde.
 
-**Kliktest-blok fase 2 — AFGEROND op de koude-herstart-check na (kliktest 2026-08-17):**
+**Kliktest-blok fase 2 — AFGEROND (kliktest rondes 1+2, 2026-08-17; alleen het Android-spoor
+rest):**
 1. ~~Xcode installeren + eerste compile-ronde~~ UITGEVOERD 2026-08-17 (zie hierboven).
 2. ~~Signing onder het PDL-team + Associated Domains~~ UITGEVOERD (commit 2732d12).
 3. ~~apple_team_id in productieconfig + statische AASA op de WordPress-apex~~ UITGEVOERD
    (commit 7bd9f57 + kliktest-bewijs: de native prompt kwam, dus iOS heeft de AASA
    geaccepteerd). Voor Android t.z.t. idem `assetlinks.json`.
 4. ~~Activeringsflow: passkey-registratie + login in de native Face ID-prompt~~ BEWEZEN
-   (kliktest ronde 1). Koude herstart → alleen ontgrendel-assertion: staat in de ronde
-   2-checklist (hoort formeel bij het fase 4-bewijs).
+   (kliktest ronde 1). ~~Koude herstart → alleen ontgrendel-assertion~~ BEWEZEN in ronde 2
+   (2026-08-17): automatische Face ID-ontgrendeling bij koude start, geen wachtwoord —
+   tegelijk het fase 4-Keychain-bewijs. Ook de bestaande PWA-passkey van hetzelfde account
+   werkt in de native app (zelfde rp_id — 0022-lijn live bevestigd, ronde 2).
 5. Android idem zodra upload-keystore bestaat (assetlinks + apk-key-hash-origin eerst;
    Play Console-account bestaat al).
 
-### Fase 3 — native push: GEBOUWD + GETEST serverzijde/webcode (2026-08-17); ontvangst = kliktest
+### Fase 3 — native push: BEWEZEN OP TOESTEL (kliktest ronde 2, 2026-08-17)
 
 Route conform (b) hierboven: **APNs direct voor iOS + FCM voor Android, achter één
 adapterlaag** — de AVG-afweging valt daarmee zo klein mogelijk uit (Firebase alleen voor
@@ -276,10 +279,12 @@ Android-bezorging; payload uitsluitend aantal + deep-link, nooit financiële det
   één handmatige run van rlz-accordeur-herinneringen. ⚠️ `APNS_SANDBOX=true` zolang de
   geïnstalleerde build dev-signed is (aps-environment 'development' = sandbox-APNs);
   TestFlight/App Store = false — staat als comment in deploy.yml en in
-  STORE_GEREEDHEID. Bewijs op het toestel = ronde 2-checklist hieronder. Android idem ná
+  STORE_GEREEDHEID. **Bewijs op het toestel GELEVERD (ronde 2, 2026-08-17):** registratie
+  via de meldingen-kaart geslaagd, APNs-banner binnen op het toestel, tap = deep-link naar
+  het document ná ontgrendeling. Android idem ná
   Firebase-project + google-services.json in `native/android/app/`.
 
-### Fase 4 — gebundelde assets + bearer-refresh Keychain/Keystore: GEBOUWD + GETEST (2026-08-17)
+### Fase 4 — gebundelde assets + bearer-refresh Keychain/Keystore: BEWEZEN OP TOESTEL (kliktest ronde 2, 2026-08-17)
 
 Route 2 uit (d): een échte app met gebundelde assets — geen remote-wrapper.
 
@@ -301,14 +306,15 @@ Route 2 uit (d): een échte app met gebundelde assets — geen remote-wrapper.
   fase 2):** `VeiligeOpslagPlugin.swift` (Keychain, AfterFirstUnlockThisDeviceOnly — nooit
   in backups) en `VeiligeOpslagPlugin.java` (EncryptedSharedPreferences, Keystore-gedekt);
   eigen dunne plugins, geen community-pakket in de auth-kern.
-- **Kliktest-blok fase 4 (zit in de fase-2-sessie):** volledige cyclus op het toestel —
-  login → app hard afsluiten → opnieuw openen → ontgrendelen met passkey zónder nieuwe
-  login (bewijst Keychain-refresh); kill-switch op Instellingen → app valt per direct terug
-  naar login. Vooraf: ~~VITE_API_BASE-domein bevestigen~~ BESLIST 2026-08-17:
+- **Kliktest-blok fase 4 — AFGEROND (ronde 2, 2026-08-17):** volledige cyclus op het
+  toestel bewezen — koude herstart → automatische Face ID-ontgrendeling zónder nieuwe
+  login (Keychain-refresh bewezen); kill-switch op Instellingen → app viel per direct terug
+  naar login, passkey onbruikbaar, apparatenlijst leeg. Vooraf:
+  ~~VITE_API_BASE-domein bevestigen~~ BESLIST 2026-08-17:
   `https://app.administratiekantoornijenhuis.nl` (de apex draait de WordPress-site en
   routeert niet naar Cloud Run — zie de fase-2-compile-ronde-notitie hierboven).
 
-### Fase 5 — store-gereedheid: VOORBEREID (2026-08-17); publicatie wacht op de kliktest-blokken
+### Fase 5 — store-gereedheid: VOORBEREID (2026-08-17); kliktest-blokken GROEN (ronde 2) — iOS-publicatiepad open
 
 De store-accounts bestaan al (correctie 2026-08-17, zie (c)) — geen kritiek pad bij derden;
 alles tot aan de kliktest-blokken staat klaar:
@@ -328,7 +334,7 @@ alles tot aan de kliktest-blokken staat klaar:
 - Open taakjes die bij de checklist horen: privacyverklaring als publieke URL,
   demo-account voor review, screenshots — allemaal ná de kliktest-blokken.
 
-### Kliktest-checklist ronde 2 (klaargezet 2026-08-17 — alles in één rondje aftikbaar)
+### Kliktest-checklist ronde 2 — UITGEVOERD, VOLLEDIG GROEN (kliktest Peter, echt toestel, 2026-08-17)
 
 Vooraf, in deze volgorde:
 1. `scripts/gcp/apns_afronden.sh` draaien (owner-account) — het script dicteert eerst de
@@ -340,24 +346,31 @@ Vooraf, in deze volgorde:
    (docstring = draaiboek) — de meldingen-flow én de herinnering-job hebben ≥1 open
    accordering nodig.
 
-Aftiklijst op het toestel:
-- [ ] **Safe-area (de ronde 1-bevinding):** kop start ónder de klok/notch (statusbalktekst
+Aftiklijst op het toestel (alle zes ✅, 2026-08-17):
+- [x] **Safe-area (de ronde 1-bevinding):** kop start ónder de klok/notch (statusbalktekst
       wit op de donkere kop); actiebalk Akkoord/Afwijzen vrij van de home-indicator; afwijs-
-      en staande-goedkeuring-sheets idem; login-/ontgrendel-/voorwaardenscherm netjes binnen
-      de randen — ook even in het lichte thema (◐): klok leesbaar op de donkere cap.
-- [ ] **Koude herstart (fase 4-bewijs, stond nog open):** app wegvegen → opnieuw openen →
-      alleen Face ID-ontgrendeling, GEEN wachtwoord (bewijst Keychain-refresh-token).
-- [ ] **Meldingen aan** via de meldingen-kaart op de wachtrij → iOS-toestemmingsprompt →
-      registratie slaagt (geen 409 meer na apns_afronden.sh stap 3).
-- [ ] **Bewijs-push (fase 3):** apns_afronden.sh stap 4 (run herinnering-job) → banner komt
-      binnen op het toestel → tap opent de app op het document (deep-link, ná ontgrendeling —
-      goedkeuren-vanuit-de-melding bestaat bewust niet). Alternatief bij "vandaag al
-      herinnerd": handmatige herinner-knop in de kantoor-UI.
-- [ ] **Kill-switch (fase 3+4-bewijs):** kantoor-UI → Instellingen → apparaat intrekken →
-      app valt per direct terug naar login én er komt géén push meer binnen (nieuwe
-      job-run of herinner-knop = stil voor dit apparaat).
-- [ ] **Bestaande PWA-passkey** van hetzelfde account werkt óók in de app (zelfde rp_id) —
-      als dat in ronde 1 nog niet expliciet is gezien.
+      en staande-goedkeuring-sheets idem; licht thema: klok leesbaar op de donkere cap —
+      zichtcontrole geslaagd, de ronde 1-fix is daarmee afgesloten.
+- [x] **Koude herstart (fase 4-bewijs):** app wegvegen → opnieuw openen → automatische
+      Face ID-ontgrendeling, GEEN wachtwoord — Keychain-refresh-token bewezen.
+- [x] **Meldingen aan** via de meldingen-kaart → iOS-toestemmingsprompt → registratie
+      geslaagd (apns_afronden.sh-config live).
+- [x] **Bewijs-push (fase 3):** APNs-banner binnen op het toestel; tap opent de app op het
+      document (deep-link, ná ontgrendeling — goedkeuren-vanuit-de-melding bestaat bewust
+      niet).
+- [x] **Kill-switch (fase 3+4-bewijs):** apparaat ingetrokken op Instellingen → app viel
+      per direct terug naar login, passkey onbruikbaar, apparatenlijst leeg — bedoeld
+      gedrag bevestigd (push-stilte volgt uit dezelfde apparaat-gebonden intrekking;
+      server-side met test bewezen, fase 3).
+- [x] **Bestaande PWA-passkey** van hetzelfde account werkt óók in de native app (zelfde
+      rp_id — 0022-lijn live bevestigd).
 
-Ná groen: uitkomsten vastleggen (BESLISSINGEN + dit rapport), daarna fase 5-publicatiepad
-(TestFlight — dáár `APNS_SANDBOX=false`, zie deploy.yml-comment + STORE_GEREEDHEID).
+**Uitkomst vastgelegd in BESLISSINGEN "NATIVE KLIKTEST RONDE 2"; fases 1–4 staan hierboven
+op bewezen-op-toestel. Volgende halte (fase 5-publicatiepad):**
+1. **TestFlight** — mét als EXPLICIETE stap `APNS_SANDBOX=false` (TestFlight/App
+   Store-builds zijn production-signed; de dev-build draaide sandbox — zie de
+   deploy.yml-comment + STORE_GEREEDHEID), plus de open taakjes uit fase 5
+   (privacyverklaring-URL, review-demo-account, screenshots).
+2. **Android/Firebase-ronde** — Android Studio/SDK-compile, Firebase-project +
+   google-services.json + FCM_SERVICE_ACCOUNT_JSON, Play-keystore → assetlinks +
+   apk-key-hash-origin in WEBAUTHN_ORIGINS.
