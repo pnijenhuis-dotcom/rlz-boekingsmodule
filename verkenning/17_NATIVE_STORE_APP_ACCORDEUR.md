@@ -269,7 +269,20 @@ Route 2 uit (d): een échte app met gebundelde assets — geen remote-wrapper.
   login (bewijst Keychain-refresh); kill-switch op Instellingen → app valt per direct terug
   naar login. Vooraf: VITE_API_BASE-domein bevestigen (apex-routing naar Cloud Run).
 
-### Fase 5 (store-gereedheid)
+### Fase 5 — store-gereedheid: VOORBEREID (2026-08-17); publicatie wacht op de accounts
 
-Nog niet gestart — iconen/splash, privacylabels, reviewnotities, TestFlight/interne track;
-kan pas echt af mét de store-accounts (parallel klikwerk Peter).
+Alles wat zonder store-accounts kan, staat klaar:
+
+- **Iconen + splash** voor beide schillen, herhaalbaar gegenereerd uit de canonieke
+  accordeur-icoon-SVG via `native/scripts/genereer_assets.sh` (qlmanage, geen extra
+  dependencies): App Store-icoon 1024 full-bleed (geen transparante hoeken), iOS-splash
+  2732 (donker, icoon gecentreerd — zelfde kleur als de webview-achtergrond, geen
+  witflits), Android launcher/round/adaptive-foreground per dichtheid +
+  ic_launcher_background #0e1514 + alle splash-drawables.
+- **`native/STORE_GEREEDHEID.md` (canoniek voor deze fase):** privacy nutrition labels
+  (App Store) + Data safety (Play) voor-ingevuld, reviewnotities (demo-accordeur op de
+  TEST-administratie, pushpermissie-uitleg, 4.2-onderbouwing), publicatie-checklist in
+  volgorde (TestFlight; Play gesloten test ≥ 12 testers/14 dagen; assetlinks +
+  apk-key-hash-origin ná de keystore), versiebeleid.
+- Open taakjes die bij de checklist horen: privacyverklaring als publieke URL,
+  demo-account voor review, screenshots — allemaal ná de kliktest-blokken.

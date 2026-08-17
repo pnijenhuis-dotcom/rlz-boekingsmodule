@@ -416,11 +416,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   geraakt), beslispuntenrapport `verkenning/17_NATIVE_STORE_APP_ACCORDEUR.md` = basis voor
   het go/no-go-bouwbesluit; GO Peter 2026-08-16 (aanbevolen route: native-passkey-plugin +
   APNs/FCM + gebundelde assets + bearer-refresh Keychain/Keystore, bundle-id
-  `nl.aknijenhuis.goedkeuren`) — fase 1 (snelheidslaag PWA) GEBOUWD + GETEST 2026-08-17:
-  optimistisch akkoord/afwijzen (achtergrond-verzendrij met begrensde retry, definitief
-  mislukt = zichtbaar terug in de rij), prefetch/prerender van de eerstvolgende factuur,
-  backend-idempotente besluit-herhaling (`_herhaald_besluit`), dubbeltik-vangnet — zie
-  BESLISSINGEN "NATIVE-APP FASE 1"**). Factuurbeeld
+  `nl.aknijenhuis.goedkeuren`) — bouwstatus per fase: verkenning/17 "Bouwstatus" +
+  BESLISSINGEN "NATIVE-APP FASE 1–5" (alle vijf 2026-08-17): fase 1 snelheidslaag PWA
+  GEBOUWD+GETEST (optimistisch akkoord/afwijzen via achtergrond-verzendrij met begrensde
+  retry, definitief mislukt = zichtbaar terug in de rij; prefetch/prerender eerstvolgende
+  factuur; backend-idempotente besluit-herhaling `_herhaald_besluit`; dubbeltik-vangnet);
+  fase 2 native passkey-plugin CODE STAAT (eigen dunne Swift/Java-plugin, webcode-seam
+  getest, well-known-routes fail-closed — bewijs = kliktest echt toestel ná Apple-account);
+  fase 3 native push GEBOUWD+GETEST server/webcode (migratie 0055 subscriptie-soort
+  apns/fcm, adapters, kill-switch dekt web én native — ontvangst = kliktest); fase 4
+  GEBOUWD+GETEST (VITE_API_BASE, bearer-refresh via X-Refresh-Token +
+  Keychain/Keystore-plugins, web-contract ongewijzigd + bewaakt); fase 5 VOORBEREID
+  (`native/STORE_GEREEDHEID.md`, assets uit één SVG-bron)**). Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,
