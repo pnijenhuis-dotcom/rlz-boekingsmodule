@@ -114,6 +114,11 @@ jobs:
       # de allUsers-binding niet zélf zetten (gcloud waarschuwt, run blijft groen); de
       # binding wordt éénmalig gezet in f2_services.sh stap 3 (owner) en de flag vindt
       # 'm daarna al staan.
+      # Native store-app (fase 2/4, kliktest-prep 2026-08-17): de apex-origin in
+      # WEBAUTHN_ORIGINS (iOS-passkey-assertions dragen de rp_id-origin, niet het
+      # app-subdomein) en capacitor://localhost in CORS (de iOS-webview-origin; de
+      # Android-origin https://localhost volgt pas in de Android-ronde, samen met de
+      # apk-key-hash-origin).
       - name: Cloud Run-revisie uitrollen
         run: |
           gcloud run deploy rlz-backend \
@@ -125,7 +130,7 @@ jobs:
             --allow-unauthenticated \
             --memory 1Gi \
             --cpu 1 \
-            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[]@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
+            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\"]@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest" \
             --quiet
 
