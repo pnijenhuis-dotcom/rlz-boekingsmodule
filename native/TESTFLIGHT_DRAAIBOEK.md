@@ -45,6 +45,12 @@ review-wachtwoord (komt in de reviewnotities; bewaar het ook zelf). Raakt de wac
 leeg (reviewer heeft alles beoordeeld), draai het script opnieuw met een batch-letter:
 `… cloud_seed_review_demo.py b`.
 
+> ⚠️ Netwerk-bevinding 2026-08-18: op het kantoornetwerk (gateway 192.168.30.1) wordt
+> uitgaand TCP 3307/5432 per direct geweigerd — de Cloud SQL Auth Proxy komt er dan niet
+> doorheen ("connection refused" in ~2 ms = lokale firewall, niet Google). De seed draaien
+> lukt dus alleen vanaf een netwerk zónder die blokkade (hotspot/thuis) of ná een
+> firewall-uitzondering voor 3307.
+
 ## 1. App-registratie in App Store Connect (A4)
 
 Vooraf: door de kliktest-builds met "automatically manage signing" bestaat het App ID
