@@ -9,6 +9,9 @@ app-registraties onder het bestaande PDL-team. Bundle-id definitief:
 `nl.aknijenhuis.goedkeuren` (akkoord Peter bij het GO-besluit 16-08 — permanent, nooit meer
 wijzigen; registreren onder het bestaande team).
 
+**Klik-voor-klik-recept voor de TestFlight-ronde (registratie ASC, archive/upload,
+APNS_SANDBOX-omslag, demo-account): `native/TESTFLIGHT_DRAAIBOEK.md` (2026-08-18).**
+
 ## 1. Wat de app is (voor reviewnotities en listing)
 
 Interne zakelijke app voor klanten van Administratiekantoor Nijenhuis: accordeurs keuren
@@ -45,11 +48,18 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
 
 ## 4. Reviewnotities (Apple én Play — demo-toegang)
 
-- App vereist een uitnodiging; voor review een **demo-accordeur op de TEST-administratie**
-  aanmaken (bestaand patroon: passkeytest-account + geseede TEST-accordering,
-  `backend/scripts/cloud_seed_accordering.py`). Inloggegevens + korte flow-uitleg in het
-  reviewnotitieveld; expliciet vermelden dat de passkey-stap ná de wachtwoordstap komt en
-  dat de reviewer bij "Voorwaarden" moet accepteren.
+- **Demo-account: strategie + seedscript KLAAR (2026-08-18, TESTFLIGHT_DRAAIBOEK.md §0):**
+  gewoon accordeur-account `p.nijenhuis+applereview@kempengroep.nl` op SEED-PASSKEYTEST via
+  `backend/scripts/cloud_seed_review_demo.py` — normale wachtwoord→passkey-flow op het
+  reviewtoestel (passkey-laag NIET verzwakt, geen bypass), uitsluitend FICTIEVE
+  demo-facturen (eigen PDF's), en twee accorderingslagen (review → passkeytest) zodat het
+  reviewer-akkoord nooit de boekmotor raakt. Engelse reviewnotities-tekst staat kant-en-
+  klaar in het draaiboek. Peter: script draaien + activatielink doorlopen (wachtwoord kiezen).
+  Bekend risico: passkeys falen soms op Apple-reviewtoestellen (iCloud-sleutelhanger) —
+  in de notities benoemd; bij afwijzing = reply/appeal, nooit een bypass bouwen.
+- Inloggegevens + korte flow-uitleg in het reviewnotitieveld; expliciet vermelden dat de
+  passkey-stap ná de wachtwoordstap komt en dat de reviewer bij "Voorwaarden" moet
+  accepteren.
 - Uitleggen waarom pushpermissie gevraagd wordt (dagelijkse herinnering + nieuwe facturen,
   alleen bij openstaand werk) en dat goedkeuren nooit vanuit de melding zelf kan.
 - Guideline 4.2 (minimal functionality): benoemen dat de app gebundelde assets, native
@@ -75,10 +85,18 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
    PDL-organisatieaccount valt daarbuiten; de accordeurs blijven de testgroep) +
    `assetlinks.json` met de definitieve signing-hash + `android:apk-key-hash:`-origin in
    `webauthn_origins`.
-5. Store-listing (NL): naam "RLZ Goedkeuren", ondertitel "Facturen goedkeuren —
-   Administratiekantoor Nijenhuis", screenshots van wachtrij/review/lege staat (donker
-   thema), privacy-URL (bestaande accordeur-privacyverklaring — zelfde tekst als het
-   voorwaarden-scherm in de app, moet als publieke URL beschikbaar zijn: klein taakje).
+5. Store-listing (NL): naam "RLZ Goedkeuren", ondertitel "Facturen goedkeuren" (ASC-limiet
+   30 tekens). **Screenshots: KLAAR (2026-08-18)** — `store-assets/screenshots/`
+   (6.9" + 6.3", donker thema: wachtrij, factuurbeeld, ontgrendelscherm + meldingen-kaart;
+   gemaakt in de simulator tegen een lokale backend met uitsluitend fictieve
+   demo-facturen). **Privacy-URL: GEBOUWD (2026-08-18)** —
+   `https://app.administratiekantoornijenhuis.nl/accordeur/privacy`
+   (`backend/app/auth/privacy_pagina.py`, wellknown-patroon: rendert de akkoordtekst uit
+   `app/auth/voorwaarden.py` — één bron van waarheid, versie zichtbaar; live ná de
+   eerstvolgende deploy). NB de tekst draagt nog de versie "2026-08-11-concept-v1"
+   (jurist-toets open) en de in-app-tekst verwijst nog zonder link naar "de
+   privacyverklaring" — de URL erin opnemen = tekstwijziging = versie-ophoging = iedereen
+   opnieuw akkoord (bewust besluit voor later, zie BESLISSINGEN).
 6. Ná review-akkoord: gefaseerde uitrol; PWA blijft parallel live als terugval (besluit
    14-08) — accordeurs migreren op eigen tempo, passkeys blijven geldig (zelfde rp_id).
 
