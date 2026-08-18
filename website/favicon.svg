@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- App-icoon RLZ Goedkeuren — definitief (akkoord Peter 18-08, variant D).
+       Beeldmerk: de N van Reisburo Nijenhuis (logo van Peters vader),
+       exact hertekend uit pixelscan van het origineel (drie losse delen,
+       onderbroken contouren, geknikte binnenranden, punt boven/onder),
+       als witte contour op het wordmark-verloop van Administratiekantoor
+       Nijenhuis, driehoek-accenten in mint.
+       Bron voor de icoon-/splash-pipeline (native/store-assets). -->
+  <defs>
+    <linearGradient id="achtergrond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c1e1c"/>
+      <stop offset=".55" stop-color="#1d4540"/>
+      <stop offset="1" stop-color="#2e6660"/>
+    </linearGradient>
+  </defs>
+
+  <!-- achtergrond: vol vlak — iOS rondt zelf af (masker), Android via adaptive icon -->
+  <rect width="1024" height="1024" fill="url(#achtergrond)"/>
+
+  <!-- monogram, gecentreerd; tekenruimte 420x296 geschaald x1.6 → 672x474 -->
+  <g transform="translate(176,275) scale(1.6)">
+    <!-- linkerbeen (punt boven, geknikte binnenrand) -->
+    <polygon points="112,32 0,292 92,292 148,164"
+             fill="none" stroke="#ffffff" stroke-width="13" stroke-linejoin="miter"/>
+    <!-- middenbeen (vol parallellogram) -->
+    <polygon points="132,0 216,0 292,292 204,292"
+             fill="none" stroke="#ffffff" stroke-width="13" stroke-linejoin="miter"/>
+    <!-- rechterbeen (vlakke kop, punt onder, geknikte binnenrand) -->
+    <polygon points="328,0 420,0 310,268 280,140"
+             fill="none" stroke="#ffffff" stroke-width="13" stroke-linejoin="miter"/>
+    <!-- accent-driehoeken (mint) -->
+    <polygon points="228,8 316,8 266,147" fill="#57b3a7"/>
+    <polygon points="160,164 190,284 108,284" fill="#57b3a7"/>
+  </g>
+</svg>

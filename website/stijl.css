@@ -1,0 +1,88 @@
+/* Website administratiekantoornijenhuis.nl — statische site (2026-08-18).
+   Ontwerp = mockup/website-aknijenhuis.html (akkoord Peter 18-08).
+   Geen JavaScript; losse pagina's. */
+
+:root{
+  --bg:#f6f8f7; --panel:#ffffff; --border:#e3e9e7; --text:#15201d;
+  --muted:#5f6f6b; --primary:#2e6660; --primary-d:#25534e;
+  --mint:#57b3a7; --accent-bg:#e9f2f0;
+  --radius:14px; --shadow:0 1px 2px rgba(21,32,29,.05),0 6px 24px rgba(21,32,29,.07);
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;font-size:16px}
+a{color:var(--primary)}
+img{max-width:100%;height:auto}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+
+/* header */
+header{background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.topbar{display:flex;align-items:center;gap:14px;padding-top:14px;padding-bottom:14px;flex-wrap:wrap}
+.logo-link{display:flex;align-items:center}
+.logo-link img{height:38px;width:auto}
+nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+nav a{font-size:14.5px;padding:8px 14px;border-radius:9px;color:var(--muted);text-decoration:none;font-weight:500}
+nav a:hover{background:var(--accent-bg);color:var(--primary)}
+nav a[aria-current="page"]{color:var(--primary);font-weight:600;background:var(--accent-bg)}
+
+/* hero */
+.hero{padding-top:72px;padding-bottom:56px;display:grid;grid-template-columns:1.2fr .8fr;gap:48px;align-items:center}
+.hero h1{font-size:38px;line-height:1.15;letter-spacing:-.03em;margin-bottom:16px}
+.hero h1 .accent{color:var(--primary)}
+.hero p{color:var(--muted);font-size:17px;max-width:52ch}
+.hero .cta{margin-top:26px;display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-block;padding:12px 22px;border-radius:11px;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;font-size:15px;border:1px solid transparent}
+.btn:hover{background:var(--primary-d)}
+.hero-merk{display:grid;place-items:center}
+.hero-merk img{width:min(340px,90%);filter:drop-shadow(0 12px 32px rgba(46,102,96,.18))}
+
+/* secties */
+section.blok{padding:48px 0}
+.blok h2{font-size:24px;letter-spacing:-.02em;margin-bottom:10px}
+.blok .sub{color:var(--muted);margin-bottom:28px;max-width:60ch}
+.kaarten{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.kaart{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
+.kaart .ico{width:42px;height:42px;border-radius:11px;background:var(--accent-bg);display:grid;place-items:center;font-size:20px;margin-bottom:14px}
+.kaart h3{font-size:16.5px;margin-bottom:6px}
+.kaart p{font-size:14.5px;color:var(--muted)}
+.kaart p a{overflow-wrap:anywhere}
+
+.balk{background:var(--primary);color:#fff;border-radius:var(--radius);padding:34px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.balk h3{font-size:19px;margin-bottom:4px}
+.balk p{opacity:.85;font-size:14.5px;max-width:58ch}
+.balk .btn{margin-left:auto;background:#fff;color:var(--primary)}
+
+/* contact + footer */
+.contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+footer{border-top:1px solid var(--border);margin-top:56px;background:var(--panel)}
+.foot{display:flex;gap:24px;padding-top:26px;padding-bottom:26px;flex-wrap:wrap;align-items:center;font-size:13.5px;color:var(--muted)}
+.foot img{height:22px;width:auto}
+.foot a{color:var(--muted);text-decoration:none}
+.foot a:hover{color:var(--primary)}
+.foot .spacer{flex:1}
+
+/* juridische pagina's */
+.juridisch{max-width:760px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:40px;margin:48px auto;box-shadow:var(--shadow)}
+.juridisch h1{font-size:26px;margin-bottom:6px;letter-spacing:-.02em}
+.juridisch .versie{color:var(--muted);font-size:13px;margin-bottom:24px}
+.juridisch h2{font-size:17px;margin:26px 0 8px}
+.juridisch p,.juridisch li{font-size:14.5px;color:#333d3a}
+.juridisch ul{padding-left:20px}
+.juridisch li{margin-bottom:6px}
+.juridisch li:last-child{margin-bottom:0}
+
+@media(max-width:760px){
+  .hero{grid-template-columns:1fr;padding-top:40px;padding-bottom:40px}
+  .hero h1{font-size:30px}
+  .hero-merk{order:-1}
+  .hero-merk img{width:min(260px,80%)}
+  .balk .btn{margin-left:0}
+  .juridisch{padding:26px 20px;margin:24px auto}
+}
+@media(max-width:480px){
+  .wrap{padding:0 16px}
+  .topbar{padding-top:12px;padding-bottom:12px}
+  .logo-link img{height:30px}
+  nav a{padding:7px 10px;font-size:13.5px}
+  .hero h1{font-size:27px}
+}

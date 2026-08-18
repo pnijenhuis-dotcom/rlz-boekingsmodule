@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Administratiekantoor Nijenhuis — website-mockup + logo-voorzet</title>
+<!-- ============================================================
+     MOCKUP website administratiekantoornijenhuis.nl (2026-08-18)
+     + logo-voorzet: het monogram van Reisburo Nijenhuis (logo van
+     Peters vader — schuine N met driehoek-accenten) hertekend in de
+     kleurstelling van Administratiekantoor Nijenhuis / de app.
+     Klikbaar: navigatie schakelt tussen Home / Privacy / Verwerking.
+     Onderaan: logo-varianten ter beoordeling.
+     ============================================================ -->
+<style>
+  :root{
+    --bg:#f6f8f7; --panel:#ffffff; --border:#e3e9e7; --text:#15201d;
+    --muted:#5f6f6b; --primary:#2e6660; --primary-d:#25534e;
+    --mint:#57b3a7; --amber:#d9930b; --accent-bg:#e9f2f0;
+    --radius:14px; --shadow:0 1px 2px rgba(21,32,29,.05),0 6px 24px rgba(21,32,29,.07);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;font-size:16px}
+  a{color:var(--primary)}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+
+  /* header */
+  header{background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 0}
+  .logo-lockup{display:flex;align-items:center;gap:12px;cursor:pointer}
+  /* wordmark = Peters eigen logo, hier typografisch nagebouwd (echte site: logobestand) */
+  .wordmark{display:inline-block;line-height:1.05;
+    background:linear-gradient(100deg,#0c1e1c 0%,#1d4540 55%,#2e6660 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;user-select:none}
+  .wordmark .boven{display:block;font-size:.44em;font-weight:600;letter-spacing:.34em;text-transform:lowercase}
+  .wordmark .lijn{display:block;height:.06em;background:linear-gradient(100deg,#0c1e1c,#2e6660);margin:.12em 0 .1em;border-radius:99px}
+  .wordmark .onder{display:block;font-weight:700;letter-spacing:.18em;text-transform:uppercase}
+  .wordmark.klein{font-size:26px} .wordmark.groot{font-size:64px}
+  nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+  nav button{border:none;background:none;font-family:inherit;font-size:14.5px;padding:8px 14px;border-radius:9px;color:var(--muted);cursor:pointer;font-weight:500}
+  nav button:hover{background:var(--accent-bg);color:var(--primary)}
+  nav button.actief{color:var(--primary);font-weight:600;background:var(--accent-bg)}
+
+  /* hero */
+  .hero{padding:72px 0 56px;display:grid;grid-template-columns:1.2fr .8fr;gap:48px;align-items:center}
+  .hero h1{font-size:38px;line-height:1.15;letter-spacing:-.03em;margin-bottom:16px}
+  .hero p{color:var(--muted);font-size:17px;max-width:52ch}
+  .hero .cta{margin-top:26px;display:flex;gap:12px;flex-wrap:wrap}
+  .btn{display:inline-block;padding:12px 22px;border-radius:11px;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;font-size:15px;border:1px solid transparent}
+  .btn:hover{background:var(--primary-d)}
+  .btn.licht{background:var(--panel);color:var(--primary);border-color:var(--border)}
+  .hero-merk{display:grid;place-items:center}
+  .hero-merk svg{width:min(300px,80%);height:auto;filter:drop-shadow(0 12px 32px rgba(46,102,96,.18))}
+
+  /* secties */
+  section.blok{padding:48px 0}
+  .blok h2{font-size:24px;letter-spacing:-.02em;margin-bottom:10px}
+  .blok .sub{color:var(--muted);margin-bottom:28px;max-width:60ch}
+  .kaarten{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+  .kaart{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
+  .kaart .ico{width:42px;height:42px;border-radius:11px;background:var(--accent-bg);display:grid;place-items:center;font-size:20px;margin-bottom:14px}
+  .kaart h3{font-size:16.5px;margin-bottom:6px}
+  .kaart p{font-size:14.5px;color:var(--muted)}
+
+  .balk{background:var(--primary);color:#fff;border-radius:var(--radius);padding:34px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+  .balk h3{font-size:19px;margin-bottom:4px}
+  .balk p{opacity:.85;font-size:14.5px;max-width:58ch}
+  .balk .btn{margin-left:auto;background:#fff;color:var(--primary)}
+
+  /* contact + footer */
+  .contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  footer{border-top:1px solid var(--border);margin-top:56px;background:var(--panel)}
+  .foot{display:flex;gap:24px;padding:26px 0;flex-wrap:wrap;align-items:center;font-size:13.5px;color:var(--muted)}
+  .foot a{color:var(--muted);text-decoration:none;cursor:pointer}
+  .foot a:hover{color:var(--primary)}
+  .foot .spacer{flex:1}
+
+  /* juridische pagina's */
+  .juridisch{max-width:760px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:40px;margin:48px auto;box-shadow:var(--shadow)}
+  .juridisch h1{font-size:26px;margin-bottom:6px;letter-spacing:-.02em}
+  .juridisch .versie{color:var(--muted);font-size:13px;margin-bottom:24px}
+  .juridisch h2{font-size:17px;margin:26px 0 8px}
+  .juridisch p,.juridisch li{font-size:14.5px;color:#333d3a}
+  .juridisch ul{padding-left:20px}
+  .notitie{background:var(--accent-bg);border-radius:10px;padding:14px 18px;font-size:13.5px;color:var(--primary);margin-bottom:20px}
+
+  /* logo-varianten sectie */
+  .varianten{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+  .variant{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:26px;text-align:center}
+  .variant.donker{background:#0e1514;border-color:#263431;color:#e6ecea}
+  .variant svg{width:130px;height:auto;margin-bottom:14px}
+  .variant .naam{font-size:13px;font-weight:600}
+  .variant .toel{font-size:12px;color:var(--muted);margin-top:3px}
+  .variant.donker .toel{color:#93a4a0}
+  .app-icoon{width:96px;height:96px;border-radius:22px;background:linear-gradient(160deg,#2e6660,#1d4540);display:grid;place-items:center;margin:0 auto 14px;box-shadow:var(--shadow)}
+  .app-icoon svg{width:60px;height:auto;margin:0}
+
+  .pagina{display:none} .pagina.actief{display:block}
+  @media(max-width:760px){.hero{grid-template-columns:1fr;padding:40px 0}.hero h1{font-size:30px}.balk .btn{margin-left:0}}
+</style>
+</head>
+<body>
+
+<!-- ===== HET MONOGRAM (symbol, hergebruikt door alle varianten) =====
+     Voorzet: de schuine N van Reisburo Nijenhuis — parallellogram-kader,
+     open N-vorm met contourlijnen, twee driehoek-accenten in de counters.
+     Kleurstelling: diep teal (kantoor-primair) + amber-accent als knipoog
+     naar het oorspronkelijke geel; mint-variant als alternatief. -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <!-- het verloop uit Peters wordmark: diep inkt-teal → kantoor-teal -->
+    <linearGradient id="gradMerk" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0c1e1c"/>
+      <stop offset=".55" stop-color="#1d4540"/>
+      <stop offset="1" stop-color="#2e6660"/>
+    </linearGradient>
+    <linearGradient id="gradMerkLicht" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2e6660"/>
+      <stop offset="1" stop-color="#57b3a7"/>
+    </linearGradient>
+    <g id="monogram-vorm">
+      <!-- EXACT uit de pixelscan (18-08, ronde 2): DRIE LOSSE delen, elk met
+           eigen (onderbroken) contour. Middenbeen = vol parallellogram.
+           Linkerbeen: punt boven, geknikte binnenrand parallel aan het
+           middenbeen. Rechterbeen: gespiegeld, punt onder. Gele driehoeken
+           vullen de twee taps toelopende kanalen. -->
+      <g transform="translate(10,72)">
+        <!-- linkerbeen (punt boven, knik in rechterrand) -->
+        <polygon points="112,32 0,292 92,292 148,164"
+                 fill="var(--m-vul)" stroke="var(--m-lijn)" stroke-width="11" stroke-linejoin="miter"/>
+        <!-- middenbeen (vol parallellogram, vlakke kop en voet) -->
+        <polygon points="132,0 216,0 292,292 204,292"
+                 fill="var(--m-vul)" stroke="var(--m-lijn)" stroke-width="11" stroke-linejoin="miter"/>
+        <!-- rechterbeen (vlakke kop, punt onder, knik in linkerrand) -->
+        <polygon points="328,0 420,0 310,268 280,140"
+                 fill="var(--m-vul)" stroke="var(--m-lijn)" stroke-width="11" stroke-linejoin="miter"/>
+        <!-- geel ▼ in het kanaal rechtsboven -->
+        <polygon points="228,8 316,8 266,147" fill="var(--m-accent)"/>
+        <!-- geel ▲ in het kanaal linksonder -->
+        <polygon points="160,164 190,284 108,284" fill="var(--m-accent)"/>
+      </g>
+    </g>
+  </defs>
+</svg>
+
+<header>
+  <div class="wrap topbar">
+    <div class="logo-lockup" onclick="toon('home')">
+      <span class="wordmark klein"><span class="boven">administratiekantoor</span><span class="lijn"></span><span class="onder">Nijenhuis</span></span>
+    </div>
+    <nav>
+      <button class="actief" data-p="home" onclick="toon('home')">Home</button>
+      <button data-p="privacy" onclick="toon('privacy')">Privacyverklaring</button>
+      <button data-p="verwerking" onclick="toon('verwerking')">Gegevensverwerking</button>
+      <button data-p="logo" onclick="toon('logo')">App-beeldmerk</button>
+    </nav>
+  </div>
+</header>
+
+<!-- ================= PAGINA: HOME ================= -->
+<div class="pagina actief" id="pagina-home">
+  <div class="wrap hero">
+    <div>
+      <h1>Uw administratie, <span style="color:var(--primary)">zonder omkijken</span>.</h1>
+      <p>Administratiekantoor Nijenhuis verzorgt de complete boekhouding voor ondernemers en vastgoedbeheerders — van inkoopfactuur tot btw-aangifte. Persoonlijk waar het moet, geautomatiseerd waar het kan.</p>
+      <div class="cta">
+        <a class="btn" href="#" onclick="return false;">Neem contact op</a>
+      </div>
+    </div>
+    <div class="hero-merk">
+      <span class="wordmark groot" style="font-size:clamp(34px,5vw,58px)"><span class="boven">administratiekantoor</span><span class="lijn"></span><span class="onder">Nijenhuis</span></span>
+    </div>
+  </div>
+
+  <section class="blok"><div class="wrap">
+    <h2>Wat wij doen</h2>
+    <p class="sub">Een vast aanspreekpunt, moderne systemen en heldere afspraken.</p>
+    <div class="kaarten">
+      <div class="kaart"><div class="ico">📚</div><h3>Boekhouding & administratie</h3><p>Volledige verwerking van inkoop, verkoop en bank — dagelijks bijgewerkt, altijd inzichtelijk.</p></div>
+      <div class="kaart"><div class="ico">🧾</div><h3>Btw & aangiften</h3><p>Tijdige en juiste aangiften, met bewaking van termijnen en correcties volgens de regels.</p></div>
+      <div class="kaart"><div class="ico">📱</div><h3>Digitaal goedkeuren</h3><p>Facturen accorderen doet u met één blik en Face ID in onze goedkeur-app — waar u ook bent.</p></div>
+      <div class="kaart"><div class="ico">🏢</div><h3>Vastgoed & projecten</h3><p>Specialistische administratie voor vastgoedbeheer en projectmatig werken in de bouw.</p></div>
+    </div>
+  </div></section>
+
+  <section class="blok"><div class="wrap">
+    <div class="balk">
+      <div>
+        <h3>Uw gegevens in vertrouwde handen</h3>
+        <p>Wij werken volgens de AVG, met versleutelde opslag binnen de EU en een gedocumenteerd verwerkingsbeleid. Lees precies hoe wij met uw gegevens omgaan.</p>
+      </div>
+      <a class="btn" onclick="toon('privacy')">Privacyverklaring →</a>
+    </div>
+  </div></section>
+
+  <section class="blok"><div class="wrap">
+    <h2>Contact</h2>
+    <p class="sub">Bel, mail of loop binnen — we denken graag met u mee.</p>
+    <div class="contact-grid">
+      <div class="kaart"><h3>Adres</h3><p>Turfstraat 1<br>6811 HL Arnhem</p></div>
+      <div class="kaart"><h3>E-mail</h3><p>info@ak-nijenhuis.nl<br>facturen: facturen@ak-nijenhuis.nl</p></div>
+    </div>
+  </div></section>
+</div>
+
+<!-- ================= PAGINA: PRIVACY ================= -->
+<div class="pagina" id="pagina-privacy">
+  <div class="wrap"><div class="juridisch">
+    <h1>Privacyverklaring</h1>
+    <div class="versie">Versie [datum] · Administratiekantoor Nijenhuis C.V.</div>
+    <div class="notitie">Mockup-notitie: de definitieve tekst komt uit het bestaande AVG-pakket (docs/avg/) — deze pagina toont de structuur. Zelfde bron als de verklaring in de goedkeur-app, zodat teksten nooit uit de pas lopen.</div>
+    <h2>1. Wie wij zijn</h2><p>Administratiekantoor Nijenhuis C.V. verwerkt persoonsgegevens als verwerkingsverantwoordelijke voor de eigen dienstverlening en als verwerker namens klanten.</p>
+    <h2>2. Welke gegevens wij verwerken</h2><ul><li>Contact- en accountgegevens (naam, e-mail, telefoonnummer)</li><li>Financiële administratiegegevens van klanten</li><li>Gebruiksgegevens van het klantportaal en de goedkeur-app</li></ul>
+    <h2>3. Waarvoor en op welke grondslag</h2><p>Uitvoering van de overeenkomst, wettelijke plichten (o.a. 7 jaar bewaarplicht) en gerechtvaardigd belang bij beveiliging.</p>
+    <h2>4. Waar uw gegevens staan</h2><p>Opslag en verwerking vinden plaats binnen de EU (Google Cloud, regio Nederland/EU) met versleuteling in rust en onderweg.</p>
+    <h2>5. Uw rechten</h2><p>Inzage, correctie, verwijdering, bezwaar en overdraagbaarheid — neem contact op via info@ak-nijenhuis.nl.</p>
+  </div></div>
+</div>
+
+<!-- ================= PAGINA: VERWERKING ================= -->
+<div class="pagina" id="pagina-verwerking">
+  <div class="wrap"><div class="juridisch">
+    <h1>Gegevensverwerking &amp; subverwerkers</h1>
+    <div class="versie">Versie [datum]</div>
+    <div class="notitie">Mockup-notitie: inhoud volgt uit docs/avg/ (verwerkingsregister §8/§9 + subverwerkers-checklist) — hier de publieksvriendelijke samenvatting.</div>
+    <h2>Hoe wij verwerken</h2><p>Wij gebruiken eigen, beveiligde systemen met toegangsbeheer per medewerker, versleutelde opslag (klant-beheerde sleutels) en een volledig auditspoor.</p>
+    <h2>Subverwerkers</h2>
+    <ul>
+      <li><b>Google Cloud EMEA</b> — hosting en opslag (EU-regio, CDPA)</li>
+      <li><b>Google Workspace</b> — zakelijke e-mail</li>
+      <li><b>Exact / Reeleezee</b> — boekhoudplatform (EU-datalocatie bevestigd)</li>
+      <li><b>Anthropic Ireland Ltd</b> — AI-ondersteunde documentherkenning (geen training op klantdata; alleen actief na expliciete activering)</li>
+    </ul>
+    <h2>Datalekken</h2><p>Wij hanteren een datalekprocedure conform art. 33/34 AVG met melding binnen 72 uur waar vereist.</p>
+  </div></div>
+</div>
+
+<!-- ================= PAGINA: LOGO-VOORZET ================= -->
+<div class="pagina" id="pagina-logo">
+  <section class="blok"><div class="wrap">
+    <h2>Beeldmerk voor de app — de N van Nijenhuis, tweede generatie</h2>
+    <p class="sub">De N van Reisburo Nijenhuis (jaren '80), opnieuw gerenderd in de kleurstelling van jouw wordmark: het diepe inkt-teal-verloop. Dit beeldmerk wordt het logo van de native app. Drie uitvoeringen ter beoordeling:</p>
+    <div class="varianten">
+      <div class="variant">
+        <svg viewBox="0 0 440 440" style="--m-lijn:url(#gradMerk);--m-vul:#ffffff;--m-accent:url(#gradMerkLicht)"><use href="#monogram-vorm"/></svg>
+        <div class="naam">A — Contour met verloop</div>
+        <div class="toel">de klassieke opbouw van het origineel: open contour, driehoeken in het lichtere deel van het verloop</div>
+      </div>
+      <div class="variant">
+        <svg viewBox="0 0 440 440" style="--m-lijn:url(#gradMerk);--m-vul:url(#gradMerk);--m-accent:#ffffff"><use href="#monogram-vorm"/></svg>
+        <div class="naam">B — Massief verloop</div>
+        <div class="toel">modernere "update": gevulde vormen in het wordmark-verloop, witte driehoek-accenten</div>
+      </div>
+      <div class="variant donker">
+        <svg viewBox="0 0 440 440" style="--m-lijn:#e6ecea;--m-vul:transparent;--m-accent:url(#gradMerkLicht)"><use href="#monogram-vorm"/></svg>
+        <div class="naam">C — Diapositief (donker)</div>
+        <div class="toel">lichte contour op donker — voor dark mode en donkere dragers</div>
+      </div>
+      <div class="variant">
+        <div class="app-icoon" style="background:linear-gradient(160deg,#0c1e1c,#1d4540 55%,#2e6660)">
+          <svg viewBox="0 0 440 440" style="--m-lijn:#ffffff;--m-vul:transparent;--m-accent:#57b3a7"><use href="#monogram-vorm"/></svg>
+        </div>
+        <div class="naam">D — App-icoon (RLZ Goedkeuren)</div>
+        <div class="toel">witte N op het wordmark-verloop — vervangt het huidige vinkje op je beginscherm</div>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:26px">Beoordeel: klopt de N-vorm met het origineel (schuinte, dikte en driehoek-posities stel ik bij op aanwijzing), en welke uitvoering wordt het app-icoon — B massief of D contour-op-verloop? Bij akkoord lever ik de definitieve SVG's en gaat het icoon via de bestaande één-SVG-bron-pipeline de app in.</p>
+  </div></section>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <span class="wordmark klein" style="font-size:15px"><span class="boven">administratiekantoor</span><span class="lijn"></span><span class="onder">Nijenhuis</span></span>
+    <span>© 2026 Administratiekantoor Nijenhuis C.V.</span>
+    <div class="spacer"></div>
+    <a onclick="toon('privacy')">Privacyverklaring</a>
+    <a onclick="toon('verwerking')">Gegevensverwerking</a>
+  </div>
+</footer>
+
+<script>
+  function toon(p){
+    document.querySelectorAll('.pagina').forEach(x=>x.classList.remove('actief'));
+    document.getElementById('pagina-'+p).classList.add('actief');
+    document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('actief',b.dataset.p===p));
+    scrollTo(0,0);
+  }
+</script>
+</body>
+</html>

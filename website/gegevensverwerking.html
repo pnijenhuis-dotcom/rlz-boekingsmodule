@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gegevensverwerking &amp; verwerkers — Administratiekantoor Nijenhuis</title>
+<meta name="description" content="Hoe Administratiekantoor Nijenhuis gegevens verwerkt: de beveiligingsmaatregelen, de ingeschakelde verwerkers (Exact Reeleezee, Google Cloud, Anthropic) en de waarborgen bij doorgifte buiten de EER.">
+<link rel="canonical" href="https://administratiekantoornijenhuis.nl/gegevensverwerking.html">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="nl_NL">
+<meta property="og:site_name" content="Administratiekantoor Nijenhuis">
+<meta property="og:title" content="Gegevensverwerking &amp; verwerkers — Administratiekantoor Nijenhuis">
+<meta property="og:description" content="Onze beveiligingsmaatregelen, de ingeschakelde verwerkers en de waarborgen bij doorgifte buiten de EER.">
+<meta property="og:url" content="https://administratiekantoornijenhuis.nl/gegevensverwerking.html">
+<meta property="og:image" content="https://administratiekantoornijenhuis.nl/assets/og-beeld.png">
+<meta name="theme-color" content="#2e6660">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="stijl.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap topbar">
+    <a class="logo-link" href="./" aria-label="Administratiekantoor Nijenhuis — home">
+      <img src="assets/logo.png" alt="Administratiekantoor Nijenhuis" width="1000" height="295">
+    </a>
+    <nav aria-label="Hoofdnavigatie">
+      <a href="./">Home</a>
+      <a href="privacy.html">Privacyverklaring</a>
+      <a href="gegevensverwerking.html" aria-current="page">Gegevensverwerking</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap"><div class="juridisch">
+    <h1>Gegevensverwerking &amp; verwerkers</h1>
+    <div class="versie">Versie 18 augustus 2026 · Administratiekantoor Nijenhuis C.V.</div>
+
+    <p>Deze pagina beschrijft hoe wij gegevens technisch en organisatorisch verwerken en welke
+    dienstverleners (verwerkers in de zin van art. 28 AVG) wij daarbij inschakelen. Wat wij
+    verwerken, waarvoor en welke rechten u heeft, leest u in de
+    <a href="privacy.html">privacyverklaring</a>.</p>
+
+    <h2>Hoe wij verwerken</h2>
+    <ul>
+      <li><b>Eigen, beveiligde systemen</b> met toegangsbeheer per medewerker: iedere medewerker
+          ziet uitsluitend de administraties waarvoor die is geautoriseerd, afgedwongen tot op
+          databaseniveau.</li>
+      <li><b>Versleuteling</b> in rust en onderweg; encryptiesleutels in eigen beheer
+          (klant-beheerde sleutels bij onze cloudleverancier); toegangsgegevens worden extra
+          versleuteld opgeslagen.</li>
+      <li><b>Volledig auditspoor</b>: iedere handeling wordt onwisbaar vastgelegd
+          (wie, wat, wanneer, oude en nieuwe waarde).</li>
+      <li><b>Mens-in-de-lus</b>: geautomatiseerde verwerking bereidt voor; boekingen worden
+          gecontroleerd en afwijkingen zichtbaar gemarkeerd. AI voert nooit geldberekeningen uit.</li>
+      <li><b>Dataminimalisatie richting AI</b>: alleen documentinhoud die voor herkenning nodig is;
+          AI-verwerking staat standaard uit en vergt een bewuste, vastgelegde activering;
+          burgerservicenummers gaan nooit naar de AI.</li>
+      <li><b>Pseudonimisering in plaats van stil wissen</b>: na afloop van de klantrelatie en de
+          wettelijke bewaartermijn van zeven jaar worden persoonsgegevens gepseudonimiseerd, zodat
+          de administratie controleerbaar blijft zonder tot personen herleidbaar te zijn.</li>
+    </ul>
+
+    <h2>Onze verwerkers</h2>
+    <p>Wij zijn voor de administratievoering zelf verwerkingsverantwoordelijke; de partijen
+    hieronder verwerken in onze opdracht. Met elk van hen is een verwerkersovereenkomst met
+    passende waarborgen gesloten.</p>
+    <ul>
+      <li><b>Exact Reeleezee</b> (Exact Group B.V., Nederland) — het boekhoudplatform waarin de
+          administraties worden gevoerd. Opslag en verwerking volledig binnen de EU/EER
+          (schriftelijk door Exact bevestigd); verwerkersovereenkomst van Exact van toepassing,
+          inclusief de toegang via de programmeerkoppeling.</li>
+      <li><b>Google Cloud EMEA Ltd.</b> — hosting, database en documentopslag van onze eigen
+          systemen. Regio Nederland (europe-west4) met een afgedwongen EU-locatiebeleid en
+          klant-beheerde encryptiesleutels; het Google Cloud Data Processing Addendum is van
+          toepassing.</li>
+      <li><b>Google Workspace</b> (Google) — zakelijke e-mail, waaronder het facturen-postvak.
+          Zelfde verwerkersvoorwaarden als Google Cloud.</li>
+      <li><b>Anthropic Ireland, Limited</b> — AI-ondersteunde documentherkenning (voorlezen van
+          factuurgegevens). Alleen actief na expliciete activering; Anthropic traint niet op onze
+          gegevens en de verwerking valt onder de verwerkersvoorwaarden met
+          EU-modelcontractbepalingen. Zie ook "Doorgifte buiten de EER" hieronder.</li>
+      <li><b>PDL Powerhouse B.V.</b> (Nederland) — eigenaar en technisch beheerder van onze
+          verwerkingssoftware en de cloudomgeving, op basis van een verwerkersovereenkomst
+          binnen de groep.</li>
+    </ul>
+    <p>De eigen onderaannemers van deze partijen (hun subverwerkers) zijn vastgelegd in hun
+    verwerkersvoorwaarden; wij houden die lijsten bij en beoordelen wijzigingen.</p>
+
+    <h2>Doorgifte buiten de EER</h2>
+    <p>Onze systemen en de boekhouddata staan binnen de EU. Er zijn twee uitzonderingen met
+    waarborgen:</p>
+    <ul>
+      <li><b>AI-documentherkenning (Anthropic)</b>: de verwerking vindt plaats in de Verenigde
+          Staten. De doorgifte rust op de EU-modelcontractbepalingen (Standard Contractual
+          Clauses) in de verwerkersovereenkomst, aangevuld met onze eigen maatregelen:
+          standaard-uit-activering, dataminimalisatie en het BSN-verbod.</li>
+      <li><b>Google</b>: verwerking in Nederland, maar ondersteuning kan in uitzonderlijke
+          gevallen toegang vanuit de VS vergen. Daarvoor gelden de EU-modelcontractbepalingen in
+          Googles verwerkersvoorwaarden; Google is bovendien gecertificeerd onder het EU-U.S.
+          Data Privacy Framework.</li>
+    </ul>
+
+    <h2>Datalekken</h2>
+    <p>Wij hanteren een datalekprocedure conform art. 33/34 AVG: direct beperken, vastleggen in het
+    datalekregister, risicobeoordeling, waar vereist melding aan de Autoriteit Persoonsgegevens
+    binnen 72 uur na ontdekking, en het onverwijld informeren van betrokkenen en opdrachtgevers bij
+    een waarschijnlijk hoog risico. Onze verwerkers zijn contractueel verplicht ons onverwijld te
+    informeren bij een inbreuk aan hun kant.</p>
+
+    <h2>Vragen</h2>
+    <p>Vragen over onze gegevensverwerking of over een specifieke dienstverlener? Mail
+    <a href="mailto:info@ak-nijenhuis.nl">info@ak-nijenhuis.nl</a>.</p>
+  </div></div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <img src="assets/logo.png" alt="" width="1000" height="295">
+    <span>© 2026 Administratiekantoor Nijenhuis C.V.</span>
+    <div class="spacer"></div>
+    <a href="privacy.html">Privacyverklaring</a>
+    <a href="gegevensverwerking.html">Gegevensverwerking</a>
+  </div>
+</footer>
+
+</body>
+</html>
