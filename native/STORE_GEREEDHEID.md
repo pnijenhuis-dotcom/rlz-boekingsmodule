@@ -1,7 +1,14 @@
 # Store-gereedheid "RLZ Goedkeuren" (fase 5)
 
 **Status 2026-08-17:** alles tot aan de kliktest-blokken is klaar (iconen/splash uit één
-SVG-bron via `scripts/genereer_assets.sh`, naamgeving, dit dossier). **De store-accounts
+SVG-bron via `scripts/genereer_assets.sh`, naamgeving, dit dossier). **Iconen + splash
+DEFINITIEF (2026-08-18, besluit Peter):** beeldmerk = `mockup/app-icoon-n.svg` — de N van
+Reisburo Nijenhuis (familielogo, exact gereconstrueerd; geometrie nooit aanpassen), witte
+contour op het wordmark-verloop, mint-driehoeken. Alle iOS/Android/PWA-iconen en splashes
+zijn eruit hergenereerd (splash = verloop schermvullend + monogram gecentreerd; renderer
+sinds 18-08 NSImage/CoreSVG i.p.v. qlmanage — dat plette transparantie, waardoor de
+Android-adaptive-foreground een wit vlak was) en de dev-build staat op Peters iPhone.
+Zie BESLISSINGEN "APP-BEELDMERK". **De store-accounts
 BESTAAN al (correctie Peter 2026-08-17): Apple Developer én Play Console onder PDL
 Powerhouse zijn actief (Vastly-app draait eronder), incl. D-U-N-S — geen kritiek pad bij
 derden.** Publicatie wacht alleen nog op de kliktest-blokken (verkenning/17) + de
@@ -86,10 +93,12 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
    `assetlinks.json` met de definitieve signing-hash + `android:apk-key-hash:`-origin in
    `webauthn_origins`.
 5. Store-listing (NL): naam "RLZ Goedkeuren", ondertitel "Facturen goedkeuren" (ASC-limiet
-   30 tekens). **Screenshots: KLAAR (2026-08-18)** — `store-assets/screenshots/`
+   30 tekens). **Iconen: DEFINITIEF (2026-08-18)** — N-beeldmerk uit `mockup/app-icoon-n.svg`
+   (zie status bovenaan). **Screenshots: KLAAR (2026-08-18)** — `store-assets/screenshots/`
    (6.9" + 6.3", donker thema: wachtrij, factuurbeeld, ontgrendelscherm + meldingen-kaart;
    gemaakt in de simulator tegen een lokale backend met uitsluitend fictieve
-   demo-facturen). **Privacy-URL: GEBOUWD (2026-08-18)** —
+   demo-facturen). Het app-icoon komt in geen enkele screenshot in beeld — hergeneratie na
+   de beeldmerk-wissel was dus niet nodig (geverifieerd 18-08). **Privacy-URL: GEBOUWD (2026-08-18)** —
    `https://app.administratiekantoornijenhuis.nl/accordeur/privacy`
    (`backend/app/auth/privacy_pagina.py`, wellknown-patroon: rendert de akkoordtekst uit
    `app/auth/voorwaarden.py` — één bron van waarheid, versie zichtbaar; live ná de
