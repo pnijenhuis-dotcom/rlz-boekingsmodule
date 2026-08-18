@@ -16,7 +16,7 @@ september 2026).
 | 4 | [04-dpia-lichte-toets-ai-extractie.md](04-dpia-lichte-toets-ai-extractie.md) | DPIA-lichte toets op de AI-extractie: risico's, geborgde mitigaties, restrisico's |
 | 5 | [05-activatie-checklist.md](05-activatie-checklist.md) | Volgorde waarin de gates aangezet mogen worden en wat er per gate rond moet zijn |
 | 6 | [06-datalek-procedure.md](06-datalek-procedure.md) | Datalek-procedure (meldplicht art. 33/34 AVG), kantoorbreed, incl. rollen en meldstappen |
-| 7 | [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md) | Intra-groep verwerkersovereenkomst kantoor ↔ PDL Powerhouse B.V. (jurist-vraag 9; getoetst, concept tot ondertekening) |
+| 7 | [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md) | Intra-groep verwerkersovereenkomst kantoor ↔ PDL Powerhouse B.V. (jurist-vraag 9; **ondertekenklaar 2026-08-18** — Bijlage B ingevuld op de feitelijke accountstructuur: Anthropic/GCP/Workspace/Apple/Play onder PDL, Reeleezee rechtstreeks; docx `Verwerkersovereenkomst-PDL-definitief-2026-08-18.docx`; open: KvK-nummer kantoor + ondertekenblok + aanpassing documenten 1–2) |
 | 8 | [08-f5-poortdossier.md](08-f5-poortdossier.md) | Afvinkbaar bewijsdossier voor de F5-go-live-poort (= stap 2 van doc 5): per punt bewijs/vindplaats + wie + status |
 
 Word-bundel voor verzending aan de jurist: `AVG-pakket-ter-toetsing-2026-08-11.docx`

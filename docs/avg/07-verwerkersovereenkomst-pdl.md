@@ -1,18 +1,23 @@
 # Verwerkersovereenkomst (intra-groep) — Administratiekantoor Nijenhuis ↔ PDL Powerhouse B.V.
 
-> ✅ **Getoetst — jurist-akkoord 2026-08-12** (vraag 9 van het toetsingsmemo; intern
-> opgesteld, juridische toetsing afgerond). **Blijft concept tot ondertekening.**
-> Opgesteld 2026-08-12. Door de jurist meegetoetste aanname: PDL is
-> verwerker voor **hosting en software-exploitatie**; Google Cloud is subverwerker ván PDL;
-> het kantoor contracteert **Anthropic en Exact Reeleezee rechtstreeks** (accounts op naam
-> van het kantoor) zodat documenten 1–3 ongewijzigd kloppen. Staan die accounts feitelijk op
-> naam van PDL, dan verhuizen die partijen naar Bijlage B en moeten documenten 1–2 daarop
-> worden aangepast — dit is een invulpunt bij ondertekening.
+> ✅ **Ondertekenklaar — versie 2026-08-18** (jurist-akkoord op het concept 2026-08-12,
+> vraag 9 van het toetsingsmemo). Het door de jurist meegetoetste invulpunt is in deze
+> versie ingevuld conform de **feitelijke accountstructuur**: het Anthropic-API-account
+> (organisatie), het Google Cloud-project, de Google Workspace-omgeving én de Apple
+> Developer- en Google Play-accounts staan op naam van **PDL Powerhouse B.V.** — die
+> partijen staan daarom in Bijlage B als subverwerkers ván PDL. Alleen **Exact Reeleezee**
+> contracteert het kantoor rechtstreeks (bestaande relatie, webservice-logins per
+> administratie) en blijft dus búíten deze overeenkomst (verwerker van Verantwoordelijke,
+> documenten 1–2). ⚠️ Open actie conform de jurist-notitie: documenten 1–2
+> (verwerkingsregister + verwerkers-checklist) aanpassen op de verhuizing van Anthropic en
+> Google Workspace naar de PDL-keten.
 
 **Partijen**
 
-1. **Administratiekantoor Nijenhuis** ([rechtsvorm + KvK invullen]), hierna: *Verantwoordelijke*;
-2. **PDL Powerhouse B.V.** ([KvK invullen]), hierna: *Verwerker*.
+1. **Administratiekantoor Nijenhuis C.V.**, gevestigd te Arnhem (Turfstraat 1, 6811 HL),
+   KvK [INVULLEN: KvK-nummer kantoor], hierna: *Verantwoordelijke*;
+2. **PDL Powerhouse B.V.**, gevestigd te Arnhem (Turfstraat 1-3, 6811 HL), KvK 42063059,
+   hierna: *Verwerker*.
 
 Overwegende dat Verwerker eigenaar en beheerder is van de programmatuur "RLZ Boekingsmodule"
 en de bijbehorende cloudinfrastructuur (Google Cloud, regio `europe-west4`), en deze aan
@@ -23,7 +28,11 @@ partijen het volgende overeen.
 
 1. Verwerker verwerkt persoonsgegevens uitsluitend ten behoeve van Verantwoordelijke in het
    kader van: (a) hosting en technisch beheer van de RLZ Boekingsmodule en de bijbehorende
-   database en documentopslag; (b) onderhoud, updates en incidentafhandeling.
+   database en documentopslag; (b) onderhoud, updates en incidentafhandeling; (c) de
+   AI-extractie van documentgegevens via het Anthropic-API-account van Verwerker; (d) de
+   e-mail- en notificatievoorzieningen van de programmatuur (intake-postvak, uitgaande
+   systeemmail, pushmeldingen) en de distributie van de bijbehorende mobiele
+   accordeur-applicatie via de store-accounts van Verwerker.
 2. De verwerking omvat geen zelfstandig gebruik door Verwerker; Verwerker bepaalt doel noch
    middelen anders dan de technische inrichting binnen de instructies van Verantwoordelijke.
 3. Duur: zolang de terbeschikkingstelling van de programmatuur voortduurt (zie artikel 10).
@@ -68,8 +77,12 @@ dataregio `europe-west4`, back-ups met point-in-time recovery).
 ## Artikel 7 — Doorgifte buiten de EER
 
 Doorgifte vindt uitsluitend plaats met een passend doorgiftemechanisme (adequaatheidsbesluit,
-EU Standard Contractual Clauses of EU-U.S. Data Privacy Framework). Voor Google Cloud loopt
+EU Standard Contractual Clauses of EU-U.S. Data Privacy Framework); het toepasselijke
+mechanisme staat per subverwerker in Bijlage B. Voor Google Cloud en Google Workspace loopt
 dit via het Cloud Data Processing Addendum; dataopslag is geconfigureerd in `europe-west4`.
+Voor Anthropic rust de doorgifte op de EU SCC's in Anthropics Data Processing Addendum
+(verwerking en opslag in de VS; Anthropic is niet DPF-gecertificeerd — registercheck
+2026-08-15).
 
 ## Artikel 8 — Bijstand aan Verantwoordelijke
 
@@ -110,19 +123,28 @@ hun certificeringen/auditrapporten (ISO 27001, SOC 2) waar beschikbaar.
 verwerkingsregister van Verantwoordelijke (document 1), beperkt tot hosting/opslag/verwerking
 binnen de RLZ Boekingsmodule.
 
-**Bijlage B — Subverwerkers van PDL**: Google Cloud EMEA Ltd. (hosting, database,
-documentopslag; regio `europe-west4`; CDPA incl. SCC's/DPF). *(Invulpunt: staan het
-Anthropic-API-account en/of het Exact Reeleezee-abonnement op naam van PDL in plaats van het
-kantoor, dan hier toevoegen en documenten 1–2 overeenkomstig aanpassen.)*
+**Bijlage B — Subverwerkers van PDL** (accounthouder is telkens Verwerker):
+
+| Subverwerker | Dienst | Datalocatie & doorgifte | Contract/grondslag |
+|---|---|---|---|
+| Google Cloud EMEA Ltd. | Hosting, database, documentopslag en achtergrondjobs — Google Cloud-project `rlz-boekhouding` in de PDL Powerhouse-organisatie | EU, regio `europe-west4` (EU-organisatiebeleid; CMEK, platformbesluit 0021) | Cloud Data Processing Addendum (versie 8 juni 2026, gearchiveerd) incl. EU SCC's; Google is DPF-gecertificeerd |
+| Google Workspace (Google Cloud EMEA Ltd.) | E-mailvoorziening: intake-postvak `facturen@ak-nijenhuis.nl` (IMAP) en uitgaande systeemmail (uitnodigingen, herinneringen) — Workspace-omgeving van PDL | EU/doorgifte conform CDPA | Zelfde CDPA; Workspace expliciet in scope (geverifieerd 2026-08-15) |
+| Anthropic Ireland, Limited | AI-extractie van documentgegevens (Claude API) — API-organisatieaccount van PDL; alleen actief achter de AVG-gate `intake_ai_ingeschakeld` | Verwerking en opslag in de VS; doorgifte op de EU SCC's in de DPA (niet DPF-gecertificeerd); geen training op klantdata (Commercial Terms 17-06-2025); Zero Data Retention aangevraagd 2026-08-14, uitkomst open | Commercial Terms of Service (17-06-2025) + Data Processing Addendum (24-02-2025), beide gearchiveerd |
+| Apple Inc. / Apple Distribution International Ltd. | Distributie van de accordeur-app (App Store/TestFlight) en pushmeldingen via APNs — Apple Developer-account van PDL; pushberichten bevatten apparaat-tokens maar geen financiële gegevens of documentinhoud | Doorgifte VS mogelijk (APNs) | [INVULLEN: Apple-DPA/doorgiftecheck archiveren — uitbreiding verwerkers-checklist, vóór livegang van de iOS-app] |
+| Google Ireland Ltd. (Google Play + Firebase Cloud Messaging) | Distributie van de Android-app (Play Console van PDL) en pushmeldingen via FCM — **vanaf activering van de Android-app** (nu nog niet live) | Doorgifte conform Google-voorwaarden | [INVULLEN: FCM-/Play-DPA-check archiveren — AVG-afweging Firebase is een open beslispunt, vóór livegang van de Android-app] |
+
+*Geen subverwerker van PDL:* **Exact Reeleezee (Exact Group B.V.)** — rechtstreeks
+gecontracteerd door Verantwoordelijke (bestaande relatie; VWO 1.5/1.6, EU/EER-datalocatie
+en API-toegang bevestigd — zie de verwerkers-checklist, document 2).
 
 **Bijlage C — Beveiligingsmaatregelen**: de maatregelen zoals beschreven in
 verwerkingsregister §8 (document 1), die hier als herhaald en ingelast gelden.
 
-*Aldus overeengekomen en ondertekend in tweevoud:*
+*Aldus overeengekomen en ondertekend in tweevoud te Arnhem:*
 
-| Administratiekantoor Nijenhuis | PDL Powerhouse B.V. |
+| Administratiekantoor Nijenhuis C.V. | PDL Powerhouse B.V. |
 |---|---|
-| Naam: | Naam: |
-| Functie: | Functie: |
+| Naam: [INVULLEN] | Naam: [INVULLEN] |
+| Functie: [INVULLEN: beherend vennoot / gevolmachtigde] | Functie: [INVULLEN: bestuurder / gevolmachtigde] |
 | Datum: | Datum: |
 | Handtekening: | Handtekening: |
