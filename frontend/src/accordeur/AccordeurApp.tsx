@@ -55,10 +55,11 @@ function useManifest(): void {
     const vorigeTitel = document.title
     document.title = 'RLZ Goedkeuren'
     const elementen: HTMLElement[] = []
-    const voegLink = (rel: string, href: string) => {
+    const voegLink = (rel: string, href: string, type?: string) => {
       const el = document.createElement('link')
       el.rel = rel
       el.href = href
+      if (type) el.type = type
       document.head.appendChild(el)
       elementen.push(el)
     }
@@ -70,6 +71,9 @@ function useManifest(): void {
       elementen.push(el)
     }
     voegLink('manifest', '/accordeur.webmanifest')
+    // Eigen favicon (het N-beeldmerk) — overstemt de kantoor-favicon uit index.html zolang
+    // de accordeur-app gemonteerd is; opruimen bij unmount zet de kantoor-favicon terug.
+    voegLink('icon', '/icons/accordeur-icoon.svg', 'image/svg+xml')
     voegLink('apple-touch-icon', '/icons/apple-touch-icon-accordeur.png')
     voegMeta('apple-mobile-web-app-capable', 'yes')
     voegMeta('apple-mobile-web-app-status-bar-style', 'black-translucent')
