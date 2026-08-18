@@ -3,6 +3,7 @@
   "segmenten": [
     "/.well-known",
     "/accordering",
+    "/accordeur",
     "/administraties",
     "/auth",
     "/bank",
