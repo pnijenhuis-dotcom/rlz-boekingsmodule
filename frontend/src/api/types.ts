@@ -568,8 +568,15 @@ export interface ZoekAuditHitDto {
   detail: Record<string, unknown> | null
 }
 
+/** Administratie waarvan de naam matcht — link naar de klantpagina (veegrun 2026-08-18). */
+export interface ZoekAdministratieHitDto {
+  administratie_id: string
+  naam: string
+}
+
 export interface ZoekResponseDto {
   term: string
+  administraties: ZoekAdministratieHitDto[]
   documenten: ZoekDocumentHitDto[]
   audit: ZoekAuditHitDto[]
 }

@@ -90,8 +90,15 @@ class AuditHit:
 
 
 @dataclass(frozen=True)
+class AdministratieHit:
+    administratie_id: uuid.UUID
+    naam: str
+
+
+@dataclass(frozen=True)
 class ZoekResultaat:
     term: str
+    administraties: list[AdministratieHit]
     documenten: list[DocumentHit]
     audit: list[AuditHit]
 
@@ -344,8 +351,17 @@ def zoek(*, actor_id: uuid.UUID, rol: GebruikerRol, term: str) -> ZoekResultaat:
     korte term geeft bewust een leeg resultaat (geen full-table-dumps)."""
     term = term.strip()
     if len(term) < _MIN_TERM_LENGTE:
-        return ZoekResultaat(term=term, documenten=[], audit=[])
+        return ZoekResultaat(term=term, administraties=[], documenten=[], audit=[])
     administraties = auth_service.mijn_administraties(actor_id=actor_id, rol=rol)
+
+    # Administratie-hits (veegrun 2026-08-18): klantnaam matcht → link naar de klantpagina.
+    # Scope-veilig zonder extra query: de naam-match loopt uitsluitend over de eigen
+    # scope-lijst die hierboven al is opgehaald (beheerder = alles, anders koppeltabel).
+    administratie_hits = [
+        AdministratieHit(administratie_id=a.id, naam=a.naam)
+        for a in administraties
+        if term.lower() in a.naam.lower()
+    ]
 
     documenten: list[DocumentHit] = []
     audit: list[AuditHit] = []
@@ -362,7 +378,7 @@ def zoek(*, actor_id: uuid.UUID, rol: GebruikerRol, term: str) -> ZoekResultaat:
         )
     documenten.sort(key=lambda hit: hit.aangemaakt_op, reverse=True)
     audit.sort(key=lambda hit: hit.tijdstip, reverse=True)
-    return ZoekResultaat(term=term, documenten=documenten, audit=audit)
+    return ZoekResultaat(term=term, administraties=administratie_hits, documenten=documenten, audit=audit)
 
 
 @dataclass(frozen=True)

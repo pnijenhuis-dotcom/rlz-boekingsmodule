@@ -96,7 +96,11 @@ export function ZoekenScreen() {
   }, [term, poging])
 
   const geenResultaten =
-    resultaat !== null && !laden && resultaat.documenten.length === 0 && resultaat.audit.length === 0
+    resultaat !== null &&
+    !laden &&
+    resultaat.administraties.length === 0 &&
+    resultaat.documenten.length === 0 &&
+    resultaat.audit.length === 0
 
   return (
     <div>
@@ -105,7 +109,7 @@ export function ZoekenScreen() {
       </div>
       <div className="panel">
         <input
-          placeholder="Zoek op leverancier, factuurnummer, boekstuknummer, bedrag…"
+          placeholder="Zoek op klantnaam, leverancier, factuurnummer, boekstuknummer, bedrag…"
           aria-label="Globaal zoeken"
           autoFocus
           value={term}
@@ -147,7 +151,38 @@ export function ZoekenScreen() {
 
         {resultaat !== null && !laden && !geenResultaten && (
           <>
-            <h2>Boekingen ({resultaat.documenten.length})</h2>
+            {/* Administratie-hits (klantnaam) — alleen tonen bij treffers: het is een
+                snelkoppeling naar de klantpagina, geen verplichte sectie. */}
+            {resultaat.administraties.length > 0 && (
+              <>
+                <h2>Administraties ({resultaat.administraties.length})</h2>
+                <table>
+                  <tbody>
+                    <tr>
+                      <th>Klant</th>
+                    </tr>
+                    {resultaat.administraties.map((hit) => (
+                      <tr
+                        key={hit.administratie_id}
+                        className="clickable"
+                        onClick={() => navigate(`/?administratie=${hit.administratie_id}`)}
+                      >
+                        <td>
+                          <b>{hit.naam}</b>
+                          <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 8 }}>
+                            naar klantpagina
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            <h2 style={{ marginTop: resultaat.administraties.length > 0 ? 18 : undefined }}>
+              Boekingen ({resultaat.documenten.length})
+            </h2>
             {resultaat.documenten.length === 0 ? (
               <p className="hint">Geen boekingen gevonden.</p>
             ) : (
@@ -226,8 +261,8 @@ export function ZoekenScreen() {
         )}
 
         <div className="hint" style={{ marginTop: 14 }}>
-          Doorzoekt alles in één keer: boekingen (ook gearchiveerd, mét RLZ-boekstuk), accorderingshistorie (wie
-          keurde wanneer, welke laag), vragen &amp; antwoorden en audit-gebeurtenissen.
+          Doorzoekt alles in één keer: administraties (klantnaam), boekingen (ook gearchiveerd, mét RLZ-boekstuk),
+          accorderingshistorie (wie keurde wanneer, welke laag), vragen &amp; antwoorden en audit-gebeurtenissen.
         </div>
       </div>
     </div>

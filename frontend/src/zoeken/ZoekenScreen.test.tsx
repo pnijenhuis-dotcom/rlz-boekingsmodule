@@ -33,6 +33,7 @@ function documentHit(overrides: Record<string, unknown> = {}) {
 }
 
 function installFetchMock(body: {
+  administraties?: unknown[]
   documenten?: unknown[]
   audit?: unknown[]
 }) {
@@ -43,7 +44,12 @@ function installFetchMock(body: {
       if (pad.startsWith('/zoeken?term=')) {
         const term = decodeURIComponent(pad.slice('/zoeken?term='.length))
         return Promise.resolve(
-          jsonResponse({ term, documenten: body.documenten ?? [], audit: body.audit ?? [] }),
+          jsonResponse({
+            term,
+            administraties: body.administraties ?? [],
+            documenten: body.documenten ?? [],
+            audit: body.audit ?? [],
+          }),
         )
       }
       return Promise.resolve(new Response(null, { status: 404 }))
@@ -201,5 +207,24 @@ describe('ZoekenScreen — globaal zoeken (mockup #zoeken)', () => {
     await gebruiker.click(screen.getByText(/Bouwmaat Nederland B\.V\./))
 
     await waitFor(() => expect(screen.getByText('omzetreview-probe')).toBeInTheDocument())
+  })
+
+  it('administratie-hit: klantnaam matcht → sectie Administraties, klik gaat naar de klantpagina', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({ administraties: [{ administratie_id: ADMINISTRATIE_ID, naam: 'Kempen Groep B.V.' }] })
+    render(
+      <MemoryRouter initialEntries={['/zoeken']}>
+        <Routes>
+          <Route path="/zoeken" element={<ZoekenScreen />} />
+          <Route path="/" element={<div>klantpagina-probe</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await gebruiker.type(screen.getByLabelText('Globaal zoeken'), 'kempen')
+    await waitFor(() => expect(screen.getByText('Administraties (1)')).toBeInTheDocument())
+    await gebruiker.click(screen.getByText('Kempen Groep B.V.'))
+
+    await waitFor(() => expect(screen.getByText('klantpagina-probe')).toBeInTheDocument())
   })
 })

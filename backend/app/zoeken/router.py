@@ -53,8 +53,14 @@ class AuditHitDto(BaseModel):
     detail: dict | None
 
 
+class AdministratieHitDto(BaseModel):
+    administratie_id: uuid.UUID
+    naam: str
+
+
 class ZoekResponse(BaseModel):
     term: str
+    administraties: list[AdministratieHitDto]
     documenten: list[DocumentHitDto]
     audit: list[AuditHitDto]
 
@@ -86,6 +92,7 @@ def globaal_zoeken(
     resultaat = service.zoek(actor_id=actor.id, rol=actor.rol, term=term)
     return ZoekResponse(
         term=resultaat.term,
+        administraties=[AdministratieHitDto(**vars(hit)) for hit in resultaat.administraties],
         documenten=[
             DocumentHitDto(
                 document_id=hit.document_id,

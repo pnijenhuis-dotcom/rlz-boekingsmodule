@@ -162,7 +162,37 @@ class TestZoeken:
 
     def test_te_korte_term_geeft_leeg_resultaat(self, gescoopte_gebruiker: uuid.UUID) -> None:  # noqa: F811
         resultaat = zoeken_service.zoek(actor_id=gescoopte_gebruiker, rol=GebruikerRol.BOEKHOUDING, term="x")
-        assert resultaat.documenten == [] and resultaat.audit == []
+        assert resultaat.documenten == [] and resultaat.audit == [] and resultaat.administraties == []
+
+    def test_administratienaam_treffer_case_insensitief(
+        self,
+        gescoopte_gebruiker: uuid.UUID,  # noqa: F811
+        administratie_id: uuid.UUID,  # noqa: F811
+    ) -> None:
+        resultaat = zoeken_service.zoek(
+            actor_id=gescoopte_gebruiker, rol=GebruikerRol.BOEKHOUDING, term="scope-TEST"
+        )
+        assert [(h.administratie_id, h.naam) for h in resultaat.administraties] == [
+            (administratie_id, "Scope-test")
+        ]
+
+    def test_administratienaam_scope_veilig(
+        self,
+        gescoopte_gebruiker: uuid.UUID,  # noqa: F811
+        beheerder_id: uuid.UUID,  # noqa: F811
+        andere_administratie: uuid.UUID,
+        administratie_id: uuid.UUID,  # noqa: F811
+    ) -> None:
+        # 'Andere klant' bestaat maar zit niet in de scope van de gebruiker — géén naam-hit.
+        resultaat = zoeken_service.zoek(
+            actor_id=gescoopte_gebruiker, rol=GebruikerRol.BOEKHOUDING, term="Andere klant"
+        )
+        assert resultaat.administraties == []
+        # Een Beheerder ziet 'm wél (platform-brede scope).
+        beheerder_resultaat = zoeken_service.zoek(
+            actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER, term="Andere klant"
+        )
+        assert [h.administratie_id for h in beheerder_resultaat.administraties] == [andere_administratie]
 
 
 class TestArchief:
