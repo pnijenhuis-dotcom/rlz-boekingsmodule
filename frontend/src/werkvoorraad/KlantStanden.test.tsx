@@ -36,10 +36,13 @@ function installMock({
   documenten = [] as unknown[],
   rekeningen = [] as unknown[],
   vragen = [] as unknown[],
+  laatstHerinnerd = {} as Record<string, string>,
 } = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
+      if (url.endsWith('/accordering/herinneringen'))
+        return Promise.resolve(jsonResponse({ laatst_herinnerd: laatstHerinnerd }))
       if (url.includes('/documenten')) return Promise.resolve(jsonResponse({ documenten }))
       if (url.includes('/rekeningen'))
         return Promise.resolve(
@@ -134,6 +137,25 @@ describe('KlantStanden (klantpagina = standen)', () => {
     expect(screen.queryByText('Openstaande vragen')).not.toBeInTheDocument()
     expect(screen.queryByText('Bij klant ter accordering')).not.toBeInTheDocument()
     expect(screen.queryByText('Bank — af te letteren')).not.toBeInTheDocument()
+  })
+
+  it('dagrem herinner-knop: vandaag al herinnerd = disabled mét tijdstip, ouder = actief', async () => {
+    const vandaagDoc = doc({ id: 'dddddddd-0000-0000-0000-000000000001', status: 'ter_accordering' })
+    const gisterenDoc = doc({ id: 'dddddddd-0000-0000-0000-000000000002', status: 'ter_accordering' })
+    installMock({
+      documenten: [vandaagDoc, gisterenDoc],
+      laatstHerinnerd: {
+        [vandaagDoc.id as string]: new Date().toISOString(),
+        [gisterenDoc.id as string]: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      },
+    })
+    renderStanden()
+
+    await waitFor(() => expect(screen.getByText('Bij klant ter accordering')).toBeInTheDocument())
+    expect(await screen.findByText(/vandaag al herinnerd om \d{2}:\d{2}/)).toBeInTheDocument()
+    const knoppen = screen.getAllByRole('button', { name: 'Herinner' })
+    expect(knoppen).toHaveLength(2)
+    expect(knoppen.filter((k) => (k as HTMLButtonElement).disabled)).toHaveLength(1)
   })
 
   it('een open vraag verschijnt in de vragen-sectie met beantwoorden-link', async () => {

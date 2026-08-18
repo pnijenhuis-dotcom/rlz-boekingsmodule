@@ -7,6 +7,7 @@ import {
   type AccorderingDto,
   type AccorderingStapDto,
 } from '../accordering/accorderingApi'
+import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDag'
 
 function formatTijdstip(iso: string | null): string {
   if (!iso) return '—'
@@ -144,8 +145,20 @@ export function AccorderingSectie({
       {fout && <div className="fout">{fout}</div>}
       {accordering.status === 'open' && (
         <div className="actions">
-          <button type="button" className="btn secondary" disabled={herinnerBezig} onClick={() => void herinneren()}>
-            {herinnerBezig ? 'Bezig…' : 'Herinner accordeur'}
+          {/* Dagrem gespiegeld (max 1 per document per dag, Europe/Amsterdam): vandaag al
+              verzonden = knop disabled mét tijdstip i.p.v. fout-ná-klik. Een mislukte
+              poging zit niet in laatst_herinnerd → knop blijft actief (herkansing). */}
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={herinnerBezig || isVandaagHerinnerd(laatstHerinnerd)}
+            onClick={() => void herinneren()}
+          >
+            {herinnerBezig
+              ? 'Bezig…'
+              : isVandaagHerinnerd(laatstHerinnerd) && laatstHerinnerd
+                ? `Vandaag al herinnerd om ${herinnerTijdLabel(laatstHerinnerd)}`
+                : 'Herinner accordeur'}
           </button>
           <button type="button" className="btn secondary" disabled={bezig} onClick={() => void intrekken()}>
             {bezig ? 'Bezig…' : 'Terughalen uit accordering'}

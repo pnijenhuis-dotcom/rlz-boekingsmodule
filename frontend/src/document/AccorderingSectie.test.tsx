@@ -26,7 +26,7 @@ function stap(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function installFetchMock(accordering: unknown, intrekkenAanroepen?: string[]) {
+function installFetchMock(accordering: unknown, intrekkenAanroepen?: string[], laatstHerinnerd?: string) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -34,10 +34,24 @@ function installFetchMock(accordering: unknown, intrekkenAanroepen?: string[]) {
         intrekkenAanroepen?.push(url)
         return Promise.resolve(jsonResponse({ ...(accordering as object), status: 'ingetrokken' }))
       }
+      if (url.endsWith('/accordering/herinneringen')) {
+        return Promise.resolve(
+          jsonResponse({ laatst_herinnerd: laatstHerinnerd ? { [DOCUMENT_ID]: laatstHerinnerd } : {} }),
+        )
+      }
       if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(accordering))
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
   )
+}
+
+const OPEN_ACCORDERING = {
+  id: 'acc-1',
+  document_id: DOCUMENT_ID,
+  status: 'open',
+  aangeboden_op: '2026-08-08T10:00:00Z',
+  afgerond_op: null,
+  stappen: [stap()],
 }
 
 describe('AccorderingSectie', () => {
@@ -121,5 +135,37 @@ describe('AccorderingSectie', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Terughalen uit accordering/ }))
     await waitFor(() => expect(intrekkenAanroepen).toHaveLength(1))
     expect(onGewijzigd).toHaveBeenCalled()
+  })
+
+  it('dagrem: vandaag al herinnerd = knop disabled mét tijdstip (geen fout-ná-klik)', async () => {
+    installFetchMock(OPEN_ACCORDERING, undefined, new Date().toISOString())
+    render(
+      <AccorderingSectie
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        documentStatus="ter_accordering"
+        onGewijzigd={() => {}}
+      />,
+    )
+
+    const knop = await screen.findByRole('button', { name: /Vandaag al herinnerd om \d{2}:\d{2}/ })
+    expect(knop).toBeDisabled()
+  })
+
+  it('dagrem: gisteren herinnerd = knop gewoon actief (nieuwe dag, nieuwe claim)', async () => {
+    const gisteren = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    installFetchMock(OPEN_ACCORDERING, undefined, gisteren)
+    render(
+      <AccorderingSectie
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        documentStatus="ter_accordering"
+        onGewijzigd={() => {}}
+      />,
+    )
+
+    const knop = await screen.findByRole('button', { name: 'Herinner accordeur' })
+    expect(knop).toBeEnabled()
+    expect(screen.getByText(/laatst herinnerd/)).toBeInTheDocument()
   })
 })

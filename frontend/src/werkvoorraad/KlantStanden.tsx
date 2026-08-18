@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { haalLaatstHerinnerd, herinnerAccordeur } from '../accordering/accorderingApi'
+import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDag'
 import { apiJson } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
@@ -373,10 +374,19 @@ export function KlantStanden({
                         : '—'}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
+                      {/* Dagrem gespiegeld (max 1 per document per dag, Europe/Amsterdam):
+                          vandaag al verzonden = knop disabled i.p.v. fout-ná-klik. Een
+                          mislukte poging zit niet in laatst_herinnerd → knop blijft actief
+                          (herkansing). */}
                       <Button
                         variant="secundair"
                         maat="klein"
-                        disabled={herinnerBezig === d.id}
+                        disabled={herinnerBezig === d.id || isVandaagHerinnerd(laatstHerinnerd[d.id])}
+                        title={
+                          isVandaagHerinnerd(laatstHerinnerd[d.id])
+                            ? `Vandaag al herinnerd om ${herinnerTijdLabel(laatstHerinnerd[d.id])}`
+                            : undefined
+                        }
                         onClick={(e) => {
                           e.stopPropagation()
                           void herinneren(d.id)
@@ -384,6 +394,9 @@ export function KlantStanden({
                       >
                         {herinnerBezig === d.id ? 'Bezig…' : 'Herinner'}
                       </Button>
+                      {isVandaagHerinnerd(laatstHerinnerd[d.id]) && (
+                        <div className="hint">vandaag al herinnerd om {herinnerTijdLabel(laatstHerinnerd[d.id])}</div>
+                      )}
                     </td>
                   </tr>
                 ))}
