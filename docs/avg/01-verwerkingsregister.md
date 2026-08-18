@@ -1,7 +1,7 @@
 # Verwerkingsregister (art. 30 AVG) — RLZ Boekingsmodule
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld.**
-> Opgesteld 2026-08-11. Dit register beschrijft de verwerkingen die Administratiekantoor
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
+> — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Opgesteld 2026-08-11. Dit register beschrijft de verwerkingen die Administratiekantoor
 > Nijenhuis uitvoert **via de RLZ-boekingsmodule**. Verwerkingen buiten de module (papieren
 > dossier, e-mailverkeer buiten de intake, loonadministratie in andere pakketten) vallen erbuiten
 > en horen in het kantoorbrede register.
@@ -12,7 +12,7 @@
 |---|---|
 | Verwerkingsverantwoordelijke | Administratiekantoor Nijenhuis (rolbepaling: zie [03-verwerker-vs-verantwoordelijke.md](03-verwerker-vs-verantwoordelijke.md) — het kantoor is voor de administratievoering zelfstandig verwerkingsverantwoordelijke) |
 | Contactpersoon | P. Nijenhuis |
-| Functionaris gegevensbescherming | n.v.t. (geen FG-plicht verwacht; juridisch toetsen) |
+| Functionaris gegevensbescherming | n.v.t. (geen FG-plicht; register meegetoetst — jurist-akkoord 2026-08-12, toetsvraag 5) |
 | Verwerkers (via de module) | Anthropic Ireland, Limited (Claude API — AI-extractie; contractspartij EEA), Exact Reeleezee (boekhoudpakket, bron van waarheid), PDL Powerhouse B.V. (eigenaar software + hosting — intra-groep verwerkersovereenkomst, concept [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md), jurist-akkoord vraag 9 2026-08-12), Google Cloud EMEA Ltd. (hosting/database/documentopslag — subverwerker ván PDL; cloudomgeving staat sinds 2026-08-14, klantdata pas ná de F5-poort), Google Workspace (e-mailprovider intake-postvak `facturen@ak-nijenhuis.nl` — sinds IMAP-activatie 2026-08-15, DPA = CDPA, checklist D) — details en contractstatus: [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) |
 | Doorgifte buiten de EER | Ja, naar de VS (Anthropic Claude API). Zie §9 (doorgifte-/CLOUD Act-notitie) |
 

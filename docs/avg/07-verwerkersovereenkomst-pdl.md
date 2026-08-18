@@ -1,7 +1,8 @@
 # Verwerkersovereenkomst (intra-groep) — Administratiekantoor Nijenhuis ↔ PDL Powerhouse B.V.
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld** (vraag 9 van het
-> toetsingsmemo). Opgesteld 2026-08-12. Aanname die de jurist moet bevestigen: PDL is
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (vraag 9 van het toetsingsmemo; intern
+> opgesteld, juridische toetsing afgerond). **Blijft concept tot ondertekening.**
+> Opgesteld 2026-08-12. Door de jurist meegetoetste aanname: PDL is
 > verwerker voor **hosting en software-exploitatie**; Google Cloud is subverwerker ván PDL;
 > het kantoor contracteert **Anthropic en Exact Reeleezee rechtstreeks** (accounts op naam
 > van het kantoor) zodat documenten 1–3 ongewijzigd kloppen. Staan die accounts feitelijk op

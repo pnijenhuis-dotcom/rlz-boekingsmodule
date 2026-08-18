@@ -1,8 +1,9 @@
 # DPIA-lichte toets — AI-extractie van boekhouddocumenten
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld.**
-> Dit is een lichte, gestructureerde risicotoets (pre-DPIA). De slotafweging in §6 — of een
-> volledige DPIA (art. 35 AVG) nodig is — moet juridisch worden bevestigd.
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
+> — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Dit is een lichte, gestructureerde
+> risicotoets (pre-DPIA); de slotafweging in §6 — of een volledige DPIA (art. 35 AVG) nodig
+> is — is bij die toetsing juridisch bevestigd.
 
 ## 1. Beschrijving van de verwerking
 

@@ -3,6 +3,9 @@
 > Van: P. Nijenhuis, Administratiekantoor Nijenhuis · Datum: 2026-08-11
 > Bijgevoegd: zes conceptdocumenten (hierna). Alle stukken zijn intern opgesteld (met
 > AI-ondersteuning) en **niet door een jurist geschreven** — vandaar dit verzoek.
+>
+> ✅ **Status: beantwoord — jurist-akkoord 2026-08-12 op alle 9 toetsvragen** (zie
+> `docs/BESLISSINGEN.md` "AVG-compliance"). Dit memo blijft bewaard zoals verzonden.
 
 ## Context in vijf zinnen
 

@@ -1,13 +1,14 @@
 # Activatie-checklist — volgorde van de gates
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld.**
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
+> — zie `docs/BESLISSINGEN.md` "AVG-compliance"); sindsdien de operationele leidraad.
 > Harde regel (besluit Peter 2026-08-11): dit pakket is de poort vóór AI op echte klantdata
 > en vóór klantdata in de cloud. Een gate gaat pas AAN als alle vinkjes van zijn stap staan.
 
 ## Stap 0 — nu (fundament, geen gate)
 
-- [ ] Dit AVG-pakket juridisch getoetst (alle vijf documenten) — statusupdate in
-      `docs/BESLISSINGEN.md` "AVG-compliance".
+- [x] Dit AVG-pakket juridisch getoetst (alle vijf documenten) — **gedaan: jurist-akkoord
+      2026-08-12**, statusupdate in `docs/BESLISSINGEN.md` "AVG-compliance" staat.
 - [ ] Datalek-procedure kantoorbreed beschreven (meldplicht 72 u; wie meldt, wie beoordeelt).
 - [ ] Privacyverklaring kantoor actueel (verwijzing naar register + tekstblok doc 3).
 
@@ -82,8 +83,8 @@ gewicht op de gedocumenteerde waarborgen):
       **opdracht-/gebruiksvoorwaarden + privacyverklaring** en vraagt expliciet akkoord vóór
       het eerste gebruik; het akkoord (wie, wanneer, welke tekstversie) landt in het
       append-only audit log.
-- [ ] De **concept-akkoordtekst (bijlage A)** is juridisch getoetst vóórdat de eerste échte
-      accordeur live gaat.
+- [x] De **akkoordtekst (bijlage A)** is juridisch getoetst vóórdat de eerste échte
+      accordeur live gaat — **gedaan: jurist-akkoord 2026-08-12**.
 
 ## Samenvatting: wat blokkeert wat
 
@@ -96,12 +97,11 @@ AVG-pakket getoetst (stap 0)
                  └─► opt-ins per administratie (stap 3)
 ```
 
-## Bijlage A — concept-akkoordtekst activeringsflow accordeur
+## Bijlage A — akkoordtekst activeringsflow accordeur
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld.** Vóór gebruik door
-> een jurist laten toetsen (zelfde disclaimer als de rest van dit pakket). Placeholders
-> tussen [ ] worden per klant/administratie ingevuld; de getoonde tekstversie + datum worden
-> bij elk akkoord vastgelegd.
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (meegetoetst met de rest van dit pakket).
+> Placeholders tussen [ ] worden per klant/administratie ingevuld; de getoonde tekstversie +
+> datum worden bij elk akkoord vastgelegd.
 
 ---
 

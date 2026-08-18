@@ -1,7 +1,7 @@
 # Datalek-procedure (meldplicht art. 33/34 AVG) — Administratiekantoor Nijenhuis
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld.**
-> Opgesteld 2026-08-11 als invulling van restpunt §5.3 uit de DPIA-lichte toets. Kantoorbreed:
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
+> — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Opgesteld 2026-08-11 als invulling van restpunt §5.3 uit de DPIA-lichte toets. Kantoorbreed:
 > geldt voor incidenten in de RLZ-boekingsmodule, Reeleezee, e-mail en papier.
 
 ## 1. Wat is een datalek (werkdefinitie)

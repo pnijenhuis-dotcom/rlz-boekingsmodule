@@ -1,7 +1,7 @@
 # Subverwerkers-checklist — verwerkersovereenkomsten per partij
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld.**
-> Links en voorwaarden geverifieerd via web op **2026-08-11**; DPA-voorwaarden wijzigen —
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
+> — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Links en voorwaarden geverifieerd via web op **2026-08-11**; DPA-voorwaarden wijzigen —
 > her-verifieer bij ondertekening.
 
 Terminologie: omdat het kantoor voor de administratievoering **zelfstandig

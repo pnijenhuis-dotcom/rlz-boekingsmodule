@@ -1,8 +1,9 @@
 # Verwerker vs. verwerkingsverantwoordelijke — rolbepaling per dienst
 
-> ⚠️ **Concept ter juridische toetsing — niet door een jurist opgesteld.**
-> De rolbepaling hieronder volgt de branche-richtsnoeren maar is een inschatting; laat de
-> conclusie én het tekstblok in §4 juridisch toetsen vóór gebruik richting klanten.
+> ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
+> — zie `docs/BESLISSINGEN.md` "AVG-compliance"). De rolbepaling volgt de
+> branche-richtsnoeren; de conclusie én het tekstblok in §4 zijn juridisch getoetst en
+> bruikbaar richting klanten.
 
 ## 1. Kader
 
@@ -52,7 +53,7 @@ wettelijke normen (AWR, beroepsregels) en is daarmee doorgaans **geen** verwerke
 
 ## 4. Concept-tekstblok voor de klantovereenkomst (bijlage bij de opdrachtvoorwaarden)
 
-> ⚠️ Concept — juridisch toetsen vóór gebruik.
+> ✅ Getoetst — jurist-akkoord 2026-08-12 (toetsvraag 2); bruikbaar richting klanten.
 
 ---
 
