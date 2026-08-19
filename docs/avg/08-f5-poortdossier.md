@@ -186,9 +186,14 @@ account als `vastly-504108`); read-only geverifieerd bij de F0-uitvoering (GCP_U
 §"F0 — UITGEVOERD": billing aan, org-policy effectief, SA's/WIF onder het project).
 Domein `administratiekantoornijenhuis.nl` is in eigen bezit (beslispunt 3). De
 eigendomsverhouding software/hosting (PDL) ↔ verwerkingsverantwoordelijke (kantoor) is
-juridisch belegd via de intra-groep verwerkersovereenkomst (concept
-`07-verwerkersovereenkomst-pdl.md`, jurist-akkoord vraag 9, 2026-08-12) — ondertekening
-is onderdeel van de livegang-administratie.
+juridisch belegd via de intra-groep verwerkersovereenkomst
+(`07-verwerkersovereenkomst-pdl.md`, jurist-akkoord vraag 9, 2026-08-12) —
+✅ **GETEKEND 2026-08-19** (in tweevoud te Arnhem, beide partijen P.W. Nijenhuis,
+Directie; KvK kantoor 72504412): getekend exemplaar gearchiveerd als
+`docs/avg/Verwerkersovereenkomst-PDL-getekend-2026-08-18.pdf` (incl. Bijlagen A/B/C, ook
+los als `Bijlagen-A-B-C-…-2026-08-18.docx`). Daarmee is de laatste
+livegang-administratie-actie van dit poortpunt afgerond én de stap-1-voorwaarde
+"PDL-VWO getekend" uit `05-activatie-checklist.md` vervuld.
 
 ---
 

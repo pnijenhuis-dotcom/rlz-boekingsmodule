@@ -1,6 +1,15 @@
 # Verwerkersovereenkomst (intra-groep) — Administratiekantoor Nijenhuis ↔ PDL Powerhouse B.V.
 
-> ✅ **Ondertekenklaar — versie 2026-08-18** (jurist-akkoord op het concept 2026-08-12,
+> ✅✍️ **GETEKEND — 2026-08-19** (in tweevoud te Arnhem; beide partijen P.W. Nijenhuis,
+> Directie). Getekend exemplaar gearchiveerd:
+> `Verwerkersovereenkomst-PDL-getekend-2026-08-18.pdf` (hoofdtekst + Bijlagen A/B/C,
+> KvK kantoor 72504412 ingevuld); de bijlagen zijn ook los als docx bewaard
+> (`Bijlagen-A-B-C-Verwerkersovereenkomst-PDL-2026-08-18.docx`). Daarmee zijn de open
+> punten "KvK-nummer + ondertekenblok" gedicht en is de stap-1-voorwaarde
+> "PDL-verwerkersovereenkomst getekend" (document 5) vervuld. Dit md-bestand blijft de
+> canonieke tékst; het getekende PDF is het bindende exemplaar.
+>
+> Historie: **ondertekenklaar — versie 2026-08-18** (jurist-akkoord op het concept 2026-08-12,
 > vraag 9 van het toetsingsmemo). Het door de jurist meegetoetste invulpunt is in deze
 > versie ingevuld conform de **feitelijke accountstructuur**: het Anthropic-API-account
 > (organisatie), het Google Cloud-project, de Google Workspace-omgeving én de Apple
@@ -17,7 +26,7 @@
 **Partijen**
 
 1. **Administratiekantoor Nijenhuis C.V.**, gevestigd te Arnhem (Turfstraat 1, 6811 HL),
-   KvK [INVULLEN: KvK-nummer kantoor], hierna: *Verantwoordelijke*;
+   KvK 72504412, hierna: *Verantwoordelijke*;
 2. **PDL Powerhouse B.V.**, gevestigd te Arnhem (Turfstraat 1-3, 6811 HL), KvK 42063059,
    hierna: *Verwerker*.
 
@@ -142,11 +151,11 @@ en API-toegang bevestigd — zie de verwerkers-checklist, document 2).
 **Bijlage C — Beveiligingsmaatregelen**: de maatregelen zoals beschreven in
 verwerkingsregister §8 (document 1), die hier als herhaald en ingelast gelden.
 
-*Aldus overeengekomen en ondertekend in tweevoud te Arnhem:*
+*Aldus overeengekomen en ondertekend in tweevoud te Arnhem op 19 augustus 2026:*
 
 | Administratiekantoor Nijenhuis C.V. | PDL Powerhouse B.V. |
 |---|---|
-| Naam: [INVULLEN] | Naam: [INVULLEN] |
-| Functie: [INVULLEN: beherend vennoot / gevolmachtigde] | Functie: [INVULLEN: bestuurder / gevolmachtigde] |
-| Datum: | Datum: |
-| Handtekening: | Handtekening: |
+| Naam: P.W. Nijenhuis | Naam: P.W. Nijenhuis |
+| Functie: Directie | Functie: Directie |
+| Datum: 19 augustus 2026 | Datum: 19 augustus 2026 |
+| Handtekening: zie het getekende exemplaar (`Verwerkersovereenkomst-PDL-getekend-2026-08-18.pdf`) | Handtekening: idem |

@@ -9,3 +9,6 @@ backend/.pytest_cache/
 backend/.data/
 backend/*.egg-info/
 frontend/dist/
+
+# Word-lockbestanden (tijdelijk, ontstaan zolang een docx open staat)
+~$*

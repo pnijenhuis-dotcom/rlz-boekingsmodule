@@ -20,9 +20,12 @@
 
 Volgorde: eerst contracten, dan documenten, dan de knop.
 
-- [ ] **PDL-verwerkersovereenkomst getekend** (document 7 — ondertekenklaar 2026-08-18;
-      open: KvK-nummer kantoor + handtekeningen): de keten-schakel waarbinnen de
-      Anthropic-DPA hangt (het API-organisatieaccount staat op naam van PDL, Bijlage B).
+- [x] **PDL-verwerkersovereenkomst getekend** — **gedaan 2026-08-19**: in tweevoud
+      getekend te Arnhem (beide partijen P.W. Nijenhuis, Directie; KvK kantoor 72504412
+      ingevuld), gearchiveerd als
+      `Verwerkersovereenkomst-PDL-getekend-2026-08-18.pdf` (incl. Bijlagen A/B/C).
+      Dit is de keten-schakel waarbinnen de Anthropic-DPA hangt (het
+      API-organisatieaccount staat op naam van PDL, Bijlage B).
 - [ ] **Anthropic-DPA rond in de keten PDL ↔ Anthropic**: betaald API-account (organisatie,
       op naam van PDL Powerhouse), Commercial Terms geaccepteerd door PDL (= DPA incl.
       SCC's — voor de kantoor-klantdata is module 3 processor→processor de toepasselijke
