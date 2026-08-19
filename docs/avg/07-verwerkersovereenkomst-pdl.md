@@ -9,6 +9,14 @@
 > "PDL-verwerkersovereenkomst getekend" (document 5) vervuld. Dit md-bestand blijft de
 > canonieke tékst; het getekende PDF is het bindende exemplaar.
 >
+> **Bijlagen gesynchroniseerd (2026-08-19):** de Bijlagen A/B/C hieronder zijn 1-op-1 de
+> tekst uit de getekende versie (de nette Cowork-docx hierboven) — de getekende bijlagen
+> dragen exact deze bewoordingen, inclusief de term "Verwerkingsverantwoordelijke" (waar
+> de hoofdtekst de verkorte definitie "Verantwoordelijke" hanteert; zelfde partij).
+> Artikelverwijzing gecontroleerd: de meldprocedure waarnaar Bijlage B verwijst is
+> inderdaad artikel 6 (Subverwerkers, lid 2 — vooraf informeren + 14 dagen bezwaar).
+> Verzend-/teken-artefacten (docx/PDF) blijven ongemoeid.
+>
 > Historie: **ondertekenklaar — versie 2026-08-18** (jurist-akkoord op het concept 2026-08-12,
 > vraag 9 van het toetsingsmemo). Het door de jurist meegetoetste invulpunt is in deze
 > versie ingevuld conform de **feitelijke accountstructuur**: het Anthropic-API-account
@@ -130,26 +138,58 @@ hun certificeringen/auditrapporten (ISO 27001, SOC 2) waar beschikbaar.
 2. Bij strijd tussen deze overeenkomst en andere afspraken prevaleert deze overeenkomst voor
    zover het de verwerking van persoonsgegevens betreft.
 
-**Bijlage A — Verwerkingen en gegevens**: de verwerkingen zoals beschreven in het
-verwerkingsregister van Verantwoordelijke (document 1), beperkt tot hosting/opslag/verwerking
-binnen de RLZ Boekingsmodule.
+## Bijlage A — Verwerkingen en gegevens
 
-**Bijlage B — Subverwerkers van PDL** (accounthouder is telkens Verwerker):
+De verwerking betreft de verwerkingen zoals beschreven in het verwerkingsregister van
+Verwerkingsverantwoordelijke (document 1), beperkt tot hosting, opslag en verwerking binnen
+de RLZ Boekingsmodule.
 
-| Subverwerker | Dienst | Datalocatie & doorgifte | Contract/grondslag |
+Categorieën betrokkenen: leveranciers, afnemers/huurders, medewerkers en contactpersonen van
+klanten van Verwerkingsverantwoordelijke, alsmede gebruikers van de programmatuur
+(kantoormedewerkers en klant-accordeurs).
+
+Categorieën persoonsgegevens: gegevens zoals die voorkomen op boekhouddocumenten (namen,
+adressen, IBAN's, factuur- en betaalgegevens) en accountgegevens van gebruikers (naam,
+e-mailadres, authenticatiegegevens).
+
+Burgerservicenummers worden door de programmatuur niet geëxtraheerd of geïndexeerd;
+brondocumenten die een BSN bevatten worden uitsluitend als bestand bewaard in het kader van
+de wettelijke bewaarplicht.
+
+## Bijlage B — Overzicht van subverwerkers
+
+Verwerker maakt bij de uitvoering van deze overeenkomst gebruik van de onderstaande
+subverwerkers. Verwerker is telkens de accounthouder en contractspartij.
+Verwerkingsverantwoordelijke verleent voor deze subverwerkers algemene schriftelijke
+toestemming als bedoeld in artikel 28 lid 2 AVG; voor wijzigingen geldt de meldprocedure van
+artikel 6 van de overeenkomst.
+
+| Subverwerker | Dienstverlening | Datalocatie en doorgifte | Contractuele grondslag |
 |---|---|---|---|
-| Google Cloud EMEA Ltd. | Hosting, database, documentopslag en achtergrondjobs — Google Cloud-project `rlz-boekhouding` in de PDL Powerhouse-organisatie | EU, regio `europe-west4` (EU-organisatiebeleid; CMEK, platformbesluit 0021) | Cloud Data Processing Addendum (versie 8 juni 2026, gearchiveerd) incl. EU SCC's; Google is DPF-gecertificeerd |
-| Google Workspace (Google Cloud EMEA Ltd.) | E-mailvoorziening: intake-postvak `facturen@ak-nijenhuis.nl` (IMAP) en uitgaande systeemmail (uitnodigingen, herinneringen) — Workspace-omgeving van PDL | EU/doorgifte conform CDPA | Zelfde CDPA; Workspace expliciet in scope (geverifieerd 2026-08-15) |
-| Anthropic Ireland, Limited | AI-extractie van documentgegevens (Claude API) — API-organisatieaccount van PDL; alleen actief achter de AVG-gate `intake_ai_ingeschakeld` | Verwerking en opslag in de VS; doorgifte op de EU SCC's in de DPA (niet DPF-gecertificeerd); geen training op klantdata (Commercial Terms 17-06-2025); Zero Data Retention aangevraagd 2026-08-14, uitkomst open | Commercial Terms of Service (17-06-2025) + Data Processing Addendum (24-02-2025), beide gearchiveerd |
-| Apple Inc. / Apple Distribution International Ltd. | Distributie van de accordeur-app (App Store/TestFlight) en pushmeldingen via APNs — Apple Developer-account van PDL; pushberichten bevatten apparaat-tokens maar geen financiële gegevens of documentinhoud | Doorgifte VS mogelijk (APNs) | [INVULLEN: Apple-DPA/doorgiftecheck archiveren — uitbreiding verwerkers-checklist, vóór livegang van de iOS-app] |
-| Google Ireland Ltd. (Google Play + Firebase Cloud Messaging) | Distributie van de Android-app (Play Console van PDL) en pushmeldingen via FCM — **vanaf activering van de Android-app** (nu nog niet live) | Doorgifte conform Google-voorwaarden | [INVULLEN: FCM-/Play-DPA-check archiveren — AVG-afweging Firebase is een open beslispunt, vóór livegang van de Android-app] |
+| Google Cloud EMEA Ltd. | Hosting, database, documentopslag en achtergrondverwerking (Google Cloud-project rlz-boekhouding binnen de organisatie van Verwerker) | EU, regio europe-west4, afgedwongen door organisatiebeleid; versleuteling met klant-beheerde sleutels (CMEK) | Cloud Data Processing Addendum d.d. 8 juni 2026 (gearchiveerd), inclusief EU-modelcontractbepalingen; Google is gecertificeerd onder het EU-U.S. Data Privacy Framework |
+| Google Workspace (Google Cloud EMEA Ltd.) | E-mailvoorziening: ontvangst van administratiedocumenten (facturen@ak-nijenhuis.nl) en uitgaande systeemberichten (uitnodigingen, herinneringen) | EU; eventuele doorgifte conform het CDPA | Zelfde Cloud Data Processing Addendum; toepasselijkheid op Workspace geverifieerd op 15 augustus 2026 |
+| Anthropic Ireland, Limited | AI-ondersteunde gegevensextractie uit administratiedocumenten (Claude API), via het API-organisatieaccount van Verwerker; uitsluitend actief na uitdrukkelijke activering door Verwerkingsverantwoordelijke (AVG-schakelaar per administratie) | Verwerking en opslag in de Verenigde Staten; doorgifte op grond van de EU-modelcontractbepalingen in de DPA (Anthropic is niet DPF-gecertificeerd); contractueel uitgesloten dat klantdata voor modeltraining wordt gebruikt; verzoek tot Zero Data Retention ingediend op 14 augustus 2026, uitkomst nog open | Commercial Terms of Service d.d. 17 juni 2025 en Data Processing Addendum d.d. 24 februari 2025 (beide gearchiveerd) |
+| Apple Inc. / Apple Distribution International Ltd. | Distributie van de goedkeur-app (App Store, TestFlight) en aflevering van pushmeldingen (APNs) via het Apple Developer-account van Verwerker; pushberichten bevatten apparaat-tokens en aantallen, geen financiële gegevens of documentinhoud | Doorgifte naar de Verenigde Staten mogelijk (APNs) | [Aan te vullen vóór livegang van de iOS-app: Apple-verwerkersvoorwaarden en doorgiftegrondslag archiveren — zie verwerkers-checklist, sectie E] |
+| Google Ireland Ltd. (Google Play en Firebase Cloud Messaging) | Distributie van de Android-app (Play Console van Verwerker) en aflevering van pushmeldingen (FCM); deze subverwerking vangt pas aan bij activering van de Android-app | Doorgifte conform de toepasselijke Google-voorwaarden | [Aan te vullen vóór livegang van de Android-app: FCM-/Play-verwerkersvoorwaarden archiveren — zie verwerkers-checklist, sectie F] |
 
-*Geen subverwerker van PDL:* **Exact Reeleezee (Exact Group B.V.)** — rechtstreeks
-gecontracteerd door Verantwoordelijke (bestaande relatie; VWO 1.5/1.6, EU/EER-datalocatie
-en API-toegang bevestigd — zie de verwerkers-checklist, document 2).
+Buiten deze bijlage valt Exact Reeleezee (Exact Group B.V.): deze partij is rechtstreeks
+door Verwerkingsverantwoordelijke gecontracteerd en is derhalve geen subverwerker van
+Verwerker. De toepasselijke verwerkersovereenkomst (versie 1.5/1.6), de bevestiging van
+EU/EER-datalocatie en de toepasselijkheid op de API-toegang zijn vastgelegd in de
+verwerkers-checklist (document 2).
 
-**Bijlage C — Beveiligingsmaatregelen**: de maatregelen zoals beschreven in
-verwerkingsregister §8 (document 1), die hier als herhaald en ingelast gelden.
+## Bijlage C — Beveiligingsmaatregelen
+
+Als technische en organisatorische maatregelen in de zin van artikel 32 AVG gelden de
+maatregelen zoals beschreven in §8 van het verwerkingsregister (document 1), welke
+beschrijving hier als herhaald en ingelast geldt. Daartoe behoren ten minste:
+toegangsbeperking per administratie (row-level security), tweefactorauthenticatie en
+passkeys, versleutelde opslag van credentials (envelope encryption met KMS-beheerde
+sleutels), een append-only audit-log, dataopslag in de EU (regio europe-west4, met
+klant-beheerde versleuteling), en back-ups met point-in-time recovery.
+
+Wijzigingen in deze maatregelen die het beschermingsniveau verlagen, worden vooraf aan
+Verwerkingsverantwoordelijke gemeld.
 
 *Aldus overeengekomen en ondertekend in tweevoud te Arnhem op 19 augustus 2026:*
 
