@@ -590,7 +590,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     return (
       <div className="acc-vol">
         <div className="acc-appnaam">
-          RLZ <span>Goedkeuren</span>
+          Nijenhuis <span>Boekingsmodule</span>
         </div>
         <div className="acc-bio">
           <div className="acc-icoon">🔔</div>
@@ -626,7 +626,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       <div className="acc-apphead">
         <div>
           <b>
-            RLZ <span>Goedkeuren</span>
+            Nijenhuis <span>Boekingsmodule</span>
           </b>
           <div className="acc-who">{administratieNamen.join(' · ') || 'Accordeur'}</div>
         </div>

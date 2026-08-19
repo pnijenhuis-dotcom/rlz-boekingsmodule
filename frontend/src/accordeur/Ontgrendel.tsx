@@ -87,7 +87,7 @@ export function Ontgrendel({ naOntgrendeld, naarLogin }: Props) {
   return (
     <div className="acc-vol">
       <div className="acc-appnaam">
-        RLZ <span>Goedkeuren</span>
+        Nijenhuis <span>Boekingsmodule</span>
       </div>
       <div className="acc-bio">
         <div className={gelukt ? 'acc-icoon ok' : 'acc-icoon'}>{gelukt ? '✓' : '☉'}</div>

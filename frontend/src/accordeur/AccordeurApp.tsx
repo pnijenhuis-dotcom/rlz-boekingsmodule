@@ -165,7 +165,7 @@ export default function AccordeurApp() {
       ) : (
         <div className="acc-vol">
           <div className="acc-appnaam">
-            RLZ <span>Goedkeuren</span>
+            Nijenhuis <span>Boekingsmodule</span>
           </div>
           <div className="acc-bio">
             <div className="acc-sub">Laden…</div>
@@ -176,7 +176,7 @@ export default function AccordeurApp() {
     inhoud = (
       <div className="acc-vol">
         <div className="acc-appnaam">
-          RLZ <span>Goedkeuren</span>
+          Nijenhuis <span>Boekingsmodule</span>
         </div>
         <div className="acc-bio">
           <div className="acc-icoon">☉</div>
@@ -195,7 +195,7 @@ export default function AccordeurApp() {
     inhoud = (
       <div className="acc-vol">
         <div className="acc-appnaam">
-          RLZ <span>Goedkeuren</span>
+          Nijenhuis <span>Boekingsmodule</span>
         </div>
         <div className="acc-bio">
           <div className="acc-sub">Laden…</div>

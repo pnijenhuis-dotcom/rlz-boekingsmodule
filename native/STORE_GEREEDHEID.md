@@ -5,9 +5,10 @@
 > beginscherm-weergavenaam = kort **"Nijenhuis"** (CFBundleDisplayName in Info.plist +
 > `app_name` in het Android-manifest, i.v.m. afkapping onder het icoon; PWA-manifest:
 > name "Nijenhuis Boekingsmodule", short_name "Nijenhuis"). Bundle-id blijft
-> `nl.aknijenhuis.goedkeuren` — wijzigen zou signing/AASA raken. NB de **in-app wordmark**
-> op de schermen zegt nog "RLZ Goedkeuren" (mockup-norm; de store-screenshots tonen die
-> kop) — aanpassen is een aparte UX-beslissing, zie BESLISSINGEN "APP HERNOEMD".
+> `nl.aknijenhuis.goedkeuren` — wijzigen zou signing/AASA raken. **De in-app wordmark is
+> per 2026-08-19 (besluit Peter) gelijkgetrokken naar "Nijenhuis Boekingsmodule"** (alle
+> schermen + mockup-norm `accordeur.html`); de store-screenshots zijn dezelfde dag
+> hergenereerd met de nieuwe kop. Zie BESLISSINGEN "IN-APP WORDMARK".
 
 **Status 2026-08-17:** alles tot aan de kliktest-blokken is klaar (iconen/splash uit één
 SVG-bron via `scripts/genereer_assets.sh`, naamgeving, dit dossier). **Iconen + splash
@@ -103,11 +104,10 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
    `webauthn_origins`.
 5. Store-listing (NL): naam "Nijenhuis Boekingsmodule" (hernoemd 19-08), ondertitel "Facturen goedkeuren" (ASC-limiet
    30 tekens). **Iconen: DEFINITIEF (2026-08-18)** — N-beeldmerk uit `mockup/app-icoon-n.svg`
-   (zie status bovenaan). **Screenshots: KLAAR (2026-08-18)** — `store-assets/screenshots/`
-   (6.9" + 6.3", donker thema: wachtrij, factuurbeeld, ontgrendelscherm + meldingen-kaart;
-   gemaakt in de simulator tegen een lokale backend met uitsluitend fictieve
-   demo-facturen). Het app-icoon komt in geen enkele screenshot in beeld — hergeneratie na
-   de beeldmerk-wissel was dus niet nodig (geverifieerd 18-08). **Privacy-URL: GEBOUWD (2026-08-18)** —
+   (zie status bovenaan). **Screenshots: KLAAR — hergenereerd 2026-08-19 mét de nieuwe
+   in-app wordmark** — `store-assets/screenshots/` (6.9" + 6.3", donker thema: wachtrij,
+   factuurbeeld, ontgrendelscherm + meldingen-kaart; gemaakt in de simulator tegen een
+   lokale backend met uitsluitend fictieve demo-facturen — zelfde opzet als 18-08). **Privacy-URL: GEBOUWD (2026-08-18)** —
    `https://app.administratiekantoornijenhuis.nl/accordeur/privacy`
    (`backend/app/auth/privacy_pagina.py`, wellknown-patroon: rendert de akkoordtekst uit
    `app/auth/voorwaarden.py` — één bron van waarheid, versie zichtbaar; live ná de

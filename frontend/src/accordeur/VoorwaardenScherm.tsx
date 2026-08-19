@@ -51,7 +51,7 @@ export function VoorwaardenScherm({ naAkkoord, uitloggen }: Props) {
         ⏻
       </button>
       <div className="acc-appnaam">
-        RLZ <span>Goedkeuren</span>
+        Nijenhuis <span>Boekingsmodule</span>
       </div>
       <div className="acc-bio" style={{ padding: 0 }}>
         <b>Voordat je begint</b>

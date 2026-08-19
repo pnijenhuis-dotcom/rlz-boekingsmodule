@@ -88,7 +88,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
   return (
     <div className="acc-vol">
       <div className="acc-appnaam">
-        RLZ <span>Goedkeuren</span>
+        Nijenhuis <span>Boekingsmodule</span>
       </div>
       <div className="acc-bio">
         <b>Inloggen</b>

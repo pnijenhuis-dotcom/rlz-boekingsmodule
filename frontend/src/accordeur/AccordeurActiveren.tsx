@@ -83,7 +83,7 @@ export function AccordeurActiveren({ passkeySetupToken, naIngelogd }: Props) {
   return (
     <div className="acc-vol">
       <div className="acc-appnaam">
-        RLZ <span>Goedkeuren</span>
+        Nijenhuis <span>Boekingsmodule</span>
       </div>
       <div className="acc-bio">
         <div className="acc-icoon">☉</div>
