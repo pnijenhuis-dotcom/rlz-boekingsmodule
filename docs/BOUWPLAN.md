@@ -724,6 +724,32 @@ UI-eisen):
     is het zaad voor de eliminaties. Details: `Platform/besluiten/0015-…`.
 - Peppol-intake, hardening (rate-limit-gedrag, backup/restore, monitoring), uitrol alle klanten.
 
+## Roadmap ná go-live — Betaalmodule via Ponto PIS (capture 2026-08-19, besluit Peter: GEEN bouw nu)
+
+Platformbreed onderwerp (raakt óók vastgoeds Ponto-/AIS-traject — één Ponto-contract, twee
+modules; ter kennisname gemeld in `Platform/OPEN_ITEMS.md`). Bouw pas ná go-live, ná de
+**zwaarste ontwerp-/risicoronde tot nu toe** en met een **apart akkoord van Peter vóór elke
+bouwstap** — dit is de knop op échte geldstromen.
+
+- **Doel:** één geconsolideerd betaaloverzicht over alle (~80) bankrekeningen; de module
+  stelt betalingen/batches samen uit de openstaande posten en initieert ze via
+  Ponto-betaalinitiatie (PIS — staat al geprijsd in het SAF-contract: € 0,10 per betaling /
+  € 0,30 bulk). **Autorisatie = SCA in de bank-app van de rekeninghouder** — de
+  mens-op-de-knop verschuift naar bankniveau en blijft dus onverkort staan (kernprincipe
+  "mens voor de knop op geld").
+- **Vastgesteld feit:** de ING-verzendlijst is bankintern en via PSD2 niet benaderbaar — de
+  PIS-route **vervángt** die omweg, hij leest hem niet.
+- **Ontwerpuitgangspunt afschrift-zichtbaarheid:** de SEPA batch-booking-indicator standaard
+  op NIET-verzamelen, zodat elke leverancier + bedrag los op het bankafschrift staat
+  (Rabo-gedrag, ook bij ING afdwingen); Ponto's bulk ondersteunt `batchBookingPreferred`.
+  Vangnet: de module kent de batch-inhoud en kan een verzamelafschrijving altijd intern
+  uitsplitsen/afletteren.
+- **Verificatiepunten vóór een go:** (1) PIS- en bulk-ondersteuning per bank in Ponto's
+  bankenlijst, getoetst op onze wérkelijke banken; (2) kosten (rekeningen × PPM + per
+  betaling) vs tijdwinst; (3) autorisatie-mandaten per rekeninghouder; (4) honoreert elke
+  bank de niet-verzamelen-voorkeur (ING eerst); (5) raakvlak met vastgoeds AIS-traject —
+  één Ponto-contract, twee modules.
+
 ## Platform-verbeteringen (vastgesteld 2026-07-04, mogelijk gemaakt door GCP-keuze)
 
 | # | Verbetering | Waarom | Fase |
