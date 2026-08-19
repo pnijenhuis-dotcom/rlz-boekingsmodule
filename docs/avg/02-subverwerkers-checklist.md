@@ -2,26 +2,45 @@
 
 > ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
 > — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Links en voorwaarden geverifieerd via web op **2026-08-11**; DPA-voorwaarden wijzigen —
-> her-verifieer bij ondertekening.
+> her-verifieer bij ondertekening. **Bijgewerkt 2026-08-19:** keten aangepast op de
+> feitelijke accountstructuur — Anthropic, Google Cloud, Google Workspace, Apple en
+> Google Play lopen via PDL Powerhouse B.V. (het door de jurist bij toetsvraag 9 voorziene
+> invulpunt-pad; document 7, Bijlage B is de canonieke subverwerkerslijst).
 
-Terminologie: omdat het kantoor voor de administratievoering **zelfstandig
-verwerkingsverantwoordelijke** is (zie [03-verwerker-vs-verantwoordelijke.md](03-verwerker-vs-verantwoordelijke.md)),
-zijn de partijen hieronder formeel **verwerkers** van het kantoor (geen "subverwerkers").
-De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkomst/DPA
-(art. 28 AVG) staan vóór er persoonsgegevens naartoe gaan.
+Terminologie: het kantoor is voor de administratievoering **zelfstandig
+verwerkingsverantwoordelijke** (zie [03-verwerker-vs-verantwoordelijke.md](03-verwerker-vs-verantwoordelijke.md)).
+De contractketen volgt de feitelijke accountstructuur (vastgelegd 2026-08-18, document 7):
+**PDL Powerhouse B.V. is de verwerker van het kantoor** (intra-groep verwerkersovereenkomst,
+software + hosting) en houdt de accounts van Anthropic (API-organisatie), Google Cloud,
+Google Workspace, Apple Developer en Google Play — die partijen zijn daarmee
+**subverwerkers ván PDL** (keten: kantoor → PDL → partij; PDL blijft jegens het kantoor
+aansprakelijk voor hun nakoming, VWO artikel 6). Alleen **Exact Reeleezee** is een
+rechtstreekse verwerker van het kantoor (bestaande relatie, bewust búíten de PDL-keten).
+De checklist-acties blijven identiek: per partij moet een verwerkersovereenkomst/DPA
+(art. 28 AVG) in de keten staan vóór er persoonsgegevens naartoe gaan, en het kantoor
+blijft als verantwoordelijke toezien op de hele keten.
 
 ## Overzicht
 
 | Partij | Rol | Wanneer nodig | Status |
 |---|---|---|---|
-| Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Verwerker (AI-extractie, Claude API) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14); DPF-check gedaan 2026-08-15 (negatief — SCC's dragen alleen); ZDR-verzoek ingediend; open: ZDR-uitkomst + subverwerkerslijst |
-| Google Cloud (Google Cloud EMEA Ltd.) | Verwerker (hosting, DB, documentopslag) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | ✅ vrijwel rond — CDPA versie 8 juni 2026 gearchiveerd 2026-08-15 (`nl-cloud-data-processing-addendum-customers.pdf`); CMEK-besluit 0021 akkoord + uitgevoerd 2026-08-14; subverwerkerslijst gearchiveerd 2026-08-15 — **rond** |
-| Exact Reeleezee (Exact Group B.V.) | Verwerker (boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ✅ rond — VWO 1.5/1.6 van toepassing (Exact-support 2026-08-14, `Bevestiging versie RLZ.pdf`); EU/EER-datalocatie + API onder dezelfde VWO bevestigd (Exact-support 2026-08-15, `Bevestiging Exact EU-datalocatie en API-toegang 2026-08-15.pdf`) |
-| E-mailprovider intake-postvak | Verwerker (IMAP-postvak) | Vóór activering live IMAP-fetch (F3.4) | ✅ rond 2026-08-15 — Google Workspace, mailbox `facturen@ak-nijenhuis.nl`; geldende DPA = de CDPA (zelfde gearchiveerde document als checklist B — dekt Workspace expliciet); zie D |
+| PDL Powerhouse B.V. | Verwerker (intra-groep: software + hosting; accounthouder van de subverwerkers hieronder) | Vóór klantdata in de cloud / AI op echte klantdata | 🔶 ondertekenklaar — [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md) definitief 2026-08-18 (jurist-akkoord concept 2026-08-12); open: KvK-nummer kantoor + handtekeningen |
+| Anthropic (contractspartij EEA: Anthropic Ireland, Limited) | Subverwerker ván PDL (AI-extractie, Claude API — API-organisatieaccount van PDL) | Vóór `intake_ai_ingeschakeld` AAN op echte klantdata | 🔶 lopend — ToS + DPA gearchiveerd (2026-08-14); DPF-check gedaan 2026-08-15 (negatief — SCC's dragen alleen); ZDR-verzoek ingediend; open: ZDR-uitkomst + subverwerkerslijst |
+| Google Cloud (Google Cloud EMEA Ltd.) | Subverwerker ván PDL (hosting, DB, documentopslag — project in de PDL-org) | Vóór de F5-poort (klantdata in de cloud; infra staat sinds 2026-08-14) | ✅ vrijwel rond — CDPA versie 8 juni 2026 gearchiveerd 2026-08-15 (`nl-cloud-data-processing-addendum-customers.pdf`); CMEK-besluit 0021 akkoord + uitgevoerd 2026-08-14; subverwerkerslijst gearchiveerd 2026-08-15 — **rond** |
+| Exact Reeleezee (Exact Group B.V.) | Verwerker van het kantoor (rechtstreeks — boekhoudpakket) | Loopt al — bestaande relatie; status formeel bevestigen | ✅ rond — VWO 1.5/1.6 van toepassing (Exact-support 2026-08-14, `Bevestiging versie RLZ.pdf`); EU/EER-datalocatie + API onder dezelfde VWO bevestigd (Exact-support 2026-08-15, `Bevestiging Exact EU-datalocatie en API-toegang 2026-08-15.pdf`) |
+| E-mailprovider intake-postvak | Subverwerker ván PDL (IMAP-postvak — Workspace-omgeving van PDL) | Vóór activering live IMAP-fetch (F3.4) | ✅ rond 2026-08-15 — Google Workspace, mailbox `facturen@ak-nijenhuis.nl`; geldende DPA = de CDPA (zelfde gearchiveerde document als checklist B — dekt Workspace expliciet); zie D |
+| Apple (Apple Inc. / Apple Distribution International Ltd.) | Subverwerker ván PDL (App Store/TestFlight-distributie + APNs-push — Apple Developer-account van PDL) | Vóór livegang van de iOS-accordeur-app | ⬜ open — Apple-DPA/doorgiftecheck archiveren; zie E |
+| Google Play + Firebase Cloud Messaging (Google Ireland Ltd.) | Subverwerker ván PDL (Play-distributie + FCM-push — Play Console van PDL) | Vóór livegang van de Android-app (nu nog niet live) | ⬜ open — FCM-/Play-DPA-check archiveren (AVG-afweging Firebase = open beslispunt); zie F |
 
 ---
 
 ## A. Anthropic (Claude API)
+
+**Keten (2026-08-19):** het API-account is een **organisatieaccount op naam van PDL
+Powerhouse** — Anthropic is subverwerker ván PDL (document 7, Bijlage B). De
+Commercial-Terms-acceptatie (= DPA-acceptatie, zie hieronder) gebeurt dus door PDL; voor de
+klantdata van het kantoor is de processor→processor-variant van de SCC's (module 3, eveneens
+in de DPA) de toepasselijke module. De inhoudelijke checks hieronder veranderen daar niet door.
 
 **Gearchiveerde brondocumenten (aangeleverd door Peter, 2026-08-14 — in deze map):**
 
@@ -83,7 +102,8 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 
 **Acties Peter:**
 
-- [ ] Betaald Anthropic-API-account (organisatie) — Commercial Terms accepteren = DPA rond;
+- [ ] Betaald Anthropic-API-account (organisatie, **op naam van PDL Powerhouse**) —
+      Commercial Terms accepteren = DPA rond in de keten PDL ↔ Anthropic;
       de Terms-versie (effective 17-06-2025) en DPA-versie (effective 24-02-2025) zijn
       gearchiveerd (2026-08-14); acceptatiedatum van het account nog vastleggen.
 - [x] ZDR aanvragen — **verzoek ingediend, loopt** (status 2026-08-14); ⬜ uitkomst
@@ -96,6 +116,10 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 ---
 
 ## B. Google Cloud
+
+**Keten (2026-08-19):** het project `rlz-boekhouding` staat in de **PDL
+Powerhouse-organisatie** — Google Cloud is subverwerker ván PDL (document 7, Bijlage B);
+de CDPA-acceptatie loopt via de org-overeenkomst van PDL.
 
 **Hoe de DPA werkt (geverifieerd 2026-08-11):**
 
@@ -165,7 +189,9 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 - Kanttekening bij de rol: als het kantoor zelfstandig verantwoordelijke is en Reeleezee de
   software levert waarin het kantoor de administratie voert, is Reeleezee verwerker van het
   kantoor. De webservice-logins per administratie (waarmee déze module in RLZ schrijft)
-  vallen onder diezelfde relatie.
+  vallen onder diezelfde relatie. **Dit is de enige rechtstreekse verwerkersrelatie van het
+  kantoor** — Exact Reeleezee staat bewust búíten de PDL-keten (bestaande relatie op naam
+  van het kantoor; document 7, Bijlage B "Geen subverwerker van PDL").
 
 **Acties Peter:**
 
@@ -187,8 +213,10 @@ De checklist-acties zijn identiek: met elke partij moet een verwerkersovereenkom
 
 ## D. E-mailprovider intake-postvak — ✅ rond (2026-08-15)
 
-De leverancier van het centrale intake-adres is een verwerker (e-mail bevat facturen met
-persoonsgegevens); deze check moest rond zijn vóór activering van de live IMAP-fetch (F3.4).
+De leverancier van het centrale intake-adres verwerkt persoonsgegevens (e-mail bevat
+facturen); deze check moest rond zijn vóór activering van de live IMAP-fetch (F3.4).
+**Keten (2026-08-19):** de Workspace-omgeving is van PDL — Google Workspace is subverwerker
+ván PDL (document 7, Bijlage B).
 
 - [x] Providerkeuze: **Google Workspace** (bestaande kantoor-mailprovider,
       GCP-beslispunt 5, 2026-08-12).
@@ -208,3 +236,37 @@ persoonsgegevens); deze check moest rond zijn vóór activering van de live IMAP
 - [x] Workspace-subverwerkerslijst gearchiveerd (2026-08-15):
       `docs/avg/Google Workspace Terms Of Service – Subprocessors.pdf` (last modified
       23 juli 2026, <https://workspace.google.com/terms/subprocessors/>).
+
+---
+
+## E. Apple (App Store/TestFlight + APNs) — ⬜ open, vóór livegang iOS-app
+
+Uitbreiding conform document 7, Bijlage B (invulpunt): het **Apple Developer-account staat
+op naam van PDL** — Apple is subverwerker ván PDL voor de distributie van de
+accordeur-app (App Store/TestFlight) en pushmeldingen via APNs. Pushberichten bevatten
+apparaat-tokens maar géén financiële gegevens of documentinhoud (payloads zijn generiek —
+"Er staan N facturen voor u klaar"); doorgifte naar de VS is via APNs mogelijk.
+
+**Acties Peter (vóór livegang van de iOS-app; TestFlight is de eerstvolgende halte):**
+
+- [ ] Apple-DPA/doorgiftevoorwaarden checken en archiveren (Apple Developer Program License
+      Agreement + Apple's data-processing-voorwaarden voor APNs) en het
+      [INVULLEN]-punt in document 7, Bijlage B daarmee invullen.
+- [ ] Doorgiftemechanisme noteren (DPF-registercheck Apple + eventuele SCC's in Apples
+      voorwaarden).
+
+---
+
+## F. Google Play + Firebase Cloud Messaging — ⬜ open, vóór livegang Android-app
+
+Uitbreiding conform document 7, Bijlage B (invulpunt): de **Play Console staat op naam van
+PDL** — Google Ireland Ltd. is subverwerker ván PDL voor de Android-distributie en
+FCM-push, **vanaf activering van de Android-app** (nu nog niet live; de AVG-afweging
+Firebase is een open beslispunt bij de Android-ronde).
+
+**Acties Peter (vóór livegang van de Android-app):**
+
+- [ ] FCM-/Play-DPA-check uitvoeren en archiveren (Google Play-voorwaarden + Firebase
+      data-processing-voorwaarden) en het [INVULLEN]-punt in document 7, Bijlage B invullen.
+- [ ] AVG-afweging Firebase vastleggen (welke FCM-variant, welke gegevens in de payload —
+      zelfde norm als APNs: nooit documentinhoud of financiële gegevens).

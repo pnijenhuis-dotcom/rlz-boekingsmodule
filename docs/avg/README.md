@@ -11,12 +11,12 @@ september 2026).
 |---|---|---|
 | 0 | [00-toetsingsmemo-jurist.md](00-toetsingsmemo-jurist.md) | Toetsingsmemo voor de jurist: leeswijzer, context en concrete toetsvragen per document |
 | 1 | [01-verwerkingsregister.md](01-verwerkingsregister.md) | Verwerkingsregister (art. 30 AVG) voor het kantoor als gebruiker van de module |
-| 2 | [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) | Per partij (Anthropic, Google Cloud, Reeleezee/Exact): welke verwerkersovereenkomst/DPA nodig is, status en acties |
+| 2 | [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) | Per partij (PDL, Anthropic, Google Cloud, Reeleezee/Exact, Workspace, Apple, Play/FCM): welke verwerkersovereenkomst/DPA nodig is, status en acties — sinds 2026-08-19 op de PDL-keten (alleen Exact rechtstreeks) |
 | 3 | [03-verwerker-vs-verantwoordelijke.md](03-verwerker-vs-verantwoordelijke.md) | Rolbepaling per dienst + getoetst tekstblok voor de klantovereenkomst |
 | 4 | [04-dpia-lichte-toets-ai-extractie.md](04-dpia-lichte-toets-ai-extractie.md) | DPIA-lichte toets op de AI-extractie: risico's, geborgde mitigaties, restrisico's |
 | 5 | [05-activatie-checklist.md](05-activatie-checklist.md) | Volgorde waarin de gates aangezet mogen worden en wat er per gate rond moet zijn |
 | 6 | [06-datalek-procedure.md](06-datalek-procedure.md) | Datalek-procedure (meldplicht art. 33/34 AVG), kantoorbreed, incl. rollen en meldstappen |
-| 7 | [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md) | Intra-groep verwerkersovereenkomst kantoor ↔ PDL Powerhouse B.V. (jurist-vraag 9; **ondertekenklaar 2026-08-18** — Bijlage B ingevuld op de feitelijke accountstructuur: Anthropic/GCP/Workspace/Apple/Play onder PDL, Reeleezee rechtstreeks; docx `Verwerkersovereenkomst-PDL-definitief-2026-08-18.docx`; open: KvK-nummer kantoor + ondertekenblok + aanpassing documenten 1–2) |
+| 7 | [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md) | Intra-groep verwerkersovereenkomst kantoor ↔ PDL Powerhouse B.V. (jurist-vraag 9; **ondertekenklaar 2026-08-18** — Bijlage B ingevuld op de feitelijke accountstructuur: Anthropic/GCP/Workspace/Apple/Play onder PDL, Reeleezee rechtstreeks; documenten 1–2 op die keten aangepast 2026-08-19; docx `Verwerkersovereenkomst-PDL-definitief-2026-08-18.docx` = **schone tekenversie zonder statusnoot** (printklaar, `--zonder-statusnoot`); open: KvK-nummer kantoor + ondertekenblok) |
 | 8 | [08-f5-poortdossier.md](08-f5-poortdossier.md) | Afvinkbaar bewijsdossier voor de F5-go-live-poort (= stap 2 van doc 5): per punt bewijs/vindplaats + wie + status |
 
 Word-bundel voor verzending aan de jurist: `AVG-pakket-ter-toetsing-2026-08-11.docx`
@@ -37,8 +37,9 @@ per partij in [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md)):
   supportbevestiging `Bevestiging versie RLZ.pdf`.
 
 **De .md-bestanden zijn canoniek; de .docx-bestanden zijn gegenereerde verzend-artefacten**
-— verversen via `backend/.venv/bin/python scripts/genereer_avg_docx.py <bron.md> <doel.docx>`,
-nooit met de hand in Word bewerken (2026-08-13: een Word-hersave van de
+— verversen via `backend/.venv/bin/python scripts/genereer_avg_docx.py <bron.md> <doel.docx>`
+(vlag `--zonder-statusnoot` laat het status-blockquote onder de H1 weg — de schone
+teken-/printversie, gebruikt voor de definitieve PDL-docx), nooit met de hand in Word bewerken (2026-08-13: een Word-hersave van de
 verwerkersovereenkomst-docx introduceerde precies zo'n zwevende binary-wijziging, incl.
 per ongeluk getikte tekst; opgelost door regeneratie uit de ongewijzigde md).
 

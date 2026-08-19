@@ -1,7 +1,12 @@
 # Verwerkingsregister (art. 30 AVG) — RLZ Boekingsmodule
 
 > ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
-> — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Opgesteld 2026-08-11. Dit register beschrijft de verwerkingen die Administratiekantoor
+> — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Opgesteld 2026-08-11. **Bijgewerkt
+> 2026-08-19:** verwerkersketen aangepast op de feitelijke accountstructuur — het
+> Anthropic-API-organisatieaccount en de Google Workspace-omgeving staan (net als het Google
+> Cloud-project en de store-accounts) op naam van PDL Powerhouse B.V. en zijn daarmee
+> **subverwerkers ván PDL** (het door de jurist bij toetsvraag 9 voorziene invulpunt-pad;
+> zie document 7, Bijlage B). Dit register beschrijft de verwerkingen die Administratiekantoor
 > Nijenhuis uitvoert **via de RLZ-boekingsmodule**. Verwerkingen buiten de module (papieren
 > dossier, e-mailverkeer buiten de intake, loonadministratie in andere pakketten) vallen erbuiten
 > en horen in het kantoorbrede register.
@@ -13,7 +18,7 @@
 | Verwerkingsverantwoordelijke | Administratiekantoor Nijenhuis (rolbepaling: zie [03-verwerker-vs-verantwoordelijke.md](03-verwerker-vs-verantwoordelijke.md) — het kantoor is voor de administratievoering zelfstandig verwerkingsverantwoordelijke) |
 | Contactpersoon | P. Nijenhuis |
 | Functionaris gegevensbescherming | n.v.t. (geen FG-plicht; register meegetoetst — jurist-akkoord 2026-08-12, toetsvraag 5) |
-| Verwerkers (via de module) | Anthropic Ireland, Limited (Claude API — AI-extractie; contractspartij EEA), Exact Reeleezee (boekhoudpakket, bron van waarheid), PDL Powerhouse B.V. (eigenaar software + hosting — intra-groep verwerkersovereenkomst, concept [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md), jurist-akkoord vraag 9 2026-08-12), Google Cloud EMEA Ltd. (hosting/database/documentopslag — subverwerker ván PDL; cloudomgeving staat sinds 2026-08-14, klantdata pas ná de F5-poort), Google Workspace (e-mailprovider intake-postvak `facturen@ak-nijenhuis.nl` — sinds IMAP-activatie 2026-08-15, DPA = CDPA, checklist D) — details en contractstatus: [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) |
+| Verwerkers (via de module) | **PDL Powerhouse B.V.** (eigenaar software + hosting — intra-groep verwerkersovereenkomst [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md), ondertekenklaar 2026-08-18, jurist-akkoord vraag 9 2026-08-12), met als **subverwerkers ván PDL** (accounthouder is telkens PDL — document 7, Bijlage B): Anthropic Ireland, Limited (Claude API — AI-extractie via het API-organisatieaccount van PDL; contractspartij EEA), Google Cloud EMEA Ltd. (hosting/database/documentopslag — cloudomgeving staat sinds 2026-08-14, klantdata pas ná de F5-poort), Google Workspace (e-mailprovider intake-postvak `facturen@ak-nijenhuis.nl` — sinds IMAP-activatie 2026-08-15, DPA = CDPA, checklist D) en bij app-livegang Apple (App Store/APNs) resp. Google Play/FCM (DPA-checks open, checklist E/F). **Rechtstreeks verwerker van het kantoor:** Exact Reeleezee (boekhoudpakket, bron van waarheid — bestaande relatie, bewust búíten de PDL-keten). Details en contractstatus: [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md) |
 | Doorgifte buiten de EER | Ja, naar de VS (Anthropic Claude API). Zie §9 (doorgifte-/CLOUD Act-notitie) |
 
 ## 1. Overzicht verwerkingen
@@ -36,7 +41,7 @@
 | Grondslag | Uitvoering overeenkomst met de klant (art. 6 lid 1 sub b AVG) en wettelijke verplichting administratie-/bewaarplicht (art. 6 lid 1 sub c AVG jo. art. 52 AWR / art. 2:10 BW) |
 | Categorieën betrokkenen | Contactpersonen en eenmanszaak-eigenaren van leveranciers; medewerkers van klanten (namen op facturen/urenstaten); klant-eigenaren |
 | Categorieën gegevens | Naam, (bedrijfs)adres, e-mail, telefoonnummer, IBAN, KvK-/btw-nummer, factuur- en betaalgegevens; op urenstaten: namen + gewerkte uren. **BSN's worden nooit geëxtraheerd, geïndexeerd of in AI-output opgenomen** (hard principe; prompt-verbod + deterministisch post-filter `app/extractie/bsn.py`, preview maskeert; brondocument blijft wél bewaard i.v.m. WKA) |
-| Ontvangers/verwerkers | Anthropic (alleen bij AI-extractie: documentinhoud gaat naar de Claude API — model `claude-sonnet-5`, config `ai_extractie_model`); Exact Reeleezee (boeking); Google Cloud (na uitrol: opslag/verwerking); Belastingdienst (indirect, via aangiften) |
+| Ontvangers/verwerkers | Anthropic (alleen bij AI-extractie: documentinhoud gaat naar de Claude API — model `claude-sonnet-5`, config `ai_extractie_model`; API-organisatieaccount van PDL — subverwerker ván PDL); Exact Reeleezee (boeking — rechtstreeks verwerker); Google Cloud (na uitrol: opslag/verwerking — subverwerker ván PDL); Belastingdienst (indirect, via aangiften) |
 | Bewaartermijn | 7 jaar (fiscale bewaarplicht), documenten in archief terugvindbaar mét PDF; **PII wordt gepseudonimiseerd ná relatie-einde + 7 jaar, nooit hard verwijderd** (platformbesluit 0004 — AVG-verwijderverzoek = pseudonimiseren) |
 | Beveiliging | Zie §8 |
 
@@ -48,7 +53,7 @@
 | Grondslag | Als V1 |
 | Betrokkenen | Afzenders van e-mail (leveranciers, klanten); personen genoemd in bijlagen |
 | Gegevens | E-mailadres afzender, Message-ID, bijlagen (facturen/UBL/PDF); niet-PDF/XML-bijlagen worden geregistreerd maar niet verwerkt |
-| Ontvangers/verwerkers | Anthropic alléén bij PDF-extractie/splitsingsvoorstel en alléén als de AVG-gate `intake_ai_ingeschakeld` AAN staat (Beheerder-instelling, default UIT, elke wijziging in het audit log); e-mailprovider van het intake-postvak (Google Workspace, `facturen@ak-nijenhuis.nl` — DPA = CDPA, checklist D rond 2026-08-15) |
+| Ontvangers/verwerkers | Anthropic alléén bij PDF-extractie/splitsingsvoorstel en alléén als de AVG-gate `intake_ai_ingeschakeld` AAN staat (Beheerder-instelling, default UIT, elke wijziging in het audit log); e-mailprovider van het intake-postvak (Google Workspace, `facturen@ak-nijenhuis.nl` — Workspace-omgeving van PDL, subverwerker ván PDL; DPA = CDPA, checklist D rond 2026-08-15) |
 | Bewaartermijn | Als V1; berichten die "niet bij ons horen" worden afgewezen met reden en blijven zichtbaar geregistreerd (niets verdwijnt stil) |
 
 ## 4. V3 — Omzet-/kassarapportverwerking
@@ -88,7 +93,7 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
 | Grondslag | Uitvoering overeenkomst (accordeurs), gerechtvaardigd belang beveiliging/verantwoording (art. 6 lid 1 sub f), wettelijke verplichting (administratieve verantwoording) |
 | Betrokkenen | Medewerkers kantoor; klant-accordeurs |
 | Gegevens | Naam, e-mailadres, wachtwoord-hash, TOTP-secret (versleuteld), rol- en scope-toekenningen, sessies (JWT/refresh-tokens), audit-events (wie/wat/wanneer/oud→nieuw, correlatie-id) |
-| Ontvangers | Google Cloud (na uitrol); niemand extern |
+| Ontvangers | Google Cloud (na uitrol; subverwerker ván PDL); niemand extern |
 | Bewaartermijn | Accounts: duur dienstverband/relatie + pseudonimisering conform besluit 0004. Audit log: append-only, bewaartermijn gelijk aan de administratie (7 jaar); **PII gescheiden van financiële data** zodat pseudonimisering het audit-spoor niet breekt |
 
 ## 8. Technische en organisatorische maatregelen (gebouwd)
@@ -138,9 +143,13 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
 1. **Anthropic (Claude API)** — contractspartij voor EEA-klanten is **Anthropic Ireland,
    Limited** (Commercial Terms of Service, versie effective 17-06-2025, gearchiveerd
    2026-08-14), maar de **verwerking zelf vindt plaats in de VS** (geen EU-verwerkingsregio
-   voor de standaard API; stand webverificatie 2026-08-11). Grondslag doorgifte: de EU
-   Standard Contractual Clauses (2021) in Anthropics DPA (versie effective 24-02-2025,
-   gearchiveerd 2026-08-14; module 2 controller→processor). De gearchiveerde Terms
+   voor de standaard API; stand webverificatie 2026-08-11). **Contractketen (feitelijke
+   accountstructuur, document 7): het API-organisatieaccount staat op naam van PDL
+   Powerhouse** — Anthropic is subverwerker ván PDL; voor de klantdata van het kantoor is
+   daarmee de processor→processor-variant van de SCC's de toepasselijke module. Grondslag
+   doorgifte: de EU Standard Contractual Clauses (2021) in Anthropics DPA (versie effective
+   24-02-2025, gearchiveerd 2026-08-14; module 2 controller→processor én module 3
+   processor→processor). De gearchiveerde Terms
    bevestigen: **geen training op Customer Content** (§B). **Zero data retention:
    aangevraagd, loopt** (status 2026-08-14) — uitkomst archiveren in de checklist.
    **DPF-registercheck uitgevoerd 2026-08-15, uitkomst negatief** (geen treffer op
@@ -167,6 +176,9 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
    sinds september 2023). CDPA gearchiveerd 2026-08-15: **versie 8 juni 2026**
    (`docs/avg/nl-cloud-data-processing-addendum-customers.pdf`, F5-poortpunt 1 ✅);
    subverwerkerslijsten gearchiveerd 2026-08-15 (GCP + Workspace, checklist B/D).
+   Accounthouder is PDL (project `rlz-boekhouding` in de PDL Powerhouse-organisatie):
+   Google Cloud is subverwerker ván PDL, de CDPA-acceptatie loopt via de org-overeenkomst
+   van PDL (document 7, Bijlage B).
 3. **Exact Reeleezee** — Nederlandse leverancier, hosting in de EU (expliciet bevestigen =
    restpunt checklist C; de Exact-MKB-PDF's versie 1.5/2021 + bijlage 1.6/2022 zijn
    gearchiveerd in `docs/`; toepasselijkheid op Reeleezee-abonnementen **bevestigd door
@@ -176,7 +188,8 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
    IMAP-activatie (F3.4, 2026-08-15). DPA-check (checklist D) **rond 2026-08-15**: de
    geldende Workspace-verwerkersvoorwaarden zijn het **CDPA** — hetzelfde gearchiveerde
    document als punt 2 hierboven (versie 8 juni 2026, dekt Workspace expliciet);
-   doorgifte-grondslag identiek (SCC's in het CDPA + DPF).
+   doorgifte-grondslag identiek (SCC's in het CDPA + DPF). De Workspace-omgeving is van
+   PDL: Workspace is subverwerker ván PDL (document 7, Bijlage B).
 
 ## 10. Rechten van betrokkenen
 

@@ -8,9 +8,11 @@
 > partijen staan daarom in Bijlage B als subverwerkers ván PDL. Alleen **Exact Reeleezee**
 > contracteert het kantoor rechtstreeks (bestaande relatie, webservice-logins per
 > administratie) en blijft dus búíten deze overeenkomst (verwerker van Verantwoordelijke,
-> documenten 1–2). ⚠️ Open actie conform de jurist-notitie: documenten 1–2
-> (verwerkingsregister + verwerkers-checklist) aanpassen op de verhuizing van Anthropic en
-> Google Workspace naar de PDL-keten.
+> documenten 1–2). ✅ De jurist-notitie-actie is uitgevoerd (2026-08-19): documenten 1–2
+> (verwerkingsregister + verwerkers-checklist) zijn aangepast op de verhuizing van Anthropic
+> en Google Workspace naar de PDL-keten. De teken-docx
+> (`Verwerkersovereenkomst-PDL-definitief-2026-08-18.docx`) is de **schone tekenversie
+> zónder deze statusnoot** (gegenereerd met `--zonder-statusnoot`).
 
 **Partijen**
 
