@@ -1,4 +1,13 @@
-# Store-gereedheid "RLZ Goedkeuren" (fase 5)
+# Store-gereedheid "Nijenhuis Boekingsmodule" (fase 5)
+
+> **Hernoemd 2026-08-19 (besluit Peter):** App Store-/productnaam = **"Nijenhuis
+> Boekingsmodule"** (was "RLZ Goedkeuren"), ondertitel blijft "Facturen goedkeuren";
+> beginscherm-weergavenaam = kort **"Nijenhuis"** (CFBundleDisplayName in Info.plist +
+> `app_name` in het Android-manifest, i.v.m. afkapping onder het icoon; PWA-manifest:
+> name "Nijenhuis Boekingsmodule", short_name "Nijenhuis"). Bundle-id blijft
+> `nl.aknijenhuis.goedkeuren` — wijzigen zou signing/AASA raken. NB de **in-app wordmark**
+> op de schermen zegt nog "RLZ Goedkeuren" (mockup-norm; de store-screenshots tonen die
+> kop) — aanpassen is een aparte UX-beslissing, zie BESLISSINGEN "APP HERNOEMD".
 
 **Status 2026-08-17:** alles tot aan de kliktest-blokken is klaar (iconen/splash uit één
 SVG-bron via `scripts/genereer_assets.sh`, naamgeving, dit dossier). **Iconen + splash
@@ -92,7 +101,7 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
    PDL-organisatieaccount valt daarbuiten; de accordeurs blijven de testgroep) +
    `assetlinks.json` met de definitieve signing-hash + `android:apk-key-hash:`-origin in
    `webauthn_origins`.
-5. Store-listing (NL): naam "RLZ Goedkeuren", ondertitel "Facturen goedkeuren" (ASC-limiet
+5. Store-listing (NL): naam "Nijenhuis Boekingsmodule" (hernoemd 19-08), ondertitel "Facturen goedkeuren" (ASC-limiet
    30 tekens). **Iconen: DEFINITIEF (2026-08-18)** — N-beeldmerk uit `mockup/app-icoon-n.svg`
    (zie status bovenaan). **Screenshots: KLAAR (2026-08-18)** — `store-assets/screenshots/`
    (6.9" + 6.3", donker thema: wachtrij, factuurbeeld, ontgrendelscherm + meldingen-kaart;

@@ -1,4 +1,10 @@
-# TestFlight-draaiboek "RLZ Goedkeuren" (iOS, deel A van de run 2026-08-18)
+# TestFlight-draaiboek "Nijenhuis Boekingsmodule" (iOS, deel A van de run 2026-08-18)
+
+> **Hernoemd 2026-08-19 (besluit Peter):** productnaam/App Store-naam = **"Nijenhuis
+> Boekingsmodule"** (was "RLZ Goedkeuren"), ondertitel blijft "Facturen goedkeuren";
+> beginscherm-weergavenaam = kort **"Nijenhuis"** (CFBundleDisplayName/Android-label,
+> i.v.m. afkapping onder het icoon). Bundle-id blijft `nl.aknijenhuis.goedkeuren`
+> (onzichtbaar; wijzigen zou signing/AASA raken).
 
 Klik-voor-klik-recept voor Peter. Voorwerk door de agent is af: publieke privacy-URL
 (A1, live ná de eerstvolgende deploy), screenshots (A3, `store-assets/screenshots/`),
@@ -60,12 +66,13 @@ Associated Domains en Push Notifications. Controleer dat eerst:
 1. https://developer.apple.com → Account (PDL Powerhouse) → **Certificates, Identifiers &
    Profiles → Identifiers**. Staat `nl.aknijenhuis.goedkeuren` er? Klik erop en check dat
    **Associated Domains** én **Push Notifications** aangevinkt zijn. Ontbreekt het App ID:
-   **+** → App IDs → App → Description "RLZ Goedkeuren", Bundle ID **Explicit**
+   **+** → App IDs → App → Description "Nijenhuis Boekingsmodule", Bundle ID **Explicit**
    `nl.aknijenhuis.goedkeuren`, vink beide capabilities aan → Register.
 2. https://appstoreconnect.apple.com → **My Apps** (Apps) → **+** → **New App**:
    - Platforms: **iOS**
-   - Name: **RLZ Goedkeuren** (zichtbare App Store-naam; moet uniek zijn in de store —
-     wijkt hij af, neem "RLZ Goedkeuren — Nijenhuis")
+   - Name: **Nijenhuis Boekingsmodule** (zichtbare App Store-naam, 24 tekens — past binnen
+     de 30-tekens-limiet; moet uniek zijn in de store — is hij bezet (onwaarschijnlijk),
+     dan niet zelf variëren maar even afstemmen)
    - Primary Language: **Dutch (Nederlands)**
    - Bundle ID: kies **nl.aknijenhuis.goedkeuren** uit de lijst
    - SKU: `rlz-goedkeuren` (intern, vrij te kiezen, permanent)
@@ -155,7 +162,8 @@ webcode wijzigen: eerst `cd native && npm run bouw-web && npx cap sync ios`.
      voeg jezelf toe (je ASC-gebruiker) → selecteer de build. Interne testers = geen
      beta-review nodig; je krijgt direct de TestFlight-uitnodiging per mail.
 8. iPhone: installeer **TestFlight** uit de App Store → open de uitnodiging → installeer
-   "RLZ Goedkeuren". NB dit vervangt de kabel-/dev-build op het toestel.
+   "Nijenhuis Boekingsmodule" (op het beginscherm heet de app kort "Nijenhuis").
+   NB dit vervangt de kabel-/dev-build op het toestel.
 
 ## 4. APNS_SANDBOX omzetten (A6) — pas NA de eerste TestFlight-install
 

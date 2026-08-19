@@ -12,8 +12,12 @@ import type { CapacitorConfig } from '@capacitor/cli'
  *   De API-base-URL-kwestie (alle fetches zijn root-relatief) is beslispunt (d) in het
  *   rapport en vergt een kleine webcode-aanpassing vóór een echte release. */
 const config: CapacitorConfig = {
+  /* Naamgeving (besluit Peter 2026-08-19): productnaam "Nijenhuis Boekingsmodule",
+   * beginscherm-weergavenaam kort "Nijenhuis" (CFBundleDisplayName/Android-label —
+   * dáár staat de korte vorm i.v.m. afkapping onder het icoon). appId blijft
+   * ongewijzigd: wijzigen zou signing/AASA raken. */
   appId: 'nl.aknijenhuis.goedkeuren',
-  appName: 'RLZ Goedkeuren',
+  appName: 'Nijenhuis Boekingsmodule',
   webDir: '../frontend/dist',
   ios: {
     // De accordeur-PWA is dark-first; de webview mag niet wit flitsen bij het opstarten.

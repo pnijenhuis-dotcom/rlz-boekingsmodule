@@ -24,7 +24,7 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {}
   }
-  const titel = data.titel || 'RLZ Goedkeuren'
+  const titel = data.titel || 'Nijenhuis Boekingsmodule'
   const tekst = data.tekst || 'Er wacht iets op je akkoord.'
   const url = typeof data.url === 'string' && data.url.startsWith('/accordeur') ? data.url : '/accordeur'
   event.waitUntil(

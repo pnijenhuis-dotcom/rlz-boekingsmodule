@@ -62,7 +62,7 @@ def _verzend_apns(subscriptie: PushSubscriptie, payload: dict) -> None:
     try:
         apns.verzend_apns(
             subscriptie.endpoint,
-            titel=str(payload.get("titel", "RLZ Goedkeuren")),
+            titel=str(payload.get("titel", "Nijenhuis Boekingsmodule")),
             tekst=str(payload.get("tekst", "")),
             url=str(payload.get("url", "/accordeur")),
         )
@@ -78,7 +78,7 @@ def _verzend_fcm(subscriptie: PushSubscriptie, payload: dict) -> None:
     try:
         fcm.verzend_fcm(
             subscriptie.endpoint,
-            titel=str(payload.get("titel", "RLZ Goedkeuren")),
+            titel=str(payload.get("titel", "Nijenhuis Boekingsmodule")),
             tekst=str(payload.get("tekst", "")),
             url=str(payload.get("url", "/accordeur")),
         )

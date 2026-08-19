@@ -73,7 +73,7 @@ def verstuur_push_anders_mail(
     vervallen = 0
     push_fouten: list[str] = []
     if subscripties:
-        payload = {"titel": "RLZ Goedkeuren", "tekst": pushtekst, "url": url}
+        payload = {"titel": "Nijenhuis Boekingsmodule", "tekst": pushtekst, "url": url}
         if extra_payload:
             payload.update(extra_payload)
         for subscriptie in subscripties:

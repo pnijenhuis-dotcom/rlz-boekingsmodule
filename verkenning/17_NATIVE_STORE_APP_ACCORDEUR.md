@@ -12,7 +12,9 @@ terugval; BESLISSINGEN "Mobiele bouwstenen accordeur-PWA" punt 8, platformbeslui
 
 **Wat er nu staat (deze run, GEEN publicatie):** map `native/` met een werkende
 Capacitor 8-schil rond de bestaande PWA-build — `capacitor.config.ts`
-(appId-vóórstel `nl.aknijenhuis.goedkeuren`, appName "RLZ Goedkeuren",
+(appId-vóórstel `nl.aknijenhuis.goedkeuren`, appName destijds "RLZ Goedkeuren" —
+**hernoemd 2026-08-19, besluit Peter: productnaam "Nijenhuis Boekingsmodule",
+beginscherm-naam kort "Nijenhuis"; bundle-id ongewijzigd** —,
 `webDir: ../frontend/dist` — **de webcode is niet geraakt**), iOS-project via **Swift
 Package Manager** (bewust geen CocoaPods-afhankelijkheid) én Android-project, beide met de
 actuele PWA-build gebundeld (`npx cap sync` geverifieerd). Gegenereerde sync-artefacten

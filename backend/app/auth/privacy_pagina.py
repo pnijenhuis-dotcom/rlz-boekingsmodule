@@ -58,12 +58,12 @@ def accordeur_privacy() -> HTMLResponse:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacyverklaring en gebruiksvoorwaarden — RLZ Goedkeuren</title>
+<title>Privacyverklaring en gebruiksvoorwaarden — Nijenhuis Boekingsmodule</title>
 <style>{_STIJL}</style>
 </head>
 <body>
 <main>
-<h1>Privacyverklaring en gebruiksvoorwaarden — RLZ Goedkeuren</h1>
+<h1>Privacyverklaring en gebruiksvoorwaarden — Nijenhuis Boekingsmodule</h1>
 <p class="sub">Goedkeuringsapp van Administratiekantoor Nijenhuis · tekstversie {html.escape(AKKOORD_TEKST_VERSIE)}</p>
 {_als_html_alineas(AKKOORD_TEKST)}
 <footer>

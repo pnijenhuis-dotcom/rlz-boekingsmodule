@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # (dev: localhost; GCP: het productiedomein via env). Origins = exact wat de browser als
     # origin meestuurt (dev: de Vite-server; de backend op 8000 voor echte-HTTP-tests).
     webauthn_rp_id: str = "localhost"
-    webauthn_rp_naam: str = "RLZ Goedkeuren"
+    webauthn_rp_naam: str = "Nijenhuis Boekingsmodule"
     webauthn_origins: list[str] = ["http://localhost:5173", "http://localhost:8000"]
     webauthn_challenge_ttl_seconds: int = 300
     # Dev-fallback voor de secure-context-beperking (WebAuthn werkt alleen op https/localhost —

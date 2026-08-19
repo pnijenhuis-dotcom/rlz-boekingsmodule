@@ -134,7 +134,7 @@ done
 
 echo
 echo "== Stap 4/4: bewijs-push (verificatiepoort) =="
-echo "   DOE NU OP HET TOESTEL: open RLZ Goedkeuren (nieuwe build!), ontgrendel, en zet"
+echo "   DOE NU OP HET TOESTEL: open de Nijenhuis-app (nieuwe build!), ontgrendel, en zet"
 echo "   de meldingen AAN via de meldingen-kaart op de wachtrij (iOS vraagt toestemming)."
 echo "   Vereist: een OPEN accordering voor dit account — staat er geen (bv. weggewerkt"
 echo "   in een eerdere kliktest), seed 'm eerst opnieuw met"

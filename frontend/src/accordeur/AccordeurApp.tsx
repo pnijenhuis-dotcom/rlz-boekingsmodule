@@ -53,7 +53,7 @@ function useThema(): { licht: boolean; wissel: () => void } {
 function useManifest(): void {
   useEffect(() => {
     const vorigeTitel = document.title
-    document.title = 'RLZ Goedkeuren'
+    document.title = 'Nijenhuis Boekingsmodule'
     const elementen: HTMLElement[] = []
     const voegLink = (rel: string, href: string, type?: string) => {
       const el = document.createElement('link')

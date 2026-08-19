@@ -1,6 +1,6 @@
 {
-  "name": "RLZ Goedkeuren",
-  "short_name": "Goedkeuren",
+  "name": "Nijenhuis Boekingsmodule",
+  "short_name": "Nijenhuis",
   "description": "Facturen goedkeuren voor Administratiekantoor Nijenhuis",
   "id": "/accordeur",
   "start_url": "/accordeur",
