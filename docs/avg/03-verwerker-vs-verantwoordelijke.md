@@ -3,7 +3,9 @@
 > ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
 > — zie `docs/BESLISSINGEN.md` "AVG-compliance"). De rolbepaling volgt de
 > branche-richtsnoeren; de conclusie én het tekstblok in §4 zijn juridisch getoetst en
-> bruikbaar richting klanten.
+> bruikbaar richting klanten. **Bijgewerkt 2026-08-19:** de verwerkersketen in §3 volgt
+> sinds 2026-08-18 de feitelijke accountstructuur (PDL-keten, document 7 Bijlage B) — de
+> rolbepaling zelf en het tekstblok in §4 zijn ongewijzigd.
 
 ## 1. Kader
 
@@ -36,20 +38,25 @@ wettelijke normen (AWR, beroepsregels) en is daarmee doorgaans **geen** verwerke
    (art. 13/14 AVG): klanten en hun betrokkenen moeten weten wat het kantoor met de gegevens
    doet. Dat regelt het tekstblok in §4 (opnemen in de opdrachtvoorwaarden/-bevestiging) plus
    een privacyverklaring van het kantoor.
-2. **Anthropic, Google Cloud en Exact Reeleezee zijn verwerkers ván het kantoor** (art. 28
-   AVG) — met elk van hen moet een DPA staan (zie
-   [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md)). Ze zijn formeel geen
-   "subverwerkers", want het kantoor is geen verwerker; hun eigen onderaannemers zijn dat wel
-   (hun subverwerkerslijsten archiveren).
+2. **PDL Powerhouse B.V. is de verwerker ván het kantoor** (art. 28 AVG; intra-groep
+   verwerkersovereenkomst, [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md)).
+   De contractketen volgt sinds 2026-08-18 de feitelijke accountstructuur (document 7,
+   Bijlage B): Anthropic (API-organisatieaccount), Google Cloud, Google Workspace en bij
+   app-livegang Apple resp. Google Play/FCM zijn **subverwerkers ván PDL** (keten:
+   kantoor → PDL → partij). Alleen **Exact Reeleezee** is een rechtstreekse verwerker van
+   het kantoor (bestaande relatie, bewust búíten de PDL-keten). Met elke schakel moet een
+   verwerkersovereenkomst/DPA staan (zie
+   [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md)); de eigen
+   subverwerkerslijsten van de partijen blijven te archiveren.
 3. **Eigen verplichtingen van het kantoor als verantwoordelijke**: verwerkingsregister
    (document 1), beveiliging (art. 32 — grotendeels gebouwd, zie register §8), meldplicht
    datalekken (procedure kantoorbreed beleggen — nog niet in dit pakket), rechten van
    betrokkenen, en een DPIA-afweging voor de AI-extractie (document 4).
 4. **Als het kantoor voor een specifieke dienst tóch verwerker is** (bv. pure
    salarisverwerking): dan verwerkersovereenkomst met die klant sluiten (NBA-model als basis)
-   en zijn Anthropic/Google op dat deel subverwerkers — die moeten dan in de
-   verwerkersovereenkomst met de klant als subverwerker zijn toegestaan. Die dienst loopt nu
-   niet door deze module.
+   en is de PDL-keten op dat deel de subverwerkersketen (PDL als subverwerker van het
+   kantoor, Anthropic/Google daaronder) — die moeten dan in de verwerkersovereenkomst met
+   de klant als subverwerker zijn toegestaan. Die dienst loopt nu niet door deze module.
 
 ## 4. Concept-tekstblok voor de klantovereenkomst (bijlage bij de opdrachtvoorwaarden)
 

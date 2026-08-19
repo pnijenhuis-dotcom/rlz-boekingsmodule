@@ -4,6 +4,10 @@
 > — zie `docs/BESLISSINGEN.md` "AVG-compliance"); sindsdien de operationele leidraad.
 > Harde regel (besluit Peter 2026-08-11): dit pakket is de poort vóór AI op echte klantdata
 > en vóór klantdata in de cloud. Een gate gaat pas AAN als alle vinkjes van zijn stap staan.
+> **Bijgewerkt 2026-08-19:** stap 1 op de PDL-keten (document 7, Bijlage B) — het
+> Anthropic-API-organisatieaccount staat op naam van PDL, dus de Anthropic-DPA hangt in de
+> keten PDL ↔ Anthropic en de getekende PDL-verwerkersovereenkomst is zelf een
+> stap-1-voorwaarde.
 
 ## Stap 0 — nu (fundament, geen gate)
 
@@ -16,8 +20,13 @@
 
 Volgorde: eerst contracten, dan documenten, dan de knop.
 
-- [ ] **Anthropic-DPA rond**: betaald API-account, Commercial Terms geaccepteerd (= DPA incl.
-      SCC's), versie + datum gearchiveerd (checklist A in doc 2).
+- [ ] **PDL-verwerkersovereenkomst getekend** (document 7 — ondertekenklaar 2026-08-18;
+      open: KvK-nummer kantoor + handtekeningen): de keten-schakel waarbinnen de
+      Anthropic-DPA hangt (het API-organisatieaccount staat op naam van PDL, Bijlage B).
+- [ ] **Anthropic-DPA rond in de keten PDL ↔ Anthropic**: betaald API-account (organisatie,
+      op naam van PDL Powerhouse), Commercial Terms geaccepteerd door PDL (= DPA incl.
+      SCC's — voor de kantoor-klantdata is module 3 processor→processor de toepasselijke
+      variant), versie + datum gearchiveerd (checklist A in doc 2).
 - [ ] **Zero data retention** aangevraagd en bevestigd, óf de default-retentie bewust
       geaccepteerd en vastgelegd (met motivering).
 - [ ] **Model-check**: `ai_extractie_model` is ZDR-compatibel (nu `claude-sonnet-5` — bij
@@ -69,7 +78,7 @@ gewicht op de gedocumenteerde waarborgen):
 | Autoboeken per leverancier (Beheerder-only, default UIT) | Stap 1 volledig; werkt alleen op app-bevestigd geheugen + harde checks (gebouwd) |
 | Klant-accordering + accordeur-accounts | Tekstblok doc 3 bij de klant rond (accordeur-gegevens in register V6/V7) + activeringsflow-akkoord (zie hieronder) |
 | `afgeletterd_event_ingeschakeld` / webhooks naar vastgoed | Platform-intern (HMAC); geen aparte DPA — wel benoemd in het register (V4) |
-| Accordeur-PWA + push (fase 3) | Bij bouw: register aanvullen (pushtokens = persoonsgegevens) + providerkeuze push |
+| Accordeur-PWA + push (fase 3) | Bij bouw: register aanvullen (pushtokens = persoonsgegevens); providerkeuze gemaakt — APNs resp. FCM via de PDL-keten (subverwerkers ván PDL; DPA-checks E/F in doc 2 rond vóór app-livegang) |
 
 ### Accordeur-activeringsflow — voorwaarden + privacyverklaring ter akkoord (toegevoegd 2026-08-11)
 
@@ -90,7 +99,7 @@ gewicht op de gedocumenteerde waarborgen):
 
 ```
 AVG-pakket getoetst (stap 0)
-   └─► Anthropic-DPA + ZDR + register + DPIA + klantinfo (stap 1)
+   └─► PDL-VWO getekend + Anthropic-DPA (keten) + ZDR + register + DPIA + klantinfo (stap 1)
           └─► intake_ai_ingeschakeld AAN  ──► AI-extractie / splitsing / rapport-extractie
    └─► Google CDPA + regio + CMEK-herziening + retentie (stap 2)
           └─► GCP-uitrol (klantdata in de cloud) ──► live IMAP-intake (na eigen DPA)

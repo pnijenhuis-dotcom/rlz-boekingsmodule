@@ -3,6 +3,9 @@
 > ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
 > — zie `docs/BESLISSINGEN.md` "AVG-compliance"). Opgesteld 2026-08-11 als invulling van restpunt §5.3 uit de DPIA-lichte toets. Kantoorbreed:
 > geldt voor incidenten in de RLZ-boekingsmodule, Reeleezee, e-mail en papier.
+> **Bijgewerkt 2026-08-19:** §5 op de PDL-keten (document 7, Bijlage B) — subverwerkers
+> melden aan PDL, PDL informeert het kantoor uiterlijk binnen 24 uur (artikel 9 van de
+> verwerkersovereenkomst).
 
 ## 1. Wat is een datalek (werkdefinitie)
 
@@ -11,7 +14,8 @@ wijziging, of ongeoorloofde verstrekking van of toegang tot persoonsgegevens. Vo
 onze context: een verkeerd geadresseerde e-mail met factuurbijlagen, een kwijtgeraakte/gestolen
 (ontgrendelde) telefoon of laptop met toegang, een gecompromitteerd account (ondanks
 2FA/passkeys), onbevoegde toegang tot een administratie door een scoping-fout, een inbraak bij
-een verwerker (Anthropic, Google, Exact), of ransomware op een kantoormachine.
+een (sub)verwerker in de keten (PDL, Anthropic, Google, Exact), of ransomware op een
+kantoormachine.
 
 ## 2. Rollen
 
@@ -60,11 +64,17 @@ datum ontdekking, omschrijving, betrokken gegevens/personen/administraties, risi
 
 ## 5. De verwerker-keten
 
-Anthropic, Google Cloud en Exact zijn contractueel (DPA) verplicht óns onverwijld te informeren
-bij een inbreuk aan hun kant; onze 72-uursklok start dan bij hún melding aan ons. Controlepunt
-bij DPA-acceptatie (checklist document 2): staat de meldtermijn van de verwerker erin en is het
-meldkanaal bekend? Andersom geldt: een lek bij een verwerker ontslaat ons niet van onze eigen
-melding aan AP/betrokkenen — wij blijven verantwoordelijke.
+De contractketen volgt de feitelijke accountstructuur (document 7, Bijlage B). **PDL is de
+verwerker van het kantoor en informeert ons zonder onredelijke vertraging en uiterlijk
+binnen 24 uur** na ontdekking van een inbreuk (artikel 9 van de verwerkersovereenkomst,
+document 7) — óók als de inbreuk bij een subverwerker ván PDL zit (Anthropic, Google Cloud,
+Google Workspace, straks Apple/Play): die zijn onder hun eigen DPA's verplicht PDL
+onverwijld te informeren, en PDL geeft dat langs dezelfde 24-uurslijn aan ons door.
+**Exact Reeleezee** is rechtstreeks verwerker van het kantoor en meldt rechtstreeks aan ons
+(VWO 1.5/1.6). Onze 72-uursklok start bij de melding aan óns. Controlepunt bij
+DPA-acceptatie (checklist document 2): staat de meldtermijn van de (sub)verwerker erin en is
+het meldkanaal bekend? Andersom geldt: een lek bij een (sub)verwerker ontslaat ons niet van
+onze eigen melding aan AP/betrokkenen — wij blijven verantwoordelijke.
 
 ## 6. Oefening
 
