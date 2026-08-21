@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — tegenboeken ná ingediende btw-aangifte + suppletie-signaal</title>
+<!-- ============================================================
+     ONTWERPRONDE tegenboek-pad (geparkeerd besluit 15/16-08, mockup
+     19-08 ter beoordeling Peter). Drie schermen, klikbaar:
+     1. controlescherm: storno geblokkeerd → actie "Tegenboeken…"
+     2. de tegenboek-flow (keuze annuleren/vervangen, reden, preview)
+     3. klantpagina: suppletie-signaal > €1.000 + afvinken
+     Stijl = kantoor-modern (designpass-norm).
+     ============================================================ -->
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#ffffff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-hover:#25534e; --primary-fg:#ffffff;
+    --accent-bg:#e9f2f0; --ring:rgba(46,102,96,.35);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13.5px;letter-spacing:-.01em;line-height:1.5;padding:26px}
+  .wrap{max-width:980px;margin:0 auto}
+  h1{font-size:18px;margin-bottom:4px} .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px}
+  .stap-nav{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .stap-nav button{border:1px solid var(--border);background:var(--panel);padding:7px 14px;border-radius:9px;font-family:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+  .stap-nav button.actief{background:var(--accent-bg);color:var(--primary);font-weight:600;border-color:var(--primary)}
+
+  .kaart{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px}
+  .kaart-kop{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .kaart-kop h2{font-size:14px}
+  .kaart-body{padding:18px}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)} .badge.warn{background:var(--warn-bg);color:var(--warn)}
+  .badge.danger{background:var(--danger-bg);color:var(--danger)} .badge.info{background:var(--info-bg);color:var(--info)}
+  .badge.stil{background:var(--panel-2);color:var(--muted);border:1px solid var(--border)}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--primary-hover)}
+  .btn.secundair{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.gevaar{background:var(--danger)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)}
+  td{padding:9px 12px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .neg{color:var(--danger);font-weight:600}
+  .melding{border-radius:10px;padding:12px 16px;font-size:12.5px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start}
+  .melding.warn{background:var(--warn-bg);color:var(--warn)}
+  .melding.info{background:var(--info-bg);color:var(--info)}
+  .melding.danger{background:var(--danger-bg);color:var(--danger)}
+  .veld{margin-bottom:14px}
+  .veld label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+  .veld textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;min-height:56px;background:var(--panel);color:var(--text)}
+  .keuze{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+  .keuze label{border:1.5px solid var(--border);border-radius:11px;padding:14px;cursor:pointer;display:block}
+  .keuze label.aan{border-color:var(--primary);background:var(--accent-bg)}
+  .keuze b{display:block;font-size:13px;margin-bottom:3px}
+  .keuze span{font-size:12px;color:var(--muted)}
+  .keuze input{display:none}
+  .scherm{display:none}.scherm.actief{display:block}
+  .toasts{position:fixed;bottom:22px;right:22px;z-index:80;display:flex;flex-direction:column;gap:8px}
+  .toast{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;box-shadow:0 8px 40px rgba(21,32,29,.18);padding:11px 16px;font-size:12.5px}
+  .kv{display:grid;grid-template-columns:200px 1fr;gap:4px 16px;font-size:12.5px;margin-bottom:14px}
+  .kv dt{color:var(--muted)} .kv dd{font-weight:500}
+  @media(max-width:700px){.keuze{grid-template-columns:1fr}.kv{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Ontwerpronde — corrigeren ná ingediende btw-aangifte</h1>
+  <div class="sub">Drie schermen, klikbaar. Stijl volgt de kantoor-modernisering. Ter beoordeling: de flow, de teksten en de suppletie-bewaking.</div>
+  <div class="stap-nav">
+    <button class="actief" data-s="1" onclick="toon(1)">1 · Controlescherm (geblokkeerde storno)</button>
+    <button data-s="2" onclick="toon(2)">2 · Tegenboek-flow</button>
+    <button data-s="3" onclick="toon(3)">3 · Suppletie-signaal</button>
+  </div>
+
+  <!-- ========== SCHERM 1: controlescherm-fragment ========== -->
+  <section class="scherm actief" id="s1">
+    <div class="kaart">
+      <div class="kaart-kop"><h2>Factuur 2026-0841 — Bouwmaat Eindhoven</h2><span class="badge ok">GEBOEKT</span><span class="badge stil">periode mei 2026</span></div>
+      <div class="kaart-body">
+        <div class="kv">
+          <dt>Bedrag</dt><dd>€ 6.050,00 incl. btw (€ 1.050,00 btw, 21%)</dd>
+          <dt>Geboekt op</dt><dd>14 mei 2026 · RLZ-boekstuk RLZ-04-0004102</dd>
+          <dt>Btw-aangifte periode</dt><dd>Q2 2026 — <b>ingediend op 28 juli 2026</b></dd>
+        </div>
+        <div class="melding warn">⚠️ <span><b>Storno niet mogelijk:</b> de btw-aangifte over deze periode is definitief ingediend. Corrigeren kan via een <b>tegenboeking</b> in de huidige open periode — het origineel blijft staan, de btw-correctie telt mee in de eerstvolgende aangifte.</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn secundair" disabled>Storneren (geblokkeerd)</button>
+          <button class="btn" onclick="toon(2)">Tegenboeken…</button>
+        </div>
+      </div>
+    </div>
+    <div class="sub">▲ De storno-knop blijft zichtbaar-maar-uit mét de reden (bestaand gedrag); "Tegenboeken…" is de nieuwe primaire route. De knop verschijnt alléén als storno door de aangifte-poort geblokkeerd is.</div>
+  </section>
+
+  <!-- ========== SCHERM 2: de flow ========== -->
+  <section class="scherm" id="s2">
+    <div class="kaart">
+      <div class="kaart-kop"><h2>Tegenboeken — Factuur 2026-0841</h2><span class="badge stil">stap 1 van 1</span></div>
+      <div class="kaart-body">
+        <div class="keuze">
+          <label class="aan" onclick="kies(this,'annuleer')"><input type="radio" name="soort" checked><b>Volledig tegenboeken</b><span>De boeking hoort er helemaal niet te zijn (dubbel, verkeerde administratie). Er komt één omgekeerde boeking; daarna is het saldo-effect nul.</span></label>
+          <label onclick="kies(this,'vervang')"><input type="radio" name="soort"><b>Tegenboeken én opnieuw boeken</b><span>De boeking was fout (bedrag, grootboek, btw). Na de tegenboeking staat het document klaar in de werkvoorraad om opnieuw — correct — te boeken.</span></label>
+        </div>
+
+        <div class="kaart" style="box-shadow:none;background:var(--panel-2)">
+          <div class="kaart-kop" style="padding:10px 14px"><h2 style="font-size:12.5px">Voorbeeld van de tegenboeking (boekdatum vandaag, periode Q3 2026 — open)</h2></div>
+          <table>
+            <thead><tr><th>Grootboek</th><th>Omschrijving</th><th class="num">Netto</th><th class="num">Btw</th></tr></thead>
+            <tbody>
+              <tr><td>4302 Onderhoud</td><td>TEGENBOEKING 2026-0841 · Bouwmaat Eindhoven</td><td class="num neg">− € 5.000,00</td><td class="num neg">− € 1.050,00</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="melding info" style="margin-top:14px">ℹ️ <span>Btw-effect: <b>− € 1.050,00</b> telt mee in de eerstvolgende open aangifte (Q3 2026). Cumulatief gecorrigeerd op ingediende periode Q2 2026 wordt hiermee <b>€ 1.240,00</b> — <b>boven de suppletiegrens van € 1.000</b>: het systeem zet een suppletie-taak klaar (zie scherm 3).</span></div>
+
+        <div class="veld"><label>Reden (verplicht, komt in audit en tijdlijn)</label><textarea placeholder="Bijv.: factuur dubbel geboekt — origineel zat al in periode april"></textarea></div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn secundair" onclick="toon(1)">Annuleren</button>
+          <button class="btn gevaar" onclick="toon(3);toast('Tegenboeking geboekt in Q3 2026 — origineel gemarkeerd, suppletie-taak aangemaakt')">Tegenboeking boeken</button>
+        </div>
+      </div>
+    </div>
+    <div class="sub">▲ Eén scherm, geen wizard: keuze, voorbeeld, reden, boeken. De harde checks draaien onverkort op de tegenboeking; het origineel krijgt de chip "TEGENGEBOEKT" met kruisverwijzing (beide kanten, tijdlijn + audit).</div>
+  </section>
+
+  <!-- ========== SCHERM 3: suppletie-signaal ========== -->
+  <section class="scherm" id="s3">
+    <div class="kaart">
+      <div class="kaart-kop"><h2>Bouwmaat Holding B.V. — klantpagina</h2><span class="badge stil">fragment</span></div>
+      <div class="kaart-body">
+        <div class="melding danger">🔔 <span><b>Suppletie vereist — Q2 2026:</b> het cumulatieve btw-effect van correcties op deze ingediende periode is <b>€ 1.240,00</b> (grens € 1.000). Dien een btw-suppletie in bij de Belastingdienst en vink dit daarna af. <a href="#" onclick="return false">Bekijk de 3 onderliggende correcties →</a></span></div>
+        <table>
+          <thead><tr><th>Ingediende periode</th><th class="num">Btw-effect correcties</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Q2 2026 (ingediend 28-07)</td><td class="num neg">− € 1.240,00</td><td><span class="badge danger">suppletie vereist</span></td><td style="text-align:right"><button class="btn secundair" style="padding:5px 11px;font-size:12px" onclick="this.closest('tr').querySelector('.badge').outerHTML='<span class=\'badge ok\'>suppletie ingediend 19-08</span>';this.remove();toast('Suppletie afgevinkt — vastgelegd in audit (wie/wanneer)')">Suppletie ingediend…</button></td></tr>
+            <tr><td>Q1 2026 (ingediend 28-04)</td><td class="num">− € 86,00</td><td><span class="badge stil">onder de grens — mee in eerstvolgende aangifte</span></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sub">▲ Het signaal leeft op de klantpagina (en telt mee in de werkvoorraad-teller "vragen/taken"). Onder de grens = stil meenemen in de volgende aangifte (mag wettelijk); boven de grens = taak die pas verdwijnt na afvinken mét audit. Afvinken = Beheerder of Boekhouding-rol.</div>
+  </section>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script>
+  function toon(n){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('actief'));
+    document.getElementById('s'+n).classList.add('actief');
+    document.querySelectorAll('.stap-nav button').forEach(b=>b.classList.toggle('actief',b.dataset.s==n));window.scrollTo(0,0);}
+  function kies(el){document.querySelectorAll('.keuze label').forEach(l=>l.classList.remove('aan'));el.classList.add('aan');}
+  function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;
+    document.getElementById('toasts').appendChild(d);setTimeout(()=>d.remove(),4200);}
+</script>
+</body>
+</html>
