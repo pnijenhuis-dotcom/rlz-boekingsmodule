@@ -1,4 +1,4 @@
-# Tranche-2-draaiboek — datamigratie za 23-08 / zo 24-08-2026
+# Tranche-2-draaiboek — datamigratie za 22-08 / zo 23-08-2026
 
 > **Klaargezet 2026-08-21** (na de Vastly-bevestiging van het cutover-schema; zie
 > BESLISSINGEN "VASTLY-BEVESTIGING CUTOVER-SCHEMA"). Normtekst = `docs/GCP_UITROL.md`
@@ -6,18 +6,14 @@
 > sessie dit stap voor stap — elke stap heeft een expliciete verificatie vóór de
 > volgende begint, en elke afwijking wordt gemeld, nooit stil hersteld.
 >
-> **Schema (vast, Vastly 21-08):** za 23 / zo 24-08 tranche 2 → **ma 25-08 F4-cutover**
-> (`docs/F4_ACTIVATIE_RUNBOOK.md`, uitloop di 26-08) → nazorgweek. Facturatiestart
-> vastgoed = kalendergrens 1 september. De F5-poort is dicht (8/8, 2026-08-15) —
-> tranche 2 is vrijgegeven.
->
-> ⚠️ **Datum-mismatch (signalering vastgoed 21-08, klopt):** 2026-08-21 is een vrijdag,
-> dus za = **22**-08, zo = **23**-08, ma = **24**-08 en 25-08 = **dinsdag** — de
-> dag-labels en datums in het schema hierboven kunnen niet allebei waar zijn. **Peter
-> bevestigt vóór de start welke geldt** (weekend 22/23 met cutover ma 24, óf 23/24 met
-> cutover di 25). Dit draaiboek is verder datum-onafhankelijk.
+> **Schema (DEFINITIEF — bevestiging Peter mét Vastly 21-08, lezing A/weekdagen):**
+> **za 22 / zo 23-08 tranche 2 → ma 24-08 F4-cutover** (`docs/F4_ACTIVATIE_RUNBOOK.md`,
+> uitloop di 25-08) → nazorgweek. Facturatiestart vastgoed = kalendergrens 1 september.
+> De eerder gemarkeerde datum-mismatch (dag-labels vs datums) is hiermee opgelost.
+> **Freeze: za 22-08 09:00** — Peter meldt zich dan voor dit draaiboek.
+> De F5-poort is dicht (8/8, 2026-08-15) — tranche 2 is vrijgegeven.
 
-## Vooraf (vrijdagavond 22-08 / zaterdagochtend, vóór de freeze)
+## Vooraf (vrijdagavond 21-08 / zaterdagochtend 22-08, vóór de freeze)
 
 Deze drie punten komen uit de gereedheidscheck en zijn **blokkerend** voor de start:
 
@@ -37,7 +33,7 @@ Deze drie punten komen uit de gereedheidscheck en zijn **blokkerend** voor de st
    koppelingen, weekstaten), en cloud-zijdig geregistreerde accounts/passkeys (de
    lokale gebruikerstabel wint — cloud-only-passkeys worden wees, herregistratie is
    de normale flow). Alles bewuste besluiten; hier alleen herbevestigen.
-3. **Freeze-afspraak.** Tijdstip afspreken met Peter (voorstel: za 23-08 09:00).
+3. **Freeze-afspraak.** VASTGELEGD: **za 22-08 09:00** (afspraak Peter 21-08).
    Vanaf dat moment tot en met de groene functionele proef (stap 6): lokale backend +
    dagelijkse run uit, geen boekingen, geen syncs, geen deploys/pushes naar main
    (de deploy-workflow migreert de cloud-DB — mag niet middenin de restore landen).
@@ -75,7 +71,7 @@ en een verse controle dat er geen migratie klaarstaat die nog niet gedeployed is
    **Gepauzeerd blijven** (eigen gate, los van tranche 2):
    `rlz-accordeur-herinneringen` + `rlz-nieuwe-facturen` — tot de
    notificatie-live-verificatie (`scripts/gcp/notificaties_afronden.sh`).
-   NB de webhook-aflever-toggle blijft UIT tot de F4-activatie op ma 25-08.
+   NB de webhook-aflever-toggle blijft UIT tot de F4-activatie op ma 24-08.
 
 ## Ná afloop (zelfde weekend)
 
@@ -88,6 +84,6 @@ en een verse controle dat er geen migratie klaarstaat die nog niet gedeployed is
   cloud-veldwerkers van de 21-08-test zijn weg; heractiveren (opt-in + uitnodigingen)
   is een bewuste vervolgstap als de kliktest doorloopt.
 - **Route A wordt end-to-end mogelijk** (werk-DB staat nu in de cloud) — hoort bij de
-  F4-activatie ma 25-08, niet bij dit weekend.
+  F4-activatie ma 24-08, niet bij dit weekend.
 - Vastleggen: BESLISSINGEN-rij + GCP_UITROL §F1.6-uitvoering + dit draaiboek
   bijwerken met de werkelijke uitkomsten.

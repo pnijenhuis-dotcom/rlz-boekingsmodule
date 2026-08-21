@@ -36,33 +36,42 @@ ander niet. **Nooit hergebruiken.**
 - Tier-vlag-CLI: `make afgeletterd-event-aan/-uit`; toggle-CLI `make
   webhook-aflevering-aan/-uit`; herstel `make webhook-redrive`.
 
+## Cutover-moment (DEFINITIEF — bevestiging Peter mét Vastly 21-08)
+
+**F4-cutover = maandag 24-08-2026** (uitloop di 25-08), ná datamigratie-tranche 2 op
+za 22 / zo 23-08 (`docs/TRANCHE2_DRAAIBOEK.md`; freeze za 22-08 09:00). De eerder door
+vastgoed gesignaleerde datum-mismatch is opgelost met lezing A (weekdagen leidend).
+Facturatiestart vastgoed blijft de kalendergrens 1 september.
+
 ## Update vastgoed 21-08 (OPEN_ITEMS "Bevestigingsronde 21-08" + vastgoed-antwoord — verwerkt)
 
 - **Uitgaand: de SA-grant-route is de werkende route.** Vastgoeds slot heet
   **`WEBHOOK_RLZ_SECRET`** in `vastly-504108` (⚠️ naamverschil met ons env-label
   `WEBHOOK_HMAC_SECRET` — zelfde waarde); accessor-grants voor onze `run-backend@` +
-  `run-jobs@rlz-boekhouding` STAAN (door vastgoed gezet + nagelopen, één enabled versie).
+  `run-jobs@rlz-boekhouding` STAAN én zijn door vastgoed geverifieerd (herbevestigd in de
+  definitieve bevestigingsronde 21-08; één enabled versie).
   Deploy-editie (stap 8) draagt dus
   `projects/vastly-504108/secrets/WEBHOOK_RLZ_SECRET:latest`. Waardevrij te controleren:
   `gcloud secrets get-iam-policy WEBHOOK_RLZ_SECRET --project=vastly-504108`. NB tot
   tranche 2 draait de afleveraar lokaal → de .env-waarde blijft dan nodig (stap 2).
-- **Inkomend: slotnaam bekend — zelfde naam aan beide kanten.** Vastgoed maakt op de
-  cutover-dag `PROJECTAANVRAAG_HMAC_SECRET` aan in `vastly-504108` (user-managed
-  `europe-west4`, accessor `run-backend@vastly-504108`); het slot bestaat daar 21-08 nog
-  níét. Ons store-naar-store-plakcommando is **getoetst en goedgekeurd** (byte-veilig:
+- **Inkomend: slotnaam definitief — zelfde naam aan beide kanten, wij leveren de
+  VOLLEDIGE waarde (geen helften te combineren).** Vastgoed maakt op de cutover-dag
+  `PROJECTAANVRAAG_HMAC_SECRET` aan in `vastly-504108` (user-managed `europe-west4`,
+  accessor `run-backend@vastly-504108`); het slot bestaat daar 21-08 nog níét. Ons
+  store-naar-store-plakcommando is **getoetst en goedgekeurd** (byte-veilig:
   f4_koppelvlak.sh schrijft met `printf '%s'`, geen newline):
   `gcloud secrets versions access latest --secret=PROJECTAANVRAAG_HMAC_SECRET
   --project=rlz-boekhouding | gcloud secrets versions add PROJECTAANVRAAG_HMAC_SECRET
   --project=vastly-504108 --data-file=-` — controle zonder waarde tonen: SHA-256 van
-  `versions access` in beide projecten vergelijken.
+  `versions access` in beide projecten vergelijken; **vastgoed heeft die
+  SHA-256-vergelijking als newline-vangnet klaarstaan** (bevestigd 21-08).
 - **Poort-beginstand vastgoed live geverifieerd 21-08:** `/health` → 200; ongetekende
   `POST /webhooks/rlz` → 401.
 - **Vastgoeds ochtend-draaiboek** = checklist **3.3c-RLZ** in
   `Vastgoed software/docs/HOSTING_SEPTEMBER.md` (losgetrokken van hun september-go-live).
-- ⚠️ **Datum bevestigen (signalering vastgoed):** 25-08-2026 is een **dinsdag**
-  (maandag = 24-08) — het schema "za 23 / zo 24 / ma 25" klopt niet met de kalender
-  (za = 22, zo = 23). Peter zet vóór de tranche-2-start vast welke dagen bedoeld zijn;
-  runbook en draaiboek zijn datum-onafhankelijk.
+- **Datum-mismatch OPGELOST (bevestiging Peter mét Vastly 21-08):** lezing A geldt —
+  tranche 2 za 22 / zo 23-08, **F4-cutover ma 24-08** (uitloop di 25-08). Zie de kop
+  "Cutover-moment" hierboven.
 
 ## Stap 0 — kan vandaag al (Peter, ~5 min)
 
