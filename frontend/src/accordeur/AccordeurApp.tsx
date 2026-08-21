@@ -13,6 +13,7 @@ import { AccordeurActiveren } from './AccordeurActiveren'
 import { GoedkeurenFlow } from './GoedkeurenFlow'
 import { installeerNativeTapAfhandeling } from './nativePush'
 import { Ontgrendel } from './Ontgrendel'
+import { UrenFlow } from '../uren/UrenFlow'
 
 const ONTGRENDELD_VLAG = 'accordeur-ontgrendeld'
 const THEMA_SLEUTEL = 'accordeur-thema'
@@ -145,8 +146,10 @@ export default function AccordeurApp() {
     void navigate('/accordeur', { replace: true })
   }, [navigate])
 
-  if (status === 'ingelogd' && rol !== null && rol !== 'klant_accordeur') {
-    // Kantoor-rollen horen in de web-app; de PWA is uitsluitend de accordeer-wachtrij.
+  const veldrol = rol === 'zzper' || rol === 'uitvoerder' || rol === 'detacheerder'
+  if (status === 'ingelogd' && rol !== null && rol !== 'klant_accordeur' && !veldrol) {
+    // Kantoor-rollen horen in de web-app; deze surface is voor de externe app-rollen
+    // (accordeur + veldrollen uren & meerwerk, migratie 0056 — zelfde auth-cadans).
     return <Navigate to="/" replace />
   }
 
@@ -206,6 +209,9 @@ export default function AccordeurApp() {
     inhoud = <AccordeurLogin naIngelogd={naIngelogd} />
   } else if (!ontgrendeld) {
     inhoud = <Ontgrendel naOntgrendeld={naIngelogd} naarLogin={() => setForceerLogin(true)} />
+  } else if (veldrol) {
+    // Uren & meerwerk (fase 4, mockup/uren-uitvoerder.html): zelfde app, rolafhankelijke tabs.
+    inhoud = <UrenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} />
   } else {
     inhoud = <GoedkeurenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} />
   }

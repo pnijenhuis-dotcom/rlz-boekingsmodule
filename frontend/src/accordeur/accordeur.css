@@ -741,3 +741,316 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ===== Uren & meerwerk (fase 4, mockup/uren-uitvoerder.html 1-op-1 — BOUW GO 21-08) ===== */
+
+/* Functietabs onder de kop (rolafhankelijk). Sticky onder de apphead. */
+.acc-functabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+  background: var(--acc-bg);
+  position: sticky;
+  top: 0;
+  z-index: 18;
+}
+.acc-functab {
+  flex: 1;
+  text-align: center;
+  padding: 9px 6px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: var(--acc-panel);
+  border: 1px solid var(--acc-border);
+  color: var(--acc-muted);
+  cursor: pointer;
+  position: relative;
+  font-family: inherit;
+}
+.acc-functab.actief {
+  color: var(--acc-accent);
+  border-color: var(--acc-accent);
+  background: var(--acc-blue-bg);
+}
+.acc-functab .acc-badge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  background: var(--acc-red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+/* Status-chips van de uren-flow (mockup .chip.*) */
+.acc-chip.concept {
+  background: var(--acc-blue-bg);
+  color: var(--acc-accent);
+}
+.acc-chip.open {
+  background: var(--acc-orange-bg);
+  color: var(--acc-orange);
+}
+.acc-chip.ingediend {
+  background: var(--acc-orange-bg);
+  color: var(--acc-orange);
+}
+.acc-chip.akkoord {
+  background: var(--acc-green-bg);
+  color: var(--acc-green);
+}
+.acc-chip.afgekeurd {
+  background: var(--acc-red-bg);
+  color: var(--acc-red);
+}
+.acc-chip.meerwerk {
+  background: var(--acc-purple-bg);
+  color: var(--acc-purple);
+}
+
+.acc-seclabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--acc-muted);
+  margin: 16px 2px 8px;
+}
+.acc-seclabel:first-child {
+  margin-top: 0;
+}
+/* "namens X"-context (detacheerder-flow, mockup-norm: zichtbaar in de kopregel). */
+.acc-namens {
+  color: var(--acc-purple);
+  font-weight: 700;
+}
+
+.acc-card {
+  background: var(--acc-panel);
+  border: 1px solid var(--acc-border);
+  border-radius: var(--acc-radius);
+  box-shadow: var(--acc-shadow);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.acc-card.klik {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  transition: border-color 0.12s, transform 0.05s;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  font-size: inherit;
+}
+.acc-card.klik:active {
+  transform: scale(0.99);
+}
+.acc-card.klik:hover {
+  border-color: var(--acc-accent);
+}
+.acc-card .acc-tt {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+.acc-card .acc-meta {
+  font-size: 11.5px;
+  color: var(--acc-muted);
+  margin-top: 3px;
+}
+.acc-card .acc-arrow {
+  color: var(--acc-muted);
+  font-size: 16px;
+}
+
+/* Dagrijen in de weekstaat */
+.acc-dagrij {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--acc-border);
+}
+.acc-dagrij:last-child {
+  border-bottom: none;
+}
+.acc-dagrij .acc-dag {
+  width: 34px;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--acc-muted);
+}
+.acc-dagrij .acc-proj {
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.acc-dagrij .acc-proj small {
+  color: var(--acc-muted);
+  display: block;
+}
+.acc-dagrij .acc-u {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+.acc-dagrij .acc-leegdag {
+  color: var(--acc-muted);
+  font-size: 12.5px;
+  font-style: italic;
+  flex: 1;
+}
+.acc-dagrij .acc-plus {
+  background: var(--acc-blue-bg);
+  color: var(--acc-accent);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.acc-totbalk {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 4px 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.acc-totbalk .acc-k {
+  color: var(--acc-muted);
+  font-weight: 500;
+}
+
+.acc-duo {
+  display: flex;
+  gap: 10px;
+}
+.acc-duo > * {
+  flex: 1;
+}
+
+/* Infolijst (uitvoerder-projectdetail) */
+.acc-infolijst {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.acc-infolijst .acc-rij {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--acc-border);
+}
+.acc-infolijst .acc-rij:last-child {
+  border-bottom: none;
+}
+.acc-infolijst .acc-k {
+  color: var(--acc-muted);
+}
+.acc-infolijst b {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.acc-doclink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  background: var(--acc-bg);
+  border: 1px solid var(--acc-border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+.acc-doclink:hover {
+  border-color: var(--acc-accent);
+}
+.acc-doclink .acc-ic {
+  font-size: 17px;
+}
+.acc-doclink small {
+  color: var(--acc-muted);
+  font-weight: 400;
+  display: block;
+  font-size: 11px;
+}
+
+.acc-notitie {
+  background: var(--acc-blue-bg);
+  border-radius: 10px;
+  padding: 9px 12px;
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--acc-accent);
+  display: flex;
+  gap: 8px;
+}
+.acc-notitie.waarschuw {
+  background: var(--acc-orange-bg);
+  color: var(--acc-orange);
+}
+.acc-afwijs {
+  background: var(--acc-red-bg);
+  color: var(--acc-red);
+  border-radius: 10px;
+  padding: 9px 12px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.acc-fotoknop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1.5px dashed var(--acc-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--acc-muted);
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  background: none;
+  font-family: inherit;
+}
+
+.acc-mwrij {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--acc-border);
+  font-size: 12.5px;
+}
+.acc-mwrij:last-child {
+  border-bottom: none;
+}
+.acc-mwrij .acc-oms {
+  flex: 1;
+  line-height: 1.4;
+}
+.acc-mwrij .acc-oms small {
+  color: var(--acc-muted);
+  display: block;
+  font-size: 11px;
+}
