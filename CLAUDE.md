@@ -62,6 +62,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   Beheerder-rol (initieel alleen Peter), server-side gecontroleerd. **Niemand kan zijn eigen rol
   of scope muteren, ook een Beheerder niet** (tweede beheerder aanwijzen kan alleen door een
   andere beheerder). Elke rol-/scope-wijziging in het append-only audit_event.
+  **Rolniveau-poorten kantoor-console (rollen-gate-fix 2026-08-21, BESLISSINGEN "ROLLEN-GATE-BUG
+  WEB"):** administratie-scope is GEEN rolpoort — externe app-rollen (accordeur + veldrollen)
+  hebben reguliere scope-rijen. Élk kantoor-endpoint draagt daarom `vereis_kantoorrol`
+  (router-breed waar mogelijk) of `vereis_kantoor_of_accordeur` (PDF-bestand,
+  accorderingsbesluiten) uit `app/auth/deps.py`; frontend-routing fail-closed via allowlists
+  (`frontend/src/auth/rollen.ts`). Vangnet: `tests/security/test_rol_endpoint_gates.py` —
+  rol×endpoint-matrix + fail-closed sweep over álle routes (nieuw endpoint zonder poort = rood).
   **Platformbesluit 0019 (2026-08-08): identiteit gedeeld, autorisatie per module** — elke
   module een eigen rollen-/rechtenstructuur (nooit één gedeelde enum); gebouwd als
   `platform.gebruiker_module_rol` + `platform.gebruiker_entiteit` (migratie 0034, RLS dwingt
