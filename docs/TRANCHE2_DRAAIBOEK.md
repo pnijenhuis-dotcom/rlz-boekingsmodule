@@ -10,6 +10,12 @@
 > (`docs/F4_ACTIVATIE_RUNBOOK.md`, uitloop di 26-08) → nazorgweek. Facturatiestart
 > vastgoed = kalendergrens 1 september. De F5-poort is dicht (8/8, 2026-08-15) —
 > tranche 2 is vrijgegeven.
+>
+> ⚠️ **Datum-mismatch (signalering vastgoed 21-08, klopt):** 2026-08-21 is een vrijdag,
+> dus za = **22**-08, zo = **23**-08, ma = **24**-08 en 25-08 = **dinsdag** — de
+> dag-labels en datums in het schema hierboven kunnen niet allebei waar zijn. **Peter
+> bevestigt vóór de start welke geldt** (weekend 22/23 met cutover ma 24, óf 23/24 met
+> cutover di 25). Dit draaiboek is verder datum-onafhankelijk.
 
 ## Vooraf (vrijdagavond 22-08 / zaterdagochtend, vóór de freeze)
 
