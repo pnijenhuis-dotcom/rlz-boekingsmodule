@@ -485,6 +485,28 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   dekkingscontrole vs OVH-project) — nooit geboekt in RLZ.
 - **Projectcode-generatie** volgens naamconventie van de klant (bijv. Universal: "26xxx Plaats
   (Opdrachtgever)"), synct bij aanmaken naar RLZ.
+- **Uren & meerwerk (steigerbouw-tak — ontwerpronde Peter 2026-08-21, capture, GEEN bouw):**
+  het fase-4-item "urenportaal ZZP'ers" is naar voren getrokken; de UX-/ontwerpronde is
+  uitgevoerd, twee mockups goedgekeurd: `mockup/uren-uitvoerder.html` (veldkant, zelfde
+  native app als de accordeur) + `mockup/meerwerk-kantoor.html` (kantoorkant, stijl
+  kantoor-modern). Scope: steigerbouw-specifiek, **opt-in per administratie** (alleen
+  Universal initieel); onderdeel van de projectadministratie maar **niet leidend** ervoor —
+  de generieke projectenmodule blijft eigen ontwerp en wordt alleen gevoed (m²-voortgang,
+  meerwerklijst, getekende urenstaten). Rollen in de bestaande native app: **ZZP'er**
+  (weekstaat per project — uren + optionele m² per dag, indienen per week) en
+  **uitvoerder** (specs/contract alleen-lezen, meerwerk melden zonder prijzen, urenstaten
+  keuren per dag/week met verplichte afkeurreden); kantoor bepaalt keurders per
+  uitvoerder↔project. Goedgekeurde staat = getekende urenstaat = basis ZZP-factuurmatch
+  (autoboek-opt-in bij match, afwijking = afwijzen + mail). Meerwerk-kantoorkant: gemeld →
+  goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen rekening, verplichte reden);
+  contract-toets stelt prijs voor uit de offerte-staffel, mens bevestigt (nooit auto-boeken);
+  goedgekeurd + 2 weken niet op een verkoopfactuur = werkvoorraad-signaal (sluit aan op de
+  item-niveau-doorbelastingscontrole); omschrijvingen altijd voluit. Toegang: één
+  module-recht "Meerwerk & urenstaten" per kantoormedewerker (0019-patroon, Beheerder-only,
+  audit, server-side incl. menu/standen/zoeken/API; klantscope blijft eronder gelden).
+  **Bouw vergt een apart akkoord ná de OPEN datamodel-vraag (weekstaat per project vs één
+  gemengde per persoon + aannames-toets) — zie BESLISSINGEN "Ontwerpronde uren &
+  uitvoerder + meerwerk-kantoor".**
 - **Zoeken**: globaal over boekingen (incl. archief + RLZ-boekstuk + PDF), accorderingshistorie
   — **GEBOUWD + GETEST (2026-08-09)**: `backend/app/zoeken/` + `frontend/src/zoeken/`,
   scope-veilig per administratie (RLS + server-side), doorzoekt kopgegevens + lokaal
@@ -618,6 +640,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vormgeving, componenten en IA; semantische design tokens = de bron voor de frontend-tokens**
 - `mockup/accordeur.html` — klikbare mobile-first accordeur-app-mockup (blok 5, 2026-08-09;
   ter beoordeling Peter op het mobiele breakpoint — bouw start pas na akkoord)
+- `mockup/uren-uitvoerder.html` + `mockup/meerwerk-kantoor.html` — goedgekeurde
+  ontwerpronde uren & meerwerk (Peter 2026-08-21): veldkant (ZZP'er/uitvoerder in de
+  native app) + kantoorkant (stijl kantoor-modern) — capture, bouw pas na apart akkoord
+  (zie "Uren & meerwerk" hierboven)
 - `verkenning/api-verkenning.md` — alle geverifieerde API-feiten + PoC-resultaten
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
