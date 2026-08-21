@@ -51,8 +51,12 @@ for SVC in $(gcloud run services list --region="${REGION}" --format='value(metad
   fi
 done
 for JOB in $(gcloud run jobs list --region="${REGION}" --format='value(metadata.name)'); do
+  # NB jobs nesten in de v1-YAML één niveau dieper dan services:
+  # Job.spec.template (ExecutionTemplate) .spec (ExecutionSpec) .template (TaskTemplate)
+  # .spec.serviceAccountName — het pad zonder de middelste .spec leest altijd leeg
+  # (vals alarm F6-run 2026-08-21: alle jobs stonden gewoon op run-jobs@).
   SA="$(gcloud run jobs describe "${JOB}" --region="${REGION}" \
-        --format='value(spec.template.template.spec.serviceAccountName)')"
+        --format='value(spec.template.spec.template.spec.serviceAccountName)')"
   if [ -z "${SA}" ] || [ "${SA}" = "${DEFAULT_SA}" ]; then
     echo "   STOP: job ${JOB} draait op het default-SA (serviceAccountName='${SA:-<leeg>}')."
     GEBRUIKT=1

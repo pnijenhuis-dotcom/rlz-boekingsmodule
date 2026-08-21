@@ -731,6 +731,15 @@ uit (omkeerbaar met `enable`; verwijderen bewust niet). Mocht ooit iets stilletj
 default-SA leunen (bv. een legacy Cloud Build-pad), dan faalt dat vanaf dan zichtbaar —
 terugweg is één enable-commando + een eigen SA voor die dienst.
 
+**Run 2026-08-21 AFGEBROKEN op een vals alarm (script-bug, zelfde dag gefixt):** de
+verificatiestap las bij álle 7 jobs een lege serviceAccountName en stopte fail-closed —
+correct gedrag, maar de oorzaak was een verkeerd veldpad (jobs nesten in de v1-YAML één
+niveau dieper dan services: `spec.template.spec.template.spec.serviceAccountName`; het
+script miste de middelste `.spec`). Diagnose per job én op de laatste échte executie
+(rlz-sync) bevestigde: alles draait gewoon op run-jobs@ — least privilege stond wél in
+runtime. Bijvangst: het default-SA had hier al géén Editor-binding (stap 2 zal "al gedaan"
+melden); alleen stap 3 (disable) is nog te doen.
+
 ## Kritieke pad & parallelsporen
 
 ```
