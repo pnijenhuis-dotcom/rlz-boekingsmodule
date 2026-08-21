@@ -714,6 +714,10 @@ UI-eisen):
      werkvoorraad-signaal; één module-recht "Meerwerk & urenstaten" per kantoormedewerker
      (0019-patroon). **Factuurmatch-motor + autoboek-activatie = latere fase met eigen
      akkoord (datamodel bereidt voor).**
+     **BOUWSTATUS: fases 1–4 GEBOUWD + GETEST 2026-08-21 (migratie 0056; datamodel +
+     statusmachine, veld-API, kantoor-API + kantoor-UI, native app-UI) — canoniek
+     statusregister + open punten: BESLISSINGEN "UREN & MEERWERK — BOUW"; activatie +
+     kliktest Peter open.**
   2. **Universal Nederland (zusterbedrijf, steiger-inhuur):** geen menselijke verificatie —
      invullen via de bestaande per-leverancier-autoboek-opt-in (migratie 0036,
      `app/documenten/autoboeken.py`); harde checks blijven onverkort;
