@@ -208,14 +208,14 @@ jobs:
           # Native push fase 3 (kliktest-ronde 2026-08-17): APNs op de twee notificatie-jobs.
           # APNS_KEY_P8 + APNS_KEY_ID zijn Secret Manager-slots (scripts/gcp/apns_afronden.sh
           # — het Key ID is geen geheim maar leeft dáár zodat deploy.yml waarde-vrij blijft).
-          # APNS_SANDBOX=true zolang de geïnstalleerde build dev-signed is (aps-environment
-          # 'development' praat uitsluitend met sandbox-APNs); bij de TestFlight-/App Store-
-          # build op false zetten — dit is dezelfde omslag als het provisioning-profiel maakt.
+          # APNS_SANDBOX=false sinds A6 (2026-08-21): de TestFlight-build is de doel-build
+          # (aps-environment 'production'); push op de oude dev-signed kabel-build werkt
+          # daarmee bewust niet meer — dit is dezelfde omslag als het provisioning-profiel maakt.
           for NJOB in rlz-accordeur-herinneringen rlz-nieuwe-facturen; do
             gcloud run jobs update "${NJOB}" \
               --region "${REGION}" \
               --project "${PROJECT_ID}" \
-              --update-env-vars "APNS_SANDBOX=true,APPLE_TEAM_ID=VRQP26CX43" \
+              --update-env-vars "APNS_SANDBOX=false,APPLE_TEAM_ID=VRQP26CX43" \
               --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
               --quiet \
             || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — ${NJOB} verstuurt native push nog niet (webpush/mail ongemoeid)."
@@ -241,11 +241,11 @@ jobs:
           # APNs óók op de service: het native-registratie-endpoint is fail-closed 409 zolang
           # APNs daar niet geconfigureerd is, en de handmatige herinner-knop verstuurt per
           # direct vanuit de service. Eigen || zodat een ontbrekend APNs-slot de mailconfig
-          # hierboven niet meesleept. APNS_SANDBOX: zie de job-stap (dev-build = true).
+          # hierboven niet meesleept. APNS_SANDBOX: zie de job-stap (TestFlight = false, A6).
           gcloud run services update rlz-backend \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
-            --update-env-vars "APNS_SANDBOX=true" \
+            --update-env-vars "APNS_SANDBOX=false" \
             --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
             --quiet \
           || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — native-pushregistratie blijft fail-closed 409, web/PWA ongemoeid."
