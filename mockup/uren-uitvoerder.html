@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Uren & Uitvoerder — mockup (mobiel leading, zelfde app als accordeur)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== Zelfde design tokens als mockup/accordeur.html (dark = default, ◐ = override) ===== */
+  :root {
+    color-scheme: dark;
+    --bg: #0e1514; --panel: #16211f; --border: #263533;
+    --text: #e6ecea; --muted: #8ba09b; --accent: #5cb3a8;
+    --green: #34c08b; --green-bg: #123227;
+    --orange: #e9a23b; --orange-bg: #372a12;
+    --red: #ee6c62; --red-bg: #3a1e1b;
+    --blue-bg: #1a2e2b; --purple: #ab8ffc; --purple-bg: #28203f;
+    --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --focus: rgba(92,179,168,.28);
+  }
+  body.licht {
+    color-scheme: light;
+    --bg: #f5f7f7; --panel: #ffffff; --border: #e5e9e8;
+    --text: #16181d; --muted: #647572; --accent: #2e6660;
+    --green: #1c7a54; --green-bg: #e6f4ee;
+    --orange: #b45309; --orange-bg: #fdf3e3;
+    --red: #b42318; --red-bg: #fceceb;
+    --blue-bg: #e6f0ee; --purple: #6941c6; --purple-bg: #f1ecfb;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 4px rgba(16,24,40,.05);
+    --focus: rgba(46,102,96,.18);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  input, textarea, select { font-size: 16px; } /* iOS-autozoom-preventie, bouwvereiste dag één */
+  body { font-family: 'Inter', -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.01em;
+    background: var(--bg); color: var(--text); font-size: 14px; min-height: 100vh; }
+
+  .stage { min-height: 100vh; display: flex; justify-content: center; }
+  .phone { width: 100%; max-width: 430px; background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; position: relative; }
+  .desknote { display: none; }
+  @media (min-width: 581px) {
+    body { background: color-mix(in srgb, var(--bg) 80%, #9fb3af); padding: 28px 16px; }
+    .stage { gap: 28px; align-items: flex-start; }
+    .phone { border: 12px solid #1d2523; border-radius: 40px; min-height: 780px; max-height: 860px;
+      overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.35); flex-shrink: 0; overflow-y:auto; }
+    .desknote { display: block; max-width: 340px; font-size: 13px; line-height: 1.6; color: var(--text);
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 18px 20px; }
+    .desknote h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 8px; }
+    .desknote h2:first-child { margin-top: 0; }
+    .desknote p { margin-bottom: 10px; }
+  }
+
+  .apphead { padding: 14px 16px 10px; background: linear-gradient(180deg, #14242b 0%, #0d1a19 100%);
+    color: #e6efec; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    position: sticky; top: 0; z-index: 20; }
+  .apphead .who { font-size: 11px; color: #a9bfba; }
+  .apphead b { font-size: 14px; display: block; color: #fff; }
+  .apphead b span { color: #7fd0c5; }
+  .headbtns { display: flex; gap: 6px; }
+  .iconbtn { background: rgba(255,255,255,.08); border: none; color: #cfe0dc; width: 34px; height: 34px;
+    border-radius: 10px; font-size: 15px; cursor: pointer; flex-shrink: 0; }
+  .iconbtn:hover { background: rgba(255,255,255,.16); }
+  .content { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: 24px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Functie-tabs onder de kop (rolafhankelijk zichtbaar in het echt) */
+  .functabs { display: flex; gap: 6px; padding: 10px 16px 0; background: var(--bg); position: sticky; top: 58px; z-index: 18; }
+  .functab { flex: 1; text-align: center; padding: 9px 6px; border-radius: 10px; font-size: 12.5px; font-weight: 700;
+    background: var(--panel); border: 1px solid var(--border); color: var(--muted); cursor: pointer; position: relative; }
+  .functab.actief { color: var(--accent); border-color: var(--accent); background: var(--blue-bg); }
+  .functab .badge { position: absolute; top: -6px; right: -4px; background: var(--red); color: #fff;
+    font-size: 10px; font-weight: 800; border-radius: 999px; padding: 2px 6px; }
+
+  .chip { display: inline-block; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .chip::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: currentColor; }
+  .chip.concept  { background: var(--blue-bg); color: var(--accent); }
+  .chip.open     { background: var(--orange-bg); color: var(--orange); }
+  .chip.ingediend{ background: var(--orange-bg); color: var(--orange); }
+  .chip.akkoord  { background: var(--green-bg); color: var(--green); }
+  .chip.afgekeurd{ background: var(--red-bg); color: var(--red); }
+  .chip.meerwerk { background: var(--purple-bg); color: var(--purple); }
+
+  .seclabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 2px 8px; }
+  .seclabel:first-child { margin-top: 0; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px 16px; margin-bottom: 10px; }
+  .card.klik { cursor: pointer; display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    transition: border-color .12s, transform .05s; }
+  .card.klik:active { transform: scale(.99); }
+  .card.klik:hover { border-color: var(--accent); }
+  .card .tt { font-weight: 700; font-size: 14.5px; }
+  .card .meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .card .arrow { color: var(--muted); font-size: 16px; }
+
+  .dagrij { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .dagrij:last-child { border-bottom: none; }
+  .dagrij .dag { width: 34px; font-weight: 700; font-size: 12.5px; color: var(--muted); }
+  .dagrij .proj { flex: 1; font-size: 12.5px; line-height: 1.35; }
+  .dagrij .proj small { color: var(--muted); display: block; }
+  .dagrij .u { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13.5px; white-space: nowrap; }
+  .dagrij .leegdag { color: var(--muted); font-size: 12.5px; font-style: italic; flex: 1; }
+  .dagrij .plus { background: var(--blue-bg); color: var(--accent); border: none; border-radius: 8px; padding: 6px 10px; font-weight: 700; font-size: 12px; cursor: pointer; }
+  .dagrij .keur { display: flex; gap: 6px; }
+  .dagrij .keur button { border: none; border-radius: 8px; width: 34px; height: 30px; font-size: 14px; cursor: pointer; }
+  .dagrij .keur .ok { background: var(--green-bg); color: var(--green); }
+  .dagrij .keur .nee { background: var(--red-bg); color: var(--red); }
+
+  .totbalk { display: flex; justify-content: space-between; padding: 12px 4px 2px; font-size: 13px; font-weight: 700; }
+  .totbalk .k { color: var(--muted); font-weight: 500; }
+
+  .veld { margin-bottom: 12px; }
+  .veld label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+  .veld input, .veld select, .veld textarea { width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); padding: 11px 12px; font-family: inherit; }
+  .veld input:focus, .veld select:focus, .veld textarea:focus { outline: 3px solid var(--focus); border-color: var(--accent); }
+  .duo { display: flex; gap: 10px; } .duo .veld { flex: 1; }
+
+  .infolijst { font-size: 13px; line-height: 1.5; }
+  .infolijst .rij { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .infolijst .rij:last-child { border-bottom: none; }
+  .infolijst .k { color: var(--muted); }
+  .infolijst b { font-variant-numeric: tabular-nums; text-align: right; }
+
+  .doclink { display: flex; align-items: center; gap: 10px; padding: 11px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .doclink:hover { border-color: var(--accent); }
+  .doclink .ic { font-size: 17px; }
+  .doclink small { color: var(--muted); font-weight: 400; display: block; font-size: 11px; }
+
+  .notitie { background: var(--blue-bg); border-radius: 10px; padding: 9px 12px; margin: 8px 0 0;
+    font-size: 11.5px; line-height: 1.5; color: var(--accent); display: flex; gap: 8px; }
+  .waarschuw { background: var(--orange-bg); color: var(--orange); }
+  .afwijs { background: var(--red-bg); color: var(--red); border-radius: 10px; padding: 9px 12px; margin-top: 8px; font-size: 11.5px; line-height: 1.5; }
+
+  .actionbar { position: sticky; bottom: 0; background: linear-gradient(180deg, transparent, var(--bg) 26%);
+    padding: 16px 0 6px; display: flex; gap: 10px; z-index: 15; }
+  .btn { border: none; border-radius: 12px; font-weight: 700; font-size: 15px; padding: 15px 10px;
+    cursor: pointer; font-family: inherit; transition: filter .12s, transform .05s; flex: 1; }
+  .btn:active { transform: scale(.98); }
+  .btn.primair { background: var(--accent); color: #08211d; }
+  .btn.stil { background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+  .btn.rood { background: var(--red-bg); color: var(--red); }
+  .btn:disabled { opacity: .45; cursor: default; }
+
+  .terug { background: none; border: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0; margin-bottom: 8px; }
+
+  .fakepdf-wrap { background: #3f4247; border-radius: var(--radius); padding: 14px; min-height: 300px;
+    display: flex; align-items: center; justify-content: center; margin-top: 10px; }
+  .fakepdf { background: #fff; width: 100%; max-width: 330px; min-height: 280px; padding: 18px; font-size: 11px; color: #333;
+    box-shadow: 0 4px 14px rgba(0,0,0,.4); border-radius: 2px; }
+  .fakepdf h3 { margin-bottom: 2px; font-size: 13px; }
+  .fakepdf .sub { color: #888; font-size: 10px; }
+  .fakepdf .fr { display: flex; justify-content: space-between; margin: 3px 0; }
+  .fakepdf hr { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
+
+  .fotoknop { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px dashed var(--border);
+    border-radius: 10px; padding: 14px; color: var(--muted); font-size: 13px; cursor: pointer; }
+
+  .mwrij { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .mwrij:last-child { border-bottom: none; }
+  .mwrij .oms { flex: 1; line-height: 1.4; }
+  .mwrij .oms small { color: var(--muted); display: block; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone">
+
+    <div class="apphead">
+      <div class="who">Nijenhuis · Universal Steigerbouw
+        <b id="kopnaam">Uren — <span>Milan K. (ZZP)</span></b>
+      </div>
+      <div class="headbtns">
+        <button class="iconbtn" title="rol wisselen (alleen mockup)" onclick="wisselRol()">⇄</button>
+        <button class="iconbtn" title="thema" onclick="document.body.classList.toggle('licht')">◐</button>
+      </div>
+    </div>
+
+    <!-- Functietabs: rolafhankelijk. Milan (ZZP) ziet Uren; Ben (uitvoerder) ziet Projecten + Te keuren. -->
+    <div class="functabs" id="tabsZzp">
+      <div class="functab actief" onclick="toon('zzpProjecten', this)">⏱ Mijn projecten</div>
+      <div class="functab" onclick="toon('historie', this)">✓ Ingediend</div>
+    </div>
+    <div class="functabs" id="tabsUitv" style="display:none">
+      <div class="functab actief" onclick="toon('projecten', this)">🏗 Projecten</div>
+      <div class="functab" onclick="toon('keurlijst', this)">✓ Te keuren<span class="badge">3</span></div>
+    </div>
+
+    <div class="content">
+
+      <!-- ============ ZZP · BEGINSCHERM: MIJN PROJECTEN ============ -->
+      <div class="view active" id="zzpProjecten">
+        <div class="seclabel">Mijn projecten (3)</div>
+        <div class="card klik" onclick="toon('zzpProject')">
+          <div><div class="tt">26014 Eindhoven (BAM)</div><div class="meta">steigerbouw · laatste invoer: wo wk 34</div></div>
+          <div style="text-align:right"><span class="chip open">2 weken open</span></div>
+        </div>
+        <div class="card klik" onclick="toon('zzpProject')">
+          <div><div class="tt">26021 Tilburg (Heijmans)</div><div class="meta">demontage · laatste invoer: wo wk 34</div></div>
+          <div style="text-align:right"><span class="chip open">1 week open</span></div>
+        </div>
+        <div class="card klik" onclick="toon('zzpProject')">
+          <div><div class="tt">26008 Nijmegen (Dura Vermeer)</div><div class="meta">afgerond wk 31 · alles ingediend</div></div>
+          <div style="text-align:right"><span class="chip akkoord">bij</span></div>
+        </div>
+        <div class="notitie"><span>ℹ️</span><span>Je ziet alleen projecten waar je aan gekoppeld bent. <b>Open</b> = weken met dagen zonder uren/m².</span></div>
+      </div>
+
+      <!-- ============ ZZP · PROJECT: OPENSTAANDE WEKEN ============ -->
+      <div class="view" id="zzpProject">
+        <button class="terug" onclick="toon('zzpProjecten')">‹ Mijn projecten</button>
+        <div class="seclabel">26014 Eindhoven (BAM) · weken</div>
+        <div class="card klik" onclick="toon('weekstaat')">
+          <div><div class="tt">Week 34 <small style="color:var(--muted);font-weight:500">17 – 23 aug</small></div>
+            <div class="meta">3 van 5 dagen ingevuld · 22,5 u · 215 m²</div></div>
+          <span class="chip open">nog invullen</span>
+        </div>
+        <div class="card klik" onclick="toon('weekstaat')">
+          <div><div class="tt">Week 33 <small style="color:var(--muted);font-weight:500">10 – 16 aug</small></div>
+            <div class="meta">0 van 5 dagen ingevuld (vakantie? meld 0-uren)</div></div>
+          <span class="chip open">nog invullen</span>
+        </div>
+        <div class="card klik" onclick="toon('afgekeurd')">
+          <div><div class="tt">Week 32</div><div class="meta">2 dagen afgekeurd door Ben v. Dijk — tik voor toelichting</div></div>
+          <span class="chip afgekeurd">corrigeren</span>
+        </div>
+        <div class="card klik">
+          <div><div class="tt">Week 31</div><div class="meta">goedgekeurd 3 aug · 40,0 u · 380 m²</div></div>
+          <span class="chip akkoord">goedgekeurd</span>
+        </div>
+      </div>
+
+      <!-- ============ ZZP · WEEKSTAAT (per project, per week) ============ -->
+      <div class="view" id="weekstaat">
+        <button class="terug" onclick="toon('zzpProject')">‹ 26014 Eindhoven</button>
+        <div class="seclabel">Week 34 · 17 – 23 aug</div>
+        <div class="card">
+          <div class="dagrij">
+            <span class="dag">ma</span>
+            <span class="proj">steigerbouw gevel B<small>—</small></span>
+            <span class="u">8,0 u · 120 m²</span>
+          </div>
+          <div class="dagrij">
+            <span class="dag">di</span>
+            <span class="proj">steigerbouw gevel B<small>—</small></span>
+            <span class="u">8,0 u · 95 m²</span>
+          </div>
+          <div class="dagrij">
+            <span class="dag">wo</span>
+            <span class="proj">wachttijd levering<small>opmerking toegevoegd</small></span>
+            <span class="u">6,5 u · —</span>
+          </div>
+          <div class="dagrij">
+            <span class="dag">do</span>
+            <span class="leegdag">nog niet ingevuld</span>
+            <button class="plus" onclick="toon('daginvoer')">+ invullen</button>
+          </div>
+          <div class="dagrij">
+            <span class="dag">vr</span>
+            <span class="leegdag">nog niet ingevuld</span>
+            <button class="plus" onclick="toon('daginvoer')">+ invullen</button>
+          </div>
+          <div class="totbalk"><span class="k">Totaal week 34 op dit project</span><span>22,5 u · 215 m²</span></div>
+        </div>
+        <div class="notitie"><span>ℹ️</span><span>Indienen kan t/m <b>maandag 09:00</b>. Niet gewerkt op een dag? Laat leeg en dien in — dat telt als 0 uur op dit project.</span></div>
+        <div class="actionbar">
+          <button class="btn stil">Bewaren</button>
+          <button class="btn primair" onclick="toon('historie'); document.querySelectorAll('#tabsZzp .functab').forEach((t,i)=>t.classList.toggle('actief',i===1))">Week indienen</button>
+        </div>
+      </div>
+
+      <!-- ============ ZZP · DAGINVOER ============ -->
+      <div class="view" id="daginvoer">
+        <button class="terug" onclick="toon('weekstaat')">‹ Week 34</button>
+        <div class="seclabel">Donderdag 20 aug · 26014 Eindhoven</div>
+        <div class="card">
+          <div class="duo">
+            <div class="veld"><label>Uren</label><input type="number" inputmode="decimal" placeholder="8,0"></div>
+            <div class="veld"><label>m² gebouwd (optioneel)</label><input type="number" inputmode="decimal" placeholder="0"></div>
+          </div>
+          <div class="veld"><label>Opmerking (optioneel)</label><input type="text" placeholder="bijv. wachttijd i.v.m. levering"></div>
+          <div class="notitie"><span>➕</span><span>Zelfde dag óók op een ander project gewerkt? Vul die uren daar in — elke week hangt aan één project.</span></div>
+        </div>
+        <div class="actionbar">
+          <button class="btn primair" onclick="toon('weekstaat')">Opslaan</button>
+        </div>
+      </div>
+
+      <!-- ============ ZZP · INGEDIEND / HISTORIE ============ -->
+      <div class="view" id="historie">
+        <div class="seclabel">Ingediende weken (alle projecten)</div>
+        <div class="card klik">
+          <div><div class="tt">Wk 34 · 26014 Eindhoven · 22,5 u</div><div class="meta">ingediend 24 aug 08:41 · wacht op Ben v. Dijk</div></div>
+          <span class="chip ingediend">ingediend</span>
+        </div>
+        <div class="card klik">
+          <div><div class="tt">Wk 34 · 26021 Tilburg · 13,0 u</div><div class="meta">goedgekeurd door Ben v. Dijk · 24 aug</div></div>
+          <span class="chip akkoord">goedgekeurd</span>
+        </div>
+        <div class="card klik" onclick="toon('afgekeurd')">
+          <div><div class="tt">Wk 32 · 26014 Eindhoven · 38,0 u</div><div class="meta">2 dagen afgekeurd — tik voor toelichting</div></div>
+          <span class="chip afgekeurd">deels afgekeurd</span>
+        </div>
+        <div class="notitie"><span>🔒</span><span>Een goedgekeurde week is de <b>getekende urenstaat</b>: jouw factuur wordt hier automatisch tegen gecontroleerd.</span></div>
+      </div>
+
+      <!-- ============ ZZP · AFGEKEURDE WEEK ============ -->
+      <div class="view" id="afgekeurd">
+        <button class="terug" onclick="toon('historie')">‹ Ingediend</button>
+        <div class="seclabel">Wk 32 · 26014 Eindhoven · toelichting</div>
+        <div class="card">
+          <div class="dagrij"><span class="dag">ma</span><span class="proj">steigerbouw</span><span class="u">8,0 u ✓</span></div>
+          <div class="dagrij"><span class="dag">di</span><span class="proj">steigerbouw</span><span class="u">8,0 u ✓</span></div>
+          <div class="dagrij"><span class="dag">wo</span><span class="proj">steigerbouw</span><span class="u chip afgekeurd">10,0 u ✗</span></div>
+          <div class="afwijs"><b>Afgekeurd (wo):</b> "Max 8 uur afgesproken op dit werk; overuren vooraf melden bij Ben." — corrigeer en dien de dag opnieuw in.</div>
+        </div>
+        <div class="actionbar">
+          <button class="btn primair" onclick="toon('daginvoer')">Dag corrigeren</button>
+        </div>
+      </div>
+
+      <!-- ============ UITVOERDER · PROJECTENLIJST ============ -->
+      <div class="view" id="projecten">
+        <div class="seclabel">Lopende projecten (5)</div>
+        <div class="card klik" onclick="toon('projectdetail')">
+          <div><div class="tt">26014 Eindhoven (BAM)</div><div class="meta">montage · 4.200 m² contract · huur t/m 30 nov</div></div>
+          <div style="text-align:right"><span class="chip meerwerk">2 meerwerk</span><div class="meta">78% gebouwd</div></div>
+        </div>
+        <div class="card klik" onclick="toon('projectdetail')">
+          <div><div class="tt">26021 Tilburg (Heijmans)</div><div class="meta">demontage · 1.850 m² · huur t/m 12 sep</div></div>
+          <div style="text-align:right"><div class="meta">95% gebouwd</div></div>
+        </div>
+        <div class="card klik" onclick="toon('projectdetail')">
+          <div><div class="tt">26025 Breda (Van Wijnen)</div><div class="meta">start 1 sep · 2.600 m² contract</div></div>
+          <div style="text-align:right"><span class="chip concept">start binnenkort</span></div>
+        </div>
+        <div class="notitie"><span>👷</span><span>Je ziet alleen projecten waar het kantoor jou als uitvoerder aan gekoppeld heeft.</span></div>
+      </div>
+
+      <!-- ============ UITVOERDER · TE KEUREN URENSTATEN ============ -->
+      <div class="view" id="keurlijst">
+        <div class="seclabel">Te keuren urenstaten (3)</div>
+        <div class="card klik" onclick="toon('keurdetail')">
+          <div><div class="tt">Milan K. · wk 34 · 26014 Eindhoven</div><div class="meta">22,5 u · 215 m² · ingediend 24 aug 08:41</div></div>
+          <span class="arrow">›</span>
+        </div>
+        <div class="card klik" onclick="toon('keurdetail')">
+          <div><div class="tt">Stefan B. · wk 34 · 26014 Eindhoven</div><div class="meta">40,0 u · 410 m² · ingediend 24 aug 07:15</div></div>
+          <span class="arrow">›</span>
+        </div>
+        <div class="card klik" onclick="toon('keurdetail')">
+          <div><div class="tt">Milan K. · wk 34 · 26021 Tilburg</div><div class="meta">13,0 u · ingediend 24 aug 08:42</div></div>
+          <span class="arrow">›</span>
+        </div>
+        <div class="notitie"><span>🔑</span><span>Jij keurt de projecten die het kantoor aan jou heeft toegewezen (instelbaar per uitvoerder ↔ project, alleen door het kantoor). Na jouw akkoord is de staat de <b>getekende urenstaat</b>; het kantoor blijft de eindpoort bij de factuurcontrole.</span></div>
+      </div>
+
+      <!-- ============ UITVOERDER · URENSTAAT KEUREN ============ -->
+      <div class="view" id="keurdetail">
+        <button class="terug" onclick="toon('keurlijst')">‹ Te keuren</button>
+        <div class="seclabel">Milan K. · week 34 · 26014 Eindhoven</div>
+        <div class="card">
+          <div class="dagrij">
+            <span class="dag">ma</span><span class="proj">steigerbouw gevel B</span>
+            <span class="u">8,0 u · 120 m²</span>
+            <span class="keur"><button class="ok">✓</button><button class="nee" onclick="toon('keurafwijs')">✗</button></span>
+          </div>
+          <div class="dagrij">
+            <span class="dag">di</span><span class="proj">steigerbouw gevel B</span>
+            <span class="u">8,0 u · 95 m²</span>
+            <span class="keur"><button class="ok">✓</button><button class="nee" onclick="toon('keurafwijs')">✗</button></span>
+          </div>
+          <div class="dagrij">
+            <span class="dag">wo</span><span class="proj">wachttijd levering<small>"levering staal kwam 13:30"</small></span>
+            <span class="u">6,5 u · —</span>
+            <span class="keur"><button class="ok">✓</button><button class="nee" onclick="toon('keurafwijs')">✗</button></span>
+          </div>
+          <div class="totbalk"><span class="k">Totaal</span><span>22,5 u · 215 m²</span></div>
+        </div>
+        <div class="notitie waarschuw"><span>⚠️</span><span>Wo bevat wachttijd zonder m². Keur per dag, of keur de hele week in één keer met de knop onderin.</span></div>
+        <div class="actionbar">
+          <button class="btn rood" onclick="toon('keurafwijs')">Afkeuren…</button>
+          <button class="btn primair" onclick="toon('keurlijst')">Hele week akkoord</button>
+        </div>
+      </div>
+
+      <!-- ============ UITVOERDER · AFKEUREN MET REDEN ============ -->
+      <div class="view" id="keurafwijs">
+        <button class="terug" onclick="toon('keurdetail')">‹ Urenstaat</button>
+        <div class="seclabel">Afkeuren — reden verplicht</div>
+        <div class="card">
+          <div class="veld"><label>Dag(en)</label>
+            <select><option>woensdag 19 aug</option><option>hele week</option></select>
+          </div>
+          <div class="veld"><label>Reden (verplicht — gaat naar Milan K.)</label>
+            <textarea rows="3" placeholder="bijv. wachttijd niet akkoord, vooraf melden"></textarea>
+          </div>
+        </div>
+        <div class="actionbar">
+          <button class="btn rood" onclick="toon('keurlijst')">Afkeuren en terugsturen</button>
+        </div>
+      </div>
+
+      <!-- ============ UITVOERDER · PROJECTDETAIL ============ -->
+      <div class="view" id="projectdetail">
+        <button class="terug" onclick="toon('projecten')">‹ Projecten</button>
+        <div class="seclabel">26014 Eindhoven (BAM)</div>
+
+        <div class="card infolijst">
+          <div class="rij"><span class="k">Opdrachtgever</span><b>BAM Bouw & Techniek</b></div>
+          <div class="rij"><span class="k">Werknummer opdrachtgever</span><b>BAM-88412</b></div>
+          <div class="rij"><span class="k">Contract m²</span><b>4.200 m²</b></div>
+          <div class="rij"><span class="k">Gebouwd t/m wk 34</span><b>3.280 m² (78%)</b></div>
+          <div class="rij"><span class="k">Looptijd</span><b>2 jun – 30 nov 2026</b></div>
+          <div class="rij"><span class="k">Huurtijd in contract</span><b>16 wkn, daarna € 0,42/m²/wk</b></div>
+          <div class="rij"><span class="k">Doorlopende huur sinds</span><b class="chip ingediend">wk 33 — loopt</b></div>
+        </div>
+
+        <div class="seclabel">Documenten</div>
+        <div class="doclink" onclick="toon('contract')"><span class="ic">📄</span><span>Opdracht / contract<small>getekend, versie 2 (meerwerk t/m juni)</small></span></div>
+        <div class="doclink" onclick="toon('contract')"><span class="ic">📄</span><span>Offerte 26014-O1<small>incl. staffels & verrekenprijzen</small></span></div>
+
+        <div class="seclabel">Meerwerk (2)</div>
+        <div class="card">
+          <div class="mwrij">
+            <span class="oms">Extra trapsteiger achterzijde<small>gemeld 12 aug · 84 m² · foto ✓</small></span>
+            <span class="chip meerwerk">gemeld</span>
+          </div>
+          <div class="mwrij">
+            <span class="oms">Doorwerkvoorziening dak<small>gemeld 3 aug · 40 m¹ netten</small></span>
+            <span class="chip akkoord">doorbelast</span>
+          </div>
+        </div>
+
+        <div class="actionbar">
+          <button class="btn primair" onclick="toon('meerwerk')">+ Meerwerk melden</button>
+        </div>
+      </div>
+
+      <!-- ============ UITVOERDER · MEERWERK INVULLEN ============ -->
+      <div class="view" id="meerwerk">
+        <button class="terug" onclick="toon('projectdetail')">‹ 26014 Eindhoven</button>
+        <div class="seclabel">Meerwerk melden</div>
+        <div class="card">
+          <div class="veld"><label>Omschrijving</label>
+            <textarea rows="4" style="resize:vertical;min-height:96px;line-height:1.5" placeholder="Beschrijf het meerwerk voluit — wat, waar en waarom. Alle tekst blijft volledig zichtbaar, ook in de kantoorlijst."></textarea>
+          </div>
+          <div class="duo">
+            <div class="veld"><label>Aantal</label><input type="number" inputmode="decimal" placeholder="0"></div>
+            <div class="veld"><label>Eenheid</label>
+              <select><option>m²</option><option>m¹</option><option>stuks</option><option>manuren</option></select>
+            </div>
+          </div>
+          <div class="veld"><label>Datum uitgevoerd</label><input type="date" value="2026-08-21"></div>
+          <div class="veld"><label>In opdracht van (naam op de bouw)</label><input type="text" placeholder="bijv. J. Timmers (BAM)"></div>
+          <div class="veld"><label>Foto (optioneel, sterk aangeraden)</label>
+            <div class="fotoknop">📷 Maak of kies een foto</div>
+          </div>
+          <div class="notitie waarschuw"><span>⚠️</span><span>Meerwerk zonder melding = niet doorbelast. Het kantoor toetst elke melding tegen offerte- en verrekenafspraken en zet 'm door naar facturatie.</span></div>
+        </div>
+        <div class="actionbar">
+          <button class="btn primair" onclick="toon('projectdetail')">Melden</button>
+        </div>
+      </div>
+
+      <!-- ============ UITVOERDER · CONTRACT-WEERGAVE ============ -->
+      <div class="view" id="contract">
+        <button class="terug" onclick="toon('projectdetail')">‹ 26014 Eindhoven</button>
+        <div class="seclabel">Opdracht / contract — alleen lezen</div>
+        <div class="fakepdf-wrap">
+          <div class="fakepdf">
+            <h3>Opdrachtbevestiging 26014</h3>
+            <div class="sub">BAM Bouw & Techniek · Eindhoven Strijp</div>
+            <hr>
+            <div class="fr"><span>Steigerwerk gevel A–C</span><span>4.200 m²</span></div>
+            <div class="fr"><span>Huurtijd inbegrepen</span><span>16 weken</span></div>
+            <div class="fr"><span>Doorlopende huur</span><span>€ 0,42 /m²/wk</span></div>
+            <div class="fr"><span>Trapsteigers</span><span>verrekenbaar, § 4.2</span></div>
+            <hr>
+            <div class="fr" style="color:#888"><span>Pagina 1 van 6 · pinch om te zoomen</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="desknote">
+    <h2>Wat je ziet</h2>
+    <p>Twee nieuwe functies in <b>dezelfde app</b> (Nijenhuis Boekingsmodule); je rol bepaalt de tabs. ⇄ rechtsboven wisselt in deze mockup tussen ZZP'er en uitvoerder.</p>
+    <h2>Rol 1 · Uren (ZZP)</h2>
+    <p>Beginscherm = <b>mijn projecten</b> met open-teller → project = <b>openstaande weken</b> (incl. corrigeren-na-afkeuring) → week = dagen invullen (uren + m², m² optioneel) → indienen per week per project. "Ingediend" toont de statussen over alle projecten heen.</p>
+    <h2>Rol 2 · Uitvoerder</h2>
+    <p>Projecten (specs, contract/offerte, meerwerk melden → meerwerklijst per project) én <b>Te keuren</b>: ingediende urenstaten van de projecten die het kantoor aan deze uitvoerder heeft toegewezen. Keuren per dag (✓/✗) of hele week in één keer; afkeuren = verplichte reden, gaat terug naar de ZZP'er.</p>
+    <h2>Scope (besluit Peter 21-08)</h2>
+    <p>Uren &amp; meerwerk zijn een <b>steigerbouw-specifieke tak</b> (opt-in per administratie, bv. alleen Universal): ze horen bij de projectadministratie maar zijn er niet leidend voor. De generieke projectenmodule (budget, werksoorten, signalen) blijft eigen ontwerp; deze functies voeden 'm alleen (m²-voortgang, meerwerklijst, getekende urenstaten).</p>
+    <h2>Bewuste keuzes (graag jouw oordeel)</h2>
+    <p>1. Weekstaat hangt aan één project; zelfde dag op twee projecten = twee weekstaten. Alternatief: één gemengde weekstaat — zeg het als je dat wilt.<br>
+    2. Uitvoerder↔project-toewijzing voor het keuren beheert het kantoor (rollen & rechten, kantoor-UI) — de uitvoerder kan dit zelf niet aanpassen.<br>
+    3. Uitvoerder keurt; kantoor blijft eindpoort bij de factuur-match (autoboek pas bij match, afwijking → afwijzen + mail).<br>
+    4. Meerwerk: melden zonder prijzen; kantoor prijst en belast door.<br>
+    5. Indien-deadline maandag 09:00 (aanname).</p>
+  </div>
+</div>
+
+<script>
+  let rol = 'zzp';
+  function toon(id, tabEl) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    if (tabEl) { tabEl.parentElement.querySelectorAll('.functab').forEach(t => t.classList.remove('actief')); tabEl.classList.add('actief'); }
+    document.querySelector('.content').scrollTop = 0; window.scrollTo(0,0);
+  }
+  function wisselRol() {
+    rol = rol === 'zzp' ? 'uitv' : 'zzp';
+    document.getElementById('tabsZzp').style.display = rol === 'zzp' ? 'flex' : 'none';
+    document.getElementById('tabsUitv').style.display = rol === 'uitv' ? 'flex' : 'none';
+    document.getElementById('kopnaam').innerHTML = rol === 'zzp' ? 'Uren — <span>Milan K. (ZZP)</span>' : 'Projecten — <span>Ben v. Dijk (uitvoerder)</span>';
+    document.querySelectorAll('.functabs').forEach(g => g.querySelectorAll('.functab').forEach((t,i) => t.classList.toggle('actief', i===0)));
+    toon(rol === 'zzp' ? 'zzpProjecten' : 'projecten');
+  }
+</script>
+</body>
+</html>

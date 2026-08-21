@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meerwerk in de boekingsmodule — mockup (kantoor-console)</title>
+<!-- ============================================================
+     MOCKUP meerwerk-kantoorkant (ter beoordeling Peter)
+     Hoort bij mockup/uren-uitvoerder.html (veldkant).
+     Stijl/tokens = mockup/kantoor-modern.html (designpass-norm).
+     IA klant-centrisch: klantpagina Universal → stand "Meerwerk"
+     (alleen bij teller > 0) → deelscherm meerwerklijst → beoordelen.
+     Toegang: module-recht per kantoormedewerker (0019-lijn),
+     alleen Beheerder muteert, alles in het audit_event.
+     Klikbaar: navigatie links, beoordeel-paneel, toegangs-toggles,
+     thema-toggle rechtsboven.
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#ffffff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-hover:#25534e; --primary-fg:#ffffff;
+    --accent-bg:#e9f2f0; --ring:rgba(46,102,96,.35);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+    --shadow-lg:0 8px 40px rgba(21,32,29,.18);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  html.dark{
+    --bg:#0e1514; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --primary:#57b3a7; --primary-hover:#6ac4b8; --primary-fg:#0c1513;
+    --accent-bg:#1c2e2b; --ring:rgba(87,179,167,.35);
+    --ok:#4ecb94; --ok-bg:#152f24; --warn:#e5a04c; --warn-bg:#33260f;
+    --danger:#f08579; --danger-bg:#361713; --info:#93a6f5; --info-bg:#1a2038;
+    --purple:#b39af0; --purple-bg:#251b3d;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+    --shadow-lg:0 8px 40px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13.5px;letter-spacing:-.01em;line-height:1.45}
+  button{font-family:inherit}
+
+  .shell{display:flex;min-height:100vh}
+  .sidebar{width:236px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh}
+  .logo{display:flex;align-items:center;gap:10px;padding:4px 10px 18px}
+  .logo-mark{width:30px;height:30px;border-radius:9px;background:var(--primary);color:var(--primary-fg);display:grid;place-items:center;font-weight:700;font-size:13px}
+  .logo b{font-size:14px;letter-spacing:-.02em}
+  .logo small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+  .nav-kop{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);padding:14px 10px 4px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;color:var(--muted);cursor:pointer;border:1px solid transparent;font-size:13px;background:none;width:100%;text-align:left}
+  .nav-item:hover{background:var(--panel-2);color:var(--text)}
+  .nav-item.actief{background:var(--accent-bg);color:var(--primary);border-color:color-mix(in srgb,var(--primary) 25%,transparent);font-weight:600}
+  .nav-item .ico{width:17px;text-align:center;opacity:.85}
+  .nav-item .tel{margin-left:auto;background:var(--warn-bg);color:var(--warn);font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px}
+  .sidebar .onder{margin-top:auto;padding:10px;font-size:11.5px;color:var(--faint)}
+
+  .main{flex:1;min-width:0}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:20}
+  .kruimel{font-size:12.5px;color:var(--muted)}
+  .kruimel b{color:var(--text)}
+  .kruimel span{cursor:pointer} .kruimel span:hover{color:var(--primary)}
+  .topbar .spacer{flex:1}
+  .icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:15px}
+  .icon-btn:hover{color:var(--text);background:var(--panel-2)}
+  .avatar{width:32px;height:32px;border-radius:99px;background:var(--accent-bg);color:var(--primary);display:grid;place-items:center;font-weight:600;font-size:12px;border:1px solid var(--border)}
+
+  .content{padding:26px;max-width:1240px}
+  .pagina-kop{display:flex;align-items:flex-end;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+  .pagina-kop h1{font-size:19px;letter-spacing:-.02em}
+  .pagina-kop .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .pagina-kop .acties{margin-left:auto;display:flex;gap:8px}
+
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .btn:hover{background:var(--primary-hover)}
+  .btn.secundair{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.secundair:hover{background:var(--panel-2)}
+  .btn.gevaar{background:var(--danger-bg);color:var(--danger)}
+  .btn.klein{padding:5px 11px;font-size:12px;border-radius:7px}
+
+  .kaart{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px}
+  .kaart-kop{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .kaart-kop h2{font-size:14px;letter-spacing:-.01em}
+  .kaart-kop .uitleg{color:var(--muted);font-size:12px;width:100%;font-weight:400}
+  .kaart-kop .rechts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .kaart-body{padding:18px}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+  .badge::before{content:'';width:6px;height:6px;border-radius:99px;background:currentColor}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .badge.warn{background:var(--warn-bg);color:var(--warn)}
+  .badge.danger{background:var(--danger-bg);color:var(--danger)}
+  .badge.info{background:var(--info-bg);color:var(--info)}
+  .badge.paars{background:var(--purple-bg);color:var(--purple)}
+
+  .tabel-scroll{overflow-x:auto;border-radius:0 0 var(--radius) var(--radius)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:600}
+  td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr.klik{cursor:pointer} tr.klik:hover td{background:var(--panel-2)}
+  td .sub{color:var(--muted);font-size:11.5px;margin-top:2px}
+
+  .filterbalk{display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .filter-chip{padding:5px 12px;border-radius:99px;border:1px solid var(--border);background:var(--panel);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer}
+  .filter-chip.actief{background:var(--accent-bg);color:var(--primary);border-color:color-mix(in srgb,var(--primary) 30%,transparent)}
+
+  /* standen-blok (klantpagina) */
+  .standen{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+  .stand{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer}
+  .stand:hover{border-color:var(--primary)}
+  .stand .lbl{font-size:11.5px;color:var(--muted)}
+  .stand .waarde{font-size:22px;font-weight:700;letter-spacing:-.03em;margin-top:4px}
+  .stand .delta{font-size:11.5px;margin-top:2px;color:var(--muted)}
+  .stand.aandacht{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+  .stand.aandacht .waarde{color:var(--warn)}
+
+  /* beoordeel-paneel */
+  .overlay{position:fixed;inset:0;background:rgba(10,16,15,.45);display:none;z-index:40}
+  .overlay.open{display:block}
+  .paneel{position:fixed;top:0;right:0;bottom:0;width:min(560px,94vw);background:var(--panel);border-left:1px solid var(--border);box-shadow:var(--shadow-lg);z-index:41;transform:translateX(105%);transition:transform .18s ease;display:flex;flex-direction:column}
+  .paneel.open{transform:none}
+  .paneel-kop{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border)}
+  .paneel-kop h2{font-size:15px}
+  .paneel-body{flex:1;overflow-y:auto;padding:20px}
+  .paneel-voet{display:flex;gap:8px;padding:14px 20px;border-top:1px solid var(--border)}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 18px;font-size:13px}
+  .info-grid .rij{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
+  .info-grid .k{color:var(--muted)}
+  .fotoblok{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);height:120px;display:grid;place-items:center;color:var(--faint);font-size:12px;margin:12px 0;cursor:pointer}
+  .prijsblok{background:var(--info-bg);border-radius:var(--radius-sm);padding:12px 14px;font-size:12.5px;line-height:1.55;color:var(--info);margin:12px 0}
+  .veld{margin:12px 0}
+  .veld label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px}
+  .veld input,.veld select,.veld textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px 12px;font-family:inherit;font-size:13px}
+  .veld input:focus,.veld textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--ring)}
+  .duo{display:flex;gap:10px}.duo .veld{flex:1}
+
+  /* switch (zelfde patroon als kantoor-modern) */
+  .switch{position:relative;width:38px;height:22px;flex-shrink:0;cursor:pointer}
+  .switch input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;z-index:2;margin:0}
+  .switch .track{position:absolute;inset:0;background:var(--border);border-radius:99px;transition:background .15s}
+  .switch .knob{position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:99px;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .switch input:checked ~ .track{background:var(--primary)}
+  .switch input:checked ~ .track .knob{left:19px}
+  .switch input:disabled ~ .track{opacity:.45}
+
+  .notitie{background:var(--accent-bg);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;line-height:1.55;color:var(--primary);display:flex;gap:9px;margin-top:12px}
+  .notitie.warn{background:var(--warn-bg);color:var(--warn)}
+
+  .view{display:none}.view.actief{display:block}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">N</div>
+      <div><b>Boekingsmodule</b><small>Administratiekantoor Nijenhuis</small></div>
+    </div>
+    <div class="nav-kop">Werk</div>
+    <button class="nav-item"><span class="ico">📥</span> Werkvoorraad <span class="tel">12</span></button>
+    <button class="nav-item actief" onclick="toon('klant', this)"><span class="ico">🏢</span> Universal Steigerbouw</button>
+    <div class="nav-kop">Modules</div>
+    <button class="nav-item" onclick="toon('meerwerk', this)"><span class="ico">🧱</span> Meerwerk <span class="tel">3</span></button>
+    <button class="nav-item"><span class="ico">⏱</span> Urenstaten</button>
+    <button class="nav-item"><span class="ico">📁</span> Projecten</button>
+    <div class="nav-kop">Beheer</div>
+    <button class="nav-item" onclick="toon('toegang', this)"><span class="ico">🔑</span> Gebruikers & toegang</button>
+    <button class="nav-item"><span class="ico">⚙️</span> Instellingen</button>
+    <div class="onder">Ingelogd als Peter · Beheerder<br>Meerwerk-menu is alleen zichtbaar mét module-recht.</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="kruimel" id="kruimel"><span onclick="toon('klant')">Universal Steigerbouw</span> › <b>Klantpagina</b></div>
+      <div class="spacer"></div>
+      <button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')">◐</button>
+      <div class="avatar">PN</div>
+    </div>
+
+    <!-- ============ VIEW 1: KLANTPAGINA (standen — meerwerk als stand, toon-regel teller>0) ============ -->
+    <div class="content view actief" id="klant">
+      <div class="pagina-kop">
+        <div><h1>Universal Steigerbouw B.V.</h1>
+        <div class="sub">Klantpagina · standen per soort — een blok verschijnt alleen bij openstaand werk</div></div>
+      </div>
+      <div class="standen">
+        <div class="stand aandacht"><div class="lbl">Inkoopfacturen</div><div class="waarde">7</div><div class="delta">waarvan 2 met vraag</div></div>
+        <div class="stand"><div class="lbl">Bank — Rabobank ···1912</div><div class="waarde">14</div><div class="delta">open mutaties</div></div>
+        <div class="stand aandacht" onclick="toon('meerwerk')"><div class="lbl">🧱 Meerwerk</div><div class="waarde">3</div><div class="delta">gemeld, te beoordelen → tik om te openen</div></div>
+        <div class="stand"><div class="lbl">Urenstaten</div><div class="waarde">2</div><div class="delta">wachten op uitvoerder</div></div>
+      </div>
+      <div class="notitie"><span>ℹ️</span><span><b>Meerwerk-stand</b> volgt de bestaande toon-regel: alleen zichtbaar bij teller &gt; 0 én alleen voor medewerkers met het module-recht "Meerwerk" (zie Gebruikers &amp; toegang).</span></div>
+    </div>
+
+    <!-- ============ VIEW 2: MEERWERKLIJST (deelscherm) ============ -->
+    <div class="content view" id="meerwerk">
+      <div class="pagina-kop">
+        <div><h1>Meerwerk — Universal Steigerbouw</h1>
+        <div class="sub">Gemeld door uitvoerders in de app · niets verdwijnt stil: elke melding houdt een status</div></div>
+        <div class="acties"><button class="btn secundair klein">Exporteren</button></div>
+      </div>
+
+      <div class="kaart">
+        <div class="filterbalk">
+          <span class="filter-chip actief">Te beoordelen (3)</span>
+          <span class="filter-chip">Goedgekeurd, nog doorbelasten (1)</span>
+          <span class="filter-chip">Doorbelast (12)</span>
+          <span class="filter-chip">Afgewezen (2)</span>
+          <span class="filter-chip">Alle projecten ▾</span>
+        </div>
+        <div class="tabel-scroll">
+          <table>
+            <thead><tr>
+              <th>Project</th><th>Omschrijving</th><th>Aantal</th><th>Gemeld door</th><th>In opdracht van</th><th>Status</th><th></th>
+            </tr></thead>
+            <tbody>
+              <tr class="klik" onclick="openPaneel()">
+                <td><b>26014 Eindhoven</b><div class="sub">BAM Bouw &amp; Techniek</div></td>
+                <td>Extra trapsteiger achterzijde<div class="sub">foto ✓ · 12 aug</div></td>
+                <td>84 m²</td>
+                <td>B. van Dijk</td>
+                <td>J. Timmers (BAM)</td>
+                <td><span class="badge paars">gemeld</span></td>
+                <td>›</td>
+              </tr>
+              <tr class="klik" onclick="openPaneel()">
+                <td><b>26014 Eindhoven</b><div class="sub">BAM Bouw &amp; Techniek</div></td>
+                <td style="max-width:340px">Hijsvoorziening gevel C: extra hijsbalk + 2 katrollen geplaatst omdat de bouwlift van BAM twee weken later komt; nodig om wk 35 door te kunnen bouwen<div class="sub">geen foto · 18 aug · volledige tekst altijd zichtbaar</div></td>
+                <td>2 stuks</td>
+                <td>B. van Dijk</td>
+                <td>—<div class="sub">⚠ geen naam</div></td>
+                <td><span class="badge paars">gemeld</span></td>
+                <td>›</td>
+              </tr>
+              <tr class="klik" onclick="openPaneel()">
+                <td><b>26021 Tilburg</b><div class="sub">Heijmans</div></td>
+                <td>Nachtwerk demontage wk 35<div class="sub">foto ✓ · 20 aug</div></td>
+                <td>16 manuren</td>
+                <td>B. van Dijk</td>
+                <td>P. de Groot (Heijmans)</td>
+                <td><span class="badge paars">gemeld</span></td>
+                <td>›</td>
+              </tr>
+              <tr class="klik">
+                <td><b>26014 Eindhoven</b><div class="sub">BAM Bouw &amp; Techniek</div></td>
+                <td>Doorwerkvoorziening dak<div class="sub">40 m¹ netten · 3 aug</div></td>
+                <td>40 m¹</td>
+                <td>B. van Dijk</td>
+                <td>J. Timmers (BAM)</td>
+                <td><span class="badge ok">doorbelast · VF-2608</span></td>
+                <td>›</td>
+              </tr>
+              <tr class="klik">
+                <td><b>26008 Nijmegen</b><div class="sub">Dura Vermeer</div></td>
+                <td>Extra kraanuren lossen<div class="sub">28 jul</div></td>
+                <td>3 manuren</td>
+                <td>B. van Dijk</td>
+                <td>—</td>
+                <td><span class="badge danger">afgewezen · eigen rekening</span></td>
+                <td>›</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="notitie"><span>🔗</span><span>De wekelijkse <b>doorbelastingscontrole op item-niveau</b> gebruikt deze lijst als bron: goedgekeurd meerwerk dat ná 2 weken nog niet op een verkoopfactuur staat, komt als signaal terug in de werkvoorraad. Omschrijvingen worden <b>altijd voluit</b> getoond (regelterugloop, nooit afgekapt met "…").</span></div>
+      <div class="notitie"><span>🧭</span><span><b>Scope:</b> uren &amp; meerwerk zijn een steigerbouw-specifieke tak — <b>opt-in per administratie</b> (hier alleen Universal). Ze horen bij de projectadministratie maar zijn er niet leidend voor: de generieke projectenmodule (budget, werksoorten, signalen) blijft een eigen ontwerp en wordt door deze lijst alleen gevóéd.</span></div>
+    </div>
+
+    <!-- ============ VIEW 3: GEBRUIKERS & TOEGANG (module-recht meerwerk) ============ -->
+    <div class="content view" id="toegang">
+      <div class="pagina-kop">
+        <div><h1>Gebruikers &amp; toegang</h1>
+        <div class="sub">Module-recht "Meerwerk &amp; urenstaten" per kantoormedewerker · alleen een Beheerder kan dit wijzigen · elke wijziging in het auditlog</div></div>
+      </div>
+
+      <div class="kaart">
+        <div class="kaart-kop"><h2>Kantoormedewerkers</h2>
+          <div class="uitleg">Het recht geeft toegang tot de meerwerklijst en het beoordelen van urenstaten, binnen de administraties waar de medewerker al aan gekoppeld is (klantscope blijft leidend — geen scope = geen data).</div>
+        </div>
+        <div class="tabel-scroll">
+          <table>
+            <thead><tr><th>Medewerker</th><th>Rol</th><th>Klantscope</th><th>Meerwerk &amp; urenstaten</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><b>Peter Nijenhuis</b><div class="sub">p.nijenhuis@kempengroep.nl</div></td>
+                <td><span class="badge info">Beheerder</span></td>
+                <td>alle administraties</td>
+                <td><label class="switch"><input type="checkbox" checked disabled><span class="track"><span class="knob"></span></span></label>
+                    <div class="sub">Beheerder heeft dit recht altijd</div></td>
+              </tr>
+              <tr>
+                <td><b>Annemieke B.</b><div class="sub">boekhouding</div></td>
+                <td><span class="badge ok">Boekhouding + Projecten</span></td>
+                <td>Universal, BLOW, +3</td>
+                <td><label class="switch"><input type="checkbox" checked onchange="toast(this)"><span class="track"><span class="knob"></span></span></label></td>
+              </tr>
+              <tr>
+                <td><b>Rob T.</b><div class="sub">boekhouding</div></td>
+                <td><span class="badge ok">Boekhouding</span></td>
+                <td>Kempen-groep (6)</td>
+                <td><label class="switch"><input type="checkbox" onchange="toast(this)"><span class="track"><span class="knob"></span></span></label>
+                    <div class="sub">uit — ziet geen meerwerk-menu of -standen</div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="notitie warn"><span>🔒</span><span>Zonder recht verdwijnt meerwerk overal: menu-ingang, klantpagina-stand, zoeken én API-antwoorden (server-side afgedwongen, zelfde patroon als de klantscope — niet alleen verbergen in de UI).</span></div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ BEOORDEEL-PANEEL ============ -->
+<div class="overlay" id="ov" onclick="sluitPaneel()"></div>
+<div class="paneel" id="pan">
+  <div class="paneel-kop">
+    <h2>Meerwerk beoordelen</h2>
+    <span class="badge paars">gemeld</span>
+    <div style="margin-left:auto"><button class="icon-btn" onclick="sluitPaneel()">✕</button></div>
+  </div>
+  <div class="paneel-body">
+    <div class="info-grid">
+      <div class="rij"><span class="k">Project</span><b>26014 Eindhoven (BAM)</b></div>
+      <div class="rij"><span class="k">Gemeld door</span><b>B. van Dijk (uitvoerder)</b></div>
+      <div class="rij"><span class="k">Omschrijving</span><b>Extra trapsteiger achterzijde</b></div>
+      <div class="rij"><span class="k">Datum uitgevoerd</span><b>12 aug 2026</b></div>
+      <div class="rij"><span class="k">Aantal</span><b>84 m²</b></div>
+      <div class="rij"><span class="k">In opdracht van</span><b>J. Timmers (BAM)</b></div>
+    </div>
+    <div class="fotoblok">📷 foto-trapsteiger-12aug.jpg — tik om te vergroten</div>
+    <div class="prijsblok">
+      <b>Contract-toets (offerte 26014-O1):</b> trapsteigers zijn <b>verrekenbaar</b> (§ 4.2) tegen € 9,20 /m².
+      Voorstel uit de offerte-staffel: <b>84 m² × € 9,20 = € 772,80</b> — jij bevestigt of past aan, de app rekent nooit zelf door naar een boeking.
+    </div>
+    <div class="duo">
+      <div class="veld"><label>Verrekenprijs</label><input value="€ 9,20 /m²"></div>
+      <div class="veld"><label>Bedrag</label><input value="€ 772,80"></div>
+    </div>
+    <div class="veld"><label>Notitie voor facturatie (optioneel)</label><input placeholder="bijv. meenemen op termijn 4"></div>
+    <div class="notitie"><span>🧾</span><span>Goedkeuren zet dit meerwerk in de bak <b>"nog doorbelasten"</b>; het item wordt bewaakt tot het op een verkoopfactuur staat. Afwijzen (eigen rekening) vergt een verplichte reden en blijft zichtbaar in de lijst — conform de bestaande afwijs-regel.</span></div>
+  </div>
+  <div class="paneel-voet">
+    <button class="btn gevaar" onclick="sluitPaneel()">Afwijzen — eigen rekening…</button>
+    <div style="flex:1"></div>
+    <button class="btn secundair" onclick="sluitPaneel()">Vraag aan uitvoerder</button>
+    <button class="btn" onclick="sluitPaneel()">Goedkeuren voor doorbelasting</button>
+  </div>
+</div>
+
+<script>
+  function toon(id, el){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('actief'));
+    document.getElementById(id).classList.add('actief');
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('actief'));
+    if(el) el.classList.add('actief');
+    else if(id==='meerwerk') document.querySelectorAll('.nav-item')[2].classList.add('actief');
+    const k = {klant:'<span onclick="toon(\'klant\')">Universal Steigerbouw</span> › <b>Klantpagina</b>',
+               meerwerk:'<span onclick="toon(\'klant\')">Universal Steigerbouw</span> › <b>Meerwerk</b>',
+               toegang:'<b>Gebruikers &amp; toegang</b>'};
+    document.getElementById('kruimel').innerHTML = k[id];
+    window.scrollTo(0,0);
+  }
+  function openPaneel(){document.getElementById('ov').classList.add('open');document.getElementById('pan').classList.add('open')}
+  function sluitPaneel(){document.getElementById('ov').classList.remove('open');document.getElementById('pan').classList.remove('open')}
+  function toast(cb){ /* mockup: wijziging zou naar audit_event gaan */ }
+</script>
+</body>
+</html>
