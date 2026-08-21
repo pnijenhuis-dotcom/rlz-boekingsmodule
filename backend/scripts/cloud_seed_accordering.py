@@ -26,13 +26,16 @@ Draaien (patroon + failsafes cloud_seed_accordeur.py):
     APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:\
 $(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434/boekhouding" \
     DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten \
-        .venv/bin/python scripts/cloud_seed_accordering.py
+        .venv/bin/python scripts/cloud_seed_accordering.py [--referentie TEST-ACC-NOTIF-02]
 
-Herdraaibaar: bestaat TEST-ACC-NOTIF-01 al, dan doet het script niets (behalve de
-laag-controle). Actor is de actieve Beheerder in de doel-database."""
+Herdraaibaar per referentie (--referentie, default TEST-ACC-NOTIF-01): bestaat de
+referentie al, dan doet het script niets (behalve de laag-controle) — een nieuwe
+referentie zet één nieuwe open accordering klaar. Actor is de actieve Beheerder in de
+doel-database."""
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import sys
@@ -46,8 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 ACCORDEUR_EMAIL = "accordeur-passkeytest@ak-nijenhuis.nl"
 TEST_ADMIN_RLZ_ID = "SEED-PASSKEYTEST"
-REFERENTIE = "TEST-ACC-NOTIF-01"
-BESTANDSNAAM = "TEST-ACC-NOTIF-01.pdf"
+STANDAARD_REFERENTIE = "TEST-ACC-NOTIF-01"
 NETTO = Decimal("100.00")
 BTW = Decimal("21.00")
 
@@ -98,6 +100,21 @@ def _mini_pdf(tekst: str) -> bytes:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Cloud-seed: één open TEST-accordering (herdraaibaar per referentie).")
+    parser.add_argument(
+        "--referentie",
+        default=STANDAARD_REFERENTIE,
+        help=f"TEST-referentie van de accordering (default {STANDAARD_REFERENTIE}); idempotent per referentie.",
+    )
+    argumenten = parser.parse_args()
+    referentie: str = argumenten.referentie
+    if not referentie.startswith("TEST-"):
+        raise SystemExit(
+            f"FAILSAFE: referentie {referentie!r} volgt de TEST-conventie niet (moet met 'TEST-' beginnen) — "
+            "gestopt, niets gedaan."
+        )
+    bestandsnaam = f"{referentie}.pdf"
+
     _controleer_database_doel()
 
     # Imports pas ná de failsafe: het app-pakket bindt de database-engine bij import.
@@ -155,15 +172,15 @@ def main() -> int:
 
     # 3. Idempotentie: bestaat de TEST-referentie al, dan niets dubbel klaarzetten.
     with scoped_session(administratie_id) as session:
-        bestaand = session.scalars(select(Boekvoorstel).where(Boekvoorstel.referentie == REFERENTIE)).first()
+        bestaand = session.scalars(select(Boekvoorstel).where(Boekvoorstel.referentie == referentie)).first()
     if bestaand is not None:
-        print(f"{REFERENTIE}: bestaat al — niets te doen.")
+        print(f"{referentie}: bestaat al — niets te doen.")
         return 0
 
     # 4. Document + mini-PDF. Status direct klaar_om_te_boeken (zie docstring: de checks-poort
     #    vergt RLZ en deze administratie heeft bewust geen credential).
     document_id = uuid.uuid4()
-    pdf = _mini_pdf(f"TEST notificatie-verificatie {REFERENTIE}")
+    pdf = _mini_pdf(f"TEST notificatie-verificatie {referentie}")
     opslag_pad = f"{administratie_id}/{document_id}.pdf"
     try:
         standaard_opslag().opslaan(pad=opslag_pad, inhoud=pdf)
@@ -177,20 +194,20 @@ def main() -> int:
                 id=document_id,
                 administratie_id=administratie_id,
                 bron=DocumentBron.UPLOAD,
-                bestandsnaam=BESTANDSNAAM,
+                bestandsnaam=bestandsnaam,
                 sha256_hash=hashlib.sha256(pdf).hexdigest(),
                 status=DocumentStatus.KLAAR_OM_TE_BOEKEN,
                 opslag_pad=opslag_pad,
             )
         )
-    print(f"Document aangemaakt: {BESTANDSNAAM} ({document_id})")
+    print(f"Document aangemaakt: {bestandsnaam} ({document_id})")
 
     boekvoorstel_service.sla_boekvoorstel_op(
         administratie_id=administratie_id,
         document_id=document_id,
         actor_id=beheerder_id,
         vendor_id=uuid.uuid4(),  # synthetisch — zie docstring
-        referentie=REFERENTIE,
+        referentie=referentie,
         factuurdatum=datetime.now(UTC).date(),
         totaalbedrag=NETTO + BTW,
         regels=[
@@ -200,7 +217,7 @@ def main() -> int:
                 project_id=None,
                 netto_bedrag=NETTO,
                 btw_bedrag=BTW,
-                omschrijving=f"TEST notificatie-verificatie {REFERENTIE}",
+                omschrijving=f"TEST notificatie-verificatie {referentie}",
             )
         ],
     )
@@ -211,7 +228,7 @@ def main() -> int:
         actor_id=beheerder_id,
         actor_rol=GebruikerRol.BEHEERDER.value,
     )
-    print(f"{REFERENTIE}: ter accordering aangeboden (status {resultaat.accordering.status}).")
+    print(f"{referentie}: ter accordering aangeboden (status {resultaat.accordering.status}).")
     print()
     print("Klaar: 1 open accordering voor het passkeytest-account — de 09:00-job heeft nu iets te melden.")
     return 0
