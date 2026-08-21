@@ -6,6 +6,7 @@ import { apiJson } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
 import { verwerkEml } from '../intake/intakeApi'
+import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
@@ -40,6 +41,10 @@ export function KlantStanden({
   const [rekeningenGeladen, setRekeningenGeladen] = useState(false)
   const [vragen, setVragen] = useState<VraagDto[] | null>(null)
   const [laatstHerinnerd, setLaatstHerinnerd] = useState<Record<string, string>>({})
+  // Uren & meerwerk (fase 3, mockup meerwerk-kantoor.html): best-effort — 403 (geen
+  // module-recht) of 409 (opt-in uit) betekent: het blok bestaat niet voor deze gebruiker/
+  // administratie (toon-regel), nooit een foutmelding.
+  const [urenStand, setUrenStand] = useState<UrenStandDto | null>(null)
   const [herinnerBezig, setHerinnerBezig] = useState<string | null>(null)
   const [herinnerFout, setHerinnerFout] = useState<string | null>(null)
 
@@ -77,6 +82,12 @@ export function KlantStanden({
       .catch(() => {
         if (actueel) setVragen(null)
       })
+    setUrenStand(null)
+    haalUrenStand(administratieId)
+      .then((data) => {
+        if (actueel) setUrenStand(data)
+      })
+      .catch(() => undefined)
     // "Laatst herinnerd" bij het accorderingspaneel — verrijking, fout blokkeert niets.
     setLaatstHerinnerd({})
     haalLaatstHerinnerd(administratieId)
@@ -293,6 +304,81 @@ export function KlantStanden({
           </div>
         </div>
       )}
+
+      {/* Meerwerk & urenstaten (fase 3, mockup meerwerk-kantoor.html): standen alleen bij
+          teller > 0 én module-recht (de fetch geeft anders 403/409 en het blok bestaat niet). */}
+      {urenStand !== null &&
+        (urenStand.meerwerk_te_beoordelen > 0 ||
+          urenStand.meerwerk_nog_doorbelasten > 0 ||
+          urenStand.urenstaten_wachten_op_keuring > 0) && (
+          <div className="panel">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <h2 style={{ margin: 0 }}>🧱 Meerwerk &amp; urenstaten</h2>
+              {urenStand.meerwerk_te_beoordelen > 0 && (
+                <Badge variant="warn">{urenStand.meerwerk_te_beoordelen} te beoordelen</Badge>
+              )}
+              {urenStand.meerwerk_te_lang_niet_doorbelast > 0 && (
+                <Badge variant="danger">
+                  {urenStand.meerwerk_te_lang_niet_doorbelast} &gt; 2 weken niet doorbelast
+                </Badge>
+              )}
+            </div>
+            <div className="tabel-scroll">
+              <table>
+                <tbody>
+                  <tr>
+                    <th>Stand</th>
+                    <th className="amount">Aantal</th>
+                    <th />
+                  </tr>
+                  {urenStand.meerwerk_te_beoordelen > 0 && (
+                    <tr className="clickable" onClick={() => navigate(`/meerwerk?administratie=${administratieId}`)}>
+                      <td>
+                        <b>Meerwerk — gemeld, te beoordelen</b>
+                      </td>
+                      <td className="amount">{urenStand.meerwerk_te_beoordelen}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="text-primary" style={{ fontWeight: 600 }}>
+                          Beoordelen →
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {urenStand.meerwerk_nog_doorbelasten > 0 && (
+                    <tr className="clickable" onClick={() => navigate(`/meerwerk?administratie=${administratieId}`)}>
+                      <td>
+                        <b>Meerwerk — goedgekeurd, nog doorbelasten</b>
+                        {urenStand.meerwerk_te_lang_niet_doorbelast > 0 && (
+                          <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }}>
+                            waarvan {urenStand.meerwerk_te_lang_niet_doorbelast} langer dan 2 weken — bewakingssignaal
+                          </div>
+                        )}
+                      </td>
+                      <td className="amount">{urenStand.meerwerk_nog_doorbelasten}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="text-primary" style={{ fontWeight: 600 }}>
+                          Bekijken →
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {urenStand.urenstaten_wachten_op_keuring > 0 && (
+                    <tr>
+                      <td>
+                        <b>Urenstaten — ingediend, wachten op uitvoerder</b>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                          keuren gebeurt door de uitvoerder in de app (per week)
+                        </div>
+                      </td>
+                      <td className="amount">{urenStand.urenstaten_wachten_op_keuring}</td>
+                      <td />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
       {/* Bank per rekening — alleen rekeningen met open mutaties (toon-regel 15-08). */}
       {openRekeningen.length > 0 && (

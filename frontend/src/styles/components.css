@@ -904,3 +904,93 @@ body.dark .combobox-listbox {
 .review.review-gestapeld .review-splitter {
   display: none;
 }
+
+/* --- Zijpaneel (meerwerk-beoordelen — mockup meerwerk-kantoor.html .paneel/.overlay) --------- */
+.zijpaneel-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 16, 15, 0.45);
+  z-index: 40;
+}
+.zijpaneel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 94vw);
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+}
+.zijpaneel-kop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.zijpaneel-kop h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.zijpaneel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+.zijpaneel-voet {
+  display: flex;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 18px;
+  font-size: 13px;
+}
+.info-grid .rij {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.info-grid .rij .k {
+  color: var(--muted);
+}
+.info-grid .rij.breed {
+  grid-column: 1 / -1;
+}
+.prijsblok {
+  background: var(--info-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--info);
+  margin: 12px 0;
+}
+.fotoblok {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  font-size: 12px;
+  margin: 12px 0;
+  overflow: hidden;
+}
+.fotoblok img {
+  max-width: 100%;
+  max-height: 320px;
+  display: block;
+}

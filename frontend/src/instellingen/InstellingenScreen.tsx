@@ -23,6 +23,7 @@ import {
   zetEigenaar,
   zetIntakeAiInstelling,
   zetProjectInstelling,
+  zetUrenMeerwerkInstelling,
   zetVerkoopAutoboekenInstelling,
   type AiKostenStatusDto,
 } from './instellingenApi'
@@ -34,6 +35,7 @@ type WijzigingType =
   | 'project'
   | 'ai_extractie'
   | 'verkoop_autoboeken'
+  | 'uren_meerwerk'
   | 'eigenaar'
   | 'iban_accordeurs'
   | 'ai_kosten_limiet'
@@ -76,6 +78,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `PDF's van "${pending.naam}" gaan voortaan voor extractie naar de Claude API (AVG-gate). Echte klantfacturen pas ná DPA + EU-verwerking + verwerkersregister — zie docs/BOUWPLAN.md.`
         : `AI-extractie wordt uitgeschakeld voor "${pending.naam}" — PDF's worden weer volledig handmatig ingevuld.`
+    case 'uren_meerwerk':
+      return pending.nieuweWaarde
+        ? `Uren & meerwerk (steigerbouw-tak) wordt ingeschakeld voor "${pending.naam}": ZZP'ers/uitvoerders/detacheerders kunnen er weekstaten en meerwerk op werken en het kantoor ziet de standen (module-recht vereist).`
+        : `Uren & meerwerk wordt uitgeschakeld voor "${pending.naam}" — de app en de kantoor-schermen weigeren dan; bestaande weekstaten en meerwerk blijven bewaard.`
     case 'verkoop_autoboeken':
       return pending.nieuweWaarde
         ? `Vastly-verkoopfacturen van "${pending.naam}" boeken voortaan automatisch zodra álles groen is (harde checks, ondubbelzinnige GB-codes en btw uit de UBL, geen vraag of duplicaatsignaal). Elk ander geval blijft gewoon in de werkvoorraad; elke automatische boeking is gemarkeerd en geauditeerd.`
@@ -116,6 +122,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'verkoop_autoboeken') {
     await zetVerkoopAutoboekenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'uren_meerwerk') {
+    await zetUrenMeerwerkInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'eigenaar') {
@@ -492,6 +502,7 @@ export function InstellingenScreen() {
                 <th>Boeken ingeschakeld</th>
                 <th>AI-extractie (AVG-gate)</th>
                 <th>Autoboeken Vastly-verkoop</th>
+                <th>Uren &amp; meerwerk</th>
               </tr>
               {administraties.map((a) => (
                 <tr key={a.id} className={selectie.includes(a.id) ? 'geselecteerd' : undefined}>
@@ -611,6 +622,23 @@ export function InstellingenScreen() {
                         —
                       </span>
                     )}
+                  </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
+                      <Switch
+                        aria-label={`Uren & meerwerk voor ${a.naam}`}
+                        checked={a.uren_meerwerk_ingeschakeld}
+                        onChange={(e) =>
+                          setPending({
+                            type: 'uren_meerwerk',
+                            administratieId: a.id,
+                            naam: a.naam,
+                            nieuweWaarde: e.target.checked,
+                          })
+                        }
+                      />
+                      {a.uren_meerwerk_ingeschakeld ? 'aan' : 'uit'}
+                    </label>
                   </td>
                 </tr>
               ))}

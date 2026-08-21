@@ -45,6 +45,15 @@ export const ROL_LABELS: Record<string, string> = {
   boekhouding_projecten: 'Boekhouding + Projecten',
   boekhouding: 'Boekhouding',
   klant_accordeur: 'Klant-accordeur',
+  zzper: "ZZP'er",
+  uitvoerder: 'Uitvoerder',
+  detacheerder: 'Detacheerder',
+}
+
+/** Veldrollen uren & meerwerk (migratie 0056) — externe app-rollen naast de accordeur. */
+export const VELD_ROLLEN = ['zzper', 'uitvoerder', 'detacheerder'] as const
+export function isVeldrol(rol: string): boolean {
+  return (VELD_ROLLEN as readonly string[]).includes(rol)
 }
 
 export function rolLabel(rol: string): string {

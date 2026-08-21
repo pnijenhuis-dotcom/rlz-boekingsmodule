@@ -310,6 +310,8 @@ export interface AdministratieInstellingenDto {
    * vastgoed-administraties — daarbuiten toont de kolom een streepje. */
   is_vastgoed: boolean
   verkoop_autoboeken_ingeschakeld: boolean
+  /** Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie. */
+  uren_meerwerk_ingeschakeld: boolean
 }
 
 export interface AdministratieInstellingenLijstDto {

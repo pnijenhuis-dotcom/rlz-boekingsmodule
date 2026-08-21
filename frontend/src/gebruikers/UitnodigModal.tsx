@@ -23,7 +23,7 @@ export function UitnodigModal({
   onSluiten,
   onUitgenodigd,
 }: {
-  soort: 'medewerker' | 'accordeur'
+  soort: 'medewerker' | 'accordeur' | 'veldwerker'
   administraties: AdministratieDto[]
   open: boolean
   onSluiten: () => void
@@ -31,13 +31,16 @@ export function UitnodigModal({
 }) {
   const [naam, setNaam] = useState('')
   const [eMail, setEMail] = useState('')
-  const [rol, setRol] = useState(soort === 'accordeur' ? 'klant_accordeur' : 'boekhouding')
+  const [rol, setRol] = useState(
+    soort === 'accordeur' ? 'klant_accordeur' : soort === 'veldwerker' ? 'zzper' : 'boekhouding',
+  )
   const [scope, setScope] = useState<string[]>([])
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
 
   const isAccordeur = soort === 'accordeur'
-  const scopeVerplicht = isAccordeur || rol !== 'beheerder'
+  const isVeldwerker = soort === 'veldwerker'
+  const scopeVerplicht = isAccordeur || isVeldwerker || rol !== 'beheerder'
 
   async function verstuur() {
     setBezig(true)
@@ -66,11 +69,15 @@ export function UitnodigModal({
   return (
     <Dialog open={open} onOpenChange={(nieuwOpen) => !nieuwOpen && !bezig && onSluiten()}>
       <DialogContent>
-        <DialogTitle>{isAccordeur ? 'Accordeur uitnodigen' : 'Medewerker uitnodigen'}</DialogTitle>
+        <DialogTitle>
+          {isAccordeur ? 'Accordeur uitnodigen' : isVeldwerker ? 'Veldwerker uitnodigen' : 'Medewerker uitnodigen'}
+        </DialogTitle>
         <DialogDescription>
           {isAccordeur
             ? 'De accordeur krijgt een activatiemail voor de mobiele app (wachtwoord → passkey → voorwaarden). Meerdere administraties mag — de wachtrij toont alles bij elkaar.'
-            : 'De uitnodiging wordt gemaild (eenmalige link, 72 uur geldig). Activatie = wachtwoord + tweede factor.'}
+            : isVeldwerker
+              ? "Veldwerkers (uren & meerwerk) gebruiken dezelfde mobiele app en passkey-flow als de accordeurs. Ná activatie koppel je projecten (ZZP'er/uitvoerder) of ZZP'ers (detacheerder) in dit scherm."
+              : 'De uitnodiging wordt gemaild (eenmalige link, 72 uur geldig). Activatie = wachtwoord + tweede factor.'}
         </DialogDescription>
         <FormField label="Naam" htmlFor="uitnodig-naam">
           <input
@@ -90,7 +97,20 @@ export function UitnodigModal({
             placeholder={isAccordeur ? 'naam@klantbedrijf.nl' : 'naam@ak-nijenhuis.nl'}
           />
         </FormField>
-        {!isAccordeur && (
+        {isVeldwerker && (
+          <FormField
+            label="Rol"
+            htmlFor="uitnodig-rol"
+            hint="ZZP'er: weekstaten per project · Uitvoerder: keurt weekstaten per week + meldt meerwerk · Detacheerder: vult in namens gekoppelde ZZP'ers"
+          >
+            <Select id="uitnodig-rol" className="w-full" value={rol} onChange={(e) => setRol(e.target.value)}>
+              <option value="zzper">ZZP'er</option>
+              <option value="uitvoerder">Uitvoerder</option>
+              <option value="detacheerder">Detacheerder</option>
+            </Select>
+          </FormField>
+        )}
+        {!isAccordeur && !isVeldwerker && (
           <FormField
             label="Rol"
             htmlFor="uitnodig-rol"
@@ -106,11 +126,13 @@ export function UitnodigModal({
         <FormField
           label={isAccordeur ? 'Administraties' : 'Administratie-scope'}
           hint={
-            rol === 'beheerder' && !isAccordeur
+            rol === 'beheerder' && !isAccordeur && !isVeldwerker
               ? 'Een Beheerder is platform-breed — scope is niet nodig.'
               : isAccordeur
                 ? 'Minstens één — de wachtrij voegt alles samen.'
-                : 'Minstens één — zonder scope ziet iemand niets.'
+                : isVeldwerker
+                  ? 'Minstens één — de administratie(s) met de uren-&-meerwerk-opt-in (Universal).'
+                  : 'Minstens één — zonder scope ziet iemand niets.'
           }
         >
           <MultiSelect

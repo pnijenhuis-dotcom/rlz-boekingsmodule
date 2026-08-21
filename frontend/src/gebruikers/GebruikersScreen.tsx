@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
-import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
+import { Badge, Button, Select, Switch, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
@@ -11,14 +11,17 @@ import {
   haalGebruikersOp,
   heractiveerGebruiker,
   mailUitnodigingOpnieuw,
+  isVeldrol,
   rolLabel,
   trekApparaatIn,
   wijzigRol,
   type ApparaatDto,
   type GebruikerOverzichtDto,
 } from './gebruikersApi'
+import { haalModuleRechtHouders, zetModuleRecht } from '../meerwerk/meerwerkApi'
 import { ScopeModal } from './ScopeModal'
 import { UitnodigModal } from './UitnodigModal'
+import { VeldwerkersPanel } from './VeldwerkersPanel'
 
 /* Gebruikers & toegang (fase 3 modernisering 15-08, mockup #scherm-gebruikers; rollenmodel
  * 0019 ongewijzigd): kantoorgebruikers (rol, scope, apparaten/passkeys, TOTP-status),
@@ -63,7 +66,7 @@ export function GebruikersScreen() {
   const [mailFout, setMailFout] = useState<string | null>(null)
   const [apparatenPer, setApparatenPer] = useState<Record<string, ApparaatDto[]>>({})
 
-  const [uitnodigSoort, setUitnodigSoort] = useState<'medewerker' | 'accordeur' | null>(null)
+  const [uitnodigSoort, setUitnodigSoort] = useState<'medewerker' | 'accordeur' | 'veldwerker' | null>(null)
   const [scopeVoor, setScopeVoor] = useState<GebruikerOverzichtDto | null>(null)
   const [rolWijziging, setRolWijziging] = useState<{ gebruiker: GebruikerOverzichtDto; nieuweRol: string } | null>(
     null,
@@ -93,15 +96,50 @@ export function GebruikersScreen() {
     laad()
   }, [laad])
 
-  const kantoor = useMemo(() => (gebruikers ?? []).filter((g) => g.rol !== 'klant_accordeur'), [gebruikers])
+  // Module-recht "Meerwerk & urenstaten" (0019-patroon, migratie 0056): houders laden en per
+  // kantoormedewerker tonen als switch — Beheerder heeft het recht altijd (niet instelbaar).
+  const [rechtHouders, setRechtHouders] = useState<Set<string>>(new Set())
+  const [rechtBezig, setRechtBezig] = useState<string | null>(null)
+  useEffect(() => {
+    haalModuleRechtHouders()
+      .then((data) => setRechtHouders(new Set(data.gebruiker_ids)))
+      .catch(() => undefined)
+  }, [])
+  async function toggleMeerwerkRecht(g: GebruikerOverzichtDto, ingeschakeld: boolean) {
+    setRechtBezig(g.id)
+    try {
+      await zetModuleRecht(g.id, ingeschakeld)
+      setRechtHouders((huidig) => {
+        const kopie = new Set(huidig)
+        if (ingeschakeld) kopie.add(g.id)
+        else kopie.delete(g.id)
+        return kopie
+      })
+      meld(
+        ingeschakeld
+          ? `${g.naam} heeft nu het module-recht Meerwerk & urenstaten.`
+          : `${g.naam} verliest het module-recht — meerwerk verdwijnt overal (menu, standen, zoeken, API).`,
+      )
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'Recht wijzigen mislukt.')
+    } finally {
+      setRechtBezig(null)
+    }
+  }
+
+  const kantoor = useMemo(
+    () => (gebruikers ?? []).filter((g) => g.rol !== 'klant_accordeur' && !isVeldrol(g.rol)),
+    [gebruikers],
+  )
   const accordeurs = useMemo(() => (gebruikers ?? []).filter((g) => g.rol === 'klant_accordeur'), [gebruikers])
+  const veldwerkers = useMemo(() => (gebruikers ?? []).filter((g) => isVeldrol(g.rol)), [gebruikers])
   const naamPerAdministratie = useMemo(() => new Map((administraties ?? []).map((a) => [a.id, a.naam])), [administraties])
 
   // Apparaten per accordeur (kill-switch-blok) — best-effort per gebruiker, een fout daar
   // blokkeert de lijst niet.
   useEffect(() => {
     let actueel = true
-    for (const accordeur of accordeurs) {
+    for (const accordeur of [...accordeurs, ...veldwerkers]) {
       if (apparatenPer[accordeur.id]) continue
       haalApparatenVan(accordeur.id)
         .then((data) => {
@@ -112,7 +150,7 @@ export function GebruikersScreen() {
     return () => {
       actueel = false
     }
-  }, [accordeurs, apparatenPer])
+  }, [accordeurs, veldwerkers, apparatenPer])
 
   async function opnieuwMailen(gebruiker: GebruikerOverzichtDto) {
     setOpnieuwBezig(gebruiker.id)
@@ -262,6 +300,7 @@ export function GebruikersScreen() {
                   <th>Gebruiker</th>
                   <th>Rol</th>
                   <th>Scope</th>
+                  <th>Meerwerk &amp; urenstaten</th>
                   <th>Beveiliging</th>
                   <th>Status</th>
                   <th />
@@ -305,6 +344,20 @@ export function GebruikersScreen() {
                               </Button>
                             )}
                           </>
+                        )}
+                      </td>
+                      <td>
+                        {g.rol === 'beheerder' ? (
+                          <span className="hint" style={{ margin: 0, fontSize: 11.5 }}>
+                            altijd (Beheerder)
+                          </span>
+                        ) : (
+                          <Switch
+                            aria-label={`Meerwerk & urenstaten voor ${g.naam}`}
+                            checked={rechtHouders.has(g.id)}
+                            disabled={rechtBezig === g.id}
+                            onChange={(e) => void toggleMeerwerkRecht(g, e.target.checked)}
+                          />
                         )}
                       </td>
                       <td>
@@ -372,6 +425,27 @@ export function GebruikersScreen() {
           </div>
         )}
       </div>
+
+      <VeldwerkersPanel
+        gebruikers={veldwerkers}
+        administraties={administraties ?? []}
+        onUitnodigen={() => setUitnodigSoort('veldwerker')}
+        actieKolom={(g) => (
+          <>
+            {g.status === 'uitgenodigd' && (
+              <Button
+                variant="secundair"
+                maat="klein"
+                disabled={opnieuwBezig === g.id}
+                onClick={() => void opnieuwMailen(g)}
+              >
+                {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
+              </Button>
+            )}{' '}
+            {blokkadeKnop(g)}
+          </>
+        )}
+      />
 
       <div className="panel">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

@@ -11,6 +11,7 @@ import { BankDetailScreen } from './bank/BankDetailScreen'
 import { DocumentDetailScreen } from './document/DocumentDetailScreen'
 import { GebruikersScreen } from './gebruikers/GebruikersScreen'
 import { InstellingenScreen } from './instellingen/InstellingenScreen'
+import { MeerwerkScreen } from './meerwerk/MeerwerkScreen'
 import { OmzetReviewScreen } from './omzet/OmzetReviewScreen'
 import { Shell } from './shell/Shell'
 import { VerkoopReviewScreen } from './verkoop/VerkoopReviewScreen'
@@ -54,8 +55,9 @@ function BeschermdeRoutes() {
   if (status === 'uitgelogd') {
     return <Navigate to="/login" replace />
   }
-  if (rol === 'klant_accordeur') {
-    // Accordeurs landen automatisch in hun eigen surface (blok 2a accordeur-PWA).
+  if (rol === 'klant_accordeur' || rol === 'zzper' || rol === 'uitvoerder' || rol === 'detacheerder') {
+    // Externe app-rollen (accordeur + veldrollen uren & meerwerk, migratie 0056) landen
+    // automatisch in hun eigen surface — de mobiele app op /accordeur.
     return <Navigate to="/accordeur" replace />
   }
 
@@ -82,6 +84,7 @@ function BeschermdeRoutes() {
             </Suspense>
           }
         />
+        <Route path="/meerwerk" element={<MeerwerkScreen />} />
         <Route path="/gebruikers" element={<GebruikersScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>
