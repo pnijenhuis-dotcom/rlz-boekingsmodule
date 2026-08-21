@@ -15,7 +15,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.accordering import herinnering, schemas, service
 from app.auth import service as auth_service
 from app.auth import voorwaarden
-from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder, vereis_administratie_scope
+from app.auth.deps import (
+    CurrentGebruiker,
+    get_current_gebruiker,
+    require_beheerder,
+    vereis_administratie_scope,
+    vereis_kantoor_of_accordeur,
+    vereis_kantoorrol,
+)
 from app.db.models import GebruikerRol
 from app.documenten.service import DocumentNietGevonden
 
@@ -92,10 +99,13 @@ def _besluit_response(resultaat: service.AkkoordResultaat) -> schemas.BesluitRes
     response_model=schemas.InstellingenResponse,
 )
 def instellingen_ophalen(
-    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.InstellingenResponse:
     """Scope-check, geen Beheerder-only: het controlescherm moet weten of de boekknop
-    "Ter accordering" hoort te zijn."""
+    "Ter accordering" hoort te zijn. Wél kantoor-only (rollen-gate-fix 2026-08-21): de
+    accordeur-PWA heeft de lagen/drempels niet nodig."""
     ingeschakeld, lagen, namen = service.instellingen_ophalen(administratie_id=administratie_id)
     return schemas.InstellingenResponse(
         ingeschakeld=ingeschakeld,
@@ -168,6 +178,7 @@ def aanbieden(
     document_id: uuid.UUID,
     invoer: schemas.AanbiedenInput | None = None,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.BesluitResponse:
     """De "Ter accordering"-knop (kantoor). Staande goedkeuringen worden direct toegepast —
     zijn alle lagen daarmee akkoord, dan boekt de motor meteen (met alle harde checks).
@@ -222,6 +233,7 @@ def akkoord(
     document_id: uuid.UUID,
     invoer: schemas.AkkoordInput,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
 ) -> schemas.BesluitResponse:
     """Akkoord van de accordeur die aan de beurt is (PWA-endpoint). Optioneel mét staande
     goedkeuring voor toekomstige facturen van deze leverancier bij exact dit bedrag."""
@@ -247,6 +259,7 @@ def afwijzen(
     document_id: uuid.UUID,
     invoer: schemas.AfwijsInput,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
 ) -> schemas.AccorderingResponse:
     """Afwijzen door de accordeur — verplichte reden (popup-principe); komt met reden terug in
     de werkvoorraad via het bestaande afwijzen-patroon."""
@@ -268,6 +281,7 @@ def intrekken(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.AccorderingResponse:
     try:
         data = service.trek_accordering_in(
@@ -289,6 +303,7 @@ def herinneren(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.HerinneringResponse:
     """Handmatige extra herinnering (push, anders mail) aan de accordeur die aan de beurt is —
     max één per document per dag, geauditeerd (beheer-mini 2026-08-16)."""
@@ -316,6 +331,7 @@ def herinneren(
 def herinneringen_overzicht(
     administratie_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.HerinneringenOverzichtResponse:
     """"Laatst herinnerd" per document (klantpagina-paneel + accorderingssectie)."""
     return schemas.HerinneringenOverzichtResponse(
@@ -331,6 +347,7 @@ def accordering_van_document(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.AccorderingResponse | None:
     """Accorderingshistorie op het document (controlescherm-sectie)."""
     data = service.accordering_van_document(administratie_id=administratie_id, document_id=document_id)
@@ -341,7 +358,14 @@ def accordering_van_document(
 def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.WachtrijResponse:
     """De accordeer-wachtrij van de ingelogde gebruiker (PWA-endpoint, scope-aanscherping
     2026-08-08: uitsluitend de wachtrij). Administraties komen uit de eigen scope-bron —
-    geen scope = geen data, RLS dwingt dat op DB-niveau nogmaals af."""
+    geen scope = geen data, RLS dwingt dat op DB-niveau nogmaals af. Rolniveau-poort
+    (rollen-gate-fix 2026-08-21): uitsluitend de klant-accordeur — kantoor heeft eigen
+    overzichten, veldrollen hebben hier niets (de voorwaarden-poort hieronder liet elke
+    niet-accordeur-rol stil door)."""
+    if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor klant-accordeurs"
+        )
     _vereis_voorwaarden_akkoord(actor)
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     items = service.wachtrij_voor_accordeur(
@@ -372,7 +396,9 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
     response_model=schemas.StaandeRegelsResponse,
 )
 def staande_regels(
-    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
 ) -> schemas.StaandeRegelsResponse:
     """Zelfde voorwaarden-poort als wachtrij/akkoord/afwijzen (nazorg 2026-08-11): het
     ✓✓-beheer is onderdeel van de accordeur-flow en hoort niet open te staan vóór het
@@ -405,6 +431,7 @@ def staande_regel_intrekken(
     administratie_id: uuid.UUID,
     regel_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
 ) -> None:
     """Intrekbaar door kantoor én door de accordeur zelf (besluit 2026-08-08)."""
     _vereis_voorwaarden_akkoord(actor)

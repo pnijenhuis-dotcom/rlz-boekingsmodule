@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 
+from app.auth.rollen import is_externe_app_rol, is_kantoorrol
 from app.db.models import GebruikerAdministratie, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.security.tokens import TokenError, decode_token
@@ -70,6 +71,36 @@ def get_current_gebruiker(
         status=GebruikerStatus(status_waarde),
         apparaat_id=uuid.UUID(apparaat_claim) if apparaat_claim is not None else None,
     )
+
+
+def vereis_kantoorrol(current: CurrentGebruiker = Depends(get_current_gebruiker)) -> CurrentGebruiker:
+    """Kantoor-console-endpoints: elke externe app-rol (klant-accordeur + veldrollen, zie
+    app/auth/rollen.py) krijgt 403 — rolniveau-poort, LOS van administratie-scope. Dat laatste
+    is essentieel: accordeurs én veldwerkers hebben reguliere gebruiker_administratie-rijen
+    (hun eigen flows vereisen die), dus vereis_administratie_scope alléén houdt ze niet buiten
+    kantoor-data (rollen-gate-bug kliktest 2026-08-21). Router-breed toepasbaar via
+    `APIRouter(dependencies=[Depends(vereis_kantoorrol)])` — dan zijn ook toekomstige
+    endpoints in die router automatisch dicht (fail-closed)."""
+    if is_externe_app_rol(current.rol):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen toegankelijk voor kantoorrollen"
+        )
+    return current
+
+
+def vereis_kantoor_of_accordeur(
+    current: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> CurrentGebruiker:
+    """Endpoints die de accordeur-PWA zelf nodig heeft bovenop het kantoor (PDF-bestand,
+    accorderingsbesluiten, staande regels): veldrollen — en elke toekomstige rol die niet
+    expliciet kantoor of klant-accordeur is — krijgen 403. Bewust een allowlist, geen
+    `not is_veldrol`: een nieuwe externe rol valt dan dicht i.p.v. stil open."""
+    if not (is_kantoorrol(current.rol) or current.rol == GebruikerRol.KLANT_ACCORDEUR):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen toegankelijk voor kantoorrollen en klant-accordeurs",
+        )
+    return current
 
 
 def require_beheerder(current: CurrentGebruiker = Depends(get_current_gebruiker)) -> CurrentGebruiker:

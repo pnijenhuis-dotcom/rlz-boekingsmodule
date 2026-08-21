@@ -6,6 +6,7 @@ import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
 import { initThema } from './ui/thema'
 import { ActivateScreen } from './auth/ActivateScreen'
 import { useAuth } from './auth/AuthContext'
+import { isKantoorRol } from './auth/rollen'
 import { LoginScreen } from './auth/LoginScreen'
 import { BankDetailScreen } from './bank/BankDetailScreen'
 import { DocumentDetailScreen } from './document/DocumentDetailScreen'
@@ -55,9 +56,12 @@ function BeschermdeRoutes() {
   if (status === 'uitgelogd') {
     return <Navigate to="/login" replace />
   }
-  if (rol === 'klant_accordeur' || rol === 'zzper' || rol === 'uitvoerder' || rol === 'detacheerder') {
-    // Externe app-rollen (accordeur + veldrollen uren & meerwerk, migratie 0056) landen
-    // automatisch in hun eigen surface — de mobiele app op /accordeur.
+  if (!isKantoorRol(rol)) {
+    // Fail-closed (rollen-gate-bug kliktest 2026-08-21): de kantoor-shell rendert UITSLUITEND
+    // voor een expliciete kantoorrol — accordeur, veldrollen én elke onbekende/nieuwe rol
+    // landen in de externe app-surface op /accordeur (waar de rolvertakking ze hun eigen
+    // flow geeft). De backend weigert kantoor-endpoints sindsdien óók met 403 op rolniveau;
+    // deze redirect is routing, geen beveiliging.
     return <Navigate to="/accordeur" replace />
   }
 

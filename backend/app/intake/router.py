@@ -4,24 +4,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.auth.deps import CurrentGebruiker, get_current_gebruiker
-from app.auth.rollen import is_externe_app_rol
-from app.db.models import GebruikerRol
+from app.auth.deps import CurrentGebruiker, vereis_kantoorrol
 from app.documenten.service import DocumentNietGevonden
 from app.intake import schemas, splitsing, verwerking, verzamelbak
 
+# De lokale vereis_kantoorrol is bij de rollen-gate-fix (2026-08-21) verhuisd naar
+# app/auth/deps.py — één bron voor de kantoor-console-poort; de per-endpoint-Depends hieronder
+# blijven ongewijzigd werken.
 router = APIRouter(tags=["intake"])
-
-
-def vereis_kantoorrol(current: CurrentGebruiker = Depends(get_current_gebruiker)) -> CurrentGebruiker:
-    """De verzamelbak en intake zijn platform-breed (documenten zónder administratie) en dus
-    kantoorwerk: elke kantoorrol mag erbij, een externe app-rol (accordeur/veldrollen — scope:
-    uitsluitend eigen administratie/projecten) per definitie niet."""
-    if is_externe_app_rol(current.rol):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Intake/verzamelbak is alleen voor kantoorrollen"
-        )
-    return current
 
 
 @router.post("/intake/eml", response_model=schemas.IntakeVerwerkResponse, status_code=status.HTTP_201_CREATED)

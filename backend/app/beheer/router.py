@@ -5,10 +5,13 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.aikosten import service as aikosten_service
-from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope
+from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
 from app.beheer import schemas, service
 
-router = APIRouter(tags=["beheer"])
+# Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
+# kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
+# administratie-scope; nieuwe endpoints vallen automatisch onder dezelfde poort (fail-closed).
+router = APIRouter(tags=["beheer"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 @router.get(

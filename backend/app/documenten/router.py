@@ -6,7 +6,14 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
 from app.auth import service as auth_service
-from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder, vereis_administratie_scope
+from app.auth.deps import (
+    CurrentGebruiker,
+    get_current_gebruiker,
+    require_beheerder,
+    vereis_administratie_scope,
+    vereis_kantoor_of_accordeur,
+    vereis_kantoorrol,
+)
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import afwijzen, boeken, boekvoorstel, iban_accordering, leverancier_iban, schemas, service, vragen
@@ -15,7 +22,15 @@ from app.documenten.models import DocumentSoort, IbanAccorderingStatus, IbanSoor
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.rlz.credentials import GeenRlzCredentials
 
-router = APIRouter(tags=["documenten"])
+# Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): de documenten-endpoints zijn
+# kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
+# administratie-scope. Eén uitzondering leeft in `bestand_router` hieronder: het
+# PDF-bestand-endpoint, dat de accordeur-PWA zelf nodig heeft (factuurbeeld centraal).
+router = APIRouter(tags=["documenten"], dependencies=[Depends(vereis_kantoorrol)])
+
+# Aparte router zonder de kantoor-poort: alleen /bestand, met de eigen kantoor-óf-accordeur-poort
+# (veldrollen 403 — hun projectdocument-leesroute is /uren/projectdocumenten, vereis_veldrol).
+bestand_router = APIRouter(tags=["documenten"])
 
 
 def _naar_check_rapport_response(rapport: CheckRapport) -> schemas.CheckRapportResponse:
@@ -336,11 +351,12 @@ def document_detail(
     )
 
 
-@router.get("/administraties/{administratie_id}/documenten/{document_id}/bestand")
+@bestand_router.get("/administraties/{administratie_id}/documenten/{document_id}/bestand")
 def document_bestand(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
 ) -> Response:
     try:
         inhoud, bestandsnaam, content_type = service.haal_bijlage_op(

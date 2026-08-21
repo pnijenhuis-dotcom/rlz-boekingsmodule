@@ -5,12 +5,15 @@ from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth.deps import CurrentGebruiker, vereis_administratie_scope
+from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.rlz.client import RlzApiError
 from app.rlz.credentials import GeenRlzCredentials
 from app.sync import schemas, service
 
-router = APIRouter(tags=["sync"])
+# Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
+# kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
+# administratie-scope; nieuwe endpoints vallen automatisch onder dezelfde poort (fail-closed).
+router = APIRouter(tags=["sync"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 def _sync_trigger(

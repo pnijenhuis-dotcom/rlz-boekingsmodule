@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { isKantoorRol, isVeldRol } from '../auth/rollen'
 import type { TokenPaarResponseDto } from '../api/types'
 import './accordeur.css'
 import { AccordeurLogin } from './AccordeurLogin'
@@ -146,10 +147,13 @@ export default function AccordeurApp() {
     void navigate('/accordeur', { replace: true })
   }, [navigate])
 
-  const veldrol = rol === 'zzper' || rol === 'uitvoerder' || rol === 'detacheerder'
-  if (status === 'ingelogd' && rol !== null && rol !== 'klant_accordeur' && !veldrol) {
+  const veldrol = isVeldRol(rol)
+  if (status === 'ingelogd' && isKantoorRol(rol)) {
     // Kantoor-rollen horen in de web-app; deze surface is voor de externe app-rollen
     // (accordeur + veldrollen uren & meerwerk, migratie 0056 — zelfde auth-cadans).
+    // Allowlist i.p.v. "niet accordeur/veld" (rollen-gate-fix 2026-08-21): een onbekende
+    // rol blijft hier (en ziet niets — de backend geeft 403), in plaats van eindeloos
+    // tussen de twee surfaces te ping-pongen.
     return <Navigate to="/" replace />
   }
 

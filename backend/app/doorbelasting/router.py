@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope
+from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
 from app.documenten.boeken import BoekenUitgeschakeld, VolumeremBereikt
 from app.documenten.checks import CheckRapport
 from app.documenten.schemas import CheckRapportResponse, CheckResultaatDto
@@ -13,7 +13,10 @@ from app.doorbelasting.models import DoorbelastingMapping, DoorbelastingRegel
 from app.rlz.aangifte import STORNO_BLOKKADE_MELDING, StornoGeblokkeerdDoorAangifte
 from app.rlz.credentials import GeenRlzCredentials
 
-router = APIRouter(tags=["doorbelasting"])
+# Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
+# kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
+# administratie-scope; nieuwe endpoints vallen automatisch onder dezelfde poort (fail-closed).
+router = APIRouter(tags=["doorbelasting"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 def _naar_check_rapport(rapport: CheckRapport) -> CheckRapportResponse:

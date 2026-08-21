@@ -7,10 +7,13 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.auth.deps import CurrentGebruiker, get_current_gebruiker, vereis_administratie_scope
+from app.auth.deps import CurrentGebruiker, get_current_gebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.zoeken import service
 
-router = APIRouter(tags=["zoeken"])
+# Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
+# kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
+# administratie-scope; nieuwe endpoints vallen automatisch onder dezelfde poort (fail-closed).
+router = APIRouter(tags=["zoeken"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 class VraagHitDto(BaseModel):

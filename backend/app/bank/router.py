@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import service as auth_service
-from app.auth.deps import CurrentGebruiker, get_current_gebruiker, vereis_administratie_scope
+from app.auth.deps import CurrentGebruiker, get_current_gebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.bank import afletteren, boeken, schemas, service, sync, voorstellen
 from app.bank.models import BankMutatie
 from app.db.session import scoped_session
@@ -14,7 +14,10 @@ from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import GeenRlzCredentials, client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.service import SyncFout
 
-router = APIRouter(tags=["bank"])
+# Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
+# kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
+# administratie-scope; nieuwe endpoints vallen automatisch onder dezelfde poort (fail-closed).
+router = APIRouter(tags=["bank"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 def _rlz_client_voor(administratie_id: uuid.UUID) -> RlzClient:
