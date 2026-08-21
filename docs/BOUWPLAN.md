@@ -687,26 +687,33 @@ UI-eisen):
      nieuwe externe gebruikersklasse (auth via de bestaande passkey-bouwstenen; rollen
      medewerker/teamleider/manager), AVG-/verwerkingsregister-uitbreiding, koppeling met de
      fase-4-urenstaat-lessen (getekende staat vs factuur).
-     **ONTWERPRONDE UITGEVOERD (akkoord Peter 2026-08-21 — onderdeel naar voren getrokken;
-     capture, geen bouw):** twee mockups goedgekeurd — `mockup/uren-uitvoerder.html`
-     (veldkant, zelfde native app als de accordeur) + `mockup/meerwerk-kantoor.html`
-     (kantoorkant, stijl kantoor-modern). Kernbesluiten (canoniek in BESLISSINGEN
-     "Ontwerpronde uren & uitvoerder + meerwerk-kantoor"): steigerbouw-specifieke tak,
-     opt-in per administratie (alleen Universal initieel) — onderdeel van de
-     projectadministratie maar NIET leidend ervoor (de generieke projectenmodule blijft
-     eigen ontwerp, wordt alleen gevoed met m²-voortgang, meerwerklijst en getekende
-     urenstaten); rollen ZZP'er (weekstaat per project: uren + optionele m² per dag,
-     indienen per week) + uitvoerder (specs/contract alleen-lezen, meerwerk melden zonder
-     prijzen, urenstaten keuren per dag/week met verplichte afkeurreden); kantoor bepaalt
-     keurders per uitvoerder↔project; goedgekeurde staat = getekende urenstaat = basis
-     factuurmatch (de lijn hierboven ongewijzigd); meerwerk-statusflow gemeld →
-     goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen rekening, verplichte reden)
-     mét contract-toets (prijsvoorstel uit offerte-staffel, mens bevestigt — nooit
-     auto-boeken) en 2-weken-bewaking niet-doorbelast → werkvoorraad-signaal; één
-     module-recht "Meerwerk & urenstaten" per kantoormedewerker (0019-patroon).
-     **Bouw vergt een apart akkoord ná de OPEN datamodel-vraag: weekstaat per project
-     (gemockt) vs één gemengde weekstaat per persoon — plus aannames ter toets
-     (indien-deadline ma 09:00, m² optioneel, uitvoerder ziet prijzen).**
+     **ONTWERPRONDE UITGEVOERD (akkoord Peter 2026-08-21 — onderdeel naar voren getrokken)
+     én BOUW GO (Peter 2026-08-21):** twee mockups definitief goedgekeurd —
+     `mockup/uren-uitvoerder.html` (veldkant, zelfde native app als de accordeur, drie
+     rollen) + `mockup/meerwerk-kantoor.html` (kantoorkant, stijl kantoor-modern).
+     Kernbesluiten (canoniek in BESLISSINGEN "Ontwerpronde uren & uitvoerder +
+     meerwerk-kantoor"): steigerbouw-specifieke tak, opt-in per administratie (alleen
+     Universal initieel) — onderdeel van de projectadministratie maar NIET leidend ervoor
+     (de generieke projectenmodule blijft eigen ontwerp, wordt alleen gevoed met
+     m²-voortgang, meerwerklijst en getekende urenstaten); **datamodel-besluit: weekstaat
+     PER PROJECT** (één staat per persoon per project per week; zelfde dag op twee
+     projecten = twee staten); rollen **ZZP'er** (weekstaat per project: uren + optionele
+     m² per dag, indienen per week, deadline ma 09:00), **uitvoerder** (specs/contract
+     alleen-lezen mét prijzen, meerwerk melden zonder prijzen, **keuring op WEEKNIVEAU**:
+     week akkoord óf week afkeuren met verplichte reden → hele week terug als
+     "corrigeren", ZZP'er dient de week opnieuw in — geen dag-keuring) en **detacheerder**
+     (vult weekstaten in namens gekoppelde ZZP'ers, exact dezelfde schermen/velden, geen
+     projectinhoud, elk scherm "· namens <ZZP'er>", invoer vastgelegd als "X namens Y";
+     vervángt de 17-08-rollen teamleider/manager); kantoor bepaalt keurders per
+     uitvoerder↔project én detacheerder↔zzp'er-koppelingen; goedgekeurde staat = getekende
+     urenstaat = basis factuurmatch (ZZP-factuur vs staat; bureaufactuur vs sóm van de
+     staten van zijn ZZP'ers — de lijn hierboven verder ongewijzigd); meerwerk-statusflow
+     gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen rekening,
+     verplichte reden) mét contract-toets (prijsvoorstel uit offerte-staffel, mens
+     bevestigt — nooit auto-boeken) en 2-weken-bewaking niet-doorbelast →
+     werkvoorraad-signaal; één module-recht "Meerwerk & urenstaten" per kantoormedewerker
+     (0019-patroon). **Factuurmatch-motor + autoboek-activatie = latere fase met eigen
+     akkoord (datamodel bereidt voor).**
   2. **Universal Nederland (zusterbedrijf, steiger-inhuur):** geen menselijke verificatie —
      invullen via de bestaande per-leverancier-autoboek-opt-in (migratie 0036,
      `app/documenten/autoboeken.py`); harde checks blijven onverkort;

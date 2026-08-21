@@ -164,6 +164,10 @@
   .mwrij:last-child { border-bottom: none; }
   .mwrij .oms { flex: 1; line-height: 1.4; }
   .mwrij .oms small { color: var(--muted); display: block; font-size: 11px; }
+
+  /* "namens X"-context: alleen zichtbaar in de detacheerder-rol (gedeelde ZZP-schermen) */
+  .namens { display: none; color: var(--purple); font-weight: 700; }
+  body.rol-deta .namens { display: inline; }
 </style>
 </head>
 <body>
@@ -189,6 +193,9 @@
       <div class="functab actief" onclick="toon('projecten', this)">🏗 Projecten</div>
       <div class="functab" onclick="toon('keurlijst', this)">✓ Te keuren<span class="badge">3</span></div>
     </div>
+    <div class="functabs" id="tabsDeta" style="display:none">
+      <div class="functab actief" onclick="toon('detaZzpers', this)">👥 Mijn ZZP'ers</div>
+    </div>
 
     <div class="content">
 
@@ -213,7 +220,7 @@
       <!-- ============ ZZP · PROJECT: OPENSTAANDE WEKEN ============ -->
       <div class="view" id="zzpProject">
         <button class="terug" onclick="toon('zzpProjecten')">‹ Mijn projecten</button>
-        <div class="seclabel">26014 Eindhoven (BAM) · weken</div>
+        <div class="seclabel">26014 Eindhoven (BAM) · weken<span class="namens"> · namens Milan K.</span></div>
         <div class="card klik" onclick="toon('weekstaat')">
           <div><div class="tt">Week 34 <small style="color:var(--muted);font-weight:500">17 – 23 aug</small></div>
             <div class="meta">3 van 5 dagen ingevuld · 22,5 u · 215 m²</div></div>
@@ -225,7 +232,7 @@
           <span class="chip open">nog invullen</span>
         </div>
         <div class="card klik" onclick="toon('afgekeurd')">
-          <div><div class="tt">Week 32</div><div class="meta">2 dagen afgekeurd door Ben v. Dijk — tik voor toelichting</div></div>
+          <div><div class="tt">Week 32</div><div class="meta">week afgekeurd door Ben v. Dijk — tik voor toelichting</div></div>
           <span class="chip afgekeurd">corrigeren</span>
         </div>
         <div class="card klik">
@@ -237,7 +244,7 @@
       <!-- ============ ZZP · WEEKSTAAT (per project, per week) ============ -->
       <div class="view" id="weekstaat">
         <button class="terug" onclick="toon('zzpProject')">‹ 26014 Eindhoven</button>
-        <div class="seclabel">Week 34 · 17 – 23 aug</div>
+        <div class="seclabel">Week 34 · 17 – 23 aug<span class="namens"> · namens Milan K.</span></div>
         <div class="card">
           <div class="dagrij">
             <span class="dag">ma</span>
@@ -276,7 +283,7 @@
       <!-- ============ ZZP · DAGINVOER ============ -->
       <div class="view" id="daginvoer">
         <button class="terug" onclick="toon('weekstaat')">‹ Week 34</button>
-        <div class="seclabel">Donderdag 20 aug · 26014 Eindhoven</div>
+        <div class="seclabel">Donderdag 20 aug · 26014 Eindhoven<span class="namens"> · namens Milan K.</span></div>
         <div class="card">
           <div class="duo">
             <div class="veld"><label>Uren</label><input type="number" inputmode="decimal" placeholder="8,0"></div>
@@ -302,8 +309,8 @@
           <span class="chip akkoord">goedgekeurd</span>
         </div>
         <div class="card klik" onclick="toon('afgekeurd')">
-          <div><div class="tt">Wk 32 · 26014 Eindhoven · 38,0 u</div><div class="meta">2 dagen afgekeurd — tik voor toelichting</div></div>
-          <span class="chip afgekeurd">deels afgekeurd</span>
+          <div><div class="tt">Wk 32 · 26014 Eindhoven · 38,0 u</div><div class="meta">week afgekeurd — tik voor toelichting</div></div>
+          <span class="chip afgekeurd">afgekeurd</span>
         </div>
         <div class="notitie"><span>🔒</span><span>Een goedgekeurde week is de <b>getekende urenstaat</b>: jouw factuur wordt hier automatisch tegen gecontroleerd.</span></div>
       </div>
@@ -311,16 +318,50 @@
       <!-- ============ ZZP · AFGEKEURDE WEEK ============ -->
       <div class="view" id="afgekeurd">
         <button class="terug" onclick="toon('historie')">‹ Ingediend</button>
-        <div class="seclabel">Wk 32 · 26014 Eindhoven · toelichting</div>
+        <div class="seclabel">Wk 32 · 26014 Eindhoven · toelichting<span class="namens"> · namens Milan K.</span></div>
         <div class="card">
-          <div class="dagrij"><span class="dag">ma</span><span class="proj">steigerbouw</span><span class="u">8,0 u ✓</span></div>
-          <div class="dagrij"><span class="dag">di</span><span class="proj">steigerbouw</span><span class="u">8,0 u ✓</span></div>
-          <div class="dagrij"><span class="dag">wo</span><span class="proj">steigerbouw</span><span class="u chip afgekeurd">10,0 u ✗</span></div>
-          <div class="afwijs"><b>Afgekeurd (wo):</b> "Max 8 uur afgesproken op dit werk; overuren vooraf melden bij Ben." — corrigeer en dien de dag opnieuw in.</div>
+          <div class="dagrij"><span class="dag">ma</span><span class="proj">steigerbouw</span><span class="u">8,0 u</span></div>
+          <div class="dagrij"><span class="dag">di</span><span class="proj">steigerbouw</span><span class="u">8,0 u</span></div>
+          <div class="dagrij"><span class="dag">wo</span><span class="proj">steigerbouw</span><span class="u chip afgekeurd">10,0 u</span></div>
+          <div class="afwijs"><b>Week afgekeurd door Ben v. Dijk:</b> "Wo max 8 uur afgesproken op dit werk; overuren vooraf melden." — corrigeer en dien de <b>week</b> opnieuw in.</div>
         </div>
         <div class="actionbar">
-          <button class="btn primair" onclick="toon('daginvoer')">Dag corrigeren</button>
+          <button class="btn primair" onclick="toon('weekstaat')">Week corrigeren</button>
         </div>
+      </div>
+
+      <!-- ============ DETACHEERDER · MIJN ZZP'ERS ============ -->
+      <div class="view" id="detaZzpers">
+        <div class="seclabel">Mijn ZZP'ers (3)</div>
+        <div class="card klik" onclick="toon('detaWeken')">
+          <div><div class="tt">Milan K.</div><div class="meta">2 projecten · laatste invoer wo wk 34</div></div>
+          <span class="chip open">2 weken open</span>
+        </div>
+        <div class="card klik" onclick="toon('detaWeken')">
+          <div><div class="tt">Stefan B.</div><div class="meta">1 project · laatste invoer vr wk 34</div></div>
+          <span class="chip open">1 week open</span>
+        </div>
+        <div class="card klik" onclick="toon('detaWeken')">
+          <div><div class="tt">Ali D.</div><div class="meta">1 project · alles ingediend</div></div>
+          <span class="chip akkoord">bij</span>
+        </div>
+        <div class="notitie"><span>🔒</span><span>Je vult de weekstaten in <b>namens</b> de ZZP'ers die het kantoor aan jou gekoppeld heeft — daarna zie je exact dezelfde schermen als de ZZP'er zelf (projecten → open weken → uren + m² per dag). Projectinhoud (specs, contract, meerwerk) blijft onzichtbaar: per project alleen nummer en plaats.</span></div>
+      </div>
+
+      <!-- ============ DETACHEERDER · NA ZZP'ER-KEUZE: EXACT DE ZZP-SCHERMEN ============ -->
+      <div class="view" id="detaWeken">
+        <button class="terug" onclick="toon('detaZzpers')">‹ Mijn ZZP'ers</button>
+        <div class="notitie" style="margin:0 0 12px"><span>✍️</span><span>Je werkt nu <b>namens Milan K.</b> Vanaf hier zijn de schermen exact die van de ZZP'er zelf: projecten → open weken → weekstaat met uren + m² per dag → week indienen. Elke invoer wordt vastgelegd als "ingevuld door jou, namens Milan K." (zichtbaar bij de keuring en in het audit-log).</span></div>
+        <div class="seclabel">Milan K. · projecten</div>
+        <div class="card klik" onclick="toon('zzpProject')">
+          <div><div class="tt">26014 Eindhoven (BAM)</div><div class="meta">steigerbouw · laatste invoer: wo wk 34</div></div>
+          <span class="chip open">2 weken open</span>
+        </div>
+        <div class="card klik" onclick="toon('zzpProject')">
+          <div><div class="tt">26021 Tilburg (Heijmans)</div><div class="meta">demontage · alles ingediend</div></div>
+          <span class="chip akkoord">bij</span>
+        </div>
+        <div class="notitie"><span>▶</span><span>Demo: tik een project — je landt in dezelfde weken-/weekstaat-schermen als bij de ZZP-rol.</span></div>
       </div>
 
       <!-- ============ UITVOERDER · PROJECTENLIJST ============ -->
@@ -367,41 +408,36 @@
           <div class="dagrij">
             <span class="dag">ma</span><span class="proj">steigerbouw gevel B</span>
             <span class="u">8,0 u · 120 m²</span>
-            <span class="keur"><button class="ok">✓</button><button class="nee" onclick="toon('keurafwijs')">✗</button></span>
           </div>
           <div class="dagrij">
             <span class="dag">di</span><span class="proj">steigerbouw gevel B</span>
             <span class="u">8,0 u · 95 m²</span>
-            <span class="keur"><button class="ok">✓</button><button class="nee" onclick="toon('keurafwijs')">✗</button></span>
           </div>
           <div class="dagrij">
             <span class="dag">wo</span><span class="proj">wachttijd levering<small>"levering staal kwam 13:30"</small></span>
             <span class="u">6,5 u · —</span>
-            <span class="keur"><button class="ok">✓</button><button class="nee" onclick="toon('keurafwijs')">✗</button></span>
           </div>
           <div class="totbalk"><span class="k">Totaal</span><span>22,5 u · 215 m²</span></div>
         </div>
-        <div class="notitie waarschuw"><span>⚠️</span><span>Wo bevat wachttijd zonder m². Keur per dag, of keur de hele week in één keer met de knop onderin.</span></div>
+        <div class="notitie"><span>ℹ️</span><span>Keuren gaat per <b>week</b> — de dagen zie je hier alleen ter controle. Niet akkoord? Dan gaat de hele week terug met een verplichte reden; de ZZP'er corrigeert en dient opnieuw in.</span></div>
         <div class="actionbar">
-          <button class="btn rood" onclick="toon('keurafwijs')">Afkeuren…</button>
-          <button class="btn primair" onclick="toon('keurlijst')">Hele week akkoord</button>
+          <button class="btn rood" onclick="toon('keurafwijs')">Week afkeuren…</button>
+          <button class="btn primair" onclick="toon('keurlijst')">Week akkoord</button>
         </div>
       </div>
 
       <!-- ============ UITVOERDER · AFKEUREN MET REDEN ============ -->
       <div class="view" id="keurafwijs">
         <button class="terug" onclick="toon('keurdetail')">‹ Urenstaat</button>
-        <div class="seclabel">Afkeuren — reden verplicht</div>
+        <div class="seclabel">Week 34 afkeuren — reden verplicht</div>
         <div class="card">
-          <div class="veld"><label>Dag(en)</label>
-            <select><option>woensdag 19 aug</option><option>hele week</option></select>
-          </div>
           <div class="veld"><label>Reden (verplicht — gaat naar Milan K.)</label>
-            <textarea rows="3" placeholder="bijv. wachttijd niet akkoord, vooraf melden"></textarea>
+            <textarea rows="4" style="resize:vertical;min-height:96px;line-height:1.5" placeholder="bijv. wachttijd wo niet akkoord — vooraf melden bij Ben"></textarea>
           </div>
+          <div class="notitie"><span>↩️</span><span>De hele week gaat terug naar Milan K. als "corrigeren". Hij past aan en dient de week opnieuw in.</span></div>
         </div>
         <div class="actionbar">
-          <button class="btn rood" onclick="toon('keurlijst')">Afkeuren en terugsturen</button>
+          <button class="btn rood" onclick="toon('keurlijst')">Week afkeuren en terugsturen</button>
         </div>
       </div>
 
@@ -495,7 +531,9 @@
     <h2>Rol 1 · Uren (ZZP)</h2>
     <p>Beginscherm = <b>mijn projecten</b> met open-teller → project = <b>openstaande weken</b> (incl. corrigeren-na-afkeuring) → week = dagen invullen (uren + m², m² optioneel) → indienen per week per project. "Ingediend" toont de statussen over alle projecten heen.</p>
     <h2>Rol 2 · Uitvoerder</h2>
-    <p>Projecten (specs, contract/offerte, meerwerk melden → meerwerklijst per project) én <b>Te keuren</b>: ingediende urenstaten van de projecten die het kantoor aan deze uitvoerder heeft toegewezen. Keuren per dag (✓/✗) of hele week in één keer; afkeuren = verplichte reden, gaat terug naar de ZZP'er.</p>
+    <p>Projecten (specs, contract/offerte, meerwerk melden → meerwerklijst per project) én <b>Te keuren</b>: ingediende urenstaten van de projecten die het kantoor aan deze uitvoerder heeft toegewezen. Keuren gaat per <b>week</b> (besluit Peter 21-08): week akkoord of week afkeuren met verplichte reden — de hele week gaat dan terug naar de ZZP'er, die corrigeert en opnieuw indient. De dagen staan alleen ter controle in beeld.</p>
+    <h2>Rol 3 · Detacheerder (toevoeging Peter 21-08)</h2>
+    <p>Vult de weekstaten in namens de ZZP'ers die het kantoor aan hem koppelt — <b>zelfde velden als de ZZP'er zelf</b> (uren, m², opmerking), alleen dan voor meerdere mensen (besluit Peter 21-08). Ziet géén projectinhoud (specs/contract/meerwerk) — per project alleen nummer + plaats. Elke invoer draagt "ingevuld door X namens Y" (audit + zichtbaar bij de keuring); de uitvoerder keurt zoals altijd. Factuurmatch: de factuur van het detacheringsbureau wordt gematcht tegen de <b>som van de goedgekeurde staten</b> van zijn ZZP'ers in de periode.</p>
     <h2>Scope (besluit Peter 21-08)</h2>
     <p>Uren &amp; meerwerk zijn een <b>steigerbouw-specifieke tak</b> (opt-in per administratie, bv. alleen Universal): ze horen bij de projectadministratie maar zijn er niet leidend voor. De generieke projectenmodule (budget, werksoorten, signalen) blijft eigen ontwerp; deze functies voeden 'm alleen (m²-voortgang, meerwerklijst, getekende urenstaten).</p>
     <h2>Bewuste keuzes (graag jouw oordeel)</h2>
@@ -508,6 +546,7 @@
 </div>
 
 <script>
+  const rollen = ['zzp', 'uitv', 'deta'];
   let rol = 'zzp';
   function toon(id, tabEl) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -516,12 +555,17 @@
     document.querySelector('.content').scrollTop = 0; window.scrollTo(0,0);
   }
   function wisselRol() {
-    rol = rol === 'zzp' ? 'uitv' : 'zzp';
+    rol = rollen[(rollen.indexOf(rol) + 1) % rollen.length];
+    document.body.classList.toggle('rol-deta', rol === 'deta');
     document.getElementById('tabsZzp').style.display = rol === 'zzp' ? 'flex' : 'none';
     document.getElementById('tabsUitv').style.display = rol === 'uitv' ? 'flex' : 'none';
-    document.getElementById('kopnaam').innerHTML = rol === 'zzp' ? 'Uren — <span>Milan K. (ZZP)</span>' : 'Projecten — <span>Ben v. Dijk (uitvoerder)</span>';
+    document.getElementById('tabsDeta').style.display = rol === 'deta' ? 'flex' : 'none';
+    document.getElementById('kopnaam').innerHTML =
+      rol === 'zzp' ? 'Uren — <span>Milan K. (ZZP)</span>' :
+      rol === 'uitv' ? 'Projecten — <span>Ben v. Dijk (uitvoerder)</span>' :
+      'Uren namens — <span>Karin S. (detacheerder)</span>';
     document.querySelectorAll('.functabs').forEach(g => g.querySelectorAll('.functab').forEach((t,i) => t.classList.toggle('actief', i===0)));
-    toon(rol === 'zzp' ? 'zzpProjecten' : 'projecten');
+    toon(rol === 'zzp' ? 'zzpProjecten' : rol === 'uitv' ? 'projecten' : 'detaZzpers');
   }
 </script>
 </body>
