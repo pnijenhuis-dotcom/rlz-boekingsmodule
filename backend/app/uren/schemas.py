@@ -1,0 +1,216 @@
+"""DTO's voor de uren-&-meerwerk-veld-API (fase 2, mockup uren-uitvoerder.html): de native
+app-endpoints voor ZZP'er / uitvoerder / detacheerder. De kantoor-DTO's (meerwerklijst,
+beoordeel-paneel, beheer) volgen in fase 3 op dezelfde schemas."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
+
+from pydantic import BaseModel
+
+from app.schemas_basis import StrikteInvoer
+
+
+class DagDto(BaseModel):
+    id: uuid.UUID
+    datum: date
+    uren: Decimal
+    m2: Decimal | None = None
+    opmerking: str | None = None
+    ingevuld_door_naam: str | None = None
+    namens: bool
+
+
+class WeekstaatDto(BaseModel):
+    id: uuid.UUID
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    gebruiker_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    jaar: int
+    weeknummer: int
+    status: str
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+    dagen: list[DagDto]
+    ingediend_op: datetime | None = None
+    ingediend_door_naam: str | None = None
+    ingediend_namens: bool = False
+    goedgekeurd_op: datetime | None = None
+    goedgekeurd_door_naam: str | None = None
+    afgekeurd_op: datetime | None = None
+    afgekeurd_door_naam: str | None = None
+    afkeur_reden: str | None = None
+
+
+class ProjectKaartDto(BaseModel):
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    soort_werk: str | None = None
+    open_weken: int
+    laatste_invoer: date | None = None
+
+
+class WeekKaartDto(BaseModel):
+    jaar: int
+    weeknummer: int
+    maandag: date
+    zondag: date
+    status: str  # 'nieuw' = nog geen staat
+    weekstaat_id: uuid.UUID | None = None
+    dagen_ingevuld: int
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+    ingediend_op: datetime | None = None
+    goedgekeurd_door_naam: str | None = None
+    afgekeurd_door_naam: str | None = None
+    afkeur_reden: str | None = None
+
+
+class IngediendeWeekDto(BaseModel):
+    weekstaat_id: uuid.UUID
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    jaar: int
+    weeknummer: int
+    status: str
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+    ingediend_op: datetime | None = None
+    ingediend_namens: bool = False
+    goedgekeurd_door_naam: str | None = None
+    afgekeurd_door_naam: str | None = None
+    afkeur_reden: str | None = None
+
+
+class ZzperKaartDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str
+    aantal_projecten: int
+    open_weken: int
+    laatste_invoer: date | None = None
+
+
+class TeKeurenItemDto(BaseModel):
+    weekstaat_id: uuid.UUID
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    zzper_id: uuid.UUID
+    zzper_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    jaar: int
+    weeknummer: int
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+    ingediend_op: datetime | None = None
+    ingediend_namens: bool = False
+    ingediend_door_naam: str | None = None
+
+
+class MeerwerkDto(BaseModel):
+    id: uuid.UUID
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    omschrijving: str
+    aantal: Decimal
+    eenheid: str
+    datum_uitgevoerd: date
+    in_opdracht_van: str | None = None
+    heeft_foto: bool
+    foto_bestandsnaam: str | None = None
+    gemeld_door_naam: str | None = None
+    gemeld_op: datetime
+    status: str
+    prijs_per_eenheid: Decimal | None = None
+    bedrag: Decimal | None = None
+    facturatie_notitie: str | None = None
+    beoordeeld_op: datetime | None = None
+    beoordeeld_door_naam: str | None = None
+    afwijs_reden: str | None = None
+    doorbelast_op: datetime | None = None
+    verkoopfactuur_referentie: str | None = None
+    vraag_tekst: str | None = None
+    vraag_gesteld_op: datetime | None = None
+    vraag_antwoord: str | None = None
+    vraag_beantwoord_op: datetime | None = None
+
+
+class ProjectDocumentKaartDto(BaseModel):
+    id: uuid.UUID
+    soort: str
+    titel: str
+    versie_omschrijving: str | None = None
+    bestandsnaam: str
+
+
+class ProjectDetailDto(BaseModel):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    opdrachtgever: str | None = None
+    werknummer_opdrachtgever: str | None = None
+    soort_werk: str | None = None
+    contract_m2: Decimal | None = None
+    gebouwd_m2: Decimal
+    looptijd_van: date | None = None
+    looptijd_tot: date | None = None
+    huurtijd_omschrijving: str | None = None
+    doorlopende_huur_omschrijving: str | None = None
+    documenten: list[ProjectDocumentKaartDto]
+    meerwerk: list[MeerwerkDto]
+
+
+class UitvoerderProjectKaartDto(BaseModel):
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    soort_werk: str | None = None
+    contract_m2: Decimal | None = None
+    gebouwd_m2: Decimal
+    looptijd_tot: date | None = None
+    huurtijd_omschrijving: str | None = None
+    meerwerk_gemeld: int
+    te_keuren: int
+
+
+# --- requests ---------------------------------------------------------------------------------
+
+
+class DagZettenRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    jaar: int
+    weeknummer: int
+    datum: date
+    uren: Decimal
+    m2: Decimal | None = None
+    opmerking: str | None = None
+    # Detacheerder-namens-flow (besluit 21-08): de ZZP'er van wie de staat is. Weglaten = de
+    # actor zelf (moet dan een ZZP'er zijn).
+    namens_zzper_id: uuid.UUID | None = None
+
+
+class WeekIndienenRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    jaar: int
+    weeknummer: int
+    namens_zzper_id: uuid.UUID | None = None
+
+
+class WeekAfkeurenRequest(StrikteInvoer):
+    reden: str
+
+
+class VraagAntwoordRequest(StrikteInvoer):
+    tekst: str
