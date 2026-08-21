@@ -82,6 +82,19 @@ gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
 - Guideline 4.2 (minimal functionality): benoemen dat de app gebundelde assets, native
   passkeys, native push en deep-links gebruikt — geen remote-loading wrapper.
 
+**Voortgang App Store Connect (klikwerk Peter, 2026-08-21):** app-registratie + App
+Information (subtitle "Facturen goedkeuren", categorie Business, geen third-party content),
+Age Rating (nieuwe 7-staps-vragenlijst op de App Information-pagina, alles None/No →
+**4+**, Age Categories "Not Applicable"), App Privacy (privacy-URL gezet, labels exact
+conform §2 — vier datatypes, alle App Functionality + linked to identity, geen tracking —
+gepubliceerd onder "Data Linked to You") en Pricing (€ 0,00, basisland NL, Availability
+alleen Nederland) zijn ÁF. Aandachtspunt: **Apple Silicon Mac-beschikbaarheid staat op de
+ASC-default AAN** ("Make this app available", Automatic macOS 11.0) — advies: uitzetten
+(alleen iPhone getest; passkey-/viewport-gedrag op macOS onbekend), besluit Peter open.
+Nog open in ASC: versiepagina 1.0 (screenshots/description/keywords/support-URL), App
+Review Information (vergt het demo-wachtwoord uit draaiboek §0 — pas nodig vóór
+béta-/app-review, niet voor interne TestFlight), build koppelen ná de eerste upload.
+
 ## 5. Checklist tot publicatie (volgorde)
 
 1. **Peter:** ~~accounts aanmaken~~ **VERVALLEN** (bestaan al onder PDL Powerhouse, actief —
