@@ -145,6 +145,8 @@ class AdministratieInstellingen:
     # is_vastgoed-administraties — de UI heeft beide velden nodig om dat te tonen.
     is_vastgoed: bool = False
     verkoop_autoboeken_ingeschakeld: bool = False
+    # Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie.
+    uren_meerwerk_ingeschakeld: bool = False
 
 
 def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
@@ -164,6 +166,7 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
                 eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
                 is_vastgoed=r.is_vastgoed,
                 verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
+                uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
             )
             for r in rijen
         ]
@@ -321,6 +324,41 @@ def zet_bank_autoboeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: u
             correlatie_id=uuid.uuid4(),
             oude_waarde={"bank_autoboeken_ingeschakeld": oud},
             nieuwe_waarde={"bank_autoboeken_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
+def haal_uren_meerwerk_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.uren_meerwerk_ingeschakeld
+
+
+def zet_uren_meerwerk_ingeschakeld(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
+) -> bool:
+    """Opt-in uren & meerwerk (migratie 0056, BOUW GO Peter 2026-08-21): steigerbouw-
+    specifieke tak, alleen Universal initieel. Default UIT; Beheerder-only (router/CLI).
+    Uit = de module bestaat niet voor deze administratie (veld-API en kantoor-endpoints
+    weigeren server-side; bestaande weekstaten/meerwerk blijven staan — niets verdwijnt)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.uren_meerwerk_ingeschakeld
+        administratie.uren_meerwerk_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="uren_meerwerk_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"uren_meerwerk_ingeschakeld": oud},
+            nieuwe_waarde={"uren_meerwerk_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
 

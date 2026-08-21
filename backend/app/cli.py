@@ -718,6 +718,26 @@ def _zet_verkoop_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> 
     return 0
 
 
+def _zet_uren_meerwerk(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Opt-in uren & meerwerk (migratie 0056, steigerbouw-tak — BOUW GO 2026-08-21): zelfde
+    patroon als de andere toggles; Beheerder als audit_event-actor, default UIT."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_uren_meerwerk_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"uren_meerwerk_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    return 0
+
+
 def _zet_boeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Boeken-failsafe (a), per-administratie deel — hergebruikt app.beheer.service (zelfde
     servicefunctie als het instellingen-scherm straks aanroept), met de Beheerder als actor
@@ -1060,6 +1080,8 @@ def main(argv: list[str] | None = None) -> int:
         ("verkoop-autoboeken-uit", "Zet de verkoop-autoboek-toggle UIT."),
         ("afgeletterd-event-aan", "Zet de tier-vlag voor het factuur_afgeletterd-event AAN (§3 v1.11)."),
         ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
+        ("uren-meerwerk-aan", "Zet de uren-&-meerwerk-opt-in (steigerbouw-tak, migratie 0056) AAN."),
+        ("uren-meerwerk-uit", "Zet de uren-&-meerwerk-opt-in UIT."),
     ):
         bank_auto_parser = subparsers.add_parser(naam, help=hulp)
         bank_auto_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
@@ -1181,6 +1203,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":
         return _zet_bank_autoboeken(args, ingeschakeld=False)
+    if args.commando == "uren-meerwerk-aan":
+        return _zet_uren_meerwerk(args, ingeschakeld=True)
+    if args.commando == "uren-meerwerk-uit":
+        return _zet_uren_meerwerk(args, ingeschakeld=False)
     if args.commando == "verkoop-autoboeken-aan":
         return _zet_verkoop_autoboeken(args, ingeschakeld=True)
     if args.commando == "verkoop-autoboeken-uit":

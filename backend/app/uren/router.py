@@ -21,7 +21,13 @@ from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
 from app.auth import voorwaarden
-from app.auth.deps import CurrentGebruiker, get_current_gebruiker
+from app.auth.deps import (
+    CurrentGebruiker,
+    get_current_gebruiker,
+    require_beheerder,
+    require_meerwerk_urenstaten_recht,
+    vereis_administratie_scope,
+)
 from app.auth.rollen import is_veldrol
 from app.uren import overzichten, schemas, service
 
@@ -397,6 +403,247 @@ def meerwerk_foto(
         media_type=content_type,
         headers={"Content-Disposition": f'inline; filename="{naam}"'},
     )
+
+
+# --- kantoor (fase 3): module-recht + klantscope, server-side ------------------------------------
+
+
+@router.get("/kantoor/stand", response_model=schemas.UrenStandDto)
+def kantoor_stand(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.UrenStandDto:
+    """Tellers voor de klantpagina-standen (toon-regel: blok alleen bij teller > 0) + het
+    2-weken-bewakingssignaal. 403 zonder module-recht (de UI verbergt het blok dan), 409 als
+    de administratie de opt-in niet aan heeft."""
+    try:
+        stand = service.uren_stand(administratie_id=administratie_id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.UrenStandDto(**stand.__dict__)
+
+
+@router.get("/kantoor/meerwerk", response_model=list[schemas.MeerwerkDto])
+def kantoor_meerwerk_lijst(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> list[schemas.MeerwerkDto]:
+    try:
+        items = service.meerwerk_lijst(administratie_id=administratie_id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [_meerwerk_response(m) for m in items]
+
+
+@router.get(
+    "/kantoor/meerwerk/{administratie_id}/{meerwerk_id}/contract-toets",
+    response_model=list[schemas.StaffelRegelDto],
+)
+def kantoor_contract_toets(
+    administratie_id: uuid.UUID,
+    meerwerk_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> list[schemas.StaffelRegelDto]:
+    """VOORSTEL uit de offerte-staffel (zelfde eenheid) — de mens bevestigt de prijs, de app
+    rekent nooit zelf door naar een boeking. Leeg = geen staffel bekend, handmatig prijzen."""
+    try:
+        regels = service.contract_toets_voor_melding(
+            administratie_id=administratie_id, meerwerk_id=meerwerk_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.StaffelRegelDto(**r.__dict__) for r in regels]
+
+
+@router.post("/kantoor/meerwerk/{administratie_id}/{meerwerk_id}/goedkeuren", response_model=schemas.MeerwerkDto)
+def kantoor_meerwerk_goedkeuren(
+    administratie_id: uuid.UUID,
+    meerwerk_id: uuid.UUID,
+    payload: schemas.MeerwerkGoedkeurenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.MeerwerkDto:
+    try:
+        data = service.keur_meerwerk_goed(
+            administratie_id=administratie_id,
+            meerwerk_id=meerwerk_id,
+            actor_id=actor.id,
+            prijs_per_eenheid=payload.prijs_per_eenheid,
+            bedrag=payload.bedrag,
+            facturatie_notitie=payload.facturatie_notitie,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _meerwerk_response(data)
+
+
+@router.post("/kantoor/meerwerk/{administratie_id}/{meerwerk_id}/afwijzen", response_model=schemas.MeerwerkDto)
+def kantoor_meerwerk_afwijzen(
+    administratie_id: uuid.UUID,
+    meerwerk_id: uuid.UUID,
+    payload: schemas.MeerwerkAfwijzenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.MeerwerkDto:
+    try:
+        data = service.wijs_meerwerk_af(
+            administratie_id=administratie_id, meerwerk_id=meerwerk_id, actor_id=actor.id, reden=payload.reden
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _meerwerk_response(data)
+
+
+@router.post("/kantoor/meerwerk/{administratie_id}/{meerwerk_id}/doorbelast", response_model=schemas.MeerwerkDto)
+def kantoor_meerwerk_doorbelast(
+    administratie_id: uuid.UUID,
+    meerwerk_id: uuid.UUID,
+    payload: schemas.MeerwerkDoorbelastRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.MeerwerkDto:
+    try:
+        data = service.markeer_doorbelast(
+            administratie_id=administratie_id,
+            meerwerk_id=meerwerk_id,
+            actor_id=actor.id,
+            verkoopfactuur_referentie=payload.verkoopfactuur_referentie,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _meerwerk_response(data)
+
+
+@router.post("/kantoor/meerwerk/{administratie_id}/{meerwerk_id}/vraag", response_model=schemas.MeerwerkDto)
+def kantoor_meerwerk_vraag(
+    administratie_id: uuid.UUID,
+    meerwerk_id: uuid.UUID,
+    payload: schemas.VraagAntwoordRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.MeerwerkDto:
+    try:
+        data = service.stel_vraag(
+            administratie_id=administratie_id, meerwerk_id=meerwerk_id, actor_id=actor.id, tekst=payload.tekst
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _meerwerk_response(data)
+
+
+@router.get("/kantoor/weekstaten/{administratie_id}/{weekstaat_id}", response_model=schemas.WeekstaatDto)
+def kantoor_weekstaat_detail(
+    administratie_id: uuid.UUID,
+    weekstaat_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.WeekstaatDto:
+    try:
+        data = overzichten.weekstaat_detail_voor(
+            administratie_id=administratie_id, weekstaat_id=weekstaat_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _weekstaat_response(data)
+
+
+# --- beheer (Beheerder-only): koppelingen + module-recht ------------------------------------------
+
+
+@router.get("/beheer/veldgebruikers", response_model=list[schemas.VeldgebruikerDto])
+def beheer_veldgebruikers(actor: CurrentGebruiker = Depends(require_beheerder)) -> list[schemas.VeldgebruikerDto]:
+    kaarten = overzichten.veldgebruikers_overzicht(actor_id=actor.id)
+    return [
+        schemas.VeldgebruikerDto(
+            gebruiker_id=k.gebruiker_id,
+            naam=k.naam,
+            e_mail=k.e_mail,
+            rol=k.rol,
+            status=k.status,
+            projecten=[schemas.ToewijzingDto(**t.__dict__) for t in k.projecten],
+            zzpers=[schemas.GekoppeldeZzperDto(**z) for z in k.zzpers],
+        )
+        for k in kaarten
+    ]
+
+
+@router.post("/beheer/projectkoppelingen", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_projectkoppeling_toevoegen(
+    payload: schemas.ProjectKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    try:
+        service.koppel_project(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            project_id=payload.project_id,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/beheer/projectkoppelingen/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_projectkoppeling_verwijderen(
+    payload: schemas.ProjectKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    try:
+        service.ontkoppel_project(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            project_id=payload.project_id,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/beheer/detacheerderkoppelingen", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_detacheerderkoppeling_toevoegen(
+    payload: schemas.DetacheerderKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    try:
+        service.koppel_detacheerder(
+            detacheerder_id=payload.detacheerder_id, zzper_id=payload.zzper_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/beheer/detacheerderkoppelingen/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_detacheerderkoppeling_verwijderen(
+    payload: schemas.DetacheerderKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    try:
+        service.ontkoppel_detacheerder(
+            detacheerder_id=payload.detacheerder_id, zzper_id=payload.zzper_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.get("/beheer/module-recht", response_model=schemas.ModuleRechtHoudersDto)
+def beheer_module_recht_houders(
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.ModuleRechtHoudersDto:
+    return schemas.ModuleRechtHoudersDto(gebruiker_ids=service.module_recht_houders())
+
+
+@router.put("/beheer/module-recht", response_model=schemas.ModuleRechtDto)
+def beheer_module_recht_zetten(
+    payload: schemas.ModuleRechtRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.ModuleRechtDto:
+    """Module-recht 'Meerwerk & urenstaten' aan/uit per kantoormedewerker (0019-patroon:
+    Beheerder-only, audit via de DB-trigger van migratie 0034, idempotent)."""
+    try:
+        ingeschakeld = service.zet_meerwerk_recht(
+            gebruiker_id=payload.gebruiker_id, ingeschakeld=payload.ingeschakeld, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.ModuleRechtDto(gebruiker_id=payload.gebruiker_id, ingeschakeld=ingeschakeld)
 
 
 @router.get("/projectdocumenten/{administratie_id}/{document_id}")

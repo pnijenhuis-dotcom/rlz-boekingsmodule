@@ -32,10 +32,45 @@ def administratie_instellingen_lijst(
                 eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
                 is_vastgoed=r.is_vastgoed,
                 verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
+                uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
             )
             for r in overzicht
         ]
     )
+
+
+@router.get(
+    "/administraties/{administratie_id}/uren-meerwerk-instelling",
+    response_model=schemas.UrenMeerwerkDto,
+)
+def uren_meerwerk_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.UrenMeerwerkDto:
+    try:
+        ingeschakeld = service.haal_uren_meerwerk_ingeschakeld_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.UrenMeerwerkDto(ingeschakeld=ingeschakeld)
+
+
+@router.put(
+    "/administraties/{administratie_id}/uren-meerwerk-instelling",
+    response_model=schemas.UrenMeerwerkDto,
+)
+def uren_meerwerk_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.UrenMeerwerkDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.UrenMeerwerkDto:
+    """Opt-in uren & meerwerk (migratie 0056, steigerbouw-tak) — Beheerder-only, default UIT;
+    alleen Universal initieel (besluit Peter 2026-08-21)."""
+    try:
+        ingeschakeld = service.zet_uren_meerwerk_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.UrenMeerwerkDto(ingeschakeld=ingeschakeld)
 
 
 @router.get(

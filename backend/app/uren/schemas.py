@@ -214,3 +214,83 @@ class WeekAfkeurenRequest(StrikteInvoer):
 
 class VraagAntwoordRequest(StrikteInvoer):
     tekst: str
+
+
+# --- kantoor (fase 3) ---------------------------------------------------------------------------
+
+
+class UrenStandDto(BaseModel):
+    meerwerk_te_beoordelen: int
+    meerwerk_nog_doorbelasten: int
+    meerwerk_te_lang_niet_doorbelast: int
+    urenstaten_wachten_op_keuring: int
+
+
+class StaffelRegelDto(BaseModel):
+    id: uuid.UUID
+    omschrijving: str
+    eenheid: str
+    prijs_per_eenheid: Decimal
+    verrekenbaar: bool
+    bron: str | None = None
+
+
+class MeerwerkGoedkeurenRequest(StrikteInvoer):
+    prijs_per_eenheid: Decimal
+    bedrag: Decimal
+    facturatie_notitie: str | None = None
+
+
+class MeerwerkAfwijzenRequest(StrikteInvoer):
+    reden: str
+
+
+class MeerwerkDoorbelastRequest(StrikteInvoer):
+    verkoopfactuur_referentie: str
+
+
+class ToewijzingDto(BaseModel):
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+
+
+class GekoppeldeZzperDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str
+
+
+class VeldgebruikerDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str
+    e_mail: str
+    rol: str
+    status: str
+    projecten: list[ToewijzingDto]
+    zzpers: list[GekoppeldeZzperDto]
+
+
+class ProjectKoppelingRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+
+
+class DetacheerderKoppelingRequest(StrikteInvoer):
+    detacheerder_id: uuid.UUID
+    zzper_id: uuid.UUID
+
+
+class ModuleRechtRequest(StrikteInvoer):
+    gebruiker_id: uuid.UUID
+    ingeschakeld: bool
+
+
+class ModuleRechtDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    ingeschakeld: bool
+
+
+class ModuleRechtHoudersDto(BaseModel):
+    gebruiker_ids: list[uuid.UUID]

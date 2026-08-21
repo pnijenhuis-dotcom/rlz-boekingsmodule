@@ -49,6 +49,10 @@ class DoorbelastingIngeschakeldDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class UrenMeerwerkDto(StrikteInvoer):
+    ingeschakeld: bool
+
+
 class VerkoopAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
@@ -67,6 +71,8 @@ class AdministratieInstellingenDto(BaseModel):
     # de schakelaar uitsluitend voor vastgoed-administraties.
     is_vastgoed: bool = False
     verkoop_autoboeken_ingeschakeld: bool = False
+    # Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie.
+    uren_meerwerk_ingeschakeld: bool = False
 
 
 class AdministratieInstellingenLijstDto(BaseModel):

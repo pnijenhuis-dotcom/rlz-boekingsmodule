@@ -703,6 +703,83 @@ def projectdetail_uitvoerder(
         )
 
 
+# --- kantoor-beheer (Beheerder-only via de router) -----------------------------------------------
+
+
+@dataclass(frozen=True)
+class ToewijzingKaart:
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    project_id: uuid.UUID
+    project_naam: str | None
+
+
+@dataclass(frozen=True)
+class VeldgebruikerKaart:
+    gebruiker_id: uuid.UUID
+    naam: str
+    e_mail: str
+    rol: str
+    status: str
+    projecten: list[ToewijzingKaart]
+    zzpers: list[dict]  # detacheerder: [{gebruiker_id, naam}]
+
+
+def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]:
+    """Beheerscherm Gebruikers & toegang: alle veldrol-gebruikers mét hun project-toewijzingen
+    (over alle uren-administraties) en, voor detacheerders, de gekoppelde ZZP'ers."""
+    from app.auth.rollen import VELD_ROLLEN
+
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruikers = list(
+            session.scalars(
+                select(Gebruiker).where(Gebruiker.rol.in_(list(VELD_ROLLEN))).order_by(Gebruiker.naam)
+            )
+        )
+        koppelingen = list(session.scalars(select(DetacheerderKoppeling)))
+        zzper_namen = {g.id: g.naam for g in gebruikers}
+
+    toewijzingen_per_gebruiker: dict[uuid.UUID, list[ToewijzingKaart]] = {}
+    for administratie in _administraties_met_opt_in(actor_id, GebruikerRol.BEHEERDER):
+        with scoped_session(administratie.id) as session:
+            rijen = list(
+                session.scalars(
+                    select(UrenProjectToewijzing).where(
+                        UrenProjectToewijzing.administratie_id == administratie.id
+                    )
+                )
+            )
+            for rij in rijen:
+                project = session.get(ProjectCache, (rij.project_id, administratie.id))
+                toewijzingen_per_gebruiker.setdefault(rij.gebruiker_id, []).append(
+                    ToewijzingKaart(
+                        administratie_id=administratie.id,
+                        administratie_naam=administratie.naam,
+                        project_id=rij.project_id,
+                        project_naam=project.naam if project else None,
+                    )
+                )
+
+    return [
+        VeldgebruikerKaart(
+            gebruiker_id=g.id,
+            naam=g.naam,
+            e_mail=g.e_mail,
+            rol=g.rol.value,
+            status=g.status.value,
+            projecten=sorted(
+                toewijzingen_per_gebruiker.get(g.id, []), key=lambda t: t.project_naam or ""
+            ),
+            zzpers=[
+                {"gebruiker_id": k.zzper_gebruiker_id, "naam": zzper_namen.get(k.zzper_gebruiker_id, "?")}
+                for k in koppelingen
+                if k.detacheerder_gebruiker_id == g.id
+            ],
+        )
+        for g in gebruikers
+    ]
+
+
 def project_document_inhoud(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
 ) -> tuple[str, bytes]:

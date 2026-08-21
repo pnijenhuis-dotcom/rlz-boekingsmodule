@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.auth.rollen import is_kantoorrol
 from app.db.audit import record_audit_event
@@ -1030,6 +1030,108 @@ def koppel_detacheerder(*, detacheerder_id: uuid.UUID, zzper_id: uuid.UUID, acto
             correlatie_id=zzper_id,
             nieuwe_waarde={"detacheerder_gebruiker_id": str(detacheerder_id), "zzper_gebruiker_id": str(zzper_id)},
         )
+
+
+# --- kantoor: lijsten, stand en module-recht (fase 3) ------------------------------------------
+
+
+@dataclass(frozen=True)
+class UrenStand:
+    """Tellers voor de klantpagina-standen (toon-regel: blok alleen bij teller > 0) en het
+    werkvoorraad-signaal van de 2-weken-bewaking."""
+
+    meerwerk_te_beoordelen: int
+    meerwerk_nog_doorbelasten: int
+    meerwerk_te_lang_niet_doorbelast: int
+    urenstaten_wachten_op_keuring: int
+
+
+def meerwerk_lijst(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> list[MeerwerkData]:
+    """Meerwerklijst voor het kantoor-deelscherm (alle statussen — niets verdwijnt stil;
+    filteren doet de UI). Module-recht server-side."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _vereis_meerwerk_recht(session, actor_id)
+        rijen = session.scalars(
+            select(Meerwerk)
+            .where(Meerwerk.administratie_id == administratie_id)
+            .order_by(Meerwerk.gemeld_op.desc())
+        ).all()
+        return [_meerwerk_data(session, m) for m in rijen]
+
+
+def contract_toets_voor_melding(
+    *, administratie_id: uuid.UUID, meerwerk_id: uuid.UUID, actor_id: uuid.UUID
+) -> list[StaffelRegelData]:
+    """Contract-toets bij het beoordeel-paneel: staffelregels van het project van de melding
+    met dezelfde eenheid — een VOORSTEL, de mens bevestigt (leeg = handmatig prijzen)."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _vereis_meerwerk_recht(session, actor_id)
+        melding = _meerwerk(session, meerwerk_id)
+        project_id, eenheid = melding.project_id, melding.eenheid
+    return contract_toets(administratie_id=administratie_id, project_id=project_id, eenheid=eenheid)
+
+
+def uren_stand(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> UrenStand:
+    grens = datetime.now(UTC) - timedelta(days=BEWAKING_DAGEN)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+
+        def _tel(*condities) -> int:
+            return session.execute(select(func.count()).where(*condities)).scalar_one()
+
+        return UrenStand(
+            meerwerk_te_beoordelen=_tel(
+                Meerwerk.administratie_id == administratie_id,
+                Meerwerk.status == MeerwerkStatus.GEMELD.value,
+            ),
+            meerwerk_nog_doorbelasten=_tel(
+                Meerwerk.administratie_id == administratie_id,
+                Meerwerk.status == MeerwerkStatus.GOEDGEKEURD.value,
+            ),
+            meerwerk_te_lang_niet_doorbelast=_tel(
+                Meerwerk.administratie_id == administratie_id,
+                Meerwerk.status == MeerwerkStatus.GOEDGEKEURD.value,
+                Meerwerk.beoordeeld_op < grens,
+            ),
+            urenstaten_wachten_op_keuring=_tel(
+                Weekstaat.administratie_id == administratie_id,
+                Weekstaat.status == WeekstaatStatus.INGEDIEND.value,
+            ),
+        )
+
+
+def module_recht_houders() -> list[uuid.UUID]:
+    """Gebruikers mét het module-recht 'Meerwerk & urenstaten' (Beheerder-only via de router;
+    Beheerders zelf staan hier niet in — zij hebben het recht impliciet altijd)."""
+    with scoped_session(None) as session:
+        return list(
+            session.scalars(
+                select(GebruikerModuleRol.gebruiker_id).where(
+                    GebruikerModuleRol.module == MODULE,
+                    GebruikerModuleRol.rol == MEERWERK_URENSTATEN_RECHT,
+                )
+            )
+        )
+
+
+def zet_meerwerk_recht(*, gebruiker_id: uuid.UUID, ingeschakeld: bool, actor_id: uuid.UUID) -> bool:
+    """Module-recht toekennen/intrekken (Beheerder-only via de router; de RLS + audit-trigger
+    van migratie 0034 bijten hieronder mee — nooit op de eigen gebruiker). Idempotent. Een
+    Beheerder heeft het recht altijd impliciet; een expliciete rij voor een Beheerder of een
+    externe rol is betekenisloos en wordt geweigerd."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        doel = _gebruiker(session, gebruiker_id)
+        if doel.rol == GebruikerRol.BEHEERDER:
+            raise OngeldigeInvoer("Een Beheerder heeft dit recht altijd — niet instelbaar")
+        if not is_kantoorrol(doel.rol):
+            raise OngeldigeInvoer("Het module-recht is alleen voor kantoor-rollen")
+        rij = session.get(GebruikerModuleRol, (gebruiker_id, MODULE))
+        if ingeschakeld and rij is None:
+            session.add(GebruikerModuleRol(gebruiker_id=gebruiker_id, module=MODULE, rol=MEERWERK_URENSTATEN_RECHT))
+        elif not ingeschakeld and rij is not None:
+            session.delete(rij)
+        return ingeschakeld
 
 
 def ontkoppel_detacheerder(*, detacheerder_id: uuid.UUID, zzper_id: uuid.UUID, actor_id: uuid.UUID) -> None:
