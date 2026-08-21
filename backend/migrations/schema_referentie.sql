@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0056
+-- Migratie-head bij deze dump: 0057
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -756,6 +756,43 @@ ALTER TABLE ONLY boekhouding.doorbelasting_run FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: factuurmatch; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.factuurmatch (
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    veldwerker_gebruiker_id uuid NOT NULL,
+    uitkomst text NOT NULL,
+    staten_som_uren numeric(8,2) NOT NULL,
+    staten_som_bedrag numeric(12,2),
+    factuur_bedrag numeric(14,2),
+    factuur_uren numeric(8,2),
+    verschil_bedrag numeric(14,2),
+    verschil_uren numeric(8,2),
+    tarief_ontbreekt boolean NOT NULL,
+    details jsonb,
+    berekend_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_factuurmatch_uitkomst CHECK ((uitkomst = ANY (ARRAY['match'::text, 'match_alleen_uren'::text, 'afwijking'::text, 'niet_toetsbaar'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.factuurmatch FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: factuurmatch_staat; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.factuurmatch_staat (
+    document_id uuid NOT NULL,
+    weekstaat_id uuid NOT NULL,
+    administratie_id uuid NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.factuurmatch_staat FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: iban_accordering; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1296,6 +1333,25 @@ ALTER TABLE ONLY boekhouding.uren_project_toewijzing FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: veldwerker_crediteur; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.veldwerker_crediteur (
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    uurtarief numeric(8,2),
+    autoboeken_ingeschakeld boolean NOT NULL,
+    gekoppeld_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_veldwerker_crediteur_uurtarief CHECK (((uurtarief IS NULL) OR (uurtarief >= (0)::numeric)))
+);
+
+ALTER TABLE ONLY boekhouding.veldwerker_crediteur FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: vendor_cache; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1503,9 +1559,12 @@ CREATE TABLE boekhouding.weekstaat (
     afkeur_reden text,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verrekend_met_document_id uuid,
+    verrekend_op timestamp with time zone,
     CONSTRAINT ck_weekstaat_afkeur_reden CHECK (((status <> 'corrigeren'::text) OR (afkeur_reden IS NOT NULL))),
     CONSTRAINT ck_weekstaat_goedgekeurd_velden CHECK (((status <> 'goedgekeurd'::text) OR ((goedgekeurd_op IS NOT NULL) AND (goedgekeurd_door IS NOT NULL)))),
     CONSTRAINT ck_weekstaat_status CHECK ((status = ANY (ARRAY['concept'::text, 'ingediend'::text, 'goedgekeurd'::text, 'corrigeren'::text]))),
+    CONSTRAINT ck_weekstaat_verrekend_samen CHECK (((verrekend_met_document_id IS NULL) = (verrekend_op IS NULL))),
     CONSTRAINT ck_weekstaat_weeknummer CHECK (((weeknummer >= 1) AND (weeknummer <= 53)))
 );
 
@@ -1707,7 +1766,9 @@ CREATE TABLE platform.detacheerder_koppeling (
     detacheerder_gebruiker_id uuid NOT NULL,
     zzper_gebruiker_id uuid NOT NULL,
     aangemaakt_door uuid NOT NULL,
-    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    uurtarief numeric(8,2),
+    CONSTRAINT ck_detacheerder_koppeling_uurtarief CHECK (((uurtarief IS NULL) OR (uurtarief >= (0)::numeric)))
 );
 
 
@@ -2147,6 +2208,22 @@ ALTER TABLE ONLY boekhouding.doorbelasting_run
 
 
 --
+-- Name: factuurmatch factuurmatch_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch
+    ADD CONSTRAINT factuurmatch_pkey PRIMARY KEY (document_id);
+
+
+--
+-- Name: factuurmatch_staat factuurmatch_staat_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch_staat
+    ADD CONSTRAINT factuurmatch_staat_pkey PRIMARY KEY (document_id, weekstaat_id);
+
+
+--
 -- Name: iban_accordering iban_accordering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2355,6 +2432,14 @@ ALTER TABLE ONLY boekhouding.toewijzing_regel
 
 
 --
+-- Name: veldwerker_crediteur uq_veldwerker_crediteur_vendor; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_crediteur
+    ADD CONSTRAINT uq_veldwerker_crediteur_vendor UNIQUE (administratie_id, vendor_id);
+
+
+--
 -- Name: weekstaat_dag uq_weekstaat_dag_datum; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2376,6 +2461,14 @@ ALTER TABLE ONLY boekhouding.weekstaat
 
 ALTER TABLE ONLY boekhouding.uren_project_toewijzing
     ADD CONSTRAINT uren_project_toewijzing_pkey PRIMARY KEY (administratie_id, gebruiker_id, project_id);
+
+
+--
+-- Name: veldwerker_crediteur veldwerker_crediteur_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_crediteur
+    ADD CONSTRAINT veldwerker_crediteur_pkey PRIMARY KEY (administratie_id, gebruiker_id);
 
 
 --
@@ -2880,6 +2973,34 @@ CREATE INDEX ix_document_status ON boekhouding.document USING btree (status);
 
 
 --
+-- Name: ix_factuurmatch_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_factuurmatch_administratie_id ON boekhouding.factuurmatch USING btree (administratie_id);
+
+
+--
+-- Name: ix_factuurmatch_administratie_uitkomst; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_factuurmatch_administratie_uitkomst ON boekhouding.factuurmatch USING btree (administratie_id, uitkomst);
+
+
+--
+-- Name: ix_factuurmatch_staat_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_factuurmatch_staat_administratie_id ON boekhouding.factuurmatch_staat USING btree (administratie_id);
+
+
+--
+-- Name: ix_factuurmatch_staat_weekstaat_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_factuurmatch_staat_weekstaat_id ON boekhouding.factuurmatch_staat USING btree (weekstaat_id);
+
+
+--
 -- Name: ix_meerwerk_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -2975,6 +3096,13 @@ CREATE INDEX ix_taxrate_cache_administratie_id ON boekhouding.taxrate_cache USIN
 --
 
 CREATE INDEX ix_uren_project_toewijzing_administratie_id ON boekhouding.uren_project_toewijzing USING btree (administratie_id);
+
+
+--
+-- Name: ix_veldwerker_crediteur_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_veldwerker_crediteur_administratie_id ON boekhouding.veldwerker_crediteur USING btree (administratie_id);
 
 
 --
@@ -3765,6 +3893,54 @@ ALTER TABLE ONLY boekhouding.doorbelasting_run
 
 
 --
+-- Name: factuurmatch factuurmatch_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch
+    ADD CONSTRAINT factuurmatch_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: factuurmatch factuurmatch_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch
+    ADD CONSTRAINT factuurmatch_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: factuurmatch_staat factuurmatch_staat_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch_staat
+    ADD CONSTRAINT factuurmatch_staat_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: factuurmatch_staat factuurmatch_staat_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch_staat
+    ADD CONSTRAINT factuurmatch_staat_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.factuurmatch(document_id);
+
+
+--
+-- Name: factuurmatch_staat factuurmatch_staat_weekstaat_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch_staat
+    ADD CONSTRAINT factuurmatch_staat_weekstaat_id_fkey FOREIGN KEY (weekstaat_id) REFERENCES boekhouding.weekstaat(id);
+
+
+--
+-- Name: factuurmatch factuurmatch_veldwerker_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch
+    ADD CONSTRAINT factuurmatch_veldwerker_gebruiker_id_fkey FOREIGN KEY (veldwerker_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: meerwerk fk_meerwerk_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3810,6 +3986,14 @@ ALTER TABLE ONLY boekhouding.uren_project_toewijzing
 
 ALTER TABLE ONLY boekhouding.weekstaat
     ADD CONSTRAINT fk_weekstaat_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: weekstaat fk_weekstaat_verrekend_document; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT fk_weekstaat_verrekend_document FOREIGN KEY (verrekend_met_document_id) REFERENCES boekhouding.document(id);
 
 
 --
@@ -4218,6 +4402,30 @@ ALTER TABLE ONLY boekhouding.uren_project_toewijzing
 
 ALTER TABLE ONLY boekhouding.uren_project_toewijzing
     ADD CONSTRAINT uren_project_toewijzing_toegevoegd_door_fkey FOREIGN KEY (toegevoegd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: veldwerker_crediteur veldwerker_crediteur_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_crediteur
+    ADD CONSTRAINT veldwerker_crediteur_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: veldwerker_crediteur veldwerker_crediteur_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_crediteur
+    ADD CONSTRAINT veldwerker_crediteur_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: veldwerker_crediteur veldwerker_crediteur_gekoppeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_crediteur
+    ADD CONSTRAINT veldwerker_crediteur_gekoppeld_door_fkey FOREIGN KEY (gekoppeld_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -5014,6 +5222,32 @@ CREATE POLICY doorbelasting_run_scope ON boekhouding.doorbelasting_run USING ((a
 
 
 --
+-- Name: factuurmatch; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.factuurmatch ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: factuurmatch factuurmatch_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY factuurmatch_scope ON boekhouding.factuurmatch USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: factuurmatch_staat; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.factuurmatch_staat ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: factuurmatch_staat factuurmatch_staat_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY factuurmatch_staat_scope ON boekhouding.factuurmatch_staat USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: iban_accordering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -5347,6 +5581,19 @@ CREATE POLICY uren_project_toewijzing_scope ON boekhouding.uren_project_toewijzi
 
 
 --
+-- Name: veldwerker_crediteur; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.veldwerker_crediteur ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: veldwerker_crediteur veldwerker_crediteur_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY veldwerker_crediteur_scope ON boekhouding.veldwerker_crediteur USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: vendor_cache; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -5511,7 +5758,14 @@ ALTER TABLE platform.detacheerder_koppeling ENABLE ROW LEVEL SECURITY;
 -- Name: detacheerder_koppeling detacheerder_koppeling_lees; Type: POLICY; Schema: platform; Owner: -
 --
 
-CREATE POLICY detacheerder_koppeling_lees ON platform.detacheerder_koppeling FOR SELECT USING (((detacheerder_gebruiker_id = platform.current_actor_id()) OR platform.current_actor_is_beheerder()));
+CREATE POLICY detacheerder_koppeling_lees ON platform.detacheerder_koppeling FOR SELECT USING (((detacheerder_gebruiker_id = platform.current_actor_id()) OR platform.current_actor_is_beheerder() OR (platform.current_actor_id() = '00000000-0000-0000-0000-000000000001'::uuid)));
+
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_muteren; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY detacheerder_koppeling_muteren ON platform.detacheerder_koppeling FOR UPDATE USING (platform.current_actor_is_beheerder()) WITH CHECK (platform.current_actor_is_beheerder());
 
 
 --

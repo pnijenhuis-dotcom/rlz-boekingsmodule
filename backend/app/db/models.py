@@ -260,10 +260,18 @@ class DetacheerderKoppeling(Base):
     schermen en velden als de ZZP'er zelf, elke invoer vastgelegd als "ingevuld door X namens
     Y". Persoonsniveau (niet administratie-gebonden) — analoog aan GebruikerEntiteit in het
     platform-schema. RLS: de detacheerder leest zijn eigen rijen, muteren is Beheerder-only
-    (0019-lijn); elke mutatie via de service in het audit_event."""
+    (0019-lijn); elke mutatie via de service in het audit_event.
+
+    `uurtarief` (migratie 0057, besluit Peter 2026-08-21): het bureau-tarief voor déze ZZP'er —
+    het HOOFDMECHANISME van de bureaufactuurmatch (bureaus factureren per ZZP'er verschillende
+    tarieven; bedragcontrole = som over de goedgekeurde staten van uren × dit tarief). NULL =
+    "geen tarief bekend": de match valt terug op alleen uren (oranje, geen blokkade)."""
 
     __tablename__ = "detacheerder_koppeling"
-    __table_args__ = (Index("ix_detacheerder_koppeling_zzper", "zzper_gebruiker_id"),)
+    __table_args__ = (
+        CheckConstraint("uurtarief IS NULL OR uurtarief >= 0", name="ck_detacheerder_koppeling_uurtarief"),
+        Index("ix_detacheerder_koppeling_zzper", "zzper_gebruiker_id"),
+    )
 
     detacheerder_gebruiker_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
@@ -271,6 +279,7 @@ class DetacheerderKoppeling(Base):
     zzper_gebruiker_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
     )
+    uurtarief: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 

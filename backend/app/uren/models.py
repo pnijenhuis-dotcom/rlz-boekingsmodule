@@ -35,7 +35,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models import Base
@@ -73,9 +73,26 @@ class MeerwerkEenheid(enum.StrEnum):
     MANUREN = "manuren"
 
 
+class FactuurmatchUitkomst(enum.StrEnum):
+    """Uitkomst van de factuurmatch (akkoord Peter 2026-08-21, BESLISSINGEN "FACTUURMATCH"):
+    MATCH = elke beschikbare vergelijking sluit (bedrag = hoofdmechanisme, uren indien
+    beschikbaar mee getoetst); MATCH_ALLEEN_UREN = uren sluiten maar (een deel van) de
+    tarieven ontbreekt — oranje "geen tarief bekend", nooit een blokkade (besluit 1);
+    AFWIJKING = een beschikbare vergelijking sluit niet — losse vlag + eigen teller/chip
+    volgens het duplicaat-patroon, géén documentstatus (besluit 3), boeken kan mét expliciete
+    bevestiging (besluit 2); NIET_TOETSBAAR = geen tarief én geen factuur-uren — er valt
+    niets te vergelijken (oranje). Het autoboek-slot (fase 4) is uitsluitend groen bij MATCH."""
+
+    MATCH = "match"
+    MATCH_ALLEEN_UREN = "match_alleen_uren"
+    AFWIJKING = "afwijking"
+    NIET_TOETSBAAR = "niet_toetsbaar"
+
+
 _WEEKSTAAT_STATUS_SQL = ", ".join(f"'{s.value}'" for s in WeekstaatStatus)
 _MEERWERK_STATUS_SQL = ", ".join(f"'{s.value}'" for s in MeerwerkStatus)
 _EENHEID_SQL = ", ".join(f"'{e.value}'" for e in MeerwerkEenheid)
+_MATCH_UITKOMST_SQL = ", ".join(f"'{u.value}'" for u in FactuurmatchUitkomst)
 
 
 class Weekstaat(Base):
@@ -105,6 +122,10 @@ class Weekstaat(Base):
             "status != 'corrigeren' OR afkeur_reden IS NOT NULL",
             name="ck_weekstaat_afkeur_reden",
         ),
+        CheckConstraint(
+            "(verrekend_met_document_id IS NULL) = (verrekend_op IS NULL)",
+            name="ck_weekstaat_verrekend_samen",
+        ),
         Index("ix_weekstaat_administratie_id", "administratie_id"),
         Index("ix_weekstaat_administratie_status", "administratie_id", "status"),
         Index("ix_weekstaat_gebruiker", "administratie_id", "gebruiker_id"),
@@ -133,6 +154,13 @@ class Weekstaat(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     afkeur_reden: Mapped[str | None] = mapped_column(default=None)
+    # Dubbeltelling-preventie factuurmatch (migratie 0057): gezet bij het boeken van de
+    # gematchte inkoopfactuur (app/uren/factuurmatch.py::verreken_staten) — een verrekende
+    # staat doet nooit meer mee in een andere match. Beide velden samen of geen van beide.
+    verrekend_met_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
+    )
+    verrekend_op: Mapped[datetime | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -323,6 +351,96 @@ class ProjectDocument(Base):
     bestandsnaam: Mapped[str]
     geupload_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class VeldwerkerCrediteur(Base):
+    """De veldwerker-koppeling (factuurmatch fase 1, akkoord Peter 2026-08-21): welke
+    RLZ-crediteur factureert het werk van deze veldwerker in deze administratie. Voor een
+    ZZP'er draagt de rij het eigen `uurtarief`; voor een detacheerder (bureau) blijft dat NULL —
+    de bureau-tarieven per ZZP'er staan op platform.detacheerder_koppeling.uurtarief (besluit 1:
+    hoofdmechanisme, geen vangnet). `vendor_id` is de RLZ-Vendor-GUID, bewust geen FK naar
+    vendor_cache (zelfde afweging als Boekvoorstel: de cache is read-side). Eén veldwerker per
+    crediteur (uniek per administratie) — anders is een binnenkomende factuur niet eenduidig.
+    `autoboeken_ingeschakeld` = de autoboek-opt-in per veldwerker-koppeling (besluit 4, default
+    UIT; activatie = fase 4). Kantoor-beheerd (Beheerder-only via de service, geaudit)."""
+
+    __tablename__ = "veldwerker_crediteur"
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "vendor_id", name="uq_veldwerker_crediteur_vendor"),
+        CheckConstraint("uurtarief IS NULL OR uurtarief >= 0", name="ck_veldwerker_crediteur_uurtarief"),
+        Index("ix_veldwerker_crediteur_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    uurtarief: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
+    autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    gekoppeld_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class Factuurmatch(Base):
+    """Eén matchresultaat per inkoopfactuur-document (herberekenen ververst de rij — geen
+    historie hier; berekend_op toont de versheid). De berekening zelf wordt bewust niet
+    geauditeerd (deterministisch afgeleide van staten + voorstel, herhaalbaar); de verrekening
+    bij boeken wél. `staten_som_bedrag` is NULL zodra een betrokken tarief ontbreekt
+    (`tarief_ontbreekt` = de oranje "geen tarief bekend"-indicator); `factuur_bedrag` = de som
+    van de netto regelbedragen uit het boekvoorstel (btw-verlegd is de norm in de bouwketen —
+    netto is de vergelijkbare grootheid); `factuur_uren` komt uit extractie/mens (fase 2/3).
+    `details` draagt de per-ZZP'er- en per-staat-uitsplitsing voor de match-sectie (fase 3)."""
+
+    __tablename__ = "factuurmatch"
+    __table_args__ = (
+        CheckConstraint(f"uitkomst IN ({_MATCH_UITKOMST_SQL})", name="ck_factuurmatch_uitkomst"),
+        Index("ix_factuurmatch_administratie_id", "administratie_id"),
+        Index("ix_factuurmatch_administratie_uitkomst", "administratie_id", "uitkomst"),
+        {"schema": "boekhouding"},
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), primary_key=True
+    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    veldwerker_gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    uitkomst: Mapped[str]
+    staten_som_uren: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    staten_som_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
+    factuur_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    factuur_uren: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
+    verschil_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    verschil_uren: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
+    tarief_ontbreekt: Mapped[bool] = mapped_column(default=False)
+    details: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    berekend_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class FactuurmatchStaat(Base):
+    """Welke goedgekeurde weekstaten in de match van dit document betrokken zijn (de
+    kandidaat-selectie van de laatste berekening — herberekening vervangt de rijen). Bij het
+    boeken van het document worden precies déze staten verrekend
+    (weekstaat.verrekend_met_document_id) zodat ze nooit dubbel tellen."""
+
+    __tablename__ = "factuurmatch_staat"
+    __table_args__ = (
+        Index("ix_factuurmatch_staat_administratie_id", "administratie_id"),
+        Index("ix_factuurmatch_staat_weekstaat_id", "weekstaat_id"),
+        {"schema": "boekhouding"},
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.factuurmatch.document_id"), primary_key=True
+    )
+    weekstaat_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.weekstaat.id"), primary_key=True
+    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
 
 
 class ProjectStaffel(Base):
