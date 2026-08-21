@@ -44,6 +44,7 @@ from app.accordering.models import (
     StapBesluit,
     StapBesluitBron,
 )
+from app.auth.rollen import is_externe_app_rol
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
@@ -216,7 +217,9 @@ def is_accordering_ingeschakeld(*, administratie_id: uuid.UUID) -> bool:
 
 
 def _vereis_kantoor(actor_rol: str) -> None:
-    if actor_rol == GebruikerRol.KLANT_ACCORDEUR.value:
+    # Externe app-rollen (accordeur + veldrollen, app/auth/rollen.py) mogen nooit
+    # kantoor-acties — toets tegen de centrale set, niet alleen klant_accordeur.
+    if is_externe_app_rol(GebruikerRol(actor_rol)):
         raise KantoorActieVereist("Deze actie is voorbehouden aan het kantoor")
 
 

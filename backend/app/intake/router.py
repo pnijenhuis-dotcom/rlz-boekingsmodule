@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker
+from app.auth.rollen import is_externe_app_rol
 from app.db.models import GebruikerRol
 from app.documenten.service import DocumentNietGevonden
 from app.intake import schemas, splitsing, verwerking, verzamelbak
@@ -14,9 +15,9 @@ router = APIRouter(tags=["intake"])
 
 def vereis_kantoorrol(current: CurrentGebruiker = Depends(get_current_gebruiker)) -> CurrentGebruiker:
     """De verzamelbak en intake zijn platform-breed (documenten zónder administratie) en dus
-    kantoorwerk: elke kantoorrol mag erbij, een klant-accordeur (scope: uitsluitend de eigen
-    administratie) per definitie niet."""
-    if current.rol == GebruikerRol.KLANT_ACCORDEUR:
+    kantoorwerk: elke kantoorrol mag erbij, een externe app-rol (accordeur/veldrollen — scope:
+    uitsluitend eigen administratie/projecten) per definitie niet."""
+    if is_externe_app_rol(current.rol):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Intake/verzamelbak is alleen voor kantoorrollen"
         )

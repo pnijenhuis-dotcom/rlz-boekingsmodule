@@ -237,6 +237,18 @@ akkoord (datamodel bereidt ze wél voor).
 | **Datamodel-besluit: WEEKSTAAT PER PROJECT (besluit Peter 2026-08-21)** — één staat per persoon per project per week; zelfde dag op twee projecten = twee staten (zoals gemockt; het alternatief "één gemengde weekstaat per persoon" is afgewezen). De parkeerpost die de bouwstart blokkeerde is daarmee beslist | **besloten (Peter 2026-08-21)** | dit register; mockup `uren-uitvoerder.html` |
 | **Mockup-aannames aanvaard met het akkoord (2026-08-21):** indien-deadline **maandag 09:00**; m² per dag **optioneel**; uitvoerder ziet contract-PDF **mét prijzen** (meerwerk melden blijft zonder prijzen) | **aanvaard (Peter 2026-08-21)** | mockup `uren-uitvoerder.html` "Bewuste keuzes" |
 
+### UREN & MEERWERK — BOUW (gefaseerd, gestart 2026-08-21)
+
+Fasering (voorstel Claude, conform bouwopdracht "tests op de geldlogica eerst"):
+**fase 1** datamodel + migratie + statusmachine (backend, geen UI) → **fase 2** veld-API
+(native app-endpoints zzp'er/uitvoerder/detacheerder) → **fase 3** kantoor-API + kantoor-UI
+(meerwerklijst/beoordeel-paneel/standen/beheer) → **fase 4** native app-UI (uren-uitvoerder-
+mockup 1-op-1) → factuurmatch-motor + autoboek = LATERE fase met eigen akkoord.
+
+| Onderwerp | Status | Canonieke vindplaats |
+|---|---|---|
+| **Fase 1 — datamodel + statusmachine: GEBOUWD + GETEST (2026-08-21, migratie 0056).** Drie nieuwe rollen op `platform.gebruiker_rol` (zzper/uitvoerder/detacheerder) als externe app-rollen op de 0040-lijn — **centrale rol-indeling in `app/auth/rollen.py`** (EXTERNE_APP_ROLLEN/VELD_ROLLEN); álle gates die "kantoor = niet-accordeur" aannamen zijn omgezet (accordeur-login, kantoor-passkey-endpoints, TTL-cadans, activeringstak → passkey, intake-`vereis_kantoorrol`, accordering-`_vereis_kantoor`, `kantoor_apparaten`) zodat veldrollen nooit stil als kantoor doorglippen. Module-recht **"Meerwerk & urenstaten"** = `gebruiker_module_rol` module `boekhouding` rol `meerwerk_urenstaten` (CHECK-uitbreiding op 0034, `require_meerwerk_urenstaten_recht`-dependency + service-side toets). Opt-in `administratie.uren_meerwerk_ingeschakeld` (default UIT). Domeintabellen mét RLS: `weekstaat` (uniek per persoon×project×ISO-week — datamodel-besluit), `weekstaat_dag` (uren 0–24, m² optioneel, `ingevuld_door` draagt de namens-vastlegging), `meerwerk` (status-CHECKs: afwijzen⇒reden, goedgekeurd⇒prijs+bedrag, doorbelast⇒VF-referentie; vraag-velden; foto via DocumentOpslag), `uren_project_toewijzing` (zzp-schrijfrecht/uitvoerder-keurrecht), `project_specificatie`/`project_document`/`project_staffel` (specs, contract-PDF's, offerte-staffel = bron contract-toets), `platform.detacheerder_koppeling` (RLS: eigen rijen lezen, muteren Beheerder-only). Statusmachine `app/uren/service.py`: weekniveau-keuring, goedgekeurd onmuteerbaar (alleen open te breken via nieuwe afkeuring — goedgekeurd-velden gaan dan leeg, historie in audit), idempotente besluit-herhaling (verzendrij-patroon), indien-deadline ma 09:00 bewust GEEN harde blokkade (te late uren moeten het systeem in), lege week indienen = 0-uren-week. 2-weken-bewaking `bewaking_niet_doorbelast`. 43 nieuwe tests (statusmachine/idempotentie/scope/RLS/CHECK); volledige suite 1608 groen; afsluitroutine gedaan (dev-migrate, live 200, dump) | **gebouwd + getest (2026-08-21)** | migratie 0056; `app/uren/models.py` + `service.py`; `app/auth/rollen.py`; `tests/uren/` |
+
 ## Geparkeerd / waarschuwing
 
 | Onderwerp | Status | Canonieke vindplaats |

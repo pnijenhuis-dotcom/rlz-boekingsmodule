@@ -47,6 +47,7 @@ from webauthn.helpers.structs import (
 )
 
 from app.auth.normalisatie import normaliseer_e_mail
+from app.auth.rollen import EXTERNE_APP_ROLLEN, is_externe_app_rol
 from app.auth.service import AuthError, TokenPaar, _hash_token, _issue_token_paar, _login_metadata
 from app.config import settings
 from app.db.audit import record_audit_event
@@ -159,7 +160,7 @@ def start_accordeur_login(*, e_mail: str, wachtwoord: str, ip_adres: str | None 
         if gebruiker is None:
             pass
         elif (
-            gebruiker.rol != GebruikerRol.KLANT_ACCORDEUR
+            not is_externe_app_rol(gebruiker.rol)
             or gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY)
             or gebruiker.wachtwoord_hash is None
             or not verify_password(wachtwoord, gebruiker.wachtwoord_hash)
@@ -564,10 +565,11 @@ def ontgrendel_assertie(
 
 
 def _is_kantoorrol(rol: GebruikerRol) -> bool:
-    """Kantoor = elke rol behalve klant-accordeur; accordeurs houden hun eigen flow (wachtwoord +
-    passkey, 7-dagen-cadans) en mogen de éénstaps-kantoor-login niet gebruiken — dat zou hun
+    """Kantoor = elke rol die géén externe app-rol is (app/auth/rollen.py — accordeur én
+    veldrollen, migratie 0056); externe rollen houden hun eigen flow (wachtwoord + passkey,
+    7-dagen-cadans) en mogen de éénstaps-kantoor-login niet gebruiken — dat zou hun
     wachtwoordstap omzeilen."""
-    return rol != GebruikerRol.KLANT_ACCORDEUR
+    return not is_externe_app_rol(rol)
 
 
 def voltooi_kantoor_registratie(
@@ -831,7 +833,7 @@ def kantoor_apparaten() -> list[KantoorApparaatData]:
         rijen = session.execute(
             select(WebauthnCredential, Gebruiker.naam)
             .join(Gebruiker, Gebruiker.id == WebauthnCredential.gebruiker_id)
-            .where(Gebruiker.rol != GebruikerRol.KLANT_ACCORDEUR)
+            .where(Gebruiker.rol.not_in(list(EXTERNE_APP_ROLLEN)))
             .order_by(Gebruiker.naam, WebauthnCredential.aangemaakt_op.desc())
         ).all()
         return [

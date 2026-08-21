@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth import schemas, service, voorwaarden, webauthn_service
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder
+from app.auth.rollen import is_externe_app_rol
 from app.berichten import mail as berichten_mail
 from app.berichten import uitnodigingsmail
 from app.config import settings
@@ -492,9 +493,10 @@ def ontgrendelen(
 
 
 def _vereis_kantoorrol(actor: CurrentGebruiker) -> None:
-    """Accordeurs hebben hun eigen registratie-/loginflow (wachtwoord + passkey, 7-dagen-cadans);
-    de kantoor-endpoints zouden hun wachtwoordstap omzeilen."""
-    if actor.rol == GebruikerRol.KLANT_ACCORDEUR:
+    """Externe app-rollen (accordeur + veldrollen, app/auth/rollen.py) hebben hun eigen
+    registratie-/loginflow (wachtwoord + passkey, 7-dagen-cadans); de kantoor-endpoints zouden
+    hun wachtwoordstap omzeilen."""
+    if is_externe_app_rol(actor.rol):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor kantoor-rollen"
         )
@@ -678,10 +680,11 @@ def accordeur_voorwaarden(
 
 @router.post("/accordeur/voorwaarden-akkoord", status_code=status.HTTP_204_NO_CONTENT)
 def accordeur_voorwaarden_akkoord(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> None:
-    """Alleen zinvol (en toegestaan) voor de rol klant-accordeur — kantoor-rollen hebben deze
+    """Alleen zinvol (en toegestaan) voor de externe app-rollen (accordeur + veldrollen —
+    zelfde app, zelfde voorwaarden-/privacyverklaring-poort); kantoor-rollen hebben deze
     informatieplicht-laag niet."""
-    if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
+    if not is_externe_app_rol(actor.rol):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor de rol klant-accordeur"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor externe app-rollen"
         )
     voorwaarden.leg_akkoord_vast(gebruiker_id=actor.id)

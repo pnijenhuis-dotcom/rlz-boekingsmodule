@@ -40,12 +40,20 @@ class Base(DeclarativeBase):
 class GebruikerRol(enum.StrEnum):
     """Rolmodel (CLAUDE.md): Beheerder / Boekhouding+Projecten / Boekhouding / Klant-accordeur
     (scope: eigen administratie). Beheerder is platform-breed (geen scope nodig, zie
-    gebruiker_administratie + platform.current_actor_is_beheerder())."""
+    gebruiker_administratie + platform.current_actor_is_beheerder()).
+
+    Veldrollen uren & meerwerk (migratie 0056, BOUW GO Peter 2026-08-21): ZZP'er / uitvoerder /
+    detacheerder — externe app-rollen op de 0040-lijn (zelfde passkey-auth en 7-dagen-cadans
+    als de klant-accordeur, zie app/auth/rollen.py). De detacheerder vult weekstaten in namens
+    de ZZP'ers die het kantoor aan hem koppelt (DetacheerderKoppeling)."""
 
     BEHEERDER = "beheerder"
     BOEKHOUDING_PROJECTEN = "boekhouding_projecten"
     BOEKHOUDING = "boekhouding"
     KLANT_ACCORDEUR = "klant_accordeur"
+    ZZPER = "zzper"
+    UITVOERDER = "uitvoerder"
+    DETACHEERDER = "detacheerder"
 
 
 class GebruikerStatus(enum.StrEnum):
@@ -134,6 +142,10 @@ class Administratie(Base):
     # alleen Kempen Facilities). De doel-kant heeft geen vlag nodig: doorbelasten náár een
     # administratie wordt afgedwongen via de mapping-whitelist (doorbelasting_mapping).
     doorbelasting_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Uren & meerwerk (migratie 0056, BOUW GO Peter 2026-08-21): steigerbouw-specifieke tak,
+    # opt-in per administratie — alleen Universal initieel. Uit = geen weekstaten/meerwerk voor
+    # deze administratie (server-side afgedwongen in app/uren/service.py), default UIT.
+    uren_meerwerk_ingeschakeld: Mapped[bool] = mapped_column(default=False)
     eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
@@ -239,6 +251,27 @@ class GebruikerEntiteit(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
     )
     entiteit_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class DetacheerderKoppeling(Base):
+    """Koppeltabel detacheerder↔ZZP'er (migratie 0056, besluit Peter 2026-08-21): de
+    detacheerder vult weekstaten in NAMENS de hieraan gekoppelde ZZP'ers — exact dezelfde
+    schermen en velden als de ZZP'er zelf, elke invoer vastgelegd als "ingevuld door X namens
+    Y". Persoonsniveau (niet administratie-gebonden) — analoog aan GebruikerEntiteit in het
+    platform-schema. RLS: de detacheerder leest zijn eigen rijen, muteren is Beheerder-only
+    (0019-lijn); elke mutatie via de service in het audit_event."""
+
+    __tablename__ = "detacheerder_koppeling"
+    __table_args__ = (Index("ix_detacheerder_koppeling_zzper", "zzper_gebruiker_id"),)
+
+    detacheerder_gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    zzper_gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

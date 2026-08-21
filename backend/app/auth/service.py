@@ -11,6 +11,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.auth.normalisatie import normaliseer_e_mail
+from app.auth.rollen import is_externe_app_rol
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
@@ -150,7 +151,8 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
         gebruiker.wachtwoord_hash = hash_password(wachtwoord)
         uitnodiging.gebruikt_op = now
 
-        if gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR:
+        if is_externe_app_rol(gebruiker.rol):
+            # Accordeur én veldrollen (0040-lijn, migratie 0056): passkey i.p.v. TOTP.
             gebruiker.status = GebruikerStatus.WACHT_OP_PASSKEY
             return AcceptatieResultaat(
                 soort="passkey", passkey_setup_token=create_passkey_setup_token(gebruiker.id)
@@ -183,9 +185,10 @@ class TokenPaar:
 
 
 def _refresh_ttl_voor(rol: GebruikerRol) -> int:
-    """Accordeur-cadans (besluit 2026-08-11): 7 dagen sliding voor klant-accordeurs — elke
-    rotatie geeft een vers token met deze TTL, dus 7 dagen zónder gebruik = volledige login."""
-    if rol == GebruikerRol.KLANT_ACCORDEUR:
+    """Accordeur-cadans (besluit 2026-08-11): 7 dagen sliding voor álle externe app-rollen
+    (accordeur + veldrollen, migratie 0056) — elke rotatie geeft een vers token met deze TTL,
+    dus 7 dagen zónder gebruik = volledige login."""
+    if is_externe_app_rol(rol):
         return settings.jwt_refresh_ttl_accordeur_seconds
     return settings.jwt_refresh_ttl_seconds
 

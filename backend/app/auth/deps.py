@@ -78,6 +78,24 @@ def require_beheerder(current: CurrentGebruiker = Depends(get_current_gebruiker)
     return current
 
 
+def require_meerwerk_urenstaten_recht(
+    current: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> CurrentGebruiker:
+    """Module-recht 'Meerwerk & urenstaten' (0019-patroon, migratie 0056): Beheerder altijd,
+    andere kantoor-rollen alleen mét gebruiker_module_rol-rij — server-side afgedwongen op
+    élk meerwerk-/urenstaten-kantoor-endpoint (menu/standen/zoeken/API); zonder recht
+    verdwijnt de module overal, niet alleen in de UI. De klantscope (vereis_administratie_
+    scope) blijft eronder gelden."""
+    from app.uren.service import heeft_meerwerk_urenstaten_recht
+
+    if not heeft_meerwerk_urenstaten_recht(gebruiker_id=current.id, rol=current.rol):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vereist het module-recht 'Meerwerk & urenstaten'",
+        )
+    return current
+
+
 def vereis_administratie_scope(
     administratie_id: uuid.UUID, current: CurrentGebruiker = Depends(get_current_gebruiker)
 ) -> CurrentGebruiker:

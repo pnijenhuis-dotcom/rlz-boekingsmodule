@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0055
+-- Migratie-head bij deze dump: 0056
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -79,7 +79,10 @@ CREATE TYPE platform.gebruiker_rol AS ENUM (
     'beheerder',
     'boekhouding_projecten',
     'boekhouding',
-    'klant_accordeur'
+    'klant_accordeur',
+    'zzper',
+    'uitvoerder',
+    'detacheerder'
 );
 
 
@@ -887,6 +890,49 @@ ALTER TABLE ONLY boekhouding.leverancier_voorkeur FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: meerwerk; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.meerwerk (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    omschrijving text NOT NULL,
+    aantal numeric(10,2) NOT NULL,
+    eenheid text NOT NULL,
+    datum_uitgevoerd date NOT NULL,
+    in_opdracht_van text,
+    foto_opslag_pad text,
+    foto_bestandsnaam text,
+    foto_content_type text,
+    gemeld_door uuid NOT NULL,
+    gemeld_op timestamp with time zone DEFAULT now() NOT NULL,
+    status text NOT NULL,
+    prijs_per_eenheid numeric(10,2),
+    bedrag numeric(12,2),
+    facturatie_notitie text,
+    beoordeeld_door uuid,
+    beoordeeld_op timestamp with time zone,
+    afwijs_reden text,
+    doorbelast_op timestamp with time zone,
+    verkoopfactuur_referentie text,
+    vraag_tekst text,
+    vraag_gesteld_door uuid,
+    vraag_gesteld_op timestamp with time zone,
+    vraag_antwoord text,
+    vraag_beantwoord_op timestamp with time zone,
+    CONSTRAINT ck_meerwerk_aantal CHECK ((aantal > (0)::numeric)),
+    CONSTRAINT ck_meerwerk_afwijs_reden CHECK (((status <> 'afgewezen'::text) OR (afwijs_reden IS NOT NULL))),
+    CONSTRAINT ck_meerwerk_doorbelast_referentie CHECK (((status <> 'doorbelast'::text) OR (verkoopfactuur_referentie IS NOT NULL))),
+    CONSTRAINT ck_meerwerk_eenheid CHECK ((eenheid = ANY (ARRAY['m2'::text, 'm1'::text, 'stuks'::text, 'manuren'::text]))),
+    CONSTRAINT ck_meerwerk_prijs_bevestigd CHECK (((status <> ALL (ARRAY['goedgekeurd'::text, 'doorbelast'::text])) OR ((prijs_per_eenheid IS NOT NULL) AND (bedrag IS NOT NULL)))),
+    CONSTRAINT ck_meerwerk_status CHECK ((status = ANY (ARRAY['gemeld'::text, 'goedgekeurd'::text, 'doorbelast'::text, 'afgewezen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.meerwerk FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: omzet_boeking; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1066,6 +1112,71 @@ ALTER TABLE ONLY boekhouding.project_cache FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: project_document; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_document (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    soort text NOT NULL,
+    titel text NOT NULL,
+    versie_omschrijving text,
+    opslag_pad text NOT NULL,
+    bestandsnaam text NOT NULL,
+    geupload_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_project_document_soort CHECK ((soort = ANY (ARRAY['contract'::text, 'offerte'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.project_document FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: project_specificatie; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_specificatie (
+    project_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    opdrachtgever text,
+    werknummer_opdrachtgever text,
+    soort_werk text,
+    contract_m2 numeric(10,2),
+    looptijd_van date,
+    looptijd_tot date,
+    huurtijd_omschrijving text,
+    doorlopende_huur_omschrijving text,
+    bijgewerkt_door uuid NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.project_specificatie FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: project_staffel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_staffel (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    omschrijving text NOT NULL,
+    eenheid text NOT NULL,
+    prijs_per_eenheid numeric(10,2) NOT NULL,
+    verrekenbaar boolean NOT NULL,
+    bron text,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_project_staffel_eenheid CHECK ((eenheid = ANY (ARRAY['m2'::text, 'm1'::text, 'stuks'::text, 'manuren'::text]))),
+    CONSTRAINT ck_project_staffel_prijs CHECK ((prijs_per_eenheid >= (0)::numeric))
+);
+
+ALTER TABLE ONLY boekhouding.project_staffel FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: projectaanvraag; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1167,6 +1278,21 @@ CREATE TABLE boekhouding.toewijzing_regel (
 );
 
 ALTER TABLE ONLY boekhouding.toewijzing_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: uren_project_toewijzing; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.uren_project_toewijzing (
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    toegevoegd_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.uren_project_toewijzing FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -1357,6 +1483,58 @@ ALTER TABLE ONLY boekhouding.webhook_uitgaand FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: weekstaat; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.weekstaat (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    jaar smallint NOT NULL,
+    weeknummer smallint NOT NULL,
+    status text NOT NULL,
+    ingediend_op timestamp with time zone,
+    ingediend_door uuid,
+    goedgekeurd_op timestamp with time zone,
+    goedgekeurd_door uuid,
+    afgekeurd_op timestamp with time zone,
+    afgekeurd_door uuid,
+    afkeur_reden text,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_weekstaat_afkeur_reden CHECK (((status <> 'corrigeren'::text) OR (afkeur_reden IS NOT NULL))),
+    CONSTRAINT ck_weekstaat_goedgekeurd_velden CHECK (((status <> 'goedgekeurd'::text) OR ((goedgekeurd_op IS NOT NULL) AND (goedgekeurd_door IS NOT NULL)))),
+    CONSTRAINT ck_weekstaat_status CHECK ((status = ANY (ARRAY['concept'::text, 'ingediend'::text, 'goedgekeurd'::text, 'corrigeren'::text]))),
+    CONSTRAINT ck_weekstaat_weeknummer CHECK (((weeknummer >= 1) AND (weeknummer <= 53)))
+);
+
+ALTER TABLE ONLY boekhouding.weekstaat FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: weekstaat_dag; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.weekstaat_dag (
+    id uuid NOT NULL,
+    weekstaat_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    datum date NOT NULL,
+    uren numeric(5,2) NOT NULL,
+    m2 numeric(8,2),
+    opmerking text,
+    ingevuld_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_weekstaat_dag_m2 CHECK (((m2 IS NULL) OR (m2 >= (0)::numeric))),
+    CONSTRAINT ck_weekstaat_dag_uren CHECK (((uren >= (0)::numeric) AND (uren <= (24)::numeric)))
+);
+
+ALTER TABLE ONLY boekhouding.weekstaat_dag FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: accordeur_akkoord; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -1429,6 +1607,7 @@ CREATE TABLE platform.administratie (
     reconciliatie_uitgesloten_door uuid,
     doorbelasting_ingeschakeld boolean DEFAULT false NOT NULL,
     verkoop_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
+    uren_meerwerk_ingeschakeld boolean DEFAULT false NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5))))
 );
 
@@ -1521,6 +1700,18 @@ CREATE TABLE platform.boeken_instelling (
 
 
 --
+-- Name: detacheerder_koppeling; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.detacheerder_koppeling (
+    detacheerder_gebruiker_id uuid NOT NULL,
+    zzper_gebruiker_id uuid NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: gebruiker; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -1582,7 +1773,7 @@ CREATE TABLE platform.gebruiker_module_rol (
     module text NOT NULL,
     rol text NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_gebruiker_module_rol_geldig CHECK (((module = 'vastgoed'::text) AND (rol = ANY (ARRAY['superadmin'::text, 'eigenaar'::text, 'kantoor'::text]))))
+    CONSTRAINT ck_gebruiker_module_rol_geldig CHECK ((((module = 'vastgoed'::text) AND (rol = ANY (ARRAY['superadmin'::text, 'eigenaar'::text, 'kantoor'::text]))) OR ((module = 'boekhouding'::text) AND (rol = 'meerwerk_urenstaten'::text))))
 );
 
 
@@ -2020,6 +2211,14 @@ ALTER TABLE ONLY boekhouding.leverancier_voorkeur
 
 
 --
+-- Name: meerwerk meerwerk_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.meerwerk
+    ADD CONSTRAINT meerwerk_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: omzet_boeking omzet_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2084,6 +2283,30 @@ ALTER TABLE ONLY boekhouding.project_cache
 
 
 --
+-- Name: project_document project_document_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_document
+    ADD CONSTRAINT project_document_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: project_specificatie project_specificatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_specificatie
+    ADD CONSTRAINT project_specificatie_pkey PRIMARY KEY (project_id, administratie_id);
+
+
+--
+-- Name: project_staffel project_staffel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_staffel
+    ADD CONSTRAINT project_staffel_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: projectaanvraag projectaanvraag_nonce_key; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2129,6 +2352,30 @@ ALTER TABLE ONLY boekhouding.taxrate_cache
 
 ALTER TABLE ONLY boekhouding.toewijzing_regel
     ADD CONSTRAINT toewijzing_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: weekstaat_dag uq_weekstaat_dag_datum; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_dag
+    ADD CONSTRAINT uq_weekstaat_dag_datum UNIQUE (weekstaat_id, datum);
+
+
+--
+-- Name: weekstaat uq_weekstaat_persoon_project_week; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT uq_weekstaat_persoon_project_week UNIQUE (administratie_id, gebruiker_id, project_id, jaar, weeknummer);
+
+
+--
+-- Name: uren_project_toewijzing uren_project_toewijzing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_project_toewijzing
+    ADD CONSTRAINT uren_project_toewijzing_pkey PRIMARY KEY (administratie_id, gebruiker_id, project_id);
 
 
 --
@@ -2201,6 +2448,22 @@ ALTER TABLE ONLY boekhouding.waarborg_bericht
 
 ALTER TABLE ONLY boekhouding.webhook_uitgaand
     ADD CONSTRAINT webhook_uitgaand_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: weekstaat_dag weekstaat_dag_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_dag
+    ADD CONSTRAINT weekstaat_dag_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: weekstaat weekstaat_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT weekstaat_pkey PRIMARY KEY (id);
 
 
 --
@@ -2281,6 +2544,14 @@ ALTER TABLE ONLY platform.audit_event
 
 ALTER TABLE ONLY platform.boeken_instelling
     ADD CONSTRAINT boeken_instelling_pkey PRIMARY KEY (singleton);
+
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.detacheerder_koppeling
+    ADD CONSTRAINT detacheerder_koppeling_pkey PRIMARY KEY (detacheerder_gebruiker_id, zzper_gebruiker_id);
 
 
 --
@@ -2609,6 +2880,20 @@ CREATE INDEX ix_document_status ON boekhouding.document USING btree (status);
 
 
 --
+-- Name: ix_meerwerk_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_meerwerk_administratie_id ON boekhouding.meerwerk USING btree (administratie_id);
+
+
+--
+-- Name: ix_meerwerk_administratie_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_meerwerk_administratie_status ON boekhouding.meerwerk USING btree (administratie_id, status);
+
+
+--
 -- Name: ix_omzet_boeking_document_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -2644,6 +2929,34 @@ CREATE INDEX ix_project_cache_administratie_id ON boekhouding.project_cache USIN
 
 
 --
+-- Name: ix_project_document_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_document_administratie_id ON boekhouding.project_document USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_document_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_document_project ON boekhouding.project_document USING btree (administratie_id, project_id);
+
+
+--
+-- Name: ix_project_staffel_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_staffel_administratie_id ON boekhouding.project_staffel USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_staffel_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_staffel_project ON boekhouding.project_staffel USING btree (administratie_id, project_id);
+
+
+--
 -- Name: ix_staande_goedkeuring_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -2655,6 +2968,13 @@ CREATE INDEX ix_staande_goedkeuring_administratie_id ON boekhouding.staande_goed
 --
 
 CREATE INDEX ix_taxrate_cache_administratie_id ON boekhouding.taxrate_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_uren_project_toewijzing_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_uren_project_toewijzing_administratie_id ON boekhouding.uren_project_toewijzing USING btree (administratie_id);
 
 
 --
@@ -2697,6 +3017,41 @@ CREATE INDEX ix_webhook_uitgaand_document_id ON boekhouding.webhook_uitgaand USI
 --
 
 CREATE INDEX ix_webhook_uitgaand_openstaand ON boekhouding.webhook_uitgaand USING btree (volgende_poging_op) WHERE (status = 'openstaand'::text);
+
+
+--
+-- Name: ix_weekstaat_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_administratie_id ON boekhouding.weekstaat USING btree (administratie_id);
+
+
+--
+-- Name: ix_weekstaat_administratie_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_administratie_status ON boekhouding.weekstaat USING btree (administratie_id, status);
+
+
+--
+-- Name: ix_weekstaat_dag_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_dag_administratie_id ON boekhouding.weekstaat_dag USING btree (administratie_id);
+
+
+--
+-- Name: ix_weekstaat_dag_weekstaat_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_dag_weekstaat_id ON boekhouding.weekstaat_dag USING btree (weekstaat_id);
+
+
+--
+-- Name: ix_weekstaat_gebruiker; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_gebruiker ON boekhouding.weekstaat USING btree (administratie_id, gebruiker_id);
 
 
 --
@@ -2823,6 +3178,13 @@ CREATE INDEX ix_audit_event_tabel_record ON platform.audit_event USING btree (ta
 --
 
 CREATE INDEX ix_audit_event_tijdstip ON platform.audit_event USING btree (tijdstip);
+
+
+--
+-- Name: ix_detacheerder_koppeling_zzper; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_detacheerder_koppeling_zzper ON platform.detacheerder_koppeling USING btree (zzper_gebruiker_id);
 
 
 --
@@ -3403,6 +3765,54 @@ ALTER TABLE ONLY boekhouding.doorbelasting_run
 
 
 --
+-- Name: meerwerk fk_meerwerk_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.meerwerk
+    ADD CONSTRAINT fk_meerwerk_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: project_document fk_project_document_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_document
+    ADD CONSTRAINT fk_project_document_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: project_specificatie fk_project_specificatie_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_specificatie
+    ADD CONSTRAINT fk_project_specificatie_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: project_staffel fk_project_staffel_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_staffel
+    ADD CONSTRAINT fk_project_staffel_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: uren_project_toewijzing fk_uren_project_toewijzing_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_project_toewijzing
+    ADD CONSTRAINT fk_uren_project_toewijzing_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: weekstaat fk_weekstaat_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT fk_weekstaat_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: iban_accordering iban_accordering_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3504,6 +3914,38 @@ ALTER TABLE ONLY boekhouding.leverancier_iban
 
 ALTER TABLE ONLY boekhouding.leverancier_voorkeur
     ADD CONSTRAINT leverancier_voorkeur_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: meerwerk meerwerk_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.meerwerk
+    ADD CONSTRAINT meerwerk_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: meerwerk meerwerk_beoordeeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.meerwerk
+    ADD CONSTRAINT meerwerk_beoordeeld_door_fkey FOREIGN KEY (beoordeeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: meerwerk meerwerk_gemeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.meerwerk
+    ADD CONSTRAINT meerwerk_gemeld_door_fkey FOREIGN KEY (gemeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: meerwerk meerwerk_vraag_gesteld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.meerwerk
+    ADD CONSTRAINT meerwerk_vraag_gesteld_door_fkey FOREIGN KEY (vraag_gesteld_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -3611,6 +4053,54 @@ ALTER TABLE ONLY boekhouding.project_cache
 
 
 --
+-- Name: project_document project_document_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_document
+    ADD CONSTRAINT project_document_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: project_document project_document_geupload_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_document
+    ADD CONSTRAINT project_document_geupload_door_fkey FOREIGN KEY (geupload_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_specificatie project_specificatie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_specificatie
+    ADD CONSTRAINT project_specificatie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: project_specificatie project_specificatie_bijgewerkt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_specificatie
+    ADD CONSTRAINT project_specificatie_bijgewerkt_door_fkey FOREIGN KEY (bijgewerkt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_staffel project_staffel_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_staffel
+    ADD CONSTRAINT project_staffel_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_staffel project_staffel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_staffel
+    ADD CONSTRAINT project_staffel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: projectaanvraag projectaanvraag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3704,6 +4194,30 @@ ALTER TABLE ONLY boekhouding.toewijzing_regel
 
 ALTER TABLE ONLY boekhouding.toewijzing_regel
     ADD CONSTRAINT toewijzing_regel_gedeactiveerd_door_fkey FOREIGN KEY (gedeactiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: uren_project_toewijzing uren_project_toewijzing_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_project_toewijzing
+    ADD CONSTRAINT uren_project_toewijzing_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: uren_project_toewijzing uren_project_toewijzing_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_project_toewijzing
+    ADD CONSTRAINT uren_project_toewijzing_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: uren_project_toewijzing uren_project_toewijzing_toegevoegd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_project_toewijzing
+    ADD CONSTRAINT uren_project_toewijzing_toegevoegd_door_fkey FOREIGN KEY (toegevoegd_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -3859,6 +4373,70 @@ ALTER TABLE ONLY boekhouding.webhook_uitgaand
 
 
 --
+-- Name: weekstaat weekstaat_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT weekstaat_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: weekstaat weekstaat_afgekeurd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT weekstaat_afgekeurd_door_fkey FOREIGN KEY (afgekeurd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: weekstaat_dag weekstaat_dag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_dag
+    ADD CONSTRAINT weekstaat_dag_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: weekstaat_dag weekstaat_dag_ingevuld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_dag
+    ADD CONSTRAINT weekstaat_dag_ingevuld_door_fkey FOREIGN KEY (ingevuld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: weekstaat_dag weekstaat_dag_weekstaat_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_dag
+    ADD CONSTRAINT weekstaat_dag_weekstaat_id_fkey FOREIGN KEY (weekstaat_id) REFERENCES boekhouding.weekstaat(id);
+
+
+--
+-- Name: weekstaat weekstaat_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT weekstaat_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: weekstaat weekstaat_goedgekeurd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT weekstaat_goedgekeurd_door_fkey FOREIGN KEY (goedgekeurd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: weekstaat weekstaat_ingediend_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat
+    ADD CONSTRAINT weekstaat_ingediend_door_fkey FOREIGN KEY (ingediend_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: accordeur_akkoord accordeur_akkoord_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -3936,6 +4514,30 @@ ALTER TABLE ONLY platform.audit_event
 
 ALTER TABLE ONLY platform.boeken_instelling
     ADD CONSTRAINT boeken_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.detacheerder_koppeling
+    ADD CONSTRAINT detacheerder_koppeling_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_detacheerder_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.detacheerder_koppeling
+    ADD CONSTRAINT detacheerder_koppeling_detacheerder_gebruiker_id_fkey FOREIGN KEY (detacheerder_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_zzper_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.detacheerder_koppeling
+    ADD CONSTRAINT detacheerder_koppeling_zzper_gebruiker_id_fkey FOREIGN KEY (zzper_gebruiker_id) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -4503,6 +5105,19 @@ CREATE POLICY leverancier_voorkeur_scope ON boekhouding.leverancier_voorkeur USI
 
 
 --
+-- Name: meerwerk; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.meerwerk ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: meerwerk meerwerk_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY meerwerk_scope ON boekhouding.meerwerk USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: omzet_boeking; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -4615,6 +5230,45 @@ CREATE POLICY project_cache_scope ON boekhouding.project_cache USING ((administr
 
 
 --
+-- Name: project_document; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_document ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_document project_document_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_document_scope ON boekhouding.project_document USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: project_specificatie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_specificatie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_specificatie project_specificatie_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_specificatie_scope ON boekhouding.project_specificatie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: project_staffel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_staffel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_staffel project_staffel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_staffel_scope ON boekhouding.project_staffel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: projectaanvraag; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -4677,6 +5331,19 @@ ALTER TABLE boekhouding.toewijzing_regel ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY toewijzing_regel_scope ON boekhouding.toewijzing_regel USING (true) WITH CHECK (true);
+
+
+--
+-- Name: uren_project_toewijzing; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.uren_project_toewijzing ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: uren_project_toewijzing uren_project_toewijzing_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY uren_project_toewijzing_scope ON boekhouding.uren_project_toewijzing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --
@@ -4796,6 +5463,32 @@ CREATE POLICY webhook_uitgaand_scope ON boekhouding.webhook_uitgaand USING ((((a
 
 
 --
+-- Name: weekstaat; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.weekstaat ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: weekstaat_dag; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.weekstaat_dag ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: weekstaat_dag weekstaat_dag_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY weekstaat_dag_scope ON boekhouding.weekstaat_dag USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: weekstaat weekstaat_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY weekstaat_scope ON boekhouding.weekstaat USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: audit_event; Type: ROW SECURITY; Schema: platform; Owner: -
 --
 
@@ -4806,6 +5499,33 @@ ALTER TABLE platform.audit_event ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY audit_event_administratie_scope ON platform.audit_event USING (((administratie_id IS NULL) OR (administratie_id = platform.current_administratie_id()))) WITH CHECK (((administratie_id IS NULL) OR (administratie_id = platform.current_administratie_id())));
+
+
+--
+-- Name: detacheerder_koppeling; Type: ROW SECURITY; Schema: platform; Owner: -
+--
+
+ALTER TABLE platform.detacheerder_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_lees; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY detacheerder_koppeling_lees ON platform.detacheerder_koppeling FOR SELECT USING (((detacheerder_gebruiker_id = platform.current_actor_id()) OR platform.current_actor_is_beheerder()));
+
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_toevoegen; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY detacheerder_koppeling_toevoegen ON platform.detacheerder_koppeling FOR INSERT WITH CHECK (platform.current_actor_is_beheerder());
+
+
+--
+-- Name: detacheerder_koppeling detacheerder_koppeling_verwijderen; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY detacheerder_koppeling_verwijderen ON platform.detacheerder_koppeling FOR DELETE USING (platform.current_actor_is_beheerder());
 
 
 --
