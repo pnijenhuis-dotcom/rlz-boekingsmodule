@@ -120,7 +120,11 @@ béta-/app-review, niet voor interne TestFlight), build koppelen ná de eerste u
    (zie status bovenaan). **Screenshots: KLAAR — hergenereerd 2026-08-19 mét de nieuwe
    in-app wordmark** — `store-assets/screenshots/` (6.9" + 6.3", donker thema: wachtrij,
    factuurbeeld, ontgrendelscherm + meldingen-kaart; gemaakt in de simulator tegen een
-   lokale backend met uitsluitend fictieve demo-facturen — zelfde opzet als 18-08). **Privacy-URL: GEBOUWD (2026-08-18)** —
+   lokale backend met uitsluitend fictieve demo-facturen — zelfde opzet als 18-08).
+   **Aangevuld 2026-08-21 met de 6.5"-maat** (`iphone-6p5-*`, 1284×2778 — iPhone
+   11 Pro Max-klasse, de derde maat die ASC op de versiepagina kan vragen): wachtrij,
+   factuurbeeld, ontgrendelscherm (drie schermen, conform de 6.9"-set; zelfde
+   simulator-opzet met uitsluitend fictieve demo-facturen). **Privacy-URL: GEBOUWD (2026-08-18)** —
    `https://app.administratiekantoornijenhuis.nl/accordeur/privacy`
    (`backend/app/auth/privacy_pagina.py`, wellknown-patroon: rendert de akkoordtekst uit
    `app/auth/voorwaarden.py` — één bron van waarheid, versie zichtbaar; live ná de
