@@ -33,6 +33,7 @@ module-recht "meerwerk_urenstaten" voor de beoordeel-acties — nooit alleen in 
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -61,6 +62,8 @@ from app.uren.models import (
     WeekstaatDag,
     WeekstaatStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 MODULE = "boekhouding"
 MEERWERK_URENSTATEN_RECHT = "meerwerk_urenstaten"
@@ -544,7 +547,21 @@ def keur_week_goed(*, administratie_id: uuid.UUID, weekstaat_id: uuid.UUID, acto
             nieuwe_waarde={"status": staat.status},
             administratie_id=administratie_id,
         )
-        return _weekstaat_data(session, staat)
+        zzper_id = staat.gebruiker_id
+        data = _weekstaat_data(session, staat)
+
+    # Factuurmatch (fase 2): een nieuwe getekende staat kan een bestaande match laten
+    # verschuiven (afwijking → match, of andersom) — post-commit herberekenen voor alle open
+    # matches waarin deze ZZP'er meetelt (zelfde hook-vorm als _na_extractie_hook; een fout is
+    # een gelogde waarschuwing, nooit een blokkade van de keuring).
+    from app.uren import factuurmatch_pipeline  # lokaal: houdt de importgraaf klein
+
+    try:
+        factuurmatch_pipeline.herbereken_voor_veldwerker(administratie_id=administratie_id, gebruiker_id=zzper_id)
+    except Exception:  # noqa: BLE001 — de match is signalering, nooit een blokkade
+        logger.exception("Factuurmatch-herberekening na weekstaat-goedkeuring mislukt (staat %s)", weekstaat_id)
+
+    return data
 
 
 def keur_week_af(
@@ -565,6 +582,14 @@ def keur_week_af(
             return _weekstaat_data(session, staat)  # herhaald besluit
         if staat.status not in (WeekstaatStatus.INGEDIEND.value, WeekstaatStatus.GOEDGEKEURD.value):
             raise OngeldigeOvergang("Alleen een ingediende of goedgekeurde week kan afgekeurd worden")
+        # Factuurmatch (fase 2, dubbeltelling-preventie): een staat die al met een geboekte
+        # factuur verrekend is, is boekhoudkundig afgehandeld — openbreken zou de match onder
+        # de boeking uit trekken. Correctie loopt dan via storno van de factuur (die de
+        # verrekening niet automatisch terugdraait — kantoorbeoordeling), nooit hierlangs.
+        if staat.verrekend_met_document_id is not None:
+            raise OngeldigeOvergang(
+                "Deze week is al verrekend met een geboekte factuur — afkeuren kan niet meer"
+            )
 
         oude_status = staat.status
         staat.status = WeekstaatStatus.CORRIGEREN.value

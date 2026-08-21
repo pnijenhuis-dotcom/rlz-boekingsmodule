@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import delete, select
@@ -264,11 +264,16 @@ def bereken_match_in_sessie(
     weekstaat_ids: list[uuid.UUID] | None = None,
     factuur_uren: Decimal | None = None,
     factuur_bedrag: Decimal | None = None,
+    vendor_id: uuid.UUID | None = None,
+    factuurdatum: date | None = None,
 ) -> FactuurmatchData | None:
     """Bereken (of herbereken) de match en sla het resultaat op. Geeft None als de match niet
     van toepassing is: geen inkoopfactuur, geen boekvoorstel/crediteur, of de crediteur is aan
     geen veldwerker gekoppeld. `factuur_bedrag` default = som van de netto regelbedragen uit
-    het opgeslagen boekvoorstel (fase 2 kan het veldvoorstel-bedrag meegeven)."""
+    het opgeslagen boekvoorstel (fase 2 kan het veldvoorstel-bedrag meegeven). `vendor_id` +
+    `factuurdatum` zijn fallbacks voor de run direct ná extractie, wanneer er nog géén
+    opgeslagen Boekvoorstel is — het veldvoorstel-prefill levert ze dan aan (fase 2,
+    app/uren/factuurmatch_pipeline.py); een opgeslagen voorstel wint altijd."""
     document = session.get(Document, document_id)
     if document is None:
         raise NietGevonden(f"Document {document_id} niet gevonden")
@@ -276,9 +281,13 @@ def bereken_match_in_sessie(
         return None
 
     voorstel = session.get(Boekvoorstel, document_id)
-    if voorstel is None or voorstel.vendor_id is None:
+    if voorstel is not None and voorstel.vendor_id is not None:
+        vendor_id = voorstel.vendor_id
+    if voorstel is not None and voorstel.factuurdatum is not None:
+        factuurdatum = voorstel.factuurdatum
+    if vendor_id is None:
         return None
-    koppeling = vind_veldwerker_koppeling(session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
+    koppeling = vind_veldwerker_koppeling(session, administratie_id=administratie_id, vendor_id=vendor_id)
     if koppeling is None:
         return None
 
@@ -313,8 +322,8 @@ def bereken_match_in_sessie(
         )
     else:
         tot_en_met: tuple[int, int] | None = None
-        if voorstel.factuurdatum is not None:
-            iso = voorstel.factuurdatum.isocalendar()
+        if factuurdatum is not None:
+            iso = factuurdatum.isocalendar()
             tot_en_met = (iso.year, iso.week)
         staten = (
             _kandidaat_staten(
@@ -387,6 +396,10 @@ def bereken_match_in_sessie(
     match.tarief_ontbreekt = berekening.tarief_ontbreekt
     match.details = details
     match.berekend_op = datetime.now(UTC)
+    # Een (her)berekening wist een eerdere "boeken ondanks afwijking"-bevestiging: nieuwe
+    # cijfers = nieuwe beslissing (besluit 2, migratie 0058 — de boekpoort toetst hierop).
+    match.afwijking_bevestigd_door = None
+    match.afwijking_bevestigd_op = None
     session.flush()
 
     # Herberekening vervangt de staat-selectie integraal (geen residu van een eerdere run).
@@ -435,6 +448,8 @@ def bereken_match(
     weekstaat_ids: list[uuid.UUID] | None = None,
     factuur_uren: Decimal | None = None,
     factuur_bedrag: Decimal | None = None,
+    vendor_id: uuid.UUID | None = None,
+    factuurdatum: date | None = None,
 ) -> FactuurmatchData | None:
     """`actor_id` = wie de berekening triggert (pipeline = SYSTEEM_ACTOR_ID) — nodig omdat de
     lees-policy op platform.detacheerder_koppeling actor-gebonden is (0056/0057)."""
@@ -446,6 +461,8 @@ def bereken_match(
             weekstaat_ids=weekstaat_ids,
             factuur_uren=factuur_uren,
             factuur_bedrag=factuur_bedrag,
+            vendor_id=vendor_id,
+            factuurdatum=factuurdatum,
         )
 
 

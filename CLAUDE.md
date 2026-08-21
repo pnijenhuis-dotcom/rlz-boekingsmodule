@@ -517,7 +517,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (4) autoboek-opt-in per veldwerker-koppeling (default UIT). **Fase 1 GEBOUWD + GETEST
   (2026-08-21, migratie 0057)**: veldwerker_crediteur + bureau-tarieven + factuurmatch(-staat)
   + weekstaat-verrekening (dubbeltelling-preventie) + deterministische motor
-  `app/uren/factuurmatch.py`; fase 2 pipeline-integratie, fase 3 kantoor-UI + kleine
+  `app/uren/factuurmatch.py`. **Fase 2 pipeline-integratie GEBOUWD + GETEST (2026-08-21,
+  migratie 0058 — BESLISSINGEN "Fase 2" is canoniek)**: match-run ná
+  extractie/voorstel-opslag/staat-goedkeuring + herbereken-endpoint met staten-selectie
+  (altijd systeem-actor — RLS bureau-tarieven), boeken-mét-expliciete-bevestiging ("geboekt
+  ondanks match-afwijking" in tijdlijn + audit; bevestiging persistent op de match-rij,
+  herberekening wist 'm; zelfde poort bij ter-accordering-aanbieden), staten-verrekening ín
+  de boek-transactie + afkeur-blokkade op verrekende weken, werkvoorraad-teller/chip/banner
+  (duplicaat-patroon), concept-mail aan de veldwerker (mens bewerkt + verstuurt expliciet,
+  nooit auto) én weigering van de oude leverancier-autoboek-opt-in voor gekoppelde
+  crediteuren (runtime-vangnet + 409 bij aanzetten); fase 3 kantoor-UI + kleine
   mockup-bijwerking (veldwerkers-paneel crediteur+tarieven, match-sectie — geen aparte
   ontwerpronde), fase 4 autoboek-activatie = open.
   Meerwerk-kantoorkant: gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen

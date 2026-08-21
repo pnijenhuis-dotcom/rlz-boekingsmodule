@@ -394,11 +394,19 @@ class Factuurmatch(Base):
     (`tarief_ontbreekt` = de oranje "geen tarief bekend"-indicator); `factuur_bedrag` = de som
     van de netto regelbedragen uit het boekvoorstel (btw-verlegd is de norm in de bouwketen —
     netto is de vergelijkbare grootheid); `factuur_uren` komt uit extractie/mens (fase 2/3).
-    `details` draagt de per-ZZP'er- en per-staat-uitsplitsing voor de match-sectie (fase 3)."""
+    `details` draagt de per-ZZP'er- en per-staat-uitsplitsing voor de match-sectie (fase 3).
+    `afwijking_bevestigd_door/-op` (migratie 0058, besluit 2): de expliciete mens-bevestiging
+    "boeken ondanks match-afwijking" — persistent op de rij zodat óók het accorderingspad
+    (boeken ná het laatste klant-akkoord, systeem-actor) de poort kan toetsen; een
+    herberekening wist de bevestiging (nieuwe cijfers = nieuwe beslissing)."""
 
     __tablename__ = "factuurmatch"
     __table_args__ = (
         CheckConstraint(f"uitkomst IN ({_MATCH_UITKOMST_SQL})", name="ck_factuurmatch_uitkomst"),
+        CheckConstraint(
+            "(afwijking_bevestigd_door IS NULL) = (afwijking_bevestigd_op IS NULL)",
+            name="ck_factuurmatch_bevestigd_samen",
+        ),
         Index("ix_factuurmatch_administratie_id", "administratie_id"),
         Index("ix_factuurmatch_administratie_uitkomst", "administratie_id", "uitkomst"),
         {"schema": "boekhouding"},
@@ -419,6 +427,10 @@ class Factuurmatch(Base):
     tarief_ontbreekt: Mapped[bool] = mapped_column(default=False)
     details: Mapped[dict | None] = mapped_column(JSONB, default=None)
     berekend_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    afwijking_bevestigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    afwijking_bevestigd_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class FactuurmatchStaat(Base):

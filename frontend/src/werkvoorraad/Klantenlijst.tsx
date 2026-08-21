@@ -49,6 +49,9 @@ export function Klantenlijst({
   // Kolom alleen bij data (Kempen-doorbelasting is voor één administratie relevant — de rest
   // van het kantoor moet geen lege kolom zien).
   const toonSpiegel = (klanten ?? []).some((k) => (k.spiegel_taken ?? 0) > 0)
+  // Zelfde toon-regel voor de urenmatch-afwijkingen (factuurmatch fase 2 — alleen relevant
+  // voor administraties mét de uren-&-meerwerkmodule, initieel Universal).
+  const toonMatch = (klanten ?? []).some((k) => (k.match_afwijkingen ?? 0) > 0)
 
   return (
     <div className="panel">
@@ -57,8 +60,9 @@ export function Klantenlijst({
       {!fout && (
         // .tabel-scroll (responsive-fix 2026-08-15): de tellerkolommen + nowrap-chips maken de
         // tabel op smalle vensters breder dan het paneel — dan scrolt de tabel intern i.p.v.
-        // door de paneelrand te klippen.
-        <div className="tabel-scroll">
+        // door de paneelrand te klippen. sticky-koppen (kliktest 2026-08-21): koppen blijven
+        // in beeld bij een lange klantenlijst.
+        <div className="tabel-scroll sticky-koppen">
           <table>
             <tbody>
               <tr>
@@ -70,6 +74,7 @@ export function Klantenlijst({
                 <th>Bij klant (goedkeuring)</th>
                 <th>Bank</th>
                 {toonSpiegel && <th>Spiegel-taken</th>}
+                {toonMatch && <th>Urenmatch</th>}
               </tr>
               {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
               {zichtbaar.map((k) => (
@@ -119,6 +124,11 @@ export function Klantenlijst({
                   {toonSpiegel && (
                     <td title="Open spiegel-taken (doorbelasting): bron geboekt, spiegel-inkoopfactuur in de doel-administratie nog niet">
                       {k.spiegel_taken === null ? '—' : <Teller waarde={k.spiegel_taken} chipKlasse="vraag" />}
+                    </td>
+                  )}
+                  {toonMatch && (
+                    <td title="Veldwerker-facturen waarvan de urenmatch afwijkt van de goedgekeurde weekstaten">
+                      <Teller waarde={k.match_afwijkingen ?? 0} chipKlasse="vraag" />
                     </td>
                   )}
                 </tr>

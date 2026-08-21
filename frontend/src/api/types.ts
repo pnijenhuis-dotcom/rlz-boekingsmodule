@@ -64,6 +64,52 @@ export interface IbanAccordeursDto {
   accordeurs: string[]
 }
 
+/** Compacte urenmatch-stand voor de werkvoorraad-chip (factuurmatch fase 2, besluit 3 —
+ * duplicaat-patroon: losse vlag bovenop de normale flow, geen status). */
+export interface FactuurmatchKortDto {
+  uitkomst: string
+  verschil_bedrag: string | null
+  verschil_uren: string | null
+  tarief_ontbreekt: boolean
+}
+
+/** Volledige urenmatch-stand (controlescherm-banner; fase-3-match-sectie). */
+export interface FactuurmatchDto {
+  document_id: string
+  veldwerker_naam: string | null
+  uitkomst: string
+  staten_som_uren: string
+  staten_som_bedrag: string | null
+  factuur_bedrag: string | null
+  factuur_uren: string | null
+  verschil_bedrag: string | null
+  verschil_uren: string | null
+  tarief_ontbreekt: boolean
+  details: Record<string, unknown> | null
+  berekend_op: string
+  afwijking_bevestigd: boolean
+  afwijking_bevestigd_op: string | null
+}
+
+/** 409-detail van de boek-/aanbiedenroute bij een onbevestigde match-afwijking. */
+export interface MatchAfwijkingDetailDto {
+  uitkomst: string
+  staten_som_uren: string | null
+  staten_som_bedrag: string | null
+  factuur_bedrag: string | null
+  factuur_uren: string | null
+  verschil_bedrag: string | null
+  verschil_uren: string | null
+  tarief_ontbreekt: boolean
+}
+
+export interface MatchMailConceptDto {
+  ontvanger_naam: string | null
+  ontvanger_e_mail: string
+  onderwerp: string
+  tekst: string
+}
+
 export interface DocumentListItemDto {
   id: string
   bestandsnaam: string
@@ -84,6 +130,9 @@ export interface DocumentListItemDto {
   /** Autoboeken-opt-in per leverancier: geboekt zónder menselijke boek-klik — voedt de
    * werkvoorraad-chip "automatisch" en het filter "Automatisch geboekt". */
   automatisch_geboekt: boolean
+  /** Factuurmatch (fase 2): urenmatch-stand van een veldwerker-factuur — voedt de chip
+   * "urenmatch wijkt af". Null/afwezig = geen match van toepassing. */
+  factuurmatch?: FactuurmatchKortDto | null
 }
 
 export interface DocumentListResponseDto {
@@ -113,6 +162,9 @@ export interface WerkvoorraadKlantDto {
   afgewezen: number
   bij_klant: number
   iban_wachtend: number
+  /** Factuurmatch (fase 2): signaal-teller — open documenten met een match-afwijking (de
+   * documenten zelf zitten al in een status-teller hierboven). */
+  match_afwijkingen?: number
 }
 
 export interface WerkvoorraadOverzichtDto {
@@ -143,6 +195,8 @@ export interface DocumentDetailDto {
   laatst_gewijzigd_op: string
   veldvoorstel: Record<string, unknown> | null
   afwijzing: AfwijzingInfoDto | null
+  /** Factuurmatch (fase 2): actuele urenmatch-stand — null als geen match van toepassing. */
+  factuurmatch?: FactuurmatchDto | null
   tijdlijn: DocumentGebeurtenisDto[]
 }
 
@@ -282,6 +336,8 @@ export interface CheckRapportDto {
 export interface BoekvoorstelMetChecksDto {
   boekvoorstel: BoekvoorstelDto
   checks: CheckRapportDto
+  /** Factuurmatch (fase 2): de vers herberekende urenmatch-stand na deze opslag. */
+  factuurmatch?: FactuurmatchDto | null
 }
 
 export interface BoekenResponseDto {

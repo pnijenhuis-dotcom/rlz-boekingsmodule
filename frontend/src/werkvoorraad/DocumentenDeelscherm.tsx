@@ -226,7 +226,7 @@ export function DocumentenDeelscherm({
           <p className="hint">Geen documenten die aan de zoekterm of het statusfilter voldoen.</p>
         )}
         {gefilterd !== null && gefilterd.length > 0 && (
-          <div className="tabel-scroll">
+          <div className="tabel-scroll sticky-koppen">
             <table>
               <tbody>
                 <tr>
@@ -284,6 +284,23 @@ export function DocumentenDeelscherm({
                               van {d.mogelijk_duplicaat_van.bestandsnaam} (
                               {formatDatumKort(d.mogelijk_duplicaat_van.aangemaakt_op)})
                             </Link>
+                          </div>
+                        )}
+                        {/* Factuurmatch (fase 2, besluit 3): afwijking als losse chip — zelfde
+                            patroon als het duplicaat-signaal, geen status. */}
+                        {d.factuurmatch?.uitkomst === 'afwijking' && (
+                          <div style={{ marginTop: 4 }}>
+                            <span className="chip vraag">Urenmatch wijkt af</span>
+                            {d.factuurmatch.verschil_bedrag && (
+                              <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 6 }}>
+                                verschil {formatBedrag(d.factuurmatch.verschil_bedrag)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {d.factuurmatch && d.factuurmatch.uitkomst !== 'afwijking' && d.factuurmatch.tarief_ontbreekt && (
+                          <div style={{ marginTop: 4 }}>
+                            <span className="chip vraag">Urenmatch: geen tarief bekend</span>
                           </div>
                         )}
                       </td>

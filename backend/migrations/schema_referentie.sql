@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0057
+-- Migratie-head bij deze dump: 0058
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -773,6 +773,9 @@ CREATE TABLE boekhouding.factuurmatch (
     tarief_ontbreekt boolean NOT NULL,
     details jsonb,
     berekend_op timestamp with time zone DEFAULT now() NOT NULL,
+    afwijking_bevestigd_door uuid,
+    afwijking_bevestigd_op timestamp with time zone,
+    CONSTRAINT ck_factuurmatch_bevestigd_samen CHECK (((afwijking_bevestigd_door IS NULL) = (afwijking_bevestigd_op IS NULL))),
     CONSTRAINT ck_factuurmatch_uitkomst CHECK ((uitkomst = ANY (ARRAY['match'::text, 'match_alleen_uren'::text, 'afwijking'::text, 'niet_toetsbaar'::text])))
 );
 
@@ -3938,6 +3941,14 @@ ALTER TABLE ONLY boekhouding.factuurmatch_staat
 
 ALTER TABLE ONLY boekhouding.factuurmatch
     ADD CONSTRAINT factuurmatch_veldwerker_gebruiker_id_fkey FOREIGN KEY (veldwerker_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: factuurmatch fk_factuurmatch_bevestigd_door; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.factuurmatch
+    ADD CONSTRAINT fk_factuurmatch_bevestigd_door FOREIGN KEY (afwijking_bevestigd_door) REFERENCES platform.gebruiker(id);
 
 
 --

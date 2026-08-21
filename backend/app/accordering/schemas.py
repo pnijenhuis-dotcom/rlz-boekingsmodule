@@ -82,6 +82,13 @@ class HerinneringenOverzichtResponse(BaseModel):
     laatst_herinnerd: dict[uuid.UUID, datetime]
 
 
+class AanbiedenInput(StrikteInvoer):
+    """Optionele body van de aanbieden-route (factuurmatch fase 2): de expliciete
+    kantoor-bevestiging "aanbieden ondanks match-afwijking" — zelfde vlag als de boek-route."""
+
+    match_afwijking_bevestigd: bool = False
+
+
 class AkkoordInput(StrikteInvoer):
     staande_regel_aanmaken: bool = False
 

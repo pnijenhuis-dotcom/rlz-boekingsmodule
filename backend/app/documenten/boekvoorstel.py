@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -35,6 +36,8 @@ from app.documenten.service import DocumentNietGevonden
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
+
+logger = logging.getLogger(__name__)
 
 # Zodra het document GEBOEKT is, is het RLZ-boekstuk de bron van waarheid (CLAUDE.md, kernprincipe
 # 1) — het boekvoorstel wordt dan bevroren, geen bewerking (PUT) of herberekening (checks) meer via
@@ -423,6 +426,17 @@ def sla_boekvoorstel_op(
             nieuwe_waarde={"referentie": referentie, "aantal_regels": len(regels)},
             administratie_id=administratie_id,
         )
+
+    # Factuurmatch (fase 2): ná élke voorstel-opslag herberekenen — crediteur, factuurdatum en
+    # regelbedragen sturen alle drie de match. Post-commit en onder de systeem-actor (de
+    # lees-policy op de bureau-tarieven is actor-gebonden, 0057); een fout is een gelogde
+    # waarschuwing — de match is signalering, nooit een blokkade van de opslag.
+    from app.uren import factuurmatch_pipeline  # lokaal: houdt de importgraaf klein
+
+    try:
+        factuurmatch_pipeline.draai_match_voor_document(administratie_id=administratie_id, document_id=document_id)
+    except Exception:  # noqa: BLE001 — de match is signalering, nooit een blokkade
+        logger.exception("Factuurmatch-run na voorstel-opslag mislukt voor document %s", document_id)
 
     return haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
 

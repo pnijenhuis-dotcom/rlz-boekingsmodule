@@ -38,6 +38,48 @@ def _naar_afwijzing_info(data: afwijzen.AfwijzingData | None) -> schemas.Afwijzi
     )
 
 
+def _naar_match_kort(match: service.FactuurmatchKort | None) -> schemas.FactuurmatchKortDto | None:
+    if match is None:
+        return None
+    return schemas.FactuurmatchKortDto(
+        uitkomst=match.uitkomst,
+        verschil_bedrag=match.verschil_bedrag,
+        verschil_uren=match.verschil_uren,
+        tarief_ontbreekt=match.tarief_ontbreekt,
+    )
+
+
+def _naar_match_dto(gegevens: object | None) -> schemas.FactuurmatchDto | None:
+    """Mapper voor app.uren.factuurmatch_pipeline.FactuurmatchGegevens (lazy geïmporteerd in
+    de endpoints — geen kringimport op moduleniveau)."""
+    if gegevens is None:
+        return None
+    return schemas.FactuurmatchDto(
+        document_id=gegevens.document_id,
+        veldwerker_naam=gegevens.veldwerker_naam,
+        uitkomst=gegevens.uitkomst,
+        staten_som_uren=gegevens.staten_som_uren,
+        staten_som_bedrag=gegevens.staten_som_bedrag,
+        factuur_bedrag=gegevens.factuur_bedrag,
+        factuur_uren=gegevens.factuur_uren,
+        verschil_bedrag=gegevens.verschil_bedrag,
+        verschil_uren=gegevens.verschil_uren,
+        tarief_ontbreekt=gegevens.tarief_ontbreekt,
+        details=gegevens.details,
+        berekend_op=gegevens.berekend_op,
+        afwijking_bevestigd=gegevens.afwijking_bevestigd_op is not None,
+        afwijking_bevestigd_op=gegevens.afwijking_bevestigd_op,
+    )
+
+
+def _lees_match_dto(administratie_id: uuid.UUID, document_id: uuid.UUID) -> schemas.FactuurmatchDto | None:
+    from app.uren import factuurmatch_pipeline
+
+    return _naar_match_dto(
+        factuurmatch_pipeline.lees_match(administratie_id=administratie_id, document_id=document_id)
+    )
+
+
 def _naar_duplicaat_response(
     referentie: service.DuplicaatReferentie | None,
 ) -> schemas.DuplicaatReferentieResponse | None:
@@ -147,6 +189,7 @@ def werkvoorraad_overzicht(
                 afgewezen=k.afgewezen,
                 bij_klant=k.bij_klant,
                 iban_wachtend=k.iban_wachtend,
+                match_afwijkingen=k.match_afwijkingen,
             )
             for k in klanten
         ]
@@ -183,6 +226,7 @@ def documenten_lijst(
                 totaalbedrag=item.totaalbedrag,
                 factuurdatum=item.factuurdatum,
                 automatisch_geboekt=item.automatisch_geboekt,
+                factuurmatch=_naar_match_kort(item.factuurmatch),
             )
             for item in items
         ]
@@ -277,6 +321,7 @@ def document_detail(
             if d.status.value == "afgewezen"
             else None
         ),
+        factuurmatch=_lees_match_dto(administratie_id, document_id),
         tijdlijn=[
             schemas.DocumentGebeurtenisResponse(
                 van_status=g.van_status.value if g.van_status else None,
@@ -437,7 +482,10 @@ def boekvoorstel_opslaan(
     rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
 
     return schemas.BoekvoorstelMetChecksResponse(
-        boekvoorstel=_naar_boekvoorstel_response(data), checks=_naar_check_rapport_response(rapport)
+        boekvoorstel=_naar_boekvoorstel_response(data),
+        checks=_naar_check_rapport_response(rapport),
+        # sla_boekvoorstel_op herberekende de factuurmatch al (post-commit) — hier de verse stand.
+        factuurmatch=_lees_match_dto(administratie_id, document_id),
     )
 
 
@@ -469,12 +517,26 @@ def boekvoorstel_checks_uitvoeren(
 def document_boeken(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
+    invoer: schemas.BoekenInput | None = None,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.BoekenResponse:
+    """Body optioneel (factuurmatch fase 2): `match_afwijking_bevestigd` is de expliciete
+    "boeken ondanks match-afwijking"-bevestiging; zonder die vlag antwoordt een afwijking
+    met 409 + de match-cijfers in detail.match (client toont de bevestigingspop-up)."""
     try:
-        resultaat = boeken.boek_document(administratie_id=administratie_id, document_id=document_id, actor_id=actor.id)
+        resultaat = boeken.boek_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            match_afwijking_bevestigd=invoer.match_afwijking_bevestigd if invoer else False,
+        )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except boeken.MatchAfwijkingBevestigingVereist as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "match": exc.match_info},
+        ) from exc
     except boeken.OngeldigeBoekpoging as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except boeken.BoekenGeblokkeerdDoorChecks as exc:
@@ -500,6 +562,105 @@ def document_boeken(
         rlz_document_id=resultaat.rlz_document_id,
         rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
     )
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/factuurmatch/herbereken",
+    response_model=schemas.FactuurmatchResponse,
+)
+def factuurmatch_herberekenen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.FactuurmatchHerberekenInput | None = None,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.FactuurmatchResponse:
+    """Expliciete herberekening van de urenmatch (fase 2; "periode-keuze"): optioneel mét een
+    handmatige weekstaat-selectie en/of mens-opgegeven factuur-uren — de motor valideert de
+    selectie hard (alleen goedgekeurde, onverrekende staten van de betrokken ZZP'ers). De
+    berekening zelf draait onder de systeem-actor (lees-policy bureau-tarieven, 0057);
+    NB een herberekening wist een eerdere "boeken ondanks afwijking"-bevestiging."""
+    from app.uren import factuurmatch_pipeline
+    from app.uren.service import NietGevonden as UrenNietGevonden
+    from app.uren.service import OngeldigeInvoer as UrenOngeldigeInvoer
+
+    try:
+        data = factuurmatch_pipeline.draai_match_voor_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            weekstaat_ids=invoer.weekstaat_ids if invoer else None,
+            factuur_uren=invoer.factuur_uren if invoer else None,
+        )
+    except UrenNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except UrenOngeldigeInvoer as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if data is None:
+        return schemas.FactuurmatchResponse(factuurmatch=None)
+    return schemas.FactuurmatchResponse(factuurmatch=_lees_match_dto(administratie_id, document_id))
+
+
+@router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}/factuurmatch/concept-mail",
+    response_model=schemas.MatchMailConceptResponse,
+)
+def factuurmatch_concept_mail(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.MatchMailConceptResponse:
+    """CONCEPT-mail aan de veldwerker over de matchstand (fase 2) — genereren is lezen, er
+    wordt niets verzonden of vastgelegd; de mens bewerkt en verstuurt expliciet (POST)."""
+    from app.uren import factuurmatch_mail
+    from app.uren.service import NietGevonden as UrenNietGevonden
+
+    try:
+        concept = factuurmatch_mail.bouw_concept_mail(administratie_id=administratie_id, document_id=document_id)
+    except UrenNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.MatchMailConceptResponse(
+        ontvanger_naam=concept.ontvanger_naam,
+        ontvanger_e_mail=concept.ontvanger_e_mail,
+        onderwerp=concept.onderwerp,
+        tekst=concept.tekst,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/factuurmatch/mail",
+    response_model=schemas.MatchMailVerzondenResponse,
+)
+def factuurmatch_mail_verzenden(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.MatchMailVerzendenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.MatchMailVerzondenResponse:
+    """Verzend de (gereviewde) match-mail aan de veldwerker van de match — nooit automatisch.
+    Fail-zichtbaar: mailkanaal niet geconfigureerd = 503, verzendfout = 424 (zelfde afweging
+    als de accordeur-herinnering: een bezorgfout is een nette applicatie-uitkomst, geen
+    gateway-status). Geslaagd = audit + tijdlijn-notitie."""
+    from app.berichten.mail import MailNietGeconfigureerd, MailVerzendFout
+    from app.uren import factuurmatch_mail
+    from app.uren.service import NietGevonden as UrenNietGevonden
+    from app.uren.service import OngeldigeInvoer as UrenOngeldigeInvoer
+
+    try:
+        verzonden_aan = factuurmatch_mail.verzend_match_mail(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            onderwerp=invoer.onderwerp,
+            tekst=invoer.tekst,
+        )
+    except UrenNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except UrenOngeldigeInvoer as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except MailNietGeconfigureerd as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except MailVerzendFout as exc:
+        raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=str(exc)) from exc
+    return schemas.MatchMailVerzondenResponse(verzonden_aan=verzonden_aan)
 
 
 def _naar_vraag_response(data: vragen.VraagData) -> schemas.VraagResponse:

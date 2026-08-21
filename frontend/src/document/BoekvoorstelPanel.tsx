@@ -9,6 +9,7 @@ import type {
   DocumentActieResponseDto,
   GeheugenVeldVoorstelDto,
   GeheugenVoorstelDto,
+  MatchAfwijkingDetailDto,
   VendorOptieDto,
 } from '../api/types'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
@@ -24,6 +25,7 @@ import {
 } from './geheugenVoorstel'
 import { Checkbox } from '../ui/basis'
 import { ChecksPopup } from '../ui/ChecksPopup'
+import { MatchAfwijkingPopup } from '../ui/MatchAfwijkingPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
@@ -347,6 +349,11 @@ export function BoekvoorstelPanel({
   const [wijzigingsVersie, setWijzigingsVersie] = useState(0)
   const wijzigingsVersieRef = useRef(0)
   const [popupChecks, setPopupChecks] = useState<{ melding: string | null; checks: CheckRapportDto } | null>(null)
+  // Factuurmatch fase 2 (besluit 2): 409 mét detail.match = onbevestigde urenmatch-afwijking —
+  // pop-up met de cijfers; bevestigen herhaalt de actie mét match_afwijking_bevestigd.
+  const [popupMatch, setPopupMatch] = useState<{ melding: string | null; match: MatchAfwijkingDetailDto } | null>(
+    null,
+  )
   const [boekenBezig, setBoekenBezig] = useState(false)
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
   const [boekResultaat, setBoekResultaat] = useState<BoekenResponseDto | null>(null)
@@ -724,7 +731,7 @@ export function BoekvoorstelPanel({
     }
   }, [administratieId])
 
-  const boeken = async () => {
+  const boeken = async (matchBevestigd = false) => {
     setBoekenBezig(true)
     setBoekenFout(null)
     try {
@@ -734,12 +741,23 @@ export function BoekvoorstelPanel({
       const pad = accorderingAan
         ? `/administraties/${administratieId}/accordering/documenten/${documentId}/aanbieden`
         : `/administraties/${administratieId}/documenten/${documentId}/boeken`
-      const resp = await apiFetch(pad, { method: 'POST' })
+      const resp = await apiFetch(pad, {
+        method: 'POST',
+        // Alleen mét een bewuste bevestiging reist er een body mee — het kale POST-contract
+        // blijft ongewijzigd (factuurmatch fase 2).
+        ...(matchBevestigd
+          ? {
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ match_afwijking_bevestigd: true }),
+            }
+          : {}),
+      })
       const body: unknown = await resp.json().catch(() => null)
 
       if (resp.ok && accorderingAan) {
         const resultaat = body as { geboekt: boolean; boek_fout: string | null; alles_akkoord: boolean }
         if (resultaat.boek_fout) setBoekenFout(resultaat.boek_fout)
+        setPopupMatch(null)
         onGeboekt()
         return
       }
@@ -747,6 +765,7 @@ export function BoekvoorstelPanel({
         const resultaat = body as BoekenResponseDto
         setBoekResultaat(resultaat)
         setBoekstuknummer(resultaat.rlz_boekstuknummer)
+        setPopupMatch(null)
         onGeboekt()
         return
       }
@@ -763,6 +782,10 @@ export function BoekvoorstelPanel({
         // Blok B: de server-side herdraaide checks blokkeren → pop-up met de concrete
         // gefaalde check(s); de inline lijst blijft daarnaast staan.
         setPopupChecks({ melding: message ?? null, checks: rapport })
+      } else if (resp.status === 409 && detail && typeof detail === 'object' && 'match' in detail) {
+        // Factuurmatch fase 2: onbevestigde urenmatch-afwijking → bevestigingspop-up.
+        const { message, match } = detail as { message?: string; match: MatchAfwijkingDetailDto }
+        setPopupMatch({ melding: message ?? null, match })
       } else {
         setBoekenFout(typeof detail === 'string' ? detail : resp.statusText || `Fout (${resp.status})`)
       }
@@ -1301,6 +1324,16 @@ export function BoekvoorstelPanel({
           melding={popupChecks.melding}
           checks={popupChecks.checks}
           onSluiten={() => setPopupChecks(null)}
+        />
+      )}
+      {popupMatch && (
+        <MatchAfwijkingPopup
+          melding={popupMatch.melding}
+          match={popupMatch.match}
+          actieLabel={accorderingAan ? 'Ter accordering ondanks afwijking' : 'Boeken ondanks afwijking'}
+          bezig={boekenBezig}
+          onBevestig={() => void boeken(true)}
+          onSluiten={() => setPopupMatch(null)}
         />
       )}
     </>

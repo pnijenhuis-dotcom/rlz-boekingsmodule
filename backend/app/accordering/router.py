@@ -166,19 +166,33 @@ def kandidaten(
 def aanbieden(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
+    invoer: schemas.AanbiedenInput | None = None,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.BesluitResponse:
     """De "Ter accordering"-knop (kantoor). Staande goedkeuringen worden direct toegepast —
-    zijn alle lagen daarmee akkoord, dan boekt de motor meteen (met alle harde checks)."""
+    zijn alle lagen daarmee akkoord, dan boekt de motor meteen (met alle harde checks).
+    Body optioneel (factuurmatch fase 2): bevestiging "aanbieden ondanks match-afwijking"."""
+    from app.documenten import boeken as boeken_module
+
     try:
         resultaat = service.bied_ter_accordering_aan(
             administratie_id=administratie_id,
             document_id=document_id,
             actor_id=actor.id,
             actor_rol=actor.rol.value,
+            match_afwijking_bevestigd=invoer.match_afwijking_bevestigd if invoer else False,
         )
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except boeken_module.MatchAfwijkingBevestigingVereist as exc:
+        # Zelfde 409-vorm als de boek-route: match-cijfers in detail.match, de client toont de
+        # bevestigingspop-up en herhaalt de actie mét vlag.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "match": exc.match_info},
+        ) from exc
+    except boeken_module.OngeldigeBoekpoging as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.ChecksNietGroen as exc:
         # Zelfde vorm als de boek-route (409 + CheckRapport in detail.checks) zodat het
         # controlescherm de check-rijen gewoon kan tonen.

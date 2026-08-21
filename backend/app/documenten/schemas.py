@@ -68,6 +68,75 @@ class AfwijzingInfoDto(BaseModel):
     status_voor_afwijzing: str
 
 
+class FactuurmatchKortDto(BaseModel):
+    """Compacte matchstand voor de werkvoorraad-chip (factuurmatch fase 2, besluit 3 —
+    duplicaat-patroon: losse vlag bovenop de normale flow, geen status)."""
+
+    uitkomst: str
+    verschil_bedrag: Decimal | None = None
+    verschil_uren: Decimal | None = None
+    tarief_ontbreekt: bool = False
+
+
+class FactuurmatchDto(BaseModel):
+    """Volledige matchstand (controlescherm-banner + fase-3-match-sectie)."""
+
+    document_id: uuid.UUID
+    veldwerker_naam: str | None = None
+    uitkomst: str
+    staten_som_uren: Decimal
+    staten_som_bedrag: Decimal | None = None
+    factuur_bedrag: Decimal | None = None
+    factuur_uren: Decimal | None = None
+    verschil_bedrag: Decimal | None = None
+    verschil_uren: Decimal | None = None
+    tarief_ontbreekt: bool = False
+    details: dict | None = None
+    berekend_op: datetime
+    afwijking_bevestigd: bool = False
+    afwijking_bevestigd_op: datetime | None = None
+
+
+class FactuurmatchHerberekenInput(StrikteInvoer):
+    """Expliciete herberekening ("periode-keuze"): optioneel een handmatige staten-selectie
+    (gevalideerd in de motor — alleen goedgekeurde, onverrekende staten van de betrokken
+    ZZP'ers) en/of een mens-opgave van de factuur-uren."""
+
+    weekstaat_ids: list[uuid.UUID] | None = None
+    factuur_uren: DecimalMetKomma | None = None
+
+
+class FactuurmatchResponse(BaseModel):
+    """None-vormig antwoord kan niet in FastAPI's response_model zonder wrapper — de match is
+    None wanneer die niet van toepassing is (geen gekoppelde crediteur)."""
+
+    factuurmatch: FactuurmatchDto | None = None
+
+
+class BoekenInput(StrikteInvoer):
+    """Optionele body van de boek-route (factuurmatch fase 2, besluit 2): de expliciete
+    bevestiging "boeken ondanks match-afwijking" — zonder deze vlag antwoordt de server bij
+    een afwijking met 409 + de match-cijfers."""
+
+    match_afwijking_bevestigd: bool = False
+
+
+class MatchMailConceptResponse(BaseModel):
+    ontvanger_naam: str | None = None
+    ontvanger_e_mail: str
+    onderwerp: str
+    tekst: str
+
+
+class MatchMailVerzendenInput(StrikteInvoer):
+    onderwerp: str
+    tekst: str
+
+
+class MatchMailVerzondenResponse(BaseModel):
+    verzonden_aan: str
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
@@ -90,6 +159,9 @@ class DocumentListItemResponse(BaseModel):
     # Autoboeken (blok 2, 2026-08-09): geboekt zonder menselijke boek-klik (opt-in leverancier)
     # — voedt de werkvoorraad-chip "automatisch" en het filter "automatisch geboekt".
     automatisch_geboekt: bool = False
+    # Factuurmatch (fase 2): matchstand van een veldwerker-factuur — voedt de chip
+    # "urenmatch wijkt af" (besluit 3, duplicaat-patroon). None = geen match van toepassing.
+    factuurmatch: FactuurmatchKortDto | None = None
 
 
 class LeverancierAutoboekenDto(BaseModel):
@@ -115,6 +187,9 @@ class WerkvoorraadKlantResponse(BaseModel):
     afgewezen: int
     bij_klant: int
     iban_wachtend: int
+    # Factuurmatch (fase 2, besluit 3): signaal-teller — open documenten met een
+    # match-afwijking (de documenten zelf zitten al in een status-teller hierboven).
+    match_afwijkingen: int = 0
 
 
 class WerkvoorraadOverzichtResponse(BaseModel):
@@ -149,6 +224,9 @@ class DocumentDetailResponse(BaseModel):
     laatst_gewijzigd_op: datetime
     veldvoorstel: dict | None = None
     afwijzing: AfwijzingInfoDto | None = None
+    # Factuurmatch (fase 2): actuele matchstand voor de controlescherm-banner; None = geen
+    # match van toepassing (crediteur niet aan een veldwerker gekoppeld).
+    factuurmatch: FactuurmatchDto | None = None
     tijdlijn: list[DocumentGebeurtenisResponse]
 
 
@@ -206,6 +284,9 @@ class CheckRapportResponse(BaseModel):
 class BoekvoorstelMetChecksResponse(BaseModel):
     boekvoorstel: BoekvoorstelResponse
     checks: CheckRapportResponse
+    # Factuurmatch (fase 2): de vers herberekende matchstand na deze opslag — de
+    # auto-checks-lus van het controlescherm houdt de banner er actueel mee.
+    factuurmatch: FactuurmatchDto | None = None
 
 
 class BoekenResponse(BaseModel):

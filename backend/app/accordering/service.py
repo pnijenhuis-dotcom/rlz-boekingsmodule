@@ -350,7 +350,12 @@ def _als_decimal(waarde: object) -> Decimal | None:
 
 
 def bied_ter_accordering_aan(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, actor_rol: str
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    actor_rol: str,
+    match_afwijking_bevestigd: bool = False,
 ) -> AkkoordResultaat:
     """De "Ter accordering"-knop (kantoor): bevriest de actieve lagen tot stappen (drempel op
     het totaalbedrag; onbekend bedrag = vereist, fail-closed), zet het document op
@@ -359,6 +364,18 @@ def bied_ter_accordering_aan(
     _vereis_kantoor(actor_rol)
     if not is_accordering_ingeschakeld(administratie_id=administratie_id):
         raise AccorderingUitgeschakeld("Accordering staat uit voor deze administratie")
+
+    # Factuurmatch-poort (fase 2, besluit 2): een match-afwijking vraagt de expliciete
+    # kantoor-bevestiging al bij het AANBIEDEN — de klant-accordeur is niet degene die de
+    # urenmatch beoordeelt, en het boeken ná het laatste akkoord (systeem-actor) leunt op de
+    # hier persistent vastgelegde bevestiging (migratie 0058). Zelfde 409-vorm als de
+    # boek-route (router vertaalt MatchAfwijkingBevestigingVereist).
+    boeken_service.toets_match_afwijking_poort(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        bevestigd=match_afwijking_bevestigd,
+    )
 
     # De "Ter accordering"-knop vervangt de boekknop op het controlescherm — dus ook vanaf
     # te_controleren/handmatig_afmaken, mét exact dezelfde checks-poort als boek_document:

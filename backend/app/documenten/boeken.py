@@ -66,6 +66,20 @@ class VolumeremBereikt(BoekenFout):
     """Failsafe (c): de dagelijkse boekingslimiet voor deze administratie is bereikt."""
 
 
+class MatchAfwijkingBevestigingVereist(BoekenFout):
+    """Factuurmatch fase 2 (besluit 2, Peter 2026-08-21): de urenmatch van dit document staat
+    op `afwijking` en er is (nog) geen expliciete bevestiging — boeken mág, maar alleen mét
+    de bewuste "boeken ondanks match-afwijking"-klik (409 + match-cijfers in de router; de
+    client toont de pop-up en herhaalt de actie mét bevestigingsvlag)."""
+
+    def __init__(self, match_info: dict) -> None:
+        self.match_info = match_info
+        super().__init__(
+            "De urenmatch wijkt af van de goedgekeurde weekstaten — boeken vereist een "
+            "expliciete bevestiging"
+        )
+
+
 class RlzBoekingMislukt(BoekenFout):
     """RLZ gaf een fout terug tijdens de boekpoging — het document staat op boeken_mislukt met de
     échte foutmelding; een volgende poging is idempotent (zelfde client-GUID's)."""
@@ -118,6 +132,87 @@ def _zorg_voor_klaar_om_te_boeken(session: Session, *, document: Document, actor
 def _rlz_client_voor(administratie_id: uuid.UUID) -> RlzClient:
     rlz_admin_id = rlz_admin_id_voor(administratie_id)
     return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+
+
+def _als_str(waarde: object) -> str | None:
+    return str(waarde) if waarde is not None else None
+
+
+def toets_match_afwijking_poort(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, bevestigd: bool
+) -> None:
+    """Factuurmatch-poort (fase 2, besluit 2) — vóór élke boekpoging én bij het ter accordering
+    aanbieden (app/accordering/service.py). Drie toetsen, fail-closed:
+
+    1. Staten-versheid: is een betrokken weekstaat intussen met een ÁNDER document verrekend,
+       dan is de match verouderd — eerst herberekenen (zichtbare 409, nooit stil dubbel
+       tellen). Bewust vóór de RLZ-call getoetst: de verrekening in de slot-transactie zou
+       anders pas ná het boeken in RLZ falen.
+    2. Uitkomst `afwijking` zonder bevestiging → MatchAfwijkingBevestigingVereist (409 mét de
+       match-cijfers; de client toont de pop-up).
+    3. `bevestigd=True` van een mens → bevestiging persistent op de match-rij (migratie 0058)
+       + audit, in een eigen transactie vóór het boeken. Zo kan óók het accorderingspad —
+       waar de systeem-actor pas ná het laatste klant-akkoord boekt — de poort passeren op
+       de eerder vastgelegde mens-bevestiging; de systeem-actor bevestigt nooit zelf
+       (`bevestigd` is daar altijd False). Een herberekening wist de bevestiging weer
+       (app/uren/factuurmatch.py) — nieuwe cijfers = nieuwe beslissing.
+
+    Lazy imports: app.uren gebruikt de documenten-modellen — geen kringimport op moduleniveau."""
+    from app.uren.models import Factuurmatch, FactuurmatchStaat, FactuurmatchUitkomst, Weekstaat
+
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        match = session.get(Factuurmatch, document_id)
+        if match is None:
+            return
+
+        elders_verrekend = session.scalar(
+            select(func.count())
+            .select_from(FactuurmatchStaat)
+            .join(Weekstaat, Weekstaat.id == FactuurmatchStaat.weekstaat_id)
+            .where(
+                FactuurmatchStaat.document_id == document_id,
+                Weekstaat.verrekend_met_document_id.is_not(None),
+                Weekstaat.verrekend_met_document_id != document_id,
+            )
+        )
+        if elders_verrekend:
+            raise OngeldigeBoekpoging(
+                "Een weekstaat uit deze urenmatch is intussen met een andere factuur verrekend — "
+                "herbereken de match voordat u boekt"
+            )
+
+        if match.uitkomst != FactuurmatchUitkomst.AFWIJKING.value:
+            return
+        if match.afwijking_bevestigd_op is not None:
+            return
+
+        match_info = {
+            "uitkomst": match.uitkomst,
+            "veldwerker_gebruiker_id": str(match.veldwerker_gebruiker_id),
+            "staten_som_uren": _als_str(match.staten_som_uren),
+            "staten_som_bedrag": _als_str(match.staten_som_bedrag),
+            "factuur_bedrag": _als_str(match.factuur_bedrag),
+            "factuur_uren": _als_str(match.factuur_uren),
+            "verschil_bedrag": _als_str(match.verschil_bedrag),
+            "verschil_uren": _als_str(match.verschil_uren),
+            "tarief_ontbreekt": match.tarief_ontbreekt,
+        }
+        if not bevestigd:
+            raise MatchAfwijkingBevestigingVereist(match_info)
+
+        match.afwijking_bevestigd_door = actor_id
+        match.afwijking_bevestigd_op = datetime.now(UTC)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="factuurmatch",
+            record_id=document_id,
+            actie="match_afwijking_bevestigd",
+            correlatie_id=document_id,
+            nieuwe_waarde=match_info,
+            administratie_id=administratie_id,
+        )
 
 
 def _regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
@@ -249,6 +344,7 @@ def boek_document(
     document_id: uuid.UUID,
     actor_id: uuid.UUID,
     extra_overgang_detail: dict | None = None,
+    match_afwijking_bevestigd: bool = False,
 ) -> BoekResultaat:
     """De boekactie (CLAUDE.md-taak 2.3): harde checks herhalen (nooit de client-kant vertrouwen),
     dan de twee resterende failsafes (toggle+kill switch, volumerem), dan pas de echte RLZ-
@@ -287,6 +383,16 @@ def boek_document(
                     "Klant-accordering staat aan voor deze administratie — bied het document ter "
                     "accordering aan; na het laatste akkoord wordt automatisch geboekt"
                 )
+
+    # Factuurmatch-poort (fase 2): staten-versheid + afwijking-bevestiging, vóór de checks en
+    # dus ruim vóór de RLZ-schrijfacties. Ná de accorderingspoort: "Ter accordering" hoort als
+    # eerste te winnen op het controlescherm (de aanbieden-flow toetst deze poort zelf ook).
+    toets_match_afwijking_poort(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        bevestigd=match_afwijking_bevestigd,
+    )
 
     with _rlz_client_voor(administratie_id) as client:
         rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, client=client)
@@ -337,6 +443,21 @@ def boek_document(
         assert boekvoorstel is not None
         boekvoorstel.rlz_boekstuknummer = rlz_boekstuknummer
 
+        # Factuurmatch (fase 2): een bevestigde afwijking draagt "geboekt ondanks
+        # match-afwijking" in tijdlijn + audit (besluit 2 — de _schrijf_overgang hieronder
+        # schrijft het detail in beide). Lazy import: geen kringimport op moduleniveau.
+        from app.uren.factuurmatch import verreken_staten_in_sessie
+        from app.uren.models import Factuurmatch, FactuurmatchUitkomst
+
+        match = session.get(Factuurmatch, document_id)
+        match_detail: dict = {}
+        if match is not None and match.uitkomst == FactuurmatchUitkomst.AFWIJKING.value:
+            match_detail["geboekt_ondanks_match_afwijking"] = {
+                "verschil_bedrag": _als_str(match.verschil_bedrag),
+                "verschil_uren": _als_str(match.verschil_uren),
+                "bevestigd_door": _als_str(match.afwijking_bevestigd_door),
+            }
+
         _schrijf_overgang(
             session,
             document=document,
@@ -347,10 +468,19 @@ def boek_document(
             # werkvoorraad-filter) — nooit de kernvelden overschrijven.
             detail={
                 **(extra_overgang_detail or {}),
+                **match_detail,
                 "rlz_document_id": str(rlz_document_id),
                 "rlz_boekstuknummer": rlz_boekstuknummer,
             },
         )
+        # Staten-verrekening ín de boek-transactie (fase 2, dubbeltelling-preventie): de
+        # betrokken weekstaten gaan op verrekend_met_document_id — samen met de
+        # GEBOEKT-overgang, of samen niet (zelfde argument als leg_boeking_vast hieronder).
+        # De poort aan het begin toetste de versheid al vóór de RLZ-call.
+        if match is not None:
+            verreken_staten_in_sessie(
+                session, administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+            )
         _sla_webhook_op(
             session,
             administratie_id=administratie_id,

@@ -13,6 +13,8 @@ import { AfwijsModal } from './AfwijsModal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { formatBedrag } from '../werkvoorraad/format'
+import { MatchMailPaneel } from './MatchMailPaneel'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
@@ -394,6 +396,64 @@ export function DocumentDetailScreen() {
           />
 
 
+          {/* Factuurmatch fase 2 (besluit 3): afwijking = zichtbaar signaal, géén status —
+              boeken blijft mogelijk mét expliciete bevestiging (pop-up in het boekvoorstel). */}
+          {detail.factuurmatch?.uitkomst === 'afwijking' &&
+            !['geboekt', 'verwijderd', 'gesplitst'].includes(detail.status) && (
+              <div className="panel">
+                <h2>
+                  Urenmatch wijkt af <span className="chip vraag">bevestiging vereist bij boeken</span>
+                </h2>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  {detail.factuurmatch.veldwerker_naam && (
+                    <>
+                      Veldwerker: <b>{detail.factuurmatch.veldwerker_naam}</b> ·{' '}
+                    </>
+                  )}
+                  weekstaten {detail.factuurmatch.staten_som_uren.replace('.', ',')} uur
+                  {detail.factuurmatch.staten_som_bedrag &&
+                    ` (${formatBedrag(detail.factuurmatch.staten_som_bedrag)})`}{' '}
+                  · factuur{' '}
+                  {detail.factuurmatch.factuur_bedrag
+                    ? formatBedrag(detail.factuurmatch.factuur_bedrag)
+                    : 'bedrag onbekend'}
+                  {detail.factuurmatch.verschil_bedrag && (
+                    <>
+                      {' '}
+                      · verschil <b>{formatBedrag(detail.factuurmatch.verschil_bedrag)}</b>
+                    </>
+                  )}
+                  {detail.factuurmatch.afwijking_bevestigd && (
+                    <>
+                      {' '}
+                      · <span className="chip geheugen">afwijking bevestigd</span>
+                    </>
+                  )}
+                </p>
+                <MatchMailPaneel
+                  administratieId={administratieId}
+                  documentId={documentId}
+                  onVerzonden={laadDetail}
+                />
+              </div>
+            )}
+          {detail.factuurmatch &&
+            detail.factuurmatch.uitkomst !== 'afwijking' &&
+            detail.factuurmatch.tarief_ontbreekt &&
+            !['geboekt', 'verwijderd', 'gesplitst'].includes(detail.status) && (
+              <div className="panel">
+                <h2>
+                  Urenmatch <span className="chip vraag">geen tarief bekend</span>
+                </h2>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  De uren sluiten op de goedgekeurde weekstaten (
+                  {detail.factuurmatch.staten_som_uren.replace('.', ',')} uur), maar (een deel van) de
+                  tarieven ontbreekt — het bedrag kon niet getoetst worden. Tarieven beheert u bij de
+                  veldwerker-koppelingen.
+                </p>
+              </div>
+            )}
+
           {detail.status === 'afgewezen' && (
             <div className="panel">
               <h2>
@@ -687,6 +747,23 @@ export function DocumentDetailScreen() {
                         <div className="hint" style={{ marginTop: 2 }}>
                           Vraag gesteld door {naamVoor(g.actor_id)} — toegewezen aan{' '}
                           {naamVoor(typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}
+                        </div>
+                      )}
+                      {g.detail && 'geboekt_ondanks_match_afwijking' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }}>
+                          Geboekt ondanks match-afwijking — expliciet bevestigd (besluit vastgelegd in het
+                          auditlog)
+                        </div>
+                      )}
+                      {g.detail && 'match_mail_verzonden' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Mail over de urenmatch verzonden door {naamVoor(g.actor_id)}
+                          {(() => {
+                            const info = g.detail.match_mail_verzonden
+                            return info && typeof info === 'object' && 'aan' in info
+                              ? ` aan ${String((info as { aan: unknown }).aan)}`
+                              : ''
+                          })()}
                         </div>
                       )}
                       {g.detail && 'vraag_beantwoord' in g.detail && (

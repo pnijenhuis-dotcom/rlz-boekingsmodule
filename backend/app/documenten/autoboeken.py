@@ -49,6 +49,13 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------------- opt-in-beheer
 
 
+class VeldwerkerKoppelingBlokkeertOptIn(Exception):
+    """Factuurmatch fase 2 (Peter 2026-08-21): een crediteur die aan een veldwerker gekoppeld
+    is (boekhouding.veldwerker_crediteur) krijgt de OUDE per-leverancier-autoboek-opt-in niet —
+    die zou de urenmatch omzeilen. Autoboeken loopt daar via de opt-in per
+    veldwerker-koppeling (besluit 4, activatie = fase 4, strikt groen incl. bedrag)."""
+
+
 @dataclass(frozen=True)
 class LeverancierAutoboeken:
     vendor_id: uuid.UUID
@@ -88,8 +95,19 @@ def zet_leverancier_autoboeken(
 ) -> bool:
     """Zet de opt-in per leverancier. Beheerder-only wordt in de router afgedwongen
     (require_beheerder); elke zetting — óók een herbevestiging — gaat het audit_event in
-    (zelfde bewuste conventie als de beheer-toggles, app/beheer/service.py)."""
+    (zelfde bewuste conventie als de beheer-toggles, app/beheer/service.py). AANzetten wordt
+    geweigerd voor een crediteur mét veldwerker-koppeling (factuurmatch fase 2 — het
+    veldwerker-autoboekpad, fase 4, is daar het enige kanaal); UITzetten mag altijd."""
+    from app.uren.factuurmatch import vind_veldwerker_koppeling
+
     with scoped_session(administratie_id, actor_id=actor_id) as session:
+        if ingeschakeld and vind_veldwerker_koppeling(
+            session, administratie_id=administratie_id, vendor_id=vendor_id
+        ):
+            raise VeldwerkerKoppelingBlokkeertOptIn(
+                "Deze crediteur is gekoppeld aan een veldwerker — autoboeken loopt daar via de "
+                "urenmatch-opt-in per veldwerker-koppeling, niet via de leverancier-opt-in"
+            )
         voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
         oud = voorkeur.autoboeken_ingeschakeld if voorkeur else False
         if voorkeur is None:
@@ -201,6 +219,25 @@ def probeer_autoboeken_na_extractie(
         return None
 
     # Vanaf hier is autoboeken expliciet aangezet — elke uitkomst wordt geauditeerd.
+    # Runtime-vangnet (factuurmatch fase 2): aanzetten wordt sinds die fase geweigerd voor een
+    # gekoppelde crediteur, maar een opt-in van vóór de koppeling blijft anders stil werken —
+    # en zou de urenmatch omzeilen. Autoboeken hier = alleen via fase 4 (per veldwerker).
+    from app.uren.factuurmatch import vind_veldwerker_koppeling
+
+    with scoped_session(administratie_id) as session:
+        veldwerker_gekoppeld = (
+            vind_veldwerker_koppeling(session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
+            is not None
+        )
+    if veldwerker_gekoppeld:
+        return _weiger(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            reden=(
+                "crediteur is gekoppeld aan een veldwerker — de leverancier-opt-in geldt daar "
+                "niet (urenmatch; autoboeken alleen via de veldwerker-opt-in, fase 4)"
+            ),
+        )
     if mogelijk_duplicaat:
         return _weiger(
             administratie_id=administratie_id,
