@@ -116,6 +116,12 @@
   .stip{width:6px;height:6px;border-radius:99px;background:currentColor;display:inline-block}
 
   .tabel-scroll{overflow-x:auto;border-radius:0 0 var(--radius) var(--radius)}
+  /* Sticky kolomkoppen (nazorg kliktest 2026-08-21): lange lijsten scrollen intern binnen de
+     viewport, de koppenregel blijft staan. overflow:clip op de tabel (geen scroll-container,
+     wél radius-clip); th-rand als box-shadow (collapse-borders scrollen anders mee weg). */
+  .tabel-scroll.sticky-koppen{overflow:auto;max-height:max(340px,calc(100vh - 230px))}
+  .tabel-scroll.sticky-koppen table{overflow:clip}
+  .tabel-scroll.sticky-koppen th{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:none;box-shadow:0 1px 0 var(--border)}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:600}
   td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}

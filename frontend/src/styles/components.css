@@ -503,6 +503,33 @@ textarea:focus {
  * verschijnt er niets. NB de standaard-props scrollbar-width/-color hier NIET combineren met
  * de webkit-regels: Chrome laat de standaard-props dan voorgaan en die renderen weer als
  * onzichtbare overlay (headless-verificatie 2026-08-15) — vandaar de @supports-splitsing. */
+/* Sticky kolomkoppen (UI-nazorg kliktest Peter 2026-08-21): bij lange lijsten (11+
+ * administraties, gebruikers, werkvoorraad) verdwenen de koppen uit beeld — dan weet je niet
+ * meer welke toggle wat doet. De lijst scrolt intern binnen de viewport en de koppenregel
+ * blijft staan. Drie CSS-valkuilen bewust omzeild: (1) de tabel zelf heeft `overflow: hidden`
+ * voor de hoekradius — dat maakt 'm een scroll-container en breekt position:sticky, vandaar
+ * `overflow: clip` (clipt wél, scrollt níet); (2) met border-collapse scrollt de
+ * th-onderrand mee onder de sticky kop uit — de rand komt daarom als box-shadow; (3) de kop
+ * heeft een dekkende achtergrond nodig, anders schijnen de rijen erdoorheen. Zonder overloop
+ * (korte lijst) verandert er niets zichtbaars. */
+.tabel-scroll.sticky-koppen {
+  overflow: auto;
+  max-height: max(340px, calc(100vh - 230px));
+}
+
+.tabel-scroll.sticky-koppen table {
+  overflow: clip;
+}
+
+.tabel-scroll.sticky-koppen th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  border-bottom: none;
+  box-shadow: 0 1px 0 var(--border);
+}
+
 .tabel-scroll::-webkit-scrollbar {
   height: 8px;
 }

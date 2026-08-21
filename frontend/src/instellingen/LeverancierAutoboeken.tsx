@@ -114,7 +114,10 @@ export function LeverancierAutoboeken({
         </p>
       )}
       {leveranciers !== null && leveranciers.length > 0 && (
-        <table style={{ marginTop: 10 }}>
+        // sticky-koppen (kliktest 2026-08-21): de leverancierslijst is per administratie lang —
+        // koppen blijven in beeld tijdens het scrollen.
+        <div className="tabel-scroll sticky-koppen" style={{ marginTop: 10 }}>
+        <table>
           <tbody>
             <tr>
               <th>Leverancier</th>
@@ -142,6 +145,7 @@ export function LeverancierAutoboeken({
             })}
           </tbody>
         </table>
+        </div>
       )}
       <p className="hint" style={{ marginBottom: 0 }}>
         Standaard staat automatisch boeken UIT; alleen een Beheerder kan dit wijzigen. Automatisch

@@ -482,8 +482,10 @@ export function InstellingenScreen() {
             onGereed={laadAlles}
           />
           {/* .tabel-scroll (kliktest 2026-08-16, ~1170px): acht kolommen clipten rechts buiten
-              het paneel zonder scroll — brede inhoud scrolt intern, nooit paginabreed. */}
-          <div className="tabel-scroll">
+              het paneel zonder scroll — brede inhoud scrolt intern, nooit paginabreed.
+              sticky-koppen (kliktest 2026-08-21): bij 11+ administraties blijven de kolomkoppen
+              in beeld tijdens het scrollen. */}
+          <div className="tabel-scroll sticky-koppen">
           <table>
             <tbody>
               <tr>

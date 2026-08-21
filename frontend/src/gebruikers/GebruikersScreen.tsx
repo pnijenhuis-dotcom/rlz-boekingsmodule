@@ -293,7 +293,7 @@ export function GebruikersScreen() {
           </div>
         )}
         {gebruikers !== null && (
-          <div className="tabel-scroll">
+          <div className="tabel-scroll sticky-koppen">
             <table>
               <tbody>
                 <tr>
@@ -464,7 +464,7 @@ export function GebruikersScreen() {
           <p className="hint">Nog geen klant-accordeurs — nodig er een uit om de accorderingsflow te activeren.</p>
         )}
         {accordeurs.length > 0 && (
-          <div className="tabel-scroll">
+          <div className="tabel-scroll sticky-koppen">
             <table>
               <tbody>
                 <tr>
