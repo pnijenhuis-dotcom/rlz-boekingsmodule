@@ -506,8 +506,20 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   namens Y", audit + zichtbaar bij de keuring). Kantoor beheert keurders per
   uitvoerder↔project én detacheerder↔zzp'er (Beheerder-only, audit). Goedgekeurde staat =
   getekende urenstaat, onmuteerbaar (wijzigen alleen via nieuwe afkeuring) = basis
-  factuurmatch (ZZP-factuur vs staat; bureaufactuur vs som van de staten; **match-motor +
-  autoboek = latere fase met eigen akkoord**, datamodel bereidt voor).
+  factuurmatch. **Factuurmatch: verkenning + fasering AKKOORD (Peter 2026-08-21, vier
+  richtingbesluiten — BESLISSINGEN "FACTUURMATCH ZZP-/BUREAUFACTUREN" is canoniek):**
+  (1) bureau-tarief per detacheerder↔zzp'er-koppeling = hoofdmechanisme (bureaufactuur =
+  som van uren × tarief per ZZP'er; ontbrekend tarief = match alleen op uren, oranje "geen
+  tarief bekend", geen blokkade; los ZZP-tarief op de veldwerker↔crediteur-koppeling);
+  (2) boeken bij afwijking mág mét expliciete bevestiging ("geboekt ondanks
+  match-afwijking", tijdlijn + audit), autoboek-slot strikt groen incl. bedrag;
+  (3) afwijking = vlag + eigen teller/chip (duplicaat-patroon), geen enum-status;
+  (4) autoboek-opt-in per veldwerker-koppeling (default UIT). **Fase 1 GEBOUWD + GETEST
+  (2026-08-21, migratie 0057)**: veldwerker_crediteur + bureau-tarieven + factuurmatch(-staat)
+  + weekstaat-verrekening (dubbeltelling-preventie) + deterministische motor
+  `app/uren/factuurmatch.py`; fase 2 pipeline-integratie, fase 3 kantoor-UI + kleine
+  mockup-bijwerking (veldwerkers-paneel crediteur+tarieven, match-sectie — geen aparte
+  ontwerpronde), fase 4 autoboek-activatie = open.
   Meerwerk-kantoorkant: gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen
   rekening, verplichte reden); contract-toets stelt prijs voor uit de offerte-staffel, mens
   bevestigt (nooit auto-boeken); goedgekeurd + 2 weken niet op een verkoopfactuur =
