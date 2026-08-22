@@ -14,6 +14,7 @@ import { GebruikersScreen } from './gebruikers/GebruikersScreen'
 import { InstellingenScreen } from './instellingen/InstellingenScreen'
 import { MeerwerkScreen } from './meerwerk/MeerwerkScreen'
 import { OmzetReviewScreen } from './omzet/OmzetReviewScreen'
+import { PlanningScreen } from './planning/PlanningScreen'
 import { Shell } from './shell/Shell'
 import { VerkoopReviewScreen } from './verkoop/VerkoopReviewScreen'
 import { WaarborgReviewScreen } from './waarborg/WaarborgReviewScreen'
@@ -89,6 +90,7 @@ function BeschermdeRoutes() {
           }
         />
         <Route path="/meerwerk" element={<MeerwerkScreen />} />
+        <Route path="/planning" element={<PlanningScreen />} />
         <Route path="/gebruikers" element={<GebruikersScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>

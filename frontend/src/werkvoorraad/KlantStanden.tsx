@@ -305,14 +305,13 @@ export function KlantStanden({
         </div>
       )}
 
-      {/* Meerwerk & urenstaten (fase 3, mockup meerwerk-kantoor.html): standen alleen bij
-          teller > 0 én module-recht (de fetch geeft anders 403/409 en het blok bestaat niet). */}
-      {urenStand !== null &&
-        (urenStand.meerwerk_te_beoordelen > 0 ||
-          urenStand.meerwerk_nog_doorbelasten > 0 ||
-          urenStand.urenstaten_wachten_op_keuring > 0) && (
+      {/* Meerwerk & urenstaten (fase 3, mockup meerwerk-kantoor.html): het blok bestaat alleen
+          bij module-recht + opt-in (de fetch geeft anders 403/409); stand-RIJEN alleen bij
+          teller > 0 (toon-regel). De planning-agenda (akkoord 22-08) heeft hier haar vaste
+          ingang — plannen is proactief werk, dus die knop is niet teller-afhankelijk. */}
+      {urenStand !== null && (
           <div className="panel">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
               <h2 style={{ margin: 0 }}>🧱 Meerwerk &amp; urenstaten</h2>
               {urenStand.meerwerk_te_beoordelen > 0 && (
                 <Badge variant="warn">{urenStand.meerwerk_te_beoordelen} te beoordelen</Badge>
@@ -322,7 +321,26 @@ export function KlantStanden({
                   {urenStand.meerwerk_te_lang_niet_doorbelast} &gt; 2 weken niet doorbelast
                 </Badge>
               )}
+              <div style={{ marginLeft: 'auto' }}>
+                <Button
+                  variant="secundair"
+                  maat="klein"
+                  onClick={() => navigate(`/planning?administratie=${administratieId}`)}
+                >
+                  📅 Planning
+                </Button>
+              </div>
             </div>
+            {urenStand.meerwerk_te_beoordelen === 0 &&
+              urenStand.meerwerk_nog_doorbelasten === 0 &&
+              urenStand.urenstaten_wachten_op_keuring === 0 && (
+                <p className="hint" style={{ marginBottom: 0 }}>
+                  Geen openstaand meerwerk of urenstaten — plan vooruit via de planning-agenda.
+                </p>
+              )}
+            {(urenStand.meerwerk_te_beoordelen > 0 ||
+              urenStand.meerwerk_nog_doorbelasten > 0 ||
+              urenStand.urenstaten_wachten_op_keuring > 0) && (
             <div className="tabel-scroll">
               <table>
                 <tbody>
@@ -377,6 +395,7 @@ export function KlantStanden({
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
 
