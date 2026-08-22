@@ -726,6 +726,8 @@ class CrediteurKoppelingKaart:
     vendor_id: uuid.UUID
     vendor_naam: str | None
     uurtarief: Decimal | None
+    # Autoboek-opt-in per koppeling (factuurmatch fase 4, besluit 4 — default UIT).
+    autoboeken_ingeschakeld: bool
 
 
 @dataclass(frozen=True)
@@ -777,6 +779,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                         vendor_id=koppel.vendor_id,
                         vendor_naam=vendor.naam if vendor else None,
                         uurtarief=koppel.uurtarief,
+                        autoboeken_ingeschakeld=koppel.autoboeken_ingeschakeld,
                     )
                 )
             rijen = list(

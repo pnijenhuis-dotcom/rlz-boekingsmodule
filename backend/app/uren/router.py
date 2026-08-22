@@ -815,6 +815,24 @@ def beheer_veldwerker_crediteur_verwijderen(
         raise _vertaal(exc) from exc
 
 
+@router.post("/beheer/veldwerkercrediteuren/autoboeken", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_veldwerker_autoboeken(
+    payload: schemas.VeldwerkerAutoboekenRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    """Autoboek-opt-in per veldwerker-koppeling (factuurmatch fase 4, besluit 4 — Beheerder-
+    only, default UIT, geaudit). Het slot blijft strikt: alleen een GROENE match incl. bedrag
+    + álle bestaande poorten van het inkoop-autoboekpad boekt automatisch."""
+    try:
+        service.zet_veldwerker_autoboeken(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            ingeschakeld=payload.ingeschakeld,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
 @router.post("/beheer/detacheerderkoppelingen/tarief", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_detacheerder_tarief(
     payload: schemas.DetacheerderTariefRequest, actor: CurrentGebruiker = Depends(require_beheerder)

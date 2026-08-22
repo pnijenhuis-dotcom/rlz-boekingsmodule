@@ -117,6 +117,8 @@ export interface CrediteurKoppelingDto {
   vendor_id: string
   vendor_naam: string | null
   uurtarief: string | null
+  // Autoboek-opt-in per koppeling (factuurmatch fase 4, besluit 4 — default UIT).
+  autoboeken_ingeschakeld: boolean
 }
 
 export interface VeldgebruikerDto {
@@ -180,6 +182,21 @@ export async function ontkoppelVeldwerkerCrediteur(administratieId: string, gebr
   await apiPostJson('/uren/beheer/veldwerkercrediteuren/verwijderen', {
     administratie_id: administratieId,
     gebruiker_id: gebruikerId,
+  })
+}
+
+/** Autoboek-opt-in per veldwerker-koppeling (factuurmatch fase 4, Beheerder-only, default
+ * UIT). Het slot blijft strikt: alleen een GROENE match incl. bedrag + alle bestaande poorten
+ * van het inkoop-autoboekpad boekt automatisch. */
+export async function zetVeldwerkerAutoboeken(
+  administratieId: string,
+  gebruikerId: string,
+  ingeschakeld: boolean,
+): Promise<void> {
+  await apiPostJson('/uren/beheer/veldwerkercrediteuren/autoboeken', {
+    administratie_id: administratieId,
+    gebruiker_id: gebruikerId,
+    ingeschakeld,
   })
 }
 

@@ -1409,6 +1409,38 @@ def ontkoppel_veldwerker_crediteur(
         )
 
 
+def zet_veldwerker_autoboeken(
+    *, administratie_id: uuid.UUID, gebruiker_id: uuid.UUID, ingeschakeld: bool, actor_id: uuid.UUID
+) -> bool:
+    """Autoboek-opt-in per veldwerker-koppeling (factuurmatch fase 4, besluit 4 Peter
+    2026-08-21 — default UIT). Beheerder-only via de router; élke zetting — óók een
+    herbevestiging — gaat het audit_event in (zelfde conventie als de leverancier-opt-in,
+    app/documenten/autoboeken.py). Het slot zelf blijft strikt: autoboeken vuurt uitsluitend
+    bij een GROENE match incl. bedrag + álle bestaande poorten van het inkoop-autoboekpad."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        rij = session.get(VeldwerkerCrediteur, (administratie_id, gebruiker_id))
+        if rij is None:
+            raise NietGevonden(
+                "Deze veldwerker heeft geen crediteur-koppeling in deze administratie — koppel eerst"
+            )
+        oud = rij.autoboeken_ingeschakeld
+        rij.autoboeken_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="veldwerker_crediteur",
+            record_id=gebruiker_id,
+            actie="veldwerker_autoboeken_gewijzigd",
+            correlatie_id=rij.vendor_id,
+            oude_waarde={"autoboeken_ingeschakeld": oud},
+            nieuwe_waarde={"autoboeken_ingeschakeld": ingeschakeld},
+            administratie_id=administratie_id,
+        )
+    return ingeschakeld
+
+
 def zet_detacheerder_tarief(
     *, detacheerder_id: uuid.UUID, zzper_id: uuid.UUID, uurtarief: Decimal | None, actor_id: uuid.UUID
 ) -> None:

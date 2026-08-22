@@ -10,6 +10,7 @@ import {
   ontkoppelProject,
   ontkoppelVeldwerkerCrediteur,
   zetDetacheerderTarief,
+  zetVeldwerkerAutoboeken,
   type VeldgebruikerDto,
 } from '../meerwerk/meerwerkApi'
 import type { VendorLijstDto } from '../api/types'
@@ -24,6 +25,7 @@ import {
   FormField,
   MultiSelect,
   Select,
+  Switch,
   useToastOptioneel,
 } from '../ui/basis'
 import { rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
@@ -157,6 +159,11 @@ export function VeldwerkersPanel({
                                 € {c.vendor_naam ?? c.vendor_id}
                                 {c.uurtarief !== null && ` · ${tariefLabel(c.uurtarief)}`}
                               </Badge>{' '}
+                              {c.autoboeken_ingeschakeld && (
+                                <Badge variant="ok" title="Autoboeken bij een groene urenmatch (fase 4) staat aan voor deze koppeling">
+                                  ⚡ autoboeken
+                                </Badge>
+                              )}{' '}
                             </span>
                           ))}
                           <Button variant="ghost" maat="klein" onClick={() => setCrediteurModal(info)}>
@@ -449,6 +456,9 @@ function CrediteurModal({
   const huidige = veldwerker.crediteuren.find((c) => c.administratie_id === administratieId) ?? null
   const [vendorId, setVendorId] = useState('')
   const [tarief, setTarief] = useState('')
+  // Lokale spiegel van de autoboek-opt-in: de prop is een momentopname (de lijst herlaadt op
+  // de achtergrond terwijl de modal openstaat) — pas ná een geslaagde server-call bijgewerkt.
+  const [autoboeken, setAutoboeken] = useState(huidige?.autoboeken_ingeschakeld ?? false)
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
 
@@ -457,6 +467,7 @@ function CrediteurModal({
     const koppeling = veldwerker.crediteuren.find((c) => c.administratie_id === administratieId) ?? null
     setVendorId(koppeling?.vendor_id ?? '')
     setTarief(koppeling?.uurtarief ?? '')
+    setAutoboeken(koppeling?.autoboeken_ingeschakeld ?? false)
     setCrediteuren(null)
     setFout(null)
     apiJson<VendorLijstDto>(`/administraties/${administratieId}/crediteuren`)
@@ -494,6 +505,20 @@ function CrediteurModal({
       onSluiten()
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Ontkoppelen mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  async function wisselAutoboeken(ingeschakeld: boolean) {
+    setBezig(true)
+    setFout(null)
+    try {
+      await zetVeldwerkerAutoboeken(administratieId, veldwerker.gebruiker_id, ingeschakeld)
+      setAutoboeken(ingeschakeld) // pas ná de geslaagde server-call — nooit optimistisch
+      onGewijzigd()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Autoboeken wijzigen mislukt.')
     } finally {
       setBezig(false)
     }
@@ -555,6 +580,38 @@ function CrediteurModal({
               onChange={(e) => setTarief(e.target.value)}
             />
           </FormField>
+        )}
+        {/* Factuurmatch fase 4 (besluit 4, 21-08): autoboek-opt-in per koppeling — default
+            UIT, direct effect (eigen audit-actie, los van de opslaan-knop). Het slot blijft
+            strikt: alleen een GROENE match incl. bedrag + alle bestaande autoboek-poorten. */}
+        {huidige !== null && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              padding: '10px 12px',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+            }}
+          >
+            <Switch
+              id="crediteur-autoboeken"
+              aria-label="Automatisch boeken bij een groene urenmatch"
+              checked={autoboeken}
+              disabled={bezig}
+              onChange={(e) => void wisselAutoboeken(e.target.checked)}
+            />
+            <label htmlFor="crediteur-autoboeken" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              <b>Automatisch boeken bij een groene urenmatch</b>
+              <span style={{ display: 'block', color: 'var(--muted)' }}>
+                Boekt uitsluitend als de match GROEN is inclusief bedrag (tarief dus ingevuld) én alle vaste
+                autoboek-poorten slagen (harde checks, bevestigd boekingsgeheugen, geen duplicaat/vraag,
+                volumerem, accordering). Elke boeking draagt de markering &quot;automatisch&quot;; storno blijft de
+                terugweg. Wijziging werkt per direct en wordt geauditeerd.
+              </span>
+            </label>
+          </div>
         )}
         {fout && <div className="fout">{fout}</div>}
         <DialogFooter>

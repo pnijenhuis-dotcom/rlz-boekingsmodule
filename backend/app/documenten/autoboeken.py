@@ -199,10 +199,22 @@ def _weiger(
 def probeer_autoboeken_na_extractie(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID
 ) -> AutoboekBesluit | None:
-    """Het autoboek-pad, aangeroepen ná de extractie (post-commit hook). Retourneert None
-    wanneer autoboeken hier per definitie niet aan de orde is (geen inkoopfactuur, geen
-    leverancier herkend, of opt-in uit — bewust géén audit-ruis), anders een AutoboekBesluit
-    (geboekt of geweigerd-met-reden, altijd geauditeerd)."""
+    """Het autoboek-pad, aangeroepen ná de extractie (post-commit hook) én — voor
+    veldwerker-crediteuren — ná een weekstaat-goedkeuring die de match groen maakt
+    (factuurmatch fase 4, app/uren/factuurmatch_pipeline.py). Retourneert None wanneer
+    autoboeken hier per definitie niet aan de orde is (geen inkoopfactuur, geen leverancier
+    herkend, of opt-in uit — bewust géén audit-ruis), anders een AutoboekBesluit (geboekt of
+    geweigerd-met-reden, altijd geauditeerd).
+
+    Twee opt-in-kanalen, wederzijds exclusief per crediteur:
+    - leverancier-opt-in (blok 2, 2026-08-09) voor gewone crediteuren;
+    - veldwerker-opt-in (factuurmatch fase 4, besluit 4 Peter 2026-08-21): per
+      veldwerker-koppeling (default UIT), mét de extra poort dat de urenmatch strikt GROEN is
+      inclusief bedrag (uitkomst `match` — tarief dus ingevuld; alleen-uren/niet-toetsbaar/
+      afwijking autoboekt nooit) én er getekende weekstaten in de match zitten. Alle overige
+      poorten (harde checks, volledig app-bevestigd geheugen, duplicaat/vraag/afwijzing,
+      volumerem, accorderingspoort, boeken-toggle) gelden onverkort — de staten worden ín de
+      boek-transactie verrekend (fase 2)."""
     with scoped_session(administratie_id) as session:
         document = session.get(Document, document_id)
         if document is None or document.soort != DocumentSoort.INKOOPFACTUUR.value:
@@ -215,21 +227,23 @@ def probeer_autoboeken_na_extractie(
     voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     if voorstel.vendor_id is None:
         return None  # geen herkende leverancier → sowieso mensenwerk
-    if not _autoboeken_ingeschakeld(administratie_id=administratie_id, vendor_id=voorstel.vendor_id):
-        return None
 
-    # Vanaf hier is autoboeken expliciet aangezet — elke uitkomst wordt geauditeerd.
-    # Runtime-vangnet (factuurmatch fase 2): aanzetten wordt sinds die fase geweigerd voor een
-    # gekoppelde crediteur, maar een opt-in van vóór de koppeling blijft anders stil werken —
-    # en zou de urenmatch omzeilen. Autoboeken hier = alleen via fase 4 (per veldwerker).
     from app.uren.factuurmatch import vind_veldwerker_koppeling
 
     with scoped_session(administratie_id) as session:
-        veldwerker_gekoppeld = (
-            vind_veldwerker_koppeling(session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
-            is not None
+        koppeling = vind_veldwerker_koppeling(
+            session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id
         )
-    if veldwerker_gekoppeld:
+        veldwerker_gekoppeld = koppeling is not None
+        veldwerker_opt_in = bool(koppeling and koppeling.autoboeken_ingeschakeld)
+    legacy_opt_in = _autoboeken_ingeschakeld(administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
+
+    if veldwerker_gekoppeld and not veldwerker_opt_in:
+        if not legacy_opt_in:
+            return None  # geen enkel autoboek-kanaal aan — de default voor alles
+        # Runtime-vangnet (factuurmatch fase 2): aanzetten wordt sinds die fase geweigerd voor
+        # een gekoppelde crediteur, maar een opt-in van vóór de koppeling blijft anders stil
+        # werken — en zou de urenmatch omzeilen. Autoboeken hier = alleen via fase 4.
         return _weiger(
             administratie_id=administratie_id,
             document_id=document_id,
@@ -238,6 +252,41 @@ def probeer_autoboeken_na_extractie(
                 "niet (urenmatch; autoboeken alleen via de veldwerker-opt-in, fase 4)"
             ),
         )
+    if not veldwerker_gekoppeld and not legacy_opt_in:
+        return None
+
+    # Vanaf hier is autoboeken expliciet aangezet — elke uitkomst wordt geauditeerd.
+    bron = "veldwerker_opt_in" if veldwerker_gekoppeld else "leverancier_opt_in"
+
+    if veldwerker_gekoppeld:
+        # Fase-4-poort (besluit 2 + 4): het autoboek-slot is uitsluitend groen bij `match` —
+        # bedrag getoetst en kloppend (tarief dus ingevuld). Alles anders blijft mensenwerk.
+        from app.uren.factuurmatch_pipeline import lees_match
+
+        match = lees_match(administratie_id=administratie_id, document_id=document_id)
+        if match is None:
+            return _weiger(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                reden="geen matchresultaat voor dit document — de urenmatch is de autoboek-poort",
+            )
+        if match.uitkomst != "match":
+            cijfers = (
+                f"staten {match.staten_som_uren} u / € {match.staten_som_bedrag}"
+                f" vs factuur € {match.factuur_bedrag}"
+            )
+            return _weiger(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                reden=f"urenmatch niet groen (uitkomst: {match.uitkomst} — {cijfers}) — mens beoordeelt",
+            )
+        if not (match.details or {}).get("staten"):
+            return _weiger(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                reden="urenmatch zonder getekende weekstaten — niets te verrekenen, mens beoordeelt",
+            )
+
     if mogelijk_duplicaat:
         return _weiger(
             administratie_id=administratie_id,
@@ -302,7 +351,7 @@ def probeer_autoboeken_na_extractie(
             administratie_id=administratie_id,
             document_id=document_id,
             actor_id=SYSTEEM_ACTOR_ID,
-            extra_overgang_detail={"automatisch_geboekt": True, "bron": "leverancier_opt_in"},
+            extra_overgang_detail={"automatisch_geboekt": True, "bron": bron},
         )
     except boeken_service.BoekenGeblokkeerdDoorChecks as exc:
         geblokkeerd = [f"{r.naam}: {r.melding}" for r in exc.rapport.resultaten if not r.ok]
@@ -335,7 +384,11 @@ def probeer_autoboeken_na_extractie(
             record_id=document_id,
             actie="automatisch_geboekt",
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"vendor_id": str(voorstel.vendor_id), "referentie": voorstel.referentie},
+            nieuwe_waarde={
+                "vendor_id": str(voorstel.vendor_id),
+                "referentie": voorstel.referentie,
+                "bron": bron,
+            },
             administratie_id=administratie_id,
         )
-    return AutoboekBesluit(geboekt=True, reden="automatisch geboekt (opt-in leverancier)")
+    return AutoboekBesluit(geboekt=True, reden=f"automatisch geboekt ({bron})")

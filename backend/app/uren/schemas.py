@@ -292,6 +292,8 @@ class CrediteurKoppelingDto(BaseModel):
     vendor_id: uuid.UUID
     vendor_naam: str | None = None
     uurtarief: Decimal | None = None
+    # Autoboek-opt-in per koppeling (factuurmatch fase 4, besluit 4 — default UIT).
+    autoboeken_ingeschakeld: bool = False
 
 
 class VeldgebruikerDto(BaseModel):
@@ -332,6 +334,14 @@ class VeldwerkerCrediteurRequest(StrikteInvoer):
 class VeldwerkerCrediteurVerwijderRequest(StrikteInvoer):
     administratie_id: uuid.UUID
     gebruiker_id: uuid.UUID
+
+
+class VeldwerkerAutoboekenRequest(StrikteInvoer):
+    """Autoboek-opt-in per veldwerker-koppeling (factuurmatch fase 4, default UIT)."""
+
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    ingeschakeld: bool
 
 
 class DetacheerderTariefRequest(StrikteInvoer):

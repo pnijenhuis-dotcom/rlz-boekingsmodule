@@ -84,6 +84,7 @@ describe('VeldwerkersPanel — crediteur & tarieven (factuurmatch fase 3)', () =
             vendor_id: VENDOR_ID,
             vendor_naam: 'Milan K. Montage',
             uurtarief: '42.50',
+            autoboeken_ingeschakeld: false,
           },
         ],
         uren_afwijking_aantal: 2,
@@ -97,6 +98,27 @@ describe('VeldwerkersPanel — crediteur & tarieven (factuurmatch fase 3)', () =
     // afwijkings-logging (besluit 22-08): optelbaar per veldwerker, alleen hier — kantoor
     expect(screen.getByText(/2× correctie bij keuring/)).toBeInTheDocument()
     expect(screen.getByText(/3,5\s*u\s*meer ingediend dan goedgekeurd/)).toBeInTheDocument()
+    // Autoboek-opt-in (fase 4) staat UIT — geen ⚡-badge.
+    expect(screen.queryByText(/⚡ autoboeken/)).not.toBeInTheDocument()
+  })
+
+  it('toont de ⚡-badge zodra de autoboek-opt-in (fase 4) op de koppeling aanstaat', async () => {
+    installMock([
+      veldGebruiker({
+        crediteuren: [
+          {
+            administratie_id: ADMINISTRATIE_ID,
+            administratie_naam: 'Universal Steigerbouw',
+            vendor_id: VENDOR_ID,
+            vendor_naam: 'Milan K. Montage',
+            uurtarief: '42.50',
+            autoboeken_ingeschakeld: true,
+          },
+        ],
+      }),
+    ])
+    renderPaneel([overzichtGebruiker({})])
+    await waitFor(() => expect(screen.getByText(/⚡ autoboeken/)).toBeInTheDocument())
   })
 
   it('toont zonder koppeling de koppel-knop + hint en bij de detacheerder het bureau-tarief per ZZP\'er', async () => {

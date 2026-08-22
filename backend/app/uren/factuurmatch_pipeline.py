@@ -25,6 +25,7 @@ afhangen. De berekening zelf wordt bewust niet geauditeerd (deterministisch afge
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,6 +40,8 @@ from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Document, DocumentStatus
 from app.uren.factuurmatch import FactuurmatchData, bereken_match_in_sessie
 from app.uren.models import Factuurmatch
+
+logger = logging.getLogger(__name__)
 
 # Terminale documentstatussen: een match op zo'n document wordt nooit meer ververst (geboekt =
 # vastgelegd resultaat; verwijderd/gesplitst = geen werk meer).
@@ -253,7 +256,14 @@ def herbereken_voor_veldwerker(*, administratie_id: uuid.UUID, gebruiker_id: uui
     """Ná een weekstaat-goedkeuring: ververs elke bestaande match waarin deze ZZP'er meetelt —
     de eigen ZZP-koppeling én de bureaufacturen van detacheerders waaraan die gekoppeld is.
     Alleen matches op niet-terminale documenten (een geboekt document is vastgelegd).
-    Retourneert het aantal ververste matches (logging/tests)."""
+    Retourneert het aantal ververste matches (logging/tests).
+
+    Factuurmatch fase 4: wordt een match hier GROEN (`match`), dan krijgt het document direct
+    een autoboek-poging — de ZZP-factuur ligt er in de praktijk vaak eerder dan de
+    goedgekeurde week, dus de extractie-hook alleen zou de opt-in bijna nooit laten vuren.
+    `probeer_autoboeken_na_extractie` doet zelf alle poorten (opt-in per koppeling, harde
+    checks, geheugen, accordering, volumerem); een fout is een gelogde waarschuwing — de
+    keuring/herberekening blokkeert nooit."""
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         detacheerder_ids = session.scalars(
             select(DetacheerderKoppeling.detacheerder_gebruiker_id).where(
@@ -273,6 +283,17 @@ def herbereken_voor_veldwerker(*, administratie_id: uuid.UUID, gebruiker_id: uui
 
     ververst = 0
     for document_id in document_ids:
-        if draai_match_voor_document(administratie_id=administratie_id, document_id=document_id) is not None:
-            ververst += 1
+        data = draai_match_voor_document(administratie_id=administratie_id, document_id=document_id)
+        if data is None:
+            continue
+        ververst += 1
+        if data.uitkomst == "match":
+            from app.documenten import autoboeken  # lokaal: houdt de importgraaf klein
+
+            try:
+                autoboeken.probeer_autoboeken_na_extractie(
+                    administratie_id=administratie_id, document_id=document_id
+                )
+            except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
+                logger.exception("Autoboeken-poging na weekstaat-goedkeuring mislukt (document %s)", document_id)
     return ververst
