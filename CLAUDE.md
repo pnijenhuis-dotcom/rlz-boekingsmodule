@@ -399,8 +399,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   concept vrij) vóór álle bestaande storno-paden: bank-direct én doorbelasting (alles-of-niets
   over bron + doel, per kant zichtbaar waarom; UI-knop disabled mét melding via de
   storno-toets-leesroute; interne rollback-storno's ín een boek-transactie bewust niet gepoort
-  — btw-netto-nul). Suppletie-signaal > € 1.000 en tegenboek-pad blijven GEPARKEERD voor een
-  eigen ontwerp-/UX-ronde (apart akkoord). Kliktest-herstart geverifieerd (BESLISSINGEN
+  — btw-netto-nul). **Het tegenboek-pad is GEBOUWD + GETEST
+  (2026-08-22, migratie 0061 — mockup tegenboek-mockup.html; het suppletie-signaal is
+  definitief GESCHRAPT, besluit Peter 22-08): is storno door de aangifte-poort geblokkeerd,
+  dan biedt het controlescherm (en het ⋯-menu in het archief) "Tegenboeken…" — een NIEUWE
+  PurchaseInvoice met gespiegelde negatieve regels op dezelfde Entity, boekdatum vandaag
+  (btw = negatieve voorbelasting in de open periode, STAP-0 api-verkenning "Tegenboek-pad
+  STAP 0"); volledig (chip TEGENGEBOEKT + kruisverwijzing) óf tegenboeken-én-opnieuw-boeken
+  (GEBOEKT→te_controleren, boek_cyclus+1 — herboeking op een eigen RLZ-GUID, uitgezonderd
+  van het duplicaatsignaal); harde checks onverkort, verplichte reden, betaalstatus-
+  waarschuwing (open creditpost); vastgoed krijgt het als factuur_geboekt-event met
+  negatieve regels (creditnota-norm §3a), bewust géén factuur_gestorneerd. Zie BESLISSINGEN
+  "TEGENBOEK-PAD".** Kliktest-herstart geverifieerd (BESLISSINGEN
   "KLIKTEST-HERSTART"): her-PUT op een bestaand concept vervángt de DocumentLineList (live
   bewezen, api-verkenning "Her-PUT op een bestaand concept"). **Kliktest 2 strandde alsnog
   op de bijlage-upload (nazorg ronde 3, gefikst + getest 2026-08-16): RLZ's /Uploads kent
@@ -492,6 +502,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   dekkingscontrole vs OVH-project) — nooit geboekt in RLZ.
 - **Projectcode-generatie** volgens naamconventie van de klant (bijv. Universal: "26xxx Plaats
   (Opdrachtgever)"), synct bij aanmaken naar RLZ.
+  **Kantoor-projectenmodule (mockup projecten-invoer.html, akkoord + GEBOUWD + GETEST
+  2026-08-22, migratie 0062 — BESLISSINGEN "PROJECTENMODULE KANTOOR" is canoniek):**
+  projectenlijst + detail met specs/contract-&-offerte-upload/verrekenstaffels/leverancier-
+  werknummers (schrijven = Beheerder + Boekhouding+Projecten, lezen = kantoorrol + scope),
+  contract-ontleding als AI-VOORSTEL per regel (per-administratie AVG-gate
+  ai_extractie_ingeschakeld + AI-kostengrens; bevestigen = deterministisch opslaan), nieuw
+  project via de bestaande RLZ-projectmotor-bouwstenen ("26127 Tilburg (Heijmans)"), en het
+  resultaat per project + cumulatief overzicht (analytische laag — project_regel_cache uit
+  RLZ-Lines mét projectref, `make projecten-cijfers-sync`; onderweg = getekende onverrekende
+  uren × tarief (ontbrekend tarief = onbepaalbaar, nooit gokken) + goedgekeurd meerwerk;
+  werkweek-herleiding via verrekende weekstaten; zelfde rekenfunctie voor detail én
+  overzicht; nooit geboekt in RLZ, excl. AK-opslag; géén suppletie-signaal — besluit 22-08).
 - **Uren & meerwerk (steigerbouw-tak — ontwerpronde + BOUW GO Peter 2026-08-21):**
   het fase-4-item "urenportaal ZZP'ers" is naar voren getrokken; twee mockups definitief
   goedgekeurd: `mockup/uren-uitvoerder.html` (veldkant, zelfde native app als de accordeur,
@@ -564,6 +586,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   buiten planning = oranje `buiten_planning`-vlag bij de keuring (geen blokkade); dubbele
   dag zonder dekking = interne melding + 30-dagen-teller per ZZP'er, uitsluitend kantoor.
   Toegang onder module-recht "Meerwerk & urenstaten" + uren-&-meerwerk-opt-in.
+  **Jaaragenda + bruikbaarheids-fixes (besluiten Peter 22-08, GEBOUWD + GETEST zelfde dag —
+  geen migratie):** vrij vooruit plannen onbegrensd (géén week-kopieerknop — het hele jaar
+  wordt vooruit gevuld; project-einddatum = zacht oranje signaal, geen blokkade), week in de
+  URL (`?week=2026-W41`) mét weekkiezer, grid toont alleen projecten mét planning in de
+  zichtbare week + zoekbare "+ project toevoegen"-rij (endpoint
+  `/uren/kantoor/planning/projecten`), drag & drop gerepareerd + volwaardig klik-alternatief
+  (cel aanklikken → persoon kiezen), opmaak conform de bijgewerkte mockup.
   Meerwerk-kantoorkant: gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen
   rekening, verplichte reden); contract-toets stelt prijs voor uit de offerte-staffel, mens
   bevestigt (nooit auto-boeken); goedgekeurd + 2 weken niet op een verkoopfactuur =
@@ -712,6 +741,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - `mockup/planning-steigerbouw.html` — definitief goedgekeurde mockup planning-agenda
   (v2, Peter 2026-08-22; GEBOUWD 2026-08-22) — de bouwnorm voor `/planning` + de
   veld-app-planningweergave
+- `mockup/tegenboek-mockup.html` — definitief goedgekeurde mockup tegenboek-pad (Peter
+  2026-08-22, suppletie-signaal geschrapt; GEBOUWD 2026-08-22) — de bouwnorm
+- `mockup/projecten-invoer.html` — definitief goedgekeurde mockup kantoor-projectenmodule
+  (Peter 2026-08-22, incl. resultaat per project + cumulatief; GEBOUWD 2026-08-22) — de
+  bouwnorm
 - `verkenning/api-verkenning.md` — alle geverifieerde API-feiten + PoC-resultaten
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
