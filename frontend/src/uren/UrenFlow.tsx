@@ -30,13 +30,16 @@ import {
   haalWeekstaat,
   haalZzpProjecten,
   haalZzpWeken,
+  heeftVoorstel,
   keurWeekAf,
   keurWeekGoed,
   meldMeerwerk,
   urenLabel,
+  voorstelLabel,
   weekDagen,
   weekTotaalLabel,
   zetDag,
+  type DagCorrectieInvoer,
   type IngediendeWeekDto,
   type MeerwerkDto,
   type ProjectDetailDto,
@@ -73,7 +76,7 @@ type Scherm =
   | { s: 'meerwerkVraag'; kaart: UitvoerderProjectKaartDto; melding: MeerwerkDto }
   | { s: 'keurlijst' }
   | { s: 'keurdetail'; item: TeKeurenItemDto }
-  | { s: 'keurafwijs'; item: TeKeurenItemDto }
+  | { s: 'keurafwijs'; item: TeKeurenItemDto; staat: WeekstaatDto }
 
 function chipVoorWeekStatus(status: WeekKaartDto['status']): { klasse: string; label: string } {
   switch (status) {
@@ -372,7 +375,7 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
             item={scherm.item}
             vangFout={vangFout}
             terug={() => setScherm({ s: 'keurlijst' })}
-            naarAfwijzen={() => setScherm({ s: 'keurafwijs', item: scherm.item })}
+            naarAfwijzen={(staat) => setScherm({ s: 'keurafwijs', item: scherm.item, staat })}
             naAkkoord={() => {
               toon('Week goedgekeurd — dit is nu de getekende urenstaat.')
               laadTeKeurenTeller()
@@ -383,6 +386,7 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
         {scherm.s === 'keurafwijs' && (
           <KeurAfwijsView
             item={scherm.item}
+            staat={scherm.staat}
             vangFout={vangFout}
             terug={() => setScherm({ s: 'keurdetail', item: scherm.item })}
             naAfkeuren={() => {
@@ -457,8 +461,7 @@ function ZzpProjectenView({
         <div className="acc-notitie" style={{ margin: '0 0 12px' }}>
           <span>✍️</span>
           <span>
-            Je werkt nu <b>namens {namens.naam}</b> — exact dezelfde schermen als de ZZP'er zelf. Elke invoer wordt
-            vastgelegd als "ingevuld door jou, namens {namens.naam}" (zichtbaar bij de keuring en in het audit-log).
+            Je werkt nu <b>namens {namens.naam}</b> — elke invoer wordt zo vastgelegd (zichtbaar bij de keuring).
           </span>
         </div>
       )}
@@ -485,14 +488,6 @@ function ZzpProjectenView({
           )}
         </button>
       ))}
-      {projecten !== null && projecten.length > 0 && (
-        <div className="acc-notitie">
-          <span>ℹ️</span>
-          <span>
-            Je ziet alleen projecten waar je aan gekoppeld bent. <b>Open</b> = weken met dagen zonder uren/m².
-          </span>
-        </div>
-      )}
     </div>
   )
 }
@@ -660,12 +655,14 @@ function WeekstaatView({
                 </div>
               )
             }
+            const toonVoorstel = echteStaat?.status === 'corrigeren' && heeftVoorstel(dag)
             return (
               <div key={datum} className="acc-dagrij">
                 <span className="acc-dag">{naam}</span>
                 <span className="acc-proj">
                   {dag.opmerking ?? '—'}
                   {dag.namens && <small>ingevuld door {dag.ingevuld_door_naam ?? 'detacheerder'}</small>}
+                  {toonVoorstel && <small className="acc-voorstel">voorstel keurder: {voorstelLabel(dag)}</small>}
                 </span>
                 <span className="acc-u">{urenLabel(dag.uren, dag.m2)}</span>
                 {muteerbaar && (
@@ -686,14 +683,20 @@ function WeekstaatView({
             <div className="acc-afwijs">
               <b>Week afgekeurd{echteStaat.afgekeurd_door_naam ? ` door ${echteStaat.afgekeurd_door_naam}` : ''}:</b>{' '}
               "{echteStaat.afkeur_reden}" — corrigeer en dien de <b>week</b> opnieuw in.
+              {echteStaat.dagen.some(heeftVoorstel) && (
+                <>
+                  {' '}
+                  De keurder deed per dag een <b>voorstel</b> (paars) — jij beslist: overnemen of zelf aanpassen.
+                </>
+              )}
             </div>
           )}
           {echteStaat?.status === 'goedgekeurd' && (
             <div className="acc-notitie">
               <span>🔒</span>
               <span>
-                Goedgekeurd{echteStaat.goedgekeurd_door_naam ? ` door ${echteStaat.goedgekeurd_door_naam}` : ''} — dit
-                is de <b>getekende urenstaat</b>. Wijzigen kan alleen als de uitvoerder de week opnieuw afkeurt.
+                Goedgekeurd{echteStaat.goedgekeurd_door_naam ? ` door ${echteStaat.goedgekeurd_door_naam}` : ''} — de{' '}
+                <b>getekende urenstaat</b>; wijzigen kan alleen via een nieuwe afkeuring.
               </span>
             </div>
           )}
@@ -715,8 +718,7 @@ function WeekstaatView({
         <div className="acc-notitie">
           <span>ℹ️</span>
           <span>
-            Indienen kan t/m <b>maandag 09:00</b>. Niet gewerkt op een dag? Laat leeg en dien in — dat telt als 0 uur
-            op dit project.
+            Indienen kan t/m <b>maandag 09:00</b> · lege dag telt als 0 uur.
           </span>
         </div>
       )}
@@ -806,12 +808,30 @@ function DagInvoerView({
           Opmerking (optioneel)
           <input type="text" placeholder="bijv. wachttijd i.v.m. levering" value={opmerking} onChange={(e) => setOpmerking(e.target.value)} />
         </label>
+        {bestaand && heeftVoorstel(bestaand) && (
+          <div className="acc-notitie">
+            <span>✏️</span>
+            <span>
+              Voorstel van de keurder: <b className="acc-voorstel-inline">{voorstelLabel(bestaand)}</b> — jij beslist.{' '}
+              <button
+                type="button"
+                className="acc-plus"
+                onClick={() => {
+                  if (bestaand.voorstel_uren !== null) setUren(bestaand.voorstel_uren)
+                  if (bestaand.voorstel_m2 !== null) setM2(bestaand.voorstel_m2)
+                }}
+              >
+                overnemen
+              </button>
+            </span>
+          </div>
+        )}
         <div className="acc-notitie">
           <span>➕</span>
           <span>
             {dagNaam === 'za' || dagNaam === 'zo'
               ? 'Weekenddag — alleen invullen als er echt gewerkt is.'
-              : 'Zelfde dag óók op een ander project gewerkt? Vul die uren dáár in — elke week hangt aan één project.'}
+              : 'Zelfde dag op een ander project gewerkt? Vul die uren dáár in.'}
           </span>
         </div>
         {fout && <FoutRegel tekst={fout} />}
@@ -878,8 +898,7 @@ function IngediendView({
         <div className="acc-notitie">
           <span>🔒</span>
           <span>
-            Een goedgekeurde week is de <b>getekende urenstaat</b>: jouw factuur wordt hier automatisch tegen
-            gecontroleerd.
+            Een goedgekeurde week is de <b>getekende urenstaat</b> — de basis voor de factuurcontrole.
           </span>
         </div>
       )}
@@ -931,8 +950,7 @@ function DetaZzpersView({ vangFout, kies }: { vangFout: (err: unknown) => string
       <div className="acc-notitie">
         <span>🔒</span>
         <span>
-          Je vult de weekstaten in <b>namens</b> de ZZP'ers die het kantoor aan jou gekoppeld heeft — daarna zie je
-          exact dezelfde schermen als de ZZP'er zelf. Projectinhoud (specs, contract, meerwerk) blijft onzichtbaar.
+          Je vult weekstaten in <b>namens</b> gekoppelde ZZP'ers; projectinhoud blijft onzichtbaar.
         </span>
       </div>
     </div>
@@ -997,12 +1015,6 @@ function UitvProjectenView({
           </span>
         </button>
       ))}
-      {projecten !== null && projecten.length > 0 && (
-        <div className="acc-notitie">
-          <span>👷</span>
-          <span>Je ziet alleen projecten waar het kantoor jou als uitvoerder aan gekoppeld heeft.</span>
-        </div>
-      )}
     </div>
   )
 }
@@ -1404,8 +1416,7 @@ function KeurLijstView({
         <div className="acc-notitie">
           <span>🔑</span>
           <span>
-            Jij keurt de projecten die het kantoor aan jou heeft toegewezen. Na jouw akkoord is de staat de{' '}
-            <b>getekende urenstaat</b>; het kantoor blijft de eindpoort bij de factuurcontrole.
+            Na jouw akkoord is de staat de <b>getekende urenstaat</b>.
           </span>
         </div>
       )}
@@ -1423,7 +1434,7 @@ function KeurDetailView({
   item: TeKeurenItemDto
   vangFout: (err: unknown) => string
   terug: () => void
-  naarAfwijzen: () => void
+  naarAfwijzen: (staat: WeekstaatDto) => void
   naAkkoord: () => void
 }) {
   const [staat, setStaat] = useState<WeekstaatDto | null>(null)
@@ -1491,12 +1502,11 @@ function KeurDetailView({
       <div className="acc-notitie">
         <span>ℹ️</span>
         <span>
-          Keuren gaat per <b>week</b> — de dagen zie je hier alleen ter controle. Niet akkoord? Dan gaat de hele week
-          terug met een verplichte reden; de ZZP'er corrigeert en dient opnieuw in.
+          Keuren gaat per <b>week</b> — dagen alleen ter controle; afkeuren = hele week terug met reden.
         </span>
       </div>
       <div className="acc-actionbar">
-        <button className="acc-btn afwijs" disabled={bezig} onClick={naarAfwijzen}>
+        <button className="acc-btn afwijs" disabled={bezig || staat === null} onClick={() => staat && naarAfwijzen(staat)}>
           Week afkeuren…
         </button>
         <button className="acc-btn groen" disabled={bezig || staat === null} onClick={() => void akkoord()}>
@@ -1507,26 +1517,59 @@ function KeurDetailView({
   )
 }
 
+/** Invoerstaat van één correctievoorstel-rij in het afkeurscherm (hybride keuring, 22-08). */
+interface CorrectieInvoer {
+  uren: string
+  m2: string
+  opmerking: string
+}
+
 function KeurAfwijsView({
   item,
+  staat,
   vangFout,
   terug,
   naAfkeuren,
 }: {
   item: TeKeurenItemDto
+  staat: WeekstaatDto
   vangFout: (err: unknown) => string
   terug: () => void
   naAfkeuren: () => void
 }) {
   const [reden, setReden] = useState('')
+  const [correcties, setCorrecties] = useState<Record<string, CorrectieInvoer>>({})
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
+
+  // Alleen bestaande dagregels kunnen een voorstel dragen (backend-regel), in ma–zo-volgorde.
+  const dagen = weekDagen(item.jaar, item.weeknummer)
+    .map((d) => ({ ...d, dag: staat.dagen.find((x) => x.datum === d.datum) ?? null }))
+    .filter((d): d is typeof d & { dag: NonNullable<(typeof d)['dag']> } => d.dag !== null)
+
+  function zetCorrectie(datum: string, deel: Partial<CorrectieInvoer>) {
+    setCorrecties((huidig) => {
+      const basis = huidig[datum] ?? { uren: '', m2: '', opmerking: '' }
+      return { ...huidig, [datum]: { ...basis, ...deel } }
+    })
+  }
+
+  function alsPayload(): DagCorrectieInvoer[] {
+    return Object.entries(correcties)
+      .map(([datum, c]) => ({
+        datum,
+        uren: c.uren.trim() === '' ? null : c.uren.replace(',', '.'),
+        m2: c.m2.trim() === '' ? null : c.m2.replace(',', '.'),
+        opmerking: c.opmerking.trim() === '' ? null : c.opmerking.trim(),
+      }))
+      .filter((c) => c.uren !== null || c.m2 !== null || c.opmerking !== null)
+  }
 
   async function afkeuren() {
     setBezig(true)
     setFout(null)
     try {
-      await keurWeekAf(item.administratie_id, item.weekstaat_id, reden.trim())
+      await keurWeekAf(item.administratie_id, item.weekstaat_id, reden.trim(), alsPayload())
       naAfkeuren()
     } catch (err) {
       const tekst = vangFout(err)
@@ -1554,12 +1597,59 @@ function KeurAfwijsView({
         <div className="acc-notitie">
           <span>↩️</span>
           <span>
-            De hele week gaat terug naar {item.zzper_naam ?? "de ZZP'er"} als "corrigeren". Hij past aan en dient de
-            week opnieuw in.
+            De hele week gaat terug naar {item.zzper_naam ?? "de ZZP'er"} als "corrigeren"; hij dient zelf opnieuw in.
           </span>
         </div>
         {fout && <FoutRegel tekst={fout} />}
       </div>
+      {dagen.length > 0 && (
+        <div className="acc-card">
+          <div className="acc-seclabel" style={{ margin: '0 0 6px' }}>
+            Correctievoorstel per dag (optioneel)
+          </div>
+          {dagen.map(({ naam, datum, dag }) => (
+            <div key={datum} className="acc-dagrij acc-correctierij">
+              <span className="acc-dag">{naam}</span>
+              <span className="acc-proj">
+                <small>ingediend: {urenLabel(dag.uren, dag.m2)}</small>
+              </span>
+              <input
+                type="number"
+                inputMode="decimal"
+                className="acc-correctie-input"
+                placeholder="uren"
+                aria-label={`Voorstel uren ${naam}`}
+                value={correcties[datum]?.uren ?? ''}
+                onChange={(e) => zetCorrectie(datum, { uren: e.target.value })}
+              />
+              <input
+                type="number"
+                inputMode="decimal"
+                className="acc-correctie-input"
+                placeholder="m²"
+                aria-label={`Voorstel m² ${naam}`}
+                value={correcties[datum]?.m2 ?? ''}
+                onChange={(e) => zetCorrectie(datum, { m2: e.target.value })}
+              />
+              <input
+                type="text"
+                className="acc-correctie-opmerking"
+                placeholder="opmerking"
+                aria-label={`Voorstel opmerking ${naam}`}
+                value={correcties[datum]?.opmerking ?? ''}
+                onChange={(e) => zetCorrectie(datum, { opmerking: e.target.value })}
+              />
+            </div>
+          ))}
+          <div className="acc-notitie">
+            <span>✏️</span>
+            <span>
+              Jouw voorstel wijzigt níéts zelf — {item.zzper_naam ?? "de ZZP'er"} ziet het letterlijk in zijn
+              corrigeer-scherm en dient zelf opnieuw in.
+            </span>
+          </div>
+        </div>
+      )}
       <div className="acc-actionbar">
         <button className="acc-btn afwijs" disabled={bezig || reden.trim() === ''} onClick={() => void afkeuren()}>
           {bezig ? 'Bezig…' : 'Week afkeuren en terugsturen'}

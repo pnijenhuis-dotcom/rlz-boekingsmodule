@@ -13,6 +13,11 @@ export interface DagDto {
   opmerking: string | null
   ingevuld_door_naam: string | null
   namens: boolean
+  // Correctievoorstel van de laatste afkeuring (hybride keuring, besluit 22-08) — de app
+  // toont ze alleen in status 'corrigeren'; de keurder wijzigt nooit zelf de uren.
+  voorstel_uren: string | null
+  voorstel_m2: string | null
+  voorstel_opmerking: string | null
 }
 
 export interface WeekstaatDto {
@@ -254,8 +259,25 @@ export function keurWeekGoed(administratieId: string, weekstaatId: string): Prom
   return apiPostJson(`/uren/uitvoerder/weekstaten/${administratieId}/${weekstaatId}/akkoord`, {})
 }
 
-export function keurWeekAf(administratieId: string, weekstaatId: string, reden: string): Promise<WeekstaatDto> {
-  return apiPostJson(`/uren/uitvoerder/weekstaten/${administratieId}/${weekstaatId}/afkeuren`, { reden })
+/** Correctievoorstel per bestaande dagregel bij het afkeuren (hybride keuring, besluit
+ * 22-08): minstens één van uren/m²/opmerking gevuld — de backend valideert hard. */
+export interface DagCorrectieInvoer {
+  datum: string
+  uren: string | null
+  m2: string | null
+  opmerking: string | null
+}
+
+export function keurWeekAf(
+  administratieId: string,
+  weekstaatId: string,
+  reden: string,
+  correcties: DagCorrectieInvoer[] = [],
+): Promise<WeekstaatDto> {
+  return apiPostJson(`/uren/uitvoerder/weekstaten/${administratieId}/${weekstaatId}/afkeuren`, {
+    reden,
+    correcties,
+  })
 }
 
 export async function meldMeerwerk(payload: {
@@ -327,6 +349,24 @@ export function urenLabel(uren: string, m2: string | null): string {
   const u = Number(uren).toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
   if (m2 === null || Number(m2) === 0) return `${u} u · —`
   return `${u} u · ${Number(m2).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} m²`
+}
+
+/** Compacte weergave van het correctievoorstel van de keurder (hybride keuring, 22-08). */
+export function voorstelLabel(dag: DagDto): string {
+  const delen: string[] = []
+  if (dag.voorstel_uren !== null)
+    delen.push(
+      `${Number(dag.voorstel_uren).toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} u`,
+    )
+  if (dag.voorstel_m2 !== null)
+    delen.push(`${Number(dag.voorstel_m2).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} m²`)
+  const cijfers = delen.join(' · ')
+  if (dag.voorstel_opmerking) return cijfers ? `${cijfers} — "${dag.voorstel_opmerking}"` : `"${dag.voorstel_opmerking}"`
+  return cijfers
+}
+
+export function heeftVoorstel(dag: DagDto): boolean {
+  return dag.voorstel_uren !== null || dag.voorstel_m2 !== null || dag.voorstel_opmerking !== null
 }
 
 export function weekTotaalLabel(totaalUren: string, totaalM2: string): string {

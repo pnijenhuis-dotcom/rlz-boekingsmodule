@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { Checkbox, Select } from '../ui/basis'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { useAuthOptioneel } from '../auth/AuthContext'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   boekDirect,
@@ -369,6 +370,9 @@ function MutatieRij({
 export function BankDetailScreen() {
   const { administratieId } = useParams<{ administratieId: string }>()
   const { administraties } = useAdministraties()
+  // UI-nazorg 22-08: de handmatige RLZ-sync is Beheerder-only — de nachtelijke cloud-sync
+  // is voor de overige rollen de verversing. Fail-closed: geen auth-context = geen knop.
+  const isBeheerder = useAuthOptioneel()?.rol === 'beheerder'
   const [searchParams, setSearchParams] = useSearchParams()
   const rekeningId = searchParams.get('rekening')
 
@@ -593,9 +597,11 @@ export function BankDetailScreen() {
       <div className="panel">
         <h2>Onverwerkte bankmutaties</h2>
         <div className="actions" style={{ marginBottom: 8 }}>
-          <button className="btn secondary" onClick={() => void sync()} disabled={syncBezig || verifieerBezig}>
-            {syncBezig ? 'Synchroniseren…' : '⟳ Verversen uit Reeleezee'}
-          </button>
+          {isBeheerder && (
+            <button className="btn secondary" onClick={() => void sync()} disabled={syncBezig || verifieerBezig}>
+              {syncBezig ? 'Synchroniseren…' : '⟳ Verversen uit Reeleezee'}
+            </button>
+          )}
           <button
             className="btn secondary"
             onClick={() => void verifieerNu()}

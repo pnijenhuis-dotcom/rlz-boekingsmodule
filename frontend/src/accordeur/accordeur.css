@@ -160,6 +160,10 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
+  /* UI-nazorg 22-08: status-badges zijn een vaste rechterkolom in de lijstkaarten —
+     nooit mee-krimpen of midden in het label wrappen op smalle schermen. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .acc-chip::before {
   content: '';
@@ -895,6 +899,36 @@
 .acc-dagrij .acc-proj small {
   color: var(--acc-muted);
   display: block;
+}
+/* Correctievoorstel van de keurder (hybride keuring, 22-08) — paars, net als de
+   namens-context: het is andermans aantekening naast de eigen invoer, nooit de invoer zelf. */
+.acc-voorstel,
+.acc-dagrij .acc-proj small.acc-voorstel {
+  color: var(--acc-purple);
+  font-weight: 600;
+}
+.acc-voorstel-inline {
+  color: var(--acc-purple);
+}
+/* Correctievoorstel-invoer in het afkeurscherm van de keurder: compacte velden per dagrij. */
+.acc-correctierij {
+  flex-wrap: wrap;
+}
+.acc-correctierij input {
+  background: var(--acc-bg);
+  border: 1px solid var(--acc-border);
+  border-radius: 8px;
+  padding: 8px;
+  font-family: inherit;
+  color: inherit;
+  font-size: 16px; /* ≥16px — iOS zoomt anders in op focus (mockup-norm) */
+}
+.acc-correctie-input {
+  width: 72px;
+}
+.acc-correctie-opmerking {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 .acc-dagrij .acc-u {
   font-weight: 700;

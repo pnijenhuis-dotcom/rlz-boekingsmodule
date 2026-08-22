@@ -168,6 +168,15 @@
   /* "namens X"-context: alleen zichtbaar in de detacheerder-rol (gedeelde ZZP-schermen) */
   .namens { display: none; color: var(--purple); font-weight: 700; }
   body.rol-deta .namens { display: inline; }
+
+  /* Correctievoorstel van de keurder (hybride keuring, besluit Peter 22-08): paars —
+     andermans aantekening naast de eigen invoer, nooit de invoer zelf. */
+  .voorstel { color: var(--purple); font-weight: 600; }
+  .correctierij { flex-wrap: wrap; }
+  .correctierij input { background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px; font: inherit; font-size: 16px; color: inherit; }
+  .correctierij input.kort { width: 72px; }
+  .correctierij input.breed { flex: 1 1 100%; min-width: 0; }
 </style>
 </head>
 <body>
@@ -214,7 +223,6 @@
           <div><div class="tt">26008 Nijmegen (Dura Vermeer)</div><div class="meta">afgerond wk 31 · alles ingediend</div></div>
           <div style="text-align:right"><span class="chip akkoord">bij</span></div>
         </div>
-        <div class="notitie"><span>ℹ️</span><span>Je ziet alleen projecten waar je aan gekoppeld bent. <b>Open</b> = weken met dagen zonder uren/m².</span></div>
       </div>
 
       <!-- ============ ZZP · PROJECT: OPENSTAANDE WEKEN ============ -->
@@ -273,7 +281,7 @@
           </div>
           <div class="totbalk"><span class="k">Totaal week 34 op dit project</span><span>22,5 u · 215 m²</span></div>
         </div>
-        <div class="notitie"><span>ℹ️</span><span>Indienen kan t/m <b>maandag 09:00</b>. Niet gewerkt op een dag? Laat leeg en dien in — dat telt als 0 uur op dit project.</span></div>
+        <div class="notitie"><span>ℹ️</span><span>Indienen kan t/m <b>maandag 09:00</b> · lege dag telt als 0 uur.</span></div>
         <div class="actionbar">
           <button class="btn stil">Bewaren</button>
           <button class="btn primair" onclick="toon('historie'); document.querySelectorAll('#tabsZzp .functab').forEach((t,i)=>t.classList.toggle('actief',i===1))">Week indienen</button>
@@ -312,7 +320,7 @@
           <div><div class="tt">Wk 32 · 26014 Eindhoven · 38,0 u</div><div class="meta">week afgekeurd — tik voor toelichting</div></div>
           <span class="chip afgekeurd">afgekeurd</span>
         </div>
-        <div class="notitie"><span>🔒</span><span>Een goedgekeurde week is de <b>getekende urenstaat</b>: jouw factuur wordt hier automatisch tegen gecontroleerd.</span></div>
+        <div class="notitie"><span>🔒</span><span>Een goedgekeurde week is de <b>getekende urenstaat</b> — de basis voor de factuurcontrole.</span></div>
       </div>
 
       <!-- ============ ZZP · AFGEKEURDE WEEK ============ -->
@@ -322,8 +330,8 @@
         <div class="card">
           <div class="dagrij"><span class="dag">ma</span><span class="proj">steigerbouw</span><span class="u">8,0 u</span></div>
           <div class="dagrij"><span class="dag">di</span><span class="proj">steigerbouw</span><span class="u">8,0 u</span></div>
-          <div class="dagrij"><span class="dag">wo</span><span class="proj">steigerbouw</span><span class="u chip afgekeurd">10,0 u</span></div>
-          <div class="afwijs"><b>Week afgekeurd door Ben v. Dijk:</b> "Wo max 8 uur afgesproken op dit werk; overuren vooraf melden." — corrigeer en dien de <b>week</b> opnieuw in.</div>
+          <div class="dagrij"><span class="dag">wo</span><span class="proj">steigerbouw<small class="voorstel">voorstel keurder: 8,0 u — "max 8 u afgesproken"</small></span><span class="u chip afgekeurd">10,0 u</span></div>
+          <div class="afwijs"><b>Week afgekeurd door Ben v. Dijk:</b> "Wo max 8 uur afgesproken op dit werk; overuren vooraf melden." — corrigeer en dien de <b>week</b> opnieuw in. De keurder deed per dag een <b>voorstel</b> (paars) — jij beslist: overnemen of zelf aanpassen.</div>
         </div>
         <div class="actionbar">
           <button class="btn primair" onclick="toon('weekstaat')">Week corrigeren</button>
@@ -345,13 +353,13 @@
           <div><div class="tt">Ali D.</div><div class="meta">1 project · alles ingediend</div></div>
           <span class="chip akkoord">bij</span>
         </div>
-        <div class="notitie"><span>🔒</span><span>Je vult de weekstaten in <b>namens</b> de ZZP'ers die het kantoor aan jou gekoppeld heeft — daarna zie je exact dezelfde schermen als de ZZP'er zelf (projecten → open weken → uren + m² per dag). Projectinhoud (specs, contract, meerwerk) blijft onzichtbaar: per project alleen nummer en plaats.</span></div>
+        <div class="notitie"><span>🔒</span><span>Je vult weekstaten in <b>namens</b> gekoppelde ZZP'ers; projectinhoud blijft onzichtbaar.</span></div>
       </div>
 
       <!-- ============ DETACHEERDER · NA ZZP'ER-KEUZE: EXACT DE ZZP-SCHERMEN ============ -->
       <div class="view" id="detaWeken">
         <button class="terug" onclick="toon('detaZzpers')">‹ Mijn ZZP'ers</button>
-        <div class="notitie" style="margin:0 0 12px"><span>✍️</span><span>Je werkt nu <b>namens Milan K.</b> Vanaf hier zijn de schermen exact die van de ZZP'er zelf: projecten → open weken → weekstaat met uren + m² per dag → week indienen. Elke invoer wordt vastgelegd als "ingevuld door jou, namens Milan K." (zichtbaar bij de keuring en in het audit-log).</span></div>
+        <div class="notitie" style="margin:0 0 12px"><span>✍️</span><span>Je werkt nu <b>namens Milan K.</b> — elke invoer wordt zo vastgelegd (zichtbaar bij de keuring).</span></div>
         <div class="seclabel">Milan K. · projecten</div>
         <div class="card klik" onclick="toon('zzpProject')">
           <div><div class="tt">26014 Eindhoven (BAM)</div><div class="meta">steigerbouw · laatste invoer: wo wk 34</div></div>
@@ -379,7 +387,6 @@
           <div><div class="tt">26025 Breda (Van Wijnen)</div><div class="meta">start 1 sep · 2.600 m² contract</div></div>
           <div style="text-align:right"><span class="chip concept">start binnenkort</span></div>
         </div>
-        <div class="notitie"><span>👷</span><span>Je ziet alleen projecten waar het kantoor jou als uitvoerder aan gekoppeld heeft.</span></div>
       </div>
 
       <!-- ============ UITVOERDER · TE KEUREN URENSTATEN ============ -->
@@ -397,7 +404,7 @@
           <div><div class="tt">Milan K. · wk 34 · 26021 Tilburg</div><div class="meta">13,0 u · ingediend 24 aug 08:42</div></div>
           <span class="arrow">›</span>
         </div>
-        <div class="notitie"><span>🔑</span><span>Jij keurt de projecten die het kantoor aan jou heeft toegewezen (instelbaar per uitvoerder ↔ project, alleen door het kantoor). Na jouw akkoord is de staat de <b>getekende urenstaat</b>; het kantoor blijft de eindpoort bij de factuurcontrole.</span></div>
+        <div class="notitie"><span>🔑</span><span>Na jouw akkoord is de staat de <b>getekende urenstaat</b>.</span></div>
       </div>
 
       <!-- ============ UITVOERDER · URENSTAAT KEUREN ============ -->
@@ -419,7 +426,7 @@
           </div>
           <div class="totbalk"><span class="k">Totaal</span><span>22,5 u · 215 m²</span></div>
         </div>
-        <div class="notitie"><span>ℹ️</span><span>Keuren gaat per <b>week</b> — de dagen zie je hier alleen ter controle. Niet akkoord? Dan gaat de hele week terug met een verplichte reden; de ZZP'er corrigeert en dient opnieuw in.</span></div>
+        <div class="notitie"><span>ℹ️</span><span>Keuren gaat per <b>week</b> — dagen alleen ter controle; afkeuren = hele week terug met reden.</span></div>
         <div class="actionbar">
           <button class="btn rood" onclick="toon('keurafwijs')">Week afkeuren…</button>
           <button class="btn primair" onclick="toon('keurlijst')">Week akkoord</button>
@@ -434,7 +441,32 @@
           <div class="veld"><label>Reden (verplicht — gaat naar Milan K.)</label>
             <textarea rows="4" style="resize:vertical;min-height:96px;line-height:1.5" placeholder="bijv. wachttijd wo niet akkoord — vooraf melden bij Ben"></textarea>
           </div>
-          <div class="notitie"><span>↩️</span><span>De hele week gaat terug naar Milan K. als "corrigeren". Hij past aan en dient de week opnieuw in.</span></div>
+          <div class="notitie"><span>↩️</span><span>De hele week gaat terug naar Milan K. als "corrigeren"; hij dient zelf opnieuw in.</span></div>
+        </div>
+        <!-- Hybride keuring (besluit Peter 22-08): optioneel correctievoorstel per bestaande
+             dagregel — de keurder wijzigt nooit zelf andermans uren; de ZZP'er ziet het
+             voorstel letterlijk (paars) in zijn corrigeer-scherm en dient zelf opnieuw in. -->
+        <div class="card">
+          <div class="seclabel" style="margin:0 0 6px">Correctievoorstel per dag (optioneel)</div>
+          <div class="dagrij correctierij">
+            <span class="dag">ma</span><span class="proj"><small>ingediend: 8,0 u · 120 m²</small></span>
+            <input type="number" inputmode="decimal" class="kort" placeholder="uren">
+            <input type="number" inputmode="decimal" class="kort" placeholder="m²">
+            <input type="text" class="breed" placeholder="opmerking">
+          </div>
+          <div class="dagrij correctierij">
+            <span class="dag">di</span><span class="proj"><small>ingediend: 8,0 u · 95 m²</small></span>
+            <input type="number" inputmode="decimal" class="kort" placeholder="uren">
+            <input type="number" inputmode="decimal" class="kort" placeholder="m²">
+            <input type="text" class="breed" placeholder="opmerking">
+          </div>
+          <div class="dagrij correctierij">
+            <span class="dag">wo</span><span class="proj"><small>ingediend: 6,5 u · —</small></span>
+            <input type="number" inputmode="decimal" class="kort" placeholder="uren" value="6">
+            <input type="number" inputmode="decimal" class="kort" placeholder="m²">
+            <input type="text" class="breed" placeholder="opmerking" value="wachttijd max 6 u — vooraf melden">
+          </div>
+          <div class="notitie"><span>✏️</span><span>Jouw voorstel wijzigt níéts zelf — Milan K. ziet het letterlijk in zijn corrigeer-scherm en dient zelf opnieuw in.</span></div>
         </div>
         <div class="actionbar">
           <button class="btn rood" onclick="toon('keurlijst')">Week afkeuren en terugsturen</button>
@@ -531,7 +563,7 @@
     <h2>Rol 1 · Uren (ZZP)</h2>
     <p>Beginscherm = <b>mijn projecten</b> met open-teller → project = <b>openstaande weken</b> (incl. corrigeren-na-afkeuring) → week = dagen invullen (uren + m², m² optioneel) → indienen per week per project. "Ingediend" toont de statussen over alle projecten heen.</p>
     <h2>Rol 2 · Uitvoerder</h2>
-    <p>Projecten (specs, contract/offerte, meerwerk melden → meerwerklijst per project) én <b>Te keuren</b>: ingediende urenstaten van de projecten die het kantoor aan deze uitvoerder heeft toegewezen. Keuren gaat per <b>week</b> (besluit Peter 21-08): week akkoord of week afkeuren met verplichte reden — de hele week gaat dan terug naar de ZZP'er, die corrigeert en opnieuw indient. De dagen staan alleen ter controle in beeld.</p>
+    <p>Projecten (specs, contract/offerte, meerwerk melden → meerwerklijst per project) én <b>Te keuren</b>: ingediende urenstaten van de projecten die het kantoor aan deze uitvoerder heeft toegewezen. Keuren gaat per <b>week</b> (besluit Peter 21-08): week akkoord of week afkeuren met verplichte reden — de hele week gaat dan terug naar de ZZP'er, die corrigeert en opnieuw indient. De dagen staan alleen ter controle in beeld. <b>Hybride keuring (besluit Peter 22-08):</b> bij afkeuren kan de keurder per dag een <b>correctievoorstel</b> meegeven (uren en/of m² + opmerking); de ZZP'er ziet dat voorstel paars in zijn corrigeer-scherm en dient zelf opnieuw in — de keurder wijzigt nooit zelf andermans uren. Elke afkeuring mét voorstel wordt geregistreerd (afwijkings-logging, alleen zichtbaar voor kantoor).</p>
     <h2>Rol 3 · Detacheerder (toevoeging Peter 21-08)</h2>
     <p>Vult de weekstaten in namens de ZZP'ers die het kantoor aan hem koppelt — <b>zelfde velden als de ZZP'er zelf</b> (uren, m², opmerking), alleen dan voor meerdere mensen (besluit Peter 21-08). Ziet géén projectinhoud (specs/contract/meerwerk) — per project alleen nummer + plaats. Elke invoer draagt "ingevuld door X namens Y" (audit + zichtbaar bij de keuring); de uitvoerder keurt zoals altijd. Factuurmatch: de factuur van het detacheringsbureau wordt gematcht tegen de <b>som van de goedgekeurde staten</b> van zijn ZZP'ers in de periode.</p>
     <h2>Scope (besluit Peter 21-08)</h2>
