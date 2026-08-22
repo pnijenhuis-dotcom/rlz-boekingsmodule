@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
@@ -8,25 +8,34 @@ import { FoutMelding } from '../ui/FoutMelding'
 import {
   haalPlanning,
   isoWeekVan,
+  parseWeekParam,
   planToewijzing,
   schuifWeek,
   verplaatsToewijzing,
   verwijderToewijzing,
   weekDagen,
+  weekNaarParam,
   zetDagdeel,
+  zoekPlanningProjecten,
   type PlanningKaartDto,
+  type PlanningProjectRijDto,
+  type PlanningProjectZoekDto,
   type PlanningWeekDto,
 } from './planningApi'
 
-/* Planning-agenda steigerbouw (mockup planning-steigerbouw.html 1-op-1, definitief akkoord
- * Peter 22-08): ALLEEN actieve projecten als rijen, dagen (ma–vr) als kolommen, ZZP'ers/
- * uitvoerders als sleepbare kaartjes — meerdere per project/dag; halve dagen dragen een
- * ½-label. Slepen uit de pool = plannen (maakt de projectkoppeling automatisch aan, besluit
- * A); slepen tussen cellen = atomair verplaatsen. FAILSAFE: dezelfde persoon nooit 2× op
- * dezelfde dag op hetzélfde project — de cel weigert (rood), de backend-PK is het vangnet.
- * De zijbalk toont de pool (geplande dagen; > 5 = zacht signaal, besluit C), de controle-
- * meldingen (uren buiten planning · dubbele dag zonder dekking) en de dubbele-dag-teller —
- * uitsluitend zichtbaar voor kantoor. Toegang: module-recht 'Meerwerk & urenstaten'. */
+/* Planning-agenda steigerbouw (mockup planning-steigerbouw.html v2, definitief akkoord Peter
+ * 22-08 + jaaragenda-besluiten 22-08): het grid toont ALLEEN projecten mét planning in de
+ * zichtbare week; een leeg project komt erbij via de zoekbare "+ project toevoegen"-rij.
+ * Vrij vooruit plannen (weeknavigatie + weekkiezer, onbegrensd — het hele jaar wordt vooruit
+ * gevuld, besluit: géén week-kopieerknop); de URL draagt de week (?week=2026-W41) zodat een
+ * stand deelbaar/herlaadbaar is. Slepen uit de pool = plannen (maakt de projectkoppeling
+ * automatisch aan, besluit A); slepen tussen cellen = atomair verplaatsen; klik-alternatief:
+ * cel aanklikken → persoon kiezen uit de pool (DnD is nooit de enige weg — touch/trackpad).
+ * FAILSAFE: dezelfde persoon nooit 2× op dezelfde dag op hetzélfde project — de cel weigert
+ * (rood), de backend-PK is het vangnet. Plannen ná de project-einddatum mag: zacht oranje
+ * signaal op het kaartje (natuurlijke grens, geen blokkade). De zijbalk toont de pool
+ * (geplande dagen; > 5 = zacht signaal, besluit C), de controle-meldingen en de dubbele-dag-
+ * teller — uitsluitend kantoor. Toegang: module-recht 'Meerwerk & urenstaten'. */
 
 interface Sleep {
   gebruikerId: string
@@ -36,6 +45,10 @@ interface Sleep {
 
 function dagLabel(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString('nl-NL', { day: 'numeric', month: 'numeric' })
+}
+
+function lokaleIsoDatum(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function initialen(naam: string | null): string {
@@ -49,11 +62,15 @@ function initialen(naam: string | null): string {
 }
 
 export function PlanningScreen() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const administratieId = searchParams.get('administratie')
   const { administraties } = useAdministraties()
 
-  const [week, setWeek] = useState(() => isoWeekVan(new Date()))
+  // De URL draagt de week (?week=2026-W41) — deelbaar/herlaadbaar; ongeldig → huidige week.
+  const week = useMemo(
+    () => parseWeekParam(searchParams.get('week')) ?? isoWeekVan(new Date()),
+    [searchParams],
+  )
   const [data, setData] = useState<PlanningWeekDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [actieFout, setActieFout] = useState<string | null>(null)
@@ -62,13 +79,29 @@ export function PlanningScreen() {
   const [sleep, setSleep] = useState<Sleep | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null) // celkey "project|datum"
   const [weigerCel, setWeigerCel] = useState<string | null>(null) // failsafe-flits (rood)
+  const [kiesCel, setKiesCel] = useState<string | null>(null) // klik-alternatief: persoon kiezen
+  // "+ project toevoegen": lokaal bijgehaalde (nog lege) projectrijen + de zoekstaat.
+  const [extraProjecten, setExtraProjecten] = useState<PlanningProjectZoekDto[]>([])
+  const [zoekTerm, setZoekTerm] = useState('')
+  const [zoekResultaten, setZoekResultaten] = useState<PlanningProjectZoekDto[] | null>(null)
 
   const administratieNaam = useMemo(
     () => (administraties ?? []).find((a) => a.id === administratieId)?.naam ?? 'Administratie',
     [administraties, administratieId],
   )
 
-  const laad = useCallback(() => {
+  function zetWeek(w: { jaar: number; weeknummer: number }) {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev)
+        p.set('week', weekNaarParam(w))
+        return p
+      },
+      { replace: true },
+    )
+  }
+
+  function laad() {
     if (!administratieId) return
     setFout(null)
     haalPlanning(administratieId, week.jaar, week.weeknummer)
@@ -78,12 +111,28 @@ export function PlanningScreen() {
         else if (err instanceof ApiError && err.status === 409) setModuleUit(true)
         else setFout(err instanceof Error ? err.message : 'Onbekende fout')
       })
-  }, [administratieId, week])
+  }
 
   useEffect(() => {
     setData(null)
+    setKiesCel(null)
     laad()
-  }, [laad])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [administratieId, week.jaar, week.weeknummer])
+
+  // Zoekrij: licht debounced zoeken in de actieve projecten van de administratie.
+  useEffect(() => {
+    if (!administratieId || zoekTerm.trim() === '') {
+      setZoekResultaten(null)
+      return
+    }
+    const timer = window.setTimeout(() => {
+      zoekPlanningProjecten(administratieId, zoekTerm.trim())
+        .then(setZoekResultaten)
+        .catch(() => setZoekResultaten([]))
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [administratieId, zoekTerm])
 
   if (!administratieId) {
     return <p className="hint">Geen administratie gekozen — open de planning vanaf de klantpagina.</p>
@@ -102,6 +151,23 @@ export function PlanningScreen() {
 
   // Mockup: ma–vr als kolommen (weekendwerk loopt via de weekstaten, niet via de planning).
   const dagen = weekDagen(week.jaar, week.weeknummer).slice(0, 5)
+  const vandaagIso = lokaleIsoDatum(new Date())
+
+  // Grid-rijen: de server levert alleen projecten mét planning; de lokaal bijgehaalde extra
+  // projecten (zoekrij) staan eronder tot ze planning krijgen (dan komen ze uit de server).
+  const serverIds = new Set((data?.projecten ?? []).map((p) => p.project_id))
+  const extraRijen: PlanningProjectRijDto[] = extraProjecten
+    .filter((p) => !serverIds.has(p.project_id))
+    .map((p) => ({
+      project_id: p.project_id,
+      project_naam: p.naam,
+      opdrachtgever: p.opdrachtgever,
+      soort_werk: p.soort_werk,
+      looptijd_tot: p.looptijd_tot,
+      week_man: 0,
+      per_datum: {},
+    }))
+  const rijen = [...(data?.projecten ?? []), ...extraRijen]
 
   async function actie(fn: () => Promise<void>) {
     setActieFout(null)
@@ -114,6 +180,26 @@ export function PlanningScreen() {
     }
   }
 
+  function plan(gebruikerId: string, projectId: string, datum: string) {
+    void actie(() =>
+      planToewijzing({
+        administratie_id: administratieId!,
+        gebruiker_id: gebruikerId,
+        project_id: projectId,
+        datum,
+      }),
+    )
+  }
+
+  function weiger(celKey: string) {
+    setWeigerCel(celKey)
+    window.setTimeout(() => setWeigerCel(null), 700)
+  }
+
+  function kaartenIn(projectId: string, datum: string): PlanningKaartDto[] {
+    return rijen.find((p) => p.project_id === projectId)?.per_datum[datum] ?? []
+  }
+
   function drop(projectId: string, datum: string) {
     const celKey = `${projectId}|${datum}`
     setDragOver(null)
@@ -122,23 +208,15 @@ export function PlanningScreen() {
     setSleep(null)
     // FAILSAFE (besluit 22-08): zelfde persoon max 1× per project per dag — de cel weigert
     // (rode flits); de samengestelde PK in de backend is het harde vangnet.
-    const cel = data?.projecten.find((p) => p.project_id === projectId)?.per_datum[datum] ?? []
+    const cel = kaartenIn(projectId, datum)
     const zelfdeCel =
       typeof huidige.bron === 'object' && huidige.bron.projectId === projectId && huidige.bron.datum === datum
     if (!zelfdeCel && cel.some((k) => k.gebruiker_id === huidige.gebruikerId)) {
-      setWeigerCel(celKey)
-      window.setTimeout(() => setWeigerCel(null), 700)
+      weiger(celKey)
       return
     }
     if (huidige.bron === 'pool') {
-      void actie(() =>
-        planToewijzing({
-          administratie_id: administratieId,
-          gebruiker_id: huidige.gebruikerId,
-          project_id: projectId,
-          datum,
-        }),
-      )
+      plan(huidige.gebruikerId, projectId, datum)
     } else if (!zelfdeCel) {
       const bron = huidige.bron
       void actie(() =>
@@ -154,10 +232,21 @@ export function PlanningScreen() {
     }
   }
 
-  function Kaart({ kaart, projectId, datum }: { kaart: PlanningKaartDto; projectId: string; datum: string }) {
+  function Kaart({
+    kaart,
+    projectId,
+    datum,
+    naEinddatum,
+  }: {
+    kaart: PlanningKaartDto
+    projectId: string
+    datum: string
+    naEinddatum: boolean
+  }) {
     return (
       <div
         draggable
+        title={naEinddatum ? 'Gepland ná de einddatum van het project (zacht signaal, geen blokkade)' : undefined}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
           e.dataTransfer.setData('text/plain', kaart.gebruiker_id)
@@ -168,8 +257,8 @@ export function PlanningScreen() {
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          background: kaart.rol === 'uitvoerder' ? 'var(--ok-bg)' : 'var(--info-bg)',
-          border: '1px solid var(--border)',
+          background: naEinddatum ? 'var(--warn-bg)' : kaart.rol === 'uitvoerder' ? 'var(--ok-bg)' : 'var(--info-bg)',
+          border: naEinddatum ? '1px solid var(--warn)' : '1px solid var(--border)',
           borderRadius: 9,
           padding: '4px 8px',
           fontSize: 11.5,
@@ -198,6 +287,11 @@ export function PlanningScreen() {
         </span>
         <b style={{ fontSize: 12 }}>{kaart.naam ?? '?'}</b>
         {kaart.rol === 'uitvoerder' && <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700 }}>uitv.</span>}
+        {naEinddatum && (
+          <span aria-label="ná projecteinddatum" style={{ fontSize: 10, color: 'var(--warn)', fontWeight: 700 }}>
+            ⚠
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
           <button
             className="linkbtn"
@@ -240,7 +334,7 @@ export function PlanningScreen() {
     )
   }
 
-  const vandaag = isoWeekVan(new Date())
+  const vandaagWeek = isoWeekVan(new Date())
 
   return (
     <div>
@@ -255,23 +349,51 @@ export function PlanningScreen() {
           />
           <h1>Planning — {administratieNaam}</h1>
           <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>
-            Week {week.weeknummer} · {dagLabel(dagen[0].datum)} – {dagLabel(dagen[4].datum)} · alleen actieve projecten ·
-            sleep een persoon naar een project-dag — plannen maakt de projectkoppeling automatisch aan
+            Week {week.weeknummer} · {dagLabel(dagen[0].datum)} – {dagLabel(dagen[4].datum)} · projecten mét planning
+            deze week · sleep een persoon naar een project-dag, of klik een cel om te plannen
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Button variant="secundair" maat="klein" aria-label="Vorige week" onClick={() => setWeek(schuifWeek(week.jaar, week.weeknummer, -1))}>
+          <Button
+            variant="secundair"
+            maat="klein"
+            aria-label="Vorige week"
+            onClick={() => zetWeek(schuifWeek(week.jaar, week.weeknummer, -1))}
+          >
             ‹
           </Button>
-          <b style={{ padding: '0 4px' }}>Week {week.weeknummer}</b>
-          <Button variant="secundair" maat="klein" aria-label="Volgende week" onClick={() => setWeek(schuifWeek(week.jaar, week.weeknummer, 1))}>
+          {/* Week-/datumkiezer: zelfde vorm als de URL-parameter (2026-W41) — vrij vooruit. */}
+          <input
+            type="week"
+            aria-label="Weekkiezer"
+            value={weekNaarParam(week)}
+            onChange={(e) => {
+              const gekozen = parseWeekParam(e.target.value)
+              if (gekozen) zetWeek(gekozen)
+            }}
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              color: 'var(--text)',
+              font: 'inherit',
+              fontWeight: 700,
+              padding: '4px 8px',
+            }}
+          />
+          <Button
+            variant="secundair"
+            maat="klein"
+            aria-label="Volgende week"
+            onClick={() => zetWeek(schuifWeek(week.jaar, week.weeknummer, 1))}
+          >
             ›
           </Button>
           <Button
             variant="secundair"
             maat="klein"
-            disabled={week.jaar === vandaag.jaar && week.weeknummer === vandaag.weeknummer}
-            onClick={() => setWeek(vandaag)}
+            disabled={week.jaar === vandaagWeek.jaar && week.weeknummer === vandaagWeek.weeknummer}
+            onClick={() => zetWeek(vandaagWeek)}
           >
             Vandaag
           </Button>
@@ -289,76 +411,221 @@ export function PlanningScreen() {
               <span className="skeleton" style={{ width: '40%' }} />
             </div>
           )}
-          {data !== null && data.projecten.length === 0 && (
-            <p className="hint" style={{ padding: 16 }}>
-              Geen actieve projecten in deze administratie — synchroniseer de projecten of activeer ze in Reeleezee.
-            </p>
-          )}
-          {data !== null && data.projecten.length > 0 && (
+          {data !== null && (
             <div className="tabel-scroll">
-              <table style={{ tableLayout: 'fixed', minWidth: 760 }}>
-                <tbody>
+              <table className="plan-grid" style={{ tableLayout: 'fixed', minWidth: 760 }}>
+                <thead>
                   <tr>
-                    <th style={{ width: 180 }}>Project (actief)</th>
+                    <th style={{ width: 180 }}>Project</th>
                     {dagen.map((d) => (
-                      <th key={d.datum} style={{ textAlign: 'center' }}>
+                      <th
+                        key={d.datum}
+                        className={d.datum === vandaagIso ? 'plan-vandaag' : undefined}
+                        style={{ textAlign: 'center' }}
+                      >
                         {d.naam} {dagLabel(d.datum)}
+                        {d.datum === vandaagIso && (
+                          <span style={{ display: 'block', textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>
+                            vandaag
+                          </span>
+                        )}
                       </th>
                     ))}
                   </tr>
-                  {data.projecten.map((rij) => (
-                    <tr key={rij.project_id}>
-                      <th style={{ verticalAlign: 'top', textAlign: 'left' }}>
-                        {rij.project_naam ?? rij.project_id}
-                        <div style={{ fontWeight: 400, fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
-                          {[rij.opdrachtgever, rij.soort_werk, rij.looptijd_tot ? `t/m ${dagLabel(rij.looptijd_tot)}` : null]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </div>
-                        {rij.week_man > 0 && (
-                          <div style={{ marginTop: 5 }}>
-                            <Badge variant="info">deze week: {rij.week_man} man</Badge>
-                          </div>
-                        )}
-                      </th>
-                      {dagen.map((d) => {
-                        const celKey = `${rij.project_id}|${d.datum}`
-                        const kaarten = rij.per_datum[d.datum] ?? []
-                        return (
-                          <td
-                            key={d.datum}
-                            data-testid={`cel-${celKey}`}
-                            onDragOver={(e) => {
-                              e.preventDefault()
-                              setDragOver(celKey)
-                            }}
-                            onDragLeave={() => setDragOver((h) => (h === celKey ? null : h))}
-                            onDrop={(e) => {
-                              e.preventDefault()
-                              drop(rij.project_id, d.datum)
-                            }}
-                            style={{
-                              padding: 5,
-                              verticalAlign: 'top',
-                              minHeight: 52,
-                              outline:
-                                weigerCel === celKey
-                                  ? '2px solid var(--danger)'
-                                  : dragOver === celKey
-                                    ? '2px dashed var(--primary)'
-                                    : undefined,
-                              outlineOffset: -3,
-                              background: dragOver === celKey ? 'var(--accent-bg)' : undefined,
-                            }}
-                          >
-                            {kaarten.map((k) => (
-                              <Kaart key={k.gebruiker_id} kaart={k} projectId={rij.project_id} datum={d.datum} />
-                            ))}
-                          </td>
-                        )
-                      })}
+                </thead>
+                <tbody>
+                  {rijen.length === 0 && (
+                    <tr>
+                      <td colSpan={6}>
+                        <p className="hint" style={{ margin: 0 }}>
+                          Nog niets gepland in deze week — zoek hieronder een project en sleep (of klik) er mensen op.
+                        </p>
+                      </td>
                     </tr>
-                  ))}
+                  )}
+                  {rijen.map((rij) => {
+                    const rijNaEinddatum = rij.looptijd_tot !== null && dagen[0].datum > rij.looptijd_tot
+                    return (
+                      <tr key={rij.project_id}>
+                        <th style={{ verticalAlign: 'top', textAlign: 'left' }}>
+                          {rij.project_naam ?? rij.project_id}
+                          <div style={{ fontWeight: 400, fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+                            {[rij.opdrachtgever, rij.soort_werk, rij.looptijd_tot ? `t/m ${dagLabel(rij.looptijd_tot)}` : null]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {rijNaEinddatum && (
+                            <div style={{ fontWeight: 600, fontSize: 10.5, color: 'var(--warn)', marginTop: 3 }}>
+                              ⚠ deze week valt ná de einddatum
+                            </div>
+                          )}
+                          {rij.week_man > 0 && (
+                            <div style={{ marginTop: 5 }}>
+                              <Badge variant="info">deze week: {rij.week_man} man</Badge>
+                            </div>
+                          )}
+                        </th>
+                        {dagen.map((d) => {
+                          const celKey = `${rij.project_id}|${d.datum}`
+                          const kaarten = rij.per_datum[d.datum] ?? []
+                          const naEinddatum = rij.looptijd_tot !== null && d.datum > rij.looptijd_tot
+                          const kiesbaar = (data?.pool ?? []).filter(
+                            (p) => !kaarten.some((k) => k.gebruiker_id === p.gebruiker_id),
+                          )
+                          return (
+                            <td
+                              key={d.datum}
+                              data-testid={`cel-${celKey}`}
+                              className={`plan-cel${d.datum === vandaagIso ? ' plan-vandaag' : ''}`}
+                              title="Klik om een persoon te plannen"
+                              onClick={(e) => {
+                                // Klik-alternatief voor DnD: alleen op de lege celruimte zelf
+                                // (kliks op kaartjes/kiezer raken de td niet als target).
+                                if (e.target === e.currentTarget) setKiesCel((h) => (h === celKey ? null : celKey))
+                              }}
+                              onDragEnter={(e) => e.preventDefault()}
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                e.dataTransfer.dropEffect = sleep?.bron === 'pool' ? 'copy' : 'move'
+                                setDragOver(celKey)
+                              }}
+                              onDragLeave={(e) => {
+                                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                                  setDragOver((h) => (h === celKey ? null : h))
+                                }
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                drop(rij.project_id, d.datum)
+                              }}
+                              style={{
+                                padding: 5,
+                                verticalAlign: 'top',
+                                outline:
+                                  weigerCel === celKey
+                                    ? '2px solid var(--danger)'
+                                    : dragOver === celKey
+                                      ? '2px dashed var(--primary)'
+                                      : undefined,
+                                outlineOffset: -3,
+                                background: dragOver === celKey ? 'var(--accent-bg)' : undefined,
+                              }}
+                            >
+                              {kaarten.map((k) => (
+                                <Kaart
+                                  key={k.gebruiker_id}
+                                  kaart={k}
+                                  projectId={rij.project_id}
+                                  datum={d.datum}
+                                  naEinddatum={naEinddatum}
+                                />
+                              ))}
+                              {kiesCel === celKey && (
+                                <div
+                                  style={{
+                                    background: 'var(--panel)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: 9,
+                                    boxShadow: 'var(--schaduw, 0 4px 16px rgba(0,0,0,.12))',
+                                    fontSize: 12,
+                                    marginTop: 2,
+                                    padding: 6,
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                                    <b style={{ fontSize: 11 }}>Plan op {dagLabel(d.datum)}</b>
+                                    <button
+                                      className="linkbtn"
+                                      aria-label="Kiezer sluiten"
+                                      style={{ marginLeft: 'auto' }}
+                                      onClick={() => setKiesCel(null)}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                  {kiesbaar.length === 0 && <p className="hint" style={{ margin: 0 }}>Iedereen staat al in deze cel.</p>}
+                                  {kiesbaar.map((p) => (
+                                    <button
+                                      key={p.gebruiker_id}
+                                      className="linkbtn"
+                                      style={{ display: 'block', padding: '3px 4px', textAlign: 'left', width: '100%' }}
+                                      onClick={() => {
+                                        setKiesCel(null)
+                                        plan(p.gebruiker_id, rij.project_id, d.datum)
+                                      }}
+                                    >
+                                      {p.naam}
+                                      {p.rol === 'uitvoerder' ? ' · uitv.' : ''}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                  {/* "+ project toevoegen": zoekt in de actieve projecten van de administratie. */}
+                  <tr>
+                    <td colSpan={6} style={{ background: 'var(--panel-2)' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: 12 }}>＋ Project toevoegen</span>
+                        <input
+                          type="search"
+                          aria-label="Zoek een actief project"
+                          placeholder="Zoek op nummer, plaats of opdrachtgever…"
+                          value={zoekTerm}
+                          onChange={(e) => setZoekTerm(e.target.value)}
+                          style={{
+                            background: 'var(--panel)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            color: 'var(--text)',
+                            font: 'inherit',
+                            fontSize: 12.5,
+                            maxWidth: 320,
+                            padding: '5px 9px',
+                            width: '100%',
+                          }}
+                        />
+                        <span style={{ color: 'var(--faint)', fontSize: 11.5 }}>
+                          het grid toont alleen projecten mét planning — hier haal je er een leeg project bij
+                        </span>
+                      </div>
+                      {zoekResultaten !== null && (
+                        <div style={{ marginTop: 6 }}>
+                          {zoekResultaten.length === 0 && (
+                            <p className="hint" style={{ margin: 0 }}>
+                              Geen actief project gevonden voor &quot;{zoekTerm.trim()}&quot;.
+                            </p>
+                          )}
+                          {zoekResultaten.map((p) => (
+                            <button
+                              key={p.project_id}
+                              className="linkbtn"
+                              style={{ display: 'block', padding: '3px 4px', textAlign: 'left' }}
+                              disabled={serverIds.has(p.project_id) || extraProjecten.some((e) => e.project_id === p.project_id)}
+                              onClick={() => {
+                                setExtraProjecten((huidig) =>
+                                  huidig.some((e) => e.project_id === p.project_id) ? huidig : [...huidig, p],
+                                )
+                                setZoekTerm('')
+                                setZoekResultaten(null)
+                              }}
+                            >
+                              {p.naam ?? p.project_id}
+                              {p.opdrachtgever ? ` · ${p.opdrachtgever}` : ''}
+                              {p.looptijd_tot ? ` · t/m ${dagLabel(p.looptijd_tot)}` : ''}
+                              {serverIds.has(p.project_id) || extraProjecten.some((e) => e.project_id === p.project_id)
+                                ? ' — staat al in het grid'
+                                : ''}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -476,7 +743,8 @@ export function PlanningScreen() {
         planning = oranje &quot;buiten planning&quot; bij de keuring (geen blokkade — invallen en omplannen blijft
         mogelijk) · twee projecten op één dag zónder planning-dekking = interne melding + teller per ZZP&apos;er,
         alleen zichtbaar voor kantoor. Meerdere mensen op één project/dag = meerdere kaartjes in één cel; halve
-        dagen dragen een ½-label.
+        dagen dragen een ½-label. Vooruit plannen kan onbegrensd (het hele jaar wordt vooruit gevuld); plannen ná
+        de einddatum van een project mag en kleurt oranje.
       </p>
     </div>
   )

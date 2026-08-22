@@ -401,6 +401,17 @@ class DubbeleDagTellerDto(BaseModel):
     aantal: int  # ongedekte dubbele dagen in de laatste 30 dagen
 
 
+class PlanningProjectZoekDto(BaseModel):
+    """Actief project voor de "+ project toevoegen"-zoekrij (jaaragenda 22-08); looptijd_tot
+    voedt het zachte einddatum-signaal (plannen ná de einddatum kleurt oranje, geen blokkade)."""
+
+    project_id: uuid.UUID
+    naam: str | None = None
+    opdrachtgever: str | None = None
+    soort_werk: str | None = None
+    looptijd_tot: date | None = None
+
+
 class PlanningWeekDto(BaseModel):
     jaar: int
     weeknummer: int

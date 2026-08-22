@@ -1,7 +1,9 @@
-/** Planning-agenda steigerbouw (akkoord Peter 22-08): weekgrid met actieve projecten als
- * rijen en kaartjes per dag, pool met geplande-dagen-teller (> 5 = zacht signaal, besluit C),
- * controle-meldingen + dubbele-dag-teller (kantoor-only) en de 403-module-recht-melding. */
-import { render, screen, waitFor } from '@testing-library/react'
+/** Planning-agenda steigerbouw (akkoord Peter 22-08 + jaaragenda-besluiten 22-08): weekgrid
+ * met alléén projecten mét planning, "+ project toevoegen"-zoekrij, klik-alternatief voor
+ * drag-and-drop, week in de URL (?week=2026-W41), einddatum-signaal, pool met geplande-
+ * dagen-teller (> 5 = zacht signaal, besluit C), controle-meldingen + dubbele-dag-teller
+ * (kantoor-only) en de 403-module-recht-melding. */
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PlanningScreen } from './PlanningScreen'
@@ -57,22 +59,32 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function installMock(planning: () => Response) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('/auth/administraties'))
-        return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Universal Steigerbouw' }] }))
-      if (url.includes('/uren/kantoor/planning')) return Promise.resolve(planning())
-      return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
-    }),
-  )
+interface MockOpties {
+  planning?: () => Response
+  zoek?: () => Response
+  post?: () => Response
 }
 
-function renderScherm() {
+function installMock(opties: MockOpties = {}) {
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/auth/administraties'))
+      return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Universal Steigerbouw' }] }))
+    if (url.includes('/uren/kantoor/planning/projecten'))
+      return Promise.resolve((opties.zoek ?? (() => jsonResponse([])))())
+    if (url.includes('/uren/kantoor/planning') && init?.method === 'POST')
+      return Promise.resolve((opties.post ?? (() => new Response(null, { status: 204 })))())
+    if (url.includes('/uren/kantoor/planning'))
+      return Promise.resolve((opties.planning ?? (() => jsonResponse(planningWeek())))())
+    return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+function renderScherm(zoekdeel = `?administratie=${ADMINISTRATIE_ID}`) {
   return render(
-    <MemoryRouter initialEntries={[`/planning?administratie=${ADMINISTRATIE_ID}`]}>
+    <MemoryRouter initialEntries={[`/planning${zoekdeel}`]}>
       <Routes>
         <Route path="/planning" element={<PlanningScreen />} />
       </Routes>
@@ -86,7 +98,7 @@ afterEach(() => {
 
 describe('PlanningScreen', () => {
   it('toont het weekgrid met kaartjes, tellers en de kantoor-signalen', async () => {
-    installMock(() => jsonResponse(planningWeek()))
+    installMock()
     renderScherm()
     await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
     // Kaartjes in de cel — de uitvoerder draagt het uitv.-label, de projectrij de man-teller.
@@ -101,8 +113,98 @@ describe('PlanningScreen', () => {
     expect(screen.getByText('3× / 30 dgn')).toBeInTheDocument()
   })
 
+  it('leest de week uit de URL (?week=2026-W41) en vraagt die week op', async () => {
+    const fetchMock = installMock({ planning: () => jsonResponse(planningWeek({ weeknummer: 41 })) })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W41`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    const planningCall = fetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes('/uren/kantoor/planning?'))
+    expect(planningCall).toContain('jaar=2026')
+    expect(planningCall).toContain('weeknummer=41')
+    // De weekkiezer staat op dezelfde waarde als de URL.
+    expect(screen.getByLabelText('Weekkiezer')).toHaveValue('2026-W41')
+  })
+
+  it('voegt via de zoekrij een leeg project toe aan het grid', async () => {
+    installMock({
+      planning: () => jsonResponse(planningWeek({ projecten: [] })),
+      zoek: () =>
+        jsonResponse([
+          {
+            project_id: 'eeeeeeee-0000-0000-0000-00000000000e',
+            naam: '25016 Groesbeek (Janssen)',
+            opdrachtgever: 'Janssen-Groesbeek',
+            soort_werk: null,
+            looptijd_tot: null,
+          },
+        ]),
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getByText(/Nog niets gepland in deze week/)).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText('Zoek een actief project'), { target: { value: 'groesbeek' } })
+    const resultaat = await screen.findByText(/25016 Groesbeek \(Janssen\) · Janssen-Groesbeek/)
+    fireEvent.click(resultaat)
+    // Het project staat nu als (lege) rij in het grid, klaar om op te plannen.
+    await waitFor(() => expect(screen.getByText('25016 Groesbeek (Janssen)')).toBeInTheDocument())
+  })
+
+  it('plant via het klik-alternatief: cel aanklikken → persoon kiezen', async () => {
+    let gepost: unknown = null
+    installMock({
+      post: () => new Response(null, { status: 204 }),
+    })
+    const fetchMock = vi.mocked(fetch)
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    // Dinsdag 25-08 is leeg — klik de cel aan en kies Ben v. Dijk uit de pool-lijst.
+    fireEvent.click(screen.getByTestId(`cel-${PROJECT_ID}|2026-08-25`))
+    const keuze = await screen.findByRole('button', { name: 'Ben v. Dijk · uitv.' })
+    fireEvent.click(keuze)
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
+      expect(postCall).toBeDefined()
+      gepost = JSON.parse(String((postCall![1] as RequestInit).body))
+    })
+    expect(gepost).toMatchObject({
+      administratie_id: ADMINISTRATIE_ID,
+      gebruiker_id: 'cccccccc-0000-0000-0000-00000000000c',
+      project_id: PROJECT_ID,
+      datum: '2026-08-25',
+    })
+  })
+
+  it('markeert kaartjes ná de projecteinddatum als zacht oranje signaal', async () => {
+    installMock({
+      planning: () =>
+        jsonResponse(
+          planningWeek({
+            projecten: [
+              {
+                project_id: PROJECT_ID,
+                project_naam: '144 Breda (Moeskops)',
+                opdrachtgever: 'Moeskops',
+                soort_werk: 'montage',
+                looptijd_tot: '2026-08-20', // vóór de getoonde week
+                week_man: 1,
+                per_datum: {
+                  '2026-08-24': [{ gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel' }],
+                },
+              },
+            ],
+          }),
+        ),
+    })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    expect(
+      screen.getByTitle('Gepland ná de einddatum van het project (zacht signaal, geen blokkade)'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/deze week valt ná de einddatum/)).toBeInTheDocument()
+  })
+
   it('meldt netjes dat het module-recht ontbreekt (403 — fail-closed)', async () => {
-    installMock(() => jsonResponse({ detail: 'geen recht' }, 403))
+    installMock({ planning: () => jsonResponse({ detail: 'geen recht' }, 403) })
     renderScherm()
     await waitFor(() =>
       expect(screen.getByText(/module-recht "Meerwerk & urenstaten"/)).toBeInTheDocument(),
@@ -110,7 +212,7 @@ describe('PlanningScreen', () => {
   })
 
   it('meldt de opt-in-uitschakeling (409) zonder grid', async () => {
-    installMock(() => jsonResponse({ detail: 'module uit' }, 409))
+    installMock({ planning: () => jsonResponse({ detail: 'module uit' }, 409) })
     renderScherm()
     await waitFor(() =>
       expect(screen.getByText(/niet ingeschakeld voor deze administratie/)).toBeInTheDocument(),

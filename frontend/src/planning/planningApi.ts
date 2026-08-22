@@ -62,8 +62,23 @@ export interface PlanningWeekDto {
   dubbele_dag_tellers: DubbeleDagTellerDto[]
 }
 
+export interface PlanningProjectZoekDto {
+  project_id: string
+  naam: string | null
+  opdrachtgever: string | null
+  soort_werk: string | null
+  looptijd_tot: string | null // voedt het zachte einddatum-signaal (plannen ná einddatum = oranje)
+}
+
 export function haalPlanning(administratieId: string, jaar: number, weeknummer: number): Promise<PlanningWeekDto> {
   return apiJson(`/uren/kantoor/planning?administratie_id=${administratieId}&jaar=${jaar}&weeknummer=${weeknummer}`)
+}
+
+/** Zoekbron voor de "+ project toevoegen"-rij: actieve projecten op naam/opdrachtgever/werknummer. */
+export function zoekPlanningProjecten(administratieId: string, zoek: string): Promise<PlanningProjectZoekDto[]> {
+  return apiJson(
+    `/uren/kantoor/planning/projecten?administratie_id=${administratieId}&zoek=${encodeURIComponent(zoek)}`,
+  )
 }
 
 export function planToewijzing(payload: {
@@ -141,4 +156,25 @@ export function schuifWeek(jaar: number, weeknummer: number, delta: number): { j
   const d = new Date(`${maandag}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + delta * 7)
   return isoWeekVan(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
+
+/* --- week in de URL (?week=2026-W41) — deelbaar/herlaadbaar, zelfde vorm als <input type="week"> */
+
+export function weekNaarParam(week: { jaar: number; weeknummer: number }): string {
+  return `${week.jaar}-W${String(week.weeknummer).padStart(2, '0')}`
+}
+
+/** Parse "2026-W41" (ook "2026-W5"); ongeldig of niet-bestaande week → null. */
+export function parseWeekParam(param: string | null): { jaar: number; weeknummer: number } | null {
+  if (!param) return null
+  const m = /^(\d{4})-W(\d{1,2})$/.exec(param)
+  if (!m) return null
+  const jaar = Number(m[1])
+  const weeknummer = Number(m[2])
+  if (weeknummer < 1 || weeknummer > 53) return null
+  // Week 53 bestaat niet elk jaar: de maandag van "week 53" moet ook echt in week 53 vallen.
+  const maandag = weekDagen(jaar, weeknummer)[0].datum
+  const terug = isoWeekVan(new Date(`${maandag}T12:00:00Z`))
+  if (terug.jaar !== jaar || terug.weeknummer !== weeknummer) return null
+  return { jaar, weeknummer }
 }

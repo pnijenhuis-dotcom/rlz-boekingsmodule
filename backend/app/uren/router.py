@@ -614,6 +614,23 @@ def kantoor_planning(
     )
 
 
+@router.get("/kantoor/planning/projecten", response_model=list[schemas.PlanningProjectZoekDto])
+def kantoor_planning_projecten(
+    administratie_id: uuid.UUID,
+    zoek: str = "",
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> list[schemas.PlanningProjectZoekDto]:
+    """Zoekbron voor de "+ project toevoegen"-rij (jaaragenda 22-08): actieve projecten op
+    naam/opdrachtgever/werknummer. Het grid toont alleen projecten mét planning; via deze
+    route haalt kantoor er een leeg project bij."""
+    try:
+        resultaten = planning.zoek_projecten(administratie_id=administratie_id, actor_id=actor.id, zoek=zoek)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.PlanningProjectZoekDto(**r.__dict__) for r in resultaten]
+
+
 @router.post("/kantoor/planning", status_code=status.HTTP_204_NO_CONTENT)
 def kantoor_planning_plannen(
     payload: schemas.PlanningToewijzingRequest,

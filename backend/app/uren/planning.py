@@ -74,7 +74,9 @@ class PlanningKaartData:
 
 @dataclass(frozen=True)
 class ProjectRijData:
-    """Eén projectrij in het weekgrid (alleen actieve projecten, mockup-norm)."""
+    """Eén projectrij in het weekgrid: alleen projecten mét planning in de zichtbare week
+    (jaaragenda-fix 22-08 — de 154 lege rijen zijn weg; een leeg project komt erbij via de
+    zoekbare "+ project toevoegen"-rij in de UI, gevoed door zoek_projecten)."""
 
     project_id: uuid.UUID
     project_naam: str | None
@@ -84,6 +86,18 @@ class ProjectRijData:
     week_man: int  # "deze week: N man" — unieke personen met ≥ 1 toewijzing deze week
     # ISO-datum → kaartjes (alleen datums mét toewijzingen; de UI rendert de kolommen).
     per_datum: dict[str, list[PlanningKaartData]]
+
+
+@dataclass(frozen=True)
+class ProjectZoekResultaat:
+    """Actief project voor de "+ project toevoegen"-zoekrij (jaaragenda 22-08). looptijd_tot
+    voedt het zachte einddatum-signaal: plannen ná de einddatum mag, kleurt oranje in de UI."""
+
+    project_id: uuid.UUID
+    naam: str | None
+    opdrachtgever: str | None
+    soort_werk: str | None
+    looptijd_tot: date | None
 
 
 @dataclass(frozen=True)
@@ -560,26 +574,37 @@ def planning_overzicht(
                 namen[g.id] = g.naam
                 rollen[g.id] = g.rol.value
 
-        # Projectrijen: alle actieve projecten van de administratie (mockup: afgeronde
-        # projecten verdwijnen uit de lijst), mét spec-samenvatting.
+        # Projectrijen: ALLEEN projecten mét planning in de zichtbare week (jaaragenda-fix
+        # 22-08 — geen lege rijen meer; een leeg project komt erbij via de zoekrij). Bewust
+        # zonder is_actief-filter: een intussen gedeactiveerd project mét planning blijft
+        # zichtbaar zodat kantoor de kaartjes kan weghalen/verplaatsen.
+        per_project: dict[uuid.UUID, list[PlanningToewijzing]] = {}
+        for t in toewijzingen:
+            per_project.setdefault(t.project_id, []).append(t)
+
         projecten = list(
             session.scalars(
                 select(ProjectCache)
                 .where(
                     ProjectCache.administratie_id == administratie_id,
-                    ProjectCache.is_actief.is_(True),
-                    ProjectCache.verdwenen_uit_bron_op.is_(None),
+                    ProjectCache.id.in_(per_project.keys()),
                 )
                 .order_by(ProjectCache.naam)
             )
         )
-        per_project: dict[uuid.UUID, list[PlanningToewijzing]] = {}
-        for t in toewijzingen:
-            per_project.setdefault(t.project_id, []).append(t)
+        specs = {
+            s.project_id: s
+            for s in session.scalars(
+                select(ProjectSpecificatie).where(
+                    ProjectSpecificatie.administratie_id == administratie_id,
+                    ProjectSpecificatie.project_id.in_(per_project.keys()),
+                )
+            )
+        }
 
         rijen: list[ProjectRijData] = []
         for project in projecten:
-            spec = session.get(ProjectSpecificatie, (project.id, administratie_id))
+            spec = specs.get(project.id)
             eigen = per_project.get(project.id, [])
             per_datum: dict[str, list[PlanningKaartData]] = {}
             for t in sorted(eigen, key=lambda t: (t.datum, namen.get(t.gebruiker_id) or "")):
@@ -652,6 +677,66 @@ def planning_overzicht(
             dubbele_dagen=dubbel,
             dubbele_dag_tellers=tellers,
         )
+
+
+ZOEK_MAX_RESULTATEN = 20
+
+
+def zoek_projecten(
+    *, administratie_id: uuid.UUID, actor_id: uuid.UUID, zoek: str = ""
+) -> list[ProjectZoekResultaat]:
+    """Actieve projecten voor de "+ project toevoegen"-zoekrij (jaaragenda 22-08): zoekt op
+    projectnaam én opdrachtgever/werknummer uit de specificatie. Alleen actieve projecten —
+    plannen op een afgerond project kan niet (bestaande poort in plan_toewijzing)."""
+    term = zoek.strip().lower()
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        projecten = list(
+            session.scalars(
+                select(ProjectCache)
+                .where(
+                    ProjectCache.administratie_id == administratie_id,
+                    ProjectCache.is_actief.is_(True),
+                    ProjectCache.verdwenen_uit_bron_op.is_(None),
+                )
+                .order_by(ProjectCache.naam)
+            )
+        )
+        specs = {
+            s.project_id: s
+            for s in session.scalars(
+                select(ProjectSpecificatie).where(
+                    ProjectSpecificatie.administratie_id == administratie_id,
+                    ProjectSpecificatie.project_id.in_([p.id for p in projecten]),
+                )
+            )
+        }
+        resultaten: list[ProjectZoekResultaat] = []
+        for project in projecten:
+            spec = specs.get(project.id)
+            if term:
+                doorzoekbaar = " ".join(
+                    filter(
+                        None,
+                        (project.naam, spec.opdrachtgever if spec else None,
+                         spec.werknummer_opdrachtgever if spec else None),
+                    )
+                ).lower()
+                if term not in doorzoekbaar:
+                    continue
+            resultaten.append(
+                ProjectZoekResultaat(
+                    project_id=project.id,
+                    naam=project.naam,
+                    opdrachtgever=spec.opdrachtgever if spec else None,
+                    soort_werk=spec.soort_werk if spec else None,
+                    looptijd_tot=spec.looptijd_tot if spec else None,
+                )
+            )
+            if len(resultaten) >= ZOEK_MAX_RESULTATEN:
+                break
+        return resultaten
 
 
 # --- veld: eigen planning alleen-lezen (besluit B) ----------------------------------------------

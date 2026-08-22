@@ -66,8 +66,11 @@
   /* ---- planner-grid: PROJECTEN als rijen ---- */
   .planner{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
   table{width:100%;border-collapse:collapse;table-layout:fixed}
-  th,td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);vertical-align:top}
+  th,td{border-bottom:1px solid color-mix(in srgb,var(--border) 55%,var(--muted));border-right:1px solid color-mix(in srgb,var(--border) 55%,var(--muted));vertical-align:top}
   th:last-child,td:last-child{border-right:none}
+  td.cel:hover{background:var(--panel-2);box-shadow:inset 0 0 0 1px var(--primary)}
+  th.vandaag,td.vandaag{background:color-mix(in srgb,var(--accent-bg) 55%,transparent)}
+  thead th.vandaag{color:var(--primary);font-weight:800}
   thead th{background:var(--panel-2);padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:center}
   thead th:first-child{text-align:left;width:170px}
   thead th small{display:block;text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
@@ -128,7 +131,7 @@
       <thead>
         <tr>
           <th>Project (actief)</th>
-          <th>ma 24-8</th>
+          <th class="vandaag">ma 24-8<small>vandaag</small></th>
           <th>di 25-8</th>
           <th>wo 26-8<small>Milan vrij (gemeld)</small></th>
           <th>do 27-8</th>
