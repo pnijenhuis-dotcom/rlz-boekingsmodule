@@ -9,6 +9,7 @@ import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { VraagModal } from '../vragen/VraagModal'
 import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
+import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
@@ -573,6 +574,16 @@ export function DocumentDetailScreen() {
             />
           )}
 
+          {/* Tegenboek-pad (mockup 22-08): actie op een GEBOEKTE inkoopfactuur waarvan storno
+              door de aangifte-poort geblokkeerd is — de sectie gate zichzelf. */}
+          <TegenboekSectie
+            administratieId={administratieId}
+            documentId={documentId}
+            status={detail.status}
+            soort={detail.soort}
+            onGewijzigd={laadDetail}
+          />
+
           {/* Kempen-doorbelasting (blok 3): actie op een GEBOEKTE inkoopfactuur — de sectie
               gate zichzelf (status + soort + toggle per administratie, faalvriendelijk). */}
           <DoorbelastenSectie
@@ -707,6 +718,21 @@ export function DocumentDetailScreen() {
                         <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }}>
                           Geboekt ondanks match-afwijking — expliciet bevestigd (besluit vastgelegd in het
                           auditlog)
+                        </div>
+                      )}
+                      {g.detail && 'tegenboeking' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }}>
+                          {(() => {
+                            const info = g.detail.tegenboeking as Record<string, unknown> | null
+                            if (!info || typeof info !== 'object') return 'Tegengeboekt'
+                            const soortTekst =
+                              info.soort === 'vervang'
+                                ? 'Tegengeboekt én klaargezet om opnieuw te boeken (herboeking gekoppeld — uitgezonderd van het duplicaatsignaal)'
+                                : 'Volledig tegengeboekt — origineel gemarkeerd TEGENGEBOEKT'
+                            const boekstuk = typeof info.rlz_boekstuknummer === 'string' ? info.rlz_boekstuknummer : null
+                            const reden = typeof info.reden === 'string' ? info.reden : null
+                            return `${soortTekst} door ${naamVoor(g.actor_id)}${boekstuk ? ` · tegenboeking ${boekstuk}` : ''}${reden ? ` — “${reden}”` : ''}`
+                          })()}
                         </div>
                       )}
                       {g.detail && 'match_mail_verzonden' in g.detail && (

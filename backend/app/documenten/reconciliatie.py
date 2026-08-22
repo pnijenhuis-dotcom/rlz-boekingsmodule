@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.documenten.models import Boekvoorstel, Document, DocumentStatus
-from app.documenten.rlz_ids import rlz_purchase_invoice_id
+from app.documenten.rlz_ids import rlz_herboeking_id
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 
@@ -39,10 +39,12 @@ class ReconciliatieRapport:
     afwijkingen: tuple[ReconciliatieAfwijking, ...]
 
 
-def _geboekte_documenten(administratie_id: uuid.UUID) -> list[tuple[uuid.UUID, Decimal | None, str | None]]:
+def _geboekte_documenten(
+    administratie_id: uuid.UUID,
+) -> list[tuple[uuid.UUID, Decimal | None, str | None, int]]:
     with scoped_session(administratie_id) as session:
         rows = session.execute(
-            select(Document.id, Boekvoorstel.totaalbedrag, Boekvoorstel.rlz_boekstuknummer)
+            select(Document.id, Boekvoorstel.totaalbedrag, Boekvoorstel.rlz_boekstuknummer, Boekvoorstel.boek_cyclus)
             .join(Boekvoorstel, Boekvoorstel.document_id == Document.id)
             .where(Document.administratie_id == administratie_id, Document.status == DocumentStatus.GEBOEKT)
         ).all()
@@ -50,9 +52,16 @@ def _geboekte_documenten(administratie_id: uuid.UUID) -> list[tuple[uuid.UUID, D
 
 
 def _vergelijk_met_rlz(
-    *, client: RlzClient, document_id: uuid.UUID, totaalbedrag: Decimal | None, rlz_boekstuknummer: str | None
+    *,
+    client: RlzClient,
+    document_id: uuid.UUID,
+    totaalbedrag: Decimal | None,
+    rlz_boekstuknummer: str | None,
+    boek_cyclus: int = 0,
 ) -> list[ReconciliatieAfwijking]:
-    rlz_document_id = rlz_purchase_invoice_id(document_id)
+    # boek_cyclus (tegenboek-pad): de actieve boeking leeft na "tegenboeken én opnieuw boeken"
+    # op het herboeking-GUID, niet op het origineel.
+    rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
     try:
         invoice = client.get(f"PurchaseInvoices/{rlz_document_id}")
     except RlzApiError as exc:
@@ -107,13 +116,14 @@ def reconcilieer_administratie(*, administratie_id: uuid.UUID, client: RlzClient
         client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
     try:
         afwijkingen: list[ReconciliatieAfwijking] = []
-        for document_id, totaalbedrag, rlz_boekstuknummer in geboekte_documenten:
+        for document_id, totaalbedrag, rlz_boekstuknummer, boek_cyclus in geboekte_documenten:
             afwijkingen.extend(
                 _vergelijk_met_rlz(
                     client=client,
                     document_id=document_id,
                     totaalbedrag=totaalbedrag,
                     rlz_boekstuknummer=rlz_boekstuknummer,
+                    boek_cyclus=boek_cyclus,
                 )
             )
     finally:

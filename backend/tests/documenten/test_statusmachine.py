@@ -30,8 +30,12 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     óók niet naar verwijderd. Sinds de e-mail-intake (migratie 0028) geldt hetzelfde voor een
     gesplitst bron-document: de kind-documenten verwijzen ernaar (gesplitst_uit_id) — het
     origineel verwijderen zou hun herkomst breken. Elke andere status (zelfs afgewezen) heeft
-    nog altijd minstens verwijderd als uitgang."""
-    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset()
+    nog altijd minstens verwijderd als uitgang. Uitzondering sinds het tegenboek-pad (migratie
+    0061, mockup 22-08): GEBOEKT heeft precies één uitgang — terug naar te_controleren bij
+    "tegenboeken én opnieuw boeken" (alleen ná een geslaagde tegenboeking in RLZ); nooit naar
+    verwijderd."""
+    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset({DocumentStatus.TE_CONTROLEREN})
+    assert DocumentStatus.VERWIJDERD not in _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT]
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GESPLITST] == frozenset()
     for van in DocumentStatus:
         if van in (

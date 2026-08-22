@@ -19,6 +19,7 @@ class FakeBoekClient:
         faal_op: str | None = None,
         bestaande_invoices: dict[str, dict[str, Any]] | None = None,
         bank_relations: list[dict[str, Any]] | None = None,
+        aangiften: list[dict[str, Any]] | None = None,
     ) -> None:
         self.duplicaten = duplicaten or []
         self.faal_op = faal_op
@@ -30,6 +31,9 @@ class FakeBoekClient:
         # RLZ-seed voor de IBAN-wissel-check (Vendors/{id}/BankRelations) — default leeg: een
         # crediteur zonder bankrelaties, zodat bestaande boek-tests ongewijzigd blijven werken.
         self.bank_relations = bank_relations or []
+        # TaxDeclarations-seed voor de aangifte-poort (tegenboek-pad) — default leeg: geen
+        # ingediende aangiften, storno vrij.
+        self.aangiften = aangiften or []
 
     def __enter__(self) -> FakeBoekClient:
         return self
@@ -65,9 +69,20 @@ class FakeBoekClient:
         bedrag = sum(line["NetAmount"] + line["TaxAmount"] for line in lines)
         self._invoices.setdefault(
             str(invoice_id),
-            {"Status": 1, "ReceiptNumber": f"RLZ-TEST-{len(self.puts):05d}", "BaseInvoiceAmount": round(bedrag, 2)},
+            {
+                "Status": 1,
+                "ReceiptNumber": f"RLZ-TEST-{len(self.puts):05d}",
+                "BaseInvoiceAmount": round(bedrag, 2),
+                # Date zoals RLZ 'm teruggeeft (ISO-datetime) — de aangifte-poort toetst erop.
+                "Date": extra.get("Date"),
+            },
         )
         return SimpleNamespace(status_code=204)
+
+    def list_tax_declarations(self) -> list[dict[str, Any]]:
+        if self.faal_op == "aangiften":
+            raise RlzApiError(500, "GET", "TaxDeclarations", "Aangiften mislukt (simulatie)")
+        return self.aangiften
 
     def upload_bijlage(
         self, entity_path: str, entity_id: uuid.UUID, *, upload_id: uuid.UUID, filename: str, content_base64: str

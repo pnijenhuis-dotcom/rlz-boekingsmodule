@@ -425,3 +425,66 @@ class IbanAccordeursResponse(BaseModel):
 
 class IbanAccordeursInput(StrikteInvoer):
     accordeurs: list[uuid.UUID]
+
+
+# --- tegenboek-pad (mockup tegenboek-mockup.html, akkoord Peter 22-08) --------------------------
+
+
+class TegenboekVoorbeeldRegelDto(BaseModel):
+    """Eén regel van het voorbeeld van de tegenboeking (mockup-tabel: negatieve netto/btw)."""
+
+    grootboek_code: str | None = None
+    grootboek_naam: str | None = None
+    omschrijving: str
+    netto_bedrag: Decimal
+    btw_bedrag: Decimal
+
+
+class TegenboekBetaalstatusDto(BaseModel):
+    """Betaalstatus origineel — de waarschuwing "open creditpost" verschijnt alléén als er
+    (deels) betaald/afgeletterd is."""
+
+    betaald_bedrag: Decimal
+    open_bedrag: Decimal
+    volledig_afgeletterd: bool
+
+
+class TegenboekingInfoDto(BaseModel):
+    soort: str
+    reden: str
+    boek_cyclus: int
+    rlz_tegenboeking_id: uuid.UUID
+    rlz_boekstuknummer: str | None = None
+    origineel_betaald_bedrag: Decimal | None = None
+    aangemaakt_op: datetime
+
+
+class TegenboekToetsResponse(BaseModel):
+    """Leesroute voor de sectie op het controlescherm en het ⋯-menu in het archief: de knop
+    "Tegenboeken…" verschijnt alléén bij storno_geblokkeerd (en zonder bestaande tegenboeking).
+    `betaalstatus` is None als het origineel in RLZ niet leesbaar was."""
+
+    document_id: uuid.UUID
+    storno_geblokkeerd: bool
+    blokkade_melding: str | None = None
+    tegenboeking: TegenboekingInfoDto | None = None
+    betaalstatus: TegenboekBetaalstatusDto | None = None
+    voorbeeld: list[TegenboekVoorbeeldRegelDto]
+    referentie: str | None = None
+    tegenboek_referentie: str
+    leverancier_naam: str | None = None
+    totaal_netto: Decimal
+    totaal_btw: Decimal
+
+
+class TegenboekenInput(StrikteInvoer):
+    soort: Literal["volledig", "vervang"]
+    reden: str
+
+
+class TegenboekenResponse(BaseModel):
+    document_id: uuid.UUID
+    soort: str
+    status: str
+    rlz_tegenboeking_id: uuid.UUID
+    rlz_boekstuknummer: str | None = None

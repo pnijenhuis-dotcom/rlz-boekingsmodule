@@ -229,6 +229,21 @@ def _zoek_documenten_in_administratie(
         vragen = _vraag_hits(session, document_ids)
         accorderingen = _accordering_hits(session, document_ids)
         automatisch = _automatisch_geboekt_ids(session, document_ids)
+        tegengeboekte_ids: set[uuid.UUID] = set()
+        if document_ids:
+            from app.documenten.models import Tegenboeking
+
+            tegengeboekte_ids = {
+                doc_id
+                for doc_id, cyclus in session.execute(
+                    select(Tegenboeking.document_id, Tegenboeking.boek_cyclus).where(
+                        Tegenboeking.document_id.in_(document_ids)
+                    )
+                )
+                # Alleen de tegenboeking van de HUIDIGE cyclus telt: na "tegenboeken én
+                # opnieuw boeken" (cyclus +1) is de nieuwe boeking niet tegengeboekt.
+                if cyclus == next((bv.boek_cyclus for d, bv, _ in rijen if d.id == doc_id and bv is not None), 0)
+            }
 
         hits: list[DocumentHit] = []
         for document, boekvoorstel, verkoopvoorstel in rijen:
@@ -393,6 +408,9 @@ class ArchiefDocument:
     factuurdatum: date | None
     geboekt_op: datetime | None
     automatisch_geboekt: bool
+    # Tegenboek-pad (migratie 0061): er bestaat een tegenboeking voor de huidige boek_cyclus —
+    # de rij draagt de chip TEGENGEBOEKT (kruisverwijzing op de documentpagina).
+    tegengeboekt: bool
 
 
 def archief(*, administratie_id: uuid.UUID) -> list[ArchiefDocument]:
@@ -421,6 +439,21 @@ def archief(*, administratie_id: uuid.UUID) -> list[ArchiefDocument]:
             ).all()
         )
         automatisch = _automatisch_geboekt_ids(session, document_ids)
+        tegengeboekte_ids: set[uuid.UUID] = set()
+        if document_ids:
+            from app.documenten.models import Tegenboeking
+
+            tegengeboekte_ids = {
+                doc_id
+                for doc_id, cyclus in session.execute(
+                    select(Tegenboeking.document_id, Tegenboeking.boek_cyclus).where(
+                        Tegenboeking.document_id.in_(document_ids)
+                    )
+                )
+                # Alleen de tegenboeking van de HUIDIGE cyclus telt: na "tegenboeken én
+                # opnieuw boeken" (cyclus +1) is de nieuwe boeking niet tegengeboekt.
+                if cyclus == next((bv.boek_cyclus for d, bv, _ in rijen if d.id == doc_id and bv is not None), 0)
+            }
         geboekt_momenten: dict[uuid.UUID, datetime] = {}
         if document_ids:
             for gebeurtenis in session.scalars(
@@ -464,6 +497,7 @@ def archief(*, administratie_id: uuid.UUID) -> list[ArchiefDocument]:
                     factuurdatum=datum,
                     geboekt_op=geboekt_momenten.get(document.id),
                     automatisch_geboekt=document.id in automatisch,
+                    tegengeboekt=document.id in tegengeboekte_ids,
                 )
             )
         return resultaat

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0060
+-- Migratie-head bij deze dump: 0061
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -534,7 +534,8 @@ CREATE TABLE boekhouding.boekvoorstel (
     totaalbedrag numeric(14,2),
     rlz_boekstuknummer text,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
-    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    boek_cyclus integer DEFAULT 0 NOT NULL
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel FORCE ROW LEVEL SECURITY;
@@ -1143,11 +1144,11 @@ CREATE TABLE boekhouding.planning_toewijzing (
     gebruiker_id uuid NOT NULL,
     project_id uuid NOT NULL,
     datum date NOT NULL,
-    dagdeel character varying NOT NULL,
+    dagdeel text NOT NULL,
     toegevoegd_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_planning_toewijzing_dagdeel CHECK (((dagdeel)::text = ANY ((ARRAY['heel'::character varying, 'half'::character varying])::text[])))
+    CONSTRAINT ck_planning_toewijzing_dagdeel CHECK ((dagdeel = ANY (ARRAY['heel'::text, 'half'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.planning_toewijzing FORCE ROW LEVEL SECURITY;
@@ -1316,6 +1317,28 @@ CREATE TABLE boekhouding.taxrate_cache (
 );
 
 ALTER TABLE ONLY boekhouding.taxrate_cache FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: tegenboeking; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.tegenboeking (
+    document_id uuid NOT NULL,
+    boek_cyclus integer NOT NULL,
+    administratie_id uuid NOT NULL,
+    soort text NOT NULL,
+    reden text NOT NULL,
+    rlz_tegenboeking_id uuid NOT NULL,
+    rlz_boekstuknummer text,
+    origineel_betaald_bedrag numeric(14,2),
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_tegenboeking_reden CHECK ((length(btrim(reden)) >= 5)),
+    CONSTRAINT ck_tegenboeking_soort CHECK ((soort = ANY (ARRAY['volledig'::text, 'vervang'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.tegenboeking FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2484,6 +2507,14 @@ ALTER TABLE ONLY boekhouding.taxrate_cache
 
 
 --
+-- Name: tegenboeking tegenboeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.tegenboeking
+    ADD CONSTRAINT tegenboeking_pkey PRIMARY KEY (document_id, boek_cyclus);
+
+
+--
 -- Name: toewijzing_regel toewijzing_regel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3178,6 +3209,13 @@ CREATE INDEX ix_staande_goedkeuring_administratie_id ON boekhouding.staande_goed
 --
 
 CREATE INDEX ix_taxrate_cache_administratie_id ON boekhouding.taxrate_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_tegenboeking_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_tegenboeking_administratie_id ON boekhouding.tegenboeking USING btree (administratie_id);
 
 
 --
@@ -4507,6 +4545,30 @@ ALTER TABLE ONLY boekhouding.taxrate_cache
 
 
 --
+-- Name: tegenboeking tegenboeking_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.tegenboeking
+    ADD CONSTRAINT tegenboeking_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: tegenboeking tegenboeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.tegenboeking
+    ADD CONSTRAINT tegenboeking_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: tegenboeking tegenboeking_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.tegenboeking
+    ADD CONSTRAINT tegenboeking_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
 -- Name: toewijzing_regel toewijzing_regel_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5747,6 +5809,19 @@ ALTER TABLE boekhouding.taxrate_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY taxrate_cache_scope ON boekhouding.taxrate_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: tegenboeking; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.tegenboeking ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: tegenboeking tegenboeking_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY tegenboeking_scope ON boekhouding.tegenboeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

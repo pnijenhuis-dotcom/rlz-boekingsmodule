@@ -175,7 +175,7 @@ class TestBoekDocumentGelukt:
         eerste = boeken.boek_document(
             administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
         )
-        assert eerste.rlz_document_id == boeken.rlz_purchase_invoice_id(klaar_document)
+        assert eerste.rlz_document_id == boeken.rlz_herboeking_id(klaar_document, 0)
 
 
 class TestBoekDocumentRegelZonderBtw:

@@ -32,8 +32,8 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.boekstand import laatste_boekstand_rij, stand_van_rij
-from app.documenten.models import Document, DocumentStatus, WebhookUitgaand
-from app.documenten.rlz_ids import rlz_purchase_invoice_id
+from app.documenten.models import Boekvoorstel, Document, DocumentStatus, WebhookUitgaand
+from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.webhook import (
     FACTUUR_GEBOEKT_EVENT,
     GESTORNEERD_BRON_RLZ_UI,
@@ -58,10 +58,14 @@ def detecteer_en_meld_gestorneerd(*, administratie_id: uuid.UUID, client: RlzCli
     rlz_admin_id = rlz_admin_id_voor(administratie_id)
 
     with scoped_session(administratie_id) as session:
+        # boek_cyclus bepaalt het actuele RLZ-GUID (tegenboek-pad): na "tegenboeken én opnieuw
+        # boeken" leeft de actieve boeking op het herboeking-GUID, niet op het origineel.
         kandidaten = [
-            document_id
-            for document_id in session.scalars(
-                select(Document.id).where(
+            (document_id, boek_cyclus or 0)
+            for document_id, boek_cyclus in session.execute(
+                select(Document.id, Boekvoorstel.boek_cyclus)
+                .join(Boekvoorstel, Boekvoorstel.document_id == Document.id, isouter=True)
+                .where(
                     Document.administratie_id == administratie_id,
                     Document.soort == "inkoopfactuur",
                     Document.status == DocumentStatus.GEBOEKT,
@@ -76,8 +80,8 @@ def detecteer_en_meld_gestorneerd(*, administratie_id: uuid.UUID, client: RlzCli
         client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
     gemeld = 0
     try:
-        for document_id in kandidaten:
-            rlz_document_id = rlz_purchase_invoice_id(document_id)
+        for document_id, boek_cyclus in kandidaten:
+            rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
             with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
                 rij = laatste_boekstand_rij(
                     session, document_id=document_id, rlz_document_id=rlz_document_id

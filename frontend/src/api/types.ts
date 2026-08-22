@@ -652,6 +652,7 @@ export interface ArchiefDocumentDto {
   factuurdatum: string | null
   geboekt_op: string | null
   automatisch_geboekt: boolean
+  tegengeboekt: boolean
 }
 
 export interface ArchiefResponseDto {
@@ -779,4 +780,54 @@ export interface SpiegelTaakDto {
 export interface SpiegelDoelGbsInputDto {
   regel_gbs: Record<string, string>
   provisie_kosten_ledger_id?: string
+}
+
+/* --- tegenboek-pad (mockup tegenboek-mockup.html, akkoord Peter 22-08) ----------------------- */
+
+export interface TegenboekVoorbeeldRegelDto {
+  grootboek_code: string | null
+  grootboek_naam: string | null
+  omschrijving: string
+  netto_bedrag: string
+  btw_bedrag: string
+}
+
+export interface TegenboekBetaalstatusDto {
+  betaald_bedrag: string
+  open_bedrag: string
+  volledig_afgeletterd: boolean
+}
+
+export interface TegenboekingInfoDto {
+  soort: 'volledig' | 'vervang' | string
+  reden: string
+  boek_cyclus: number
+  rlz_tegenboeking_id: string
+  rlz_boekstuknummer: string | null
+  origineel_betaald_bedrag: string | null
+  aangemaakt_op: string
+}
+
+/** Leesroute: de knop "Tegenboeken…" verschijnt alléén bij storno_geblokkeerd (en zonder
+ * bestaande tegenboeking voor de huidige cyclus). */
+export interface TegenboekToetsDto {
+  document_id: string
+  storno_geblokkeerd: boolean
+  blokkade_melding: string | null
+  tegenboeking: TegenboekingInfoDto | null
+  betaalstatus: TegenboekBetaalstatusDto | null
+  voorbeeld: TegenboekVoorbeeldRegelDto[]
+  referentie: string | null
+  tegenboek_referentie: string
+  leverancier_naam: string | null
+  totaal_netto: string
+  totaal_btw: string
+}
+
+export interface TegenboekenResponseDto {
+  document_id: string
+  soort: string
+  status: string
+  rlz_tegenboeking_id: string
+  rlz_boekstuknummer: string | null
 }

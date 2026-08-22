@@ -49,6 +49,12 @@
   background: var(--orange-bg);
 }
 
+/* Mockup .btn.gevaar (tegenboeking boeken): gevulde rode actieknop. */
+.btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

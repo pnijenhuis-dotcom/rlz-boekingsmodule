@@ -16,7 +16,17 @@ from app.auth.deps import (
 )
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import afwijzen, boeken, boekvoorstel, iban_accordering, leverancier_iban, schemas, service, vragen
+from app.documenten import (
+    afwijzen,
+    boeken,
+    boekvoorstel,
+    iban_accordering,
+    leverancier_iban,
+    schemas,
+    service,
+    tegenboeken,
+    vragen,
+)
 from app.documenten.checks import CheckRapport
 from app.documenten.models import DocumentSoort, IbanAccorderingStatus, IbanSoort, VraagStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
@@ -576,6 +586,119 @@ def document_boeken(
         document_id=resultaat.document_id,
         status=resultaat.status.value,
         rlz_document_id=resultaat.rlz_document_id,
+        rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
+    )
+
+
+def _naar_tegenboek_toets_response(data: tegenboeken.TegenboekToets) -> schemas.TegenboekToetsResponse:
+    return schemas.TegenboekToetsResponse(
+        document_id=data.document_id,
+        storno_geblokkeerd=data.storno_geblokkeerd,
+        blokkade_melding=data.blokkade_melding,
+        tegenboeking=(
+            schemas.TegenboekingInfoDto(
+                soort=data.tegenboeking.soort,
+                reden=data.tegenboeking.reden,
+                boek_cyclus=data.tegenboeking.boek_cyclus,
+                rlz_tegenboeking_id=data.tegenboeking.rlz_tegenboeking_id,
+                rlz_boekstuknummer=data.tegenboeking.rlz_boekstuknummer,
+                origineel_betaald_bedrag=data.tegenboeking.origineel_betaald_bedrag,
+                aangemaakt_op=data.tegenboeking.aangemaakt_op,
+            )
+            if data.tegenboeking
+            else None
+        ),
+        betaalstatus=(
+            schemas.TegenboekBetaalstatusDto(
+                betaald_bedrag=data.betaalstatus.betaald_bedrag,
+                open_bedrag=data.betaalstatus.open_bedrag,
+                volledig_afgeletterd=data.betaalstatus.volledig_afgeletterd,
+            )
+            if data.betaalstatus
+            else None
+        ),
+        voorbeeld=[
+            schemas.TegenboekVoorbeeldRegelDto(
+                grootboek_code=r.grootboek_code,
+                grootboek_naam=r.grootboek_naam,
+                omschrijving=r.omschrijving,
+                netto_bedrag=r.netto_bedrag,
+                btw_bedrag=r.btw_bedrag,
+            )
+            for r in data.voorbeeld
+        ],
+        referentie=data.referentie,
+        tegenboek_referentie=data.tegenboek_referentie,
+        leverancier_naam=data.leverancier_naam,
+        totaal_netto=data.totaal_netto,
+        totaal_btw=data.totaal_btw,
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}/tegenboek-toets",
+    response_model=schemas.TegenboekToetsResponse,
+)
+def document_tegenboek_toets(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.TegenboekToetsResponse:
+    """Leesroute tegenboek-pad (mockup tegenboek-mockup.html): is storno door de aangifte-poort
+    geblokkeerd (dan verschijnt "Tegenboeken…"), bestaat er al een tegenboeking (chip
+    TEGENGEBOEKT + kruisverwijzing) en het voorbeeld + de betaalstatus-waarschuwing."""
+    try:
+        data = tegenboeken.toets(administratie_id=administratie_id, document_id=document_id)
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except tegenboeken.OngeldigeTegenboeking as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return _naar_tegenboek_toets_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/tegenboeken",
+    response_model=schemas.TegenboekenResponse,
+)
+def document_tegenboeken(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.TegenboekenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.TegenboekenResponse:
+    """De tegenboek-actie (mockup: keuze volledig/vervang, verplichte reden). Zie
+    app/documenten/tegenboeken.py voor de poorten en waarborgen."""
+    try:
+        resultaat = tegenboeken.voer_tegenboeking_uit(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            soort=invoer.soort,
+            reden=invoer.reden,
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except tegenboeken.TegenboekenGeblokkeerdDoorChecks as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Tegenboeken geblokkeerd door harde checks",
+                "checks": _naar_check_rapport_response(exc.rapport).model_dump(),
+            },
+        ) from exc
+    except (tegenboeken.OngeldigeTegenboeking, tegenboeken.TegenboekenNietToegestaan, tegenboeken.TegenboekingBestaatAl) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except tegenboeken.RlzTegenboekingMislukt as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return schemas.TegenboekenResponse(
+        document_id=resultaat.document_id,
+        soort=resultaat.soort,
+        status=resultaat.status.value,
+        rlz_tegenboeking_id=resultaat.rlz_tegenboeking_id,
         rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
     )
 

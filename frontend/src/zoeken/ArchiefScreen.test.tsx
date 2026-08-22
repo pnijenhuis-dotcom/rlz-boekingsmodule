@@ -24,6 +24,7 @@ function archiefDocument(overrides: Record<string, unknown> = {}) {
     factuurdatum: '2026-06-20',
     geboekt_op: '2026-06-24T09:30:00Z',
     automatisch_geboekt: true,
+    tegengeboekt: false,
     ...overrides,
   }
 }
@@ -113,7 +114,9 @@ describe('ArchiefScreen — geboekt archief per administratie (bewaarplicht 7 ja
 
     await gebruiker.selectOptions(await screen.findByLabelText('Administratie'), ADMINISTRATIE_ID)
     await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: /PDF openen van bouwmaat-factuur\.pdf/ }))
+    // Sinds het tegenboek-pad (22-08) zit de PDF-actie in het ⋯-menu per rij.
+    await gebruiker.click(screen.getByRole('button', { name: /Acties voor bouwmaat-factuur\.pdf/ }))
+    await gebruiker.click(screen.getByRole('menuitem', { name: 'PDF openen' }))
 
     await waitFor(() => expect(openSpy).toHaveBeenCalledWith('blob:test-url', '_blank', 'noopener'))
     expect(bestandAanroepen).toHaveLength(1)

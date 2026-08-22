@@ -31,7 +31,7 @@ from app.documenten.models import (
     DocumentStatus,
     LeverancierVoorkeur,
 )
-from app.documenten.rlz_ids import rlz_purchase_invoice_id
+from app.documenten.rlz_ids import rlz_herboeking_id, rlz_purchase_invoice_id, rlz_tegenboeking_id
 from app.documenten.service import DocumentNietGevonden
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
@@ -92,6 +92,9 @@ class BoekvoorstelData:
     regels_samenvoegen: bool = True
     samenvoegen_toegestaan: bool = True
     samengevoegde_regel: BoekvoorstelRegelData | None = None
+    # Tegenboek-pad (migratie 0061): bepaalt het RLZ-GUID van de (her)boeking — cyclus 0 is de
+    # oorspronkelijke boeking, elke "tegenboeken én opnieuw boeken" verhoogt 'm.
+    boek_cyclus: int = 0
 
 
 def _als_decimal(waarde: str | None) -> Decimal | None:
@@ -312,6 +315,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                     )
                     for r in regels
                 ],
+                boek_cyclus=bestaand.boek_cyclus,
                 **samenvoeg_velden(bestaand.vendor_id),
             )
 
@@ -578,6 +582,14 @@ def voer_checks_uit(
             # wél de echte actor.
             actor_id=SYSTEEM_ACTOR_ID,
         )
+        # Tegenboek-pad: het eigen GUID volgt de boek_cyclus (herboeking = nieuw GUID); alle
+        # eerdere (her)boekings- en tegenboekings-GUID's van dit document zijn de gekoppelde
+        # correctieketen en tellen niet als duplicaat (mockup 22-08 — de herboeking heeft
+        # bewust dezelfde Entity+Reference+bedrag als het origineel).
+        keten = frozenset(
+            {rlz_herboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
+            | {rlz_tegenboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
+        )
         return voer_harde_checks_uit(
             client=client,
             vendor_id=voorstel.vendor_id,
@@ -585,7 +597,8 @@ def voer_checks_uit(
             factuurdatum=voorstel.factuurdatum,
             totaalbedrag=voorstel.totaalbedrag,
             regels=_naar_check_regels(voorstel),
-            eigen_rlz_document_id=rlz_purchase_invoice_id(document_id),
+            eigen_rlz_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),
+            uitgezonderde_rlz_document_ids=keten,
             project_verplicht=project_verplicht,
             factuur_iban=factuur_iban,
             vertrouwde_ibans=vertrouwde_ibans,

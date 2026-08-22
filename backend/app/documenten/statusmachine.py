@@ -179,7 +179,12 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # afwijzen-met-verplichte-reden (heropenen brengt het document dan terug in de kantoorbak).
     # Bewust NIET naar VERWIJDERD: een document dat bij de klant ligt haal je eerst terug.
     DocumentStatus.TER_ACCORDERING: frozenset({DocumentStatus.KLAAR_OM_TE_BOEKEN}),
-    DocumentStatus.GEBOEKT: frozenset(),
+    # Tegenboek-pad (migratie 0061, mockup tegenboek-mockup.html): "tegenboeken én opnieuw
+    # boeken" zet het document terug in de werkvoorraad — de ENIGE uitgang uit GEBOEKT, en
+    # uitsluitend gebruikt door app/documenten/tegenboeken.py ná een geslaagde tegenboeking in
+    # RLZ (aangifte-poort geblokkeerd, verplichte reden, audit). Een kale storno kent het
+    # inkooppad nog steeds niet (dat blijft actie 19 in de RLZ-UI + detectie).
+    DocumentStatus.GEBOEKT: frozenset({DocumentStatus.TE_CONTROLEREN}),
     DocumentStatus.GESPLITST: frozenset(),
     DocumentStatus.VERWIJDERD: _NIET_GEBOEKTE_STATUSSEN,
 }

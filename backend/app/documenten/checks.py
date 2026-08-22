@@ -99,12 +99,17 @@ def check_duplicaat(
     referentie: str | None,
     totaalbedrag: Decimal | None,
     eigen_rlz_document_id: uuid.UUID,
+    uitgezonderde_rlz_document_ids: frozenset[uuid.UUID] = frozenset(),
 ) -> CheckResultaat:
     """Eigen duplicaatquery (RLZ's actie 138 geeft geen bruikbaar signaal, besluit 0013): zoekt
     op Entity+Reference(afgekapt op 30 tekens, zie RlzClient.find_purchase_invoices_by_reference)
     +bedrag. Een hit op het EIGEN client-GUID (`eigen_rlz_document_id`) is geen duplicaat maar de
     eigen, eventueel al eerder gelukte PUT — anders zou een retry na boeken_mislukt zichzelf als
-    duplicaat blokkeren.
+    duplicaat blokkeren. `uitgezonderde_rlz_document_ids` (tegenboek-pad, mockup 22-08): bij
+    "tegenboeken én opnieuw boeken" heeft de herboeking bewust dezelfde Entity+Reference+bedrag
+    als het origineel — alle eerdere (her)boekings- en tegenboekings-GUID's van hetzélfde
+    document zijn dan geen duplicaat maar de gekoppelde correctieketen (zichtbaar in de
+    tijdlijn); élk ander RLZ-document blijft onverkort blokkerend.
 
     Een falende RLZ-aanroep hier mag nooit als kale 500 bij de gebruiker terechtkomen — zonder
     duplicaatcheck is boeken net zo onverantwoord als met een echte duplicaat-hit, dus dit
@@ -121,7 +126,8 @@ def check_duplicaat(
         return CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {exc}")
     except Exception as exc:  # noqa: BLE001 — bewust breed: elke RLZ-connectiefout blokkeert, crasht nooit
         return CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {exc}")
-    anderen = [f for f in gevonden if f.get("id") != str(eigen_rlz_document_id)]
+    uitgezonderd = {str(eigen_rlz_document_id)} | {str(i) for i in uitgezonderde_rlz_document_ids}
+    anderen = [f for f in gevonden if f.get("id") not in uitgezonderd]
     if anderen:
         return CheckResultaat(
             "Duplicaatcheck",
@@ -198,6 +204,7 @@ def voer_harde_checks_uit(
     totaalbedrag: Decimal | None,
     regels: list[CheckRegel],
     eigen_rlz_document_id: uuid.UUID,
+    uitgezonderde_rlz_document_ids: frozenset[uuid.UUID] = frozenset(),
     project_verplicht: bool = False,
     factuur_iban: str | None = None,
     vertrouwde_ibans: set[str] | None = None,
@@ -235,6 +242,7 @@ def voer_harde_checks_uit(
                 referentie=referentie,
                 totaalbedrag=totaalbedrag,
                 eigen_rlz_document_id=eigen_rlz_document_id,
+                uitgezonderde_rlz_document_ids=uitgezonderde_rlz_document_ids,
             ),
         )
     )

@@ -16,7 +16,7 @@ from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus, WebhookUitgaand
-from app.documenten.rlz_ids import rlz_purchase_invoice_id, rlz_upload_id
+from app.documenten.rlz_ids import rlz_herboeking_id, rlz_herboeking_upload_id
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
 from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
 from app.geheugen.leerlus import leg_boeking_vast
@@ -240,8 +240,10 @@ def _boek_bij_rlz(
     *, client: RlzClient, document_id: uuid.UUID, voorstel: BoekvoorstelData, bestand: bytes, bestandsnaam: str
 ) -> tuple[uuid.UUID, str | None]:
     """PUT + /Uploads + actie 17, in die volgorde (RLZ berekent zelf totalen uit de regels — geen
-    eigen bedragberekening hier). Retourneert (rlz_document_id, rlz_boekstuknummer)."""
-    rlz_document_id = rlz_purchase_invoice_id(document_id)
+    eigen bedragberekening hier). Retourneert (rlz_document_id, rlz_boekstuknummer). Het GUID
+    volgt de boek_cyclus (tegenboek-pad): een herboeking ná "tegenboeken én opnieuw boeken" is
+    een NIEUW RLZ-document — nooit een her-PUT op het geboekt blijvende origineel."""
+    rlz_document_id = rlz_herboeking_id(document_id, voorstel.boek_cyclus)
     assert voorstel.vendor_id is not None and voorstel.factuurdatum is not None  # afgedwongen door de harde checks
 
     client.put_purchase_invoice(
@@ -258,7 +260,7 @@ def _boek_bij_rlz(
         client,
         "PurchaseInvoices",
         rlz_document_id,
-        upload_id=rlz_upload_id(document_id),
+        upload_id=rlz_herboeking_upload_id(document_id, voorstel.boek_cyclus),
         filename=bestandsnaam,
         content_base64=base64.b64encode(bestand).decode(),
     )

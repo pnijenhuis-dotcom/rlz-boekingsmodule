@@ -79,6 +79,7 @@ class ArchiefDocumentDto(BaseModel):
     factuurdatum: date | None
     geboekt_op: datetime | None
     automatisch_geboekt: bool
+    tegengeboekt: bool
 
 
 class ArchiefResponse(BaseModel):

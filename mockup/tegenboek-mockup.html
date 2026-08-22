@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mockup — tegenboeken ná ingediende btw-aangifte + suppletie-signaal</title>
+<title>Mockup — tegenboeken ná ingediende btw-aangifte</title>
 <!-- ============================================================
      ONTWERPRONDE tegenboek-pad (geparkeerd besluit 15/16-08, mockup
      19-08 ter beoordeling Peter). Drie schermen, klikbaar:
      1. controlescherm: storno geblokkeerd → actie "Tegenboeken…"
      2. de tegenboek-flow (keuze annuleren/vervangen, reden, preview)
-     3. klantpagina: suppletie-signaal > €1.000 + afvinken
+     (suppletie-signaal GESCHRAPT — besluit Peter 22-08)
      Stijl = kantoor-modern (designpass-norm).
      ============================================================ -->
 <style>
@@ -75,11 +75,10 @@
 <body>
 <div class="wrap">
   <h1>Ontwerpronde — corrigeren ná ingediende btw-aangifte</h1>
-  <div class="sub">Drie schermen, klikbaar. Stijl volgt de kantoor-modernisering. Ter beoordeling: de flow, de teksten en de suppletie-bewaking.</div>
+  <div class="sub">Twee schermen, klikbaar. Stijl volgt de kantoor-modernisering. Besluit Peter 22-08: <b>géén suppletie-signaal</b> — correcties lopen mee in het lopende tijdvak. Ingangen: de geblokkeerde storno-knop op het controlescherm/de documentpagina én het ⋯-menu in het archief ("Tegenboeken…").</div>
   <div class="stap-nav">
     <button class="actief" data-s="1" onclick="toon(1)">1 · Controlescherm (geblokkeerde storno)</button>
     <button data-s="2" onclick="toon(2)">2 · Tegenboek-flow</button>
-    <button data-s="3" onclick="toon(3)">3 · Suppletie-signaal</button>
   </div>
 
   <!-- ========== SCHERM 1: controlescherm-fragment ========== -->
@@ -122,35 +121,19 @@
           </table>
         </div>
 
-        <div class="melding info" style="margin-top:14px">ℹ️ <span>Btw-effect: <b>− € 1.050,00</b> telt mee in de eerstvolgende open aangifte (Q3 2026). Cumulatief gecorrigeerd op ingediende periode Q2 2026 wordt hiermee <b>€ 1.240,00</b> — <b>boven de suppletiegrens van € 1.000</b>: het systeem zet een suppletie-taak klaar (zie scherm 3).</span></div>
+        <div class="melding info" style="margin-top:14px">ℹ️ <span>Btw-effect: <b>− € 1.050,00</b> telt mee in de eerstvolgende open aangifte (Q3 2026) — geen verdere actie nodig.</span></div>
+
+        <div class="melding warn" style="margin-top:10px">⚠️ <span><b>Betaalstatus origineel: al afgeletterd</b> (betaald 02-06 via Rabobank). De tegenboeking laat een <b>open creditpost</b> achter — verreken die tegen een volgende factuur van deze leverancier, of laat terugbetalen. De post verschijnt in de open-postenlijst; hij verdwijnt niet stil.</span></div>
 
         <div class="veld"><label>Reden (verplicht, komt in audit en tijdlijn)</label><textarea placeholder="Bijv.: factuur dubbel geboekt — origineel zat al in periode april"></textarea></div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button class="btn secundair" onclick="toon(1)">Annuleren</button>
-          <button class="btn gevaar" onclick="toon(3);toast('Tegenboeking geboekt in Q3 2026 — origineel gemarkeerd, suppletie-taak aangemaakt')">Tegenboeking boeken</button>
+          <button class="btn gevaar" onclick="toon(1);toast('Tegenboeking geboekt in Q3 2026 — origineel gemarkeerd TEGENGEBOEKT (kruisverwijzing beide kanten)')">Tegenboeking boeken</button>
         </div>
       </div>
     </div>
-    <div class="sub">▲ Eén scherm, geen wizard: keuze, voorbeeld, reden, boeken. De harde checks draaien onverkort op de tegenboeking; het origineel krijgt de chip "TEGENGEBOEKT" met kruisverwijzing (beide kanten, tijdlijn + audit).</div>
-  </section>
-
-  <!-- ========== SCHERM 3: suppletie-signaal ========== -->
-  <section class="scherm" id="s3">
-    <div class="kaart">
-      <div class="kaart-kop"><h2>Bouwmaat Holding B.V. — klantpagina</h2><span class="badge stil">fragment</span></div>
-      <div class="kaart-body">
-        <div class="melding danger">🔔 <span><b>Suppletie vereist — Q2 2026:</b> het cumulatieve btw-effect van correcties op deze ingediende periode is <b>€ 1.240,00</b> (grens € 1.000). Dien een btw-suppletie in bij de Belastingdienst en vink dit daarna af. <a href="#" onclick="return false">Bekijk de 3 onderliggende correcties →</a></span></div>
-        <table>
-          <thead><tr><th>Ingediende periode</th><th class="num">Btw-effect correcties</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            <tr><td>Q2 2026 (ingediend 28-07)</td><td class="num neg">− € 1.240,00</td><td><span class="badge danger">suppletie vereist</span></td><td style="text-align:right"><button class="btn secundair" style="padding:5px 11px;font-size:12px" onclick="this.closest('tr').querySelector('.badge').outerHTML='<span class=\'badge ok\'>suppletie ingediend 19-08</span>';this.remove();toast('Suppletie afgevinkt — vastgelegd in audit (wie/wanneer)')">Suppletie ingediend…</button></td></tr>
-            <tr><td>Q1 2026 (ingediend 28-04)</td><td class="num">− € 86,00</td><td><span class="badge stil">onder de grens — mee in eerstvolgende aangifte</span></td><td></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <div class="sub">▲ Het signaal leeft op de klantpagina (en telt mee in de werkvoorraad-teller "vragen/taken"). Onder de grens = stil meenemen in de volgende aangifte (mag wettelijk); boven de grens = taak die pas verdwijnt na afvinken mét audit. Afvinken = Beheerder of Boekhouding-rol.</div>
+    <div class="sub">▲ Eén scherm, geen wizard: keuze, voorbeeld, reden, boeken. De harde checks draaien onverkort op de tegenboeking; het origineel krijgt de chip "TEGENGEBOEKT" met kruisverwijzing (beide kanten, tijdlijn + audit). <b>Bij "tegenboeken én opnieuw boeken": de herboeking is gekoppeld aan de tegenboeking en wordt uitgezonderd van het duplicaatsignaal</b> (zelfde Entity+Reference+bedrag zou anders onze eigen duplicaatcheck triggeren) — de koppeling is zichtbaar in de tijdlijn. De betaalstatus-waarschuwing verschijnt alléén als het origineel (deels) afgeletterd is; bij een deels betaalde post toont hij het openstaande vs. betaalde deel.</div>
   </section>
 </div>
 

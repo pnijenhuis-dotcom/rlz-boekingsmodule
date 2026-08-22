@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Numeric, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -189,6 +189,11 @@ class Boekvoorstel(Base):
     factuurdatum: Mapped[date | None] = mapped_column(default=None)
     totaalbedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     rlz_boekstuknummer: Mapped[str | None] = mapped_column(default=None)
+    # Tegenboek-pad (migratie 0061): 0 = de oorspronkelijke boeking; elke "tegenboeken én
+    # opnieuw boeken" verhoogt de cyclus. Bepaalt het RLZ-client-GUID van de (her)boeking
+    # (rlz_ids.rlz_herboeking_id) — een herboeking mag NOOIT het GUID van het origineel
+    # hergebruiken (her-PUT zou de DocumentLineList van het origineel vervangen).
+    boek_cyclus: Mapped[int] = mapped_column(server_default=text("0"), default=0)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -460,6 +465,57 @@ class IbanAccordering(Base):
     )
     besloten_op: Mapped[datetime | None] = mapped_column(default=None)
     afwijs_reden: Mapped[str | None] = mapped_column(default=None)
+
+
+class TegenboekingSoort(enum.StrEnum):
+    """Mockup tegenboek-mockup.html (akkoord Peter 22-08): `volledig` = de boeking hoort er
+    helemaal niet te zijn (saldo-effect nul, document blijft GEBOEKT mét chip TEGENGEBOEKT);
+    `vervang` = tegenboeken én opnieuw boeken (document terug naar te_controleren, boek_cyclus
+    +1 — de herboeking krijgt een eigen RLZ-GUID en een duplicaat-uitzondering)."""
+
+    VOLLEDIG = "volledig"
+    VERVANG = "vervang"
+
+
+_TEGENBOEKING_SOORT_SQL = ", ".join(f"'{s.value}'" for s in TegenboekingSoort)
+
+
+class Tegenboeking(Base):
+    """Tegenboeking van een geboekte inkoopfactuur (migratie 0061, mockup tegenboek-mockup.html):
+    een NIEUWE PurchaseInvoice in RLZ met gespiegelde negatieve regels op dezelfde Entity,
+    boekdatum vandaag — de route wanneer storno door de aangifte-poort geblokkeerd is (STAP-0
+    "Tegenboek-pad" 22-08: btw telt als negatieve voorbelasting mee in de eerstvolgende open
+    aangifte; besluit Peter 22-08: géén suppletie-signaal). Eén rij per (document, boek_cyclus);
+    append-only (geen UPDATE/DELETE-grant) — terugdraaien van een tegenboeking is een
+    RLZ-UI-handeling (actie 19), nooit een app-mutatie."""
+
+    __tablename__ = "tegenboeking"
+    __table_args__ = (
+        CheckConstraint(f"soort IN ({_TEGENBOEKING_SOORT_SQL})", name="ck_tegenboeking_soort"),
+        CheckConstraint("length(btrim(reden)) >= 5", name="ck_tegenboeking_reden"),
+        Index("ix_tegenboeking_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), primary_key=True
+    )
+    # De boek_cyclus van het origineel dat deze rij tegenboekt (boekvoorstel.boek_cyclus op het
+    # moment van tegenboeken) — de kruisverwijzing beide kanten: origineel → tegenboeking via
+    # (document_id, cyclus == huidige boek_cyclus), tegenboeking → origineel via document_id.
+    boek_cyclus: Mapped[int] = mapped_column(primary_key=True)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    soort: Mapped[str]
+    reden: Mapped[str]
+    rlz_tegenboeking_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    rlz_boekstuknummer: Mapped[str | None] = mapped_column(default=None)
+    # Betaalstatus van het origineel op het moment van tegenboeken (mockup-waarschuwing "open
+    # creditpost"): puur informatief vastgelegd voor tijdlijn/audit, RLZ blijft de bron.
+    origineel_betaald_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class WebhookStatus(enum.StrEnum):

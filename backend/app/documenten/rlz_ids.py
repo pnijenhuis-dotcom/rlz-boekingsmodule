@@ -118,3 +118,37 @@ def rlz_doorbelasting_upload_id(
     (patroon rlz_omzet_upload_id). Net als rlz_upload_id een BASIS-GUID: her-PUT bestaat
     niet op /Uploads, herstart-cycli lopen via `app.rlz.bijlage.zorg_voor_bijlage`."""
     return uuid.uuid5(_NAMESPACE, f"doorbelasting-upload-{kant}:{document_id}:{doel_customer_guid}")
+
+def rlz_herboeking_id(document_id: uuid.UUID, boek_cyclus: int) -> uuid.UUID:
+    """Deterministisch client-GUID voor de (her)boeking van een document, per boek_cyclus
+    (tegenboek-pad, migratie 0061). Cyclus 0 = het bestaande rlz_purchase_invoice_id (alle al
+    geboekte documenten behouden hun GUID); elke "tegenboeken én opnieuw boeken" verhoogt de
+    cyclus en levert een NIEUW GUID — een her-PUT op het GUID van het origineel zou de
+    DocumentLineList van dat (geboekt blijvende) origineel vervangen (api-verkenning
+    "Her-PUT op een bestaand concept")."""
+    if boek_cyclus == 0:
+        return rlz_purchase_invoice_id(document_id)
+    return uuid.uuid5(_NAMESPACE, f"herboeking:{document_id}:{boek_cyclus}")
+
+
+def rlz_herboeking_upload_id(document_id: uuid.UUID, boek_cyclus: int) -> uuid.UUID:
+    """Basis-upload-GUID per boek_cyclus (zelfde reden als rlz_herboeking_id: de herboeking is
+    een nieuw RLZ-document en krijgt zijn eigen bijlage-upload; cyclus 0 = het bestaande
+    rlz_upload_id). Her-PUT bestaat niet op /Uploads — cycli via zorg_voor_bijlage."""
+    if boek_cyclus == 0:
+        return rlz_upload_id(document_id)
+    return uuid.uuid5(_NAMESPACE, f"herboeking-upload:{document_id}:{boek_cyclus}")
+
+
+def rlz_tegenboeking_id(document_id: uuid.UUID, boek_cyclus: int) -> uuid.UUID:
+    """Deterministisch client-GUID voor de tegenboeking (nieuwe PurchaseInvoice met gespiegelde
+    negatieve regels, STAP-0 "Tegenboek-pad" 22-08) van de boeking met deze boek_cyclus —
+    nooit het GUID van het origineel hergebruiken (zelfde her-PUT-risico); een retry na een
+    halve mislukking raakt hierdoor altijd dezelfde RLZ-tegenboeking."""
+    return uuid.uuid5(_NAMESPACE, f"tegenboeking:{document_id}:{boek_cyclus}")
+
+
+def rlz_tegenboeking_upload_id(document_id: uuid.UUID, boek_cyclus: int) -> uuid.UUID:
+    """Basis-upload-GUID voor de PDF-bijlage (het originele document) aan de tegenboeking —
+    eigen GUID per RLZ-document (patroon rlz_omzet_upload_id); cycli via zorg_voor_bijlage."""
+    return uuid.uuid5(_NAMESPACE, f"tegenboeking-upload:{document_id}:{boek_cyclus}")

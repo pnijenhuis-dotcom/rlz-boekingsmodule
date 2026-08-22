@@ -33,7 +33,7 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Boekvoorstel, Document, DocumentStatus, WebhookUitgaand
-from app.documenten.rlz_ids import rlz_purchase_invoice_id
+from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.webhook import (
     AFGELETTERD_SCENARIO_DEEL,
     AFGELETTERD_SCENARIO_ONT,
@@ -97,7 +97,7 @@ def detecteer_en_meld_afgeletterd(*, administratie_id: uuid.UUID, client: RlzCli
 
     with scoped_session(administratie_id) as session:
         kandidaten = [
-            (document.id, voorstel.rlz_boekstuknummer, voorstel.referentie)
+            (document.id, voorstel.rlz_boekstuknummer, voorstel.referentie, voorstel.boek_cyclus)
             for document, voorstel in session.execute(
                 select(Document, Boekvoorstel)
                 .join(Boekvoorstel, Boekvoorstel.document_id == Document.id)
@@ -109,8 +109,9 @@ def detecteer_en_meld_afgeletterd(*, administratie_id: uuid.UUID, client: RlzCli
         ]
 
     gemeld = 0
-    for document_id, boekstuknummer, referentie in kandidaten:
-        rlz_document_id = rlz_purchase_invoice_id(document_id)
+    for document_id, boekstuknummer, referentie, boek_cyclus in kandidaten:
+        # boek_cyclus (tegenboek-pad): actieve boeking = herboeking-GUID, zie rlz_ids.
+        rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
         try:
             factuur = client.get(f"PurchaseInvoices/{rlz_document_id}")
         except RlzApiError as exc:
