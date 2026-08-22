@@ -140,3 +140,61 @@ béta-/app-review, niet voor interne TestFlight), build koppelen ná de eerste u
 MARKETING_VERSION/versionName starten op 1.0; elke webcode-wijziging in de bundel vergt een
 store-release (review: uren–dagen) — de PWA blijft daarom het snelste kanaal; een
 live-update-dienst (Appflow e.d.) is een latere, aparte afweging (kosten/AVG).
+
+## 7. Xcode Cloud (blok D 2026-08-22) — automatische TestFlight-builds vanaf `main`
+
+**Wat er in de repo staat (gebouwd, geen klikwerk):**
+
+- `native/ios/App/ci_scripts/ci_post_clone.sh` — draait bij élke cloud-build automatisch:
+  Node-bootstrap (Homebrew, major uit `.nvmrc` in de repo-root), `npm ci` in `frontend/` én
+  `native/` (dat laatste is hard nodig vóór de SPM-resolve: `CapApp-SPM/Package.swift` heeft
+  een lokale path-dependency op `node_modules/@capacitor/push-notifications`),
+  `npm run bouw-web` (frontend `--mode native`, `VITE_API_BASE` uit `frontend/.env.native`)
+  en `npx cap sync ios` — **elke build bundelt dus de actuele web-assets**, er hoeft nooit
+  meer een dist ingecheckt of handmatig gesynct te worden.
+- **Buildnummer-automatisering:** het script zet `CURRENT_PROJECT_VERSION` (beide plekken in
+  het pbxproj) op Xcode Clouds `CI_BUILD_NUMBER`; `Info.plist` leest `CFBundleVersion` daar
+  al uit. `MARKETING_VERSION` blijft handmatig (§6). NB het Xcode Cloud-buildnummer telt
+  per workflow vanaf 1 — zet bij het aanmaken van de workflow de teller éénmalig hoger dan
+  de laatst geüploade build (nu Build 2 → "Start build number" ≥ 3, zie klikstap 5).
+- **Gedeeld scheme:** `App.xcodeproj/xcshareddata/xcschemes/App.xcscheme` is aangemaakt en
+  ingecheckt — zonder gedeeld scheme kan Xcode Cloud niets bouwen (het scheme leefde tot
+  22-08 alleen in xcuserdata).
+- NB: dit vervangt het handmatige archive/upload-recept in `TESTFLIGHT_DRAAIBOEK.md` §3 —
+  dat blijft de terugval als de cloud-build ooit stilligt. **Vastly is hier bewust géén
+  voorbeeld:** die app bouwt via Expo/EAS (eas.json, `autoIncrement`), niet via Xcode Cloud;
+  dit is de eerste Xcode Cloud-opzet binnen het platform.
+
+**Eenmalige klikstappen Peter (workflow koppelen — ~10 min, daarna rolt elke `main`-push):**
+
+1. Open het project op de Mac: `cd native && npx cap open ios` (of open
+   `native/ios/App/App.xcodeproj`), log in Xcode in met het PDL Powerhouse-account
+   (team VRQP26CX43).
+2. Xcode-menu **Integrate → Create Workflow…** (of Report navigator → tab **Cloud** →
+   "Get started"). Kies de app **App** (product "Nijenhuis Boekingsmodule").
+3. **Grant Access** voor de GitHub-repo `pnijenhuis-dotcom/rlz-boekingsmodule` (Xcode stuurt
+   je door naar GitHub → installeer de "Xcode Cloud"-app op precies die repo). Dit hoeft
+   maar één keer per repo.
+4. Workflow-instellingen (de default "Default" workflow aanpassen):
+   - **Start Conditions:** Branch Changes → branch `main` (default).
+   - **Environment:** nieuwste macOS/Xcode (defaults volstaan; "Clean" hoeft niet aan —
+     ci_post_clone bouwt de webbundel toch elke keer vers).
+   - **Actions:** één **Archive**-actie, platform iOS, scheme **App**, deployment
+     preparation **TestFlight (Internal Testing Only)**.
+   - **Post-Actions:** **TestFlight Internal Testing** → kies/maak de interne groep
+     (Peter + kantoor — dezelfde groep als Build 1/2).
+5. Onder **Settings → Build Number** van de workflow: zet **Start build number** op een
+   waarde boven de laatst geüploade build (Build 2 staat op TestFlight → kies bv. 3 of 10);
+   Xcode Cloud verhoogt daarna zelf per build en het script schrijft dat nummer in het
+   pbxproj.
+6. **Save** → eerste build start direct (of klik "Start Build" op `main`). Volg de build in
+   Xcode (Report navigator → Cloud) of App Store Connect → app → **Xcode Cloud**. De build
+   verschijnt daarna vanzelf in TestFlight bij de interne groep.
+7. ⚠️ Vergeet checklist-stap 3 hierboven niet (`APNS_SANDBOX=false` in deploy.yml, twee
+   plekken) — dat staat los van Xcode Cloud maar hoort bij dezelfde eerste
+   TestFlight-ronde. Voor de export-compliance-vraag: `ITSAppUsesNonExemptEncryption=false`
+   staat al in Info.plist, TestFlight vraagt er dan niet meer om.
+
+**Build 3 (planning-tab + jaaragenda in de veld-app) staat klaar:** de web-assets komen bij
+elke cloud-build automatisch uit `main` — zodra de workflow gekoppeld is, is de eerste build
+die eruit rolt meteen Build 3 met de planning-weergave; er is geen extra klaarzet-stap.
