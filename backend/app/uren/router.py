@@ -29,7 +29,7 @@ from app.auth.deps import (
     vereis_administratie_scope,
 )
 from app.auth.rollen import is_veldrol
-from app.uren import overzichten, schemas, service
+from app.uren import overzichten, planning, schemas, service
 
 router = APIRouter(prefix="/uren", tags=["uren"])
 
@@ -85,6 +85,7 @@ def _weekstaat_response(data: service.WeekstaatData) -> schemas.WeekstaatDto:
                 voorstel_uren=d.voorstel_uren,
                 voorstel_m2=d.voorstel_m2,
                 voorstel_opmerking=d.voorstel_opmerking,
+                buiten_planning=d.buiten_planning,
             )
             for d in data.dagen
         ],
@@ -227,6 +228,28 @@ def weekstaat_detail(
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return _weekstaat_response(data)
+
+
+# --- planning: veld alleen-lezen (besluit B, planning-agenda 22-08) -------------------------------
+
+
+@router.get("/zzp/planning", response_model=list[schemas.MijnPlanningDagDto])
+def zzp_planning(
+    jaar: int,
+    weeknummer: int,
+    namens: uuid.UUID | None = None,
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> list[schemas.MijnPlanningDagDto]:
+    """De eigen planning voor één ISO-week, ALLEEN-LEZEN ("waar moet ik heen") — de ZZP'er of
+    uitvoerder zelf, of de detacheerder namens een gekoppelde ZZP'er. Plannen doet uitsluitend
+    het kantoor; de veld-API heeft bewust geen mutatiepad."""
+    try:
+        dagen = planning.mijn_planning(
+            veldwerker_id=namens or actor.id, actor_id=actor.id, jaar=jaar, weeknummer=weeknummer
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.MijnPlanningDagDto(**d.__dict__) for d in dagen]
 
 
 # --- detacheerder --------------------------------------------------------------------------------
@@ -542,6 +565,132 @@ def kantoor_meerwerk_vraag(
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return _meerwerk_response(data)
+
+
+# --- kantoor: planning-agenda (mockup planning-steigerbouw.html, akkoord Peter 22-08) ------------
+
+
+@router.get("/kantoor/planning", response_model=schemas.PlanningWeekDto)
+def kantoor_planning(
+    administratie_id: uuid.UUID,
+    jaar: int,
+    weeknummer: int,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.PlanningWeekDto:
+    """Het weekgrid: ALLEEN actieve projecten als rijen, kaartjes per dag, de mensen-pool
+    (geplande dagen — besluit C: > 5 kleurt) en de controle-meldingen + dubbele-dag-teller
+    (uitsluitend kantoor). Toegang: module-recht + klantscope; opt-in per administratie."""
+    try:
+        data = planning.planning_overzicht(
+            administratie_id=administratie_id, jaar=jaar, weeknummer=weeknummer, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.PlanningWeekDto(
+        jaar=data.jaar,
+        weeknummer=data.weeknummer,
+        maandag=data.maandag,
+        zondag=data.zondag,
+        projecten=[
+            schemas.PlanningProjectRijDto(
+                project_id=rij.project_id,
+                project_naam=rij.project_naam,
+                opdrachtgever=rij.opdrachtgever,
+                soort_werk=rij.soort_werk,
+                looptijd_tot=rij.looptijd_tot,
+                week_man=rij.week_man,
+                per_datum={
+                    datum: [schemas.PlanningKaartDto(**k.__dict__) for k in kaarten]
+                    for datum, kaarten in rij.per_datum.items()
+                },
+            )
+            for rij in data.projecten
+        ],
+        pool=[schemas.PlanningPoolPersoonDto(**p.__dict__) for p in data.pool],
+        buiten_planning=[schemas.BuitenPlanningMeldingDto(**m.__dict__) for m in data.buiten_planning],
+        dubbele_dagen=[schemas.DubbeleDagMeldingDto(**m.__dict__) for m in data.dubbele_dagen],
+        dubbele_dag_tellers=[schemas.DubbeleDagTellerDto(**t.__dict__) for t in data.dubbele_dag_tellers],
+    )
+
+
+@router.post("/kantoor/planning", status_code=status.HTTP_204_NO_CONTENT)
+def kantoor_planning_plannen(
+    payload: schemas.PlanningToewijzingRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    """Kaartje plannen (sleep uit de pool). FAILSAFE: zelfde persoon 2× op dezelfde dag op
+    hetzélfde project = 422; maakt de projectkoppeling automatisch aan (besluit A, geaudit)."""
+    try:
+        planning.plan_toewijzing(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            project_id=payload.project_id,
+            datum=payload.datum,
+            dagdeel=payload.dagdeel,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/kantoor/planning/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
+def kantoor_planning_verwijderen(
+    payload: schemas.PlanningVerwijderRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    try:
+        planning.verwijder_toewijzing(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            project_id=payload.project_id,
+            datum=payload.datum,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/kantoor/planning/verplaatsen", status_code=status.HTTP_204_NO_CONTENT)
+def kantoor_planning_verplaatsen(
+    payload: schemas.PlanningVerplaatsRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    """Kaartje tussen cellen slepen — atomair (nooit half verplaatst)."""
+    try:
+        planning.verplaats_toewijzing(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            van_project_id=payload.van_project_id,
+            van_datum=payload.van_datum,
+            naar_project_id=payload.naar_project_id,
+            naar_datum=payload.naar_datum,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/kantoor/planning/dagdeel", status_code=status.HTTP_204_NO_CONTENT)
+def kantoor_planning_dagdeel(
+    payload: schemas.PlanningDagdeelRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    try:
+        planning.zet_dagdeel(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            project_id=payload.project_id,
+            datum=payload.datum,
+            dagdeel=payload.dagdeel,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
 
 
 @router.get("/kantoor/weekstaten/{administratie_id}/{weekstaat_id}", response_model=schemas.WeekstaatDto)

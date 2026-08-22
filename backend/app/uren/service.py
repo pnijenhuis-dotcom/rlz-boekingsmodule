@@ -127,6 +127,10 @@ class DagData:
     voorstel_uren: Decimal | None
     voorstel_m2: Decimal | None
     voorstel_opmerking: str | None
+    # Planning-dekking (besluit 22-08, mockup planning-steigerbouw): uren op een dag zónder
+    # planningstoewijzing op dit project = oranje "buiten planning" bij de keuring — een
+    # signaal, nooit een blokkade (invallen/omplannen blijft mogelijk). Een 0-urendag telt niet.
+    buiten_planning: bool = False
 
 
 @dataclass(frozen=True)
@@ -303,7 +307,9 @@ def _vereis_meerwerk_recht(session, actor_id: uuid.UUID) -> Gebruiker:
     return actor
 
 
-def _dag_data(dag: WeekstaatDag, *, zzper_id: uuid.UUID, namen: dict[uuid.UUID, str]) -> DagData:
+def _dag_data(
+    dag: WeekstaatDag, *, zzper_id: uuid.UUID, namen: dict[uuid.UUID, str], gepland: set[date]
+) -> DagData:
     return DagData(
         id=dag.id,
         datum=dag.datum,
@@ -316,6 +322,27 @@ def _dag_data(dag: WeekstaatDag, *, zzper_id: uuid.UUID, namen: dict[uuid.UUID, 
         voorstel_uren=dag.voorstel_uren,
         voorstel_m2=dag.voorstel_m2,
         voorstel_opmerking=dag.voorstel_opmerking,
+        buiten_planning=dag.uren > 0 and dag.datum not in gepland,
+    )
+
+
+def _geplande_datums(session, staat: Weekstaat, dagen: list[WeekstaatDag]) -> set[date]:
+    """Datums van deze staat mét een planningstoewijzing (persoon × project × dag) — de
+    dekking-toets 'buiten planning' voor de keuring (planning-agenda, besluit 22-08). Lokale
+    model-import: app/uren/planning.py importeert uit deze module (geen cyclus maken)."""
+    from app.uren.models import PlanningToewijzing
+
+    if not dagen:
+        return set()
+    return set(
+        session.scalars(
+            select(PlanningToewijzing.datum).where(
+                PlanningToewijzing.administratie_id == staat.administratie_id,
+                PlanningToewijzing.gebruiker_id == staat.gebruiker_id,
+                PlanningToewijzing.project_id == staat.project_id,
+                PlanningToewijzing.datum.in_([d.datum for d in dagen]),
+            )
+        )
     )
 
 
@@ -325,6 +352,7 @@ def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
             select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id).order_by(WeekstaatDag.datum)
         )
     )
+    gepland = _geplande_datums(session, staat, dagen)
     namen = _namen(
         session,
         {staat.gebruiker_id, staat.ingediend_door, staat.goedgekeurd_door, staat.afgekeurd_door}
@@ -343,7 +371,7 @@ def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
         status=staat.status,
         totaal_uren=sum((d.uren for d in dagen), Decimal("0")),
         totaal_m2=sum((d.m2 for d in dagen if d.m2 is not None), Decimal("0")),
-        dagen=[_dag_data(d, zzper_id=staat.gebruiker_id, namen=namen) for d in dagen],
+        dagen=[_dag_data(d, zzper_id=staat.gebruiker_id, namen=namen, gepland=gepland) for d in dagen],
         ingediend_op=staat.ingediend_op,
         ingediend_door=staat.ingediend_door,
         ingediend_door_naam=namen.get(staat.ingediend_door) if staat.ingediend_door else None,

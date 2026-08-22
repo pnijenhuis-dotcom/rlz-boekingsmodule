@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0059
+-- Migratie-head bij deze dump: 0060
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1132,6 +1132,25 @@ CREATE TABLE boekhouding.payment_item_cache (
 );
 
 ALTER TABLE ONLY boekhouding.payment_item_cache FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: planning_toewijzing; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.planning_toewijzing (
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    datum date NOT NULL,
+    dagdeel character varying NOT NULL,
+    toegevoegd_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_planning_toewijzing_dagdeel CHECK (((dagdeel)::text = ANY ((ARRAY['heel'::character varying, 'half'::character varying])::text[])))
+);
+
+ALTER TABLE ONLY boekhouding.planning_toewijzing FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2385,6 +2404,14 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 
 --
+-- Name: planning_toewijzing planning_toewijzing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_toewijzing
+    ADD CONSTRAINT planning_toewijzing_pkey PRIMARY KEY (administratie_id, gebruiker_id, project_id, datum);
+
+
+--
 -- Name: project_cache project_cache_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3081,6 +3108,27 @@ CREATE INDEX ix_payment_account_cache_administratie_id ON boekhouding.payment_ac
 --
 
 CREATE INDEX ix_payment_item_cache_administratie_id ON boekhouding.payment_item_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_planning_toewijzing_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_toewijzing_administratie_id ON boekhouding.planning_toewijzing USING btree (administratie_id);
+
+
+--
+-- Name: ix_planning_toewijzing_datum; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_toewijzing_datum ON boekhouding.planning_toewijzing USING btree (administratie_id, datum);
+
+
+--
+-- Name: ix_planning_toewijzing_gebruiker; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_toewijzing_gebruiker ON boekhouding.planning_toewijzing USING btree (administratie_id, gebruiker_id, datum);
 
 
 --
@@ -4019,6 +4067,14 @@ ALTER TABLE ONLY boekhouding.meerwerk
 
 
 --
+-- Name: planning_toewijzing fk_planning_toewijzing_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_toewijzing
+    ADD CONSTRAINT fk_planning_toewijzing_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: project_document fk_project_document_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4296,6 +4352,30 @@ ALTER TABLE ONLY boekhouding.payment_account_cache
 
 ALTER TABLE ONLY boekhouding.payment_item_cache
     ADD CONSTRAINT payment_item_cache_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: planning_toewijzing planning_toewijzing_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_toewijzing
+    ADD CONSTRAINT planning_toewijzing_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: planning_toewijzing planning_toewijzing_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_toewijzing
+    ADD CONSTRAINT planning_toewijzing_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: planning_toewijzing planning_toewijzing_toegevoegd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_toewijzing
+    ADD CONSTRAINT planning_toewijzing_toegevoegd_door_fkey FOREIGN KEY (toegevoegd_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -5550,6 +5630,19 @@ ALTER TABLE boekhouding.payment_item_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY payment_item_cache_scope ON boekhouding.payment_item_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: planning_toewijzing; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.planning_toewijzing ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: planning_toewijzing planning_toewijzing_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY planning_toewijzing_scope ON boekhouding.planning_toewijzing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

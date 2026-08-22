@@ -26,6 +26,9 @@ class DagDto(BaseModel):
     voorstel_uren: Decimal | None = None
     voorstel_m2: Decimal | None = None
     voorstel_opmerking: str | None = None
+    # Planning-dekking (planning-agenda, besluit 22-08): uren zonder planningstoewijzing op
+    # (persoon, project, dag) = oranje "buiten planning" bij de keuring — nooit een blokkade.
+    buiten_planning: bool = False
 
 
 class WeekstaatDto(BaseModel):
@@ -337,6 +340,110 @@ class DetacheerderTariefRequest(StrikteInvoer):
     detacheerder_id: uuid.UUID
     zzper_id: uuid.UUID
     uurtarief: Decimal | None = None
+
+
+# --- planning-agenda steigerbouw (akkoord Peter 22-08, mockup planning-steigerbouw.html) --------
+
+
+class PlanningKaartDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str | None = None
+    rol: str
+    dagdeel: str  # 'heel' | 'half' (½-label op het kaartje)
+
+
+class PlanningProjectRijDto(BaseModel):
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    opdrachtgever: str | None = None
+    soort_werk: str | None = None
+    looptijd_tot: date | None = None
+    week_man: int  # "deze week: N man"
+    per_datum: dict[str, list[PlanningKaartDto]]  # ISO-datum → kaartjes
+
+
+class PlanningPoolPersoonDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str
+    rol: str
+    geplande_dagen: Decimal  # heel = 1, half = 0,5 — besluit C: > 5 kleurt als zacht signaal
+
+
+class BuitenPlanningMeldingDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str | None = None
+    datum: date
+    project_naam: str | None = None
+    uren: Decimal
+
+
+class DubbeleDagMeldingDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str | None = None
+    datum: date
+    project_namen: list[str]
+    ongedekte_project_namen: list[str]
+
+
+class DubbeleDagTellerDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str | None = None
+    aantal: int  # ongedekte dubbele dagen in de laatste 30 dagen
+
+
+class PlanningWeekDto(BaseModel):
+    jaar: int
+    weeknummer: int
+    maandag: date
+    zondag: date
+    projecten: list[PlanningProjectRijDto]
+    pool: list[PlanningPoolPersoonDto]
+    buiten_planning: list[BuitenPlanningMeldingDto]
+    dubbele_dagen: list[DubbeleDagMeldingDto]
+    dubbele_dag_tellers: list[DubbeleDagTellerDto]
+
+
+class PlanningToewijzingRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+    dagdeel: str = "heel"
+
+
+class PlanningVerwijderRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+
+
+class PlanningVerplaatsRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    van_project_id: uuid.UUID
+    van_datum: date
+    naar_project_id: uuid.UUID
+    naar_datum: date
+
+
+class PlanningDagdeelRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+    dagdeel: str
+
+
+class MijnPlanningDagDto(BaseModel):
+    """Alleen-lezen veld-weergave (besluit B): waar moet ik heen deze week."""
+
+    datum: date
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    dagdeel: str
 
 
 class ModuleRechtRequest(StrikteInvoer):

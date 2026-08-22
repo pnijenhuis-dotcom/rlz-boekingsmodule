@@ -325,6 +325,58 @@ class Meerwerk(Base):
     vraag_beantwoord_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
+class PlanningDagdeel(enum.StrEnum):
+    """Dagdeel van een planningstoewijzing (mockup planning-steigerbouw.html, akkoord Peter
+    22-08): HEEL = hele dag (1,0 dag in de tellers), HALF = halve dag (0,5 — het ½-label op
+    het kaartje; zo kan één persoon via dagdelen op twee projecten per dag gepland worden)."""
+
+    HEEL = "heel"
+    HALF = "half"
+
+
+_DAGDEEL_SQL = ", ".join(f"'{d.value}'" for d in PlanningDagdeel)
+
+
+class PlanningToewijzing(Base):
+    """Planning-agenda steigerbouw (mockup planning-steigerbouw.html, definitief akkoord Peter
+    22-08, migratie 0060): het kantoor plant ZZP'ers/uitvoerders per dag op actieve projecten.
+    De samengestelde PK ís de harde failsafe (besluit 22-08): dezelfde persoon kan nooit 2× op
+    dezelfde dag op hetzélfde project gepland worden; meerdere personen per project/dag en (via
+    dagdelen) meerdere projecten per persoon/dag zijn wél geldig. Plannen maakt de
+    projectkoppeling (uren_project_toewijzing) automatisch aan als die ontbreekt (besluit A,
+    geaudit). De planning is de TOETSBRON voor de weekstaten: uren buiten de planning kleuren
+    oranje bij de keuring (geen blokkade), een dubbele dag zonder dekking is een interne
+    kantoor-melding + teller (app/uren/planning.py). De veldwerker ziet zijn eigen planning
+    alleen-lezen in de app (besluit B) — nooit muteerbaar vanuit de veld-API."""
+
+    __tablename__ = "planning_toewijzing"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_planning_toewijzing_project_cache",
+        ),
+        CheckConstraint(f"dagdeel IN ({_DAGDEEL_SQL})", name="ck_planning_toewijzing_dagdeel"),
+        Index("ix_planning_toewijzing_administratie_id", "administratie_id"),
+        Index("ix_planning_toewijzing_datum", "administratie_id", "datum"),
+        Index("ix_planning_toewijzing_gebruiker", "administratie_id", "gebruiker_id", "datum"),
+        {"schema": "boekhouding"},
+    )
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    datum: Mapped[date] = mapped_column(primary_key=True)
+    dagdeel: Mapped[str] = mapped_column(default=PlanningDagdeel.HEEL.value)
+    toegevoegd_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 class UrenProjectToewijzing(Base):
     """Kantoor-beheerde koppeling gebruiker↔project (Beheerder-only, geaudit): voor een ZZP'er
     = "op dit project schrijf je weekstaten", voor een uitvoerder = keurrecht + projectinhoud
