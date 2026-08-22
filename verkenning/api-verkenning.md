@@ -1517,3 +1517,45 @@ herstart op een storno-concept én de crash-retry); lijst leeg → PUT met het b
 400/404 door naar een deterministisch cyclus-GUID (`uuid5` over het basis-GUID, begrensd op
 5 cycli, daarna zichtbare fout). Onleesbare Uploads-lijst = fail-open naar gewoon uploaden
 (een dubbele bijlage is cosmetisch, een gestrande boeking niet).
+
+## Tegenboek-pad STAP 0 — negatieve spiegel-PurchaseInvoice GESLAAGD (22 augustus 2026)
+
+Live tegen de test-administratie (`verkenning/poc_tegenboeking.py`, audit in
+`output/tegenboekpoc_audit.jsonl`), vóór de bouw van het tegenboek-pad
+(mockup/tegenboek-mockup.html; besluit Peter 22-08: géén suppletie-signaal). Scenario:
+origineel geboekt mét `Date` in de ingediende periode 2023-Q1 (Status 2 — precies het
+geval waarin onze aangifte-poort storno blokkeert), daarna de tegenboeking als NIEUWE
+PurchaseInvoice.
+
+1. **De tegenboek-vorm werkt door de hele flow**: PUT nieuwe PurchaseInvoice op een eigen
+   deterministisch GUID, zélfde `Entity`, per regel zelfde `Account`+`TaxRate` met
+   NEGATIEVE `NetAmount`/`TaxAmount`, `Date` = vandaag (open periode), eigen `Reference`
+   ("TB <orig>") → `/Uploads` n.v.t. in de PoC → actie 17 → **Status 2, BaseInvoiceAmount
+   −121,00, eigen ReceiptNumber (RLZ-04-00002032)**. Consistent met de eerdere
+   creditnota-feiten ("Inkoopcreditnota = negatieve PurchaseInvoice"): dit ís de
+   representatie, geen workaround.
+2. **Btw-effect exact zoals gewenst**: de TaxSource van de tegenboeking landt als
+   **negatieve voorbelasting (−100/−21, VATSourceCategory 2) in de aangifte van de eigen
+   boekperiode** (concept-aangifte Q3 2026, Status 1). Het origineel (Date 2023-02-15 in
+   de ingediende 2023-Q1) kreeg zijn TaxSource +100/+21 in de **eerstvolgende open
+   periode 2023-Q2** — herbevestiging van "Actie 19 in een periode met ingediende
+   btw-aangifte" (RLZ schuift zelf, wij hoeven niets).
+3. **Open-post-gedrag**: het origineel blijft gewoon open staan (BaseRemainingAmount
+   +121); de tegenboeking staat als **open creditpost** (BaseRemainingAmount −121,
+   BasePaidAmount 0). RLZ verrekent de twee NIET zelf — verrekenen/terugbetalen is een
+   aparte (bank/afletter)handeling. Dit onderbouwt de mockup-waarschuwing "de
+   tegenboeking laat een open creditpost achter".
+4. **TaxSources dragen géén document-referentie** in de collectievorm
+   (`TaxDeclarations/{id}/TaxSources`: alleen id, Net/Tax/DeclaredAmount, Date,
+   Description = crediteurnaam, DocumentType, VATSourceCategory) — een
+   btw-reconciliatie kan alleen op bedrag+datum+omschrijving matchen, nooit op id.
+5. Opruimen: actie 19 op beide (Status 1, `Open` terug naar 0.0) — concepten blijven
+   staan met TEST-referentie, conform testdata-afspraak (nooit verwijderen).
+
+Consequentie voor de motor: tegenboeking = nieuwe PurchaseInvoice met eigen
+deterministisch GUID (`tegenboeking:{document_id}:{cyclus}` — nooit het GUID van het
+origineel: een her-PUT dáárop zou de DocumentLineList van het origineel vervangen, zie
+"Her-PUT op een bestaand concept"), gespiegelde negatieve regels uit het geboekte
+voorstel, boekdatum = vandaag. Bij "tegenboeken én opnieuw boeken" krijgt de herboeking
+óók een eigen GUID (zelfde reden) en een duplicaat-uitzondering (zelfde
+Entity+Reference+bedrag als het origineel is dáár bewust).
