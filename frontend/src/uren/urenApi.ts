@@ -18,6 +18,9 @@ export interface DagDto {
   voorstel_uren: string | null
   voorstel_m2: string | null
   voorstel_opmerking: string | null
+  // Planning-dekking (planning-agenda, besluit 22-08): uren zonder planningstoewijzing =
+  // oranje "buiten planning" bij de keuring — een signaal, nooit een blokkade.
+  buiten_planning: boolean
 }
 
 export interface WeekstaatDto {
@@ -235,6 +238,26 @@ export function haalWeekstaat(administratieId: string, weekstaatId: string): Pro
   return apiJson(`/uren/weekstaten/${administratieId}/${weekstaatId}`)
 }
 
+/** Eigen planning, ALLEEN-LEZEN (planning-agenda besluit B, 22-08): waar moet ik heen deze
+ * week. Plannen doet uitsluitend het kantoor — de veld-API heeft bewust geen mutatiepad. */
+export interface MijnPlanningDagDto {
+  datum: string
+  administratie_id: string
+  administratie_naam: string | null
+  project_id: string
+  project_naam: string | null
+  dagdeel: 'heel' | 'half'
+}
+
+export function haalMijnPlanning(
+  jaar: number,
+  weeknummer: number,
+  namens: string | null,
+): Promise<MijnPlanningDagDto[]> {
+  const basis = `/uren/zzp/planning?jaar=${jaar}&weeknummer=${weeknummer}`
+  return apiJson(namens ? `${basis}&namens=${namens}` : basis)
+}
+
 /* --- detacheerder ------------------------------------------------------------------------------ */
 
 export function haalMijnZzpers(): Promise<ZzperKaartDto[]> {
@@ -343,6 +366,25 @@ export function weekDagen(jaar: number, weeknummer: number): { naam: string; dat
     d.setUTCDate(maandag.getUTCDate() + i)
     return { naam, datum: d.toISOString().slice(0, 10) }
   })
+}
+
+/** ISO-(jaar, week) van een datum (planning-weergave: huidige week + vooruit bladeren). */
+export function isoWeekVan(datum: Date): { jaar: number; weeknummer: number } {
+  const d = new Date(Date.UTC(datum.getFullYear(), datum.getMonth(), datum.getDate()))
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)) // donderdag bepaalt het ISO-jaar
+  const jaar = d.getUTCFullYear()
+  const eersteDonderdag = new Date(Date.UTC(jaar, 0, 4))
+  eersteDonderdag.setUTCDate(eersteDonderdag.getUTCDate() + 4 - (eersteDonderdag.getUTCDay() || 7))
+  const weeknummer = 1 + Math.round((d.getTime() - eersteDonderdag.getTime()) / (7 * 24 * 3600 * 1000))
+  return { jaar, weeknummer }
+}
+
+/** Eén ISO-week vooruit of terug ten opzichte van (jaar, weeknummer). */
+export function schuifWeek(jaar: number, weeknummer: number, delta: number): { jaar: number; weeknummer: number } {
+  const maandag = weekDagen(jaar, weeknummer)[0].datum
+  const d = new Date(`${maandag}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + delta * 7)
+  return isoWeekVan(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }
 
 export function urenLabel(uren: string, m2: string | null): string {
