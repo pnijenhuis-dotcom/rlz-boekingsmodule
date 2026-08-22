@@ -544,7 +544,26 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (Beheerder-only endpoints, geaudit) én de match-sectie op het controlescherm
   (uitkomst-chip, verschil-per-week-uitsplitsing, periode-keuze/herberekenen met
   weekstaat-selectie via de kandidaat-staten-leesroute, concept-mail-paneel);
-  mockup meerwerk-kantoor.html mee bijgewerkt. Fase 4 autoboek-activatie = open.
+  mockup meerwerk-kantoor.html mee bijgewerkt. **Fase 4 autoboek-slot GEBOUWD + GETEST
+  (2026-08-22, geen migratie — kolom 0057): opt-in per veldwerker-koppeling (Beheerder-only
+  endpoint + switch in de crediteur/tarief-modal, ⚡-badge), slot uitsluitend groen bij
+  match-uitkomst `match` (bedrag getoetst — tarief verplicht) mét ≥ 1 getekende staat,
+  bovenop álle bestaande inkoop-autoboekpoorten (app-bevestigd geheugen, harde checks,
+  duplicaat/vraag, volumerem, accorderingspoort); bron `veldwerker_opt_in` in tijdlijn +
+  audit; twee triggers (ná extractie én ná weekstaat-goedkeuring die de match groen maakt);
+  staat overal UIT — activeren per koppeling is klikwerk Peter.**
+  **Planning-agenda steigerbouw (ontwerpronde v2 + BOUW akkoord Peter 22-08, mockup
+  `planning-steigerbouw.html` = norm; GEBOUWD + GETEST 2026-08-22, migratie 0060 —
+  BESLISSINGEN "PLANNING-AGENDA STEIGERBOUW" is canoniek):** kantoor plant ZZP'ers/
+  uitvoerders per dag op ACTIEVE projecten (weekgrid `/planning`, sleepbare kaartjes,
+  dagdeel heel/half; ingang op de klantpagina). Harde failsafe = samengestelde PK
+  persoon×project×dag; besluit A: plannen maakt de projectkoppeling automatisch aan
+  (geaudit, bron 'planning'); besluit B: veldwerker ziet de eigen planning ALLEEN-LEZEN in
+  de app (tab "📅 Planning", ook detacheerder-namens; geen veld-mutatiepad); besluit C:
+  > 5 geplande dagen p.p./week = zacht signaal. Planning = TOETSBRON weekstaten: uren
+  buiten planning = oranje `buiten_planning`-vlag bij de keuring (geen blokkade); dubbele
+  dag zonder dekking = interne melding + 30-dagen-teller per ZZP'er, uitsluitend kantoor.
+  Toegang onder module-recht "Meerwerk & urenstaten" + uren-&-meerwerk-opt-in.
   Meerwerk-kantoorkant: gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen
   rekening, verplichte reden); contract-toets stelt prijs voor uit de offerte-staffel, mens
   bevestigt (nooit auto-boeken); goedgekeurd + 2 weken niet op een verkoopfactuur =
@@ -690,6 +709,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   mockups uren & meerwerk (Peter 2026-08-21, BOUW GO): veldkant (ZZP'er/uitvoerder/
   detacheerder in de native app) + kantoorkant (stijl kantoor-modern) — de bouwnorm
   (zie "Uren & meerwerk" hierboven)
+- `mockup/planning-steigerbouw.html` — definitief goedgekeurde mockup planning-agenda
+  (v2, Peter 2026-08-22; GEBOUWD 2026-08-22) — de bouwnorm voor `/planning` + de
+  veld-app-planningweergave
 - `verkenning/api-verkenning.md` — alle geverifieerde API-feiten + PoC-resultaten
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
