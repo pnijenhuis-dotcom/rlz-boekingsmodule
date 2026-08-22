@@ -115,6 +115,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/administraties/{aid}/omzet/documenten/{DUMMY_ID}/boeken"),  # omzet
         ("GET", "/auth/gebruikers"),  # gebruikersbeheer (beheerder-only)
         ("GET", f"/uren/kantoor/stand?administratie_id={aid}"),  # uren kantoorkant
+        ("GET", f"/projecten/{aid}"),  # projectenmodule kantoor (22-08)
     ]
 
 

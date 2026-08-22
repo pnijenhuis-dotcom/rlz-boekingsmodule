@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-seed-kempen reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-seed-kempen reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -218,3 +218,8 @@ webhook-redrive: check-versions
 # herlaadt bij codewijzigingen; poort 8000 moet matchen met frontend/vite.config.ts's proxy.
 run: check-versions
 	.venv/bin/uvicorn app.main:app --reload --port 8000
+
+# Projectcijfers-sync (projectenmodule 22-08): ververst project_regel_cache uit RLZ voor alle
+# administraties mét de uren-&-meerwerk-opt-in — leescache, RLZ blijft de bron van waarheid.
+projecten-cijfers-sync: check-versions
+	.venv/bin/python -m app.cli projecten-cijfers-sync

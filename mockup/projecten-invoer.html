@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Projecten — specs, contract & staffels (mockup kantoor-console)</title>
+<!-- ============================================================
+     MOCKUP projectenmodule-invoer (ontwerpronde, ter beoordeling Peter)
+     Doel: de invoerkant die nu ontbreekt — projectspecificaties,
+     contract-/offertedocumenten en verrekenstaffels. Voedt:
+     - de uitvoerder-specs in de veld-app (nu leeg)
+     - de contract-toets bij meerwerk-beoordeling (prijsvoorstel)
+     - later: planning (looptijden) en projectsignalen
+     Stijl/tokens = mockup/kantoor-modern.html (designpass-norm).
+     Klikbaar: projectenlijst → projectdetail, ontleed-voorstel
+     bevestigen per regel, thema-toggle. Desktop-first (kantoor).
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#ffffff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-hover:#25534e; --primary-fg:#ffffff;
+    --accent-bg:#e9f2f0; --ring:rgba(46,102,96,.35);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  html.dark{
+    --bg:#0e1514; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --primary:#57b3a7; --primary-hover:#6ac4b8; --primary-fg:#0c1513;
+    --accent-bg:#1c2e2b; --ring:rgba(87,179,167,.35);
+    --ok:#4ecb94; --ok-bg:#152f24; --warn:#e5a04c; --warn-bg:#33260f;
+    --danger:#f08579; --danger-bg:#361713; --info:#93a6f5; --info-bg:#1a2038;
+    --purple:#b39af0; --purple-bg:#251b3d;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13.5px;letter-spacing:-.01em;line-height:1.45;padding:22px}
+  button{font-family:inherit}
+  .kop{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+  .kop h1{font-size:19px;letter-spacing:-.02em}
+  .kop .sub{color:var(--muted);font-size:12.5px}
+  .kop .rechts{margin-left:auto;display:flex;gap:8px}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .btn.secundair{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.klein{padding:5px 11px;font-size:12px;border-radius:7px}
+  .btn.gevaar{background:var(--danger-bg);color:var(--danger)}
+  .icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:15px}
+
+  .kaart{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px}
+  .kaart-kop{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .kaart-kop h2{font-size:14px}
+  .kaart-kop .uitleg{color:var(--muted);font-size:12px;width:100%;font-weight:400}
+  .kaart-kop .rechts{margin-left:auto;display:flex;gap:8px}
+  .kaart-body{padding:16px 18px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:600}
+  td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr.klik{cursor:pointer} tr.klik:hover td{background:var(--panel-2)}
+  td .sub{color:var(--muted);font-size:11.5px;margin-top:2px}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+  .badge::before{content:'';width:6px;height:6px;border-radius:99px;background:currentColor}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .badge.warn{background:var(--warn-bg);color:var(--warn)}
+  .badge.info{background:var(--info-bg);color:var(--info)}
+  .badge.stil{background:var(--panel-2);color:var(--muted);border:1px solid var(--border)}
+  .badge.stil::before{display:none}
+
+  .zoek{max-width:340px;width:100%;position:relative;margin-right:auto}
+  .zoek input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);color:var(--text);font-size:13px}
+
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 16px}
+  .veld label{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:4px}
+  .veld input,.veld select{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:8px 11px;font-family:inherit;font-size:13px}
+  .veld .hint{font-size:11px;color:var(--faint);margin-top:3px}
+
+  .doc{display:flex;align-items:center;gap:12px;padding:11px 12px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;font-size:13px}
+  .doc .ic{font-size:18px}
+  .doc b{display:block}
+  .doc small{color:var(--muted)}
+  .doc .rechts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .dropzone{border:1.5px dashed var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:12.5px;margin-top:6px}
+  .dropzone b{color:var(--primary)}
+
+  .voorstel{border:1px solid color-mix(in srgb,var(--info) 30%,transparent);background:var(--info-bg);border-radius:10px;padding:2px 0;margin-top:10px}
+  .voorstel .vkop{padding:10px 14px;font-size:12.5px;font-weight:700;color:var(--info);display:flex;gap:8px;align-items:center}
+  .vregel{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid color-mix(in srgb,var(--info) 18%,transparent);font-size:12.5px;background:var(--panel)}
+  .vregel .oms{flex:1}
+  .vregel .oms small{display:block;color:var(--muted);font-size:11px}
+  .vregel .prijs{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+  .vregel .acties{display:flex;gap:6px}
+  .vregel .ok-knop,.vregel .nee-knop{border:none;border-radius:8px;width:32px;height:28px;cursor:pointer;font-size:13px}
+  .vregel .ok-knop{background:var(--ok-bg);color:var(--ok)}
+  .vregel .nee-knop{background:var(--danger-bg);color:var(--danger)}
+  .vregel.bevestigd{opacity:.65}
+  .vregel.bevestigd .acties{visibility:hidden}
+  .vregel.bevestigd .oms::after{content:" ✓ bevestigd";color:var(--ok);font-weight:700;font-size:11px}
+
+  .notitie{background:var(--accent-bg);border-radius:var(--radius-sm);padding:10px 13px;font-size:12px;line-height:1.55;color:var(--primary);margin-top:12px}
+  .notitie.warn{background:var(--warn-bg);color:var(--warn)}
+  .desknote{margin-top:18px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;font-size:12.5px;line-height:1.6;max-width:1080px}
+  .desknote h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:10px 0 6px}
+  .desknote h2:first-child{margin-top:0}
+  .view{display:none}.view.actief{display:block}
+  .kruimel{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .kruimel span{cursor:pointer;color:var(--primary)}
+</style>
+</head>
+<body>
+
+<!-- ================= VIEW 1: PROJECTENLIJST ================= -->
+<div class="view actief" id="lijst">
+  <div class="kop">
+    <div><h1>Projecten — Universal Steigerbouw</h1>
+    <div class="sub">Specificaties, contracten en verrekenstaffels · gesynct met RLZ (154 projecten)</div></div>
+    <div class="rechts"><button class="btn secundair klein" onclick="toon('overzicht')">📈 Resultaat alle projecten</button><button class="btn klein" onclick="document.getElementById('nieuwmodal').style.display='grid'">+ Nieuw project</button><button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')">◐</button></div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop">
+      <div class="zoek"><input placeholder="Zoek op nummer, plaats of opdrachtgever…"></div>
+      <span class="badge warn">12 zonder specs</span>
+      <span class="badge stil">alleen actieve</span>
+    </div>
+    <table>
+      <thead><tr><th>Project</th><th>Opdrachtgever</th><th>Specs</th><th>Contract</th><th>Staffels</th><th>Voortgang</th></tr></thead>
+      <tbody>
+        <tr class="klik" onclick="toon('detail')">
+          <td><b>144 Breda</b><div class="sub">Moeskops · werknr BAM-88412</div></td>
+          <td>Moeskops Bouw</td>
+          <td><span class="badge ok">compleet</span></td>
+          <td><span class="badge ok">contract + offerte</span></td>
+          <td><span class="badge ok">4 regels</span></td>
+          <td>3.280 / 4.200 m² <div class="sub">78% · uit weekstaten</div></td>
+        </tr>
+        <tr class="klik">
+          <td><b>25013 Deurne</b><div class="sub">Bots Bouwgroep</div></td>
+          <td>Bots Bouwgroep</td>
+          <td><span class="badge warn">onvolledig</span></td>
+          <td><span class="badge ok">offerte</span></td>
+          <td><span class="badge warn">geen</span></td>
+          <td>— <div class="sub">geen contract-m²</div></td>
+        </tr>
+        <tr class="klik">
+          <td><b>25016 Groesbeek</b><div class="sub">Janssen-Groesbeek B.V.</div></td>
+          <td>Janssen-Groesbeek</td>
+          <td><span class="badge ok">compleet</span></td>
+          <td><span class="badge warn">geen documenten</span></td>
+          <td><span class="badge warn">geen</span></td>
+          <td>1.150 / 2.600 m² <div class="sub">44%</div></td>
+        </tr>
+        <tr class="klik">
+          <td><b>25011 Zwolle Weeshuispassage</b><div class="sub">Ben Kuijer</div></td>
+          <td>Ben Kuijer</td>
+          <td><span class="badge ok">compleet</span></td>
+          <td><span class="badge ok">contract</span></td>
+          <td><span class="badge ok">2 regels</span></td>
+          <td><span class="badge info">doorlopende huur · wk 33+</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="notitie">ℹ️ Projecten komen uit de RLZ-sync — hier voeg je de <b>steigerbouw-inhoud</b> toe: specs, documenten en staffels. "Zonder specs" telt alleen projecten met uren-&-meerwerk-activiteit; de rest mag leeg blijven.</div>
+</div>
+
+<!-- ================= VIEW 2: PROJECTDETAIL ================= -->
+<div class="view" id="detail">
+  <div class="kruimel"><span onclick="toon('lijst')">Projecten</span> › 144 Breda (Moeskops)</div>
+  <div class="kop">
+    <div><h1>144 Breda (Moeskops)</h1>
+    <div class="sub">RLZ-project · gekoppeld werknummer opdrachtgever: BAM-88412</div></div>
+    <div class="rechts"><button class="btn secundair klein" onclick="toon('resultaat')">📈 Resultaat</button><button class="btn klein">Opslaan</button><button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')">◐</button></div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop"><h2>Specificaties</h2>
+      <div class="uitleg">Deze velden voeden de uitvoerder-app (specs-scherm), de planning en de projectsignalen. Handmatig invullen of bevestigen uit de contract-ontleding hieronder.</div>
+    </div>
+    <div class="kaart-body grid2">
+      <div class="veld"><label>Opdrachtgever</label><input value="Moeskops Bouw B.V."></div>
+      <div class="veld"><label>Werknummer opdrachtgever</label><input value="BAM-88412"><div class="hint">gebruikt voor factuur↔project-matching</div></div>
+      <div class="veld"><label>Contract-m²</label><input value="4.200"></div>
+      <div class="veld"><label>Looptijd</label><input value="02-06-2026 t/m 30-11-2026"></div>
+      <div class="veld"><label>Huurtijd inbegrepen</label><input value="16 weken"></div>
+      <div class="veld"><label>Doorlopende huur daarna</label><input value="€ 0,42 /m²/week"><div class="hint">voedt het doorlopende-huur-signaal</div></div>
+    </div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop"><h2>Documenten (contract & offerte)</h2>
+      <div class="uitleg">Alleen-lezen zichtbaar voor de uitvoerder in de veld-app. Ná upload stelt de ontleding specs en staffels VOOR — jij bevestigt per regel, er wordt nooit iets automatisch overgenomen.</div>
+    </div>
+    <div class="kaart-body">
+      <div class="doc"><span class="ic">📄</span><span><b>Opdrachtbevestiging 26014 v2.pdf</b><small>geüpload 12 aug · getekend · ontleed ✓</small></span><span class="rechts"><span class="badge ok">actueel contract</span><button class="btn secundair klein">Bekijk</button></span></div>
+      <div class="doc"><span class="ic">📄</span><span><b>Offerte 26014-O1.pdf</b><small>geüpload 2 jun · incl. staffels</small></span><span class="rechts"><span class="badge stil">offerte</span><button class="btn secundair klein">Bekijk</button></span></div>
+      <div class="dropzone">Sleep hier een contract of offerte (PDF) naartoe, of <b>blader</b> — ontleding start daarna als voorstel</div>
+
+      <div class="voorstel">
+        <div class="vkop">🧠 Ontleed-voorstel uit "Opdrachtbevestiging 26014 v2.pdf" — bevestig per regel</div>
+        <div class="vregel bevestigd"><span class="oms">Contract-m² <small>gevonden op p.1: "4.200 m² steigerwerk gevel A–C"</small></span><span class="prijs">4.200 m²</span><span class="acties"><button class="ok-knop">✓</button><button class="nee-knop">✗</button></span></div>
+        <div class="vregel"><span class="oms">Staffel: trapsteiger <small>§4.2 "verrekenbaar tegen € 9,20 per m²"</small></span><span class="prijs">€ 9,20 /m²</span><span class="acties"><button class="ok-knop" onclick="this.closest('.vregel').classList.add('bevestigd')">✓</button><button class="nee-knop">✗</button></span></div>
+        <div class="vregel"><span class="oms">Staffel: doorwerkvoorziening netten <small>§4.3 "€ 3,10 per m¹ per week"</small></span><span class="prijs">€ 3,10 /m¹/wk</span><span class="acties"><button class="ok-knop" onclick="this.closest('.vregel').classList.add('bevestigd')">✓</button><button class="nee-knop">✗</button></span></div>
+        <div class="vregel"><span class="oms">Boeteclausule <small>§7: "€ 500 per kalenderdag te late oplevering" — ter info, wordt projectsignaal</small></span><span class="prijs">€ 500 /dag</span><span class="acties"><button class="ok-knop" onclick="this.closest('.vregel').classList.add('bevestigd')">✓</button><button class="nee-knop">✗</button></span></div>
+      </div>
+      <div class="notitie warn">⚠️ De ontleding draait onder de bestaande AI-gate en AI-kostengrens; staat die uit, dan vul je specs en staffels gewoon handmatig in — alles hierboven blijft werken.</div>
+    </div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop"><h2>Verrekenstaffels</h2>
+      <div class="uitleg">Bron voor het prijsvoorstel bij meerwerk-beoordeling. "Verrekenbaar nee" = meerwerk op dit item wordt standaard afgeraden (eigen rekening) — de mens beslist altijd.</div>
+      <div class="rechts"><button class="btn secundair klein">+ Regel</button></div>
+    </div>
+    <table>
+      <thead><tr><th>Omschrijving</th><th>Eenheid</th><th>Prijs</th><th>Verrekenbaar</th><th>Bron</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Trapsteiger</td><td>m²</td><td>€ 9,20</td><td><span class="badge ok">ja</span></td><td>contract §4.2 <div class="sub">bevestigd 12 aug</div></td><td><button class="btn secundair klein">wijzig</button></td></tr>
+        <tr><td>Doorwerkvoorziening netten</td><td>m¹/week</td><td>€ 3,10</td><td><span class="badge ok">ja</span></td><td>contract §4.3</td><td><button class="btn secundair klein">wijzig</button></td></tr>
+        <tr><td>Extra manuren (regie)</td><td>uur</td><td>€ 47,50</td><td><span class="badge ok">ja</span></td><td>offerte</td><td><button class="btn secundair klein">wijzig</button></td></tr>
+        <tr><td>Hijswerk kraan</td><td>dagdeel</td><td>—</td><td><span class="badge warn">nee</span></td><td>handmatig <div class="sub">"zit in aanneemsom"</div></td><td><button class="btn secundair klein">wijzig</button></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop"><h2>Leverancier-werknummers</h2>
+      <div class="uitleg">Leveranciers hanteren eigen werknummers op hun facturen — deze mapping koppelt ze aan dit project (eerste keer bevestigen, daarna automatisch; bestaande praktijkles).</div>
+    </div>
+    <table>
+      <thead><tr><th>Leverancier</th><th>Hun werknummer</th><th>Bron</th></tr></thead>
+      <tbody>
+        <tr><td>Bouwflex Detacheringen</td><td>BF-2231</td><td>geleerd uit factuur 8 aug <span class="badge ok">bevestigd</span></td></tr>
+        <tr><td>Van Thiel Verhuur</td><td>VT-90114</td><td>voorstel uit factuur 19 aug <span class="badge warn">bevestigen</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ================= VIEW 3: RESULTAAT (kosten/baten per week) ================= -->
+<div class="view" id="resultaat">
+  <div class="kruimel"><span onclick="toon('lijst')">Projecten</span> › <span onclick="toon('detail')">144 Breda (Moeskops)</span> › Resultaat</div>
+  <div class="kop">
+    <div><h1>Resultaat — 144 Breda (Moeskops)</h1>
+    <div class="sub">Kosten/baten per week · analytische laag, wordt nooit in RLZ geboekt</div></div>
+    <div class="rechts"><button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')">◐</button></div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop"><h2>Stand tot en met week 34</h2></div>
+    <div class="kaart-body grid2">
+      <div><div style="font-size:11.5px;color:var(--muted)">Baten gefactureerd (RLZ)</div><div style="font-size:22px;font-weight:800">€ 128.400</div><div class="sub" style="color:var(--faint);font-size:11.5px">3 termijnfacturen + 1 meerwerk</div></div>
+      <div><div style="font-size:11.5px;color:var(--muted)">Kosten geboekt (RLZ)</div><div style="font-size:22px;font-weight:800">€ 96.150</div><div class="sub" style="color:var(--faint);font-size:11.5px">inkoop + ZZP-facturen op dit project</div></div>
+      <div><div style="font-size:11.5px;color:var(--muted)">Onderweg (verrijking)</div><div style="font-size:22px;font-weight:800;color:var(--warn)">− € 7.240</div><div class="sub" style="color:var(--faint);font-size:11.5px">getekende uren nog niet gefactureerd (€ 9.860) − goedgekeurd meerwerk nog te factureren (€ 2.620)</div></div>
+      <div><div style="font-size:11.5px;color:var(--muted)">Verwachte marge</div><div style="font-size:22px;font-weight:800;color:var(--ok)">€ 25.010 · 19%</div><div class="sub" style="color:var(--faint);font-size:11.5px">gefactureerd + onderweg, excl. AK-opslag</div></div>
+    </div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop"><h2>Per week</h2>
+      <div class="uitleg">Baten = verkoopfacturen (RLZ) op dit project · Kosten = inkoop/ZZP-facturen (RLZ) + getekende-uren-verrijking uit de weekstaten (uren × tarief, zolang de factuur er nog niet is — telt nooit dubbel: zodra de factuur geboekt is vervangt die de verrijking).</div>
+    </div>
+    <table>
+      <thead><tr><th>Week</th><th>Baten</th><th>Kosten (geboekt)</th><th>Kosten onderweg (uren)</th><th>Saldo week</th><th>Cumulatief</th></tr></thead>
+      <tbody>
+        <tr><td><b>wk 31</b></td><td>€ 42.800 <div class="sub">termijn 2</div></td><td>€ 18.410</td><td>—</td><td style="color:var(--ok);font-weight:700">+ € 24.390</td><td>+ € 28.920</td></tr>
+        <tr><td><b>wk 32</b></td><td>—</td><td>€ 12.980</td><td>—</td><td style="color:var(--danger);font-weight:700">− € 12.980</td><td>+ € 15.940</td></tr>
+        <tr><td><b>wk 33</b></td><td>€ 42.800 <div class="sub">termijn 3</div></td><td>€ 21.300 <div class="sub">incl. huur liften</div></td><td>€ 3.120 <div class="sub">2 staten, factuur verwacht</div></td><td style="color:var(--ok);font-weight:700">+ € 18.380</td><td>+ € 34.320</td></tr>
+        <tr><td><b>wk 34</b></td><td>€ 2.620 <div class="sub">meerwerk trapsteiger</div></td><td>€ 5.190</td><td>€ 6.740 <div class="sub">3 staten</div></td><td style="color:var(--danger);font-weight:700">− € 9.310</td><td style="font-weight:800">+ € 25.010</td></tr>
+      </tbody>
+    </table>
+    <div class="kaart-body">
+      <div class="notitie">ℹ️ Week-toewijzing: kosten op <b>werkweek</b> (uit weekstaten/factuurregels) waar herleidbaar, anders factuurdatum · signaal-koppeling: een week met kosten maar zonder baten voedt het bestaande "inkoop zonder omzet"-signaal.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= VIEW 4: RESULTAAT ALLE PROJECTEN ================= -->
+<div class="view" id="overzicht">
+  <div class="kruimel"><span onclick="toon('lijst')">Projecten</span> › Resultaat (alle projecten)</div>
+  <div class="kop">
+    <div><h1>Resultaat — alle actieve projecten</h1>
+    <div class="sub">Cumulatief t/m week 34 · gefactureerd + onderweg · analytisch, nooit geboekt in RLZ</div></div>
+    <div class="rechts"><button class="btn secundair klein">Deze week</button><button class="btn secundair klein">Dit kwartaal</button><button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')">◐</button></div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-body grid2">
+      <div><div style="font-size:11.5px;color:var(--muted)">Baten totaal</div><div style="font-size:22px;font-weight:800">€ 486.900</div><div style="color:var(--faint);font-size:11.5px">17 actieve projecten met activiteit</div></div>
+      <div><div style="font-size:11.5px;color:var(--muted)">Kosten totaal (incl. onderweg)</div><div style="font-size:22px;font-weight:800">€ 391.320</div><div style="color:var(--faint);font-size:11.5px">waarvan € 31.480 uren-onderweg</div></div>
+      <div><div style="font-size:11.5px;color:var(--muted)">Marge totaal</div><div style="font-size:22px;font-weight:800;color:var(--ok)">€ 95.580 · 19,6%</div><div style="color:var(--faint);font-size:11.5px">excl. AK-opslag</div></div>
+      <div><div style="font-size:11.5px;color:var(--muted)">Aandacht</div><div style="font-size:22px;font-weight:800;color:var(--danger)">2 projecten</div><div style="color:var(--faint);font-size:11.5px">negatieve of dalende marge</div></div>
+    </div>
+  </div>
+
+  <div class="kaart">
+    <div class="kaart-kop"><h2>Per project</h2>
+      <div class="uitleg">Gesorteerd op marge, laagste eerst — zo staat het aandachtswerk bovenaan. Klik een rij voor de week-uitsplitsing.</div>
+    </div>
+    <table>
+      <thead><tr><th>Project</th><th>Baten</th><th>Kosten (incl. onderweg)</th><th>Marge</th><th>Marge %</th><th>Trend 4 wkn</th><th>Signalen</th></tr></thead>
+      <tbody>
+        <tr class="klik">
+          <td><b>25013 Deurne</b><div class="sub">Bots Bouwgroep</div></td><td>€ 18.200</td><td>€ 21.940</td>
+          <td style="color:var(--danger);font-weight:700">− € 3.740</td><td style="color:var(--danger);font-weight:700">− 20,5%</td>
+          <td style="color:var(--danger)">▼ dalend</td><td><span class="badge danger">kosten zonder omzet 3 wkn</span></td>
+        </tr>
+        <tr class="klik">
+          <td><b>25058 Haarlem</b><div class="sub">Slokker</div></td><td>€ 44.100</td><td>€ 42.760</td>
+          <td style="font-weight:700">+ € 1.340</td><td style="font-weight:700">3,0%</td>
+          <td style="color:var(--danger)">▼ dalend</td><td><span class="badge warn">meerwerk 2 wkn niet doorbelast</span></td>
+        </tr>
+        <tr class="klik" onclick="toon('resultaat')">
+          <td><b>144 Breda</b><div class="sub">Moeskops</div></td><td>€ 128.400</td><td>€ 103.390</td>
+          <td style="color:var(--ok);font-weight:700">+ € 25.010</td><td style="color:var(--ok);font-weight:700">19,5%</td>
+          <td style="color:var(--ok)">▲ stabiel</td><td>—</td>
+        </tr>
+        <tr class="klik">
+          <td><b>25016 Groesbeek</b><div class="sub">Janssen-Groesbeek</div></td><td>€ 87.400</td><td>€ 64.230</td>
+          <td style="color:var(--ok);font-weight:700">+ € 23.170</td><td style="color:var(--ok);font-weight:700">26,5%</td>
+          <td style="color:var(--ok)">▲ stijgend</td><td>—</td>
+        </tr>
+        <tr class="klik">
+          <td><b>25011 Zwolle Weeshuispassage</b><div class="sub">Ben Kuijer</div></td><td>€ 61.080</td><td>€ 38.900</td>
+          <td style="color:var(--ok);font-weight:700">+ € 22.180</td><td style="color:var(--ok);font-weight:700">36,3%</td>
+          <td style="color:var(--ok)">▲ stijgend</td><td><span class="badge info">doorlopende huur loopt</span></td>
+        </tr>
+        <tr><td colspan="7" style="color:var(--faint);font-size:12px;padding:10px 14px">… nog 12 projecten (marge tussen 15% en 31%, geen signalen) — <a href="#" onclick="return false" style="color:var(--accent)">alles tonen</a></td></tr>
+      </tbody>
+    </table>
+    <div class="kaart-body">
+      <div class="notitie">ℹ️ Zelfde rekenregels als het project-resultaat: baten en kosten uit RLZ per project, verrijkt met getekende-uren-onderweg en goedgekeurd-meerwerk-nog-te-factureren. De signalen-kolom hergebruikt de bestaande projectsignalen (kosten-zonder-omzet, meerwerk-niet-doorbelast, doorlopende huur).</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL: NIEUW PROJECT ================= -->
+<div id="nieuwmodal" style="display:none;position:fixed;inset:0;background:rgba(10,16,15,.45);place-items:center;z-index:50" onclick="if(event.target===this)this.style.display='none'">
+  <div class="kaart" style="width:min(520px,92vw);margin:0">
+    <div class="kaart-kop"><h2>Nieuw project</h2>
+      <div class="uitleg">Wordt volgens de naamconventie aangemaakt in RLZ (projectmotor, idempotent) en daarna hierheen gesynct — één bron van waarheid.</div>
+    </div>
+    <div class="kaart-body grid2">
+      <div class="veld"><label>Projectnummer</label><input value="26127" placeholder="26xxx"><div class="hint">volgende vrije nummer voorgesteld</div></div>
+      <div class="veld"><label>Plaats</label><input placeholder="bijv. Tilburg"></div>
+      <div class="veld"><label>Opdrachtgever</label><input placeholder="bijv. Heijmans"></div>
+      <div class="veld"><label>Startdatum</label><input value="01-09-2026"></div>
+    </div>
+    <div class="kaart-body" style="padding-top:0">
+      <div class="notitie">Naam wordt: <b>26127 Tilburg (Heijmans)</b> — conform de Universal-naamconventie, max 50 tekens (RLZ-grens).</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="btn secundair klein" onclick="document.getElementById('nieuwmodal').style.display='none'">Annuleren</button>
+        <button class="btn klein" onclick="document.getElementById('nieuwmodal').style.display='none'">Aanmaken in RLZ</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="desknote">
+  <h2>Wat je ziet (ontwerpronde — nog niet gebouwd)</h2>
+  De invoerkant van de projectadministratie (steigerbouw-tak): per RLZ-project de <b>specs</b> (contract-m², looptijd, huurtijd, doorlopende-huurtarief), <b>documenten</b> (contract/offerte, alleen-lezen door naar de uitvoerder-app), <b>verrekenstaffels</b> (bron van het meerwerk-prijsvoorstel) en <b>leverancier-werknummers</b>. De lijst toont sync-projecten met compleetheids-badges; voortgang komt uit de goedgekeurde weekstaten (m²).
+  <h2>Bewuste keuzes (graag jouw oordeel)</h2>
+  1. Contract-ontleding = VOORSTEL per regel, mens bevestigt (✓/✗) — niets wordt automatisch overgenomen; draait onder de bestaande AI-gate + kostengrens, en zonder AI blijft alles handmatig invulbaar.<br>
+  2. "Verrekenbaar nee" bij een staffel = meerwerk-beoordeling adviseert "eigen rekening" — de mens beslist.<br>
+  3. Boeteclausules worden vastgelegd als projectsignaal (info), geen automatische actie.<br>
+  4. Toegang: zelfde module-recht "Meerwerk & urenstaten" + klantscope; wijzigen door Boekhouding+Projecten en Beheerder.<br>
+  5. "Zonder specs"-teller telt alleen projecten met uren/meerwerk-activiteit — niet alle 154.
+  <h2>Aanvullingen Peter 22-08 (verwerkt)</h2>
+  6. Beeldvullend (max-breedte losgelaten).<br>
+  7. "+ Nieuw project": wij maken 'm aan in RLZ (bestaande idempotente projectmotor, naamconventie 26xxx Plaats (Opdrachtgever), 50-tekens-grens) en syncen terug — RLZ blijft de bron.<br>
+  8. Resultaat-scherm per project: kosten/baten per week — baten = verkoopfacturen (RLZ), kosten = inkoop/ZZP-facturen (RLZ) verrijkt met getekende-uren-onderweg (uren × tarief tot de factuur er is; nooit dubbel), plus goedgekeurd-meerwerk-nog-te-factureren als baten-onderweg. Analytische laag, wordt nooit in RLZ geboekt; week-toewijzing op werkweek waar herleidbaar, anders factuurdatum. Suppletie-signaal bij tegenboeken: definitief NIET (besluit Peter — correcties lopen mee in het lopende tijdvak).<br>
+  9. Resultaat-overzicht over ÁLLE projecten (knop op het hoofdscherm): totaal-tegels + tabel per project (baten/kosten/marge/trend/signalen), gesorteerd op laagste marge eerst — aandachtswerk bovenaan; rij klikt door naar de week-uitsplitsing. Periode-filters (deze week / kwartaal).
+</div>
+
+<script>
+  function toon(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('actief'));document.getElementById(id).classList.add('actief');window.scrollTo(0,0);}
+</script>
+</body>
+</html>

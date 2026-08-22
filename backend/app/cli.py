@@ -50,6 +50,24 @@ def _bootstrap_beheerder(args: argparse.Namespace) -> int:
     return 0
 
 
+def _projecten_cijfers_sync(args: argparse.Namespace) -> int:
+    """Projectcijfers-sync (projectenmodule, mockup 22-08) — zelfde nooit-vroeg-stoppen-patroon
+    als sync-alles; een administratie zonder credentials telt als overgeslagen."""
+    from app.projecten.cijfers import sync_project_regels_alle
+
+    resultaten = sync_project_regels_alle()
+    fouten = 0
+    for administratie_id, resultaat in resultaten.items():
+        if isinstance(resultaat, dict):
+            print(f"{administratie_id}: {resultaat['documenten']} documenten, {resultaat['regels']} regels, "
+                  f"{resultaat['verdwenen']} verdwenen")
+        else:
+            fouten += 1
+            print(f"{administratie_id}: FOUT — {resultaat}")
+    print(f"Klaar: {len(resultaten)} administratie(s), {fouten} fout(en)")
+    return 1 if fouten else 0
+
+
 def _sync_alles(args: argparse.Namespace) -> int:
     """Nachtelijke sync-entrypoint (fase-vervolg: Cloud Scheduler -> Cloud Run job roept dit
     commando aan). Eén administratie zonder werkende .env-credentials laat de rest niet
@@ -940,6 +958,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Sync Ledgers/TaxRates/Vendors/Projects voor alle administraties (nachtelijke sync).",
     )
 
+    subparsers.add_parser(
+        "projecten-cijfers-sync",
+        help="Ververs de project_regel_cache (RLZ-documentregels mét projectreferentie — de "
+        "rekenbron voor resultaat-per-project) voor alle administraties mét de "
+        "uren-&-meerwerk-opt-in.",
+    )
+
     seed_parser = subparsers.add_parser(
         "seed-boekingsgeheugen",
         help="RLZ-seed van het boekingsgeheugen (PurchaseInvoices+Lines) voor één administratie — "
@@ -1169,6 +1194,8 @@ def main(argv: list[str] | None = None) -> int:
         return _bootstrap_beheerder(args)
     if args.commando == "sync-alles":
         return _sync_alles(args)
+    if args.commando == "projecten-cijfers-sync":
+        return _projecten_cijfers_sync(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
     if args.commando == "bank-sync":

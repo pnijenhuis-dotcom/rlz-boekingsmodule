@@ -321,13 +321,22 @@ export function KlantStanden({
                   {urenStand.meerwerk_te_lang_niet_doorbelast} &gt; 2 weken niet doorbelast
                 </Badge>
               )}
-              <div style={{ marginLeft: 'auto' }}>
+              <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
                 <Button
                   variant="secundair"
                   maat="klein"
                   onClick={() => navigate(`/planning?administratie=${administratieId}`)}
                 >
                   📅 Planning
+                </Button>
+                {/* Projectenmodule (22-08): specs/contracten/staffels + resultaat — net als de
+                    planning een vaste, niet teller-afhankelijke ingang. */}
+                <Button
+                  variant="secundair"
+                  maat="klein"
+                  onClick={() => navigate(`/projecten?administratie=${administratieId}`)}
+                >
+                  📁 Projecten
                 </Button>
               </div>
             </div>

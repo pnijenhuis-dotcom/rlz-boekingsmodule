@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import ForeignKey, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, Index, Numeric, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models import Base
@@ -41,3 +42,157 @@ class ProjectAanvraag(Base):
     rlz_project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     status: Mapped[str] = mapped_column()
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ProjectRegelSoort(enum.StrEnum):
+    """Kant van een RLZ-documentregel in de cijfer-cache: inkoop = kosten, verkoop = baten."""
+
+    INKOOP = "inkoop"
+    VERKOOP = "verkoop"
+
+
+_REGEL_SOORT_SQL = ", ".join(f"'{s.value}'" for s in ProjectRegelSoort)
+
+
+class ProjectRegelCache(Base):
+    """Cache van RLZ-documentregels MÉT projectreferentie (projectenmodule, migratie 0062) —
+    de rekenbron voor "resultaat per project" (mockup projecten-invoer.html views 3/4).
+    Gevuld door de projectcijfers-sync (app/projecten/cijfers.py: PurchaseInvoices +
+    SalesInvoices → /Lines?$expand=Account,Project — api-verkenning: "factuurregels dragen
+    Project + GB aan béíde kanten"); RLZ blijft de bron van waarheid, dit is een leescache
+    (kernprincipe 1). `id` = het RLZ-Line-GUID; regels van geboekte documenten (Status 2/3).
+    Bedragen zoals RLZ ze geeft — creditregels zijn negatief, nooit hier omgerekend."""
+
+    __tablename__ = "project_regel_cache"
+    __table_args__ = (
+        CheckConstraint(f"soort IN ({_REGEL_SOORT_SQL})", name="ck_project_regel_cache_soort"),
+        Index("ix_project_regel_cache_administratie_id", "administratie_id"),
+        Index("ix_project_regel_cache_project", "administratie_id", "project_id"),
+        Index("ix_project_regel_cache_document", "administratie_id", "rlz_document_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    rlz_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    soort: Mapped[str]
+    # RLZ-Project-GUID — bewust géén FK naar project_cache: een regel kan naar een intussen
+    # gearchiveerd/verdwenen project wijzen; de rekenlaag joint zelf op de cache.
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    netto_bedrag: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    btw_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    # Documentdatum (RLZ `Date`) — de week-toewijzing "anders factuurdatum" (mockup-notitie).
+    datum: Mapped[date | None] = mapped_column(default=None)
+    referentie: Mapped[str | None] = mapped_column(default=None)
+    omschrijving: Mapped[str | None] = mapped_column(default=None)
+    laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
+    verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class OntledingRegelStatus(enum.StrEnum):
+    VOORSTEL = "voorstel"
+    BEVESTIGD = "bevestigd"
+    AFGEWEZEN = "afgewezen"
+
+
+class OntledingRegelSoort(enum.StrEnum):
+    """Wat een ontleed-voorstelregel bij bevestiging deterministisch voedt (mockup: bevestigen
+    per regel, nooit automatisch overnemen)."""
+
+    CONTRACT_M2 = "contract_m2"  # → project_specificatie.contract_m2
+    LOOPTIJD = "looptijd"  # → looptijd_van/looptijd_tot
+    HUURTIJD = "huurtijd"  # → huurtijd_omschrijving
+    DOORLOPENDE_HUUR = "doorlopende_huur"  # → doorlopende_huur_omschrijving
+    OPDRACHTGEVER = "opdrachtgever"  # → opdrachtgever
+    WERKNUMMER = "werknummer"  # → werknummer_opdrachtgever
+    STAFFEL = "staffel"  # → project_staffel-rij (mens kiest de eenheid uit de vaste vier)
+    BOETE = "boete"  # vastgelegd als info/projectsignaal — geen spec-/staffelveld
+
+
+_ONTLEDING_SOORT_SQL = ", ".join(f"'{s.value}'" for s in OntledingRegelSoort)
+_ONTLEDING_STATUS_SQL = ", ".join(f"'{s.value}'" for s in OntledingRegelStatus)
+
+
+class ProjectOntledingRegel(Base):
+    """Eén regel van het contract-/offerte-ontleedvoorstel (AI — mockup projecten-invoer.html:
+    "Ontleed-voorstel … bevestig per regel"; migratie 0062). De AI stelt VOOR, de mens
+    bevestigt (✓) of wijst af (✗); bevestigen = deterministisch doorschrijven naar
+    project_specificatie/project_staffel (app/projecten/ontleding.py) — er wordt nooit iets
+    automatisch overgenomen. Een her-ontleding vervangt alleen de nog onbesliste
+    voorstel-regels; besliste regels blijven als vastlegging staan."""
+
+    __tablename__ = "project_ontleding_regel"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_project_ontleding_regel_project_cache",
+        ),
+        CheckConstraint(f"soort IN ({_ONTLEDING_SOORT_SQL})", name="ck_project_ontleding_regel_soort"),
+        CheckConstraint(f"status IN ({_ONTLEDING_STATUS_SQL})", name="ck_project_ontleding_regel_status"),
+        Index("ix_project_ontleding_regel_administratie_id", "administratie_id"),
+        Index("ix_project_ontleding_regel_project", "administratie_id", "project_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    project_document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.project_document.id")
+    )
+    soort: Mapped[str]
+    omschrijving: Mapped[str]
+    citaat: Mapped[str | None] = mapped_column(default=None)
+    # Soort-afhankelijke voorstelwaarde ({"waarde": "4200"}, {"prijs": "9.20", "eenheid": …},
+    # {"van": "2026-06-02", "tot": "2026-11-30"}, {"tekst": …}) — string-bedragen, geen floats.
+    waarde: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    zekerheid: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), default=None)
+    status: Mapped[str] = mapped_column(default=OntledingRegelStatus.VOORSTEL.value)
+    beslist_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    beslist_op: Mapped[datetime | None] = mapped_column(default=None)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class LeverancierWerknummer(Base):
+    """Leverancier-werknummer ↔ project-mapping (praktijkles verkenning/12: leveranciers
+    hanteren eigen werknummers op hun facturen; eerste keer bevestigen, daarna automatisch;
+    migratie 0062). `bron` = hoe de rij ontstond; `bevestigd` = mens heeft de koppeling
+    bevestigd (mockup-badge). Voedt de factuur↔project-matching (t.z.t. de fuzzy match —
+    de mapping-tabel is er nu, het automatisch leren uit facturen is een parkeerpost)."""
+
+    __tablename__ = "leverancier_werknummer"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_leverancier_werknummer_project_cache",
+        ),
+        UniqueConstraint("administratie_id", "vendor_id", "werknummer", name="uq_leverancier_werknummer"),
+        Index("ix_leverancier_werknummer_administratie_id", "administratie_id"),
+        Index("ix_leverancier_werknummer_project", "administratie_id", "project_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))  # RLZ-Vendor-GUID, geen FK
+    werknummer: Mapped[str]
+    bron: Mapped[str] = mapped_column(default="handmatig")
+    bevestigd: Mapped[bool] = mapped_column(default=False)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bevestigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    bevestigd_op: Mapped[datetime | None] = mapped_column(default=None)

@@ -26,6 +26,7 @@ from app.doorbelasting.router import router as doorbelasting_router
 from app.geheugen.router import router as geheugen_router
 from app.intake.router import router as intake_router
 from app.omzet.router import router as omzet_router
+from app.projecten.kantoor_router import router as projecten_kantoor_router
 from app.projecten.router import router as projecten_koppelvlak_router
 from app.static_frontend import activeer_frontend_serving
 from app.sync.router import router as sync_router
@@ -168,6 +169,7 @@ app.include_router(omzet_router)
 app.include_router(verkoop_router)
 app.include_router(waarborg_router)
 app.include_router(projecten_koppelvlak_router)
+app.include_router(projecten_kantoor_router)
 app.include_router(doorbelasting_router)
 app.include_router(zoeken_router)
 app.include_router(intake_router)

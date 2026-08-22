@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0061
+-- Migratie-head bij deze dump: 0062
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -931,6 +931,27 @@ ALTER TABLE ONLY boekhouding.leverancier_voorkeur FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: leverancier_werknummer; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.leverancier_werknummer (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    werknummer text NOT NULL,
+    bron text NOT NULL,
+    bevestigd boolean NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bevestigd_door uuid,
+    bevestigd_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.leverancier_werknummer FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: meerwerk; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1190,6 +1211,55 @@ CREATE TABLE boekhouding.project_document (
 );
 
 ALTER TABLE ONLY boekhouding.project_document FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: project_ontleding_regel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_ontleding_regel (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    project_document_id uuid NOT NULL,
+    soort text NOT NULL,
+    omschrijving text NOT NULL,
+    citaat text,
+    waarde jsonb,
+    zekerheid numeric(4,3),
+    status text NOT NULL,
+    beslist_door uuid,
+    beslist_op timestamp with time zone,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_project_ontleding_regel_soort CHECK ((soort = ANY (ARRAY['contract_m2'::text, 'looptijd'::text, 'huurtijd'::text, 'doorlopende_huur'::text, 'opdrachtgever'::text, 'werknummer'::text, 'staffel'::text, 'boete'::text]))),
+    CONSTRAINT ck_project_ontleding_regel_status CHECK ((status = ANY (ARRAY['voorstel'::text, 'bevestigd'::text, 'afgewezen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.project_ontleding_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: project_regel_cache; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_regel_cache (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    rlz_document_id uuid NOT NULL,
+    soort text NOT NULL,
+    project_id uuid NOT NULL,
+    ledger_id uuid,
+    netto_bedrag numeric(14,2) NOT NULL,
+    btw_bedrag numeric(14,2),
+    datum date,
+    referentie text,
+    omschrijving text,
+    laatst_gesynchroniseerd timestamp with time zone DEFAULT now() NOT NULL,
+    verdwenen_uit_bron_op timestamp with time zone,
+    CONSTRAINT ck_project_regel_cache_soort CHECK ((soort = ANY (ARRAY['inkoop'::text, 'verkoop'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.project_regel_cache FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2363,6 +2433,14 @@ ALTER TABLE ONLY boekhouding.leverancier_voorkeur
 
 
 --
+-- Name: leverancier_werknummer leverancier_werknummer_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_werknummer
+    ADD CONSTRAINT leverancier_werknummer_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: meerwerk meerwerk_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2451,6 +2529,22 @@ ALTER TABLE ONLY boekhouding.project_document
 
 
 --
+-- Name: project_ontleding_regel project_ontleding_regel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_ontleding_regel
+    ADD CONSTRAINT project_ontleding_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: project_regel_cache project_regel_cache_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_regel_cache
+    ADD CONSTRAINT project_regel_cache_pkey PRIMARY KEY (id, administratie_id);
+
+
+--
 -- Name: project_specificatie project_specificatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2520,6 +2614,14 @@ ALTER TABLE ONLY boekhouding.tegenboeking
 
 ALTER TABLE ONLY boekhouding.toewijzing_regel
     ADD CONSTRAINT toewijzing_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: leverancier_werknummer uq_leverancier_werknummer; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_werknummer
+    ADD CONSTRAINT uq_leverancier_werknummer UNIQUE (administratie_id, vendor_id, werknummer);
 
 
 --
@@ -3100,6 +3202,20 @@ CREATE INDEX ix_factuurmatch_staat_weekstaat_id ON boekhouding.factuurmatch_staa
 
 
 --
+-- Name: ix_leverancier_werknummer_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_leverancier_werknummer_administratie_id ON boekhouding.leverancier_werknummer USING btree (administratie_id);
+
+
+--
+-- Name: ix_leverancier_werknummer_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_leverancier_werknummer_project ON boekhouding.leverancier_werknummer USING btree (administratie_id, project_id);
+
+
+--
 -- Name: ix_meerwerk_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -3181,6 +3297,41 @@ CREATE INDEX ix_project_document_administratie_id ON boekhouding.project_documen
 --
 
 CREATE INDEX ix_project_document_project ON boekhouding.project_document USING btree (administratie_id, project_id);
+
+
+--
+-- Name: ix_project_ontleding_regel_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_ontleding_regel_administratie_id ON boekhouding.project_ontleding_regel USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_ontleding_regel_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_ontleding_regel_project ON boekhouding.project_ontleding_regel USING btree (administratie_id, project_id);
+
+
+--
+-- Name: ix_project_regel_cache_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_regel_cache_administratie_id ON boekhouding.project_regel_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_regel_cache_document; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_regel_cache_document ON boekhouding.project_regel_cache USING btree (administratie_id, rlz_document_id);
+
+
+--
+-- Name: ix_project_regel_cache_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_regel_cache_project ON boekhouding.project_regel_cache USING btree (administratie_id, project_id);
 
 
 --
@@ -4097,6 +4248,14 @@ ALTER TABLE ONLY boekhouding.factuurmatch
 
 
 --
+-- Name: leverancier_werknummer fk_leverancier_werknummer_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_werknummer
+    ADD CONSTRAINT fk_leverancier_werknummer_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: meerwerk fk_meerwerk_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4118,6 +4277,14 @@ ALTER TABLE ONLY boekhouding.planning_toewijzing
 
 ALTER TABLE ONLY boekhouding.project_document
     ADD CONSTRAINT fk_project_document_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: project_ontleding_regel fk_project_ontleding_regel_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_ontleding_regel
+    ADD CONSTRAINT fk_project_ontleding_regel_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
 
 
 --
@@ -4262,6 +4429,30 @@ ALTER TABLE ONLY boekhouding.leverancier_iban
 
 ALTER TABLE ONLY boekhouding.leverancier_voorkeur
     ADD CONSTRAINT leverancier_voorkeur_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: leverancier_werknummer leverancier_werknummer_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_werknummer
+    ADD CONSTRAINT leverancier_werknummer_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: leverancier_werknummer leverancier_werknummer_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_werknummer
+    ADD CONSTRAINT leverancier_werknummer_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: leverancier_werknummer leverancier_werknummer_bevestigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_werknummer
+    ADD CONSTRAINT leverancier_werknummer_bevestigd_door_fkey FOREIGN KEY (bevestigd_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -4438,6 +4629,38 @@ ALTER TABLE ONLY boekhouding.project_document
 
 ALTER TABLE ONLY boekhouding.project_document
     ADD CONSTRAINT project_document_geupload_door_fkey FOREIGN KEY (geupload_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_ontleding_regel project_ontleding_regel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_ontleding_regel
+    ADD CONSTRAINT project_ontleding_regel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: project_ontleding_regel project_ontleding_regel_beslist_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_ontleding_regel
+    ADD CONSTRAINT project_ontleding_regel_beslist_door_fkey FOREIGN KEY (beslist_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_ontleding_regel project_ontleding_regel_project_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_ontleding_regel
+    ADD CONSTRAINT project_ontleding_regel_project_document_id_fkey FOREIGN KEY (project_document_id) REFERENCES boekhouding.project_document(id);
+
+
+--
+-- Name: project_regel_cache project_regel_cache_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_regel_cache
+    ADD CONSTRAINT project_regel_cache_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -5583,6 +5806,19 @@ CREATE POLICY leverancier_voorkeur_scope ON boekhouding.leverancier_voorkeur USI
 
 
 --
+-- Name: leverancier_werknummer; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.leverancier_werknummer ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: leverancier_werknummer leverancier_werknummer_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY leverancier_werknummer_scope ON boekhouding.leverancier_werknummer USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: meerwerk; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -5731,6 +5967,32 @@ ALTER TABLE boekhouding.project_document ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY project_document_scope ON boekhouding.project_document USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: project_ontleding_regel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_ontleding_regel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_ontleding_regel project_ontleding_regel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_ontleding_regel_scope ON boekhouding.project_ontleding_regel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: project_regel_cache; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_regel_cache ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_regel_cache project_regel_cache_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_regel_cache_scope ON boekhouding.project_regel_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

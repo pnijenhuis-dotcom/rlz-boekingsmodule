@@ -28,6 +28,19 @@ const DoorbelastingReviewScreen = lazy(() =>
   import('./doorbelasting/DoorbelastingReviewScreen').then((m) => ({ default: m.DoorbelastingReviewScreen })),
 )
 
+// Projectenmodule (mockup projecten-invoer.html, 22-08): lazy — steigerbouw-specifiek, alleen
+// relevant voor administraties met de uren-&-meerwerk-tak.
+const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
+const ProjectDetailScreenLazy = lazy(() =>
+  import('./projecten/ProjectDetailScreen').then((m) => ({ default: m.ProjectDetailScreen })),
+)
+const ProjectResultaatScreen = lazy(() =>
+  import('./projecten/ProjectResultaatScreen').then((m) => ({ default: m.ProjectResultaatScreen })),
+)
+const ProjectenOverzichtScreen = lazy(() =>
+  import('./projecten/ProjectenOverzichtScreen').then((m) => ({ default: m.ProjectenOverzichtScreen })),
+)
+
 /** Oude /vragen-links (mail, favorieten, interne verwijzingen) landen op het vragen-deelscherm
  * van de klantpagina; zonder administratie op de kantoorbrede vragen-dwarsdoorsnede.
  * (export voor de redirect-test — niets 404't, IA-besluit 15-08). */
@@ -91,6 +104,38 @@ function BeschermdeRoutes() {
         />
         <Route path="/meerwerk" element={<MeerwerkScreen />} />
         <Route path="/planning" element={<PlanningScreen />} />
+        <Route
+          path="/projecten"
+          element={
+            <Suspense fallback={<p className="hint">Laden…</p>}>
+              <ProjectenScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/projecten-resultaat"
+          element={
+            <Suspense fallback={<p className="hint">Laden…</p>}>
+              <ProjectenOverzichtScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/projecten/:administratieId/:projectId"
+          element={
+            <Suspense fallback={<p className="hint">Laden…</p>}>
+              <ProjectDetailScreenLazy />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/projecten/:administratieId/:projectId/resultaat"
+          element={
+            <Suspense fallback={<p className="hint">Laden…</p>}>
+              <ProjectResultaatScreen />
+            </Suspense>
+          }
+        />
         <Route path="/gebruikers" element={<GebruikersScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
       </Route>
