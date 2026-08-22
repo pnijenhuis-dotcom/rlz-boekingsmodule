@@ -1,5 +1,10 @@
 # Tranche-2-draaiboek — datamigratie za 22-08 / zo 23-08-2026
 
+> **✅ UITGEVOERD za 22-08-2026 — alle stappen groen, afgesloten met de her-intake
+> (bewijs groen).** Werkelijke uitkomsten + lessen: zie "Uitvoering — uitkomsten en
+> lessen" onderaan; formele vastlegging in GCP_UITROL §F1.6-uitvoering en de
+> BESLISSINGEN-rij "TRANCHE 2 UITGEVOERD". Dit draaiboek is daarmee historie.
+>
 > **Klaargezet 2026-08-21** (na de Vastly-bevestiging van het cutover-schema; zie
 > BESLISSINGEN "VASTLY-BEVESTIGING CUTOVER-SCHEMA"). Normtekst = `docs/GCP_UITROL.md`
 > §F1.6 (volgorde bindend); dit is de uitvoeringsversie. Op de dag zelf dicteert de
@@ -17,11 +22,10 @@
 
 Deze drie punten komen uit de gereedheidscheck en zijn **blokkerend** voor de start:
 
-1. **Alertmail-bevestiging (F3.2-restpunt).** Peter bevestigt dat de alertmail van de
-   geforceerde-failure-test (F3, 14-08) daadwerkelijk is ontvangen op
-   `Peter@ak-nijenhuis.nl`. Ná stap 7 zijn de cloud-jobs het **enige** vangnet (de
-   lokale dagelijkse run stopt) — zonder bewezen alertkanaal geen cutover.
-   Zo nodig op de dag een nieuwe geforceerde failure draaien (F3-recept).
+1. **Alertmail-bevestiging (F3.2-restpunt) — ✅ AFGEVINKT (Peter, 2026-08-22 bij de
+   start):** de alertmail is 21-08 's avonds ontvangen op `peter@ak-nijenhuis.nl`,
+   onderwerp "RLZ Cloud Run job-failure (F3.2)". Het alertkanaal is bewezen; geen
+   nieuwe geforceerde failure nodig. (Ná stap 7 zijn de cloud-jobs het enige vangnet.)
 2. **Cloud-DB-inventaris + IMAP-check.** Sinds F3.4 landt intake-mail op
    `facturen@ak-nijenhuis.nl` in de **cloud-DB**; de restore overschrijft die.
    Vóór de dump: (a) scheduler `rlz-intake-imap` **pauzeren**; (b) inventaris draaien
@@ -86,4 +90,47 @@ en een verse controle dat er geen migratie klaarstaat die nog niet gedeployed is
 - **Route A wordt end-to-end mogelijk** (werk-DB staat nu in de cloud) — hoort bij de
   F4-activatie ma 24-08, niet bij dit weekend.
 - Vastleggen: BESLISSINGEN-rij + GCP_UITROL §F1.6-uitvoering + dit draaiboek
-  bijwerken met de werkelijke uitkomsten.
+  bijwerken met de werkelijke uitkomsten. ✅ Gedaan 22-08 — zie hieronder.
+
+## Uitvoering — uitkomsten en lessen (UITGEVOERD za 22-08-2026)
+
+Alle zeven stappen zijn op zaterdag 22-08 groen doorlopen (geen uitloop naar zondag
+nodig); het sluitstuk was de **her-intake** van het vóór de restore veiliggestelde
+intake-verkeer — groen, waarmee tranche 2 formeel af is. Afwijkingen van het plan en
+lessen, per stap:
+
+1. **Restore-smaak (stap 2): TOC-gestuurde full restore i.p.v. data-only met
+   `--disable-triggers`.** De geplande smaak "data-only + `--disable-triggers`" is op
+   Cloud SQL niet uitvoerbaar: triggers uitzetten vereist superuser-rechten en de
+   `postgres`-rol is daar géén superuser. Gekozen en uitgevoerd: **full restore
+   gestuurd via de pg_restore-TOC-lijst** (`pg_restore -l` → gefilterde lijst →
+   `pg_restore -L`), waarmee de bestaande cloud-inhoud expliciet en controleerbaar
+   vervangen is i.p.v. stil gemengd. `alembic_version` op het doel geverifieerd
+   (= lokale head, 0058). Norm voor een eventuele volgende restore: TOC-smaak is dé
+   smaak op Cloud SQL.
+2. **LES — RLS-blindheid bij élke cloud-telling als `postgres`.** Tellingen/
+   inventarissen op de cloud-DB die als `postgres` draaien zien **0 rijen** op alle
+   FORCE-ROW-LEVEL-SECURITY-tabellen (geen scope-context, en `postgres` heeft op
+   Cloud SQL geen BYPASSRLS) — een tabel die "leeg" lijkt is dat dus niet
+   noodzakelijk. Elke verificatie-/inventaristelling moet RLS expliciet adresseren;
+   nooit een kale `psql`-count als postgres vertrouwen.
+3. **Masterkey-continuïteit: herversleuteling groen** (dry-run 0 mislukt →
+   `--uitvoeren`), TOTP-login op het doel bewezen. **Aanscherping t.o.v. het plan
+   ("oude key weg ná groene stap 6"): de oude lokale `TOTP_MASTER_KEY` blijft staan
+   tot ná de nazorgweek** — de lokale omgeving is tot dan de rollback-bron en moet
+   zelfstandig kunnen draaien; pas daarna opruimen (bewuste, expliciete stap).
+4. **Her-intake-bewijs (vooraf-punt 2 + functionele proef):** het intake-verkeer dat
+   sinds de IMAP-activatie in de cloud-DB was geland (en door de restore overschreven
+   werd) is ná de restore opnieuw en **idempotent** verwerkt — her-intake groen, geen
+   verlies, geen duplicaten. De vergankelijke cloud-testdata (SEED-PASSKEYTEST,
+   review-demo, Universal-cloud-test-onboarding 21-08) is conform besluit verdwenen.
+5. **Outbox-hertelling: 3 rijen** (ongewijzigd t.o.v. de stand van 15-08) — genoteerd
+   als input voor de **backlogmelding aan vastgoed op de F4-cutover-dag ma 24-08**
+   (F4-runbook stap 4).
+6. **Cutover (stap 7) uitgevoerd:** cloud-schedulers hervat, lokale cron definitief
+   uit. De **rlz-sync-cadans is live verzet naar `0 7 * * *` (Europe/Amsterdam)**;
+   config-as-code (`scripts/gcp/f3_jobs.sh`) is gelijkgetrokken zodat een herdeploy/
+   her-run niets terugzet — NB `deploy.yml` raakt scheduler-cadansen sowieso niet.
+   `rlz-accordeur-herinneringen` + `rlz-nieuwe-facturen` blijven gepauzeerd (eigen
+   gate: notificatie-live-verificatie); webhook-aflevering blijft UIT tot F4 (ma
+   24-08).

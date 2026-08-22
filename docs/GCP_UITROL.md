@@ -5,7 +5,9 @@
 > migratie 0001→0047 + GCS/KMS-verificatie geslaagd, zie §F1 — UITGEVOERD);
 > F2 FORMEEL AF (2026-08-14); F3 UITGEVOERD (2026-08-14, zie §F3-uitvoering —
 > alerting + 4 jobs + scheduler staan, per job een handmatige run geverifieerd;
-> IMAP bewust inactief tot DPA-check; open: alertmail-ontvangst bevestigen (Peter));
+> IMAP bewust inactief tot DPA-check; alertmail-ontvangst BEVESTIGD door Peter 2026-08-22
+> — ontvangen 21-08 avond op peter@ak-nijenhuis.nl, onderwerp "RLZ Cloud Run job-failure
+> (F3.2)" — F3.2 aantoonbaar rond);
 > F3.3 rapportage-teller GEFIXT (2026-08-14 — cutover-voorwaarde dicht);
 > F5-VOORBEREIDING UITGEVOERD (2026-08-14): CMEK-memo = voorstel-besluit 0021,
 > verwerkingsregister §8/§9 bijgewerkt, poortdossier `docs/avg/08-f5-poortdossier.md`;
@@ -17,6 +19,12 @@
 > **F5-POORT DICHT: 8/8 ✅ (2026-08-15 — punt 6 IMAP-provider-DPA rond: Google Workspace,
 > geldende DPA = de CDPA; zie poortdossier punt 6). Tranche 2 (§F1.6) is daarmee
 > vrijgegeven — uitvoering zodra Peter het go-live-moment kiest.**
+> **TRANCHE 2 UITGEVOERD (za 22-08-2026, zie §F1.6-uitvoering): dump/restore
+> (TOC-smaak), documenten-rsync, masterkey-herversleuteling, verificatie exit 0,
+> functionele proef + her-intake GROEN; cutover gedaan — cloud-jobs zijn het vangnet,
+> lokale cron definitief uit, kantoor werkt op het productiedomein. Lokaal blijft
+> t/m de nazorgweek de rollback-bron (incl. oude TOTP_MASTER_KEY). Outbox-stand voor
+> de F4-backlogmelding ma 24-08: 3 rijen.**
 > **F3.4 IMAP-ACTIVATIE UITGEVOERD (2026-08-15, zie §F3.4-uitvoering): live IMAP-fetch
 > gebouwd (echte imaplib-bron i.p.v. de seam-stub) + job-config in deploy.yml
 > (facturen@ak-nijenhuis.nl, imap.gmail.com SSL 993); resterende klikken: app-wachtwoord
@@ -296,6 +304,32 @@ Volgorde is bindend; elke stap heeft een expliciete verificatie vóór de volgen
 7. **Cutover:** Cloud Scheduler-jobs aan (F3), lokale cron uit — pas nadat de
    job-failure-alerting staat (F3.2, "geen gat tussen oud en nieuw vangnet").
 
+### F1.6-uitvoering — TRANCHE 2 UITGEVOERD (za 22-08-2026)
+
+Alle zeven stappen op zaterdag 22-08 groen doorlopen volgens `docs/TRANCHE2_DRAAIBOEK.md`
+(de uitvoeringsversie — dáár staan de uitkomsten per stap); afgesloten met de groene
+**her-intake** van het vooraf veiliggestelde cloud-intake-verkeer. Kern + lessen:
+
+- **Smaakbeslissing stap 2: TOC-gestuurde full restore** (`pg_restore -l` → gefilterde
+  lijst → `-L`) i.p.v. data-only met `--disable-triggers` — triggers uitzetten vereist
+  superuser en Cloud SQL's `postgres`-rol is dat niet. `alembic_version` doel = lokale
+  head (0058). Dit is voortaan dé restore-smaak op Cloud SQL.
+- **LES — RLS-blindheid:** élke telling op de cloud-DB als `postgres` ziet 0 rijen op
+  FORCE-RLS-tabellen (geen scope-context, geen BYPASSRLS) — tellingen/inventarissen
+  moeten RLS expliciet adresseren, nooit een kale count als postgres vertrouwen.
+- **Masterkey:** herversleuteling lokaal→KMS groen (dry-run 0 mislukt → uitvoeren),
+  TOTP-login op het doel bewezen. Aanscherping: de oude lokale `TOTP_MASTER_KEY` gaat
+  pas weg **ná de nazorgweek** (lokaal = rollback-bron), niet al na groene stap 6.
+- **Verificatie + functionele proef groen:** `datamigratie_check.py` exit 0; login mét
+  TOTP, RLZ-sync, documentweergave uit de bucket én her-intake (idempotent, geen
+  verlies/duplicaten) op het productiedomein.
+- **Cutover:** schedulers hervat (rlz-sync live verzet naar **`0 7 * * *`
+  Europe/Amsterdam** — config-as-code `scripts/gcp/f3_jobs.sh` gelijkgetrokken;
+  `deploy.yml` raakt cadansen niet), lokale cron definitief uit; notificatie-jobs
+  blijven gepauzeerd (eigen gate), webhook-aflevering UIT tot F4 (ma 24-08).
+- **Outbox-hertelling: 3 rijen** (= stand 15-08) — input voor de F4-backlogmelding
+  aan vastgoed op ma 24-08 (F4-runbook stap 4).
+
 ## F2 — Services (backend, frontend, domein/https)
 
 **Afhankelijk van:** F1 (DB + secrets moeten bestaan).
@@ -440,7 +474,7 @@ alleen verpakking.
 
 | Job | Commando | Cadans (voorstel) |
 |---|---|---|
-| Nachtelijke sync | `python -m app.cli sync-alles` | dagelijks 03:00 |
+| Nachtelijke sync | `python -m app.cli sync-alles` | dagelijks 03:00 → **07:00 sinds tranche 2 (22-08, live verzet; f3_jobs.sh gelijkgetrokken)** |
 | Reconciliaties (documenten + bank + omzet) | `python -m app.cli reconciliatie-alles` | dagelijks 06:30 |
 | Webhook-afleveraar | `python -m app.cli webhook-afleveren` | elke 5 min |
 | E-mail-intake (IMAP-fetch) | intake-CLI op de seam `app/intake/postvak.py` | elke 10 min |
@@ -509,8 +543,10 @@ te wachten (`F3_IMAGE_OVERRIDE`; de volgende deploy-run trekt de beelden weer ge
   `rlz-reconciliatie` GROEN (alle vier blokken OK, samenvatting zichtbaar);
   `rlz-webhook-afleveraar` GROEN ("OVERGESLAGEN: aflevering staat uit", exit 0);
   `rlz-intake-imap` FAALT BEWUST met de expliciete SEAM-melding (exit 1) — dat is meteen de
-  geforceerde-failure-test voor de alerting (failed-metric geverifieerd). **Open vinkje:
-  Peter bevestigt de alertmail-ontvangst** — pas dan is F3.2 aantoonbaar rond.
+  geforceerde-failure-test voor de alerting (failed-metric geverifieerd). **Vinkje DICHT
+  (2026-08-22, start tranche 2): Peter bevestigt de alertmail-ontvangst** — ontvangen
+  21-08 avond op peter@ak-nijenhuis.nl, onderwerp "RLZ Cloud Run job-failure (F3.2)";
+  F3.2 is daarmee aantoonbaar rond.
 - **Lessen:** (1) lokaal gebouwde beelden zijn arm64 (Apple Silicon) en docker's
   containerd-store pusht een OCI-index mét attestation-manifest — Cloud Run weigert beide;
   lokale override-builds altijd `--platform linux/amd64 --provenance=false --sbom=false`

@@ -36,10 +36,12 @@ POLICY_NAAM="RLZ Cloud Run job-failure (F3.2)"
 KANAAL_NAAM="RLZ kantoor-e-mail (job-alerts)"
 CLOUD_SQL="rlz-boekhouding:europe-west4:rlz-sql2"   # F5/besluit 0021: CMEK-herbouw
 
-# Job → CLI-commando → scheduler-cadans (draaiboektabel §F3). De cadansen: sync 03:00,
-# reconciliaties 06:30 (Europe/Amsterdam), afleveraar elke 5 min, intake elke 10 min.
+# Job → CLI-commando → scheduler-cadans (draaiboektabel §F3). De cadansen: sync 07:00
+# (live verzet bij tranche 2, 2026-08-22 — was 03:00; hier gelijkgetrokken zodat een
+# her-run niets terugzet), reconciliaties 06:30 (Europe/Amsterdam), afleveraar elke
+# 5 min, intake elke 10 min.
 JOBS=(
-  "rlz-sync|sync-alles|3600|0 3 * * *"
+  "rlz-sync|sync-alles|3600|0 7 * * *"
   "rlz-reconciliatie|reconciliatie-alles|3600|30 6 * * *"
   "rlz-webhook-afleveraar|webhook-afleveren|600|*/5 * * * *"
   "rlz-intake-imap|intake-postvak-verwerken|900|*/10 * * * *"
