@@ -4,8 +4,16 @@ Datamodel-besluiten (BESLISSINGEN "Ontwerpronde uren & uitvoerder + meerwerk-kan
 - WEEKSTAAT PER PROJECT: één staat per persoon per project per ISO-week; zelfde dag op twee
   projecten = twee staten. Dagregels (uren + optionele m² + opmerking) hangen aan de staat;
   een dag zonder rij telt als 0 uur.
-- KEURING OP WEEKNIVEAU: de uitvoerder keurt de week in zijn geheel — akkoord óf afkeuren met
-  verplichte reden (hele week terug naar "corrigeren"). Geen dag-keuring in het datamodel.
+- HYBRIDE KEURING (besluit Peter 2026-08-22, vervangt het pure weekniveau-besluit van 21-08
+  deels): keuren blijft op WEEKNIVEAU — akkoord óf afkeuren met verplichte reden (hele week
+  terug naar "corrigeren"). Bij AFKEUREN kan de uitvoerder per dagregel een CORRECTIEVOORSTEL
+  meegeven (voorgestelde uren en/of m² + opmerking): de voorstel-velden op weekstaat_dag.
+  De keurder wijzigt nooit zelf andermans uren — de ZZP'er ziet de voorstellen letterlijk in
+  zijn corrigeer-scherm en dient zelf opnieuw in. Geen dag-keuring in het datamodel.
+- AFWIJKINGS-LOGGING (eis Peter 2026-08-22): elke afkeuring MÉT correctievoorstel wordt
+  structureel geregistreerd in weekstaat_correctie (ingediende vs. voorgestelde uren, delta;
+  ná de uiteindelijke goedkeuring aangevuld met het goedgekeurde totaal) — optelbaar per
+  veldwerker, zichtbaar voor het kantoor (veldwerkers-paneel), nooit voor de veldwerker zelf.
 - Goedgekeurd = de GETEKENDE urenstaat (basis voor de latere factuurmatch) — onmuteerbaar;
   wijzigen kan uitsluitend doordat de uitvoerder opnieuw afkeurt (reden verplicht).
 - DETACHEERDER vult in namens gekoppelde ZZP'ers: elke dagregel draagt `ingevuld_door` en de
@@ -170,13 +178,24 @@ class WeekstaatDag(Base):
     `ingevuld_door` ≠ de ZZP'er van de staat = ingevuld door een detacheerder namens hem —
     zichtbaar bij de keuring en in het audit-log. Muteerbaar uitsluitend in de staten
     concept/corrigeren (statusmachine, app/uren/service.py). Geen DELETE gegrant: een
-    verkeerde dag wordt op 0 uur gezet, nooit stil verwijderd."""
+    verkeerde dag wordt op 0 uur gezet, nooit stil verwijderd.
+
+    De voorstel-velden (hybride keuring, besluit 22-08, migratie 0059) dragen het
+    correctievoorstel van de LAATSTE afkeuring — gezet door de keurder bij het afkeuren,
+    nooit door hem in `uren`/`m2` zelf (de ZZP'er blijft de enige die zijn uren wijzigt).
+    Een nieuwe afkeuring vervangt ze integraal (dagen zonder nieuw voorstel worden leeg);
+    de UI toont ze alleen in status `corrigeren` — historie in audit_event."""
 
     __tablename__ = "weekstaat_dag"
     __table_args__ = (
         UniqueConstraint("weekstaat_id", "datum", name="uq_weekstaat_dag_datum"),
         CheckConstraint("uren >= 0 AND uren <= 24", name="ck_weekstaat_dag_uren"),
         CheckConstraint("m2 IS NULL OR m2 >= 0", name="ck_weekstaat_dag_m2"),
+        CheckConstraint(
+            "voorstel_uren IS NULL OR (voorstel_uren >= 0 AND voorstel_uren <= 24)",
+            name="ck_weekstaat_dag_voorstel_uren",
+        ),
+        CheckConstraint("voorstel_m2 IS NULL OR voorstel_m2 >= 0", name="ck_weekstaat_dag_voorstel_m2"),
         Index("ix_weekstaat_dag_administratie_id", "administratie_id"),
         Index("ix_weekstaat_dag_weekstaat_id", "weekstaat_id"),
         {"schema": "boekhouding"},
@@ -190,8 +209,50 @@ class WeekstaatDag(Base):
     m2: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
     opmerking: Mapped[str | None] = mapped_column(default=None)
     ingevuld_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    # Correctievoorstel van de laatste afkeuring (hybride keuring, migratie 0059).
+    voorstel_uren: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
+    voorstel_m2: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
+    voorstel_opmerking: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class WeekstaatCorrectie(Base):
+    """Afwijkings-logging (eis Peter 2026-08-22, migratie 0059): één rij per afkeuring MÉT
+    correctievoorstel — hoe vaak dient een ZZP'er méér uren in dan de uitvoerder wil
+    goedkeuren. Append-only bij het afkeuren (`ingediend_uren` vs `voorgesteld_uren`, delta =
+    ingediend − voorgesteld); zodra de week daarna definitief wordt goedgekeurd vult
+    keur_week_goed het werkelijke `goedgekeurd_uren`-totaal aan op de nog open rijen (dé
+    toetsbron blijft de goedgekeurde staat, zoals bij de factuurmatch). `details` draagt de
+    per-dag-uitsplitsing (datum, ingediend, voorstel — incl. m²). Optelbaar per veldwerker
+    voor het kantoor (veldwerkers-paneel); de veld-API exposeert deze tabel nooit."""
+
+    __tablename__ = "weekstaat_correctie"
+    __table_args__ = (
+        CheckConstraint("ingediend_uren >= 0", name="ck_weekstaat_correctie_ingediend"),
+        CheckConstraint("voorgesteld_uren >= 0", name="ck_weekstaat_correctie_voorgesteld"),
+        CheckConstraint(
+            "(goedgekeurd_uren IS NULL) = (goedgekeurd_op IS NULL)",
+            name="ck_weekstaat_correctie_goedgekeurd_samen",
+        ),
+        Index("ix_weekstaat_correctie_administratie_id", "administratie_id"),
+        Index("ix_weekstaat_correctie_zzper", "administratie_id", "zzper_gebruiker_id"),
+        Index("ix_weekstaat_correctie_weekstaat_id", "weekstaat_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    weekstaat_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.weekstaat.id"))
+    zzper_gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    afgekeurd_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    afgekeurd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    ingediend_uren: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    voorgesteld_uren: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    delta_uren: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    goedgekeurd_uren: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
+    goedgekeurd_op: Mapped[datetime | None] = mapped_column(default=None)
+    details: Mapped[dict | None] = mapped_column(JSONB, default=None)
 
 
 class Meerwerk(Base):

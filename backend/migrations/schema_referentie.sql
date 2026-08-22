@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0058
+-- Migratie-head bij deze dump: 0059
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1575,6 +1575,31 @@ ALTER TABLE ONLY boekhouding.weekstaat FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: weekstaat_correctie; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.weekstaat_correctie (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    weekstaat_id uuid NOT NULL,
+    zzper_gebruiker_id uuid NOT NULL,
+    afgekeurd_door uuid NOT NULL,
+    afgekeurd_op timestamp with time zone DEFAULT now() NOT NULL,
+    ingediend_uren numeric(8,2) NOT NULL,
+    voorgesteld_uren numeric(8,2) NOT NULL,
+    delta_uren numeric(8,2) NOT NULL,
+    goedgekeurd_uren numeric(8,2),
+    goedgekeurd_op timestamp with time zone,
+    details jsonb,
+    CONSTRAINT ck_weekstaat_correctie_goedgekeurd_samen CHECK (((goedgekeurd_uren IS NULL) = (goedgekeurd_op IS NULL))),
+    CONSTRAINT ck_weekstaat_correctie_ingediend CHECK ((ingediend_uren >= (0)::numeric)),
+    CONSTRAINT ck_weekstaat_correctie_voorgesteld CHECK ((voorgesteld_uren >= (0)::numeric))
+);
+
+ALTER TABLE ONLY boekhouding.weekstaat_correctie FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: weekstaat_dag; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1589,8 +1614,13 @@ CREATE TABLE boekhouding.weekstaat_dag (
     ingevuld_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    voorstel_uren numeric(5,2),
+    voorstel_m2 numeric(8,2),
+    voorstel_opmerking text,
     CONSTRAINT ck_weekstaat_dag_m2 CHECK (((m2 IS NULL) OR (m2 >= (0)::numeric))),
-    CONSTRAINT ck_weekstaat_dag_uren CHECK (((uren >= (0)::numeric) AND (uren <= (24)::numeric)))
+    CONSTRAINT ck_weekstaat_dag_uren CHECK (((uren >= (0)::numeric) AND (uren <= (24)::numeric))),
+    CONSTRAINT ck_weekstaat_dag_voorstel_m2 CHECK (((voorstel_m2 IS NULL) OR (voorstel_m2 >= (0)::numeric))),
+    CONSTRAINT ck_weekstaat_dag_voorstel_uren CHECK (((voorstel_uren IS NULL) OR ((voorstel_uren >= (0)::numeric) AND (voorstel_uren <= (24)::numeric))))
 );
 
 ALTER TABLE ONLY boekhouding.weekstaat_dag FORCE ROW LEVEL SECURITY;
@@ -2547,6 +2577,14 @@ ALTER TABLE ONLY boekhouding.webhook_uitgaand
 
 
 --
+-- Name: weekstaat_correctie weekstaat_correctie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_correctie
+    ADD CONSTRAINT weekstaat_correctie_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: weekstaat_dag weekstaat_dag_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3162,6 +3200,27 @@ CREATE INDEX ix_weekstaat_administratie_id ON boekhouding.weekstaat USING btree 
 --
 
 CREATE INDEX ix_weekstaat_administratie_status ON boekhouding.weekstaat USING btree (administratie_id, status);
+
+
+--
+-- Name: ix_weekstaat_correctie_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_correctie_administratie_id ON boekhouding.weekstaat_correctie USING btree (administratie_id);
+
+
+--
+-- Name: ix_weekstaat_correctie_weekstaat_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_correctie_weekstaat_id ON boekhouding.weekstaat_correctie USING btree (weekstaat_id);
+
+
+--
+-- Name: ix_weekstaat_correctie_zzper; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_weekstaat_correctie_zzper ON boekhouding.weekstaat_correctie USING btree (administratie_id, zzper_gebruiker_id);
 
 
 --
@@ -4608,6 +4667,38 @@ ALTER TABLE ONLY boekhouding.weekstaat
 
 
 --
+-- Name: weekstaat_correctie weekstaat_correctie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_correctie
+    ADD CONSTRAINT weekstaat_correctie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: weekstaat_correctie weekstaat_correctie_afgekeurd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_correctie
+    ADD CONSTRAINT weekstaat_correctie_afgekeurd_door_fkey FOREIGN KEY (afgekeurd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: weekstaat_correctie weekstaat_correctie_weekstaat_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_correctie
+    ADD CONSTRAINT weekstaat_correctie_weekstaat_id_fkey FOREIGN KEY (weekstaat_id) REFERENCES boekhouding.weekstaat(id);
+
+
+--
+-- Name: weekstaat_correctie weekstaat_correctie_zzper_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.weekstaat_correctie
+    ADD CONSTRAINT weekstaat_correctie_zzper_gebruiker_id_fkey FOREIGN KEY (zzper_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: weekstaat_dag weekstaat_dag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5725,6 +5816,19 @@ CREATE POLICY webhook_uitgaand_scope ON boekhouding.webhook_uitgaand USING ((((a
 --
 
 ALTER TABLE boekhouding.weekstaat ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: weekstaat_correctie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.weekstaat_correctie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: weekstaat_correctie weekstaat_correctie_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY weekstaat_correctie_scope ON boekhouding.weekstaat_correctie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
 
 --
 -- Name: weekstaat_dag; Type: ROW SECURITY; Schema: boekhouding; Owner: -

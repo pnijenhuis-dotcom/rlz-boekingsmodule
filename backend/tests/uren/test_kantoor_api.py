@@ -232,3 +232,90 @@ class TestOptInBeheer:
             headers=headers,
         )
         assert resp.status_code == 200
+
+
+class TestAfwijkingsLogging:
+    """Afwijkings-logging (besluit Peter 2026-08-22): de opgetelde uren-afwijking per ZZP'er
+    is zichtbaar voor het kantoor op het veldwerkers-overzicht (Beheerder-only) — en bestaat
+    bewust nergens in de veld-API."""
+
+    def test_veldgebruikers_dragen_uren_afwijking(
+        self, administratie_id, project_id, gekoppelde_zzper, gekoppelde_uitvoerder, beheerder_id
+    ):
+        maandag = date.fromisocalendar(2026, 34, 1)
+        uren_service.zet_dag(
+            administratie_id=administratie_id,
+            zzper_id=gekoppelde_zzper,
+            project_id=project_id,
+            jaar=2026,
+            weeknummer=34,
+            datum=maandag,
+            uren=Decimal("10"),
+            actor_id=gekoppelde_zzper,
+        )
+        staat = uren_service.dien_week_in(
+            administratie_id=administratie_id,
+            zzper_id=gekoppelde_zzper,
+            project_id=project_id,
+            jaar=2026,
+            weeknummer=34,
+            actor_id=gekoppelde_zzper,
+        )
+        uren_service.keur_week_af(
+            administratie_id=administratie_id,
+            weekstaat_id=staat.id,
+            actor_id=gekoppelde_uitvoerder,
+            reden="Max 8 uur afgesproken",
+            correcties=[uren_service.DagCorrectieInvoer(datum=maandag, uren=Decimal("8"))],
+        )
+        resp = client.get("/uren/beheer/veldgebruikers", headers=_bearer(beheerder_id, rol="beheerder"))
+        assert resp.status_code == 200
+        milan = next(g for g in resp.json() if g["gebruiker_id"] == str(gekoppelde_zzper))
+        assert milan["uren_afwijking_aantal"] == 1
+        assert Decimal(milan["uren_afwijking_som"]) == Decimal("2")
+        # ná de correctieronde + goedkeuring telt het wérkelijk goedgekeurde totaal
+        uren_service.zet_dag(
+            administratie_id=administratie_id,
+            zzper_id=gekoppelde_zzper,
+            project_id=project_id,
+            jaar=2026,
+            weeknummer=34,
+            datum=maandag,
+            uren=Decimal("9"),
+            actor_id=gekoppelde_zzper,
+        )
+        uren_service.dien_week_in(
+            administratie_id=administratie_id,
+            zzper_id=gekoppelde_zzper,
+            project_id=project_id,
+            jaar=2026,
+            weeknummer=34,
+            actor_id=gekoppelde_zzper,
+        )
+        uren_service.keur_week_goed(
+            administratie_id=administratie_id, weekstaat_id=staat.id, actor_id=gekoppelde_uitvoerder
+        )
+        resp = client.get("/uren/beheer/veldgebruikers", headers=_bearer(beheerder_id, rol="beheerder"))
+        milan = next(g for g in resp.json() if g["gebruiker_id"] == str(gekoppelde_zzper))
+        assert Decimal(milan["uren_afwijking_som"]) == Decimal("1")  # 10 ingediend − 9 goedgekeurd
+
+    def test_veld_api_exposeert_geen_afwijkingsstatistiek(
+        self, administratie_id, project_id, gekoppelde_zzper
+    ):
+        from app.auth import voorwaarden
+
+        voorwaarden.leg_akkoord_vast(gebruiker_id=gekoppelde_zzper)
+        maandag = date.fromisocalendar(2026, 34, 1)
+        uren_service.zet_dag(
+            administratie_id=administratie_id,
+            zzper_id=gekoppelde_zzper,
+            project_id=project_id,
+            jaar=2026,
+            weeknummer=34,
+            datum=maandag,
+            uren=Decimal("8"),
+            actor_id=gekoppelde_zzper,
+        )
+        resp = client.get("/uren/zzp/projecten", headers=_bearer(gekoppelde_zzper, rol="zzper"))
+        assert resp.status_code == 200
+        assert "afwijking" not in resp.text

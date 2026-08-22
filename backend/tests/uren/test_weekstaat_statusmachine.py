@@ -240,3 +240,153 @@ class TestDetacheerderNamens:
         indringer = maak_gebruiker(admin_engine, "zzper", "Stefan B.")
         with pytest.raises(service.GeenToegang):
             _zet_dag(administratie_id, gekoppelde_zzper, project_id, actor=indringer)
+
+
+class TestHybrideKeuring:
+    """Hybride keuring (besluit Peter 2026-08-22): afkeuren blijft op weekniveau, maar de
+    keurder kan per bestaande dagregel een correctievoorstel meegeven — de ZZP'er ziet dat
+    voorstel in zijn corrigeer-scherm en dient zelf opnieuw in; de keurder wijzigt de
+    uren/m² van de ZZP'er nooit zelf. Elke afkeuring mét voorstel wordt geregistreerd
+    (weekstaat_correctie, afwijkings-logging kantoor-only)."""
+
+    def _correcties_van(self, admin_engine: Engine, weekstaat_id) -> list[dict]:
+        with admin_engine.begin() as conn:
+            rijen = conn.execute(
+                text(
+                    "SELECT ingediend_uren, voorgesteld_uren, delta_uren, goedgekeurd_uren "
+                    "FROM boekhouding.weekstaat_correctie WHERE weekstaat_id = :ws "
+                    "ORDER BY afgekeurd_op"
+                ),
+                {"ws": weekstaat_id},
+            ).mappings().all()
+        return [dict(r) for r in rijen]
+
+    def test_afkeuren_met_correctievoorstel(
+        self, admin_engine: Engine, administratie_id, project_id, gekoppelde_zzper, gekoppelde_uitvoerder
+    ):
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, uren="10", m2="120")
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, datum=MAANDAG + timedelta(days=1), uren="8")
+        staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
+        afgekeurd = service.keur_week_af(
+            administratie_id=administratie_id,
+            weekstaat_id=staat.id,
+            actor_id=gekoppelde_uitvoerder,
+            reden="Ma max 8 uur afgesproken op dit werk",
+            correcties=[
+                service.DagCorrectieInvoer(
+                    datum=MAANDAG, uren=Decimal("8"), m2=Decimal("100"), opmerking="max 8 u afgesproken"
+                )
+            ],
+        )
+        assert afgekeurd.status == "corrigeren"
+        maandag_dag = next(d for d in afgekeurd.dagen if d.datum == MAANDAG)
+        dinsdag_dag = next(d for d in afgekeurd.dagen if d.datum == MAANDAG + timedelta(days=1))
+        # het voorstel staat NAAST de invoer — de uren van de ZZP'er zelf zijn onaangetast
+        assert maandag_dag.uren == Decimal("10")
+        assert maandag_dag.voorstel_uren == Decimal("8")
+        assert maandag_dag.voorstel_m2 == Decimal("100")
+        assert maandag_dag.voorstel_opmerking == "max 8 u afgesproken"
+        assert dinsdag_dag.voorstel_uren is None
+        # afwijkings-logging: ingediend 18 vs voorgesteld 16 → delta +2
+        registraties = self._correcties_van(admin_engine, staat.id)
+        assert len(registraties) == 1
+        assert registraties[0]["ingediend_uren"] == Decimal("18")
+        assert registraties[0]["voorgesteld_uren"] == Decimal("16")
+        assert registraties[0]["delta_uren"] == Decimal("2")
+        assert registraties[0]["goedgekeurd_uren"] is None
+
+    def test_goedkeuring_vult_definitief_totaal_aan(
+        self, admin_engine: Engine, administratie_id, project_id, gekoppelde_zzper, gekoppelde_uitvoerder
+    ):
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, uren="10")
+        staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
+        service.keur_week_af(
+            administratie_id=administratie_id,
+            weekstaat_id=staat.id,
+            actor_id=gekoppelde_uitvoerder,
+            reden="Max 8 uur",
+            correcties=[service.DagCorrectieInvoer(datum=MAANDAG, uren=Decimal("8"))],
+        )
+        # ZZP'er corrigeert (naar 9 — niet exact het voorstel) en dient opnieuw in
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, uren="9")
+        staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
+        service.keur_week_goed(
+            administratie_id=administratie_id, weekstaat_id=staat.id, actor_id=gekoppelde_uitvoerder
+        )
+        registraties = self._correcties_van(admin_engine, staat.id)
+        assert len(registraties) == 1
+        assert registraties[0]["goedgekeurd_uren"] == Decimal("9")
+
+    def test_nieuwe_afkeuring_vervangt_voorstellen(
+        self, administratie_id, project_id, gekoppelde_zzper, gekoppelde_uitvoerder
+    ):
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, uren="10")
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, datum=MAANDAG + timedelta(days=1), uren="10")
+        staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
+        service.keur_week_af(
+            administratie_id=administratie_id,
+            weekstaat_id=staat.id,
+            actor_id=gekoppelde_uitvoerder,
+            reden="Ma te veel",
+            correcties=[service.DagCorrectieInvoer(datum=MAANDAG, uren=Decimal("8"))],
+        )
+        staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
+        # tweede afkeuring stelt alleen dinsdag voor → het oude maandag-voorstel verdwijnt
+        opnieuw = service.keur_week_af(
+            administratie_id=administratie_id,
+            weekstaat_id=staat.id,
+            actor_id=gekoppelde_uitvoerder,
+            reden="Di te veel",
+            correcties=[service.DagCorrectieInvoer(datum=MAANDAG + timedelta(days=1), uren=Decimal("8"))],
+        )
+        maandag_dag = next(d for d in opnieuw.dagen if d.datum == MAANDAG)
+        dinsdag_dag = next(d for d in opnieuw.dagen if d.datum == MAANDAG + timedelta(days=1))
+        assert maandag_dag.voorstel_uren is None
+        assert dinsdag_dag.voorstel_uren == Decimal("8")
+
+    def test_afkeuren_zonder_voorstel_registreert_niet(
+        self, admin_engine: Engine, administratie_id, project_id, gekoppelde_zzper, gekoppelde_uitvoerder
+    ):
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, uren="10")
+        staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
+        service.keur_week_af(
+            administratie_id=administratie_id,
+            weekstaat_id=staat.id,
+            actor_id=gekoppelde_uitvoerder,
+            reden="Verkeerde week — vul opnieuw in",
+        )
+        assert self._correcties_van(admin_engine, staat.id) == []
+
+    def test_validatie_correctievoorstel(
+        self, administratie_id, project_id, gekoppelde_zzper, gekoppelde_uitvoerder
+    ):
+        _zet_dag(administratie_id, gekoppelde_zzper, project_id, uren="10")
+        staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
+
+        def _afkeur(correcties):
+            return service.keur_week_af(
+                administratie_id=administratie_id,
+                weekstaat_id=staat.id,
+                actor_id=gekoppelde_uitvoerder,
+                reden="test",
+                correcties=correcties,
+            )
+
+        with pytest.raises(service.OngeldigeInvoer, match="leeg"):
+            _afkeur([service.DagCorrectieInvoer(datum=MAANDAG)])
+        with pytest.raises(service.OngeldigeInvoer, match="tussen 0 en 24"):
+            _afkeur([service.DagCorrectieInvoer(datum=MAANDAG, uren=Decimal("25"))])
+        with pytest.raises(service.OngeldigeInvoer, match="negatief"):
+            _afkeur([service.DagCorrectieInvoer(datum=MAANDAG, m2=Decimal("-1"))])
+        with pytest.raises(service.OngeldigeInvoer, match="Geen ingevulde dagregel"):
+            _afkeur([service.DagCorrectieInvoer(datum=MAANDAG + timedelta(days=3), uren=Decimal("8"))])
+        with pytest.raises(service.OngeldigeInvoer, match="dezelfde dag"):
+            _afkeur(
+                [
+                    service.DagCorrectieInvoer(datum=MAANDAG, uren=Decimal("8")),
+                    service.DagCorrectieInvoer(datum=MAANDAG, uren=Decimal("7")),
+                ]
+            )
+        # de staat is door de validatiefouten NIET afgekeurd
+        detail = service.weekstaat_detail(administratie_id=administratie_id, weekstaat_id=staat.id)
+        assert detail.status == "ingediend"

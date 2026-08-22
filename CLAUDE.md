@@ -504,9 +504,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   projecten = twee staten. Rollen in de bestaande native app: **ZZP'er** (weekstaat per
   project — uren + optionele m² per dag, indienen per week, deadline ma 09:00),
   **uitvoerder** (specs/contract alleen-lezen mét prijzen, meerwerk melden zonder prijzen,
-  **keuring op WEEKNIVEAU** — week akkoord óf week afkeuren met verplichte reden, hele week
-  terug naar "corrigeren", ZZP'er dient de wéék opnieuw in; geen dag-keuring, dagen alleen
-  ter controle) en **detacheerder** (besluit 21-08, vervángt de 17-08-rollen
+  **HYBRIDE keuring op WEEKNIVEAU (aanvulling Peter 22-08, migratie 0059)** — week akkoord
+  óf week afkeuren met verplichte reden, hele week terug naar "corrigeren", ZZP'er dient de
+  wéék opnieuw in; bij afkeuren kan de keurder per dag een CORRECTIEVOORSTEL meegeven
+  (uren/m²/opmerking) dat de ZZP'er letterlijk in zijn corrigeer-scherm ziet — de keurder
+  wijzigt nooit zelf andermans uren; geen dag-keuring, dagen alleen ter controle. Elke
+  afkeuring mét voorstel wordt geregistreerd (`weekstaat_correctie`: ingediend vs.
+  voorgesteld/goedgekeurd, optelbaar per veldwerker, alléén zichtbaar voor kantoor —
+  het goedgekeurde totaal blijft de toetsbron voor de factuurmatch) en **detacheerder** (besluit 21-08, vervángt de 17-08-rollen
   teamleider/manager: vult weekstaten in namens door kantoor gekoppelde ZZP'ers, exact
   dezelfde schermen/velden, geen projectinhoud — per project alleen nummer + plaats; elk
   namens-scherm draagt "· namens <ZZP'er>", elke invoer vastgelegd als "ingevuld door X

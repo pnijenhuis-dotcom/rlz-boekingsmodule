@@ -21,6 +21,11 @@ class DagDto(BaseModel):
     opmerking: str | None = None
     ingevuld_door_naam: str | None = None
     namens: bool
+    # Correctievoorstel van de laatste afkeuring (hybride keuring, besluit 22-08) — de app
+    # toont ze alleen in status `corrigeren`.
+    voorstel_uren: Decimal | None = None
+    voorstel_m2: Decimal | None = None
+    voorstel_opmerking: str | None = None
 
 
 class WeekstaatDto(BaseModel):
@@ -208,8 +213,19 @@ class WeekIndienenRequest(StrikteInvoer):
     namens_zzper_id: uuid.UUID | None = None
 
 
+class DagCorrectieDto(StrikteInvoer):
+    """Correctievoorstel per bestaande dagregel bij het afkeuren (hybride keuring, besluit
+    22-08): minstens één van uren/m²/opmerking gevuld — de service valideert hard."""
+
+    datum: date
+    uren: Decimal | None = None
+    m2: Decimal | None = None
+    opmerking: str | None = None
+
+
 class WeekAfkeurenRequest(StrikteInvoer):
     reden: str
+    correcties: list[DagCorrectieDto] = []
 
 
 class VraagAntwoordRequest(StrikteInvoer):
@@ -269,6 +285,10 @@ class VeldgebruikerDto(BaseModel):
     status: str
     projecten: list[ToewijzingDto]
     zzpers: list[GekoppeldeZzperDto]
+    # Afwijkings-logging (besluit 22-08, kantoor-only — de veld-API exposeert dit nooit):
+    # afkeuringen mét correctievoorstel + opgetelde uren-delta (ingediend − goedgekeurd).
+    uren_afwijking_aantal: int = 0
+    uren_afwijking_som: Decimal = Decimal("0")
 
 
 class ProjectKoppelingRequest(StrikteInvoer):

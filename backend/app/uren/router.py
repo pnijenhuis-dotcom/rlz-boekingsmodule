@@ -82,6 +82,9 @@ def _weekstaat_response(data: service.WeekstaatData) -> schemas.WeekstaatDto:
                 opmerking=d.opmerking,
                 ingevuld_door_naam=d.ingevuld_door_naam,
                 namens=d.namens,
+                voorstel_uren=d.voorstel_uren,
+                voorstel_m2=d.voorstel_m2,
+                voorstel_opmerking=d.voorstel_opmerking,
             )
             for d in data.dagen
         ],
@@ -315,7 +318,14 @@ def week_afkeuren(
 ) -> schemas.WeekstaatDto:
     try:
         data = service.keur_week_af(
-            administratie_id=administratie_id, weekstaat_id=weekstaat_id, actor_id=actor.id, reden=payload.reden
+            administratie_id=administratie_id,
+            weekstaat_id=weekstaat_id,
+            actor_id=actor.id,
+            reden=payload.reden,
+            correcties=[
+                service.DagCorrectieInvoer(datum=c.datum, uren=c.uren, m2=c.m2, opmerking=c.opmerking)
+                for c in payload.correcties
+            ],
         )
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
@@ -565,6 +575,8 @@ def beheer_veldgebruikers(actor: CurrentGebruiker = Depends(require_beheerder)) 
             status=k.status,
             projecten=[schemas.ToewijzingDto(**t.__dict__) for t in k.projecten],
             zzpers=[schemas.GekoppeldeZzperDto(**z) for z in k.zzpers],
+            uren_afwijking_aantal=k.uren_afwijking_aantal,
+            uren_afwijking_som=k.uren_afwijking_som,
         )
         for k in kaarten
     ]

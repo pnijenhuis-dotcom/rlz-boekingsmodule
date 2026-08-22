@@ -1,6 +1,7 @@
 """Uren & meerwerk — geldlogica/statusmachine (BOUW GO Peter 2026-08-21, migratie 0056).
 
-Weekstaat-statusmachine (KEURING OP WEEKNIVEAU, besluit 21-08):
+Weekstaat-statusmachine (KEURING OP WEEKNIVEAU, besluit 21-08; HYBRIDE sinds besluit 22-08 —
+afkeuren kan per dagregel een correctievoorstel meegeven, zie keur_week_af):
 
     concept ──(week indienen)──> ingediend ──(week akkoord)──> goedgekeurd
        ▲                            │  ▲                            │
@@ -59,6 +60,7 @@ from app.uren.models import (
     ProjectStaffel,
     UrenProjectToewijzing,
     Weekstaat,
+    WeekstaatCorrectie,
     WeekstaatDag,
     WeekstaatStatus,
 )
@@ -119,6 +121,22 @@ class DagData:
     ingevuld_door: uuid.UUID
     ingevuld_door_naam: str | None
     namens: bool  # ingevuld door iemand anders dan de ZZP'er zelf (detacheerder)
+    # Correctievoorstel van de laatste afkeuring (hybride keuring, besluit 22-08) — de UI
+    # toont ze alleen in status `corrigeren`.
+    voorstel_uren: Decimal | None
+    voorstel_m2: Decimal | None
+    voorstel_opmerking: str | None
+
+
+@dataclass(frozen=True)
+class DagCorrectieInvoer:
+    """Correctievoorstel van de keurder bij het afkeuren, per bestaande dagregel (besluit
+    22-08): voorgestelde uren en/of m² + opmerking — minstens één veld gevuld."""
+
+    datum: date
+    uren: Decimal | None = None
+    m2: Decimal | None = None
+    opmerking: str | None = None
 
 
 @dataclass(frozen=True)
@@ -294,6 +312,9 @@ def _dag_data(dag: WeekstaatDag, *, zzper_id: uuid.UUID, namen: dict[uuid.UUID, 
         ingevuld_door=dag.ingevuld_door,
         ingevuld_door_naam=namen.get(dag.ingevuld_door),
         namens=dag.ingevuld_door != zzper_id,
+        voorstel_uren=dag.voorstel_uren,
+        voorstel_m2=dag.voorstel_m2,
+        voorstel_opmerking=dag.voorstel_opmerking,
     )
 
 
@@ -536,6 +557,20 @@ def keur_week_goed(*, administratie_id: uuid.UUID, weekstaat_id: uuid.UUID, acto
         staat.status = WeekstaatStatus.GOEDGEKEURD.value
         staat.goedgekeurd_op = datetime.now(UTC)
         staat.goedgekeurd_door = actor_id
+        # Afwijkings-logging (besluit 22-08): vul op de nog open correctie-registraties van
+        # deze staat het definitieve goedgekeurde totaal aan — dé toetsbron (factuurmatch-lijn).
+        goedgekeurd_totaal = session.execute(
+            select(func.coalesce(func.sum(WeekstaatDag.uren), 0)).where(WeekstaatDag.weekstaat_id == staat.id)
+        ).scalar_one()
+        open_correcties = session.scalars(
+            select(WeekstaatCorrectie).where(
+                WeekstaatCorrectie.weekstaat_id == staat.id,
+                WeekstaatCorrectie.goedgekeurd_uren.is_(None),
+            )
+        ).all()
+        for correctie in open_correcties:
+            correctie.goedgekeurd_uren = goedgekeurd_totaal
+            correctie.goedgekeurd_op = staat.goedgekeurd_op
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -565,21 +600,42 @@ def keur_week_goed(*, administratie_id: uuid.UUID, weekstaat_id: uuid.UUID, acto
 
 
 def keur_week_af(
-    *, administratie_id: uuid.UUID, weekstaat_id: uuid.UUID, actor_id: uuid.UUID, reden: str
+    *,
+    administratie_id: uuid.UUID,
+    weekstaat_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    reden: str,
+    correcties: list[DagCorrectieInvoer] | None = None,
 ) -> WeekstaatData:
     """ingediend/goedgekeurd → corrigeren, reden VERPLICHT — de hele week gaat terug naar de
     ZZP'er (keuring op weekniveau, besluit 21-08). Afkeuren van een al-goedgekeurde week is de
     enige weg om een getekende urenstaat weer open te breken; de goedgekeurd-velden gaan dan
-    leeg (de staat is niet langer getekend — de historie staat in audit_event)."""
+    leeg (de staat is niet langer getekend — de historie staat in audit_event).
+
+    HYBRIDE (besluit 22-08): `correcties` = optionele correctievoorstellen per bestaande
+    dagregel (voorgestelde uren en/of m² + opmerking). De keurder wijzigt nooit zelf de
+    uren/m² van de ZZP'er — de voorstellen landen in de voorstel-velden, de ZZP'er ziet ze
+    letterlijk in zijn corrigeer-scherm en dient zelf opnieuw in. Elke afkeuring mét
+    voorstel wordt geregistreerd in weekstaat_correctie (afwijkings-logging, kantoor-only)."""
     reden = (reden or "").strip()
     if not reden:
         raise RedenVerplicht("Afkeuren vereist een reden — die gaat naar de ZZP'er")
+    correcties = correcties or []
+    for correctie in correcties:
+        if correctie.uren is None and correctie.m2 is None and not (correctie.opmerking or "").strip():
+            raise OngeldigeInvoer(f"Correctievoorstel voor {correctie.datum} is leeg")
+        if correctie.uren is not None and not (0 <= correctie.uren <= 24):
+            raise OngeldigeInvoer("Voorgestelde uren moeten tussen 0 en 24 liggen")
+        if correctie.m2 is not None and correctie.m2 < 0:
+            raise OngeldigeInvoer("Voorgestelde m² kan niet negatief zijn")
+    if len({c.datum for c in correcties}) != len(correcties):
+        raise OngeldigeInvoer("Meerdere correctievoorstellen voor dezelfde dag")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)
         staat = _weekstaat(session, weekstaat_id)
         _vereis_keurrecht(session, administratie_id=administratie_id, actor_id=actor_id, project_id=staat.project_id)
         if staat.status == WeekstaatStatus.CORRIGEREN.value and staat.afkeur_reden == reden:
-            return _weekstaat_data(session, staat)  # herhaald besluit
+            return _weekstaat_data(session, staat)  # herhaald besluit (dubbeltik/verzendrij)
         if staat.status not in (WeekstaatStatus.INGEDIEND.value, WeekstaatStatus.GOEDGEKEURD.value):
             raise OngeldigeOvergang("Alleen een ingediende of goedgekeurde week kan afgekeurd worden")
         # Factuurmatch (fase 2, dubbeltelling-preventie): een staat die al met een geboekte
@@ -591,6 +647,15 @@ def keur_week_af(
                 "Deze week is al verrekend met een geboekte factuur — afkeuren kan niet meer"
             )
 
+        # Correctievoorstellen horen bij bestaande dagregels (per dagregel, besluit 22-08).
+        dagen = list(session.scalars(select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id)))
+        dag_per_datum = {d.datum: d for d in dagen}
+        for correctie in correcties:
+            if correctie.datum not in dag_per_datum:
+                raise OngeldigeInvoer(
+                    f"Geen ingevulde dagregel op {correctie.datum} — een voorstel hoort bij een dag"
+                )
+
         oude_status = staat.status
         staat.status = WeekstaatStatus.CORRIGEREN.value
         staat.afgekeurd_op = datetime.now(UTC)
@@ -598,6 +663,57 @@ def keur_week_af(
         staat.afkeur_reden = reden
         staat.goedgekeurd_op = None
         staat.goedgekeurd_door = None
+
+        # Voorstellen van de LAATSTE afkeuring zijn leidend: eerst alles leeg, dan de nieuwe
+        # set zetten — een stale voorstel van een eerdere ronde blijft nooit hangen.
+        for dag in dagen:
+            dag.voorstel_uren = None
+            dag.voorstel_m2 = None
+            dag.voorstel_opmerking = None
+        correcties_audit: list[dict] = []
+        for correctie in correcties:
+            dag = dag_per_datum[correctie.datum]
+            dag.voorstel_uren = correctie.uren
+            dag.voorstel_m2 = correctie.m2
+            dag.voorstel_opmerking = (correctie.opmerking or "").strip() or None
+            correcties_audit.append(
+                {
+                    "datum": correctie.datum.isoformat(),
+                    "ingediend_uren": str(dag.uren),
+                    "ingediend_m2": str(dag.m2) if dag.m2 is not None else None,
+                    "voorstel_uren": str(correctie.uren) if correctie.uren is not None else None,
+                    "voorstel_m2": str(correctie.m2) if correctie.m2 is not None else None,
+                    "voorstel_opmerking": dag.voorstel_opmerking,
+                }
+            )
+
+        # Afwijkings-logging (besluit 22-08): alleen bij een afkeuring MÉT voorstel valt er
+        # een delta te meten — ingediend totaal vs. het totaal mét voorstellen toegepast.
+        if correcties:
+            ingediend_totaal = sum((d.uren for d in dagen), Decimal("0"))
+            voorstel_per_datum = {c.datum: c.uren for c in correcties}
+            voorgesteld_totaal = sum(
+                (voorstel_per_datum.get(d.datum) if voorstel_per_datum.get(d.datum) is not None else d.uren
+                 for d in dagen),
+                Decimal("0"),
+            )
+            session.add(
+                WeekstaatCorrectie(
+                    administratie_id=administratie_id,
+                    weekstaat_id=staat.id,
+                    zzper_gebruiker_id=staat.gebruiker_id,
+                    afgekeurd_door=actor_id,
+                    afgekeurd_op=staat.afgekeurd_op,
+                    ingediend_uren=ingediend_totaal,
+                    voorgesteld_uren=voorgesteld_totaal,
+                    delta_uren=ingediend_totaal - voorgesteld_totaal,
+                    details={"dagen": correcties_audit},
+                )
+            )
+
+        nieuwe_waarde: dict = {"status": staat.status, "reden": reden}
+        if correcties_audit:
+            nieuwe_waarde["correctievoorstellen"] = correcties_audit
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -607,7 +723,7 @@ def keur_week_af(
             actie="weekstaat_afgekeurd",
             correlatie_id=staat.id,
             oude_waarde={"status": oude_status},
-            nieuwe_waarde={"status": staat.status, "reden": reden},
+            nieuwe_waarde=nieuwe_waarde,
             administratie_id=administratie_id,
         )
         return _weekstaat_data(session, staat)

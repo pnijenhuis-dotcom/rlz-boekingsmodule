@@ -32,6 +32,7 @@ from app.uren.models import (
     ProjectSpecificatie,
     UrenProjectToewijzing,
     Weekstaat,
+    WeekstaatCorrectie,
     WeekstaatDag,
     WeekstaatStatus,
 )
@@ -723,11 +724,17 @@ class VeldgebruikerKaart:
     status: str
     projecten: list[ToewijzingKaart]
     zzpers: list[dict]  # detacheerder: [{gebruiker_id, naam}]
+    # Afwijkings-logging (besluit 22-08, kantoor-only): afkeuringen mét correctievoorstel +
+    # de opgetelde delta (ingediend − uiteindelijk goedgekeurd, of − voorgesteld zolang de
+    # week nog niet opnieuw goedgekeurd is). Alleen gevuld voor ZZP'ers.
+    uren_afwijking_aantal: int
+    uren_afwijking_som: Decimal
 
 
 def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]:
     """Beheerscherm Gebruikers & toegang: alle veldrol-gebruikers mét hun project-toewijzingen
-    (over alle uren-administraties) en, voor detacheerders, de gekoppelde ZZP'ers."""
+    (over alle uren-administraties), voor detacheerders de gekoppelde ZZP'ers, en per ZZP'er
+    de opgetelde uren-afwijking uit de correctie-registratie (nooit zichtbaar in de veld-API)."""
     from app.auth.rollen import VELD_ROLLEN
 
     with scoped_session(None, actor_id=actor_id) as session:
@@ -740,6 +747,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
         zzper_namen = {g.id: g.naam for g in gebruikers}
 
     toewijzingen_per_gebruiker: dict[uuid.UUID, list[ToewijzingKaart]] = {}
+    afwijking_per_gebruiker: dict[uuid.UUID, tuple[int, Decimal]] = {}
     for administratie in _administraties_met_opt_in(actor_id, GebruikerRol.BEHEERDER):
         with scoped_session(administratie.id) as session:
             rijen = list(
@@ -759,6 +767,25 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                         project_naam=project.naam if project else None,
                     )
                 )
+            # Delta per registratie: ingediend − goedgekeurd zodra de week definitief is
+            # goedgekeurd (dé toetsbron), anders ingediend − voorgesteld.
+            afwijkingen = session.execute(
+                select(
+                    WeekstaatCorrectie.zzper_gebruiker_id,
+                    func.count(),
+                    func.sum(
+                        WeekstaatCorrectie.ingediend_uren
+                        - func.coalesce(
+                            WeekstaatCorrectie.goedgekeurd_uren, WeekstaatCorrectie.voorgesteld_uren
+                        )
+                    ),
+                )
+                .where(WeekstaatCorrectie.administratie_id == administratie.id)
+                .group_by(WeekstaatCorrectie.zzper_gebruiker_id)
+            ).all()
+            for zzper_id, aantal, som in afwijkingen:
+                oud_aantal, oud_som = afwijking_per_gebruiker.get(zzper_id, (0, Decimal("0")))
+                afwijking_per_gebruiker[zzper_id] = (oud_aantal + aantal, oud_som + (som or Decimal("0")))
 
     return [
         VeldgebruikerKaart(
@@ -775,6 +802,8 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                 for k in koppelingen
                 if k.detacheerder_gebruiker_id == g.id
             ],
+            uren_afwijking_aantal=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[0],
+            uren_afwijking_som=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[1],
         )
         for g in gebruikers
     ]
