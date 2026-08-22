@@ -34,7 +34,7 @@ from __future__ import annotations
 import base64
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -233,7 +233,9 @@ def _laad_geboekt_document(session: Session, *, administratie_id: uuid.UUID, doc
     if document is None or document.administratie_id != administratie_id:
         raise DocumentNietGevonden(f"Onbekend document: {document_id}")
     if document.soort != "inkoopfactuur":
-        raise OngeldigeTegenboeking(f"Document heeft soort {document.soort} — tegenboeken is alleen voor inkoopfacturen")
+        raise OngeldigeTegenboeking(
+            f"Document heeft soort {document.soort} — tegenboeken is alleen voor inkoopfacturen"
+        )
     if document.status != DocumentStatus.GEBOEKT:
         raise OngeldigeTegenboeking(
             f"Document staat op status {document.status.value} — alleen een geboekt document kan tegengeboekt worden"

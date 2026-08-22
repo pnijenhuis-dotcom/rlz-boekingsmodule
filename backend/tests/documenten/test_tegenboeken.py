@@ -163,7 +163,10 @@ class TestVolledigTegenboeken:
             assert tijdlijn.van_status == tijdlijn.naar_status == "geboekt"
             assert tijdlijn.detail["tegenboeking"]["reden"] == REDEN
             audit = conn.execute(
-                text("SELECT count(*) FROM platform.audit_event WHERE tabel = 'tegenboeking' AND actie = 'tegengeboekt_in_rlz'")
+                text(
+                    "SELECT count(*) FROM platform.audit_event "
+                    "WHERE tabel = 'tegenboeking' AND actie = 'tegengeboekt_in_rlz'"
+                )
             ).scalar_one()
             assert audit == 1
         # Archief: de rij draagt de tegengeboekt-vlag (chip TEGENGEBOEKT).
@@ -249,7 +252,9 @@ class TestPoorten:
                 soort="volledig", reden=REDEN,
             )
 
-    def test_reden_verplicht(self, geboekt_document, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID) -> None:
+    def test_reden_verplicht(
+        self, geboekt_document, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID
+    ) -> None:
         document_id, _ = geboekt_document
         with pytest.raises(tegenboeken.OngeldigeTegenboeking, match="Reden"):
             tegenboeken.voer_tegenboeking_uit(
@@ -344,7 +349,8 @@ class TestWebhook:
         # rlz_document_id (eigen volgnummer-reeks start op 1); nooit factuur_gestorneerd —
         # het origineel blijft in RLZ geboekt staan.
         assert "factuur_gestorneerd" not in events
-        [tegen_event] = [r for r in rijen if r.payload["data"]["rlz_document_id"] == str(rlz_tegenboeking_id(document_id, 0))]
+        tegen_guid = str(rlz_tegenboeking_id(document_id, 0))
+        [tegen_event] = [r for r in rijen if r.payload["data"]["rlz_document_id"] == tegen_guid]
         assert tegen_event.event == "factuur_geboekt"
         data = tegen_event.payload["data"]
         assert data["volgnummer"] == 1
