@@ -5,10 +5,14 @@ import {
   haalVeldgebruikers,
   koppelDetacheerder,
   koppelProject,
+  koppelVeldwerkerCrediteur,
   ontkoppelDetacheerder,
   ontkoppelProject,
+  ontkoppelVeldwerkerCrediteur,
+  zetDetacheerderTarief,
   type VeldgebruikerDto,
 } from '../meerwerk/meerwerkApi'
+import type { VendorLijstDto } from '../api/types'
 import {
   Badge,
   Button,
@@ -47,6 +51,8 @@ export function VeldwerkersPanel({
   const [fout, setFout] = useState<string | null>(null)
   const [projectModal, setProjectModal] = useState<VeldgebruikerDto | null>(null)
   const [zzperModal, setZzperModal] = useState<VeldgebruikerDto | null>(null)
+  const [crediteurModal, setCrediteurModal] = useState<VeldgebruikerDto | null>(null)
+  const [tarievenModal, setTarievenModal] = useState<VeldgebruikerDto | null>(null)
 
   const laad = useCallback(() => {
     setFout(null)
@@ -72,9 +78,8 @@ export function VeldwerkersPanel({
         </div>
       </div>
       <p className="hint" style={{ marginTop: 6 }}>
-        ZZP'ers schrijven weekstaten op hun gekoppelde projecten; uitvoerders keuren die per week (keurrecht per
-        uitvoerder↔project) en melden meerwerk; een detacheerder vult in namens de aan hem gekoppelde ZZP'ers.
-        Zelfde mobiele app en passkey-flow als de accordeurs.
+        ZZP'ers schrijven weekstaten, uitvoerders keuren per week, detacheerders vullen in namens gekoppelde
+        ZZP'ers — crediteur + tarieven voeden de factuurmatch.
       </p>
       {fout && <div className="fout">{fout}</div>}
       {gebruikers.length === 0 && (
@@ -126,7 +131,10 @@ export function VeldwerkersPanel({
                         <>
                           {(info?.zzpers ?? []).map((z) => (
                             <span key={z.gebruiker_id}>
-                              <Badge variant="info">{z.naam}</Badge>{' '}
+                              <Badge variant="info">
+                                {z.naam}
+                                {z.uurtarief !== null ? ` · ${tariefLabel(z.uurtarief)}` : ' · geen tarief'}
+                              </Badge>{' '}
                             </span>
                           ))}
                           {info !== undefined && (
@@ -134,7 +142,32 @@ export function VeldwerkersPanel({
                               {info.zzpers.length === 0 ? "ZZP'ers koppelen" : 'wijzig'}
                             </Button>
                           )}
+                          {info !== undefined && info.zzpers.length > 0 && (
+                            <Button variant="ghost" maat="klein" onClick={() => setTarievenModal(info)}>
+                              tarieven…
+                            </Button>
+                          )}
                         </>
+                      )}
+                      {info !== undefined && g.rol !== 'uitvoerder' && (
+                        <div style={{ marginTop: 4 }}>
+                          {info.crediteuren.map((c) => (
+                            <span key={`${c.administratie_id}-${c.vendor_id}`}>
+                              <Badge variant="stil">
+                                € {c.vendor_naam ?? c.vendor_id}
+                                {c.uurtarief !== null && ` · ${tariefLabel(c.uurtarief)}`}
+                              </Badge>{' '}
+                            </span>
+                          ))}
+                          <Button variant="ghost" maat="klein" onClick={() => setCrediteurModal(info)}>
+                            {info.crediteuren.length === 0 ? 'crediteur koppelen' : 'crediteur/tarief'}
+                          </Button>
+                          {info.crediteuren.length === 0 && (
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                              zonder crediteur-koppeling geen factuurmatch
+                            </div>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td>
@@ -142,6 +175,16 @@ export function VeldwerkersPanel({
                       {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
                       {g.status === 'uitgenodigd' && <Badge variant="stil">uitgenodigd</Badge>}
                       {g.status === 'wacht_op_passkey' && <Badge variant="warn">activatie onderbroken</Badge>}
+                      {info !== undefined && info.uren_afwijking_aantal > 0 && (
+                        <div
+                          style={{ fontSize: 11, color: 'var(--warn)', marginTop: 2 }}
+                          title="Afkeuringen mét correctievoorstel; delta = ingediend − uiteindelijk goedgekeurd. Alleen zichtbaar voor kantoor — de veldwerker ziet dit niet."
+                        >
+                          ⚠ {info.uren_afwijking_aantal}× correctie bij keuring ·{' '}
+                          {Number(info.uren_afwijking_som).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} u
+                          meer ingediend dan goedgekeurd
+                        </div>
+                      )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>{actieKolom(g)}</td>
                   </tr>
@@ -174,8 +217,33 @@ export function VeldwerkersPanel({
           }}
         />
       )}
+      {crediteurModal && (
+        <CrediteurModal
+          veldwerker={crediteurModal}
+          administraties={administraties}
+          onSluiten={() => setCrediteurModal(null)}
+          onGewijzigd={() => {
+            meld('Crediteur-koppeling bijgewerkt — geauditeerd.')
+            laad()
+          }}
+        />
+      )}
+      {tarievenModal && (
+        <BureauTarievenModal
+          detacheerder={tarievenModal}
+          onSluiten={() => setTarievenModal(null)}
+          onGewijzigd={() => {
+            meld('Bureau-tarieven bijgewerkt — geauditeerd.')
+            laad()
+          }}
+        />
+      )}
     </div>
   )
+}
+
+function tariefLabel(uurtarief: string): string {
+  return `€ ${Number(uurtarief).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/u`
 }
 
 /** Projecten koppelen per administratie: kies de administratie (alleen relevante), laad haar
@@ -352,6 +420,232 @@ function DetacheerderKoppelModal({
           </Button>
           <Button onClick={() => void opslaan()} disabled={bezig || (erbij.length === 0 && eraf.length === 0)}>
             {bezig ? 'Bezig…' : 'Koppelingen opslaan'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Crediteur-koppeling + los ZZP-uurtarief per administratie (factuurmatch fase 3, besluiten
+ * Peter 21-08): welke RLZ-crediteur factureert het werk van deze veldwerker. Eén crediteur
+ * per veldwerker per administratie (upsert); het uurtarief hoort alleen bij een ZZP'er —
+ * bureau-tarieven staan per detacheerder↔zzp'er-koppeling (BureauTarievenModal). */
+function CrediteurModal({
+  veldwerker,
+  administraties,
+  onSluiten,
+  onGewijzigd,
+}: {
+  veldwerker: VeldgebruikerDto
+  administraties: AdministratieDto[]
+  onSluiten: () => void
+  onGewijzigd: () => void
+}) {
+  const [administratieId, setAdministratieId] = useState(
+    veldwerker.crediteuren[0]?.administratie_id ?? administraties[0]?.id ?? '',
+  )
+  const [crediteuren, setCrediteuren] = useState<{ id: string; naam: string | null }[] | null>(null)
+  const huidige = veldwerker.crediteuren.find((c) => c.administratie_id === administratieId) ?? null
+  const [vendorId, setVendorId] = useState('')
+  const [tarief, setTarief] = useState('')
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!administratieId) return
+    const koppeling = veldwerker.crediteuren.find((c) => c.administratie_id === administratieId) ?? null
+    setVendorId(koppeling?.vendor_id ?? '')
+    setTarief(koppeling?.uurtarief ?? '')
+    setCrediteuren(null)
+    setFout(null)
+    apiJson<VendorLijstDto>(`/administraties/${administratieId}/crediteuren`)
+      .then((data) => setCrediteuren(data.crediteuren))
+      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Crediteuren laden mislukt'))
+    // veldwerker verandert niet tijdens een open modal
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [administratieId])
+
+  async function opslaan() {
+    setBezig(true)
+    setFout(null)
+    try {
+      await koppelVeldwerkerCrediteur({
+        administratie_id: administratieId,
+        gebruiker_id: veldwerker.gebruiker_id,
+        vendor_id: vendorId,
+        uurtarief: veldwerker.rol === 'zzper' && tarief.trim() !== '' ? tarief.replace(',', '.') : null,
+      })
+      onGewijzigd()
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Koppelen mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  async function ontkoppelen() {
+    setBezig(true)
+    setFout(null)
+    try {
+      await ontkoppelVeldwerkerCrediteur(administratieId, veldwerker.gebruiker_id)
+      onGewijzigd()
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Ontkoppelen mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
+      <DialogContent>
+        <DialogTitle>Crediteur van {veldwerker.naam}</DialogTitle>
+        <DialogDescription>
+          Facturen van deze crediteur worden automatisch gematcht tegen de goedgekeurde urenstaten
+          {veldwerker.rol === 'zzper'
+            ? ' van deze ZZP’er (uren × uurtarief; zonder tarief alleen op uren — oranje).'
+            : ' van de aan dit bureau gekoppelde ZZP’ers (uren × bureau-tarief per ZZP’er — knop "tarieven…").'}{' '}
+          Eén veldwerker per crediteur; elke wijziging wordt geauditeerd.
+        </DialogDescription>
+        <FormField label="Administratie" htmlFor="crediteur-administratie">
+          <Select
+            id="crediteur-administratie"
+            className="w-full"
+            value={administratieId}
+            onChange={(e) => setAdministratieId(e.target.value)}
+          >
+            {administraties.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.naam}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        {crediteuren === null && !fout && <p className="hint">Crediteuren laden…</p>}
+        {crediteuren !== null && (
+          <FormField label="Crediteur (uit Reeleezee)" htmlFor="crediteur-vendor">
+            <Select
+              id="crediteur-vendor"
+              className="w-full"
+              value={vendorId}
+              onChange={(e) => setVendorId(e.target.value)}
+            >
+              <option value="">— kies een crediteur —</option>
+              {crediteuren.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.naam ?? c.id}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+        )}
+        {veldwerker.rol === 'zzper' && (
+          <FormField label="Uurtarief (optioneel — zonder tarief matcht alleen op uren)" htmlFor="crediteur-tarief">
+            <input
+              id="crediteur-tarief"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="bijv. 42,50"
+              value={tarief}
+              onChange={(e) => setTarief(e.target.value)}
+            />
+          </FormField>
+        )}
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          {huidige !== null && (
+            <Button variant="secundair" onClick={() => void ontkoppelen()} disabled={bezig}>
+              Ontkoppelen
+            </Button>
+          )}
+          <Button variant="secundair" onClick={onSluiten} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button onClick={() => void opslaan()} disabled={bezig || vendorId === ''}>
+            {bezig ? 'Bezig…' : 'Opslaan'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Bureau-tarief per detacheerder↔zzp'er-koppeling (besluit 1, 21-08: hét hoofdmechanisme van
+ * de bureaufactuurmatch — bureaus factureren per ZZP'er verschillende tarieven). Leeg laten =
+ * "geen tarief bekend" (match alleen op uren, oranje — geen blokkade). */
+function BureauTarievenModal({
+  detacheerder,
+  onSluiten,
+  onGewijzigd,
+}: {
+  detacheerder: VeldgebruikerDto
+  onSluiten: () => void
+  onGewijzigd: () => void
+}) {
+  const [tarieven, setTarieven] = useState<Record<string, string>>(() =>
+    Object.fromEntries(detacheerder.zzpers.map((z) => [z.gebruiker_id, z.uurtarief ?? ''])),
+  )
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  const gewijzigd = detacheerder.zzpers.filter((z) => (z.uurtarief ?? '') !== (tarieven[z.gebruiker_id] ?? ''))
+
+  async function opslaan() {
+    setBezig(true)
+    setFout(null)
+    try {
+      for (const z of gewijzigd) {
+        const waarde = (tarieven[z.gebruiker_id] ?? '').trim()
+        await zetDetacheerderTarief(
+          detacheerder.gebruiker_id,
+          z.gebruiker_id,
+          waarde === '' ? null : waarde.replace(',', '.'),
+        )
+      }
+      onGewijzigd()
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Tarieven opslaan mislukt.')
+      onGewijzigd()
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
+      <DialogContent>
+        <DialogTitle>Bureau-tarieven van {detacheerder.naam}</DialogTitle>
+        <DialogDescription>
+          Het tarief per gekoppelde ZZP'er — de bureaufactuur wordt gematcht op de som van
+          (goedgekeurde uren × tarief) per ZZP'er. Leeg = geen tarief bekend: match alleen op uren (oranje).
+        </DialogDescription>
+        {detacheerder.zzpers.map((z) => (
+          <FormField key={z.gebruiker_id} label={z.naam} htmlFor={`tarief-${z.gebruiker_id}`}>
+            <input
+              id={`tarief-${z.gebruiker_id}`}
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="geen tarief bekend"
+              value={tarieven[z.gebruiker_id] ?? ''}
+              onChange={(e) => setTarieven((t) => ({ ...t, [z.gebruiker_id]: e.target.value }))}
+            />
+          </FormField>
+        ))}
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          <Button variant="secundair" onClick={onSluiten} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button onClick={() => void opslaan()} disabled={bezig || gewijzigd.length === 0}>
+            {bezig ? 'Bezig…' : 'Tarieven opslaan'}
           </Button>
         </DialogFooter>
       </DialogContent>

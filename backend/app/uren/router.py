@@ -575,6 +575,7 @@ def beheer_veldgebruikers(actor: CurrentGebruiker = Depends(require_beheerder)) 
             status=k.status,
             projecten=[schemas.ToewijzingDto(**t.__dict__) for t in k.projecten],
             zzpers=[schemas.GekoppeldeZzperDto(**z) for z in k.zzpers],
+            crediteuren=[schemas.CrediteurKoppelingDto(**c.__dict__) for c in k.crediteuren],
             uren_afwijking_aantal=k.uren_afwijking_aantal,
             uren_afwijking_som=k.uren_afwijking_som,
         )
@@ -631,6 +632,51 @@ def beheer_detacheerderkoppeling_verwijderen(
     try:
         service.ontkoppel_detacheerder(
             detacheerder_id=payload.detacheerder_id, zzper_id=payload.zzper_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/beheer/veldwerkercrediteuren", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_veldwerker_crediteur_koppelen(
+    payload: schemas.VeldwerkerCrediteurRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    """Crediteur-koppeling + los ZZP-uurtarief (factuurmatch fase 3, upsert, geaudit)."""
+    try:
+        service.koppel_veldwerker_crediteur(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            vendor_id=payload.vendor_id,
+            uurtarief=payload.uurtarief,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/beheer/veldwerkercrediteuren/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_veldwerker_crediteur_verwijderen(
+    payload: schemas.VeldwerkerCrediteurVerwijderRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    try:
+        service.ontkoppel_veldwerker_crediteur(
+            administratie_id=payload.administratie_id, gebruiker_id=payload.gebruiker_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/beheer/detacheerderkoppelingen/tarief", status_code=status.HTTP_204_NO_CONTENT)
+def beheer_detacheerder_tarief(
+    payload: schemas.DetacheerderTariefRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> None:
+    """Bureau-tarief per detacheerder↔zzp'er-koppeling (besluit 1, hoofdmechanisme match)."""
+    try:
+        service.zet_detacheerder_tarief(
+            detacheerder_id=payload.detacheerder_id,
+            zzper_id=payload.zzper_id,
+            uurtarief=payload.uurtarief,
+            actor_id=actor.id,
         )
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc

@@ -319,3 +319,179 @@ class TestAfwijkingsLogging:
         resp = client.get("/uren/zzp/projecten", headers=_bearer(gekoppelde_zzper, rol="zzper"))
         assert resp.status_code == 200
         assert "afwijking" not in resp.text
+
+
+class TestVeldwerkerCrediteurBeheer:
+    """Factuurmatch fase 3 (besluiten Peter 2026-08-21): crediteur-koppeling + ZZP-uurtarief
+    per veldwerker en het bureau-tarief per detacheerder↔zzp'er-koppeling — Beheerder-only,
+    geaudit, zichtbaar op het veldgebruikers-overzicht."""
+
+    def _maak_vendor(self, admin_engine, administratie_id, naam="Milan K. Montage") -> uuid.UUID:
+        vendor_id = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO boekhouding.vendor_cache (id, administratie_id, naam, brondata) "
+                    "VALUES (:id, :aid, :naam, '{}')"
+                ),
+                {"id": vendor_id, "aid": administratie_id, "naam": naam},
+            )
+        return vendor_id
+
+    def test_koppelen_tarief_en_overzicht(
+        self, admin_engine, administratie_id, gekoppelde_zzper, detacheerder, beheerder_id
+    ):
+        headers = _bearer(beheerder_id, rol="beheerder")
+        vendor_id = self._maak_vendor(admin_engine, administratie_id)
+        resp = client.post(
+            "/uren/beheer/veldwerkercrediteuren",
+            json={
+                "administratie_id": str(administratie_id),
+                "gebruiker_id": str(gekoppelde_zzper),
+                "vendor_id": str(vendor_id),
+                "uurtarief": "42.50",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 204
+        # bureau-tarief op een bestaande detacheerder↔zzp'er-koppeling
+        uren_service.koppel_detacheerder(
+            detacheerder_id=detacheerder, zzper_id=gekoppelde_zzper, actor_id=beheerder_id
+        )
+        resp = client.post(
+            "/uren/beheer/detacheerderkoppelingen/tarief",
+            json={
+                "detacheerder_id": str(detacheerder),
+                "zzper_id": str(gekoppelde_zzper),
+                "uurtarief": "51.00",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 204
+        overzicht = client.get("/uren/beheer/veldgebruikers", headers=headers).json()
+        milan = next(g for g in overzicht if g["gebruiker_id"] == str(gekoppelde_zzper))
+        assert len(milan["crediteuren"]) == 1
+        assert milan["crediteuren"][0]["vendor_id"] == str(vendor_id)
+        assert milan["crediteuren"][0]["vendor_naam"] == "Milan K. Montage"
+        assert Decimal(milan["crediteuren"][0]["uurtarief"]) == Decimal("42.50")
+        karin = next(g for g in overzicht if g["gebruiker_id"] == str(detacheerder))
+        assert Decimal(karin["zzpers"][0]["uurtarief"]) == Decimal("51.00")
+
+    def test_upsert_en_ontkoppelen(self, admin_engine, administratie_id, gekoppelde_zzper, beheerder_id):
+        headers = _bearer(beheerder_id, rol="beheerder")
+        vendor_id = self._maak_vendor(admin_engine, administratie_id)
+        basis = {
+            "administratie_id": str(administratie_id),
+            "gebruiker_id": str(gekoppelde_zzper),
+            "vendor_id": str(vendor_id),
+        }
+        assert client.post("/uren/beheer/veldwerkercrediteuren", json=basis, headers=headers).status_code == 204
+        # upsert: tarief bijwerken op dezelfde koppeling
+        assert (
+            client.post(
+                "/uren/beheer/veldwerkercrediteuren", json={**basis, "uurtarief": "45.00"}, headers=headers
+            ).status_code
+            == 204
+        )
+        overzicht = client.get("/uren/beheer/veldgebruikers", headers=headers).json()
+        milan = next(g for g in overzicht if g["gebruiker_id"] == str(gekoppelde_zzper))
+        assert Decimal(milan["crediteuren"][0]["uurtarief"]) == Decimal("45.00")
+        # ontkoppelen (idempotent)
+        weg = {"administratie_id": str(administratie_id), "gebruiker_id": str(gekoppelde_zzper)}
+        assert client.post("/uren/beheer/veldwerkercrediteuren/verwijderen", json=weg, headers=headers).status_code == 204
+        assert client.post("/uren/beheer/veldwerkercrediteuren/verwijderen", json=weg, headers=headers).status_code == 204
+        overzicht = client.get("/uren/beheer/veldgebruikers", headers=headers).json()
+        milan = next(g for g in overzicht if g["gebruiker_id"] == str(gekoppelde_zzper))
+        assert milan["crediteuren"] == []
+
+    def test_validaties(
+        self, admin_engine, administratie_id, gekoppelde_zzper, gekoppelde_uitvoerder, detacheerder, beheerder_id
+    ):
+        headers = _bearer(beheerder_id, rol="beheerder")
+        vendor_id = self._maak_vendor(admin_engine, administratie_id)
+        # onbekende crediteur → 404 (eerst syncen)
+        resp = client.post(
+            "/uren/beheer/veldwerkercrediteuren",
+            json={
+                "administratie_id": str(administratie_id),
+                "gebruiker_id": str(gekoppelde_zzper),
+                "vendor_id": str(uuid.uuid4()),
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 404
+        # uitvoerder krijgt geen crediteur-koppeling
+        resp = client.post(
+            "/uren/beheer/veldwerkercrediteuren",
+            json={
+                "administratie_id": str(administratie_id),
+                "gebruiker_id": str(gekoppelde_uitvoerder),
+                "vendor_id": str(vendor_id),
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 422
+        # uurtarief hoort niet bij een detacheerder (bureau-tarieven per gekoppelde ZZP'er)
+        resp = client.post(
+            "/uren/beheer/veldwerkercrediteuren",
+            json={
+                "administratie_id": str(administratie_id),
+                "gebruiker_id": str(detacheerder),
+                "vendor_id": str(vendor_id),
+                "uurtarief": "50.00",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 422
+        # crediteur al bezet door een andere veldwerker → expliciete fout
+        assert (
+            client.post(
+                "/uren/beheer/veldwerkercrediteuren",
+                json={
+                    "administratie_id": str(administratie_id),
+                    "gebruiker_id": str(gekoppelde_zzper),
+                    "vendor_id": str(vendor_id),
+                },
+                headers=headers,
+            ).status_code
+            == 204
+        )
+        resp = client.post(
+            "/uren/beheer/veldwerkercrediteuren",
+            json={
+                "administratie_id": str(administratie_id),
+                "gebruiker_id": str(detacheerder),
+                "vendor_id": str(vendor_id),
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 422
+        # bureau-tarief zonder koppeling → 404; negatief tarief → 422
+        resp = client.post(
+            "/uren/beheer/detacheerderkoppelingen/tarief",
+            json={"detacheerder_id": str(detacheerder), "zzper_id": str(gekoppelde_zzper), "uurtarief": "50"},
+            headers=headers,
+        )
+        assert resp.status_code == 404
+        uren_service.koppel_detacheerder(
+            detacheerder_id=detacheerder, zzper_id=gekoppelde_zzper, actor_id=beheerder_id
+        )
+        resp = client.post(
+            "/uren/beheer/detacheerderkoppelingen/tarief",
+            json={"detacheerder_id": str(detacheerder), "zzper_id": str(gekoppelde_zzper), "uurtarief": "-1"},
+            headers=headers,
+        )
+        assert resp.status_code == 422
+
+    def test_niet_beheerder_geweigerd(self, administratie_id, gekoppelde_zzper, admin_engine):
+        medewerker = maak_gebruiker(admin_engine, "boekhouding", "Kantoor M.")
+        resp = client.post(
+            "/uren/beheer/veldwerkercrediteuren",
+            json={
+                "administratie_id": str(administratie_id),
+                "gebruiker_id": str(gekoppelde_zzper),
+                "vendor_id": str(uuid.uuid4()),
+            },
+            headers=_bearer(medewerker, rol="boekhouding"),
+        )
+        assert resp.status_code == 403

@@ -275,6 +275,20 @@ class ToewijzingDto(BaseModel):
 class GekoppeldeZzperDto(BaseModel):
     gebruiker_id: uuid.UUID
     naam: str
+    # Bureau-tarief per detacheerder↔zzp'er-koppeling (besluit 1, 21-08 — het hoofdmechanisme
+    # van de bureaufactuurmatch). None = "geen tarief bekend" (match alleen op uren, oranje).
+    uurtarief: Decimal | None = None
+
+
+class CrediteurKoppelingDto(BaseModel):
+    """Veldwerker↔RLZ-crediteur per administratie (factuurmatch fase 3) + het losse
+    ZZP-uurtarief op die koppeling."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    vendor_id: uuid.UUID
+    vendor_naam: str | None = None
+    uurtarief: Decimal | None = None
 
 
 class VeldgebruikerDto(BaseModel):
@@ -285,6 +299,7 @@ class VeldgebruikerDto(BaseModel):
     status: str
     projecten: list[ToewijzingDto]
     zzpers: list[GekoppeldeZzperDto]
+    crediteuren: list[CrediteurKoppelingDto] = []
     # Afwijkings-logging (besluit 22-08, kantoor-only — de veld-API exposeert dit nooit):
     # afkeuringen mét correctievoorstel + opgetelde uren-delta (ingediend − goedgekeurd).
     uren_afwijking_aantal: int = 0
@@ -300,6 +315,28 @@ class ProjectKoppelingRequest(StrikteInvoer):
 class DetacheerderKoppelingRequest(StrikteInvoer):
     detacheerder_id: uuid.UUID
     zzper_id: uuid.UUID
+
+
+class VeldwerkerCrediteurRequest(StrikteInvoer):
+    """Crediteur-koppeling + los ZZP-uurtarief (upsert per veldwerker; Beheerder-only)."""
+
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    vendor_id: uuid.UUID
+    uurtarief: Decimal | None = None
+
+
+class VeldwerkerCrediteurVerwijderRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+
+
+class DetacheerderTariefRequest(StrikteInvoer):
+    """Bureau-tarief op een bestaande detacheerder↔zzp'er-koppeling; None wist het tarief."""
+
+    detacheerder_id: uuid.UUID
+    zzper_id: uuid.UUID
+    uurtarief: Decimal | None = None
 
 
 class ModuleRechtRequest(StrikteInvoer):

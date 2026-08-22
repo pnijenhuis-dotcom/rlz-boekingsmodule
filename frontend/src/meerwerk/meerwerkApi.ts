@@ -111,6 +111,14 @@ export interface ToewijzingDto {
   project_naam: string | null
 }
 
+export interface CrediteurKoppelingDto {
+  administratie_id: string
+  administratie_naam: string | null
+  vendor_id: string
+  vendor_naam: string | null
+  uurtarief: string | null
+}
+
 export interface VeldgebruikerDto {
   gebruiker_id: string
   naam: string
@@ -118,7 +126,13 @@ export interface VeldgebruikerDto {
   rol: string
   status: string
   projecten: ToewijzingDto[]
-  zzpers: { gebruiker_id: string; naam: string }[]
+  // uurtarief = het bureau-tarief per detacheerder↔zzp'er-koppeling (hoofdmechanisme match).
+  zzpers: { gebruiker_id: string; naam: string; uurtarief: string | null }[]
+  crediteuren: CrediteurKoppelingDto[]
+  // Afwijkings-logging (besluit 22-08, kantoor-only): afkeuringen mét correctievoorstel +
+  // opgetelde uren-delta (ingediend − goedgekeurd) — de veldwerker ziet dit nooit.
+  uren_afwijking_aantal: number
+  uren_afwijking_som: string
 }
 
 export function haalVeldgebruikers(): Promise<VeldgebruikerDto[]> {
@@ -149,6 +163,36 @@ export async function ontkoppelDetacheerder(detacheerderIid: string, zzperId: st
   await apiPostJson('/uren/beheer/detacheerderkoppelingen/verwijderen', {
     detacheerder_id: detacheerderIid,
     zzper_id: zzperId,
+  })
+}
+
+/** Crediteur-koppeling + los ZZP-uurtarief (factuurmatch fase 3, upsert, Beheerder-only). */
+export async function koppelVeldwerkerCrediteur(payload: {
+  administratie_id: string
+  gebruiker_id: string
+  vendor_id: string
+  uurtarief: string | null
+}): Promise<void> {
+  await apiPostJson('/uren/beheer/veldwerkercrediteuren', payload)
+}
+
+export async function ontkoppelVeldwerkerCrediteur(administratieId: string, gebruikerId: string): Promise<void> {
+  await apiPostJson('/uren/beheer/veldwerkercrediteuren/verwijderen', {
+    administratie_id: administratieId,
+    gebruiker_id: gebruikerId,
+  })
+}
+
+/** Bureau-tarief op een bestaande detacheerder↔zzp'er-koppeling; null wist het tarief. */
+export async function zetDetacheerderTarief(
+  detacheerderIid: string,
+  zzperId: string,
+  uurtarief: string | null,
+): Promise<void> {
+  await apiPostJson('/uren/beheer/detacheerderkoppelingen/tarief', {
+    detacheerder_id: detacheerderIid,
+    zzper_id: zzperId,
+    uurtarief,
   })
 }
 

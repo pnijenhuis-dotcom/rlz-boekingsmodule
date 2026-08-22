@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from app.auth import service as auth_service
 from app.db.models import Administratie, DetacheerderKoppeling, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
-from app.sync.models import ProjectCache
+from app.sync.models import ProjectCache, VendorCache
 from app.uren import service
 from app.uren.models import (
     Meerwerk,
@@ -31,6 +31,7 @@ from app.uren.models import (
     ProjectDocument,
     ProjectSpecificatie,
     UrenProjectToewijzing,
+    VeldwerkerCrediteur,
     Weekstaat,
     WeekstaatCorrectie,
     WeekstaatDag,
@@ -716,6 +717,18 @@ class ToewijzingKaart:
 
 
 @dataclass(frozen=True)
+class CrediteurKoppelingKaart:
+    """Veldwerker↔crediteur-koppeling per administratie (factuurmatch fase 3): vendor uit de
+    cache + het losse ZZP-uurtarief (bureau-tarieven staan per detacheerder↔zzp'er-rij)."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    vendor_id: uuid.UUID
+    vendor_naam: str | None
+    uurtarief: Decimal | None
+
+
+@dataclass(frozen=True)
 class VeldgebruikerKaart:
     gebruiker_id: uuid.UUID
     naam: str
@@ -723,7 +736,8 @@ class VeldgebruikerKaart:
     rol: str
     status: str
     projecten: list[ToewijzingKaart]
-    zzpers: list[dict]  # detacheerder: [{gebruiker_id, naam}]
+    zzpers: list[dict]  # detacheerder: [{gebruiker_id, naam, uurtarief}] — uurtarief = bureau-tarief
+    crediteuren: list[CrediteurKoppelingKaart]
     # Afwijkings-logging (besluit 22-08, kantoor-only): afkeuringen mét correctievoorstel +
     # de opgetelde delta (ingediend − uiteindelijk goedgekeurd, of − voorgesteld zolang de
     # week nog niet opnieuw goedgekeurd is). Alleen gevuld voor ZZP'ers.
@@ -748,8 +762,23 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
 
     toewijzingen_per_gebruiker: dict[uuid.UUID, list[ToewijzingKaart]] = {}
     afwijking_per_gebruiker: dict[uuid.UUID, tuple[int, Decimal]] = {}
+    crediteuren_per_gebruiker: dict[uuid.UUID, list[CrediteurKoppelingKaart]] = {}
     for administratie in _administraties_met_opt_in(actor_id, GebruikerRol.BEHEERDER):
         with scoped_session(administratie.id) as session:
+            # Crediteur-koppelingen + ZZP-uurtarief (factuurmatch fase 3) — vendor-naam uit de cache.
+            for koppel in session.scalars(
+                select(VeldwerkerCrediteur).where(VeldwerkerCrediteur.administratie_id == administratie.id)
+            ):
+                vendor = session.get(VendorCache, (koppel.vendor_id, administratie.id))
+                crediteuren_per_gebruiker.setdefault(koppel.gebruiker_id, []).append(
+                    CrediteurKoppelingKaart(
+                        administratie_id=administratie.id,
+                        administratie_naam=administratie.naam,
+                        vendor_id=koppel.vendor_id,
+                        vendor_naam=vendor.naam if vendor else None,
+                        uurtarief=koppel.uurtarief,
+                    )
+                )
             rijen = list(
                 session.scalars(
                     select(UrenProjectToewijzing).where(
@@ -798,10 +827,17 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                 toewijzingen_per_gebruiker.get(g.id, []), key=lambda t: t.project_naam or ""
             ),
             zzpers=[
-                {"gebruiker_id": k.zzper_gebruiker_id, "naam": zzper_namen.get(k.zzper_gebruiker_id, "?")}
+                {
+                    "gebruiker_id": k.zzper_gebruiker_id,
+                    "naam": zzper_namen.get(k.zzper_gebruiker_id, "?"),
+                    "uurtarief": k.uurtarief,
+                }
                 for k in koppelingen
                 if k.detacheerder_gebruiker_id == g.id
             ],
+            crediteuren=sorted(
+                crediteuren_per_gebruiker.get(g.id, []), key=lambda c: c.administratie_naam or ""
+            ),
             uren_afwijking_aantal=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[0],
             uren_afwijking_som=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[1],
         )

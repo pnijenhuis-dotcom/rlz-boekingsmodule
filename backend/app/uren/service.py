@@ -52,13 +52,14 @@ from app.db.models import (
     GebruikerRol,
 )
 from app.db.session import scoped_session
-from app.sync.models import ProjectCache
+from app.sync.models import ProjectCache, VendorCache
 from app.uren.models import (
     Meerwerk,
     MeerwerkEenheid,
     MeerwerkStatus,
     ProjectStaffel,
     UrenProjectToewijzing,
+    VeldwerkerCrediteur,
     Weekstaat,
     WeekstaatCorrectie,
     WeekstaatDag,
@@ -1273,6 +1274,140 @@ def zet_meerwerk_recht(*, gebruiker_id: uuid.UUID, ingeschakeld: bool, actor_id:
         elif not ingeschakeld and rij is not None:
             session.delete(rij)
         return ingeschakeld
+
+
+def koppel_veldwerker_crediteur(
+    *,
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    uurtarief: Decimal | None,
+    actor_id: uuid.UUID,
+) -> None:
+    """Koppel (of werk bij) een veldwerker aan zijn RLZ-crediteur in deze administratie
+    (factuurmatch fase 3, besluiten Peter 2026-08-21). Upsert per (administratie, gebruiker);
+    de crediteur blijft uniek per administratie — een crediteur die al bij een ándere
+    veldwerker hoort is een expliciete fout, nooit stil overnemen. `uurtarief` hoort alleen
+    bij een ZZP'er (bureau-tarieven leven per detacheerder↔zzp'er-koppeling, besluit 1)."""
+    if uurtarief is not None and uurtarief < 0:
+        raise OngeldigeInvoer("Het uurtarief kan niet negatief zijn")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        gebruiker = _gebruiker(session, gebruiker_id)
+        if gebruiker.rol not in (GebruikerRol.ZZPER, GebruikerRol.DETACHEERDER):
+            raise OngeldigeInvoer("Alleen ZZP'ers en detacheerders krijgen een crediteur-koppeling")
+        if uurtarief is not None and gebruiker.rol != GebruikerRol.ZZPER:
+            raise OngeldigeInvoer(
+                "Een uurtarief hoort alleen bij een ZZP'er — bureau-tarieven staan per gekoppelde ZZP'er"
+            )
+        vendor = session.get(VendorCache, (vendor_id, administratie_id))
+        if vendor is None:
+            raise NietGevonden("Crediteur niet gevonden in deze administratie — synchroniseer de crediteuren eerst")
+        bezet = session.scalars(
+            select(VeldwerkerCrediteur).where(
+                VeldwerkerCrediteur.administratie_id == administratie_id,
+                VeldwerkerCrediteur.vendor_id == vendor_id,
+                VeldwerkerCrediteur.gebruiker_id != gebruiker_id,
+            )
+        ).one_or_none()
+        if bezet is not None:
+            raise OngeldigeInvoer(
+                "Deze crediteur is al aan een andere veldwerker gekoppeld — één veldwerker per crediteur"
+            )
+        rij = session.get(VeldwerkerCrediteur, (administratie_id, gebruiker_id))
+        if rij is None:
+            session.add(
+                VeldwerkerCrediteur(
+                    administratie_id=administratie_id,
+                    gebruiker_id=gebruiker_id,
+                    vendor_id=vendor_id,
+                    uurtarief=uurtarief,
+                    gekoppeld_door=actor_id,
+                )
+            )
+            oude_waarde = None
+        else:
+            if rij.vendor_id == vendor_id and rij.uurtarief == uurtarief:
+                return  # idempotent
+            oude_waarde = {
+                "vendor_id": str(rij.vendor_id),
+                "uurtarief": str(rij.uurtarief) if rij.uurtarief is not None else None,
+            }
+            rij.vendor_id = vendor_id
+            rij.uurtarief = uurtarief
+            rij.gekoppeld_door = actor_id
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="veldwerker_crediteur",
+            record_id=gebruiker_id,
+            actie="veldwerker_crediteur_gekoppeld",
+            correlatie_id=vendor_id,
+            oude_waarde=oude_waarde,
+            nieuwe_waarde={
+                "vendor_id": str(vendor_id),
+                "vendor_naam": vendor.naam,
+                "uurtarief": str(uurtarief) if uurtarief is not None else None,
+            },
+            administratie_id=administratie_id,
+        )
+
+
+def ontkoppel_veldwerker_crediteur(
+    *, administratie_id: uuid.UUID, gebruiker_id: uuid.UUID, actor_id: uuid.UUID
+) -> None:
+    """Crediteur-koppeling verwijderen — bestaande matchresultaten blijven staan (niets
+    verdwijnt stil); nieuwe facturen van die crediteur matchen simpelweg niet meer."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rij = session.get(VeldwerkerCrediteur, (administratie_id, gebruiker_id))
+        if rij is None:
+            return  # idempotent
+        oude_waarde = {
+            "vendor_id": str(rij.vendor_id),
+            "uurtarief": str(rij.uurtarief) if rij.uurtarief is not None else None,
+        }
+        session.delete(rij)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="veldwerker_crediteur",
+            record_id=gebruiker_id,
+            actie="veldwerker_crediteur_ontkoppeld",
+            correlatie_id=rij.vendor_id,
+            oude_waarde=oude_waarde,
+            administratie_id=administratie_id,
+        )
+
+
+def zet_detacheerder_tarief(
+    *, detacheerder_id: uuid.UUID, zzper_id: uuid.UUID, uurtarief: Decimal | None, actor_id: uuid.UUID
+) -> None:
+    """Bureau-tarief per detacheerder↔zzp'er-koppeling (besluit 1, 2026-08-21: HET
+    hoofdmechanisme van de bureaufactuurmatch). NULL = tarief onbekend → match alleen op
+    uren (oranje, geen blokkade)."""
+    if uurtarief is not None and uurtarief < 0:
+        raise OngeldigeInvoer("Het uurtarief kan niet negatief zijn")
+    with scoped_session(None, actor_id=actor_id) as session:
+        rij = session.get(DetacheerderKoppeling, (detacheerder_id, zzper_id))
+        if rij is None:
+            raise NietGevonden("Deze detacheerder↔ZZP'er-koppeling bestaat niet — koppel eerst")
+        if rij.uurtarief == uurtarief:
+            return  # idempotent
+        oud = str(rij.uurtarief) if rij.uurtarief is not None else None
+        rij.uurtarief = uurtarief
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="detacheerder_koppeling",
+            record_id=detacheerder_id,
+            actie="detacheerder_tarief_gezet",
+            correlatie_id=zzper_id,
+            oude_waarde={"uurtarief": oud},
+            nieuwe_waarde={"uurtarief": str(uurtarief) if uurtarief is not None else None},
+        )
 
 
 def ontkoppel_detacheerder(*, detacheerder_id: uuid.UUID, zzper_id: uuid.UUID, actor_id: uuid.UUID) -> None:
