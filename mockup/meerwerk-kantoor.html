@@ -315,6 +315,55 @@
         </div>
       </div>
       <div class="notitie warn"><span>🔒</span><span>Zonder recht verdwijnt meerwerk overal: menu-ingang, klantpagina-stand, zoeken én API-antwoorden (server-side afgedwongen, zelfde patroon als de klantscope — niet alleen verbergen in de UI).</span></div>
+
+      <!-- Veldwerkers: crediteur-koppeling + tarieven (factuurmatch fase 3, besluiten Peter
+           21-08 — kleine mockup-bijwerking conform de fasering, geen aparte ontwerpronde). -->
+      <div class="kaart">
+        <div class="kaart-kop"><h2>Veldwerkers — crediteur &amp; tarieven (factuurmatch)</h2>
+          <div class="uitleg">Facturen van de gekoppelde crediteur worden automatisch gematcht tegen de goedgekeurde urenstaten. ZZP'er = eigen uurtarief op de koppeling; detacheerder (bureau) = een tarief per gekoppelde ZZP'er (hoofdmechanisme). Zonder tarief matcht alleen op uren (oranje, geen blokkade). Beheerder-only, geauditeerd.</div>
+        </div>
+        <div class="tabel-scroll">
+          <table>
+            <thead><tr><th>Veldwerker</th><th>Rol</th><th>Koppelingen</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><b>Milan K.</b><div class="sub">milan@voorbeeld.nl</div></td>
+                <td><span class="badge paars">ZZP'er</span></td>
+                <td><span class="badge info">26014 Eindhoven</span> <span class="badge info">26021 Tilburg</span><br>
+                    <span class="badge">€ Milan K. Montage · € 42,50/u</span> <a href="#" onclick="return false">crediteur/tarief</a></td>
+                <td><span class="badge ok">actief</span>
+                    <div class="sub" style="color:var(--warn)">⚠ 2× correctie bij keuring · 3,5 u meer ingediend dan goedgekeurd</div></td>
+              </tr>
+              <tr>
+                <td><b>Karin S.</b><div class="sub">bureau — detacheerder</div></td>
+                <td><span class="badge paars">Detacheerder</span></td>
+                <td><span class="badge info">Milan K. · € 51,00/u</span> <span class="badge info">Stefan B. · geen tarief</span>
+                    <a href="#" onclick="return false">tarieven…</a><br>
+                    <span class="badge">€ FlexBouw Detachering B.V.</span> <a href="#" onclick="return false">crediteur/tarief</a></td>
+                <td><span class="badge ok">actief</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="notitie"><span>ℹ️</span><span>De afwijkings-teller (afkeuringen mét correctievoorstel, delta ingediend − goedgekeurd) is <b>alleen hier</b> zichtbaar — de veldwerker ziet 'm nooit. Het goedgekeurde totaal blijft de toetsbron voor de factuurmatch.</span></div>
+      </div>
+
+      <!-- Match-sectie controlescherm (fase 3): zo landt de urenmatch op het documentdetail. -->
+      <div class="kaart">
+        <div class="kaart-kop"><h2>Urenmatch op het controlescherm <span class="badge warn">wijkt af — bevestiging vereist bij boeken</span></h2>
+          <div class="uitleg">Veldwerker: <b>Karin S. (bureau)</b> · weekstaten 32,0 u (€ 1.632,00) · factuur € 1.840,00 · verschil <b>€ 208,00</b></div>
+        </div>
+        <div class="tabel-scroll">
+          <table>
+            <thead><tr><th>Week</th><th>ZZP'er</th><th>Project</th><th>Goedgekeurde uren</th></tr></thead>
+            <tbody>
+              <tr><td>wk 33 · 2026</td><td>Milan K.</td><td>26014 Eindhoven</td><td>16,0 u</td></tr>
+              <tr><td>wk 33 · 2026</td><td>Stefan B.</td><td>26014 Eindhoven</td><td>16,0 u</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="sub" style="margin-top:8px"><a href="#" onclick="return false">Periode kiezen / herberekenen…</a> — expliciete weekstaat-selectie + optionele factuur-uren; herberekenen wist een eerdere "boeken ondanks afwijking"-bevestiging. Bij een afwijking staat hier ook de <b>concept-mail aan de veldwerker</b> (mens bewerkt + verstuurt expliciet — nooit automatisch).</div>
+      </div>
     </div>
   </main>
 </div>

@@ -113,6 +113,23 @@ class FactuurmatchResponse(BaseModel):
     factuurmatch: FactuurmatchDto | None = None
 
 
+class KandidaatStaatDto(BaseModel):
+    """Selecteerbare weekstaat voor de periode-keuze in de match-sectie (fase 3)."""
+
+    weekstaat_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    gebruiker_naam: str | None = None
+    project_naam: str | None = None
+    jaar: int
+    weeknummer: int
+    uren: Decimal
+    in_match: bool
+
+
+class KandidaatStatenResponse(BaseModel):
+    staten: list[KandidaatStaatDto]
+
+
 class BoekenInput(StrikteInvoer):
     """Optionele body van de boek-route (factuurmatch fase 2, besluit 2): de expliciete
     bevestiging "boeken ondanks match-afwijking" — zonder deze vlag antwoordt de server bij

@@ -538,9 +538,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   de boek-transactie + afkeur-blokkade op verrekende weken, werkvoorraad-teller/chip/banner
   (duplicaat-patroon), concept-mail aan de veldwerker (mens bewerkt + verstuurt expliciet,
   nooit auto) én weigering van de oude leverancier-autoboek-opt-in voor gekoppelde
-  crediteuren (runtime-vangnet + 409 bij aanzetten); fase 3 kantoor-UI + kleine
-  mockup-bijwerking (veldwerkers-paneel crediteur+tarieven, match-sectie — geen aparte
-  ontwerpronde), fase 4 autoboek-activatie = open.
+  crediteuren (runtime-vangnet + 409 bij aanzetten). **Fase 3 kantoor-UI GEBOUWD + GETEST
+  (2026-08-22 — BESLISSINGEN "Fase 3" is canoniek)**: veldwerkers-paneel met
+  crediteur-koppeling + ZZP-uurtarief + bureau-tarief per detacheerder↔zzp'er
+  (Beheerder-only endpoints, geaudit) én de match-sectie op het controlescherm
+  (uitkomst-chip, verschil-per-week-uitsplitsing, periode-keuze/herberekenen met
+  weekstaat-selectie via de kandidaat-staten-leesroute, concept-mail-paneel);
+  mockup meerwerk-kantoor.html mee bijgewerkt. Fase 4 autoboek-activatie = open.
   Meerwerk-kantoorkant: gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen
   rekening, verplichte reden); contract-toets stelt prijs voor uit de offerte-staffel, mens
   bevestigt (nooit auto-boeken); goedgekeurd + 2 weken niet op een verkoopfactuur =

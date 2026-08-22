@@ -245,6 +245,26 @@ def _expliciete_staten(
 # --- motor -------------------------------------------------------------------------------------
 
 
+def tarieven_voor_veldwerker(
+    session: Session, *, veldwerker: Gebruiker, koppeling: VeldwerkerCrediteur
+) -> dict[uuid.UUID, Decimal | None]:
+    """Leden + tarieven van een veldwerker-koppeling: ZZP'er = zichzelf mét het
+    koppeling-uurtarief; detacheerder = zijn gekoppelde ZZP'ers mét het tarief per
+    detacheerder↔zzp'er-koppeling (besluit 1)."""
+    if veldwerker.rol == GebruikerRol.ZZPER:
+        return {veldwerker.id: koppeling.uurtarief}
+    if veldwerker.rol == GebruikerRol.DETACHEERDER:
+        bureau_koppelingen = session.scalars(
+            select(DetacheerderKoppeling).where(
+                DetacheerderKoppeling.detacheerder_gebruiker_id == veldwerker.id
+            )
+        ).all()
+        return {k.zzper_gebruiker_id: k.uurtarief for k in bureau_koppelingen}
+    raise OngeldigeInvoer(
+        "Veldwerker-koppeling hoort bij een ZZP'er of detacheerder — deze rol levert geen urenstaten"
+    )
+
+
 def vind_veldwerker_koppeling(
     session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID
 ) -> VeldwerkerCrediteur | None:
@@ -295,22 +315,7 @@ def bereken_match_in_sessie(
     if veldwerker is None:
         raise NietGevonden("Veldwerker van de koppeling niet gevonden")
 
-    # Leden + tarieven: ZZP'er = zichzelf mét het koppeling-uurtarief; detacheerder = zijn
-    # gekoppelde ZZP'ers mét het tarief per detacheerder↔zzp'er-koppeling (besluit 1).
-    if veldwerker.rol == GebruikerRol.ZZPER:
-        tarieven: dict[uuid.UUID, Decimal | None] = {veldwerker.id: koppeling.uurtarief}
-    elif veldwerker.rol == GebruikerRol.DETACHEERDER:
-        bureau_koppelingen = session.scalars(
-            select(DetacheerderKoppeling).where(
-                DetacheerderKoppeling.detacheerder_gebruiker_id == veldwerker.id
-            )
-        ).all()
-        tarieven = {k.zzper_gebruiker_id: k.uurtarief for k in bureau_koppelingen}
-    else:
-        raise OngeldigeInvoer(
-            "Veldwerker-koppeling hoort bij een ZZP'er of detacheerder — deze rol levert geen urenstaten"
-        )
-
+    tarieven = tarieven_voor_veldwerker(session, veldwerker=veldwerker, koppeling=koppeling)
     gebruiker_ids = list(tarieven)
     if weekstaat_ids is not None:
         staten = _expliciete_staten(

@@ -564,3 +564,48 @@ class TestMatchMail:
                 onderwerp="  ",
                 tekst="",
             )
+
+
+class TestKandidaatStaten:
+    """Leesroute voor de periode-keuze in de match-sectie (fase 3): alle selecteerbare staten
+    (goedgekeurd + onverrekend, zonder factuurdatum-grens) mét de markering welke in de
+    huidige berekening meetellen."""
+
+    def test_kandidaat_staten_met_in_match_markering(
+        self, administratie_id, project_id, gekoppelde_zzper, gekoppelde_uitvoerder, beheerder_id, opslag
+    ):
+        staat_1 = maak_goedgekeurde_staat(
+            administratie_id, gekoppelde_zzper, project_id, gekoppelde_uitvoerder, week=30
+        )
+        staat_2 = maak_goedgekeurde_staat(
+            administratie_id, gekoppelde_zzper, project_id, gekoppelde_uitvoerder, week=31
+        )
+        vendor_id = uuid.uuid4()
+        koppel_crediteur(administratie_id, gekoppelde_zzper, vendor_id, beheerder_id, uurtarief="50")
+        document_id = maak_boekbare_factuur(
+            administratie_id, beheerder_id, opslag, vendor_id, nettos=("800.00",)
+        )
+        # expliciete selectie: alleen week 30 telt mee in de huidige berekening
+        factuurmatch_pipeline.draai_match_voor_document(
+            administratie_id=administratie_id, document_id=document_id, weekstaat_ids=[staat_1]
+        )
+        staten = factuurmatch_pipeline.kandidaat_staten_voor_document(
+            administratie_id=administratie_id, document_id=document_id
+        )
+        assert {s.weekstaat_id for s in staten} == {staat_1, staat_2}
+        per_id = {s.weekstaat_id: s for s in staten}
+        assert per_id[staat_1].in_match is True
+        assert per_id[staat_2].in_match is False
+        assert per_id[staat_1].uren == Decimal("16.00")
+        assert per_id[staat_1].gebruiker_naam is not None
+
+    def test_zonder_koppeling_lege_lijst(self, administratie_id, beheerder_id, opslag):
+        document_id = maak_boekbare_factuur(
+            administratie_id, beheerder_id, opslag, uuid.uuid4(), nettos=("100.00",)
+        )
+        assert (
+            factuurmatch_pipeline.kandidaat_staten_voor_document(
+                administratie_id=administratie_id, document_id=document_id
+            )
+            == []
+        )

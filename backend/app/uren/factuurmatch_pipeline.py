@@ -177,6 +177,78 @@ def draai_match_voor_document(
         )
 
 
+@dataclass(frozen=True)
+class KandidaatStaatGegevens:
+    """Selecteerbare weekstaat voor de periode-keuze in de match-sectie (fase 3): goedgekeurd
+    én onverrekend (of met dít document verrekend), van een betrokken ZZP'er."""
+
+    weekstaat_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    gebruiker_naam: str | None
+    project_naam: str | None
+    jaar: int
+    weeknummer: int
+    uren: Decimal
+    in_match: bool  # telt mee in de huidige berekening
+
+
+def kandidaat_staten_voor_document(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID
+) -> list[KandidaatStaatGegevens]:
+    """Alle selecteerbare staten voor de expliciete periode-keuze (match-sectie, fase 3) —
+    bewust zónder de factuurdatum-grens: de mens mag ook een latere week meenemen (de motor
+    valideert de selectie hard bij het herberekenen). Lege lijst als de match niet van
+    toepassing is (geen crediteur / geen veldwerker-koppeling)."""
+    from app.db.models import Gebruiker
+    from app.documenten.boekvoorstel import haal_boekvoorstel_op
+    from app.uren.factuurmatch import _kandidaat_staten, tarieven_voor_veldwerker, vind_veldwerker_koppeling
+
+    voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+    if voorstel.vendor_id is None:
+        return []
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        koppeling = vind_veldwerker_koppeling(
+            session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id
+        )
+        if koppeling is None:
+            return []
+        veldwerker = session.get(Gebruiker, koppeling.gebruiker_id)
+        if veldwerker is None:
+            return []
+        gebruiker_ids = list(tarieven_voor_veldwerker(session, veldwerker=veldwerker, koppeling=koppeling))
+        if not gebruiker_ids:
+            return []
+        staten = _kandidaat_staten(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            gebruiker_ids=gebruiker_ids,
+            tot_en_met=None,
+        )
+        namen = {
+            g.id: g.naam
+            for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(gebruiker_ids))).all()
+        }
+        match = session.get(Factuurmatch, document_id)
+        in_match = {
+            uuid.UUID(s["weekstaat_id"])
+            for s in ((match.details or {}).get("staten", []) if match is not None else [])
+        }
+        return [
+            KandidaatStaatGegevens(
+                weekstaat_id=s.weekstaat_id,
+                gebruiker_id=s.gebruiker_id,
+                gebruiker_naam=namen.get(s.gebruiker_id),
+                project_naam=s.project_naam,
+                jaar=s.jaar,
+                weeknummer=s.weeknummer,
+                uren=s.uren,
+                in_match=s.weekstaat_id in in_match,
+            )
+            for s in staten
+        ]
+
+
 def herbereken_voor_veldwerker(*, administratie_id: uuid.UUID, gebruiker_id: uuid.UUID) -> int:
     """Ná een weekstaat-goedkeuring: ververs elke bestaande match waarin deze ZZP'er meetelt —
     de eigen ZZP-koppeling én de bureaufacturen van detacheerders waaraan die gekoppeld is.

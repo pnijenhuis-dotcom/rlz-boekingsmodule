@@ -580,6 +580,28 @@ def document_boeken(
     )
 
 
+@router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}/factuurmatch/kandidaat-staten",
+    response_model=schemas.KandidaatStatenResponse,
+)
+def factuurmatch_kandidaat_staten(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.KandidaatStatenResponse:
+    """Selecteerbare weekstaten voor de periode-keuze in de match-sectie (fase 3): goedgekeurd
+    én onverrekend (of met dít document verrekend), van de betrokken ZZP'er(s) — bewust zonder
+    factuurdatum-grens (de motor valideert de uiteindelijke selectie hard bij herberekenen)."""
+    from app.uren import factuurmatch_pipeline
+
+    staten = factuurmatch_pipeline.kandidaat_staten_voor_document(
+        administratie_id=administratie_id, document_id=document_id
+    )
+    return schemas.KandidaatStatenResponse(
+        staten=[schemas.KandidaatStaatDto(**s.__dict__) for s in staten]
+    )
+
+
 @router.post(
     "/administraties/{administratie_id}/documenten/{document_id}/factuurmatch/herbereken",
     response_model=schemas.FactuurmatchResponse,
