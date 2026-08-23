@@ -72,8 +72,17 @@ function installMock(opties: MockOpties = {}) {
       return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Universal Steigerbouw' }] }))
     if (url.includes('/uren/kantoor/planning/projecten'))
       return Promise.resolve((opties.zoek ?? (() => jsonResponse([])))())
-    if (url.includes('/uren/kantoor/planning') && init?.method === 'POST')
+    if (url.includes('/uren/kantoor/planning') && init?.method === 'POST') {
+      // Spiegel de echte backend: vereis_administratie_scope leest administratie_id als
+      // QUERY-parameter, óók op POST — zonder die parameter is de cloud-response een 422
+      // (kliktest 23-08). De mock dwingt dat hier net zo hard af, anders vangt de suite
+      // deze klasse bug nooit.
+      if (!url.includes(`administratie_id=${ADMINISTRATIE_ID}`))
+        return Promise.resolve(
+          jsonResponse({ detail: [{ loc: ['query', 'administratie_id'], msg: 'Field required' }] }, 422),
+        )
       return Promise.resolve((opties.post ?? (() => new Response(null, { status: 204 })))())
+    }
     if (url.includes('/uren/kantoor/planning'))
       return Promise.resolve((opties.planning ?? (() => jsonResponse(planningWeek())))())
     return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
@@ -161,17 +170,54 @@ describe('PlanningScreen', () => {
     fireEvent.click(screen.getByTestId(`cel-${PROJECT_ID}|2026-08-25`))
     const keuze = await screen.findByRole('button', { name: 'Ben v. Dijk · uitv.' })
     fireEvent.click(keuze)
+    let postUrl = ''
     await waitFor(() => {
       const postCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
       expect(postCall).toBeDefined()
+      postUrl = String(postCall![0])
       gepost = JSON.parse(String((postCall![1] as RequestInit).body))
     })
+    // De scope-check leest administratie_id uit de QUERY — zonder deze parameter is de echte
+    // response een 422 (kliktest 23-08); de body alleen is niet genoeg.
+    expect(postUrl).toContain(`administratie_id=${ADMINISTRATIE_ID}`)
     expect(gepost).toMatchObject({
       administratie_id: ADMINISTRATIE_ID,
       gebruiker_id: 'cccccccc-0000-0000-0000-00000000000c',
       project_id: PROJECT_ID,
       datum: '2026-08-25',
     })
+  })
+
+  it('verwijdert een kaartje mét administratie_id als query-parameter', async () => {
+    const fetchMock = installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Milan K. uit de planning halen' }))
+    let postUrl = ''
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
+      expect(postCall).toBeDefined()
+      postUrl = String(postCall![0])
+    })
+    expect(postUrl).toContain('/uren/kantoor/planning/verwijderen')
+    expect(postUrl).toContain(`administratie_id=${ADMINISTRATIE_ID}`)
+    // De mock antwoordt 422 als de query-parameter ontbreekt — dan verschijnt hier een actie-fout.
+    await waitFor(() => expect(screen.queryByText(/Actie mislukt|Field required/)).not.toBeInTheDocument())
+  })
+
+  it('wijzigt het dagdeel mét administratie_id als query-parameter', async () => {
+    const fetchMock = installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Hele dag — maak ½ dag'))
+    let postUrl = ''
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
+      expect(postCall).toBeDefined()
+      postUrl = String(postCall![0])
+    })
+    expect(postUrl).toContain('/uren/kantoor/planning/dagdeel')
+    expect(postUrl).toContain(`administratie_id=${ADMINISTRATIE_ID}`)
   })
 
   it('markeert kaartjes ná de projecteinddatum als zacht oranje signaal', async () => {

@@ -81,6 +81,10 @@ export function zoekPlanningProjecten(administratieId: string, zoek: string): Pr
   )
 }
 
+// De scope-dependency (vereis_administratie_scope) leest administratie_id als QUERY-parameter,
+// óók op de POST-routes — de body alleen is niet genoeg (422 "query.administratie_id required",
+// kliktest cloud 23-08). Daarom draagt élke schrijfactie 'm dubbel: query (scope) + body (motor).
+
 export function planToewijzing(payload: {
   administratie_id: string
   gebruiker_id: string
@@ -88,7 +92,7 @@ export function planToewijzing(payload: {
   datum: string
   dagdeel?: 'heel' | 'half'
 }): Promise<void> {
-  return apiPostJson('/uren/kantoor/planning', payload)
+  return apiPostJson(`/uren/kantoor/planning?administratie_id=${payload.administratie_id}`, payload)
 }
 
 export function verwijderToewijzing(payload: {
@@ -97,7 +101,7 @@ export function verwijderToewijzing(payload: {
   project_id: string
   datum: string
 }): Promise<void> {
-  return apiPostJson('/uren/kantoor/planning/verwijderen', payload)
+  return apiPostJson(`/uren/kantoor/planning/verwijderen?administratie_id=${payload.administratie_id}`, payload)
 }
 
 export function verplaatsToewijzing(payload: {
@@ -108,7 +112,7 @@ export function verplaatsToewijzing(payload: {
   naar_project_id: string
   naar_datum: string
 }): Promise<void> {
-  return apiPostJson('/uren/kantoor/planning/verplaatsen', payload)
+  return apiPostJson(`/uren/kantoor/planning/verplaatsen?administratie_id=${payload.administratie_id}`, payload)
 }
 
 export function zetDagdeel(payload: {
@@ -118,7 +122,7 @@ export function zetDagdeel(payload: {
   datum: string
   dagdeel: 'heel' | 'half'
 }): Promise<void> {
-  return apiPostJson('/uren/kantoor/planning/dagdeel', payload)
+  return apiPostJson(`/uren/kantoor/planning/dagdeel?administratie_id=${payload.administratie_id}`, payload)
 }
 
 /* --- ISO-week-helpers (kantoor-chunk; bewust niet uit uren/urenApi — accordeur-chunk) --------- */
