@@ -23,10 +23,11 @@
 #      komt nergens in logs/chat; bewaar de .p8 daarna zelf in de wachtwoord-
 #      kluis — Apple geeft 'm nooit opnieuw).
 #   3. dezelfde service-/job-updates als de deploy.yml-stappen, maar per direct
-#      (geen deploy-run nodig voor de kliktest; de eerstvolgende deploy her-
-#      bevestigt exact dezelfde config). APNS_SANDBOX=true: de geïnstalleerde
-#      build is dev-signed (aps-environment 'development' = sandbox-APNs);
-#      bij TestFlight/App Store zet de deploy 'm op false (deploy.yml-comment).
+#      (geen deploy-run nodig; de eerstvolgende deploy herbevestigt exact
+#      dezelfde config). APNS_SANDBOX=false sinds 2026-08-23 (Xcode Cloud →
+#      TestFlight is de doel-build, aps-environment 'production'); alleen voor
+#      een dev-signed kabel-build-test tijdelijk true zetten (hier én in
+#      deploy.yml, twee plekken) en daarna terugdraaien.
 #   4. verificatiepoort: jij zet in de app meldingen aan (registratie mag nu
 #      niet meer 409 geven) en dit script draait daarna één handmatige run van
 #      rlz-accordeur-herinneringen — de push op het toestel is het bewijs.
@@ -116,17 +117,18 @@ fi
 
 echo
 echo "== Stap 3/4: service + notificatie-jobs per direct bijwerken (spiegel van deploy.yml) =="
-# APNS_SANDBOX=true: geïnstalleerde build is dev-signed → sandbox-APNs (zie kop).
+# APNS_SANDBOX=false: TestFlight-/App Store-builds zijn production-signed (zie kop; spiegel
+# van deploy.yml — een her-run mag de live config nooit terug naar sandbox zetten).
 gcloud run services update rlz-backend \
   --region "${REGION}" \
-  --update-env-vars "APNS_SANDBOX=true" \
+  --update-env-vars "APNS_SANDBOX=false" \
   --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
   --quiet
 echo "   rlz-backend bijgewerkt (registratie-endpoint is nu open i.p.v. 409)."
 for NJOB in rlz-accordeur-herinneringen rlz-nieuwe-facturen; do
   gcloud run jobs update "${NJOB}" \
     --region "${REGION}" \
-    --update-env-vars "APNS_SANDBOX=true,APPLE_TEAM_ID=VRQP26CX43" \
+    --update-env-vars "APNS_SANDBOX=false,APPLE_TEAM_ID=VRQP26CX43" \
     --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
     --quiet
   echo "   ${NJOB} bijgewerkt."
@@ -150,8 +152,8 @@ if [[ "${ANTWOORD}" =~ ^[jJ]$ ]]; then
   echo "       per dag) — gebruik dan de handmatige herinner-knop in de kantoor-UI"
   echo "       (klantpagina → accorderingssectie; max 1 per document per dag), of test morgen;"
   echo "     • logs: gcloud logging read 'resource.labels.job_name=rlz-accordeur-herinneringen' --limit=20"
-  echo "       (BadDeviceToken bij sandbox/productie-mismatch: APNS_SANDBOX moet true zijn"
-  echo "       voor een Xcode-build, false voor TestFlight/App Store)."
+  echo "       (BadDeviceToken bij sandbox/productie-mismatch: APNS_SANDBOX staat op false"
+  echo "       — TestFlight/App Store; een dev-signed kabel-build vergt tijdelijk true)."
 else
   echo "   Overgeslagen — draai dit script later opnieuw (alles hierboven is idempotent),"
   echo "   of stuur de bewijs-push via de handmatige herinner-knop in de kantoor-UI."

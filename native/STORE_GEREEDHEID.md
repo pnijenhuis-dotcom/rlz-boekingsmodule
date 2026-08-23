@@ -103,12 +103,17 @@ béta-/app-review, niet voor interne TestFlight), build koppelen ná de eerste u
 2. Xcode installeren → fase 2/3/4-kliktest-blokken (verkenning/17): compile, passkeys op
    toestel, push-ontvangst, koude-herstart-ontgrendeling. Dáár horen ook:
    `apple_team_id`/AASA live, APNs .p8 + secrets, VITE_API_BASE-domein bevestigen.
-3. ⚠️ **Bij de eerste TestFlight-build: `APNS_SANDBOX` op `false`** (deploy.yml, twee
-   plekken — jobs + service). De kliktest-configuratie staat op `true` omdat een dev-signed
-   Xcode-build (`aps-environment: development`) uitsluitend met sandbox-APNs praat;
-   TestFlight/App Store-builds krijgen automatisch `production` en hun tokens werken alléén
-   tegen productie-APNs. Vergeten = pushes falen met BadDeviceToken (fail-zichtbaar in de
-   job-logs, nooit stil).
+3. ✅ **UITGEVOERD (deploy.yml omgezet 2026-08-21 als A6; afgerond + geverifieerd
+   2026-08-23, samen met de Xcode Cloud-livegang): `APNS_SANDBOX=false`** op beide
+   plekken in deploy.yml (jobs + service) én in de directe spiegel
+   `scripts/gcp/apns_afronden.sh` (her-run zet de live config nu nooit meer terug naar
+   sandbox); repo-brede sweep bevestigt dat geen configplek meer naar sandbox wijst.
+   Native push staat hiermee op productie-APNs; web-push (VAPID) is ongewijzigd.
+   Achtergrond: TestFlight/App Store-builds zijn production-signed
+   (`aps-environment: production`) — hun tokens werken alléén tegen productie-APNs.
+   Gevolg: een oude dev-signed kabel-build krijgt geen push meer (BadDeviceToken,
+   fail-zichtbaar in de job-logs — token wordt als vervallen opgeruimd); kabel-build-push
+   testen = de vlag tijdelijk terug naar `true` (zelfde plekken) en daarna terugdraaien.
 4. `npm run bouw-web && npx cap sync` → archive/upload naar **TestFlight** (interne testers:
    Peter + kantoor); Android: upload-keystore aanmaken (Play App Signing aan), **interne/
    gesloten test** (de ≥ 12 testers/14 dagen-eis geldt alleen persoonlijke accounts — het
@@ -190,9 +195,9 @@ live-update-dienst (Appflow e.d.) is een latere, aparte afweging (kosten/AVG).
 6. **Save** → eerste build start direct (of klik "Start Build" op `main`). Volg de build in
    Xcode (Report navigator → Cloud) of App Store Connect → app → **Xcode Cloud**. De build
    verschijnt daarna vanzelf in TestFlight bij de interne groep.
-7. ⚠️ Vergeet checklist-stap 3 hierboven niet (`APNS_SANDBOX=false` in deploy.yml, twee
-   plekken) — dat staat los van Xcode Cloud maar hoort bij dezelfde eerste
-   TestFlight-ronde. Voor de export-compliance-vraag: `ITSAppUsesNonExemptEncryption=false`
+7. ✅ Checklist-stap 3 hierboven is UITGEVOERD (2026-08-23): `APNS_SANDBOX=false` staat in
+   deploy.yml (twee plekken) én in apns_afronden.sh — native push draait op productie-APNs.
+   Voor de export-compliance-vraag: `ITSAppUsesNonExemptEncryption=false`
    staat al in Info.plist, TestFlight vraagt er dan niet meer om.
 
 **Build 3 (planning-tab + jaaragenda in de veld-app) staat klaar:** de web-assets komen bij

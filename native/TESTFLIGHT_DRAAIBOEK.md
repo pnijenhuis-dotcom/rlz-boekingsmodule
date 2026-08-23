@@ -165,13 +165,12 @@ webcode wijzigen: eerst `cd native && npm run bouw-web && npx cap sync ios`.
    "Nijenhuis Boekingsmodule" (op het beginscherm heet de app kort "Nijenhuis").
    NB dit vervangt de kabel-/dev-build op het toestel.
 
-## 4. APNS_SANDBOX omzetten (A6) — pas NA de eerste TestFlight-install
+## 4. APNS_SANDBOX omzetten (A6) — ✅ UITGEVOERD (deploy.yml 2026-08-21; afgerond 2026-08-23)
 
 De TestFlight-build is production-signed (`aps-environment: production`) en praat alleen
-met productie-APNs; de kliktest-config staat nog op sandbox. **Zodra de TestFlight-build op
-je toestel staat**: zeg "zet A6 om" tegen de agent, of doe het zelf —
-`.github/workflows/deploy.yml`, twee plekken (job-stap ± regel 218 én service-stap
-± regel 248): `APNS_SANDBOX=true` → `APNS_SANDBOX=false`, commit + push (deploy zet het live).
+met productie-APNs. `APNS_SANDBOX=false` staat sindsdien in `.github/workflows/deploy.yml`
+(twee plekken: job-stap + service-stap) én in `scripts/gcp/apns_afronden.sh` (de directe
+spiegel — een her-run zet de live config niet meer terug naar sandbox).
 
 **Gevolg, expliciet:** je kabel-/dev-build krijgt daarna GÉÉN push meer — het oude
 sandbox-token faalt zichtbaar als BadDeviceToken in de job-logs en wordt als vervallen
