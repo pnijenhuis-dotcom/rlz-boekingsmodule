@@ -601,10 +601,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   **Jaaragenda + bruikbaarheids-fixes (besluiten Peter 22-08, GEBOUWD + GETEST zelfde dag —
   geen migratie):** vrij vooruit plannen onbegrensd (géén week-kopieerknop — het hele jaar
   wordt vooruit gevuld; project-einddatum = zacht oranje signaal, geen blokkade), week in de
-  URL (`?week=2026-W41`) mét weekkiezer, grid toont alleen projecten mét planning in de
-  zichtbare week + zoekbare "+ project toevoegen"-rij (endpoint
-  `/uren/kantoor/planning/projecten`), drag & drop gerepareerd + volwaardig klik-alternatief
+  URL (`?week=2026-W41`) mét weekkiezer, drag & drop gerepareerd + volwaardig klik-alternatief
   (cel aanklikken → persoon kiezen), opmaak conform de bijgewerkte mockup.
+  **Grid v3 (besluit Peter 23-08, GEBOUWD + GETEST zelfde dag — vervángt het 22-08-grid-filter
+  "alleen projecten mét planning + zoekrij", dat gaf een leeg grid waarin je niet kon
+  beginnen):** het weekgrid toont ÁLLE actieve projecten in twee blokken — mét planning
+  bovenaan (volle rijen), de rest compact onder een scheidingskop, direct beplanbaar via klik
+  én drag & drop — mét live filterveld + telling "N actieve projecten · M mét planning"; de
+  "+ project toevoegen"-rij en het endpoint `/uren/kantoor/planning/projecten` zijn VERVALLEN,
+  de planning-GET levert alles (incl. specs-metadata, gebatcht) in één request — vlot bij 68
+  actieve projecten (Universal). Veld-app-planningtab ongewijzigd. BESLISSINGEN
+  "PLANNING-AGENDA" (rij GRID V3) is canoniek.
   Meerwerk-kantoorkant: gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen
   rekening, verplichte reden); contract-toets stelt prijs voor uit de offerte-staffel, mens
   bevestigt (nooit auto-boeken); goedgekeurd + 2 weken niet op een verkoopfactuur =
