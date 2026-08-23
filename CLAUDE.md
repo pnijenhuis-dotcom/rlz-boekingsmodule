@@ -409,8 +409,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (GEBOEKT→te_controleren, boek_cyclus+1 — herboeking op een eigen RLZ-GUID, uitgezonderd
   van het duplicaatsignaal); harde checks onverkort, verplichte reden, betaalstatus-
   waarschuwing (open creditpost); vastgoed krijgt het als factuur_geboekt-event met
-  negatieve regels (creditnota-norm §3a), bewust géén factuur_gestorneerd. Zie BESLISSINGEN
-  "TEGENBOEK-PAD".** Kliktest-herstart geverifieerd (BESLISSINGEN
+  negatieve regels (creditnota-norm §3a) mét — sinds 2026-08-23, akkoord Vastly, schema
+  1.1→1.2/contract v1.17 — het optionele veld `corrigeert_document_id` (= rlz_document_id
+  van het origineel, UITSLUITEND op tegenboeking-events; de herboeking draagt het níét),
+  bewust géén factuur_gestorneerd. Zie BESLISSINGEN "TEGENBOEK-PAD".** Kliktest-herstart geverifieerd (BESLISSINGEN
   "KLIKTEST-HERSTART"): her-PUT op een bestaand concept vervángt de DocumentLineList (live
   bewezen, api-verkenning "Her-PUT op een bestaand concept"). **Kliktest 2 strandde alsnog
   op de bijlage-upload (nazorg ronde 3, gefikst + getest 2026-08-16): RLZ's /Uploads kent
@@ -514,6 +516,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   uren × tarief (ontbrekend tarief = onbepaalbaar, nooit gokken) + goedgekeurd meerwerk;
   werkweek-herleiding via verrekende weekstaten; zelfde rekenfunctie voor detail én
   overzicht; nooit geboekt in RLZ, excl. AK-opslag; géén suppletie-signaal — besluit 22-08).
+  **Cijfers-sync = ACHTERGRONDRUN (fix 504-crash, 2026-08-23, migratie 0063 — BESLISSINGEN
+  "CIJFERS-SYNC-CRASH" is canoniek):** de ⟳-knop antwoordt 202 + statusrij
+  (`project_cijfers_sync_run`, UI pollt bezig/klaar/fout mét zichtbare foutreden en
+  leesfouten-teller), motor gepagineerd per documenttype/RLZ-pagina (nooit volledige
+  collecties in één request — dat gaf de 504); voertuig cloud = on-demand job
+  `rlz-projecten-cijfers` (metadata-server-trigger, IAM f3_jobs.sh stap 6), dev = thread;
+  dagelijkse verversing draait mee in de rlz-sync-job van 07:00. Een onleesbaar document
+  (RLZ-403) telt als leesfout en wordt nooit vals als "verdwenen" gemarkeerd.
 - **Uren & meerwerk (steigerbouw-tak — ontwerpronde + BOUW GO Peter 2026-08-21):**
   het fase-4-item "urenportaal ZZP'ers" is naar voren getrokken; twee mockups definitief
   goedgekeurd: `mockup/uren-uitvoerder.html` (veldkant, zelfde native app als de accordeur,
@@ -634,7 +644,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.15)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.17)
 
 - **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
   RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
