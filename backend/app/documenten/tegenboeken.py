@@ -394,7 +394,13 @@ def _sla_tegenboek_webhook_op(
     rlz_document_id — de creditnota-norm van koppelcontract §3a (v1.14). Bewust GEEN
     `factuur_gestorneerd` voor het origineel: dat blijft in RLZ geboekt staan (er is op dát
     rlz_document_id niets teruggedraaid) — de ontvanger telt origineel + tegenboeking netto op
-    nul, met elk hun eigen volgnummer-reeks per rlz_document_id (§3b)."""
+    nul, met elk hun eigen volgnummer-reeks per rlz_document_id (§3b).
+
+    `corrigeert_document_id` (schema 1.2, v1.17 — akkoord Vastly 23-08): het RLZ-GUID van het
+    origineel dat deze tegenboeking corrigeert, deterministisch uit de kruisverwijzing
+    (document_id + boek_cyclus, migratie 0061) — zo legt Vastly het verband
+    origineel↔tegenboeking zonder referentie-heuristiek. Alléén hier; de herboeking bij
+    'vervang' is een gewoon nieuw document en draagt het veld níét."""
     administratie = session.get(Administratie, administratie_id)
     if administratie is None or not administratie.is_vastgoed:
         return
@@ -424,6 +430,7 @@ def _sla_tegenboek_webhook_op(
         referentie=referentie,
         volgnummer=volgend_volgnummer(session, document_id=document_id, rlz_document_id=rlz_tegenboeking_id_),
         regels=webhook_regels,
+        corrigeert_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),
     )
     session.add(WebhookUitgaand(document_id=document_id, event=payload["event"], payload=payload))
 

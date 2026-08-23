@@ -16,7 +16,14 @@ from app.config import settings
 # per rlz_document_id monotoon oplopend over factuur_geboekt- én factuur_gestorneerd-events
 # (één reeks, app/documenten/boekstand.py). Ontvanger: idempotent per (rlz_document_id,
 # volgnummer), hoogste volgnummer wint; 1.0-events zonder volgnummer gelden als volgnummer 0.
-WEBHOOK_SCHEMA_VERSION = "1.1"
+# 1.2 (koppelcontract v1.17, akkoord Vastly 2026-08-23): OPTIONEEL veld
+# `corrigeert_document_id` — het rlz_document_id van het origineel, UITSLUITEND aanwezig op
+# tegenboeking-events (creditnota-norm §3a); de herboeking bij "tegenboeken én opnieuw
+# boeken" draagt het veld níét (gewoon nieuw document). Additief: events zonder het veld
+# blijven geldig, oude events/replays ongewijzigd. Verwijst het id naar een bij Vastly
+# onbekend origineel (van vóór de webhook-activatie), dan droppen zij het event niet maar
+# vallen terug op hun gemarkeerde handmatige stap (gedragsafspraak §3a).
+WEBHOOK_SCHEMA_VERSION = "1.2"
 FACTUUR_GEBOEKT_EVENT = "factuur_geboekt"
 # Storno-event (koppelcontract v1.14, kostenflow-randvraag c — harde eis vastgoed-S2): zelfde
 # kanaal/envelope/HMAC, eigen event-naam + eigen schemaversie; het volgnummer zit in dezelfde
@@ -106,6 +113,7 @@ def bouw_factuur_geboekt_payload(
     referentie: str,
     volgnummer: int,
     regels: list[WebhookRegel],
+    corrigeert_document_id: uuid.UUID | None = None,
 ) -> dict:
     """ONGETEKENDE payload voor het "factuur geboekt"-event (koppelcontract §3 + CLAUDE.md-
     koppelvlak: RLZ-GUID, project-GUID, datum, bedragen per regel, GB, leverancier, omschrijving,
@@ -113,7 +121,11 @@ def bouw_factuur_geboekt_payload(
     boekhouding.webhook_uitgaand; timestamp/nonce/handtekening horen hier bewust NIET in — die
     berekent de afleveraar pas per verzendpoging (onderteken_voor_verzending), anders wijst het
     ~5 min-replay-venster van de ontvanger elke aflevering later dan ~5 min na het boeken
-    (outbox-retry!) per definitie af."""
+    (outbox-retry!) per definitie af.
+
+    `corrigeert_document_id` (schema 1.2, §3a): alléén het tegenboek-pad geeft dit mee — het
+    veld komt dan als extra sleutel in de data en ontbreekt in álle andere events (additief,
+    backward-compatible; nooit als null meesturen)."""
     data = {
         "administratie_id": str(administratie_id),
         "rlz_admin_id": rlz_admin_id,
@@ -135,6 +147,8 @@ def bouw_factuur_geboekt_payload(
             for regel in regels
         ],
     }
+    if corrigeert_document_id is not None:
+        data["corrigeert_document_id"] = str(corrigeert_document_id)
     return {
         "schema_version": WEBHOOK_SCHEMA_VERSION,
         "event": FACTUUR_GEBOEKT_EVENT,

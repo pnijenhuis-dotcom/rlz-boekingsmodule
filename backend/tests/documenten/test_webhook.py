@@ -99,10 +99,35 @@ def test_data_bevat_de_koppelcontract_velden() -> None:
     assert data["volgnummer"] == 1
 
 
-def test_schema_version_is_gebumpt_naar_1_1_door_het_volgnummer() -> None:
-    """Koppelcontract v1.14 (kostenflow-randvraag b): het volgnummer is een wire-wijziging —
-    de versie MOET mee, anders parst een ontvanger op 1.0 stilzwijgend verkeerd."""
-    assert WEBHOOK_SCHEMA_VERSION == "1.1"
+def test_schema_version_is_gebumpt_naar_1_2_door_corrigeert_document_id() -> None:
+    """Koppelcontract v1.17 (akkoord Vastly 23-08): het optionele corrigeert_document_id is
+    een wire-wijziging — de versie moet mee (1.1 → 1.2), ook al is het veld additief."""
+    assert WEBHOOK_SCHEMA_VERSION == "1.2"
+
+
+def test_corrigeert_document_id_alleen_aanwezig_als_meegegeven() -> None:
+    """§3a v1.17: het veld staat UITSLUITEND op tegenboeking-events. Zonder parameter (élk
+    gewoon boekpad, óók de herboeking bij "tegenboeken én opnieuw boeken") ontbreekt de
+    sleutel volledig — nooit als null meegestuurd; bestaande events blijven zo byte-voor-byte
+    geldig (additief, backward-compatible)."""
+    zonder = _payload()
+    assert "corrigeert_document_id" not in zonder["data"]
+
+    origineel = uuid.uuid4()
+    met = bouw_factuur_geboekt_payload(
+        administratie_id=uuid.uuid4(),
+        rlz_admin_id="rlz-admin-1",
+        rlz_document_id=uuid.uuid4(),
+        rlz_boekstuknummer="RLZ-04-00002003",
+        factuurdatum=datetime(2026, 8, 23).date(),
+        vendor_id=uuid.uuid4(),
+        vendor_naam="Test Leverancier",
+        referentie="TB F-2026-001",
+        volgnummer=1,
+        regels=[],
+        corrigeert_document_id=origineel,
+    )
+    assert met["data"]["corrigeert_document_id"] == str(origineel)
 
 
 def test_negatieve_regelbedragen_gaan_ongewijzigd_de_wire_op() -> None:

@@ -356,6 +356,44 @@ class TestWebhook:
         assert data["volgnummer"] == 1
         assert data["referentie"] == "TB F-2026-0841"
         assert Decimal(data["regels"][0]["netto_bedrag"]) == Decimal("-100.00")
+        # Schema 1.2 (v1.17, akkoord Vastly 23-08): het tegenboeking-event draagt de
+        # kruisverwijzing naar het origineel — deterministisch uit (document_id, boek_cyclus).
+        assert data["corrigeert_document_id"] == str(rlz_herboeking_id(document_id, 0))
+        assert tegen_event.payload["schema_version"] == "1.2"
+
+    def test_herboeking_draagt_geen_corrigeert_document_id(
+        self, geboekt_document, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """§3a v1.17: de herboeking bij "tegenboeken én opnieuw boeken" is een gewoon nieuw
+        document — haar factuur_geboekt-event draagt het veld níét (sleutel afwezig)."""
+        document_id, fake_client = geboekt_document
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET is_vastgoed = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        tegenboeken.voer_tegenboeking_uit(
+            administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker,
+            soort="vervang", reden=REDEN,
+        )
+        fake_client.duplicaten = [
+            {"id": str(rlz_herboeking_id(document_id, 0))},
+            {"id": str(rlz_tegenboeking_id(document_id, 0))},
+        ]
+        boeken.boek_document(
+            administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker
+        )
+        with admin_engine.connect() as conn:
+            rijen = conn.execute(
+                text("SELECT payload FROM boekhouding.webhook_uitgaand WHERE document_id = :id"),
+                {"id": document_id},
+            ).all()
+        herboek_guid = str(rlz_herboeking_id(document_id, 1))
+        [herboek_event] = [r for r in rijen if r.payload["data"]["rlz_document_id"] == herboek_guid]
+        assert "corrigeert_document_id" not in herboek_event.payload["data"]
+        tegen_guid = str(rlz_tegenboeking_id(document_id, 0))
+        [tegen_event] = [r for r in rijen if r.payload["data"]["rlz_document_id"] == tegen_guid]
+        assert tegen_event.payload["data"]["corrigeert_document_id"] == str(rlz_herboeking_id(document_id, 0))
 
     def test_geen_webhook_zonder_vastgoed_vlag(
         self, geboekt_document, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
