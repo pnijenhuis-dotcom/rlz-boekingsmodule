@@ -77,6 +77,9 @@
   tbody th{background:var(--panel-2);padding:10px;font-size:12.5px;text-align:left;vertical-align:top}
   tbody th .pl{display:block;font-weight:400;font-size:10.5px;color:var(--faint)}
   tbody th .bezet{display:inline-flex;margin-top:5px;font-size:10.5px;font-weight:700;color:var(--primary);background:var(--accent-bg);border-radius:99px;padding:1px 7px}
+  tr.scheider th{background:var(--bg);color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;padding:7px 10px;font-weight:700}
+  tr.leeg th{padding:7px 10px;font-weight:600;font-size:12px}
+  tr.leeg td.cel{height:34px;min-height:0}
   td.cel{padding:5px;min-height:52px;height:1px}
   td.cel.dragover{outline:2px dashed var(--primary);outline-offset:-3px;background:var(--accent-bg)}
 
@@ -116,7 +119,7 @@
 <div class="kop">
   <div>
     <h1>Planning — Universal Steigerbouw</h1>
-    <div class="sub">Week 35 · 24 – 28 aug · alleen actieve projecten · sleep een ZZP'er naar een project-dag</div>
+    <div class="sub">Week 35 · 24 – 28 aug · álle actieve projecten (mét planning bovenaan) · sleep een ZZP'er naar een project-dag, of klik een cel</div>
   </div>
   <div class="rechts">
     <div class="weeknav"><button class="icon-btn">‹</button><span style="padding:0 6px">Week 35</span><button class="icon-btn">›</button></div>
@@ -127,6 +130,10 @@
 
 <div class="layout">
   <div class="planner">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
+      <input type="search" placeholder="Filter projecten… (nummer, plaats of opdrachtgever)" style="flex:0 0 340px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:12.5px;color:var(--text)">
+      <span style="font-size:11.5px;color:var(--faint)">18 actieve projecten · 4 mét planning deze week</span>
+    </div>
     <table id="grid">
       <thead>
         <tr>
@@ -178,6 +185,27 @@
           <td class="cel"></td>
           <td class="cel"></td>
         </tr>
+        <tr class="scheider"><th colspan="6">Overige actieve projecten — nog niemand gepland deze week</th></tr>
+        <tr class="leeg">
+          <th>25017 Kudo Arnhem-Kronenburg fase 2<span class="pl">Kudo · montage · t/m wk 44</span></th>
+          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
+        </tr>
+        <tr class="leeg">
+          <th>25036 Arnhem<span class="pl">Confide Bouw · montage</span></th>
+          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
+        </tr>
+        <tr class="leeg">
+          <th>25047 Ede<span class="pl">Welling bouw · demontage · t/m wk 36 <b style="color:var(--warn)">⚠ einddatum nadert</b></span></th>
+          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
+        </tr>
+        <tr class="leeg">
+          <th>25058 Haarlem<span class="pl">Slokker · montage</span></th>
+          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
+        </tr>
+        <tr class="leeg">
+          <th style="color:var(--faint);font-weight:400">… nog 10 projecten (scroll of filter)</th>
+          <td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -212,6 +240,8 @@
 <div class="notitie">ℹ️ <b>Zo grijpt de planning op de weekstaten in:</b> uren op een gepland project/dag = groen · uren búíten de planning = oranje "buiten planning" bij de keuring (geen blokkade — invallen en omplannen blijft mogelijk) · twee projecten op één dag zónder planning-dekking = <b>interne melding + teller per ZZP'er</b>, alleen zichtbaar voor kantoor. Meerdere mensen op één project/dag = meerdere kaartjes in één cel; halve dagen dragen een ½-label. Slepen naar een project maakt de projectkoppeling automatisch aan.</div>
 
 <div class="desknote">
+  <h2>v3 — grid-model omgedraaid (besluit Peter 23-08, vervángt "alleen projecten mét planning")</h2>
+  Het grid toont <b>álle actieve projecten als rijen</b>, in twee blokken: projecten mét planning deze week bovenaan (volle rijhoogte, tellers), daaronder compact de overige actieve projecten onder de scheidingskop "overige actieve projecten" — direct beplanbaar zonder eerst te zoeken. Filterveld bovenaan versmalt de lijst live (nummer/plaats/opdrachtgever); de aparte zoekbare "+ project toevoegen"-rij VERVALT. Project-einddatum die nadert = oranje signaal in de rijkop. Reden: de eerdere "alleen mét planning"-variant gaf een leeg grid waarin je niet kon starten met plannen.
   <h2>Wat je ziet (ontwerpronde v2 — GEBOUWD 2026-08-22, kantoor-route /planning + veld-app-tab)</h2>
   Weekgrid omgedraaid conform feedback Peter 22-08: <b>actieve projecten als rijen</b>, dagen als kolommen, <b>ZZP'ers als sleepbare kaartjes</b> — meerdere per project/dag. Afgeronde projecten verdwijnen uit de lijst. De zijbalk toont de mensen-pool met het aantal geplande dagen deze week (besluit C: &gt; 5 dagen kleurt als zacht signaal). Weeknavigatie = vooruit plannen.
   <h2>Besluiten Peter 22-08 (verwerkt)</h2>

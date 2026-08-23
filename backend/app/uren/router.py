@@ -578,9 +578,11 @@ def kantoor_planning(
     actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.PlanningWeekDto:
-    """Het weekgrid: ALLEEN actieve projecten als rijen, kaartjes per dag, de mensen-pool
-    (geplande dagen — besluit C: > 5 kleurt) en de controle-meldingen + dubbele-dag-teller
-    (uitsluitend kantoor). Toegang: module-recht + klantscope; opt-in per administratie."""
+    """Het weekgrid (v3, besluit Peter 23-08): ÁLLE actieve projecten als rijen — mét planning
+    bovenaan, de rest compact (splitsing in de UI op per_datum) — kaartjes per dag, de
+    mensen-pool (geplande dagen — besluit C: > 5 kleurt) en de controle-meldingen +
+    dubbele-dag-teller (uitsluitend kantoor). Eén request levert alles incl. specs-metadata;
+    de aparte zoekroute is vervallen. Toegang: module-recht + klantscope; opt-in."""
     try:
         data = planning.planning_overzicht(
             administratie_id=administratie_id, jaar=jaar, weeknummer=weeknummer, actor_id=actor.id
@@ -599,6 +601,7 @@ def kantoor_planning(
                 opdrachtgever=rij.opdrachtgever,
                 soort_werk=rij.soort_werk,
                 looptijd_tot=rij.looptijd_tot,
+                is_actief=rij.is_actief,
                 week_man=rij.week_man,
                 per_datum={
                     datum: [schemas.PlanningKaartDto(**k.__dict__) for k in kaarten]
@@ -612,23 +615,6 @@ def kantoor_planning(
         dubbele_dagen=[schemas.DubbeleDagMeldingDto(**m.__dict__) for m in data.dubbele_dagen],
         dubbele_dag_tellers=[schemas.DubbeleDagTellerDto(**t.__dict__) for t in data.dubbele_dag_tellers],
     )
-
-
-@router.get("/kantoor/planning/projecten", response_model=list[schemas.PlanningProjectZoekDto])
-def kantoor_planning_projecten(
-    administratie_id: uuid.UUID,
-    zoek: str = "",
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
-    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
-) -> list[schemas.PlanningProjectZoekDto]:
-    """Zoekbron voor de "+ project toevoegen"-rij (jaaragenda 22-08): actieve projecten op
-    naam/opdrachtgever/werknummer. Het grid toont alleen projecten mét planning; via deze
-    route haalt kantoor er een leeg project bij."""
-    try:
-        resultaten = planning.zoek_projecten(administratie_id=administratie_id, actor_id=actor.id, zoek=zoek)
-    except service.UrenFout as exc:
-        raise _vertaal(exc) from exc
-    return [schemas.PlanningProjectZoekDto(**r.__dict__) for r in resultaten]
 
 
 @router.post("/kantoor/planning", status_code=status.HTTP_204_NO_CONTENT)

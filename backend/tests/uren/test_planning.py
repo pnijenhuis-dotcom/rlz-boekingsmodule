@@ -171,8 +171,8 @@ class TestVerplaatsenEnDagdeel:
             administratie_id=administratie_id, jaar=JAAR, weeknummer=WEEK, actor_id=beheerder_id, vandaag=VANDAAG
         )
         per_project = {rij.project_id: rij for rij in data.projecten}
-        # Jaaragenda-fix 22-08: het bron-project heeft geen planning meer → geen rij meer.
-        assert project_id not in per_project
+        # V3 (23-08): het bron-project blijft als actieve rij staan, maar zonder kaartjes.
+        assert per_project[project_id].per_datum == {}
         [kaart] = per_project[tweede_project_id].per_datum[DI.isoformat()]
         assert kaart.dagdeel == "half"
 
@@ -296,11 +296,13 @@ class TestSignalen:
         assert len(buiten_venster.dubbele_dagen) == 1
 
 
-class TestJaaragendaGrid:
-    """Jaaragenda-besluiten 22-08: alleen projecten mét planning in de zichtbare week als rij
-    (de zoekrij haalt lege projecten erbij), en onbegrensd vooruit plannen per week."""
+class TestGridV3AlleActieveProjecten:
+    """V3-besluit Peter 23-08 (vervángt het 22-08-grid-filter "alleen mét planning" — dat gaf
+    een leeg grid waarin je niet kon beginnen): de leesroute levert ÁLLE actieve projecten als
+    rij, mét planning gevuld (per_datum) en de rest leeg maar direct beplanbaar; de UI splitst
+    in twee blokken. Specs-metadata komt in één batch mee. Vooruit plannen blijft onbegrensd."""
 
-    def test_grid_toont_alleen_projecten_met_planning_in_de_week(
+    def test_grid_toont_alle_actieve_projecten_met_planning_gevuld(
         self, administratie_id, project_id, tweede_project_id, zzper, beheerder_id
     ):
         planning.plan_toewijzing(
@@ -309,12 +311,68 @@ class TestJaaragendaGrid:
         data = planning.planning_overzicht(
             administratie_id=administratie_id, jaar=JAAR, weeknummer=WEEK, actor_id=beheerder_id, vandaag=VANDAAG
         )
-        assert [rij.project_id for rij in data.projecten] == [project_id]
-        # Een andere week zonder planning: leeg grid, geen 154 lege rijen.
+        # Beide actieve projecten zijn een rij, gesorteerd op naam (Eindhoven vóór Tilburg).
+        assert [rij.project_id for rij in data.projecten] == [project_id, tweede_project_id]
+        per_project = {rij.project_id: rij for rij in data.projecten}
+        assert per_project[project_id].per_datum[MA.isoformat()][0].gebruiker_id == zzper
+        # Het project zónder planning: lege rij (compacte blok in de UI), wél is_actief.
+        assert per_project[tweede_project_id].per_datum == {}
+        assert per_project[tweede_project_id].week_man == 0
+        assert per_project[tweede_project_id].is_actief is True
+        # Een andere week zonder planning: beide projecten blijven als (lege) rij staan —
+        # het v2-lege-grid bestaat niet meer.
         volgende = planning.planning_overzicht(
             administratie_id=administratie_id, jaar=JAAR, weeknummer=WEEK + 1, actor_id=beheerder_id, vandaag=VANDAAG
         )
-        assert volgende.projecten == []
+        assert [rij.project_id for rij in volgende.projecten] == [project_id, tweede_project_id]
+        assert all(rij.per_datum == {} for rij in volgende.projecten)
+
+    def test_specs_metadata_ook_op_projecten_zonder_planning(
+        self, admin_engine: Engine, administratie_id, project_id, tweede_project_id, beheerder_id
+    ):
+        """De rijkop van het compacte blok (opdrachtgever/einddatum) komt uit dezelfde ene
+        leesroute-call — geen aparte zoekroute of per-rij-calls meer."""
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO boekhouding.project_specificatie "
+                    "(project_id, administratie_id, opdrachtgever, looptijd_tot, bijgewerkt_door) "
+                    "VALUES (:pid, :aid, 'Moeskops Bouw', '2026-11-30', :door)"
+                ),
+                {"pid": tweede_project_id, "aid": administratie_id, "door": beheerder_id},
+            )
+        data = planning.planning_overzicht(
+            administratie_id=administratie_id, jaar=JAAR, weeknummer=WEEK, actor_id=beheerder_id, vandaag=VANDAAG
+        )
+        rij = {r.project_id: r for r in data.projecten}[tweede_project_id]
+        assert rij.per_datum == {}  # nog niemand gepland
+        assert rij.opdrachtgever == "Moeskops Bouw"
+        assert rij.looptijd_tot == date(2026, 11, 30)  # voedt het einddatum-signaal in de rijkop
+
+    def test_realistische_aantallen_in_een_request(
+        self, admin_engine: Engine, administratie_id, project_id, zzper, beheerder_id
+    ):
+        """Universal heeft 68 actieve projecten — één leesroute-call levert ze allemaal
+        (specs gebatcht; de UI rendert de lege rijen als lichte, compacte rijen)."""
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO boekhouding.project_cache (id, administratie_id, naam, is_actief, brondata) "
+                    "VALUES (:id, :aid, :naam, true, '{}')"
+                ),
+                [
+                    {"id": uuid.uuid4(), "aid": administratie_id, "naam": f"26{100 + i:03d} Plaats {i}"}
+                    for i in range(67)
+                ],
+            )
+        planning.plan_toewijzing(
+            administratie_id=administratie_id, gebruiker_id=zzper, project_id=project_id, datum=MA, actor_id=beheerder_id
+        )
+        data = planning.planning_overzicht(
+            administratie_id=administratie_id, jaar=JAAR, weeknummer=WEEK, actor_id=beheerder_id, vandaag=VANDAAG
+        )
+        assert len(data.projecten) == 68
+        assert sum(1 for rij in data.projecten if rij.per_datum) == 1
 
     def test_ver_vooruit_plannen_kan_onbegrensd(self, administratie_id, project_id, zzper, beheerder_id):
         """Besluit Peter 22-08: het hele jaar (en verder) wordt vooruit gevuld — geen
@@ -333,55 +391,24 @@ class TestJaaragendaGrid:
     def test_gedeactiveerd_project_met_planning_blijft_zichtbaar(
         self, admin_engine: Engine, administratie_id, project_id, zzper, beheerder_id
     ):
-        """Een project dat ná het plannen inactief wordt blijft als rij staan zodat kantoor de
-        kaartjes kan weghalen; in de zoekrij komt het níét meer voor."""
+        """Een project dat ná het plannen inactief wordt blijft als rij staan (is_actief=False,
+        telt in de UI niet mee als actief project) zodat kantoor de kaartjes kan weghalen; een
+        inactief project zónder planning verschijnt nooit in het grid."""
         planning.plan_toewijzing(
             administratie_id=administratie_id, gebruiker_id=zzper, project_id=project_id, datum=MA, actor_id=beheerder_id
         )
+        afgerond_zonder_planning = maak_project(admin_engine, administratie_id, "25001 Afgerond (leeg)")
         with admin_engine.begin() as conn:
             conn.execute(
-                text("UPDATE boekhouding.project_cache SET is_actief = false WHERE id = :id"),
-                {"id": project_id},
+                text("UPDATE boekhouding.project_cache SET is_actief = false WHERE id IN (:a, :b)"),
+                {"a": project_id, "b": afgerond_zonder_planning},
             )
         data = planning.planning_overzicht(
             administratie_id=administratie_id, jaar=JAAR, weeknummer=WEEK, actor_id=beheerder_id, vandaag=VANDAAG
         )
         assert [rij.project_id for rij in data.projecten] == [project_id]
-        assert planning.zoek_projecten(administratie_id=administratie_id, actor_id=beheerder_id) == []
-
-
-class TestZoekProjecten:
-    def test_zoekt_op_naam_en_opdrachtgever_alleen_actief(
-        self, admin_engine: Engine, administratie_id, project_id, tweede_project_id, beheerder_id
-    ):
-        with admin_engine.begin() as conn:
-            conn.execute(
-                text(
-                    "INSERT INTO boekhouding.project_specificatie "
-                    "(project_id, administratie_id, opdrachtgever, looptijd_tot, bijgewerkt_door) "
-                    "VALUES (:pid, :aid, 'Moeskops Bouw', '2026-11-30', :door)"
-                ),
-                {"pid": project_id, "aid": administratie_id, "door": beheerder_id},
-            )
-        alles = planning.zoek_projecten(administratie_id=administratie_id, actor_id=beheerder_id)
-        assert {r.project_id for r in alles} == {project_id, tweede_project_id}
-        # Op naam (deel, hoofdletterongevoelig) én op opdrachtgever uit de specificatie.
-        assert [r.project_id for r in planning.zoek_projecten(
-            administratie_id=administratie_id, actor_id=beheerder_id, zoek="eindhoven"
-        )] == [project_id]
-        [op_opdrachtgever] = planning.zoek_projecten(
-            administratie_id=administratie_id, actor_id=beheerder_id, zoek="moeskops"
-        )
-        assert op_opdrachtgever.project_id == project_id
-        assert op_opdrachtgever.looptijd_tot == date(2026, 11, 30)  # voedt het einddatum-signaal
-        assert planning.zoek_projecten(
-            administratie_id=administratie_id, actor_id=beheerder_id, zoek="bestaat-niet"
-        ) == []
-
-    def test_zoekroute_vereist_module_recht(self, admin_engine: Engine, administratie_id, beheerder_id):
-        medewerker = maak_gebruiker(admin_engine, "boekhouding", "Zonder Recht Zoeker")
-        with pytest.raises(service.GeenToegang, match="module-recht"):
-            planning.zoek_projecten(administratie_id=administratie_id, actor_id=medewerker)
+        [rij] = data.projecten
+        assert rij.is_actief is False
 
 
 class TestScopeEnPoorten:

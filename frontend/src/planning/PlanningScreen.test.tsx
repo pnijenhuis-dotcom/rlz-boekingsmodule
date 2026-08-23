@@ -1,8 +1,10 @@
-/** Planning-agenda steigerbouw (akkoord Peter 22-08 + jaaragenda-besluiten 22-08): weekgrid
- * met alléén projecten mét planning, "+ project toevoegen"-zoekrij, klik-alternatief voor
- * drag-and-drop, week in de URL (?week=2026-W41), einddatum-signaal, pool met geplande-
- * dagen-teller (> 5 = zacht signaal, besluit C), controle-meldingen + dubbele-dag-teller
- * (kantoor-only) en de 403-module-recht-melding. */
+/** Planning-agenda steigerbouw (akkoord Peter 22-08 + v3-grid-besluit 23-08): weekgrid met
+ * ÁLLE actieve projecten in twee blokken (mét planning bovenaan, de rest compact onder de
+ * scheidingskop — direct beplanbaar, precies het gat van v2), live filterveld + telling,
+ * klik-alternatief voor drag-and-drop, week in de URL (?week=2026-W41), einddatum-signaal,
+ * pool met geplande-dagen-teller (> 5 = zacht signaal, besluit C), controle-meldingen +
+ * dubbele-dag-teller (kantoor-only) en de 403-module-recht-melding. Eén request — geen
+ * per-rij-calls (Universal = 68 actieve projecten). */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -10,6 +12,7 @@ import { PlanningScreen } from './PlanningScreen'
 
 const ADMINISTRATIE_ID = 'dddddddd-0000-0000-0000-00000000000d'
 const PROJECT_ID = 'aaaaaaaa-0000-0000-0000-00000000000a'
+const COMPACT_PROJECT_ID = 'ffffffff-0000-0000-0000-00000000000f'
 const ZZP_ID = 'bbbbbbbb-0000-0000-0000-00000000000b'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -29,6 +32,7 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
         opdrachtgever: 'Moeskops',
         soort_werk: 'montage',
         looptijd_tot: null,
+        is_actief: true,
         week_man: 2,
         per_datum: {
           '2026-08-24': [
@@ -36,6 +40,17 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
             { gebruiker_id: 'cccccccc-0000-0000-0000-00000000000c', naam: 'Ben v. Dijk', rol: 'uitvoerder', dagdeel: 'half' },
           ],
         },
+      },
+      // V3: de leesroute levert óók de actieve projecten zónder planning (compacte blok).
+      {
+        project_id: COMPACT_PROJECT_ID,
+        project_naam: '25036 Arnhem',
+        opdrachtgever: 'Confide Bouw',
+        soort_werk: 'montage',
+        looptijd_tot: null,
+        is_actief: true,
+        week_man: 0,
+        per_datum: {},
       },
     ],
     pool: [
@@ -61,7 +76,6 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
 
 interface MockOpties {
   planning?: () => Response
-  zoek?: () => Response
   post?: () => Response
 }
 
@@ -70,8 +84,6 @@ function installMock(opties: MockOpties = {}) {
     const url = String(input)
     if (url.includes('/auth/administraties'))
       return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Universal Steigerbouw' }] }))
-    if (url.includes('/uren/kantoor/planning/projecten'))
-      return Promise.resolve((opties.zoek ?? (() => jsonResponse([])))())
     if (url.includes('/uren/kantoor/planning') && init?.method === 'POST') {
       // Spiegel de echte backend: vereis_administratie_scope leest administratie_id als
       // QUERY-parameter, óók op POST — zonder die parameter is de cloud-response een 422
@@ -110,6 +122,11 @@ describe('PlanningScreen', () => {
     installMock()
     renderScherm()
     await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    // V3: álle actieve projecten in twee blokken — het project zonder planning staat compact
+    // onder de scheidingskop; de telling naast het filterveld telt beide.
+    expect(screen.getByText('Overige actieve projecten — nog niemand gepland deze week')).toBeInTheDocument()
+    expect(screen.getByText('25036 Arnhem')).toBeInTheDocument()
+    expect(screen.getByText('2 actieve projecten · 1 mét planning deze week')).toBeInTheDocument()
     // Kaartjes in de cel — de uitvoerder draagt het uitv.-label, de projectrij de man-teller.
     expect(screen.getAllByText('Milan K.').length).toBeGreaterThan(0)
     expect(screen.getByText('deze week: 2 man')).toBeInTheDocument()
@@ -135,27 +152,70 @@ describe('PlanningScreen', () => {
     expect(screen.getByLabelText('Weekkiezer')).toHaveValue('2026-W41')
   })
 
-  it('voegt via de zoekrij een leeg project toe aan het grid', async () => {
-    installMock({
-      planning: () => jsonResponse(planningWeek({ projecten: [] })),
-      zoek: () =>
-        jsonResponse([
-          {
-            project_id: 'eeeeeeee-0000-0000-0000-00000000000e',
-            naam: '25016 Groesbeek (Janssen)',
-            opdrachtgever: 'Janssen-Groesbeek',
-            soort_werk: null,
-            looptijd_tot: null,
-          },
-        ]),
+  it('plant direct vanaf het compacte blok op een project zónder bestaande planning (het v2-gat)', async () => {
+    // Precies het gat van v2: een project zonder planning stond niet in het grid en was dus
+    // niet beplanbaar zonder eerst te zoeken. In v3 is de compacte rij direct beplanbaar.
+    const fetchMock = installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('25036 Arnhem')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId(`cel-${COMPACT_PROJECT_ID}|2026-08-24`))
+    fireEvent.click(await screen.findByRole('button', { name: 'Milan K.' }))
+    let postUrl = ''
+    let gepost: unknown = null
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
+      expect(postCall).toBeDefined()
+      postUrl = String(postCall![0])
+      gepost = JSON.parse(String((postCall![1] as RequestInit).body))
     })
-    renderScherm()
-    await waitFor(() => expect(screen.getByText(/Nog niets gepland in deze week/)).toBeInTheDocument())
-    fireEvent.change(screen.getByLabelText('Zoek een actief project'), { target: { value: 'groesbeek' } })
-    const resultaat = await screen.findByText(/25016 Groesbeek \(Janssen\) · Janssen-Groesbeek/)
-    fireEvent.click(resultaat)
-    // Het project staat nu als (lege) rij in het grid, klaar om op te plannen.
-    await waitFor(() => expect(screen.getByText('25016 Groesbeek (Janssen)')).toBeInTheDocument())
+    // Query-parameter-assertie van de 422-fix (23-08) blijft onverkort staan.
+    expect(postUrl).toContain(`administratie_id=${ADMINISTRATIE_ID}`)
+    expect(gepost).toMatchObject({
+      administratie_id: ADMINISTRATIE_ID,
+      gebruiker_id: ZZP_ID,
+      project_id: COMPACT_PROJECT_ID,
+      datum: '2026-08-24',
+    })
+    await waitFor(() => expect(screen.queryByText(/Actie mislukt|Field required/)).not.toBeInTheDocument())
+  })
+
+  it('filtert beide blokken live en meldt een lege uitkomst netjes', async () => {
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    // Filter op opdrachtgever van het compacte project: het bovenblok-project verdwijnt.
+    fireEvent.change(screen.getByLabelText('Filter projecten'), { target: { value: 'confide' } })
+    expect(screen.getByText('25036 Arnhem')).toBeInTheDocument()
+    expect(screen.queryByText('144 Breda (Moeskops)')).not.toBeInTheDocument()
+    // De telling blijft over de ongefilterde stand gaan.
+    expect(screen.getByText('2 actieve projecten · 1 mét planning deze week')).toBeInTheDocument()
+    // Lege uitkomst = nette leegmelding, geen kaal grid.
+    fireEvent.change(screen.getByLabelText('Filter projecten'), { target: { value: 'bestaat-niet' } })
+    expect(screen.getByText(/Geen project past bij "bestaat-niet"/)).toBeInTheDocument()
+  })
+
+  it('blijft één request bij realistische aantallen (68 actieve projecten)', async () => {
+    const projecten = [
+      ...(planningWeek().projecten as Record<string, unknown>[]).slice(0, 1),
+      ...Array.from({ length: 67 }, (_, i) => ({
+        project_id: `00000000-0000-0000-0000-${String(100 + i).padStart(12, '0')}`,
+        project_naam: `26${String(100 + i).padStart(3, '0')} Plaats ${i}`,
+        opdrachtgever: 'Opdrachtgever',
+        soort_werk: null,
+        looptijd_tot: null,
+        is_actief: true,
+        week_man: 0,
+        per_datum: {},
+      })),
+    ]
+    const fetchMock = installMock({ planning: () => jsonResponse(planningWeek({ projecten })) })
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('68 actieve projecten · 1 mét planning deze week')).toBeInTheDocument())
+    expect(screen.getByText('26100 Plaats 0')).toBeInTheDocument()
+    expect(screen.getByText('26166 Plaats 66')).toBeInTheDocument()
+    // Eén planning-request voor het hele grid — geen per-rij-calls (de batch-les van 22-08).
+    const planningCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/uren/kantoor/planning'))
+    expect(planningCalls).toHaveLength(1)
   })
 
   it('plant via het klik-alternatief: cel aanklikken → persoon kiezen', async () => {
@@ -232,6 +292,7 @@ describe('PlanningScreen', () => {
                 opdrachtgever: 'Moeskops',
                 soort_werk: 'montage',
                 looptijd_tot: '2026-08-20', // vóór de getoonde week
+                is_actief: true,
                 week_man: 1,
                 per_datum: {
                   '2026-08-24': [{ gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel' }],

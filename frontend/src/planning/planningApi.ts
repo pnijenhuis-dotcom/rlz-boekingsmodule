@@ -17,6 +17,10 @@ export interface PlanningProjectRijDto {
   opdrachtgever: string | null
   soort_werk: string | null
   looptijd_tot: string | null
+  // V3 (besluit Peter 23-08): de leesroute levert ÁLLE actieve projecten — de UI splitst op
+  // per_datum (mét planning bovenaan, de rest compact). is_actief=false alleen bij een
+  // gedeactiveerd project dat mét planning zichtbaar blijft (telt niet mee als actief).
+  is_actief: boolean
   week_man: number
   per_datum: Record<string, PlanningKaartDto[]>
 }
@@ -62,23 +66,8 @@ export interface PlanningWeekDto {
   dubbele_dag_tellers: DubbeleDagTellerDto[]
 }
 
-export interface PlanningProjectZoekDto {
-  project_id: string
-  naam: string | null
-  opdrachtgever: string | null
-  soort_werk: string | null
-  looptijd_tot: string | null // voedt het zachte einddatum-signaal (plannen ná einddatum = oranje)
-}
-
 export function haalPlanning(administratieId: string, jaar: number, weeknummer: number): Promise<PlanningWeekDto> {
   return apiJson(`/uren/kantoor/planning?administratie_id=${administratieId}&jaar=${jaar}&weeknummer=${weeknummer}`)
-}
-
-/** Zoekbron voor de "+ project toevoegen"-rij: actieve projecten op naam/opdrachtgever/werknummer. */
-export function zoekPlanningProjecten(administratieId: string, zoek: string): Promise<PlanningProjectZoekDto[]> {
-  return apiJson(
-    `/uren/kantoor/planning/projecten?administratie_id=${administratieId}&zoek=${encodeURIComponent(zoek)}`,
-  )
 }
 
 // De scope-dependency (vereis_administratie_scope) leest administratie_id als QUERY-parameter,

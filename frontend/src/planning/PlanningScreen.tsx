@@ -16,16 +16,18 @@ import {
   weekDagen,
   weekNaarParam,
   zetDagdeel,
-  zoekPlanningProjecten,
   type PlanningKaartDto,
   type PlanningProjectRijDto,
-  type PlanningProjectZoekDto,
   type PlanningWeekDto,
 } from './planningApi'
 
-/* Planning-agenda steigerbouw (mockup planning-steigerbouw.html v2, definitief akkoord Peter
- * 22-08 + jaaragenda-besluiten 22-08): het grid toont ALLEEN projecten mét planning in de
- * zichtbare week; een leeg project komt erbij via de zoekbare "+ project toevoegen"-rij.
+/* Planning-agenda steigerbouw (mockup planning-steigerbouw.html v3, besluit Peter 23-08 —
+ * vervángt het 22-08-grid-filter "alleen projecten mét planning + zoekrij", dat gaf een leeg
+ * grid waarin je niet kon beginnen): het grid toont ÁLLE actieve projecten in twee blokken —
+ * mét planning deze week bovenaan (volle rijen, tellers), daaronder compact de overige
+ * actieve projecten (lage rijen, direct beplanbaar via klik én drag & drop; zodra er iemand
+ * gepland wordt schuift het project bij de verversing naar boven). Het filterveld boven het
+ * grid versmalt beide blokken live (nummer/plaats/opdrachtgever); één request levert alles.
  * Vrij vooruit plannen (weeknavigatie + weekkiezer, onbegrensd — het hele jaar wordt vooruit
  * gevuld, besluit: géén week-kopieerknop); de URL draagt de week (?week=2026-W41) zodat een
  * stand deelbaar/herlaadbaar is. Slepen uit de pool = plannen (maakt de projectkoppeling
@@ -33,9 +35,10 @@ import {
  * cel aanklikken → persoon kiezen uit de pool (DnD is nooit de enige weg — touch/trackpad).
  * FAILSAFE: dezelfde persoon nooit 2× op dezelfde dag op hetzélfde project — de cel weigert
  * (rood), de backend-PK is het vangnet. Plannen ná de project-einddatum mag: zacht oranje
- * signaal op het kaartje (natuurlijke grens, geen blokkade). De zijbalk toont de pool
- * (geplande dagen; > 5 = zacht signaal, besluit C), de controle-meldingen en de dubbele-dag-
- * teller — uitsluitend kantoor. Toegang: module-recht 'Meerwerk & urenstaten'. */
+ * signaal op kaartje én rijkop, ook in het compacte blok (natuurlijke grens, geen blokkade).
+ * De zijbalk toont de pool (geplande dagen; > 5 = zacht signaal, besluit C), de controle-
+ * meldingen en de dubbele-dag-teller — uitsluitend kantoor. Toegang: module-recht
+ * 'Meerwerk & urenstaten'. */
 
 interface Sleep {
   gebruikerId: string
@@ -80,10 +83,8 @@ export function PlanningScreen() {
   const [dragOver, setDragOver] = useState<string | null>(null) // celkey "project|datum"
   const [weigerCel, setWeigerCel] = useState<string | null>(null) // failsafe-flits (rood)
   const [kiesCel, setKiesCel] = useState<string | null>(null) // klik-alternatief: persoon kiezen
-  // "+ project toevoegen": lokaal bijgehaalde (nog lege) projectrijen + de zoekstaat.
-  const [extraProjecten, setExtraProjecten] = useState<PlanningProjectZoekDto[]>([])
-  const [zoekTerm, setZoekTerm] = useState('')
-  const [zoekResultaten, setZoekResultaten] = useState<PlanningProjectZoekDto[] | null>(null)
+  // Filterveld boven het grid: versmalt beide blokken live (client-side — één request).
+  const [filterTerm, setFilterTerm] = useState('')
 
   const administratieNaam = useMemo(
     () => (administraties ?? []).find((a) => a.id === administratieId)?.naam ?? 'Administratie',
@@ -120,20 +121,6 @@ export function PlanningScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [administratieId, week.jaar, week.weeknummer])
 
-  // Zoekrij: licht debounced zoeken in de actieve projecten van de administratie.
-  useEffect(() => {
-    if (!administratieId || zoekTerm.trim() === '') {
-      setZoekResultaten(null)
-      return
-    }
-    const timer = window.setTimeout(() => {
-      zoekPlanningProjecten(administratieId, zoekTerm.trim())
-        .then(setZoekResultaten)
-        .catch(() => setZoekResultaten([]))
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [administratieId, zoekTerm])
-
   if (!administratieId) {
     return <p className="hint">Geen administratie gekozen — open de planning vanaf de klantpagina.</p>
   }
@@ -153,21 +140,18 @@ export function PlanningScreen() {
   const dagen = weekDagen(week.jaar, week.weeknummer).slice(0, 5)
   const vandaagIso = lokaleIsoDatum(new Date())
 
-  // Grid-rijen: de server levert alleen projecten mét planning; de lokaal bijgehaalde extra
-  // projecten (zoekrij) staan eronder tot ze planning krijgen (dan komen ze uit de server).
-  const serverIds = new Set((data?.projecten ?? []).map((p) => p.project_id))
-  const extraRijen: PlanningProjectRijDto[] = extraProjecten
-    .filter((p) => !serverIds.has(p.project_id))
-    .map((p) => ({
-      project_id: p.project_id,
-      project_naam: p.naam,
-      opdrachtgever: p.opdrachtgever,
-      soort_werk: p.soort_werk,
-      looptijd_tot: p.looptijd_tot,
-      week_man: 0,
-      per_datum: {},
-    }))
-  const rijen = [...(data?.projecten ?? []), ...extraRijen]
+  // Grid-rijen (v3): de server levert ÁLLE actieve projecten (mét planning gevuld) in één
+  // request. Splitsing in twee blokken op planning; het filter versmalt beide blokken live
+  // op nummer/plaats (projectnaam) én opdrachtgever. Tellingen over de ongefilterde stand.
+  const alleRijen = data?.projecten ?? []
+  const term = filterTerm.trim().toLowerCase()
+  const past = (rij: PlanningProjectRijDto) =>
+    term === '' || `${rij.project_naam ?? ''} ${rij.opdrachtgever ?? ''}`.toLowerCase().includes(term)
+  const metPlanning = alleRijen.filter((rij) => Object.keys(rij.per_datum).length > 0)
+  const zonderPlanning = alleRijen.filter((rij) => Object.keys(rij.per_datum).length === 0)
+  const bovenblok = metPlanning.filter(past)
+  const onderblok = zonderPlanning.filter(past)
+  const aantalActief = alleRijen.filter((rij) => rij.is_actief).length
 
   async function actie(fn: () => Promise<void>) {
     setActieFout(null)
@@ -197,7 +181,7 @@ export function PlanningScreen() {
   }
 
   function kaartenIn(projectId: string, datum: string): PlanningKaartDto[] {
-    return rijen.find((p) => p.project_id === projectId)?.per_datum[datum] ?? []
+    return alleRijen.find((p) => p.project_id === projectId)?.per_datum[datum] ?? []
   }
 
   function drop(projectId: string, datum: string) {
@@ -334,6 +318,140 @@ export function PlanningScreen() {
     )
   }
 
+  // Eén projectrij, gedeeld door beide blokken. compact = project zónder planning deze week
+  // (lage rij, alleen nummer/plaats + opdrachtgever in de rijkop) — de cellen zijn identiek
+  // en direct beplanbaar via klik én drag & drop; ná het plannen ververst het grid en schuift
+  // het project naar het bovenste blok. Bewust een render-functie (geen component): met 68
+  // projecten zou een per-render nieuw componenttype elke keer de hele subtree remounten.
+  function renderRij(rij: PlanningProjectRijDto, compact: boolean) {
+    const rijNaEinddatum = rij.looptijd_tot !== null && dagen[0].datum > rij.looptijd_tot
+    return (
+      <tr key={rij.project_id} className={compact ? 'plan-compact' : undefined}>
+        <th style={{ verticalAlign: 'top', textAlign: 'left' }}>
+          {rij.project_naam ?? rij.project_id}
+          <div style={{ fontWeight: 400, fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+            {[rij.opdrachtgever, rij.soort_werk, rij.looptijd_tot ? `t/m ${dagLabel(rij.looptijd_tot)}` : null]
+              .filter(Boolean)
+              .join(' · ')}
+            {compact && rijNaEinddatum && (
+              <b style={{ color: 'var(--warn)', fontWeight: 700 }}> ⚠ ná einddatum</b>
+            )}
+          </div>
+          {!compact && rijNaEinddatum && (
+            <div style={{ fontWeight: 600, fontSize: 10.5, color: 'var(--warn)', marginTop: 3 }}>
+              ⚠ deze week valt ná de einddatum
+            </div>
+          )}
+          {!compact && rij.week_man > 0 && (
+            <div style={{ marginTop: 5 }}>
+              <Badge variant="info">deze week: {rij.week_man} man</Badge>
+            </div>
+          )}
+        </th>
+        {dagen.map((d) => {
+          const celKey = `${rij.project_id}|${d.datum}`
+          const kaarten = rij.per_datum[d.datum] ?? []
+          const naEinddatum = rij.looptijd_tot !== null && d.datum > rij.looptijd_tot
+          // De persoon-kiezer alleen berekenen voor de éne open cel (68 rijen × 5 dagen).
+          const kiesbaar =
+            kiesCel === celKey
+              ? (data?.pool ?? []).filter((p) => !kaarten.some((k) => k.gebruiker_id === p.gebruiker_id))
+              : []
+          return (
+            <td
+              key={d.datum}
+              data-testid={`cel-${celKey}`}
+              className={`plan-cel${d.datum === vandaagIso ? ' plan-vandaag' : ''}`}
+              title="Klik om een persoon te plannen"
+              onClick={(e) => {
+                // Klik-alternatief voor DnD: alleen op de lege celruimte zelf
+                // (kliks op kaartjes/kiezer raken de td niet als target).
+                if (e.target === e.currentTarget) setKiesCel((h) => (h === celKey ? null : celKey))
+              }}
+              onDragEnter={(e) => e.preventDefault()}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = sleep?.bron === 'pool' ? 'copy' : 'move'
+                setDragOver(celKey)
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setDragOver((h) => (h === celKey ? null : h))
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                drop(rij.project_id, d.datum)
+              }}
+              style={{
+                padding: 5,
+                verticalAlign: 'top',
+                outline:
+                  weigerCel === celKey
+                    ? '2px solid var(--danger)'
+                    : dragOver === celKey
+                      ? '2px dashed var(--primary)'
+                      : undefined,
+                outlineOffset: -3,
+                background: dragOver === celKey ? 'var(--accent-bg)' : undefined,
+              }}
+            >
+              {kaarten.map((k) => (
+                <Kaart
+                  key={k.gebruiker_id}
+                  kaart={k}
+                  projectId={rij.project_id}
+                  datum={d.datum}
+                  naEinddatum={naEinddatum}
+                />
+              ))}
+              {kiesCel === celKey && (
+                <div
+                  style={{
+                    background: 'var(--panel)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 9,
+                    boxShadow: 'var(--schaduw, 0 4px 16px rgba(0,0,0,.12))',
+                    fontSize: 12,
+                    marginTop: 2,
+                    padding: 6,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                    <b style={{ fontSize: 11 }}>Plan op {dagLabel(d.datum)}</b>
+                    <button
+                      className="linkbtn"
+                      aria-label="Kiezer sluiten"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={() => setKiesCel(null)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {kiesbaar.length === 0 && <p className="hint" style={{ margin: 0 }}>Iedereen staat al in deze cel.</p>}
+                  {kiesbaar.map((p) => (
+                    <button
+                      key={p.gebruiker_id}
+                      className="linkbtn"
+                      style={{ display: 'block', padding: '3px 4px', textAlign: 'left', width: '100%' }}
+                      onClick={() => {
+                        setKiesCel(null)
+                        plan(p.gebruiker_id, rij.project_id, d.datum)
+                      }}
+                    >
+                      {p.naam}
+                      {p.rol === 'uitvoerder' ? ' · uitv.' : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </td>
+          )
+        })}
+      </tr>
+    )
+  }
+
   const vandaagWeek = isoWeekVan(new Date())
 
   return (
@@ -349,8 +467,8 @@ export function PlanningScreen() {
           />
           <h1>Planning — {administratieNaam}</h1>
           <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>
-            Week {week.weeknummer} · {dagLabel(dagen[0].datum)} – {dagLabel(dagen[4].datum)} · projecten mét planning
-            deze week · sleep een persoon naar een project-dag, of klik een cel om te plannen
+            Week {week.weeknummer} · {dagLabel(dagen[0].datum)} – {dagLabel(dagen[4].datum)} · álle actieve projecten
+            (mét planning bovenaan) · sleep een persoon naar een project-dag, of klik een cel om te plannen
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -412,7 +530,40 @@ export function PlanningScreen() {
             </div>
           )}
           {data !== null && (
-            <div className="tabel-scroll">
+            <>
+              {/* Filter (client-side, live) + telling — mockup v3. */}
+              <div
+                style={{
+                  alignItems: 'center',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                  padding: '10px 12px',
+                }}
+              >
+                <input
+                  type="search"
+                  aria-label="Filter projecten"
+                  placeholder="Filter projecten… (nummer, plaats of opdrachtgever)"
+                  value={filterTerm}
+                  onChange={(e) => setFilterTerm(e.target.value)}
+                  style={{
+                    background: 'var(--panel-2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    color: 'var(--text)',
+                    flex: '0 1 340px',
+                    font: 'inherit',
+                    fontSize: 12.5,
+                    padding: '7px 11px',
+                  }}
+                />
+                <span style={{ color: 'var(--faint)', fontSize: 11.5 }}>
+                  {aantalActief} actieve projecten · {metPlanning.length} mét planning deze week
+                </span>
+              </div>
+              <div className="tabel-scroll">
               <table className="plan-grid" style={{ tableLayout: 'fixed', minWidth: 760 }}>
                 <thead>
                   <tr>
@@ -434,201 +585,37 @@ export function PlanningScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rijen.length === 0 && (
+                  {alleRijen.length === 0 && (
                     <tr>
                       <td colSpan={6}>
                         <p className="hint" style={{ margin: 0 }}>
-                          Nog niets gepland in deze week — zoek hieronder een project en sleep (of klik) er mensen op.
+                          Geen actieve projecten in deze administratie — synchroniseer de projecten of activeer ze in
+                          RLZ.
                         </p>
                       </td>
                     </tr>
                   )}
-                  {rijen.map((rij) => {
-                    const rijNaEinddatum = rij.looptijd_tot !== null && dagen[0].datum > rij.looptijd_tot
-                    return (
-                      <tr key={rij.project_id}>
-                        <th style={{ verticalAlign: 'top', textAlign: 'left' }}>
-                          {rij.project_naam ?? rij.project_id}
-                          <div style={{ fontWeight: 400, fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
-                            {[rij.opdrachtgever, rij.soort_werk, rij.looptijd_tot ? `t/m ${dagLabel(rij.looptijd_tot)}` : null]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </div>
-                          {rijNaEinddatum && (
-                            <div style={{ fontWeight: 600, fontSize: 10.5, color: 'var(--warn)', marginTop: 3 }}>
-                              ⚠ deze week valt ná de einddatum
-                            </div>
-                          )}
-                          {rij.week_man > 0 && (
-                            <div style={{ marginTop: 5 }}>
-                              <Badge variant="info">deze week: {rij.week_man} man</Badge>
-                            </div>
-                          )}
-                        </th>
-                        {dagen.map((d) => {
-                          const celKey = `${rij.project_id}|${d.datum}`
-                          const kaarten = rij.per_datum[d.datum] ?? []
-                          const naEinddatum = rij.looptijd_tot !== null && d.datum > rij.looptijd_tot
-                          const kiesbaar = (data?.pool ?? []).filter(
-                            (p) => !kaarten.some((k) => k.gebruiker_id === p.gebruiker_id),
-                          )
-                          return (
-                            <td
-                              key={d.datum}
-                              data-testid={`cel-${celKey}`}
-                              className={`plan-cel${d.datum === vandaagIso ? ' plan-vandaag' : ''}`}
-                              title="Klik om een persoon te plannen"
-                              onClick={(e) => {
-                                // Klik-alternatief voor DnD: alleen op de lege celruimte zelf
-                                // (kliks op kaartjes/kiezer raken de td niet als target).
-                                if (e.target === e.currentTarget) setKiesCel((h) => (h === celKey ? null : celKey))
-                              }}
-                              onDragEnter={(e) => e.preventDefault()}
-                              onDragOver={(e) => {
-                                e.preventDefault()
-                                e.dataTransfer.dropEffect = sleep?.bron === 'pool' ? 'copy' : 'move'
-                                setDragOver(celKey)
-                              }}
-                              onDragLeave={(e) => {
-                                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                                  setDragOver((h) => (h === celKey ? null : h))
-                                }
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault()
-                                drop(rij.project_id, d.datum)
-                              }}
-                              style={{
-                                padding: 5,
-                                verticalAlign: 'top',
-                                outline:
-                                  weigerCel === celKey
-                                    ? '2px solid var(--danger)'
-                                    : dragOver === celKey
-                                      ? '2px dashed var(--primary)'
-                                      : undefined,
-                                outlineOffset: -3,
-                                background: dragOver === celKey ? 'var(--accent-bg)' : undefined,
-                              }}
-                            >
-                              {kaarten.map((k) => (
-                                <Kaart
-                                  key={k.gebruiker_id}
-                                  kaart={k}
-                                  projectId={rij.project_id}
-                                  datum={d.datum}
-                                  naEinddatum={naEinddatum}
-                                />
-                              ))}
-                              {kiesCel === celKey && (
-                                <div
-                                  style={{
-                                    background: 'var(--panel)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: 9,
-                                    boxShadow: 'var(--schaduw, 0 4px 16px rgba(0,0,0,.12))',
-                                    fontSize: 12,
-                                    marginTop: 2,
-                                    padding: 6,
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                                    <b style={{ fontSize: 11 }}>Plan op {dagLabel(d.datum)}</b>
-                                    <button
-                                      className="linkbtn"
-                                      aria-label="Kiezer sluiten"
-                                      style={{ marginLeft: 'auto' }}
-                                      onClick={() => setKiesCel(null)}
-                                    >
-                                      ✕
-                                    </button>
-                                  </div>
-                                  {kiesbaar.length === 0 && <p className="hint" style={{ margin: 0 }}>Iedereen staat al in deze cel.</p>}
-                                  {kiesbaar.map((p) => (
-                                    <button
-                                      key={p.gebruiker_id}
-                                      className="linkbtn"
-                                      style={{ display: 'block', padding: '3px 4px', textAlign: 'left', width: '100%' }}
-                                      onClick={() => {
-                                        setKiesCel(null)
-                                        plan(p.gebruiker_id, rij.project_id, d.datum)
-                                      }}
-                                    >
-                                      {p.naam}
-                                      {p.rol === 'uitvoerder' ? ' · uitv.' : ''}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    )
-                  })}
-                  {/* "+ project toevoegen": zoekt in de actieve projecten van de administratie. */}
-                  <tr>
-                    <td colSpan={6} style={{ background: 'var(--panel-2)' }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 700, fontSize: 12 }}>＋ Project toevoegen</span>
-                        <input
-                          type="search"
-                          aria-label="Zoek een actief project"
-                          placeholder="Zoek op nummer, plaats of opdrachtgever…"
-                          value={zoekTerm}
-                          onChange={(e) => setZoekTerm(e.target.value)}
-                          style={{
-                            background: 'var(--panel)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 8,
-                            color: 'var(--text)',
-                            font: 'inherit',
-                            fontSize: 12.5,
-                            maxWidth: 320,
-                            padding: '5px 9px',
-                            width: '100%',
-                          }}
-                        />
-                        <span style={{ color: 'var(--faint)', fontSize: 11.5 }}>
-                          het grid toont alleen projecten mét planning — hier haal je er een leeg project bij
-                        </span>
-                      </div>
-                      {zoekResultaten !== null && (
-                        <div style={{ marginTop: 6 }}>
-                          {zoekResultaten.length === 0 && (
-                            <p className="hint" style={{ margin: 0 }}>
-                              Geen actief project gevonden voor &quot;{zoekTerm.trim()}&quot;.
-                            </p>
-                          )}
-                          {zoekResultaten.map((p) => (
-                            <button
-                              key={p.project_id}
-                              className="linkbtn"
-                              style={{ display: 'block', padding: '3px 4px', textAlign: 'left' }}
-                              disabled={serverIds.has(p.project_id) || extraProjecten.some((e) => e.project_id === p.project_id)}
-                              onClick={() => {
-                                setExtraProjecten((huidig) =>
-                                  huidig.some((e) => e.project_id === p.project_id) ? huidig : [...huidig, p],
-                                )
-                                setZoekTerm('')
-                                setZoekResultaten(null)
-                              }}
-                            >
-                              {p.naam ?? p.project_id}
-                              {p.opdrachtgever ? ` · ${p.opdrachtgever}` : ''}
-                              {p.looptijd_tot ? ` · t/m ${dagLabel(p.looptijd_tot)}` : ''}
-                              {serverIds.has(p.project_id) || extraProjecten.some((e) => e.project_id === p.project_id)
-                                ? ' — staat al in het grid'
-                                : ''}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                  {alleRijen.length > 0 && bovenblok.length === 0 && onderblok.length === 0 && (
+                    <tr>
+                      <td colSpan={6}>
+                        <p className="hint" style={{ margin: 0 }}>
+                          Geen project past bij &quot;{filterTerm.trim()}&quot; — pas het filter aan.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                  {bovenblok.map((rij) => renderRij(rij, false))}
+                  {/* Overige actieve projecten: compact, leeg maar direct beplanbaar (v3). */}
+                  {onderblok.length > 0 && (
+                    <tr className="plan-scheider">
+                      <th colSpan={6}>Overige actieve projecten — nog niemand gepland deze week</th>
+                    </tr>
+                  )}
+                  {onderblok.map((rij) => renderRij(rij, true))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
 

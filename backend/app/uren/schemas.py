@@ -363,11 +363,16 @@ class PlanningKaartDto(BaseModel):
 
 
 class PlanningProjectRijDto(BaseModel):
+    """V3 (besluit Peter 23-08): de leesroute levert ÁLLE actieve projecten als rij — de UI
+    splitst op per_datum (mét planning bovenaan, de rest compact en direct beplanbaar).
+    is_actief=False alleen bij een gedeactiveerd project dat mét planning zichtbaar blijft."""
+
     project_id: uuid.UUID
     project_naam: str | None = None
     opdrachtgever: str | None = None
     soort_werk: str | None = None
     looptijd_tot: date | None = None
+    is_actief: bool = True
     week_man: int  # "deze week: N man"
     per_datum: dict[str, list[PlanningKaartDto]]  # ISO-datum → kaartjes
 
@@ -399,17 +404,6 @@ class DubbeleDagTellerDto(BaseModel):
     gebruiker_id: uuid.UUID
     naam: str | None = None
     aantal: int  # ongedekte dubbele dagen in de laatste 30 dagen
-
-
-class PlanningProjectZoekDto(BaseModel):
-    """Actief project voor de "+ project toevoegen"-zoekrij (jaaragenda 22-08); looptijd_tot
-    voedt het zachte einddatum-signaal (plannen ná de einddatum kleurt oranje, geen blokkade)."""
-
-    project_id: uuid.UUID
-    naam: str | None = None
-    opdrachtgever: str | None = None
-    soort_werk: str | None = None
-    looptijd_tot: date | None = None
 
 
 class PlanningWeekDto(BaseModel):
