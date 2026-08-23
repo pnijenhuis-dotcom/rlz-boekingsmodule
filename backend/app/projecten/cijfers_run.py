@@ -332,7 +332,11 @@ def sync_alle_via_runs() -> dict[uuid.UUID, RunInfo | str]:
     for administratie_id in _opt_in_administraties():
         try:
             run = sync_administratie_via_run(administratie_id)
-            resultaten[administratie_id] = run if run is not None else "geen run verwerkt (al bezig?)"
+            if run is None:
+                # Claim geweigerd: er loopt al een verse run (bv. de knop vlak vóór 07:00) —
+                # informatief, geen fout; de actuele runstatus is het eerlijke antwoord.
+                run = laatste_run(administratie_id)
+            resultaten[administratie_id] = run if run is not None else "geen run beschikbaar"
         except Exception as exc:  # noqa: BLE001 — bewust breed, zie sync_alle_administraties
             resultaten[administratie_id] = str(exc)
     return resultaten

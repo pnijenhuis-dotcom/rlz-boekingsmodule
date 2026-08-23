@@ -64,6 +64,10 @@ def _rapporteer_cijfers_runs(resultaten: dict) -> int:
                     f"{administratie_id}: klaar — {resultaat.documenten} documenten, "
                     f"{resultaat.regels} regels, {resultaat.verdwenen} verdwenen{extra}"
                 )
+            elif resultaat.status in ("wachtrij", "bezig"):
+                # Informatief, geen fout: er loopt al een verse run (bv. de knop vlak vóór de
+                # job) — die maakt zijn eigen status af, dubbel draaien is juist ongewenst.
+                print(f"{administratie_id}: al {resultaat.status} (run {resultaat.run_id}) — niet dubbel gestart")
             else:
                 fouten += 1
                 print(f"{administratie_id}: {resultaat.status} — {resultaat.fout_reden}")
