@@ -723,6 +723,16 @@ body.dark .combobox-listbox {
   margin-bottom: 14px;
 }
 
+/* iOS-autozoom-preventie (kliktest telefoon 23-08): accordeurs openen hun activatielink op
+ * /activeren — velden < 16px laten iOS-Safari bij focus inzoomen (en zo blijven staan).
+ * Zelfde ≥16px-regel als de accordeur-app (.acc input); bewust GEEN maximum-scale-hack in
+ * de viewport-meta (toegankelijkheid). Dekt ook het TOTP-/loginpad op dezelfde kaart. */
+.auth-card input,
+.auth-card select,
+.auth-card textarea {
+  font-size: 16px;
+}
+
 .secret-blok {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 15px;
