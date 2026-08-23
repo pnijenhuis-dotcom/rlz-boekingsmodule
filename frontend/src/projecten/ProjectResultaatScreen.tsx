@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Button } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
-import { euro, euroPrecies, haalProjectResultaat, syncProjectCijfers, type ProjectResultaatDto } from './projectenApi'
+import {
+  euro,
+  euroPrecies,
+  haalCijfersSyncStatus,
+  haalProjectResultaat,
+  startCijfersSync,
+  type ProjectResultaatDto,
+} from './projectenApi'
 
 /* Resultaat per project (mockup projecten-invoer.html view 3, akkoord Peter 22-08): vier
  * tegels + weektabel met cumulatief. Analytische laag — volledig deterministisch uit de
@@ -28,6 +35,9 @@ export function ProjectResultaatScreen() {
   const [data, setData] = useState<ProjectResultaatDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [syncBezig, setSyncBezig] = useState(false)
+  const [syncMelding, setSyncMelding] = useState<string | null>(null)
+  const gestopt = useRef(false)
+  useEffect(() => () => { gestopt.current = true }, [])
 
   const administratieNaam = useMemo(
     () => (administraties ?? []).find((a) => a.id === administratieId)?.naam ?? 'Administratie',
@@ -46,15 +56,37 @@ export function ProjectResultaatScreen() {
     laad()
   }, [laad])
 
+  /* Achtergrondrun (fix 23-08): start = 202, daarna de status pollen tot klaar/fout —
+   * de RLZ-ronde duurt tegen echte datamassa minuten en hoort niet in één request. */
   const ververs = async () => {
     setSyncBezig(true)
+    setSyncMelding(null)
     try {
-      await syncProjectCijfers(administratieId)
-      laad()
+      await startCijfersSync(administratieId)
+      // Poll ruim (2,5 s); de run zelf meldt fouten expliciet via de statusroute — nooit stil.
+      for (;;) {
+        await new Promise((klaar) => setTimeout(klaar, 2500))
+        if (gestopt.current) return
+        const status = await haalCijfersSyncStatus(administratieId)
+        if (status.status === 'klaar') {
+          if ((status.leesfouten ?? 0) > 0) {
+            setSyncMelding(
+              `Verversing klaar, maar ${status.leesfouten} document(en) bleven onleesbaar in RLZ — ` +
+                'cijfers mogelijk onvolledig; probeer later opnieuw.',
+            )
+          }
+          laad()
+          return
+        }
+        if (status.status === 'fout' || status.status === 'geen') {
+          setSyncMelding(`Verversen mislukt: ${status.fout_reden ?? 'onbekende fout'}`)
+          return
+        }
+      }
     } catch (err) {
-      setFout(err instanceof Error ? err.message : 'Verversen mislukt')
+      setSyncMelding(err instanceof Error ? `Verversen mislukt: ${err.message}` : 'Verversen mislukt')
     } finally {
-      setSyncBezig(false)
+      if (!gestopt.current) setSyncBezig(false)
     }
   }
 
@@ -84,10 +116,16 @@ export function ProjectResultaatScreen() {
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <Button variant="secundair" maat="klein" disabled={syncBezig} onClick={() => void ververs()}>
-            {syncBezig ? 'Verversen…' : '⟳ Cijfers verversen uit RLZ'}
+            {syncBezig ? 'Verversen… (loopt op de achtergrond)' : '⟳ Cijfers verversen uit RLZ'}
           </Button>
         </div>
       </div>
+
+      {syncMelding && (
+        <p style={{ background: 'var(--warn-bg)', borderRadius: 8, color: 'var(--warn)', fontSize: 12.5, padding: '9px 13px' }}>
+          ⚠️ {syncMelding}
+        </p>
+      )}
 
       <div className="panel">
         <h2>Stand</h2>

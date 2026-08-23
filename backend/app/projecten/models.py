@@ -92,6 +92,58 @@ class ProjectRegelCache(Base):
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
+class CijfersSyncRunStatus(enum.StrEnum):
+    """Levensloop van één projectcijfers-syncrun: `wachtrij` (aangevraagd, wacht op de
+    verwerker), `bezig` (geclaimd, heartbeat in laatst_actief_op), `klaar` of `fout`
+    (fout_reden verplicht zichtbaar — nooit stil, kernprincipe 4)."""
+
+    WACHTRIJ = "wachtrij"
+    BEZIG = "bezig"
+    KLAAR = "klaar"
+    FOUT = "fout"
+
+
+_SYNC_RUN_STATUS_SQL = ", ".join(f"'{s.value}'" for s in CijfersSyncRunStatus)
+
+
+class ProjectCijfersSyncRun(Base):
+    """Statusrij van één projectcijfers-syncrun (migratie 0063 — fix van de 504-crash 23-08:
+    de knop start een ACHTERGRONDRUN i.p.v. de hele RLZ-ronde in één HTTP-request; de UI pollt
+    deze rij via de status-leesroute). Cloud Run-voertuig = de on-demand job
+    `rlz-projecten-cijfers` (wachtrij-patroon: de rij ís de opdracht, de job-args blijven
+    leeg); dev-voertuig = een achtergrond-thread. `laatst_actief_op` is de heartbeat — een
+    `bezig`-rij zonder verse heartbeat telt als afgebroken (zichtbaar fout, blokkeert geen
+    nieuwe run). `leesfouten` = documenten waarvan RLZ de regels niet gaf (bv. 403-storm):
+    hun cache-rijen worden dan bewust NIET als verdwenen gemarkeerd."""
+
+    __tablename__ = "project_cijfers_sync_run"
+    __table_args__ = (
+        CheckConstraint(f"status IN ({_SYNC_RUN_STATUS_SQL})", name="ck_project_cijfers_sync_run_status"),
+        Index("ix_project_cijfers_sync_run_administratie_id", "administratie_id"),
+        Index("ix_project_cijfers_sync_run_status", "administratie_id", "status"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    status: Mapped[str] = mapped_column(default=CijfersSyncRunStatus.WACHTRIJ.value)
+    # NULL = aangevraagd door het systeem (dagelijkse sync-job) i.p.v. de knop.
+    aangevraagd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    aangevraagd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    gestart_op: Mapped[datetime | None] = mapped_column(default=None)
+    laatst_actief_op: Mapped[datetime | None] = mapped_column(default=None)
+    beeindigd_op: Mapped[datetime | None] = mapped_column(default=None)
+    documenten: Mapped[int | None] = mapped_column(default=None)
+    regels: Mapped[int | None] = mapped_column(default=None)
+    verdwenen: Mapped[int | None] = mapped_column(default=None)
+    leesfouten: Mapped[int | None] = mapped_column(default=None)
+    fout_reden: Mapped[str | None] = mapped_column(default=None)
+
+
 class OntledingRegelStatus(enum.StrEnum):
     VOORSTEL = "voorstel"
     BEVESTIGD = "bevestigd"

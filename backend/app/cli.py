@@ -50,22 +50,47 @@ def _bootstrap_beheerder(args: argparse.Namespace) -> int:
     return 0
 
 
-def _projecten_cijfers_sync(args: argparse.Namespace) -> int:
-    """Projectcijfers-sync (projectenmodule, mockup 22-08) — zelfde nooit-vroeg-stoppen-patroon
-    als sync-alles; een administratie zonder credentials telt als overgeslagen."""
-    from app.projecten.cijfers import sync_project_regels_alle
+def _rapporteer_cijfers_runs(resultaten: dict) -> int:
+    """Gedeelde rapportage voor de projectcijfers-runcommando's: run-uitkomst per
+    administratie, exit 1 bij élke fout-run of exception (zichtbaar in de job-alerting)."""
+    from app.projecten.cijfers_run import RunInfo
 
-    resultaten = sync_project_regels_alle()
     fouten = 0
     for administratie_id, resultaat in resultaten.items():
-        if isinstance(resultaat, dict):
-            print(f"{administratie_id}: {resultaat['documenten']} documenten, {resultaat['regels']} regels, "
-                  f"{resultaat['verdwenen']} verdwenen")
+        if isinstance(resultaat, RunInfo):
+            if resultaat.status == "klaar":
+                extra = f", {resultaat.leesfouten} leesfout(en)" if resultaat.leesfouten else ""
+                print(
+                    f"{administratie_id}: klaar — {resultaat.documenten} documenten, "
+                    f"{resultaat.regels} regels, {resultaat.verdwenen} verdwenen{extra}"
+                )
+            else:
+                fouten += 1
+                print(f"{administratie_id}: {resultaat.status} — {resultaat.fout_reden}")
+        elif resultaat is None:
+            print(f"{administratie_id}: geen wachtrij")
         else:
             fouten += 1
             print(f"{administratie_id}: FOUT — {resultaat}")
     print(f"Klaar: {len(resultaten)} administratie(s), {fouten} fout(en)")
     return 1 if fouten else 0
+
+
+def _projecten_cijfers_sync(args: argparse.Namespace) -> int:
+    """Projectcijfers-sync (projectenmodule, mockup 22-08) — zelfde nooit-vroeg-stoppen-patroon
+    als sync-alles; loopt sinds de achtergrondrun-fix (23-08) via de run-administratie zodat
+    'laatst ververst' óók voor deze route zichtbaar is in de status-leesroute."""
+    from app.projecten.cijfers_run import sync_alle_via_runs
+
+    return _rapporteer_cijfers_runs(sync_alle_via_runs())
+
+
+def _projecten_cijfers_wachtrij(args: argparse.Namespace) -> int:
+    """Entrypoint van de on-demand Cloud Run-job rlz-projecten-cijfers (achtergrondrun-fix
+    23-08): verwerk klaargezette wachtrij-runs; geen wachtrij = snelle no-op (exit 0)."""
+    from app.projecten.cijfers_run import verwerk_wachtrij
+
+    return _rapporteer_cijfers_runs(verwerk_wachtrij())
 
 
 def _sync_alles(args: argparse.Namespace) -> int:
@@ -95,7 +120,15 @@ def _sync_alles(args: argparse.Namespace) -> int:
     if overgeslagen:
         kern += f" ({overgeslagen} overgeslagen: geen credential geregistreerd)"
     print(f"\n{kern}")
-    return 1 if fouten else 0
+
+    # Automatisering-first (opdracht 23-08 punt 3): de dagelijkse sync ververst óók de
+    # projectcijfers voor de uren-&-meerwerk-administraties — de knop blijft de handmatige
+    # verversing. Eigen fouten-telling: een kapotte cijfers-sync maakt de job zichtbaar rood.
+    from app.projecten.cijfers_run import sync_alle_via_runs
+
+    print("\nProjectcijfers-sync (uren-&-meerwerk-administraties):")
+    cijfers_exit = _rapporteer_cijfers_runs(sync_alle_via_runs())
+    return 1 if fouten or cijfers_exit else 0
 
 
 def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
@@ -962,7 +995,14 @@ def main(argv: list[str] | None = None) -> int:
         "projecten-cijfers-sync",
         help="Ververs de project_regel_cache (RLZ-documentregels mét projectreferentie — de "
         "rekenbron voor resultaat-per-project) voor alle administraties mét de "
-        "uren-&-meerwerk-opt-in.",
+        "uren-&-meerwerk-opt-in, via de run-administratie (status zichtbaar in de UI).",
+    )
+
+    subparsers.add_parser(
+        "projecten-cijfers-wachtrij",
+        help="Verwerk de wachtrij van projectcijfers-syncruns (entrypoint van de on-demand "
+        "Cloud Run-job rlz-projecten-cijfers — de sync-knop zet de run klaar en triggert "
+        "deze job; geen wachtrij = snelle no-op).",
     )
 
     seed_parser = subparsers.add_parser(
@@ -1196,6 +1236,8 @@ def main(argv: list[str] | None = None) -> int:
         return _sync_alles(args)
     if args.commando == "projecten-cijfers-sync":
         return _projecten_cijfers_sync(args)
+    if args.commando == "projecten-cijfers-wachtrij":
+        return _projecten_cijfers_wachtrij(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
     if args.commando == "bank-sync":

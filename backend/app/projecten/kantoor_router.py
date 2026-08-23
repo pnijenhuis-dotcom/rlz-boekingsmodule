@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.db.session import scoped_session
-from app.projecten import cijfers, kantoor, ontleding
+from app.projecten import cijfers, cijfers_run, kantoor, ontleding
 from app.projecten import schemas_kantoor as schemas
 from app.projecten.motor import ProjectAanmakenMislukt, ProjectNaamConflict
 from app.rlz.client import RlzApiError
@@ -138,19 +138,47 @@ def resultaat_overzicht(
     )
 
 
-@router.post("/{administratie_id}/cijfers-sync", response_model=schemas.CijfersSyncResponse)
+@router.post(
+    "/{administratie_id}/cijfers-sync",
+    response_model=schemas.CijfersSyncStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 def cijfers_sync(
     administratie_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
-) -> schemas.CijfersSyncResponse:
-    """Ververs de project_regel_cache uit RLZ (leescache — RLZ blijft de bron van waarheid)."""
+) -> schemas.CijfersSyncStartResponse:
+    """Start de verversing van de project_regel_cache als ACHTERGRONDRUN (fix 504-crash
+    23-08: de volledige RLZ-ronde hoort niet in één request-response) — 202 + run_id; de UI
+    pollt de status-leesroute hieronder. Een al lopende run wordt hergebruikt."""
     try:
-        teller = cijfers.sync_project_regels(administratie_id=administratie_id)
-    except GeenRlzCredentials as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except RlzApiError as exc:
+        run = cijfers_run.start_achtergrondrun(administratie_id=administratie_id, actor_id=actor.id)
+    except cijfers_run.CijfersSyncStartFout as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return schemas.CijfersSyncResponse(**teller)
+    return schemas.CijfersSyncStartResponse(run_id=run.run_id, status=run.status)
+
+
+@router.get("/{administratie_id}/cijfers-sync/status", response_model=schemas.CijfersSyncStatusResponse)
+def cijfers_sync_status(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.CijfersSyncStatusResponse:
+    """Status van de recentste syncrun (knop óf dagelijkse job): wachtrij/bezig/klaar/fout
+    mét zichtbare foutreden en leesfouten-teller — nooit stil."""
+    run = cijfers_run.laatste_run(administratie_id)
+    if run is None:
+        return schemas.CijfersSyncStatusResponse(status="geen")
+    return schemas.CijfersSyncStatusResponse(
+        status=run.status,
+        run_id=run.run_id,
+        aangevraagd_op=run.aangevraagd_op,
+        gestart_op=run.gestart_op,
+        beeindigd_op=run.beeindigd_op,
+        documenten=run.documenten,
+        regels=run.regels,
+        verdwenen=run.verdwenen,
+        leesfouten=run.leesfouten,
+        fout_reden=run.fout_reden,
+    )
 
 
 @router.get("/{administratie_id}/{project_id}", response_model=schemas.ProjectDetailResponse)

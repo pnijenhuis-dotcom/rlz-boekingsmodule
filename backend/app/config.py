@@ -180,6 +180,12 @@ class Settings(BaseSettings):
     # app-observaties (door een mens bevestigde boekingen) wegen zwaarder dan de RLZ-seed
     # (CLAUDE.md: "correcties wegen zwaarder"), en oudere observaties tellen exponentieel
     # minder mee (halfwaardetijd in dagen).
+    # Achtergrond-voertuig van de projectcijfers-sync (fix 504-crash 2026-08-23): de volledige
+    # Cloud Run-job-resource ("projects/…/locations/…/jobs/rlz-projecten-cijfers"). Gezet =
+    # de sync-knop triggert één on-demand job-uitvoering (metadata-server-auth, wachtrij-rij =
+    # de opdracht); leeg (dev/tests) = een achtergrond-thread in het proces zelf.
+    cijfers_sync_job_resource: str | None = None
+
     boekingsgeheugen_seed_maanden: int = 36
     boekingsgeheugen_halfwaardetijd_dagen: int = 365
     boekingsgeheugen_gewicht_app: float = 3.0

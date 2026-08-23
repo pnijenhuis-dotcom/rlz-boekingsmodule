@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0062
+-- Migratie-head bij deze dump: 0063
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1190,6 +1190,30 @@ CREATE TABLE boekhouding.project_cache (
 );
 
 ALTER TABLE ONLY boekhouding.project_cache FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: project_cijfers_sync_run; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_cijfers_sync_run (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    status text NOT NULL,
+    aangevraagd_door uuid,
+    aangevraagd_op timestamp with time zone DEFAULT now() NOT NULL,
+    gestart_op timestamp with time zone,
+    laatst_actief_op timestamp with time zone,
+    beeindigd_op timestamp with time zone,
+    documenten integer,
+    regels integer,
+    verdwenen integer,
+    leesfouten integer,
+    fout_reden text,
+    CONSTRAINT ck_project_cijfers_sync_run_status CHECK ((status = ANY (ARRAY['wachtrij'::text, 'bezig'::text, 'klaar'::text, 'fout'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.project_cijfers_sync_run FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2521,6 +2545,14 @@ ALTER TABLE ONLY boekhouding.project_cache
 
 
 --
+-- Name: project_cijfers_sync_run project_cijfers_sync_run_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_cijfers_sync_run
+    ADD CONSTRAINT project_cijfers_sync_run_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: project_document project_document_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3283,6 +3315,20 @@ CREATE INDEX ix_planning_toewijzing_gebruiker ON boekhouding.planning_toewijzing
 --
 
 CREATE INDEX ix_project_cache_administratie_id ON boekhouding.project_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_cijfers_sync_run_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_cijfers_sync_run_administratie_id ON boekhouding.project_cijfers_sync_run USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_cijfers_sync_run_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_cijfers_sync_run_status ON boekhouding.project_cijfers_sync_run USING btree (administratie_id, status);
 
 
 --
@@ -4613,6 +4659,22 @@ ALTER TABLE ONLY boekhouding.planning_toewijzing
 
 ALTER TABLE ONLY boekhouding.project_cache
     ADD CONSTRAINT project_cache_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: project_cijfers_sync_run project_cijfers_sync_run_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_cijfers_sync_run
+    ADD CONSTRAINT project_cijfers_sync_run_aangevraagd_door_fkey FOREIGN KEY (aangevraagd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_cijfers_sync_run project_cijfers_sync_run_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_cijfers_sync_run
+    ADD CONSTRAINT project_cijfers_sync_run_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -5954,6 +6016,19 @@ ALTER TABLE boekhouding.project_cache ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY project_cache_scope ON boekhouding.project_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: project_cijfers_sync_run; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_cijfers_sync_run ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_cijfers_sync_run project_cijfers_sync_run_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_cijfers_sync_run_scope ON boekhouding.project_cijfers_sync_run USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

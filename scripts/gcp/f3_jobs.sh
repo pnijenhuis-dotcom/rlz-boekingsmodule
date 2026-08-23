@@ -232,6 +232,27 @@ if [ "${NIEUWE_FACTUREN_NIEUW}" = "1" ]; then
   echo "   rlz-nieuwe-facturen GEPAUZEERD (resume samen met/na de notificatie-live-verificatie)."
 fi
 
+echo "== 6. rlz-projecten-cijfers: on-demand job (achtergrondrun-fix 2026-08-23) =="
+# Deze job heeft bewust GÉÉN scheduler: de sync-knop op de service zet een wachtrij-rij
+# klaar en triggert één uitvoering (CIJFERS_SYNC_JOB_RESOURCE in deploy.yml, auth via de
+# metadata-server); de dagelijkse verversing zit in rlz-sync (07:00). De job zelf wordt —
+# net als de andere F3-jobs — door deploy.yml aangemaakt/bijgewerkt. Hier alleen de
+# eenmalige IAM-binding: run-backend@ (de service) mag déze ene job uitvoeren
+# (roles/run.invoker dekt run.jobs.run; job-niveau, least privilege — geen overrides nodig,
+# de wachtrij-rij ís de opdracht).
+if gcloud run jobs describe rlz-projecten-cijfers --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding rlz-projecten-cijfers \
+    --region="${REGION}" \
+    --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet >/dev/null
+  echo "   run-backend@ mag rlz-projecten-cijfers uitvoeren (roles/run.invoker, job-niveau)."
+else
+  echo "   LET OP: job rlz-projecten-cijfers bestaat nog niet (eerste deploy-run maakt 'm) —"
+  echo "   draai dit script daarna opnieuw voor de IAM-binding, anders faalt de sync-knop"
+  echo "   zichtbaar met 'Achtergrondrun starten mislukt' (403)."
+fi
+
 echo
 echo "Klaar. Verificatie F3 (draaiboek): per job één handmatige run —"
 echo "  gcloud run jobs execute rlz-sync                --region=${REGION} --wait   # groen"

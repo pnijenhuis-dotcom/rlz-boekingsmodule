@@ -253,8 +253,27 @@ export function haalProjectenOverzicht(administratieId: string): Promise<Project
   return apiJson(`/projecten/${administratieId}/resultaat-overzicht`)
 }
 
-export function syncProjectCijfers(administratieId: string): Promise<{ documenten: number; regels: number; verdwenen: number }> {
+/* Achtergrondrun-fix 23-08: de knop start een run (202) en de UI pollt de status —
+ * de volledige RLZ-ronde liep in één request tegen Cloud Runs request-timeout (504). */
+export interface CijfersSyncStatusDto {
+  status: 'geen' | 'wachtrij' | 'bezig' | 'klaar' | 'fout'
+  run_id?: string | null
+  aangevraagd_op?: string | null
+  gestart_op?: string | null
+  beeindigd_op?: string | null
+  documenten?: number | null
+  regels?: number | null
+  verdwenen?: number | null
+  leesfouten?: number | null
+  fout_reden?: string | null
+}
+
+export function startCijfersSync(administratieId: string): Promise<{ run_id: string; status: string }> {
   return apiPostJson(`/projecten/${administratieId}/cijfers-sync`, {})
+}
+
+export function haalCijfersSyncStatus(administratieId: string): Promise<CijfersSyncStatusDto> {
+  return apiJson(`/projecten/${administratieId}/cijfers-sync/status`)
 }
 
 export function euro(bedrag: string | number | null | undefined): string {

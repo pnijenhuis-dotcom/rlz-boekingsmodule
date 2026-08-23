@@ -151,10 +151,29 @@ class OntleedResponse(BaseModel):
     aantal_regels: int
 
 
-class CijfersSyncResponse(BaseModel):
-    documenten: int
-    regels: int
-    verdwenen: int
+class CijfersSyncStartResponse(BaseModel):
+    """202-antwoord van de sync-knop (achtergrondrun-fix 23-08): de run is gestart of
+    hergebruikt (dubbelklik = zelfde run); de UI pollt de status-leesroute."""
+
+    run_id: uuid.UUID
+    status: str
+
+
+class CijfersSyncStatusResponse(BaseModel):
+    """Status van de recentste syncrun — `status` 'geen' als er nog nooit één draaide.
+    `leesfouten` > 0 betekent: N documenten bleven onleesbaar in RLZ (cijfers mogelijk
+    onvolledig, hun cache-rijen zijn bewust niet als verdwenen gemarkeerd)."""
+
+    status: str
+    run_id: uuid.UUID | None = None
+    aangevraagd_op: datetime | None = None
+    gestart_op: datetime | None = None
+    beeindigd_op: datetime | None = None
+    documenten: int | None = None
+    regels: int | None = None
+    verdwenen: int | None = None
+    leesfouten: int | None = None
+    fout_reden: str | None = None
 
 
 # --- resultaat (analytische laag) ----------------------------------------------------------------

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -31,7 +32,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Administratie, DetacheerderKoppeling
+from app.db.models import DetacheerderKoppeling
 from app.db.session import scoped_session
 from app.projecten.models import ProjectRegelCache, ProjectRegelSoort
 from app.rlz.client import RlzApiError, RlzClient
@@ -93,29 +94,92 @@ def _als_decimal(waarde: object) -> Decimal | None:
         return None
 
 
-def _documenten(client: RlzClient, collectie: str, *, vanaf: date) -> list[dict]:
-    """Alle geboekte documenten vanaf de ondergrens, gepagineerd (patroon app/geheugen/seed.py;
-    Status-filter kan niet server-side — OData geeft daar een 400 op, lokaal filteren)."""
-    rijen: list[dict] = []
+def _documenten_paginas(client: RlzClient, collectie: str, *, vanaf: date) -> Iterator[list[dict]]:
+    """Geboekte documenten vanaf de ondergrens, per RLZ-serverpagina (patroon
+    app/geheugen/seed.py; Status-filter kan niet server-side — OData geeft daar een 400 op,
+    lokaal filteren). Bewust een generator: de 504-crash van 23-08 kwam uit één synchrone
+    request over de volledige collecties — de aanvoer is nu per pagina begrensd, er staat
+    nooit méér dan één pagina documenten tegelijk in het geheugen."""
     skip = 0
     while True:
         batch = client.get(
             collectie,
             params={"$filter": f"Date ge {vanaf.isoformat()}", "$top": str(_PAGINA_GROOTTE), "$skip": str(skip)},
         ).get("value", [])
-        rijen.extend(r for r in batch if r.get("Status") in _RLZ_GEBOEKT)
+        yield [r for r in batch if r.get("Status") in _RLZ_GEBOEKT]
         if len(batch) < _PAGINA_GROOTTE:
-            return rijen
+            return
         skip += _PAGINA_GROOTTE
 
 
+@dataclass(frozen=True)
+class _DocumentKop:
+    """Minimale documentkop voor de verwerking + de herkansing van leesfouten — bewust geen
+    volledige RLZ-dicts vasthouden (geheugen-begrensd)."""
+
+    collectie: str
+    soort: str
+    doc_id: uuid.UUID
+    datum: date | None
+    referentie: str | None
+
+
+def _verwerk_document(
+    session: Session, *, administratie_id: uuid.UUID, kop: _DocumentKop, lines: list[dict],
+    gezien: set[uuid.UUID], nu: datetime, teller: dict[str, int],
+) -> None:
+    project_lines = [line for line in lines if _als_uuid(line.get("Project")) is not None]
+    if not project_lines:
+        return
+    teller["documenten"] += 1
+    for line in project_lines:
+        line_id = _als_uuid(line.get("id"))
+        netto = _als_decimal(line.get("NetAmount"))
+        if line_id is None or netto is None:
+            continue
+        gezien.add(line_id)
+        rij = session.get(ProjectRegelCache, (line_id, administratie_id))
+        if rij is None:
+            rij = ProjectRegelCache(
+                id=line_id,
+                administratie_id=administratie_id,
+                rlz_document_id=kop.doc_id,
+                soort=kop.soort,
+                project_id=_als_uuid(line.get("Project")),
+                netto_bedrag=netto,
+            )
+            session.add(rij)
+        rij.rlz_document_id = kop.doc_id
+        rij.soort = kop.soort
+        rij.project_id = _als_uuid(line.get("Project"))
+        rij.ledger_id = _als_uuid(line.get("Account"))
+        rij.netto_bedrag = netto
+        rij.btw_bedrag = _als_decimal(line.get("TaxAmount"))
+        rij.datum = kop.datum
+        rij.referentie = kop.referentie
+        rij.omschrijving = line.get("Description")
+        rij.laatst_gesynchroniseerd = nu
+        rij.verdwenen_uit_bron_op = None
+        teller["regels"] += 1
+
+
 def sync_project_regels(
-    *, administratie_id: uuid.UUID, client: RlzClient | None = None, vanaf: date | None = None
+    *,
+    administratie_id: uuid.UUID,
+    client: RlzClient | None = None,
+    vanaf: date | None = None,
+    voortgang: Callable[[dict[str, int]], None] | None = None,
 ) -> dict[str, int]:
     """Ververst de project_regel_cache voor één administratie. Idempotent (upsert op het
     RLZ-Line-GUID); regels die uit de bron verdwenen zijn (storno, regelvervanging) krijgen
     `verdwenen_uit_bron_op` en tellen niet meer mee — nooit hard verwijderen zolang de sync
-    loopt, de reconciliatie-sweep ruimt cache-rijen niet op (leescache)."""
+    loopt, de reconciliatie-sweep ruimt cache-rijen niet op (leescache).
+
+    Geheugen-begrensd (fix 23-08): per documenttype en per RLZ-pagina, één DB-transactie per
+    pagina; `voortgang` (heartbeat achtergrondrun) wordt per pagina aangeroepen. Documenten
+    waarvan RLZ de regels niet gaf (bv. de 403-storm van 23-08) krijgen één herkansing aan
+    het einde van de run en tellen daarna als `leesfouten` — hun bestaande cache-rijen worden
+    dan bewust NIET als verdwenen gemarkeerd (de bron was onleesbaar, niet leeg)."""
     vanaf = vanaf or CIJFERS_VANAF
     eigen_client = client is None
     if client is None:
@@ -123,54 +187,60 @@ def sync_project_regels(
         client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
 
     nu = datetime.now(UTC)
-    teller = {"documenten": 0, "regels": 0, "verdwenen": 0}
+    teller = {"documenten": 0, "regels": 0, "verdwenen": 0, "leesfouten": 0}
     gezien: set[uuid.UUID] = set()
+    mislukt: list[_DocumentKop] = []
+
+    def _lees_en_verwerk(session: Session, kop: _DocumentKop) -> bool:
+        try:
+            lines = client.get_lines(kop.collectie, kop.doc_id, expand="Account,Project")
+        except RlzApiError as exc:
+            logger.warning(
+                "Projectcijfers-sync: regels van %s/%s niet leesbaar: %s", kop.collectie, kop.doc_id, exc
+            )
+            return False
+        _verwerk_document(
+            session, administratie_id=administratie_id, kop=kop, lines=lines,
+            gezien=gezien, nu=nu, teller=teller,
+        )
+        return True
+
     try:
         for collectie, soort in _COLLECTIES:
-            documenten = _documenten(client, collectie, vanaf=vanaf)
-            for document in documenten:
-                doc_id = _als_uuid(document.get("id"))
-                if doc_id is None:
+            for pagina in _documenten_paginas(client, collectie, vanaf=vanaf):
+                if not pagina:
                     continue
-                try:
-                    lines = client.get_lines(collectie, doc_id, expand="Account,Project")
-                except RlzApiError as exc:
-                    logger.warning("Projectcijfers-sync: regels van %s/%s niet leesbaar: %s", collectie, doc_id, exc)
-                    continue
-                project_lines = [line for line in lines if _als_uuid(line.get("Project")) is not None]
-                if not project_lines:
-                    continue
-                teller["documenten"] += 1
                 with scoped_session(administratie_id) as session:
-                    for line in project_lines:
-                        line_id = _als_uuid(line.get("id"))
-                        netto = _als_decimal(line.get("NetAmount"))
-                        if line_id is None or netto is None:
+                    for document in pagina:
+                        doc_id = _als_uuid(document.get("id"))
+                        if doc_id is None:
                             continue
-                        gezien.add(line_id)
-                        rij = session.get(ProjectRegelCache, (line_id, administratie_id))
-                        if rij is None:
-                            rij = ProjectRegelCache(
-                                id=line_id,
-                                administratie_id=administratie_id,
-                                rlz_document_id=doc_id,
-                                soort=soort,
-                                project_id=_als_uuid(line.get("Project")),
-                                netto_bedrag=netto,
-                            )
-                            session.add(rij)
-                        rij.rlz_document_id = doc_id
-                        rij.soort = soort
-                        rij.project_id = _als_uuid(line.get("Project"))
-                        rij.ledger_id = _als_uuid(line.get("Account"))
-                        rij.netto_bedrag = netto
-                        rij.btw_bedrag = _als_decimal(line.get("TaxAmount"))
-                        rij.datum = _als_datum(document.get("Date"))
-                        rij.referentie = document.get("Reference") or document.get("ReceiptNumber")
-                        rij.omschrijving = line.get("Description")
-                        rij.laatst_gesynchroniseerd = nu
-                        rij.verdwenen_uit_bron_op = None
-                        teller["regels"] += 1
+                        kop = _DocumentKop(
+                            collectie=collectie,
+                            soort=soort,
+                            doc_id=doc_id,
+                            datum=_als_datum(document.get("Date")),
+                            referentie=document.get("Reference") or document.get("ReceiptNumber"),
+                        )
+                        if not _lees_en_verwerk(session, kop):
+                            mislukt.append(kop)
+                if voortgang is not None:
+                    voortgang(dict(teller))
+
+        # Herkansing: één rustige tweede poging per gefaald document (de 403-storm van 23-08
+        # was een tijdelijke blokkade). Wat dan nóg faalt telt als leesfout — zichtbaar in de
+        # runstatus, nooit stil.
+        if mislukt:
+            nog_mislukt: set[uuid.UUID] = set()
+            with scoped_session(administratie_id) as session:
+                for kop in mislukt:
+                    if not _lees_en_verwerk(session, kop):
+                        nog_mislukt.add(kop.doc_id)
+            teller["leesfouten"] = len(nog_mislukt)
+            if voortgang is not None:
+                voortgang(dict(teller))
+        else:
+            nog_mislukt = set()
     finally:
         if eigen_client:
             client.close()
@@ -182,27 +252,14 @@ def sync_project_regels(
                 ProjectRegelCache.verdwenen_uit_bron_op.is_(None),
             )
         ):
-            if rij.id not in gezien and (rij.datum is None or rij.datum >= vanaf):
+            if (
+                rij.id not in gezien
+                and rij.rlz_document_id not in nog_mislukt
+                and (rij.datum is None or rij.datum >= vanaf)
+            ):
                 rij.verdwenen_uit_bron_op = nu
                 teller["verdwenen"] += 1
     return teller
-
-
-def sync_project_regels_alle() -> dict[uuid.UUID, dict[str, int] | str]:
-    """Alle administraties mét de uren-&-meerwerk-opt-in (de steigerbouw-tak) — één zonder
-    werkende credentials stopt de rest niet (patroon sync_alle_administraties)."""
-    with scoped_session(None) as session:
-        ids = [
-            rij.id
-            for rij in session.scalars(select(Administratie).where(Administratie.uren_meerwerk_ingeschakeld))
-        ]
-    resultaten: dict[uuid.UUID, dict[str, int] | str] = {}
-    for administratie_id in ids:
-        try:
-            resultaten[administratie_id] = sync_project_regels(administratie_id=administratie_id)
-        except Exception as exc:  # noqa: BLE001 — bewust breed, zie sync_alle_administraties
-            resultaten[administratie_id] = str(exc)
-    return resultaten
 
 
 # --- rekenlaag ---------------------------------------------------------------------------------
