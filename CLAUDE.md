@@ -448,8 +448,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   **Kliktests echt iPhone-toestel rondes 1+2 (2026-08-17) VOLLEDIG GROEN — fases 1–4
   BEWEZEN OP TOESTEL** (passkey-Face-ID, koude-herstart-Keychain-refresh, safe-area,
   meldingen-flow + APNs-push + deep-link, PWA-passkey in native, kill-switch — BESLISSINGEN
-  "NATIVE KLIKTEST RONDE 1/2"); volgende halte: TestFlight (mét `APNS_SANDBOX=false` als
-  expliciete stap) + de Android/Firebase-ronde). Factuurbeeld
+  "NATIVE KLIKTEST RONDE 1/2"); **TestFlight LIVE via Xcode Cloud (23-08, workflow main →
+  TestFlight intern) mét `APNS_SANDBOX=false` afgerond — native push op productie-APNs,
+  web-push/VAPID ongewijzigd (BESLISSINGEN "XCODE CLOUD")**; volgende halte: de
+  Android/Firebase-ronde). Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,
