@@ -674,16 +674,21 @@ de lokale backend. Zie het OPEN_ITEMS-webhook-item voor de afspraken. NB het ín
 **Verificatie F4:** een echte `factuur_geboekt`-aflevering met 200 + verwerkt-bevestiging aan
 vastgoed-kant; een `factuur_afgeletterd` 2.0-event op een tier-administratie idem.
 
-#### F4 — UITGEVOERD (ma 24-08-2026, grotendeels; één blocker vastgoed-kant)
+#### F4 — VOLLEDIG AFGEROND (ma 24-08-2026, avondsessie)
 
 Kanaal-config live (deploy.yml-activatie-editie + direct via gcloud; SA-grant-route,
 cross-project-secretpad op projectnúmmer 755625271889 — het project-id weigert gcloud),
 inkomende poort groen (kanaaltest 404/401/400 tegen productie), toggle AAN, **backlog 3/3
-afgeleverd**. **Blocker:** Vastly's ontvanger weigert `schema_version` 1.2 (kent 1.0/1.1/2.0)
-— de v1.17-wire-bump is daar nog niet gedeployed; het TEST-`factuur_geboekt`-event
-(volgnummer 1) staat zichtbaar in retry-backoff. Storno-deel van de verificatie-cyclus,
-is_vastgoed-TEST-terugdraai én punt 3 (tier-vlag Rubicon) wachten dáárop. Canoniek:
-`docs/F4_ACTIVATIE_RUNBOOK.md` §"UITVOERING MA 24-08" + BESLISSINGEN "F4-CUTOVER 24-08".
+afgeleverd**. De ochtend-blocker (Vastly's ontvanger weigerde `schema_version` 1.2) is
+dezelfde dag door vastgoed opgelost; avondsessie: TEST-`factuur_geboekt` (volgnummer 1,
+1.2) na redrive uit dead-letter **200 afgeleverd**, storno-deel (actie 19) uitgevoerd →
+`factuur_gestorneerd` (volgnummer 2, bron `module_storno`) **200 afgeleverd**,
+is_vastgoed TEST terug UIT, **tier-vlag `afgeletterd_event_ingeschakeld` AAN — alleen
+Rubicon** (beslispunt 9). NB: afgeletterd-events ontstaan pas bij bank-sync-detectie én
+zolang Rubicon `is_vastgoed=False` staat vuurt er niets — de is_vastgoed-omschakeling per
+administratie is het S2-klikwerk van Peter mét Vastly (entiteiten-koppeling + kostenintake
+hun kant), geen onderdeel van F4. Canoniek: `docs/F4_ACTIVATIE_RUNBOOK.md`
+§"UITVOERING MA 24-08" + BESLISSINGEN "F4-CUTOVER 24-08".
 
 ## F5 — Go-live-gate (HARDE POORT vóór echte klantdata)
 

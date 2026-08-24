@@ -8,10 +8,10 @@
 > Platform/OPEN_ITEMS.md "F4-cutover-pakket" (wat vastgoed aanlevert).
 > Geschreven 2026-08-14 (F4-voorbereiding); beslispunt 9 (alleen Rubicon) verwerkt.
 
-## UITVOERING MA 24-08-2026 — grotendeels LIVE, één blocker aan vastgoed-kant
+## UITVOERING MA 24-08-2026 — VOLLEDIG AFGEROND (avondsessie 24-08 ~21:20)
 
-**Uitgevoerd door Code (opdracht Peter 24-08); details + eindrapport in BESLISSINGEN
-"F4-CUTOVER 24-08".** Stand per stap:
+**Uitgevoerd door Code (opdracht Peter 24-08, ochtend + avond); details + eindrapport in
+BESLISSINGEN "F4-CUTOVER 24-08".** Stand per stap:
 
 - **Stap 8 (deploy-editie) UITGEVOERD, aangepast aan de SA-grant-route + tranche 2:**
   `PROJECTAANVRAAG_HMAC_SECRET` gemount op de service; afleveraar-job uit de F3-lus met
@@ -31,13 +31,24 @@
   HMAC-weigering aan Vastly-kant is al bewezen (ongetekende POST → 401, hun poortcheck)
   en een dummy-waarde in het gemounte vastly-secret is niet aan de orde via de SA-grant-route.
 - **Stap 5 (toggle) AAN** (beheerder p.nijenhuis@kempengroep.nl, geauditeerd).
-- **Stap 7 uitgaand — GEBLOKKEERD op vastgoed-kant:** TEST-boeking geslaagd
-  (`TEST-F4-CUTOVER-2408`, outbox `factuur_geboekt` volgnummer 1, schema 1.2) maar
-  **Vastly's ontvanger weigert schema_version 1.2** ("bekend: 1.0/1.1/2.0") — de
-  v1.17-afspraak (corrigeert_document_id, akkoord 23-08) is daar nog niet gedeployed.
-  Rij staat zichtbaar in retry-backoff (dead-letter na 8 pogingen; herstel = redrive).
-  **Open tot vastgoeds fix: storno-deel van de cyclus, is_vastgoed weer UIT, én stap 6
-  (tier-vlag Rubicon — vereist expliciet een geslaagde stap 7).**
+- **Stap 7 uitgaand — AFGEROND (avondsessie 24-08, ná vastgoeds 1.2-fix dezelfde dag):**
+  TEST-boeking geslaagd (`TEST-F4-CUTOVER-2408`, outbox `factuur_geboekt` volgnummer 1,
+  schema 1.2); de ochtend-weigering ("Onbekende schema_version '1.2'") liep na 8 pogingen
+  in dead-letter → **redrive + afleveraar-job-run = 200 afgeleverd** (1 poging,
+  19:14:40 UTC). **Storno-deel uitgevoerd**: actie 19 via de echte bouwstenen
+  (aangifte-poort vrij → `correct_purchase_invoice` → RLZ-status 1 geverifieerd) →
+  `factuur_gestorneerd` volgnummer 2 op hetzelfde rlz_document_id, bron `module_storno`,
+  reden "F4-cutover-verificatie" (eigen schema 1.0) → **200 afgeleverd** (1 poging,
+  19:17:48 UTC). Het gestorneerde TEST-document blijft staan (nooit verwijderen);
+  `is_vastgoed` TEST-administratie terug **UIT** (geauditeerd, actor Peters beheerder-id).
+- **Stap 6 (tier-vlag) UITGEVOERD ná de geslaagde stap 7: `afgeletterd_event_ingeschakeld`
+  AAN — alleen Rubicon** (`35d106f2-…`, beslispunt 9; geauditeerd). ⚠️ Events ontstaan pas
+  bij de eerstvolgende bank-sync-detectie én zolang Rubicon `is_vastgoed=False` staat
+  vuurt er niets: de is_vastgoed-omschakeling per administratie is het **S2-klikwerk van
+  Peter mét Vastly** (koppeling entiteiten + kostenintake aan hun kant) — bewust geen
+  onderdeel van deze run.
+- **Restpunt (geen blocker):** Vastly's mailbox-afzenderlijst per verhuurder (hun 4a) —
+  open in Platform/OPEN_ITEMS.
 
 ## De twee kanalen
 
