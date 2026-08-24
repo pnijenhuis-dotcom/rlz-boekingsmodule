@@ -15,12 +15,14 @@
 # backend-lifespan is de vangrail als deze volgorde ooit geschonden wordt.
 #
 # Secrets (besluit 0012): uitsluitend als Secret Manager-verwijzing (--set-secrets), nooit
-# als waarde in deze file of in env-vars. WEBHOOK_HMAC_SECRET, PROJECTAANVRAAG_HMAC_SECRET
-# en ANTHROPIC_API_KEY hebben bewust nog géén versie (F4-uitwisseling resp. AI-gate-
-# klikwerk) — pas mounten wanneer er een versie is, anders faalt de revisie-start op een
-# leeg secret. De exacte F4-activatie-editie (PROJECTAANVRAAG_HMAC_SECRET op de service;
-# WEBHOOK_HMAC_SECRET + WEBHOOK_DOEL_URL alléén op de afleveraar-job) staat in
-# docs/F4_ACTIVATIE_RUNBOOK.md stap 8.
+# als waarde in deze file of in env-vars. ANTHROPIC_API_KEY heeft bewust nog géén versie
+# (AI-gate-klikwerk) — pas mounten wanneer er een versie is, anders faalt de revisie-start
+# op een leeg secret. F4-activatie-editie (cutover 2026-08-24, runbook stap 8 aangepast
+# aan de SA-grant-route): PROJECTAANVRAAG_HMAC_SECRET op de service (inkomend kanaal);
+# de afleveraar-job heeft een eigen blok met WEBHOOK_HMAC_SECRET als cross-project-
+# verwijzing naar Vastly's slot WEBHOOK_RLZ_SECRET in vastly-504108 (⚠️ naamverschil,
+# zelfde waarde; accessors run-backend@ + run-jobs@ door vastgoed gezet) +
+# WEBHOOK_DOEL_URL — UITSLUITEND op die job (least privilege).
 
 name: deploy
 
@@ -134,7 +136,7 @@ jobs:
             --memory 1Gi \
             --cpu 1 \
             --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers" \
-            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest" \
+            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest" \
             --quiet
 
       # F3-jobs (draaiboek §F3): de bestaande CLI-commando's zijn de entrypoints — zelfde
@@ -156,7 +158,6 @@ jobs:
           for JOB in \
             "rlz-sync|sync-alles|3600" \
             "rlz-reconciliatie|reconciliatie-alles|3600" \
-            "rlz-webhook-afleveraar|webhook-afleveren|600" \
             "rlz-intake-imap|intake-postvak-verwerken|900" \
             "rlz-accordeur-herinneringen|accordeur-herinneringen|600" \
             "rlz-nieuwe-facturen|nieuwe-facturen-melden|600" \
@@ -177,6 +178,28 @@ jobs:
               --task-timeout "${TIMEOUT}" \
               --quiet
           done
+          # F4 — webhook-afleveraar (activatie-editie 2026-08-24, runbook stap 8 + SA-grant-
+          # route): eigen deploy-blok BUITEN de lus — alléén deze job draagt het uitgaande
+          # HMAC-secret en de doel-URL (least privilege). WEBHOOK_HMAC_SECRET mount
+          # cross-project Vastly's slot WEBHOOK_RLZ_SECRET in vastly-504108 (⚠️ naamverschil,
+          # zelfde waarde — runbook "Update vastgoed 21-08"); accessors voor onze
+          # run-jobs@/run-backend@ zijn door vastgoed gezet en 24-08 herbevestigd
+          # (één enabled versie, waardevrij geverifieerd). NB cross-project-secrets
+          # vereisen het projectNÚMMER in het pad (755625271889 = vastly-504108) —
+          # het project-id weigert gcloud ("not a valid secret name", les 24-08).
+          gcloud run jobs deploy rlz-webhook-afleveraar \
+            --image "${IMAGE}:${GITHUB_SHA}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --set-cloudsql-instances "${CLOUD_SQL}" \
+            --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey,WEBHOOK_DOEL_URL=https://api.vastly.software/webhooks/rlz" \
+            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,WEBHOOK_HMAC_SECRET=projects/755625271889/secrets/WEBHOOK_RLZ_SECRET:latest" \
+            --command python \
+            --args="-m,app.cli,webhook-afleveren" \
+            --max-retries 0 \
+            --task-timeout 600 \
+            --quiet
           # F3.4 — live IMAP-intake (facturen@ak-nijenhuis.nl op Google Workspace, SSL 993).
           # Het app-wachtwoord leeft uitsluitend in Secret Manager (INTAKE_IMAP_WACHTWOORD,
           # versie door Peter); de scheduler-pauze is de aan/uit-knop van de fetch.
