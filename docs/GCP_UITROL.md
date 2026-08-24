@@ -674,6 +674,17 @@ de lokale backend. Zie het OPEN_ITEMS-webhook-item voor de afspraken. NB het ín
 **Verificatie F4:** een echte `factuur_geboekt`-aflevering met 200 + verwerkt-bevestiging aan
 vastgoed-kant; een `factuur_afgeletterd` 2.0-event op een tier-administratie idem.
 
+#### F4 — UITGEVOERD (ma 24-08-2026, grotendeels; één blocker vastgoed-kant)
+
+Kanaal-config live (deploy.yml-activatie-editie + direct via gcloud; SA-grant-route,
+cross-project-secretpad op projectnúmmer 755625271889 — het project-id weigert gcloud),
+inkomende poort groen (kanaaltest 404/401/400 tegen productie), toggle AAN, **backlog 3/3
+afgeleverd**. **Blocker:** Vastly's ontvanger weigert `schema_version` 1.2 (kent 1.0/1.1/2.0)
+— de v1.17-wire-bump is daar nog niet gedeployed; het TEST-`factuur_geboekt`-event
+(volgnummer 1) staat zichtbaar in retry-backoff. Storno-deel van de verificatie-cyclus,
+is_vastgoed-TEST-terugdraai én punt 3 (tier-vlag Rubicon) wachten dáárop. Canoniek:
+`docs/F4_ACTIVATIE_RUNBOOK.md` §"UITVOERING MA 24-08" + BESLISSINGEN "F4-CUTOVER 24-08".
+
 ## F5 — Go-live-gate (HARDE POORT vóór echte klantdata)
 
 **Afhankelijk van:** F1–F3 af; de jurist-toets kan al die tijd parallel lopen.

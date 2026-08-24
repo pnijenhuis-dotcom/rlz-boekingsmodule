@@ -8,6 +8,37 @@
 > Platform/OPEN_ITEMS.md "F4-cutover-pakket" (wat vastgoed aanlevert).
 > Geschreven 2026-08-14 (F4-voorbereiding); beslispunt 9 (alleen Rubicon) verwerkt.
 
+## UITVOERING MA 24-08-2026 — grotendeels LIVE, één blocker aan vastgoed-kant
+
+**Uitgevoerd door Code (opdracht Peter 24-08); details + eindrapport in BESLISSINGEN
+"F4-CUTOVER 24-08".** Stand per stap:
+
+- **Stap 8 (deploy-editie) UITGEVOERD, aangepast aan de SA-grant-route + tranche 2:**
+  `PROJECTAANVRAAG_HMAC_SECRET` gemount op de service; afleveraar-job uit de F3-lus met
+  eigen blok — `WEBHOOK_HMAC_SECRET` = cross-project-verwijzing naar Vastly's slot
+  `WEBHOOK_RLZ_SECRET` in `vastly-504108` + `WEBHOOK_DOEL_URL=https://api.vastly.software/
+  webhooks/rlz` alléén op die job. ⚠️ LES: cross-project-secretpaden vereisen het
+  projectNÚMMER (755625271889), het project-id weigert gcloud. Config óók direct via
+  gcloud live gezet (de hook-push vuurt pas ná de run; eerstvolgende deploy is idempotent).
+  De stappen 2/3 (.env-route lokale afleveraar) zijn met tranche 2 VERVALLEN.
+- **Kanaaltest inkomend (stap 7) GROEN** tegen het productiedomein: geldig secret → 404
+  `administratie_onbekend`, fout secret → 401, oude timestamp → 400.
+- **Backlog (stap 4): 3 rijen** (alle `factuur_geboekt`, TEST-administratie, schema ≤1.1)
+  — **alle 3 AFGELEVERD** (één na een read-timeout-retry). NB volgorde-afwijking: de
+  is_vastgoed-vlag van stap 7 is vóór de eerste run aangezet, anders had de afleveraar de
+  TEST-backlog zichtbaar geweigerd ("geen vastgoed-administratie") en landde er niets.
+- **Stap-4-negatieftest (dummy-secret) VERVALLEN (besluit in de opdracht 24-08):** de
+  HMAC-weigering aan Vastly-kant is al bewezen (ongetekende POST → 401, hun poortcheck)
+  en een dummy-waarde in het gemounte vastly-secret is niet aan de orde via de SA-grant-route.
+- **Stap 5 (toggle) AAN** (beheerder p.nijenhuis@kempengroep.nl, geauditeerd).
+- **Stap 7 uitgaand — GEBLOKKEERD op vastgoed-kant:** TEST-boeking geslaagd
+  (`TEST-F4-CUTOVER-2408`, outbox `factuur_geboekt` volgnummer 1, schema 1.2) maar
+  **Vastly's ontvanger weigert schema_version 1.2** ("bekend: 1.0/1.1/2.0") — de
+  v1.17-afspraak (corrigeert_document_id, akkoord 23-08) is daar nog niet gedeployed.
+  Rij staat zichtbaar in retry-backoff (dead-letter na 8 pogingen; herstel = redrive).
+  **Open tot vastgoeds fix: storno-deel van de cyclus, is_vastgoed weer UIT, én stap 6
+  (tier-vlag Rubicon — vereist expliciet een geslaagde stap 7).**
+
 ## De twee kanalen
 
 | | Uitgaand (webhooks) | Inkomend (route A) |
