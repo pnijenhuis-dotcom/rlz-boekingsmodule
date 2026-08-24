@@ -331,7 +331,7 @@
                 <td><span class="badge paars">ZZP'er</span></td>
                 <td><span class="badge info">26014 Eindhoven</span> <span class="badge info">26021 Tilburg</span><br>
                     <span class="badge">€ Milan K. Montage · € 42,50/u</span> <span class="badge ok" title="Autoboeken bij een groene urenmatch (fase 4) staat aan voor deze koppeling">⚡ autoboeken</span> <a href="#" onclick="return false">crediteur/tarief</a></td>
-                <td><span class="badge ok">actief</span>
+                <td><span class="badge ok">actief</span> <a href="#" onclick="return false"><span class="badge warn">📁 dossier 4/6</span></a>
                     <div class="sub" style="color:var(--warn)">⚠ 2× correctie bij keuring · 3,5 u meer ingediend dan goedgekeurd</div></td>
               </tr>
               <tr>
@@ -340,12 +340,43 @@
                 <td><span class="badge info">Milan K. · € 51,00/u</span> <span class="badge info">Stefan B. · geen tarief</span>
                     <a href="#" onclick="return false">tarieven…</a><br>
                     <span class="badge">€ FlexBouw Detachering B.V.</span> <a href="#" onclick="return false">crediteur/tarief</a></td>
-                <td><span class="badge ok">actief</span></td>
+                <td><span class="badge ok">actief</span> <a href="#" onclick="return false"><span class="badge ok">📁 dossier compleet</span></a></td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="notitie"><span>ℹ️</span><span>De afwijkings-teller (afkeuringen mét correctievoorstel, delta ingediend − goedgekeurd) is <b>alleen hier</b> zichtbaar — de veldwerker ziet 'm nooit. Het goedgekeurde totaal blijft de toetsbron voor de factuurmatch.</span></div>
+      </div>
+
+      <!-- ZZP-dossier (steigerbouw-feedbackronde Peter 23-08, punt 9): verplichte documenten
+           per veldwerker + geldigheid + KvK-lookup (patroon Vastly kvk.py). -->
+      <div class="kaart">
+        <div class="kaart-kop"><h2>📁 Dossier — Milan K. (ZZP'er)</h2>
+          <div class="uitleg">Verplichte documenten voor het inleners-/WKA-dossier, per type met geldig-tot en signalering. Een incompleet of verlopen dossier geeft een teller op dit paneel én een vlag bij keuring en factuurmatch (signaal, geen blokkade). Kopie ID: BSN wordt nooit geëxtraheerd of geïndexeerd; preview gemaskeerd (bestaande AVG-regel).</div>
+        </div>
+        <div class="kaart-body">
+          <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+            <div class="veld" style="flex:0 0 220px"><label>KvK-nummer</label><input value="68750110"></div>
+            <div class="veld" style="flex:1"><label>Opgehaald via KvK-API <span class="badge ok">geverifieerd</span></label>
+              <div class="sub" style="padding-top:8px">Milan Kowalski Montage · eenmanszaak · Arnhem — <a href="#" onclick="return false">bevestigen</a></div></div>
+            <div class="veld" style="flex:0 0 220px"><label>Btw-nummer</label><input value="NL001234567B01"></div>
+          </div>
+          <table>
+            <thead><tr><th>Document</th><th>Status</th><th>Geldig tot</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Kopie ID</td><td><span class="badge ok">aanwezig</span></td><td>12-03-2029</td><td style="text-align:right"><a href="#" onclick="return false">bekijk (gemaskeerd)</a> · <a href="#" onclick="return false">vervang</a></td></tr>
+              <tr><td>Steigerpas</td><td><span class="badge warn">verloopt over 24 dagen</span></td><td>17-09-2026</td><td style="text-align:right"><a href="#" onclick="return false">bekijk</a> · <a href="#" onclick="return false">vervang</a></td></tr>
+              <tr><td>VCA (vol)</td><td><span class="badge info">ter controle — geüpload door Milan K. (app), 23-08</span></td><td>02-11-2027</td><td style="text-align:right"><button class="btn klein">✓ Goedkeuren</button> <button class="btn secundair klein">Afwijzen…</button></td></tr>
+              <tr><td>Aansprakelijkheidsverzekering (AVB)</td><td><span class="badge danger">ontbreekt</span></td><td>—</td><td style="text-align:right"><a href="#" onclick="return false">uploaden…</a></td></tr>
+              <tr><td>KvK-uittreksel</td><td><span class="badge danger">verlopen 01-07-2026</span></td><td>01-07-2026</td><td style="text-align:right"><a href="#" onclick="return false">vervang</a></td></tr>
+            </tbody>
+          </table>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+            <button class="btn secundair klein">🔔 Herinner Milan K. (2 van 3 verstuurd — laatst 19-08)</button>
+            <span class="badge warn">na de 3e herinnering: weekstaat-invoer geblokkeerd tot het dossier compleet is</span>
+          </div>
+        </div>
+        <div class="notitie"><span>ℹ️</span><span><b>Handhaving (besluit Peter 23-08):</b> kantoor herinnert per knop (mail + app-melding, teller per veldwerker); ná de 3e herinnering blokkeert het indienen van weekstaten — óók namens-invoer door de detacheerder — met een duidelijke melding + upload-ingang in de native app. De veldwerker uploadt zelf in de app; élk document krijgt status <b>ter controle</b> en telt pas als aanwezig ná goedkeuring door kantoor (afwijzen = verplichte reden, voorkomt blanco-uploads). Deblokkade zodra alle verplichte documenten geüpload zijn; een latere afwijzing heractiveert de blokkade. Uren over de geblokkeerde periode kunnen ná deblokkade alsnog ingediend worden — er raken nooit uren zoek. Documenttypen + verplicht-vlag = beheerder-instelling per administratie (schaalbaar); 30 dagen vóór verloop een vooraankondiging.</span></div>
       </div>
 
       <!-- Match-sectie controlescherm (fase 3): zo landt de urenmatch op het documentdetail. -->
