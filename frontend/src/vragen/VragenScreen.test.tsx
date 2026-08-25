@@ -33,6 +33,11 @@ function vraag(overrides: Record<string, unknown> = {}) {
     ingetrokken_door: null,
     ingetrokken_op: null,
     ingetrokken_reden: null,
+    aan_de_beurt: EIGENAAR_ID,
+    afgehandeld_door: null,
+    afgehandeld_op: null,
+    berichten: [],
+    mag_afhandelen: false,
     ...overrides,
   }
 }
@@ -40,7 +45,8 @@ function vraag(overrides: Record<string, unknown> = {}) {
 interface MockOpties {
   vragen?: unknown[]
   vragenNaMutatie?: unknown[]
-  beantwoordAanroepen?: { url: string; body: unknown }[]
+  berichtAanroepen?: { url: string; body: unknown }[]
+  afhandelAanroepen?: { url: string; body: unknown }[]
   intrekAanroepen?: { url: string; body: unknown }[]
 }
 
@@ -65,10 +71,15 @@ function installFetchMock(opties: MockOpties) {
       if (url.endsWith('/eigenaar')) {
         return Promise.resolve(jsonResponse({ eigenaar_gebruiker_id: EIGENAAR_ID }))
       }
-      if (url.includes('/beantwoorden') && init?.method === 'POST') {
+      if (url.includes('/berichten') && init?.method === 'POST') {
         gemuteerd = true
-        opties.beantwoordAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
-        return Promise.resolve(jsonResponse(vraag({ status: 'beantwoord', antwoord_tekst: 'Zakelijk' })))
+        opties.berichtAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
+        return Promise.resolve(jsonResponse(vraag({ aan_de_beurt: STELLER_ID })))
+      }
+      if (url.includes('/afhandelen') && init?.method === 'POST') {
+        gemuteerd = true
+        opties.afhandelAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
+        return Promise.resolve(jsonResponse(vraag({ status: 'afgehandeld' })))
       }
       if (url.includes('/intrekken') && init?.method === 'POST') {
         gemuteerd = true
@@ -106,38 +117,80 @@ describe('VragenScreen (mockup #vragen)', () => {
     expect(screen.getByText('Open')).toBeInTheDocument()
     expect(screen.getByText(/€ 450,00/)).toBeInTheDocument()
     expect(screen.getByText(/gesteld door P\. Nijenhuis/)).toBeInTheDocument()
-    expect(screen.getByText('M. de Boer')).toBeInTheDocument()
+    expect(screen.getAllByText('M. de Boer').length).toBeGreaterThan(0)
     expect(screen.getByText(/\(eigenaar administratie\)/)).toBeInTheDocument()
     expect(screen.getByText(/Weet jij van wie dit is\?/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Beantwoorden' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reageren' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Factuur bekijken' })).toHaveAttribute(
       'href',
       `/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`,
     )
     expect(screen.getByRole('button', { name: 'Intrekken…' })).toBeInTheDocument()
+    // Niet de vraagsteller (server-hint mag_afhandelen=false) → geen Afgehandeld-knop.
+    expect(screen.queryByRole('button', { name: 'Afgehandeld…' })).not.toBeInTheDocument()
   })
 
-  it('beantwoorden stuurt de antwoordtekst en herlaadt de lijst', async () => {
+  it('reageren plaatst een bericht; de vraag blijft open en de thread toont auteur + tijd (nieuwste onderaan)', async () => {
     const gebruiker = userEvent.setup()
-    const beantwoordAanroepen: { url: string; body: unknown }[] = []
+    const berichtAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({
       vragen: [vraag()],
-      vragenNaMutatie: [vraag({ status: 'beantwoord', antwoord_tekst: 'Zakelijk, boeken op 4560.' })],
-      beantwoordAanroepen,
+      vragenNaMutatie: [
+        vraag({
+          aan_de_beurt: STELLER_ID,
+          berichten: [
+            { id: 'b1', auteur_id: EIGENAAR_ID, tekst: 'Zakelijk, boeken op 4560.', geplaatst_op: '2026-07-02T09:00:00Z' },
+            { id: 'b2', auteur_id: STELLER_ID, tekst: 'En de btw?', geplaatst_op: '2026-07-02T09:05:00Z' },
+          ],
+        }),
+      ],
+      berichtAanroepen,
     })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByLabelText('Antwoord')).toBeInTheDocument())
-    const knop = screen.getByRole('button', { name: 'Beantwoorden' })
+    await waitFor(() => expect(screen.getByLabelText('Reactie')).toBeInTheDocument())
+    const knop = screen.getByRole('button', { name: 'Reageren' })
     expect(knop).toBeDisabled()
-    await gebruiker.type(screen.getByLabelText('Antwoord'), 'Zakelijk, boeken op 4560.')
+    await gebruiker.type(screen.getByLabelText('Reactie'), 'Zakelijk, boeken op 4560.')
     await gebruiker.click(knop)
 
-    await waitFor(() => expect(screen.getByText('Beantwoord')).toBeInTheDocument())
-    expect(beantwoordAanroepen).toHaveLength(1)
-    expect(beantwoordAanroepen[0].url).toContain(`/vragen/${VRAAG_ID}/beantwoorden`)
-    expect(beantwoordAanroepen[0].body).toEqual({ antwoord_tekst: 'Zakelijk, boeken op 4560.' })
-    expect(screen.getByText(/Zakelijk, boeken op 4560\./)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/En de btw\?/)).toBeInTheDocument())
+    expect(berichtAanroepen).toHaveLength(1)
+    expect(berichtAanroepen[0].url).toContain(`/vragen/${VRAAG_ID}/berichten`)
+    expect(berichtAanroepen[0].body).toEqual({ tekst: 'Zakelijk, boeken op 4560.' })
+    // Blijft open (blokkeert boeken) en de beurt ligt weer bij de vraagsteller.
+    expect(screen.getByText('Open')).toBeInTheDocument()
+    expect(screen.getByText(/aan de beurt:/)).toBeInTheDocument()
+    const berichten = screen.getAllByRole('listitem')
+    expect(berichten).toHaveLength(3)
+    expect(berichten[1]).toHaveTextContent('M. de Boer')
+    expect(berichten[1]).toHaveTextContent('Zakelijk, boeken op 4560.')
+    expect(berichten[2]).toHaveTextContent('En de btw?')
+  })
+
+  it('alleen de vraagsteller ziet "Afgehandeld…"; afhandelen sluit de thread en stuurt het slotbericht mee', async () => {
+    const gebruiker = userEvent.setup()
+    const afhandelAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      vragen: [vraag({ mag_afhandelen: true })],
+      vragenNaMutatie: [
+        vraag({ status: 'afgehandeld', afgehandeld_door: STELLER_ID, afgehandeld_op: '2026-07-02T10:00:00Z' }),
+      ],
+      afhandelAanroepen,
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Afgehandeld…' })).toBeInTheDocument())
+    await gebruiker.type(screen.getByLabelText('Reactie'), 'Dank, ik boek hem.')
+    await gebruiker.click(screen.getByRole('button', { name: 'Afgehandeld…' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Vraag afgehandeld' }))
+
+    await waitFor(() => expect(screen.getByText('Afgehandeld')).toBeInTheDocument())
+    expect(afhandelAanroepen).toHaveLength(1)
+    expect(afhandelAanroepen[0].url).toContain(`/vragen/${VRAAG_ID}/afhandelen`)
+    expect(afhandelAanroepen[0].body).toEqual({ slotbericht: 'Dank, ik boek hem.' })
+    expect(screen.getByText(/afgehandeld door P\. Nijenhuis/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reageren' })).not.toBeInTheDocument()
   })
 
   it('intrekken stuurt de optionele reden en toont daarna de ingetrokken-historie', async () => {
@@ -175,12 +228,12 @@ describe('VragenScreen (mockup #vragen)', () => {
 
     await waitFor(() => expect(screen.getByText(/scan_0034\.pdf/)).toBeInTheDocument())
     expect(screen.getByText(/Het document is verwijderd/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Beantwoorden' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reageren' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intrekken…' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Factuur bekijken' })).not.toBeInTheDocument()
   })
 
-  it('een beantwoorde vraag is historie: antwoord zichtbaar, geen actieknoppen', async () => {
+  it('een legacy-beantwoorde vraag is historie: antwoord als laatste bericht, geen actieknoppen', async () => {
     installFetchMock({
       vragen: [
         vraag({
@@ -189,6 +242,10 @@ describe('VragenScreen (mockup #vragen)', () => {
           antwoord_tekst: 'Zakelijk, boeken op 4560.',
           beantwoord_door: EIGENAAR_ID,
           beantwoord_op: '2026-07-02T09:00:00Z',
+          // De backend spiegelt het legacy-antwoord als laatste bericht van de thread.
+          berichten: [
+            { id: VRAAG_ID, auteur_id: EIGENAAR_ID, tekst: 'Zakelijk, boeken op 4560.', geplaatst_op: '2026-07-02T09:00:00Z' },
+          ],
         }),
       ],
     })
@@ -197,7 +254,7 @@ describe('VragenScreen (mockup #vragen)', () => {
     await waitFor(() => expect(screen.getByText('Beantwoord')).toBeInTheDocument())
     expect(screen.getByText(/Zakelijk, boeken op 4560\./)).toBeInTheDocument()
     expect(screen.getByText(/beantwoord door M\. de Boer/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Beantwoorden' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reageren' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intrekken…' })).not.toBeInTheDocument()
   })
 })

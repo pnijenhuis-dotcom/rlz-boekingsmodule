@@ -220,6 +220,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   ("Autoboek-afweging overige deterministische paden") — bouw vergt apart akkoord.**
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
+  **DIALOOG (besluit Peter 25-08, migratie 0064 — herziet het één-antwoord-model van 14-07):**
+  een vraag is een thread (append-only `vraag_bericht`, auteur + tijdstip per bijdrage, onbeperkt
+  heen en weer; `aan_de_beurt` stuurt de bestaande melding `Document.toegewezen_aan`); de vraag
+  blokkeert boeken tot **"Afgehandeld" door de oorspronkelijke vraagsteller** (server 403 voor
+  anderen; systeem-vraag → toegewezene) — niet al bij het eerste antwoord. Controlescherm:
+  tabs "Tijdlijn" (statusgebeurtenissen) en "Opmerkingen" (de threads, nieuwste onderaan). Zie
+  BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt B.
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
 - **Verzamelbak "Niet toegewezen"**: alles wat niet eenduidig aan een administratie koppelt
   (tenaamstelling leidend, afzender = hint); leert van handmatige toewijzingen; "hoort niet bij
@@ -353,7 +360,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `verkenning/16_DOORBELASTING_KEMPEN.md` + BESLISSINGEN "KEMPEN-DOORBELASTING")**: tweezijdige
   motor op het HUIDIGE patroon (2025/2026, granulair per document; historie = archief). Actie
   "Doorbelasten…" op een GEBOEKTE inkoopfactuur (toggle per bron-administratie, default UIT —
-  alleen Kempen Facilities; NB bewuste afwijking van de mockup-boekflow-trigger) →
+  alleen Kempen Facilities) **én — besluit Peter 25-08, herziet 13-08 — het optionele
+  controlescherm-blok "Doorbelasten na boeken" op een NOG NIET geboekt document (run-fase
+  `klaargezet`, migratie 0065): boek- en doorbelasting-checks samen groen → knop "Boeken +
+  doorbelasten" → orkestratie `app/doorbelasting/orkestratie.py` draait beide bestaande
+  motoren in één gang (inkoop → verkopen → spiegels; fout ná de inkoopboeking = zichtbaar op de
+  run, half-geboekt-patroon); bij klant-accordering gaat de verdeling mee (accordeur ziet ze
+  alleen-lezen, bevroren tot het besluit) en boekt alles ná het laatste akkoord. Zie
+  BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt A** →
   regelverdeling in % (exact 100%, grootste-rest-centen) over de geseede mapping-whitelist
   (doelentiteit ↔ customer-GUID, server-side afgedwongen, `make doorbelasting-seed-kempen`) →
   per doelentiteit: verkoopfactuur in de bron (kostenregels + losse provisieregel, provisie-%

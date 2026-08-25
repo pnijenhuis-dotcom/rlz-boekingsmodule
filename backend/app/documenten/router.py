@@ -100,9 +100,7 @@ def _naar_match_dto(gegevens: object | None) -> schemas.FactuurmatchDto | None:
 def _lees_match_dto(administratie_id: uuid.UUID, document_id: uuid.UUID) -> schemas.FactuurmatchDto | None:
     from app.uren import factuurmatch_pipeline
 
-    return _naar_match_dto(
-        factuurmatch_pipeline.lees_match(administratie_id=administratie_id, document_id=document_id)
-    )
+    return _naar_match_dto(factuurmatch_pipeline.lees_match(administratie_id=administratie_id, document_id=document_id))
 
 
 def _naar_duplicaat_response(
@@ -200,9 +198,7 @@ def werkvoorraad_overzicht(
     GET /auth/administraties; zelfde patroon als GET /bank/overzicht). Alle administraties komen
     mee; de frontend toont alleen klanten mét openstaand werk en vermeldt het aantal verborgen."""
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
-    klanten = service.werkvoorraad_overzicht(
-        administratie_ids_met_naam=[(a.id, a.naam) for a in administraties]
-    )
+    klanten = service.werkvoorraad_overzicht(administratie_ids_met_naam=[(a.id, a.naam) for a in administraties])
     return schemas.WerkvoorraadOverzichtResponse(
         klanten=[
             schemas.WerkvoorraadKlantResponse(
@@ -435,7 +431,7 @@ def document_opnieuw_extraheren(
     document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentActieResponse:
-    """"Opnieuw extraheren" na een transiënte AI-fout (timeout, 529) — draait de extractie
+    """ "Opnieuw extraheren" na een transiënte AI-fout (timeout, 529) — draait de extractie
     opnieuw zonder her-upload; AVG-gate en key-check gelden onverkort (zie
     service.py::herextraheer_document). Klein-vs-groot-routing net als de upload: een groot
     document komt terug met status extractie_wachtrij en wordt door de worker afgemaakt."""
@@ -549,15 +545,29 @@ def document_boeken(
     """Body optioneel (factuurmatch fase 2): `match_afwijking_bevestigd` is de expliciete
     "boeken ondanks match-afwijking"-bevestiging; zonder die vlag antwoordt een afwijking
     met 409 + de match-cijfers in detail.match (client toont de bevestigingspop-up)."""
+    # Orkestratie (besluit 25-08): mét klaargezette doorbelasting = "Boeken + doorbelasten" in
+    # één gang, zonder = exact de bestaande boek_document-aanroep. Lazy import: geen kring.
+    from app.doorbelasting import orkestratie
+
     try:
-        resultaat = boeken.boek_document(
+        gecombineerd = orkestratie.boek_document_met_doorbelasting(
             administratie_id=administratie_id,
             document_id=document_id,
             actor_id=actor.id,
             match_afwijking_bevestigd=invoer.match_afwijking_bevestigd if invoer else False,
         )
+        resultaat = gecombineerd.boek
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except orkestratie.DoorbelastingChecksNietGroen as exc:
+        # Zelfde 409-vorm als de inkoop-checks: het controlescherm toont de check-rijen.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Boeken geblokkeerd door doorbelasting-checks",
+                "checks": _naar_check_rapport_response(exc.rapport).model_dump(),
+            },
+        ) from exc
     except boeken.MatchAfwijkingBevestigingVereist as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -587,6 +597,9 @@ def document_boeken(
         status=resultaat.status.value,
         rlz_document_id=resultaat.rlz_document_id,
         rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
+        doorbelasting_run_id=gecombineerd.doorbelasting_run_id,
+        doorbelasting=gecombineerd.doorbelasting,
+        doorbelasting_fout=gecombineerd.doorbelasting_fout,
     )
 
 
@@ -688,7 +701,11 @@ def document_tegenboeken(
                 "checks": _naar_check_rapport_response(exc.rapport).model_dump(),
             },
         ) from exc
-    except (tegenboeken.OngeldigeTegenboeking, tegenboeken.TegenboekenNietToegestaan, tegenboeken.TegenboekingBestaatAl) as exc:
+    except (
+        tegenboeken.OngeldigeTegenboeking,
+        tegenboeken.TegenboekenNietToegestaan,
+        tegenboeken.TegenboekingBestaatAl,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except GeenRlzCredentials as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
@@ -720,9 +737,7 @@ def factuurmatch_kandidaat_staten(
     staten = factuurmatch_pipeline.kandidaat_staten_voor_document(
         administratie_id=administratie_id, document_id=document_id
     )
-    return schemas.KandidaatStatenResponse(
-        staten=[schemas.KandidaatStaatDto(**s.__dict__) for s in staten]
-    )
+    return schemas.KandidaatStatenResponse(staten=[schemas.KandidaatStaatDto(**s.__dict__) for s in staten])
 
 
 @router.post(
@@ -824,7 +839,7 @@ def factuurmatch_mail_verzenden(
     return schemas.MatchMailVerzondenResponse(verzonden_aan=verzonden_aan)
 
 
-def _naar_vraag_response(data: vragen.VraagData) -> schemas.VraagResponse:
+def _naar_vraag_response(data: vragen.VraagData, actor_id: uuid.UUID | None = None) -> schemas.VraagResponse:
     return schemas.VraagResponse(
         id=data.id,
         document_id=data.document_id,
@@ -843,6 +858,18 @@ def _naar_vraag_response(data: vragen.VraagData) -> schemas.VraagResponse:
         ingetrokken_door=data.ingetrokken_door,
         ingetrokken_op=data.ingetrokken_op,
         ingetrokken_reden=data.ingetrokken_reden,
+        aan_de_beurt=data.aan_de_beurt,
+        afgehandeld_door=data.afgehandeld_door,
+        afgehandeld_op=data.afgehandeld_op,
+        berichten=[
+            schemas.VraagBerichtResponse(id=b.id, auteur_id=b.auteur_id, tekst=b.tekst, geplaatst_op=b.geplaatst_op)
+            for b in data.berichten
+        ],
+        mag_afhandelen=(
+            data.status == VraagStatus.OPEN.value
+            and actor_id is not None
+            and vragen.mag_afhandelen(data.gesteld_door, data.toegewezen_aan, actor_id)
+        ),
     )
 
 
@@ -876,36 +903,63 @@ def vraag_stellen(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except (vragen.ErIsAlEenOpenVraag, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_vraag_response(data)
+    return _naar_vraag_response(data, actor.id)
 
 
 @router.post(
-    "/administraties/{administratie_id}/vragen/{vraag_id}/beantwoorden",
+    "/administraties/{administratie_id}/vragen/{vraag_id}/berichten",
     response_model=schemas.VraagResponse,
+    status_code=status.HTTP_201_CREATED,
 )
-def vraag_beantwoorden(
+def vraag_bericht_plaatsen(
     administratie_id: uuid.UUID,
     vraag_id: uuid.UUID,
-    invoer: schemas.VraagBeantwoordenInput,
+    invoer: schemas.VraagBerichtInput,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.VraagResponse:
-    """Antwoord vastleggen op de vraag-rij zelf (historie blijft) en het document terug naar de
-    herkomst-status van vóór de vraag (status_voor_vraag) — boeken is daarna weer bereikbaar via
-    de normale route."""
+    """Bijdrage in de dialoog (besluit Peter 25-08): append-only bericht, de vraag blijft open en
+    het document geblokkeerd; "aan de beurt" wisselt en Document.toegewezen_aan volgt (de
+    bestaande melding). Alleen "Afgehandeld" door de vraagsteller sluit de thread."""
     try:
-        data = vragen.beantwoord_vraag(
-            administratie_id=administratie_id,
-            vraag_id=vraag_id,
-            actor_id=actor.id,
-            antwoord_tekst=invoer.antwoord_tekst,
+        data = vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=vraag_id, actor_id=actor.id, tekst=invoer.tekst
         )
     except (vragen.VraagNietGevonden, service.DocumentNietGevonden) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except vragen.AntwoordTekstVerplicht as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except vragen.VraagNietOpen as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_vraag_response(data, actor.id)
+
+
+@router.post(
+    "/administraties/{administratie_id}/vragen/{vraag_id}/afhandelen",
+    response_model=schemas.VraagResponse,
+)
+def vraag_afhandelen(
+    administratie_id: uuid.UUID,
+    vraag_id: uuid.UUID,
+    invoer: schemas.VraagAfhandelenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VraagResponse:
+    """ "Afgehandeld" (besluit Peter 25-08): uitsluitend de oorspronkelijke vraagsteller (403 voor
+    ieder ander; systeem-vraag: de toegewezene). Sluit de thread en zet het document terug naar de
+    herkomst-status van vóór de vraag — boeken is daarna weer bereikbaar via de normale route."""
+    try:
+        data = vragen.handel_vraag_af(
+            administratie_id=administratie_id,
+            vraag_id=vraag_id,
+            actor_id=actor.id,
+            slotbericht=invoer.slotbericht,
+        )
+    except (vragen.VraagNietGevonden, service.DocumentNietGevonden) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except vragen.AlleenVraagstellerMagAfhandelen as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except (vragen.VraagNietOpen, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_vraag_response(data)
+    return _naar_vraag_response(data, actor.id)
 
 
 @router.post(
@@ -929,7 +983,7 @@ def vraag_intrekken(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (vragen.VraagNietOpen, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_vraag_response(data)
+    return _naar_vraag_response(data, actor.id)
 
 
 @router.get(
@@ -945,7 +999,7 @@ def vragen_lijst(
     """Vragen van één administratie, nieuwste eerst (voedt de #vragen-view; optioneel gefilterd
     op status en/of document — het controlescherm haalt zo de open vraag van één document op)."""
     data = vragen.lijst_vragen(administratie_id=administratie_id, status=vraag_status, document_id=document_id)
-    return schemas.VraagLijstResponse(vragen=[_naar_vraag_response(v) for v in data])
+    return schemas.VraagLijstResponse(vragen=[_naar_vraag_response(v, actor.id) for v in data])
 
 
 def _naar_afwijzing_response(data: afwijzen.AfwijzingData) -> schemas.AfwijzingResponse:
@@ -1143,9 +1197,7 @@ def iban_accorderingen_lijst(
     data = iban_accordering.lijst_accorderingen(
         administratie_id=administratie_id, status=accordering_status, document_id=document_id
     )
-    return schemas.IbanAccorderingLijstResponse(
-        accorderingen=[_naar_iban_accordering_response(a) for a in data]
-    )
+    return schemas.IbanAccorderingLijstResponse(accorderingen=[_naar_iban_accordering_response(a) for a in data])
 
 
 @router.get(

@@ -345,6 +345,12 @@ export interface BoekenResponseDto {
   status: string
   rlz_document_id: string
   rlz_boekstuknummer: string | null
+  /** "Boeken + doorbelasten" (besluit 25-08): resultaat per doelentiteit (mapping-id → status)
+   * van de klaargezette doorbelasting; null = er was geen. */
+  doorbelasting_run_id?: string | null
+  doorbelasting?: Record<string, string> | null
+  /** Zichtbare fout als de doorbelasting ná de geslaagde inkoopboeking (deels) mislukte. */
+  doorbelasting_fout?: string | null
 }
 
 export interface ProjectVerplichtDto {
@@ -386,7 +392,9 @@ export interface VraagDto {
   /** Totaalbedrag uit het boekvoorstel (Decimal serialiseert als string), null zonder voorstel. */
   totaalbedrag: string | null
   vraag_tekst: string
-  status: 'open' | 'beantwoord' | 'ingetrokken'
+  /** 'beantwoord' = legacy (één-antwoord-model vóór migratie 0064); nieuwe vragen sluiten met
+   * 'afgehandeld' (besluit Peter 25-08: alleen de vraagsteller). */
+  status: 'open' | 'beantwoord' | 'ingetrokken' | 'afgehandeld'
   status_voor_vraag: string
   gesteld_door: string
   gesteld_op: string
@@ -397,6 +405,20 @@ export interface VraagDto {
   ingetrokken_door: string | null
   ingetrokken_op: string | null
   ingetrokken_reden: string | null
+  /** Dialoog (0064): wie aan zet is, afhandeling, de thread (oudste eerst) en de server-side
+   * poort-uitkomst voor de "Afgehandeld"-knop (UI-hint — de server hertoetst). */
+  aan_de_beurt: string
+  afgehandeld_door: string | null
+  afgehandeld_op: string | null
+  berichten: VraagBerichtDto[]
+  mag_afhandelen: boolean
+}
+
+export interface VraagBerichtDto {
+  id: string
+  auteur_id: string
+  tekst: string
+  geplaatst_op: string
 }
 
 export interface VraagLijstDto {

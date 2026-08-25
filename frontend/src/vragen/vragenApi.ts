@@ -6,7 +6,7 @@ import type { EigenaarDto, MedewerkersLijstDto, VraagDto, VraagLijstDto } from '
 
 export function haalVragenOp(
   administratieId: string,
-  opties: { status?: 'open' | 'beantwoord' | 'ingetrokken'; documentId?: string } = {},
+  opties: { status?: 'open' | 'beantwoord' | 'ingetrokken' | 'afgehandeld'; documentId?: string } = {},
 ): Promise<VraagLijstDto> {
   const params = new URLSearchParams()
   if (opties.status) params.set('vraag_status', opties.status)
@@ -23,10 +23,14 @@ export function stelVraag(
   return apiPostJson<VraagDto>(`/administraties/${administratieId}/documenten/${documentId}/vraag`, invoer)
 }
 
-export function beantwoordVraag(administratieId: string, vraagId: string, antwoordTekst: string): Promise<VraagDto> {
-  return apiPostJson<VraagDto>(`/administraties/${administratieId}/vragen/${vraagId}/beantwoorden`, {
-    antwoord_tekst: antwoordTekst,
-  })
+/** Bijdrage in de dialoog (besluit Peter 25-08): de vraag blijft open, "aan de beurt" wisselt. */
+export function plaatsBericht(administratieId: string, vraagId: string, tekst: string): Promise<VraagDto> {
+  return apiPostJson<VraagDto>(`/administraties/${administratieId}/vragen/${vraagId}/berichten`, { tekst })
+}
+
+/** "Afgehandeld" — uitsluitend de vraagsteller (server: 403 voor ieder ander); optioneel slotbericht. */
+export function handelVraagAf(administratieId: string, vraagId: string, slotbericht: string | null): Promise<VraagDto> {
+  return apiPostJson<VraagDto>(`/administraties/${administratieId}/vragen/${vraagId}/afhandelen`, { slotbericht })
 }
 
 export function trekVraagIn(administratieId: string, vraagId: string, reden: string | null): Promise<VraagDto> {

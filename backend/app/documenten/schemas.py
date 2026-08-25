@@ -311,6 +311,12 @@ class BoekenResponse(BaseModel):
     status: str
     rlz_document_id: uuid.UUID
     rlz_boekstuknummer: str | None = None
+    # "Boeken + doorbelasten" (besluit 25-08): resultaat per doelentiteit van de klaargezette
+    # doorbelasting (None = er was geen), en een zichtbare fout als de doorbelasting ná de
+    # geslaagde inkoopboeking (deels) mislukte — nooit stil.
+    doorbelasting_run_id: uuid.UUID | None = None
+    doorbelasting: dict[str, str] | None = None
+    doorbelasting_fout: str | None = None
 
 
 class VraagStellenInput(StrikteInvoer):
@@ -322,8 +328,16 @@ class VraagStellenInput(StrikteInvoer):
     toegewezen_aan: uuid.UUID | None = None
 
 
-class VraagBeantwoordenInput(StrikteInvoer):
-    antwoord_tekst: str
+class VraagBerichtInput(StrikteInvoer):
+    """Bijdrage in de dialoog (besluit Peter 25-08): tekst verplicht, de vraag blijft open."""
+
+    tekst: str
+
+
+class VraagAfhandelenInput(StrikteInvoer):
+    """ "Afgehandeld" — alleen de vraagsteller; optioneel slotbericht in de thread."""
+
+    slotbericht: str | None = None
 
 
 class VraagIntrekkenInput(StrikteInvoer):
@@ -331,6 +345,13 @@ class VraagIntrekkenInput(StrikteInvoer):
     maar wordt hoe dan ook in het audit_event vastgelegd."""
 
     reden: str | None = None
+
+
+class VraagBerichtResponse(BaseModel):
+    id: uuid.UUID
+    auteur_id: uuid.UUID
+    tekst: str
+    geplaatst_op: datetime
 
 
 class VraagResponse(BaseModel):
@@ -351,6 +372,13 @@ class VraagResponse(BaseModel):
     ingetrokken_door: uuid.UUID | None = None
     ingetrokken_op: datetime | None = None
     ingetrokken_reden: str | None = None
+    # Dialoog (migratie 0064): wie aan zet is, afhandeling, de thread (oudste eerst) en de
+    # server-side poort-uitkomst voor de "Afgehandeld"-knop (UI-hint; de server hertoetst).
+    aan_de_beurt: uuid.UUID
+    afgehandeld_door: uuid.UUID | None = None
+    afgehandeld_op: datetime | None = None
+    berichten: list[VraagBerichtResponse] = []
+    mag_afhandelen: bool = False
 
 
 class VraagLijstResponse(BaseModel):

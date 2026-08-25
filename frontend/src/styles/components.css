@@ -773,6 +773,36 @@ body.dark .combobox-listbox {
   display: flex;
   gap: 8px;
   margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* Dialoog (besluit Peter 25-08): openingsvraag + berichten chronologisch, nieuwste onderaan;
+   elke bijdrage draagt auteur + tijdstip. Antwoorden krijgen een neutrale achtergrond, alleen
+   de openingsvraag houdt de rode markering. */
+.q-thread {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.q-bericht .q-auteur {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.q-bericht .q-tijd {
+  color: var(--faint, var(--muted));
+  margin-left: 6px;
+}
+
+.q-bericht:not(.q-vraag) .vraagtekst {
+  background: var(--panel-2, var(--panel2, #eef0f3));
+  border: 1px solid var(--border);
+  margin: 4px 0 0 18px;
 }
 
 .q-answer input {

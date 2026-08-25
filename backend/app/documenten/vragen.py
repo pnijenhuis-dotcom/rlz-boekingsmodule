@@ -1,10 +1,21 @@
 """Vragenworkflow (CLAUDE.md domeinbeslissing, mockup #vragen + #vraagmodal): een vraag blokkeert
 het boeken van het document (DocumentStatus.VRAAG_OPEN — boeken.py laat een boekpoging vanuit die
 status niet toe), is toegewezen aan één medewerker (default: de administratie-eigenaar, mockup
-Instellingen "Eigenaar (krijgt vragen)") en beantwoorden of intrekken zet het document terug naar
+Instellingen "Eigenaar (krijgt vragen)") en afhandelen of intrekken zet het document terug naar
 exact de status van vóór de vraag (vraag.status_voor_vraag: te_controleren, handmatig_afmaken of
 klaar_om_te_boeken), waarna de normale route naar boeken weer open is. Intrekken en stellen vanuit
 klaar_om_te_boeken zijn bewuste uitbreidingen op de goedgekeurde mockup — zie docs/BESLISSINGEN.md.
+
+DIALOOG (besluit Peter 25-08, RLZ-feedbackronde punt B, migratie 0064 — herziet het één-antwoord-
+model van 14-07): een vraag is een thread. Iedereen binnen de scope kan een bericht plaatsen
+(`plaats_bericht`, append-only in `vraag_bericht`); na elk bericht wisselt "aan de beurt" naar de
+andere kant van de dialoog en Document.toegewezen_aan (de bestaande melding: werkvoorraad-kolom
+"Toegewezen" + tellers) volgt mee. De vraag blijft het boeken blokkeren tot de OORSPRONKELIJKE
+vraagsteller op "Afgehandeld" drukt (`handel_vraag_af`) — niet al bij het eerste antwoord. Enige
+uitzondering: een automatische vraag van de systeem-actor (omzet-/verkoop-autovraag) heeft geen
+menselijke vraagsteller; dan mag de toegewezene afhandelen, anders zou zo'n vraag nooit dicht
+kunnen. Legacy-rijen met status 'beantwoord' blijven staan; hun oude antwoord verschijnt als
+laatste bericht in de thread.
 
 "Antwoord voedt het geheugen" loopt in v1 via de bestaande boek-leerlus (app/geheugen/leerlus.py):
 het antwoord leidt tot een correctie in het boekvoorstel + boeken, en dát legt de gekozen GB/btw
@@ -25,7 +36,8 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerAdministratie, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
-from app.documenten.models import Boekvoorstel, Document, DocumentStatus, Vraag, VraagStatus
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten.models import Boekvoorstel, Document, DocumentStatus, Vraag, VraagBericht, VraagStatus
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
 from app.documenten.statusmachine import OngeldigeStatusovergang
 
@@ -39,7 +51,12 @@ class VraagTekstVerplicht(VraagFout):
 
 
 class AntwoordTekstVerplicht(VraagFout):
-    """Beantwoorden zonder antwoordtekst wordt geweigerd."""
+    """Een bericht zonder tekst wordt geweigerd."""
+
+
+class AlleenVraagstellerMagAfhandelen(VraagFout):
+    """ "Afgehandeld" is uitsluitend aan de oorspronkelijke vraagsteller (besluit Peter 25-08);
+    bij een automatische vraag van de systeem-actor aan de toegewezene."""
 
 
 class ErIsAlEenOpenVraag(VraagFout):
@@ -61,8 +78,8 @@ class VraagNietGevonden(VraagFout):
 
 
 class VraagNietOpen(VraagFout):
-    """De vraag is al beantwoord of ingetrokken — alleen een open vraag kan beantwoord of
-    ingetrokken worden."""
+    """De vraag is al afgehandeld of ingetrokken — alleen op een open vraag kan gereageerd,
+    afgehandeld of ingetrokken worden."""
 
 
 # De enige herkomsten waarvandaan een vraag gesteld kan worden: beantwoorden/intrekken moet de
@@ -77,6 +94,16 @@ _HERSTELBARE_HERKOMSTEN = frozenset(
         DocumentStatus.KLAAR_OM_TE_BOEKEN,
     }
 )
+
+
+@dataclass(frozen=True)
+class BerichtData:
+    """Eén bijdrage in de dialoog (detached)."""
+
+    id: uuid.UUID
+    auteur_id: uuid.UUID
+    tekst: str
+    geplaatst_op: datetime
 
 
 @dataclass(frozen=True)
@@ -102,9 +129,46 @@ class VraagData:
     ingetrokken_door: uuid.UUID | None
     ingetrokken_op: datetime | None
     ingetrokken_reden: str | None
+    # Dialoog (0064): wie aan zet is, afhandeling en de berichten in chronologische volgorde
+    # (oudste eerst — de UI toont het nieuwste onderaan).
+    aan_de_beurt: uuid.UUID
+    afgehandeld_door: uuid.UUID | None
+    afgehandeld_op: datetime | None
+    berichten: tuple[BerichtData, ...]
 
 
-def _naar_data(vraag: Vraag, document: Document, totaalbedrag: Decimal | None) -> VraagData:
+def _aan_de_beurt(vraag: Vraag) -> uuid.UUID:
+    """NULL op rijen van vóór migratie 0064 betekent: de toegewezene is aan zet."""
+    return vraag.aan_de_beurt or vraag.toegewezen_aan
+
+
+def _berichten_van(vraag: Vraag, berichten: list[VraagBericht]) -> tuple[BerichtData, ...]:
+    """Berichten van deze vraag, chronologisch. Een legacy-antwoord ('beantwoord', vóór 0064)
+    verschijnt als laatste bericht zodat de historie in één vorm leesbaar blijft."""
+    lijst = [
+        BerichtData(id=b.id, auteur_id=b.auteur_id, tekst=b.tekst, geplaatst_op=b.geplaatst_op)
+        for b in sorted(berichten, key=lambda b: (b.geplaatst_op, b.id.hex))
+    ]
+    if (
+        vraag.status == VraagStatus.BEANTWOORD.value
+        and vraag.antwoord_tekst
+        and vraag.beantwoord_door is not None
+        and vraag.beantwoord_op is not None
+    ):
+        lijst.append(
+            BerichtData(
+                id=vraag.id,
+                auteur_id=vraag.beantwoord_door,
+                tekst=vraag.antwoord_tekst,
+                geplaatst_op=vraag.beantwoord_op,
+            )
+        )
+    return tuple(lijst)
+
+
+def _naar_data(
+    vraag: Vraag, document: Document, totaalbedrag: Decimal | None, berichten: list[VraagBericht] | None = None
+) -> VraagData:
     return VraagData(
         id=vraag.id,
         document_id=vraag.document_id,
@@ -123,7 +187,20 @@ def _naar_data(vraag: Vraag, document: Document, totaalbedrag: Decimal | None) -
         ingetrokken_door=vraag.ingetrokken_door,
         ingetrokken_op=vraag.ingetrokken_op,
         ingetrokken_reden=vraag.ingetrokken_reden,
+        aan_de_beurt=_aan_de_beurt(vraag),
+        afgehandeld_door=vraag.afgehandeld_door,
+        afgehandeld_op=vraag.afgehandeld_op,
+        berichten=_berichten_van(vraag, berichten or []),
     )
+
+
+def _berichten_per_vraag(session: Session, vraag_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[VraagBericht]]:
+    per_vraag: dict[uuid.UUID, list[VraagBericht]] = {vid: [] for vid in vraag_ids}
+    if not vraag_ids:
+        return per_vraag
+    for bericht in session.scalars(select(VraagBericht).where(VraagBericht.vraag_id.in_(vraag_ids))):
+        per_vraag.setdefault(bericht.vraag_id, []).append(bericht)
+    return per_vraag
 
 
 def _controleer_toegewezene_scope(session: Session, *, gebruiker_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
@@ -173,9 +250,7 @@ def stel_vraag(
             # Zelfde foutsoort als de statusmachine zelf zou geven — de extra poort hier dekt
             # uitsluitend herkomsten mét een toegestane heenweg maar zonder herstel-terugweg
             # (extractie_bezig), zodat een vraag nooit onbeantwoordbaar/onintrekbaar wordt.
-            raise OngeldigeStatusovergang(
-                f"Vanuit status {document.status.value} kan geen vraag gesteld worden"
-            )
+            raise OngeldigeStatusovergang(f"Vanuit status {document.status.value} kan geen vraag gesteld worden")
 
         toegewezene = toegewezen_aan
         if toegewezene is None:
@@ -194,6 +269,7 @@ def stel_vraag(
             gesteld_door=actor_id,
             vraag_tekst=tekst,
             toegewezen_aan=toegewezene,
+            aan_de_beurt=toegewezene,
             status_voor_vraag=document.status.value,
         )
         session.add(vraag)
@@ -249,31 +325,106 @@ def _open_vraag_met_document(session, *, administratie_id: uuid.UUID, vraag_id: 
     return vraag, document
 
 
-def beantwoord_vraag(
-    *, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID, antwoord_tekst: str
-) -> VraagData:
-    """Legt het antwoord vast op dezelfde vraag-rij (status open -> beantwoord, nooit een delete)
-    en zet het document terug naar exact de herkomst-status van vóór de vraag
-    (vraag.status_voor_vraag) — een handmatig_afmaken- of klaar_om_te_boeken-document verliest
-    zijn context dus niet; boeken is daarna weer bereikbaar via de normale route.
-    Document.toegewezen_aan gaat terug naar leeg (de toewijzing hoorde bij de open vraag)."""
-    antwoord = antwoord_tekst.strip()
-    if not antwoord:
-        raise AntwoordTekstVerplicht("Een antwoord zonder tekst is niet toegestaan")
+def plaats_bericht(*, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID, tekst: str) -> VraagData:
+    """Plaatst een bijdrage in de dialoog (append-only rij in vraag_bericht). De vraag blijft OPEN
+    en het document blijft geblokkeerd — alleen `handel_vraag_af` sluit de thread. Na het bericht
+    wisselt "aan de beurt": schrijft de vraagsteller, dan is de toegewezene aan zet; schrijft
+    iemand anders (de toegewezene of een collega die namens hem antwoordt), dan de vraagsteller.
+    Document.toegewezen_aan volgt mee — dat ís de bestaande melding (werkvoorraad-kolom
+    "Toegewezen" + vragen-teller). Bij een systeem-vraag (geen menselijke vraagsteller) blijft
+    de toegewezene aan zet."""
+    inhoud = tekst.strip()
+    if not inhoud:
+        raise AntwoordTekstVerplicht("Een bericht zonder tekst is niet toegestaan")
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         vraag, document = _open_vraag_met_document(session, administratie_id=administratie_id, vraag_id=vraag_id)
+        bericht = VraagBericht(
+            id=uuid.uuid4(),
+            administratie_id=administratie_id,
+            vraag_id=vraag.id,
+            auteur_id=actor_id,
+            tekst=inhoud,
+            geplaatst_op=datetime.now(UTC),
+        )
+        session.add(bericht)
 
-        vraag.status = VraagStatus.BEANTWOORD.value
-        vraag.antwoord_tekst = antwoord
-        vraag.beantwoord_door = actor_id
-        vraag.beantwoord_op = datetime.now(UTC)
+        vorige_beurt = _aan_de_beurt(vraag)
+        # Systeem-vraag (geen menselijke vraagsteller) of de vraagsteller zelf schrijft → de
+        # toegewezene is aan zet; ieder ander (toegewezene of collega namens hem) → de vraagsteller.
+        if vraag.gesteld_door == SYSTEEM_ACTOR_ID or actor_id == vraag.gesteld_door:
+            nieuwe_beurt = vraag.toegewezen_aan
+        else:
+            nieuwe_beurt = vraag.gesteld_door
+        vraag.aan_de_beurt = nieuwe_beurt
+        document.toegewezen_aan = nieuwe_beurt
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="vraag_bericht",
+            record_id=bericht.id,
+            actie="vraag_bericht_geplaatst",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"aan_de_beurt": str(vorige_beurt)},
+            nieuwe_waarde={
+                "vraag_id": str(vraag.id),
+                "document_id": str(document.id),
+                "tekst": inhoud,
+                "aan_de_beurt": str(nieuwe_beurt),
+            },
+            administratie_id=administratie_id,
+        )
+        session.flush()
+        berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
+        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
+
+
+def mag_afhandelen(vraag_gesteld_door: uuid.UUID, vraag_toegewezen_aan: uuid.UUID, actor_id: uuid.UUID) -> bool:
+    """De ene bron voor de "Afgehandeld"-poort (server én UI-hint): uitsluitend de oorspronkelijke
+    vraagsteller; bij een automatische vraag van de systeem-actor de toegewezene."""
+    if vraag_gesteld_door == SYSTEEM_ACTOR_ID:
+        return actor_id == vraag_toegewezen_aan
+    return actor_id == vraag_gesteld_door
+
+
+def handel_vraag_af(
+    *, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID, slotbericht: str | None = None
+) -> VraagData:
+    """Sluit de dialoog (status open -> afgehandeld, nooit een delete) en zet het document terug
+    naar exact de herkomst-status van vóór de vraag (vraag.status_voor_vraag) — boeken is daarna
+    weer bereikbaar via de normale route. UITSLUITEND de oorspronkelijke vraagsteller (besluit
+    Peter 25-08; systeem-vraag: de toegewezene). Optioneel slotbericht gaat als gewone bijdrage
+    de thread in. "De uitkomst voedt het boekingsgeheugen zoals nu" = via de boek-leerlus, geen
+    apart pad hier. Document.toegewezen_aan gaat terug naar leeg."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        vraag, document = _open_vraag_met_document(session, administratie_id=administratie_id, vraag_id=vraag_id)
+        if not mag_afhandelen(vraag.gesteld_door, vraag.toegewezen_aan, actor_id):
+            raise AlleenVraagstellerMagAfhandelen("Alleen de vraagsteller kan deze vraag als afgehandeld markeren")
+
+        slot = slotbericht.strip() if slotbericht and slotbericht.strip() else None
+        if slot:
+            session.add(
+                VraagBericht(
+                    id=uuid.uuid4(),
+                    administratie_id=administratie_id,
+                    vraag_id=vraag.id,
+                    auteur_id=actor_id,
+                    tekst=slot,
+                    geplaatst_op=datetime.now(UTC),
+                )
+            )
+        vraag.status = VraagStatus.AFGEHANDELD.value
+        vraag.afgehandeld_door = actor_id
+        vraag.afgehandeld_op = datetime.now(UTC)
+        vraag.aan_de_beurt = actor_id
         _schrijf_overgang(
             session,
             document=document,
             naar=DocumentStatus(vraag.status_voor_vraag),
             actor_id=actor_id,
-            detail={"vraag_id": str(vraag.id), "vraag_beantwoord": True},
+            detail={"vraag_id": str(vraag.id), "vraag_afgehandeld": True},
         )
         document.toegewezen_aan = None
         record_audit_event(
@@ -282,19 +433,20 @@ def beantwoord_vraag(
             module="boekhouding",
             tabel="vraag",
             record_id=vraag.id,
-            actie="vraag_beantwoord",
+            actie="vraag_afgehandeld",
             correlatie_id=uuid.uuid4(),
             oude_waarde={"status": VraagStatus.OPEN.value},
             nieuwe_waarde={
-                "status": VraagStatus.BEANTWOORD.value,
-                "antwoord_tekst": antwoord,
-                "beantwoord_door": str(actor_id),
+                "status": VraagStatus.AFGEHANDELD.value,
+                "afgehandeld_door": str(actor_id),
+                "slotbericht": slot,
                 "document_hersteld_naar": vraag.status_voor_vraag,
             },
             administratie_id=administratie_id,
         )
         session.flush()
-        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id))
+        berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
+        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
 
 
 def trek_vraag_in(
@@ -339,7 +491,8 @@ def trek_vraag_in(
             administratie_id=administratie_id,
         )
         session.flush()
-        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id))
+        berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
+        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
 
 
 def lijst_vragen(
@@ -362,4 +515,9 @@ def lijst_vragen(
         if document_id is not None:
             query = query.where(Vraag.document_id == document_id)
         query = query.order_by(Vraag.gesteld_op.desc())
-        return [_naar_data(vraag, document, totaalbedrag) for vraag, document, totaalbedrag in session.execute(query)]
+        rijen = list(session.execute(query))
+        berichten = _berichten_per_vraag(session, [vraag.id for vraag, _document, _bedrag in rijen])
+        return [
+            _naar_data(vraag, document, totaalbedrag, berichten.get(vraag.id, []))
+            for vraag, document, totaalbedrag in rijen
+        ]

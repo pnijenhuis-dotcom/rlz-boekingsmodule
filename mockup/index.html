@@ -498,15 +498,33 @@
             </table>
             </div>
             <div class="hint">Grootboek- én btw-lijsten komen live uit RLZ van deze administratie (alle tarieven, incl. verlegd/EU/vrijgesteld). Correcties die je hier maakt wegen zwaarder dan oude historie: pas je Ziggo één keer aan van Communicatie naar Internet, dan is Internet vanaf dat moment de eerste suggestie.</div>
+            <!-- HERZIEN 25-08 (besluit Peter, feedbackronde punt A — herziet 13-08 "actie op een GEBOEKT document"):
+                 doorbelasten zit weer ín de boekflow als OPTIONEEL blok "Doorbelasten na boeken" (vinkje → verdeel-UI
+                 inline op het nog niet geboekte document, verdeling wordt als 'klaargezet' aan het document bewaard).
+                 Boek-checks én doorbelasting-checks moeten samen groen zijn; de knop heet dan "Boeken + doorbelasten".
+                 Bij klant-accordering gaat de klaargezette verdeling mee (accordeur ziet die alleen-lezen) en boekt alles
+                 ná het laatste akkoord in één gang. De losse actie "Doorbelasten…" op een geboekt document blijft bestaan. -->
+            <div class="panel" style="margin-top:12px;padding:12px 14px">
+              <h2 style="font-size:13.5px;margin:0 0 6px">Doorbelasten na boeken <span class="chip klaar">klaargezet</span></h2>
+              <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text)"><input type="checkbox" checked style="width:auto"> Deze factuur na het boeken doorbelasten aan één of meer doelentiteiten (Kempen-patroon) — de knop wordt "Boeken + doorbelasten".</label>
+              <table class="lines" style="margin-top:8px"><tr><th>Regel</th><th>Doelentiteit</th><th>%</th><th class="amount">Bedrag excl.</th><th>GB in doeladministratie</th></tr>
+                <tr><td>Steigermateriaal</td><td>Kempen Vastgoed B.V.</td><td>60</td><td class="amount">€ 1.020,00</td><td>4310 · Onderhoud gebouwen</td></tr>
+                <tr><td></td><td>Kempen Bouw B.V.</td><td>40</td><td class="amount">€ 680,00</td><td>4600 · Materialen</td></tr>
+              </table>
+              <div class="hint" style="margin:6px 0 0">Preview per doelentiteit: verkoopfactuur (kosten + provisie 5%, btw 21%) in Kempen Facilities + spiegel-inkoopfactuur in de doeladministratie. Faalt een deel ná de inkoopboeking → zichtbaar op het document (half-geboekt-patroon, bestaande herstel/storno).</div>
+            </div>
             <div class="hint" style="margin-top:6px"><b>Centrale inkoop:</b> elke regel moet volledig (100%) aan één of meer entiteiten zijn toegewezen — anders blokkeert boeken, net als bij een ontbrekend project. Alleen administraties op de whitelist van deze klant zijn kiesbaar. Bij het boeken ontstaan naast deze inkoopfactuur automatisch per betrokken entiteit een <b>doorbelastings-verkoopfactuur</b> (Kempen Facilities, mét btw — geen fiscale eenheid) en de <b>spiegel-inkoopfactuur</b> in de doeladministratie: hier 1 + 2×3 = 7 documenten, geboekt als één bewaakte transactie met zichtbare status per deelboeking. Het boekingsgeheugen leert de entiteit(verdeling) per leverancier, zoals bij grootboek en btw.</div>
           </div>
 
           <div class="panel">
-            <h2>Tijdlijn</h2>
+            <!-- HERZIEN 25-08 (punt B3): twee tabs — Tijdlijn (statusgebeurtenissen, zoals hiervoor) en
+                 Opmerkingen (de vraag/antwoord-dialoog van dít document, nieuwste onderaan, mét Afgehandeld-status). -->
+            <div class="segment" style="margin-bottom:10px"><button class="actief">Tijdlijn</button><button>Opmerkingen (1) <span class="chip vraag" style="margin-left:6px">open</span></button></div>
             <table class="lines">
               <tr><td style="white-space:nowrap;color:var(--muted)">29 jun · 14:22</td><td>Binnengekomen via <b>facturen@ak-nijenhuis.nl</b> (afzender: administratie@bouwmaat.nl)</td></tr>
               <tr><td style="white-space:nowrap;color:var(--muted)">29 jun · 14:23</td><td>AI-extractie afgerond · toegewezen aan <b>Kempen Facilities B.V.</b> o.b.v. tenaamstelling (centrale inkoop)</td></tr>
-              <tr><td style="white-space:nowrap;color:var(--muted)">30 jun · 09:05</td><td>Vraag gesteld door <b>M. de Boer</b> → beantwoord door <b>P. Nijenhuis</b> (30 jun · 11:47)</td></tr>
+              <tr><td style="white-space:nowrap;color:var(--muted)">30 jun · 09:05</td><td>Vraag gesteld door <b>M. de Boer</b> — aan <b>P. Nijenhuis</b> (dialoog in het tabblad Opmerkingen)</td></tr>
+              <tr><td style="white-space:nowrap;color:var(--muted)">30 jun · 11:47</td><td>Vraag afgehandeld door <b>M. de Boer</b> — terug naar <b>Te controleren</b></td></tr>
               <tr><td style="white-space:nowrap;color:var(--muted)">—</td><td style="color:var(--muted)">Nog te gebeuren: controle → (accordering indien aan) → boeken in RLZ</td></tr>
             </table>
             <div class="hint">Elke stap met datum en tijd, van binnenkomst tot RLZ-boekstuk — ook wie accordeerde (welke laag) en wie boekte. Dezelfde tijdlijn is terug te vinden via Zoeken, ook bij geboekte facturen.</div>
@@ -516,7 +534,7 @@
             <button class="btn secondary" onclick="document.getElementById('afwijsmodal').classList.add('open')">Afwijzen…</button>
             <button class="btn secondary" onclick="document.getElementById('tenaamstellingmodal').classList.add('open')">Verkeerde tenaamstelling…</button>
             <button class="btn warn" onclick="document.getElementById('vraagmodal').classList.add('open')">Vraag stellen…</button>
-            <button class="btn green" onclick="alert('Mockup — gedrag hangt af van de administratie:\n\n• Klant-goedkeuring UIT (zoals hier): direct boeken in RLZ.\n\n• Klant-goedkeuring AAN: knop heet dan \'Ter accordering ✓\' — factuur gaat de goedkeuringsflow in en wordt NA het laatste akkoord automatisch geboekt.\n\n• Centrale inkoop AAN (zoals hier): boeken = 1 inkoopfactuur + per betrokken entiteit een doorbelastings-verkoopfactuur en spiegel-inkoopfactuur (hier 7 documenten), als één bewaakte transactie. Faalt een deelboeking, dan zie je precies welke — nooit een halve doorbelasting zonder spoor.')">Boeken in RLZ ✓</button>
+            <button class="btn green" onclick="alert('Mockup — gedrag hangt af van de administratie:\n\n• Klant-goedkeuring UIT (zoals hier): direct boeken in RLZ.\n\n• Klant-goedkeuring AAN: knop heet dan \'Ter accordering ✓\' — factuur gaat de goedkeuringsflow in en wordt NA het laatste akkoord automatisch geboekt.\n\n• Doorbelasten na boeken AANGEVINKT (zoals hier, besluit 25-08): knop heet \'Boeken + doorbelasten ✓\' — 1 inkoopfactuur + per doelentiteit een doorbelastings-verkoopfactuur en spiegel-inkoopfactuur, in één gang via de bestaande doorbelastingsmotor; boek- én doorbelasting-checks vooraf samen groen. Faalt een deel ná de inkoopboeking, dan zie je precies welke — nooit een halve doorbelasting zonder spoor. Zonder vinkje gewoon \'Boeken in RLZ ✓\'.')">Boeken + doorbelasten ✓</button>
           </div>
         </div>
       </div>
@@ -720,26 +738,38 @@
     </div>
 
     <!-- ================= VRAGEN ================= -->
+    <!-- HERZIEN 25-08 (besluit Peter, RLZ-feedbackronde punt B): een vraag is een DIALOOG — thread
+         met auteur + tijdstip per bijdrage, onbeperkt heen en weer; "Afgehandeld" is uitsluitend
+         voor de oorspronkelijke vraagsteller en pas dán is boeken weer mogelijk (niet al bij het
+         eerste antwoord). Op het controlescherm staat dezelfde thread in het tabblad Opmerkingen. -->
     <div class="view" id="vragen">
       <div class="topbar"><h1>Openstaande vragen</h1></div>
 
       <div class="q-item">
-        <div class="meta"><span class="chip vraag">Open</span> &nbsp; scan_0034.pdf · Kempen Vastgoed B.V. · € 450,00 · gesteld door P. Nijenhuis, 01-07 14:32 · toegewezen aan <b>M. de Boer</b> (eigenaar administratie)</div>
+        <div class="meta"><span class="chip vraag">Open</span> &nbsp; scan_0034.pdf · Kempen Vastgoed B.V. · € 450,00 · gesteld door P. Nijenhuis, 01-07 14:32 · aan <b>M. de Boer</b> (eigenaar administratie) · aan de beurt: <b>P. Nijenhuis</b></div>
+        <div class="meta" style="margin-bottom:0">P. Nijenhuis <span style="color:var(--muted)">01-07 14:32</span></div>
         <div class="vraagtekst">"Handgeschreven bon zonder leveranciersnaam. Weet jij van wie dit is en waar dit op geboekt moet worden?"</div>
-        <div class="q-answer"><input placeholder="Antwoord typen… (mockup)"><button class="btn">Beantwoorden</button><button class="btn secondary">Factuur bekijken</button></div>
+        <div class="meta" style="margin:6px 0 0 18px">M. de Boer <span style="color:var(--muted)">01-07 15:10</span></div>
+        <div class="vraagtekst" style="background:#eef0f3;border:1px solid var(--border);margin:4px 0 0 18px">"Dat is de bon van Bouwmaat voor project 26127 — ik denk 4560 materiaal, maar check even het bedrag."</div>
+        <div class="meta" style="margin:6px 0 0 18px">P. Nijenhuis <span style="color:var(--muted)">01-07 15:20</span></div>
+        <div class="vraagtekst" style="background:#eef0f3;border:1px solid var(--border);margin:4px 0 0 18px">"Bedrag klopt met de bestelbon. Verlegd of 21%?"</div>
+        <div class="q-answer"><input placeholder="Reactie typen… (mockup)"><button class="btn">Reageren</button><button class="btn secondary" title="Alleen de vraagsteller (P. Nijenhuis) ziet deze knop">Afgehandeld…</button><button class="btn secondary">Factuur bekijken</button><button class="btn secondary">Intrekken…</button></div>
       </div>
 
       <div class="q-item">
-        <div class="meta"><span class="chip vraag">Open</span> &nbsp; 2026-0598.pdf · Kempen Groep B.V. · € 1.210,55 · gesteld door M. de Boer, 30-06 09:15 · toegewezen aan <b>P. Nijenhuis</b> (eigenaar administratie)</div>
+        <div class="meta"><span class="chip vraag">Open</span> &nbsp; 2026-0598.pdf · Kempen Groep B.V. · € 1.210,55 · gesteld door M. de Boer, 30-06 09:15 · aan <b>P. Nijenhuis</b> (eigenaar administratie) · aan de beurt: <b>P. Nijenhuis</b></div>
         <div class="vraagtekst">"Garage Wolters — is dit onderhoud van de bedrijfsbus (4210) of van de heftruck (4220)? Kenteken staat niet op de factuur."</div>
-        <div class="q-answer"><input placeholder="Antwoord typen… (mockup)"><button class="btn">Beantwoorden</button><button class="btn secondary">Factuur bekijken</button></div>
+        <div class="q-answer"><input placeholder="Reactie typen… (mockup)"><button class="btn">Reageren</button><button class="btn secondary">Factuur bekijken</button><button class="btn secondary">Intrekken…</button></div>
+        <div class="hint" style="margin-top:6px">Ingelogd als P. Nijenhuis (niet de vraagsteller): wél reageren, géén "Afgehandeld" — die knop is alleen voor M. de Boer.</div>
       </div>
 
       <div class="q-item" style="opacity:.6">
-        <div class="meta"><span class="chip geboekt">Beantwoord & geboekt</span> &nbsp; 2026-0571.pdf · Kempen Services B.V. · beantwoord door J. Willems, 26-06</div>
-        <div class="vraagtekst" style="background:#eef0f3">"Abonnement Ziggo — zakelijk of doorbelasten aan huurder?" → <b>"Zakelijk, boeken op 4560."</b></div>
+        <div class="meta"><span class="chip geboekt">Afgehandeld</span> &nbsp; 2026-0571.pdf · Kempen Services B.V. · gesteld door J. Willems, 25-06 · afgehandeld door J. Willems, 26-06</div>
+        <div class="vraagtekst" style="background:#eef0f3">"Abonnement Ziggo — zakelijk of doorbelasten aan huurder?"</div>
+        <div class="vraagtekst" style="background:#eef0f3;border:1px solid var(--border);margin:4px 0 0 18px">P. Nijenhuis, 26-06 08:40 — "Zakelijk, boeken op 4560."</div>
+        <div class="vraagtekst" style="background:#eef0f3;border:1px solid var(--border);margin:4px 0 0 18px">J. Willems, 26-06 09:02 — "Dank, geboekt." <span class="chip geboekt" style="margin-left:6px">slotbericht</span></div>
       </div>
-      <div class="hint">Een factuur met een openstaande vraag kan niet geboekt worden tot de vraag beantwoord is. Het antwoord wordt toegevoegd aan het boekingsgeheugen.</div>
+      <div class="hint">Een factuur met een openstaande vraag kan niet geboekt worden tot de <b>vraagsteller</b> de vraag als afgehandeld markeert (of iemand hem intrekt) — een antwoord alleen deblokkeert niet. Elke bijdrage is append-only met auteur en tijdstip; de uitkomst wordt via de boeking toegevoegd aan het boekingsgeheugen. Werkvoorraad-tellers en "vraag blokkeert boeken" werken ongewijzigd op de thread-status; de melding aan de collega is de bestaande "Toegewezen"-kolom + vragen-teller (volgt "aan de beurt").</div>
     </div>
 
     <!-- ================= PROJECTEN ================= -->

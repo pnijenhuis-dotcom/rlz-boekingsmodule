@@ -69,8 +69,7 @@ def _vraag_audit_acties(admin_engine: Engine, vraag_id: uuid.UUID) -> list[str]:
         return (
             conn.execute(
                 text(
-                    "SELECT actie FROM platform.audit_event WHERE tabel = 'vraag' AND record_id = :id "
-                    "ORDER BY tijdstip"
+                    "SELECT actie FROM platform.audit_event WHERE tabel = 'vraag' AND record_id = :id ORDER BY tijdstip"
                 ),
                 {"id": vraag_id},
             )
@@ -279,7 +278,10 @@ class TestVraagStellen:
         assert _vraag_audit_acties(admin_engine, data.id) == ["vraag_gesteld"]
 
 
-class TestVraagBeantwoorden:
+class TestVraagDialoog:
+    """Dialoog-model (besluit Peter 25-08, migratie 0064): berichten blokkeren níét het boeken
+    (de vraag blijft open), alleen "Afgehandeld" door de vraagsteller herstelt het document."""
+
     @pytest.fixture
     def open_vraag(
         self,
@@ -295,8 +297,43 @@ class TestVraagBeantwoorden:
             vraag_tekst="Zakelijk of doorbelasten aan huurder?",
         )
 
+    def test_bericht_houdt_vraag_open_en_wisselt_de_beurt(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        open_vraag: vragen.VraagData,
+        admin_engine: Engine,
+    ) -> None:
+        assert open_vraag.aan_de_beurt == eigenaar_id
+        # Antwoord van de toegewezene: vraag blijft open, document blijft geblokkeerd, de beurt
+        # (= de bestaande melding: Document.toegewezen_aan) gaat terug naar de vraagsteller.
+        na_antwoord = vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Zakelijk, 4560."
+        )
+        assert na_antwoord.status == VraagStatus.OPEN.value
+        assert [b.tekst for b in na_antwoord.berichten] == ["Zakelijk, 4560."]
+        assert na_antwoord.berichten[0].auteur_id == eigenaar_id
+        assert na_antwoord.aan_de_beurt == gescoopte_gebruiker
+        assert _status(admin_engine, open_vraag.document_id) == DocumentStatus.VRAAG_OPEN.value
+        assert _toegewezen_aan(admin_engine, open_vraag.document_id) == gescoopte_gebruiker
+        with pytest.raises(boeken.OngeldigeBoekpoging):
+            boeken.boek_document(
+                administratie_id=administratie_id, document_id=open_vraag.document_id, actor_id=gescoopte_gebruiker
+            )
+        # Vervolgvraag van de vraagsteller: beurt terug naar de toegewezene, thread chronologisch.
+        na_vervolg = vragen.plaats_bericht(
+            administratie_id=administratie_id,
+            vraag_id=open_vraag.id,
+            actor_id=gescoopte_gebruiker,
+            tekst="En de btw dan?",
+        )
+        assert [b.tekst for b in na_vervolg.berichten] == ["Zakelijk, 4560.", "En de btw dan?"]
+        assert na_vervolg.aan_de_beurt == eigenaar_id
+        assert _toegewezen_aan(admin_engine, open_vraag.document_id) == eigenaar_id
+
     @pytest.mark.parametrize("herkomst", _HERKOMSTEN)
-    def test_herstelt_exact_de_herkomst_status_en_deblokkeert_boeken(
+    def test_afhandelen_herstelt_exact_de_herkomst_status_en_deblokkeert_boeken(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -320,16 +357,16 @@ class TestVraagBeantwoorden:
             actor_id=gescoopte_gebruiker,
             vraag_tekst="Zakelijk of doorbelasten?",
         )
-        data = vragen.beantwoord_vraag(
-            administratie_id=administratie_id,
-            vraag_id=gesteld.id,
-            actor_id=eigenaar_id,
-            antwoord_tekst="Zakelijk, boeken op 4560.",
+        vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=eigenaar_id, tekst="Zakelijk, 4560."
         )
-        assert data.status == VraagStatus.BEANTWOORD.value
-        assert data.antwoord_tekst == "Zakelijk, boeken op 4560."
-        assert data.beantwoord_door == eigenaar_id
-        assert data.beantwoord_op is not None
+        data = vragen.handel_vraag_af(
+            administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=gescoopte_gebruiker, slotbericht="Dank!"
+        )
+        assert data.status == VraagStatus.AFGEHANDELD.value
+        assert data.afgehandeld_door == gescoopte_gebruiker
+        assert data.afgehandeld_op is not None
+        assert [b.tekst for b in data.berichten] == ["Zakelijk, 4560.", "Dank!"]
         assert _status(admin_engine, document_te_controleren) == herkomst.value
         assert _toegewezen_aan(admin_engine, document_te_controleren) is None
 
@@ -341,8 +378,46 @@ class TestVraagBeantwoorden:
                 administratie_id=administratie_id, document_id=document_te_controleren, actor_id=gescoopte_gebruiker
             )
 
+    def test_alleen_vraagsteller_mag_afhandelen(
+        self,
+        administratie_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        open_vraag: vragen.VraagData,
+        admin_engine: Engine,
+    ) -> None:
+        with pytest.raises(vragen.AlleenVraagstellerMagAfhandelen):
+            vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id)
+        assert _status(admin_engine, open_vraag.document_id) == DocumentStatus.VRAAG_OPEN.value
+        assert vragen.mag_afhandelen(open_vraag.gesteld_door, open_vraag.toegewezen_aan, eigenaar_id) is False
+        assert vragen.mag_afhandelen(open_vraag.gesteld_door, open_vraag.toegewezen_aan, open_vraag.gesteld_door)
+
+    def test_systeem_vraag_mag_door_toegewezene_afgehandeld_worden(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        document_te_controleren: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        """Automatische vragen (omzet-/verkoop-autovraag) hebben geen menselijke vraagsteller —
+        zonder deze uitzondering kon zo'n vraag nooit dicht."""
+        from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+        gesteld = vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=document_te_controleren,
+            actor_id=SYSTEEM_ACTOR_ID,
+            vraag_tekst="Categorie zonder mapping",
+            toegewezen_aan=eigenaar_id,
+        )
+        with pytest.raises(vragen.AlleenVraagstellerMagAfhandelen):
+            vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=gescoopte_gebruiker)
+        data = vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=eigenaar_id)
+        assert data.status == VraagStatus.AFGEHANDELD.value
+        assert _status(admin_engine, document_te_controleren) == DocumentStatus.TE_CONTROLEREN.value
+
     @pytest.mark.parametrize("tekst", ["", "   "])
-    def test_antwoord_zonder_tekst_geweigerd(
+    def test_bericht_zonder_tekst_geweigerd(
         self,
         administratie_id: uuid.UUID,
         eigenaar_id: uuid.UUID,
@@ -351,36 +426,69 @@ class TestVraagBeantwoorden:
         tekst: str,
     ) -> None:
         with pytest.raises(vragen.AntwoordTekstVerplicht):
-            vragen.beantwoord_vraag(
-                administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, antwoord_tekst=tekst
+            vragen.plaats_bericht(
+                administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst=tekst
             )
         assert _status(admin_engine, open_vraag.document_id) == DocumentStatus.VRAAG_OPEN.value
 
-    def test_al_beantwoorde_vraag_geweigerd(
-        self, administratie_id: uuid.UUID, eigenaar_id: uuid.UUID, open_vraag: vragen.VraagData
+    def test_afgehandelde_vraag_weigert_bericht_en_herafhandeling(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        open_vraag: vragen.VraagData,
     ) -> None:
-        vragen.beantwoord_vraag(
-            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, antwoord_tekst="Antwoord"
-        )
+        vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker)
         with pytest.raises(vragen.VraagNietOpen):
-            vragen.beantwoord_vraag(
-                administratie_id=administratie_id,
-                vraag_id=open_vraag.id,
-                actor_id=eigenaar_id,
-                antwoord_tekst="Nog een keer",
+            vragen.plaats_bericht(
+                administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Te laat"
+            )
+        with pytest.raises(vragen.VraagNietOpen):
+            vragen.handel_vraag_af(
+                administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker
             )
 
-    def test_audit_event_bij_beantwoorden(
+    def test_audit_events_bij_bericht_en_afhandelen(
         self,
+        gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
         eigenaar_id: uuid.UUID,
         open_vraag: vragen.VraagData,
         admin_engine: Engine,
     ) -> None:
-        vragen.beantwoord_vraag(
-            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, antwoord_tekst="Antwoord"
+        na_bericht = vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Antwoord"
         )
-        assert _vraag_audit_acties(admin_engine, open_vraag.id) == ["vraag_gesteld", "vraag_beantwoord"]
+        vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker)
+        assert _vraag_audit_acties(admin_engine, open_vraag.id) == ["vraag_gesteld", "vraag_afgehandeld"]
+        with admin_engine.connect() as conn:
+            acties = (
+                conn.execute(
+                    text("SELECT actie FROM platform.audit_event WHERE tabel = 'vraag_bericht' AND record_id = :id"),
+                    {"id": na_bericht.berichten[0].id},
+                )
+                .scalars()
+                .all()
+            )
+        assert acties == ["vraag_bericht_geplaatst"]
+
+    def test_berichten_zijn_append_only_voor_de_app_rol(
+        self, administratie_id: uuid.UUID, eigenaar_id: uuid.UUID, open_vraag: vragen.VraagData, app_engine: Engine
+    ) -> None:
+        na_bericht = vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Antwoord"
+        )
+        bericht_id = na_bericht.berichten[0].id
+        for sql in (
+            "UPDATE boekhouding.vraag_bericht SET tekst = 'herschreven' WHERE id = :id",
+            "DELETE FROM boekhouding.vraag_bericht WHERE id = :id",
+        ):
+            with pytest.raises(Exception, match="permission denied"), app_engine.begin() as conn:
+                conn.execute(
+                    text("SELECT set_config('app.current_administratie_id', :adm, true)"),
+                    {"adm": str(administratie_id)},
+                )
+                conn.execute(text(sql), {"id": bericht_id})
 
     def test_historie_blijft_en_nieuwe_vraag_kan_daarna(
         self,
@@ -390,9 +498,10 @@ class TestVraagBeantwoorden:
         eigenaar_id: uuid.UUID,
         open_vraag: vragen.VraagData,
     ) -> None:
-        vragen.beantwoord_vraag(
-            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, antwoord_tekst="Antwoord"
+        vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Antwoord"
         )
+        vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker)
         tweede = vragen.stel_vraag(
             administratie_id=administratie_id,
             document_id=document_te_controleren,
@@ -401,6 +510,9 @@ class TestVraagBeantwoorden:
         )
         alle = vragen.lijst_vragen(administratie_id=administratie_id, document_id=document_te_controleren)
         assert {v.id for v in alle} == {open_vraag.id, tweede.id}
+        per_id = {v.id: v for v in alle}
+        assert [b.tekst for b in per_id[open_vraag.id].berichten] == ["Antwoord"]
+        assert per_id[tweede.id].berichten == ()
         open_alleen = vragen.lijst_vragen(
             administratie_id=administratie_id, status=VraagStatus.OPEN, document_id=document_te_controleren
         )
@@ -505,11 +617,8 @@ class TestVraagIntrekken:
         )
         vragen.trek_vraag_in(administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=gescoopte_gebruiker)
         with pytest.raises(vragen.VraagNietOpen):
-            vragen.beantwoord_vraag(
-                administratie_id=administratie_id,
-                vraag_id=gesteld.id,
-                actor_id=eigenaar_id,
-                antwoord_tekst="Te laat",
+            vragen.plaats_bericht(
+                administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=eigenaar_id, tekst="Te laat"
             )
         with pytest.raises(vragen.VraagNietOpen):
             vragen.trek_vraag_in(administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=gescoopte_gebruiker)

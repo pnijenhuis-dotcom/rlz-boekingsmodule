@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type { AfwijzingDto, DocumentActieResponseDto, DocumentDetailDto, VraagDto } from '../api/types'
@@ -8,6 +8,8 @@ import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { VraagModal } from '../vragen/VraagModal'
+import { VraagThread } from '../vragen/VraagThread'
+import { DoorbelastenNaBoeken, type KlaargezetteDoorbelasting } from '../doorbelasting/DoorbelastenNaBoeken'
 import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
@@ -210,7 +212,16 @@ export function DocumentDetailScreen() {
   // de her-run overschrijft het huidige voorstel (nieuwste extractie wint).
   const [herExtractieBevestigen, setHerExtractieBevestigen] = useState(false)
   const [vraagModalOpen, setVraagModalOpen] = useState(false)
-  const [openVraag, setOpenVraag] = useState<VraagDto | null>(null)
+  // Alle vragen van dit document (dialoog-threads, besluit Peter 25-08): voeden de open-vraag-
+  // banner én het tabblad "Opmerkingen" naast de tijdlijn.
+  const [documentVragen, setDocumentVragen] = useState<VraagDto[] | null>(null)
+  const [tijdlijnTab, setTijdlijnTab] = useState<'tijdlijn' | 'opmerkingen'>('tijdlijn')
+  const opmerkingenRef = useRef<HTMLDivElement | null>(null)
+  // Doorbelasten in de boekflow (besluit Peter 25-08): het blok meldt of er een klaargezette run
+  // is en of die groen staat — de boekknop wordt dan "Boeken + doorbelasten" (poort in het paneel).
+  const [doorbelastingKlaargezet, setDoorbelastingKlaargezet] = useState<KlaargezetteDoorbelasting | null>(null)
+  const [boekvoorstelVersie, setBoekvoorstelVersie] = useState(0)
+  const onVoorstelOpgeslagen = useCallback(() => setBoekvoorstelVersie((v) => v + 1), [])
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
   const [heropenenBezig, setHeropenenBezig] = useState(false)
   const [heropenenFout, setHeropenenFout] = useState<string | null>(null)
@@ -238,27 +249,33 @@ export function DocumentDetailScreen() {
     return () => clearInterval(timer)
   }, [detail, laadDetail])
 
-  // Open vraag van dit document (vragenworkflow): gevoed zodra de status vraag_open is, zodat
-  // de banner de vraagtekst + toegewezene toont in plaats van alleen een statuschip.
-  useEffect(() => {
-    if (!administratieId || !documentId || detail?.status !== 'vraag_open') {
-      setOpenVraag(null)
-      return
-    }
-    let actief = true
-    haalVragenOp(administratieId, { status: 'open', documentId })
-      .then((data) => {
-        if (actief) setOpenVraag(data.vragen[0] ?? null)
-      })
+  // Vragen van dit document (dialoog): herladen bij elke detail-verversing zodat een nieuw
+  // bericht of afhandeling direct zichtbaar is in banner en Opmerkingen-tab.
+  const laadVragen = useCallback(() => {
+    if (!administratieId || !documentId) return
+    haalVragenOp(administratieId, { documentId })
+      .then((data) => setDocumentVragen(data.vragen))
       .catch(() => {
         // Banner degradeert naar alleen de statuschip — de vraag zelf blijft via de
         // vragen-view bereikbaar.
-        if (actief) setOpenVraag(null)
+        setDocumentVragen(null)
       })
-    return () => {
-      actief = false
-    }
-  }, [administratieId, documentId, detail?.status])
+  }, [administratieId, documentId])
+
+  useEffect(() => {
+    setDocumentVragen(null)
+    laadVragen()
+  }, [laadVragen, detail?.status])
+
+  const openVraag = useMemo(() => documentVragen?.find((v) => v.status === 'open') ?? null, [documentVragen])
+  const vragenChronologisch = useMemo(
+    () => (documentVragen ? [...documentVragen].sort((a, b) => a.gesteld_op.localeCompare(b.gesteld_op)) : null),
+    [documentVragen],
+  )
+  const toonOpmerkingen = () => {
+    setTijdlijnTab('opmerkingen')
+    opmerkingenRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   useEffect(() => {
     if (!administratieId || !documentId) return
@@ -454,14 +471,23 @@ export function DocumentDetailScreen() {
                 <>
                   <div className="q-item" style={{ marginBottom: 0, border: 'none', padding: 0 }}>
                     <div className="meta">
-                      gesteld door {naamVoor(openVraag.gesteld_door)}, {formatDatum(openVraag.gesteld_op)} ·
-                      toegewezen aan <b>{naamVoor(openVraag.toegewezen_aan)}</b>
+                      gesteld door {naamVoor(openVraag.gesteld_door)}, {formatDatum(openVraag.gesteld_op)} · aan{' '}
+                      <b>{naamVoor(openVraag.toegewezen_aan)}</b> · aan de beurt: <b>{naamVoor(openVraag.aan_de_beurt)}</b>
+                      {openVraag.berichten.length > 0 && (
+                        <> · {openVraag.berichten.length} {openVraag.berichten.length === 1 ? 'reactie' : 'reacties'}</>
+                      )}
                     </div>
                     <div className="vraagtekst">&ldquo;{openVraag.vraag_tekst}&rdquo;</div>
                   </div>
                   <div className="actions">
-                    <Link className="btn" to={`/?administratie=${administratieId}&sectie=vragen&document=${documentId}`}>
-                      Beantwoorden of intrekken →
+                    <button type="button" className="btn" onClick={toonOpmerkingen}>
+                      Reageren of afhandelen ↓
+                    </button>
+                    <Link
+                      className="btn secondary"
+                      to={`/?administratie=${administratieId}&sectie=vragen&document=${documentId}`}
+                    >
+                      Open in vragenlijst →
                     </Link>
                   </div>
                 </>
@@ -471,7 +497,7 @@ export function DocumentDetailScreen() {
                   <Link to={`/?administratie=${administratieId}&sectie=vragen&document=${documentId}`}>
                     bekijk de vraag
                   </Link>
-                  . Boeken kan pas na beantwoording (of intrekking).
+                  . Boeken kan pas nadat de vraagsteller de vraag als afgehandeld markeert (of na intrekking).
                 </p>
               )}
             </div>
@@ -571,8 +597,21 @@ export function DocumentDetailScreen() {
               }
               onAfwijzen={AFWIJZEN_STATUSSEN.has(detail.status) ? () => setAfwijsModalOpen(true) : undefined}
               onIbanAangeboden={VRAAG_STELLEN_STATUSSEN.has(detail.status) ? laadDetail : undefined}
+              doorbelastingKlaargezet={doorbelastingKlaargezet}
+              onVoorstelOpgeslagen={onVoorstelOpgeslagen}
             />
           )}
+
+          {/* Doorbelasten ná boeken (besluit Peter 25-08, herziet 13-08): optioneel blok op een NOG
+              NIET geboekt document — de sectie gate zichzelf (soort + status + toggle). */}
+          <DoorbelastenNaBoeken
+            administratieId={administratieId}
+            documentId={documentId}
+            status={detail.status}
+            soort={detail.soort}
+            boekvoorstelVersie={boekvoorstelVersie}
+            onKlaargezet={setDoorbelastingKlaargezet}
+          />
 
           {/* Tegenboek-pad (mockup 22-08): actie op een GEBOEKTE inkoopfactuur waarvan storno
               door de aangifte-poort geblokkeerd is — de sectie gate zichzelf. */}
@@ -634,9 +673,60 @@ export function DocumentDetailScreen() {
             />
           )}
 
-          <div className="panel">
-            <h2>Tijdlijn</h2>
-            <table className="lines">
+          <div className="panel" ref={opmerkingenRef}>
+            {/* Twee tabs (besluit Peter 25-08, punt B3): Tijdlijn = statusgebeurtenissen,
+                Opmerkingen = de vraag/antwoord-dialogen van dit document, nieuwste onderaan. */}
+            <div className="segment" role="tablist" aria-label="Tijdlijn of opmerkingen" style={{ marginBottom: 10 }}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tijdlijnTab === 'tijdlijn'}
+                className={tijdlijnTab === 'tijdlijn' ? 'actief' : undefined}
+                onClick={() => setTijdlijnTab('tijdlijn')}
+              >
+                Tijdlijn
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tijdlijnTab === 'opmerkingen'}
+                className={tijdlijnTab === 'opmerkingen' ? 'actief' : undefined}
+                onClick={() => setTijdlijnTab('opmerkingen')}
+              >
+                Opmerkingen{documentVragen && documentVragen.length > 0 ? ` (${documentVragen.length})` : ''}
+                {openVraag && (
+                  <span className="chip vraag" style={{ marginLeft: 6 }}>
+                    open
+                  </span>
+                )}
+              </button>
+            </div>
+            {tijdlijnTab === 'opmerkingen' && (
+              <div role="tabpanel" aria-label="Opmerkingen">
+                {vragenChronologisch === null && <p className="hint">Opmerkingen laden…</p>}
+                {vragenChronologisch !== null && vragenChronologisch.length === 0 && (
+                  <p className="hint" style={{ marginTop: 0 }}>
+                    Nog geen vragen of opmerkingen bij dit document. Stel een vraag via &ldquo;Vraag stellen…&rdquo; in
+                    het boekvoorstel — de dialoog verschijnt hier.
+                  </p>
+                )}
+                {vragenChronologisch?.map((v) => (
+                  <VraagThread
+                    key={v.id}
+                    vraag={v}
+                    administratieId={administratieId ?? ''}
+                    naamVoor={naamVoor}
+                    metFactuurlink={false}
+                    onGewijzigd={() => {
+                      laadVragen()
+                      laadDetail()
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {tijdlijnTab === 'tijdlijn' && (
+            <table className="lines" role="tabpanel" aria-label="Tijdlijn">
               <tbody>
                 {detail.tijdlijn.map((g, i) => (
                   <tr key={i}>
@@ -751,6 +841,11 @@ export function DocumentDetailScreen() {
                           Vraag beantwoord door {naamVoor(g.actor_id)}
                         </div>
                       )}
+                      {g.detail && 'vraag_afgehandeld' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Vraag afgehandeld door {naamVoor(g.actor_id)} — dialoog in het tabblad Opmerkingen
+                        </div>
+                      )}
                       {g.detail && 'vraag_ingetrokken' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           Vraag ingetrokken door {naamVoor(g.actor_id)}
@@ -797,6 +892,7 @@ export function DocumentDetailScreen() {
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         </div>
       </div>

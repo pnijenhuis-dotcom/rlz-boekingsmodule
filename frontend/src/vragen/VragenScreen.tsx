@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ApiError } from '../api/client'
 import type { VraagDto } from '../api/types'
 import { Select } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { useMedewerkers } from './useMedewerkers'
-import { beantwoordVraag, haalEigenaarOp, haalVragenOp, trekVraagIn } from './vragenApi'
-
-function formatDatum(iso: string): string {
-  return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
-}
+import { VraagThread } from './VraagThread'
+import { haalEigenaarOp, haalVragenOp } from './vragenApi'
 
 function formatBedrag(bedrag: string | null): string | null {
   if (bedrag === null) return null
@@ -26,133 +22,25 @@ interface QItemProps {
   onGewijzigd: () => void
 }
 
-/** Eén vraag-blok (mockup .q-item): open = actief met antwoord-invoer/intrekken/factuurlink,
- * beantwoord of ingetrokken = grijze historie. Een open vraag op een verwijderd document is een
- * weesvraag: niet actief tonen — geen acties, geen klikbare factuurlink. */
+/** Eén vraag-blok (mockup .q-item) = de dialoog-thread (besluit Peter 25-08) mét de kopregel
+ * van de vragen-view: bestandsnaam, bedrag en eigenaar-hint. */
 function QItem({ vraag, administratieId, naamVoor, eigenaarId, onGewijzigd }: QItemProps) {
-  const [antwoord, setAntwoord] = useState('')
-  const [intrekkenOpen, setIntrekkenOpen] = useState(false)
-  const [intrekReden, setIntrekReden] = useState('')
-  const [bezig, setBezig] = useState(false)
-  const [fout, setFout] = useState<string | null>(null)
-
-  const isOpen = vraag.status === 'open'
-  const documentVerwijderd = vraag.document_status === 'verwijderd'
-  const actief = isOpen && !documentVerwijderd
-
-  const beantwoorden = async () => {
-    setBezig(true)
-    setFout(null)
-    try {
-      await beantwoordVraag(administratieId, vraag.id, antwoord)
-      onGewijzigd()
-    } catch (err) {
-      setFout(err instanceof ApiError ? err.message : 'Beantwoorden mislukt.')
-    } finally {
-      setBezig(false)
-    }
-  }
-
-  const intrekken = async () => {
-    setBezig(true)
-    setFout(null)
-    try {
-      await trekVraagIn(administratieId, vraag.id, intrekReden.trim() || null)
-      onGewijzigd()
-    } catch (err) {
-      setFout(err instanceof ApiError ? err.message : 'Intrekken mislukt.')
-    } finally {
-      setBezig(false)
-    }
-  }
-
   const bedrag = formatBedrag(vraag.totaalbedrag)
-  const chip = isOpen ? (
-    <span className="chip vraag">Open</span>
-  ) : vraag.status === 'beantwoord' ? (
-    <span className="chip geboekt">Beantwoord</span>
-  ) : (
-    <span className="chip geheugen">Ingetrokken</span>
-  )
-
   return (
-    <div className="q-item" style={actief ? undefined : { opacity: 0.6 }}>
-      <div className="meta">
-        {chip} &nbsp; {vraag.document_bestandsnaam}
-        {bedrag && <> · {bedrag}</>} · gesteld door {naamVoor(vraag.gesteld_door)}, {formatDatum(vraag.gesteld_op)} ·
-        toegewezen aan <b>{naamVoor(vraag.toegewezen_aan)}</b>
-        {eigenaarId !== null && vraag.toegewezen_aan === eigenaarId && <> (eigenaar administratie)</>}
-      </div>
-      <div className="vraagtekst" style={isOpen ? undefined : { background: 'var(--panel2, #eef0f3)' }}>
-        &ldquo;{vraag.vraag_tekst}&rdquo;
-        {vraag.antwoord_tekst && (
-          <>
-            {' '}
-            → <b>&ldquo;{vraag.antwoord_tekst}&rdquo;</b>
-          </>
-        )}
-      </div>
-      {vraag.status === 'beantwoord' && (
-        <div className="meta">
-          beantwoord door {naamVoor(vraag.beantwoord_door)}
-          {vraag.beantwoord_op ? `, ${formatDatum(vraag.beantwoord_op)}` : ''}
-        </div>
-      )}
-      {vraag.status === 'ingetrokken' && (
-        <div className="meta">
-          ingetrokken door {naamVoor(vraag.ingetrokken_door)}
-          {vraag.ingetrokken_op ? `, ${formatDatum(vraag.ingetrokken_op)}` : ''}
-          {vraag.ingetrokken_reden ? ` — “${vraag.ingetrokken_reden}”` : ''}
-        </div>
-      )}
-      {isOpen && documentVerwijderd && (
-        <div className="meta" style={{ color: 'var(--orange)' }}>
-          Het document is verwijderd — deze vraag kan pas beantwoord of ingetrokken worden nadat het document is
-          hersteld (werkvoorraad → &ldquo;toon verwijderde documenten&rdquo;).
-        </div>
-      )}
-      {fout && <div className="fout">{fout}</div>}
-      {actief && (
-        <div className="q-answer">
-          <input
-            placeholder="Antwoord typen…"
-            value={antwoord}
-            onChange={(e) => setAntwoord(e.target.value)}
-            aria-label="Antwoord"
-          />
-          <button
-            type="button"
-            className="btn"
-            disabled={bezig || antwoord.trim() === ''}
-            onClick={() => void beantwoorden()}
-          >
-            {bezig ? 'Bezig…' : 'Beantwoorden'}
-          </button>
-          <Link className="btn secondary" to={`/documenten/${administratieId}/${vraag.document_id}`}>
-            Factuur bekijken
-          </Link>
-          <button type="button" className="btn secondary" disabled={bezig} onClick={() => setIntrekkenOpen((v) => !v)}>
-            Intrekken…
-          </button>
-        </div>
-      )}
-      {actief && intrekkenOpen && (
-        <div className="q-answer">
-          <input
-            placeholder="Reden (optioneel)"
-            value={intrekReden}
-            onChange={(e) => setIntrekReden(e.target.value)}
-            aria-label="Reden van intrekken"
-          />
-          <button type="button" className="btn warn" disabled={bezig} onClick={() => void intrekken()}>
-            {bezig ? 'Bezig…' : 'Vraag intrekken'}
-          </button>
-          <span className="hint" style={{ margin: 0, alignSelf: 'center' }}>
-            De factuur gaat terug naar de status van vóór de vraag; de vraag blijft als historie zichtbaar.
-          </span>
-        </div>
-      )}
-    </div>
+    <VraagThread
+      vraag={vraag}
+      administratieId={administratieId}
+      naamVoor={naamVoor}
+      onGewijzigd={onGewijzigd}
+      kop={
+        <>
+          {' '}
+          &nbsp; {vraag.document_bestandsnaam}
+          {bedrag && <> · {bedrag}</>}
+          {eigenaarId !== null && vraag.toegewezen_aan === eigenaarId && <> · (eigenaar administratie)</>}
+        </>
+      }
+    />
   )
 }
 
@@ -303,8 +191,9 @@ export function VragenScreen() {
 
       {vragen !== null && vragen.length > 0 && (
         <div className="hint">
-          Een factuur met een openstaande vraag kan niet geboekt worden tot de vraag beantwoord (of ingetrokken)
-          is. Het antwoord wordt via de boeking toegevoegd aan het boekingsgeheugen.
+          Een factuur met een openstaande vraag kan niet geboekt worden tot de vraagsteller de vraag als
+          afgehandeld markeert (of iemand hem intrekt) — een antwoord alleen deblokkeert niet. De uitkomst wordt
+          via de boeking toegevoegd aan het boekingsgeheugen.
         </div>
       )}
     </div>

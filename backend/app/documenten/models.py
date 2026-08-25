@@ -288,8 +288,14 @@ class VraagStatus(enum.StrEnum):
     ongeluk gestelde vraag een pro-forma nep-antwoord afdwingt."""
 
     OPEN = "open"
+    # LEGACY (vóór migratie 0064): het oude één-antwoord-model. Bestaande rijen blijven staan; de
+    # servicelaag toont het oude antwoord als laatste bericht van de thread. Nieuwe vragen komen
+    # hier nooit meer in.
     BEANTWOORD = "beantwoord"
     INGETROKKEN = "ingetrokken"
+    # Eindstatus sinds de dialoog (besluit Peter 25-08, migratie 0064): alleen de oorspronkelijke
+    # vraagsteller sluit de thread; pas dán gaat het document terug naar de herkomst-status.
+    AFGEHANDELD = "afgehandeld"
 
 
 class Vraag(Base):
@@ -314,9 +320,7 @@ class Vraag(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
     gesteld_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     gesteld_op: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -336,6 +340,33 @@ class Vraag(Base):
     )
     ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
     ingetrokken_reden: Mapped[str | None] = mapped_column(default=None)
+    # Dialoog (migratie 0064): wie er in de thread aan zet is — de bestaande melding
+    # (Document.toegewezen_aan, werkvoorraad-kolom "Toegewezen") volgt dit veld. NULL op rijen
+    # van vóór 0064 = toegewezen_aan (schema-only migratie; zie vragen.py::_aan_de_beurt).
+    aan_de_beurt: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    afgehandeld_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    afgehandeld_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class VraagBericht(Base):
+    """Eén bijdrage in de vraag-dialoog (migratie 0064, besluit Peter 25-08): append-only — de
+    app-rol heeft alleen SELECT + INSERT, een bericht wordt nooit herschreven of verwijderd
+    (kernprincipe 4). De openingsvraag zelf staat in Vraag.vraag_tekst; elk antwoord/vervolg is
+    een rij hier, mét auteur en tijdstip."""
+
+    __tablename__ = "vraag_bericht"
+    __table_args__ = ({"schema": "boekhouding"},)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    vraag_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.vraag.id"), index=True)
+    auteur_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    tekst: Mapped[str]
+    geplaatst_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class AfwijzingStatus(enum.StrEnum):
@@ -370,9 +401,7 @@ class Afwijzing(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
     afgewezen_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     afgewezen_op: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -447,9 +476,7 @@ class IbanAccordering(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
     nieuw_iban: Mapped[str]
@@ -504,9 +531,7 @@ class Tegenboeking(Base):
     # moment van tegenboeken) — de kruisverwijzing beide kanten: origineel → tegenboeking via
     # (document_id, cyclus == huidige boek_cyclus), tegenboeking → origineel via document_id.
     boek_cyclus: Mapped[int] = mapped_column(primary_key=True)
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     soort: Mapped[str]
     reden: Mapped[str]
     rlz_tegenboeking_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
@@ -564,6 +589,7 @@ class WebhookUitgaand(Base):
     laatste_poging_op: Mapped[datetime | None] = mapped_column(default=None)
     laatste_fout: Mapped[str | None] = mapped_column(default=None)
     volgende_poging_op: Mapped[datetime | None] = mapped_column(default=None)
+
 
 # Metadata-registratie: Document.intake_bericht_id draagt een FK naar boekhouding.intake_bericht
 # (migratie 0028) — die tabel moet in Base.metadata staan vóór SQLAlchemy de Document-mapper
