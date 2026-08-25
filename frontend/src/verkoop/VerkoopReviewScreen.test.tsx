@@ -396,14 +396,15 @@ describe('VerkoopReviewScreen', () => {
     window.localStorage.removeItem('rlz.verkoop.breedGestapeld')
   })
 
-  it('blok C: de regel-omschrijving is een 2-regelig doorloopveld met de volledige tekst als hover-title', async () => {
+  it('blok C (+ regelrij-UI 25-08): de regel-omschrijving is een meegroeiend doorloopveld met de volledige tekst als hover-title', async () => {
     installFetchMock()
     renderScherm()
     await screen.findByText(/UBL-verkoopfactuur/)
 
     const veld = screen.getByLabelText('Omschrijving regel 1')
     expect(veld.tagName).toBe('TEXTAREA')
-    expect(veld).toHaveAttribute('rows', '2')
+    // Regelrij-UI 25-08: start op één regel en groeit mee met de inhoud (scrollHeight) — nooit afkappen.
+    expect(veld).toHaveAttribute('rows', '1')
     expect(veld).toHaveAttribute('title', 'Huur augustus 2026')
   })
 
