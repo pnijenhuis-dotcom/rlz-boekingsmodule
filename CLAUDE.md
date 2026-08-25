@@ -62,6 +62,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   Beheerder-rol (initieel alleen Peter), server-side gecontroleerd. **Niemand kan zijn eigen rol
   of scope muteren, ook een Beheerder niet** (tweede beheerder aanwijzen kan alleen door een
   andere beheerder). Elke rol-/scope-wijziging in het append-only audit_event.
+  **RLS-les scope-toetsen (bugfix 2026-08-25, BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" rij
+  A-BUGFIX): een scope-lookup op `gebruiker_administratie` (zelf RLS) leest ALTIJD
+  `scoped_session(<te toetsen administratie>, actor_id=actor)` — in `scoped_session(None)`
+  zonder actor ziet een niet-Beheerder nul rijen en lijkt elke scope leeg (Beheerder-bypass
+  verbergt dat); tests verplicht met een echte niet-Beheerder MÉT scope (groen pad), zie
+  Platform `conventies.md` §RLS.**
   **Rolniveau-poorten kantoor-console (rollen-gate-fix 2026-08-21, BESLISSINGEN "ROLLEN-GATE-BUG
   WEB"):** administratie-scope is GEEN rolpoort — externe app-rollen (accordeur + veldrollen)
   hebben reguliere scope-rijen. Élk kantoor-endpoint draagt daarom `vereis_kantoorrol`
