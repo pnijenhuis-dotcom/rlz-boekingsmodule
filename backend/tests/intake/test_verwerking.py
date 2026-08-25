@@ -132,7 +132,7 @@ class TestPdfRouting:
         monkeypatch.setattr(
             verwerking.splitsing_extractie,
             "detecteer_facturen",
-            lambda inhoud, paginas, client=None, verbruik_referentie=None: [
+            lambda inhoud, paginas, client=None, verbruik_referentie=None, mail_context=None: [
                 FactuurSegment(1, 2, "BLOW B.V.", "Bouwmaat", "F-1", 0.95),
                 FactuurSegment(3, 3, "Kempen Groep B.V.", "Sligro", "F-2", 0.9),
             ],
@@ -162,7 +162,7 @@ class TestPdfRouting:
         monkeypatch.setattr(
             verwerking.splitsing_extractie,
             "detecteer_facturen",
-            lambda inhoud, paginas, client=None, verbruik_referentie=None: [
+            lambda inhoud, paginas, client=None, verbruik_referentie=None, mail_context=None: [
                 FactuurSegment(1, 1, "BLOW B.V.", "Bouwmaat", "F-1", 0.95)
             ],
         )
@@ -178,7 +178,7 @@ class TestPdfRouting:
     ) -> None:
         monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
 
-        def faal(inhoud, paginas, client=None, verbruik_referentie=None):
+        def faal(inhoud, paginas, client=None, verbruik_referentie=None, mail_context=None):
             raise RuntimeError("AI plat")
 
         monkeypatch.setattr(verwerking.splitsing_extractie, "detecteer_facturen", faal)
@@ -278,7 +278,9 @@ class TestBerichtVerwerking:
     def test_onverwerkbaar_bijlagetype_zichtbaar_geregistreerd(
         self, gescoopte_gebruiker: uuid.UUID
     ) -> None:
-        eml = bouw_eml(bijlagen=[("logo.png", b"\x89PNG fake", "image", "png")])
+        # Sinds punt 2 (25-08 deel 3) zijn afbeeldingen wél documenten — zie test_afbeeldingen.py;
+        # een Word-bestand blijft zichtbaar 'niet_verwerkbaar'.
+        eml = bouw_eml(bijlagen=[("brief.docx", b"PK fake", "application", "vnd.openxmlformats-officedocument")])
         resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
         assert resultaat.bijlagen[0].uitkomst == "niet_verwerkbaar"
         assert resultaat.bijlagen[0].document_id is None

@@ -69,6 +69,9 @@ export function VerzamelbakPreview({
   )
 
   const isPdf = bestandsnaam.toLowerCase().endsWith('.pdf')
+  // Een onbruikbare (corrupte) afbeelding ligt als origineel in de verzamelbak (punt 2) — tonen
+  // wat de browser ervan kan maken; een omgezette foto is gewoon een PDF.
+  const isAfbeelding = /\.(jpe?g|png|heic|heif)$/i.test(bestandsnaam)
 
   return (
     <span className="verzamelbak-preview" onMouseEnter={startHover} onMouseLeave={stopHover}>
@@ -95,7 +98,10 @@ export function VerzamelbakPreview({
           {fout && <div className="hint">{fout}</div>}
           {!bestand && !fout && <div className="hint">Voorbeeld laden…</div>}
           {bestand && isPdf && <PdfEerstePagina blobUrl={bestand.url} breedte={PREVIEW_BREEDTE} />}
-          {bestand && !isPdf && (
+          {bestand && isAfbeelding && (
+            <img src={bestand.url} alt={`Voorbeeld ${bestandsnaam}`} style={{ maxWidth: PREVIEW_BREEDTE, display: 'block' }} />
+          )}
+          {bestand && !isPdf && !isAfbeelding && (
             <div className="hint">UBL/XML-bestand — geen paginabeeld; tenaamstelling staat in de rij.</div>
           )}
         </div>
@@ -114,7 +120,10 @@ export function VerzamelbakPreview({
               <p className="hint">Geen inline PDF-weergave beschikbaar in deze browser.</p>
             </object>
           )}
-          {bestand && !isPdf && <p className="hint">UBL/XML-bestand — geen inline weergave.</p>}
+          {bestand && isAfbeelding && (
+            <img src={bestand.url} alt={bestandsnaam} style={{ maxWidth: '100%', maxHeight: '70vh', display: 'block' }} />
+          )}
+          {bestand && !isPdf && !isAfbeelding && <p className="hint">UBL/XML-bestand — geen inline weergave.</p>}
           {bestand && (
             <p style={{ marginTop: 10 }}>
               <a className="btn secondary" href={bestand.url} download={bestandsnaam}>

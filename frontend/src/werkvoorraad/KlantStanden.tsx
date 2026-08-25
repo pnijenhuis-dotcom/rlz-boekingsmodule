@@ -5,7 +5,7 @@ import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDa
 import { apiJson } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
-import { verwerkEml } from '../intake/intakeApi'
+import { verwerkEml, UPLOAD_ACCEPT } from '../intake/intakeApi'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
@@ -604,9 +604,13 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
           'Bezig met uploaden…'
         ) : (
           <>
-            Sleep hier een PDF-, UBL- of .eml-bestand naartoe, of <b>blader</b> — meteen toegewezen aan deze klant
+            Sleep hier een PDF-, UBL-, .eml- of fotobestand (JPEG/PNG/HEIC) naartoe, of <b>blader</b> — meteen
+            toegewezen aan deze klant
             <br />
-            <span style={{ fontSize: 12 }}>Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst.</span>
+            <span style={{ fontSize: 12 }}>
+              Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst; een foto wordt naar PDF omgezet
+              (origineel blijft bewaard).
+            </span>
             <br />
             <label
               style={{
@@ -636,7 +640,7 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
         <input
           ref={bestandInputRef}
           type="file"
-          accept=".pdf,.xml,.eml"
+          accept={UPLOAD_ACCEPT}
           style={{ display: 'none' }}
           onChange={(e) => {
             const bestand = e.target.files?.[0]

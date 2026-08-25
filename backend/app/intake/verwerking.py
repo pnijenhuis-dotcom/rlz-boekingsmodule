@@ -21,8 +21,20 @@ PDF:
 6. Gate uit of AI-fout → verzamelbak (mens beoordeelt; na toewijzing draait de normale
    extractie onder de AVG-gate van de gekozen administratie).
 
+AFBEELDING (JPEG/PNG/HEIC — feedbackronde 25-08 deel 3, punt 2):
+7. Inline MIME-deel (Content-Disposition inline / Content-ID = in de HTML geplaatst logo) of
+   kleiner dan MIN_DOCUMENT_PIXELS in beide richtingen (handtekening-logo, pixel) →
+   'niet_verwerkbaar' (zichtbaar geregistreerd, geen document — de verzamelbak blijft schoon).
+8. Anders deterministisch naar PDF (app/documenten/afbeelding.py) en verder exact als een PDF
+   (regel 5/6); het origineel blijft als brondocument bewaard (document.bron_*). Onbruikbaar
+   (corrupt/leeg) → verzamelbak met reden `afbeelding_onbruikbaar: …`, het origineel als bestand.
+
 Overige bijlage-typen worden zichtbaar als 'niet_verwerkbaar' in het intake-bericht
 geregistreerd (mail-handtekeningen/logo's horen niet als document in de verzamelbak).
+
+Los bestand (werkvoorraad-sleepzone zonder klant, zelfde punt 2): `verwerk_los_bestand` stuurt een
+PDF/UBL/afbeelding door precies dezelfde routing als een mailbijlage — zonder intake-bericht
+(intake_bericht_id NULL, bron 'upload'), tenaamstelling leidend, twijfel = verzamelbak.
 
 Toewijzing zelf: app/intake/toewijzing.py — tenaamstelling leidend, afzender hint, nooit
 auto-toewijzen bij twijfel."""
@@ -41,8 +53,11 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.documenten import service as documenten_service
+from app.documenten.afbeelding import AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
+from app.documenten.mime import content_type_voor
 from app.documenten.models import DocumentBron, DocumentSoort
 from app.documenten.pdf import tel_paginas
+from app.documenten.service import BronBestand
 from app.documenten.storage import DocumentOpslag
 from app.documenten.ubl import (
     GeenGeldigeUbl,
@@ -57,6 +72,10 @@ from app.intake.models import IntakeBericht, IntakeSplitsing
 from app.intake.toewijzing import bepaal_toewijzing
 
 logger = logging.getLogger(__name__)
+
+# Een afbeelding die in béide richtingen kleiner is dan dit aantal pixels is geen gefotografeerd/
+# gescand document maar een handtekening-logo of icoon (deterministische drempel, punt 2).
+MIN_DOCUMENT_PIXELS = 600
 
 
 @dataclass(frozen=True)
@@ -94,13 +113,16 @@ def _wijs_toe_of_verzamelbak(
     tenaamstelling: str | None,
     afzender: str | None,
     actor_id: uuid.UUID,
-    intake_bericht_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
     opslag: DocumentOpslag | None,
     verzamelbak_reden: str,
     gesplitst_uit_id: uuid.UUID | None = None,
+    body_hint: str | None = None,
+    bron_bestand: BronBestand | None = None,
+    kanaal: DocumentBron = DocumentBron.EMAIL,
 ) -> BijlageResultaat:
     with scoped_session(None) as session:
-        besluit = bepaal_toewijzing(session, tenaamstelling=tenaamstelling, afzender=afzender)
+        besluit = bepaal_toewijzing(session, tenaamstelling=tenaamstelling, afzender=afzender, body_hint=body_hint)
 
     if besluit.administratie_id is not None:
         resultaat = documenten_service.upload_document(
@@ -109,12 +131,13 @@ def _wijs_toe_of_verzamelbak(
             inhoud=inhoud,
             actor_id=actor_id,
             opslag=opslag,
-            bron=DocumentBron.EMAIL,
+            bron=kanaal,
             soort=soort,
             intake_bericht_id=intake_bericht_id,
             afzender_hint=afzender,
             tenaamstelling=tenaamstelling,
             gesplitst_uit_id=gesplitst_uit_id,
+            bron_bestand=bron_bestand,
         )
         return BijlageResultaat(
             bestandsnaam=bijlage_naam,
@@ -136,6 +159,8 @@ def _wijs_toe_of_verzamelbak(
         gesplitst_uit_id=gesplitst_uit_id,
         suggestie_administratie_id=besluit.suggestie_administratie_id,
         suggestie_bron=besluit.suggestie_bron,
+        bron_bestand=bron_bestand,
+        bron=kanaal,
     )
     return BijlageResultaat(
         bestandsnaam=bijlage_naam, uitkomst="verzamelbak", document_id=document_id, detail=verzamelbak_reden
@@ -286,8 +311,10 @@ def _verwerk_xml(
     *,
     afzender: str | None,
     actor_id: uuid.UUID,
-    intake_bericht_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
     opslag: DocumentOpslag | None,
+    body_hint: str | None = None,
+    kanaal: DocumentBron = DocumentBron.EMAIL,
 ) -> BijlageResultaat:
     from app.documenten.waarborg_xml import is_waarborg_xml
 
@@ -394,6 +421,8 @@ def _verwerk_xml(
             intake_bericht_id=intake_bericht_id,
             opslag=opslag,
             verzamelbak_reden="vastly_verkoop_zonder_eenduidige_entiteit",
+            body_hint=body_hint,
+            kanaal=kanaal,
         )
 
     # Normale inkoop-UBL: tenaamstelling = de afnemer (AccountingCustomerParty), leidend.
@@ -407,6 +436,8 @@ def _verwerk_xml(
         intake_bericht_id=intake_bericht_id,
         opslag=opslag,
         verzamelbak_reden="tenaamstelling_niet_eenduidig",
+        body_hint=body_hint,
+        kanaal=kanaal,
     )
 
 
@@ -415,8 +446,11 @@ def _verwerk_pdf(
     *,
     afzender: str | None,
     actor_id: uuid.UUID,
-    intake_bericht_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
     opslag: DocumentOpslag | None,
+    body_hint: str | None = None,
+    bron_bestand: BronBestand | None = None,
+    kanaal: DocumentBron = DocumentBron.EMAIL,
 ) -> BijlageResultaat:
     if not beheer_service.intake_ai_effectief_ingeschakeld() or not settings.anthropic_api_key:
         # AVG-gate intake (platform-breed, default UIT): zonder opt-in geen intake-byte naar de
@@ -431,6 +465,8 @@ def _verwerk_pdf(
             opslag=opslag,
             intake_bericht_id=intake_bericht_id,
             afzender_hint=afzender,
+            bron_bestand=bron_bestand,
+            bron=kanaal,
         )
         return BijlageResultaat(
             bestandsnaam=bijlage.bestandsnaam,
@@ -445,6 +481,7 @@ def _verwerk_pdf(
             bijlage.inhoud,
             paginas=paginas or 1,
             verbruik_referentie=AiVerbruikReferentie(bron="intake_splitsing", intake_bericht_id=intake_bericht_id),
+            mail_context=body_hint,
         )
     except AiKostenLimietBereikt:
         # AI-kostengrens (besluit 2026-08-14): zelfde zichtbare pad als intake_ai_uitgeschakeld —
@@ -458,6 +495,8 @@ def _verwerk_pdf(
             opslag=opslag,
             intake_bericht_id=intake_bericht_id,
             afzender_hint=afzender,
+            bron_bestand=bron_bestand,
+            bron=kanaal,
         )
         return BijlageResultaat(
             bestandsnaam=bijlage.bestandsnaam,
@@ -475,6 +514,8 @@ def _verwerk_pdf(
             opslag=opslag,
             intake_bericht_id=intake_bericht_id,
             afzender_hint=afzender,
+            bron_bestand=bron_bestand,
+            bron=kanaal,
         )
         return BijlageResultaat(
             bestandsnaam=bijlage.bestandsnaam,
@@ -494,6 +535,9 @@ def _verwerk_pdf(
             intake_bericht_id=intake_bericht_id,
             opslag=opslag,
             verzamelbak_reden="tenaamstelling_niet_eenduidig",
+            body_hint=body_hint,
+            bron_bestand=bron_bestand,
+            kanaal=kanaal,
         )
 
     # Meerdere facturen: bron-document naar de verzamelbak MET splitsingsvoorstel — de
@@ -506,6 +550,8 @@ def _verwerk_pdf(
         opslag=opslag,
         intake_bericht_id=intake_bericht_id,
         afzender_hint=afzender,
+        bron_bestand=bron_bestand,
+        bron=kanaal,
     )
     with scoped_session(None, actor_id=actor_id) as session:
         # Herverwerking van een afgebroken run: het bron-document (idempotent op sha256) kan al
@@ -525,6 +571,135 @@ def _verwerk_pdf(
         uitkomst="splitsingsvoorstel",
         document_id=document_id,
         detail=f"{len(segmenten)} facturen herkend — splitsing ter controle",
+    )
+
+
+def _verwerk_afbeelding(
+    bijlage: IntakeBijlage,
+    *,
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
+    opslag: DocumentOpslag | None,
+    body_hint: str | None = None,
+    kanaal: DocumentBron = DocumentBron.EMAIL,
+    logo_filter: bool = True,
+) -> BijlageResultaat:
+    """Afbeelding → PDF → verder als PDF (punt 2). `logo_filter` (alleen mail): inline delen en
+    te kleine plaatjes zijn handtekening-ruis, geen document."""
+    if logo_filter and bijlage.inline:
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="niet_verwerkbaar",
+            detail="inline afbeelding (in de mailtekst geplaatst logo/handtekening) — geen document",
+        )
+    try:
+        omgezet = afbeelding_naar_pdf(bijlage.inhoud, bestandsnaam=bijlage.bestandsnaam)
+    except AfbeeldingOnbruikbaar as exc:
+        reden = f"afbeelding_onbruikbaar: {exc}"
+        document_id = documenten_service.registreer_niet_toegewezen_document(
+            bestandsnaam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            actor_id=actor_id,
+            reden=reden,
+            opslag=opslag,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender,
+            bron=kanaal,
+        )
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam, uitkomst="verzamelbak", document_id=document_id, detail=reden
+        )
+    if logo_filter and omgezet.breedte < MIN_DOCUMENT_PIXELS and omgezet.hoogte < MIN_DOCUMENT_PIXELS:
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="niet_verwerkbaar",
+            detail=(
+                f"afbeelding te klein voor een document ({omgezet.breedte}×{omgezet.hoogte} px, "
+                f"grens {MIN_DOCUMENT_PIXELS} px) — handtekening-logo/icoon"
+            ),
+        )
+    resultaat = _verwerk_pdf(
+        IntakeBijlage(bestandsnaam=omgezet.pdf_bestandsnaam, inhoud=omgezet.pdf, content_type="application/pdf"),
+        afzender=afzender,
+        actor_id=actor_id,
+        intake_bericht_id=intake_bericht_id,
+        opslag=opslag,
+        body_hint=body_hint,
+        bron_bestand=BronBestand(
+            bestandsnaam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            content_type=content_type_voor(bijlage.bestandsnaam)
+            if bijlage.content_type == "application/octet-stream"
+            else bijlage.content_type,
+        ),
+        kanaal=kanaal,
+    )
+    # De uitkomst draagt de aangeleverde naam (zo herkent de uploader 'm), het document heet .pdf.
+    return BijlageResultaat(
+        bestandsnaam=bijlage.bestandsnaam,
+        uitkomst=resultaat.uitkomst,
+        document_id=resultaat.document_id,
+        detail=f"omgezet naar {omgezet.pdf_bestandsnaam} ({omgezet.bron_formaat}) · {resultaat.detail}",
+    )
+
+
+def _routeer_bijlage(
+    bijlage: IntakeBijlage,
+    *,
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
+    opslag: DocumentOpslag | None,
+    body_hint: str | None,
+    kanaal: DocumentBron,
+    logo_filter: bool,
+) -> BijlageResultaat:
+    gedeeld = dict(
+        afzender=afzender, actor_id=actor_id, intake_bericht_id=intake_bericht_id, opslag=opslag, body_hint=body_hint
+    )
+    if bijlage.is_xml:
+        return _verwerk_xml(bijlage, kanaal=kanaal, **gedeeld)
+    if bijlage.is_pdf:
+        return _verwerk_pdf(bijlage, kanaal=kanaal, **gedeeld)
+    if bijlage.is_afbeelding:
+        return _verwerk_afbeelding(bijlage, kanaal=kanaal, logo_filter=logo_filter, **gedeeld)
+    return BijlageResultaat(
+        bestandsnaam=bijlage.bestandsnaam,
+        uitkomst="niet_verwerkbaar",
+        detail=f"bijlagetype {bijlage.content_type} wordt niet verwerkt (zichtbaar geregistreerd, geen document)",
+    )
+
+
+class BestandstypeNietOndersteund(Exception):
+    """Los bestand van een type dat de intake niet kent (geen PDF/UBL/afbeelding)."""
+
+
+def verwerk_los_bestand(
+    *,
+    bestandsnaam: str,
+    inhoud: bytes,
+    content_type: str | None,
+    actor_id: uuid.UUID,
+    opslag: DocumentOpslag | None = None,
+) -> BijlageResultaat:
+    """Los bestand op de werkvoorraad-sleepzone (zonder klant): dezelfde routing als een
+    mailbijlage — tenaamstelling leidend, twijfel = verzamelbak — maar zonder intake-bericht en
+    zonder logo-filter (een mens koos dit bestand bewust). Bron = 'upload'."""
+    bijlage = IntakeBijlage(
+        bestandsnaam=bestandsnaam, inhoud=inhoud, content_type=content_type or content_type_voor(bestandsnaam)
+    )
+    if not (bijlage.is_xml or bijlage.is_pdf or is_afbeelding(bestandsnaam, content_type)):
+        raise BestandstypeNietOndersteund("Alleen PDF, UBL/XML, .eml of een afbeelding (JPEG/PNG/HEIC)")
+    return _routeer_bijlage(
+        bijlage,
+        afzender=None,
+        actor_id=actor_id,
+        intake_bericht_id=None,
+        opslag=opslag,
+        body_hint=None,
+        kanaal=DocumentBron.UPLOAD,
+        logo_filter=False,
     )
 
 
@@ -566,6 +741,7 @@ def verwerk_eml(
             assert bericht is not None
             bericht.verwerkt_door = actor_id
             bericht.detail = {"bijlagen": [], "verwerking": "bezig", "herverwerking": True}
+            bericht.body_tekst = mail.body_tekst
         else:
             session.add(
                 IntakeBericht(
@@ -577,40 +753,25 @@ def verwerk_eml(
                     ontvangen_op=mail.ontvangen_op,
                     verwerkt_door=actor_id,
                     detail={"bijlagen": [], "verwerking": "bezig"},
+                    # Mail-body (punt 1a, migratie 0069): dezelfde tekst hoort bij álle
+                    # documenten uit dit bericht (via de FK document.intake_bericht_id).
+                    body_tekst=mail.body_tekst,
                 )
             )
 
-    resultaten: list[BijlageResultaat] = []
-    for bijlage in mail.bijlagen:
-        if bijlage.is_xml:
-            resultaten.append(
-                _verwerk_xml(
-                    bijlage,
-                    afzender=mail.afzender,
-                    actor_id=actor_id,
-                    intake_bericht_id=bericht_id,
-                    opslag=opslag,
-                )
-            )
-        elif bijlage.is_pdf:
-            resultaten.append(
-                _verwerk_pdf(
-                    bijlage,
-                    afzender=mail.afzender,
-                    actor_id=actor_id,
-                    intake_bericht_id=bericht_id,
-                    opslag=opslag,
-                )
-            )
-        else:
-            resultaten.append(
-                BijlageResultaat(
-                    bestandsnaam=bijlage.bestandsnaam,
-                    uitkomst="niet_verwerkbaar",
-                    detail=f"bijlagetype {bijlage.content_type} wordt niet verwerkt "
-                    "(zichtbaar geregistreerd, geen document)",
-                )
-            )
+    resultaten: list[BijlageResultaat] = [
+        _routeer_bijlage(
+            bijlage,
+            afzender=mail.afzender,
+            actor_id=actor_id,
+            intake_bericht_id=bericht_id,
+            opslag=opslag,
+            body_hint=mail.body_tekst,
+            kanaal=DocumentBron.EMAIL,
+            logo_filter=True,
+        )
+        for bijlage in mail.bijlagen
+    ]
 
     with scoped_session(None, actor_id=actor_id) as session:
         bericht = session.get(IntakeBericht, bericht_id)

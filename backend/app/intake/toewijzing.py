@@ -10,6 +10,12 @@ zelf is code:
    nergens op matcht, dan is dat twijfel → verzamelbak, met de afzender-administratie als
    suggestie ("nooit auto-toewijzen bij twijfel").
 3. Anders → verzamelbak, met de beste hint als suggestie (nooit een stille keuze).
+4. Mail-body als HINT (feedbackronde 25-08 deel 3, punt 1c — casus "dit is voor Oirschot"): komt
+   er zonder tenaamstelling-/afzender-match nog géén suggestie uit, dan wordt de begeleidende
+   mailtekst deterministisch afgezocht op administratienamen (onderscheidende naam-tokens als
+   hele woorden; precies één administratie met de hoogste score) → uitsluitend een SUGGESTIE
+   (`suggestie_bron="mail_body"`), nooit een automatische toewijzing — tenaamstelling blijft
+   leidend, een collega-opmerking is een hint.
 
 Leren: elke handmatige toewijzing in de verzamelbak wordt een regel (tenaamstelling én — als
 bekend — afzender). Zelfde sleutel later anders toegewezen = oude regel deactiveren + nieuwe
@@ -81,8 +87,48 @@ def _administratie_op_naam(session: Session, genormaliseerde_naam: str) -> uuid.
     return kandidaten[0] if len(kandidaten) == 1 else None
 
 
+# Naam-tokens die op zichzelf niets onderscheiden (komen in veel administratienamen voor).
+_ALGEMENE_NAAM_TOKENS = {
+    "beheer", "holding", "vastgoed", "groep", "group", "facilities", "recreatie", "exploitatie",
+    "onroerend", "goed", "administratie", "kantoor", "bedrijf", "bedrijven", "van", "de", "het", "en",
+}  # fmt: skip
+_WOORD = re.compile(r"[0-9a-zà-ÿ]+")
+
+
+def _naam_tokens(naam: str) -> set[str]:
+    return {t for t in normaliseer_partijnaam(naam).split() if len(t) >= 3}
+
+
+def vind_administratie_hint_in_tekst(session: Session, tekst: str | None) -> uuid.UUID | None:
+    """Deterministische naamherkenning in vrije tekst (mail-body). Per actieve administratie:
+    kandidaat zodra minstens één ONDERSCHEIDEND naam-token (niet uit _ALGEMENE_NAAM_TOKENS) als
+    heel woord in de tekst staat; score = alle naam-tokens die voorkomen (ook de algemene, die
+    maken het verschil tussen "Molenhof Beheer" en "Molenhof Vastgoed"). Precies één kandidaat
+    met de hoogste score → de hint; gelijkspel ("voor Molenhof") = geen hint — nooit gokken."""
+    if not tekst:
+        return None
+    woorden = set(_WOORD.findall(tekst.lower()))
+    if not woorden:
+        return None
+    scores: list[tuple[int, uuid.UUID]] = []
+    for rij in session.scalars(select(Administratie).where(Administratie.actief.is_(True))):
+        tokens = _naam_tokens(rij.naam)
+        if not (tokens - _ALGEMENE_NAAM_TOKENS) & woorden:
+            continue
+        scores.append((len(tokens & woorden), rij.id))
+    if not scores:
+        return None
+    hoogste = max(score for score, _ in scores)
+    winnaars = [adm_id for score, adm_id in scores if score == hoogste]
+    return winnaars[0] if len(winnaars) == 1 else None
+
+
 def bepaal_toewijzing(
-    session: Session, *, tenaamstelling: str | None, afzender: str | None
+    session: Session,
+    *,
+    tenaamstelling: str | None,
+    afzender: str | None,
+    body_hint: str | None = None,
 ) -> ToewijzingBesluit:
     tenaamstelling_sleutel = normaliseer_partijnaam(tenaamstelling) if tenaamstelling else ""
     afzender_sleutel = normaliseer_afzender(afzender)
@@ -114,6 +160,14 @@ def bepaal_toewijzing(
             )
         return ToewijzingBesluit(administratie_id=afzender_regel.administratie_id, bron="afzender_regel")
 
+    body_suggestie = vind_administratie_hint_in_tekst(session, body_hint)
+    if body_suggestie is not None:
+        return ToewijzingBesluit(
+            administratie_id=None,
+            bron=None,
+            suggestie_administratie_id=body_suggestie,
+            suggestie_bron="mail_body",
+        )
     return ToewijzingBesluit(administratie_id=None, bron=None)
 
 

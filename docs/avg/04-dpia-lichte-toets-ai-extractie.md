@@ -9,7 +9,11 @@
 
 De module stuurt de inhoud van aangeleverde boekhouddocumenten (PDF-facturen, kassarapporten,
 multi-factuur-PDF's) naar de Anthropic Claude API (model `claude-sonnet-5`) om
-factuurgegevens voor te lezen: leverancier, datum, bedragen, regels, btw. Kenmerken:
+factuurgegevens voor te lezen: leverancier, datum, bedragen, regels, btw. Sinds 2026-08-25 gaat
+daarbij — uitsluitend bij documenten uit de e-mail-intake — de begeleidende mail-body als
+HINT mee (platte tekst, max 4.000 tekens, door hetzelfde BSN-post-filter; casus: een collega
+mailt "dit is voor Oirschot"), en worden aangeleverde foto's (JPEG/PNG/HEIC) vóór verzending
+deterministisch naar PDF omgezet — de AI ziet uitsluitend PDF. Kenmerken:
 
 - **AI alleen voor taal, code voor cijfers**: elke AI-uitkomst gaat door een deterministische
   controlelaag (regelsommen, btw-per-regel-check, verplichte velden); geen LLM in
@@ -24,7 +28,8 @@ factuurgegevens voor te lezen: leverancier, datum, bedragen, regels, btw. Kenmer
 
 Doel: handmatige overtypwerkzaamheden vervangen; het alternatief (volledig handmatig) is
 foutgevoeliger en trager. De verwerking is beperkt tot documentinhoud die het kantoor toch al
-onder ogen krijgt; er gaan geen aparte persoonsdossiers naar de AI. Minder ingrijpende
+onder ogen krijgt — de mail-body is daar sinds 25-08 onderdeel van (dezelfde mail die de
+medewerker leest), begrensd en BSN-gefilterd; er gaan geen aparte persoonsdossiers naar de AI. Minder ingrijpende
 alternatieven (klassieke OCR-templates) zijn overwogen maar schalen niet over de
 leveranciersvariëteit; de AI levert bovendien alleen een vóórstel, geen besluit.
 

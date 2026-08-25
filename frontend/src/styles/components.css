@@ -1225,3 +1225,21 @@ body.dark .combobox-listbox {
 .plan-grid tr.plan-compact td.plan-cel {
   height: 34px;
 }
+
+/* Blok "Uit de e-mail" op het controlescherm (feedbackronde 25-08 deel 3 punt 1b). */
+.uit-de-email > summary { list-style: revert; }
+.uit-de-email dl { margin: 0; }
+.uit-de-email dd { margin: 2px 0 0; }
+.mail-body {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+

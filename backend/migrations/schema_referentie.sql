@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0068
+-- Migratie-head bij deze dump: 0070
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -583,6 +583,9 @@ CREATE TABLE boekhouding.document (
     toewijzing_suggestie_administratie_id uuid,
     toewijzing_suggestie_bron text,
     gesplitst_uit_id uuid,
+    bron_opslag_pad text,
+    bron_bestandsnaam text,
+    bron_content_type text,
     CONSTRAINT document_soort_geldig CHECK ((soort = ANY (ARRAY['inkoopfactuur'::text, 'kassarapport'::text, 'verkoopfactuur'::text, 'waarborg'::text])))
 );
 
@@ -899,6 +902,7 @@ CREATE TABLE boekhouding.intake_bericht (
     verwerkt_op timestamp with time zone DEFAULT now() NOT NULL,
     verwerkt_door uuid NOT NULL,
     detail jsonb NOT NULL,
+    body_tekst text,
     CONSTRAINT intake_bericht_bron_geldig CHECK ((bron = ANY (ARRAY['eml_upload'::text, 'imap'::text])))
 );
 

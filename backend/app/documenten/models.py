@@ -141,6 +141,12 @@ class Document(Base):
     gesplitst_uit_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
     )
+    # Origineel brondocument (migratie 0070, feedbackronde 25-08 deel 3 punt 2): een afbeelding
+    # (JPEG/PNG/HEIC) wordt bij binnenkomst naar PDF omgezet — opslag_pad/bestandsnaam zijn dan
+    # de PDF, deze drie kolommen het aangeleverde origineel. NULL = het bestand ís het origineel.
+    bron_opslag_pad: Mapped[str | None] = mapped_column(default=None)
+    bron_bestandsnaam: Mapped[str | None] = mapped_column(default=None)
+    bron_content_type: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     laatst_gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

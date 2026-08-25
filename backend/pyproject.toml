@@ -33,6 +33,20 @@ dependencies = [
     # Mozilla-services-bibliotheek, MPL-2.0, de referentie-implementatie in Python; trekt
     # py-vapid mee (gebruikt door scripts/genereer_vapid_sleutels.py).
     "pywebpush>=2.0",
+    # Afbeeldingsformaten uploaden (feedbackronde 25-08 deel 3 punt 2): JPEG/PNG/HEIC worden bij
+    # binnenkomst deterministisch naar PDF omgezet (app/documenten/afbeelding.py — eigen minimale
+    # PDF-writer, geen datums/ID's → zelfde foto = zelfde bytes = werkende sha256-duplicaatcheck).
+    # Pillow decodeert/valideert (HPND/MIT-achtig, de standaard); pillow-heif (LGPL-3.0/BSD,
+    # bundelt libheif in manylinux-/macOS-wheels — geen apt-pakket in python:3.12-slim nodig)
+    # opent HEIC/HEIF van iPhones. Gedeclareerde dependencies worden bewaakt door
+    # tests/unit/test_dependencies_gedeclareerd.py (de "requirements-check").
+    "Pillow>=11.0",
+    "pillow-heif>=0.20",
+    # Gevonden door de requirements-check (25-08): rechtstreeks geïmporteerd maar tot dan alleen
+    # transitief aanwezig (via fastapi/pydantic-settings resp. google-cloud-storage). Expliciet
+    # declareren = de import kan nooit wegvallen bij een upstream-herschikking.
+    "pydantic>=2.9",
+    "google-crc32c>=1.5",
 ]
 
 [project.optional-dependencies]

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
-import type { AfwijzingDto, DocumentActieResponseDto, DocumentDetailDto, VraagDto } from '../api/types'
+import type { AfwijzingDto, DocumentActieResponseDto, DocumentDetailDto, HerkomstMailDto, VraagDto } from '../api/types'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
@@ -202,6 +202,51 @@ function laatsteExtractieProbleem(detail: DocumentDetailDto): string | null {
   return null
 }
 
+/** Inklapbaar blok "Uit de e-mail" (feedbackronde 25-08 deel 3 punt 1b): afzender, onderwerp en
+ * de platte mail-body van het intake-bericht — context voor het boekingsvoorstel (casus: collega
+ * mailt "dit is voor Oirschot"). Standaard ingeklapt; géén body (bericht van vóór 0069 of mail
+ * zonder tekst) = dat staat er eerlijk bij. */
+function UitDeEmail({ herkomst }: { herkomst: HerkomstMailDto }) {
+  const ontvangen = herkomst.ontvangen_op ? new Date(herkomst.ontvangen_op).toLocaleString('nl-NL') : null
+  return (
+    <details className="panel uit-de-email" data-testid="uit-de-email">
+      <summary style={{ cursor: 'pointer' }}>
+        <h2 style={{ display: 'inline', margin: 0 }}>Uit de e-mail</h2>
+        <span className="hint" style={{ marginLeft: 8 }}>
+          {herkomst.afzender ?? 'onbekende afzender'}
+          {herkomst.onderwerp ? ` · ${herkomst.onderwerp}` : ''}
+        </span>
+      </summary>
+      <dl className="grid2" style={{ marginTop: 10 }}>
+        <div>
+          <dt className="hint">Afzender</dt>
+          <dd>{herkomst.afzender ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="hint">Onderwerp</dt>
+          <dd>{herkomst.onderwerp ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="hint">Ontvangen</dt>
+          <dd>
+            {ontvangen ?? '—'} <span className="hint">({herkomst.bron === 'imap' ? 'postvak' : '.eml-upload'})</span>
+          </dd>
+        </div>
+      </dl>
+      <div className="hint" style={{ marginTop: 8 }}>
+        Begeleidend schrijven
+      </div>
+      {herkomst.body_tekst ? (
+        <pre className="mail-body">{herkomst.body_tekst}</pre>
+      ) : (
+        <p className="hint" style={{ margin: 0 }}>
+          Geen mailtekst beschikbaar (mail zonder tekst, of verwerkt vóór de mail-body bewaard werd).
+        </p>
+      )}
+    </details>
+  )
+}
+
 export function DocumentDetailScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
   const [detail, setDetail] = useState<DocumentDetailDto | null>(null)
@@ -217,6 +262,17 @@ export function DocumentDetailScreen() {
   // banner én het tabblad "Opmerkingen" naast de tijdlijn.
   const [documentVragen, setDocumentVragen] = useState<VraagDto[] | null>(null)
   const [tijdlijnTab, setTijdlijnTab] = useState<'tijdlijn' | 'opmerkingen'>('tijdlijn')
+  const downloadOrigineel = async () => {
+    if (!detail?.bron_bestandsnaam) return
+    const resp = await apiFetch(`/administraties/${administratieId}/documenten/${documentId}/bronbestand`)
+    if (!resp.ok) return
+    const url = URL.createObjectURL(await resp.blob())
+    const a = document.createElement('a')
+    a.href = url
+    a.download = detail.bron_bestandsnaam
+    a.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
   const opmerkingenRef = useRef<HTMLDivElement | null>(null)
   // Doorbelasten in de boekflow (besluit Peter 25-08): het blok meldt of er een klaargezette run
   // is en of die groen staat — de boekknop wordt dan "Boeken + doorbelasten" (poort in het paneel).
@@ -386,10 +442,22 @@ export function DocumentDetailScreen() {
               )}
             </div>
             {bijlage && (
-              <p style={{ marginTop: 10 }}>
+              <p style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <a className="btn secondary" href={bijlage.url} download={detail.bestandsnaam}>
                   Downloaden
                 </a>
+                {detail.bron_bestandsnaam && (
+                  // Omgezette afbeelding (punt 2, 25-08 deel 3): het aangeleverde origineel blijft
+                  // als brondocument bewaard en is hier op te halen.
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    title="Deze PDF is gemaakt uit een aangeleverde afbeelding; het origineel blijft bewaard"
+                    onClick={() => void downloadOrigineel()}
+                  >
+                    Origineel ({detail.bron_bestandsnaam})
+                  </button>
+                )}
               </p>
             )}
           </div>
@@ -584,6 +652,9 @@ export function DocumentDetailScreen() {
               </div>
             )
           })()}
+
+          {/* Uit de e-mail (feedbackronde 25-08 deel 3 punt 1b): context bij het voorstel. */}
+          {detail.herkomst_mail && <UitDeEmail herkomst={detail.herkomst_mail} />}
 
           {/* Al-betaald-signaal (besluit Peter 25-08, deel 2 punt 1): alleen hier op het
               controlescherm, nooit blokkerend — de component gate zichzelf (soort/status). */}

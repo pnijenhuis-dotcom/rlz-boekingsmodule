@@ -37,6 +37,10 @@ class IntakeBericht(Base):
     verwerkt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     verwerkt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     detail: Mapped[dict] = mapped_column(JSONB)
+    # Platte tekst van de mail-body (migratie 0069, feedbackronde 25-08 deel 3 punt 1): dossier-
+    # tekst (7 jaar) + hint voor toewijzing/extractie. NULL = bericht van vóór 0069 (geen
+    # backfill mogelijk) of een mail zonder tekstdeel.
+    body_tekst: Mapped[str | None] = mapped_column(default=None)
 
 
 class ToewijzingRegelSoort(enum.StrEnum):

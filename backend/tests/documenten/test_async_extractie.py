@@ -59,7 +59,7 @@ def ai_gate_aan(administratie_id: uuid.UUID, beheerder_id: uuid.UUID, monkeypatc
 def fake_extraheer(monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
     aanroepen: list[bytes] = []
 
-    def _fake(pdf_bytes: bytes, *, client=None, verbruik_referentie=None):
+    def _fake(pdf_bytes: bytes, *, client=None, verbruik_referentie=None, mail_context=None):
         aanroepen.append(pdf_bytes)
         return _fake_extractie()
 
@@ -241,7 +241,7 @@ class TestAsyncFlow:
         )
         monkeypatch.setattr(
             "app.extractie.service.extraheer_inkoopfactuur",
-            lambda pdf_bytes, *, client=None, verbruik_referentie=None: _fake_extractie(volledig=False),
+            lambda pdf_bytes, *, client=None, verbruik_referentie=None, mail_context=None: _fake_extractie(volledig=False),
         )
         wachtrij = InProcessExtractieWachtrij(taak=service.verwerk_extractie_taak, max_workers=1)
 

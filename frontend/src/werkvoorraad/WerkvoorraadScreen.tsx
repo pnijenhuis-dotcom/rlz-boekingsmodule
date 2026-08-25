@@ -4,7 +4,7 @@ import type { AdministratieDto } from '../api/types'
 import { useAuthOptioneel } from '../auth/AuthContext'
 import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/instellingenApi'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
-import { verwerkEml } from '../intake/intakeApi'
+import { UPLOAD_ACCEPT, verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
 import { FoutMelding } from '../ui/FoutMelding'
 import { VragenScreen } from '../vragen/VragenScreen'
 import { DocumentenDeelscherm } from './DocumentenDeelscherm'
@@ -199,28 +199,30 @@ function EmlUploadZone({ onVerwerkt }: { onVerwerkt: () => void }) {
   const [sleepActief, setSleepActief] = useState(false)
   const bestandInputRef = useRef<HTMLInputElement>(null)
 
-  const uploadEml = useCallback(async (bestand: File) => {
-    if (!bestand.name.toLowerCase().endsWith('.eml')) {
-      setUploadFout(
-        `"${bestand.name}" is geen .eml-bestand. PDF's en UBL horen bij een klant: open eerst de klant in de lijst hieronder en upload daar.`,
-      )
-      return
-    }
+  // Werkvoorraad-sleepzone = tenaamstelling-routing (CLAUDE.md): een .eml gaat door de mail-intake,
+  // een los bestand (PDF/UBL/foto — punt 2 feedbackronde 25-08 deel 3) door dezelfde routing als een
+  // mailbijlage: eenduidige tenaamstelling → klant, twijfel → "Niet toegewezen".
+  const uploadBestand = useCallback(async (bestand: File) => {
     setBezig(true)
     setUploadFout(null)
     setUploadBericht(null)
     try {
-      const resultaat = await verwerkEml(bestand)
-      setUploadBericht(
-        resultaat.al_eerder_verwerkt
-          ? `"${bestand.name}" was al eerder verwerkt (zelfde Message-ID) — niets dubbel gedaan.`
-          : `"${bestand.name}" verwerkt: ${resultaat.bijlagen
-              .map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`)
-              .join('; ') || 'geen bijlagen gevonden'}.`,
-      )
+      if (bestand.name.toLowerCase().endsWith('.eml')) {
+        const resultaat = await verwerkEml(bestand)
+        setUploadBericht(
+          resultaat.al_eerder_verwerkt
+            ? `"${bestand.name}" was al eerder verwerkt (zelfde Message-ID) — niets dubbel gedaan.`
+            : `"${bestand.name}" verwerkt: ${resultaat.bijlagen
+                .map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`)
+                .join('; ') || 'geen bijlagen gevonden'}.`,
+        )
+      } else {
+        const r = await verwerkLosBestand(bestand)
+        setUploadBericht(`"${bestand.name}" → ${r.uitkomst.replaceAll('_', ' ')}${r.detail ? ` (${r.detail})` : ''}.`)
+      }
       onVerwerkt()
     } catch (err) {
-      setUploadFout(err instanceof Error ? err.message : 'Verwerken van de mail is mislukt.')
+      setUploadFout(err instanceof Error ? err.message : 'Verwerken van het bestand is mislukt.')
     } finally {
       setBezig(false)
     }
@@ -240,29 +242,29 @@ function EmlUploadZone({ onVerwerkt }: { onVerwerkt: () => void }) {
           e.preventDefault()
           setSleepActief(false)
           const bestand = e.dataTransfer.files?.[0]
-          if (bestand) void uploadEml(bestand)
+          if (bestand) void uploadBestand(bestand)
         }}
       >
         {bezig ? (
           'Bezig met verwerken…'
         ) : (
           <>
-            Sleep hier een doorgestuurde mail (.eml) naartoe, of <b>blader</b>
+            Sleep hier een doorgestuurde mail (.eml), een PDF, UBL of foto (JPEG/PNG/HEIC) naartoe, of <b>blader</b>
             <br />
             <span style={{ fontSize: 12 }}>
-              Bijlagen worden automatisch aan de juiste klant toegewezen; wat niet eenduidig koppelt komt in
-              &ldquo;Niet toegewezen&rdquo; hieronder. Losse PDF&rsquo;s of UBL uploadt u bij de klant zelf.
+              Toewijzing op tenaamstelling: wat eenduidig koppelt gaat direct naar de klant, de rest komt in
+              &ldquo;Niet toegewezen&rdquo; hieronder. Een foto wordt naar PDF omgezet (origineel blijft bewaard).
             </span>
           </>
         )}
         <input
           ref={bestandInputRef}
           type="file"
-          accept=".eml"
+          accept={UPLOAD_ACCEPT}
           style={{ display: 'none' }}
           onChange={(e) => {
             const bestand = e.target.files?.[0]
-            if (bestand) void uploadEml(bestand)
+            if (bestand) void uploadBestand(bestand)
           }}
         />
       </div>

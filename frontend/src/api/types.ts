@@ -229,7 +229,20 @@ export interface DocumentDetailDto {
   afwijzing: AfwijzingInfoDto | null
   /** Factuurmatch (fase 2): actuele urenmatch-stand — null als geen match van toepassing. */
   factuurmatch?: FactuurmatchDto | null
+  /** Blok "Uit de e-mail" (feedbackronde 25-08 deel 3 punt 1b) — alleen bij mail-herkomst. */
+  herkomst_mail?: HerkomstMailDto | null
+  /** Aangeleverd origineel (bv. IMG_0412.HEIC) als het document een omgezette afbeelding is (punt 2). */
+  bron_bestandsnaam?: string | null
   tijdlijn: DocumentGebeurtenisDto[]
+}
+
+export interface HerkomstMailDto {
+  afzender: string | null
+  onderwerp: string | null
+  ontvangen_op: string | null
+  /** null = geen tekstdeel óf bericht van vóór migratie 0069 (geen backfill). */
+  body_tekst: string | null
+  bron: string
 }
 
 export interface UploadResponseDto {

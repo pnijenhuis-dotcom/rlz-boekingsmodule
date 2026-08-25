@@ -442,3 +442,62 @@ describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () 
     expect(await screen.findByRole('button', { name: 'Afwijzen…' })).toBeInTheDocument()
   })
 })
+
+describe('DocumentDetailScreen — blok "Uit de e-mail" (feedbackronde 25-08 deel 3, punt 1b)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const basis = {
+    id: DOCUMENT_ID,
+    administratie_id: ADMINISTRATIE_ID,
+    bestandsnaam: 'factuur.pdf',
+    status: 'te_controleren',
+    bron: 'email',
+    soort: 'inkoopfactuur',
+    mogelijk_duplicaat_van: null,
+    toegewezen_aan: null,
+    aangemaakt_op: '2026-08-25T10:00:00Z',
+    laatst_gewijzigd_op: '2026-08-25T10:00:00Z',
+    veldvoorstel: null,
+    tijdlijn: [],
+  }
+
+  it('toont afzender, onderwerp en het begeleidend schrijven, ingeklapt', async () => {
+    installFetchMock({
+      ...basis,
+      herkomst_mail: {
+        afzender: 'collega@kempengroep.nl',
+        onderwerp: 'Factuur Bouwmaat',
+        ontvangen_op: '2026-08-25T09:00:00+02:00',
+        body_tekst: 'Hoi Peter,\n\nDit is voor Oirschot.',
+        bron: 'imap',
+      },
+    })
+    renderScherm()
+    const blok = await screen.findByTestId('uit-de-email')
+    expect(blok).not.toHaveAttribute('open')
+    expect(blok).toHaveTextContent('Uit de e-mail')
+    expect(blok).toHaveTextContent('collega@kempengroep.nl')
+    expect(blok).toHaveTextContent('Factuur Bouwmaat')
+    expect(blok).toHaveTextContent('Dit is voor Oirschot.')
+    expect(blok).toHaveTextContent('postvak')
+  })
+
+  it('zonder body staat er eerlijk dat er geen mailtekst is; zonder mail-herkomst géén blok', async () => {
+    installFetchMock({
+      ...basis,
+      herkomst_mail: { afzender: 'x@y.nl', onderwerp: null, ontvangen_op: null, body_tekst: null, bron: 'eml_upload' },
+    })
+    renderScherm()
+    const blok = await screen.findByTestId('uit-de-email')
+    expect(blok).toHaveTextContent('Geen mailtekst beschikbaar')
+    vi.unstubAllGlobals()
+
+    installFetchMock({ ...basis, bron: 'upload', herkomst_mail: null })
+    const { unmount } = renderScherm()
+    await waitFor(() => expect(screen.getAllByText(/Kopgegevens|Bijlage/).length).toBeGreaterThan(0))
+    expect(screen.queryAllByTestId('uit-de-email')).toHaveLength(1) // alleen het eerste (nog gemounte) scherm
+    unmount()
+  })
+})

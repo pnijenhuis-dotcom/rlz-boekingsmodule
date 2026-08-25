@@ -73,15 +73,23 @@ def bouw_eml(
     onderwerp: str = "Factuur",
     message_id: str | None = None,
     bijlagen: list[tuple[str, bytes, str, str]] | None = None,
+    body: str | None = "Bijgaand de factuur.",
+    body_html: str | None = None,
 ) -> bytes:
-    """bijlagen: (bestandsnaam, inhoud, maintype, subtype)."""
+    """bijlagen: (bestandsnaam, inhoud, maintype, subtype). `body` = platte tekst (None = géén
+    tekstdeel), `body_html` = extra HTML-alternatief (multipart/alternative)."""
     mail = EmailMessage()
     mail["From"] = f"Bouwmaat <{afzender}>"
     mail["To"] = "facturen@ak-nijenhuis.nl"
     mail["Subject"] = onderwerp
     mail["Date"] = "Thu, 07 Aug 2026 09:00:00 +0200"
     mail["Message-ID"] = message_id or f"<{uuid.uuid4()}@test.local>"
-    mail.set_content("Bijgaand de factuur.")
+    if body is not None:
+        mail.set_content(body)
+        if body_html is not None:
+            mail.add_alternative(body_html, subtype="html")
+    elif body_html is not None:
+        mail.set_content(body_html, subtype="html")
     for naam, inhoud, maintype, subtype in bijlagen or []:
         mail.add_attachment(inhoud, maintype=maintype, subtype=subtype, filename=naam)
     return mail.as_bytes()

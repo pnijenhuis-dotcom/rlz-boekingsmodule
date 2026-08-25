@@ -260,6 +260,17 @@ class DocumentGebeurtenisResponse(BaseModel):
     tijdstip: datetime
 
 
+class HerkomstMailDto(BaseModel):
+    """Blok "Uit de e-mail" (feedbackronde 25-08 deel 3 punt 1b): herkomst van een document met
+    mail-herkomst. `body_tekst` None = geen tekstdeel óf bericht van vóór migratie 0069."""
+
+    afzender: str | None = None
+    onderwerp: str | None = None
+    ontvangen_op: datetime | None = None
+    body_tekst: str | None = None
+    bron: str
+
+
 class DocumentDetailResponse(BaseModel):
     id: uuid.UUID
     administratie_id: uuid.UUID | None
@@ -276,6 +287,10 @@ class DocumentDetailResponse(BaseModel):
     # Factuurmatch (fase 2): actuele matchstand voor de controlescherm-banner; None = geen
     # match van toepassing (crediteur niet aan een veldwerker gekoppeld).
     factuurmatch: FactuurmatchDto | None = None
+    # Alleen bij documenten met mail-herkomst (intake_bericht_id gezet).
+    herkomst_mail: HerkomstMailDto | None = None
+    # Aangeleverd origineel als het document een omgezette afbeelding is (punt 2, migratie 0070).
+    bron_bestandsnaam: str | None = None
     tijdlijn: list[DocumentGebeurtenisResponse]
 
 

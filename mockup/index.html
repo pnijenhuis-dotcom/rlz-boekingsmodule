@@ -295,7 +295,7 @@
         </div>
       </div>
 
-      <div class="upload">Sleep hier PDF- of UBL-bestanden naartoe, of <b>blader</b> · UBL wordt automatisch herkend, PDF's gaan door AI-extractie en komen altijd langs het controlescherm<br><span style="font-size:12px">Een PDF met méérdere facturen wordt automatisch gesplitst; elke factuur wordt op tenaamstelling aan de juiste administratie toegewezen. De voorgestelde splitsing en toewijzing zie je altijd eerst ter controle.</span></div>
+      <div class="upload">Sleep hier PDF-, UBL-, .eml- of fotobestanden (JPEG/PNG/HEIC) naartoe, of <b>blader</b> · UBL wordt automatisch herkend, PDF's gaan door AI-extractie en komen altijd langs het controlescherm · een foto wordt bij binnenkomst naar PDF omgezet (origineel blijft als brondocument bewaard; onbruikbaar = zichtbaar in de verzamelbak)<br><span style="font-size:12px">Een PDF met méérdere facturen wordt automatisch gesplitst; elke factuur wordt op tenaamstelling aan de juiste administratie toegewezen. De voorgestelde splitsing en toewijzing zie je altijd eerst ter controle.</span></div>
 
       <div class="panel" style="border-left:3px solid var(--orange)">
         <h2>Niet toegewezen — handmatig koppelen (2)</h2>
@@ -448,6 +448,24 @@
             <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="chip afwijking">Waarschijnlijk al betaald</span> <b>14-08-2026 · ING zakelijk · − € 1.847,23</b> <span style="font-size:12px;color:var(--muted)">match: bedrag incl. btw exact gelijk + factuurnummer in omschrijving</span></div>
             <div class="hint" style="margin:4px 0 0">Onafgeletterde bankmutatie van "Bouwmaat Nederland B.V." — "Factuur 2026-0642". Signaal, geen blokkade: na het boeken pakt het afletteren deze mutatie op.</div>
           </div>
+          <!-- Uit de e-mail (feedbackronde 25-08 deel 3, punt 1b): inklapbaar blok bij documenten met
+               mail-herkomst — afzender, onderwerp en de platte mail-body (ruis gestript). De body gaat
+               ook als HINT mee in toewijzing en AI-extractie; tenaamstelling blijft leidend. -->
+          <details class="panel uit-de-email" style="padding:10px 14px">
+            <summary style="cursor:pointer"><b>Uit de e-mail</b> <span style="font-size:12px;color:var(--muted)">jan@kempengroep.nl · Fwd: Factuur Bouwmaat 2026-0642</span></summary>
+            <div class="grid2" style="margin-top:10px;font-size:12.5px">
+              <div><span style="color:var(--muted)">Afzender</span><br>jan@kempengroep.nl</div>
+              <div><span style="color:var(--muted)">Onderwerp</span><br>Fwd: Factuur Bouwmaat 2026-0642</div>
+              <div><span style="color:var(--muted)">Ontvangen</span><br>25-08-2026 09:14 <span style="color:var(--muted)">(postvak)</span></div>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:8px">Begeleidend schrijven</div>
+            <pre style="margin:4px 0 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);font:inherit;white-space:pre-wrap">Hoi Peter,
+
+Dit is voor Oirschot — steigermateriaal voor het pand aan de Rijkesluisstraat.
+
+Groet, Jan</pre>
+            <div class="hint" style="margin:6px 0 0">Verzamelbak-suggestie "mail_body" komt hieruit (Oirschot Recreatie B.V.) — een hint, nooit een automatische toewijzing.</div>
+          </details>
           <div class="panel">
             <h2>Kopgegevens <span class="conf hi">extractie-zekerheid per veld</span></h2>
             <div class="grid2">

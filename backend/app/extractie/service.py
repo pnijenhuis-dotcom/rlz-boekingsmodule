@@ -7,6 +7,7 @@ from typing import Any
 from app.aikosten.service import AiVerbruikReferentie
 from app.extractie.bsn import verwijder_bsns
 from app.extractie.client import ClaudeExtractieClient
+from app.extractie.splitsing import met_mail_context
 
 logger = logging.getLogger(__name__)
 
@@ -338,6 +339,7 @@ def extraheer_inkoopfactuur(
     *,
     client: ClaudeExtractieClient | None = None,
     verbruik_referentie: AiVerbruikReferentie | None = None,
+    mail_context: str | None = None,
 ) -> AiFactuurExtractie:
     """Stuurt de PDF naar Claude en normaliseert het resultaat naar AiFactuurExtractie.
 
@@ -354,9 +356,14 @@ def extraheer_inkoopfactuur(
     teller = _Teller()
     uit = _Genormaliseerd()
 
+    # Mail-body als hint (feedbackronde 25-08 deel 3 punt 1c): alleen in de kop-dragende
+    # opdrachten — de regel-blokken van de chunking hebben er niets aan.
     eerste = teller.tel(
         client.extraheer_json_uit_pdf(
-            pdf_bytes=pdf_bytes, system=SYSTEM_PROMPT, opdracht=OPDRACHT, json_schema=FACTUUR_SCHEMA
+            pdf_bytes=pdf_bytes,
+            system=SYSTEM_PROMPT,
+            opdracht=met_mail_context(OPDRACHT, mail_context),
+            json_schema=FACTUUR_SCHEMA,
         )
     )
 
@@ -370,7 +377,7 @@ def extraheer_inkoopfactuur(
             client.extraheer_json_uit_pdf(
                 pdf_bytes=pdf_bytes,
                 system=SYSTEM_PROMPT,
-                opdracht=OPDRACHT_KOP,
+                opdracht=met_mail_context(OPDRACHT_KOP, mail_context),
                 json_schema=KOP_SCHEMA,
                 cache_document=True,
             )

@@ -93,6 +93,26 @@ class FactuurSegment:
         }
 
 
+# Begeleidende mailtekst als hint in de opdracht (punt 1c): begrensd én door het BSN-filter,
+# dezelfde AVG-discipline als de documentinhoud. Eén plek voor alle extractie-opdrachten.
+MAIL_CONTEXT_MAX_TEKENS = 4_000
+
+
+def met_mail_context(opdracht: str, mail_context: str | None) -> str:
+    if not mail_context or not mail_context.strip():
+        return opdracht
+    schoon, _ = verwijder_bsns(mail_context.strip())
+    if len(schoon) > MAIL_CONTEXT_MAX_TEKENS:
+        schoon = schoon[:MAIL_CONTEXT_MAX_TEKENS].rstrip() + " […]"
+    return (
+        f"{opdracht}\n\n"
+        "Begeleidende e-mail waarmee dit document is aangeleverd — uitsluitend CONTEXT/HINT (bijvoorbeeld "
+        "voor wie de factuur bestemd is); wat op het document zelf staat is altijd leidend en de mailtekst "
+        "mag nooit als factuurinhoud worden overgenomen:\n"
+        f"<<<\n{schoon}\n>>>"
+    )
+
+
 def _schoon(waarde: Any) -> tuple[str | None, int]:
     if waarde is None:
         return None, 0
@@ -128,13 +148,18 @@ def detecteer_facturen(
     paginas: int,
     client: ClaudeExtractieClient | None = None,
     verbruik_referentie: AiVerbruikReferentie | None = None,
+    mail_context: str | None = None,
 ) -> list[FactuurSegment]:
     """Eén Claude-aanroep → gevalideerde segmenten. Elke ongeldige uitkomst (afkap, ongeldige
     bereiken) is een AiExtractieFout — de aanroeper vangt 'm en routeert naar de verzamelbak,
-    nooit een stille gok."""
+    nooit een stille gok. `mail_context` = de begeleidende mailtekst als HINT (feedbackronde
+    25-08 deel 3 punt 1c) — gaat BSN-gefilterd mee in de opdracht, het document blijft leidend."""
     client = client or ClaudeExtractieClient(verbruik_referentie=verbruik_referentie)
     antwoord = client.extraheer_json_uit_pdf(
-        pdf_bytes=pdf_bytes, system=SYSTEM_PROMPT, opdracht=OPDRACHT, json_schema=SPLITSING_SCHEMA
+        pdf_bytes=pdf_bytes,
+        system=SYSTEM_PROMPT,
+        opdracht=met_mail_context(OPDRACHT, mail_context),
+        json_schema=SPLITSING_SCHEMA,
     )
     if antwoord.afgekapt:
         raise AiExtractieFout("Splitsingsdetectie afgekapt (max_tokens) — voorstel onbruikbaar.")

@@ -22,7 +22,7 @@ from app.documenten.pdf import tel_paginas
 from app.documenten.service import _schrijf_overgang, _standaard_opslag
 from app.documenten.storage import DocumentOpslag
 from app.extractie.splitsing import FactuurSegment, valideer_segmenten
-from app.intake.models import IntakeSplitsing, IntakeSplitsingStatus
+from app.intake.models import IntakeBericht, IntakeSplitsing, IntakeSplitsingStatus
 from app.intake.toewijzing import bepaal_toewijzing
 
 
@@ -101,6 +101,10 @@ def bevestig_splitsing(
         bron_kanaal = bron_document.bron
         intake_bericht_id = bron_document.intake_bericht_id
         afzender = bron_document.afzender_hint
+        # Mail-body als toewijzingshint voor de delen (punt 1c) — dezelfde body als het bron-document.
+        body_hint = (
+            session.get(IntakeBericht, intake_bericht_id).body_tekst if intake_bericht_id is not None else None
+        )
 
     inhoud = opslag.lezen(pad=bron_pad)
     paginas = tel_paginas(inhoud) or 1
@@ -127,7 +131,9 @@ def bevestig_splitsing(
         deel_bytes = _pdf_deel(inhoud, start=segment.start_pagina, eind=segment.eind_pagina)
         deel_naam = f"{stam}-deel{volgnummer}.pdf"
         with scoped_session(None) as session:
-            besluit = bepaal_toewijzing(session, tenaamstelling=segment.tenaamstelling, afzender=afzender)
+            besluit = bepaal_toewijzing(
+                session, tenaamstelling=segment.tenaamstelling, afzender=afzender, body_hint=body_hint
+            )
         if besluit.administratie_id is not None:
             upload = documenten_service.upload_document(
                 administratie_id=besluit.administratie_id,

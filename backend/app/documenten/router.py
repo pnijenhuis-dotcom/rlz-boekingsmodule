@@ -27,7 +27,9 @@ from app.documenten import (
     tegenboeken,
     vragen,
 )
+from app.documenten.afbeelding import AFBEELDING_SUFFIXEN, AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
 from app.documenten.checks import CheckRapport
+from app.documenten.mime import content_type_voor
 from app.documenten.models import DocumentSoort, IbanAccorderingStatus, IbanSoort, VraagStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.rlz.credentials import GeenRlzCredentials
@@ -141,7 +143,9 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
     )
 
 
-_TOEGESTANE_SUFFIXEN = {".pdf", ".xml"}
+# Afbeeldingen (feedbackronde 25-08 deel 3 punt 2) worden bij binnenkomst naar PDF omgezet — de
+# keten ziet uitsluitend PDF/UBL; het origineel blijft als brondocument bewaard.
+_TOEGESTANE_SUFFIXEN = {".pdf", ".xml"} | set(AFBEELDING_SUFFIXEN)
 
 
 @router.post(
@@ -156,7 +160,10 @@ async def document_uploaden(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentUploadResponse:
     if not bestand.filename or Path(bestand.filename).suffix.lower() not in _TOEGESTANE_SUFFIXEN:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Alleen PDF- of XML-bestanden")
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Alleen PDF-, XML- of afbeeldingsbestanden (JPEG/PNG/HEIC)",
+        )
     try:
         document_soort = DocumentSoort(soort)
     except ValueError:
@@ -164,9 +171,9 @@ async def document_uploaden(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Onbekende documentsoort: {soort}"
         ) from None
     # Een kassarapport is altijd een PDF-scan/export — UBL is een factuurformaat, geen rapport.
-    if document_soort == DocumentSoort.KASSARAPPORT and Path(bestand.filename).suffix.lower() != ".pdf":
+    if document_soort == DocumentSoort.KASSARAPPORT and Path(bestand.filename).suffix.lower() == ".xml":
         raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Een kassarapport moet een PDF zijn"
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Een kassarapport moet een PDF (of foto) zijn"
         )
 
     inhoud = await bestand.read()
@@ -175,12 +182,31 @@ async def document_uploaden(
     if len(inhoud) > settings.document_max_bytes:
         raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Bestand te groot")
 
+    bestandsnaam = bestand.filename
+    bron_bestand: service.BronBestand | None = None
+    if is_afbeelding(bestandsnaam, bestand.content_type):
+        # Directe upload door een mens: een onbruikbare afbeelding meldt zich meteen terug (het
+        # bestand staat nog op diens schijf) — via mail landt hetzelfde geval in de verzamelbak.
+        try:
+            omgezet = afbeelding_naar_pdf(inhoud, bestandsnaam=bestandsnaam)
+        except AfbeeldingOnbruikbaar as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Afbeelding onbruikbaar: {exc}"
+            ) from exc
+        bron_bestand = service.BronBestand(
+            bestandsnaam=bestandsnaam,
+            inhoud=inhoud,
+            content_type=bestand.content_type or content_type_voor(bestandsnaam),
+        )
+        bestandsnaam, inhoud = omgezet.pdf_bestandsnaam, omgezet.pdf
+
     resultaat = service.upload_document(
         administratie_id=administratie_id,
-        bestandsnaam=bestand.filename,
+        bestandsnaam=bestandsnaam,
         inhoud=inhoud,
         actor_id=actor.id,
         soort=document_soort,
+        bron_bestand=bron_bestand,
     )
     return schemas.DocumentUploadResponse(
         document_id=resultaat.document_id,
@@ -353,6 +379,18 @@ def document_detail(
             else None
         ),
         factuurmatch=_lees_match_dto(administratie_id, document_id),
+        bron_bestandsnaam=d.bron_bestandsnaam,
+        herkomst_mail=(
+            schemas.HerkomstMailDto(
+                afzender=detail.herkomst_mail.afzender,
+                onderwerp=detail.herkomst_mail.onderwerp,
+                ontvangen_op=detail.herkomst_mail.ontvangen_op,
+                body_tekst=detail.herkomst_mail.body_tekst,
+                bron=detail.herkomst_mail.bron,
+            )
+            if detail.herkomst_mail
+            else None
+        ),
         tijdlijn=[
             schemas.DocumentGebeurtenisResponse(
                 van_status=g.van_status.value if g.van_status else None,
@@ -376,6 +414,28 @@ def document_bestand(
 ) -> Response:
     try:
         inhoud, bestandsnaam, content_type = service.haal_bijlage_op(
+            administratie_id=administratie_id, document_id=document_id
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=inhoud,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{bestandsnaam}"'},
+    )
+
+
+@bestand_router.get("/administraties/{administratie_id}/documenten/{document_id}/bronbestand")
+def document_bronbestand(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> Response:
+    """Het aangeleverde origineel (bv. de foto) van een naar PDF omgezet document — punt 2; 404 als
+    het document zelf het origineel is."""
+    try:
+        inhoud, bestandsnaam, content_type = service.haal_bronbestand_op(
             administratie_id=administratie_id, document_id=document_id
         )
     except service.DocumentNietGevonden as exc:

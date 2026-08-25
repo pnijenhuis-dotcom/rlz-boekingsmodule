@@ -40,6 +40,35 @@ async def eml_verwerken(
     )
 
 
+@router.post("/intake/bestand", response_model=schemas.IntakeBijlageResultaatDto, status_code=status.HTTP_201_CREATED)
+async def los_bestand_verwerken(
+    bestand: UploadFile = File(...),
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.IntakeBijlageResultaatDto:
+    """Los bestand op de werkvoorraad-sleepzone (feedbackronde 25-08 deel 3, punt 2): PDF, UBL of
+    afbeelding (JPEG/PNG/HEIC) — zelfde tenaamstelling-routing als een mailbijlage; een .eml hoort
+    op /intake/eml."""
+    from app.config import settings
+
+    inhoud = await bestand.read()
+    if not inhoud:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Leeg bestand")
+    if len(inhoud) > settings.document_max_bytes:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Bestand te groot")
+    try:
+        r = verwerking.verwerk_los_bestand(
+            bestandsnaam=bestand.filename or "bestand",
+            inhoud=inhoud,
+            content_type=bestand.content_type,
+            actor_id=actor.id,
+        )
+    except verwerking.BestandstypeNietOndersteund as exc:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
+    return schemas.IntakeBijlageResultaatDto(
+        bestandsnaam=r.bestandsnaam, uitkomst=r.uitkomst, document_id=r.document_id, detail=r.detail
+    )
+
+
 @router.get("/verzamelbak", response_model=schemas.VerzamelbakLijstResponse)
 def verzamelbak_lijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.VerzamelbakLijstResponse:
     items = verzamelbak.lijst_verzamelbak()
@@ -109,9 +138,7 @@ def verzamelbak_hoort_niet_bij_ons(
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.DocumentStatusResponse:
     try:
-        eind_status = verzamelbak.hoort_niet_bij_ons(
-            document_id=document_id, actor_id=actor.id, reden=invoer.reden
-        )
+        eind_status = verzamelbak.hoort_niet_bij_ons(document_id=document_id, actor_id=actor.id, reden=invoer.reden)
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except verzamelbak.RedenVerplicht as exc:
@@ -121,9 +148,7 @@ def verzamelbak_hoort_niet_bij_ons(
     return schemas.DocumentStatusResponse(document_id=document_id, status=eind_status.value)
 
 
-@router.post(
-    "/intake/splitsingen/{splitsing_id}/bevestigen", response_model=schemas.SplitsingBevestigenResponse
-)
+@router.post("/intake/splitsingen/{splitsing_id}/bevestigen", response_model=schemas.SplitsingBevestigenResponse)
 def splitsing_bevestigen(
     splitsing_id: uuid.UUID,
     invoer: schemas.SplitsingBevestigenInput,

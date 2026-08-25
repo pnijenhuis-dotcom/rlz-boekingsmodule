@@ -52,9 +52,9 @@
 | Doel | Centraal ontvangen van boekhoudstukken, splitsen van multi-factuur-PDF's, toewijzen aan de juiste administratie (tenaamstelling leidend) |
 | Grondslag | Als V1 |
 | Betrokkenen | Afzenders van e-mail (leveranciers, klanten); personen genoemd in bijlagen |
-| Gegevens | E-mailadres afzender, Message-ID, bijlagen (facturen/UBL/PDF); niet-PDF/XML-bijlagen worden geregistreerd maar niet verwerkt |
-| Ontvangers/verwerkers | Anthropic alléén bij PDF-extractie/splitsingsvoorstel en alléén als de AVG-gate `intake_ai_ingeschakeld` AAN staat (Beheerder-instelling, default UIT, elke wijziging in het audit log); e-mailprovider van het intake-postvak (Google Workspace, `facturen@ak-nijenhuis.nl` — Workspace-omgeving van PDL, subverwerker ván PDL; DPA = CDPA, checklist D rond 2026-08-15) |
-| Bewaartermijn | Als V1; berichten die "niet bij ons horen" worden afgewezen met reden en blijven zichtbaar geregistreerd (niets verdwijnt stil) |
+| Gegevens | E-mailadres afzender, Message-ID, onderwerp, **de platte tekst van de mail-body** (sinds 2026-08-25, migratie 0069: HTML → tekst, handtekening-/disclaimer-ruis deterministisch gestript, max 20.000 tekens — onderdeel van het documentdossier, zichtbaar op het controlescherm als "Uit de e-mail" en gedeeld door alle documenten uit dezelfde mail; geen backfill van eerdere berichten), bijlagen (facturen/UBL/PDF én **afbeeldingen JPEG/PNG/HEIC** — sinds 2026-08-25 deterministisch naar PDF omgezet, het origineel blijft als brondocument bewaard; inline logo's/te kleine plaatjes worden geregistreerd maar niet als document verwerkt); overige bijlagetypen worden geregistreerd maar niet verwerkt |
+| Ontvangers/verwerkers | Anthropic alléén bij PDF-extractie/splitsingsvoorstel en alléén als de AVG-gate `intake_ai_ingeschakeld` AAN staat — sinds 2026-08-25 gaat daarbij óók de mail-body als HINT mee (max 4.000 tekens, door hetzelfde BSN-filter als de documentinhoud; onder dezelfde gates en de AI-kostengrens, nooit erbuiten) (Beheerder-instelling, default UIT, elke wijziging in het audit log); e-mailprovider van het intake-postvak (Google Workspace, `facturen@ak-nijenhuis.nl` — Workspace-omgeving van PDL, subverwerker ván PDL; DPA = CDPA, checklist D rond 2026-08-15) |
+| Bewaartermijn | Als V1 (7 jaar) — geldt óók voor de bewaarde mail-body en het originele afbeeldingsbestand naast de omgezette PDF (beide horen bij het documentdossier); berichten die "niet bij ons horen" worden afgewezen met reden en blijven zichtbaar geregistreerd (niets verdwijnt stil) |
 
 ## 4. V3 — Omzet-/kassarapportverwerking
 
@@ -113,7 +113,9 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
   post-filter vóór persistentie + preview-maskering); mens-in-de-lus op elke boeking
   (automatisch boeken = opt-in per leverancier/administratie met harde blokkerende checks);
   code voor cijfers — geen LLM in geldberekeningen.
-- **Dataminimalisatie richting AI**: alleen documentinhoud die voor extractie nodig is;
+- **Dataminimalisatie richting AI**: alleen documentinhoud die voor extractie nodig is, plus
+  (sinds 2026-08-25) de begeleidende mail-body als begrensde, BSN-gefilterde hint onder dezelfde
+  gates;
   zoeken gebruikt uitsluitend lokaal aanwezige extractietekst (bewust geen nieuwe AI-calls).
 - **Integriteit**: idempotentie overal (client-GUID's, duplicaatchecks); niets verdwijnt stil
   (afwijzen = verplichte reden; API-fout = zichtbare foutstatus + retry).

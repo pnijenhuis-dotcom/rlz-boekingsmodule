@@ -10,6 +10,8 @@ import email.utils
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app.intake.mailbody import body_tekst_uit_bericht
+
 # Bijlage-typen die de intake verwerkt; al het andere wordt zichtbaar geregistreerd als
 # "niet verwerkbaar" in het intake-bericht (nooit stil genegeerd).
 _PDF_TYPES = {"application/pdf"}
@@ -21,6 +23,15 @@ class IntakeBijlage:
     bestandsnaam: str
     inhoud: bytes
     content_type: str
+    # Inline MIME-deel (Content-Disposition: inline en/of Content-ID): een in de HTML-body
+    # geplaatste afbeelding — handtekening-logo, tracking-pixel — geen document (punt 2).
+    inline: bool = False
+
+    @property
+    def is_afbeelding(self) -> bool:
+        from app.documenten.afbeelding import is_afbeelding
+
+        return is_afbeelding(self.bestandsnaam, self.content_type)
 
     @property
     def is_pdf(self) -> bool:
@@ -38,6 +49,8 @@ class IntakeMail:
     onderwerp: str | None
     ontvangen_op: datetime | None
     bijlagen: list[IntakeBijlage] = field(default_factory=list)
+    # Platte tekst van de body (feedbackronde 25-08 deel 3 punt 1) — None = geen tekstdeel.
+    body_tekst: str | None = None
 
 
 class GeenGeldigeEml(Exception):
@@ -76,6 +89,7 @@ def parse_eml(inhoud: bytes) -> IntakeMail:
                 bestandsnaam=bestandsnaam,
                 inhoud=payload,
                 content_type=deel.get_content_type(),
+                inline=(deel.get_content_disposition() == "inline") or bool(deel.get("Content-ID")),
             )
         )
 
@@ -86,4 +100,5 @@ def parse_eml(inhoud: bytes) -> IntakeMail:
         onderwerp=str(bericht.get("Subject")) if bericht.get("Subject") else None,
         ontvangen_op=ontvangen_op,
         bijlagen=bijlagen,
+        body_tekst=body_tekst_uit_bericht(bericht),
     )

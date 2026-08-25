@@ -141,7 +141,7 @@ def splitsingsvoorstel(
     monkeypatch.setattr(
         verwerking.splitsing_extractie,
         "detecteer_facturen",
-        lambda inhoud, paginas, client=None, verbruik_referentie=None: [
+        lambda inhoud, paginas, client=None, verbruik_referentie=None, mail_context=None: [
             FactuurSegment(1, 2, "BLOW B.V.", "Bouwmaat", "F-1", 0.95),
             FactuurSegment(3, 3, "Onbekend BV", "Sligro", "F-2", 0.9),
         ],

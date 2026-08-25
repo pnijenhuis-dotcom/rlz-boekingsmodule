@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
+from app.documenten.mime import content_type_voor
 from app.documenten.models import Document, DocumentStatus
 from app.documenten.service import (
     DocumentNietGevonden,
@@ -36,7 +37,7 @@ class DocumentNietInVerzamelbak(VerzamelbakFout):
 
 
 class RedenVerplicht(VerzamelbakFout):
-    """"Hoort niet bij ons" zonder reden wordt geweigerd (mockup: verplichte reden)."""
+    """ "Hoort niet bij ons" zonder reden wordt geweigerd (mockup: verplichte reden)."""
 
 
 class OnbekendeAdministratie(VerzamelbakFout):
@@ -78,7 +79,7 @@ def haal_bijlage_op(*, document_id: uuid.UUID, opslag: DocumentOpslag | None = N
         opslag_pad = document.opslag_pad
         bestandsnaam = document.bestandsnaam
     inhoud = opslag.lezen(pad=opslag_pad)
-    content_type = "application/pdf" if bestandsnaam.lower().endswith(".pdf") else "application/xml"
+    content_type = content_type_voor(bestandsnaam)
     return inhoud, bestandsnaam, content_type
 
 
@@ -135,9 +136,7 @@ def _laad_verzamelbak_document(session, document_id: uuid.UUID) -> Document:
     return document
 
 
-def wijs_toe(
-    *, document_id: uuid.UUID, administratie_id: uuid.UUID, actor_id: uuid.UUID
-) -> DocumentStatus:
+def wijs_toe(*, document_id: uuid.UUID, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> DocumentStatus:
     """Handmatige toewijzing vanuit de verzamelbak: administratie zetten, toewijzings-geheugen
     leren (mockup: "wordt onthouden"), terug naar ontvangen en de normale extractieflow starten
     (AVG-gate van de gekozen administratie geldt vanaf hier)."""
@@ -172,13 +171,11 @@ def wijs_toe(
             administratie_id=administratie_id,
         )
 
-    return start_extractie_na_toewijzing(
-        administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
-    )
+    return start_extractie_na_toewijzing(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
 
 
 def hoort_niet_bij_ons(*, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str) -> DocumentStatus:
-    """"Hoort niet bij ons" — verplichte reden, document blijft terugvindbaar als afgewezen
+    """ "Hoort niet bij ons" — verplichte reden, document blijft terugvindbaar als afgewezen
     (mockup: "blijft in het archief terugvindbaar"). Het toewijzings-geheugen leert hier bewust
     níéts (een verkeerd geadresseerd document is geen betrouwbare hint)."""
     schone_reden = reden.strip() if reden else ""

@@ -18,6 +18,7 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import storage
+from app.documenten.mime import content_type_voor
 from app.documenten.models import (
     Boekvoorstel,
     Document,
@@ -357,6 +358,8 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
         extractie = extractie_service.extraheer_inkoopfactuur(
             inhoud,
             verbruik_referentie=AiVerbruikReferentie(bron="inkoop_extractie", document_id=document.id),
+            # Begeleidende mailtekst als hint (punt 1c) — zelfde AVG-gate als het document zelf.
+            mail_context=_mail_body_van(session, document),
         )
     except AiKostenLimietBereikt:
         # AI-kostengrens (besluit 2026-08-14): zelfde zichtbare pad als de AVG-gate-uit — het
@@ -479,9 +482,7 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
         from app.uren import factuurmatch_pipeline  # lokaal: houdt de importgraaf klein
 
         try:
-            factuurmatch_pipeline.draai_match_voor_document(
-                administratie_id=administratie_id, document_id=document_id
-            )
+            factuurmatch_pipeline.draai_match_voor_document(administratie_id=administratie_id, document_id=document_id)
         except Exception:  # noqa: BLE001 — de match is signalering, nooit een blokkade
             logger.exception("Factuurmatch-run mislukt voor document %s", document_id)
 
@@ -528,6 +529,24 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
             logger.exception("Automatische GB-code-vraag mislukt voor document %s", document_id)
 
 
+@dataclass(frozen=True)
+class BronBestand:
+    """Aangeleverd origineel dat naast het (omgezette) documentbestand bewaard blijft — punt 2
+    feedbackronde 25-08 deel 3: foto.jpg → foto.pdf als document, foto.jpg als brondocument."""
+
+    bestandsnaam: str
+    inhoud: bytes
+    content_type: str
+
+
+def _sla_bronbestand_op(opslag: DocumentOpslag, *, opslag_pad: str, bron: BronBestand | None) -> str | None:
+    if bron is None:
+        return None
+    bron_pad = f"{opslag_pad}.bron{Path(bron.bestandsnaam).suffix.lower()}"
+    opslag.opslaan(pad=bron_pad, inhoud=bron.inhoud)
+    return bron_pad
+
+
 def upload_document(
     *,
     administratie_id: uuid.UUID,
@@ -543,6 +562,7 @@ def upload_document(
     afzender_hint: str | None = None,
     tenaamstelling: str | None = None,
     gesplitst_uit_id: uuid.UUID | None = None,
+    bron_bestand: BronBestand | None = None,
 ) -> UploadResultaat:
     """Slaat het bestand op, detecteert mogelijke duplicaten (sha256, binnen dezelfde
     administratie) en start de extractie: klein = synchroon binnen deze request (snelle
@@ -584,6 +604,7 @@ def upload_document(
 
         opslag_pad = f"{administratie_id}/{document_id}{Path(bestandsnaam).suffix.lower()}"
         opslag.opslaan(pad=opslag_pad, inhoud=inhoud)
+        bron_pad = _sla_bronbestand_op(opslag, opslag_pad=opslag_pad, bron=bron_bestand)
 
         document = Document(
             id=document_id,
@@ -599,6 +620,9 @@ def upload_document(
             afzender_hint=afzender_hint,
             tenaamstelling=tenaamstelling,
             gesplitst_uit_id=gesplitst_uit_id,
+            bron_opslag_pad=bron_pad,
+            bron_bestandsnaam=bron_bestand.bestandsnaam if bron_bestand else None,
+            bron_content_type=bron_bestand.content_type if bron_bestand else None,
         )
         session.add(document)
         session.flush()
@@ -678,6 +702,7 @@ def registreer_niet_toegewezen_document(
     gesplitst_uit_id: uuid.UUID | None = None,
     suggestie_administratie_id: uuid.UUID | None = None,
     suggestie_bron: str | None = None,
+    bron_bestand: BronBestand | None = None,
 ) -> uuid.UUID:
     """Verzamelbak-intake (e-mail-intake, migratie 0028): een document dat niet eenduidig aan een
     administratie te koppelen is — administratie_id NULL, status niet_toegewezen, mét de reden en
@@ -704,6 +729,7 @@ def registreer_niet_toegewezen_document(
 
     opslag_pad = f"niet_toegewezen/{document_id}{Path(bestandsnaam).suffix.lower()}"
     opslag.opslaan(pad=opslag_pad, inhoud=inhoud)
+    bron_pad = _sla_bronbestand_op(opslag, opslag_pad=opslag_pad, bron=bron_bestand)
 
     with scoped_session(None, actor_id=actor_id) as session:
         document = Document(
@@ -721,6 +747,9 @@ def registreer_niet_toegewezen_document(
             gesplitst_uit_id=gesplitst_uit_id,
             toewijzing_suggestie_administratie_id=suggestie_administratie_id,
             toewijzing_suggestie_bron=suggestie_bron,
+            bron_opslag_pad=bron_pad,
+            bron_bestandsnaam=bron_bestand.bestandsnaam if bron_bestand else None,
+            bron_content_type=bron_bestand.content_type if bron_bestand else None,
         )
         session.add(document)
         session.flush()
@@ -1074,12 +1103,47 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
     return klanten
 
 
+def haal_bronbestand_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> tuple[bytes, str, str]:
+    """Origineel brondocument (migratie 0070) van een naar PDF omgezette afbeelding."""
+    opslag = _standaard_opslag()
+    with scoped_session(administratie_id) as session:
+        document = session.get(Document, document_id)
+        if document is None or document.bron_opslag_pad is None or document.bron_bestandsnaam is None:
+            raise DocumentNietGevonden(f"Geen brondocument voor: {document_id}")
+        pad, naam = document.bron_opslag_pad, document.bron_bestandsnaam
+        content_type = document.bron_content_type or content_type_voor(naam)
+    return opslag.lezen(pad=pad), naam, content_type
+
+
+def _mail_body_van(session: Session, document: Document) -> str | None:
+    """Platte mail-body van het intake-bericht waaruit dit document komt (migratie 0069), of None
+    (upload zonder mail, of bericht van vóór 0069)."""
+    if document.intake_bericht_id is None:
+        return None
+    from app.intake.models import IntakeBericht
+
+    bericht = session.get(IntakeBericht, document.intake_bericht_id)
+    return bericht.body_tekst if bericht is not None else None
+
+
+@dataclass(frozen=True)
+class HerkomstMail:
+    """Blok "Uit de e-mail" op het controlescherm (feedbackronde 25-08 deel 3 punt 1b)."""
+
+    afzender: str | None
+    onderwerp: str | None
+    ontvangen_op: datetime | None
+    body_tekst: str | None
+    bron: str
+
+
 @dataclass(frozen=True)
 class DocumentDetail:
     document: Document
     gebeurtenissen: list[DocumentGebeurtenis]
     veldvoorstel: dict | None
     duplicaat_referentie: DuplicaatReferentie | None
+    herkomst_mail: HerkomstMail | None = None
 
 
 def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDetail:
@@ -1108,12 +1172,26 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
             if document.mogelijk_duplicaat_van_id
             else None
         )
+        herkomst_mail = None
+        if document.intake_bericht_id is not None:
+            from app.intake.models import IntakeBericht
+
+            bericht = session.get(IntakeBericht, document.intake_bericht_id)
+            if bericht is not None:
+                herkomst_mail = HerkomstMail(
+                    afzender=bericht.afzender,
+                    onderwerp=bericht.onderwerp,
+                    ontvangen_op=bericht.ontvangen_op,
+                    body_tekst=bericht.body_tekst,
+                    bron=bericht.bron,
+                )
 
     return DocumentDetail(
         document=document,
         gebeurtenissen=gebeurtenissen,
         veldvoorstel=veldvoorstel,
         duplicaat_referentie=duplicaat_referentie,
+        herkomst_mail=herkomst_mail,
     )
 
 
@@ -1243,5 +1321,5 @@ def haal_bijlage_op(
         bestandsnaam = document.bestandsnaam
 
     inhoud = opslag.lezen(pad=opslag_pad)
-    content_type = "application/pdf" if bestandsnaam.lower().endswith(".pdf") else "application/xml"
+    content_type = content_type_voor(bestandsnaam)
     return inhoud, bestandsnaam, content_type

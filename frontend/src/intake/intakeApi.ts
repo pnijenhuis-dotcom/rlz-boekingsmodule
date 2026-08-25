@@ -64,6 +64,17 @@ export function verwerkEml(bestand: File): Promise<IntakeVerwerkResponseDto> {
   return apiJson<IntakeVerwerkResponseDto>('/intake/eml', { method: 'POST', body: formData })
 }
 
+/** Los bestand (PDF/UBL/afbeelding) op de werkvoorraad-sleepzone — zelfde tenaamstelling-routing
+ * als een mailbijlage (feedbackronde 25-08 deel 3 punt 2). Een .eml gaat via verwerkEml. */
+export function verwerkLosBestand(bestand: File): Promise<IntakeBijlageResultaatDto> {
+  const formData = new FormData()
+  formData.append('bestand', bestand)
+  return apiJson<IntakeBijlageResultaatDto>('/intake/bestand', { method: 'POST', body: formData })
+}
+
+/** Bestandstypen die de sleepzones accepteren (naast .eml op de werkvoorraad). */
+export const UPLOAD_ACCEPT = '.pdf,.xml,.eml,.jpg,.jpeg,.png,.heic,.heif'
+
 export function wijsToe(documentId: string, administratieId: string): Promise<unknown> {
   return apiPostJson(`/verzamelbak/${documentId}/toewijzen`, { administratie_id: administratieId })
 }
