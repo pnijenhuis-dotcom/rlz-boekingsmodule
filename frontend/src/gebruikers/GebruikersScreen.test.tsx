@@ -110,9 +110,9 @@ function installMock(opties: {
   )
 }
 
-function renderScherm() {
+function renderScherm(pad = '/gebruikers') {
   return render(
-    <MemoryRouter initialEntries={['/gebruikers']}>
+    <MemoryRouter initialEntries={[pad]}>
       <AuthProvider>
         <GebruikersScreen />
       </AuthProvider>
@@ -179,7 +179,7 @@ describe('GebruikersScreen', () => {
       ],
       postAanroepen: posts,
     })
-    renderScherm()
+    renderScherm('/gebruikers?groep=accordeurs')
 
     await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
     // Precies één knop: de accordeur wél, de kantoorgebruiker (wachtwoord + TOTP) níét.
@@ -196,7 +196,7 @@ describe('GebruikersScreen', () => {
       gebruikers: [gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur' })],
       mailVerzonden: false,
     })
-    renderScherm()
+    renderScherm('/gebruikers?groep=accordeurs')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Herstel-link' })).toBeInTheDocument())
     const gebruikerEvent = userEvent.setup()
@@ -217,7 +217,7 @@ describe('GebruikersScreen', () => {
         }),
       ],
     })
-    renderScherm()
+    renderScherm('/gebruikers?groep=accordeurs')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Opnieuw mailen' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Herstel-link' })).not.toBeInTheDocument()
@@ -256,7 +256,7 @@ describe('GebruikersScreen', () => {
       ],
       postAanroepen: posts,
     })
-    renderScherm()
+    renderScherm('/gebruikers?groep=accordeurs')
 
     await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
     expect(screen.getByText('Molenhof Beheer B.V.')).toBeInTheDocument()
@@ -299,7 +299,7 @@ describe('GebruikersScreen', () => {
         },
       ],
     })
-    renderScherm()
+    renderScherm('/gebruikers?groep=accordeurs')
 
     await waitFor(() => expect(screen.getByText(/LAN-telefoon \(dev-stub\)/)).toBeInTheDocument())
     // Eén chip voor de gedupliceerde stub, de echte passkey blijft een eigen rij.
@@ -322,5 +322,75 @@ describe('GebruikersScreen', () => {
     await waitFor(() =>
       expect(screen.getByText(/alleen toegankelijk voor de Beheerder-rol/)).toBeInTheDocument(),
     )
+  })
+
+  it('tabs per groep met tellers; kantoor is de default en oude #accordeurs-ankers landen op de accordeurs-tab', async () => {
+    installMock({
+      gebruikers: [
+        gebruiker({ id: ANDER_ID, naam: 'Demi de Vries' }),
+        gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur' }),
+        gebruiker({ id: 'ffffffff-0000-0000-0000-00000000000f', naam: 'Z. Zzp', rol: 'zzper' }),
+      ],
+    })
+    const { unmount } = renderScherm()
+    await waitFor(() => expect(screen.getByText('Demi de Vries')).toBeInTheDocument())
+    expect(screen.getByRole('tab', { name: 'Kantoor (1)' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Veldwerkers (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Klant-accordeurs (1)' })).toBeInTheDocument()
+    expect(screen.queryByText('R. de Groot')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Medewerker uitnodigen' })).toBeInTheDocument()
+
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Klant-accordeurs (1)' }))
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    expect(screen.queryByText('Demi de Vries')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Accordeur uitnodigen' })).toBeInTheDocument()
+    unmount()
+
+    renderScherm('/gebruikers#accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+  })
+
+  it('zoekveld filtert op naam/e-mail/administratie en paginering houdt 25 rijen per pagina', async () => {
+    const veel = Array.from({ length: 30 }, (_, i) =>
+      gebruiker({
+        id: `aaaaaaaa-1111-0000-0000-${String(i).padStart(12, '0')}`,
+        naam: `Medewerker ${String(i).padStart(2, '0')}`,
+        e_mail: `m${i}@ak-nijenhuis.nl`,
+      }),
+    )
+    installMock({ gebruikers: veel })
+    renderScherm()
+    await waitFor(() => expect(screen.getByText('Medewerker 00')).toBeInTheDocument())
+    expect(screen.getByText('Medewerker 24')).toBeInTheDocument()
+    expect(screen.queryByText('Medewerker 25')).not.toBeInTheDocument()
+    expect(screen.getByText(/1–25 van 30 gebruikers/)).toBeInTheDocument()
+
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Volgende pagina' }))
+    expect(screen.getByText('Medewerker 25')).toBeInTheDocument()
+    expect(screen.queryByText('Medewerker 00')).not.toBeInTheDocument()
+
+    await gebruikerEvent.type(screen.getByRole('searchbox', { name: 'Zoek gebruikers' }), 'm7@')
+    expect(screen.getByText('Medewerker 07')).toBeInTheDocument()
+    expect(screen.queryByText('Medewerker 08')).not.toBeInTheDocument()
+    expect(screen.getByText(/1 van 30 gebruikers/)).toBeInTheDocument()
+    await gebruikerEvent.clear(screen.getByRole('searchbox', { name: 'Zoek gebruikers' }))
+    await gebruikerEvent.type(screen.getByRole('searchbox', { name: 'Zoek gebruikers' }), 'molenhof')
+    expect(screen.getByText('30 gebruikers')).toBeInTheDocument() // administratienaam matcht iedereen
+  })
+
+  it('accordeur met veel administraties toont één chip met een bekijk-dialoog; de actiekolom is sticky (3e)', async () => {
+    const ids = [ADMINISTRATIE_ID, ...Array.from({ length: 10 }, (_, i) => `dddddddd-0000-0000-0000-${String(i + 1).padStart(12, '0')}`)]
+    installMock({
+      gebruikers: [gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur', administratie_ids: ids })],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    expect(screen.getByText('11 administraties')).toBeInTheDocument()
+    // Actieknoppen staan in de sticky actiekolom (3e).
+    expect(screen.getByRole('button', { name: 'Blokkeren' }).closest('td')).toHaveClass('acties')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Molenhof Beheer B.V.')
   })
 })

@@ -220,7 +220,10 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
 
     await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
     expect(screen.getByText('IBAN-wissel accorderen door')).toBeInTheDocument()
-    // De accordeur-cel toont de medewerker als aangevinkte accordeur…
+    // De accordeur-cel toont de medewerker compact als chip (punt 4a, 25-08 deel 3)…
+    await waitFor(() => expect(screen.getAllByText('M. de Boer').length).toBeGreaterThan(0))
+    // …en de checkbox-lijst zit achter "wijzig" in een dialoog, met de medewerker aangevinkt.
+    await userEvent.setup().click(screen.getByRole('button', { name: /IBAN-accordeurs van Kempen Facilities B\.V\. wijzigen/ }))
     const accordeurCheckbox = await screen.findByRole('checkbox', { name: /M\. de Boer/ })
     expect(accordeurCheckbox).toBeChecked()
     // …en nergens een foutbanner of laad-fout.
@@ -233,7 +236,7 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     renderScherm()
 
     await waitFor(() => expect(screen.getAllByText('Testklant B.V.').length).toBeGreaterThan(0))
-    expect(await screen.findByText(/valt terug op de beheerder\(s\)/)).toBeInTheDocument()
+    expect(await screen.findByText(/beheerders \(terugval\)/)).toBeInTheDocument()
   })
 })
 

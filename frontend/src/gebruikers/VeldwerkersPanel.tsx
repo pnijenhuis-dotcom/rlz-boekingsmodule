@@ -97,7 +97,7 @@ export function VeldwerkersPanel({
                 <th>Rol</th>
                 <th>Koppelingen</th>
                 <th>Status</th>
-                <th />
+                <th className="acties" />
               </tr>
               {gebruikers.map((g) => {
                 const info = veldPer.get(g.id)
@@ -197,7 +197,9 @@ export function VeldwerkersPanel({
                         </div>
                       )}
                     </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{actieKolom(g)}</td>
+                    <td className="acties" style={{ whiteSpace: 'nowrap' }}>
+                      {actieKolom(g)}
+                    </td>
                   </tr>
                 )
               })}

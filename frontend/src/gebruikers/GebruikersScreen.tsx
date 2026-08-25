@@ -1,8 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
-import { Badge, Button, Select, Switch, useToastOptioneel } from '../ui/basis'
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  Paginering,
+  paginaSlice,
+  Select,
+  Switch,
+  useToastOptioneel,
+} from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
@@ -54,6 +67,80 @@ function groepeerApparaten(apparaten: ApparaatDto[]): ApparaatGroep[] {
     else groepen.push({ naam, isDevStub: apparaat.is_dev_stub, ids: [apparaat.id] })
   }
   return groepen
+}
+
+export type GebruikersGroep = 'kantoor' | 'veldwerkers' | 'accordeurs'
+const GROEPEN: { key: GebruikersGroep; label: string }[] = [
+  { key: 'kantoor', label: 'Kantoor' },
+  { key: 'veldwerkers', label: 'Veldwerkers' },
+  { key: 'accordeurs', label: 'Klant-accordeurs' },
+]
+
+/** Tab uit de URL: `?groep=` is de norm; oude `#accordeurs`-/`#veldwerkers`-ankers en onbekende
+ * waarden vallen terug op Kantoor — bestaande deep-links blijven werken (punt 3, 25-08 deel 3). */
+export function groepUitUrl(zoek: string | null, hash: string): GebruikersGroep {
+  const kandidaat = (zoek ?? hash.replace(/^#/, '')).toLowerCase()
+  if (kandidaat.startsWith('accordeur') || kandidaat === 'klant-accordeurs') return 'accordeurs'
+  if (kandidaat.startsWith('veldwerker')) return 'veldwerkers'
+  return 'kantoor'
+}
+
+/** Zoekfilter per tab: naam, e-mail, rol-label en administratienamen (punt 3). */
+export function filterGebruikers(
+  lijst: GebruikerOverzichtDto[],
+  zoekterm: string,
+  naamPerAdministratie: Map<string, string>,
+): GebruikerOverzichtDto[] {
+  const term = zoekterm.trim().toLowerCase()
+  if (!term) return lijst
+  return lijst.filter((g) =>
+    [g.naam, g.e_mail, rolLabel(g.rol), ...g.administratie_ids.map((id) => naamPerAdministratie.get(id) ?? '')]
+      .join(' ')
+      .toLowerCase()
+      .includes(term),
+  )
+}
+
+/** Compacte administraties-kolom (punt 3e): tot twee namen inline, daarboven één chip
+ * "N administraties" mét een dialoog die de volledige lijst toont — de kolom maakt de tabel
+ * nooit meer breder dan het scherm. Zelfde patroon als de IBAN-accordeurs-kolom (punt 4a). */
+function AdministratiesSamenvatting({ ids, naamPerAdministratie, eigenaar }: { ids: string[]; naamPerAdministratie: Map<string, string>; eigenaar: string }) {
+  const [open, setOpen] = useState(false)
+  const namen = ids.map((id) => naamPerAdministratie.get(id) ?? id)
+  if (ids.length === 0) return <>—</>
+  if (ids.length <= 2) {
+    return (
+      <>
+        {namen.map((naam) => (
+          <span key={naam}>
+            <Badge variant="info">{naam}</Badge>{' '}
+          </span>
+        ))}
+      </>
+    )
+  }
+  return (
+    <>
+      <Badge variant="info">{ids.length} administraties</Badge>{' '}
+      <Button variant="ghost" maat="klein" aria-label={`Administraties van ${eigenaar} bekijken`} onClick={() => setOpen(true)}>
+        bekijk
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogTitle>Administraties van {eigenaar}</DialogTitle>
+          <DialogDescription>
+            {ids.length} administraties — de wachtrij en de dagelijkse herinnering voegen ze samen. Scope wijzigen gaat via
+            de uitnodiging of het accorderingsbeheer per administratie.
+          </DialogDescription>
+          <ul style={{ margin: '10px 0 0', paddingLeft: 18, columns: namen.length > 8 ? 2 : 1 }}>
+            {[...namen].sort((a, b) => a.localeCompare(b, 'nl')).map((naam) => (
+              <li key={naam}>{naam}</li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
 
 export function GebruikersScreen() {
@@ -133,6 +220,19 @@ export function GebruikersScreen() {
   )
   const accordeurs = useMemo(() => (gebruikers ?? []).filter((g) => g.rol === 'klant_accordeur'), [gebruikers])
   const veldwerkers = useMemo(() => (gebruikers ?? []).filter((g) => isVeldrol(g.rol)), [gebruikers])
+
+  // Tabs per groep + zoekveld + paginering (punt 3, 25-08 deel 3): tab in de URL (?groep=),
+  // zoekterm en pagina lokaal; tab-wissel wist zoek + pagina.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { hash } = useLocation()
+  const groep = groepUitUrl(searchParams.get('groep'), hash)
+  const [zoekterm, setZoekterm] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const kiesGroep = (nieuwe: GebruikersGroep) => {
+    setZoekterm('')
+    setPagina(1)
+    setSearchParams(nieuwe === 'kantoor' ? {} : { groep: nieuwe }, { replace: true })
+  }
   const naamPerAdministratie = useMemo(() => new Map((administraties ?? []).map((a) => [a.id, a.naam])), [administraties])
 
   // Apparaten per accordeur (kill-switch-blok) — best-effort per gebruiker, een fout daar
@@ -316,6 +416,39 @@ export function GebruikersScreen() {
     return <p className="hint">Gebruikersbeheer is alleen toegankelijk voor de Beheerder-rol.</p>
   }
 
+  const gefilterd = {
+    kantoor: filterGebruikers(kantoor, zoekterm, naamPerAdministratie),
+    veldwerkers: filterGebruikers(veldwerkers, zoekterm, naamPerAdministratie),
+    accordeurs: filterGebruikers(accordeurs, zoekterm, naamPerAdministratie),
+  }
+  const kantoorPagina = paginaSlice(gefilterd.kantoor, pagina)
+  const veldwerkersPagina = paginaSlice(gefilterd.veldwerkers, pagina)
+  const accordeursPagina = paginaSlice(gefilterd.accordeurs, pagina)
+  const tellers: Record<GebruikersGroep, number> = {
+    kantoor: kantoor.length,
+    veldwerkers: veldwerkers.length,
+    accordeurs: accordeurs.length,
+  }
+  const zoekveld = (
+    <div className="lijst-kop">
+      <input
+        type="search"
+        aria-label="Zoek gebruikers"
+        placeholder="Zoek op naam, e-mail, rol of administratie…"
+        value={zoekterm}
+        onChange={(e) => {
+          setZoekterm(e.target.value)
+          setPagina(1)
+        }}
+      />
+      <span className="hint" style={{ margin: 0 }}>
+        {gefilterd[groep].length === tellers[groep]
+          ? `${tellers[groep]} ${tellers[groep] === 1 ? 'gebruiker' : 'gebruikers'}`
+          : `${gefilterd[groep].length} van ${tellers[groep]} gebruikers`}
+      </span>
+    </div>
+  )
+
   return (
     <div>
       <div className="topbar">
@@ -325,22 +458,44 @@ export function GebruikersScreen() {
             Medewerkers, rollen, administratie-scope en apparaten — met audit op elke wijziging.
           </div>
         </div>
-        <Button onClick={() => setUitnodigSoort('medewerker')}>+ Medewerker uitnodigen</Button>
+        {groep === 'kantoor' && <Button onClick={() => setUitnodigSoort('medewerker')}>+ Medewerker uitnodigen</Button>}
+        {/* Veldwerkers: de uitnodig-knop zit in het paneel zelf (VeldwerkersPanel, eigen kop). */}
+        {groep === 'accordeurs' && <Button onClick={() => setUitnodigSoort('accordeur')}>+ Accordeur uitnodigen</Button>}
       </div>
 
       {fout && <FoutMelding melding="De gebruikerslijst kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
       {mailFout && <FoutMelding melding={mailFout} />}
       {administratiesFout && <FoutMelding melding="Administraties konden niet geladen worden." detail={administratiesFout} />}
 
-      <div className="panel">
-        <h2>Kantoorgebruikers</h2>
-        {gebruikers === null && !fout && (
-          <div aria-busy="true">
-            <span className="skeleton" style={{ width: '55%', marginBottom: 8 }} />
-            <span className="skeleton" style={{ width: '40%' }} />
-          </div>
-        )}
-        {gebruikers !== null && (
+      {/* Tabs per groep (besluit Peter 25-08 "net zoals instellingen"): tellers per tab, eigen
+          zoekveld + paginering + uitnodig-knop per tab; ?groep= in de URL. */}
+      <div className="segment tabs-gebruikers" role="tablist" aria-label="Gebruikersgroep" style={{ marginBottom: 12 }}>
+        {GROEPEN.map((g) => (
+          <button
+            key={g.key}
+            type="button"
+            role="tab"
+            aria-selected={groep === g.key}
+            className={groep === g.key ? 'actief' : undefined}
+            onClick={() => kiesGroep(g.key)}
+          >
+            {g.label} ({tellers[g.key]})
+          </button>
+        ))}
+      </div>
+
+      {groep === 'kantoor' && (
+        <div className="panel" role="tabpanel">
+          <h2>Kantoorgebruikers</h2>
+          {gebruikers === null && !fout && (
+            <div aria-busy="true">
+              <span className="skeleton" style={{ width: '55%', marginBottom: 8 }} />
+              <span className="skeleton" style={{ width: '40%' }} />
+            </div>
+          )}
+          {gebruikers !== null && (
+            <>
+              {zoekveld}
           <div className="tabel-scroll sticky-koppen">
             <table>
               <tbody>
@@ -351,9 +506,9 @@ export function GebruikersScreen() {
                   <th>Meerwerk &amp; urenstaten</th>
                   <th>Beveiliging</th>
                   <th>Status</th>
-                  <th />
+                  <th className="acties" />
                 </tr>
-                {kantoor.map((g) => {
+                {kantoorPagina.map((g) => {
                   const isZelf = g.id === gebruikerId
                   const openUitnodiging = g.status === 'uitgenodigd' && g.open_uitnodiging_verloopt_op
                   return (
@@ -444,7 +599,7 @@ export function GebruikersScreen() {
                           <Badge variant="warn">activatie onderbroken</Badge>
                         )}
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td className="acties" style={{ whiteSpace: 'nowrap' }}>
                         {g.status === 'uitgenodigd' && (
                           <Button
                             variant="secundair"
@@ -471,11 +626,17 @@ export function GebruikersScreen() {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+              <Paginering pagina={pagina} totaal={gefilterd.kantoor.length} onPagina={setPagina} label="gebruikers" />
+            </>
+          )}
+        </div>
+      )}
 
+      {groep === 'veldwerkers' && (
+        <div role="tabpanel">
+          {gebruikers !== null && <div className="panel" style={{ paddingBottom: 4 }}>{zoekveld}</div>}
       <VeldwerkersPanel
-        gebruikers={veldwerkers}
+        gebruikers={veldwerkersPagina}
         administraties={administraties ?? []}
         onUitnodigen={() => setUitnodigSoort('veldwerker')}
         actieKolom={(g) => (
@@ -496,24 +657,23 @@ export function GebruikersScreen() {
           </>
         )}
       />
-
-      <div className="panel">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0 }}>Klant-accordeurs</h2>
-          <div style={{ marginLeft: 'auto' }}>
-            <Button variant="secundair" maat="klein" onClick={() => setUitnodigSoort('accordeur')}>
-              + Accordeur uitnodigen
-            </Button>
-          </div>
+          <Paginering pagina={pagina} totaal={gefilterd.veldwerkers.length} onPagina={setPagina} label="veldwerkers" />
         </div>
-        <p className="hint" style={{ marginTop: 6 }}>
-          Accordeurs gebruiken de mobiele app met passkey. Eén accordeur kan meerdere administraties bedienen —
-          de wachtrij en de dagelijkse herinnering voegen alles samen.
-        </p>
-        {gebruikers !== null && accordeurs.length === 0 && (
-          <p className="hint">Nog geen klant-accordeurs — nodig er een uit om de accorderingsflow te activeren.</p>
-        )}
-        {accordeurs.length > 0 && (
+      )}
+
+      {groep === 'accordeurs' && (
+        <div className="panel" role="tabpanel">
+          <h2 style={{ margin: 0 }}>Klant-accordeurs</h2>
+          <p className="hint" style={{ marginTop: 6 }}>
+            Accordeurs gebruiken de mobiele app met passkey. Eén accordeur kan meerdere administraties bedienen —
+            de wachtrij en de dagelijkse herinnering voegen alles samen.
+          </p>
+          {gebruikers !== null && accordeurs.length === 0 && (
+            <p className="hint">Nog geen klant-accordeurs — nodig er een uit om de accorderingsflow te activeren.</p>
+          )}
+          {accordeurs.length > 0 && (
+            <>
+              {zoekveld}
           <div className="tabel-scroll sticky-koppen">
             <table>
               <tbody>
@@ -522,9 +682,9 @@ export function GebruikersScreen() {
                   <th>Administraties</th>
                   <th>Apparaten</th>
                   <th>Staande goedkeuringen</th>
-                  <th />
+                  <th className="acties" />
                 </tr>
-                {accordeurs.map((g) => {
+                {accordeursPagina.map((g) => {
                   const apparaten = groepeerApparaten(
                     (apparatenPer[g.id] ?? []).filter((a) => a.ingetrokken_op === null),
                   )
@@ -544,12 +704,11 @@ export function GebruikersScreen() {
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
                       </td>
                       <td>
-                        {g.administratie_ids.length === 0 && '—'}
-                        {g.administratie_ids.map((id) => (
-                          <span key={id}>
-                            <Badge variant="info">{naamPerAdministratie.get(id) ?? id}</Badge>{' '}
-                          </span>
-                        ))}
+                        <AdministratiesSamenvatting
+                          ids={g.administratie_ids}
+                          naamPerAdministratie={naamPerAdministratie}
+                          eigenaar={g.naam}
+                        />
                       </td>
                       <td>
                         {apparaten.length === 0 && (
@@ -574,7 +733,7 @@ export function GebruikersScreen() {
                         ))}
                       </td>
                       <td className="amount">{g.staande_goedkeuringen}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td className="acties" style={{ whiteSpace: 'nowrap' }}>
                         {g.status === 'uitgenodigd' && (
                           <Button
                             variant="secundair"
@@ -594,12 +753,15 @@ export function GebruikersScreen() {
               </tbody>
             </table>
           </div>
-        )}
-        <p className="hint" style={{ marginBottom: 0 }}>
-          Staande goedkeuringen beheren (bekijken/intrekken) en accorderingslagen instellen gebeurt per
-          administratie onder Instellingen → accordering.
-        </p>
-      </div>
+              <Paginering pagina={pagina} totaal={gefilterd.accordeurs.length} onPagina={setPagina} label="accordeurs" />
+            </>
+          )}
+          <p className="hint" style={{ marginBottom: 0 }}>
+            Staande goedkeuringen beheren (bekijken/intrekken) en accorderingslagen instellen gebeurt per
+            administratie onder Instellingen → accordering.
+          </p>
+        </div>
+      )}
 
       <UitnodigModal
         soort={uitnodigSoort ?? 'medewerker'}

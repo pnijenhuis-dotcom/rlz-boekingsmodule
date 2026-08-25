@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
-import { Button, Checkbox, Select, Switch } from '../ui/basis'
+import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, Switch } from '../ui/basis'
 import type { AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
@@ -184,13 +184,17 @@ interface IbanAccordeursCellProps {
 }
 
 /** Instelling "IBAN-wissel accorderen door" (vier-ogen-flow, docs/ontwerp/
- * iban-wissel-accordering.md): één of meer medewerkers binnen de scope; elke aan/uit is één
- * bevestigde wijziging (PUT met de volledige nieuwe set). Lege set → zichtbaar terugvallen op
- * de beheerder(s). */
+ * iban-wissel-accordering.md): één of meer medewerkers binnen de scope. Compact in de rij
+ * (feedbackronde 25-08 deel 3 punt 4a — de open checkbox-lijst maakte elke rij 4-6 regels hoog):
+ * de gekozen namen als chips, of "beheerders (terugval)" zonder set, plus "wijzig" dat de
+ * checkbox-lijst in een dialoog opent (patroon ScopeModal). Opslaan in de dialoog = één
+ * bevestigde wijziging (PUT met de volledige nieuwe set), zoals voorheen per vinkje. */
 function IbanAccordeursCell({ administratie, versie, onWijzig }: IbanAccordeursCellProps) {
   const { medewerkers, fout: medewerkersFout } = useMedewerkers(administratie.id)
   const [accordeurs, setAccordeurs] = useState<string[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+  const [concept, setConcept] = useState<string[]>([])
 
   useEffect(() => {
     haalIbanAccordeursOp(administratie.id)
@@ -212,35 +216,76 @@ function IbanAccordeursCell({ administratie, versie, onWijzig }: IbanAccordeursC
       </span>
     )
   }
+  const naamVan = (id: string) => medewerkers.find((m) => m.id === id)?.naam ?? 'onbekend'
+  const gekozen = accordeurs.filter((id) => medewerkers.some((m) => m.id === id))
+  const opslaan = () => {
+    const erbij = concept.filter((id) => !accordeurs.includes(id)).map(naamVan)
+    const eraf = accordeurs.filter((id) => !concept.includes(id)).map(naamVan)
+    setOpen(false)
+    if (erbij.length === 0 && eraf.length === 0) return
+    const delen = [
+      erbij.length ? `${erbij.join(', ')} ${erbij.length === 1 ? 'wordt' : 'worden'} IBAN-accordeur` : null,
+      eraf.length ? `${eraf.join(', ')} ${eraf.length === 1 ? 'is' : 'zijn'} niet langer IBAN-accordeur` : null,
+    ].filter(Boolean)
+    onWijzig(concept, delen.join('; '))
+  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {medewerkers.map((m) => {
-        const ingesteld = accordeurs.includes(m.id)
-        return (
-          <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, fontSize: 12.5 }}>
-            <Checkbox
-              checked={ingesteld}
-              onChange={(e) => {
-                const nieuweSet = e.target.checked
-                  ? [...accordeurs, m.id]
-                  : accordeurs.filter((id) => id !== m.id)
-                onWijzig(
-                  nieuweSet,
-                  e.target.checked
-                    ? `${m.naam} wordt IBAN-accordeur`
-                    : `${m.naam} is niet langer IBAN-accordeur`,
-                )
-              }}
-            />
-            {m.naam}
-          </label>
-        )
-      })}
-      {accordeurs.length === 0 && (
-        <span className="hint" style={{ margin: 0 }}>
-          geen accordeurs ingesteld — valt terug op de beheerder(s)
-        </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {gekozen.length === 0 ? (
+        <Badge variant="stil" title="Geen accordeurs ingesteld — een IBAN-wissel valt terug op de beheerder(s)">
+          beheerders (terugval)
+        </Badge>
+      ) : (
+        gekozen.map((id) => (
+          <Badge key={id} variant="info">
+            {naamVan(id)}
+          </Badge>
+        ))
       )}
+      <Button
+        variant="ghost"
+        maat="klein"
+        aria-label={`IBAN-accordeurs van ${administratie.naam} wijzigen`}
+        onClick={() => {
+          setConcept(gekozen)
+          setOpen(true)
+        }}
+      >
+        wijzig
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogTitle>IBAN-wissel accorderen door — {administratie.naam}</DialogTitle>
+          <DialogDescription>
+            Wie mag een IBAN-wissel accorderen (vier ogen — nooit de aanvrager zelf)? Zonder keuze valt de
+            accordering terug op de beheerder(s). Opslaan vraagt één bevestiging en wordt geauditeerd.
+          </DialogDescription>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '10px 0' }}>
+            {medewerkers.map((m) => (
+              <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 13 }}>
+                <Checkbox
+                  checked={concept.includes(m.id)}
+                  onChange={(e) =>
+                    setConcept((huidig) => (e.target.checked ? [...huidig, m.id] : huidig.filter((id) => id !== m.id)))
+                  }
+                />
+                {m.naam}
+              </label>
+            ))}
+            {medewerkers.length === 0 && (
+              <span className="hint" style={{ margin: 0 }}>
+                Geen medewerkers met scope op deze administratie.
+              </span>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="secundair" onClick={() => setOpen(false)}>
+              Annuleren
+            </Button>
+            <Button onClick={opslaan}>Opslaan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

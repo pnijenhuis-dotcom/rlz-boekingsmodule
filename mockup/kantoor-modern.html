@@ -158,6 +158,8 @@
   .segment{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:2.5px;gap:2px}
   .segment button{border:none;background:none;padding:5px 13px;font-size:12.5px;border-radius:7px;color:var(--muted);cursor:pointer;font-weight:500}
   .segment button.actief{background:var(--panel);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
+  /* Actiekolom altijd in beeld (25-08 deel 3 punt 3e): plakt rechts binnen .tabel-scroll. */
+  .tabel-scroll th.acties,.tabel-scroll td.acties{position:sticky;right:0;background:var(--panel);z-index:1;box-shadow:-8px 0 10px -8px rgba(21,32,29,.25)}
 
   /* bulkbalk */
   .bulkbalk{display:none;align-items:center;gap:12px;padding:10px 18px;background:var(--accent-bg);border-bottom:1px solid var(--border);font-size:13px}
@@ -273,7 +275,7 @@
       <!-- upload-dropzone terug (feedback Peter: sleep-upload van de oude werkvoorraad behouden) -->
       <div class="kaart" style="margin-bottom:16px;border-style:dashed;background:var(--panel-2)">
         <div style="padding:20px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer" onclick="toast('Mockup: bestandskiezer opent')">
-          ⬆ &nbsp;<b>Sleep PDF's of e-mails hierheen</b> — of klik om te kiezen · meerdere tegelijk mag · toewijzing op tenaamstelling
+          ⬆ &nbsp;<b>Sleep PDF's, UBL, e-mails of foto's (JPEG/PNG/HEIC) hierheen</b> — of klik om te kiezen · meerdere tegelijk mag · toewijzing op tenaamstelling · een foto wordt naar PDF omgezet, het origineel blijft bewaard
         </div>
       </div>
 
@@ -520,13 +522,22 @@
         <div class="acties"><button class="btn" onclick="openModal()">+ Medewerker uitnodigen</button></div>
       </div>
 
+      <!-- Tabs per groep (besluit Peter 25-08 deel 3 punt 3, "net zoals instellingen"): tellers per tab,
+           per tab een zoekveld + paginering (25 rijen) en de uitnodig-knop van die groep; ?groep= in de URL.
+           Punt 3e: actiekolom sticky rechts (plakt binnen .tabel-scroll), administraties-kolom compact
+           ("11 administraties" + bekijk-dialoog) — actieknoppen vallen op geen enkel formaat buiten beeld. -->
+      <div class="segment" role="tablist" style="margin-bottom:12px">
+        <button class="actief" role="tab" aria-selected="true">Kantoor (3)</button>
+        <button role="tab">Veldwerkers (12)</button>
+        <button role="tab">Klant-accordeurs (2)</button>
+      </div>
       <div class="kaart">
         <div class="kaart-kop"><h2>Kantoorgebruikers</h2>
-          <div class="rechts"><select class="sel"><option>Alle rollen</option><option>Beheerder</option><option>Boekhouding + Projecten</option><option>Boekhouding</option></select></div>
+          <div class="rechts"><input type="search" class="sel" placeholder="Zoek op naam, e-mail, rol of administratie…" style="min-width:280px"> <span class="sub">3 gebruikers</span></div>
         </div>
         <div class="tabel-scroll">
           <table>
-            <thead><tr><th>Gebruiker</th><th>Rol</th><th>Scope</th><th>Beveiliging</th><th>Laatst actief</th><th></th></tr></thead>
+            <thead><tr><th>Gebruiker</th><th>Rol</th><th>Scope</th><th>Beveiliging</th><th>Laatst actief</th><th class="acties"></th></tr></thead>
             <tbody>
               <tr>
                 <td><div class="hoofd">Peter Nijenhuis</div><div class="sub">p.nijenhuis@kempengroep.nl</div></td>
@@ -558,15 +569,15 @@
       </div>
 
       <div class="kaart" style="margin-top:16px">
-        <div class="kaart-kop"><h2>Klant-accordeurs</h2>
-          <div class="rechts"><button class="btn klein" onclick="openAccModal()">+ Accordeur uitnodigen</button></div>
+        <div class="kaart-kop"><h2>Klant-accordeurs <span class="sub" style="font-weight:400">(eigen tab — hier onder elkaar getoond)</span></h2>
+          <div class="rechts"><input type="search" class="sel" placeholder="Zoek accordeur…" style="min-width:200px"> <button class="btn klein" onclick="openAccModal()">+ Accordeur uitnodigen</button></div>
           <div class="uitleg">Accordeurs gebruiken de mobiele app met passkey. Eén accordeur kan meerdere administraties bedienen — de wachtrij voegt alles samen. Wachtwoord kwijt (bv. ná een kill-switch)? "Herstel-link": eenmalige 72-uurslink voor een nieuw wachtwoord + apparaat-registratie; passkeys en akkoorden blijven staan (25-08, punt 7).</div>
         </div>
         <div class="tabel-scroll">
           <table>
-            <thead><tr><th>Accordeur</th><th>Administraties</th><th>Apparaten</th><th>Staande goedkeuringen</th><th></th></tr></thead>
+            <thead><tr><th>Accordeur</th><th>Administraties</th><th>Apparaten</th><th>Staande goedkeuringen</th><th class="acties"></th></tr></thead>
             <tbody>
-              <tr><td><div class="hoofd">R. de Groot (voorbeeld)</div><div class="sub">r.degroot@molenhof.nl</div></td><td><span class="badge info">Molenhof Beheer</span> <span class="badge info">Molenhof Verhuur</span></td><td><span class="apparaat">📱 iPhone · passkey</span></td><td class="num">2 <a class="rijlink" style="font-size:11.5px">bekijk</a></td><td><a class="rijlink" onclick="toast('Herstel-link gemaild aan r.degroot@molenhof.nl — eerder verstuurde links zijn vervallen')">Herstel-link</a> · <a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
+              <tr><td><div class="hoofd">R. de Groot (voorbeeld)</div><div class="sub">r.degroot@molenhof.nl</div></td><td><span class="badge info">11 administraties</span> <a class="rijlink" style="font-size:12px" onclick="toast('Dialoog: alle 11 administraties van R. de Groot')">bekijk</a></td><td><span class="apparaat">📱 iPhone · passkey</span></td><td class="num">2 <a class="rijlink" style="font-size:11.5px">bekijk</a></td><td><a class="rijlink" onclick="toast('Herstel-link gemaild aan r.degroot@molenhof.nl — eerder verstuurde links zijn vervallen')">Herstel-link</a> · <a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
               <tr><td><div class="hoofd">Testaccount passkeytest</div><div class="sub">accordeur-passkeytest@ak-nijenhuis.nl</div></td><td><span class="badge stil">SEED-PASSKEYTEST</span></td><td><span class="apparaat">📱 iPhone · 15-08</span></td><td class="num">0</td><td><a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
             </tbody>
           </table>

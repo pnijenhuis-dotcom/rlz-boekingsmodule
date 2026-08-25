@@ -1243,3 +1243,37 @@ body.dark .combobox-listbox {
   overflow: auto;
 }
 
+/* Actiekolom altijd in beeld (kliktest Peter 25-08, deel 3 punt 3e): in de gebruikers-tabellen
+ * vielen Herstel-link/Blokkeren buiten beeld zodra een brede kolom de tabel breder maakte dan het
+ * scherm. De laatste kolom plakt rechts binnen .tabel-scroll; de zachte schaduw links markeert
+ * dat er inhoud onder schuift. Werkt samen met .sticky-koppen (th plakt dan boven én rechts). */
+.tabel-scroll th.acties,
+.tabel-scroll td.acties {
+  position: sticky;
+  right: 0;
+  background: var(--panel);
+  z-index: 1;
+  box-shadow: -8px 0 10px -8px rgba(21, 32, 29, 0.25);
+}
+
+.tabel-scroll.sticky-koppen th.acties {
+  z-index: 3;
+}
+
+tr.geselecteerd td.acties {
+  background: var(--accent-bg);
+}
+
+/* Lijst-kop boven een tabel: zoekveld + teller (gebruikers-tabs, punt 3). */
+.lijst-kop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+
+.lijst-kop input[type='search'] {
+  max-width: 320px;
+  flex: 1 1 220px;
+}
