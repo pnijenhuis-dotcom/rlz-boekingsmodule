@@ -21,6 +21,11 @@ export interface DagDto {
   // Planning-dekking (planning-agenda, besluit 22-08): uren zonder planningstoewijzing =
   // oranje "buiten planning" bij de keuring — een signaal, nooit een blokkade.
   buiten_planning: boolean
+  // Signaal >N uur per dag (A6, 25-08): som over álle weekstaten van deze persoon op deze
+  // kalenderdag; boven de administratie-drempel = oranje vlag. Nooit een blokkade.
+  dag_totaal_uren: string
+  boven_dagmax: boolean
+  dagmax_uren: string | null
 }
 
 export interface WeekstaatDto {
@@ -425,4 +430,86 @@ export function datumKort(iso: string | null): string {
 export function datumMetTijd(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+
+/* --- ZZP-dossier (A1/A2, 25-08): eigen dossier + upload in de app, blokkade-melding ------------ */
+
+export interface DossierDocumentDto {
+  code: string
+  naam: string
+  verplicht: boolean
+  geldig_tot_vereist: boolean
+  bsn_gevoelig: boolean
+  status: 'ontbreekt' | 'ter_controle' | 'afgewezen' | 'goedgekeurd' | 'verloopt_binnenkort' | 'verlopen'
+  document_id: string | null
+  geldig_tot: string | null
+  verloopt_over_dagen: number | null
+  bestandsnaam: string | null
+  geupload_op: string | null
+  geupload_door_naam: string | null
+  afwijs_reden: string | null
+}
+
+export interface DossierDto {
+  administratie_id: string
+  gebruiker_id: string
+  gebruiker_naam: string
+  documenten: DossierDocumentDto[]
+  aantal_verplicht: number
+  aantal_aanwezig: number
+  aantal_ontbrekend: number
+  aantal_verlopen: number
+  aantal_verloopt_binnenkort: number
+  aantal_ter_controle: number
+  compleet: boolean
+  compleet_incl_ter_controle: boolean
+  herinneringen_teller: number
+  herinneringen_max: number
+  geblokkeerd: boolean
+  signalen: string[]
+}
+
+export function haalMijnDossier(administratieId: string, namens: string | null): Promise<DossierDto> {
+  const q = new URLSearchParams({ administratie_id: administratieId })
+  if (namens) q.set('namens', namens)
+  return apiJson<DossierDto>(`/uren/dossier?${q.toString()}`)
+}
+
+export async function uploadDossierDocument(payload: {
+  administratie_id: string
+  type_code: string
+  geldig_tot: string | null
+  namens: string | null
+  bestand: File
+}): Promise<DossierDto> {
+  const form = new FormData()
+  form.append('administratie_id', payload.administratie_id)
+  form.append('type_code', payload.type_code)
+  if (payload.geldig_tot) form.append('geldig_tot', payload.geldig_tot)
+  if (payload.namens) form.append('namens', payload.namens)
+  form.append('bestand', payload.bestand, payload.bestand.name)
+  return apiJson<DossierDto>('/uren/dossier/upload', { method: 'POST', body: form })
+}
+
+/** 423 Locked = dossier-handhaving (indienen geblokkeerd) — de app toont melding + upload-ingang. */
+export function isDossierGeblokkeerd(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { status?: number }).status === 423
+}
+
+export function dossierStatusLabel(d: DossierDocumentDto): { klasse: string; label: string } {
+  switch (d.status) {
+    case 'ontbreekt':
+      return { klasse: d.verplicht ? 'afgekeurd' : 'concept', label: d.verplicht ? 'ontbreekt' : 'optioneel' }
+    case 'ter_controle':
+      return { klasse: 'ingediend', label: 'ter controle' }
+    case 'afgewezen':
+      return { klasse: 'afgekeurd', label: 'afgewezen' }
+    case 'goedgekeurd':
+      return { klasse: 'akkoord', label: 'aanwezig' }
+    case 'verloopt_binnenkort':
+      return { klasse: 'open', label: `verloopt over ${d.verloopt_over_dagen ?? '?'} d` }
+    case 'verlopen':
+      return { klasse: 'afgekeurd', label: 'verlopen' }
+  }
 }

@@ -308,6 +308,13 @@ class Settings(BaseSettings):
     # APNs: token-based auth met de .p8-sleutel uit het Apple Developer-account (PDL) —
     # private key via Secret Manager APNS_KEY_P8; topic = de bundle-id (native_app_bundle_id),
     # team-id = apple_team_id (fase 2-setting). Sandbox alleen voor TestFlight-/Xcode-builds.
+    # KvK Basisprofiel-API (ZZP-dossier A3, steigerbouw-run 25-08 — Vastly-patroon): zonder
+    # sleutel draait de client tegen KvK's publieke TESTOMGEVING (fictieve data); productie =
+    # KVK_API_KEY + KVK_BASE_URL uit Secret Manager, nooit in code/git. Consistentiecheck in
+    # app/integraties/kvk.py (sleutel en URL uit dezelfde omgeving).
+    kvk_api_key: str | None = None
+    kvk_base_url: str | None = None
+
     apns_key_p8: str | None = None
     apns_key_id: str = ""
     apns_sandbox: bool = False

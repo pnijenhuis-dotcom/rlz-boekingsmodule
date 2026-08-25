@@ -3,6 +3,7 @@ import type { AdministratieDto } from '../api/types'
 import { ApiError } from '../api/client'
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -35,6 +36,9 @@ export function UitnodigModal({
     soort === 'accordeur' ? 'klant_accordeur' : soort === 'veldwerker' ? 'zzper' : 'boekhouding',
   )
   const [scope, setScope] = useState<string[]>([])
+  // A4 (25-08): veldwerker aanmaken zónder mail — account op 'uitgenodigd', alsnog mailen via
+  // de bestaande "Opnieuw mailen"-knop op Gebruikers & toegang.
+  const [uitnodigingLater, setUitnodigingLater] = useState(false)
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
 
@@ -51,11 +55,13 @@ export function UitnodigModal({
         e_mail: eMail.trim(),
         rol: isAccordeur ? 'klant_accordeur' : rol,
         administratie_ids: scope,
+        uitnodiging_later: isVeldwerker && uitnodigingLater,
       })
       onUitgenodigd(resultaat)
       setNaam('')
       setEMail('')
       setScope([])
+      setUitnodigingLater(false)
       onSluiten()
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Uitnodigen mislukt.')
@@ -166,13 +172,22 @@ export function UitnodigModal({
             Accorderingslagen en drempels stel je per administratie in onder Instellingen → accordering.
           </p>
         )}
+        {isVeldwerker && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, marginBottom: 10 }}>
+            <Checkbox checked={uitnodigingLater} onChange={(e) => setUitnodigingLater(e.target.checked)} />
+            <span>
+              <b>Uitnodiging later versturen</b> — het account wordt nu aangemaakt (status uitgenodigd) zonder mail; alsnog
+              uitnodigen kan met "Opnieuw mailen".
+            </span>
+          </label>
+        )}
         {fout && <div className="fout">{fout}</div>}
         <DialogFooter>
           <Button variant="secundair" onClick={onSluiten} disabled={bezig}>
             Annuleren
           </Button>
           <Button onClick={() => void verstuur()} disabled={bezig || !kanVersturen}>
-            {bezig ? 'Bezig…' : 'Verstuur uitnodiging'}
+            {bezig ? 'Bezig…' : isVeldwerker && uitnodigingLater ? 'Account aanmaken (zonder mail)' : 'Verstuur uitnodiging'}
           </Button>
         </DialogFooter>
       </DialogContent>

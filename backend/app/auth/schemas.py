@@ -14,6 +14,9 @@ class UitnodigingAanmakenRequest(StrikteInvoer):
     e_mail: str = Field(min_length=3)
     rol: GebruikerRol
     administratie_ids: list[uuid.UUID] = Field(default_factory=list)
+    # A4 (steigerbouw-run 25-08): account aanmaken zónder mail — status 'uitgenodigd', de
+    # uitnodiging wordt later verstuurd via de bestaande "Opnieuw mailen"-knop.
+    uitnodiging_later: bool = False
 
 
 class UitnodigingAanmakenResponse(BaseModel):
@@ -26,6 +29,8 @@ class UitnodigingAanmakenResponse(BaseModel):
     # de terugval — de link (token) zit hoe dan ook in deze respons.
     mail_verzonden: bool = False
     mail_fout: str | None = None
+    # A4: bewust niet gemaild (uitnodiging_later) — géén fout, wel zichtbaar.
+    mail_uitgesteld: bool = False
 
 
 class UitnodigingAccepterenRequest(StrikteInvoer):
@@ -174,6 +179,24 @@ class VoorwaardenResponse(BaseModel):
 
 class RolWijzigenRequest(StrikteInvoer):
     rol: GebruikerRol
+
+
+class EMailWijzigenRequest(StrikteInvoer):
+    """A5 (steigerbouw-run 25-08): Beheerder wijzigt het e-mailadres (= login) van een gebruiker."""
+
+    e_mail: str = Field(min_length=3, max_length=254)
+
+
+class EMailWijzigenResponse(BaseModel):
+    gebruiker_id: uuid.UUID
+    oud_e_mail: str
+    nieuw_e_mail: str
+    # Niet-geactiveerd account: er is direct een verse uitnodiging naar het nieuwe adres gestuurd.
+    uitnodiging_vernieuwd: bool = False
+    token: str | None = None
+    verloopt_op: datetime | None = None
+    mail_verzonden: bool = False
+    mail_fout: str | None = None
 
 
 class ScopeToevoegenRequest(StrikteInvoer):

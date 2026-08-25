@@ -598,3 +598,228 @@ class ProjectStaffel(Base):
     bron: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+# --- ZZP-dossier per veldwerker (steigerbouw-run blok A, migratie 0072) --------------------------
+
+
+class DossierDocumentStatus(enum.StrEnum):
+    """Per upload: TER_CONTROLE (geüpload, telt voor de deblokkade maar nog niet als 'aanwezig'
+    in de zin van goedgekeurd) → GOEDGEKEURD (kantoor) / AFGEWEZEN (kantoor, reden verplicht —
+    voorkomt blanco-uploads). 'Ontbreekt' en 'verlopen' zijn afgeleide toestanden per type
+    (geen upload resp. goedgekeurd met geldig_tot < vandaag) — zie app/uren/dossier.py."""
+
+    TER_CONTROLE = "ter_controle"
+    GOEDGEKEURD = "goedgekeurd"
+    AFGEWEZEN = "afgewezen"
+
+
+_DOSSIER_STATUS_SQL = ", ".join(f"'{s.value}'" for s in DossierDocumentStatus)
+
+
+class DossierDocumenttype(Base):
+    """Documenttypen als Beheerder-instelling per administratie (A1). Zolang een administratie
+    geen rijen heeft geldt de default-set uit app/uren/dossier.py (virtueel — geen verborgen
+    schrijfactie op een GET); de eerste PUT persisteert de volledige set. `bsn_gevoelig` (kopie
+    ID): nooit extraheren/indexeren, weergave gemaskeerd + elke inzage geauditeerd."""
+
+    __tablename__ = "dossier_documenttype"
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "code", name="uq_dossier_documenttype_code"),
+        CheckConstraint("code ~ '^[a-z0-9_]{2,40}$'", name="ck_dossier_documenttype_code"),
+        Index("ix_dossier_documenttype_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    code: Mapped[str]
+    naam: Mapped[str]
+    verplicht: Mapped[bool]
+    geldig_tot_vereist: Mapped[bool]
+    bsn_gevoelig: Mapped[bool]
+    volgorde: Mapped[int]
+    actief: Mapped[bool]
+    bijgewerkt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class VeldwerkerDossier(Base):
+    """Stand per (administratie, veldwerker): de herinnering-teller ("N van 3", reset zodra het
+    dossier volledig goedgekeurd én geldig is), de blokkade-vlag (herleid bij élke mutatie én op
+    het indien-moment — een intussen verlopen document bijt dan zichtbaar, geauditeerd) en de
+    KvK-/btw-bedrijfsgegevens (KvK-API haalt op, een mens bevestigt — A3)."""
+
+    __tablename__ = "veldwerker_dossier"
+    __table_args__ = (
+        CheckConstraint("herinneringen_teller >= 0", name="ck_veldwerker_dossier_teller"),
+        CheckConstraint("kvk_nummer IS NULL OR kvk_nummer ~ '^[0-9]{8}$'", name="ck_veldwerker_dossier_kvk"),
+        Index("ix_veldwerker_dossier_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), primary_key=True
+    )
+    herinneringen_teller: Mapped[int] = mapped_column(default=0, server_default="0")
+    laatste_herinnering_op: Mapped[datetime | None] = mapped_column(default=None)
+    geblokkeerd: Mapped[bool] = mapped_column(default=False, server_default="false")
+    geblokkeerd_op: Mapped[datetime | None] = mapped_column(default=None)
+    gedeblokkeerd_op: Mapped[datetime | None] = mapped_column(default=None)
+    kvk_nummer: Mapped[str | None] = mapped_column(default=None)
+    btw_nummer: Mapped[str | None] = mapped_column(default=None)
+    kvk_naam: Mapped[str | None] = mapped_column(default=None)
+    kvk_plaats: Mapped[str | None] = mapped_column(default=None)
+    kvk_rechtsvorm: Mapped[str | None] = mapped_column(default=None)
+    kvk_bevestigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    kvk_bevestigd_op: Mapped[datetime | None] = mapped_column(default=None)
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class DossierDocument(Base):
+    """Append-only upload (kantoor of app; `bron`), opslag via DocumentOpslag onder
+    dossier/{administratie}/{veldwerker}/{id}/…. Het huidige document per type = de jongste
+    rij; vervangen = nieuwe rij, nooit DELETE."""
+
+    __tablename__ = "dossier_document"
+    __table_args__ = (
+        CheckConstraint(f"status IN ({_DOSSIER_STATUS_SQL})", name="ck_dossier_document_status"),
+        CheckConstraint("bron IN ('kantoor', 'app')", name="ck_dossier_document_bron"),
+        CheckConstraint(
+            "status <> 'afgewezen' OR (afwijs_reden IS NOT NULL AND length(btrim(afwijs_reden)) > 0)",
+            name="ck_dossier_document_afwijs_reden",
+        ),
+        CheckConstraint("(status = 'ter_controle') = (beoordeeld_op IS NULL)", name="ck_dossier_document_beoordeeld"),
+        Index("ix_dossier_document_administratie_id", "administratie_id"),
+        Index("ix_dossier_document_veldwerker", "administratie_id", "gebruiker_id", "type_code"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    type_code: Mapped[str]
+    status: Mapped[str] = mapped_column(default=DossierDocumentStatus.TER_CONTROLE.value)
+    geldig_tot: Mapped[date | None] = mapped_column(default=None)
+    opslag_pad: Mapped[str]
+    bestandsnaam: Mapped[str]
+    content_type: Mapped[str]
+    bron: Mapped[str]
+    geupload_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    geupload_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    beoordeeld_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    beoordeeld_op: Mapped[datetime | None] = mapped_column(default=None)
+    afwijs_reden: Mapped[str | None] = mapped_column(default=None)
+
+
+class DossierHerinnering(Base):
+    """Handmatige dossier-herinnering (A2): één rij per (veldwerker, dag) = de dagrem, claim vóór
+    verzenden (patroon accordering.herinnering); `volgnummer` = de teller-stand ná deze
+    herinnering ("N van 3")."""
+
+    __tablename__ = "dossier_herinnering"
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "gebruiker_id", "datum", name="uq_dossier_herinnering_dag"),
+        CheckConstraint(
+            "status IN ('bezig', 'verzonden', 'mislukt', 'overgeslagen')", name="ck_dossier_herinnering_status"
+        ),
+        Index("ix_dossier_herinnering_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    datum: Mapped[date]
+    volgnummer: Mapped[int]
+    status: Mapped[str]
+    kanaal: Mapped[str | None] = mapped_column(default=None)
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    verzonden_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    verzonden_op: Mapped[datetime | None] = mapped_column(default=None)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+# --- projectspecifieke prijsafspraken per veldwerker (steigerbouw-run B1, migratie 0073) ----------
+
+
+class PrijsafspraakEenheid(enum.StrEnum):
+    """Eenheid van een projectafspraak: UUR = uren × tarief; M2 = goedgekeurde m² uit de
+    weekstaten × tarief (mockup projecten-invoer "Prijsafspraken veldwerkers")."""
+
+    UUR = "uur"
+    M2 = "m2"
+
+
+_PRIJSAFSPRAAK_EENHEID_SQL = ", ".join(f"'{e.value}'" for e in PrijsafspraakEenheid)
+
+
+class ProjectPrijsafspraak(Base):
+    """Tarief per (project × veldwerker) mét eenheid en ISO-week-venster (vanaf/t/m optioneel =
+    hele project). Tariefresolutie in de factuurmatch per weekstaat: projectafspraak wint →
+    koppeling-tarief → onbepaalbaar (nooit gokken). Append-only: intrekken = ingetrokken_op mét
+    reden; wijzigen = intrekken + nieuwe rij (historie blijft herleidbaar). Overlappende actieve
+    afspraken voor dezelfde (project, veldwerker) weigert de service."""
+
+    __tablename__ = "project_prijsafspraak"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_project_prijsafspraak_project_cache",
+        ),
+        CheckConstraint(f"eenheid IN ({_PRIJSAFSPRAAK_EENHEID_SQL})", name="ck_project_prijsafspraak_eenheid"),
+        CheckConstraint("tarief >= 0", name="ck_project_prijsafspraak_tarief"),
+        CheckConstraint(
+            "(geldig_vanaf_jaar IS NULL) = (geldig_vanaf_week IS NULL)", name="ck_project_prijsafspraak_vanaf_samen"
+        ),
+        CheckConstraint("(geldig_tm_jaar IS NULL) = (geldig_tm_week IS NULL)", name="ck_project_prijsafspraak_tm_samen"),
+        CheckConstraint(
+            "geldig_vanaf_week IS NULL OR (geldig_vanaf_week BETWEEN 1 AND 53)", name="ck_project_prijsafspraak_vanaf_week"
+        ),
+        CheckConstraint("geldig_tm_week IS NULL OR (geldig_tm_week BETWEEN 1 AND 53)", name="ck_project_prijsafspraak_tm_week"),
+        CheckConstraint(
+            "ingetrokken_op IS NULL OR (ingetrokken_reden IS NOT NULL AND length(btrim(ingetrokken_reden)) > 0)",
+            name="ck_project_prijsafspraak_ingetrokken_reden",
+        ),
+        Index("ix_project_prijsafspraak_administratie_id", "administratie_id"),
+        Index("ix_project_prijsafspraak_project", "administratie_id", "project_id", "gebruiker_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    eenheid: Mapped[str]
+    tarief: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    geldig_vanaf_jaar: Mapped[int | None] = mapped_column(default=None)
+    geldig_vanaf_week: Mapped[int | None] = mapped_column(default=None)
+    geldig_tm_jaar: Mapped[int | None] = mapped_column(default=None)
+    geldig_tm_week: Mapped[int | None] = mapped_column(default=None)
+    toelichting: Mapped[str | None] = mapped_column(default=None)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    ingetrokken_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
+    ingetrokken_reden: Mapped[str | None] = mapped_column(default=None)
+
+    def geldt_in(self, jaar: int, week: int) -> bool:
+        """Pure vensterlogica op (ISO-jaar, ISO-week); ingetrokken afspraken gelden nooit."""
+        if self.ingetrokken_op is not None:
+            return False
+        sleutel = (jaar, week)
+        if self.geldig_vanaf_jaar is not None and sleutel < (self.geldig_vanaf_jaar, self.geldig_vanaf_week or 1):
+            return False
+        if self.geldig_tm_jaar is not None and sleutel > (self.geldig_tm_jaar, self.geldig_tm_week or 53):
+            return False
+        return True

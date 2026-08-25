@@ -93,22 +93,26 @@ def uitnodiging_aanmaken(
         e_mail=payload.e_mail,
         rol=payload.rol,
         administratie_ids=payload.administratie_ids,
+        uitnodiging_later=payload.uitnodiging_later,
     )
     # Uitnodiging per mail (berichten-bouwsteen 2026-08-15). Fail-zichtbaar, niet fail-hard:
     # de uitnodiging bestaat al (en de link zit in de respons), dus een mailfout mag het
-    # aanmaken niet terugdraaien — hij moet alleen nooit stil zijn.
+    # aanmaken niet terugdraaien — hij moet alleen nooit stil zijn. A4 (25-08): met
+    # `uitnodiging_later` wordt bewust niet gemaild (status uitgenodigd, alsnog mailen =
+    # "Opnieuw mailen").
     mail_verzonden = False
     mail_fout: str | None = None
-    try:
-        uitnodigingsmail.verstuur_uitnodigingsmail(
-            naam=payload.naam,
-            e_mail=payload.e_mail,
-            token=resultaat.token,
-            verloopt_op=resultaat.verloopt_op,
-        )
-        mail_verzonden = True
-    except berichten_mail.MailFout as exc:
-        mail_fout = str(exc)
+    if not payload.uitnodiging_later:
+        try:
+            uitnodigingsmail.verstuur_uitnodigingsmail(
+                naam=payload.naam,
+                e_mail=payload.e_mail,
+                token=resultaat.token,
+                verloopt_op=resultaat.verloopt_op,
+            )
+            mail_verzonden = True
+        except berichten_mail.MailFout as exc:
+            mail_fout = str(exc)
     return schemas.UitnodigingAanmakenResponse(
         uitnodiging_id=resultaat.uitnodiging_id,
         gebruiker_id=resultaat.gebruiker_id,
@@ -116,6 +120,7 @@ def uitnodiging_aanmaken(
         verloopt_op=resultaat.verloopt_op,
         mail_verzonden=mail_verzonden,
         mail_fout=mail_fout,
+        mail_uitgesteld=payload.uitnodiging_later,
     )
 
 
@@ -249,7 +254,7 @@ def uitnodiging_opnieuw_mailen(
     gebruiker_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.UitnodigingAanmakenResponse:
-    """"Opnieuw mailen" op Gebruikers & toegang: nieuw eenmalig token (oude open links verlopen
+    """ "Opnieuw mailen" op Gebruikers & toegang: nieuw eenmalig token (oude open links verlopen
     per direct), zelfde fail-zichtbare mailafhandeling als het aanmaken."""
     try:
         vernieuwd = service.vernieuw_uitnodiging(actor_id=actor.id, gebruiker_id=gebruiker_id)
@@ -282,7 +287,7 @@ def herstel_link_sturen(
     gebruiker_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.UitnodigingAanmakenResponse:
-    """"Herstel-link sturen" op Gebruikers & toegang (feedbackronde 25-08 punt 7): eenmalige
+    """ "Herstel-link sturen" op Gebruikers & toegang (feedbackronde 25-08 punt 7): eenmalige
     72-uurs link voor een actieve accordeur/veldwerker die zijn wachtwoord kwijt is (bv. ná een
     kill-switch). Zelfde responsvorm + fail-zichtbare mailafhandeling als de uitnodiging — de
     link zit in de respons als handmatige terugval. Beheerder-only; 409 bij een account dat
@@ -323,6 +328,52 @@ def rol_wijzigen(
         service.wijzig_rol(actor_id=actor.id, doel_gebruiker_id=gebruiker_id, nieuwe_rol=payload.rol)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.patch("/gebruikers/{gebruiker_id}/e-mail", response_model=schemas.EMailWijzigenResponse)
+def e_mail_wijzigen(
+    gebruiker_id: uuid.UUID,
+    payload: schemas.EMailWijzigenRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.EMailWijzigenResponse:
+    """A5 (steigerbouw-run 25-08, Beheerder-only): e-mailadres = login wijzigen. Uniciteit =
+    409; niet-geactiveerd account krijgt direct een verse uitnodiging op het nieuwe adres
+    (fail-zichtbare mail, link in de respons als terugval); geactiveerd = alleen de login."""
+    try:
+        gewijzigd = service.wijzig_e_mail(
+            actor_id=actor.id, doel_gebruiker_id=gebruiker_id, nieuw_e_mail=payload.e_mail
+        )
+    except service.AuthError as exc:
+        code = (
+            status.HTTP_409_CONFLICT
+            if "in gebruik" in str(exc) or "al het huidige" in str(exc)
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    mail_verzonden = False
+    mail_fout: str | None = None
+    vernieuwd = gewijzigd.vernieuwde_uitnodiging
+    if vernieuwd is not None:
+        try:
+            uitnodigingsmail.verstuur_uitnodigingsmail(
+                naam=gewijzigd.naam,
+                e_mail=gewijzigd.nieuw_e_mail,
+                token=vernieuwd.token,
+                verloopt_op=vernieuwd.verloopt_op,
+            )
+            mail_verzonden = True
+        except berichten_mail.MailFout as exc:
+            mail_fout = str(exc)
+    return schemas.EMailWijzigenResponse(
+        gebruiker_id=gewijzigd.gebruiker_id,
+        oud_e_mail=gewijzigd.oud_e_mail,
+        nieuw_e_mail=gewijzigd.nieuw_e_mail,
+        uitnodiging_vernieuwd=vernieuwd is not None,
+        token=vernieuwd.token if vernieuwd else None,
+        verloopt_op=vernieuwd.verloopt_op if vernieuwd else None,
+        mail_verzonden=mail_verzonden,
+        mail_fout=mail_fout,
+    )
 
 
 @router.post("/gebruikers/{gebruiker_id}/blokkeren", status_code=status.HTTP_204_NO_CONTENT)
@@ -392,15 +443,11 @@ def _passkey_setup_gebruiker(credentials: HTTPAuthorizationCredentials = Depends
 def webauthn_config() -> schemas.WebauthnConfigResponse:
     """Publiek: de PWA moet vóór de login weten of de dev-stub actief is (LAN-IP-kliktest heeft
     geen secure context, dus geen echte WebAuthn). Bevat geen gevoelige informatie."""
-    return schemas.WebauthnConfigResponse(
-        dev_stub=webauthn_service.dev_stub_actief(), rp_id=settings.webauthn_rp_id
-    )
+    return schemas.WebauthnConfigResponse(dev_stub=webauthn_service.dev_stub_actief(), rp_id=settings.webauthn_rp_id)
 
 
 @router.post("/accordeur/login", response_model=schemas.AccordeurLoginResponse)
-def accordeur_login(
-    payload: schemas.AccordeurLoginRequest, request: Request
-) -> schemas.AccordeurLoginResponse:
+def accordeur_login(payload: schemas.AccordeurLoginRequest, request: Request) -> schemas.AccordeurLoginResponse:
     """Wachtwoordstap van de volledige accordeur-login (eerste gebruik / nieuw apparaat / ná 7
     dagen inactiviteit). Kantoor-rollen blijven op /auth/login (wachtwoord + TOTP)."""
     try:
@@ -534,9 +581,7 @@ def _vereis_kantoorrol(actor: CurrentGebruiker) -> None:
     registratie-/loginflow (wachtwoord + passkey, 7-dagen-cadans); de kantoor-endpoints zouden
     hun wachtwoordstap omzeilen."""
     if is_externe_app_rol(actor.rol):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor kantoor-rollen"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor kantoor-rollen")
 
 
 @router.post("/webauthn/kantoor/registratie/opties", response_model=schemas.WebauthnOptiesResponse)
@@ -549,9 +594,7 @@ def kantoor_registratie_opties(
     _vereis_kantoorrol(actor)
     try:
         return schemas.WebauthnOptiesResponse(
-            opties=webauthn_service.registratie_opties(
-                gebruiker_id=actor.id, alleen_platform_authenticator=False
-            )
+            opties=webauthn_service.registratie_opties(gebruiker_id=actor.id, alleen_platform_authenticator=False)
         )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -681,9 +724,7 @@ def apparaten_van_gebruiker(
 
 
 @router.post("/apparaten/{apparaat_id}/intrekken", status_code=status.HTTP_204_NO_CONTENT)
-def apparaat_intrekken(
-    apparaat_id: uuid.UUID, actor: CurrentGebruiker = Depends(get_current_gebruiker)
-) -> None:
+def apparaat_intrekken(apparaat_id: uuid.UUID, actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> None:
     """Kill-switch: trekt de passkey-credential + alle gebonden sessies van dit apparaat in.
     Beheerder mag elk apparaat (óók andermans — kantoor-passkeys 0020); iedere andere rol
     uitsluitend de eigen apparaten — een niet-eigen apparaat antwoordt 404 (geen bestaans-lek).
@@ -721,7 +762,5 @@ def accordeur_voorwaarden_akkoord(actor: CurrentGebruiker = Depends(get_current_
     zelfde app, zelfde voorwaarden-/privacyverklaring-poort); kantoor-rollen hebben deze
     informatieplicht-laag niet."""
     if not is_externe_app_rol(actor.rol):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor externe app-rollen"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor externe app-rollen")
     voorwaarden.leg_akkoord_vast(gebruiker_id=actor.id)

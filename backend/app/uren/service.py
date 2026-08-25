@@ -131,6 +131,11 @@ class DagData:
     # planningstoewijzing op dit project = oranje "buiten planning" bij de keuring — een
     # signaal, nooit een blokkade (invallen/omplannen blijft mogelijk). Een 0-urendag telt niet.
     buiten_planning: bool = False
+    # Signaal >N uur per dag (A6): som van de uren van deze persoon op deze kalenderdag over
+    # álle niet-concept-weekstaten heen (incl. deze staat); boven de administratie-drempel = oranje.
+    dag_totaal_uren: Decimal = Decimal("0")
+    boven_dagmax: bool = False
+    dagmax_uren: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -254,9 +259,7 @@ def _project(session, administratie_id: uuid.UUID, project_id: uuid.UUID) -> Pro
 
 
 def _heeft_toewijzing(session, administratie_id: uuid.UUID, gebruiker_id: uuid.UUID, project_id: uuid.UUID) -> bool:
-    return (
-        session.get(UrenProjectToewijzing, (administratie_id, gebruiker_id, project_id)) is not None
-    )
+    return session.get(UrenProjectToewijzing, (administratie_id, gebruiker_id, project_id)) is not None
 
 
 def _vereis_invuller(session, *, zzper: Gebruiker, actor_id: uuid.UUID) -> Gebruiker:
@@ -308,8 +311,15 @@ def _vereis_meerwerk_recht(session, actor_id: uuid.UUID) -> Gebruiker:
 
 
 def _dag_data(
-    dag: WeekstaatDag, *, zzper_id: uuid.UUID, namen: dict[uuid.UUID, str], gepland: set[date]
+    dag: WeekstaatDag,
+    *,
+    zzper_id: uuid.UUID,
+    namen: dict[uuid.UUID, str],
+    gepland: set[date],
+    dagtotalen: dict[date, Decimal] | None = None,
+    dagmax: Decimal | None = None,
 ) -> DagData:
+    totaal = (dagtotalen or {}).get(dag.datum, dag.uren)
     return DagData(
         id=dag.id,
         datum=dag.datum,
@@ -323,7 +333,29 @@ def _dag_data(
         voorstel_m2=dag.voorstel_m2,
         voorstel_opmerking=dag.voorstel_opmerking,
         buiten_planning=dag.uren > 0 and dag.datum not in gepland,
+        dag_totaal_uren=totaal,
+        boven_dagmax=dagmax is not None and totaal > dagmax,
+        dagmax_uren=dagmax,
     )
+
+
+def _dagtotalen(session, staat: Weekstaat, dagen: list[WeekstaatDag]) -> dict[date, Decimal]:
+    """Som van de uren per kalenderdag van deze persoon over álle weekstaten behalve concepten
+    van ándere projecten (A6: 'ingediende uren'); de eigen staat telt altijd volledig mee."""
+    if not dagen:
+        return {}
+    datums = [d.datum for d in dagen]
+    rijen = session.execute(
+        select(WeekstaatDag.datum, func.coalesce(func.sum(WeekstaatDag.uren), 0))
+        .join(Weekstaat, Weekstaat.id == WeekstaatDag.weekstaat_id)
+        .where(
+            Weekstaat.gebruiker_id == staat.gebruiker_id,
+            WeekstaatDag.datum.in_(datums),
+            (Weekstaat.id == staat.id) | (Weekstaat.status != WeekstaatStatus.CONCEPT.value),
+        )
+        .group_by(WeekstaatDag.datum)
+    ).all()
+    return {datum: Decimal(som) for datum, som in rijen}
 
 
 def _geplande_datums(session, staat: Weekstaat, dagen: list[WeekstaatDag]) -> set[date]:
@@ -348,11 +380,12 @@ def _geplande_datums(session, staat: Weekstaat, dagen: list[WeekstaatDag]) -> se
 
 def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
     dagen = list(
-        session.scalars(
-            select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id).order_by(WeekstaatDag.datum)
-        )
+        session.scalars(select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id).order_by(WeekstaatDag.datum))
     )
     gepland = _geplande_datums(session, staat, dagen)
+    dagtotalen = _dagtotalen(session, staat, dagen)
+    administratie = session.get(Administratie, staat.administratie_id)
+    dagmax = administratie.uren_dagmax_uren if administratie is not None else None
     namen = _namen(
         session,
         {staat.gebruiker_id, staat.ingediend_door, staat.goedgekeurd_door, staat.afgekeurd_door}
@@ -371,7 +404,12 @@ def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
         status=staat.status,
         totaal_uren=sum((d.uren for d in dagen), Decimal("0")),
         totaal_m2=sum((d.m2 for d in dagen if d.m2 is not None), Decimal("0")),
-        dagen=[_dag_data(d, zzper_id=staat.gebruiker_id, namen=namen, gepland=gepland) for d in dagen],
+        dagen=[
+            _dag_data(
+                d, zzper_id=staat.gebruiker_id, namen=namen, gepland=gepland, dagtotalen=dagtotalen, dagmax=dagmax
+            )
+            for d in dagen
+        ],
         ingediend_op=staat.ingediend_op,
         ingediend_door=staat.ingediend_door,
         ingediend_door_naam=namen.get(staat.ingediend_door) if staat.ingediend_door else None,
@@ -459,9 +497,7 @@ def zet_dag(
             weeknummer=weeknummer,
         )
         if staat.status not in (WeekstaatStatus.CONCEPT.value, WeekstaatStatus.CORRIGEREN.value):
-            raise WeekstaatBevroren(
-                "Deze week is al ingediend of goedgekeurd — wijzigen kan alleen na een afkeuring"
-            )
+            raise WeekstaatBevroren("Deze week is al ingediend of goedgekeurd — wijzigen kan alleen na een afkeuring")
 
         dag = session.scalars(
             select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id, WeekstaatDag.datum == datum)
@@ -540,6 +576,11 @@ def dien_week_in(
             return _weekstaat_data(session, staat)  # herhaald besluit — geen fout
         if staat.status == WeekstaatStatus.GOEDGEKEURD.value:
             raise OngeldigeOvergang("Deze week is al goedgekeurd (getekende urenstaat)")
+        # Dossier-handhaving (steigerbouw-run A2): ná de 3e herinnering blokkeert INDIENEN — óók
+        # namens-invoer door de detacheerder. Dagen zetten blijft mogelijk, niets raakt zoek.
+        from app.uren import dossier as dossier_service  # lokaal: dossier importeert uit deze module
+
+        dossier_service.toets_indienen(session, administratie_id=administratie_id, zzper_id=zzper_id, actor_id=actor_id)
 
         staat.status = WeekstaatStatus.INGEDIEND.value
         staat.ingediend_op = datetime.now(UTC)
@@ -672,18 +713,14 @@ def keur_week_af(
         # de boeking uit trekken. Correctie loopt dan via storno van de factuur (die de
         # verrekening niet automatisch terugdraait — kantoorbeoordeling), nooit hierlangs.
         if staat.verrekend_met_document_id is not None:
-            raise OngeldigeOvergang(
-                "Deze week is al verrekend met een geboekte factuur — afkeuren kan niet meer"
-            )
+            raise OngeldigeOvergang("Deze week is al verrekend met een geboekte factuur — afkeuren kan niet meer")
 
         # Correctievoorstellen horen bij bestaande dagregels (per dagregel, besluit 22-08).
         dagen = list(session.scalars(select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id)))
         dag_per_datum = {d.datum: d for d in dagen}
         for correctie in correcties:
             if correctie.datum not in dag_per_datum:
-                raise OngeldigeInvoer(
-                    f"Geen ingevulde dagregel op {correctie.datum} — een voorstel hoort bij een dag"
-                )
+                raise OngeldigeInvoer(f"Geen ingevulde dagregel op {correctie.datum} — een voorstel hoort bij een dag")
 
         oude_status = staat.status
         staat.status = WeekstaatStatus.CORRIGEREN.value
@@ -722,8 +759,10 @@ def keur_week_af(
             ingediend_totaal = sum((d.uren for d in dagen), Decimal("0"))
             voorstel_per_datum = {c.datum: c.uren for c in correcties}
             voorgesteld_totaal = sum(
-                (voorstel_per_datum.get(d.datum) if voorstel_per_datum.get(d.datum) is not None else d.uren
-                 for d in dagen),
+                (
+                    voorstel_per_datum.get(d.datum) if voorstel_per_datum.get(d.datum) is not None else d.uren
+                    for d in dagen
+                ),
                 Decimal("0"),
             )
             session.add(
@@ -979,10 +1018,7 @@ def markeer_doorbelast(
         _administratie_met_opt_in(session, administratie_id)
         _vereis_meerwerk_recht(session, actor_id)
         melding = _meerwerk(session, meerwerk_id)
-        if (
-            melding.status == MeerwerkStatus.DOORBELAST.value
-            and melding.verkoopfactuur_referentie == referentie
-        ):
+        if melding.status == MeerwerkStatus.DOORBELAST.value and melding.verkoopfactuur_referentie == referentie:
             return _meerwerk_data(session, melding)  # herhaald besluit
         if melding.status != MeerwerkStatus.GOEDGEKEURD.value:
             raise OngeldigeOvergang("Alleen goedgekeurd meerwerk kan doorbelast gemarkeerd worden")
@@ -1004,9 +1040,7 @@ def markeer_doorbelast(
         return _meerwerk_data(session, melding)
 
 
-def stel_vraag(
-    *, administratie_id: uuid.UUID, meerwerk_id: uuid.UUID, actor_id: uuid.UUID, tekst: str
-) -> MeerwerkData:
+def stel_vraag(*, administratie_id: uuid.UUID, meerwerk_id: uuid.UUID, actor_id: uuid.UUID, tekst: str) -> MeerwerkData:
     """Lichte kantoor→uitvoerder-vraag uit het beoordeel-paneel; de status blijft `gemeld`."""
     tekst = (tekst or "").strip()
     if not tekst:
@@ -1068,9 +1102,7 @@ def beantwoord_vraag(
         return _meerwerk_data(session, melding)
 
 
-def contract_toets(
-    *, administratie_id: uuid.UUID, project_id: uuid.UUID, eenheid: str
-) -> list[StaffelRegelData]:
+def contract_toets(*, administratie_id: uuid.UUID, project_id: uuid.UUID, eenheid: str) -> list[StaffelRegelData]:
     """VOORSTEL uit de offerte-staffel: alle staffelregels van dit project met dezelfde
     eenheid. Leeg = geen staffel bekend — de mens prijst dan volledig handmatig. Bewust een
     lijst (meerdere regels met dezelfde eenheid = de mens kiest), nooit een berekening."""
@@ -1214,6 +1246,11 @@ class UrenStand:
     meerwerk_nog_doorbelasten: int
     meerwerk_te_lang_niet_doorbelast: int
     urenstaten_wachten_op_keuring: int
+    # ZZP-dossier (A1): veldwerkers met een dossier-signaal (ontbrekend/verlopen/verloopt
+    # binnenkort), documenten ter controle en geblokkeerde veldwerkers — werkvoorraad-signaal.
+    dossier_veldwerkers_met_signaal: int = 0
+    dossier_ter_controle: int = 0
+    dossier_geblokkeerd: int = 0
 
 
 def meerwerk_lijst(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> list[MeerwerkData]:
@@ -1222,9 +1259,7 @@ def meerwerk_lijst(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> list[
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _vereis_meerwerk_recht(session, actor_id)
         rijen = session.scalars(
-            select(Meerwerk)
-            .where(Meerwerk.administratie_id == administratie_id)
-            .order_by(Meerwerk.gemeld_op.desc())
+            select(Meerwerk).where(Meerwerk.administratie_id == administratie_id).order_by(Meerwerk.gemeld_op.desc())
         ).all()
         return [_meerwerk_data(session, m) for m in rijen]
 
@@ -1244,11 +1279,15 @@ def contract_toets_voor_melding(
 def uren_stand(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> UrenStand:
     grens = datetime.now(UTC) - timedelta(days=BEWAKING_DAGEN)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        administratie = _administratie_met_opt_in(session, administratie_id)
         _vereis_meerwerk_recht(session, actor_id)
 
         def _tel(*condities) -> int:
             return session.execute(select(func.count()).where(*condities)).scalar_one()
+
+        from app.uren import dossier as dossier_service
+
+        dossier_signalen = dossier_service.signalen_in_sessie(session, administratie=administratie)
 
         return UrenStand(
             meerwerk_te_beoordelen=_tel(
@@ -1268,6 +1307,9 @@ def uren_stand(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> UrenStand
                 Weekstaat.administratie_id == administratie_id,
                 Weekstaat.status == WeekstaatStatus.INGEDIEND.value,
             ),
+            dossier_veldwerkers_met_signaal=dossier_signalen.veldwerkers_met_signaal,
+            dossier_ter_controle=dossier_signalen.ter_controle,
+            dossier_geblokkeerd=dossier_signalen.geblokkeerd,
         )
 
 
@@ -1421,9 +1463,7 @@ def zet_veldwerker_autoboeken(
         _administratie_met_opt_in(session, administratie_id)
         rij = session.get(VeldwerkerCrediteur, (administratie_id, gebruiker_id))
         if rij is None:
-            raise NietGevonden(
-                "Deze veldwerker heeft geen crediteur-koppeling in deze administratie — koppel eerst"
-            )
+            raise NietGevonden("Deze veldwerker heeft geen crediteur-koppeling in deze administratie — koppel eerst")
         oud = rij.autoboeken_ingeschakeld
         rij.autoboeken_ingeschakeld = ingeschakeld
         record_audit_event(

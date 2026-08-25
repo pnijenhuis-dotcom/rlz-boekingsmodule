@@ -329,6 +329,17 @@ export function KlantStanden({
                   {urenStand.meerwerk_te_lang_niet_doorbelast} &gt; 2 weken niet doorbelast
                 </Badge>
               )}
+              {/* ZZP-dossier (A1, 25-08): werkvoorraad-signaal — ontbrekend/verlopen/verloopt binnenkort. */}
+              {(urenStand.dossier_veldwerkers_met_signaal ?? 0) > 0 && (
+                <Badge variant="warn" title="Veldwerkers met een ontbrekend, verlopen of binnenkort verlopend dossierdocument">
+                  📁 {urenStand.dossier_veldwerkers_met_signaal} dossier-signaal
+                </Badge>
+              )}
+              {(urenStand.dossier_geblokkeerd ?? 0) > 0 && (
+                <Badge variant="danger" title="Weekstaat-indienen geblokkeerd ná de 3e dossier-herinnering">
+                  {urenStand.dossier_geblokkeerd} geblokkeerd
+                </Badge>
+              )}
               <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
                 <Button
                   variant="secundair"
@@ -350,14 +361,18 @@ export function KlantStanden({
             </div>
             {urenStand.meerwerk_te_beoordelen === 0 &&
               urenStand.meerwerk_nog_doorbelasten === 0 &&
-              urenStand.urenstaten_wachten_op_keuring === 0 && (
+              urenStand.urenstaten_wachten_op_keuring === 0 &&
+              (urenStand.dossier_veldwerkers_met_signaal ?? 0) === 0 &&
+              (urenStand.dossier_ter_controle ?? 0) === 0 && (
                 <p className="hint" style={{ marginBottom: 0 }}>
                   Geen openstaand meerwerk of urenstaten — plan vooruit via de planning-agenda.
                 </p>
               )}
             {(urenStand.meerwerk_te_beoordelen > 0 ||
               urenStand.meerwerk_nog_doorbelasten > 0 ||
-              urenStand.urenstaten_wachten_op_keuring > 0) && (
+              urenStand.urenstaten_wachten_op_keuring > 0 ||
+              (urenStand.dossier_veldwerkers_met_signaal ?? 0) > 0 ||
+              (urenStand.dossier_ter_controle ?? 0) > 0) && (
             <div className="tabel-scroll">
               <table>
                 <tbody>
@@ -407,6 +422,34 @@ export function KlantStanden({
                       </td>
                       <td className="amount">{urenStand.urenstaten_wachten_op_keuring}</td>
                       <td />
+                    </tr>
+                  )}
+                  {((urenStand.dossier_veldwerkers_met_signaal ?? 0) > 0 || (urenStand.dossier_ter_controle ?? 0) > 0) && (
+                    <tr className="clickable" onClick={() => navigate('/gebruikers?groep=veldwerkers')}>
+                      <td>
+                        <b>ZZP-dossiers — signaal</b>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                          {[
+                            (urenStand.dossier_veldwerkers_met_signaal ?? 0) > 0
+                              ? `${urenStand.dossier_veldwerkers_met_signaal} veldwerker(s) met ontbrekend/verlopen document`
+                              : null,
+                            (urenStand.dossier_ter_controle ?? 0) > 0
+                              ? `${urenStand.dossier_ter_controle} document(en) ter controle`
+                              : null,
+                            (urenStand.dossier_geblokkeerd ?? 0) > 0 ? `${urenStand.dossier_geblokkeerd} geblokkeerd` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                      </td>
+                      <td className="amount">
+                        {(urenStand.dossier_veldwerkers_met_signaal ?? 0) + (urenStand.dossier_ter_controle ?? 0)}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="text-primary" style={{ fontWeight: 600 }}>
+                          Dossiers →
+                        </span>
+                      </td>
                     </tr>
                   )}
                 </tbody>

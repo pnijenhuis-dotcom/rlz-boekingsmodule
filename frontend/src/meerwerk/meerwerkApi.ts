@@ -9,6 +9,11 @@ export interface UrenStandDto {
   meerwerk_nog_doorbelasten: number
   meerwerk_te_lang_niet_doorbelast: number
   urenstaten_wachten_op_keuring: number
+  // ZZP-dossier (A1, 25-08): werkvoorraad-signaal — veldwerkers met ontbrekend/verlopen/
+  // binnenkort-verlopend document, documenten ter controle, geblokkeerde veldwerkers.
+  dossier_veldwerkers_met_signaal: number
+  dossier_ter_controle: number
+  dossier_geblokkeerd: number
 }
 
 export interface MeerwerkDto {
@@ -135,6 +140,176 @@ export interface VeldgebruikerDto {
   // opgetelde uren-delta (ingediend − goedgekeurd) — de veldwerker ziet dit nooit.
   uren_afwijking_aantal: number
   uren_afwijking_som: string
+  // ZZP-dossier per administratie (A1): teller + signalen voor de dossier-badge.
+  dossiers: DossierSamenvattingDto[]
+}
+
+/* --- ZZP-dossier per veldwerker (steigerbouw-run blok A, migratie 0072) ---------------------- */
+
+export interface DossierSamenvattingDto {
+  administratie_id: string
+  administratie_naam: string | null
+  aantal_verplicht: number
+  aantal_aanwezig: number
+  aantal_ontbrekend: number
+  aantal_verlopen: number
+  aantal_verloopt_binnenkort: number
+  aantal_ter_controle: number
+  herinneringen_teller: number
+  geblokkeerd: boolean
+  compleet: boolean
+}
+
+export type DossierDocumentStatus =
+  | 'ontbreekt'
+  | 'ter_controle'
+  | 'afgewezen'
+  | 'goedgekeurd'
+  | 'verloopt_binnenkort'
+  | 'verlopen'
+
+export interface DossierDocumentDto {
+  code: string
+  naam: string
+  verplicht: boolean
+  geldig_tot_vereist: boolean
+  bsn_gevoelig: boolean
+  status: DossierDocumentStatus
+  document_id: string | null
+  geldig_tot: string | null
+  verloopt_over_dagen: number | null
+  bestandsnaam: string | null
+  content_type: string | null
+  geupload_op: string | null
+  geupload_door_naam: string | null
+  bron: 'kantoor' | 'app' | null
+  afwijs_reden: string | null
+  beoordeeld_door_naam: string | null
+  beoordeeld_op: string | null
+}
+
+export interface DossierDto {
+  administratie_id: string
+  gebruiker_id: string
+  gebruiker_naam: string
+  documenten: DossierDocumentDto[]
+  aantal_verplicht: number
+  aantal_aanwezig: number
+  aantal_ontbrekend: number
+  aantal_verlopen: number
+  aantal_verloopt_binnenkort: number
+  aantal_ter_controle: number
+  compleet: boolean
+  compleet_incl_ter_controle: boolean
+  herinneringen_teller: number
+  herinneringen_max: number
+  laatste_herinnering_op: string | null
+  geblokkeerd: boolean
+  geblokkeerd_op: string | null
+  kan_herinneren_vandaag: boolean
+  kvk_nummer: string | null
+  btw_nummer: string | null
+  kvk_naam: string | null
+  kvk_plaats: string | null
+  kvk_rechtsvorm: string | null
+  kvk_bevestigd_op: string | null
+  kvk_bevestigd_door_naam: string | null
+  signalen: string[]
+}
+
+export interface DossierDocumenttypeDto {
+  code: string
+  naam: string
+  verplicht: boolean
+  geldig_tot_vereist: boolean
+  bsn_gevoelig: boolean
+  volgorde: number
+  actief: boolean
+}
+
+export interface KvkLookupDto {
+  kvk_nummer: string
+  gevonden: boolean
+  naam: string | null
+  rechtsvorm: string | null
+  adres: string | null
+  postcode: string | null
+  plaats: string | null
+  uitgeschreven: boolean
+  datum_einde: string | null
+  testomgeving: boolean
+}
+
+export function haalDossier(administratieId: string, gebruikerId: string): Promise<DossierDto> {
+  return apiJson<DossierDto>(`/uren/kantoor/dossier/${administratieId}/${gebruikerId}`)
+}
+
+export async function uploadDossierDocument(
+  administratieId: string,
+  gebruikerId: string,
+  payload: { type_code: string; geldig_tot: string | null; bestand: File },
+): Promise<DossierDto> {
+  const form = new FormData()
+  form.append('type_code', payload.type_code)
+  if (payload.geldig_tot) form.append('geldig_tot', payload.geldig_tot)
+  form.append('bestand', payload.bestand, payload.bestand.name)
+  return apiJson<DossierDto>(`/uren/kantoor/dossier/${administratieId}/${gebruikerId}/upload`, {
+    method: 'POST',
+    body: form,
+  })
+}
+
+export function beoordeelDossierDocument(
+  administratieId: string,
+  documentId: string,
+  payload: { goedgekeurd: boolean; reden?: string | null },
+): Promise<DossierDto> {
+  return apiPostJson<DossierDto>(`/uren/kantoor/dossier/${administratieId}/documenten/${documentId}/beoordelen`, payload)
+}
+
+export function dossierBestandPad(administratieId: string, documentId: string): string {
+  return `/uren/kantoor/dossier/${administratieId}/documenten/${documentId}/bestand`
+}
+
+export interface DossierHerinneringResultaatDto {
+  gebruiker_id: string
+  volgnummer: number
+  kanaal: string
+  verzonden_op: string
+  geblokkeerd: boolean
+}
+
+export function herinnerDossier(administratieId: string, gebruikerId: string): Promise<DossierHerinneringResultaatDto> {
+  return apiPostJson<DossierHerinneringResultaatDto>(`/uren/kantoor/dossier/${administratieId}/${gebruikerId}/herinneren`, {})
+}
+
+export function zoekKvk(kvkNummer: string): Promise<KvkLookupDto> {
+  return apiJson<KvkLookupDto>(`/uren/kantoor/kvk/${encodeURIComponent(kvkNummer)}`)
+}
+
+export function bevestigBedrijfsgegevens(
+  administratieId: string,
+  gebruikerId: string,
+  payload: { kvk_nummer: string | null; btw_nummer: string | null; naam: string | null; plaats: string | null; rechtsvorm: string | null },
+): Promise<DossierDto> {
+  return apiPostJson<DossierDto>(`/uren/kantoor/dossier/${administratieId}/${gebruikerId}/bedrijfsgegevens`, payload)
+}
+
+export function haalDossierDocumenttypen(
+  administratieId: string,
+): Promise<{ typen: DossierDocumenttypeDto[]; is_standaard: boolean }> {
+  return apiJson(`/uren/beheer/dossier-documenttypen/${administratieId}`)
+}
+
+export function zetDossierDocumenttypen(
+  administratieId: string,
+  typen: DossierDocumenttypeDto[],
+): Promise<{ typen: DossierDocumenttypeDto[]; is_standaard: boolean }> {
+  return apiJson(`/uren/beheer/dossier-documenttypen/${administratieId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ typen }),
+  })
 }
 
 export function haalVeldgebruikers(): Promise<VeldgebruikerDto[]> {

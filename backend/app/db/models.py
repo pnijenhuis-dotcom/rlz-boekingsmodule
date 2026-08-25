@@ -146,6 +146,10 @@ class Administratie(Base):
     # opt-in per administratie — alleen Universal initieel. Uit = geen weekstaten/meerwerk voor
     # deze administratie (server-side afgedwongen in app/uren/service.py), default UIT.
     uren_meerwerk_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Signaal >N uur per dag (steigerbouw-run blok A6, migratie 0072): som van de ingediende uren
+    # per persoon per kalenderdag over álle weekstaten heen boven deze drempel = oranje vlag bij
+    # de keuring + zichtbaar voor kantoor. Geen blokkade. Default 12, per administratie instelbaar.
+    uren_dagmax_uren: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("12"), server_default="12")
     eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

@@ -53,6 +53,12 @@ class UrenMeerwerkDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class UrenDagmaxDto(StrikteInvoer):
+    """Drempel voor het >N-uur-per-dag-signaal (steigerbouw-run A6, migratie 0072): 0 < N ≤ 24."""
+
+    dagmax_uren: Decimal = Field(gt=0, le=24)
+
+
 class VerkoopAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
@@ -73,6 +79,8 @@ class AdministratieInstellingenDto(BaseModel):
     verkoop_autoboeken_ingeschakeld: bool = False
     # Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie.
     uren_meerwerk_ingeschakeld: bool = False
+    # Signaal >N uur per dag (A6, migratie 0072).
+    uren_dagmax_uren: Decimal = Decimal("12")
 
 
 class AdministratieInstellingenLijstDto(BaseModel):

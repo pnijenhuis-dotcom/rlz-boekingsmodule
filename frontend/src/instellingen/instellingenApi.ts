@@ -87,6 +87,14 @@ export function zetUrenMeerwerkInstelling(administratieId: string, ingeschakeld:
   })
 }
 
+/** Signaal >N uur per dag (A6, 25-08): drempel per administratie (0 < N ≤ 24), Beheerder-only. */
+export function zetUrenDagmaxInstelling(administratieId: string, dagmaxUren: string): Promise<{ dagmax_uren: string }> {
+  return apiJson(`/administraties/${administratieId}/uren-dagmax-instelling`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ dagmax_uren: dagmaxUren }),
+  })
+}
+
 export function zetVerkoopAutoboekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/verkoop-autoboeken-instelling`, {
     ...PUT_JSON,

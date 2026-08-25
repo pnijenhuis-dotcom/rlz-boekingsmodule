@@ -29,6 +29,7 @@ from app.auth.deps import (
     vereis_administratie_scope,
 )
 from app.auth.rollen import is_veldrol
+from app.uren import dossier as dossier_service
 from app.uren import overzichten, planning, schemas, service
 
 router = APIRouter(prefix="/uren", tags=["uren"])
@@ -57,7 +58,57 @@ def _vertaal(exc: service.UrenFout) -> HTTPException:
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     if isinstance(exc, service.WeekstaatBevroren | service.OngeldigeOvergang | service.ModuleUitgeschakeld):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, dossier_service.DossierGeblokkeerd):
+        # 423 Locked: de app herkent dit als dossier-handhaving (melding + upload-ingang).
+        return HTTPException(status_code=status.HTTP_423_LOCKED, detail=str(exc))
+    if isinstance(exc, dossier_service.AlHerinnerdVandaag | dossier_service.DossierCompleet):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, dossier_service.HerinneringMislukt):
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+def _dossier_response(stand: dossier_service.DossierStand) -> schemas.DossierDto:
+    return schemas.DossierDto(
+        administratie_id=stand.administratie_id,
+        gebruiker_id=stand.gebruiker_id,
+        gebruiker_naam=stand.gebruiker_naam,
+        documenten=[schemas.DossierDocumentDto(**d.__dict__) for d in stand.documenten],
+        aantal_verplicht=stand.aantal_verplicht,
+        aantal_aanwezig=stand.aantal_aanwezig,
+        aantal_ontbrekend=stand.aantal_ontbrekend,
+        aantal_verlopen=stand.aantal_verlopen,
+        aantal_verloopt_binnenkort=stand.aantal_verloopt_binnenkort,
+        aantal_ter_controle=stand.aantal_ter_controle,
+        compleet=stand.compleet,
+        compleet_incl_ter_controle=stand.compleet_incl_ter_controle,
+        herinneringen_teller=stand.herinneringen_teller,
+        herinneringen_max=dossier_service.MAX_HERINNERINGEN,
+        laatste_herinnering_op=stand.laatste_herinnering_op,
+        geblokkeerd=stand.geblokkeerd,
+        geblokkeerd_op=stand.geblokkeerd_op,
+        kan_herinneren_vandaag=stand.kan_herinneren_vandaag,
+        kvk_nummer=stand.kvk_nummer,
+        btw_nummer=stand.btw_nummer,
+        kvk_naam=stand.kvk_naam,
+        kvk_plaats=stand.kvk_plaats,
+        kvk_rechtsvorm=stand.kvk_rechtsvorm,
+        kvk_bevestigd_op=stand.kvk_bevestigd_op,
+        kvk_bevestigd_door_naam=stand.kvk_bevestigd_door_naam,
+        signalen=stand.signalen,
+    )
+
+
+async def _lees_upload(bestand: UploadFile) -> tuple[str, str, bytes]:
+    inhoud = await bestand.read()
+    return bestand.filename or "document", bestand.content_type or "application/octet-stream", inhoud
+
+
+def _bestand_response(naam: str, content_type: str, inhoud: bytes, *, bsn_gevoelig: bool) -> Response:
+    headers = {"Content-Disposition": f'inline; filename="{naam}"', "Cache-Control": "no-store"}
+    if bsn_gevoelig:
+        headers["X-Dossier-Bsn-Gevoelig"] = "1"
+    return Response(content=inhoud, media_type=content_type, headers=headers)
 
 
 def _weekstaat_response(data: service.WeekstaatData) -> schemas.WeekstaatDto:
@@ -252,6 +303,63 @@ def zzp_planning(
     return [schemas.MijnPlanningDagDto(**d.__dict__) for d in dagen]
 
 
+# --- ZZP-dossier: veldkant (A1/A2 — upload in de app, blokkade-melding) --------------------------
+
+
+@router.get("/dossier", response_model=schemas.DossierDto)
+def mijn_dossier(
+    administratie_id: uuid.UUID,
+    namens: uuid.UUID | None = None,
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> schemas.DossierDto:
+    """Eigen dossier (ZZP'er/uitvoerder) of dat van een gekoppelde ZZP'er (detacheerder namens)."""
+    try:
+        stand = dossier_service.dossier_van(
+            administratie_id=administratie_id, gebruiker_id=namens or actor.id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _dossier_response(stand)
+
+
+@router.post("/dossier/upload", response_model=schemas.DossierDto)
+async def dossier_upload(
+    administratie_id: uuid.UUID = Form(...),
+    type_code: str = Form(...),
+    geldig_tot: date | None = Form(default=None),
+    namens: uuid.UUID | None = Form(default=None),
+    bestand: UploadFile = File(...),
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> schemas.DossierDto:
+    """Upload door de veldwerker zelf (of detacheerder namens) → status 'ter controle'; telt
+    direct voor de deblokkade, als aanwezig pas ná goedkeuring door kantoor."""
+    try:
+        stand = dossier_service.upload_document(
+            administratie_id=administratie_id,
+            gebruiker_id=namens or actor.id,
+            type_code=type_code,
+            geldig_tot=geldig_tot,
+            bestand=await _lees_upload(bestand),
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _dossier_response(stand)
+
+
+@router.get("/dossier/documenten/{administratie_id}/{document_id}/bestand")
+def dossier_bestand_veld(
+    administratie_id: uuid.UUID, document_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_veldrol)
+) -> Response:
+    try:
+        naam, ctype, inhoud, gevoelig = dossier_service.document_inhoud(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _bestand_response(naam, ctype, inhoud, bsn_gevoelig=gevoelig)
+
+
 # --- detacheerder --------------------------------------------------------------------------------
 
 
@@ -324,9 +432,7 @@ def week_akkoord(
     actor: CurrentGebruiker = Depends(vereis_veldrol),
 ) -> schemas.WeekstaatDto:
     try:
-        data = service.keur_week_goed(
-            administratie_id=administratie_id, weekstaat_id=weekstaat_id, actor_id=actor.id
-        )
+        data = service.keur_week_goed(administratie_id=administratie_id, weekstaat_id=weekstaat_id, actor_id=actor.id)
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return _weekstaat_response(data)
@@ -712,6 +818,165 @@ def kantoor_weekstaat_detail(
     return _weekstaat_response(data)
 
 
+# --- ZZP-dossier: kantoorkant (module-recht + klantscope) -------------------------------------------
+
+
+@router.get("/kantoor/dossier/{administratie_id}/{gebruiker_id}", response_model=schemas.DossierDto)
+def kantoor_dossier(
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DossierDto:
+    try:
+        stand = dossier_service.dossier_van(
+            administratie_id=administratie_id, gebruiker_id=gebruiker_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _dossier_response(stand)
+
+
+@router.post("/kantoor/dossier/{administratie_id}/{gebruiker_id}/upload", response_model=schemas.DossierDto)
+async def kantoor_dossier_upload(
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    type_code: str = Form(...),
+    geldig_tot: date | None = Form(default=None),
+    bestand: UploadFile = File(...),
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DossierDto:
+    try:
+        stand = dossier_service.upload_document(
+            administratie_id=administratie_id,
+            gebruiker_id=gebruiker_id,
+            type_code=type_code,
+            geldig_tot=geldig_tot,
+            bestand=await _lees_upload(bestand),
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _dossier_response(stand)
+
+
+@router.post(
+    "/kantoor/dossier/{administratie_id}/documenten/{document_id}/beoordelen", response_model=schemas.DossierDto
+)
+def kantoor_dossier_beoordelen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    payload: schemas.DossierBeoordelenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DossierDto:
+    try:
+        stand = dossier_service.beoordeel_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            goedgekeurd=payload.goedgekeurd,
+            reden=payload.reden,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _dossier_response(stand)
+
+
+@router.get("/kantoor/dossier/{administratie_id}/documenten/{document_id}/bestand")
+def kantoor_dossier_bestand(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> Response:
+    """Inzage; een bsn-gevoelig document (kopie ID) wordt per inzage geauditeerd en de UI toont
+    het standaard gemaskeerd (BSN-regel: nooit extraheren/indexeren)."""
+    try:
+        naam, ctype, inhoud, gevoelig = dossier_service.document_inhoud(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _bestand_response(naam, ctype, inhoud, bsn_gevoelig=gevoelig)
+
+
+@router.post(
+    "/kantoor/dossier/{administratie_id}/{gebruiker_id}/herinneren",
+    response_model=schemas.DossierHerinneringResultaatDto,
+)
+def kantoor_dossier_herinneren(
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DossierHerinneringResultaatDto:
+    """Herinner-knop (A2): push, anders mail; max 1/dag; teller "N van 3"; ná de 3e blokkeert
+    het indienen van weekstaten voor deze veldwerker."""
+    try:
+        r = dossier_service.stuur_herinnering(
+            administratie_id=administratie_id, gebruiker_id=gebruiker_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.DossierHerinneringResultaatDto(**r.__dict__)
+
+
+@router.get("/kantoor/kvk/{kvk_nummer}", response_model=schemas.KvkLookupDto)
+def kantoor_kvk_lookup(
+    kvk_nummer: str, actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht)
+) -> schemas.KvkLookupDto:
+    """KvK Basisprofiel-lookup (A3, Vastly-patroon): ter bevestiging door een mens — schrijft niets."""
+    from app.integraties import kvk
+
+    try:
+        profiel = kvk.haal_basisprofiel(kvk_nummer.strip())
+    except kvk.KvkConfiguratieFout as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except kvk.KvkFout as exc:
+        code = status.HTTP_422_UNPROCESSABLE_ENTITY if "8 cijfers" in str(exc) else status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    if profiel is None:
+        return schemas.KvkLookupDto(kvk_nummer=kvk_nummer, gevonden=False, testomgeving=kvk.is_testomgeving())
+    return schemas.KvkLookupDto(
+        kvk_nummer=kvk_nummer,
+        gevonden=True,
+        naam=profiel.get("naam"),
+        rechtsvorm=profiel.get("rechtsvorm"),
+        adres=profiel.get("adres"),
+        postcode=profiel.get("postcode"),
+        plaats=profiel.get("plaats"),
+        uitgeschreven=bool(profiel.get("uitgeschreven")),
+        datum_einde=profiel.get("datum_einde"),
+        testomgeving=kvk.is_testomgeving(),
+    )
+
+
+@router.post("/kantoor/dossier/{administratie_id}/{gebruiker_id}/bedrijfsgegevens", response_model=schemas.DossierDto)
+def kantoor_dossier_bedrijfsgegevens(
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    payload: schemas.BedrijfsgegevensBevestigenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DossierDto:
+    try:
+        stand = dossier_service.bevestig_bedrijfsgegevens(
+            administratie_id=administratie_id,
+            gebruiker_id=gebruiker_id,
+            kvk_nummer=payload.kvk_nummer,
+            btw_nummer=payload.btw_nummer,
+            naam=payload.naam,
+            plaats=payload.plaats,
+            rechtsvorm=payload.rechtsvorm,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _dossier_response(stand)
+
+
 # --- beheer (Beheerder-only): koppelingen + module-recht ------------------------------------------
 
 
@@ -730,9 +995,55 @@ def beheer_veldgebruikers(actor: CurrentGebruiker = Depends(require_beheerder)) 
             crediteuren=[schemas.CrediteurKoppelingDto(**c.__dict__) for c in k.crediteuren],
             uren_afwijking_aantal=k.uren_afwijking_aantal,
             uren_afwijking_som=k.uren_afwijking_som,
+            dossiers=[schemas.DossierSamenvattingDto(**d.__dict__) for d in k.dossiers],
         )
         for k in kaarten
     ]
+
+
+@router.get("/beheer/dossier-documenttypen/{administratie_id}", response_model=schemas.DossierDocumenttypenDto)
+def beheer_dossier_documenttypen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.DossierDocumenttypenDto:
+    """Documenttypen als Beheerder-instelling per administratie (A1); `is_standaard` = nog nooit
+    aangepast (de default-set geldt virtueel)."""
+    try:
+        typen, is_standaard = dossier_service.documenttypen(administratie_id=administratie_id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.DossierDocumenttypenDto(
+        typen=[schemas.DossierDocumenttypeDto(**t.__dict__) for t in typen], is_standaard=is_standaard
+    )
+
+
+@router.put("/beheer/dossier-documenttypen/{administratie_id}", response_model=schemas.DossierDocumenttypenDto)
+def beheer_dossier_documenttypen_zetten(
+    administratie_id: uuid.UUID,
+    payload: schemas.DossierDocumenttypenZettenRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.DossierDocumenttypenDto:
+    try:
+        typen = dossier_service.zet_documenttypen(
+            administratie_id=administratie_id,
+            typen=[
+                dossier_service.TypeDef(
+                    code=t.code,
+                    naam=t.naam,
+                    verplicht=t.verplicht,
+                    geldig_tot_vereist=t.geldig_tot_vereist,
+                    bsn_gevoelig=t.bsn_gevoelig,
+                    volgorde=t.volgorde,
+                    actief=t.actief,
+                )
+                for t in payload.typen
+            ],
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.DossierDocumenttypenDto(
+        typen=[schemas.DossierDocumenttypeDto(**t.__dict__) for t in typen], is_standaard=False
+    )
 
 
 @router.post("/beheer/projectkoppelingen", status_code=status.HTTP_204_NO_CONTENT)

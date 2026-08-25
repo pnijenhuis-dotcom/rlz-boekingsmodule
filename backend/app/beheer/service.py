@@ -147,6 +147,7 @@ class AdministratieInstellingen:
     verkoop_autoboeken_ingeschakeld: bool = False
     # Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie.
     uren_meerwerk_ingeschakeld: bool = False
+    uren_dagmax_uren: Decimal = Decimal("12")
 
 
 def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
@@ -167,6 +168,7 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
                 is_vastgoed=r.is_vastgoed,
                 verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
                 uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
+                uren_dagmax_uren=r.uren_dagmax_uren,
             )
             for r in rijen
         ]
@@ -336,9 +338,7 @@ def haal_uren_meerwerk_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
         return administratie.uren_meerwerk_ingeschakeld
 
 
-def zet_uren_meerwerk_ingeschakeld(
-    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
-) -> bool:
+def zet_uren_meerwerk_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
     """Opt-in uren & meerwerk (migratie 0056, BOUW GO Peter 2026-08-21): steigerbouw-
     specifieke tak, alleen Universal initieel. Default UIT; Beheerder-only (router/CLI).
     Uit = de module bestaat niet voor deze administratie (veld-API en kantoor-endpoints
@@ -619,3 +619,37 @@ def zet_globale_kill_switch(*, actor_id: uuid.UUID, ingeschakeld: bool) -> bool:
             nieuwe_waarde={"globaal_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
+
+
+def haal_uren_dagmax_op(*, administratie_id: uuid.UUID) -> Decimal:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.uren_dagmax_uren
+
+
+def zet_uren_dagmax(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, dagmax_uren: Decimal) -> Decimal:
+    """Drempel voor het >N-uur-per-dag-signaal (steigerbouw-run A6, migratie 0072): som van de
+    ingediende uren per persoon per kalenderdag over álle weekstaten heen boven N = oranje vlag
+    bij de keuring + zichtbaar voor kantoor. Signaal, geen blokkade. Beheerder-only, geaudit."""
+    if not (Decimal("0") < dagmax_uren <= Decimal("24")):
+        raise BeheerFout("De dagdrempel moet tussen 0 en 24 uur liggen")
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.uren_dagmax_uren
+        administratie.uren_dagmax_uren = dagmax_uren
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="uren_dagmax_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"uren_dagmax_uren": str(oud)},
+            nieuwe_waarde={"uren_dagmax_uren": str(dagmax_uren)},
+        )
+        return dagmax_uren

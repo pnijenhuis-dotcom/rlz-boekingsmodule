@@ -9,7 +9,9 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogTitle,
+  FormField,
   Paginering,
   paginaSlice,
   Select,
@@ -30,6 +32,7 @@ import {
   isVeldrol,
   rolLabel,
   stuurHerstelLink,
+  wijzigEMail,
   trekApparaatIn,
   wijzigRol,
   type ApparaatDto,
@@ -163,6 +166,8 @@ export function GebruikersScreen() {
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [opnieuwBezig, setOpnieuwBezig] = useState<string | null>(null)
   const [herstelVoor, setHerstelVoor] = useState<GebruikerOverzichtDto | null>(null)
+  const [eMailVoor, setEMailVoor] = useState<GebruikerOverzichtDto | null>(null)
+  const [nieuwEMail, setNieuwEMail] = useState('')
 
   const laad = useCallback(() => {
     setFout(null)
@@ -308,6 +313,44 @@ export function GebruikersScreen() {
         Herstel-link
       </Button>
     )
+  }
+
+  /** A5 (25-08, Beheerder-only): e-mailadres = login wijzigen — uniciteit server-side (409),
+   * niet-geactiveerd account krijgt direct een verse uitnodiging op het nieuwe adres. */
+  function eMailKnop(g: GebruikerOverzichtDto) {
+    if (g.status === 'geblokkeerd') return null
+    return (
+      <Button variant="ghost" maat="klein" onClick={() => { setEMailVoor(g); setNieuwEMail(g.e_mail) }}>
+        E-mail wijzigen
+      </Button>
+    )
+  }
+
+  async function bevestigEMailWijziging() {
+    if (!eMailVoor) return
+    setActieBezig(true)
+    setActieFout(null)
+    setMailFout(null)
+    try {
+      const r = await wijzigEMail(eMailVoor.id, nieuwEMail.trim())
+      if (r.uitnodiging_vernieuwd) {
+        if (r.mail_verzonden) {
+          meld(`E-mailadres gewijzigd naar ${r.nieuw_e_mail} — verse uitnodiging gemaild, oude links zijn vervallen.`)
+        } else {
+          setMailFout(
+            `E-mailadres gewijzigd naar ${r.nieuw_e_mail}, maar het mailen van de nieuwe uitnodiging mislukte: ${r.mail_fout ?? 'onbekende mailfout'}. Gebruik "Opnieuw mailen".`,
+          )
+        }
+      } else {
+        meld(`E-mailadres (login) gewijzigd naar ${r.nieuw_e_mail} — passkeys, TOTP en historie blijven aan het account hangen.`)
+      }
+      setEMailVoor(null)
+      laad()
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'E-mail wijzigen mislukt.')
+    } finally {
+      setActieBezig(false)
+    }
   }
 
   function herstelBadge(g: GebruikerOverzichtDto) {
@@ -651,7 +694,8 @@ export function GebruikersScreen() {
                 {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
               </Button>
             )}{' '}
-            {herstelKnop(g)}
+            {herstelKnop(g)}{' '}
+            {eMailKnop(g)}
             {herstelBadge(g)}{' '}
             {blokkadeKnop(g)}
           </>
@@ -745,6 +789,7 @@ export function GebruikersScreen() {
                           </Button>
                         )}{' '}
                         {herstelKnop(g)}{' '}
+                        {eMailKnop(g)}{' '}
                         {blokkadeKnop(g)}
                       </td>
                     </tr>
@@ -769,7 +814,9 @@ export function GebruikersScreen() {
         administraties={administraties ?? []}
         onSluiten={() => setUitnodigSoort(null)}
         onUitgenodigd={(resultaat) => {
-          if (resultaat.mail_verzonden) {
+          if (resultaat.mail_uitgesteld) {
+            meld('Account aangemaakt zonder mail (status uitgenodigd) — nodig later uit via "Opnieuw mailen".')
+          } else if (resultaat.mail_verzonden) {
             meld('Uitnodiging gemaild — zichtbaar in de lijst tot activatie.')
           } else {
             setMailFout(
@@ -787,6 +834,35 @@ export function GebruikersScreen() {
           onSluiten={() => setScopeVoor(null)}
           onGewijzigd={laad}
         />
+      )}
+
+      {eMailVoor && (
+        <Dialog open onOpenChange={(open) => !open && !actieBezig && setEMailVoor(null)}>
+          <DialogContent>
+            <DialogTitle>E-mailadres wijzigen — {eMailVoor.naam}</DialogTitle>
+            <DialogDescription>
+              Het e-mailadres is de login. {eMailVoor.status === 'uitgenodigd'
+                ? 'Dit account is nog niet geactiveerd: de oude uitnodigingslink vervalt en er gaat direct een verse uitnodiging naar het nieuwe adres.'
+                : 'Alleen de login wijzigt — passkeys, TOTP, sessies en historie blijven aan het account hangen.'}{' '}
+              De wijziging wordt geauditeerd (oud → nieuw).
+            </DialogDescription>
+            <FormField label="Nieuw e-mailadres" htmlFor="nieuw-e-mail">
+              <input id="nieuw-e-mail" type="email" value={nieuwEMail} onChange={(e) => setNieuwEMail(e.target.value)} />
+            </FormField>
+            {actieFout && <div className="fout">{actieFout}</div>}
+            <DialogFooter>
+              <Button variant="secundair" disabled={actieBezig} onClick={() => setEMailVoor(null)}>
+                Annuleren
+              </Button>
+              <Button
+                disabled={actieBezig || !nieuwEMail.includes('@') || nieuwEMail.trim().toLowerCase() === eMailVoor.e_mail}
+                onClick={() => void bevestigEMailWijziging()}
+              >
+                {actieBezig ? 'Bezig…' : 'Wijzigen'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {rolWijziging && (

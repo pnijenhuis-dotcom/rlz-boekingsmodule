@@ -365,11 +365,12 @@ class VraagBericht(Base):
     een rij hier, mét auteur en tijdstip."""
 
     __tablename__ = "vraag_bericht"
-    __table_args__ = ({"schema": "boekhouding"},)
+    __table_args__ = (Index("ix_vraag_bericht_vraag_id", "vraag_id"),
+        {"schema": "boekhouding"},)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
-    vraag_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.vraag.id"), index=True)
+    vraag_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.vraag.id"))
     auteur_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     tekst: Mapped[str]
     geplaatst_op: Mapped[datetime] = mapped_column(server_default=func.now())

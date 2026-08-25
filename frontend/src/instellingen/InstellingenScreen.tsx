@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstellingen'
 import { useMedewerkers } from '../vragen/useMedewerkers'
+import { DossierTypenModal } from './DossierTypenModal'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
 import { BulkBediening } from './BulkBediening'
@@ -24,6 +25,7 @@ import {
   zetEigenaar,
   zetIntakeAiInstelling,
   zetProjectInstelling,
+  zetUrenDagmaxInstelling,
   zetUrenMeerwerkInstelling,
   zetVerkoopAutoboekenInstelling,
   type AiKostenStatusDto,
@@ -322,6 +324,20 @@ export function InstellingenScreen() {
   const [limietInvoer, setLimietInvoer] = useState('')
   const [laadFout, setLaadFout] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingWijziging | null>(null)
+  const [dossierTypenVoor, setDossierTypenVoor] = useState<{ id: string; naam: string } | null>(null)
+
+  /** A6 (25-08): dagdrempel opslaan — server valideert 0 < N ≤ 24, geaudit oud→nieuw. */
+  async function slaDagmaxOp(administratieId: string, naam: string, waarde: string) {
+    try {
+      const r = await zetUrenDagmaxInstelling(administratieId, waarde)
+      setAdministraties((huidig) =>
+        huidig ? huidig.map((x) => (x.id === administratieId ? { ...x, uren_dagmax_uren: r.dagmax_uren } : x)) : huidig,
+      )
+      setWijzigenFout(null)
+    } catch (err) {
+      setWijzigenFout(err instanceof ApiError ? `Dagdrempel voor ${naam}: ${err.message}` : 'Dagdrempel opslaan mislukt.')
+    }
+  }
   const [bezig, setBezig] = useState(false)
   const [wijzigenFout, setWijzigenFout] = useState<string | null>(null)
   // Bulk-rijselectie (fase 3 modernisering 15-08): ids van geselecteerde administraties.
@@ -812,6 +828,32 @@ export function InstellingenScreen() {
                       />
                       {a.uren_meerwerk_ingeschakeld ? 'aan' : 'uit'}
                     </label>
+                    {a.uren_meerwerk_ingeschakeld && (
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                        {/* A6 (25-08): drempel >N uur per dag — signaal bij de keuring, geen blokkade. */}
+                        <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11, margin: 0 }} title="Signaal >N uur per dag (som over alle weekstaten per kalenderdag)">
+                          max/dag
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0.5}
+                            max={24}
+                            step={0.5}
+                            aria-label={`Dagdrempel uren voor ${a.naam}`}
+                            defaultValue={a.uren_dagmax_uren}
+                            style={{ width: 62, padding: '2px 6px' }}
+                            onBlur={(e) => {
+                              const waarde = e.target.value.replace(',', '.')
+                              if (waarde !== '' && Number(waarde) !== Number(a.uren_dagmax_uren)) void slaDagmaxOp(a.id, a.naam, waarde)
+                            }}
+                          />
+                          u
+                        </label>
+                        <Button variant="ghost" maat="klein" onClick={() => setDossierTypenVoor({ id: a.id, naam: a.naam })}>
+                          📁 Dossier-documenttypen…
+                        </Button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -821,6 +863,10 @@ export function InstellingenScreen() {
           </>
         )}
       </div>
+      )}
+
+      {dossierTypenVoor && (
+        <DossierTypenModal administratieId={dossierTypenVoor.id} naam={dossierTypenVoor.naam} onSluiten={() => setDossierTypenVoor(null)} />
       )}
 
       {sectie === 'accordering' && administraties !== null && (

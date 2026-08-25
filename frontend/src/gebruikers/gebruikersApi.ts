@@ -31,6 +31,8 @@ export interface UitnodigingResultaatDto {
   verloopt_op: string
   mail_verzonden: boolean
   mail_fout: string | null
+  /** A4 (25-08): bewust niet gemaild ("uitnodiging later versturen") — geen fout. */
+  mail_uitgesteld?: boolean
 }
 
 export interface ApparaatDto {
@@ -92,8 +94,30 @@ export function nodigUit(payload: {
   e_mail: string
   rol: string
   administratie_ids: string[]
+  uitnodiging_later?: boolean
 }): Promise<UitnodigingResultaatDto> {
   return apiPostJson<UitnodigingResultaatDto>('/auth/uitnodigingen', payload)
+}
+
+export interface EMailWijzigenResultaatDto {
+  gebruiker_id: string
+  oud_e_mail: string
+  nieuw_e_mail: string
+  uitnodiging_vernieuwd: boolean
+  token: string | null
+  verloopt_op: string | null
+  mail_verzonden: boolean
+  mail_fout: string | null
+}
+
+/** A5 (25-08, Beheerder-only): e-mailadres = login wijzigen; niet-geactiveerd account krijgt
+ * direct een verse uitnodiging op het nieuwe adres. */
+export function wijzigEMail(gebruikerId: string, eMail: string): Promise<EMailWijzigenResultaatDto> {
+  return apiJson<EMailWijzigenResultaatDto>(`/auth/gebruikers/${gebruikerId}/e-mail`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ e_mail: eMail }),
+  })
 }
 
 export function mailUitnodigingOpnieuw(gebruikerId: string): Promise<UitnodigingResultaatDto> {

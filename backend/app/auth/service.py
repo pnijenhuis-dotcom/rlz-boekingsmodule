@@ -82,9 +82,12 @@ def maak_uitnodiging(
     e_mail: str,
     rol: GebruikerRol,
     administratie_ids: list[uuid.UUID],
+    uitnodiging_later: bool = False,
 ) -> UitnodigingResultaat:
     """Beheerder-only (afgedwongen door de router-dependency, niet hier — zie deps.require_beheerder).
-    Genereert een eenmalig token; alleen de hash ervan wordt opgeslagen (zie Uitnodiging)."""
+    Genereert een eenmalig token; alleen de hash ervan wordt opgeslagen (zie Uitnodiging).
+    `uitnodiging_later` (A4) legt alleen vast dát de mail bewust is uitgesteld — de router
+    slaat het verzenden over; het token blijft geldig voor "Opnieuw mailen"."""
     e_mail = normaliseer_e_mail(e_mail)
     gebruiker_id = uuid.uuid4()
     token = secrets.token_urlsafe(32)
@@ -104,6 +107,25 @@ def maak_uitnodiging(
                 aangemaakt_door=actor_id,
                 verloopt_op=verloopt_op,
             )
+        )
+        # Audit op de uitnodiging-rij (record = uitnodiging, correlatie = gebruiker) — de
+        # gebruiker-tabel houdt zo uitsluitend account-gebeurtenissen (login/rol/scope/e-mail).
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="uitnodiging",
+            record_id=uitnodiging_id,
+            actie="gebruiker_uitgenodigd",
+            correlatie_id=gebruiker_id,
+            nieuwe_waarde={
+                "naam": naam,
+                "e_mail": e_mail,
+                "rol": rol.value,
+                "administratie_ids": [str(a) for a in administratie_ids],
+                "status": GebruikerStatus.UITGENODIGD.value,
+                "mail_uitgesteld": uitnodiging_later,
+            },
         )
 
     return UitnodigingResultaat(
@@ -158,16 +180,12 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
         if is_externe_app_rol(gebruiker.rol):
             # Accordeur én veldrollen (0040-lijn, migratie 0056): passkey i.p.v. TOTP.
             gebruiker.status = GebruikerStatus.WACHT_OP_PASSKEY
-            return AcceptatieResultaat(
-                soort="passkey", passkey_setup_token=create_passkey_setup_token(gebruiker.id)
-            )
+            return AcceptatieResultaat(soort="passkey", passkey_setup_token=create_passkey_setup_token(gebruiker.id))
 
         gebruiker.status = GebruikerStatus.WACHT_OP_TOTP
         secret = generate_secret()
         ciphertext, wrapped_key = wrap_secret(secret.encode())
-        session.add(
-            TotpSecret(gebruiker_id=gebruiker.id, secret_ciphertext=ciphertext, wrapped_data_key=wrapped_key)
-        )
+        session.add(TotpSecret(gebruiker_id=gebruiker.id, secret_ciphertext=ciphertext, wrapped_data_key=wrapped_key))
         e_mail = gebruiker.e_mail
         gebruiker_id = gebruiker.id
 
@@ -805,9 +823,7 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
         scope_rijen = session.execute(
             select(GebruikerAdministratie.gebruiker_id, GebruikerAdministratie.administratie_id)
         ).all()
-        totp_ids = set(
-            session.scalars(select(TotpSecret.gebruiker_id).where(TotpSecret.bevestigd_op.is_not(None)))
-        )
+        totp_ids = set(session.scalars(select(TotpSecret.gebruiker_id).where(TotpSecret.bevestigd_op.is_not(None))))
         passkeys = dict(
             session.execute(
                 select(WebauthnCredential.gebruiker_id, func.count())
@@ -820,9 +836,7 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
             .where(Uitnodiging.gebruikt_op.is_(None), Uitnodiging.verloopt_op > now)
             .group_by(Uitnodiging.gebruiker_id, Uitnodiging.soort)
         ).all()
-        open_uitnodigingen = {
-            gid: tot for gid, soort, tot in open_links if soort == UitnodigingSoort.UITNODIGING.value
-        }
+        open_uitnodigingen = {gid: tot for gid, soort, tot in open_links if soort == UitnodigingSoort.UITNODIGING.value}
         open_herstellinks = {
             gid: tot for gid, soort, tot in open_links if soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value
         }
@@ -893,7 +907,7 @@ class VernieuwdeUitnodiging:
 
 
 def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> VernieuwdeUitnodiging:
-    """"Opnieuw mailen" (Gebruikers & toegang): het oorspronkelijke token bestaat alleen als
+    """ "Opnieuw mailen" (Gebruikers & toegang): het oorspronkelijke token bestaat alleen als
     hash, dus opnieuw versturen = een nieuw token uitgeven. Oudere nog-open uitnodigingen van
     dezelfde gebruiker verlopen per direct (één werkende link tegelijk); de handeling zelf gaat
     het append-only audit_event in. Alleen voor gebruikers die nog in de uitnodigingsfase
@@ -947,7 +961,7 @@ def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Ver
 
 
 def maak_herstel_link(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> VernieuwdeUitnodiging:
-    """"Herstel-link sturen" (Gebruikers & toegang, Beheerder-only via de router-dependency;
+    """ "Herstel-link sturen" (Gebruikers & toegang, Beheerder-only via de router-dependency;
     feedbackronde 25-08 punt 7). Voor een al geactiveerde EXTERNE gebruiker (accordeur/veldwerker;
     status actief of wacht_op_passkey = wachtwoord ooit gezet) die zijn wachtwoord kwijt is —
     bv. ná een kill-switch op zijn enige apparaat. Zelfde token-mechaniek als de uitnodiging
@@ -1014,3 +1028,87 @@ def maak_herstel_link(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Vernie
         naam=naam,
         e_mail=e_mail,
     )
+
+
+@dataclass(frozen=True)
+class EMailGewijzigd:
+    gebruiker_id: uuid.UUID
+    naam: str
+    oud_e_mail: str
+    nieuw_e_mail: str
+    # Gevuld als het account nog niet geactiveerd was: verse uitnodiging (oude links ongeldig).
+    vernieuwde_uitnodiging: UitnodigingResultaat | None
+
+
+def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_mail: str) -> EMailGewijzigd:
+    """A5 (steigerbouw-run 25-08, Beheerder-only via de router): het e-mailadres ís de login.
+    Uniciteitscheck (409), systeem-actor nooit, geblokkeerd account nooit. Niet-geactiveerd
+    account (uitgenodigd) → alle open uitnodigingslinks vervallen + een verse uitnodiging naar
+    het nieuwe adres (de router mailt). Geactiveerd account → alleen de login wijzigt: passkeys,
+    TOTP, sessies en historie hangen aan het account-id, niet aan het adres. Audit oud→nieuw."""
+    _weiger_systeem_actor(doel_gebruiker_id)
+    nieuw = normaliseer_e_mail(nieuw_e_mail)
+    if "@" not in nieuw or nieuw.startswith("@") or nieuw.endswith("@"):
+        raise AuthError("Ongeldig e-mailadres")
+    now = datetime.now(UTC)
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, doel_gebruiker_id)
+        if gebruiker is None:
+            raise AuthError("Onbekende gebruiker")
+        if gebruiker.status == GebruikerStatus.GEBLOKKEERD:
+            raise AuthError("Account is geblokkeerd — heractiveer eerst")
+        if gebruiker.e_mail == nieuw:
+            raise AuthError("Dit is al het huidige e-mailadres")
+        bezet = session.scalars(select(Gebruiker.id).where(Gebruiker.e_mail == nieuw)).first()
+        if bezet is not None:
+            raise AuthError("Dit e-mailadres is al in gebruik door een andere gebruiker")
+        oud = gebruiker.e_mail
+        gebruiker.e_mail = nieuw
+        vernieuwd: UitnodigingResultaat | None = None
+        if gebruiker.status == GebruikerStatus.UITGENODIGD:
+            open_links = session.scalars(
+                select(Uitnodiging).where(
+                    Uitnodiging.gebruiker_id == gebruiker.id,
+                    Uitnodiging.gebruikt_op.is_(None),
+                    Uitnodiging.soort == UitnodigingSoort.UITNODIGING.value,
+                )
+            ).all()
+            for link in open_links:
+                link.gebruikt_op = now  # oude links (naar het oude adres) ongeldig
+            token = secrets.token_urlsafe(32)
+            verloopt_op = now + INVITE_TTL
+            uitnodiging_id = uuid.uuid4()
+            session.add(
+                Uitnodiging(
+                    id=uitnodiging_id,
+                    gebruiker_id=gebruiker.id,
+                    token_hash=_hash_token(token),
+                    aangemaakt_door=actor_id,
+                    verloopt_op=verloopt_op,
+                )
+            )
+            vernieuwd = UitnodigingResultaat(
+                uitnodiging_id=uitnodiging_id, gebruiker_id=gebruiker.id, token=token, verloopt_op=verloopt_op
+            )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=gebruiker.id,
+            actie="e_mail_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"e_mail": oud},
+            nieuwe_waarde={
+                "e_mail": nieuw,
+                "status": gebruiker.status.value,
+                "uitnodiging_vernieuwd": vernieuwd is not None,
+            },
+        )
+        return EMailGewijzigd(
+            gebruiker_id=gebruiker.id,
+            naam=gebruiker.naam,
+            oud_e_mail=oud,
+            nieuw_e_mail=nieuw,
+            vernieuwde_uitnodiging=vernieuwd,
+        )

@@ -10,6 +10,7 @@
 // Dit bestand hoort bij de accordeur-chunk: geen kantoor-imports (performance-budget).
 
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { haalMijnAdministraties, isVoorwaardenVereist } from '../accordeur/accordeurApi'
 import { PdfWeergave } from '../accordeur/PdfWeergave'
 import { VoorwaardenScherm } from '../accordeur/VoorwaardenScherm'
@@ -54,6 +55,11 @@ import {
   type WeekKaartDto,
   type WeekstaatDto,
   type ZzperKaartDto,
+  dossierStatusLabel,
+  haalMijnDossier,
+  isDossierGeblokkeerd,
+  uploadDossierDocument,
+  type DossierDto,
 } from './urenApi'
 
 type Veldrol = 'zzper' | 'uitvoerder' | 'detacheerder'
@@ -73,6 +79,7 @@ type Scherm =
   | { s: 'daginvoer'; ctx: WeekContext; datum: string; dagNaam: string; bestaand: WeekstaatDto['dagen'][number] | null; terug: Scherm }
   | { s: 'ingediend' }
   | { s: 'planning' }
+  | { s: 'dossier'; terug: Scherm }
   | { s: 'detaZzpers' }
   | { s: 'uitvProjecten' }
   | { s: 'projectdetail'; kaart: UitvoerderProjectKaartDto }
@@ -122,6 +129,8 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
   const [voorwaardenNodig, setVoorwaardenNodig] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [administratieNamen, setAdministratieNamen] = useState<string[]>([])
+  const [administraties, setAdministraties] = useState<{ id: string; naam: string }[]>([])
+  const location = useLocation()
   const [teKeurenTeller, setTeKeurenTeller] = useState<number | null>(null)
 
   const toon = useCallback((tekst: string) => {
@@ -139,9 +148,20 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
 
   useEffect(() => {
     haalMijnAdministraties()
-      .then((data) => setAdministratieNamen(data.administraties.map((a) => a.naam)))
+      .then((data) => {
+        setAdministratieNamen(data.administraties.map((a) => a.naam))
+        setAdministraties(data.administraties)
+      })
       .catch(() => undefined)
   }, [])
+
+  // Deep-link uit de dossier-herinnering (push/mail: /accordeur?dossier=1) → direct het dossier.
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('dossier') === '1' && veldrol !== 'detacheerder') {
+      setScherm((huidig) => (huidig.s === 'dossier' ? huidig : { s: 'dossier', terug: huidig }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search])
 
   const laadTeKeurenTeller = useCallback(() => {
     if (veldrol !== 'uitvoerder') return
@@ -265,6 +285,24 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
             terugNaarZzpers={veldrol === 'detacheerder' ? () => { setNamens(null); setScherm({ s: 'detaZzpers' }) } : null}
             openProject={(project) => setScherm({ s: 'zzpWeken', project })}
             openPlanning={veldrol === 'detacheerder' ? () => setScherm({ s: 'planning' }) : null}
+            dossierKaart={
+              <DossierKaart
+                administratieId={administraties[0]?.id ?? null}
+                namens={namens}
+                vangFout={vangFout}
+                open={() => setScherm({ s: 'dossier', terug: scherm })}
+              />
+            }
+          />
+        )}
+        {scherm.s === 'dossier' && (
+          <DossierView
+            administraties={administraties}
+            namens={namens}
+            namensSuffix={namensSuffix}
+            vangFout={vangFout}
+            terug={() => setScherm(scherm.terug)}
+            toon={toon}
           />
         )}
         {scherm.s === 'planning' && (
@@ -311,6 +349,7 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
               toon('Week ingediend — de uitvoerder keurt de hele week.')
               setScherm(veldrol === 'detacheerder' ? scherm.terug : { s: 'ingediend' })
             }}
+            openDossier={() => setScherm({ s: 'dossier', terug: scherm })}
           />
         )}
         {scherm.s === 'daginvoer' && (
@@ -355,7 +394,15 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
           />
         )}
         {scherm.s === 'uitvProjecten' && (
-          <UitvProjectenView vangFout={vangFout} openProject={(kaart) => setScherm({ s: 'projectdetail', kaart })} />
+          <>
+            <DossierKaart
+              administratieId={administraties[0]?.id ?? null}
+              namens={null}
+              vangFout={vangFout}
+              open={() => setScherm({ s: 'dossier', terug: scherm })}
+            />
+            <UitvProjectenView vangFout={vangFout} openProject={(kaart) => setScherm({ s: 'projectdetail', kaart })} />
+          </>
         )}
         {scherm.s === 'projectdetail' && (
           <ProjectDetailView
@@ -428,6 +475,210 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
   )
 }
 
+/* ============ ZZP-dossier (A1/A2, 25-08 — kantoor-mockup "Dossier", veldkant) ============ */
+
+function DossierKaart({
+  administratieId,
+  namens,
+  vangFout,
+  open,
+}: {
+  administratieId: string | null
+  namens: { id: string; naam: string } | null
+  vangFout: (err: unknown) => string
+  open: () => void
+}) {
+  const [dossier, setDossier] = useState<DossierDto | null>(null)
+  useEffect(() => {
+    if (!administratieId) return
+    haalMijnDossier(administratieId, namens?.id ?? null)
+      .then(setDossier)
+      .catch((err) => {
+        vangFout(err)
+      })
+  }, [administratieId, namens, vangFout])
+  if (!dossier) return null
+  const ontbrekend = dossier.aantal_ontbrekend + dossier.aantal_verlopen
+  const chip = dossier.geblokkeerd
+    ? { klasse: 'afgekeurd', label: 'geblokkeerd' }
+    : ontbrekend > 0
+      ? { klasse: 'afgekeurd', label: `${ontbrekend} ontbreekt` }
+      : dossier.aantal_ter_controle > 0
+        ? { klasse: 'ingediend', label: `${dossier.aantal_ter_controle} ter controle` }
+        : dossier.aantal_verloopt_binnenkort > 0
+          ? { klasse: 'open', label: 'verloopt binnenkort' }
+          : { klasse: 'akkoord', label: 'compleet' }
+  return (
+    <button className="acc-card klik" onClick={open}>
+      <span>
+        <span className="acc-tt">📁 {namens ? `Dossier van ${namens.naam}` : 'Mijn dossier'}</span>
+        <span className="acc-meta" style={{ display: 'block' }}>
+          {dossier.geblokkeerd
+            ? 'weekstaten indienen is geblokkeerd tot het dossier compleet is — upload hier'
+            : dossier.herinneringen_teller > 0
+              ? `herinnering ${dossier.herinneringen_teller} van ${dossier.herinneringen_max} · ${dossier.aantal_aanwezig}/${dossier.aantal_verplicht} verplichte documenten`
+              : `${dossier.aantal_aanwezig}/${dossier.aantal_verplicht} verplichte documenten aanwezig`}
+        </span>
+      </span>
+      <span className={`acc-chip ${chip.klasse}`}>{chip.label}</span>
+    </button>
+  )
+}
+
+function DossierView({
+  administraties,
+  namens,
+  namensSuffix,
+  vangFout,
+  terug,
+  toon,
+}: {
+  administraties: { id: string; naam: string }[]
+  namens: { id: string; naam: string } | null
+  namensSuffix: React.ReactNode
+  vangFout: (err: unknown) => string
+  terug: () => void
+  toon: (tekst: string) => void
+}) {
+  const [administratieId, setAdministratieId] = useState<string | null>(administraties[0]?.id ?? null)
+  const [dossier, setDossier] = useState<DossierDto | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
+  const [bezig, setBezig] = useState<string | null>(null)
+  const [geldigTot, setGeldigTot] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!administratieId && administraties[0]) setAdministratieId(administraties[0].id)
+  }, [administraties, administratieId])
+
+  const laad = useCallback(() => {
+    if (!administratieId) return
+    setFout(null)
+    haalMijnDossier(administratieId, namens?.id ?? null)
+      .then(setDossier)
+      .catch((err) => setFout(vangFout(err) || null))
+  }, [administratieId, namens, vangFout])
+  useEffect(() => {
+    laad()
+  }, [laad])
+
+  async function upload(code: string, bestand: File) {
+    if (!administratieId) return
+    setBezig(code)
+    setFout(null)
+    try {
+      const nieuw = await uploadDossierDocument({
+        administratie_id: administratieId,
+        type_code: code,
+        geldig_tot: geldigTot[code] || null,
+        namens: namens?.id ?? null,
+        bestand,
+      })
+      setDossier(nieuw)
+      toon('Document geüpload — het kantoor controleert het.')
+    } catch (err) {
+      const tekst = vangFout(err)
+      if (tekst) setFout(tekst)
+    } finally {
+      setBezig(null)
+    }
+  }
+
+  return (
+    <div>
+      <Terug label="Terug" onClick={terug} />
+      <div className="acc-seclabel">
+        📁 {namens ? `Dossier van ${namens.naam}` : 'Mijn dossier'}
+        {namensSuffix}
+      </div>
+      {administraties.length > 1 && (
+        <label className="acc-form">
+          Administratie
+          <select value={administratieId ?? ''} onChange={(e) => setAdministratieId(e.target.value)}>
+            {administraties.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.naam}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
+      {dossier === null && !fout && <Leeg tekst="Laden…" />}
+      {dossier?.geblokkeerd && (
+        <div className="acc-afwijs">
+          <b>🔒 Weekstaten indienen is geblokkeerd.</b> Na {dossier.herinneringen_max} herinneringen is het dossier nog niet
+          compleet. Upload de ontbrekende documenten hieronder — zodra alles geüpload is kun je je weken weer indienen; je uren
+          blijven bewaard.
+        </div>
+      )}
+      {dossier && !dossier.geblokkeerd && dossier.herinneringen_teller > 0 && (
+        <div className="acc-notitie waarschuw">
+          <span>🔔</span>
+          <span>
+            Herinnering {dossier.herinneringen_teller} van {dossier.herinneringen_max} ontvangen. Na de {dossier.herinneringen_max}e herinnering kun
+            je geen weekstaten meer indienen tot het dossier compleet is.
+          </span>
+        </div>
+      )}
+      {dossier?.documenten.map((d) => {
+        const chip = dossierStatusLabel(d)
+        const kanUploaden = d.status !== 'ter_controle'
+        return (
+          <div key={d.code} className="acc-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1 }}>
+                <span className="acc-tt">{d.naam}</span>
+                <span className="acc-meta" style={{ display: 'block' }}>
+                  {d.status === 'ontbreekt' && (d.verplicht ? 'verplicht — nog niet geüpload' : 'niet verplicht')}
+                  {d.status === 'ter_controle' && `geüpload ${datumKort(d.geupload_op)} — het kantoor controleert`}
+                  {d.status === 'afgewezen' && `afgewezen: ${d.afwijs_reden ?? '—'} — upload een nieuw document`}
+                  {(d.status === 'goedgekeurd' || d.status === 'verloopt_binnenkort') && `geldig tot ${datumKort(d.geldig_tot)}`}
+                  {d.status === 'verlopen' && `verlopen op ${datumKort(d.geldig_tot)} — upload een nieuw document`}
+                </span>
+              </span>
+              <span className={`acc-chip ${chip.klasse}`}>{chip.label}</span>
+            </div>
+            {kanUploaden && (
+              <div className="acc-duo" style={{ marginTop: 8 }}>
+                {d.geldig_tot_vereist && (
+                  <label className="acc-form">
+                    Geldig tot
+                    <input type="date" value={geldigTot[d.code] ?? ''} onChange={(e) => setGeldigTot({ ...geldigTot, [d.code]: e.target.value })} />
+                  </label>
+                )}
+                <label className="acc-form">
+                  {d.document_id ? 'Nieuw bestand' : 'Bestand (foto of PDF)'}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png"
+                    disabled={bezig === d.code || (d.geldig_tot_vereist && !geldigTot[d.code])}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) void upload(d.code, f)
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+            {kanUploaden && d.geldig_tot_vereist && !geldigTot[d.code] && (
+              <small className="acc-meta">Vul eerst de geldig-tot-datum in, dan kun je het bestand kiezen.</small>
+            )}
+          </div>
+        )
+      })}
+      {dossier && (
+        <div className="acc-notitie">
+          <span>ℹ️</span>
+          <span>
+            Kopie ID: alleen het kantoor kan dit document (gemaskeerd) inzien — je BSN wordt nergens gelezen of opgeslagen buiten het bestand zelf.
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ============ gedeelde bouwstenen ============ */
 
 function Terug({ label, onClick }: { label: string; onClick: () => void }) {
@@ -463,6 +714,7 @@ function ZzpProjectenView({
   terugNaarZzpers,
   openProject,
   openPlanning,
+  dossierKaart,
 }: {
   namens: { id: string; naam: string } | null
   vangFout: (err: unknown) => string
@@ -470,6 +722,8 @@ function ZzpProjectenView({
   openProject: (project: ProjectKaartDto) => void
   /** Detacheerder-namens-flow: de planning van de gekozen ZZP'er (alleen-lezen, besluit B). */
   openPlanning: (() => void) | null
+  /** ZZP-dossier (A1): statuskaart + ingang naar upload (ook namens door de detacheerder). */
+  dossierKaart?: React.ReactNode
 }) {
   const [projecten, setProjecten] = useState<ProjectKaartDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
@@ -505,6 +759,7 @@ function ZzpProjectenView({
           <span className="acc-arrow">›</span>
         </button>
       )}
+      {dossierKaart}
       <div className="acc-seclabel">
         {namens ? `${namens.naam} · projecten` : `Mijn projecten${projecten ? ` (${projecten.length})` : ''}`}
       </div>
@@ -613,6 +868,7 @@ function WeekstaatView({
   terug,
   openDag,
   naIndienen,
+  openDossier,
 }: {
   ctx: WeekContext
   namens: { id: string; naam: string } | null
@@ -621,10 +877,13 @@ function WeekstaatView({
   terug: () => void
   openDag: (datum: string, dagNaam: string, bestaand: WeekstaatDto['dagen'][number] | null) => void
   naIndienen: () => void
+  openDossier: () => void
 }) {
   const [staat, setStaat] = useState<WeekstaatDto | null | 'nieuw'>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
+  // Dossier-handhaving (A2): 423 = indienen geblokkeerd — melding + upload-ingang, uren blijven staan.
+  const [geblokkeerd, setGeblokkeerd] = useState<string | null>(null)
 
   const laad = useCallback(() => {
     setFout(null)
@@ -662,6 +921,10 @@ function WeekstaatView({
       })
       naIndienen()
     } catch (err) {
+      if (isDossierGeblokkeerd(err)) {
+        setGeblokkeerd(err instanceof Error ? err.message : 'Indienen is geblokkeerd: dossier incompleet.')
+        return
+      }
       const tekst = vangFout(err)
       if (tekst) setFout(tekst)
     } finally {
@@ -672,6 +935,17 @@ function WeekstaatView({
   return (
     <div>
       <Terug label={ctx.projectNaam ?? 'Project'} onClick={terug} />
+      {geblokkeerd && (
+        <div className="acc-afwijs">
+          <b>🔒 Indienen geblokkeerd — dossier incompleet.</b> {geblokkeerd}
+          <div style={{ marginTop: 8 }}>
+            <button className="acc-btn klein" onClick={openDossier}>
+              📁 Naar {namens ? `dossier van ${namens.naam}` : 'mijn dossier'} — documenten uploaden
+            </button>
+          </div>
+          <small style={{ display: 'block', marginTop: 6 }}>Je uren blijven bewaard; zodra alle verplichte documenten geüpload zijn kun je de week alsnog indienen.</small>
+        </div>
+      )}
       <div className="acc-seclabel">
         Week {ctx.weeknummer} · {datumKort(dagen[0].datum)} – {datumKort(dagen[6].datum)}
         {namensSuffix}
@@ -703,6 +977,7 @@ function WeekstaatView({
                   {dag.opmerking ?? '—'}
                   {dag.namens && <small>ingevuld door {dag.ingevuld_door_naam ?? 'detacheerder'}</small>}
                   {toonVoorstel && <small className="acc-voorstel">voorstel keurder: {voorstelLabel(dag)}</small>}
+                  {dag.boven_dagmax && <small style={{ color: 'var(--acc-orange)' }}>⚠ {Number(dag.dag_totaal_uren).toLocaleString('nl-NL')} u op deze dag (alle projecten) — boven {Number(dag.dagmax_uren ?? 0).toLocaleString('nl-NL')} u</small>}
                 </span>
                 <span className="acc-u">{urenLabel(dag.uren, dag.m2)}</span>
                 {muteerbaar && (
@@ -1625,6 +1900,12 @@ function KeurDetailView({
                     {dag.namens && <small>ingevuld door {dag.ingevuld_door_naam ?? 'detacheerder'} (namens)</small>}
                     {/* Planning-toetsbron (besluit 22-08): oranje signaal, nooit een blokkade. */}
                     {dag.buiten_planning && <small style={{ color: 'var(--acc-warn, #e5a04c)' }}>⚠ buiten planning</small>}
+                    {/* A6 (25-08): >N uur per dag over álle weekstaten — signaal, geen blokkade. */}
+                    {dag.boven_dagmax && (
+                      <small style={{ color: 'var(--acc-orange)' }}>
+                        ⚠ {Number(dag.dag_totaal_uren).toLocaleString('nl-NL')} u op deze dag over alle projecten (&gt; {Number(dag.dagmax_uren ?? 0).toLocaleString('nl-NL')} u)
+                      </small>
+                    )}
                   </span>
                   <span className="acc-u">{urenLabel(dag.uren, dag.m2)}</span>
                 </div>
@@ -1635,6 +1916,15 @@ function KeurDetailView({
             <span className="acc-k">Totaal</span>
             <span>{weekTotaalLabel(staat.totaal_uren, staat.totaal_m2)}</span>
           </div>
+        </div>
+      )}
+      {staat !== null && staat.dagen.some((d) => d.boven_dagmax) && (
+        <div className="acc-notitie waarschuw">
+          <span>⚠️</span>
+          <span>
+            Dagen met meer dan {Number(staat.dagen.find((d) => d.boven_dagmax)?.dagmax_uren ?? 12).toLocaleString('nl-NL')} uur
+            (over álle projecten samen) — controleer of dit klopt; een signaal, geen blokkade.
+          </span>
         </div>
       )}
       {staat !== null && staat.dagen.some((d) => d.buiten_planning) && (

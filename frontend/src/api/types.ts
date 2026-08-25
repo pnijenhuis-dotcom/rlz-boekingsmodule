@@ -439,6 +439,8 @@ export interface AdministratieInstellingenDto {
   verkoop_autoboeken_ingeschakeld: boolean
   /** Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie. */
   uren_meerwerk_ingeschakeld: boolean
+  /** Signaal >N uur per dag (A6, migratie 0072) — drempel per administratie, default 12. */
+  uren_dagmax_uren: string
 }
 
 export interface AdministratieInstellingenLijstDto {

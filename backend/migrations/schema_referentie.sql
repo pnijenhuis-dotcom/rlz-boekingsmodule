@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0071
+-- Migratie-head bij deze dump: 0072
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -891,6 +891,79 @@ ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel FORCE ROW LEVEL SECURI
 
 
 --
+-- Name: dossier_document; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.dossier_document (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    type_code text NOT NULL,
+    status text NOT NULL,
+    geldig_tot date,
+    opslag_pad text NOT NULL,
+    bestandsnaam text NOT NULL,
+    content_type text NOT NULL,
+    bron text NOT NULL,
+    geupload_door uuid NOT NULL,
+    geupload_op timestamp with time zone DEFAULT now() NOT NULL,
+    beoordeeld_door uuid,
+    beoordeeld_op timestamp with time zone,
+    afwijs_reden text,
+    CONSTRAINT ck_dossier_document_afwijs_reden CHECK (((status <> 'afgewezen'::text) OR ((afwijs_reden IS NOT NULL) AND (length(btrim(afwijs_reden)) > 0)))),
+    CONSTRAINT ck_dossier_document_beoordeeld CHECK (((status = 'ter_controle'::text) = (beoordeeld_op IS NULL))),
+    CONSTRAINT ck_dossier_document_bron CHECK ((bron = ANY (ARRAY['kantoor'::text, 'app'::text]))),
+    CONSTRAINT ck_dossier_document_status CHECK ((status = ANY (ARRAY['ter_controle'::text, 'goedgekeurd'::text, 'afgewezen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.dossier_document FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: dossier_documenttype; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.dossier_documenttype (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    code text NOT NULL,
+    naam text NOT NULL,
+    verplicht boolean NOT NULL,
+    geldig_tot_vereist boolean NOT NULL,
+    bsn_gevoelig boolean NOT NULL,
+    volgorde integer NOT NULL,
+    actief boolean NOT NULL,
+    bijgewerkt_door uuid NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_dossier_documenttype_code CHECK ((code ~ '^[a-z0-9_]{2,40}$'::text))
+);
+
+ALTER TABLE ONLY boekhouding.dossier_documenttype FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: dossier_herinnering; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.dossier_herinnering (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    datum date NOT NULL,
+    volgnummer integer NOT NULL,
+    status text NOT NULL,
+    kanaal text,
+    detail jsonb,
+    verzonden_door uuid NOT NULL,
+    verzonden_op timestamp with time zone,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_dossier_herinnering_status CHECK ((status = ANY (ARRAY['bezig'::text, 'verzonden'::text, 'mislukt'::text, 'overgeslagen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.dossier_herinnering FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: duplicaat_signaal; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1646,6 +1719,33 @@ ALTER TABLE ONLY boekhouding.veldwerker_crediteur FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: veldwerker_dossier; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.veldwerker_dossier (
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    herinneringen_teller integer DEFAULT 0 NOT NULL,
+    laatste_herinnering_op timestamp with time zone,
+    geblokkeerd boolean DEFAULT false NOT NULL,
+    geblokkeerd_op timestamp with time zone,
+    gedeblokkeerd_op timestamp with time zone,
+    kvk_nummer text,
+    btw_nummer text,
+    kvk_naam text,
+    kvk_plaats text,
+    kvk_rechtsvorm text,
+    kvk_bevestigd_door uuid,
+    kvk_bevestigd_op timestamp with time zone,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_veldwerker_dossier_kvk CHECK (((kvk_nummer IS NULL) OR (kvk_nummer ~ '^[0-9]{8}$'::text))),
+    CONSTRAINT ck_veldwerker_dossier_teller CHECK ((herinneringen_teller >= 0))
+);
+
+ALTER TABLE ONLY boekhouding.veldwerker_dossier FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: vendor_cache; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2011,7 +2111,9 @@ CREATE TABLE platform.administratie (
     doorbelasting_ingeschakeld boolean DEFAULT false NOT NULL,
     verkoop_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
     uren_meerwerk_ingeschakeld boolean DEFAULT false NOT NULL,
-    CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5))))
+    uren_dagmax_uren numeric(4,2) DEFAULT 12 NOT NULL,
+    CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
+    CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
 );
 
 
@@ -2602,6 +2704,30 @@ ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel
 
 
 --
+-- Name: dossier_document dossier_document_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_document
+    ADD CONSTRAINT dossier_document_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: dossier_documenttype dossier_documenttype_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_documenttype
+    ADD CONSTRAINT dossier_documenttype_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: dossier_herinnering dossier_herinnering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_herinnering
+    ADD CONSTRAINT dossier_herinnering_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: duplicaat_signaal duplicaat_signaal_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2882,6 +3008,22 @@ ALTER TABLE ONLY boekhouding.toewijzing_regel
 
 
 --
+-- Name: dossier_documenttype uq_dossier_documenttype_code; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_documenttype
+    ADD CONSTRAINT uq_dossier_documenttype_code UNIQUE (administratie_id, code);
+
+
+--
+-- Name: dossier_herinnering uq_dossier_herinnering_dag; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_herinnering
+    ADD CONSTRAINT uq_dossier_herinnering_dag UNIQUE (administratie_id, gebruiker_id, datum);
+
+
+--
 -- Name: leverancier_werknummer uq_leverancier_werknummer; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -2927,6 +3069,14 @@ ALTER TABLE ONLY boekhouding.uren_project_toewijzing
 
 ALTER TABLE ONLY boekhouding.veldwerker_crediteur
     ADD CONSTRAINT veldwerker_crediteur_pkey PRIMARY KEY (administratie_id, gebruiker_id);
+
+
+--
+-- Name: veldwerker_dossier veldwerker_dossier_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_dossier
+    ADD CONSTRAINT veldwerker_dossier_pkey PRIMARY KEY (administratie_id, gebruiker_id);
 
 
 --
@@ -3496,6 +3646,34 @@ CREATE INDEX ix_doorbelasting_verdeelsleutel_administratie_id ON boekhouding.doo
 
 
 --
+-- Name: ix_dossier_document_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_dossier_document_administratie_id ON boekhouding.dossier_document USING btree (administratie_id);
+
+
+--
+-- Name: ix_dossier_document_veldwerker; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_dossier_document_veldwerker ON boekhouding.dossier_document USING btree (administratie_id, gebruiker_id, type_code);
+
+
+--
+-- Name: ix_dossier_documenttype_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_dossier_documenttype_administratie_id ON boekhouding.dossier_documenttype USING btree (administratie_id);
+
+
+--
+-- Name: ix_dossier_herinnering_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_dossier_herinnering_administratie_id ON boekhouding.dossier_herinnering USING btree (administratie_id);
+
+
+--
 -- Name: ix_duplicaat_signaal_administratie_uitkomst; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -3724,6 +3902,13 @@ CREATE INDEX ix_uren_project_toewijzing_administratie_id ON boekhouding.uren_pro
 --
 
 CREATE INDEX ix_veldwerker_crediteur_administratie_id ON boekhouding.veldwerker_crediteur USING btree (administratie_id);
+
+
+--
+-- Name: ix_veldwerker_dossier_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_veldwerker_dossier_administratie_id ON boekhouding.veldwerker_dossier USING btree (administratie_id);
 
 
 --
@@ -4644,6 +4829,78 @@ ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel
 
 
 --
+-- Name: dossier_document dossier_document_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_document
+    ADD CONSTRAINT dossier_document_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: dossier_document dossier_document_beoordeeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_document
+    ADD CONSTRAINT dossier_document_beoordeeld_door_fkey FOREIGN KEY (beoordeeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: dossier_document dossier_document_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_document
+    ADD CONSTRAINT dossier_document_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: dossier_document dossier_document_geupload_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_document
+    ADD CONSTRAINT dossier_document_geupload_door_fkey FOREIGN KEY (geupload_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: dossier_documenttype dossier_documenttype_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_documenttype
+    ADD CONSTRAINT dossier_documenttype_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: dossier_documenttype dossier_documenttype_bijgewerkt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_documenttype
+    ADD CONSTRAINT dossier_documenttype_bijgewerkt_door_fkey FOREIGN KEY (bijgewerkt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: dossier_herinnering dossier_herinnering_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_herinnering
+    ADD CONSTRAINT dossier_herinnering_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: dossier_herinnering dossier_herinnering_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_herinnering
+    ADD CONSTRAINT dossier_herinnering_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: dossier_herinnering dossier_herinnering_verzonden_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.dossier_herinnering
+    ADD CONSTRAINT dossier_herinnering_verzonden_door_fkey FOREIGN KEY (verzonden_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: duplicaat_signaal duplicaat_signaal_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5353,6 +5610,30 @@ ALTER TABLE ONLY boekhouding.veldwerker_crediteur
 
 ALTER TABLE ONLY boekhouding.veldwerker_crediteur
     ADD CONSTRAINT veldwerker_crediteur_gekoppeld_door_fkey FOREIGN KEY (gekoppeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: veldwerker_dossier veldwerker_dossier_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_dossier
+    ADD CONSTRAINT veldwerker_dossier_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: veldwerker_dossier veldwerker_dossier_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_dossier
+    ADD CONSTRAINT veldwerker_dossier_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: veldwerker_dossier veldwerker_dossier_kvk_bevestigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_dossier
+    ADD CONSTRAINT veldwerker_dossier_kvk_bevestigd_door_fkey FOREIGN KEY (kvk_bevestigd_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -6286,6 +6567,45 @@ CREATE POLICY doorbelasting_verdeelsleutel_scope ON boekhouding.doorbelasting_ve
 
 
 --
+-- Name: dossier_document; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.dossier_document ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: dossier_document dossier_document_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY dossier_document_scope ON boekhouding.dossier_document USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: dossier_documenttype; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.dossier_documenttype ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: dossier_documenttype dossier_documenttype_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY dossier_documenttype_scope ON boekhouding.dossier_documenttype USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: dossier_herinnering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.dossier_herinnering ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: dossier_herinnering dossier_herinnering_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY dossier_herinnering_scope ON boekhouding.dossier_herinnering USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: duplicaat_signaal; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -6746,6 +7066,19 @@ ALTER TABLE boekhouding.veldwerker_crediteur ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY veldwerker_crediteur_scope ON boekhouding.veldwerker_crediteur USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: veldwerker_dossier; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.veldwerker_dossier ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: veldwerker_dossier veldwerker_dossier_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY veldwerker_dossier_scope ON boekhouding.veldwerker_dossier USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

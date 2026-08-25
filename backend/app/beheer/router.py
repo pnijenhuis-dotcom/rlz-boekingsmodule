@@ -36,6 +36,7 @@ def administratie_instellingen_lijst(
                 is_vastgoed=r.is_vastgoed,
                 verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
                 uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
+                uren_dagmax_uren=r.uren_dagmax_uren,
             )
             for r in overzicht
         ]
@@ -74,6 +75,40 @@ def uren_meerwerk_instelling_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return schemas.UrenMeerwerkDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
+    "/administraties/{administratie_id}/uren-dagmax-instelling",
+    response_model=schemas.UrenDagmaxDto,
+)
+def uren_dagmax_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.UrenDagmaxDto:
+    try:
+        waarde = service.haal_uren_dagmax_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.UrenDagmaxDto(dagmax_uren=waarde)
+
+
+@router.put(
+    "/administraties/{administratie_id}/uren-dagmax-instelling",
+    response_model=schemas.UrenDagmaxDto,
+)
+def uren_dagmax_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.UrenDagmaxDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.UrenDagmaxDto:
+    """Signaal >N uur per dag (steigerbouw-run A6): drempel per administratie, default 12."""
+    try:
+        waarde = service.zet_uren_dagmax(
+            actor_id=actor.id, administratie_id=administratie_id, dagmax_uren=invoer.dagmax_uren
+        )
+    except service.BeheerFout as exc:
+        code = status.HTTP_404_NOT_FOUND if "Onbekende" in str(exc) else status.HTTP_422_UNPROCESSABLE_ENTITY
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    return schemas.UrenDagmaxDto(dagmax_uren=waarde)
 
 
 @router.get(

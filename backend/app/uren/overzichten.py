@@ -14,7 +14,7 @@ De indien-deadline (ma 09:00) is een zichtbare afspraak in de app, geen berekeni
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -179,9 +179,7 @@ class ProjectDetail:
 
 
 def _administraties_met_opt_in(actor_id: uuid.UUID, rol: GebruikerRol) -> list[Administratie]:
-    return [
-        a for a in auth_service.mijn_administraties(actor_id=actor_id, rol=rol) if a.uren_meerwerk_ingeschakeld
-    ]
+    return [a for a in auth_service.mijn_administraties(actor_id=actor_id, rol=rol) if a.uren_meerwerk_ingeschakeld]
 
 
 def _weken_terug(vandaag: date, aantal: int) -> list[tuple[int, int]]:
@@ -218,9 +216,7 @@ def _dag_sommen(session, weekstaat_ids: list[uuid.UUID]) -> dict[uuid.UUID, tupl
     return {r[0]: (r[1], Decimal(r[2]), Decimal(r[3]), r[4]) for r in rijen}
 
 
-def _open_weken_voor(
-    staten: list[Weekstaat], koppeling_op: date, vandaag: date
-) -> int:
+def _open_weken_voor(staten: list[Weekstaat], koppeling_op: date, vandaag: date) -> int:
     """Zie module-docstring voor de definitie."""
     venster = set(_weken_terug(vandaag, OPEN_WEKEN_VENSTER))
     koppelweek = _week_sleutel(koppeling_op)
@@ -233,9 +229,7 @@ def _open_weken_voor(
             open_teller += 1
     # afgekeurde weken buiten het venster tellen altijd mee
     open_teller += sum(
-        1
-        for s in staten
-        if s.status == WeekstaatStatus.CORRIGEREN.value and (s.jaar, s.weeknummer) not in venster
+        1 for s in staten if s.status == WeekstaatStatus.CORRIGEREN.value and (s.jaar, s.weeknummer) not in venster
     )
     return open_teller
 
@@ -348,9 +342,7 @@ def weken_overzicht_zzp(
             )
         )
         sommen = _dag_sommen(session, [s.id for s in staten])
-        namen = service._namen(
-            session, {s.goedgekeurd_door for s in staten} | {s.afgekeurd_door for s in staten}
-        )
+        namen = service._namen(session, {s.goedgekeurd_door for s in staten} | {s.afgekeurd_door for s in staten})
 
         per_week: dict[tuple[int, int], Weekstaat] = {(s.jaar, s.weeknummer): s for s in staten}
         koppelweek = _week_sleutel(toewijzing.aangemaakt_op.date())
@@ -364,10 +356,19 @@ def weken_overzicht_zzp(
             if staat is None:
                 kaarten.append(
                     WeekKaart(
-                        jaar=jaar, weeknummer=week, maandag=maandag, zondag=zondag, status="nieuw",
-                        weekstaat_id=None, dagen_ingevuld=0, totaal_uren=Decimal("0"),
-                        totaal_m2=Decimal("0"), ingediend_op=None, goedgekeurd_door_naam=None,
-                        afgekeurd_door_naam=None, afkeur_reden=None,
+                        jaar=jaar,
+                        weeknummer=week,
+                        maandag=maandag,
+                        zondag=zondag,
+                        status="nieuw",
+                        weekstaat_id=None,
+                        dagen_ingevuld=0,
+                        totaal_uren=Decimal("0"),
+                        totaal_m2=Decimal("0"),
+                        ingediend_op=None,
+                        goedgekeurd_door_naam=None,
+                        afgekeurd_door_naam=None,
+                        afkeur_reden=None,
                     )
                 )
                 continue
@@ -409,9 +410,7 @@ def ingediende_weken(*, zzper_id: uuid.UUID, actor_id: uuid.UUID) -> list[Ingedi
                 )
             )
             sommen = _dag_sommen(session, [s.id for s in staten])
-            namen = service._namen(
-                session, {s.goedgekeurd_door for s in staten} | {s.afgekeurd_door for s in staten}
-            )
+            namen = service._namen(session, {s.goedgekeurd_door for s in staten} | {s.afgekeurd_door for s in staten})
             for staat in staten:
                 aantal, uren, m2, _ = sommen.get(staat.id, (0, Decimal("0"), Decimal("0"), None))
                 project = session.get(ProjectCache, (staat.project_id, administratie.id))
@@ -474,16 +473,15 @@ def mijn_zzpers(*, detacheerder_id: uuid.UUID, vandaag: date | None = None) -> l
             raise GeenToegang("Alleen voor de rol detacheerder")
         koppelingen = list(
             session.scalars(
-                select(DetacheerderKoppeling).where(
-                    DetacheerderKoppeling.detacheerder_gebruiker_id == detacheerder_id
-                )
+                select(DetacheerderKoppeling).where(DetacheerderKoppeling.detacheerder_gebruiker_id == detacheerder_id)
             )
         )
         zzper_ids = [k.zzper_gebruiker_id for k in koppelingen]
-        namen = {
-            g.id: g.naam
-            for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(zzper_ids))).all()
-        } if zzper_ids else {}
+        namen = (
+            {g.id: g.naam for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(zzper_ids))).all()}
+            if zzper_ids
+            else {}
+        )
 
     kaarten: list[ZzperKaart] = []
     administraties = _administraties_met_opt_in(detacheerder_id, GebruikerRol.DETACHEERDER)
@@ -567,9 +565,7 @@ def te_keuren(*, uitvoerder_id: uuid.UUID) -> list[TeKeurenItem]:
                 )
             )
             sommen = _dag_sommen(session, [s.id for s in staten])
-            namen = service._namen(
-                session, {s.gebruiker_id for s in staten} | {s.ingediend_door for s in staten}
-            )
+            namen = service._namen(session, {s.gebruiker_id for s in staten} | {s.ingediend_door for s in staten})
             for staat in staten:
                 aantal, uren, m2, _ = sommen.get(staat.id, (0, Decimal("0"), Decimal("0"), None))
                 project = session.get(ProjectCache, (staat.project_id, administratie.id))
@@ -745,6 +741,8 @@ class VeldgebruikerKaart:
     # week nog niet opnieuw goedgekeurd is). Alleen gevuld voor ZZP'ers.
     uren_afwijking_aantal: int
     uren_afwijking_som: Decimal
+    # ZZP-dossier (A1): stand per administratie mét scope (teller + signalen + blokkade).
+    dossiers: list = field(default_factory=list)
 
 
 def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]:
@@ -755,9 +753,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
 
     with scoped_session(None, actor_id=actor_id) as session:
         gebruikers = list(
-            session.scalars(
-                select(Gebruiker).where(Gebruiker.rol.in_(list(VELD_ROLLEN))).order_by(Gebruiker.naam)
-            )
+            session.scalars(select(Gebruiker).where(Gebruiker.rol.in_(list(VELD_ROLLEN))).order_by(Gebruiker.naam))
         )
         koppelingen = list(session.scalars(select(DetacheerderKoppeling)))
         zzper_namen = {g.id: g.naam for g in gebruikers}
@@ -765,8 +761,17 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
     toewijzingen_per_gebruiker: dict[uuid.UUID, list[ToewijzingKaart]] = {}
     afwijking_per_gebruiker: dict[uuid.UUID, tuple[int, Decimal]] = {}
     crediteuren_per_gebruiker: dict[uuid.UUID, list[CrediteurKoppelingKaart]] = {}
+    dossiers_per_gebruiker: dict[uuid.UUID, list] = {}
+    from app.uren import dossier as dossier_service
+
     for administratie in _administraties_met_opt_in(actor_id, GebruikerRol.BEHEERDER):
-        with scoped_session(administratie.id) as session:
+        with scoped_session(administratie.id, actor_id=actor_id) as session:
+            # ZZP-dossier (A1): veldwerkers mét scope op deze administratie — de scope-tabel heeft
+            # RLS, dus binnen de administratie-sessie mét actor (RLS-les 25-08).
+            for gid in dossier_service.veldwerkers_van(session, administratie.id):
+                dossiers_per_gebruiker.setdefault(gid, []).append(
+                    dossier_service.samenvatting_in_sessie(session, administratie=administratie, gebruiker_id=gid)
+                )
             # Crediteur-koppelingen + ZZP-uurtarief (factuurmatch fase 3) — vendor-naam uit de cache.
             for koppel in session.scalars(
                 select(VeldwerkerCrediteur).where(VeldwerkerCrediteur.administratie_id == administratie.id)
@@ -784,9 +789,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                 )
             rijen = list(
                 session.scalars(
-                    select(UrenProjectToewijzing).where(
-                        UrenProjectToewijzing.administratie_id == administratie.id
-                    )
+                    select(UrenProjectToewijzing).where(UrenProjectToewijzing.administratie_id == administratie.id)
                 )
             )
             for rij in rijen:
@@ -807,9 +810,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                     func.count(),
                     func.sum(
                         WeekstaatCorrectie.ingediend_uren
-                        - func.coalesce(
-                            WeekstaatCorrectie.goedgekeurd_uren, WeekstaatCorrectie.voorgesteld_uren
-                        )
+                        - func.coalesce(WeekstaatCorrectie.goedgekeurd_uren, WeekstaatCorrectie.voorgesteld_uren)
                     ),
                 )
                 .where(WeekstaatCorrectie.administratie_id == administratie.id)
@@ -826,9 +827,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
             e_mail=g.e_mail,
             rol=g.rol.value,
             status=g.status.value,
-            projecten=sorted(
-                toewijzingen_per_gebruiker.get(g.id, []), key=lambda t: t.project_naam or ""
-            ),
+            projecten=sorted(toewijzingen_per_gebruiker.get(g.id, []), key=lambda t: t.project_naam or ""),
             zzpers=[
                 {
                     "gebruiker_id": k.zzper_gebruiker_id,
@@ -838,11 +837,10 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                 for k in koppelingen
                 if k.detacheerder_gebruiker_id == g.id
             ],
-            crediteuren=sorted(
-                crediteuren_per_gebruiker.get(g.id, []), key=lambda c: c.administratie_naam or ""
-            ),
+            crediteuren=sorted(crediteuren_per_gebruiker.get(g.id, []), key=lambda c: c.administratie_naam or ""),
             uren_afwijking_aantal=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[0],
             uren_afwijking_som=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[1],
+            dossiers=dossiers_per_gebruiker.get(g.id, []),
         )
         for g in gebruikers
     ]

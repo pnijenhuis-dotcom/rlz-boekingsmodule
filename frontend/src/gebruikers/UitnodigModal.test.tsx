@@ -32,3 +32,36 @@ describe('UitnodigModal — administratie-scope alles/geen (besluit Peter 25-08,
     expect(screen.queryByRole('button', { name: 'Kempen Facilities B.V. verwijderen' })).not.toBeInTheDocument()
   })
 })
+
+describe('UitnodigModal — veldwerker zonder mail (steigerbouw-run A4, 25-08)', () => {
+  it('stuurt uitnodiging_later mee en hernoemt de knop', async () => {
+    const gebruiker = userEvent.setup()
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/auth/uitnodigingen')) {
+        const body = JSON.parse(String(init?.body))
+        expect(body.uitnodiging_later).toBe(true)
+        expect(body.rol).toBe('zzper')
+        return new Response(
+          JSON.stringify({
+            uitnodiging_id: 'u1', gebruiker_id: 'g1', token: 't', verloopt_op: '2026-09-01T00:00:00Z',
+            mail_verzonden: false, mail_fout: null, mail_uitgesteld: true,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onUitgenodigd = vi.fn()
+    render(
+      <UitnodigModal soort="veldwerker" administraties={ADMINISTRATIES} open onSluiten={() => {}} onUitgenodigd={onUitgenodigd} />,
+    )
+    await gebruiker.type(screen.getByLabelText('Naam'), 'Stefan B.')
+    await gebruiker.type(screen.getByLabelText('E-mailadres'), 'stefan@test.local')
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle administraties selecteren' }))
+    await gebruiker.click(screen.getByRole('checkbox', { name: /Uitnodiging later versturen/ }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Account aanmaken (zonder mail)' }))
+    expect(onUitgenodigd).toHaveBeenCalledWith(expect.objectContaining({ mail_uitgesteld: true, mail_verzonden: false }))
+  })
+})

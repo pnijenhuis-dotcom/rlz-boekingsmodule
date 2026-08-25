@@ -28,6 +28,7 @@ import {
   Switch,
   useToastOptioneel,
 } from '../ui/basis'
+import { DossierModal, dossierBadge } from './DossierModal'
 import {
   formatVerloop, rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
 
@@ -56,6 +57,7 @@ export function VeldwerkersPanel({
   const [zzperModal, setZzperModal] = useState<VeldgebruikerDto | null>(null)
   const [crediteurModal, setCrediteurModal] = useState<VeldgebruikerDto | null>(null)
   const [tarievenModal, setTarievenModal] = useState<VeldgebruikerDto | null>(null)
+  const [dossierModal, setDossierModal] = useState<VeldgebruikerDto | null>(null)
 
   const laad = useCallback(() => {
     setFout(null)
@@ -186,6 +188,24 @@ export function VeldwerkersPanel({
                       {g.open_herstel_verloopt_op && (
                         <Badge variant="stil">herstel-link — {formatVerloop(g.open_herstel_verloopt_op)}</Badge>
                       )}
+                      {/* ZZP-dossier (A1, 25-08 — mockup: "📁 dossier 4/6"): klik opent het dossier. */}
+                      {info !== undefined && g.rol !== 'detacheerder' && (() => {
+                        const badge = dossierBadge(info)
+                        return (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              className="linkbtn"
+                              style={{ padding: 0 }}
+                              onClick={() => setDossierModal(info)}
+                              title="ZZP-dossier openen (documenten, KvK/btw, herinneringen)"
+                            >
+                              {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : <Badge variant="stil">📁 dossier</Badge>}
+                            </button>
+                          </>
+                        )
+                      })()}
                       {info !== undefined && info.uren_afwijking_aantal > 0 && (
                         <div
                           style={{ fontSize: 11, color: 'var(--warn)', marginTop: 2 }}
@@ -239,6 +259,14 @@ export function VeldwerkersPanel({
             meld('Crediteur-koppeling bijgewerkt — geauditeerd.')
             laad()
           }}
+        />
+      )}
+      {dossierModal && (
+        <DossierModal
+          veldwerker={dossierModal}
+          administraties={administraties}
+          onSluiten={() => setDossierModal(null)}
+          onGewijzigd={laad}
         />
       )}
       {tarievenModal && (

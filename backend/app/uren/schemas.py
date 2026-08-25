@@ -8,7 +8,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas_basis import StrikteInvoer
 
@@ -29,6 +29,12 @@ class DagDto(BaseModel):
     # Planning-dekking (planning-agenda, besluit 22-08): uren zonder planningstoewijzing op
     # (persoon, project, dag) = oranje "buiten planning" bij de keuring — nooit een blokkade.
     buiten_planning: bool = False
+    # Signaal >N uur per dag (steigerbouw-run A6): som van de uren van deze persoon op deze
+    # kalenderdag over álle weekstaten heen; boven de administratie-drempel = oranje vlag bij
+    # de keuring + zichtbaar voor kantoor. Nooit een blokkade.
+    dag_totaal_uren: Decimal = Decimal("0")
+    boven_dagmax: bool = False
+    dagmax_uren: Decimal | None = None
 
 
 class WeekstaatDto(BaseModel):
@@ -243,6 +249,10 @@ class UrenStandDto(BaseModel):
     meerwerk_nog_doorbelasten: int
     meerwerk_te_lang_niet_doorbelast: int
     urenstaten_wachten_op_keuring: int
+    # ZZP-dossier (A1) — werkvoorraad-signaal op de klantpagina-stand.
+    dossier_veldwerkers_met_signaal: int = 0
+    dossier_ter_controle: int = 0
+    dossier_geblokkeerd: int = 0
 
 
 class StaffelRegelDto(BaseModel):
@@ -296,6 +306,20 @@ class CrediteurKoppelingDto(BaseModel):
     autoboeken_ingeschakeld: bool = False
 
 
+class DossierSamenvattingDto(BaseModel):
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    aantal_verplicht: int
+    aantal_aanwezig: int
+    aantal_ontbrekend: int
+    aantal_verlopen: int
+    aantal_verloopt_binnenkort: int
+    aantal_ter_controle: int
+    herinneringen_teller: int
+    geblokkeerd: bool
+    compleet: bool
+
+
 class VeldgebruikerDto(BaseModel):
     gebruiker_id: uuid.UUID
     naam: str
@@ -309,6 +333,8 @@ class VeldgebruikerDto(BaseModel):
     # afkeuringen mét correctievoorstel + opgetelde uren-delta (ingediend − goedgekeurd).
     uren_afwijking_aantal: int = 0
     uren_afwijking_som: Decimal = Decimal("0")
+    # ZZP-dossier per administratie (A1): teller + signalen voor de dossier-badge op het paneel.
+    dossiers: list[DossierSamenvattingDto] = []
 
 
 class ProjectKoppelingRequest(StrikteInvoer):
@@ -473,3 +499,108 @@ class ModuleRechtDto(BaseModel):
 
 class ModuleRechtHoudersDto(BaseModel):
     gebruiker_ids: list[uuid.UUID]
+
+
+# --- ZZP-dossier per veldwerker (steigerbouw-run blok A, migratie 0072) ------------------------------
+
+
+class DossierDocumenttypeDto(StrikteInvoer):
+    code: str = Field(pattern=r"^[a-z0-9_]{2,40}$")
+    naam: str = Field(min_length=1, max_length=80)
+    verplicht: bool = True
+    geldig_tot_vereist: bool = True
+    bsn_gevoelig: bool = False
+    volgorde: int = Field(ge=0, le=999)
+    actief: bool = True
+
+
+class DossierDocumenttypenDto(BaseModel):
+    typen: list[DossierDocumenttypeDto]
+    is_standaard: bool
+
+
+class DossierDocumenttypenZettenRequest(StrikteInvoer):
+    typen: list[DossierDocumenttypeDto] = Field(min_length=1, max_length=50)
+
+
+class DossierDocumentDto(BaseModel):
+    code: str
+    naam: str
+    verplicht: bool
+    geldig_tot_vereist: bool
+    bsn_gevoelig: bool
+    status: str  # ontbreekt | ter_controle | afgewezen | goedgekeurd | verloopt_binnenkort | verlopen
+    document_id: uuid.UUID | None = None
+    geldig_tot: date | None = None
+    verloopt_over_dagen: int | None = None
+    bestandsnaam: str | None = None
+    content_type: str | None = None
+    geupload_op: datetime | None = None
+    geupload_door_naam: str | None = None
+    bron: str | None = None
+    afwijs_reden: str | None = None
+    beoordeeld_door_naam: str | None = None
+    beoordeeld_op: datetime | None = None
+
+
+class DossierDto(BaseModel):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    gebruiker_naam: str
+    documenten: list[DossierDocumentDto]
+    aantal_verplicht: int
+    aantal_aanwezig: int
+    aantal_ontbrekend: int
+    aantal_verlopen: int
+    aantal_verloopt_binnenkort: int
+    aantal_ter_controle: int
+    compleet: bool
+    compleet_incl_ter_controle: bool
+    herinneringen_teller: int
+    herinneringen_max: int = 3
+    laatste_herinnering_op: datetime | None = None
+    geblokkeerd: bool
+    geblokkeerd_op: datetime | None = None
+    kan_herinneren_vandaag: bool
+    kvk_nummer: str | None = None
+    btw_nummer: str | None = None
+    kvk_naam: str | None = None
+    kvk_plaats: str | None = None
+    kvk_rechtsvorm: str | None = None
+    kvk_bevestigd_op: datetime | None = None
+    kvk_bevestigd_door_naam: str | None = None
+    signalen: list[str] = []
+
+
+class DossierBeoordelenRequest(StrikteInvoer):
+    goedgekeurd: bool
+    reden: str | None = Field(default=None, max_length=1000)
+
+
+class DossierHerinneringResultaatDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    volgnummer: int
+    kanaal: str
+    verzonden_op: datetime
+    geblokkeerd: bool
+
+
+class KvkLookupDto(BaseModel):
+    kvk_nummer: str
+    gevonden: bool
+    naam: str | None = None
+    rechtsvorm: str | None = None
+    adres: str | None = None
+    postcode: str | None = None
+    plaats: str | None = None
+    uitgeschreven: bool = False
+    datum_einde: str | None = None
+    testomgeving: bool = False
+
+
+class BedrijfsgegevensBevestigenRequest(StrikteInvoer):
+    kvk_nummer: str | None = Field(default=None, max_length=8)
+    btw_nummer: str | None = Field(default=None, max_length=20)
+    naam: str | None = Field(default=None, max_length=200)
+    plaats: str | None = Field(default=None, max_length=100)
+    rechtsvorm: str | None = Field(default=None, max_length=100)
