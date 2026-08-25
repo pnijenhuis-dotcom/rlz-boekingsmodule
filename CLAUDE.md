@@ -454,6 +454,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   van gestorneerde/vervallen runs (beide kanten, informatief — nooit exit 1) + scanknop op
   Instellingen → Doorbelasting; de app verwijdert NOOIT in RLZ (kernprincipe 3, expliciet
   herbevestigd door Peter) — opruimen is klikwerk in de RLZ-UI, indien gewenst.**
+  **Doorbelasting × projecten (besluit Peter 25-08 "optie 2", GEBOUWD + GETEST 2026-08-25,
+  migratie 0067 — BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08 DEEL 2" punt 2 is canoniek):** per
+  verdeelregel een project uit de DOEL-administratie (verplicht + blokkerende check zodra dat
+  doel `project_verplicht` aan heeft; spiegel-regels dragen `Project:{id}`, webhook `project_id`
+  per regel), multi-project binnen een doelentiteit (alle actieve projecten; basis naar rato
+  contract-m² — ontbrekende m² = geweigerd, nooit gokken — óf gelijk per object; centen
+  server-side via de herbruikbare pure motor `app/doorbelasting/verdeelhulp.py`; één
+  spiegel-regel per project), verdeelsleutels per bron-administratie (naam + versie,
+  append-only, één klik toepassen, herleidbaar op de run + audit). Verdeelhulp-UI voor gewone
+  regel-splitsing zonder doorbelasting = parkeerpost.
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
