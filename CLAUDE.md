@@ -703,6 +703,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   weekstaten per kalenderdag, oranje vlag, geen blokkade). **Seam-eis steigerbouw-run: nieuwe
   module-code roept nooit RlzClient aan; adapter-grepen per blok in BESLISSINGEN "ODOO-ADAPTER
   — GREPEN".**
+  **Prijsafspraken per project × veldwerker (steigerbouw-run 25-08 blok B1, GEBOUWD + GETEST
+  2026-08-25, migratie 0073 — BESLISSINGEN "STEIGERBOUW-RUN 25-08 — BLOK B" is canoniek):**
+  tarief mét eenheid uur óf m² + ISO-week-venster, append-only (intrekken met reden), overlap
+  geweigerd; factuurmatch-tariefresolutie per weekstaat: projectafspraak wint → koppeling-tarief →
+  onbepaalbaar (nooit gokken), m² rekent met goedgekeurde weekstaat-m², geldt óók voor
+  bureaufacturen; de match-sectie toont altijd de tariefbron. Weeknummers in alle steigerbouw-
+  datumweergaves (B2, `datumMetWeek`).
   **Planning-agenda steigerbouw (ontwerpronde v2 + BOUW akkoord Peter 22-08, mockup
   `planning-steigerbouw.html` = norm; GEBOUWD + GETEST 2026-08-22, migratie 0060 —
   BESLISSINGEN "PLANNING-AGENDA STEIGERBOUW" is canoniek):** kantoor plant ZZP'ers/
