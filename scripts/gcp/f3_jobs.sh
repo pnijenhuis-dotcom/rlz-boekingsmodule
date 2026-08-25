@@ -253,6 +253,22 @@ else
   echo "   zichtbaar met 'Achtergrondrun starten mislukt' (403)."
 fi
 
+echo "== 7. rlz-bank-sync: on-demand job (bank auto-verversing bij openen, 25-08 deel 4) =="
+# Zelfde patroon als stap 6: geen scheduler, de service triggert één uitvoering per
+# bankscherm-opening (BANK_SYNC_JOB_RESOURCE in deploy.yml); alleen de IAM-binding hier.
+if gcloud run jobs describe rlz-bank-sync --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding rlz-bank-sync \
+    --region="${REGION}" \
+    --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet >/dev/null
+  echo "   run-backend@ mag rlz-bank-sync uitvoeren (roles/run.invoker, job-niveau)."
+else
+  echo "   LET OP: job rlz-bank-sync bestaat nog niet (eerste deploy-run maakt 'm) —"
+  echo "   draai dit script daarna opnieuw voor de IAM-binding, anders faalt de auto-verversing"
+  echo "   zichtbaar met 'Achtergrondrun starten mislukt' (403); de handmatige knop werkt wel."
+fi
+
 echo
 echo "Klaar. Verificatie F3 (draaiboek): per job één handmatige run —"
 echo "  gcloud run jobs execute rlz-sync                --region=${REGION} --wait   # groen"

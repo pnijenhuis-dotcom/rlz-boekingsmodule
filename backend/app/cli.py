@@ -97,6 +97,17 @@ def _projecten_cijfers_wachtrij(args: argparse.Namespace) -> int:
     return _rapporteer_cijfers_runs(verwerk_wachtrij())
 
 
+def _bank_sync_wachtrij(args: argparse.Namespace) -> int:
+    """Entrypoint van de on-demand Cloud Run-job rlz-bank-sync (bank auto-verversing bij openen,
+    feedbackronde 25-08 deel 4 punt 2): verwerk klaargezette bank_sync_run-rijen; geen wachtrij =
+    snelle no-op (exit 0). Fouten landen zichtbaar op de run (status fout + reden), nooit exit 1."""
+    from app.bank.sync_run import verwerk_wachtrij
+
+    aantal = verwerk_wachtrij()
+    print(f"bank-sync-wachtrij: {aantal} run(s) verwerkt")
+    return 0
+
+
 def _sync_alles(args: argparse.Namespace) -> int:
     """Nachtelijke sync-entrypoint (fase-vervolg: Cloud Scheduler -> Cloud Run job roept dit
     commando aan). Eén administratie zonder werkende .env-credentials laat de rest niet
@@ -1009,6 +1020,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "bank-sync-wachtrij",
+        help="Verwerk de wachtrij van bank-verversingsruns (entrypoint van de on-demand Cloud "
+        "Run-job rlz-bank-sync — het openen van het bankscherm zet de run klaar en triggert "
+        "deze job; geen wachtrij = snelle no-op).",
+    )
+
+    subparsers.add_parser(
         "projecten-cijfers-wachtrij",
         help="Verwerk de wachtrij van projectcijfers-syncruns (entrypoint van de on-demand "
         "Cloud Run-job rlz-projecten-cijfers — de sync-knop zet de run klaar en triggert "
@@ -1251,6 +1269,8 @@ def main(argv: list[str] | None = None) -> int:
         return _projecten_cijfers_sync(args)
     if args.commando == "projecten-cijfers-wachtrij":
         return _projecten_cijfers_wachtrij(args)
+    if args.commando == "bank-sync-wachtrij":
+        return _bank_sync_wachtrij(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
     if args.commando == "bank-sync":

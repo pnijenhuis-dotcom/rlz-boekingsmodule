@@ -152,3 +152,31 @@ def rlz_tegenboeking_upload_id(document_id: uuid.UUID, boek_cyclus: int) -> uuid
     """Basis-upload-GUID voor de PDF-bijlage (het originele document) aan de tegenboeking —
     eigen GUID per RLZ-document (patroon rlz_omzet_upload_id); cycli via zorg_voor_bijlage."""
     return uuid.uuid5(_NAMESPACE, f"tegenboeking-upload:{document_id}:{boek_cyclus}")
+
+
+def rlz_bank_boeking_cyclus_id(payment_transaction_id: uuid.UUID, cyclus: int) -> uuid.UUID:
+    """Cyclus-GUID voor een directe bankboeking (STAP-0 "Bankmutatie op een RELATIE + mutatie
+    SPLITSEN" 25-08 §2.6: een her-PUT op een gestorneerd BankMutationDirectBooking-document is
+    204 zónder effect en actie 17 erop = 409 — herboeken ná storno vereist een NIEUW GUID).
+    Cyclus 0 = het bestaande rlz_bank_boeking_id (alle al geboekte mutaties behouden hun GUID);
+    elke storno verhoogt de cyclus. Deterministisch per (mutatie, cyclus): een retry binnen
+    dezelfde cyclus raakt hetzelfde RLZ-document."""
+    if cyclus == 0:
+        return rlz_bank_boeking_id(payment_transaction_id)
+    return uuid.uuid5(_NAMESPACE, f"bankboeking:{payment_transaction_id}:cyclus:{cyclus}")
+
+
+def rlz_bank_deel_boeking_id(payment_transaction_id: uuid.UUID, deel_id: uuid.UUID, cyclus: int) -> uuid.UUID:
+    """Client-GUID voor het grootboek-DEEL van een gesplitste bankmutatie (deel 4 punt 4): één
+    RLZ-BankMutationDirectBooking per deel, eigen GUID per (mutatie, deel-rij, cyclus) — nooit
+    het GUID van de ongesplitste directe boeking hergebruiken."""
+    return uuid.uuid5(_NAMESPACE, f"bankboeking-deel:{payment_transaction_id}:{deel_id}:{cyclus}")
+
+
+def rlz_bank_aanbetaling_id(relatie_boeking_id: uuid.UUID) -> uuid.UUID:
+    """Client-GUID voor het AANBETALINGSDOCUMENT (deel 4 punt 3, STAP-0 §1 H1): de
+    PurchaseInvoice/SalesInvoice op de relatie met één regel op de vooruitbetalingsrekening.
+    Functie van onze eigen registratie-rij (elke boekronde krijgt een nieuwe rij, dus ná een
+    storno automatisch een nieuw GUID — STAP-0 H5: her-PUT op hetzelfde GUID geeft geen nieuw
+    PaymentItem); een retry op dezelfde rij raakt hetzelfde RLZ-document."""
+    return uuid.uuid5(_NAMESPACE, f"bank-aanbetaling:{relatie_boeking_id}")

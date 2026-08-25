@@ -241,3 +241,98 @@ class NieuweBankRegelInput(StrikteInvoer):
     taxrate_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     omschrijving: str | None = None
+
+
+# --- feedbackronde 25-08 deel 4 --------------------------------------------------------------
+
+
+class BankSyncRunResponse(BaseModel):
+    """Achtergrond-verversing (punt 2): `status` geen | overgeslagen (drempel) | wachtrij | bezig |
+    klaar | fout; `laatste_sync_op` = "laatst ververst" voor de UI; `fout_reden` zichtbaar bij fout."""
+
+    run_id: uuid.UUID | None
+    status: str
+    overgeslagen: bool
+    laatste_sync_op: datetime | None
+    aangevraagd_op: datetime | None = None
+    beeindigd_op: datetime | None = None
+    resultaat: dict | None = None
+    fout_reden: str | None = None
+
+
+class KoppelRelatieInput(StrikteInvoer):
+    relatie_soort: str = Field(pattern="^(crediteur|debiteur)$")
+    entity_id: uuid.UUID
+    omschrijving: str | None = None
+
+
+class RelatieBoekingResponse(BaseModel):
+    boeking_id: uuid.UUID
+    rlz_document_id: uuid.UUID
+    rlz_boekstuknummer: str | None
+    open_restant: Decimal | None
+
+
+class AanbetalingResponse(BaseModel):
+    boeking_id: uuid.UUID
+    payment_transaction_id: uuid.UUID
+    relatie_soort: str
+    entity_id: uuid.UUID
+    entity_naam: str | None
+    bedrag: Decimal
+    boekdatum: date | None
+    rlz_boekstuknummer: str | None
+    geboekt_op: datetime
+    status: str
+
+
+class AanbetalingenResponse(BaseModel):
+    aanbetalingen: list[AanbetalingResponse]
+
+
+class DebiteurOptieResponse(BaseModel):
+    id: uuid.UUID
+    naam: str
+
+
+class DebiteurenZoekResponse(BaseModel):
+    debiteuren: list[DebiteurOptieResponse]
+
+
+class SplitsDeelInput(StrikteInvoer):
+    soort: str = Field(pattern="^(grootboek|open_post|relatie)$")
+    bedrag: Decimal
+    regels: list[DirectBoekenRegelInput] | None = None
+    payment_item_id: uuid.UUID | None = None
+    relatie_soort: str | None = Field(default=None, pattern="^(crediteur|debiteur)$")
+    entity_id: uuid.UUID | None = None
+    omschrijving: str | None = None
+
+
+class SplitsenInput(StrikteInvoer):
+    delen: list[SplitsDeelInput] = Field(min_length=2)
+
+
+class SplitsDeelResponse(BaseModel):
+    deel_id: uuid.UUID
+    volgnummer: int
+    soort: str
+    bedrag: Decimal
+    status: str
+    fout: str | None
+    bank_boeking_id: uuid.UUID | None
+    afletter_opdracht_id: uuid.UUID | None
+    relatie_boeking_id: uuid.UUID | None
+
+
+class SplitsingResponse(BaseModel):
+    splitsing_id: uuid.UUID
+    payment_transaction_id: uuid.UUID
+    status: str
+    mutatie_bedrag: Decimal
+    aangemaakt_op: datetime | None
+    delen: list[SplitsDeelResponse]
+
+
+class SplitsingenResponse(BaseModel):
+    splitsingen: list[SplitsingResponse]

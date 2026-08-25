@@ -219,20 +219,23 @@ class BankBoekingBron(enum.StrEnum):
 class BankBoeking(Base):
     """Eén directe grootboekboeking van een bankmutatie (`PUT BankMutationDirectBookings`,
     schrijf-PoC §3 — boekt direct op Status 3 én lettert af). `rlz_document_id` is het
-    deterministische RLZ-client-GUID (rlz_ids.rlz_bank_boeking_id, UUIDv5 op de mutatie-id):
-    een retry raakt hetzelfde RLZ-document, en ook een herboeking ná storno hergebruikt
-    datzelfde RLZ-document (PUT op hetzelfde GUID). Lokaal krijgt élke boekronde een eigen rij
+    deterministische RLZ-client-GUID (rlz_ids.rlz_bank_boeking_cyclus_id, UUIDv5 op mutatie-id +
+    cyclus): een retry raakt hetzelfde RLZ-document; een herboeking ná storno krijgt een NIEUW
+    GUID (STAP-0 25-08 §2.6 — her-PUT op een gestorneerd BMDB is 204 zonder effect; de oude
+    aanname "hergebruikt hetzelfde document" was fout). Lokaal krijgt élke boekronde een eigen rij
     (surrogaat-`id`): de gestorneerde rij blijft als historie staan — vandaar geen unique op
     payment_transaction_id maar een partiële ("één GEBOEKTE per mutatie", migratie 0026)."""
 
     __tablename__ = "bank_boeking"
     __table_args__ = (
+        # Eén GEBOEKTE volledige boeking per mutatie; delen van een splitsing (deel_id gevuld,
+        # migratie 0071) vallen buiten die regel — daar bewaakt bank_splitsing_deel de uniciteit.
         Index(
             "ux_bank_boeking_actief_per_mutatie",
             "administratie_id",
             "payment_transaction_id",
             unique=True,
-            postgresql_where=text("status = 'geboekt'"),
+            postgresql_where=text("status = 'geboekt' AND deel_id IS NULL"),
         ),
         {"schema": "boekhouding"},
     )
@@ -242,6 +245,8 @@ class BankBoeking(Base):
         UUID(as_uuid=True), ForeignKey("platform.administratie.id")
     )
     payment_transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    # Gevuld = grootboek-DEEL van een gesplitste mutatie (bank_splitsing_deel.id, migratie 0071).
+    deel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     rlz_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     omschrijving: Mapped[str | None] = mapped_column(default=None)
     rlz_boekstuknummer: Mapped[str | None] = mapped_column(default=None)
@@ -317,3 +322,190 @@ class BankRegel(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     gedeactiveerd_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+# --- feedbackronde 25-08 deel 4 (migratie 0071) --------------------------------------------------
+
+
+class BankSyncRunStatus(enum.StrEnum):
+    WACHTRIJ = "wachtrij"
+    BEZIG = "bezig"
+    KLAAR = "klaar"
+    FOUT = "fout"
+
+
+class BankSyncRun(Base):
+    """Achtergrond-verversing van de bankcache (punt 2 — cijfers-sync-patroon, migratie 0063):
+    het bankscherm toont de cache direct en start een run; de UI pollt de status. Eén rij per
+    aanvraag; een stille dood van het voertuig wordt via `laatst_actief_op` als zichtbare fout
+    vertaald (nooit eeuwig 'bezig'). `resultaat` = de BankSyncResultaat-tellers als JSON."""
+
+    __tablename__ = "bank_sync_run"
+    __table_args__ = (
+        Index("ix_bank_sync_run_administratie_id", "administratie_id"),
+        Index("ix_bank_sync_run_administratie_status", "administratie_id", "status"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    status: Mapped[str] = mapped_column(default=BankSyncRunStatus.WACHTRIJ.value)
+    aangevraagd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    aangevraagd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    gestart_op: Mapped[datetime | None] = mapped_column(default=None)
+    laatst_actief_op: Mapped[datetime | None] = mapped_column(default=None)
+    beeindigd_op: Mapped[datetime | None] = mapped_column(default=None)
+    resultaat: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), default=None)
+    fout_reden: Mapped[str | None] = mapped_column(default=None)
+
+
+class RelatieSoort(enum.StrEnum):
+    CREDITEUR = "crediteur"
+    DEBITEUR = "debiteur"
+
+
+class BankRelatieBoekingStatus(enum.StrEnum):
+    GEBOEKT = "geboekt"  # aanbetaling staat open (nog niet verrekend met een factuur)
+    VERREKEND = "verrekend"  # tegenregel op een geboekte factuur heeft de aanbetaling opgenomen
+    GESTORNEERD = "gestorneerd"
+
+
+class BankRelatieBoeking(Base):
+    """"Koppel aan relatie" (punt 3): een bankmutatie op een crediteur/debiteur ZONDER factuur,
+    geboekt als AANBETALINGSDOCUMENT (STAP-0 25-08: PurchaseInvoice/SalesInvoice op de relatie met
+    één regel op de vooruitbetalingsrekening 1403/1806, 0%-tarief) + afletteren via actie 15.
+    RLZ kent die open aanbetaling daarna alleen nog als GB-saldo — de per-relatie-administratie
+    (open → verrekend/gestorneerd) is DEZE tabel. `rlz_document_id` = rlz_bank_aanbetaling_id(id):
+    elke rij een eigen GUID, dus een herboeking ná storno is automatisch een nieuw document.
+    `deel_id` gevuld = onderdeel van een splitsing (punt 4); anders hooguit één GEBOEKTE per
+    mutatie (partiële unique)."""
+
+    __tablename__ = "bank_relatie_boeking"
+    __table_args__ = (
+        Index("ix_bank_relatie_boeking_administratie_id", "administratie_id"),
+        Index("ix_bank_relatie_boeking_entity", "administratie_id", "entity_id", "status"),
+        Index(
+            "ux_bank_relatie_boeking_actief_per_mutatie",
+            "administratie_id",
+            "payment_transaction_id",
+            unique=True,
+            postgresql_where=text("status IN ('geboekt', 'verrekend') AND deel_id IS NULL"),
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    payment_transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    deel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    relatie_soort: Mapped[str]
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    entity_naam: Mapped[str | None] = mapped_column(default=None)
+    # Teken van de mutatie (afschrijving negatief); |bedrag| = de aanbetaling.
+    bedrag: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    vooruit_ledger_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    taxrate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    rlz_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    rlz_boekstuknummer: Mapped[str | None] = mapped_column(default=None)
+    rlz_payment_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    omschrijving: Mapped[str | None] = mapped_column(default=None)
+    status: Mapped[str] = mapped_column(default=BankRelatieBoekingStatus.GEBOEKT.value)
+    geboekt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    geboekt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verrekend_met_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    verrekend_op: Mapped[datetime | None] = mapped_column(default=None)
+    gestorneerd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gestorneerd_op: Mapped[datetime | None] = mapped_column(default=None)
+    storno_reden: Mapped[str | None] = mapped_column(default=None)
+
+
+class BankSplitsingStatus(enum.StrEnum):
+    BEZIG = "bezig"
+    VERWERKT = "verwerkt"
+    HALF_VERWERKT = "half_verwerkt"  # minstens één deel klaar, minstens één deel fout/wacht — zichtbaar
+    GESTORNEERD = "gestorneerd"
+
+
+class BankSplitsingDeelSoort(enum.StrEnum):
+    GROOTBOEK = "grootboek"  # incl. kruispost — gewoon een grootboek-bestemming
+    OPEN_POST = "open_post"
+    RELATIE = "relatie"
+
+
+class BankSplitsingDeelStatus(enum.StrEnum):
+    WACHT = "wacht"
+    VERWERKT = "verwerkt"
+    FOUT = "fout"
+    GESTORNEERD = "gestorneerd"
+
+
+class BankSplitsing(Base):
+    """Eén mutatie verdeeld over meerdere bestemmingen (punt 4): geordende compositie van de
+    drie bestaande motoren — per deel een eigen RLZ-document/koppeling (STAP-0 25-08 §2: de delen
+    sluiten samen de mutatie). App-regel: Σ delen = mutatiebedrag, server-side blokkerend. Faalt
+    een deel, dan blijft de splitsing zichtbaar `half_verwerkt` en zijn de resterende delen
+    per stuk te hervatten (verse OpenAmount leidend). Nooit stil."""
+
+    __tablename__ = "bank_splitsing"
+    __table_args__ = (
+        Index("ix_bank_splitsing_administratie_id", "administratie_id"),
+        Index(
+            "ux_bank_splitsing_actief_per_mutatie",
+            "administratie_id",
+            "payment_transaction_id",
+            unique=True,
+            postgresql_where=text("status IN ('bezig', 'verwerkt', 'half_verwerkt')"),
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    payment_transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    mutatie_bedrag: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    status: Mapped[str] = mapped_column(default=BankSplitsingStatus.BEZIG.value)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    laatst_verwerkt_op: Mapped[datetime | None] = mapped_column(default=None)
+    gestorneerd_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class BankSplitsingDeel(Base):
+    """Eén deel van een splitsing: bedrag (teken van de mutatie) + bestemming. `spec` draagt de
+    route-specifieke invoer (grootboek: regels; open_post: payment_item_id; relatie: soort +
+    entity), de resultaat-kolommen wijzen naar de registratie van de onderliggende motor."""
+
+    __tablename__ = "bank_splitsing_deel"
+    __table_args__ = (
+        Index("ix_bank_splitsing_deel_splitsing_id", "splitsing_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    splitsing_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.bank_splitsing.id")
+    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    volgnummer: Mapped[int]
+    soort: Mapped[str]
+    bedrag: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    spec: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(default=BankSplitsingDeelStatus.WACHT.value)
+    fout: Mapped[str | None] = mapped_column(default=None)
+    cyclus: Mapped[int] = mapped_column(default=0)
+    bank_boeking_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    afletter_opdracht_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    relatie_boeking_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    verwerkt_op: Mapped[datetime | None] = mapped_column(default=None)

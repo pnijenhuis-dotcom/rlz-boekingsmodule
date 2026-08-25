@@ -173,6 +173,26 @@ class AlBetaaldSignaalResponse(BaseModel):
     treffers: list[AlBetaaldTrefferDto]
 
 
+class AanbetalingTrefferDto(BaseModel):
+    boeking_id: uuid.UUID
+    payment_transaction_id: uuid.UUID
+    bedrag: Decimal
+    boekdatum: date | None
+    geboekt_op: datetime
+    rlz_boekstuknummer: str | None
+    entity_naam: str | None
+    vooruit_ledger_id: uuid.UUID
+    herkenning: str
+
+
+class AanbetalingSignaalResponse(BaseModel):
+    """Aanbetaling-open-signaal (feedbackronde 25-08 deel 4 punt 3): open relatie-koppelingen van
+    deze crediteur (Entity-match, IBAN als extra herkenning) — signaal, geen blokkade."""
+
+    toetsbaar: bool
+    treffers: list[AanbetalingTrefferDto]
+
+
 class DuplicaatSignaalKortDto(BaseModel):
     """Gecachete RLZ-duplicaatuitkomst (25-08, deel 2 punt 6): 'geen' | 'mogelijk_duplicaat' |
     'niet_toetsbaar' | 'onbekend'. Signalering — de live check bij boeken is bindend."""

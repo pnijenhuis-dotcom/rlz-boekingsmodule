@@ -186,6 +186,14 @@ class Settings(BaseSettings):
     # de opdracht); leeg (dev/tests) = een achtergrond-thread in het proces zelf.
     cijfers_sync_job_resource: str | None = None
 
+    # Bank auto-verversing bij openen (feedbackronde 25-08 deel 4 punt 2): zelfde voertuig-
+    # splitsing als de projectcijfers ("projects/…/jobs/rlz-bank-sync" = on-demand job; leeg =
+    # thread) én de drempel tegen rate-limit-verspilling — is de laatste geslaagde bank-sync van
+    # de administratie jonger dan dit aantal minuten, dan start het openen van het bankscherm
+    # géén nieuwe RLZ-ronde (de handmatige verversen-knop wél, die blijft onbegrensd).
+    bank_sync_job_resource: str | None = None
+    bank_auto_ververs_drempel_minuten: int = 5
+
     boekingsgeheugen_seed_maanden: int = 36
     boekingsgeheugen_halfwaardetijd_dagen: int = 365
     boekingsgeheugen_gewicht_app: float = 3.0

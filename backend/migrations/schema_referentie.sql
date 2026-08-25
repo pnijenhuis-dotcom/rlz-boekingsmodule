@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0070
+-- Migratie-head bij deze dump: 0071
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -410,6 +410,7 @@ CREATE TABLE boekhouding.bank_boeking (
     gestorneerd_door uuid,
     gestorneerd_op timestamp with time zone,
     storno_reden text,
+    deel_id uuid,
     CONSTRAINT bank_boeking_bron_geldig CHECK ((bron = ANY (ARRAY['handmatig'::text, 'vaste_regel'::text, 'automatisch'::text]))),
     CONSTRAINT bank_boeking_status_geldig CHECK ((status = ANY (ARRAY['geboekt'::text, 'gestorneerd'::text]))),
     CONSTRAINT bank_boeking_storno_consistent CHECK (((status = 'gestorneerd'::text) = (gestorneerd_op IS NOT NULL)))
@@ -484,6 +485,109 @@ CREATE TABLE boekhouding.bank_regel (
 );
 
 ALTER TABLE ONLY boekhouding.bank_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: bank_relatie_boeking; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.bank_relatie_boeking (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    payment_transaction_id uuid NOT NULL,
+    deel_id uuid,
+    relatie_soort text NOT NULL,
+    entity_id uuid NOT NULL,
+    entity_naam text,
+    bedrag numeric(14,2) NOT NULL,
+    vooruit_ledger_id uuid NOT NULL,
+    taxrate_id uuid NOT NULL,
+    rlz_document_id uuid NOT NULL,
+    rlz_boekstuknummer text,
+    rlz_payment_item_id uuid,
+    omschrijving text,
+    status text NOT NULL,
+    geboekt_door uuid NOT NULL,
+    geboekt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verrekend_met_document_id uuid,
+    verrekend_op timestamp with time zone,
+    gestorneerd_door uuid,
+    gestorneerd_op timestamp with time zone,
+    storno_reden text,
+    CONSTRAINT ck_bank_relatie_boeking_soort CHECK ((relatie_soort = ANY (ARRAY['crediteur'::text, 'debiteur'::text]))),
+    CONSTRAINT ck_bank_relatie_boeking_status CHECK ((status = ANY (ARRAY['geboekt'::text, 'verrekend'::text, 'gestorneerd'::text]))),
+    CONSTRAINT ck_bank_relatie_boeking_storno_reden CHECK (((status <> 'gestorneerd'::text) OR ((storno_reden IS NOT NULL) AND (length(btrim(storno_reden)) > 0))))
+);
+
+ALTER TABLE ONLY boekhouding.bank_relatie_boeking FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: bank_splitsing; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.bank_splitsing (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    payment_transaction_id uuid NOT NULL,
+    mutatie_bedrag numeric(14,2) NOT NULL,
+    status text NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    laatst_verwerkt_op timestamp with time zone,
+    gestorneerd_op timestamp with time zone,
+    CONSTRAINT ck_bank_splitsing_status CHECK ((status = ANY (ARRAY['bezig'::text, 'verwerkt'::text, 'half_verwerkt'::text, 'gestorneerd'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.bank_splitsing FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: bank_splitsing_deel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.bank_splitsing_deel (
+    id uuid NOT NULL,
+    splitsing_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    volgnummer integer NOT NULL,
+    soort text NOT NULL,
+    bedrag numeric(14,2) NOT NULL,
+    spec jsonb NOT NULL,
+    status text NOT NULL,
+    fout text,
+    cyclus integer NOT NULL,
+    bank_boeking_id uuid,
+    afletter_opdracht_id uuid,
+    relatie_boeking_id uuid,
+    verwerkt_op timestamp with time zone,
+    CONSTRAINT ck_bank_splitsing_deel_bedrag CHECK ((bedrag <> (0)::numeric)),
+    CONSTRAINT ck_bank_splitsing_deel_soort CHECK ((soort = ANY (ARRAY['grootboek'::text, 'open_post'::text, 'relatie'::text]))),
+    CONSTRAINT ck_bank_splitsing_deel_status CHECK ((status = ANY (ARRAY['wacht'::text, 'verwerkt'::text, 'fout'::text, 'gestorneerd'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.bank_splitsing_deel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: bank_sync_run; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.bank_sync_run (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    status text NOT NULL,
+    aangevraagd_door uuid,
+    aangevraagd_op timestamp with time zone DEFAULT now() NOT NULL,
+    gestart_op timestamp with time zone,
+    laatst_actief_op timestamp with time zone,
+    beeindigd_op timestamp with time zone,
+    resultaat jsonb,
+    fout_reden text,
+    CONSTRAINT ck_bank_sync_run_status CHECK ((status = ANY (ARRAY['wachtrij'::text, 'bezig'::text, 'klaar'::text, 'fout'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.bank_sync_run FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2330,6 +2434,38 @@ ALTER TABLE ONLY boekhouding.bank_regel
 
 
 --
+-- Name: bank_relatie_boeking bank_relatie_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_relatie_boeking
+    ADD CONSTRAINT bank_relatie_boeking_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bank_splitsing_deel bank_splitsing_deel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_splitsing_deel
+    ADD CONSTRAINT bank_splitsing_deel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bank_splitsing bank_splitsing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_splitsing
+    ADD CONSTRAINT bank_splitsing_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bank_sync_run bank_sync_run_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_sync_run
+    ADD CONSTRAINT bank_sync_run_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: bank_sync_stand bank_sync_stand_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3241,6 +3377,48 @@ CREATE INDEX ix_bank_mutatie_open ON boekhouding.bank_mutatie USING btree (admin
 
 
 --
+-- Name: ix_bank_relatie_boeking_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_relatie_boeking_administratie_id ON boekhouding.bank_relatie_boeking USING btree (administratie_id);
+
+
+--
+-- Name: ix_bank_relatie_boeking_entity; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_relatie_boeking_entity ON boekhouding.bank_relatie_boeking USING btree (administratie_id, entity_id, status);
+
+
+--
+-- Name: ix_bank_splitsing_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_splitsing_administratie_id ON boekhouding.bank_splitsing USING btree (administratie_id);
+
+
+--
+-- Name: ix_bank_splitsing_deel_splitsing_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_splitsing_deel_splitsing_id ON boekhouding.bank_splitsing_deel USING btree (splitsing_id);
+
+
+--
+-- Name: ix_bank_sync_run_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_sync_run_administratie_id ON boekhouding.bank_sync_run USING btree (administratie_id);
+
+
+--
+-- Name: ix_bank_sync_run_administratie_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_sync_run_administratie_status ON boekhouding.bank_sync_run USING btree (administratie_id, status);
+
+
+--
 -- Name: ix_boeking_observatie_admin_vendor_sleutel; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -3685,7 +3863,7 @@ CREATE UNIQUE INDEX ux_bank_afletter_opdracht_open ON boekhouding.bank_afletter_
 -- Name: ux_bank_boeking_actief_per_mutatie; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
-CREATE UNIQUE INDEX ux_bank_boeking_actief_per_mutatie ON boekhouding.bank_boeking USING btree (administratie_id, payment_transaction_id) WHERE (status = 'geboekt'::text);
+CREATE UNIQUE INDEX ux_bank_boeking_actief_per_mutatie ON boekhouding.bank_boeking USING btree (administratie_id, payment_transaction_id) WHERE ((status = 'geboekt'::text) AND (deel_id IS NULL));
 
 
 --
@@ -3693,6 +3871,20 @@ CREATE UNIQUE INDEX ux_bank_boeking_actief_per_mutatie ON boekhouding.bank_boeki
 --
 
 CREATE UNIQUE INDEX ux_bank_regel_actief_per_tegenpartij ON boekhouding.bank_regel USING btree (administratie_id, tegenpartij_sleutel) WHERE actief;
+
+
+--
+-- Name: ux_bank_relatie_boeking_actief_per_mutatie; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_bank_relatie_boeking_actief_per_mutatie ON boekhouding.bank_relatie_boeking USING btree (administratie_id, payment_transaction_id) WHERE ((status = ANY (ARRAY['geboekt'::text, 'verrekend'::text])) AND (deel_id IS NULL));
+
+
+--
+-- Name: ux_bank_splitsing_actief_per_mutatie; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_bank_splitsing_actief_per_mutatie ON boekhouding.bank_splitsing USING btree (administratie_id, payment_transaction_id) WHERE (status = ANY (ARRAY['bezig'::text, 'verwerkt'::text, 'half_verwerkt'::text]));
 
 
 --
@@ -4073,6 +4265,78 @@ ALTER TABLE ONLY boekhouding.bank_regel
 
 ALTER TABLE ONLY boekhouding.bank_regel
     ADD CONSTRAINT bank_regel_gedeactiveerd_door_fkey FOREIGN KEY (gedeactiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: bank_relatie_boeking bank_relatie_boeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_relatie_boeking
+    ADD CONSTRAINT bank_relatie_boeking_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: bank_relatie_boeking bank_relatie_boeking_geboekt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_relatie_boeking
+    ADD CONSTRAINT bank_relatie_boeking_geboekt_door_fkey FOREIGN KEY (geboekt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: bank_relatie_boeking bank_relatie_boeking_gestorneerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_relatie_boeking
+    ADD CONSTRAINT bank_relatie_boeking_gestorneerd_door_fkey FOREIGN KEY (gestorneerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: bank_splitsing bank_splitsing_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_splitsing
+    ADD CONSTRAINT bank_splitsing_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: bank_splitsing bank_splitsing_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_splitsing
+    ADD CONSTRAINT bank_splitsing_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: bank_splitsing_deel bank_splitsing_deel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_splitsing_deel
+    ADD CONSTRAINT bank_splitsing_deel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: bank_splitsing_deel bank_splitsing_deel_splitsing_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_splitsing_deel
+    ADD CONSTRAINT bank_splitsing_deel_splitsing_id_fkey FOREIGN KEY (splitsing_id) REFERENCES boekhouding.bank_splitsing(id);
+
+
+--
+-- Name: bank_sync_run bank_sync_run_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_sync_run
+    ADD CONSTRAINT bank_sync_run_aangevraagd_door_fkey FOREIGN KEY (aangevraagd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: bank_sync_run bank_sync_run_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_sync_run
+    ADD CONSTRAINT bank_sync_run_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -5773,6 +6037,58 @@ ALTER TABLE boekhouding.bank_regel ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY bank_regel_scope ON boekhouding.bank_regel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: bank_relatie_boeking; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.bank_relatie_boeking ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: bank_relatie_boeking bank_relatie_boeking_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY bank_relatie_boeking_scope ON boekhouding.bank_relatie_boeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: bank_splitsing; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.bank_splitsing ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: bank_splitsing_deel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.bank_splitsing_deel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: bank_splitsing_deel bank_splitsing_deel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY bank_splitsing_deel_scope ON boekhouding.bank_splitsing_deel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: bank_splitsing bank_splitsing_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY bank_splitsing_scope ON boekhouding.bank_splitsing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: bank_sync_run; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.bank_sync_run ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: bank_sync_run bank_sync_run_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY bank_sync_run_scope ON boekhouding.bank_sync_run USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

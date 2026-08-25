@@ -112,6 +112,7 @@ def zet_klaar_voor_afletteren(
     actor_id: uuid.UUID,
     voorstel_detail: dict[str, Any] | None = None,
     client: RlzClient | None = None,
+    deelbedrag: Decimal | None = None,
 ) -> AfletterUitvoering:
     """Publieke ingang voor de afletter-actie (router, autoflow, matchvoorstel-akkoord).
     Valideert deterministisch en delegeert de uitvoering aan de seam."""
@@ -154,6 +155,11 @@ def zet_klaar_voor_afletteren(
             if bestaande is not None:
                 raise OpdrachtBestaatAl("Er staat al een klaargezette afletter-opdracht voor deze mutatie")
 
+            if deelbedrag is not None:
+                # Splitsen (deel 4 punt 4): expliciet deelbedrag i.p.v. min(open mutatie, post);
+                # reist mee in voorstel_detail zodat ook 'nu afletteren' op een assist-opdracht
+                # hetzelfde deel koppelt.
+                voorstel_detail = {**(voorstel_detail or {}), "deelbedrag": str(deelbedrag)}
             return voer_afletter_actie_uit(
                 session=session,
                 administratie_id=administratie_id,
@@ -287,6 +293,15 @@ def _probeer_api_koppeling(
     # tussentijdse deelkoppeling gemist hebben).
     linked = bereken_linked_amount(open_vooraf if open_vooraf is not None else mutatie.open_bedrag,
                                    item.bedrag if item else None)
+    deel = _als_decimal((opdracht.voorstel_detail or {}).get("deelbedrag"))
+    if deel is not None:
+        basis = open_vooraf if open_vooraf is not None else mutatie.open_bedrag
+        if deel == 0 or (deel > 0) != (basis > 0) or abs(deel) > abs(basis):
+            return _api_fout(
+                session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,
+                fout=f"deelbedrag {deel} past niet op het open bedrag {basis} van de mutatie",
+            )
+        linked = deel
     try:
         client.link_payment_item(
             opdracht.payment_transaction_id,
@@ -309,7 +324,10 @@ def _probeer_api_koppeling(
     doel_gekoppeld = opdracht.rlz_document_id is not None and any(
         k["rlz_document_id"] == str(opdracht.rlz_document_id) for k in koppelingen
     )
-    if not doel_gekoppeld and (open_na is None or open_na != 0):
+    verwacht_open = (
+        (open_vooraf - linked).quantize(Decimal("0.01")) if open_vooraf is not None else Decimal("0")
+    )
+    if not doel_gekoppeld and (open_na is None or open_na != verwacht_open):
         # 204-zonder-effect (bekend RLZ-gedrag bij een niet-passende body) — nooit stil.
         return _api_fout(
             session=session, administratie_id=administratie_id, opdracht=opdracht, actor_id=actor_id,

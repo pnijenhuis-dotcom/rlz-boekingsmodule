@@ -531,3 +531,315 @@ def bank_regel_aanmaken(
         omschrijving=regel.omschrijving,
         actief=regel.actief,
     )
+
+
+# --- feedbackronde 25-08 deel 4: auto-verversing, relatie-koppeling, splitsen --------------------
+
+
+def _sync_run_response(info) -> schemas.BankSyncRunResponse:
+    return schemas.BankSyncRunResponse(
+        run_id=info.run_id,
+        status=info.status,
+        overgeslagen=info.overgeslagen,
+        laatste_sync_op=info.laatste_sync_op,
+        aangevraagd_op=info.aangevraagd_op,
+        beeindigd_op=info.beeindigd_op,
+        resultaat=info.resultaat,
+        fout_reden=info.fout_reden,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/sync-achtergrond",
+    response_model=schemas.BankSyncRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def bank_sync_achtergrond(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.BankSyncRunResponse:
+    """Auto-verversing bij het openen van het bankscherm (besluit Peter 25-08, punt 2): cache blijft
+    direct zichtbaar, de RLZ-ronde loopt op de achtergrond (202 + status-poll). Laatste sync jonger
+    dan de drempel (`bank_auto_ververs_drempel_minuten`, default 5) → `overgeslagen`, geen ronde."""
+    from app.bank import sync_run
+
+    try:
+        return _sync_run_response(sync_run.start_bij_openen(administratie_id=administratie_id, actor_id=actor.id))
+    except sync_run.BankSyncStartFout as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.get("/administraties/{administratie_id}/bank/sync-achtergrond/status", response_model=schemas.BankSyncRunResponse)
+def bank_sync_achtergrond_status(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.BankSyncRunResponse:
+    from app.bank import sync_run
+
+    return _sync_run_response(sync_run.laatste_run(administratie_id))
+
+
+def _vertaal_relatie_fouten(exc: Exception) -> HTTPException:
+    from app.bank import relatie
+
+    if isinstance(exc, (boeken.BankMutatieNietGevonden, relatie.RelatieNietGevonden, relatie.RelatieBoekingNietGevonden)):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, boeken.BankBoekenUitgeschakeld):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, boeken.BankVolumeremBereikt):
+        return HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc))
+    if isinstance(exc, (relatie.RlzRelatieBoekingMislukt,)):
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    if isinstance(exc, StornoGeblokkeerdDoorAangifte):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.detail_tekst())
+    if isinstance(
+        exc,
+        (relatie.RelatieBoekingBestaatAl, relatie.BedragPastNiet, boeken.MutatieAlAfgeletterd,
+         relatie.RelatieInstellingOntbreekt, relatie.RelatieBoekenFout),
+    ):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, (GeenRlzCredentials, RlzApiError)):
+        return _vertaal_rlz_fouten(exc)
+    raise exc
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/mutaties/{mutatie_id}/koppel-relatie",
+    response_model=schemas.RelatieBoekingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def koppel_relatie(
+    administratie_id: uuid.UUID,
+    mutatie_id: uuid.UUID,
+    invoer: schemas.KoppelRelatieInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.RelatieBoekingResponse:
+    """Derde verwerkroute (besluit Peter 25-08, punt 3): mutatie op een crediteur/debiteur zónder
+    factuur — aanbetalingsdocument + afletteren (bewezen vorm, api-verkenning 25-08)."""
+    from app.bank import relatie
+
+    try:
+        with _rlz_client_voor(administratie_id) as client:
+            r = relatie.boek_mutatie_op_relatie(
+                administratie_id=administratie_id,
+                payment_transaction_id=mutatie_id,
+                relatie_soort=invoer.relatie_soort,
+                entity_id=invoer.entity_id,
+                actor_id=actor.id,
+                client=client,
+                omschrijving=invoer.omschrijving,
+            )
+    except Exception as exc:  # noqa: BLE001 — vertaald of opnieuw gegooid
+        raise _vertaal_relatie_fouten(exc) from exc
+    return schemas.RelatieBoekingResponse(
+        boeking_id=r.boeking_id, rlz_document_id=r.rlz_document_id,
+        rlz_boekstuknummer=r.rlz_boekstuknummer, open_restant=r.open_restant,
+    )
+
+
+@router.get("/administraties/{administratie_id}/bank/aanbetalingen", response_model=schemas.AanbetalingenResponse)
+def aanbetalingen(
+    administratie_id: uuid.UUID,
+    alleen_open: bool = True,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AanbetalingenResponse:
+    """Open-posten-weergave van de relatie-koppelingen: RLZ kent de aanbetaling na het afletteren
+    alleen als GB-saldo, de open post per relatie leeft hier (status geboekt = open)."""
+    from app.bank import relatie
+
+    rijen = relatie.open_aanbetalingen(administratie_id=administratie_id, alleen_open=alleen_open)
+    return schemas.AanbetalingenResponse(
+        aanbetalingen=[
+            schemas.AanbetalingResponse(
+                boeking_id=r.boeking_id, payment_transaction_id=r.payment_transaction_id,
+                relatie_soort=r.relatie_soort, entity_id=r.entity_id, entity_naam=r.entity_naam,
+                bedrag=r.bedrag, boekdatum=r.boekdatum, rlz_boekstuknummer=r.rlz_boekstuknummer,
+                geboekt_op=r.geboekt_op, status=r.status,
+            )
+            for r in rijen
+        ]
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/aanbetalingen/{boeking_id}/storno",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def aanbetaling_storno(
+    administratie_id: uuid.UUID,
+    boeking_id: uuid.UUID,
+    invoer: schemas.StornoInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    from app.bank import relatie
+
+    try:
+        with _rlz_client_voor(administratie_id) as client:
+            relatie.storno_relatie_boeking(
+                administratie_id=administratie_id, boeking_id=boeking_id, actor_id=actor.id,
+                reden=invoer.reden, client=client,
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise _vertaal_relatie_fouten(exc) from exc
+
+
+@router.get("/administraties/{administratie_id}/bank/debiteuren", response_model=schemas.DebiteurenZoekResponse)
+def debiteuren_zoeken(
+    administratie_id: uuid.UUID,
+    zoek: str = "",
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DebiteurenZoekResponse:
+    """Debiteur-keuze voor de relatie-koppeling: debiteuren hebben geen lokale cache (verkoop maakt
+    ze ad hoc aan), dus dit is een live RLZ-zoekactie (read-only) op naam — minimaal 2 tekens."""
+    term = zoek.strip()
+    if len(term) < 2:
+        return schemas.DebiteurenZoekResponse(debiteuren=[])
+    try:
+        with _rlz_client_voor(administratie_id) as client:
+            rijen = client.find_customers_by_name(name=term)
+    except (GeenRlzCredentials, RlzApiError) as exc:
+        raise _vertaal_rlz_fouten(exc) from exc
+    uit = []
+    for rij in rijen[:25]:
+        try:
+            uit.append(schemas.DebiteurOptieResponse(id=uuid.UUID(str(rij.get("id"))), naam=rij.get("Name") or rij.get("SearchName") or "?"))
+        except ValueError:
+            continue
+    return schemas.DebiteurenZoekResponse(debiteuren=uit)
+
+
+def _splitsing_response(r) -> schemas.SplitsingResponse:
+    return schemas.SplitsingResponse(
+        splitsing_id=r.splitsing_id, payment_transaction_id=r.payment_transaction_id, status=r.status,
+        mutatie_bedrag=r.mutatie_bedrag, aangemaakt_op=r.aangemaakt_op,
+        delen=[
+            schemas.SplitsDeelResponse(
+                deel_id=d.deel_id, volgnummer=d.volgnummer, soort=d.soort, bedrag=d.bedrag, status=d.status,
+                fout=d.fout, bank_boeking_id=d.bank_boeking_id, afletter_opdracht_id=d.afletter_opdracht_id,
+                relatie_boeking_id=d.relatie_boeking_id,
+            )
+            for d in r.delen
+        ],
+    )
+
+
+def _vertaal_splits_fouten(exc: Exception) -> HTTPException:
+    from app.bank import splitsen
+
+    if isinstance(exc, (splitsen.SplitsingNietGevonden, boeken.BankMutatieNietGevonden)):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, splitsen.SplitsingBestaatAl):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, splitsen.SplitsingOngeldig):
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    if isinstance(exc, StornoGeblokkeerdDoorAangifte):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.detail_tekst())
+    if isinstance(exc, splitsen.SplitsenFout):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, boeken.BankBoekenFout):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, (GeenRlzCredentials, RlzApiError)):
+        return _vertaal_rlz_fouten(exc)
+    from app.bank import relatie
+
+    if isinstance(exc, relatie.RelatieBoekenFout):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    raise exc
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/mutaties/{mutatie_id}/splitsen",
+    response_model=schemas.SplitsingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def splitsen_starten(
+    administratie_id: uuid.UUID,
+    mutatie_id: uuid.UUID,
+    invoer: schemas.SplitsenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SplitsingResponse:
+    """Splitsen (besluit Peter 25-08, punt 4): delen moeten exact optellen tot het mutatiebedrag
+    (server-side blokkerend, 422); uitvoering = geordende compositie van de bestaande motoren met
+    het half-verwerkt-patroon (zie `app/bank/splitsen.py`)."""
+    from app.bank import splitsen
+
+    delen = [
+        splitsen.DeelInvoer(
+            soort=d.soort,
+            bedrag=d.bedrag,
+            omschrijving=d.omschrijving,
+            spec={
+                **({"regels": [r.model_dump(mode="json") for r in d.regels]} if d.regels is not None else {}),
+                **({"payment_item_id": str(d.payment_item_id)} if d.payment_item_id else {}),
+                **({"relatie_soort": d.relatie_soort} if d.relatie_soort else {}),
+                **({"entity_id": str(d.entity_id)} if d.entity_id else {}),
+            },
+        )
+        for d in invoer.delen
+    ]
+    try:
+        with _rlz_client_voor(administratie_id) as client:
+            r = splitsen.start_splitsing(
+                administratie_id=administratie_id, payment_transaction_id=mutatie_id, delen=delen,
+                actor_id=actor.id, client=client,
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise _vertaal_splits_fouten(exc) from exc
+    return _splitsing_response(r)
+
+
+@router.get(
+    "/administraties/{administratie_id}/bank/rekeningen/{rekening_id}/splitsingen",
+    response_model=schemas.SplitsingenResponse,
+)
+def splitsingen(
+    administratie_id: uuid.UUID,
+    rekening_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SplitsingenResponse:
+    from app.bank import splitsen
+
+    rijen = splitsen.splitsingen_voor_rekening(administratie_id=administratie_id, payment_account_id=rekening_id)
+    return schemas.SplitsingenResponse(splitsingen=[_splitsing_response(r) for r in rijen])
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/splitsingen/{splitsing_id}/hervat",
+    response_model=schemas.SplitsingResponse,
+)
+def splitsing_hervatten(
+    administratie_id: uuid.UUID,
+    splitsing_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SplitsingResponse:
+    """Half-verwerkt herstel: de delen op wacht/fout alsnog, tegen de verse RLZ-staat."""
+    from app.bank import splitsen
+
+    try:
+        with _rlz_client_voor(administratie_id) as client:
+            r = splitsen.hervat_splitsing(
+                administratie_id=administratie_id, splitsing_id=splitsing_id, actor_id=actor.id, client=client
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise _vertaal_splits_fouten(exc) from exc
+    return _splitsing_response(r)
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/splitsingen/delen/{deel_id}/storno",
+    response_model=schemas.SplitsingResponse,
+)
+def splitsing_deel_storno(
+    administratie_id: uuid.UUID,
+    deel_id: uuid.UUID,
+    invoer: schemas.StornoInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SplitsingResponse:
+    from app.bank import splitsen
+
+    try:
+        with _rlz_client_voor(administratie_id) as client:
+            r = splitsen.storno_deel(
+                administratie_id=administratie_id, deel_id=deel_id, actor_id=actor.id, reden=invoer.reden, client=client
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise _vertaal_splits_fouten(exc) from exc
+    return _splitsing_response(r)

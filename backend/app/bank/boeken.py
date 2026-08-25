@@ -9,10 +9,17 @@ Failsafes en waarborgen (zelfde lat als het documenten-boeken):
   administratie per dag (eigen teller op bank_boeking, los van de documentboekingen);
 - geldlogica hard in code: de regels (netto + btw, mét het teken van de mutatie — PoC:
   NetAmount = Amount van de transactie) moeten samen EXACT het mutatiebedrag dekken;
-- idempotentie: deterministisch client-GUID (rlz_ids.rlz_bank_boeking_id) + eigen
+- idempotentie: deterministisch client-GUID (rlz_ids.rlz_bank_boeking_cyclus_id — cyclus =
+  aantal eerdere storno's op de mutatie; STAP-0 25-08 §2.6: een her-PUT op een gestorneerd
+  BMDB-document is 204 zónder effect, dus herboeken ná storno vereist een NIEUW GUID) + eigen
   duplicaatcheck vóór de PUT — lokaal (één GEBOEKTE boeking per mutatie) én tegen RLZ (verse
   OpenAmount-check; wijst de PaymentReferenceList al naar óns GUID, dan was een eerdere poging
   geslaagd en wordt alleen de lokale registratie ingehaald);
+- verificatie ná de PUT op de verse OpenAmount van de mutatie (een 204 is bij RLZ geen bewijs
+  van effect) — afwijking = zichtbare fout, nooit een lokale "geboekt" zonder RLZ-effect;
+- DEELMODUS (splitsen, deel 4 punt 4): `deel=` boekt een DEEL van de mutatie (RLZ accepteert
+  een deelbedrag, STAP-0 §2.2) op een eigen deel-GUID; de dekkingscheck toetst dan het deel,
+  de één-per-mutatie-regel geldt niet en het open bedrag wordt op de verse RLZ-stand gezet;
 - audit_event op boeken én storno; niets verdwijnt stil.
 
 Volautomatisch (opt-in per administratie, `bank_autoboeken_ingeschakeld`, default UIT):
@@ -44,7 +51,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten.rlz_ids import rlz_bank_boeking_id
+from app.documenten.rlz_ids import rlz_bank_boeking_cyclus_id, rlz_bank_deel_boeking_id
 from app.rlz.aangifte import AangiftePoort, blokkeer_bij_ingediende_aangifte
 from app.rlz.client import RlzApiError, RlzClient
 
@@ -98,6 +105,15 @@ class BankBoekRegelInput:
     taxrate_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     omschrijving: str | None = None
+
+
+@dataclass(frozen=True)
+class DeelBoeking:
+    """Deelmodus: dit deel van een gesplitste mutatie (bedrag mét het teken van de mutatie)."""
+
+    deel_id: uuid.UUID
+    bedrag: Decimal
+    cyclus: int = 0
 
 
 @dataclass(frozen=True)
@@ -173,6 +189,8 @@ def _registreer_boeking(
     bron: BankBoekingBron,
     actor_id: uuid.UUID,
     detail_actie: str,
+    deel_id: uuid.UUID | None = None,
+    open_na: Decimal | None = None,
 ) -> uuid.UUID:
     boeking_id = uuid.uuid4()
     session.add(
@@ -180,6 +198,7 @@ def _registreer_boeking(
             id=boeking_id,
             administratie_id=administratie_id,
             payment_transaction_id=payment_transaction_id,
+            deel_id=deel_id,
             rlz_document_id=rlz_document_id,
             omschrijving=omschrijving,
             rlz_boekstuknummer=rlz_boekstuknummer,
@@ -203,7 +222,7 @@ def _registreer_boeking(
         )
     mutatie = session.get(BankMutatie, (payment_transaction_id, administratie_id))
     if mutatie is not None:
-        mutatie.open_bedrag = Decimal("0")
+        mutatie.open_bedrag = open_na if open_na is not None else Decimal("0")
     record_audit_event(
         session,
         actor_id=actor_id,
@@ -217,6 +236,8 @@ def _registreer_boeking(
             "rlz_document_id": str(rlz_document_id),
             "rlz_boekstuknummer": rlz_boekstuknummer,
             "bron": bron.value,
+            "deel_id": str(deel_id) if deel_id else None,
+            "open_restant": str(open_na) if open_na is not None else "0",
             "regels": [
                 {
                     "ledger_id": str(regel.ledger_id),
@@ -240,6 +261,7 @@ def boek_mutatie_direct(
     omschrijving: str | None = None,
     bron: BankBoekingBron = BankBoekingBron.HANDMATIG,
     client: RlzClient,
+    deel: DeelBoeking | None = None,
 ) -> BankBoekResultaat:
     """De volledige direct-op-grootboek-flow: checks → failsafes → duplicaatchecks → PUT →
     lokale registratie + audit. Idempotent: een retry raakt hetzelfde RLZ-document."""
@@ -251,7 +273,16 @@ def boek_mutatie_direct(
             raise BankBoekenFout("Mutatie zonder bedrag kan niet geboekt worden")
         mutatie_bedrag = mutatie.bedrag
 
-        _controleer_regels(regels, mutatie_bedrag=mutatie_bedrag)
+        # Dekking: volledig = de regels dekken het mutatiebedrag; deelmodus = ze dekken het deel
+        # (zelfde teken als de mutatie, nooit groter dan de mutatie).
+        te_dekken = mutatie_bedrag if deel is None else deel.bedrag
+        if deel is not None and (
+            deel.bedrag == 0 or (deel.bedrag > 0) != (mutatie_bedrag > 0) or abs(deel.bedrag) > abs(mutatie_bedrag)
+        ):
+            raise RegelsDekkenMutatieNiet(
+                f"Deelbedrag {deel.bedrag} past niet op de mutatie {mutatie_bedrag} (zelfde teken, niet groter)"
+            )
+        _controleer_regels(regels, mutatie_bedrag=te_dekken)
 
         if not _is_boeken_toegestaan(session, administratie_id=administratie_id):
             raise BankBoekenUitgeschakeld(
@@ -263,17 +294,41 @@ def boek_mutatie_direct(
                 f"Dagelijkse limiet van {limiet} bankboekingen bereikt voor deze administratie"
             )
 
-        bestaande = session.scalars(
-            select(BankBoeking).where(
-                BankBoeking.administratie_id == administratie_id,
-                BankBoeking.payment_transaction_id == payment_transaction_id,
-                BankBoeking.status == BankBoekingStatus.GEBOEKT.value,
-            )
-        ).first()
-        if bestaande is not None:
-            raise BankBoekingBestaatAl(bestaande.id)
-
-    rlz_document_id = rlz_bank_boeking_id(payment_transaction_id)
+        if deel is None:
+            bestaande = session.scalars(
+                select(BankBoeking).where(
+                    BankBoeking.administratie_id == administratie_id,
+                    BankBoeking.payment_transaction_id == payment_transaction_id,
+                    BankBoeking.deel_id.is_(None),
+                    BankBoeking.status == BankBoekingStatus.GEBOEKT.value,
+                )
+            ).first()
+            if bestaande is not None:
+                raise BankBoekingBestaatAl(bestaande.id)
+            # Cyclus = aantal eerdere storno's op deze mutatie: elke herboeking een NIEUW GUID
+            # (STAP-0 25-08 §2.6 — her-PUT op een gestorneerd BMDB is 204 zonder effect).
+            cyclus = session.scalar(
+                select(func.count())
+                .select_from(BankBoeking)
+                .where(
+                    BankBoeking.administratie_id == administratie_id,
+                    BankBoeking.payment_transaction_id == payment_transaction_id,
+                    BankBoeking.deel_id.is_(None),
+                    BankBoeking.status == BankBoekingStatus.GESTORNEERD.value,
+                )
+            ) or 0
+            rlz_document_id = rlz_bank_boeking_cyclus_id(payment_transaction_id, cyclus)
+        else:
+            bestaande = session.scalars(
+                select(BankBoeking).where(
+                    BankBoeking.administratie_id == administratie_id,
+                    BankBoeking.deel_id == deel.deel_id,
+                    BankBoeking.status == BankBoekingStatus.GEBOEKT.value,
+                )
+            ).first()
+            if bestaande is not None:
+                raise BankBoekingBestaatAl(bestaande.id)
+            rlz_document_id = rlz_bank_deel_boeking_id(payment_transaction_id, deel.deel_id, deel.cyclus)
 
     # Eigen duplicaatcheck tegen RLZ (kernprincipe 5): verse staat van de mutatie ophalen. Is hij
     # daar al dicht, dan alleen doorgaan als ÓNS deterministische document de koppeling draagt
@@ -282,16 +337,14 @@ def boek_mutatie_direct(
         payment_transaction_id, expand="PaymentReferenceList($expand=Document)"
     )
     open_amount = vers.get("OpenAmount")
-    if open_amount is not None and float(open_amount) == 0.0:
-        onze_koppeling = any(
-            (ref.get("Document") or {}).get("id") == str(rlz_document_id)
-            and (ref.get("Document") or {}).get("Status") != 1
-            for ref in vers.get("PaymentReferenceList") or []
-        )
-        if not onze_koppeling:
-            raise MutatieAlAfgeletterd(
-                "De mutatie is intussen in Reeleezee zelf afgeletterd — niet nogmaals boeken"
-            )
+    open_vooraf = Decimal(str(open_amount)).quantize(Decimal("0.01")) if open_amount is not None else None
+    onze_koppeling = any(
+        (ref.get("Document") or {}).get("id") == str(rlz_document_id)
+        and (ref.get("Document") or {}).get("Status") != 1
+        for ref in vers.get("PaymentReferenceList") or []
+    )
+    if onze_koppeling:
+        # Eerdere poging geslaagd (retry ná een halve mislukking): alleen lokaal inhalen.
         document = client.get_bank_mutation_direct_booking(rlz_document_id)
         with scoped_session(administratie_id, actor_id=actor_id) as session:
             boeking_id = _registreer_boeking(
@@ -305,6 +358,8 @@ def boek_mutatie_direct(
                 bron=bron,
                 actor_id=actor_id,
                 detail_actie="bank_mutatie_direct_geboekt_ingehaald",
+                deel_id=deel.deel_id if deel else None,
+                open_na=open_vooraf,
             )
         return BankBoekResultaat(
             boeking_id=boeking_id,
@@ -312,6 +367,15 @@ def boek_mutatie_direct(
             payment_transaction_id=payment_transaction_id,
             rlz_boekstuknummer=document.get("ReceiptNumber"),
             al_eerder_geboekt=True,
+        )
+    if open_vooraf is not None and open_vooraf == 0:
+        raise MutatieAlAfgeletterd(
+            "De mutatie is intussen in Reeleezee zelf afgeletterd — niet nogmaals boeken"
+        )
+    if deel is not None and open_vooraf is not None and abs(open_vooraf) < abs(deel.bedrag):
+        raise MutatieAlAfgeletterd(
+            f"Open bedrag in Reeleezee ({open_vooraf}) is kleiner dan dit deel ({deel.bedrag}) — "
+            "de mutatie is intussen deels verwerkt; ververs en pas de verdeling aan"
         )
 
     try:
@@ -322,8 +386,23 @@ def boek_mutatie_direct(
             description=omschrijving,
         )
         document = client.get_bank_mutation_direct_booking(rlz_document_id)
+        na = client.get_payment_transaction(payment_transaction_id, expand="PaymentReferenceList($expand=Document)")
     except RlzApiError as exc:
         raise RlzBankBoekingMislukt(str(exc)) from exc
+
+    # Verificatie ná de PUT: een 204 is bij RLZ geen bewijs (her-PUT op een gestorneerd document =
+    # 204 zonder effect). Verwacht open ná = 0 (volledig) of open vóór − deel.
+    open_na_raw = na.get("OpenAmount")
+    open_na = Decimal(str(open_na_raw)).quantize(Decimal("0.01")) if open_na_raw is not None else None
+    verwacht = Decimal("0") if deel is None else (
+        (open_vooraf - deel.bedrag).quantize(Decimal("0.01")) if open_vooraf is not None else None
+    )
+    if document.get("Status") == 1 or (verwacht is not None and open_na != verwacht):
+        raise RlzBankBoekingMislukt(
+            "Reeleezee accepteerde de boeking (204) maar het effect is niet zichtbaar "
+            f"(documentstatus {document.get('Status')}, open {open_vooraf} → {open_na}, verwacht {verwacht}) — "
+            "niets lokaal geregistreerd; ververs de bankmutaties en probeer opnieuw"
+        )
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         boeking_id = _registreer_boeking(
@@ -337,6 +416,8 @@ def boek_mutatie_direct(
             bron=bron,
             actor_id=actor_id,
             detail_actie="bank_mutatie_direct_geboekt",
+            deel_id=deel.deel_id if deel else None,
+            open_na=open_na,
         )
 
     return BankBoekResultaat(

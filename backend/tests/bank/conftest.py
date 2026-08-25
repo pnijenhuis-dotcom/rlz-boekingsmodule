@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -46,6 +47,10 @@ class FakeBankClient:
         # voor het PaymentReferenceList-leesspoor dat link_payment_item opbouwt.
         self.item_documenten = {str(k): str(v) for k, v in (item_documenten or {}).items()}
         self.links: list[dict[str, Any]] = []
+        # Deel 4 (25-08): aanbetalingsdocumenten (inkoop/verkoop) + debiteuren voor het relatie-pad.
+        self.aanbetalingen: dict[str, dict[str, Any]] = {}
+        self.customers: dict[str, dict[str, Any]] = {}
+        self.factuur_correcties: list[str] = []
 
     # -- contextmanager + verbinding ------------------------------------------------------------
     def __enter__(self) -> FakeBankClient:
@@ -88,14 +93,29 @@ class FakeBankClient:
         return record
 
     def list_payment_items(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        return self.items
+        filter_expr = (params or {}).get("$filter") or ""
+        if filter_expr.startswith("Document/id eq "):
+            doc_id = filter_expr.removeprefix("Document/id eq ").strip()
+            doc = self.aanbetalingen.get(doc_id)
+            if doc is not None and doc.get("Status") == 2 and doc.get("_item"):
+                return [doc["_item"]]
+            return [i for i in self.items if str((i.get("Document") or {}).get("id")) == doc_id]
+        return self.items + [
+            d["_item"] for d in self.aanbetalingen.values() if d.get("Status") == 2 and d.get("_item")
+        ]
 
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         entiteit_id = path.rsplit("/", 1)[-1]
-        if path.startswith("PurchaseInvoices/"):
+        if path.startswith("PurchaseInvoices/") or path.startswith("SalesInvoices/"):
+            if entiteit_id in self.aanbetalingen:
+                return self.aanbetalingen[entiteit_id]
             if entiteit_id not in self.invoices:
                 raise RlzApiError(404, "GET", path, "Niet gevonden (simulatie)")
             return self.invoices[entiteit_id]
+        if path.startswith("Customers/"):
+            if entiteit_id not in self.customers:
+                raise RlzApiError(404, "GET", path, "Niet gevonden (simulatie)")
+            return self.customers[entiteit_id]
         raise RlzApiError(404, "GET", path, "Onbekend pad (simulatie)")
 
     def link_payment_item(
@@ -163,12 +183,18 @@ class FakeBankClient:
             # aangifte-poort toetst dáárop.
             "Date": self.transacties.get(str(payment_transaction_id), {}).get("Date") or "2026-08-10T00:00:00",
         }
+        if self.faal_op == "put_zonder_effect" or str(booking_id) in self.direct_bookings:
+            # STAP-0 25-08 §2.6: her-PUT op een gestorneerd BMDB = 204 zónder effect (document blijft
+            # concept, mutatie ongewijzigd) — óók wat een echte 204-zonder-effect doet.
+            self.direct_bookings.setdefault(str(booking_id), {**document, "Status": 1})
+            return
         self.direct_bookings[str(booking_id)] = document
         tx = self.transacties[str(payment_transaction_id)]
-        tx["OpenAmount"] = 0
-        tx["PaymentReferenceList"] = [
-            {"id": str(uuid.uuid4()), "Sequence": 1, "Amount": tx.get("Amount"), "Document": document}
-        ]
+        som = round(sum(float(l.get("NetAmount") or 0) + float(l.get("TaxAmount") or 0) for l in lines), 2)
+        # Deelbedrag (STAP-0 §2.2): OpenAmount daalt met de som van de regels; volledig = 0.
+        tx["OpenAmount"] = round(float(tx.get("OpenAmount") or 0) - som, 2)
+        refs = tx.setdefault("PaymentReferenceList", [])
+        refs.append({"id": str(uuid.uuid4()), "Sequence": len(refs) + 1, "Amount": som, "Document": document})
 
     def get_bank_mutation_direct_booking(self, booking_id: Any) -> dict[str, Any]:
         record = self.direct_bookings.get(str(booking_id))
@@ -189,10 +215,125 @@ class FakeBankClient:
         document["Status"] = 1
         for tx in self.transacties.values():
             refs = tx.get("PaymentReferenceList") or []
-            if any((ref.get("Document") or {}).get("id") == str(booking_id) for ref in refs):
-                # Schrijf-PoC §6: OpenAmount hersteld, maar de referentie blijft naar het (nu
-                # concept-)document wijzen — het gestorneerde document wordt zelf de huls.
-                tx["OpenAmount"] = tx.get("Amount")
+            for ref in refs:
+                if (ref.get("Document") or {}).get("id") == str(booking_id):
+                    # Schrijf-PoC §6 / STAP-0 25-08 §2.4: het deel komt terug op de mutatie, de
+                    # referentie blijft naar het (nu concept-)document wijzen (huls-rol).
+                    tx["OpenAmount"] = round(float(tx.get("OpenAmount") or 0) + float(ref.get("Amount") or 0), 2)
+
+    # -- aanbetalingsdocumenten (deel 4 punt 3) ---------------------------------------------------
+    def _put_aanbetaling(self, pad: str, invoice_id: Any, entity_id: Any, lines: list[dict[str, Any]], extra: dict) -> None:
+        if self.faal_op == "put_aanbetaling":
+            raise RlzApiError(500, "PUT", f"{pad}/{invoice_id}", "PUT mislukt (simulatie)")
+        bestaand = self.aanbetalingen.get(str(invoice_id))
+        self.aanbetalingen[str(invoice_id)] = {
+            "id": str(invoice_id), "Entity": {"id": str(entity_id)}, "DocumentLineList": lines,
+            "Status": 1, "ReceiptNumber": (bestaand or {}).get("ReceiptNumber") or f"RLZ-04-{len(self.aanbetalingen) + 1:08d}",
+            "Reference": extra.get("Reference"), "Date": "2026-08-25T00:00:00", "_pad": pad,
+            # Her-PUT op hetzelfde GUID ná storno: géén nieuw item meer (STAP-0 H5).
+            "_herboekt": bestaand is not None,
+        }
+
+    def put_purchase_invoice(self, invoice_id: Any, *, vendor_id: Any, lines: list[dict[str, Any]], reference: str | None = None, **extra: Any) -> None:
+        self._put_aanbetaling("PurchaseInvoices", invoice_id, vendor_id, lines, {"Reference": reference, **extra})
+
+    def put_sales_invoice(self, invoice_id: Any, *, customer_id: Any, lines: list[dict[str, Any]], document_category_id: Any = None, **extra: Any) -> None:
+        self._put_aanbetaling("SalesInvoices", invoice_id, customer_id, lines, extra)
+
+    def _book(self, invoice_id: Any) -> None:
+        doc = self.aanbetalingen[str(invoice_id)]
+        doc["Status"] = 2
+        som = round(sum(float(l.get("NetAmount") or 0) + float(l.get("TaxAmount") or 0) for l in doc["DocumentLineList"]), 2)
+        doc["BaseInvoiceAmount"] = som
+        doc["BaseRemainingAmount"] = som
+        if not doc.get("_herboekt") and self.faal_op != "aanbetaling_zonder_item":
+            item_id = str(uuid.uuid4())
+            doc["_item"] = {"id": item_id, "Amount": -som if doc["_pad"] == "PurchaseInvoices" else som,
+                            "PaymentStatus": 1, "Document": {"id": str(invoice_id)}}
+            self.item_documenten[item_id] = str(invoice_id)
+        else:
+            doc["_item"] = None
+
+    def book_purchase_invoice(self, invoice_id: Any) -> None:
+        self._book(invoice_id)
+
+    def book_sales_invoice(self, invoice_id: Any) -> None:
+        self._book(invoice_id)
+
+    def get_sales_invoice(self, invoice_id: Any) -> dict[str, Any]:
+        return self.get(f"SalesInvoices/{invoice_id}")
+
+    def _correct_factuur(self, invoice_id: Any) -> None:
+        if self.faal_op == "correct_aanbetaling":
+            raise RlzApiError(500, "POST", "Actions", "Storno mislukt (simulatie)")
+        self.factuur_correcties.append(str(invoice_id))
+        doc = self.aanbetalingen.get(str(invoice_id))
+        if doc is None:
+            return
+        doc["Status"] = 1
+        doc["_item"] = None
+        for tx in self.transacties.values():
+            for ref in tx.get("PaymentReferenceList") or []:
+                if (ref.get("Document") or {}).get("id") == str(invoice_id) and not ref.get("_gestorneerd"):
+                    ref["_gestorneerd"] = True
+                    ref["Document"]["Status"] = 1
+                    tx["OpenAmount"] = round(float(tx.get("OpenAmount") or 0) - float(ref.get("Amount") or 0), 2)
+
+    def correct_purchase_invoice(self, invoice_id: Any) -> None:
+        self._correct_factuur(invoice_id)
+
+    def correct_sales_invoice(self, invoice_id: Any) -> None:
+        self._correct_factuur(invoice_id)
+
+    def find_customers_by_name(self, *, name: str) -> list[dict[str, Any]]:
+        return [c for c in self.customers.values() if name.lower() in (c.get("Name") or "").lower()]
+
+
+def maak_relatie_referentiedata(
+    admin_engine: Engine,
+    *,
+    administratie_id: uuid.UUID,  # noqa: F811
+    vendor_id: uuid.UUID | None = None,
+    vendor_naam: str = "Steigerhout Import B.V.",
+    met_1806: bool = True,
+    extra_nul_tarief: bool = False,
+) -> dict[str, uuid.UUID]:
+    """Grootboek 1403/1806 + het ene 'Nul tarief' + een crediteur — wat `relatie.bepaal_instelling`
+    deterministisch nodig heeft (deel 4 punt 3)."""
+    vendor_id = vendor_id or uuid.uuid4()
+    gb_1403, gb_1806, nul = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO platform.grootboekrekening (ledger_id, administratie_id, code, naam, soort, is_totaalrekening) "
+                 "VALUES (:id, :aid, '1403', 'Vooruit betaalde inkoopfacturen', 3, false)"),
+            {"id": gb_1403, "aid": administratie_id},
+        )
+        if met_1806:
+            conn.execute(
+                text("INSERT INTO platform.grootboekrekening (ledger_id, administratie_id, code, naam, soort, is_totaalrekening) "
+                     "VALUES (:id, :aid, '1806', 'Vooruitbetaalde verkoopfacturen', 4, false)"),
+                {"id": gb_1806, "aid": administratie_id},
+            )
+        rates = [
+            (nul, "NL, Nul tarief", {"IsRelayed": False, "IsExcempt": False, "IsMixed": False, "TaxKind": 1}, "0"),
+            (uuid.uuid4(), "NL, Geen BTW (Vrijgesteld)", {"IsRelayed": False, "IsExcempt": True, "IsMixed": False, "TaxKind": 1}, "0"),
+            (uuid.uuid4(), "NL, BTW verlegd (hoog)", {"IsRelayed": True, "IsExcempt": False, "IsMixed": False, "TaxKind": 1}, "0"),
+            (uuid.uuid4(), "NL, Hoog", {"IsRelayed": False, "IsExcempt": False, "IsMixed": False, "TaxKind": 1}, "0.21"),
+        ]
+        if extra_nul_tarief:
+            rates.append((uuid.uuid4(), "NL, Nul tarief (dubbel)", {"IsRelayed": False, "IsExcempt": False, "IsMixed": False, "TaxKind": 1}, "0"))
+        for rid, naam, brondata, pct in rates:
+            conn.execute(
+                text("INSERT INTO boekhouding.taxrate_cache (id, administratie_id, naam, percentage, brondata) "
+                     "VALUES (:id, :aid, :naam, :pct, CAST(:bron AS jsonb))"),
+                {"id": rid, "aid": administratie_id, "naam": naam, "pct": pct, "bron": json.dumps(brondata)},
+            )
+        conn.execute(
+            text("INSERT INTO boekhouding.vendor_cache (id, administratie_id, naam, is_gearchiveerd, brondata) "
+                 "VALUES (:id, :aid, :naam, false, '{}')"),
+            {"id": vendor_id, "aid": administratie_id, "naam": vendor_naam},
+        )
+    return {"vendor_id": vendor_id, "gb_1403": gb_1403, "gb_1806": gb_1806, "nul_tarief": nul}
 
 
 def maak_bank_mutatie(

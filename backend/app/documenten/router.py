@@ -582,6 +582,34 @@ def boekvoorstel_opslaan(
 
 
 @router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}/aanbetaling-open",
+    response_model=schemas.AanbetalingSignaalResponse,
+)
+def aanbetaling_open_signaal(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AanbetalingSignaalResponse:
+    """Aanbetaling-open-signaal (besluit Peter 25-08, deel 4 punt 3): staat er voor de crediteur van
+    dit document nog een vooruitbetaling/aanbetaling open (relatie-koppeling uit de bankmodule) —
+    signaal op het controlescherm, alleen op het boekmoment, nooit blokkerend, puur lezen."""
+    from app.bank import aanbetaling_signaal
+
+    signaal = aanbetaling_signaal.signaal_voor_document(administratie_id=administratie_id, document_id=document_id)
+    return schemas.AanbetalingSignaalResponse(
+        toetsbaar=signaal.toetsbaar,
+        treffers=[
+            schemas.AanbetalingTrefferDto(
+                boeking_id=t.boeking_id, payment_transaction_id=t.payment_transaction_id, bedrag=t.bedrag,
+                boekdatum=t.boekdatum, geboekt_op=t.geboekt_op, rlz_boekstuknummer=t.rlz_boekstuknummer,
+                entity_naam=t.entity_naam, vooruit_ledger_id=t.vooruit_ledger_id, herkenning=t.herkenning,
+            )
+            for t in signaal.treffers
+        ],
+    )
+
+
+@router.get(
     "/administraties/{administratie_id}/documenten/{document_id}/al-betaald",
     response_model=schemas.AlBetaaldSignaalResponse,
 )

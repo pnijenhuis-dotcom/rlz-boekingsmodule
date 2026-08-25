@@ -508,6 +508,19 @@ def boek_document(
             regels=voorstel.regels,
             regels_samenvoegen=voorstel.regels_samenvoegen,
         )
+        # Aanbetaling-verrekening (feedbackronde 25-08 deel 4 punt 3): draagt het voorstel de
+        # tegenregel −X op de vooruitbetalingsrekening, dan sluit de open aanbetaling van deze
+        # crediteur ín dezelfde transactie (append-only spoor + audit). Lazy import: geen kring.
+        from app.bank.relatie import markeer_verrekend_bij_boeking
+
+        markeer_verrekend_bij_boeking(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            vendor_id=voorstel.vendor_id,
+            regels=voorstel.regels,
+            actor_id=actor_id,
+        )
         record_audit_event(
             session,
             actor_id=actor_id,

@@ -139,7 +139,7 @@ jobs:
             --allow-unauthenticated \
             --memory 1Gi \
             --cpu 1 \
-            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers" \
+            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers@BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
             --quiet
 
@@ -147,6 +147,11 @@ jobs:
       # beeld als de service, per job een eigen definitie (een hangende sync blokkeert nooit
       # de afleveraar). Config-as-code, zelfde patroon als rlz-migratie hierboven; de
       # Scheduler-cadans + alerting + IAM staan in scripts/gcp/f3_jobs.sh (owner, eenmalig).
+      # rlz-bank-sync is óók ON-DEMAND (feedbackronde 25-08 deel 4 punt 2): het openen van het
+      # bankscherm zet een bank_sync_run klaar en triggert één uitvoering via
+      # BANK_SYNC_JOB_RESOURCE (zelfde metadata-server-auth; run-backend@ heeft roles/run.invoker
+      # op déze job — eenmalig via f3_jobs.sh stap 7). Drempel: < 5 min na de vorige sync
+      # start er geen ronde (BANK_AUTO_VERVERS_DREMPEL_MINUTEN).
       # rlz-projecten-cijfers is ON-DEMAND (géén scheduler): de sync-knop zet een wachtrij-rij
       # klaar en triggert één uitvoering via CIJFERS_SYNC_JOB_RESOURCE op de service
       # (achtergrondrun-fix 2026-08-23; run-backend@ heeft roles/run.invoker op déze job —
@@ -166,6 +171,7 @@ jobs:
             "rlz-accordeur-herinneringen|accordeur-herinneringen|600" \
             "rlz-nieuwe-facturen|nieuwe-facturen-melden|600" \
             "rlz-projecten-cijfers|projecten-cijfers-wachtrij|3600" \
+            "rlz-bank-sync|bank-sync-wachtrij|900" \
           ; do
             NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"
             gcloud run jobs deploy "${NAAM}" \
