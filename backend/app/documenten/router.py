@@ -32,6 +32,7 @@ from app.documenten.checks import CheckRapport
 from app.documenten.mime import content_type_voor
 from app.documenten.models import DocumentSoort, IbanAccorderingStatus, IbanSoort, VraagStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
+from app.materiaal.match import MateriaalAfwijkingBevestigingVereist, lees_materiaalmatch
 from app.rlz.credentials import GeenRlzCredentials
 
 # Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): de documenten-endpoints zijn
@@ -379,6 +380,7 @@ def document_detail(
             else None
         ),
         factuurmatch=_lees_match_dto(administratie_id, document_id),
+        materiaalmatch=_lees_materiaalmatch_dto(administratie_id, document_id),
         bron_bestandsnaam=d.bron_bestandsnaam,
         herkomst_mail=(
             schemas.HerkomstMailDto(
@@ -600,9 +602,15 @@ def aanbetaling_open_signaal(
         toetsbaar=signaal.toetsbaar,
         treffers=[
             schemas.AanbetalingTrefferDto(
-                boeking_id=t.boeking_id, payment_transaction_id=t.payment_transaction_id, bedrag=t.bedrag,
-                boekdatum=t.boekdatum, geboekt_op=t.geboekt_op, rlz_boekstuknummer=t.rlz_boekstuknummer,
-                entity_naam=t.entity_naam, vooruit_ledger_id=t.vooruit_ledger_id, herkenning=t.herkenning,
+                boeking_id=t.boeking_id,
+                payment_transaction_id=t.payment_transaction_id,
+                bedrag=t.bedrag,
+                boekdatum=t.boekdatum,
+                geboekt_op=t.geboekt_op,
+                rlz_boekstuknummer=t.rlz_boekstuknummer,
+                entity_naam=t.entity_naam,
+                vooruit_ledger_id=t.vooruit_ledger_id,
+                herkenning=t.herkenning,
             )
             for t in signaal.treffers
         ],
@@ -686,6 +694,7 @@ def document_boeken(
             document_id=document_id,
             actor_id=actor.id,
             match_afwijking_bevestigd=invoer.match_afwijking_bevestigd if invoer else False,
+            materiaal_afwijking_bevestigd=invoer.materiaal_afwijking_bevestigd if invoer else False,
         )
         resultaat = gecombineerd.boek
     except service.DocumentNietGevonden as exc:
@@ -703,6 +712,12 @@ def document_boeken(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"message": str(exc), "match": exc.match_info},
+        ) from exc
+    except MateriaalAfwijkingBevestigingVereist as exc:
+        # D6: zelfde 409-vorm, eigen sleutel — de client toont de materiaal-pop-up.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "materiaalmatch": exc.match_info},
         ) from exc
     except boeken.OngeldigeBoekpoging as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -1363,3 +1378,12 @@ def iban_accordeurs_zetten(
     except iban_accordering.AccordeurBuitenScope as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return schemas.IbanAccordeursResponse(accordeurs=accordeurs)
+
+
+def _lees_materiaalmatch_dto(administratie_id: uuid.UUID, document_id: uuid.UUID):
+    """Materiaalmatch (D6) op het controlescherm — None als er geen match-rij is (geen
+    verhuur-crediteur). Lazy import: de materiaal-schemas kennen de document-schemas niet."""
+    from app.materiaal import schemas as materiaal_schemas
+
+    m = lees_materiaalmatch(administratie_id=administratie_id, document_id=document_id)
+    return materiaal_schemas.MateriaalmatchDto(**m.__dict__) if m else None

@@ -485,6 +485,13 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
             factuurmatch_pipeline.draai_match_voor_document(administratie_id=administratie_id, document_id=document_id)
         except Exception:  # noqa: BLE001 — de match is signalering, nooit een blokkade
             logger.exception("Factuurmatch-run mislukt voor document %s", document_id)
+        # Materiaalmatch (steigerbouw-run D6): verhuur-crediteuren vs geregistreerde leveringen.
+        from app.materiaal import match as materiaalmatch
+
+        try:
+            materiaalmatch.draai_materiaalmatch(administratie_id=administratie_id, document_id=document_id)
+        except Exception:  # noqa: BLE001 — signalering, nooit een blokkade
+            logger.exception("Materiaalmatch-run mislukt voor document %s", document_id)
 
         # Autoboeken-opt-in per leverancier (blok 2, 2026-08-09): post-commit, systeem-actor;
         # elke uitkomst geauditeerd zodra de opt-in aanstaat. Een fout hier mag de

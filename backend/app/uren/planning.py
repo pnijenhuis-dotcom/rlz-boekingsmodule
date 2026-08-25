@@ -21,7 +21,7 @@ de opt-in per administratie (uren_meerwerk_ingeschakeld) — allemaal ook hier s
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -143,6 +143,8 @@ class PlanningWeekData:
     buiten_planning: list[BuitenPlanningMelding]
     dubbele_dagen: list[DubbeleDagMelding]
     dubbele_dag_tellers: list[DubbeleDagTeller]
+    # Wachtrisico-kruissignaal (steigerbouw-run D5): personeel gepland zonder bevestigde levering.
+    wachtrisico: list = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -264,7 +266,8 @@ def plan_toewijzing(
         gebruiker = _vereis_planbare_gebruiker(session, gebruiker_id)
         if session.get(PlanningToewijzing, (administratie_id, gebruiker_id, project_id, datum)) is not None:
             raise OngeldigeInvoer(
-                f"{gebruiker.naam} staat op {datum} al op dit project gepland — één kaartje per persoon per project per dag"
+                f"{gebruiker.naam} staat op {datum} al op dit project gepland — "
+                "één kaartje per persoon per project per dag"
             )
         _zorg_voor_projectkoppeling(
             session, administratie_id=administratie_id, gebruiker=gebruiker, project_id=project_id, actor_id=actor_id
@@ -471,9 +474,7 @@ def _dekking_signalen(
 
     gebruiker_ids = {gid for _, gid, _ in dag_rijen}
     project_ids = {pid for _, _, pid in dag_rijen}
-    namen = {
-        g.id: g.naam for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(gebruiker_ids))).all()
-    }
+    namen = {g.id: g.naam for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(gebruiker_ids))).all()}
     project_namen = {
         p.id: p.naam
         for p in session.scalars(
@@ -668,6 +669,13 @@ def planning_overzicht(
             key=lambda t: (-t.aantal, t.naam or ""),
         )
 
+        # Wachtrisico (D5): personeel × transport — rood op beide tabs (kaart + zijbalk).
+        from app.materiaal.service import wachtrisico_in_sessie
+
+        personeel: dict[tuple[uuid.UUID, date], int] = {}
+        for tw in toewijzingen:
+            personeel[(tw.project_id, tw.datum)] = personeel.get((tw.project_id, tw.datum), 0) + 1
+        wachtrisico = wachtrisico_in_sessie(session, administratie_id=administratie_id, personeel=personeel)
         return PlanningWeekData(
             jaar=jaar,
             weeknummer=weeknummer,
@@ -678,6 +686,7 @@ def planning_overzicht(
             buiten_planning=buiten,
             dubbele_dagen=dubbel,
             dubbele_dag_tellers=tellers,
+            wachtrisico=wachtrisico,
         )
 
 

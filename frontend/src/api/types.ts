@@ -249,6 +249,8 @@ export interface DocumentDetailDto {
   afwijzing: AfwijzingInfoDto | null
   /** Factuurmatch (fase 2): actuele urenmatch-stand — null als geen match van toepassing. */
   factuurmatch?: FactuurmatchDto | null
+  /** Steigerbouw-run D6: materiaalcontrole (verhuur-crediteur) — null zonder koppeling. */
+  materiaalmatch?: import('../planning/transportApi').MateriaalmatchDto | null
   /** Blok "Uit de e-mail" (feedbackronde 25-08 deel 3 punt 1b) — alleen bij mail-herkomst. */
   herkomst_mail?: HerkomstMailDto | null
   /** Aangeleverd origineel (bv. IMG_0412.HEIC) als het document een omgezette afbeelding is (punt 2). */
@@ -403,6 +405,8 @@ export interface BoekvoorstelMetChecksDto {
   checks: CheckRapportDto
   /** Factuurmatch (fase 2): de vers herberekende urenmatch-stand na deze opslag. */
   factuurmatch?: FactuurmatchDto | null
+  /** Steigerbouw-run D6: materiaalcontrole (verhuur-crediteur) — null zonder koppeling. */
+  materiaalmatch?: import('../planning/transportApi').MateriaalmatchDto | null
 }
 
 export interface BoekenResponseDto {

@@ -25,6 +25,7 @@ from app.auth.deps import (
 )
 from app.db.models import GebruikerRol
 from app.documenten.service import DocumentNietGevonden
+from app.materiaal.match import MateriaalAfwijkingBevestigingVereist
 
 router = APIRouter(tags=["accordering"])
 
@@ -192,6 +193,7 @@ def aanbieden(
             actor_id=actor.id,
             actor_rol=actor.rol.value,
             match_afwijking_bevestigd=invoer.match_afwijking_bevestigd if invoer else False,
+            materiaal_afwijking_bevestigd=invoer.materiaal_afwijking_bevestigd if invoer else False,
         )
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -201,6 +203,12 @@ def aanbieden(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"message": str(exc), "match": exc.match_info},
+        ) from exc
+    except MateriaalAfwijkingBevestigingVereist as exc:
+        # D6: zelfde 409-vorm, eigen sleutel — de client toont de materiaal-pop-up.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "materiaalmatch": exc.match_info},
         ) from exc
     except boeken_module.OngeldigeBoekpoging as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

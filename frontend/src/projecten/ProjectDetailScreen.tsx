@@ -5,6 +5,7 @@ import type { VendorLijstDto } from '../api/types'
 import { Badge, Button, Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
+import { MateriaalstandPaneel } from '../planning/MateriaalstandPaneel'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   beslisOntledingRegel,
@@ -159,6 +160,7 @@ export function ProjectDetailScreen() {
         veldwerkers={detail.veldwerkers ?? []}
         actie={actie}
       />
+      <MateriaalstandPaneel administratieId={administratieId} projectId={projectId} />
       <WerknummersPaneel
         administratieId={administratieId}
         projectId={projectId}

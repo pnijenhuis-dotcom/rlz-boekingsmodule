@@ -112,7 +112,11 @@ class Weekstaat(Base):
     __tablename__ = "weekstaat"
     __table_args__ = (
         UniqueConstraint(
-            "administratie_id", "gebruiker_id", "project_id", "jaar", "weeknummer",
+            "administratie_id",
+            "gebruiker_id",
+            "project_id",
+            "jaar",
+            "weeknummer",
             name="uq_weekstaat_persoon_project_week",
         ),
         ForeignKeyConstraint(
@@ -780,11 +784,16 @@ class ProjectPrijsafspraak(Base):
         CheckConstraint(
             "(geldig_vanaf_jaar IS NULL) = (geldig_vanaf_week IS NULL)", name="ck_project_prijsafspraak_vanaf_samen"
         ),
-        CheckConstraint("(geldig_tm_jaar IS NULL) = (geldig_tm_week IS NULL)", name="ck_project_prijsafspraak_tm_samen"),
         CheckConstraint(
-            "geldig_vanaf_week IS NULL OR (geldig_vanaf_week BETWEEN 1 AND 53)", name="ck_project_prijsafspraak_vanaf_week"
+            "(geldig_tm_jaar IS NULL) = (geldig_tm_week IS NULL)", name="ck_project_prijsafspraak_tm_samen"
         ),
-        CheckConstraint("geldig_tm_week IS NULL OR (geldig_tm_week BETWEEN 1 AND 53)", name="ck_project_prijsafspraak_tm_week"),
+        CheckConstraint(
+            "geldig_vanaf_week IS NULL OR (geldig_vanaf_week BETWEEN 1 AND 53)",
+            name="ck_project_prijsafspraak_vanaf_week",
+        ),
+        CheckConstraint(
+            "geldig_tm_week IS NULL OR (geldig_tm_week BETWEEN 1 AND 53)", name="ck_project_prijsafspraak_tm_week"
+        ),
         CheckConstraint(
             "ingetrokken_op IS NULL OR (ingetrokken_reden IS NOT NULL AND length(btrim(ingetrokken_reden)) > 0)",
             name="ck_project_prijsafspraak_ingetrokken_reden",
@@ -820,6 +829,4 @@ class ProjectPrijsafspraak(Base):
         sleutel = (jaar, week)
         if self.geldig_vanaf_jaar is not None and sleutel < (self.geldig_vanaf_jaar, self.geldig_vanaf_week or 1):
             return False
-        if self.geldig_tm_jaar is not None and sleutel > (self.geldig_tm_jaar, self.geldig_tm_week or 53):
-            return False
-        return True
+        return not (self.geldig_tm_jaar is not None and sleutel > (self.geldig_tm_jaar, self.geldig_tm_week or 53))

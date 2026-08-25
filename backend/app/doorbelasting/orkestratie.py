@@ -142,6 +142,7 @@ def boek_document_met_doorbelasting(
     actor_id: uuid.UUID,
     extra_overgang_detail: dict | None = None,
     match_afwijking_bevestigd: bool = False,
+    materiaal_afwijking_bevestigd: bool = False,
     bron_client=None,
     doel_client_factory=None,
 ) -> BoekMetDoorbelastingResultaat:
@@ -157,6 +158,7 @@ def boek_document_met_doorbelasting(
             actor_id=actor_id,
             extra_overgang_detail=extra_overgang_detail,
             match_afwijking_bevestigd=match_afwijking_bevestigd,
+            materiaal_afwijking_bevestigd=materiaal_afwijking_bevestigd,
         )
         return BoekMetDoorbelastingResultaat(
             boek=boek, doorbelasting_run_id=None, doorbelasting=None, doorbelasting_fout=None
@@ -170,6 +172,7 @@ def boek_document_met_doorbelasting(
         actor_id=actor_id,
         extra_overgang_detail={**(extra_overgang_detail or {}), "doorbelasting_na_boeken": str(run.id)},
         match_afwijking_bevestigd=match_afwijking_bevestigd,
+        materiaal_afwijking_bevestigd=materiaal_afwijking_bevestigd,
     )
 
     # Inkoopfactuur staat in RLZ. Vanaf hier is elke fout een zichtbare doorbelasting-fout op de

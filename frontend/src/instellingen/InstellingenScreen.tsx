@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, Switch } from '../ui/basis'
-import type { AdministratieInstellingenDto } from '../api/types'
+import type {
+  AdministratieDto, AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstellingen'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { DossierTypenModal } from './DossierTypenModal'
+import { MateriaalCatalogusBeheer } from './MateriaalCatalogusBeheer'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
 import { BulkBediening } from './BulkBediening'
@@ -304,6 +306,7 @@ export const INSTELLINGEN_SECTIES = [
   { pad: 'accordering', titel: 'Klant-accordering', uitleg: 'Goedkeuring door klanten: lagen, apparaten, staande goedkeuringen.', beheerder: true },
   { pad: 'autoboeken', titel: 'Autoboeken', uitleg: 'Automatisch boeken per leverancier (opt-in, harde checks blijven blokkerend).', beheerder: true },
   { pad: 'doorbelasting', titel: 'Doorbelasting', uitleg: 'Kempen-doorbelasting: toggle, provisie, whitelist doelentiteiten, opruimlijst.', beheerder: true },
+  { pad: 'materiaal', titel: 'Materiaalcatalogus', uitleg: 'Steigerbouw: leveranciers, catalogus (verpakking, m²-lengte), bestel-mailadres, crediteur-koppeling — bron voor bestellingen en transport.', beheerder: true },
   { pad: 'gebruikers', titel: 'Gebruikers & toegang', uitleg: 'Medewerkers, accordeurs en veldwerkers uitnodigen, rollen en scope, blokkeren.', beheerder: true, extern: '/gebruikers' },
 ] as const
 
@@ -867,6 +870,10 @@ export function InstellingenScreen() {
 
       {dossierTypenVoor && (
         <DossierTypenModal administratieId={dossierTypenVoor.id} naam={dossierTypenVoor.naam} onSluiten={() => setDossierTypenVoor(null)} />
+      )}
+
+      {sectie === 'materiaal' && administraties !== null && (
+        <MateriaalCatalogusBeheer administraties={administraties.filter((a) => a.uren_meerwerk_ingeschakeld).map((a) => ({ id: a.id, naam: a.naam }) as AdministratieDto)} />
       )}
 
       {sectie === 'accordering' && administraties !== null && (

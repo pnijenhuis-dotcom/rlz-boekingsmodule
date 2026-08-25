@@ -1919,6 +1919,16 @@ function KeurDetailView({
           </div>
         </div>
       )}
+      {staat !== null && staat.meer_gebouwd_dan_geleverd && (
+        <div className="acc-notitie waarschuw">
+          <span>📦</span>
+          <span>
+            <b>Meer gebouwd dan geleverd</b>: op dit project is {Number(staat.m2_gebouwd_project ?? 0).toLocaleString('nl-NL')} m² gebouwd
+            (incl. deze week) tegenover {Number(staat.m2_geleverd_project ?? 0).toLocaleString('nl-NL')} m² geleverd materiaal — controleer de
+            m²; een signaal, geen blokkade.
+          </span>
+        </div>
+      )}
       {staat !== null && staat.dagen.some((d) => d.boven_dagmax) && (
         <div className="acc-notitie waarschuw">
           <span>⚠️</span>

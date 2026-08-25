@@ -172,6 +172,10 @@ class WeekstaatData:
     afgekeurd_op: datetime | None
     afgekeurd_door_naam: str | None
     afkeur_reden: str | None
+    # m²-toetsbron (D6): geleverde m² (materiaalstand) vs gebouwde m² op het project.
+    m2_geleverd_project: Decimal | None = None
+    m2_gebouwd_project: Decimal | None = None
+    meer_gebouwd_dan_geleverd: bool = False
 
 
 @dataclass(frozen=True)
@@ -378,6 +382,36 @@ def _geplande_datums(session, staat: Weekstaat, dagen: list[WeekstaatDag]) -> se
     )
 
 
+def _m2_toets(session, staat: Weekstaat) -> tuple[Decimal | None, Decimal | None, bool]:
+    """D6-toetsbron bij de keuring: geleverde m² op het project (materiaalstand, alleen
+    status geleverd) naast gebouwde m² = goedgekeurde staten + deze staat. Zonder geregistreerde
+    leveringen géén signaal (niets om tegen te toetsen). Lazy imports: geen kring."""
+    from app.materiaal.service import m2_geleverd_in_sessie
+
+    try:
+        geleverd = m2_geleverd_in_sessie(session, administratie_id=staat.administratie_id, project_id=staat.project_id)
+    except Exception:  # noqa: BLE001 — signalering, nooit een blokkade van de weekstaat
+        logger.exception("m²-toetsbron niet beschikbaar voor staat %s", staat.id)
+        return None, None, False
+    if geleverd is None:
+        return None, None, False
+    gebouwd_goedgekeurd = session.execute(
+        select(func.coalesce(func.sum(WeekstaatDag.m2), 0))
+        .join(Weekstaat, Weekstaat.id == WeekstaatDag.weekstaat_id)
+        .where(
+            Weekstaat.administratie_id == staat.administratie_id,
+            Weekstaat.project_id == staat.project_id,
+            Weekstaat.status == WeekstaatStatus.GOEDGEKEURD.value,
+            Weekstaat.id != staat.id,
+        )
+    ).scalar_one()
+    eigen = session.execute(
+        select(func.coalesce(func.sum(WeekstaatDag.m2), 0)).where(WeekstaatDag.weekstaat_id == staat.id)
+    ).scalar_one()
+    gebouwd = Decimal(gebouwd_goedgekeurd) + Decimal(eigen)
+    return geleverd, gebouwd, gebouwd > geleverd
+
+
 def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
     dagen = list(
         session.scalars(select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id).order_by(WeekstaatDag.datum))
@@ -392,8 +426,12 @@ def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
         | {d.ingevuld_door for d in dagen},
     )
     project = session.get(ProjectCache, (staat.project_id, staat.administratie_id))
+    m2_geleverd, m2_gebouwd, meer_gebouwd = _m2_toets(session, staat)
     return WeekstaatData(
         id=staat.id,
+        m2_geleverd_project=m2_geleverd,
+        m2_gebouwd_project=m2_gebouwd,
+        meer_gebouwd_dan_geleverd=meer_gebouwd,
         administratie_id=staat.administratie_id,
         gebruiker_id=staat.gebruiker_id,
         gebruiker_naam=namen.get(staat.gebruiker_id),

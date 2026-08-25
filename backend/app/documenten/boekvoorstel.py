@@ -31,7 +31,7 @@ from app.documenten.models import (
     DocumentStatus,
     LeverancierVoorkeur,
 )
-from app.documenten.rlz_ids import rlz_herboeking_id, rlz_purchase_invoice_id, rlz_tegenboeking_id
+from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.documenten.service import DocumentNietGevonden
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
@@ -452,6 +452,13 @@ def sla_boekvoorstel_op(
         factuurmatch_pipeline.draai_match_voor_document(administratie_id=administratie_id, document_id=document_id)
     except Exception:  # noqa: BLE001 — de match is signalering, nooit een blokkade
         logger.exception("Factuurmatch-run na voorstel-opslag mislukt voor document %s", document_id)
+    # Materiaalmatch (steigerbouw-run D6): crediteur, project en factuurdatum sturen de toets.
+    from app.materiaal import match as materiaalmatch  # lokaal: houdt de importgraaf klein
+
+    try:
+        materiaalmatch.draai_materiaalmatch(administratie_id=administratie_id, document_id=document_id)
+    except Exception:  # noqa: BLE001 — signalering, nooit een blokkade
+        logger.exception("Materiaalmatch-run na voorstel-opslag mislukt voor document %s", document_id)
 
     # Duplicaatsignaal (besluit Peter 25-08, deel 2 punt 6): herberekenen bij elke veldwijziging
     # — crediteur, referentie en totaal sturen de RLZ-duplicaatquery. Post-commit; signalering

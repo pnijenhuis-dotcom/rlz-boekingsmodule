@@ -64,6 +64,8 @@ export interface PlanningWeekDto {
   buiten_planning: BuitenPlanningMeldingDto[]
   dubbele_dagen: DubbeleDagMeldingDto[]
   dubbele_dag_tellers: DubbeleDagTellerDto[]
+  // Wachtrisico (steigerbouw-run D5): personeel gepland op een dag zonder bevestigde levering.
+  wachtrisico?: { project_id: string; project_naam: string | null; datum: string; aantal_personen: number; transport_id: string | null; leverancier_naam: string | null; samenvatting: string }[]
 }
 
 export function haalPlanning(administratieId: string, jaar: number, weeknummer: number): Promise<PlanningWeekDto> {

@@ -75,8 +75,7 @@ class MatchAfwijkingBevestigingVereist(BoekenFout):
     def __init__(self, match_info: dict) -> None:
         self.match_info = match_info
         super().__init__(
-            "De urenmatch wijkt af van de goedgekeurde weekstaten — boeken vereist een "
-            "expliciete bevestiging"
+            "De urenmatch wijkt af van de goedgekeurde weekstaten — boeken vereist een expliciete bevestiging"
         )
 
 
@@ -347,6 +346,7 @@ def boek_document(
     actor_id: uuid.UUID,
     extra_overgang_detail: dict | None = None,
     match_afwijking_bevestigd: bool = False,
+    materiaal_afwijking_bevestigd: bool = False,
 ) -> BoekResultaat:
     """De boekactie (CLAUDE.md-taak 2.3): harde checks herhalen (nooit de client-kant vertrouwen),
     dan de twee resterende failsafes (toggle+kill switch, volumerem), dan pas de echte RLZ-
@@ -395,6 +395,17 @@ def boek_document(
         actor_id=actor_id,
         bevestigd=match_afwijking_bevestigd,
     )
+    # Materiaalmatch-poort (steigerbouw-run D6, besluit Peter 24-08): zelfde vlag-patroon —
+    # afwijking = 409 mét cijfers, boeken alleen mét de expliciete "ondanks materiaal-afwijking"-klik
+    # (persistent + audit; de systeem-actor bevestigt nooit zelf). Lazy import: geen kring.
+    from app.materiaal.match import toets_materiaalmatch_poort
+
+    toets_materiaalmatch_poort(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        bevestigd=materiaal_afwijking_bevestigd,
+    )
 
     with _rlz_client_voor(administratie_id) as client:
         rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, client=client)
@@ -408,9 +419,7 @@ def boek_document(
 
         with scoped_session(administratie_id) as session:
             if not _is_boeken_toegestaan(session, administratie_id=administratie_id):
-                raise BoekenUitgeschakeld(
-                    "Boeken staat uit voor deze administratie of via de globale kill switch"
-                )
+                raise BoekenUitgeschakeld("Boeken staat uit voor deze administratie of via de globale kill switch")
             limiet = settings.max_boekingen_per_dag_per_administratie
             if _boekingen_vandaag(session, administratie_id=administratie_id) >= limiet:
                 raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} boekingen bereikt voor deze administratie")

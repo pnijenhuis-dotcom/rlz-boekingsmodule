@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0073
+-- Migratie-head bij deze dump: 0074
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1177,6 +1177,177 @@ CREATE TABLE boekhouding.leverancier_werknummer (
 );
 
 ALTER TABLE ONLY boekhouding.leverancier_werknummer FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: materiaal_bestelling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.materiaal_bestelling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    leverancier_id uuid NOT NULL,
+    volgnummer integer NOT NULL,
+    status text NOT NULL,
+    revisie integer NOT NULL,
+    regels jsonb NOT NULL,
+    gewenste_leverdatum date,
+    gewenste_levertijd time without time zone,
+    leveradres text,
+    contactpersoon text,
+    opmerking text,
+    annulering_reden text,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_door uuid NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_materiaal_bestelling_annulering CHECK (((status <> 'geannuleerd'::text) OR ((annulering_reden IS NOT NULL) AND (length(btrim(annulering_reden)) > 0)))),
+    CONSTRAINT ck_materiaal_bestelling_revisie CHECK ((revisie >= 0)),
+    CONSTRAINT ck_materiaal_bestelling_status CHECK ((status = ANY (ARRAY['concept'::text, 'verstuurd'::text, 'geannuleerd'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: materiaal_bestelling_revisie; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.materiaal_bestelling_revisie (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    bestelling_id uuid NOT NULL,
+    revisie integer NOT NULL,
+    regels jsonb NOT NULL,
+    m2_totaal numeric(12,2) NOT NULL,
+    delta jsonb,
+    gewenste_leverdatum date,
+    gewenste_levertijd time without time zone,
+    leveradres text,
+    pdf_opslag_pad text NOT NULL,
+    verzonden_naar text NOT NULL,
+    mail_status text NOT NULL,
+    mail_fout text,
+    verstuurd_door uuid NOT NULL,
+    verstuurd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_materiaal_bestelling_revisie_mail CHECK ((mail_status = ANY (ARRAY['verzonden'::text, 'mislukt'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling_revisie FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: materiaal_categorie; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.materiaal_categorie (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    leverancier_id uuid NOT NULL,
+    naam text NOT NULL,
+    bundel text NOT NULL,
+    volgorde integer NOT NULL,
+    actief boolean NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.materiaal_categorie FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: materiaal_leverancier; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.materiaal_leverancier (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    naam text NOT NULL,
+    bestel_email text,
+    telefoon text,
+    adres text,
+    vendor_id uuid,
+    actief boolean NOT NULL,
+    bijgewerkt_door uuid NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.materiaal_leverancier FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: materiaal_product; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.materiaal_product (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    leverancier_id uuid NOT NULL,
+    categorie_id uuid NOT NULL,
+    naam text NOT NULL,
+    verpakking text,
+    eenheid text NOT NULL,
+    m2_lengte numeric(8,3),
+    volgorde integer NOT NULL,
+    actief boolean NOT NULL,
+    CONSTRAINT ck_materiaal_product_m2_lengte CHECK (((m2_lengte IS NULL) OR (m2_lengte >= (0)::numeric)))
+);
+
+ALTER TABLE ONLY boekhouding.materiaal_product FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: materiaal_transport; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.materiaal_transport (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    leverancier_id uuid NOT NULL,
+    bestelling_id uuid,
+    soort text NOT NULL,
+    datum date NOT NULL,
+    tijdstip time without time zone,
+    status text NOT NULL,
+    status_bron text NOT NULL,
+    status_reden text,
+    status_gewijzigd_door uuid,
+    status_gewijzigd_op timestamp with time zone,
+    regels jsonb NOT NULL,
+    omschrijving text,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_materiaal_transport_annulering CHECK (((status <> 'geannuleerd'::text) OR ((status_reden IS NOT NULL) AND (length(btrim(status_reden)) > 0)))),
+    CONSTRAINT ck_materiaal_transport_soort CHECK ((soort = ANY (ARRAY['levering'::text, 'retour'::text]))),
+    CONSTRAINT ck_materiaal_transport_status CHECK ((status = ANY (ARRAY['gepland'::text, 'bevestigd'::text, 'geleverd'::text, 'geannuleerd'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.materiaal_transport FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: materiaalmatch; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.materiaalmatch (
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    leverancier_id uuid NOT NULL,
+    project_id uuid,
+    uitkomst text NOT NULL,
+    aantal_regels_getoetst integer NOT NULL,
+    aantal_regels_afwijkend integer NOT NULL,
+    aantal_regels_onbekend integer NOT NULL,
+    details jsonb,
+    berekend_op timestamp with time zone DEFAULT now() NOT NULL,
+    afwijking_bevestigd_door uuid,
+    afwijking_bevestigd_op timestamp with time zone,
+    CONSTRAINT ck_materiaalmatch_bevestigd_samen CHECK (((afwijking_bevestigd_door IS NULL) = (afwijking_bevestigd_op IS NULL))),
+    CONSTRAINT ck_materiaalmatch_uitkomst CHECK ((uitkomst = ANY (ARRAY['match'::text, 'afwijking'::text, 'niet_toetsbaar'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.materiaalmatch FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2857,6 +3028,62 @@ ALTER TABLE ONLY boekhouding.leverancier_werknummer
 
 
 --
+-- Name: materiaal_bestelling materiaal_bestelling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling
+    ADD CONSTRAINT materiaal_bestelling_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: materiaal_bestelling_revisie materiaal_bestelling_revisie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling_revisie
+    ADD CONSTRAINT materiaal_bestelling_revisie_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: materiaal_categorie materiaal_categorie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_categorie
+    ADD CONSTRAINT materiaal_categorie_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: materiaal_leverancier materiaal_leverancier_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_leverancier
+    ADD CONSTRAINT materiaal_leverancier_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: materiaal_product materiaal_product_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_product
+    ADD CONSTRAINT materiaal_product_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: materiaal_transport materiaal_transport_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_transport
+    ADD CONSTRAINT materiaal_transport_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: materiaalmatch materiaalmatch_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaalmatch
+    ADD CONSTRAINT materiaalmatch_pkey PRIMARY KEY (document_id);
+
+
+--
 -- Name: meerwerk meerwerk_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3070,6 +3297,46 @@ ALTER TABLE ONLY boekhouding.dossier_herinnering
 
 ALTER TABLE ONLY boekhouding.leverancier_werknummer
     ADD CONSTRAINT uq_leverancier_werknummer UNIQUE (administratie_id, vendor_id, werknummer);
+
+
+--
+-- Name: materiaal_bestelling_revisie uq_materiaal_bestelling_revisie; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling_revisie
+    ADD CONSTRAINT uq_materiaal_bestelling_revisie UNIQUE (bestelling_id, revisie);
+
+
+--
+-- Name: materiaal_bestelling uq_materiaal_bestelling_volgnummer; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling
+    ADD CONSTRAINT uq_materiaal_bestelling_volgnummer UNIQUE (administratie_id, volgnummer);
+
+
+--
+-- Name: materiaal_categorie uq_materiaal_categorie_naam; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_categorie
+    ADD CONSTRAINT uq_materiaal_categorie_naam UNIQUE (leverancier_id, naam);
+
+
+--
+-- Name: materiaal_leverancier uq_materiaal_leverancier_naam; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_leverancier
+    ADD CONSTRAINT uq_materiaal_leverancier_naam UNIQUE (administratie_id, naam);
+
+
+--
+-- Name: materiaal_product uq_materiaal_product_naam; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_product
+    ADD CONSTRAINT uq_materiaal_product_naam UNIQUE (leverancier_id, naam);
 
 
 --
@@ -3761,6 +4028,90 @@ CREATE INDEX ix_leverancier_werknummer_administratie_id ON boekhouding.leveranci
 --
 
 CREATE INDEX ix_leverancier_werknummer_project ON boekhouding.leverancier_werknummer USING btree (administratie_id, project_id);
+
+
+--
+-- Name: ix_materiaal_bestelling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_bestelling_administratie_id ON boekhouding.materiaal_bestelling USING btree (administratie_id);
+
+
+--
+-- Name: ix_materiaal_bestelling_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_bestelling_project ON boekhouding.materiaal_bestelling USING btree (administratie_id, project_id);
+
+
+--
+-- Name: ix_materiaal_bestelling_revisie_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_bestelling_revisie_administratie_id ON boekhouding.materiaal_bestelling_revisie USING btree (administratie_id);
+
+
+--
+-- Name: ix_materiaal_categorie_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_categorie_administratie_id ON boekhouding.materiaal_categorie USING btree (administratie_id);
+
+
+--
+-- Name: ix_materiaal_leverancier_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_leverancier_administratie_id ON boekhouding.materiaal_leverancier USING btree (administratie_id);
+
+
+--
+-- Name: ix_materiaal_product_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_product_administratie_id ON boekhouding.materiaal_product USING btree (administratie_id);
+
+
+--
+-- Name: ix_materiaal_product_leverancier; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_product_leverancier ON boekhouding.materiaal_product USING btree (leverancier_id, categorie_id, volgorde);
+
+
+--
+-- Name: ix_materiaal_transport_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_transport_administratie_id ON boekhouding.materiaal_transport USING btree (administratie_id);
+
+
+--
+-- Name: ix_materiaal_transport_datum; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_transport_datum ON boekhouding.materiaal_transport USING btree (administratie_id, datum);
+
+
+--
+-- Name: ix_materiaal_transport_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaal_transport_project ON boekhouding.materiaal_transport USING btree (administratie_id, project_id, datum);
+
+
+--
+-- Name: ix_materiaalmatch_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaalmatch_administratie_id ON boekhouding.materiaalmatch USING btree (administratie_id);
+
+
+--
+-- Name: ix_materiaalmatch_administratie_uitkomst; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_materiaalmatch_administratie_uitkomst ON boekhouding.materiaalmatch USING btree (administratie_id, uitkomst);
 
 
 --
@@ -5044,6 +5395,22 @@ ALTER TABLE ONLY boekhouding.leverancier_werknummer
 
 
 --
+-- Name: materiaal_bestelling fk_materiaal_bestelling_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling
+    ADD CONSTRAINT fk_materiaal_bestelling_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: materiaal_transport fk_materiaal_transport_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_transport
+    ADD CONSTRAINT fk_materiaal_transport_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: meerwerk fk_meerwerk_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5249,6 +5616,190 @@ ALTER TABLE ONLY boekhouding.leverancier_werknummer
 
 ALTER TABLE ONLY boekhouding.leverancier_werknummer
     ADD CONSTRAINT leverancier_werknummer_bevestigd_door_fkey FOREIGN KEY (bevestigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaal_bestelling materiaal_bestelling_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling
+    ADD CONSTRAINT materiaal_bestelling_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaal_bestelling materiaal_bestelling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling
+    ADD CONSTRAINT materiaal_bestelling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: materiaal_bestelling materiaal_bestelling_bijgewerkt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling
+    ADD CONSTRAINT materiaal_bestelling_bijgewerkt_door_fkey FOREIGN KEY (bijgewerkt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaal_bestelling materiaal_bestelling_leverancier_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling
+    ADD CONSTRAINT materiaal_bestelling_leverancier_id_fkey FOREIGN KEY (leverancier_id) REFERENCES boekhouding.materiaal_leverancier(id);
+
+
+--
+-- Name: materiaal_bestelling_revisie materiaal_bestelling_revisie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling_revisie
+    ADD CONSTRAINT materiaal_bestelling_revisie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: materiaal_bestelling_revisie materiaal_bestelling_revisie_bestelling_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling_revisie
+    ADD CONSTRAINT materiaal_bestelling_revisie_bestelling_id_fkey FOREIGN KEY (bestelling_id) REFERENCES boekhouding.materiaal_bestelling(id);
+
+
+--
+-- Name: materiaal_bestelling_revisie materiaal_bestelling_revisie_verstuurd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_bestelling_revisie
+    ADD CONSTRAINT materiaal_bestelling_revisie_verstuurd_door_fkey FOREIGN KEY (verstuurd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaal_categorie materiaal_categorie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_categorie
+    ADD CONSTRAINT materiaal_categorie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: materiaal_categorie materiaal_categorie_leverancier_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_categorie
+    ADD CONSTRAINT materiaal_categorie_leverancier_id_fkey FOREIGN KEY (leverancier_id) REFERENCES boekhouding.materiaal_leverancier(id);
+
+
+--
+-- Name: materiaal_leverancier materiaal_leverancier_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_leverancier
+    ADD CONSTRAINT materiaal_leverancier_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: materiaal_leverancier materiaal_leverancier_bijgewerkt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_leverancier
+    ADD CONSTRAINT materiaal_leverancier_bijgewerkt_door_fkey FOREIGN KEY (bijgewerkt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaal_product materiaal_product_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_product
+    ADD CONSTRAINT materiaal_product_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: materiaal_product materiaal_product_categorie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_product
+    ADD CONSTRAINT materiaal_product_categorie_id_fkey FOREIGN KEY (categorie_id) REFERENCES boekhouding.materiaal_categorie(id);
+
+
+--
+-- Name: materiaal_product materiaal_product_leverancier_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_product
+    ADD CONSTRAINT materiaal_product_leverancier_id_fkey FOREIGN KEY (leverancier_id) REFERENCES boekhouding.materiaal_leverancier(id);
+
+
+--
+-- Name: materiaal_transport materiaal_transport_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_transport
+    ADD CONSTRAINT materiaal_transport_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaal_transport materiaal_transport_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_transport
+    ADD CONSTRAINT materiaal_transport_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: materiaal_transport materiaal_transport_bestelling_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_transport
+    ADD CONSTRAINT materiaal_transport_bestelling_id_fkey FOREIGN KEY (bestelling_id) REFERENCES boekhouding.materiaal_bestelling(id);
+
+
+--
+-- Name: materiaal_transport materiaal_transport_leverancier_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_transport
+    ADD CONSTRAINT materiaal_transport_leverancier_id_fkey FOREIGN KEY (leverancier_id) REFERENCES boekhouding.materiaal_leverancier(id);
+
+
+--
+-- Name: materiaal_transport materiaal_transport_status_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaal_transport
+    ADD CONSTRAINT materiaal_transport_status_gewijzigd_door_fkey FOREIGN KEY (status_gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaalmatch materiaalmatch_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaalmatch
+    ADD CONSTRAINT materiaalmatch_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: materiaalmatch materiaalmatch_afwijking_bevestigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaalmatch
+    ADD CONSTRAINT materiaalmatch_afwijking_bevestigd_door_fkey FOREIGN KEY (afwijking_bevestigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: materiaalmatch materiaalmatch_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaalmatch
+    ADD CONSTRAINT materiaalmatch_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: materiaalmatch materiaalmatch_leverancier_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.materiaalmatch
+    ADD CONSTRAINT materiaalmatch_leverancier_id_fkey FOREIGN KEY (leverancier_id) REFERENCES boekhouding.materiaal_leverancier(id);
 
 
 --
@@ -6841,6 +7392,97 @@ ALTER TABLE boekhouding.leverancier_werknummer ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY leverancier_werknummer_scope ON boekhouding.leverancier_werknummer USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaal_bestelling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.materiaal_bestelling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: materiaal_bestelling_revisie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.materiaal_bestelling_revisie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: materiaal_bestelling_revisie materiaal_bestelling_revisie_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaal_bestelling_revisie_scope ON boekhouding.materiaal_bestelling_revisie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaal_bestelling materiaal_bestelling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaal_bestelling_scope ON boekhouding.materiaal_bestelling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaal_categorie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.materiaal_categorie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: materiaal_categorie materiaal_categorie_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaal_categorie_scope ON boekhouding.materiaal_categorie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaal_leverancier; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.materiaal_leverancier ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: materiaal_leverancier materiaal_leverancier_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaal_leverancier_scope ON boekhouding.materiaal_leverancier USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaal_product; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.materiaal_product ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: materiaal_product materiaal_product_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaal_product_scope ON boekhouding.materiaal_product USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaal_transport; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.materiaal_transport ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: materiaal_transport materiaal_transport_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaal_transport_scope ON boekhouding.materiaal_transport USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaalmatch; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.materiaalmatch ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: materiaalmatch materiaalmatch_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaalmatch_scope ON boekhouding.materiaalmatch USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

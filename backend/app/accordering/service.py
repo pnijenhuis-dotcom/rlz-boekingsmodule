@@ -350,6 +350,7 @@ def bied_ter_accordering_aan(
     actor_id: uuid.UUID,
     actor_rol: str,
     match_afwijking_bevestigd: bool = False,
+    materiaal_afwijking_bevestigd: bool = False,
 ) -> AkkoordResultaat:
     """De "Ter accordering"-knop (kantoor): bevriest de actieve lagen tot stappen (drempel op
     het totaalbedrag; onbekend bedrag = vereist, fail-closed), zet het document op
@@ -369,6 +370,14 @@ def bied_ter_accordering_aan(
         document_id=document_id,
         actor_id=actor_id,
         bevestigd=match_afwijking_bevestigd,
+    )
+    from app.materiaal.match import toets_materiaalmatch_poort  # D6, zelfde poort-vorm
+
+    toets_materiaalmatch_poort(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        bevestigd=materiaal_afwijking_bevestigd,
     )
 
     # De "Ter accordering"-knop vervangt de boekknop op het controlescherm — dus ook vanaf

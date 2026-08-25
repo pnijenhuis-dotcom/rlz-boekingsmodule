@@ -29,6 +29,7 @@ import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
 import { BoekvoorstelPanel, type GeboektInfo, type ToeTeVoegenRegel } from './BoekvoorstelPanel'
 import { MatchSectie } from './MatchSectie'
+import { MateriaalMatchSectie } from './MateriaalMatchSectie'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
@@ -563,6 +564,16 @@ export function DocumentDetailScreen() {
               administratieId={administratieId}
               documentId={documentId}
               match={detail.factuurmatch}
+              onGewijzigd={laadDetail}
+            />
+          )}
+          {/* Materiaalcontrole (steigerbouw-run D6): inkoopfacturen van gekoppelde verhuur-
+              crediteuren vs geregistreerde leveringen — zelfde vlag-patroon als de urenmatch. */}
+          {detail.materiaalmatch && !['geboekt', 'verwijderd', 'gesplitst'].includes(detail.status) && (
+            <MateriaalMatchSectie
+              administratieId={administratieId}
+              documentId={documentId}
+              match={detail.materiaalmatch}
               onGewijzigd={laadDetail}
             />
           )}

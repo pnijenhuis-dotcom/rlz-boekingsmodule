@@ -138,9 +138,15 @@ def _weekstaat_response(data: service.WeekstaatData) -> schemas.WeekstaatDto:
                 voorstel_m2=d.voorstel_m2,
                 voorstel_opmerking=d.voorstel_opmerking,
                 buiten_planning=d.buiten_planning,
+                dag_totaal_uren=d.dag_totaal_uren,
+                boven_dagmax=d.boven_dagmax,
+                dagmax_uren=d.dagmax_uren,
             )
             for d in data.dagen
         ],
+        m2_geleverd_project=data.m2_geleverd_project,
+        m2_gebouwd_project=data.m2_gebouwd_project,
+        meer_gebouwd_dan_geleverd=data.meer_gebouwd_dan_geleverd,
         ingediend_op=data.ingediend_op,
         ingediend_door_naam=data.ingediend_door_naam,
         ingediend_namens=data.ingediend_namens,
@@ -721,6 +727,7 @@ def kantoor_planning(
         buiten_planning=[schemas.BuitenPlanningMeldingDto(**m.__dict__) for m in data.buiten_planning],
         dubbele_dagen=[schemas.DubbeleDagMeldingDto(**m.__dict__) for m in data.dubbele_dagen],
         dubbele_dag_tellers=[schemas.DubbeleDagTellerDto(**t.__dict__) for t in data.dubbele_dag_tellers],
+        wachtrisico=[schemas.WachtrisicoKortDto(**w.__dict__) for w in data.wachtrisico],
     )
 
 

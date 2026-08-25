@@ -87,6 +87,7 @@ class AanbiedenInput(StrikteInvoer):
     kantoor-bevestiging "aanbieden ondanks match-afwijking" — zelfde vlag als de boek-route."""
 
     match_afwijking_bevestigd: bool = False
+    materiaal_afwijking_bevestigd: bool = False
 
 
 class AkkoordInput(StrikteInvoer):

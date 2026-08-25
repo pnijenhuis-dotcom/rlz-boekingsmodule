@@ -38,6 +38,11 @@ class DagDto(BaseModel):
 
 
 class WeekstaatDto(BaseModel):
+    # m²-toetsbron (steigerbouw-run D6): geleverde m² (materiaalstand) naast gebouwde m² op het
+    # project (goedgekeurde staten + deze staat); meer gebouwd dan geleverd = signaal bij de keuring.
+    m2_geleverd_project: Decimal | None = None
+    m2_gebouwd_project: Decimal | None = None
+    meer_gebouwd_dan_geleverd: bool = False
     id: uuid.UUID
     administratie_id: uuid.UUID
     gebruiker_id: uuid.UUID
@@ -432,6 +437,18 @@ class DubbeleDagTellerDto(BaseModel):
     aantal: int  # ongedekte dubbele dagen in de laatste 30 dagen
 
 
+class WachtrisicoKortDto(BaseModel):
+    """D5-kruissignaal op de personeelsplanning: ploeg gepland zonder bevestigde levering."""
+
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    datum: date
+    aantal_personen: int
+    transport_id: uuid.UUID | None = None
+    leverancier_naam: str | None = None
+    samenvatting: str
+
+
 class PlanningWeekDto(BaseModel):
     jaar: int
     weeknummer: int
@@ -442,6 +459,7 @@ class PlanningWeekDto(BaseModel):
     buiten_planning: list[BuitenPlanningMeldingDto]
     dubbele_dagen: list[DubbeleDagMeldingDto]
     dubbele_dag_tellers: list[DubbeleDagTellerDto]
+    wachtrisico: list[WachtrisicoKortDto] = []
 
 
 class PlanningToewijzingRequest(StrikteInvoer):

@@ -49,6 +49,10 @@ export interface WeekstaatDto {
   afgekeurd_op: string | null
   afgekeurd_door_naam: string | null
   afkeur_reden: string | null
+  // m²-toetsbron (steigerbouw-run D6): geleverde m² (materiaalstand) vs gebouwde m² op het project.
+  m2_geleverd_project: string | null
+  m2_gebouwd_project: string | null
+  meer_gebouwd_dan_geleverd: boolean
 }
 
 export interface ProjectKaartDto {

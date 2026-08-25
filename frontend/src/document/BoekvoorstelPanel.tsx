@@ -26,6 +26,8 @@ import {
 import { Checkbox } from '../ui/basis'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { MatchAfwijkingPopup } from '../ui/MatchAfwijkingPopup'
+import { MateriaalAfwijkingPopup } from '../ui/MateriaalAfwijkingPopup'
+import type { MateriaalmatchDto } from '../planning/transportApi'
 import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
@@ -391,6 +393,14 @@ export function BoekvoorstelPanel({
   const [popupMatch, setPopupMatch] = useState<{ melding: string | null; match: MatchAfwijkingDetailDto } | null>(
     null,
   )
+  // Materiaalcontrole (steigerbouw-run D6): 409 mét detail.materiaalmatch — zelfde patroon,
+  // eigen pop-up; bevestigen herhaalt de actie mét materiaal_afwijking_bevestigd.
+  type MateriaalPopupInfo = Pick<MateriaalmatchDto, 'uitkomst' | 'aantal_regels_getoetst' | 'aantal_regels_afwijkend' | 'aantal_regels_onbekend'> & {
+    regels?: NonNullable<MateriaalmatchDto['details']>['regels']
+  }
+  const [popupMateriaal, setPopupMateriaal] = useState<{ melding: string | null; match: MateriaalPopupInfo } | null>(null)
+  // Reeds gegeven bevestigingen reizen mee bij een herhaalde poging (beide poorten kunnen achter elkaar bijten).
+  const [bevestigingen, setBevestigingen] = useState<{ match: boolean; materiaal: boolean }>({ match: false, materiaal: false })
   const [boekenBezig, setBoekenBezig] = useState(false)
   const [boekenFout, setBoekenFout] = useState<string | null>(null)
   const [boekResultaat, setBoekResultaat] = useState<BoekenResponseDto | null>(null)
@@ -797,7 +807,9 @@ export function BoekvoorstelPanel({
     }
   }, [administratieId])
 
-  const boeken = async (matchBevestigd = false) => {
+  const boeken = async (matchBevestigd = false, materiaalBevestigd = false) => {
+    const vlaggen = { match: matchBevestigd || bevestigingen.match, materiaal: materiaalBevestigd || bevestigingen.materiaal }
+    setBevestigingen(vlaggen)
     setBoekenBezig(true)
     setBoekenFout(null)
     try {
@@ -811,10 +823,10 @@ export function BoekvoorstelPanel({
         method: 'POST',
         // Alleen mét een bewuste bevestiging reist er een body mee — het kale POST-contract
         // blijft ongewijzigd (factuurmatch fase 2).
-        ...(matchBevestigd
+        ...(vlaggen.match || vlaggen.materiaal
           ? {
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ match_afwijking_bevestigd: true }),
+              body: JSON.stringify({ match_afwijking_bevestigd: vlaggen.match, materiaal_afwijking_bevestigd: vlaggen.materiaal }),
             }
           : {}),
       })
@@ -870,6 +882,11 @@ export function BoekvoorstelPanel({
         // Factuurmatch fase 2: onbevestigde urenmatch-afwijking → bevestigingspop-up.
         const { message, match } = detail as { message?: string; match: MatchAfwijkingDetailDto }
         setPopupMatch({ melding: message ?? null, match })
+      } else if (resp.status === 409 && detail && typeof detail === 'object' && 'materiaalmatch' in detail) {
+        // Steigerbouw-run D6: onbevestigde materiaal-afwijking → eigen pop-up.
+        const { message, materiaalmatch } = detail as { message?: string; materiaalmatch: MateriaalPopupInfo }
+        setPopupMatch(null)
+        setPopupMateriaal({ melding: message ?? null, match: materiaalmatch })
       } else {
         setBoekenFout(typeof detail === 'string' ? detail : resp.statusText || `Fout (${resp.status})`)
       }
@@ -1440,8 +1457,24 @@ export function BoekvoorstelPanel({
           match={popupMatch.match}
           actieLabel={accorderingAan ? 'Ter accordering ondanks afwijking' : 'Boeken ondanks afwijking'}
           bezig={boekenBezig}
-          onBevestig={() => void boeken(true)}
+          onBevestig={() => {
+            setPopupMatch(null)
+            void boeken(true)
+          }}
           onSluiten={() => setPopupMatch(null)}
+        />
+      )}
+      {popupMateriaal && (
+        <MateriaalAfwijkingPopup
+          melding={popupMateriaal.melding}
+          match={popupMateriaal.match}
+          actieLabel={accorderingAan ? 'Ter accordering ondanks materiaal-afwijking' : 'Boeken ondanks materiaal-afwijking'}
+          bezig={boekenBezig}
+          onBevestig={() => {
+            setPopupMateriaal(null)
+            void boeken(false, true)
+          }}
+          onSluiten={() => setPopupMateriaal(null)}
         />
       )}
     </>

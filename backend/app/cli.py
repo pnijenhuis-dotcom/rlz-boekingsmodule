@@ -380,7 +380,6 @@ def _omzet_reconciliatie(args: argparse.Namespace) -> int:
     return 1
 
 
-
 def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
     """Doorbelasting-failsafe: vergelijk elke doorbelastings-boeking (verkoopfactuur in de bron
     + spiegel-inkoopfactuur in het doel) met de werkelijke RLZ-staat — incl. alle
@@ -454,10 +453,23 @@ def _doorbelasting_seed_kempen(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
         return 1
-    toegevoegd = doorbelasting_service.seed_kempen_mappings(
-        administratie_id=administratie_id, actor_id=beheerder_id
-    )
+    toegevoegd = doorbelasting_service.seed_kempen_mappings(administratie_id=administratie_id, actor_id=beheerder_id)
     print(f"OK         {toegevoegd} mapping(s) toegevoegd ({len(doorbelasting_service.KEMPEN_SEED)} totaal in de seed)")
+    return 0
+
+
+def _materiaal_seed_universal(args: argparse.Namespace) -> int:
+    """Materiaalcatalogus Universal Nederland B.V. laden uit de bestellijst (steigerbouw-run D2;
+    idempotent, nooit verwijderen). Beheerder-id verplicht (audit-actor)."""
+    from app.materiaal import service as materiaal_service
+
+    r = materiaal_service.seed_universal(
+        administratie_id=uuid.UUID(args.administratie_id), actor_id=uuid.UUID(args.beheerder_id)
+    )
+    print(
+        f"Catalogus geseed voor leverancier {r.leverancier_id}: {r.categorieen_nieuw} categorieën nieuw, "
+        f"{r.producten_nieuw} producten nieuw, {r.producten_bestaand} bestaand (ongemoeid)."
+    )
     return 0
 
 
@@ -549,8 +561,7 @@ def _reconciliatie_accepteer(args: argparse.Namespace) -> int:
         print(f"FOUT: {exc}", file=sys.stderr)
         return 1
     print(
-        f"Geaccepteerd: {args.bron}/{soort} [vaf:{args.vingerafdruk}] record={record_id} "
-        f"(acceptatie {acceptatie_id})"
+        f"Geaccepteerd: {args.bron}/{soort} [vaf:{args.vingerafdruk}] record={record_id} (acceptatie {acceptatie_id})"
     )
     print("De afwijking blijft zichtbaar in het rapport, maar zet de exit-code niet meer op 1.")
     return 0
@@ -636,14 +647,11 @@ def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
     try:
         for inhoud in ImapPostvakBron().nieuwe_berichten():
             try:
-                resultaat = intake_verwerking.verwerk_eml(
-                    inhoud, actor_id=SYSTEEM_ACTOR_ID, bron="imap"
-                )
+                resultaat = intake_verwerking.verwerk_eml(inhoud, actor_id=SYSTEEM_ACTOR_ID, bron="imap")
             except intake_verwerking.GeenGeldigIntakeBericht as exc:
                 fouten += 1
                 print(
-                    f"FOUT  ongeldig bericht overgeslagen (blijft in het postvak, "
-                    f"gemarkeerd als gelezen): {exc}",
+                    f"FOUT  ongeldig bericht overgeslagen (blijft in het postvak, gemarkeerd als gelezen): {exc}",
                     file=sys.stderr,
                 )
                 continue
@@ -663,9 +671,7 @@ def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
     except PostvakFout as exc:
         print(f"FOUT  {exc}", file=sys.stderr)
         return 1
-    print(
-        f"Postvak verwerkt: {verwerkt} nieuw, {al_eerder} al eerder verwerkt, {fouten} ongeldig."
-    )
+    print(f"Postvak verwerkt: {verwerkt} nieuw, {al_eerder} al eerder verwerkt, {fouten} ongeldig.")
     return 1 if fouten else 0
 
 
@@ -952,9 +958,7 @@ def _zet_webhook_aflevering(args: argparse.Namespace, *, ingeschakeld: bool) -> 
         print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
         return 1
     try:
-        resultaat = beheer_service.zet_webhook_aflevering_ingeschakeld(
-            actor_id=beheerder_id, ingeschakeld=ingeschakeld
-        )
+        resultaat = beheer_service.zet_webhook_aflevering_ingeschakeld(actor_id=beheerder_id, ingeschakeld=ingeschakeld)
     except beheer_service.BeheerFout as exc:
         print(f"FOUT: {exc}", file=sys.stderr)
         return 1
@@ -1040,7 +1044,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     seed_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
     seed_parser.add_argument(
-        "--maanden", type=int, default=None,
+        "--maanden",
+        type=int,
+        default=None,
         help="Recency-cap in maanden (default: settings.boekingsgeheugen_seed_maanden).",
     )
 
@@ -1055,7 +1061,9 @@ def main(argv: list[str] | None = None) -> int:
         "+ opt-in autoboeken) voor één of alle administraties.",
     )
     bank_sync_parser.add_argument(
-        "--administratie-id", default=None, dest="administratie_id",
+        "--administratie-id",
+        default=None,
+        dest="administratie_id",
         help="Alleen deze administratie (default: alle).",
     )
 
@@ -1106,6 +1114,13 @@ def main(argv: list[str] | None = None) -> int:
     seed_kempen_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
     seed_kempen_parser.add_argument("--beheerder-id", required=True, dest="beheerder_id")
 
+    seed_mat_parser = subparsers.add_parser(
+        "materiaal-seed-universal",
+        help="Materiaalcatalogus Universal Nederland B.V. laden uit de bestellijst (steigerbouw-run D2) — idempotent.",
+    )
+    seed_mat_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
+    seed_mat_parser.add_argument("--beheerder-id", required=True, dest="beheerder_id")
+
     subparsers.add_parser(
         "reconciliatie-alles",
         help="Draai alle vier de reconciliaties (bank, documenten, omzet, doorbelasting) in één "
@@ -1119,9 +1134,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     accepteer_parser.add_argument("--bron", required=True, choices=[b.value for b in ReconciliatieBron])
     accepteer_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
-    accepteer_parser.add_argument(
-        "--vingerafdruk", required=True, help="De [vaf:...]-waarde uit de rapportregel."
-    )
+    accepteer_parser.add_argument("--vingerafdruk", required=True, help="De [vaf:...]-waarde uit de rapportregel.")
     accepteer_parser.add_argument("--reden", required=True, help="Waarom deze afwijking blijft staan.")
     accepteer_parser.add_argument(
         "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
@@ -1283,6 +1296,8 @@ def main(argv: list[str] | None = None) -> int:
         return _doorbelasting_reconciliatie(args)
     if args.commando == "doorbelasting-seed-kempen":
         return _doorbelasting_seed_kempen(args)
+    if args.commando == "materiaal-seed-universal":
+        return _materiaal_seed_universal(args)
     if args.commando == "reconciliatie-alles":
         return _reconciliatie_alles(args)
     if args.commando == "reconciliatie-accepteer":

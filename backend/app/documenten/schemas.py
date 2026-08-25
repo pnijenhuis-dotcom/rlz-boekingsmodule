@@ -136,6 +136,8 @@ class BoekenInput(StrikteInvoer):
     een afwijking met 409 + de match-cijfers."""
 
     match_afwijking_bevestigd: bool = False
+    # Steigerbouw-run D6: expliciete "boeken ondanks materiaal-afwijking"-bevestiging.
+    materiaal_afwijking_bevestigd: bool = False
 
 
 class MatchMailConceptResponse(BaseModel):
@@ -371,6 +373,8 @@ class BoekvoorstelMetChecksResponse(BaseModel):
     # Factuurmatch (fase 2): de vers herberekende matchstand na deze opslag — de
     # auto-checks-lus van het controlescherm houdt de banner er actueel mee.
     factuurmatch: FactuurmatchDto | None = None
+    # Steigerbouw-run D6: materiaalmatch (verhuur-crediteur) — None zonder koppeling.
+    materiaalmatch: dict | None = None
 
 
 class BoekenResponse(BaseModel):

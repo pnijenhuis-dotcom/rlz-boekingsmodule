@@ -5,6 +5,7 @@ import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { Badge, Button } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
+import { TransportTab } from './TransportTab'
 import {
   haalPlanning,
   isoWeekVan,
@@ -85,6 +86,19 @@ export function PlanningScreen() {
   const [kiesCel, setKiesCel] = useState<string | null>(null) // klik-alternatief: persoon kiezen
   // Filterveld boven het grid: versmalt beide blokken live (client-side — één request).
   const [filterTerm, setFilterTerm] = useState('')
+  // Steigerbouw-run D1: tweede tab Transport naast Personeel (URL: ?tab=transport).
+  const tab: 'personeel' | 'transport' = searchParams.get('tab') === 'transport' ? 'transport' : 'personeel'
+  function zetTab(t: 'personeel' | 'transport') {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev)
+        if (t === 'transport') p.set('tab', 'transport')
+        else p.delete('tab')
+        return p
+      },
+      { replace: true },
+    )
+  }
 
   const administratieNaam = useMemo(
     () => (administraties ?? []).find((a) => a.id === administratieId)?.naam ?? 'Administratie',
@@ -518,9 +532,23 @@ export function PlanningScreen() {
         </div>
       </div>
 
-      {fout && <FoutMelding melding="De planning kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
-      {actieFout && <div className="fout">{actieFout}</div>}
+      <div style={{ display: 'flex', gap: 8, margin: '0 0 14px' }} role="tablist" aria-label="Planning-tabs">
+        <Button variant={tab === 'personeel' ? 'primair' : 'secundair'} maat="klein" role="tab" aria-selected={tab === 'personeel'} onClick={() => zetTab('personeel')}>
+          👷 Personeel
+        </Button>
+        <Button variant={tab === 'transport' ? 'primair' : 'secundair'} maat="klein" role="tab" aria-selected={tab === 'transport'} onClick={() => zetTab('transport')}>
+          🚚 Transport
+        </Button>
+      </div>
 
+      {tab === 'transport' && administratieId && (
+        <TransportTab administratieId={administratieId} week={week} dagen={dagen} filterTerm={filterTerm} setFilterTerm={setFilterTerm} />
+      )}
+
+      {tab === 'personeel' && fout && <FoutMelding melding="De planning kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
+      {tab === 'personeel' && actieFout && <div className="fout">{actieFout}</div>}
+
+      {tab === 'personeel' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 16, alignItems: 'start' }}>
         <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
           {data === null && !fout && (
@@ -672,6 +700,28 @@ export function PlanningScreen() {
             })}
           </div>
 
+          {data !== null && (data.wachtrisico ?? []).length > 0 && (
+            <div className="panel">
+              <h2 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)' }}>
+                ⚠ Wachtrisico&apos;s <Badge variant="danger">{(data.wachtrisico ?? []).length}</Badge>
+              </h2>
+              {(data.wachtrisico ?? []).map((w, i) => (
+                <div key={`wr-${i}`} style={{ display: 'flex', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                  <span aria-hidden>🟥</span>
+                  <span>
+                    <b>{w.project_naam ?? '?'} {dagLabel(w.datum)}</b> — ploeg gepland ({w.aantal_personen} man) maar de materiaallevering is niet
+                    bevestigd ({w.samenvatting}).
+                    <span style={{ display: 'block', color: 'var(--muted)', fontSize: 11 }}>
+                      kruissignaal personeel × transport —{' '}
+                      <button className="linkbtn" style={{ fontSize: 11 }} onClick={() => zetTab('transport')}>
+                        naar Transport
+                      </button>
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           {data !== null && (data.dubbele_dagen.length > 0 || data.buiten_planning.length > 0) && (
             <div className="panel">
               <h2 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)' }}>
@@ -724,6 +774,7 @@ export function PlanningScreen() {
           )}
         </div>
       </div>
+      )}
 
       <p className="hint" style={{ marginTop: 14, maxWidth: 980 }}>
         ℹ️ Zo grijpt de planning op de weekstaten in: uren op een gepland project/dag = groen · uren búíten de

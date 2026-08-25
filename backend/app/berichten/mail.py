@@ -32,9 +32,7 @@ class MailVerzendFout(MailFout):
 
 def is_geconfigureerd() -> bool:
     return bool(
-        settings.berichten_smtp_host
-        and settings.berichten_smtp_gebruiker
-        and settings.berichten_smtp_wachtwoord
+        settings.berichten_smtp_host and settings.berichten_smtp_gebruiker and settings.berichten_smtp_wachtwoord
     )
 
 
@@ -43,9 +41,12 @@ def _afzender() -> str:
     return formataddr((settings.berichten_afzender_naam, adres))
 
 
-def bouw_bericht(*, naar: str, onderwerp: str, tekst: str) -> EmailMessage:
+def bouw_bericht(
+    *, naar: str, onderwerp: str, tekst: str, bijlagen: list[tuple[str, bytes, str]] | None = None
+) -> EmailMessage:
     """Plain-text mail (bewust: geen HTML-sjablonen — de inhoud is kort en functioneel, en
-    plain text rendert overal, incl. strenge zakelijke mailclients)."""
+    plain text rendert overal, incl. strenge zakelijke mailclients). `bijlagen` (blok D3,
+    bestelbon-PDF): lijst van (bestandsnaam, bytes, mimetype)."""
     bericht = EmailMessage()
     bericht["From"] = _afzender()
     bericht["To"] = naar
@@ -55,16 +56,23 @@ def bouw_bericht(*, naar: str, onderwerp: str, tekst: str) -> EmailMessage:
     if settings.berichten_reply_to:
         bericht["Reply-To"] = settings.berichten_reply_to
     bericht.set_content(tekst)
+    for bestandsnaam, inhoud, mimetype in bijlagen or []:
+        hoofd, _, sub = mimetype.partition("/")
+        bericht.add_attachment(
+            inhoud, maintype=hoofd or "application", subtype=sub or "octet-stream", filename=bestandsnaam
+        )
     return bericht
 
 
-def verzend_mail(*, naar: str, onderwerp: str, tekst: str) -> None:
+def verzend_mail(
+    *, naar: str, onderwerp: str, tekst: str, bijlagen: list[tuple[str, bytes, str]] | None = None
+) -> None:
     """Verzend één mail, synchroon. Raise-t altijd expliciet bij falen — nooit stil."""
     if not is_geconfigureerd():
         raise MailNietGeconfigureerd(
             "Mailkanaal niet geconfigureerd (BERICHTEN_SMTP_HOST/-GEBRUIKER/-WACHTWOORD ontbreekt)."
         )
-    bericht = bouw_bericht(naar=naar, onderwerp=onderwerp, tekst=tekst)
+    bericht = bouw_bericht(naar=naar, onderwerp=onderwerp, tekst=tekst, bijlagen=bijlagen)
     try:
         with smtplib.SMTP_SSL(settings.berichten_smtp_host, settings.berichten_smtp_poort, timeout=30) as smtp:
             smtp.login(settings.berichten_smtp_gebruiker, settings.berichten_smtp_wachtwoord)
