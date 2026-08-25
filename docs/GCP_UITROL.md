@@ -276,6 +276,8 @@ idempotent conform de F0-les — describe-vóór-create, herdraaibaar na elke de
 - **Bewust open (geen F1-blocker):** `WEBHOOK_HMAC_SECRET` en `ANTHROPIC_API_KEY` zijn
   containers zonder versie (HMAC volgt bij de F4-uitwisseling met vastgoed; de API-key bij
   het AI-gate-klikwerk). Tranche 1 = alleen schema — géén klantdata (F5-poort).
+  **Inmiddels beide ingelost:** HMAC bij de F4-cutover (24-08); `ANTHROPIC_API_KEY`
+  gevuld + gemount **2026-08-25** — zie §"ANTHROPIC_API_KEY-mount" onder F3.
 
 **F1-verificatie-eisen uit het draaiboek — alle vier aantoonbaar gedaan:** upgrade schoon ✓,
 metadata-guard groen tegen dat schema ✓, testdocument geüpload + teruggelezen ✓,
@@ -407,7 +409,8 @@ Gebouwd + lokaal geverifieerd (18 nieuwe unit-tests, suite 1338 groen):
   `gcloud run deploy`) — de éérste run maakt `rlz-migratie` en `rlz-backend` zelf aan, mét
   volledige runtime-config als code: SA's, Cloud SQL, secret-verwijzingen
   (APP_DB_PASSWORD/JWT_SECRET/TOTP_MASTER_KEY; WEBHOOK_HMAC_SECRET + ANTHROPIC_API_KEY
-  bewust NIET gemount — geen versie, mounten zou de revisie-start breken),
+  destijds bewust NIET gemount — geen versie, mounten zou de revisie-start breken; sinds
+  24-08 resp. 25-08 wél gemount, zie §F4-uitvoering en §"ANTHROPIC_API_KEY-mount"),
   `WEBAUTHN_RP_ID`=apex + origin=app-subdomein (F2.3-bouwvereiste), CORS leeg,
   GCS-bucket + KMS-sleutel; concurrency-groep (nooit twee deploys door elkaar);
   volgorde migratie-job → revisie onverkort.
@@ -596,6 +599,44 @@ bewust kort, niet het app-domein).
   NB tot tranche 2 landt intake-mail in de **cloud-DB** (het kantoor werkt nog lokaal)
   — bewust: dit is het infrastructuurbewijs, de lokale .eml-upload blijft het
   werkkanaal tot de cutover.
+
+### ANTHROPIC_API_KEY-mount — UITGEVOERD (2026-08-25, mini-opdracht ná kliktest Peter)
+
+Aanleiding: kliktest 25-08 — zeven verse mail-facturen bij Kempen Facilities kregen
+"AI-extractie overgeslagen: geen Claude-API-key geconfigureerd". Oorzaak: het secret
+`ANTHROPIC_API_KEY` had bewust nog geen bruikbare versie (kopcommentaar deploy.yml) en werd
+nergens gemount. Peter zette de waarde 25-08 10:22 als **versie 2** (`latest`).
+
+- [x] **Waardevrij geverifieerd vooraf:** `gcloud secrets versions list` → versie 2 enabled
+      (latest); IAM-policy van het secret: `roles/secretmanager.secretAccessor` voor
+      `run-backend@` én `run-jobs@` (F1-bindings) — géén grant nodig.
+- [x] **Least-privilege-inventaris (code):** de Claude-client (`app/extractie/client.py`,
+      mét de AI-kostenpoort erin) wordt bereikt vanuit (a) de **service** — upload-extractie
+      + multi-factuur-splitsing (`app/documenten/service.py`), projecten-contractontleding
+      (`app/projecten/ontleding.py`) — en (b) uitsluitend de job **`rlz-intake-imap`**
+      (`app/intake/verwerking.py`, intake-AI achter de `intake_ai`-gate). Geen enkele
+      andere job importeert de extractie-client (sync, reconciliatie, herinneringen,
+      nieuwe-facturen, projecten-cijfers, webhook-afleveraar, migratie) → dáár niet gemount.
+- [x] **deploy.yml (config-as-code):** `ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest` in
+      `--set-secrets` van de service `rlz-backend` én in de `--update-secrets` van de
+      `rlz-intake-imap`-update-stap (ná de job-lus, naast `INTAKE_IMAP_WACHTWOORD`);
+      kopcommentaar "bewust geen versie" vervangen.
+- [x] **Live gezet in dezelfde gang** (F4-patroon: de hook-push vuurt pas ná de run) via
+      `gcloud run services update --update-secrets` → revisie **`rlz-backend-00190-hss`**
+      uitgerold en serveert 100 % (een onleesbaar/leeg secret had de revisie-start laten
+      falen — dat is de mount-toets), `/health` 200, geen ERROR-logregels op de revisie;
+      `gcloud run jobs update rlz-intake-imap --update-secrets` → job-env draagt het secret.
+      Overige jobs geverifieerd zónder het secret. De eerstvolgende deploy past dezelfde
+      config idempotent toe.
+- [ ] **Live extractie-test (open — klikwerk Peter):** één test-PDF uploaden bij de
+      TEST-administratie (AI-extractie-gate staat daar aan) → tijdlijn toont de
+      AI-extractie (geen "geen_api_key"-overslag meer) en het verbruiksblok op Instellingen
+      telt de call. Code kon dit 25-08 niet zelf: geen browserlogin (TOTP/passkey zijn van
+      Peter), een eenmalige job-execute met code-override én een lokale run tegen de
+      cloud-DB (vereist secretwaarde in de proces-env + ADC) werden door de
+      permissieclassifier geweigerd — bewust niet omzeild. NB de poorten blijven onverkort:
+      `intake_ai`-gate (platform), `ai_extractie_ingeschakeld` per administratie én de
+      AI-kostengrens € 100/mnd.
 
 ### F3.5 — accordeur-herinneringen (toegevoegd 2026-08-15, berichten-bouwsteen)
 
