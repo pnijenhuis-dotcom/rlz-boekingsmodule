@@ -30,7 +30,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `boekhouding`; secrets via **Google Secret Manager** (credential-store: envelope encryption met
   KMS-gewrapte data-keys); documenten (7 jaar bewaarplicht) in **Cloud Storage** met retentie;
   achtergrondwerk (signalering, sync, e-mail-intake) via **Cloud Scheduler + Cloud Run jobs**.
-  Docker Compose = lokale dev. CLOUD Act geaccepteerd; het herzieningsmoment vóór go-live is
+  Docker Compose = lokale dev. **Same-origin-serving (`app/static_frontend.py`): een
+  browser-NAVIGATIE (Accept text/html + Sec-Fetch-Dest document) krijgt via een middleware
+  VÓÓR de routing altijd de SPA — ook als het pad exact een API-route is (bugfix 25-08:
+  `/instellingen/administraties` gaf "Not authenticated"); regressiesweep over álle
+  router-paden in `tests/unit/test_static_frontend.py`; de frontend navigeert daarom nooit
+  rechtstreeks naar een API-URL (bestanden altijd via fetch + blob).** CLOUD Act geaccepteerd; het herzieningsmoment vóór go-live is
   **uitgevoerd als platformbesluit 0021 (akkoord 2026-08-14): CMEK actief** — Cloud SQL
   `rlz-sql2` mét CMEK-key + default-CMEK-key op de documentenbucket (keys `cmek-sql`/
   `cmek-documenten` op keyring `rlz`, jaarrotatie, nooit destroy); client-side
@@ -185,7 +190,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). **Instellingen = landing met
   sectiekaarten → subpagina's `/instellingen/<sectie>` (besluit 25-08, D2; deep-links
   redirecten); de globale boeken-kill-switch heet in de UI/CLI "Boeken platformbreed" — aan =
-  boeken kan, uit = boeken staat plat (D4, alleen presentatie).** Sleep-upload blijft op
+  boeken kan, uit = boeken staat plat (D4, alleen presentatie). Deel 3 (25-08): `/gebruikers`
+  = tabs Kantoor/Veldwerkers/Klant-accordeurs mét tellers, zoekveld + paginering (25) per tab,
+  `?groep=` in de URL, actiekolom sticky rechts (`td.acties`) en compacte administraties-chip;
+  Instellingen › Administraties: IBAN-accordeurs als chips + wijzig-dialoog (één regel per
+  administratie).** Sleep-upload blijft op
   werkvoorraad (tenaamstelling) én klantpagina (direct toegewezen). **GEBOUWD + GETEST in 3
   fases (2026-08-16, kliktest Peter open):** fase 1 designsysteem (Tailwind v4 zónder
   preflight, tokens + `ui/thema.ts` + componentenset `ui/basis/`, controls gemigreerd), fase
@@ -280,6 +289,21 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   herverwerkt i.p.v. vroeg terug te keren, idempotent op (intake_bericht_id, sha256) —
   fix 2026-08-07. Multi-factuur-splitsing: AI-voorstel ALTIJD eerst ter controle, bevestigen =
   deterministische pypdf-splitsing, bron-document terminaal `gesplitst`.
+  **Mail-body bij het boekingsvoorstel (feedbackronde 25-08 deel 3 punt 1, migratie 0069):**
+  de intake bewaart de platte mail-body op `intake_bericht.body_tekst` (HTML → tekst, ruis
+  deterministisch gestript — `app/intake/mailbody.py`), gedeeld door álle documenten uit die
+  mail (FK), zichtbaar als inklapbaar blok "Uit de e-mail" op het controlescherm, en als HINT in
+  toewijzing (uitsluitend een verzamelbak-suggestie `mail_body`, tenaamstelling blijft leidend)
+  én AI-extractie (BSN-gefilterd, begrensd, achter de bestaande gates). Geen backfill.
+  **Afbeeldingen (punt 2, migratie 0070):** JPEG/PNG/HEIC via mail én alle upload-zones →
+  bij binnenkomst deterministisch + verliesvrij naar PDF (`app/documenten/afbeelding.py`,
+  eigen PDF-writer; HEIC eerst naar JPEG) zodat de keten uniform PDF blijft; origineel =
+  brondocument (`document.bron_*`, route `/bronbestand`); onbruikbaar → verzamelbak met reden
+  (mailpad) of 422 (directe upload); inline logo's/< 600 px blijven `niet_verwerkbaar`. De
+  werkvoorraad-sleepzone accepteert sindsdien ook losse PDF/UBL/foto via `POST /intake/bestand`
+  (zelfde tenaamstelling-routing als een mailbijlage). Dependencies staan in `pyproject.toml`
+  (geen requirements.txt) en worden bewaakt door `tests/unit/test_dependencies_gedeclareerd.py`.
+  Zie BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08 DEEL 3".
 - **AI-kostengrens intake (besluit Peter 2026-08-14, GEBOUWD + GETEST zelfde dag, migratie
   0047)**: Anthropic-API-kosten voor intake-AI max € 100 per kalendermaand (Europe/Amsterdam) —
   deterministische kostenmeter (`backend/app/aikosten/`): élke Claude-call append-only gelogd
