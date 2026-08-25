@@ -92,6 +92,9 @@ interface RegelState {
   geheugenFout: boolean
 }
 
+/** Afrondingsmarge btw-hint (regelrij-UI 25-08): tot en met 1 cent is afronding, geen afwijking. */
+const BTW_AFRONDINGSMARGE = 0.0105
+
 const GEEN_HANDMATIGE_VELDEN: HandmatigeVelden = { ledgerId: false, taxrateId: false, projectId: false }
 
 function nieuweRegel(): RegelState {
@@ -1049,7 +1052,11 @@ export function BoekvoorstelPanel({
               const verwachtBtw =
                 percentage !== undefined && nettoAlsGetal !== null ? berekenBtwBedrag(nettoAlsGetal, percentage) : null
               const huidigBtw = bedragAlsGetal(regel.btw)
-              const btwWijktAf = verwachtBtw !== null && (huidigBtw === null || Math.abs(huidigBtw - verwachtBtw) > 0.005)
+              // Regelrij-UI 25-08 (screenshot Peter, LUSSO): alleen een RELEVANTE afwijking is een
+              // melding waard — een puur afrondingsverschil (≤ 1 cent tussen netto × tarief en de
+              // factuur-btw) niet; de factuur-btw is leidend (bestaand beleid).
+              const btwWijktAf =
+                verwachtBtw !== null && (huidigBtw === null || Math.abs(huidigBtw - verwachtBtw) > BTW_AFRONDINGSMARGE)
               return (
               <tr key={regel.key}>
                 <td>
@@ -1163,8 +1170,13 @@ export function BoekvoorstelPanel({
                         onChange={(e) => wijzigRegel(regel.key, 'btw', e.target.value)}
                       />
                       {btwWijktAf && verwachtBtw !== null && (
-                        <div style={{ textAlign: 'right', marginTop: 4 }}>
-                          <span className="chip afwijking">Berekend: € {formatEuro(verwachtBtw)}</span>
+                        <div className="regel-hint" style={{ textAlign: 'right' }}>
+                          <span
+                            className="chip afwijking"
+                            title={`Netto × tarief geeft € ${formatEuro(verwachtBtw)}; het ingevulde bedrag wijkt meer dan 1 cent af. De btw van de factuur is leidend — controleer of het tarief klopt.`}
+                          >
+                            Berekend uit tarief: € {formatEuro(verwachtBtw)} · factuur-btw leidend
+                          </span>
                         </div>
                       )}
                     </>

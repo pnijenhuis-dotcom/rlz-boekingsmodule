@@ -568,6 +568,16 @@ textarea:focus {
   min-width: 0;
 }
 
+/* Regelrij-UI 25-08 (screenshot Peter): alle velden van een regel op één basislijn — een
+ * hint onder een veld (berekend-btw, AI-chip, geheugen-chip) duwt de buurvelden niet meer
+ * naar beneden omdat cellen bovenaan uitlijnen; de hint staat in een eigen regel eronder. */
+.boekingsregels-tabel td {
+  vertical-align: top;
+}
+.boekingsregels-tabel .regel-hint {
+  margin-top: 4px;
+}
+
 /* Chips ín de regeltabel (geheugen, berekend-btw) wrappen binnen hun cel in plaats van als
  * nowrap-regel de buurkolom in te steken — de celoverloop die op 1440–1536px als "klippende
  * rechterkolom" zichtbaar was (responsive-fix 2026-07-15). Chips buiten de tabel houden de
@@ -1045,6 +1055,9 @@ body.dark .combobox-listbox {
   overflow: hidden;
   display: block;
   width: 100%;
+  /* Regelrij-UI 25-08: groeit mee met de inhoud (hoogte via scrollHeight in het component);
+   * nooit meer afkappen na regel 2 ("Factuur 260988 — samengevoegd…"). */
+  overflow-wrap: anywhere;
 }
 
 /* Verkoop-review "breed"-stand (blok C 2026-08-10): gestapeld i.p.v. naast elkaar — de
