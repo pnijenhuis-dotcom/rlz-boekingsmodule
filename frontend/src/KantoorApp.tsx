@@ -7,6 +7,8 @@ import { initThema } from './ui/thema'
 import { ActivateScreen } from './auth/ActivateScreen'
 import { useAuth } from './auth/AuthContext'
 import { isKantoorRol } from './auth/rollen'
+import { landingsPad, useMijnToegang } from './auth/useMijnToegang'
+import { useAdministraties } from './werkvoorraad/useAdministraties'
 import { LoginScreen } from './auth/LoginScreen'
 import { BankDetailScreen } from './bank/BankDetailScreen'
 import { DocumentDetailScreen } from './document/DocumentDetailScreen'
@@ -57,6 +59,27 @@ export function VragenRedirect() {
   )
 }
 
+/** Slimme landing (C1, besluit Peter 24-08): een medewerker met scope op precies één
+ * administratie landt op die klantpagina; mét het module-recht "Meerwerk & urenstaten" en de
+ * opt-in op die administratie direct op het steigerbouw-deel. Alleen op de kale root (geen
+ * query) en fail-closed: bij twijfel/fout gewoon de werkvoorraad. (export voor de test) */
+export function SlimmeLanding() {
+  const [searchParams] = useSearchParams()
+  const toegang = useMijnToegang()
+  const { administraties, fout } = useAdministraties()
+  if (searchParams.toString() !== '') return <WerkvoorraadScreen />
+  if (toegang === undefined || (administraties === null && !fout)) {
+    return (
+      <p className="hint" style={{ padding: 24 }}>
+        Laden…
+      </p>
+    )
+  }
+  const pad = landingsPad(toegang, administraties)
+  if (pad) return <Navigate to={pad} replace />
+  return <WerkvoorraadScreen />
+}
+
 function BeschermdeRoutes() {
   const { status, rol } = useAuth()
 
@@ -82,7 +105,7 @@ function BeschermdeRoutes() {
   return (
     <Routes>
       <Route element={<Shell />}>
-        <Route path="/" element={<WerkvoorraadScreen />} />
+        <Route path="/" element={<SlimmeLanding />} />
         {/* IA-verbouwing (designronde 15-08): Vragen en Bank zijn geen eigen tabbladen meer —
             oude URL's redirecten (niets 404't); het rekening-afletterscherm blijft bestaan. */}
         <Route path="/bank" element={<Navigate to="/?filter=bank" replace />} />

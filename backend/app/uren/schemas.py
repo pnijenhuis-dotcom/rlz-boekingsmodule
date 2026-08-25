@@ -604,3 +604,14 @@ class BedrijfsgegevensBevestigenRequest(StrikteInvoer):
     naam: str | None = Field(default=None, max_length=200)
     plaats: str | None = Field(default=None, max_length=100)
     rechtsvorm: str | None = Field(default=None, max_length=100)
+
+
+class MijnToegangDto(BaseModel):
+    """Slimme landing + Planning-menu (steigerbouw-run C1/C2): heeft de ingelogde kantoormedewerker
+    het module-recht 'Meerwerk & urenstaten' en op welke administraties in zijn scope staat de
+    uren-&-meerwerk-opt-in aan. Fail-closed aan de client-kant: bij twijfel de gewone werkvoorraad."""
+
+    heeft_meerwerk_recht: bool
+    administraties_met_opt_in: list[uuid.UUID]
+    aantal_administraties_in_scope: int
+    is_beheerder: bool

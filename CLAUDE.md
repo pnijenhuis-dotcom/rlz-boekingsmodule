@@ -710,6 +710,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   onbepaalbaar (nooit gokken), m² rekent met goedgekeurde weekstaat-m², geldt óók voor
   bureaufacturen; de match-sectie toont altijd de tariefbron. Weeknummers in alle steigerbouw-
   datumweergaves (B2, `datumMetWeek`).
+  **Slimme landing + Planning-menu (steigerbouw-run 25-08 blok C, GEBOUWD 2026-08-25 —
+  BESLISSINGEN "BLOK C"):** `GET /uren/kantoor/mijn-toegang` voedt `useMijnToegang`; een
+  mono-klant-medewerker (één administratie in scope, geen Beheerder) landt op zijn klantpagina,
+  mét module-recht + opt-in op `/meerwerk?administratie=X`; fail-closed = werkvoorraad. Planning
+  als zijbalk-item bij module-recht + opt-in. **Koude start rlz-backend ≈ 15 s (gemeten 25-08);
+  voorstel `--min-instances 1` ≈ € 7/mnd staat in `docs/COLD_START_ONDERZOEK_25-08.md` — besluit
+  Peter, niet aangezet.**
   **Planning-agenda steigerbouw (ontwerpronde v2 + BOUW akkoord Peter 22-08, mockup
   `planning-steigerbouw.html` = norm; GEBOUWD + GETEST 2026-08-22, migratie 0060 —
   BESLISSINGEN "PLANNING-AGENDA STEIGERBOUW" is canoniek):** kantoor plant ZZP'ers/

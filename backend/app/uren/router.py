@@ -27,6 +27,7 @@ from app.auth.deps import (
     require_beheerder,
     require_meerwerk_urenstaten_recht,
     vereis_administratie_scope,
+    vereis_kantoorrol,
 )
 from app.auth.rollen import is_veldrol
 from app.uren import dossier as dossier_service
@@ -816,6 +817,22 @@ def kantoor_weekstaat_detail(
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return _weekstaat_response(data)
+
+
+@router.get("/kantoor/mijn-toegang", response_model=schemas.MijnToegangDto)
+def kantoor_mijn_toegang(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.MijnToegangDto:
+    """C1/C2 (25-08): voeding voor de slimme landing en het Planning-hoofdmenu-item — module-recht +
+    opt-in-administraties binnen de eigen scope. Alleen kantoorrollen; geen mutatie."""
+    from app.auth import service as auth_service
+    from app.db.models import GebruikerRol
+
+    administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+    return schemas.MijnToegangDto(
+        heeft_meerwerk_recht=service.heeft_meerwerk_urenstaten_recht(gebruiker_id=actor.id, rol=actor.rol),
+        administraties_met_opt_in=[a.id for a in administraties if a.uren_meerwerk_ingeschakeld],
+        aantal_administraties_in_scope=len(administraties),
+        is_beheerder=actor.rol == GebruikerRol.BEHEERDER,
+    )
 
 
 # --- ZZP-dossier: kantoorkant (module-recht + klantscope) -------------------------------------------

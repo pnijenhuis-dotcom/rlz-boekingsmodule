@@ -495,3 +495,26 @@ class TestVeldwerkerCrediteurBeheer:
             headers=_bearer(medewerker, rol="boekhouding"),
         )
         assert resp.status_code == 403
+
+
+class TestMijnToegang:
+    """C1/C2 (25-08): voeding slimme landing + Planning-menu — recht + opt-in binnen de eigen scope."""
+
+    def test_recht_en_opt_in_per_scope(self, admin_engine: Engine, administratie_id, administratie_zonder_opt_in, beheerder_id):
+        medewerker = maak_gebruiker(admin_engine, "boekhouding", "Rob T.")
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=medewerker, administratie_id=administratie_id)
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=medewerker, administratie_id=administratie_zonder_opt_in)
+        resp = client.get("/uren/kantoor/mijn-toegang", headers=_bearer(medewerker, rol="boekhouding"))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["heeft_meerwerk_recht"] is False and body["is_beheerder"] is False
+        assert body["aantal_administraties_in_scope"] == 2
+        assert body["administraties_met_opt_in"] == [str(administratie_id)]
+        uren_service.zet_meerwerk_recht(gebruiker_id=medewerker, ingeschakeld=True, actor_id=beheerder_id)
+        assert client.get("/uren/kantoor/mijn-toegang", headers=_bearer(medewerker, rol="boekhouding")).json()["heeft_meerwerk_recht"] is True
+        # Beheerder: platform-breed, recht altijd.
+        b = client.get("/uren/kantoor/mijn-toegang", headers=_bearer(beheerder_id, rol="beheerder")).json()
+        assert b["is_beheerder"] and b["heeft_meerwerk_recht"]
+        # Veldrol: kantoor-endpoint → 403.
+        zzper = maak_gebruiker(admin_engine, "zzper", "Milan")
+        assert client.get("/uren/kantoor/mijn-toegang", headers=_bearer(zzper, rol="zzper")).status_code == 403

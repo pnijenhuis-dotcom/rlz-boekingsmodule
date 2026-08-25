@@ -3,6 +3,8 @@
 // alleen vormgeving; de navigatie-items en routes zijn ongewijzigd (IA-verbouwing = fase 2).
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { isMonoKlant, planningMenuPad, useMijnToegang } from '../auth/useMijnToegang'
+import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { ThemaKnop } from '../ui/ThemaKnop'
 import { ToastProvider } from '../ui/basis'
 
@@ -16,6 +18,13 @@ function NavItem({ to, end, children }: { to: string; end?: boolean; children: R
 
 export function Shell() {
   const { rol, uitloggen } = useAuth()
+  // C1/C2 (25-08): mono-klant-medewerker ziet geen Werkvoorraad maar zijn klantpagina; Planning
+  // als eigen hoofdmenu-item volgt module-recht + opt-in. Fail-closed: geen toegang-data = het
+  // gewone menu.
+  const toegang = useMijnToegang()
+  const { administraties } = useAdministraties()
+  const monoKlant = isMonoKlant(toegang, administraties)
+  const planningPad = planningMenuPad(toegang)
 
   return (
     <ToastProvider>
@@ -34,9 +43,14 @@ export function Shell() {
               klant leeft op de klantpagina; kantoorbrede dwarsdoorsneden via de klikbare
               KPI-kaarten bovenaan de werkvoorraad. */}
           <div className="nav-kop">Werk</div>
-          <NavItem to="/" end>
-            Werkvoorraad
-          </NavItem>
+          {monoKlant && administraties ? (
+            <NavItem to={`/?administratie=${administraties[0].id}`}>{administraties[0].naam}</NavItem>
+          ) : (
+            <NavItem to="/" end>
+              Werkvoorraad
+            </NavItem>
+          )}
+          {planningPad && <NavItem to={planningPad}>Planning</NavItem>}
           <div className="nav-kop">Inzicht</div>
           <NavItem to="/zoeken">Zoeken</NavItem>
           <NavItem to="/archief">Archief</NavItem>
