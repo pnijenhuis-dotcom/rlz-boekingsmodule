@@ -1559,3 +1559,81 @@ origineel: een her-PUT dáárop zou de DocumentLineList van het origineel vervan
 voorstel, boekdatum = vandaag. Bij "tegenboeken én opnieuw boeken" krijgt de herboeking
 óók een eigen GUID (zelfde reden) en een duplicaat-uitzondering (zelfde
 Entity+Reference+bedrag als het origineel is dáár bewust).
+
+## Bankmutatie op een RELATIE + mutatie SPLITSEN — STAP-0 (25 augustus 2026, test-administratie) — GESLAAGD, mét grenzen
+
+Feedbackronde 25-08 deel 4, punten 3 en 4. Harness `verkenning/poc_bank_relatie_splitsen.py`
+(zelfde waarborgen als de eerdere bank-PoC's: admin-pin, kill switch, TEST-referenties
+`TEST-RELPOC-*`/`TEST-SPLITPOC-*`, append-only audit `output/relpoc_audit.jsonl`, state
+`output/relpoc_state.json`). Read-only recon vooraf óók tegen BLOW (productie, uitsluitend GET):
+over 400 afgeletterde mutaties wijzen koppelingen alleen naar inkoop (1), verkoop (10), memoriaal
+(11 — waaronder RLZ's eigen "Uitbetaald salaris"-memoriaal mét Entity = medewerker, categorie met
+`BankReferenceType 3`), belastingaangifte (7) en Kas & Bank (19). **Een RLZ-eigen "boek op
+relatie zonder document"-vorm bestaat niet** — ook in Peters praktijk niet.
+
+### 1. Alle "relatie zónder document"-vormen zijn dicht — één werkende vorm: het AANBETALINGSDOCUMENT
+
+| Probe | Uitkomst |
+|---|---|
+| A/B/C `PUT BankMutationDirectBookings` mét `Entity` (document-`Account` 1600, regel 1600, beide) | `500 Onverwachte fout` (derde bevestiging van de Entity-muur op BMDB) |
+| D BMDB zónder Entity, regel op koppelrekening 1600 | **204, boekt** (C 1004 bank / D 1600) — maar zónder sub-administratiepost: GB 1600 loopt uit de pas met de crediteurenkaart. **Nooit gebruiken** (gestorneerd; het gestorneerde BMDB-document gaf daarna 404 — RLZ ruimt gestorneerde BMDB's zelf op) |
+| E `PUT OpenBalances/{guid}` mét Entity + Account 1600 (Debit 100) | 204, maar `Entity` wordt **stil genegeerd**, géén PaymentItem; journaal D 1600 / C 2101 "Tegenrekening balansposten" (openingsbalans-mechaniek). ⚠️ `/Actions` leeg, actie 19 → 400: **niet terug te draaien** — document RLZ-63-00000006 staat blijvend in de test-administratie (100 op 1600/2101, TEST-referentie) |
+| F `PUT ManualJournals` mét Entity + categorie "Memoriaal" (D 1600 / C bank) | `500` — óók mét categorie (bevestigt fallback-PoC §3) |
+| Positieve `PUT PaymentTransactions` (ontvangst, +80) | `400 _InvalidData` in álle varianten (Amount / DebitAmount / CreditAmount) — **test-ontvangsten zijn via de API niet aan te maken**; de debiteurkant is daarom alleen als spiegelbeeld vastgelegd, niet live bewezen |
+| **H1 `PUT PurchaseInvoices/{guid}` op de crediteur met ÉÉN regel op systeemrekening 1403 "Vooruit betaalde inkoopfacturen" (0%-tarief, geen btw) + actie 17** | **204/204** → RLZ-04-reeks, Status 2, journaal **D 1403 / C 1600 (crediteur)**, open PaymentItem −100 (PaymentStatus 1) op de Entity. `UseForPurchaseInvoiceDetails=false` op 1403 is voor de API géén blokkade |
+| H2 actie 15 (bewezen vorm) TX_R1 (−100) → aanbetalingspost | 204: mutatie `OpenAmount` 0, aanbetalingsdocument Status 3 (`BasePaidAmount` 100), `PaymentReferenceList` wijst naar het aanbetalingsdocument (DocumentType 1). De post verdwijnt daarmee uit de open-items-collectie — de "aanbetaling" leeft vanaf dan op GB 1403 + het gesloten document, **niet** als open post op de crediteurenkaart |
+| H3 verrekening: échte factuur (200 incl.) mét **tegenregel −100 op 1403** | 204/204: `BaseInvoiceAmount` 100, open post −100 (het restant); journaal D 4699 165,29 / D 1300 34,71 / **C 1403 100** / C 1600 100 — 1403 loopt weer op 0. Dit ís de verrekening (actie 34 blijft dood, zie fallback-PoC) |
+| H4 storno (actie 19) aanbetalingsdocument ná koppeling | 204: mutatie **volledig weer open** (−100, systeemhuls terug), document Status 1, post weg |
+| I `PUT PurchaseInvoices` aanbetalingsregel ZÓNDER `TaxRate` (TaxAmount 0) | 204/204 maar RLZ rekent het crediteur-default **21%** erbij (25,00 → 30,25, regel krijgt het 21%-tarief) — het 0%-tarief moet dus ALTIJD expliciet mee; deterministische keuze in de motor: het ene nationale 0%-tarief dat niet verlegd/vrijgesteld/'zelf specificeren' is ("NL, Nul tarief": `IsRelayed`/`IsExcempt`/`IsMixed` false, `TaxKind` 1) |
+| H5 her-PUT + actie 17 op hetzelfde GUID ná storno | 204/204 maar **géén nieuw PaymentItem** (oud betaalspoor overleeft de concept-rondgang — bekend sinds 09-08) → opnieuw aanbieden vereist een **NIEUW GUID** (cyclus-GUID) |
+
+**Conclusie punt 3:** "koppelen aan relatie" = **aanbetalingsdocument**: inkoop (crediteur) = PurchaseInvoice
+met één regel op 1403; verkoop (debiteur) = spiegelbeeld SalesInvoice met één regel op **1806
+"Vooruitbetaalde verkoopfacturen"** (type 4; niet live bewezen — geen positieve test-TX mogelijk,
+bij de eerste echte casus verifiëren met de storno-terugweg klaar). Daarna afletteren via de
+bewezen actie 15. Verrekening = tegenregel op de latere factuur (RLZ kent geen API-verrekening);
+storno = actie 19 op het aanbetalingsdocument (mutatie komt volledig terug). De "open
+aanbetaling" is in RLZ alleen als GB-saldo 1403/1806 zichtbaar; de per-relatie-administratie
+ervan is dús onze verantwoordelijkheid (`bank_relatie_boeking`, status open → verrekend/gestorneerd).
+
+### 2. Splitsen: mengvorm op één mutatie werkt, storno per deel met één belangrijke asymmetrie
+
+TX_S1 −300, facturen F1 (100) + F2 (50) open op de crediteur:
+
+1. **Twee PaymentItems in één actie 15** (`PaymentItemList: [F1, F2]`, `LinkedAmount −150`) → 204,
+   beide posten gekoppeld (refs 100 + 50), mutatie −150 open. RLZ verdeelt `LinkedAmount` zelf over
+   de lijst (in lijstvolgorde) — voor exacte controle per deel koppelt de motor **één post per call**.
+   ⚠️ F1's item was −99,99 (RLZ herrekent 21% van 82,64 = 17,35) en werd met 100 overgekoppeld →
+   restpost +0,01 "onderweg": LinkedAmount altijd uit de vérse `OpenAmount` van de post afleiden.
+2. **Deel-BMDB** (`PUT BankMutationDirectBookings` −100 op 4699 terwijl −150 open) → 204, `OpenAmount`
+   −50: direct-op-grootboek accepteert een deelbedrag (de bestaande motor eist nu dekking = mutatie —
+   dat is een app-regel, geen RLZ-regel).
+3. Rest −50 op kruisposten (tweede BMDB) → `OpenAmount` 0; `PaymentReferenceList` draagt vier
+   koppelingen (2 posten + 2 BMDB's), de systeemhuls is weg. **De delen sluiten samen de mutatie.**
+4. **Storno BMDB-deel** (actie 19) → `OpenAmount` 0 → −100: exact het deel komt terug. Het
+   gestorneerde BMDB blijft als DocumentType 19/Status 1 in de lijst (huls-rol).
+5. **Storno factuur-deel** (actie 19 op F1) → `OpenAmount` bleef −100 (i.p.v. −200): RLZ werkt
+   `OpenAmount` ná een factuur-storno op een meervoudig gekoppelde mutatie **niet direct** bij (het
+   09-08-"TX6"-beeld); een systeemhuls −100 (Account 2000) verschijnt. Bij de eerstvolgende
+   schrijfactie op de mutatie was `OpenAmount` wél weer consistent (−100 = precies het
+   F1-deel, nadat het 4699-deel opnieuw geboekt was). **Reconciliatie toetst daarom niet alleen op
+   `OpenAmount` maar op Σ(koppelingen met Document.Status ≠ 1).**
+6. **Her-PUT op een gestorneerd BMDB-document (zelfde GUID) = 204 zónder effect; actie 17 erop =
+   409 `APIActions_NotAllowed`.** Een deel (of een hele directe boeking!) opnieuw boeken vereist een
+   **nieuw GUID**. ⚠️ Dit raakt de bestaande motor `app/bank/boeken.py` (deterministisch GUID per
+   mutatie): herboeken ná storno zou stil niets doen → **gefikst in deel 4: cyclus-GUID per
+   (mutatie, deel, cyclus) + verificatie op de verse `OpenAmount` ná de PUT.**
+7. Een BMDB mét nieuw GUID op een mutatie waarvan de rest door een huls "geclaimd" wordt boekt
+   gewoon (Status 3) — de huls is geen blokkade.
+
+**Consequenties punt 4:** de splitsmotor is een geordende compositie van de drie bestaande vormen
+(actie 15 per open post, BMDB per grootboek-deel, aanbetalingsdocument + actie 15 per relatie-deel),
+elk deel met eigen document/GUID; app-regel: som van de delen = mutatiebedrag (server-side
+blokkerend); half-verwerkt = zichtbaar per deel, herstel = ontbrekende delen alsnog (met vers
+`OpenAmount`); storno per deel: grootboek-/relatie-deel komt netjes terug, afletter-deel (storno
+van de factuur) laat de mutatie mogelijk tijdelijk stale — reconciliatie op koppelingen.
+
+Blijvend in de test-administratie (bewust, verwijderen verboden): TX'en TEST-RELPOC-TX1 (−100) en
+TEST-SPLITPOC-TX1 (−300, deels huls), debiteur "TEST PoC debiteur relatie — storneren" (ongebruikt),
+OpenBalance RLZ-63-00000006 (niet storneerbaar), en op concept: F1/F2, aanbetalingsdocument
+TEST-RELPOC-AANB1, factuur TEST-RELPOC-F-VERREKEN, kruisposten-/4699-BMDB's.
