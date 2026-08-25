@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
-import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto } from '../api/types'
+import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, VraagDto } from '../api/types'
+import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
+import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { Checkbox } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
+import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
-import { documentRoute, formatBedrag, formatDatum, formatDatumKort, soortLabel } from './format'
+import { documentRoute, formatBedrag, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
+import { KlantUpload } from './KlantStanden'
 import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
 import { VerwijderDialog } from './VerwijderDialog'
@@ -19,9 +23,19 @@ const STATUSFILTER_ALLE = 'alle'
  * DocumentStatus-waarde uit de backend kan botsen. */
 const STATUSFILTER_AUTOMATISCH = '__automatisch_geboekt'
 
-/* Documenten-deelscherm = WERKEN (IA-besluit 15-08, mockup #scherm-docs): één documentsoort
- * (of alle, incl. geboekt/verwijderd — het herstel-pad mag nooit onbereikbaar zijn),
- * segment-filters op status, zoekveld, verwijderen/herstellen. */
+/** Vaste tab-volgorde (mockup-norm 25-08: minimaal Inkoopfacturen / Verkoopfacturen); onbekende
+ * soorten volgen alfabetisch achteraan. Alleen soorten met teller > 0 krijgen een tab. */
+const SOORT_VOLGORDE = ['inkoopfactuur', 'verkoopfactuur', 'kassarapport', 'waarborg']
+/** Expliciete "alle documenten"-tab (incl. geboekt/verwijderd — het herstel-pad mag nooit
+ * onbereikbaar zijn); zonder `soort`-param kiest het scherm de eerste tab met open werk. */
+export const SOORT_ALLE = 'alle'
+
+/* Klantlanding = documentenlijst (besluit Peter 25-08, feedbackronde punt C — herziet het
+ * IA-besluit 15-08 "klantpagina = standen-tussenlaag"): klik op een klant landt hier, met tabs
+ * per soort (alleen soorten met teller > 0), een compacte klikbare chip-rij met de overige
+ * standen (bank per rekening, vragen, bij klant, afgewezen, IBAN, meerwerk, standen-overzicht) en
+ * de klant-upload. Daaronder het bestaande deelscherm: segment-filters op status (voorkiesbaar
+ * via `?status=`), zoekveld, verwijderen/herstellen. */
 export function DocumentenDeelscherm({
   administratieId,
   administratieNaam,
@@ -31,14 +45,20 @@ export function DocumentenDeelscherm({
 }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const soort = searchParams.get('soort')
+  const soortParam = searchParams.get('soort')
+  const statusParam = searchParams.get('status')
   const { naamVoor } = useMedewerkers(administratieId)
 
   const [documenten, setDocumenten] = useState<DocumentListItemDto[] | null>(null)
   const [lijstFout, setLijstFout] = useState<string | null>(null)
   const [toonVerwijderd, setToonVerwijderd] = useState(false)
   const [zoekterm, setZoekterm] = useState('')
-  const [statusFilter, setStatusFilter] = useState(STATUSFILTER_ALLE)
+  const [statusFilter, setStatusFilter] = useState(statusParam ?? STATUSFILTER_ALLE)
+  // Chip-rij-standen (verrijking — een fout hier blokkeert de lijst nooit, zelfde patroon als de
+  // standen-pagina).
+  const [rekeningen, setRekeningen] = useState<RekeningenDto | null>(null)
+  const [vragen, setVragen] = useState<VraagDto[] | null>(null)
+  const [urenStand, setUrenStand] = useState<UrenStandDto | null>(null)
   const [verwijderenVoor, setVerwijderenVoor] = useState<DocumentListItemDto | null>(null)
   const [verwijderenBezig, setVerwijderenBezig] = useState(false)
   const [verwijderenFout, setVerwijderenFout] = useState<string | null>(null)
@@ -58,6 +78,37 @@ export function DocumentenDeelscherm({
     setDocumenten(null)
     laadDocumenten()
   }, [laadDocumenten])
+
+  // `?status=` uit een chip (Bij klant / Afgewezen / IBAN) kiest het segment-filter voor.
+  useEffect(() => {
+    setStatusFilter(statusParam ?? STATUSFILTER_ALLE)
+  }, [statusParam])
+
+  useEffect(() => {
+    let actueel = true
+    setRekeningen(null)
+    setVragen(null)
+    setUrenStand(null)
+    haalRekeningen(administratieId)
+      .then((data) => {
+        if (actueel) setRekeningen(data)
+      })
+      .catch(() => undefined)
+    haalVragenOp(administratieId, { status: 'open' })
+      .then((data) => {
+        if (actueel) setVragen(data.vragen)
+      })
+      .catch(() => undefined)
+    // Uren & meerwerk: 403/409 = blok bestaat niet voor deze gebruiker/administratie (toon-regel).
+    haalUrenStand(administratieId)
+      .then((data) => {
+        if (actueel) setUrenStand(data)
+      })
+      .catch(() => undefined)
+    return () => {
+      actueel = false
+    }
+  }, [administratieId])
 
   // Live extractiestatus (async extractie): zolang er documenten in de wachtrij of bij de
   // worker staan, ververst de lijst vanzelf.
@@ -101,11 +152,49 @@ export function DocumentenDeelscherm({
     }
   }
 
-  // Soort-scope (deelscherm = één soort; zonder soort-param alle documenten).
+  // Tabs per soort: alleen soorten met openstaand werk (toon-regel), in vaste volgorde.
+  const openPerSoort = useMemo(() => {
+    const tellers = new Map<string, number>()
+    for (const d of documenten ?? []) {
+      if (isOpenstaand(d)) tellers.set(d.soort, (tellers.get(d.soort) ?? 0) + 1)
+    }
+    return tellers
+  }, [documenten])
+  const tabs = useMemo(
+    () =>
+      Array.from(openPerSoort.keys()).sort((a, b) => {
+        const ia = SOORT_VOLGORDE.indexOf(a)
+        const ib = SOORT_VOLGORDE.indexOf(b)
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b)
+      }),
+    [openPerSoort],
+  )
+  // Zonder soort-param: de eerste tab met open werk; niets open → alle documenten.
+  const soort: string | null =
+    soortParam === SOORT_ALLE ? null : soortParam ?? (documenten === null ? null : (tabs[0] ?? null))
+  const toontAlle = documenten !== null && soort === null
+
+  // Soort-scope (tab = één soort; "alle" = alle documenten incl. geboekt/verwijderd).
   const inScope = useMemo(
     () => (documenten === null ? null : soort ? documenten.filter((d) => d.soort === soort) : documenten),
     [documenten, soort],
   )
+
+  // Chip-rij-standen.
+  // Status-tellers over álle documenten (niet alleen "openstaand": bij-klant/afgewezen zijn
+  // eigen standen, ongeacht hoe isOpenstaand ze indeelt).
+  const alle = documenten ?? []
+  const terAccordering = alle.filter((d) => d.status === 'ter_accordering').length
+  const afgewezen = alle.filter((d) => d.status === 'afgewezen').length
+  const ibanWachtend = alle.filter((d) => d.status === 'wacht_op_iban_accordering').length
+  const openVragen = vragen?.length ?? 0
+  const openRekeningen = (rekeningen?.rekeningen ?? []).filter((r) => r.open_mutaties > 0)
+  const meerwerkOpen = urenStand
+    ? urenStand.meerwerk_te_beoordelen + urenStand.meerwerk_nog_doorbelasten + urenStand.urenstaten_wachten_op_keuring
+    : 0
+  const naarTab = (s: string) => navigate(`/?administratie=${administratieId}&soort=${s}`)
+  const naarStatus = (status: string) =>
+    navigate(`/?administratie=${administratieId}${soortParam ? `&soort=${soortParam}` : ''}&status=${status}`)
 
   const gefilterd = useMemo(() => {
     if (inScope === null) return null
@@ -141,17 +230,108 @@ export function DocumentenDeelscherm({
               { label: 'Werkvoorraad', naar: '/' },
               { label: administratieNaam, naar: `/?administratie=${administratieId}` },
             ]}
-            huidige={soort ? soortLabel(soort) : 'Alle documenten'}
+            huidige={soort ? soortLabel(soort) : toontAlle ? 'Alle documenten' : 'Te verwerken'}
           />
-          <h1>{soort ? soortLabel(soort) : 'Alle documenten'}</h1>
+          <h1>{administratieNaam}</h1>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
-          <Checkbox checked={toonVerwijderd} onChange={(e) => setToonVerwijderd(e.target.checked)} />
-          Toon verwijderde documenten
-        </label>
+        {ibanWachtend > 0 && (
+          <span className="chip blokkerend">
+            {ibanWachtend} IBAN-{ibanWachtend === 1 ? 'accordering' : 'accorderingen'} wachtend
+          </span>
+        )}
       </div>
 
+      {/* Chip-rij met de overige standen (besluit 25-08, C2): klikbaar naar de bestaande deelschermen;
+          alleen chips met teller > 0 (toon-regel) + de vaste ingang naar het standen-overzicht. */}
+      <div className="standen-chips" role="navigation" aria-label="Overige standen">
+        {openRekeningen.map((r) => (
+          <button
+            type="button"
+            key={r.id}
+            className="chip klaar klikbaar"
+            onClick={() => navigate(`/bank/${administratieId}?rekening=${r.id}`)}
+            title={r.iban ?? undefined}
+          >
+            🏦 {r.naam}: {r.open_mutaties} af te letteren
+          </button>
+        ))}
+        {openVragen > 0 && (
+          <button
+            type="button"
+            className="chip vraag klikbaar"
+            onClick={() => navigate(`/?administratie=${administratieId}&sectie=vragen`)}
+          >
+            ❓ {openVragen} {openVragen === 1 ? 'open vraag' : 'open vragen'} — blokkeert boeken
+          </button>
+        )}
+        {terAccordering > 0 && (
+          <button type="button" className="chip geheugen klikbaar" onClick={() => naarStatus('ter_accordering')}>
+            👤 {terAccordering} bij klant ter accordering
+          </button>
+        )}
+        {afgewezen > 0 && (
+          <button type="button" className="chip vraag klikbaar" onClick={() => naarStatus('afgewezen')}>
+            ✕ {afgewezen} afgewezen — ter controle
+          </button>
+        )}
+        {ibanWachtend > 0 && (
+          <button
+            type="button"
+            className="chip blokkerend klikbaar"
+            onClick={() => naarStatus('wacht_op_iban_accordering')}
+          >
+            IBAN-wissel: {ibanWachtend} wacht op accordering
+          </button>
+        )}
+        {urenStand && meerwerkOpen > 0 && (
+          <button
+            type="button"
+            className="chip klaar klikbaar"
+            onClick={() => navigate(`/meerwerk?administratie=${administratieId}`)}
+          >
+            🛠 {meerwerkOpen} meerwerk/urenstaten te beoordelen
+          </button>
+        )}
+        <Link className="chip klikbaar" to={`/?administratie=${administratieId}&sectie=standen`}>
+          Standen &amp; overzicht ›
+        </Link>
+      </div>
+
+      <KlantUpload administratieId={administratieId} onGeupload={laadDocumenten} />
+
       <div className="panel">
+        {/* Tabs per soort (besluit 25-08, C1): alleen soorten met teller > 0; "Alle documenten"
+            houdt het herstel-pad (geboekt/verwijderd) bereikbaar. */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="segment tabs-soort" role="tablist" aria-label="Documentsoort">
+            {tabs.map((t) => (
+              <button
+                type="button"
+                role="tab"
+                key={t}
+                aria-selected={soort === t}
+                className={soort === t ? 'actief' : undefined}
+                onClick={() => naarTab(t)}
+              >
+                {soortLabel(t)} ({openPerSoort.get(t) ?? 0})
+              </button>
+            ))}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={toontAlle}
+              className={toontAlle ? 'actief' : undefined}
+              onClick={() => naarTab(SOORT_ALLE)}
+              title="Alle documenten van deze klant, incl. geboekt en verwijderd (herstel-pad)"
+            >
+              Alle documenten
+            </button>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
+            <Checkbox checked={toonVerwijderd} onChange={(e) => setToonVerwijderd(e.target.checked)} />
+            Toon verwijderde documenten
+          </label>
+        </div>
         {/* Segment-filters (mockup #scherm-docs) + zoekveld. */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div className="segment" role="group" aria-label="Filter op status" style={{ flexWrap: 'wrap' }}>
@@ -219,7 +399,7 @@ export function DocumentenDeelscherm({
           <p className="hint">
             {soort
               ? `Geen ${soortLabel(soort).toLowerCase()} voor deze administratie.`
-              : 'Nog geen documenten voor deze administratie. Upload een factuur op de klantpagina of stuur een mail door als .eml-bestand.'}
+              : 'Nog geen documenten voor deze administratie. Upload hierboven een factuur of stuur een mail door als .eml-bestand.'}
           </p>
         )}
         {inScope !== null && inScope.length > 0 && gefilterd !== null && gefilterd.length === 0 && (

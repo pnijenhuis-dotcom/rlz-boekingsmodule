@@ -162,7 +162,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   RLZ-palet; `mockup/kantoor-modern.html` = de norm voor vormgeving, componenten en IA,
   `mockup/index.html` blijft de bron voor flows/inhoud. **IA-besluit klant-centrisch, drie
   lagen:** klantpagina = STANDEN (documenten per soort, bank per rekening — alleen tellers),
-  deelscherm = WERKEN (één soort/rekening, segment-filters), controlescherm = één document;
+  deelscherm = WERKEN (één soort/rekening, segment-filters), controlescherm = één document
+  — **HERZIEN 25-08 (besluit Peter, kliktest): de klant-klik landt DIRECT op de
+  documentenlijst (`/?administratie=X`) mét tabs per soort (alleen teller > 0 + "Alle
+  documenten") en een klikbare chip-rij met de overige standen; het standen-scherm blijft
+  als `sectie=standen` bereikbaar (niets vervalt, alleen de verplichte tussenstop). Zie
+  BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt C;**
   Vragen-/Bank-tabbladen vervallen, kantoorbrede dwarsdoorsneden via klikbare KPI-kaarten
   bovenaan de werkvoorraad; oude URL's redirecten. Toon-regel: bakken-/soorten-regels alleen
   bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). Sleep-upload blijft op

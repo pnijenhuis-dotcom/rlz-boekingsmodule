@@ -15,12 +15,14 @@ import { KpiRij } from './KpiRij'
 import { teVerwerken, useWerkvoorraadData, type KlantRij } from './useWerkvoorraadData'
 import { useAdministraties } from './useAdministraties'
 
-/** IA (designronde 15-08, mockup/kantoor-modern.html): drie lagen achter één route.
+/** IA (designronde 15-08, mockup/kantoor-modern.html) — HERZIEN 25-08 (besluit Peter, feedbackronde
+ * punt C: "twee kliks is omslachtig"): de klant-klik landt DIRECT op de documentenlijst.
  * `/` = werkvoorraad (KPI's + upload + verzamelbak + klantenlijst);
  * `/?filter=` = kantoorbrede dwarsdoorsnede (klikbare KPI-kaart);
- * `/?administratie=` = klantpagina (STANDEN);
- * `/?administratie=&sectie=documenten[&soort=]` = documenten-deelscherm (WERKEN);
- * `/?administratie=&sectie=vragen[&document=]` = vragen-deelscherm. */
+ * `/?administratie=[&soort=][&status=]` = klantlanding: te-verwerken-documenten mét tabs per soort
+ *   en een chip-rij met de overige standen (`sectie=documenten` blijft als alias werken);
+ * `/?administratie=&sectie=standen` = het standen-overzicht (voorheen de verplichte tussenlaag);
+ * `/?administratie=&sectie=vragen[&document=]` = vragen-deelscherm. Oude URL's blijven werken. */
 export function WerkvoorraadScreen() {
   const { administraties, fout: administratiesFout } = useAdministraties()
   const [searchParams] = useSearchParams()
@@ -52,13 +54,14 @@ export function WerkvoorraadScreen() {
   if (administratieId) {
     const administratie = administraties.find((a) => a.id === administratieId)
     const naam = administratie?.naam ?? 'Onbekende administratie'
-    if (sectie === 'documenten') {
-      return <DocumentenDeelscherm administratieId={administratieId} administratieNaam={naam} />
-    }
     if (sectie === 'vragen') {
       return <VragenScreen />
     }
-    return <KlantStanden administratieId={administratieId} administratieNaam={naam} />
+    if (sectie === 'standen') {
+      return <KlantStanden administratieId={administratieId} administratieNaam={naam} />
+    }
+    // Landing (besluit 25-08) — óók voor de oude `sectie=documenten`-URL's.
+    return <DocumentenDeelscherm administratieId={administratieId} administratieNaam={naam} />
   }
 
   return <WerkvoorraadIngang administraties={administraties} filter={filter} />

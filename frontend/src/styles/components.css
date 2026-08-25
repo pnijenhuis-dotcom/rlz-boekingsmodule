@@ -809,6 +809,34 @@ body.dark .combobox-listbox {
   flex: 1;
 }
 
+/* Klantlanding (besluit 25-08, punt C): compacte klikbare chip-rij met de overige standen boven
+   de documentenlijst. Chips zijn knoppen/links met de bestaande chip-kleuren. */
+.standen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.standen-chips .chip.klikbaar {
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  padding: 5px 11px;
+  text-decoration: none;
+  font-family: inherit;
+}
+
+.standen-chips .chip.klikbaar:hover {
+  border-color: var(--primary);
+}
+
+.standen-chips a.chip.klikbaar {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--primary);
+}
+
 /* ================= Bank (mockup #bank/#bankdetail) ================= */
 
 /* Statistiek-kaarten boven de mutatielijst — 1-op-1 uit de mockup-CSS overgenomen. */

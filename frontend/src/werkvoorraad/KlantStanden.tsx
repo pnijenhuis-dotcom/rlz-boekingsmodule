@@ -15,9 +15,11 @@ import { Breadcrumb } from './Breadcrumb'
 import { documentRoute, formatBedrag, isOpenstaand, ouderdomLabel, soortLabel } from './format'
 import { KpiRij } from './KpiRij'
 
-/* Klantpagina = STANDEN (IA-besluit 15-08, mockup #scherm-klant): documenten per soort, bank
- * per rekening — alleen tellers; werken gebeurt in het deelscherm (één soort/rekening).
- * Toon-regel: secties en regels alleen zichtbaar bij teller > 0. */
+/* Standen-overzicht per klant (IA-besluit 15-08, mockup #scherm-klant): documenten per soort,
+ * bank per rekening — alleen tellers. HERZIEN 25-08 (besluit Peter, feedbackronde punt C): dit is
+ * niet langer de verplichte tussenstop — een klant-klik landt direct op de documentenlijst
+ * (`/?administratie=`); dit scherm blijft bereikbaar als `sectie=standen` via de chip-rij
+ * ("Standen & overzicht"), niets vervalt. Toon-regel: secties/regels alleen bij teller > 0. */
 
 interface SoortStand {
   soort: string
@@ -146,8 +148,14 @@ export function KlantStanden({
     <div>
       <div className="topbar">
         <div>
-          <Breadcrumb stappen={[{ label: 'Werkvoorraad', naar: '/' }]} huidige={administratieNaam} />
-          <h1>{administratieNaam}</h1>
+          <Breadcrumb
+            stappen={[
+              { label: 'Werkvoorraad', naar: '/' },
+              { label: administratieNaam, naar: `/?administratie=${administratieId}` },
+            ]}
+            huidige="Standen & overzicht"
+          />
+          <h1>{administratieNaam} — standen &amp; overzicht</h1>
         </div>
         {ibanWachtend > 0 && (
           <span className="chip blokkerend">
@@ -164,7 +172,7 @@ export function KlantStanden({
             label: 'Te verwerken',
             waarde: documenten === null ? null : teVerwerken,
             stipKleur: 'warn',
-            onClick: () => navigate(`/?administratie=${administratieId}&sectie=documenten`),
+            onClick: () => navigate(`/?administratie=${administratieId}`),
           },
           {
             label: 'Vragen',
@@ -252,7 +260,7 @@ export function KlantStanden({
               type="button"
               className="linkbtn"
               style={{ color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
-              onClick={() => navigate(`/?administratie=${administratieId}&sectie=documenten`)}
+              onClick={() => navigate(`/?administratie=${administratieId}&sectie=documenten&soort=alle`)}
             >
               Alle documenten (incl. geboekt en verwijderd) →
             </button>
@@ -525,7 +533,7 @@ export function KlantStanden({
 
 /** Upload gericht op déze klant (besluit 15-08: sleep-upload blijft óók op de klantpagina —
  * direct toegewezen, geen verzamelbak; .eml volgt de tenaamstelling-route). */
-function KlantUpload({ administratieId, onGeupload }: { administratieId: string; onGeupload: () => void }) {
+export function KlantUpload({ administratieId, onGeupload }: { administratieId: string; onGeupload: () => void }) {
   const bestandInputRef = useRef<HTMLInputElement>(null)
   const [bezig, setBezig] = useState(false)
   const [sleepActief, setSleepActief] = useState(false)

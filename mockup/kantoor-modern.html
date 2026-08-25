@@ -291,7 +291,8 @@
               <tr><td><div class="hoofd">Universal Steigerbouw B.V.</div><div class="sub">laatste sync 06:02 · 87 projecten</div></td><td class="num">6</td><td class="num">2</td><td class="num">3</td><td>4 dagen</td><td><span class="badge warn"><span class="stip"></span> Actie nodig</span></td><td><a class="rijlink">Openen →</a></td></tr>
               <tr><td><div class="hoofd">BLOW B.V.</div><div class="sub">laatste sync 06:04 · omzetrapport klaar</div></td><td class="num">3</td><td class="num">0</td><td class="num">1</td><td>2 dagen</td><td><span class="badge warn"><span class="stip"></span> Actie nodig</span></td><td><a class="rijlink">Openen →</a></td></tr>
               <tr><td><div class="hoofd">Kempen Facilities B.V.</div><div class="sub">doorbelasting actief · 5 doelen</div></td><td class="num">2</td><td class="num">1</td><td class="num">0</td><td>1 dag</td><td><span class="badge info"><span class="stip"></span> Doorbelasting klaar</span></td><td><a class="rijlink">Openen →</a></td></tr>
-              <tr style="cursor:pointer" onclick="toonKlant()"><td><div class="hoofd">Rubicon Vastgoed B.V.</div><div class="sub">vastgoed-koppeling · bank bij</div></td><td class="num">1</td><td class="num">1</td><td class="num">1</td><td>vandaag</td><td><span class="badge ok"><span class="stip"></span> Op schema</span></td><td><a class="rijlink">Openen →</a></td></tr>
+              <!-- HERZIEN 25-08 (besluit Peter, punt C): klant-klik landt direct op de documentenlijst (#scherm-docs), niet meer op de standen-tussenlaag -->
+              <tr style="cursor:pointer" onclick="toonDocs()"><td><div class="hoofd">Rubicon Vastgoed B.V.</div><div class="sub">vastgoed-koppeling · bank bij</div></td><td class="num">1</td><td class="num">1</td><td class="num">1</td><td>vandaag</td><td><span class="badge ok"><span class="stip"></span> Op schema</span></td><td><a class="rijlink">Openen →</a></td></tr>
             </tbody>
           </table>
         </div>
@@ -302,11 +303,14 @@
     <!-- ================= SCHERM: KLANTPAGINA (NIEUW — feedback Peter punt 7) =================
          Eén klant, álles wat openstaat: documenten, vragen, bank, accordering. Geen aparte
          Vragen-/Bank-tabbladen meer nodig voor het dagelijkse werk. -->
+    <!-- HERZIEN 25-08 (besluit Peter, feedbackronde punt C — herziet IA-besluit 15-08 "klantpagina = standen-tussenlaag"):
+         dit standen-overzicht is NIET meer de verplichte stop na een klant-klik; het blijft bereikbaar via de chip
+         "Standen & overzicht ›" op de documentenlanding (#scherm-docs). Niets vervalt. -->
     <section class="scherm" id="scherm-klant">
       <div class="pagina-kop">
         <div>
-          <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> Rubicon Vastgoed B.V.</div>
-          <h1>Rubicon Vastgoed B.V.</h1>
+          <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> <a class="rijlink" onclick="toonDocs()">Rubicon Vastgoed B.V.</a> <span style="color:var(--faint)">›</span> Standen &amp; overzicht</div>
+          <h1>Rubicon Vastgoed B.V. — standen &amp; overzicht</h1>
           <div class="sub">Laatste sync 06:04 · vastgoed-koppeling actief · eigenaar vragen: Peter</div>
         </div>
         <div class="acties"><button class="btn secundair klein" onclick="toast('Mockup: sync gestart voor deze administratie')">⟳ Sync nu</button></div>
@@ -377,18 +381,33 @@
     </section>
 
     <!-- ================= SCHERM: DOCUMENTEN-DEELSCHERM (één soort, gefocust werken) ================= -->
+    <!-- HERZIEN 25-08 (besluit Peter, punt C1/C2): dit is de KLANTLANDING — klik op een klant komt hier.
+         Tabs per soort (alleen soorten met teller > 0, minimaal Inkoopfacturen/Verkoopfacturen + "Alle documenten"
+         voor het herstel-pad), daarboven een compacte klikbare chip-rij met de overige standen (bank per rekening,
+         vragen, bij klant, afgewezen, meerwerk) naar de bestaande deelschermen, en de klant-upload. -->
     <section class="scherm" id="scherm-docs">
       <div class="pagina-kop">
         <div>
-          <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> <a class="rijlink" onclick="toonKlant()">Rubicon Vastgoed B.V.</a> <span style="color:var(--faint)">›</span> Inkoopfacturen</div>
-          <h1>Inkoopfacturen — te verwerken</h1>
-          <div class="sub">34 open · 21 met volledig groen voorstel · oudste 4 dagen</div>
+          <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> Rubicon Vastgoed B.V. <span style="color:var(--faint)">›</span> Inkoopfacturen</div>
+          <h1>Rubicon Vastgoed B.V.</h1>
+          <div class="sub">Laatste sync 06:04 · vastgoed-koppeling actief · eigenaar vragen: Peter</div>
         </div>
-        <div class="acties">
-          <div class="segment"><button class="actief">Alle (34)</button><button>Groen voorstel (21)</button><button>Met vraag (2)</button><button>Oudste eerst</button></div>
-        </div>
+        <div class="acties"><button class="btn secundair klein" onclick="toast('Mockup: sync gestart voor deze administratie')">⟳ Sync nu</button></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <span class="badge info" style="cursor:pointer" onclick="toonBank()">🏦 NL91 RABO … 4471: 3 af te letteren</span>
+        <span class="badge danger" style="cursor:pointer" onclick="toast('Mockup: vragen-deelscherm')">❓ 1 open vraag — blokkeert boeken</span>
+        <span class="badge" style="cursor:pointer" onclick="toast('Mockup: filter bij klant')">👤 1 bij klant ter accordering</span>
+        <span class="badge" style="cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--primary)" onclick="toonKlant()">Standen &amp; overzicht ›</span>
+      </div>
+      <div class="kaart" style="margin-bottom:12px;border-style:dashed;background:var(--panel-2)">
+        <div style="padding:10px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer" onclick="toast('Mockup: upload direct toegewezen aan Rubicon')">⬆ Sleep PDF's hierheen voor <b>Rubicon</b> — meteen toegewezen, geen verzamelbak</div>
       </div>
       <div class="kaart">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px 0">
+          <div class="segment" role="tablist"><button class="actief">Inkoopfacturen (34)</button><button>Verkoopfacturen (7)</button><button title="incl. geboekt en verwijderd (herstel-pad)">Alle documenten</button></div>
+          <div class="segment"><button class="actief">Alle (34)</button><button>Groen voorstel (21)</button><button>Met vraag (2)</button><button>Oudste eerst</button></div>
+        </div>
         <div class="tabel-scroll"><table>
           <thead><tr><th>Document</th><th>Leverancier</th><th class="num">Bedrag</th><th>Voorstel</th><th>Checks</th><th></th></tr></thead>
           <tbody>

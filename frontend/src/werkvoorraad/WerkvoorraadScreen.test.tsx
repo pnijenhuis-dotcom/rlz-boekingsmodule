@@ -17,6 +17,7 @@ function document(overrides: Record<string, unknown>) {
   return {
     id: DOCUMENT_ID,
     bestandsnaam: 'factuur.pdf',
+    soort: 'inkoopfactuur',
     status: 'te_controleren',
     bron: 'upload',
     mogelijk_duplicaat_van: null,
@@ -362,16 +363,22 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
     expect(screen.getByText(/1 klant zonder openstaande zaken \(verborgen\)/)).toBeInTheDocument()
   })
 
-  it('klik op een klant opent de klantpagina met standen (IA-verbouwing 15-08)', async () => {
+  it('klik op een klant landt DIRECT op de documentenlijst met soort-tabs (besluit 25-08, punt C — herziet 15-08)', async () => {
     const gebruiker = userEvent.setup()
     installOverzichtMock([klant({ te_controleren: 1 })])
     renderIngang()
 
     await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
     await gebruiker.click(screen.getByText('Testklant'))
-    // Klantpagina = STANDEN: breadcrumb terug + standen-kop.
-    await waitFor(() => expect(screen.getByText('Te verwerken documenten')).toBeInTheDocument())
+    // Geen standen-tussenlaag meer: meteen de tabs + de documententabel.
+    await waitFor(() => expect(screen.getByRole('tablist', { name: 'Documentsoort' })).toBeInTheDocument())
+    expect(screen.queryByText('Te verwerken documenten')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Werkvoorraad' })).toBeInTheDocument()
+    // Standen blijven bereikbaar via de chip-rij.
+    expect(screen.getByRole('link', { name: /Standen & overzicht/ })).toHaveAttribute(
+      'href',
+      `/?administratie=${ADMINISTRATIE_ID}&sectie=standen`,
+    )
   })
 
   it('bank-teller komt uit het bank-overzicht en een bankfout blokkeert de lijst niet', async () => {
@@ -522,5 +529,90 @@ describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-i
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     expect(screen.queryByText('automatisch')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Automatisch geboekt' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Klantlanding — tabs per soort + chip-rij (besluit Peter 25-08, punt C)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function renderLanding(pad = `/?administratie=${ADMINISTRATIE_ID}`) {
+    return render(
+      <MemoryRouter initialEntries={[pad]}>
+        <WerkvoorraadScreen />
+      </MemoryRouter>,
+    )
+  }
+
+  it('toont alleen tabs voor soorten met teller > 0, kiest de eerste tab en houdt "Alle documenten" bereikbaar', async () => {
+    installFetchMock({
+      documenten: [
+        document({ id: 'd-1', soort: 'inkoopfactuur', status: 'te_controleren', bestandsnaam: 'inkoop.pdf' }),
+        document({ id: 'd-2', soort: 'verkoopfactuur', status: 'klaar_om_te_boeken', bestandsnaam: 'verkoop.xml' }),
+        document({ id: 'd-3', soort: 'kassarapport', status: 'geboekt', bestandsnaam: 'kas.pdf' }),
+      ],
+    })
+    renderLanding()
+
+    await screen.findByRole('tab', { name: 'Inkoopfacturen (1)' })
+    const tablist = screen.getByRole('tablist', { name: 'Documentsoort' })
+    const tabs = within(tablist).getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Inkoopfacturen (1)', 'Verkoopfacturen (1)', 'Alle documenten'])
+    // Geboekt kassarapport = geen open teller → geen tab (toon-regel).
+    expect(within(tablist).queryByText(/Omzetrapporten/)).not.toBeInTheDocument()
+    // Eerste tab actief zonder soort-param: alleen de inkoopfactuur in de tabel.
+    expect(within(tablist).getByRole('tab', { name: 'Inkoopfacturen (1)' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('inkoop.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('verkoop.xml')).not.toBeInTheDocument()
+  })
+
+  it('tab-klik wisselt de soort; "Alle documenten" toont ook geboekte documenten (herstel-pad)', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      documenten: [
+        document({ id: 'd-1', soort: 'inkoopfactuur', status: 'te_controleren', bestandsnaam: 'inkoop.pdf' }),
+        document({ id: 'd-2', soort: 'verkoopfactuur', status: 'klaar_om_te_boeken', bestandsnaam: 'verkoop.xml' }),
+        document({ id: 'd-3', soort: 'kassarapport', status: 'geboekt', bestandsnaam: 'kas.pdf' }),
+      ],
+    })
+    renderLanding()
+
+    await gebruiker.click(await screen.findByRole('tab', { name: 'Verkoopfacturen (1)' }))
+    await waitFor(() => expect(screen.getByText('verkoop.xml')).toBeInTheDocument())
+    expect(screen.queryByText('inkoop.pdf')).not.toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('tab', { name: 'Alle documenten' }))
+    await waitFor(() => expect(screen.getByText('kas.pdf')).toBeInTheDocument())
+    expect(screen.getByText('inkoop.pdf')).toBeInTheDocument()
+    expect(screen.getByText('verkoop.xml')).toBeInTheDocument()
+  })
+
+  it('chip-rij toont alleen standen met teller > 0 en ?status= kiest het segment-filter voor', async () => {
+    installFetchMock({
+      documenten: [
+        document({ id: 'd-1', status: 'te_controleren', bestandsnaam: 'open.pdf' }),
+        document({ id: 'd-2', status: 'ter_accordering', bestandsnaam: 'bij-klant.pdf' }),
+      ],
+    })
+    renderLanding(`/?administratie=${ADMINISTRATIE_ID}&status=ter_accordering`)
+
+    await screen.findByRole('tab', { name: 'Inkoopfacturen (2)' })
+    const chips = screen.getByRole('navigation', { name: 'Overige standen' })
+    expect(within(chips).getByRole('button', { name: /1 bij klant ter accordering/ })).toBeInTheDocument()
+    expect(within(chips).queryByRole('button', { name: /afgewezen/ })).not.toBeInTheDocument()
+    // Voorgekozen statusfilter: alleen het bij-klant-document zichtbaar.
+    await waitFor(() => expect(screen.getByText('bij-klant.pdf')).toBeInTheDocument())
+    expect(screen.queryByText('open.pdf')).not.toBeInTheDocument()
+  })
+
+  it('oude URL sectie=documenten blijft werken en sectie=standen toont het standen-overzicht', async () => {
+    installFetchMock({})
+    renderLanding(`/?administratie=${ADMINISTRATIE_ID}&sectie=documenten`)
+    expect(await screen.findByRole('tablist', { name: 'Documentsoort' })).toBeInTheDocument()
+    vi.unstubAllGlobals()
+    installFetchMock({})
+    renderLanding(`/?administratie=${ADMINISTRATIE_ID}&sectie=standen`)
+    expect(await screen.findByText('Te verwerken documenten')).toBeInTheDocument()
   })
 })
