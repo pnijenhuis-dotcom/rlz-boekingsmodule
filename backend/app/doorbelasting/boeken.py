@@ -207,34 +207,40 @@ def _spiegel_regelspec(
     provisie_btw: Decimal,
     provisie_kosten_ledger_id: uuid.UUID,
     provisie_omschrijving: str,
-) -> list[tuple[uuid.UUID, Decimal, Decimal, str]]:
-    """Eén regelspecificatie (ledger, netto, btw, omschrijving) voor de spiegel-inkoopfactuur,
-    als enige bron voor zowel de RLZ-DocumentLineList als de webhook-regels — wat geboekt
-    wordt en wat aan vastgoed gemeld wordt kan zo nooit uit elkaar lopen."""
-    spec: list[tuple[uuid.UUID, Decimal, Decimal, str]] = []
+) -> list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]]:
+    """Eén regelspecificatie (ledger, netto, btw, omschrijving, project) voor de spiegel-
+    inkoopfactuur, als enige bron voor zowel de RLZ-DocumentLineList als de webhook-regels —
+    wat geboekt wordt en wat aan vastgoed gemeld wordt kan zo nooit uit elkaar lopen.
+    Doorbelasting × projecten (25-08): één spiegel-regel per verdeelregel = per project; de
+    provisieregel draagt géén project (kantoorkosten van de doelentiteit, geen pandkosten)."""
+    spec: list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]] = []
     for r in regels:
         bron_regel = bron_regels[r.bron_regel_id]
         omschrijving = omschrijving_basis
         if bron_regel.omschrijving:
             omschrijving = f"{omschrijving_basis} — {bron_regel.omschrijving}"[:200]
-        spec.append((r.doel_kosten_ledger_id, r.netto_deel, btw_over(r.netto_deel, btw_pct), omschrijving))
-    spec.append((provisie_kosten_ledger_id, provisie, provisie_btw, provisie_omschrijving))
+        spec.append((r.doel_kosten_ledger_id, r.netto_deel, btw_over(r.netto_deel, btw_pct), omschrijving, r.project_id))
+    spec.append((provisie_kosten_ledger_id, provisie, provisie_btw, provisie_omschrijving, None))
     return spec
 
 
 def _spiegel_lines_van_spec(
-    spec: list[tuple[uuid.UUID, Decimal, Decimal, str]], *, btw_taxrate_id: uuid.UUID
+    spec: list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]], *, btw_taxrate_id: uuid.UUID
 ) -> list[dict]:
-    return [
-        {
+    lines: list[dict] = []
+    for ledger_id, netto, btw, omschrijving, project_id in spec:
+        line: dict = {
             "Account": {"id": str(ledger_id)},
             "TaxRate": {"id": str(btw_taxrate_id)},
             "NetAmount": float(netto),
             "TaxAmount": float(btw),
             "Description": omschrijving,
         }
-        for ledger_id, netto, btw, omschrijving in spec
-    ]
+        # Zelfde vorm als app/documenten/boeken.py: Project alleen zetten als er een is.
+        if project_id is not None:
+            line["Project"] = {"id": str(project_id)}
+        lines.append(line)
+    return lines
 
 
 def _bouw_spiegel_webhook_payload(
@@ -247,7 +253,7 @@ def _bouw_spiegel_webhook_payload(
     spiegel_boekstuknummer: str | None,
     referentie: str,
     factuurdatum: date,
-    regelspec: list[tuple[uuid.UUID, Decimal, Decimal, str]],
+    regelspec: list[tuple[uuid.UUID, Decimal, Decimal, str, uuid.UUID | None]],
 ) -> dict | None:
     """ONGETEKENDE `factuur_geboekt`-payload voor een spiegel-inkoopfactuur in een
     vastgoed-doel-administratie (besluit Peter 2026-08-14, koppelcontract §3: het event geldt
@@ -267,13 +273,14 @@ def _bouw_spiegel_webhook_payload(
         rlz_admin_id = doel.rlz_admin_id
     webhook_regels: list[WebhookRegel] = []
     with scoped_session(doel_administratie_id) as session:
-        for ledger_id, netto, btw, omschrijving in regelspec:
+        for ledger_id, netto, btw, omschrijving, project_id in regelspec:
             grootboek = session.get(Grootboekrekening, (ledger_id, doel_administratie_id))
             webhook_regels.append(
                 WebhookRegel(
                     ledger_id=ledger_id,
                     grootboek_code=grootboek.code if grootboek else "",
-                    project_id=None,
+                    # Doorbelasting × projecten (25-08): pand = project per spiegel-regel (§2.1).
+                    project_id=project_id,
                     netto_bedrag=netto,
                     btw_bedrag=btw,
                     omschrijving=omschrijving,

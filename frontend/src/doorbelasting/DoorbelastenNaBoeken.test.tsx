@@ -45,22 +45,77 @@ const RUN_MET_VERDELING = run({
   checks: { geblokkeerd: false, resultaten: [{ naam: 'Verdeling per regel = 100%', ok: true, melding: 'OK' }] },
 })
 
+const PROJECT_A = 'aaaa1111-0000-0000-0000-000000000001'
+const PROJECT_B = 'aaaa1111-0000-0000-0000-000000000002'
+const SLEUTEL = 'ffff0000-0000-0000-0000-000000000009'
+
 interface Opties {
   toggleAan?: boolean
   bestaandeRun?: DoorbelastingRunDto | null
+  /** Doel-projecten achter de mapping (25-08, deel 2 punt 2); projectVerplicht = doel heeft projectplicht. */
+  projectVerplicht?: boolean
+  /** Mapping mét onboarded doel (nodig voor project-/GB-keuze); default false zoals de oudere tests. */
+  doelOnboarded?: boolean
+  verdelingPuts?: unknown[]
+  sleutelPosts?: { url: string; body: unknown }[]
   /** Server-antwoord op de default-aan-vraag: 'maakt' (nieuwe klaargezette run) of 'niets' (204 —
    * de mens had het vinkje al eens uitgezet). */
   defaultAan?: 'maakt' | 'niets'
   aanroepen?: { url: string; method: string }[]
 }
 
-function installFetchMock({ toggleAan = true, bestaandeRun = null, defaultAan = 'maakt', aanroepen }: Opties) {
+function installFetchMock({
+  toggleAan = true,
+  bestaandeRun = null,
+  defaultAan = 'maakt',
+  aanroepen,
+  projectVerplicht = false,
+  doelOnboarded = false,
+  verdelingPuts,
+  sleutelPosts,
+}: Opties) {
   let huidigeRun: DoorbelastingRunDto | null = bestaandeRun
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET'
       aanroepen?.push({ url, method })
+      if (url.endsWith('/administraties/doel-1/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: [] }))
+      if (url.endsWith(`/mappings/${MAPPING}/projecten`)) {
+        return Promise.resolve(
+          jsonResponse({
+            doel_administratie_id: 'doel-1',
+            project_verplicht: projectVerplicht,
+            projecten: [
+              { id: PROJECT_A, naam: 'Pand A', is_actief: true, contract_m2: '100.00' },
+              { id: PROJECT_B, naam: 'Pand B', is_actief: true, contract_m2: null },
+            ],
+          }),
+        )
+      }
+      if (url.endsWith('/verdeelsleutels') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse([
+            { id: SLEUTEL, naam: 'Alle panden', versie: 2, actief: true, definitie: { doelen: [] }, aangemaakt_op: '2026-08-25T09:00:00Z' },
+          ]),
+        )
+      }
+      if (url.endsWith('/verdeelsleutels') && method === 'POST') {
+        const body = init?.body ? JSON.parse(String(init.body)) : null
+        sleutelPosts?.push({ url, body })
+        return Promise.resolve(jsonResponse({ id: 'nieuw', naam: body.naam, versie: 1, actief: true, definitie: { doelen: body.doelen }, aangemaakt_op: '2026-08-25T10:00:00Z' }))
+      }
+      if (url.endsWith(`/verdeelsleutels/${SLEUTEL}/toepassen`) && method === 'POST') {
+        sleutelPosts?.push({ url, body: null })
+        huidigeRun = { ...RUN_MET_VERDELING, verdeelsleutel: { id: SLEUTEL, naam: 'Alle panden', versie: 2, toegepast_op: '2026-08-25T10:00:00Z' } }
+        return Promise.resolve(jsonResponse(huidigeRun))
+      }
+      if (url.endsWith('/verdeling') && method === 'PUT') {
+        const body = init?.body ? JSON.parse(String(init.body)) : null
+        verdelingPuts?.push(body)
+        huidigeRun = RUN_MET_VERDELING
+        return Promise.resolve(jsonResponse(huidigeRun))
+      }
       if (url.endsWith('/doorbelasting-instelling')) return Promise.resolve(jsonResponse({ ingeschakeld: toggleAan }))
       if (url.endsWith(`/documenten/${DOC}/run/default`) && method === 'POST') {
         if (defaultAan === 'niets' || huidigeRun) {
@@ -87,7 +142,7 @@ function installFetchMock({ toggleAan = true, bestaandeRun = null, defaultAan = 
               id: MAPPING,
               doelentiteit_naam: 'Veldhoven Recreatie B.V.',
               doel_customer_guid: 'x',
-              doel_administratie_id: null,
+              doel_administratie_id: doelOnboarded ? 'doel-1' : null,
               intercompany: true,
               provisie_kosten_ledger_id: null,
               laatste_kosten_ledger_id: null,
@@ -190,6 +245,66 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     await waitFor(() => expect(screen.getByLabelText('Doorbelasten na boeken')).not.toBeChecked())
     expect(aanroepen.some((a) => a.method === 'POST' && a.url.endsWith(`/runs/${RUN}/vervallen`))).toBe(true)
     await waitFor(() => expect(meldingen.at(-1)).toBeNull())
+  })
+
+  it('doorbelasting × projecten (deel 2 punt 2): "alle actieve projecten" + verdeelbasis gaan mee in de opslag; ontbrekende m² wordt benoemd', async () => {
+    const verdelingPuts: unknown[] = []
+    installFetchMock({ bestaandeRun: RUN_MET_VERDELING, verdelingPuts, doelOnboarded: true })
+    renderBlok('klaar_om_te_boeken')
+    await waitFor(() => expect(screen.getByLabelText('Doorbelasten na boeken')).toBeChecked())
+
+    await userEvent.click(await screen.findByRole('button', { name: 'alle actieve projecten' }))
+    expect(screen.getByText('2 gekozen')).toBeInTheDocument()
+    // default m² → Pand B zonder m² wordt benoemd (nooit gokken)
+    expect(screen.getByText(/geen m² bekend: Pand B/)).toBeInTheDocument()
+    await userEvent.click(screen.getByLabelText('gelijk per object'))
+    expect(screen.queryByText(/geen m² bekend/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Verdeling opslaan' }))
+    await waitFor(() => expect(verdelingPuts).toHaveLength(1))
+    const body = verdelingPuts[0] as { regels: { project_ids: string[]; verdeelbasis: string | null }[] }
+    expect(body.regels[0].project_ids).toEqual([PROJECT_A, PROJECT_B])
+    expect(body.regels[0].verdeelbasis).toBe('gelijk')
+  })
+
+  it('project verplicht in het doel: chip zichtbaar en opslaan zonder project wordt geweigerd', async () => {
+    const verdelingPuts: unknown[] = []
+    installFetchMock({ bestaandeRun: RUN_MET_VERDELING, projectVerplicht: true, verdelingPuts, doelOnboarded: true })
+    renderBlok('klaar_om_te_boeken')
+    expect(await screen.findByText('project verplicht')).toBeInTheDocument()
+    // Een wijziging (percentage) zonder project kiezen → opslaan geweigerd met duidelijke reden
+    await userEvent.clear(screen.getByLabelText('Percentage voor Steigermateriaal'))
+    await userEvent.type(screen.getByLabelText('Percentage voor Steigermateriaal'), '100')
+    await userEvent.click(screen.getByRole('button', { name: 'Verdeling opslaan' }))
+    expect(await screen.findByText(/Project verplicht in Veldhoven Recreatie B.V./)).toBeInTheDocument()
+    expect(verdelingPuts).toHaveLength(0)
+  })
+
+  it('verdeelsleutel: toepassen is één klik (POST) en de run toont sleutel + versie; opslaan als sleutel bewaart "alle actieve" dynamisch', async () => {
+    const sleutelPosts: { url: string; body: unknown }[] = []
+    installFetchMock({ bestaandeRun: RUN_MET_VERDELING, sleutelPosts, doelOnboarded: true })
+    renderBlok('klaar_om_te_boeken')
+    await waitFor(() => expect(screen.getByLabelText('Doorbelasten na boeken')).toBeChecked())
+
+    const kiezer = await screen.findByLabelText('Verdeelsleutel')
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Alle panden (v2)' })).toBeInTheDocument())
+    await userEvent.selectOptions(kiezer, SLEUTEL)
+    await userEvent.click(screen.getByRole('button', { name: 'Sleutel toepassen' }))
+    await waitFor(() => expect(sleutelPosts.some((p) => p.url.endsWith(`/verdeelsleutels/${SLEUTEL}/toepassen`))).toBe(true))
+    expect(await screen.findByText(/toegepast op/)).toBeInTheDocument()
+    expect(screen.getByText('Alle panden', { selector: 'b' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'alle actieve projecten' }))
+    await userEvent.type(screen.getByLabelText('Naam nieuwe verdeelsleutel'), 'Nieuwe sleutel')
+    await userEvent.click(screen.getByRole('button', { name: 'Opslaan als sleutel' }))
+    await waitFor(() => expect(sleutelPosts.some((p) => p.url.endsWith('/verdeelsleutels') && p.body)).toBe(true))
+    const post = sleutelPosts.find((p) => p.url.endsWith('/verdeelsleutels') && p.body)!.body as {
+      naam: string
+      doelen: { mapping_id: string; projecten: unknown; verdeelbasis: string | null }[]
+    }
+    expect(post.naam).toBe('Nieuwe sleutel')
+    expect(post.doelen[0]).toMatchObject({ mapping_id: MAPPING, projecten: 'alle_actief', verdeelbasis: 'm2' })
+    expect(await screen.findByText(/opgeslagen als versie 1/)).toBeInTheDocument()
   })
 
   it('bij de klant (ter_accordering) is de verdeling alleen-lezen', async () => {

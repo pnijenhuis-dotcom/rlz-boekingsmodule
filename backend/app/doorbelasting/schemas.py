@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 from datetime import datetime
 from decimal import Decimal
 
@@ -51,6 +52,10 @@ class VerdeelRegelRequest(StrikteInvoer):
     mapping_id: uuid.UUID
     percentage: Decimal = Field(gt=0, le=100)
     doel_kosten_ledger_id: uuid.UUID | None = None
+    # Doorbelasting × projecten (25-08, deel 2 punt 2): projecten in de DOEL-administratie; bij
+    # meer dan één is `verdeelbasis` ('m2' | 'gelijk') verplicht — de server splitst en rekent.
+    project_ids: list[uuid.UUID] = Field(default_factory=list)
+    verdeelbasis: Literal["m2", "gelijk"] | None = None
 
 
 class VerdelingRequest(StrikteInvoer):
@@ -64,6 +69,17 @@ class VerdeelRegelResponse(BaseModel):
     percentage: Decimal
     netto_deel: Decimal
     doel_kosten_ledger_id: uuid.UUID | None
+    project_id: uuid.UUID | None = None
+    project_naam: str | None = None
+    project_aandeel: Decimal | None = None
+    verdeelbasis: str | None = None
+    m2: Decimal | None = None
+
+
+class ProjectPreviewResponse(BaseModel):
+    project_id: uuid.UUID
+    naam: str
+    netto_totaal: Decimal
 
 
 class DoelentiteitPreviewResponse(BaseModel):
@@ -75,6 +91,14 @@ class DoelentiteitPreviewResponse(BaseModel):
     btw_bedrag: Decimal
     boeking_status: str | None
     boeking_id: uuid.UUID | None
+    projecten: list[ProjectPreviewResponse] = Field(default_factory=list)
+
+
+class VerdeelsleutelKortResponse(BaseModel):
+    id: uuid.UUID
+    naam: str
+    versie: int
+    toegepast_op: datetime | None
 
 
 class RunResponse(BaseModel):
@@ -85,6 +109,46 @@ class RunResponse(BaseModel):
     regels: list[VerdeelRegelResponse]
     previews: list[DoelentiteitPreviewResponse]
     checks: CheckRapportResponse
+    # Verdeelsleutel-herleidbaarheid (25-08, punt 2c): welke sleutel(versie) is toegepast.
+    verdeelsleutel: VerdeelsleutelKortResponse | None = None
+
+
+class DoelProjectResponse(BaseModel):
+    """Project van een doel-administratie voor de verdeel-UI (25-08, punt 2a/b)."""
+
+    id: uuid.UUID
+    naam: str
+    is_actief: bool
+    contract_m2: Decimal | None
+
+
+class DoelProjectenResponse(BaseModel):
+    doel_administratie_id: uuid.UUID | None
+    project_verplicht: bool
+    projecten: list[DoelProjectResponse]
+
+
+class VerdeelsleutelDoelInput(StrikteInvoer):
+    mapping_id: uuid.UUID
+    percentage: Decimal = Field(gt=0, le=100)
+    doel_kosten_ledger_id: uuid.UUID | None = None
+    # lijst van project-id's, óf de string "alle_actief" (gematerialiseerd bij toepassen)
+    projecten: list[uuid.UUID] | Literal["alle_actief"] = Field(default_factory=list)
+    verdeelbasis: Literal["m2", "gelijk"] | None = None
+
+
+class VerdeelsleutelInput(StrikteInvoer):
+    naam: str = Field(min_length=1, max_length=80)
+    doelen: list[VerdeelsleutelDoelInput] = Field(min_length=1)
+
+
+class VerdeelsleutelResponse(BaseModel):
+    id: uuid.UUID
+    naam: str
+    versie: int
+    actief: bool
+    definitie: dict
+    aangemaakt_op: datetime
 
 
 class BoekResultaatResponse(BaseModel):

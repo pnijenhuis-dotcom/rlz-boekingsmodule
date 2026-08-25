@@ -760,6 +760,13 @@ export interface DoorbelastingVerdeelRegelDto {
   /** Server-berekend netto-deel (grootste-rest) — de client rekent nooit zelf bindend. */
   netto_deel: string
   doel_kosten_ledger_id: string | null
+  /** Doorbelasting × projecten (25-08, deel 2 punt 2): project in de DOEL-administratie; bij een
+   * multi-project-verdeling één rij per project met hetzelfde percentage. */
+  project_id?: string | null
+  project_naam?: string | null
+  project_aandeel?: string | null
+  verdeelbasis?: 'm2' | 'gelijk' | null
+  m2?: string | null
 }
 
 export interface DoorbelastingVerdeelRegelInputDto {
@@ -767,6 +774,58 @@ export interface DoorbelastingVerdeelRegelInputDto {
   mapping_id: string
   percentage: string
   doel_kosten_ledger_id: string | null
+  /** Projecten in de doel-administratie (leeg = geen); bij > 1 is `verdeelbasis` verplicht. */
+  project_ids?: string[]
+  verdeelbasis?: 'm2' | 'gelijk' | null
+}
+
+/** Project van een doel-administratie voor de verdeel-UI (25-08, deel 2 punt 2a/b). */
+export interface DoelProjectDto {
+  id: string
+  naam: string
+  is_actief: boolean
+  contract_m2: string | null
+}
+
+export interface DoelProjectenDto {
+  doel_administratie_id: string | null
+  project_verplicht: boolean
+  projecten: DoelProjectDto[]
+}
+
+export interface DoorbelastingProjectPreviewDto {
+  project_id: string
+  naam: string
+  netto_totaal: string
+}
+
+export interface VerdeelsleutelKortDto {
+  id: string
+  naam: string
+  versie: number
+  toegepast_op: string | null
+}
+
+export interface VerdeelsleutelDoelInputDto {
+  mapping_id: string
+  percentage: string
+  doel_kosten_ledger_id: string | null
+  projecten: string[] | 'alle_actief'
+  verdeelbasis: 'm2' | 'gelijk' | null
+}
+
+export interface VerdeelsleutelInputDto {
+  naam: string
+  doelen: VerdeelsleutelDoelInputDto[]
+}
+
+export interface VerdeelsleutelDto {
+  id: string
+  naam: string
+  versie: number
+  actief: boolean
+  definitie: { doelen: VerdeelsleutelDoelInputDto[] }
+  aangemaakt_op: string
 }
 
 export interface DoorbelastingPreviewDto {
@@ -781,6 +840,8 @@ export interface DoorbelastingPreviewDto {
   /** Boeking-id bij een bestaande niet-gestorneerde boeking — sleutel voor de storno- en
    * spiegel-taak-acties; null zolang er voor deze doelentiteit niets geboekt is. */
   boeking_id: string | null
+  /** Netto-deel per project binnen deze doelentiteit (25-08, deel 2 punt 2b). */
+  projecten?: DoorbelastingProjectPreviewDto[]
 }
 
 export interface DoorbelastingRunDto {
@@ -791,6 +852,8 @@ export interface DoorbelastingRunDto {
   regels: DoorbelastingVerdeelRegelDto[]
   previews: DoorbelastingPreviewDto[]
   checks: CheckRapportDto
+  /** Welke verdeelsleutel(versie) op deze run is toegepast (25-08, punt 2c) — null = geen. */
+  verdeelsleutel?: VerdeelsleutelKortDto | null
 }
 
 /** Resultaat van (spiegel-)boeken/storno: status per doelentiteit (mapping-id → status). */

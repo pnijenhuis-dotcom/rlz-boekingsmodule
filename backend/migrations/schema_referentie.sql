@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0066
+-- Migratie-head bij deze dump: 0067
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -731,7 +731,13 @@ CREATE TABLE boekhouding.doorbelasting_regel (
     percentage numeric(5,2) NOT NULL,
     netto_deel numeric(14,2) NOT NULL,
     doel_kosten_ledger_id uuid,
-    CONSTRAINT doorbelasting_regel_pct_bereik CHECK (((percentage > (0)::numeric) AND (percentage <= (100)::numeric)))
+    project_id uuid,
+    project_aandeel numeric(9,6),
+    verdeelbasis text,
+    m2 numeric(10,2),
+    CONSTRAINT doorbelasting_regel_pct_bereik CHECK (((percentage > (0)::numeric) AND (percentage <= (100)::numeric))),
+    CONSTRAINT doorbelasting_regel_project_aandeel CHECK (((project_aandeel IS NULL) OR ((project_aandeel > (0)::numeric) AND (project_aandeel <= (1)::numeric)))),
+    CONSTRAINT doorbelasting_regel_verdeelbasis CHECK (((verdeelbasis IS NULL) OR (verdeelbasis = ANY (ARRAY['m2'::text, 'gelijk'::text]))))
 );
 
 ALTER TABLE ONLY boekhouding.doorbelasting_regel FORCE ROW LEVEL SECURITY;
@@ -750,10 +756,31 @@ CREATE TABLE boekhouding.doorbelasting_run (
     aangemaakt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     geboekt_op timestamp with time zone,
+    verdeelsleutel_id uuid,
+    verdeelsleutel_toegepast_op timestamp with time zone,
     CONSTRAINT doorbelasting_run_status CHECK ((status = ANY (ARRAY['klaargezet'::text, 'concept'::text, 'geboekt'::text, 'gestorneerd'::text, 'vervallen'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.doorbelasting_run FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: doorbelasting_verdeelsleutel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.doorbelasting_verdeelsleutel (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    naam text NOT NULL,
+    versie integer NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    definitie jsonb NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT doorbelasting_verdeelsleutel_versie CHECK ((versie >= 1))
+);
+
+ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2405,7 +2432,7 @@ ALTER TABLE ONLY boekhouding.doorbelasting_regel
 --
 
 ALTER TABLE ONLY boekhouding.doorbelasting_regel
-    ADD CONSTRAINT doorbelasting_regel_uniek UNIQUE (run_id, bron_regel_id, mapping_id);
+    ADD CONSTRAINT doorbelasting_regel_uniek UNIQUE NULLS NOT DISTINCT (run_id, bron_regel_id, mapping_id, project_id);
 
 
 --
@@ -2414,6 +2441,22 @@ ALTER TABLE ONLY boekhouding.doorbelasting_regel
 
 ALTER TABLE ONLY boekhouding.doorbelasting_run
     ADD CONSTRAINT doorbelasting_run_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: doorbelasting_verdeelsleutel doorbelasting_verdeelsleutel_naam_versie; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel
+    ADD CONSTRAINT doorbelasting_verdeelsleutel_naam_versie UNIQUE (administratie_id, naam, versie);
+
+
+--
+-- Name: doorbelasting_verdeelsleutel doorbelasting_verdeelsleutel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel
+    ADD CONSTRAINT doorbelasting_verdeelsleutel_pkey PRIMARY KEY (id);
 
 
 --
@@ -3259,6 +3302,13 @@ CREATE INDEX ix_document_herinnering_document_id ON boekhouding.document_herinne
 --
 
 CREATE INDEX ix_document_status ON boekhouding.document USING btree (status);
+
+
+--
+-- Name: ix_doorbelasting_verdeelsleutel_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_doorbelasting_verdeelsleutel_administratie_id ON boekhouding.doorbelasting_verdeelsleutel USING btree (administratie_id);
 
 
 --
@@ -4308,6 +4358,22 @@ ALTER TABLE ONLY boekhouding.doorbelasting_run
 
 
 --
+-- Name: doorbelasting_verdeelsleutel doorbelasting_verdeelsleutel_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel
+    ADD CONSTRAINT doorbelasting_verdeelsleutel_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: doorbelasting_verdeelsleutel doorbelasting_verdeelsleutel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_verdeelsleutel
+    ADD CONSTRAINT doorbelasting_verdeelsleutel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: duplicaat_signaal duplicaat_signaal_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4369,6 +4435,14 @@ ALTER TABLE ONLY boekhouding.factuurmatch_staat
 
 ALTER TABLE ONLY boekhouding.factuurmatch
     ADD CONSTRAINT factuurmatch_veldwerker_gebruiker_id_fkey FOREIGN KEY (veldwerker_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: doorbelasting_run fk_doorbelasting_run_verdeelsleutel; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.doorbelasting_run
+    ADD CONSTRAINT fk_doorbelasting_run_verdeelsleutel FOREIGN KEY (verdeelsleutel_id) REFERENCES boekhouding.doorbelasting_verdeelsleutel(id);
 
 
 --
@@ -5874,6 +5948,19 @@ ALTER TABLE boekhouding.doorbelasting_run ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY doorbelasting_run_scope ON boekhouding.doorbelasting_run USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: doorbelasting_verdeelsleutel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.doorbelasting_verdeelsleutel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: doorbelasting_verdeelsleutel doorbelasting_verdeelsleutel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY doorbelasting_verdeelsleutel_scope ON boekhouding.doorbelasting_verdeelsleutel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

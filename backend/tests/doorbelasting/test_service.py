@@ -416,7 +416,7 @@ class TestReviewData:
         assert preview.btw_bedrag == D("22.05")  # 21% over 100,00 + 21% over 5,00, per regel
         assert preview.boeking_status is None  # nog niets geboekt
         # het checks-rapport is aanwezig én groen voor deze volledig geconfigureerde run
-        assert len(data.rapport.resultaten) == 5
+        assert len(data.rapport.resultaten) == 6  # incl. project-verplicht-doel (25-08)
         assert not data.rapport.geblokkeerd
 
 

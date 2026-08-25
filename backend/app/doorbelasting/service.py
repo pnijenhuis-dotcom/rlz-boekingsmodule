@@ -27,6 +27,7 @@ from app.doorbelasting.checks import (
     voer_doorbelasting_checks_uit,
 )
 from app.doorbelasting.geld import provisie_over, verdeel_grootste_rest
+from app.doorbelasting.verdeelhulp import VERDEELBASES, VerdeelDoel, VerdeelFout, verdeel_naar_gewicht, verdeel_over_doelen
 from app.doorbelasting.models import (
     INACTIEVE_RUN_STATUSSEN,
     DoorbelastingBoeking,
@@ -37,6 +38,7 @@ from app.doorbelasting.models import (
     DoorbelastingRun,
     DoorbelastingRunStatus,
     IntercompanyTegenpartij,
+    DoorbelastingVerdeelsleutel,
 )
 from app.projecten.anker import anker_customer_id
 
@@ -311,6 +313,86 @@ class VerdeelRegelInvoerData:
     mapping_id: uuid.UUID
     percentage: Decimal
     doel_kosten_ledger_id: uuid.UUID | None
+    # Doorbelasting × projecten (25-08, deel 2 punt 2a/b): projecten in de DOEL-administratie.
+    # Leeg = geen project; één = dat project; meerdere = multi-project-verdeling met
+    # `verdeelbasis` 'm2' of 'gelijk' (verplicht bij > 1) — de server splitst en rekent.
+    project_ids: tuple[uuid.UUID, ...] = ()
+    verdeelbasis: str | None = None
+
+
+@dataclass(frozen=True)
+class DoelProject:
+    """Project van een doel-administratie zoals de verdeel-UI 'm nodig heeft (uit haar
+    project_cache + project_specificatie): naam, actief, contract-m² (None = onbekend)."""
+
+    id: uuid.UUID
+    naam: str
+    is_actief: bool
+    contract_m2: Decimal | None
+
+
+def projecten_van_doel(doel_administratie_id: uuid.UUID, project_ids: list[uuid.UUID] | None = None) -> list[DoelProject]:
+    """Leest in de scope van de DOEL-administratie (RLS: de bron-sessie ziet die rijen niet).
+    `project_ids=None` = alle niet-verdwenen projecten; anders alleen die id's."""
+    from app.sync.models import ProjectCache  # lokaal: houdt de importgraaf klein
+    from app.uren.models import ProjectSpecificatie
+
+    with scoped_session(doel_administratie_id) as session:
+        query = select(ProjectCache).where(
+            ProjectCache.administratie_id == doel_administratie_id, ProjectCache.verdwenen_uit_bron_op.is_(None)
+        )
+        if project_ids is not None:
+            query = query.where(ProjectCache.id.in_(project_ids))
+        projecten = list(session.scalars(query.order_by(ProjectCache.naam)))
+        specs = {
+            sp.project_id: sp
+            for sp in session.scalars(
+                select(ProjectSpecificatie).where(
+                    ProjectSpecificatie.administratie_id == doel_administratie_id,
+                    ProjectSpecificatie.project_id.in_([p.id for p in projecten] or [uuid.UUID(int=0)]),
+                )
+            )
+        }
+        return [
+            DoelProject(
+                id=p.id,
+                naam=p.naam or str(p.id),
+                is_actief=bool(p.is_actief),
+                contract_m2=specs[p.id].contract_m2 if p.id in specs else None,
+            )
+            for p in projecten
+        ]
+
+
+class GeenScopeOpDoel(DoorbelastingFout):
+    """De actor heeft geen scope op de doel-administratie (router → 403)."""
+
+
+def projecten_voor_mapping(*, administratie_id: uuid.UUID, mapping_id: uuid.UUID, actor_id: uuid.UUID) -> list[DoelProject]:
+    """Leesroute voor de verdeel-UI: projecten van de doel-administratie achter een mapping-rij
+    van deze bron — uitsluitend als de actor scope op dat doel heeft (zelfde regel als boeken +
+    doorbelasten; RLS-les 25-08: gescoped op het doel mét actor). Niet-onboarded doel = leeg."""
+    with scoped_session(administratie_id) as session:
+        mapping = session.get(DoorbelastingMapping, mapping_id)
+        if mapping is None or mapping.administratie_id != administratie_id:
+            raise DoorbelastingFout("Onbekende doelentiteit voor deze administratie")
+        doel_id = mapping.doel_administratie_id
+    if doel_id is None:
+        return []
+    if not actor_heeft_scope(actor_id=actor_id, administratie_id=doel_id):
+        raise GeenScopeOpDoel("Geen scope op de doel-administratie")
+    return projecten_van_doel(doel_id)
+
+
+def _project_verplicht_per_administratie(administratie_ids: set[uuid.UUID]) -> dict[uuid.UUID, tuple[bool, str]]:
+    """project_verplicht + naam van doel-administraties — platform-tabel, buiten de bron-scope."""
+    if not administratie_ids:
+        return {}
+    with scoped_session(None) as session:
+        return {
+            a.id: (bool(a.project_verplicht), a.naam)
+            for a in session.scalars(select(Administratie).where(Administratie.id.in_(list(administratie_ids))))
+        }
 
 
 def vind_run(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> DoorbelastingRun | None:
@@ -529,7 +611,11 @@ class VerdelingSnapshot:
 
     run_id: uuid.UUID
     administratie_id: uuid.UUID
-    regels: tuple[tuple[int | None, uuid.UUID, Decimal, uuid.UUID | None], ...]
+    # (volgnummer, mapping_id, percentage, doel_gb, project_id, project_aandeel, verdeelbasis, m2)
+    regels: tuple[
+        tuple[int | None, uuid.UUID, Decimal, uuid.UUID | None, uuid.UUID | None, Decimal | None, str | None, Decimal | None],
+        ...,
+    ]
 
 
 def neem_klaargezette_verdeling_los(session, *, document_id: uuid.UUID) -> VerdelingSnapshot | None:
@@ -552,7 +638,16 @@ def neem_klaargezette_verdeling_los(session, *, document_id: uuid.UUID) -> Verde
         run_id=run.id,
         administratie_id=run.administratie_id,
         regels=tuple(
-            (volgnummer_per_id.get(r.bron_regel_id), r.mapping_id, r.percentage, r.doel_kosten_ledger_id)
+            (
+                volgnummer_per_id.get(r.bron_regel_id),
+                r.mapping_id,
+                r.percentage,
+                r.doel_kosten_ledger_id,
+                r.project_id,
+                r.project_aandeel,
+                r.verdeelbasis,
+                r.m2,
+            )
             for r in oude_regels
         ),
     )
@@ -576,27 +671,45 @@ def zet_klaargezette_verdeling_terug(
             select(BoekvoorstelRegel).where(BoekvoorstelRegel.id.in_(list(nieuwe_regels.values())))
         )
     }
-    per_bron: dict[uuid.UUID, list[tuple[uuid.UUID, Decimal, uuid.UUID | None]]] = {}
-    for volgnummer, mapping_id, percentage, gb in snapshot.regels:
+    # Per nieuwe bron-regel: per doelentiteit het percentage (één keer — de project-rijen delen
+    # het) en daaronder de project-rijen met hun aandeel; centen eerst per doelentiteit
+    # (grootste-rest over percentages), dan per project (grootste-rest over aandelen).
+    per_bron: dict[uuid.UUID, dict[uuid.UUID, dict]] = {}
+    for volgnummer, mapping_id, percentage, gb, project_id, aandeel, basis, m2 in snapshot.regels:
         nieuw_id = nieuwe_regels.get(volgnummer) if volgnummer is not None else None
         if nieuw_id is None:
             continue
-        per_bron.setdefault(nieuw_id, []).append((mapping_id, percentage, gb))
-    for bron_regel_id, groep in per_bron.items():
+        doel = per_bron.setdefault(nieuw_id, {}).setdefault(
+            mapping_id, {"percentage": percentage, "gb": gb, "projecten": []}
+        )
+        doel["projecten"].append((project_id, aandeel, basis, m2))
+    for bron_regel_id, doelen in per_bron.items():
         bron_netto = bron_regels[bron_regel_id].netto_bedrag or Decimal(0)
-        delen = _bereken_delen(bron_netto, [g[1] for g in groep])
-        for (mapping_id, percentage, gb), deel in zip(groep, delen, strict=True):
-            session.add(
-                DoorbelastingRegel(
-                    run_id=snapshot.run_id,
-                    administratie_id=snapshot.administratie_id,
-                    bron_regel_id=bron_regel_id,
-                    mapping_id=mapping_id,
-                    percentage=percentage,
-                    netto_deel=deel,
-                    doel_kosten_ledger_id=gb,
+        mapping_ids = list(doelen.keys())
+        delen = _bereken_delen(bron_netto, [doelen[m]["percentage"] for m in mapping_ids])
+        for mapping_id, deel in zip(mapping_ids, delen, strict=True):
+            doel = doelen[mapping_id]
+            projecten = doel["projecten"]
+            if len(projecten) > 1 and all(a is not None and a > 0 for _, a, _, _ in projecten):
+                sub_delen = verdeel_naar_gewicht(deel, [a for _, a, _, _ in projecten])
+            else:
+                sub_delen = [deel] + [Decimal(0)] * (len(projecten) - 1)
+            for (project_id, aandeel, basis, m2), sub in zip(projecten, sub_delen, strict=True):
+                session.add(
+                    DoorbelastingRegel(
+                        run_id=snapshot.run_id,
+                        administratie_id=snapshot.administratie_id,
+                        bron_regel_id=bron_regel_id,
+                        mapping_id=mapping_id,
+                        percentage=doel["percentage"],
+                        netto_deel=sub,
+                        doel_kosten_ledger_id=doel["gb"],
+                        project_id=project_id,
+                        project_aandeel=aandeel,
+                        verdeelbasis=basis,
+                        m2=m2,
+                    )
                 )
-            )
     session.flush()
 
 
@@ -668,6 +781,15 @@ def sla_verdeling_op(
                 # Server-side whitelist: een doelentiteit buiten de mapping bestaat niet.
                 raise DoorbelastingFout(f"Doelentiteit {invoer.mapping_id} staat niet op de whitelist")
 
+        # Projecten van de doel-administraties (eigen scope per doel, buiten deze sessie) — één
+        # keer per doel ophalen, mét contract-m² voor de m²-basis.
+        projecten_cache: dict[uuid.UUID, dict[uuid.UUID, DoelProject]] = {}
+        for invoer in regels:
+            if invoer.project_ids:
+                doel_id = mappings[invoer.mapping_id].doel_administratie_id
+                if doel_id is not None and doel_id not in projecten_cache:
+                    projecten_cache[doel_id] = {p.id: p for p in projecten_van_doel(doel_id)}
+
         for oud in session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == run_id)):
             session.delete(oud)
         # De deletes moeten de database bereiken vóór de vervangende rijen: SQLAlchemy flusht
@@ -689,21 +811,92 @@ def sla_verdeling_op(
             # check blokkeert het boeken dan
             delen = _bereken_delen(bron_netto, [g.percentage for g in groep])
             for invoer, deel in zip(groep, delen, strict=True):
-                regel = DoorbelastingRegel(
-                    run_id=run_id,
-                    administratie_id=administratie_id,
-                    bron_regel_id=invoer.bron_regel_id,
-                    mapping_id=invoer.mapping_id,
-                    percentage=invoer.percentage,
-                    netto_deel=deel,
-                    doel_kosten_ledger_id=invoer.doel_kosten_ledger_id,
-                )
-                session.add(regel)
-                nieuw.append(regel)
+                for project_id, aandeel, basis, m2, sub_deel in _project_delen(
+                    invoer=invoer, deel=deel, mapping=mappings[invoer.mapping_id], projecten_cache=projecten_cache
+                ):
+                    regel = DoorbelastingRegel(
+                        run_id=run_id,
+                        administratie_id=administratie_id,
+                        bron_regel_id=invoer.bron_regel_id,
+                        mapping_id=invoer.mapping_id,
+                        percentage=invoer.percentage,
+                        netto_deel=sub_deel,
+                        doel_kosten_ledger_id=invoer.doel_kosten_ledger_id,
+                        project_id=project_id,
+                        project_aandeel=aandeel,
+                        verdeelbasis=basis,
+                        m2=m2,
+                    )
+                    session.add(regel)
+                    nieuw.append(regel)
         session.flush()
+        # Audit (audit-eis 25-08): elke opslag van de verdeling is een handeling — herleidbaar
+        # wat er stond, ook ná het toepassen van een verdeelsleutel.
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=_MODULE,
+            tabel="doorbelasting_run",
+            record_id=run.id,
+            actie="doorbelasting_verdeling_opgeslagen",
+            correlatie_id=run.document_id,
+            nieuwe_waarde={
+                "aantal_regels": len(nieuw),
+                "doelen": sorted({str(r.mapping_id) for r in nieuw}),
+                "projecten": sorted({str(r.project_id) for r in nieuw if r.project_id is not None}),
+                "verdeelsleutel_id": str(run.verdeelsleutel_id) if run.verdeelsleutel_id else None,
+            },
+            administratie_id=administratie_id,
+        )
         for regel in nieuw:
             session.expunge(regel)
         return nieuw
+
+
+def _project_delen(
+    *,
+    invoer: VerdeelRegelInvoerData,
+    deel: Decimal,
+    mapping: DoorbelastingMapping,
+    projecten_cache: dict[uuid.UUID, dict[uuid.UUID, DoelProject]],
+) -> list[tuple[uuid.UUID | None, Decimal | None, str | None, Decimal | None, Decimal]]:
+    """Splitst het doelentiteit-deel over de gekozen projecten (25-08, deel 2 punt 2b):
+    (project_id, aandeel, verdeelbasis, m2, bedrag) per rij. Geen projecten = één rij zonder
+    project; één project = 100% op dat project; meerdere = verdeelhulp over m² of gelijk —
+    ontbrekende m² = fout mét projectnamen, nooit gokken."""
+    if not invoer.project_ids:
+        return [(None, None, None, None, deel)]
+    if mapping.doel_administratie_id is None:
+        raise DoorbelastingFout(
+            f"Projecten kiezen kan alleen voor een onboarded doelentiteit ({mapping.doelentiteit_naam} is niet onboarded)"
+        )
+    bekend = projecten_cache[mapping.doel_administratie_id]
+    onbekend = [str(p) for p in invoer.project_ids if p not in bekend]
+    if onbekend:
+        raise DoorbelastingFout(
+            f"Onbekend project in {mapping.doelentiteit_naam}: " + ", ".join(onbekend) + " (niet in de projectcache van die administratie)"
+        )
+    if len(invoer.project_ids) == 1:
+        p = bekend[invoer.project_ids[0]]
+        return [(p.id, Decimal(1), None, p.contract_m2, deel)]
+    if invoer.verdeelbasis not in VERDEELBASES:
+        raise DoorbelastingFout("Kies bij meerdere projecten een verdeelbasis: naar rato m² of gelijk per object")
+    doelen = [VerdeelDoel(sleutel=str(p), gewicht=bekend[p].contract_m2, naam=bekend[p].naam) for p in invoer.project_ids]
+    try:
+        verdeeld = verdeel_over_doelen(deel, doelen, invoer.verdeelbasis)  # type: ignore[arg-type]
+    except VerdeelFout as exc:
+        raise DoorbelastingFout(f"{mapping.doelentiteit_naam}: {exc}") from exc
+    return [
+        (uuid.UUID(v.sleutel), v.aandeel, invoer.verdeelbasis, bekend[uuid.UUID(v.sleutel)].contract_m2, v.bedrag)
+        for v in verdeeld
+    ]
+
+
+@dataclass(frozen=True)
+class ProjectPreview:
+    project_id: uuid.UUID
+    naam: str
+    netto_totaal: Decimal
 
 
 @dataclass(frozen=True)
@@ -716,6 +909,16 @@ class DoelentiteitPreview:
     btw_bedrag: Decimal
     boeking_status: str | None  # status van een bestaande niet-gestorneerde boeking
     boeking_id: uuid.UUID | None  # id daarvan — nodig voor storno/spiegel-acties in de UI
+    # Doorbelasting × projecten (25-08): het netto-deel per project binnen deze doelentiteit.
+    projecten: tuple[ProjectPreview, ...] = ()
+
+
+@dataclass(frozen=True)
+class VerdeelsleutelKort:
+    id: uuid.UUID
+    naam: str
+    versie: int
+    toegepast_op: object | None
 
 
 @dataclass(frozen=True)
@@ -724,6 +927,9 @@ class RunReviewData:
     regels: list[DoorbelastingRegel]
     previews: list[DoelentiteitPreview]
     rapport: CheckRapport
+    verdeelsleutel: VerdeelsleutelKort | None = None
+    # Projectnamen (doel-scope) voor de regel-weergave: project_id → naam.
+    project_namen: dict[uuid.UUID, str] | None = None
 
 
 def _check_invoer(
@@ -734,6 +940,14 @@ def _check_invoer(
         r.id: r
         for r in session.scalars(select(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == run.document_id))
     }
+    mapping_rijen = list(
+        session.scalars(
+            select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == run.administratie_id)
+        )
+    )
+    doel_info = _project_verplicht_per_administratie(
+        {m.doel_administratie_id for m in mapping_rijen if m.doel_administratie_id is not None}
+    )
     mappings = {
         m.id: MappingInvoer(
             mapping_id=m.id,
@@ -741,10 +955,12 @@ def _check_invoer(
             doel_administratie_id=m.doel_administratie_id,
             provisie_kosten_ledger_id=m.provisie_kosten_ledger_id,
             doel_customer_guid=m.doel_customer_guid,
+            doel_project_verplicht=doel_info.get(m.doel_administratie_id, (False, ""))[0]
+            if m.doel_administratie_id
+            else False,
+            doelentiteit_naam=m.doelentiteit_naam,
         )
-        for m in session.scalars(
-            select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == run.administratie_id)
-        )
+        for m in mapping_rijen
     }
     instelling = session.get(DoorbelastingInstelling, run.administratie_id) or DoorbelastingInstelling(
         administratie_id=run.administratie_id
@@ -757,6 +973,7 @@ def _check_invoer(
             percentage=r.percentage,
             netto_deel=r.netto_deel,
             doel_kosten_ledger_id=r.doel_kosten_ledger_id,
+            project_id=r.project_id,
         )
         for r in regels
     ]
@@ -818,6 +1035,10 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
                 Decimal(0),
             ) + btw_over(provisie, btw_pct)
             boeking_status, boeking_id = boekingen.get(mapping_id, (None, None))
+            per_project: dict[uuid.UUID, Decimal] = {}
+            for r in invoer:
+                if r.mapping_id == mapping_id and r.project_id is not None:
+                    per_project[r.project_id] = per_project.get(r.project_id, Decimal(0)) + r.netto_deel
             previews.append(
                 DoelentiteitPreview(
                     mapping_id=mapping_id,
@@ -828,11 +1049,40 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
                     btw_bedrag=btw,
                     boeking_status=boeking_status,
                     boeking_id=boeking_id,
+                    projecten=tuple(
+                        ProjectPreview(project_id=pid, naam="", netto_totaal=n) for pid, n in per_project.items()
+                    ),
                 )
             )
         regels = list(session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == run_id)))
+        sleutel = (
+            session.get(DoorbelastingVerdeelsleutel, run.verdeelsleutel_id) if run.verdeelsleutel_id else None
+        )
+        verdeelsleutel = (
+            VerdeelsleutelKort(id=sleutel.id, naam=sleutel.naam, versie=sleutel.versie, toegepast_op=run.verdeelsleutel_toegepast_op)
+            if sleutel
+            else None
+        )
         session.expunge_all()
-        return RunReviewData(run=run, regels=regels, previews=previews, rapport=rapport)
+    # Projectnamen uit de doel-scopes (buiten de bron-sessie; alleen doelen mét project-rijen).
+    project_namen: dict[uuid.UUID, str] = {}
+    for mapping_id, mapping in naam_per_mapping.items():
+        ids = sorted({r.project_id for r in regels if r.mapping_id == mapping_id and r.project_id is not None}, key=str)
+        if ids and mapping.doel_administratie_id is not None:
+            for p in projecten_van_doel(mapping.doel_administratie_id, ids):
+                project_namen[p.id] = p.naam
+    previews = [
+        DoelentiteitPreview(
+            **{**p.__dict__, "projecten": tuple(
+                ProjectPreview(project_id=pp.project_id, naam=project_namen.get(pp.project_id, str(pp.project_id)), netto_totaal=pp.netto_totaal)
+                for pp in sorted(p.projecten, key=lambda x: project_namen.get(x.project_id, str(x.project_id)))
+            )}
+        )
+        for p in previews
+    ]
+    return RunReviewData(
+        run=run, regels=regels, previews=previews, rapport=rapport, verdeelsleutel=verdeelsleutel, project_namen=project_namen
+    )
 
 
 def zet_spiegel_doel_gbs(
@@ -945,3 +1195,191 @@ def actor_heeft_scope(*, actor_id: uuid.UUID, administratie_id: uuid.UUID) -> bo
             )
         )
         return bool(koppel)
+
+
+# --- Verdeelsleutels (besluit Peter 25-08, deel 2 punt 2c) -------------------------------
+
+
+def lijst_verdeelsleutels(*, administratie_id: uuid.UUID, alleen_actief: bool = True) -> list[DoorbelastingVerdeelsleutel]:
+    with scoped_session(administratie_id) as session:
+        query = select(DoorbelastingVerdeelsleutel).where(DoorbelastingVerdeelsleutel.administratie_id == administratie_id)
+        if alleen_actief:
+            query = query.where(DoorbelastingVerdeelsleutel.actief.is_(True))
+        rijen = list(session.scalars(query.order_by(DoorbelastingVerdeelsleutel.naam, DoorbelastingVerdeelsleutel.versie.desc())))
+        session.expunge_all()
+        return rijen
+
+
+def _valideer_sleutel_definitie(definitie: dict, mappings: dict[uuid.UUID, DoorbelastingMapping]) -> dict:
+    doelen = definitie.get("doelen")
+    if not isinstance(doelen, list) or not doelen:
+        raise DoorbelastingFout("Een verdeelsleutel heeft minimaal één doelentiteit")
+    genormaliseerd: list[dict] = []
+    som = Decimal(0)
+    for d in doelen:
+        try:
+            mapping_id = uuid.UUID(str(d["mapping_id"]))
+            pct = Decimal(str(d["percentage"]))
+        except (KeyError, ValueError, ArithmeticError) as exc:
+            raise DoorbelastingFout("Ongeldige doel-regel in de verdeelsleutel") from exc
+        if mapping_id not in mappings:
+            raise DoorbelastingFout(f"Doelentiteit {mapping_id} staat niet op de whitelist")
+        if pct <= 0 or pct > 100:
+            raise DoorbelastingFout("Elk percentage moet groter dan 0 en hoogstens 100 zijn")
+        projecten = d.get("projecten") or []
+        if projecten != "alle_actief":
+            if not isinstance(projecten, list):
+                raise DoorbelastingFout("projecten moet een lijst zijn of 'alle_actief'")
+            projecten = [str(uuid.UUID(str(p))) for p in projecten]
+        basis = d.get("verdeelbasis")
+        if basis is not None and basis not in VERDEELBASES:
+            raise DoorbelastingFout("verdeelbasis moet 'm2' of 'gelijk' zijn")
+        if (projecten == "alle_actief" or len(projecten) > 1) and basis is None:
+            raise DoorbelastingFout("Kies bij meerdere projecten een verdeelbasis: m² of gelijk")
+        gb = d.get("doel_kosten_ledger_id")
+        genormaliseerd.append(
+            {
+                "mapping_id": str(mapping_id),
+                "percentage": str(pct.quantize(Decimal("0.01"))),
+                "doel_kosten_ledger_id": str(uuid.UUID(str(gb))) if gb else None,
+                "projecten": projecten,
+                "verdeelbasis": basis,
+            }
+        )
+        som += pct
+    if som != Decimal(100):
+        raise DoorbelastingFout(f"De percentages van een verdeelsleutel moeten exact op 100% sommen (nu {som}%)")
+    return {"doelen": genormaliseerd}
+
+
+def sla_verdeelsleutel_op(
+    *, administratie_id: uuid.UUID, naam: str, definitie: dict, actor_id: uuid.UUID
+) -> DoorbelastingVerdeelsleutel:
+    """Nieuwe sleutel of nieuwe VERSIE onder een bestaande naam (append-only): de vorige versie
+    wordt inactief maar blijft bestaan — runs verwijzen naar de exacte versie. Audit."""
+    naam = naam.strip()
+    if not naam:
+        raise DoorbelastingFout("Geef de verdeelsleutel een naam")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        mappings = {
+            m.id: m
+            for m in session.scalars(
+                select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == administratie_id)
+            )
+        }
+        schoon = _valideer_sleutel_definitie(definitie, mappings)
+        bestaande = list(
+            session.scalars(
+                select(DoorbelastingVerdeelsleutel).where(
+                    DoorbelastingVerdeelsleutel.administratie_id == administratie_id,
+                    DoorbelastingVerdeelsleutel.naam == naam,
+                )
+            )
+        )
+        versie = max((b.versie for b in bestaande), default=0) + 1
+        for b in bestaande:
+            b.actief = False
+        sleutel = DoorbelastingVerdeelsleutel(
+            administratie_id=administratie_id,
+            naam=naam,
+            versie=versie,
+            actief=True,
+            definitie=schoon,
+            aangemaakt_door=actor_id,
+        )
+        session.add(sleutel)
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=_MODULE,
+            tabel="doorbelasting_verdeelsleutel",
+            record_id=sleutel.id,
+            actie="doorbelasting_verdeelsleutel_opgeslagen",
+            correlatie_id=sleutel.id,
+            oude_waarde={"vorige_versie": versie - 1} if bestaande else None,
+            nieuwe_waarde={"naam": naam, "versie": versie, "definitie": schoon},
+            administratie_id=administratie_id,
+        )
+        session.expunge(sleutel)
+        return sleutel
+
+
+def pas_verdeelsleutel_toe(
+    *, administratie_id: uuid.UUID, run_id: uuid.UUID, sleutel_id: uuid.UUID, actor_id: uuid.UUID
+) -> list[DoorbelastingRegel]:
+    """Eén klik: de sleutel-definitie op ÉLKE bron-regel van de run toepassen (dezelfde doelen/
+    projecten/basis per regel), 'alle_actief' gematerialiseerd naar de nu actieve projecten van
+    het doel; daarna gewoon `sla_verdeling_op` (alle poorten + centen server-side) — de mens
+    kan het resultaat nog aanpassen vóór opslaan. De run onthoudt sleutel(versie) + moment;
+    audit `doorbelasting_verdeelsleutel_toegepast`."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        sleutel = session.get(DoorbelastingVerdeelsleutel, sleutel_id)
+        if sleutel is None or sleutel.administratie_id != administratie_id:
+            raise DoorbelastingFout("Onbekende verdeelsleutel voor deze administratie")
+        run = session.get(DoorbelastingRun, run_id)
+        if run is None or run.administratie_id != administratie_id:
+            raise RunNietGevonden("Onbekende run voor deze administratie")
+        bron_regel_ids = list(
+            session.scalars(
+                select(BoekvoorstelRegel.id)
+                .where(BoekvoorstelRegel.document_id == run.document_id)
+                .order_by(BoekvoorstelRegel.volgnummer)
+            )
+        )
+        mappings = {
+            m.id: m
+            for m in session.scalars(
+                select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == administratie_id)
+            )
+        }
+        definitie = dict(sleutel.definitie)
+        naam, versie = sleutel.naam, sleutel.versie
+    if not bron_regel_ids:
+        raise DoorbelastingFout("Het document heeft nog geen boekingsregels om te verdelen")
+    invoer: list[VerdeelRegelInvoerData] = []
+    alle_actief_cache: dict[uuid.UUID, tuple[uuid.UUID, ...]] = {}
+    for bron_regel_id in bron_regel_ids:
+        for d in definitie["doelen"]:
+            mapping = mappings.get(uuid.UUID(d["mapping_id"]))
+            if mapping is None:
+                raise DoorbelastingFout(f"Doelentiteit {d['mapping_id']} uit de sleutel staat niet (meer) op de whitelist")
+            projecten = d.get("projecten") or []
+            if projecten == "alle_actief":
+                if mapping.doel_administratie_id is None:
+                    raise DoorbelastingFout(f"{mapping.doelentiteit_naam} is niet onboarded — 'alle actieve projecten' kan daar niet")
+                if mapping.doel_administratie_id not in alle_actief_cache:
+                    alle_actief_cache[mapping.doel_administratie_id] = tuple(
+                        p.id for p in projecten_van_doel(mapping.doel_administratie_id) if p.is_actief
+                    )
+                project_ids = alle_actief_cache[mapping.doel_administratie_id]
+                if not project_ids:
+                    raise DoorbelastingFout(f"{mapping.doelentiteit_naam} heeft geen actieve projecten in de cache")
+            else:
+                project_ids = tuple(uuid.UUID(str(p)) for p in projecten)
+            invoer.append(
+                VerdeelRegelInvoerData(
+                    bron_regel_id=bron_regel_id,
+                    mapping_id=mapping.id,
+                    percentage=Decimal(d["percentage"]),
+                    doel_kosten_ledger_id=uuid.UUID(d["doel_kosten_ledger_id"]) if d.get("doel_kosten_ledger_id") else None,
+                    project_ids=project_ids,
+                    verdeelbasis=d.get("verdeelbasis") if len(project_ids) > 1 else None,
+                )
+            )
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        run = session.get(DoorbelastingRun, run_id)
+        run.verdeelsleutel_id = sleutel_id
+        run.verdeelsleutel_toegepast_op = func.now()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=_MODULE,
+            tabel="doorbelasting_run",
+            record_id=run.id,
+            actie="doorbelasting_verdeelsleutel_toegepast",
+            correlatie_id=run.document_id,
+            nieuwe_waarde={"verdeelsleutel_id": str(sleutel_id), "naam": naam, "versie": versie},
+            administratie_id=administratie_id,
+        )
+    return sla_verdeling_op(administratie_id=administratie_id, run_id=run_id, regels=invoer, actor_id=actor_id)

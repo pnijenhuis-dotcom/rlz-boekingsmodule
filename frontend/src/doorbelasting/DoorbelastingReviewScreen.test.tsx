@@ -302,8 +302,8 @@ describe('DoorbelastingReviewScreen', () => {
     await waitFor(() => expect(verdelingAanroepen).toHaveLength(1))
     expect(verdelingAanroepen[0].body).toEqual({
       regels: [
-        { bron_regel_id: BRON_REGEL_1, mapping_id: MAPPING_CHALETS, percentage: '50', doel_kosten_ledger_id: null },
-        { bron_regel_id: BRON_REGEL_1, mapping_id: MAPPING_RUBICON, percentage: '50', doel_kosten_ledger_id: null },
+        { bron_regel_id: BRON_REGEL_1, mapping_id: MAPPING_CHALETS, percentage: '50', doel_kosten_ledger_id: null, project_ids: [], verdeelbasis: null },
+        { bron_regel_id: BRON_REGEL_1, mapping_id: MAPPING_RUBICON, percentage: '50', doel_kosten_ledger_id: null, project_ids: [], verdeelbasis: null },
       ],
     })
     // Server-netto_delen (grootste-rest) zichtbaar ná opslaan.

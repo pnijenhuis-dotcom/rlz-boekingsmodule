@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Numeric, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -153,6 +153,13 @@ class DoorbelastingRun(Base):
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     geboekt_op: Mapped[datetime | None] = mapped_column(default=None)
+    # Verdeelsleutel-herleidbaarheid (25-08, deel 2 punt 2c): welke sleutel(versie) is op deze run
+    # toegepast — blijft staan óók als de mens de verdeling daarna nog aanpaste (het audit-spoor
+    # `doorbelasting_verdeling_opgeslagen` toont die aanpassing).
+    verdeelsleutel_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.doorbelasting_verdeelsleutel.id"), default=None
+    )
+    verdeelsleutel_toegepast_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class DoorbelastingRegel(Base):
@@ -165,7 +172,21 @@ class DoorbelastingRegel(Base):
 
     __tablename__ = "doorbelasting_regel"
     __table_args__ = (
-        UniqueConstraint("run_id", "bron_regel_id", "mapping_id", name="doorbelasting_regel_uniek"),
+        # Multi-project (25-08, deel 2 punt 2b): één rij per project binnen een doelentiteit;
+        # NULLS NOT DISTINCT houdt de rij-zonder-project even hard uniek als voorheen.
+        UniqueConstraint(
+            "run_id",
+            "bron_regel_id",
+            "mapping_id",
+            "project_id",
+            name="doorbelasting_regel_uniek",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint("verdeelbasis IS NULL OR verdeelbasis IN ('m2', 'gelijk')", name="doorbelasting_regel_verdeelbasis"),
+        CheckConstraint(
+            "project_aandeel IS NULL OR (project_aandeel > 0 AND project_aandeel <= 1)",
+            name="doorbelasting_regel_project_aandeel",
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -181,6 +202,46 @@ class DoorbelastingRegel(Base):
     percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2))
     netto_deel: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     doel_kosten_ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    # Doorbelasting × projecten (besluit Peter 25-08 "optie 2", migratie 0067): het project in de
+    # DOEL-administratie (RLZ-project-GUID uit haar project_cache) waarop de spiegel-regel boekt.
+    # `percentage` blijft het doelentiteit-aandeel van de bron-regel (identiek op alle project-
+    # rijen van dezelfde doelentiteit); `project_aandeel` = de fractie van dát deel voor dit
+    # project (som 1 per bron-regel × doelentiteit), `verdeelbasis` = 'm2' | 'gelijk' bij een
+    # multi-project-verdeling (NULL bij één of geen project), `m2` = de contract-m² waarop
+    # verdeeld is — herleidbaar waarom dit deel dit bedrag kreeg.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    project_aandeel: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), default=None)
+    verdeelbasis: Mapped[str | None] = mapped_column(default=None)
+    m2: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), default=None)
+
+
+class DoorbelastingVerdeelsleutel(Base):
+    """Herbruikbare verdeelsleutel per bron-administratie (besluit Peter 25-08, deel 2 punt 2c):
+    doelen + projecten + verdeelbasis als JSON-definitie, append-only per versie — opnieuw
+    opslaan onder dezelfde naam maakt versie n+1 en zet de vorige inactief (nooit een delete:
+    een run verwijst naar de exacte versie die toegepast is, QoE-eis).
+
+    `definitie` = {"doelen": [{"mapping_id", "percentage", "doel_kosten_ledger_id"|null,
+    "projecten": [project_id, ...] | "alle_actief" | [], "verdeelbasis": "m2"|"gelijk"|null}]};
+    "alle_actief" wordt bij toepassen gematerialiseerd naar de dan actieve projecten van de
+    doel-administratie (de run draagt de concrete lijst)."""
+
+    __tablename__ = "doorbelasting_verdeelsleutel"
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "naam", "versie", name="doorbelasting_verdeelsleutel_naam_versie"),
+        CheckConstraint("versie >= 1", name="doorbelasting_verdeelsleutel_versie"),
+        Index("ix_doorbelasting_verdeelsleutel_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    naam: Mapped[str]
+    versie: Mapped[int]
+    actief: Mapped[bool] = mapped_column(server_default=text("true"), default=True)
+    definitie: Mapped[dict] = mapped_column(JSONB)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class DoorbelastingBoeking(Base):

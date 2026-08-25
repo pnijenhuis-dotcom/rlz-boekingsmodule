@@ -1,6 +1,9 @@
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type {
   BoekenIngeschakeldDto,
+  DoelProjectenDto,
+  VerdeelsleutelDto,
+  VerdeelsleutelInputDto,
   DoorbelastingBoekResultaatDto,
   DoorbelastingInstellingDto,
   DoorbelastingInstellingInputDto,
@@ -207,4 +210,30 @@ export interface OpruimlijstDto {
 /** Live scan tegen RLZ (klein volume) — Beheerder-only; de app verwijdert nooit iets in RLZ. */
 export function haalOpruimlijstOp(administratieId: string): Promise<OpruimlijstDto> {
   return apiJson<OpruimlijstDto>(`/doorbelasting/${administratieId}/opruimlijst`)
+}
+
+// --- doorbelasting × projecten + verdeelsleutels (besluit Peter 25-08, deel 2 punt 2) --------
+
+/** Projecten van de DOEL-administratie achter een whitelist-rij, mét project_verplicht en
+ * contract-m² (voor de m²-basis). 403 = geen scope op het doel. */
+export function haalDoelProjectenOp(administratieId: string, mappingId: string): Promise<DoelProjectenDto> {
+  return apiJson<DoelProjectenDto>(`/doorbelasting/${administratieId}/mappings/${mappingId}/projecten`)
+}
+
+export function haalVerdeelsleutelsOp(administratieId: string): Promise<VerdeelsleutelDto[]> {
+  return apiJson<VerdeelsleutelDto[]>(`/doorbelasting/${administratieId}/verdeelsleutels`)
+}
+
+/** Nieuwe sleutel of nieuwe versie onder een bestaande naam (append-only, server-side audit). */
+export function slaVerdeelsleutelOp(administratieId: string, input: VerdeelsleutelInputDto): Promise<VerdeelsleutelDto> {
+  return apiPostJson<VerdeelsleutelDto>(`/doorbelasting/${administratieId}/verdeelsleutels`, input)
+}
+
+/** Eén klik: sleutel op alle bron-regels van de run toepassen; de verse run komt terug en is
+ * daarna nog aanpasbaar vóór opslaan. */
+export function pasVerdeelsleutelToe(administratieId: string, runId: string, sleutelId: string): Promise<DoorbelastingRunDto> {
+  return apiPostJson<DoorbelastingRunDto>(
+    `/doorbelasting/${administratieId}/runs/${runId}/verdeelsleutels/${sleutelId}/toepassen`,
+    {},
+  )
 }

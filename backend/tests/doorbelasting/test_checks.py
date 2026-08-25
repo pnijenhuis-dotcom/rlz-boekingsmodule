@@ -161,5 +161,5 @@ def test_rapport_bundelt_alle_checks() -> None:
         btw_taxrate_id=TAXRATE,
         omzet_ledger_id=GB,
     )
-    assert len(rapport.resultaten) == 5
+    assert len(rapport.resultaten) == 6  # incl. project-verplicht-doel (25-08)
     assert not rapport.geblokkeerd

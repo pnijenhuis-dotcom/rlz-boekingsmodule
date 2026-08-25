@@ -38,6 +38,9 @@ class VerdeelRegelInvoer:
     percentage: Decimal
     netto_deel: Decimal
     doel_kosten_ledger_id: uuid.UUID | None
+    # Doorbelasting × projecten (25-08, deel 2 punt 2a): project in de doel-administratie; bij een
+    # multi-project-verdeling staat per project één rij met hetzelfde `percentage`.
+    project_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,10 @@ class MappingInvoer:
     # Route-A-nazorg (besluit 2026-08-14): het RLZ-customer-GUID waarop de verkoopfactuur in
     # de bron geboekt wordt — nodig voor de anker-toets (check_geen_ankerdebiteur).
     doel_customer_guid: uuid.UUID | None = None
+    # project_verplicht van de DOEL-administratie (25-08, deel 2 punt 2a): dan is een project per
+    # verdeelregel verplicht — de spiegel ontsnapt niet meer aan de projectplicht van het doel.
+    doel_project_verplicht: bool = False
+    doelentiteit_naam: str | None = None
 
 
 def check_verdeling_100(regels: list[VerdeelRegelInvoer]) -> CheckResultaat:
@@ -57,7 +64,13 @@ def check_verdeling_100(regels: list[VerdeelRegelInvoer]) -> CheckResultaat:
         return CheckResultaat(naam=naam, ok=False, melding="Geen verdeelregels — selecteer minimaal één regel")
     fouten: list[str] = []
     per_bron: dict[uuid.UUID, Decimal] = {}
+    # Multi-project (25-08): de project-rijen van één doelentiteit delen hetzelfde percentage —
+    # per (bron-regel, doelentiteit) één keer meetellen.
+    gezien: set[tuple[uuid.UUID, uuid.UUID]] = set()
     for regel in regels:
+        if (regel.bron_regel_id, regel.mapping_id) in gezien:
+            continue
+        gezien.add((regel.bron_regel_id, regel.mapping_id))
         per_bron[regel.bron_regel_id] = per_bron.get(regel.bron_regel_id, Decimal(0)) + regel.percentage
     for bron_id, som in per_bron.items():
         if som != HONDERD:
@@ -180,6 +193,26 @@ def check_geen_ankerdebiteur(
     return CheckResultaat(naam=naam, ok=True, melding="Geen doelentiteit verwijst naar het projectanker")
 
 
+def check_project_verplicht_doel(
+    regels: list[VerdeelRegelInvoer], mappings: dict[uuid.UUID, MappingInvoer]
+) -> CheckResultaat:
+    """Besluit Peter 25-08 "optie 2": heeft de DOEL-administratie project_verplicht aan, dan
+    moet elke verdeelregel naar dat doel een project dragen — anders zou de spiegel-inkoopfactuur
+    zonder project geboekt worden terwijl een gewone inkoopfactuur daar geblokkeerd zou zijn.
+    Zonder projectplicht is het project optioneel (geen melding)."""
+    naam = "Project verplicht in doel-administratie"
+    fouten: list[str] = []
+    for regel in regels:
+        mapping = mappings.get(regel.mapping_id)
+        if mapping is None or not mapping.doel_project_verplicht:
+            continue
+        if regel.project_id is None:
+            fouten.append(f"{mapping.doelentiteit_naam or mapping.mapping_id}: regel {regel.bron_regel_id} zonder project")
+    if fouten:
+        return CheckResultaat(naam=naam, ok=False, melding="Project ontbreekt — " + "; ".join(sorted(fouten)))
+    return CheckResultaat(naam=naam, ok=True, melding="Elke verdeelregel naar een doel met projectplicht draagt een project")
+
+
 def voer_doorbelasting_checks_uit(
     *,
     regels: list[VerdeelRegelInvoer],
@@ -203,5 +236,6 @@ def voer_doorbelasting_checks_uit(
             ),
             check_onboarded_doelen_boekbaar(regels, mappings),
             check_geen_ankerdebiteur(regels, mappings, anker_customer_guid=anker_customer_guid),
+            check_project_verplicht_doel(regels, mappings),
         )
     )

@@ -39,7 +39,7 @@ def _naar_mapping(m: DoorbelastingMapping) -> schemas.MappingResponse:
     )
 
 
-def _naar_regel(r: DoorbelastingRegel) -> schemas.VerdeelRegelResponse:
+def _naar_regel(r: DoorbelastingRegel, project_namen: dict[uuid.UUID, str] | None = None) -> schemas.VerdeelRegelResponse:
     return schemas.VerdeelRegelResponse(
         id=r.id,
         bron_regel_id=r.bron_regel_id,
@@ -47,6 +47,11 @@ def _naar_regel(r: DoorbelastingRegel) -> schemas.VerdeelRegelResponse:
         percentage=r.percentage,
         netto_deel=r.netto_deel,
         doel_kosten_ledger_id=r.doel_kosten_ledger_id,
+        project_id=r.project_id,
+        project_naam=(project_namen or {}).get(r.project_id) if r.project_id else None,
+        project_aandeel=r.project_aandeel,
+        verdeelbasis=r.verdeelbasis,
+        m2=r.m2,
     )
 
 
@@ -56,7 +61,7 @@ def _naar_run_response(data: service.RunReviewData) -> schemas.RunResponse:
         document_id=data.run.document_id,
         status=data.run.status,
         laatste_fout=data.run.laatste_fout,
-        regels=[_naar_regel(r) for r in data.regels],
+        regels=[_naar_regel(r, data.project_namen) for r in data.regels],
         previews=[
             schemas.DoelentiteitPreviewResponse(
                 mapping_id=p.mapping_id,
@@ -67,10 +72,30 @@ def _naar_run_response(data: service.RunReviewData) -> schemas.RunResponse:
                 btw_bedrag=p.btw_bedrag,
                 boeking_status=p.boeking_status,
                 boeking_id=p.boeking_id,
+                projecten=[
+                    schemas.ProjectPreviewResponse(project_id=pp.project_id, naam=pp.naam, netto_totaal=pp.netto_totaal)
+                    for pp in p.projecten
+                ],
             )
             for p in data.previews
         ],
         checks=_naar_check_rapport(data.rapport),
+        verdeelsleutel=(
+            schemas.VerdeelsleutelKortResponse(
+                id=data.verdeelsleutel.id,
+                naam=data.verdeelsleutel.naam,
+                versie=data.verdeelsleutel.versie,
+                toegepast_op=data.verdeelsleutel.toegepast_op,  # type: ignore[arg-type]
+            )
+            if data.verdeelsleutel
+            else None
+        ),
+    )
+
+
+def _naar_verdeelsleutel(v) -> schemas.VerdeelsleutelResponse:
+    return schemas.VerdeelsleutelResponse(
+        id=v.id, naam=v.naam, versie=v.versie, actief=v.actief, definitie=v.definitie, aangemaakt_op=v.aangemaakt_op
     )
 
 
@@ -228,10 +253,116 @@ def verdeling_opslaan(
                     mapping_id=r.mapping_id,
                     percentage=r.percentage,
                     doel_kosten_ledger_id=r.doel_kosten_ledger_id,
+                    project_ids=tuple(r.project_ids),
+                    verdeelbasis=r.verdeelbasis,
                 )
                 for r in body.regels
             ],
             actor_id=actor.id,
+        )
+        data = service.review_data(administratie_id=administratie_id, run_id=run_id)
+    except service.RunNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except service.DoorbelastingFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_run_response(data)
+
+
+# --- doorbelasting × projecten + verdeelsleutels (besluit Peter 25-08, deel 2 punt 2) ----------
+
+
+@router.get(
+    "/doorbelasting/{administratie_id}/mappings/{mapping_id}/projecten",
+    response_model=schemas.DoelProjectenResponse,
+)
+def projecten_van_doelentiteit(
+    administratie_id: uuid.UUID,
+    mapping_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DoelProjectenResponse:
+    """Projecten van de DOEL-administratie achter een whitelist-rij (voor de projectkeuze in de
+    verdeel-UI): naam, actief, contract-m² — plus of het doel project_verplicht heeft. Alleen
+    met scope op het doel (403), niet-onboarded doel = leeg."""
+    try:
+        projecten = service.projecten_voor_mapping(administratie_id=administratie_id, mapping_id=mapping_id, actor_id=actor.id)
+    except service.GeenScopeOpDoel as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except service.DoorbelastingFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    mapping = next((m for m in service.lijst_mappings(administratie_id=administratie_id) if m.id == mapping_id), None)
+    doel_id = mapping.doel_administratie_id if mapping else None
+    verplicht = False
+    if doel_id is not None:
+        verplicht = service._project_verplicht_per_administratie({doel_id}).get(doel_id, (False, ""))[0]
+    return schemas.DoelProjectenResponse(
+        doel_administratie_id=doel_id,
+        project_verplicht=verplicht,
+        projecten=[
+            schemas.DoelProjectResponse(id=p.id, naam=p.naam, is_actief=p.is_actief, contract_m2=p.contract_m2)
+            for p in projecten
+        ],
+    )
+
+
+@router.get("/doorbelasting/{administratie_id}/verdeelsleutels", response_model=list[schemas.VerdeelsleutelResponse])
+def verdeelsleutels_lijst(
+    administratie_id: uuid.UUID,
+    alleen_actief: bool = True,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> list[schemas.VerdeelsleutelResponse]:
+    return [
+        _naar_verdeelsleutel(v)
+        for v in service.lijst_verdeelsleutels(administratie_id=administratie_id, alleen_actief=alleen_actief)
+    ]
+
+
+@router.post(
+    "/doorbelasting/{administratie_id}/verdeelsleutels",
+    response_model=schemas.VerdeelsleutelResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def verdeelsleutel_opslaan(
+    administratie_id: uuid.UUID,
+    body: schemas.VerdeelsleutelInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VerdeelsleutelResponse:
+    """Nieuwe sleutel of nieuwe versie onder een bestaande naam (append-only, geauditeerd)."""
+    definitie = {
+        "doelen": [
+            {
+                "mapping_id": str(d.mapping_id),
+                "percentage": str(d.percentage),
+                "doel_kosten_ledger_id": str(d.doel_kosten_ledger_id) if d.doel_kosten_ledger_id else None,
+                "projecten": d.projecten if d.projecten == "alle_actief" else [str(p) for p in d.projecten],
+                "verdeelbasis": d.verdeelbasis,
+            }
+            for d in body.doelen
+        ]
+    }
+    try:
+        sleutel = service.sla_verdeelsleutel_op(
+            administratie_id=administratie_id, naam=body.naam, definitie=definitie, actor_id=actor.id
+        )
+    except service.DoorbelastingFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_verdeelsleutel(sleutel)
+
+
+@router.post(
+    "/doorbelasting/{administratie_id}/runs/{run_id}/verdeelsleutels/{sleutel_id}/toepassen",
+    response_model=schemas.RunResponse,
+)
+def verdeelsleutel_toepassen(
+    administratie_id: uuid.UUID,
+    run_id: uuid.UUID,
+    sleutel_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.RunResponse:
+    """Eén klik: de sleutel op alle bron-regels van de run toepassen (server rekent bindend);
+    daarna nog aanpasbaar vóór opslaan. Run onthoudt sleutel(versie) + moment (QoE)."""
+    try:
+        service.pas_verdeelsleutel_toe(
+            administratie_id=administratie_id, run_id=run_id, sleutel_id=sleutel_id, actor_id=actor.id
         )
         data = service.review_data(administratie_id=administratie_id, run_id=run_id)
     except service.RunNietGevonden as exc:

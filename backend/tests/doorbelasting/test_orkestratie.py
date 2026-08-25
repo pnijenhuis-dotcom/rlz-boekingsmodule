@@ -194,7 +194,9 @@ class TestBoekenPlusDoorbelasten:
                 .scalars()
                 .all()
             )
-        assert acties[:2] == ["doorbelasting_run_klaargezet", "doorbelasting_run_geactiveerd_na_boeken"]
+        # De verdeling-opslag-audit (25-08, deel 2) zit ertussen — hier gaat het om de run-overgangen.
+        overgangen = [a for a in acties if a != "doorbelasting_verdeling_opgeslagen"]
+        assert overgangen[:2] == ["doorbelasting_run_klaargezet", "doorbelasting_run_geactiveerd_na_boeken"]
 
     def test_rode_doorbelasting_checks_blokkeren_voor_de_inkoopboeking(
         self,
