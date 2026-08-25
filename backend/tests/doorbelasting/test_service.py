@@ -8,7 +8,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, text
 
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
@@ -302,6 +302,102 @@ class TestStartOfHaalRun:
             administratie_id=administratie_id, document_id=document_id, actor_id=beheerder_id
         )
         assert eerste.id == tweede.id
+
+
+class TestDefaultAan:
+    """Besluit Peter 25-08 (deel 2 punt 5): vinkje "Doorbelasten na boeken" standaard AAN op een
+    administratie mét toggle — maar de eerdere keuze van de mens (vervallen) wint altijd."""
+
+    def _upload(self, administratie_id, gescoopte_gebruiker, opslag, naam="default.pdf"):
+        return documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=naam,
+            inhoud=b"%PDF-1.4 " + naam.encode(),
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        ).document_id
+
+    def test_eerste_keer_maakt_klaargezette_run_met_bron_default(
+        self,
+        doorbelasting_aan: None,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine,
+    ) -> None:
+        document_id = self._upload(administratie_id, gescoopte_gebruiker, opslag)
+        run = doorbelasting_service.zet_run_default_klaar(
+            administratie_id=administratie_id, document_id=document_id, actor_id=beheerder_id
+        )
+        assert run is not None and run.status == "klaargezet"
+        # Idempotent: tweede aanroep = dezelfde run
+        tweede = doorbelasting_service.zet_run_default_klaar(
+            administratie_id=administratie_id, document_id=document_id, actor_id=beheerder_id
+        )
+        assert tweede is not None and tweede.id == run.id
+        with admin_engine.connect() as conn:
+            rij = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event WHERE record_id = :id "
+                    "AND actie = 'doorbelasting_run_klaargezet'"
+                ),
+                {"id": run.id},
+            ).one()
+        assert rij[0]["bron"] == "default_aan"
+
+    def test_na_uitvinken_blijft_de_keuze_van_de_mens_staan(
+        self,
+        doorbelasting_aan: None,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        document_id = self._upload(administratie_id, gescoopte_gebruiker, opslag, "uitgevinkt.pdf")
+        run = doorbelasting_service.zet_run_default_klaar(
+            administratie_id=administratie_id, document_id=document_id, actor_id=beheerder_id
+        )
+        assert run is not None
+        doorbelasting_service.laat_run_vervallen(administratie_id=administratie_id, run_id=run.id, actor_id=beheerder_id)
+        assert (
+            doorbelasting_service.zet_run_default_klaar(
+                administratie_id=administratie_id, document_id=document_id, actor_id=beheerder_id
+            )
+            is None
+        )
+
+    def test_geen_default_op_geboekt_document_of_zonder_toggle(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine,
+    ) -> None:
+        # toggle uit
+        document_id = self._upload(administratie_id, gescoopte_gebruiker, opslag, "toggle-uit.pdf")
+        assert (
+            doorbelasting_service.zet_run_default_klaar(
+                administratie_id=administratie_id, document_id=document_id, actor_id=beheerder_id
+            )
+            is None
+        )
+        # toggle aan, maar geboekt document → geen default (losse actie blijft een klik)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET doorbelasting_ingeschakeld = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        geboekt_id, _ = maak_geboekt_inkoopfactuur(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, nettos=[D("10.00")]
+        )
+        assert (
+            doorbelasting_service.zet_run_default_klaar(
+                administratie_id=administratie_id, document_id=geboekt_id, actor_id=beheerder_id
+            )
+            is None
+        )
 
 
 class TestReviewData:

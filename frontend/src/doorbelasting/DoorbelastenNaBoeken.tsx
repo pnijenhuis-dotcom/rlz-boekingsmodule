@@ -11,6 +11,7 @@ import {
   haalDoorbelastingToggleOp,
   laatDoorbelastingRunVervallen,
   startDoorbelastingRun,
+  zetDoorbelastingDefaultAan,
 } from './doorbelastingApi'
 import { runVerdelingOnvolledig, VerdelingEditor, type BronRegel, type VerdelingStaat } from './VerdelingEditor'
 
@@ -109,8 +110,10 @@ function Inhoud({
     )
   }, [administratieId, documentId])
 
-  // Leesroute (GET, 404 → geen run): openen van het controlescherm maakt nooit een run aan —
-  // de POST is het vinkje (gebruikersactie). Herladen bij elke boekvoorstel-opslag.
+  // Leesroute (GET, 404 → geen run) + default-AAN (besluit Peter 25-08, deel 2 punt 5): op een
+  // administratie mét toggle staat het vinkje standaard aan — is er nog geen run, dan vraagt het
+  // scherm de server om de default (die maakt alléén een run als er nog nooit één was; heeft de
+  // mens 'm eerder uitgezet, dan blijft dat zo). Herladen bij elke boekvoorstel-opslag.
   useEffect(() => {
     let actief = true
     setFout(null)
@@ -119,9 +122,13 @@ function Inhoud({
       haalDoorbelastingMappingsOp(administratieId).catch(() => [] as DoorbelastingMappingDto[]),
       laadBronRegels(),
     ])
-      .then(([runData, mappingLijst]) => {
+      .then(async ([runData, mappingLijst]) => {
+        let actieveRun = runData && runData.status === 'klaargezet' ? runData : null
+        if (actieveRun === null && !runData && !bevroren && KLAARZETBAAR.has(status)) {
+          actieveRun = await zetDoorbelastingDefaultAan(administratieId, documentId).catch(() => null)
+        }
         if (!actief) return
-        setRun(runData && runData.status === 'klaargezet' ? runData : null)
+        setRun(actieveRun)
         setMappings(mappingLijst)
       })
       .catch((err: unknown) => {
@@ -130,7 +137,7 @@ function Inhoud({
     return () => {
       actief = false
     }
-  }, [administratieId, documentId, boekvoorstelVersie, laadBronRegels])
+  }, [administratieId, documentId, boekvoorstelVersie, laadBronRegels, bevroren, status])
 
   // Poort-signaal naar de boekknop: server-checks van de run + werkstaat van de editor.
   useEffect(() => {

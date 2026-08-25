@@ -410,6 +410,68 @@ def start_of_haal_run(*, administratie_id: uuid.UUID, document_id: uuid.UUID, ac
         return run
 
 
+def zet_run_default_klaar(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
+) -> DoorbelastingRun | None:
+    """Default-AAN van het vinkje "Doorbelasten na boeken" (besluit Peter 25-08, feedbackronde
+    deel 2 punt 5): op een administratie mét doorbelasting-toggle staat het vinkje standaard
+    aan. Het controlescherm roept dit aan bij het openen; de functie maakt UITSLUITEND een
+    klaargezette run aan als er voor dit document nog NOOIT een run bestond — heeft de mens
+    het vinkje al eens uitgezet (run 'vervallen') of is er om een andere reden een eerdere run
+    (gestorneerd), dan blijft die keuze staan en gebeurt er niets (None). Bestaat er een
+    actieve run, dan komt die terug (zelfde als de leesroute). Verder exact de poorten van
+    start_of_haal_run, maar alléén voor klaarzetbare (nog niet geboekte) documenten — de losse
+    actie op een geboekt document blijft een expliciete klik.
+
+    NB dit herziet bewust de 13-08-regel "openen maakt nooit een run aan" voor deze ene
+    situatie; de aanmaak is geauditeerd met bron 'default_aan' zodat het spoor eerlijk blijft."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None or not administratie.doorbelasting_ingeschakeld:
+            return None
+        document = session.get(Document, document_id)
+        if document is None or document.administratie_id != administratie_id:
+            return None
+        if document.soort != DocumentSoort.INKOOPFACTUUR.value:
+            return None
+        alle = session.scalars(select(DoorbelastingRun).where(DoorbelastingRun.document_id == document_id)).all()
+        actieve = [r for r in alle if r.status not in INACTIEVE_RUN_STATUSSEN]
+        if actieve:
+            run = actieve[0]
+            session.expunge(run)
+            return run
+        if alle:
+            # Er is al eens gekozen (vervallen/gestorneerd): de mens wint van de default.
+            return None
+        if document.status not in _KLAARZETBARE_DOCUMENTSTATUSSEN:
+            return None
+        run = DoorbelastingRun(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            aangemaakt_door=actor_id,
+            status=DoorbelastingRunStatus.KLAARGEZET.value,
+        )
+        session.add(run)
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=_MODULE,
+            tabel="doorbelasting_run",
+            record_id=run.id,
+            actie="doorbelasting_run_klaargezet",
+            correlatie_id=document_id,
+            nieuwe_waarde={
+                "document_id": str(document_id),
+                "status": DoorbelastingRunStatus.KLAARGEZET.value,
+                "bron": "default_aan",
+            },
+            administratie_id=administratie_id,
+        )
+        session.expunge(run)
+        return run
+
+
 def laat_run_vervallen(*, administratie_id: uuid.UUID, run_id: uuid.UUID, actor_id: uuid.UUID) -> DoorbelastingRun:
     """Het vinkje "Doorbelasten na boeken" gaat weer uit vóór het boeken: de klaargezette run
     wordt VERVALLEN (nooit een delete — spoor + audit blijven), de verdeelregels blijven eraan

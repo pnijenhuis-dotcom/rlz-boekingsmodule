@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
 from app.documenten.boeken import BoekenUitgeschakeld, VolumeremBereikt
@@ -173,6 +173,28 @@ def run_starten(
         data = service.review_data(administratie_id=administratie_id, run_id=run.id)
     except service.DoorbelastingFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_run_response(data)
+
+
+@router.post(
+    "/doorbelasting/{administratie_id}/documenten/{document_id}/run/default",
+    response_model=schemas.RunResponse | None,
+    responses={204: {"description": "Geen run aangemaakt — eerdere keuze of niet klaarzetbaar"}},
+)
+def run_default_aan(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    response: Response,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.RunResponse | None:
+    """Default-AAN (besluit Peter 25-08, deel 2 punt 5): het controlescherm zet het vinkje
+    standaard aan — maakt alleen een klaargezette run als er nog nooit één was; 204 = niets
+    aangemaakt (mens had 'm al uitgezet, of het document is niet klaarzetbaar)."""
+    run = service.zet_run_default_klaar(administratie_id=administratie_id, document_id=document_id, actor_id=actor.id)
+    if run is None:
+        response.status_code = status.HTTP_204_NO_CONTENT
+        return None
+    data = service.review_data(administratie_id=administratie_id, run_id=run.id)
     return _naar_run_response(data)
 
 

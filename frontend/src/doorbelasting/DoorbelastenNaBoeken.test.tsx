@@ -48,10 +48,13 @@ const RUN_MET_VERDELING = run({
 interface Opties {
   toggleAan?: boolean
   bestaandeRun?: DoorbelastingRunDto | null
+  /** Server-antwoord op de default-aan-vraag: 'maakt' (nieuwe klaargezette run) of 'niets' (204 —
+   * de mens had het vinkje al eens uitgezet). */
+  defaultAan?: 'maakt' | 'niets'
   aanroepen?: { url: string; method: string }[]
 }
 
-function installFetchMock({ toggleAan = true, bestaandeRun = null, aanroepen }: Opties) {
+function installFetchMock({ toggleAan = true, bestaandeRun = null, defaultAan = 'maakt', aanroepen }: Opties) {
   let huidigeRun: DoorbelastingRunDto | null = bestaandeRun
   vi.stubGlobal(
     'fetch',
@@ -59,6 +62,13 @@ function installFetchMock({ toggleAan = true, bestaandeRun = null, aanroepen }: 
       const method = init?.method ?? 'GET'
       aanroepen?.push({ url, method })
       if (url.endsWith('/doorbelasting-instelling')) return Promise.resolve(jsonResponse({ ingeschakeld: toggleAan }))
+      if (url.endsWith(`/documenten/${DOC}/run/default`) && method === 'POST') {
+        if (defaultAan === 'niets' || huidigeRun) {
+          return Promise.resolve(huidigeRun ? jsonResponse(huidigeRun) : new Response(null, { status: 204 }))
+        }
+        huidigeRun = run()
+        return Promise.resolve(jsonResponse(huidigeRun))
+      }
       if (url.endsWith(`/documenten/${DOC}/run`) && method === 'GET') {
         return Promise.resolve(huidigeRun ? jsonResponse(huidigeRun) : new Response(null, { status: 404 }))
       }
@@ -127,26 +137,41 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     expect(screen.queryByText('Doorbelasten na boeken')).not.toBeInTheDocument()
   })
 
-  it('aanvinken start een klaargezette run (POST) en toont de verdeel-UI inline; leeg = knop geblokkeerd', async () => {
+  it('default AAN (besluit 25-08, deel 2 punt 5): zonder eerdere run staat het vinkje standaard aan via de default-route; leeg = knop geblokkeerd', async () => {
     const aanroepen: { url: string; method: string }[] = []
     const meldingen: (KlaargezetteDoorbelasting | null)[] = []
     installFetchMock({ aanroepen })
     renderBlok('te_controleren', (s) => meldingen.push(s))
 
     const vinkje = await screen.findByLabelText('Doorbelasten na boeken')
-    await waitFor(() => expect(vinkje).toBeEnabled())
-    expect(vinkje).not.toBeChecked()
-    expect(meldingen.at(-1)).toBeNull()
-
-    await userEvent.click(vinkje)
+    await waitFor(() => expect(vinkje).toBeChecked())
+    expect(aanroepen.some((a) => a.method === 'POST' && a.url.endsWith(`/documenten/${DOC}/run/default`))).toBe(true)
+    // Géén gewone POST (dat is de expliciete klik) — de default-route is de enige aanmaak.
+    expect(aanroepen.some((a) => a.method === 'POST' && a.url.endsWith(`/documenten/${DOC}/run`))).toBe(false)
     await waitFor(() => expect(screen.getByText('klaargezet')).toBeInTheDocument())
-    expect(aanroepen.some((a) => a.method === 'POST' && a.url.endsWith(`/documenten/${DOC}/run`))).toBe(true)
     // Verdeel-UI inline mét de bron-regel uit het boekvoorstel
     expect(screen.getByText('Steigermateriaal')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '+ Doelentiteit toevoegen' })).toBeInTheDocument()
     // Nog niets verdeeld → de boekknop-poort meldt geblokkeerd mét reden (A2)
     await waitFor(() => expect(meldingen.at(-1)?.geblokkeerd).toBe(true))
     expect(meldingen.at(-1)?.reden).toMatch(/nog geen verdeling/)
+  })
+
+  it('eerder uitgevinkt (server 204 op de default-route): vinkje blijft uit; aanvinken is de expliciete POST', async () => {
+    const aanroepen: { url: string; method: string }[] = []
+    const meldingen: (KlaargezetteDoorbelasting | null)[] = []
+    installFetchMock({ aanroepen, defaultAan: 'niets' })
+    renderBlok('te_controleren', (s) => meldingen.push(s))
+
+    const vinkje = await screen.findByLabelText('Doorbelasten na boeken')
+    await waitFor(() => expect(vinkje).toBeEnabled())
+    expect(vinkje).not.toBeChecked()
+    expect(aanroepen.some((a) => a.method === 'POST' && a.url.endsWith(`/documenten/${DOC}/run/default`))).toBe(true)
+    expect(meldingen.at(-1)).toBeNull()
+
+    await userEvent.click(vinkje)
+    await waitFor(() => expect(screen.getByText('klaargezet')).toBeInTheDocument())
+    expect(aanroepen.some((a) => a.method === 'POST' && a.url.endsWith(`/documenten/${DOC}/run`))).toBe(true)
   })
 
   it('bestaande klaargezette run met groene checks meldt de boekknop "groen"; uitvinken laat vervallen na bevestiging', async () => {

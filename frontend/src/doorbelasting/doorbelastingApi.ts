@@ -91,6 +91,22 @@ export function startDoorbelastingRun(administratieId: string, documentId: strin
   )
 }
 
+/** Default-AAN (besluit Peter 25-08, deel 2 punt 5): het controlescherm zet het vinkje
+ * "Doorbelasten na boeken" standaard aan op een administratie mét toggle. De server maakt
+ * alléén een klaargezette run als er voor dit document nog nooit één bestond (204 = niets
+ * aangemaakt: de mens had 'm al uitgezet, of het document is niet klaarzetbaar). */
+export async function zetDoorbelastingDefaultAan(
+  administratieId: string,
+  documentId: string,
+): Promise<DoorbelastingRunDto | null> {
+  const resp = await apiFetch(`/doorbelasting/${administratieId}/documenten/${documentId}/run/default`, {
+    method: 'POST',
+  })
+  if (resp.status === 204) return null
+  if (!resp.ok) throw new ApiError(resp.status, `Doorbelasten standaard aanzetten mislukt (${resp.status})`)
+  return (await resp.json()) as DoorbelastingRunDto
+}
+
 export function haalDoorbelastingRunOp(administratieId: string, runId: string): Promise<DoorbelastingRunDto> {
   return apiJson<DoorbelastingRunDto>(`/doorbelasting/${administratieId}/runs/${runId}`)
 }

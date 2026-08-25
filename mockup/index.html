@@ -506,7 +506,10 @@
                  ná het laatste akkoord in één gang. De losse actie "Doorbelasten…" op een geboekt document blijft bestaan. -->
             <div class="panel" style="margin-top:12px;padding:12px 14px">
               <h2 style="font-size:13.5px;margin:0 0 6px">Doorbelasten na boeken <span class="chip klaar">klaargezet</span></h2>
-              <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text)"><input type="checkbox" checked style="width:auto"> Deze factuur na het boeken doorbelasten aan één of meer doelentiteiten (Kempen-patroon) — de knop wordt "Boeken + doorbelasten".</label>
+              <!-- Besluit Peter 25-08 (deel 2, punt 5): op een administratie mét doorbelasting-toggle staat dit vinkje
+                   STANDAARD AAN (server maakt de klaargezette run bij het openen; uitvinken = vervallen en die keuze blijft
+                   staan bij herladen). -->
+              <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text)"><input type="checkbox" checked style="width:auto"> Deze factuur na het boeken doorbelasten aan één of meer doelentiteiten (Kempen-patroon) — de knop wordt "Boeken + doorbelasten". <span class="chip geheugen" title="Standaard aan op administraties met de doorbelasting-toggle">standaard aan</span></label>
               <table class="lines" style="margin-top:8px"><tr><th>Regel</th><th>Doelentiteit</th><th>%</th><th class="amount">Bedrag excl.</th><th>GB in doeladministratie</th></tr>
                 <tr><td>Steigermateriaal</td><td>Kempen Vastgoed B.V.</td><td>60</td><td class="amount">€ 1.020,00</td><td>4310 · Onderhoud gebouwen</td></tr>
                 <tr><td></td><td>Kempen Bouw B.V.</td><td>40</td><td class="amount">€ 680,00</td><td>4600 · Materialen</td></tr>
