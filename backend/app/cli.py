@@ -742,7 +742,7 @@ def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int
     if resultaat and not beheer_service.haal_boeken_ingeschakeld_op(administratie_id=administratie_id):
         print(
             "WAARSCHUWING: de boeken-toggle van deze administratie staat uit — automatisch boeken "
-            "blijft effectief uit tot die (en de globale kill switch) ook aan staat."
+            "blijft effectief uit tot die (en 'Boeken platformbreed') ook aan staat."
         )
     return 0
 
@@ -768,7 +768,7 @@ def _zet_verkoop_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> 
     if resultaat and not beheer_service.haal_boeken_ingeschakeld_op(administratie_id=administratie_id):
         print(
             "WAARSCHUWING: de boeken-toggle van deze administratie staat uit — automatisch boeken "
-            "blijft effectief uit tot die (en de globale kill switch) ook aan staat."
+            "blijft effectief uit tot die (en 'Boeken platformbreed') ook aan staat."
         )
     return 0
 
@@ -813,7 +813,10 @@ def _zet_boeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
         return 1
     print(f"boeken_ingeschakeld={resultaat} voor administratie {administratie_id}")
     if resultaat and not beheer_service.haal_globale_kill_switch_op():
-        print("WAARSCHUWING: de globale kill switch staat uit — boeken blijft effectief uit tot die ook aan staat.")
+        print(
+            "WAARSCHUWING: 'Boeken platformbreed' staat UIT (boeken staat plat voor alle administraties) — "
+            "boeken blijft effectief uit tot die ook aan staat."
+        )
     return 0
 
 
@@ -827,7 +830,10 @@ def _boeken_uit(args: argparse.Namespace) -> int:
 
 def _boeken_status(args: argparse.Namespace) -> int:
     kill_switch_aan = beheer_service.haal_globale_kill_switch_op()
-    print(f"Globale kill switch: {'AAN' if kill_switch_aan else 'UIT'}")
+    # Label eenduidig (kliktest-les Peter 25-08): "aan" = boeken kan, "uit" = boeken staat plat —
+    # de oude term "kill switch: uit" werd gelezen als "noodstop niet actief".
+    stand = "AAN — boeken kan" if kill_switch_aan else "UIT — boeken staat plat (noodstop)"
+    print(f"Boeken platformbreed: {stand}")
     print()
     overzicht = beheer_service.overzicht_boeken_status()
     if not overzicht:
@@ -1178,7 +1184,10 @@ def main(argv: list[str] | None = None) -> int:
 
     subparsers.add_parser(
         "boeken-status",
-        help="Overzicht: globale kill switch + per-administratie boeken-toggle.",
+        help=(
+            "Overzicht: 'Boeken platformbreed' (aan = boeken kan, uit = boeken staat plat) "
+            "+ per-administratie boeken-toggle."
+        ),
     )
 
     for naam, hulp in (

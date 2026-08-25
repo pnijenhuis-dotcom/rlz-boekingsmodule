@@ -16,7 +16,13 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.documenten.models import Document, DocumentStatus
-from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, start_extractie_na_toewijzing
+from app.documenten.service import (
+    DocumentNietGevonden,
+    _schrijf_overgang,
+    _standaard_opslag,
+    start_extractie_na_toewijzing,
+)
+from app.documenten.storage import DocumentOpslag
 from app.intake.models import IntakeSplitsing, IntakeSplitsingStatus
 from app.intake.toewijzing import leer_toewijzing
 
@@ -51,6 +57,29 @@ class VerzamelbakItem:
     aangemaakt_op: datetime
     splitsing_id: uuid.UUID | None
     splitsing_voorstel: dict | None
+
+
+def haal_bijlage_op(*, document_id: uuid.UUID, opslag: DocumentOpslag | None = None) -> tuple[bytes, str, str]:
+    """Bestand van een VERZAMELBAK-document (besluit Peter 25-08, punt D1: preview-popup in de
+    verzamelbak). Verzamelbak-documenten hebben geen administratie (RLS-scope NULL), dus de
+    administratie-gescoopte bestand-route past niet; deze leesroute is fail-closed beperkt tot
+    documenten die écht nog in de verzamelbak staan (administratie NULL + status
+    niet_toegewezen) — een al toegewezen document loopt via zijn administratie-route.
+    Retourneert (inhoud, bestandsnaam, content_type)."""
+    opslag = opslag or _standaard_opslag()
+    with scoped_session(None) as session:
+        document = session.get(Document, document_id)
+        if (
+            document is None
+            or document.administratie_id is not None
+            or document.status != DocumentStatus.NIET_TOEGEWEZEN
+        ):
+            raise DocumentNietGevonden(f"Geen verzamelbak-document: {document_id}")
+        opslag_pad = document.opslag_pad
+        bestandsnaam = document.bestandsnaam
+    inhoud = opslag.lezen(pad=opslag_pad)
+    content_type = "application/pdf" if bestandsnaam.lower().endswith(".pdf") else "application/xml"
+    return inhoud, bestandsnaam, content_type
 
 
 def lijst_verzamelbak() -> list[VerzamelbakItem]:

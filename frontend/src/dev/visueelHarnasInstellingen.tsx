@@ -188,6 +188,7 @@ createRoot(document.getElementById('root')!).render(
               <div className="content">
                 <Routes>
                   <Route path="/instellingen" element={<InstellingenScreen />} />
+                  <Route path="/instellingen/:sectie" element={<InstellingenScreen />} />
                 </Routes>
               </div>
             </div>

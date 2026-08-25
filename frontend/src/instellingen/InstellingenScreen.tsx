@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { Button, Checkbox, Select, Switch } from '../ui/basis'
 import type { AdministratieInstellingenDto } from '../api/types'
@@ -59,9 +60,11 @@ interface PendingWijziging {
 function berichtVoor(pending: PendingWijziging): string {
   switch (pending.type) {
     case 'kill_switch':
+      // D4 (kliktest-les 25-08): "aan" = boeken kan, "uit" = boeken staat plat — nooit meer
+      // "kill switch: uit", dat werd gelezen als "noodstop niet actief".
       return pending.nieuweWaarde
-        ? 'Boeken wordt platformbreed weer mogelijk (nog steeds ook afhankelijk van de boeken-toggle per administratie).'
-        : 'Boeken wordt voor ALLE administraties direct stopgezet, ongeacht de toggle per administratie.'
+        ? 'Boeken platformbreed gaat AAN: boeken kan weer, voor elke administratie waarvan de eigen boeken-toggle ook aan staat.'
+        : 'Boeken platformbreed gaat UIT: boeken staat per direct plat voor ALLE administraties, ongeacht de toggle per administratie (noodstop).'
     case 'intake_ai':
       return pending.nieuweWaarde
         ? 'Nog-niet-toegewezen intake-PDF\'s (verzamelbak) gaan voortaan voor tenaamstelling en splitsingsdetectie naar de Claude API (platform-brede AVG-gate). Echte klantdocumenten pas ná DPA + EU-verwerking + verwerkersregister — zie docs/BOUWPLAN.md.'
@@ -242,8 +245,29 @@ function IbanAccordeursCell({ administratie, versie, onWijzig }: IbanAccordeursC
   )
 }
 
+/** Sectiekaarten van de Instellingen-landing (besluit Peter 25-08, D2 — patroon Vastly's
+ * configuratie-landing): elke kaart leidt naar een eigen subpagina `/instellingen/<sectie>`.
+ * Geen functionaliteit gewijzigd, alleen herindeeld; deep-links naar de oude secties (hash of
+ * ?sectie=) redirecten. */
+export const INSTELLINGEN_SECTIES = [
+  { pad: 'beveiliging', titel: 'Beveiliging', uitleg: 'Passkeys van jezelf en van medewerkers (apparaat-kill-switch).', beheerder: false },
+  { pad: 'boeken', titel: 'Boeken & platform', uitleg: 'Boeken platformbreed aan/uit (noodstop) — de poort boven alle administraties.', beheerder: true },
+  { pad: 'intake-ai', titel: 'Intake-AI & kosten', uitleg: 'AVG-gate voor de verzamelbak-AI en de maandelijkse AI-kostengrens.', beheerder: true },
+  { pad: 'administraties', titel: 'Administraties', uitleg: 'Per administratie: eigenaar, IBAN-accordeurs, projectplicht, boeken, AI-extractie, autoboeken, uren & meerwerk — mét bulkbediening.', beheerder: true },
+  { pad: 'accordering', titel: 'Klant-accordering', uitleg: 'Goedkeuring door klanten: lagen, apparaten, staande goedkeuringen.', beheerder: true },
+  { pad: 'autoboeken', titel: 'Autoboeken', uitleg: 'Automatisch boeken per leverancier (opt-in, harde checks blijven blokkerend).', beheerder: true },
+  { pad: 'doorbelasting', titel: 'Doorbelasting', uitleg: 'Kempen-doorbelasting: toggle, provisie, whitelist doelentiteiten, opruimlijst.', beheerder: true },
+  { pad: 'gebruikers', titel: 'Gebruikers & toegang', uitleg: 'Medewerkers, accordeurs en veldwerkers uitnodigen, rollen en scope, blokkeren.', beheerder: true, extern: '/gebruikers' },
+] as const
+
+export type InstellingenSectie = (typeof INSTELLINGEN_SECTIES)[number]['pad']
+
+const SECTIE_PADEN = new Set<string>(INSTELLINGEN_SECTIES.map((s) => s.pad))
+
 export function InstellingenScreen() {
   const { rol, status } = useAuth()
+  const { sectie: sectieParam } = useParams<{ sectie?: string }>()
+  const location = useLocation()
 
   const [administraties, setAdministraties] = useState<AdministratieInstellingenDto[] | null>(null)
   const [accordeursVersie, setAccordeursVersie] = useState(0)
@@ -289,13 +313,97 @@ export function InstellingenScreen() {
     return <p className="hint">Laden…</p>
   }
   const isBeheerder = rol === 'beheerder'
+
+  // Deep-link-redirects (D2): oude vormen `#doorbelasting` / `?sectie=doorbelasting` → subpagina.
+  const hashSectie = location.hash.replace(/^#/, '')
+  const querySectie = new URLSearchParams(location.search).get('sectie')
+  const doelSectie = [hashSectie, querySectie].find((x) => x && SECTIE_PADEN.has(x))
+  if (!sectieParam && doelSectie) {
+    return <Navigate to={`/instellingen/${doelSectie}`} replace />
+  }
+  if (sectieParam && !SECTIE_PADEN.has(sectieParam)) {
+    return <Navigate to="/instellingen" replace />
+  }
+  const sectie = (sectieParam ?? null) as InstellingenSectie | null
+  const sectieInfo = INSTELLINGEN_SECTIES.find((x) => x.pad === sectie) ?? null
+  if (sectieInfo && 'extern' in sectieInfo && sectieInfo.extern) {
+    return <Navigate to={sectieInfo.extern} replace />
+  }
+
   if (!isBeheerder) {
+    // Niet-Beheerder: alleen Beveiliging (eigen passkeys) — landing én subpagina zijn hetzelfde.
     return (
       <div>
         <div className="topbar">
           <h1>Instellingen</h1>
         </div>
         <BeveiligingInstellingen isBeheerder={false} />
+      </div>
+    )
+  }
+  if (sectie && sectieInfo && !sectieInfo.beheerder) {
+    return (
+      <div>
+        <div className="topbar">
+          <div>
+            <div className="mb-1 text-[12.5px] text-muted">
+              <Link to="/instellingen" className="text-primary no-underline hover:underline">
+                Instellingen
+              </Link>{' '}
+              <span className="text-faint">›</span> {sectieInfo.titel}
+            </div>
+            <h1>{sectieInfo.titel}</h1>
+          </div>
+        </div>
+        <BeveiligingInstellingen isBeheerder />
+      </div>
+    )
+  }
+  if (sectie === null) {
+    return (
+      <div>
+        <div className="topbar">
+          <div>
+            <h1>Instellingen</h1>
+            <p className="hint" style={{ margin: 0 }}>
+              Platform-instellingen en bediening per administratie — kies een onderdeel.
+            </p>
+          </div>
+        </div>
+        {laadFout && <div className="fout">Kon instellingen niet laden: {laadFout}</div>}
+        <div className="instellingen-kaarten">
+          {INSTELLINGEN_SECTIES.map((k) => (
+            <Link
+              key={k.pad}
+              to={'extern' in k && k.extern ? k.extern : `/instellingen/${k.pad}`}
+              className="panel instellingen-kaart"
+            >
+              <h2>{k.titel}</h2>
+              <p className="hint">{k.uitleg}</p>
+              <span className="instellingen-kaart-stand">
+                {k.pad === 'boeken' && killSwitch !== null && (
+                  <span className={`chip ${killSwitch ? 'ok' : 'blokkerend'}`}>
+                    {killSwitch ? 'boeken kan' : 'boeken staat plat'}
+                  </span>
+                )}
+                {k.pad === 'intake-ai' && intakeAi !== null && (
+                  <span className={`chip ${intakeAi ? 'ok' : 'geheugen'}`}>intake-AI {intakeAi ? 'aan' : 'uit'}</span>
+                )}
+                {k.pad === 'intake-ai' && aiKosten && (
+                  <span className="chip geheugen">
+                    € {aiKosten.verbruik_eur} / € {aiKosten.limiet_eur}
+                  </span>
+                )}
+                {k.pad === 'administraties' && administraties && (
+                  <span className="chip geheugen">{administraties.length} administraties</span>
+                )}
+              </span>
+              <span className="rijlink text-primary" style={{ fontWeight: 600 }}>
+                Openen →
+              </span>
+            </Link>
+          ))}
+        </div>
       </div>
     )
   }
@@ -352,47 +460,62 @@ export function InstellingenScreen() {
   return (
     <div>
       <div className="topbar">
-        <h1>Instellingen</h1>
+        <div>
+          <div className="mb-1 text-[12.5px] text-muted">
+            <Link to="/instellingen" className="text-primary no-underline hover:underline">
+              Instellingen
+            </Link>{' '}
+            <span className="text-faint">›</span> {sectieInfo?.titel}
+          </div>
+          <h1>{sectieInfo?.titel}</h1>
+        </div>
       </div>
-
-      <BeveiligingInstellingen isBeheerder />
 
       {laadFout && <div className="fout">Kon instellingen niet laden: {laadFout}</div>}
 
+      {sectie === 'boeken' && (
       <div className="panel">
-        {/* flexWrap + nowrap-label (kliktest 2026-08-16, ~1170px): de switch mét aan/uit-label
+        {/* D4 (kliktest-les Peter 25-08): het label "Globale kill switch: uit" werd gelezen als
+            "noodstop niet actief" terwijl het "boeken staat plat" betekent. Nu eenduidig:
+            "Boeken platformbreed" aan = boeken kan, uit = boeken kan niet. Alleen presentatie —
+            backend-endpoint/audit ongewijzigd.
+            flexWrap + nowrap-label (kliktest 2026-08-16, ~1170px): de switch mét aan/uit-label
             wikkelt onder de tekst i.p.v. rechts uit het paneel te clippen. */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ minWidth: 0, flex: '1 1 320px' }}>
-            <h2 style={{ margin: 0 }}>Boeken — globale kill switch</h2>
+            <h2 style={{ margin: 0 }}>Boeken platformbreed</h2>
             <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
-              Platformbrede noodstop: staat deze uit, dan kan er nergens geboekt worden, ongeacht de toggle per
-              administratie hieronder.
+              De poort boven alle administraties. <b>Aan</b> = boeken kan (per administratie nog afhankelijk van
+              de eigen boeken-toggle onder Administraties). <b>Uit</b> = boeken staat per direct plat voor álle
+              administraties — de noodstop.
             </p>
           </div>
           {killSwitch !== null && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
               <Switch
-                aria-label="Globale kill switch"
+                aria-label="Boeken platformbreed"
                 checked={killSwitch}
                 onChange={(e) =>
-                  setPending({ type: 'kill_switch', naam: 'kill switch', nieuweWaarde: e.target.checked })
+                  setPending({ type: 'kill_switch', naam: 'boeken platformbreed', nieuweWaarde: e.target.checked })
                 }
               />
-              {killSwitch ? 'aan' : 'uit'}
+              {killSwitch ? 'aan — boeken kan' : 'uit — boeken staat plat'}
             </label>
           )}
         </div>
       </div>
+      )}
 
-      <div className="panel" style={{ marginTop: 16 }}>
+      {sectie === 'intake-ai' && (
+      <>
+      <div className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ minWidth: 0, flex: '1 1 320px' }}>
             <h2 style={{ margin: 0 }}>Intake-AI (AVG-gate, platform-breed)</h2>
             <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
               Bepaalt of nog-niet-toegewezen intake-PDF&apos;s (verzamelbak) voor tenaamstelling en
               multi-factuur-splitsingsdetectie naar de Claude API mogen. Staat los van de AI-extractie
-              per administratie hieronder, die pas ná toewijzing geldt.
+              per administratie (Instellingen → Administraties), die pas ná toewijzing geldt.
             </p>
           </div>
           {intakeAi !== null && (
@@ -463,8 +586,11 @@ export function InstellingenScreen() {
           )}
         </div>
       </div>
+      </>
+      )}
 
-      <div className="panel" style={{ marginTop: 16 }}>
+      {sectie === 'administraties' && (
+      <div className="panel">
         <h2 style={{ marginTop: 0 }}>Administraties</h2>
         <p className="hint" style={{ marginTop: 4 }}>
           Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
@@ -650,17 +776,21 @@ export function InstellingenScreen() {
           </>
         )}
       </div>
+      )}
 
-      {administraties !== null && (
+      {sectie === 'accordering' && administraties !== null && (
         <AccorderingInstellingen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
       )}
 
-      {administraties !== null && (
+      {sectie === 'autoboeken' && administraties !== null && (
         <LeverancierAutoboeken administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
       )}
 
-      {administraties !== null && (
+      {sectie === 'doorbelasting' && administraties !== null && (
         <DoorbelastingInstellingen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
+      )}
+      {sectie !== 'administraties' && sectie !== 'boeken' && sectie !== 'intake-ai' && administraties === null && !laadFout && (
+        <p className="hint">Laden…</p>
       )}
 
       {pending && (

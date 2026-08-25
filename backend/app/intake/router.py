@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
 from app.auth.deps import CurrentGebruiker, vereis_kantoorrol
 from app.documenten.service import DocumentNietGevonden
@@ -65,6 +65,23 @@ def verzamelbak_lijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> s
             )
             for item in items
         ]
+    )
+
+
+@router.get("/verzamelbak/{document_id}/bestand")
+def verzamelbak_bestand(document_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> Response:
+    """Bestand van een verzamelbak-document (besluit Peter 25-08, punt D1: preview-popup per rij
+    zodat je ziet voor wie het document is). Fail-closed: alleen documenten die nog écht in de
+    verzamelbak staan (administratie NULL + niet_toegewezen), anders 404 — een toegewezen
+    document loopt via zijn administratie-gescoopte bestand-route."""
+    try:
+        inhoud, bestandsnaam, content_type = verzamelbak.haal_bijlage_op(document_id=document_id)
+    except DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=inhoud,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{bestandsnaam}"'},
     )
 
 

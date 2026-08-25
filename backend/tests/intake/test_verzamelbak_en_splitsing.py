@@ -34,6 +34,28 @@ class TestVerzamelbak:
         assert items[0].tenaamstelling == "Onbekend BV"
         assert items[0].afzender_hint == "administratie@bouwmaat.nl"
 
+    def test_bestand_leesroute_alleen_voor_echte_verzamelbak_documenten(
+        self,
+        verzamelbak_document: uuid.UUID,
+        administratie_heet_blow: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+    ) -> None:
+        """D1 (besluit 25-08): de preview-popup leest het bestand administratie-loos — maar
+        uitsluitend zolang het document nog in de verzamelbak staat (fail-closed)."""
+        from app.documenten.service import DocumentNietGevonden
+
+        inhoud, bestandsnaam, content_type = verzamelbak.haal_bijlage_op(document_id=verzamelbak_document)
+        assert bestandsnaam == "factuur.xml"
+        assert content_type == "application/xml"
+        assert b"Onbekend BV" in inhoud
+        verzamelbak.wijs_toe(
+            document_id=verzamelbak_document, administratie_id=administratie_heet_blow, actor_id=gescoopte_gebruiker
+        )
+        with pytest.raises(DocumentNietGevonden):
+            verzamelbak.haal_bijlage_op(document_id=verzamelbak_document)
+        with pytest.raises(DocumentNietGevonden):
+            verzamelbak.haal_bijlage_op(document_id=uuid.uuid4())
+
     def test_toewijzen_leert_en_start_extractie(
         self,
         verzamelbak_document: uuid.UUID,

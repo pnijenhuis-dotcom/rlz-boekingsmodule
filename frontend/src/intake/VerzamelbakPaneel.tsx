@@ -11,6 +11,7 @@ import {
   wijsToe,
   type VerzamelbakItemDto,
 } from './intakeApi'
+import { VerzamelbakPreview } from './VerzamelbakPreview'
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
@@ -93,6 +94,12 @@ export function VerzamelbakPaneel({
               return (
                 <tr key={item.document_id}>
                   <td>
+                    {/* D1 (besluit 25-08): voorbeeld bij hover, klik = volledige weergave — lazy. */}
+                    <VerzamelbakPreview
+                      documentId={item.document_id}
+                      bestandsnaam={item.bestandsnaam}
+                      tenaamstelling={item.tenaamstelling}
+                    />{' '}
                     {item.bestandsnaam}
                     {item.soort !== 'inkoopfactuur' && (
                       <div>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { VerzamelbakPaneel } from './VerzamelbakPaneel'
@@ -37,10 +37,15 @@ function item(overrides: Record<string, unknown> = {}) {
 function installFetchMock(opties: {
   items?: unknown[]
   aanroepen?: { url: string; body: unknown }[]
+  bestandAanroepen?: string[]
 }) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/bestand') && (!init || !init.method)) {
+        opties.bestandAanroepen?.push(url)
+        return Promise.resolve(new Response(new Blob(['%PDF-1.4'], { type: 'application/pdf' }), { status: 200 }))
+      }
       if (url.endsWith('/verzamelbak') && (!init || !init.method)) {
         return Promise.resolve(jsonResponse({ items: opties.items ?? [item()] }))
       }
@@ -66,6 +71,29 @@ describe('VerzamelbakPaneel', () => {
     expect(screen.getByText(/e-mail · info@blow.nl/)).toBeInTheDocument()
     expect(screen.getByText(/“BLOW Holding”/)).toBeInTheDocument()
     expect(screen.getByText('suggestie: BLOW B.V.')).toBeInTheDocument()
+  })
+
+  it('preview (D1, besluit 25-08): niets vooraf opgehaald; hover laadt het bestand één keer en toont de popup', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const bestandAanroepen: string[] = []
+    installFetchMock({ items: [item()], bestandAanroepen })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    const knop = await screen.findByRole('button', { name: 'Voorbeeld van factuur_energie.pdf' })
+    // Lazy: geen enkele bestand-request vóór hover/klik.
+    expect(bestandAanroepen).toHaveLength(0)
+
+    fireEvent.mouseEnter(knop.parentElement as HTMLElement)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(await screen.findByRole('tooltip', { name: 'Voorbeeld factuur_energie.pdf' })).toBeInTheDocument()
+    await waitFor(() => expect(bestandAanroepen).toHaveLength(1))
+    expect(bestandAanroepen[0]).toContain(`/verzamelbak/${DOC_ID}/bestand`)
+
+    // Opnieuw hoveren: uit de cache, geen tweede request.
+    fireEvent.mouseLeave(knop.parentElement as HTMLElement)
+    fireEvent.mouseEnter(knop.parentElement as HTMLElement)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(bestandAanroepen).toHaveLength(1)
+    vi.useRealTimers()
   })
 
   it('is onzichtbaar zolang de bak leeg is', async () => {

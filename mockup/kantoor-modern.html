@@ -446,17 +446,34 @@
     </section>
 
     <!-- ================= SCHERM: INSTELLINGEN ================= -->
+    <!-- HERZIEN 25-08 (besluit Peter, feedbackronde punt D2): Instellingen is een LANDING met sectiekaarten
+         (patroon Vastly's configuratie-landing); elke kaart leidt naar een eigen subpagina /instellingen/<sectie>.
+         Geen functionaliteit gewijzigd, alleen herindeeld; deep-links naar oude secties redirecten.
+         D4 (kliktest-les 25-08): "Globale kill switch: uit" is hernoemd naar "Boeken platformbreed" —
+         aan = boeken kan, uit = boeken staat plat (noodstop). Alleen presentatie; backend ongewijzigd. -->
     <section class="scherm" id="scherm-instellingen">
       <div class="pagina-kop">
-        <div><h1>Instellingen</h1><div class="sub">Platform-instellingen en bediening per administratie.</div></div>
+        <div><h1>Instellingen</h1><div class="sub">Platform-instellingen en bediening per administratie — kies een onderdeel.</div></div>
       </div>
 
-      <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-        <div class="kpi"><div class="lbl">Boeken — globale kill switch</div><div style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" class="switch" checked aria-label="Boeken globaal"> <span style="font-size:12.5px">Boeken staat <b style="color:var(--ok)">aan</b></span></div></div>
-        <div class="kpi"><div class="lbl">Intake-AI (AVG-gate)</div><div style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" class="switch" aria-label="Intake AI"> <span style="font-size:12.5px">Uit — wacht op ZDR-akkoord</span></div></div>
-        <div class="kpi"><div class="lbl">AI-kostenlimiet</div><div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span class="waarde" style="font-size:16px">€ 100</span><span style="font-size:11.5px;color:var(--muted)">/maand · verbruik € 14,20</span><button class="btn ghost klein" style="margin-left:auto">Wijzig</button></div></div>
+      <div class="kpis" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-bottom:20px">
+        <div class="kpi" style="cursor:pointer" onclick="toast('Mockup: subpagina Beveiliging')"><div class="lbl">Beveiliging</div><div class="sub" style="margin-top:6px">Passkeys van jezelf en van medewerkers (apparaat-kill-switch).</div><a class="rijlink">Openen →</a></div>
+        <div class="kpi" style="cursor:pointer" onclick="toast('Mockup: subpagina Boeken & platform')"><div class="lbl">Boeken &amp; platform</div><div class="sub" style="margin-top:6px">Boeken platformbreed aan/uit (noodstop) — de poort boven alle administraties.</div><span class="badge ok">boeken kan</span> <a class="rijlink">Openen →</a></div>
+        <div class="kpi" style="cursor:pointer" onclick="toast('Mockup: subpagina Intake-AI & kosten')"><div class="lbl">Intake-AI &amp; kosten</div><div class="sub" style="margin-top:6px">AVG-gate verzamelbak-AI + maandelijkse AI-kostengrens.</div><span class="badge stil">intake-AI uit</span> <span class="badge stil">€ 12 / € 100</span> <a class="rijlink">Openen →</a></div>
+        <div class="kpi" style="cursor:pointer" onclick="toast('Mockup: subpagina Administraties (de tabel hieronder)')"><div class="lbl">Administraties</div><div class="sub" style="margin-top:6px">Per administratie: eigenaar, IBAN-accordeurs, projectplicht, boeken, AI-extractie, autoboeken, uren &amp; meerwerk — mét bulkbediening.</div><span class="badge stil">11 administraties</span> <a class="rijlink">Openen →</a></div>
+        <div class="kpi" style="cursor:pointer" onclick="toast('Mockup: subpagina Klant-accordering')"><div class="lbl">Klant-accordering</div><div class="sub" style="margin-top:6px">Lagen, apparaten, staande goedkeuringen.</div><a class="rijlink">Openen →</a></div>
+        <div class="kpi" style="cursor:pointer" onclick="toast('Mockup: subpagina Autoboeken')"><div class="lbl">Autoboeken</div><div class="sub" style="margin-top:6px">Automatisch boeken per leverancier (opt-in).</div><a class="rijlink">Openen →</a></div>
+        <div class="kpi" style="cursor:pointer" onclick="toast('Mockup: subpagina Doorbelasting')"><div class="lbl">Doorbelasting</div><div class="sub" style="margin-top:6px">Kempen: toggle, provisie, whitelist, opruimlijst.</div><a class="rijlink">Openen →</a></div>
+        <div class="kpi" style="cursor:pointer" onclick="document.querySelector('[data-scherm=gebruikers]').click()"><div class="lbl">Gebruikers &amp; toegang</div><div class="sub" style="margin-top:6px">Uitnodigen, rollen en scope, blokkeren.</div><a class="rijlink">Openen →</a></div>
       </div>
 
+      <!-- Subpagina "Boeken & platform" (D4-label) — ter illustratie onder de landing -->
+      <div class="kaart" style="margin-bottom:16px">
+        <div class="kaart-kop"><h2>Boeken platformbreed</h2><div class="uitleg">De poort boven alle administraties. <b>Aan</b> = boeken kan (per administratie nog afhankelijk van de eigen boeken-toggle). <b>Uit</b> = boeken staat per direct plat voor álle administraties — de noodstop.</div></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:0 14px 14px"><input type="checkbox" class="switch" checked aria-label="Boeken platformbreed"> <span style="font-size:12.5px">aan — boeken kan</span></div>
+      </div>
+
+      <!-- Subpagina "Administraties" (ongewijzigd, nu op /instellingen/administraties) -->
       <div class="kaart">
         <div class="kaart-kop">
           <h2>Administraties</h2>

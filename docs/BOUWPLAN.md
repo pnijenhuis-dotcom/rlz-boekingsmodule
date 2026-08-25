@@ -271,7 +271,7 @@ Backend:
      client-GUID (UUIDv5 op administratie + genormaliseerde naam, dubbele klik raakt dezelfde
      RLZ-vendor), eigen duplicaatcheck op naam (409 draagt de bestaande vendor_id; de frontend
      selecteert die dan gewoon), en **dezelfde schrijf-failsafe-poort als boeken** (toggle per
-     administratie + globale kill switch) — audit_event `crediteur_aangemaakt_in_rlz`, cache-rij
+     administratie + 'Boeken platformbreed' — de globale kill switch, UI-label sinds 25-08) — audit_event `crediteur_aangemaakt_in_rlz`, cache-rij
      direct kiesbaar, eerstvolgende vendors-sync verrijkt met RLZ's volledige record. Directe
      cache-match blijft automatisch voorvullen (bestaand gedrag).
    - **Fix 3 — regels standaard samengevoegd, splitsen als keuze:** het controlescherm toont bij
@@ -378,7 +378,7 @@ Backend:
    `geboekt` met tijdlijn+audit; een RLZ-fout zet `boeken_mislukt` met de échte foutmelding, een
    volgende poging is idempotent (zelfde client-GUID's).
    - **Drie failsafes (CLAUDE.md-taak 2.4):** (a) `platform.administratie.boeken_ingeschakeld`
-     (per-administratie opt-in, default UIT) + `platform.boeken_instelling` (globale kill switch,
+     (per-administratie opt-in, default UIT) + `platform.boeken_instelling` (globale kill switch — UI-label 'Boeken platformbreed' sinds 25-08,
      singleton) — nieuwe `app/beheer/`-module, Beheerder-only endpoints, beide moeten aan staan.
      (b) Reconciliatiejob (`app/documenten/reconciliatie.py`, `make reconciliatie` /
      `python -m app.cli reconciliatie`): vergelijkt elk lokaal `geboekt` document met de
@@ -521,7 +521,7 @@ UI-eisen):
      (`frontend/src/document/IbanAccorderingSectie.tsx` + `ibanAccorderingApi.ts`, zie
      BESLISSINGEN); visuele browserreview blijft open (drift-correctie 2026-08-07).
    - ~~Openstaand (2026-07-09): het instellingen-scherm is de échte UI voor de drie toggles~~ —
-     **gebouwd** (`frontend/src/instellingen/InstellingenScreen.tsx`: kill switch, project
+     **gebouwd** (`frontend/src/instellingen/InstellingenScreen.tsx`: 'Boeken platformbreed' (kill switch), project
      verplicht, boeken per administratie, AI-extractie, intake-AI, eigenaar, IBAN-accordeurs;
      drift-correctie 2026-08-07). `make boeken-aan`/`boeken-uit`/`boeken-status`
      (`app/cli.py`, hergebruikt `app.beheer.service`) en de `PUT`-endpoints blijven

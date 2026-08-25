@@ -144,13 +144,17 @@ function installFetchMock(opties: {
   )
 }
 
-function renderScherm() {
+/** D2 (besluit 25-08): Instellingen is een landing met sectiekaarten; de secties leven op
+ * `/instellingen/<sectie>`. Tests renderen standaard de subpagina die ze toetsen. */
+function renderScherm(pad = '/instellingen/administraties') {
   return render(
-    <MemoryRouter initialEntries={['/instellingen']}>
+    <MemoryRouter initialEntries={[pad]}>
       <AuthProvider>
         <Routes>
           <Route path="/" element={<div>WERKVOORRAAD-SCHERM</div>} />
+          <Route path="/gebruikers" element={<div>GEBRUIKERS-SCHERM</div>} />
           <Route path="/instellingen" element={<InstellingenScreen />} />
+          <Route path="/instellingen/:sectie" element={<InstellingenScreen />} />
         </Routes>
       </AuthProvider>
     </MemoryRouter>,
@@ -164,20 +168,42 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
 
   it('een niet-Beheerder ziet alléén de Beveiliging-sectie (eigen passkeys, besluit 0020)', async () => {
     installFetchMock({ rol: 'boekhouding' })
-    renderScherm()
+    renderScherm('/instellingen')
 
     expect(await screen.findByRole('heading', { name: /Beveiliging — passkeys/ })).toBeInTheDocument()
     expect(screen.queryByText('Administraties')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /kill switch/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Boeken platformbreed/ })).not.toBeInTheDocument()
   })
 
-  it('een Beheerder ziet de administraties-lijst en de kill switch', async () => {
+  it('een Beheerder landt op sectiekaarten (D2, besluit 25-08) en opent daaruit de administraties-subpagina', async () => {
+    const gebruiker = userEvent.setup()
     installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'Kempen Facilities B.V.' })] })
-    renderScherm()
+    renderScherm('/instellingen')
 
+    expect(await screen.findByRole('link', { name: /Administraties/ })).toHaveAttribute('href', '/instellingen/administraties')
+    for (const titel of ['Beveiliging', 'Boeken & platform', 'Intake-AI & kosten', 'Klant-accordering', 'Autoboeken', 'Doorbelasting']) {
+      expect(screen.getByRole('heading', { name: titel })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('link', { name: /Gebruikers & toegang/ })).toHaveAttribute('href', '/gebruikers')
+    // Stand-chip op de kaart: boeken platformbreed staat aan.
+    expect(await screen.findByText('boeken kan')).toBeInTheDocument()
+    // Geen tabel op de landing; die leeft op de subpagina.
+    expect(screen.queryByText('IBAN-wissel accorderen door')).not.toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('link', { name: /Administraties/ }))
     await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
-    expect(screen.getByRole('heading', { name: /kill switch/i })).toBeInTheDocument()
+    expect(screen.getByText('IBAN-wissel accorderen door')).toBeInTheDocument()
     expect(screen.queryByText('WERKVOORRAAD-SCHERM')).not.toBeInTheDocument()
+  })
+
+  it('deep-links naar oude secties redirecten naar de subpagina (D2)', async () => {
+    installFetchMock({ rol: 'beheerder' })
+    renderScherm('/instellingen?sectie=doorbelasting')
+    expect(await screen.findByRole('heading', { name: 'Doorbelasting' })).toBeInTheDocument()
+    vi.unstubAllGlobals()
+    installFetchMock({ rol: 'beheerder' })
+    renderScherm('/instellingen#boeken')
+    expect(await screen.findByRole('heading', { name: 'Boeken platformbreed' })).toBeInTheDocument()
   })
 
   it('rendert de administratielijst mét het veld "IBAN-wissel accorderen door" zonder foutbanner', async () => {
@@ -302,18 +328,20 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     expect(projectToggle).not.toBeChecked()
   })
 
-  it('de globale kill switch vraagt ook een bevestiging', async () => {
+  it('"Boeken platformbreed" (D4: aan = boeken kan, uit = boeken staat plat) vraagt ook een bevestiging', async () => {
     const gebruiker = userEvent.setup()
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', killSwitch: true, putAanroepen })
-    renderScherm()
+    renderScherm('/instellingen/boeken')
 
     // De heading rendert al vóórdat de Promise.all met instellingen-data terug is — wacht dus op
     // de checkbox zelf (die pas ná het laden bestaat), anders is deze test een race/flake.
-    const killSwitchToggle = await screen.findByRole('checkbox', { name: 'Globale kill switch' })
+    const killSwitchToggle = await screen.findByRole('checkbox', { name: 'Boeken platformbreed' })
+    expect(screen.getByText('aan — boeken kan')).toBeInTheDocument()
+    expect(screen.queryByText(/kill switch/i)).not.toBeInTheDocument()
     await gebruiker.click(killSwitchToggle)
 
-    expect(screen.getByText(/stopgezet, ongeacht de toggle per administratie/)).toBeInTheDocument()
+    expect(screen.getByText(/boeken staat per direct plat voor ALLE administraties/)).toBeInTheDocument()
     await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
 
     await waitFor(() => expect(putAanroepen).toHaveLength(1))
@@ -324,7 +352,7 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     const gebruiker = userEvent.setup()
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', intakeAi: false, putAanroepen })
-    renderScherm()
+    renderScherm('/instellingen/intake-ai')
 
     const intakeAiToggle = await screen.findByRole('checkbox', { name: 'Intake-AI ingeschakeld' })
     expect(intakeAiToggle).not.toBeChecked()

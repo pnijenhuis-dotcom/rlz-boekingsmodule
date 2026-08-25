@@ -809,6 +809,72 @@ body.dark .combobox-listbox {
   flex: 1;
 }
 
+/* Instellingen-landing (besluit 25-08, punt D2): sectiekaarten → subpagina's. */
+.instellingen-kaarten {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.instellingen-kaart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-decoration: none;
+  color: inherit;
+  margin: 0;
+}
+
+.instellingen-kaart:hover {
+  border-color: var(--primary);
+}
+
+.instellingen-kaart h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.instellingen-kaart .hint {
+  margin: 0;
+  flex: 1;
+}
+
+.instellingen-kaart-stand {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 20px;
+}
+
+/* Verzamelbak-preview (besluit 25-08, punt D1): popup met de eerste PDF-pagina bij hover. */
+.verzamelbak-preview {
+  position: relative;
+  display: inline-block;
+}
+
+.verzamelbak-preview-popup {
+  position: absolute;
+  left: 28px;
+  top: -8px;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg, 0 8px 40px rgba(0, 0, 0, 0.18));
+  padding: 10px;
+  min-width: 220px;
+}
+
+.verzamelbak-preview-kop {
+  font-size: 12px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
+
+.verzamelbak-preview-dialog {
+  max-width: min(900px, 96vw);
+}
+
 /* Klantlanding (besluit 25-08, punt C): compacte klikbare chip-rij met de overige standen boven
    de documentenlijst. Chips zijn knoppen/links met de bestaande chip-kleuren. */
 .standen-chips {

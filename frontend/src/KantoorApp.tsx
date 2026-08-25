@@ -138,6 +138,7 @@ function BeschermdeRoutes() {
         />
         <Route path="/gebruikers" element={<GebruikersScreen />} />
         <Route path="/instellingen" element={<InstellingenScreen />} />
+        <Route path="/instellingen/:sectie" element={<InstellingenScreen />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

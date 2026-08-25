@@ -84,7 +84,7 @@ class TestBoekenAanUit:
         uit = capsys.readouterr()
 
         assert exitcode == 0
-        assert "kill switch staat uit" in uit.out
+        assert "'Boeken platformbreed' staat UIT" in uit.out
 
 
 class TestBoekenStatus:
@@ -98,7 +98,7 @@ class TestBoekenStatus:
         uit = capsys.readouterr()
 
         assert exitcode == 0
-        assert "Globale kill switch: AAN" in uit.out
+        assert "Boeken platformbreed: AAN — boeken kan" in uit.out
         assert str(administratie_id) in uit.out
         assert "AAN" in uit.out
 

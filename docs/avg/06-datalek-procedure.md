@@ -29,7 +29,7 @@ kantoormachine.
 
 **Stap 1 — Direct beperken (uur 0).** Toegang dichtzetten met de bestaande middelen:
 kill-switch accordeur-apparaat, sessies intrekken (revoke-all), credential roteren
-(RLZ-webservice-login, API-keys), gate uitzetten (`intake_ai`, boeken-kill-switch). Niets
+(RLZ-webservice-login, API-keys), gate uitzetten (`intake_ai`, 'Boeken platformbreed' uit = boeken-kill-switch). Niets
 verwijderen — bewijs en audit-trail bewaren (append-only audit_event helpt hier).
 
 **Stap 2 — Vastleggen (uur 0–4).** In het datalekregister (§4): wat is er gebeurd, welke

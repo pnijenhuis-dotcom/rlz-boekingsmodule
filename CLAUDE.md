@@ -170,7 +170,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt C;**
   Vragen-/Bank-tabbladen vervallen, kantoorbrede dwarsdoorsneden via klikbare KPI-kaarten
   bovenaan de werkvoorraad; oude URL's redirecten. Toon-regel: bakken-/soorten-regels alleen
-  bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). Sleep-upload blijft op
+  bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). **Instellingen = landing met
+  sectiekaarten → subpagina's `/instellingen/<sectie>` (besluit 25-08, D2; deep-links
+  redirecten); de globale boeken-kill-switch heet in de UI/CLI "Boeken platformbreed" — aan =
+  boeken kan, uit = boeken staat plat (D4, alleen presentatie).** Sleep-upload blijft op
   werkvoorraad (tenaamstelling) én klantpagina (direct toegewezen). **GEBOUWD + GETEST in 3
   fases (2026-08-16, kliktest Peter open):** fase 1 designsysteem (Tailwind v4 zónder
   preflight, tokens + `ui/thema.ts` + componentenset `ui/basis/`, controls gemigreerd), fase
@@ -238,7 +241,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   ons" met reden. Nooit auto-toewijzen bij twijfel.
   **Bouwstatus: GEBOUWD + GETEST (2026-08-07, met de e-mail-intake)** — migratie 0028 +
   `backend/app/intake/` + `frontend/src/intake/`; details BESLISSINGEN "E-mail-intake +
-  verzamelbak — GEBOUWD + GETEST". Eigen naamnormalisatie: "Holding" blijft onderscheidend
+  verzamelbak — GEBOUWD + GETEST". **Preview per rij (besluit Peter 25-08, D1): hover toont lazy
+  de eerste PDF-pagina, klik de volledige weergave — leesroute `GET /verzamelbak/{id}/bestand`,
+  fail-closed tot echte verzamelbak-documenten.** Eigen naamnormalisatie: "Holding" blijft onderscheidend
   (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
   tenaamstelling-signaal.
 - **E-mail intake**: één centraal adres — **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter

@@ -1,4 +1,4 @@
-import { apiJson, apiPostJson } from '../api/client'
+import { apiFetch, apiJson, apiPostJson } from '../api/client'
 
 export interface SplitsSegmentDto {
   start_pagina: number
@@ -42,6 +42,20 @@ export interface IntakeVerwerkResponseDto {
 
 export function haalVerzamelbakOp(): Promise<VerzamelbakLijstDto> {
   return apiJson<VerzamelbakLijstDto>('/verzamelbak')
+}
+
+export interface VerzamelbakBestand {
+  /** Object-URL van de blob (Authorization-header vereist — een kale <object src> kan niet). */
+  url: string
+  contentType: string
+}
+
+/** Bestand van een verzamelbak-document (D1, besluit 25-08): lazy — pas bij hover/klik. */
+export async function haalVerzamelbakBestandBlob(documentId: string): Promise<VerzamelbakBestand> {
+  const resp = await apiFetch(`/verzamelbak/${documentId}/bestand`)
+  if (!resp.ok) throw new Error(`Bestand niet te laden (${resp.status})`)
+  const blob = await resp.blob()
+  return { url: URL.createObjectURL(blob), contentType: blob.type }
 }
 
 export function verwerkEml(bestand: File): Promise<IntakeVerwerkResponseDto> {

@@ -135,6 +135,25 @@ export function UitnodigModal({
                   : 'Minstens één — zonder scope ziet iemand niets.'
           }
         >
+          {/* D3 (besluit Peter 25-08): alles/geen naast de losse vinkjes — bij 11+ administraties
+              is per stuk aanvinken onnodig klikwerk voor een kantoormedewerker. */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+            <Button
+              type="button"
+              variant="secundair"
+              maat="klein"
+              disabled={scope.length === administraties.length}
+              onClick={() => setScope(administraties.map((a) => a.id))}
+            >
+              Alle administraties selecteren
+            </Button>
+            <Button type="button" variant="ghost" maat="klein" disabled={scope.length === 0} onClick={() => setScope([])}>
+              Geen
+            </Button>
+            <span className="hint" style={{ margin: 0, alignSelf: 'center' }}>
+              {scope.length} van {administraties.length} geselecteerd
+            </span>
+          </div>
           <MultiSelect
             opties={administraties.map((a) => ({ waarde: a.id, label: a.naam }))}
             waarden={scope}
