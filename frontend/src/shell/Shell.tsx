@@ -22,9 +22,9 @@ export function Shell() {
       <div className="app">
         <nav className="sidebar" aria-label="Hoofdnavigatie">
           <div className="logo">
-            <div className="logo-mark" aria-hidden>
-              N
-            </div>
+            {/* Definitief beeldmerk (besluit 18-08, geometrie ongewijzigd) — gegenereerd uit
+                mockup/app-icoon-n.svg via native/scripts/genereer_assets.sh; ook de favicon. */}
+            <img className="logo-mark" src="/beeldmerk-n.svg" alt="" aria-hidden />
             <div>
               <b>Nijenhuis</b>
               <small>Boekingsmodule</small>

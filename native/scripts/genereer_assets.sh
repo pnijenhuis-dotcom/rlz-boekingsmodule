@@ -18,6 +18,10 @@
 #   monogram gecentreerd (besluit 2026-08-18) — donkere start, geen witflits.
 # - PWA: frontend/public/icons/accordeur-icoon.svg = byte-kopie van de bron;
 #   192/512/apple-touch-180 full-bleed uit dezelfde bron.
+# - Kantoor-webapp (besluit Peter 25-08, feedbackronde deel 2 punt 3): favicon én het
+#   beeldmerk in de zijbalk = frontend/public/beeldmerk-n.svg — de afgeronde variant
+#   (rx 192/1024, een browsertab maskt niet zelf) uit dezelfde bron; het monogram zelf
+#   blijft geometrisch onaangeraakt.
 set -euo pipefail
 
 HIER="$(cd "$(dirname "$0")/.." && pwd)"
@@ -121,6 +125,11 @@ render "$WERK/vierkant.svg" 512 512 "$ICONS/accordeur-512.png"
 render "$WERK/vierkant.svg" 192 192 "$ICONS/accordeur-192.png"
 render "$WERK/vierkant.svg" 180 180 "$ICONS/apple-touch-icon-accordeur.png"
 
+# ---- Kantoor-webapp (frontend/public) ------------------------------------------------------------
+# Vector volstaat: browsers renderen SVG-favicons scherp op elke dichtheid; de zijbalk laadt hetzelfde
+# bestand als <img>. Afgeronde hoeken zitten in het bestand (geen CSS-afhankelijkheid voor de tab).
+cp "$WERK/launcher.svg" "$REPO/frontend/public/beeldmerk-n.svg"
+
 # ---- iOS -----------------------------------------------------------------------------------------
 render "$WERK/vierkant.svg" 1024 1024 "$HIER/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
 
@@ -151,4 +160,4 @@ find "$RES" -name "splash.png" | while read -r bestand; do
   render "$svg" "$b" "$h" "$bestand"
 done
 
-echo "Assets gegenereerd uit $BRON (App Store 1024, iOS-splash 2732, Android launcher/adaptive/splash, PWA 512/192/180 + SVG-kopie)."
+echo "Assets gegenereerd uit $BRON (App Store 1024, iOS-splash 2732, Android launcher/adaptive/splash, PWA 512/192/180 + SVG-kopie, kantoor-webapp beeldmerk-n.svg)."

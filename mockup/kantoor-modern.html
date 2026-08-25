@@ -49,7 +49,7 @@
   .shell{display:flex;min-height:100vh}
   .sidebar{width:236px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh}
   .logo{display:flex;align-items:center;gap:10px;padding:4px 10px 18px}
-  .logo-mark{width:30px;height:30px;border-radius:9px;background:var(--primary);color:var(--primary-fg);display:grid;place-items:center;font-weight:700;font-size:13px}
+  .logo-mark{width:30px;height:30px;border-radius:9px;display:block;flex-shrink:0}
   .logo b{font-size:14px;letter-spacing:-.02em}
   .logo small{display:block;color:var(--muted);font-weight:400;font-size:11px}
   .nav-kop{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);padding:14px 10px 4px}
@@ -218,7 +218,7 @@
 
   <!-- ================= SIDEBAR ================= -->
   <nav class="sidebar">
-    <div class="logo"><div class="logo-mark">N</div><div><b>Nijenhuis</b><small>Boekingsmodule</small></div></div>
+    <div class="logo"><img class="logo-mark" src="app-icoon-n.svg" alt=""><div><b>Nijenhuis</b><small>Boekingsmodule</small></div></div>
     <div class="nav-kop">Werk</div>
     <button class="nav-item actief" data-scherm="werkvoorraad"><span class="ico">▦</span><span class="txt">Werkvoorraad</span><span class="tel">12</span></button>
     <!-- IA-besluit-voorstel (feedback Peter 15-08): Vragen en Bank zijn geen eigen tabbladen
