@@ -685,6 +685,24 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   duplicaat/vraag, volumerem, accorderingspoort); bron `veldwerker_opt_in` in tijdlijn +
   audit; twee triggers (ná extractie én ná weekstaat-goedkeuring die de match groen maakt);
   staat overal UIT — activeren per koppeling is klikwerk Peter.**
+  **ZZP-dossier + handhaving + KvK (steigerbouw-run 25-08 blok A, besluiten Peter 23/24-08,
+  GEBOUWD + GETEST 2026-08-25, migratie 0072 — BESLISSINGEN "STEIGERBOUW-RUN 25-08 — BLOK A"
+  is canoniek):** per veldwerker (ZZP'er/uitvoerder) × administratie een dossier met
+  Beheerder-instelbare documenttypen (default kopie ID/steigerpas/VCA vol/AVB/KvK-uittreksel;
+  virtueel tot de eerste PUT), statusmodel ontbreekt → ter controle (upload kantoor óf app, ook
+  detacheerder namens) → goedgekeurd/afgewezen-met-reden, verlopen + 30-dagen-vooraankondiging;
+  kopie ID volgt de BSN-regel (nooit extraheren/indexeren, gemaskeerde weergave, élke inzage
+  geauditeerd). Handhaving: herinner-knop (push-anders-mail, max 1/dag, "N van 3"); ná de 3e
+  herinnering blokkeert weekstaat-INDIENEN (HTTP 423, óók namens) — dagen zetten blijft mogelijk,
+  deblokkade zodra alles geüpload is (ter controle telt), afwijzing heractiveert, teller-reset
+  pas bij volledig goedgekeurd. KvK-lookup = eigen kopie Vastly-patroon (`app/integraties/
+  kvk.py`, testomgeving default, `KVK_API_KEY`/`KVK_BASE_URL` productie), mens bevestigt.
+  Daarnaast: veldwerker aanmaken zónder mail (`uitnodiging_later`), Beheerder-only e-mail
+  wijzigen (`PATCH /auth/gebruikers/{id}/e-mail`, verse uitnodiging bij niet-geactiveerd) en het
+  signaal > N uur per dag (`administratie.uren_dagmax_uren`, default 12 — som over álle
+  weekstaten per kalenderdag, oranje vlag, geen blokkade). **Seam-eis steigerbouw-run: nieuwe
+  module-code roept nooit RlzClient aan; adapter-grepen per blok in BESLISSINGEN "ODOO-ADAPTER
+  — GREPEN".**
   **Planning-agenda steigerbouw (ontwerpronde v2 + BOUW akkoord Peter 22-08, mockup
   `planning-steigerbouw.html` = norm; GEBOUWD + GETEST 2026-08-22, migratie 0060 —
   BESLISSINGEN "PLANNING-AGENDA STEIGERBOUW" is canoniek):** kantoor plant ZZP'ers/
