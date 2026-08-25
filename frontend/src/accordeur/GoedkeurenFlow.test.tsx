@@ -93,6 +93,31 @@ describe('GoedkeurenFlow', () => {
     expect(screen.getByText('1 van 1')).toBeInTheDocument()
   })
 
+  it('toont een klaargezette doorbelasting alleen-lezen per doelentiteit (besluit 25-08, A3)', async () => {
+    const metDoorbelasting: WachtrijItemDto = {
+      ...ITEM,
+      doorbelasting: [
+        { doelentiteit_naam: 'Oirschot Recreatie B.V.', percentage: '60.00', netto_totaal: '420.00', provisie_bedrag: '21.00' },
+        { doelentiteit_naam: 'Veldhoven Recreatie B.V.', percentage: '40.00', netto_totaal: '280.00', provisie_bedrag: '14.00' },
+      ],
+    }
+    stubFetch(basisRoutes([metDoorbelasting]))
+    renderFlow()
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+
+    const blok = await screen.findByLabelText('Doorbelasting')
+    expect(blok).toHaveTextContent('Wordt na akkoord doorbelast aan')
+    expect(blok).toHaveTextContent('alleen-lezen')
+    expect(blok).toHaveTextContent('Oirschot Recreatie B.V.')
+    expect(blok).toHaveTextContent('60%')
+    expect(blok).toHaveTextContent('€ 420,00 excl.')
+    expect(blok).toHaveTextContent('provisie € 21,00')
+    expect(blok).toHaveTextContent('Veldhoven Recreatie B.V.')
+    // Geen eigen acties in het blok: fout = de bestaande afwijsknop met reden
+    expect(blok.querySelector('button')).toBeNull()
+    expect(screen.getByRole('button', { name: /Afwijzen/ })).toBeInTheDocument()
+  })
+
   it('akkoord verwerkt de factuur en toont daarna de lege staat', async () => {
     const routes = basisRoutes([ITEM])
     routes['/administraties/a1/accordering/documenten/d1/akkoord'] = (init) => {

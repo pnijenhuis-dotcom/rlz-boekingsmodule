@@ -54,8 +54,7 @@ class BoekvoorstelFout(Exception):
 def _controleer_niet_bevroren(document: Document) -> None:
     if document.status in _BEVROREN_STATUSSEN:
         raise BoekvoorstelFout(
-            f"Document {document.id} kan niet meer gewijzigd of gecontroleerd worden "
-            f"(status: {document.status.value})"
+            f"Document {document.id} kan niet meer gewijzigd of gecontroleerd worden (status: {document.status.value})"
         )
 
 
@@ -237,9 +236,7 @@ def _project_verplicht(administratie_id: uuid.UUID) -> bool:
         return administratie.project_verplicht if administratie else False
 
 
-def _voorkeur_samenvoegen(
-    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None
-) -> bool | None:
+def _voorkeur_samenvoegen(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None) -> bool | None:
     if vendor_id is None:
         return None
     voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
@@ -395,19 +392,33 @@ def sla_boekvoorstel_op(
         bestaand.factuurdatum = factuurdatum
         bestaand.totaalbedrag = totaalbedrag
 
+        # Klaargezette doorbelasting (besluit 25-08) verwijst per regel-id — over de
+        # delete+insert heen meenemen per volgnummer. Lazy import: doorbelasting.service
+        # gebruikt deze module-familie (geen kringimport op moduleniveau).
+        from app.doorbelasting import service as doorbelasting_service
+
+        verdeling_snapshot = doorbelasting_service.neem_klaargezette_verdeling_los(session, document_id=document_id)
         session.execute(delete(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == document_id))
+        nieuwe_regels: list[BoekvoorstelRegel] = []
         for i, regel in enumerate(regels, start=1):
-            session.add(
-                BoekvoorstelRegel(
-                    document_id=document_id,
-                    volgnummer=i,
-                    ledger_id=regel.ledger_id,
-                    taxrate_id=regel.taxrate_id,
-                    project_id=regel.project_id,
-                    netto_bedrag=regel.netto_bedrag,
-                    btw_bedrag=regel.btw_bedrag,
-                    omschrijving=regel.omschrijving,
-                )
+            nieuwe_regel = BoekvoorstelRegel(
+                document_id=document_id,
+                volgnummer=i,
+                ledger_id=regel.ledger_id,
+                taxrate_id=regel.taxrate_id,
+                project_id=regel.project_id,
+                netto_bedrag=regel.netto_bedrag,
+                btw_bedrag=regel.btw_bedrag,
+                omschrijving=regel.omschrijving,
+            )
+            session.add(nieuwe_regel)
+            nieuwe_regels.append(nieuwe_regel)
+        if verdeling_snapshot is not None:
+            session.flush()
+            doorbelasting_service.zet_klaargezette_verdeling_terug(
+                session,
+                snapshot=verdeling_snapshot,
+                nieuwe_regels={r.volgnummer: r.id for r in nieuwe_regels},
             )
 
         if regels_samenvoegen is not None and vendor_id is not None and not _project_verplicht(administratie_id):
@@ -512,9 +523,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     regels = _naar_check_regels(voorstel)
     vertrouwd: set[str] = set()
     if voorstel.vendor_id is not None:
-        vertrouwd = leverancier_iban.vertrouwde_ibans(
-            administratie_id=administratie_id, vendor_id=voorstel.vendor_id
-        )
+        vertrouwd = leverancier_iban.vertrouwde_ibans(administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
     return CheckRapport(
         (
             check_verplichte_velden(

@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerAdministratie, GebruikerRol
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.checks import CheckRapport
 from app.documenten.models import BoekvoorstelRegel, Document, DocumentSoort, DocumentStatus
 from app.doorbelasting.checks import (
@@ -27,6 +28,7 @@ from app.doorbelasting.checks import (
 )
 from app.doorbelasting.geld import provisie_over, verdeel_grootste_rest
 from app.doorbelasting.models import (
+    INACTIEVE_RUN_STATUSSEN,
     DoorbelastingBoeking,
     DoorbelastingBoekingStatus,
     DoorbelastingInstelling,
@@ -73,6 +75,7 @@ def upsert_intercompany_tegenpartij(
         bestaand.actief = actief
         if mapping_id is not None:
             bestaand.mapping_id = mapping_id
+
 
 _MODULE = "boekhouding"
 
@@ -319,7 +322,7 @@ def vind_run(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> Doorbela
             select(DoorbelastingRun).where(
                 DoorbelastingRun.administratie_id == administratie_id,
                 DoorbelastingRun.document_id == document_id,
-                DoorbelastingRun.status != DoorbelastingRunStatus.GESTORNEERD.value,
+                DoorbelastingRun.status.notin_(INACTIEVE_RUN_STATUSSEN),
             )
         ).one_or_none()
         if run is not None:
@@ -327,12 +330,37 @@ def vind_run(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> Doorbela
         return run
 
 
-def start_of_haal_run(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
-) -> DoorbelastingRun:
-    """De actie "Doorbelasten…" op een GEBOEKT bron-document: bestaande niet-gestorneerde run
-    teruggeven of een concept-run aanmaken. Poorten: document bestaat in deze administratie,
-    is geboekt en is een inkoopfactuur; de administratie heeft doorbelasting aan."""
+# Documentstatussen waarop de verdeling al vóór het boeken klaargezet mag worden (besluit
+# Peter 25-08): precies de statussen waaruit een boekpoging kan starten (boeken.py) — een
+# document met open vraag/afwijzing/accordering krijgt eerst zijn eigen afhandeling.
+_KLAARZETBARE_DOCUMENTSTATUSSEN = frozenset(
+    {
+        DocumentStatus.TE_CONTROLEREN,
+        DocumentStatus.KLAAR_OM_TE_BOEKEN,
+        DocumentStatus.HANDMATIG_AFMAKEN,
+        DocumentStatus.BOEKEN_MISLUKT,
+    }
+)
+
+
+def klaargezette_run(session, *, document_id: uuid.UUID) -> DoorbelastingRun | None:
+    """De klaargezette (nog niet geboekte) run van een document, of None — de ene leesroute
+    voor de orkestratie (boeken + accordering) en de boekvoorstel-herkoppeling."""
+    return session.scalars(
+        select(DoorbelastingRun).where(
+            DoorbelastingRun.document_id == document_id,
+            DoorbelastingRun.status == DoorbelastingRunStatus.KLAARGEZET.value,
+        )
+    ).one_or_none()
+
+
+def start_of_haal_run(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID) -> DoorbelastingRun:
+    """Bestaande actieve run teruggeven of een nieuwe aanmaken. Twee ingangen (besluit Peter
+    25-08, herziet 13-08): op een GEBOEKT document = de losse actie "Doorbelasten…" (run
+    concept, blijft bestaan); op een nog niet geboekt maar boekbaar document = het blok
+    "Doorbelasten na boeken" op het controlescherm (run KLAARGEZET — "Boeken + doorbelasten"
+    activeert 'm ná de inkoopboeking). Poorten: toggle aan, document van deze administratie,
+    inkoopfactuur, status geboekt óf klaarzetbaar."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         administratie = session.get(Administratie, administratie_id)
         if administratie is None or not administratie.doorbelasting_ingeschakeld:
@@ -340,20 +368,31 @@ def start_of_haal_run(
         document = session.get(Document, document_id)
         if document is None or document.administratie_id != administratie_id:
             raise DoorbelastingFout("Onbekend document voor deze administratie")
-        if document.status != DocumentStatus.GEBOEKT:
-            raise DoorbelastingFout("Doorbelasten kan alleen vanaf een geboekt document")
         if document.soort != DocumentSoort.INKOOPFACTUUR.value:
             raise DoorbelastingFout("Doorbelasten kan alleen op een inkoopfactuur")
         bestaande = session.scalars(
             select(DoorbelastingRun).where(
                 DoorbelastingRun.document_id == document_id,
-                DoorbelastingRun.status != DoorbelastingRunStatus.GESTORNEERD.value,
+                DoorbelastingRun.status.notin_(INACTIEVE_RUN_STATUSSEN),
             )
         ).one_or_none()
         if bestaande is not None:
             session.expunge(bestaande)
             return bestaande
-        run = DoorbelastingRun(administratie_id=administratie_id, document_id=document_id, aangemaakt_door=actor_id)
+        if document.status == DocumentStatus.GEBOEKT:
+            status = DoorbelastingRunStatus.CONCEPT.value
+            actie = "doorbelasting_run_gestart"
+        elif document.status in _KLAARZETBARE_DOCUMENTSTATUSSEN:
+            status = DoorbelastingRunStatus.KLAARGEZET.value
+            actie = "doorbelasting_run_klaargezet"
+        else:
+            raise DoorbelastingFout(
+                f"Doorbelasten kan niet vanuit status {document.status.value} — alleen op een geboekt "
+                "of boekbaar document"
+            )
+        run = DoorbelastingRun(
+            administratie_id=administratie_id, document_id=document_id, aangemaakt_door=actor_id, status=status
+        )
         session.add(run)
         session.flush()
         record_audit_event(
@@ -362,13 +401,148 @@ def start_of_haal_run(
             module=_MODULE,
             tabel="doorbelasting_run",
             record_id=run.id,
-            actie="doorbelasting_run_gestart",
+            actie=actie,
             correlatie_id=document_id,
-            nieuwe_waarde={"document_id": str(document_id)},
+            nieuwe_waarde={"document_id": str(document_id), "status": status},
             administratie_id=administratie_id,
         )
         session.expunge(run)
         return run
+
+
+def laat_run_vervallen(*, administratie_id: uuid.UUID, run_id: uuid.UUID, actor_id: uuid.UUID) -> DoorbelastingRun:
+    """Het vinkje "Doorbelasten na boeken" gaat weer uit vóór het boeken: de klaargezette run
+    wordt VERVALLEN (nooit een delete — spoor + audit blijven), de verdeelregels blijven eraan
+    hangen als historie. Alleen vanaf KLAARGEZET; een run met boekingen kan nooit vervallen."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        run = session.get(DoorbelastingRun, run_id)
+        if run is None or run.administratie_id != administratie_id:
+            raise RunNietGevonden("Onbekende run voor deze administratie")
+        if run.status != DoorbelastingRunStatus.KLAARGEZET.value or _run_heeft_actieve_boeking(session, run_id):
+            raise VerdelingBevroren("Alleen een klaargezette (nog niet geboekte) doorbelasting kan vervallen")
+        document = session.get(Document, run.document_id)
+        if document is not None and document.status == DocumentStatus.TER_ACCORDERING:
+            raise VerdelingBevroren("Het document ligt bij de klant ter accordering — verdeling is bevroren")
+        run.status = DoorbelastingRunStatus.VERVALLEN.value
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=_MODULE,
+            tabel="doorbelasting_run",
+            record_id=run.id,
+            actie="doorbelasting_run_vervallen",
+            correlatie_id=run.document_id,
+            oude_waarde={"status": DoorbelastingRunStatus.KLAARGEZET.value},
+            nieuwe_waarde={"status": run.status},
+            administratie_id=administratie_id,
+        )
+        session.flush()
+        session.expunge(run)
+        return run
+
+
+def activeer_klaargezette_run(session, *, run: DoorbelastingRun, actor_id: uuid.UUID) -> None:
+    """Ná een geslaagde inkoopboeking: KLAARGEZET → CONCEPT, zodat de bestaande motor de run
+    exact behandelt als een run uit de losse "Doorbelasten…"-actie. In de sessie van de
+    aanroeper (orkestratie), mét audit."""
+    run.status = DoorbelastingRunStatus.CONCEPT.value
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module=_MODULE,
+        tabel="doorbelasting_run",
+        record_id=run.id,
+        actie="doorbelasting_run_geactiveerd_na_boeken",
+        correlatie_id=run.document_id,
+        oude_waarde={"status": DoorbelastingRunStatus.KLAARGEZET.value},
+        nieuwe_waarde={"status": run.status},
+        administratie_id=run.administratie_id,
+    )
+
+
+@dataclass(frozen=True)
+class VerdelingSnapshot:
+    """Klaargezette verdeling losgekoppeld van regel-id's (per volgnummer) — de brug over de
+    delete+insert van de boekvoorstel-regels heen."""
+
+    run_id: uuid.UUID
+    administratie_id: uuid.UUID
+    regels: tuple[tuple[int | None, uuid.UUID, Decimal, uuid.UUID | None], ...]
+
+
+def neem_klaargezette_verdeling_los(session, *, document_id: uuid.UUID) -> VerdelingSnapshot | None:
+    """Het boekvoorstel vervangt zijn regels bij elke opslag (delete + insert → nieuwe id's).
+    Een KLAARGEZETTE verdeling verwijst per regel-id en zou dan op de FK stranden. Deze hook
+    (aangeroepen vanuit sla_boekvoorstel_op, vóór de delete) legt de verdeling per VOLGNUMMER
+    vast en verwijdert de oude verdeelregels; `zet_klaargezette_verdeling_terug` hangt ze ná
+    de insert aan de nieuwe regels. None = geen klaargezette run, niets te doen."""
+    run = klaargezette_run(session, document_id=document_id)
+    if run is None:
+        return None
+    oude_regels = list(session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == run.id)))
+    if not oude_regels:
+        return None
+    volgnummer_per_id = {
+        r.id: r.volgnummer
+        for r in session.scalars(select(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == document_id))
+    }
+    snapshot = VerdelingSnapshot(
+        run_id=run.id,
+        administratie_id=run.administratie_id,
+        regels=tuple(
+            (volgnummer_per_id.get(r.bron_regel_id), r.mapping_id, r.percentage, r.doel_kosten_ledger_id)
+            for r in oude_regels
+        ),
+    )
+    for oud in oude_regels:
+        session.delete(oud)
+    session.flush()
+    return snapshot
+
+
+def zet_klaargezette_verdeling_terug(
+    session, *, snapshot: VerdelingSnapshot | None, nieuwe_regels: dict[int, uuid.UUID]
+) -> None:
+    """Tweede helft: zelfde volgnummer = zelfde verdeling, netto-delen opnieuw berekend op het
+    nieuwe regelbedrag (grootste-rest, als sla_verdeling_op); een verdeelde regel die verdwenen
+    is, verliest zijn verdeling ZICHTBAAR (preview/checks tonen dat) — nooit stil."""
+    if snapshot is None or not nieuwe_regels:
+        return
+    bron_regels = {
+        r.id: r
+        for r in session.scalars(
+            select(BoekvoorstelRegel).where(BoekvoorstelRegel.id.in_(list(nieuwe_regels.values())))
+        )
+    }
+    per_bron: dict[uuid.UUID, list[tuple[uuid.UUID, Decimal, uuid.UUID | None]]] = {}
+    for volgnummer, mapping_id, percentage, gb in snapshot.regels:
+        nieuw_id = nieuwe_regels.get(volgnummer) if volgnummer is not None else None
+        if nieuw_id is None:
+            continue
+        per_bron.setdefault(nieuw_id, []).append((mapping_id, percentage, gb))
+    for bron_regel_id, groep in per_bron.items():
+        bron_netto = bron_regels[bron_regel_id].netto_bedrag or Decimal(0)
+        delen = _bereken_delen(bron_netto, [g[1] for g in groep])
+        for (mapping_id, percentage, gb), deel in zip(groep, delen, strict=True):
+            session.add(
+                DoorbelastingRegel(
+                    run_id=snapshot.run_id,
+                    administratie_id=snapshot.administratie_id,
+                    bron_regel_id=bron_regel_id,
+                    mapping_id=mapping_id,
+                    percentage=percentage,
+                    netto_deel=deel,
+                    doel_kosten_ledger_id=gb,
+                )
+            )
+    session.flush()
+
+
+def _bereken_delen(bron_netto: Decimal, percentages: list[Decimal]) -> list[Decimal]:
+    """Grootste-rest bij exact 100%, anders naar rato (werkstaat — de harde check blokkeert)."""
+    if sum(percentages) == Decimal(100):
+        return verdeel_grootste_rest(bron_netto, percentages)
+    return [(bron_netto * pct / Decimal(100)).quantize(Decimal("0.01")) for pct in percentages]
 
 
 def _run_heeft_actieve_boeking(session, run_id: uuid.UUID) -> bool:
@@ -400,8 +574,16 @@ def sla_verdeling_op(
         run = session.get(DoorbelastingRun, run_id)
         if run is None or run.administratie_id != administratie_id:
             raise RunNietGevonden("Onbekende run voor deze administratie")
-        if run.status != DoorbelastingRunStatus.CONCEPT.value or _run_heeft_actieve_boeking(session, run_id):
+        if run.status not in (
+            DoorbelastingRunStatus.CONCEPT.value,
+            DoorbelastingRunStatus.KLAARGEZET.value,
+        ) or _run_heeft_actieve_boeking(session, run_id):
             raise VerdelingBevroren("Deze doorbelasting is (deels) geboekt — verdeling is bevroren")
+        # Klaargezette verdeling bij de klant (A3): de accordeur beoordeelt precies wat hij ziet —
+        # tot het besluit is de verdeling bevroren (afwijzen zet het document terug, dan mag het weer).
+        document = session.get(Document, run.document_id)
+        if document is not None and document.status == DocumentStatus.TER_ACCORDERING:
+            raise VerdelingBevroren("Het document ligt bij de klant ter accordering — verdeling is bevroren")
 
         bron_regels = {
             r.id: r
@@ -441,14 +623,9 @@ def sla_verdeling_op(
             bron_netto = bron_regels[bron_regel_id].netto_bedrag
             if bron_netto is None:
                 raise DoorbelastingFout(f"Bron-regel {bron_regel_id} heeft geen nettobedrag")
-            percentages = [g.percentage for g in groep]
-            if sum(percentages) == Decimal(100):
-                delen = verdeel_grootste_rest(bron_netto, percentages)
-            else:
-                # werkstaat: nog niet op 100% — bewaar naar rato, harde check blokkeert boeken
-                delen = [
-                    (bron_netto * g.percentage / Decimal(100)).quantize(Decimal("0.01")) for g in groep
-                ]
+            # grootste-rest bij exact 100%; werkstaat (nog niet op 100%) naar rato — de harde
+            # check blokkeert het boeken dan
+            delen = _bereken_delen(bron_netto, [g.percentage for g in groep])
             for invoer, deel in zip(groep, delen, strict=True):
                 regel = DoorbelastingRegel(
                     run_id=run_id,
@@ -628,8 +805,7 @@ def zet_spiegel_doel_gbs(
         if onbekend:
             raise DoorbelastingFout(f"Onbekende verdeelregel(s) voor deze spiegel-taak: {sorted(map(str, onbekend))}")
         oud = {
-            str(rid): (str(r.doel_kosten_ledger_id) if r.doel_kosten_ledger_id else None)
-            for rid, r in regels.items()
+            str(rid): (str(r.doel_kosten_ledger_id) if r.doel_kosten_ledger_id else None) for rid, r in regels.items()
         }
         for regel_id, ledger_id in regel_gbs.items():
             regels[regel_id].doel_kosten_ledger_id = ledger_id
@@ -681,6 +857,11 @@ def actor_heeft_scope(*, actor_id: uuid.UUID, administratie_id: uuid.UUID) -> bo
     doorbelasten naar administraties waarop hij zelf scope heeft"); Beheerder = alles
     (bestaand rolmodel). Bewust in de platform-scope (scoped_session(None)) — de
     koppeltabel is geen administratie-gescoped gegeven."""
+    # Systeem-actor (besluit 25-08, boeken ná het laatste klant-akkoord): geen mens, geen
+    # scope-rij — de menselijke trigger (aanbieden ter accordering) is op dat moment al op
+    # doel-scope getoetst (orkestratie.toets_klaargezette_doorbelasting), dus hier door.
+    if actor_id == SYSTEEM_ACTOR_ID:
+        return True
     with scoped_session(None) as session:
         gebruiker = session.get(Gebruiker, actor_id)
         if gebruiker is not None and gebruiker.rol == GebruikerRol.BEHEERDER:

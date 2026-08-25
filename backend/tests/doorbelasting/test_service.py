@@ -211,7 +211,7 @@ class TestSlaVerdelingOp:
 
 
 class TestStartOfHaalRun:
-    def test_weigert_niet_geboekt_document(
+    def test_niet_geboekt_maar_boekbaar_document_geeft_klaargezette_run(
         self,
         doorbelasting_aan: None,
         gescoopte_gebruiker: uuid.UUID,
@@ -219,6 +219,8 @@ class TestStartOfHaalRun:
         beheerder_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
     ) -> None:
+        """Besluit Peter 25-08 (herziet 13-08): op een nog niet geboekt maar boekbaar document
+        start het blok "Doorbelasten na boeken" een KLAARGEZETTE run — was: geweigerd."""
         resultaat = documenten_service.upload_document(
             administratie_id=administratie_id,
             bestandsnaam="nog-niet-geboekt.pdf",
@@ -226,7 +228,40 @@ class TestStartOfHaalRun:
             actor_id=gescoopte_gebruiker,
             opslag=opslag,
         )
-        with pytest.raises(DoorbelastingFout, match="geboekt document"):
+        run = doorbelasting_service.start_of_haal_run(
+            administratie_id=administratie_id, document_id=resultaat.document_id, actor_id=beheerder_id
+        )
+        assert run.status == "klaargezet"
+        # Idempotent: nogmaals = dezelfde run
+        assert (
+            doorbelasting_service.start_of_haal_run(
+                administratie_id=administratie_id, document_id=resultaat.document_id, actor_id=beheerder_id
+            ).id
+            == run.id
+        )
+
+    def test_weigert_document_in_niet_boekbare_status(
+        self,
+        doorbelasting_aan: None,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        from app.documenten.models import Document, DocumentStatus
+        from app.documenten.service import _schrijf_overgang
+
+        resultaat = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="afgewezen.pdf",
+            inhoud=b"%PDF-1.4 afgewezen",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
+            document = session.get(Document, resultaat.document_id)
+            _schrijf_overgang(session, document=document, naar=DocumentStatus.AFGEWEZEN, actor_id=gescoopte_gebruiker)
+        with pytest.raises(DoorbelastingFout, match="geboekt of boekbaar"):
             doorbelasting_service.start_of_haal_run(
                 administratie_id=administratie_id, document_id=resultaat.document_id, actor_id=beheerder_id
             )

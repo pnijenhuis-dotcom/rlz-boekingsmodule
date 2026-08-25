@@ -133,6 +133,10 @@
     padding: 11px 14px; margin-top: 10px; font-size: 12.5px; line-height: 1.5;
   }
   .boekinfo .k { color: var(--muted); }
+  .boekinfo .doorbelasting { margin-top:10px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; font-size:13px; }
+  .boekinfo .doorbelasting .dk { font-weight:600; margin-bottom:6px; }
+  .boekinfo .doorbelasting .dr { display:grid; grid-template-columns:1fr auto; gap:2px 10px; margin-bottom:4px; }
+  .boekinfo .doorbelasting .dr .k { grid-column:1 / -1; }
   .staandnote {
     background: var(--purple-bg); border-radius: 10px; padding: 9px 12px; margin-top: 8px;
     font-size: 11.5px; line-height: 1.5; color: var(--purple); display: flex; gap: 8px;
@@ -382,7 +386,8 @@
   // Essent stond vorige maand óók op € 847,00 en werd toen door S. Bakker goedgekeurd
   // → bij akkoord op #2 volgt het staande-goedkeuring-voorstel (2e identieke factuur).
   const facturen = [
-    { id: 1, lev: "Growshop De Toekomst", nr: "2026-0221", datum: "30-06-2026", omschrijving: "Kweekbenodigdheden div.", netto: "€ 2.049,59", btw: "Btw 21% — € 430,41", totaal: "€ 2.480,00", boeking: "Inkopen Headshop · btw 21%", verval: "vervalt 30-07", herhaald: false },
+    { id: 1, lev: "Growshop De Toekomst", nr: "2026-0221", datum: "30-06-2026", omschrijving: "Kweekbenodigdheden div.", netto: "€ 2.049,59", btw: "Btw 21% — € 430,41", totaal: "€ 2.480,00", boeking: "Inkopen Headshop · btw 21%", verval: "vervalt 30-07", herhaald: false,
+      doorbelasting: [ { naam: "Oirschot Recreatie B.V.", pct: "60%", excl: "€ 1.229,75", provisie: "€ 61,49" }, { naam: "Veldhoven Recreatie B.V.", pct: "40%", excl: "€ 819,84", provisie: "€ 40,99" } ] },
     { id: 2, lev: "Essent Zakelijk", nr: "E-2026-07-8841", datum: "01-07-2026", omschrijving: "Energie juli — vast contract", netto: "€ 700,00", btw: "Btw 21% — € 147,00", totaal: "€ 847,00", boeking: "Gas, water en elektra · btw 21%", verval: "vervalt 15-07", herhaald: true },
     { id: 3, lev: "Verpakkingen Noord B.V.", nr: "VN-10388", datum: "02-07-2026", omschrijving: "Gripzakken + etiketten", netto: "€ 391,74", btw: "Btw 21% — € 82,26", totaal: "€ 474,00", boeking: "Verpakkingsmateriaal · btw 21%", verval: "vervalt 01-08", herhaald: false }
   ];
@@ -421,8 +426,14 @@
       `<div class="fr"><span>${f.btw.split(' — ')[0]}</span><span>${f.btw.split(' — ')[1]}</span></div><hr>` +
       `<div class="fr"><b>Totaal</b><b>${f.totaal}</b></div>` +
       `<div class="zoom">(volledige PDF, zoombaar — knijp of dubbeltik)</div>`;
+    // HERZIEN 25-08 (besluit Peter, punt A3): een klaargezette doorbelasting toont de accordeur
+    // ALLEEN-LEZEN per doelentiteit (naam, %, bedrag excl., provisie). Fout = de gewone afwijsknop
+    // met verplichte reden — geen aparte doorbelasting-afwijzing.
+    const db = f.doorbelasting ? `<div class="doorbelasting"><div class="dk">Wordt na akkoord doorbelast aan <span class="k">· alleen-lezen</span></div>` +
+      f.doorbelasting.map(r => `<div class="dr"><b>${r.naam}</b><span>${r.pct}</span><span class="k">${r.excl} excl. · provisie ${r.provisie}</span></div>`).join('') +
+      `<div class="k">Klopt de verdeling niet? Wijs de factuur af met een reden — het kantoor past de verdeling aan.</div></div>` : '';
     document.getElementById('boekinfo').innerHTML =
-      `Boeking: <b>${f.boeking}</b><br><span class="k">${f.totaal} · ${f.verval}</span>`;
+      `Boeking: <b>${f.boeking}</b><br><span class="k">${f.totaal} · ${f.verval}</span>` + db;
     document.getElementById('staandhint').style.display = f.herhaald ? 'flex' : 'none';
     document.getElementById('revteller').textContent = `${totaalStart - wachtrij.length + 1} van ${totaalStart}`;
     toon('review');

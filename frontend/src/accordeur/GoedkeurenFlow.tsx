@@ -245,6 +245,13 @@ function MeldingenSheet({ status, bezig, onAanzetten, onUitzetten, onSluit }: Me
 
 /** Factuurbeeld via de prefetchcache — óók verborgen gemonteerd voor de eerstvolgende factuur,
  * zodat blob + pdf.js-render al klaarstaan vóór de gebruiker daar aankomt. */
+/** Aandeel-percentage als "50%" / "33,33%" — string uit de backend (Decimal), nooit herberekend. */
+function pctWeergave(pct: string): string {
+  const getal = Number(pct)
+  if (!Number.isFinite(getal)) return `${pct}%`
+  return `${getal.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
+}
+
 function FactuurBeeld({ item }: { item: WachtrijItemDto }) {
   const [url, setUrl] = useState<string | null>(null)
   const [laden, setLaden] = useState(true)
@@ -782,6 +789,27 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 {` · laag ${huidige.laag_volgnummer}`}
               </span>
             </div>
+            {huidige.doorbelasting && huidige.doorbelasting.length > 0 && (
+              <div className="acc-doorbelasting" aria-label="Doorbelasting">
+                <div className="acc-doorbelasting-kop">
+                  Wordt na akkoord doorbelast aan
+                  <span className="acc-k"> · alleen-lezen</span>
+                </div>
+                <ul>
+                  {huidige.doorbelasting.map((r) => (
+                    <li key={r.doelentiteit_naam}>
+                      <span className="acc-db-naam">{r.doelentiteit_naam}</span>
+                      <span className="acc-db-pct">{pctWeergave(r.percentage)}</span>
+                      <span className="acc-db-bedrag">
+                        {eurWeergave(r.netto_totaal)} excl.
+                        <span className="acc-k"> · provisie {eurWeergave(r.provisie_bedrag)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="acc-k">Klopt de verdeling niet? Wijs de factuur af met een reden — het kantoor past de verdeling aan.</div>
+              </div>
+            )}
             {huidige.staande_regel_kandidaat && (
               <div className="acc-staandnote">
                 <span>✓✓</span>

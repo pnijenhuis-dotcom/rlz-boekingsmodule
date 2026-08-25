@@ -280,6 +280,13 @@ interface Props {
    * geblokkeerde IBAN-wissel-check — het detailscherm herlaadt dan (document gaat naar
    * wacht_op_iban_accordering en de accordering-sectie verschijnt). */
   onIbanAangeboden?: () => void
+  /** Klaargezette doorbelasting (besluit 25-08, blok "Doorbelasten na boeken"): de knop wordt
+   * "Boeken + doorbelasten" en is pas actief als óók de doorbelasting-checks groen zijn
+   * (`geblokkeerd` + reden komen uit het blok; de server hertoetst). null/undefined = geen. */
+  doorbelastingKlaargezet?: { runId: string; geblokkeerd: boolean; reden: string | null } | null
+  /** Ná elke geslaagde opslag van het boekvoorstel (regels krijgen nieuwe id's) — het
+   * doorbelasting-blok herlaadt dan zijn bron-regels + run. */
+  onVoorstelOpgeslagen?: () => void
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
@@ -295,6 +302,8 @@ export function BoekvoorstelPanel({
   onVraagStellen,
   onAfwijzen,
   onIbanAangeboden,
+  doorbelastingKlaargezet = null,
+  onVoorstelOpgeslagen,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -694,6 +703,7 @@ export function BoekvoorstelPanel({
         setCheckRapport(resultaat.checks)
         setChecksActueel(true)
       }
+      onVoorstelOpgeslagen?.()
     } catch (err) {
       setControlerenFout(err instanceof ApiError ? err.message : 'Checks uitvoeren mislukt.')
     }
@@ -766,6 +776,11 @@ export function BoekvoorstelPanel({
         setBoekResultaat(resultaat)
         setBoekstuknummer(resultaat.rlz_boekstuknummer)
         setPopupMatch(null)
+        // "Boeken + doorbelasten": de inkoop staat; een (deels) mislukte doorbelasting is een
+        // zichtbare melding (nooit stil) — herstel via de Doorbelasten-sectie op het document.
+        if (resultaat.doorbelasting_fout) {
+          setBoekenFout(`Inkoopfactuur geboekt; doorbelasting (deels) mislukt: ${resultaat.doorbelasting_fout}`)
+        }
         onGeboekt()
         return
       }
@@ -832,7 +847,11 @@ export function BoekvoorstelPanel({
   if (laden) return <div className="panel">Boekvoorstel laden…</div>
   if (ladenFout) return <div className="fout">Kon boekvoorstel niet laden: {ladenFout}</div>
 
-  const kanBoeken = checkRapport !== null && checksActueel && !checkRapport.geblokkeerd && !isReadOnly
+  // A2 (besluit 25-08): mét klaargezette doorbelasting moeten boek-checks én
+  // doorbelasting-checks samen groen zijn vóór de knop actief wordt.
+  const doorbelastingBlokkeert = doorbelastingKlaargezet?.geblokkeerd === true
+  const kanBoeken =
+    checkRapport !== null && checksActueel && !checkRapport.geblokkeerd && !isReadOnly && !doorbelastingBlokkeert
   const boekenTitel = isReadOnly
     ? undefined
     : checkRapport === null
@@ -841,7 +860,16 @@ export function BoekvoorstelPanel({
         ? 'Er zijn wijzigingen sinds de laatste controle — de checks draaien zo automatisch opnieuw.'
         : checkRapport.geblokkeerd
           ? 'Boeken geblokkeerd — een of meer harde checks zijn niet groen.'
-          : undefined
+          : doorbelastingBlokkeert
+            ? `Boeken + doorbelasten geblokkeerd — ${doorbelastingKlaargezet?.reden ?? 'doorbelasting nog niet groen'}`
+            : undefined
+  const boekLabel = accorderingAan
+    ? doorbelastingKlaargezet
+      ? 'Ter accordering (+ doorbelasten) →'
+      : 'Ter accordering →'
+    : doorbelastingKlaargezet
+      ? 'Boeken + doorbelasten ✓'
+      : 'Boeken in RLZ ✓'
 
   return (
     <>
@@ -1314,7 +1342,7 @@ export function BoekvoorstelPanel({
               title={boekenTitel}
               onClick={() => void boeken()}
             >
-              {boekenBezig ? 'Bezig…' : accorderingAan ? 'Ter accordering →' : 'Boeken in RLZ ✓'}
+              {boekenBezig ? 'Bezig…' : boekLabel}
             </button>
           </div>
         )}

@@ -17,6 +17,16 @@ export interface WachtrijItemDto {
   laag_volgnummer: number
   boeking_omschrijving: string | null
   staande_regel_kandidaat: boolean
+  /** Klaargezette doorbelasting (besluit 25-08, A3): ALLEEN-LEZEN per doelentiteit; null =
+   * geen doorbelasting bij dit document. Fout = de gewone afwijsknop met reden. */
+  doorbelasting?: WachtrijDoorbelastingRegelDto[] | null
+}
+
+export interface WachtrijDoorbelastingRegelDto {
+  doelentiteit_naam: string
+  percentage: string
+  netto_totaal: string
+  provisie_bedrag: string
 }
 
 export const VOORWAARDEN_AKKOORD_VEREIST = 'voorwaarden_akkoord_vereist'

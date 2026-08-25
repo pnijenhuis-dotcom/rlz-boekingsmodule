@@ -121,9 +121,7 @@ def mappings_lijst(
     return [_naar_mapping(m) for m in service.lijst_mappings(administratie_id=administratie_id)]
 
 
-@router.put(
-    "/doorbelasting/{administratie_id}/mappings/{mapping_id}", response_model=schemas.MappingResponse
-)
+@router.put("/doorbelasting/{administratie_id}/mappings/{mapping_id}", response_model=schemas.MappingResponse)
 def mapping_wijzigen(
     administratie_id: uuid.UUID,
     mapping_id: uuid.UUID,
@@ -149,9 +147,7 @@ def mapping_wijzigen(
 # --- run + verdeling + boeken (scope-gebonden) ---------------------------------------------
 
 
-@router.get(
-    "/doorbelasting/{administratie_id}/documenten/{document_id}/run", response_model=schemas.RunResponse
-)
+@router.get("/doorbelasting/{administratie_id}/documenten/{document_id}/run", response_model=schemas.RunResponse)
 def run_voor_document(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
@@ -166,18 +162,14 @@ def run_voor_document(
     return _naar_run_response(data)
 
 
-@router.post(
-    "/doorbelasting/{administratie_id}/documenten/{document_id}/run", response_model=schemas.RunResponse
-)
+@router.post("/doorbelasting/{administratie_id}/documenten/{document_id}/run", response_model=schemas.RunResponse)
 def run_starten(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.RunResponse:
     try:
-        run = service.start_of_haal_run(
-            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
-        )
+        run = service.start_of_haal_run(administratie_id=administratie_id, document_id=document_id, actor_id=actor.id)
         data = service.review_data(administratie_id=administratie_id, run_id=run.id)
     except service.DoorbelastingFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -227,6 +219,25 @@ def verdeling_opslaan(
     return _naar_run_response(data)
 
 
+@router.post("/doorbelasting/{administratie_id}/runs/{run_id}/vervallen", response_model=schemas.RunResponse)
+def run_vervallen(
+    administratie_id: uuid.UUID,
+    run_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.RunResponse:
+    """Vinkje "Doorbelasten na boeken" weer uit (besluit 25-08): de klaargezette run wordt
+    VERVALLEN — nooit een delete, spoor + audit blijven. 409 als de run niet meer klaargezet is
+    (geboekt/bij de klant)."""
+    try:
+        service.laat_run_vervallen(administratie_id=administratie_id, run_id=run_id, actor_id=actor.id)
+        data = service.review_data(administratie_id=administratie_id, run_id=run_id)
+    except service.RunNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except service.DoorbelastingFout as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_run_response(data)
+
+
 @router.post("/doorbelasting/{administratie_id}/runs/{run_id}/boeken", response_model=schemas.BoekResultaatResponse)
 def run_boeken(
     administratie_id: uuid.UUID,
@@ -234,9 +245,7 @@ def run_boeken(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.BoekResultaatResponse:
     try:
-        resultaat = boeken.boek_doorbelasting_run(
-            administratie_id=administratie_id, run_id=run_id, actor_id=actor.id
-        )
+        resultaat = boeken.boek_doorbelasting_run(administratie_id=administratie_id, run_id=run_id, actor_id=actor.id)
     except boeken.BoekenGeblokkeerdDoorChecks as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -391,9 +400,7 @@ def storno_toets(
     de echte poort. Fail-closed: geen credentials voor de bron = alles geblokkeerd (409 komt
     hier niet voor terug; de UI behandelt élke fout als geblokkeerd)."""
     try:
-        per_boeking = boeken.storno_toets_voor_document(
-            administratie_id=administratie_id, document_id=document_id
-        )
+        per_boeking = boeken.storno_toets_voor_document(administratie_id=administratie_id, document_id=document_id)
     except GeenRlzCredentials as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return schemas.StornoToetsResponse(
@@ -401,10 +408,7 @@ def storno_toets(
             boeking_id: schemas.BoekingStornoToetsDto(
                 toegestaan=all(t.toegestaan for t in toetsen),
                 melding=None if all(t.toegestaan for t in toetsen) else STORNO_BLOKKADE_MELDING,
-                kanten=[
-                    schemas.KantToetsDto(kant=t.kant, toegestaan=t.toegestaan, reden=t.reden)
-                    for t in toetsen
-                ],
+                kanten=[schemas.KantToetsDto(kant=t.kant, toegestaan=t.toegestaan, reden=t.reden) for t in toetsen],
             )
             for boeking_id, toetsen in per_boeking.items()
         }

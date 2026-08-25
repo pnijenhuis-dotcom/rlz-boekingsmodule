@@ -47,6 +47,7 @@ from app.documenten.models import (
     BoekvoorstelRegel,
     Document,
     DocumentGebeurtenis,
+    DocumentStatus,
     WebhookUitgaand,
 )
 from app.documenten.rlz_ids import (
@@ -180,9 +181,7 @@ def _boek_spiegel_inkoop(
     return geboekt.get("ReceiptNumber")
 
 
-def _zorg_voor_crediteur_in_doel(
-    *, client: RlzClient, doel_administratie_id: uuid.UUID, naam: str
-) -> uuid.UUID:
+def _zorg_voor_crediteur_in_doel(*, client: RlzClient, doel_administratie_id: uuid.UUID, naam: str) -> uuid.UUID:
     """Idempotente crediteur-aanmaak in de DOEL-administratie: lookup-vóór-PUT tegen de
     RLZ-Vendors-collectie (níét de lokale VendorCache — die kan voor een verse
     doel-administratie leeg zijn), anders PUT met deterministisch client-GUID.
@@ -192,9 +191,7 @@ def _zorg_voor_crediteur_in_doel(
     if len(bestaand) == 1:
         return uuid.UUID(bestaand[0]["id"])
     if len(bestaand) > 1:
-        raise DoorbelastingFout(
-            f"Meerdere crediteuren '{naam}' in de doel-administratie — kies/schoon eerst op in RLZ"
-        )
+        raise DoorbelastingFout(f"Meerdere crediteuren '{naam}' in de doel-administratie — kies/schoon eerst op in RLZ")
     vendor_id = rlz_vendor_id(doel_administratie_id, naam)
     client.put_vendor(vendor_id, name=naam)
     return vendor_id
@@ -360,6 +357,17 @@ def boek_doorbelasting_run(
             raise RunNietGevonden("Onbekende run voor deze administratie")
         if run.status == DoorbelastingRunStatus.GESTORNEERD.value:
             raise DoorbelastingFout("Deze run is gestorneerd")
+        if run.status == DoorbelastingRunStatus.VERVALLEN.value:
+            raise DoorbelastingFout("Deze run is vervallen")
+        # Besluit 25-08: een run kan al vóór het boeken klaargezet zijn — de motor zelf boekt
+        # uitsluitend ná de inkoopboeking (orkestratie zet KLAARGEZET → CONCEPT na boek_document).
+        bron_document = session.get(Document, run.document_id)
+        if bron_document is None or bron_document.status != DocumentStatus.GEBOEKT:
+            raise DoorbelastingFout("Het bron-document is nog niet geboekt — doorbelasten volgt ná de inkoopboeking")
+        if run.status == DoorbelastingRunStatus.KLAARGEZET.value:
+            raise DoorbelastingFout(
+                "Deze doorbelasting staat klaar voor 'Boeken + doorbelasten' en is nog niet geactiveerd"
+            )
         administratie = session.get(Administratie, administratie_id)
         if administratie is None or not administratie.doorbelasting_ingeschakeld:
             raise DoorbelastingFout("Doorbelasting staat uit voor deze administratie")
@@ -384,9 +392,7 @@ def boek_doorbelasting_run(
             raise DoorbelastingFout("Bron-document of boekvoorstel niet gevonden")
         bron_regels = {
             r.id: r
-            for r in session.scalars(
-                select(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == run.document_id)
-            )
+            for r in session.scalars(select(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == run.document_id))
         }
         mappings = {
             m.id: m
@@ -421,9 +427,7 @@ def boek_doorbelasting_run(
         # volumerem: eigen telling (elke doelentiteit = één tweezijdige boeking)
         limiet = settings.max_boekingen_per_dag_per_administratie
         if _eigen_boekingen_vandaag(session, administratie_id=administratie_id) + len(te_boeken) > limiet:
-            raise VolumeremBereikt(
-                f"Dagelijkse limiet van {limiet} doorbelastings-boekingen zou overschreden worden"
-            )
+            raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} doorbelastings-boekingen zou overschreden worden")
 
     if not te_boeken:
         raise DoorbelastingFout("Alle doelentiteiten zijn al geboekt voor dit document")
@@ -439,9 +443,7 @@ def boek_doorbelasting_run(
             )
         with scoped_session(mapping.doel_administratie_id) as doel_sessie:
             if not _is_boeken_toegestaan(doel_sessie, administratie_id=mapping.doel_administratie_id):
-                raise BoekenUitgeschakeld(
-                    f"Boeken staat uit voor doel-administratie {mapping.doelentiteit_naam}"
-                )
+                raise BoekenUitgeschakeld(f"Boeken staat uit voor doel-administratie {mapping.doelentiteit_naam}")
 
     bestand = _standaard_opslag().lezen(pad=opslag_pad)
     datum_iso = f"{datetime.now(UTC).date().isoformat()}T00:00:00"
@@ -1013,9 +1015,7 @@ def storno_doorbelasting_boeking(
         doel_administratie_id = boeking.doel_administratie_id
         verkoop_rlz_id, spiegel_rlz_id = boeking.verkoop_rlz_id, boeking.spiegel_rlz_id
 
-    spiegel_geboekt = (
-        oude_status == DoorbelastingBoekingStatus.GEBOEKT.value and doel_administratie_id is not None
-    )
+    spiegel_geboekt = oude_status == DoorbelastingBoekingStatus.GEBOEKT.value and doel_administratie_id is not None
     eigen_doel = doel_client is None
     eigen_bron = bron_client is None
     if spiegel_geboekt and doel_client is None:

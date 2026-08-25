@@ -105,6 +105,15 @@ class BesluitResponse(BaseModel):
     staande_regel_id: uuid.UUID | None
 
 
+class WachtrijDoorbelastingRegelResponse(BaseModel):
+    """Alleen-lezen doorbelasting-samenvatting voor de accordeur (besluit 25-08, A3)."""
+
+    doelentiteit_naam: str
+    percentage: Decimal
+    netto_totaal: Decimal
+    provisie_bedrag: Decimal
+
+
 class WachtrijItemResponse(BaseModel):
     document_id: uuid.UUID
     administratie_id: uuid.UUID
@@ -117,6 +126,7 @@ class WachtrijItemResponse(BaseModel):
     laag_volgnummer: int
     boeking_omschrijving: str | None = None
     staande_regel_kandidaat: bool = False
+    doorbelasting: list[WachtrijDoorbelastingRegelResponse] | None = None
 
 
 class WachtrijResponse(BaseModel):

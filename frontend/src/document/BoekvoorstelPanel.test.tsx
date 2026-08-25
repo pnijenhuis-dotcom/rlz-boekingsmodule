@@ -974,4 +974,39 @@ describe('BoekvoorstelPanel', () => {
       timeout: 4000,
     })
   })
+
+  it('klaargezette doorbelasting: knop heet "Boeken + doorbelasten" en blijft uit zolang de doorbelasting niet groen is (A2)', async () => {
+    const groen = {
+      geblokkeerd: false,
+      resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'Alle verplichte velden zijn ingevuld' }],
+    }
+    installFetchMock({ checksResponse: groen })
+    const { rerender } = render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+        doorbelastingKlaargezet={{ runId: 'run1', geblokkeerd: true, reden: 'Elke verdeelde regel moet exact op 100% sluiten' }}
+      />,
+    )
+    const knop = await screen.findByRole('button', { name: 'Boeken + doorbelasten ✓' })
+    // Inkoop-checks groen (open-run) maar doorbelasting rood → knop uit mét de doorbelasting-reden.
+    await waitFor(() => expect(screen.getAllByText('OK')).toHaveLength(1))
+    expect(knop).toBeDisabled()
+    expect(knop).toHaveAttribute('title', expect.stringContaining('100%'))
+
+    rerender(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+        doorbelastingKlaargezet={{ runId: 'run1', geblokkeerd: false, reden: null }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken + doorbelasten ✓' })).toBeEnabled())
+  })
 })

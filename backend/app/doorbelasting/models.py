@@ -32,9 +32,19 @@ class DoorbelastingBoekingStatus(enum.StrEnum):
 
 
 class DoorbelastingRunStatus(enum.StrEnum):
+    """KLAARGEZET (migratie 0065, besluit Peter 25-08): verdeling opgeslagen aan een nog NIET
+    geboekt document — "Boeken + doorbelasten" zet 'm ná de inkoopboeking om naar CONCEPT en
+    draait de motor. VERVALLEN: vinkje vóór het boeken weer uit (nooit een delete, spoor blijft).
+    Beide inactieve statussen (GESTORNEERD, VERVALLEN) tellen niet in de één-actieve-run-index."""
+
+    KLAARGEZET = "klaargezet"  # verdeling aan een nog niet geboekt document (besluit 25-08)
     CONCEPT = "concept"  # review open / (deels) nog niet geboekt
     GEBOEKT = "geboekt"  # elke doelentiteit heeft een niet-gestorneerde boeking
     GESTORNEERD = "gestorneerd"  # alle boekingen teruggedraaid
+    VERVALLEN = "vervallen"  # vinkje vóór het boeken weer uit — spoor blijft, nooit een delete
+
+
+INACTIEVE_RUN_STATUSSEN: tuple[str, ...] = ("gestorneerd", "vervallen")
 
 
 class DoorbelastingMapping(Base):
@@ -55,9 +65,7 @@ class DoorbelastingMapping(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     doelentiteit_naam: Mapped[str]
     doel_customer_guid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     doel_administratie_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -67,9 +75,7 @@ class DoorbelastingMapping(Base):
     provisie_kosten_ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     laatste_kosten_ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     actief: Mapped[bool] = mapped_column(default=True)
-    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id")
-    )
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -111,9 +117,7 @@ class IntercompanyTegenpartij(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     entity_guid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     naam: Mapped[str]
     bron: Mapped[str] = mapped_column(default="doorbelasting_mapping")
@@ -136,23 +140,17 @@ class DoorbelastingRun(Base):
             "doorbelasting_run_document_actief_uniek",
             "document_id",
             unique=True,
-            postgresql_where=text("status != 'gestorneerd'"),
+            postgresql_where=text("status NOT IN ('gestorneerd', 'vervallen')"),
         ),
         {"schema": "boekhouding"},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("boekhouding.document.id")
-    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
     status: Mapped[str] = mapped_column(default=DoorbelastingRunStatus.CONCEPT.value)
     laatste_fout: Mapped[dict | None] = mapped_column(JSONB, default=None)
-    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id")
-    )
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     geboekt_op: Mapped[datetime | None] = mapped_column(default=None)
 
@@ -172,12 +170,8 @@ class DoorbelastingRegel(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("boekhouding.doorbelasting_run.id")
-    )
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.doorbelasting_run.id"))
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     bron_regel_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("boekhouding.boekvoorstel_regel.id")
     )
@@ -210,15 +204,9 @@ class DoorbelastingBoeking(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("boekhouding.doorbelasting_run.id")
-    )
-    administratie_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
-    )
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("boekhouding.document.id")
-    )
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.doorbelasting_run.id"))
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
     mapping_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("boekhouding.doorbelasting_mapping.id")
     )
@@ -236,8 +224,6 @@ class DoorbelastingBoeking(Base):
     spiegel_geboekt_op: Mapped[datetime | None] = mapped_column(default=None)
     half_geboekt_detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
     storno_reden: Mapped[str | None] = mapped_column(default=None)
-    geboekt_door: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id")
-    )
+    geboekt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

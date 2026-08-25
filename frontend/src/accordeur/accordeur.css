@@ -329,6 +329,50 @@
 .acc-boekinfo .acc-k {
   color: var(--acc-muted);
 }
+/* Klaargezette doorbelasting (besluit 25-08, A3): alleen-lezen blok onder de boekinfo —
+   per doelentiteit naam, aandeel-%, bedrag excl. en provisie. Geen acties: fout = afwijzen. */
+.acc-doorbelasting {
+  margin: 10px 16px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--acc-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.acc-doorbelasting-kop {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.acc-doorbelasting ul {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.acc-doorbelasting li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+}
+
+.acc-doorbelasting .acc-db-naam {
+  font-weight: 600;
+}
+
+.acc-doorbelasting .acc-db-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.acc-doorbelasting .acc-db-bedrag {
+  grid-column: 1 / -1;
+  font-variant-numeric: tabular-nums;
+}
+
 .acc-staandnote {
   background: var(--acc-purple-bg);
   border-radius: 10px;

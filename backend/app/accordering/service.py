@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -151,9 +151,7 @@ def _eerstvolgende_open_stap(stappen: list[AccorderingStap]) -> AccorderingStap 
     return None
 
 
-def _naar_data(
-    session: Session, accordering: DocumentAccordering, stappen: list[AccorderingStap]
-) -> AccorderingData:
+def _naar_data(session: Session, accordering: DocumentAccordering, stappen: list[AccorderingStap]) -> AccorderingData:
     namen = _gebruikersnamen(session, {s.accordeur_gebruiker_id for s in stappen})
     volgende = _eerstvolgende_open_stap(stappen) if accordering.status == AccorderingStatus.OPEN.value else None
     return AccorderingData(
@@ -182,9 +180,7 @@ def _naar_data(
 
 
 def _stappen_van(session: Session, accordering_id: uuid.UUID) -> list[AccorderingStap]:
-    return list(
-        session.scalars(select(AccorderingStap).where(AccorderingStap.accordering_id == accordering_id))
-    )
+    return list(session.scalars(select(AccorderingStap).where(AccorderingStap.accordering_id == accordering_id)))
 
 
 def _open_accordering(session: Session, document_id: uuid.UUID) -> DocumentAccordering | None:
@@ -297,9 +293,7 @@ def instellingen_opslaan(
             actie="accordering_schema_gewijzigd",
             correlatie_id=uuid.uuid4(),
             oude_waarde={
-                "lagen": [
-                    {"volgnummer": b.volgnummer, "accordeur": str(b.accordeur_gebruiker_id)} for b in bestaande
-                ]
+                "lagen": [{"volgnummer": b.volgnummer, "accordeur": str(b.accordeur_gebruiker_id)} for b in bestaande]
             },
             nieuwe_waarde={
                 "ingeschakeld": ingeschakeld,
@@ -405,6 +399,18 @@ def bied_ter_accordering_aan(
                     detail={"harde_checks": "doorstaan"},
                 )
 
+    # Klaargezette doorbelasting (besluit 25-08, A2/A3): boek-checks én doorbelasting-checks
+    # moeten samen groen zijn vóór het document naar de klant gaat — de accordeur ziet de
+    # verdeling alleen-lezen en ná het laatste akkoord boekt alles in één gang. Lazy import.
+    from app.doorbelasting import orkestratie
+
+    try:
+        orkestratie.toets_klaargezette_doorbelasting(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+        )
+    except orkestratie.DoorbelastingChecksNietGroen as exc:
+        raise ChecksNietGroen(exc.rapport) from exc
+
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
         if document is None:
@@ -444,9 +450,7 @@ def bied_ter_accordering_aan(
         for laag in lagen:
             # Drempel: laag geldt alleen bóven het bedrag; onbekend totaalbedrag = vereist
             # (fail-closed — bij twijfel wél een mens laten kijken).
-            vereist = (
-                laag.bedrag_drempel is None or totaalbedrag is None or abs(totaalbedrag) > laag.bedrag_drempel
-            )
+            vereist = laag.bedrag_drempel is None or totaalbedrag is None or abs(totaalbedrag) > laag.bedrag_drempel
             session.add(
                 AccorderingStap(
                     administratie_id=administratie_id,
@@ -629,9 +633,7 @@ def geef_akkoord(
     bedrag (zichtbaar + intrekbaar; harde checks blijven onverkort)."""
     staande_regel_id: uuid.UUID | None = None
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        herhaald = _herhaald_besluit(
-            session, document_id=document_id, actor_id=actor_id, besluit=StapBesluit.AKKOORD
-        )
+        herhaald = _herhaald_besluit(session, document_id=document_id, actor_id=actor_id, besluit=StapBesluit.AKKOORD)
         if herhaald is not None:
             # Herhaalde POST van een al vastgelegd akkoord: huidige stand teruggeven, niets
             # opnieuw doen. `geboekt` uit de werkelijke documentstatus; een eventueel bij de
@@ -651,9 +653,7 @@ def geef_akkoord(
                 boek_fout=None,
                 staande_regel_id=bestaande_regel.id if bestaande_regel is not None else None,
             )
-        accordering, stap, stappen = _stap_aan_de_beurt_voor(
-            session, document_id=document_id, actor_id=actor_id
-        )
+        accordering, stap, stappen = _stap_aan_de_beurt_voor(session, document_id=document_id, actor_id=actor_id)
         stap.besluit = StapBesluit.AKKOORD.value
         stap.besluit_bron = StapBesluitBron.HANDMATIG.value
         stap.besloten_op = datetime.now(UTC)
@@ -777,11 +777,25 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
 
     geboekt = False
     boek_fout: str | None = None
+    # Orkestratie (besluit 25-08): mét klaargezette doorbelasting boekt alles in één gang
+    # (inkoop → verkopen → spiegels); zonder = exact de bestaande boek_document-aanroep.
+    from app.doorbelasting import orkestratie
+
     try:
-        boeken_service.boek_document(
+        gecombineerd = orkestratie.boek_document_met_doorbelasting(
             administratie_id=administratie_id, document_id=document_id, actor_id=SYSTEEM_ACTOR_ID
         )
         geboekt = True
+        if gecombineerd.doorbelasting_fout:
+            # Inkoop staat geboekt; de doorbelasting-stap faalde zichtbaar (run draagt de fout,
+            # herstel via de bestaande doorbelasting-routes) — nooit stil.
+            boek_fout = "Inkoopfactuur geboekt; doorbelasting (deels) mislukt: " + gecombineerd.doorbelasting_fout
+            logger.warning("Accordering %s: %s", accordering_id, boek_fout)
+    except orkestratie.DoorbelastingChecksNietGroen as exc:
+        boek_fout = "Boeken geblokkeerd door doorbelasting-checks: " + "; ".join(
+            r.melding for r in exc.rapport.resultaten if not r.ok
+        )
+        logger.warning("Accordering %s afgerond maar boeken geblokkeerd: %s", accordering_id, boek_fout)
     except boeken_service.BoekenGeblokkeerdDoorChecks as exc:
         boek_fout = "Boeken geblokkeerd door harde checks: " + "; ".join(
             r.melding for r in exc.rapport.resultaten if not r.ok
@@ -801,9 +815,7 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
     )
 
 
-def wijs_af(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str
-) -> AccorderingData:
+def wijs_af(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str) -> AccorderingData:
     """Afwijzen door de accordeur: verplichte reden (popup-principe), hergebruikt het bestaande
     afwijzen-met-reden-patroon — document eerst zichtbaar terug uit de accordering, dan
     afgewezen (status in de werkvoorraad, met reden; heropenen = kantoorbak)."""
@@ -812,17 +824,13 @@ def wijs_af(
         raise RedenVerplicht("Afwijzen zonder reden is niet toegestaan")
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        herhaald = _herhaald_besluit(
-            session, document_id=document_id, actor_id=actor_id, besluit=StapBesluit.AFGEWEZEN
-        )
+        herhaald = _herhaald_besluit(session, document_id=document_id, actor_id=actor_id, besluit=StapBesluit.AFGEWEZEN)
         if herhaald is not None:
             # Herhaalde POST van een al vastgelegde afwijzing: de eerste reden staat, niets
             # opnieuw doen (geen tweede afwijs-ronde in de werkvoorraad, geen dubbel audit-event).
             laatste, laatste_stappen = herhaald
             return _naar_data(session, laatste, laatste_stappen)
-        accordering, stap, stappen = _stap_aan_de_beurt_voor(
-            session, document_id=document_id, actor_id=actor_id
-        )
+        accordering, stap, stappen = _stap_aan_de_beurt_voor(session, document_id=document_id, actor_id=actor_id)
         stap.besluit = StapBesluit.AFGEWEZEN.value
         stap.besluit_bron = StapBesluitBron.HANDMATIG.value
         stap.reden = reden_tekst
@@ -944,6 +952,53 @@ class WachtrijItem:
     # Mockup-flow "staande goedkeuring na 2e identieke factuur": déze accordeur gaf eerder
     # handmatig akkoord op zelfde leverancier + exact bedrag, en er is nog geen actieve regel.
     staande_regel_kandidaat: bool = False
+    # Klaargezette doorbelasting (besluit 25-08, A3): ALLEEN-LEZEN weergave per doelentiteit
+    # (naam, aandeel-%, bedrag excl., provisie); None = geen doorbelasting bij dit document.
+    # Fout = de bestaande afwijsknop met verplichte reden (geen aparte doorbelasting-afwijzing).
+    doorbelasting: tuple[WachtrijDoorbelastingRegel, ...] | None = None
+
+
+@dataclass(frozen=True)
+class WachtrijDoorbelastingRegel:
+    doelentiteit_naam: str
+    percentage: Decimal
+    netto_totaal: Decimal
+    provisie_bedrag: Decimal
+
+
+def _doorbelasting_voor_wachtrij(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID
+) -> tuple[WachtrijDoorbelastingRegel, ...] | None:
+    """Leesroute voor de accordeur: de klaargezette verdeling samengevat per doelentiteit.
+    Aandeel-% = netto_totaal van de doelentiteit t.o.v. het totaal van de verdeelde bron-regels
+    (de per-regel-percentages kunnen verschillen; de accordeur krijgt één begrijpelijk getal).
+    Faalvriendelijk: een leesfout hier mag de wachtrij nooit blokkeren — dan géén blok."""
+    from app.doorbelasting import orkestratie
+    from app.doorbelasting import service as doorbelasting_service
+
+    try:
+        run = orkestratie.klaargezette_run_voor(administratie_id=administratie_id, document_id=document_id)
+        if run is None:
+            return None
+        review = doorbelasting_service.review_data(administratie_id=administratie_id, run_id=run.id)
+    except Exception:  # noqa: BLE001 — verrijking, nooit blokkerend voor de wachtrij
+        logger.exception("Doorbelasting-samenvatting voor de wachtrij niet te laden (document %s)", document_id)
+        return None
+    if not review.previews:
+        return None
+    totaal = sum((p.netto_totaal for p in review.previews), Decimal(0))
+    regels = []
+    for p in review.previews:
+        aandeel = (p.netto_totaal / totaal * Decimal(100)).quantize(Decimal("0.01")) if totaal else Decimal(0)
+        regels.append(
+            WachtrijDoorbelastingRegel(
+                doelentiteit_naam=p.doelentiteit_naam,
+                percentage=aandeel,
+                netto_totaal=p.netto_totaal,
+                provisie_bedrag=p.provisie_bedrag,
+            )
+        )
+    return tuple(regels)
 
 
 def _boeking_omschrijving(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
@@ -1077,8 +1132,20 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
                             vendor_id=voorstel.vendor_id if voorstel else None,
                             totaalbedrag=voorstel.totaalbedrag if voorstel else None,
                         ),
+                        doorbelasting=None,
                     )
                 )
+    # Buiten de scoped_session per administratie: de doorbelasting-leesroute opent zijn eigen
+    # sessies (review_data), nooit genest.
+    items = [
+        replace(
+            item,
+            doorbelasting=_doorbelasting_voor_wachtrij(
+                administratie_id=item.administratie_id, document_id=item.document_id
+            ),
+        )
+        for item in items
+    ]
     items.sort(key=lambda i: i.aangeboden_op)
     return items
 
@@ -1135,9 +1202,7 @@ def accordeur_kandidaten(*, administratie_id: uuid.UUID) -> list[AccordeurKandid
                 Gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR,
             )
         ).all()
-    return sorted(
-        (AccordeurKandidaat(id=rij.id, naam=rij.naam) for rij in rijen), key=lambda k: k.naam.lower()
-    )
+    return sorted((AccordeurKandidaat(id=rij.id, naam=rij.naam) for rij in rijen), key=lambda k: k.naam.lower())
 
 
 def staande_regels(*, administratie_id: uuid.UUID) -> tuple[list[StaandeGoedkeuring], dict[uuid.UUID, str]]:

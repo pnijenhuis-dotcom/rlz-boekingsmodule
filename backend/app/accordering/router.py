@@ -213,9 +213,7 @@ def aanbieden(
                 "message": "Ter accordering geblokkeerd door harde checks",
                 "checks": {
                     "geblokkeerd": exc.rapport.geblokkeerd,
-                    "resultaten": [
-                        {"naam": r.naam, "ok": r.ok, "melding": r.melding} for r in exc.rapport.resultaten
-                    ],
+                    "resultaten": [{"naam": r.naam, "ok": r.ok, "melding": r.melding} for r in exc.rapport.resultaten],
                 },
             },
         ) from exc
@@ -333,7 +331,7 @@ def herinneringen_overzicht(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
     _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.HerinneringenOverzichtResponse:
-    """"Laatst herinnerd" per document (klantpagina-paneel + accorderingssectie)."""
+    """ "Laatst herinnerd" per document (klantpagina-paneel + accorderingssectie)."""
     return schemas.HerinneringenOverzichtResponse(
         laatst_herinnerd=herinnering.laatst_herinnerd_per_document(administratie_id=administratie_id)
     )
@@ -363,14 +361,10 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
     overzichten, veldrollen hebben hier niets (de voorwaarden-poort hieronder liet elke
     niet-accordeur-rol stil door)."""
     if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor klant-accordeurs"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor klant-accordeurs")
     _vereis_voorwaarden_akkoord(actor)
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
-    items = service.wachtrij_voor_accordeur(
-        actor_id=actor.id, administratie_ids=[a.id for a in administraties]
-    )
+    items = service.wachtrij_voor_accordeur(actor_id=actor.id, administratie_ids=[a.id for a in administraties])
     return schemas.WachtrijResponse(
         items=[
             schemas.WachtrijItemResponse(
@@ -385,6 +379,19 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
                 laag_volgnummer=item.laag_volgnummer,
                 boeking_omschrijving=item.boeking_omschrijving,
                 staande_regel_kandidaat=item.staande_regel_kandidaat,
+                doorbelasting=(
+                    None
+                    if item.doorbelasting is None
+                    else [
+                        schemas.WachtrijDoorbelastingRegelResponse(
+                            doelentiteit_naam=r.doelentiteit_naam,
+                            percentage=r.percentage,
+                            netto_totaal=r.netto_totaal,
+                            provisie_bedrag=r.provisie_bedrag,
+                        )
+                        for r in item.doorbelasting
+                    ]
+                ),
             )
             for item in items
         ]

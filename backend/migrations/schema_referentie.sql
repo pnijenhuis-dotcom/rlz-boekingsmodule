@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0063
+-- Migratie-head bij deze dump: 0065
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -750,7 +750,7 @@ CREATE TABLE boekhouding.doorbelasting_run (
     aangemaakt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     geboekt_op timestamp with time zone,
-    CONSTRAINT doorbelasting_run_status CHECK ((status = ANY (ARRAY['concept'::text, 'geboekt'::text, 'gestorneerd'::text])))
+    CONSTRAINT doorbelasting_run_status CHECK ((status = ANY (ARRAY['klaargezet'::text, 'concept'::text, 'geboekt'::text, 'gestorneerd'::text, 'vervallen'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.doorbelasting_run FORCE ROW LEVEL SECURITY;
@@ -1613,13 +1613,33 @@ CREATE TABLE boekhouding.vraag (
     ingetrokken_door uuid,
     ingetrokken_op timestamp with time zone,
     ingetrokken_reden text,
-    CONSTRAINT vraag_antwoord_consistent CHECK ((((status = 'open'::text) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL)) OR ((status = 'beantwoord'::text) AND (btrim(antwoord_tekst) <> ''::text) AND (beantwoord_door IS NOT NULL) AND (beantwoord_op IS NOT NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL)) OR ((status = 'ingetrokken'::text) AND (ingetrokken_door IS NOT NULL) AND (ingetrokken_op IS NOT NULL) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL)))),
+    aan_de_beurt uuid,
+    afgehandeld_door uuid,
+    afgehandeld_op timestamp with time zone,
+    CONSTRAINT vraag_antwoord_consistent CHECK ((((status = 'open'::text) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL) AND (afgehandeld_door IS NULL) AND (afgehandeld_op IS NULL)) OR ((status = 'beantwoord'::text) AND (btrim(antwoord_tekst) <> ''::text) AND (beantwoord_door IS NOT NULL) AND (beantwoord_op IS NOT NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL) AND (afgehandeld_door IS NULL) AND (afgehandeld_op IS NULL)) OR ((status = 'ingetrokken'::text) AND (ingetrokken_door IS NOT NULL) AND (ingetrokken_op IS NOT NULL) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL) AND (afgehandeld_door IS NULL) AND (afgehandeld_op IS NULL)) OR ((status = 'afgehandeld'::text) AND (afgehandeld_door IS NOT NULL) AND (afgehandeld_op IS NOT NULL) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL)))),
     CONSTRAINT vraag_herkomst_herstelbaar CHECK ((status_voor_vraag = ANY (ARRAY['te_controleren'::text, 'handmatig_afmaken'::text, 'klaar_om_te_boeken'::text]))),
-    CONSTRAINT vraag_status_geldig CHECK ((status = ANY (ARRAY['open'::text, 'beantwoord'::text, 'ingetrokken'::text]))),
+    CONSTRAINT vraag_status_geldig CHECK ((status = ANY (ARRAY['open'::text, 'beantwoord'::text, 'ingetrokken'::text, 'afgehandeld'::text]))),
     CONSTRAINT vraag_tekst_niet_leeg CHECK ((btrim(vraag_tekst) <> ''::text))
 );
 
 ALTER TABLE ONLY boekhouding.vraag FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: vraag_bericht; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.vraag_bericht (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    vraag_id uuid NOT NULL,
+    auteur_id uuid NOT NULL,
+    tekst text NOT NULL,
+    geplaatst_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT vraag_bericht_tekst_niet_leeg CHECK ((btrim(tekst) <> ''::text))
+);
+
+ALTER TABLE ONLY boekhouding.vraag_bericht FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2737,6 +2757,14 @@ ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel
 
 
 --
+-- Name: vraag_bericht vraag_bericht_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vraag_bericht
+    ADD CONSTRAINT vraag_bericht_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: vraag vraag_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3090,7 +3118,7 @@ CREATE UNIQUE INDEX doorbelasting_boeking_doc_doel_uniek ON boekhouding.doorbela
 -- Name: doorbelasting_run_document_actief_uniek; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
-CREATE UNIQUE INDEX doorbelasting_run_document_actief_uniek ON boekhouding.doorbelasting_run USING btree (document_id) WHERE (status <> 'gestorneerd'::text);
+CREATE UNIQUE INDEX doorbelasting_run_document_actief_uniek ON boekhouding.doorbelasting_run USING btree (document_id) WHERE (status <> ALL (ARRAY['gestorneerd'::text, 'vervallen'::text]));
 
 
 --
@@ -3448,6 +3476,13 @@ CREATE INDEX ix_verkoop_boeking_document_id ON boekhouding.verkoop_boeking USING
 --
 
 CREATE INDEX ix_verkoop_voorstel_regel_document_id ON boekhouding.verkoop_voorstel_regel USING btree (document_id);
+
+
+--
+-- Name: ix_vraag_bericht_vraag_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_vraag_bericht_vraag_id ON boekhouding.vraag_bericht USING btree (vraag_id);
 
 
 --
@@ -4990,6 +5025,14 @@ ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel
 
 
 --
+-- Name: vraag vraag_aan_de_beurt_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vraag
+    ADD CONSTRAINT vraag_aan_de_beurt_fkey FOREIGN KEY (aan_de_beurt) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: vraag vraag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4998,11 +5041,43 @@ ALTER TABLE ONLY boekhouding.vraag
 
 
 --
+-- Name: vraag vraag_afgehandeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vraag
+    ADD CONSTRAINT vraag_afgehandeld_door_fkey FOREIGN KEY (afgehandeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: vraag vraag_beantwoord_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
 ALTER TABLE ONLY boekhouding.vraag
     ADD CONSTRAINT vraag_beantwoord_door_fkey FOREIGN KEY (beantwoord_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: vraag_bericht vraag_bericht_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vraag_bericht
+    ADD CONSTRAINT vraag_bericht_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: vraag_bericht vraag_bericht_auteur_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vraag_bericht
+    ADD CONSTRAINT vraag_bericht_auteur_id_fkey FOREIGN KEY (auteur_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: vraag_bericht vraag_bericht_vraag_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vraag_bericht
+    ADD CONSTRAINT vraag_bericht_vraag_id_fkey FOREIGN KEY (vraag_id) REFERENCES boekhouding.vraag(id);
 
 
 --
@@ -6278,6 +6353,19 @@ CREATE POLICY verkoop_voorstel_scope ON boekhouding.verkoop_voorstel USING ((EXI
 --
 
 ALTER TABLE boekhouding.vraag ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: vraag_bericht; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.vraag_bericht ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: vraag_bericht vraag_bericht_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY vraag_bericht_scope ON boekhouding.vraag_bericht USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
 
 --
 -- Name: vraag vraag_scope; Type: POLICY; Schema: boekhouding; Owner: -

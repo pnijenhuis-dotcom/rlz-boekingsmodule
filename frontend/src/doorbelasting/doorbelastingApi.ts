@@ -111,6 +111,11 @@ export function slaDoorbelastingVerdelingOp(
 /** Boekt de run per doelentiteit. Bewust de rauwe Response (zelfde patroon als verkoop/omzet):
  * BoekenGeblokkeerdDoorChecks (409) stuurt het verse CheckRapport mee in detail.checks — een
  * object dat de generieke apiJson/ApiError-afhandeling niet kan uitpakken. */
+/** Vinkje "Doorbelasten na boeken" weer uit (besluit 25-08): klaargezette run → vervallen (spoor blijft). */
+export function laatDoorbelastingRunVervallen(administratieId: string, runId: string): Promise<DoorbelastingRunDto> {
+  return apiPostJson<DoorbelastingRunDto>(`/doorbelasting/${administratieId}/runs/${runId}/vervallen`, {})
+}
+
 export function boekDoorbelastingRun(administratieId: string, runId: string): Promise<Response> {
   return apiFetch(`/doorbelasting/${administratieId}/runs/${runId}/boeken`, { method: 'POST' })
 }
