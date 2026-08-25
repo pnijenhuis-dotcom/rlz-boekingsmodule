@@ -717,6 +717,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   als zijbalk-item bij module-recht + opt-in. **Koude start rlz-backend ≈ 15 s (gemeten 25-08);
   voorstel `--min-instances 1` ≈ € 7/mnd staat in `docs/COLD_START_ONDERZOEK_25-08.md` — besluit
   Peter, niet aangezet.**
+  **Transportplanning + bestellingen + materiaalstand (steigerbouw-run 25-08 blok D, besluiten
+  Peter 24-08, GEBOUWD + GETEST 2026-08-25, migratie 0074 — BESLISSINGEN "BLOK D" is canoniek;
+  mockup planning-steigerbouw Transport-tab + popup = norm):** `app/materiaal/` — catalogus per
+  leverancier (seed uit de bestellijst-xlsx, m² = Σ(aantal × lengte)/4,6), bestellingen mét
+  append-only revisies (PDF-bon per mail via het bestaande SMTP-kanaal, update-mail = alleen
+  gewijzigde regels oud→nieuw, mailfout = geen revisie), transport levering/retour per project ×
+  dag met status gepland → bevestigd → geleverd (**seam `zet_transport_status(bron=)`** voor het
+  latere verhuursysteem/veld-aftekening), materiaalstand + huurperiode per item, wachtrisico-
+  kruissignaal op beide planning-tabs, materiaalmatch (D6: verhuur-crediteur vs aantal ×
+  huurperiode; zelfde vlag-patroon + boekpoort als de urenmatch; m²-toetsbron in de keuring).
+  Nieuwe module-code roept nergens RlzClient aan (seam-eis).
   **Planning-agenda steigerbouw (ontwerpronde v2 + BOUW akkoord Peter 22-08, mockup
   `planning-steigerbouw.html` = norm; GEBOUWD + GETEST 2026-08-22, migratie 0060 —
   BESLISSINGEN "PLANNING-AGENDA STEIGERBOUW" is canoniek):** kantoor plant ZZP'ers/
