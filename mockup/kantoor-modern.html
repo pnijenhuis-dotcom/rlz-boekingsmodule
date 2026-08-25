@@ -560,13 +560,13 @@
       <div class="kaart" style="margin-top:16px">
         <div class="kaart-kop"><h2>Klant-accordeurs</h2>
           <div class="rechts"><button class="btn klein" onclick="openAccModal()">+ Accordeur uitnodigen</button></div>
-          <div class="uitleg">Accordeurs gebruiken de mobiele app met passkey. Eén accordeur kan meerdere administraties bedienen — de wachtrij voegt alles samen.</div>
+          <div class="uitleg">Accordeurs gebruiken de mobiele app met passkey. Eén accordeur kan meerdere administraties bedienen — de wachtrij voegt alles samen. Wachtwoord kwijt (bv. ná een kill-switch)? "Herstel-link": eenmalige 72-uurslink voor een nieuw wachtwoord + apparaat-registratie; passkeys en akkoorden blijven staan (25-08, punt 7).</div>
         </div>
         <div class="tabel-scroll">
           <table>
             <thead><tr><th>Accordeur</th><th>Administraties</th><th>Apparaten</th><th>Staande goedkeuringen</th><th></th></tr></thead>
             <tbody>
-              <tr><td><div class="hoofd">R. de Groot (voorbeeld)</div><div class="sub">r.degroot@molenhof.nl</div></td><td><span class="badge info">Molenhof Beheer</span> <span class="badge info">Molenhof Verhuur</span></td><td><span class="apparaat">📱 iPhone · passkey</span></td><td class="num">2 <a class="rijlink" style="font-size:11.5px">bekijk</a></td><td><a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
+              <tr><td><div class="hoofd">R. de Groot (voorbeeld)</div><div class="sub">r.degroot@molenhof.nl</div></td><td><span class="badge info">Molenhof Beheer</span> <span class="badge info">Molenhof Verhuur</span></td><td><span class="apparaat">📱 iPhone · passkey</span></td><td class="num">2 <a class="rijlink" style="font-size:11.5px">bekijk</a></td><td><a class="rijlink" onclick="toast('Herstel-link gemaild aan r.degroot@molenhof.nl — eerder verstuurde links zijn vervallen')">Herstel-link</a> · <a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
               <tr><td><div class="hoofd">Testaccount passkeytest</div><div class="sub">accordeur-passkeytest@ak-nijenhuis.nl</div></td><td><span class="badge stil">SEED-PASSKEYTEST</span></td><td><span class="apparaat">📱 iPhone · 15-08</span></td><td class="num">0</td><td><a class="rijlink" onclick="toast('Kill-switch: apparaat per direct geblokkeerd','warn')">Kill-switch</a></td></tr>
             </tbody>
           </table>

@@ -45,7 +45,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   passkey-assertion éénmaal per app-opening, GEEN biometrie per actie; kantoor-kill-switch per
   apparaat (bijt per request + bij rotatie + bij assertion); dev-stub `auth_biometrie_dev_stub`
   voor LAN-kliktests (WebAuthn vereist https/localhost), hard onwerkzaam buiten dev. Zie
-  BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD".
+  BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD". **Wachtwoord kwijt (bv. ná een
+  kill-switch): Beheerder-knop "Herstel-link sturen" (feedbackronde 25-08 deel 2 punt 7,
+  migratie 0068 — `platform.uitnodiging.soort`): eenmalige 72-uurslink, zelfde token-mechaniek
+  als de uitnodiging; nieuw wachtwoord → direct passkey-setup-token voor apparaat-registratie;
+  status/passkeys/akkoorden blijven staan, sessies vervallen, alle oudere links ongeldig, audit
+  beide kanten. Bewust géén selfservice "wachtwoord vergeten" — kantoor blijft poortwachter;
+  alleen externe app-rollen.**
   **Platformbesluit 0020 (2026-08-14, samen met vastgoed): passkeys worden de EERSTE
   authenticatielijn voor álle rollen; wachtwoord + TOTP wordt terugval/herstel.**
   **Kantoor-passkeys: GEBOUWD + GETEST (2026-08-15)** — tweede afnemer van de 0040-bouwstenen,
