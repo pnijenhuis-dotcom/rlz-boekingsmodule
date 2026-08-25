@@ -201,7 +201,57 @@ def project_detail(
         werknummers=[schemas.WerknummerDto(**w.__dict__) for w in detail.werknummers],
         ontleding=[schemas.OntledingRegelDto(**r.__dict__) for r in detail.ontleding],
         gebouwd_m2=detail.gebouwd_m2,
+        prijsafspraken=[schemas.PrijsafspraakDto(**a.__dict__) for a in detail.prijsafspraken],
+        veldwerkers=[schemas.VeldwerkerKeuzeDto(**v.__dict__) for v in detail.veldwerkers],
     )
+
+
+@router.post("/{administratie_id}/{project_id}/prijsafspraken", status_code=status.HTTP_201_CREATED)
+def prijsafspraak_toevoegen(
+    administratie_id: uuid.UUID,
+    project_id: uuid.UUID,
+    invoer: schemas.PrijsafspraakInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> dict:
+    """Projectspecifieke prijsafspraak per veldwerker (steigerbouw-run B1): uur óf m², venster in
+    ISO-weken; wint in de factuurmatch van het koppeling-tarief. Schrijven = Beheerder +
+    Boekhouding+Projecten (service), geaudit."""
+    if (invoer.geldig_vanaf_jaar is None) != (invoer.geldig_vanaf_week is None) or (invoer.geldig_tm_jaar is None) != (
+        invoer.geldig_tm_week is None
+    ):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Jaar en week horen samen")
+    try:
+        afspraak_id = kantoor.voeg_prijsafspraak_toe(
+            administratie_id=administratie_id,
+            project_id=project_id,
+            actor_id=actor.id,
+            gebruiker_id=invoer.gebruiker_id,
+            eenheid=invoer.eenheid,
+            tarief=invoer.tarief,
+            geldig_vanaf=(invoer.geldig_vanaf_jaar, invoer.geldig_vanaf_week)
+            if invoer.geldig_vanaf_jaar is not None
+            else None,
+            geldig_tm=(invoer.geldig_tm_jaar, invoer.geldig_tm_week) if invoer.geldig_tm_jaar is not None else None,
+            toelichting=invoer.toelichting,
+        )
+    except kantoor.ProjectenFout as exc:
+        raise _vertaal(exc) from exc
+    return {"id": str(afspraak_id)}
+
+
+@router.post("/{administratie_id}/prijsafspraken/{afspraak_id}/intrekken", status_code=status.HTTP_204_NO_CONTENT)
+def prijsafspraak_intrekken(
+    administratie_id: uuid.UUID,
+    afspraak_id: uuid.UUID,
+    invoer: schemas.PrijsafspraakIntrekkenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    try:
+        kantoor.trek_prijsafspraak_in(
+            administratie_id=administratie_id, afspraak_id=afspraak_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except kantoor.ProjectenFout as exc:
+        raise _vertaal(exc) from exc
 
 
 @router.put("/{administratie_id}/{project_id}/specificatie", status_code=status.HTTP_204_NO_CONTENT)

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.audit import record_audit_event
-from app.db.models import Gebruiker, GebruikerRol
+from app.db.models import DetacheerderKoppeling, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
 from app.documenten.rlz_ids import _NAMESPACE  # type: ignore[attr-defined]
 from app.documenten.storage import standaard_opslag
@@ -34,9 +34,11 @@ from app.sync.models import ProjectCache, VendorCache
 from app.uren.models import (
     MeerwerkEenheid,
     ProjectDocument,
+    ProjectPrijsafspraak,
     ProjectSpecificatie,
     ProjectStaffel,
     UrenProjectToewijzing,
+    VeldwerkerCrediteur,
     Weekstaat,
 )
 from app.uren.overzichten import _gebouwd_m2
@@ -77,9 +79,7 @@ def rlz_steiger_project_id(administratie_id: uuid.UUID, projectnummer: str) -> u
 def _vereis_schrijfrol(session: Session, actor_id: uuid.UUID) -> None:
     actor = session.get(Gebruiker, actor_id)
     if actor is None or actor.rol not in _SCHRIJF_ROLLEN:
-        raise GeenSchrijfrecht(
-            "Projectgegevens wijzigen is voorbehouden aan Beheerder en Boekhouding+Projecten"
-        )
+        raise GeenSchrijfrecht("Projectgegevens wijzigen is voorbehouden aan Beheerder en Boekhouding+Projecten")
 
 
 def _vereis_project(session: Session, *, administratie_id: uuid.UUID, project_id: uuid.UUID) -> ProjectCache:
@@ -174,8 +174,14 @@ def projecten_lijst(
         for project in projecten:
             spec = specs.get(project.id)
             doorzoekbaar = " ".join(
-                filter(None, (project.naam, spec.opdrachtgever if spec else None,
-                              spec.werknummer_opdrachtgever if spec else None))
+                filter(
+                    None,
+                    (
+                        project.naam,
+                        spec.opdrachtgever if spec else None,
+                        spec.werknummer_opdrachtgever if spec else None,
+                    ),
+                )
             ).lower()
             if term and term not in doorzoekbaar:
                 continue
@@ -247,6 +253,40 @@ class OntledingRegelInfo:
 
 
 @dataclass(frozen=True)
+class PrijsafspraakInfo:
+    """Projectafspraak per veldwerker (B1): tarief + eenheid + ISO-week-venster; `standaard_tarief` =
+    het koppeling-tarief dat anders zou gelden (ZZP: veldwerker_crediteur.uurtarief; via bureau:
+    detacheerder_koppeling.uurtarief) — de mockup-kolom "Standaard (koppeling)"."""
+
+    id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    veldwerker_naam: str | None
+    via_bureau_naam: str | None
+    eenheid: str
+    tarief: Decimal
+    geldig_vanaf_jaar: int | None
+    geldig_vanaf_week: int | None
+    geldig_tm_jaar: int | None
+    geldig_tm_week: int | None
+    toelichting: str | None
+    standaard_tarief: Decimal | None
+    aangemaakt_op: datetime
+    aangemaakt_door_naam: str | None
+    ingetrokken_op: datetime | None
+    ingetrokken_reden: str | None
+
+
+@dataclass(frozen=True)
+class VeldwerkerKeuze:
+    """ZZP'er gekoppeld aan dit project — kandidaat voor een prijsafspraak."""
+
+    gebruiker_id: uuid.UUID
+    naam: str
+    via_bureau_naam: str | None
+    standaard_tarief: Decimal | None
+
+
+@dataclass(frozen=True)
 class ProjectDetail:
     project_id: uuid.UUID
     naam: str | None
@@ -257,6 +297,62 @@ class ProjectDetail:
     werknummers: list[WerknummerInfo]
     ontleding: list[OntledingRegelInfo]
     gebouwd_m2: Decimal
+    prijsafspraken: list[PrijsafspraakInfo] = field(default_factory=list)
+    veldwerkers: list[VeldwerkerKeuze] = field(default_factory=list)
+
+
+def _standaard_tarief(
+    session: Session, *, administratie_id: uuid.UUID, zzper_id: uuid.UUID
+) -> tuple[Decimal | None, str | None]:
+    """(koppeling-tarief, bureau-naam): eigen ZZP-koppeling wint; anders het bureau-tarief van de
+    (eerste) detacheerder-koppeling — dezelfde volgorde als de factuurmatch-leden."""
+    eigen = session.scalars(
+        select(VeldwerkerCrediteur).where(
+            VeldwerkerCrediteur.administratie_id == administratie_id, VeldwerkerCrediteur.gebruiker_id == zzper_id
+        )
+    ).first()
+    # De lees-policy op platform.detacheerder_koppeling is actor-gebonden (0057: eigen rijen +
+    # systeem-actor) — voor de weergave "via <bureau>" lezen we als systeem-actor, net als de
+    # factuurmatch-motor (de uitkomst mag niet van de toevallige kijker afhangen).
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as platform_sessie:
+        bureau = platform_sessie.scalars(
+            select(DetacheerderKoppeling).where(DetacheerderKoppeling.zzper_gebruiker_id == zzper_id)
+        ).first()
+        bureau_naam = None
+        bureau_tarief = None
+        if bureau is not None:
+            b = platform_sessie.get(Gebruiker, bureau.detacheerder_gebruiker_id)
+            bureau_naam = b.naam if b else None
+            bureau_tarief = bureau.uurtarief
+    if eigen is not None and eigen.uurtarief is not None:
+        return eigen.uurtarief, bureau_naam
+    if bureau_tarief is not None:
+        return bureau_tarief, bureau_naam
+    return None, bureau_naam
+
+
+def _prijsafspraak_info(session: Session, a: ProjectPrijsafspraak, namen: dict[uuid.UUID, str]) -> PrijsafspraakInfo:
+    standaard, bureau_naam = _standaard_tarief(session, administratie_id=a.administratie_id, zzper_id=a.gebruiker_id)
+    return PrijsafspraakInfo(
+        id=a.id,
+        gebruiker_id=a.gebruiker_id,
+        veldwerker_naam=namen.get(a.gebruiker_id),
+        via_bureau_naam=bureau_naam,
+        eenheid=a.eenheid,
+        tarief=a.tarief,
+        geldig_vanaf_jaar=a.geldig_vanaf_jaar,
+        geldig_vanaf_week=a.geldig_vanaf_week,
+        geldig_tm_jaar=a.geldig_tm_jaar,
+        geldig_tm_week=a.geldig_tm_week,
+        toelichting=a.toelichting,
+        standaard_tarief=standaard,
+        aangemaakt_op=a.aangemaakt_op,
+        aangemaakt_door_naam=namen.get(a.aangemaakt_door),
+        ingetrokken_op=a.ingetrokken_op,
+        ingetrokken_reden=a.ingetrokken_reden,
+    )
 
 
 def project_detail(*, administratie_id: uuid.UUID, project_id: uuid.UUID) -> ProjectDetail:
@@ -360,6 +456,41 @@ def project_detail(*, administratie_id: uuid.UUID, project_id: uuid.UUID) -> Pro
         if spec is not None:
             session.expunge(spec)
             spec_kopie = spec
+        afspraken = session.scalars(
+            select(ProjectPrijsafspraak)
+            .where(
+                ProjectPrijsafspraak.administratie_id == administratie_id, ProjectPrijsafspraak.project_id == project_id
+            )
+            .order_by(ProjectPrijsafspraak.ingetrokken_op.is_not(None), ProjectPrijsafspraak.aangemaakt_op.desc())
+        ).all()
+        toewijzingen = session.scalars(
+            select(UrenProjectToewijzing).where(
+                UrenProjectToewijzing.administratie_id == administratie_id,
+                UrenProjectToewijzing.project_id == project_id,
+            )
+        ).all()
+        gebruiker_ids = (
+            {a.gebruiker_id for a in afspraken}
+            | {a.aangemaakt_door for a in afspraken}
+            | {t.gebruiker_id for t in toewijzingen}
+        )
+        gebruikers = (
+            {g.id: g for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(gebruiker_ids)))}
+            if gebruiker_ids
+            else {}
+        )
+        namen = {gid: g.naam for gid, g in gebruikers.items()}
+        prijsafspraken = [_prijsafspraak_info(session, a, namen) for a in afspraken]
+        veldwerkers: list[VeldwerkerKeuze] = []
+        for t in toewijzingen:
+            g = gebruikers.get(t.gebruiker_id)
+            if g is None or g.rol != GebruikerRol.ZZPER:
+                continue
+            standaard, bureau_naam = _standaard_tarief(session, administratie_id=administratie_id, zzper_id=g.id)
+            veldwerkers.append(
+                VeldwerkerKeuze(gebruiker_id=g.id, naam=g.naam, via_bureau_naam=bureau_naam, standaard_tarief=standaard)
+            )
+        veldwerkers.sort(key=lambda v: v.naam)
         return ProjectDetail(
             project_id=project_id,
             naam=project.naam,
@@ -369,6 +500,8 @@ def project_detail(*, administratie_id: uuid.UUID, project_id: uuid.UUID) -> Pro
             staffels=staffels,
             werknummers=werknummers,
             ontleding=ontleding,
+            prijsafspraken=prijsafspraken,
+            veldwerkers=veldwerkers,
             gebouwd_m2=_gebouwd_m2(session, administratie_id, project_id),
         )
 
@@ -472,8 +605,13 @@ def voeg_staffel_toe(
             record_id=staffel.id,
             actie="project_staffel_toegevoegd",
             correlatie_id=project_id,
-            nieuwe_waarde={"omschrijving": staffel.omschrijving, "eenheid": eenheid,
-                           "prijs_per_eenheid": str(prijs_per_eenheid), "verrekenbaar": verrekenbaar, "bron": bron},
+            nieuwe_waarde={
+                "omschrijving": staffel.omschrijving,
+                "eenheid": eenheid,
+                "prijs_per_eenheid": str(prijs_per_eenheid),
+                "verrekenbaar": verrekenbaar,
+                "bron": bron,
+            },
             administratie_id=administratie_id,
         )
         return staffel.id
@@ -499,8 +637,12 @@ def wijzig_staffel(
         staffel = session.get(ProjectStaffel, staffel_id)
         if staffel is None or staffel.administratie_id != administratie_id:
             raise ProjectNietGevonden("Onbekende staffelregel")
-        oude = {"omschrijving": staffel.omschrijving, "eenheid": staffel.eenheid,
-                "prijs_per_eenheid": str(staffel.prijs_per_eenheid), "verrekenbaar": staffel.verrekenbaar}
+        oude = {
+            "omschrijving": staffel.omschrijving,
+            "eenheid": staffel.eenheid,
+            "prijs_per_eenheid": str(staffel.prijs_per_eenheid),
+            "verrekenbaar": staffel.verrekenbaar,
+        }
         staffel.omschrijving = omschrijving.strip() or staffel.omschrijving
         staffel.eenheid = eenheid
         staffel.prijs_per_eenheid = prijs_per_eenheid
@@ -516,8 +658,12 @@ def wijzig_staffel(
             actie="project_staffel_gewijzigd",
             correlatie_id=staffel.project_id,
             oude_waarde=oude,
-            nieuwe_waarde={"omschrijving": staffel.omschrijving, "eenheid": eenheid,
-                           "prijs_per_eenheid": str(prijs_per_eenheid), "verrekenbaar": verrekenbaar},
+            nieuwe_waarde={
+                "omschrijving": staffel.omschrijving,
+                "eenheid": eenheid,
+                "prijs_per_eenheid": str(prijs_per_eenheid),
+                "verrekenbaar": verrekenbaar,
+            },
             administratie_id=administratie_id,
         )
 
@@ -777,3 +923,132 @@ def _als_uuid_veilig(waarde: object) -> uuid.UUID | None:
         return uuid.UUID(str(waarde))
     except (ValueError, TypeError):
         return None
+
+
+# --- prijsafspraken per veldwerker (steigerbouw-run B1, migratie 0073) -----------------------------
+
+_PRIJSAFSPRAAK_EENHEDEN = ("uur", "m2")
+
+
+def _venster(vanaf: tuple[int, int] | None, tm: tuple[int, int] | None) -> None:
+    for w in (vanaf, tm):
+        if w is not None and not (1 <= w[1] <= 53):
+            raise OngeldigeInvoer("Weeknummer moet tussen 1 en 53 liggen")
+    if vanaf is not None and tm is not None and vanaf > tm:
+        raise OngeldigeInvoer("De vanaf-week ligt ná de t/m-week")
+
+
+def _overlapt(a: ProjectPrijsafspraak, vanaf: tuple[int, int] | None, tm: tuple[int, int] | None) -> bool:
+    a_vanaf = (a.geldig_vanaf_jaar, a.geldig_vanaf_week) if a.geldig_vanaf_jaar is not None else None
+    a_tm = (a.geldig_tm_jaar, a.geldig_tm_week) if a.geldig_tm_jaar is not None else None
+    start = max(x for x in (a_vanaf, vanaf) if x is not None) if (a_vanaf or vanaf) else None
+    eind = min(x for x in (a_tm, tm) if x is not None) if (a_tm or tm) else None
+    return start is None or eind is None or start <= eind
+
+
+def voeg_prijsafspraak_toe(
+    *,
+    administratie_id: uuid.UUID,
+    project_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    eenheid: str,
+    tarief: Decimal,
+    geldig_vanaf: tuple[int, int] | None = None,
+    geldig_tm: tuple[int, int] | None = None,
+    toelichting: str | None = None,
+) -> uuid.UUID:
+    """Projectafspraak (B1): per (project × ZZP'er) tarief + eenheid + ISO-week-venster; overlap met
+    een actieve afspraak voor dezelfde combinatie = zichtbare fout (de resolutie moet eenduidig
+    zijn — nooit gokken). Schrijven = Beheerder + Boekhouding+Projecten, geaudit."""
+    if eenheid not in _PRIJSAFSPRAAK_EENHEDEN:
+        raise OngeldigeInvoer("Eenheid moet 'uur' of 'm2' zijn")
+    if tarief < 0:
+        raise OngeldigeInvoer("Tarief kan niet negatief zijn")
+    _venster(geldig_vanaf, geldig_tm)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _vereis_schrijfrol(session, actor_id)
+        _vereis_project(session, administratie_id=administratie_id, project_id=project_id)
+        veldwerker = session.get(Gebruiker, gebruiker_id)
+        if veldwerker is None or veldwerker.rol != GebruikerRol.ZZPER:
+            raise OngeldigeInvoer("Een prijsafspraak hoort bij een ZZP'er (ook als die via een bureau factureert)")
+        actieve = session.scalars(
+            select(ProjectPrijsafspraak).where(
+                ProjectPrijsafspraak.administratie_id == administratie_id,
+                ProjectPrijsafspraak.project_id == project_id,
+                ProjectPrijsafspraak.gebruiker_id == gebruiker_id,
+                ProjectPrijsafspraak.ingetrokken_op.is_(None),
+            )
+        ).all()
+        for a in actieve:
+            if _overlapt(a, geldig_vanaf, geldig_tm):
+                raise OngeldigeInvoer(
+                    "Er bestaat al een actieve prijsafspraak voor deze veldwerker in (een deel van) dit venster — "
+                    "trek die eerst in"
+                )
+        afspraak = ProjectPrijsafspraak(
+            administratie_id=administratie_id,
+            project_id=project_id,
+            gebruiker_id=gebruiker_id,
+            eenheid=eenheid,
+            tarief=tarief,
+            geldig_vanaf_jaar=geldig_vanaf[0] if geldig_vanaf else None,
+            geldig_vanaf_week=geldig_vanaf[1] if geldig_vanaf else None,
+            geldig_tm_jaar=geldig_tm[0] if geldig_tm else None,
+            geldig_tm_week=geldig_tm[1] if geldig_tm else None,
+            toelichting=(toelichting or "").strip() or None,
+            aangemaakt_door=actor_id,
+        )
+        session.add(afspraak)
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="project_prijsafspraak",
+            record_id=afspraak.id,
+            actie="project_prijsafspraak_toegevoegd",
+            correlatie_id=project_id,
+            nieuwe_waarde={
+                "gebruiker_id": str(gebruiker_id),
+                "eenheid": eenheid,
+                "tarief": str(tarief),
+                "geldig_vanaf": list(geldig_vanaf) if geldig_vanaf else None,
+                "geldig_tm": list(geldig_tm) if geldig_tm else None,
+                "toelichting": afspraak.toelichting,
+            },
+            administratie_id=administratie_id,
+        )
+        return afspraak.id
+
+
+def trek_prijsafspraak_in(
+    *, administratie_id: uuid.UUID, afspraak_id: uuid.UUID, actor_id: uuid.UUID, reden: str
+) -> None:
+    """Append-only: intrekken mét verplichte reden (wijzigen = intrekken + nieuwe afspraak).
+    Lopende matches herberekenen op de eerstvolgende trigger — de audit toont oud→nieuw."""
+    reden = (reden or "").strip()
+    if not reden:
+        raise OngeldigeInvoer("Intrekken vereist een reden")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _vereis_schrijfrol(session, actor_id)
+        a = session.get(ProjectPrijsafspraak, afspraak_id)
+        if a is None or a.administratie_id != administratie_id:
+            raise ProjectNietGevonden("Onbekende prijsafspraak")
+        if a.ingetrokken_op is not None:
+            return  # idempotent
+        a.ingetrokken_op = datetime.now(UTC)
+        a.ingetrokken_door = actor_id
+        a.ingetrokken_reden = reden
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="project_prijsafspraak",
+            record_id=afspraak_id,
+            actie="project_prijsafspraak_ingetrokken",
+            correlatie_id=a.project_id,
+            oude_waarde={"actief": True, "eenheid": a.eenheid, "tarief": str(a.tarief)},
+            nieuwe_waarde={"actief": False, "reden": reden},
+            administratie_id=administratie_id,
+        )

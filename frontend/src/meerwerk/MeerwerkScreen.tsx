@@ -57,8 +57,16 @@ function statusBadge(item: MeerwerkDto) {
   }
 }
 
+/** B2 (25-08): weeknummers overal in steigerbouw-datumweergaves. */
+function weekVan(iso: string): number {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`)
+  const dag = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dag)
+  return Math.ceil(((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7)
+}
+
 function datumLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+  return `${new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} (wk ${weekVan(iso)})`
 }
 
 function euro(bedrag: string | null): string {
@@ -343,7 +351,7 @@ function MeerwerkPaneel({
             </div>
             <div className="rij">
               <span className="k">Datum uitgevoerd</span>
-              <b>{new Date(item.datum_uitgevoerd).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}</b>
+              <b>{new Date(item.datum_uitgevoerd).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })} (wk {weekVan(item.datum_uitgevoerd)})</b>
             </div>
             <div className="rij">
               <span className="k">Aantal</span>

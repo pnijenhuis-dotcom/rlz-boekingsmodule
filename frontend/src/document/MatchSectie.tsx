@@ -28,6 +28,12 @@ interface DetailsStaat {
   jaar: number
   weeknummer: number
   uren: string
+  // Tariefresolutie per staat (steigerbouw-run B1): projectafspraak | koppeling | null.
+  m2?: string
+  tariefbron?: 'projectafspraak' | 'koppeling' | null
+  eenheid?: 'uur' | 'm2'
+  tarief?: string | null
+  bedrag?: string | null
 }
 
 interface DetailsLid {
@@ -36,6 +42,7 @@ interface DetailsLid {
   uren: string
   uurtarief: string | null
   bedrag: string | null
+  tariefbronnen?: string[]
 }
 
 function uitkomstChip(match: FactuurmatchDto): { klasse: string; label: string } {
@@ -71,6 +78,9 @@ export function MatchSectie({
   const staten = ((match.details?.staten as DetailsStaat[] | undefined) ?? []).slice()
   const leden = (match.details?.leden as DetailsLid[] | undefined) ?? []
   const meerdereLeden = leden.length > 1
+  // De match-sectie toont áltijd welke tariefbron gebruikt is (B1, mockup projecten-invoer).
+  const tariefbronnen = (match.details?.tariefbronnen as string[] | undefined) ?? []
+  const heeftStaatTarief = staten.some((s) => s.tariefbron !== undefined)
 
   return (
     <div className="panel">
@@ -106,6 +116,21 @@ export function MatchSectie({
         )}
       </p>
 
+      <p className="hint" style={{ marginTop: 0 }}>
+        Tariefbron:{' '}
+        {tariefbronnen.length > 0 ? (
+          tariefbronnen.map((b) => (
+            <span key={b} className={`chip ${b.startsWith('projectafspraak') ? 'ok' : 'geheugen'}`} style={{ marginRight: 4 }}>
+              {b}
+            </span>
+          ))
+        ) : match.tarief_ontbreekt ? (
+          <span className="chip vraag">onbepaalbaar — geen projectafspraak en geen koppeling-tarief</span>
+        ) : (
+          <span className="chip geheugen">koppeling-tarief</span>
+        )}
+      </p>
+
       {meerdereLeden && (
         <table style={{ marginBottom: 8 }}>
           <tbody>
@@ -135,6 +160,8 @@ export function MatchSectie({
               {meerdereLeden && <th>ZZP'er</th>}
               <th>Project</th>
               <th>Goedgekeurde uren</th>
+              {heeftStaatTarief && <th>Tarief (bron)</th>}
+              {heeftStaatTarief && <th>Bedrag</th>}
             </tr>
             {staten
               .sort((a, b) => a.jaar - b.jaar || a.weeknummer - b.weeknummer)
@@ -145,7 +172,18 @@ export function MatchSectie({
                   </td>
                   {meerdereLeden && <td>{leden.find((l) => l.gebruiker_id === s.gebruiker_id)?.naam ?? '—'}</td>}
                   <td>{s.project_naam ?? '—'}</td>
-                  <td>{uren(s.uren)}</td>
+                  <td>
+                    {uren(s.uren)}
+                    {s.eenheid === 'm2' && s.m2 && ` · ${Number(s.m2).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} m²`}
+                  </td>
+                  {heeftStaatTarief && (
+                    <td>
+                      {s.tarief
+                        ? `${formatBedrag(s.tarief)}/${s.eenheid === 'm2' ? 'm²' : 'u'} (${s.tariefbron === 'projectafspraak' ? 'projectafspraak' : 'koppeling'})`
+                        : 'onbepaalbaar'}
+                    </td>
+                  )}
+                  {heeftStaatTarief && <td>{s.bedrag ? formatBedrag(s.bedrag) : '—'}</td>}
                 </tr>
               ))}
           </tbody>

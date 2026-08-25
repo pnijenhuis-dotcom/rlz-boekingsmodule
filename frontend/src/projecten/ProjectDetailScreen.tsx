@@ -20,6 +20,12 @@ import {
   type ProjectDetailDto,
   type SpecificatieDto,
   type StaffelDto,
+  datumMetWeek,
+  trekPrijsafspraakIn,
+  voegPrijsafspraakToe,
+  weekLabel,
+  type PrijsafspraakDto,
+  type VeldwerkerKeuzeDto,
 } from './projectenApi'
 
 /* Projectdetail (mockup projecten-invoer.html view 2, akkoord Peter 22-08): specs-grid
@@ -146,6 +152,13 @@ export function ProjectDetailScreen() {
         actie={actie}
       />
       <StaffelsPaneel administratieId={administratieId} projectId={projectId} staffels={detail.staffels} actie={actie} />
+      <PrijsafsprakenPaneel
+        administratieId={administratieId}
+        projectId={projectId}
+        afspraken={detail.prijsafspraken ?? []}
+        veldwerkers={detail.veldwerkers ?? []}
+        actie={actie}
+      />
       <WerknummersPaneel
         administratieId={administratieId}
         projectId={projectId}
@@ -204,10 +217,12 @@ function SpecificatiePaneel({
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
           Looptijd van
           <input type="date" value={vorm.looptijd_van ?? ''} onChange={zet('looptijd_van')} style={veldStijl} />
+          {vorm.looptijd_van && <span className="hint" style={{ fontSize: 11 }}>{datumMetWeek(vorm.looptijd_van)}</span>}
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
           Looptijd t/m
           <input type="date" value={vorm.looptijd_tot ?? ''} onChange={zet('looptijd_tot')} style={veldStijl} />
+          {vorm.looptijd_tot && <span className="hint" style={{ fontSize: 11 }}>{datumMetWeek(vorm.looptijd_tot)}</span>}
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
           Huurtijd inbegrepen
@@ -362,7 +377,7 @@ function DocumentenPaneel({
           <span style={{ flex: 1, minWidth: 200 }}>
             <b>{doc.titel}</b>
             <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11.5 }}>
-              {doc.bestandsnaam} · geüpload {new Date(doc.aangemaakt_op).toLocaleDateString('nl-NL')}
+              {doc.bestandsnaam} · geüpload {datumMetWeek(doc.aangemaakt_op)}
               {doc.ontleed ? ' · ontleed ✓' : ''}
             </span>
           </span>
@@ -555,6 +570,239 @@ function StaffelVorm({
       <Button variant="secundair" maat="klein" onClick={onAnnuleren}>
         Annuleren
       </Button>
+    </div>
+  )
+}
+
+/** Prijsafspraken veldwerkers — dit project (steigerbouw-run B1, mockup projecten-invoer =
+ * norm): projectafspraak wint in de factuurmatch van het koppeling-tarief; eenheid uur óf m²;
+ * geldigheid in ISO-weken; wijzigen = intrekken (reden) + nieuwe afspraak (append-only). */
+function PrijsafsprakenPaneel({
+  administratieId,
+  projectId,
+  afspraken,
+  veldwerkers,
+  actie,
+}: {
+  administratieId: string
+  projectId: string
+  afspraken: PrijsafspraakDto[]
+  veldwerkers: VeldwerkerKeuzeDto[]
+  actie: (fn: () => Promise<unknown>, geslaagd?: string) => Promise<void>
+}) {
+  const [nieuw, setNieuw] = useState<PrijsafspraakDto | 'nieuw' | null>(null)
+  const [intrek, setIntrek] = useState<PrijsafspraakDto | null>(null)
+  const [reden, setReden] = useState('')
+  const [toonHistorie, setToonHistorie] = useState(false)
+  const actief = afspraken.filter((a) => a.ingetrokken_op === null)
+  const historie = afspraken.filter((a) => a.ingetrokken_op !== null)
+  const tariefLabel = (a: { tarief: string; eenheid: string }) => `${euro(a.tarief)} /${a.eenheid === 'm2' ? 'm²' : 'u'}`
+  const geldigLabel = (a: PrijsafspraakDto) => {
+    const van = weekLabel(a.geldig_vanaf_jaar, a.geldig_vanaf_week)
+    const tm = weekLabel(a.geldig_tm_jaar, a.geldig_tm_week)
+    if (!van && !tm) return 'hele project'
+    if (van && tm) return `${van} t/m ${tm}`
+    return van ? `vanaf ${van}` : `t/m ${tm}`
+  }
+  return (
+    <div className="panel">
+      <h2>
+        Prijsafspraken veldwerkers — dit project{' '}
+        <Button variant="secundair" maat="klein" style={{ float: 'right' }} onClick={() => setNieuw('nieuw')} disabled={veldwerkers.length === 0}>
+          + Afspraak
+        </Button>
+      </h2>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Projectspecifieke tarieven die afwijken van het standaardtarief op de veldwerker-koppeling. De factuurmatch rekent
+        per week: <b>projectafspraak wint</b> → anders het koppeling-tarief → anders &quot;onbepaalbaar&quot; (oranje, nooit
+        gokken). Eenheid m² rekent met de goedgekeurde m² uit de weekstaten in plaats van uren. Wijzigen = intrekken (reden)
+        + nieuwe afspraak; alles geauditeerd.
+      </p>
+      {veldwerkers.length === 0 && <p className="hint">Nog geen ZZP'ers aan dit project gekoppeld — koppelen gebeurt via Gebruikers &amp; toegang of de planning.</p>}
+      {actief.length === 0 && veldwerkers.length > 0 && <p className="hint">Geen afspraak — het koppeling-tarief geldt.</p>}
+      {actief.length > 0 && (
+        <div className="tabel-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Veldwerker</th>
+                <th>Eenheid</th>
+                <th>Tarief</th>
+                <th>Standaard (koppeling)</th>
+                <th>Geldig</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {actief.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    <b>{a.veldwerker_naam ?? a.gebruiker_id}</b>{' '}
+                    <Badge variant="paars">{a.via_bureau_naam ? `via ${a.via_bureau_naam} (bureau)` : "ZZP'er"}</Badge>
+                    {a.toelichting && <div className="hint" style={{ fontSize: 11 }}>{a.toelichting}</div>}
+                  </td>
+                  <td>{a.eenheid === 'm2' ? 'm²' : 'uur'}</td>
+                  <td>{tariefLabel(a)}</td>
+                  <td className="hint">{a.standaard_tarief ? `${euro(a.standaard_tarief)} /u` : 'geen tarief'}</td>
+                  <td>{geldigLabel(a)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <Button variant="secundair" maat="klein" onClick={() => setNieuw(a)}>
+                      wijzig
+                    </Button>{' '}
+                    <Button variant="ghost" maat="klein" onClick={() => { setIntrek(a); setReden('') }}>
+                      intrekken
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {historie.length > 0 && (
+        <p className="hint" style={{ marginBottom: 0 }}>
+          <button type="button" className="linkbtn" onClick={() => setToonHistorie((t) => !t)}>
+            {toonHistorie ? 'Historie verbergen' : `${historie.length} ingetrokken afspraak/afspraken tonen`}
+          </button>
+        </p>
+      )}
+      {toonHistorie &&
+        historie.map((a) => (
+          <div key={a.id} className="hint" style={{ fontSize: 11.5 }}>
+            {a.veldwerker_naam} · {tariefLabel(a)} · {geldigLabel(a)} — ingetrokken {datumMetWeek(a.ingetrokken_op)}: {a.ingetrokken_reden}
+          </div>
+        ))}
+      {nieuw !== null && (
+        <PrijsafspraakVorm
+          basis={nieuw === 'nieuw' ? null : nieuw}
+          veldwerkers={veldwerkers}
+          onOpslaan={(waarden) => {
+            const oud = nieuw
+            setNieuw(null)
+            void actie(async () => {
+              if (oud !== 'nieuw') {
+                await trekPrijsafspraakIn(administratieId, oud.id, 'vervangen door nieuwe afspraak')
+              }
+              await voegPrijsafspraakToe(administratieId, projectId, waarden)
+            }, oud === 'nieuw' ? 'Prijsafspraak toegevoegd.' : 'Prijsafspraak vervangen (oude ingetrokken).')
+          }}
+          onAnnuleren={() => setNieuw(null)}
+        />
+      )}
+      {intrek && (
+        <div style={{ alignItems: 'end', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10, padding: 12 }}>
+          <label style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', minWidth: 220 }}>
+            Reden intrekken — {intrek.veldwerker_naam} {tariefLabel(intrek)}
+            <input value={reden} onChange={(e) => setReden(e.target.value)} style={veldStijl} placeholder="bijv. tarief herzien per wk 41" />
+          </label>
+          <Button maat="klein" variant="gevaar" disabled={reden.trim().length < 3} onClick={() => { const a = intrek; setIntrek(null); void actie(() => trekPrijsafspraakIn(administratieId, a.id, reden.trim()), 'Prijsafspraak ingetrokken.') }}>
+            Intrekken
+          </Button>
+          <Button variant="secundair" maat="klein" onClick={() => setIntrek(null)}>
+            Annuleren
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PrijsafspraakVorm({
+  basis,
+  veldwerkers,
+  onOpslaan,
+  onAnnuleren,
+}: {
+  basis: PrijsafspraakDto | null
+  veldwerkers: VeldwerkerKeuzeDto[]
+  onOpslaan: (waarden: {
+    gebruiker_id: string
+    eenheid: 'uur' | 'm2'
+    tarief: string
+    geldig_vanaf_jaar: number | null
+    geldig_vanaf_week: number | null
+    geldig_tm_jaar: number | null
+    geldig_tm_week: number | null
+    toelichting: string | null
+  }) => void
+  onAnnuleren: () => void
+}) {
+  const [gebruikerId, setGebruikerId] = useState(basis?.gebruiker_id ?? veldwerkers[0]?.gebruiker_id ?? '')
+  const [eenheid, setEenheid] = useState<'uur' | 'm2'>(basis?.eenheid ?? 'uur')
+  const [tarief, setTarief] = useState(basis?.tarief ?? '')
+  const [vanaf, setVanaf] = useState(basis?.geldig_vanaf_week ? `${basis.geldig_vanaf_jaar}-W${String(basis.geldig_vanaf_week).padStart(2, '0')}` : '')
+  const [tm, setTm] = useState(basis?.geldig_tm_week ? `${basis.geldig_tm_jaar}-W${String(basis.geldig_tm_week).padStart(2, '0')}` : '')
+  const [toelichting, setToelichting] = useState(basis?.toelichting ?? '')
+  const gekozen = veldwerkers.find((v) => v.gebruiker_id === gebruikerId)
+  const parseWeek = (w: string): [number, number] | null => {
+    const m = /^(\d{4})-W(\d{2})$/.exec(w)
+    return m ? [Number(m[1]), Number(m[2])] : null
+  }
+  const v = parseWeek(vanaf)
+  const t = parseWeek(tm)
+  return (
+    <div style={{ alignItems: 'end', background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10, padding: 12 }}>
+      <label style={{ flex: 2, fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', minWidth: 200 }}>
+        Veldwerker
+        <Select value={gebruikerId} onChange={(e) => setGebruikerId(e.target.value)} disabled={basis !== null}>
+          {veldwerkers.map((w) => (
+            <option key={w.gebruiker_id} value={w.gebruiker_id}>
+              {w.naam}
+              {w.via_bureau_naam ? ` (via ${w.via_bureau_naam})` : ''}
+              {w.standaard_tarief ? ` — standaard ${euro(w.standaard_tarief)}/u` : ' — geen koppeling-tarief'}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
+        Eenheid
+        <Select value={eenheid} onChange={(e) => setEenheid(e.target.value as 'uur' | 'm2')}>
+          <option value="uur">uur</option>
+          <option value="m2">m² (goedgekeurde weekstaat-m²)</option>
+        </Select>
+      </label>
+      <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', width: 110 }}>
+        Tarief (€)
+        <input value={tarief} onChange={(e) => setTarief(e.target.value)} inputMode="decimal" style={veldStijl} />
+      </label>
+      <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
+        Vanaf week (optioneel)
+        <input type="week" value={vanaf} onChange={(e) => setVanaf(e.target.value)} style={veldStijl} />
+      </label>
+      <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
+        T/m week (optioneel)
+        <input type="week" value={tm} onChange={(e) => setTm(e.target.value)} style={veldStijl} />
+      </label>
+      <label style={{ flex: 2, fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', minWidth: 160 }}>
+        Toelichting
+        <input value={toelichting} onChange={(e) => setToelichting(e.target.value)} style={veldStijl} />
+      </label>
+      <Button
+        maat="klein"
+        disabled={!gebruikerId || !tarief.trim() || (vanaf !== '' && !v) || (tm !== '' && !t)}
+        onClick={() =>
+          onOpslaan({
+            gebruiker_id: gebruikerId,
+            eenheid,
+            tarief: tarief.replace(',', '.').trim(),
+            geldig_vanaf_jaar: v?.[0] ?? null,
+            geldig_vanaf_week: v?.[1] ?? null,
+            geldig_tm_jaar: t?.[0] ?? null,
+            geldig_tm_week: t?.[1] ?? null,
+            toelichting: toelichting.trim() || null,
+          })
+        }
+      >
+        Opslaan
+      </Button>
+      <Button variant="secundair" maat="klein" onClick={onAnnuleren}>
+        Annuleren
+      </Button>
+      {gekozen && !gekozen.standaard_tarief && (
+        <span className="hint" style={{ width: '100%', margin: 0 }}>
+          Zonder koppeling-tarief is deze afspraak de enige prijsbron — buiten het venster wordt de match &quot;onbepaalbaar&quot;.
+        </span>
+      )}
     </div>
   )
 }

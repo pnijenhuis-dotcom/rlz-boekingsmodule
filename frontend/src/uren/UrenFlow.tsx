@@ -60,6 +60,7 @@ import {
   isDossierGeblokkeerd,
   uploadDossierDocument,
   type DossierDto,
+  datumMetWeek,
 } from './urenApi'
 
 type Veldrol = 'zzper' | 'uitvoerder' | 'detacheerder'
@@ -773,7 +774,7 @@ function ZzpProjectenView({
           <span>
             <span className="acc-tt">{p.project_naam ?? 'Project'}</span>
             <span className="acc-meta" style={{ display: 'block' }}>
-              {p.soort_werk ?? 'steigerbouw'} · laatste invoer: {datumKort(p.laatste_invoer)}
+              {p.soort_werk ?? 'steigerbouw'} · laatste invoer: {datumMetWeek(p.laatste_invoer)}
             </span>
           </span>
           {p.open_weken > 0 ? (
@@ -1410,7 +1411,7 @@ function UitvProjectenView({
               {[
                 kaart.soort_werk,
                 kaart.contract_m2 !== null ? `${Number(kaart.contract_m2).toLocaleString('nl-NL')} m² contract` : null,
-                kaart.looptijd_tot ? `t/m ${datumKort(kaart.looptijd_tot)}` : null,
+                kaart.looptijd_tot ? `t/m ${datumMetWeek(kaart.looptijd_tot)}` : null,
               ]
                 .filter(Boolean)
                 .join(' · ') || 'projectgegevens volgen'}
@@ -1499,7 +1500,7 @@ function ProjectDetailView({
               <div className="acc-rij">
                 <span className="acc-k">Looptijd</span>
                 <b>
-                  {datumKort(detail.looptijd_van)} – {datumKort(detail.looptijd_tot)}
+                  {datumMetWeek(detail.looptijd_van)} – {datumMetWeek(detail.looptijd_tot)}
                 </b>
               </div>
             )}
@@ -1540,7 +1541,7 @@ function ProjectDetailView({
                     <span className="acc-oms">
                       {m.omschrijving}
                       <small>
-                        gemeld {datumKort(m.gemeld_op)} · {m.aantal} {eenheidLabel(m.eenheid)}
+                        gemeld {datumMetWeek(m.gemeld_op)} · {m.aantal} {eenheidLabel(m.eenheid)}
                         {m.heeft_foto ? ' · foto ✓' : ''}
                       </small>
                       {openVraag && (

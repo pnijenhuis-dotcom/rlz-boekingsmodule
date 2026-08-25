@@ -117,6 +117,50 @@ class OntledingBeslisInput(StrikteInvoer):
     verrekenbaar: bool = True
 
 
+class PrijsafspraakDto(BaseModel):
+    """Projectafspraak per veldwerker (steigerbouw-run B1, mockup projecten-invoer
+    "Prijsafspraken veldwerkers — dit project")."""
+
+    id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    veldwerker_naam: str | None = None
+    via_bureau_naam: str | None = None
+    eenheid: Literal["uur", "m2"]
+    tarief: Decimal
+    geldig_vanaf_jaar: int | None = None
+    geldig_vanaf_week: int | None = None
+    geldig_tm_jaar: int | None = None
+    geldig_tm_week: int | None = None
+    toelichting: str | None = None
+    standaard_tarief: Decimal | None = None
+    aangemaakt_op: datetime
+    aangemaakt_door_naam: str | None = None
+    ingetrokken_op: datetime | None = None
+    ingetrokken_reden: str | None = None
+
+
+class VeldwerkerKeuzeDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    naam: str
+    via_bureau_naam: str | None = None
+    standaard_tarief: Decimal | None = None
+
+
+class PrijsafspraakInput(StrikteInvoer):
+    gebruiker_id: uuid.UUID
+    eenheid: Literal["uur", "m2"]
+    tarief: Decimal
+    geldig_vanaf_jaar: int | None = None
+    geldig_vanaf_week: int | None = None
+    geldig_tm_jaar: int | None = None
+    geldig_tm_week: int | None = None
+    toelichting: str | None = None
+
+
+class PrijsafspraakIntrekkenInput(StrikteInvoer):
+    reden: str
+
+
 class ProjectDetailResponse(BaseModel):
     project_id: uuid.UUID
     naam: str | None = None
@@ -127,6 +171,8 @@ class ProjectDetailResponse(BaseModel):
     werknummers: list[WerknummerDto]
     ontleding: list[OntledingRegelDto]
     gebouwd_m2: Decimal
+    prijsafspraken: list[PrijsafspraakDto] = []
+    veldwerkers: list[VeldwerkerKeuzeDto] = []
 
 
 class NieuwProjectInput(StrikteInvoer):

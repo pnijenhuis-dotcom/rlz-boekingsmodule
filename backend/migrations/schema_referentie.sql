@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0072
+-- Migratie-head bij deze dump: 0073
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1491,6 +1491,39 @@ ALTER TABLE ONLY boekhouding.project_ontleding_regel FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: project_prijsafspraak; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.project_prijsafspraak (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    eenheid text NOT NULL,
+    tarief numeric(10,2) NOT NULL,
+    geldig_vanaf_jaar integer,
+    geldig_vanaf_week integer,
+    geldig_tm_jaar integer,
+    geldig_tm_week integer,
+    toelichting text,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    ingetrokken_door uuid,
+    ingetrokken_op timestamp with time zone,
+    ingetrokken_reden text,
+    CONSTRAINT ck_project_prijsafspraak_eenheid CHECK ((eenheid = ANY (ARRAY['uur'::text, 'm2'::text]))),
+    CONSTRAINT ck_project_prijsafspraak_ingetrokken_reden CHECK (((ingetrokken_op IS NULL) OR ((ingetrokken_reden IS NOT NULL) AND (length(btrim(ingetrokken_reden)) > 0)))),
+    CONSTRAINT ck_project_prijsafspraak_tarief CHECK ((tarief >= (0)::numeric)),
+    CONSTRAINT ck_project_prijsafspraak_tm_samen CHECK (((geldig_tm_jaar IS NULL) = (geldig_tm_week IS NULL))),
+    CONSTRAINT ck_project_prijsafspraak_tm_week CHECK (((geldig_tm_week IS NULL) OR ((geldig_tm_week >= 1) AND (geldig_tm_week <= 53)))),
+    CONSTRAINT ck_project_prijsafspraak_vanaf_samen CHECK (((geldig_vanaf_jaar IS NULL) = (geldig_vanaf_week IS NULL))),
+    CONSTRAINT ck_project_prijsafspraak_vanaf_week CHECK (((geldig_vanaf_week IS NULL) OR ((geldig_vanaf_week >= 1) AND (geldig_vanaf_week <= 53))))
+);
+
+ALTER TABLE ONLY boekhouding.project_prijsafspraak FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: project_regel_cache; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2928,6 +2961,14 @@ ALTER TABLE ONLY boekhouding.project_ontleding_regel
 
 
 --
+-- Name: project_prijsafspraak project_prijsafspraak_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_prijsafspraak
+    ADD CONSTRAINT project_prijsafspraak_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: project_regel_cache project_regel_cache_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3832,6 +3873,20 @@ CREATE INDEX ix_project_ontleding_regel_administratie_id ON boekhouding.project_
 --
 
 CREATE INDEX ix_project_ontleding_regel_project ON boekhouding.project_ontleding_regel USING btree (administratie_id, project_id);
+
+
+--
+-- Name: ix_project_prijsafspraak_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_prijsafspraak_administratie_id ON boekhouding.project_prijsafspraak USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_prijsafspraak_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_prijsafspraak_project ON boekhouding.project_prijsafspraak USING btree (administratie_id, project_id, gebruiker_id);
 
 
 --
@@ -5021,6 +5076,14 @@ ALTER TABLE ONLY boekhouding.project_ontleding_regel
 
 
 --
+-- Name: project_prijsafspraak fk_project_prijsafspraak_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_prijsafspraak
+    ADD CONSTRAINT fk_project_prijsafspraak_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: project_specificatie fk_project_specificatie_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5402,6 +5465,38 @@ ALTER TABLE ONLY boekhouding.project_ontleding_regel
 
 ALTER TABLE ONLY boekhouding.project_ontleding_regel
     ADD CONSTRAINT project_ontleding_regel_project_document_id_fkey FOREIGN KEY (project_document_id) REFERENCES boekhouding.project_document(id);
+
+
+--
+-- Name: project_prijsafspraak project_prijsafspraak_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_prijsafspraak
+    ADD CONSTRAINT project_prijsafspraak_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_prijsafspraak project_prijsafspraak_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_prijsafspraak
+    ADD CONSTRAINT project_prijsafspraak_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: project_prijsafspraak project_prijsafspraak_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_prijsafspraak
+    ADD CONSTRAINT project_prijsafspraak_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: project_prijsafspraak project_prijsafspraak_ingetrokken_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_prijsafspraak
+    ADD CONSTRAINT project_prijsafspraak_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -6923,6 +7018,19 @@ ALTER TABLE boekhouding.project_ontleding_regel ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY project_ontleding_regel_scope ON boekhouding.project_ontleding_regel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: project_prijsafspraak; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.project_prijsafspraak ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: project_prijsafspraak project_prijsafspraak_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY project_prijsafspraak_scope ON boekhouding.project_prijsafspraak USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

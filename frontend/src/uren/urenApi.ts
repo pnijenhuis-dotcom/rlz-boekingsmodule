@@ -422,6 +422,17 @@ export function weekTotaalLabel(totaalUren: string, totaalM2: string): string {
   return m2 > 0 ? `${u} u · ${m2.toLocaleString('nl-NL', { maximumFractionDigits: 2 })} m²` : `${u} u`
 }
 
+/** B2 (25-08): weeknummers overal in steigerbouw-datumweergaves — ook in de veld-app. */
+export function weekVan(iso: string | null): number | null {
+  if (!iso) return null
+  return isoWeekVan(new Date(`${iso.slice(0, 10)}T12:00:00Z`)).weeknummer
+}
+
+export function datumMetWeek(iso: string | null): string {
+  if (!iso) return '—'
+  return `${datumKort(iso)} (wk ${weekVan(iso)})`
+}
+
 export function datumKort(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })

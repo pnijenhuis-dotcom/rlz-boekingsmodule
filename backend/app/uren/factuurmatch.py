@@ -45,6 +45,7 @@ from app.uren.models import (
     Factuurmatch,
     FactuurmatchStaat,
     FactuurmatchUitkomst,
+    ProjectPrijsafspraak,
     VeldwerkerCrediteur,
     Weekstaat,
     WeekstaatDag,
@@ -64,15 +65,26 @@ _CENT = Decimal("0.01")
 @dataclass(frozen=True)
 class MatchLid:
     """Eén ZZP'er in de vergelijking (bij een ZZP-factuur precies één lid — de veldwerker
-    zelf; bij een bureaufactuur één per gekoppelde ZZP'er, mét het koppeling-tarief)."""
+    zelf; bij een bureaufactuur één per gekoppelde ZZP'er, mét het koppeling-tarief).
+
+    Tariefresolutie per weekstaat (steigerbouw-run B1, 25-08): projectafspraak (uur óf m²) wint →
+    anders het koppeling-`uurtarief` → anders onbepaalbaar. `bedrag_staten` = de som van de per
+    staat geprijsde bedragen (None zodra één staat geen tarief heeft — nooit gokken); zonder
+    staten-prijzing (pure tests / geen staten) valt `bedrag` terug op uren × uurtarief."""
 
     gebruiker_id: uuid.UUID
     naam: str | None
     uren: Decimal
     uurtarief: Decimal | None
+    m2: Decimal = Decimal("0")
+    bedrag_staten: Decimal | None = None
+    staten_geprijsd: bool = False  # True zodra ≥ 1 staat in de resolutie zat (bedrag_staten leidend)
+    tariefbronnen: tuple[str, ...] = ()
 
     @property
     def bedrag(self) -> Decimal | None:
+        if self.staten_geprijsd:
+            return self.bedrag_staten
         if self.uurtarief is None:
             return None
         return (self.uren * self.uurtarief).quantize(_CENT, rounding=ROUND_HALF_UP)
@@ -100,7 +112,7 @@ def bepaal_uitkomst(
     vergelijking moet sluiten voor `match` (een kloppend bedrag met afwijkende uren is een
     tariefverschil — dat is een afwijking, geen match)."""
     staten_som_uren = sum((lid.uren for lid in leden), Decimal("0"))
-    tarief_ontbreekt = any(lid.uurtarief is None for lid in leden)
+    tarief_ontbreekt = any(lid.bedrag is None for lid in leden)
     staten_som_bedrag: Decimal | None = None
     if not tarief_ontbreekt:
         staten_som_bedrag = sum((lid.bedrag or Decimal("0") for lid in leden), Decimal("0"))
@@ -165,10 +177,82 @@ def _als_str(waarde: Decimal | None) -> str | None:
 class _StaatRegel:
     weekstaat_id: uuid.UUID
     gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
     project_naam: str | None
     jaar: int
     weeknummer: int
     uren: Decimal
+    m2: Decimal = Decimal("0")
+
+
+@dataclass(frozen=True)
+class GeprijsdeStaat:
+    """Uitkomst van de tariefresolutie voor één weekstaat (B1): bron 'projectafspraak' | 'koppeling'
+    | None (onbepaalbaar), eenheid 'uur' | 'm2', tarief en het afgeronde bedrag."""
+
+    staat: _StaatRegel
+    tariefbron: str | None
+    eenheid: str
+    tarief: Decimal | None
+    afspraak_id: uuid.UUID | None
+
+    @property
+    def hoeveelheid(self) -> Decimal:
+        return self.staat.m2 if self.eenheid == "m2" else self.staat.uren
+
+    @property
+    def bedrag(self) -> Decimal | None:
+        if self.tarief is None:
+            return None
+        return (self.hoeveelheid * self.tarief).quantize(_CENT, rounding=ROUND_HALF_UP)
+
+    @property
+    def label(self) -> str | None:
+        if self.tariefbron is None:
+            return None
+        eenheid = "m²" if self.eenheid == "m2" else "u"
+        if self.tariefbron == "projectafspraak":
+            bron = f"projectafspraak {self.staat.project_naam or 'project'}"
+        else:
+            bron = "koppeling-tarief"
+        return f"{bron} · € {self.tarief}/{eenheid}"
+
+
+def prijs_staat(
+    staat: _StaatRegel, *, afspraken: list[ProjectPrijsafspraak], koppeling_tarief: Decimal | None
+) -> GeprijsdeStaat:
+    """Pure resolutie (B1): de actieve projectafspraak voor (project, veldwerker) die in de
+    ISO-week van de staat geldt wint; anders het koppeling-uurtarief; anders onbepaalbaar."""
+    for a in afspraken:
+        if (
+            a.project_id == staat.project_id
+            and a.gebruiker_id == staat.gebruiker_id
+            and a.geldt_in(staat.jaar, staat.weeknummer)
+        ):
+            return GeprijsdeStaat(
+                staat=staat, tariefbron="projectafspraak", eenheid=a.eenheid, tarief=a.tarief, afspraak_id=a.id
+            )
+    if koppeling_tarief is not None:
+        return GeprijsdeStaat(
+            staat=staat, tariefbron="koppeling", eenheid="uur", tarief=koppeling_tarief, afspraak_id=None
+        )
+    return GeprijsdeStaat(staat=staat, tariefbron=None, eenheid="uur", tarief=None, afspraak_id=None)
+
+
+def _actieve_afspraken(
+    session: Session, *, administratie_id: uuid.UUID, gebruiker_ids: list[uuid.UUID]
+) -> list[ProjectPrijsafspraak]:
+    if not gebruiker_ids:
+        return []
+    return list(
+        session.scalars(
+            select(ProjectPrijsafspraak).where(
+                ProjectPrijsafspraak.administratie_id == administratie_id,
+                ProjectPrijsafspraak.gebruiker_id.in_(gebruiker_ids),
+                ProjectPrijsafspraak.ingetrokken_op.is_(None),
+            )
+        )
+    )
 
 
 def _kandidaat_staten(
@@ -185,15 +269,13 @@ def _kandidaat_staten(
         select(Weekstaat, ProjectCache.naam)
         .join(
             ProjectCache,
-            (ProjectCache.id == Weekstaat.project_id)
-            & (ProjectCache.administratie_id == Weekstaat.administratie_id),
+            (ProjectCache.id == Weekstaat.project_id) & (ProjectCache.administratie_id == Weekstaat.administratie_id),
         )
         .where(
             Weekstaat.administratie_id == administratie_id,
             Weekstaat.status == WeekstaatStatus.GOEDGEKEURD.value,
             Weekstaat.gebruiker_id.in_(gebruiker_ids),
-            (Weekstaat.verrekend_met_document_id.is_(None))
-            | (Weekstaat.verrekend_met_document_id == document_id),
+            (Weekstaat.verrekend_met_document_id.is_(None)) | (Weekstaat.verrekend_met_document_id == document_id),
         )
         .order_by(Weekstaat.jaar, Weekstaat.weeknummer)
     )
@@ -204,14 +286,18 @@ def _kandidaat_staten(
 
 
 def _met_uren(session: Session, staat: Weekstaat, project_naam: str | None) -> _StaatRegel:
-    dagen = session.scalars(select(WeekstaatDag.uren).where(WeekstaatDag.weekstaat_id == staat.id)).all()
+    dagen = session.execute(
+        select(WeekstaatDag.uren, WeekstaatDag.m2).where(WeekstaatDag.weekstaat_id == staat.id)
+    ).all()
     return _StaatRegel(
         weekstaat_id=staat.id,
         gebruiker_id=staat.gebruiker_id,
+        project_id=staat.project_id,
         project_naam=project_naam,
         jaar=staat.jaar,
         weeknummer=staat.weeknummer,
-        uren=sum(dagen, Decimal("0")),
+        uren=sum((u for u, _ in dagen), Decimal("0")),
+        m2=sum((m for _, m in dagen if m is not None), Decimal("0")),
     )
 
 
@@ -255,14 +341,10 @@ def tarieven_voor_veldwerker(
         return {veldwerker.id: koppeling.uurtarief}
     if veldwerker.rol == GebruikerRol.DETACHEERDER:
         bureau_koppelingen = session.scalars(
-            select(DetacheerderKoppeling).where(
-                DetacheerderKoppeling.detacheerder_gebruiker_id == veldwerker.id
-            )
+            select(DetacheerderKoppeling).where(DetacheerderKoppeling.detacheerder_gebruiker_id == veldwerker.id)
         ).all()
         return {k.zzper_gebruiker_id: k.uurtarief for k in bureau_koppelingen}
-    raise OngeldigeInvoer(
-        "Veldwerker-koppeling hoort bij een ZZP'er of detacheerder — deze rol levert geen urenstaten"
-    )
+    raise OngeldigeInvoer("Veldwerker-koppeling hoort bij een ZZP'er of detacheerder — deze rol levert geen urenstaten")
 
 
 def vind_veldwerker_koppeling(
@@ -342,19 +424,30 @@ def bereken_match_in_sessie(
             else []
         )
 
-    namen = {
-        g.id: g.naam
-        for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(gebruiker_ids))).all()
-    } if gebruiker_ids else {}
-    leden = [
-        MatchLid(
-            gebruiker_id=gid,
-            naam=namen.get(gid),
-            uren=sum((s.uren for s in staten if s.gebruiker_id == gid), Decimal("0")),
-            uurtarief=tarieven[gid],
+    namen = (
+        {g.id: g.naam for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(gebruiker_ids))).all()}
+        if gebruiker_ids
+        else {}
+    )
+    # Tariefresolutie per staat (B1): projectafspraak → koppeling-tarief → onbepaalbaar.
+    afspraken = _actieve_afspraken(session, administratie_id=administratie_id, gebruiker_ids=gebruiker_ids)
+    geprijsd = [prijs_staat(st, afspraken=afspraken, koppeling_tarief=tarieven[st.gebruiker_id]) for st in staten]
+    leden: list[MatchLid] = []
+    for gid in gebruiker_ids:
+        eigen = [g for g in geprijsd if g.staat.gebruiker_id == gid]
+        bedragen = [g.bedrag for g in eigen]
+        leden.append(
+            MatchLid(
+                gebruiker_id=gid,
+                naam=namen.get(gid),
+                uren=sum((g.staat.uren for g in eigen), Decimal("0")),
+                m2=sum((g.staat.m2 for g in eigen), Decimal("0")),
+                uurtarief=tarieven[gid],
+                bedrag_staten=None if any(b is None for b in bedragen) else sum(bedragen, Decimal("0")),
+                staten_geprijsd=bool(eigen),
+                tariefbronnen=tuple(sorted({g.label for g in eigen if g.label})),
+            )
         )
-        for gid in gebruiker_ids
-    ]
 
     if factuur_bedrag is None:
         factuur_bedrag = _netto_som(session, document_id=document_id)
@@ -367,23 +460,33 @@ def bereken_match_in_sessie(
                 "gebruiker_id": str(lid.gebruiker_id),
                 "naam": lid.naam,
                 "uren": str(lid.uren),
+                "m2": str(lid.m2),
                 "uurtarief": _als_str(lid.uurtarief),
                 "bedrag": _als_str(lid.bedrag),
+                "tariefbronnen": list(lid.tariefbronnen),
             }
             for lid in leden
         ],
         "staten": [
             {
-                "weekstaat_id": str(s.weekstaat_id),
-                "gebruiker_id": str(s.gebruiker_id),
-                "project_naam": s.project_naam,
-                "jaar": s.jaar,
-                "weeknummer": s.weeknummer,
-                "uren": str(s.uren),
+                "weekstaat_id": str(g.staat.weekstaat_id),
+                "gebruiker_id": str(g.staat.gebruiker_id),
+                "project_naam": g.staat.project_naam,
+                "jaar": g.staat.jaar,
+                "weeknummer": g.staat.weeknummer,
+                "uren": str(g.staat.uren),
+                "m2": str(g.staat.m2),
+                "tariefbron": g.tariefbron,
+                "eenheid": g.eenheid,
+                "tarief": _als_str(g.tarief),
+                "bedrag": _als_str(g.bedrag),
+                "afspraak_id": str(g.afspraak_id) if g.afspraak_id else None,
             }
-            for s in staten
+            for g in geprijsd
         ],
-        "tarief_ontbreekt_voor": [lid.naam or str(lid.gebruiker_id) for lid in leden if lid.uurtarief is None],
+        "tarief_ontbreekt_voor": [lid.naam or str(lid.gebruiker_id) for lid in leden if lid.bedrag is None],
+        # De match-sectie toont áltijd welke tariefbron gebruikt is (mockup projecten-invoer).
+        "tariefbronnen": sorted({g.label for g in geprijsd if g.label}),
     }
 
     match = session.get(Factuurmatch, document_id)
@@ -411,9 +514,7 @@ def bereken_match_in_sessie(
     session.execute(delete(FactuurmatchStaat).where(FactuurmatchStaat.document_id == document_id))
     for s in staten:
         session.add(
-            FactuurmatchStaat(
-                document_id=document_id, weekstaat_id=s.weekstaat_id, administratie_id=administratie_id
-            )
+            FactuurmatchStaat(document_id=document_id, weekstaat_id=s.weekstaat_id, administratie_id=administratie_id)
         )
     session.flush()
 
@@ -520,9 +621,7 @@ def verreken_staten_in_sessie(
     return verrekend
 
 
-def verreken_staten(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
-) -> list[uuid.UUID]:
+def verreken_staten(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID) -> list[uuid.UUID]:
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         return verreken_staten_in_sessie(
             session, administratie_id=administratie_id, document_id=document_id, actor_id=actor_id

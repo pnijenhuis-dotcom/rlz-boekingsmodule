@@ -76,6 +76,35 @@ export interface OntledingRegelDto {
   status: 'voorstel' | 'bevestigd' | 'afgewezen' | string
 }
 
+/** Projectafspraak per veldwerker (steigerbouw-run B1, mockup projecten-invoer "Prijsafspraken
+ * veldwerkers — dit project"): wint in de factuurmatch van het koppeling-tarief; eenheid m²
+ * rekent met goedgekeurde weekstaat-m². */
+export interface PrijsafspraakDto {
+  id: string
+  gebruiker_id: string
+  veldwerker_naam: string | null
+  via_bureau_naam: string | null
+  eenheid: 'uur' | 'm2'
+  tarief: string
+  geldig_vanaf_jaar: number | null
+  geldig_vanaf_week: number | null
+  geldig_tm_jaar: number | null
+  geldig_tm_week: number | null
+  toelichting: string | null
+  standaard_tarief: string | null
+  aangemaakt_op: string
+  aangemaakt_door_naam: string | null
+  ingetrokken_op: string | null
+  ingetrokken_reden: string | null
+}
+
+export interface VeldwerkerKeuzeDto {
+  gebruiker_id: string
+  naam: string
+  via_bureau_naam: string | null
+  standaard_tarief: string | null
+}
+
 export interface ProjectDetailDto {
   project_id: string
   naam: string | null
@@ -86,6 +115,8 @@ export interface ProjectDetailDto {
   werknummers: WerknummerDto[]
   ontleding: OntledingRegelDto[]
   gebouwd_m2: string
+  prijsafspraken?: PrijsafspraakDto[]
+  veldwerkers?: VeldwerkerKeuzeDto[]
 }
 
 export interface ProjectWeekDto {
@@ -181,6 +212,52 @@ export function voegStaffelToe(
   payload: { omschrijving: string; eenheid: string; prijs_per_eenheid: string; verrekenbaar: boolean; bron?: string | null },
 ): Promise<{ id: string }> {
   return apiPostJson(`/projecten/${administratieId}/${projectId}/staffels`, payload)
+}
+
+export function voegPrijsafspraakToe(
+  administratieId: string,
+  projectId: string,
+  payload: {
+    gebruiker_id: string
+    eenheid: 'uur' | 'm2'
+    tarief: string
+    geldig_vanaf_jaar?: number | null
+    geldig_vanaf_week?: number | null
+    geldig_tm_jaar?: number | null
+    geldig_tm_week?: number | null
+    toelichting?: string | null
+  },
+): Promise<{ id: string }> {
+  return apiPostJson(`/projecten/${administratieId}/${projectId}/prijsafspraken`, payload)
+}
+
+export function trekPrijsafspraakIn(administratieId: string, afspraakId: string, reden: string): Promise<void> {
+  return apiJson(`/projecten/${administratieId}/prijsafspraken/${afspraakId}/intrekken`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reden }),
+  })
+}
+
+/** B2 (25-08): weeknummers overal in steigerbouw-datumweergaves — "12-03-2026 (wk 11)". */
+export function isoWeekVanDatum(iso: string): { jaar: number; weeknummer: number } {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`)
+  const dag = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dag)
+  const jaar = d.getUTCFullYear()
+  const start = Date.UTC(jaar, 0, 1)
+  return { jaar, weeknummer: Math.ceil(((d.getTime() - start) / 86400000 + 1) / 7) }
+}
+
+export function datumMetWeek(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const { weeknummer } = isoWeekVanDatum(iso)
+  return `${new Date(iso).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' })} (wk ${weeknummer})`
+}
+
+export function weekLabel(jaar: number | null, week: number | null): string {
+  if (jaar === null || week === null) return ''
+  return `wk ${week}-${jaar}`
 }
 
 export function wijzigStaffel(
