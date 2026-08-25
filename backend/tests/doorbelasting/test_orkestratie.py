@@ -27,6 +27,7 @@ from tests.doorbelasting.conftest import (
     DOEL_KOSTEN_LEDGER_ID,
     PROVISIE_KOSTEN_LEDGER_ID,
     FakeDoorbelastingClient,
+    geef_scope,
     haal_boekingen,
     haal_run,
     maak_mapping,
@@ -261,9 +262,98 @@ class TestBoekenPlusDoorbelasten:
             orkestratie.boek_document_met_doorbelasting(
                 administratie_id=administratie_id, document_id=klaargezet["document_id"], actor_id=gescoopte_gebruiker
             )
-        assert any(r.naam == "doorbelasting_scope" and not r.ok for r in exc.value.rapport.resultaten)
+        [scope_check] = [r for r in exc.value.rapport.resultaten if r.naam == "doorbelasting_scope"]
+        assert not scope_check.ok
+        assert klaargezet["mapping"].doelentiteit_naam in scope_check.melding  # de juiste naam
         assert inkoop.puts == []
         assert _status(admin_engine, klaargezet["document_id"]) != "geboekt"
+
+    def test_medewerker_met_scope_op_bron_en_doel_boekt_in_een_gang(
+        self,
+        klaargezet: dict,
+        administratie_id: uuid.UUID,
+        doel_administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Regressie kliktest Peter 25-08 (Barbara, Boekhouding+Projecten, scope op bron én
+        Molenhof Beheer): de scope-check sloeg onterecht aan omdat de koppeltabel in een
+        scope-loze sessie zonder actor werd gelezen (RLS verborg élke rij). Echte niet-Beheerder
+        MÉT scope op alle doelen → check groen, alles boekt."""
+        geef_scope(beheerder_id=beheerder_id, gebruiker_id=gescoopte_gebruiker, administratie_id=doel_administratie_id)
+        inkoop = _patch_inkoop_rlz(monkeypatch)
+        bron, doel = FakeDoorbelastingClient(), FakeDoorbelastingClient()
+        rapport = orkestratie.toets_klaargezette_doorbelasting(
+            administratie_id=administratie_id, document_id=klaargezet["document_id"], actor_id=gescoopte_gebruiker
+        )
+        assert rapport is not None and not rapport.geblokkeerd
+        assert not any(r.naam == "doorbelasting_scope" for r in rapport.resultaten)
+        resultaat = orkestratie.boek_document_met_doorbelasting(
+            administratie_id=administratie_id,
+            document_id=klaargezet["document_id"],
+            actor_id=gescoopte_gebruiker,
+            bron_client=bron,
+            doel_client_factory=lambda _aid: doel,
+        )
+        assert resultaat.boek.status == DocumentStatus.GEBOEKT
+        assert resultaat.doorbelasting == {str(klaargezet["mapping"].id): "geboekt"}
+        assert resultaat.doorbelasting_fout is None
+        assert len(inkoop.puts) == 1
+        assert len(bron.sales_invoices) == 1 and len(doel.purchase_invoices) == 1
+        assert _status(admin_engine, klaargezet["document_id"]) == "geboekt"
+
+    def test_scope_op_een_van_twee_doelen_blokkeert_met_alleen_die_naam(
+        self,
+        klaargezet: dict,
+        administratie_id: uuid.UUID,
+        doel_administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Twee doelen, scope op één: de melding noemt uitsluitend het doel zónder scope."""
+        from tests.doorbelasting.conftest import maak_administratie
+
+        geef_scope(beheerder_id=beheerder_id, gebruiker_id=gescoopte_gebruiker, administratie_id=doel_administratie_id)
+        tweede_doel = maak_administratie(admin_engine, "Molenhof Beheer B.V.")
+        tweede_mapping = maak_mapping(
+            administratie_id=administratie_id,
+            actor_id=beheerder_id,
+            naam="Molenhof Beheer B.V.",
+            doel_administratie_id=tweede_doel,
+            provisie_kosten_ledger_id=PROVISIE_KOSTEN_LEDGER_ID,
+        )
+        doorbelasting_service.sla_verdeling_op(
+            administratie_id=administratie_id,
+            run_id=klaargezet["run"].id,
+            actor_id=gescoopte_gebruiker,
+            regels=[
+                VerdeelRegelInvoerData(
+                    bron_regel_id=klaargezet["regel_ids"][0],
+                    mapping_id=klaargezet["mapping"].id,
+                    percentage=Decimal("50"),
+                    doel_kosten_ledger_id=DOEL_KOSTEN_LEDGER_ID,
+                ),
+                VerdeelRegelInvoerData(
+                    bron_regel_id=klaargezet["regel_ids"][0],
+                    mapping_id=tweede_mapping.id,
+                    percentage=Decimal("50"),
+                    doel_kosten_ledger_id=DOEL_KOSTEN_LEDGER_ID,
+                ),
+            ],
+        )
+        inkoop = _patch_inkoop_rlz(monkeypatch)
+        with pytest.raises(orkestratie.DoorbelastingChecksNietGroen) as exc:
+            orkestratie.boek_document_met_doorbelasting(
+                administratie_id=administratie_id, document_id=klaargezet["document_id"], actor_id=gescoopte_gebruiker
+            )
+        [scope_check] = [r for r in exc.value.rapport.resultaten if r.naam == "doorbelasting_scope"]
+        assert "Molenhof Beheer B.V." in scope_check.melding
+        assert klaargezet["mapping"].doelentiteit_naam not in scope_check.melding
+        assert inkoop.puts == []
 
     def test_doorbelasting_faalt_na_inkoopboeking_is_zichtbaar_nooit_stil(
         self,

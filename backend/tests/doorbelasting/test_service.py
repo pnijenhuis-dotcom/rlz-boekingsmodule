@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import Engine, select
 
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import service as documenten_service
 from app.documenten.models import DocumentSoort
 from app.documenten.storage import LokaleBestandsopslag
@@ -26,6 +27,7 @@ from app.doorbelasting.service import (
 from tests.doorbelasting.conftest import (
     DoorbelastingOpzet,
     FakeDoorbelastingClient,
+    geef_scope,
     maak_administratie,
     maak_geboekt_inkoopfactuur,
     maak_mapping,
@@ -57,9 +59,7 @@ class TestSeedKempenMappings:
         with scoped_session(administratie_id) as session:
             ic_rijen = list(
                 session.scalars(
-                    select(IntercompanyTegenpartij).where(
-                        IntercompanyTegenpartij.administratie_id == administratie_id
-                    )
+                    select(IntercompanyTegenpartij).where(IntercompanyTegenpartij.administratie_id == administratie_id)
                 )
             )
             assert {str(r.entity_guid) for r in ic_rijen} == {guid for _, guid in KEMPEN_SEED}
@@ -305,13 +305,9 @@ class TestStartOfHaalRun:
 
 
 class TestReviewData:
-    def test_previews_met_provisie_en_btw_uit_het_cache_tarief(
-        self, onboarded_opzet: DoorbelastingOpzet
-    ) -> None:
+    def test_previews_met_provisie_en_btw_uit_het_cache_tarief(self, onboarded_opzet: DoorbelastingOpzet) -> None:
         opzet = onboarded_opzet
-        data = doorbelasting_service.review_data(
-            administratie_id=opzet.administratie_id, run_id=opzet.run.id
-        )
+        data = doorbelasting_service.review_data(administratie_id=opzet.administratie_id, run_id=opzet.run.id)
         assert data.run.id == opzet.run.id
         assert len(data.regels) == 1
         assert len(data.previews) == 1
@@ -345,12 +341,46 @@ class TestWijzigMapping:
         with scoped_session(administratie_id) as session:
             ic_rijen = list(
                 session.scalars(
-                    select(IntercompanyTegenpartij).where(
-                        IntercompanyTegenpartij.administratie_id == administratie_id
-                    )
+                    select(IntercompanyTegenpartij).where(IntercompanyTegenpartij.administratie_id == administratie_id)
                 )
             )
             assert len(ic_rijen) == 8  # nooit verwijderd, alleen gedeactiveerd
             per_guid = {r.entity_guid: r for r in ic_rijen}
             assert per_guid[doelwit.doel_customer_guid].actief is False
             assert sum(1 for r in ic_rijen if r.actief) == 7
+
+
+class TestActorHeeftScope:
+    """RLS-les (bugfix 2026-08-25, kliktest Peter): de koppeltabel heeft zelf RLS — de toets
+    moet gescoped op de te toetsen administratie mét actor lezen, anders is élke niet-Beheerder
+    "zonder scope". Altijd met een echte niet-Beheerder MÉT scope testen (Beheerder = bypass)."""
+
+    def test_niet_beheerder_met_scope_op_bron_en_doel_is_groen(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        administratie_id: uuid.UUID,
+        doel_administratie_id: uuid.UUID,
+    ) -> None:
+        geef_scope(beheerder_id=beheerder_id, gebruiker_id=gescoopte_gebruiker, administratie_id=doel_administratie_id)
+        assert doorbelasting_service.actor_heeft_scope(actor_id=gescoopte_gebruiker, administratie_id=administratie_id)
+        assert doorbelasting_service.actor_heeft_scope(
+            actor_id=gescoopte_gebruiker, administratie_id=doel_administratie_id
+        )
+
+    def test_niet_beheerder_zonder_scope_op_doel_is_rood(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, doel_administratie_id: uuid.UUID
+    ) -> None:
+        # bron wél (fixture), doel níét
+        assert doorbelasting_service.actor_heeft_scope(actor_id=gescoopte_gebruiker, administratie_id=administratie_id)
+        assert not doorbelasting_service.actor_heeft_scope(
+            actor_id=gescoopte_gebruiker, administratie_id=doel_administratie_id
+        )
+
+    def test_beheerder_altijd_groen(self, beheerder_id: uuid.UUID, doel_administratie_id: uuid.UUID) -> None:
+        assert doorbelasting_service.actor_heeft_scope(actor_id=beheerder_id, administratie_id=doel_administratie_id)
+
+    def test_systeem_actor_groen_en_onbekende_actor_rood(self, doel_administratie_id: uuid.UUID) -> None:
+        doel = doel_administratie_id
+        assert doorbelasting_service.actor_heeft_scope(actor_id=SYSTEEM_ACTOR_ID, administratie_id=doel)
+        assert not doorbelasting_service.actor_heeft_scope(actor_id=uuid.uuid4(), administratie_id=doel)

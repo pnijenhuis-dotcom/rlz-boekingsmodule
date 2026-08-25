@@ -42,6 +42,7 @@ from tests.doorbelasting.conftest import (
     PROVISIE_KOSTEN_LEDGER_ID,
     DoorbelastingOpzet,
     FakeDoorbelastingClient,
+    geef_scope,
     haal_boekingen,
     haal_run,
     maak_administratie,
@@ -150,6 +151,33 @@ class TestHappyPathOnboarded:
             assert ic.entity_guid == vendor_id
             assert ic.naam == "Scope-test"
             assert ic.actief is True
+
+    def test_medewerker_met_scope_op_doel_boekt_de_losse_actie(
+        self,
+        onboarded_opzet: DoorbelastingOpzet,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+    ) -> None:
+        """Losse "Doorbelasten…" op een geboekt document — zelfde scope-poort als de boekflow
+        (bugfix 2026-08-25: echte niet-Beheerder MÉT doel-scope moet door)."""
+        opzet = onboarded_opzet
+        assert opzet.doel_administratie_id is not None
+        geef_scope(
+            beheerder_id=beheerder_id, gebruiker_id=gescoopte_gebruiker, administratie_id=opzet.doel_administratie_id
+        )
+        bron, doel = FakeDoorbelastingClient(), FakeDoorbelastingClient()
+        resultaat = _boek(opzet, gescoopte_gebruiker, bron=bron, doel=doel)
+        assert resultaat == {str(opzet.mapping.id): DoorbelastingBoekingStatus.GEBOEKT.value}
+        assert len(bron.sales_invoices) == 1 and len(doel.purchase_invoices) == 1
+
+    def test_medewerker_zonder_scope_op_doel_wordt_geweigerd_zonder_writes(
+        self, onboarded_opzet: DoorbelastingOpzet, gescoopte_gebruiker: uuid.UUID
+    ) -> None:
+        opzet = onboarded_opzet
+        bron, doel = FakeDoorbelastingClient(), FakeDoorbelastingClient()
+        with pytest.raises(DoorbelastingFout, match="Geen scope op doel-administratie van Veldhoven Recreatie B.V."):
+            _boek(opzet, gescoopte_gebruiker, bron=bron, doel=doel)
+        assert bron.sales_invoices == {} and doel.purchase_invoices == {}
 
     def test_tweede_keer_boeken_van_geboekte_run_weigert(
         self, onboarded_opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID
@@ -533,7 +561,11 @@ class TestStornoAangiftePoort:
     vóór de eerste RLZ-write, fail-closed, en de leesroute voor de UI-knop."""
 
     def _geboekte_boeking(
-        self, opzet: DoorbelastingOpzet, beheerder_id: uuid.UUID, *, bron: FakeDoorbelastingClient,
+        self,
+        opzet: DoorbelastingOpzet,
+        beheerder_id: uuid.UUID,
+        *,
+        bron: FakeDoorbelastingClient,
         doel: FakeDoorbelastingClient,
     ):
         _boek(opzet, beheerder_id, bron=bron, doel=doel)
@@ -549,9 +581,12 @@ class TestStornoAangiftePoort:
 
         with pytest.raises(StornoGeblokkeerdDoorAangifte) as excinfo:
             storno_doorbelasting_boeking(
-                administratie_id=opzet.administratie_id, boeking_id=boeking.id,
-                actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
-                bron_client=bron, doel_client=doel,
+                administratie_id=opzet.administratie_id,
+                boeking_id=boeking.id,
+                actor_id=beheerder_id,
+                reden="Verkeerde verdeelsleutel gebruikt",
+                bron_client=bron,
+                doel_client=doel,
             )
         # alles-of-niets: aan géén van beide kanten is iets teruggedraaid, boeking blijft staan
         assert bron.verkoop_correcties == []
@@ -570,9 +605,12 @@ class TestStornoAangiftePoort:
 
         with pytest.raises(StornoGeblokkeerdDoorAangifte) as excinfo:
             storno_doorbelasting_boeking(
-                administratie_id=opzet.administratie_id, boeking_id=boeking.id,
-                actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
-                bron_client=bron, doel_client=doel,
+                administratie_id=opzet.administratie_id,
+                boeking_id=boeking.id,
+                actor_id=beheerder_id,
+                reden="Verkeerde verdeelsleutel gebruikt",
+                bron_client=bron,
+                doel_client=doel,
             )
         assert bron.verkoop_correcties == []
         assert doel.spiegel_correcties == []
@@ -589,9 +627,12 @@ class TestStornoAangiftePoort:
         boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
         with pytest.raises(StornoGeblokkeerdDoorAangifte):
             storno_doorbelasting_boeking(
-                administratie_id=opzet.administratie_id, boeking_id=boeking.id,
-                actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
-                bron_client=bron, doel_client=doel,
+                administratie_id=opzet.administratie_id,
+                boeking_id=boeking.id,
+                actor_id=beheerder_id,
+                reden="Verkeerde verdeelsleutel gebruikt",
+                bron_client=bron,
+                doel_client=doel,
             )
         assert bron.verkoop_correcties == []
         assert doel.spiegel_correcties == []
@@ -604,9 +645,12 @@ class TestStornoAangiftePoort:
         doel = FakeDoorbelastingClient(aangiften=[_AANGIFTE_CONCEPT])
         boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
         gestorneerd = storno_doorbelasting_boeking(
-            administratie_id=opzet.administratie_id, boeking_id=boeking.id,
-            actor_id=beheerder_id, reden="Verkeerde verdeelsleutel gebruikt",
-            bron_client=bron, doel_client=doel,
+            administratie_id=opzet.administratie_id,
+            boeking_id=boeking.id,
+            actor_id=beheerder_id,
+            reden="Verkeerde verdeelsleutel gebruikt",
+            bron_client=bron,
+            doel_client=doel,
         )
         assert gestorneerd.status == DoorbelastingBoekingStatus.GESTORNEERD.value
 
@@ -619,8 +663,10 @@ class TestStornoAangiftePoort:
         boeking = self._geboekte_boeking(opzet, beheerder_id, bron=bron, doel=doel)
 
         per_boeking = storno_toets_voor_document(
-            administratie_id=opzet.administratie_id, document_id=opzet.document_id,
-            bron_client=bron, doel_client_factory=lambda _aid: doel,
+            administratie_id=opzet.administratie_id,
+            document_id=opzet.document_id,
+            bron_client=bron,
+            doel_client_factory=lambda _aid: doel,
         )
         assert set(per_boeking) == {boeking.id}
         toetsen = per_boeking[boeking.id]
@@ -634,8 +680,10 @@ class TestStornoAangiftePoort:
         opzet = onboarded_opzet
         bron = FakeDoorbelastingClient()
         per_boeking = storno_toets_voor_document(
-            administratie_id=opzet.administratie_id, document_id=opzet.document_id,
-            bron_client=bron, doel_client_factory=lambda _aid: FakeDoorbelastingClient(),
+            administratie_id=opzet.administratie_id,
+            document_id=opzet.document_id,
+            bron_client=bron,
+            doel_client_factory=lambda _aid: FakeDoorbelastingClient(),
         )
         assert per_boeking == {}
         assert bron.probes == 0
@@ -670,9 +718,7 @@ class TestSpiegelAlsnog:
         # de verdeling is bevroren (run geboekt) — de doel-GB wordt dus rechtstreeks gezet,
         # precies wat de spiegel-alsnog-UI via haar eigen pad zou doen
         with scoped_session(opzet.administratie_id, actor_id=beheerder_id) as session:
-            for regel in session.scalars(
-                select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == opzet.run.id)
-            ):
+            for regel in session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == opzet.run.id)):
                 regel.doel_kosten_ledger_id = DOEL_KOSTEN_LEDGER_ID
 
         doel = FakeDoorbelastingClient()
@@ -710,9 +756,7 @@ class TestSpiegelAlsnog:
             doel_administratie_id=doel_administratie,
         )
         with scoped_session(opzet.administratie_id, actor_id=beheerder_id) as session:
-            for regel in session.scalars(
-                select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == opzet.run.id)
-            ):
+            for regel in session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == opzet.run.id)):
                 regel.doel_kosten_ledger_id = DOEL_KOSTEN_LEDGER_ID
 
         doel = FakeDoorbelastingClient()

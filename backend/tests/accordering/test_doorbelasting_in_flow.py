@@ -23,6 +23,7 @@ from tests.doorbelasting.conftest import (  # noqa: F401 — fixtures via import
     FakeDoorbelastingClient,
     doel_administratie_id,
     doorbelasting_aan,
+    geef_scope,
     haal_run,
     instelling_compleet,
     maak_mapping,
@@ -210,3 +211,27 @@ def test_afwijzen_door_accordeur_geeft_verdeling_weer_vrij(
             )
         ],
     )
+
+
+def test_aanbieden_door_medewerker_met_scope_op_bron_en_doel_slaagt(
+    klaargezet_op_klaar_document: dict,
+    klaar_document: uuid.UUID,
+    administratie_id: uuid.UUID,
+    doel_administratie_id: uuid.UUID,  # noqa: F811
+    beheerder_id: uuid.UUID,
+    gescoopte_gebruiker: uuid.UUID,
+    accordeur_1: uuid.UUID,
+    boeken_aan: None,
+    admin_engine: Engine,
+) -> None:
+    """Regressie bugfix 2026-08-25 (RLS-context scope-toets): een echte niet-Beheerder MÉT scope
+    op bron én doel mag aanbieden — de A2-poort blokkeerde vóór de fix élke niet-Beheerder."""
+    zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+    geef_scope(beheerder_id=beheerder_id, gebruiker_id=gescoopte_gebruiker, administratie_id=doel_administratie_id)
+    service.bied_ter_accordering_aan(
+        administratie_id=administratie_id,
+        document_id=klaar_document,
+        actor_id=gescoopte_gebruiker,
+        actor_rol="boekhouding",
+    )
+    assert document_status(admin_engine, klaar_document) == "ter_accordering"

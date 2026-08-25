@@ -855,14 +855,22 @@ def open_spiegel_taken(*, administratie_id: uuid.UUID) -> list[DoorbelastingBoek
 def actor_heeft_scope(*, actor_id: uuid.UUID, administratie_id: uuid.UUID) -> bool:
     """Server-side scope-toets voor de DOEL-kant (mockup: "een medewerker kan alleen
     doorbelasten naar administraties waarop hij zelf scope heeft"); Beheerder = alles
-    (bestaand rolmodel). Bewust in de platform-scope (scoped_session(None)) — de
-    koppeltabel is geen administratie-gescoped gegeven."""
+    (bestaand rolmodel).
+
+    ⚠️ RLS-context (bugfix 2026-08-25, kliktest Peter — feedbackronde punt A): de
+    koppeltabel `platform.gebruiker_administratie` heeft zélf RLS (migratie 0002/0007:
+    `administratie_id = current_administratie_id() OR actor_is_beheerder() OR gebruiker_id =
+    current_actor_id()`). De oude vorm `scoped_session(None)` zónder actor maakte álle drie
+    de takken onwaar, waardoor elke niet-Beheerder "geen scope" leek — op de doel- én zelfs
+    op de bron-administratie; alleen de Beheerder (eigen bypass) merkte er niets van. De sessie
+    wordt daarom bewust gescoped OP de te toetsen administratie mét de actor, exact zoals
+    `app.auth.deps.vereis_administratie_scope` dat al deed (en documenteerde)."""
     # Systeem-actor (besluit 25-08, boeken ná het laatste klant-akkoord): geen mens, geen
     # scope-rij — de menselijke trigger (aanbieden ter accordering) is op dat moment al op
     # doel-scope getoetst (orkestratie.toets_klaargezette_doorbelasting), dus hier door.
     if actor_id == SYSTEEM_ACTOR_ID:
         return True
-    with scoped_session(None) as session:
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
         gebruiker = session.get(Gebruiker, actor_id)
         if gebruiker is not None and gebruiker.rol == GebruikerRol.BEHEERDER:
             return True

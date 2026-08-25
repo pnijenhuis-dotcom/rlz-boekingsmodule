@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, select, text
 
+from app.auth import service as auth_service
 from app.db.session import scoped_session
 from app.documenten import service as documenten_service
 from app.documenten.models import (
@@ -79,6 +80,14 @@ def doel_administratie_id(admin_engine: Engine) -> uuid.UUID:
     return maak_administratie(admin_engine, "Veldhoven Recreatie B.V.")
 
 
+def geef_scope(*, beheerder_id: uuid.UUID, gebruiker_id: uuid.UUID, administratie_id: uuid.UUID) -> None:  # noqa: F811
+    """Scope-rij via de servicelaag (audit-trigger krijgt een actor) — de RLS-les: doel-scope-
+    toetsen altijd óók met een echte niet-Beheerder MÉT scope testen (bugfix 2026-08-25)."""
+    auth_service.voeg_scope_toe(
+        actor_id=beheerder_id, doel_gebruiker_id=gebruiker_id, administratie_id=administratie_id
+    )
+
+
 # --- instellingen + btw-cache -------------------------------------------------------------
 
 
@@ -101,8 +110,14 @@ def instelling_compleet(administratie_id: uuid.UUID, beheerder_id: uuid.UUID) ->
                 administratie_id=administratie_id,
                 naam="NL, Hoog Tarief",
                 percentage=Decimal("0.2100"),
-                brondata={"Name": "NL, Hoog Tarief", "Percentage": 0.21,
-                          "IsRelayed": False, "IsExcempt": False, "IsMixed": False, "TaxKind": 1},
+                brondata={
+                    "Name": "NL, Hoog Tarief",
+                    "Percentage": 0.21,
+                    "IsRelayed": False,
+                    "IsExcempt": False,
+                    "IsMixed": False,
+                    "TaxKind": 1,
+                },
             )
         )
 
@@ -153,9 +168,7 @@ def maak_geboekt_inkoopfactuur(
             session.flush()
             regel_ids.append(regel.id)
         if document.status != DocumentStatus.KLAAR_OM_TE_BOEKEN:
-            _schrijf_overgang(
-                session, document=document, naar=DocumentStatus.KLAAR_OM_TE_BOEKEN, actor_id=actor_id
-            )
+            _schrijf_overgang(session, document=document, naar=DocumentStatus.KLAAR_OM_TE_BOEKEN, actor_id=actor_id)
         _schrijf_overgang(session, document=document, naar=DocumentStatus.GEBOEKT, actor_id=actor_id)
     return resultaat.document_id, regel_ids
 
@@ -232,9 +245,7 @@ def haal_run(administratie_id: uuid.UUID, run_id: uuid.UUID) -> DoorbelastingRun
 
 def haal_boekingen(administratie_id: uuid.UUID, run_id: uuid.UUID) -> list[DoorbelastingBoeking]:  # noqa: F811
     with scoped_session(administratie_id) as session:
-        rijen = list(
-            session.scalars(select(DoorbelastingBoeking).where(DoorbelastingBoeking.run_id == run_id))
-        )
+        rijen = list(session.scalars(select(DoorbelastingBoeking).where(DoorbelastingBoeking.run_id == run_id)))
         session.expunge_all()
         return rijen
 
@@ -395,11 +406,7 @@ class FakeDoorbelastingClient:
         if doc_id.endswith("/Uploads"):
             # Uploads-leesroute (STAP-0 2026-08-16: bruikbaar als aanwezigheids-check)
             entity_id = doc_id.removesuffix("/Uploads")
-            return {
-                "value": [
-                    u for u in self.uploads if u["pad"] == soort and u["entity_id"] == entity_id
-                ]
-            }
+            return {"value": [u for u in self.uploads if u["pad"] == soort and u["entity_id"] == entity_id]}
         bron = {"PurchaseInvoices": self.purchase_invoices, "SalesInvoices": self.sales_invoices}.get(soort)
         if bron is None:
             raise AssertionError(f"Onverwachte GET in de fake: {path}")
