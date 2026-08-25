@@ -109,6 +109,38 @@
   .badge.warn{background:var(--warn-bg);color:var(--warn)}
   .notitie{background:var(--accent-bg);border-radius:var(--radius-sm);padding:10px 13px;font-size:12px;line-height:1.55;color:var(--primary);margin-top:14px;max-width:980px}
 
+  /* ---- bestelling-popup (bm = bestelmodal) ---- */
+  .bm-overlay{position:fixed;inset:0;background:rgba(10,18,16,.5);backdrop-filter:blur(3px);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px}
+  .bm{width:100%;max-width:760px;max-height:92vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:hidden}
+  .bm-kop{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)}
+  .bm-kop .icoon{width:38px;height:38px;border-radius:10px;background:var(--accent-bg);display:grid;place-items:center;font-size:18px;flex-shrink:0}
+  .bm-kop h3{font-size:15px;letter-spacing:-.01em}
+  .bm-kop .sub{font-size:12px;color:var(--muted);margin-top:1px}
+  .bm-meta{display:flex;gap:10px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--panel-2);flex-wrap:wrap}
+  .bm-meta .blok{flex:1;min-width:140px}
+  .bm-meta .blok .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:700}
+  .bm-meta .blok .val{font-size:13px;font-weight:600;margin-top:2px}
+  .bm-lijst{overflow:auto;flex:1}
+  .bm-groep{padding:9px 20px 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:800;background:var(--panel);position:sticky;top:0}
+  .bm-rij{display:flex;align-items:center;gap:12px;padding:7px 20px;border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent)}
+  .bm-rij:hover{background:var(--panel-2)}
+  .bm-rij .nr{width:34px;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .bm-rij .naam{flex:1;font-size:13px}
+  .bm-rij.nul .naam{color:var(--faint)}
+  .bm-rij .gel{width:70px;text-align:right;font-size:12.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .bm-rij input[type=number]{width:84px;text-align:right;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font:inherit;font-weight:600;font-variant-numeric:tabular-nums}
+  .bm-rij input[type=number]:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--ring)}
+  .bm-rij.delta-min input{border-color:var(--warn);background:var(--warn-bg)}
+  .bm-rij.delta-plus input{border-color:var(--ok);background:var(--ok-bg)}
+  .bm-rij .was{font-size:10.5px;font-weight:700;width:58px;text-align:right}
+  .bm-rij.delta-min .was{color:var(--warn)} .bm-rij.delta-plus .was{color:var(--ok)}
+  .bm-bundel{display:flex;align-items:center;gap:12px;padding:11px 20px;background:var(--accent-bg);border-bottom:1px solid var(--border)}
+  .bm-bundel b{font-size:13px}
+  .bm-bundel .som{margin-left:auto;font-size:15px;font-weight:800;color:var(--primary)}
+  .bm-kolomkop{display:flex;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:700}
+  .bm-voet{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--border);background:var(--panel-2)}
+  .bm-voet .rev{font-size:11.5px;color:var(--faint);flex:1;line-height:1.5}
+
   .desknote{margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;font-size:12.5px;line-height:1.6;max-width:980px}
   .desknote h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:10px 0 6px}
   .desknote h2:first-child{margin-top:0}
@@ -128,7 +160,12 @@
   </div>
 </div>
 
-<div class="layout">
+<div style="display:flex;gap:8px;margin:0 0 14px">
+  <button class="btn klein" id="tab-personeel" onclick="toonTab('personeel')">👷 Personeel</button>
+  <button class="btn secundair klein" id="tab-transport" onclick="toonTab('transport')">🚚 Transport</button>
+</div>
+
+<div class="layout" id="view-personeel">
   <div class="planner">
     <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
       <input type="search" placeholder="Filter projecten… (nummer, plaats of opdrachtgever)" style="flex:0 0 340px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:12.5px;color:var(--text)">
@@ -237,9 +274,125 @@
   </div>
 </div>
 
+<!-- ================= TAB 2: TRANSPORT (uitbreiding Peter 24-08) ================= -->
+<div class="layout" id="view-transport" style="display:none">
+  <div class="planner">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
+      <input type="search" placeholder="Filter projecten…" style="flex:0 0 280px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:12.5px;color:var(--text)">
+      <span style="font-size:11.5px;color:var(--faint)">transporten deze week: 5 · 1 wachtrisico</span>
+      <button class="btn klein" style="margin-left:auto">+ Transport plannen</button>
+    </div>
+    <table>
+      <thead><tr><th>Project</th><th class="vandaag">ma 24-8 · wk 35</th><th>di 25-8</th><th>wo 26-8</th><th>do 27-8</th><th>vr 28-8</th></tr></thead>
+      <tbody>
+        <tr>
+          <th>144 Breda<span class="pl">Moeskops · ploeg ma–vr (3 man)</span></th>
+          <td class="cel vandaag"><div class="kaart groen"><span class="init">▲</span><b>Levering steiger 600 m²</b><span class="half">Universal Verhuur · 07:00 · bevestigd</span></div></td>
+          <td class="cel"><div class="kaart groen"><span class="init">▲</span><b>Levering lift (1×)</b><span class="half">Floor Liften · 09:00 · bevestigd</span></div></td>
+          <td class="cel"></td><td class="cel"></td>
+          <td class="cel"><div class="kaart geel"><span class="init">▼</span><b>Retour netten 400 m¹</b><span class="half">Universal Verhuur · gepland</span></div></td>
+        </tr>
+        <tr>
+          <th>25013 Deurne<span class="pl">Bots Bouwgroep · ploeg vanaf di (1 man)</span></th>
+          <td class="cel"></td>
+          <td class="cel"><div class="kaart conflict"><span class="init">▲</span><b>Levering steiger 400 m²</b><span class="half">Universal Verhuur · NIET bevestigd · ⚠ ploeg staat di gepland</span></div></td>
+          <td class="cel"></td><td class="cel"></td><td class="cel"></td>
+        </tr>
+        <tr class="scheider"><th colspan="6">Overige actieve projecten — geen transport deze week</th></tr>
+        <tr class="leeg"><th>25016 Groesbeek<span class="pl">Janssen-Groesbeek</span></th><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td></tr>
+        <tr class="leeg"><th style="color:var(--faint);font-weight:400">… overige projecten (filter)</th><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td><td class="cel"></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="zij">
+    <div class="paneel">
+      <h2>📦 Materiaal op locatie — 144 Breda</h2>
+      <div class="melding"><span>Steiger</span><span style="margin-left:auto"><b>1.000 m²</b><span class="meta" style="display:block;text-align:right">600 + 400 · Universal Verhuur</span></span></div>
+      <div class="melding"><span>Liften</span><span style="margin-left:auto"><b>2×</b><span class="meta" style="display:block;text-align:right">1× Universal Verhuur · 1× Floor Liften</span></span></div>
+      <div class="melding"><span>Netten</span><span style="margin-left:auto"><b>400 m¹</b><span class="meta" style="display:block;text-align:right">retour gepland vr 28-8</span></span></div>
+      <div class="melding" style="color:var(--faint)"><span>Stand = som leveringen − retouren over álle leveranciers · huurperiode loopt per item</span></div>
+    </div>
+    <div class="paneel">
+      <h2>🧾 Factuurcontrole materiaal <span class="badge warn" style="margin-left:auto">1</span></h2>
+      <div class="melding"><span>🟧</span><span><b>Universal Verhuur · fact. 2026-2201</b> — factureert 1.200 m² steiger op 144 Breda; geregistreerd geleverd: 1.000 m².<span class="meta">verschil 200 m² → controleren vóór boeken (zelfde patroon als de uren-factuurmatch)</span></span></div>
+      <div class="melding"><span>🟩</span><span><b>Floor Liften · fact. 88-1042</b> — 1 lift · huur wk 35–38 · klopt met levering di 25-8.</span></div>
+    </div>
+    <div class="paneel">
+      <h2>⚠ Wachtrisico's</h2>
+      <div class="melding"><span>🟥</span><span><b>25013 Deurne di 25-8</b> — ploeg gepland (1 man) maar de materiaallevering is niet bevestigd.<span class="meta">kruissignaal personeel × transport</span></span></div>
+    </div>
+    <div class="paneel">
+      <h2>📋 Bestellingen <span class="badge warn" style="margin-left:auto">1 concept</span></h2>
+      <div class="melding" style="cursor:pointer" onclick="document.getElementById('bestelling-detail').style.display='';window.scrollTo(0,document.body.scrollHeight/2)"><span>🟧</span><span><b>#262651 · 144 Breda → Universal Verhuur</b> — 36 regels · 331 m² · lever ma 24-8 07:00<span class="meta">r1 verstuurd 20-08 · wijziging r2 in concept · <u>klik om te openen</u></span></span></div>
+      <div class="melding" style="color:var(--faint)"><span>Nieuwe bestelling = regels kiezen uit de materiaalcatalogus van de leverancier (categorieën + verpakkingseenheden, geseed uit de bestaande bestellijst; m²-totaal automatisch) → PDF-bon per mail.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Bestelling-popup (klik op #262651 in het Bestellingen-paneel) — vorm conform het
+     UVA-verhuursysteem-voorbeeld (screenshot Peter 24-08): volledige productlijst met
+     steppers, bundel-m² bovenaan, besteld naast geleverd. -->
+<div id="bestelling-detail" class="bm-overlay" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="bm">
+    <div class="bm-kop">
+      <div class="icoon">🚚</div>
+      <div><h3>Bestelling #262651 <span class="badge warn" style="vertical-align:2px">concept r2</span></h3>
+        <div class="sub">144 Breda (Moeskops) → Universal Verhuur · r1 verstuurd 20-08 aan reijer@universalbv.nl</div></div>
+      <button class="icon-btn" style="margin-left:auto" onclick="document.getElementById('bestelling-detail').style.display='none'">✕</button>
+    </div>
+
+    <div class="bm-meta">
+      <div class="blok"><div class="lbl">Leverdatum</div><div class="val">ma 24-8 · wk 35 · 07:00</div></div>
+      <div class="blok"><div class="lbl">Leveradres</div><div class="val">projectadres 144 Breda</div></div>
+      <div class="blok"><div class="lbl">Status levering</div><div class="val" style="color:var(--muted)">volgt uit verhuursysteem</div></div>
+      <div class="blok" style="flex:0 0 auto;display:flex;align-items:center"><button class="btn secundair klein">📄 PDF-bon</button></div>
+    </div>
+
+    <div class="bm-kolomkop"><span style="width:34px"></span><span style="flex:1">Product</span><span style="width:84px;text-align:right">Besteld</span><span class="was"></span><span style="width:70px;text-align:right">Geleverd</span></div>
+
+    <div class="bm-lijst">
+      <div class="bm-bundel"><b>1 · Vierkante meter (bundel)</b><span class="sub" style="color:var(--muted);font-size:11.5px">onderliggende regels tellen op</span><span class="som">331 m²</span><button class="btn secundair klein">Bereken m²</button></div>
+
+      <div class="bm-groep">Tubelock</div>
+      <div class="bm-rij"><span class="nr">1.1</span><span class="naam">Steigerbuis tubelock 2 mtr</span><input type="number" value="50"><span class="was"></span><span class="gel">—</span></div>
+      <div class="bm-rij"><span class="nr">1.2</span><span class="naam">Steigerbuis tubelock 3 mtr</span><input type="number" value="150"><span class="was"></span><span class="gel">—</span></div>
+      <div class="bm-rij delta-min"><span class="nr">1.3</span><span class="naam">Steigerbuis tubelock 4 mtr</span><input type="number" value="90"><span class="was">was 150</span><span class="gel">—</span></div>
+      <div class="bm-rij"><span class="nr">1.4</span><span class="naam">Uitzetkorteling 6 pl.</span><input type="number" value="45"><span class="was"></span><span class="gel">—</span></div>
+      <div class="bm-rij"><span class="nr">1.5</span><span class="naam">Uitschuiver 6+3-planks tube-lock</span><input type="number" value="150"><span class="was"></span><span class="gel">—</span></div>
+
+      <div class="bm-groep">Verankeringen</div>
+      <div class="bm-rij nul"><span class="nr">1.6</span><span class="naam">Verankeringsbuis 1,2 mtr</span><input type="number" value="0"><span class="was"></span><span class="gel">—</span></div>
+      <div class="bm-rij"><span class="nr">1.7</span><span class="naam">Steigerogen met plug (lang)</span><input type="number" value="10"><span class="was"></span><span class="gel">—</span></div>
+
+      <div class="bm-groep">Koppelingen</div>
+      <div class="bm-rij"><span class="nr">1.8</span><span class="naam">Kruiskoppeling</span><input type="number" value="1000"><span class="was"></span><span class="gel">—</span></div>
+      <div class="bm-rij"><span class="nr">1.9</span><span class="naam">Voetplaat tube-lock</span><input type="number" value="90"><span class="was"></span><span class="gel">—</span></div>
+
+      <div class="bm-groep">Steigerdelen</div>
+      <div class="bm-rij"><span class="nr">1.10</span><span class="naam">Steigerdelen gekramd 5 mtr</span><input type="number" value="200"><span class="was"></span><span class="gel">—</span></div>
+
+      <div class="bm-groep">Diversen</div>
+      <div class="bm-rij delta-plus"><span class="nr">1.11</span><span class="naam">Metselboy</span><input type="number" value="50"><span class="was">was 25</span><span class="gel">—</span></div>
+      <div class="bm-rij nul"><span class="nr">1.12</span><span class="naam">Steigergaas (rol)</span><input type="number" value="0"><span class="was"></span><span class="gel">—</span></div>
+
+      <div class="bm-bundel"><b>2 · Trappentoren (bundel)</b><span class="sub" style="color:var(--muted);font-size:11.5px">RS-onderdelen · nog niets besteld</span><span class="som" style="color:var(--faint)">—</span></div>
+    </div>
+
+    <div class="bm-voet">
+      <div class="rev">0 = niet bestellen (grijs) · gewijzigde regels kleuren mét "was …" · <b>Geleverd</b> vult straks automatisch uit de koppeling met het verhuursysteem · elke revisie + verzending in de audit</div>
+      <button class="btn secundair" onclick="document.getElementById('bestelling-detail').style.display='none'">Sluiten</button>
+      <button class="btn">Update-mail versturen (r2)…</button>
+    </div>
+  </div>
+</div>
+
 <div class="notitie">ℹ️ <b>Zo grijpt de planning op de weekstaten in:</b> uren op een gepland project/dag = groen · uren búíten de planning = oranje "buiten planning" bij de keuring (geen blokkade — invallen en omplannen blijft mogelijk) · twee projecten op één dag zónder planning-dekking = <b>interne melding + teller per ZZP'er</b>, alleen zichtbaar voor kantoor. Meerdere mensen op één project/dag = meerdere kaartjes in één cel; halve dagen dragen een ½-label. Slepen naar een project maakt de projectkoppeling automatisch aan.</div>
 
 <div class="desknote">
+  <h2>TRANSPORT-TAB (uitbreiding Peter 24-08 — ontwerp, ter beoordeling)</h2>
+  Tweede tab naast Personeel: transport plannen per project per dag — <b>levering (▲) of retour (▼)</b>, materiaalsoort + aantal + eenheid (m², stuks, m¹), leverancier (eigen verhuurbedrijven zoals Universal Verhuur / Floor Liften), status gepland → bevestigd → geleverd. Doel: nooit een ploeg die op materiaal wacht — het <b>wachtrisico-kruissignaal</b> (rood) vuurt als er personeel gepland staat op een dag zonder bevestigde levering van het benodigde materiaal. Zijbalk: <b>materiaalstand per project</b> = som van leveringen − retouren over álle leveranciers (voorbeeld: 600 m² Universal + 400 m² Universal + 1 lift Universal + 1 lift Floor = 1.000 m² en 2 liften op locatie), met huurperiode per item. <b>Factuurcontrole</b>: inkoopfacturen van de verhuurbedrijven worden per project gematcht tegen de geregistreerde leveringen/huurperiodes (zelfde vlag-patroon als de uren-factuurmatch: verschil = oranje, boeken mét expliciete bevestiging); en de geleverde m² zijn de toetsbron naast de gebouwde m² uit de weekstaten van de ZZP'ers (meer gebouwd dan geleverd = signaal). Weeknummers overal in de koppen (feedback 24-08).<br><br>
+  <b>Bestelbon-digitalisering (voorbeeld-xlsx Peter 24-08, bestellijst #262651 Universal Nederland):</b> materiaalcatalogus per leverancier (categorieën als tubelock/ladders/verankeringen/koppelingen/steigerdelen/trappentoren, productnaam + verpakkingseenheid; seedbaar uit de bestaande bestellijst incl. m²-berekening) → bestelling per project samenstellen (aantallen, gewenste leverdatum + tijd, leveradres = project) → als nette PDF-bon per mail naar de leverancier (bestaand SMTP-kanaal; mens verstuurt expliciet). Elke wijziging ná versturen = een REVISIE (r2, r3 …) met een update-mail waarin alleen de gewijzigde regels gemarkeerd staan. Leveringsstatus (gepland/geleverd) komt in een latere fase uit de koppeling met Universal Verhuurs eigen verhuursysteem — tot die tijd bevestigt kantoor/uitvoerder handmatig. Besluit Peter 24-08: huurfactuur-match volgt het model aantal × huurperiode per item.
   <h2>v3 — grid-model omgedraaid (besluit Peter 23-08, vervángt "alleen projecten mét planning")</h2>
   Het grid toont <b>álle actieve projecten als rijen</b>, in twee blokken: projecten mét planning deze week bovenaan (volle rijhoogte, tellers), daaronder compact de overige actieve projecten onder de scheidingskop "overige actieve projecten" — direct beplanbaar zonder eerst te zoeken. Filterveld bovenaan versmalt de lijst live (nummer/plaats/opdrachtgever); de aparte zoekbare "+ project toevoegen"-rij VERVALT. Project-einddatum die nadert = oranje signaal in de rijkop. Reden: de eerdere "alleen mét planning"-variant gaf een leeg grid waarin je niet kon starten met plannen.
   <h2>Wat je ziet (ontwerpronde v2 — GEBOUWD 2026-08-22, kantoor-route /planning + veld-app-tab)</h2>
@@ -254,6 +407,12 @@
 </div>
 
 <script>
+  function toonTab(t){
+    document.getElementById('view-personeel').style.display = t==='personeel' ? '' : 'none';
+    document.getElementById('view-transport').style.display = t==='transport' ? '' : 'none';
+    document.getElementById('tab-personeel').className = 'btn klein' + (t==='personeel' ? '' : ' secundair');
+    document.getElementById('tab-transport').className = 'btn klein' + (t==='transport' ? '' : ' secundair');
+  }
   let sleep = null;
   document.addEventListener('dragstart', e => {
     const k = e.target.closest('.kaart'); if (!k) return;
