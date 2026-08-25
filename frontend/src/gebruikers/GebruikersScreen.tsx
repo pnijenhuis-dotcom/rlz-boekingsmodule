@@ -9,10 +9,14 @@ import {
   blokkeerGebruiker,
   haalApparatenVan,
   haalGebruikersOp,
+  formatVerloop,
   heractiveerGebruiker,
+  herstelLinkUrl,
+  kanHerstelLinkKrijgen,
   mailUitnodigingOpnieuw,
   isVeldrol,
   rolLabel,
+  stuurHerstelLink,
   trekApparaatIn,
   wijzigRol,
   type ApparaatDto,
@@ -28,11 +32,6 @@ import { VeldwerkersPanel } from './VeldwerkersPanel'
  * openstaande uitnodigingen met "opnieuw mailen", accordeurs-blok met kill-switch en staande
  * goedkeuringen. Zelfbescherming (eigen rol/scope alleen door een ándere Beheerder) wordt
  * server-side afgedwongen; de UI biedt de onmogelijke actie niet aan. */
-
-function formatVerloop(iso: string): string {
-  const uren = Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 3_600_000))
-  return uren <= 1 ? 'verloopt binnen een uur' : `verloopt over ${uren} uur`
-}
 
 interface ApparaatGroep {
   naam: string
@@ -76,6 +75,7 @@ export function GebruikersScreen() {
   const [actieBezig, setActieBezig] = useState(false)
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [opnieuwBezig, setOpnieuwBezig] = useState<string | null>(null)
+  const [herstelVoor, setHerstelVoor] = useState<GebruikerOverzichtDto | null>(null)
 
   const laad = useCallback(() => {
     setFout(null)
@@ -170,6 +170,54 @@ export function GebruikersScreen() {
     } finally {
       setOpnieuwBezig(null)
     }
+  }
+
+  /** "Herstel-link sturen" (feedbackronde 25-08 punt 7): actieve accordeur/veldwerker die zijn
+   * wachtwoord kwijt is (bv. ná een kill-switch) krijgt een eenmalige 72-uurs link — nieuw
+   * wachtwoord + apparaat registreren; passkeys/akkoorden blijven, oudere links vervallen.
+   * Fail-zichtbaar: mislukt de mail, dan staat de link hier om handmatig te delen. */
+  async function bevestigHerstelLink() {
+    if (!herstelVoor) return
+    setActieBezig(true)
+    setActieFout(null)
+    setMailFout(null)
+    try {
+      const resultaat = await stuurHerstelLink(herstelVoor.id)
+      if (resultaat.mail_verzonden) {
+        meld(`Herstel-link gemaild aan ${herstelVoor.e_mail} — eerder verstuurde links zijn vervallen.`)
+      } else {
+        setMailFout(
+          `Herstel-link aangemaakt voor ${herstelVoor.e_mail}, maar het mailen mislukte: ${resultaat.mail_fout ?? 'onbekende mailfout'}. Deel de link handmatig (eenmalig, 72 uur geldig): ${herstelLinkUrl(resultaat.token)}`,
+        )
+      }
+      setHerstelVoor(null)
+      laad()
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'Herstel-link sturen mislukt.')
+    } finally {
+      setActieBezig(false)
+    }
+  }
+
+  /** Knop in de actiekolom van accordeurs/veldwerkers — alleen bij een account dat een
+   * wachtwoord heeft gehad (server-side dezelfde poort; geblokkeerd = eerst heractiveren). */
+  function herstelKnop(g: GebruikerOverzichtDto) {
+    if (!kanHerstelLinkKrijgen(g)) return null
+    return (
+      <Button variant="secundair" maat="klein" onClick={() => setHerstelVoor(g)}>
+        Herstel-link
+      </Button>
+    )
+  }
+
+  function herstelBadge(g: GebruikerOverzichtDto) {
+    if (!g.open_herstel_verloopt_op) return null
+    return (
+      <>
+        {' '}
+        <Badge variant="stil">herstel-link — {formatVerloop(g.open_herstel_verloopt_op)}</Badge>
+      </>
+    )
   }
 
   async function bevestigRolWijziging() {
@@ -442,6 +490,8 @@ export function GebruikersScreen() {
                 {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
               </Button>
             )}{' '}
+            {herstelKnop(g)}
+            {herstelBadge(g)}{' '}
             {blokkadeKnop(g)}
           </>
         )}
@@ -490,6 +540,7 @@ export function GebruikersScreen() {
                             {blokkadeDetail(g)}
                           </>
                         )}
+                        {herstelBadge(g)}
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
                       </td>
                       <td>
@@ -534,6 +585,7 @@ export function GebruikersScreen() {
                             {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
                           </Button>
                         )}{' '}
+                        {herstelKnop(g)}{' '}
                         {blokkadeKnop(g)}
                       </td>
                     </tr>
@@ -608,10 +660,24 @@ export function GebruikersScreen() {
         />
       )}
 
+      {herstelVoor && (
+        <BevestigDialog
+          titel="Herstel-link sturen"
+          bericht={`${herstelVoor.naam} (${herstelVoor.e_mail}) ontvangt een eenmalige link (72 uur geldig) om een nieuw wachtwoord in te stellen en daarna een apparaat te registreren. Bestaande passkeys en akkoorden blijven staan; eerder verstuurde links vervallen en lopende sessies worden beëindigd. De actie wordt geauditeerd.`}
+          bezig={actieBezig}
+          fout={actieFout}
+          onBevestigen={() => void bevestigHerstelLink()}
+          onAnnuleren={() => {
+            setHerstelVoor(null)
+            setActieFout(null)
+          }}
+        />
+      )}
+
       {killSwitchVoor && (
         <BevestigDialog
           titel="Kill-switch — apparaat blokkeren"
-          bericht={`"${killSwitchVoor.groep.naam}" van ${killSwitchVoor.gebruiker.naam} wordt per direct geblokkeerd: de passkey en alle sessies van dit apparaat vervallen. De accordeur kan met wachtwoord + nieuwe registratie weer verder — niemand raakt buitengesloten.`}
+          bericht={`"${killSwitchVoor.groep.naam}" van ${killSwitchVoor.gebruiker.naam} wordt per direct geblokkeerd: de passkey en alle sessies van dit apparaat vervallen. De accordeur kan met wachtwoord + nieuwe registratie weer verder — niemand raakt buitengesloten (wachtwoord kwijt? "Herstel-link").`}
           bezig={actieBezig}
           fout={actieFout}
           onBevestigen={() => void bevestigKillSwitch()}

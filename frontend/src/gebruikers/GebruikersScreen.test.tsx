@@ -32,7 +32,10 @@ function gebruiker(overrides: Record<string, unknown>) {
     heeft_totp: true,
     aantal_passkeys: 0,
     open_uitnodiging_verloopt_op: null,
+    open_herstel_verloopt_op: null,
     staande_goedkeuringen: 0,
+    geblokkeerd_op: null,
+    geblokkeerd_door_naam: null,
     ...overrides,
   }
 }
@@ -82,6 +85,19 @@ function installMock(opties: {
                 ingetrokken_op: null,
               },
             ],
+          }),
+        )
+      }
+      if (url.endsWith('/herstel-link') && init?.method === 'POST') {
+        opties.postAanroepen?.push(url)
+        return Promise.resolve(
+          jsonResponse({
+            uitnodiging_id: 'h-1',
+            gebruiker_id: ACCORDEUR_ID,
+            token: 'herstel-token',
+            verloopt_op: new Date(Date.now() + 72 * 3600e3).toISOString(),
+            mail_verzonden: opties.mailVerzonden ?? true,
+            mail_fout: (opties.mailVerzonden ?? true) ? null : 'SMTP niet geconfigureerd',
           }),
         )
       }
@@ -152,6 +168,59 @@ describe('GebruikersScreen', () => {
     const gebruikerEvent = userEvent.setup()
     await gebruikerEvent.click(screen.getByRole('button', { name: 'Opnieuw mailen' }))
     await waitFor(() => expect(posts).toContain(`/auth/gebruikers/${ANDER_ID}/uitnodiging-opnieuw`))
+  })
+
+  it('een actieve accordeur krijgt "Herstel-link" — bevestigen POST naar het herstel-endpoint (punt 7, 25-08)', async () => {
+    const posts: string[] = []
+    installMock({
+      gebruikers: [
+        gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', e_mail: 'r.degroot@molenhof.nl', rol: 'klant_accordeur' }),
+        gebruiker({ naam: 'Kantoor K.', rol: 'boekhouding' }),
+      ],
+      postAanroepen: posts,
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    // Precies één knop: de accordeur wél, de kantoorgebruiker (wachtwoord + TOTP) níét.
+    expect(screen.getAllByRole('button', { name: 'Herstel-link' })).toHaveLength(1)
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Herstel-link' }))
+    expect(screen.getByText(/Bestaande passkeys en akkoorden blijven staan/)).toBeInTheDocument()
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(posts).toContain(`/auth/gebruikers/${ACCORDEUR_ID}/herstel-link`))
+  })
+
+  it('mislukt het mailen van de herstel-link, dan staat de link zichtbaar om handmatig te delen', async () => {
+    installMock({
+      gebruikers: [gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur' })],
+      mailVerzonden: false,
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Herstel-link' })).toBeInTheDocument())
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Herstel-link' }))
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(screen.getByText(/mailen mislukte/)).toBeInTheDocument())
+    expect(screen.getByText(/activeren\?token=herstel-token&herstel=1/)).toBeInTheDocument()
+  })
+
+  it('een geblokkeerde of nog niet geactiveerde externe gebruiker krijgt géén herstel-knop', async () => {
+    installMock({
+      gebruikers: [
+        gebruiker({ id: ACCORDEUR_ID, rol: 'klant_accordeur', status: 'geblokkeerd', geblokkeerd_op: '2026-08-25T09:00:00Z' }),
+        gebruiker({
+          rol: 'klant_accordeur',
+          status: 'uitgenodigd',
+          open_uitnodiging_verloopt_op: new Date(Date.now() + 68 * 3600e3).toISOString(),
+        }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Opnieuw mailen' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Herstel-link' })).not.toBeInTheDocument()
   })
 
   it('een mailfout bij opnieuw mailen is zichtbaar (fail-zichtbaar, nooit stil)', async () => {

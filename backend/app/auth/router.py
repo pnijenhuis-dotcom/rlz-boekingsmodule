@@ -234,6 +234,7 @@ def gebruikers_lijst(actor: CurrentGebruiker = Depends(require_beheerder)) -> sc
                 heeft_totp=item.heeft_totp,
                 aantal_passkeys=item.aantal_passkeys,
                 open_uitnodiging_verloopt_op=item.open_uitnodiging_verloopt_op,
+                open_herstel_verloopt_op=item.open_herstel_verloopt_op,
                 staande_goedkeuringen=staande.get(item.id, 0),
                 geblokkeerd_op=item.geblokkeerd_op,
                 geblokkeerd_door_naam=item.geblokkeerd_door_naam,
@@ -271,6 +272,42 @@ def uitnodiging_opnieuw_mailen(
         gebruiker_id=vernieuwd.resultaat.gebruiker_id,
         token=vernieuwd.resultaat.token,
         verloopt_op=vernieuwd.resultaat.verloopt_op,
+        mail_verzonden=mail_verzonden,
+        mail_fout=mail_fout,
+    )
+
+
+@router.post("/gebruikers/{gebruiker_id}/herstel-link", response_model=schemas.UitnodigingAanmakenResponse)
+def herstel_link_sturen(
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.UitnodigingAanmakenResponse:
+    """"Herstel-link sturen" op Gebruikers & toegang (feedbackronde 25-08 punt 7): eenmalige
+    72-uurs link voor een actieve accordeur/veldwerker die zijn wachtwoord kwijt is (bv. ná een
+    kill-switch). Zelfde responsvorm + fail-zichtbare mailafhandeling als de uitnodiging — de
+    link zit in de respons als handmatige terugval. Beheerder-only; 409 bij een account dat
+    hier niet voor in aanmerking komt (kantoorrol, geblokkeerd, nog niet geactiveerd)."""
+    try:
+        herstel = service.maak_herstel_link(actor_id=actor.id, gebruiker_id=gebruiker_id)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    mail_verzonden = False
+    mail_fout: str | None = None
+    try:
+        uitnodigingsmail.verstuur_herstelmail(
+            naam=herstel.naam,
+            e_mail=herstel.e_mail,
+            token=herstel.resultaat.token,
+            verloopt_op=herstel.resultaat.verloopt_op,
+        )
+        mail_verzonden = True
+    except berichten_mail.MailFout as exc:
+        mail_fout = str(exc)
+    return schemas.UitnodigingAanmakenResponse(
+        uitnodiging_id=herstel.resultaat.uitnodiging_id,
+        gebruiker_id=herstel.resultaat.gebruiker_id,
+        token=herstel.resultaat.token,
+        verloopt_op=herstel.resultaat.verloopt_op,
         mail_verzonden=mail_verzonden,
         mail_fout=mail_fout,
     )

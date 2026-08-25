@@ -30,3 +30,28 @@ def verstuur_uitnodigingsmail(*, naam: str, e_mail: str, token: str, verloopt_op
         f"Administratiekantoor Nijenhuis"
     )
     mail.verzend_mail(naar=e_mail, onderwerp="Je account bij Administratiekantoor Nijenhuis", tekst=tekst)
+
+
+def herstellink(token: str) -> str:
+    """Zelfde /activeren-route als de uitnodiging (het token bepaalt server-side de soort);
+    `herstel=1` is uitsluitend presentatie — het scherm zegt dan 'Nieuw wachtwoord instellen'
+    i.p.v. 'Account activeren'."""
+    return f"{activeerlink(token)}&herstel=1"
+
+
+def verstuur_herstelmail(*, naam: str, e_mail: str, token: str, verloopt_op: datetime) -> None:
+    """Wachtwoord-herstel voor een actieve externe gebruiker (feedbackronde 25-08 punt 7).
+    Raise-t mail.MailFout bij niet-geconfigureerd/mislukt — de aanroeper maakt dat zichtbaar."""
+    link = herstellink(token)
+    tekst = (
+        f"Beste {naam},\n\n"
+        f"Het kantoor heeft een herstel-link voor je aangemaakt zodat je een nieuw wachtwoord kunt "
+        f"instellen voor je account bij Administratiekantoor Nijenhuis.\n\n"
+        f"Stel je nieuwe wachtwoord in via deze link (eenmalig, geldig tot "
+        f"{verloopt_op.astimezone().strftime('%d-%m-%Y %H:%M')}):\n{link}\n\n"
+        f"Daarna registreer je je apparaat opnieuw. Je bestaande instellingen blijven bewaard.\n\n"
+        f"Heb je hier niet om gevraagd? Neem dan contact op met het kantoor — de link vervalt "
+        f"vanzelf.\n\n"
+        f"Administratiekantoor Nijenhuis"
+    )
+    mail.verzend_mail(naar=e_mail, onderwerp="Nieuw wachtwoord instellen — Administratiekantoor Nijenhuis", tekst=tekst)

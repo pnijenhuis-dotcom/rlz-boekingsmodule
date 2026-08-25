@@ -56,3 +56,29 @@ describe('ActivateScreen — TOTP-enrollment', () => {
     expect(screen.getByRole('link', { name: /otpauth-link openen/ })).toHaveAttribute('href', OTPAUTH_URI)
   })
 })
+
+describe('ActivateScreen — herstel-link (feedbackronde 25-08 punt 7)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('presenteert een herstel-link als "Nieuw wachtwoord instellen", zelfde formulier', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/auth/token/vernieuwen') return Promise.resolve(new Response(null, { status: 401 }))
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+    render(
+      <MemoryRouter initialEntries={['/activeren?token=abc&herstel=1']}>
+        <AuthProvider>
+          <ActivateScreen />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('heading', { name: 'Nieuw wachtwoord instellen' })).toBeInTheDocument()
+    expect(screen.getByText(/bestaande instellingen blijven bewaard/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Wachtwoord instellen' })).toBeInTheDocument()
+  })
+})

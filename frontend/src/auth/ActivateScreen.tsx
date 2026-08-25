@@ -21,6 +21,9 @@ export function ActivateScreen() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
+  // Herstel-link (feedbackronde 25-08 punt 7): zelfde token-mechaniek, alleen presentatie
+  // anders — de server bepaalt de soort uit het token, niet uit deze parameter.
+  const isHerstel = searchParams.get('herstel') === '1'
 
   const [stap, setStap] = useState<'wachtwoord' | 'totp'>('wachtwoord')
   const [wachtwoord, setWachtwoord] = useState('')
@@ -35,8 +38,11 @@ export function ActivateScreen() {
     return (
       <div className="auth-shell">
         <div className="panel auth-card">
-          <h1>Activatielink ongeldig</h1>
-          <p className="hint">Er ontbreekt een token in de URL. Vraag een nieuwe uitnodiging aan.</p>
+          <h1>{isHerstel ? 'Herstel-link ongeldig' : 'Activatielink ongeldig'}</h1>
+          <p className="hint">
+            Er ontbreekt een token in de URL. Vraag een nieuwe {isHerstel ? 'herstel-link' : 'uitnodiging'} aan bij het
+            kantoor.
+          </p>
         </div>
       </div>
     )
@@ -97,8 +103,14 @@ export function ActivateScreen() {
   return (
     <div className="auth-shell">
       <div className="panel auth-card">
-        <h1>Account activeren</h1>
+        <h1>{isHerstel ? 'Nieuw wachtwoord instellen' : 'Account activeren'}</h1>
         <div className="sub">RLZ Boekingsmodule</div>
+        {isHerstel && stap === 'wachtwoord' && (
+          <p className="hint" style={{ marginTop: 0 }}>
+            Het kantoor heeft een herstel-link voor je aangemaakt. Stel een nieuw wachtwoord in; daarna registreer je
+            dit apparaat. Je bestaande instellingen blijven bewaard.
+          </p>
+        )}
         {fout && <div className="fout">{fout}</div>}
         <FormFouten fouten={veldFouten} />
 

@@ -202,6 +202,9 @@ class GebruikerOverzichtResponse(BaseModel):
     heeft_totp: bool
     aantal_passkeys: int
     open_uitnodiging_verloopt_op: datetime | None
+    # Open wachtwoord-herstel-link (migratie 0068, feedbackronde 25-08 punt 7) — alleen bij
+    # externe app-gebruikers; los van de uitnodiging zodat het scherm ze kan onderscheiden.
+    open_herstel_verloopt_op: datetime | None = None
     # Alleen zinvol gevuld voor klant-accordeurs (0 voor kantoorrollen).
     staande_goedkeuringen: int
     # Alleen gevuld bij status 'geblokkeerd' (migratie 0052).

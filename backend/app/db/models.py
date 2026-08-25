@@ -284,13 +284,28 @@ class DetacheerderKoppeling(Base):
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class UitnodigingSoort(enum.StrEnum):
+    """`uitnodiging` = activatielink voor een nieuw account (wachtwoord + tweede factor
+    inrichten); `wachtwoord_herstel` (migratie 0068, feedbackronde 25-08 punt 7) = eenmalige
+    herstel-link voor een al geactiveerde EXTERNE gebruiker (accordeur/veldwerker) die zijn
+    wachtwoord kwijt is: nieuw wachtwoord zetten + direct door naar apparaat-registratie, status
+    en bestaande passkeys blijven staan. Tekstkolom + CHECK, geen PG-enum (zelfde
+    soort-patroon als elders in het platform)."""
+
+    UITNODIGING = "uitnodiging"
+    WACHTWOORD_HERSTEL = "wachtwoord_herstel"
+
+
 class Uitnodiging(Base):
-    """Eenmalige uitnodigingslink (72u geldig). Alleen `token_hash` wordt opgeslagen — het
-    plaintext-token gaat naar de gebruiker (e-mail, buiten scope van deze migratie) en is daarna
-    nergens anders herleidbaar dan via de hash."""
+    """Eenmalige uitnodigings- óf herstel-link (72u geldig, `soort`). Alleen `token_hash` wordt
+    opgeslagen — het plaintext-token gaat naar de gebruiker (e-mail) en is daarna nergens anders
+    herleidbaar dan via de hash."""
 
     __tablename__ = "uitnodiging"
-    __table_args__ = (Index("ix_uitnodiging_gebruiker_id", "gebruiker_id"),)
+    __table_args__ = (
+        Index("ix_uitnodiging_gebruiker_id", "gebruiker_id"),
+        CheckConstraint("soort IN ('uitnodiging', 'wachtwoord_herstel')", name="ck_uitnodiging_soort"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -299,6 +314,9 @@ class Uitnodiging(Base):
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     verloopt_op: Mapped[datetime]
     gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
+    soort: Mapped[str] = mapped_column(
+        Text, default=UitnodigingSoort.UITNODIGING.value, server_default=UitnodigingSoort.UITNODIGING.value
+    )
 
 
 class RefreshToken(Base):

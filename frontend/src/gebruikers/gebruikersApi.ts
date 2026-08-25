@@ -13,6 +13,8 @@ export interface GebruikerOverzichtDto {
   heeft_totp: boolean
   aantal_passkeys: number
   open_uitnodiging_verloopt_op: string | null
+  /** Open wachtwoord-herstel-link (feedbackronde 25-08 punt 7) — alleen externe app-gebruikers. */
+  open_herstel_verloopt_op: string | null
   staande_goedkeuringen: number
   geblokkeerd_op: string | null
   geblokkeerd_door_naam: string | null
@@ -60,6 +62,27 @@ export function rolLabel(rol: string): string {
   return ROL_LABELS[rol] ?? rol
 }
 
+/** Externe app-rollen (accordeur + veldrollen): passkey-cadans, herstel-link-doelgroep. */
+export function isExterneAppRol(rol: string): boolean {
+  return rol === 'klant_accordeur' || isVeldrol(rol)
+}
+
+/** Komt deze gebruiker in aanmerking voor "Herstel-link sturen" (server-side dezelfde poort:
+ * externe rol + wachtwoord ooit gezet; geblokkeerd = eerst heractiveren)? */
+export function kanHerstelLinkKrijgen(g: { rol: string; status: string }): boolean {
+  return isExterneAppRol(g.rol) && (g.status === 'actief' || g.status === 'wacht_op_passkey')
+}
+
+export function formatVerloop(iso: string): string {
+  const uren = Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 3_600_000))
+  return uren <= 1 ? 'verloopt binnen een uur' : `verloopt over ${uren} uur`
+}
+
+/** De link zoals de mail 'm draagt — terugval om handmatig te delen als de mail mislukt. */
+export function herstelLinkUrl(token: string): string {
+  return `${window.location.origin}/activeren?token=${encodeURIComponent(token)}&herstel=1`
+}
+
 export function haalGebruikersOp(): Promise<GebruikersLijstDto> {
   return apiJson<GebruikersLijstDto>('/auth/gebruikers')
 }
@@ -75,6 +98,12 @@ export function nodigUit(payload: {
 
 export function mailUitnodigingOpnieuw(gebruikerId: string): Promise<UitnodigingResultaatDto> {
   return apiPostJson<UitnodigingResultaatDto>(`/auth/gebruikers/${gebruikerId}/uitnodiging-opnieuw`, {})
+}
+
+/** "Herstel-link sturen" (feedbackronde 25-08 punt 7): eenmalige 72-uurs link voor een actieve
+ * accordeur/veldwerker die zijn wachtwoord kwijt is — zelfde responsvorm als de uitnodiging. */
+export function stuurHerstelLink(gebruikerId: string): Promise<UitnodigingResultaatDto> {
+  return apiPostJson<UitnodigingResultaatDto>(`/auth/gebruikers/${gebruikerId}/herstel-link`, {})
 }
 
 export async function wijzigRol(gebruikerId: string, rol: string): Promise<void> {

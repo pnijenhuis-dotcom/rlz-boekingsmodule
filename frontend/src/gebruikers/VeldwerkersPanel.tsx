@@ -28,7 +28,8 @@ import {
   Switch,
   useToastOptioneel,
 } from '../ui/basis'
-import { rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
+import {
+  formatVerloop, rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
 
 /* Veldwerkers-paneel (Gebruikers & toegang, fase 3 uren & meerwerk — mockup meerwerk-kantoor
  * "Gebruikers & toegang" + bouwopdracht 21-08): kantoor beheert hier de koppelingen
@@ -182,6 +183,9 @@ export function VeldwerkersPanel({
                       {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
                       {g.status === 'uitgenodigd' && <Badge variant="stil">uitgenodigd</Badge>}
                       {g.status === 'wacht_op_passkey' && <Badge variant="warn">activatie onderbroken</Badge>}
+                      {g.open_herstel_verloopt_op && (
+                        <Badge variant="stil">herstel-link — {formatVerloop(g.open_herstel_verloopt_op)}</Badge>
+                      )}
                       {info !== undefined && info.uren_afwijking_aantal > 0 && (
                         <div
                           style={{ fontSize: 11, color: 'var(--warn)', marginTop: 2 }}

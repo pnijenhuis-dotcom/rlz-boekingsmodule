@@ -23,6 +23,7 @@ from app.db.models import (
     RefreshToken,
     TotpSecret,
     Uitnodiging,
+    UitnodigingSoort,
     WebauthnCredential,
 )
 from app.db.session import scoped_session
@@ -148,6 +149,9 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
         gebruiker = session.get(Gebruiker, uitnodiging.gebruiker_id)
         assert gebruiker is not None  # FK garandeert dit
 
+        if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value:
+            return _accepteer_wachtwoord_herstel(session, uitnodiging, gebruiker, wachtwoord=wachtwoord, now=now)
+
         gebruiker.wachtwoord_hash = hash_password(wachtwoord)
         uitnodiging.gebruikt_op = now
 
@@ -173,6 +177,37 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
         otpauth_uri=build_otpauth_uri(secret, account_name=e_mail),
         secret=secret,
     )
+
+
+def _accepteer_wachtwoord_herstel(
+    session: Session, uitnodiging: Uitnodiging, gebruiker: Gebruiker, *, wachtwoord: str, now: datetime
+) -> AcceptatieResultaat:
+    """Herstel-link (soort wachtwoord_herstel, feedbackronde 25-08 punt 7) verzilveren: NIEUW
+    wachtwoord, status ongewijzigd (actief blijft actief — bestaande passkeys en akkoorden
+    blijven staan), alle lopende sessies ingetrokken (wachtwoordwissel = conventionele
+    sessie-reset; een apparaat logt daarna gewoon opnieuw in met het nieuwe wachtwoord + zijn
+    passkey), en direct een passkey-setup-token zodat het nieuwe/ontgrendelde apparaat
+    geregistreerd kan worden. Het token is hierna verbruikt. Is de gebruiker intussen
+    geblokkeerd, dan is de link waardeloos — blokkade wint altijd (0052-lijn)."""
+    if not is_externe_app_rol(gebruiker.rol):
+        raise AuthError("Herstel-links bestaan alleen voor externe app-gebruikers")
+    if gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
+        raise AuthError("Account is geblokkeerd of niet geactiveerd — neem contact op met het kantoor")
+
+    gebruiker.wachtwoord_hash = hash_password(wachtwoord)
+    uitnodiging.gebruikt_op = now
+    _intrek_alle_sessies(session, gebruiker.id, now=now)
+    record_audit_event(
+        session,
+        actor_id=gebruiker.id,
+        module="platform",
+        tabel="gebruiker",
+        record_id=gebruiker.id,
+        actie="wachtwoord_hersteld",
+        correlatie_id=uuid.uuid4(),
+        nieuwe_waarde={"uitnodiging_id": str(uitnodiging.id), "status": gebruiker.status.value},
+    )
+    return AcceptatieResultaat(soort="passkey", passkey_setup_token=create_passkey_setup_token(gebruiker.id))
 
 
 @dataclass(frozen=True)
@@ -744,6 +779,10 @@ class GebruikerOverzicht:
     heeft_totp: bool
     aantal_passkeys: int
     open_uitnodiging_verloopt_op: datetime | None
+    # Open herstel-link (soort wachtwoord_herstel, migratie 0068) — apart van de uitnodiging,
+    # zodat het scherm "herstel-link verstuurd" kan tonen zonder het account als
+    # 'nog niet geactiveerd' te lezen.
+    open_herstel_verloopt_op: datetime | None
     geblokkeerd_op: datetime | None
     geblokkeerd_door_naam: str | None
 
@@ -776,13 +815,17 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
                 .group_by(WebauthnCredential.gebruiker_id)
             ).all()
         )
-        open_uitnodigingen = dict(
-            session.execute(
-                select(Uitnodiging.gebruiker_id, func.max(Uitnodiging.verloopt_op))
-                .where(Uitnodiging.gebruikt_op.is_(None), Uitnodiging.verloopt_op > now)
-                .group_by(Uitnodiging.gebruiker_id)
-            ).all()
-        )
+        open_links = session.execute(
+            select(Uitnodiging.gebruiker_id, Uitnodiging.soort, func.max(Uitnodiging.verloopt_op))
+            .where(Uitnodiging.gebruikt_op.is_(None), Uitnodiging.verloopt_op > now)
+            .group_by(Uitnodiging.gebruiker_id, Uitnodiging.soort)
+        ).all()
+        open_uitnodigingen = {
+            gid: tot for gid, soort, tot in open_links if soort == UitnodigingSoort.UITNODIGING.value
+        }
+        open_herstellinks = {
+            gid: tot for gid, soort, tot in open_links if soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value
+        }
         # Naam van de blokkeerder apart opgehaald: die kan zelf gepseudonimiseerd of de
         # systeem-actor zijn en dus buiten de lijst hierboven vallen.
         blokkeerder_ids = {g.geblokkeerd_door for g in gebruikers if g.geblokkeerd_door is not None}
@@ -808,6 +851,7 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
             heeft_totp=g.id in totp_ids,
             aantal_passkeys=passkeys.get(g.id, 0),
             open_uitnodiging_verloopt_op=open_uitnodigingen.get(g.id),
+            open_herstel_verloopt_op=open_herstellinks.get(g.id),
             geblokkeerd_op=g.geblokkeerd_op,
             geblokkeerd_door_naam=(
                 blokkeerder_namen.get(g.geblokkeerd_door) if g.geblokkeerd_door is not None else None
@@ -892,6 +936,76 @@ def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Ver
             actie="uitnodiging_opnieuw_gemaild",
             correlatie_id=uuid.uuid4(),
             nieuwe_waarde={"gebruiker_id": str(gebruiker_id), "verloopt_op": verloopt_op.isoformat()},
+        )
+    return VernieuwdeUitnodiging(
+        resultaat=UitnodigingResultaat(
+            uitnodiging_id=uitnodiging_id, gebruiker_id=gebruiker_id, token=token, verloopt_op=verloopt_op
+        ),
+        naam=naam,
+        e_mail=e_mail,
+    )
+
+
+def maak_herstel_link(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> VernieuwdeUitnodiging:
+    """"Herstel-link sturen" (Gebruikers & toegang, Beheerder-only via de router-dependency;
+    feedbackronde 25-08 punt 7). Voor een al geactiveerde EXTERNE gebruiker (accordeur/veldwerker;
+    status actief of wacht_op_passkey = wachtwoord ooit gezet) die zijn wachtwoord kwijt is —
+    bv. ná een kill-switch op zijn enige apparaat. Zelfde token-mechaniek als de uitnodiging
+    (hash-only, 72 u, eenmalig), soort `wachtwoord_herstel`; ALLE nog-open links van de
+    gebruiker (uitnodiging óf herstel) verlopen per direct — één werkende link tegelijk. Niets
+    anders wijzigt: status, passkeys, akkoorden en scope blijven staan tot de gebruiker de link
+    verzilvert. Geen selfservice 'wachtwoord vergeten' (bewust — kantoor blijft poortwachter).
+    Kantoorrollen vallen buiten dit pad (die hebben wachtwoord+TOTP mét eigen herstelroute via
+    de Beheerder — blokkeren/opnieuw uitnodigen), een geblokkeerd account eerst heractiveren."""
+    _weiger_systeem_actor(gebruiker_id)
+    token = secrets.token_urlsafe(32)
+    verloopt_op = datetime.now(UTC) + INVITE_TTL
+    uitnodiging_id = uuid.uuid4()
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, gebruiker_id)
+        if gebruiker is None or gebruiker.gepseudonimiseerd_op is not None:
+            raise AuthError("Onbekende gebruiker")
+        if not is_externe_app_rol(gebruiker.rol):
+            raise AuthError("Een herstel-link is alleen voor externe app-gebruikers (accordeur/veldwerker)")
+        if gebruiker.status == GebruikerStatus.GEBLOKKEERD:
+            raise AuthError("Gebruiker is geblokkeerd — heractiveer eerst")
+        if gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
+            raise AuthError("Account is nog niet geactiveerd — gebruik 'Opnieuw mailen' voor de uitnodiging")
+        naam, e_mail = gebruiker.naam, gebruiker.e_mail
+        nu = datetime.now(UTC)
+        session.execute(
+            update(Uitnodiging)
+            .where(
+                Uitnodiging.gebruiker_id == gebruiker_id,
+                Uitnodiging.gebruikt_op.is_(None),
+                Uitnodiging.verloopt_op > nu,
+            )
+            .values(verloopt_op=nu)
+        )
+        session.add(
+            Uitnodiging(
+                id=uitnodiging_id,
+                gebruiker_id=gebruiker_id,
+                token_hash=_hash_token(token),
+                aangemaakt_door=actor_id,
+                verloopt_op=verloopt_op,
+                soort=UitnodigingSoort.WACHTWOORD_HERSTEL.value,
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="platform.uitnodiging",
+            record_id=uitnodiging_id,
+            actie="wachtwoord_herstel_link_aangemaakt",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "gebruiker_id": str(gebruiker_id),
+                "rol": gebruiker.rol.value,
+                "status": gebruiker.status.value,
+                "verloopt_op": verloopt_op.isoformat(),
+            },
         )
     return VernieuwdeUitnodiging(
         resultaat=UitnodigingResultaat(
