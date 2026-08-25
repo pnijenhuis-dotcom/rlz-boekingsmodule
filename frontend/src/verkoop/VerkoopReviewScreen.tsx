@@ -460,7 +460,7 @@ export function VerkoopReviewScreen() {
                 <label htmlFor="totaal-incl">Totaalbedrag (incl. btw)</label>
                 <input
                   id="totaal-incl"
-                  style={{ textAlign: 'right' }}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
                   value={totaalIncl}
                   onChange={(e) => {
                     setTotaalIncl(e.target.value)

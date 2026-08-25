@@ -980,7 +980,9 @@ export function BoekvoorstelPanel({
                 inputMode="decimal"
                 placeholder="1234,56"
                 title="Bijvoorbeeld 1234,56 of 1234.56"
-                style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                // Kopgegevens-velden staan uniform links (feedbackronde 25-08 deel 3 punt 6);
+                // rechts uitlijnen is voorbehouden aan de numerieke kolommen in de regeltabel.
+                style={{ fontVariantNumeric: 'tabular-nums' }}
                 value={totaalbedrag}
                 onChange={(e) => wijzigTotaalbedrag(e.target.value)}
               />
