@@ -172,6 +172,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 
 - **Werkvoorraad** = klantenlijst met tellers (alleen klanten mét openstaand werk) → klantpagina →
   controlescherm. Overal breadcrumbs, lijst→detail-patroon consistent.
+- **Na boeken direct door (besluit Peter 25-08, deel 4 punt 1, GEBOUWD):** ná boeken/"Boeken +
+  doorbelasten"/afwijzen/ter accordering toont het controlescherm een toast (referentie +
+  boekstuknummer) en opent automatisch het volgende te-verwerken document van dezelfde klant
+  (zelfde soort eerst, dan de soort-tab-volgorde; `werkvoorraad/volgendDocument.ts`); stapel
+  leeg → documentenlijst van de klant. Uitzondering: ter accordering mét `boek_fout` blijft staan.
 - **Kantoor-frontend-modernisering (designronde Peter 2026-08-15, 4 iteratierondes —
   BESLISSINGEN "Kantoor-frontend-modernisering"):** de kantoor-UI migreert naar het
   platform-fundament (Vastly-generatie: Tailwind v4 + semantische tokens, shadcn-stijl-
@@ -402,6 +407,30 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vastgoed). Failsafe: `make bank-reconciliatie` vangt in de RLZ-UI teruggedraaide
   boekingen/afletteringen. Zie api-verkenning.md "Bankmodule schrijf-PoC" + "Bankmodule
   FALLBACK-PoC" en BESLISSINGEN "Bankmodule — GEBOUWD + GETEST".
+  **Bank-verdieping feedbackronde 25-08 deel 4 (besluiten Peter, GEBOUWD + GETEST 2026-08-25,
+  migratie 0071 — BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08 DEEL 4" is canoniek; RLZ-feiten in
+  api-verkenning "Bankmutatie op een RELATIE + mutatie SPLITSEN — STAP-0 (25-08)"):**
+  (2) **auto-verversing bij openen** — cache direct + "laatst ververst HH:MM", 202+status-poll
+  (`app/bank/sync_run.py`, tabel `bank_sync_run`, job `rlz-bank-sync`/CLI `bank-sync-wachtrij`),
+  drempel `bank_auto_ververs_drempel_minuten` = 5 (jongere sync = `overgeslagen`), handmatige knop
+  blijft; (3) **derde verwerkroute "Koppel aan relatie"** — RLZ kent geen relatie-boeking zonder
+  document (Entity op BMDB/memoriaal = 500), de bewezen vorm is het **aanbetalingsdocument**:
+  PurchaseInvoice (crediteur, één regel op systeemrekening 1403, expliciet 0%-"Nul tarief" —
+  zonder tarief rekent RLZ 21%) resp. SalesInvoice (debiteur, 1806) + actie 15; verrekening =
+  tegenregel −X op 1403 ín de latere factuur (actie 34 blijft dood); storno = actie 19 op het
+  aanbetalingsdocument (mutatie volledig terug); de open aanbetaling per relatie leeft in
+  `bank_relatie_boeking` (`app/bank/relatie.py`), zichtbaar in het paneel "Openstaande
+  aanbetalingen" + **aanbetaling-open-signaal op het controlescherm** (`aanbetaling_signaal.py`,
+  Entity + leverancier-IBAN, knop "Verrekenregel toevoegen", hook `markeer_verrekend_bij_boeking`
+  ín de boek-transactie) — signaal, geen blokkade, geen werkvoorraad-chip; (4) **splitsen** —
+  geordende compositie open posten → relaties → grootboek via de bestaande motoren
+  (`app/bank/splitsen.py`; Σ delen = mutatie server-side blokkerend; half-verwerkt zichtbaar +
+  hervatten; storno per deel — een afletter-deel alleen via storno van de factuur in RLZ).
+  ⚠️ **Nieuw RLZ-feit: her-PUT op een gestorneerd BankMutationDirectBooking = 204 zónder effect
+  (actie 17 = 409)** → de directe boeking gebruikt sinds 25-08 een **cyclus-GUID**
+  (`rlz_bank_boeking_cyclus_id`) én verifieert ná élke PUT de verse OpenAmount; deel-BMDB's
+  accepteren een deelbedrag. Storno van een factuur-deel op een meervoudig gekoppelde mutatie
+  laat OpenAmount tijdelijk stale (huls) — reconciliatie-aandachtspunt (parkeerpost).
 - **Kempen-doorbelasting (besluit Peter 2026-08-13, hoort bij de livegang; canoniek
   `verkenning/16_DOORBELASTING_KEMPEN.md` + BESLISSINGEN "KEMPEN-DOORBELASTING")**: tweezijdige
   motor op het HUIDIGE patroon (2025/2026, granulair per document; historie = archief). Actie
