@@ -9,7 +9,12 @@ geen productie-verrassingen op paden die in dev werkten:
   bij elke build; al het niet-gehashte, incl. index.html en de PWA-manifest, no-cache);
 - een document-NAVIGATIE (Accept: text/html én Sec-Fetch-Dest: document, zelfde dubbele
   voorwaarde als isDocumentNavigatie in proxyRegels.ts) krijgt áltijd de SPA — ook op
-  /bank/ of een diepe link onder een API-segment (randgeval kliktest 2026-08-08);
+  /bank/ of een diepe link onder een API-segment (randgeval kliktest 2026-08-08), én óók
+  als het pad exact een ECHTE API-route is (bugfix 2026-08-25: verse load/refresh op
+  /instellingen/administraties gaf de kale JSON "Not authenticated" van
+  `GET /instellingen/administraties` uit de beheer-router — de catch-all komt bij een
+  route-botsing nooit aan bod, daarom zit deze regel in een middleware VÓÓR de routing,
+  precies zoals de dev-proxy-bypass vóór het proxyen zit);
 - een fetch/XHR naar een onbekend pad ónder een API-segment (/bank/onzin) krijgt de JSON-404
   van de API, nooit stil index.html (de proxy-bugklasse: "Unexpected token '<'");
 - al het overige (SPA-routes als /instellingen, onbekende top-level paden) valt terug op
@@ -67,15 +72,40 @@ def activeer_frontend_serving(app: FastAPI, dist_map: str | None = None) -> None
     def _index_response() -> FileResponse:
         return FileResponse(index, headers={"Cache-Control": CACHE_OVERIG})
 
+    def _build_bestand(spa_pad: str) -> Path | None:
+        """Bestaand bestand in de build-map, of None. resolve + is_relative_to = traversal-guard:
+        niets buiten de build-map serveren."""
+        if not spa_pad:
+            return None
+        bestand = (dist / spa_pad).resolve()
+        if bestand.is_relative_to(dist) and bestand.is_file():
+            return bestand
+        return None
+
+    @app.middleware("http")
+    async def spa_navigatie_voor_routing(request: Request, call_next):  # type: ignore[no-untyped-def]
+        """Document-navigatie → SPA, VÓÓR de routing (bugfix 2026-08-25, zie module-docstring):
+        een SPA-route die toevallig samenvalt met een API-route (/instellingen/administraties,
+        /zoeken, …) zou anders de API-handler treffen. Een browser-navigatie hoort nooit bij
+        de API uit te komen; de frontend opent bestanden (PDF's) altijd via fetch + blob-URL,
+        nooit door naar een API-URL te navigeren — dus dit raakt geen enkel bestaand pad.
+        Build-bestanden (bv. /favicon.svg rechtstreeks geopend) blijven gewoon bestanden."""
+        if request.method == "GET" and is_document_navigatie(request):
+            bestand = _build_bestand(request.url.path.lstrip("/"))
+            if bestand is not None:
+                cache = CACHE_ASSETS if request.url.path.startswith("/assets/") else CACHE_OVERIG
+                return FileResponse(bestand, headers={"Cache-Control": cache})
+            return _index_response()
+        return await call_next(request)
+
     @app.get(SPA_FALLBACK_PAD, include_in_schema=False, name="spa_fallback")
     def spa_fallback(spa_pad: str, request: Request) -> FileResponse:
-        if spa_pad:
-            bestand = (dist / spa_pad).resolve()
-            # resolve + is_relative_to = traversal-guard: niets buiten de build-map serveren.
-            if bestand.is_relative_to(dist) and bestand.is_file():
-                cache = CACHE_ASSETS if spa_pad.startswith("assets/") else CACHE_OVERIG
-                return FileResponse(bestand, headers={"Cache-Control": cache})
+        bestand = _build_bestand(spa_pad)
+        if bestand is not None:
+            cache = CACHE_ASSETS if spa_pad.startswith("assets/") else CACHE_OVERIG
+            return FileResponse(bestand, headers={"Cache-Control": cache})
         if is_document_navigatie(request):
+            # Vangnet — de middleware hierboven heeft dit geval al afgehandeld.
             return _index_response()
         if "/" in spa_pad and f"/{spa_pad.split('/', 1)[0]}" in api_segmenten:
             # Fetch naar een onbestaand pad ónder een API-segment: dezelfde JSON-404 als de
