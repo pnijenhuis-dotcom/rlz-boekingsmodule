@@ -13,6 +13,7 @@ import { DoorbelastenNaBoeken, type KlaargezetteDoorbelasting } from '../doorbel
 import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
+import { AlBetaaldSignaal } from './AlBetaaldSignaal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
@@ -583,6 +584,18 @@ export function DocumentDetailScreen() {
               </div>
             )
           })()}
+
+          {/* Al-betaald-signaal (besluit Peter 25-08, deel 2 punt 1): alleen hier op het
+              controlescherm, nooit blokkerend — de component gate zichzelf (soort/status). */}
+          {!achtergrondBezig && (
+            <AlBetaaldSignaal
+              administratieId={administratieId}
+              documentId={documentId}
+              status={detail.status}
+              soort={detail.soort}
+              boekvoorstelVersie={boekvoorstelVersie}
+            />
+          )}
 
           {!achtergrondBezig && (
             <BoekvoorstelPanel

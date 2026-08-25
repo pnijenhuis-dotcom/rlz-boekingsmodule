@@ -11,7 +11,7 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 }
 
-function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: string[] }) {
+function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: string[]; alBetaald?: unknown }) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -25,6 +25,7 @@ function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: strin
         return Promise.resolve(jsonResponse({ ingeschakeld: false, lagen: [] }))
       if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))
       if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
+      if (url.endsWith('/al-betaald')) return Promise.resolve(jsonResponse(opties?.alBetaald ?? { toetsbaar: false, treffers: [] }))
       if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
       if (url.endsWith('/boekvoorstel')) {
         return Promise.resolve(
@@ -183,6 +184,57 @@ describe('DocumentDetailScreen — tijdlijn en duplicaat', () => {
   })
 })
 
+describe('DocumentDetailScreen — al-betaald-signaal (besluit Peter 25-08, deel 2 punt 1)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const detail = {
+    id: DOCUMENT_ID,
+    administratie_id: ADMINISTRATIE_ID,
+    bestandsnaam: 'factuur.pdf',
+    soort: 'inkoopfactuur',
+    status: 'te_controleren',
+    bron: 'upload',
+    mogelijk_duplicaat_van: null,
+    toegewezen_aan: null,
+    aangemaakt_op: '2026-07-09T10:00:00Z',
+    laatst_gewijzigd_op: '2026-07-09T10:00:00Z',
+    veldvoorstel: null,
+    tijdlijn: [],
+  }
+
+  it('toont "Waarschijnlijk al betaald" met datum, rekening, bedrag en matchreden — als signaal, niet als blokkade', async () => {
+    installFetchMock(detail, {
+      alBetaald: {
+        toetsbaar: true,
+        treffers: [
+          {
+            mutatie_id: 'm1',
+            boekdatum: '2026-08-14',
+            bedrag: '-1512.50',
+            rekening_naam: 'ING zakelijk',
+            rekening_iban: 'NL22INGB0001238102',
+            tegenpartij_naam: 'Floor Bouwliften B.V.',
+            omschrijving: 'Factuur 88122',
+            redenen: ['bedrag incl. btw exact gelijk', 'factuurnummer in omschrijving'],
+          },
+        ],
+      },
+    })
+    renderScherm()
+    expect(await screen.findByText('Waarschijnlijk al betaald')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/ING zakelijk/)
+    expect(screen.getByRole('status')).toHaveTextContent(/bedrag incl\. btw exact gelijk \+ factuurnummer in omschrijving/)
+    expect(screen.getByRole('status')).toHaveTextContent(/geen blokkade/)
+  })
+
+  it('geen signaal zonder treffers', async () => {
+    installFetchMock(detail, { alBetaald: { toetsbaar: true, treffers: [] } })
+    renderScherm()
+    await screen.findByText('factuur.pdf')
+    expect(screen.queryByText('Waarschijnlijk al betaald')).not.toBeInTheDocument()
+  })
+})
+
 // ————— UX-fix 2026-07-11: "↻ Opnieuw extraheren" ook op een gesláágd voorstel —————
 
 const AI_VOORSTEL = {
@@ -321,6 +373,7 @@ describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () 
           return Promise.resolve(jsonResponse({ ingeschakeld: false, lagen: [] }))
         if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))
         if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
+        if (url.endsWith('/al-betaald')) return Promise.resolve(jsonResponse({ toetsbaar: false, treffers: [] }))
         if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
         if (url.endsWith('/boekvoorstel')) {
           return Promise.resolve(

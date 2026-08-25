@@ -113,6 +113,24 @@ export interface MatchMailConceptDto {
 /** Duplicaatsignaal (besluit 25-08, deel 2 punt 6): gecachete RLZ-duplicaatuitkomst —
  * 'geen' | 'mogelijk_duplicaat' | 'niet_toetsbaar' | 'onbekend'. Signalering: de live check op
  * het boekmoment blijft bindend. */
+/** Al-betaald-signaal (besluit 25-08, deel 2 punt 1): onafgeletterde bankmutaties uit de lokale
+ * cache met exact het factuurbedrag; `redenen` = matchreden(en). Signaal, nooit blokkerend. */
+export interface AlBetaaldTrefferDto {
+  mutatie_id: string
+  boekdatum: string
+  bedrag: string
+  rekening_naam: string | null
+  rekening_iban: string | null
+  tegenpartij_naam: string | null
+  omschrijving: string | null
+  redenen: string[]
+}
+
+export interface AlBetaaldSignaalDto {
+  toetsbaar: boolean
+  treffers: AlBetaaldTrefferDto[]
+}
+
 export interface DuplicaatSignaalKortDto {
   uitkomst: string
   aantal_treffers: number

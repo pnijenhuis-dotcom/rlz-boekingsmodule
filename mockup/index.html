@@ -438,6 +438,16 @@
         </div>
 
         <div class="formpane">
+          <!-- Besluit Peter 25-08 (deel 2, punt 1): al-betaald-signaal — alléén op het controlescherm (géén
+               werkvoorraad-chip). Zodra crediteur + totaalbedrag bekend zijn toetst de app de ONafgeletterde
+               bankmutaties uit de lokale bank-cache (geen live RLZ-call): bedrag incl. btw exact gelijk, versterkt
+               door factuurnummer/crediteurnaam in de omschrijving. SIGNAAL, nooit blokkerend; ná het boeken pakt de
+               bestaande afletter-matching de mutatie op. Som van meerdere mutaties (G-rekening/deelbetaling) =
+               bewust buiten scope (parkeerpost). -->
+          <div class="panel" style="border-color:var(--orange);padding:10px 14px">
+            <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="chip afwijking">Waarschijnlijk al betaald</span> <b>14-08-2026 · ING zakelijk · − € 1.847,23</b> <span style="font-size:12px;color:var(--muted)">match: bedrag incl. btw exact gelijk + factuurnummer in omschrijving</span></div>
+            <div class="hint" style="margin:4px 0 0">Onafgeletterde bankmutatie van "Bouwmaat Nederland B.V." — "Factuur 2026-0642". Signaal, geen blokkade: na het boeken pakt het afletteren deze mutatie op.</div>
+          </div>
           <div class="panel">
             <h2>Kopgegevens <span class="conf hi">extractie-zekerheid per veld</span></h2>
             <div class="grid2">

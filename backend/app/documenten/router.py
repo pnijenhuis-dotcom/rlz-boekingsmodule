@@ -521,6 +521,39 @@ def boekvoorstel_opslaan(
     )
 
 
+@router.get(
+    "/administraties/{administratie_id}/documenten/{document_id}/al-betaald",
+    response_model=schemas.AlBetaaldSignaalResponse,
+)
+def al_betaald_signaal(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AlBetaaldSignaalResponse:
+    """Al-betaald-signaal (besluit Peter 25-08, deel 2 punt 1): toetst de ONafgeletterde
+    bankmutaties uit de lokale cache tegen crediteur + totaalbedrag van dit document — een
+    signaal op het controlescherm, nooit blokkerend, geen live RLZ-call, geen bijwerking."""
+    from app.bank import betaald_signaal
+
+    signaal = betaald_signaal.signaal_voor_document(administratie_id=administratie_id, document_id=document_id)
+    return schemas.AlBetaaldSignaalResponse(
+        toetsbaar=signaal.toetsbaar,
+        treffers=[
+            schemas.AlBetaaldTrefferDto(
+                mutatie_id=t.mutatie_id,
+                boekdatum=t.boekdatum,
+                bedrag=t.bedrag,
+                rekening_naam=t.rekening_naam,
+                rekening_iban=t.rekening_iban,
+                tegenpartij_naam=t.tegenpartij_naam,
+                omschrijving=t.omschrijving,
+                redenen=list(t.redenen),
+            )
+            for t in signaal.treffers
+        ],
+    )
+
+
 @router.post(
     "/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel/checks",
     response_model=schemas.CheckRapportResponse,

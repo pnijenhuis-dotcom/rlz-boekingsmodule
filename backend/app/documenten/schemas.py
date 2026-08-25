@@ -154,6 +154,25 @@ class MatchMailVerzondenResponse(BaseModel):
     verzonden_aan: str
 
 
+class AlBetaaldTrefferDto(BaseModel):
+    """Al-betaald-signaal (25-08, deel 2 punt 1): één onafgeletterde bankmutatie uit de lokale
+    cache met exact het factuurbedrag; `redenen` = de matchreden(en), nooit blokkerend."""
+
+    mutatie_id: uuid.UUID
+    boekdatum: date
+    bedrag: Decimal
+    rekening_naam: str | None
+    rekening_iban: str | None
+    tegenpartij_naam: str | None
+    omschrijving: str | None
+    redenen: list[str]
+
+
+class AlBetaaldSignaalResponse(BaseModel):
+    toetsbaar: bool
+    treffers: list[AlBetaaldTrefferDto]
+
+
 class DuplicaatSignaalKortDto(BaseModel):
     """Gecachete RLZ-duplicaatuitkomst (25-08, deel 2 punt 6): 'geen' | 'mogelijk_duplicaat' |
     'niet_toetsbaar' | 'onbekend'. Signalering — de live check bij boeken is bindend."""
