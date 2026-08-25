@@ -154,6 +154,15 @@ class MatchMailVerzondenResponse(BaseModel):
     verzonden_aan: str
 
 
+class DuplicaatSignaalKortDto(BaseModel):
+    """Gecachete RLZ-duplicaatuitkomst (25-08, deel 2 punt 6): 'geen' | 'mogelijk_duplicaat' |
+    'niet_toetsbaar' | 'onbekend'. Signalering — de live check bij boeken is bindend."""
+
+    uitkomst: str
+    aantal_treffers: int
+    berekend_op: datetime
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
@@ -179,6 +188,8 @@ class DocumentListItemResponse(BaseModel):
     # Factuurmatch (fase 2): matchstand van een veldwerker-factuur — voedt de chip
     # "urenmatch wijkt af" (besluit 3, duplicaat-patroon). None = geen match van toepassing.
     factuurmatch: FactuurmatchKortDto | None = None
+    # Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + filter.
+    duplicaatsignaal: DuplicaatSignaalKortDto | None = None
 
 
 class LeverancierAutoboekenDto(BaseModel):
@@ -207,6 +218,8 @@ class WerkvoorraadKlantResponse(BaseModel):
     # Factuurmatch (fase 2, besluit 3): signaal-teller — open documenten met een
     # match-afwijking (de documenten zelf zitten al in een status-teller hierboven).
     match_afwijkingen: int = 0
+    # Duplicaatsignaal (25-08, deel 2 punt 6): open documenten met gecachet 'mogelijk_duplicaat'.
+    duplicaat_signalen: int = 0
 
 
 class WerkvoorraadOverzichtResponse(BaseModel):

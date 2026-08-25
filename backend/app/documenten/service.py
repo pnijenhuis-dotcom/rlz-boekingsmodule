@@ -25,6 +25,8 @@ from app.documenten.models import (
     DocumentGebeurtenis,
     DocumentSoort,
     DocumentStatus,
+    DuplicaatSignaal,
+    DuplicaatSignaalUitkomst,
 )
 from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
@@ -461,6 +463,14 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
     if administratie_id is None:
         return
     if soort == DocumentSoort.INKOOPFACTUUR.value:
+        # Duplicaatsignaal (besluit Peter 25-08, deel 2 punt 6): de RLZ-duplicaatquery éénmaal
+        # ná extractie draaien en cachen, zodat de werkvoorraad de chip direct toont. Puur
+        # signalering (de live check op het boekmoment blijft bindend); fouten zichtbaar als
+        # 'onbekend' + gelogd, nooit een blokkade.
+        from app.documenten import duplicaatsignaal  # lokaal: houdt de importgraaf klein
+
+        duplicaatsignaal.bereken_duplicaatsignaal_stil(administratie_id=administratie_id, document_id=document_id)
+
         # Factuurmatch (fase 2, akkoord Peter 2026-08-21): éérst de match-run — vóór de
         # autoboek-poging, zodat het autoboek-slot (fase 4) en de weigering hieronder de
         # actuele matchstand zien, en de werkvoorraad-teller/chip direct ná extractie klopt.
@@ -792,6 +802,9 @@ def _als_datum_of_none(waarde: object) -> date | None:
         return None
 
 
+from app.documenten.duplicaatsignaal import DuplicaatSignaalKort  # noqa: E402 — lichte dataclass, geen kringimport
+
+
 @dataclass(frozen=True)
 class FactuurmatchKort:
     """Compacte matchstand voor de documentenlijst-chip (factuurmatch fase 2, besluit 3 —
@@ -819,6 +832,9 @@ class DocumentMetDuplicaat:
     # Factuurmatch (fase 2): de actuele matchstand van een veldwerker-factuur — None zolang
     # er geen match berekend is (crediteur niet gekoppeld / nog geen voorstel).
     factuurmatch: FactuurmatchKort | None = None
+    # Duplicaatsignaal (25-08, deel 2 punt 6): gecachete RLZ-duplicaatuitkomst — None zolang er
+    # nog niet getoetst is.
+    duplicaatsignaal: DuplicaatSignaalKort | None = None
 
 
 def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
@@ -886,6 +902,10 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                 )
                 for m in session.scalars(select(Factuurmatch).where(Factuurmatch.document_id.in_(document_ids)))
             }
+        # Duplicaatsignaal-chipdata (25-08, deel 2 punt 6; bulk, zelfde geen-N+1-regel).
+        from app.documenten.duplicaatsignaal import signalen_voor_documenten
+
+        signalen = signalen_voor_documenten(session, document_ids)
         veldvoorstellen: dict[uuid.UUID, dict] = {}
         zonder_voorstel = [d_id for d_id in document_ids if d_id not in voorstellen]
         if zonder_voorstel:
@@ -929,6 +949,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     factuurdatum=factuurdatum,
                     automatisch_geboekt=d.id in automatisch_geboekt_ids,
                     factuurmatch=matches.get(d.id),
+                    duplicaatsignaal=signalen.get(d.id),
                 )
             )
         return resultaat
@@ -961,6 +982,9 @@ class WerkvoorraadKlant:
     # SIGNAAL-teller bovenop de status-tellers (de documenten zelf zitten al in een bucket
     # hierboven) — telt daarom bewust niet mee in heeft_openstaand_werk.
     match_afwijkingen: int = 0
+    # Duplicaatsignaal (25-08, deel 2 punt 6): open documenten met gecachete uitkomst
+    # `mogelijk_duplicaat` — zelfde signaal-patroon, telt niet mee in heeft_openstaand_werk.
+    duplicaat_signalen: int = 0
 
     @property
     def heeft_openstaand_werk(self) -> bool:
@@ -1016,6 +1040,21 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 )
                 or 0
             )
+            duplicaat_signalen = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(DuplicaatSignaal)
+                    .join(Document, Document.id == DuplicaatSignaal.document_id)
+                    .where(
+                        DuplicaatSignaal.administratie_id == administratie_id,
+                        DuplicaatSignaal.uitkomst == DuplicaatSignaalUitkomst.MOGELIJK_DUPLICAAT.value,
+                        Document.status.notin_(
+                            [DocumentStatus.VERWIJDERD, DocumentStatus.GEBOEKT, DocumentStatus.GESPLITST]
+                        ),
+                    )
+                )
+                or 0
+            )
         klanten.append(
             WerkvoorraadKlant(
                 administratie_id=administratie_id,
@@ -1029,6 +1068,7 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 bij_klant=per_status.get(DocumentStatus.TER_ACCORDERING, 0),
                 iban_wachtend=per_status.get(DocumentStatus.WACHT_OP_IBAN_ACCORDERING, 0),
                 match_afwijkingen=match_afwijkingen,
+                duplicaat_signalen=duplicaat_signalen,
             )
         )
     return klanten

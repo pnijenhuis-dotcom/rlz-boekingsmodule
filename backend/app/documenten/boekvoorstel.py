@@ -453,6 +453,13 @@ def sla_boekvoorstel_op(
     except Exception:  # noqa: BLE001 — de match is signalering, nooit een blokkade
         logger.exception("Factuurmatch-run na voorstel-opslag mislukt voor document %s", document_id)
 
+    # Duplicaatsignaal (besluit Peter 25-08, deel 2 punt 6): herberekenen bij elke veldwijziging
+    # — crediteur, referentie en totaal sturen de RLZ-duplicaatquery. Post-commit; signalering
+    # (de live check op het boekmoment blijft bindend), fouten zichtbaar als 'onbekend'.
+    from app.documenten import duplicaatsignaal  # lokaal: houdt de importgraaf klein
+
+    duplicaatsignaal.bereken_duplicaatsignaal_stil(administratie_id=administratie_id, document_id=document_id)
+
     return haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
 
 

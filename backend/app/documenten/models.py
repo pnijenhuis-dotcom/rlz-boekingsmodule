@@ -595,4 +595,50 @@ class WebhookUitgaand(Base):
 # (migratie 0028) — die tabel moet in Base.metadata staan vóór SQLAlchemy de Document-mapper
 # configureert, óók als de aanroeper alleen dit module importeert. Onderaan i.p.v. bovenaan om
 # elke schijn van een importcyclus te vermijden (app/intake/models.py importeert alleen Base).
+class DuplicaatSignaalUitkomst(enum.StrEnum):
+    """Gecachete uitkomst van de RLZ-duplicaatquery (besluit Peter 25-08, feedbackronde deel 2
+    punt 6): GEEN = geen andere factuur in RLZ met dezelfde crediteur+referentie+bedrag;
+    MOGELIJK_DUPLICAAT = wél (chip in de werkvoorraad, teller per klant); NIET_TOETSBAAR = kop
+    nog onvolledig (crediteur/referentie/bedrag ontbreekt); ONBEKEND = RLZ niet bereikbaar bij
+    de laatste berekening. De cache is SIGNALERING: de live check op het boekmoment
+    (checks.check_duplicaat) blijft de bindende poort — bij verschil wint de live check."""
+
+    GEEN = "geen"
+    MOGELIJK_DUPLICAAT = "mogelijk_duplicaat"
+    NIET_TOETSBAAR = "niet_toetsbaar"
+    ONBEKEND = "onbekend"
+
+
+_DUPLICAAT_UITKOMST_SQL = ", ".join(f"'{u.value}'" for u in DuplicaatSignaalUitkomst)
+
+
+class DuplicaatSignaal(Base):
+    """Eén rij per inkoopfactuur-document met de laatst berekende duplicaat-uitkomst (migratie
+    0066). Herberekend ná extractie én bij elke veldopslag (`sla_boekvoorstel_op`) zodat de
+    werkvoorraad het signaal toont zónder live RLZ-call per lijstrij. Herberekenen = UPDATE
+    (geen DELETE — het spoor van de laatste toetsing blijft; `berekend_op` toont de versheid).
+    `treffers` = de RLZ-documenten (id + Reference + InvoiceNumber) waarop het signaal rust;
+    `vendor_id`/`referentie`/`totaalbedrag` = de kopgegevens waarop getoetst is (herleidbaar
+    waarom het signaal er staat, ook als het voorstel intussen gewijzigd is)."""
+
+    __tablename__ = "duplicaat_signaal"
+    __table_args__ = (
+        CheckConstraint(f"uitkomst IN ({_DUPLICAAT_UITKOMST_SQL})", name="ck_duplicaat_signaal_uitkomst"),
+        Index("ix_duplicaat_signaal_administratie_uitkomst", "administratie_id", "uitkomst"),
+        {"schema": "boekhouding"},
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), primary_key=True
+    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    uitkomst: Mapped[str]
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    referentie: Mapped[str | None] = mapped_column(default=None)
+    totaalbedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    treffers: Mapped[list | None] = mapped_column(JSONB, default=None)
+    melding: Mapped[str | None] = mapped_column(default=None)
+    berekend_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 from app.intake import models as _intake_models  # noqa: E402, F401

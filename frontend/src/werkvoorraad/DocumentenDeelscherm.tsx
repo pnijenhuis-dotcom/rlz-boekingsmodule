@@ -22,6 +22,8 @@ const STATUSFILTER_ALLE = 'alle'
 /** Sentinel voor het autoboeken-filter — met prefix, zodat het nooit met een echte
  * DocumentStatus-waarde uit de backend kan botsen. */
 const STATUSFILTER_AUTOMATISCH = '__automatisch_geboekt'
+/** Sentinel voor het duplicaatsignaal-filter (besluit 25-08, deel 2 punt 6) — zelfde prefix-regel. */
+export const STATUSFILTER_DUPLICAAT = '__mogelijk_duplicaat'
 
 /** Vaste tab-volgorde (mockup-norm 25-08: minimaal Inkoopfacturen / Verkoopfacturen); onbekende
  * soorten volgen alfabetisch achteraan. Alleen soorten met teller > 0 krijgen een tab. */
@@ -29,6 +31,12 @@ const SOORT_VOLGORDE = ['inkoopfactuur', 'verkoopfactuur', 'kassarapport', 'waar
 /** Expliciete "alle documenten"-tab (incl. geboekt/verwijderd — het herstel-pad mag nooit
  * onbereikbaar zijn); zonder `soort`-param kiest het scherm de eerste tab met open werk. */
 export const SOORT_ALLE = 'alle'
+
+/** Eén duplicaat-begrip voor filter en teller: het gecachete RLZ-signaal óf de bestandsinhoud-
+ * match bij upload (`mogelijk_duplicaat_van`). */
+function isMogelijkDuplicaat(d: DocumentListItemDto): boolean {
+  return d.duplicaatsignaal?.uitkomst === 'mogelijk_duplicaat' || d.mogelijk_duplicaat_van !== null
+}
 
 /* Klantlanding = documentenlijst (besluit Peter 25-08, feedbackronde punt C — herziet het
  * IA-besluit 15-08 "klantpagina = standen-tussenlaag"): klik op een klant landt hier, met tabs
@@ -202,6 +210,8 @@ export function DocumentenDeelscherm({
     return inScope.filter((d) => {
       if (statusFilter === STATUSFILTER_AUTOMATISCH) {
         if (!d.automatisch_geboekt) return false
+      } else if (statusFilter === STATUSFILTER_DUPLICAAT) {
+        if (!isMogelijkDuplicaat(d)) return false
       } else if (statusFilter !== STATUSFILTER_ALLE && d.status !== statusFilter) return false
       if (!term) return true
       const doorzoekbaar = [d.bestandsnaam, d.leverancier ?? '', d.totaalbedrag ?? '', statusLabel(d.status)]
@@ -216,6 +226,7 @@ export function DocumentenDeelscherm({
     [inScope],
   )
   const heeftAutomatischGeboekt = useMemo(() => (inScope ?? []).some((d) => d.automatisch_geboekt), [inScope])
+  const aantalMogelijkDuplicaat = useMemo(() => (inScope ?? []).filter(isMogelijkDuplicaat).length, [inScope])
   const aantalMetStatus = useCallback(
     (status: string) => (inScope ?? []).filter((d) => d.status === status).length,
     [inScope],
@@ -361,6 +372,16 @@ export function DocumentenDeelscherm({
                 Automatisch geboekt
               </button>
             )}
+            {aantalMogelijkDuplicaat > 0 && (
+              <button
+                type="button"
+                className={statusFilter === STATUSFILTER_DUPLICAAT ? 'actief' : undefined}
+                onClick={() => setStatusFilter(STATUSFILTER_DUPLICAAT)}
+                title="Documenten waarvan de gecachete RLZ-duplicaatcheck een bestaande factuur met dezelfde crediteur, referentie en bedrag vond (of met dezelfde bestandsinhoud)"
+              >
+                Mogelijk duplicaat ({aantalMogelijkDuplicaat})
+              </button>
+            )}
           </div>
           <input
             placeholder="Zoek op leverancier, bedrag, bestandsnaam…"
@@ -464,6 +485,19 @@ export function DocumentenDeelscherm({
                               van {d.mogelijk_duplicaat_van.bestandsnaam} (
                               {formatDatumKort(d.mogelijk_duplicaat_van.aangemaakt_op)})
                             </Link>
+                          </div>
+                        )}
+                        {/* Duplicaatsignaal (besluit 25-08, deel 2 punt 6): de gecachete
+                            RLZ-duplicaatuitkomst als chip ónder de status — signalering, de
+                            live check bij het boeken blijft bindend. */}
+                        {d.duplicaatsignaal?.uitkomst === 'mogelijk_duplicaat' && (
+                          <div style={{ marginTop: 4 }}>
+                            <span
+                              className="chip vraag"
+                              title={`${d.duplicaatsignaal.aantal_treffers} bestaande factuur/facturen in RLZ met dezelfde crediteur, referentie en bedrag (getoetst ${formatDatumKort(d.duplicaatsignaal.berekend_op)}). De live check bij het boeken is bindend.`}
+                            >
+                              Mogelijk duplicaat in RLZ
+                            </span>
                           </div>
                         )}
                         {/* Factuurmatch (fase 2, besluit 3): afwijking als losse chip — zelfde

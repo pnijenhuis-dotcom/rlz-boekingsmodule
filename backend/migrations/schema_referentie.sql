@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0065
+-- Migratie-head bij deze dump: 0066
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -754,6 +754,26 @@ CREATE TABLE boekhouding.doorbelasting_run (
 );
 
 ALTER TABLE ONLY boekhouding.doorbelasting_run FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: duplicaat_signaal; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.duplicaat_signaal (
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    uitkomst text NOT NULL,
+    vendor_id uuid,
+    referentie text,
+    totaalbedrag numeric(14,2),
+    treffers jsonb,
+    melding text,
+    berekend_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_duplicaat_signaal_uitkomst CHECK ((uitkomst = ANY (ARRAY['geen'::text, 'mogelijk_duplicaat'::text, 'niet_toetsbaar'::text, 'onbekend'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.duplicaat_signaal FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2397,6 +2417,14 @@ ALTER TABLE ONLY boekhouding.doorbelasting_run
 
 
 --
+-- Name: duplicaat_signaal duplicaat_signaal_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.duplicaat_signaal
+    ADD CONSTRAINT duplicaat_signaal_pkey PRIMARY KEY (document_id);
+
+
+--
 -- Name: factuurmatch factuurmatch_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3231,6 +3259,13 @@ CREATE INDEX ix_document_herinnering_document_id ON boekhouding.document_herinne
 --
 
 CREATE INDEX ix_document_status ON boekhouding.document USING btree (status);
+
+
+--
+-- Name: ix_duplicaat_signaal_administratie_uitkomst; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_duplicaat_signaal_administratie_uitkomst ON boekhouding.duplicaat_signaal USING btree (administratie_id, uitkomst);
 
 
 --
@@ -4270,6 +4305,22 @@ ALTER TABLE ONLY boekhouding.doorbelasting_run
 
 ALTER TABLE ONLY boekhouding.doorbelasting_run
     ADD CONSTRAINT doorbelasting_run_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: duplicaat_signaal duplicaat_signaal_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.duplicaat_signaal
+    ADD CONSTRAINT duplicaat_signaal_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: duplicaat_signaal duplicaat_signaal_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.duplicaat_signaal
+    ADD CONSTRAINT duplicaat_signaal_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
 
 
 --
@@ -5823,6 +5874,19 @@ ALTER TABLE boekhouding.doorbelasting_run ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY doorbelasting_run_scope ON boekhouding.doorbelasting_run USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: duplicaat_signaal; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.duplicaat_signaal ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: duplicaat_signaal duplicaat_signaal_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY duplicaat_signaal_scope ON boekhouding.duplicaat_signaal USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

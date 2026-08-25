@@ -52,6 +52,9 @@ export function Klantenlijst({
   // Zelfde toon-regel voor de urenmatch-afwijkingen (factuurmatch fase 2 — alleen relevant
   // voor administraties mét de uren-&-meerwerkmodule, initieel Universal).
   const toonMatch = (klanten ?? []).some((k) => (k.match_afwijkingen ?? 0) > 0)
+  // Duplicaatsignaal (besluit 25-08, deel 2 punt 6): zelfde toon-regel — kolom alleen zodra er
+  // ergens een gecachet "mogelijk duplicaat in RLZ" staat.
+  const toonDuplicaat = (klanten ?? []).some((k) => (k.duplicaat_signalen ?? 0) > 0)
 
   return (
     <div className="panel">
@@ -75,6 +78,7 @@ export function Klantenlijst({
                 <th>Bank</th>
                 {toonSpiegel && <th>Spiegel-taken</th>}
                 {toonMatch && <th>Urenmatch</th>}
+                {toonDuplicaat && <th>Duplicaten</th>}
               </tr>
               {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
               {zichtbaar.map((k) => (
@@ -129,6 +133,18 @@ export function Klantenlijst({
                   {toonMatch && (
                     <td title="Veldwerker-facturen waarvan de urenmatch afwijkt van de goedgekeurde weekstaten">
                       <Teller waarde={k.match_afwijkingen ?? 0} chipKlasse="vraag" />
+                    </td>
+                  )}
+                  {toonDuplicaat && (
+                    <td
+                      title="Open documenten waarvan de gecachete RLZ-duplicaatcheck een bestaande factuur met dezelfde crediteur, referentie en bedrag vond"
+                      onClick={(e) => {
+                        if ((k.duplicaat_signalen ?? 0) === 0) return
+                        e.stopPropagation()
+                        navigate(`/?administratie=${k.administratie_id}&status=__mogelijk_duplicaat`)
+                      }}
+                    >
+                      <Teller waarde={k.duplicaat_signalen ?? 0} chipKlasse="vraag" />
                     </td>
                   )}
                 </tr>

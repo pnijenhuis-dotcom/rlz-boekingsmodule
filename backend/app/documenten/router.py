@@ -211,6 +211,7 @@ def werkvoorraad_overzicht(
                 bij_klant=k.bij_klant,
                 iban_wachtend=k.iban_wachtend,
                 match_afwijkingen=k.match_afwijkingen,
+                duplicaat_signalen=k.duplicaat_signalen,
             )
             for k in klanten
         ]
@@ -248,6 +249,15 @@ def documenten_lijst(
                 factuurdatum=item.factuurdatum,
                 automatisch_geboekt=item.automatisch_geboekt,
                 factuurmatch=_naar_match_kort(item.factuurmatch),
+                duplicaatsignaal=(
+                    schemas.DuplicaatSignaalKortDto(
+                        uitkomst=item.duplicaatsignaal.uitkomst,
+                        aantal_treffers=item.duplicaatsignaal.aantal_treffers,
+                        berekend_op=item.duplicaatsignaal.berekend_op,
+                    )
+                    if item.duplicaatsignaal
+                    else None
+                ),
             )
             for item in items
         ]

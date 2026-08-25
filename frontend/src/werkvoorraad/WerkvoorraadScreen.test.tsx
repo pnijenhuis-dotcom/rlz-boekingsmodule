@@ -532,6 +532,39 @@ describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-i
   })
 })
 
+describe('Duplicaatsignaal in de lijst (besluit Peter 25-08, deel 2 punt 6)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('toont de chip "Mogelijk duplicaat in RLZ" onder de status en biedt het filter aan', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      documenten: [
+        document({
+          id: DOCUMENT_ID,
+          bestandsnaam: 'dubbel.pdf',
+          duplicaatsignaal: { uitkomst: 'mogelijk_duplicaat', aantal_treffers: 1, berekend_op: '2026-08-25T09:00:00Z' },
+        }),
+        document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'schoon.pdf', duplicaatsignaal: { uitkomst: 'geen', aantal_treffers: 0, berekend_op: '2026-08-25T09:00:00Z' } }),
+      ],
+    })
+    renderScherm()
+    expect(await screen.findByText('Mogelijk duplicaat in RLZ')).toBeInTheDocument()
+    expect(screen.getByText('schoon.pdf')).toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Mogelijk duplicaat (1)' }))
+    expect(screen.getByText('dubbel.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('schoon.pdf')).not.toBeInTheDocument()
+  })
+
+  it('zonder duplicaatsignalen geen chip en geen filteroptie', async () => {
+    installFetchMock({ documenten: [document({ duplicaatsignaal: { uitkomst: 'geen', aantal_treffers: 0, berekend_op: '2026-08-25T09:00:00Z' } })] })
+    renderScherm()
+    await screen.findByText('factuur.pdf')
+    expect(screen.queryByText('Mogelijk duplicaat in RLZ')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Mogelijk duplicaat \(/ })).not.toBeInTheDocument()
+  })
+})
+
 describe('Klantlanding — tabs per soort + chip-rij (besluit Peter 25-08, punt C)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()

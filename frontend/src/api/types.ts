@@ -110,6 +110,15 @@ export interface MatchMailConceptDto {
   tekst: string
 }
 
+/** Duplicaatsignaal (besluit 25-08, deel 2 punt 6): gecachete RLZ-duplicaatuitkomst —
+ * 'geen' | 'mogelijk_duplicaat' | 'niet_toetsbaar' | 'onbekend'. Signalering: de live check op
+ * het boekmoment blijft bindend. */
+export interface DuplicaatSignaalKortDto {
+  uitkomst: string
+  aantal_treffers: number
+  berekend_op: string
+}
+
 export interface DocumentListItemDto {
   id: string
   bestandsnaam: string
@@ -133,6 +142,9 @@ export interface DocumentListItemDto {
   /** Factuurmatch (fase 2): urenmatch-stand van een veldwerker-factuur — voedt de chip
    * "urenmatch wijkt af". Null/afwezig = geen match van toepassing. */
   factuurmatch?: FactuurmatchKortDto | null
+  /** Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + het
+   * filter. Null/afwezig = nog niet getoetst. */
+  duplicaatsignaal?: DuplicaatSignaalKortDto | null
 }
 
 export interface DocumentListResponseDto {
@@ -165,6 +177,8 @@ export interface WerkvoorraadKlantDto {
   /** Factuurmatch (fase 2): signaal-teller — open documenten met een match-afwijking (de
    * documenten zelf zitten al in een status-teller hierboven). */
   match_afwijkingen?: number
+  /** Duplicaatsignaal (25-08, deel 2 punt 6): open documenten met gecachet 'mogelijk_duplicaat'. */
+  duplicaat_signalen?: number
 }
 
 export interface WerkvoorraadOverzichtDto {
