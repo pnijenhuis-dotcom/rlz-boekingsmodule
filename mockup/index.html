@@ -448,6 +448,16 @@
             <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="chip afwijking">Waarschijnlijk al betaald</span> <b>14-08-2026 · ING zakelijk · − € 1.847,23</b> <span style="font-size:12px;color:var(--muted)">match: bedrag incl. btw exact gelijk + factuurnummer in omschrijving</span></div>
             <div class="hint" style="margin:4px 0 0">Onafgeletterde bankmutatie van "Bouwmaat Nederland B.V." — "Factuur 2026-0642". Signaal, geen blokkade: na het boeken pakt het afletteren deze mutatie op.</div>
           </div>
+          <!-- Besluit Peter 25-08 (deel 4, punt 3): aanbetaling-open-signaal — zelfde plek en stijl als het
+               al-betaald-blok. De app zoekt in de bank-directboekingen van deze administratie een eerdere
+               aanbetaling op een vooruitbetalingsrekening voor dezelfde leverancier (herkend op RLZ-crediteur,
+               anders op IBAN → chip "via IBAN") die nog niet verrekend is. SIGNAAL, nooit blokkerend; één klik
+               zet een negatieve verrekenregel (netto −bedrag, btw 0, vooruit-rekening) in het boekvoorstel — de
+               mens controleert totaal + btw-code en boekt. -->
+          <div class="panel" style="border-color:var(--orange);padding:10px 14px">
+            <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="chip afwijking">Aanbetaling open</span> <span>Voor deze leverancier staat nog een aanbetaling open (<b>€ 250,00</b>, 12-08-2026 · boekstuk RLZ-04-00002036)</span> <a href="#bank" style="font-size:12px">Bekijk in bank →</a> <button class="btn secondary" style="padding:3px 10px" onclick="alert('Mockup: voegt een boekingsregel toe — vooruitbetalingsrekening, netto − € 250,00, btw 0 (Nul tarief), omschrijving \'Verrekening aanbetaling RLZ-04-00002036 2026-08-12\'. De harde checks draaien daarna automatisch opnieuw; de mens controleert het totaal en boekt.')">Verrekenregel toevoegen</button></div>
+            <div class="hint" style="margin:4px 0 0">Signaal, geen blokkade: een verrekenregel zet het aanbetaalde bedrag negatief op de vooruitbetalingsrekening (Bouwmaat Nederland B.V.) — controleer de btw-code en het totaal vóór het boeken.</div>
+          </div>
           <!-- Uit de e-mail (feedbackronde 25-08 deel 3, punt 1b): inklapbaar blok bij documenten met
                mail-herkomst — afzender, onderwerp en de platte mail-body (ruis gestript). De body gaat
                ook als HINT mee in toewijzing en AI-extractie; tenaamstelling blijft leidend. -->
@@ -566,8 +576,10 @@ Groet, Jan</pre>
             <button class="btn secondary" onclick="document.getElementById('afwijsmodal').classList.add('open')">Afwijzen…</button>
             <button class="btn secondary" onclick="document.getElementById('tenaamstellingmodal').classList.add('open')">Verkeerde tenaamstelling…</button>
             <button class="btn warn" onclick="document.getElementById('vraagmodal').classList.add('open')">Vraag stellen…</button>
-            <button class="btn green" onclick="alert('Mockup — gedrag hangt af van de administratie:\n\n• Klant-goedkeuring UIT (zoals hier): direct boeken in RLZ.\n\n• Klant-goedkeuring AAN: knop heet dan \'Ter accordering ✓\' — factuur gaat de goedkeuringsflow in en wordt NA het laatste akkoord automatisch geboekt.\n\n• Doorbelasten na boeken AANGEVINKT (zoals hier, besluit 25-08): knop heet \'Boeken + doorbelasten ✓\' — 1 inkoopfactuur + per doelentiteit een doorbelastings-verkoopfactuur en spiegel-inkoopfactuur, in één gang via de bestaande doorbelastingsmotor; boek- én doorbelasting-checks vooraf samen groen. Faalt een deel ná de inkoopboeking, dan zie je precies welke — nooit een halve doorbelasting zonder spoor. Zonder vinkje gewoon \'Boeken in RLZ ✓\'.')">Boeken + doorbelasten ✓</button>
+            <button class="btn green" onclick="alert('Mockup — gedrag hangt af van de administratie:\n\n• Klant-goedkeuring UIT (zoals hier): direct boeken in RLZ.\n\n• Klant-goedkeuring AAN: knop heet dan \'Ter accordering ✓\' — factuur gaat de goedkeuringsflow in en wordt NA het laatste akkoord automatisch geboekt.\n\n• Doorbelasten na boeken AANGEVINKT (zoals hier, besluit 25-08): knop heet \'Boeken + doorbelasten ✓\' — 1 inkoopfactuur + per doelentiteit een doorbelastings-verkoopfactuur en spiegel-inkoopfactuur, in één gang via de bestaande doorbelastingsmotor; boek- én doorbelasting-checks vooraf samen groen. Faalt een deel ná de inkoopboeking, dan zie je precies welke — nooit een halve doorbelasting zonder spoor. Zonder vinkje gewoon \'Boeken in RLZ ✓\'.\n\nNá de klik (besluit 25-08, deel 4 punt 1): toast \'Geboekt — 2026-0642 · boekstuk RLZ-…\' en automatisch door naar het volgende document van deze klant.')">Boeken + doorbelasten ✓</button>
           </div>
+          <!-- Besluit Peter 25-08 (deel 4, punt 1): doorloop ná de actie. -->
+          <div class="hint" style="margin:6px 0 0">Na boeken/afwijzen/ter accordering: toast + automatisch het volgende document van deze klant (zelfde soort eerst); stapel leeg → terug naar de documentenlijst.</div>
         </div>
       </div>
     </div>

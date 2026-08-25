@@ -266,12 +266,33 @@ function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokP
   )
 }
 
+/** Uitkomst van de boekknop voor de aanroeper (deel 4 punt 1: toast + doorloop naar het volgende
+ * document van dezelfde klant). `staande_goedkeuring` = ter accordering aangeboden én direct
+ * geboekt (alles_akkoord + geboekt in de response). `waarschuwing` = iets ging ná de geslaagde
+ * hoofdactie (deels) mis en moet zichtbaar blijven (doorbelasting-fout, boek_fout). */
+export interface GeboektInfo {
+  uitkomst: 'geboekt' | 'ter_accordering' | 'staande_goedkeuring'
+  referentie: string | null
+  boekstuknummer: string | null
+  waarschuwing?: string
+}
+
+/** Imperatieve brug voor een van buiten aangeleverde regel (aanbetaling-verrekenregel, deel 4
+ * punt 3): elke nieuwe `volgnummer` voegt de regel één keer toe aan de regel-lijst. */
+export interface ToeTeVoegenRegel {
+  volgnummer: number
+  ledger_id: string
+  netto_bedrag: number
+  btw_bedrag: number
+  omschrijving: string
+}
+
 interface Props {
   administratieId: string
   documentId: string
   status: string
   veldvoorstel?: Record<string, unknown> | null
-  onGeboekt: () => void
+  onGeboekt: (info: GeboektInfo) => void
   onHersteld: () => void
   /** Vragenworkflow (mockup: "Vraag stellen…"-knop naast de boekknop): alleen meegegeven vanuit
    * statussen waaruit een vraag gesteld kan worden — undefined verbergt de knop. */
@@ -290,6 +311,9 @@ interface Props {
   /** Ná elke geslaagde opslag van het boekvoorstel (regels krijgen nieuwe id's) — het
    * doorbelasting-blok herlaadt dan zijn bron-regels + run. */
   onVoorstelOpgeslagen?: () => void
+  /** Van buiten aangeleverde regel (aanbetaling-verrekenregel): wordt toegevoegd zodra het
+   * volgnummer verandert — zelfde pad als "+ Regel toevoegen", dus mét checks-herrun. */
+  toeTeVoegenRegel?: ToeTeVoegenRegel | null
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
@@ -307,6 +331,7 @@ export function BoekvoorstelPanel({
   onIbanAangeboden,
   doorbelastingKlaargezet = null,
   onVoorstelOpgeslagen,
+  toeTeVoegenRegel = null,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -613,6 +638,34 @@ export function BoekvoorstelPanel({
     veranderInvoer()
   }
 
+  // Aanbetaling-verrekenregel (deel 4 punt 3): elke nieuwe aanlevering (volgnummer) wordt één
+  // keer als regel toegevoegd — negatief netto op de vooruit-rekening, btw 0. Btw-code: het
+  // 0%-tarief uit de sync-cache als dat eenduidig is ("Nul tarief"/enige 0%-optie), anders leeg
+  // en kiest de mens. Niet in read-only (het scherm biedt de knop dan ook niet aan).
+  const verwerktVolgnummer = useRef<number | null>(null)
+  useEffect(() => {
+    if (!toeTeVoegenRegel || isReadOnly) return
+    if (verwerktVolgnummer.current === toeTeVoegenRegel.volgnummer) return
+    verwerktVolgnummer.current = toeTeVoegenRegel.volgnummer
+    const nulOpties = taxrateOpties.filter((o) => o.percentage === 0)
+    const nulTarief =
+      nulOpties.find((o) => /nul/i.test(o.label)) ?? (nulOpties.length === 1 ? nulOpties[0] : undefined)
+    const regel: RegelState = {
+      ...nieuweRegel(),
+      ledgerId: toeTeVoegenRegel.ledger_id,
+      taxrateId: nulTarief?.id ?? null,
+      netto: toeTeVoegenRegel.netto_bedrag.toFixed(2),
+      btw: toeTeVoegenRegel.btw_bedrag.toFixed(2),
+      btwHandmatig: true,
+      omschrijving: toeTeVoegenRegel.omschrijving,
+      handmatigeVelden: { ledgerId: true, taxrateId: nulTarief !== undefined, projectId: false },
+    }
+    setRegels((r) => [...r, regel])
+    veranderInvoer()
+    // Bewust alleen op het volgnummer: taxrateOpties/isReadOnly zijn context, geen trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toeTeVoegenRegel?.volgnummer])
+
   // Fix 2: de AI las een leveranciersnaam, maar het crediteur-veld is (nog) leeg — nooit een
   // leeg verplicht veld zonder handelingsperspectief. Voorstelblok met de gelezen naam +
   // zekerheid, klikbare koppel-suggesties uit de cache, en "nieuwe crediteur aanmaken in RLZ".
@@ -767,11 +820,17 @@ export function BoekvoorstelPanel({
       })
       const body: unknown = await resp.json().catch(() => null)
 
+      const referentieVoorMelding = referentie.trim() || null
       if (resp.ok && accorderingAan) {
         const resultaat = body as { geboekt: boolean; boek_fout: string | null; alles_akkoord: boolean }
         if (resultaat.boek_fout) setBoekenFout(resultaat.boek_fout)
         setPopupMatch(null)
-        onGeboekt()
+        onGeboekt({
+          uitkomst: resultaat.geboekt ? 'staande_goedkeuring' : 'ter_accordering',
+          referentie: referentieVoorMelding,
+          boekstuknummer: null,
+          waarschuwing: resultaat.boek_fout ?? undefined,
+        })
         return
       }
       if (resp.ok) {
@@ -784,7 +843,14 @@ export function BoekvoorstelPanel({
         if (resultaat.doorbelasting_fout) {
           setBoekenFout(`Inkoopfactuur geboekt; doorbelasting (deels) mislukt: ${resultaat.doorbelasting_fout}`)
         }
-        onGeboekt()
+        onGeboekt({
+          uitkomst: 'geboekt',
+          referentie: referentieVoorMelding,
+          boekstuknummer: resultaat.rlz_boekstuknummer,
+          waarschuwing: resultaat.doorbelasting_fout
+            ? `doorbelasting (deels) mislukt: ${resultaat.doorbelasting_fout}`
+            : undefined,
+        })
         return
       }
 

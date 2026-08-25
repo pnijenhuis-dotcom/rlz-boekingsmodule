@@ -242,3 +242,173 @@ export function boekDirect(
 ): Promise<DirectBoekenResultaatDto> {
   return apiPostJson(`/administraties/${administratieId}/bank/mutaties/${mutatieId}/direct-boeken`, payload)
 }
+
+// --- feedbackronde 25-08 deel 4: auto-verversing, relatie-koppeling, splitsen --------------------
+
+export type BankSyncRunStatus = 'geen' | 'overgeslagen' | 'wachtrij' | 'bezig' | 'klaar' | 'fout'
+
+export interface BankSyncRunResultaatDto {
+  mutaties_nieuw: number
+  mutaties_bijgewerkt: number
+  open_ververst: number
+  afletteren_geverifieerd: number
+  automatisch_afgeletterd: number
+  automatisch_geboekt: number
+  fouten: string[]
+}
+
+/** Achtergrond-sync bij het openen van het bankscherm (besluit Peter 25-08, punt 2): de POST geeft
+ *  202 + deze status terug; `overgeslagen` = laatste sync jonger dan de drempel (~5 min), geen
+ *  ronde; `wachtrij`/`bezig` → pollen op de status-route tot klaar/fout/geen. */
+export interface BankSyncRunDto {
+  run_id: string | null
+  status: BankSyncRunStatus
+  overgeslagen: boolean
+  laatste_sync_op: string | null
+  aangevraagd_op?: string | null
+  beeindigd_op?: string | null
+  resultaat?: BankSyncRunResultaatDto | null
+  fout_reden: string | null
+}
+
+export function startBankSyncAchtergrond(administratieId: string): Promise<BankSyncRunDto> {
+  return apiJson<BankSyncRunDto>(`/administraties/${administratieId}/bank/sync-achtergrond`, { method: 'POST' })
+}
+
+export function haalBankSyncAchtergrondStatus(administratieId: string): Promise<BankSyncRunDto> {
+  return apiJson<BankSyncRunDto>(`/administraties/${administratieId}/bank/sync-achtergrond/status`)
+}
+
+export type RelatieSoort = 'crediteur' | 'debiteur'
+
+export interface KoppelRelatieInputDto {
+  relatie_soort: RelatieSoort
+  entity_id: string
+  omschrijving?: string | null
+}
+
+export interface RelatieBoekingDto {
+  boeking_id: string
+  rlz_document_id: string
+  rlz_boekstuknummer: string | null
+  open_restant: string | null
+}
+
+/** Derde verwerkroute (punt 3): aanbetalingsdocument op de relatie + afletteren van de mutatie.
+ *  Fouten: 409 (instelling ontbreekt / al gekoppeld / bedrag past niet), 403 boeken uit,
+ *  429 volumerem, 502 RLZ — de detail-tekst komt via ApiError.message terug. */
+export function koppelRelatie(
+  administratieId: string,
+  mutatieId: string,
+  payload: KoppelRelatieInputDto,
+): Promise<RelatieBoekingDto> {
+  return apiPostJson(`/administraties/${administratieId}/bank/mutaties/${mutatieId}/koppel-relatie`, payload)
+}
+
+export interface AanbetalingDto {
+  boeking_id: string
+  payment_transaction_id: string
+  relatie_soort: RelatieSoort
+  entity_id: string
+  entity_naam: string | null
+  bedrag: string
+  boekdatum: string | null
+  rlz_boekstuknummer: string | null
+  geboekt_op: string
+  status: string
+}
+
+export interface AanbetalingenDto {
+  aanbetalingen: AanbetalingDto[]
+}
+
+export function haalAanbetalingen(administratieId: string): Promise<AanbetalingenDto> {
+  return apiJson<AanbetalingenDto>(`/administraties/${administratieId}/bank/aanbetalingen`)
+}
+
+export function stornoAanbetaling(administratieId: string, boekingId: string, reden: string): Promise<void> {
+  return apiPostJson(`/administraties/${administratieId}/bank/aanbetalingen/${boekingId}/storno`, { reden })
+}
+
+export interface DebiteurOptieDto {
+  id: string
+  naam: string
+}
+
+export interface DebiteurenZoekDto {
+  debiteuren: DebiteurOptieDto[]
+}
+
+/** Live RLZ-zoekactie op naam (read-only, ≥ 2 tekens — korter geeft de backend een lege lijst). */
+export function zoekDebiteuren(administratieId: string, zoek: string): Promise<DebiteurenZoekDto> {
+  return apiJson<DebiteurenZoekDto>(
+    `/administraties/${administratieId}/bank/debiteuren?zoek=${encodeURIComponent(zoek)}`,
+  )
+}
+
+export type SplitsDeelSoort = 'grootboek' | 'open_post' | 'relatie'
+
+/** Eén deel van een splitsing (punt 4). `bedrag` reist als Decimal-string mét het teken van de
+ *  mutatie; de delen moeten server-side exact optellen tot het mutatiebedrag (422). */
+export interface SplitsDeelInputDto {
+  soort: SplitsDeelSoort
+  bedrag: string
+  regels?: DirectBoekenRegelInputDto[]
+  payment_item_id?: string
+  relatie_soort?: RelatieSoort
+  entity_id?: string
+  omschrijving?: string | null
+}
+
+export type SplitsingStatus = 'bezig' | 'verwerkt' | 'half_verwerkt' | 'gestorneerd'
+export type SplitsDeelStatus = 'wacht' | 'verwerkt' | 'fout' | 'gestorneerd'
+
+export interface SplitsDeelDto {
+  deel_id: string
+  volgnummer: number
+  soort: SplitsDeelSoort
+  bedrag: string
+  status: SplitsDeelStatus
+  fout: string | null
+  bank_boeking_id: string | null
+  afletter_opdracht_id: string | null
+  relatie_boeking_id: string | null
+}
+
+export interface SplitsingDto {
+  splitsing_id: string
+  payment_transaction_id: string
+  status: SplitsingStatus
+  mutatie_bedrag: string
+  aangemaakt_op: string | null
+  delen: SplitsDeelDto[]
+}
+
+export interface SplitsingenDto {
+  splitsingen: SplitsingDto[]
+}
+
+export function splitsMutatie(
+  administratieId: string,
+  mutatieId: string,
+  delen: SplitsDeelInputDto[],
+): Promise<SplitsingDto> {
+  return apiPostJson(`/administraties/${administratieId}/bank/mutaties/${mutatieId}/splitsen`, { delen })
+}
+
+export function haalSplitsingen(administratieId: string, rekeningId: string): Promise<SplitsingenDto> {
+  return apiJson<SplitsingenDto>(`/administraties/${administratieId}/bank/rekeningen/${rekeningId}/splitsingen`)
+}
+
+/** Half-verwerkt herstel: de delen op wacht/fout alsnog uitvoeren tegen de verse RLZ-staat. */
+export function hervatSplitsing(administratieId: string, splitsingId: string): Promise<SplitsingDto> {
+  return apiJson<SplitsingDto>(`/administraties/${administratieId}/bank/splitsingen/${splitsingId}/hervat`, {
+    method: 'POST',
+  })
+}
+
+/** Storno van één verwerkt deel (reden verplicht). Een afletter-deel is niet via de API
+ *  storneerbaar → 409 mét tekst (storno actie 19 in RLZ zelf). */
+export function stornoSplitsDeel(administratieId: string, deelId: string, reden: string): Promise<SplitsingDto> {
+  return apiPostJson(`/administraties/${administratieId}/bank/splitsingen/delen/${deelId}/storno`, { reden })
+}

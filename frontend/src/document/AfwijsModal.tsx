@@ -5,10 +5,18 @@ import { Select } from '../ui/basis'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalEigenaarOp } from '../vragen/vragenApi'
 
+/** Info voor de aanroeper ná een geslaagde afwijzing (deel 4 punt 1: toast + doorloop naar het
+ * volgende document) — de referentie komt via de prop van het scherm, de modal kent 'm niet. */
+export interface AfgewezenInfo {
+  referentie: string | null
+}
+
 interface Props {
   administratieId: string
   documentId: string
-  onAfgewezen: (afwijzing: AfwijzingDto) => void
+  /** Referentie/factuurnummer voor de toast ná afwijzen (optioneel — de modal heeft 'm zelf niet). */
+  referentie?: string | null
+  onAfgewezen: (afwijzing: AfwijzingDto, info: AfgewezenInfo) => void
   onAnnuleren: () => void
 }
 
@@ -16,7 +24,7 @@ interface Props {
  * administratie-eigenaar als voorgeselecteerde standaard, en de expliciete melding dat de
  * factuur zichtbaar blijft in de werkvoorraad — zelfde opbouw en eigenaar-default als de
  * vraagmodal (vragen/VraagModal.tsx). */
-export function AfwijsModal({ administratieId, documentId, onAfgewezen, onAnnuleren }: Props) {
+export function AfwijsModal({ administratieId, documentId, referentie = null, onAfgewezen, onAnnuleren }: Props) {
   const { medewerkers, fout: medewerkersFout } = useMedewerkers(administratieId)
   const [eigenaarId, setEigenaarId] = useState<string | null>(null)
   const [eigenaarGeladen, setEigenaarGeladen] = useState(false)
@@ -52,7 +60,7 @@ export function AfwijsModal({ administratieId, documentId, onAfgewezen, onAnnule
         `/administraties/${administratieId}/documenten/${documentId}/afwijzen`,
         { reden, toegewezen_aan: toegewezenAan || null },
       )
-      onAfgewezen(afwijzing)
+      onAfgewezen(afwijzing, { referentie })
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Afwijzen mislukt.')
     } finally {

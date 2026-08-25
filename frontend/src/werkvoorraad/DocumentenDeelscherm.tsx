@@ -9,7 +9,7 @@ import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
-import { documentRoute, formatBedrag, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
+import { SOORT_VOLGORDE, documentRoute, formatBedrag, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
 import { KlantUpload } from './KlantStanden'
 import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
@@ -25,9 +25,10 @@ const STATUSFILTER_AUTOMATISCH = '__automatisch_geboekt'
 /** Sentinel voor het duplicaatsignaal-filter (besluit 25-08, deel 2 punt 6) — zelfde prefix-regel. */
 export const STATUSFILTER_DUPLICAAT = '__mogelijk_duplicaat'
 
-/** Vaste tab-volgorde (mockup-norm 25-08: minimaal Inkoopfacturen / Verkoopfacturen); onbekende
- * soorten volgen alfabetisch achteraan. Alleen soorten met teller > 0 krijgen een tab. */
-const SOORT_VOLGORDE = ['inkoopfactuur', 'verkoopfactuur', 'kassarapport', 'waarborg']
+/** Vaste tab-volgorde (mockup-norm 25-08) — leeft in ./format (gedeeld met de "volgende
+ * document"-keuze); onbekende soorten volgen alfabetisch achteraan. Alleen soorten met teller > 0
+ * krijgen een tab. */
+export { SOORT_VOLGORDE }
 /** Expliciete "alle documenten"-tab (incl. geboekt/verwijderd — het herstel-pad mag nooit
  * onbereikbaar zijn); zonder `soort`-param kiest het scherm de eerste tab met open werk. */
 export const SOORT_ALLE = 'alle'

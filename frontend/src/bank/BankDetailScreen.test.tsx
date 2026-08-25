@@ -151,6 +151,25 @@ function installFetchMock(opties: MockOpties = {}) {
       if (url.includes('/grootboek') || url.includes('/btw-codes')) {
         return Promise.resolve(jsonResponse({ rekeningen: [], btw_codes: [] }))
       }
+      // Deel 4 (25-08): auto-verversing + de nieuwe panelen — in deze suite neutraal (actueel/leeg).
+      if (url.endsWith('/bank/sync-achtergrond') && init?.method === 'POST') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              run_id: null,
+              status: 'overgeslagen',
+              overgeslagen: true,
+              laatste_sync_op: '2026-08-02T06:00:00Z',
+              resultaat: null,
+              fout_reden: null,
+            },
+            202,
+          ),
+        )
+      }
+      if (url.endsWith('/bank/aanbetalingen')) return Promise.resolve(jsonResponse({ aanbetalingen: [] }))
+      if (url.endsWith('/splitsingen')) return Promise.resolve(jsonResponse({ splitsingen: [] }))
+      if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: [] }))
       return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
     }),
   )

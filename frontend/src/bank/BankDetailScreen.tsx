@@ -18,10 +18,15 @@ import {
   type AfletterActieResultaatDto,
   type AfletterHistorieRegelDto,
   type AfletterOpdrachtDto,
+  type BankSyncRunDto,
   type MutatieDto,
   type RekeningenDto,
+  type SplitsingDto,
   type VoorstelDto,
 } from './bankApi'
+import { AanbetalingenPaneel, KoppelRelatieForm } from './RelatieKoppeling'
+import { SplitsenForm, SplitsingWeergave, SplitsingenPaneel } from './Splitsen'
+import { useBankAutoVerversing } from './useBankAutoVerversing'
 
 function formatBedrag(bedrag: string | null): string {
   if (bedrag === null) return '—'
@@ -41,6 +46,28 @@ function chipKlasse(voorstel: VoorstelDto): string {
 function formatTijdstip(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/** "laatst ververst"-hint (auto-verversing 25-08): vandaag → HH:MM, anders dd-mm HH:MM. */
+export function formatVerversTijd(iso: string | null, nu: Date = new Date()): string {
+  if (!iso) return 'nog nooit ververst'
+  const d = new Date(iso)
+  const tijd = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+  const vandaag =
+    d.getFullYear() === nu.getFullYear() && d.getMonth() === nu.getMonth() && d.getDate() === nu.getDate()
+  if (vandaag) return `laatst ververst ${tijd}`
+  return `laatst ververst ${d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' })} ${tijd}`
+}
+
+/** Eénregelige samenvatting van een afgeronde achtergrondronde. */
+function syncRunSamenvatting(run: BankSyncRunDto): string {
+  const r = run.resultaat
+  if (!r) return 'Ververst uit Reeleezee.'
+  const delen = [`${r.mutaties_nieuw} nieuwe mutaties`, `${r.mutaties_bijgewerkt} bijgewerkt`]
+  if (r.automatisch_afgeletterd > 0) delen.push(`${r.automatisch_afgeletterd} automatisch afgeletterd`)
+  if (r.automatisch_geboekt > 0) delen.push(`${r.automatisch_geboekt} automatisch geboekt`)
+  if (r.fouten.length > 0) delen.push(`${r.fouten.length} fout(en)`)
+  return `Ververst uit Reeleezee: ${delen.join(' · ')}.`
 }
 
 /** Levenscyclus-chip van een afletter-opdracht (kliktest 2026-08-08): klaargezet → wacht op
@@ -193,20 +220,26 @@ function HandmatigBoekenForm({
   )
 }
 
+/** Drie verwerkroutes per mutatie (25-08, deel 4): direct-op-grootboek ("Boeken…"), relatie-
+ * koppeling ("Koppel aan relatie…") en splitsen ("Splitsen…") — één inline formulier tegelijk. */
+type ActieModus = 'handmatig' | 'relatie' | 'splitsen' | null
+
 function MutatieRij({
   administratieId,
   mutatie,
   onVerversen,
   onMelding,
+  onGesplitst,
 }: {
   administratieId: string
   mutatie: MutatieDto
   onVerversen: () => void
   onMelding: (tekst: string) => void
+  onGesplitst: (splitsing: SplitsingDto) => void
 }) {
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
-  const [handmatigOpen, setHandmatigOpen] = useState(false)
+  const [actieModus, setActieModus] = useState<ActieModus>(null)
 
   const voorstel = mutatie.voorstel
   const opdracht = mutatie.afletter_opdracht
@@ -337,20 +370,56 @@ function MutatieRij({
           >
             Akkoord ✓
           </button>
-        ) : handmatigOpen ? (
+        ) : actieModus === 'handmatig' ? (
           <HandmatigBoekenForm
             administratieId={administratieId}
             mutatie={mutatie}
             onGeboekt={() => {
-              setHandmatigOpen(false)
+              setActieModus(null)
               onVerversen()
             }}
-            onAnnuleer={() => setHandmatigOpen(false)}
+            onAnnuleer={() => setActieModus(null)}
           />
-        ) : (
-          <button className="btn" disabled={bezig} onClick={() => setHandmatigOpen(true)}>
+        ) : actieModus === null ? (
+          <button className="btn" disabled={bezig} onClick={() => setActieModus('handmatig')}>
             Boeken…
           </button>
+        ) : null}
+        {/* Tweede en derde verwerkroute — beschikbaar op elke nog niet klaargezette mutatie, ook
+            naast een afletter-/regelvoorstel (bv. deelmatch → splitsen in open post + rest). */}
+        {!opdracht && actieModus === null && (
+          <div className="actions" style={{ marginTop: 6 }}>
+            <button className="btn secondary" disabled={bezig} onClick={() => setActieModus('relatie')}>
+              Koppel aan relatie…
+            </button>
+            <button className="btn secondary" disabled={bezig} onClick={() => setActieModus('splitsen')}>
+              Splitsen…
+            </button>
+          </div>
+        )}
+        {actieModus === 'relatie' && (
+          <KoppelRelatieForm
+            administratieId={administratieId}
+            mutatie={mutatie}
+            onGekoppeld={(melding) => {
+              setActieModus(null)
+              onMelding(melding)
+              onVerversen()
+            }}
+            onAnnuleer={() => setActieModus(null)}
+          />
+        )}
+        {actieModus === 'splitsen' && (
+          <SplitsenForm
+            administratieId={administratieId}
+            mutatie={mutatie}
+            onGesplitst={(splitsing) => {
+              setActieModus(null)
+              onGesplitst(splitsing)
+              onVerversen()
+            }}
+            onAnnuleer={() => setActieModus(null)}
+          />
         )}
         {actieFout && (
           <p className="hint" style={{ color: 'var(--red)' }}>
@@ -385,6 +454,11 @@ export function BankDetailScreen() {
   const [verifieerBezig, setVerifieerBezig] = useState(false)
   const [afletterBezigId, setAfletterBezigId] = useState<string | null>(null)
   const [afletterMelding, setAfletterMelding] = useState<{ tekst: string; isFout: boolean } | null>(null)
+  // Deel 4 (25-08): herlaadsleutel voor de aanbetalingen-/splitsingen-panelen + het zojuist-
+  // gesplitst-resultaat (de rij verdwijnt na verversen, het resultaat blijft zichtbaar).
+  const [herlaadSleutel, setHerlaadSleutel] = useState(0)
+  const [splitsResultaat, setSplitsResultaat] = useState<SplitsingDto | null>(null)
+  const [autoVerversMelding, setAutoVerversMelding] = useState<string | null>(null)
 
   const klantNaam = useMemo(
     () => administraties?.find((a) => a.id === administratieId)?.naam ?? '…',
@@ -427,7 +501,22 @@ export function BankDetailScreen() {
   const verversAlles = useCallback(() => {
     laadRekeningen()
     laadMutaties()
+    setHerlaadSleutel((n) => n + 1)
   }, [laadRekeningen, laadMutaties])
+
+  /** Auto-verversing bij openen (besluit Peter 25-08, punt 2): éénmaal per administratie; de cache
+   * staat al op het scherm, bij `klaar` herladen we alles en tonen één regel samenvatting. */
+  const autoVerversing = useBankAutoVerversing(
+    administratieId,
+    useCallback(
+      (run: BankSyncRunDto) => {
+        setAutoVerversMelding(syncRunSamenvatting(run))
+        verversAlles()
+      },
+      [verversAlles],
+    ),
+  )
+  const laatsteSyncOp = autoVerversing.run?.laatste_sync_op ?? rekeningen?.laatste_sync_op ?? null
 
   /** "Nu afletteren" vanuit de levenscyclus-lijst: voert een eerder klaargezette opdracht alsnog
    * via de API uit; de uitkomst (succes of fallback-fout) landt zichtbaar in dezelfde sectie. */
@@ -514,6 +603,18 @@ export function BankDetailScreen() {
             <span className="text-faint">›</span> Bank
           </div>
           <h1>Afletteren — {klantNaam}</h1>
+          <div className="hint" data-testid="ververs-hint" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>{formatVerversTijd(laatsteSyncOp)}</span>
+            {autoVerversing.bezig ? (
+              <span className="chip vraag" role="status">
+                ⟳ verversen uit Reeleezee…
+              </span>
+            ) : autoVerversing.run?.status === 'overgeslagen' ? (
+              <span className="chip geheugen">ververst &lt; 5 min geleden — actueel</span>
+            ) : autoVerversing.run?.status === 'klaar' ? (
+              <span className="chip geheugen">zojuist ververst</span>
+            ) : null}
+          </div>
         </div>
         <div className="bankpicker">
           <span className="bp-icon">🏦</span>
@@ -544,6 +645,18 @@ export function BankDetailScreen() {
         <div className="panel">
           <p className="hint" style={{ color: 'var(--red)' }}>
             {fout}
+          </p>
+        </div>
+      )}
+
+      {(autoVerversing.fout || autoVerversing.run?.status === 'fout') && (
+        <div className="panel" role="alert">
+          <p className="hint" style={{ color: 'var(--red)' }}>
+            ⚠️ Automatisch verversen uit Reeleezee is mislukt
+            {autoVerversing.run?.fout_reden ? `: ${autoVerversing.run.fout_reden}` : ''}
+            {autoVerversing.fout ? `: ${autoVerversing.fout}` : ''}. De getoonde mutaties komen uit de cache van{' '}
+            {formatVerversTijd(laatsteSyncOp).replace('laatst ververst ', '')}; probeer het later opnieuw of gebruik
+            “Verversen uit Reeleezee”.
           </p>
         </div>
       )}
@@ -610,12 +723,8 @@ export function BankDetailScreen() {
           >
             {verifieerBezig ? 'Verifiëren…' : '✓ Nu verifiëren'}
           </button>
-          {rekeningen?.laatste_sync_op && (
-            <span className="hint">
-              laatste sync {new Date(rekeningen.laatste_sync_op).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })}
-            </span>
-          )}
         </div>
+        {autoVerversMelding && <p className="hint">{autoVerversMelding}</p>}
         {syncMelding && <p className="hint">{syncMelding}</p>}
         {mutaties === null ? (
           <p className="hint">Laden…</p>
@@ -641,10 +750,24 @@ export function BankDetailScreen() {
                   mutatie={mutatie}
                   onVerversen={verversAlles}
                   onMelding={setSyncMelding}
+                  onGesplitst={setSplitsResultaat}
                 />
               ))}
             </tbody>
           </table>
+        )}
+        {splitsResultaat && (
+          <div style={{ marginTop: 12 }} data-testid="splits-resultaat">
+            <h3 style={{ margin: '0 0 6px' }}>Zojuist gesplitst</h3>
+            <SplitsingWeergave
+              administratieId={administratieId}
+              splitsing={splitsResultaat}
+              onBijgewerkt={(nieuw) => {
+                setSplitsResultaat(nieuw)
+                verversAlles()
+              }}
+            />
+          </div>
         )}
         <div className="hint">
           Volgorde: 1) <b>exacte match</b> (referentie + bedrag) en 2) gedeeltelijke match →{' '}
@@ -653,9 +776,17 @@ export function BankDetailScreen() {
           Reeleezee, de eerstvolgende sync verifieert); 3) vaste regel uit het geheugen en 5) handmatig →{' '}
           <b>direct op grootboek</b> geboekt vanuit de app; 4) Reeleezee's eigen voorstel wordt getoond mét bron.
           Na 3× dezelfde handmatige boeking stelt de app een vaste regel voor. Afletteren gaat niet door de
-          klant-accorderingsflow.
+          klant-accorderingsflow. Daarnaast per mutatie: <b>Koppel aan relatie</b> (aanbetaling op crediteur/
+          debiteur zonder factuur, verrekening later op de factuur) en <b>Splitsen</b> (één mutatie over meerdere
+          bestemmingen — grootboek, open post of relatie; de delen moeten exact optellen).
         </div>
       </div>
+
+      <AanbetalingenPaneel administratieId={administratieId} herlaadSleutel={herlaadSleutel} />
+
+      {rekeningId && (
+        <SplitsingenPaneel administratieId={administratieId} rekeningId={rekeningId} herlaadSleutel={herlaadSleutel} />
+      )}
 
       {afletterHistorie !== null && afletterHistorie.length > 0 && (
         <div className="panel">

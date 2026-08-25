@@ -423,27 +423,92 @@
     </section>
 
     <!-- ================= SCHERM: BANK-DEELSCHERM (één rekening, gefocust werken) ================= -->
+    <!-- HERZIEN 25-08 (besluit Peter, feedbackronde deel 4 punten 2-4): (2) auto-verversing bij openen —
+         cache direct zichtbaar, "laatst ververst HH:MM" + statuschip (actueel / verversen… / fout-paneel, nooit stil);
+         (3) derde verwerkroute "Koppel aan relatie…" (aanbetalingsdocument op crediteur/debiteur, 1403/1806, mutatie
+         afgeletterd, verrekening later op de factuur) + paneel "Openstaande aanbetalingen op relaties";
+         (4) "Splitsen…" — inline verdeel-editor met rest-teller (rood tot exact 0), bestemming per deel = grootboek
+         (kruispost = gewoon een GB-keuze) / open post (alleen de bij de mutatie bekende) / relatie; half verwerkt =
+         zichtbaar per deel + "Hervatten"; paneel "Gesplitste mutaties" per rekening. -->
     <section class="scherm" id="scherm-bank">
       <div class="pagina-kop">
         <div>
           <div class="sub" style="margin-bottom:4px"><a class="rijlink" onclick="terugWerkvoorraad()">Werkvoorraad</a> <span style="color:var(--faint)">›</span> <a class="rijlink" onclick="toonKlant()">Rubicon Vastgoed B.V.</a> <span style="color:var(--faint)">›</span> NL91 RABO … 4471</div>
           <h1>Afletteren — NL91 RABO … 4471</h1>
           <div class="sub">30 open mutaties · 12 met matchvoorstel · bij t/m 14-08</div>
+          <div class="sub" style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">laatst ververst 09:41 <span class="badge info">⟳ verversen uit Reeleezee…</span> <span style="color:var(--faint)">— of ná afloop:</span> <span class="badge ok">ververst &lt; 5 min geleden — actueel</span></div>
         </div>
         <div class="acties">
           <div class="segment"><button class="actief">Alle (30)</button><button>Met voorstel (12)</button><button>Zonder (18)</button></div>
         </div>
       </div>
-      <div class="kaart">
+      <div class="kaart" style="margin-bottom:16px;border-style:dashed;background:var(--panel-2)">
+        <div class="kaart-body" style="padding:10px 18px;font-size:12.5px;color:var(--muted)"><span class="badge danger">fout</span> Automatisch verversen uit Reeleezee is mislukt: <i>RLZ gaf 503 op PaymentTransactions</i>. De getoonde mutaties komen uit de cache van 09:41 — probeer het later opnieuw of gebruik “Verversen uit Reeleezee”. <span style="color:var(--faint)">(alleen zichtbaar bij status fout — nooit stil)</span></div>
+      </div>
+      <div class="kaart" style="margin-bottom:16px">
+        <div class="kaart-kop"><h2>Onverwerkte bankmutaties</h2><span class="badge info">30 open</span><div class="rechts"><span class="sub">Ververst uit Reeleezee: 3 nieuwe mutaties · 1 bijgewerkt.</span></div></div>
         <div class="tabel-scroll"><table>
           <thead><tr><th>Mutatie</th><th class="num">Bedrag</th><th>Voorstel</th><th></th></tr></thead>
           <tbody>
-            <tr><td><div class="hoofd">Huur augustus — Jansen Beheer</div><div class="sub">14-08 · NL22 INGB … 8102</div></td><td class="num">€ 1.250,00</td><td><span class="badge ok">exacte match: factuur 2026-0007</span></td><td><a class="rijlink" onclick="toast('Afgeletterd — direct geverifieerd in RLZ')">Nu afletteren</a></td></tr>
-            <tr><td><div class="hoofd">Gemeente Eindhoven OZB</div><div class="sub">13-08</div></td><td class="num">− € 418,00</td><td><span class="badge warn">deelmatch — bevestigen</span></td><td><a class="rijlink">Bekijken →</a></td></tr>
-            <tr><td><div class="hoofd">Storting kruispost</div><div class="sub">13-08</div></td><td class="num">€ 500,00</td><td><span class="badge stil">geen voorstel</span></td><td><a class="rijlink">Boeken →</a></td></tr>
-            <tr><td colspan="4" class="leeg">… nog 27 mutaties (mockup toont er 3)</td></tr>
+            <tr><td><div class="hoofd">Huur augustus — Jansen Beheer</div><div class="sub">14-08 · NL22 INGB … 8102</div></td><td class="num">€ 1.250,00</td><td><span class="badge ok">exacte match: factuur 2026-0007</span></td><td><a class="rijlink" onclick="toast('Afgeletterd — direct geverifieerd in RLZ')">Nu afletteren</a><div class="sub" style="margin-top:4px"><a class="rijlink" style="font-weight:500">Koppel aan relatie…</a> · <a class="rijlink" style="font-weight:500">Splitsen…</a></div></td></tr>
+            <tr><td><div class="hoofd">Gemeente Eindhoven OZB</div><div class="sub">13-08</div></td><td class="num">− € 418,00</td><td><span class="badge warn">deelmatch — bevestigen</span></td><td><a class="rijlink">Bekijken →</a><div class="sub" style="margin-top:4px"><a class="rijlink" style="font-weight:500">Koppel aan relatie…</a> · <a class="rijlink" style="font-weight:500">Splitsen…</a></div></td></tr>
+            <tr><td><div class="hoofd">Bouwmaat Nederland B.V. — aanbetaling order 8812</div><div class="sub">12-08 · NL00 BANK … 6789</div></td><td class="num">− € 1.000,00</td><td><span class="badge stil">geen voorstel</span></td><td><a class="rijlink">Boeken →</a><div class="sub" style="margin-top:4px"><a class="rijlink" style="font-weight:500">Koppel aan relatie…</a> · <a class="rijlink" style="font-weight:500">Splitsen…</a></div></td></tr>
+            <tr><td colspan="4" style="padding:12px 18px;background:var(--panel-2)">
+              <!-- inline formulier derde verwerkroute (opent onder de rij, zelfde patroon als "Boeken…") -->
+              <div class="sub" style="font-weight:600;color:var(--text);margin-bottom:8px">Koppel aan relatie — Bouwmaat Nederland B.V. · − € 1.000,00</div>
+              <div style="display:flex;gap:14px;font-size:12.5px;margin-bottom:8px"><label><input type="radio" checked> Crediteur</label><label><input type="radio"> Debiteur <span style="color:var(--faint)">(live zoeken in RLZ, min. 2 tekens)</span></label></div>
+              <div class="veld" style="max-width:420px"><label>Crediteur *</label><input type="text" value="Bouwmaat Nederland B.V."></div>
+              <div class="veld" style="max-width:420px"><label>Omschrijving (optioneel)</label><input type="text" value="aanbetaling order 8812"><div class="hint">Boekt een aanbetalingsdocument op de relatie (vooruitbetalingsrekening 1403/1806) en lettert de mutatie af; verrekening later via de tegenregel op de factuur.</div></div>
+              <button class="btn klein" onclick="toast('Gekoppeld — aanbetalingsdocument RLZ-07-00000042 geboekt, mutatie afgeletterd')">Koppel aan relatie ✓</button> <button class="btn klein secundair">Annuleren</button>
+            </td></tr>
+            <tr><td><div class="hoofd">Storting kruispost + huur Jansen</div><div class="sub">13-08</div></td><td class="num">€ 1.750,00</td><td><span class="badge warn">deelmatch: factuur 2026-0007 (€ 1.250,00)</span></td><td><a class="rijlink">Bekijken →</a><div class="sub" style="margin-top:4px"><a class="rijlink" style="font-weight:500">Koppel aan relatie…</a> · <a class="rijlink" style="font-weight:500;text-decoration:underline">Splitsen…</a></div></td></tr>
+            <tr><td colspan="4" style="padding:12px 18px;background:var(--panel-2)">
+              <!-- inline verdeel-editor (punt 4): bedrag + bestemmingstype per deel; bedragen positief invoeren, teken volgt de mutatie -->
+              <div class="sub" style="font-weight:600;color:var(--text);margin-bottom:8px">Splitsen — mutatie € 1.750,00 verdelen over meerdere bestemmingen</div>
+              <div style="display:grid;grid-template-columns:120px 220px 1fr;gap:8px;align-items:end;margin-bottom:8px">
+                <div class="veld" style="margin:0"><label>Bedrag deel 1 *</label><input type="text" value="1.250,00"></div>
+                <div class="veld" style="margin:0"><label>Bestemming</label><input type="text" value="Open post (afletteren)"></div>
+                <div class="sub">Afletteren tegen open post <b>2026-0007</b> (€ 1.250,00) — de enige open post die de matchmotor bij deze mutatie kent.</div>
+                <div class="veld" style="margin:0"><label>Bedrag deel 2 *</label><input type="text" value="400,00"></div>
+                <div class="veld" style="margin:0"><label>Bestemming</label><input type="text" value="Grootboek"></div>
+                <div class="veld" style="margin:0"><label>Grootboekrekening deel 2 * · Btw-code</label><input type="text" value="2100 · Kruisposten — geen btw"></div>
+              </div>
+              <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px"><button class="btn klein secundair">+ Deel toevoegen</button><span class="badge danger">Rest: € 100,00</span><span class="sub">→ na correctie van deel 2 naar 500,00:</span><span class="badge ok">Rest: € 0,00 — klopt</span></div>
+              <button class="btn klein" disabled style="opacity:.55">Splitsen en verwerken ✓</button> <button class="btn klein secundair">Annuleren</button> <span class="sub">knop pas actief bij rest 0 én complete bestemming per deel; server toetst de som opnieuw (422)</span>
+            </td></tr>
+            <tr><td colspan="4" class="leeg">… nog 26 mutaties (mockup toont er 4)</td></tr>
           </tbody>
         </table></div>
+      </div>
+      <div class="kaart" style="margin-bottom:16px">
+        <div class="kaart-kop"><h2>Openstaande aanbetalingen op relaties</h2><span class="badge warn">1 open</span><div class="uitleg">RLZ kent de aanbetaling ná het afletteren alleen als GB-saldo; de open post per relatie leeft hier tot de factuur via de tegenregel wordt verrekend. Paneel alleen zichtbaar als er iets staat.</div></div>
+        <div class="tabel-scroll"><table>
+          <thead><tr><th>Datum</th><th>Relatie</th><th class="num">Bedrag</th><th>Boekstuk</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>12-08</td><td><span class="badge stil">crediteur</span> Bouwmaat Nederland B.V.</td><td class="num">− € 1.000,00</td><td>RLZ-07-00000042</td><td><span class="badge warn">open — nog te verrekenen</span></td><td><a class="rijlink">Storno…</a> <span class="sub">(reden verplicht)</span></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="kaart">
+        <div class="kaart-kop"><h2>Gesplitste mutaties</h2><span class="badge danger">1 half verwerkt</span><div class="uitleg">Per deel een chip (verwerkt / fout / wacht) mét fouttekst; half verwerkt → “Hervatten” voert de resterende delen alsnog uit tegen de verse RLZ-staat. Afletter-delen zijn niet via de API storneerbaar (actie 19 in RLZ zelf), grootboek- en relatie-delen wel (reden verplicht).</div></div>
+        <div class="kaart-body" style="padding-top:12px">
+          <div class="sub" style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b style="color:var(--text)">Mutatie € 1.750,00</b> in 2 delen <span class="badge danger">half verwerkt — hervatten</span> <button class="btn klein">Hervatten</button></div>
+          <div class="tabel-scroll"><table>
+            <thead><tr><th>#</th><th>Bestemming</th><th class="num">Bedrag</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>Open post (afletteren)</td><td class="num">€ 1.250,00</td><td><span class="badge ok">verwerkt</span></td><td></td></tr>
+              <tr><td>2</td><td>Grootboek</td><td class="num">€ 500,00</td><td><span class="badge danger">fout</span> <span class="sub">RLZ gaf 400 _InvalidData op de regel</span></td><td></td></tr>
+            </tbody>
+          </table></div>
+          <div class="sub" style="display:flex;gap:8px;align-items:center;margin:14px 0 6px"><b style="color:var(--text)">Mutatie − € 1.000,00</b> in 2 delen <span class="badge ok">volledig verwerkt</span></div>
+          <div class="tabel-scroll"><table>
+            <thead><tr><th>#</th><th>Bestemming</th><th class="num">Bedrag</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>Grootboek</td><td class="num">− € 600,00</td><td><span class="badge ok">verwerkt</span></td><td><a class="rijlink">Storno deel…</a></td></tr>
+              <tr><td>2</td><td>Relatie (aanbetaling)</td><td class="num">− € 400,00</td><td><span class="badge ok">verwerkt</span></td><td><a class="rijlink">Storno deel…</a></td></tr>
+            </tbody>
+          </table></div>
+        </div>
       </div>
     </section>
 

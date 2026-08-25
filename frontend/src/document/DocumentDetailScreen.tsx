@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
-import type { AfwijzingDto, DocumentActieResponseDto, DocumentDetailDto, HerkomstMailDto, VraagDto } from '../api/types'
+import type {
+  AfwijzingDto,
+  DocumentActieResponseDto,
+  DocumentDetailDto,
+  DocumentListResponseDto,
+  HerkomstMailDto,
+  VraagDto,
+} from '../api/types'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
+import { documentRoute } from '../werkvoorraad/format'
+import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
+import { useToastOptioneel } from '../ui/basis'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
@@ -14,9 +24,10 @@ import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
 import { AlBetaaldSignaal } from './AlBetaaldSignaal'
+import { AanbetalingSignaal, type VerrekenRegel } from './AanbetalingSignaal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
-import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { BoekvoorstelPanel, type GeboektInfo, type ToeTeVoegenRegel } from './BoekvoorstelPanel'
 import { MatchSectie } from './MatchSectie'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
@@ -29,6 +40,25 @@ const VRAAG_STELLEN_STATUSSEN = new Set(['te_controleren', 'handmatig_afmaken', 
 /** Statussen waaruit afgewezen kan worden (spiegel van app/documenten/afwijzen.py —
  * zelfde herstelbare herkomsten als bij vragen; de backend blijft de waarheid). */
 const AFWIJZEN_STATUSSEN = VRAAG_STELLEN_STATUSSEN
+
+/** Uitkomst van een verwerkingsactie op dit scherm (boeken / ter accordering / afwijzen) — voedt
+ * de toast en de doorloop naar het volgende document (besluit Peter 25-08, deel 4 punt 1). */
+type VerwerkingsInfo =
+  | GeboektInfo
+  | { uitkomst: 'afgewezen'; referentie: string | null; boekstuknummer: null; waarschuwing?: undefined }
+
+function toastTekst(info: VerwerkingsInfo, referentie: string): string {
+  switch (info.uitkomst) {
+    case 'geboekt':
+      return `Geboekt — ${referentie}${info.boekstuknummer ? ` · boekstuk ${info.boekstuknummer}` : ''}`
+    case 'staande_goedkeuring':
+      return `Geboekt via staande goedkeuring — ${referentie}`
+    case 'ter_accordering':
+      return `Ter accordering aangeboden — ${referentie}`
+    case 'afgewezen':
+      return `Afgewezen — ${referentie}`
+  }
+}
 
 /** Ververs-interval zolang de achtergrondextractie loopt (wachtrij/bezig). */
 const EXTRACTIE_POLL_MS = 3000
@@ -249,6 +279,8 @@ function UitDeEmail({ herkomst }: { herkomst: HerkomstMailDto }) {
 
 export function DocumentDetailScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
+  const navigate = useNavigate()
+  const { meld } = useToastOptioneel()
   const [detail, setDetail] = useState<DocumentDetailDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bijlage, setBijlage] = useState<Bijlage | null>(null)
@@ -280,6 +312,14 @@ export function DocumentDetailScreen() {
   const [boekvoorstelVersie, setBoekvoorstelVersie] = useState(0)
   const onVoorstelOpgeslagen = useCallback(() => setBoekvoorstelVersie((v) => v + 1), [])
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
+  // Aanbetaling-verrekenregel (deel 4 punt 3): brug van het signaal naar het boekvoorstel — elke
+  // klik levert een nieuw volgnummer, het paneel voegt de regel dan één keer toe.
+  const [toeTeVoegenRegel, setToeTeVoegenRegel] = useState<ToeTeVoegenRegel | null>(null)
+  const verrekenTeller = useRef(0)
+  const voegVerrekenregelToe = useCallback((regel: VerrekenRegel) => {
+    verrekenTeller.current += 1
+    setToeTeVoegenRegel({ volgnummer: verrekenTeller.current, ...regel })
+  }, [])
   const [heropenenBezig, setHeropenenBezig] = useState(false)
   const [heropenenFout, setHeropenenFout] = useState<string | null>(null)
   const splitter = useReviewSplitter()
@@ -382,6 +422,38 @@ export function DocumentDetailScreen() {
   // backend bewaakt dit ook (alleen PDF, alleen vanaf te_controleren) — dit is de UI-kant.
   const isPdf = detail.bestandsnaam.toLowerCase().endsWith('.pdf')
   const magOpnieuwExtraheren = isPdf && detail.status === 'te_controleren' && !extractieProbleem
+
+  /** Referentie voor de toast: het ingevulde factuurnummer, anders het geëxtraheerde, anders de
+   * bestandsnaam — een toast zonder herkenbare aanduiding zegt niets. */
+  const veldvoorstelReferentie =
+    detail.veldvoorstel && typeof detail.veldvoorstel.factuurnummer === 'string' && detail.veldvoorstel.factuurnummer.trim()
+      ? detail.veldvoorstel.factuurnummer
+      : null
+  const referentieVoorMelding = (ref: string | null) => ref?.trim() || veldvoorstelReferentie || detail.bestandsnaam
+
+  /** Ná boeken / ter accordering / afwijzen (besluit Peter 25-08, deel 4 punt 1): toast en dan
+   * automatisch door naar het volgende te verwerken document van deze klant (zelfde soort eerst);
+   * stapel leeg — of lijst niet leesbaar — dan terug naar de documentenlijst. Eén uitzondering:
+   * ter accordering mét boek_fout (staande goedkeuring die niet kon boeken) blijft op het
+   * scherm — de fout hoort zichtbaar te blijven waar hij thuishoort, niet alleen in een toast. */
+  const naVerwerking = async (info: VerwerkingsInfo) => {
+    const tekst = toastTekst(info, referentieVoorMelding(info.referentie))
+    if (info.uitkomst === 'ter_accordering' && info.waarschuwing) {
+      meld(`${tekst} — ${info.waarschuwing}`, 'warn')
+      laadDetail()
+      return
+    }
+    meld(info.waarschuwing ? `${tekst} — ${info.waarschuwing}` : tekst, info.waarschuwing ? 'warn' : 'ok')
+    let doel = `/?administratie=${administratieId}`
+    try {
+      const lijst = await apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
+      const volgende = kiesVolgendDocument(lijst.documenten, documentId, detail.soort)
+      if (volgende) doel = documentRoute(administratieId, volgende)
+    } catch {
+      // Lijst niet leesbaar: de documentenlijst zelf toont die fout — daar landen we dan.
+    }
+    void navigate(doel)
+  }
 
   const heropenen = async () => {
     setHeropenenBezig(true)
@@ -668,13 +740,30 @@ export function DocumentDetailScreen() {
             />
           )}
 
+          {/* Aanbetaling-open-signaal (deel 4 punt 3): zelfde gates; de verrekenknop alleen
+              zolang het boekvoorstel bewerkbaar is. */}
+          {!achtergrondBezig && (
+            <AanbetalingSignaal
+              administratieId={administratieId}
+              documentId={documentId}
+              status={detail.status}
+              soort={detail.soort}
+              boekvoorstelVersie={boekvoorstelVersie}
+              onVerrekenregel={
+                VRAAG_STELLEN_STATUSSEN.has(detail.status) || detail.status === 'boeken_mislukt'
+                  ? voegVerrekenregelToe
+                  : undefined
+              }
+            />
+          )}
+
           {!achtergrondBezig && (
             <BoekvoorstelPanel
               administratieId={administratieId}
               documentId={documentId}
               status={detail.status}
               veldvoorstel={detail.veldvoorstel}
-              onGeboekt={laadDetail}
+              onGeboekt={(info) => void naVerwerking(info)}
               onHersteld={laadDetail}
               onVraagStellen={
                 VRAAG_STELLEN_STATUSSEN.has(detail.status) ? () => setVraagModalOpen(true) : undefined
@@ -683,6 +772,7 @@ export function DocumentDetailScreen() {
               onIbanAangeboden={VRAAG_STELLEN_STATUSSEN.has(detail.status) ? laadDetail : undefined}
               doorbelastingKlaargezet={doorbelastingKlaargezet}
               onVoorstelOpgeslagen={onVoorstelOpgeslagen}
+              toeTeVoegenRegel={toeTeVoegenRegel}
             />
           )}
 
@@ -732,9 +822,10 @@ export function DocumentDetailScreen() {
             <AfwijsModal
               administratieId={administratieId}
               documentId={documentId}
-              onAfgewezen={() => {
+              referentie={veldvoorstelReferentie}
+              onAfgewezen={(_afwijzing, info) => {
                 setAfwijsModalOpen(false)
-                laadDetail()
+                void naVerwerking({ uitkomst: 'afgewezen', referentie: info.referentie, boekstuknummer: null })
               }}
               onAnnuleren={() => setAfwijsModalOpen(false)}
             />

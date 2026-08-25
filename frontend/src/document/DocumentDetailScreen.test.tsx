@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../ui/basis'
 import { DocumentDetailScreen } from './DocumentDetailScreen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -11,7 +12,25 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 }
 
-function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: string[]; alBetaald?: unknown }) {
+interface MockOpties {
+  extractieAanroepen?: string[]
+  alBetaald?: unknown
+  /** Deel 4 punt 3: antwoord op GET …/aanbetaling-open (default: niet toetsbaar). */
+  aanbetaling?: unknown
+  /** Deel 4 punt 1: de documentenlijst van de klant (GET …/documenten) voor de doorloop. */
+  lijst?: unknown[]
+  lijstAanroepen?: string[]
+  /** Blok B: antwoord op de automatische open-run POST …/boekvoorstel/checks (default 404). */
+  checksResponse?: unknown
+  /** Antwoord op POST …/boeken. */
+  boekenResponse?: unknown
+  boekenAanroepen?: string[]
+  /** Override voor GET …/boekvoorstel. */
+  boekvoorstel?: unknown
+  taxrates?: unknown[]
+}
+
+function installFetchMock(detail: unknown, opties?: MockOpties) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -19,6 +38,20 @@ function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: strin
         opties?.extractieAanroepen?.push(url)
         return Promise.resolve(jsonResponse({ document_id: DOCUMENT_ID, status: 'extractie_bezig' }))
       }
+      if (url.endsWith('/boekvoorstel/checks') && init?.method === 'POST') {
+        if (opties?.checksResponse === undefined) return Promise.resolve(new Response(null, { status: 404 }))
+        return Promise.resolve(jsonResponse(opties.checksResponse))
+      }
+      if (url.endsWith('/boeken') && init?.method === 'POST') {
+        opties?.boekenAanroepen?.push(url)
+        return Promise.resolve(jsonResponse(opties?.boekenResponse ?? {}))
+      }
+      if (url.endsWith('/documenten')) {
+        opties?.lijstAanroepen?.push(url)
+        return Promise.resolve(jsonResponse({ documenten: opties?.lijst ?? [] }))
+      }
+      if (url.endsWith('/aanbetaling-open'))
+        return Promise.resolve(jsonResponse(opties?.aanbetaling ?? { toetsbaar: false, treffers: [] }))
       // Klant-accordering: vóór de documenten-match — /accordering/documenten/{id} eindigt óók
       // op /documenten/{id}.
       if (url.includes('/accordering/instellingen'))
@@ -29,20 +62,22 @@ function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: strin
       if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
       if (url.endsWith('/boekvoorstel')) {
         return Promise.resolve(
-          jsonResponse({
-            document_id: DOCUMENT_ID,
-            vendor_id: null,
-            referentie: null,
-            factuurdatum: null,
-            totaalbedrag: null,
-            rlz_boekstuknummer: null,
-            opgeslagen: false,
-            regels: [],
-          }),
+          jsonResponse(
+            opties?.boekvoorstel ?? {
+              document_id: DOCUMENT_ID,
+              vendor_id: null,
+              referentie: null,
+              factuurdatum: null,
+              totaalbedrag: null,
+              rlz_boekstuknummer: null,
+              opgeslagen: false,
+              regels: [],
+            },
+          ),
         )
       }
       if (url.endsWith('/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: [] }))
-      if (url.endsWith('/btw-codes')) return Promise.resolve(jsonResponse({ btw_codes: [] }))
+      if (url.endsWith('/btw-codes')) return Promise.resolve(jsonResponse({ btw_codes: opties?.taxrates ?? [] }))
       if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: [] }))
       if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten: [] }))
       if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: false }))
@@ -51,12 +86,22 @@ function installFetchMock(detail: unknown, opties?: { extractieAanroepen?: strin
   )
 }
 
+/** Locatie-probe voor de doorloop-tests: toont het actuele pad + query, waar de router ook landt. */
+function LocatieProbe() {
+  const loc = useLocation()
+  return <div data-testid="locatie">{loc.pathname + loc.search}</div>
+}
+
 function renderScherm() {
   return render(
     <MemoryRouter initialEntries={[`/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`]}>
-      <Routes>
-        <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
-      </Routes>
+      <ToastProvider>
+        <LocatieProbe />
+        <Routes>
+          <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
+          <Route path="*" element={<div>elders</div>} />
+        </Routes>
+      </ToastProvider>
     </MemoryRouter>,
   )
 }
@@ -222,9 +267,11 @@ describe('DocumentDetailScreen — al-betaald-signaal (besluit Peter 25-08, deel
     })
     renderScherm()
     expect(await screen.findByText('Waarschijnlijk al betaald')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(/ING zakelijk/)
-    expect(screen.getByRole('status')).toHaveTextContent(/bedrag incl\. btw exact gelijk \+ factuurnummer in omschrijving/)
-    expect(screen.getByRole('status')).toHaveTextContent(/geen blokkade/)
+    // Het signaal-blok zelf (de ToastProvider draagt óók role=status).
+    const blok = screen.getByText('Waarschijnlijk al betaald').closest('.al-betaald-signaal') as HTMLElement
+    expect(blok).toHaveTextContent(/ING zakelijk/)
+    expect(blok).toHaveTextContent(/bedrag incl\. btw exact gelijk \+ factuurnummer in omschrijving/)
+    expect(blok).toHaveTextContent(/geen blokkade/)
   })
 
   it('geen signaal zonder treffers', async () => {
@@ -499,5 +546,162 @@ describe('DocumentDetailScreen — blok "Uit de e-mail" (feedbackronde 25-08 dee
     await waitFor(() => expect(screen.getAllByText(/Kopgegevens|Bijlage/).length).toBeGreaterThan(0))
     expect(screen.queryAllByTestId('uit-de-email')).toHaveLength(1) // alleen het eerste (nog gemounte) scherm
     unmount()
+  })
+})
+
+// ————— Deel 4 punt 1 (besluit Peter 25-08): ná boeken direct door naar het volgende document —————
+
+const VOLGEND_ID = 'dddddddd-0000-0000-0000-000000000004'
+
+function lijstItem(id: string, soort: string, status: string) {
+  return {
+    id,
+    bestandsnaam: `${id}.pdf`,
+    status,
+    bron: 'upload',
+    soort,
+    mogelijk_duplicaat_van: null,
+    toegewezen_aan: null,
+    aangemaakt_op: '2026-08-25T10:00:00Z',
+    laatst_gewijzigd_op: '2026-08-25T10:00:00Z',
+    afwijzing: null,
+    leverancier: null,
+    totaalbedrag: null,
+    factuurdatum: null,
+    automatisch_geboekt: false,
+  }
+}
+
+const GROEN_RAPPORT = { geblokkeerd: false, resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'ok' }] }
+
+describe('DocumentDetailScreen — doorloop ná boeken (deel 4 punt 1)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const boekOpties = (lijst: unknown[]): MockOpties => ({
+    lijst,
+    lijstAanroepen: [],
+    boekenAanroepen: [],
+    checksResponse: GROEN_RAPPORT,
+    boekenResponse: { document_id: DOCUMENT_ID, status: 'geboekt', rlz_document_id: 'x', rlz_boekstuknummer: 'RLZ-04-00002001' },
+    boekvoorstel: {
+      document_id: DOCUMENT_ID,
+      vendor_id: null,
+      referentie: 'F-1',
+      factuurdatum: null,
+      totaalbedrag: null,
+      rlz_boekstuknummer: null,
+      opgeslagen: true,
+      regels: [],
+    },
+  })
+
+  it('boekt, toont een toast met referentie + boekstuk en opent het volgende inkoopdocument van de klant', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const opties = boekOpties([
+      lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'te_controleren'),
+      lijstItem('eeeeeeee-0000-0000-0000-000000000005', 'verkoopfactuur', 'te_controleren'),
+      lijstItem(VOLGEND_ID, 'inkoopfactuur', 'klaar_om_te_boeken'),
+    ])
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] }), opties)
+    renderScherm()
+
+    const knop = await screen.findByRole('button', { name: 'Boeken in RLZ ✓' })
+    await waitFor(() => expect(knop).toBeEnabled())
+    await gebruiker.click(knop)
+
+    await waitFor(() => expect(opties.boekenAanroepen).toHaveLength(1))
+    expect(await screen.findByText('Geboekt — F-1 · boekstuk RLZ-04-00002001')).toBeInTheDocument()
+    await waitFor(() => expect(opties.lijstAanroepen).toHaveLength(1))
+    await waitFor(() =>
+      expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${VOLGEND_ID}`),
+    )
+  })
+
+  it('zonder te verwerken documenten gaat het terug naar de documentenlijst van de klant', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const opties = boekOpties([
+      lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'geboekt'),
+      lijstItem(VOLGEND_ID, 'inkoopfactuur', 'ter_accordering'),
+      lijstItem('eeeeeeee-0000-0000-0000-000000000005', 'inkoopfactuur', 'afgewezen'),
+    ])
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] }), opties)
+    renderScherm()
+
+    const knop = await screen.findByRole('button', { name: 'Boeken in RLZ ✓' })
+    await waitFor(() => expect(knop).toBeEnabled())
+    await gebruiker.click(knop)
+
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/?administratie=${ADMINISTRATIE_ID}`))
+    expect(screen.getByText('elders')).toBeInTheDocument()
+  })
+})
+
+// ————— Deel 4 punt 3: aanbetaling-open-signaal + verrekenregel —————
+
+describe('DocumentDetailScreen — aanbetaling-open-signaal (deel 4 punt 3)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const detail = detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] })
+  const TREFFER = {
+    boeking_id: 'b1',
+    payment_transaction_id: 'pt1',
+    bedrag: '250.00',
+    boekdatum: '2026-08-12',
+    geboekt_op: '2026-08-12T10:00:00Z',
+    rlz_boekstuknummer: 'RLZ-04-00002036',
+    entity_naam: 'Bouwmaat Nederland B.V.',
+    vooruit_ledger_id: 'ledger-vooruit',
+    herkenning: 'iban',
+  }
+
+  it('toont het signaal met bedrag, datum, boekstuk, herkenning-chip en banklink', async () => {
+    installFetchMock(detail, { aanbetaling: { toetsbaar: true, treffers: [TREFFER] } })
+    renderScherm()
+    expect(await screen.findByText('Aanbetaling open')).toBeInTheDocument()
+    const blok = screen.getByText('Aanbetaling open').closest('.aanbetaling-signaal') as HTMLElement
+    expect(blok).toHaveTextContent(/Voor deze leverancier staat nog een aanbetaling open/)
+    expect(blok).toHaveTextContent(/250,00/)
+    expect(blok).toHaveTextContent(/12 aug 2026/)
+    expect(blok).toHaveTextContent(/boekstuk RLZ-04-00002036/)
+    expect(blok).toHaveTextContent('via IBAN')
+    expect(screen.getByRole('link', { name: /Bekijk in bank/ })).toHaveAttribute('href', `/bank/${ADMINISTRATIE_ID}`)
+  })
+
+  it('geen signaal zonder treffers', async () => {
+    installFetchMock(detail, { aanbetaling: { toetsbaar: true, treffers: [] } })
+    renderScherm()
+    await screen.findByText('factuur.pdf')
+    expect(screen.queryByText('Aanbetaling open')).not.toBeInTheDocument()
+  })
+
+  it('"Verrekenregel toevoegen" zet een negatieve regel op de vooruit-rekening in het boekvoorstel (0%-tarief als dat eenduidig is)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    installFetchMock(detail, {
+      aanbetaling: { toetsbaar: true, treffers: [TREFFER] },
+      taxrates: [
+        { id: 'tr-hoog', naam: 'NL Hoog 21%', percentage: '0.21' },
+        { id: 'tr-nul', naam: 'Nul tarief', percentage: '0' },
+      ],
+    })
+    renderScherm()
+
+    await screen.findByText('Aanbetaling open')
+    // Eén lege startregel in het boekvoorstel.
+    await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(1))
+    await gebruiker.click(screen.getByRole('button', { name: 'Verrekenregel toevoegen' }))
+
+    await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(2))
+    const netto = screen.getAllByLabelText('Netto bedrag').map((el) => (el as HTMLInputElement).value)
+    expect(netto).toContain('-250.00')
+    const omschrijvingen = screen
+      .getAllByRole('textbox')
+      .map((el) => (el as HTMLInputElement).value)
+    expect(omschrijvingen).toContain('Verrekening aanbetaling RLZ-04-00002036 2026-08-12')
+    // Twee keer klikken = twee regels (elke klik een nieuw volgnummer).
+    await gebruiker.click(screen.getByRole('button', { name: 'Verrekenregel toevoegen' }))
+    await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(3))
   })
 })

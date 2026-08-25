@@ -34,6 +34,11 @@ export function soortLabel(soort: string): string {
   return SOORT_LABELS[soort] ?? soort
 }
 
+/** Vaste soort-volgorde (mockup-norm 25-08: minimaal Inkoopfacturen / Verkoopfacturen) — gedeeld
+ * door de tabs van de documentenlijst en de "volgende document"-keuze ná boeken/afwijzen
+ * (deel 4 punt 1). Onbekende soorten volgen achteraan. */
+export const SOORT_VOLGORDE = ['inkoopfactuur', 'verkoopfactuur', 'kassarapport', 'waarborg']
+
 /** Route per documentsoort/-status — één plek voor het klik-doel van een documentregel
  * (mockup: klik op een vraag-regel opent de vráág, niet het controlescherm). */
 export function documentRoute(administratieId: string, d: DocumentListItemDto): string {

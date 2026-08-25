@@ -131,6 +131,26 @@ export interface AlBetaaldSignaalDto {
   treffers: AlBetaaldTrefferDto[]
 }
 
+/** Aanbetaling-open-signaal (25-08 deel 4 punt 3): een eerdere bank-directboeking op een
+ * vooruitbetalingsrekening voor dezelfde leverancier (herkend op Entity of IBAN) die nog niet
+ * verrekend is. Bedrag = string (Decimal, positief). */
+export interface AanbetalingOpenTrefferDto {
+  boeking_id: string
+  payment_transaction_id: string
+  bedrag: string
+  boekdatum: string | null
+  geboekt_op: string
+  rlz_boekstuknummer: string | null
+  entity_naam: string | null
+  vooruit_ledger_id: string
+  herkenning: 'entity' | 'iban'
+}
+
+export interface AanbetalingOpenDto {
+  toetsbaar: boolean
+  treffers: AanbetalingOpenTrefferDto[]
+}
+
 export interface DuplicaatSignaalKortDto {
   uitkomst: string
   aantal_treffers: number
