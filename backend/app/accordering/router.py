@@ -24,6 +24,7 @@ from app.auth.deps import (
     vereis_kantoorrol,
 )
 from app.db.models import GebruikerRol
+from app.documenten import vragen
 from app.documenten.service import DocumentNietGevonden
 from app.materiaal.match import MateriaalAfwijkingBevestigingVereist
 
@@ -360,6 +361,98 @@ def accordering_van_document(
     return _accordering_response(data) if data is not None else None
 
 
+def _naar_accordeur_vraag(
+    data: vragen.VraagData,
+    *,
+    actor_id: uuid.UUID,
+    administratie_id: uuid.UUID,
+    administratie_naam: str | None,
+    leverancier_naam: str | None,
+) -> schemas.AccordeurVraagResponse:
+    return schemas.AccordeurVraagResponse(
+        id=data.id,
+        administratie_id=administratie_id,
+        administratie_naam=administratie_naam,
+        document_id=data.document_id,
+        document_status=data.document_status.value,
+        leverancier_naam=leverancier_naam,
+        totaalbedrag=data.totaalbedrag,
+        vraag_tekst=data.vraag_tekst,
+        gesteld_op=data.gesteld_op,
+        ik_ben_aan_de_beurt=data.aan_de_beurt == actor_id,
+        berichten=[
+            schemas.AccordeurVraagBerichtResponse(
+                id=b.id, auteur_id=b.auteur_id, van_mij=b.auteur_id == actor_id, tekst=b.tekst, geplaatst_op=b.geplaatst_op
+            )
+            for b in data.berichten
+        ],
+    )
+
+
+@router.get("/accordering/vragen", response_model=schemas.VragenAanMijResponse)
+def vragen_aan_mij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.VragenAanMijResponse:
+    """"Vragen aan u" (blok B5 26-08, mockup accordeur-vragen.html): alle open vragen die expliciet
+    aan de ingelogde accordeur gericht zijn — óók over al goedgekeurde/geboekte facturen. Vragen
+    op een document dat nu in zijn wachtrij staat reizen mee op de wachtrij-kaart; de app toont
+    ze op één plek. Zelfde poorten als de wachtrij (accordeur-rol + voorwaarden-akkoord)."""
+    if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor klant-accordeurs")
+    _vereis_voorwaarden_akkoord(actor)
+    administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+    items = vragen.vragen_aan_accordeur(actor_id=actor.id, administratie_ids=[a.id for a in administraties])
+    return schemas.VragenAanMijResponse(
+        items=[
+            _naar_accordeur_vraag(
+                a.vraag,
+                actor_id=actor.id,
+                administratie_id=a.administratie_id,
+                administratie_naam=a.administratie_naam,
+                leverancier_naam=a.leverancier_naam,
+            )
+            for a in items
+        ]
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/accordering/vragen/{vraag_id}/berichten",
+    response_model=schemas.AccordeurVraagResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def vraag_beantwoorden_als_accordeur(
+    administratie_id: uuid.UUID,
+    vraag_id: uuid.UUID,
+    invoer: schemas.AccordeurVraagBerichtInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
+) -> schemas.AccordeurVraagResponse:
+    """Antwoord van de accordeur in de thread (append-only, zelfde vraag_bericht-model). Alleen op
+    een vraag die aan hém gericht is (anders 404 — het bestaan van intern overleg lekt nooit);
+    "aan de beurt" wisselt naar de vraagsteller (kantoor). Afgehandeld verklaren kan de
+    accordeur niet (bestaande 403-regel: alleen de vraagsteller)."""
+    if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor klant-accordeurs")
+    _vereis_voorwaarden_akkoord(actor)
+    try:
+        data = vragen.plaats_bericht_als_accordeur(
+            administratie_id=administratie_id, vraag_id=vraag_id, actor_id=actor.id, tekst=invoer.tekst
+        )
+    except vragen.VraagNietAanDezeAccordeur as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except vragen.AntwoordTekstVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except vragen.VraagNietOpen as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    administraties = {a.id: a.naam for a in auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)}
+    return _naar_accordeur_vraag(
+        data,
+        actor_id=actor.id,
+        administratie_id=administratie_id,
+        administratie_naam=administraties.get(administratie_id),
+        leverancier_naam=None,
+    )
+
+
 @router.get("/accordering/wachtrij", response_model=schemas.WachtrijResponse)
 def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.WachtrijResponse:
     """De accordeer-wachtrij van de ingelogde gebruiker (PWA-endpoint, scope-aanscherping
@@ -399,6 +492,17 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
                         )
                         for r in item.doorbelasting
                     ]
+                ),
+                vraag=(
+                    _naar_accordeur_vraag(
+                        item.vraag,  # type: ignore[arg-type]
+                        actor_id=actor.id,
+                        administratie_id=item.administratie_id,
+                        administratie_naam=item.administratie_naam,
+                        leverancier_naam=item.leverancier_naam,
+                    )
+                    if item.vraag is not None
+                    else None
                 ),
             )
             for item in items

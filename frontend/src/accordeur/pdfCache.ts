@@ -45,6 +45,15 @@ export class FactuurCache {
     return rij.promise
   }
 
+  /** Vergeet één document (retry-knop, feedbackpunt 2 26-08): de volgende `haal` fetcht opnieuw. */
+  vergeet(documentId: string): void {
+    const rij = this.rijen.get(documentId)
+    if (!rij) return
+    rij.verwijderd = true
+    if (rij.url) URL.revokeObjectURL(rij.url)
+    this.rijen.delete(documentId)
+  }
+
   /** Houd alleen het actieve venster vast; al het andere wordt ge-revoked (geheugenrem). */
   snoei(bewaarDocumentIds: string[]): void {
     const bewaar = new Set(bewaarDocumentIds)

@@ -292,7 +292,11 @@ def medewerkers_lijst(
     Beheerders — server-side scope-gecontroleerd (dependency) en op DB-niveau (RLS op de
     koppeltabel)."""
     medewerkers = service.lijst_medewerkers(administratie_id=administratie_id)
-    return schemas.MedewerkersLijstDto(medewerkers=[schemas.MedewerkerDto(id=m.id, naam=m.naam) for m in medewerkers])
+    return schemas.MedewerkersLijstDto(
+        medewerkers=[
+            schemas.MedewerkerDto(id=m.id, naam=m.naam, is_klant_accordeur=m.is_klant_accordeur) for m in medewerkers
+        ]
+    )
 
 
 @router.get(

@@ -31,6 +31,8 @@ interface Props {
   kop?: React.ReactNode
   /** Link naar het controlescherm tonen (niet vanuit het controlescherm zelf). */
   metFactuurlink?: boolean
+  /** Blok B5 (26-08): is de gebruiker een klant-accordeur → chip "bij de klant". */
+  isKlantAccordeur?: (gebruikerId: string | null) => boolean
 }
 
 /** Eén vraag als dialoog (besluit Peter 25-08, punt B): openingsvraag + berichten chronologisch
@@ -38,7 +40,15 @@ interface Props {
  * vraagsteller ziet "Afgehandeld" (server-side hertoetst — `mag_afhandelen` is de UI-hint). De
  * vraag blokkeert boeken tot "Afgehandeld", niet al bij het eerste antwoord. Een open vraag op
  * een verwijderd document is een weesvraag: geen acties. */
-export function VraagThread({ vraag, administratieId, naamVoor, onGewijzigd, kop, metFactuurlink = true }: Props) {
+export function VraagThread({
+  vraag,
+  administratieId,
+  naamVoor,
+  isKlantAccordeur,
+  onGewijzigd,
+  kop,
+  metFactuurlink = true,
+}: Props) {
   const [bericht, setBericht] = useState('')
   const [intrekkenOpen, setIntrekkenOpen] = useState(false)
   const [intrekReden, setIntrekReden] = useState('')
@@ -83,6 +93,11 @@ export function VraagThread({ vraag, administratieId, naamVoor, onGewijzigd, kop
           <>
             {' '}
             · aan de beurt: <b>{naamVoor(vraag.aan_de_beurt)}</b>
+            {isKlantAccordeur?.(vraag.aan_de_beurt) && (
+              <span className="chip vraag" style={{ marginLeft: 6 }} title="De vraag ligt bij de klant-accordeur; die antwoordt in de app">
+                bij de klant
+              </span>
+            )}
           </>
         )}
       </div>

@@ -51,8 +51,15 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import afwijzen as afwijzen_service
 from app.documenten import boeken as boeken_service
-from app.documenten.models import Boekvoorstel, Document, DocumentStatus
+from app.documenten.models import (
+    Boekvoorstel,
+    Document,
+    DocumentStatus,
+    Vraag,
+    VraagStatus,
+)
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
+from app.documenten.vragen import open_vraag_aan_accordeur_op_document
 from app.sync.models import VendorCache
 
 logger = logging.getLogger(__name__)
@@ -783,6 +790,40 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
             nieuwe_waarde={"document_id": str(document_id)},
             administratie_id=administratie_id,
         )
+        # Open-vraag-poort (blok B5 26-08): een open vraag blokkeert het BOEKEN, niet het akkoord.
+        # Ligt er nog een open dialoog (bv. aan de accordeur zelf, gesteld terwijl het document bij
+        # de klant lag), dan boeken we NIET maar zetten het document zichtbaar op vraag_open met
+        # herkomst klaar_om_te_boeken — "Afgehandeld" door de vraagsteller brengt het terug en
+        # het kantoor boekt dan via de normale route. Nooit stil.
+        open_vraag = session.scalars(
+            select(Vraag).where(Vraag.document_id == document_id, Vraag.status == VraagStatus.OPEN.value)
+        ).first()
+        open_vraag_fout: str | None = None
+        if open_vraag is not None:
+            open_vraag.status_voor_vraag = DocumentStatus.KLAAR_OM_TE_BOEKEN.value
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.VRAAG_OPEN,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={"vraag_id": str(open_vraag.id), "boeken_wacht_op_open_vraag": True},
+            )
+            document.toegewezen_aan = open_vraag.aan_de_beurt or open_vraag.toegewezen_aan
+            open_vraag_fout = (
+                "Alle lagen akkoord; boeken wacht op het afhandelen van de open vraag "
+                f"(vraag {open_vraag.id}) door de vraagsteller"
+            )
+
+    if open_vraag_fout is not None:
+        logger.info("Accordering %s afgerond; %s", accordering_id, open_vraag_fout)
+        with scoped_session(administratie_id) as session:
+            accordering = session.get(DocumentAccordering, accordering_id)
+            assert accordering is not None
+            stappen = _stappen_van(session, accordering_id)
+            data = _naar_data(session, accordering, stappen)
+        return AkkoordResultaat(
+            accordering=data, alles_akkoord=True, geboekt=False, boek_fout=open_vraag_fout, staande_regel_id=None
+        )
 
     geboekt = False
     boek_fout: str | None = None
@@ -965,6 +1006,9 @@ class WachtrijItem:
     # (naam, aandeel-%, bedrag excl., provisie); None = geen doorbelasting bij dit document.
     # Fout = de bestaande afwijsknop met verplichte reden (geen aparte doorbelasting-afwijzing).
     doorbelasting: tuple[WachtrijDoorbelastingRegel, ...] | None = None
+    # Vragen-dialoog aan de accordeur (blok B5 26-08): de open vraag op dít document die aan déze
+    # accordeur gericht is — None = geen (intern kantooroverleg komt hier nooit in).
+    vraag: object | None = None
 
 
 @dataclass(frozen=True)
@@ -1142,6 +1186,9 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
                             totaalbedrag=voorstel.totaalbedrag if voorstel else None,
                         ),
                         doorbelasting=None,
+                        vraag=open_vraag_aan_accordeur_op_document(
+                            session, document_id=accordering.document_id, actor_id=actor_id
+                        ),
                     )
                 )
     # Buiten de scoped_session per administratie: de doorbelasting-leesroute opent zijn eigen

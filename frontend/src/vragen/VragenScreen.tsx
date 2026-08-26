@@ -18,19 +18,21 @@ interface QItemProps {
   vraag: VraagDto
   administratieId: string
   naamVoor: (id: string | null) => string
+  isKlantAccordeur?: (id: string | null) => boolean
   eigenaarId: string | null
   onGewijzigd: () => void
 }
 
 /** Eén vraag-blok (mockup .q-item) = de dialoog-thread (besluit Peter 25-08) mét de kopregel
  * van de vragen-view: bestandsnaam, bedrag en eigenaar-hint. */
-function QItem({ vraag, administratieId, naamVoor, eigenaarId, onGewijzigd }: QItemProps) {
+function QItem({ vraag, administratieId, naamVoor, isKlantAccordeur, eigenaarId, onGewijzigd }: QItemProps) {
   const bedrag = formatBedrag(vraag.totaalbedrag)
   return (
     <VraagThread
       vraag={vraag}
       administratieId={administratieId}
       naamVoor={naamVoor}
+      isKlantAccordeur={isKlantAccordeur}
       onGewijzigd={onGewijzigd}
       kop={
         <>
@@ -60,7 +62,7 @@ export function VragenScreen() {
   const [vragen, setVragen] = useState<VraagDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [eigenaarId, setEigenaarId] = useState<string | null>(null)
-  const { naamVoor } = useMedewerkers(administratieId)
+  const { naamVoor, isKlantAccordeur } = useMedewerkers(administratieId)
 
   useEffect(() => {
     if (!administratieId && administraties && administraties.length > 0) {
@@ -174,6 +176,7 @@ export function VragenScreen() {
           vraag={v}
           administratieId={administratieId ?? ''}
           naamVoor={naamVoor}
+          isKlantAccordeur={isKlantAccordeur}
           eigenaarId={eigenaarId}
           onGewijzigd={laadVragen}
         />
@@ -184,6 +187,7 @@ export function VragenScreen() {
           vraag={v}
           administratieId={administratieId ?? ''}
           naamVoor={naamVoor}
+          isKlantAccordeur={isKlantAccordeur}
           eigenaarId={eigenaarId}
           onGewijzigd={laadVragen}
         />

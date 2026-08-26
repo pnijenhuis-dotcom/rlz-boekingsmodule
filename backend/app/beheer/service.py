@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
+from app.auth.rollen import is_kantoorrol
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
@@ -424,6 +425,9 @@ def zet_verkoop_autoboeken_ingeschakeld(
 class Medewerker:
     id: uuid.UUID
     naam: str
+    # Blok B5 (26-08): een klant-accordeur is óók toewijsbaar (vraag aan de klant) — de UI groepeert
+    # en toont "bij de klant"; verder geen rol/e-mail (dataminimalisatie blijft).
+    is_klant_accordeur: bool = False
 
 
 def lijst_medewerkers(*, administratie_id: uuid.UUID) -> list[Medewerker]:
@@ -436,7 +440,7 @@ def lijst_medewerkers(*, administratie_id: uuid.UUID) -> list[Medewerker]:
     naar de UI (dataminimalisatie)."""
     with scoped_session(administratie_id) as session:
         gescoopt = session.execute(
-            select(Gebruiker.id, Gebruiker.naam)
+            select(Gebruiker.id, Gebruiker.naam, Gebruiker.rol)
             .join(GebruikerAdministratie, GebruikerAdministratie.gebruiker_id == Gebruiker.id)
             .where(
                 GebruikerAdministratie.administratie_id == administratie_id,
@@ -444,12 +448,21 @@ def lijst_medewerkers(*, administratie_id: uuid.UUID) -> list[Medewerker]:
             )
         ).all()
         beheerders = session.execute(
-            select(Gebruiker.id, Gebruiker.naam).where(
+            select(Gebruiker.id, Gebruiker.naam, Gebruiker.rol).where(
                 Gebruiker.rol == GebruikerRol.BEHEERDER, Gebruiker.status == GebruikerStatus.ACTIEF
             )
         ).all()
-    uniek = {rij.id: rij.naam for rij in [*gescoopt, *beheerders]}
-    return sorted((Medewerker(id=gid, naam=naam) for gid, naam in uniek.items()), key=lambda m: m.naam.lower())
+    uniek = {rij.id: (rij.naam, rij.rol) for rij in [*gescoopt, *beheerders]}
+    # Veldrollen (zzp'er/uitvoerder/detacheerder) hebben scope-rijen maar zijn geen gesprekspartner
+    # voor een factuurvraag — alleen kantoorrollen + klant-accordeurs zijn toewijsbaar.
+    return sorted(
+        (
+            Medewerker(id=gid, naam=naam, is_klant_accordeur=rol == GebruikerRol.KLANT_ACCORDEUR)
+            for gid, (naam, rol) in uniek.items()
+            if is_kantoorrol(rol) or rol == GebruikerRol.KLANT_ACCORDEUR
+        ),
+        key=lambda m: (m.is_klant_accordeur, m.naam.lower()),
+    )
 
 
 class OngeldigeEigenaar(BeheerFout):

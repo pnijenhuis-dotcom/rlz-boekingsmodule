@@ -34,5 +34,11 @@ export function useMedewerkers(administratieId: string | null) {
     }
   }, [medewerkers])
 
-  return { medewerkers, naamVoor, fout }
+  /** Blok B5 (26-08): is deze gebruiker een klant-accordeur (vraag "bij de klant")? */
+  const isKlantAccordeur = useMemo(() => {
+    const set = new Set((medewerkers ?? []).filter((m) => m.is_klant_accordeur).map((m) => m.id))
+    return (gebruikerId: string | null): boolean => !!gebruikerId && set.has(gebruikerId)
+  }, [medewerkers])
+
+  return { medewerkers, naamVoor, isKlantAccordeur, fout }
 }

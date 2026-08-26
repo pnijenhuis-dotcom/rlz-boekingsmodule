@@ -523,6 +523,8 @@ export interface VraagLijstDto {
 export interface MedewerkerDto {
   id: string
   naam: string
+  /** Blok B5 (26-08): klant-accordeur — toewijsbaar als "vraag aan de klant" (antwoordt in de app). */
+  is_klant_accordeur?: boolean
 }
 
 export interface MedewerkersLijstDto {

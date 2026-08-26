@@ -284,7 +284,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   blokkeert boeken tot **"Afgehandeld" door de oorspronkelijke vraagsteller** (server 403 voor
   anderen; systeem-vraag → toegewezene) — niet al bij het eerste antwoord. Controlescherm:
   tabs "Tijdlijn" (statusgebeurtenissen) en "Opmerkingen" (de threads, nieuwste onderaan). Zie
-  BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt B.
+  BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt B. **Vraag aan de klant-accordeur (26-08 blok B5,
+  migratie 0079): toewijzen aan een accordeur = thread in de app (alleen eigen vragen zichtbaar),
+  geen statusovergang op ter_accordering/geboekt, akkoord mogelijk, boeken wacht — zie
+  "Accordeur-app-ronde 26-08" hieronder.**
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
 - **Verzamelbak "Niet toegewezen"**: alles wat niet eenduidig aan een administratie koppelt
   (tenaamstelling leidend, afzender = hint); leert van handmatige toewijzingen; "hoort niet bij
@@ -610,6 +613,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   wachtwoord → passkey → voorwaarden/privacyverklaring-akkoord (server-side afgedwongen,
   `platform.accordeur_akkoord` + audit), apparatenbeheer/kill-switch op Instellingen.
   Zie BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD".
+  **Accordeur-app-ronde 26-08 (blok B gecombineerde run, mockup `accordeur-vragen.html` = norm,
+  migratie 0079 — BESLISSINGEN "GECOMBINEERDE RUN 26-08" blok B is canoniek):** compacte header
+  zónder administratienamen; PDF-weergave mét laadstate/retry/tijdslimiet (oorzaak wit vlak:
+  verborgen prerender op breedte 0 → `PdfWeergave.actief`); 🔔-hoekje + popup + wachtrij-kaart
+  VERVALLEN (meldingskeuze alleen éénmalig in de activeringsflow, daarna telefooninstellingen);
+  native `.then is not a function` gefikst (bridge-shim geeft een plain listener-handle,
+  `nativePush.alsHandle`); doorbelast-blok = één regel + uitklap; **vragen-dialoog naar de
+  accordeur**: vraag aan een klant-accordeur laat de documentstatus staan (ter_accordering/
+  geboekt), akkoord blijft mogelijk, boeken wacht ná het laatste akkoord zichtbaar op de open
+  vraag (`vraag_open` + boek_fout); accordeur ziet uitsluitend eigen threads (`GET
+  /accordering/vragen`, `WachtrijItem.vraag`, antwoord-POST), afgehandeld alleen vraagsteller;
+  push-anders-mail per beurt mét stille uren (`app/berichten/vraag_meldingen.py`).
   **Notificaties: GEBOUWD + GETEST (2026-08-15, BESLISSINGEN "ACCORDEUR-NOTIFICATIES")** —
   gedeeld SMTP-mailkanaal (`app/berichten/`, Google Workspace, fail-zichtbaar; bedient óók de
   uitnodigingsmail), dagelijkse 09:00-herinnering (job `rlz-accordeur-herinneringen`, alleen
@@ -617,9 +632,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `public/accordeur-sw.js` (scope /accordeur, UITSLUITEND push — geen fetch-handler/caching,
   installatie-/updatepad ongewijzigd; subscriptie per apparaat, kill-switch trekt push mee in;
   permissie alleen vanuit expliciete klik). **Meldingen-kaart eenmalig (UX-besluit Peter
-  2026-08-17): voorstel éénmalig in de activeringsflow (ná voorwaarden-akkoord), keuze per
-  apparaat onthouden (óók "nee"; mislukt = eerlijke fout + één herkansing) — wachtrij blijft
-  schoon, later (om)zetten via het 🔔-hoekje; kill-switch ongewijzigd.** **HARD PRINCIPE: maillinks zijn deep-links naar de
+  2026-08-17, HERZIEN 26-08 blok B3): voorstel éénmalig in de activeringsflow (ná
+  voorwaarden-akkoord), keuze per apparaat onthouden (óók "nee"; mislukt = eerlijke fout + één
+  herkansing) — het 🔔-hoekje en de meldingen-popup zijn sinds 26-08 weg; om-/uitzetten =
+  telefooninstellingen; kill-switch ongewijzigd.** **HARD PRINCIPE: maillinks zijn deep-links naar de
   PWA (`/accordeur?document=<id>`) — goedkeuren-zonder-inloggen/one-click-token bestaat bewust
   NIET** (zou de passkey-laag omzeilen). **Afzenderadres beslist (Peter 2026-08-15):
   facturen@ak-nijenhuis.nl (géén aparte gebruiker/licentie) mét Reply-To

@@ -339,7 +339,7 @@ export function DocumentDetailScreen() {
   const [heropenenBezig, setHeropenenBezig] = useState(false)
   const [heropenenFout, setHeropenenFout] = useState<string | null>(null)
   const splitter = useReviewSplitter()
-  const { naamVoor } = useMedewerkers(administratieId ?? null)
+  const { naamVoor, isKlantAccordeur } = useMedewerkers(administratieId ?? null)
 
   const laadDetail = useCallback(() => {
     if (!administratieId || !documentId) return
@@ -944,6 +944,7 @@ export function DocumentDetailScreen() {
                     vraag={v}
                     administratieId={administratieId ?? ''}
                     naamVoor={naamVoor}
+                    isKlantAccordeur={isKlantAccordeur}
                     metFactuurlink={false}
                     onGewijzigd={() => {
                       laadVragen()

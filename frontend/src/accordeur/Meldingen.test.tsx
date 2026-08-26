@@ -1,7 +1,8 @@
-// Schermtests meldingen (berichten-bouwsteen 2026-08-15; UX-besluit Peter 2026-08-17):
-// permissie-flow via expliciete klik op de EENMALIGE wachtrij-kaart, keuze per apparaat
-// onthouden (aan/uit/mislukt — kaart verdwijnt na élke uitkomst), eerlijke fout + één
-// herkansing, het 🔔-hoekje als blijvende beheerplek, en de ?document=-deep-link.
+// Schermtests meldingen (berichten-bouwsteen 2026-08-15; UX-besluit Peter 2026-08-17, HERZIEN
+// 26-08 blok B3): de wel/geen-meldingen-keuze zit UITSLUITEND nog éénmalig in de activeringsflow
+// (ná het voorwaarden-akkoord); het 🔔-hoekje, de meldingen-popup en de wachtrij-kaart bestaan niet
+// meer — om-/uitzetten gebeurt in de telefooninstellingen. Permissie pas ná de expliciete klik,
+// keuze per apparaat onthouden (aan/uit/mislukt), eerlijke fout + één herkansing, ?document=-deep-link.
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -124,7 +125,29 @@ function renderFlow(startPad = '/accordeur') {
   )
 }
 
-describe('Meldingen (push-permissieflow)', () => {
+/** Activeringsflow-stubs: wachtrij eist eerst het voorwaarden-akkoord (403), daarna items. */
+function activeringsRoutes(items: WachtrijItemDto[]): FetchAntwoorden {
+  let akkoord = false
+  return {
+    ...basisRoutes(items),
+    '/accordering/wachtrij': () =>
+      akkoord ? jsonResponse({ items }) : jsonResponse({ detail: 'voorwaarden_akkoord_vereist' }, 403),
+    '/accordering/vragen': () => jsonResponse({ items: [] }),
+    '/auth/accordeur/voorwaarden': () =>
+      jsonResponse({ tekst_versie: '2026-08', tekst: 'Voorwaardentekst', akkoord_gegeven: false, administratie_namen: ['BLOW B.V.'] }),
+    '/auth/accordeur/voorwaarden-akkoord': () => {
+      akkoord = true
+      return new Response(null, { status: 204 })
+    },
+  }
+}
+
+async function doorloopVoorwaarden() {
+  await userEvent.click(await screen.findByRole('checkbox'))
+  await userEvent.click(screen.getByRole('button', { name: 'Akkoord en beginnen' }))
+}
+
+describe('Meldingen (éénmalig in de activeringsflow — blok B3 26-08)', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} }))
@@ -135,9 +158,22 @@ describe('Meldingen (push-permissieflow)', () => {
     delete navigator.serviceWorker
   })
 
-  it('toont de eenmalige kaart, registreert SW + subscriptie pas ná de klik en onthoudt "aan"', async () => {
+  it('wachtrij heeft géén 🔔-hoekje, géén meldingen-popup en géén eenmalige kaart meer', async () => {
+    stubPushOmgeving('default')
+    const routes = { ...basisRoutes([ITEM]), '/accordering/vragen': () => jsonResponse({ items: [] }) }
+    stubFetch(routes)
+    renderFlow()
+    expect(await screen.findByText('1 factuur wacht op je akkoord')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Meldingen' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Dagelijkse herinnering · 09:00/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Zet meldingen aan' })).not.toBeInTheDocument()
+    // compacte header (feedbackpunt 1): geen administraties-namenlijst
+    expect(screen.queryByText('BLOW B.V.')).not.toBeInTheDocument()
+  })
+
+  it('activeringsflow: voorstel ná het voorwaarden-akkoord, registratie pas ná de klik, keuze "aan" onthouden', async () => {
     const push = stubPushOmgeving('default')
-    const routes = basisRoutes([ITEM])
+    const routes = activeringsRoutes([ITEM])
     const subscripties: unknown[] = []
     routes['/notificaties/push/subscripties'] = (init) => {
       subscripties.push(JSON.parse(String(init?.body)))
@@ -145,96 +181,54 @@ describe('Meldingen (push-permissieflow)', () => {
     }
     stubFetch(routes)
     renderFlow()
+    await doorloopVoorwaarden()
 
     const knop = await screen.findByRole('button', { name: 'Zet meldingen aan' })
-    // Nooit rauw bij het laden: vóór de klik géén registratie of permissieprompt-gevolg.
+    expect(screen.getByText('Meldingen aanzetten?')).toBeInTheDocument()
+    // de tekst verwijst niet meer naar een 🔔-hoekje maar naar de telefooninstellingen
+    expect(screen.getByText(/instellingen van uw telefoon/)).toBeInTheDocument()
     expect(push.registraties).toHaveLength(0)
     await userEvent.click(knop)
 
     await waitFor(() => expect(subscripties).toHaveLength(1))
     expect(push.registraties).toEqual(['/accordeur-sw.js'])
-    expect(push.subscribeAanroepen).toBe(1)
-    expect(subscripties[0]).toEqual({ endpoint: 'https://push.example/sub1', p256dh: 'p', auth: 'a' })
-    // Uitkomst "aan" onthouden → de kaart verdwijnt, de wachtrij blijft schoon.
     expect(localStorage.getItem('accordeur_meldingen_keuze')).toBe('aan')
-    await waitFor(() => expect(screen.queryByText(/Dagelijkse herinnering · 09:00/)).not.toBeInTheDocument())
-  })
-
-  it('"niet nu" onthoudt de keuze per apparaat en laat de kaart blijvend verdwijnen', async () => {
-    stubPushOmgeving('default')
-    stubFetch(basisRoutes([ITEM]))
-    renderFlow()
-    await userEvent.click(await screen.findByRole('button', { name: 'niet nu' }))
-    expect(localStorage.getItem('accordeur_meldingen_keuze')).toBe('uit')
-    expect(screen.queryByText(/Dagelijkse herinnering/)).not.toBeInTheDocument()
-  })
-
-  it('toont de kaart niet meer zodra er een keuze onthouden is', async () => {
-    localStorage.setItem('accordeur_meldingen_keuze', 'uit')
-    stubPushOmgeving('default')
-    stubFetch(basisRoutes([ITEM]))
-    renderFlow()
     expect(await screen.findByText('1 factuur wacht op je akkoord')).toBeInTheDocument()
-    expect(screen.queryByText(/Dagelijkse herinnering/)).not.toBeInTheDocument()
   })
 
-  it('mislukken = eerlijke fout-toast + één herkansing; tweede mislukking onthoudt "mislukt"', async () => {
+  it('activeringsflow: "Niet nu" onthoudt "uit" en het voorstel komt nooit meer terug', async () => {
     stubPushOmgeving('default')
-    const routes = basisRoutes([ITEM])
+    stubFetch(activeringsRoutes([ITEM]))
+    renderFlow()
+    await doorloopVoorwaarden()
+    await userEvent.click(await screen.findByRole('button', { name: 'Niet nu' }))
+    expect(localStorage.getItem('accordeur_meldingen_keuze')).toBe('uit')
+    expect(await screen.findByText('1 factuur wacht op je akkoord')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Zet meldingen aan' })).not.toBeInTheDocument()
+  })
+
+  it('activeringsflow: mislukken = eerlijke fout-toast + één herkansing; tweede mislukking onthoudt "mislukt"', async () => {
+    stubPushOmgeving('default')
+    const routes = activeringsRoutes([ITEM])
     routes['/notificaties/push/subscripties'] = () => jsonResponse({ detail: 'serverfout' }, 500)
     stubFetch(routes)
     renderFlow()
-
-    // Eerste poging: eerlijke fout, kaart blijft staan (de herkansing).
+    await doorloopVoorwaarden()
     await userEvent.click(await screen.findByRole('button', { name: 'Zet meldingen aan' }))
     expect(await screen.findByText(/Meldingen aanzetten mislukte/)).toBeInTheDocument()
     expect(localStorage.getItem('accordeur_meldingen_keuze')).toBeNull()
-    const herkansing = await screen.findByRole('button', { name: 'Zet meldingen aan' })
-
-    // Tweede mislukking: uitkomst "mislukt" onthouden, geen permanente banner.
-    await userEvent.click(herkansing)
+    await userEvent.click(await screen.findByRole('button', { name: 'Zet meldingen aan' }))
     await waitFor(() => expect(localStorage.getItem('accordeur_meldingen_keuze')).toBe('mislukt'))
-    await waitFor(() => expect(screen.queryByText(/Dagelijkse herinnering/)).not.toBeInTheDocument())
-  })
-
-  it('geweigerde browserpermissie geeft géén permanente banner; de uitleg staat in het 🔔-hoekje', async () => {
-    stubPushOmgeving('denied')
-    stubFetch(basisRoutes([ITEM]))
-    renderFlow()
     expect(await screen.findByText('1 factuur wacht op je akkoord')).toBeInTheDocument()
-    expect(screen.queryByText(/geblokkeerd/)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Zet meldingen aan' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Meldingen' }))
-    expect(await screen.findByText(/geblokkeerd in je toestel- of browserinstellingen/)).toBeInTheDocument()
   })
 
-  it('meldingen later alsnog aanzetten kan via het 🔔-hoekje, ook mét onthouden "uit"-keuze', async () => {
+  it('geen voorstel meer zodra er op dit apparaat een keuze ligt', async () => {
     localStorage.setItem('accordeur_meldingen_keuze', 'uit')
     stubPushOmgeving('default')
-    const routes = basisRoutes([ITEM])
-    const subscripties: unknown[] = []
-    routes['/notificaties/push/subscripties'] = (init) => {
-      subscripties.push(JSON.parse(String(init?.body)))
-      return jsonResponse({ id: 's1', endpoint: 'https://push.example/sub1', aangemaakt_op: '2026-08-15T09:00:00Z' }, 201)
-    }
-    stubFetch(routes)
+    stubFetch(activeringsRoutes([ITEM]))
     renderFlow()
-
-    await screen.findByText('1 factuur wacht op je akkoord')
-    await userEvent.click(screen.getByRole('button', { name: 'Meldingen' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Zet meldingen aan' }))
-    await waitFor(() => expect(subscripties).toHaveLength(1))
-    expect(localStorage.getItem('accordeur_meldingen_keuze')).toBe('aan')
-  })
-
-  it('verbergt kaart én sheet-aanzetknop als push niet ondersteund wordt (geen SW/Push API)', async () => {
-    stubFetch(basisRoutes([ITEM]))
-    renderFlow()
+    await doorloopVoorwaarden()
     expect(await screen.findByText('1 factuur wacht op je akkoord')).toBeInTheDocument()
-    expect(screen.queryByText(/Dagelijkse herinnering/)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Zet meldingen aan' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Meldingen' }))
-    expect(await screen.findByText(/niet ondersteund/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Zet meldingen aan' })).not.toBeInTheDocument()
   })
 

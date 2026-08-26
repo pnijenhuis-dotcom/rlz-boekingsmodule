@@ -93,6 +93,23 @@ describe('haalDeviceToken', () => {
     await expect(haalDeviceToken(plugin)).resolves.toBe('tok-42')
   })
 
+  it('werkt óók als addListener een PLAIN handle teruggeeft (Capacitor bridge-shim, bug ".then is not a function" 26-08)', async () => {
+    const plugin = maakFakePlugin({ registerLevert: 'tok-shim' })
+    const listeners = new Map<string, Listener[]>()
+    // de shim uit native-bridge.js: synchroon een { remove } zonder Promise
+    plugin.addListener = vi.fn((naam: string, listener: Listener) => {
+      listeners.set(naam, [...(listeners.get(naam) ?? []), listener])
+      return { remove: () => Promise.resolve() }
+    }) as never
+    plugin.register = vi.fn(() => {
+      queueMicrotask(() => {
+        for (const l of listeners.get('registration') ?? []) l({ value: 'tok-shim' })
+      })
+      return Promise.resolve()
+    })
+    await expect(haalDeviceToken(plugin)).resolves.toBe('tok-shim')
+  })
+
   it('faalt zichtbaar op een registratiefout — nooit eeuwig hangen', async () => {
     const plugin = maakFakePlugin({ registerLevert: new Error('APNS onbereikbaar') })
     await expect(haalDeviceToken(plugin)).rejects.toThrow('APNS onbereikbaar')

@@ -25,6 +25,7 @@ is een genoteerde latere verrijking (docs/BESLISSINGEN.md).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -37,9 +38,20 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerAdministratie, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten.models import Boekvoorstel, Document, DocumentStatus, Vraag, VraagBericht, VraagStatus
+from app.documenten.models import (
+    Boekvoorstel,
+    Document,
+    DocumentGebeurtenis,
+    DocumentStatus,
+    Vraag,
+    VraagBericht,
+    VraagStatus,
+)
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
 from app.documenten.statusmachine import OngeldigeStatusovergang
+from app.sync.models import VendorCache
+
+logger = logging.getLogger(__name__)
 
 
 class VraagFout(Exception):
@@ -82,6 +94,11 @@ class VraagNietOpen(VraagFout):
     afgehandeld of ingetrokken worden."""
 
 
+class VraagNietAanDezeAccordeur(VraagFout):
+    """De accordeur-app ziet en beantwoordt UITSLUITEND vragen die expliciet aan de ingelogde
+    accordeur gericht zijn (blok B5 26-08) — intern kantooroverleg lekt nooit."""
+
+
 # De enige herkomsten waarvandaan een vraag gesteld kan worden: beantwoorden/intrekken moet de
 # herkomst exact kunnen herstellen, dus élke toegestane herkomst heeft een vraag_open -> herkomst-
 # overgang in de statusmachine. De statusmachine kent daarnaast extractie_bezig -> vraag_open
@@ -93,6 +110,15 @@ _HERSTELBARE_HERKOMSTEN = frozenset(
         DocumentStatus.HANDMATIG_AFMAKEN,
         DocumentStatus.KLAAR_OM_TE_BOEKEN,
     }
+)
+
+# Blok B5 (26-08, migratie 0079): een vraag op een document dat bij de klant ligt of al geboekt
+# is verandert de DOCUMENTSTATUS NIET — het akkoord in de app blijft mogelijk (een
+# open vraag blokkeert het boeken, niet het akkoord: `accordering.service._rond_af_en_boek` zet
+# het document ná het laatste akkoord zichtbaar op vraag_open i.p.v. te boeken). Afhandelen/
+# intrekken herstelt dan ook niets: de status is nooit veranderd.
+_HERKOMSTEN_ZONDER_OVERGANG = frozenset(
+    {DocumentStatus.TER_ACCORDERING, DocumentStatus.GEBOEKT}
 )
 
 
@@ -140,6 +166,40 @@ class VraagData:
 def _aan_de_beurt(vraag: Vraag) -> uuid.UUID:
     """NULL op rijen van vóór migratie 0064 betekent: de toegewezene is aan zet."""
     return vraag.aan_de_beurt or vraag.toegewezen_aan
+
+
+def _tijdlijn_zonder_overgang(session: Session, *, document: Document, actor_id: uuid.UUID, detail: dict) -> None:
+    """Tijdlijnregel zonder statuswissel (herinnering-patroon): voor vragen op documenten die bij
+    de klant liggen of al geboekt zijn — zichtbaar in de tijdlijn, status onaangeroerd."""
+    session.add(
+        DocumentGebeurtenis(
+            id=uuid.uuid4(),
+            document_id=document.id,
+            van_status=document.status,
+            naar_status=document.status,
+            actor_id=actor_id,
+            detail=detail,
+        )
+    )
+
+
+def _is_klant_accordeur(session: Session, gebruiker_id: uuid.UUID | None) -> bool:
+    if gebruiker_id is None:
+        return False
+    gebruiker = session.get(Gebruiker, gebruiker_id)
+    return gebruiker is not None and gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR
+
+
+def _meld_accordeur_indien_nodig(vraag_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
+    """Ná stel_vraag/plaats_bericht (buiten de transactie): staat de beurt bij een klant-accordeur,
+    dan meteen melden via de bestaande kanalen — behalve in de stille uren (dan vangt de
+    10-min-job `rlz-nieuwe-facturen` 'm op). Nooit een fout richting de aanroeper."""
+    try:
+        from app.berichten import vraag_meldingen
+
+        vraag_meldingen.verstuur_vraag_meldingen(vraag_id=vraag_id, administratie_id=administratie_id)
+    except Exception:  # noqa: BLE001 — melding mag de dialoog nooit breken; job herkanst
+        logger.exception("Melding aan accordeur voor vraag %s mislukte — job herkanst", vraag_id)
 
 
 def _berichten_van(vraag: Vraag, berichten: list[VraagBericht]) -> tuple[BerichtData, ...]:
@@ -246,7 +306,8 @@ def stel_vraag(
         if open_vraag is not None:
             raise ErIsAlEenOpenVraag("Er staat al een open vraag op dit document")
 
-        if document.status not in _HERSTELBARE_HERKOMSTEN:
+        zonder_overgang = document.status in _HERKOMSTEN_ZONDER_OVERGANG
+        if document.status not in _HERSTELBARE_HERKOMSTEN and not zonder_overgang:
             # Zelfde foutsoort als de statusmachine zelf zou geven — de extra poort hier dekt
             # uitsluitend herkomsten mét een toegestane heenweg maar zonder herstel-terugweg
             # (extractie_bezig), zodat een vraag nooit onbeantwoordbaar/onintrekbaar wordt.
@@ -270,24 +331,29 @@ def stel_vraag(
             vraag_tekst=tekst,
             toegewezen_aan=toegewezene,
             aan_de_beurt=toegewezene,
+            aan_de_beurt_sinds=datetime.now(UTC),
             status_voor_vraag=document.status.value,
         )
         session.add(vraag)
-        # De overgang valideert tegen de statusmachine vóór er iets persisteert — een vraag op
-        # bv. een geboekt document rolt de hele transactie (incl. de vraag-rij) terug.
-        _schrijf_overgang(
-            session,
-            document=document,
-            naar=DocumentStatus.VRAAG_OPEN,
-            actor_id=actor_id,
-            detail={
-                "vraag_id": str(vraag.id),
-                "toegewezen_aan": str(toegewezene),
-                "status_voor_vraag": vraag.status_voor_vraag,
-            },
-        )
+        overgang_detail = {
+            "vraag_id": str(vraag.id),
+            "toegewezen_aan": str(toegewezene),
+            "status_voor_vraag": vraag.status_voor_vraag,
+        }
+        if zonder_overgang:
+            # Blok B5: document blijft bij de klant / geboekt — alleen een tijdlijnregel.
+            _tijdlijn_zonder_overgang(
+                session, document=document, actor_id=actor_id, detail={**overgang_detail, "vraag_gesteld": True}
+            )
+        else:
+            # De overgang valideert tegen de statusmachine vóór er iets persisteert — een vraag op
+            # bv. een extractie_bezig-document rolt de hele transactie (incl. de vraag-rij) terug.
+            _schrijf_overgang(
+                session, document=document, naar=DocumentStatus.VRAAG_OPEN, actor_id=actor_id, detail=overgang_detail
+            )
         document.toegewezen_aan = toegewezene
         session.flush()
+        meld_accordeur = _is_klant_accordeur(session, toegewezene)
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -304,7 +370,10 @@ def stel_vraag(
             administratie_id=administratie_id,
         )
         session.flush()
-        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id))
+        data = _naar_data(vraag, document, _totaalbedrag_van(session, document.id))
+    if meld_accordeur:
+        _meld_accordeur_indien_nodig(data.id, administratie_id)
+    return data
 
 
 def _totaalbedrag_van(session, document_id: uuid.UUID) -> Decimal | None:
@@ -357,8 +426,11 @@ def plaats_bericht(*, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id
         else:
             nieuwe_beurt = vraag.gesteld_door
         vraag.aan_de_beurt = nieuwe_beurt
+        if nieuwe_beurt != vorige_beurt:
+            vraag.aan_de_beurt_sinds = datetime.now(UTC)
         document.toegewezen_aan = nieuwe_beurt
         session.flush()
+        meld_accordeur = nieuwe_beurt != vorige_beurt and _is_klant_accordeur(session, nieuwe_beurt)
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -378,7 +450,34 @@ def plaats_bericht(*, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id
         )
         session.flush()
         berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
-        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
+        data = _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
+    if meld_accordeur:
+        _meld_accordeur_indien_nodig(data.id, administratie_id)
+    return data
+
+
+def plaats_bericht_als_accordeur(
+    *, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID, tekst: str
+) -> VraagData:
+    """Accordeur-app (blok B5): antwoorden mag uitsluitend op een vraag die aan déze accordeur
+    gericht is — elke andere vraag is voor de app onbestaand (VraagNietAanDezeAccordeur → 404,
+    nooit een 403 dat het bestaan verraadt). Daarna het gewone append-only pad."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        vraag = session.get(Vraag, vraag_id)
+        if vraag is None or vraag.administratie_id != administratie_id or vraag.toegewezen_aan != actor_id:
+            raise VraagNietAanDezeAccordeur(f"Onbekende vraag: {vraag_id}")
+    return plaats_bericht(administratie_id=administratie_id, vraag_id=vraag_id, actor_id=actor_id, tekst=tekst)
+
+
+def _herstel_document_na_sluiten(session: Session, *, vraag: Vraag, document: Document, actor_id: uuid.UUID, detail: dict) -> None:
+    """Afhandelen/intrekken: herstel de herkomst-status — behalve als de vraag zónder overgang
+    gesteld was (document bij de klant/geboekt) of het document intussen zelf al verder is
+    (ná het laatste akkoord zette de boek-poort 'm op vraag_open met herkomst klaar_om_te_boeken:
+    dan wél herstellen). Regel: alleen een document dat NU op vraag_open staat wordt hersteld."""
+    if document.status == DocumentStatus.VRAAG_OPEN:
+        _schrijf_overgang(session, document=document, naar=DocumentStatus(vraag.status_voor_vraag), actor_id=actor_id, detail=detail)
+    else:
+        _tijdlijn_zonder_overgang(session, document=document, actor_id=actor_id, detail=detail)
 
 
 def mag_afhandelen(vraag_gesteld_door: uuid.UUID, vraag_toegewezen_aan: uuid.UUID, actor_id: uuid.UUID) -> bool:
@@ -419,10 +518,10 @@ def handel_vraag_af(
         vraag.afgehandeld_door = actor_id
         vraag.afgehandeld_op = datetime.now(UTC)
         vraag.aan_de_beurt = actor_id
-        _schrijf_overgang(
+        _herstel_document_na_sluiten(
             session,
+            vraag=vraag,
             document=document,
-            naar=DocumentStatus(vraag.status_voor_vraag),
             actor_id=actor_id,
             detail={"vraag_id": str(vraag.id), "vraag_afgehandeld": True},
         )
@@ -465,10 +564,10 @@ def trek_vraag_in(
         vraag.ingetrokken_door = actor_id
         vraag.ingetrokken_op = datetime.now(UTC)
         vraag.ingetrokken_reden = reden.strip() if reden and reden.strip() else None
-        _schrijf_overgang(
+        _herstel_document_na_sluiten(
             session,
+            vraag=vraag,
             document=document,
-            naar=DocumentStatus(vraag.status_voor_vraag),
             actor_id=actor_id,
             detail={"vraag_id": str(vraag.id), "vraag_ingetrokken": True, "reden": vraag.ingetrokken_reden},
         )
@@ -521,3 +620,76 @@ def lijst_vragen(
             _naar_data(vraag, document, totaalbedrag, berichten.get(vraag.id, []))
             for vraag, document, totaalbedrag in rijen
         ]
+
+
+@dataclass(frozen=True)
+class AccordeurVraag:
+    """Vraag zoals de accordeur-app 'm ziet (blok B5): de thread + documentcontext (leverancier,
+    bedrag, administratie, status) — uitsluitend vragen die aan déze accordeur gericht zijn."""
+
+    vraag: VraagData
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    leverancier_naam: str | None
+    ik_ben_aan_de_beurt: bool
+
+
+def vragen_aan_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid.UUID]) -> list[AccordeurVraag]:
+    """Alle OPEN vragen die expliciet aan deze accordeur zijn toegewezen, over zijn administraties
+    (scope-bron van de aanroeper; RLS dwingt het nogmaals af). Intern kantooroverleg (vragen aan
+    kantoormedewerkers) komt hier per definitie nooit uit — de filter is `toegewezen_aan == actor`."""
+    uit: list[AccordeurVraag] = []
+    for administratie_id in administratie_ids:
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            administratie = session.get(Administratie, administratie_id)
+            rijen = list(
+                session.execute(
+                    select(Vraag, Document, Boekvoorstel)
+                    .join(Document, Vraag.document_id == Document.id)
+                    .outerjoin(Boekvoorstel, Boekvoorstel.document_id == Document.id)
+                    .where(
+                        Vraag.administratie_id == administratie_id,
+                        Vraag.status == VraagStatus.OPEN.value,
+                        Vraag.toegewezen_aan == actor_id,
+                    )
+                    .order_by(Vraag.gesteld_op.desc())
+                )
+            )
+            berichten = _berichten_per_vraag(session, [v.id for v, _d, _b in rijen])
+            for vraag, document, voorstel in rijen:
+                leverancier = None
+                if voorstel is not None and voorstel.vendor_id is not None:
+                    vendor = session.get(VendorCache, (voorstel.vendor_id, administratie_id))
+                    leverancier = vendor.naam if vendor else None
+                uit.append(
+                    AccordeurVraag(
+                        vraag=_naar_data(
+                            vraag, document, voorstel.totaalbedrag if voorstel else None, berichten.get(vraag.id, [])
+                        ),
+                        administratie_id=administratie_id,
+                        administratie_naam=administratie.naam if administratie else None,
+                        leverancier_naam=leverancier,
+                        ik_ben_aan_de_beurt=_aan_de_beurt(vraag) == actor_id,
+                    )
+                )
+    uit.sort(key=lambda a: a.vraag.gesteld_op, reverse=True)
+    return uit
+
+
+def open_vraag_aan_accordeur_op_document(
+    session: Session, *, document_id: uuid.UUID, actor_id: uuid.UUID
+) -> VraagData | None:
+    """Voor de wachtrij-kaart (blok B5): de open vraag op dít document, alleen als die aan deze
+    accordeur gericht is. Sessie van de aanroeper (al gescoopt op de administratie)."""
+    vraag = session.scalars(
+        select(Vraag).where(
+            Vraag.document_id == document_id,
+            Vraag.status == VraagStatus.OPEN.value,
+            Vraag.toegewezen_aan == actor_id,
+        )
+    ).first()
+    if vraag is None:
+        return None
+    document = session.get(Document, document_id)
+    berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
+    return _naar_data(vraag, document, _totaalbedrag_van(session, document_id), berichten)

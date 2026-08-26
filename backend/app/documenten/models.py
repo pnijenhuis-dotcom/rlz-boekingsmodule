@@ -359,6 +359,11 @@ class Vraag(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     afgehandeld_op: Mapped[datetime | None] = mapped_column(default=None)
+    # Vragen aan de klant-accordeur (blok B5 26-08, migratie 0079): wanneer de beurt voor het
+    # laatst wisselde en tot welke beurt de accordeur gemeld is — samen de idempotentie van de
+    # push-anders-mail-melding (stille uren: de 10-min-job vangt uitgestelde meldingen op).
+    aan_de_beurt_sinds: Mapped[datetime | None] = mapped_column(default=None)
+    accordeur_gemeld_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class VraagBericht(Base):

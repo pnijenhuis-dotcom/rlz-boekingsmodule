@@ -20,6 +20,41 @@ export interface WachtrijItemDto {
   /** Klaargezette doorbelasting (besluit 25-08, A3): ALLEEN-LEZEN per doelentiteit; null =
    * geen doorbelasting bij dit document. Fout = de gewone afwijsknop met reden. */
   doorbelasting?: WachtrijDoorbelastingRegelDto[] | null
+  /** Open vraag van het kantoor aan déze accordeur op dit document (blok B5, 26-08); null = geen. */
+  vraag?: AccordeurVraagDto | null
+}
+
+export interface AccordeurVraagBerichtDto {
+  id: string
+  auteur_id: string
+  van_mij: boolean
+  tekst: string
+  geplaatst_op: string
+}
+
+/** Vraag-thread zoals de accordeur 'm ziet (mockup accordeur-vragen.html): uitsluitend vragen die
+ * aan de ingelogde accordeur gericht zijn — namen van kantoormedewerkers reizen niet mee. */
+export interface AccordeurVraagDto {
+  id: string
+  administratie_id: string
+  administratie_naam: string | null
+  document_id: string
+  document_status: string
+  leverancier_naam: string | null
+  totaalbedrag: string | null
+  vraag_tekst: string
+  gesteld_op: string
+  ik_ben_aan_de_beurt: boolean
+  berichten: AccordeurVraagBerichtDto[]
+}
+
+export function haalVragenAanMij(): Promise<{ items: AccordeurVraagDto[] }> {
+  return apiJson('/accordering/vragen')
+}
+
+/** Antwoord in de thread (append-only). Afgehandeld verklaren kan alleen de vraagsteller (kantoor). */
+export function beantwoordVraag(administratieId: string, vraagId: string, tekst: string): Promise<AccordeurVraagDto> {
+  return apiPostJson(`/administraties/${administratieId}/accordering/vragen/${vraagId}/berichten`, { tekst })
 }
 
 export interface WachtrijDoorbelastingRegelDto {

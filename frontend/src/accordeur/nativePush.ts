@@ -11,11 +11,24 @@ interface PermissieStatus {
   receive: 'prompt' | 'prompt-with-rationale' | 'granted' | 'denied'
 }
 
+interface ListenerHandle {
+  remove: () => Promise<void> | void
+}
+
+/** ⚠️ Capacitor's bridge-shim (`w.Capacitor.addListener` in JSExport/native-bridge.js) geeft een
+ * PLAIN handle terug, geen Promise — de gepubliceerde plugin-typings beloven een Promise. Op het
+ * toestel gaf `.then(...)` daardoor "`.then is not a function`" (bug 26-08, activeringsflow én het
+ * oude 🔔-hoekje). Beide vormen worden hier geaccepteerd. */
 interface PushNotificationsPlugin {
   checkPermissions(): Promise<PermissieStatus>
   requestPermissions(): Promise<PermissieStatus>
   register(): Promise<void>
-  addListener(eventName: string, listener: (payload: never) => void): Promise<{ remove: () => Promise<void> }>
+  addListener(eventName: string, listener: (payload: never) => void): Promise<ListenerHandle> | ListenerHandle
+}
+
+/** Normaliseert de addListener-uitkomst (Promise óf plain handle) naar één belofte. */
+export function alsHandle(uitkomst: Promise<ListenerHandle> | ListenerHandle): Promise<ListenerHandle> {
+  return Promise.resolve(uitkomst)
 }
 
 interface CapacitorGlobal {
@@ -55,23 +68,31 @@ export function nativePushSoort(): 'apns' | 'fcm' {
 export async function haalDeviceToken(plugin: PushNotificationsPlugin, timeoutMs = 15_000): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let klaar = false
-    const listeners: { remove: () => Promise<void> }[] = []
+    const listeners: ListenerHandle[] = []
     const rondAf = (fout: Error | null, token?: string) => {
       if (klaar) return
       klaar = true
       clearTimeout(timer)
-      for (const l of listeners) void l.remove().catch(() => {})
+      for (const l of listeners) void Promise.resolve(l.remove()).catch(() => {})
       if (fout) reject(fout)
       else resolve(token ?? '')
     }
     const timer = setTimeout(() => rondAf(new Error('Registratie bij de push-dienst duurde te lang')), timeoutMs)
-    void plugin
-      .addListener('registration', ((t: { value: string }) => rondAf(null, t.value)) as never)
-      .then((l) => listeners.push(l))
-    void plugin
-      .addListener('registrationError', ((e: { error: string }) =>
-        rondAf(new Error(`Registratie bij de push-dienst mislukte: ${e.error}`))) as never)
-      .then((l) => listeners.push(l))
+    const registreer = (naam: string, listener: (payload: never) => void) => {
+      let uitkomst: Promise<ListenerHandle> | ListenerHandle
+      try {
+        uitkomst = plugin.addListener(naam, listener)
+      } catch (fout) {
+        rondAf(fout instanceof Error ? fout : new Error(String(fout)))
+        return
+      }
+      void alsHandle(uitkomst)
+        .then((l) => listeners.push(l))
+        .catch((fout: unknown) => rondAf(fout instanceof Error ? fout : new Error(String(fout))))
+    }
+    registreer('registration', ((t: { value: string }) => rondAf(null, t.value)) as never)
+    registreer('registrationError', ((e: { error: string }) =>
+      rondAf(new Error(`Registratie bij de push-dienst mislukte: ${e.error}`))) as never)
     void plugin.register().catch((fout: unknown) => rondAf(fout instanceof Error ? fout : new Error(String(fout))))
   })
 }

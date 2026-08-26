@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0078
+-- Migratie-head bij deze dump: 0079
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2104,8 +2104,10 @@ CREATE TABLE boekhouding.vraag (
     aan_de_beurt uuid,
     afgehandeld_door uuid,
     afgehandeld_op timestamp with time zone,
+    aan_de_beurt_sinds timestamp with time zone,
+    accordeur_gemeld_op timestamp with time zone,
     CONSTRAINT vraag_antwoord_consistent CHECK ((((status = 'open'::text) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL) AND (afgehandeld_door IS NULL) AND (afgehandeld_op IS NULL)) OR ((status = 'beantwoord'::text) AND (btrim(antwoord_tekst) <> ''::text) AND (beantwoord_door IS NOT NULL) AND (beantwoord_op IS NOT NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL) AND (afgehandeld_door IS NULL) AND (afgehandeld_op IS NULL)) OR ((status = 'ingetrokken'::text) AND (ingetrokken_door IS NOT NULL) AND (ingetrokken_op IS NOT NULL) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL) AND (afgehandeld_door IS NULL) AND (afgehandeld_op IS NULL)) OR ((status = 'afgehandeld'::text) AND (afgehandeld_door IS NOT NULL) AND (afgehandeld_op IS NOT NULL) AND (antwoord_tekst IS NULL) AND (beantwoord_door IS NULL) AND (beantwoord_op IS NULL) AND (ingetrokken_door IS NULL) AND (ingetrokken_op IS NULL) AND (ingetrokken_reden IS NULL)))),
-    CONSTRAINT vraag_herkomst_herstelbaar CHECK ((status_voor_vraag = ANY (ARRAY['te_controleren'::text, 'handmatig_afmaken'::text, 'klaar_om_te_boeken'::text]))),
+    CONSTRAINT vraag_herkomst_herstelbaar CHECK ((status_voor_vraag = ANY (ARRAY['te_controleren'::text, 'handmatig_afmaken'::text, 'klaar_om_te_boeken'::text, 'ter_accordering'::text, 'geboekt'::text]))),
     CONSTRAINT vraag_status_geldig CHECK ((status = ANY (ARRAY['open'::text, 'beantwoord'::text, 'ingetrokken'::text, 'afgehandeld'::text]))),
     CONSTRAINT vraag_tekst_niet_leeg CHECK ((btrim(vraag_tekst) <> ''::text))
 );

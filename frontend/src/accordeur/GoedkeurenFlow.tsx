@@ -28,19 +28,21 @@ import {
   bewaarMeldingenKeuze,
   haalMeldingenStatus,
   zetMeldingenAan,
-  zetMeldingenUit,
   type MeldingenKeuze,
   type MeldingenStatus,
 } from './pushClient'
 import type { StaandeRegelDto } from '../accordering/accorderingApi'
 import {
+  beantwoordVraag,
   datumWeergave,
   eurWeergave,
   haalMijnAdministraties,
   haalStaandeRegels,
+  haalVragenAanMij,
   haalWachtrij,
   isVoorwaardenVereist,
   trekStaandeRegelIn,
+  type AccordeurVraagDto,
   type WachtrijItemDto,
 } from './accordeurApi'
 import { besluitVerzender, type BesluitOpdracht } from './besluitQueue'
@@ -48,7 +50,7 @@ import { factuurCache } from './pdfCache'
 import { PdfWeergave } from './PdfWeergave'
 import { VoorwaardenScherm } from './VoorwaardenScherm'
 
-type Weergave = 'wachtrij' | 'review' | 'beheer'
+type Weergave = 'wachtrij' | 'review' | 'beheer' | 'thread'
 
 /** Wachtrij-item + lokale terugkeer-melding na een definitief mislukte verzending. */
 type WachtrijItem = WachtrijItemDto & { verzend_fout?: string }
@@ -176,73 +178,6 @@ function StaandSheet({ item, onKeuze }: StaandSheetProps) {
   )
 }
 
-interface MeldingenSheetProps {
-  status: MeldingenStatus | null
-  bezig: boolean
-  onAanzetten: () => void
-  onUitzetten: () => void
-  onSluit: () => void
-}
-
-/** Het discrete meldingen-hoekje (🔔 naast de themaknop — UX-besluit Peter 2026-08-17):
- * dé plek om meldingen later alsnog aan of uit te zetten nu de wachtrij schoon blijft.
- * Kill-switch-semantiek ongewijzigd: het kantoor kan een apparaat server-side blijven
- * intrekken, ongeacht wat hier staat. */
-function MeldingenSheet({ status, bezig, onAanzetten, onUitzetten, onSluit }: MeldingenSheetProps) {
-  const sheetRef = useSheetBovenToetsenbord(true)
-  return (
-    <div className="acc-sheet-bg">
-      <div className="acc-sheet" ref={sheetRef}>
-        <h2>Meldingen</h2>
-        <div className="acc-uitleg">
-          Eén dagelijkse herinnering om 09:00 — alléén als er iets op je akkoord wacht, nooit ruis.
-          Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding zelf.
-        </div>
-        {status === 'aan' && (
-          <div className="acc-uitlegblok">
-            Meldingen staan <b>aan</b> op dit apparaat.
-          </div>
-        )}
-        {status === 'uit' && (
-          <div className="acc-uitlegblok">
-            Meldingen staan <b>uit</b> op dit apparaat.
-          </div>
-        )}
-        {status === 'geweigerd' && (
-          <div className="acc-uitlegblok">
-            Meldingen zijn <b>geblokkeerd in je toestel- of browserinstellingen</b> — sta ze daar eerst
-            toe, en zet ze daarna hier aan.
-          </div>
-        )}
-        {status === 'niet-geconfigureerd' && (
-          <div className="acc-uitlegblok">Meldingen zijn op deze server (nog) niet ingericht.</div>
-        )}
-        {(status === 'niet-ondersteund' || status === null) && (
-          <div className="acc-uitlegblok">
-            Meldingen worden in deze browser niet ondersteund. Op een iPhone: zet de app eerst op je
-            beginscherm.
-          </div>
-        )}
-        <div className="acc-rij">
-          <button className="acc-btn secundair" onClick={onSluit}>
-            Sluiten
-          </button>
-          {status === 'aan' && (
-            <button className="acc-btn afwijs" disabled={bezig} onClick={onUitzetten}>
-              {bezig ? 'Bezig…' : 'Meldingen uitzetten'}
-            </button>
-          )}
-          {status === 'uit' && (
-            <button className="acc-btn primair" disabled={bezig} onClick={onAanzetten}>
-              {bezig ? 'Bezig…' : 'Zet meldingen aan'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /** Factuurbeeld via de prefetchcache — óók verborgen gemonteerd voor de eerstvolgende factuur,
  * zodat blob + pdf.js-render al klaarstaan vóór de gebruiker daar aankomt. */
 /** Aandeel-percentage als "50%" / "33,33%" — string uit de backend (Decimal), nooit herberekend. */
@@ -252,33 +187,131 @@ function pctWeergave(pct: string): string {
   return `${getal.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
 }
 
-function FactuurBeeld({ item }: { item: WachtrijItemDto }) {
+function FactuurBeeld({ item, actief = true }: { item: WachtrijItemDto; actief?: boolean }) {
   const [url, setUrl] = useState<string | null>(null)
   const [laden, setLaden] = useState(true)
   const [fout, setFout] = useState<string | null>(null)
+  const [poging, setPoging] = useState(0)
 
   useEffect(() => {
-    let actief = true
+    let levend = true
     setUrl(null)
     setLaden(true)
     setFout(null)
     factuurCache
       .haal(item.administratie_id, item.document_id)
       .then((blobUrl) => {
-        if (actief) setUrl(blobUrl)
+        if (levend) setUrl(blobUrl)
       })
       .catch(() => {
-        if (actief) setFout('Het factuurbeeld kon niet geladen worden.')
+        if (levend) setFout('Het factuurbeeld kon niet geladen worden.')
       })
       .finally(() => {
-        if (actief) setLaden(false)
+        if (levend) setLaden(false)
       })
     return () => {
-      actief = false
+      levend = false
     }
-  }, [item.administratie_id, item.document_id])
+  }, [item.administratie_id, item.document_id, poging])
 
-  return <PdfWeergave blobUrl={url} laden={laden} fout={fout} />
+  // Retry (feedbackpunt 2): cache-rij vergeten → verse fetch + render.
+  const opnieuw = () => {
+    factuurCache.vergeet(item.document_id)
+    setPoging((p) => p + 1)
+  }
+
+  return <PdfWeergave blobUrl={url} laden={laden} fout={fout} actief={actief} onOpnieuw={opnieuw} />
+}
+
+/** "Wordt doorbelast aan X" / "aan X en Y" / "aan X, Y en Z" — puur tekst, geen rekenwerk. */
+export function doorbelastKop(namen: string[]): string {
+  if (namen.length === 0) return ''
+  if (namen.length === 1) return namen[0]
+  return `${namen.slice(0, -1).join(', ')} en ${namen[namen.length - 1]}`
+}
+
+/** Datum + tijd voor de thread ("26-08 16:42") — presentatie. */
+function tijdWeergave(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+interface VraagThreadProps {
+  vraag: AccordeurVraagDto
+  onBeantwoord: (vraag: AccordeurVraagDto) => void
+  toon: (tekst: string) => void
+  rustig?: boolean
+}
+
+/** Vraag-thread van het kantoor aan de accordeur (mockup accordeur-vragen.html, blok B5):
+ * bubbels (kantoor links, "U" rechts), antwoordbalk zolang de accordeur aan de beurt is; ná het
+ * versturen "Wacht op kantoor". Afgehandeld verklaren kan alleen de vraagsteller — bewust géén
+ * knop hier. */
+function VraagThread({ vraag, onBeantwoord, toon, rustig = false }: VraagThreadProps) {
+  const [tekst, setTekst] = useState('')
+  const [bezig, setBezig] = useState(false)
+  const verstuur = async () => {
+    const inhoud = tekst.trim()
+    if (!inhoud || bezig) return
+    setBezig(true)
+    try {
+      const nieuw = await beantwoordVraag(vraag.administratie_id, vraag.id, inhoud)
+      setTekst('')
+      onBeantwoord(nieuw)
+    } catch {
+      toon('Antwoord versturen mislukte — probeer het opnieuw')
+    } finally {
+      setBezig(false)
+    }
+  }
+  return (
+    <div className={`acc-thread${rustig || !vraag.ik_ben_aan_de_beurt ? ' rustig' : ''}`} aria-label="Vraag van het kantoor">
+      <div className="acc-thread-kop">
+        <span>💬 Vraag van het kantoor</span>
+        {vraag.ik_ben_aan_de_beurt ? (
+          <span className="acc-chip beurt">U bent aan de beurt</span>
+        ) : (
+          <span className="acc-chip wacht">Wacht op kantoor</span>
+        )}
+      </div>
+      <div className="acc-berichten">
+        <div className="acc-bericht">
+          <div className="acc-bubbel">{vraag.vraag_tekst}</div>
+          <div className="acc-wie">Kantoor · {tijdWeergave(vraag.gesteld_op)}</div>
+        </div>
+        {vraag.berichten.map((b) => (
+          <div key={b.id} className={`acc-bericht${b.van_mij ? ' van-mij' : ''}`}>
+            <div className="acc-bubbel">{b.tekst}</div>
+            <div className="acc-wie">
+              {b.van_mij ? 'U' : 'Kantoor'} · {tijdWeergave(b.geplaatst_op)}
+            </div>
+          </div>
+        ))}
+      </div>
+      {vraag.ik_ben_aan_de_beurt && (
+        <div className="acc-antwoordbalk">
+          <input
+            type="text"
+            placeholder="Uw antwoord…"
+            aria-label="Uw antwoord"
+            value={tekst}
+            onChange={(e) => setTekst(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void verstuur()
+            }}
+          />
+          <button type="button" disabled={bezig || tekst.trim() === ''} onClick={() => void verstuur()}>
+            {bezig ? '…' : 'Verstuur'}
+          </button>
+        </div>
+      )}
+      <div className="acc-afgehandeld-voet">
+        Alleen de vraagsteller op kantoor kan de vraag <b>afgehandeld</b> verklaren. U ziet uitsluitend vragen die
+        aan u gericht zijn — nooit intern kantooroverleg.
+      </div>
+    </div>
+  )
 }
 
 interface Props {
@@ -302,15 +335,22 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const laatsteOvergang = useRef(0)
-  const [administratieNamen, setAdministratieNamen] = useState<string[]>([])
+  // Vragen van het kantoor aan déze accordeur (blok B5, mockup accordeur-vragen.html): alle open
+  // threads; op de wachtrij-kaart als hij bij een te accorderen document hoort, anders in de
+  // sectie "Vragen aan u". `vraagOpen` = de losse thread die nu open staat.
+  const [vragen, setVragen] = useState<AccordeurVraagDto[]>([])
+  const [vraagOpen, setVraagOpen] = useState<AccordeurVraagDto | null>(null)
+  const [doorbelastOpen, setDoorbelastOpen] = useState(false)
+  const [factuurLos, setFactuurLos] = useState(false)
   const [staandeRegels, setStaandeRegels] = useState<(StaandeRegelDto & { administratie_id: string })[]>([])
   const [meldingen, setMeldingen] = useState<MeldingenStatus | null>(null)
   const [meldingenVoorstel, setMeldingenVoorstel] = useState(false)
   const [meldingenBezig, setMeldingenBezig] = useState(false)
   // Onthouden uitkomst per apparaat (UX-besluit Peter 2026-08-17): zodra er een keuze ligt
   // (aan/uit/mislukt) verschijnt het voorstel nergens meer — alleen het 🔔-hoekje blijft.
-  const [meldingenKeuze, setMeldingenKeuze] = useState<MeldingenKeuze | null>(() => bewaardeMeldingenKeuze())
-  const [meldingenSheetOpen, setMeldingenSheetOpen] = useState(false)
+  // Alleen nog de setter: de keuze wordt per apparaat onthouden (activeringsflow éénmalig);
+  // een 🔔-hoekje of wachtrij-kaart bestaat sinds 26-08 niet meer (om-/uitzetten = telefooninstellingen).
+  const [, setMeldingenKeuze] = useState<MeldingenKeuze | null>(() => bewaardeMeldingenKeuze())
   // Eén herkansing bij een mislukte aanzet-poging in het éénmalige voorstel; daarna is
   // "mislukt" de onthouden uitkomst (eerlijke fout-toast, geen permanente banner).
   const meldingenMislukt = useRef(0)
@@ -334,6 +374,10 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       setTotaalStart(zichtbaar.length)
       setVerwerkt(0)
       setVoorwaardenNodig(false)
+      // Vragen aan mij: tolerant — een fout hier mag de wachtrij nooit blokkeren.
+      haalVragenAanMij()
+        .then(({ items: v }) => setVragen(v))
+        .catch(() => setVragen([]))
     } catch (err) {
       if (isVoorwaardenVereist(err)) {
         setVoorwaardenNodig(true)
@@ -347,9 +391,6 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
 
   useEffect(() => {
     void laadWachtrij()
-    haalMijnAdministraties()
-      .then(({ administraties }) => setAdministratieNamen(administraties.map((a) => a.naam)))
-      .catch(() => setAdministratieNamen([]))
     haalMeldingenStatus()
       .then(setMeldingen)
       .catch(() => setMeldingen(null))
@@ -430,22 +471,19 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     setMeldingenVoorstel(false)
   }, [legKeuzeVast, meldingenAanzetten])
 
-  const meldingenUitzetten = useCallback(async () => {
-    setMeldingenBezig(true)
-    try {
-      await zetMeldingenUit()
-      setMeldingen('uit')
-      legKeuzeVast('uit')
-      toon('Meldingen staan uit')
-    } finally {
-      setMeldingenBezig(false)
-    }
-  }, [legKeuzeVast, toon])
-
   const openReview = (item: WachtrijItem) => {
     setHuidige(item)
+    setDoorbelastOpen(false)
     setWeergave('review')
   }
+
+  /** Ná een antwoord: dezelfde thread op de kaart, in de review én in de losse lijst bijwerken. */
+  const werkVraagBij = useCallback((nieuw: AccordeurVraagDto) => {
+    setVragen((vorige) => (vorige.some((v) => v.id === nieuw.id) ? vorige.map((v) => (v.id === nieuw.id ? nieuw : v)) : [nieuw, ...vorige]))
+    setVraagOpen((v) => (v && v.id === nieuw.id ? nieuw : v))
+    setItems((vorige) => vorige.map((i) => (i.vraag?.id === nieuw.id ? { ...i, vraag: nieuw } : i)))
+    setHuidige((h) => (h && h.vraag?.id === nieuw.id ? { ...h, vraag: nieuw } : h))
+  }, [])
 
   // Deep-link uit mail/pushmelding (?document=<id>): open dat document zodra de wachtrij er
   // is — staat het er niet (meer) in, dan gewoon de wachtrij (al afgehandeld/ingetrokken).
@@ -454,7 +492,22 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   useEffect(() => {
     if (laden || deepLinkVerwerkt.current) return
     const documentId = zoekParams.get('document')
-    if (!documentId) return
+    const vraagId = zoekParams.get('vraag')
+    if (!documentId && !vraagId) return
+    if (vraagId) {
+      // Deep-link uit de vraag-melding (blok B5): eerst de losse thread als die er is, anders het
+      // document waar de vraag op hangt; onbekend = gewoon de wachtrij.
+      if (vragen.length === 0 && items.length === 0) return
+      deepLinkVerwerkt.current = true
+      const vraag = vragen.find((v) => v.id === vraagId)
+      const kaart = items.find((i) => i.vraag?.id === vraagId)
+      if (kaart) openReview(kaart)
+      else if (vraag) {
+        setVraagOpen(vraag)
+        setWeergave('thread')
+      }
+      return
+    }
     deepLinkVerwerkt.current = true
     const doel = items.find((i) => i.document_id === documentId)
     if (doel) openReview(doel)
@@ -462,7 +515,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     rest.delete('document')
     setZoekParams(rest, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [laden, items, zoekParams, setZoekParams])
+  }, [laden, items, zoekParams, vragen, setZoekParams])
 
   // Prefetch-venster: in review de huidige + eerstvolgende factuur, op de wachtrij vast de
   // eerste — verborgen gemonteerd (prerender), al het andere wordt gesnoeid (geheugenrem).
@@ -603,9 +656,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
           <div className="acc-icoon">🔔</div>
           <b>Meldingen aanzetten?</b>
           <div className="acc-sub">
-            Eén dagelijkse herinnering om 09:00 — alléén als er iets op je akkoord wacht, nooit ruis.
-            Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding zelf. Later aanzetten kan
-            altijd nog via 🔔 rechtsboven.
+            Eén dagelijkse herinnering om 09:00 — alléén als er iets op je akkoord wacht — en een bericht
+            als het kantoor u een vraag stelt. Goedkeuren gebeurt altijd ín de app, nooit vanuit de melding
+            zelf. Later aan- of uitzetten doet u in de instellingen van uw telefoon.
           </div>
         </div>
         <button className="acc-btn primair" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
@@ -627,15 +680,23 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
 
   const teller = items.length
   const tellerTekst = teller === 1 ? '1 factuur wacht op je akkoord' : `${teller} facturen wachten op je akkoord`
+  // "Vragen aan u" = vragen die NIET op een te accorderen document in de wachtrij hangen (die
+  // staan op de kaart zelf). Antwoorden werkt de thread op beide plekken bij.
+  const wachtrijDocumenten = new Set(items.map((i) => i.document_id))
+  const losseVragen = vragen.filter((v) => !wachtrijDocumenten.has(v.document_id))
+  const huidigeVraag: AccordeurVraagDto | null = huidige
+    ? (vragen.find((v) => v.document_id === huidige.document_id) ?? huidige.vraag ?? null)
+    : null
 
   return (
     <>
       <div className="acc-apphead">
+        {/* Compact (feedbackpunt 1, 26-08): alleen titel + actieknoppen — de administratie staat al
+            bij de boeking zelf; de administraties-namenlijst is weg. */}
         <div>
           <b>
             Nijenhuis <span>Boekingsmodule</span>
           </b>
-          <div className="acc-who">{administratieNamen.join(' · ') || 'Accordeur'}</div>
         </div>
         <div className="acc-headbtns">
           <button
@@ -647,21 +708,6 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
             }}
           >
             ✓✓
-          </button>
-          <button
-            className="acc-iconbtn"
-            title="Meldingen"
-            aria-label="Meldingen"
-            onClick={() => {
-              // Vers ophalen bij het openen: de permissie kan intussen in de toestel-/
-              // browserinstellingen gewijzigd zijn.
-              haalMeldingenStatus()
-                .then(setMeldingen)
-                .catch(() => {})
-              setMeldingenSheetOpen(true)
-            }}
-          >
-            🔔
           </button>
           <button className="acc-iconbtn" title="Licht/donker (dark is default)" onClick={wisselThema}>
             ◐
@@ -684,28 +730,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 </button>
               </div>
             )}
-            {/* Eénmalige meldingen-kaart (UX-besluit Peter 2026-08-17): alléén zolang er op
-                dit apparaat nog géén uitkomst onthouden is (dekt apparaten die de
-                activeringsflow al vóór dit voorstel doorliepen). Na élke uitkomst — aan,
-                "niet nu", of mislukt-na-herkansing — blijft de wachtrij schoon; beheer
-                loopt dan via het 🔔-hoekje. De geweigerd-/aan-banners zijn bewust weg. */}
-            {!laden && !fout && meldingen === 'uit' && meldingenKeuze === null && (
-              <div className="acc-pushnote">
-                <span className="t">🔔</span>
-                <div>
-                  <b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.
-                  <br />
-                  <button className="acc-btn klein primair" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
-                    {meldingenBezig ? 'Bezig…' : 'Zet meldingen aan'}
-                  </button>{' '}
-                  <button className="acc-tekstlink" onClick={() => legKeuzeVast('uit')}>
-                    niet nu
-                  </button>
-                </div>
-              </div>
-            )}
             {!laden && !fout && teller > 0 && (
               <>
+                <div className="acc-seclabel">Te accorderen · {teller}</div>
                 <div className="acc-qcount">{tellerTekst}</div>
                 {items.map((item) => (
                   <button key={item.document_id} className="acc-qcard" onClick={() => openReview(item)}>
@@ -714,6 +741,8 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                       <div className="acc-meta">
                         {item.referentie ? `nr. ${item.referentie} · ` : ''}
                         {datumWeergave(item.factuurdatum)}
+                        {item.administratie_naam ? ` · ${item.administratie_naam}` : ''}
+                        {` · laag ${item.laag_volgnummer}`}
                         {item.verzend_fout && (
                           <>
                             {' · '}
@@ -727,6 +756,14 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                           </>
                         )}
                       </div>
+                      {(item.vraag || (item.doorbelasting && item.doorbelasting.length > 0)) && (
+                        <div className="acc-kaartchips">
+                          {item.vraag && <span className="acc-chip vraag">💬 Vraag van kantoor</span>}
+                          {item.doorbelasting && item.doorbelasting.length > 0 && (
+                            <span className="acc-chip wacht">Wordt doorbelast</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className="acc-amt">{eurWeergave(item.totaalbedrag)}</span>
@@ -743,6 +780,40 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 Er staat niets meer voor je klaar. Je krijgt een melding zodra er een nieuwe factuur op je
                 akkoord wacht.
               </div>
+            )}
+            {!laden && !fout && losseVragen.length > 0 && (
+              <>
+                <div className="acc-seclabel">Vragen aan u · {losseVragen.length}</div>
+                <div className="acc-toelicht">
+                  Vragen van het kantoor die geen open accordering blokkeren — bijvoorbeeld over een eerder
+                  goedgekeurde factuur.
+                </div>
+                {losseVragen.map((vraag) => (
+                  <button
+                    key={vraag.id}
+                    className="acc-qcard"
+                    onClick={() => {
+                      setVraagOpen(vraag)
+                      setWeergave('thread')
+                    }}
+                  >
+                    <div>
+                      <div className="acc-lev">{vraag.leverancier_naam ?? 'Factuur'}</div>
+                      <div className="acc-meta">
+                        {vraag.document_status === 'geboekt' ? 'Geboekt' : 'Factuur'}
+                        {vraag.totaalbedrag ? ` · ${eurWeergave(vraag.totaalbedrag)}` : ''}
+                        {vraag.administratie_naam ? ` · ${vraag.administratie_naam}` : ''}
+                      </div>
+                      <div className="acc-meta acc-citaat">“{vraag.vraag_tekst}”</div>
+                    </div>
+                    {vraag.ik_ben_aan_de_beurt ? (
+                      <span className="acc-chip beurt">U bent aan de beurt</span>
+                    ) : (
+                      <span className="acc-chip wacht">Wacht op kantoor</span>
+                    )}
+                  </button>
+                ))}
+              </>
             )}
             {onderweg > 0 && (
               <div className="acc-onderweg">
@@ -772,7 +843,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
             const actief = weergave === 'review' && huidige?.document_id === item.document_id
             return (
               <div key={item.document_id} style={actief ? undefined : { display: 'none' }} aria-hidden={!actief}>
-                <FactuurBeeld item={item} />
+                <FactuurBeeld item={item} actief={actief} />
               </div>
             )
           })}
@@ -790,25 +861,50 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
               </span>
             </div>
             {huidige.doorbelasting && huidige.doorbelasting.length > 0 && (
-              <div className="acc-doorbelasting" aria-label="Doorbelasting">
-                <div className="acc-doorbelasting-kop">
-                  Wordt na akkoord doorbelast aan
-                  <span className="acc-k"> · alleen-lezen</span>
-                </div>
-                <ul>
-                  {huidige.doorbelasting.map((r) => (
-                    <li key={r.doelentiteit_naam}>
-                      <span className="acc-db-naam">{r.doelentiteit_naam}</span>
-                      <span className="acc-db-pct">{pctWeergave(r.percentage)}</span>
-                      <span className="acc-db-bedrag">
-                        {eurWeergave(r.netto_totaal)} excl.
-                        <span className="acc-k"> · provisie {eurWeergave(r.provisie_bedrag)}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="acc-k">Klopt de verdeling niet? Wijs de factuur af met een reden — het kantoor past de verdeling aan.</div>
+              // Feedbackpunt 3 (26-08): één regel, tikbaar uitklappen — verdeling alleen-lezen.
+              <div className={`acc-doorbelast${doorbelastOpen ? ' open' : ''}`} aria-label="Doorbelasting">
+                <button
+                  type="button"
+                  className="acc-doorbelast-kop"
+                  aria-expanded={doorbelastOpen}
+                  onClick={() => setDoorbelastOpen((v) => !v)}
+                >
+                  <span>
+                    Wordt doorbelast aan <b>{doorbelastKop(huidige.doorbelasting.map((r) => r.doelentiteit_naam))}</b>
+                  </span>
+                  <span className="acc-pijl" aria-hidden="true">
+                    ▶
+                  </span>
+                </button>
+                {doorbelastOpen && (
+                  <div className="acc-doorbelast-detail">
+                    {huidige.doorbelasting.map((r) => (
+                      <div className="acc-rij" key={r.doelentiteit_naam}>
+                        <span>{r.doelentiteit_naam}</span>
+                        <span className="acc-p">
+                          {pctWeergave(r.percentage)} · {eurWeergave(r.netto_totaal)} excl.
+                        </span>
+                      </div>
+                    ))}
+                    {huidige.doorbelasting.map((r) => (
+                      <div className="acc-rij" key={`prov-${r.doelentiteit_naam}`}>
+                        <span>Provisie kantoor{huidige.doorbelasting!.length > 1 ? ` · ${r.doelentiteit_naam}` : ''}</span>
+                        <span className="acc-p">{eurWeergave(r.provisie_bedrag)}</span>
+                      </div>
+                    ))}
+                    <div className="acc-voetje">Verdeling is alleen-lezen. Klopt die niet? Wijs de factuur af met een reden.</div>
+                  </div>
+                )}
               </div>
+            )}
+            {huidigeVraag && (
+              <>
+                <VraagThread vraag={huidigeVraag} onBeantwoord={werkVraagBij} toon={toon} />
+                <div className="acc-toelicht">
+                  U kunt de factuur gewoon goedkeuren of afwijzen — de vraag blokkeert alleen het <b>boeken</b> op
+                  kantoor, tot de vraagsteller hem afgehandeld verklaart.
+                </div>
+              </>
             )}
             {huidige.staande_regel_kandidaat && (
               <div className="acc-staandnote">
@@ -819,6 +915,47 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {weergave === 'thread' && vraagOpen && (
+          <div>
+            <div className="acc-revtop">
+              <button className="acc-terug" onClick={() => setWeergave('wachtrij')}>
+                ‹ Wachtrij
+              </button>
+            </div>
+            <div className="acc-boekinfo">
+              <b>{vraagOpen.leverancier_naam ?? 'Factuur'}</b>
+              {vraagOpen.totaalbedrag ? ` · ${eurWeergave(vraagOpen.totaalbedrag)}` : ''}
+              <br />
+              <span className="acc-k">
+                {vraagOpen.document_status === 'geboekt' ? 'Geboekt' : 'Factuur'}
+                {vraagOpen.administratie_naam ? ` · ${vraagOpen.administratie_naam}` : ''}
+                {' · '}
+                <button type="button" className="acc-tekstlink" onClick={() => setFactuurLos((v) => !v)}>
+                  {factuurLos ? 'verberg factuur' : 'bekijk factuur'}
+                </button>
+              </span>
+            </div>
+            {factuurLos && (
+              <FactuurBeeld
+                item={{
+                  document_id: vraagOpen.document_id,
+                  administratie_id: vraagOpen.administratie_id,
+                  administratie_naam: vraagOpen.administratie_naam,
+                  leverancier_naam: vraagOpen.leverancier_naam,
+                  referentie: null,
+                  factuurdatum: null,
+                  totaalbedrag: vraagOpen.totaalbedrag,
+                  aangeboden_op: vraagOpen.gesteld_op,
+                  laag_volgnummer: 0,
+                  boeking_omschrijving: null,
+                  staande_regel_kandidaat: false,
+                }}
+              />
+            )}
+            <VraagThread vraag={vraagOpen} onBeantwoord={werkVraagBij} toon={toon} rustig />
           </div>
         )}
 
@@ -878,15 +1015,6 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       )}
 
       {afwijsOpen && <AfwijsSheet onAnnuleer={() => setAfwijsOpen(false)} onBevestig={(reden) => afwijzen(reden)} />}
-      {meldingenSheetOpen && (
-        <MeldingenSheet
-          status={meldingen}
-          bezig={meldingenBezig}
-          onAanzetten={() => void meldingenAanzetten()}
-          onUitzetten={() => void meldingenUitzetten()}
-          onSluit={() => setMeldingenSheetOpen(false)}
-        />
-      )}
       {staandOpen && huidige && (
         <StaandSheet
           item={huidige}

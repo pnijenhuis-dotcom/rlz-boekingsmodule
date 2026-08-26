@@ -80,12 +80,27 @@ export function VraagModal({ administratieId, documentId, onGesteld, onAnnuleren
             onChange={(e) => setToegewezenAan(e.target.value)}
           >
             {!eigenaarId && <option value="">— kies een medewerker —</option>}
-            {(medewerkers ?? []).map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.naam}
-                {m.id === eigenaarId ? ' — eigenaar administratie (standaard)' : ''}
-              </option>
-            ))}
+            {(medewerkers ?? [])
+              .filter((m) => !m.is_klant_accordeur)
+              .map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.naam}
+                  {m.id === eigenaarId ? ' — eigenaar administratie (standaard)' : ''}
+                </option>
+              ))}
+            {(medewerkers ?? []).some((m) => m.is_klant_accordeur) && (
+              // Blok B5 (26-08): vraag aan de klant — de accordeur ziet en beantwoordt de thread in
+              // de app; de vraag blokkeert het boeken, niet het akkoord.
+              <optgroup label="Klant-accordeurs (vraag aan de klant)">
+                {(medewerkers ?? [])
+                  .filter((m) => m.is_klant_accordeur)
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.naam} — klant
+                    </option>
+                  ))}
+              </optgroup>
+            )}
           </Select>
           {medewerkersFout && <div className="fout">Kon medewerkers niet laden: {medewerkersFout}</div>}
         </div>

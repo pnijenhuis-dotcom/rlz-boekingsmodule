@@ -115,6 +115,40 @@ class WachtrijDoorbelastingRegelResponse(BaseModel):
     provisie_bedrag: Decimal
 
 
+class AccordeurVraagBerichtInput(StrikteInvoer):
+    tekst: str
+
+
+class AccordeurVraagBerichtResponse(BaseModel):
+    id: uuid.UUID
+    auteur_id: uuid.UUID
+    van_mij: bool
+    tekst: str
+    geplaatst_op: datetime
+
+
+class AccordeurVraagResponse(BaseModel):
+    """Vraag-thread zoals de accordeur-app 'm toont (blok B5 26-08): uitsluitend vragen die aan de
+    ingelogde accordeur gericht zijn. Namen van kantoormedewerkers reizen niet mee (alleen
+    'kantoor' vs 'u') — dataminimalisatie; `ik_ben_aan_de_beurt` stuurt de chip + antwoordbalk."""
+
+    id: uuid.UUID
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    document_id: uuid.UUID
+    document_status: str
+    leverancier_naam: str | None
+    totaalbedrag: Decimal | None
+    vraag_tekst: str
+    gesteld_op: datetime
+    ik_ben_aan_de_beurt: bool
+    berichten: list[AccordeurVraagBerichtResponse]
+
+
+class VragenAanMijResponse(BaseModel):
+    items: list[AccordeurVraagResponse]
+
+
 class WachtrijItemResponse(BaseModel):
     document_id: uuid.UUID
     administratie_id: uuid.UUID
@@ -128,6 +162,8 @@ class WachtrijItemResponse(BaseModel):
     boeking_omschrijving: str | None = None
     staande_regel_kandidaat: bool = False
     doorbelasting: list[WachtrijDoorbelastingRegelResponse] | None = None
+    # Open vraag aan déze accordeur op dit document (blok B5) — None = geen.
+    vraag: AccordeurVraagResponse | None = None
 
 
 class WachtrijResponse(BaseModel):

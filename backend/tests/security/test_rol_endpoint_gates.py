@@ -146,6 +146,11 @@ class TestExterneRollenGeweigerd:
         resp = client.get("/accordering/wachtrij", headers=_bearer(zzper, rol="zzper"))
         assert resp.status_code == 403
 
+    def test_veldrol_en_kantoor_geen_vragen_aan_mij(self, zzper, boekhouder):
+        # Blok B5: de accordeur-vragenroutes zijn uitsluitend voor de klant-accordeur.
+        assert client.get("/accordering/vragen", headers=_bearer(zzper, rol="zzper")).status_code == 403
+        assert client.get("/accordering/vragen", headers=_bearer(boekhouder, rol="boekhouding")).status_code == 403
+
 
 class TestAccordeurPadenBlijvenOpen:
     """De accordeur-PWA-flows mogen niet sneuvelen op de nieuwe rolpoorten."""
@@ -158,6 +163,17 @@ class TestAccordeurPadenBlijvenOpen:
         # 404 (onbekend document) is prima — het mag alleen géén 403-rolpoort zijn.
         resp = client.get(
             f"/administraties/{administratie_id}/documenten/{DUMMY_ID}/bestand",
+            headers=_bearer(accordeur, rol="klant_accordeur"),
+        )
+        assert resp.status_code == 404
+
+    def test_vragen_aan_mij_200_en_antwoord_op_onbekende_vraag_404(self, accordeur, administratie_id):
+        # Blok B5 (26-08): "Vragen aan u" + antwoorden — accordeur-paden, nooit een rolweigering.
+        resp = client.get("/accordering/vragen", headers=_bearer(accordeur, rol="klant_accordeur"))
+        assert resp.status_code == 200 and resp.json() == {"items": []}
+        resp = client.post(
+            f"/administraties/{administratie_id}/accordering/vragen/{DUMMY_ID}/berichten",
+            json={"tekst": "test"},
             headers=_bearer(accordeur, rol="klant_accordeur"),
         )
         assert resp.status_code == 404

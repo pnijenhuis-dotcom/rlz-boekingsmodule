@@ -156,10 +156,12 @@ class ProbeRapportDto(BaseModel):
 
 
 class MedewerkerDto(BaseModel):
-    """Toewijsbare medewerker (vraagmodal): bewust alleen id + naam, geen e-mail/rol."""
+    """Toewijsbare medewerker (vraagmodal): bewust alleen id + naam, geen e-mail/rol —
+    plus (blok B5 26-08) of het een klant-accordeur is (vraag aan de klant, chip "bij de klant")."""
 
     id: uuid.UUID
     naam: str
+    is_klant_accordeur: bool = False
 
 
 class MedewerkersLijstDto(BaseModel):

@@ -745,6 +745,18 @@ def _nieuwe_facturen_melden(args: argparse.Namespace) -> int:
     (20:00–08:00 Europe/Amsterdam) en 0-nieuw-runs zijn exit 0 met zichtbare tellers; exit 1
     alleen bij échte fouten (verzending mislukt, bezig-blijver, volumerem) — F3.2-alert."""
     rapport = nieuwe_facturen.verstuur_nieuwe_facturen_meldingen()
+    # Blok B5 (26-08): dezelfde 10-min-cadans vangt de vraag-meldingen aan accordeurs op die in de
+    # stille uren of door een verzendfout nog niet gemeld zijn (idempotent per beurt).
+    from app.berichten import vraag_meldingen
+
+    vraag_rapport = vraag_meldingen.verstuur_vraag_meldingen()
+    print(
+        f"vraag-meldingen: stille_uren={vraag_rapport.stille_uren} kandidaten={vraag_rapport.kandidaten} "
+        f"push={vraag_rapport.verzonden_push} mail={vraag_rapport.verzonden_mail} "
+        f"geen_kanaal={vraag_rapport.overgeslagen_geen_kanaal} mislukt={vraag_rapport.mislukt}"
+    )
+    for fout in vraag_rapport.fouten:
+        print(f"FOUT       vraag-melding: {fout}", file=sys.stderr)
     if rapport.stille_uren:
         print("Stille uren (20:00–08:00 Europe/Amsterdam) — geen meldingen verstuurd.")
         return 0
