@@ -120,15 +120,19 @@ def verzamelbak_toewijzen(
     invoer: schemas.ToewijzenInput,
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.DocumentStatusResponse:
+    """Idempotent (avondrun 26-08): een tweede klik op een al-toegewezen document geeft 200 mét
+    `al_verwerkt=true` — geen rode fout (het paneel verwijdert de rij optimistisch en zou anders
+    een geslaagde actie als fout terugmelden). Écht conflict (intussen afgehandeld als "hoort niet
+    bij ons", andere administratie) blijft 409/404 mét leesbare melding."""
     try:
-        eind_status = verzamelbak.wijs_toe(
-            document_id=document_id, administratie_id=invoer.administratie_id, actor_id=actor.id
-        )
+        r = verzamelbak.wijs_toe(document_id=document_id, administratie_id=invoer.administratie_id, actor_id=actor.id)
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (verzamelbak.DocumentNietInVerzamelbak, verzamelbak.OnbekendeAdministratie) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return schemas.DocumentStatusResponse(document_id=document_id, status=eind_status.value)
+    return schemas.DocumentStatusResponse(
+        document_id=document_id, status=r.status.value, al_verwerkt=r.al_verwerkt, melding=r.melding
+    )
 
 
 @router.post("/verzamelbak/{document_id}/hoort-niet-bij-ons", response_model=schemas.DocumentStatusResponse)
@@ -138,14 +142,16 @@ def verzamelbak_hoort_niet_bij_ons(
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.DocumentStatusResponse:
     try:
-        eind_status = verzamelbak.hoort_niet_bij_ons(document_id=document_id, actor_id=actor.id, reden=invoer.reden)
+        r = verzamelbak.hoort_niet_bij_ons(document_id=document_id, actor_id=actor.id, reden=invoer.reden)
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except verzamelbak.RedenVerplicht as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except verzamelbak.DocumentNietInVerzamelbak as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return schemas.DocumentStatusResponse(document_id=document_id, status=eind_status.value)
+    return schemas.DocumentStatusResponse(
+        document_id=document_id, status=r.status.value, al_verwerkt=r.al_verwerkt, melding=r.melding
+    )
 
 
 @router.post("/intake/splitsingen/{splitsing_id}/bevestigen", response_model=schemas.SplitsingBevestigenResponse)

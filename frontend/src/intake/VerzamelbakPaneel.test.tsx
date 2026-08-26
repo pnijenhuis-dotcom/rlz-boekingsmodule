@@ -131,6 +131,85 @@ describe('VerzamelbakPaneel', () => {
     expect(aanroepen[0].body).toEqual({ reden: 'Ander kantoor' })
   })
 
+  it('optimistisch (besluit 26-08): de rij verdwijnt direct en de teller telt af, nog vóór de server antwoordt', async () => {
+    let los: ((r: Response) => void) | null = null
+    const items = [item(), item({ document_id: 'cccccccc-0000-0000-0000-000000000004', bestandsnaam: 'tweede.pdf' })]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/verzamelbak') && (!init || !init.method)) return Promise.resolve(jsonResponse({ items }))
+        if (init?.method === 'POST') return new Promise<Response>((resolve) => (los = resolve))
+        return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
+      }),
+    )
+    const onGewijzigd = vi.fn()
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} onGewijzigd={onGewijzigd} />)
+    await screen.findByText(/handmatig koppelen \(2\)/)
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Toewijzen ✓' })[0])
+    // Direct weg + teller af, terwijl het request nog open staat.
+    expect(screen.getByText(/handmatig koppelen \(1\)/)).toBeInTheDocument()
+    expect(screen.queryByText('factuur_energie.pdf')).not.toBeInTheDocument()
+    expect(onGewijzigd).not.toHaveBeenCalled()
+
+    los!(jsonResponse({ document_id: DOC_ID, status: 'te_controleren' }))
+    await waitFor(() => expect(onGewijzigd).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('factuur_energie.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('mislukt (4xx/5xx/time-out): de rij komt LUID terug op haar plek mét rode reden — nooit stil', async () => {
+    const items = [item(), item({ document_id: 'cccccccc-0000-0000-0000-000000000004', bestandsnaam: 'tweede.pdf' })]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/verzamelbak') && (!init || !init.method)) return Promise.resolve(jsonResponse({ items }))
+        if (init?.method === 'POST') {
+          return Promise.resolve(jsonResponse({ detail: "Dit document is al afgehandeld als 'hoort niet bij ons' — er is niets gewijzigd." }, 409))
+        }
+        return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
+      }),
+    )
+    const onGewijzigd = vi.fn()
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} onGewijzigd={onGewijzigd} />)
+    await screen.findByText(/handmatig koppelen \(2\)/)
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Toewijzen ✓' })[0])
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/Niet verwerkt: Dit document is al afgehandeld als 'hoort niet bij ons'/)
+    expect(screen.getByText(/handmatig koppelen \(2\)/)).toBeInTheDocument()
+    // Terug op de oorspronkelijke plek (eerste rij), niet onderaan.
+    const rijen = screen.getAllByRole('row')
+    expect(rijen[1]).toHaveTextContent('factuur_energie.pdf')
+    expect(onGewijzigd).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Lijst verversen' })).toBeInTheDocument()
+  })
+
+  it('al verwerkt (tweede klik / collega): rij blijft weg, rustige melding in plaats van een rode fout', async () => {
+    const items = [item(), item({ document_id: 'cccccccc-0000-0000-0000-000000000004', bestandsnaam: 'tweede.pdf' })]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/verzamelbak') && (!init || !init.method)) return Promise.resolve(jsonResponse({ items }))
+        if (init?.method === 'POST') {
+          return Promise.resolve(
+            jsonResponse({ document_id: DOC_ID, status: 'ontvangen', al_verwerkt: true, melding: 'Was al toegewezen aan BLOW B.V. — niets opnieuw gedaan.' }),
+          )
+        }
+        return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
+      }),
+    )
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await screen.findByText(/handmatig koppelen \(2\)/)
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Toewijzen ✓' })[0])
+    const melding = await screen.findByTestId('verzamelbak-al-verwerkt')
+    expect(melding).toHaveTextContent('factuur_energie.pdf: Was al toegewezen aan BLOW B.V. — niets opnieuw gedaan.')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText('factuur_energie.pdf', { exact: true })).not.toBeInTheDocument()
+    expect(screen.getByText(/handmatig koppelen \(1\)/)).toBeInTheDocument()
+  })
+
   it('een splitsingsvoorstel toont de delen en bevestigt met de paginabereiken', async () => {
     const aanroepen: { url: string; body: unknown }[] = []
     installFetchMock({

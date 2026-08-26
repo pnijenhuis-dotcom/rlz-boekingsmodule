@@ -125,24 +125,70 @@ def lijst_verzamelbak() -> list[VerzamelbakItem]:
         return items
 
 
+@dataclass(frozen=True)
+class VerzamelbakActieResultaat:
+    """Uitkomst van toewijzen / hoort-niet-bij-ons (avondrun 26-08, optimistisch paneel):
+    `al_verwerkt` = de actie was al eerder gedaan (tweede klik, collega, retry ná time-out) —
+    géén fout, niets opnieuw gedaan, rustig gemeld; de DB blijft de bron van waarheid."""
+
+    status: DocumentStatus
+    al_verwerkt: bool = False
+    melding: str | None = None
+
+
+def _menselijke_toestand(document: Document) -> str:
+    """Geen enum-jargon in een melding aan de gebruiker (de oude tekst "staat niet (meer) in de
+    verzamelbak (status: ontvangen)" toonde een geslaagde actie als fout)."""
+    if document.status == DocumentStatus.AFGEWEZEN and document.administratie_id is None:
+        return "is al afgehandeld als 'hoort niet bij ons'"
+    if document.status == DocumentStatus.GESPLITST:
+        return "is intussen gesplitst in losse facturen"
+    if document.administratie_id is not None:
+        return "is intussen al toegewezen aan een administratie"
+    return f"is intussen al verwerkt ({document.status.value.replace('_', ' ')})"
+
+
+NIET_MEER_ZICHTBAAR_MELDING = (
+    "Dit document staat niet (meer) in de verzamelbak — waarschijnlijk heeft een collega het "
+    "intussen aan een andere administratie toegewezen. Ververs de lijst."
+)
+
+
 def _laad_verzamelbak_document(session, document_id: uuid.UUID) -> Document:
     document = session.get(Document, document_id)
     if document is None:
-        raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        raise DocumentNietGevonden(NIET_MEER_ZICHTBAAR_MELDING)
     if document.administratie_id is not None or document.status != DocumentStatus.NIET_TOEGEWEZEN:
-        raise DocumentNietInVerzamelbak(
-            f"Document {document_id} staat niet (meer) in de verzamelbak (status: {document.status.value})"
-        )
+        raise DocumentNietInVerzamelbak(f"Dit document {_menselijke_toestand(document)} — er is niets gewijzigd.")
     return document
 
 
-def wijs_toe(*, document_id: uuid.UUID, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> DocumentStatus:
+def wijs_toe(
+    *, document_id: uuid.UUID, administratie_id: uuid.UUID, actor_id: uuid.UUID
+) -> VerzamelbakActieResultaat:
     """Handmatige toewijzing vanuit de verzamelbak: administratie zetten, toewijzings-geheugen
     leren (mockup: "wordt onthouden"), terug naar ontvangen en de normale extractieflow starten
-    (AVG-gate van de gekozen administratie geldt vanaf hier)."""
+    (AVG-gate van de gekozen administratie geldt vanaf hier).
+
+    Idempotent (avondrun 26-08): is het document al aan DEZE administratie toegewezen (tweede
+    klik, retry ná een time-out, collega), dan gebeurt er niets en komt `al_verwerkt=True` terug —
+    geen fout. Toegewezen aan een ándere administratie = onzichtbaar onder RLS →
+    DocumentNietGevonden met een leesbare melding (router: 404)."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        if session.get(Administratie, administratie_id) is None:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
             raise OnbekendeAdministratie(f"Onbekende administratie: {administratie_id}")
+        bestaand = session.get(Document, document_id)
+        if (
+            bestaand is not None
+            and bestaand.administratie_id == administratie_id
+            and bestaand.status != DocumentStatus.NIET_TOEGEWEZEN
+        ):
+            return VerzamelbakActieResultaat(
+                status=bestaand.status,
+                al_verwerkt=True,
+                melding=f"Was al toegewezen aan {administratie.naam} — niets opnieuw gedaan.",
+            )
         document = _laad_verzamelbak_document(session, document_id)
         document.administratie_id = administratie_id
         _schrijf_overgang(
@@ -171,17 +217,30 @@ def wijs_toe(*, document_id: uuid.UUID, administratie_id: uuid.UUID, actor_id: u
             administratie_id=administratie_id,
         )
 
-    return start_extractie_na_toewijzing(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
+    eind_status = start_extractie_na_toewijzing(
+        administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+    )
+    return VerzamelbakActieResultaat(status=eind_status)
 
 
-def hoort_niet_bij_ons(*, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str) -> DocumentStatus:
+def hoort_niet_bij_ons(*, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str) -> VerzamelbakActieResultaat:
     """ "Hoort niet bij ons" — verplichte reden, document blijft terugvindbaar als afgewezen
     (mockup: "blijft in het archief terugvindbaar"). Het toewijzings-geheugen leert hier bewust
-    níéts (een verkeerd geadresseerd document is geen betrouwbare hint)."""
+    níéts (een verkeerd geadresseerd document is geen betrouwbare hint).
+
+    Idempotent (avondrun 26-08): al afgewezen-zonder-administratie (= eerder "hoort niet bij
+    ons") → `al_verwerkt=True`, niets opnieuw vastgelegd — de eerste reden blijft de reden."""
     schone_reden = reden.strip() if reden else ""
     if not schone_reden:
         raise RedenVerplicht("'Hoort niet bij ons' vereist een reden")
     with scoped_session(None, actor_id=actor_id) as session:
+        bestaand = session.get(Document, document_id)
+        if bestaand is not None and bestaand.administratie_id is None and bestaand.status == DocumentStatus.AFGEWEZEN:
+            return VerzamelbakActieResultaat(
+                status=bestaand.status,
+                al_verwerkt=True,
+                melding="Was al vastgelegd als 'hoort niet bij ons' — niets opnieuw gedaan.",
+            )
         document = _laad_verzamelbak_document(session, document_id)
         _schrijf_overgang(
             session,
@@ -201,4 +260,4 @@ def hoort_niet_bij_ons(*, document_id: uuid.UUID, actor_id: uuid.UUID, reden: st
             nieuwe_waarde={"reden": schone_reden},
             administratie_id=None,
         )
-        return document.status
+        return VerzamelbakActieResultaat(status=document.status)

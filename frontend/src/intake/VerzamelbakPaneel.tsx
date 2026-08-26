@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ApiError } from '../api/client'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ApiError, BackendOnbereikbaarError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
 import { Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
@@ -9,12 +9,22 @@ import {
   hoortNietBijOns,
   wijsSplitsingAf,
   wijsToe,
+  type VerzamelbakActieResultaatDto,
   type VerzamelbakItemDto,
 } from './intakeApi'
 import { VerzamelbakPreview } from './VerzamelbakPreview'
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+/** Reden waarmee een mislukte optimistische actie LUID terugkomt op de rij — nooit stil. */
+export function redenVoorMislukking(err: unknown): string {
+  if (err instanceof BackendOnbereikbaarError) {
+    return 'Server niet bereikbaar (time-out) — niet verwerkt. Probeer het opnieuw.'
+  }
+  if (err instanceof ApiError) return `Niet verwerkt: ${err.message}`
+  return 'Actie mislukt — niet verwerkt. Probeer het opnieuw.'
 }
 
 /** Verzamelbak "Niet toegewezen" (mockup werkvoorraad-paneel): platform-breed — alles wat de
@@ -34,6 +44,11 @@ export function VerzamelbakPaneel({
   const [bezig, setBezig] = useState<string | null>(null)
   const [redenVoor, setRedenVoor] = useState<VerzamelbakItemDto | null>(null)
   const [reden, setReden] = useState('')
+  // Optimistisch toewijzen / hoort-niet-bij-ons (besluit Peter 26-08, casus collega): de rij
+  // verdwijnt per direct, het request loopt op de achtergrond; mislukt → rij LUID terug mét reden.
+  const [rijFouten, setRijFouten] = useState<Record<string, string>>({})
+  const [stilleMeldingen, setStilleMeldingen] = useState<string[]>([])
+  const onderweg = useRef(new Set<string>())
 
   const laad = useCallback(() => {
     haalVerzamelbakOp()
@@ -59,6 +74,47 @@ export function VerzamelbakPaneel({
     }
   }
 
+  /** Optimistisch (patroon accordeur-fase-1-verzendrij, zonder retry: de server is idempotent, een
+   * herhaalde klik is veilig). De DB blijft de bron van waarheid — verwijderen is puur presentatie:
+   * geslaagd → rij blijft weg (al_verwerkt = rustige melding, geen fout); mislukt (4xx/5xx/
+   * time-out) → dezelfde rij terug op haar plek mét rode reden. */
+  const optimistischeActie = async (item: VerzamelbakItemDto, werk: () => Promise<VerzamelbakActieResultaatDto>) => {
+    const id = item.document_id
+    if (onderweg.current.has(id)) return // dubbeltik-vangnet
+    onderweg.current.add(id)
+    let index = 0
+    setItems((huidig) => {
+      if (!huidig) return huidig
+      index = Math.max(0, huidig.findIndex((i) => i.document_id === id))
+      return huidig.filter((i) => i.document_id !== id)
+    })
+    setRijFouten((f) => {
+      if (!(id in f)) return f
+      const kopie = { ...f }
+      delete kopie[id]
+      return kopie
+    })
+    try {
+      const r = await werk()
+      if (r?.al_verwerkt) {
+        setStilleMeldingen((m) => [...m, `${item.bestandsnaam}: ${r.melding ?? 'was al verwerkt — niets opnieuw gedaan.'}`])
+      }
+      onGewijzigd?.()
+    } catch (err) {
+      const reden = redenVoorMislukking(err)
+      setItems((huidig) => {
+        const lijst = huidig ?? []
+        if (lijst.some((i) => i.document_id === id)) return lijst
+        const kopie = [...lijst]
+        kopie.splice(Math.min(index, kopie.length), 0, item)
+        return kopie
+      })
+      setRijFouten((f) => ({ ...f, [id]: reden }))
+    } finally {
+      onderweg.current.delete(id)
+    }
+  }
+
   if (items === null || items.length === 0) {
     // Mockup: leeg = paneel onzichtbaar. Een laadfout tonen we wel — nooit stil.
     return fout ? (
@@ -74,6 +130,13 @@ export function VerzamelbakPaneel({
     <div className="panel" style={{ borderLeft: '3px solid var(--orange)' }}>
       <h2>Niet toegewezen — handmatig koppelen ({items.length})</h2>
       {fout && <div className="fout">{fout}</div>}
+      {stilleMeldingen.length > 0 && (
+        <div className="hint" data-testid="verzamelbak-al-verwerkt" style={{ marginTop: 0 }}>
+          {stilleMeldingen.map((m, i) => (
+            <div key={i}>{m}</div>
+          ))}
+        </div>
+      )}
       {/* .tabel-scroll (responsive-fix 2026-08-15): vijf kolommen + toewijzen-select en
           actieknoppen maken de tabel op smalle vensters breder dan het paneel — intern
           scrollen i.p.v. door de paneelrand klippen (zelfde patroon als de
@@ -101,6 +164,14 @@ export function VerzamelbakPaneel({
                       tenaamstelling={item.tenaamstelling}
                     />{' '}
                     {item.bestandsnaam}
+                    {rijFouten[item.document_id] && (
+                      <div className="fout" role="alert" style={{ marginTop: 4, fontSize: 12 }}>
+                        {rijFouten[item.document_id]}{' '}
+                        <button type="button" className="btn secondary" style={{ padding: '2px 8px' }} onClick={laad}>
+                          Lijst verversen
+                        </button>
+                      </div>
+                    )}
                     {item.soort !== 'inkoopfactuur' && (
                       <div>
                         <span className="chip klaar">{item.soort}</span>
@@ -194,7 +265,7 @@ export function VerzamelbakPaneel({
                           className="btn"
                           style={{ padding: '5px 12px' }}
                           disabled={!gekozen || bezig === item.document_id}
-                          onClick={() => void actie(item.document_id, () => wijsToe(item.document_id, gekozen))}
+                          onClick={() => void optimistischeActie(item, () => wijsToe(item.document_id, gekozen))}
                         >
                           Toewijzen ✓
                         </button>{' '}
@@ -249,8 +320,9 @@ export function VerzamelbakPaneel({
                 disabled={!reden.trim()}
                 onClick={() => {
                   const doel = redenVoor
+                  const schoneReden = reden.trim()
                   setRedenVoor(null)
-                  void actie(doel.document_id, () => hoortNietBijOns(doel.document_id, reden.trim()))
+                  void optimistischeActie(doel, () => hoortNietBijOns(doel.document_id, schoneReden))
                 }}
               >
                 Vastleggen ✓

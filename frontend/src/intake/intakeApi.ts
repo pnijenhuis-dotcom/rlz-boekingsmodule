@@ -75,12 +75,23 @@ export function verwerkLosBestand(bestand: File): Promise<IntakeBijlageResultaat
 /** Bestandstypen die de sleepzones accepteren (naast .eml op de werkvoorraad). */
 export const UPLOAD_ACCEPT = '.pdf,.xml,.eml,.jpg,.jpeg,.png,.heic,.heif'
 
-export function wijsToe(documentId: string, administratieId: string): Promise<unknown> {
-  return apiPostJson(`/verzamelbak/${documentId}/toewijzen`, { administratie_id: administratieId })
+/** Antwoord van toewijzen / hoort-niet-bij-ons. `al_verwerkt` (avondrun 26-08): de actie was al
+ * eerder gedaan (dubbelklik, retry ná time-out, collega) — géén fout, rustig melden. */
+export interface VerzamelbakActieResultaatDto {
+  document_id: string
+  status: string
+  al_verwerkt?: boolean
+  melding?: string | null
 }
 
-export function hoortNietBijOns(documentId: string, reden: string): Promise<unknown> {
-  return apiPostJson(`/verzamelbak/${documentId}/hoort-niet-bij-ons`, { reden })
+export function wijsToe(documentId: string, administratieId: string): Promise<VerzamelbakActieResultaatDto> {
+  return apiPostJson<VerzamelbakActieResultaatDto>(`/verzamelbak/${documentId}/toewijzen`, {
+    administratie_id: administratieId,
+  })
+}
+
+export function hoortNietBijOns(documentId: string, reden: string): Promise<VerzamelbakActieResultaatDto> {
+  return apiPostJson<VerzamelbakActieResultaatDto>(`/verzamelbak/${documentId}/hoort-niet-bij-ons`, { reden })
 }
 
 export function bevestigSplitsing(

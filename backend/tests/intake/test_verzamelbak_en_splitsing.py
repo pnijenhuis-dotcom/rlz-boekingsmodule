@@ -69,7 +69,8 @@ class TestVerzamelbak:
             actor_id=gescoopte_gebruiker,
         )
         # UBL is deterministisch: na toewijzing meteen door de extractie → te_controleren.
-        assert eind_status.value == "te_controleren"
+        assert eind_status.status.value == "te_controleren"
+        assert eind_status.al_verwerkt is False
         with admin_engine.connect() as conn:
             rij = conn.execute(
                 text("SELECT administratie_id, status FROM boekhouding.document WHERE id = :id"),
@@ -101,7 +102,7 @@ class TestVerzamelbak:
         eind_status = verzamelbak.hoort_niet_bij_ons(
             document_id=verzamelbak_document, actor_id=gescoopte_gebruiker, reden="Factuur van een ander kantoor"
         )
-        assert eind_status.value == "afgewezen"
+        assert eind_status.status.value == "afgewezen"
         # Het toewijzings-geheugen leert hier bewust niets.
         with admin_engine.connect() as conn:
             aantal = conn.execute(text("SELECT count(*) FROM boekhouding.toewijzing_regel")).scalar_one()
@@ -123,10 +124,100 @@ class TestVerzamelbak:
         # dit document staat niet meer in de bak.
         from app.documenten.service import DocumentNietGevonden
 
-        with pytest.raises((verzamelbak.DocumentNietInVerzamelbak, DocumentNietGevonden)):
+        with pytest.raises((verzamelbak.DocumentNietInVerzamelbak, DocumentNietGevonden)) as excinfo:
             verzamelbak.hoort_niet_bij_ons(
                 document_id=verzamelbak_document, actor_id=gescoopte_gebruiker, reden="x"
             )
+        # Leesbare melding, geen enum-jargon (avondrun 26-08).
+        assert "status:" not in str(excinfo.value)
+        assert "verzamelbak" in str(excinfo.value)
+
+    def test_tweede_klik_toewijzen_is_idempotent(
+        self,
+        verzamelbak_document: uuid.UUID,
+        administratie_heet_blow: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        """Avondrun 26-08 (optimistisch paneel): dubbelklik/retry ná time-out op dezelfde
+        administratie = géén fout, niets opnieuw gedaan (één toewijzings-audit, één leer-set)."""
+        eerste = verzamelbak.wijs_toe(
+            document_id=verzamelbak_document, administratie_id=administratie_heet_blow, actor_id=gescoopte_gebruiker
+        )
+        assert eerste.al_verwerkt is False
+        tweede = verzamelbak.wijs_toe(
+            document_id=verzamelbak_document, administratie_id=administratie_heet_blow, actor_id=gescoopte_gebruiker
+        )
+        assert tweede.al_verwerkt is True
+        assert tweede.status == eerste.status
+        assert tweede.melding is not None and "al toegewezen" in tweede.melding
+        with admin_engine.connect() as conn:
+            aantal_audit = conn.execute(
+                text(
+                    "SELECT count(*) FROM platform.audit_event "
+                    "WHERE record_id = :id AND actie = 'verzamelbak_toegewezen'"
+                ),
+                {"id": verzamelbak_document},
+            ).scalar_one()
+        assert aantal_audit == 1
+
+    def test_toewijzen_aan_andere_administratie_na_toewijzing_is_leesbaar_conflict(
+        self,
+        verzamelbak_document: uuid.UUID,
+        administratie_heet_blow: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        from app.documenten.service import DocumentNietGevonden
+
+        andere = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Andere (test)', :rlz)"),
+                {"id": andere, "rlz": f"rlz-{andere}"},
+            )
+        verzamelbak.wijs_toe(
+            document_id=verzamelbak_document, administratie_id=administratie_heet_blow, actor_id=gescoopte_gebruiker
+        )
+        # Onder RLS van de andere administratie is het document onzichtbaar → geen stille no-op,
+        # wél een leesbare melding (router: 404).
+        with pytest.raises(DocumentNietGevonden) as excinfo:
+            verzamelbak.wijs_toe(
+                document_id=verzamelbak_document, administratie_id=andere, actor_id=gescoopte_gebruiker
+            )
+        assert "collega" in str(excinfo.value)
+
+    def test_tweede_hoort_niet_bij_ons_is_idempotent_en_toewijzen_daarna_conflict(
+        self,
+        verzamelbak_document: uuid.UUID,
+        administratie_heet_blow: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        eerste = verzamelbak.hoort_niet_bij_ons(
+            document_id=verzamelbak_document, actor_id=gescoopte_gebruiker, reden="Ander kantoor"
+        )
+        assert eerste.al_verwerkt is False and eerste.status.value == "afgewezen"
+        tweede = verzamelbak.hoort_niet_bij_ons(
+            document_id=verzamelbak_document, actor_id=gescoopte_gebruiker, reden="Nog eens"
+        )
+        assert tweede.al_verwerkt is True
+        with admin_engine.connect() as conn:
+            aantal = conn.execute(
+                text(
+                    "SELECT count(*) FROM platform.audit_event WHERE record_id = :id "
+                    "AND actie = 'verzamelbak_hoort_niet_bij_ons'"
+                ),
+                {"id": verzamelbak_document},
+            ).scalar_one()
+        assert aantal == 1  # de eerste reden blijft de reden
+        # Toewijzen ná hoort-niet-bij-ons is een écht conflict — leesbaar, geen jargon.
+        with pytest.raises(verzamelbak.DocumentNietInVerzamelbak) as excinfo:
+            verzamelbak.wijs_toe(
+                document_id=verzamelbak_document, administratie_id=administratie_heet_blow, actor_id=gescoopte_gebruiker
+            )
+        assert "hoort niet bij ons" in str(excinfo.value)
+        assert "status:" not in str(excinfo.value)
 
 
 @pytest.fixture

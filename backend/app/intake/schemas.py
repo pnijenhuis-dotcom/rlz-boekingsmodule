@@ -85,3 +85,7 @@ class SplitsingBevestigenResponse(BaseModel):
 class DocumentStatusResponse(BaseModel):
     document_id: uuid.UUID
     status: str
+    # Avondrun 26-08 (optimistisch verzamelbak-paneel): de actie was al eerder gedaan — geen
+    # fout, rustig melden; `melding` is leesbare tekst voor de gebruiker.
+    al_verwerkt: bool = False
+    melding: str | None = None
