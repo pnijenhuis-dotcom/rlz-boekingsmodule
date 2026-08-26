@@ -890,22 +890,40 @@ textarea:focus {
   min-height: 20px;
 }
 
-/* Verzamelbak-preview (besluit 25-08, punt D1): popup met de eerste PDF-pagina bij hover. */
+/* Anker-popup (ui/basis/AnkerPopup.tsx, feedbackronde 26-08 punt 2): rendert via een portal op
+   documentniveau mét position: fixed (inline gezet) — géén scroll-/overflow-container kan hem
+   afkappen (.tabel-scroll is per CSS-spec óók een verticale scroll-container, en table heeft
+   overflow: hidden voor de hoekradius). z-index boven de datepicker-popover (50), onder de
+   modal-bg (60): een klik-dialoog dekt een hover-popup altijd af. */
+.anker-popup {
+  z-index: 55;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  padding: 10px;
+}
+
+/* ⋯-rijmenu (archief): compacte menu-variant van de anker-popup. */
+.anker-popup.rijmenu {
+  border-radius: 9px;
+  padding: 4px;
+  min-width: 150px;
+}
+.anker-popup.rijmenu .linkbtn {
+  display: block;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+/* Verzamelbak-preview (besluit 25-08, punt D1): popup met de eerste PDF-pagina bij hover —
+   sinds 26-08 een anker-popup (zie hierboven), niet langer absoluut binnen de rij. */
 .verzamelbak-preview {
-  position: relative;
   display: inline-block;
 }
 
 .verzamelbak-preview-popup {
-  position: absolute;
-  left: 28px;
-  top: -8px;
-  z-index: 30;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg, 0 8px 40px rgba(0, 0, 0, 0.18));
-  padding: 10px;
   min-width: 220px;
 }
 

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 import type { ArchiefDocumentDto } from '../api/types'
-import { Select } from '../ui/basis'
+import { AnkerPopup, Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { amountKlasse, formatBedrag, formatDatum, formatDatumKort } from './format'
@@ -26,6 +26,10 @@ export function ArchiefScreen() {
   const [herlaad, setHerlaad] = useState(0)
   // ⋯-menu per rij (tegenboek-mockup 22-08): PDF openen + "Tegenboeken…" als tweede ingang.
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  // Anker per rij voor het ⋯-menu: het menu rendert via AnkerPopup op documentniveau (portal +
+  // fixed) — als absoluut kind van de cel werd het door `table { overflow: hidden }` afgekapt
+  // (zelfde fout als de verzamelbak-preview, feedbackronde 26-08 punt 2).
+  const menuKnoppen = useRef<Record<string, HTMLButtonElement | null>>({})
 
   // Eén administratie in scope (bv. klant-accordeur): meteen die kiezen, geen lege select.
   useEffect(() => {
@@ -184,8 +188,11 @@ export function ArchiefScreen() {
                       </>
                     )}
                   </td>
-                  <td style={{ position: 'relative' }}>
+                  <td>
                     <button
+                      ref={(el) => {
+                        menuKnoppen.current[doc.document_id] = el
+                      }}
                       type="button"
                       className="icon-btn"
                       aria-label={`Acties voor ${doc.bestandsnaam}`}
@@ -197,28 +204,20 @@ export function ArchiefScreen() {
                     >
                       ⋯
                     </button>
-                    {menuOpen === doc.document_id && (
-                      <div
-                        role="menu"
-                        style={{
-                          background: 'var(--panel)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 9,
-                          boxShadow: '0 8px 24px rgba(0,0,0,.14)',
-                          minWidth: 150,
-                          padding: 4,
-                          position: 'absolute',
-                          right: 8,
-                          top: '80%',
-                          zIndex: 30,
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                    <AnkerPopup
+                      open={menuOpen === doc.document_id}
+                      anker={menuKnoppen.current[doc.document_id] ?? null}
+                      kant="onder"
+                      uitlijning="eind"
+                      className="rijmenu"
+                      role="menu"
+                      onAnkerUitBeeld={() => setMenuOpen(null)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                         <button
                           type="button"
                           className="linkbtn"
                           role="menuitem"
-                          style={{ display: 'block', padding: '6px 8px', textAlign: 'left', width: '100%' }}
                           onClick={() => {
                             setMenuOpen(null)
                             void openBestand(doc)
@@ -234,8 +233,7 @@ export function ArchiefScreen() {
                             type="button"
                             className="linkbtn"
                             role="menuitem"
-                            style={{ display: 'block', padding: '6px 8px', textAlign: 'left', width: '100%' }}
-                            onClick={() => {
+                              onClick={() => {
                               setMenuOpen(null)
                               navigate(`${reviewPad(doc.soort, administratieId, doc.document_id)}?tegenboeken=1`)
                             }}
@@ -243,8 +241,7 @@ export function ArchiefScreen() {
                             Tegenboeken…
                           </button>
                         )}
-                      </div>
-                    )}
+                    </AnkerPopup>
                   </td>
                 </tr>
               ))}

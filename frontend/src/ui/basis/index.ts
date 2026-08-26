@@ -15,3 +15,4 @@ export { Skeleton, SkeletonRegels, SkeletonPaneel, SkeletonRijen, SkeletonBlok }
 export { ToastProvider, useToast, useToastOptioneel, type ToastSoort } from './Toast'
 export { MultiSelect, type MultiSelectOptie } from './MultiSelect'
 export { Paginering, paginaSlice, aantalPaginas, PAGINA_GROOTTE } from './Paginering'
+export { AnkerPopup, berekenPositie, type Anker, type AnkerKant, type AnkerUitlijning } from './AnkerPopup'

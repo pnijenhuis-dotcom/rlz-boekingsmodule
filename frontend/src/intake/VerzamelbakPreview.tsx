@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/basis'
+import { AnkerPopup, Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/basis'
 import { PdfEerstePagina } from '../ui/PdfEerstePagina'
 import { haalVerzamelbakBestandBlob, type VerzamelbakBestand } from './intakeApi'
 
@@ -26,7 +26,12 @@ function laad(documentId: string): Promise<VerzamelbakBestand> {
  * een korte vertraging een popup met de eerste pagina van de PDF zodat je ziet voor wie het
  * document is; klik opent de bestaande volledige weergave (zelfde <object>-viewer als het
  * controlescherm). Het bestand wordt pas bij de eerste hover/klik opgehaald — nooit vooraf voor
- * de hele lijst. UBL/XML heeft geen paginabeeld: dan de tenaamstelling + downloadlink. */
+ * de hele lijst. UBL/XML heeft geen paginabeeld: dan de tenaamstelling + downloadlink.
+ *
+ * De hover-popup rendert via `AnkerPopup` op documentniveau (portal + fixed, rechts van het
+ * oog-icoon, flipt naar links/schuift omhoog bij de viewport-rand) — feedbackronde 26-08 punt 2:
+ * als `position: absolute`-kind van de rij werd hij door `.tabel-scroll`/`table{overflow:hidden}`
+ * na ~30 px afgekapt. */
 export function VerzamelbakPreview({
   documentId,
   bestandsnaam,
@@ -41,6 +46,7 @@ export function VerzamelbakPreview({
   const [hover, setHover] = useState(false)
   const [open, setOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const knopRef = useRef<HTMLButtonElement>(null)
 
   const haal = () => {
     if (bestand || fout) return
@@ -76,6 +82,7 @@ export function VerzamelbakPreview({
   return (
     <span className="verzamelbak-preview" onMouseEnter={startHover} onMouseLeave={stopHover}>
       <button
+        ref={knopRef}
         type="button"
         className="icon-btn"
         aria-label={`Voorbeeld van ${bestandsnaam}`}
@@ -89,23 +96,30 @@ export function VerzamelbakPreview({
       >
         👁
       </button>
-      {hover && (
-        <div className="verzamelbak-preview-popup" role="tooltip" aria-label={`Voorbeeld ${bestandsnaam}`}>
-          <div className="verzamelbak-preview-kop">
-            {bestandsnaam}
-            {tenaamstelling && <span className="hint" style={{ margin: 0 }}> · &ldquo;{tenaamstelling}&rdquo;</span>}
-          </div>
-          {fout && <div className="hint">{fout}</div>}
-          {!bestand && !fout && <div className="hint">Voorbeeld laden…</div>}
-          {bestand && isPdf && <PdfEerstePagina blobUrl={bestand.url} breedte={PREVIEW_BREEDTE} />}
-          {bestand && isAfbeelding && (
-            <img src={bestand.url} alt={`Voorbeeld ${bestandsnaam}`} style={{ maxWidth: PREVIEW_BREEDTE, display: 'block' }} />
-          )}
-          {bestand && !isPdf && !isAfbeelding && (
-            <div className="hint">UBL/XML-bestand — geen paginabeeld; tenaamstelling staat in de rij.</div>
-          )}
+      <AnkerPopup
+        open={hover}
+        anker={knopRef}
+        kant="rechts"
+        afstand={8}
+        onAnkerUitBeeld={stopHover}
+        className="verzamelbak-preview-popup"
+        role="tooltip"
+        aria-label={`Voorbeeld ${bestandsnaam}`}
+      >
+        <div className="verzamelbak-preview-kop">
+          {bestandsnaam}
+          {tenaamstelling && <span className="hint" style={{ margin: 0 }}> · &ldquo;{tenaamstelling}&rdquo;</span>}
         </div>
-      )}
+        {fout && <div className="hint">{fout}</div>}
+        {!bestand && !fout && <div className="hint">Voorbeeld laden…</div>}
+        {bestand && isPdf && <PdfEerstePagina blobUrl={bestand.url} breedte={PREVIEW_BREEDTE} />}
+        {bestand && isAfbeelding && (
+          <img src={bestand.url} alt={`Voorbeeld ${bestandsnaam}`} style={{ maxWidth: PREVIEW_BREEDTE, display: 'block' }} />
+        )}
+        {bestand && !isPdf && !isAfbeelding && (
+          <div className="hint">UBL/XML-bestand — geen paginabeeld; tenaamstelling staat in de rij.</div>
+        )}
+      </AnkerPopup>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="verzamelbak-preview-dialog">
           <DialogTitle>{bestandsnaam}</DialogTitle>
