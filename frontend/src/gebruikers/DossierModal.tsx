@@ -14,18 +14,7 @@ import {
   type KvkLookupDto,
   type VeldgebruikerDto,
 } from '../meerwerk/meerwerkApi'
-import {
-  Badge,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-  FormField,
-  Select,
-  useToastOptioneel,
-} from '../ui/basis'
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, Select, useToastOptioneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
 
 /* ZZP-dossier per veldwerker (steigerbouw-run A1–A3, mockup meerwerk-kantoor.html "📁 Dossier"
  * = norm): KvK-/btw-blok (lookup → mens bevestigt), documententabel per type met status/geldig-
@@ -168,7 +157,7 @@ export function DossierModal({
           </FormField>
         )}
         {fout && <div className="fout">{fout}</div>}
-        {dossier === null && !fout && <p className="hint">Laden…</p>}
+        {dossier === null && !fout && <SkeletonRegels />}
         {dossier !== null && (
           <>
             <BedrijfsgegevensBlok
@@ -529,7 +518,7 @@ function BekijkDialog({ administratieId, document, onSluiten }: { administratieI
           </DialogDescription>
         )}
         {fout && <div className="fout">{fout}</div>}
-        {!url && !fout && <p className="hint">Laden…</p>}
+        {!url && !fout && <SkeletonBlok hoogte={420} />}
         {url && (
           <div
             style={{ position: 'relative', height: '70vh', filter: document.bsn_gevoelig && !onthuld ? 'blur(14px)' : 'none', transition: 'filter .15s', userSelect: 'none' }}

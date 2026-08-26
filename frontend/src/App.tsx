@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
+import { SkeletonPaneel } from './ui/basis'
 
 // Route-based code splitting (performance-budget accordeur-PWA, BESLISSINGEN punt 4): de
 // accordeur-route laadt geen kantoor-bundels en andersom — beide surfaces zijn een eigen
@@ -18,9 +19,7 @@ function AppRoutes() {
   return (
     <Suspense
       fallback={
-        <p className="hint" style={{ padding: 24 }}>
-          Laden…
-        </p>
+        <div style={{ padding: 24 }}><SkeletonPaneel /></div>
       }
     >
       <Routes>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
-import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
+import { Badge, Button, Select, useToastOptioneel, SkeletonRegels } from '../ui/basis'
 import { BestellingPopup } from './BestellingPopup'
 import { MateriaalstandPaneel } from './MateriaalstandPaneel'
 import {
@@ -200,7 +200,7 @@ export function TransportTab({
               + Transport plannen
             </Button>
           </div>
-          {data === null && !fout && <p className="hint" style={{ padding: 16 }}>Laden…</p>}
+          {data === null && !fout && <div style={{ padding: 16 }}><SkeletonRegels /></div>}
           {data !== null && (
             <div className="tabel-scroll">
               <table className="plan-grid" style={{ tableLayout: 'fixed', minWidth: 760 }}>

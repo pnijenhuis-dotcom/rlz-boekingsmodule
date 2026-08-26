@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { trekApparaatIn, type ApparaatDto } from '../accordering/accorderingApi'
+import { SkeletonRegels } from '../ui/basis'
 import {
   apparaatNaam,
   haalWebauthnConfig,
@@ -156,7 +157,7 @@ export function BeveiligingInstellingen({ isBeheerder }: { isBeheerder: boolean 
       </p>
       {fout && <div className="fout">{fout}</div>}
 
-      {apparaten === null && !fout && <p className="hint">Laden…</p>}
+      {apparaten === null && !fout && <SkeletonRegels />}
       {apparaten !== null && (
         <>
           {apparaten.length === 0 ? (

@@ -16,6 +16,7 @@ import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit } from './omzetApi'
+import { SkeletonPaneel } from '../ui/basis'
 
 /** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's. */
 interface RegelStaat {
@@ -258,7 +259,7 @@ export function OmzetReviewScreen() {
   })
 
   if (laadFout) return <div className="fout">Kon omzetboeking niet laden: {laadFout}</div>
-  if (!detail || !voorstel || !administratieId || !documentId) return <p className="hint">Laden…</p>
+  if (!detail || !voorstel || !administratieId || !documentId) return <SkeletonPaneel />
 
   const isGeboekt = detail.status === 'geboekt'
   const isVraagOpen = detail.status === 'vraag_open'
@@ -615,7 +616,7 @@ export function OmzetReviewScreen() {
                 </button>
                 <button
                   type="button"
-                  className="btn green"
+                  className="btn"
                   disabled={!isBoekbaar || !checksGroen || boekenBezig}
                   title={
                     !isBoekbaar

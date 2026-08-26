@@ -1434,7 +1434,7 @@ export function BoekvoorstelPanel({
             )}
             <button
               type="button"
-              className="btn green"
+              className="btn"
               disabled={!kanBoeken || boekenBezig}
               title={boekenTitel}
               onClick={() => void boeken()}

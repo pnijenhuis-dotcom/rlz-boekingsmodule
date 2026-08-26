@@ -8,6 +8,14 @@ export function formatDatumKort(iso: string): string {
   return new Date(iso).toLocaleDateString('nl-NL', { dateStyle: 'medium' })
 }
 
+/** Celklasse voor een bedragkolom: negatief = `amount neg` (--danger, designpass v2) — één plek
+ * voor de geldsemantiek in lijsten; niet-numeriek/leeg = neutraal. */
+export function amountKlasse(bedrag: string | number | null | undefined): string {
+  if (bedrag === null || bedrag === undefined) return 'amount'
+  const numeriek = typeof bedrag === 'number' ? bedrag : Number(bedrag)
+  return Number.isFinite(numeriek) && numeriek < 0 ? 'amount neg' : 'amount'
+}
+
 export function formatBedrag(bedrag: string | null): string {
   if (bedrag === null) return '—'
   const numeriek = Number(bedrag)

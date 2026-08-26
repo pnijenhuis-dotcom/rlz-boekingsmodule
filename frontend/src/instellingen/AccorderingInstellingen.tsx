@@ -11,7 +11,7 @@ import {
   type KandidaatDto,
   type StaandeRegelDto,
 } from '../accordering/accorderingApi'
-import { Select, Switch } from '../ui/basis'
+import { Select, Switch, SkeletonRegels } from '../ui/basis'
 
 interface LaagInvoer {
   accordeurId: string
@@ -197,7 +197,7 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
       </summary>
       {fout && <div className="fout">{fout}</div>}
       {!geladen && !fout ? (
-        <p className="hint">Laden…</p>
+        <SkeletonRegels />
       ) : geladen ? (
         <div style={{ display: 'grid', gap: 10, padding: '6px 0 12px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>

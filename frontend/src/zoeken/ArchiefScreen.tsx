@@ -5,7 +5,7 @@ import type { ArchiefDocumentDto } from '../api/types'
 import { Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
-import { formatBedrag, formatDatum, formatDatumKort } from './format'
+import { amountKlasse, formatBedrag, formatDatum, formatDatumKort } from './format'
 import { reviewPad } from './reviewPad'
 import { haalArchiefOp } from './zoekenApi'
 
@@ -166,7 +166,7 @@ export function ArchiefScreen() {
                   </td>
                   <td>{doc.referentie ?? '—'}</td>
                   <td>{doc.rlz_boekstuknummer ?? '—'}</td>
-                  <td className="amount">{formatBedrag(doc.totaalbedrag)}</td>
+                  <td className={amountKlasse(doc.totaalbedrag)}>{formatBedrag(doc.totaalbedrag)}</td>
                   <td>
                     {doc.geboekt_op ? formatDatum(doc.geboekt_op) : formatDatumKort(doc.factuurdatum)}
                     {doc.automatisch_geboekt && (

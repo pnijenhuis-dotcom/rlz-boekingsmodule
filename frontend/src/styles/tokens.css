@@ -1,36 +1,67 @@
-/* Semantische design tokens — 1:1 uit mockup/kantoor-modern.html (designpass-norm, akkoord
-   Peter 2026-08-15). Wijzigingen aan tokens gaan via de mockup, niet hier los.
-   De oude mockup/index.html-namen (--accent/--green/--orange/--red/--blue-bg) blijven als
-   aliassen staan zodat de bestaande scherm-CSS ongewijzigd blijft werken; nieuw werk gebruikt
-   de semantische namen. Dark mode: thema.ts zet de klasse `dark` op <html> én <body>
-   (keuze wint, anders systeem) — de .dark-tokens hieronder zijn daarmee levend. */
+/* Semantische design tokens — DESIGNPASS V2 (mockup/kantoor-designpass-v2.html, akkoord Peter
+   2026-08-26): neutrale fundering + inkt-zijbalk. Kernidee: achtergrond/randen/tekst zijn
+   ONTGROEND (inkt + echte grijzen) zodat het teal weer betekenis krijgt. Bindende
+   semantiek-regel (BESLISSINGEN "DESIGNPASS V2"):
+     • TEAL (--primary) = exclusief ACTIE: knoppen, actieve nav, links, focus, selectie.
+     • GROEN (--ok)     = exclusief STATUS: geboekt / akkoord / betaald / aan.
+   Wijzigingen aan tokens gaan via de mockup, niet hier los. De oude mockup/index.html-namen
+   (--accent/--green/--orange/--red/--blue-bg) blijven als aliassen staan zodat bestaande
+   scherm-CSS werkt; nieuw werk gebruikt de semantische namen.
+   Dark (Vastly-les 24-08 "groene lichtbaan"): puur grafiet — GEEN groene ondertoon in
+   achtergronden, kaarten of randen; eigen hexwaarden, nooit licht-waarden hergebruikt.
+   Contrast is geborgd als test: src/styles/contrast.test.ts parseert dít bestand (beide
+   modi) — faalt een paar, dan het token bijstellen binnen de ontwerprichting, niet de test.
+   thema.ts zet de klasse `dark` op <html> én <body> (keuze wint, anders systeem). */
 :root {
-  --bg: #f4f7f6;
+  --bg: #f6f7f8;
   --panel: #ffffff;
-  --panel-2: #fafcfb;
-  --border: #e3e9e7;
-  --text: #15201d;
-  --muted: #5f6f6b;
-  --faint: #8a9793;
-  --primary: #2e6660;
-  --primary-hover: #25534e;
+  --panel-2: #fafbfb;
+  --border: #e6e8ea;
+  --text: #12181f;
+  --muted: #5b6470;
+  /* --faint: mockup had #8b93a0 (3,1:1) — bijgesteld naar 4,5:1 op paneel én achtergrond
+     (contrast-audit 26-08; kolomkoppen/sectielabels zijn tekst). */
+  --faint: #687180;
+  --primary: #0e7a6e;
+  --primary-hover: #0a635a;
   --primary-fg: #ffffff;
-  --accent-bg: #e9f2f0;
-  --ring: rgba(46, 102, 96, 0.35);
+  --accent-bg: #e6f4f2;
+  --ring: rgba(14, 122, 110, 0.3);
   --ok: #1c7a54;
   --ok-bg: #e4f4ec;
   --warn: #b45309;
   --warn-bg: #fdf3e3;
   --danger: #b42318;
+  --danger-fg: #ffffff;
   --danger-bg: #fceceb;
   --info: #3548a5;
   --info-bg: #eaeefb;
   --purple: #6941c6;
   --purple-bg: #f1ecfb;
+  /* Inkt-zijbalk (identiteitsdrager; in licht donker, in dark grafiet mét rand). */
+  --rail: #101b19;
+  --rail-text: #c7d2cf;
+  --rail-muted: #7d8c88;
+  --rail-actief: #16332e;
+  --rail-accent: #4fd1c0;
+  /* Teller-badge in de rail = solide 22%-blend van --rail-accent over --rail (mockup:
+     color-mix) — als vaste hex zodat de contrast-audit 'm deterministisch kan toetsen. */
+  --rail-teller-bg: #1e433e;
+  /* Avatar-set (8 vaste kleuren, wit initialenopschrift ≥ 4,5:1 — geauditeerd); modus-
+     invariant, dus alleen hier gedefinieerd. Keuze = hash(id) mod 8 (ui/Avatar.tsx). */
+  --avatar-0: #0e7a6e;
+  --avatar-1: #3548a5;
+  --avatar-2: #6941c6;
+  --avatar-3: #b45309;
+  --avatar-4: #b42318;
+  --avatar-5: #1c7a54;
+  --avatar-6: #a3468a;
+  --avatar-7: #4b5563;
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(21, 32, 29, 0.05), 0 4px 16px rgba(21, 32, 29, 0.06);
-  --shadow-lg: 0 8px 40px rgba(21, 32, 29, 0.18);
+  --shadow: 0 1px 2px rgba(18, 24, 31, 0.06), 0 4px 14px rgba(18, 24, 31, 0.06);
+  --shadow-hover: 0 2px 4px rgba(18, 24, 31, 0.08), 0 10px 28px rgba(18, 24, 31, 0.12);
+  --shadow-lg: 0 8px 40px rgba(18, 24, 31, 0.18);
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   /* Aliassen voor de bestaande scherm-CSS (oude mockup/index.html-namen). */
@@ -45,29 +76,37 @@
 }
 
 .dark {
-  --bg: #0e1514;
-  --panel: #16211f;
-  --panel-2: #121b1a;
-  --border: #263431;
-  --text: #e6ecea;
-  --muted: #93a4a0;
-  --faint: #6a7a76;
-  --primary: #57b3a7;
-  --primary-hover: #6ac4b8;
-  --primary-fg: #0c1513;
-  --accent-bg: #1c2e2b;
-  --ring: rgba(87, 179, 167, 0.35);
+  --bg: #0b0d0e;
+  --panel: #151719;
+  --panel-2: #111314;
+  --border: #242729;
+  --text: #f0f3f2;
+  --muted: #98a0a5;
+  --faint: #7f878d;
+  --primary: #3ec9b8;
+  --primary-hover: #58d6c7;
+  --primary-fg: #06211d;
+  --accent-bg: #12302c;
+  --ring: rgba(62, 201, 184, 0.35);
   --ok: #4ecb94;
-  --ok-bg: #152f24;
+  --ok-bg: #12291e;
   --warn: #e5a04c;
-  --warn-bg: #33260f;
+  --warn-bg: #2e2310;
   --danger: #f08579;
-  --danger-bg: #361713;
+  --danger-fg: #2a0c09;
+  --danger-bg: #331714;
   --info: #93a6f5;
   --info-bg: #1a2038;
   --purple: #b39af0;
-  --purple-bg: #251b3d;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --purple-bg: #241d38;
+  --rail: #0e1011;
+  --rail-text: #c6cdd0;
+  --rail-muted: #737d82;
+  --rail-actief: #17322d;
+  --rail-accent: #4fd1c0;
+  --rail-teller-bg: #1c3a37;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.55);
   color-scheme: dark;
 }

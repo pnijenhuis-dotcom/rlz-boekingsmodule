@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { VraagDto } from '../api/types'
-import { Select } from '../ui/basis'
+import { Select, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { useMedewerkers } from './useMedewerkers'
 import { VraagThread } from './VraagThread'
@@ -104,7 +104,7 @@ export function VragenScreen() {
   if (administratiesFout) {
     return <div className="fout">Kon administraties niet laden: {administratiesFout}</div>
   }
-  if (!administraties) return <p className="hint">Laden…</p>
+  if (!administraties) return <SkeletonPaneel />
   if (administraties.length === 0) return <p className="hint">Geen administraties gekoppeld aan uw account.</p>
 
   const open = (vragen ?? []).filter((v) => v.status === 'open')
@@ -163,7 +163,7 @@ export function VragenScreen() {
       )}
 
       {fout && <div className="fout">{fout}</div>}
-      {vragen === null && !fout && <p className="hint">Laden…</p>}
+      {vragen === null && !fout && <SkeletonRegels />}
       {vragen !== null && vragen.length === 0 && (
         <p className="hint">Geen vragen voor deze administratie{documentFilter ? ' en dit document' : ''}.</p>
       )}

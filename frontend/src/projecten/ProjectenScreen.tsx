@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
-import { Badge, Button } from '../ui/basis'
+import { Badge, Button, SkeletonRegels } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
@@ -129,9 +129,9 @@ export function ProjectenScreen() {
           <Badge>alleen actieve</Badge>
         </div>
         {data === null && !fout && (
-          <p className="hint" aria-busy="true" style={{ padding: 16 }}>
-            Laden…
-          </p>
+          <div style={{ padding: 16 }}>
+            <SkeletonRegels />
+          </div>
         )}
         {data !== null && data.projecten.length === 0 && (
           <p className="hint" style={{ padding: 16 }}>
@@ -290,7 +290,7 @@ function NieuwProjectModal({
           </label>
         </div>
         {naam && (
-          <p className="hint" style={{ background: 'var(--accent-bg)', borderRadius: 8, color: 'var(--primary)', marginTop: 12, padding: '10px 13px' }}>
+          <p className="hint" style={{ background: 'var(--info-bg)', borderRadius: 8, color: 'var(--info)', marginTop: 12, padding: '10px 13px' }}>
             Naam wordt: <b>{naam}</b> — conform de naamconventie, max 50 tekens (RLZ-grens).
           </p>
         )}

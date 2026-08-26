@@ -245,7 +245,7 @@ export function IbanAccorderingSectie({ administratieId, documentId, onGewijzigd
             </button>
             <button
               type="button"
-              className="btn green"
+              className="btn"
               disabled={besluitBezig}
               onClick={() => void besluit('accorderen')}
             >

@@ -41,16 +41,25 @@
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
   --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
   --color-danger-bg: var(--danger-bg);
   --color-info: var(--info);
   --color-info-bg: var(--info-bg);
   --color-purple: var(--purple);
   --color-purple-bg: var(--purple-bg);
   --color-white: #ffffff;
+  /* Inkt-zijbalk (designpass v2, 26-08). */
+  --color-rail: var(--rail);
+  --color-rail-text: var(--rail-text);
+  --color-rail-muted: var(--rail-muted);
+  --color-rail-actief: var(--rail-actief);
+  --color-rail-accent: var(--rail-accent);
   --radius-md: var(--radius-sm);
   --radius-lg: var(--radius);
   --font-sans: var(--font);
   --shadow-kaart: var(--shadow);
+  /* hover-lift op klikbare kaarten (designpass v2): shadow-lift + translateY(-2px). */
+  --shadow-lift: var(--shadow-hover);
   --shadow-zweef: var(--shadow-lg);
 }
 

@@ -6,7 +6,7 @@ import { BankOverzichtScreen } from '../bank/BankOverzichtScreen'
 import { FoutMelding } from '../ui/FoutMelding'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
-import { documentRoute, formatBedrag, ouderdomLabel } from './format'
+import { documentRoute, amountKlasse, formatBedrag, ouderdomLabel } from './format'
 import { StatusChip } from './StatusChip'
 import { teVerwerken, type KlantRij } from './useWerkvoorraadData'
 
@@ -253,7 +253,7 @@ function DocumentDwarsdoorsnede({
                         </td>
                         <td>{rij.document.bestandsnaam}</td>
                         <td>{rij.document.leverancier ?? '—'}</td>
-                        <td className="amount">{formatBedrag(rij.document.totaalbedrag)}</td>
+                        <td className={amountKlasse(rij.document.totaalbedrag)}>{formatBedrag(rij.document.totaalbedrag)}</td>
                         <td>
                           <StatusChip status={rij.document.status} />
                         </td>

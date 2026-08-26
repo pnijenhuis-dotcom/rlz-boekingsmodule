@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { Select } from '../ui/basis'
+import { amountKlasse } from '../werkvoorraad/format'
 import {
   haalSplitsingen,
   hervatSplitsing,
@@ -300,7 +301,7 @@ export function SplitsenForm({
         </p>
       )}
       <div className="actions">
-        <button className="btn green" onClick={() => void verstuur()} disabled={!kanVersturen}>
+        <button className="btn" onClick={() => void verstuur()} disabled={!kanVersturen}>
           {bezig ? 'Splitsen…' : 'Splitsen en verwerken ✓'}
         </button>
         <button className="btn secondary" onClick={onAnnuleer} disabled={bezig}>
@@ -361,7 +362,7 @@ export function SplitsingWeergave({
         <SplitsingStatusChip status={splitsing.status} />
         {splitsing.status === 'half_verwerkt' && (
           <button
-            className="btn green"
+            className="btn"
             disabled={bezig}
             onClick={() => void doe(() => hervatSplitsing(administratieId, splitsing.splitsing_id))}
           >
@@ -384,7 +385,7 @@ export function SplitsingWeergave({
             <tr key={deel.deel_id}>
               <td>{deel.volgnummer}</td>
               <td>{SOORT_LABEL[deel.soort] ?? deel.soort}</td>
-              <td className="amount">{formatBedrag(deel.bedrag)}</td>
+              <td className={amountKlasse(deel.bedrag)}>{formatBedrag(deel.bedrag)}</td>
               <td>
                 <DeelStatusChip deel={deel} />
                 {deel.fout && (

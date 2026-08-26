@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge } from '../ui/basis'
+import { Badge, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
@@ -47,7 +47,7 @@ export function ProjectenOverzichtScreen() {
     return <p className="hint">Geen administratie gekozen — open het resultaat vanaf de projectenlijst.</p>
   }
   if (fout) return <FoutMelding melding="Het overzicht kon niet geladen worden." detail={fout} onOpnieuw={laad} />
-  if (data === null) return <p className="hint" aria-busy="true">Laden…</p>
+  if (data === null) return <SkeletonPaneel />
 
   return (
     <div>

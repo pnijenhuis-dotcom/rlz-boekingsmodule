@@ -18,6 +18,7 @@ import {
 } from './doorbelastingApi'
 import { boekingStatusChip } from './status'
 import { runVerdelingOnvolledig, VerdelingEditor, type BronRegel, type VerdelingStaat } from './VerdelingEditor'
+import { SkeletonPaneel } from '../ui/basis'
 
 /** Reviewscherm Kempen-doorbelasting (blok 3, route /doorbelasting/:administratieId/:documentId):
  * per bron-regel een percentage-verdeling over de whitelist-doelentiteiten (verdeelmodal-
@@ -81,7 +82,7 @@ export function DoorbelastingReviewScreen() {
 
   if (laadFout) return <div className="fout">Kon de doorbelasting niet laden: {laadFout}</div>
   if (!administratieId || !documentId || !detail || !run || bronRegels === null) {
-    return <p className="hint">Laden…</p>
+    return <SkeletonPaneel />
   }
 
   // Synchroon uit de run + de editor-werkstaat: nooit één render lang ten onrechte "aan".
@@ -217,7 +218,7 @@ export function DoorbelastingReviewScreen() {
           <div className="actions">
             <button
               type="button"
-              className="btn green"
+              className="btn"
               disabled={!checksGroen || boekenBezig || verdelingOnvolledig}
               title={
                 verdelingOnvolledig

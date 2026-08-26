@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
-import { Badge, Button, useToastOptioneel } from '../ui/basis'
+import { Badge, Button, useToastOptioneel, SkeletonRegels } from '../ui/basis'
 import {
   annuleerBestelling,
   haalBestelling,
@@ -163,7 +163,7 @@ export function BestellingPopup({ administratieId, bestellingId, onSluiten, onGe
         </div>
 
         {fout && <div className="fout" style={{ margin: '10px 20px 0' }}>{fout}</div>}
-        {b === null && !fout && <p className="hint" style={{ padding: 20 }}>Laden…</p>}
+        {b === null && !fout && <div style={{ padding: 20 }}><SkeletonRegels /></div>}
 
         {b !== null && (
           <>

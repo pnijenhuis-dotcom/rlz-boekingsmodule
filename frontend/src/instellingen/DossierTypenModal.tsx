@@ -5,7 +5,7 @@ import {
   zetDossierDocumenttypen,
   type DossierDocumenttypeDto,
 } from '../meerwerk/meerwerkApi'
-import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, useToastOptioneel } from '../ui/basis'
+import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, useToastOptioneel, SkeletonRegels } from '../ui/basis'
 
 /* Dossier-documenttypen als Beheerder-instelling per administratie (steigerbouw-run A1, 25-08).
  * Default-set (kopie ID, steigerpas, VCA vol, AVB, KvK-uittreksel) geldt tot de eerste
@@ -77,7 +77,7 @@ export function DossierTypenModal({ administratieId, naam, onSluiten }: { admini
           {isStandaard && <Badge variant="stil">standaardset — nog niet aangepast</Badge>}
         </DialogDescription>
         {fout && <div className="fout">{fout}</div>}
-        {typen === null && !fout && <p className="hint">Laden…</p>}
+        {typen === null && !fout && <SkeletonRegels />}
         {typen !== null && (
           <div className="tabel-scroll">
             <table>

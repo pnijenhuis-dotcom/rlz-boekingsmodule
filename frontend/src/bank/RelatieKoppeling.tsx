@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useVendorOpties } from '../document/useSyncOpties'
+import { amountKlasse } from '../werkvoorraad/format'
 import {
   haalAanbetalingen,
   koppelRelatie,
@@ -262,7 +263,7 @@ export function KoppelRelatieForm({
         </p>
       )}
       <div className="actions">
-        <button className="btn green" onClick={() => void koppel()} disabled={!keuze.entityId || bezig}>
+        <button className="btn" onClick={() => void koppel()} disabled={!keuze.entityId || bezig}>
           {bezig ? 'Koppelen…' : 'Koppel aan relatie ✓'}
         </button>
         <button className="btn secondary" onClick={onAnnuleer} disabled={bezig}>
@@ -381,7 +382,7 @@ export function AanbetalingenPaneel({
                 <td>
                   <span className="chip">{rij.relatie_soort}</span> {rij.entity_naam ?? rij.entity_id}
                 </td>
-                <td className="amount">{formatBedrag(rij.bedrag)}</td>
+                <td className={amountKlasse(rij.bedrag)}>{formatBedrag(rij.bedrag)}</td>
                 <td>{rij.rlz_boekstuknummer ?? '—'}</td>
                 <td>
                   <span className="chip vraag">{rij.status === 'geboekt' ? 'open — nog te verrekenen' : rij.status}</span>

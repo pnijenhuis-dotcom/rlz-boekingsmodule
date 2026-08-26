@@ -9,7 +9,7 @@ import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
-import { SOORT_VOLGORDE, documentRoute, formatBedrag, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
+import { SOORT_VOLGORDE, documentRoute, amountKlasse, formatBedrag, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
 import { KlantUpload } from './KlantStanden'
 import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
@@ -458,7 +458,7 @@ export function DocumentenDeelscherm({
                       </td>
                       <td>{d.leverancier ?? '—'}</td>
                       <td>{d.factuurdatum ? formatDatumKort(d.factuurdatum) : '—'}</td>
-                      <td className="amount">{formatBedrag(d.totaalbedrag)}</td>
+                      <td className={amountKlasse(d.totaalbedrag)}>{formatBedrag(d.totaalbedrag)}</td>
                       <td>
                         {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
                         {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}

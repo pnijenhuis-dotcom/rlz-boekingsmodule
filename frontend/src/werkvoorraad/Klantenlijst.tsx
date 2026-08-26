@@ -1,4 +1,6 @@
 import { useNavigate } from 'react-router-dom'
+import { Avatar } from '../ui/Avatar'
+import { SkeletonRijen } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { heeftOpenstaandWerk, type KlantRij } from './useWerkvoorraadData'
 
@@ -13,22 +15,6 @@ function Teller({ waarde, chipKlasse, label }: { waarde: number; chipKlasse: str
       {waarde}
       {label ? ` ${label}` : ''}
     </span>
-  )
-}
-
-function SkeletonRijen({ kolommen, rijen }: { kolommen: number; rijen: number }) {
-  return (
-    <>
-      {Array.from({ length: rijen }, (_, r) => (
-        <tr key={r} aria-hidden="true">
-          {Array.from({ length: kolommen }, (_, k) => (
-            <td key={k}>
-              <span className="skeleton" style={{ width: k === 0 ? '60%' : 28 }} />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
   )
 }
 
@@ -88,12 +74,17 @@ export function Klantenlijst({
                   onClick={() => navigate(`/?administratie=${k.administratie_id}`)}
                 >
                   <td>
-                    <b>{k.naam}</b>{' '}
-                    {k.iban_wachtend > 0 && (
-                      <span className="chip blokkerend">
-                        {k.iban_wachtend} IBAN-{k.iban_wachtend === 1 ? 'accordering' : 'accorderingen'}
-                      </span>
-                    )}
+                    <div className="naam-met-avatar">
+                      <Avatar id={k.administratie_id} naam={k.naam} />
+                      <div>
+                        <b>{k.naam}</b>{' '}
+                        {k.iban_wachtend > 0 && (
+                          <span className="chip blokkerend">
+                            {k.iban_wachtend} IBAN-{k.iban_wachtend === 1 ? 'accordering' : 'accorderingen'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td>
                     <Teller waarde={k.te_controleren} chipKlasse="ai" />

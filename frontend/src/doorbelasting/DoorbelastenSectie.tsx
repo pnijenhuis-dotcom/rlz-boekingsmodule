@@ -484,7 +484,7 @@ export function SpiegelTaakBlok({ administratieId, taak, mapping, regels, onGebo
       <div className="actions">
         <button
           type="button"
-          className="btn green"
+          className="btn"
           disabled={!allesGekozen || bezig}
           title={
             allesGekozen

@@ -10,7 +10,7 @@ import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
-import { Button, Select, Switch } from '../ui/basis'
+import { Button, Select, Switch, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   haalDoorbelastingInstellingOp,
@@ -188,7 +188,7 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
     )
   }
   if (ingeschakeld === null || instelling === null || mappings === null) {
-    return <p className="hint">Laden…</p>
+    return <SkeletonPaneel />
   }
 
   return (

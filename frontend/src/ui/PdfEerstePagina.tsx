@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { SkeletonBlok } from './basis'
 
 interface Props {
   blobUrl: string
@@ -51,7 +52,7 @@ export function PdfEerstePagina({ blobUrl, breedte }: Props) {
 
   return (
     <div style={{ width: breedte }}>
-      {bezig && !fout && <div className="hint">Voorbeeld laden…</div>}
+      {bezig && !fout && <SkeletonBlok hoogte={Math.round(breedte * 1.3)} />}
       {fout && <div className="hint">{fout}</div>}
       <canvas ref={canvasRef} style={{ display: fout ? 'none' : 'block', maxWidth: '100%' }} />
     </div>

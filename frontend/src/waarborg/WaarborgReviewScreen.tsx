@@ -8,6 +8,7 @@ import { useAutoChecks } from '../document/useAutoChecks'
 import { useGrootboekOpties } from '../document/useSyncOpties'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { haalWaarborgVoorstelOp, slaWaarborgTegenrekeningOp, voerWaarborgChecksUit } from './waarborgApi'
+import { SkeletonPaneel } from '../ui/basis'
 
 /** Waarborg-review (§2d-waarborgroute v1.11, blok E 2026-08-10): alle berichtvelden zijn
  * BRONGEGEVEN (read-only — het VASTLY-WAARBORG-bericht is de bron); de éne menselijke keuze is
@@ -153,7 +154,7 @@ export function WaarborgReviewScreen() {
   })
 
   if (laadFout) return <div className="fout">Kon waarborg-bericht niet laden: {laadFout}</div>
-  if (!detail || !voorstel || !administratieId || !documentId) return <p className="hint">Laden…</p>
+  if (!detail || !voorstel || !administratieId || !documentId) return <SkeletonPaneel />
 
   const isGeboekt = detail.status === 'geboekt' || voorstel.status === 'geboekt'
   const isBoekbaar = BOEKBARE_STATUSSEN.has(detail.status)
@@ -301,7 +302,7 @@ export function WaarborgReviewScreen() {
               <div className="actions">
                 <button
                   type="button"
-                  className="btn green"
+                  className="btn"
                   disabled={!isBoekbaar || !checksGroen || boekenBezig}
                   title={
                     !isBoekbaar

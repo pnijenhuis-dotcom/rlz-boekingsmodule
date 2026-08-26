@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
-import { Badge } from '../ui/basis'
+import { Badge, SkeletonRegels } from '../ui/basis'
 import { haalMateriaalstand, type MateriaalStandDto } from './transportApi'
 
 /* Materiaalstand per project (steigerbouw-run D4, mockup planning-steigerbouw zijbalk "📦 Materiaal
@@ -35,7 +35,7 @@ export function MateriaalstandPaneel({ administratieId, projectId, compact = fal
         )}
       </h2>
       {fout && <div className="fout">{fout}</div>}
-      {stand === null && !fout && <p className="hint">Laden…</p>}
+      {stand === null && !fout && <SkeletonRegels />}
       {stand !== null && stand.regels.length === 0 && <p className="hint">Nog geen geleverd materiaal geregistreerd op dit project (Transport-tab → status geleverd).</p>}
       {stand !== null && stand.regels.length > 0 && (
         <div className="tabel-scroll">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Button } from '../ui/basis'
+import { Button, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
@@ -91,7 +91,7 @@ export function ProjectResultaatScreen() {
   }
 
   if (fout) return <FoutMelding melding="Het resultaat kon niet geladen worden." detail={fout} onOpnieuw={laad} />
-  if (data === null) return <p className="hint" aria-busy="true">Laden…</p>
+  if (data === null) return <SkeletonPaneel />
 
   const onderwegNegatief = Number(data.onderweg_saldo) < 0
   const margePositief = Number(data.verwachte_marge) >= 0

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { SearchableCombobox } from '../document/SearchableCombobox'
-import { Checkbox, Select } from '../ui/basis'
+import { Checkbox, Select, SkeletonRegels } from '../ui/basis'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { useAuthOptioneel } from '../auth/AuthContext'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
@@ -27,6 +27,7 @@ import {
 import { AanbetalingenPaneel, KoppelRelatieForm } from './RelatieKoppeling'
 import { SplitsenForm, SplitsingWeergave, SplitsingenPaneel } from './Splitsen'
 import { useBankAutoVerversing } from './useBankAutoVerversing'
+import { amountKlasse } from '../werkvoorraad/format'
 
 function formatBedrag(bedrag: string | null): string {
   if (bedrag === null) return '—'
@@ -209,7 +210,7 @@ function HandmatigBoekenForm({
       </label>
       {fout && <p className="hint" style={{ color: 'var(--red)' }}>{fout}</p>}
       <div className="actions">
-        <button className="btn green" onClick={() => void boek()} disabled={!ledgerId || bezig}>
+        <button className="btn" onClick={() => void boek()} disabled={!ledgerId || bezig}>
           {bezig ? 'Boeken…' : 'Boeken in RLZ ✓'}
         </button>
         <button className="btn secondary" onClick={onAnnuleer} disabled={bezig}>
@@ -321,7 +322,7 @@ function MutatieRij({
             <AfletterStatusChip opdracht={opdracht} />{' '}
             {opdracht.status === 'klaargezet' && (
               <button
-                className="btn green"
+                className="btn"
                 disabled={bezig}
                 onClick={() => void letterAf(() => voerAfletterOpdrachtUit(administratieId, opdracht.id))}
               >
@@ -338,7 +339,7 @@ function MutatieRij({
           </>
         ) : isAfletterVoorstel ? (
           <button
-            className="btn green"
+            className="btn"
             disabled={bezig}
             onClick={() =>
               void letterAf(() => zetAfletterenKlaar(administratieId, mutatie.id, voorstel.payment_item_id ?? ''))
@@ -348,7 +349,7 @@ function MutatieRij({
           </button>
         ) : voorstel.soort === 'vaste_regel' && voorstel.regels.length > 0 ? (
           <button
-            className="btn green"
+            className="btn"
             disabled={bezig}
             onClick={() =>
               void doe(() =>
@@ -727,7 +728,7 @@ export function BankDetailScreen() {
         {autoVerversMelding && <p className="hint">{autoVerversMelding}</p>}
         {syncMelding && <p className="hint">{syncMelding}</p>}
         {mutaties === null ? (
-          <p className="hint">Laden…</p>
+          <SkeletonRegels />
         ) : mutaties.length === 0 ? (
           <p className="hint">Geen onverwerkte mutaties op deze rekening.</p>
         ) : (
@@ -811,14 +812,14 @@ export function BankDetailScreen() {
                 <tr key={regel.opdracht.id}>
                   <td>{formatDatumKort(regel.boekdatum)}</td>
                   <td>{regel.tegenpartij_naam ?? 'Onbekende tegenpartij'}</td>
-                  <td className="amount">{formatBedrag(regel.bedrag)}</td>
+                  <td className={amountKlasse(regel.bedrag)}>{formatBedrag(regel.bedrag)}</td>
                   <td>
                     <AfletterStatusChip opdracht={regel.opdracht} />
                     {regel.opdracht.status === 'klaargezet' && (
                       <>
                         {' '}
                         <button
-                          className="btn green"
+                          className="btn"
                           disabled={afletterBezigId !== null}
                           onClick={() => void voerOpdrachtUit(regel.opdracht.id)}
                         >

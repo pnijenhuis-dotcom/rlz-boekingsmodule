@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type { VendorLijstDto } from '../api/types'
-import { Badge, Button, Select } from '../ui/basis'
+import { Badge, Button, Select, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { MateriaalstandPaneel } from '../planning/MateriaalstandPaneel'
@@ -104,7 +104,7 @@ export function ProjectDetailScreen() {
   }
 
   if (fout) return <FoutMelding melding="Het project kon niet geladen worden." detail={fout} onOpnieuw={laad} />
-  if (detail === null) return <p className="hint" aria-busy="true">Laden…</p>
+  if (detail === null) return <SkeletonPaneel />
 
   return (
     <div>
@@ -430,7 +430,7 @@ function DocumentenPaneel({
 
       {detail.ontleding.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, marginTop: 12, overflow: 'hidden' }}>
-          <div style={{ background: 'var(--accent-bg)', color: 'var(--primary)', fontSize: 12.5, fontWeight: 700, padding: '10px 14px' }}>
+          <div style={{ background: 'var(--info-bg)', color: 'var(--info)', fontSize: 12.5, fontWeight: 700, padding: '10px 14px' }}>
             🧠 Ontleed-voorstel — bevestig per regel (staffels: kies de eenheid, de AI-eenheid is alleen een voorstel)
           </div>
           {detail.ontleding.map((regel) => (

@@ -1,7 +1,10 @@
-/* Gedeelde componentstijlen — 1:1 uit mockup/index.html (designpass-laag). */
+/* Gedeelde componentstijlen — 1:1 uit mockup/index.html (designpass-laag); designpass v2
+   (2026-08-26, mockup/kantoor-designpass-v2.html): tokens ontgroend, teal = actie / groen =
+   status, hover-lift + pressed-states, rij-hover, status als dot+label, shimmer-skeletons. */
 .btn {
-  background: var(--accent);
-  color: #fff;
+  background: var(--primary);
+  color: var(--primary-fg);
+  box-shadow: 0 1px 2px rgba(18, 24, 31, 0.15);
   border: none;
   padding: 8px 16px;
   border-radius: 8px;
@@ -11,21 +14,23 @@
   font-family: inherit;
   transition:
     filter 0.12s,
-    transform 0.05s;
+    transform 0.06s;
 }
 
 .btn:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
+/* Pressed-state (v2): korte schaalstap i.p.v. verschuiving. */
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 
 .btn.secondary {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
+  box-shadow: none;
 }
 
 .btn.secondary:hover:not(:disabled) {
@@ -33,8 +38,11 @@
   background: var(--bg);
 }
 
+/* .btn.green is VERVALLEN (semantiek-regel v2: een knop is een actie → teal, nooit status-
+   groen). Alias blijft staan als vangnet voor niet-gemigreerde markup; de schermen zelf zijn
+   op 26-08 omgezet naar de kale .btn. */
 .btn.green {
-  background: var(--green);
+  background: var(--primary);
 }
 
 /* Mockup .btn.warn (vraag stellen / intrekken): omlijnd oranje, geen vulling. */
@@ -42,6 +50,7 @@
   background: var(--panel);
   color: var(--orange);
   border: 1px solid var(--orange);
+  box-shadow: none;
 }
 
 .btn.warn:hover:not(:disabled) {
@@ -52,7 +61,7 @@
 /* Mockup .btn.gevaar (tegenboeking boeken): gevulde rode actieknop. */
 .btn.danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--danger-fg);
 }
 
 .btn:disabled {
@@ -129,7 +138,23 @@ tr.clickable {
 }
 
 tr.clickable:hover {
-  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  background: var(--panel-2);
+}
+
+/* Rij-hover (v2, mockup tbody tr:hover): elke rij in een lijsttabel licht op; de
+   geselecteerde rij houdt zijn accent-tint, formulier-/regel-/planningtabellen doen niet mee. */
+tbody tr:not(.geselecteerd):hover > td {
+  background: var(--panel-2);
+}
+
+tbody tr:not(.geselecteerd):hover > td.acties {
+  background: var(--panel-2);
+}
+
+.boekingsregels-tabel tbody tr:hover > td,
+.lines tbody tr:hover > td,
+.plan-grid tbody tr:hover > td {
+  background: transparent;
 }
 
 /* Bulk-rijselectie (fase 3 modernisering — mockup tbody tr.geselecteerd). */
@@ -146,25 +171,34 @@ td.amount {
   font-weight: 600;
 }
 
-/* Laad-skeleton (browserreview 2026-08-07 punt 3): rustig pulserende balk op de plek waar de
-   inhoud komt, per lijst — geen kale "Laden…"-regel meer als enige signaal. */
+/* Negatief bedrag (creditnota, storno, negatieve marge) = --danger (v2; format.ts amountKlasse). */
+.amount.neg {
+  color: var(--danger);
+}
+
+/* Laad-skeleton (browserreview 2026-08-07 punt 3; v2: shimmer i.p.v. puls, mockup .skeleton):
+   glijdende lichtbaan over een balk op de plek waar de inhoud komt — geen kale "Laden…"-regel
+   of leeg wit meer als enige signaal. Componenten: ui/basis/Skeleton.tsx. */
 .skeleton {
   display: block;
   height: 14px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--muted) 22%, transparent);
-  animation: skeleton-puls 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--border) 25%, var(--panel-2) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s infinite;
 }
 
-@keyframes skeleton-puls {
-  0%,
-  100% {
-    opacity: 0.55;
+@keyframes skeleton-shimmer {
+  to {
+    background-position: -200% 0;
   }
+}
 
-  50% {
-    opacity: 1;
-  }
+.skeleton-blok {
+  border-radius: var(--radius-sm);
+  min-height: 120px;
+  height: 100%;
+  width: 100%;
 }
 
 .chip {
@@ -192,18 +226,15 @@ td.amount {
   color: var(--orange);
 }
 
+/* "Klaar om te boeken" was teal-getint; sinds v2 info-blauw — teal is exclusief actie, een
+   status-chip nooit (semantiek-regel 26-08). */
 .chip.klaar {
-  background: var(--blue-bg);
-  color: var(--accent);
+  background: var(--info-bg);
+  color: var(--info);
 }
 
 .chip.geboekt {
-  background: #eef0f3;
-  color: var(--muted);
-}
-
-body.dark .chip.geboekt {
-  background: #242c3d;
+  background: color-mix(in srgb, var(--muted) 14%, var(--panel));
   color: var(--muted);
 }
 
@@ -233,12 +264,12 @@ body.dark .chip.geboekt {
 }
 
 .upload {
-  border: 2px dashed #cdd3de;
+  border: 2px dashed color-mix(in srgb, var(--faint) 55%, var(--border));
   border-radius: var(--radius);
   padding: 26px;
   text-align: center;
   color: var(--muted);
-  background: #fbfcfd;
+  background: var(--panel-2);
   margin-bottom: 20px;
   transition:
     border-color 0.15s,
@@ -254,11 +285,6 @@ body.dark .chip.geboekt {
 
 .upload b {
   color: var(--accent);
-}
-
-body.dark .upload {
-  background: #161c28;
-  border-color: #33504b;
 }
 
 label {
@@ -595,17 +621,13 @@ textarea:focus {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(16, 24, 40, 0.12), 0 12px 32px rgba(16, 24, 40, 0.1);
+  box-shadow: var(--shadow-lg);
   padding: 4px;
   overflow-y: auto;
   /* De verschijnende/groeiende lijst mag nooit een scroll-anker worden — Chrome's scroll
    * anchoring kan de pagina anders laten springen op het moment dat de portal opent
    * (scroll-sprong-onderzoek 2026-07-11). */
   overflow-anchor: none;
-}
-
-body.dark .combobox-listbox {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 .combobox-optie {
@@ -691,7 +713,12 @@ body.dark .combobox-listbox {
   color: var(--muted);
   transition:
     background 0.12s,
-    color 0.12s;
+    color 0.12s,
+    transform 0.06s;
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -810,7 +837,7 @@ body.dark .combobox-listbox {
 }
 
 .q-bericht:not(.q-vraag) .vraagtekst {
-  background: var(--panel-2, var(--panel2, #eef0f3));
+  background: var(--panel-2);
   border: 1px solid var(--border);
   margin: 4px 0 0 18px;
 }
@@ -833,10 +860,17 @@ body.dark .combobox-listbox {
   text-decoration: none;
   color: inherit;
   margin: 0;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s,
+    border-color 0.12s;
 }
 
+/* Hover-lift op klikbare kaarten (v2). */
 .instellingen-kaart:hover {
-  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
 .instellingen-kaart h2 {
@@ -933,8 +967,9 @@ body.dark .combobox-listbox {
 
 .card .num {
   font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .card .lbl {
@@ -1089,7 +1124,7 @@ body.dark .combobox-listbox {
 .zijpaneel-bg {
   position: fixed;
   inset: 0;
-  background: rgba(10, 16, 15, 0.45);
+  background: rgba(18, 24, 31, 0.45);
   z-index: 40;
 }
 .zijpaneel {
@@ -1253,7 +1288,7 @@ body.dark .combobox-listbox {
   right: 0;
   background: var(--panel);
   z-index: 1;
-  box-shadow: -8px 0 10px -8px rgba(21, 32, 29, 0.25);
+  box-shadow: -8px 0 10px -8px rgba(18, 24, 31, 0.25);
 }
 
 .tabel-scroll.sticky-koppen th.acties {
@@ -1276,4 +1311,87 @@ tr.geselecteerd td.acties {
 .lijst-kop input[type='search'] {
   max-width: 320px;
   flex: 1 1 220px;
+}
+
+/* ================= Designpass v2 (26-08) ================= */
+
+/* Status als dot + label (mockup .status): geen pil, één gekleurde stip vóór het label.
+   Kleurklassen dragen dezelfde namen als de chips (werkvoorraad/status.ts) zodat de mapping
+   één plek blijft; StatusChip.tsx rendert dit. Tellers/aantallen blijven pil-chips. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status.ai,
+.status.afwijking {
+  color: var(--warn);
+}
+
+.status.klaar {
+  color: var(--info);
+}
+
+.status.vraag,
+.status.blokkerend {
+  color: var(--danger);
+}
+
+.status.geheugen {
+  color: var(--purple);
+}
+
+.status.ok {
+  color: var(--ok);
+}
+
+.status.geboekt {
+  color: var(--muted);
+}
+
+/* Avatar met initialen + deterministische kleur per administratie/gebruiker (hash op id, vaste
+   8-kleuren-set --avatar-0…7 in tokens.css, geen opslag; ui/Avatar.tsx). */
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 11.5px;
+  letter-spacing: 0;
+  color: #ffffff;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.avatar.klein {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.naam-met-avatar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.naam-met-avatar > div {
+  min-width: 0;
 }

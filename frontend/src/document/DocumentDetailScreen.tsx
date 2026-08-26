@@ -13,7 +13,7 @@ import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { documentRoute } from '../werkvoorraad/format'
 import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
-import { useToastOptioneel } from '../ui/basis'
+import { useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
@@ -396,7 +396,7 @@ export function DocumentDetailScreen() {
   }, [administratieId, documentId])
 
   if (fout) return <div className="fout">Kon document niet laden: {fout}</div>
-  if (!administratieId || !documentId || !detail) return <p className="hint">Laden…</p>
+  if (!administratieId || !documentId || !detail) return <SkeletonPaneel />
 
   const extractieProbleem = laatsteExtractieProbleem(detail)
   const isHandmatigAfmaken = detail.status === 'handmatig_afmaken'
@@ -495,7 +495,7 @@ export function DocumentDetailScreen() {
               <ReviewVergrootKnop splitter={splitter} />
             </div>
             <div className="bijlage-inhoud">
-              {!bijlage && <p className="hint">Bijlage laden…</p>}
+              {!bijlage && <SkeletonBlok />}
               {bijlage?.contentType.includes('pdf') && (
                 <object data={bijlage.url} type="application/pdf">
                   <p className="hint">
@@ -889,7 +889,7 @@ export function DocumentDetailScreen() {
             </div>
             {tijdlijnTab === 'opmerkingen' && (
               <div role="tabpanel" aria-label="Opmerkingen">
-                {vragenChronologisch === null && <p className="hint">Opmerkingen laden…</p>}
+                {vragenChronologisch === null && <SkeletonRegels />}
                 {vragenChronologisch !== null && vragenChronologisch.length === 0 && (
                   <p className="hint" style={{ marginTop: 0 }}>
                     Nog geen vragen of opmerkingen bij dit document. Stel een vraag via &ldquo;Vraag stellen…&rdquo; in

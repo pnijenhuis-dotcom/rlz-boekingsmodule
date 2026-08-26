@@ -6,6 +6,7 @@ import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/in
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
 import { UPLOAD_ACCEPT, verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
 import { FoutMelding } from '../ui/FoutMelding'
+import { Lichtbaan } from '../ui/Lichtbaan'
 import { VragenScreen } from '../vragen/VragenScreen'
 import { DocumentenDeelscherm } from './DocumentenDeelscherm'
 import { FilterWeergave, type WerkvoorraadFilter } from './FilterWeergave'
@@ -132,6 +133,8 @@ function WerkvoorraadIngang({
 
   return (
     <div>
+      {/* Designpass v2 punt 3: teal-gloed bovenaan — alleen hier (landing), alleen dark. */}
+      <Lichtbaan />
       <div className="topbar">
         <div>
           <h1>Werkvoorraad</h1>

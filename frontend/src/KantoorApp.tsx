@@ -23,6 +23,7 @@ import { WaarborgReviewScreen } from './waarborg/WaarborgReviewScreen'
 import { WerkvoorraadScreen } from './werkvoorraad/WerkvoorraadScreen'
 import { ArchiefScreen } from './zoeken/ArchiefScreen'
 import { ZoekenScreen } from './zoeken/ZoekenScreen'
+import { SkeletonPaneel } from './ui/basis'
 
 // Kempen-doorbelasting (blok 3): lazy — het reviewscherm is alleen relevant voor de enkele
 // administratie mét doorbelasting; de rest van het kantoor laadt deze chunk nooit.
@@ -70,9 +71,7 @@ export function SlimmeLanding() {
   if (searchParams.toString() !== '') return <WerkvoorraadScreen />
   if (toegang === undefined || (administraties === null && !fout)) {
     return (
-      <p className="hint" style={{ padding: 24 }}>
-        Laden…
-      </p>
+      <div style={{ padding: 24 }}><SkeletonPaneel /></div>
     )
   }
   const pad = landingsPad(toegang, administraties)
@@ -85,9 +84,7 @@ function BeschermdeRoutes() {
 
   if (status === 'laden') {
     return (
-      <p className="hint" style={{ padding: 24 }}>
-        Laden…
-      </p>
+      <div style={{ padding: 24 }}><SkeletonPaneel /></div>
     )
   }
   if (status === 'uitgelogd') {
@@ -120,7 +117,7 @@ function BeschermdeRoutes() {
         <Route
           path="/doorbelasting/:administratieId/:documentId"
           element={
-            <Suspense fallback={<p className="hint">Laden…</p>}>
+            <Suspense fallback={<SkeletonPaneel />}>
               <DoorbelastingReviewScreen />
             </Suspense>
           }
@@ -130,7 +127,7 @@ function BeschermdeRoutes() {
         <Route
           path="/projecten"
           element={
-            <Suspense fallback={<p className="hint">Laden…</p>}>
+            <Suspense fallback={<SkeletonPaneel />}>
               <ProjectenScreen />
             </Suspense>
           }
@@ -138,7 +135,7 @@ function BeschermdeRoutes() {
         <Route
           path="/projecten-resultaat"
           element={
-            <Suspense fallback={<p className="hint">Laden…</p>}>
+            <Suspense fallback={<SkeletonPaneel />}>
               <ProjectenOverzichtScreen />
             </Suspense>
           }
@@ -146,7 +143,7 @@ function BeschermdeRoutes() {
         <Route
           path="/projecten/:administratieId/:projectId"
           element={
-            <Suspense fallback={<p className="hint">Laden…</p>}>
+            <Suspense fallback={<SkeletonPaneel />}>
               <ProjectDetailScreenLazy />
             </Suspense>
           }
@@ -154,7 +151,7 @@ function BeschermdeRoutes() {
         <Route
           path="/projecten/:administratieId/:projectId/resultaat"
           element={
-            <Suspense fallback={<p className="hint">Laden…</p>}>
+            <Suspense fallback={<SkeletonPaneel />}>
               <ProjectResultaatScreen />
             </Suspense>
           }

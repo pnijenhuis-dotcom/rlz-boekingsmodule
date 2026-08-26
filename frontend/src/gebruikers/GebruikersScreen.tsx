@@ -18,6 +18,7 @@ import {
   Switch,
   useToastOptioneel,
 } from '../ui/basis'
+import { Avatar } from '../ui/Avatar'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
@@ -557,8 +558,13 @@ export function GebruikersScreen() {
                   return (
                     <tr key={g.id}>
                       <td>
-                        <b>{g.naam}</b>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
+                        <div className="naam-met-avatar">
+                          <Avatar id={g.id} naam={g.naam} />
+                          <div>
+                            <b>{g.naam}</b>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
+                          </div>
+                        </div>
                       </td>
                       <td>
                         {isZelf ? (
@@ -736,6 +742,7 @@ export function GebruikersScreen() {
                   return (
                     <tr key={g.id}>
                       <td>
+                        <Avatar id={g.id} naam={g.naam} klein />{' '}
                         <b>{g.naam}</b>
                         {g.status === 'geblokkeerd' && (
                           <>

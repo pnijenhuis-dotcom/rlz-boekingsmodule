@@ -12,7 +12,7 @@ import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
-import { documentRoute, formatBedrag, isOpenstaand, ouderdomLabel, soortLabel } from './format'
+import { documentRoute, amountKlasse, formatBedrag, isOpenstaand, ouderdomLabel, soortLabel } from './format'
 import { KpiRij } from './KpiRij'
 
 /* Standen-overzicht per klant (IA-besluit 15-08, mockup #scherm-klant): documenten per soort,
@@ -528,7 +528,7 @@ export function KlantStanden({
                       <b>{d.bestandsnaam}</b>
                     </td>
                     <td>{d.leverancier ?? '—'}</td>
-                    <td className="amount">{formatBedrag(d.totaalbedrag)}</td>
+                    <td className={amountKlasse(d.totaalbedrag)}>{formatBedrag(d.totaalbedrag)}</td>
                     <td>{ouderdomLabel(d.laatst_gewijzigd_op)}</td>
                     <td>
                       {laatstHerinnerd[d.id]

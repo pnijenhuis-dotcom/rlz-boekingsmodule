@@ -19,6 +19,7 @@ import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
 import { haalVerkoopVoorstelOp, slaVerkoopVoorstelOp, voerVerkoopChecksUit } from './verkoopApi'
+import { SkeletonPaneel } from '../ui/basis'
 
 /** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's.
  * `gbCode` + `gbCodeStatus` reizen readonly mee (deterministisch uit de UBL gelezen, BT-133) —
@@ -316,7 +317,7 @@ export function VerkoopReviewScreen() {
   })
 
   if (laadFout) return <div className="fout">Kon verkoopfactuur niet laden: {laadFout}</div>
-  if (!detail || !voorstel || !administratieId || !documentId) return <p className="hint">Laden…</p>
+  if (!detail || !voorstel || !administratieId || !documentId) return <SkeletonPaneel />
 
   const isGeboekt = detail.status === 'geboekt'
   const isVraagOpen = detail.status === 'vraag_open'
@@ -689,7 +690,7 @@ export function VerkoopReviewScreen() {
                 </button>
                 <button
                   type="button"
-                  className="btn green"
+                  className="btn"
                   disabled={!isBoekbaar || !checksGroen || boekenBezig}
                   title={
                     !isBoekbaar

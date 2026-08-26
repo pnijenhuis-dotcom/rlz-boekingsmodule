@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { ZoekAccorderingHitDto, ZoekDocumentHitDto, ZoekResponseDto } from '../api/types'
 import { FoutMelding } from '../ui/FoutMelding'
 import { StatusChip } from '../werkvoorraad/StatusChip'
-import { formatBedrag, formatDatumKort, formatDatum } from './format'
+import { amountKlasse, formatBedrag, formatDatumKort, formatDatum } from './format'
 import { reviewPad } from './reviewPad'
 import { zoek } from './zoekenApi'
 
@@ -210,7 +210,7 @@ export function ZoekenScreen() {
                           )}
                         </td>
                         <td>{hit.administratie_naam}</td>
-                        <td className="amount">{formatBedrag(hit.totaalbedrag)}</td>
+                        <td className={amountKlasse(hit.totaalbedrag)}>{formatBedrag(hit.totaalbedrag)}</td>
                         <td>
                           {hit.status === 'geboekt' && hit.rlz_boekstuknummer ? (
                             <span className="chip geboekt">Geboekt · {hit.rlz_boekstuknummer}</span>

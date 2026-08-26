@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
-import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, Switch } from '../ui/basis'
+import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, Switch, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
 import type {
   AdministratieDto, AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -215,9 +215,7 @@ function IbanAccordeursCell({ administratie, versie, onWijzig }: IbanAccordeursC
   }
   if (accordeurs === null || !medewerkers) {
     return (
-      <span className="hint" style={{ margin: 0 }}>
-        Laden…
-      </span>
+      <SkeletonRegels regels={2} />
     )
   }
   const naamVan = (id: string) => medewerkers.find((m) => m.id === id)?.naam ?? 'onbekend'
@@ -374,7 +372,7 @@ export function InstellingenScreen() {
   // renderen niet eens (design-pass taak 3: geen kale 403 of lege tabel). Wacht op `status`
   // (niet alleen `rol`) zodat dit ook correct is los van App.tsx's status==='laden'-gate.
   if (status === 'laden') {
-    return <p className="hint">Laden…</p>
+    return <SkeletonPaneel />
   }
   const isBeheerder = rol === 'beheerder'
 
@@ -659,7 +657,7 @@ export function InstellingenScreen() {
         <p className="hint" style={{ marginTop: 4 }}>
           Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
         </p>
-        {administraties === null && !laadFout && <p className="hint">Laden…</p>}
+        {administraties === null && !laadFout && <SkeletonRegels />}
         {administraties !== null && administraties.length === 0 && (
           <p className="hint">Nog geen administraties gekoppeld.</p>
         )}
@@ -888,7 +886,7 @@ export function InstellingenScreen() {
         <DoorbelastingInstellingen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
       )}
       {sectie !== 'administraties' && sectie !== 'boeken' && sectie !== 'intake-ai' && administraties === null && !laadFout && (
-        <p className="hint">Laden…</p>
+        <SkeletonRegels />
       )}
 
       {pending && (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { LeverancierAutoboekenDto } from '../api/types'
-import { Select, Switch } from '../ui/basis'
+import { Select, Switch, SkeletonRegels } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { BevestigDialog } from './BevestigDialog'
 import { haalLeveranciersAutoboeken, zetLeverancierAutoboeken } from './instellingenApi'
@@ -106,7 +106,7 @@ export function LeverancierAutoboeken({
           onOpnieuw={() => setLaadVersie((v) => v + 1)}
         />
       )}
-      {administratieId && leveranciers === null && !laadFout && <p className="hint">Laden…</p>}
+      {administratieId && leveranciers === null && !laadFout && <SkeletonRegels />}
       {leveranciers !== null && leveranciers.length === 0 && (
         <p className="hint">
           Nog geen leveranciers bekend voor deze administratie — de leverancierslijst komt uit de

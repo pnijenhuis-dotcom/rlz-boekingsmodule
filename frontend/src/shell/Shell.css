@@ -1,6 +1,8 @@
-/* Shell (sidebar + topbar + main) — 1:1 uit mockup/kantoor-modern.html (designpass-norm,
-   akkoord Peter 2026-08-15): panel-sidebar op tokens (geen vaste donkere gradient meer),
-   sectiekoppen, slanke topbar met thema-toggle. */
+/* Shell (sidebar + topbar + main) — designpass v2 (mockup/kantoor-designpass-v2.html, akkoord
+   Peter 2026-08-26): INKT-ZIJBALK als identiteitsdrager — donkere rail op --rail-tokens met
+   actieve-item-balkje en teller-badges in het rail-accent; in het donkere thema een
+   grafiet-rail mét rand (Vastly-les 24-08: geen groenzweem in vlakken). Topbar en main
+   ongewijzigd t.o.v. de 15-08-norm; navigatie-items/routes zijn géén onderdeel van deze pass. */
 .app {
   display: flex;
   min-height: 100vh;
@@ -9,8 +11,8 @@
 .sidebar {
   width: 236px;
   flex-shrink: 0;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
+  background: var(--rail);
+  color: var(--rail-text);
   padding: 18px 12px;
   display: flex;
   flex-direction: column;
@@ -19,6 +21,12 @@
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  transition: background 0.2s;
+}
+
+/* Dark: de rail is grafiet en zou zonder rand in de achtergrond wegvallen. */
+.dark .sidebar {
+  border-right: 1px solid var(--border);
 }
 
 .logo {
@@ -39,47 +47,49 @@
 .logo b {
   font-size: 14px;
   letter-spacing: -0.02em;
-  color: var(--text);
+  color: #ffffff;
 }
 
 .logo small {
   display: block;
-  color: var(--muted);
+  color: var(--rail-muted);
   font-weight: 400;
   font-size: 11px;
 }
 
 .nav-kop {
   font-size: 10.5px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--faint);
-  padding: 14px 10px 4px;
+  letter-spacing: 0.07em;
+  color: var(--rail-muted);
+  padding: 14px 10px 6px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   padding: 8px 10px;
-  border-radius: 9px;
-  color: var(--muted);
+  border-radius: 8px;
+  color: var(--rail-text);
   cursor: pointer;
-  border: 1px solid transparent;
+  border: none;
   font-size: 13px;
   background: none;
   width: 100%;
   text-align: left;
   text-decoration: none;
   font-weight: 500;
+  position: relative;
   transition:
-    background 0.15s,
-    color 0.15s;
+    background 0.12s,
+    color 0.12s;
 }
 
 .nav-item:hover {
-  background: var(--panel-2);
-  color: var(--text);
+  background: color-mix(in srgb, var(--rail-actief) 60%, transparent);
+  color: #ffffff;
 }
 
 .nav-item:focus-visible {
@@ -88,20 +98,32 @@
 }
 
 .nav-item.actief {
-  background: var(--accent-bg);
-  color: var(--primary);
-  border-color: color-mix(in srgb, var(--primary) 25%, transparent);
-  font-weight: 600;
+  background: var(--rail-actief);
+  color: #ffffff;
+  font-weight: 700;
 }
 
-/* Teller-badge rechts in een nav-item (werkvoorraad-stand). */
+/* Actieve-item-balkje aan de railrand (mockup .rail a.actief::before). */
+.nav-item.actief::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--rail-accent);
+}
+
+/* Teller-badge rechts in een nav-item (werkvoorraad-stand): rail-accent op de vaste
+   blend-tint (--rail-teller-bg, contrast-geauditeerd). */
 .nav-item .tel {
   margin-left: auto;
-  background: var(--warn-bg);
-  color: var(--warn);
+  background: var(--rail-teller-bg);
+  color: var(--rail-accent);
   font-size: 11px;
-  font-weight: 600;
-  padding: 1px 7px;
+  font-weight: 700;
+  padding: 1px 8px;
   border-radius: 99px;
 }
 
@@ -109,7 +131,7 @@
   margin-top: auto;
   padding: 10px;
   font-size: 11.5px;
-  color: var(--faint);
+  color: var(--rail-muted);
 }
 
 .main {
@@ -117,6 +139,28 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Lichtbaan (designpass v2 punt 3, Vastly-patroon 24-08): subtiele radiale teal-gloed bovenaan
+   — ALLEEN in het donkere thema en ALLEEN op het landingsscherm (WerkvoorraadIngang zet de
+   html-klasse `lichtbaan` via ui/Lichtbaan.tsx). z-index -1 binnen de eigen stacking context
+   van .main: boven de body-achtergrond, onder topbar en inhoud. Op licht is er geen grafiet om
+   op te gloeien, dus daar niets. */
+html.dark.lichtbaan .main {
+  position: relative;
+  z-index: 0;
+}
+
+html.dark.lichtbaan .main::before {
+  content: '';
+  position: absolute;
+  top: -120px;
+  left: 8%;
+  width: 60%;
+  height: 320px;
+  z-index: -1;
+  background: radial-gradient(ellipse at center, rgba(62, 201, 184, 0.1), transparent 70%);
+  pointer-events: none;
 }
 
 /* Slanke shell-topbar (thema-toggle + gebruiker); de schermen houden hun eigen paginakop. */
@@ -149,11 +193,19 @@
   cursor: pointer;
   font-size: 15px;
   font-family: inherit;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    transform 0.06s;
 }
 
 .shell-iconknop:hover {
   color: var(--text);
   background: var(--panel-2);
+}
+
+.shell-iconknop:active {
+  transform: scale(0.97);
 }
 
 .shell-iconknop:focus-visible {
@@ -210,14 +262,15 @@
 
 h1 {
   font-size: 19px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.02em;
   margin: 0;
 }
 
+/* Links = actie → teal (semantiek-regel v2). */
 h1 a {
   cursor: pointer;
-  color: var(--accent);
+  color: var(--primary);
   text-decoration: none;
 }
 

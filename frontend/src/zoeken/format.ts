@@ -1,5 +1,7 @@
 /** Gedeelde weergavehelpers voor het zoek- en archiefscherm — zelfde notatie als de
- * werkvoorraad (nl-NL, EUR, em-dash voor ontbrekende waarden). */
+ * werkvoorraad (nl-NL, EUR, em-dash voor ontbrekende waarden). De bedragcel-klasse (negatief =
+ * --danger, designpass v2) is één bron: werkvoorraad/format.ts. */
+export { amountKlasse } from '../werkvoorraad/format'
 
 export function formatBedrag(bedrag: string | null): string {
   if (bedrag === null) return '—'
