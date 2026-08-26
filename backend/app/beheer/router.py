@@ -511,6 +511,47 @@ def verkoop_autoboeken_instelling_zetten(
 
 
 @router.get(
+    "/administraties/{administratie_id}/is-vastgoed",
+    response_model=schemas.IsVastgoedResultaatDto,
+)
+def is_vastgoed_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.IsVastgoedResultaatDto:
+    try:
+        rij = service.haal_is_vastgoed_op(administratie_id=administratie_id)
+        verkoop = service.haal_verkoop_autoboeken_ingeschakeld_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.IsVastgoedResultaatDto(
+        is_vastgoed=rij, verkoop_autoboeken_ingeschakeld=verkoop, verkoop_autoboeken_uitgezet=False
+    )
+
+
+@router.patch(
+    "/administraties/{administratie_id}/is-vastgoed",
+    response_model=schemas.IsVastgoedResultaatDto,
+)
+def is_vastgoed_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.IsVastgoedDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.IsVastgoedResultaatDto:
+    """Vastgoed-koppeling per administratie (avondrun 26-08, S2-draaiboek R1) — Beheerder-only,
+    audit oud→nieuw; UIT neemt verkoop-autoboeken zichtbaar mee uit (service)."""
+    try:
+        r = service.zet_is_vastgoed(
+            actor_id=actor.id, administratie_id=administratie_id, is_vastgoed=invoer.is_vastgoed
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.IsVastgoedResultaatDto(
+        is_vastgoed=r.is_vastgoed,
+        verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
+        verkoop_autoboeken_uitgezet=r.verkoop_autoboeken_uitgezet,
+    )
+
+
+@router.get(
     "/instellingen/webhook-aflevering",
     response_model=schemas.WebhookAfleveringDto,
 )

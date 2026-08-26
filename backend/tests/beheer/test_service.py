@@ -268,3 +268,87 @@ class TestPersistentiePerInstelbaarVeld:
         assert service.haal_webhook_aflevering_ingeschakeld_op() is True
         service.zet_webhook_aflevering_ingeschakeld(actor_id=beheerder_id, ingeschakeld=False)
         assert service.haal_webhook_aflevering_ingeschakeld_op() is False
+
+
+class TestIsVastgoedToggle:
+    """Avondrun 26-08 (S2-draaiboek R1): is_vastgoed als Beheerder-toggle — audit oud→nieuw;
+    UIT neemt verkoop-autoboeken zichtbaar mee uit (409-regel: die opt-in bestaat alleen bij
+    is_vastgoed)."""
+
+    def test_default_uit_en_aanzetten(self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        assert service.haal_is_vastgoed_op(administratie_id=administratie_id) is False
+        r = service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=True)
+        assert r.is_vastgoed is True
+        assert r.verkoop_autoboeken_uitgezet is False
+        assert service.haal_is_vastgoed_op(administratie_id=administratie_id) is True
+
+    def test_wijziging_geaudit_oud_naar_nieuw(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=True)
+        with admin_engine.connect() as conn:
+            rij = conn.execute(
+                text(
+                    "SELECT actor_id, oude_waarde, nieuwe_waarde FROM platform.audit_event "
+                    "WHERE tabel = 'administratie' AND record_id = :id AND actie = 'is_vastgoed_gewijzigd'"
+                ),
+                {"id": administratie_id},
+            ).one()
+        assert rij.actor_id == beheerder_id
+        assert rij.oude_waarde == {"is_vastgoed": False}
+        assert rij.nieuwe_waarde == {"is_vastgoed": True}
+
+    def test_uitzetten_neemt_verkoop_autoboeken_zichtbaar_mee_uit(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=True)
+        service.zet_verkoop_autoboeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+        r = service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=False)
+        assert r.is_vastgoed is False
+        assert r.verkoop_autoboeken_ingeschakeld is False
+        assert r.verkoop_autoboeken_uitgezet is True
+        assert service.haal_verkoop_autoboeken_ingeschakeld_op(administratie_id=administratie_id) is False
+        acties = _audit_acties(admin_engine, tabel="administratie", record_id=administratie_id)
+        # Twee is_vastgoed-audits (aan, uit) + twee verkoop-audits (aan via opt-in, uit via de toggle).
+        assert acties.count("is_vastgoed_gewijzigd") == 2
+        assert acties.count("verkoop_autoboeken_ingeschakeld_gewijzigd") == 2
+        with admin_engine.connect() as conn:
+            laatste = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event WHERE tabel = 'administratie' "
+                    "AND record_id = :id AND actie = 'verkoop_autoboeken_ingeschakeld_gewijzigd' "
+                    "ORDER BY tijdstip DESC LIMIT 1"
+                ),
+                {"id": administratie_id},
+            ).scalar_one()
+        assert laatste == {"verkoop_autoboeken_ingeschakeld": False, "reden": "is_vastgoed uitgezet"}
+
+    def test_uitzetten_zonder_opt_in_raakt_verkoop_niet(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        r = service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=False)
+        assert r.verkoop_autoboeken_uitgezet is False
+        acties = _audit_acties(admin_engine, tabel="administratie", record_id=administratie_id)
+        assert "verkoop_autoboeken_ingeschakeld_gewijzigd" not in acties
+
+    def test_tier_vlag_afgeletterd_event_blijft_staan(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Besluit 0018: aparte kolom — de vastgoed-toggle raakt de tier-vlag niet (Rubicon AAN)."""
+        service.zet_afgeletterd_event_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+        service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=True)
+        service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=False)
+        with admin_engine.connect() as conn:
+            vlag = conn.execute(
+                text("SELECT afgeletterd_event_ingeschakeld FROM platform.administratie WHERE id = :id"),
+                {"id": administratie_id},
+            ).scalar_one()
+        assert vlag is True
+
+    def test_onbekende_administratie(self, beheerder_id: uuid.UUID) -> None:
+        with pytest.raises(service.BeheerFout):
+            service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=uuid.uuid4(), is_vastgoed=True)

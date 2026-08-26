@@ -845,6 +845,34 @@ def _zet_verkoop_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> 
     return 0
 
 
+def _zet_is_vastgoed(args: argparse.Namespace, *, is_vastgoed: bool) -> int:
+    """Vastgoed-koppeling per administratie (avondrun 26-08, S2-draaiboek R1) — begeleide
+    terugval naast de Beheerder-toggle in de UI; zelfde service, zelfde audit. UIT neemt
+    verkoop-autoboeken zichtbaar mee uit."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        r = beheer_service.zet_is_vastgoed(
+            actor_id=beheerder_id, administratie_id=administratie_id, is_vastgoed=is_vastgoed
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"is_vastgoed={r.is_vastgoed} voor administratie {administratie_id}")
+    if r.verkoop_autoboeken_uitgezet:
+        print("LET OP: verkoop_autoboeken_ingeschakeld is mee UIT gezet (kan alleen bij is_vastgoed) — geauditeerd.")
+    if r.is_vastgoed:
+        print(
+            "factuur_geboekt-/factuur_gestorneerd-events naar Vastly lopen per direct voor deze administratie "
+            "(webhook-aflevering-toggle + kanaal-config blijven de failsafes)."
+        )
+    return 0
+
+
 def _zet_uren_meerwerk(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Opt-in uren & meerwerk (migratie 0056, steigerbouw-tak — BOUW GO 2026-08-21): zelfde
     patroon als de andere toggles; Beheerder als audit_event-actor, default UIT."""
@@ -1267,6 +1295,8 @@ def main(argv: list[str] | None = None) -> int:
         ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
         ("uren-meerwerk-aan", "Zet de uren-&-meerwerk-opt-in (steigerbouw-tak, migratie 0056) AAN."),
         ("uren-meerwerk-uit", "Zet de uren-&-meerwerk-opt-in UIT."),
+        ("is-vastgoed-aan", "Zet de vastgoed-koppeling (is_vastgoed: Vastly-events + VASTLY-VERKOOP) AAN — S2 R1."),
+        ("is-vastgoed-uit", "Zet de vastgoed-koppeling UIT (verkoop-autoboeken gaat zichtbaar mee uit)."),
     ):
         bank_auto_parser = subparsers.add_parser(naam, help=hulp)
         bank_auto_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
@@ -1417,6 +1447,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_afgeletterd_event(args, ingeschakeld=True)
     if args.commando == "afgeletterd-event-uit":
         return _zet_afgeletterd_event(args, ingeschakeld=False)
+    if args.commando == "is-vastgoed-aan":
+        return _zet_is_vastgoed(args, is_vastgoed=True)
+    if args.commando == "is-vastgoed-uit":
+        return _zet_is_vastgoed(args, is_vastgoed=False)
     if args.commando == "seed-boekingsgeheugen":
         return _seed_boekingsgeheugen(args)
     if args.commando == "boeken-aan":

@@ -31,6 +31,7 @@ import {
   zetProjectInstelling,
   zetUrenDagmaxInstelling,
   zetUrenMeerwerkInstelling,
+  zetIsVastgoed,
   zetVerkoopAutoboekenInstelling,
   type AiKostenStatusDto,
 } from './instellingenApi'
@@ -42,6 +43,7 @@ type WijzigingType =
   | 'project'
   | 'ai_extractie'
   | 'verkoop_autoboeken'
+  | 'is_vastgoed'
   | 'uren_meerwerk'
   | 'eigenaar'
   | 'iban_accordeurs'
@@ -61,6 +63,8 @@ interface PendingWijziging {
   accordeursOmschrijving?: string
   /** Alleen voor type 'ai_kosten_limiet': de nieuwe maandlimiet in EUR (string, Decimal-precisie). */
   limietEur?: string
+  /** Alleen voor type 'is_vastgoed' (UIT): staat verkoop-autoboeken nu aan? Dan gaat die mee uit. */
+  verkoopAutoboekenAan?: boolean
 }
 
 function berichtVoor(pending: PendingWijziging): string {
@@ -95,6 +99,16 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `Vastly-verkoopfacturen van "${pending.naam}" boeken voortaan automatisch zodra álles groen is (harde checks, ondubbelzinnige GB-codes en btw uit de UBL, geen vraag of duplicaatsignaal). Elk ander geval blijft gewoon in de werkvoorraad; elke automatische boeking is gemarkeerd en geauditeerd.`
         : `Verkoop-autoboeken wordt uitgeschakeld voor "${pending.naam}" — elke Vastly-verkoopfactuur wacht weer op een menselijke boek-klik.`
+    case 'is_vastgoed':
+      // Avondrun 26-08 (S2-draaiboek R1): de consequenties benoemen — dit is de schakelaar die
+      // het koppelvlak met Vastly voor deze administratie aan- of uitzet.
+      return pending.nieuweWaarde
+        ? `Vastgoed-koppeling gaat AAN voor "${pending.naam}": factuur_geboekt- en factuur_gestorneerd-events naar Vastly gaan per direct lopen voor deze administratie (ook voor doorbelasting-spiegels die hier landen), Vastly-verkoopfacturen (VASTLY-VERKOOP) worden hier geboekt mét webhook en projectaanvragen vanuit Vastly worden geaccepteerd. Alleen aanzetten ná Vastly's omschakeling voor deze administratie (draaiboek R1).`
+        : `Vastgoed-koppeling gaat UIT voor "${pending.naam}": de events naar Vastly stoppen per direct en projectaanvragen worden geweigerd.${
+            pending.verkoopAutoboekenAan
+              ? ' Autoboeken Vastly-verkoop staat aan en gaat MEE UIT (geauditeerd).'
+              : ' Autoboeken Vastly-verkoop kan daarna niet aan.'
+          } Niets wordt verwijderd; al verstuurde events blijven staan.`
     case 'eigenaar':
       return pending.eigenaarId
         ? `${pending.eigenaarNaam ?? 'Deze medewerker'} wordt eigenaar van "${pending.naam}" en krijgt nieuwe vragen standaard toegewezen.`
@@ -131,6 +145,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'verkoop_autoboeken') {
     await zetVerkoopAutoboekenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'is_vastgoed') {
+    await zetIsVastgoed(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'uren_meerwerk') {
@@ -509,6 +527,12 @@ export function InstellingenScreen() {
                         ? { ai_extractie_ingeschakeld: pending.nieuweWaarde }
                         : pending.type === 'verkoop_autoboeken'
                           ? { verkoop_autoboeken_ingeschakeld: pending.nieuweWaarde }
+                          : pending.type === 'is_vastgoed'
+                            ? {
+                                is_vastgoed: pending.nieuweWaarde,
+                                // UIT neemt verkoop-autoboeken server-side mee uit (409-regel).
+                                ...(pending.nieuweWaarde ? {} : { verkoop_autoboeken_ingeschakeld: false }),
+                              }
                           : pending.type === 'eigenaar'
                             ? { eigenaar_gebruiker_id: pending.eigenaarId ?? null }
                             : { project_verplicht: pending.nieuweWaarde }),
@@ -705,6 +729,7 @@ export function InstellingenScreen() {
                 <th>Project verplicht bij boeken</th>
                 <th>Boeken ingeschakeld</th>
                 <th>AI-extractie (AVG-gate)</th>
+                <th>Vastgoed-koppeling (Vastly)</th>
                 <th>Autoboeken Vastly-verkoop</th>
                 <th>Uren &amp; meerwerk</th>
               </tr>
@@ -824,6 +849,25 @@ export function InstellingenScreen() {
                         }
                       />
                       {a.ai_extractie_ingeschakeld ? 'aan' : 'uit'}
+                    </label>
+                  </td>
+                  <td>
+                    {/* Avondrun 26-08 (S2 R1): is_vastgoed als Beheerder-toggle — vóór 26-08 alleen via de DB. */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
+                      <Switch
+                        aria-label={`Vastgoed-koppeling voor ${a.naam}`}
+                        checked={a.is_vastgoed}
+                        onChange={(e) =>
+                          setPending({
+                            type: 'is_vastgoed',
+                            administratieId: a.id,
+                            naam: a.naam,
+                            nieuweWaarde: e.target.checked,
+                            verkoopAutoboekenAan: a.verkoop_autoboeken_ingeschakeld,
+                          })
+                        }
+                      />
+                      {a.is_vastgoed ? 'aan' : 'uit'}
                     </label>
                   </td>
                   <td>

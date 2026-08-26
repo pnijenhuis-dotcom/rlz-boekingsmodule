@@ -448,6 +448,14 @@ export interface BoekenIngeschakeldDto {
   ingeschakeld: boolean
 }
 
+/** Resultaat van de vastgoed-toggle (avondrun 26-08, PATCH /administraties/{id}/is-vastgoed):
+ * UIT neemt verkoop-autoboeken zichtbaar mee uit — de server meldt dat expliciet. */
+export interface IsVastgoedResultaatDto {
+  is_vastgoed: boolean
+  verkoop_autoboeken_ingeschakeld: boolean
+  verkoop_autoboeken_uitgezet: boolean
+}
+
 export interface AdministratieInstellingenDto {
   id: string
   naam: string
@@ -455,8 +463,9 @@ export interface AdministratieInstellingenDto {
   project_verplicht: boolean
   ai_extractie_ingeschakeld: boolean
   eigenaar_gebruiker_id: string | null
-  /** Verkoop-autoboeken (migratie 0051): de schakelaar bestaat alleen voor
-   * vastgoed-administraties — daarbuiten toont de kolom een streepje. */
+  /** Vastgoed-koppeling (Beheerder-toggle sinds 26-08, S2-draaiboek R1): stuurt de
+   * factuur_geboekt-/gestorneerd-events naar Vastly, het VASTLY-VERKOOP-boekpad en route A.
+   * Verkoop-autoboeken (migratie 0051) bestaat alleen bij is_vastgoed — daarbuiten een streepje. */
   is_vastgoed: boolean
   verkoop_autoboeken_ingeschakeld: boolean
   /** Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie. */

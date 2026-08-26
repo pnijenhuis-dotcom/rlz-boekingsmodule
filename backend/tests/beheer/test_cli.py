@@ -108,3 +108,37 @@ class TestBoekenStatus:
 
         assert exitcode == 0
         assert "geen administraties" in uit.out
+
+
+class TestIsVastgoedAanUit:
+    """Avondrun 26-08: begeleide terugval naast de UI-toggle (S2-draaiboek R1)."""
+
+    def test_aan_en_uit_met_zichtbare_verkoop_melding(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        exitcode = cli.main(
+            ["is-vastgoed-aan", "--administratie-id", str(administratie_id), "--beheerder-id", str(beheerder_id)]
+        )
+        uit = capsys.readouterr()
+        assert exitcode == 0
+        assert "is_vastgoed=True" in uit.out
+        assert service.haal_is_vastgoed_op(administratie_id=administratie_id) is True
+        service.zet_verkoop_autoboeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+        )
+
+        exitcode = cli.main(
+            ["is-vastgoed-uit", "--administratie-id", str(administratie_id), "--beheerder-id", str(beheerder_id)]
+        )
+        uit = capsys.readouterr()
+        assert exitcode == 0
+        assert "is_vastgoed=False" in uit.out
+        assert "verkoop_autoboeken_ingeschakeld is mee UIT gezet" in uit.out
+        assert service.haal_verkoop_autoboeken_ingeschakeld_op(administratie_id=administratie_id) is False
+
+    def test_onbekende_administratie_exit_1(self, beheerder_id: uuid.UUID, capsys: pytest.CaptureFixture[str]) -> None:
+        exitcode = cli.main(
+            ["is-vastgoed-aan", "--administratie-id", str(uuid.uuid4()), "--beheerder-id", str(beheerder_id)]
+        )
+        assert exitcode == 1
+        assert "FOUT" in capsys.readouterr().err

@@ -118,6 +118,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/auth/gebruikers/{DUMMY_ID}/open-werk"),  # open-werk-telling vóór archiveren
         ("GET", f"/uren/kantoor/stand?administratie_id={aid}"),  # uren kantoorkant
         ("GET", f"/projecten/{aid}"),  # projectenmodule kantoor (22-08)
+        ("PATCH", f"/administraties/{aid}/is-vastgoed"),  # vastgoed-toggle (avondrun 26-08, beheerder-only)
+        ("POST", f"/verzamelbak/{DUMMY_ID}/toewijzen"),  # verzamelbak-actie (idempotent sinds 26-08)
     ]
 
 
@@ -191,7 +193,7 @@ class TestKantoorBlijftWerken:
 
     def test_kantoor_endpoints_geen_403_rolpoort(self, boekhouder, administratie_id):
         for methode, pad in _kantoor_endpoints(administratie_id):
-            if pad.startswith("/auth/gebruikers") or pad.startswith("/uren/kantoor"):
+            if pad.startswith("/auth/gebruikers") or pad.startswith("/uren/kantoor") or pad.endswith("/is-vastgoed"):
                 # Beheerder-only resp. module-recht 'Meerwerk & urenstaten': 403 voor een
                 # boekhouder zónder dat recht is correct bestaand gedrag, geen rolpoort-regressie.
                 continue

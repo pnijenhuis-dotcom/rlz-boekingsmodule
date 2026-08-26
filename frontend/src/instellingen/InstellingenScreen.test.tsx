@@ -101,6 +101,13 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body })
         return Promise.resolve(jsonResponse(body))
       }
+      if (url.endsWith('/is-vastgoed') && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body)) as { is_vastgoed: boolean }
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(
+          jsonResponse({ is_vastgoed: body.is_vastgoed, verkoop_autoboeken_ingeschakeld: false, verkoop_autoboeken_uitgezet: !body.is_vastgoed }),
+        )
+      }
       if (url.endsWith('/verkoop-autoboeken-instelling') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as unknown
         opties.putAanroepen?.push({ url, body })
@@ -274,6 +281,50 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     expect(putAanroepen[0].url).toContain(`/administraties/${ADMINISTRATIE_ID}/boeken-instelling`)
     expect(putAanroepen[0].body).toEqual({ ingeschakeld: true })
     await waitFor(() => expect(boekenToggle).toBeChecked())
+  })
+
+  it('vastgoed-koppeling (avondrun 26-08): toggle met consequentie-dialoog, bevestigen PATCHt; UIT neemt verkoop-autoboeken mee', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [
+        administratie({ naam: 'Rubicon Investments B.V.' }),
+        administratie({
+          id: 'aaaaaaaa-0000-0000-0000-000000000002',
+          naam: 'Molenhof B.V.',
+          is_vastgoed: true,
+          verkoop_autoboeken_ingeschakeld: true,
+        }),
+      ],
+      putAanroepen,
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getAllByText('Rubicon Investments B.V.').length).toBeGreaterThan(0))
+
+    // AAN: dialoog benoemt de events die gaan lopen; pas ná bevestigen een PATCH.
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Vastgoed-koppeling voor Rubicon Investments B.V.' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText(/factuur_geboekt- en factuur_gestorneerd-events naar Vastly gaan per direct lopen/)).toBeInTheDocument()
+    expect(putAanroepen).toHaveLength(0)
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(putAanroepen).toHaveLength(1))
+    expect(putAanroepen[0].url).toBe(`/administraties/${ADMINISTRATIE_ID}/is-vastgoed`)
+    expect(putAanroepen[0].body).toEqual({ is_vastgoed: true })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('checkbox', { name: 'Vastgoed-koppeling voor Rubicon Investments B.V.' })).toBeChecked()
+    // Ná AAN verschijnt de verkoop-autoboeken-schakelaar voor deze administratie.
+    expect(screen.getByRole('checkbox', { name: 'Autoboeken Vastly-verkoop voor Rubicon Investments B.V.' })).toBeInTheDocument()
+
+    // UIT op een administratie mét verkoop-autoboeken aan: dialoog zegt dat die MEE UIT gaat.
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Vastgoed-koppeling voor Molenhof B.V.' }))
+    expect(screen.getByText(/Autoboeken Vastly-verkoop staat aan en gaat MEE UIT/)).toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(putAanroepen).toHaveLength(2))
+    expect(putAanroepen[1].body).toEqual({ is_vastgoed: false })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('checkbox', { name: 'Vastgoed-koppeling voor Molenhof B.V.' })).not.toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: 'Autoboeken Vastly-verkoop voor Molenhof B.V.' })).not.toBeInTheDocument()
   })
 
   it('verkoop-autoboeken: schakelaar alleen bij vastgoed-administraties, bevestigen PUT de instelling', async () => {

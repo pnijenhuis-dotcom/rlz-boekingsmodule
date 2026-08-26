@@ -64,6 +64,19 @@ class VerkoopAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class IsVastgoedDto(StrikteInvoer):
+    is_vastgoed: bool
+
+
+class IsVastgoedResultaatDto(BaseModel):
+    """Resultaat van de vastgoed-toggle (avondrun 26-08): de nieuwe vlag + of verkoop-autoboeken
+    mee uit ging (409-regel: die opt-in bestaat alleen bij is_vastgoed) — zichtbaar, nooit stil."""
+
+    is_vastgoed: bool
+    verkoop_autoboeken_ingeschakeld: bool
+    verkoop_autoboeken_uitgezet: bool
+
+
 class AdministratieInstellingenDto(BaseModel):
     """Eén rij in het instellingen-scherm (design-pass taak 3) — dezelfde twee schakelaars als
     de losse per-administratie GET/PUT-endpoints hierboven, nu in één keer voor de hele lijst."""

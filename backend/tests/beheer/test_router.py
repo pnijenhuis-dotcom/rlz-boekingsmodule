@@ -129,3 +129,60 @@ def test_beheerder_kan_intake_ai_zetten_en_lezen(beheerder_id: uuid.UUID) -> Non
 
     resp = client.get("/instellingen/intake-ai", headers=headers)
     assert resp.json() == {"ingeschakeld": True}
+
+
+PAD = "/administraties"
+
+
+class TestIsVastgoedEndpoint:
+    """Avondrun 26-08: PATCH /administraties/{id}/is-vastgoed — Beheerder-only (router-brede
+    kantoorpoort + require_beheerder), 404 op onbekend, verkoop-autoboeken zichtbaar mee uit."""
+
+    def test_niet_beheerder_403(self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        assert client.get(f"/administraties/{administratie_id}/is-vastgoed", headers=headers).status_code == 403
+        resp = client.patch(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers, json={"is_vastgoed": True})
+        assert resp.status_code == 403
+
+    def test_beheerder_zet_en_leest(self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        headers = _bearer(beheerder_id, rol="beheerder")
+        resp = client.patch(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers, json={"is_vastgoed": True})
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            "is_vastgoed": True,
+            "verkoop_autoboeken_ingeschakeld": False,
+            "verkoop_autoboeken_uitgezet": False,
+        }
+        gelezen = client.get(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers).json()
+        assert gelezen["is_vastgoed"] is True
+        lijst = client.get("/instellingen/administraties", headers=headers).json()["administraties"]
+        assert next(r for r in lijst if r["id"] == str(administratie_id))["is_vastgoed"] is True
+
+    def test_uit_neemt_verkoop_autoboeken_mee(self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        headers = _bearer(beheerder_id, rol="beheerder")
+        client.patch(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers, json={"is_vastgoed": True})
+        r = client.put(
+            f"{PAD}/{administratie_id}/verkoop-autoboeken-instelling", headers=headers, json={"ingeschakeld": True}
+        )
+        assert r.status_code == 200, r.text
+        resp = client.patch(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers, json={"is_vastgoed": False})
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            "is_vastgoed": False,
+            "verkoop_autoboeken_ingeschakeld": False,
+            "verkoop_autoboeken_uitgezet": True,
+        }
+        # De 409-regel blijft: opnieuw aanzetten zonder is_vastgoed weigert.
+        r = client.put(
+            f"{PAD}/{administratie_id}/verkoop-autoboeken-instelling", headers=headers, json={"ingeschakeld": True}
+        )
+        assert r.status_code == 409
+
+    def test_onbekende_administratie_404_en_strikte_invoer_422(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        headers = _bearer(beheerder_id, rol="beheerder")
+        onbekend = client.patch(f"{PAD}/{uuid.uuid4()}/is-vastgoed", headers=headers, json={"is_vastgoed": True})
+        assert onbekend.status_code == 404
+        verkeerd = client.patch(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers, json={"ingeschakeld": True})
+        assert verkeerd.status_code == 422

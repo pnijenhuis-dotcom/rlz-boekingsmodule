@@ -2,6 +2,7 @@ import { apiJson } from '../api/client'
 import type {
   AdministratieInstellingenLijstDto,
   BoekenIngeschakeldDto,
+  IsVastgoedResultaatDto,
   LeverancierAutoboekenDto,
   LeverancierAutoboekenLijstDto,
 } from '../api/types'
@@ -99,6 +100,16 @@ export function zetVerkoopAutoboekenInstelling(administratieId: string, ingescha
   return apiJson(`/administraties/${administratieId}/verkoop-autoboeken-instelling`, {
     ...PUT_JSON,
     body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
+/** Vastgoed-koppeling per administratie (avondrun 26-08, S2 R1) — Beheerder-only; UIT neemt
+ * verkoop-autoboeken server-side mee uit (zichtbaar in het resultaat). */
+export function zetIsVastgoed(administratieId: string, isVastgoed: boolean): Promise<IsVastgoedResultaatDto> {
+  return apiJson<IsVastgoedResultaatDto>(`/administraties/${administratieId}/is-vastgoed`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_vastgoed: isVastgoed }),
   })
 }
 

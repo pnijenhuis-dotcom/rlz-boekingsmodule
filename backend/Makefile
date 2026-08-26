@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -170,6 +170,15 @@ afgeletterd-event-aan: check-versions
 
 afgeletterd-event-uit: check-versions
 	.venv/bin/python -m app.cli afgeletterd-event-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+# Vastgoed-koppeling per administratie (S2-draaiboek R1; UI-toggle op Instellingen › Administraties
+# is de hoofdroute, dit is de begeleide terugval). UIT neemt verkoop-autoboeken zichtbaar mee uit.
+# Voorbeeld: make is-vastgoed-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
+is-vastgoed-aan: check-versions
+	.venv/bin/python -m app.cli is-vastgoed-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+is-vastgoed-uit: check-versions
+	.venv/bin/python -m app.cli is-vastgoed-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
 
 # Eenmalig: de bestaande .env-logins de credential-store in. Voorbeeld:
 # make import-env-credentials BEHEERDER_ID=<uuid>

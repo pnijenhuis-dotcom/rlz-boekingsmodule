@@ -422,6 +422,77 @@ def zet_verkoop_autoboeken_ingeschakeld(
 
 
 @dataclass(frozen=True)
+class IsVastgoedResultaat:
+    """Uitkomst van `zet_is_vastgoed`: de nieuwe vlag + wat er aan opt-ins mee uitging."""
+
+    is_vastgoed: bool
+    verkoop_autoboeken_ingeschakeld: bool
+    verkoop_autoboeken_uitgezet: bool
+
+
+def haal_is_vastgoed_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.is_vastgoed
+
+
+def zet_is_vastgoed(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, is_vastgoed: bool) -> IsVastgoedResultaat:
+    """Vastgoed-koppeling per administratie (avondrun 26-08, S2-draaiboek R1 — tot dan alleen via
+    de DB gezet). Beheerder-only (router/CLI). De vlag stuurt uitsluitend BESTAANDE poorten: de
+    outbox-rijen `factuur_geboekt`/`factuur_gestorneerd` ontstaan alleen bij is_vastgoed
+    (documenten/boeken.py, verkoop/boeken.py, doorbelasting-spiegel), de afleveraar assert het
+    nogmaals, route A (projectaanvragen) is er hard op gescoped en het VASTLY-VERKOOP-boekpad
+    vuurt zijn webhook alleen dan. Geen andere semantiek; de tier-vlag
+    `afgeletterd_event_ingeschakeld` blijft onaangeroerd (besluit 0018 — aparte kolom).
+
+    UIT zetten neemt `verkoop_autoboeken_ingeschakeld` mee UIT (de 409-regel: die opt-in kan
+    alleen bestaan bij is_vastgoed — een slapende opt-in zou anders bij een latere her-activering
+    stil weer gaan boeken). Dat gebeurt ZICHTBAAR: eigen audit_event + in het resultaat, nooit
+    stil. Élke aanroep wordt geauditeerd (oud→nieuw), ook een no-op — zelfde lijn als de andere
+    toggles (test_elke_wijziging_wordt_geaudit)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.is_vastgoed
+        administratie.is_vastgoed = is_vastgoed
+        correlatie_id = uuid.uuid4()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="is_vastgoed_gewijzigd",
+            correlatie_id=correlatie_id,
+            oude_waarde={"is_vastgoed": oud},
+            nieuwe_waarde={"is_vastgoed": is_vastgoed},
+        )
+        verkoop_uitgezet = False
+        if not is_vastgoed and administratie.verkoop_autoboeken_ingeschakeld:
+            administratie.verkoop_autoboeken_ingeschakeld = False
+            verkoop_uitgezet = True
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="platform",
+                tabel="administratie",
+                record_id=administratie_id,
+                actie="verkoop_autoboeken_ingeschakeld_gewijzigd",
+                correlatie_id=correlatie_id,
+                oude_waarde={"verkoop_autoboeken_ingeschakeld": True},
+                nieuwe_waarde={"verkoop_autoboeken_ingeschakeld": False, "reden": "is_vastgoed uitgezet"},
+            )
+        return IsVastgoedResultaat(
+            is_vastgoed=is_vastgoed,
+            verkoop_autoboeken_ingeschakeld=administratie.verkoop_autoboeken_ingeschakeld,
+            verkoop_autoboeken_uitgezet=verkoop_uitgezet,
+        )
+
+
+@dataclass(frozen=True)
 class Medewerker:
     id: uuid.UUID
     naam: str
