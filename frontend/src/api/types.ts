@@ -348,6 +348,9 @@ export interface BoekvoorstelRegelDto {
   netto_bedrag: string | null
   btw_bedrag: string | null
   omschrijving: string | null
+  /** Herkomst van de btw-code (feedbackronde 26-08 punt 3): 'factuur' = door code afgeleid uit
+   * netto/btw van de gelezen regel (prefill); null = leeg, of van de mens/het geheugen. */
+  btw_bron?: string | null
 }
 
 export interface BoekvoorstelDto {
@@ -365,6 +368,9 @@ export interface BoekvoorstelDto {
   regels_samenvoegen: boolean
   samenvoegen_toegestaan: boolean
   samengevoegde_regel: BoekvoorstelRegelDto | null
+  /** Letterlijke "btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — HINT bij een
+   * 0%-regel zonder btw-code, nooit een invulling. */
+  btw_verlegd_vermelding?: string | null
 }
 
 export interface GeheugenVeldVoorstelDto {
@@ -445,6 +451,11 @@ export interface AdministratieInstellingenDto {
   uren_meerwerk_ingeschakeld: boolean
   /** Signaal >N uur per dag (A6, migratie 0072) — drempel per administratie, default 12. */
   uren_dagmax_uren: string
+  /** Koppelstand (wizard 26-08 punt 5): RLZ-id, webservice-gebruiker (null = geen credential —
+   * nooit het wachtwoord) en of de laatste rechten-probe groen was (null = nog nooit). */
+  rlz_admin_id?: string | null
+  webservice_username?: string | null
+  probe_groen?: boolean | null
 }
 
 export interface AdministratieInstellingenLijstDto {

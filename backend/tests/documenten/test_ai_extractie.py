@@ -192,7 +192,9 @@ class TestAiVoorstel:
         assert str(data.totaalbedrag) == "178.50"
         assert len(data.regels) == 2
         assert data.regels[0].taxrate_id == taxrate_hoog  # 21% uniek uit de cache
+        assert data.regels[0].btw_bron == "factuur"  # herkomst zichtbaar per veld (punt 3, 26-08)
         assert data.regels[1].taxrate_id is None  # 15% bestaat niet in de cache — geen gok
+        assert data.regels[1].btw_bron is None
         assert all(regel.ledger_id is None for regel in data.regels)  # GB pas met boekingsgeheugen
 
     def test_voorstel_boekt_nooit_automatisch(

@@ -32,6 +32,31 @@ class VendorKandidaat:
 class TaxRateKandidaat:
     id: uuid.UUID
     percentage: Decimal | None
+    # RLZ-vlaggen uit TaxRateCache.brondata (feedbackronde 26-08 punt 3). `is_favoriet` =
+    # RLZ's eigen `IsFavorite` — de deterministische tiebreak tussen tarieven met hetzélfde
+    # percentage ("NL, Hoog Tarief" vs "NL, Hoog Tarief (vooruit)" zijn beide 21%; in alle 14
+    # gesyncte administraties draagt precies één van beide de vlag). Verlegd/vrijgesteld/gemengd
+    # ("BTW-bedrag zelf specificeren") doen nooit mee in de bedrag-afleiding.
+    is_favoriet: bool = False
+    is_verlegd: bool = False
+    is_vrijgesteld: bool = False
+    is_gemengd: bool = False
+
+
+@dataclass(frozen=True)
+class BtwAfleiding:
+    """Uitkomst van `leid_btw_af`: het tarief dat deterministisch uit netto/btw van de regel
+    volgt. `taxrate_id` None = niets invullen (0/onbepaalbaar/meerduidig) — dan geldt de
+    bestaande volgorde (boekingsgeheugen per leverancier, anders mens). `bron` is altijd
+    "factuur": een factuur-afgeleide waarde is géén seed-only-geheugenwaarde en mag dus als
+    ingevuld voorstel staan; de harde checks blijven de poort."""
+
+    taxrate_id: uuid.UUID | None
+    percentage: Decimal | None
+    bron: str | None
+    # Waarom er níet ingevuld is (leesbaar in tests/tijdlijn): "btw_nul", "geen_match",
+    # "meerduidig"; None bij een geslaagde afleiding.
+    reden: str | None = None
 
 
 def parse_bedrag(waarde: str | None) -> Decimal | None:
@@ -110,28 +135,60 @@ def match_vendor(
     return besten[0].id, "fuzzy"
 
 
-def match_taxrate(
-    netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]
-) -> uuid.UUID | None:
-    """Btw-code-suggestie uitsluitend uit de sync-cache: het btw-percentage dat deterministisch
-    uit netto/btw van de regel volgt, gematcht op TaxRateCache.percentage (fractie, bv. 0.21).
-    Alleen bij precies één passende kandidaat — anders geen suggestie. Verlegd/vrijgesteld (btw
-    0 op de regel) krijgt bewust géén automatische suggestie: 0% kan meerdere codes betekenen
-    (verlegd, vrijgesteld, 0%-tarief) en dat onderscheid is aangifte-kritisch (CLAUDE.md)."""
-    if netto is None or btw is None or netto == 0 or btw == 0:
-        return None
+def leid_btw_af(netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]) -> BtwAfleiding:
+    """Btw-code deterministisch uit de regel afleiden (CODE, geen AI — feedbackronde 26-08 punt 3):
+    netto × tarief ≈ btw-bedrag (tolerantie ±1 cent per regel) tegen de gesyncte TaxRates van de
+    administratie (percentage = fractie, bv. 0.21 — zie app/sync/btw.py voor de eenheidsregel).
+
+    HARD: bij 0/onbepaalbaar/meerduidig NOOIT invullen. 0% is ambigu (0%-tarief/vrijgesteld/
+    verlegd — de bouwketen-norm is verlegd) en aangifte-kritisch; daar wint het boekingsgeheugen
+    per leverancier, anders kiest de mens. Negatieve regels (creditnota) rekenen gewoon mee:
+    −100 × 0,21 = −21.
+
+    Meerdere tarieven met hetzélfde percentage (RLZ: "Hoog Tarief" én "Hoog Tarief (vooruit)"):
+    precies één RLZ-favoriet → die; anders meerduidig = leeg. Twee verschillende percentages die
+    beide binnen de tolerantie vallen (alleen bij centbedragen) = meerduidig = leeg."""
+    if netto is None or btw is None or netto == 0:
+        return BtwAfleiding(taxrate_id=None, percentage=None, bron=None, reden="onbepaalbaar")
+    if btw == 0:
+        return BtwAfleiding(taxrate_id=None, percentage=None, bron=None, reden="btw_nul")
     passend = [
         kandidaat
         for kandidaat in kandidaten
         if kandidaat.percentage is not None
-        and kandidaat.percentage != 0
+        and kandidaat.percentage > 0
+        and not (kandidaat.is_verlegd or kandidaat.is_vrijgesteld or kandidaat.is_gemengd)
         and abs(netto * kandidaat.percentage - btw) <= _ROND_TOLERANTIE
     ]
+    if not passend:
+        return BtwAfleiding(taxrate_id=None, percentage=None, bron=None, reden="geen_match")
+    percentages = {kandidaat.percentage for kandidaat in passend}
+    if len(percentages) > 1:
+        return BtwAfleiding(taxrate_id=None, percentage=None, bron=None, reden="meerduidig")
+    percentage = next(iter(percentages))
     if len(passend) == 1:
-        return passend[0].id
-    # Nul of meerdere passende codes (bv. 21% inkoop én 21% verkoop als aparte TaxRates): geen
-    # gok — de controleur kiest zelf uit de combobox.
-    return None
+        return BtwAfleiding(taxrate_id=passend[0].id, percentage=percentage, bron="factuur")
+    favorieten = [kandidaat for kandidaat in passend if kandidaat.is_favoriet]
+    if len(favorieten) == 1:
+        return BtwAfleiding(taxrate_id=favorieten[0].id, percentage=percentage, bron="factuur")
+    # Nul of meerdere favorieten met hetzelfde percentage: geen gok — de controleur kiest.
+    return BtwAfleiding(taxrate_id=None, percentage=percentage, bron=None, reden="meerduidig")
+
+
+def match_taxrate(
+    netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]
+) -> uuid.UUID | None:
+    """Alleen het tarief-id uit `leid_btw_af` (compat-vorm voor bestaande aanroepers/tests)."""
+    return leid_btw_af(netto, btw, kandidaten).taxrate_id
+
+
+def is_verlegd_vermelding(tekst: str | None) -> bool:
+    """Deterministische toets of een door de AI vóórgelezen kop-tekst een btw-verleggings-
+    vermelding is (hint voor de controleur — nooit een invulling)."""
+    if not tekst:
+        return False
+    genormaliseerd = tekst.lower()
+    return "verleg" in genormaliseerd or "verlegd" in genormaliseerd or "reverse charge" in genormaliseerd
 
 
 def _bedrag_str(bedrag: Decimal | None) -> str | None:
@@ -201,6 +258,11 @@ def bouw_veldvoorstel(
     totaal_excl = bedrag_van("totaal_excl")
     totaal_incl = bedrag_van("totaal_incl")
     btw_bedrag = bedrag_van("btw_bedrag")
+    # "Btw verlegd"-vermelding (punt 3, 26-08): de AI leest de letterlijke tekst voor, code
+    # toetst of het een verleggings-vermelding is. Uitsluitend een HINT voor de controleur —
+    # 0% blijft ambigu en wordt nooit vanuit deze vermelding ingevuld.
+    verlegd_ruw = tekst_van("btw_verlegd_vermelding")
+    btw_verlegd_vermelding = verlegd_ruw if is_verlegd_vermelding(verlegd_ruw) else None
 
     vendor_id, vendor_match = match_vendor(leverancier_naam, vendors)
 
@@ -218,14 +280,18 @@ def bouw_veldvoorstel(
         if netto is None:
             regelsom_compleet = False
         regelsom += (netto or Decimal(0)) + (btw or Decimal(0))
-        taxrate_id = match_taxrate(netto, btw, taxrates)
+        afleiding = leid_btw_af(netto, btw, taxrates)
         regels.append(
             {
                 "omschrijving": regel.omschrijving,
                 "netto_bedrag": _bedrag_str(netto),
                 "btw_bedrag": _bedrag_str(btw),
                 "hoeveelheid": regel.hoeveelheid,
-                "taxrate_id": str(taxrate_id) if taxrate_id else None,
+                "taxrate_id": str(afleiding.taxrate_id) if afleiding.taxrate_id else None,
+                # Herkomst van de btw-code (punt 3, 26-08): "factuur" = deterministisch uit
+                # netto/btw afgeleid; None = leeg gelaten (0/onbepaalbaar/meerduidig — reden erbij).
+                "btw_bron": afleiding.bron,
+                "btw_afleiding_reden": afleiding.reden,
             }
         )
         regel_zekerheid.append(regel.zekerheid)
@@ -246,6 +312,7 @@ def bouw_veldvoorstel(
         "totaal_excl": _bedrag_str(totaal_excl),
         "totaal_incl": _bedrag_str(totaal_incl),
         "btw_bedrag": _bedrag_str(btw_bedrag),
+        "btw_verlegd_vermelding": btw_verlegd_vermelding,
         "iban": iban,
         "regelaantal": len(regels),
         "regels": regels,

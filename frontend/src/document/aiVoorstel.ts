@@ -8,6 +8,8 @@ export interface AiRegelVoorstel {
   btw_bedrag: string | null
   hoeveelheid: string | null
   taxrate_id: string | null
+  /** 'factuur' als de btw-code deterministisch uit netto/btw is afgeleid (punt 3, 26-08). */
+  btw_bron?: string | null
 }
 
 export interface AiControle {
@@ -31,6 +33,8 @@ export interface AiVoorstel {
   totaal_excl: string | null
   totaal_incl: string | null
   btw_bedrag: string | null
+  /** Letterlijke "btw verlegd"-vermelding, alleen als code die als verleggingstekst herkent. */
+  btw_verlegd_vermelding?: string | null
   regelaantal: number
   regels: AiRegelVoorstel[]
   zekerheid: Record<string, number>

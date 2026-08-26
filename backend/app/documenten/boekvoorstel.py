@@ -70,6 +70,11 @@ class BoekvoorstelRegelData:
     # regels; prefills (AI/UBL, nog niet opgeslagen) hebben er geen. De doorbelasting-verdeling
     # (blok 3) sleutelt hierop (bron_regel_id), en die bestaat alleen op GEBOEKTE documenten.
     id: uuid.UUID | None = None
+    # Herkomst van de btw-code (feedbackronde 26-08 punt 3): "factuur" = deterministisch uit
+    # netto/btw van de gelezen regel afgeleid (prefill, nog niet opgeslagen). None = leeg of van
+    # de mens/het geheugen. Alleen gevuld op prefill-regels — ná opslaan is de keuze van de
+    # controleur (zelfde regel als de AI-zekerheidschips).
+    btw_bron: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +99,9 @@ class BoekvoorstelData:
     # Tegenboek-pad (migratie 0061): bepaalt het RLZ-GUID van de (her)boeking — cyclus 0 is de
     # oorspronkelijke boeking, elke "tegenboeken én opnieuw boeken" verhoogt 'm.
     boek_cyclus: int = 0
+    # "Btw verlegd"-vermelding uit de laatste extractie (punt 3, 26-08) — HINT voor de
+    # controleur bij 0%-regels, nooit een invulling. None = niets gelezen of geen veldvoorstel.
+    btw_verlegd_vermelding: str | None = None
 
 
 def _als_decimal(waarde: str | None) -> Decimal | None:
@@ -175,10 +183,16 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
             netto_bedrag=_als_decimal(regel.get("netto_bedrag")),
             btw_bedrag=_als_decimal(regel.get("btw_bedrag")),
             omschrijving=regel.get("omschrijving"),
+            btw_bron=_btw_bron(regel),
         )
         for regel in ai_regels
         if isinstance(regel, dict)
     ]
+
+
+def _btw_bron(regel: dict) -> str | None:
+    """Alleen "factuur" als de regel ook écht een afgeleide btw-code draagt."""
+    return "factuur" if regel.get("btw_bron") == "factuur" and _als_uuid(regel.get("taxrate_id")) else None
 
 
 def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
@@ -210,6 +224,7 @@ def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
 
     taxrate_ids = {r.get("taxrate_id") for r in regels}
     taxrate_id = _als_uuid(next(iter(taxrate_ids))) if len(taxrate_ids) == 1 else None
+    btw_bron = "factuur" if taxrate_id is not None and all(_btw_bron(r) == "factuur" for r in regels) else None
 
     omschrijving = None
     if regels:
@@ -227,7 +242,13 @@ def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
         netto_bedrag=netto,
         btw_bedrag=btw,
         omschrijving=omschrijving,
+        btw_bron=btw_bron,
     )
+
+
+def _verlegd_vermelding(veldvoorstel: dict | None) -> str | None:
+    waarde = veldvoorstel.get("btw_verlegd_vermelding") if veldvoorstel else None
+    return waarde if isinstance(waarde, str) and waarde else None
 
 
 def _project_verplicht(administratie_id: uuid.UUID) -> bool:
@@ -313,6 +334,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                     for r in regels
                 ],
                 boek_cyclus=bestaand.boek_cyclus,
+                btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
                 **samenvoeg_velden(bestaand.vendor_id),
             )
 
@@ -349,6 +371,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             rlz_boekstuknummer=None,
             opgeslagen=False,
             regels=_regels_prefill(veldvoorstel),
+            btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
             **samenvoeg_velden(vendor_id),
         )
 

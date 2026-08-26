@@ -326,6 +326,9 @@ class BoekvoorstelRegelDto(BaseModel):
     netto_bedrag: DecimalMetKomma | None = None
     btw_bedrag: DecimalMetKomma | None = None
     omschrijving: str | None = None
+    # Herkomst btw-code (punt 3, 26-08): "factuur" = deterministisch uit netto/btw afgeleid
+    # (prefill); None = leeg/mens/geheugen. Alleen informatief — de server negeert 'm bij opslaan.
+    btw_bron: str | None = None
 
 
 class BoekvoorstelResponse(BaseModel):
@@ -343,6 +346,8 @@ class BoekvoorstelResponse(BaseModel):
     regels_samenvoegen: bool = True
     samenvoegen_toegestaan: bool = True
     samengevoegde_regel: BoekvoorstelRegelDto | None = None
+    # Letterlijke "btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — hint bij 0%-regels.
+    btw_verlegd_vermelding: str | None = None
 
 
 class BoekvoorstelInput(StrikteInvoer):

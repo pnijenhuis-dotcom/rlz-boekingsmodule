@@ -1036,3 +1036,56 @@ describe('BoekvoorstelPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Boeken + doorbelasten ✓' })).toBeEnabled())
   })
 })
+
+describe('BoekvoorstelPanel — btw uit de scan (feedbackronde 26-08 punt 3)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: () => `local-${Math.random()}` })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('een factuur-afgeleide btw-code staat vooraf ingevuld mét herkomst-chip "uit factuur (21%)"', async () => {
+    installFetchMock({
+      taxrates: [{ id: TAXRATE_ID, naam: 'NL, Hoog Tarief', percentage: 0.21 }],
+      boekvoorstel: {
+        ...LEEG_BOEKVOORSTEL,
+        samenvoegen_toegestaan: false,
+        regels_samenvoegen: false,
+        regels: [
+          { id: null, ledger_id: null, taxrate_id: TAXRATE_ID, project_id: null, netto_bedrag: '100.00', btw_bedrag: '21.00', omschrijving: 'Steigerhout', btw_bron: 'factuur' },
+        ],
+      },
+    })
+    render(
+      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} onHersteld={() => {}} />,
+    )
+    await waitFor(() => expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue('21% · NL, Hoog Tarief'))
+    const chip = screen.getByText('uit factuur (21%)')
+    expect(chip).toHaveClass('chip', 'ok')
+  })
+
+  it('verlegd-leverancier: 0%-regel blijft leeg, de gelezen "btw verlegd"-vermelding is alleen een hint', async () => {
+    installFetchMock({
+      taxrates: [
+        { id: TAXRATE_ID, naam: 'NL, Hoog Tarief', percentage: 0.21 },
+        { id: 'ffffffff-0000-0000-0000-000000000006', naam: 'NL, BTW verlegd (hoog)', percentage: 0 },
+      ],
+      boekvoorstel: {
+        ...LEEG_BOEKVOORSTEL,
+        samenvoegen_toegestaan: false,
+        regels_samenvoegen: false,
+        btw_verlegd_vermelding: 'BTW verlegd',
+        regels: [
+          { id: null, ledger_id: null, taxrate_id: null, project_id: null, netto_bedrag: '1000.00', btw_bedrag: '0.00', omschrijving: 'Arbeid week 34', btw_bron: null },
+        ],
+      },
+    })
+    render(
+      <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} onHersteld={() => {}} />,
+    )
+    await waitFor(() => expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue(''))
+    expect(screen.getByText(/factuur vermeldt “btw verlegd” — kies de verlegd-code/)).toHaveClass('chip', 'vraag')
+    expect(screen.queryByText(/uit factuur/)).toBeNull()
+  })
+})

@@ -4,7 +4,7 @@ import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -33,9 +33,15 @@ from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
 from app.documenten.storage import DocumentOpslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
-from app.documenten.wachtrij import ExtractieWachtrij, InProcessExtractieWachtrij
+from app.documenten.wachtrij import (
+    CloudRunJobExtractieWachtrij,
+    DirecteExtractieWachtrij,
+    ExtractieWachtrij,
+    InProcessExtractieWachtrij,
+)
 from app.extractie import controle as extractie_controle
 from app.extractie import service as extractie_service
+from app.sync.btw import taxrate_vlaggen
 from app.sync.models import TaxRateCache, VendorCache
 
 logger = logging.getLogger(__name__)
@@ -51,14 +57,20 @@ def _standaard_opslag() -> DocumentOpslag:
 
 # Procesbrede default-wachtrij, lazy aangemaakt (na de eerste grote upload) — tests injecteren
 # hun eigen instantie via de `wachtrij`-parameter op upload/herextractie en raken deze nooit.
-_wachtrij: InProcessExtractieWachtrij | None = None
+_wachtrij: ExtractieWachtrij | None = None
 
 
 def _standaard_wachtrij() -> ExtractieWachtrij:
+    """Dev: in-process threadpool. Cloud (settings.extractie_wachtrij_job_resource gezet): elke
+    enqueue triggert de on-demand job rlz-extractie-wachtrij — zie wachtrij.py (punt 4, 26-08)."""
     global _wachtrij
     if _wachtrij is None:
-        _wachtrij = InProcessExtractieWachtrij(taak=verwerk_extractie_taak)
+        if settings.extractie_wachtrij_job_resource:
+            _wachtrij = CloudRunJobExtractieWachtrij(job_resource=settings.extractie_wachtrij_job_resource)
+        else:
+            _wachtrij = InProcessExtractieWachtrij(taak=verwerk_extractie_taak)
     return _wachtrij
+
 
 
 def _hash(inhoud: bytes) -> str:
@@ -334,6 +346,68 @@ def herstel_achtergebleven_extracties(*, wachtrij: ExtractieWachtrij | None = No
     return hersteld
 
 
+def verwerk_extractie_wachtrij(*, stale_na: timedelta = timedelta(minutes=15)) -> int:
+    """Job-/CLI-entrypoint (punt 4, 26-08): werk álle documenten op `extractie_wachtrij` synchroon
+    af, plus documenten die langer dan `stale_na` op `extractie_bezig` staan (gestrande worker —
+    een lopende synchrone extractie is nooit zichtbaar op bezig: die commit bezig én eind in één
+    transactie). Bewust NIET elke bezig-rij (zoals het startup-vangnet): twee job-uitvoeringen
+    kunnen elkaar overlappen (on-demand trigger + scheduler-vangnet) en mogen elkaars werk niet
+    terugzetten. Idempotent via de statusmachine; retourneert het aantal verwerkte documenten."""
+    grens = datetime.now(UTC) - stale_na
+    with scoped_session(None) as session:
+        administratie_ids = [rij.id for rij in session.scalars(select(Administratie))]
+
+    directe = DirecteExtractieWachtrij(taak=verwerk_extractie_taak)
+    for administratie_id in administratie_ids:
+        te_verwerken: list[uuid.UUID] = []
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            kandidaten = session.scalars(
+                select(Document).where(
+                    Document.administratie_id == administratie_id,
+                    Document.status.in_((DocumentStatus.EXTRACTIE_WACHTRIJ, DocumentStatus.EXTRACTIE_BEZIG)),
+                )
+            )
+            for document in kandidaten:
+                if document.status == DocumentStatus.EXTRACTIE_BEZIG:
+                    laatste = session.scalar(
+                        select(func.max(DocumentGebeurtenis.tijdstip)).where(
+                            DocumentGebeurtenis.document_id == document.id
+                        )
+                    )
+                    if laatste is not None and laatste > grens:
+                        continue  # verse bezig-run van een andere verwerker — laten staan
+                    _schrijf_overgang(
+                        session,
+                        document=document,
+                        naar=DocumentStatus.EXTRACTIE_WACHTRIJ,
+                        actor_id=SYSTEEM_ACTOR_ID,
+                        detail={"herstel": "gestrand_op_bezig"},
+                    )
+                te_verwerken.append(document.id)
+        for document_id in te_verwerken:
+            directe.enqueue(administratie_id=administratie_id, document_id=document_id)
+
+    if directe.verwerkt:
+        logger.info("Extractie-wachtrij verwerkt: %s document(en)", len(directe.verwerkt))
+    return len(directe.verwerkt)
+
+
+def _taxrate_kandidaat(rij: TaxRateCache) -> extractie_controle.TaxRateKandidaat:
+    """TaxRate-kandidaat mét RLZ-vlaggen uit brondata (punt 3, 26-08): verlegd/vrijgesteld/
+    gemengd doen niet mee in de bedrag-afleiding, `IsFavorite` is de tiebreak bij een gelijk
+    percentage. Zelfde vlag-lezing als app/sync/btw.py (`taxrate_vlaggen`)."""
+    is_verlegd, is_vrijgesteld = taxrate_vlaggen(rij.brondata)
+    brondata = rij.brondata or {}
+    return extractie_controle.TaxRateKandidaat(
+        id=rij.id,
+        percentage=rij.percentage,
+        is_favoriet=bool(brondata.get("IsFavorite")),
+        is_verlegd=is_verlegd,
+        is_vrijgesteld=is_vrijgesteld,
+        is_gemengd=bool(brondata.get("IsMixed")),
+    )
+
+
 def _ai_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> tuple[dict, bool]:
     """AI-route voor PDF's: AVG-gate → Claude-extractie (adaptieve chunking bij afkap) →
     deterministische controlelaag. De AI levert uitsluitend een voorstel (veld-suggesties met
@@ -404,7 +478,7 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
         )
     ]
     taxrates = [
-        extractie_controle.TaxRateKandidaat(id=rij.id, percentage=rij.percentage)
+        _taxrate_kandidaat(rij)
         for rij in session.scalars(
             select(TaxRateCache).where(
                 TaxRateCache.administratie_id == document.administratie_id,

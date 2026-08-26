@@ -125,6 +125,7 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
         netto_bedrag=r.netto_bedrag,
         btw_bedrag=r.btw_bedrag,
         omschrijving=r.omschrijving,
+        btw_bron=r.btw_bron,
     )
 
 
@@ -141,6 +142,7 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         regels_samenvoegen=data.regels_samenvoegen,
         samenvoegen_toegestaan=data.samenvoegen_toegestaan,
         samengevoegde_regel=_naar_regel_dto(data.samengevoegde_regel) if data.samengevoegde_regel else None,
+        btw_verlegd_vermelding=data.btw_verlegd_vermelding,
     )
 
 

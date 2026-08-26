@@ -79,6 +79,10 @@ interface RegelState {
    * één keer aangeraakt blijft het van de gebruiker. Een geladen regel met een al opgeslagen
    * btw-bedrag telt ook als "handmatig" (kan een eerdere handmatige invoer zijn geweest). */
   btwHandmatig: boolean
+  /** Herkomst van de vooringevulde btw-code (punt 3, 26-08): 'factuur' = door code afgeleid uit
+   * netto/btw van de gelezen regel. Toont de chip "uit factuur (21%)" zolang de controleur het
+   * veld niet zelf aanraakt — daarna is de keuze van de mens (zelfde regel als de AI-chip). */
+  btwBron: 'factuur' | null
   omschrijving: string
   /** Laagste AI-zekerheidsscore van de vooringevulde regelvelden (alleen bij een vers, nog niet
    * opgeslagen AI-voorstel). Elke handmatige wijziging aan de regel wist de score — dan beschrijft
@@ -108,6 +112,7 @@ function nieuweRegel(): RegelState {
     netto: '',
     btw: '',
     btwHandmatig: false,
+    btwBron: null,
     omschrijving: '',
     aiZekerheid: null,
     geheugen: null,
@@ -125,6 +130,7 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     netto: r.netto_bedrag ?? '',
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
+    btwBron: r.btw_bron === 'factuur' && r.taxrate_id ? 'factuur' : null,
     omschrijving: r.omschrijving ?? '',
     aiZekerheid,
     geheugen: null,
@@ -157,6 +163,7 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     netto: r.netto_bedrag ?? '',
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
+    btwBron: r.btw_bron === 'factuur' && r.taxrate_id ? 'factuur' : null,
     omschrijving: r.omschrijving ?? '',
     aiZekerheid: ai.regel_zekerheid[i] ?? null,
     geheugen: null,
@@ -339,6 +346,8 @@ export function BoekvoorstelPanel({
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
   // controleur, niet meer van de AI.
   const [aiChipsActief, setAiChipsActief] = useState(false)
+  // "Btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — hint bij 0%-regels zonder code.
+  const [verlegdVermelding, setVerlegdVermelding] = useState<string | null>(null)
   const [cacheVersie, setCacheVersie] = useState(0)
   const { opties: grootboekOpties, fout: grootboekFout, laden: grootboekLaden } = useGrootboekOpties(administratieId, cacheVersie)
   const { opties: taxrateOpties, fout: taxrateFout, laden: taxrateLaden } = useTaxrateOpties(administratieId, cacheVersie)
@@ -424,6 +433,7 @@ export function BoekvoorstelPanel({
         setFactuurdatum(dto.factuurdatum ?? '')
         setTotaalbedrag(dto.totaalbedrag ?? '')
         setBoekstuknummer(dto.rlz_boekstuknummer)
+        setVerlegdVermelding(dto.btw_verlegd_vermelding ?? ai?.btw_verlegd_vermelding ?? null)
 
         // Fix 3: bepaal de gesplitste én de samengevoegde variant, en welke actief start.
         const opgeslagenSamengevoegd = dto.opgeslagen && dto.regels_samenvoegen && dto.samenvoegen_toegestaan
@@ -1189,6 +1199,29 @@ export function BoekvoorstelPanel({
                         vereist
                         toonLabel={false}
                       />
+                      {regel.btwBron === 'factuur' && regel.taxrateId && !regel.handmatigeVelden.taxrateId && (
+                        <div style={{ marginTop: 4 }}>
+                          <span
+                            className="chip ok"
+                            title="Door code afgeleid uit netto- en btw-bedrag van deze factuurregel (±1 cent) tegen de RLZ-tarieven van deze administratie — geen AI, geen geheugen. De harde checks blijven de poort."
+                          >
+                            uit factuur{percentageMap[regel.taxrateId] !== undefined ? ` (${Math.round(percentageMap[regel.taxrateId] * 100)}%)` : ''}
+                          </span>
+                        </div>
+                      )}
+                      {verlegdVermelding &&
+                        regel.taxrateId === null &&
+                        !regel.handmatigeVelden.taxrateId &&
+                        (bedragAlsGetal(regel.btw) ?? 0) === 0 && (
+                          <div style={{ marginTop: 4 }}>
+                            <span
+                              className="chip vraag"
+                              title={`De factuur vermeldt: "${verlegdVermelding}". Dit is een hint — 0% kan verlegd, vrijgesteld of 0%-tarief zijn, dus de code wordt nooit automatisch ingevuld; kies zelf (of het boekingsgeheugen van deze leverancier vult 'm).`}
+                            >
+                              factuur vermeldt &ldquo;btw verlegd&rdquo; — kies de verlegd-code
+                            </span>
+                          </div>
+                        )}
                       {regel.geheugen && (
                         <GeheugenChipBlok
                           veld={regel.geheugen.btw}

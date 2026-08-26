@@ -8,6 +8,8 @@ from app.extractie.controle import (
     TaxRateKandidaat,
     VendorKandidaat,
     bouw_veldvoorstel,
+    is_verlegd_vermelding,
+    leid_btw_af,
     match_taxrate,
     match_vendor,
     parse_bedrag,
@@ -210,3 +212,116 @@ class TestBouwVeldvoorstel:
         # Boekingsgeheugen is sessie 2 — tot die tijd geen enkele GB-suggestie (geen gok).
         voorstel = bouw_veldvoorstel(_extractie(), vendors=[], taxrates=[], zekerheid_drempel=0.8)
         assert all("ledger_id" not in regel for regel in voorstel["regels"])
+
+
+class TestLeidBtwAf:
+    """Btw-code vooraf invullen uit de scan (feedbackronde 26-08 punt 3): CODE leidt per regel
+    het tarief af uit btw ÷ netto tegen de gesyncte TaxRates; 0/onbepaalbaar/meerduidig = leeg."""
+
+    def _tarieven(self) -> dict[str, TaxRateKandidaat]:
+        return {
+            "hoog": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"), is_favoriet=True),
+            "hoog_vooruit": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21")),
+            "laag": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.09"), is_favoriet=True),
+            "laag_vooruit": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.09")),
+            "verlegd": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0"), is_verlegd=True),
+            "vrijgesteld": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0"), is_vrijgesteld=True),
+            "nul": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0")),
+            "gemengd": TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0"), is_gemengd=True),
+        }
+
+    def test_21_en_9_procent_worden_afgeleid_met_bron_factuur(self) -> None:
+        t = self._tarieven()
+        kandidaten = list(t.values())
+        hoog = leid_btw_af(Decimal("100.00"), Decimal("21.00"), kandidaten)
+        assert (hoog.taxrate_id, hoog.bron, hoog.percentage) == (t["hoog"].id, "factuur", Decimal("0.21"))
+        laag = leid_btw_af(Decimal("250.00"), Decimal("22.50"), kandidaten)
+        assert (laag.taxrate_id, laag.bron) == (t["laag"].id, "factuur")
+
+    def test_dubbel_percentage_kiest_de_rlz_favoriet(self) -> None:
+        """De echte RLZ-situatie (dev-DB 26-08, 14 administraties): "NL, Hoog Tarief" én
+        "NL, Hoog Tarief (vooruit)" zijn beide 21% — vóór deze fix bleef het veld daardoor leeg."""
+        t = self._tarieven()
+        afleiding = leid_btw_af(Decimal("100.00"), Decimal("21.00"), [t["hoog_vooruit"], t["hoog"]])
+        assert afleiding.taxrate_id == t["hoog"].id
+
+    def test_dubbel_percentage_zonder_eenduidige_favoriet_blijft_leeg(self) -> None:
+        a = TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"))
+        b = TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"))
+        assert leid_btw_af(Decimal("100.00"), Decimal("21.00"), [a, b]).taxrate_id is None
+        assert leid_btw_af(Decimal("100.00"), Decimal("21.00"), [a, b]).reden == "meerduidig"
+        twee_favorieten = [
+            TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"), is_favoriet=True),
+            TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"), is_favoriet=True),
+        ]
+        assert leid_btw_af(Decimal("100.00"), Decimal("21.00"), twee_favorieten).taxrate_id is None
+
+    def test_centafronding_binnen_1_cent_matcht(self) -> None:
+        t = self._tarieven()
+        kandidaten = list(t.values())
+        # 33.33 × 0.21 = 6.9993 → factuur toont 7.00 (afgerond) én 6.99 (afgekapt): beide matchen.
+        assert leid_btw_af(Decimal("33.33"), Decimal("7.00"), kandidaten).taxrate_id == t["hoog"].id
+        assert leid_btw_af(Decimal("33.33"), Decimal("6.99"), kandidaten).taxrate_id == t["hoog"].id
+        # Meer dan 1 cent ernaast = geen match (geen gok).
+        assert leid_btw_af(Decimal("33.33"), Decimal("7.02"), kandidaten).taxrate_id is None
+
+    def test_nul_btw_blijft_leeg_ook_met_verlegd_vrijgesteld_en_nultarief_in_de_cache(self) -> None:
+        """0% is ambigu (0%-tarief/vrijgesteld/verlegd — bouwketen-norm verlegd): nooit invullen
+        vanuit de afleiding; boekingsgeheugen per leverancier wint, anders kiest de mens."""
+        t = self._tarieven()
+        afleiding = leid_btw_af(Decimal("100.00"), Decimal("0"), list(t.values()))
+        assert afleiding.taxrate_id is None and afleiding.bron is None and afleiding.reden == "btw_nul"
+        assert leid_btw_af(Decimal("100.00"), Decimal("0.00"), [t["verlegd"]]).taxrate_id is None
+
+    def test_meerdere_tarieven_in_een_factuur_per_regel(self) -> None:
+        t = self._tarieven()
+        kandidaten = list(t.values())
+        regels = [(Decimal("100.00"), Decimal("21.00")), (Decimal("50.00"), Decimal("4.50")), (Decimal("10.00"), Decimal("0"))]
+        uitkomsten = [leid_btw_af(n, b, kandidaten).taxrate_id for n, b in regels]
+        assert uitkomsten == [t["hoog"].id, t["laag"].id, None]
+
+    def test_negatieve_regel_creditnota(self) -> None:
+        t = self._tarieven()
+        kandidaten = list(t.values())
+        assert leid_btw_af(Decimal("-100.00"), Decimal("-21.00"), kandidaten).taxrate_id == t["hoog"].id
+        assert leid_btw_af(Decimal("-100.00"), Decimal("-9.00"), kandidaten).taxrate_id == t["laag"].id
+        # Tekenfout op de factuur (netto negatief, btw positief) matcht niets — geen gok.
+        assert leid_btw_af(Decimal("-100.00"), Decimal("21.00"), kandidaten).taxrate_id is None
+
+    def test_onbepaalbaar_zonder_bedragen(self) -> None:
+        t = self._tarieven()
+        assert leid_btw_af(None, Decimal("21.00"), list(t.values())).reden == "onbepaalbaar"
+        assert leid_btw_af(Decimal("100.00"), None, list(t.values())).reden == "onbepaalbaar"
+        assert leid_btw_af(Decimal("0"), Decimal("0"), list(t.values())).taxrate_id is None
+
+    def test_afwijkend_percentage_matcht_niets(self) -> None:
+        t = self._tarieven()
+        assert leid_btw_af(Decimal("100.00"), Decimal("15.00"), list(t.values())).reden == "geen_match"
+
+    def test_veldvoorstel_draagt_btw_bron_en_verlegd_hint(self) -> None:
+        t = self._tarieven()
+        extractie = AiFactuurExtractie(
+            kop={
+                "leverancier_naam": _veld("Onderaannemer X"),
+                "totaal_excl": _veld("110.00"),
+                "totaal_incl": _veld("131.00"),
+                "btw_verlegd_vermelding": _veld("BTW verlegd naar afnemer art. 12 lid 5"),
+            },
+            regels=[_regel(netto="100.00", btw="21.00"), _regel(omschrijving="Arbeid", netto="10.00", btw="0")],
+            bsn_verwijderd=0,
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert voorstel["regels"][0]["taxrate_id"] == str(t["hoog"].id)
+        assert voorstel["regels"][0]["btw_bron"] == "factuur"
+        assert voorstel["regels"][1]["taxrate_id"] is None
+        assert voorstel["regels"][1]["btw_bron"] is None
+        assert voorstel["regels"][1]["btw_afleiding_reden"] == "btw_nul"
+        # De verlegd-vermelding is een hint (tekst), geen ingevulde code.
+        assert voorstel["btw_verlegd_vermelding"] == "BTW verlegd naar afnemer art. 12 lid 5"
+
+    def test_verlegd_vermelding_alleen_bij_echte_verleggingstekst(self) -> None:
+        assert is_verlegd_vermelding("BTW verlegd") is True
+        assert is_verlegd_vermelding("Verleggingsregeling van toepassing") is True
+        assert is_verlegd_vermelding("VAT reverse charge") is True
+        assert is_verlegd_vermelding("Betaling binnen 30 dagen") is False
+        assert is_verlegd_vermelding(None) is False

@@ -32,6 +32,11 @@ _KOP_KEYS: dict[str, str] = {
     # IBAN-wissel-fraudecontrole (app/documenten/checks.py::check_iban_wissel). Validatie is
     # deterministisch (app/extractie/iban.py, mod-97) in de controlelaag — nooit de AI.
     "iban": "iban",
+    # Letterlijke btw-verleggingsvermelding op de factuur ("BTW verlegd", "verleggingsregeling",
+    # "reverse charge") — punt 3 feedbackronde 26-08. Alleen voorlezen; de controlelaag toetst
+    # deterministisch (controle.is_verlegd_vermelding) en de UI toont het als HINT, nooit als
+    # ingevulde btw-code (0% is ambigu — aangifte-kritisch).
+    "vl": "btw_verlegd_vermelding",
 }
 
 _STRING_OF_NULL: dict[str, Any] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
@@ -104,7 +109,9 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
 - kop: lev=leveranciersnaam, nr=factuurnummer, dat=factuurdatum, verval=vervaldatum, val=valuta,
   excl=totaal exclusief btw, incl=totaal inclusief btw, btw=btw-bedrag, iban=IBAN-rekeningnummer waarop
   de leverancier betaald wil worden (betaalinformatie op de factuur; staan er meerdere, geef dan het
-  primaire/eerstgenoemde) — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
+  primaire/eerstgenoemde), vl=de letterlijke vermelding dat de btw verlegd is (bijv. "BTW verlegd",
+  "btw verlegd naar afnemer", "verleggingsregeling", "reverse charge") als die op de factuur staat,
+  anders null — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen
@@ -224,7 +231,7 @@ class _Genormaliseerd:
 # maskeerde een echt factuurnummer dat toevallig de elfproef doorstond (fix 2026-07-10, Peters
 # controle van een echte factuur). Zie ook app/extractie/bsn.py: het filter zelf eist bovendien
 # BSN-context.
-_VRIJE_TEKST_KOP_KEYS = frozenset({"lev"})
+_VRIJE_TEKST_KOP_KEYS = frozenset({"lev", "vl"})
 _VRIJE_TEKST_REGEL_KEYS = frozenset({"o"})
 
 
