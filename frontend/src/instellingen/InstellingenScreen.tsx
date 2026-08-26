@@ -14,6 +14,8 @@ import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
 import { BulkBediening } from './BulkBediening'
 import { BeveiligingInstellingen } from './BeveiligingInstellingen'
+import { AdministratieWizard } from './AdministratieWizard'
+import { SchrijftestDialog, WebserviceGegevensDialog } from './KoppelingDialogen'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import {
   haalAiKostenStatusOp,
@@ -343,6 +345,10 @@ export function InstellingenScreen() {
   const [wijzigenFout, setWijzigenFout] = useState<string | null>(null)
   // Bulk-rijselectie (fase 3 modernisering 15-08): ids van geselecteerde administraties.
   const [selectie, setSelectie] = useState<string[]>([])
+  // Administratie toevoegen / koppeling (feedbackronde 26-08 punt 5).
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [webserviceVoor, setWebserviceVoor] = useState<AdministratieInstellingenDto | null>(null)
+  const [schrijftestVoor, setSchrijftestVoor] = useState<AdministratieInstellingenDto | null>(null)
 
   const laadAlles = useCallback(() => {
     setLaadFout(null)
@@ -653,13 +659,20 @@ export function InstellingenScreen() {
 
       {sectie === 'administraties' && (
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>Administraties</h2>
-        <p className="hint" style={{ marginTop: 4 }}>
-          Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ marginTop: 0 }}>Administraties</h2>
+            <p className="hint" style={{ marginTop: 4 }}>
+              Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
+            </p>
+          </div>
+          {/* Wizard (besluit Peter 26-08, punt 5): webservice-gegevens → probe groen → keuze uit
+              GET Administrations → opslaan met defaults → eerste sync op de achtergrond. */}
+          <Button onClick={() => setWizardOpen(true)}>+ Administratie toevoegen</Button>
+        </div>
         {administraties === null && !laadFout && <SkeletonRegels />}
         {administraties !== null && administraties.length === 0 && (
-          <p className="hint">Nog geen administraties gekoppeld.</p>
+          <p className="hint">Nog geen administraties gekoppeld — begin met &ldquo;+ Administratie toevoegen&rdquo;.</p>
         )}
         {administraties !== null && administraties.length > 0 && (
           <>
@@ -686,6 +699,7 @@ export function InstellingenScreen() {
                   />
                 </th>
                 <th>Administratie</th>
+                <th>Koppeling Reeleezee</th>
                 <th>Eigenaar (krijgt vragen)</th>
                 <th>IBAN-wissel accorderen door</th>
                 <th>Project verplicht bij boeken</th>
@@ -708,6 +722,28 @@ export function InstellingenScreen() {
                     />
                   </td>
                   <td>{a.naam}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {a.webservice_username ? (
+                      <span
+                        className={`chip ${a.probe_groen === false ? 'blokkerend' : a.probe_groen ? 'ok' : 'stil'}`}
+                        title={`Webservice-gebruiker ${a.webservice_username} · wachtwoord aanwezig (niet uitleesbaar)${
+                          a.probe_groen === null || a.probe_groen === undefined ? '' : a.probe_groen ? ' · rechten-probe groen' : ' · rechten-probe NIET groen'
+                        }${a.rlz_admin_id ? ` · RLZ-id ${a.rlz_admin_id}` : ''}`}
+                      >
+                        {a.webservice_username}
+                      </span>
+                    ) : (
+                      <span className="chip afwijking" title="Geen webservice-gegevens in de credential-store (alleen .env-fallback, indien aanwezig)">
+                        geen credentials
+                      </span>
+                    )}{' '}
+                    <Button variant="ghost" maat="klein" aria-label={`Webservice-gegevens van ${a.naam}`} onClick={() => setWebserviceVoor(a)}>
+                      Webservice-gegevens
+                    </Button>{' '}
+                    <Button variant="ghost" maat="klein" aria-label={`Schrijftest voor ${a.naam}`} onClick={() => setSchrijftestVoor(a)}>
+                      Schrijftest
+                    </Button>
+                  </td>
                   <td>
                     <EigenaarCell
                       administratie={a}
@@ -866,6 +902,11 @@ export function InstellingenScreen() {
       </div>
       )}
 
+      <AdministratieWizard open={wizardOpen} onSluiten={() => setWizardOpen(false)} onAangemaakt={laadAlles} />
+      {webserviceVoor && (
+        <WebserviceGegevensDialog administratie={webserviceVoor} onSluiten={() => setWebserviceVoor(null)} onGewijzigd={laadAlles} />
+      )}
+      {schrijftestVoor && <SchrijftestDialog administratie={schrijftestVoor} onSluiten={() => setSchrijftestVoor(null)} />}
       {dossierTypenVoor && (
         <DossierTypenModal administratieId={dossierTypenVoor.id} naam={dossierTypenVoor.naam} onSluiten={() => setDossierTypenVoor(null)} />
       )}

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0074
+-- Migratie-head bij deze dump: 0076
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -95,7 +95,8 @@ CREATE TYPE platform.gebruiker_status AS ENUM (
     'wacht_op_totp',
     'actief',
     'geblokkeerd',
-    'wacht_op_passkey'
+    'wacht_op_passkey',
+    'gearchiveerd'
 );
 
 
@@ -338,6 +339,27 @@ CREATE TABLE boekhouding.accordering_stap (
 );
 
 ALTER TABLE ONLY boekhouding.accordering_stap FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: administratie_sync_run; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.administratie_sync_run (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    status text NOT NULL,
+    aangevraagd_door uuid,
+    aangevraagd_op timestamp with time zone DEFAULT now() NOT NULL,
+    gestart_op timestamp with time zone,
+    laatst_actief_op timestamp with time zone,
+    beeindigd_op timestamp with time zone,
+    onderdelen jsonb,
+    fout_reden text,
+    CONSTRAINT ck_administratie_sync_run_status CHECK ((status = ANY (ARRAY['wachtrij'::text, 'bezig'::text, 'klaar'::text, 'fout'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.administratie_sync_run FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2438,6 +2460,9 @@ CREATE TABLE platform.gebruiker (
     geblokkeerd_op timestamp with time zone,
     geblokkeerd_door uuid,
     status_voor_blokkade text,
+    gearchiveerd_op timestamp with time zone,
+    gearchiveerd_door uuid,
+    status_voor_archivering text,
     CONSTRAINT ck_gebruiker_e_mail_lowercase CHECK ((e_mail = lower(e_mail)))
 );
 
@@ -2689,6 +2714,14 @@ ALTER TABLE ONLY boekhouding.accordering_laag
 
 ALTER TABLE ONLY boekhouding.accordering_stap
     ADD CONSTRAINT accordering_stap_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: administratie_sync_run administratie_sync_run_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.administratie_sync_run
+    ADD CONSTRAINT administratie_sync_run_pkey PRIMARY KEY (id);
 
 
 --
@@ -3814,6 +3847,20 @@ CREATE INDEX ix_accordering_stap_accordering_id ON boekhouding.accordering_stap 
 
 
 --
+-- Name: ix_administratie_sync_run_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_administratie_sync_run_administratie_id ON boekhouding.administratie_sync_run USING btree (administratie_id);
+
+
+--
+-- Name: ix_administratie_sync_run_administratie_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_administratie_sync_run_administratie_status ON boekhouding.administratie_sync_run USING btree (administratie_id, status);
+
+
+--
 -- Name: ix_bank_boeking_regel_boeking_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -4728,6 +4775,22 @@ ALTER TABLE ONLY boekhouding.accordering_stap
 
 ALTER TABLE ONLY boekhouding.accordering_stap
     ADD CONSTRAINT accordering_stap_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: administratie_sync_run administratie_sync_run_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.administratie_sync_run
+    ADD CONSTRAINT administratie_sync_run_aangevraagd_door_fkey FOREIGN KEY (aangevraagd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: administratie_sync_run administratie_sync_run_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.administratie_sync_run
+    ADD CONSTRAINT administratie_sync_run_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -6699,6 +6762,14 @@ ALTER TABLE ONLY platform.gebruiker_entiteit
 
 
 --
+-- Name: gebruiker gebruiker_gearchiveerd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.gebruiker
+    ADD CONSTRAINT gebruiker_gearchiveerd_door_fkey FOREIGN KEY (gearchiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: gebruiker gebruiker_geblokkeerd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -6882,6 +6953,19 @@ ALTER TABLE boekhouding.accordering_stap ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY accordering_stap_scope ON boekhouding.accordering_stap USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: administratie_sync_run; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.administratie_sync_run ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: administratie_sync_run administratie_sync_run_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY administratie_sync_run_scope ON boekhouding.administratie_sync_run USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

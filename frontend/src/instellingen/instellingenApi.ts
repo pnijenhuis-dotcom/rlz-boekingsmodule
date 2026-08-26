@@ -135,3 +135,80 @@ export function zetEigenaar(administratieId: string, eigenaarGebruikerId: string
     body: JSON.stringify({ eigenaar_gebruiker_id: eigenaarGebruikerId }),
   })
 }
+
+/* --- Administratie toevoegen (wizard, feedbackronde 26-08 punt 5) ---------------------------- */
+
+export interface GevondenAdministratieDto {
+  rlz_admin_id: string
+  naam: string
+  al_aangesloten: boolean
+}
+
+export interface AangemaakteAdministratieDto {
+  id: string
+  naam: string
+  rlz_admin_id: string
+  probe: Record<string, string>
+  sync_run_id: string | null
+}
+
+export interface EersteSyncRunDto {
+  run_id: string | null
+  status: 'geen' | 'wachtrij' | 'bezig' | 'klaar' | 'fout' | string
+  onderdelen: Record<string, { status: string; aangemaakt?: number | null; bijgewerkt?: number | null; fout?: string }> | null
+  aangevraagd_op: string | null
+  beeindigd_op: string | null
+  fout_reden: string | null
+}
+
+export interface SchrijftestResultaatDto {
+  uitkomst: 'ok' | 'fout' | string
+  referentie: string
+  document_id: string
+  stappen: { stap: string; status: string; detail: string | null }[]
+}
+
+const POST_JSON = { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+
+/** Stap a+c: login proberen → gevonden administraties. Het wachtwoord reist alleen in de body. */
+export function testVerbinding(webservice_username: string, wachtwoord: string): Promise<{ administraties: GevondenAdministratieDto[] }> {
+  return apiJson('/instellingen/administraties/verbinding-testen', {
+    ...POST_JSON,
+    body: JSON.stringify({ webservice_username, wachtwoord }),
+  })
+}
+
+/** Stap b+d: probe groen vereist (422 mét rapport, niets opgeslagen) → aanmaken + eerste sync. */
+export function maakAdministratiesAan(
+  webservice_username: string,
+  wachtwoord: string,
+  rlz_admin_ids: string[],
+): Promise<{ administraties: AangemaakteAdministratieDto[] }> {
+  return apiJson('/instellingen/administraties/aanmaken', {
+    ...POST_JSON,
+    body: JSON.stringify({ webservice_username, wachtwoord, rlz_admin_ids }),
+  })
+}
+
+export function haalEersteSyncStatusOp(administratieId: string): Promise<EersteSyncRunDto> {
+  return apiJson<EersteSyncRunDto>(`/instellingen/administraties/${administratieId}/eerste-sync/status`)
+}
+
+export function startEersteSync(administratieId: string): Promise<EersteSyncRunDto> {
+  return apiJson<EersteSyncRunDto>(`/instellingen/administraties/${administratieId}/eerste-sync`, { method: 'POST' })
+}
+
+export function wijzigWebserviceGegevens(
+  administratieId: string,
+  webservice_username: string,
+  wachtwoord: string,
+): Promise<{ rapport: Record<string, string> }> {
+  return apiJson(`/instellingen/administraties/${administratieId}/webservice-gegevens`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ webservice_username, wachtwoord }),
+  })
+}
+
+export function voerSchrijftestUit(administratieId: string): Promise<SchrijftestResultaatDto> {
+  return apiJson<SchrijftestResultaatDto>(`/instellingen/administraties/${administratieId}/schrijftest`, { method: 'POST' })
+}

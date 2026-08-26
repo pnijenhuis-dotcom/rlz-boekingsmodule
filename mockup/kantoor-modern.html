@@ -570,12 +570,14 @@
         <div style="display:flex;align-items:center;gap:10px;padding:0 14px 14px"><input type="checkbox" class="switch" checked aria-label="Boeken platformbreed"> <span style="font-size:12.5px">aan — boeken kan</span></div>
       </div>
 
-      <!-- Subpagina "Administraties" (ongewijzigd, nu op /instellingen/administraties) -->
+      <!-- Subpagina "Administraties" (nu op /instellingen/administraties; 26-08 punt 5: knop
+           "+ Administratie toevoegen" rechtsboven + kolom "Koppeling Reeleezee" per rij) -->
       <div class="kaart">
         <div class="kaart-kop">
           <h2>Administraties</h2>
           <div class="rechts">
             <select class="sel"><option>Alle rollen</option><option>Klant</option><option>Doorbelasting-doel</option><option>Bron</option></select>
+            <button class="btn klein" onclick="document.getElementById('wizard-admin').style.display='block'">+ Administratie toevoegen</button>
           </div>
           <div class="uitleg">Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.</div>
         </div>
@@ -607,6 +609,26 @@
           </table>
         </div>
         <div class="leeg" style="border-top:1px solid var(--border)">nog 6 administraties — <a class="rijlink">toon alles</a></div>
+      </div>
+
+      <!-- WIZARD "Administratie toevoegen" (besluit Peter 26-08, feedbackronde punt 5 — norm voor
+           frontend/src/instellingen/AdministratieWizard.tsx). Drie stappen in één dialoog; het
+           wachtwoord gaat uitsluitend de credential-store in (envelope, KMS) en is daarna nooit
+           uitleesbaar; probe verplicht groen vóór opslaan; eerste sync = achtergrondrun met
+           status per onderdeel; de schrijftest is een APARTE knop op de rij ("Schrijftest"). -->
+      <div class="kaart" id="wizard-admin" style="display:none;margin-top:16px;max-width:640px">
+        <div class="kaart-kop"><h2>Administratie toevoegen — stap 2 van 3</h2>
+          <div class="uitleg">Deze login ziet de volgende administraties. Kies welke je aansluit; vóór het opslaan draait per administratie de rechten-probe (10 leesroutes) — die moet volledig groen zijn.</div></div>
+        <div style="padding:0 14px 14px">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Stap 1 ✓ webservice-gebruiker <b>ws_nijenhuis</b> · wachtwoord aanwezig (niet uitleesbaar)</div>
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><input type="checkbox" class="cb" checked> <span><b>Nieuwe Klant B.V.</b> <span style="font-size:11px;color:var(--muted)">RLZ-id 1a2b3c…</span></span></label>
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);opacity:.6"><input type="checkbox" class="cb" disabled> <span><b>Universal Steigerbouw B.V.</b> <span class="chip stil">al aangesloten</span></span></label>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn ghost klein">← Terug</button><button class="btn klein">Aansluiten (1) →</button></div>
+          <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:10px;font-size:12px">
+            <b>Stap 3 (na opslaan):</b> Nieuwe Klant B.V. <span class="chip ai">bezig</span> — Grootboek <span class="chip ok">klaar</span> 412 nieuw · Btw-tarieven <span class="chip ok">klaar</span> · Crediteuren <span class="chip ai">bezig</span> · Projecten <span class="chip stil">wachtrij</span> · Bankrekeningen <span class="chip stil">wachtrij</span>
+            <div style="color:var(--muted);margin-top:4px">Niemand ziet de administratie tot je scopes toekent (Gebruikers &amp; toegang). Schrijftest = aparte knop op de rij.</div>
+          </div>
+        </div>
       </div>
     </section>
 

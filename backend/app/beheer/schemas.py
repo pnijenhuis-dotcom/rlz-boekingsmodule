@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -81,10 +82,77 @@ class AdministratieInstellingenDto(BaseModel):
     uren_meerwerk_ingeschakeld: bool = False
     # Signaal >N uur per dag (A6, migratie 0072).
     uren_dagmax_uren: Decimal = Decimal("12")
+    # Koppelstand (wizard 26-08 punt 5): RLZ-administratie-id, webservice-gebruiker (None = geen
+    # credential in de store — nooit het wachtwoord) en of de laatste rechten-probe groen was.
+    rlz_admin_id: str | None = None
+    webservice_username: str | None = None
+    probe_groen: bool | None = None
 
 
 class AdministratieInstellingenLijstDto(BaseModel):
     administraties: list[AdministratieInstellingenDto]
+
+
+# --- Administratie toevoegen (wizard, feedbackronde 26-08 punt 5) -------------------------------
+
+
+class WebserviceGegevensDto(StrikteInvoer):
+    """Login voor de RLZ-webservice — alleen inkomend; komt nooit terug in een response."""
+
+    webservice_username: str = Field(min_length=1, max_length=200)
+    wachtwoord: str = Field(min_length=1, max_length=500)
+
+
+class GevondenAdministratieDto(BaseModel):
+    rlz_admin_id: str
+    naam: str
+    al_aangesloten: bool
+
+
+class VerbindingTestDto(BaseModel):
+    administraties: list[GevondenAdministratieDto]
+
+
+class AdministratiesAanmakenDto(WebserviceGegevensDto):
+    rlz_admin_ids: list[str] = Field(min_length=1)
+
+
+class AangemaakteAdministratieDto(BaseModel):
+    id: uuid.UUID
+    naam: str
+    rlz_admin_id: str
+    probe: dict[str, str]
+    sync_run_id: uuid.UUID | None
+
+
+class AdministratiesAangemaaktDto(BaseModel):
+    administraties: list[AangemaakteAdministratieDto]
+
+
+class EersteSyncRunDto(BaseModel):
+    run_id: uuid.UUID | None
+    status: str
+    onderdelen: dict[str, dict] | None = None
+    aangevraagd_op: datetime | None = None
+    beeindigd_op: datetime | None = None
+    fout_reden: str | None = None
+
+
+class SchrijftestStapDto(BaseModel):
+    stap: str
+    status: str
+    detail: str | None = None
+
+
+class SchrijftestResultaatDto(BaseModel):
+    uitkomst: str
+    referentie: str
+    document_id: uuid.UUID
+    stappen: list[SchrijftestStapDto]
+
+
+class ProbeRapportDto(BaseModel):
+    rapport: dict[str, str]
 
 
 class MedewerkerDto(BaseModel):

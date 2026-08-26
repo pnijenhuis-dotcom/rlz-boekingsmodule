@@ -42,10 +42,14 @@ export function setSessieVerlopenHandler(handler: (() => void) | null): void {
 
 export class ApiError extends Error {
   status: number
+  /** Het ruwe `detail` uit de JSON-body (string, pydantic-lijst of een object zoals de
+   * wizard-422 `{bericht, rapporten}`) — voor schermen die méér willen tonen dan de tekst. */
+  detail: unknown
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail: unknown = undefined) {
     super(message)
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -209,19 +213,25 @@ function pydanticValidatiefoutenNaarTekst(detail: unknown): string | null {
   return regels.length > 0 ? regels.join('; ') : null
 }
 
-async function foutmelding(resp: Response): Promise<string> {
+async function foutmelding(resp: Response): Promise<{ tekst: string; detail: unknown }> {
   try {
     const body: unknown = await resp.json()
     if (body && typeof body === 'object' && 'detail' in body) {
       const detail = (body as { detail: unknown }).detail
-      if (typeof detail === 'string') return detail
+      if (typeof detail === 'string') return { tekst: detail, detail }
       const validatiefouten = pydanticValidatiefoutenNaarTekst(detail)
-      if (validatiefouten) return validatiefouten
+      if (validatiefouten) return { tekst: validatiefouten, detail }
+      // Object-detail met een leesbare `bericht`-sleutel (bv. de onboarding-wizard: {bericht,
+      // rapporten}) — de tekst is het bericht, het hele object reist mee als ApiError.detail.
+      if (detail && typeof detail === 'object' && 'bericht' in detail) {
+        return { tekst: String((detail as { bericht: unknown }).bericht), detail }
+      }
+      return { tekst: resp.statusText || `Fout (${resp.status})`, detail }
     }
   } catch {
     // geen JSON-body — val terug op de statustekst
   }
-  return resp.statusText || `Fout (${resp.status})`
+  return { tekst: resp.statusText || `Fout (${resp.status})`, detail: undefined }
 }
 
 export const GEEN_JSON_MELDING =
@@ -230,7 +240,10 @@ export const GEEN_JSON_MELDING =
 
 export async function apiJson<T>(pad: string, init: RequestInit = {}): Promise<T> {
   const resp = await apiFetch(pad, init)
-  if (!resp.ok) throw new ApiError(resp.status, await foutmelding(resp))
+  if (!resp.ok) {
+    const fout = await foutmelding(resp)
+    throw new ApiError(resp.status, fout.tekst, fout.detail)
+  }
   if (resp.status === 204) return undefined as T
   // Vangnet op de proxy-bugklasse (browserreview 2026-08-07, derde herhaling): een pad dat
   // buiten de dev-proxy valt krijgt Vite's SPA-fallback — index.html met status 200. Zonder deze

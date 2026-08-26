@@ -148,6 +148,14 @@ class AdministratieInstellingen:
     # Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie.
     uren_meerwerk_ingeschakeld: bool = False
     uren_dagmax_uren: Decimal = Decimal("12")
+    rlz_admin_id: str | None = None
+    webservice_username: str | None = None
+    probe_groen: bool | None = None
+
+
+def administratie_bestaat(administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        return session.get(Administratie, administratie_id) is not None
 
 
 def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
@@ -155,23 +163,30 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
     één keer, i.p.v. de losse per-administratie GET-endpoints hierboven N keer aan te roepen.
     Los van `overzicht_boeken_status()` (CLI, alleen boeken_ingeschakeld) gehouden — dat commando
     hoeft niet mee te veranderen als deze lijst een derde kolom krijgt."""
+    from app.beheer.onboarding import koppelstand
+
     with scoped_session(None) as session:
-        rijen = session.scalars(select(Administratie).order_by(Administratie.naam))
-        return [
-            AdministratieInstellingen(
-                administratie_id=r.id,
-                naam=r.naam,
-                boeken_ingeschakeld=r.boeken_ingeschakeld,
-                project_verplicht=r.project_verplicht,
-                ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
-                eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
-                is_vastgoed=r.is_vastgoed,
-                verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
-                uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
-                uren_dagmax_uren=r.uren_dagmax_uren,
-            )
-            for r in rijen
-        ]
+        rijen = list(session.scalars(select(Administratie).order_by(Administratie.naam)))
+        session.expunge_all()
+    stand = koppelstand([r.id for r in rijen])
+    return [
+        AdministratieInstellingen(
+            administratie_id=r.id,
+            naam=r.naam,
+            boeken_ingeschakeld=r.boeken_ingeschakeld,
+            project_verplicht=r.project_verplicht,
+            ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
+            eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
+            is_vastgoed=r.is_vastgoed,
+            verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
+            uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
+            uren_dagmax_uren=r.uren_dagmax_uren,
+            rlz_admin_id=r.rlz_admin_id,
+            webservice_username=stand.get(r.id, (None, None))[0],
+            probe_groen=stand.get(r.id, (None, None))[1],
+        )
+        for r in rijen
+    ]
 
 
 def haal_project_verplicht_op(*, administratie_id: uuid.UUID) -> bool:

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -493,5 +493,22 @@ describe('InstellingenScreen — bulkbediening administraties (fase 3 moderniser
     expect(screen.getByText(/Molenhof Beheer B\.V\.: geen RLZ-credentials/)).toBeInTheDocument()
     // De geslaagde administratie is wél doorgevoerd.
     expect(putAanroepen.some((p) => p.url === `/administraties/${ADMINISTRATIE_ID}/boeken-instelling`)).toBe(true)
+  })
+})
+
+describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5)', () => {
+  it('toont de knop "+ Administratie toevoegen" en per rij de koppelstand zonder wachtwoord', async () => {
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [administratie({ webservice_username: 'ws_nijenhuis', probe_groen: true, rlz_admin_id: 'rlz-1' }), administratie({ id: 'bbbbbbbb-0000-0000-0000-000000000002', naam: 'Zonder Login B.V.' })],
+    })
+    renderScherm('/instellingen/administraties')
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ Administratie toevoegen' })).toBeInTheDocument())
+    expect(screen.getByText('ws_nijenhuis')).toHaveClass('chip', 'ok')
+    expect(screen.getByText('geen credentials')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Webservice-gegevens van/ })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /Schrijftest voor/ })).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: '+ Administratie toevoegen' }))
+    expect(await screen.findByText('Administratie toevoegen — stap 1 van 3')).toBeInTheDocument()
   })
 })

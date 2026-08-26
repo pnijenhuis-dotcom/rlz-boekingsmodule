@@ -162,6 +162,52 @@ _TE_PROBEREN_ENDPOINTS = (
 )
 
 
+def probe_rapport(client: RlzClient, rlz_admin_id: str) -> dict[str, str]:
+    """Het kale rechtenrapport (per endpoint 'ok' of de HTTP-status als string) voor één RLZ-
+    administratie met een gegeven (root-)client — herbruikbaar vóór er een administratie-rij
+    bestaat (onboarding-wizard, punt 5 26-08). `Administrations` via de root-client, de rest via
+    de gescoped variant, exact zoals de rest van de app RLZ aanspreekt."""
+    scoped_client = client.for_administration(rlz_admin_id)
+    rapport: dict[str, str] = {}
+    for endpoint in _TE_PROBEREN_ENDPOINTS:
+        actieve_client = client if endpoint == "Administrations" else scoped_client
+        try:
+            actieve_client.get(endpoint)
+            rapport[endpoint] = "ok"
+        except RlzApiError as exc:
+            rapport[endpoint] = str(exc.status_code)
+    return rapport
+
+
+def probe_is_groen(rapport: dict[str, str]) -> bool:
+    return bool(rapport) and all(v == "ok" for v in rapport.values())
+
+
+def sla_probe_op(session, *, administratie_id: uuid.UUID, rapport: dict[str, str], actor_id: uuid.UUID) -> None:
+    """Rapport op platform.rlz_rechten_probe (overschrijft; historie in audit) + geaggregeerde audit."""
+    now = datetime.now(UTC)
+    bestaand = session.get(RlzRechtenProbe, administratie_id)
+    if bestaand is None:
+        session.add(RlzRechtenProbe(administratie_id=administratie_id, rapport=rapport, uitgevoerd_door=actor_id))
+    else:
+        bestaand.rapport = rapport
+        bestaand.uitgevoerd_door = actor_id
+        bestaand.uitgevoerd_op = now
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="platform",
+        tabel="rlz_rechten_probe",
+        record_id=administratie_id,
+        actie="rechten_probe_uitgevoerd",
+        correlatie_id=uuid.uuid4(),
+        nieuwe_waarde={
+            "aantal_ok": sum(1 for v in rapport.values() if v == "ok"),
+            "aantal_totaal": len(rapport),
+        },
+    )
+
+
 def voer_rechten_probe_uit(
     *, administratie_id: uuid.UUID, actor_id: uuid.UUID, client: RlzClient | None = None
 ) -> dict[str, str]:
@@ -178,41 +224,12 @@ def voer_rechten_probe_uit(
     eigen_client = client is None
     if client is None:
         client = open_root_client(rlz_admin_id)
-    scoped_client = client.for_administration(rlz_admin_id)
-
     try:
-        rapport: dict[str, str] = {}
-        for endpoint in _TE_PROBEREN_ENDPOINTS:
-            actieve_client = client if endpoint == "Administrations" else scoped_client
-            try:
-                actieve_client.get(endpoint)
-                rapport[endpoint] = "ok"
-            except RlzApiError as exc:
-                rapport[endpoint] = str(exc.status_code)
+        rapport = probe_rapport(client, rlz_admin_id)
     finally:
         if eigen_client:
             client.close()
 
-    now = datetime.now(UTC)
     with scoped_session(None, actor_id=actor_id) as session:
-        bestaand = session.get(RlzRechtenProbe, administratie_id)
-        if bestaand is None:
-            session.add(RlzRechtenProbe(administratie_id=administratie_id, rapport=rapport, uitgevoerd_door=actor_id))
-        else:
-            bestaand.rapport = rapport
-            bestaand.uitgevoerd_door = actor_id
-            bestaand.uitgevoerd_op = now
-        record_audit_event(
-            session,
-            actor_id=actor_id,
-            module="platform",
-            tabel="rlz_rechten_probe",
-            record_id=administratie_id,
-            actie="rechten_probe_uitgevoerd",
-            correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={
-                "aantal_ok": sum(1 for v in rapport.values() if v == "ok"),
-                "aantal_totaal": len(rapport),
-            },
-        )
+        sla_probe_op(session, administratie_id=administratie_id, rapport=rapport, actor_id=actor_id)
     return rapport
