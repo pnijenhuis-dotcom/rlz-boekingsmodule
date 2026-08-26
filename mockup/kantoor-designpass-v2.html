@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Designpass v2 — neutrale fundering + inkt-zijbalk (voorstel 25-08)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ================= VOORSTEL-TOKENS (v2) =================
+     Kernidee: neutrale fundering — het teal wordt accent i.p.v. sfeer.
+     1. bg/borders/tekst ONTGROEND (echte grijzen + inkt)
+     2. --primary rijker teal, exclusief voor acties/nav/links
+     3. --ok (groen) exclusief voor status "geboekt/akkoord/betaald"
+     4. inkt-zijbalk als identiteitsdrager
+     5. diepte: gelaagde schaduwen + hover-lift + pressed-states     */
+  :root, [data-versie="v2"] {
+    --bg: #f6f7f8;            /* was #f4f7f6 (groenzweem) */
+    --panel: #ffffff;
+    --panel-2: #fafbfb;
+    --border: #e6e8ea;        /* neutraal grijs */
+    --text: #12181f;          /* inkt, was groenzwart */
+    --muted: #5b6470;
+    --faint: #8b93a0;
+    --primary: #0e7a6e;       /* rijker teal — POPT nu de rest neutraal is */
+    --primary-hover: #0a635a;
+    --primary-fg: #ffffff;
+    --accent-bg: #e6f4f2;
+    --ring: rgba(14, 122, 110, 0.30);
+    --ok: #1c7a54; --ok-bg: #e4f4ec;
+    --warn: #b45309; --warn-bg: #fdf3e3;
+    --danger: #b42318; --danger-bg: #fceceb;
+    --info: #3548a5; --info-bg: #eaeefb;
+    --purple: #6941c6; --purple-bg: #f1ecfb;
+    /* inkt-zijbalk */
+    --rail: #101b19;
+    --rail-text: #c7d2cf;
+    --rail-muted: #7d8c88;
+    --rail-actief: #16332e;
+    --rail-accent: #4fd1c0;
+    --radius: 12px; --radius-sm: 8px;
+    --shadow: 0 1px 2px rgba(18,24,31,.06), 0 4px 14px rgba(18,24,31,.06);
+    --shadow-hover: 0 2px 4px rgba(18,24,31,.08), 0 10px 28px rgba(18,24,31,.12);
+    --font: 'Inter', -apple-system, sans-serif;
+  }
+
+  /* ===== v2 DONKER — Vastly-les 24-08: grafiet, GEEN groene ondertoon in
+     achtergronden/kaarten/randen; teal exclusief actie; eigen hexwaarden ===== */
+  [data-thema="donker"] {
+    --bg: #0b0d0e;
+    --panel: #151719;
+    --panel-2: #111314;
+    --border: #242729;
+    --text: #f0f3f2;
+    --muted: #98a0a5;
+    --faint: #6d757b;
+    --primary: #3ec9b8;
+    --primary-hover: #58d6c7;
+    --primary-fg: #06211d;
+    --accent-bg: #12302c;
+    --ring: rgba(62, 201, 184, 0.35);
+    --ok: #4ecb94; --ok-bg: #12291e;
+    --warn: #e5a04c; --warn-bg: #2e2310;
+    --danger: #f08579; --danger-bg: #331714;
+    --info: #93a6f5; --info-bg: #1a2038;
+    --purple: #b39af0; --purple-bg: #241d38;
+    --rail: #0e1011;
+    --rail-text: #c6cdd0;
+    --rail-muted: #737d82;
+    --rail-actief: #17322d;
+    --rail-accent: #4fd1c0;
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.35);
+    --shadow-hover: 0 2px 4px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  [data-thema="donker"] .rail { border-right: 1px solid var(--border); }
+  /* Lichtbaan (Vastly-patroon): subtiele ambient teal-gloed, alleen dark + alleen v2 */
+  [data-thema="donker"][data-versie="v2"] .main { position: relative; }
+  [data-thema="donker"][data-versie="v2"] .main::before {
+    content: ''; position: absolute; top: -120px; left: 8%; width: 60%; height: 320px;
+    background: radial-gradient(ellipse at center, rgba(62,201,184,.10), transparent 70%);
+    pointer-events: none;
+  }
+
+  /* ================= HUIDIGE TOKENS (ter vergelijk) ================= */
+  [data-versie="huidig"] {
+    --bg: #f4f7f6; --panel: #ffffff; --panel-2: #fafcfb;
+    --border: #e3e9e7; --text: #15201d; --muted: #5f6f6b; --faint: #8a9793;
+    --primary: #2e6660; --primary-hover: #25534e; --primary-fg: #ffffff;
+    --accent-bg: #e9f2f0; --ring: rgba(46,102,96,.35);
+    --shadow: 0 1px 2px rgba(21,32,29,.05), 0 4px 16px rgba(21,32,29,.06);
+    --shadow-hover: var(--shadow);
+    /* zijbalk blijft licht in de huidige versie */
+    --rail: #ffffff; --rail-text: #15201d; --rail-muted: #5f6f6b;
+    --rail-actief: #e9f2f0; --rail-accent: #2e6660;
+  }
+  /* Huidig donker = de bestaande .dark-set uit tokens.css (groenige donkertinten) */
+  [data-versie="huidig"][data-thema="donker"] {
+    --bg: #0e1514; --panel: #16211f; --panel-2: #121b1a;
+    --border: #263431; --text: #e6ecea; --muted: #93a4a0; --faint: #6a7a76;
+    --primary: #57b3a7; --primary-hover: #6ac4b8; --primary-fg: #0c1513;
+    --accent-bg: #1c2e2b; --ring: rgba(87,179,167,.35);
+    --ok: #4ecb94; --ok-bg: #152f24; --warn: #e5a04c; --warn-bg: #33260f;
+    --danger: #f08579; --danger-bg: #361713; --info: #93a6f5; --info-bg: #1a2038;
+    --purple: #b39af0; --purple-bg: #251b3d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.35);
+    --shadow-hover: var(--shadow);
+    --rail: #16211f; --rail-text: #e6ecea; --rail-muted: #93a4a0;
+    --rail-actief: #1c2e2b; --rail-accent: #57b3a7;
+    color-scheme: dark;
+  }
+  [data-versie="huidig"][data-thema="donker"] .main::before { content: none; }
+  [data-versie="huidig"] .kaart:hover, [data-versie="huidig"] .kpi:hover { transform: none; }
+  [data-versie="huidig"] .rail { border-right: 1px solid var(--border); }
+  [data-versie="huidig"] .rail .logo b { color: var(--primary); }
+  [data-versie="huidig"] .bedrag.pos { color: var(--text); }
+
+  body { font-family: var(--font); font-size: 13.5px; line-height: 1.45; letter-spacing: -.01em;
+    background: var(--bg); color: var(--text); }
+
+  /* Vergelijk-balk */
+  .vergelijk { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 12px;
+    background: #12181f; color: #e7ecf1; padding: 10px 18px; font-size: 12.5px; }
+  .vergelijk .knoppen { display: flex; gap: 6px; margin-left: auto; }
+  .vergelijk button { border: 1px solid #3a4553; background: transparent; color: #e7ecf1;
+    border-radius: 8px; padding: 6px 14px; font-weight: 700; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+  .vergelijk button.actief { background: #0e7a6e; border-color: #0e7a6e; }
+
+  .app { display: flex; min-height: calc(100vh - 41px); }
+
+  /* ===== Zijbalk (inkt) ===== */
+  .rail { width: 216px; background: var(--rail); color: var(--rail-text); padding: 18px 12px;
+    display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; transition: background .2s; }
+  .rail .logo { font-size: 15px; font-weight: 800; color: #fff; padding: 0 10px 16px; letter-spacing: -.01em; }
+  [data-versie="huidig"] .rail .logo { color: var(--text); }
+  .rail .logo b { color: var(--rail-accent); }
+  .rail .sectie { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--rail-muted); padding: 14px 10px 6px; }
+  .rail a { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px;
+    color: var(--rail-text); text-decoration: none; font-weight: 500; font-size: 13px; position: relative;
+    transition: background .12s, color .12s; }
+  .rail a:hover { background: color-mix(in srgb, var(--rail-actief) 60%, transparent); color: #fff; }
+  [data-versie="huidig"] .rail a:hover { color: var(--text); }
+  .rail a.actief { background: var(--rail-actief); color: #fff; font-weight: 700; }
+  [data-versie="huidig"] .rail a.actief { color: var(--primary); }
+  .rail a.actief::before { content: ''; position: absolute; left: -12px; top: 7px; bottom: 7px; width: 3px;
+    border-radius: 0 3px 3px 0; background: var(--rail-accent); }
+  .rail .teller { margin-left: auto; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--rail-accent) 22%, transparent);
+    color: var(--rail-accent); border-radius: 99px; padding: 1px 8px; }
+  [data-versie="huidig"] .rail .teller { background: var(--accent-bg); color: var(--primary); }
+
+  /* ===== Content ===== */
+  .main { flex: 1; padding: 26px 30px; min-width: 0; }
+  .paginakop { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
+  .paginakop h1 { font-size: 21px; font-weight: 800; letter-spacing: -.02em; }
+  .paginakop .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .knop { display: inline-flex; align-items: center; gap: 7px; background: var(--primary); color: var(--primary-fg);
+    border: none; border-radius: 10px; padding: 9px 16px; font-size: 13.5px; font-weight: 700; font-family: inherit;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(18,24,31,.15); transition: background .12s, transform .06s; }
+  .knop:hover { background: var(--primary-hover); }
+  .knop:active { transform: scale(.97); }
+  .knop.stil { background: var(--panel); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
+  .knop.stil:hover { background: var(--panel-2); border-color: var(--faint); }
+
+  /* KPI's: grote tabular cijfers + hover-lift + delta's */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 15px 16px; cursor: pointer;
+    transition: transform .12s, box-shadow .12s, border-color .12s; }
+  .kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--primary) 30%, var(--border)); }
+  .kpi .label { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .kpi .waarde { font-size: 26px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .kpi .delta { font-size: 11.5px; font-weight: 600; margin-top: 3px; }
+  .kpi .delta.op { color: var(--ok); } .kpi .delta.neer { color: var(--muted); }
+  .kpi.warn .waarde { color: var(--warn); }
+
+  .seclabel { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 2px 10px; }
+
+  /* Klantenlijst: avatar-kleur per administratie + hover-lift */
+  .kaart { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    display: flex; align-items: center; gap: 14px; padding: 13px 16px; margin-bottom: 10px; cursor: pointer;
+    transition: transform .12s, box-shadow .12s, border-color .12s; }
+  .kaart:hover { transform: translateY(-1px); box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--primary) 25%, var(--border)); }
+  .avatar { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+    font-weight: 800; font-size: 13px; color: #fff; flex-shrink: 0; }
+  .kaart .wie { flex: 1; min-width: 0; }
+  .kaart .naam { font-weight: 700; font-size: 14px; }
+  .kaart .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .kaart .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .chip { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+  .chip.doc { background: var(--accent-bg); color: var(--primary); }
+  .chip.vraag { background: var(--warn-bg); color: var(--warn); }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); }
+  .chip.bij-klant { background: var(--purple-bg); color: var(--purple); }
+  .chip.duplicaat { background: var(--danger-bg); color: var(--danger); }
+
+  /* Tabelfragment: bedragen rechts + tabular + semantiek */
+  .paneel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 22px; }
+  .paneel .kop { padding: 13px 16px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 13.5px;
+    display: flex; justify-content: space-between; align-items: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--faint); padding: 9px 16px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+  td { padding: 11px 16px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background .1s; cursor: pointer; }
+  tbody tr:hover { background: var(--panel-2); }
+  .bedrag { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  th.bedrag { text-align: right; }
+  .bedrag.neg { color: var(--danger); }
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; }
+  .status .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status.geboekt { color: var(--ok); } .status.geboekt .dot { background: var(--ok); }
+  .status.open { color: var(--warn); } .status.open .dot { background: var(--warn); }
+  .status.controle { color: var(--info); } .status.controle .dot { background: var(--info); }
+
+  /* Skeleton-demo (laadstates i.p.v. leeg wit) */
+  .skeleton { height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--border) 25%, var(--panel-2) 50%, var(--border) 75%);
+    background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  .uitleg { max-width: 760px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px 20px; margin-top: 26px; font-size: 13px; line-height: 1.65; }
+  .uitleg h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
+  .uitleg ol { margin: 6px 0 0 18px; }
+  .uitleg li { margin-bottom: 8px; }
+</style>
+</head>
+<body data-versie="v2">
+
+<div class="vergelijk">
+  <b>Designpass v2 — voorstel 25-08</b> · zelfde schermen, andere fundering. Vergelijk:
+  <div class="knoppen">
+    <button id="k-v2" class="actief" onclick="zet('v2')">Voorstel v2</button>
+    <button id="k-huidig" onclick="zet('huidig')">Huidig</button>
+    <span style="width:10px;"></span>
+    <button id="t-licht" class="actief" onclick="thema('licht')">☀ Licht</button>
+    <button id="t-donker" onclick="thema('donker')">☾ Donker</button>
+  </div>
+</div>
+
+<div class="app">
+
+  <nav class="rail">
+    <div class="logo">Nijenhuis <b>RLZ</b></div>
+    <div class="sectie">Verwerken</div>
+    <a href="#" class="actief">📥 Werkvoorraad <span class="teller">23</span></a>
+    <a href="#">🏦 Bank <span class="teller">7</span></a>
+    <a href="#">🗂 Verzamelbak <span class="teller">3</span></a>
+    <div class="sectie">Projecten</div>
+    <a href="#">📁 Projecten</a>
+    <a href="#">📅 Planning</a>
+    <a href="#">🛠 Meerwerk & uren</a>
+    <div class="sectie">Beheer</div>
+    <a href="#">🔍 Zoeken</a>
+    <a href="#">👥 Gebruikers</a>
+    <a href="#">⚙️ Instellingen</a>
+  </nav>
+
+  <main class="main">
+    <div class="paginakop">
+      <div>
+        <h1>Werkvoorraad</h1>
+        <div class="sub">dinsdag 25 augustus · 5 klanten met openstaand werk</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="knop stil">⟳ Verversen</button>
+        <button class="knop">＋ Document uploaden</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="label">Te verwerken</div><div class="waarde">23</div><div class="delta neer">−6 sinds vanochtend</div></div>
+      <div class="kpi"><div class="label">Bij klant</div><div class="waarde">4</div><div class="delta op">2 vandaag akkoord</div></div>
+      <div class="kpi warn"><div class="label">Vragen open</div><div class="waarde">3</div><div class="delta neer">oudste 2 dagen</div></div>
+      <div class="kpi"><div class="label">Geboekt vandaag</div><div class="waarde">18</div><div class="delta op">waarvan 5 automatisch</div></div>
+    </div>
+
+    <div class="seclabel">Klanten met openstaand werk</div>
+
+    <div class="kaart">
+      <div class="avatar" style="background:#0e7a6e;">KF</div>
+      <div class="wie">
+        <div class="naam">Kempen Facilities B.V.</div>
+        <div class="meta">Laatste activiteit 16:42 · Barbara</div>
+      </div>
+      <div class="chips"><span class="chip doc">9 inkoop</span><span class="chip vraag">2 vragen</span><span class="chip bij-klant">3 bij klant</span></div>
+    </div>
+    <div class="kaart">
+      <div class="avatar" style="background:#3548a5;">US</div>
+      <div class="wie">
+        <div class="naam">Universal Steigerbouw B.V.</div>
+        <div class="meta">Laatste activiteit 15:10 · Niek</div>
+      </div>
+      <div class="chips"><span class="chip doc">6 inkoop</span><span class="chip duplicaat">1 duplicaat?</span></div>
+    </div>
+    <div class="kaart">
+      <div class="avatar" style="background:#6941c6;">OR</div>
+      <div class="wie">
+        <div class="naam">Oirschot Recreatie B.V.</div>
+        <div class="meta">Laatste activiteit 11:38 · Wendy</div>
+      </div>
+      <div class="chips"><span class="chip doc">4 inkoop</span><span class="chip doc">1 omzet</span></div>
+    </div>
+
+    <div style="height:22px;"></div>
+    <div class="seclabel">Stijl-demo: zó gaan tabellen eruitzien (dit blok staat NIET op de werkvoorraad — de documentenlijst blijft één klik dieper, op de klantpagina)</div>
+    <div class="paneel">
+      <div class="kop">Kempen Facilities B.V. · Inkoopfacturen</div>
+      <table>
+        <thead><tr><th>Leverancier</th><th>Referentie</th><th>Status</th><th class="bedrag">Bedrag incl.</th></tr></thead>
+        <tbody>
+          <tr><td><b>LUSSO Interieurbouw</b></td><td>2026-0841</td><td><span class="status controle"><span class="dot"></span>Te controleren</span></td><td class="bedrag">€ 1.132,51</td></tr>
+          <tr><td><b>Boels Verhuur B.V.</b></td><td>INV-77812</td><td><span class="status open"><span class="dot"></span>Bij klant</span></td><td class="bedrag">€ 486,10</td></tr>
+          <tr><td><b>Van Diemen Transport</b></td><td>CR 2026-114</td><td><span class="status geboekt"><span class="dot"></span>Geboekt</span></td><td class="bedrag neg">− € 240,00</td></tr>
+          <tr>
+            <td><div class="skeleton" style="width:140px;"></div></td>
+            <td><div class="skeleton" style="width:70px;"></div></td>
+            <td><div class="skeleton" style="width:90px;"></div></td>
+            <td><div class="skeleton" style="width:70px; margin-left:auto;"></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="uitleg">
+      <h2>Wat er precies verandert (en waarom)</h2>
+      <ol>
+        <li><b>Neutrale fundering.</b> Achtergrond, borders en tekst verliezen de groenzweem (inkt + echte grijzen). Daardoor krijgt het teal wéér betekenis: het zegt "hier kun je klikken".</li>
+        <li><b>Teal = actie, groen = status.</b> Het merk-teal (iets rijker: #0e7a6e) is exclusief voor knoppen, actieve nav en links; semantisch groen blijft exclusief "geboekt/akkoord/betaald". Nu vallen die samen.</li>
+        <li><b>Inkt-zijbalk.</b> Donkere navigatie-rail als identiteitsdrager (patroon van moderne finance-consoles) — content wint contrast, navigatie krijgt gewicht. Grootste enkele ingreep tegen "flets".</li>
+        <li><b>Leven in de details.</b> Hover-lift + schaduwlaag op kaarten, pressed-state op knoppen, rij-hover in tabellen, skeleton-loaders i.p.v. leeg wit (zie onderste tabelrij), grote tabular-nums op KPI's mét delta-regel.</li>
+        <li><b>Herkenning per administratie.</b> Deterministische avatar-kleur per klant (8-kleuren-set) — sneller scannen in lijsten, zoals Mollie logo's gebruikt.</li>
+      </ol>
+      <p style="margin-top:10px;"><b>Donker thema (☾ rechtsboven):</b> grafiet-fundering volgens de Vastly-les van 24-08 — geen groene ondertoon in achtergronden, kaarten of randen; eigen hexwaarden (nooit licht-waarden hergebruikt); subtiele teal "lichtbaan"-gloed bovenaan als ambient diepte (alleen op landingsschermen).</p>
+      <p style="margin-top:10px; color:var(--muted);">Alles is token- en componentniveau — geen IA- of flowwijziging, dus de bestaande schermen migreren via <code>tokens.css</code> + gerichte component-CSS. <b>Native/accordeur-app restyled mee</b> (zelfde token-taal in <code>accordeur.css</code>, dark default blijft). Contrast wordt geborgd als geautomatiseerde AA-test die de tokens parseert (Vastly-patroon). Norm-mockup <code>kantoor-modern.html</code> wordt bij akkoord mee bijgewerkt.</p>
+    </div>
+  </main>
+</div>
+
+<script>
+  function zet(v) {
+    document.body.dataset.versie = v;
+    document.getElementById('k-v2').classList.toggle('actief', v === 'v2');
+    document.getElementById('k-huidig').classList.toggle('actief', v === 'huidig');
+  }
+  function thema(t) {
+    if (t === 'donker') { document.body.dataset.thema = 'donker'; }
+    else { delete document.body.dataset.thema; }
+    document.getElementById('t-licht').classList.toggle('actief', t === 'licht');
+    document.getElementById('t-donker').classList.toggle('actief', t === 'donker');
+  }
+</script>
+</body>
+</html>
