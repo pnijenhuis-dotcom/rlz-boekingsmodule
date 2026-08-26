@@ -353,10 +353,11 @@ class TestVoerChecksUit:
         assert [r.naam for r in rapport.resultaten] == [
             "Verplichte velden",
             "Regeltelling vs totaal",
+            "Vervaldatum",
             "IBAN-wissel",
             "Duplicaatcheck",
         ]
-        verplichte_velden, regeltelling, iban_wissel, duplicaatcheck = rapport.resultaten
+        verplichte_velden, regeltelling, _vervaldatum, iban_wissel, duplicaatcheck = rapport.resultaten
         assert verplichte_velden.ok  # lokale check, draait gewoon door zonder RLZ
         assert regeltelling.ok  # lokale check, draait gewoon door zonder RLZ
         assert iban_wissel.ok  # lokale check tegen de opgeslagen set — geen RLZ nodig

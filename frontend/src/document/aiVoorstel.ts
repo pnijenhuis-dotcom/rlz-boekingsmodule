@@ -14,6 +14,9 @@ export interface AiRegelVoorstel {
 
 export interface AiControle {
   regelsom: string | null
+  /** 'incl' (Σnetto+Σbtw vs incl-totaal) | 'excl' (Σnetto vs excl-totaal) — C3 26-08: exact de
+   * netto+btw=incl-logica van de boekingsregels-toets; null = niets te toetsen. */
+  regelsom_basis?: 'incl' | 'excl' | null
   regelsom_wijkt_af: boolean | null
   onparseerbaar: string[]
   lage_zekerheid: string[]

@@ -151,7 +151,9 @@ function AiVoorstelPanel({ voorstel, onOpnieuwExtraheren }: AiVoorstelPanelProps
             <td style={{ textAlign: 'right' }}>
               {controle.regelsom !== null && controle.regelsom_wijkt_af !== null && (
                 <span className={`chip ${controle.regelsom_wijkt_af ? 'afwijking' : 'ok'}`}>
-                  {controle.regelsom_wijkt_af ? `som € ${controle.regelsom} wijkt af` : 'regelsom sluit aan'}
+                  {controle.regelsom_wijkt_af
+                    ? `som € ${controle.regelsom} (${controle.regelsom_basis === 'excl' ? 'excl.' : 'incl.'}) wijkt af`
+                    : 'regelsom sluit aan'}
                 </span>
               )}
             </td>

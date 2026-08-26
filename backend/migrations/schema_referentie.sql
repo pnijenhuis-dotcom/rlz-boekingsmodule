@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0077
+-- Migratie-head bij deze dump: 0078
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -661,7 +661,8 @@ CREATE TABLE boekhouding.boekvoorstel (
     rlz_boekstuknummer text,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
-    boek_cyclus integer DEFAULT 0 NOT NULL
+    boek_cyclus integer DEFAULT 0 NOT NULL,
+    vervaldatum date
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel FORCE ROW LEVEL SECURITY;

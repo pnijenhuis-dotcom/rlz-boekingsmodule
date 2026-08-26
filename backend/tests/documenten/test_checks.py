@@ -233,6 +233,7 @@ class TestVoerHardeChecksUit:
         assert [r.naam for r in rapport.resultaten] == [
             "Verplichte velden",
             "Regeltelling vs totaal",
+            "Vervaldatum",
             "IBAN-wissel",
             "Duplicaatcheck",
         ]
@@ -265,7 +266,7 @@ class TestVoerHardeChecksUit:
             regels=[],
             eigen_rlz_document_id=uuid.uuid4(),
         )
-        assert len(rapport.resultaten) == 4
+        assert len(rapport.resultaten) == 5  # incl. Vervaldatum (C1 26-08)
 
 
 class TestIbanWissel:

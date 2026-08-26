@@ -204,6 +204,14 @@ class DuplicaatSignaalKortDto(BaseModel):
     berekend_op: datetime
 
 
+class AccordeurAanDeBeurtDto(BaseModel):
+    """C2 26-08: wie bij een ter-accordering-document nu aan de beurt is (kolom "Toegewezen")."""
+
+    gebruiker_id: uuid.UUID
+    naam: str
+    laag: int
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
@@ -229,6 +237,9 @@ class DocumentListItemResponse(BaseModel):
     # Factuurmatch (fase 2): matchstand van een veldwerker-factuur — voedt de chip
     # "urenmatch wijkt af" (besluit 3, duplicaat-patroon). None = geen match van toepassing.
     factuurmatch: FactuurmatchKortDto | None = None
+    # Accordeur aan de beurt (C2 26-08): alleen bij status ter_accordering — de kolom "Toegewezen"
+    # toont "<naam> · laag N" i.p.v. "—"; interne toewijzing blijft voor de overige statussen.
+    accordeur_aan_de_beurt: AccordeurAanDeBeurtDto | None = None
     # Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + filter.
     duplicaatsignaal: DuplicaatSignaalKortDto | None = None
 
@@ -336,6 +347,9 @@ class BoekvoorstelResponse(BaseModel):
     vendor_id: uuid.UUID | None = None
     referentie: str | None = None
     factuurdatum: date | None = None
+    # Vervaldatum (C1 26-08) + oranje signaal bij een implausibele termijn (> 90 dagen, geen blokkade).
+    vervaldatum: date | None = None
+    vervaldatum_signaal: str | None = None
     totaalbedrag: DecimalMetKomma | None = None
     rlz_boekstuknummer: str | None = None
     opgeslagen: bool
@@ -354,6 +368,7 @@ class BoekvoorstelInput(StrikteInvoer):
     vendor_id: uuid.UUID | None = None
     referentie: str | None = None
     factuurdatum: date | None = None
+    vervaldatum: date | None = None
     totaalbedrag: DecimalMetKomma | None = None
     regels: list[BoekvoorstelRegelDto] = []
     # Fix 3: de weergavekeuze van de controleur bij opslaan — wordt als voorkeur per

@@ -180,9 +180,18 @@ export interface DocumentListItemDto {
   /** Factuurmatch (fase 2): urenmatch-stand van een veldwerker-factuur — voedt de chip
    * "urenmatch wijkt af". Null/afwezig = geen match van toepassing. */
   factuurmatch?: FactuurmatchKortDto | null
+  /** Accordeur aan de beurt (C2 26-08): alleen bij status ter_accordering — de kolom "Toegewezen"
+   * toont "<naam> · laag N" in plaats van "—". */
+  accordeur_aan_de_beurt?: AccordeurAanDeBeurtDto | null
   /** Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + het
    * filter. Null/afwezig = nog niet getoetst. */
   duplicaatsignaal?: DuplicaatSignaalKortDto | null
+}
+
+export interface AccordeurAanDeBeurtDto {
+  gebruiker_id: string
+  naam: string
+  laag: number
 }
 
 export interface DocumentListResponseDto {
@@ -358,6 +367,9 @@ export interface BoekvoorstelDto {
   vendor_id: string | null
   referentie: string | null
   factuurdatum: string | null
+  /** Vervaldatum (C1 26-08) + oranje signaal bij een implausibele termijn (> 90 dagen, geen blokkade). */
+  vervaldatum?: string | null
+  vervaldatum_signaal?: string | null
   totaalbedrag: string | null
   rlz_boekstuknummer: string | null
   opgeslagen: boolean

@@ -342,6 +342,7 @@ def probeer_autoboeken_na_extractie(
         vendor_id=voorstel.vendor_id,
         referentie=voorstel.referentie,
         factuurdatum=voorstel.factuurdatum,
+        vervaldatum=voorstel.vervaldatum,
         totaalbedrag=voorstel.totaalbedrag,
         regels=gevulde_regels,
     )

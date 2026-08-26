@@ -236,6 +236,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   niet mee) → vooraf ingevuld mét chip "uit factuur (21%)"; 0/onbepaalbaar/meerduidig = NOOIT
   invullen (0% is ambigu: geheugen per leverancier wint, anders mens); "btw verlegd"-vermelding
   = alleen een hint-chip. Harde checks blijven de poort.
+- **Vervaldatum inkoopfactuur (C1 gecombineerde run 26-08, migratie 0078):** kopveld
+  `boekvoorstel.vervaldatum` uit de scan (herkomst-chip), harde check "Vervaldatum" (vóór
+  factuurdatum = blokkerend; leeg mag), oranje signaal > 90 dagen (geen blokkade), naar RLZ als
+  `DueDate` (live geverifieerd — zonder DueDate leidt RLZ 'm af uit Date + PaymentDueDays). De
+  documentenlijst-kolom "Toegewezen" toont bij `ter_accordering` de accordeur die aan de beurt is
+  (naam · laag, C2); de regelsom-badge op het veldvoorstel gebruikt exact de netto+btw=incl-logica
+  van de boekingsregels-toets (C3). Zie BESLISSINGEN "GECOMBINEERDE RUN 26-08" blok C.
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit

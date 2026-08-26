@@ -1181,6 +1181,61 @@ def documenten_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, l
     return per_accordeur
 
 
+@dataclass(frozen=True)
+class AanDeBeurt:
+    """Wie nu aan de beurt is op een ter-accordering-document (C2 26-08, documentenlijst-kolom
+    "Toegewezen"): accordeur + laag (volgnummer) — zelfde definitie als wachtrij/meldingen."""
+
+    gebruiker_id: uuid.UUID
+    naam: str
+    laag: int
+
+
+def aan_de_beurt_per_document(session: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, AanDeBeurt]:
+    """Bulk (geen N+1): per document mét open accorderingsronde de eerstvolgende open vereiste
+    stap → (accordeur, laag). Sessie van de aanroeper (documenten-lijst, al gescoopt)."""
+    if not document_ids:
+        return {}
+    from app.db.models import Gebruiker
+
+    rondes = list(
+        session.scalars(
+            select(DocumentAccordering).where(
+                DocumentAccordering.document_id.in_(document_ids),
+                DocumentAccordering.status == AccorderingStatus.OPEN.value,
+            )
+        )
+    )
+    if not rondes:
+        return {}
+    stappen = list(
+        session.scalars(select(AccorderingStap).where(AccorderingStap.accordering_id.in_([r.id for r in rondes])))
+    )
+    per_ronde: dict[uuid.UUID, list[AccorderingStap]] = {}
+    for stap in stappen:
+        per_ronde.setdefault(stap.accordering_id, []).append(stap)
+    volgende_per_document: dict[uuid.UUID, AccorderingStap] = {}
+    for ronde in rondes:
+        volgende = _eerstvolgende_open_stap(per_ronde.get(ronde.id, []))
+        if volgende is not None:
+            volgende_per_document[ronde.document_id] = volgende
+    namen = dict(
+        session.execute(
+            select(Gebruiker.id, Gebruiker.naam).where(
+                Gebruiker.id.in_({s.accordeur_gebruiker_id for s in volgende_per_document.values()})
+            )
+        ).all()
+    ) if volgende_per_document else {}
+    return {
+        document_id: AanDeBeurt(
+            gebruiker_id=stap.accordeur_gebruiker_id,
+            naam=namen.get(stap.accordeur_gebruiker_id, "accordeur"),
+            laag=stap.volgnummer,
+        )
+        for document_id, stap in volgende_per_document.items()
+    }
+
+
 def aantallen_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, int]:
     """Aantalvariant van documenten_aan_de_beurt (de herinnering heeft alleen het aantal nodig)."""
     return {

@@ -78,6 +78,37 @@ def check_verplichte_velden(
     return CheckResultaat("Verplichte velden", True, "Alle verplichte velden zijn ingevuld")
 
 
+# Betaaltermijn waarboven de vervaldatum als implausibel geldt (C1 26-08): een scan die per
+# ongeluk een jaartal/andere datum als vervaldatum aanwijst valt zo op — signaal, geen blokkade.
+VERVALDATUM_TERMIJN_SIGNAAL_DAGEN = 90
+
+
+def check_vervaldatum(*, factuurdatum: date | None, vervaldatum: date | None) -> CheckResultaat:
+    """Deterministische kopveld-check (C1 26-08): een vervaldatum vóór de factuurdatum is
+    onmogelijk en blokkeert (de controleur corrigeert of leegt het veld); leeg is toegestaan —
+    RLZ leidt de DueDate dan zelf af uit de betaaltermijn van de crediteur."""
+    naam = "Vervaldatum"
+    if vervaldatum is None or factuurdatum is None:
+        return CheckResultaat(naam, True, "Geen vervaldatum opgegeven (RLZ leidt 'm af uit de betaaltermijn)")
+    if vervaldatum < factuurdatum:
+        return CheckResultaat(
+            naam,
+            False,
+            f"Vervaldatum {vervaldatum.isoformat()} ligt vóór de factuurdatum {factuurdatum.isoformat()}",
+        )
+    return CheckResultaat(naam, True, f"Vervaldatum {vervaldatum.isoformat()} (termijn {(vervaldatum - factuurdatum).days} dagen)")
+
+
+def vervaldatum_signaal(*, factuurdatum: date | None, vervaldatum: date | None) -> str | None:
+    """Oranje signaal (geen blokkade): betaaltermijn langer dan VERVALDATUM_TERMIJN_SIGNAAL_DAGEN."""
+    if vervaldatum is None or factuurdatum is None or vervaldatum < factuurdatum:
+        return None
+    termijn = (vervaldatum - factuurdatum).days
+    if termijn > VERVALDATUM_TERMIJN_SIGNAAL_DAGEN:
+        return f"Betaaltermijn van {termijn} dagen is ongebruikelijk lang — controleer de vervaldatum"
+    return None
+
+
 def check_regeltelling(*, totaalbedrag: Decimal | None, regels: list[CheckRegel]) -> CheckResultaat:
     if totaalbedrag is None:
         return CheckResultaat("Regeltelling vs totaal", False, "Geen factuurtotaal ingevuld om tegen te controleren")
@@ -210,6 +241,7 @@ def voer_harde_checks_uit(
     vertrouwde_ibans: set[str] | None = None,
     iban_baseline_vastgelegd: bool = False,
     iban_seed_mislukt: bool = False,
+    vervaldatum: date | None = None,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -230,6 +262,7 @@ def voer_harde_checks_uit(
                 project_verplicht=project_verplicht,
             ),
             check_regeltelling(totaalbedrag=totaalbedrag, regels=regels),
+            check_vervaldatum(factuurdatum=factuurdatum, vervaldatum=vervaldatum),
             check_iban_wissel(
                 factuur_iban=factuur_iban,
                 vertrouwde_ibans=vertrouwde_ibans or set(),

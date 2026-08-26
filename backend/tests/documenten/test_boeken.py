@@ -526,3 +526,55 @@ class TestBoekDocumentOngeldigeStatus:
             boeken.boek_document(
                 administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
             )
+
+
+class TestVervaldatum:
+    """C1 (26-08): vervaldatum reist als `DueDate` mee naar RLZ (STAP-0 26-08 live bewezen);
+    zonder vervaldatum geen DueDate (RLZ leidt 'm af); vóór de factuurdatum = harde check rood."""
+
+    def _zet_vervaldatum(self, administratie_id, document_id, actor_id, vervaldatum) -> None:
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor_id,
+            vendor_id=uuid.uuid4(),
+            referentie=f"F-{document_id}",
+            factuurdatum=date(2026, 7, 1),
+            vervaldatum=vervaldatum,
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel()],
+        )
+
+    def test_vervaldatum_gaat_als_duedate_mee(
+        self, klaar_document, administratie_id, gescoopte_gebruiker, boeken_aan, monkeypatch
+    ) -> None:
+        self._zet_vervaldatum(administratie_id, klaar_document, gescoopte_gebruiker, date(2026, 7, 31))
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=klaar_document)
+        assert data.vervaldatum == date(2026, 7, 31) and data.vervaldatum_signaal is None
+        fake_client = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
+        boeken.boek_document(administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker)
+        assert fake_client.puts[-1]["Date"] == "2026-07-01T00:00:00"
+        assert fake_client.puts[-1]["DueDate"] == "2026-07-31T00:00:00"
+
+    def test_zonder_vervaldatum_geen_duedate(
+        self, klaar_document, administratie_id, gescoopte_gebruiker, boeken_aan, monkeypatch
+    ) -> None:
+        fake_client = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
+        boeken.boek_document(administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker)
+        assert "DueDate" not in fake_client.puts[-1]
+
+    def test_lange_termijn_is_signaal_geen_blokkade(self, klaar_document, administratie_id, gescoopte_gebruiker) -> None:
+        self._zet_vervaldatum(administratie_id, klaar_document, gescoopte_gebruiker, date(2026, 12, 31))
+        data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=klaar_document)
+        assert data.vervaldatum_signaal is not None and "183 dagen" in data.vervaldatum_signaal
+        rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=klaar_document)
+        assert next(r for r in rapport.resultaten if r.naam == "Vervaldatum").ok
+
+    def test_voor_factuurdatum_blokkeert(self, klaar_document, administratie_id, gescoopte_gebruiker) -> None:
+        self._zet_vervaldatum(administratie_id, klaar_document, gescoopte_gebruiker, date(2026, 6, 1))
+        rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=klaar_document)
+        vervaldatum = next(r for r in rapport.resultaten if r.naam == "Vervaldatum")
+        assert not vervaldatum.ok and "vóór de factuurdatum" in vervaldatum.melding
+        assert rapport.geblokkeerd

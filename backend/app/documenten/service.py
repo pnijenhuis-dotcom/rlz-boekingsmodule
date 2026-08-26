@@ -927,6 +927,13 @@ class FactuurmatchKort:
 
 
 @dataclass(frozen=True)
+class AccordeurAanDeBeurt:
+    gebruiker_id: uuid.UUID
+    naam: str
+    laag: int
+
+
+@dataclass(frozen=True)
 class DocumentMetDuplicaat:
     document: Document
     duplicaat_referentie: DuplicaatReferentie | None
@@ -942,6 +949,9 @@ class DocumentMetDuplicaat:
     # Factuurmatch (fase 2): de actuele matchstand van een veldwerker-factuur — None zolang
     # er geen match berekend is (crediteur niet gekoppeld / nog geen voorstel).
     factuurmatch: FactuurmatchKort | None = None
+    # Accordeur aan de beurt (C2 26-08): bij status ter_accordering wie (naam + laag) nu aan zet
+    # is — de kolom "Toegewezen" toont dát in plaats van "—". None bij elke andere status.
+    accordeur_aan_de_beurt: AccordeurAanDeBeurt | None = None
     # Duplicaatsignaal (25-08, deel 2 punt 6): gecachete RLZ-duplicaatuitkomst — None zolang er
     # nog niet getoetst is.
     duplicaatsignaal: DuplicaatSignaalKort | None = None
@@ -1016,6 +1026,12 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
         from app.documenten.duplicaatsignaal import signalen_voor_documenten
 
         signalen = signalen_voor_documenten(session, document_ids)
+        # Accordeur aan de beurt (C2 26-08, bulk): alleen voor documenten die bij de klant liggen.
+        from app.accordering.service import aan_de_beurt_per_document
+
+        beurt = aan_de_beurt_per_document(
+            session, [d.id for d in documenten if d.status == DocumentStatus.TER_ACCORDERING]
+        )
         veldvoorstellen: dict[uuid.UUID, dict] = {}
         zonder_voorstel = [d_id for d_id in document_ids if d_id not in voorstellen]
         if zonder_voorstel:
@@ -1060,6 +1076,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     automatisch_geboekt=d.id in automatisch_geboekt_ids,
                     factuurmatch=matches.get(d.id),
                     duplicaatsignaal=signalen.get(d.id),
+                    accordeur_aan_de_beurt=beurt.get(d.id),
                 )
             )
         return resultaat

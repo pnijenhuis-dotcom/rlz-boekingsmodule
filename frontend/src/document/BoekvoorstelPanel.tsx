@@ -368,6 +368,8 @@ export function BoekvoorstelPanel({
   const [vendorId, setVendorId] = useState<string | null>(null)
   const [referentie, setReferentie] = useState('')
   const [factuurdatum, setFactuurdatum] = useState('')
+  const [vervaldatum, setVervaldatum] = useState('')
+  const [vervaldatumSignaal, setVervaldatumSignaal] = useState<string | null>(null)
   const [totaalbedrag, setTotaalbedrag] = useState('')
   const [regels, setRegels] = useState<RegelState[]>([nieuweRegel()])
   const [boekstuknummer, setBoekstuknummer] = useState<string | null>(null)
@@ -431,6 +433,8 @@ export function BoekvoorstelPanel({
         setVendorId(dto.vendor_id)
         setReferentie(dto.referentie ?? '')
         setFactuurdatum(dto.factuurdatum ?? '')
+        setVervaldatum(dto.vervaldatum ?? '')
+        setVervaldatumSignaal(dto.vervaldatum_signaal ?? null)
         setTotaalbedrag(dto.totaalbedrag ?? '')
         setBoekstuknummer(dto.rlz_boekstuknummer)
         setVerlegdVermelding(dto.btw_verlegd_vermelding ?? ai?.btw_verlegd_vermelding ?? null)
@@ -581,12 +585,35 @@ export function BoekvoorstelPanel({
         ai.factuurdatum !== null && factuurdatum === ai.factuurdatum && ai.zekerheid.factuurdatum !== undefined
           ? { score: ai.zekerheid.factuurdatum }
           : null,
+      vervaldatum:
+        ai.vervaldatum !== null && vervaldatum === ai.vervaldatum && ai.zekerheid.vervaldatum !== undefined
+          ? { score: ai.zekerheid.vervaldatum }
+          : null,
       totaalbedrag:
         gelijkBedrag(totaalbedrag, ai.totaal_incl) && ai.zekerheid.totaal_incl !== undefined
           ? { score: ai.zekerheid.totaal_incl }
           : null,
     }
-  }, [ai, aiChipsActief, isReadOnly, vendorId, referentie, factuurdatum, totaalbedrag])
+  }, [ai, aiChipsActief, isReadOnly, vendorId, referentie, factuurdatum, vervaldatum, totaalbedrag])
+
+  // Vervaldatum-signalen (C1 26-08), deterministisch en direct bij invoer: vóór de factuurdatum =
+  // wordt door de harde check geblokkeerd (hier alvast rood), termijn > 90 dagen = oranje signaal
+  // (geen blokkade) — dezelfde grens als checks.py::VERVALDATUM_TERMIJN_SIGNAAL_DAGEN.
+  const vervaldatumHint = useMemo(() => {
+    if (!vervaldatum || !factuurdatum) {
+      return vervaldatumSignaal ? { tekst: vervaldatumSignaal, kleur: 'var(--orange)' } : null
+    }
+    const dagen = Math.round((Date.parse(vervaldatum) - Date.parse(factuurdatum)) / 86_400_000)
+    if (Number.isNaN(dagen)) return null
+    if (dagen < 0) return { tekst: 'Vervaldatum ligt vóór de factuurdatum — blokkeert boeken', kleur: 'var(--red)' }
+    if (dagen > 90) {
+      return {
+        tekst: `Betaaltermijn van ${dagen} dagen is ongebruikelijk lang — controleer de vervaldatum`,
+        kleur: 'var(--orange)',
+      }
+    }
+    return null
+  }, [vervaldatum, factuurdatum, vervaldatumSignaal])
 
   const veranderInvoer = () => {
     setChecksActueel(false)
@@ -760,6 +787,7 @@ export function BoekvoorstelPanel({
             vendor_id: vendorId,
             referentie: referentie || null,
             factuurdatum: factuurdatum || null,
+            vervaldatum: vervaldatum || null,
             totaalbedrag: totaalbedrag ? normaliseerBedrag(totaalbedrag) : null,
             // Fix 3: de weergavekeuze reist mee en wordt backend-side als voorkeur per
             // (administratie, crediteur) onthouden; null = geen keuze door te geven.
@@ -983,6 +1011,7 @@ export function BoekvoorstelPanel({
             <StatischVeld label="Crediteur" waarde={optieWeergave(vendorOpties, vendorId)} />
             <StatischVeld label="Referentie / factuurnummer" waarde={referentie} />
             <StatischVeld label="Factuurdatum" waarde={factuurdatum} />
+            <StatischVeld label="Vervaldatum" waarde={vervaldatum} />
             <StatischVeld label="Totaalbedrag (incl. btw)" waarde={totaalbedrag ? `€ ${totaalbedrag}` : ''} />
           </div>
         ) : (
@@ -1063,6 +1092,27 @@ export function BoekvoorstelPanel({
               {aiKop?.factuurdatum && (
                 <div style={{ marginTop: 4 }}>
                   <AiChip score={aiKop.factuurdatum.score} drempel={aiKop.drempel} />
+                </div>
+              )}
+            </div>
+            <div>
+              <label htmlFor="boekvoorstel-vervaldatum">Vervaldatum</label>
+              <DatePicker
+                id="boekvoorstel-vervaldatum"
+                value={vervaldatum || null}
+                onChange={(v) => {
+                  setVervaldatum(v ?? '')
+                  veranderInvoer()
+                }}
+              />
+              {aiKop?.vervaldatum && (
+                <div style={{ marginTop: 4 }}>
+                  <AiChip score={aiKop.vervaldatum.score} drempel={aiKop.drempel} />
+                </div>
+              )}
+              {vervaldatumHint && (
+                <div className="hint" style={{ marginTop: 4, color: vervaldatumHint.kleur }}>
+                  {vervaldatumHint.tekst}
                 </div>
               )}
             </div>

@@ -254,6 +254,9 @@ def _boek_bij_rlz(
         # de RLZ-test-administratie (verkenning/api-verkenning.md, "Boekstuknummer, factuurdatum
         # en /Uploads"); een kale datumstring is nooit tegen de live API getest.
         Date=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
+        # Vervaldatum (C1 26-08): `DueDate` — STAP-0 26-08 live bewezen (PUT 204, readback
+        # identiek); zonder DueDate leidt RLZ 'm zelf af uit Date + PaymentDueDays crediteur.
+        **({"DueDate": f"{voorstel.vervaldatum.isoformat()}T00:00:00"} if voorstel.vervaldatum else {}),
     )
     zorg_voor_bijlage(
         client,

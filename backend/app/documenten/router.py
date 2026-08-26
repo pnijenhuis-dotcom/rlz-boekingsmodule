@@ -135,6 +135,8 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         vendor_id=data.vendor_id,
         referentie=data.referentie,
         factuurdatum=data.factuurdatum,
+        vervaldatum=data.vervaldatum,
+        vervaldatum_signaal=data.vervaldatum_signaal,
         totaalbedrag=data.totaalbedrag,
         rlz_boekstuknummer=data.rlz_boekstuknummer,
         opgeslagen=data.opgeslagen,
@@ -278,6 +280,15 @@ def documenten_lijst(
                 factuurdatum=item.factuurdatum,
                 automatisch_geboekt=item.automatisch_geboekt,
                 factuurmatch=_naar_match_kort(item.factuurmatch),
+                accordeur_aan_de_beurt=(
+                    schemas.AccordeurAanDeBeurtDto(
+                        gebruiker_id=item.accordeur_aan_de_beurt.gebruiker_id,
+                        naam=item.accordeur_aan_de_beurt.naam,
+                        laag=item.accordeur_aan_de_beurt.laag,
+                    )
+                    if item.accordeur_aan_de_beurt
+                    else None
+                ),
                 duplicaatsignaal=(
                     schemas.DuplicaatSignaalKortDto(
                         uitkomst=item.duplicaatsignaal.uitkomst,
@@ -554,6 +565,7 @@ def boekvoorstel_opslaan(
             vendor_id=invoer.vendor_id,
             referentie=invoer.referentie,
             factuurdatum=invoer.factuurdatum,
+            vervaldatum=invoer.vervaldatum,
             totaalbedrag=invoer.totaalbedrag,
             regels=[
                 boekvoorstel.BoekvoorstelRegelData(

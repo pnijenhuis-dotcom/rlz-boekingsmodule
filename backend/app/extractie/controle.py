@@ -268,8 +268,10 @@ def bouw_veldvoorstel(
 
     regels: list[dict] = []
     regel_zekerheid: list[float] = []
-    regelsom = Decimal(0)
+    netto_som = Decimal(0)
+    btw_som = Decimal(0)
     regelsom_compleet = True
+    btw_per_regel_compleet = True
     for index, regel in enumerate(extractie.regels, start=1):
         netto = parse_bedrag(regel.netto_bedrag)
         btw = parse_bedrag(regel.btw_bedrag)
@@ -279,7 +281,10 @@ def bouw_veldvoorstel(
             onparseerbaar.append(f"btw_bedrag (regel {index})")
         if netto is None:
             regelsom_compleet = False
-        regelsom += (netto or Decimal(0)) + (btw or Decimal(0))
+        if btw is None:
+            btw_per_regel_compleet = False
+        netto_som += netto or Decimal(0)
+        btw_som += btw or Decimal(0)
         afleiding = leid_btw_af(netto, btw, taxrates)
         regels.append(
             {
@@ -298,9 +303,25 @@ def bouw_veldvoorstel(
         if regel.zekerheid < zekerheid_drempel:
             lage_zekerheid.append(f"regel {index}")
 
+    # Regelsom-toets (C3 26-08, casus AddGuests 1.328,14 + 278,91 = 1.607,05): EXACT dezelfde
+    # netto+btw=incl-logica als de boekingsregels-toets onderin het controlescherm. Een scan
+    # zonder btw per regel telde eerder alleen netto op en riep vals "wijkt af" tegen het
+    # incl-totaal. Nu: (1) btw per regel bekend → Σnetto+Σbtw vs incl; (2) anders Σnetto vs het
+    # excl-totaal; (3) anders Σnetto + factuur-btw vs incl; (4) niets te toetsen → geen badge.
+    regelsom: Decimal | None = None
+    regelsom_basis: str | None = None
     regelsom_wijkt_af: bool | None = None
-    if regels and regelsom_compleet and totaal_incl is not None:
-        regelsom_wijkt_af = abs(regelsom - totaal_incl) > _ROND_TOLERANTIE
+    if regels and regelsom_compleet:
+        if btw_per_regel_compleet and totaal_incl is not None:
+            regelsom, regelsom_basis, vergelijk = netto_som + btw_som, "incl", totaal_incl
+        elif totaal_excl is not None:
+            regelsom, regelsom_basis, vergelijk = netto_som, "excl", totaal_excl
+        elif btw_bedrag is not None and totaal_incl is not None:
+            regelsom, regelsom_basis, vergelijk = netto_som + btw_bedrag, "incl", totaal_incl
+        else:
+            vergelijk = None
+        if regelsom is not None and vergelijk is not None:
+            regelsom_wijkt_af = abs(regelsom - vergelijk) > _ROND_TOLERANTIE
 
     return {
         "bron": "ai",
@@ -325,7 +346,8 @@ def bouw_veldvoorstel(
             {"vendor_id": str(vendor_id), "match": vendor_match} if vendor_id is not None else None
         ),
         "controle": {
-            "regelsom": _bedrag_str(regelsom) if regels and regelsom_compleet else None,
+            "regelsom": _bedrag_str(regelsom) if regelsom is not None else None,
+            "regelsom_basis": regelsom_basis,
             "regelsom_wijkt_af": regelsom_wijkt_af,
             "onparseerbaar": onparseerbaar,
             "lage_zekerheid": lage_zekerheid,

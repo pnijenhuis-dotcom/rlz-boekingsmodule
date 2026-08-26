@@ -708,3 +708,45 @@ class TestIdempotenteBesluitHerhaling:
         assert resultaat.alles_akkoord is False
         assert [s.besluit for s in resultaat.accordering.stappen] == ["akkoord", None]
         assert resultaat.accordering.stappen[1].aan_de_beurt is True
+
+
+class TestAccordeurAanDeBeurtInDocumentenlijst:
+    """C2 (26-08): de documentenlijst draagt bij status ter_accordering wie aan de beurt is (naam +
+    laag) — de kolom "Toegewezen" toont dát i.p.v. "—"; ná het akkoord van laag 1 wisselt het naar
+    laag 2, en een document dat niet bij de klant ligt draagt niets."""
+
+    def test_lijst_toont_accordeur_en_laag_en_wisselt_na_akkoord(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        accordeur_2: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        from app.documenten import service as documenten_service
+
+        def item():
+            return next(
+                d for d in documenten_service.lijst_documenten(administratie_id=administratie_id) if d.document.id == klaar_document
+            )
+
+        assert item().accordeur_aan_de_beurt is None  # nog niet bij de klant
+        zet_schema(
+            administratie_id=administratie_id,
+            beheerder_id=beheerder_id,
+            lagen=[_laag(1, accordeur_1), _laag(2, accordeur_2, "100.00")],  # € 121 → beide lagen vereist
+        )
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker, actor_rol="boekhouding"
+        )
+        beurt = item().accordeur_aan_de_beurt
+        assert beurt is not None and beurt.gebruiker_id == accordeur_1 and beurt.laag == 1
+        with admin_engine.connect() as conn:
+            naam = conn.execute(text("SELECT naam FROM platform.gebruiker WHERE id = :id"), {"id": accordeur_1}).scalar_one()
+        assert beurt.naam == naam
+
+        service.geef_akkoord(administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1)
+        beurt2 = item().accordeur_aan_de_beurt
+        assert beurt2 is not None and beurt2.gebruiker_id == accordeur_2 and beurt2.laag == 2

@@ -519,7 +519,18 @@ export function DocumentenDeelscherm({
                           </div>
                         )}
                       </td>
-                      <td>{d.toegewezen_aan ? naamVoor(d.toegewezen_aan) : '—'}</td>
+                      <td>
+                        {d.status === 'ter_accordering' && d.accordeur_aan_de_beurt ? (
+                          <span title="Klant-accordeur die nu aan de beurt is">
+                            {d.accordeur_aan_de_beurt.naam}
+                            <span style={{ color: 'var(--muted)' }}> · laag {d.accordeur_aan_de_beurt.laag}</span>
+                          </span>
+                        ) : d.toegewezen_aan ? (
+                          naamVoor(d.toegewezen_aan)
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td>
                         {isVerwijderd ? (
                           <button

@@ -193,6 +193,9 @@ class Boekvoorstel(Base):
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     referentie: Mapped[str | None] = mapped_column(default=None)
     factuurdatum: Mapped[date | None] = mapped_column(default=None)
+    # Vervaldatum (C1 26-08, migratie 0078): kopveld uit de scan (zelfde herkomst-chip), gaat als
+    # `DueDate` mee naar RLZ (live bewezen — anders leidt RLZ 'm af uit Date + PaymentDueDays).
+    vervaldatum: Mapped[date | None] = mapped_column(default=None)
     totaalbedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     rlz_boekstuknummer: Mapped[str | None] = mapped_column(default=None)
     # Tegenboek-pad (migratie 0061): 0 = de oorspronkelijke boeking; elke "tegenboeken én

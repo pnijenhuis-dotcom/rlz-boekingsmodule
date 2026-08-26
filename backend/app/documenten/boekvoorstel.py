@@ -21,6 +21,8 @@ from app.documenten.checks import (
     check_iban_wissel,
     check_regeltelling,
     check_verplichte_velden,
+    check_vervaldatum,
+    vervaldatum_signaal,
     voer_harde_checks_uit,
 )
 from app.documenten.models import (
@@ -102,6 +104,10 @@ class BoekvoorstelData:
     # "Btw verlegd"-vermelding uit de laatste extractie (punt 3, 26-08) — HINT voor de
     # controleur bij 0%-regels, nooit een invulling. None = niets gelezen of geen veldvoorstel.
     btw_verlegd_vermelding: str | None = None
+    # Vervaldatum (C1 26-08): kopveld uit de scan; None = leeg (RLZ leidt DueDate dan zelf af).
+    vervaldatum: date | None = None
+    # Oranje signaal bij een implausibele betaaltermijn (> 90 dagen) — checks.vervaldatum_signaal.
+    vervaldatum_signaal: str | None = None
 
 
 def _als_decimal(waarde: str | None) -> Decimal | None:
@@ -318,6 +324,10 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 vendor_id=bestaand.vendor_id,
                 referentie=bestaand.referentie,
                 factuurdatum=bestaand.factuurdatum,
+                vervaldatum=bestaand.vervaldatum,
+                vervaldatum_signaal=vervaldatum_signaal(
+                    factuurdatum=bestaand.factuurdatum, vervaldatum=bestaand.vervaldatum
+                ),
                 totaalbedrag=bestaand.totaalbedrag,
                 rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
                 opgeslagen=True,
@@ -367,6 +377,11 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             vendor_id=vendor_id,
             referentie=veldvoorstel.get("factuurnummer"),
             factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
+            vervaldatum=_als_datum(veldvoorstel.get("vervaldatum")),
+            vervaldatum_signaal=vervaldatum_signaal(
+                factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
+                vervaldatum=_als_datum(veldvoorstel.get("vervaldatum")),
+            ),
             totaalbedrag=_als_decimal(veldvoorstel.get("totaal_incl")),
             rlz_boekstuknummer=None,
             opgeslagen=False,
@@ -397,6 +412,7 @@ def sla_boekvoorstel_op(
     totaalbedrag: Decimal | None,
     regels: list[BoekvoorstelRegelData],
     regels_samenvoegen: bool | None = None,
+    vervaldatum: date | None = None,
 ) -> BoekvoorstelData:
     """`regels_samenvoegen` (fix 3) is de weergavekeuze van de controleur op het moment van
     opslaan — die wordt als voorkeur per (administratie, crediteur) onthouden. None = niet
@@ -413,6 +429,7 @@ def sla_boekvoorstel_op(
         bestaand.vendor_id = vendor_id
         bestaand.referentie = referentie
         bestaand.factuurdatum = factuurdatum
+        bestaand.vervaldatum = vervaldatum
         bestaand.totaalbedrag = totaalbedrag
 
         # Klaargezette doorbelasting (besluit 25-08) verwijst per regel-id — over de
@@ -572,6 +589,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 project_verplicht=project_verplicht,
             ),
             check_regeltelling(totaalbedrag=voorstel.totaalbedrag, regels=regels),
+            check_vervaldatum(factuurdatum=voorstel.factuurdatum, vervaldatum=voorstel.vervaldatum),
             check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd),
             CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"),
         )
@@ -641,6 +659,7 @@ def voer_checks_uit(
             vendor_id=voorstel.vendor_id,
             referentie=voorstel.referentie,
             factuurdatum=voorstel.factuurdatum,
+            vervaldatum=voorstel.vervaldatum,
             totaalbedrag=voorstel.totaalbedrag,
             regels=_naar_check_regels(voorstel),
             eigen_rlz_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),

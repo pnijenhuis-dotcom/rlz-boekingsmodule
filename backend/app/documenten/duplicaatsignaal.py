@@ -21,7 +21,6 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal
 
 from sqlalchemy import select
 
@@ -59,7 +58,9 @@ def bereken_duplicaatsignaal(
     RlzClient (zelfde credential-resolutie als `voer_checks_uit`); een aanroeper met een open
     verbinding geeft 'm door. Geeft None terug voor documenten waar het signaal niet op van
     toepassing is (geen inkoopfactuur, verwijderd/gesplitst)."""
-    from app.documenten.boekvoorstel import haal_boekvoorstel_op  # lokaal: boekvoorstel importeert ons niet, wij hem wel
+    from app.documenten.boekvoorstel import (
+        haal_boekvoorstel_op,  # lokaal: boekvoorstel importeert ons niet, wij hem wel
+    )
 
     with scoped_session(administratie_id) as session:
         document = session.get(Document, document_id)
