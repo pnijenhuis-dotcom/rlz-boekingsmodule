@@ -1,29 +1,45 @@
 /* Accordeur-PWA — design tokens en patronen 1-op-1 uit mockup/accordeur.html (eindakkoord
    Peter 2026-08-11). DARK = DEFAULT, systeemvolgend bij openen; ◐ = handmatige override
-   (data-thema op .acc). Mobiel is leading: de app vult het scherm op ≤430px; desktop is de
+   (data-thema op .acc). DESIGNPASS V2 (26-08, mockup/kantoor-designpass-v2.html): grafiet-
+   fundering zónder groenzweem (Vastly-les 24-08 — eigen hexwaarden, nooit licht-waarden
+   hergebruikt), teal (--acc-accent) exclusief ACTIE (knoppen, links, actieve tab, focus),
+   groen (--acc-green) exclusief STATUS (akkoord/geboekt). Alleen tokens/kleuren — geen
+   functionele wijziging (header/PDF-laadstate/vragen-dialoog = aparte opdracht). Contrast
+   geborgd in src/styles/contrast.test.ts (parseert dit tokenblok, beide thema's). Mobiel is leading: de app vult het scherm op ≤430px; desktop is de
    afgeleide (zelfde kolom, gecentreerd). Alle formuliervelden ≥16px (iOS-autozoom-les 11-08);
    bewust géén maximum-scale-hack in de viewport-meta (toegankelijkheid). */
 
 .acc {
-  --acc-bg: #0e1514;
-  --acc-panel: #16211f;
-  --acc-border: #263533;
-  --acc-text: #e6ecea;
-  --acc-muted: #8ba09b;
-  --acc-accent: #5cb3a8;
-  --acc-green: #34c08b;
-  --acc-green-bg: #123227;
-  --acc-orange: #e9a23b;
-  --acc-orange-bg: #372a12;
-  --acc-red: #ee6c62;
-  --acc-red-bg: #3a1e1b;
-  --acc-blue-bg: #1a2e2b;
-  --acc-purple: #ab8ffc;
-  --acc-purple-bg: #28203f;
+  --acc-bg: #0b0d0e;
+  --acc-panel: #151719;
+  --acc-border: #242729;
+  --acc-text: #f0f3f2;
+  --acc-muted: #98a0a5;
+  --acc-accent: #3ec9b8;
+  --acc-accent-fg: #06211d;
+  --acc-green: #4ecb94;
+  --acc-green-bg: #12291e;
+  --acc-orange: #e5a04c;
+  --acc-orange-bg: #2e2310;
+  --acc-red: #f08579;
+  --acc-red-fg: #2a0c09;
+  --acc-red-bg: #331714;
+  --acc-blue-bg: #12302c;
+  --acc-purple: #b39af0;
+  --acc-purple-fg: #1a1230;
+  --acc-purple-bg: #241d38;
+  /* App-chrome (header/toast/viewer): grafiet, geen groenzweem. */
+  --acc-head-1: #15181b;
+  --acc-head-2: #0b0d0e;
+  --acc-head-text: #f0f3f2;
+  --acc-head-muted: #98a0a5;
+  --acc-head-knop: rgba(255, 255, 255, 0.08);
+  --acc-viewer-bg: #3a3d42;
+  --acc-viewer-text: #c9ced4;
   --acc-radius: 12px;
   --acc-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --acc-focus: rgba(92, 179, 168, 0.28);
-  --acc-head-grad: linear-gradient(180deg, #14242b 0%, #0d1a19 100%);
+  --acc-focus: rgba(62, 201, 184, 0.35);
+  --acc-head-grad: linear-gradient(180deg, var(--acc-head-1) 0%, var(--acc-head-2) 100%);
 
   color-scheme: dark;
   position: fixed;
@@ -43,23 +59,26 @@
 }
 
 .acc[data-thema='licht'] {
-  --acc-bg: #f5f7f7;
+  --acc-bg: #f6f7f8;
   --acc-panel: #ffffff;
-  --acc-border: #e5e9e8;
-  --acc-text: #16181d;
-  --acc-muted: #647572;
-  --acc-accent: #2e6660;
+  --acc-border: #e6e8ea;
+  --acc-text: #12181f;
+  --acc-muted: #5b6470;
+  --acc-accent: #0e7a6e;
+  --acc-accent-fg: #ffffff;
   --acc-green: #1c7a54;
-  --acc-green-bg: #e6f4ee;
+  --acc-green-bg: #e4f4ec;
   --acc-orange: #b45309;
   --acc-orange-bg: #fdf3e3;
   --acc-red: #b42318;
+  --acc-red-fg: #ffffff;
   --acc-red-bg: #fceceb;
-  --acc-blue-bg: #e6f0ee;
+  --acc-blue-bg: #e6f4f2;
   --acc-purple: #6941c6;
+  --acc-purple-fg: #ffffff;
   --acc-purple-bg: #f1ecfb;
-  --acc-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 4px rgba(16, 24, 40, 0.05);
-  --acc-focus: rgba(46, 102, 96, 0.18);
+  --acc-shadow: 0 1px 2px rgba(18, 24, 31, 0.05), 0 1px 4px rgba(18, 24, 31, 0.05);
+  --acc-focus: rgba(14, 122, 110, 0.3);
   color-scheme: light;
 }
 
@@ -103,7 +122,7 @@
 .acc-apphead {
   padding: calc(14px + env(safe-area-inset-top)) 16px 10px;
   background: var(--acc-head-grad);
-  color: #e6efec;
+  color: var(--acc-head-text);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -114,7 +133,7 @@
 }
 .acc-apphead .acc-who {
   font-size: 11px;
-  color: #a9bfba;
+  color: var(--acc-head-muted);
 }
 .acc-apphead b {
   font-size: 14px;
@@ -122,16 +141,16 @@
   color: #fff;
 }
 .acc-apphead b span {
-  color: #7fd0c5;
+  color: var(--acc-accent);
 }
 .acc-headbtns {
   display: flex;
   gap: 6px;
 }
 .acc-iconbtn {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--acc-head-knop);
   border: none;
-  color: #cfe0dc;
+  color: var(--acc-head-text);
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -291,7 +310,7 @@
   color: var(--acc-muted);
 }
 .acc-docpane {
-  background: #3f4247;
+  background: var(--acc-viewer-bg);
   border-radius: var(--acc-radius);
   padding: 10px;
   min-height: 330px;
@@ -311,7 +330,7 @@
   background: #fff;
 }
 .acc-doc-status {
-  color: #c9ced4;
+  color: var(--acc-viewer-text);
   font-size: 12px;
   padding: 24px 12px;
   text-align: center;
@@ -412,15 +431,18 @@
   filter: brightness(1.08);
 }
 .acc-btn:active {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 .acc-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* Primaire actieknop (Akkoord / Inloggen / Aanzetten): teal — semantiek-regel v2 (was .groen;
+   groen is sinds 26-08 exclusief status). De klasse .groen blijft als alias voor oude markup. */
+.acc-btn.primair,
 .acc-btn.groen {
-  background: var(--acc-green);
-  color: #fff;
+  background: var(--acc-accent);
+  color: var(--acc-accent-fg);
 }
 .acc-btn.afwijs {
   background: var(--acc-panel);
@@ -439,7 +461,7 @@
 }
 .acc-btn.paars {
   background: var(--acc-purple);
-  color: #fff;
+  color: var(--acc-purple-fg);
 }
 /* Subtiele tekstlink onder de primaire knop (beginscherm: "Opnieuw inloggen" —
    nooduitgang, geen tweede knop; feedback Peter 14-08). */
@@ -544,7 +566,7 @@
   overflow-y: auto;
 }
 /* Statusbalkzone altijd donker (native schil draait edge-to-edge met witte statusbalktekst,
-   Info.plist UIStatusBarStyleLightContent — spiegel van de PWA-theme_color #0e1514): de
+   Info.plist UIStatusBarStyleLightContent — spiegel van de PWA-theme_color #0b0d0e): de
    vol-schermen volgen het thema en zouden in het lichte thema de klok onleesbaar maken.
    In het donkere thema valt de cap weg tegen de achtergrond. */
 .acc-vol::before {
@@ -554,7 +576,7 @@
   left: 0;
   right: 0;
   height: env(safe-area-inset-top);
-  background: #0e1514;
+  background: var(--acc-head-2);
   z-index: 1;
 }
 /* Uitlog op de volledige-schermstaat (voorwaarden-gate, fix 2026-08-12): zelfde ⏻ als in de
@@ -743,8 +765,8 @@
   left: 50%;
   transform: translateX(-50%);
   bottom: calc(96px + env(safe-area-inset-bottom));
-  background: #14242b;
-  color: #e6efec;
+  background: var(--acc-head-1);
+  color: var(--acc-head-text);
   padding: 10px 18px;
   border-radius: 999px;
   font-size: 12.5px;
@@ -826,7 +848,7 @@
   top: -6px;
   right: -4px;
   background: var(--acc-red);
-  color: #fff;
+  color: var(--acc-red-fg);
   font-size: 10px;
   font-weight: 800;
   border-radius: 999px;

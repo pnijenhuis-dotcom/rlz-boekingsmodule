@@ -6,8 +6,8 @@
   "start_url": "/accordeur",
   "scope": "/accordeur",
   "display": "standalone",
-  "background_color": "#0e1514",
-  "theme_color": "#0e1514",
+  "background_color": "#0b0d0e",
+  "theme_color": "#0b0d0e",
   "lang": "nl",
   "icons": [
     { "src": "/icons/accordeur-icoon.svg", "sizes": "any", "type": "image/svg+xml" },

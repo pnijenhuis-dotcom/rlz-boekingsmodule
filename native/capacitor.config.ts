@@ -21,10 +21,10 @@ const config: CapacitorConfig = {
   webDir: '../frontend/dist',
   ios: {
     // De accordeur-PWA is dark-first; de webview mag niet wit flitsen bij het opstarten.
-    backgroundColor: '#0e1514',
+    backgroundColor: '#0b0d0e',
   },
   android: {
-    backgroundColor: '#0e1514',
+    backgroundColor: '#0b0d0e',
   },
 }
 

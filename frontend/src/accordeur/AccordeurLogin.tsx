@@ -121,7 +121,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
           value={wachtwoord}
           onChange={(e) => setWachtwoord(e.target.value)}
         />
-        <button className="acc-btn groen" type="submit" disabled={bezig} style={{ marginTop: 6 }}>
+        <button className="acc-btn primair" type="submit" disabled={bezig} style={{ marginTop: 6 }}>
           {bezig ? 'Bezig…' : 'Inloggen'}
         </button>
       </form>

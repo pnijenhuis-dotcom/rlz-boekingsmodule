@@ -79,7 +79,7 @@ function useManifest(): void {
     voegLink('apple-touch-icon', '/icons/apple-touch-icon-accordeur.png')
     voegMeta('apple-mobile-web-app-capable', 'yes')
     voegMeta('apple-mobile-web-app-status-bar-style', 'black-translucent')
-    voegMeta('theme-color', '#0e1514')
+    voegMeta('theme-color', '#0b0d0e')
     return () => {
       elementen.forEach((el) => el.remove())
       document.title = vorigeTitel
@@ -193,7 +193,7 @@ export default function AccordeurApp() {
             in met je e-mailadres en wachtwoord — daarna kun je dit apparaat direct registreren.
           </div>
         </div>
-        <button className="acc-btn groen" onClick={naarLoginNaVerlopenSessie}>
+        <button className="acc-btn primair" onClick={naarLoginNaVerlopenSessie}>
           Opnieuw inloggen
         </button>
       </div>

@@ -233,7 +233,7 @@ function MeldingenSheet({ status, bezig, onAanzetten, onUitzetten, onSluit }: Me
             </button>
           )}
           {status === 'uit' && (
-            <button className="acc-btn groen" disabled={bezig} onClick={onAanzetten}>
+            <button className="acc-btn primair" disabled={bezig} onClick={onAanzetten}>
               {bezig ? 'Bezig…' : 'Zet meldingen aan'}
             </button>
           )}
@@ -608,7 +608,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
             altijd nog via 🔔 rechtsboven.
           </div>
         </div>
-        <button className="acc-btn groen" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
+        <button className="acc-btn primair" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
           {meldingenBezig ? 'Bezig…' : 'Zet meldingen aan'}
         </button>
         <button
@@ -695,7 +695,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 <div>
                   <b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.
                   <br />
-                  <button className="acc-btn klein groen" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
+                  <button className="acc-btn klein primair" disabled={meldingenBezig} onClick={() => void eenmaligAanzetten()}>
                     {meldingenBezig ? 'Bezig…' : 'Zet meldingen aan'}
                   </button>{' '}
                   <button className="acc-tekstlink" onClick={() => legKeuzeVast('uit')}>
@@ -871,7 +871,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
           >
             Afwijzen
           </button>
-          <button className="acc-btn groen" onClick={akkoordKnop}>
+          <button className="acc-btn primair" onClick={akkoordKnop}>
             Akkoord ✓
           </button>
         </div>

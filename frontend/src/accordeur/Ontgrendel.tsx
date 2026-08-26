@@ -104,12 +104,12 @@ export function Ontgrendel({ naOntgrendeld, naarLogin }: Props) {
       </div>
       {fout && <div className="acc-fout">{fout}</div>}
       {!gelukt && echteWebauthn && (
-        <button className="acc-btn groen" disabled={bezig} onClick={() => void start(false)}>
+        <button className="acc-btn primair" disabled={bezig} onClick={() => void start(false)}>
           {bezig ? 'Bezig…' : 'Ontgrendelen'}
         </button>
       )}
       {!gelukt && !echteWebauthn && devStub && (
-        <button className="acc-btn groen" disabled={bezig} onClick={() => void start(true)}>
+        <button className="acc-btn primair" disabled={bezig} onClick={() => void start(true)}>
           {bezig ? 'Bezig…' : 'Ontgrendelen (dev-stub)'}
         </button>
       )}

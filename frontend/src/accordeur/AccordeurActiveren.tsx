@@ -98,12 +98,12 @@ export function AccordeurActiveren({ passkeySetupToken, naIngelogd }: Props) {
       </div>
       {fout && <div className="acc-fout">{fout}</div>}
       {echteWebauthn && (
-        <button className="acc-btn groen" disabled={bezig} onClick={() => void registreer(false)}>
+        <button className="acc-btn primair" disabled={bezig} onClick={() => void registreer(false)}>
           {bezig ? 'Bezig…' : 'Passkey aanmaken'}
         </button>
       )}
       {!echteWebauthn && devStub && (
-        <button className="acc-btn groen" disabled={bezig} onClick={() => void registreer(true)}>
+        <button className="acc-btn primair" disabled={bezig} onClick={() => void registreer(true)}>
           {bezig ? 'Bezig…' : 'Registreren (dev-stub)'}
         </button>
       )}

@@ -69,7 +69,7 @@ export function VoorwaardenScherm({ naAkkoord, uitloggen }: Props) {
             />
             <span>Ik heb de gebruiksvoorwaarden en de privacyverklaring gelezen en ga akkoord.</span>
           </label>
-          <button className="acc-btn groen" disabled={!aangevinkt || bezig} onClick={() => void bevestig()}>
+          <button className="acc-btn primair" disabled={!aangevinkt || bezig} onClick={() => void bevestig()}>
             {bezig ? 'Bezig…' : 'Akkoord en beginnen'}
           </button>
           <div className="acc-sub" style={{ fontSize: 11, color: 'var(--acc-muted)', maxWidth: 340 }}>
