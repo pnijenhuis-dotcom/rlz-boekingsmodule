@@ -10,27 +10,31 @@
   /* ===== Zelfde design tokens als mockup/index.html (designpass).
          DARK = DEFAULT (besluit Peter 2026-08-11, mobiele review): systeemvolgend bij het
          openen, ◐ rechtsboven = handmatige override. ===== */
+  /* DESIGNPASS V2 (26-08, kantoor-designpass-v2.html): grafiet-fundering zónder groenzweem
+     (Vastly-les 24-08), --accent teal = exclusief ACTIE (knoppen/links/actieve tab), --green =
+     exclusief STATUS. Bron voor frontend/src/accordeur/accordeur.css (--acc-*). */
   :root {
     color-scheme: dark;
-    --bg: #0e1514; --panel: #16211f; --border: #263533;
-    --text: #e6ecea; --muted: #8ba09b; --accent: #5cb3a8;
-    --green: #34c08b; --green-bg: #123227;
-    --orange: #e9a23b; --orange-bg: #372a12;
-    --red: #ee6c62; --red-bg: #3a1e1b;
-    --blue-bg: #1a2e2b; --purple: #ab8ffc; --purple-bg: #28203f;
+    --bg: #0b0d0e; --panel: #151719; --border: #242729;
+    --text: #f0f3f2; --muted: #98a0a5; --accent: #3ec9b8; --accent-fg: #06211d;
+    --green: #4ecb94; --green-bg: #12291e;
+    --orange: #e5a04c; --orange-bg: #2e2310;
+    --red: #f08579; --red-fg: #2a0c09; --red-bg: #331714;
+    --blue-bg: #12302c; --purple: #b39af0; --purple-fg: #1a1230; --purple-bg: #241d38;
+    --head-1: #15181b; --head-2: #0b0d0e; --head-text: #f0f3f2; --head-muted: #98a0a5;
     --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,.4);
-    --focus: rgba(92,179,168,.28);
+    --focus: rgba(62,201,184,.35);
   }
   body.licht {
     color-scheme: light;
-    --bg: #f5f7f7; --panel: #ffffff; --border: #e5e9e8;
-    --text: #16181d; --muted: #647572; --accent: #2e6660;
-    --green: #1c7a54; --green-bg: #e6f4ee;
+    --bg: #f6f7f8; --panel: #ffffff; --border: #e6e8ea;
+    --text: #12181f; --muted: #5b6470; --accent: #0e7a6e; --accent-fg: #ffffff;
+    --green: #1c7a54; --green-bg: #e4f4ec;
     --orange: #b45309; --orange-bg: #fdf3e3;
-    --red: #b42318; --red-bg: #fceceb;
-    --blue-bg: #e6f0ee; --purple: #6941c6; --purple-bg: #f1ecfb;
-    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 4px rgba(16,24,40,.05);
-    --focus: rgba(46,102,96,.18);
+    --red: #b42318; --red-fg: #ffffff; --red-bg: #fceceb;
+    --blue-bg: #e6f4f2; --purple: #6941c6; --purple-fg: #ffffff; --purple-bg: #f1ecfb;
+    --shadow: 0 1px 2px rgba(18,24,31,.05), 0 1px 4px rgba(18,24,31,.05);
+    --focus: rgba(14,122,110,.30);
   }
   * { box-sizing: border-box; margin: 0; }
   /* iOS-autozoom-preventie (iPhone-review Peter 2026-08-11): élk formulierveld ≥ 16px —
@@ -65,16 +69,16 @@
 
   /* ===== App-chrome ===== */
   .apphead {
-    padding: 14px 16px 10px; background: linear-gradient(180deg, #14242b 0%, #0d1a19 100%);
-    color: #e6efec; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 14px 16px 10px; background: linear-gradient(180deg, var(--head-1) 0%, var(--head-2) 100%);
+    color: var(--head-text); display: flex; align-items: center; justify-content: space-between; gap: 8px;
     position: sticky; top: 0; z-index: 20;
   }
-  .apphead .who { font-size: 11px; color: #a9bfba; }
+  .apphead .who { font-size: 11px; color: var(--head-muted); }
   .apphead b { font-size: 14px; display: block; color: #fff; }
-  .apphead b span { color: #7fd0c5; }
+  .apphead b span { color: var(--accent); }
   .headbtns { display: flex; gap: 6px; }
   .iconbtn {
-    background: rgba(255,255,255,.08); border: none; color: #cfe0dc; width: 34px; height: 34px;
+    background: rgba(255,255,255,.08); border: none; color: var(--head-text); width: 34px; height: 34px;
     border-radius: 10px; font-size: 15px; cursor: pointer; flex-shrink: 0;
   }
   .iconbtn:hover { background: rgba(255,255,255,.16); }
@@ -155,7 +159,8 @@
   .btn:hover { filter: brightness(1.08); }
   .btn:active { transform: translateY(1px); }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
-  .btn.groen { background: var(--green); color: #fff; }
+  /* Primaire actieknop = teal (v2; was .groen — groen is exclusief status). .groen blijft alias. */
+  .btn.primair, .btn.groen { background: var(--accent); color: var(--accent-fg); }
   .btn.afwijs { background: var(--panel); color: var(--red); border: 1.5px solid var(--red); }
   .btn.klein { font-size: 13px; padding: 10px 14px; flex: none; }
   .btn.secundair { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
@@ -220,7 +225,7 @@
   }
 
   .toast {
-    position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; background: #14242b; color: #e6efec;
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; background: var(--head-1); color: var(--head-text);
     padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 600; box-shadow: 0 6px 24px rgba(0,0,0,.35);
     opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 60; white-space: nowrap;
   }
@@ -262,7 +267,7 @@
              Kill-switch-semantiek ongewijzigd (kantoor trekt per apparaat server-side in). -->
         <div class="pushnote" id="meldingenkaart"><span class="t">🔔</span>
           <div><b>Dagelijkse herinnering · 09:00</b> — alleen als er iets openstaat, nooit ruis.<br>
-          <button class="btn klein groen" style="margin-top:7px" onclick="meldingenAanKaart()">Zet meldingen aan</button>
+          <button class="btn klein primair" style="margin-top:7px" onclick="meldingenAanKaart()">Zet meldingen aan</button>
           <button class="btn klein secundair" style="margin-top:7px" onclick="meldingenNietNu()">Niet nu</button></div>
         </div>
         <div class="qcount" id="qcount">3 facturen wachten op je akkoord</div>
@@ -305,7 +310,7 @@
     <!-- Actiebalk (alleen in review) -->
     <div class="actionbar" id="actionbar">
       <button class="btn afwijs" onclick="openAfwijzen()">Afwijzen</button>
-      <button class="btn groen" onclick="akkoord()">Akkoord ✓</button>
+      <button class="btn primair" onclick="akkoord()">Akkoord ✓</button>
     </div>
 
     <!-- ================= SHEET: AFWIJZEN MET VERPLICHTE REDEN ================= -->
@@ -343,7 +348,7 @@
         <div class="uitlegblok" id="meldingenstatus">Meldingen staan <b>uit</b> op dit apparaat.</div>
         <div class="rij">
           <button class="btn secundair" onclick="sluit('sheetMeldingen')">Sluiten</button>
-          <button class="btn groen" id="meldingenknop" onclick="meldingenToggle()">Zet meldingen aan</button>
+          <button class="btn primair" id="meldingenknop" onclick="meldingenToggle()">Zet meldingen aan</button>
         </div>
       </div>
     </div>
@@ -362,7 +367,7 @@
         <div class="sub">Één keer bij het openen van de app — daarna werkt alles direct, ook de akkoord-knop. Sluit je de app helemaal, dan ontgrendel je bij de volgende start opnieuw.</div>
         <span class="stub">simulatie — in de app: passkey/WebAuthn · volledige login alleen bij eerste gebruik, een nieuw apparaat of ná 7 dagen inactiviteit</span>
       </div>
-      <button class="btn groen" id="bioknop" onclick="ontgrendel()">Simuleer Face ID</button>
+      <button class="btn primair" id="bioknop" onclick="ontgrendel()">Simuleer Face ID</button>
     </div>
   </div>
 
@@ -578,7 +583,7 @@
       meldingenAanStaat ? 'Meldingen staan <b>aan</b> op dit apparaat.' : 'Meldingen staan <b>uit</b> op dit apparaat.';
     const k = document.getElementById('meldingenknop');
     k.textContent = meldingenAanStaat ? 'Meldingen uitzetten' : 'Zet meldingen aan';
-    k.className = meldingenAanStaat ? 'btn afwijs' : 'btn groen';
+    k.className = meldingenAanStaat ? 'btn afwijs' : 'btn primair';
   }
   function meldingenToggle() {
     meldingenAanStaat = !meldingenAanStaat;
