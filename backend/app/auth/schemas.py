@@ -233,7 +233,18 @@ class GebruikerOverzichtResponse(BaseModel):
     # Alleen gevuld bij status 'geblokkeerd' (migratie 0052).
     geblokkeerd_op: datetime | None
     geblokkeerd_door_naam: str | None
+    # Alleen gevuld bij status 'gearchiveerd' (migratie 0075, feedbackronde 26-08 punt 1).
+    gearchiveerd_op: datetime | None = None
+    gearchiveerd_door_naam: str | None = None
 
 
 class GebruikersLijstResponse(BaseModel):
     gebruikers: list[GebruikerOverzichtResponse]
+
+
+class OpenWerkResponse(BaseModel):
+    """Open werk van een gebruiker vóór archivering — waarschuwing mét aantallen, geen blokkade."""
+
+    open_accorderingen: int
+    weekstaten_ter_keuring: int
+    eigen_open_weekstaten: int

@@ -221,10 +221,15 @@ def mijn_administraties(actor: CurrentGebruiker = Depends(get_current_gebruiker)
 
 
 @router.get("/gebruikers", response_model=schemas.GebruikersLijstResponse)
-def gebruikers_lijst(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas.GebruikersLijstResponse:
+def gebruikers_lijst(
+    inclusief_gearchiveerd: bool = False,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.GebruikersLijstResponse:
     """Gebruikers & toegang (fase 3 modernisering, designronde 15-08) — Beheerder-only.
-    Staande-goedkeuring-tellers per accordeur komen per administratie (strikte RLS) mee."""
-    items = service.lijst_gebruikers(actor_id=actor.id)
+    Staande-goedkeuring-tellers per accordeur komen per administratie (strikte RLS) mee.
+    Gearchiveerden (0075) alleen op expliciet verzoek (`?inclusief_gearchiveerd=true`) — het
+    scherm filtert ze client-side achter "gearchiveerd (N)"."""
+    items = service.lijst_gebruikers(actor_id=actor.id, inclusief_gearchiveerd=inclusief_gearchiveerd)
     administraties = service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     staande = service.staande_goedkeuringen_per_accordeur(administratie_ids=[a.id for a in administraties])
     return schemas.GebruikersLijstResponse(
@@ -243,6 +248,8 @@ def gebruikers_lijst(actor: CurrentGebruiker = Depends(require_beheerder)) -> sc
                 staande_goedkeuringen=staande.get(item.id, 0),
                 geblokkeerd_op=item.geblokkeerd_op,
                 geblokkeerd_door_naam=item.geblokkeerd_door_naam,
+                gearchiveerd_op=item.gearchiveerd_op,
+                gearchiveerd_door_naam=item.gearchiveerd_door_naam,
             )
             for item in items
         ]
@@ -397,6 +404,46 @@ def gebruiker_heractiveren(
 ) -> None:
     try:
         service.heractiveer_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.get("/gebruikers/{gebruiker_id}/open-werk", response_model=schemas.OpenWerkResponse)
+def gebruiker_open_werk(
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.OpenWerkResponse:
+    """Open werk vóór archiveren (feedbackronde 26-08 punt 1): aantallen voor de
+    bevestigingswaarschuwing — geen blokkade, het werk blijft staan."""
+    werk = service.open_werk_van_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
+    return schemas.OpenWerkResponse(
+        open_accorderingen=werk.open_accorderingen,
+        weekstaten_ter_keuring=werk.weekstaten_ter_keuring,
+        eigen_open_weekstaten=werk.eigen_open_weekstaten,
+    )
+
+
+@router.post("/gebruikers/{gebruiker_id}/archiveren", status_code=status.HTTP_204_NO_CONTENT)
+def gebruiker_archiveren(
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> None:
+    """Archiveer een gebruiker (feedbackronde 26-08 punt 1, 0052-patroon): uit alle
+    default-lijsten, toegang per direct dicht, niets verwijderd. Guards (eigen account,
+    systeem-actor, laatste actieve Beheerder) server-side in de service."""
+    try:
+        service.archiveer_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/gebruikers/{gebruiker_id}/dearchiveren", status_code=status.HTTP_204_NO_CONTENT)
+def gebruiker_dearchiveren(
+    gebruiker_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> None:
+    try:
+        service.dearchiveer_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 

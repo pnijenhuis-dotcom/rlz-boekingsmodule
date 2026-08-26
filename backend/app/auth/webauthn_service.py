@@ -833,7 +833,10 @@ def kantoor_apparaten() -> list[KantoorApparaatData]:
         rijen = session.execute(
             select(WebauthnCredential, Gebruiker.naam)
             .join(Gebruiker, Gebruiker.id == WebauthnCredential.gebruiker_id)
-            .where(Gebruiker.rol.not_in(list(EXTERNE_APP_ROLLEN)))
+            .where(
+                Gebruiker.rol.not_in(list(EXTERNE_APP_ROLLEN)),
+                Gebruiker.status != GebruikerStatus.GEARCHIVEERD,  # 0075: niet in default-lijsten
+            )
             .order_by(Gebruiker.naam, WebauthnCredential.aangemaakt_op.desc())
         ).all()
         return [

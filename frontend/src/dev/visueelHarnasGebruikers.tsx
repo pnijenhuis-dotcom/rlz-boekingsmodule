@@ -80,7 +80,7 @@ const echteFetch = window.fetch.bind(window)
 window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof invoer === 'string' ? invoer : invoer instanceof URL ? invoer.toString() : invoer.url
   if (url === '/auth/token/vernieuwen') return Promise.resolve(jsonResponse({ access_token: fakeAccessToken() }))
-  if (url === '/auth/gebruikers') return Promise.resolve(jsonResponse({ gebruikers: GEBRUIKERS }))
+  if (url.startsWith('/auth/gebruikers')) return Promise.resolve(jsonResponse({ gebruikers: GEBRUIKERS }))
   if (url === '/auth/administraties') {
     return Promise.resolve(
       jsonResponse({

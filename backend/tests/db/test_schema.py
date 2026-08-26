@@ -42,6 +42,10 @@ def test_gebruiker_heeft_geen_financiele_kolommen(admin_engine: Engine) -> None:
         "geblokkeerd_op",
         "geblokkeerd_door",
         "status_voor_blokkade",
+        # Archivering (migratie 0075, feedbackronde 26-08 punt 1) — spiegel van de blokkade.
+        "gearchiveerd_op",
+        "gearchiveerd_door",
+        "status_voor_archivering",
     }
     assert not (columns & financial_hints)
 

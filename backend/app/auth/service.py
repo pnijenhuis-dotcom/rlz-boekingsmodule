@@ -583,6 +583,8 @@ def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol:
         gebruiker = session.get(Gebruiker, doel_gebruiker_id)
         if gebruiker is None:
             raise AuthError("Onbekende gebruiker")
+        if gebruiker.status == GebruikerStatus.GEARCHIVEERD:
+            raise AuthError("Gebruiker is gearchiveerd — dearchiveer eerst")
         gebruiker.rol = nieuwe_rol
 
 
@@ -621,6 +623,8 @@ def blokkeer_gebruiker(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID) -> 
             raise AuthError("Onbekende gebruiker")
         if gebruiker.status == GebruikerStatus.GEBLOKKEERD:
             raise AuthError("Gebruiker is al geblokkeerd")
+        if gebruiker.status == GebruikerStatus.GEARCHIVEERD:
+            raise AuthError("Gebruiker is gearchiveerd — dearchiveer eerst")
         if (
             gebruiker.rol == GebruikerRol.BEHEERDER
             and gebruiker.status == GebruikerStatus.ACTIEF
@@ -679,6 +683,178 @@ def heractiveer_gebruiker(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID) 
             actie="gebruiker_geheractiveerd",
             correlatie_id=uuid.uuid4(),
             oude_waarde={"status": GebruikerStatus.GEBLOKKEERD.value},
+            nieuwe_waarde={"status": doel_status.value},
+        )
+
+
+@dataclass(frozen=True)
+class OpenWerk:
+    """Open werk van een gebruiker vóór archivering (feedbackronde 26-08 punt 1): een
+    bevestigingswaarschuwing mét aantallen, geen blokkade — het werk blijft staan en kan
+    opnieuw toegewezen worden."""
+
+    open_accorderingen: int
+    weekstaten_ter_keuring: int
+    eigen_open_weekstaten: int
+
+    @property
+    def heeft_open_werk(self) -> bool:
+        return bool(self.open_accorderingen or self.weekstaten_ter_keuring or self.eigen_open_weekstaten)
+
+
+def open_werk_van_gebruiker(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID) -> OpenWerk:
+    """Telt per gebruiker: open accorderingsstappen (vereist, nog zonder besluit, in een open
+    ronde — over álle administraties in zijn scope, strikte RLS dus per administratie
+    gescoped), weekstaten ter keuring op projecten waar hij keurrecht heeft (uitvoerder) en
+    eigen weekstaten die nog niet goedgekeurd zijn (ZZP'er). De scope-lookup leest mét de
+    (Beheerder-)actor — `gebruiker_administratie` heeft zelf RLS en toont zonder actor nul rijen
+    (RLS-les 25-08, Platform conventies §RLS)."""
+    from app.accordering.models import AccorderingStap, AccorderingStatus, DocumentAccordering
+    from app.uren.models import UrenProjectToewijzing, Weekstaat, WeekstaatStatus
+
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie_ids = list(
+            session.scalars(
+                select(GebruikerAdministratie.administratie_id).where(
+                    GebruikerAdministratie.gebruiker_id == doel_gebruiker_id
+                )
+            )
+        )
+
+    accorderingen = 0
+    ter_keuring = 0
+    eigen = 0
+    for administratie_id in administratie_ids:
+        with scoped_session(administratie_id) as session:
+            accorderingen += (
+                session.scalar(
+                    select(func.count())
+                    .select_from(AccorderingStap)
+                    .join(DocumentAccordering, DocumentAccordering.id == AccorderingStap.accordering_id)
+                    .where(
+                        AccorderingStap.administratie_id == administratie_id,
+                        AccorderingStap.accordeur_gebruiker_id == doel_gebruiker_id,
+                        AccorderingStap.vereist.is_(True),
+                        AccorderingStap.besluit.is_(None),
+                        DocumentAccordering.status == AccorderingStatus.OPEN.value,
+                    )
+                )
+                or 0
+            )
+            keur_projecten = select(UrenProjectToewijzing.project_id).where(
+                UrenProjectToewijzing.administratie_id == administratie_id,
+                UrenProjectToewijzing.gebruiker_id == doel_gebruiker_id,
+            )
+            ter_keuring += (
+                session.scalar(
+                    select(func.count())
+                    .select_from(Weekstaat)
+                    .where(
+                        Weekstaat.administratie_id == administratie_id,
+                        Weekstaat.status == WeekstaatStatus.INGEDIEND.value,
+                        Weekstaat.gebruiker_id != doel_gebruiker_id,
+                        Weekstaat.project_id.in_(keur_projecten),
+                    )
+                )
+                or 0
+            )
+            eigen += (
+                session.scalar(
+                    select(func.count())
+                    .select_from(Weekstaat)
+                    .where(
+                        Weekstaat.administratie_id == administratie_id,
+                        Weekstaat.gebruiker_id == doel_gebruiker_id,
+                        Weekstaat.status.in_(
+                            (
+                                WeekstaatStatus.CONCEPT.value,
+                                WeekstaatStatus.INGEDIEND.value,
+                                WeekstaatStatus.CORRIGEREN.value,
+                            )
+                        ),
+                    )
+                )
+                or 0
+            )
+    return OpenWerk(open_accorderingen=accorderingen, weekstaten_ter_keuring=ter_keuring, eigen_open_weekstaten=eigen)
+
+
+def archiveer_gebruiker(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID) -> None:
+    """Archiveer een gebruiker (feedbackronde 26-08 punt 1, 0052-patroon). Status → gearchiveerd
+    bijt per direct op álle paden (elke poort eist status actief), sessies/refresh gaan dood,
+    passkeys blijven geregistreerd maar onbruikbaar. Uit alle default-lijsten; historie, audit
+    en akkoord-sporen blijven onaangetast — er wordt niets verwijderd. Open werk (accorderingen,
+    weekstaten) is een bevestigingswaarschuwing in de UI (`open_werk_van_gebruiker`), geen
+    blokkade hier.
+
+    Waarborgen (server-side, onvoorwaardelijk): eigen account nooit, systeem-actor nooit,
+    de laatste actieve Beheerder nooit."""
+    if actor_id == doel_gebruiker_id:
+        raise AuthError("Kan het eigen account niet archiveren")
+    _weiger_systeem_actor(doel_gebruiker_id)
+    now = datetime.now(UTC)
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, doel_gebruiker_id)
+        if gebruiker is None or gebruiker.gepseudonimiseerd_op is not None:
+            raise AuthError("Onbekende gebruiker")
+        if gebruiker.status == GebruikerStatus.GEARCHIVEERD:
+            raise AuthError("Gebruiker is al gearchiveerd")
+        if (
+            gebruiker.rol == GebruikerRol.BEHEERDER
+            and gebruiker.status == GebruikerStatus.ACTIEF
+            and _tel_overige_actieve_beheerders(session, behalve_gebruiker_id=doel_gebruiker_id) == 0
+        ):
+            raise AuthError("De laatste actieve Beheerder kan niet gearchiveerd worden")
+        oude_status = gebruiker.status
+        gebruiker.status_voor_archivering = oude_status.value
+        gebruiker.status = GebruikerStatus.GEARCHIVEERD
+        gebruiker.gearchiveerd_op = now
+        gebruiker.gearchiveerd_door = actor_id
+        _intrek_alle_sessies(session, doel_gebruiker_id, now=now)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=doel_gebruiker_id,
+            actie="gebruiker_gearchiveerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"status": oude_status.value},
+            nieuwe_waarde={"status": GebruikerStatus.GEARCHIVEERD.value},
+        )
+
+
+def dearchiveer_gebruiker(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID) -> None:
+    """Haal een gebruiker uit het archief: exact de status van vóór archivering terug (óók
+    'geblokkeerd' als dat zo was — dan blijft de blokkade staan tot heractiveren). Sessies komen
+    niet terug: opnieuw inloggen."""
+    if actor_id == doel_gebruiker_id:
+        raise AuthError("Kan het eigen account niet dearchiveren")
+    _weiger_systeem_actor(doel_gebruiker_id)
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, doel_gebruiker_id)
+        if gebruiker is None or gebruiker.gepseudonimiseerd_op is not None:
+            raise AuthError("Onbekende gebruiker")
+        if gebruiker.status != GebruikerStatus.GEARCHIVEERD:
+            raise AuthError("Gebruiker is niet gearchiveerd")
+        doel_status = (
+            GebruikerStatus(gebruiker.status_voor_archivering)
+            if gebruiker.status_voor_archivering
+            else GebruikerStatus.ACTIEF
+        )
+        gebruiker.status = doel_status
+        gebruiker.status_voor_archivering = None
+        gebruiker.gearchiveerd_op = None
+        gebruiker.gearchiveerd_door = None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=doel_gebruiker_id,
+            actie="gebruiker_gedearchiveerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"status": GebruikerStatus.GEARCHIVEERD.value},
             nieuwe_waarde={"status": doel_status.value},
         )
 
@@ -803,23 +979,24 @@ class GebruikerOverzicht:
     open_herstel_verloopt_op: datetime | None
     geblokkeerd_op: datetime | None
     geblokkeerd_door_naam: str | None
+    gearchiveerd_op: datetime | None = None
+    gearchiveerd_door_naam: str | None = None
 
 
-def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
+def lijst_gebruikers(*, actor_id: uuid.UUID, inclusief_gearchiveerd: bool = False) -> list[GebruikerOverzicht]:
     """Gebruikerslijst voor Gebruikers & toegang — Beheerder-only (router-dependency; de
     RLS-beheerder-bypass op gebruiker_administratie maakt de scope-kolom platform-breed
     leesbaar). Gepseudonimiseerde gebruikers (AVG) blijven buiten de lijst, net als de
     systeem-actor (achtergrondverwerking — een technische rij, geen beheerbaar account;
-    controls-review 2026-08-16: hij verscheen als muteerbare rij in Gebruikers & toegang)."""
+    controls-review 2026-08-16: hij verscheen als muteerbare rij in Gebruikers & toegang).
+    Gearchiveerde gebruikers (0075) blijven standaard buiten de lijst; het scherm vraagt ze
+    expliciet op (`inclusief_gearchiveerd`) voor het filter "gearchiveerd (N)"."""
     now = datetime.now(UTC)
     with scoped_session(None, actor_id=actor_id) as session:
-        gebruikers = list(
-            session.scalars(
-                select(Gebruiker)
-                .where(Gebruiker.gepseudonimiseerd_op.is_(None), Gebruiker.id != SYSTEEM_ACTOR_ID)
-                .order_by(Gebruiker.naam)
-            )
-        )
+        query = select(Gebruiker).where(Gebruiker.gepseudonimiseerd_op.is_(None), Gebruiker.id != SYSTEEM_ACTOR_ID)
+        if not inclusief_gearchiveerd:
+            query = query.where(Gebruiker.status != GebruikerStatus.GEARCHIVEERD)
+        gebruikers = list(session.scalars(query.order_by(Gebruiker.naam)))
         scope_rijen = session.execute(
             select(GebruikerAdministratie.gebruiker_id, GebruikerAdministratie.administratie_id)
         ).all()
@@ -842,7 +1019,9 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
         }
         # Naam van de blokkeerder apart opgehaald: die kan zelf gepseudonimiseerd of de
         # systeem-actor zijn en dus buiten de lijst hierboven vallen.
-        blokkeerder_ids = {g.geblokkeerd_door for g in gebruikers if g.geblokkeerd_door is not None}
+        blokkeerder_ids = {g.geblokkeerd_door for g in gebruikers if g.geblokkeerd_door is not None} | {
+            g.gearchiveerd_door for g in gebruikers if g.gearchiveerd_door is not None
+        }
         blokkeerder_namen = (
             dict(session.execute(select(Gebruiker.id, Gebruiker.naam).where(Gebruiker.id.in_(blokkeerder_ids))).all())
             if blokkeerder_ids
@@ -869,6 +1048,10 @@ def lijst_gebruikers(*, actor_id: uuid.UUID) -> list[GebruikerOverzicht]:
             geblokkeerd_op=g.geblokkeerd_op,
             geblokkeerd_door_naam=(
                 blokkeerder_namen.get(g.geblokkeerd_door) if g.geblokkeerd_door is not None else None
+            ),
+            gearchiveerd_op=g.gearchiveerd_op,
+            gearchiveerd_door_naam=(
+                blokkeerder_namen.get(g.gearchiveerd_door) if g.gearchiveerd_door is not None else None
             ),
         )
         for g in gebruikers
@@ -983,6 +1166,8 @@ def maak_herstel_link(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Vernie
             raise AuthError("Een herstel-link is alleen voor externe app-gebruikers (accordeur/veldwerker)")
         if gebruiker.status == GebruikerStatus.GEBLOKKEERD:
             raise AuthError("Gebruiker is geblokkeerd — heractiveer eerst")
+        if gebruiker.status == GebruikerStatus.GEARCHIVEERD:
+            raise AuthError("Gebruiker is gearchiveerd — dearchiveer eerst")
         if gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
             raise AuthError("Account is nog niet geactiveerd — gebruik 'Opnieuw mailen' voor de uitnodiging")
         naam, e_mail = gebruiker.naam, gebruiker.e_mail
@@ -1057,6 +1242,8 @@ def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_
             raise AuthError("Onbekende gebruiker")
         if gebruiker.status == GebruikerStatus.GEBLOKKEERD:
             raise AuthError("Account is geblokkeerd — heractiveer eerst")
+        if gebruiker.status == GebruikerStatus.GEARCHIVEERD:
+            raise AuthError("Account is gearchiveerd — dearchiveer eerst")
         if gebruiker.e_mail == nieuw:
             raise AuthError("Dit is al het huidige e-mailadres")
         bezet = session.scalars(select(Gebruiker.id).where(Gebruiker.e_mail == nieuw)).first()

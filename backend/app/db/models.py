@@ -61,13 +61,17 @@ class GebruikerStatus(enum.StrEnum):
     actief. geblokkeerd is een aparte eindstatus, door een Beheerder gezet (niet in deze fase
     geautomatiseerd). wacht_op_passkey (migratie 0040) is de accordeur-variant van
     wacht_op_totp: de accordeur-activeringsflow vervangt de TOTP-stap door passkey-registratie
-    (de passkey ís de tweede factor op het apparaat — besluit auth-cadans 2026-08-11)."""
+    (de passkey ís de tweede factor op het apparaat — besluit auth-cadans 2026-08-11).
+    gearchiveerd (migratie 0075, feedbackronde 26-08 punt 1) is de tweede beheer-eindstatus
+    naast geblokkeerd: uit alle default-lijsten, toegang dicht, niets verwijderd — dearchiveren
+    zet de status van vóór archivering terug."""
 
     UITGENODIGD = "uitgenodigd"
     WACHT_OP_TOTP = "wacht_op_totp"
     WACHT_OP_PASSKEY = "wacht_op_passkey"
     ACTIEF = "actief"
     GEBLOKKEERD = "geblokkeerd"
+    GEARCHIVEERD = "gearchiveerd"
 
 
 def _enum_values(python_enum: type[enum.StrEnum]) -> list[str]:
@@ -204,6 +208,14 @@ class Gebruiker(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     status_voor_blokkade: Mapped[str | None] = mapped_column(default=None)
+
+    # Archivering (migratie 0075, feedbackronde 26-08 punt 1) — spiegel van de blokkade:
+    # status_voor_archivering bewaart de status van vóór archivering (óók 'geblokkeerd').
+    gearchiveerd_op: Mapped[datetime | None] = mapped_column(default=None)
+    gearchiveerd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    status_voor_archivering: Mapped[str | None] = mapped_column(default=None)
 
 
 class GebruikerAdministratie(Base):

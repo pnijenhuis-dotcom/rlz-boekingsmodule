@@ -550,12 +550,16 @@ def planning_overzicht(
             )
         )
 
-        # Pool: alle niet-geblokkeerde ZZP'ers en uitvoerders (kantoor-breed — een nieuwe
-        # veldwerker zonder koppeling moet juist sleepbaar zijn, besluit A).
+        # Pool: alle niet-geblokkeerde, niet-gearchiveerde ZZP'ers en uitvoerders (kantoor-breed —
+        # een nieuwe veldwerker zonder koppeling moet juist sleepbaar zijn, besluit A). Bewust
+        # een expliciete uitsluitlijst (0075: gearchiveerd hoort in géén default-lijst).
         pool_gebruikers = list(
             session.scalars(
                 select(Gebruiker)
-                .where(Gebruiker.rol.in_(_PLANBARE_ROLLEN), Gebruiker.status != GebruikerStatus.GEBLOKKEERD)
+                .where(
+                    Gebruiker.rol.in_(_PLANBARE_ROLLEN),
+                    Gebruiker.status.not_in((GebruikerStatus.GEBLOKKEERD, GebruikerStatus.GEARCHIVEERD)),
+                )
                 .order_by(Gebruiker.naam)
             )
         )

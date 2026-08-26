@@ -1,6 +1,6 @@
 /** Gebruikers & toegang (fase 3 modernisering 15-08): lijst, zelfbescherming-UI, opnieuw
  * mailen (fail-zichtbaar), accordeurs-blok met kill-switch. */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -46,6 +46,7 @@ function installMock(opties: {
   postAanroepen?: string[]
   mailVerzonden?: boolean
   apparaten?: unknown[]
+  openWerk?: unknown
 }) {
   vi.stubGlobal(
     'fetch',
@@ -53,7 +54,7 @@ function installMock(opties: {
       if (url === '/auth/token/vernieuwen' && init?.method === 'POST') {
         return Promise.resolve(jsonResponse({ access_token: fakeAccessToken(opties.rol ?? 'beheerder') }))
       }
-      if (url === '/auth/gebruikers' && (!init || init.method === undefined)) {
+      if (url.startsWith('/auth/gebruikers?') && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ gebruikers: opties.gebruikers ?? [] }))
       }
       if (url === '/auth/administraties') {
@@ -102,6 +103,16 @@ function installMock(opties: {
         )
       }
       if (url.includes('/intrekken') && init?.method === 'POST') {
+        opties.postAanroepen?.push(url)
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      // Archiveren (26-08 punt 1): open-werk-telling vóór de bevestiging + de actie zelf.
+      if (url.endsWith('/open-werk') && (!init || init.method === undefined)) {
+        return Promise.resolve(
+          jsonResponse(opties.openWerk ?? { open_accorderingen: 0, weekstaten_ter_keuring: 0, eigen_open_weekstaten: 0 }),
+        )
+      }
+      if ((url.endsWith('/archiveren') || url.endsWith('/dearchiveren')) && init?.method === 'POST') {
         opties.postAanroepen?.push(url)
         return Promise.resolve(new Response(null, { status: 204 }))
       }
@@ -392,5 +403,53 @@ describe('GebruikersScreen', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await userEvent.setup().click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
     expect(await screen.findByRole('dialog')).toHaveTextContent('Molenhof Beheer B.V.')
+  })
+})
+
+describe('GebruikersScreen — archiveren (feedbackronde 26-08 punt 1)', () => {
+  it('gearchiveerden staan niet in de default-lijst; het filter "gearchiveerd (N)" toont ze mét Dearchiveren', async () => {
+    installMock({
+      gebruikers: [
+        gebruiker({ id: ANDER_ID, naam: 'Actieve Collega' }),
+        gebruiker({
+          id: ACCORDEUR_ID,
+          naam: 'Oud Account',
+          status: 'gearchiveerd',
+          gearchiveerd_op: '2026-08-26T09:00:00Z',
+          gearchiveerd_door_naam: 'Peter',
+        }),
+      ],
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getByText('Actieve Collega')).toBeInTheDocument())
+    expect(screen.queryByText('Oud Account')).not.toBeInTheDocument()
+    // Teller op de tab telt alleen actieven; het filter draagt de archief-telling.
+    expect(screen.getByRole('tab', { name: 'Kantoor (1)' })).toBeInTheDocument()
+    const filter = screen.getByRole('button', { name: 'gearchiveerd (1)' })
+    expect(filter).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(filter)
+    expect(screen.getByText('Oud Account')).toBeInTheDocument()
+    expect(screen.queryByText('Actieve Collega')).not.toBeInTheDocument()
+    expect(screen.getByText('gearchiveerd')).toBeInTheDocument()
+    expect(screen.getByText(/gearchiveerd sinds .* door Peter/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dearchiveren' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Blokkeren' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Archiveren' })).not.toBeInTheDocument()
+  })
+
+  it('archiveren toont een bevestiging mét open-werk-aantallen en POST naar /archiveren', async () => {
+    const postAanroepen: string[] = []
+    installMock({
+      gebruikers: [gebruiker({ id: ACCORDEUR_ID, naam: 'Test Accordeur', rol: 'klant_accordeur' })],
+      postAanroepen,
+      openWerk: { open_accorderingen: 2, weekstaten_ter_keuring: 0, eigen_open_weekstaten: 0 },
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('Test Accordeur')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Archiveren' }))
+    await waitFor(() => expect(screen.getByText(/open werk: 2 open accorderingen/)).toBeInTheDocument())
+    expect(screen.getByText(/er wordt niets verwijderd/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(postAanroepen).toContain(`/auth/gebruikers/${ACCORDEUR_ID}/archiveren`))
   })
 })

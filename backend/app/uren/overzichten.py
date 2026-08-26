@@ -21,7 +21,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from app.auth import service as auth_service
-from app.db.models import Administratie, DetacheerderKoppeling, Gebruiker, GebruikerRol
+from app.db.models import Administratie, DetacheerderKoppeling, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache, VendorCache
 from app.uren import service
@@ -752,8 +752,14 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
     from app.auth.rollen import VELD_ROLLEN
 
     with scoped_session(None, actor_id=actor_id) as session:
+        # Gearchiveerde veldwerkers (0075) blijven buiten het paneel — terugvinden via
+        # /gebruikers → filter "gearchiveerd (N)".
         gebruikers = list(
-            session.scalars(select(Gebruiker).where(Gebruiker.rol.in_(list(VELD_ROLLEN))).order_by(Gebruiker.naam))
+            session.scalars(
+                select(Gebruiker)
+                .where(Gebruiker.rol.in_(list(VELD_ROLLEN)), Gebruiker.status != GebruikerStatus.GEARCHIVEERD)
+                .order_by(Gebruiker.naam)
+            )
         )
         koppelingen = list(session.scalars(select(DetacheerderKoppeling)))
         zzper_namen = {g.id: g.naam for g in gebruikers}

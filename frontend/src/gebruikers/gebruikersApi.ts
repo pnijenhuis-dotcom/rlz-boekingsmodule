@@ -18,6 +18,16 @@ export interface GebruikerOverzichtDto {
   staande_goedkeuringen: number
   geblokkeerd_op: string | null
   geblokkeerd_door_naam: string | null
+  /** Archivering (feedbackronde 26-08 punt 1, migratie 0075) — alleen bij status 'gearchiveerd'. */
+  gearchiveerd_op?: string | null
+  gearchiveerd_door_naam?: string | null
+}
+
+/** Open werk vóór archiveren: waarschuwing mét aantallen, geen blokkade. */
+export interface OpenWerkDto {
+  open_accorderingen: number
+  weekstaten_ter_keuring: number
+  eigen_open_weekstaten: number
 }
 
 export interface GebruikersLijstDto {
@@ -85,8 +95,10 @@ export function herstelLinkUrl(token: string): string {
   return `${window.location.origin}/activeren?token=${encodeURIComponent(token)}&herstel=1`
 }
 
+/** Inclusief gearchiveerden (0075): het scherm filtert ze standaard weg en telt ze in het
+ * filter "gearchiveerd (N)" per tab — één request, geen tweede lijst. */
 export function haalGebruikersOp(): Promise<GebruikersLijstDto> {
-  return apiJson<GebruikersLijstDto>('/auth/gebruikers')
+  return apiJson<GebruikersLijstDto>('/auth/gebruikers?inclusief_gearchiveerd=true')
 }
 
 export function nodigUit(payload: {
@@ -152,6 +164,18 @@ export async function blokkeerGebruiker(gebruikerId: string): Promise<void> {
 
 export async function heractiveerGebruiker(gebruikerId: string): Promise<void> {
   await apiPostJson(`/auth/gebruikers/${gebruikerId}/heractiveren`, {})
+}
+
+export async function archiveerGebruiker(gebruikerId: string): Promise<void> {
+  await apiPostJson(`/auth/gebruikers/${gebruikerId}/archiveren`, {})
+}
+
+export async function dearchiveerGebruiker(gebruikerId: string): Promise<void> {
+  await apiPostJson(`/auth/gebruikers/${gebruikerId}/dearchiveren`, {})
+}
+
+export function haalOpenWerkOp(gebruikerId: string): Promise<OpenWerkDto> {
+  return apiJson<OpenWerkDto>(`/auth/gebruikers/${gebruikerId}/open-werk`)
 }
 
 export function haalApparatenVan(gebruikerId: string): Promise<{ apparaten: ApparaatDto[] }> {

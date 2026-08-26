@@ -183,6 +183,7 @@ export function VeldwerkersPanel({
                     <td>
                       {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
                       {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
+                      {g.status === 'gearchiveerd' && <Badge variant="stil">gearchiveerd</Badge>}
                       {g.status === 'uitgenodigd' && <Badge variant="stil">uitgenodigd</Badge>}
                       {g.status === 'wacht_op_passkey' && <Badge variant="warn">activatie onderbroken</Badge>}
                       {g.open_herstel_verloopt_op && (

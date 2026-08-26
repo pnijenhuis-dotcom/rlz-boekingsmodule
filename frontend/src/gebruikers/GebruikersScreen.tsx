@@ -38,6 +38,10 @@ import {
   wijzigRol,
   type ApparaatDto,
   type GebruikerOverzichtDto,
+  archiveerGebruiker,
+  dearchiveerGebruiker,
+  haalOpenWerkOp,
+  type OpenWerkDto,
 } from './gebruikersApi'
 import { haalModuleRechtHouders, zetModuleRecht } from '../meerwerk/meerwerkApi'
 import { ScopeModal } from './ScopeModal'
@@ -147,6 +151,18 @@ function AdministratiesSamenvatting({ ids, naamPerAdministratie, eigenaar }: { i
   )
 }
 
+/** Waarschuwingstekst mét aantallen in de archiveer-dialoog (besluit 26-08: waarschuwing, geen
+ * blokkade). Telling nog bezig of onbeschikbaar → geen aantallen, de dialoog blijft bruikbaar. */
+export function openWerkTekst(werk: OpenWerkDto | null | 'laden'): string {
+  if (werk === null || werk === 'laden') return ''
+  const delen: string[] = []
+  if (werk.open_accorderingen > 0) delen.push(`${werk.open_accorderingen} open accordering${werk.open_accorderingen === 1 ? '' : 'en'}`)
+  if (werk.weekstaten_ter_keuring > 0) delen.push(`${werk.weekstaten_ter_keuring} weekstaat${werk.weekstaten_ter_keuring === 1 ? '' : 'staten'} ter keuring`)
+  if (werk.eigen_open_weekstaten > 0) delen.push(`${werk.eigen_open_weekstaten} eigen open weekstaat${werk.eigen_open_weekstaten === 1 ? '' : 'staten'}`)
+  if (delen.length === 0) return ''
+  return ` LET OP — open werk: ${delen.join(', ')}. Dit werk blijft staan maar niemand handelt het af tot je het opnieuw toewijst (accorderingslagen / keurders).`
+}
+
 export function GebruikersScreen() {
   const { gebruikerId, rol } = useAuth()
   const { administraties, fout: administratiesFout } = useAdministraties()
@@ -163,6 +179,11 @@ export function GebruikersScreen() {
   )
   const [killSwitchVoor, setKillSwitchVoor] = useState<{ gebruiker: GebruikerOverzichtDto; groep: ApparaatGroep } | null>(null)
   const [blokkade, setBlokkade] = useState<{ gebruiker: GebruikerOverzichtDto; actie: 'blokkeren' | 'heractiveren' } | null>(null)
+  // Archiveren (feedbackronde 26-08 punt 1, 0052-patroon): bevestigingsdialoog mét open-werk-
+  // aantallen (waarschuwing, geen blokkade); gearchiveerden zitten achter het filter per tab.
+  const [archivering, setArchivering] = useState<{ gebruiker: GebruikerOverzichtDto; actie: 'archiveren' | 'dearchiveren' } | null>(null)
+  const [openWerk, setOpenWerk] = useState<OpenWerkDto | null | 'laden'>(null)
+  const [toonGearchiveerd, setToonGearchiveerd] = useState(false)
   const [actieBezig, setActieBezig] = useState(false)
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [opnieuwBezig, setOpnieuwBezig] = useState<string | null>(null)
@@ -220,12 +241,23 @@ export function GebruikersScreen() {
     }
   }
 
-  const kantoor = useMemo(
-    () => (gebruikers ?? []).filter((g) => g.rol !== 'klant_accordeur' && !isVeldrol(g.rol)),
-    [gebruikers],
+  // Gearchiveerden (0075) zitten wél in de response (één request) maar nooit in de default-
+  // lijsten: per tab schakelt het filter "gearchiveerd (N)" naar uitsluitend de gearchiveerden.
+  const zichtbaar = useMemo(
+    () => (gebruikers ?? []).filter((g) => (g.status === 'gearchiveerd') === toonGearchiveerd),
+    [gebruikers, toonGearchiveerd],
   )
-  const accordeurs = useMemo(() => (gebruikers ?? []).filter((g) => g.rol === 'klant_accordeur'), [gebruikers])
-  const veldwerkers = useMemo(() => (gebruikers ?? []).filter((g) => isVeldrol(g.rol)), [gebruikers])
+  const gearchiveerdTelling = useMemo(() => {
+    const alle = (gebruikers ?? []).filter((g) => g.status === 'gearchiveerd')
+    return {
+      kantoor: alle.filter((g) => g.rol !== 'klant_accordeur' && !isVeldrol(g.rol)).length,
+      accordeurs: alle.filter((g) => g.rol === 'klant_accordeur').length,
+      veldwerkers: alle.filter((g) => isVeldrol(g.rol)).length,
+    }
+  }, [gebruikers])
+  const kantoor = useMemo(() => zichtbaar.filter((g) => g.rol !== 'klant_accordeur' && !isVeldrol(g.rol)), [zichtbaar])
+  const accordeurs = useMemo(() => zichtbaar.filter((g) => g.rol === 'klant_accordeur'), [zichtbaar])
+  const veldwerkers = useMemo(() => zichtbaar.filter((g) => isVeldrol(g.rol)), [zichtbaar])
 
   // Tabs per groep + zoekveld + paginering (punt 3, 25-08 deel 3): tab in de URL (?groep=),
   // zoekterm en pagina lokaal; tab-wissel wist zoek + pagina.
@@ -237,6 +269,7 @@ export function GebruikersScreen() {
   const kiesGroep = (nieuwe: GebruikersGroep) => {
     setZoekterm('')
     setPagina(1)
+    setToonGearchiveerd(false)
     setSearchParams(nieuwe === 'kantoor' ? {} : { groep: nieuwe }, { replace: true })
   }
   const naamPerAdministratie = useMemo(() => new Map((administraties ?? []).map((a) => [a.id, a.naam])), [administraties])
@@ -319,7 +352,7 @@ export function GebruikersScreen() {
   /** A5 (25-08, Beheerder-only): e-mailadres = login wijzigen — uniciteit server-side (409),
    * niet-geactiveerd account krijgt direct een verse uitnodiging op het nieuwe adres. */
   function eMailKnop(g: GebruikerOverzichtDto) {
-    if (g.status === 'geblokkeerd') return null
+    if (g.status === 'geblokkeerd' || g.status === 'gearchiveerd') return null
     return (
       <Button variant="ghost" maat="klein" onClick={() => { setEMailVoor(g); setNieuwEMail(g.e_mail) }}>
         E-mail wijzigen
@@ -428,10 +461,68 @@ export function GebruikersScreen() {
     }
   }
 
-  /** Blokkeer-/heractiveer-knop in de actiekolom — nooit bij het eigen account (server-side
-   * eveneens geweigerd; de UI biedt de onmogelijke actie niet aan). */
-  function blokkadeKnop(g: GebruikerOverzichtDto) {
+  function openArchivering(g: GebruikerOverzichtDto) {
+    setActieFout(null)
+    setArchivering({ gebruiker: g, actie: 'archiveren' })
+    setOpenWerk('laden')
+    haalOpenWerkOp(g.id)
+      .then(setOpenWerk)
+      .catch(() => setOpenWerk(null)) // telling onbeschikbaar ≠ blokkade: dialoog blijft bruikbaar
+  }
+
+  async function bevestigArchivering() {
+    if (!archivering) return
+    setActieBezig(true)
+    setActieFout(null)
+    try {
+      if (archivering.actie === 'archiveren') {
+        await archiveerGebruiker(archivering.gebruiker.id)
+        meld(`${archivering.gebruiker.naam} is gearchiveerd — toegang dicht, historie blijft staan (filter "gearchiveerd").`)
+      } else {
+        await dearchiveerGebruiker(archivering.gebruiker.id)
+        meld(`${archivering.gebruiker.naam} is uit het archief gehaald (status van vóór archivering hersteld).`)
+      }
+      setArchivering(null)
+      laad()
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'Actie mislukt.')
+    } finally {
+      setActieBezig(false)
+    }
+  }
+
+  /** Archiveer-/dearchiveer-knop in de actiekolom — nooit bij het eigen account. */
+  function archiveerKnop(g: GebruikerOverzichtDto) {
     if (g.id === gebruikerId) return null
+    if (g.status === 'gearchiveerd') {
+      return (
+        <Button variant="secundair" maat="klein" onClick={() => setArchivering({ gebruiker: g, actie: 'dearchiveren' })}>
+          Dearchiveren
+        </Button>
+      )
+    }
+    return (
+      <Button variant="ghost" maat="klein" onClick={() => openArchivering(g)}>
+        Archiveren
+      </Button>
+    )
+  }
+
+  function archiveringDetail(g: GebruikerOverzichtDto) {
+    if (g.status !== 'gearchiveerd' || !g.gearchiveerd_op) return null
+    return (
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+        gearchiveerd sinds {new Date(g.gearchiveerd_op).toLocaleDateString('nl-NL')}
+        {g.gearchiveerd_door_naam ? ` door ${g.gearchiveerd_door_naam}` : ''}
+      </div>
+    )
+  }
+
+  /** Blokkeer-/heractiveer-knop in de actiekolom — nooit bij het eigen account (server-side
+   * eveneens geweigerd; de UI biedt de onmogelijke actie niet aan). Een gearchiveerde heeft
+   * alleen "Dearchiveren" (server weigert blokkeren op een archief-account). */
+  function blokkadeKnop(g: GebruikerOverzichtDto) {
+    if (g.id === gebruikerId || g.status === 'gearchiveerd') return null
     if (g.status === 'geblokkeerd') {
       return (
         <Button variant="secundair" maat="klein" onClick={() => setBlokkade({ gebruiker: g, actie: 'heractiveren' })}>
@@ -489,7 +580,27 @@ export function GebruikersScreen() {
         {gefilterd[groep].length === tellers[groep]
           ? `${tellers[groep]} ${tellers[groep] === 1 ? 'gebruiker' : 'gebruikers'}`
           : `${gefilterd[groep].length} van ${tellers[groep]} gebruikers`}
+        {toonGearchiveerd ? ' (archief)' : ''}
       </span>
+      {(gearchiveerdTelling[groep] > 0 || toonGearchiveerd) && (
+        <button
+          type="button"
+          className={`chip ${toonGearchiveerd ? 'afwijking' : 'stil'}`}
+          style={{ cursor: 'pointer', marginLeft: 'auto' }}
+          aria-pressed={toonGearchiveerd}
+          title={
+            toonGearchiveerd
+              ? 'Terug naar de actieve gebruikers'
+              : 'Toon uitsluitend de gearchiveerde gebruikers van deze groep (toegang dicht, historie bewaard)'
+          }
+          onClick={() => {
+            setToonGearchiveerd((v) => !v)
+            setPagina(1)
+          }}
+        >
+          {toonGearchiveerd ? '← actieve gebruikers' : `gearchiveerd (${gearchiveerdTelling[groep]})`}
+        </button>
+      )}
     </div>
   )
 
@@ -638,6 +749,12 @@ export function GebruikersScreen() {
                             {blokkadeDetail(g)}
                           </>
                         )}
+                        {g.status === 'gearchiveerd' && (
+                          <>
+                            <Badge variant="stil">gearchiveerd</Badge>
+                            {archiveringDetail(g)}
+                          </>
+                        )}
                         {openUitnodiging && (
                           <Badge variant="stil">uitnodiging — {formatVerloop(g.open_uitnodiging_verloopt_op!)}</Badge>
                         )}
@@ -667,7 +784,8 @@ export function GebruikersScreen() {
                             eigen rol/scope wijzigt alleen een ándere Beheerder
                           </span>
                         )}{' '}
-                        {blokkadeKnop(g)}
+                        {blokkadeKnop(g)}{' '}
+                        {archiveerKnop(g)}
                       </td>
                     </tr>
                   )
@@ -703,7 +821,8 @@ export function GebruikersScreen() {
             {herstelKnop(g)}{' '}
             {eMailKnop(g)}
             {herstelBadge(g)}{' '}
-            {blokkadeKnop(g)}
+            {blokkadeKnop(g)}{' '}
+            {archiveerKnop(g)}
           </>
         )}
       />
@@ -749,6 +868,13 @@ export function GebruikersScreen() {
                             {' '}
                             <Badge variant="danger">geblokkeerd</Badge>
                             {blokkadeDetail(g)}
+                          </>
+                        )}
+                        {g.status === 'gearchiveerd' && (
+                          <>
+                            {' '}
+                            <Badge variant="stil">gearchiveerd</Badge>
+                            {archiveringDetail(g)}
                           </>
                         )}
                         {herstelBadge(g)}
@@ -797,7 +923,8 @@ export function GebruikersScreen() {
                         )}{' '}
                         {herstelKnop(g)}{' '}
                         {eMailKnop(g)}{' '}
-                        {blokkadeKnop(g)}
+                        {blokkadeKnop(g)}{' '}
+                        {archiveerKnop(g)}
                       </td>
                     </tr>
                   )
@@ -900,6 +1027,24 @@ export function GebruikersScreen() {
           onBevestigen={() => void bevestigBlokkade()}
           onAnnuleren={() => {
             setBlokkade(null)
+            setActieFout(null)
+          }}
+        />
+      )}
+
+      {archivering && (
+        <BevestigDialog
+          titel={archivering.actie === 'archiveren' ? 'Gebruiker archiveren' : 'Gebruiker dearchiveren'}
+          bericht={
+            archivering.actie === 'archiveren'
+              ? `${archivering.gebruiker.naam} wordt gearchiveerd: verdwijnt uit alle lijsten en tabs (terug te vinden via het filter "gearchiveerd"), inloggen wordt per direct geweigerd, sessies vervallen en passkeys zijn onbruikbaar. Historie, audit en akkoord-sporen blijven volledig staan — er wordt niets verwijderd. Dearchiveren kan altijd. De actie wordt geauditeerd.${openWerkTekst(openWerk)}`
+              : `${archivering.gebruiker.naam} krijgt de status van vóór archivering terug (een blokkade van toen blijft dan staan). Oude sessies komen niet terug. De actie wordt geauditeerd.`
+          }
+          bezig={actieBezig || openWerk === 'laden'}
+          fout={actieFout}
+          onBevestigen={() => void bevestigArchivering()}
+          onAnnuleren={() => {
+            setArchivering(null)
             setActieFout(null)
           }}
         />
