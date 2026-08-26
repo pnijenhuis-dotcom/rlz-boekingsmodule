@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Mockup — Accordeur: vragen-dialoog + compacte UI (feedback 25-08)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Zelfde tokens als mockup/accordeur.html (de norm) — dark default */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0e1514; --panel: #16211f; --border: #263533;
+    --text: #e6ecea; --muted: #8ba09b; --accent: #5cb3a8;
+    --green: #34c08b; --green-bg: #123227;
+    --orange: #e9a23b; --orange-bg: #372a12;
+    --red: #ee6c62; --red-bg: #3a1e1b;
+    --blue-bg: #1a2e2b; --purple: #ab8ffc; --purple-bg: #28203f;
+    --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --focus: rgba(92,179,168,.28);
+  }
+  @media (prefers-color-scheme: light) { :root {
+    --bg: #f5f7f7; --panel: #ffffff; --border: #e5e9e8;
+    --text: #16181d; --muted: #647572; --accent: #2e6660;
+    --green: #1c7a54; --green-bg: #e6f4ee;
+    --orange: #b45309; --orange-bg: #fdf3e3;
+    --red: #b42318; --red-bg: #fceceb;
+    --blue-bg: #e6f0ee; --purple: #6941c6; --purple-bg: #f1ecfb;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 4px rgba(16,24,40,.05);
+    --focus: rgba(46,102,96,.18);
+  }}
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px; min-height: 100vh;
+    display: flex; justify-content: center;
+  }
+  .phone { width: 100%; max-width: 430px; background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; position: relative; }
+  @media (min-width: 700px) {
+    body { background: color-mix(in srgb, var(--bg) 80%, #9fb3af); padding: 28px 16px; gap: 24px; }
+    .phone { min-height: 860px; max-height: 920px; overflow-y: auto; border-radius: 28px; border: 1px solid var(--border); box-shadow: 0 8px 40px rgba(0,0,0,.35); }
+    .desknote { display: block; max-width: 330px; font-size: 13px; line-height: 1.6; color: var(--text);
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 18px 20px; height: fit-content; position: sticky; top: 28px; }
+    .desknote h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 12px; }
+    .desknote .k { color: var(--muted); }
+    .desknote ul { margin: 8px 0 12px 18px; }
+    .desknote li { margin-bottom: 7px; }
+  }
+  .desknote { display: none; }
+
+  /* ===== Header — NIEUW (feedbackpunt 1): compact, GEEN administraties-namenlijst ===== */
+  .hdr { padding: max(14px, env(safe-area-inset-top)) 16px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: color-mix(in srgb, var(--panel) 60%, var(--bg)); border-bottom: 1px solid var(--border); }
+  .hdr .titel { font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
+  .hdr .titel span { color: var(--accent); }
+  .hdr .knoppen { display: flex; gap: 8px; }
+  .hdr .iknop { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel);
+    color: var(--text); font-size: 15px; display: grid; place-items: center; cursor: pointer; }
+
+  .scherm { display: none; flex: 1; flex-direction: column; }
+  .scherm.actief { display: flex; }
+  .inhoud { padding: 14px 16px calc(20px + env(safe-area-inset-bottom)); flex: 1; }
+
+  .seclabel { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 2px 8px; }
+  .seclabel:first-child { margin-top: 2px; }
+
+  .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+  .chip.vraag { background: var(--orange-bg); color: var(--orange); }
+  .chip.wacht { background: var(--blue-bg); color: var(--accent); }
+  .chip.beurt { background: var(--purple-bg); color: var(--purple); }
+  .chip.klaar { background: var(--green-bg); color: var(--green); }
+
+  .kaart { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 13px 14px; margin-bottom: 10px; cursor: pointer; }
+  .kaart:active { border-color: var(--accent); }
+  .kaart .rij1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .kaart .naam { font-weight: 700; font-size: 14.5px; }
+  .kaart .meta { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+  .kaart .bedrag { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .terug { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 600; font-size: 14px;
+    background: none; border: none; cursor: pointer; padding: 0; margin-bottom: 12px; }
+  .teller { float: right; font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+
+  /* ===== PDF-blok mét expliciete laadstate (feedbackpunt 2) ===== */
+  .pdfvak { background: color-mix(in srgb, var(--panel) 70%, var(--bg)); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px; margin-bottom: 12px; }
+  .pdfpag { background: #fff; border-radius: 6px; height: 150px; margin-bottom: 10px; position: relative; overflow: hidden; }
+  @media (prefers-color-scheme: light) { .pdfpag { border: 1px solid var(--border); } }
+  .pdfpag:last-child { margin-bottom: 0; }
+  .pdfpag.laadt { background: var(--panel); display: grid; place-items: center; }
+  .laadstate { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--border); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pdffout { display: none; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+  .pdffout button { border: 1px solid var(--border); background: var(--panel); color: var(--accent); font-weight: 700;
+    border-radius: 8px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; }
+  .fake-inhoud { position: absolute; inset: 14px; opacity: .85; }
+  .fake-inhoud .fl { height: 7px; border-radius: 3px; background: #d8dedd; margin-bottom: 7px; }
+  .fake-inhoud .fl.kort { width: 55%; } .fake-inhoud .fl.mid { width: 78%; }
+  .fake-inhoud .fl.titel { width: 40%; height: 11px; background: #b9c3c1; margin-bottom: 12px; }
+
+  .boekregel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 12px 14px; margin-bottom: 10px; font-size: 13px; line-height: 1.55; }
+  .boekregel b { font-size: 14px; }
+  .boekregel .sub { color: var(--muted); font-size: 12.5px; }
+
+  /* ===== Doorbelast — NIEUW (feedbackpunt 3): één regel + tikbaar uitklappen ===== */
+  .doorbelast { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 10px; overflow: hidden; }
+  .doorbelast .kop { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; cursor: pointer; font-size: 13px; }
+  .doorbelast .kop .pijl { color: var(--muted); font-size: 12px; transition: transform .15s; }
+  .doorbelast.open .kop .pijl { transform: rotate(90deg); }
+  .doorbelast .detail { display: none; border-top: 1px solid var(--border); padding: 10px 14px 12px; font-size: 12.5px; }
+  .doorbelast.open .detail { display: block; }
+  .doorbelast .detail .rij { display: flex; justify-content: space-between; padding: 5px 0; }
+  .doorbelast .detail .rij .p { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .doorbelast .detail .voetje { color: var(--muted); font-size: 11.5px; margin-top: 6px; line-height: 1.5; }
+
+  /* ===== Vraag-thread ===== */
+  .thread { background: var(--panel); border: 1px solid var(--orange); border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 12px; overflow: hidden; }
+  .thread.rustig { border-color: var(--border); }
+  .thread .tkop { padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: color-mix(in srgb, var(--orange-bg) 55%, var(--panel)); font-size: 13px; font-weight: 700; }
+  .thread.rustig .tkop { background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
+  .thread .berichten { padding: 12px 14px 6px; }
+  .bericht { margin-bottom: 12px; max-width: 88%; }
+  .bericht .bubbel { border-radius: 12px; padding: 9px 12px; font-size: 13px; line-height: 1.5; background: var(--blue-bg); }
+  .bericht.van-mij { margin-left: auto; }
+  .bericht.van-mij .bubbel { background: var(--green-bg); }
+  .bericht .wie { font-size: 11px; color: var(--muted); margin: 4px 4px 0; }
+  .bericht.van-mij .wie { text-align: right; }
+  .antwoordbalk { display: flex; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--border); }
+  .antwoordbalk input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); padding: 10px 12px; font-size: 16px; font-family: inherit; }
+  .antwoordbalk input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+  .antwoordbalk button { background: var(--accent); color: #08211d; border: none; border-radius: 10px; font-weight: 800;
+    padding: 0 16px; font-size: 14px; cursor: pointer; }
+  .afgehandeld-voet { padding: 9px 14px 11px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+  /* Besluitknoppen */
+  .besluit { display: flex; gap: 10px; padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 60%, var(--bg));
+    position: sticky; bottom: 0; }
+  .besluit button { flex: 1; padding: 15px 10px; border-radius: 14px; font-size: 16px; font-weight: 800; font-family: inherit; cursor: pointer; }
+  .knop-afwijzen { background: transparent; border: 1.5px solid var(--red); color: var(--red); }
+  .knop-akkoord { background: var(--green); border: none; color: #06281a; }
+
+  .leeg { text-align: center; padding: 46px 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .toelicht { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin: 4px 2px 14px; }
+</style>
+</head>
+<body>
+
+<div class="phone">
+
+  <!-- Header: feedbackpunt 1 — compact, zonder administraties-namenlijst -->
+  <div class="hdr">
+    <div class="titel">Nijenhuis <span>Boekingsmodule</span></div>
+    <div class="knoppen">
+      <button class="iknop" title="Staande goedkeuringen">✓✓</button>
+      <button class="iknop" title="Meldingen">🔔</button>
+      <button class="iknop" title="Thema">◐</button>
+      <button class="iknop" title="Vergrendel">⏻</button>
+    </div>
+  </div>
+
+  <!-- ===== SCHERM 1: wachtrij ===== -->
+  <div class="scherm actief" id="s-wachtrij">
+    <div class="inhoud">
+
+      <div class="seclabel">Te accorderen · 3</div>
+      <div class="kaart" onclick="toon('s-document')">
+        <div class="rij1">
+          <div>
+            <div class="naam">LUSSO Interieurbouw</div>
+            <div class="meta">Diverse inkopen · Kempen Facilities B.V. · laag 1</div>
+          </div>
+          <div class="bedrag">€ 1.132,51</div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span class="chip vraag">💬 Vraag van kantoor</span>
+          <span class="chip wacht">Wordt doorbelast</span>
+        </div>
+      </div>
+      <div class="kaart">
+        <div class="rij1">
+          <div>
+            <div class="naam">Boels Verhuur B.V.</div>
+            <div class="meta">Huur materieel wk 34 · Kempen Facilities B.V. · laag 1</div>
+          </div>
+          <div class="bedrag">€ 486,10</div>
+        </div>
+      </div>
+      <div class="kaart">
+        <div class="rij1">
+          <div>
+            <div class="naam">Gemeente Oirschot</div>
+            <div class="meta">OZB aanslag 2026 · Oirschot Recreatie B.V. · laag 1</div>
+          </div>
+          <div class="bedrag">€ 2.310,00</div>
+        </div>
+      </div>
+
+      <div class="seclabel">Vragen aan u · 1</div>
+      <div class="toelicht">Vragen van het kantoor die geen open accordering blokkeren — bijvoorbeeld over een eerder goedgekeurde factuur.</div>
+      <div class="kaart" onclick="toon('s-thread')">
+        <div class="rij1">
+          <div>
+            <div class="naam">Van Diemen Transport</div>
+            <div class="meta">Goedgekeurd 18-08 · € 780,45 · Kempen Facilities B.V.</div>
+          </div>
+          <span class="chip beurt">U bent aan de beurt</span>
+        </div>
+        <div class="meta" style="margin-top:6px;">"Deze factuur noemt werkadres Molenhof — klopt het dat dit …"</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== SCHERM 2: document met vraag-thread ===== -->
+  <div class="scherm" id="s-document">
+    <div class="inhoud">
+      <button class="terug" onclick="toon('s-wachtrij')">‹ Wachtrij</button><span class="teller">1 van 3</span>
+
+      <!-- Feedbackpunt 2: expliciete laadstate, nooit stil wit -->
+      <div class="pdfvak">
+        <div class="pdfpag laadt">
+          <div class="laadstate"><div class="spinner"></div>PDF laden…</div>
+        </div>
+        <div class="pdfpag">
+          <div class="fake-inhoud">
+            <div class="fl titel"></div>
+            <div class="fl"></div><div class="fl mid"></div><div class="fl"></div>
+            <div class="fl kort"></div><div class="fl mid"></div><div class="fl"></div><div class="fl kort"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="boekregel">
+        <b>Boeking:</b> Diverse inkopen · NL, Hoog Tarief<br>
+        <span class="sub">€ 1.132,51 · Kempen Facilities B.V. · laag 1</span>
+      </div>
+
+      <!-- Feedbackpunt 3: één regel, tikbaar uitklappen -->
+      <div class="doorbelast" id="db">
+        <div class="kop" onclick="document.getElementById('db').classList.toggle('open')">
+          <span>Wordt doorbelast aan <b>Molenhof Verhuur B.V.</b></span>
+          <span class="pijl">▶</span>
+        </div>
+        <div class="detail">
+          <div class="rij"><span>Molenhof Verhuur B.V.</span><span class="p">100% · € 935,95 excl.</span></div>
+          <div class="rij"><span>Provisie kantoor</span><span class="p">€ 46,80</span></div>
+          <div class="voetje">Verdeling is alleen-lezen. Klopt die niet? Wijs de factuur af met een reden.</div>
+        </div>
+      </div>
+
+      <!-- NIEUW: vraag-thread op het document -->
+      <div class="thread">
+        <div class="tkop"><span>💬 Vraag van het kantoor</span><span class="chip beurt">U bent aan de beurt</span></div>
+        <div class="berichten">
+          <div class="bericht">
+            <div class="bubbel">Op de factuur staat een regel "meerwerk entree". Is dat meerwerk door u opgedragen, of hoort dit bij de oorspronkelijke opdracht?</div>
+            <div class="wie">Barbara (kantoor) · vandaag 16:42</div>
+          </div>
+        </div>
+        <div class="antwoordbalk">
+          <input type="text" placeholder="Uw antwoord…">
+          <button onclick="beantwoord()">Verstuur</button>
+        </div>
+      </div>
+      <div class="toelicht">U kunt de factuur gewoon goedkeuren of afwijzen — de vraag blokkeert alleen het <b>boeken</b> op kantoor, tot Barbara hem afgehandeld verklaart.</div>
+
+    </div>
+
+    <div class="besluit">
+      <button class="knop-afwijzen">Afwijzen</button>
+      <button class="knop-akkoord">Akkoord ✓</button>
+    </div>
+  </div>
+
+  <!-- ===== SCHERM 3: losse thread (heen-en-weer) ===== -->
+  <div class="scherm" id="s-thread">
+    <div class="inhoud">
+      <button class="terug" onclick="toon('s-wachtrij')">‹ Wachtrij</button>
+
+      <div class="boekregel">
+        <b>Van Diemen Transport</b> · € 780,45<br>
+        <span class="sub">Goedgekeurd door u op 18-08 · Kempen Facilities B.V. · <a href="#" style="color:var(--accent); font-weight:600;">bekijk factuur</a></span>
+      </div>
+
+      <div class="thread rustig" id="losse-thread">
+        <div class="tkop"><span>💬 Vraag van het kantoor</span><span class="chip beurt" id="lt-chip">U bent aan de beurt</span></div>
+        <div class="berichten" id="lt-berichten">
+          <div class="bericht">
+            <div class="bubbel">Deze factuur noemt werkadres Molenhof — klopt het dat dit tóch voor Oirschot Recreatie was? Dan passen wij de doorbelasting aan.</div>
+            <div class="wie">Barbara (kantoor) · gisteren 11:20</div>
+          </div>
+          <div class="bericht van-mij">
+            <div class="bubbel">Even nagevraagd bij de chauffeur, kom ik vanmiddag op terug.</div>
+            <div class="wie">U · gisteren 13:05</div>
+          </div>
+          <div class="bericht">
+            <div class="bubbel">Dank! Dan houden we de boeking zolang vast.</div>
+            <div class="wie">Barbara (kantoor) · gisteren 13:11</div>
+          </div>
+        </div>
+        <div class="antwoordbalk">
+          <input type="text" id="lt-input" placeholder="Uw antwoord…">
+          <button onclick="beantwoordLos()">Verstuur</button>
+        </div>
+        <div class="afgehandeld-voet">Alleen de vraagsteller (Barbara) kan de vraag <b>afgehandeld</b> verklaren. U ziet uitsluitend vragen die aan u gericht zijn — nooit intern kantooroverleg.</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Toelichting naast de telefoon (alleen desktop) -->
+<div class="desknote">
+  <h2>Bespreekpunten (26-08)</h2>
+  <p><span class="k">Wat dit toevoegt:</span> de bestaande kantoor-vragen­dialoog (25-08) krijgt een klant-kant — een vraag kan aan de accordeur gericht worden, die antwoordt in de app.</p>
+  <ul>
+    <li><b>Zichtbaarheid:</b> accordeur ziet uitsluitend threads die expliciet aan hem gericht zijn; intern kantoor­overleg lekt nooit mee.</li>
+    <li><b>Afgehandeld:</b> alleen de vraagsteller sluit de vraag (bestaande regel); vraag blokkeert boeken, niet het akkoord.</li>
+    <li><b>Meldingen:</b> via de bestaande push/mail-kanalen ("aan de beurt"), stille uren blijven gelden.</li>
+    <li><b>Twee plekken:</b> thread op het te accorderen document én een sectie "Vragen aan u" voor losse vragen (bv. over een al goedgekeurde factuur).</li>
+  </ul>
+  <p><span class="k">Meegenomen feedback 25-08:</span> compacte header zonder administraties­lijst · PDF-laadstate met retry (nooit stil wit) · doorbelasting als één regel met tikbaar uitklappen.</p>
+</div>
+
+<script>
+  function toon(id) {
+    document.querySelectorAll('.scherm').forEach(s => s.classList.remove('actief'));
+    document.getElementById(id).classList.add('actief');
+    window.scrollTo(0, 0);
+  }
+  function beantwoord() {
+    const inp = document.querySelector('#s-document .antwoordbalk input');
+    if (!inp.value.trim()) return;
+    voegToe(document.querySelector('#s-document .berichten'), inp.value);
+    inp.value = '';
+    const chip = document.querySelector('#s-document .tkop .chip');
+    chip.textContent = 'Wacht op kantoor'; chip.className = 'chip wacht';
+    document.querySelector('#s-document .thread').classList.add('rustig');
+  }
+  function beantwoordLos() {
+    const inp = document.getElementById('lt-input');
+    if (!inp.value.trim()) return;
+    voegToe(document.getElementById('lt-berichten'), inp.value);
+    inp.value = '';
+    const chip = document.getElementById('lt-chip');
+    chip.textContent = 'Wacht op kantoor'; chip.className = 'chip wacht';
+  }
+  function voegToe(container, tekst) {
+    const b = document.createElement('div');
+    b.className = 'bericht van-mij';
+    b.innerHTML = '<div class="bubbel"></div><div class="wie">U · zojuist</div>';
+    b.querySelector('.bubbel').textContent = tekst;
+    container.appendChild(b);
+  }
+</script>
+</body>
+</html>
