@@ -893,6 +893,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - `mockup/index.html` — goedgekeurde UI (alle schermen, klikbaar) — bron voor flows/inhoud
 - `mockup/kantoor-modern.html` — **designpass-norm kantoor-UI (akkoord Peter 2026-08-15):
   vormgeving, componenten en IA; semantische design tokens = de bron voor de frontend-tokens**
+- `mockup/kantoor-designpass-v2.html` — **DESIGNPASS V2 (akkoord Peter 2026-08-26, GEBOUWD zelfde
+  dag): neutrale fundering (ontgroend, inkt + echte grijzen), rijker teal, inkt-zijbalk, grafiet-dark
+  zonder groenzweem, hover-lift/pressed/rij-hover/dot+label/avatars/skeleton-shimmer, lichtbaan
+  alleen dark+landing. BINDENDE SEMANTIEK-REGEL: teal (`--primary`) = exclusief ACTIE, groen
+  (`--ok`) = exclusief STATUS. Contrast is een test (`frontend/src/styles/contrast.test.ts`,
+  parseert tokens.css + accordeur.css, beide modi — faalt een paar: token bijstellen, nooit de
+  eis). Zie BESLISSINGEN "DESIGNPASS V2"; kantoor-modern.html/accordeur.html qua tokens mee.**
 - `mockup/accordeur.html` — klikbare mobile-first accordeur-app-mockup (blok 5, 2026-08-09;
   ter beoordeling Peter op het mobiele breakpoint — bouw start pas na akkoord)
 - `mockup/uren-uitvoerder.html` + `mockup/meerwerk-kantoor.html` — definitief goedgekeurde
