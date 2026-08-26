@@ -40,6 +40,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `rlz-sql2` mét CMEK-key + default-CMEK-key op de documentenbucket (keys `cmek-sql`/
   `cmek-documenten` op keyring `rlz`, jaarrotatie, nooit destroy); client-side
   documentversleuteling alleen op expliciet klantverzoek.
+- **Administratie toevoegen via de UI (feedbackronde 26-08 punt 5, migratie 0076):** Instellingen ›
+  Administraties "+ Administratie toevoegen" — wizard: webservice-login → verbinding + rechten-probe
+  (10 leesroutes) verplicht groen → keuze uit `GET Administrations` (nooit een id typen) → opslaan
+  met defaults (alles UIT) + credential-store (envelope) → eerste sync als achtergrondrun met status
+  per onderdeel (job `rlz-eerste-sync`); "Schrijftest uitvoeren" = aparte knop (TEST-boeking +
+  storno 19); "Webservice-gegevens wijzigen" per rij (probe-gated). Zie BESLISSINGEN
+  "RLZ-FEEDBACKRONDE 26-08" punt 5; `app/beheer/onboarding.py`.
 - DB-schema's: `platform` (gebruikers, rollen, administraties, credential-store, audit log),
   `boekhouding` (deze module). Vastgoedmodule krijgt `vastgoed`, MI-dashboard later `mi`.
 - Auth: e-mailuitnodiging (eenmalige link 72 u) + wachtwoord + **TOTP-2FA verplicht**, JWT-sessies.
@@ -207,7 +214,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   verificatiepunt accordeur-multi-administratie bewezen met backend-test: wachtrij én
   09:00-herinnering voegen administraties samen), fase 3 Gebruikers & toegang
   (`/auth/gebruikers` + uitnodiging-opnieuw-endpoint, scherm `/gebruikers`) + bulkbediening
-  Instellingen. **Gebruiker blokkeren/heractiveren: GEBOUWD + GETEST (2026-08-16, migratie
+  Instellingen. **Gebruiker ARCHIVEREN/dearchiveren (feedbackronde 26-08 punt 1, migratie 0075,
+  0052-patroon): status `gearchiveerd` = uit álle default-lijsten (filter "gearchiveerd (N)" per
+  tab op /gebruikers), toegang dicht, niets verwijderd; dearchiveren = status van vóór terug; open
+  werk = waarschuwing mét aantallen (`GET /auth/gebruikers/{id}/open-werk`), geen blokkade — zie
+  BESLISSINGEN "RLZ-FEEDBACKRONDE 26-08".** **Gebruiker blokkeren/heractiveren: GEBOUWD + GETEST (2026-08-16, migratie
   0052)** — blokkade bijt per direct op álle paden (sessies/refresh dood, passkeys onbruikbaar
   maar geregistreerd = omkeerbaar), guards server-side (eigen account/systeem-actor/laatste
   actieve Beheerder nooit), heractiveren zet de status van vóór de blokkade terug; audit op
@@ -219,6 +230,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   zie BESLISSINGEN "Nazorg controls-review". Regressie-vangnet: `frontend/scripts/
   overflow_sweep.sh` (alle visuele harnassen × 1440/1170/1024/768 × licht/donker — geen
   horizontale pagina-overflow; vastgoed-sweep-patroon).
+- **Btw-code uit de scan (feedbackronde 26-08 punt 3):** ná AI-extractie leidt CODE per regel het
+  tarief af (`extractie/controle.py::leid_btw_af`: netto × tarief ≈ btw ±1 ct tegen de gesyncte
+  TaxRates; gelijk percentage → RLZ-favoriet `IsFavorite` wint; verlegd/vrijgesteld/gemengd doen
+  niet mee) → vooraf ingevuld mét chip "uit factuur (21%)"; 0/onbepaalbaar/meerduidig = NOOIT
+  invullen (0% is ambigu: geheugen per leverancier wint, anders mens); "btw verlegd"-vermelding
+  = alleen een hint-chip. Harde checks blijven de poort.
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
@@ -269,7 +286,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `backend/app/intake/` + `frontend/src/intake/`; details BESLISSINGEN "E-mail-intake +
   verzamelbak — GEBOUWD + GETEST". **Preview per rij (besluit Peter 25-08, D1): hover toont lazy
   de eerste PDF-pagina, klik de volledige weergave — leesroute `GET /verzamelbak/{id}/bestand`,
-  fail-closed tot echte verzamelbak-documenten.** Eigen naamnormalisatie: "Holding" blijft onderscheidend
+  fail-closed tot echte verzamelbak-documenten. Popup sinds 26-08 via `ui/basis/AnkerPopup.tsx`
+  (portal + fixed, flipt aan de viewport-rand) — nooit meer een absoluut gepositioneerde popup
+  bínnen `.tabel-scroll`/`table{overflow:hidden}` (feedbackronde 26-08 punt 2).** Eigen naamnormalisatie: "Holding" blijft onderscheidend
   (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
   tenaamstelling-signaal.
 - **E-mail intake**: één centraal adres — **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter
@@ -294,6 +313,15 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   herverwerkt i.p.v. vroeg terug te keren, idempotent op (intake_bericht_id, sha256) —
   fix 2026-08-07. Multi-factuur-splitsing: AI-voorstel ALTIJD eerst ter controle, bevestigen =
   deterministische pypdf-splitsing, bron-document terminaal `gesplitst`.
+  **Eén extractiepad voor álle ingangen (feedbackronde 26-08 punt 4):** mail/IMAP, sleepzone
+  (`/intake/bestand`), klantpagina-upload, verzamelbak-toewijzen en splitsing lopen alle via
+  `upload_document`/`start_extractie_na_toewijzing` achter dezelfde gates (per-administratie
+  `ai_extractie_ingeschakeld` + API-key + AI-kostengrens) — regressietests per ingang in
+  `tests/intake/test_extractie_per_ingang.py`. Grote documenten (> 3 MB / > 8 pag.) gaan naar de
+  extractie-wachtrij: in de cloud sinds 26-08 de on-demand job `rlz-extractie-wachtrij` +
+  */10-scheduler-vangnet (een in-process thread valt op Cloud Run met request-based CPU stil —
+  dát was "geüploade factuur krijgt geen AI-extractie"); controlescherm toont een overgeslagen
+  extractie mét reden.
   **Mail-body bij het boekingsvoorstel (feedbackronde 25-08 deel 3 punt 1, migratie 0069):**
   de intake bewaart de platte mail-body op `intake_bericht.body_tekst` (HTML → tekst, ruis
   deterministisch gestript — `app/intake/mailbody.py`), gedeeld door álle documenten uit die
