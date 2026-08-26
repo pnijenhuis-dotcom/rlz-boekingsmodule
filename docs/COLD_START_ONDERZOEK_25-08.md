@@ -45,6 +45,26 @@ niet de ~14 s infrastructuur.
 
 ## Besluit
 
-**Open — aan Peter.** Bij akkoord: `--min-instances 1` toevoegen aan de deploy-stap
-(`.github/workflows/deploy.yml`, "Cloud Run-revisie uitrollen") en het budget-alert (F0) met ~€ 10
-ophogen. Dit onderzoek is vastgelegd in BESLISSINGEN "STEIGERBOUW-RUN 25-08 — BLOK C" (C3).
+**AKKOORD Peter 2026-08-25 — variant A, UITGEVOERD 2026-08-26.** `--min-instances 1` (request-based
+billing, géén `--no-cpu-throttling`) staat verankerd in `.github/workflows/deploy.yml`, stap
+"Cloud Run-revisie uitrollen" — config-as-code, dus elke volgende deploy houdt 'm vast (zelfde
+patroon als Vastly, besluit 24-08). Uitsluitend de service `rlz-backend`; jobs en schedulers
+ongemoeid. Kosten bewust aanvaard: ≈ € 7/maand (idle-tarief). Geen migratie. Vastgelegd in
+BESLISSINGEN "STEIGERBOUW-RUN 25-08 — BLOK C" (C3).
+
+**Verificatie ná de deploy** (script `scripts/gcp/warme_start_verificatie.sh`, beide uitkomsten
+rapporteren):
+1. `gcloud run services describe rlz-backend --region europe-west4
+   --format="value(spec.template.metadata.annotations['autoscaling.knative.dev/minScale'])"` → **`1`**;
+2. ná > 20 min zonder verkeer een verse `curl -w '%{time_total}' https://app.administratiekantoornijenhuis.nl/health`
+   → **< 2 s** (voorheen 14,6–16,9 s).
+
+Uitkomst: zie de verificatie-tabel hieronder (ingevuld ná de eerste deploy mét de vlag).
+
+| Check | Verwacht | Gemeten | Datum/tijd |
+|---|---|---|---|
+| `minScale` op de live revisie | `1` | _nog te meten_ | |
+| `/health` ná > 20 min stilte — **0-meting vóór de deploy** | (koud) | **9,47 s** (HTTP 200) | 2026-08-26 vóór commit |
+| `/health` ná > 20 min stilte — mét minScale 1 | < 2 s | _nog te meten_ | |
+
+Open klikwerk Peter (buiten de repo): het budget-alert uit F0 met ~€ 10/maand ophogen.

@@ -714,9 +714,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   BESLISSINGEN "BLOK C"):** `GET /uren/kantoor/mijn-toegang` voedt `useMijnToegang`; een
   mono-klant-medewerker (één administratie in scope, geen Beheerder) landt op zijn klantpagina,
   mét module-recht + opt-in op `/meerwerk?administratie=X`; fail-closed = werkvoorraad. Planning
-  als zijbalk-item bij module-recht + opt-in. **Koude start rlz-backend ≈ 15 s (gemeten 25-08);
-  voorstel `--min-instances 1` ≈ € 7/mnd staat in `docs/COLD_START_ONDERZOEK_25-08.md` — besluit
-  Peter, niet aangezet.**
+  als zijbalk-item bij module-recht + opt-in. **Koude start rlz-backend ≈ 15 s (gemeten 25-08) → WARME START aangezet (besluit Peter 25-08,
+  uitgevoerd 26-08): `--min-instances 1` request-based verankerd in deploy.yml, ≈ € 7/mnd — rapport
+  + verificatie in `docs/COLD_START_ONDERZOEK_25-08.md`; alleen de service, jobs ongemoeid.**
   **Transportplanning + bestellingen + materiaalstand (steigerbouw-run 25-08 blok D, besluiten
   Peter 24-08, GEBOUWD + GETEST 2026-08-25, migratie 0074 — BESLISSINGEN "BLOK D" is canoniek;
   mockup planning-steigerbouw Transport-tab + popup = norm):** `app/materiaal/` — catalogus per
