@@ -55,6 +55,10 @@ JOBS=(
   # dwingt de stille uren (20:00–08:00 Europe/Amsterdam) bovendien zelf af. Scheduler start
   # GEPAUZEERD (zie onder) tot de notificatie-live-verificatie rond is.
   "rlz-nieuwe-facturen|nieuwe-facturen-melden|600|*/10 8-19 * * *"
+  # Extractie-wachtrij (feedbackronde 26-08 punt 4): on-demand getriggerd door de service bij
+  # elk groot document (stap 8) + dit scheduler-VANGNET elke 10 min voor een gemiste trigger.
+  # Lege wachtrij = snelle no-op. Start NIET gepauzeerd: dit is een vangnet, geen notificatie.
+  "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800|*/10 * * * *"
 )
 
 gcloud config set project "${PROJECT_ID}" --quiet
@@ -267,6 +271,39 @@ else
   echo "   LET OP: job rlz-bank-sync bestaat nog niet (eerste deploy-run maakt 'm) —"
   echo "   draai dit script daarna opnieuw voor de IAM-binding, anders faalt de auto-verversing"
   echo "   zichtbaar met 'Achtergrondrun starten mislukt' (403); de handmatige knop werkt wel."
+fi
+
+echo "== 8. rlz-extractie-wachtrij: on-demand job + vangnet (feedbackronde 26-08 punt 4) =="
+# Zelfde patroon als stap 6/7: de service triggert één uitvoering per groot document
+# (EXTRACTIE_WACHTRIJ_JOB_RESOURCE in deploy.yml); daarnaast de */10-scheduler uit de JOBS-lijst
+# als vangnet. Hier alleen de IAM-binding voor de trigger vanuit de service.
+if gcloud run jobs describe rlz-extractie-wachtrij --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding rlz-extractie-wachtrij \
+    --region="${REGION}" \
+    --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet >/dev/null
+  echo "   run-backend@ mag rlz-extractie-wachtrij uitvoeren (roles/run.invoker, job-niveau)."
+else
+  echo "   LET OP: job rlz-extractie-wachtrij bestaat nog niet (eerste deploy-run maakt 'm) —"
+  echo "   draai dit script daarna opnieuw voor de IAM-binding; tot dan vangt alleen de"
+  echo "   */10-scheduler grote documenten op (zichtbaar 'in wachtrij', nooit stil)."
+fi
+
+echo "== 9. rlz-eerste-sync: on-demand job (wizard Administratie toevoegen, 26-08 punt 5) =="
+# Geen scheduler: de wizard triggert één uitvoering per nieuwe administratie
+# (EERSTE_SYNC_JOB_RESOURCE in deploy.yml); alleen de IAM-binding hier.
+if gcloud run jobs describe rlz-eerste-sync --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding rlz-eerste-sync \
+    --region="${REGION}" \
+    --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet >/dev/null
+  echo "   run-backend@ mag rlz-eerste-sync uitvoeren (roles/run.invoker, job-niveau)."
+else
+  echo "   LET OP: job rlz-eerste-sync bestaat nog niet (eerste deploy-run maakt 'm) —"
+  echo "   draai dit script daarna opnieuw; tot dan toont de wizard 'Achtergrondrun starten"
+  echo "   mislukt' en kan de sync via de knop opnieuw gestart worden."
 fi
 
 echo

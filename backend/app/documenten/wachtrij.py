@@ -15,6 +15,18 @@ monsterfactuur kan de machine niet plattrekken, volgende taken wachten netjes in
 Bekende beperking (bewust, dev-only): de queue overleeft een proces-herstart niet — het
 startup-vangnet `service.herstel_achtergebleven_extracties()` zet achtergebleven documenten dan
 terug in de wachtrij ("niets verdwijnt stil").
+
+CLOUD (feedbackronde 26-08 punt 4 — "geüploade factuur krijgt geen AI-extractie"): op Cloud Run
+met request-based billing (deploy.yml: bewust géén --no-cpu-throttling) krijgt een achtergrond-
+thread buiten een request nauwelijks CPU — een groot document (scan > 3 MB of > 8 pagina's,
+`ai_extractie_sync_max_*`) bleef daardoor in `extractie_wachtrij` hangen tot de volgende
+herstart; kleine (digitale, gemailde) PDF's gaan synchroon en merkten er niets van. Daarom
+`CloudRunJobExtractieWachtrij`: enqueue triggert één uitvoering van de on-demand job
+`rlz-extractie-wachtrij` (zelfde metadata-server-patroon als rlz-projecten-cijfers/rlz-bank-sync),
+die met `DirecteExtractieWachtrij` álle wachtrij-documenten synchroon afwerkt
+(`service.verwerk_extractie_wachtrij`). Een scheduler-vangnet (elke 10 min, f3_jobs.sh) vangt
+een gemiste trigger. De rij-status ís de opdracht: dubbele job-runs zijn idempotent via de
+statusmachine.
 """
 
 from __future__ import annotations
@@ -70,3 +82,48 @@ class InProcessExtractieWachtrij:
         with self._lock:
             futures = list(self._futures)
         wait(futures, timeout=timeout)
+
+
+class DirecteExtractieWachtrij:
+    """Synchrone wachtrij voor het job-/CLI-proces: enqueue voert de taak meteen uit in de
+    aanroepende thread. Geen threads, geen verloren queue — de job eindigt pas als alles af is."""
+
+    def __init__(self, *, taak: ExtractieTaak) -> None:
+        self._taak = taak
+        self.verwerkt: list[uuid.UUID] = []
+
+    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
+        try:
+            self._taak(administratie_id=administratie_id, document_id=document_id)
+        except Exception:  # noqa: BLE001 — één falend document mag de rest van de wachtrij niet stoppen
+            logger.exception("Extractie-wachtrijtaak faalde onverwacht voor document %s", document_id)
+        self.verwerkt.append(document_id)
+
+
+class CloudRunJobExtractieWachtrij:
+    """Cloud-wachtrij: elke enqueue triggert één uitvoering van de on-demand Cloud Run-job
+    (`settings.extractie_wachtrij_job_resource`). De job leest zelf welke documenten op
+    `extractie_wachtrij` staan — de statusrij ís de opdracht, dus geen payload/overrides nodig
+    (roles/run.invoker volstaat). Faalt de trigger, dan blijft het document zichtbaar op
+    'in wachtrij' en pakt het scheduler-vangnet het binnen 10 minuten op; de fout wordt gelogd,
+    nooit naar de uploader gegooid (de upload zelf is geslaagd)."""
+
+    def __init__(self, *, job_resource: str, trigger: Callable[[str], None] | None = None) -> None:
+        self._job_resource = job_resource
+        self._trigger = trigger
+
+    def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
+        try:
+            if self._trigger is not None:
+                self._trigger(self._job_resource)
+            else:
+                from app.projecten.cijfers_run import _trigger_cloud_run_job
+
+                _trigger_cloud_run_job(self._job_resource)
+        except Exception:  # noqa: BLE001 — trigger-fout mag de upload nooit laten falen; vangnet = scheduler
+            logger.exception(
+                "Extractie-wachtrij: Cloud Run-job %s triggeren mislukt voor document %s — het "
+                "scheduler-vangnet pakt het document op",
+                self._job_resource,
+                document_id,
+            )

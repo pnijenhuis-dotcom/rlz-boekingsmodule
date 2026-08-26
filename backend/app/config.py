@@ -192,6 +192,14 @@ class Settings(BaseSettings):
     # de administratie jonger dan dit aantal minuten, dan start het openen van het bankscherm
     # géén nieuwe RLZ-ronde (de handmatige verversen-knop wél, die blijft onbegrensd).
     bank_sync_job_resource: str | None = None
+    # Extractie-wachtrij als on-demand Cloud Run-job (feedbackronde 26-08 punt 4:
+    # "projects/…/jobs/rlz-extractie-wachtrij"). Gezet = een groot document dat naar de
+    # wachtrij gaat triggert één job-uitvoering i.p.v. een in-process thread (die op Cloud Run
+    # met request-based CPU buiten een request stilvalt); leeg = dev-threadpool.
+    extractie_wachtrij_job_resource: str | None = None
+    # Eerste-sync-run van de onboarding-wizard (feedbackronde 26-08 punt 5:
+    # "projects/…/jobs/rlz-eerste-sync"). Gezet = job-trigger, leeg = dev-thread.
+    eerste_sync_job_resource: str | None = None
     bank_auto_ververs_drempel_minuten: int = 5
 
     boekingsgeheugen_seed_maanden: int = 36

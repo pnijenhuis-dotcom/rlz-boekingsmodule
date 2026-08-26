@@ -108,6 +108,23 @@ def _bank_sync_wachtrij(args: argparse.Namespace) -> int:
     return 0
 
 
+def _eerste_sync_wachtrij(args: argparse.Namespace) -> int:
+    from app.beheer import eerste_sync
+
+    aantal = eerste_sync.verwerk_wachtrij()
+    print(f"eerste-sync-wachtrij: {aantal} run(s) verwerkt")
+    return 0
+
+
+def _extractie_wachtrij_verwerken(args: argparse.Namespace) -> int:
+    """Job-entrypoint extractie-wachtrij (punt 4, 26-08): synchroon, systeem-actor, idempotent."""
+    from app.documenten import service as documenten_service
+
+    aantal = documenten_service.verwerk_extractie_wachtrij()
+    print(f"extractie-wachtrij-verwerken: {aantal} document(en) verwerkt")
+    return 0
+
+
 def _sync_alles(args: argparse.Namespace) -> int:
     """Nachtelijke sync-entrypoint (fase-vervolg: Cloud Scheduler -> Cloud Run job roept dit
     commando aan). Eén administratie zonder werkende .env-credentials laat de rest niet
@@ -1031,6 +1048,20 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "eerste-sync-wachtrij",
+        help="Verwerk de wachtrij van eerste-sync-runs van nieuw aangesloten administraties "
+        "(entrypoint van de on-demand Cloud Run-job rlz-eerste-sync, wizard 26-08 punt 5; lege "
+        "wachtrij = snelle no-op).",
+    )
+
+    subparsers.add_parser(
+        "extractie-wachtrij-verwerken",
+        help="Werk de AI-extractie-wachtrij af (entrypoint van de on-demand Cloud Run-job "
+        "rlz-extractie-wachtrij, feedbackronde 26-08 punt 4 — een groot document triggert de job, "
+        "het scheduler-vangnet draait 'm elke 10 min; lege wachtrij = snelle no-op).",
+    )
+
+    subparsers.add_parser(
         "projecten-cijfers-wachtrij",
         help="Verwerk de wachtrij van projectcijfers-syncruns (entrypoint van de on-demand "
         "Cloud Run-job rlz-projecten-cijfers — de sync-knop zet de run klaar en triggert "
@@ -1284,6 +1315,10 @@ def main(argv: list[str] | None = None) -> int:
         return _projecten_cijfers_wachtrij(args)
     if args.commando == "bank-sync-wachtrij":
         return _bank_sync_wachtrij(args)
+    if args.commando == "extractie-wachtrij-verwerken":
+        return _extractie_wachtrij_verwerken(args)
+    if args.commando == "eerste-sync-wachtrij":
+        return _eerste_sync_wachtrij(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
     if args.commando == "bank-sync":

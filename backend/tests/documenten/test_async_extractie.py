@@ -381,3 +381,89 @@ class TestHerstelNaHerstart:
         wachtrij = FakeWachtrij()
         assert service.herstel_achtergebleven_extracties(wachtrij=wachtrij) == 0
         assert wachtrij.enqueued == []
+
+
+class TestWachtrijJob:
+    """Feedbackronde 26-08 punt 4: op Cloud Run valt een in-process worker-thread buiten een
+    request stil (request-based CPU) — grote uploads bleven 'in wachtrij'. De job-variant werkt
+    de wachtrij synchroon af; de cloud-wachtrij triggert de job en laat de upload nooit falen."""
+
+    def test_verwerk_extractie_wachtrij_maakt_wachtrij_documenten_af_met_systeem_actor(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        ai_gate_aan: None,
+        fake_extraheer: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(settings, "ai_extractie_sync_max_bytes", 10)
+        verloren = FakeWachtrij()  # de thread die op Cloud Run nooit CPU kreeg
+        resultaat = _upload(administratie_id, gescoopte_gebruiker, opslag, wachtrij=verloren)
+        assert resultaat.status == DocumentStatus.EXTRACTIE_WACHTRIJ
+        assert fake_extraheer == []
+
+        monkeypatch.setattr(service, "_standaard_opslag", lambda: opslag)
+        verwerkt = service.verwerk_extractie_wachtrij()
+
+        assert verwerkt == 1
+        assert fake_extraheer == [_PDF]
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=resultaat.document_id)
+        assert detail.document.status == DocumentStatus.TE_CONTROLEREN
+        assert detail.gebeurtenissen[-1].actor_id == SYSTEEM_ACTOR_ID
+        # Tweede run: niets meer te doen (idempotent via de statusmachine).
+        assert service.verwerk_extractie_wachtrij() == 0
+
+    def test_verse_bezig_run_wordt_niet_teruggezet_maar_een_gestrande_wel(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        ai_gate_aan: None,
+        fake_extraheer: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from datetime import timedelta
+
+        monkeypatch.setattr(settings, "ai_extractie_sync_max_bytes", 10)
+        monkeypatch.setattr(service, "_standaard_opslag", lambda: opslag)
+        doc = _upload(administratie_id, gescoopte_gebruiker, opslag, wachtrij=FakeWachtrij())
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, doc.document_id)
+            assert document is not None
+            service._schrijf_overgang(
+                session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=SYSTEEM_ACTOR_ID
+            )
+        # Verse bezig-run (van een overlappende job-uitvoering): overslaan.
+        assert service.verwerk_extractie_wachtrij() == 0
+        assert fake_extraheer == []
+        # Gestrand (ouder dan de drempel): terug de wachtrij in en afmaken.
+        assert service.verwerk_extractie_wachtrij(stale_na=timedelta(seconds=0)) == 1
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=doc.document_id)
+        assert detail.document.status == DocumentStatus.TE_CONTROLEREN
+        assert any(g.detail == {"herstel": "gestrand_op_bezig"} for g in detail.gebeurtenissen)
+
+    def test_cloud_wachtrij_triggert_job_en_laat_upload_nooit_falen(self) -> None:
+        from app.documenten.wachtrij import CloudRunJobExtractieWachtrij
+
+        getriggerd: list[str] = []
+        wachtrij = CloudRunJobExtractieWachtrij(job_resource="projects/p/locations/l/jobs/rlz-extractie-wachtrij", trigger=getriggerd.append)
+        wachtrij.enqueue(administratie_id=uuid.uuid4(), document_id=uuid.uuid4())
+        assert getriggerd == ["projects/p/locations/l/jobs/rlz-extractie-wachtrij"]
+
+        def faal(_: str) -> None:
+            raise RuntimeError("403 run.jobs.run")
+
+        kapot = CloudRunJobExtractieWachtrij(job_resource="x", trigger=faal)
+        kapot.enqueue(administratie_id=uuid.uuid4(), document_id=uuid.uuid4())  # geen exception: vangnet = scheduler
+
+    def test_standaard_wachtrij_kiest_cloud_variant_bij_job_resource(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.documenten.wachtrij import CloudRunJobExtractieWachtrij
+
+        monkeypatch.setattr(service, "_wachtrij", None)
+        monkeypatch.setattr(settings, "extractie_wachtrij_job_resource", "projects/p/locations/l/jobs/j")
+        assert isinstance(service._standaard_wachtrij(), CloudRunJobExtractieWachtrij)
+        monkeypatch.setattr(service, "_wachtrij", None)
+        monkeypatch.setattr(settings, "extractie_wachtrij_job_resource", None)
+        assert isinstance(service._standaard_wachtrij(), InProcessExtractieWachtrij)
+        monkeypatch.setattr(service, "_wachtrij", None)

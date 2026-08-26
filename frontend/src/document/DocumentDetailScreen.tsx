@@ -233,6 +233,19 @@ function laatsteExtractieProbleem(detail: DocumentDetailDto): string | null {
   return null
 }
 
+/** Reden waarom de laatste extractie is OVERGESLAGEN (feedbackronde 26-08 punt 4: een via de
+ * module geüploade PDF zonder AI-voorstel moet zichtbaar zeggen waarom — gate uit, geen key,
+ * AI-limiet) — null als er wél geëxtraheerd is of het geen PDF-extractie betrof. */
+function laatsteExtractieOvergeslagen(detail: DocumentDetailDto): string | null {
+  for (let i = detail.tijdlijn.length - 1; i >= 0; i--) {
+    const g = detail.tijdlijn[i]
+    if (g.naar_status === 'te_controleren' || g.naar_status === 'handmatig_afmaken') {
+      return g.detail && 'ai_extractie_overgeslagen' in g.detail ? String(g.detail.ai_extractie_overgeslagen) : null
+    }
+  }
+  return null
+}
+
 /** Inklapbaar blok "Uit de e-mail" (feedbackronde 25-08 deel 3 punt 1b): afzender, onderwerp en
  * de platte mail-body van het intake-bericht — context voor het boekingsvoorstel (casus: collega
  * mailt "dit is voor Oirschot"). Standaard ingeklapt; géén body (bericht van vóór 0069 of mail
@@ -399,6 +412,7 @@ export function DocumentDetailScreen() {
   if (!administratieId || !documentId || !detail) return <SkeletonPaneel />
 
   const extractieProbleem = laatsteExtractieProbleem(detail)
+  const extractieOvergeslagen = laatsteExtractieOvergeslagen(detail)
   const isHandmatigAfmaken = detail.status === 'handmatig_afmaken'
   const achtergrondBezig = extractieActief(detail.status)
 
@@ -667,6 +681,32 @@ export function DocumentDetailScreen() {
                 {detail.status === 'extractie_wachtrij'
                   ? 'Dit document staat in de wachtrij voor AI-extractie (groot document). Dit scherm ververst vanzelf zodra de verwerking start.'
                   : 'De AI-extractie draait op de achtergrond. Dit scherm ververst vanzelf zodra het voorstel klaar is.'}
+              </p>
+            </div>
+          )}
+
+          {extractieOvergeslagen && detail.status === 'te_controleren' && (
+            <div className="panel" role="status">
+              <h2>
+                Geen AI-voorstel <span className="chip afwijking">extractie overgeslagen</span>
+              </h2>
+              <p className="hint" style={{ marginTop: 0 }}>
+                AI-extractie overgeslagen: {aiOvergeslagenLabel(extractieOvergeslagen)}. Het boekingsvoorstel is daarom
+                niet vooringevuld — handmatig invullen werkt gewoon.
+                {extractieOvergeslagen === 'ai_extractie_uitgeschakeld' && (
+                  <>
+                    {' '}
+                    De Beheerder kan de AI-extractie per administratie aanzetten op{' '}
+                    <Link to="/instellingen/administraties">Instellingen › Administraties</Link>; daarna &ldquo;Opnieuw
+                    extraheren&rdquo;.
+                  </>
+                )}
+                {extractieOvergeslagen === 'ai_limiet_bereikt' && (
+                  <>
+                    {' '}
+                    Verbruik en limiet: <Link to="/instellingen/intake-ai">Instellingen › Intake-AI &amp; kosten</Link>.
+                  </>
+                )}
               </p>
             </div>
           )}
