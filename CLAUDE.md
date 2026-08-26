@@ -46,7 +46,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   met defaults (alles UIT) + credential-store (envelope) → eerste sync als achtergrondrun met status
   per onderdeel (job `rlz-eerste-sync`); "Schrijftest uitvoeren" = aparte knop (TEST-boeking +
   storno 19); "Webservice-gegevens wijzigen" per rij (probe-gated). Zie BESLISSINGEN
-  "RLZ-FEEDBACKRONDE 26-08" punt 5; `app/beheer/onboarding.py`.
+  "RLZ-FEEDBACKRONDE 26-08" punt 5; `app/beheer/onboarding.py`. **`is_vastgoed` is sinds de avondrun
+  26-08 een Beheerder-toggle op dezelfde pagina (`PATCH /administraties/{id}/is-vastgoed`, kolom
+  "Vastgoed-koppeling (Vastly)", bevestigingsdialoog met consequenties, audit oud→nieuw; UIT neemt
+  verkoop-autoboeken zichtbaar mee uit, tier-vlag afgeletterd_event blijft; CLI-terugval `make
+  is-vastgoed-aan/-uit`) — S2-draaiboek R1. Zie BESLISSINGEN "AVONDRUN 26-08".**
 - DB-schema's: `platform` (gebruikers, rollen, administraties, credential-store, audit log),
   `boekhouding` (deze module). Vastgoedmodule krijgt `vastgoed`, MI-dashboard later `mi`.
 - Auth: e-mailuitnodiging (eenmalige link 72 u) + wachtwoord + **TOTP-2FA verplicht**, JWT-sessies.
@@ -298,7 +302,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   de eerste PDF-pagina, klik de volledige weergave — leesroute `GET /verzamelbak/{id}/bestand`,
   fail-closed tot echte verzamelbak-documenten. Popup sinds 26-08 via `ui/basis/AnkerPopup.tsx`
   (portal + fixed, flipt aan de viewport-rand) — nooit meer een absoluut gepositioneerde popup
-  bínnen `.tabel-scroll`/`table{overflow:hidden}` (feedbackronde 26-08 punt 2).** Eigen naamnormalisatie: "Holding" blijft onderscheidend
+  bínnen `.tabel-scroll`/`table{overflow:hidden}` (feedbackronde 26-08 punt 2). **Toewijzen/hoort-niet
+  OPTIMISTISCH (avondrun 26-08): rij direct weg, request async, mislukt = rij LUID terug mét rode
+  reden; server idempotent (tweede klik = 200 `al_verwerkt` + rustige melding, conflicten in
+  leesbare taal — geen enum-jargon); DB blijft bron van waarheid. Zie BESLISSINGEN "AVONDRUN 26-08".**
+  Eigen naamnormalisatie: "Holding" blijft onderscheidend
   (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
   tenaamstelling-signaal.
 - **E-mail intake**: één centraal adres — **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter
