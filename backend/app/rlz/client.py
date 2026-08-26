@@ -434,6 +434,21 @@ class RlzClient:
     def get_sales_invoice(self, invoice_id: uuid.UUID | str) -> dict[str, Any]:
         return self.get(f"SalesInvoices/{invoice_id}")
 
+    def download_sales_invoice_pdf(self, invoice_id: uuid.UUID | str) -> bytes:
+        """RLZ's eigen gerenderde verkoopfactuur (STAP-0 "Factuur-PDF-rendering" 26-08-2026):
+        `GET SalesInvoices/{id}/Download` levert de complete factuur uit de RLZ-lay-out —
+        afzenderblok (adres/KvK/btw-nummer/IBAN), geadresseerde, nummer, datum, regels,
+        btw-specificatie per tarief, totaal. ⚠️ Met de client-default `Accept: application/json`
+        antwoordt RLZ 406 — de route eist `Accept: application/pdf`. Watermerk/stempel/pakbon
+        expliciet uit; renderen ná actie 17 zodat er nooit een concept-stempel op staat."""
+        response = self._request(
+            "GET",
+            f"SalesInvoices/{invoice_id}/Download",
+            params={"includeWatermark": "false", "includeStamp": "false", "printAsPackingSlip": "false"},
+            headers={"Accept": "application/pdf"},
+        )
+        return response.content
+
     def book_sales_invoice(self, invoice_id: uuid.UUID) -> httpx.Response:
         return self.post_action(f"SalesInvoices/{invoice_id}", ACTION_BOOK)
 

@@ -72,6 +72,9 @@ def _naar_run_response(data: service.RunReviewData) -> schemas.RunResponse:
                 btw_bedrag=p.btw_bedrag,
                 boeking_status=p.boeking_status,
                 boeking_id=p.boeking_id,
+                factuur_pdf_status=p.factuur_pdf_status,
+                factuur_pdf_reden=p.factuur_pdf_reden,
+                factuur_pdf_bestandsnaam=p.factuur_pdf_bestandsnaam,
                 projecten=[
                     schemas.ProjectPreviewResponse(project_id=pp.project_id, naam=pp.naam, netto_totaal=pp.netto_totaal)
                     for pp in p.projecten
@@ -537,6 +540,26 @@ def boeking_storneren(
     except service.DoorbelastingFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return schemas.BoekResultaatResponse(per_doelentiteit={str(boeking.mapping_id): boeking.status})
+
+
+@router.get("/doorbelasting/{administratie_id}/boekingen/{boeking_id}/factuur")
+def factuur_pdf_downloaden(
+    administratie_id: uuid.UUID,
+    boeking_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> Response:
+    """De rechtsgeldige factuur-PDF van een doorbelastings-boeking (blok A 26-08): onze
+    bewaarkopie van RLZ's eigen render — dezelfde bytes als de bijlage op beide kanten. De
+    frontend haalt 'm via fetch + blob (Authorization-header), nooit als kale navigatie."""
+    try:
+        naam, inhoud = service.factuur_pdf_van_boeking(administratie_id=administratie_id, boeking_id=boeking_id)
+    except service.DoorbelastingFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=inhoud,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{naam}"'},
+    )
 
 
 @router.get(

@@ -51,6 +51,7 @@ from app.documenten.models import (
     WebhookUitgaand,
 )
 from app.documenten.rlz_ids import (
+    rlz_doorbelasting_factuur_upload_id,
     rlz_doorbelasting_spiegel_id,
     rlz_doorbelasting_upload_id,
     rlz_doorbelasting_verkoop_id,
@@ -64,6 +65,7 @@ from app.documenten.webhook import (
     bouw_factuur_geboekt_payload,
     bouw_factuur_gestorneerd_payload,
 )
+from app.doorbelasting import factuur as factuur_pdf
 from app.doorbelasting.checks import voer_doorbelasting_checks_uit
 from app.doorbelasting.geld import btw_over, provisie_over
 from app.doorbelasting.models import (
@@ -153,10 +155,17 @@ def _boek_spiegel_inkoop(
     upload_id: uuid.UUID,
     bestandsnaam: str,
     bestand: bytes,
+    factuur: tuple[bytes, str, uuid.UUID] | None = None,
+    factuur_fouten: list[str] | None = None,
 ) -> str | None:
     """Kleine inkoopmotor voor de spiegel (bewust los van documenten/boeken.py::_boek_bij_rlz —
     die is aan BoekvoorstelData gebonden): retry-inhaal via GET-op-eigen-GUID → PUT →
-    bijlage → actie 17. Retourneert het RLZ-boekstuknummer."""
+    bijlagen → actie 17. Retourneert het RLZ-boekstuknummer.
+
+    Bijlagen (blok A 26-08): `factuur` = (pdf, bestandsnaam, upload-GUID) van RLZ's gerenderde
+    verkoopfactuur — gaat als EERSTE bijlage (hoofdbijlage: dít is het document op naam van de
+    doelentiteit), de originele bon als tweede; beide idempotent op bestandsnaam. Een mislukte
+    factuur-upload blokkeert de spiegelboeking nooit — de reden landt in `factuur_fouten`."""
     try:
         bestaand = client.get(f"PurchaseInvoices/{rlz_id}")
     except RlzApiError as exc:
@@ -167,6 +176,13 @@ def _boek_spiegel_inkoop(
         return bestaand.get("ReceiptNumber")
 
     client.put_purchase_invoice(rlz_id, vendor_id=vendor_id, lines=lines, reference=referentie, Date=datum_iso)
+    if factuur is not None:
+        pdf, factuur_naam, factuur_upload_id = factuur
+        fout = factuur_pdf.voeg_factuur_als_bijlage_toe(
+            client, "PurchaseInvoices", rlz_id, upload_id=factuur_upload_id, bestandsnaam=factuur_naam, pdf=pdf
+        )
+        if fout and factuur_fouten is not None:
+            factuur_fouten.append(f"spiegel: {fout}")
     if bestand:
         zorg_voor_bijlage(
             client,
@@ -175,6 +191,7 @@ def _boek_spiegel_inkoop(
             upload_id=upload_id,
             filename=bestandsnaam,
             content_base64=base64.b64encode(bestand).decode(),
+            op_bestandsnaam=True,
         )
     client.book_purchase_invoice(rlz_id)
     geboekt = client.get(f"PurchaseInvoices/{rlz_id}")
@@ -611,12 +628,63 @@ def _boek_voor_doelentiteit(
         lokaal_max_invoice_number=_lokaal_max_doorbelasting_invoice_number(administratie_id),
     )
 
+    # --- rechtsgeldige factuur (blok A 26-08): RLZ's eigen render van de zojuist geboekte
+    # --- verkoopfactuur, deterministisch getoetst op de GEBOEKTE bedragen + nummer, als bijlage
+    # --- op de bron-verkoop (hier) en als eerste bijlage op de spiegel (hieronder). Nooit
+    # --- blokkerend: ontbreekt = zichtbaar op de boeking + herstel-commando.
+    factuur_naam = factuur_pdf.factuur_bestandsnaam(
+        verkoop_referentie or f"DOORB-{invoice_number}", mapping.doelentiteit_naam
+    )
+    factuur_fouten: list[str] = []
+    factuur_bytes, factuur_reden = factuur_pdf.haal_en_controleer_factuur(
+        bron_client,
+        verkoop_rlz_id=verkoop_rlz_id,
+        verwachting=factuur_pdf.FactuurVerwachting(
+            referentie=verkoop_referentie or f"DOORB-{invoice_number}",
+            netto_totaal=netto_totaal,
+            provisie=provisie,
+            btw_totaal=btw_totaal,
+        ),
+    )
+    factuur_pad: str | None = None
+    if factuur_bytes is not None:
+        fout = factuur_pdf.voeg_factuur_als_bijlage_toe(
+            bron_client,
+            "SalesInvoices",
+            verkoop_rlz_id,
+            upload_id=rlz_doorbelasting_factuur_upload_id(document_id, mapping.doel_customer_guid, kant="verkoop"),
+            bestandsnaam=factuur_naam,
+            pdf=factuur_bytes,
+        )
+        if fout:
+            factuur_fouten.append(f"bron: {fout}")
+        factuur_pad = factuur_pdf.factuur_opslag_pad(
+            administratie_id=administratie_id, document_id=document_id, mapping_id=mapping.id
+        )
+        try:
+            _standaard_opslag().opslaan(pad=factuur_pad, inhoud=factuur_bytes)
+        except Exception as exc:  # noqa: BLE001 — bewaarkopie mislukt: zichtbaar, niet blokkerend
+            factuur_fouten.append(f"bewaarkopie: {exc.__class__.__name__}")
+            factuur_pad = None
+    else:
+        factuur_fouten.append(factuur_reden or "factuur-PDF ontbreekt")
+    spiegel_factuur = (
+        (
+            factuur_bytes,
+            factuur_naam,
+            rlz_doorbelasting_factuur_upload_id(document_id, mapping.doel_customer_guid, kant="spiegel"),
+        )
+        if factuur_bytes is not None
+        else None
+    )
+
     def _leg_boeking_vast(
         status: DoorbelastingBoekingStatus,
         *,
         half_detail: dict | None = None,
         webhook_payload: dict | None = None,
     ) -> None:
+        factuur_ok = factuur_bytes is not None and not factuur_fouten
         with scoped_session(administratie_id, actor_id=actor_id) as session:
             boeking = DoorbelastingBoeking(
                 run_id=run_id,
@@ -635,6 +703,13 @@ def _boek_voor_doelentiteit(
                 spiegel_geboekt_op=datetime.now(UTC) if status == DoorbelastingBoekingStatus.GEBOEKT else None,
                 half_geboekt_detail=half_detail,
                 geboekt_door=actor_id,
+                factuur_pdf_status=(
+                    factuur_pdf.FACTUUR_STATUS_AANWEZIG if factuur_ok else factuur_pdf.FACTUUR_STATUS_ONTBREEKT
+                ),
+                factuur_pdf_reden=None if factuur_ok else "; ".join(factuur_fouten)[:1000],
+                factuur_pdf_bestandsnaam=factuur_naam if factuur_bytes is not None else None,
+                factuur_pdf_opslag_pad=factuur_pad,
+                factuur_pdf_op=datetime.now(UTC) if factuur_bytes is not None else None,
             )
             session.add(boeking)
             if webhook_payload is not None:
@@ -668,6 +743,7 @@ def _boek_voor_doelentiteit(
                     "verkoop_referentie": verkoop_referentie,
                     "netto": str(netto_totaal),
                     "provisie": str(provisie),
+                    "factuur_pdf": boeking.factuur_pdf_status,
                 },
             )
             record_audit_event(
@@ -684,6 +760,8 @@ def _boek_voor_doelentiteit(
                     "spiegel_rlz_id": str(spiegel_rlz_id),
                     "netto": str(netto_totaal),
                     "provisie": str(provisie),
+                    "factuur_pdf": boeking.factuur_pdf_status,
+                    **({"factuur_pdf_reden": boeking.factuur_pdf_reden} if boeking.factuur_pdf_reden else {}),
                     **({"half_detail": half_detail} if half_detail else {}),
                 },
                 administratie_id=administratie_id,
@@ -732,6 +810,8 @@ def _boek_voor_doelentiteit(
             upload_id=rlz_doorbelasting_upload_id(document_id, mapping.doel_customer_guid, kant="spiegel"),
             bestandsnaam=bestandsnaam,
             bestand=bestand,
+            factuur=spiegel_factuur,
+            factuur_fouten=factuur_fouten,
         )
     except (RlzApiError, DoorbelastingFout) as spiegel_fout:
         # spiegel gefaald → storno van de bron-verkoop (omzetmotor-patroon)
@@ -769,6 +849,30 @@ def _boek_voor_doelentiteit(
     )
     _leg_boeking_vast(DoorbelastingBoekingStatus.GEBOEKT, webhook_payload=webhook_payload)
     return DoorbelastingBoekingStatus.GEBOEKT.value
+
+
+def _render_factuur_voor_boeking(
+    *,
+    administratie_id: uuid.UUID,
+    verkoop_rlz_id: uuid.UUID,
+    verwachting: factuur_pdf.FactuurVerwachting,
+    bron_client: RlzClient | None,
+) -> tuple[bytes | None, str | None]:
+    """Verse render van de bron-verkoopfactuur (spiegel-alsnog / herstel): eigen bron-client
+    als er geen is meegegeven; een onbereikbare bron = reden, nooit een exception."""
+    eigen = bron_client is None
+    if bron_client is None:
+        try:
+            bron_client = _rlz_client_voor(administratie_id)
+        except (GeenRlzCredentials, RlzApiError) as exc:
+            return None, f"bron-administratie niet bereikbaar voor de factuurrender ({exc.__class__.__name__})"
+    try:
+        return factuur_pdf.haal_en_controleer_factuur(
+            bron_client, verkoop_rlz_id=verkoop_rlz_id, verwachting=verwachting
+        )
+    finally:
+        if eigen:
+            bron_client.close()
 
 
 def _lokaal_max_doorbelasting_invoice_number(administratie_id: uuid.UUID) -> int:
@@ -847,6 +951,18 @@ def boek_spiegel_alsnog(
         btw_taxrate_id = instelling.btw_taxrate_id
         administratie = session.get(Administratie, administratie_id)
         bron_administratie_naam = administratie.naam
+        factuur_pad = boeking.factuur_pdf_opslag_pad
+        factuur_naam = boeking.factuur_pdf_bestandsnaam or factuur_pdf.factuur_bestandsnaam(
+            boeking.verkoop_referentie or f"DOORB-{boeking.verkoop_invoice_number}", doelentiteit_naam
+        )
+        factuur_verwachting = factuur_pdf.FactuurVerwachting(
+            referentie=boeking.verkoop_referentie or f"DOORB-{boeking.verkoop_invoice_number}",
+            netto_totaal=boeking.netto_totaal,
+            provisie=boeking.provisie_bedrag,
+            btw_totaal=boeking.btw_bedrag,
+        )
+        verkoop_rlz_id = boeking.verkoop_rlz_id
+        bron_document_id = boeking.document_id
 
     if not actor_heeft_scope(actor_id=actor_id, administratie_id=doel_administratie_id):
         raise DoorbelastingFout(f"Geen scope op doel-administratie van {doelentiteit_naam}")
@@ -884,6 +1000,29 @@ def boek_spiegel_alsnog(
             provisie_omschrijving="Provisie over nettobedrag (doorbelasting)",
         )
         bestand = _standaard_opslag().lezen(pad=opslag_pad)
+        # Factuur-PDF (blok A): de bewaarkopie van de boekrun, of — als die toen ontbrak — een
+        # verse render van de bron-verkoop; ook hier nooit blokkerend voor de spiegel.
+        factuur_fouten: list[str] = []
+        factuur_bytes: bytes | None = None
+        if factuur_pad is not None:
+            try:
+                factuur_bytes = _standaard_opslag().lezen(pad=factuur_pad)
+            except Exception as exc:  # noqa: BLE001
+                factuur_fouten.append(f"bewaarkopie onleesbaar ({exc.__class__.__name__})")
+        if factuur_bytes is None:
+            factuur_bytes, factuur_reden = _render_factuur_voor_boeking(
+                administratie_id=administratie_id,
+                verkoop_rlz_id=verkoop_rlz_id,
+                verwachting=factuur_verwachting,
+                bron_client=None,
+            )
+            if factuur_bytes is None:
+                factuur_fouten.append(factuur_reden or "factuur-PDF ontbreekt")
+            else:
+                factuur_pad = factuur_pdf.factuur_opslag_pad(
+                    administratie_id=administratie_id, document_id=bron_document_id, mapping_id=mapping_id_snapshot
+                )
+                _standaard_opslag().opslaan(pad=factuur_pad, inhoud=factuur_bytes)
         boekdatum = datetime.now(UTC).date()
         spiegel_boekstuknummer = _boek_spiegel_inkoop(
             client=doel_client,
@@ -895,6 +1034,16 @@ def boek_spiegel_alsnog(
             upload_id=rlz_doorbelasting_upload_id(boeking.document_id, doel_customer_guid, kant="spiegel"),
             bestandsnaam=bestandsnaam,
             bestand=bestand,
+            factuur=(
+                (
+                    factuur_bytes,
+                    factuur_naam,
+                    rlz_doorbelasting_factuur_upload_id(bron_document_id, doel_customer_guid, kant="spiegel"),
+                )
+                if factuur_bytes is not None
+                else None
+            ),
+            factuur_fouten=factuur_fouten,
         )
     finally:
         if eigen_client:
@@ -919,6 +1068,16 @@ def boek_spiegel_alsnog(
         boeking.status = DoorbelastingBoekingStatus.GEBOEKT.value
         boeking.doel_administratie_id = doel_administratie_id
         boeking.spiegel_geboekt_op = datetime.now(UTC)
+        if factuur_bytes is not None and not factuur_fouten:
+            boeking.factuur_pdf_status = factuur_pdf.FACTUUR_STATUS_AANWEZIG
+            boeking.factuur_pdf_reden = None
+        else:
+            boeking.factuur_pdf_status = factuur_pdf.FACTUUR_STATUS_ONTBREEKT
+            boeking.factuur_pdf_reden = "; ".join(factuur_fouten)[:1000] or "factuur-PDF ontbreekt"
+        if factuur_bytes is not None:
+            boeking.factuur_pdf_bestandsnaam = factuur_naam
+            boeking.factuur_pdf_opslag_pad = factuur_pad
+            boeking.factuur_pdf_op = datetime.now(UTC)
         if webhook_payload is not None:
             session.add(
                 WebhookUitgaand(

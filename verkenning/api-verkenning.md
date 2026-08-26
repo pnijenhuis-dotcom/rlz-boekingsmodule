@@ -1637,3 +1637,59 @@ Blijvend in de test-administratie (bewust, verwijderen verboden): TX'en TEST-REL
 TEST-SPLITPOC-TX1 (−300, deels huls), debiteur "TEST PoC debiteur relatie — storneren" (ongebruikt),
 OpenBalance RLZ-63-00000006 (niet storneerbaar), en op concept: F1/F2, aanbetalingsdocument
 TEST-RELPOC-AANB1, factuur TEST-RELPOC-F-VERREKEN, kruisposten-/4699-BMDB's.
+
+## Factuur-PDF-rendering + stamgegevens + DueDate — STAP-0 gecombineerde run 26-08 (26 augustus 2026, test-administratie) — GESLAAGD
+
+Aanleiding: blok A (rechtsgeldige factuur bij doorbelasting, art. 35a Wet OB) en C1 (vervaldatum
+inkoopfactuur). Alles read-only behalve twee TEST-concepten (nooit geboekt, zie §3).
+
+### 1. RLZ rendert zélf een complete verkoopfactuur-PDF — `GET SalesInvoices/{id}/Download`
+
+- Route (uit `GET /Help`, 2.135 routes): `GET {adminId}/SalesInvoices/{id}/Download?includeWatermark=
+  {bool}&includeStamp={bool}&printAsPackingSlip={bool}`. Zusterroutes bestaan voor `ProformaInvoices`,
+  `Offerings`, `Reminders`, `Timesheets`, `TaxDeclarations`, `Reports/{id}/Download`.
+- ⚠️ **`Accept: application/json` (onze client-default) geeft 406.** Mét `Accept: application/pdf`
+  → 200, `Content-Type: application/pdf`, `%PDF-1.4`, 112 kB voor een éénregelige factuur. Geen
+  `Content-Disposition`.
+- Inhoud (gerenderd op de test-administratie, factuur RLZ-3): logo + afzenderblok uit de RLZ-lay-out
+  (adres, KvK, **btw-nummer**, IBAN/BIC, e-mail), geadresseerde (naam + adres + btw-nummer van de
+  Customer), "Factuur", factuurnummer (= `Reference`), datum (= `Date`), regels (omschrijving, datum,
+  aantal, prijs, bedrag excl., btw-%), subtotaal excl., **btw-specificatie per tarief** ("BTW 21 %
+  over € 50,00 € 10,50"), te betalen. Dat is precies de art.-35a-set → **route A: RLZ's eigen PDF is
+  de factuur**, geen eigen generator nodig.
+- De afzendergegevens komen uit RLZ's factuurlay-out (`SalesInvoiceLayouts`, Type 1; velden
+  `CompanyInformation`/`Footer` zijn op de systeemlay-outs null — de eigen lay-out is via de API
+  niet leesbaar). Compleetheid is dus alleen te toetsen op het RESULTAAT: de motor haalt de tekst
+  uit de gerenderde PDF (pypdf) en eist factuurnummer, KvK-vermelding, een btw-nummer (`NL…B..`),
+  "BTW" én de geboekte totaalbedragen (te betalen + btw-som) in NL-notatie — ontbreekt iets → de
+  run krijgt zichtbaar `factuur_pdf_status = ontbreekt` mét reden (lay-out in de RLZ-UI aanvullen),
+  nooit een onvolledige factuur als bijlage.
+- Timing: renderen ná actie 17 (Status 2) zodat de PDF nooit een concept-stempel draagt;
+  `includeWatermark=false&includeStamp=false&printAsPackingSlip=false`.
+
+### 2. Stamgegevens via de API — wat er wél en niet is
+
+- `GET Administrations/{id}`: `Name`, `DunsNumber`, `AdminType`, `Status`, licentie — **geen adres,
+  KvK of btw-nummer.**
+- `GET {adminId}/AdministrationSettings` (één rij): `CompanyName`, `ChamberOfCommerceNumber`,
+  `ChamberOfCommerceLocation`, `DefaultInvoiceDueDays` (test-admin 14, Universal 14, Rubicon 1),
+  `InvoiceStyle`, `PurchaseVATIncluded`… — **geen adres, geen btw-nummer** (het btw-nummer op de
+  gerenderde factuur komt uit de lay-out). Let op: de rij bevat een `ChangePasswordComment`-veld —
+  nooit ongefilterd loggen.
+- `GET Branches` = leeg op test-admin, Universal én Rubicon (vestigingen worden niet gebruikt).
+- `GET Customers/{id}` (ook met `fields=all`): `Name`, `StatutoryName`, `Street`/`StreetNumber`/
+  `PostalCode`/`City`, `FullAddress`, `ChamberOfCommerceNumber`/`-City`, `DueDays` — **geen
+  btw-nummer in de projectie**, terwijl de gerenderde PDF 'm wél toont. `Customers/{id}/Addresses`
+  = adresrijen (Type 1). `Vendors` idem-projectie mét `PaymentDueDays`.
+- Conclusie: een eigen factuur-generator (route B) zou het btw-nummer van afzender én afnemer NIET
+  uit de API kunnen halen → route A is niet alleen makkelijker maar ook de enige volledige.
+
+### 3. `DueDate` op PurchaseInvoice — PUT geaccepteerd, readback identiek (C1)
+
+- Recordprojectie `GET PurchaseInvoices` toont `Date`, `DueDate`, `OverdueDays`.
+- TEST-concept `TEST-STAP0-DUEDATE-26-08` (client-GUID, PUT 204): `Date 2026-08-01` +
+  `DueDate 2026-09-15` → readback `DueDate: 2026-09-15T00:00:00`. Veldnaam is dus écht `DueDate`
+  (ISO-datetime, tijd 00:00:00).
+- Zonder `DueDate` in de PUT (`…-B`): RLZ vult `Date + PaymentDueDays` van de crediteur (14 d →
+  `2026-08-15`) — een niet-meegegeven vervaldatum is dus nooit leeg, maar een RLZ-afleiding.
+  Beide concepten blijven als Status 1 staan (nooit verwijderen; storno n.v.t. want nooit geboekt).

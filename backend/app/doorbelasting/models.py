@@ -261,6 +261,10 @@ class DoorbelastingBoeking(Base):
             unique=True,
             postgresql_where=text("status != 'gestorneerd'"),
         ),
+        CheckConstraint(
+            "factuur_pdf_status IS NULL OR factuur_pdf_status IN ('aanwezig', 'ontbreekt')",
+            name="doorbelasting_boeking_factuur_pdf_status",
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -288,3 +292,13 @@ class DoorbelastingBoeking(Base):
     geboekt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    # Rechtsgeldige factuur-PDF (blok A 26-08, migratie 0077): RLZ's eigen gerenderde
+    # verkoopfactuur als bijlage op beide kanten. `factuur_pdf_status` = 'aanwezig' |
+    # 'ontbreekt' (NULL = boeking van vóór 26-08, nog nooit geprobeerd — herstel-commando);
+    # `factuur_pdf_reden` = waarom hij ontbreekt (zichtbaar op de run, nooit stil);
+    # `factuur_pdf_opslag_pad` = onze bewaarkopie (7 jaar, downloadbaar in de UI).
+    factuur_pdf_status: Mapped[str | None] = mapped_column(default=None)
+    factuur_pdf_reden: Mapped[str | None] = mapped_column(default=None)
+    factuur_pdf_bestandsnaam: Mapped[str | None] = mapped_column(default=None)
+    factuur_pdf_opslag_pad: Mapped[str | None] = mapped_column(default=None)
+    factuur_pdf_op: Mapped[datetime | None] = mapped_column(default=None)

@@ -119,6 +119,18 @@ def rlz_doorbelasting_upload_id(
     niet op /Uploads, herstart-cycli lopen via `app.rlz.bijlage.zorg_voor_bijlage`."""
     return uuid.uuid5(_NAMESPACE, f"doorbelasting-upload-{kant}:{document_id}:{doel_customer_guid}")
 
+def rlz_doorbelasting_factuur_upload_id(
+    document_id: uuid.UUID, doel_customer_guid: uuid.UUID, *, kant: str
+) -> uuid.UUID:
+    """Client-GUID voor de FACTUUR-PDF-bijlage van de doorbelasting (blok A 26-08: RLZ's eigen
+    gerenderde verkoopfactuur als rechtsgeldig document, art. 35a Wet OB) aan de
+    verkoopfactuur in de bron (`kant="verkoop"`) en de spiegel-inkoopfactuur in het doel
+    (`kant="spiegel"`) — een TWEEDE bijlage naast het originele bron-inkoopdocument
+    (rlz_doorbelasting_upload_id), dus een eigen basis-GUID per kant; herstart-cycli via
+    `app.rlz.bijlage.zorg_voor_bijlage` (op bestandsnaam)."""
+    return uuid.uuid5(_NAMESPACE, f"doorbelasting-factuur-upload-{kant}:{document_id}:{doel_customer_guid}")
+
+
 def rlz_herboeking_id(document_id: uuid.UUID, boek_cyclus: int) -> uuid.UUID:
     """Deterministisch client-GUID voor de (her)boeking van een document, per boek_cyclus
     (tegenboek-pad, migratie 0061). Cyclus 0 = het bestaande rlz_purchase_invoice_id (alle al

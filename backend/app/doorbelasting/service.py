@@ -27,7 +27,6 @@ from app.doorbelasting.checks import (
     voer_doorbelasting_checks_uit,
 )
 from app.doorbelasting.geld import provisie_over, verdeel_grootste_rest
-from app.doorbelasting.verdeelhulp import VERDEELBASES, VerdeelDoel, VerdeelFout, verdeel_naar_gewicht, verdeel_over_doelen
 from app.doorbelasting.models import (
     INACTIEVE_RUN_STATUSSEN,
     DoorbelastingBoeking,
@@ -37,8 +36,15 @@ from app.doorbelasting.models import (
     DoorbelastingRegel,
     DoorbelastingRun,
     DoorbelastingRunStatus,
-    IntercompanyTegenpartij,
     DoorbelastingVerdeelsleutel,
+    IntercompanyTegenpartij,
+)
+from app.doorbelasting.verdeelhulp import (
+    VERDEELBASES,
+    VerdeelDoel,
+    VerdeelFout,
+    verdeel_naar_gewicht,
+    verdeel_over_doelen,
 )
 from app.projecten.anker import anker_customer_id
 
@@ -911,6 +917,10 @@ class DoelentiteitPreview:
     boeking_id: uuid.UUID | None  # id daarvan — nodig voor storno/spiegel-acties in de UI
     # Doorbelasting × projecten (25-08): het netto-deel per project binnen deze doelentiteit.
     projecten: tuple[ProjectPreview, ...] = ()
+    # Rechtsgeldige factuur-PDF (blok A 26-08): 'aanwezig' | 'ontbreekt' | None (van vóór 26-08).
+    factuur_pdf_status: str | None = None
+    factuur_pdf_reden: str | None = None
+    factuur_pdf_bestandsnaam: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1003,7 +1013,7 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
             )
         }
         boekingen = {
-            b.mapping_id: (b.status, b.id)
+            b.mapping_id: (b.status, b.id, b.factuur_pdf_status, b.factuur_pdf_reden, b.factuur_pdf_bestandsnaam)
             for b in session.scalars(
                 select(DoorbelastingBoeking).where(
                     DoorbelastingBoeking.run_id == run_id,
@@ -1034,7 +1044,9 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
                 (btw_over(r.netto_deel, btw_pct) for r in invoer if r.mapping_id == mapping_id),
                 Decimal(0),
             ) + btw_over(provisie, btw_pct)
-            boeking_status, boeking_id = boekingen.get(mapping_id, (None, None))
+            boeking_status, boeking_id, factuur_status, factuur_reden, factuur_naam = boekingen.get(
+                mapping_id, (None, None, None, None, None)
+            )
             per_project: dict[uuid.UUID, Decimal] = {}
             for r in invoer:
                 if r.mapping_id == mapping_id and r.project_id is not None:
@@ -1052,6 +1064,9 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
                     projecten=tuple(
                         ProjectPreview(project_id=pid, naam="", netto_totaal=n) for pid, n in per_project.items()
                     ),
+                    factuur_pdf_status=factuur_status,
+                    factuur_pdf_reden=factuur_reden,
+                    factuur_pdf_bestandsnaam=factuur_naam,
                 )
             )
         regels = list(session.scalars(select(DoorbelastingRegel).where(DoorbelastingRegel.run_id == run_id)))
@@ -1383,3 +1398,20 @@ def pas_verdeelsleutel_toe(
             administratie_id=administratie_id,
         )
     return sla_verdeling_op(administratie_id=administratie_id, run_id=run_id, regels=invoer, actor_id=actor_id)
+
+
+def factuur_pdf_van_boeking(*, administratie_id: uuid.UUID, boeking_id: uuid.UUID) -> tuple[str, bytes]:
+    """Bewaarkopie van de rechtsgeldige factuur-PDF (blok A 26-08) voor de download-route.
+    Fail-closed: onbekende boeking, andere administratie of (nog) geen factuur = DoorbelastingFout."""
+    from app.documenten.service import _standaard_opslag
+
+    with scoped_session(administratie_id) as session:
+        boeking = session.get(DoorbelastingBoeking, boeking_id)
+        if boeking is None or boeking.administratie_id != administratie_id:
+            raise DoorbelastingFout("Onbekende doorbelastings-boeking")
+        if boeking.factuur_pdf_opslag_pad is None:
+            raise DoorbelastingFout(
+                boeking.factuur_pdf_reden or "Voor deze boeking is (nog) geen factuur-PDF — zie doorbelasting-facturen-herstel"
+            )
+        pad, naam = boeking.factuur_pdf_opslag_pad, boeking.factuur_pdf_bestandsnaam or "factuur.pdf"
+    return naam, _standaard_opslag().lezen(pad=pad)

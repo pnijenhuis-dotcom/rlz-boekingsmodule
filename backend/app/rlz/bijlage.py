@@ -52,9 +52,15 @@ def zorg_voor_bijlage(
     upload_id: uuid.UUID,
     filename: str,
     content_base64: str,
+    op_bestandsnaam: bool = False,
 ) -> bool:
-    """Zorgt dat het document precies één bijlage draagt. Retourneert True als er geüpload
-    is, False als de bijlage er al stond (herstart op een storno-concept / crash-retry).
+    """Zorgt dat het document deze bijlage draagt. Retourneert True als er geüpload is, False
+    als de bijlage er al stond (herstart op een storno-concept / crash-retry).
+
+    Default (`op_bestandsnaam=False`, alle enkel-bijlage-motoren): "er staat al íets" = klaar.
+    `op_bestandsnaam=True` (doorbelasting sinds blok A 26-08: factuur-PDF náást de originele
+    bon, meerdere bijlagen per document — RLZ staat dat toe, STAP-0 16-08 punt 4): alleen een
+    bestaande upload met dezelfde `FileName` telt als aanwezig, andere bijlagen blokkeren niet.
 
     Is de Uploads-lijst onverhoopt onleesbaar, dan valt de check open naar het oude gedrag
     (gewoon uploaden) — een dubbele bijlage is cosmetisch, een boeking die strandt op een
@@ -63,7 +69,10 @@ def zorg_voor_bijlage(
     try:
         respons = client.get(f"{entity_path}/{entity_id}/Uploads")
         bestaande = respons.get("value", []) if isinstance(respons, dict) else respons
-        if bestaande:
+        if op_bestandsnaam:
+            if any((u or {}).get("FileName") == filename for u in bestaande):
+                return False
+        elif bestaande:
             return False
     except RlzApiError as exc:
         logger.warning(

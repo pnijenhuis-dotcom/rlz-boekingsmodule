@@ -15,6 +15,7 @@ from app.berichten import herinneringen, nieuwe_facturen
 from app.credentialstore import service as credentialstore_service
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
+from app.doorbelasting import factuur_herstel as doorbelasting_factuur_herstel
 from app.doorbelasting import reconciliatie as doorbelasting_reconciliatie
 from app.doorbelasting import service as doorbelasting_service
 from app.geheugen import seed as geheugen_seed
@@ -459,6 +460,31 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def _doorbelasting_facturen_herstel(args: argparse.Namespace) -> int:
+    """Nazorg blok A (26-08): factuur-PDF alsnog op bestaande GEBOEKTE doorbelastingen zonder
+    factuur — géén herboeking, dry-run eerst, per run geauditeerd. Rapporteert het aantal."""
+    actor = uuid.UUID(args.beheerder_id) if args.beheerder_id else SYSTEEM_ACTOR_ID
+    resultaat = doorbelasting_factuur_herstel.herstel_facturen(dry_run=args.dry_run, actor_id=actor)
+    label = "DRY-RUN   " if args.dry_run else "KANDIDAAT "
+    for k in resultaat.kandidaten:
+        print(
+            f"{label} {k.administratie_naam} boeking={k.boeking_id} doel={k.doelentiteit_naam} "
+            f"ref={k.verkoop_referentie} status={k.status} factuur={k.huidige_factuur_status or 'nooit geprobeerd'}"
+        )
+    if args.dry_run:
+        print(f"DRY-RUN    {len(resultaat.kandidaten)} boeking(en) zonder factuur-PDF — niets gewijzigd")
+        return 0
+    for boeking_id in resultaat.hersteld:
+        print(f"HERSTELD   boeking={boeking_id}: factuur-PDF gerenderd, getoetst en op beide kanten gezet")
+    for boeking_id, reden in resultaat.mislukt.items():
+        print(f"MISLUKT    boeking={boeking_id}: {reden}", file=sys.stderr)
+    print(
+        f"{len(resultaat.hersteld)} hersteld, {len(resultaat.mislukt)} mislukt "
+        f"van {len(resultaat.kandidaten)} kandidaat/kandidaten"
+    )
+    return 1 if resultaat.mislukt else 0
 
 
 def _doorbelasting_seed_kempen(args: argparse.Namespace) -> int:
@@ -1137,6 +1163,16 @@ def main(argv: list[str] | None = None) -> int:
         "spiegel-taken.",
     )
 
+    facturen_herstel_parser = subparsers.add_parser(
+        "doorbelasting-facturen-herstel",
+        help="Nazorg blok A 26-08: RLZ's factuur-PDF alsnog als bijlage op bestaande GEBOEKTE "
+        "doorbelastingen zonder factuur (beide kanten) — géén herboeking; --dry-run telt alleen.",
+    )
+    facturen_herstel_parser.add_argument("--dry-run", action="store_true", dest="dry_run")
+    facturen_herstel_parser.add_argument(
+        "--beheerder-id", default=None, dest="beheerder_id", help="Audit-actor; default de systeem-actor."
+    )
+
     seed_kempen_parser = subparsers.add_parser(
         "doorbelasting-seed-kempen",
         help="Seed de doorbelasting-whitelist (doelentiteit ↔ Customer-GUID, verkenning/16 §1) "
@@ -1329,6 +1365,8 @@ def main(argv: list[str] | None = None) -> int:
         return _omzet_reconciliatie(args)
     if args.commando == "doorbelasting-reconciliatie":
         return _doorbelasting_reconciliatie(args)
+    if args.commando == "doorbelasting-facturen-herstel":
+        return _doorbelasting_facturen_herstel(args)
     if args.commando == "doorbelasting-seed-kempen":
         return _doorbelasting_seed_kempen(args)
     if args.commando == "materiaal-seed-universal":

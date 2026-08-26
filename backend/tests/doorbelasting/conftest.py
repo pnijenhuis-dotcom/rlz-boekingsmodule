@@ -381,6 +381,7 @@ class FakeDoorbelastingClient:
         self.verbruikte_upload_ids: set[str] = set()
         self.verkoop_correcties: list[str] = []
         self.spiegel_correcties: list[str] = []
+        self.factuur_renders: list[str] = []
         self.probes = 0
         self._auto_nummer = 0
         self.gesloten = False
@@ -520,7 +521,38 @@ class FakeDoorbelastingClient:
                 raise RlzApiError(400, "PUT", pad, '{"Message":"_InvalidData"}')
             raise RlzApiError(404, "PUT", pad, '{"Message":"_NotFound"}')
         self.verbruikte_upload_ids.add(sleutel)
-        self.uploads.append({"pad": entity_path, "entity_id": str(entity_id), "upload_id": str(upload_id)})
+        self.uploads.append(
+            {"pad": entity_path, "entity_id": str(entity_id), "upload_id": str(upload_id), "FileName": filename}
+        )
+
+    # -- bron-kant: RLZ's eigen factuurrender (blok A 26-08, STAP-0 "Factuur-PDF-rendering") ----
+    def download_sales_invoice_pdf(self, invoice_id: uuid.UUID | str) -> bytes:
+        """Bootst `GET SalesInvoices/{id}/Download` na: een PDF met precies wat RLZ toont —
+        nummer (Reference), afzender-KvK/btw-nummer (uit de 'lay-out', hier vast), subtotaal,
+        btw-som en totaal BEREKEND UIT DE RLZ-REGELS (NetAmount/TaxAmount) — zodat de toets in
+        de motor écht bewijst dat onze geboekte centen en RLZ's render samenvallen.
+        `faal_op` "factuur_render" = 500; "factuur_onvolledig" = lay-out zonder KvK/btw-nummer."""
+        from decimal import Decimal
+
+        from app.doorbelasting.factuur import nl_bedrag
+        from app.materiaal.pdf import TekstRegel, bouw_pdf, paginering
+
+        if "factuur_render" in self.faal_op:
+            raise RlzApiError(500, "GET", f"SalesInvoices/{invoice_id}/Download", "Render mislukt (simulatie)")
+        record = self.get_sales_invoice(invoice_id)
+        netto = sum((Decimal(str(r["NetAmount"])) for r in record["DocumentLineList"]), Decimal(0))
+        btw = sum((Decimal(str(r["TaxAmount"])) for r in record["DocumentLineList"]), Decimal(0))
+        regels = [
+            TekstRegel("Factuur", grootte=15, vet=True),
+            TekstRegel(f"Factuurnummer:{record['Reference']}"),
+            TekstRegel(f"Subtotaal (excl. BTW) € {nl_bedrag(netto)}"),
+            TekstRegel(f"BTW 21 % over € {nl_bedrag(netto)} € {nl_bedrag(btw)}"),
+            TekstRegel(f"Te betalen € {nl_bedrag(netto + btw)}"),
+        ]
+        if "factuur_onvolledig" not in self.faal_op:
+            regels.append(TekstRegel("KVK: 12345678  BTW nr: NL123456789B01"))
+        self.factuur_renders.append(str(invoice_id))
+        return bouw_pdf(paginering(regels))
 
     def verwijder_document_in_rlz_ui(self, soort: str, doc_id: uuid.UUID | str) -> None:
         """Simuleert Peters handmatige verwijdering in de RLZ-UI (het kliktest-2-scenario):

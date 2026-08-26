@@ -288,3 +288,17 @@ Consequenties (verwerkt in de mapping-config 15-08):
    met "geen btw".
 5. Facilities' bron-verkoopkant boekt beide regels (kosten + provisie) op **8000 "Omzet 1"** →
    bron-instelling: omzet-GB 8000, provisie-GB leeg (= zelfde GB), 5%, btw 21%.
+
+## Aanvulling 26-08 — rechtsgeldige factuur-PDF op beide kanten (blok A gecombineerde run)
+
+Peters constatering 26-08: de spiegel-inkoopfactuur in het doel droeg als bijlage alleen de
+originele leveranciersbon (op naam van Facilities) — geen factuur op naam van de doelentiteit =
+geen geldige voorbelasting-aftrek (art. 35a Wet OB). Sinds 26-08 rendert de motor RLZ's eigen
+verkoopfactuur (`GET SalesInvoices/{id}/Download`, Accept: application/pdf — de lay-out van
+Facilities levert afzender-adres/KvK/btw-nummer/IBAN) ná actie 17, toetst deterministisch dat
+nummer (= de spiegel-Reference), KvK, btw-nummer en de GEBOEKTE bedragen (cent-exact) erop
+staan, en zet 'm als bijlage op de verkoopfactuur én — als EERSTE bijlage — op de spiegel; de bon
+blijft de tweede bijlage. Ontbreekt iets (lay-out incompleet) → zichtbaar op de boeking, nooit een
+onvolledige factuur. Nazorg voor eerder geboekte runs: `make doorbelasting-facturen-herstel`.
+Canoniek: BESLISSINGEN "GECOMBINEERDE RUN 26-08" blok A; feiten api-verkenning "Factuur-PDF-
+rendering + stamgegevens + DueDate — STAP-0 26-08".

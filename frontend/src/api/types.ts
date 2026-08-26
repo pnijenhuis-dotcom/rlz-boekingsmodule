@@ -890,6 +890,11 @@ export interface DoorbelastingPreviewDto {
   /** Boeking-id bij een bestaande niet-gestorneerde boeking — sleutel voor de storno- en
    * spiegel-taak-acties; null zolang er voor deze doelentiteit niets geboekt is. */
   boeking_id: string | null
+  /** Rechtsgeldige factuur-PDF (blok A 26-08): 'aanwezig' (downloadbaar) | 'ontbreekt' (mét
+   * reden) | null (boeking van vóór 26-08 — herstel-commando). */
+  factuur_pdf_status?: string | null
+  factuur_pdf_reden?: string | null
+  factuur_pdf_bestandsnaam?: string | null
   /** Netto-deel per project binnen deze doelentiteit (25-08, deel 2 punt 2b). */
   projecten?: DoorbelastingProjectPreviewDto[]
 }

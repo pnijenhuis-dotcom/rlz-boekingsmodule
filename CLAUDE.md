@@ -536,7 +536,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   géén her-PUT** (bestaand GUID = 400, verbruikt GUID van een verwijderd document = 404;
   api-verkenning "Uploads bij een herstart-boekcyclus") — bijlage-idempotentie loopt sindsdien
   in álle motoren via `app/rlz/bijlage.py::zorg_voor_bijlage` (aanwezigheids-check via de
-  Uploads-leesroute + deterministische cyclus-GUID's). **Opruimlijst achtergebleven
+  Uploads-leesroute + deterministische cyclus-GUID's). **RECHTSGELDIGE FACTUUR-PDF (blok A
+  gecombineerde run 26-08, besluit Peter, migratie 0077 — BESLISSINGEN "GECOMBINEERDE RUN
+  26-08" blok A is canoniek):** ná de verkoopboeking rendert de motor RLZ's eigen factuur
+  (`GET SalesInvoices/{id}/Download` mét `Accept: application/pdf` — route A; stamgegevens/
+  btw-nummer zijn via de API níét leesbaar, dus geen eigen generator), toetst deterministisch
+  op de gerenderde tekst (nummer = spiegel-Reference, KvK, btw-nummer, geboekte bedragen
+  cent-exact) en zet 'm als bijlage op BEIDE kanten (spiegel: eerste bijlage, bon tweede;
+  `zorg_voor_bijlage(op_bestandsnaam=True)` = meerdere bijlagen per document); ontbreekt =
+  `factuur_pdf_status ontbreekt` mét reden, nooit blokkerend; download op de run; nazorg
+  `make doorbelasting-facturen-herstel` (`DRY_RUN=1` eerst). `app/doorbelasting/factuur.py`.
+  **Opruimlijst achtergebleven
   RLZ-concepten (2026-08-16): de doorbelasting-reconciliatie signaleert Status-1-concepten
   van gestorneerde/vervallen runs (beide kanten, informatief — nooit exit 1) + scanknop op
   Instellingen → Doorbelasting; de app verwijdert NOOIT in RLZ (kernprincipe 3, expliciet

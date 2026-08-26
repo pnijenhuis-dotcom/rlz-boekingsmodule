@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0076
+-- Migratie-head bij deze dump: 0077
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -801,6 +801,12 @@ CREATE TABLE boekhouding.doorbelasting_boeking (
     geboekt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    factuur_pdf_status character varying,
+    factuur_pdf_reden character varying,
+    factuur_pdf_bestandsnaam character varying,
+    factuur_pdf_opslag_pad character varying,
+    factuur_pdf_op timestamp with time zone,
+    CONSTRAINT doorbelasting_boeking_factuur_pdf_status CHECK (((factuur_pdf_status IS NULL) OR ((factuur_pdf_status)::text = ANY ((ARRAY['aanwezig'::character varying, 'ontbreekt'::character varying])::text[])))),
     CONSTRAINT doorbelasting_boeking_status CHECK ((status = ANY (ARRAY['geboekt'::text, 'spiegel_open'::text, 'half_geboekt'::text, 'gestorneerd'::text]))),
     CONSTRAINT doorbelasting_boeking_storno_reden CHECK (((status <> 'gestorneerd'::text) OR ((storno_reden IS NOT NULL) AND (length(btrim(storno_reden)) >= 5))))
 );

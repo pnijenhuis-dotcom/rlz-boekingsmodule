@@ -92,6 +92,11 @@ class DoelentiteitPreviewResponse(BaseModel):
     boeking_status: str | None
     boeking_id: uuid.UUID | None
     projecten: list[ProjectPreviewResponse] = Field(default_factory=list)
+    # Rechtsgeldige factuur-PDF (blok A 26-08): 'aanwezig' (downloadbaar via
+    # /doorbelasting/{aid}/boekingen/{boeking_id}/factuur) | 'ontbreekt' (mét reden) | None.
+    factuur_pdf_status: str | None = None
+    factuur_pdf_reden: str | None = None
+    factuur_pdf_bestandsnaam: str | None = None
 
 
 class VerdeelsleutelKortResponse(BaseModel):

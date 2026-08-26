@@ -503,7 +503,8 @@ class TestHerstartNaStornoEnUiVerwijdering:
         # Peter verwijdert het bron-verkoop-concept in de RLZ-UI; de spiegel blijft concept
         bron.verwijder_document_in_rlz_ui("SalesInvoices", verkoop_id)
         assert bron.get(f"SalesInvoices/{verkoop_id}/Uploads")["value"] == []
-        assert len(doel.get(f"PurchaseInvoices/{spiegel_id}/Uploads")["value"]) == 1
+        # spiegel: factuur-PDF (blok A) + originele bon = twee bijlagen
+        assert len(doel.get(f"PurchaseInvoices/{spiegel_id}/Uploads")["value"]) == 2
 
         # cyclus 2: nieuwe run (de oude is gestorneerd), zelfde verdeling
         run2 = start_run_met_verdeling(
@@ -531,16 +532,29 @@ class TestHerstartNaStornoEnUiVerwijdering:
         resultaat = _boek(opzet2, beheerder_id, bron=bron, doel=doel)
         assert resultaat == {str(opzet.mapping.id): DoorbelastingBoekingStatus.GEBOEKT.value}
 
-        # bron-verkoop opnieuw aangemaakt, GEBOEKT en mét precies één bijlage — op het
-        # deterministische cyclus-1-GUID (het basis-GUID is verbruikt door de verwijdering)
+        # bron-verkoop opnieuw aangemaakt, GEBOEKT en mét de bon als bijlage — op het
+        # deterministische cyclus-1-GUID (het basis-GUID is verbruikt door de verwijdering);
+        # daarnaast de factuur-PDF (blok A), óók op háár cyclus-1-GUID
+        from app.documenten.rlz_ids import rlz_doorbelasting_factuur_upload_id
+
         assert bron.sales_invoices[str(verkoop_id)]["Status"] == 2
         verkoop_uploads = bron.get(f"SalesInvoices/{verkoop_id}/Uploads")["value"]
         basis = rlz_doorbelasting_upload_id(opzet.document_id, opzet.mapping.doel_customer_guid, kant="verkoop")
-        assert [u["upload_id"] for u in verkoop_uploads] == [str(cyclus_upload_id(basis, 1))]
+        factuur_basis = rlz_doorbelasting_factuur_upload_id(
+            opzet.document_id, opzet.mapping.doel_customer_guid, kant="verkoop"
+        )
+        assert [u["upload_id"] for u in verkoop_uploads] == [
+            str(cyclus_upload_id(basis, 1)),
+            str(cyclus_upload_id(factuur_basis, 1)),
+        ]
 
-        # spiegel her-geboekt zonder tweede bijlage (aanwezigheids-check slaat de upload over)
+        # spiegel her-geboekt zonder dubbele bon (aanwezigheids-check op bestandsnaam); de
+        # herboekte verkoop heeft een NIEUW nummer (RLZ-2) → nieuwe factuur-PDF erbij; de
+        # cyclus-1-factuur (RLZ-1, gestorneerd) blijft staan — de app verwijdert nooit in RLZ
         assert doel.purchase_invoices[str(spiegel_id)]["Status"] == 2
-        assert len(doel.get(f"PurchaseInvoices/{spiegel_id}/Uploads")["value"]) == 1
+        spiegel_namen = [u["FileName"] for u in doel.get(f"PurchaseInvoices/{spiegel_id}/Uploads")["value"]]
+        assert spiegel_namen[1] == "factuur-doorbelasting.pdf"
+        assert spiegel_namen[0].startswith("Factuur RLZ-1 ") and spiegel_namen[2].startswith("Factuur RLZ-2 ")
 
         # run 2 GEBOEKT zonder achtergebleven fout; geen halve staat
         run_na = haal_run(opzet.administratie_id, run2.id)

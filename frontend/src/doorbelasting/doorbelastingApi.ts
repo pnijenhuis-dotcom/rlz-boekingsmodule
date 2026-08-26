@@ -172,6 +172,15 @@ export function boekSpiegelAlsnog(
  * aan mag — geblokkeerd zodra één kant (bron-verkoop óf doel-spiegel) in een ingediende
  * btw-aangifte valt. De server-side check op de POST blijft de echte poort; de UI schakelt de
  * knop uit mét melding en behandelt élke laadfout fail-closed (knop uit). */
+/** Rechtsgeldige factuur-PDF van een doorbelastings-boeking (blok A 26-08): bewaarkopie van
+ * RLZ's eigen render, dezelfde bytes als de bijlage op beide kanten. Fetch + blob (Authorization-
+ * header); de aanroeper is eigenaar van de URL (revokeObjectURL bij opruimen). */
+export async function haalDoorbelastingFactuurBlob(administratieId: string, boekingId: string): Promise<string> {
+  const resp = await apiFetch(`/doorbelasting/${administratieId}/boekingen/${boekingId}/factuur`)
+  if (!resp.ok) throw new Error(`Factuur-PDF ophalen mislukt (${resp.status})`)
+  return URL.createObjectURL(await resp.blob())
+}
+
 export function haalStornoToetsOp(administratieId: string, documentId: string): Promise<StornoToetsDto> {
   return apiJson<StornoToetsDto>(
     `/doorbelasting/${administratieId}/documenten/${documentId}/storno-toets`,

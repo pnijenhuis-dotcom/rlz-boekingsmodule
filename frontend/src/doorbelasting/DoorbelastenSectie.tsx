@@ -16,6 +16,7 @@ import {
   boekSpiegelAlsnog,
   haalDoorbelastingMappingsOp,
   haalDoorbelastingRunVoorDocumentOp,
+  haalDoorbelastingFactuurBlob,
   haalDoorbelastingToggleOp,
   haalSpiegelTakenOp,
   haalStornoToetsOp,
@@ -184,6 +185,7 @@ function DoorbelastenInhoud({ administratieId, documentId }: InhoudProps) {
                     <th className="amount">Doorbelast (excl.)</th>
                     <th className="amount">Provisie</th>
                     <th>Status</th>
+                    <th>Factuur</th>
                     <th />
                   </tr>
                   {boekingen.map((p) => {
@@ -265,6 +267,61 @@ interface RijProps {
   onGewijzigd: () => void
 }
 
+const BLOB_OPRUIM_MS = 60_000
+
+/** Rechtsgeldige factuur-PDF per doelentiteit (blok A 26-08): 'aanwezig' = downloadknop
+ * (RLZ's eigen render, dezelfde bytes als de bijlage op beide kanten); 'ontbreekt' = oranje chip
+ * mét de reden zichtbaar (nooit stil); null = boeking van vóór 26-08 → herstel-commando. */
+function FactuurCel({ preview, administratieId }: { preview: DoorbelastingPreviewDto; administratieId: string }) {
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+  if (preview.boeking_id === null || preview.boeking_status === 'half_geboekt') return <span className="hint">—</span>
+  if (preview.factuur_pdf_status === 'aanwezig') {
+    const open = async () => {
+      setBezig(true)
+      setFout(null)
+      try {
+        const url = await haalDoorbelastingFactuurBlob(administratieId, preview.boeking_id as string)
+        window.open(url, '_blank', 'noopener')
+        setTimeout(() => URL.revokeObjectURL(url), BLOB_OPRUIM_MS)
+      } catch (e) {
+        setFout(e instanceof Error ? e.message : 'Factuur-PDF ophalen mislukt')
+      } finally {
+        setBezig(false)
+      }
+    }
+    return (
+      <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+        <button
+          type="button"
+          className="btn secondary"
+          disabled={bezig}
+          title={preview.factuur_pdf_bestandsnaam ?? 'Factuur-PDF (bijlage op beide kanten)'}
+          onClick={open}
+        >
+          {bezig ? 'Factuur laden…' : 'Factuur-PDF ↗'}
+        </button>
+        {fout && <span style={{ fontSize: 12, color: 'var(--red)' }}>{fout}</span>}
+      </span>
+    )
+  }
+  if (preview.factuur_pdf_status === 'ontbreekt') {
+    return (
+      <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, maxWidth: 260 }}>
+        <span className="chip vraag" title={preview.factuur_pdf_reden ?? undefined}>
+          factuur ontbreekt
+        </span>
+        {preview.factuur_pdf_reden && <span style={{ fontSize: 12, color: 'var(--orange)' }}>{preview.factuur_pdf_reden}</span>}
+      </span>
+    )
+  }
+  return (
+    <span className="chip geheugen" title="Geboekt vóór 26-08 — make doorbelasting-facturen-herstel zet de factuur-PDF alsnog op beide kanten">
+      nog geen factuur
+    </span>
+  )
+}
+
 function SectieBoekingRij({
   administratieId,
   preview,
@@ -300,6 +357,9 @@ function SectieBoekingRij({
           <span className={`chip ${chipKlasse}`}>{chipLabel}</span>
         </td>
         <td>
+          <FactuurCel preview={preview} administratieId={administratieId} />
+        </td>
+        <td>
           {onStorno && (
             <button
               type="button"
@@ -315,7 +375,7 @@ function SectieBoekingRij({
       </tr>
       {onStorno && blokkade && (
         <tr>
-          <td colSpan={5} style={{ paddingTop: 0 }}>
+          <td colSpan={6} style={{ paddingTop: 0 }}>
             <div className="hint" style={{ margin: 0, color: 'var(--orange)' }}>
               {blokkade.melding}
               {blokkade.kanten
