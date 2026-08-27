@@ -45,7 +45,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (10 leesroutes) verplicht groen → keuze uit `GET Administrations` (nooit een id typen) → opslaan
   met defaults (alles UIT) + credential-store (envelope) → eerste sync als achtergrondrun met status
   per onderdeel (job `rlz-eerste-sync`); "Schrijftest uitvoeren" = aparte knop (TEST-boeking +
-  storno 19); "Webservice-gegevens wijzigen" per rij (probe-gated). Zie BESLISSINGEN
+  storno 19); "Webservice-gegevens wijzigen" per rij (probe-gated). **Eerste-sync-stand op de
+  administratie-rij (wizard-nazorg 27-08): subrij mét status per onderdeel, foutreden en "Sync
+  opnieuw starten" zolang de laatste run niet volledig groen is — `eerste_sync` op de
+  lijst-response; BESLISSINGEN "VERZAMELRUN 27-08" punt 5.** Zie BESLISSINGEN
   "RLZ-FEEDBACKRONDE 26-08" punt 5; `app/beheer/onboarding.py`. **`is_vastgoed` is sinds de avondrun
   26-08 een Beheerder-toggle op dezelfde pagina (`PATCH /administraties/{id}/is-vastgoed`, kolom
   "Vastgoed-koppeling (Vastly)", bevestigingsdialoog met consequenties, audit oud→nieuw; UIT neemt
@@ -58,7 +61,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   **Uitzondering klant-accordeur (besluit + gebouwd 2026-08-11, migratie 0040): passkey/WebAuthn
   i.p.v. TOTP** — publieke sleutel per gebruiker+apparaat (py_webauthn), volledige login alleen
   bij eerste gebruik / nieuw apparaat / ná 7 dagen inactiviteit (sliding 7-dagen-refresh-TTL),
-  passkey-assertion éénmaal per app-opening, GEEN biometrie per actie; kantoor-kill-switch per
+  passkey-assertion bij app-opening — **sinds 27-08 HOOGUIT 1× per 24 uur per apparaat
+  (besluit Peter, server-side venster op `webauthn_credential.laatst_gebruikt_op`, veld
+  `ontgrendeling_nodig` op de stille refresh; geen migratie — BESLISSINGEN "VERZAMELRUN 27-08"
+  punt 3)**, GEEN biometrie per actie; kantoor-kill-switch per
   apparaat (bijt per request + bij rotatie + bij assertion); dev-stub `auth_biometrie_dev_stub`
   voor LAN-kliktests (WebAuthn vereist https/localhost), hard onwerkzaam buiten dev. Zie
   BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD". **Wachtwoord kwijt (bv. ná een
@@ -188,6 +194,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   boekstuknummer) en opent automatisch het volgende te-verwerken document van dezelfde klant
   (zelfde soort eerst, dan de soort-tab-volgorde; `werkvoorraad/volgendDocument.ts`); stapel
   leeg → documentenlijst van de klant. Uitzondering: ter accordering mét `boek_fout` blijft staan.
+  **Actiebalk (Afwijzen / Vraag stellen / Ter accordering / Boeken, ± doorbelasten) staat sinds
+  27-08 ÓNDER het blok "Doorbelasten na boeken"** (portal-anker `actiebalkDoel`, alleen volgorde
+  — BESLISSINGEN "VERZAMELRUN 27-08" punt 4).
 - **Kantoor-frontend-modernisering (designronde Peter 2026-08-15, 4 iteratierondes —
   BESLISSINGEN "Kantoor-frontend-modernisering"):** de kantoor-UI migreert naar het
   platform-fundament (Vastly-generatie: Tailwind v4 + semantische tokens, shadcn-stijl-
@@ -633,6 +642,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vraag (`vraag_open` + boek_fout); accordeur ziet uitsluitend eigen threads (`GET
   /accordering/vragen`, `WachtrijItem.vraag`, antwoord-POST), afgehandeld alleen vraagsteller;
   push-anders-mail per beurt mét stille uren (`app/berichten/vraag_meldingen.py`).
+  **Accordeur-app-ronde 2 (VERZAMELRUN 27-08, besluiten Peter 27-08, mockup scherm 0 "Uw
+  administraties" = norm — BESLISSINGEN "VERZAMELRUN 27-08" is canoniek):** de app opent met
+  één kaart per administratie MÉT werk (teller, chip "💬 vragen aan u", oudste-wacht-regel; geen
+  ✓-bij-rijen; alles bij = "✓ Alles is bij" mét verversknop), klik = wachtrij per BV, één BV met
+  werk = direct die wachtrij, ná akkoord de volgende van dezelfde BV, deep-links landen in de
+  juiste BV (`accordeur/administraties.ts`, geen nieuw endpoint); pull-to-refresh + automatisch
+  stil verversen bij terugkeer naar de voorgrond (`PullToRefresh.tsx`, `verversen.ts`);
+  ontgrendeling hooguit 1× per 24 u per apparaat (zie Auth). Open beslispunt: teal Akkoord-knop.
   **Notificaties: GEBOUWD + GETEST (2026-08-15, BESLISSINGEN "ACCORDEUR-NOTIFICATIES")** —
   gedeeld SMTP-mailkanaal (`app/berichten/`, Google Workspace, fail-zichtbaar; bedient óók de
   uitnodigingsmail), dagelijkse 09:00-herinnering (job `rlz-accordeur-herinneringen`, alleen
