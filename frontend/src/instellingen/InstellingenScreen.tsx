@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, Switch, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
@@ -14,7 +14,7 @@ import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
 import { BulkBediening } from './BulkBediening'
 import { BeveiligingInstellingen } from './BeveiligingInstellingen'
-import { AdministratieWizard } from './AdministratieWizard'
+import { AdministratieWizard, EersteSyncStatus } from './AdministratieWizard'
 import { SchrijftestDialog, WebserviceGegevensDialog } from './KoppelingDialogen'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import {
@@ -734,7 +734,8 @@ export function InstellingenScreen() {
                 <th>Uren &amp; meerwerk</th>
               </tr>
               {administraties.map((a) => (
-                <tr key={a.id} className={selectie.includes(a.id) ? 'geselecteerd' : undefined}>
+                <Fragment key={a.id}>
+                <tr className={selectie.includes(a.id) ? 'geselecteerd' : undefined}>
                   <td>
                     <Checkbox
                       aria-label={`Selecteer ${a.naam}`}
@@ -937,6 +938,23 @@ export function InstellingenScreen() {
                     )}
                   </td>
                 </tr>
+                {/* Wizard-nazorg 27-08 (casus Bouwadvies Oost Nederland): eerste-sync-stand op de rij
+                    zolang de laatste run niet volledig groen is — status per onderdeel, foutreden
+                    zoals in de wizard, én de herstartknop (zelfde endpoint). Groen/nooit = niets. */}
+                {a.eerste_sync && a.eerste_sync.status !== 'klaar' && a.eerste_sync.status !== 'geen' && (
+                  <tr className="subrij">
+                    <td />
+                    <td colSpan={10}>
+                      <EersteSyncStatus
+                        compact
+                        administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }}
+                        initieel={a.eerste_sync}
+                        onAfgerond={laadAlles}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

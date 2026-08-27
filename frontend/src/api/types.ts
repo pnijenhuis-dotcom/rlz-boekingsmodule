@@ -461,6 +461,16 @@ export interface IsVastgoedResultaatDto {
   verkoop_autoboeken_uitgezet: boolean
 }
 
+/** Eerste-sync-run (wizard 26-08 punt 5 / rij-status 27-08) — spiegel van beheer/schemas.py. */
+export interface EersteSyncRunDto {
+  run_id: string | null
+  status: 'geen' | 'wachtrij' | 'bezig' | 'klaar' | 'fout' | string
+  onderdelen: Record<string, { status: string; aangemaakt?: number | null; bijgewerkt?: number | null; fout?: string }> | null
+  aangevraagd_op: string | null
+  beeindigd_op: string | null
+  fout_reden: string | null
+}
+
 export interface AdministratieInstellingenDto {
   id: string
   naam: string
@@ -482,6 +492,9 @@ export interface AdministratieInstellingenDto {
   rlz_admin_id?: string | null
   webservice_username?: string | null
   probe_groen?: boolean | null
+  /** Eerste-sync-stand (wizard-nazorg 27-08): laatste run; de rij toont 'm zolang die niet
+   * volledig groen is (status ≠ klaar) mét herstartknop. null/ontbrekend = nog nooit gestart. */
+  eerste_sync?: EersteSyncRunDto | null
 }
 
 export interface AdministratieInstellingenLijstDto {

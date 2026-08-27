@@ -2,6 +2,7 @@ import { apiJson } from '../api/client'
 import type {
   AdministratieInstellingenLijstDto,
   BoekenIngeschakeldDto,
+  EersteSyncRunDto,
   IsVastgoedResultaatDto,
   LeverancierAutoboekenDto,
   LeverancierAutoboekenLijstDto,
@@ -163,14 +164,7 @@ export interface AangemaakteAdministratieDto {
   sync_run_id: string | null
 }
 
-export interface EersteSyncRunDto {
-  run_id: string | null
-  status: 'geen' | 'wachtrij' | 'bezig' | 'klaar' | 'fout' | string
-  onderdelen: Record<string, { status: string; aangemaakt?: number | null; bijgewerkt?: number | null; fout?: string }> | null
-  aangevraagd_op: string | null
-  beeindigd_op: string | null
-  fout_reden: string | null
-}
+export type { EersteSyncRunDto } from '../api/types'
 
 export interface SchrijftestResultaatDto {
   uitkomst: 'ok' | 'fout' | string

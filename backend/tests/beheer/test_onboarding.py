@@ -293,3 +293,48 @@ class TestSchrijftest:
         with pytest.raises(onboarding.OnboardingFout, match="draai eerst de sync"):
             onboarding.voer_schrijftest_uit(actor_id=beheerder_id, administratie_id=administratie_id, client=root, root_client=root)
         assert root.documenten == {}
+
+
+class TestEersteSyncOpDeLijstRij:
+    """Wizard-nazorg 27-08 (casus Bouwadvies Oost Nederland): een gesloten wizard was een
+    doodlopend pad — de lijst-rij draagt sindsdien de laatste eerste-sync-stand (status +
+    onderdelen + foutreden, exact de wizard-DTO) en de herstart loopt via hetzelfde endpoint."""
+
+    def test_lijst_toont_stand_alleen_na_een_run_en_herstart_via_het_bestaande_endpoint(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine, geen_voertuig: None
+    ) -> None:
+        headers = _bearer(beheerder_id)
+        rij = next(r for r in client.get("/instellingen/administraties", headers=headers).json()["administraties"] if r["id"] == str(administratie_id))
+        assert rij["eerste_sync"] is None  # nog nooit gestart = geen extra UI
+
+        run = eerste_sync.start_run(administratie_id=administratie_id, actor_id=beheerder_id)
+        rij = next(r for r in client.get("/instellingen/administraties", headers=headers).json()["administraties"] if r["id"] == str(administratie_id))
+        assert rij["eerste_sync"]["status"] == "wachtrij"
+        assert rij["eerste_sync"]["run_id"] == str(run.run_id)
+
+        # Mislukte run: status fout + reden + onderdeel-details komen 1-op-1 mee.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.administratie_sync_run SET status = 'fout', beeindigd_op = now(), "
+                    "fout_reden = 'Niet alle onderdelen gelukt: vendors — zie details per onderdeel', "
+                    "onderdelen = CAST(:o AS jsonb) WHERE id = :id"
+                ),
+                {"id": run.run_id, "o": '{"ledgers": {"status": "klaar", "aangemaakt": 3}, "vendors": {"status": "fout", "fout": "RlzApiError: 403"}}'},
+            )
+        rij = next(r for r in client.get("/instellingen/administraties", headers=headers).json()["administraties"] if r["id"] == str(administratie_id))
+        assert rij["eerste_sync"]["status"] == "fout"
+        assert "vendors" in rij["eerste_sync"]["fout_reden"]
+        assert rij["eerste_sync"]["onderdelen"]["vendors"]["fout"] == "RlzApiError: 403"
+
+        # Herstart vanaf de rij = hetzelfde POST-endpoint als in de wizard: 202 + verse run.
+        resp = client.post(f"/instellingen/administraties/{administratie_id}/eerste-sync", headers=headers)
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["status"] == "wachtrij"
+        assert resp.json()["run_id"] != str(run.run_id)
+        rij = next(r for r in client.get("/instellingen/administraties", headers=headers).json()["administraties"] if r["id"] == str(administratie_id))
+        assert rij["eerste_sync"]["status"] == "wachtrij"
+
+    def test_herstart_is_beheerder_only(self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
+        resp = client.post(f"/instellingen/administraties/{administratie_id}/eerste-sync", headers=_bearer(gescoopte_gebruiker, rol="boekhouding"))
+        assert resp.status_code == 403

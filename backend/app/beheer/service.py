@@ -22,6 +22,7 @@ from app.db.models import (
     WebhookInstelling,
 )
 from app.db.session import scoped_session
+from app.beheer.eerste_sync import EersteSyncRunInfo
 
 
 class BeheerFout(Exception):
@@ -152,6 +153,10 @@ class AdministratieInstellingen:
     rlz_admin_id: str | None = None
     webservice_username: str | None = None
     probe_groen: bool | None = None
+    # Eerste-sync-stand (wizard-nazorg 27-08, casus Bouwadvies Oost Nederland): de laatste run
+    # zoals de wizard 'm toont (status + onderdelen + foutreden) — de UI toont 'm op de rij zolang
+    # de run niet volledig groen is, mét herstartknop op hetzelfde endpoint. None = nog nooit.
+    eerste_sync: "EersteSyncRunInfo | None" = None
 
 
 def administratie_bestaat(administratie_id: uuid.UUID) -> bool:
@@ -164,12 +169,16 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
     één keer, i.p.v. de losse per-administratie GET-endpoints hierboven N keer aan te roepen.
     Los van `overzicht_boeken_status()` (CLI, alleen boeken_ingeschakeld) gehouden — dat commando
     hoeft niet mee te veranderen als deze lijst een derde kolom krijgt."""
+    from app.beheer.eerste_sync import laatste_run
     from app.beheer.onboarding import koppelstand
 
     with scoped_session(None) as session:
         rijen = list(session.scalars(select(Administratie).order_by(Administratie.naam)))
         session.expunge_all()
     stand = koppelstand([r.id for r in rijen])
+    # Per administratie (RLS-gescoopte tabel, zelfde stale-markering als de status-route) — één
+    # korte query per rij is prima voor het Beheerder-scherm.
+    syncs = {r.id: laatste_run(r.id) for r in rijen}
     return [
         AdministratieInstellingen(
             administratie_id=r.id,
@@ -185,6 +194,7 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
             rlz_admin_id=r.rlz_admin_id,
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],
+            eerste_sync=None if syncs[r.id].status == "geen" else syncs[r.id],
         )
         for r in rijen
     ]

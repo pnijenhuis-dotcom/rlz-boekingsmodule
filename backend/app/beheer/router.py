@@ -40,6 +40,7 @@ def administratie_instellingen_lijst(
                 rlz_admin_id=r.rlz_admin_id,
                 webservice_username=r.webservice_username,
                 probe_groen=r.probe_groen,
+                eerste_sync=None if r.eerste_sync is None else _eerste_sync_dto(r.eerste_sync),
             )
             for r in overzicht
         ]

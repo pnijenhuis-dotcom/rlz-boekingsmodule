@@ -373,6 +373,19 @@ textarea:focus {
   margin-top: 6px;
 }
 
+/* Subrij onder een tabelrij (Instellingen › Administraties: eerste-sync-stand, 27-08) — visueel
+ * bij de rij erboven, geen eigen zebra/hover. */
+tr.subrij > td {
+  padding-top: 0;
+  border-top: none;
+  background: color-mix(in srgb, var(--panel) 85%, var(--muted) 15%);
+}
+tr.subrij .eerste-sync-rij ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+}
+
 .hint {
   font-size: 12px;
   line-height: 1.55;

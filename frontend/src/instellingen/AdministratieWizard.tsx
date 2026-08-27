@@ -39,31 +39,66 @@ function isLopend(run: EersteSyncRunDto | null): boolean {
   return run !== null && (run.status === 'wachtrij' || run.status === 'bezig')
 }
 
-/** Poll-blok per aangemaakte administratie: status per onderdeel tot klaar/fout. */
-export function EersteSyncStatus({ administratie }: { administratie: AangemaakteAdministratieDto }) {
-  const [run, setRun] = useState<EersteSyncRunDto | null>(null)
+export interface EersteSyncAdministratie {
+  id: string
+  naam: string
+  rlz_admin_id: string | null
+  probe?: Record<string, string>
+}
+
+/** Poll-blok per administratie: status per onderdeel tot klaar/fout + "Sync opnieuw starten".
+ * Twee afnemers: de wizard (stap 3, ná aanmaken — haalt de status zelf op) en sinds 27-08 de
+ * administratie-rij op Instellingen › Administraties (`compact`, start met de stand uit de
+ * lijst-response en pollt alleen zolang de run loopt; `onAfgerond` laat de lijst herladen zodat
+ * een groene run van de rij verdwijnt). Wizard-nazorg: een gesloten wizard is geen doodlopend pad meer. */
+export function EersteSyncStatus({
+  administratie,
+  initieel,
+  compact = false,
+  onAfgerond,
+}: {
+  administratie: EersteSyncAdministratie | AangemaakteAdministratieDto
+  initieel?: EersteSyncRunDto | null
+  compact?: boolean
+  onAfgerond?: (run: EersteSyncRunDto) => void
+}) {
+  const [run, setRun] = useState<EersteSyncRunDto | null>(initieel ?? null)
   const [fout, setFout] = useState<string | null>(null)
   const [herstartBezig, setHerstartBezig] = useState(false)
   const actief = useRef(true)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const afgerondRef = useRef(onAfgerond)
+  afgerondRef.current = onAfgerond
 
+  // Verse stand van buiten (lijst herladen) overnemen — geen extra poll nodig.
   useEffect(() => {
-    actief.current = true
-    let timer: ReturnType<typeof setTimeout> | null = null
+    if (initieel !== undefined) setRun(initieel)
+  }, [initieel])
+
+  const pollTot = (eerste: boolean) => {
     const poll = async () => {
       try {
         const nieuw = await haalEersteSyncStatusOp(administratie.id)
         if (!actief.current) return
         setRun(nieuw)
-        if (isLopend(nieuw)) timer = setTimeout(() => void poll(), POLL_INTERVAL_MS)
+        if (isLopend(nieuw)) timer.current = setTimeout(() => void poll(), POLL_INTERVAL_MS)
+        else if (!eerste || initieel === undefined) afgerondRef.current?.(nieuw)
       } catch (err) {
         if (actief.current) setFout(foutTekst(err))
       }
     }
-    void poll()
+    return poll
+  }
+
+  useEffect(() => {
+    actief.current = true
+    // Met een aangeleverde stand alleen pollen zolang de run loopt; zonder stand (wizard) direct ophalen.
+    if (initieel === undefined || isLopend(initieel ?? null)) void pollTot(true)()
     return () => {
       actief.current = false
-      if (timer) clearTimeout(timer)
+      if (timer.current) clearTimeout(timer.current)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [administratie.id])
 
   const herstart = async () => {
@@ -72,14 +107,8 @@ export function EersteSyncStatus({ administratie }: { administratie: Aangemaakte
     try {
       const nieuw = await startEersteSync(administratie.id)
       setRun(nieuw)
-      // opnieuw pollen
-      const poll = async () => {
-        const st = await haalEersteSyncStatusOp(administratie.id)
-        if (!actief.current) return
-        setRun(st)
-        if (isLopend(st)) setTimeout(() => void poll(), POLL_INTERVAL_MS)
-      }
-      setTimeout(() => void poll(), POLL_INTERVAL_MS)
+      // opnieuw pollen; klaar/fout → onAfgerond (rij herlaadt de lijst)
+      timer.current = setTimeout(() => void pollTot(false)(), POLL_INTERVAL_MS)
     } catch (err) {
       setFout(foutTekst(err))
     } finally {
@@ -92,17 +121,27 @@ export function EersteSyncStatus({ administratie }: { administratie: Aangemaakte
     return <span className={`chip ${klasse}`}>{status}</span>
   }
 
+  const probe = 'probe' in administratie ? administratie.probe : undefined
   return (
-    <div className="panel" style={{ marginTop: 10 }} data-testid={`eerste-sync-${administratie.rlz_admin_id}`}>
-      <h3 style={{ margin: '0 0 6px' }}>
-        {administratie.naam}{' '}
-        <span className="hint" style={{ margin: 0, fontSize: 11 }}>· RLZ-id {administratie.rlz_admin_id}</span>{' '}
-        {run && statusChip(run.status === 'geen' ? 'wachtrij' : run.status)}
-      </h3>
-      <div className="hint" style={{ marginTop: 0 }}>
-        Rechten-probe: {Object.values(administratie.probe).every((v) => v === 'ok') ? '10/10 groen' : 'zie rapport'} · eerste sync per
-        onderdeel:
-      </div>
+    <div className={compact ? 'eerste-sync-rij' : 'panel'} style={compact ? undefined : { marginTop: 10 }} data-testid={`eerste-sync-${administratie.rlz_admin_id ?? administratie.id}`}>
+      {compact ? (
+        <div className="hint" style={{ marginTop: 0 }}>
+          <b>Eerste sync</b> {run && statusChip(run.status === 'geen' ? 'wachtrij' : run.status)}{' '}
+          {run?.status === 'fout' ? '— niet volledig gelukt; herstart hieronder (zelfde run als in de wizard).' : run && isLopend(run) ? '— loopt nog…' : ''}
+        </div>
+      ) : (
+        <>
+          <h3 style={{ margin: '0 0 6px' }}>
+            {administratie.naam}{' '}
+            <span className="hint" style={{ margin: 0, fontSize: 11 }}>· RLZ-id {administratie.rlz_admin_id}</span>{' '}
+            {run && statusChip(run.status === 'geen' ? 'wachtrij' : run.status)}
+          </h3>
+          <div className="hint" style={{ marginTop: 0 }}>
+            Rechten-probe: {probe && Object.values(probe).every((v) => v === 'ok') ? '10/10 groen' : 'zie rapport'} · eerste sync per
+            onderdeel:
+          </div>
+        </>
+      )}
       <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }}>
         {Object.keys(ONDERDEEL_LABELS).map((naam) => {
           const stand = run?.onderdelen?.[naam]
@@ -123,7 +162,7 @@ export function EersteSyncStatus({ administratie }: { administratie: Aangemaakte
       {fout && <div className="fout" style={{ marginTop: 6 }}>{fout}</div>}
       {run && !isLopend(run) && (
         <div style={{ marginTop: 6 }}>
-          <Button variant="secundair" maat="klein" disabled={herstartBezig} onClick={() => void herstart()}>
+          <Button variant="secundair" maat="klein" disabled={herstartBezig} aria-label={compact ? `Sync opnieuw starten voor ${administratie.naam}` : undefined} onClick={() => void herstart()}>
             {herstartBezig ? 'Bezig…' : 'Sync opnieuw starten'}
           </Button>
         </div>

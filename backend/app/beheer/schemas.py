@@ -100,6 +100,9 @@ class AdministratieInstellingenDto(BaseModel):
     rlz_admin_id: str | None = None
     webservice_username: str | None = None
     probe_groen: bool | None = None
+    # Eerste-sync-stand (wizard-nazorg 27-08): laatste run — de UI toont 'm op de rij zolang die
+    # niet volledig groen is (status ≠ klaar), mét herstartknop; None = nog nooit gestart.
+    eerste_sync: "EersteSyncRunDto | None" = None
 
 
 class AdministratieInstellingenLijstDto(BaseModel):
@@ -149,6 +152,10 @@ class EersteSyncRunDto(BaseModel):
     aangevraagd_op: datetime | None = None
     beeindigd_op: datetime | None = None
     fout_reden: str | None = None
+
+
+# Forward-ref: AdministratieInstellingenDto verwijst naar EersteSyncRunDto dat hieronder staat.
+AdministratieInstellingenDto.model_rebuild()
 
 
 class SchrijftestStapDto(BaseModel):

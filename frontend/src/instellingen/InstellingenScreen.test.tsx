@@ -50,6 +50,14 @@ function installFetchMock(opties: {
       if (url === '/instellingen/administraties') {
         return Promise.resolve(jsonResponse({ administraties }))
       }
+      // Eerste-sync (wizard-nazorg 27-08): herstart vanaf de rij + status-poll.
+      if (url.endsWith('/eerste-sync') && init?.method === 'POST') {
+        opties.putAanroepen?.push({ url, body: null })
+        return Promise.resolve(jsonResponse({ run_id: 'run-2', status: 'wachtrij', onderdelen: null, aangevraagd_op: null, beeindigd_op: null, fout_reden: null }, 202))
+      }
+      if (url.endsWith('/eerste-sync/status')) {
+        return Promise.resolve(jsonResponse({ run_id: 'run-2', status: 'bezig', onderdelen: null, aangevraagd_op: null, beeindigd_op: null, fout_reden: null }))
+      }
       if (url === '/instellingen/boeken-kill-switch' && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ ingeschakeld: killSwitch }))
       }
@@ -561,5 +569,44 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     expect(screen.getAllByRole('button', { name: /Schrijftest voor/ })).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: '+ Administratie toevoegen' }))
     expect(await screen.findByText('Administratie toevoegen — stap 1 van 3')).toBeInTheDocument()
+  })
+
+  it('wizard-nazorg 27-08: mislukte eerste sync staat op de rij mét foutreden per onderdeel en herstartknop (zelfde endpoint); groen of nooit gestart = geen extra UI', async () => {
+    const putAanroepen: { url: string; body: unknown }[] = []
+    const fout = {
+      run_id: 'run-1',
+      status: 'fout',
+      onderdelen: {
+        ledgers: { status: 'klaar', aangemaakt: 412, bijgewerkt: 0 },
+        vendors: { status: 'fout', fout: 'RlzApiError: 403 Forbidden op Vendors' },
+      },
+      aangevraagd_op: '2026-08-27T09:00:00Z',
+      beeindigd_op: '2026-08-27T09:01:00Z',
+      fout_reden: 'Niet alle onderdelen gelukt: vendors — zie details per onderdeel',
+    }
+    const klaar = { ...fout, run_id: 'run-0', status: 'klaar', fout_reden: null }
+    installFetchMock({
+      rol: 'beheerder',
+      putAanroepen,
+      administraties: [
+        administratie({ naam: 'Bouwadvies Oost Nederland B.V.', webservice_username: 'ws_boon', probe_groen: true, rlz_admin_id: 'rlz-boon', eerste_sync: fout }),
+        administratie({ id: 'bbbbbbbb-0000-0000-0000-000000000002', naam: 'Groene Klant B.V.', eerste_sync: klaar }),
+        administratie({ id: 'bbbbbbbb-0000-0000-0000-000000000003', naam: 'Oude Klant B.V.', eerste_sync: null }),
+      ],
+    })
+    renderScherm('/instellingen/administraties')
+    const knop = await screen.findByRole('button', { name: 'Sync opnieuw starten voor Bouwadvies Oost Nederland B.V.' })
+    // Foutreden + onderdeel-detail exact zoals in de wizard
+    expect(screen.getByText('Niet alle onderdelen gelukt: vendors — zie details per onderdeel')).toBeInTheDocument()
+    expect(screen.getByText('RlzApiError: 403 Forbidden op Vendors')).toBeInTheDocument()
+    // Groen / nooit gestart: geen herstartknop, geen sync-regel
+    expect(screen.getAllByRole('button', { name: /Sync opnieuw starten voor/ })).toHaveLength(1)
+    expect(screen.queryByTestId('eerste-sync-bbbbbbbb-0000-0000-0000-000000000002')).not.toBeInTheDocument()
+
+    fireEvent.click(knop)
+    await waitFor(() => expect(putAanroepen.some((p) => p.url === `/instellingen/administraties/${ADMINISTRATIE_ID}/eerste-sync`)).toBe(true))
+    // Ná de herstart toont de rij de nieuwe run (wachtrij) — de knop verdwijnt zolang hij loopt.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Sync opnieuw starten voor Bouwadvies/ })).not.toBeInTheDocument())
+    expect(screen.getByTestId('eerste-sync-rlz-boon')).toHaveTextContent('wachtrij')
   })
 })
