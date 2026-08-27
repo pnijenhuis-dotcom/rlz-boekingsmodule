@@ -219,7 +219,8 @@ describe('GoedkeurenFlow', () => {
     stubFetch(routes)
     renderFlow()
     expect(await screen.findByText('Vragen aan u · 1')).toBeInTheDocument()
-    expect(screen.getByText('Te accorderen · 1')).toBeInTheDocument()
+    // Sinds 27-08 draagt de wachtrij-kop de administratienaam (scherm 1 van de mockup).
+    expect(screen.getByText('BLOW B.V. — te accorderen · 1')).toBeInTheDocument()
     await userEvent.click(screen.getByText('Van Diemen Transport'))
     const thread = await screen.findByLabelText('Vraag van het kantoor')
     expect(thread).toHaveTextContent('Even nagevraagd.')
@@ -248,7 +249,7 @@ describe('GoedkeurenFlow', () => {
     await userEvent.click(await screen.findByText('Essent Zakelijk'))
     await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
 
-    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij')).toBeInTheDocument()
   })
 
   it('afwijzen eist een reden (verplicht) en stuurt die mee', async () => {
@@ -341,7 +342,7 @@ describe('GoedkeurenFlow', () => {
     await userEvent.click(await screen.findByText('Essent Zakelijk'))
     await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
 
-    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij')).toBeInTheDocument()
     expect(screen.getByText(/1 besluit wordt op de achtergrond verzonden/)).toBeInTheDocument()
   })
 
@@ -381,7 +382,7 @@ describe('GoedkeurenFlow', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Afwijzen met reden' }))
 
     // Direct de lege staat, terwijl de server nog niet geantwoord heeft.
-    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij')).toBeInTheDocument()
     await waitFor(() => expect(afgewezenMet).toBe('Werk nog niet opgeleverd'))
   })
 

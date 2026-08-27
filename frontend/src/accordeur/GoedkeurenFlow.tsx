@@ -10,6 +10,13 @@
 // vanuit een expliciete klik, nooit rauw bij het laden. ?document=<id> is de deep-link uit
 // mail/push — alleen navigatie; de auth-cadans blijft de poort.
 //
+// BV-OPENINGSSCHERM + VERVERSEN (besluiten Peter 27-08, mockup accordeur-vragen.html scherm 0):
+// de app opent met één kaart per administratie MÉT werk (teller te accorderen, chip "vragen aan
+// u", oudste-wacht-regel); één administratie met werk = direct die wachtrij; alles bij = "✓ Alles
+// is bij" mét verversknop. Ná akkoord/afwijzen volgt de volgende factuur van DEZELFDE
+// administratie; stapel leeg = terug naar het overzicht. Verversen: pull-to-refresh op overzicht
+// én wachtrij, automatisch bij terugkeer naar de voorgrond (stil — de lijst blijft staan).
+//
 // SNELHEIDSLAAG (harde ontwerpeis Peter, 2026-08-17 — geldt ook voor de native schil die deze
 // code bundelt): (a) wachtrij + metadata staan vooraf geladen; (b) het factuurbeeld van de
 // eerstvolgende factuur wordt verborgen vooruit gemonteerd (prefetch + prerender via
@@ -49,6 +56,9 @@ import { besluitVerzender, type BesluitOpdracht } from './besluitQueue'
 import { factuurCache } from './pdfCache'
 import { PdfWeergave } from './PdfWeergave'
 import { VoorwaardenScherm } from './VoorwaardenScherm'
+import { administratiesMetWerk, kiesActieveAdministratie, vragenChipTekst, wachtSindsTekst } from './administraties'
+import { PullToRefresh } from './PullToRefresh'
+import { useVerversBijVoorgrond } from './verversen'
 
 type Weergave = 'wachtrij' | 'review' | 'beheer' | 'thread'
 
@@ -323,7 +333,10 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const { gebruikerId } = useAuth()
   const [weergave, setWeergave] = useState<Weergave>('wachtrij')
   const [items, setItems] = useState<WachtrijItem[]>([])
-  const [totaalStart, setTotaalStart] = useState(0)
+  // BV-openingsscherm (besluit Peter 27-08): de expliciet gekozen administratie; wélke de
+  // wachtrij toont volgt uit kiesActieveAdministratie (precies één met werk = automatisch die).
+  const [bvKeuze, setBvKeuze] = useState<string | null>(null)
+  // Verwerkt binnen de huidige BV-stapel ("N van M" in de review) — reset bij een BV-wissel.
   const [verwerkt, setVerwerkt] = useState(0)
   const [laden, setLaden] = useState(true)
   const [fout, setFout] = useState<string | null>(null)
@@ -362,32 +375,55 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     toastTimer.current = setTimeout(() => setToast(null), 1900)
   }, [])
 
-  const laadWachtrij = useCallback(async () => {
-    setLaden(true)
-    setFout(null)
-    try {
-      const { items: nieuw } = await haalWachtrij()
-      // Besluiten die nog onderweg zijn naar de server (optimistisch verwerkt) horen niet
-      // terug in de lijst — komen ze definitief niet aan, dan zet de mislukt-melding ze terug.
-      const zichtbaar = nieuw.filter((i) => !besluitVerzender.isOnderweg(i.document_id))
-      setItems(zichtbaar)
-      setTotaalStart(zichtbaar.length)
-      setVerwerkt(0)
-      setVoorwaardenNodig(false)
-      // Vragen aan mij: tolerant — een fout hier mag de wachtrij nooit blokkeren.
-      haalVragenAanMij()
-        .then(({ items: v }) => setVragen(v))
-        .catch(() => setVragen([]))
-    } catch (err) {
-      if (isVoorwaardenVereist(err)) {
-        setVoorwaardenNodig(true)
-      } else {
-        setFout('De wachtrij kon niet geladen worden. Probeer het opnieuw.')
+  // Voor de stille verversing: welke factuur staat nu open (zonder de callback te herbinden).
+  const huidigeRef = useRef<WachtrijItem | null>(null)
+  huidigeRef.current = huidige
+
+  /** Wachtrij (+ vragen) laden. `stil` (pull-to-refresh, voorgrond-terugkeer): de lijst blijft
+   * staan tijdens het laden en een fout wordt een toast i.p.v. een leeg scherm; de teller
+   * "verwerkt" blijft staan. Niet-stil (eerste keer, "Opnieuw"): volledige laadstate. */
+  const laadWachtrij = useCallback(
+    async (opties: { stil?: boolean } = {}) => {
+      const stil = opties.stil === true
+      if (!stil) {
+        setLaden(true)
+        setFout(null)
       }
-    } finally {
-      setLaden(false)
-    }
-  }, [])
+      try {
+        const { items: nieuw } = await haalWachtrij()
+        // Besluiten die nog onderweg zijn naar de server (optimistisch verwerkt) horen niet
+        // terug in de lijst — komen ze definitief niet aan, dan zet de mislukt-melding ze terug.
+        const zichtbaar = nieuw.filter((i) => !besluitVerzender.isOnderweg(i.document_id))
+        setItems(zichtbaar)
+        if (!stil) setVerwerkt(0)
+        setFout(null)
+        setVoorwaardenNodig(false)
+        // Stond er een factuur open die intussen door een ander is afgehandeld/ingetrokken, dan
+        // terug naar de wachtrij — nooit een besluit op een verdwenen document.
+        const open = huidigeRef.current
+        if (stil && open && !zichtbaar.some((i) => i.document_id === open.document_id) && !besluitVerzender.isOnderweg(open.document_id)) {
+          setHuidige(null)
+          setWeergave('wachtrij')
+          toon('Deze factuur is intussen afgehandeld of ingetrokken')
+        }
+        // Vragen aan mij: tolerant — een fout hier mag de wachtrij nooit blokkeren.
+        haalVragenAanMij()
+          .then(({ items: v }) => setVragen(v))
+          .catch(() => setVragen([]))
+      } catch (err) {
+        if (isVoorwaardenVereist(err)) {
+          setVoorwaardenNodig(true)
+        } else if (stil) {
+          toon('Verversen mislukte — controleer de verbinding')
+        } else {
+          setFout('De wachtrij kon niet geladen worden. Probeer het opnieuw.')
+        }
+      } finally {
+        if (!stil) setLaden(false)
+      }
+    },
+    [toon],
+  )
 
   useEffect(() => {
     void laadWachtrij()
@@ -395,6 +431,12 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       .then(setMeldingen)
       .catch(() => setMeldingen(null))
   }, [laadWachtrij])
+
+  // Automatisch verversen zodra de app naar de voorgrond komt (27-08) — stil, de lijst blijft
+  // staan; nooit meer een app-herstart nodig voor nieuwe boekingen.
+  useVerversBijVoorgrond(() => {
+    if (!voorwaardenNodig && !laden) void laadWachtrij({ stil: true })
+  })
 
   // Terugkeer-kanaal van de achtergrond-verzender: definitief mislukt = document zichtbaar
   // terug vooraan de rij mét melding (nooit stil verloren).
@@ -472,9 +514,21 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   }, [legKeuzeVast, meldingenAanzetten])
 
   const openReview = (item: WachtrijItem) => {
+    // Openen bindt de wachtrij aan de administratie van dit document (deep-links landen zo
+    // direct in de juiste BV-wachtrij); een BV-wissel start de "N van M"-teller opnieuw.
+    if (bvKeuze !== item.administratie_id) {
+      setBvKeuze(item.administratie_id)
+      setVerwerkt(0)
+    }
     setHuidige(item)
     setDoorbelastOpen(false)
     setWeergave('review')
+  }
+
+  /** Kaart op het BV-overzicht: naar de wachtrij van die administratie. */
+  const kiesBv = (id: string | null) => {
+    setBvKeuze(id)
+    setVerwerkt(0)
   }
 
   /** Ná een antwoord: dezelfde thread op de kaart, in de review én in de losse lijst bijwerken. */
@@ -503,6 +557,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       const kaart = items.find((i) => i.vraag?.id === vraagId)
       if (kaart) openReview(kaart)
       else if (vraag) {
+        setBvKeuze(vraag.administratie_id)
         setVraagOpen(vraag)
         setWeergave('thread')
       }
@@ -517,16 +572,25 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [laden, items, zoekParams, vragen, setZoekParams])
 
-  // Prefetch-venster: in review de huidige + eerstvolgende factuur, op de wachtrij vast de
-  // eerste — verborgen gemonteerd (prerender), al het andere wordt gesnoeid (geheugenrem).
+  // BV-overzicht (27-08): standen per administratie mét werk; de actieve administratie bepaalt
+  // welke facturen/vragen de wachtrij toont. Eén met werk = automatisch die (geen keuzescherm).
+  const standen = administratiesMetWerk(items, vragen)
+  const actieveBv = kiesActieveAdministratie(bvKeuze, standen)
+  const bvItems: WachtrijItem[] = actieveBv ? items.filter((i) => i.administratie_id === actieveBv) : []
+  const bvNaam = standen.find((s) => s.id === actieveBv)?.naam ?? null
+
+  // Prefetch-venster: in review de huidige + eerstvolgende factuur VAN DEZELFDE ADMINISTRATIE,
+  // op de wachtrij vast de eerste (op het overzicht: de eerste kaart) — verborgen gemonteerd
+  // (prerender), al het andere wordt gesnoeid (geheugenrem).
   const volgende: WachtrijItem | null = huidige
-    ? (items[items.findIndex((i) => i.document_id === huidige.document_id) + 1] ?? null)
+    ? (bvItems[bvItems.findIndex((i) => i.document_id === huidige.document_id) + 1] ?? null)
     : null
+  const eersteKaart: WachtrijItem | null = bvItems[0] ?? items[0] ?? null
   const venster: WachtrijItem[] =
     weergave === 'review' && huidige
       ? [huidige, ...(volgende && volgende.document_id !== huidige.document_id ? [volgende] : [])]
-      : items.length > 0
-        ? [items[0]]
+      : eersteKaart
+        ? [eersteKaart]
         : []
   const vensterSleutel = venster.map((i) => i.document_id).join(',')
   useEffect(() => {
@@ -538,14 +602,18 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const naVerwerking = (melding: string, verwerktItem: WachtrijItem) => {
     laatsteOvergang.current = Date.now()
     const rest = items.filter((i) => i.document_id !== verwerktItem.document_id)
+    // Volgende factuur van DEZELFDE administratie (besluit 27-08); stapel leeg → terug naar het
+    // BV-overzicht (of, bij nog precies één administratie met werk, direct díe wachtrij).
+    const restBv = rest.filter((i) => i.administratie_id === verwerktItem.administratie_id)
     setItems(rest)
     setVerwerkt((v) => v + 1)
     toon(melding)
-    if (rest.length > 0 && weergave === 'review') {
-      openReview(rest[0])
+    if (restBv.length > 0 && weergave === 'review') {
+      openReview(restBv[0])
     } else {
       setHuidige(null)
       setWeergave('wachtrij')
+      if (restBv.length === 0) kiesBv(null)
     }
   }
 
@@ -678,12 +746,17 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
     )
   }
 
-  const teller = items.length
+  const teller = bvItems.length
   const tellerTekst = teller === 1 ? '1 factuur wacht op je akkoord' : `${teller} facturen wachten op je akkoord`
-  // "Vragen aan u" = vragen die NIET op een te accorderen document in de wachtrij hangen (die
-  // staan op de kaart zelf). Antwoorden werkt de thread op beide plekken bij.
+  // "Vragen aan u" = vragen (van de actieve administratie) die NIET op een te accorderen document
+  // in de wachtrij hangen (die staan op de kaart zelf). Antwoorden werkt de thread op beide
+  // plekken bij.
   const wachtrijDocumenten = new Set(items.map((i) => i.document_id))
-  const losseVragen = vragen.filter((v) => !wachtrijDocumenten.has(v.document_id))
+  const losseVragen = vragen.filter(
+    (v) => !wachtrijDocumenten.has(v.document_id) && (actieveBv === null || v.administratie_id === actieveBv),
+  )
+  const toonOverzicht = actieveBv === null && standen.length > 1
+  const allesBij = standen.length === 0
   const huidigeVraag: AccordeurVraagDto | null = huidige
     ? (vragen.find((v) => v.document_id === huidige.document_id) ?? huidige.vraag ?? null)
     : null
@@ -720,7 +793,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
 
       <div className="acc-content">
         {weergave === 'wachtrij' && (
-          <div>
+          <PullToRefresh onVerversen={() => laadWachtrij({ stil: true })}>
             {laden && <div className="acc-qcount">Wachtrij laden…</div>}
             {fout && (
               <div className="acc-fout" style={{ maxWidth: 'none', marginBottom: 12 }}>
@@ -730,11 +803,60 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 </button>
               </div>
             )}
-            {!laden && !fout && teller > 0 && (
+
+            {/* Scherm 0 (27-08): één kaart per administratie MÉT werk — alleen bij ≥ 2. */}
+            {!laden && !fout && toonOverzicht && (
               <>
-                <div className="acc-seclabel">Te accorderen · {teller}</div>
-                <div className="acc-qcount">{tellerTekst}</div>
-                {items.map((item) => (
+                <div className="acc-seclabel">Uw administraties</div>
+                <div className="acc-qcount">
+                  {standen.length} administraties met iets te doen — kies er één.
+                </div>
+                {standen.map((s) => {
+                  const wacht = wachtSindsTekst(s.oudsteWacht)
+                  return (
+                    <button key={s.id} className="acc-qcard acc-bvkaart" onClick={() => kiesBv(s.id)} aria-label={`Administratie ${s.naam ?? ''}`}>
+                      <div>
+                        <div className="acc-lev">{s.naam ?? 'Administratie'}</div>
+                        {wacht && <div className="acc-meta">{wacht}</div>}
+                        {s.vragen > 0 && (
+                          <div className="acc-kaartchips">
+                            <span className="acc-chip beurt">{vragenChipTekst(s.vragen)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {s.teAccorderen > 0 && <span className="acc-chip vraag acc-bvteller">{s.teAccorderen} te accorderen</span>}
+                        <span className="acc-arrow">›</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </>
+            )}
+
+            {/* Wachtrij van één administratie (bij precies één met werk zonder terugknop). */}
+            {!laden && !fout && actieveBv !== null && (
+              <>
+                {standen.length > 1 && (
+                  <div className="acc-revtop">
+                    <button className="acc-terug" onClick={() => kiesBv(null)}>
+                      ‹ Administraties
+                    </button>
+                  </div>
+                )}
+                {teller > 0 ? (
+                  <>
+                    <div className="acc-seclabel">
+                      {bvNaam ? `${bvNaam} — te accorderen · ${teller}` : `Te accorderen · ${teller}`}
+                    </div>
+                    <div className="acc-qcount">{tellerTekst}</div>
+                  </>
+                ) : (
+                  <div className="acc-qcount">
+                    {bvNaam ? `${bvNaam} — ` : ''}geen facturen te accorderen{losseVragen.length > 0 ? ', wel een vraag aan u' : ''}
+                  </div>
+                )}
+                {bvItems.map((item) => (
                   <button key={item.document_id} className="acc-qcard" onClick={() => openReview(item)}>
                     <div>
                       <div className="acc-lev">{item.leverancier_naam ?? 'Onbekende leverancier'}</div>
@@ -773,15 +895,23 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 ))}
               </>
             )}
-            {!laden && !fout && teller === 0 && (
+
+            {/* Alles bij (27-08): lege staat mét verversknop — nooit meer een app-herstart nodig. */}
+            {!laden && !fout && allesBij && (
               <div className="acc-leeg">
                 <div className="acc-big">✓</div>
-                <b>Alles afgehandeld</b>
-                Er staat niets meer voor je klaar. Je krijgt een melding zodra er een nieuwe factuur op je
-                akkoord wacht.
+                <b>Alles is bij</b>
+                Er staat niets voor u klaar. U krijgt een melding zodra er een nieuwe factuur op uw akkoord
+                wacht — of ververs hier.
+                <div style={{ marginTop: 16 }}>
+                  <button className="acc-btn klein secundair" onClick={() => void laadWachtrij({ stil: true })}>
+                    ↻ Verversen
+                  </button>
+                </div>
               </div>
             )}
-            {!laden && !fout && losseVragen.length > 0 && (
+
+            {!laden && !fout && !toonOverzicht && losseVragen.length > 0 && (
               <>
                 <div className="acc-seclabel">Vragen aan u · {losseVragen.length}</div>
                 <div className="acc-toelicht">
@@ -821,7 +951,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 verzonden…
               </div>
             )}
-          </div>
+          </PullToRefresh>
         )}
 
         {weergave === 'review' && huidige && (
@@ -830,7 +960,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
               ‹ Wachtrij
             </button>
             <span className="acc-tel">
-              {verwerkt + 1} van {totaalStart}
+              {verwerkt + 1} van {verwerkt + bvItems.length}
             </span>
           </div>
         )}

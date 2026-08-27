@@ -165,6 +165,8 @@
 .acc-content {
   flex: 1;
   overflow-y: auto;
+  /* Pull-to-refresh (27-08) is van ons — Chrome's eigen pagina-verversing bij overscroll uit. */
+  overscroll-behavior-y: contain;
   padding: 16px;
   /* Home-indicator-marge voor schermen zónder actiebalk (wachtrij/beheer); mét actiebalk
      vangt .acc-actionbar de inset en is dit alleen wat extra scrolruimte. */
@@ -285,6 +287,39 @@
   font-size: 16px;
   display: block;
   margin-bottom: 6px;
+}
+
+/* ===== BV-overzicht (27-08, mockup scherm 0) + pull-to-refresh ===== */
+.acc-bvkaart .acc-kaartchips {
+  margin-top: 8px;
+}
+.acc-bvteller {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.acc-ptr {
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  font-size: 12px;
+  color: var(--acc-muted);
+  transition: height 0.15s ease-out, opacity 0.15s;
+  will-change: height;
+}
+.acc-ptr-pijl {
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.acc-ptr.bezig .acc-ptr-pijl {
+  animation: acc-ptr-draai 0.9s linear infinite;
+}
+@keyframes acc-ptr-draai {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ===== Review: factuurbeeld centraal ===== */

@@ -91,7 +91,7 @@ describe('AccordeurApp — uitloggen', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
 
     // Server-side intrekken via het cookie-pad, daarna het login-scherm.
@@ -201,7 +201,7 @@ describe('AccordeurApp — beginscherm met auto-assertion (besluiten Peter 2026-
 
     renderBeginscherm()
 
-    expect(await screen.findByText('Alles afgehandeld', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij', undefined, { timeout: 3000 })).toBeInTheDocument()
     expect(aangeroepen).toContain('POST /auth/token/vernieuwen/ontgrendelen')
     // Eén auto-poging, geen dubbele Face ID-prompt (StrictMode-guard).
     expect(get).toHaveBeenCalledTimes(1)
@@ -229,7 +229,7 @@ describe('AccordeurApp — beginscherm met auto-assertion (besluiten Peter 2026-
 
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
     await userEvent.click(await screen.findByRole('button', { name: 'Ontgrendelen' }))
-    expect(await screen.findByText('Alles afgehandeld', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij', undefined, { timeout: 3000 })).toBeInTheDocument()
     expect(get).toHaveBeenCalledTimes(2)
   })
 
@@ -258,7 +258,7 @@ describe('AccordeurApp — beginscherm met auto-assertion (besluiten Peter 2026-
 
     renderBeginscherm()
 
-    expect(await screen.findByText('Alles afgehandeld', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij', undefined, { timeout: 3000 })).toBeInTheDocument()
     expect(aangeroepen).toContain('POST /auth/token/vernieuwen/ontgrendelen')
   })
 })
@@ -378,7 +378,7 @@ describe('AccordeurApp — passkey-registratie schakelt door (kliktest 2026-08-1
 
     // Dóór naar de wachtrij (voorwaarden-poort zit fail-closed in GoedkeurenFlow zelf) —
     // niet blijven hangen op "Dit apparaat registreren" en niet terug naar login.
-    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij')).toBeInTheDocument()
     expect(screen.queryByText('Dit apparaat registreren')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Inloggen' })).toBeNull()
     expect(aangeroepen).toContain('POST /auth/webauthn/registratie/voltooien')
@@ -419,7 +419,7 @@ describe('AccordeurApp — passkey-registratie schakelt door (kliktest 2026-08-1
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij')).toBeInTheDocument()
     expect(screen.queryByText('Sessie verlopen')).toBeNull()
   })
 
@@ -451,7 +451,7 @@ describe('AccordeurApp — passkey-registratie schakelt door (kliktest 2026-08-1
 
     await userEvent.click(await screen.findByRole('button', { name: 'Passkey aanmaken' }))
 
-    expect(await screen.findByText('Alles afgehandeld')).toBeInTheDocument()
+    expect(await screen.findByText('Alles is bij')).toBeInTheDocument()
     expect(aangeroepen).toContain('POST /auth/webauthn/login/voltooien')
     expect(aangeroepen).not.toContain('POST /auth/webauthn/registratie/voltooien')
   })
