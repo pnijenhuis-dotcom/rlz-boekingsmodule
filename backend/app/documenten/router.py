@@ -396,6 +396,7 @@ def document_detail(
         factuurmatch=_lees_match_dto(administratie_id, document_id),
         materiaalmatch=_lees_materiaalmatch_dto(administratie_id, document_id),
         bron_bestandsnaam=d.bron_bestandsnaam,
+        tenaamstelling=d.tenaamstelling,
         herkomst_mail=(
             schemas.HerkomstMailDto(
                 afzender=detail.herkomst_mail.afzender,
@@ -554,6 +555,7 @@ def document_verplaatsen(
             doel_administratie_id=invoer.doel_administratie_id,
             actor_id=actor.id,
             actor_rol=actor.rol,
+            onthoud_tenaamstelling=invoer.onthoud_tenaamstelling,
         )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -573,6 +575,7 @@ def document_verplaatsen(
         leerregels_gecorrigeerd=list(resultaat.leerregels_gecorrigeerd),
         vragen_verhuisd=resultaat.vragen_verhuisd,
         vragen_hertoegewezen=resultaat.vragen_hertoegewezen,
+        tenaamstelling_geleerd=resultaat.tenaamstelling_geleerd,
     )
 
 

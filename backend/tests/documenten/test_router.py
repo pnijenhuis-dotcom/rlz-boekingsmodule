@@ -264,14 +264,21 @@ class TestDocumentVerwijderenEnHerstellen:
         lijst = client.get(f"/administraties/{administratie_id}/documenten", headers=headers).json()["documenten"]
         assert document_id not in {d["id"] for d in lijst}
 
-    def test_verwijderen_zonder_reden_mag(self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
+    def test_verwijderen_zonder_reden_geweigerd(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        """Werkstroom-run 27/28-08 punt 4: reden verplicht aan de HTTP-poort (herziet "zonder
+        reden mag" van design-pass taak 4) — leeg of alleen spaties = 422, document blijft staan."""
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         document_id = _upload(headers, administratie_id)
 
-        resp = client.post(
-            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
-        )
-        assert resp.status_code == 200, resp.text
+        for body in ({}, {"reden": ""}, {"reden": "   "}):
+            resp = client.post(
+                f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json=body, headers=headers
+            )
+            assert resp.status_code == 422, resp.text
+        lijst = client.get(f"/administraties/{administratie_id}/documenten", headers=headers).json()["documenten"]
+        assert document_id in {d["id"] for d in lijst}
 
     def test_toon_verwijderd_zet_hem_er_weer_bij(
         self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
@@ -279,7 +286,9 @@ class TestDocumentVerwijderenEnHerstellen:
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         document_id = _upload(headers, administratie_id)
         client.post(
-            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen",
+            json={"reden": "test"},
+            headers=headers,
         )
 
         resp = client.get(f"/administraties/{administratie_id}/documenten?toon_verwijderd=true", headers=headers)
@@ -291,7 +300,9 @@ class TestDocumentVerwijderenEnHerstellen:
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         document_id = _upload(headers, administratie_id)
         client.post(
-            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen",
+            json={"reden": "test"},
+            headers=headers,
         )
 
         resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/herstellen", headers=headers)
@@ -313,7 +324,7 @@ class TestDocumentVerwijderenEnHerstellen:
     def test_verwijderen_zonder_scope_faalt(self, gescoopte_gebruiker: uuid.UUID) -> None:
         resp = client.post(
             f"/administraties/{uuid.uuid4()}/documenten/{uuid.uuid4()}/verwijderen",
-            json={},
+            json={"reden": "test"},
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
         assert resp.status_code == 403
@@ -323,7 +334,7 @@ class TestDocumentVerwijderenEnHerstellen:
     ) -> None:
         resp = client.post(
             f"/administraties/{administratie_id}/documenten/{uuid.uuid4()}/verwijderen",
-            json={},
+            json={"reden": "test"},
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
         assert resp.status_code == 404

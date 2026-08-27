@@ -321,7 +321,7 @@ class TestBoekenEndpoint:
         assert boek_resp.status_code == 200, boek_resp.text
 
         resp = client.post(
-            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={}, headers=headers
+            f"/administraties/{administratie_id}/documenten/{document_id}/verwijderen", json={"reden": "test"}, headers=headers
         )
         assert resp.status_code == 409, resp.text
         assert "bewaarplicht" in resp.json()["detail"]

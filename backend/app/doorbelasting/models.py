@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -297,8 +297,12 @@ class DoorbelastingBoeking(Base):
     # 'ontbreekt' (NULL = boeking van vóór 26-08, nog nooit geprobeerd — herstel-commando);
     # `factuur_pdf_reden` = waarom hij ontbreekt (zichtbaar op de run, nooit stil);
     # `factuur_pdf_opslag_pad` = onze bewaarkopie (7 jaar, downloadbaar in de UI).
-    factuur_pdf_status: Mapped[str | None] = mapped_column(default=None)
-    factuur_pdf_reden: Mapped[str | None] = mapped_column(default=None)
-    factuur_pdf_bestandsnaam: Mapped[str | None] = mapped_column(default=None)
-    factuur_pdf_opslag_pad: Mapped[str | None] = mapped_column(default=None)
+    # Expliciet String() (niet de type_annotation_map str -> Text): migratie 0077 legde deze vier
+    # kolommen als VARCHAR aan; zonder deze pin meldde `alembic check` een schijn-drift
+    # (VARCHAR vs Text) en was het signaal onbruikbaar (werkstroom-run 27/28-08, punt 6b — zelfde
+    # patroon als AiKostenLog.model/bron in app/db/models.py). Geen migratie: type-neutraal in Postgres.
+    factuur_pdf_status: Mapped[str | None] = mapped_column(String(), default=None)
+    factuur_pdf_reden: Mapped[str | None] = mapped_column(String(), default=None)
+    factuur_pdf_bestandsnaam: Mapped[str | None] = mapped_column(String(), default=None)
+    factuur_pdf_opslag_pad: Mapped[str | None] = mapped_column(String(), default=None)
     factuur_pdf_op: Mapped[datetime | None] = mapped_column(default=None)

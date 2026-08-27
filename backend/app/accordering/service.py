@@ -54,6 +54,7 @@ from app.documenten import boeken as boeken_service
 from app.documenten.models import (
     Boekvoorstel,
     Document,
+    DocumentGebeurtenis,
     DocumentStatus,
     Vraag,
     VraagStatus,
@@ -142,6 +143,15 @@ class AkkoordResultaat:
     geboekt: bool
     boek_fout: str | None
     staande_regel_id: uuid.UUID | None
+
+
+def _gebruikersnamen_publiek(ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """Namen voor een lijst gebruiker-id's zonder administratie-scope (platform.gebruiker is niet
+    RLS-gescoped op administratie) — voor de vervallen-melding."""
+    if not ids:
+        return {}
+    with scoped_session(None) as session:
+        return _gebruikersnamen(session, ids)
 
 
 def _gebruikersnamen(session: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -257,10 +267,19 @@ def instellingen_opslaan(
     actor_rol: str,
     ingeschakeld: bool,
     lagen: list[LaagInput],
-) -> None:
+) -> int:
     """Beheerder-only (router-dependency) + nooit door een accordeur. Lagen zijn append-only:
     de bestaande actieve lagen worden gedeactiveerd, de nieuwe set aangemaakt. Aanzetten zonder
-    lagen is geweigerd (een toggle zonder schema zou elke boeking stil blokkeren)."""
+    lagen is geweigerd (een toggle zonder schema zou elke boeking stil blokkeren).
+
+    Lopende rondes (werkstroom-run 27/28-08, punt 2a): een OPEN ronde draagt de stappen die op het
+    aanbied-moment uit de tóén actieve lagen bevroren zijn. Wijzigt het effectieve schema (andere
+    lagen/accordeurs/drempels, of de toggle gaat uit), dan kloppen die stappen niet meer — de
+    ronde VERVALT expliciet (status `vervallen`, document terug naar klaar_om_te_boeken, tijdlijn
+    mét reden `VERVALLEN_REDEN` + batch-id voor de werkvoorraad-melding, audit per ronde). Niets
+    verdwijnt stil; opnieuw aanbieden is de weg (los of via de bulk-actie op de documentenlijst).
+    Een opslag die het schema niet verandert (bv. alleen opnieuw opslaan) raakt geen ronde.
+    Geeft het aantal vervallen rondes terug."""
     _vereis_kantoor(actor_rol)
     if ingeschakeld and not lagen:
         raise GeenLagenIngesteld("Accordering aanzetten vereist minstens één accorderingslaag")
@@ -268,6 +287,7 @@ def instellingen_opslaan(
     if len(volgnummers) != len(set(volgnummers)):
         raise OngeldigeAanbieding("Volgnummers van de lagen moeten uniek zijn")
 
+    vervallen = 0
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         bestaande = list(
             session.scalars(
@@ -276,11 +296,18 @@ def instellingen_opslaan(
                 )
             )
         )
+        administratie_vooraf = session.get(Administratie, administratie_id)
+        was_ingeschakeld = bool(administratie_vooraf and administratie_vooraf.accordering_ingeschakeld)
+        schema_gewijzigd = _schema_gewijzigd(bestaande, lagen) or (was_ingeschakeld and not ingeschakeld)
         nu = datetime.now(UTC)
         for laag in bestaande:
             laag.actief = False
             laag.gedeactiveerd_door = actor_id
             laag.gedeactiveerd_op = nu
+        if schema_gewijzigd:
+            vervallen = _laat_open_rondes_vervallen(
+                session, administratie_id=administratie_id, actor_id=actor_id, nu=nu
+            )
         for invoer in lagen:
             session.add(
                 AccorderingLaag(
@@ -312,6 +339,7 @@ def instellingen_opslaan(
                     }
                     for laag in lagen
                 ],
+                "rondes_vervallen": vervallen,
             },
             administratie_id=administratie_id,
         )
@@ -336,6 +364,136 @@ def instellingen_opslaan(
             oude_waarde={"accordering_ingeschakeld": oud},
             nieuwe_waarde={"accordering_ingeschakeld": ingeschakeld},
         )
+    return vervallen
+
+
+# Reden op de tijdlijnregel van een vervallen ronde (punt 2a, casus 34 facturen 27-08): letterlijk
+# zichtbaar in het controlescherm én in de werkvoorraad-melding — dit was eerder een raadsel.
+VERVALLEN_REDEN = "accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist"
+# Vensterbreedte van de werkvoorraad-melding: een vervallen-batch ouder dan dit wordt niet meer
+# gemeld (de tijdlijn per document blijft de bron, altijd).
+VERVALLEN_MELDING_DAGEN = 14
+
+
+def _schema_gewijzigd(bestaande: list[AccorderingLaag], nieuw: list[LaagInput]) -> bool:
+    """Effectieve vergelijking van het lagen-schema — volgorde-onafhankelijk, drempel op waarde
+    (Decimal('1000') == Decimal('1000.00'))."""
+    oud_set = {(b.volgnummer, b.accordeur_gebruiker_id, b.bedrag_drempel) for b in bestaande}
+    nieuw_set = {(n.volgnummer, n.accordeur_gebruiker_id, n.bedrag_drempel) for n in nieuw}
+    return oud_set != nieuw_set
+
+
+def _laat_open_rondes_vervallen(
+    session: Session, *, administratie_id: uuid.UUID, actor_id: uuid.UUID, nu: datetime
+) -> int:
+    """Alle OPEN rondes van de administratie → `vervallen`; document → klaar_om_te_boeken mét
+    tijdlijn-detail (reden + batch_id) en audit per ronde. Eén batch_id per configuratiewijziging
+    zodat de werkvoorraad-melding de wijziging als één gebeurtenis kan tonen."""
+    open_rondes = list(
+        session.scalars(
+            select(DocumentAccordering).where(
+                DocumentAccordering.administratie_id == administratie_id,
+                DocumentAccordering.status == AccorderingStatus.OPEN.value,
+            )
+        )
+    )
+    if not open_rondes:
+        return 0
+    batch_id = uuid.uuid4()
+    for accordering in open_rondes:
+        accordering.status = AccorderingStatus.VERVALLEN.value
+        accordering.afgerond_op = nu
+        document = session.get(Document, accordering.document_id)
+        if document is None:  # pragma: no cover — FK maakt dit onmogelijk
+            continue
+        _schrijf_overgang(
+            session,
+            document=document,
+            naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            actor_id=actor_id,
+            detail={
+                "accordering_id": str(accordering.id),
+                "accordering_vervallen": True,
+                "reden": VERVALLEN_REDEN,
+                "batch_id": str(batch_id),
+            },
+        )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="document_accordering",
+            record_id=accordering.id,
+            actie="accordering_vervallen",
+            correlatie_id=batch_id,
+            oude_waarde={"status": AccorderingStatus.OPEN.value},
+            nieuwe_waarde={
+                "status": AccorderingStatus.VERVALLEN.value,
+                "document_id": str(accordering.document_id),
+                "reden": VERVALLEN_REDEN,
+            },
+            administratie_id=administratie_id,
+        )
+    return len(open_rondes)
+
+
+@dataclass(frozen=True)
+class VervallenMelding:
+    """Eén configuratiewijziging die rondes liet vervallen (punt 2a): voedt de eenmalige
+    werkvoorraad-banner op de documentenlijst van de administratie."""
+
+    batch_id: uuid.UUID
+    tijdstip: datetime
+    door_gebruiker_id: uuid.UUID
+    aantal: int
+    # Documenten uit de batch die nu nog op klaar_om_te_boeken staan (= nog niet opnieuw
+    # aangeboden/geboekt): 0 → melding is vanzelf klaar.
+    nog_niet_opnieuw_aangeboden: int
+
+
+def vervallen_meldingen(*, administratie_id: uuid.UUID) -> list[VervallenMelding]:
+    """Vervallen-batches van de afgelopen VERVALLEN_MELDING_DAGEN, nieuwste eerst. Bron = de
+    tijdlijn (document_gebeurtenis met detail.accordering_vervallen), geen extra tabel."""
+    from datetime import timedelta
+
+    from sqlalchemy import Text, cast, func
+
+    grens = datetime.now(UTC) - timedelta(days=VERVALLEN_MELDING_DAGEN)
+    # Eén expressie-object voor select én group_by: zo krijgt Postgres dezelfde bind-parameter en
+    # geen "must appear in the GROUP BY"-fout.
+    batch_expr = DocumentGebeurtenis.detail["batch_id"].astext
+    with scoped_session(administratie_id) as session:
+        rijen = session.execute(
+            select(
+                batch_expr.label("batch_id"),
+                func.min(DocumentGebeurtenis.tijdstip).label("tijdstip"),
+                # min() bestaat niet voor uuid in Postgres — via tekst (één actor per batch).
+                func.min(cast(DocumentGebeurtenis.actor_id, Text)).label("actor_id"),
+                func.count().label("aantal"),
+                func.count().filter(Document.status == DocumentStatus.KLAAR_OM_TE_BOEKEN).label("nog_open"),
+            )
+            .join(Document, Document.id == DocumentGebeurtenis.document_id)
+            .where(
+                Document.administratie_id == administratie_id,
+                DocumentGebeurtenis.tijdstip >= grens,
+                DocumentGebeurtenis.detail["accordering_vervallen"].astext == "true",
+                batch_expr.isnot(None),
+            )
+            .group_by(batch_expr)
+            .order_by(func.min(DocumentGebeurtenis.tijdstip).desc())
+        ).all()
+        # Een document dat ná het vervallen wél opnieuw is aangeboden en daarna wéér vervallen
+        # is, telt in beide batches — bewust: elke wijziging is een eigen gebeurtenis.
+        return [
+            VervallenMelding(
+                batch_id=uuid.UUID(r.batch_id),
+                tijdstip=r.tijdstip,
+                door_gebruiker_id=uuid.UUID(r.actor_id),
+                aantal=int(r.aantal),
+                nog_niet_opnieuw_aangeboden=int(r.nog_open),
+            )
+            for r in rijen
+        ]
 
 
 # --- aanbieden -----------------------------------------------------------------------------------
@@ -506,6 +664,103 @@ def bied_ter_accordering_aan(
     return _pas_staande_regels_toe_en_rond_af(
         administratie_id=administratie_id, accordering_id=accordering_id, document_id=document_id
     )
+
+
+@dataclass(frozen=True)
+class BulkAanbiedResultaat:
+    """Uitkomst per document van de bulk-actie "Ter accordering aanbieden" (punt 2b):
+    `aangeboden` (ronde open), `geboekt` (staande goedkeuringen dekten alles → direct geboekt),
+    `overgeslagen` (poort weigerde — reden in leesbare taal, nooit stil)."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str | None
+    uitkomst: str
+    reden: str | None
+    boek_fout: str | None = None
+
+
+def bulk_aanbieden(
+    *,
+    administratie_id: uuid.UUID,
+    document_ids: list[uuid.UUID],
+    actor_id: uuid.UUID,
+    actor_rol: str,
+) -> list[BulkAanbiedResultaat]:
+    """Bulk "Ter accordering aanbieden" vanaf de documentenlijst (werkstroom-run 27/28-08, punt 2b —
+    herstelroute ná vervallen rondes). Exact dezelfde poorten als de losse knop: per document
+    `bied_ter_accordering_aan` in zijn eigen transactie(s); een geweigerd document wordt
+    overgeslagen mét de reden en blokkeert de rest niet. Bevestigingsvlaggen (match-/materiaal-
+    afwijking) worden hier bewust NIET gezet — zo'n document valt op "overgeslagen" en vraagt de
+    expliciete kantoor-bevestiging op het controlescherm. Volgorde = aangeleverde volgorde;
+    dubbele id's één keer."""
+    _vereis_kantoor(actor_rol)
+    from app.materiaal.match import MateriaalAfwijkingBevestigingVereist
+
+    namen: dict[uuid.UUID, str] = {}
+    with scoped_session(administratie_id) as session:
+        for rij in session.execute(select(Document.id, Document.bestandsnaam).where(Document.id.in_(document_ids))):
+            namen[rij.id] = rij.bestandsnaam
+
+    resultaten: list[BulkAanbiedResultaat] = []
+    gezien: set[uuid.UUID] = set()
+    for document_id in document_ids:
+        if document_id in gezien:
+            continue
+        gezien.add(document_id)
+        naam = namen.get(document_id)
+        try:
+            uitkomst = bied_ter_accordering_aan(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=actor_id,
+                actor_rol=actor_rol,
+            )
+        except DocumentNietGevonden:
+            resultaten.append(
+                BulkAanbiedResultaat(document_id, naam, "overgeslagen", "Document niet gevonden in deze administratie")
+            )
+        except ChecksNietGroen as exc:
+            rood = [r.melding for r in exc.rapport.resultaten if not r.ok]
+            resultaten.append(
+                BulkAanbiedResultaat(
+                    document_id, naam, "overgeslagen", "Harde checks niet groen: " + ("; ".join(rood) or "geblokkeerd")
+                )
+            )
+        except boeken_service.MatchAfwijkingBevestigingVereist:
+            resultaten.append(
+                BulkAanbiedResultaat(
+                    document_id,
+                    naam,
+                    "overgeslagen",
+                    "Urenmatch wijkt af — bevestig dit expliciet op het controlescherm",
+                )
+            )
+        except MateriaalAfwijkingBevestigingVereist:
+            resultaten.append(
+                BulkAanbiedResultaat(
+                    document_id,
+                    naam,
+                    "overgeslagen",
+                    "Materiaalmatch wijkt af — bevestig dit expliciet op het controlescherm",
+                )
+            )
+        except boeken_service.OngeldigeBoekpoging as exc:
+            resultaten.append(BulkAanbiedResultaat(document_id, naam, "overgeslagen", str(exc)))
+        except KantoorActieVereist:
+            raise
+        except AccorderingFout as exc:
+            resultaten.append(BulkAanbiedResultaat(document_id, naam, "overgeslagen", str(exc)))
+        else:
+            resultaten.append(
+                BulkAanbiedResultaat(
+                    document_id,
+                    naam,
+                    "geboekt" if uitkomst.geboekt else "aangeboden",
+                    None,
+                    boek_fout=uitkomst.boek_fout,
+                )
+            )
+    return resultaten
 
 
 def _pas_staande_regels_toe_en_rond_af(
@@ -1266,13 +1521,17 @@ def aan_de_beurt_per_document(session: Session, document_ids: list[uuid.UUID]) -
         volgende = _eerstvolgende_open_stap(per_ronde.get(ronde.id, []))
         if volgende is not None:
             volgende_per_document[ronde.document_id] = volgende
-    namen = dict(
-        session.execute(
-            select(Gebruiker.id, Gebruiker.naam).where(
-                Gebruiker.id.in_({s.accordeur_gebruiker_id for s in volgende_per_document.values()})
-            )
-        ).all()
-    ) if volgende_per_document else {}
+    namen = (
+        dict(
+            session.execute(
+                select(Gebruiker.id, Gebruiker.naam).where(
+                    Gebruiker.id.in_({s.accordeur_gebruiker_id for s in volgende_per_document.values()})
+                )
+            ).all()
+        )
+        if volgende_per_document
+        else {}
+    )
     return {
         document_id: AanDeBeurt(
             gebruiker_id=stap.accordeur_gebruiker_id,

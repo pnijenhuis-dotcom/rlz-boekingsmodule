@@ -56,7 +56,7 @@ from app.documenten.service import (
 )
 from app.documenten.storage import DocumentOpslag
 from app.documenten.wachtrij import ExtractieWachtrij
-from app.intake.toewijzing import corrigeer_toewijzing_na_verplaatsing
+from app.intake.toewijzing import corrigeer_toewijzing_na_verplaatsing, leer_toewijzing
 
 
 class VerplaatsenNietToegestaan(Exception):
@@ -129,6 +129,7 @@ class VerplaatsResultaat:
     leerregels_gecorrigeerd: tuple[str, ...]
     vragen_verhuisd: int
     vragen_hertoegewezen: int
+    tenaamstelling_geleerd: bool = False
 
 
 def _heeft_scope(session: Session, *, gebruiker_id: uuid.UUID, administratie_id: uuid.UUID) -> bool:
@@ -204,6 +205,7 @@ def verplaats_document(
     actor_rol: GebruikerRol,
     opslag: DocumentOpslag | None = None,
     wachtrij: ExtractieWachtrij | None = None,
+    onthoud_tenaamstelling: bool = False,
 ) -> VerplaatsResultaat:
     if doel_administratie_id == administratie_id:
         raise VerplaatsenNietToegestaan(
@@ -284,6 +286,21 @@ def verplaats_document(
             tenaamstelling=document.tenaamstelling,
             afzender=document.afzender_hint,
         )
+        # Punt 6a (werkstroom-run 27/28-08): op expliciet verzoek ("onthoud: deze tenaamstelling
+        # hoort bij <doel>", default UIT) leert het geheugen een tenaamstelling-regel naar het doel —
+        # de vulling voor het register-match-gat (toewijzing zonder leer-regel). Alleen de
+        # tenaamstelling, nooit de afzender (die is een hint, geen bewijs); is de regel net al door
+        # de correctie hierboven gezet, dan is leer_toewijzing een no-op.
+        tenaamstelling_geleerd = False
+        if onthoud_tenaamstelling and document.tenaamstelling:
+            leer_toewijzing(
+                session,
+                administratie_id=doel_administratie_id,
+                actor_id=actor_id,
+                tenaamstelling=document.tenaamstelling,
+                afzender=None,
+            )
+            tenaamstelling_geleerd = True
 
         # --- 4. tijdlijn + status → ontvangen (statusmachine) -------------------------------------
         detail: dict = {
@@ -304,6 +321,8 @@ def verplaats_document(
             detail["doorbelasting_runs_vervallen"] = runs_vervallen
         if gecorrigeerd:
             detail["leerregels_gecorrigeerd"] = list(gecorrigeerd)
+        if tenaamstelling_geleerd:
+            detail["tenaamstelling_geleerd"] = document.tenaamstelling
         _schrijf_overgang(session, document=document, naar=DocumentStatus.ONTVANGEN, actor_id=actor_id, detail=detail)
         session.flush()
 
@@ -411,4 +430,5 @@ def verplaats_document(
         leerregels_gecorrigeerd=gecorrigeerd,
         vragen_verhuisd=vragen_verhuisd,
         vragen_hertoegewezen=hertoegewezen,
+        tenaamstelling_geleerd=tenaamstelling_geleerd,
     )

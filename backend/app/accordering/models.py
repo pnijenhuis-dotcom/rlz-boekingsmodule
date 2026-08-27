@@ -24,12 +24,16 @@ class AccorderingStatus(enum.StrEnum):
     """OPEN = wacht op één of meer lagen; AFGEROND = alle vereiste lagen akkoord (document gaat
     door naar de boekmotor mét alle harde checks); AFGEWEZEN = een accordeur wees af met
     verplichte reden (document → afgewezen, zichtbaar in de werkvoorraad); INGETROKKEN = het
-    kantoor haalde het document terug uit de accordering."""
+    kantoor haalde het document terug uit de accordering; VERVALLEN = de ronde is door het
+    systeem beëindigd omdat de accorderingsconfiguratie (lagen/toggle) van de administratie
+    wijzigde — de bevroren stappen kloppen dan niet meer, het document gaat terug naar
+    klaar_om_te_boeken en moet opnieuw aangeboden worden (werkstroom-run 27/28-08, punt 2a)."""
 
     OPEN = "open"
     AFGEROND = "afgerond"
     AFGEWEZEN = "afgewezen"
     INGETROKKEN = "ingetrokken"
+    VERVALLEN = "vervallen"
 
 
 class StapBesluit(enum.StrEnum):

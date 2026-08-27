@@ -562,3 +562,63 @@ class TestHttp:
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
         assert resp.status_code == 403
+
+
+class TestOnthoudTenaamstelling:
+    """Punt 6a (werkstroom-run 27/28-08): optionele checkbox in de verplaats-modal — géén automatische
+    leer-regel; alleen op expliciet verzoek leert het geheugen de tenaamstelling naar het doel."""
+
+    def test_default_uit_leert_niets(
+        self, administratie_id: uuid.UUID, doel_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        document_id = _upload(
+            administratie_id, gescoopte_gebruiker
+        )  # toewijzing zónder leer-regel (register-match-gat)
+        resultaat = verplaatsen.verplaats_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            doel_administratie_id=doel_id,
+            actor_id=gescoopte_gebruiker,
+            actor_rol=GebruikerRol.BOEKHOUDING,
+        )
+        assert resultaat.leerregels_gecorrigeerd == ()
+        assert resultaat.tenaamstelling_geleerd is False
+        assert _actieve_regels(admin_engine) == set()
+
+    def test_onthoud_leert_alleen_de_tenaamstelling_naar_het_doel(
+        self, administratie_id: uuid.UUID, doel_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        document_id = _upload(administratie_id, gescoopte_gebruiker)
+        resultaat = verplaatsen.verplaats_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            doel_administratie_id=doel_id,
+            actor_id=gescoopte_gebruiker,
+            actor_rol=GebruikerRol.BOEKHOUDING,
+            onthoud_tenaamstelling=True,
+        )
+        assert resultaat.tenaamstelling_geleerd is True
+        # Alleen tenaamstelling — de afzender is een hint, geen bewijs.
+        assert _actieve_regels(admin_engine) == {("tenaamstelling", doel_id)}
+        with scoped_session(None) as session:
+            besluit = bepaal_toewijzing(session, tenaamstelling=TENAAMSTELLING, afzender=None)
+        assert besluit.administratie_id == doel_id
+        detail = service.haal_document_op(administratie_id=doel_id, document_id=document_id)
+        verhuis = next(g for g in detail.gebeurtenissen if g.detail and "verplaatst" in g.detail)
+        assert verhuis.detail["tenaamstelling_geleerd"] == TENAAMSTELLING
+
+    def test_http_vlag_en_response(
+        self, administratie_id: uuid.UUID, doel_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        document_id = _upload(administratie_id, gescoopte_gebruiker)
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        detail = client.get(f"/administraties/{administratie_id}/documenten/{document_id}", headers=headers).json()
+        assert detail["tenaamstelling"] == TENAAMSTELLING  # voedt de checkbox-tekst in de modal
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/verplaats",
+            json={"doel_administratie_id": str(doel_id), "onthoud_tenaamstelling": True},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["tenaamstelling_geleerd"] is True
+        assert _actieve_regels(admin_engine) == {("tenaamstelling", doel_id)}

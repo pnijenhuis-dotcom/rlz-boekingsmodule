@@ -8,7 +8,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas_basis import StrikteInvoer
 
@@ -23,6 +23,9 @@ class LaagDto(BaseModel):
 class InstellingenResponse(BaseModel):
     ingeschakeld: bool
     lagen: list[LaagDto]
+    # Alleen gevuld op de PUT-response (punt 2a): aantal lopende rondes dat door déze wijziging
+    # verviel — de UI meldt het direct ("N accorderingen vervallen — opnieuw aanbieden").
+    rondes_vervallen: int = 0
 
 
 class LaagInputDto(StrikteInvoer):
@@ -88,6 +91,42 @@ class AanbiedenInput(StrikteInvoer):
 
     match_afwijking_bevestigd: bool = False
     materiaal_afwijking_bevestigd: bool = False
+
+
+class BulkAanbiedenInput(StrikteInvoer):
+    """Bulk "Ter accordering aanbieden" (werkstroom-run 27/28-08, punt 2b): selectie van de
+    documentenlijst. Begrensd — de UI biedt één lijstpagina aan, geen onbegrensde batch."""
+
+    document_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class BulkAanbiedResultaatDto(BaseModel):
+    document_id: uuid.UUID
+    bestandsnaam: str | None
+    # 'aangeboden' | 'geboekt' (staande goedkeuringen dekten alles) | 'overgeslagen'
+    uitkomst: str
+    reden: str | None = None
+    boek_fout: str | None = None
+
+
+class BulkAanbiedenResponse(BaseModel):
+    resultaten: list[BulkAanbiedResultaatDto]
+    aangeboden: int
+    geboekt: int
+    overgeslagen: int
+
+
+class VervallenMeldingDto(BaseModel):
+    """Eén configuratiewijziging die lopende rondes liet vervallen (punt 2a) — voedt de eenmalige
+    banner op de documentenlijst; `nog_niet_opnieuw_aangeboden` 0 = klaar."""
+
+    batch_id: uuid.UUID
+    tijdstip: datetime
+    door_gebruiker_id: uuid.UUID
+    door_naam: str | None = None
+    aantal: int
+    nog_niet_opnieuw_aangeboden: int
+    reden: str
 
 
 class AkkoordInput(StrikteInvoer):

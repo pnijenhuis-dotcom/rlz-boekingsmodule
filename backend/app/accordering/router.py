@@ -133,9 +133,10 @@ def instellingen_opslaan(
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.InstellingenResponse:
     """Beheerder-only, net als de andere administratie-toggles (rol- en schemabeheer =
-    Beheerder, CLAUDE.md-autorisatie)."""
+    Beheerder, CLAUDE.md-autorisatie). Wijzigt het effectieve schema, dan vervallen lopende
+    rondes (punt 2a) — het aantal reist mee terug zodat de UI het direct kan melden."""
     try:
-        service.instellingen_opslaan(
+        vervallen = service.instellingen_opslaan(
             administratie_id=administratie_id,
             actor_id=actor.id,
             actor_rol=actor.rol.value,
@@ -151,7 +152,75 @@ def instellingen_opslaan(
         )
     except service.AccorderingFout as exc:
         raise _vertaal(exc) from exc
-    return instellingen_ophalen(administratie_id, actor)
+    antwoord = instellingen_ophalen(administratie_id, actor)
+    return antwoord.model_copy(update={"rondes_vervallen": vervallen})
+
+
+@router.get(
+    "/administraties/{administratie_id}/accordering/vervallen-meldingen",
+    response_model=list[schemas.VervallenMeldingDto],
+)
+def vervallen_meldingen(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> list[schemas.VervallenMeldingDto]:
+    """Eenmalige werkvoorraad-melding (punt 2a): configuratiewijzigingen van de afgelopen
+    VERVALLEN_MELDING_DAGEN die lopende rondes lieten vervallen, nieuwste eerst — de UI toont een
+    banner op de documentenlijst zolang er documenten uit de batch nog niet opnieuw zijn
+    aangeboden (weggeklikt = per gebruiker onthouden, client-side)."""
+    meldingen = service.vervallen_meldingen(administratie_id=administratie_id)
+    namen = service._gebruikersnamen_publiek({m.door_gebruiker_id for m in meldingen})
+    return [
+        schemas.VervallenMeldingDto(
+            batch_id=m.batch_id,
+            tijdstip=m.tijdstip,
+            door_gebruiker_id=m.door_gebruiker_id,
+            door_naam=namen.get(m.door_gebruiker_id),
+            aantal=m.aantal,
+            nog_niet_opnieuw_aangeboden=m.nog_niet_opnieuw_aangeboden,
+            reden=service.VERVALLEN_REDEN,
+        )
+        for m in meldingen
+    ]
+
+
+@router.post(
+    "/administraties/{administratie_id}/accordering/documenten/bulk-aanbieden",
+    response_model=schemas.BulkAanbiedenResponse,
+)
+def bulk_aanbieden(
+    administratie_id: uuid.UUID,
+    invoer: schemas.BulkAanbiedenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.BulkAanbiedenResponse:
+    """Bulk "Ter accordering aanbieden" (punt 2b): zelfde poorten als de losse knop, per document;
+    geweigerde documenten komen terug als `overgeslagen` mét reden — nooit stil."""
+    try:
+        resultaten = service.bulk_aanbieden(
+            administratie_id=administratie_id,
+            document_ids=list(invoer.document_ids),
+            actor_id=actor.id,
+            actor_rol=actor.rol.value,
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.BulkAanbiedenResponse(
+        resultaten=[
+            schemas.BulkAanbiedResultaatDto(
+                document_id=r.document_id,
+                bestandsnaam=r.bestandsnaam,
+                uitkomst=r.uitkomst,
+                reden=r.reden,
+                boek_fout=r.boek_fout,
+            )
+            for r in resultaten
+        ],
+        aangeboden=sum(1 for r in resultaten if r.uitkomst == "aangeboden"),
+        geboekt=sum(1 for r in resultaten if r.uitkomst == "geboekt"),
+        overgeslagen=sum(1 for r in resultaten if r.uitkomst == "overgeslagen"),
+    )
 
 
 @router.get(
@@ -382,7 +451,11 @@ def _naar_accordeur_vraag(
         ik_ben_aan_de_beurt=data.aan_de_beurt == actor_id,
         berichten=[
             schemas.AccordeurVraagBerichtResponse(
-                id=b.id, auteur_id=b.auteur_id, van_mij=b.auteur_id == actor_id, tekst=b.tekst, geplaatst_op=b.geplaatst_op
+                id=b.id,
+                auteur_id=b.auteur_id,
+                van_mij=b.auteur_id == actor_id,
+                tekst=b.tekst,
+                geplaatst_op=b.geplaatst_op,
             )
             for b in data.berichten
         ],
@@ -391,7 +464,7 @@ def _naar_accordeur_vraag(
 
 @router.get("/accordering/vragen", response_model=schemas.VragenAanMijResponse)
 def vragen_aan_mij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.VragenAanMijResponse:
-    """"Vragen aan u" (blok B5 26-08, mockup accordeur-vragen.html): alle open vragen die expliciet
+    """ "Vragen aan u" (blok B5 26-08, mockup accordeur-vragen.html): alle open vragen die expliciet
     aan de ingelogde accordeur gericht zijn — óók over al goedgekeurde/geboekte facturen. Vragen
     op een document dat nu in zijn wachtrij staat reizen mee op de wachtrij-kaart; de app toont
     ze op één plek. Zelfde poorten als de wachtrij (accordeur-rol + voorwaarden-akkoord)."""

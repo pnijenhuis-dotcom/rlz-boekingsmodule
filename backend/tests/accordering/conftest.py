@@ -54,6 +54,17 @@ def klaar_document(
 ) -> uuid.UUID:
     """Boekklaar inkoopfactuur-document (€ 121,00, vaste vendor mét cache-naam) — status
     klaar_om_te_boeken via de normale service-route."""
+    return maak_klaar_document(gescoopte_gebruiker, administratie_id, admin_engine, opslag)
+
+
+def maak_klaar_document(
+    gescoopte_gebruiker: uuid.UUID,  # noqa: F811
+    administratie_id: uuid.UUID,  # noqa: F811
+    admin_engine: Engine,
+    opslag: LokaleBestandsopslag,  # noqa: F811
+    naam: str = "factuur.pdf",
+) -> uuid.UUID:
+    """Zelfde als de fixture, aanroepbaar voor meerdere documenten in één test (bulk, punt 2b)."""
     with admin_engine.begin() as conn:
         conn.execute(
             text(
@@ -64,8 +75,8 @@ def klaar_document(
         )
     resultaat = documenten_service.upload_document(
         administratie_id=administratie_id,
-        bestandsnaam="factuur.pdf",
-        inhoud=b"%PDF-1.4 testfactuur",
+        bestandsnaam=naam,
+        inhoud=f"%PDF-1.4 testfactuur {naam}".encode(),
         actor_id=gescoopte_gebruiker,
         opslag=opslag,
     )
@@ -115,8 +126,8 @@ def zet_schema(
     beheerder_id: uuid.UUID,  # noqa: F811
     lagen: list[accordering_service.LaagInput],
     ingeschakeld: bool = True,
-) -> None:
-    accordering_service.instellingen_opslaan(
+) -> int:
+    return accordering_service.instellingen_opslaan(
         administratie_id=administratie_id,
         actor_id=beheerder_id,
         actor_rol="beheerder",

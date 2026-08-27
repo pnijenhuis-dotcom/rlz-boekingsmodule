@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 from app.schemas_basis import StrikteInvoer
 
@@ -45,10 +45,20 @@ class DocumentUploadResponse(BaseModel):
 
 
 class VerwijderenInput(StrikteInvoer):
-    """Design-pass taak 4: de reden is optioneel (bevestigingsdialoog laat 'm leeg toe), maar
-    wordt hoe dan ook in de tijdlijn/audit_event vastgelegd."""
+    """Reden VERPLICHT (werkstroom-run 27/28-08, punt 4 — herziet design-pass taak 4 "optioneel"):
+    verwijderen zit sindsdien achter het ⋯-rijmenu mét bevestiging en volgt het afwijs-patroon
+    (verplichte reden), zodat een zware actie nooit meer op één onbeschermde klik gebeurt. De reden
+    landt in tijdlijn + audit_event. De servicelaag blijft reden=None toestaan voor interne
+    aanroepers; de HTTP-poort niet."""
 
-    reden: str | None = None
+    reden: str = Field(min_length=1, max_length=500)
+
+    @field_validator("reden")
+    @classmethod
+    def _reden_niet_leeg(cls, waarde: str) -> str:
+        if not waarde.strip():
+            raise ValueError("Een reden is verplicht bij verwijderen")
+        return waarde.strip()
 
 
 class DocumentActieResponse(BaseModel):
@@ -324,6 +334,9 @@ class DocumentDetailResponse(BaseModel):
     herkomst_mail: HerkomstMailDto | None = None
     # Aangeleverd origineel als het document een omgezette afbeelding is (punt 2, migratie 0070).
     bron_bestandsnaam: str | None = None
+    # Gelezen tenaamstelling uit de intake (verzamelbak-sleutel) — voedt de "onthoud"-optie in de
+    # verplaats-modal (punt 6a); None bij directe uploads zonder tenaamstelling.
+    tenaamstelling: str | None = None
     tijdlijn: list[DocumentGebeurtenisResponse]
 
 
@@ -615,6 +628,10 @@ class VerplaatsInput(StrikteInvoer):
     en staat volledig in tijdlijn + audit)."""
 
     doel_administratie_id: uuid.UUID
+    # Punt 6a (werkstroom-run 27/28-08): optioneel "onthoud: deze tenaamstelling hoort bij <doel>"
+    # — dicht het register-match-gat (toewijzing die uit de administratienaam-match kwam en dus geen
+    # leer-regel had). Default UIT; géén automatische leer-regel.
+    onthoud_tenaamstelling: bool = False
 
 
 class DocumentVerplaatsResponse(BaseModel):
@@ -629,3 +646,5 @@ class DocumentVerplaatsResponse(BaseModel):
     leerregels_gecorrigeerd: list[str]
     vragen_verhuisd: int
     vragen_hertoegewezen: int
+    # Punt 6a: True als op verzoek een tenaamstelling-regel naar het doel is geleerd.
+    tenaamstelling_geleerd: bool = False
