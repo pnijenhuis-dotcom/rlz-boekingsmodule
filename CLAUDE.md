@@ -194,6 +194,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   boekstuknummer) en opent automatisch het volgende te-verwerken document van dezelfde klant
   (zelfde soort eerst, dan de soort-tab-volgorde; `werkvoorraad/volgendDocument.ts`); stapel
   leeg → documentenlijst van de klant. Uitzondering: ter accordering mét `boek_fout` blijft staan.
+  **Lijstcontext reist mee (werkstroom-run 27/28-08, punt 1): soort-tab + status-filter + zoekterm
+  van de documentenlijst staan in de URL (`soort=/status=/q=`) en reizen mee naar het inkoop-
+  controlescherm — de doorloop blijft BINNEN het actieve filter (`kiesVolgendDocument(…, context)`),
+  de topbar toont ‹ › mét "n van m", Esc/"← Werkvoorraad" gaan terug mét filter; élke kolom-teller in
+  "Overzicht per klant" opent de lijst voorgefilterd; één filterbron `werkvoorraad/lijstContext.ts`.
+  Sneltoetsen (punt 5): B = actieve besluitknop, A = afwijzen, ←/→, Esc, ? = overzicht, / = zoekveld —
+  alleen buiten invoervelden/dialogen (`document/sneltoetsen.ts`). Onopgeslagen (debounce loopt) →
+  bevestiging vóór verlaten. BESLISSINGEN "WERKSTROOM- + UI-RUN 27/28-08".**
   **Actiebalk (Afwijzen / Vraag stellen / Ter accordering / Boeken, ± doorbelasten) staat sinds
   27-08 ÓNDER het blok "Doorbelasten na boeken"** (portal-anker `actiebalkDoel`, alleen volgorde
   — BESLISSINGEN "VERZAMELRUN 27-08" punt 4). **Boekingsregels-tabel: kolomminima in px uit één bron
@@ -326,7 +334,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   opnieuw achter de gates van het dóél; open vragen verhuizen mee; het toewijzings-geheugen
   corrigeert de regel die naar de oude administratie wees; RLS-doorbraak uitsluitend via de
   zelf-gepoorte SECURITY DEFINER-functie `boekhouding.verplaats_document` (bron-scope + status
-  ontvangen). `app/documenten/verplaatsen.py`; BESLISSINGEN "KANTOOR-MINI-RUN 27-08" punt 5.**
+  ontvangen). `app/documenten/verplaatsen.py`; BESLISSINGEN "KANTOOR-MINI-RUN 27-08" punt 5.
+  Optionele checkbox "onthoud: deze tenaamstelling hoort bij <doel>" (default UIT, alleen de
+  tenaamstelling, géén automatische leer-regel — werkstroom-run 27/28-08 punt 6a).**
+  **Documentenlijst (werkstroom-run 27/28-08, punt 3/4): leverancier = vette hoofdregel, bestandsnaam ·
+  bron · binnenkomst = metaregel; dichtheid normaal/compact per gebruiker (localStorage, geen
+  migratie); status-dot "Geboekt" = `--ok`-groen (pil-chip blijft grijs); uploadzone één regel + ⓘ;
+  verwijderen uitsluitend via het ⋯-rijmenu mét bevestiging en VERPLICHTE reden (server 422 zonder).**
   Eigen naamnormalisatie: "Holding" blijft onderscheidend
   (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
   tenaamstelling-signaal.
@@ -602,7 +616,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   regel-splitsing zonder doorbelasting = parkeerpost.
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
-  akkoord automatisch boeken (harde checks draaien opnieuw). Klant-app = PWA + store-apps
+  akkoord automatisch boeken (harde checks draaien opnieuw). **Configuratiewijziging (lagen/toggle)
+  laat lopende rondes expliciet VERVALLEN (werkstroom-run 27/28-08 punt 2a, casus 34 facturen):
+  status `vervallen`, document terug naar klaar_om_te_boeken, tijdlijn mét reden
+  "accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist" + batch-id, eenmalige banner op de
+  documentenlijst (`GET …/accordering/vervallen-meldingen`); herstelroute = bulk "Ter accordering
+  aanbieden" op de tab Klaar om te boeken (`POST …/accordering/documenten/bulk-aanbieden`, zelfde
+  poorten per document, overgeslagen mét reden — punt 2b).** Klant-app = PWA + store-apps
   (besluit Peter 2026-08-14: de accordeur-app wordt óók uitgebracht als native App Store- én
   Google Play-app; de gebouwde PWA/webcode is de basis via een native schil, bv. Capacitor —
   PWA blijft interim + terugval; aandachtspunten native passkey-integratie (WebAuthn in een
