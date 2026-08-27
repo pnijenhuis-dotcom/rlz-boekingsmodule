@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
+import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 const DOCUMENT_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -1087,5 +1088,83 @@ describe('BoekvoorstelPanel — btw uit de scan (feedbackronde 26-08 punt 3)', (
     await waitFor(() => expect(screen.getAllByLabelText('Btw-code', { exact: false })[0]).toHaveValue(''))
     expect(screen.getByText(/factuur vermeldt “btw verlegd” — kies de verlegd-code/)).toHaveClass('chip', 'vraag')
     expect(screen.queryByText(/uit factuur/)).toBeNull()
+  })
+})
+
+describe('BoekvoorstelPanel — kolombreedtes boekingsregels (addendum 27-08 punt 4, tabel-implosie)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: () => `local-${Math.random()}` })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function renderPaneel() {
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+  }
+
+  it('zonder projectplicht: elke <col> heeft een absolute px-breedte (geen procenten), de omschrijving is de rest-kolom en de tabel-min-width is de som van de minima', async () => {
+    installFetchMock({ projectVerplicht: false })
+    renderPaneel()
+    await waitFor(() => expect(screen.getByText('Harde checks')).toBeInTheDocument())
+    const tabel = screen.getByTestId('boekingsregels-tabel')
+    expect(tabel.style.minWidth).toBe(`${minimaleTabelbreedte(false)}px`)
+    expect(tabel.classList.contains('met-project')).toBe(false)
+    const cols = Array.from(tabel.querySelectorAll('colgroup > col')) as HTMLTableColElement[]
+    expect(cols).toHaveLength(6)
+    const breedtes = cols.map((c) => c.style.width)
+    expect(breedtes).toEqual([
+      `${KOLOM_PX.grootboek}px`,
+      `${KOLOM_PX.btw}px`,
+      `${KOLOM_PX.netto}px`,
+      `${KOLOM_PX.btwBedrag}px`,
+      '', // omschrijving = rest-kolom, ondergrens zit in de tabel-min-width
+      `${KOLOM_PX.verwijder}px`,
+    ])
+    expect(breedtes.some((b) => b.endsWith('%'))).toBe(false)
+  })
+
+  it('met projectplicht: de extra Project-kolom verhoogt de tabel-min-width met exact haar minimum — de omschrijving krimpt niet', async () => {
+    installFetchMock({ projectVerplicht: true, projecten: [{ id: 'ffffffff-0000-0000-0000-000000000006', naam: 'P-001 Testproject' }] })
+    renderPaneel()
+    await waitFor(() => expect(screen.getByText('Project')).toBeInTheDocument())
+    const tabel = screen.getByTestId('boekingsregels-tabel')
+    expect(tabel.classList.contains('met-project')).toBe(true)
+    expect(tabel.style.minWidth).toBe(`${minimaleTabelbreedte(true)}px`)
+    expect(minimaleTabelbreedte(true) - minimaleTabelbreedte(false)).toBe(KOLOM_PX.project)
+    const cols = Array.from(tabel.querySelectorAll('colgroup > col')) as HTMLTableColElement[]
+    expect(cols).toHaveLength(7)
+    expect(cols[2].style.width).toBe(`${KOLOM_PX.project}px`)
+  })
+
+  it('de omschrijving-cel draagt de klasse die op woordgrenzen wrapt (CSS-kant in styles/boekingsregelsCss.test.ts)', async () => {
+    installFetchMock({
+      boekvoorstel: {
+        ...LEEG_BOEKVOORSTEL,
+        regels_samenvoegen: false,
+        regels: [
+          {
+            volgnummer: 1,
+            ledger_id: LEDGER_ID,
+            taxrate_id: TAXRATE_ID,
+            project_id: null,
+            netto_bedrag: '100.00',
+            btw_bedrag: '21.00',
+            omschrijving: 'Steigerhuur week 27 — trappentoren 26014 Amersfoort (Universal)',
+          },
+        ],
+      },
+    })
+    renderPaneel()
+    const veld = await screen.findByLabelText('Omschrijving')
+    expect(veld.closest('td')?.classList.contains('omschrijving')).toBe(true)
   })
 })

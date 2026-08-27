@@ -13,7 +13,7 @@ set -u
 POORT="${POORT:-5199}"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 BASIS="http://localhost:${POORT}"
-HARNASSEN=(harness.html harness-werkvoorraad.html "harness-werkvoorraad.html?klant=1" harness-gebruikers.html harness-instellingen.html)
+HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?klant=1" harness-gebruikers.html harness-instellingen.html)
 BREEDTES=(1440 1170 1024 768)
 
 if [ ! -x "$CHROME" ]; then

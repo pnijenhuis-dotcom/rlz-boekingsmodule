@@ -31,6 +31,7 @@ import { MateriaalAfwijkingPopup } from '../ui/MateriaalAfwijkingPopup'
 import type { MateriaalmatchDto } from '../planning/transportApi'
 import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
+import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
@@ -1175,19 +1176,25 @@ export function BoekvoorstelPanel({
           </div>
         )}
         <div className="tabel-scroll">
-        <table className="lines boekingsregels-tabel">
+        <table
+          className={`lines boekingsregels-tabel${projectVerplicht ? ' met-project' : ''}`}
+          // Addendum 27-08 punt 4: minimumbreedte = som van de kolomminima (boekingsregelsKolommen.ts)
+          // — te smal paneel = horizontale scroll bínnen .tabel-scroll, nooit kolom-implosie.
+          style={{ minWidth: minimaleTabelbreedte(projectVerplicht) }}
+          data-testid="boekingsregels-tabel"
+        >
           <colgroup>
-            {/* Bedragen houden vaste, ruime kolommen (geld moet altijd volledig leesbaar zijn —
-                104px past "123.456,78" incl. input- en celpadding); de zoek-comboboxen mogen
-                smaller — die tonen hun keuze desnoods afgekort en zijn in de listbox alsnog
-                volledig leesbaar. Omschrijving krijgt de rest. */}
-            <col style={{ width: '22%' }} />
-            <col style={{ width: '17%' }} />
-            {projectVerplicht && <col style={{ width: '14%' }} />}
-            <col style={{ width: 104 }} />
-            <col style={{ width: 104 }} />
+            {/* Absolute minima per kolom (één bron: boekingsregelsKolommen.ts). Bedragen ruim
+                (geld altijd volledig leesbaar); de zoek-comboboxen tonen hun keuze desnoods
+                afgekort en zijn in de listbox (≥ 280 px) alsnog volledig leesbaar. Omschrijving
+                krijgt de rest boven haar eigen ondergrens en wrapt op woordgrenzen. */}
+            <col style={{ width: KOLOM_PX.grootboek }} />
+            <col style={{ width: KOLOM_PX.btw }} />
+            {projectVerplicht && <col style={{ width: KOLOM_PX.project }} />}
+            <col style={{ width: KOLOM_PX.netto }} />
+            <col style={{ width: KOLOM_PX.btwBedrag }} />
             <col />
-            <col style={{ width: 30 }} />
+            <col style={{ width: KOLOM_PX.verwijder }} />
           </colgroup>
           <tbody>
             <tr>
@@ -1358,7 +1365,7 @@ export function BoekvoorstelPanel({
                     </>
                   )}
                 </td>
-                <td>
+                <td className="omschrijving">
                   {isReadOnly ? (
                     regel.omschrijving || '—'
                   ) : (

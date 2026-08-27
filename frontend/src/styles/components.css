@@ -596,10 +596,23 @@ tr.subrij .eerste-sync-rij ul {
   }
 }
 
+/* Addendum kantoor-run 27-08 punt 4 (screenshot Peter, ARVUM/Port of Rotterdam): de min-width
+ * staat NIET meer hier — één vaste 560 px drukte in een smal paneel de rest-kolom (omschrijving)
+ * kapot tot ~26 px, waarna `overflow-wrap: anywhere` per LETTER brak. De tabel krijgt haar
+ * min-width inline uit boekingsregelsKolommen.ts (som van de kolomminima; `<col>`-breedtes in
+ * px), zodat een te smal paneel horizontaal scrollt bínnen .tabel-scroll. Bewaakt door
+ * styles/boekingsregelsCss.test.ts + document/boekingsregelsKolommen.test.ts. */
 .boekingsregels-tabel {
   table-layout: fixed;
   width: 100%;
-  min-width: 560px;
+}
+
+/* Omschrijving wrapt op WOORDgrenzen — nooit per letter. `break-word` breekt uitsluitend één
+ * onafbreekbaar token dat langer is dan de hele kolom (≥ 168 px); gewone tekst blijft heel. Wint
+ * van de generieke `.lines td { overflow-wrap: anywhere }` (specifieker). */
+.boekingsregels-tabel td.omschrijving {
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .boekingsregels-tabel input,
@@ -1122,8 +1135,10 @@ tr.subrij .eerste-sync-rij ul {
   display: block;
   width: 100%;
   /* Regelrij-UI 25-08: groeit mee met de inhoud (hoogte via scrollHeight in het component);
-   * nooit meer afkappen na regel 2 ("Factuur 260988 — samengevoegd…"). */
-  overflow-wrap: anywhere;
+   * nooit meer afkappen na regel 2 ("Factuur 260988 — samengevoegd…"). Addendum 27-08 punt 4:
+   * op woordgrenzen wrappen — `anywhere` brak in een smalle kolom per letter. */
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 /* Verkoop-review "breed"-stand (blok C 2026-08-10): gestapeld i.p.v. naast elkaar — de
