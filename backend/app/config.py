@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # dus "ná 7 dagen inactiviteit = volledige login" volgt hier direct uit — actieve gebruikers
     # blijven ingelogd, een stilliggend apparaat valt na 7 dagen terug op wachtwoord + passkey.
     jwt_refresh_ttl_accordeur_seconds: int = 60 * 60 * 24 * 7  # 7 dagen
+    # Ontgrendel-frequentie (besluit Peter 2026-08-27): de passkey-ontgrendeling bij app-opening
+    # is HOOGUIT 1× per dit venster per apparaat — daartussen opent de app direct op de stille
+    # refresh. Server-side venster (geen client-klok): anker = `webauthn_credential.
+    # laatst_gebruikt_op` van het apparaat waar de sessie aan hangt (wordt uitsluitend gezet
+    # bij een echte passkey-ceremonie — registratie of assertion — nooit per request). De
+    # 7-dagen-inactiviteitsregel hierboven en de kill-switch blijven onverkort.
+    ontgrendel_venster_seconds: int = 60 * 60 * 24  # 24 uur
     # TTL van het tussentoken ná de wachtwoordstap van de accordeur-login/activatie — alleen
     # geldig om de passkey-registratie of -assertion af te ronden (zelfde idee als totp_setup).
     jwt_passkey_setup_ttl_seconds: int = 600

@@ -366,3 +366,82 @@ def test_accordeur_login_weigert_kantoorrol_generiek(beheerder_id: uuid.UUID, ad
     resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": WACHTWOORD})
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Ongeldige inloggegevens"
+
+
+# --- ontgrendel-frequentie: hooguit 1× per 24 uur per apparaat (besluit Peter 2026-08-27) -------
+# Server-side venster op `webauthn_credential.laatst_gebruikt_op` (gezet bij élke passkey-
+# ceremonie, nooit per request); de stille refresh meldt `ontgrendeling_nodig`. De 7-dagen-
+# inactiviteitsregel (hierboven) en de kill-switch blijven onverkort; audit ongewijzigd.
+
+
+def _laatst_gebruikt_terugzetten(admin_engine: Engine, e_mail: str, *, uren: float | None) -> None:
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE platform.webauthn_credential SET laatst_gebruikt_op = :wanneer "
+                "WHERE gebruiker_id = (SELECT id FROM platform.gebruiker WHERE e_mail = :mail)"
+            ),
+            {"wanneer": None if uren is None else datetime.now(UTC) - timedelta(hours=uren), "mail": e_mail},
+        )
+
+
+class TestOntgrendelVenster:
+    def test_binnen_24_uur_geen_ontgrendeling_daarna_wel_en_ontgrendelen_reset_het_venster(
+        self, beheerder_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        e_mail, apparaat, _ = _activeer_accordeur(beheerder_id)
+
+        # 1. Direct ná de registratie (= passkey-ceremonie): app-opening → direct door.
+        resp = client.post("/auth/token/vernieuwen")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ontgrendeling_nodig"] is False
+
+        # 2. 23 uur later nog binnen het venster.
+        _laatst_gebruikt_terugzetten(admin_engine, e_mail, uren=23)
+        assert client.post("/auth/token/vernieuwen").json()["ontgrendeling_nodig"] is False
+
+        # 3. 25 uur → ontgrendelen vereist.
+        _laatst_gebruikt_terugzetten(admin_engine, e_mail, uren=25)
+        assert client.post("/auth/token/vernieuwen").json()["ontgrendeling_nodig"] is True
+
+        # 4. De ontgrendeling (assertion op de refresh-cookie) zet het venster opnieuw: de
+        #    eerstvolgende stille refresh meldt weer False.
+        opties = client.post("/auth/token/vernieuwen/ontgrendel-opties")
+        assert opties.status_code == 200, opties.text
+        ontgrendeld = client.post(
+            "/auth/token/vernieuwen/ontgrendelen", json={"credential": apparaat.onderteken(opties.json()["opties"])}
+        )
+        assert ontgrendeld.status_code == 200, ontgrendeld.text
+        assert client.post("/auth/token/vernieuwen").json()["ontgrendeling_nodig"] is False
+
+    def test_nooit_een_ceremonie_geregistreerd_is_fail_closed(self, beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
+        e_mail, _, _ = _activeer_accordeur(beheerder_id)
+        _laatst_gebruikt_terugzetten(admin_engine, e_mail, uren=None)
+        assert client.post("/auth/token/vernieuwen").json()["ontgrendeling_nodig"] is True
+
+    def test_venster_is_instelbaar_en_kill_switch_wint(self, beheerder_id: uuid.UUID, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+        e_mail, _, _ = _activeer_accordeur(beheerder_id)
+        # Venster op 1 uur pinnen: 2 uur oud = ontgrendelen.
+        monkeypatch.setattr(settings, "ontgrendel_venster_seconds", 3600)
+        _laatst_gebruikt_terugzetten(admin_engine, e_mail, uren=2)
+        assert client.post("/auth/token/vernieuwen").json()["ontgrendeling_nodig"] is True
+        # Kill-switch: ingetrokken apparaat → de refresh zelf wordt geweigerd, ongeacht het venster.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE platform.webauthn_credential SET ingetrokken_op = now() "
+                    "WHERE gebruiker_id = (SELECT id FROM platform.gebruiker WHERE e_mail = :mail)"
+                ),
+                {"mail": e_mail},
+            )
+        assert client.post("/auth/token/vernieuwen").status_code == 401
+
+    def test_kantoor_refresh_draagt_het_veld_niet(self, beheerder_id: uuid.UUID) -> None:
+        """Contract-guard: alleen apparaat-gebonden externe-app-sessies krijgen een uitspraak;
+        een kantoor-TOTP-sessie (zie test_refresh_cookie) blijft byte-identiek."""
+        from app.auth import service as auth_service
+        from app.auth.schemas import TokenPaarResponse
+
+        body = TokenPaarResponse(access_token="x", ontgrendeling_nodig=None).model_dump()
+        assert "ontgrendeling_nodig" not in body
+        assert auth_service.TokenPaar(access_token="a", refresh_token="r").ontgrendeling_nodig is None

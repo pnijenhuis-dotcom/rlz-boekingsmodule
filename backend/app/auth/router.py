@@ -77,9 +77,13 @@ def _lever_token_paar(request: Request, response: Response, paar: service.TokenP
     native-aankondiging; een web-context zonder die header krijgt het token dus nooit te
     lezen, ook niet via een XSS die dit endpoint aanroept (de cookie blijft httpOnly)."""
     if _is_native_client(request):
-        return schemas.TokenPaarResponse(access_token=paar.access_token, refresh_token=paar.refresh_token)
+        return schemas.TokenPaarResponse(
+            access_token=paar.access_token,
+            refresh_token=paar.refresh_token,
+            ontgrendeling_nodig=paar.ontgrendeling_nodig,
+        )
     _set_refresh_cookie(response, paar)
-    return schemas.TokenPaarResponse(access_token=paar.access_token)
+    return schemas.TokenPaarResponse(access_token=paar.access_token, ontgrendeling_nodig=paar.ontgrendeling_nodig)
 
 
 @router.post("/uitnodigingen", response_model=schemas.UitnodigingAanmakenResponse)

@@ -67,14 +67,22 @@ class TokenPaarResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     refresh_token: str | None = None
+    # Ontgrendel-frequentie (besluit Peter 2026-08-27): uitsluitend op de stille refresh van een
+    # apparaat-gebonden externe-app-sessie — True = passkey-ontgrendeling nodig (laatste
+    # ceremonie op dit apparaat > 24 u geleden), False = direct door. Ontbreekt (None) op alle
+    # andere responses — de kantoor-JSON blijft byte-identiek.
+    ontgrendeling_nodig: bool | None = None
 
     @model_serializer(mode="wrap")
     def _zonder_leeg_refresh_token(self, handler):  # noqa: ANN001, ANN202
         """Web-responses dragen het veld überhaupt niet (contract-guard in de tests): alleen
-        de native vorm serialiseert refresh_token."""
+        de native vorm serialiseert refresh_token. Idem `ontgrendeling_nodig`: alleen wanneer
+        de service er een uitspraak over doet."""
         data = handler(self)
         if data.get("refresh_token") is None:
             data.pop("refresh_token", None)
+        if data.get("ontgrendeling_nodig") is None:
+            data.pop("ontgrendeling_nodig", None)
         return data
 
 

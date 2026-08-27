@@ -88,7 +88,7 @@ function useManifest(): void {
 }
 
 export default function AccordeurApp() {
-  const { status, rol, inloggen, uitloggen } = useAuth()
+  const { status, rol, ontgrendelingNodig, inloggen, uitloggen } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const { licht, wissel } = useThema()
@@ -100,6 +100,18 @@ export default function AccordeurApp() {
   // ontgrendel-scherm terugkomt.
   const [ontgrendeld, setOntgrendeld] = useState(() => sessionStorage.getItem(ONTGRENDELD_VLAG) === '1')
   const [forceerLogin, setForceerLogin] = useState(false)
+
+  // Ontgrendel-frequentie (besluit Peter 27-08): hooguit 1× per 24 uur per apparaat. De stille
+  // refresh bij het openen draagt de server-uitspraak (venster op het apparaat, geen client-
+  // klok): false = de laatste passkey-ceremonie is jonger dan 24 u → direct door, ook bij een
+  // koude start; true/null = het bestaande gedrag (ontgrendelscherm, tenzij al ontgrendeld in
+  // deze app-sessie). De 7-dagen-inactiviteitsregel en de kill-switch zitten in de refresh zelf.
+  useEffect(() => {
+    if (status === 'ingelogd' && ontgrendelingNodig === false && !ontgrendeld) {
+      sessionStorage.setItem(ONTGRENDELD_VLAG, '1')
+      setOntgrendeld(true)
+    }
+  }, [status, ontgrendelingNodig, ontgrendeld])
 
   // Native schil (fase 3): melding-tap → /accordeur-deep-link. No-op buiten de schil;
   // de auth-cadans blijft de poort (de app opent gewoon op ontgrendelen/login).

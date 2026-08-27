@@ -293,6 +293,11 @@ export interface TokenPaarResponseDto {
   /** Alleen in de native schil (fase 4, X-Native-Client): het refresh-token voor
    * Keychain/Keystore — web-responses dragen dit veld niet (cookie-only, Auth-0010-b). */
   refresh_token?: string | null
+  /** Ontgrendel-frequentie (besluit Peter 27-08): alleen op de stille refresh van een
+   * apparaat-gebonden accordeur-/veldsessie — true = passkey-ontgrendeling nodig (laatste
+   * ceremonie op dit apparaat > 24 u geleden), false = direct door. Ontbreekt op kantoor-
+   * responses en op login-/ontgrendel-antwoorden. */
+  ontgrendeling_nodig?: boolean | null
 }
 
 export interface UitnodigingAccepterenResponseDto {

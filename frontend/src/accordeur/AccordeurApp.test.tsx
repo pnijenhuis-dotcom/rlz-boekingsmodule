@@ -493,3 +493,38 @@ describe('AccordeurApp — activeren zonder setup-token (kliktest 2026-08-15)', 
     expect(await screen.findByRole('button', { name: 'Inloggen' })).toBeInTheDocument()
   })
 })
+
+
+// ---- ontgrendel-frequentie: hooguit 1× per 24 uur per apparaat (besluit Peter 2026-08-27) ----
+// De stille refresh draagt de server-uitspraak `ontgrendeling_nodig`; false = de app opent direct
+// (ook bij een koude start zonder sessionStorage-vlag), true/ontbrekend = ontgrendelscherm.
+describe('AccordeurApp — ontgrendel-venster 24 uur (27-08)', () => {
+  it('refresh meldt ontgrendeling_nodig=false → direct de flow, géén assertion-call', async () => {
+    const aangeroepen = stubBeginschermFetch({
+      '/auth/token/vernieuwen': () =>
+        Promise.resolve(jsonResponse({ access_token: fakeToken({ rol: 'klant_accordeur', sub: 'u1' }), ontgrendeling_nodig: false })),
+    })
+    renderBeginscherm()
+    expect(await screen.findByText('Alles is bij', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(aangeroepen).not.toContain('POST /auth/token/vernieuwen/ontgrendel-opties')
+    expect(aangeroepen).not.toContain('POST /auth/token/vernieuwen/ontgrendelen')
+    // De app-sessie is daarmee ontgrendeld (reload binnen de sessie vraagt niets opnieuw).
+    expect(sessionStorage.getItem('accordeur-ontgrendeld')).toBe('1')
+  })
+
+  it('refresh meldt ontgrendeling_nodig=true → het ontgrendelscherm (bestaand pad)', async () => {
+    vi.stubGlobal('PublicKeyCredential', class {})
+    vi.stubGlobal('isSecureContext', true)
+    Object.defineProperty(window.navigator, 'credentials', {
+      configurable: true,
+      value: { create: vi.fn(), get: vi.fn(() => new Promise(() => {})) },
+    })
+    stubBeginschermFetch({
+      '/auth/token/vernieuwen': () =>
+        Promise.resolve(jsonResponse({ access_token: fakeToken({ rol: 'klant_accordeur', sub: 'u1' }), ontgrendeling_nodig: true })),
+    })
+    renderBeginscherm()
+    expect(await screen.findByRole('button', { name: 'Ontgrendelen' })).toBeInTheDocument()
+    expect(screen.queryByText('Alles is bij')).not.toBeInTheDocument()
+  })
+})

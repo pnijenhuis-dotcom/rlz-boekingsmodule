@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, text, update
@@ -235,6 +235,12 @@ class TokenPaar:
     # Cookie-max_age hoort bij de TTL van dít token (accordeur = 7 dagen sliding, besluit
     # 2026-08-11; overige rollen 30 dagen) — de router mag niet blind de platform-default zetten.
     refresh_ttl_seconds: int = 0
+    # Ontgrendel-frequentie (besluit Peter 2026-08-27): alleen gezet op de STILLE REFRESH van een
+    # apparaat-gebonden externe-app-sessie — True = de laatste passkey-ceremonie op dit apparaat
+    # is ouder dan het venster (24 u), de app toont het ontgrendelscherm; False = direct door.
+    # None = niet van toepassing (kantoor-sessies, login-/ontgrendel-responses) → het veld
+    # ontbreekt in de JSON (contract-guard kantoor blijft byte-identiek).
+    ontgrendeling_nodig: bool | None = None
 
 
 def _refresh_ttl_voor(rol: GebruikerRol) -> int:
@@ -273,6 +279,19 @@ def _issue_token_paar(
         )
     )
     return TokenPaar(access_token=access_token, refresh_token=refresh_token, refresh_ttl_seconds=ttl_seconds)
+
+
+def _ontgrendeling_nodig(session: Session, *, apparaat_id: uuid.UUID | None, rol: GebruikerRol, now: datetime) -> bool | None:
+    """24-uursvenster (besluit 2026-08-27, `settings.ontgrendel_venster_seconds`): geldt alleen
+    voor apparaat-gebonden sessies van externe app-rollen. Anker = laatst_gebruikt_op van het
+    apparaat (elke passkey-ceremonie zet 'm; een stille refresh niet) — nooit gezet = ontgrendelen.
+    De kill-switch is hiervóór al getoetst (ingetrokken apparaat komt hier niet)."""
+    if apparaat_id is None or not is_externe_app_rol(rol):
+        return None
+    credential = session.get(WebauthnCredential, apparaat_id)
+    if credential is None or credential.laatst_gebruikt_op is None:
+        return True
+    return now - credential.laatst_gebruikt_op > timedelta(seconds=settings.ontgrendel_venster_seconds)
 
 
 def _intrek_alle_sessies(session: Session, gebruiker_id: uuid.UUID, *, now: datetime) -> None:
@@ -467,12 +486,17 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
                         correlatie_id=uuid.uuid4(),
                         nieuwe_waarde=_login_metadata(ip_adres),
                     )
-                    paar = _issue_token_paar(
-                        session,
-                        gebruiker_id=gebruiker_id,
-                        rol=gebruiker.rol,
-                        voorganger_id=rij.id,
-                        apparaat_id=rij.apparaat_id,
+                    paar = replace(
+                        _issue_token_paar(
+                            session,
+                            gebruiker_id=gebruiker_id,
+                            rol=gebruiker.rol,
+                            voorganger_id=rij.id,
+                            apparaat_id=rij.apparaat_id,
+                        ),
+                        ontgrendeling_nodig=_ontgrendeling_nodig(
+                            session, apparaat_id=rij.apparaat_id, rol=gebruiker.rol, now=now
+                        ),
                     )
                 else:
                     _intrek_alle_sessies(session, gebruiker_id, now=now)
@@ -495,12 +519,17 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
                     faal_reden = "inactief"
                 else:
                     rij.gebruikt_op = now
-                    paar = _issue_token_paar(
-                        session,
-                        gebruiker_id=gebruiker_id,
-                        rol=gebruiker.rol,
-                        voorganger_id=rij.id,
-                        apparaat_id=rij.apparaat_id,
+                    paar = replace(
+                        _issue_token_paar(
+                            session,
+                            gebruiker_id=gebruiker_id,
+                            rol=gebruiker.rol,
+                            voorganger_id=rij.id,
+                            apparaat_id=rij.apparaat_id,
+                        ),
+                        ontgrendeling_nodig=_ontgrendeling_nodig(
+                            session, apparaat_id=rij.apparaat_id, rol=gebruiker.rol, now=now
+                        ),
                     )
     except OperationalError as exc:
         if _is_lock_timeout(exc):

@@ -7,6 +7,13 @@ import { bewaarNatiefRefreshToken, haalNatiefRefreshToken, natieveSessieBeschikb
 
 let accessToken: string | null = null
 let sessieVerlopenHandler: (() => void) | null = null
+/** Uitspraak van de laatste stille refresh over de passkey-ontgrendeling (27-08): true/false
+ * alleen op apparaat-gebonden externe-app-sessies, null = server deed geen uitspraak. */
+let laatsteOntgrendelingNodig: boolean | null = null
+
+export function getOntgrendelingNodig(): boolean | null {
+  return laatsteOntgrendelingNodig
+}
 
 /** Native schil (fase 4): alle paden zijn root-relatief; in de app-bundel wijst
  * VITE_API_BASE naar het productiedomein (capacitor://localhost heeft geen backend).
@@ -146,8 +153,9 @@ async function voerVerversUit(): Promise<boolean> {
   }
   await gooiAlsBackendOnbereikbaar(resp)
   if (!resp.ok) return false
-  const body = (await resp.json()) as { access_token: string; refresh_token?: string }
+  const body = (await resp.json()) as { access_token: string; refresh_token?: string; ontgrendeling_nodig?: boolean | null }
   accessToken = body.access_token
+  laatsteOntgrendelingNodig = typeof body.ontgrendeling_nodig === 'boolean' ? body.ontgrendeling_nodig : null
   // Native (fase 4): de rotatie levert het nieuwe refresh-token in de body — meteen naar de
   // Keychain/Keystore, anders is de sessie na de volgende app-start alsnog weg.
   if (body.refresh_token) await bewaarNatiefRefreshToken(body.refresh_token)

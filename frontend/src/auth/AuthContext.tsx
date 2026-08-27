@@ -4,6 +4,7 @@ import {
   BackendOnbereikbaarError,
   decodeerJwtPayload,
   getAccessToken,
+  getOntgrendelingNodig,
   setAccessToken,
   setSessieVerlopenHandler,
   verversSessie,
@@ -24,6 +25,10 @@ interface AuthContextWaarde {
    * niet bereikbaar was (i.p.v. gewoon geen geldige refresh-cookie) — zie LoginScreen voor de
    * bijbehorende melding. */
   backendOnbereikbaar: boolean
+  /** Ontgrendel-frequentie accordeur (besluit Peter 27-08, server-side 24-uursvenster): de
+   * uitspraak van de stille refresh — false = de app opent direct, true = ontgrendelscherm,
+   * null = geen uitspraak (kantoor, of nog niet geladen). Alleen de accordeur-shell leest dit. */
+  ontgrendelingNodig: boolean | null
   inloggen: (paar: TokenPaarResponseDto) => void
   uitloggen: () => Promise<void>
 }
@@ -45,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [rol, setRol] = useState<string | null>(null)
   const [gebruikerId, setGebruikerId] = useState<string | null>(null)
   const [backendOnbereikbaar, setBackendOnbereikbaar] = useState(false)
+  const [ontgrendelingNodig, setOntgrendelingNodig] = useState<boolean | null>(null)
 
   useEffect(() => {
     setSessieVerlopenHandler(() => {
@@ -61,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const token = getAccessToken()
           setRol(token ? rolUitToken(token) : null)
           setGebruikerId(token ? gebruikerIdUitToken(token) : null)
+          setOntgrendelingNodig(getOntgrendelingNodig())
           setStatus('ingelogd')
         } else {
           setStatus('uitgelogd')
@@ -82,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGebruikerId(gebruikerIdUitToken(paar.access_token))
     setStatus('ingelogd')
     setBackendOnbereikbaar(false)
+    setOntgrendelingNodig(typeof paar.ontgrendeling_nodig === 'boolean' ? paar.ontgrendeling_nodig : null)
     // Native schil (fase 4): het refresh-token uit de body naar de Keychain/Keystore — de
     // volgende app-opening ontgrendelt dan gewoon i.p.v. een volledige login te eisen.
     if (paar.refresh_token) void bewaarNatiefRefreshToken(paar.refresh_token)
@@ -96,11 +104,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null)
     setRol(null)
     setGebruikerId(null)
+    setOntgrendelingNodig(null)
     setStatus('uitgelogd')
   }
 
   return (
-    <AuthContext.Provider value={{ status, rol, gebruikerId, backendOnbereikbaar, inloggen, uitloggen }}>
+    <AuthContext.Provider value={{ status, rol, gebruikerId, backendOnbereikbaar, ontgrendelingNodig, inloggen, uitloggen }}>
       {children}
     </AuthContext.Provider>
   )
