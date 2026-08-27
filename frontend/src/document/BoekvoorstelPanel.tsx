@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type {
   BoekenResponseDto,
@@ -323,6 +324,12 @@ interface Props {
   /** Van buiten aangeleverde regel (aanbetaling-verrekenregel): wordt toegevoegd zodra het
    * volgnummer verandert — zelfde pad als "+ Regel toevoegen", dus mét checks-herrun. */
   toeTeVoegenRegel?: ToeTeVoegenRegel | null
+  /** Actiebalk-positie (feedback Peter 27-08): de balk Afwijzen / Vraag stellen / Ter accordering /
+   * Boeken (+ doorbelasten) rendert via een portal in dit element — het controlescherm zet dat
+   * ÓNDER het blok "Doorbelasten na boeken" (eerst de verdeling zien, dan de besluitknoppen).
+   * undefined = inline op de oude plek (losse panelen, tests); null = doel nog niet gemonteerd
+   * (één commit) → even niets, zodat de balk nooit kort op de verkeerde plek flitst. */
+  actiebalkDoel?: HTMLElement | null
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
@@ -341,6 +348,7 @@ export function BoekvoorstelPanel({
   doorbelastingKlaargezet = null,
   onVoorstelOpgeslagen,
   toeTeVoegenRegel = null,
+  actiebalkDoel,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -1471,9 +1479,12 @@ export function BoekvoorstelPanel({
         </div>
       )}
 
+      {/* Alleen-lezen-uitkomsten (geboekt/verwijderd/boekfout) blijven hier; de actiebalk zelf
+          verhuist via `actiebalkDoel` naar ónder het doorbelast-blok (27-08). */}
+      {(isGeboekt || isVerwijderd || (isReadOnly && (boekenFout || boekResultaat))) && (
       <div className="panel">
-        {boekenFout && <div className="fout">{boekenFout}</div>}
-        {boekResultaat && (
+        {isReadOnly && boekenFout && <div className="fout">{boekenFout}</div>}
+        {isReadOnly && boekResultaat && (
           <div className="hint" style={{ color: 'var(--green)' }}>
             Geboekt in RLZ — boekstuknummer <b>{boekResultaat.rlz_boekstuknummer}</b>
           </div>
@@ -1503,30 +1514,44 @@ export function BoekvoorstelPanel({
             </div>
           </>
         )}
-        {!isReadOnly && (
-          <div className="actions">
-            {onAfwijzen && (
-              <button type="button" className="btn secondary" onClick={onAfwijzen}>
-                Afwijzen…
-              </button>
-            )}
-            {onVraagStellen && (
-              <button type="button" className="btn warn" onClick={onVraagStellen}>
-                Vraag stellen…
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn"
-              disabled={!kanBoeken || boekenBezig}
-              title={boekenTitel}
-              onClick={() => void boeken()}
-            >
-              {boekenBezig ? 'Bezig…' : boekLabel}
-            </button>
-          </div>
-        )}
       </div>
+      )}
+      {!isReadOnly &&
+        (() => {
+          const actiebalk = (
+            <div className="panel actiebalk" data-testid="actiebalk">
+              {boekenFout && <div className="fout">{boekenFout}</div>}
+              {boekResultaat && (
+                <div className="hint" style={{ color: 'var(--green)', marginTop: 0 }}>
+                  Geboekt in RLZ — boekstuknummer <b>{boekResultaat.rlz_boekstuknummer}</b>
+                </div>
+              )}
+              <div className="actions">
+                {onAfwijzen && (
+                  <button type="button" className="btn secondary" onClick={onAfwijzen}>
+                    Afwijzen…
+                  </button>
+                )}
+                {onVraagStellen && (
+                  <button type="button" className="btn warn" onClick={onVraagStellen}>
+                    Vraag stellen…
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!kanBoeken || boekenBezig}
+                  title={boekenTitel}
+                  onClick={() => void boeken()}
+                >
+                  {boekenBezig ? 'Bezig…' : boekLabel}
+                </button>
+              </div>
+            </div>
+          )
+          if (actiebalkDoel === undefined) return actiebalk
+          return actiebalkDoel ? createPortal(actiebalk, actiebalkDoel) : null
+        })()}
       {popupChecks && (
         <ChecksPopup
           melding={popupChecks.melding}

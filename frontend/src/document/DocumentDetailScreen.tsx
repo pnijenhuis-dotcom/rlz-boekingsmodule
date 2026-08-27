@@ -325,6 +325,9 @@ export function DocumentDetailScreen() {
   // Doorbelasten in de boekflow (besluit Peter 25-08): het blok meldt of er een klaargezette run
   // is en of die groen staat — de boekknop wordt dan "Boeken + doorbelasten" (poort in het paneel).
   const [doorbelastingKlaargezet, setDoorbelastingKlaargezet] = useState<KlaargezetteDoorbelasting | null>(null)
+  // Actiebalk-positie (feedback Peter 27-08): het paneel rendert zijn besluitknoppen via een
+  // portal in dit anker, dat ónder het blok "Doorbelasten na boeken" staat — alleen volgorde.
+  const [actiebalkDoel, setActiebalkDoel] = useState<HTMLElement | null>(null)
   const [boekvoorstelVersie, setBoekvoorstelVersie] = useState(0)
   const onVoorstelOpgeslagen = useCallback(() => setBoekvoorstelVersie((v) => v + 1), [])
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
@@ -826,6 +829,7 @@ export function DocumentDetailScreen() {
               doorbelastingKlaargezet={doorbelastingKlaargezet}
               onVoorstelOpgeslagen={onVoorstelOpgeslagen}
               toeTeVoegenRegel={toeTeVoegenRegel}
+              actiebalkDoel={actiebalkDoel}
             />
           )}
 
@@ -839,6 +843,11 @@ export function DocumentDetailScreen() {
             boekvoorstelVersie={boekvoorstelVersie}
             onKlaargezet={setDoorbelastingKlaargezet}
           />
+
+          {/* Anker voor de actiebalk (Afwijzen / Vraag stellen / Ter accordering / Boeken, al dan
+              niet "+ doorbelasten"): ÓNDER het doorbelast-blok — eerst de verdeling zien/instellen,
+              dan de besluitknoppen (feedback Peter 27-08). Geen logica; het paneel blijft eigenaar. */}
+          {!achtergrondBezig && <div ref={setActiebalkDoel} data-testid="actiebalk-doel" />}
 
           {/* Tegenboek-pad (mockup 22-08): actie op een GEBOEKTE inkoopfactuur waarvan storno
               door de aangifte-poort geblokkeerd is — de sectie gate zichzelf. */}

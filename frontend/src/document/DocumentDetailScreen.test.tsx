@@ -488,6 +488,27 @@ describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () 
     await screen.findByText('AI-voorstel — mens boekt')
     expect(await screen.findByRole('button', { name: 'Afwijzen…' })).toBeInTheDocument()
   })
+
+  it('actiebalk staat ÓNDER het boekvoorstel-paneel en het doorbelast-blok (feedback Peter 27-08: eerst de verdeling, dan de knoppen)', async () => {
+    installMetHeropenen(detailMet({ status: 'te_controleren', afwijzing: null }), [])
+
+    renderScherm()
+
+    const afwijzen = await screen.findByRole('button', { name: 'Afwijzen…' })
+    const boeken = screen.getByRole('button', { name: /Boeken in RLZ/ })
+    // De knoppen renderen via de portal in het anker dat het controlescherm ná
+    // <DoorbelastenNaBoeken> plaatst — niet meer inline in het boekvoorstel-paneel.
+    const doel = screen.getByTestId('actiebalk-doel')
+    expect(doel).toContainElement(afwijzen)
+    expect(doel).toContainElement(boeken)
+    // DOM-volgorde: alle boekvoorstel-koppen (kopgegevens, regels, checks) staan vóór het anker.
+    for (const kop of screen.getAllByRole('heading', { level: 2 })) {
+      if (doel.contains(kop)) continue
+      const naDeKop = Boolean(kop.compareDocumentPosition(doel) & Node.DOCUMENT_POSITION_FOLLOWING)
+      const onderDeTijdlijn = /Tijdlijn|Opmerkingen/.test(kop.textContent ?? '')
+      if (!onderDeTijdlijn) expect(naDeKop).toBe(true)
+    }
+  })
 })
 
 describe('DocumentDetailScreen — blok "Uit de e-mail" (feedbackronde 25-08 deel 3, punt 1b)', () => {
