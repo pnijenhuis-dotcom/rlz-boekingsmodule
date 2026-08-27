@@ -28,6 +28,8 @@ from app.documenten.models import (
     DocumentStatus,
     DuplicaatSignaal,
     DuplicaatSignaalUitkomst,
+    Vraag,
+    VraagStatus,
 )
 from app.documenten.pdf import tel_paginas
 from app.documenten.statusmachine import OngeldigeStatusovergang, valideer_overgang
@@ -70,7 +72,6 @@ def _standaard_wachtrij() -> ExtractieWachtrij:
         else:
             _wachtrij = InProcessExtractieWachtrij(taak=verwerk_extractie_taak)
     return _wachtrij
-
 
 
 def _hash(inhoud: bytes) -> str:
@@ -229,6 +230,33 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
             doel_status = DocumentStatus.HANDMATIG_AFMAKEN
 
     _schrijf_overgang(session, document=document, naar=doel_status, actor_id=actor_id, detail=detail)
+    _herstel_open_vraag_na_extractie(session, document=document, actor_id=actor_id)
+
+
+def _herstel_open_vraag_na_extractie(session: Session, *, document: Document, actor_id: uuid.UUID) -> None:
+    """Verplaatsen naar een andere administratie (27-08 punt 5): een open vraag verhuist mee, maar de
+    her-extractie in het doel zet het document eerst op te_controleren/handmatig_afmaken. Zonder
+    deze stap zou de vraag niet meer blokkeren (boeken toetst op de documentstatus). Daarom: staat er
+    ná de eindovergang nog een open vraag, dan gaat het document direct weer op vraag_open, mét de
+    verse herkomst als terugweg (vraag.status_voor_vraag) en een eigen tijdlijnregel. In elke andere
+    flow bestaat er op dit moment geen open vraag (vraag_open is dan de documentstatus zelf) — dan
+    is dit een no-op."""
+    if document.status not in (DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN):
+        return
+    open_vraag = session.scalars(
+        select(Vraag).where(Vraag.document_id == document.id, Vraag.status == VraagStatus.OPEN.value)
+    ).first()
+    if open_vraag is None:
+        return
+    open_vraag.status_voor_vraag = document.status.value
+    _schrijf_overgang(
+        session,
+        document=document,
+        naar=DocumentStatus.VRAAG_OPEN,
+        actor_id=actor_id,
+        detail={"vraag_id": str(open_vraag.id), "vraag_hersteld_na_extractie": True},
+    )
+    document.toegewezen_aan = open_vraag.aan_de_beurt or open_vraag.toegewezen_aan
 
 
 def _groot_document_detail(session: Session, *, document: Document, inhoud: bytes) -> dict | None:

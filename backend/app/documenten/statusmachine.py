@@ -29,6 +29,11 @@ _NIET_GEBOEKTE_STATUSSEN = frozenset(
     }
 )
 
+# Verplaatsen naar een andere administratie (addendum kantoor-run 27-08 punt 5): het document gaat
+# terug naar ONTVANGEN in de dóél-administratie, waarna de normale extractieflow opnieuw start
+# (zelfde route als een verzamelbak-toewijzing). Alleen vanuit de niet-geboekte kantoorbak-statussen
+# — geboekt (storno/tegenboeken is de weg) en ter_accordering (eerst intrekken) kennen dit pad bewust
+# niet; app/documenten/verplaatsen.py is de enige aanroeper.
 _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     DocumentStatus.ONTVANGEN: frozenset(
         {
@@ -67,6 +72,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     ),
     DocumentStatus.TE_CONTROLEREN: frozenset(
         {
+            DocumentStatus.ONTVANGEN,  # verplaatsen naar andere administratie (27-08 punt 5)
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VRAAG_OPEN,
             DocumentStatus.AFGEWEZEN,
@@ -87,6 +93,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     ),
     DocumentStatus.KLAAR_OM_TE_BOEKEN: frozenset(
         {
+            DocumentStatus.ONTVANGEN,  # verplaatsen naar andere administratie (27-08 punt 5)
             DocumentStatus.GEBOEKT,
             DocumentStatus.BOEKEN_MISLUKT,
             DocumentStatus.TE_CONTROLEREN,
@@ -111,6 +118,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # daarom staan alle drie de vraag-herkomsten hier als uitgang.
     DocumentStatus.VRAAG_OPEN: frozenset(
         {
+            DocumentStatus.ONTVANGEN,  # verplaatsen naar andere administratie (27-08 punt 5)
             DocumentStatus.TE_CONTROLEREN,
             DocumentStatus.HANDMATIG_AFMAKEN,
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
@@ -138,6 +146,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # boeken), plus de weg terug naar extractie_bezig voor een nieuwe extractiepoging.
     DocumentStatus.HANDMATIG_AFMAKEN: frozenset(
         {
+            DocumentStatus.ONTVANGEN,  # verplaatsen naar andere administratie (27-08 punt 5)
             DocumentStatus.EXTRACTIE_BEZIG,
             # Zelfde reden als bij te_controleren: her-extractie van een groot document is async.
             DocumentStatus.EXTRACTIE_WACHTRIJ,
@@ -167,6 +176,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # patroon als vraag_open hierboven.
     DocumentStatus.AFGEWEZEN: frozenset(
         {
+            DocumentStatus.ONTVANGEN,  # verplaatsen naar andere administratie (27-08 punt 5)
             DocumentStatus.TE_CONTROLEREN,
             DocumentStatus.HANDMATIG_AFMAKEN,
             DocumentStatus.KLAAR_OM_TE_BOEKEN,

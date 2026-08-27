@@ -1044,3 +1044,18 @@ export interface TegenboekenResponseDto {
   rlz_tegenboeking_id: string
   rlz_boekstuknummer: string | null
 }
+
+/** Antwoord op POST …/documenten/{id}/verplaats (addendum kantoor-run 27-08 punt 5). `status` is
+ * de eindstatus ná de her-extractie in het doel; `leerregels_gecorrigeerd` leeg = de toewijzing
+ * kwam niet uit het geheugen (alleen verplaatst). */
+export interface DocumentVerplaatsResponseDto {
+  document_id: string
+  status: string
+  van_administratie_id: string
+  van_administratie_naam: string
+  naar_administratie_id: string
+  naar_administratie_naam: string
+  leerregels_gecorrigeerd: string[]
+  vragen_verhuisd: number
+  vragen_hertoegewezen: number
+}

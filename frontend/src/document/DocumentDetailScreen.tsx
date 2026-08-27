@@ -13,7 +13,8 @@ import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { documentRoute } from '../werkvoorraad/format'
 import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
-import { useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
+import { AnkerPopup, useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
+import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
@@ -23,6 +24,8 @@ import { DoorbelastenNaBoeken, type KlaargezetteDoorbelasting } from '../doorbel
 import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
+import { VerplaatsModal } from './VerplaatsModal'
+import { redenNietVerplaatsbaar } from './verplaatsen'
 import { AlBetaaldSignaal } from './AlBetaaldSignaal'
 import { AanbetalingSignaal, type VerrekenRegel } from './AanbetalingSignaal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
@@ -293,6 +296,19 @@ function UitDeEmail({ herkomst }: { herkomst: HerkomstMailDto }) {
   )
 }
 
+/** Tijdlijn-detail van een verhuizing (app/documenten/verplaatsen.py) — alleen renderen als de
+ * namen er echt staan (oudere/afwijkende details vallen stil terug op de kale statusregel). */
+function isVerplaatstDetail(
+  waarde: unknown,
+): waarde is { van_administratie_naam: string; naar_administratie_naam: string } {
+  return (
+    typeof waarde === 'object' &&
+    waarde !== null &&
+    typeof (waarde as { van_administratie_naam?: unknown }).van_administratie_naam === 'string' &&
+    typeof (waarde as { naar_administratie_naam?: unknown }).naar_administratie_naam === 'string'
+  )
+}
+
 export function DocumentDetailScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
   const navigate = useNavigate()
@@ -331,6 +347,11 @@ export function DocumentDetailScreen() {
   const [boekvoorstelVersie, setBoekvoorstelVersie] = useState(0)
   const onVoorstelOpgeslagen = useCallback(() => setBoekvoorstelVersie((v) => v + 1), [])
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
+  // ⋯-actiemenu in de topbar (addendum 27-08 punt 5): "Verplaats naar andere administratie…".
+  const [actieMenuOpen, setActieMenuOpen] = useState(false)
+  const actieMenuKnop = useRef<HTMLButtonElement | null>(null)
+  const [verplaatsModalOpen, setVerplaatsModalOpen] = useState(false)
+  const { administraties } = useAdministraties()
   // Aanbetaling-verrekenregel (deel 4 punt 3): brug van het signaal naar het boekvoorstel — elke
   // klik levert een nieuw volgnummer, het paneel voegt de regel dan één keer toe.
   const [toeTeVoegenRegel, setToeTeVoegenRegel] = useState<ToeTeVoegenRegel | null>(null)
@@ -501,6 +522,56 @@ export function DocumentDetailScreen() {
         </h1>
         <div className="adm-select">
           <StatusChip status={detail.status} />
+          <button
+            ref={actieMenuKnop}
+            type="button"
+            className="icon-btn"
+            aria-label="Meer acties"
+            aria-haspopup="menu"
+            aria-expanded={actieMenuOpen}
+            onClick={() => setActieMenuOpen((o) => !o)}
+          >
+            ⋯
+          </button>
+          <AnkerPopup
+            open={actieMenuOpen}
+            anker={actieMenuKnop}
+            kant="onder"
+            uitlijning="eind"
+            className="rijmenu"
+            role="menu"
+            aria-label="Meer acties"
+            onAnkerUitBeeld={() => setActieMenuOpen(false)}
+          >
+            {(() => {
+              // Herstel foute toewijzing (besluit Peter 27-08): alleen vanuit de kantoorbak-statussen;
+              // geboekt (storno/tegenboeken) en ter_accordering (eerst intrekken) leggen uit waarom niet.
+              const reden = redenNietVerplaatsbaar(detail.status, detail.soort)
+              return (
+                <>
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    role="menuitem"
+                    disabled={reden !== null}
+                    aria-disabled={reden !== null}
+                    onClick={() => {
+                      if (reden !== null) return
+                      setActieMenuOpen(false)
+                      setVerplaatsModalOpen(true)
+                    }}
+                  >
+                    Verplaats naar andere administratie…
+                  </button>
+                  {reden !== null && (
+                    <div className="hint" style={{ padding: '2px 8px 6px', maxWidth: 280 }}>
+                      {reden}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </AnkerPopup>
         </div>
       </div>
 
@@ -893,6 +964,23 @@ export function DocumentDetailScreen() {
             />
           )}
 
+          {verplaatsModalOpen && (
+            <VerplaatsModal
+              administratieId={administratieId}
+              administratieNaam={administraties?.find((a) => a.id === administratieId)?.naam ?? null}
+              documentId={documentId}
+              bestandsnaam={detail.bestandsnaam}
+              openVragen={documentVragen?.filter((v) => v.status === 'open').length ?? 0}
+              onVerplaatst={(resultaat) => {
+                setVerplaatsModalOpen(false)
+                meld(`Verplaatst naar ${resultaat.naar_administratie_naam} — extractie draait opnieuw`)
+                // Het document is in de bron-scope niet meer zichtbaar: door naar het doel.
+                void navigate(`/documenten/${resultaat.naar_administratie_id}/${documentId}`)
+              }}
+              onAnnuleren={() => setVerplaatsModalOpen(false)}
+            />
+          )}
+
           {herExtractieBevestigen && (
             <BevestigDialog
               titel="Opnieuw extraheren?"
@@ -1009,6 +1097,25 @@ export function DocumentDetailScreen() {
                           Groot document ({typeof g.detail.paginas === 'number' ? `${g.detail.paginas} pagina's, ` : ''}
                           {typeof g.detail.bytes === 'number' ? `${(g.detail.bytes / (1024 * 1024)).toFixed(1)} MB` : ''}) —
                           extractie op de achtergrond
+                        </div>
+                      )}
+                      {g.detail && 'verplaatst' in g.detail && isVerplaatstDetail(g.detail.verplaatst) && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Verplaatst van {g.detail.verplaatst.van_administratie_naam} naar{' '}
+                          {g.detail.verplaatst.naar_administratie_naam}
+                          {Array.isArray(g.detail.leerregels_gecorrigeerd) && g.detail.leerregels_gecorrigeerd.length > 0
+                            ? ` · toewijzings-geheugen gecorrigeerd (${(g.detail.leerregels_gecorrigeerd as string[]).join(', ')})`
+                            : ' · geen leer-regel te corrigeren'}
+                          {Array.isArray(g.detail.vragen_verhuisd) && g.detail.vragen_verhuisd.length > 0
+                            ? ` · ${g.detail.vragen_verhuisd.length} open ${g.detail.vragen_verhuisd.length === 1 ? 'vraag' : 'vragen'} verhuisd`
+                            : ''}
+                          {'afwijzing_gesloten_door_verplaatsing' in g.detail ? ' · open afwijzing gesloten' : ''}
+                          {' · veldvoorstel vervallen, extractie opnieuw'}
+                        </div>
+                      )}
+                      {g.detail && 'vraag_hersteld_na_extractie' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Open vraag blokkeert boeken weer ná de nieuwe extractie
                         </div>
                       )}
                       {g.detail && 'herstel' in g.detail && g.detail.herstel === 'achtergebleven_na_herstart' && (

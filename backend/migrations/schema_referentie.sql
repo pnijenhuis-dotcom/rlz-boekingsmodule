@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0079
+-- Migratie-head bij deze dump: 0080
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -98,6 +98,73 @@ CREATE TYPE platform.gebruiker_status AS ENUM (
     'wacht_op_passkey',
     'gearchiveerd'
 );
+
+
+--
+-- Name: verplaats_document(uuid, uuid, uuid); Type: FUNCTION; Schema: boekhouding; Owner: -
+--
+
+CREATE FUNCTION boekhouding.verplaats_document(p_document_id uuid, p_van uuid, p_naar uuid) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+DECLARE
+    v_status text;
+BEGIN
+    IF p_van IS NULL OR p_naar IS NULL OR p_van = p_naar THEN
+        RAISE EXCEPTION 'verplaats_document: bron en doel moeten twee verschillende administraties zijn';
+    END IF;
+    IF platform.current_administratie_id() IS DISTINCT FROM p_van THEN
+        RAISE EXCEPTION 'verplaats_document: aanroeper is niet gescoped op de bron-administratie';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM platform.administratie WHERE id = p_naar) THEN
+        RAISE EXCEPTION 'verplaats_document: onbekende doeladministratie %', p_naar;
+    END IF;
+
+    SELECT status::text INTO v_status
+    FROM boekhouding.document
+    WHERE id = p_document_id AND administratie_id = p_van
+    FOR UPDATE;
+    IF v_status IS NULL THEN
+        RAISE EXCEPTION 'verplaats_document: document % niet gevonden in de bron-administratie', p_document_id;
+    END IF;
+    IF v_status <> 'ontvangen' THEN
+        -- De servicelaag zet het document vóór de verhuizing via de statusmachine op ontvangen;
+        -- geboekt/ter_accordering hebben dat pad niet en stranden dus ook hier.
+        RAISE EXCEPTION 'verplaats_document: document staat op %, verwacht ontvangen', v_status;
+    END IF;
+
+    UPDATE boekhouding.document SET administratie_id = p_naar WHERE id = p_document_id;
+
+    -- Kindtabellen mét eigen administratie_id: rijen van dit document volgen mee, zodat ze in de
+    -- doel-scope zichtbaar blijven (vragen/afwijzingen = historie + open vragen; signaal-caches
+    -- worden ná de her-extractie in het doel opnieuw berekend).
+    UPDATE boekhouding.vraag SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.vraag_bericht b SET administratie_id = p_naar
+        FROM boekhouding.vraag v
+        WHERE b.vraag_id = v.id AND v.document_id = p_document_id AND b.administratie_id = p_van;
+    UPDATE boekhouding.afwijzing SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.iban_accordering SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.duplicaat_signaal SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.factuurmatch SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.factuurmatch_staat SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.materiaalmatch SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.accordering_stap s SET administratie_id = p_naar
+        FROM boekhouding.document_accordering a
+        WHERE s.accordering_id = a.id AND a.document_id = p_document_id AND s.administratie_id = p_van;
+    UPDATE boekhouding.document_accordering SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.document_herinnering SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+END
+$$;
 
 
 --

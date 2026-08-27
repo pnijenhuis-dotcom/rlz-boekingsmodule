@@ -607,3 +607,25 @@ class TegenboekenResponse(BaseModel):
     status: str
     rlz_tegenboeking_id: uuid.UUID
     rlz_boekstuknummer: str | None = None
+
+
+class VerplaatsInput(StrikteInvoer):
+    """Addendum kantoor-run 27-08 punt 5: "Verplaats naar andere administratie…" — alleen het doel;
+    de bron staat in het pad. Reden is bewust niet verplicht (de verhuizing zelf is de correctie
+    en staat volledig in tijdlijn + audit)."""
+
+    doel_administratie_id: uuid.UUID
+
+
+class DocumentVerplaatsResponse(BaseModel):
+    document_id: uuid.UUID
+    status: str
+    van_administratie_id: uuid.UUID
+    van_administratie_naam: str
+    naar_administratie_id: uuid.UUID
+    naar_administratie_naam: str
+    """Leer-regels (tenaamstelling/afzender) die van de oude naar de nieuwe administratie zijn
+    gecorrigeerd — leeg = de toewijzing kwam niet uit het geheugen (alleen verplaatst)."""
+    leerregels_gecorrigeerd: list[str]
+    vragen_verhuisd: int
+    vragen_hertoegewezen: int

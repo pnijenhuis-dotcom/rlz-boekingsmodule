@@ -120,6 +120,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/projecten/{aid}"),  # projectenmodule kantoor (22-08)
         ("PATCH", f"/administraties/{aid}/is-vastgoed"),  # vastgoed-toggle (avondrun 26-08, beheerder-only)
         ("POST", f"/verzamelbak/{DUMMY_ID}/toewijzen"),  # verzamelbak-actie (idempotent sinds 26-08)
+        ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplaats"),  # verplaatsen (27-08 punt 5)
     ]
 
 

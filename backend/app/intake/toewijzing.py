@@ -134,9 +134,7 @@ def bepaal_toewijzing(
     afzender_sleutel = normaliseer_afzender(afzender)
 
     if tenaamstelling_sleutel:
-        regel = _actieve_regel(
-            session, soort=ToewijzingRegelSoort.TENAAMSTELLING, sleutel=tenaamstelling_sleutel
-        )
+        regel = _actieve_regel(session, soort=ToewijzingRegelSoort.TENAAMSTELLING, sleutel=tenaamstelling_sleutel)
         if regel is not None:
             return ToewijzingBesluit(administratie_id=regel.administratie_id, bron="tenaamstelling_regel")
         register_match = _administratie_op_naam(session, tenaamstelling_sleutel)
@@ -223,3 +221,59 @@ def leer_toewijzing(
             # (of met een andere) administratie-scope; audit_event-RLS eist anders scope=doel.
             administratie_id=None,
         )
+
+
+def corrigeer_toewijzing_na_verplaatsing(
+    session: Session,
+    *,
+    van_administratie_id: uuid.UUID,
+    naar_administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    tenaamstelling: str | None,
+    afzender: str | None,
+) -> tuple[str, ...]:
+    """Het toewijzings-geheugen leert mee terug bij "Verplaats naar andere administratie"
+    (addendum kantoor-run 27-08 punt 5, besluit Peter): uitsluitend de actieve regel(s) op de
+    sleutels van dít document die naar de OUDE administratie wijzen — de regel die de foute
+    toewijzing veroorzaakte — worden gecorrigeerd naar de nieuwe (oude rij deactiveren + nieuwe rij,
+    zelfde mechaniek als leer_toewijzing, mét audit). Wijst een sleutel al elders (of nergens)
+    heen, dan blijft die met rust: een handmatige toewijzing zónder leer-regel = alleen verplaatsen.
+    Geeft de gecorrigeerde soorten terug (voor tijdlijn + response)."""
+    paren: list[tuple[ToewijzingRegelSoort, str]] = []
+    tenaamstelling_sleutel = normaliseer_partijnaam(tenaamstelling) if tenaamstelling else ""
+    if tenaamstelling_sleutel:
+        paren.append((ToewijzingRegelSoort.TENAAMSTELLING, tenaamstelling_sleutel))
+    afzender_sleutel = normaliseer_afzender(afzender)
+    if afzender_sleutel:
+        paren.append((ToewijzingRegelSoort.AFZENDER, afzender_sleutel))
+
+    gecorrigeerd: list[str] = []
+    for soort, sleutel in paren:
+        bestaand = _actieve_regel(session, soort=soort, sleutel=sleutel)
+        if bestaand is None or bestaand.administratie_id != van_administratie_id:
+            continue
+        bestaand.actief = False
+        bestaand.gedeactiveerd_door = actor_id
+        bestaand.gedeactiveerd_op = datetime.now(UTC)
+        regel = ToewijzingRegel(
+            soort=soort.value,
+            sleutel=sleutel,
+            administratie_id=naar_administratie_id,
+            aangemaakt_door=actor_id,
+        )
+        session.add(regel)
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="toewijzing_regel",
+            record_id=regel.id,
+            actie="toewijzing_regel_gecorrigeerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"administratie_id": str(van_administratie_id), "regel_id": str(bestaand.id)},
+            nieuwe_waarde={"soort": soort.value, "sleutel": sleutel, "administratie_id": str(naar_administratie_id)},
+            administratie_id=None,  # platform-breed feit, zelfde reden als bij leer_toewijzing
+        )
+        gecorrigeerd.append(soort.value)
+    return tuple(gecorrigeerd)

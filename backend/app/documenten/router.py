@@ -25,6 +25,7 @@ from app.documenten import (
     schemas,
     service,
     tegenboeken,
+    verplaatsen,
     vragen,
 )
 from app.documenten.afbeelding import AFBEELDING_SUFFIXEN, AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
@@ -529,6 +530,50 @@ def document_opnieuw_extraheren(
     except service.HerextractieNietToegestaan as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return schemas.DocumentActieResponse(document_id=document_id, status=nieuwe_status.value)
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/verplaats",
+    response_model=schemas.DocumentVerplaatsResponse,
+)
+def document_verplaatsen(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.VerplaatsInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DocumentVerplaatsResponse:
+    """Verplaats naar een andere administratie (addendum 27-08 punt 5, herstel foute toewijzing).
+    Bron-scope via de dependency, doel-scope in de service (403 zonder toegang tot het doel); alleen
+    te_controleren/handmatig_afmaken/klaar_om_te_boeken/vraag_open/afgewezen — geboekt en
+    ter_accordering geven 409 mét uitleg (zie verplaatsen.reden_niet_verplaatsbaar). Ná de
+    verhuizing draait de extractie opnieuw in het doel; de response draagt de eindstatus dáár."""
+    try:
+        resultaat = verplaatsen.verplaats_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            doel_administratie_id=invoer.doel_administratie_id,
+            actor_id=actor.id,
+            actor_rol=actor.rol,
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except verplaatsen.OnbekendeDoelAdministratie as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except verplaatsen.GeenScopeOpDoel as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except verplaatsen.VerplaatsenNietToegestaan as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.DocumentVerplaatsResponse(
+        document_id=resultaat.document_id,
+        status=resultaat.status.value,
+        van_administratie_id=resultaat.van_administratie_id,
+        van_administratie_naam=resultaat.van_administratie_naam,
+        naar_administratie_id=resultaat.naar_administratie_id,
+        naar_administratie_naam=resultaat.naar_administratie_naam,
+        leerregels_gecorrigeerd=list(resultaat.leerregels_gecorrigeerd),
+        vragen_verhuisd=resultaat.vragen_verhuisd,
+        vragen_hertoegewezen=resultaat.vragen_hertoegewezen,
+    )
 
 
 @router.get(

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../ui/basis'
@@ -724,5 +725,152 @@ describe('DocumentDetailScreen — aanbetaling-open-signaal (deel 4 punt 3)', ()
     // Twee keer klikken = twee regels (elke klik een nieuw volgnummer).
     await gebruiker.click(screen.getByRole('button', { name: 'Verrekenregel toevoegen' }))
     await waitFor(() => expect(screen.getAllByLabelText('Netto bedrag')).toHaveLength(3))
+  })
+})
+
+describe('DocumentDetailScreen — ⋯-menu "Verplaats naar andere administratie…" (addendum 27-08 punt 5)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const DOEL_ID = 'aaaaaaaa-0000-0000-0000-000000000002'
+
+  function basisDetail(status: string, extra: Record<string, unknown> = {}) {
+    return {
+      id: DOCUMENT_ID,
+      administratie_id: ADMINISTRATIE_ID,
+      bestandsnaam: 'arvum-4711.pdf',
+      status,
+      bron: 'email',
+      soort: 'inkoopfactuur',
+      mogelijk_duplicaat_van: null,
+      toegewezen_aan: null,
+      aangemaakt_op: '2026-08-27T10:00:00Z',
+      laatst_gewijzigd_op: '2026-08-27T10:00:00Z',
+      veldvoorstel: null,
+      afwijzing: null,
+      tijdlijn: [{ van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-08-27T10:00:00Z' }],
+      ...extra,
+    }
+  }
+
+  /** Bovenop de standaard-mock: administraties (voor de modal) + het verplaats-endpoint. */
+  function metVerplaatsMock(verplaatsAanroepen: unknown[]) {
+    const basis = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/auth/administraties')) {
+          return Promise.resolve(
+            jsonResponse({
+              administraties: [
+                { id: ADMINISTRATIE_ID, naam: 'ARVUM B.V.' },
+                { id: DOEL_ID, naam: 'Port of Rotterdam N.V.' },
+              ],
+            }),
+          )
+        }
+        if (url.endsWith('/verplaats') && init?.method === 'POST') {
+          verplaatsAanroepen.push(JSON.parse(String(init.body)))
+          return Promise.resolve(
+            jsonResponse({
+              document_id: DOCUMENT_ID,
+              status: 'te_controleren',
+              van_administratie_id: ADMINISTRATIE_ID,
+              van_administratie_naam: 'ARVUM B.V.',
+              naar_administratie_id: DOEL_ID,
+              naar_administratie_naam: 'Port of Rotterdam N.V.',
+              leerregels_gecorrigeerd: ['tenaamstelling', 'afzender'],
+              vragen_verhuisd: 0,
+              vragen_hertoegewezen: 0,
+            }),
+          )
+        }
+        return basis(url, init)
+      }),
+    )
+  }
+
+  it('te_controleren: menu-item actief → modal → verplaatsen → toast + navigatie naar het document in het doel', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock(basisDetail('te_controleren'))
+    const aanroepen: unknown[] = []
+    metVerplaatsMock(aanroepen)
+    renderScherm()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Meer acties' })).toBeInTheDocument())
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Meer acties' }))
+    const item = screen.getByRole('menuitem', { name: 'Verplaats naar andere administratie…' })
+    expect(item).toBeEnabled()
+    await gebruiker.click(item)
+
+    expect(await screen.findByRole('dialog', { name: 'Verplaats naar andere administratie' })).toBeInTheDocument()
+    const veld = screen.getByRole('combobox', { name: /Doeladministratie/ })
+    await gebruiker.click(veld)
+    await gebruiker.click(await screen.findByRole('option', { name: 'Port of Rotterdam N.V.' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Verplaatsen naar Port of Rotterdam N.V.' }))
+
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${DOEL_ID}/${DOCUMENT_ID}`))
+    expect(aanroepen).toEqual([{ doel_administratie_id: DOEL_ID }])
+    expect(screen.getByText(/Verplaatst naar Port of Rotterdam N.V./)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['geboekt', /storno|Tegenboeken/],
+    ['ter_accordering', /trek de accordering eerst in/],
+  ])('%s: menu-item uitgeschakeld mét uitleg waarom (server-side afgedwongen)', async (status, uitleg) => {
+    const gebruiker = userEvent.setup()
+    installFetchMock(basisDetail(status))
+    renderScherm()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Meer acties' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Meer acties' }))
+    const item = screen.getByRole('menuitem', { name: 'Verplaats naar andere administratie…' })
+    expect(item).toBeDisabled()
+    expect(screen.getByRole('menu')).toHaveTextContent(uitleg)
+    await gebruiker.click(item)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('tijdlijn toont de verhuizing leesbaar: van → naar, geheugen-correctie en de vervallen extractie', async () => {
+    installFetchMock(
+      basisDetail('te_controleren', {
+        tijdlijn: [
+          { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-08-27T10:00:00Z' },
+          {
+            van_status: 'te_controleren',
+            naar_status: 'ontvangen',
+            actor_id: 'x',
+            actor_is_systeem: false,
+            detail: {
+              verplaatst: {
+                van_administratie_id: 'a',
+                van_administratie_naam: 'ARVUM B.V.',
+                naar_administratie_id: DOEL_ID,
+                naar_administratie_naam: 'Port of Rotterdam N.V.',
+                van_status: 'te_controleren',
+              },
+              veldvoorstel_vervallen: true,
+              leerregels_gecorrigeerd: ['tenaamstelling', 'afzender'],
+              vragen_verhuisd: ['v1'],
+            },
+            tijdstip: '2026-08-27T11:00:00Z',
+          },
+          {
+            van_status: 'te_controleren',
+            naar_status: 'vraag_open',
+            actor_id: 'x',
+            actor_is_systeem: false,
+            detail: { vraag_id: 'v1', vraag_hersteld_na_extractie: true },
+            tijdstip: '2026-08-27T11:00:05Z',
+          },
+        ],
+      }),
+    )
+    renderScherm()
+    await waitFor(() => expect(screen.getByText(/Verplaatst van ARVUM B.V. naar Port of Rotterdam N.V./)).toBeInTheDocument())
+    expect(screen.getByText(/toewijzings-geheugen gecorrigeerd \(tenaamstelling, afzender\)/)).toBeInTheDocument()
+    expect(screen.getByText(/1 open vraag verhuisd/)).toBeInTheDocument()
+    expect(screen.getByText(/veldvoorstel vervallen, extractie opnieuw/)).toBeInTheDocument()
+    expect(screen.getByText(/Open vraag blokkeert boeken weer ná de nieuwe extractie/)).toBeInTheDocument()
   })
 })

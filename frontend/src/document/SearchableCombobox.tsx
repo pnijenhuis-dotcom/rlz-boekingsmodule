@@ -300,6 +300,9 @@ export function SearchableCombobox({
             style={{
               position: 'fixed',
               zIndex: 1000,
+              // Binnen een Radix-Dialog (modal) zet Radix `pointer-events: none` op <body>; deze
+              // listbox portalt náár body en zou dan onklikbaar zijn (VerplaatsModal, 27-08 punt 5).
+              pointerEvents: 'auto',
               top: positie.top,
               bottom: positie.bottom,
               left: positie.left,
