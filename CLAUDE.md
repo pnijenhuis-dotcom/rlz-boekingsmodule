@@ -196,7 +196,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   leeg → documentenlijst van de klant. Uitzondering: ter accordering mét `boek_fout` blijft staan.
   **Actiebalk (Afwijzen / Vraag stellen / Ter accordering / Boeken, ± doorbelasten) staat sinds
   27-08 ÓNDER het blok "Doorbelasten na boeken"** (portal-anker `actiebalkDoel`, alleen volgorde
-  — BESLISSINGEN "VERZAMELRUN 27-08" punt 4).
+  — BESLISSINGEN "VERZAMELRUN 27-08" punt 4). **Boekingsregels-tabel: kolomminima in px uit één bron
+  (`document/boekingsregelsKolommen.ts`, tabel-min-width = de som; te smal paneel = horizontale
+  scroll in `.tabel-scroll`, omschrijving wrapt op woordgrenzen — nooit meer per letter; eigen
+  regressietests náást de overflow-sweep, die kolom-implosie niet ziet — BESLISSINGEN
+  "KANTOOR-MINI-RUN 27-08" punt 4).**
 - **Kantoor-frontend-modernisering (designronde Peter 2026-08-15, 4 iteratierondes —
   BESLISSINGEN "Kantoor-frontend-modernisering"):** de kantoor-UI migreert naar het
   platform-fundament (Vastly-generatie: Tailwind v4 + semantische tokens, shadcn-stijl-
@@ -315,6 +319,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   OPTIMISTISCH (avondrun 26-08): rij direct weg, request async, mislukt = rij LUID terug mét rode
   reden; server idempotent (tweede klik = 200 `al_verwerkt` + rustige melding, conflicten in
   leesbare taal — geen enum-jargon); DB blijft bron van waarheid. Zie BESLISSINGEN "AVONDRUN 26-08".**
+  **Foute toewijzing herstellen = "Verplaats naar andere administratie…" (⋯-menu controlescherm,
+  besluit Peter 27-08, migratie 0080): alleen inkoopfacturen op te_controleren/handmatig_afmaken/
+  klaar_om_te_boeken/vraag_open/afgewezen (geboekt = storno/tegenboeken, ter_accordering = eerst
+  intrekken — server-side 409 mét uitleg); boek-/veldvoorstel vervallen en de extractie draait
+  opnieuw achter de gates van het dóél; open vragen verhuizen mee; het toewijzings-geheugen
+  corrigeert de regel die naar de oude administratie wees; RLS-doorbraak uitsluitend via de
+  zelf-gepoorte SECURITY DEFINER-functie `boekhouding.verplaats_document` (bron-scope + status
+  ontvangen). `app/documenten/verplaatsen.py`; BESLISSINGEN "KANTOOR-MINI-RUN 27-08" punt 5.**
   Eigen naamnormalisatie: "Holding" blijft onderscheidend
   (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
   tenaamstelling-signaal.
