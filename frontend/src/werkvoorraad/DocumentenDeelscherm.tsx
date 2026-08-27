@@ -1,16 +1,38 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  bulkTerAccorderingAanbieden,
+  haalAccorderingInstellingen,
+  haalVervallenMeldingen,
+  type BulkAanbiedenResponseDto,
+  type VervallenMeldingDto,
+} from '../accordering/accorderingApi'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
+import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
-import { Checkbox } from '../ui/basis'
+import { AnkerPopup, Checkbox, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
-import { SOORT_VOLGORDE, documentRoute, amountKlasse, formatBedrag, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
+import { useDichtheid } from './dichtheid'
+import { SOORT_VOLGORDE, documentRoute, amountKlasse, formatBedrag, formatBinnenkomst, formatDatum, formatDatumKort, isOpenstaand, soortLabel } from './format'
 import { KlantUpload } from './KlantStanden'
+import {
+  SOORT_ALLE,
+  STATUSFILTER_ALLE,
+  STATUSFILTER_AUTOMATISCH,
+  STATUSFILTER_DUPLICAAT,
+  STATUSFILTER_URENMATCH,
+  filterDocumenten,
+  isMogelijkDuplicaat,
+  isUrenmatchAfwijking,
+  kiesTabVoorStatus,
+  lijstContextNaarParams,
+  type LijstContext,
+} from './lijstContext'
 import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
 import { VerwijderDialog } from './VerwijderDialog'
@@ -18,25 +40,29 @@ import { VerwijderDialog } from './VerwijderDialog'
 /** Ververs-interval zolang er documenten in extractie_wachtrij/extractie_bezig staan. */
 const EXTRACTIE_POLL_MS = 3000
 
-const STATUSFILTER_ALLE = 'alle'
-/** Sentinel voor het autoboeken-filter — met prefix, zodat het nooit met een echte
- * DocumentStatus-waarde uit de backend kan botsen. */
-const STATUSFILTER_AUTOMATISCH = '__automatisch_geboekt'
-/** Sentinel voor het duplicaatsignaal-filter (besluit 25-08, deel 2 punt 6) — zelfde prefix-regel. */
-export const STATUSFILTER_DUPLICAAT = '__mogelijk_duplicaat'
-
 /** Vaste tab-volgorde (mockup-norm 25-08) — leeft in ./format (gedeeld met de "volgende
  * document"-keuze); onbekende soorten volgen alfabetisch achteraan. Alleen soorten met teller > 0
  * krijgen een tab. */
 export { SOORT_VOLGORDE }
-/** Expliciete "alle documenten"-tab (incl. geboekt/verwijderd — het herstel-pad mag nooit
- * onbereikbaar zijn); zonder `soort`-param kiest het scherm de eerste tab met open werk. */
-export const SOORT_ALLE = 'alle'
+/** Sentinels/constanten leven sinds 27/28-08 in ./lijstContext (gedeeld met het controlescherm). */
+export { SOORT_ALLE, STATUSFILTER_DUPLICAAT }
 
-/** Eén duplicaat-begrip voor filter en teller: het gecachete RLZ-signaal óf de bestandsinhoud-
- * match bij upload (`mogelijk_duplicaat_van`). */
-function isMogelijkDuplicaat(d: DocumentListItemDto): boolean {
-  return d.duplicaatsignaal?.uitkomst === 'mogelijk_duplicaat' || d.mogelijk_duplicaat_van !== null
+/** Weggeklikte vervallen-meldingen (punt 2a, "eenmalig"): per batch per browser onthouden —
+ * zelfde localStorage-voorkeurenpatroon als de dichtheid. */
+const MELDING_WEGGEKLIKT_PREFIX = 'rlz.melding.accordering_vervallen.'
+function meldingWeggeklikt(batchId: string): boolean {
+  try {
+    return window.localStorage.getItem(MELDING_WEGGEKLIKT_PREFIX + batchId) === '1'
+  } catch {
+    return false
+  }
+}
+function markeerMeldingWeggeklikt(batchId: string): void {
+  try {
+    window.localStorage.setItem(MELDING_WEGGEKLIKT_PREFIX + batchId, '1')
+  } catch {
+    // geen opslag: de banner komt bij de volgende lading terug — beter dan stil verdwijnen
+  }
 }
 
 /* Klantlanding = documentenlijst (besluit Peter 25-08, feedbackronde punt C — herziet het
@@ -44,7 +70,14 @@ function isMogelijkDuplicaat(d: DocumentListItemDto): boolean {
  * per soort (alleen soorten met teller > 0), een compacte klikbare chip-rij met de overige
  * standen (bank per rekening, vragen, bij klant, afgewezen, IBAN, meerwerk, standen-overzicht) en
  * de klant-upload. Daaronder het bestaande deelscherm: segment-filters op status (voorkiesbaar
- * via `?status=`), zoekveld, verwijderen/herstellen. */
+ * via `?status=`), zoekveld, verwijderen/herstellen.
+ *
+ * Werkstroom- + UI-run 27/28-08: (1) de lijstcontext (tab + status-filter + zoekterm) staat in de
+ * URL en reist mee naar het controlescherm (`documentRoute(…, context)`) — doorloop ná boeken en
+ * ‹ ›-navigatie blijven binnen dit filter; (2a) eenmalige banner "accorderingen vervallen";
+ * (2b) bulk "Ter accordering aanbieden" op de tab "Klaar om te boeken"; (3) leverancier-eerst-
+ * rijen mét metaregel, dichtheid normaal/compact, groene geboekt-dot; (4) verwijderen via het
+ * ⋯-rijmenu mét verplichte reden; (5) "/" = zoekveld. */
 export function DocumentenDeelscherm({
   administratieId,
   administratieNaam,
@@ -53,16 +86,20 @@ export function DocumentenDeelscherm({
   administratieNaam: string
 }) {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const { meld } = useToastOptioneel()
+  const [searchParams, setSearchParams] = useSearchParams()
   const soortParam = searchParams.get('soort')
   const statusParam = searchParams.get('status')
+  const zoekParam = searchParams.get('q') ?? ''
   const { naamVoor } = useMedewerkers(administratieId)
+  const [dichtheid, setDichtheid] = useDichtheid()
 
   const [documenten, setDocumenten] = useState<DocumentListItemDto[] | null>(null)
   const [lijstFout, setLijstFout] = useState<string | null>(null)
   const [toonVerwijderd, setToonVerwijderd] = useState(false)
-  const [zoekterm, setZoekterm] = useState('')
+  const [zoekterm, setZoekterm] = useState(zoekParam)
   const [statusFilter, setStatusFilter] = useState(statusParam ?? STATUSFILTER_ALLE)
+  const zoekveldRef = useRef<HTMLInputElement | null>(null)
   // Chip-rij-standen (verrijking — een fout hier blokkeert de lijst nooit, zelfde patroon als de
   // standen-pagina).
   const [rekeningen, setRekeningen] = useState<RekeningenDto | null>(null)
@@ -73,6 +110,17 @@ export function DocumentenDeelscherm({
   const [verwijderenFout, setVerwijderenFout] = useState<string | null>(null)
   const [herstellenBezig, setHerstellenBezig] = useState<string | null>(null)
   const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
+  // ⋯-rijmenu (punt 4): archief-patroon — één open menu, anker per rij.
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const menuKnoppen = useRef<Record<string, HTMLButtonElement | null>>({})
+  // Accordering (punt 2): toggle-stand voor de bulk-actie + vervallen-meldingen voor de banner.
+  const [accorderingAan, setAccorderingAan] = useState(false)
+  const [vervallenMeldingen, setVervallenMeldingen] = useState<VervallenMeldingDto[]>([])
+  const [meldingVersie, setMeldingVersie] = useState(0)
+  const [selectie, setSelectie] = useState<Set<string>>(() => new Set())
+  const [bulkBezig, setBulkBezig] = useState(false)
+  const [bulkFout, setBulkFout] = useState<string | null>(null)
+  const [bulkResultaat, setBulkResultaat] = useState<BulkAanbiedenResponseDto | null>(null)
 
   const laadDocumenten = useCallback(() => {
     setLijstFout(null)
@@ -88,16 +136,21 @@ export function DocumentenDeelscherm({
     laadDocumenten()
   }, [laadDocumenten])
 
-  // `?status=` uit een chip (Bij klant / Afgewezen / IBAN) kiest het segment-filter voor.
+  // `?status=` uit een chip/kolom-teller (Bij klant / Afgewezen / IBAN / klantoverzicht) kiest het
+  // segment-filter voor; `?q=` de zoekterm (terugweg vanaf het controlescherm, punt 1).
   useEffect(() => {
     setStatusFilter(statusParam ?? STATUSFILTER_ALLE)
   }, [statusParam])
+  useEffect(() => {
+    setZoekterm(zoekParam)
+  }, [zoekParam])
 
   useEffect(() => {
     let actueel = true
     setRekeningen(null)
     setVragen(null)
     setUrenStand(null)
+    setAccorderingAan(false)
     haalRekeningen(administratieId)
       .then((data) => {
         if (actueel) setRekeningen(data)
@@ -114,10 +167,29 @@ export function DocumentenDeelscherm({
         if (actueel) setUrenStand(data)
       })
       .catch(() => undefined)
+    // Klant-accordering aan? Dan is de bulk-actie zinvol (punt 2b). Fout = geen bulk, lijst gewoon.
+    haalAccorderingInstellingen(administratieId)
+      .then((data) => {
+        if (actueel) setAccorderingAan(data.ingeschakeld)
+      })
+      .catch(() => undefined)
     return () => {
       actueel = false
     }
   }, [administratieId])
+
+  // Vervallen-meldingen (punt 2a): apart effect zodat een bulk-aanbieding 'm kan verversen.
+  useEffect(() => {
+    let actueel = true
+    haalVervallenMeldingen(administratieId)
+      .then((data) => {
+        if (actueel) setVervallenMeldingen(data)
+      })
+      .catch(() => undefined)
+    return () => {
+      actueel = false
+    }
+  }, [administratieId, meldingVersie])
 
   // Live extractiestatus (async extractie): zolang er documenten in de wachtrij of bij de
   // worker staan, ververst de lijst vanzelf.
@@ -127,6 +199,14 @@ export function DocumentenDeelscherm({
     return () => clearInterval(timer)
   }, [documenten, laadDocumenten])
 
+  // Punt 5: "/" zet de cursor in het zoekveld (alleen buiten invoervelden/dialogen).
+  useSneltoetsen(SNELTOETSEN_LIJST, {
+    zoeken: () => {
+      zoekveldRef.current?.focus()
+      zoekveldRef.current?.select()
+    },
+  })
+
   const verwijderen = async (reden: string) => {
     if (!verwijderenVoor) return
     setVerwijderenBezig(true)
@@ -134,7 +214,7 @@ export function DocumentenDeelscherm({
     try {
       await apiPostJson<DocumentActieResponseDto>(
         `/administraties/${administratieId}/documenten/${verwijderenVoor.id}/verwijderen`,
-        { reden: reden || null },
+        { reden },
       )
       setVerwijderenVoor(null)
       laadDocumenten()
@@ -178,10 +258,35 @@ export function DocumentenDeelscherm({
       }),
     [openPerSoort],
   )
-  // Zonder soort-param: de eerste tab met open werk; niets open → alle documenten.
+  // Zonder soort-param: de eerste tab met open werk — of, bij een voorgefilterde status (punt 1a),
+  // de eerste tab waarin dat filter iets oplevert; niets open → alle documenten.
   const soort: string | null =
-    soortParam === SOORT_ALLE ? null : soortParam ?? (documenten === null ? null : (tabs[0] ?? null))
+    soortParam === SOORT_ALLE
+      ? null
+      : (soortParam ?? (documenten === null ? null : kiesTabVoorStatus(documenten, tabs, statusFilter)))
   const toontAlle = documenten !== null && soort === null
+
+  /** De actuele lijstcontext (punt 1) — reist mee in élke rij-link en in de URL van dit scherm. */
+  const context: LijstContext = useMemo(
+    () => ({ soort, status: statusFilter, zoekterm }),
+    [soort, statusFilter, zoekterm],
+  )
+
+  // Context in de URL houden (replace — geen history-vervuiling), zodat terug/vernieuwen en de
+  // terugweg vanaf het controlescherm exact dezelfde lijst tonen.
+  useEffect(() => {
+    if (documenten === null) return
+    const huidig = new URLSearchParams(searchParams)
+    const gewenst = new URLSearchParams(searchParams)
+    for (const sleutel of ['soort', 'status', 'q']) gewenst.delete(sleutel)
+    // Soort alleen expliciet als de gebruiker (of een link) 'm zette — de automatische tab-keuze
+    // blijft impliciet (zodat een nieuwe tab-met-werk gewoon de landing wordt).
+    if (soortParam !== null) gewenst.set('soort', soortParam)
+    const ctx = new URLSearchParams(lijstContextNaarParams({ ...context, soort: null }))
+    ctx.delete('soort')
+    for (const [k, v] of ctx) gewenst.set(k, v)
+    if (huidig.toString() !== gewenst.toString()) setSearchParams(gewenst, { replace: true })
+  }, [context, documenten, searchParams, setSearchParams, soortParam])
 
   // Soort-scope (tab = één soort; "alle" = alle documenten incl. geboekt/verwijderd).
   const inScope = useMemo(
@@ -205,22 +310,12 @@ export function DocumentenDeelscherm({
   const naarStatus = (status: string) =>
     navigate(`/?administratie=${administratieId}${soortParam ? `&soort=${soortParam}` : ''}&status=${status}`)
 
-  const gefilterd = useMemo(() => {
-    if (inScope === null) return null
-    const term = zoekterm.trim().toLowerCase()
-    return inScope.filter((d) => {
-      if (statusFilter === STATUSFILTER_AUTOMATISCH) {
-        if (!d.automatisch_geboekt) return false
-      } else if (statusFilter === STATUSFILTER_DUPLICAAT) {
-        if (!isMogelijkDuplicaat(d)) return false
-      } else if (statusFilter !== STATUSFILTER_ALLE && d.status !== statusFilter) return false
-      if (!term) return true
-      const doorzoekbaar = [d.bestandsnaam, d.leverancier ?? '', d.totaalbedrag ?? '', statusLabel(d.status)]
-        .join(' ')
-        .toLowerCase()
-      return doorzoekbaar.includes(term)
-    })
-  }, [inScope, zoekterm, statusFilter])
+  // Eén bron voor het filteren (lijstContext.filterDocumenten) — het controlescherm rekent met
+  // exact dezelfde functie voor "3 van 12" en de doorloop.
+  const gefilterd = useMemo(
+    () => (documenten === null ? null : filterDocumenten(documenten, context)),
+    [documenten, context],
+  )
 
   const aanwezigeStatussen = useMemo(
     () => Array.from(new Set((inScope ?? []).map((d) => d.status))).sort(),
@@ -228,10 +323,67 @@ export function DocumentenDeelscherm({
   )
   const heeftAutomatischGeboekt = useMemo(() => (inScope ?? []).some((d) => d.automatisch_geboekt), [inScope])
   const aantalMogelijkDuplicaat = useMemo(() => (inScope ?? []).filter(isMogelijkDuplicaat).length, [inScope])
+  const aantalUrenmatch = useMemo(() => (inScope ?? []).filter(isUrenmatchAfwijking).length, [inScope])
   const aantalMetStatus = useCallback(
     (status: string) => (inScope ?? []).filter((d) => d.status === status).length,
     [inScope],
   )
+
+  // --- Bulk "Ter accordering aanbieden" (punt 2b) ------------------------------------------------
+  // Alleen op de tab "Klaar om te boeken" én als accordering voor deze klant aan staat; de poorten
+  // per document blijven server-side onverkort (overgeslagen mét reden in het resultaatpaneel).
+  const bulkMogelijk = accorderingAan && statusFilter === 'klaar_om_te_boeken'
+  const selecteerbaar = useMemo(
+    () => (bulkMogelijk ? (gefilterd ?? []).filter((d) => d.status === 'klaar_om_te_boeken') : []),
+    [bulkMogelijk, gefilterd],
+  )
+  useEffect(() => {
+    // Selectie opschonen zodra rijen uit de lijst verdwijnen (herladen/filterwissel).
+    setSelectie((s) => {
+      const ids = new Set(selecteerbaar.map((d) => d.id))
+      const nieuw = new Set([...s].filter((id) => ids.has(id)))
+      return nieuw.size === s.size ? s : nieuw
+    })
+  }, [selecteerbaar])
+  const allesGeselecteerd = selecteerbaar.length > 0 && selecteerbaar.every((d) => selectie.has(d.id))
+  const wisselSelectie = (id: string) =>
+    setSelectie((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  const bulkAanbieden = async () => {
+    if (selectie.size === 0) return
+    setBulkBezig(true)
+    setBulkFout(null)
+    setBulkResultaat(null)
+    try {
+      const resultaat = await bulkTerAccorderingAanbieden(administratieId, [...selectie])
+      setBulkResultaat(resultaat)
+      const gelukt = resultaat.aangeboden + resultaat.geboekt
+      meld(
+        `${gelukt} ${gelukt === 1 ? 'document' : 'documenten'} ter accordering aangeboden` +
+          (resultaat.geboekt > 0 ? ` (${resultaat.geboekt} direct geboekt via staande goedkeuring)` : '') +
+          (resultaat.overgeslagen > 0 ? ` — ${resultaat.overgeslagen} overgeslagen, zie de redenen` : ''),
+        resultaat.overgeslagen > 0 ? 'warn' : 'ok',
+      )
+      setSelectie(new Set())
+      laadDocumenten()
+      setMeldingVersie((v) => v + 1)
+    } catch (err) {
+      setBulkFout(err instanceof ApiError ? err.message : 'Bulk aanbieden mislukt.')
+    } finally {
+      setBulkBezig(false)
+    }
+  }
+
+  // --- Vervallen-melding (punt 2a): nieuwste batch met nog niet opnieuw aangeboden documenten ----
+  const [weggeklikteBatches, setWeggeklikteBatches] = useState<Set<string>>(() => new Set())
+  const actieveMelding =
+    vervallenMeldingen.find(
+      (m) => m.nog_niet_opnieuw_aangeboden > 0 && !weggeklikteBatches.has(m.batch_id) && !meldingWeggeklikt(m.batch_id),
+    ) ?? null
 
   return (
     <div>
@@ -309,6 +461,43 @@ export function DocumentenDeelscherm({
         </Link>
       </div>
 
+      {/* Punt 2a: eenmalige melding — lopende accorderingen vervallen door een configuratiewijziging. */}
+      {actieveMelding && (
+        <div className="melding-banner" role="status" data-testid="vervallen-melding">
+          <div className="melding-tekst">
+            <b>
+              {actieveMelding.aantal} {actieveMelding.aantal === 1 ? 'accordering is' : 'accorderingen zijn'} vervallen
+            </b>{' '}
+            op {formatDatum(actieveMelding.tijdstip)}
+            {actieveMelding.door_naam ? ` (configuratie gewijzigd door ${actieveMelding.door_naam})` : ''} —{' '}
+            {actieveMelding.reden}.{' '}
+            {actieveMelding.nog_niet_opnieuw_aangeboden} {actieveMelding.nog_niet_opnieuw_aangeboden === 1 ? 'staat' : 'staan'}{' '}
+            nog op &ldquo;Klaar om te boeken&rdquo; en {actieveMelding.nog_niet_opnieuw_aangeboden === 1 ? 'is' : 'zijn'} nog
+            niet opnieuw aangeboden.
+          </div>
+          <div className="melding-acties">
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => navigate(`/?administratie=${administratieId}&status=klaar_om_te_boeken`)}
+            >
+              Toon &ldquo;Klaar om te boeken&rdquo;
+            </button>
+            <button
+              type="button"
+              className="linkbtn"
+              onClick={() => {
+                markeerMeldingWeggeklikt(actieveMelding.batch_id)
+                setWeggeklikteBatches((s) => new Set([...s, actieveMelding.batch_id]))
+              }}
+              aria-label="Melding sluiten"
+            >
+              Sluiten
+            </button>
+          </div>
+        </div>
+      )}
+
       <KlantUpload administratieId={administratieId} onGeupload={laadDocumenten} />
 
       <div className="panel">
@@ -344,8 +533,8 @@ export function DocumentenDeelscherm({
             Toon verwijderde documenten
           </label>
         </div>
-        {/* Segment-filters (mockup #scherm-docs) + zoekveld. */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Segment-filters (mockup #scherm-docs) + zoekveld + dichtheid (punt 3b). */}
+        <div className="lijst-werkbalk">
           <div className="segment" role="group" aria-label="Filter op status" style={{ flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -383,15 +572,109 @@ export function DocumentenDeelscherm({
                 Mogelijk duplicaat ({aantalMogelijkDuplicaat})
               </button>
             )}
+            {aantalUrenmatch > 0 && (
+              <button
+                type="button"
+                className={statusFilter === STATUSFILTER_URENMATCH ? 'actief' : undefined}
+                onClick={() => setStatusFilter(STATUSFILTER_URENMATCH)}
+                title="Veldwerker-facturen waarvan de urenmatch afwijkt van de goedgekeurde weekstaten"
+              >
+                Urenmatch wijkt af ({aantalUrenmatch})
+              </button>
+            )}
           </div>
           <input
-            placeholder="Zoek op leverancier, bedrag, bestandsnaam…"
+            ref={zoekveldRef}
+            placeholder="Zoek op leverancier, bedrag, bestandsnaam…  ( / )"
             aria-label="Zoek in documenten"
             style={{ maxWidth: 300 }}
             value={zoekterm}
             onChange={(e) => setZoekterm(e.target.value)}
           />
+          <div className="spacer" />
+          <div className="segment" role="group" aria-label="Dichtheid van de lijst" title="Rijhoogte van de lijst (per gebruiker onthouden)">
+            <button
+              type="button"
+              className={dichtheid === 'normaal' ? 'actief' : undefined}
+              aria-pressed={dichtheid === 'normaal'}
+              onClick={() => setDichtheid('normaal')}
+            >
+              Normaal
+            </button>
+            <button
+              type="button"
+              className={dichtheid === 'compact' ? 'actief' : undefined}
+              aria-pressed={dichtheid === 'compact'}
+              onClick={() => setDichtheid('compact')}
+            >
+              Compact
+            </button>
+          </div>
         </div>
+
+        {/* Bulk-balk (punt 2b): alleen op "Klaar om te boeken" mét accordering aan. */}
+        {bulkMogelijk && selecteerbaar.length > 0 && (
+          <div className="bulk-balk" data-testid="bulk-balk">
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0 }}>
+              <Checkbox
+                checked={allesGeselecteerd}
+                aria-label="Alle documenten in deze lijst selecteren"
+                onChange={(e) =>
+                  setSelectie(e.target.checked ? new Set(selecteerbaar.map((d) => d.id)) : new Set())
+                }
+              />
+              {selectie.size === 0
+                ? `Selecteer documenten om ze in één keer ter accordering aan te bieden (${selecteerbaar.length} klaar om te boeken)`
+                : `${selectie.size} van ${selecteerbaar.length} geselecteerd`}
+            </label>
+            <div className="spacer" />
+            <button
+              type="button"
+              className="btn"
+              disabled={selectie.size === 0 || bulkBezig}
+              onClick={() => void bulkAanbieden()}
+              title="Zelfde poorten als de losse knop: harde checks, doorbelasting-checks en match-bevestigingen per document — wat niet mag, wordt overgeslagen mét reden"
+            >
+              {bulkBezig ? 'Aanbieden…' : `Ter accordering aanbieden${selectie.size > 0 ? ` (${selectie.size})` : ''} →`}
+            </button>
+          </div>
+        )}
+        {bulkFout && <FoutMelding melding={bulkFout} />}
+        {bulkResultaat && (
+          <div className="hint bulk-resultaat" role="status" style={{ marginBottom: 12 }}>
+            <b>
+              {bulkResultaat.aangeboden} aangeboden
+              {bulkResultaat.geboekt > 0 ? `, ${bulkResultaat.geboekt} direct geboekt (staande goedkeuring)` : ''}
+              {bulkResultaat.overgeslagen > 0 ? `, ${bulkResultaat.overgeslagen} overgeslagen` : ''}.
+            </b>
+            {bulkResultaat.overgeslagen > 0 && (
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {bulkResultaat.resultaten
+                  .filter((r) => r.uitkomst === 'overgeslagen')
+                  .map((r) => (
+                    <li key={r.document_id}>
+                      <b>{r.bestandsnaam ?? r.document_id}</b>: {r.reden ?? 'geweigerd'}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            {bulkResultaat.resultaten.some((r) => r.boek_fout) && (
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: 'var(--danger)' }}>
+                {bulkResultaat.resultaten
+                  .filter((r) => r.boek_fout)
+                  .map((r) => (
+                    <li key={r.document_id}>
+                      <b>{r.bestandsnaam ?? r.document_id}</b>: boeken ná staande goedkeuring mislukt — {r.boek_fout}
+                    </li>
+                  ))}
+              </ul>
+            )}{' '}
+            <button type="button" className="linkbtn" onClick={() => setBulkResultaat(null)}>
+              Sluiten
+            </button>
+          </div>
+        )}
+
         {lijstFout && (
           <FoutMelding
             melding="De documentenlijst kon niet geladen worden."
@@ -429,10 +712,10 @@ export function DocumentenDeelscherm({
         )}
         {gefilterd !== null && gefilterd.length > 0 && (
           <div className="tabel-scroll sticky-koppen">
-            <table>
+            <table className={`documenten-tabel${dichtheid === 'compact' ? ' dichtheid-compact' : ''}`} data-dichtheid={dichtheid}>
               <tbody>
                 <tr>
-                  <th>Document</th>
+                  {bulkMogelijk && <th className="selectie" aria-label="Selectie" />}
                   <th>Leverancier</th>
                   <th>Factuurdatum</th>
                   <th className="amount">Bedrag (incl. btw)</th>
@@ -442,21 +725,44 @@ export function DocumentenDeelscherm({
                 </tr>
                 {gefilterd.map((d) => {
                   const isVerwijderd = d.status === 'verwijderd'
-                  // Backend blokkeert dit al hard (bewaarplicht/lopende accordering) — de UI mag de
-                  // onmogelijke actie dan niet eens aanbieden, ook niet als disabled-knop.
-                  const kanNietVerwijderdWorden = d.status === 'geboekt' || d.status === 'ter_accordering'
+                  // Backend blokkeert dit hard (bewaarplicht/lopende accordering) — het menu-item legt
+                  // uit waarom i.p.v. stil te verdwijnen.
+                  const redenNietVerwijderbaar =
+                    d.status === 'geboekt'
+                      ? 'Geboekt in RLZ — bewaarplicht; terugdraaien kan alleen via storno of tegenboeken.'
+                      : d.status === 'ter_accordering'
+                        ? 'Ligt bij de klant ter accordering — trek de accordering eerst in.'
+                        : null
                   const isKassarapport = d.soort === 'kassarapport'
                   const isVerkoopfactuur = d.soort === 'verkoopfactuur'
                   const isWaarborg = d.soort === 'waarborg'
+                  const route = documentRoute(administratieId, d, context)
+                  const geselecteerd = selectie.has(d.id)
                   return (
-                    <tr key={d.id} className="clickable" onClick={() => navigate(documentRoute(administratieId, d))}>
+                    <tr
+                      key={d.id}
+                      className={`clickable${geselecteerd ? ' geselecteerd' : ''}`}
+                      onClick={() => navigate(route)}
+                    >
+                      {bulkMogelijk && (
+                        <td className="selectie" onClick={(e) => e.stopPropagation()}>
+                          {d.status === 'klaar_om_te_boeken' && (
+                            <Checkbox
+                              checked={geselecteerd}
+                              aria-label={`Selecteer ${d.leverancier ?? d.bestandsnaam}`}
+                              onChange={() => wisselSelectie(d.id)}
+                            />
+                          )}
+                        </td>
+                      )}
                       <td>
-                        {d.bestandsnaam}
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                          {d.bron} · {formatDatum(d.aangemaakt_op)}
+                        {/* Punt 3a: leverancier eerst (vet), bestandsnaam + binnenkomst als metaregel. */}
+                        <div className="lijst-hoofd">{d.leverancier ?? d.bestandsnaam}</div>
+                        <div className="lijst-meta">
+                          {d.leverancier ? `${d.bestandsnaam} · ` : ''}
+                          {d.bron} · {formatBinnenkomst(d.aangemaakt_op)}
                         </div>
                       </td>
-                      <td>{d.leverancier ?? '—'}</td>
                       <td>{d.factuurdatum ? formatDatumKort(d.factuurdatum) : '—'}</td>
                       <td className={amountKlasse(d.totaalbedrag)}>{formatBedrag(d.totaalbedrag)}</td>
                       <td>
@@ -531,35 +837,85 @@ export function DocumentenDeelscherm({
                           '—'
                         )}
                       </td>
-                      <td>
-                        {isVerwijderd ? (
+                      <td className="acties">
+                        {/* Punt 4: ⋯-rijmenu (archief-patroon) — verwijderen zit achter een menu-item mét
+                            bevestigingsdialoog en verplichte reden, nooit meer één onbeschermde klik. */}
+                        <button
+                          ref={(el) => {
+                            menuKnoppen.current[d.id] = el
+                          }}
+                          type="button"
+                          className="icon-btn"
+                          aria-label={`Acties voor ${d.leverancier ?? d.bestandsnaam}`}
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen === d.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setMenuOpen((h) => (h === d.id ? null : d.id))
+                          }}
+                        >
+                          ⋯
+                        </button>
+                        <AnkerPopup
+                          open={menuOpen === d.id}
+                          anker={menuKnoppen.current[d.id] ?? null}
+                          kant="onder"
+                          uitlijning="eind"
+                          className="rijmenu"
+                          role="menu"
+                          aria-label={`Acties voor ${d.leverancier ?? d.bestandsnaam}`}
+                          onAnkerUitBeeld={() => setMenuOpen(null)}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <button
                             type="button"
-                            className="icon-btn"
-                            disabled={herstellenBezig === d.id}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void herstellen(d.id)
+                            className="linkbtn"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuOpen(null)
+                              navigate(route)
                             }}
                           >
-                            {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
+                            Openen
                           </button>
-                        ) : (
-                          !kanNietVerwijderdWorden && (
+                          {isVerwijderd ? (
                             <button
                               type="button"
-                              className="icon-btn"
-                              aria-label="Document verwijderen"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setVerwijderenFout(null)
-                                setVerwijderenVoor(d)
+                              className="linkbtn"
+                              role="menuitem"
+                              disabled={herstellenBezig === d.id}
+                              onClick={() => {
+                                setMenuOpen(null)
+                                void herstellen(d.id)
                               }}
                             >
-                              🗑
+                              {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
                             </button>
-                          )
-                        )}
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="linkbtn"
+                                role="menuitem"
+                                disabled={redenNietVerwijderbaar !== null}
+                                aria-disabled={redenNietVerwijderbaar !== null}
+                                onClick={() => {
+                                  if (redenNietVerwijderbaar !== null) return
+                                  setMenuOpen(null)
+                                  setVerwijderenFout(null)
+                                  setVerwijderenVoor(d)
+                                }}
+                              >
+                                🗑 Verwijderen…
+                              </button>
+                              {redenNietVerwijderbaar !== null && (
+                                <div className="hint" style={{ padding: '2px 8px 6px', maxWidth: 260 }}>
+                                  {redenNietVerwijderbaar}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </AnkerPopup>
                       </td>
                     </tr>
                   )

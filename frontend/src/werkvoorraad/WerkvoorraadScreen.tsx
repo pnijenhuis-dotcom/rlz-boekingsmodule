@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { AdministratieDto } from '../api/types'
 import { useAuthOptioneel } from '../auth/AuthContext'
 import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/instellingenApi'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
-import { UPLOAD_ACCEPT, verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
+import { verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Lichtbaan } from '../ui/Lichtbaan'
 import { VragenScreen } from '../vragen/VragenScreen'
@@ -13,6 +13,7 @@ import { FilterWeergave, type WerkvoorraadFilter } from './FilterWeergave'
 import { Klantenlijst } from './Klantenlijst'
 import { KlantStanden } from './KlantStanden'
 import { KpiRij } from './KpiRij'
+import { UploadZone } from './UploadZone'
 import { teVerwerken, useWerkvoorraadData, type KlantRij } from './useWerkvoorraadData'
 import { useAdministraties } from './useAdministraties'
 
@@ -199,8 +200,6 @@ function EmlUploadZone({ onVerwerkt }: { onVerwerkt: () => void }) {
   const [uploadFout, setUploadFout] = useState<string | null>(null)
   const [uploadBericht, setUploadBericht] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
-  const [sleepActief, setSleepActief] = useState(false)
-  const bestandInputRef = useRef<HTMLInputElement>(null)
 
   // Werkvoorraad-sleepzone = tenaamstelling-routing (CLAUDE.md): een .eml gaat door de mail-intake,
   // een los bestand (PDF/UBL/foto — punt 2 feedbackronde 25-08 deel 3) door dezelfde routing als een
@@ -231,46 +230,26 @@ function EmlUploadZone({ onVerwerkt }: { onVerwerkt: () => void }) {
     }
   }, [onVerwerkt])
 
+  // Punt 3d (27/28-08): één regel + ⓘ-uitleg, zone lager — gedeelde UploadZone.
   return (
     <>
-      <div
-        className={`upload${sleepActief ? ' dragover' : ''}`}
-        onClick={() => bestandInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setSleepActief(true)
-        }}
-        onDragLeave={() => setSleepActief(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setSleepActief(false)
-          const bestand = e.dataTransfer.files?.[0]
-          if (bestand) void uploadBestand(bestand)
-        }}
-      >
-        {bezig ? (
-          'Bezig met verwerken…'
-        ) : (
+      <UploadZone
+        bezig={bezig}
+        bezigTekst="Bezig met verwerken…"
+        onBestand={(bestand) => void uploadBestand(bestand)}
+        regel={
           <>
-            Sleep hier een doorgestuurde mail (.eml), een PDF, UBL of foto (JPEG/PNG/HEIC) naartoe, of <b>blader</b>
-            <br />
-            <span style={{ fontSize: 12 }}>
-              Toewijzing op tenaamstelling: wat eenduidig koppelt gaat direct naar de klant, de rest komt in
-              &ldquo;Niet toegewezen&rdquo; hieronder. Een foto wordt naar PDF omgezet (origineel blijft bewaard).
-            </span>
+            Sleep hier een mail (.eml), PDF, UBL of foto naartoe, of <b>blader</b> — toewijzing op tenaamstelling
           </>
-        )}
-        <input
-          ref={bestandInputRef}
-          type="file"
-          accept={UPLOAD_ACCEPT}
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const bestand = e.target.files?.[0]
-            if (bestand) void uploadBestand(bestand)
-          }}
-        />
-      </div>
+        }
+        uitleg={
+          <>
+            Wat eenduidig aan een klant koppelt (tenaamstelling leidend, afzender als hint) gaat direct naar die klant;
+            de rest komt in &ldquo;Niet toegewezen&rdquo; hieronder. Een .eml doorloopt de mail-intake (idempotent op
+            Message-ID); een foto (JPEG/PNG/HEIC) wordt naar PDF omgezet, het origineel blijft bewaard.
+          </>
+        }
+      />
       {uploadFout && <FoutMelding melding={uploadFout} />}
       {uploadBericht && (
         <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>

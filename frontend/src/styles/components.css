@@ -1441,3 +1441,175 @@ tr.geselecteerd td.acties {
 .naam-met-avatar > div {
   min-width: 0;
 }
+
+/* ================= Werkstroom- + UI-run 27/28-08 ================= */
+
+/* Punt 3c: status-dot "Geboekt" = --ok (designpass-v2-semantiek: groen = status-op-orde). De
+   teller-/pil-chip .chip.geboekt blijft muted — dit gaat alleen om de status-dot in lijsten. */
+.status.geboekt {
+  color: var(--ok);
+}
+
+/* Punt 3a/3b: documentenlijst — leverancier eerst (vet) mét grijze metaregel (bestandsnaam ·
+   bron · binnenkomst); rijen compacter dan de generieke tabel; dichtheid 'compact' nog dichter.
+   Alleen deze tabel, de overige lijsttabellen ongewijzigd. */
+.documenten-tabel td {
+  padding: 9px 12px;
+}
+.documenten-tabel .lijst-hoofd {
+  font-weight: 700;
+  color: var(--text);
+}
+.documenten-tabel .lijst-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.documenten-tabel.dichtheid-compact td {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.documenten-tabel.dichtheid-compact .lijst-meta {
+  font-size: 10.5px;
+  margin-top: 0;
+}
+.documenten-tabel.dichtheid-compact .status,
+.documenten-tabel.dichtheid-compact .chip {
+  font-size: 10.5px;
+}
+.documenten-tabel td.selectie {
+  width: 34px;
+  padding-right: 0;
+}
+.documenten-tabel td.acties {
+  width: 44px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Dichtheidskeuze (segment) + bulk-balk. */
+.lijst-werkbalk {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.lijst-werkbalk .spacer {
+  flex: 1;
+}
+.bulk-balk {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  font-size: 12.5px;
+}
+.bulk-resultaat li {
+  margin: 2px 0;
+}
+
+/* Punt 2a: eenmalige melding vervallen accorderingen (banner op de documentenlijst). */
+.melding-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: var(--purple-bg);
+  border: 1px solid color-mix(in srgb, var(--purple) 35%, var(--border));
+  color: var(--text);
+  font-size: 13px;
+}
+.melding-banner .melding-tekst {
+  flex: 1;
+}
+.melding-banner .melding-acties {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Punt 3d: compacte uploadzone — één regel + ⓘ-popover; de zone zelf lager. */
+.upload.upload-compact {
+  padding: 11px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.upload-regel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.upload-uitleg-knop {
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.anker-popup.upload-uitleg {
+  max-width: 420px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: left;
+  line-height: 1.5;
+}
+.upload-extra {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+/* Punt 1c: ‹ ›-navigatie + positie in de topbar van het controlescherm. */
+.lijst-navigatie {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+}
+.lijst-navigatie .positie {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+  text-align: center;
+}
+
+/* Punt 5: toetslabel (tooltip-tekst draagt 'm ook; dit is de zichtbare hint). */
+.kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+  vertical-align: middle;
+}
+.btn .kbd {
+  margin-left: 7px;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+}
+.sneltoets-tabel td,
+.sneltoets-tabel th {
+  padding: 6px 10px;
+}

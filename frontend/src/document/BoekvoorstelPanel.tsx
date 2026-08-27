@@ -331,6 +331,13 @@ interface Props {
    * undefined = inline op de oude plek (losse panelen, tests); null = doel nog niet gemonteerd
    * (één commit) → even niets, zodat de balk nooit kort op de verkeerde plek flitst. */
   actiebalkDoel?: HTMLElement | null
+  /** Sneltoetsen (werkstroom-run 27/28-08, punt 5): het paneel meldt zijn actieve besluitknop —
+   * `boeken()` doet exact wat de knop doet (Boeken / Boeken + doorbelasten / Ter accordering),
+   * `kanBoeken` spiegelt de disabled-stand. Stabiele callback verwacht (ref-patroon). */
+  onActies?: (acties: { boeken: () => void; kanBoeken: boolean; boekLabel: string }) => void
+  /** Onopgeslagen wijzigingen (punt 1c/5): true zolang een invoerwijziging nog niet (gedebounced)
+   * is opgeslagen en gecontroleerd — het scherm vraagt dan bevestiging bij ‹ ›/Esc/pijltjes. */
+  onOnopgeslagenWijzigingen?: (heeft: boolean) => void
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
@@ -350,6 +357,8 @@ export function BoekvoorstelPanel({
   onVoorstelOpgeslagen,
   toeTeVoegenRegel = null,
   actiebalkDoel,
+  onActies,
+  onOnopgeslagenWijzigingen,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -977,14 +986,43 @@ export function BoekvoorstelPanel({
     bijWijziging: controleren,
   })
 
-  if (laden) return <div className="panel">Boekvoorstel laden…</div>
-  if (ladenFout) return <div className="fout">Kon boekvoorstel niet laden: {ladenFout}</div>
-
   // A2 (besluit 25-08): mét klaargezette doorbelasting moeten boek-checks én
   // doorbelasting-checks samen groen zijn vóór de knop actief wordt.
   const doorbelastingBlokkeert = doorbelastingKlaargezet?.geblokkeerd === true
   const kanBoeken =
-    checkRapport !== null && checksActueel && !checkRapport.geblokkeerd && !isReadOnly && !doorbelastingBlokkeert
+    !laden &&
+    ladenFout === null &&
+    checkRapport !== null &&
+    checksActueel &&
+    !checkRapport.geblokkeerd &&
+    !isReadOnly &&
+    !doorbelastingBlokkeert
+  const boekLabel = accorderingAan
+    ? doorbelastingKlaargezet
+      ? 'Ter accordering (+ doorbelasten) →'
+      : 'Ter accordering →'
+    : doorbelastingKlaargezet
+      ? 'Boeken + doorbelasten ✓'
+      : 'Boeken in RLZ ✓'
+
+  // Punt 5: de actieve besluitknop naar buiten melden (sneltoets B doet exact de knop-klik);
+  // `boeken` wisselt per render van identiteit → via ref, zodat de melding alleen bij een echte
+  // standwijziging vuurt.
+  const boekenRef = useRef(boeken)
+  boekenRef.current = boeken
+  const kanBoekenNu = kanBoeken && !boekenBezig
+  useEffect(() => {
+    onActies?.({ boeken: () => void boekenRef.current(), kanBoeken: kanBoekenNu, boekLabel })
+  }, [onActies, kanBoekenNu, boekLabel])
+  // Punt 1c/5: onopgeslagen = er is gewijzigd (versie > 0) en de debounce-run heeft de checks
+  // nog niet actueel gemaakt (of loopt nog).
+  const heeftOnopgeslagen = !isReadOnly && wijzigingsVersie > 0 && (!checksActueel || checksBezig)
+  useEffect(() => {
+    onOnopgeslagenWijzigingen?.(heeftOnopgeslagen)
+  }, [onOnopgeslagenWijzigingen, heeftOnopgeslagen])
+
+  if (laden) return <div className="panel">Boekvoorstel laden…</div>
+  if (ladenFout) return <div className="fout">Kon boekvoorstel niet laden: {ladenFout}</div>
   const boekenTitel = isReadOnly
     ? undefined
     : checkRapport === null
@@ -996,14 +1034,6 @@ export function BoekvoorstelPanel({
           : doorbelastingBlokkeert
             ? `Boeken + doorbelasten geblokkeerd — ${doorbelastingKlaargezet?.reden ?? 'doorbelasting nog niet groen'}`
             : undefined
-  const boekLabel = accorderingAan
-    ? doorbelastingKlaargezet
-      ? 'Ter accordering (+ doorbelasten) →'
-      : 'Ter accordering →'
-    : doorbelastingKlaargezet
-      ? 'Boeken + doorbelasten ✓'
-      : 'Boeken in RLZ ✓'
-
   return (
     <>
       <div className="panel">
@@ -1535,8 +1565,8 @@ export function BoekvoorstelPanel({
               )}
               <div className="actions">
                 {onAfwijzen && (
-                  <button type="button" className="btn secondary" onClick={onAfwijzen}>
-                    Afwijzen…
+                  <button type="button" className="btn secondary" onClick={onAfwijzen} title="Afwijzen — sneltoets A">
+                    Afwijzen… <kbd className="kbd" aria-hidden>A</kbd>
                   </button>
                 )}
                 {onVraagStellen && (
@@ -1548,10 +1578,15 @@ export function BoekvoorstelPanel({
                   type="button"
                   className="btn"
                   disabled={!kanBoeken || boekenBezig}
-                  title={boekenTitel}
+                  title={boekenTitel ? `${boekenTitel} — sneltoets B` : `${boekLabel} — sneltoets B`}
                   onClick={() => void boeken()}
                 >
                   {boekenBezig ? 'Bezig…' : boekLabel}
+                  {!boekenBezig && (
+                    <kbd className="kbd" aria-hidden>
+                      B
+                    </kbd>
+                  )}
                 </button>
               </div>
             </div>

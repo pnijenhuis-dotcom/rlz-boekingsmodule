@@ -161,7 +161,7 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
     setFout(null)
     setMelding(null)
     try {
-      await zetAccorderingInstellingen(administratieId, {
+      const resultaat = await zetAccorderingInstellingen(administratieId, {
         ingeschakeld,
         lagen: lagen
           .filter((laag) => laag.accordeurId)
@@ -171,7 +171,16 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
             bedrag_drempel: laag.drempel ? laag.drempel.replace(',', '.') : null,
           })),
       })
-      setMelding('Opgeslagen.')
+      // Punt 2a (27/28-08): een schemawijziging laat lopende rondes vervallen — hier direct
+      // benoemen (en op de documentenlijst van de klant staat de eenmalige banner).
+      const vervallen = resultaat.rondes_vervallen ?? 0
+      setMelding(
+        vervallen > 0
+          ? `Opgeslagen. ${vervallen} lopende ${vervallen === 1 ? 'accordering is' : 'accorderingen zijn'} vervallen ` +
+              '(accorderingsconfiguratie gewijzigd) en staan weer op "Klaar om te boeken" — bied ze opnieuw aan, ' +
+              'los of via "Ter accordering aanbieden" op de documentenlijst van deze klant.'
+          : 'Opgeslagen.',
+      )
       laad()
     } catch (err) {
       setFout(err instanceof Error ? err.message : 'Opslaan mislukt')

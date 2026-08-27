@@ -44,8 +44,11 @@ export function verplaatsDocument(
   administratieId: string,
   documentId: string,
   doelAdministratieId: string,
+  onthoudTenaamstelling = false,
 ): Promise<DocumentVerplaatsResponseDto> {
   return apiPostJson<DocumentVerplaatsResponseDto>(`/administraties/${administratieId}/documenten/${documentId}/verplaats`, {
     doel_administratie_id: doelAdministratieId,
+    // Punt 6a: alleen op expliciet verzoek (checkbox, default uit) — nooit automatisch.
+    onthoud_tenaamstelling: onthoudTenaamstelling,
   })
 }

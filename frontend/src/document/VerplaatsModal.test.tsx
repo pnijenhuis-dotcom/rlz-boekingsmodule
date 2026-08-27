@@ -103,7 +103,7 @@ describe('VerplaatsModal (addendum 27-08 punt 5)', () => {
     await waitFor(() => expect(onVerplaatst).toHaveBeenCalledTimes(1))
     expect(aanroepen).toHaveLength(1)
     expect(aanroepen[0].url).toBe(`/administraties/${BRON}/documenten/${DOCUMENT_ID}/verplaats`)
-    expect(aanroepen[0].body).toEqual({ doel_administratie_id: DOEL })
+    expect(aanroepen[0].body).toEqual({ doel_administratie_id: DOEL, onthoud_tenaamstelling: false })
     expect(onVerplaatst.mock.calls[0][0]).toMatchObject({ naar_administratie_id: DOEL, leerregels_gecorrigeerd: ['tenaamstelling'] })
   })
 

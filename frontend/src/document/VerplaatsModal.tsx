@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { DocumentVerplaatsResponseDto } from '../api/types'
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../ui/basis'
+import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import { verplaatsDocument } from './verplaatsen'
@@ -13,6 +13,8 @@ interface Props {
   bestandsnaam: string
   /** Open vragen op het document (verhuizen mee — de modal benoemt dat). */
   openVragen: number
+  /** Gelezen tenaamstelling (punt 6a): voedt de optionele "onthoud"-checkbox; null = geen checkbox. */
+  tenaamstelling?: string | null
   onVerplaatst: (resultaat: DocumentVerplaatsResponseDto) => void
   onAnnuleren: () => void
 }
@@ -27,11 +29,15 @@ export function VerplaatsModal({
   documentId,
   bestandsnaam,
   openVragen,
+  tenaamstelling = null,
   onVerplaatst,
   onAnnuleren,
 }: Props) {
   const { administraties, fout: administratiesFout } = useAdministraties()
   const [doelId, setDoelId] = useState<string | null>(null)
+  // Punt 6a (werkstroom-run 27/28-08): default UIT — géén automatische leer-regel; alleen op
+  // expliciet verzoek leert het geheugen "deze tenaamstelling hoort bij <doel>" (register-match-gat).
+  const [onthoud, setOnthoud] = useState(false)
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
 
@@ -46,7 +52,7 @@ export function VerplaatsModal({
     setBezig(true)
     setFout(null)
     try {
-      const resultaat = await verplaatsDocument(administratieId, documentId, doelId)
+      const resultaat = await verplaatsDocument(administratieId, documentId, doelId, onthoud && !!tenaamstelling)
       onVerplaatst(resultaat)
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Verplaatsen mislukt.')
@@ -103,6 +109,19 @@ export function VerplaatsModal({
           )}
           <li>De verhuizing komt in de tijdlijn en het audit-log (van → naar, door wie).</li>
         </ul>
+
+        {tenaamstelling && (
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, fontSize: 12.5 }}>
+            <Checkbox checked={onthoud} onChange={(e) => setOnthoud(e.target.checked)} disabled={bezig} />
+            <span>
+              Onthoud: tenaamstelling <b>&ldquo;{tenaamstelling}&rdquo;</b> hoort bij {doelNaam ?? 'de doeladministratie'}
+              <span className="hint" style={{ display: 'block', marginTop: 2 }}>
+                Alleen als de toewijzing níét uit een leer-regel kwam (bv. een match op de administratienaam) — anders
+                herhaalt de intake dezelfde fout bij de volgende mail. Standaard uit; niets wordt automatisch geleerd.
+              </span>
+            </span>
+          </label>
+        )}
 
         {fout && (
           <div className="fout" role="alert" style={{ marginTop: 10 }}>

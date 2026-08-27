@@ -13,6 +13,50 @@ export interface AccorderingLaagDto {
 export interface AccorderingInstellingenDto {
   ingeschakeld: boolean
   lagen: AccorderingLaagDto[]
+  /** Alleen op de PUT-response (27/28-08 punt 2a): lopende rondes die door déze wijziging vervielen. */
+  rondes_vervallen?: number
+}
+
+/** Eenmalige werkvoorraad-melding (punt 2a): één configuratiewijziging die lopende rondes liet
+ * vervallen; `nog_niet_opnieuw_aangeboden` 0 = de melding is vanzelf klaar. */
+export interface VervallenMeldingDto {
+  batch_id: string
+  tijdstip: string
+  door_gebruiker_id: string
+  door_naam: string | null
+  aantal: number
+  nog_niet_opnieuw_aangeboden: number
+  reden: string
+}
+
+export interface BulkAanbiedResultaatDto {
+  document_id: string
+  bestandsnaam: string | null
+  uitkomst: 'aangeboden' | 'geboekt' | 'overgeslagen' | string
+  reden: string | null
+  boek_fout: string | null
+}
+
+export interface BulkAanbiedenResponseDto {
+  resultaten: BulkAanbiedResultaatDto[]
+  aangeboden: number
+  geboekt: number
+  overgeslagen: number
+}
+
+export function haalVervallenMeldingen(administratieId: string): Promise<VervallenMeldingDto[]> {
+  return apiJson(`/administraties/${administratieId}/accordering/vervallen-meldingen`)
+}
+
+/** Bulk "Ter accordering aanbieden" (punt 2b) — zelfde poorten als de losse knop, per document;
+ * geweigerd = `overgeslagen` mét reden in de response, nooit stil. */
+export function bulkTerAccorderingAanbieden(
+  administratieId: string,
+  documentIds: string[],
+): Promise<BulkAanbiedenResponseDto> {
+  return apiPostJson(`/administraties/${administratieId}/accordering/documenten/bulk-aanbieden`, {
+    document_ids: documentIds,
+  })
 }
 
 export interface AccorderingStapDto {

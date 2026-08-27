@@ -811,7 +811,7 @@ describe('DocumentDetailScreen — ⋯-menu "Verplaats naar andere administratie
     await gebruiker.click(screen.getByRole('button', { name: 'Verplaatsen naar Port of Rotterdam N.V.' }))
 
     await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${DOEL_ID}/${DOCUMENT_ID}`))
-    expect(aanroepen).toEqual([{ doel_administratie_id: DOEL_ID }])
+    expect(aanroepen).toEqual([{ doel_administratie_id: DOEL_ID, onthoud_tenaamstelling: false }])
     expect(screen.getByText(/Verplaatst naar Port of Rotterdam N.V./)).toBeInTheDocument()
   })
 
@@ -872,5 +872,207 @@ describe('DocumentDetailScreen — ⋯-menu "Verplaats naar andere administratie
     expect(screen.getByText(/1 open vraag verhuisd/)).toBeInTheDocument()
     expect(screen.getByText(/veldvoorstel vervallen, extractie opnieuw/)).toBeInTheDocument()
     expect(screen.getByText(/Open vraag blokkeert boeken weer ná de nieuwe extractie/)).toBeInTheDocument()
+  })
+})
+
+// ————— Werkstroom-run 27/28-08: lijstcontext (punt 1), sneltoetsen (punt 5), vervallen-regel (punt 2a) —————
+
+const CONTEXT_QUERY = 'soort=inkoopfactuur&status=klaar_om_te_boeken'
+const K2_ID = 'dddddddd-0000-0000-0000-00000000000b'
+const T1_ID = 'dddddddd-0000-0000-0000-00000000000c'
+
+function renderSchermMetQuery(query: string) {
+  return render(
+    <MemoryRouter initialEntries={[`/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}?${query}`]}>
+      <ToastProvider>
+        <LocatieProbe />
+        <Routes>
+          <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
+          <Route path="*" element={<div>elders</div>} />
+        </Routes>
+      </ToastProvider>
+    </MemoryRouter>,
+  )
+}
+
+describe('DocumentDetailScreen — lijstcontext reist mee (punt 1b/1c)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const lijst = [
+    lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'klaar_om_te_boeken'),
+    lijstItem(T1_ID, 'inkoopfactuur', 'te_controleren'),
+    lijstItem(K2_ID, 'inkoopfactuur', 'klaar_om_te_boeken'),
+  ]
+
+  it('toont "1 van 2" binnen het filter, ‹ uit, › naar het volgende klaar-om-te-boeken-document mét context; terugweg houdt het filter', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' }), { lijst })
+    renderSchermMetQuery(CONTEXT_QUERY)
+
+    const nav = await screen.findByTestId('lijst-navigatie')
+    expect(nav).toHaveTextContent('1 van 2')
+    expect(screen.getByRole('button', { name: 'Vorige document in de lijst' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: /← Werkvoorraad/ })).toHaveAttribute(
+      'href',
+      `/?administratie=${ADMINISTRATIE_ID}&${CONTEXT_QUERY}`,
+    )
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Volgende document in de lijst' }))
+    await waitFor(() =>
+      expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${K2_ID}?${CONTEXT_QUERY}`),
+    )
+  })
+
+  it('zonder context: geen ‹ ›-navigatie en de kale terugweg (bestaand gedrag)', async () => {
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] }), { lijst })
+    renderScherm()
+    await screen.findByText('factuur.pdf')
+    expect(screen.queryByTestId('lijst-navigatie')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /← Werkvoorraad/ })).toHaveAttribute('href', `/?administratie=${ADMINISTRATIE_ID}`)
+  })
+
+  it('boeken vanuit het filter "Klaar om te boeken" opent het volgende klaar-om-te-boeken-document (niet het te-controleren-document)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const opties: MockOpties = {
+      lijst,
+      lijstAanroepen: [],
+      boekenAanroepen: [],
+      checksResponse: GROEN_RAPPORT,
+      boekenResponse: { document_id: DOCUMENT_ID, status: 'geboekt', rlz_document_id: 'x', rlz_boekstuknummer: 'RLZ-1' },
+      boekvoorstel: {
+        document_id: DOCUMENT_ID,
+        vendor_id: null,
+        referentie: 'F-1',
+        factuurdatum: null,
+        totaalbedrag: null,
+        rlz_boekstuknummer: null,
+        opgeslagen: true,
+        regels: [],
+      },
+    }
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' }), opties)
+    renderSchermMetQuery(CONTEXT_QUERY)
+
+    const knop = await screen.findByRole('button', { name: 'Boeken in RLZ ✓' })
+    await waitFor(() => expect(knop).toBeEnabled())
+    await gebruiker.click(knop)
+    await waitFor(() => expect(opties.boekenAanroepen).toHaveLength(1))
+    await waitFor(() =>
+      expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${K2_ID}?${CONTEXT_QUERY}`),
+    )
+  })
+
+  it('filter leeg ná boeken → terug naar de lijst mét dat filter', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const opties: MockOpties = {
+      lijst: [lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'klaar_om_te_boeken'), lijstItem(T1_ID, 'inkoopfactuur', 'te_controleren')],
+      boekenAanroepen: [],
+      checksResponse: GROEN_RAPPORT,
+      boekenResponse: { document_id: DOCUMENT_ID, status: 'geboekt', rlz_document_id: 'x', rlz_boekstuknummer: 'RLZ-1' },
+      boekvoorstel: { document_id: DOCUMENT_ID, vendor_id: null, referentie: 'F-1', factuurdatum: null, totaalbedrag: null, rlz_boekstuknummer: null, opgeslagen: true, regels: [] },
+    }
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' }), opties)
+    renderSchermMetQuery(CONTEXT_QUERY)
+    const knop = await screen.findByRole('button', { name: 'Boeken in RLZ ✓' })
+    await waitFor(() => expect(knop).toBeEnabled())
+    await gebruiker.click(knop)
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/?administratie=${ADMINISTRATIE_ID}&${CONTEXT_QUERY}`))
+  })
+})
+
+describe('DocumentDetailScreen — sneltoetsen (punt 5)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const lijst = [lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'klaar_om_te_boeken'), lijstItem(K2_ID, 'inkoopfactuur', 'klaar_om_te_boeken')]
+
+  it('B boekt via de actieve knop (pas als die actief is); ? toont het overzicht; Esc gaat terug naar de lijst', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const opties: MockOpties = {
+      lijst,
+      boekenAanroepen: [],
+      checksResponse: GROEN_RAPPORT,
+      boekenResponse: { document_id: DOCUMENT_ID, status: 'geboekt', rlz_document_id: 'x', rlz_boekstuknummer: 'RLZ-1' },
+      boekvoorstel: { document_id: DOCUMENT_ID, vendor_id: null, referentie: 'F-1', factuurdatum: null, totaalbedrag: null, rlz_boekstuknummer: null, opgeslagen: true, regels: [] },
+    }
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' }), opties)
+    renderSchermMetQuery(CONTEXT_QUERY)
+    await screen.findByTestId('lijst-navigatie')
+
+    // Overzicht via "?" — en de dialoog blokkeert daarna de andere sneltoetsen.
+    await gebruiker.keyboard('?')
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Sneltoetsen')
+    await gebruiker.keyboard('b')
+    expect(opties.boekenAanroepen).toHaveLength(0)
+    await gebruiker.click(screen.getByRole('button', { name: 'Sluiten' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    // B = de actieve knop (tooltip vermeldt de toets).
+    const knop = screen.getByRole('button', { name: 'Boeken in RLZ ✓' })
+    expect(knop).toHaveAttribute('title', expect.stringContaining('sneltoets B'))
+    await waitFor(() => expect(knop).toBeEnabled())
+    await gebruiker.keyboard('b')
+    await waitFor(() => expect(opties.boekenAanroepen).toHaveLength(1))
+  })
+
+  it('Esc = terug naar de lijst mét filter; → = volgende in de lijst; in een invoerveld doen de toetsen niets', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' }), { lijst })
+    renderSchermMetQuery(CONTEXT_QUERY)
+    await screen.findByTestId('lijst-navigatie')
+
+    // Focus in een invoerveld (referentie) → geen sneltoets. Wacht tot het boekvoorstel-paneel staat.
+    const veld = (await screen.findAllByRole('textbox'))[0]
+    veld.focus()
+    await gebruiker.keyboard('{ArrowRight}')
+    expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`)
+    veld.blur()
+
+    await gebruiker.keyboard('{ArrowRight}')
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${K2_ID}?${CONTEXT_QUERY}`))
+  })
+
+  it('Esc gaat terug naar de documentenlijst mét het actieve filter', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' }), { lijst })
+    renderSchermMetQuery(CONTEXT_QUERY)
+    await screen.findByTestId('lijst-navigatie')
+    await gebruiker.keyboard('{Escape}')
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/?administratie=${ADMINISTRATIE_ID}&${CONTEXT_QUERY}`))
+  })
+})
+
+describe('DocumentDetailScreen — tijdlijnregel "accordering vervallen" mét reden (punt 2a)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('toont de reden letterlijk bij de statusovergang Bij klant → Klaar om te boeken', async () => {
+    installFetchMock(
+      detailMet({
+        status: 'klaar_om_te_boeken',
+        veldvoorstel: null,
+        tijdlijn: [
+          {
+            van_status: 'ter_accordering',
+            naar_status: 'klaar_om_te_boeken',
+            actor_id: 'beheerder',
+            actor_is_systeem: false,
+            detail: {
+              accordering_id: 'acc-1',
+              accordering_vervallen: true,
+              reden: 'accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist',
+              batch_id: 'batch-1',
+            },
+            tijdstip: '2026-08-27T14:02:00Z',
+          },
+        ],
+      }),
+    )
+    renderScherm()
+    expect(await screen.findByText(/Accordering vervallen — accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)).toBeInTheDocument()
   })
 })

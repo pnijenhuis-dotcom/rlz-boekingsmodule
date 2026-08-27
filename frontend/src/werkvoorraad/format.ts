@@ -1,7 +1,18 @@
 import type { DocumentListItemDto } from '../api/types'
+import { lijstContextNaarParams, type LijstContext } from './lijstContext'
 
 export function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+/** Binnenkomst-metaregel in de documentenlijst (punt 3a): "26 aug, 16:42" — zonder jaar zolang
+ * het dit kalenderjaar is, mét jaar daarbuiten ("26 aug 2025, 16:42"). */
+export function formatBinnenkomst(iso: string, nu: Date = new Date()): string {
+  const d = new Date(iso)
+  const zelfdeJaar = d.getFullYear() === nu.getFullYear()
+  const datum = d.toLocaleDateString('nl-NL', zelfdeJaar ? { day: 'numeric', month: 'short' } : { dateStyle: 'medium' })
+  const tijd = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+  return `${datum}, ${tijd}`
 }
 
 export function formatDatumKort(iso: string): string {
@@ -48,8 +59,10 @@ export function soortLabel(soort: string): string {
 export const SOORT_VOLGORDE = ['inkoopfactuur', 'verkoopfactuur', 'kassarapport', 'waarborg']
 
 /** Route per documentsoort/-status — één plek voor het klik-doel van een documentregel
- * (mockup: klik op een vraag-regel opent de vráág, niet het controlescherm). */
-export function documentRoute(administratieId: string, d: DocumentListItemDto): string {
+ * (mockup: klik op een vraag-regel opent de vráág, niet het controlescherm). Mét lijstcontext
+ * (punt 1) reist de tab/filter/zoekterm als query mee naar het inkoop-controlescherm; de andere
+ * reviewschermen kennen die context (nog) niet en krijgen 'm bewust niet. */
+export function documentRoute(administratieId: string, d: DocumentListItemDto, context: LijstContext | null = null): string {
   const isVerwijderd = d.status === 'verwijderd'
   if (d.status === 'vraag_open' && !isVerwijderd) {
     return `/?administratie=${administratieId}&sectie=vragen&document=${d.id}`
@@ -57,7 +70,8 @@ export function documentRoute(administratieId: string, d: DocumentListItemDto): 
   if (d.soort === 'kassarapport') return `/omzet/${administratieId}/${d.id}`
   if (d.soort === 'verkoopfactuur') return `/verkoop/${administratieId}/${d.id}`
   if (d.soort === 'waarborg') return `/waarborg/${administratieId}/${d.id}`
-  return `/documenten/${administratieId}/${d.id}`
+  const q = lijstContextNaarParams(context)
+  return `/documenten/${administratieId}/${d.id}${q ? `?${q}` : ''}`
 }
 
 /** Openstaand = niet terminaal (zelfde definitie als de backend-overzichtstellers:

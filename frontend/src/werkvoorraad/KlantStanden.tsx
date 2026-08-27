@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { haalLaatstHerinnerd, herinnerAccordeur } from '../accordering/accorderingApi'
 import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDag'
 import { apiJson } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
-import { verwerkEml, UPLOAD_ACCEPT } from '../intake/intakeApi'
+import { verwerkEml } from '../intake/intakeApi'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
@@ -14,6 +14,7 @@ import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
 import { documentRoute, amountKlasse, formatBedrag, isOpenstaand, ouderdomLabel, soortLabel } from './format'
 import { KpiRij } from './KpiRij'
+import { UploadZone } from './UploadZone'
 
 /* Standen-overzicht per klant (IA-besluit 15-08, mockup #scherm-klant): documenten per soort,
  * bank per rekening — alleen tellers. HERZIEN 25-08 (besluit Peter, feedbackronde punt C): dit is
@@ -577,9 +578,7 @@ export function KlantStanden({
 /** Upload gericht op déze klant (besluit 15-08: sleep-upload blijft óók op de klantpagina —
  * direct toegewezen, geen verzamelbak; .eml volgt de tenaamstelling-route). */
 export function KlantUpload({ administratieId, onGeupload }: { administratieId: string; onGeupload: () => void }) {
-  const bestandInputRef = useRef<HTMLInputElement>(null)
   const [bezig, setBezig] = useState(false)
-  const [sleepActief, setSleepActief] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
   const [bericht, setBericht] = useState<string | null>(null)
   const [uploadSoort, setUploadSoort] = useState<'inkoopfactuur' | 'kassarapport'>('inkoopfactuur')
@@ -626,71 +625,39 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
     [administratieId, onGeupload, uploadSoort],
   )
 
+  // Punt 3d (27/28-08): één regel + ⓘ-uitleg, documentsoort inline, zone lager — gedeelde UploadZone.
   return (
     <>
-      <div
-        className={`upload${sleepActief ? ' dragover' : ''}`}
-        onClick={() => bestandInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setSleepActief(true)
-        }}
-        onDragLeave={() => setSleepActief(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setSleepActief(false)
-          const bestand = e.dataTransfer.files?.[0]
-          if (bestand) void uploadBestand(bestand)
-        }}
-      >
-        {bezig ? (
-          'Bezig met uploaden…'
-        ) : (
+      <UploadZone
+        bezig={bezig}
+        bezigTekst="Bezig met uploaden…"
+        onBestand={(bestand) => void uploadBestand(bestand)}
+        regel={
           <>
-            Sleep hier een PDF-, UBL-, .eml- of fotobestand (JPEG/PNG/HEIC) naartoe, of <b>blader</b> — meteen
-            toegewezen aan deze klant
-            <br />
-            <span style={{ fontSize: 12 }}>
-              Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst; een foto wordt naar PDF omgezet
-              (origineel blijft bewaard).
-            </span>
-            <br />
-            <label
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexWrap: 'wrap',
-                maxWidth: '100%',
-                gap: 6,
-                fontSize: 12,
-                marginTop: 8,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              Documentsoort
-              <Select
-                aria-label="Documentsoort voor upload"
-                value={uploadSoort}
-                onChange={(e) => setUploadSoort(e.target.value as 'inkoopfactuur' | 'kassarapport')}
-              >
-                <option value="inkoopfactuur">Inkoopfactuur</option>
-                <option value="kassarapport">Kassarapport (omzetboeking)</option>
-              </Select>
-            </label>
+            Sleep hier een PDF, UBL, .eml of foto naartoe, of <b>blader</b> — direct toegewezen aan deze klant
           </>
-        )}
-        <input
-          ref={bestandInputRef}
-          type="file"
-          accept={UPLOAD_ACCEPT}
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const bestand = e.target.files?.[0]
-            if (bestand) void uploadBestand(bestand)
-          }}
-        />
-      </div>
+        }
+        uitleg={
+          <>
+            Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst; een foto (JPEG/PNG/HEIC) wordt naar
+            PDF omgezet (origineel blijft bewaard). Een .eml doorloopt de mail-intake mét tenaamstelling-routing.
+            Kies rechts de documentsoort vóór het uploaden: inkoopfactuur (standaard) of kassarapport (omzetboeking).
+          </>
+        }
+        extra={
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0 }}>
+            Soort
+            <Select
+              aria-label="Documentsoort voor upload"
+              value={uploadSoort}
+              onChange={(e) => setUploadSoort(e.target.value as 'inkoopfactuur' | 'kassarapport')}
+            >
+              <option value="inkoopfactuur">Inkoopfactuur</option>
+              <option value="kassarapport">Kassarapport (omzetboeking)</option>
+            </Select>
+          </label>
+        }
+      />
       {fout && <FoutMelding melding={fout} />}
       {bericht && (
         <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>

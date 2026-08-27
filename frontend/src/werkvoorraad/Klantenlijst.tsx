@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { Avatar } from '../ui/Avatar'
 import { SkeletonRijen } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
+import { STATUSFILTER_URENMATCH } from './lijstContext'
 import { heeftOpenstaandWerk, type KlantRij } from './useWerkvoorraadData'
 
 /** Werkvoorraad-ingang (mockup #werkvoorraad "Overzicht per klant"): alleen klanten mét
@@ -30,6 +31,13 @@ export function Klantenlijst({
   totaalAdministraties: number
 }) {
   const navigate = useNavigate()
+  /** Klik op een statuskolom → documentenlijst voorgefilterd op die status (punt 1a); een lege
+   * teller ("—") laat de rij-klik (klantlanding zonder filter) gewoon doorgaan. */
+  const naarStatus = (k: KlantRij, status: string, teller: number) => (e: React.MouseEvent) => {
+    if (teller === 0) return
+    e.stopPropagation()
+    navigate(`/?administratie=${k.administratie_id}&status=${status}`)
+  }
   const zichtbaar = (klanten ?? []).filter(heeftOpenstaandWerk)
   const verborgen = (klanten?.length ?? 0) - zichtbaar.length
   // Kolom alleen bij data (Kempen-doorbelasting is voor één administratie relevant — de rest
@@ -86,10 +94,13 @@ export function Klantenlijst({
                       </div>
                     </div>
                   </td>
-                  <td>
+                  {/* Punt 1a (werkstroom-run 27/28-08): élke kolom-teller opent de documentenlijst
+                      VOORGEFILTERD op die statuskolom — de lijst kiest de tab waarin dat filter iets
+                      oplevert (kiesTabVoorStatus). Vragen → het vragen-deelscherm, Bank → bankscherm. */}
+                  <td onClick={naarStatus(k, 'te_controleren', k.te_controleren)}>
                     <Teller waarde={k.te_controleren} chipKlasse="ai" />
                   </td>
-                  <td>
+                  <td onClick={naarStatus(k, 'klaar_om_te_boeken', k.klaar_om_te_boeken)}>
                     <Teller waarde={k.klaar_om_te_boeken} chipKlasse="klaar" />
                   </td>
                   <td
@@ -101,10 +112,10 @@ export function Klantenlijst({
                   >
                     <Teller waarde={k.vragen} chipKlasse="vraag" />
                   </td>
-                  <td>
+                  <td onClick={naarStatus(k, 'afgewezen', k.afgewezen)}>
                     <Teller waarde={k.afgewezen} chipKlasse="vraag" />
                   </td>
-                  <td>
+                  <td onClick={naarStatus(k, 'ter_accordering', k.bij_klant)}>
                     <Teller waarde={k.bij_klant} chipKlasse="geheugen" />
                   </td>
                   <td
@@ -122,7 +133,10 @@ export function Klantenlijst({
                     </td>
                   )}
                   {toonMatch && (
-                    <td title="Veldwerker-facturen waarvan de urenmatch afwijkt van de goedgekeurde weekstaten">
+                    <td
+                      title="Veldwerker-facturen waarvan de urenmatch afwijkt van de goedgekeurde weekstaten"
+                      onClick={naarStatus(k, STATUSFILTER_URENMATCH, k.match_afwijkingen ?? 0)}
+                    >
                       <Teller waarde={k.match_afwijkingen ?? 0} chipKlasse="vraag" />
                     </td>
                   )}
@@ -154,7 +168,7 @@ export function Klantenlijst({
       {klanten !== null && zichtbaar.length > 0 && (
         <p className="hint">
           Alleen klanten mét openstaande zaken staan in deze lijst — is alles geboekt, dan verdwijnt de klant
-          automatisch en verschijnt hij weer zodra er iets nieuws binnenkomt. Elke teller is klikbaar.
+          automatisch en verschijnt hij weer zodra er iets nieuws binnenkomt. Elke teller is klikbaar en opent de lijst gefilterd op die kolom.
           {verborgen > 0 && (
             <span style={{ color: 'var(--muted)' }}>
               {' '}

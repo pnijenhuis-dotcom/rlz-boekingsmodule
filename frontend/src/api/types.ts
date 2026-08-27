@@ -264,6 +264,8 @@ export interface DocumentDetailDto {
   herkomst_mail?: HerkomstMailDto | null
   /** Aangeleverd origineel (bv. IMG_0412.HEIC) als het document een omgezette afbeelding is (punt 2). */
   bron_bestandsnaam?: string | null
+  /** Gelezen tenaamstelling uit de intake — voedt de "onthoud"-optie in de verplaats-modal (27/28-08 punt 6a). */
+  tenaamstelling?: string | null
   tijdlijn: DocumentGebeurtenisDto[]
 }
 
@@ -1058,4 +1060,6 @@ export interface DocumentVerplaatsResponseDto {
   leerregels_gecorrigeerd: string[]
   vragen_verhuisd: number
   vragen_hertoegewezen: number
+  /** Punt 6a: True als op verzoek een tenaamstelling-regel naar het doel is geleerd. */
+  tenaamstelling_geleerd?: boolean
 }

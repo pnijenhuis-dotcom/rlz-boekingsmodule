@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type {
   AfwijzingDto,
@@ -13,6 +13,9 @@ import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { documentRoute } from '../werkvoorraad/format'
 import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
+import { lijstContextUitParams, lijstPositie, lijstRoute, type LijstContext } from '../werkvoorraad/lijstContext'
+import { SNELTOETSEN_CONTROLESCHERM, useSneltoetsen } from './sneltoetsen'
+import { SneltoetsOverzicht } from './SneltoetsOverzicht'
 import { AnkerPopup, useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
@@ -313,6 +316,28 @@ export function DocumentDetailScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
   const navigate = useNavigate()
   const { meld } = useToastOptioneel()
+  // Lijstcontext (werkstroom-run 27/28-08, punt 1): tab + status-filter + zoekterm van de lijst
+  // waaruit dit document geopend is — uit de URL-query, stuurt doorloop, ‹ › en de terugweg.
+  const [searchParams] = useSearchParams()
+  const context: LijstContext | null = useMemo(() => lijstContextUitParams(searchParams), [searchParams])
+  // De gefilterde lijst voor ‹ › + "3 van 12" (punt 1c): één keer per document geladen; een
+  // fout hier kost alleen de positie-indicator, nooit het scherm.
+  const [lijst, setLijst] = useState<DocumentListResponseDto['documenten'] | null>(null)
+  const positie = useMemo(
+    () => (lijst && context && documentId ? lijstPositie(lijst, context, documentId) : null),
+    [lijst, context, documentId],
+  )
+  // Onopgeslagen wijzigingen in het boekvoorstel (debounce nog niet klaar) → bevestiging vóór
+  // ‹ ›/Esc/pijltjes; het doel wacht in `verlaatDoel`.
+  const [onopgeslagen, setOnopgeslagen] = useState(false)
+  const onOnopgeslagenWijzigingen = useCallback((heeft: boolean) => setOnopgeslagen(heeft), [])
+  const [verlaatDoel, setVerlaatDoel] = useState<string | null>(null)
+  // Actieve besluitknop van het boekvoorstel-paneel (sneltoets B, punt 5).
+  const actiesRef = useRef<{ boeken: () => void; kanBoeken: boolean; boekLabel: string } | null>(null)
+  const onActies = useCallback((acties: { boeken: () => void; kanBoeken: boolean; boekLabel: string }) => {
+    actiesRef.current = acties
+  }, [])
+  const [overzichtOpen, setOverzichtOpen] = useState(false)
   const [detail, setDetail] = useState<DocumentDetailDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bijlage, setBijlage] = useState<Bijlage | null>(null)
@@ -377,6 +402,70 @@ export function DocumentDetailScreen() {
     setDetail(null)
     laadDetail()
   }, [laadDetail])
+
+  useEffect(() => {
+    if (!administratieId || !context) {
+      setLijst(null)
+      return
+    }
+    let actueel = true
+    apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
+      .then((data) => {
+        if (actueel) setLijst(data.documenten)
+      })
+      .catch(() => {
+        if (actueel) setLijst(null)
+      })
+    return () => {
+      actueel = false
+    }
+  }, [administratieId, context, documentId])
+
+  /** Navigeren mét onopgeslagen-bevestiging (punt 1c): opslaan loopt automatisch, maar een
+   * wijziging van < 1 s geleden staat nog in de debounce — dan eerst vragen. */
+  const verlaatNaar = useCallback(
+    (doel: string) => {
+      if (onopgeslagen) setVerlaatDoel(doel)
+      else void navigate(doel)
+    },
+    [navigate, onopgeslagen],
+  )
+  const terugNaarLijst = useCallback(() => {
+    if (!administratieId) return
+    verlaatNaar(lijstRoute(administratieId, context))
+  }, [administratieId, context, verlaatNaar])
+  const naarBuur = useCallback(
+    (richting: 'vorige' | 'volgende') => {
+      if (!administratieId || !positie) return
+      const buur = richting === 'vorige' ? positie.vorige : positie.volgende
+      if (!buur) return
+      verlaatNaar(documentRoute(administratieId, buur, context))
+    },
+    [administratieId, positie, context, verlaatNaar],
+  )
+
+  // Sneltoetsen (punt 5): alleen buiten invoervelden en zonder open dialoog (useSneltoetsen).
+  useSneltoetsen(SNELTOETSEN_CONTROLESCHERM, {
+    boeken: () => {
+      const acties = actiesRef.current
+      if (!acties || !acties.kanBoeken) return false
+      acties.boeken()
+    },
+    afwijzen: () => {
+      if (!detail || !AFWIJZEN_STATUSSEN.has(detail.status)) return false
+      setAfwijsModalOpen(true)
+    },
+    vorige: () => {
+      if (!positie?.vorige) return false
+      naarBuur('vorige')
+    },
+    volgende: () => {
+      if (!positie?.volgende) return false
+      naarBuur('volgende')
+    },
+    terug: () => terugNaarLijst(),
+    overzicht: () => setOverzichtOpen(true),
+  })
 
   // Live extractiestatus (async extractie): in wachtrij → bezig → klaar loopt vanzelf mee —
   // geen blokkerende spinner, de gebruiker kan intussen de bijlage en tijdlijn gewoon bekijken.
@@ -485,11 +574,14 @@ export function DocumentDetailScreen() {
       return
     }
     meld(info.waarschuwing ? `${tekst} — ${info.waarschuwing}` : tekst, info.waarschuwing ? 'warn' : 'ok')
-    let doel = `/?administratie=${administratieId}`
+    // Punt 1b: mét lijstcontext blijft de doorloop BINNEN het actieve filter (vanuit "Klaar om te
+    // boeken" → het volgende klaar-om-te-boeken-document); filter leeg → terug naar de lijst mét
+    // dat filter. Zonder context: het bestaande gedrag (zelfde klant, zelfde soort eerst).
+    let doel = lijstRoute(administratieId, context)
     try {
       const lijst = await apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
-      const volgende = kiesVolgendDocument(lijst.documenten, documentId, detail.soort)
-      if (volgende) doel = documentRoute(administratieId, volgende)
+      const volgende = kiesVolgendDocument(lijst.documenten, documentId, detail.soort, context)
+      if (volgende) doel = documentRoute(administratieId, volgende, context)
     } catch {
       // Lijst niet leesbaar: de documentenlijst zelf toont die fout — daar landen we dan.
     }
@@ -516,11 +608,51 @@ export function DocumentDetailScreen() {
     <div>
       <div className="topbar">
         <h1>
-          <Link to={`/?administratie=${administratieId}`}>← Werkvoorraad</Link>{' '}
+          <Link
+            to={lijstRoute(administratieId, context)}
+            title="Terug naar de documentenlijst (zelfde tab en filter) — sneltoets Esc"
+            onClick={(e) => {
+              if (onopgeslagen) {
+                e.preventDefault()
+                terugNaarLijst()
+              }
+            }}
+          >
+            ← Werkvoorraad
+          </Link>{' '}
           <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/</span>{' '}
           {detail.bestandsnaam}
         </h1>
         <div className="adm-select">
+          {/* Punt 1c: ‹ › binnen dezelfde gefilterde lijst mét positie — alleen met lijstcontext
+              én als dit document (nog) in die lijst staat. */}
+          {positie && positie.index >= 0 && (
+            <span className="lijst-navigatie" data-testid="lijst-navigatie">
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Vorige document in de lijst"
+                title="Vorige in de gefilterde lijst — sneltoets ←"
+                disabled={!positie.vorige}
+                onClick={() => naarBuur('vorige')}
+              >
+                ‹
+              </button>
+              <span className="positie" aria-live="polite">
+                {positie.index + 1} van {positie.totaal}
+              </span>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Volgende document in de lijst"
+                title="Volgende in de gefilterde lijst — sneltoets →"
+                disabled={!positie.volgende}
+                onClick={() => naarBuur('volgende')}
+              >
+                ›
+              </button>
+            </span>
+          )}
           <StatusChip status={detail.status} />
           <button
             ref={actieMenuKnop}
@@ -568,6 +700,17 @@ export function DocumentDetailScreen() {
                       {reden}
                     </div>
                   )}
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    role="menuitem"
+                    onClick={() => {
+                      setActieMenuOpen(false)
+                      setOverzichtOpen(true)
+                    }}
+                  >
+                    Sneltoetsen… <kbd className="kbd" aria-hidden>?</kbd>
+                  </button>
                 </>
               )
             })()}
@@ -901,6 +1044,8 @@ export function DocumentDetailScreen() {
               onVoorstelOpgeslagen={onVoorstelOpgeslagen}
               toeTeVoegenRegel={toeTeVoegenRegel}
               actiebalkDoel={actiebalkDoel}
+              onActies={onActies}
+              onOnopgeslagenWijzigingen={onOnopgeslagenWijzigingen}
             />
           )}
 
@@ -971,6 +1116,7 @@ export function DocumentDetailScreen() {
               documentId={documentId}
               bestandsnaam={detail.bestandsnaam}
               openVragen={documentVragen?.filter((v) => v.status === 'open').length ?? 0}
+              tenaamstelling={detail.tenaamstelling ?? null}
               onVerplaatst={(resultaat) => {
                 setVerplaatsModalOpen(false)
                 meld(`Verplaatst naar ${resultaat.naar_administratie_naam} — extractie draait opnieuw`)
@@ -978,6 +1124,27 @@ export function DocumentDetailScreen() {
                 void navigate(`/documenten/${resultaat.naar_administratie_id}/${documentId}`)
               }}
               onAnnuleren={() => setVerplaatsModalOpen(false)}
+            />
+          )}
+
+          {overzichtOpen && <SneltoetsOverzicht onSluiten={() => setOverzichtOpen(false)} />}
+
+          {verlaatDoel !== null && (
+            <BevestigDialog
+              titel="Wijzigingen worden nog opgeslagen"
+              bericht={
+                'Je laatste wijziging in het boekvoorstel is nog niet opgeslagen (opslaan loopt automatisch, ' +
+                'maar is nog niet klaar). Wacht een moment, of verlaat het document — dan gaat die laatste ' +
+                'wijziging verloren.'
+              }
+              bezig={false}
+              fout={null}
+              onBevestigen={() => {
+                const doel = verlaatDoel
+                setVerlaatDoel(null)
+                void navigate(doel)
+              }}
+              onAnnuleren={() => setVerlaatDoel(null)}
             />
           )}
 
@@ -1111,6 +1278,25 @@ export function DocumentDetailScreen() {
                             : ''}
                           {'afwijzing_gesloten_door_verplaatsing' in g.detail ? ' · open afwijzing gesloten' : ''}
                           {' · veldvoorstel vervallen, extractie opnieuw'}
+                        </div>
+                      )}
+                      {g.detail && 'accordering_vervallen' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }}>
+                          Accordering vervallen —{' '}
+                          {typeof g.detail.reden === 'string' && g.detail.reden
+                            ? g.detail.reden
+                            : 'accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist'}
+                          {' '}(door {naamVoor(g.actor_id)})
+                        </div>
+                      )}
+                      {g.detail && 'accordering_ingetrokken' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Accordering ingetrokken door {naamVoor(g.actor_id)}
+                        </div>
+                      )}
+                      {g.detail && 'tenaamstelling_geleerd' in g.detail && typeof g.detail.tenaamstelling_geleerd === 'string' && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Onthouden: tenaamstelling &ldquo;{g.detail.tenaamstelling_geleerd}&rdquo; hoort bij deze administratie
                         </div>
                       )}
                       {g.detail && 'vraag_hersteld_na_extractie' in g.detail && (

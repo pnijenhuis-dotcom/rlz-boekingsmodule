@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { WerkvoorraadScreen } from './WerkvoorraadScreen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -76,32 +76,44 @@ function renderScherm() {
   )
 }
 
-describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', () => {
+describe('WerkvoorraadScreen — verwijderen/herstellen via het ⋯-rijmenu (design-pass taak 4, herzien 27/28-08 punt 4)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('toont het prullenbak-icoon en opent de bevestigingsdialoog met de bestandsnaam', async () => {
+  /** Punt 4: verwijderen zit achter het ⋯-rijmenu (archief-patroon), nooit meer een kale knop. */
+  async function openRijmenu(gebruiker: ReturnType<typeof userEvent.setup>, naam: RegExp | string) {
+    await gebruiker.click(screen.getByRole('button', { name: naam }))
+    return screen.getByRole('menu')
+  }
+
+  it('geen kale prullenbak-knop meer; het ⋯-menu opent de bevestigingsdialoog met de bestandsnaam', async () => {
     const gebruiker = userEvent.setup()
     installFetchMock({ documenten: [document({})] })
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Document verwijderen' }))
+    expect(screen.queryByRole('button', { name: 'Document verwijderen' })).not.toBeInTheDocument()
+    const menu = await openRijmenu(gebruiker, /Acties voor factuur\.pdf/)
+    await gebruiker.click(within(menu).getByRole('menuitem', { name: /Verwijderen/ }))
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText(/"factuur\.pdf" wordt niet definitief verwijderd/)).toBeInTheDocument()
+    expect(screen.getByText(/"factuur\.pdf" verdwijnt uit de werkvoorraad/)).toBeInTheDocument()
+    expect(screen.getByText(/wordt niet definitief verwijderd/)).toBeInTheDocument()
   })
 
-  it('bevestigen stuurt de optionele reden mee en herlaadt de lijst', async () => {
+  it('de reden is VERPLICHT: zonder reden blijft "Verwijderen" uit; mét reden gaat hij mee en herlaadt de lijst', async () => {
     const gebruiker = userEvent.setup()
     const verwijderenAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ documenten: [document({})], verwijderenAanroepen })
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Document verwijderen' }))
-    await gebruiker.type(screen.getByLabelText('Reden (optioneel)'), 'Dubbele upload')
+    const menu = await openRijmenu(gebruiker, /Acties voor factuur\.pdf/)
+    await gebruiker.click(within(menu).getByRole('menuitem', { name: /Verwijderen/ }))
+    expect(screen.getByRole('button', { name: 'Verwijderen' })).toBeDisabled()
+    await gebruiker.type(screen.getByLabelText('Reden (verplicht)'), 'Dubbele upload')
+    expect(screen.getByRole('button', { name: 'Verwijderen' })).toBeEnabled()
     await gebruiker.click(screen.getByRole('button', { name: 'Verwijderen' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -117,7 +129,8 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Document verwijderen' }))
+    const menu = await openRijmenu(gebruiker, /Acties voor factuur\.pdf/)
+    await gebruiker.click(within(menu).getByRole('menuitem', { name: /Verwijderen/ }))
     await gebruiker.click(screen.getByRole('button', { name: 'Annuleren' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -130,23 +143,31 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
-    await gebruiker.click(screen.getByRole('button', { name: 'Document verwijderen' }))
+    const menu = await openRijmenu(gebruiker, /Acties voor factuur\.pdf/)
+    await gebruiker.click(within(menu).getByRole('menuitem', { name: /Verwijderen/ }))
+    await gebruiker.type(screen.getByLabelText('Reden (verplicht)'), 'test')
     await gebruiker.click(screen.getByRole('button', { name: 'Verwijderen' }))
 
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByText(/Fout/)).toBeInTheDocument())
   })
 
-  it('hard: het prullenbak-icoon wordt helemaal niet getoond voor een geboekt document (bewaarplicht)', async () => {
+  it('hard: bij een geboekt document is "Verwijderen…" uitgeschakeld mét de bewaarplicht-uitleg', async () => {
+    const gebruiker = userEvent.setup()
     installFetchMock({
       documenten: [document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'geboekte-factuur.pdf', status: 'geboekt' })],
     })
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('geboekte-factuur.pdf')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: 'Document verwijderen' })).not.toBeInTheDocument()
+    const menu = await openRijmenu(gebruiker, /Acties voor geboekte-factuur\.pdf/)
+    expect(within(menu).getByRole('menuitem', { name: /Verwijderen/ })).toBeDisabled()
+    expect(within(menu).getByText(/bewaarplicht/)).toBeInTheDocument()
+    await gebruiker.click(within(menu).getByRole('menuitem', { name: /Verwijderen/ }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('hard: het prullenbak-icoon wordt ook niet getoond bij een lopende accordering', async () => {
+  it('hard: bij een lopende accordering is "Verwijderen…" uitgeschakeld mét "eerst intrekken"', async () => {
+    const gebruiker = userEvent.setup()
     installFetchMock({
       documenten: [
         document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'ter-accordering.pdf', status: 'ter_accordering' }),
@@ -155,7 +176,9 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
     renderScherm()
 
     await waitFor(() => expect(screen.getByText('ter-accordering.pdf')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: 'Document verwijderen' })).not.toBeInTheDocument()
+    const menu = await openRijmenu(gebruiker, /Acties voor ter-accordering\.pdf/)
+    expect(within(menu).getByRole('menuitem', { name: /Verwijderen/ })).toBeDisabled()
+    expect(within(menu).getByText(/trek de accordering eerst in/)).toBeInTheDocument()
   })
 
   it('pollt de lijst vanzelf zolang een document in de extractie-wachtrij of bij de worker staat', async () => {
@@ -218,7 +241,9 @@ describe('WerkvoorraadScreen — verwijderen/herstellen (design-pass taak 4)', (
     await gebruiker.click(screen.getByLabelText('Toon verwijderde documenten'))
     await waitFor(() => expect(screen.getByText('verwijderde-factuur.pdf')).toBeInTheDocument())
 
-    await gebruiker.click(screen.getByRole('button', { name: /Herstellen/ }))
+    // Herstellen zit sinds 27/28-08 óók in het ⋯-rijmenu.
+    await gebruiker.click(screen.getByRole('button', { name: /Acties voor verwijderde-factuur\.pdf/ }))
+    await gebruiker.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: /Herstellen/ }))
     await waitFor(() => expect(herstellenAanroepen).toHaveLength(1))
     expect(herstellenAanroepen[0]).toContain(`/documenten/${VERWIJDERD_DOCUMENT_ID}/herstellen`)
   })
@@ -450,18 +475,26 @@ describe('Klantpagina — kolommen, zoekveld en statusfilter (mockup #klantpagin
     })
     renderScherm()
 
-    await waitFor(() => expect(screen.getByText('a.pdf')).toBeInTheDocument())
-    expect(screen.getByText('b.pdf')).toBeInTheDocument()
+    // Punt 3a (27/28-08): leverancier is de vette hoofdregel, de bestandsnaam staat in de metaregel.
+    await waitFor(() => expect(screen.getByText('Eneco Zakelijk')).toBeInTheDocument())
+    expect(screen.getByText(/a\.pdf/)).toBeInTheDocument()
+    expect(screen.getByText(/b\.pdf/)).toBeInTheDocument()
 
     await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'eneco')
-    expect(screen.getByText('a.pdf')).toBeInTheDocument()
-    expect(screen.queryByText('b.pdf')).not.toBeInTheDocument()
+    expect(screen.getByText(/a\.pdf/)).toBeInTheDocument()
+    expect(screen.queryByText(/b\.pdf/)).not.toBeInTheDocument()
+
+    await gebruiker.clear(screen.getByLabelText('Zoek in documenten'))
+    // Zoeken blijft óók op de bestandsnaam werken (metaregel).
+    await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'b.pdf')
+    expect(screen.queryByText(/a\.pdf/)).not.toBeInTheDocument()
+    expect(screen.getByText(/b\.pdf/)).toBeInTheDocument()
 
     await gebruiker.clear(screen.getByLabelText('Zoek in documenten'))
     // Statusfilter = segment-knoppen (mockup #scherm-docs, IA-verbouwing 15-08).
     await gebruiker.click(screen.getByRole('button', { name: 'Klaar om te boeken (1)' }))
-    expect(screen.queryByText('a.pdf')).not.toBeInTheDocument()
-    expect(screen.getByText('b.pdf')).toBeInTheDocument()
+    expect(screen.queryByText(/a\.pdf/)).not.toBeInTheDocument()
+    expect(screen.getByText(/b\.pdf/)).toBeInTheDocument()
   })
 
   it('lege zoekresultaten geven een duidelijke melding, geen lege tabel', async () => {
@@ -647,5 +680,219 @@ describe('Klantlanding — tabs per soort + chip-rij (besluit Peter 25-08, punt 
     installFetchMock({})
     renderLanding(`/?administratie=${ADMINISTRATIE_ID}&sectie=standen`)
     expect(await screen.findByText('Te verwerken documenten')).toBeInTheDocument()
+  })
+})
+
+// ————— Werkstroom- + UI-run 27/28-08 —————
+
+
+// Node 22+/jsdom: geen bruikbare window.localStorage — in-memory vervanger (patroon
+// ui/ReviewSplitter.test.tsx) zodat de voorkeur-/melding-opslag echt getoetst wordt.
+function installeerLocalStorage() {
+  const opslag = new Map<string, string>()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (sleutel: string) => opslag.get(sleutel) ?? null,
+      setItem: (sleutel: string, waarde: string) => void opslag.set(sleutel, String(waarde)),
+      removeItem: (sleutel: string) => void opslag.delete(sleutel),
+      clear: () => opslag.clear(),
+    },
+  })
+}
+
+describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-melding, dichtheid', () => {
+  const K2_ID = 'eeeeeeee-0000-0000-0000-000000000006'
+
+  beforeAll(() => installeerLocalStorage())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.localStorage.clear()
+  })
+
+  interface RunMock {
+    documenten?: unknown[]
+    klanten?: unknown[]
+    accorderingAan?: boolean
+    meldingen?: unknown[]
+    bulkAanroepen?: { url: string; body: unknown }[]
+    bulkResponse?: unknown
+  }
+
+  function installRunMock(opties: RunMock) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/auth/administraties')) {
+          return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Testklant' }] }))
+        }
+        if (url.endsWith('/werkvoorraad/overzicht')) return Promise.resolve(jsonResponse({ klanten: opties.klanten ?? [] }))
+        if (url.endsWith('/bank/overzicht')) return Promise.resolve(jsonResponse({ klanten: [] }))
+        if (url.endsWith('/verzamelbak')) return Promise.resolve(jsonResponse({ items: [] }))
+        if (url.endsWith('/accordering/instellingen')) {
+          return Promise.resolve(jsonResponse({ ingeschakeld: opties.accorderingAan ?? false, lagen: [] }))
+        }
+        if (url.endsWith('/accordering/vervallen-meldingen')) return Promise.resolve(jsonResponse(opties.meldingen ?? []))
+        if (url.endsWith('/accordering/documenten/bulk-aanbieden') && init?.method === 'POST') {
+          opties.bulkAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
+          return Promise.resolve(jsonResponse(opties.bulkResponse ?? { resultaten: [], aangeboden: 0, geboekt: 0, overgeslagen: 0 }))
+        }
+        if (url.includes('/vragen')) return Promise.resolve(jsonResponse({ vragen: [] }))
+        if (url.includes('/documenten') && (!init || init.method === undefined)) {
+          return Promise.resolve(jsonResponse({ documenten: opties.documenten ?? [] }))
+        }
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+  }
+
+  function renderOp(pad: string) {
+    return render(
+      <MemoryRouter initialEntries={[pad]}>
+        <WerkvoorraadScreen />
+      </MemoryRouter>,
+    )
+  }
+
+  const klaarDocs = [
+    document({ id: DOCUMENT_ID, bestandsnaam: 'a.pdf', leverancier: 'Eneco Zakelijk', status: 'klaar_om_te_boeken' }),
+    document({ id: K2_ID, bestandsnaam: 'b.pdf', leverancier: 'Technische Unie', status: 'klaar_om_te_boeken' }),
+    document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'c.pdf', leverancier: 'Bouwmaat', status: 'te_controleren' }),
+  ]
+
+  it('punt 1a: de kolom-teller "Klaar om te boeken" (12) opent de documentenlijst VOORGEFILTERD op die status', async () => {
+    const gebruiker = userEvent.setup()
+    installRunMock({
+      klanten: [
+        {
+          administratie_id: ADMINISTRATIE_ID,
+          naam: 'Testklant',
+          te_controleren: 1,
+          klaar_om_te_boeken: 12,
+          vragen: 0,
+          afgewezen: 0,
+          bij_klant: 0,
+          iban_wachtend: 0,
+        },
+      ],
+      documenten: klaarDocs,
+    })
+    renderOp('/')
+    await gebruiker.click(await screen.findByText('12'))
+    // Lijst mét filter actief: segment "Klaar om te boeken (2)" is actief, het te-controleren-document staat er niet.
+    const segment = await screen.findByRole('button', { name: 'Klaar om te boeken (2)' })
+    expect(segment).toHaveClass('actief')
+    expect(screen.getByText('Eneco Zakelijk')).toBeInTheDocument()
+    expect(screen.queryByText('Bouwmaat')).not.toBeInTheDocument()
+    // Rij-link draagt de lijstcontext (punt 1) mee naar het controlescherm.
+    expect(screen.getByText('Eneco Zakelijk').closest('tr')).toBeInTheDocument()
+  })
+
+  it('punt 2b: bulk "Ter accordering aanbieden" op de tab Klaar om te boeken — selectie, POST, overgeslagen mét reden', async () => {
+    const gebruiker = userEvent.setup()
+    const bulkAanroepen: { url: string; body: unknown }[] = []
+    installRunMock({
+      documenten: klaarDocs,
+      accorderingAan: true,
+      bulkAanroepen,
+      bulkResponse: {
+        resultaten: [
+          { document_id: DOCUMENT_ID, bestandsnaam: 'a.pdf', uitkomst: 'aangeboden', reden: null, boek_fout: null },
+          { document_id: K2_ID, bestandsnaam: 'b.pdf', uitkomst: 'overgeslagen', reden: 'Harde checks niet groen: Verplichte velden ontbreken', boek_fout: null },
+        ],
+        aangeboden: 1,
+        geboekt: 0,
+        overgeslagen: 1,
+      },
+    })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}&status=klaar_om_te_boeken`)
+
+    const balk = await screen.findByTestId('bulk-balk')
+    expect(balk).toHaveTextContent('2 klaar om te boeken')
+    await gebruiker.click(within(balk).getByLabelText('Alle documenten in deze lijst selecteren'))
+    expect(balk).toHaveTextContent('2 van 2 geselecteerd')
+    await gebruiker.click(screen.getByRole('button', { name: /Ter accordering aanbieden \(2\)/ }))
+
+    await waitFor(() => expect(bulkAanroepen).toHaveLength(1))
+    expect(bulkAanroepen[0].url).toContain(`/administraties/${ADMINISTRATIE_ID}/accordering/documenten/bulk-aanbieden`)
+    expect(new Set((bulkAanroepen[0].body as { document_ids: string[] }).document_ids)).toEqual(new Set([DOCUMENT_ID, K2_ID]))
+    expect(await screen.findByText(/1 aangeboden, 1 overgeslagen/)).toBeInTheDocument()
+    expect(screen.getByText(/Harde checks niet groen: Verplichte velden ontbreken/)).toBeInTheDocument()
+  })
+
+  it('punt 2b: zonder accordering-toggle geen bulk-balk; op een andere tab ook niet', async () => {
+    installRunMock({ documenten: klaarDocs, accorderingAan: false })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}&status=klaar_om_te_boeken`)
+    await screen.findByText('Eneco Zakelijk')
+    expect(screen.queryByTestId('bulk-balk')).not.toBeInTheDocument()
+  })
+
+  it('punt 2a: eenmalige banner "accorderingen vervallen" mét reden; Sluiten onthoudt de keuze per batch', async () => {
+    const gebruiker = userEvent.setup()
+    installRunMock({
+      documenten: klaarDocs,
+      meldingen: [
+        {
+          batch_id: 'batch-1',
+          tijdstip: '2026-08-27T14:02:00Z',
+          door_gebruiker_id: 'x',
+          door_naam: 'P. Nijenhuis',
+          aantal: 34,
+          nog_niet_opnieuw_aangeboden: 12,
+          reden: 'accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist',
+        },
+      ],
+    })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}`)
+    const banner = await screen.findByTestId('vervallen-melding')
+    expect(banner).toHaveTextContent('34 accorderingen zijn vervallen')
+    expect(banner).toHaveTextContent('configuratie gewijzigd door P. Nijenhuis')
+    expect(banner).toHaveTextContent('accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist')
+    expect(banner).toHaveTextContent('12 staan nog op “Klaar om te boeken”')
+    await gebruiker.click(within(banner).getByRole('button', { name: 'Melding sluiten' }))
+    expect(screen.queryByTestId('vervallen-melding')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('rlz.melding.accordering_vervallen.batch-1')).toBe('1')
+  })
+
+  it('punt 2a: een batch die volledig opnieuw is aangeboden (0 open) toont geen banner', async () => {
+    installRunMock({
+      documenten: klaarDocs,
+      meldingen: [{ batch_id: 'b', tijdstip: '2026-08-27T14:02:00Z', door_gebruiker_id: 'x', door_naam: null, aantal: 3, nog_niet_opnieuw_aangeboden: 0, reden: 'r' }],
+    })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}`)
+    await screen.findByText('Eneco Zakelijk')
+    expect(screen.queryByTestId('vervallen-melding')).not.toBeInTheDocument()
+  })
+
+  it('punt 3a/3b/3c: leverancier vet mét metaregel, dichtheid compact onthouden, geboekt-dot in --ok-klasse', async () => {
+    const gebruiker = userEvent.setup()
+    installRunMock({
+      documenten: [
+        document({ id: DOCUMENT_ID, bestandsnaam: 'a.pdf', leverancier: 'Eneco Zakelijk', bron: 'email', aangemaakt_op: '2026-08-26T14:42:00Z' }),
+        document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'g.pdf', leverancier: 'Bouwmaat', status: 'geboekt' }),
+      ],
+    })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}&soort=alle`)
+    const hoofd = await screen.findByText('Eneco Zakelijk')
+    expect(hoofd).toHaveClass('lijst-hoofd')
+    const meta = hoofd.parentElement?.querySelector('.lijst-meta')
+    expect(meta).toHaveTextContent(/a\.pdf · email · 26 aug/)
+    expect(screen.getByText('Geboekt')).toHaveClass('status', 'geboekt')
+
+    const tabel = hoofd.closest('table') as HTMLElement
+    expect(tabel).toHaveClass('documenten-tabel')
+    expect(tabel).not.toHaveClass('dichtheid-compact')
+    await gebruiker.click(screen.getByRole('button', { name: 'Compact' }))
+    expect(tabel).toHaveClass('dichtheid-compact')
+    expect(window.localStorage.getItem('rlz.documentenlijst.dichtheid')).toBe('compact')
+  })
+
+  it('punt 5: "/" zet de cursor in het zoekveld', async () => {
+    const gebruiker = userEvent.setup()
+    installRunMock({ documenten: klaarDocs })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}`)
+    await screen.findByText('Eneco Zakelijk')
+    await gebruiker.keyboard('/')
+    expect(screen.getByLabelText('Zoek in documenten')).toHaveFocus()
   })
 })
