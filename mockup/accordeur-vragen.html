@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Mockup — Accordeur: vragen-dialoog + compacte UI (feedback 25-08)</title>
+<title>Mockup — Accordeur: administratie-overzicht (27-08) + vragen-dialoog + compacte UI (feedback 25/26-08)</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   /* Zelfde tokens als mockup/accordeur.html (de norm) — dark default */
@@ -164,11 +164,43 @@
     </div>
   </div>
 
-  <!-- ===== SCHERM 1: wachtrij ===== -->
-  <div class="scherm actief" id="s-wachtrij">
+  <!-- ===== SCHERM 0: administratie-keuze (NIEUW, besluit Peter 27-08) =====
+       Alleen getoond bij ≥ 2 administraties met open werk of vragen;
+       een accordeur met precies één BV landt direct op de wachtrij. -->
+  <div class="scherm actief" id="s-bvs">
     <div class="inhoud">
+      <div class="seclabel">Uw administraties</div>
+      <div class="kaart" onclick="toon('s-wachtrij')">
+        <div class="rij1">
+          <div>
+            <div class="naam">Kempen Facilities B.V.</div>
+            <div class="meta">Oudste wacht sinds gisteren</div>
+          </div>
+          <span class="chip vraag">3 te accorderen</span>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span class="chip beurt">💬 1 vraag aan u</span>
+        </div>
+      </div>
+      <div class="kaart">
+        <div class="rij1">
+          <div>
+            <div class="naam">Universal Steigerbouw B.V.</div>
+            <div class="meta">Oudste wacht sinds vandaag</div>
+          </div>
+          <span class="chip vraag">2 te accorderen</span>
+        </div>
+      </div>
+      <div class="toelicht">Alleen administraties mét iets te doen staan hier (besluit 27-08) — is álles bij, dan toont dit scherm "✓ Alles is bij". Trek de lijst naar beneden om te verversen.</div>
+    </div>
+  </div>
 
-      <div class="seclabel">Te accorderen · 3</div>
+  <!-- ===== SCHERM 1: wachtrij (nu per administratie) ===== -->
+  <div class="scherm" id="s-wachtrij">
+    <div class="inhoud">
+      <button class="terug" onclick="toon('s-bvs')">‹ Administraties</button>
+
+      <div class="seclabel">Kempen Facilities B.V. — te accorderen · 3</div>
       <div class="kaart" onclick="toon('s-document')">
         <div class="rij1">
           <div>
@@ -194,8 +226,8 @@
       <div class="kaart">
         <div class="rij1">
           <div>
-            <div class="naam">Gemeente Oirschot</div>
-            <div class="meta">OZB aanslag 2026 · Oirschot Recreatie B.V. · laag 1</div>
+            <div class="naam">Van Diemen Transport</div>
+            <div class="meta">Transport wk 34 · Kempen Facilities B.V. · laag 1</div>
           </div>
           <div class="bedrag">€ 2.310,00</div>
         </div>
@@ -320,6 +352,7 @@
 <div class="desknote">
   <h2>Bespreekpunten (26-08)</h2>
   <p><span class="k">Wat dit toevoegt:</span> de bestaande kantoor-vragen­dialoog (25-08) krijgt een klant-kant — een vraag kan aan de accordeur gericht worden, die antwoordt in de app.</p>
+  <p><span class="k">Nieuw 27-08 (besluiten Peter):</span> openingsscherm per administratie — uitsluitend BV-kaarten mét werk (teller "te accorderen", chip "💬 vraag aan u", oudste-wacht-regel; géén "✓ bij"-rijen — alles bij = lege staat "✓ Alles is bij" mét verversknop); één BV mét werk = direct de wachtrij, geen tussenscherm; ná akkoord/afwijzen volgt de volgende factuur van dezelfde BV, stapel leeg = terug naar dit overzicht. Plus pull-to-refresh (overzicht én wachtrij) en auto-verversen zodra de app naar de voorgrond komt. Ontgrendeling (passkey) hooguit 1× per 24 uur per apparaat.</p>
   <ul>
     <li><b>Zichtbaarheid:</b> accordeur ziet uitsluitend threads die expliciet aan hem gericht zijn; intern kantoor­overleg lekt nooit mee.</li>
     <li><b>Afgehandeld:</b> alleen de vraagsteller sluit de vraag (bestaande regel); vraag blokkeert boeken, niet het akkoord.</li>
