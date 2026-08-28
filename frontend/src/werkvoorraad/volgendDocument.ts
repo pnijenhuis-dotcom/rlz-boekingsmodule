@@ -1,6 +1,6 @@
 import type { DocumentListItemDto } from '../api/types'
 import { SOORT_VOLGORDE } from './format'
-import { STATUSFILTER_ALLE, filterDocumenten, type LijstContext } from './lijstContext'
+import { STATUSFILTER_ALLE, filterDocumenten, type FilterOpties, type LijstContext } from './lijstContext'
 
 /** Statussen waarin een document "te verwerken" is voor de doorloop ná boeken/afwijzen/ter
  * accordering (besluit Peter 25-08, deel 4 punt 1): alleen werk waar de controleur zelf iets
@@ -32,9 +32,14 @@ export function kiesVolgendDocument(
   huidigId: string,
   huidigSoort: string,
   context: LijstContext | null = null,
+  opties: FilterOpties = {},
 ): DocumentListItemDto | null {
-  if (context && (context.status !== STATUSFILTER_ALLE || context.zoekterm.trim() || context.soort !== null)) {
-    const rijen = filterDocumenten(items, context)
+  // Punt 21: óók een kale sortering (zonder filter) is context — de doorloop volgt dan die volgorde.
+  if (
+    context &&
+    (context.status !== STATUSFILTER_ALLE || context.zoekterm.trim() || context.soort !== null || context.sortering)
+  ) {
+    const rijen = filterDocumenten(items, context, opties)
     const kandidaten = rijen.filter((d) => VERWERKBARE_STATUSSEN.has(d.status))
     const huidigIndex = rijen.findIndex((d) => d.id === huidigId)
     const na = kandidaten.find((d) => d.id !== huidigId && rijen.indexOf(d) > huidigIndex)

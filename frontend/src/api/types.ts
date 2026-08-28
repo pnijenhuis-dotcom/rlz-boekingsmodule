@@ -186,6 +186,9 @@ export interface DocumentListItemDto {
   /** Bugfix-run 28-08: alle lagen akkoord maar het boeken ná het laatste akkoord faalde — de
    * kolom "Toegewezen" toont de chip "boeken ná akkoord mislukt" mét de reden. Null = geen. */
   accordering_boek_fout?: string | null
+  /** Punt 24 (opruimrun 28-08): klant-akkoord compleet én nog niet geboekt — opnieuw aanbieden is
+   * server-side geweigerd (409); de bulk-checkbox staat uit mét uitleg "boek direct". */
+  klant_akkoord_compleet?: boolean
   /** Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + het
    * filter. Null/afwezig = nog niet getoetst. */
   duplicaatsignaal?: DuplicaatSignaalKortDto | null

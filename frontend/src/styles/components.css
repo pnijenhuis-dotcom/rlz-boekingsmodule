@@ -1515,6 +1515,37 @@ tr.geselecteerd td.acties {
   margin: 2px 0;
 }
 
+/* Punt 21 (opruimrun 28-08): sorteerbare kolomkoppen documentenlijst — knop in de <th>, erft de
+   kopstijl; pijl-indicator ↕/▲/▼ (actief = primary-kleur, aria-sort op de <th>). */
+.th-sort {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  border-radius: 6px;
+}
+.th-sort:hover,
+.th-sort:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+.th-sort:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.th-sort .th-sort-pijl {
+  font-size: 9px;
+  opacity: 0.45;
+}
+.th-sort.actief .th-sort-pijl {
+  opacity: 1;
+  color: var(--primary);
+}
+
 /* Punt 2a: eenmalige melding vervallen accorderingen (banner op de documentenlijst). */
 .melding-banner {
   display: flex;

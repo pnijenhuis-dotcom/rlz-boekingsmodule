@@ -911,4 +911,51 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
     await gebruiker.keyboard('/')
     expect(screen.getByLabelText('Zoek in documenten')).toHaveFocus()
   })
+
+  it('punt 24 (opruimrun 28-08): rij mét compleet klant-akkoord is niet selecteerbaar — checkbox uit mét uitleg "boek direct"', async () => {
+    installRunMock({
+      documenten: [
+        klaarDocs[0],
+        document({ id: K2_ID, bestandsnaam: 'b.pdf', leverancier: 'Technische Unie', status: 'klaar_om_te_boeken', klant_akkoord_compleet: true }),
+      ],
+      accorderingAan: true,
+    })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}&status=klaar_om_te_boeken`)
+    const balk = await screen.findByTestId('bulk-balk')
+    // Telling telt alleen de selecteerbare rijen.
+    expect(balk).toHaveTextContent('1 klaar om te boeken')
+    const uit = screen.getByLabelText(/Technische Unie: klant-akkoord compleet — boek direct/)
+    expect(uit).toBeDisabled()
+    expect(screen.getByLabelText('Selecteer Eneco Zakelijk')).toBeEnabled()
+  })
+
+  it('punt 21 (opruimrun 28-08): kolomkop klikken sorteert oplopend, nogmaals aflopend, mét pijl + aria-sort', async () => {
+    const gebruiker = userEvent.setup()
+    installRunMock({
+      documenten: [
+        document({ id: DOCUMENT_ID, bestandsnaam: 'a.pdf', leverancier: 'Technische Unie', totaalbedrag: '9.50', status: 'klaar_om_te_boeken' }),
+        document({ id: K2_ID, bestandsnaam: 'b.pdf', leverancier: 'Eneco Zakelijk', totaalbedrag: '121.00', status: 'klaar_om_te_boeken' }),
+      ],
+    })
+    renderOp(`/?administratie=${ADMINISTRATIE_ID}&status=klaar_om_te_boeken`)
+    await screen.findByText('Technische Unie')
+    const leveranciers = () =>
+      screen.getAllByRole('row').map((r) => r.textContent ?? '').filter((t) => /Technische Unie|Eneco Zakelijk/.test(t)).map((t) => (t.includes('Technische') ? 'TU' : 'Eneco'))
+    // Backend-volgorde: zoals aangeleverd.
+    expect(leveranciers()).toEqual(['TU', 'Eneco'])
+    const kop = screen.getByRole('button', { name: /^Leverancier/ })
+    await gebruiker.click(kop)
+    expect(leveranciers()).toEqual(['Eneco', 'TU'])
+    expect(kop.closest('th')).toHaveAttribute('aria-sort', 'ascending')
+    expect(kop).toHaveTextContent('▲')
+    await gebruiker.click(kop)
+    expect(leveranciers()).toEqual(['TU', 'Eneco'])
+    expect(kop.closest('th')).toHaveAttribute('aria-sort', 'descending')
+    // Derde klik heft de sortering op.
+    await gebruiker.click(kop)
+    expect(kop.closest('th')).toHaveAttribute('aria-sort', 'none')
+    // Een andere kolom (bedrag, numeriek): 9.50 vóór 121.00.
+    await gebruiker.click(screen.getByRole('button', { name: /^Bedrag/ }))
+    expect(leveranciers()).toEqual(['TU', 'Eneco'])
+  })
 })

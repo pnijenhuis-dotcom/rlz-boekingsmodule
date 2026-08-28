@@ -316,6 +316,8 @@ export function DocumentDetailScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
   const navigate = useNavigate()
   const { meld } = useToastOptioneel()
+  // Vóór de lijstpositie gedeclareerd: de sortering op "Toegewezen" (punt 21) rekent met de namen.
+  const { naamVoor, isKlantAccordeur } = useMedewerkers(administratieId ?? null)
   // Lijstcontext (werkstroom-run 27/28-08, punt 1): tab + status-filter + zoekterm van de lijst
   // waaruit dit document geopend is — uit de URL-query, stuurt doorloop, ‹ › en de terugweg.
   const [searchParams] = useSearchParams()
@@ -324,8 +326,8 @@ export function DocumentDetailScreen() {
   // fout hier kost alleen de positie-indicator, nooit het scherm.
   const [lijst, setLijst] = useState<DocumentListResponseDto['documenten'] | null>(null)
   const positie = useMemo(
-    () => (lijst && context && documentId ? lijstPositie(lijst, context, documentId) : null),
-    [lijst, context, documentId],
+    () => (lijst && context && documentId ? lijstPositie(lijst, context, documentId, { naamVoor }) : null),
+    [lijst, context, documentId, naamVoor],
   )
   // Onopgeslagen wijzigingen in het boekvoorstel (debounce nog niet klaar) → bevestiging vóór
   // ‹ ›/Esc/pijltjes; het doel wacht in `verlaatDoel`.
@@ -388,7 +390,6 @@ export function DocumentDetailScreen() {
   const [heropenenBezig, setHeropenenBezig] = useState(false)
   const [heropenenFout, setHeropenenFout] = useState<string | null>(null)
   const splitter = useReviewSplitter()
-  const { naamVoor, isKlantAccordeur } = useMedewerkers(administratieId ?? null)
 
   const laadDetail = useCallback(() => {
     if (!administratieId || !documentId) return
@@ -580,7 +581,7 @@ export function DocumentDetailScreen() {
     let doel = lijstRoute(administratieId, context)
     try {
       const lijst = await apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
-      const volgende = kiesVolgendDocument(lijst.documenten, documentId, detail.soort, context)
+      const volgende = kiesVolgendDocument(lijst.documenten, documentId, detail.soort, context, { naamVoor })
       if (volgende) doel = documentRoute(administratieId, volgende, context)
     } catch {
       // Lijst niet leesbaar: de documentenlijst zelf toont die fout — daar landen we dan.

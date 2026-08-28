@@ -31,7 +31,11 @@ import {
   isUrenmatchAfwijking,
   kiesTabVoorStatus,
   lijstContextNaarParams,
+  sorteringNaarParam,
+  sorteringUitParam,
+  volgendeSortering,
   type LijstContext,
+  type SorteerKolom,
 } from './lijstContext'
 import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
@@ -266,10 +270,22 @@ export function DocumentenDeelscherm({
       : (soortParam ?? (documenten === null ? null : kiesTabVoorStatus(documenten, tabs, statusFilter)))
   const toontAlle = documenten !== null && soort === null
 
+  // Punt 21 (opruimrun 28-08): kolomsortering in de URL (`sort=<kolom>:<asc|desc>`) — deelbaar,
+  // terugweg-vast en onderdeel van de lijstcontext (‹ › + doorloop volgen dezelfde volgorde).
+  const sortering = useMemo(() => sorteringUitParam(searchParams.get('sort')), [searchParams])
+  const sorteerOp = (kolom: SorteerKolom) => {
+    const volgende = volgendeSortering(sortering, kolom)
+    const p = new URLSearchParams(searchParams)
+    const param = sorteringNaarParam(volgende)
+    if (param) p.set('sort', param)
+    else p.delete('sort')
+    setSearchParams(p, { replace: true })
+  }
+
   /** De actuele lijstcontext (punt 1) — reist mee in élke rij-link en in de URL van dit scherm. */
   const context: LijstContext = useMemo(
-    () => ({ soort, status: statusFilter, zoekterm }),
-    [soort, statusFilter, zoekterm],
+    () => ({ soort, status: statusFilter, zoekterm, sortering }),
+    [soort, statusFilter, zoekterm, sortering],
   )
 
   // Context in de URL houden (replace — geen history-vervuiling), zodat terug/vernieuwen en de
@@ -278,7 +294,7 @@ export function DocumentenDeelscherm({
     if (documenten === null) return
     const huidig = new URLSearchParams(searchParams)
     const gewenst = new URLSearchParams(searchParams)
-    for (const sleutel of ['soort', 'status', 'q']) gewenst.delete(sleutel)
+    for (const sleutel of ['soort', 'status', 'q', 'sort']) gewenst.delete(sleutel)
     // Soort alleen expliciet als de gebruiker (of een link) 'm zette — de automatische tab-keuze
     // blijft impliciet (zodat een nieuwe tab-met-werk gewoon de landing wordt).
     if (soortParam !== null) gewenst.set('soort', soortParam)
@@ -313,9 +329,38 @@ export function DocumentenDeelscherm({
   // Eén bron voor het filteren (lijstContext.filterDocumenten) — het controlescherm rekent met
   // exact dezelfde functie voor "3 van 12" en de doorloop.
   const gefilterd = useMemo(
-    () => (documenten === null ? null : filterDocumenten(documenten, context)),
-    [documenten, context],
+    () => (documenten === null ? null : filterDocumenten(documenten, context, { naamVoor })),
+    [documenten, context, naamVoor],
   )
+
+  /** Klikbare kolomkop (punt 21): oplopend → aflopend → uit, mét pijl-indicator en aria-sort. */
+  const sorteerKop = (kolom: SorteerKolom, label: string, className?: string) => {
+    const actief = sortering?.kolom === kolom ? sortering.richting : null
+    return (
+      <th
+        className={className}
+        aria-sort={actief === 'asc' ? 'ascending' : actief === 'desc' ? 'descending' : 'none'}
+      >
+        <button
+          type="button"
+          className={`th-sort${actief ? ' actief' : ''}`}
+          onClick={() => sorteerOp(kolom)}
+          title={
+            actief === 'asc'
+              ? `Gesorteerd oplopend op ${label.toLowerCase()} — klik voor aflopend`
+              : actief === 'desc'
+                ? `Gesorteerd aflopend op ${label.toLowerCase()} — klik om de sortering op te heffen`
+                : `Sorteer oplopend op ${label.toLowerCase()}`
+          }
+        >
+          {label}
+          <span className="th-sort-pijl" aria-hidden="true">
+            {actief === 'asc' ? '▲' : actief === 'desc' ? '▼' : '↕'}
+          </span>
+        </button>
+      </th>
+    )
+  }
 
   const aanwezigeStatussen = useMemo(
     () => Array.from(new Set((inScope ?? []).map((d) => d.status))).sort(),
@@ -333,10 +378,17 @@ export function DocumentenDeelscherm({
   // Alleen op de tab "Klaar om te boeken" én als accordering voor deze klant aan staat; de poorten
   // per document blijven server-side onverkort (overgeslagen mét reden in het resultaatpaneel).
   const bulkMogelijk = accorderingAan && statusFilter === 'klaar_om_te_boeken'
+  // Punt 24 (opruimrun 28-08): een rij mét compleet-maar-onverzilverd klant-akkoord is NIET
+  // selecteerbaar — de server weigert 'm toch (409 "boek direct"); checkbox uit mét uitleg.
   const selecteerbaar = useMemo(
-    () => (bulkMogelijk ? (gefilterd ?? []).filter((d) => d.status === 'klaar_om_te_boeken') : []),
+    () =>
+      bulkMogelijk
+        ? (gefilterd ?? []).filter((d) => d.status === 'klaar_om_te_boeken' && !d.klant_akkoord_compleet)
+        : [],
     [bulkMogelijk, gefilterd],
   )
+  const AKKOORD_COMPLEET_UITLEG =
+    'Klant-akkoord is al compleet — boek dit document direct; opnieuw aanbieden zou de klant een tweede keer om hetzelfde akkoord vragen'
   useEffect(() => {
     // Selectie opschonen zodra rijen uit de lijst verdwijnen (herladen/filterwissel).
     setSelectie((s) => {
@@ -716,11 +768,11 @@ export function DocumentenDeelscherm({
               <tbody>
                 <tr>
                   {bulkMogelijk && <th className="selectie" aria-label="Selectie" />}
-                  <th>Leverancier</th>
-                  <th>Factuurdatum</th>
-                  <th className="amount">Bedrag (incl. btw)</th>
-                  <th>Status</th>
-                  <th>Toegewezen</th>
+                  {sorteerKop('leverancier', 'Leverancier')}
+                  {sorteerKop('factuurdatum', 'Factuurdatum')}
+                  {sorteerKop('bedrag', 'Bedrag (incl. btw)', 'amount')}
+                  {sorteerKop('status', 'Status')}
+                  {sorteerKop('toegewezen', 'Toegewezen')}
                   <th />
                 </tr>
                 {gefilterd.map((d) => {
@@ -749,7 +801,13 @@ export function DocumentenDeelscherm({
                           {d.status === 'klaar_om_te_boeken' && (
                             <Checkbox
                               checked={geselecteerd}
-                              aria-label={`Selecteer ${d.leverancier ?? d.bestandsnaam}`}
+                              disabled={Boolean(d.klant_akkoord_compleet)}
+                              title={d.klant_akkoord_compleet ? AKKOORD_COMPLEET_UITLEG : undefined}
+                              aria-label={
+                                d.klant_akkoord_compleet
+                                  ? `${d.leverancier ?? d.bestandsnaam}: klant-akkoord compleet — boek direct, niet opnieuw aanbieden`
+                                  : `Selecteer ${d.leverancier ?? d.bestandsnaam}`
+                              }
                               onChange={() => wisselSelectie(d.id)}
                             />
                           )}
