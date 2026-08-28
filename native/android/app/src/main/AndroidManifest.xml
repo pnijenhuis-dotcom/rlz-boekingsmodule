@@ -24,6 +24,17 @@
 
         </activity>
 
+        <!-- FCM-notificatieweergave (native push fase 3, Android-bouwronde 28-08): de statusbalk
+             rendert een monochroom silhouet — het volle launcher-icoon zou een wit vlak worden.
+             Icoon = het N-monogram uit mockup/app-icoon-n.svg als VectorDrawable, kleur = het
+             wordmark-teal. Payload blijft aantal + deep-link (app/berichten/fcm.py). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_nijenhuis" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notificatie_accent" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -38,4 +49,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13+ (API 33): runtime-permissie voor meldingen. @capacitor/push-notifications
+         vraagt 'm op (requestPermissions) — uitsluitend vanuit de expliciete klik in de
+         activeringsflow (pushClient.ts) — maar de declaratie hoort in het app-manifest. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

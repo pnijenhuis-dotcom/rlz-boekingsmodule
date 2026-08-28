@@ -13,4 +13,8 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
+    // FCM-client voor @capacitor/push-notifications (leest rootProject.ext.firebaseMessagingVersion;
+    // zonder deze regel valt de plugin terug op zijn eigen default). Expliciet gepind voor een
+    // reproduceerbare release-build (Android-bouwronde 28-08).
+    firebaseMessagingVersion = '25.0.1'
 }

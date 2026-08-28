@@ -1,5 +1,24 @@
 apply plugin: 'com.android.application'
 
+// Signing (Android-bouwronde 28-08, Play App Signing-model): de UPLOAD-keystore staat BUITEN
+// de repo; pad + wachtwoorden komen uit `keystore.properties` naast dit bestand (gitignored,
+// aangemaakt door ../scripts/android_keystore.sh). Ontbreekt het bestand, dan bouwt de
+// release-variant ONGESIGNEERD (bundleRelease levert dan een niet-uploadbare AAB) en zegt
+// Gradle dat luid — nooit stil een debug-key op een release zetten.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def uploadSigningAanwezig = keystorePropertiesFile.exists()
+if (uploadSigningAanwezig) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+    ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].each { sleutel ->
+        if (!keystoreProperties.getProperty(sleutel)) {
+            throw new GradleException("keystore.properties mist '${sleutel}' — draai native/scripts/android_keystore.sh opnieuw.")
+        }
+    }
+} else {
+    logger.warn("LET OP: native/android/keystore.properties ontbreekt — release wordt NIET gesigneerd (niet uploadbaar naar Play). Zie native/PLAY_DRAAIBOEK.md §2.")
+}
+
 android {
     namespace = "nl.aknijenhuis.goedkeuren"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +26,12 @@ android {
         applicationId "nl.aknijenhuis.goedkeuren"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Versiebeleid (STORE_GEREEDHEID §6): versionName loopt gelijk met MARKETING_VERSION van
+        // de iOS-app (1.0); versionCode moet per Play-upload strikt omhoog (Play weigert een
+        // hergebruikt nummer). Overschrijfbaar zonder code-wijziging voor een latere
+        // CI-opzet: ./gradlew bundleRelease -PversionCode=12 -PversionName=1.1
+        versionCode(project.hasProperty('versionCode') ? project.property('versionCode').toString().toInteger() : 1)
+        versionName(project.hasProperty('versionName') ? project.property('versionName').toString() : "1.0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +39,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (uploadSigningAanwezig) {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (uploadSigningAanwezig) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
@@ -50,11 +86,14 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+// Firebase Cloud Messaging (native push fase 3, Android-kant — bouwronde 28-08). De
+// google-services.json is de Firebase-app-registratie van nl.aknijenhuis.goedkeuren in het
+// GCP-project rlz-boekhouding (géén geheim: bevat alleen project-id/-nummer, app-id en de
+// publieke Android-API-key; Analytics staat bewust UIT). Het bestand hoort gecommit te zijn —
+// daarom hier ONVOORWAARDELIJK toepassen: ontbreekt het, dan faalt de build luid in plaats
+// van stil een app zonder push te bouwen (Capacitors template deed try/catch + logger.info).
+def googleServicesJson = file('google-services.json')
+if (!googleServicesJson.exists()) {
+    throw new GradleException("native/android/app/google-services.json ontbreekt — Firebase-registratie (FCM) vereist, zie native/PLAY_DRAAIBOEK.md §0.")
 }
+apply plugin: 'com.google.gms.google-services'

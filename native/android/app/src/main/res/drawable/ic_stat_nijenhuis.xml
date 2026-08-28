@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Statusbalk-/notificatie-icoon (FCM default_notification_icon): het N-monogram uit
+     mockup/app-icoon-n.svg (tekenruimte 420x296, geometrie ongewijzigd — de drie contour-
+     polygonen + twee accent-driehoeken), monochroom wit zoals Android voor small icons eist;
+     de tint komt uit default_notification_color. Viewport = de bron-tekenruimte plus marge
+     zodat het miter-uitsteeksel van de contouren niet wordt afgesneden. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="484"
+    android:viewportHeight="484"
+    android:tint="?attr/colorControlNormal">
+    <group android:translateX="32" android:translateY="94">
+        <!-- linkerbeen -->
+        <path
+            android:pathData="M112,32 L0,292 L92,292 L148,164 Z"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="13"
+            android:strokeLineJoin="miter"
+            android:fillColor="#00000000" />
+        <!-- middenbeen -->
+        <path
+            android:pathData="M132,0 L216,0 L292,292 L204,292 Z"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="13"
+            android:strokeLineJoin="miter"
+            android:fillColor="#00000000" />
+        <!-- rechterbeen -->
+        <path
+            android:pathData="M328,0 L420,0 L310,268 L280,140 Z"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="13"
+            android:strokeLineJoin="miter"
+            android:fillColor="#00000000" />
+        <!-- accent-driehoeken (in de bron mint; hier wit — small icons zijn één kleur) -->
+        <path
+            android:pathData="M228,8 L316,8 L266,147 Z"
+            android:fillColor="#FFFFFFFF" />
+        <path
+            android:pathData="M160,164 L190,284 L108,284 Z"
+            android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>

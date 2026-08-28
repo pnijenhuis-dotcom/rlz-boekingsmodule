@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "652591056217",
+    "project_id": "rlz-boekhouding",
+    "storage_bucket": "rlz-boekhouding.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:652591056217:android:19e4a60c7c65df313ab848",
+        "android_client_info": {
+          "package_name": "nl.aknijenhuis.goedkeuren"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYVFOjCe-X2GAKGc-ad28e2lyfFZ0mBgs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Notificatie-accent (FCM default_notification_color): het wordmark-teal uit
+         mockup/app-icoon-n.svg (gradient-eindstop #2e6660). Alleen voor de meldingskleur —
+         de app-thema-kleuren komen uit Capacitor's eigen resources. -->
+    <color name="notificatie_accent">#2E6660</color>
+</resources>
