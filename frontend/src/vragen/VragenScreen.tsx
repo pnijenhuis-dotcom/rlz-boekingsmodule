@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { VraagDto } from '../api/types'
-import { Select, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
+import { SkeletonPaneel, SkeletonRegels } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { useMedewerkers } from './useMedewerkers'
 import { VraagThread } from './VraagThread'
@@ -134,20 +135,14 @@ export function VragenScreen() {
           <h1>Openstaande vragen</h1>
         </div>
         <div className="adm-select">
-          <label htmlFor="vragen-administratie-select" style={{ margin: 0 }}>
-            Administratie
-          </label>
-          <Select
-            id="vragen-administratie-select"
-            value={administratieId ?? ''}
-            onChange={(e) => setSearchParams(metSectie({ administratie: e.target.value }))}
-          >
-            {administraties.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.naam}
-              </option>
-            ))}
-          </Select>
+          <span style={{ margin: 0 }}>Administratie</span>
+          <AdministratieCombobox
+            label="Administratie"
+            toonLabel={false}
+            administraties={administraties}
+            waarde={administratieId}
+            onWijzig={(id) => setSearchParams(metSectie({ administratie: id }))}
+          />
         </div>
       </div>
 

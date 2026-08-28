@@ -10,7 +10,8 @@ import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
-import { Button, Select, Switch, SkeletonPaneel } from '../ui/basis'
+import { Button, Switch, SkeletonPaneel } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   haalDoorbelastingInstellingOp,
@@ -55,18 +56,14 @@ export function DoorbelastingInstellingen({
         (default uit), provisie-instellingen en de server-side afgedwongen whitelist van
         doelentiteiten. Kies eerst een administratie.
       </p>
-      <Select
-        aria-label="Administratie voor doorbelasting"
-        value={administratieId}
-        onChange={(e) => setAdministratieId(e.target.value)}
-      >
-        <option value="">— kies administratie —</option>
-        {administraties.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.naam}
-          </option>
-        ))}
-      </Select>
+      <AdministratieCombobox
+        label="Administratie voor doorbelasting"
+        toonLabel={false}
+        administraties={administraties}
+        waarde={administratieId}
+        onWijzig={setAdministratieId}
+        placeholder="— kies administratie —"
+      />
       {administratieId && (
         <DoorbelastingAdministratie
           key={administratieId}

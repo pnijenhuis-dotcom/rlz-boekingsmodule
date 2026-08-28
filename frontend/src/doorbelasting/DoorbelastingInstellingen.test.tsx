@@ -101,10 +101,17 @@ function installFetchMock(opties: MockOpties = {}) {
   )
 }
 
+/** Punt 13 (opruimrun 28-08): de administratie-kiezer is een doorzoekbare combobox — kiezen =
+ * veld openen en de optie aanklikken (i.p.v. userEvent.selectOptions op een <select>). */
+async function kiesAdministratie(gebruiker: ReturnType<typeof userEvent.setup>, label: string, naam: string) {
+  await gebruiker.click(await screen.findByLabelText(label))
+  await gebruiker.click(await screen.findByRole('option', { name: naam }))
+}
+
 async function renderEnKies() {
   render(<DoorbelastingInstellingen administraties={[{ id: ADMINISTRATIE_ID, naam: 'Kempen Facilities B.V.' }]} />)
   const gebruiker = userEvent.setup()
-  await gebruiker.selectOptions(screen.getByLabelText('Administratie voor doorbelasting'), ADMINISTRATIE_ID)
+  await kiesAdministratie(gebruiker, 'Administratie voor doorbelasting', 'Kempen Facilities B.V.')
   return gebruiker
 }
 

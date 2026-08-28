@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 import type { ArchiefDocumentDto } from '../api/types'
-import { AnkerPopup, Select } from '../ui/basis'
+import { AnkerPopup } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { amountKlasse, formatBedrag, formatDatum, formatDatumKort } from './format'
@@ -86,22 +87,15 @@ export function ArchiefScreen() {
       <div className="topbar">
         <h1>Archief</h1>
         <div className="adm-select">
-          <label htmlFor="archief-administratie-select" style={{ margin: 0 }}>
-            Administratie
-          </label>
-          <Select
-            id="archief-administratie-select"
-            value={administratieId}
-            onChange={(e) => setAdministratieId(e.target.value)}
-            disabled={!administraties}
-          >
-            <option value="">— kies een administratie —</option>
-            {(administraties ?? []).map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.naam}
-              </option>
-            ))}
-          </Select>
+          <span style={{ margin: 0 }}>Administratie</span>
+          <AdministratieCombobox
+            label="Administratie"
+            toonLabel={false}
+            administraties={administraties ?? []}
+            waarde={administratieId}
+            onWijzig={setAdministratieId}
+            placeholder="— kies een administratie —"
+          />
         </div>
       </div>
 

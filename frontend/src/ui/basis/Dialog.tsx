@@ -8,10 +8,20 @@ export const Dialog = DialogPrimitive.Root
 export const DialogTrigger = DialogPrimitive.Trigger
 export const DialogClose = DialogPrimitive.Close
 
+/** Een SearchableCombobox portalt zijn opties-lijst buiten de dialog-content; een klik op een optie
+ * is voor Radix een "klik buiten" en zou de modal sluiten — dat is géén sluiten. Sinds punt 13
+ * (opruimrun 28-08, administratie-combobox in álle modals) standaard in DialogContent i.p.v. per
+ * modal (VerplaatsModal-patroon); een eigen handler van de aanroeper blijft daarna gewoon lopen. */
+function isKlikInComboboxLijst(e: { target: EventTarget | null }): boolean {
+  return Boolean((e.target as Element | null)?.closest?.('.combobox-listbox'))
+}
+
 export function DialogContent({
   className,
   children,
   breed,
+  onPointerDownOutside,
+  onInteractOutside,
   ...props
 }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
   /** Bredere variant voor tabellen/verdeel-modals. */
@@ -26,6 +36,14 @@ export function DialogContent({
             breed ? 'max-w-[720px]' : 'max-w-[480px]',
             className,
           )}
+          onPointerDownOutside={(e) => {
+            if (isKlikInComboboxLijst(e)) e.preventDefault()
+            onPointerDownOutside?.(e)
+          }}
+          onInteractOutside={(e) => {
+            if (isKlikInComboboxLijst(e)) e.preventDefault()
+            onInteractOutside?.(e)
+          }}
           {...props}
         >
           {children}

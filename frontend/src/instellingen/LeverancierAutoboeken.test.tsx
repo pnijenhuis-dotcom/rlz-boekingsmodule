@@ -46,8 +46,15 @@ function installFetchMock(opties: {
 async function renderMetAdministratie() {
   const gebruiker = userEvent.setup()
   render(<LeverancierAutoboeken administraties={[{ id: ADMINISTRATIE_ID, naam: 'Testklant B.V.' }]} />)
-  await gebruiker.selectOptions(screen.getByLabelText('Administratie voor automatisch boeken'), ADMINISTRATIE_ID)
+  await kiesAdministratie(gebruiker, 'Administratie voor automatisch boeken', 'Testklant B.V.')
   return gebruiker
+}
+
+/** Punt 13 (opruimrun 28-08): de administratie-kiezer is een doorzoekbare combobox — kiezen =
+ * veld openen en de optie aanklikken (i.p.v. userEvent.selectOptions op een <select>). */
+async function kiesAdministratie(gebruiker: ReturnType<typeof userEvent.setup>, label: string, naam: string) {
+  await gebruiker.click(await screen.findByLabelText(label))
+  await gebruiker.click(await screen.findByRole('option', { name: naam }))
 }
 
 describe('LeverancierAutoboeken — opt-in per leverancier (Beheerder)', () => {
@@ -63,7 +70,7 @@ describe('LeverancierAutoboeken — opt-in per leverancier (Beheerder)', () => {
     // Nog geen keuze → geen fetch van de leverancierslijst.
     expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/leveranciers-autoboeken'))).toHaveLength(0)
 
-    await gebruiker.selectOptions(screen.getByLabelText('Administratie voor automatisch boeken'), ADMINISTRATIE_ID)
+    await kiesAdministratie(gebruiker, 'Administratie voor automatisch boeken', 'Testklant B.V.')
     await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
     expect(screen.getByRole('checkbox', { name: 'Automatisch boeken voor Bouwmaat Nederland B.V.' })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Automatisch boeken voor Technische Unie' })).toBeChecked()

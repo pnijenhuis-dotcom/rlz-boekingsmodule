@@ -14,7 +14,8 @@ import {
   type KvkLookupDto,
   type VeldgebruikerDto,
 } from '../meerwerk/meerwerkApi'
-import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, Select, useToastOptioneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, useToastOptioneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 
 /* ZZP-dossier per veldwerker (steigerbouw-run A1–A3, mockup meerwerk-kantoor.html "📁 Dossier"
  * = norm): KvK-/btw-blok (lookup → mens bevestigt), documententabel per type met status/geldig-
@@ -146,15 +147,12 @@ export function DossierModal({
           geëxtraheerd of geïndexeerd; weergave gemaskeerd, elke inzage geauditeerd.
         </DialogDescription>
         {keuzes.length > 1 && (
-          <FormField label="Administratie" htmlFor="dossier-administratie">
-            <Select id="dossier-administratie" value={administratieId} onChange={(e) => setAdministratieId(e.target.value)}>
-              {keuzes.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.naam}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          <AdministratieCombobox
+            label="Administratie"
+            administraties={keuzes}
+            waarde={administratieId}
+            onWijzig={setAdministratieId}
+          />
         )}
         {fout && <div className="fout">{fout}</div>}
         {dossier === null && !fout && <SkeletonRegels />}

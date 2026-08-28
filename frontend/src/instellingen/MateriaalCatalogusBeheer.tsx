@@ -14,6 +14,7 @@ import {
   type ProductDto,
 } from '../planning/transportApi'
 import { Badge, Button, Checkbox, Paginering, Select, useToastOptioneel } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 
 /* Materiaalcatalogus per leverancier (steigerbouw-run D2, Beheerder): leveranciers (bestel-
  * mailadres, crediteur-koppeling voor de factuurcontrole D6), categorieën + producten met
@@ -89,13 +90,17 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
     <div className="panel">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>📦 Materiaalcatalogus (transport &amp; bestellingen)</h2>
-        <Select value={administratieId} onChange={(e) => { setAdministratieId(e.target.value); setLeverancierId(null); setPagina(1) }} aria-label="Administratie">
-          {administraties.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.naam}
-            </option>
-          ))}
-        </Select>
+        <AdministratieCombobox
+          label="Administratie"
+          toonLabel={false}
+          administraties={administraties}
+          waarde={administratieId}
+          onWijzig={(id) => {
+            setAdministratieId(id)
+            setLeverancierId(null)
+            setPagina(1)
+          }}
+        />
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Button variant="secundair" maat="klein" disabled={bezig || !administratieId} onClick={() => void actie(() => seedUniversal(administratieId).then((r) => meld(`${r.producten_nieuw} nieuwe producten, ${r.producten_bestaand} bestonden al.`)), 'Standaardcatalogus Universal geladen (idempotent).')}>
             Standaardcatalogus laden (Universal)

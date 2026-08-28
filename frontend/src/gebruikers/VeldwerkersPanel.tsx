@@ -28,6 +28,7 @@ import {
   Switch,
   useToastOptioneel,
 } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { DossierModal, dossierBadge } from './DossierModal'
 import {
   formatVerloop, rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
@@ -353,20 +354,12 @@ function ProjectKoppelModal({
             : "Een ZZP'er schrijft weekstaten op zijn gekoppelde projecten — zonder koppeling ziet hij niets."}{' '}
           Elke wijziging wordt geauditeerd; bestaande weekstaten en meerwerk blijven altijd staan.
         </DialogDescription>
-        <FormField label="Administratie" htmlFor="koppel-administratie">
-          <Select
-            id="koppel-administratie"
-            className="w-full"
-            value={administratieId}
-            onChange={(e) => setAdministratieId(e.target.value)}
-          >
-            {administraties.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.naam}
-              </option>
-            ))}
-          </Select>
-        </FormField>
+        <AdministratieCombobox
+          label="Administratie"
+          administraties={administraties}
+          waarde={administratieId}
+          onWijzig={setAdministratieId}
+        />
         {projecten === null && !fout && <p className="hint">Projecten laden…</p>}
         {projecten !== null && (
           <MultiSelect
@@ -570,20 +563,12 @@ function CrediteurModal({
             : ' van de aan dit bureau gekoppelde ZZP’ers (uren × bureau-tarief per ZZP’er — knop "tarieven…").'}{' '}
           Eén veldwerker per crediteur; elke wijziging wordt geauditeerd.
         </DialogDescription>
-        <FormField label="Administratie" htmlFor="crediteur-administratie">
-          <Select
-            id="crediteur-administratie"
-            className="w-full"
-            value={administratieId}
-            onChange={(e) => setAdministratieId(e.target.value)}
-          >
-            {administraties.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.naam}
-              </option>
-            ))}
-          </Select>
-        </FormField>
+        <AdministratieCombobox
+          label="Administratie"
+          administraties={administraties}
+          waarde={administratieId}
+          onWijzig={setAdministratieId}
+        />
         {crediteuren === null && !fout && <p className="hint">Crediteuren laden…</p>}
         {crediteuren !== null && (
           <FormField label="Crediteur (uit Reeleezee)" htmlFor="crediteur-vendor">

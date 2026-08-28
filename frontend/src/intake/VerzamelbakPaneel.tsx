@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, BackendOnbereikbaarError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
-import { Select } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   bevestigSplitsing,
@@ -209,18 +209,14 @@ export function VerzamelbakPaneel({
                         eerst de splitsing beoordelen
                       </span>
                     ) : (
-                      <Select
-                        aria-label={`Toewijzen aan voor ${item.bestandsnaam}`}
-                        value={gekozen}
-                        onChange={(e) => setKeuze((k) => ({ ...k, [item.document_id]: e.target.value }))}
-                      >
-                        <option value="">— kies administratie —</option>
-                        {administraties.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.naam}
-                          </option>
-                        ))}
-                      </Select>
+                      <AdministratieCombobox
+                        label={`Toewijzen aan voor ${item.bestandsnaam}`}
+                        toonLabel={false}
+                        administraties={administraties}
+                        waarde={gekozen}
+                        onWijzig={(id) => setKeuze((k) => ({ ...k, [item.document_id]: id }))}
+                        placeholder="— kies administratie —"
+                      />
                     )}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>

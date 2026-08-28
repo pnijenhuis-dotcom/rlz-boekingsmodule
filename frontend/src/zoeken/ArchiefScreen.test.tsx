@@ -67,6 +67,13 @@ function renderScherm() {
   )
 }
 
+/** Punt 13 (opruimrun 28-08): de administratie-kiezer is een doorzoekbare combobox — kiezen =
+ * veld openen en de optie aanklikken (i.p.v. userEvent.selectOptions op een <select>). */
+async function kiesAdministratie(gebruiker: ReturnType<typeof userEvent.setup>, label: string, naam: string) {
+  await gebruiker.click(await screen.findByLabelText(label))
+  await gebruiker.click(await screen.findByRole('option', { name: naam }))
+}
+
 describe('ArchiefScreen — geboekt archief per administratie (bewaarplicht 7 jaar)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -80,7 +87,7 @@ describe('ArchiefScreen — geboekt archief per administratie (bewaarplicht 7 ja
     // Twee administraties in scope: het scherm start met een expliciete keuze.
     expect(await screen.findByText(/Kies een administratie/)).toBeInTheDocument()
 
-    await gebruiker.selectOptions(screen.getByLabelText('Administratie'), ADMINISTRATIE_ID)
+    await kiesAdministratie(gebruiker, 'Administratie', 'Kempen Groep B.V.')
 
     await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
     expect(screen.getByText('2026-0601')).toBeInTheDocument()
@@ -95,7 +102,7 @@ describe('ArchiefScreen — geboekt archief per administratie (bewaarplicht 7 ja
     installFetchMock({ documenten: [] })
     renderScherm()
 
-    await gebruiker.selectOptions(await screen.findByLabelText('Administratie'), ADMINISTRATIE_ID)
+    await kiesAdministratie(gebruiker, 'Administratie', 'Kempen Groep B.V.')
 
     await waitFor(() => expect(screen.getByText(/Nog geen geboekte documenten/)).toBeInTheDocument())
     expect(screen.getByText(/7 jaar/)).toBeInTheDocument()
@@ -112,7 +119,7 @@ describe('ArchiefScreen — geboekt archief per administratie (bewaarplicht 7 ja
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
     renderScherm()
 
-    await gebruiker.selectOptions(await screen.findByLabelText('Administratie'), ADMINISTRATIE_ID)
+    await kiesAdministratie(gebruiker, 'Administratie', 'Kempen Groep B.V.')
     await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
     // Sinds het tegenboek-pad (22-08) zit de PDF-actie in het ⋯-menu per rij.
     await gebruiker.click(screen.getByRole('button', { name: /Acties voor bouwmaat-factuur\.pdf/ }))
@@ -132,7 +139,7 @@ describe('ArchiefScreen — geboekt archief per administratie (bewaarplicht 7 ja
     installFetchMock({ documenten: [archiefDocument()] })
     renderScherm()
 
-    await gebruiker.selectOptions(await screen.findByLabelText('Administratie'), ADMINISTRATIE_ID)
+    await kiesAdministratie(gebruiker, 'Administratie', 'Kempen Groep B.V.')
     await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
     await gebruiker.click(screen.getByText('Bouwmaat Nederland B.V.'))
 

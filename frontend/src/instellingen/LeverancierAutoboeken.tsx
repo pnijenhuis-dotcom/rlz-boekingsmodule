@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { LeverancierAutoboekenDto } from '../api/types'
-import { Select, Switch, SkeletonRegels } from '../ui/basis'
+import { Switch, SkeletonRegels } from '../ui/basis'
+import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import { BevestigDialog } from './BevestigDialog'
 import { haalLeveranciersAutoboeken, zetLeverancierAutoboeken } from './instellingenApi'
@@ -86,18 +87,14 @@ export function LeverancierAutoboeken({
         Opt-in per leverancier: facturen die alle harde checks doorstaan én volledig op bevestigd
         boekingsgeheugen steunen, worden dan zonder boek-klik geboekt. Kies eerst een administratie.
       </p>
-      <Select
-        aria-label="Administratie voor automatisch boeken"
-        value={administratieId}
-        onChange={(e) => setAdministratieId(e.target.value)}
-      >
-        <option value="">— kies administratie —</option>
-        {administraties.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.naam}
-          </option>
-        ))}
-      </Select>
+      <AdministratieCombobox
+        label="Administratie voor automatisch boeken"
+        toonLabel={false}
+        administraties={administraties}
+        waarde={administratieId}
+        onWijzig={setAdministratieId}
+        placeholder="— kies administratie —"
+      />
 
       {laadFout && (
         <FoutMelding
