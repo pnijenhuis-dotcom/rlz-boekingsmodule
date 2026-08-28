@@ -73,7 +73,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   als de uitnodiging; nieuw wachtwoord → direct passkey-setup-token voor apparaat-registratie;
   status/passkeys/akkoorden blijven staan, sessies vervallen, alle oudere links ongeldig, audit
   beide kanten. Bewust géén selfservice "wachtwoord vergeten" — kantoor blijft poortwachter;
-  alleen externe app-rollen.**
+  alleen externe app-rollen.** **E-mail wijzigen zonder carrousel (opruimrun 28-08 punt 22, casus
+  Haci): Beheerder-knop "E-mail wijzigen" op álle drie de /gebruikers-tabs (óók Kantoor) en óók bij
+  geblokkeerd/gearchiveerd — een gearchiveerd account krijgt nooit een uitnodigingsmail (open links
+  vervallen, alleen adres + audit oud→nieuw); uitnodigen op een adres van een bestaand (ook
+  gearchiveerd) account = leesbare 409 i.p.v. UniqueViolation→500 (`EMailAlInGebruik`). Zie
+  BESLISSINGEN "OPRUIMRUN 28-08" punt 22.**
   **Platformbesluit 0020 (2026-08-14, samen met vastgoed): passkeys worden de EERSTE
   authenticatielijn voor álle rollen; wachtwoord + TOTP wordt terugval/herstel.**
   **Kantoor-passkeys: GEBOUWD + GETEST (2026-08-15)** — tweede afnemer van de 0040-bouwstenen,
@@ -145,6 +150,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   documenttype-status maar de afgeletterd-status — een memoriaal staat direct na boeken op 3
   omdat er niets open staat (saldo 0). Let op: geboekt = Status 2 óf 3 (afhankelijk van
   betaling), nooit alleen op 2 toetsen.
+- **Boekingsdatum = `BookDate`, niet `Date` (STAP 0 28-08, api-verkenning "Boekingsdatum =
+  BookDate"; besluit Peter 27-08 "boekingsdatum = factuurdatum", opruimrun punt 15):** de
+  journaalpost (`JournalEntry.BookDate`) volgt het PUT-veld `BookDate`; zonder dat veld zet RLZ de
+  systeemdatum (dag van boeken). `BookDate` is zetbaar op PurchaseInvoices, SalesInvoices én
+  ManualJournals; een datum in een ingediende btw-periode wordt niet geweigerd (TaxSource verschuift
+  naar de eerstvolgende open periode). **Álle motoren geven `BookDate` = factuur-/documentdatum mee
+  náást `Date`** (inkoop factuurdatum, verkoop factuurdatum, omzet periode-einde, waarborg
+  berichtdatum, doorbelasting beide kanten + inhaalpad = factuurdatum BRON-document, bank-
+  aanbetaling = mutatiedatum); tegenboeken blijft bewust boekdatum vandaag. `DueDate` blijft uit
+  `Date` afgeleid.
 - **PurchaseInvoices**: PUT met `Entity:{id:vendorGuid}` + `DocumentLineList` (per regel
   `Account:{id}`, `TaxRate:{id}`, `NetAmount`, `TaxAmount`, `Project:{id}`). `/Uploads` = PDF-bijlage
   (base64 `Content`). RLZ berekent totalen zelf.
@@ -268,6 +283,19 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   documentenlijst-kolom "Toegewezen" toont bij `ter_accordering` de accordeur die aan de beurt is
   (naam · laag, C2); de regelsom-badge op het veldvoorstel gebruikt exact de netto+btw=incl-logica
   van de boekingsregels-toets (C3). Zie BESLISSINGEN "GECOMBINEERDE RUN 26-08" blok C.
+- **Crediteur-dedup + duplicaat over crediteuren heen (opruimrun 28-08 punt 14, besluiten Peter
+  27-08, migratie 0082 `crediteur_kenmerk`):** de extractie leest het BTW-NUMMER (primair) en
+  KvK-nummer (secundair) van de leverancier; code valideert (NL-vorm + elfproef óf mod-97 =
+  "geverifieerd", `app/extractie/btw_nummer.py`), herkomst-chip bij de crediteur, opslag per
+  crediteur zodra het boekvoorstel mét crediteur wordt opgeslagen (bron 'factuur', handmatig wint,
+  audit). Crediteur-voorstel matcht éérst op btw-/KvK-nummer (RLZ-KvK uit de vendor-brondata als
+  fallback), dan pas fuzzy op naam (Wola/Wola b.v.). Nieuwe check "Duplicaat bij andere
+  crediteur" (`check_duplicaat_over_crediteuren`, Reference+bedrag zónder Entity-filter mét
+  `$expand=Entity`): zelfde btw-nummer = BLOKKEREND, anders ORANJE SIGNAAL (`CheckResultaat.signaal`
+  — ok, geen blokkade); de bestaande zelfde-crediteur-check blijft de harde poort. Instellingen ›
+  Crediteuren = dubbel-signalering per administratie (btw/KvK/IBAN/genormaliseerde naam) mét
+  KvK-controle (hergebruik A3-client) — samenvoegen blijft RLZ-mensenwerk, wij verwijderen niets.
+  `app/documenten/crediteur_kenmerk.py`; BESLISSINGEN "OPRUIMRUN 28-08" punt 14.
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
@@ -276,7 +304,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
-  verplichte velden, IBAN-wissel, vraag-blokkeert-boeken, afwijzen-met-verplichte-reden en
+  verplichte velden, IBAN-wissel, duplicaat-bij-andere-crediteur (btw-nummer + referentie + bedrag,
+  28-08 — Reference+bedrag zonder btw-match = oranje signaal), vraag-blokkeert-boeken,
+  afwijzen-met-verplichte-reden en
   webhook-HMAC-per-verzendpoging (mét afleveraar, 2026-08-02), memoriaal-saldo-0
   (omzetmodule, 2026-08-07), het VGB-prefixfilter (e-mail-intake, 2026-08-07 — dekt het
   intake-kanaal; bij een latere leesroute uit gedeelde administraties dáár opnieuw toepassen)
@@ -340,7 +370,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   **Documentenlijst (werkstroom-run 27/28-08, punt 3/4): leverancier = vette hoofdregel, bestandsnaam ·
   bron · binnenkomst = metaregel; dichtheid normaal/compact per gebruiker (localStorage, geen
   migratie); status-dot "Geboekt" = `--ok`-groen (pil-chip blijft grijs); uploadzone één regel + ⓘ;
-  verwijderen uitsluitend via het ⋯-rijmenu mét bevestiging en VERPLICHTE reden (server 422 zonder).**
+  verwijderen uitsluitend via het ⋯-rijmenu mét bevestiging en VERPLICHTE reden (server 422 zonder).
+  Sorteerbare kolomkoppen (opruimrun 28-08 punt 21): Leverancier/Factuurdatum/Bedrag/Status/Toegewezen,
+  klik = oplopend → aflopend → uit, pijl + aria-sort; de sortering is onderdeel van de lijstcontext
+  (`sort=<kolom>:<richting>` in de URL) zodat ‹ ›, "n van m" en de na-boeken-doorloop dezelfde volgorde
+  volgen. Administratie-kiezers zijn overal in de kantoor-UI een doorzoekbare combobox
+  (`ui/AdministratieCombobox`, punt 13) — nooit meer een kale select.**
   Eigen naamnormalisatie: "Holding" blijft onderscheidend
   (mockup-casus); afzender-regel wijst alleen auto toe zonder tegenstrijdig
   tenaamstelling-signaal.
@@ -630,7 +665,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   "boeken ná akkoord mislukt"; poort telt alleen de LAATSTE ronde én het bedrag mag niet gewijzigd zijn;
   élke ⚙-systeemovergang draagt een `reden` (vangnet in `_schrijf_overgang`); herstel bestaande gevallen
   = `make accordering-herstel-boeken DRY_RUN=1` eerst, uitvoeren alleen op Peters go — BESLISSINGEN
-  "BUGFIX-RUN 28-08".** Klant-app = PWA + store-apps
+  "BUGFIX-RUN 28-08".** **Opruimrun 28-08 (punten 24 + 23): een compleet, nog niet verzilverd
+  klant-akkoord (laatste ronde afgerond, bedrag ongewijzigd, sinds die afronding niet geboekt) kan
+  NIET opnieuw ter accordering — losse route 409 `KlantAkkoordAlCompleet` "boek het direct", bulk =
+  overgeslagen mét reden, lijst-checkbox uit mét uitleg (`klant_akkoord_compleet`); boeken kan wél.
+  Volumerem: de teller telt alleen échte overgangen niet-geboekt→geboekt; boekingen ná een compleet
+  klant-akkoord (accorderingspad, herstel-CLI, meelopende doorbelasting in dezelfde gang) vallen
+  onder een eigen NOODREM `max_boekingen_na_klant_akkoord_per_dag_per_administratie` = 200 i.p.v. de
+  20/dag-automatiseringsrem — de mens heeft al per document op de knop gedrukt; autoboek-paden
+  (opt-ins, bank, verkoop) blijven onverkort onder de 20-rem. BESLISSINGEN "OPRUIMRUN 28-08".**
+  Klant-app = PWA + store-apps
   (besluit Peter 2026-08-14: de accordeur-app wordt óók uitgebracht als native App Store- én
   Google Play-app; de gebouwde PWA/webcode is de basis via een native schil, bv. Capacitor —
   PWA blijft interim + terugval; aandachtspunten native passkey-integratie (WebAuthn in een
