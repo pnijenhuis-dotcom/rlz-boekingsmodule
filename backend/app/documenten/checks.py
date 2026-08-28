@@ -32,6 +32,9 @@ class CheckResultaat:
     naam: str
     ok: bool
     melding: str
+    # Punt 14 (28-08): oranje SIGNAAL — ok=True (geen blokkade) maar de controleur moet kijken; het
+    # controlescherm toont 'm oranje i.p.v. groen. Alleen gezet door checks die dat bewust doen.
+    signaal: bool = False
 
 
 @dataclass(frozen=True)
@@ -241,6 +244,8 @@ def voer_harde_checks_uit(
     vertrouwde_ibans: set[str] | None = None,
     iban_baseline_vastgelegd: bool = False,
     iban_seed_mislukt: bool = False,
+    eigen_btw_nummer: str | None = None,
+    btw_per_vendor: dict[str, str] | None = None,
     vervaldatum: date | None = None,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
@@ -277,5 +282,81 @@ def voer_harde_checks_uit(
                 eigen_rlz_document_id=eigen_rlz_document_id,
                 uitgezonderde_rlz_document_ids=uitgezonderde_rlz_document_ids,
             ),
+            check_duplicaat_over_crediteuren(
+                client=client,
+                vendor_id=vendor_id,
+                referentie=referentie,
+                totaalbedrag=totaalbedrag,
+                eigen_btw_nummer=eigen_btw_nummer,
+                btw_per_vendor=btw_per_vendor or {},
+                eigen_rlz_document_id=eigen_rlz_document_id,
+                uitgezonderde_rlz_document_ids=uitgezonderde_rlz_document_ids,
+            ),
         )
+    )
+
+
+def check_duplicaat_over_crediteuren(
+    *,
+    client: RlzClient,
+    vendor_id: uuid.UUID | None,
+    referentie: str | None,
+    totaalbedrag: Decimal | None,
+    eigen_btw_nummer: str | None,
+    btw_per_vendor: dict[str, str],
+    eigen_rlz_document_id: uuid.UUID,
+    uitgezonderde_rlz_document_ids: frozenset[uuid.UUID] = frozenset(),
+) -> CheckResultaat:
+    """Punt 14 (opruimrun 28-08, besluiten Peter 27-08) — bovenop de harde zelfde-crediteur-check:
+    zoekt Reference+bedrag over ÁLLE crediteuren van de administratie (geen Entity-filter, mét
+    `$expand=Entity`). Treffer bij een ÁNDERE crediteur:
+    - mét hetzelfde btw-nummer (factuur-btw-nummer == bekend btw-nummer van die crediteur) →
+      BLOKKEREND ("drievoudige match btw-nummer + factuurnummer + bedrag": dezelfde factuur staat al
+      geboekt onder een dubbele crediteur — mens wijst af met één klik, nooit auto-verwijderen);
+    - anders → ORANJE SIGNAAL (ok=True, signaal=True): zelfde referentie + bedrag bij een andere
+      crediteur, controleur kijkt.
+    Zonder referentie/bedrag niet toetsbaar (groen — de gewone duplicaatcheck blokkeert dan al op
+    ontbrekende gegevens). Een RLZ-fout hier is een signaal, geen blokkade: de harde zelfde-
+    crediteur-check blokkeert al bij onbereikbaarheid."""
+    naam = "Duplicaat bij andere crediteur"
+    if not referentie or totaalbedrag is None:
+        return CheckResultaat(naam, True, "Niet toetsbaar zonder referentie en totaalbedrag")
+    try:
+        gevonden = client.find_purchase_invoices_by_reference(
+            vendor_id=None, reference=referentie, total_amount=float(totaalbedrag), expand_entity=True
+        )
+    except Exception as exc:  # noqa: BLE001 — bewust breed: signaal, nooit een crash
+        return CheckResultaat(naam, True, f"Kon niet over crediteuren heen toetsen: {exc}", signaal=True)
+    uitgezonderd = {str(eigen_rlz_document_id)} | {str(i) for i in uitgezonderde_rlz_document_ids}
+    anderen: list[dict] = []
+    for f in gevonden:
+        if f.get("id") in uitgezonderd:
+            continue
+        entity = f.get("Entity") or {}
+        entity_id = str(entity.get("id") or "")
+        if vendor_id is not None and entity_id == str(vendor_id):
+            continue  # zelfde crediteur = domein van check_duplicaat
+        anderen.append(f)
+    if not anderen:
+        return CheckResultaat(naam, True, "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur")
+    if eigen_btw_nummer:
+        zelfde_btw = [
+            f for f in anderen if btw_per_vendor.get(str((f.get("Entity") or {}).get("id") or "")) == eigen_btw_nummer
+        ]
+        if zelfde_btw:
+            namen = sorted({str((f.get("Entity") or {}).get("Name") or "onbekend") for f in zelfde_btw})
+            return CheckResultaat(
+                naam,
+                False,
+                f"{len(zelfde_btw)} bestaande factuur/facturen met hetzelfde btw-nummer, factuurnummer en bedrag "
+                f"onder een andere crediteur ({', '.join(namen)}) — dubbele crediteur in RLZ; wijs dit "
+                "document af of kies die crediteur",
+            )
+    namen = sorted({str((f.get("Entity") or {}).get("Name") or "onbekend") for f in anderen})
+    return CheckResultaat(
+        naam,
+        True,
+        f"Zelfde referentie en bedrag bij een andere crediteur ({', '.join(namen)}) — controleer op een "
+        "dubbele crediteur",
+        signaal=True,
     )

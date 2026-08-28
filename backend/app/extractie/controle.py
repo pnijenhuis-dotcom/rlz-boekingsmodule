@@ -7,6 +7,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from difflib import SequenceMatcher
 
+from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
 from app.extractie.iban import is_geldig_iban, normaliseer_iban
 from app.extractie.service import AiFactuurExtractie, AiVeld
 
@@ -26,6 +27,10 @@ _RECHTSVORM = re.compile(r"\b(b\.?v\.?|n\.?v\.?|v\.?o\.?f\.?|c\.?v\.?|holding)\b
 class VendorKandidaat:
     id: uuid.UUID
     naam: str
+    # Punt 14 (28-08): bekende nummers per crediteur (crediteur_kenmerk + RLZ-KvK uit de vendor-cache)
+    # — een nummer-match wint vóór de fuzzy naam-match (Wola vs Wola b.v.).
+    btw_nummer: str | None = None
+    kvk_nummer: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,12 +102,29 @@ def _genormaliseerd(naam: str) -> str:
 
 
 def match_vendor(
-    leverancier_naam: str | None, kandidaten: list[VendorKandidaat]
+    leverancier_naam: str | None,
+    kandidaten: list[VendorKandidaat],
+    *,
+    btw_nummer: str | None = None,
+    kvk_nummer: str | None = None,
 ) -> tuple[uuid.UUID | None, str | None]:
-    """Crediteur-suggestie uit de vendor-cache: (vendor_id, "exact"|"fuzzy") of (None, None).
-    Voorstel, geen automatische keuze — bij meerdere plausibele kandidaten géén suggestie
-    (consistent met "nooit auto-toewijzen bij twijfel"). Fuzzy = genormaliseerde naam (zonder
-    rechtsvorm/leestekens) exact óf SequenceMatcher ≥ 0.85 met een uniek beste resultaat."""
+    """Crediteur-suggestie uit de vendor-cache: (vendor_id, "btw_nummer"|"kvk_nummer"|"exact"|"fuzzy")
+    of (None, None). Voorstel, geen automatische keuze — bij meerdere plausibele kandidaten géén
+    suggestie (consistent met "nooit auto-toewijzen bij twijfel").
+
+    Volgorde (punt 14, besluit Peter 27-08): éérst het btw-nummer van de factuur tegen de bekende
+    nummers per crediteur, dan het KvK-nummer, dan pas de naam — exact, dan fuzzy (genormaliseerde
+    naam zonder rechtsvorm/leestekens exact óf SequenceMatcher ≥ 0.85 met een uniek beste resultaat).
+    Een nummer dat bij méér dan één crediteur hoort (dubbele crediteur in RLZ) geeft géén
+    nummer-suggestie en valt terug op de naam — de dubbel-signalering op Instellingen toont 'm."""
+    if btw_nummer:
+        op_btw = [k for k in kandidaten if k.btw_nummer and k.btw_nummer == btw_nummer]
+        if len(op_btw) == 1:
+            return op_btw[0].id, "btw_nummer"
+    if kvk_nummer:
+        op_kvk = [k for k in kandidaten if k.kvk_nummer and k.kvk_nummer == kvk_nummer]
+        if len(op_kvk) == 1:
+            return op_kvk[0].id, "kvk_nummer"
     if not leverancier_naam:
         return None, None
     doel = _genormaliseerd(leverancier_naam)
@@ -264,7 +286,18 @@ def bouw_veldvoorstel(
     verlegd_ruw = tekst_van("btw_verlegd_vermelding")
     btw_verlegd_vermelding = verlegd_ruw if is_verlegd_vermelding(verlegd_ruw) else None
 
-    vendor_id, vendor_match = match_vendor(leverancier_naam, vendors)
+    # Btw-/KvK-nummer van de leverancier (punt 14): deterministisch genormaliseerd + getoetst; een
+    # herkenbaar foute vorm wordt niet overgenomen (liever leeg dan een gok). De ruwe tekst blijft
+    # zichtbaar via `ruw`-velden hieronder.
+    btw_gelezen = valideer_btw_nummer(tekst_van("btw_nummer"))
+    btw_nummer = btw_gelezen.genormaliseerd if btw_gelezen else None
+    kvk_nummer = normaliseer_kvk_nummer(tekst_van("kvk_nummer"))
+    if tekst_van("btw_nummer") and btw_gelezen is None:
+        onparseerbaar.append("btw_nummer")
+    if tekst_van("kvk_nummer") and kvk_nummer is None:
+        onparseerbaar.append("kvk_nummer")
+
+    vendor_id, vendor_match = match_vendor(leverancier_naam, vendors, btw_nummer=btw_nummer, kvk_nummer=kvk_nummer)
 
     regels: list[dict] = []
     regel_zekerheid: list[float] = []
@@ -335,6 +368,11 @@ def bouw_veldvoorstel(
         "btw_bedrag": _bedrag_str(btw_bedrag),
         "btw_verlegd_vermelding": btw_verlegd_vermelding,
         "iban": iban,
+        # Punt 14 (28-08): nummers van de leverancier — herkomst-chip op het controlescherm, opslag per
+        # crediteur bij het opslaan van het boekvoorstel (documenten/crediteur_kenmerk.py).
+        "btw_nummer": btw_nummer,
+        "btw_nummer_geverifieerd": btw_gelezen.geverifieerd if btw_gelezen else None,
+        "kvk_nummer": kvk_nummer,
         "regelaantal": len(regels),
         "regels": regels,
         "zekerheid": zekerheid,

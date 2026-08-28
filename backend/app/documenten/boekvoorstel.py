@@ -430,6 +430,20 @@ def sla_boekvoorstel_op(
         bestaand.referentie = referentie
         bestaand.factuurdatum = factuurdatum
         bestaand.vervaldatum = vervaldatum
+        # Punt 14 (28-08): het btw-/KvK-nummer van de factuur per crediteur onthouden zodra de mens de
+        # crediteur bevestigt (opslaan mét vendor) — voedt nummer-match, cross-crediteur-check en de
+        # dubbel-signalering. Lazy import: crediteur_kenmerk gebruikt de extractie-controlelaag.
+        if vendor_id is not None:
+            from app.documenten.crediteur_kenmerk import neem_over_uit_veldvoorstel
+
+            neem_over_uit_veldvoorstel(
+                session,
+                administratie_id=administratie_id,
+                vendor_id=vendor_id,
+                veldvoorstel=_laatste_veldvoorstel(session, document_id),
+                document_id=document_id,
+                actor_id=actor_id,
+            )
         bestaand.totaalbedrag = totaalbedrag
 
         # Klaargezette doorbelasting (besluit 25-08) verwijst per regel-id — over de
@@ -611,6 +625,11 @@ def voer_checks_uit(
         document = _laad_document(session, document_id=document_id)
         _controleer_niet_bevroren(document)
         veldvoorstel = _laatste_veldvoorstel(session, document_id)
+        # Punt 14 (28-08): bekende btw-nummers per crediteur voor de check over crediteuren heen.
+        from app.documenten.crediteur_kenmerk import btw_per_vendor as _btw_per_vendor
+
+        btw_map = _btw_per_vendor(session, administratie_id=administratie_id)
+    factuur_btw_nummer = veldvoorstel.get("btw_nummer") if veldvoorstel else None
 
     # Factuur-IBAN uit de extractie (gestructureerd kopveld sinds 2026-07-13); de controlelaag
     # heeft 'm al mod-97-gevalideerd (app/extractie/controle.py) — oudere veldvoorstellen zonder
@@ -669,6 +688,8 @@ def voer_checks_uit(
             vertrouwde_ibans=vertrouwde_ibans,
             iban_baseline_vastgelegd=baseline_vastgelegd,
             iban_seed_mislukt=seed_mislukt,
+            eigen_btw_nummer=factuur_btw_nummer,
+            btw_per_vendor=btw_map,
         )
     finally:
         if eigen_client:

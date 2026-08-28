@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0081
+-- Migratie-head bij deze dump: 0082
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -752,6 +752,28 @@ CREATE TABLE boekhouding.boekvoorstel_regel (
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: crediteur_kenmerk; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.crediteur_kenmerk (
+    administratie_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    btw_nummer text,
+    btw_nummer_geverifieerd boolean,
+    btw_nummer_bron text,
+    kvk_nummer text,
+    kvk_nummer_bron text,
+    laatst_uit_document_id uuid,
+    bijgewerkt_door uuid,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_crediteur_kenmerk_btw_bron CHECK (((btw_nummer_bron IS NULL) OR (btw_nummer_bron = ANY (ARRAY['factuur'::text, 'handmatig'::text])))),
+    CONSTRAINT ck_crediteur_kenmerk_kvk_bron CHECK (((kvk_nummer_bron IS NULL) OR (kvk_nummer_bron = ANY (ARRAY['factuur'::text, 'rlz'::text, 'handmatig'::text]))))
+);
+
+ALTER TABLE ONLY boekhouding.crediteur_kenmerk FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2928,6 +2950,14 @@ ALTER TABLE ONLY boekhouding.boekvoorstel_regel
 
 
 --
+-- Name: crediteur_kenmerk crediteur_kenmerk_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_kenmerk
+    ADD CONSTRAINT crediteur_kenmerk_pkey PRIMARY KEY (administratie_id, vendor_id);
+
+
+--
 -- Name: document_accordering document_accordering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4045,6 +4075,20 @@ CREATE INDEX ix_boekvoorstel_regel_document_id ON boekhouding.boekvoorstel_regel
 
 
 --
+-- Name: ix_crediteur_kenmerk_btw; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_crediteur_kenmerk_btw ON boekhouding.crediteur_kenmerk USING btree (administratie_id, btw_nummer);
+
+
+--
+-- Name: ix_crediteur_kenmerk_kvk; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_crediteur_kenmerk_kvk ON boekhouding.crediteur_kenmerk USING btree (administratie_id, kvk_nummer);
+
+
+--
 -- Name: ix_document_accordering_document_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -5130,6 +5174,22 @@ ALTER TABLE ONLY boekhouding.boekvoorstel
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel
     ADD CONSTRAINT boekvoorstel_regel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.boekvoorstel(document_id);
+
+
+--
+-- Name: crediteur_kenmerk crediteur_kenmerk_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_kenmerk
+    ADD CONSTRAINT crediteur_kenmerk_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: crediteur_kenmerk crediteur_kenmerk_bijgewerkt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_kenmerk
+    ADD CONSTRAINT crediteur_kenmerk_bijgewerkt_door_fkey FOREIGN KEY (bijgewerkt_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -7267,6 +7327,19 @@ CREATE POLICY boekvoorstel_scope ON boekhouding.boekvoorstel USING ((EXISTS ( SE
   WHERE ((d.id = boekvoorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM boekhouding.document d
   WHERE ((d.id = boekvoorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+
+
+--
+-- Name: crediteur_kenmerk; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.crediteur_kenmerk ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: crediteur_kenmerk crediteur_kenmerk_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY crediteur_kenmerk_scope ON boekhouding.crediteur_kenmerk USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

@@ -399,6 +399,8 @@ class CheckResultaatDto(BaseModel):
     naam: str
     ok: bool
     melding: str
+    # Punt 14 (28-08): oranje signaal — ok maar kijken (controlescherm toont 'm oranje).
+    signaal: bool = False
 
 
 class CheckRapportResponse(BaseModel):

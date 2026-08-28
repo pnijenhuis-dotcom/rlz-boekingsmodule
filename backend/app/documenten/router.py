@@ -50,7 +50,10 @@ bestand_router = APIRouter(tags=["documenten"])
 def _naar_check_rapport_response(rapport: CheckRapport) -> schemas.CheckRapportResponse:
     return schemas.CheckRapportResponse(
         geblokkeerd=rapport.geblokkeerd,
-        resultaten=[schemas.CheckResultaatDto(naam=r.naam, ok=r.ok, melding=r.melding) for r in rapport.resultaten],
+        resultaten=[
+            schemas.CheckResultaatDto(naam=r.naam, ok=r.ok, melding=r.melding, signaal=r.signaal)
+            for r in rapport.resultaten
+        ],
     )
 
 

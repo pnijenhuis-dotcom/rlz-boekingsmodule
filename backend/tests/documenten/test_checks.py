@@ -23,8 +23,10 @@ class _NepRlzClient:
         self.gevonden = gevonden
         self.aanroepen: list[dict] = []
 
-    def find_purchase_invoices_by_reference(self, *, vendor_id, reference, total_amount=None):
+    def find_purchase_invoices_by_reference(self, *, vendor_id, reference, total_amount=None, expand_entity=False):
         self.aanroepen.append({"vendor_id": vendor_id, "reference": reference, "total_amount": total_amount})
+        if vendor_id is None:  # punt 14: cross-crediteur-zoektocht — eigen lijst, default leeg
+            return list(getattr(self, "gevonden_andere", []))
         return self.gevonden
 
 
@@ -236,6 +238,7 @@ class TestVoerHardeChecksUit:
             "Vervaldatum",
             "IBAN-wissel",
             "Duplicaatcheck",
+            "Duplicaat bij andere crediteur",  # punt 14 (28-08): signaal/blokkade over crediteuren heen
         ]
         assert all(r.ok for r in rapport.resultaten)
 
@@ -266,7 +269,7 @@ class TestVoerHardeChecksUit:
             regels=[],
             eigen_rlz_document_id=uuid.uuid4(),
         )
-        assert len(rapport.resultaten) == 5  # incl. Vervaldatum (C1 26-08)
+        assert len(rapport.resultaten) == 6  # incl. Vervaldatum (C1 26-08) + cross-crediteur (punt 14, 28-08)
 
 
 class TestIbanWissel:

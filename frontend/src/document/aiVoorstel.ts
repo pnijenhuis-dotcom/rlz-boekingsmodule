@@ -44,7 +44,12 @@ export interface AiVoorstel {
   /** Eén zekerheidsscore per regel (compact schema, 2026-07-10). */
   regel_zekerheid: number[]
   zekerheid_drempel: number
-  vendor_suggestie: { vendor_id: string; match: 'exact' | 'fuzzy' } | null
+  /** Punt 14 (28-08): nummer-match wint vóór de naam — 'btw_nummer' | 'kvk_nummer' zijn de zekerste. */
+  vendor_suggestie: { vendor_id: string; match: 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer' } | null
+  /** Punt 14: btw-/KvK-nummer van de leverancier uit de factuur (deterministisch gevalideerd). */
+  btw_nummer?: string | null
+  btw_nummer_geverifieerd?: boolean | null
+  kvk_nummer?: string | null
   controle: AiControle
 }
 

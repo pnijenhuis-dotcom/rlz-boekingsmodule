@@ -17,6 +17,7 @@ import { BeveiligingInstellingen } from './BeveiligingInstellingen'
 import { AdministratieWizard, EersteSyncStatus } from './AdministratieWizard'
 import { SchrijftestDialog, WebserviceGegevensDialog } from './KoppelingDialogen'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
+import { CrediteurDubbelen } from './CrediteurDubbelen'
 import {
   haalAiKostenStatusOp,
   haalBoekenKillSwitchOp,
@@ -324,6 +325,7 @@ export const INSTELLINGEN_SECTIES = [
   { pad: 'accordering', titel: 'Klant-accordering', uitleg: 'Goedkeuring door klanten: lagen, apparaten, staande goedkeuringen.', beheerder: true },
   { pad: 'autoboeken', titel: 'Autoboeken', uitleg: 'Automatisch boeken per leverancier (opt-in, harde checks blijven blokkerend).', beheerder: true },
   { pad: 'doorbelasting', titel: 'Doorbelasting', uitleg: 'Kempen-doorbelasting: toggle, provisie, whitelist doelentiteiten, opruimlijst.', beheerder: true },
+  { pad: 'crediteuren', titel: 'Crediteuren', uitleg: 'Dubbel-signalering per administratie (btw-/KvK-nummer, IBAN, naam) — samenvoegen blijft RLZ-werk.', beheerder: true },
   { pad: 'materiaal', titel: 'Materiaalcatalogus', uitleg: 'Steigerbouw: leveranciers, catalogus (verpakking, m²-lengte), bestel-mailadres, crediteur-koppeling — bron voor bestellingen en transport.', beheerder: true },
   { pad: 'gebruikers', titel: 'Gebruikers & toegang', uitleg: 'Medewerkers, accordeurs en veldwerkers uitnodigen, rollen en scope, blokkeren.', beheerder: true, extern: '/gebruikers' },
 ] as const
@@ -987,6 +989,9 @@ export function InstellingenScreen() {
 
       {sectie === 'doorbelasting' && administraties !== null && (
         <DoorbelastingInstellingen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
+      )}
+      {sectie === 'crediteuren' && administraties !== null && (
+        <CrediteurDubbelen administraties={administraties.map((a) => ({ id: a.id, naam: a.naam }))} />
       )}
       {sectie !== 'administraties' && sectie !== 'boeken' && sectie !== 'intake-ai' && administraties === null && !laadFout && (
         <SkeletonRegels />

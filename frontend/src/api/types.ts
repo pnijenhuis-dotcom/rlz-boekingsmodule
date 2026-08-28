@@ -424,6 +424,35 @@ export interface CheckResultaatDto {
   naam: string
   ok: boolean
   melding: string
+  /** Punt 14 (28-08): oranje signaal — ok (geen blokkade) maar de controleur moet kijken. */
+  signaal?: boolean
+}
+
+/** Punt 14 (28-08): dubbel-signalering bestaande crediteuren (Instellingen › Crediteuren). */
+export interface DubbeleCrediteurDto {
+  vendor_id: string
+  naam: string | null
+  btw_nummer: string | null
+  kvk_nummer: string | null
+  ibans: string[]
+}
+export interface DubbelGroepDto {
+  soort: 'btw_nummer' | 'kvk_nummer' | 'iban' | 'naam'
+  sleutel: string
+  crediteuren: DubbeleCrediteurDto[]
+}
+export interface DubbeleCrediteurenResponseDto {
+  aantal_crediteuren: number
+  groepen: DubbelGroepDto[]
+}
+export interface CrediteurKvkDto {
+  kvk_nummer: string
+  gevonden: boolean
+  naam: string | null
+  rechtsvorm: string | null
+  plaats: string | null
+  uitgeschreven: boolean | null
+  testomgeving: boolean
 }
 
 export interface CheckRapportDto {

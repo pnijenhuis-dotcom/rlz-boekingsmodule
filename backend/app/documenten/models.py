@@ -289,6 +289,45 @@ class LeverancierIban(Base):
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class CrediteurKenmerk(Base):
+    """Btw-nummer (primair) + KvK-nummer (secundair) per crediteur per administratie (migratie 0082,
+    opruimrun 28-08 punt 14). Gevuld uit de factuur-extractie zodra de controleur het boekvoorstel
+    mét die crediteur opslaat (bron 'factuur'); KvK kan óók uit RLZ komen (vendor_cache.brondata
+    `ChamberOfCommerceNumber`, bron 'rlz' — alleen als lees-fallback, niet gekopieerd). Bewust geen
+    FK naar vendor_cache (overleeft sync-verdwijning, zelfde overweging als LeverancierIban). Voedt de
+    nummer-eerst crediteur-match, de duplicaatcheck over crediteuren heen en de dubbel-signalering."""
+
+    __tablename__ = "crediteur_kenmerk"
+    __table_args__ = (
+        Index("ix_crediteur_kenmerk_btw", "administratie_id", "btw_nummer"),
+        Index("ix_crediteur_kenmerk_kvk", "administratie_id", "kvk_nummer"),
+        CheckConstraint(
+            "btw_nummer_bron IS NULL OR btw_nummer_bron IN ('factuur', 'handmatig')",
+            name="ck_crediteur_kenmerk_btw_bron",
+        ),
+        CheckConstraint(
+            "kvk_nummer_bron IS NULL OR kvk_nummer_bron IN ('factuur', 'rlz', 'handmatig')",
+            name="ck_crediteur_kenmerk_kvk_bron",
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    btw_nummer: Mapped[str | None] = mapped_column(default=None)
+    btw_nummer_geverifieerd: Mapped[bool | None] = mapped_column(default=None)
+    btw_nummer_bron: Mapped[str | None] = mapped_column(default=None)
+    kvk_nummer: Mapped[str | None] = mapped_column(default=None)
+    kvk_nummer_bron: Mapped[str | None] = mapped_column(default=None)
+    laatst_uit_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    bijgewerkt_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class VraagStatus(enum.StrEnum):
     """Levenscyclus van een vraag (migratie 0022): OPEN blokkeert het boeken van het document
     (DocumentStatus.VRAAG_OPEN); BEANTWOORD en INGETROKKEN zijn eindtoestanden — een vraag wordt

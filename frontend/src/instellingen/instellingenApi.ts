@@ -1,5 +1,7 @@
 import { apiJson } from '../api/client'
 import type {
+  CrediteurKvkDto,
+  DubbeleCrediteurenResponseDto,
   AdministratieInstellingenLijstDto,
   BoekenIngeschakeldDto,
   EersteSyncRunDto,
@@ -216,4 +218,15 @@ export function wijzigWebserviceGegevens(
 
 export function voerSchrijftestUit(administratieId: string): Promise<SchrijftestResultaatDto> {
   return apiJson<SchrijftestResultaatDto>(`/instellingen/administraties/${administratieId}/schrijftest`, { method: 'POST' })
+}
+
+/** Punt 14 (28-08): dubbel-signalering bestaande crediteuren (naam/IBAN/btw-/KvK-nummer) — alleen
+ * lezen; samenvoegen blijft RLZ-mensenwerk, de app verwijdert niets. */
+export function haalDubbeleCrediteurenOp(administratieId: string): Promise<DubbeleCrediteurenResponseDto> {
+  return apiJson<DubbeleCrediteurenResponseDto>(`/administraties/${administratieId}/crediteuren/dubbelen`)
+}
+
+/** KvK-controle bij een dubbel-groep (hergebruik van de A3-KvK-client): officiële naam ter beoordeling. */
+export function controleerCrediteurKvk(administratieId: string, kvkNummer: string): Promise<CrediteurKvkDto> {
+  return apiJson<CrediteurKvkDto>(`/administraties/${administratieId}/crediteuren/kvk/${encodeURIComponent(kvkNummer)}`)
 }

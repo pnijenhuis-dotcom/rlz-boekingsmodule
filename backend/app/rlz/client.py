@@ -513,7 +513,12 @@ class RlzClient:
         return self.get("ManualJournals", params={"$filter": f"Reference eq '{escaped}'"}).get("value", [])
 
     def find_purchase_invoices_by_reference(
-        self, *, vendor_id: uuid.UUID | str, reference: str, total_amount: float | None = None
+        self,
+        *,
+        vendor_id: uuid.UUID | str | None,
+        reference: str,
+        total_amount: float | None = None,
+        expand_entity: bool = False,
     ) -> list[dict[str, Any]]:
         """Eigen duplicaatcheck (idempotentie-fundament — RLZ's actie 138 geeft geen bruikbaar
         signaal, zie run_unreliable_duplicate_check_action). Vóór elke PUT+Book aanroepen; niet-
@@ -524,11 +529,20 @@ class RlzClient:
         anders mist de check net-te-lange referenties zoals een volledige UUID. `total_amount`
         filtert op `BaseInvoiceAmount` (netto + btw, geverifieerd veld) — optioneel, voor
         onderscheid tussen twee facturen die toevallig dezelfde (afgekapte) referentie delen."""
+        # `vendor_id=None` (punt 14, 28-08 — duplicaat over crediteuren heen): géén Entity-predicaat, de
+        # treffers komen van álle crediteuren; `expand_entity=True` voegt `$expand=Entity` toe zodat de
+        # aanroeper per treffer ziet bij wélke crediteur 'm staat (Entity op de collectie alleen mét
+        # expand zichtbaar — zelfde gedrag als app/geheugen/seed.py op PurchaseInvoices).
         truncated_reference = reference[:30].replace("'", "''")
-        filter_expr = f"Entity/id eq {vendor_id} and Reference eq '{truncated_reference}'"
+        predicaten = [f"Reference eq '{truncated_reference}'"]
+        if vendor_id is not None:
+            predicaten.insert(0, f"Entity/id eq {vendor_id}")
         if total_amount is not None:
-            filter_expr += f" and BaseInvoiceAmount eq {total_amount}"
-        return self.get("PurchaseInvoices", params={"$filter": filter_expr}).get("value", [])
+            predicaten.append(f"BaseInvoiceAmount eq {total_amount}")
+        params: dict[str, str] = {"$filter": " and ".join(predicaten)}
+        if expand_entity:
+            params["$expand"] = "Entity"
+        return self.get("PurchaseInvoices", params=params).get("value", [])
 
 
 def _parse_retry_after(value: str | None) -> float | None:

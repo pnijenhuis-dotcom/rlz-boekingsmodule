@@ -567,16 +567,10 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
             "ai_metriek": metriek,
         }, True
 
-    vendors = [
-        extractie_controle.VendorKandidaat(id=rij.id, naam=rij.naam or "")
-        for rij in session.scalars(
-            select(VendorCache).where(
-                VendorCache.administratie_id == document.administratie_id,
-                VendorCache.verdwenen_uit_bron_op.is_(None),
-                VendorCache.is_gearchiveerd.isnot(True),
-            )
-        )
-    ]
+    # Punt 14 (28-08): kandidaten mét bekende btw-/KvK-nummers — nummer-match wint vóór de naam.
+    from app.documenten.crediteur_kenmerk import kandidaten_met_kenmerken
+
+    vendors = kandidaten_met_kenmerken(session, administratie_id=document.administratie_id)
     taxrates = [
         _taxrate_kandidaat(rij)
         for rij in session.scalars(

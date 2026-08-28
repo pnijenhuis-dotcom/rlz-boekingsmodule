@@ -48,8 +48,17 @@ class FakeBoekClient:
         return self
 
     def find_purchase_invoices_by_reference(
-        self, *, vendor_id: uuid.UUID | str, reference: str, total_amount: float | None = None
+        self,
+        *,
+        vendor_id: uuid.UUID | str | None,
+        reference: str,
+        total_amount: float | None = None,
+        expand_entity: bool = False,
     ) -> list[dict[str, Any]]:
+        # Punt 14: zonder vendor_id (over crediteuren heen) de aparte lijst `duplicaten_andere_crediteur`
+        # (treffers mét Entity) — de gewone `duplicaten` blijven het zelfde-crediteur-domein.
+        if vendor_id is None:
+            return list(getattr(self, "duplicaten_andere_crediteur", []))
         return self.duplicaten
 
     def put_purchase_invoice(

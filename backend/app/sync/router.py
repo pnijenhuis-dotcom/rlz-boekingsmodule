@@ -164,3 +164,68 @@ def project_lijst(
     return schemas.ProjectLijstResponse(
         projecten=[schemas.ProjectOptieResponse(id=p.id, naam=p.naam) for p in projecten]
     )
+
+
+@router.get(
+    "/administraties/{administratie_id}/crediteuren/dubbelen", response_model=schemas.DubbeleCrediteurenResponse
+)
+def crediteuren_dubbelen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.DubbeleCrediteurenResponse:
+    """Punt 14 (opruimrun 28-08): dubbel-signalering bestaande crediteuren (zelfde btw-nummer, KvK-nummer,
+    IBAN of genormaliseerde naam) voor Instellingen › Crediteuren. Alleen lezen — samenvoegen is
+    RLZ-mensenwerk, de app verwijdert nooit (kernprincipe 3)."""
+    from app.documenten.crediteur_kenmerk import dubbele_crediteuren
+
+    groepen = dubbele_crediteuren(administratie_id=administratie_id)
+    aantal = len(service.lijst_vendors(administratie_id=administratie_id))
+    return schemas.DubbeleCrediteurenResponse(
+        aantal_crediteuren=aantal,
+        groepen=[
+            schemas.DubbelGroepDto(
+                soort=g.soort,
+                sleutel=g.sleutel,
+                crediteuren=[
+                    schemas.DubbeleCrediteurDto(
+                        vendor_id=c.vendor_id,
+                        naam=c.naam,
+                        btw_nummer=c.btw_nummer,
+                        kvk_nummer=c.kvk_nummer,
+                        ibans=c.ibans,
+                    )
+                    for c in g.crediteuren
+                ],
+            )
+            for g in groepen
+        ],
+    )
+
+
+@router.get("/administraties/{administratie_id}/crediteuren/kvk/{kvk_nummer}", response_model=schemas.CrediteurKvkDto)
+def crediteur_kvk_controle(
+    administratie_id: uuid.UUID, kvk_nummer: str, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.CrediteurKvkDto:
+    """KvK-controle bij de dubbel-signalering (hergebruik van de A3-KvK-client): officiële naam/rechtsvorm/
+    plaats ter beoordeling — een mens beslist wat de juiste crediteur is, de app schrijft niets."""
+    from app.integraties import kvk
+
+    nummer = kvk_nummer.strip()
+    if not kvk.geldig_kvk_nummer(nummer):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Een KvK-nummer bestaat uit 8 cijfers"
+        )
+    try:
+        profiel = kvk.haal_basisprofiel(nummer)
+    except kvk.KvkConfiguratieFout as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except kvk.KvkFout as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return schemas.CrediteurKvkDto(
+        kvk_nummer=nummer,
+        gevonden=profiel is not None,
+        naam=(profiel or {}).get("naam"),
+        rechtsvorm=(profiel or {}).get("rechtsvorm"),
+        plaats=(profiel or {}).get("plaats"),
+        uitgeschreven=(profiel or {}).get("uitgeschreven"),
+        testomgeving=kvk.is_testomgeving(),
+    )

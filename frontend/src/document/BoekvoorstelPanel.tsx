@@ -211,24 +211,32 @@ function LegeCacheBanner({ naam, bezig, onSynchroniseren }: LegeCacheBannerProps
   )
 }
 
+type VendorMatch = 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer'
+
 interface AiChipProps {
   score: number
   drempel: number
-  fuzzy?: boolean
+  /** Crediteur-match-soort (punt 14, 28-08): nummer-match = groen mét herkomst, fuzzy = oranje. */
+  match?: VendorMatch
 }
 
 /** Zekerheidsscore van de AI-extractie bij een vooringevuld veld: oranje onder de drempel of bij
- * een fuzzy crediteur-match ("bij twijfel oranje, nooit gokken"), anders groen. Verdwijnt zodra
- * de controleur het veld aanpast — de score beschrijft dan de inhoud niet meer. */
-function AiChip({ score, drempel, fuzzy = false }: AiChipProps) {
-  const laag = fuzzy || score < drempel
+ * een fuzzy crediteur-match ("bij twijfel oranje, nooit gokken"), anders groen. Een crediteur die op
+ * btw-/KvK-nummer herkend is (punt 14) is groen ongeacht de naam-score: het nummer is de sleutel.
+ * Verdwijnt zodra de controleur het veld aanpast — de score beschrijft dan de inhoud niet meer. */
+function AiChip({ score, drempel, match }: AiChipProps) {
+  const opNummer = match === 'btw_nummer' || match === 'kvk_nummer'
+  const fuzzy = match === 'fuzzy'
+  const laag = fuzzy || (!opNummer && score < drempel)
+  const titel = opNummer
+    ? `Crediteur herkend op ${match === 'btw_nummer' ? 'btw-nummer' : 'KvK-nummer'} van de factuur (bekend van eerdere facturen of uit RLZ).`
+    : fuzzy
+      ? 'Crediteur benaderd op naam (fuzzy match tegen de crediteuren-cache) — controleer de keuze.'
+      : 'Zekerheid van de AI-extractie voor dit veld.'
   return (
-    <span
-      className={`chip ${laag ? 'afwijking' : 'ok'}`}
-      title={fuzzy ? 'Crediteur benaderd op naam (fuzzy match tegen de crediteuren-cache) — controleer de keuze.' : 'Zekerheid van de AI-extractie voor dit veld.'}
-    >
+    <span className={`chip ${laag ? 'afwijking' : 'ok'}`} title={titel}>
       AI {zekerheidPct(score)}
-      {fuzzy ? ' · naam benaderd' : ''}
+      {fuzzy ? ' · naam benaderd' : opNummer ? ` · herkend op ${match === 'btw_nummer' ? 'btw-nummer' : 'KvK-nummer'}` : ''}
     </span>
   )
 }
@@ -599,7 +607,7 @@ export function BoekvoorstelPanel({
       drempel: ai.zekerheid_drempel,
       vendor:
         ai.vendor_suggestie && vendorId === ai.vendor_suggestie.vendor_id
-          ? { score: ai.zekerheid.leverancier_naam ?? 0, fuzzy: ai.vendor_suggestie.match === 'fuzzy' }
+          ? { score: ai.zekerheid.leverancier_naam ?? 0, match: ai.vendor_suggestie.match }
           : null,
       referentie:
         ai.factuurnummer !== null && referentie.trim() === ai.factuurnummer && ai.zekerheid.factuurnummer !== undefined
@@ -1083,7 +1091,32 @@ export function BoekvoorstelPanel({
               />
               {aiKop?.vendor && (
                 <div style={{ marginTop: 4 }}>
-                  <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} fuzzy={aiKop.vendor.fuzzy} />
+                  <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} match={aiKop.vendor.match} />
+                </div>
+              )}
+              {/* Punt 14 (28-08): btw-/KvK-nummer van de leverancier uit de factuur — herkomst-chip conform
+                  de andere kopvelden; wordt per crediteur onthouden zodra het voorstel mét crediteur is
+                  opgeslagen (voedt nummer-match + duplicaat over crediteuren heen). */}
+              {(ai?.btw_nummer || ai?.kvk_nummer) && (
+                <div className="hint" style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {ai?.btw_nummer && (
+                    <span
+                      className={`chip ${ai.btw_nummer_geverifieerd ? 'ok' : 'afwijking'}`}
+                      title={
+                        ai.btw_nummer_geverifieerd
+                          ? 'Btw-nummer uit de factuur — vorm én elfproef/mod-97 kloppen.'
+                          : 'Btw-nummer uit de factuur — vorm klopt, controlegetal niet te verifiëren (controleer).'
+                      }
+                    >
+                      btw {ai.btw_nummer}
+                    </span>
+                  )}
+                  {ai?.kvk_nummer && (
+                    <span className="chip ok" title="KvK-nummer uit de factuur (8 cijfers).">
+                      KvK {ai.kvk_nummer}
+                    </span>
+                  )}
+                  <span>uit factuur</span>
                 </div>
               )}
               {vendorId === null && aiLeverancierNaam && (
@@ -1500,7 +1533,10 @@ export function BoekvoorstelPanel({
                   {checkRapport.resultaten.map((r) => (
                     <tr key={r.naam} style={!checksActueel ? { opacity: 0.55 } : undefined}>
                       <td>
-                        <span className={`chip ${r.ok ? 'ok' : 'blokkerend'}`}>{r.ok ? 'OK' : 'Blokkerend'}</span>
+                        {/* Punt 14 (28-08): oranje signaal = ok maar kijken (geen blokkade). */}
+                        <span className={`chip ${!r.ok ? 'blokkerend' : r.signaal ? 'afwijking' : 'ok'}`}>
+                          {!r.ok ? 'Blokkerend' : r.signaal ? 'Signaal' : 'OK'}
+                        </span>
                       </td>
                       <td>
                         <b>{r.naam}</b>

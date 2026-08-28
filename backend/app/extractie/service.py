@@ -37,6 +37,12 @@ _KOP_KEYS: dict[str, str] = {
     # deterministisch (controle.is_verlegd_vermelding) en de UI toont het als HINT, nooit als
     # ingevulde btw-code (0% is ambigu — aangifte-kritisch).
     "vl": "btw_verlegd_vermelding",
+    # Btw-nummer (primair) en KvK-nummer (secundair) van de LEVERANCIER — punt 14 opruimrun 28-08:
+    # crediteur-herkenning op nummer vóór fuzzy naam + duplicaatcheck over crediteuren heen. Alleen
+    # voorlezen; validatie (NL-vorm, elfproef/mod-97, 8 cijfers) is deterministisch in
+    # app/extractie/btw_nummer.py — nooit de AI.
+    "btwnr": "btw_nummer",
+    "kvk": "kvk_nummer",
 }
 
 _STRING_OF_NULL: dict[str, Any] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
@@ -111,7 +117,9 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   de leverancier betaald wil worden (betaalinformatie op de factuur; staan er meerdere, geef dan het
   primaire/eerstgenoemde), vl=de letterlijke vermelding dat de btw verlegd is (bijv. "BTW verlegd",
   "btw verlegd naar afnemer", "verleggingsregeling", "reverse charge") als die op de factuur staat,
-  anders null — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
+  anders null, btwnr=het btw-nummer (btw-identificatienummer, bv. NL123456789B01) van de LEVERANCIER zoals
+  het op de factuur staat (niet dat van de afnemer), kvk=het KvK-nummer (8 cijfers) van de leverancier
+  — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen

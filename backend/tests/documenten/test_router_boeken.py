@@ -84,6 +84,7 @@ class TestBoekvoorstelEndpoints:
             "Vervaldatum",
             "IBAN-wissel",
             "Duplicaatcheck",
+            "Duplicaat bij andere crediteur",
         }
 
     def test_put_met_mismatch_totaal_geeft_geblokkeerd_checkrapport(
@@ -138,6 +139,7 @@ class TestBoekvoorstelEndpoints:
             "Vervaldatum",
             "IBAN-wissel",
             "Duplicaatcheck",
+            "Duplicaat bij andere crediteur",
         }
         assert all(r["ok"] for r in body["checks"]["resultaten"])
 
