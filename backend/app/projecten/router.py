@@ -41,27 +41,23 @@ from app.projecten.schemas import (
     ProjectAanvraagResponse,
 )
 from app.rlz.credentials import GeenRlzCredentials
+from app.security.inkomend_secret import DEV_ENVIRONMENTS, resolve_inkomend_kanaal_secret
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/koppelvlak/vastgoed", tags=["projecten-koppelvlak"])
 
-_DEV_ENVIRONMENTS = ("dev", "local")
+_DEV_ENVIRONMENTS = DEV_ENVIRONMENTS
 
 
 def _resolve_projectaanvraag_secret(env: Mapping[str, str]) -> str:
-    """Zelfde bewaking als het webhook-/JWT-secret: geen stil fallback buiten dev."""
-    secret = env.get("PROJECTAANVRAAG_HMAC_SECRET")
-    if secret:
-        return secret
-    environment = env.get("ENVIRONMENT", "dev")
-    if environment not in _DEV_ENVIRONMENTS:
-        raise RuntimeError(
-            f"PROJECTAANVRAAG_HMAC_SECRET ontbreekt en ENVIRONMENT={environment!r} is geen "
-            f"dev-omgeving ({', '.join(_DEV_ENVIRONMENTS)}). Zet het secret (Cloud Run: via "
-            "Secret Manager) — zonder eigen kanaal-secret kan het koppelvlak niet verifiëren."
-        )
-    return "dev-only-insecure-projectaanvraag-hmac-secret"
+    """Zelfde bewaking als het webhook-/JWT-secret: geen stil fallback buiten dev (gedeelde
+    resolutie met het registersync-kanaal — app/security/inkomend_secret.py)."""
+    return resolve_inkomend_kanaal_secret(
+        env,
+        env_var="PROJECTAANVRAAG_HMAC_SECRET",
+        dev_fallback="dev-only-insecure-projectaanvraag-hmac-secret",
+    )
 
 
 def projectaanvraag_secret() -> str:

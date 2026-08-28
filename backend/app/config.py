@@ -166,6 +166,16 @@ class Settings(BaseSettings):
     # + nonce): een aanvraag met een timestamp buiten dit venster wordt geweigerd.
     projectaanvraag_replay_venster_seconds: float = 300.0
 
+    # Inkomend registersync-koppelvlak (koppelcontract §8 v1.18, 2026-08-28): Vastly haalt het
+    # VOLLEDIGE administratie- + grootboekregister als snapshot op via
+    # `GET /koppelvlak/vastgoed/register`. Zelfde HMAC+timestamp+nonce-patroon als route A,
+    # maar een EIGEN secret — nooit het webhook- of projectaanvraag-secret hergebruiken
+    # (compartimentering per koppelvlak). Zonder secret buiten dev weigert het endpoint zichtbaar
+    # (503), nooit een stil fallback. Uitwisseling met Vastly = klikpunt Peter
+    # (scripts/gcp/registersync_secret.sh).
+    registersync_hmac_secret: str | None = None
+    registersync_replay_venster_seconds: float = 300.0
+
     # Boeken-failsafe (c), volumerem (CLAUDE.md: "config, default laag"): max. aantal boekingen
     # per administratie per kalenderdag. Bewust laag — dit is een noodrem tegen een runaway-bug
     # of verkeerd geconfigureerde automatische boeking, geen normale-bedrijfsvoering-limiet.

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0080
+-- Migratie-head bij deze dump: 0081
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1904,6 +1904,21 @@ ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: registersync_levering; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.registersync_levering (
+    id uuid NOT NULL,
+    nonce text NOT NULL,
+    ontvangen_op timestamp with time zone DEFAULT now() NOT NULL,
+    generated_at timestamp with time zone NOT NULL,
+    aantal_administraties integer NOT NULL,
+    aantal_grootboekrekeningen integer NOT NULL,
+    duur_ms integer NOT NULL
+);
+
+
+--
 -- Name: staande_goedkeuring; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -3350,6 +3365,22 @@ ALTER TABLE ONLY boekhouding.projectaanvraag
 
 ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
     ADD CONSTRAINT reconciliatie_acceptatie_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: registersync_levering registersync_levering_nonce_key; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.registersync_levering
+    ADD CONSTRAINT registersync_levering_nonce_key UNIQUE (nonce);
+
+
+--
+-- Name: registersync_levering registersync_levering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.registersync_levering
+    ADD CONSTRAINT registersync_levering_pkey PRIMARY KEY (id);
 
 
 --

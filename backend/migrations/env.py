@@ -23,6 +23,7 @@ import app.materiaal.models  # noqa: F401
 import app.omzet.models  # noqa: F401
 import app.projecten.models  # noqa: F401
 import app.reconciliatie.models  # noqa: F401
+import app.registersync.models  # noqa: F401
 import app.sync.models  # noqa: F401
 import app.uren.models  # noqa: F401
 import app.verkoop.models  # noqa: F401
