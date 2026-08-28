@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Afdelingen binnen een administratie (punt 16, ontwerpronde 28-08)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#f6f7f8; --panel:#ffffff; --panel-2:#fafbfb; --border:#e6e8ea;
+    --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-hover:#0a635a; --primary-fg:#fff; --accent-bg:#e6f4f2;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(18,24,31,.06), 0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,sans-serif;
+  }
+  body { font-family:var(--font); background:var(--bg); color:var(--text); padding:28px; font-size:14px; }
+  h1 { font-size:20px; font-weight:800; }
+  .sub { color:var(--muted); margin:6px 0 24px; max-width:860px; line-height:1.5; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; margin-bottom:24px; max-width:980px; }
+  .panel h2 { font-size:15px; font-weight:700; margin-bottom:4px; }
+  .panel .uitleg { color:var(--muted); font-size:12.5px; margin-bottom:16px; line-height:1.5; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; }
+  .badge.ok { background:var(--ok-bg); color:var(--ok); }
+  .badge.warn { background:var(--warn-bg); color:var(--warn); }
+  .badge.info { background:var(--info-bg); color:var(--info); }
+  .badge.purple { background:var(--purple-bg); color:var(--purple); }
+  .badge.danger { background:var(--danger-bg); color:var(--danger); }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); padding:8px 10px; border-bottom:1px solid var(--border); }
+  td { padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  .switch { width:36px; height:20px; border-radius:999px; background:var(--primary); position:relative; display:inline-block; vertical-align:middle; }
+  .switch::after { content:''; position:absolute; top:2px; right:2px; width:16px; height:16px; border-radius:50%; background:#fff; }
+  .switch.uit { background:#c9ced4; } .switch.uit::after { right:auto; left:2px; }
+  .btn { display:inline-block; padding:7px 14px; border-radius:var(--radius-sm); font-size:13px; font-weight:600; border:1px solid var(--border); background:var(--panel); cursor:pointer; }
+  .btn.primair { background:var(--primary); border-color:var(--primary); color:var(--primary-fg); }
+  .btn.klein { padding:4px 10px; font-size:12px; }
+  .chip { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); font-size:12px; }
+  .veld { border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px; background:var(--panel); font-size:13px; min-width:220px; display:inline-block; color:var(--text); }
+  .veld.leeg { color:var(--faint); }
+  .check-rij { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:var(--radius-sm); font-size:13px; margin-top:6px; }
+  .check-rij.rood { background:var(--danger-bg); color:var(--danger); }
+  .check-rij.groen { background:var(--ok-bg); color:var(--ok); }
+  .label { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); font-weight:600; display:block; margin-bottom:5px; }
+  .route { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12.5px; }
+  .route .laag { background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:4px 9px; }
+  .route .pijl { color:var(--faint); }
+  .beslis { background:var(--info-bg); border:1px solid #c9d3f2; border-radius:var(--radius); padding:18px 20px; max-width:980px; }
+  .beslis h2 { font-size:14px; color:var(--info); margin-bottom:10px; }
+  .beslis li { margin:8px 0 8px 18px; line-height:1.5; font-size:13px; }
+  .telefoon { width:340px; background:#0b0d0e; border-radius:28px; padding:14px; color:#f0f3f2; box-shadow:var(--shadow); }
+  .telefoon .scherm { background:#151719; border-radius:18px; padding:16px; }
+  .kaart-app { background:#1b1e20; border:1px solid #242729; border-radius:12px; padding:14px; margin-bottom:10px; }
+  .kaart-app b { font-size:14px; }
+  .kaart-app .meta { color:#98a0a5; font-size:12px; margin-top:4px; }
+  .kaart-app .teller { float:right; background:#12302c; color:#3ec9b8; border-radius:999px; padding:2px 10px; font-size:12px; font-weight:700; }
+  .norm { font-size:11px; color:var(--faint); margin-top:30px; }
+</style>
+</head>
+<body>
+
+<h1>Afdelingen binnen een administratie</h1>
+<p class="sub">Casus Kempen Facilities: buitendienst-facturen → beheerder-accordeur, receptie-facturen → backoffice.
+Besluiten Peter 27-08: afdeling wordt <b>handmatig</b> door kantoor gekozen per document (geen automatische afleiding),
+toggle per administratie op het project_verplicht-patroon (AAN = veld verplicht + blokkerende check, UIT = veld onzichtbaar).
+Prefill uit het geheugen per leverancier is een <b>voorstel</b> — de mens beslist altijd.</p>
+
+<!-- ============ SCHERM 1: beheer ============ -->
+<div class="panel">
+  <h2>1 · Instellingen › Administraties › Kempen Facilities B.V. — sectie "Afdelingen"</h2>
+  <p class="uitleg">Toggle per administratie; het beheer verschijnt pas als de toggle aan staat. Per afdeling een eigen accorderingsroute
+  (zelfde lagen-bouwstenen als de bestaande accorderingsconfiguratie). Afdelingen worden gearchiveerd, nooit verwijderd (documenten verwijzen ernaar).</p>
+
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <span class="switch"></span> <b>Afdelingen van toepassing</b>
+    <span class="chip">AAN = afdeling verplicht op élk inkoopdocument (blokkerende check)</span>
+  </div>
+
+  <table>
+    <tr><th>Afdeling</th><th>Accorderingsroute</th><th>Staande goedkeuringen</th><th></th></tr>
+    <tr>
+      <td><b>Buitendienst</b></td>
+      <td><div class="route"><span class="laag">Laag 1 · R. de Groot (beheerder)</span><span class="pijl">→</span><span class="laag">Laag 2 · P. Kempen &gt; € 5.000</span></div></td>
+      <td><span class="badge info">2 actief</span></td>
+      <td><button class="btn klein">Route wijzigen</button> <button class="btn klein">Archiveren</button></td>
+    </tr>
+    <tr>
+      <td><b>Receptie</b></td>
+      <td><div class="route"><span class="laag">Laag 1 · Backoffice (M. Jansen)</span></div></td>
+      <td><span class="badge info">—</span></td>
+      <td><button class="btn klein">Route wijzigen</button> <button class="btn klein">Archiveren</button></td>
+    </tr>
+    <tr>
+      <td><b>Algemeen</b> <span class="chip" style="margin-left:6px;">terugval</span></td>
+      <td><div class="route"><span class="laag">Route van de administratie (bestaande config)</span></div></td>
+      <td><span class="badge info">—</span></td>
+      <td><button class="btn klein">Route wijzigen</button></td>
+    </tr>
+  </table>
+  <div style="margin-top:12px;"><button class="btn">+ Afdeling toevoegen</button></div>
+</div>
+
+<!-- ============ SCHERM 2: controlescherm ============ -->
+<div class="panel">
+  <h2>2 · Controlescherm inkoopfactuur — veld "Afdeling" (alleen zichtbaar als de toggle aan staat)</h2>
+  <p class="uitleg">Positie: in het kopblok naast crediteur/factuurdatum. Prefill = vorige keuze voor deze leverancier (herkomst-chip);
+  geen historie = leeg. Leeg bij boeken/ter accordering = blokkerende check.</p>
+
+  <div style="display:flex; gap:28px; flex-wrap:wrap;">
+    <div>
+      <span class="label">Afdeling — gevuld uit geheugen</span>
+      <span class="veld">Buitendienst ▾</span>
+      <div style="margin-top:6px;"><span class="chip">🧠 vorige keuze bij Van Happen Containers</span></div>
+      <div class="check-rij groen">✓ Afdeling gekozen — route Buitendienst (2 lagen)</div>
+    </div>
+    <div>
+      <span class="label">Afdeling — geen historie</span>
+      <span class="veld leeg">Kies afdeling… ▾</span>
+      <div style="margin-top:6px;"><span class="chip" style="visibility:hidden;">x</span></div>
+      <div class="check-rij rood">✕ Afdeling ontbreekt — verplicht voor Kempen Facilities</div>
+    </div>
+  </div>
+  <p class="uitleg" style="margin-top:14px; margin-bottom:0;">"Ter accordering" gebruikt vanaf dan de route van de gekozen afdeling.
+  Afdeling wijzigen ná aanbieden = zelfde regel als accorderingsconfig: lopende ronde vervalt zichtbaar mét reden.</p>
+</div>
+
+<!-- ============ SCHERM 3: accordeur-app ============ -->
+<div class="panel">
+  <h2>3 · Accordeur-app — scoping per afdeling</h2>
+  <p class="uitleg">Een accordeur ziet alleen de wachtrij van afdelingen waarin hij in een route zit. De BV-kaart toont de afdeling
+  als suffix; één accordeur in meerdere afdelingen van dezelfde BV = één kaart per afdeling (tellers blijven eenduidig).</p>
+  <div class="telefoon"><div class="scherm">
+    <div style="font-weight:800; font-size:16px; margin-bottom:12px;">Uw administraties</div>
+    <div class="kaart-app"><span class="teller">4</span><b>Kempen Facilities</b> · Buitendienst
+      <div class="meta">Oudste wacht 2 dagen · 💬 1 vraag aan u</div></div>
+    <div class="kaart-app"><span class="teller">1</span><b>Molenhof Beheer</b>
+      <div class="meta">Oudste wacht 1 dag</div></div>
+  </div></div>
+</div>
+
+<!-- ============ beslispunten ============ -->
+<div class="beslis">
+  <h2>Beslispunten (voorstel Cowork — akkoord of bijstellen)</h2>
+  <ul>
+    <li><b>Terugval-afdeling "Algemeen":</b> elke administratie mét toggle krijgt er automatisch één die de bestaande
+        accorderingsconfig volgt — zo breekt de toggle niets aan lopende routes en is er altijd een geldige keuze.</li>
+    <li><b>Route per afdeling vervángt de administratie-route</b> zodra een afdeling gekozen is; staande goedkeuringen
+        gelden per accordeur+leverancier+bedrag zoals nu, maar tellen alleen binnen de afdeling waar ze zijn afgegeven.</li>
+    <li><b>Geheugen:</b> prefill per (administratie, leverancier), laatste keuze wint; opslag bij het boekvoorstel-opslaan
+        (zelfde moment als crediteur-kenmerken). Geen automatische leer-regel richting auto-toewijzing.</li>
+    <li><b>MI-dimensie:</b> afdeling wordt als kolom meegenomen in document/boekvoorstel zodat de mi-laag er later op kan
+        rapporteren — geen aparte rapportage in deze fase.</li>
+    <li><b>Bestaande documenten</b> bij het aanzetten van de toggle: alleen nieuwe/nog-niet-geboekte documenten vergen
+        een afdeling; geboekte historie blijft leeg (geen backfill).</li>
+  </ul>
+</div>
+
+<p class="norm">Mockup afdelingen · ontwerpronde 28-08 · stijl designpass v2 · ná akkoord = bouwnorm (1-op-1)</p>
+</body>
+</html>

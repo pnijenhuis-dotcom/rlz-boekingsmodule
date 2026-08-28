@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Activatie mobiel-first + atomaire passkey (besluit 28-08)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#f6f7f8; --panel:#fff; --border:#e6e8ea; --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-fg:#fff; --accent-bg:#e6f4f2;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3; --danger:#b42318; --danger-bg:#fceceb;
+    --info:#3548a5; --info-bg:#eaeefb;
+    --radius:12px; --radius-sm:8px; --shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,sans-serif;
+  }
+  body { font-family:var(--font); background:var(--bg); color:var(--text); padding:28px; font-size:14px; }
+  h1 { font-size:20px; font-weight:800; }
+  .sub { color:var(--muted); margin:6px 0 24px; max-width:880px; line-height:1.5; }
+  h2.sectie { font-size:15px; font-weight:700; margin:26px 0 4px; }
+  .uitleg { color:var(--muted); font-size:12.5px; margin-bottom:14px; max-width:880px; line-height:1.5; }
+  .rij { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; }
+  /* desktop stop-scherm */
+  .desktop { width:520px; }
+  .desktop .kop { font-weight:800; font-size:17px; margin-bottom:8px; }
+  .qr { width:120px; height:120px; background:
+    repeating-linear-gradient(0deg,#12181f 0 6px,transparent 6px 12px),
+    repeating-linear-gradient(90deg,#12181f 0 6px,#fff 6px 12px);
+    border:6px solid #fff; outline:1px solid var(--border); margin:14px 0; }
+  /* telefoonframes */
+  .telefoon { width:300px; background:#0b0d0e; border-radius:28px; padding:12px; color:#f0f3f2; box-shadow:var(--shadow); flex-shrink:0; }
+  .telefoon .scherm { background:#151719; border-radius:18px; padding:18px 16px; min-height:420px; display:flex; flex-direction:column; }
+  .stap-label { font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:#7f878d; margin-bottom:4px; }
+  .stappen { display:flex; gap:5px; margin:10px 0 18px; }
+  .stappen i { height:4px; flex:1; border-radius:2px; background:#242729; }
+  .stappen i.aan { background:#3ec9b8; }
+  .t-kop { font-size:17px; font-weight:800; margin-bottom:6px; }
+  .t-sub { font-size:12.5px; color:#98a0a5; line-height:1.5; margin-bottom:16px; }
+  .t-veld { background:#1b1e20; border:1px solid #242729; border-radius:10px; padding:12px; font-size:16px; color:#f0f3f2; margin-bottom:10px; }
+  .t-veld small { color:#7f878d; display:block; font-size:11px; margin-bottom:2px; }
+  .t-knop { margin-top:auto; background:#3ec9b8; color:#06211d; text-align:center; border-radius:12px; padding:14px; font-weight:700; font-size:15px; }
+  .t-knop.stil { background:#1b1e20; color:#98a0a5; font-weight:600; }
+  .t-fout { background:#331714; color:#f08579; border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.45; margin-bottom:10px; }
+  .t-ok { text-align:center; margin:40px 0 20px; }
+  .t-ok .bol { width:64px; height:64px; border-radius:50%; background:#12291e; color:#4ecb94; font-size:30px; line-height:64px; margin:0 auto 12px; }
+  .faceid { text-align:center; margin:26px 0; }
+  .faceid .icoon { width:70px; height:70px; border-radius:18px; border:2px solid #3ec9b8; margin:0 auto 10px; line-height:70px; font-size:32px; text-align:center; }
+  .chip { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; border:1px solid var(--border); background:#fafbfb; font-size:12px; color:var(--muted); }
+  .beslis { background:var(--info-bg); border:1px solid #c9d3f2; border-radius:var(--radius); padding:18px 20px; max-width:980px; margin-top:28px; }
+  .beslis h2 { font-size:14px; color:var(--info); margin-bottom:10px; }
+  .beslis li { margin:8px 0 8px 18px; line-height:1.5; font-size:13px; }
+  .norm { font-size:11px; color:var(--faint); margin-top:30px; }
+  .badge-atoom { display:inline-block; background:var(--warn-bg); color:var(--warn); border-radius:999px; padding:2px 10px; font-size:11.5px; font-weight:700; }
+</style>
+</head>
+<body>
+
+<h1>Activatie mobiel-first + atomaire passkey-registratie</h1>
+<p class="sub">Besluit Peter 28-08 (casus Haci: wachtwoord gezet op een pc zonder passkey-support → hard vast).
+Geldt voor <b>externe app-rollen</b> (klant-accordeurs én veldrollen). Twee ingrepen: de activatielink weigert
+desktops mét doorverwijzing, en de activatie is <b>atomair</b> — het wachtwoord wordt pas definitief als de
+passkey-registratie geslaagd is. Kantoor-rollen ongewijzigd (die houden wachtwoord + TOTP als vangnet).</p>
+
+<h2 class="sectie">1 · Activatielink geopend op een desktop → stop-scherm (geen wachtwoordveld!)</h2>
+<p class="uitleg">De link verzilvert hier níéts. QR bevat dezelfde activatie-URL; token blijft geldig tot de flow op de telefoon is afgerond.</p>
+<div class="panel desktop">
+  <div class="kop">Open deze uitnodiging op uw telefoon</div>
+  <div style="color:var(--muted); font-size:13px; line-height:1.55;">U activeert uw account in de app op uw telefoon, met gezichtsherkenning of
+  vingerafdruk. Scan de QR-code met de camera van uw telefoon, of open de link uit de e-mail dáár.</div>
+  <div class="qr"></div>
+  <span class="chip">🔒 De link blijft 72 uur geldig · niets is nog vastgelegd</span>
+</div>
+
+<h2 class="sectie">2 · Mobiele activatieflow — drie stappen, één transactie <span class="badge-atoom">atomair: stap 2 mislukt = stap 1 teruggedraaid</span></h2>
+<div class="rij">
+  <div class="telefoon"><div class="scherm">
+    <div class="stap-label">Stap 1 van 3</div>
+    <div class="stappen"><i class="aan"></i><i></i><i></i></div>
+    <div class="t-kop">Welkom, Haci</div>
+    <div class="t-sub">Kies een wachtwoord. Dit is uw terugval — dagelijks ontgrendelt u met gezicht of vingerafdruk.</div>
+    <div class="t-veld"><small>Wachtwoord</small>••••••••••••</div>
+    <div class="t-veld"><small>Herhaal wachtwoord</small>••••••••••••</div>
+    <div class="t-knop">Doorgaan</div>
+  </div></div>
+
+  <div class="telefoon"><div class="scherm">
+    <div class="stap-label">Stap 2 van 3</div>
+    <div class="stappen"><i class="aan"></i><i class="aan"></i><i></i></div>
+    <div class="t-kop">Beveilig met uw gezicht of vingerafdruk</div>
+    <div class="t-sub">Uw telefoon maakt een passkey aan — daarmee opent u de app voortaan zonder wachtwoord.</div>
+    <div class="faceid"><div class="icoon">🙂</div><div style="color:#98a0a5; font-size:12.5px;">Face ID / vingerafdruk</div></div>
+    <div class="t-knop">Passkey aanmaken</div>
+  </div></div>
+
+  <div class="telefoon"><div class="scherm">
+    <div class="stap-label">Stap 2 van 3 — mislukt</div>
+    <div class="stappen"><i class="aan"></i><i class="aan"></i><i></i></div>
+    <div class="t-kop">Dat lukte niet</div>
+    <div class="t-fout">De passkey kon niet worden aangemaakt. Uw wachtwoord is <b>niet</b> vastgelegd — er is niets half geregistreerd.
+    Probeer het opnieuw; blijft het misgaan, dan neemt het kantoor contact met u op.</div>
+    <div class="t-knop">Opnieuw proberen</div>
+    <div class="t-knop stil" style="margin-top:8px;">Ik kom er niet uit — meld het kantoor</div>
+  </div></div>
+
+  <div class="telefoon"><div class="scherm">
+    <div class="stap-label">Stap 3 van 3</div>
+    <div class="stappen"><i class="aan"></i><i class="aan"></i><i class="aan"></i></div>
+    <div class="t-ok"><div class="bol">✓</div>
+    <div style="font-weight:800; font-size:17px;">Account actief</div></div>
+    <div class="t-sub" style="text-align:center;">Wachtwoord én passkey staan. Hierna: voorwaarden-akkoord (bestaande stap, ongewijzigd).</div>
+    <div class="t-knop">Naar de app</div>
+  </div></div>
+</div>
+
+<h2 class="sectie">3 · Kantoor-web: inloggen op een apparaat zónder passkey</h2>
+<p class="uitleg">Geen eigen push-login (besluit 28-08: cross-device passkey is de route — origin-gebonden en phishing-bestendig).
+De webapp begeleidt in plaats daarvan naar de native QR-flow van de browser, en stelt daarna éénmalig voor om op dít apparaat een passkey toe te voegen.</p>
+<div class="panel" style="width:520px;">
+  <div style="font-weight:800; font-size:16px; margin-bottom:10px;">Inloggen</div>
+  <div style="border:1px solid var(--border); border-radius:10px; padding:11px 12px; color:var(--faint); font-size:13px; margin-bottom:10px;">p.nijenhuis@kempengroep.nl</div>
+  <div style="background:var(--primary); color:#fff; text-align:center; border-radius:10px; padding:12px; font-weight:700;">Inloggen met passkey</div>
+  <div style="text-align:center; color:var(--muted); font-size:12.5px; margin:10px 0;">Geen passkey op dit apparaat? De browser toont een QR-code —
+  scan die met uw telefoon en keur goed met Face ID.</div>
+  <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:4px;">
+    <span class="chip">💡 ná de eerste login: "Passkey toevoegen op dit apparaat?" — eenmalige banner, keuze onthouden</span>
+  </div>
+</div>
+
+<div class="beslis">
+  <h2>Beslispunten (voorstel Cowork — akkoord of bijstellen)</h2>
+  <ul>
+    <li><b>Desktop-detectie:</b> op basis van platform-authenticator-beschikbaarheid (WebAuthn-capability-check) + user-agent als
+        vangnet; twijfel = stop-scherm tonen (fail-safe richting telefoon).</li>
+    <li><b>Atomair technisch:</b> wachtwoord-hash wordt pas gecommit in dezelfde transactie als de geslaagde passkey-registratie;
+        de activatielink blijft tot dat moment verzilverbaar (her-opening = flow opnieuw, geen nieuwe link nodig).</li>
+    <li><b>Bestaande half-geactiveerde accounts</b> (wachtwoord wél, passkey níét): eenmalige detectie + herstel-link-aanbod op
+        de Gebruikers-pagina, zodat de Haci-klasse ook met terugwerkende kracht opgeruimd wordt.</li>
+    <li><b>Kantoor-web banner "passkey toevoegen op dit apparaat"</b> verschijnt maximaal 1× per apparaat (localStorage), en
+        alleen ná een geslaagde QR-cross-device-login — het moment waarop de gebruiker het nut net ervaren heeft.</li>
+    <li><b>Buiten scope:</b> push-login met cijferbevestiging (afgewezen 28-08 — zwakker dan cross-device passkey en eigen infra).</li>
+  </ul>
+</div>
+
+<p class="norm">Mockup activatie mobiel-first · ontwerpronde 28-08 · veld-app-stijl (dark) + kantoor v2 · ná akkoord = bouwnorm</p>
+</body>
+</html>

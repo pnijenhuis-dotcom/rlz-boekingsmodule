@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Voorraad-aansluiting (controle-laag, besluit 28-08)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#f6f7f8; --panel:#fff; --panel-2:#fafbfb; --border:#e6e8ea; --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-fg:#fff; --accent-bg:#e6f4f2;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3; --danger:#b42318; --danger-bg:#fceceb;
+    --info:#3548a5; --info-bg:#eaeefb; --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px; --shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,sans-serif;
+  }
+  body { font-family:var(--font); background:var(--bg); color:var(--text); padding:28px; font-size:14px; }
+  h1 { font-size:20px; font-weight:800; }
+  .sub { color:var(--muted); margin:6px 0 24px; max-width:920px; line-height:1.5; }
+  h2.sectie { font-size:15px; font-weight:700; margin:26px 0 4px; }
+  .uitleg { color:var(--muted); font-size:12.5px; margin-bottom:14px; max-width:920px; line-height:1.5; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; margin-bottom:22px; max-width:1020px; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; }
+  .badge.ok { background:var(--ok-bg); color:var(--ok); }
+  .badge.warn { background:var(--warn-bg); color:var(--warn); }
+  .badge.danger { background:var(--danger-bg); color:var(--danger); }
+  .badge.info { background:var(--info-bg); color:var(--info); }
+  .badge.purple { background:var(--purple-bg); color:var(--purple); }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); padding:8px 10px; border-bottom:1px solid var(--border); }
+  td { padding:9px 10px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:middle; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  tr:last-child td { border-bottom:none; }
+  .chip { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); font-size:12px; color:var(--muted); }
+  .btn { display:inline-block; padding:7px 14px; border-radius:var(--radius-sm); font-size:13px; font-weight:600; border:1px solid var(--border); background:var(--panel); cursor:pointer; }
+  .btn.primair { background:var(--primary); border-color:var(--primary); color:var(--primary-fg); }
+  .btn.klein { padding:4px 10px; font-size:12px; }
+  .bv-kaarten { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; max-width:1020px; margin-bottom:22px; }
+  .bv { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; }
+  .bv b { font-size:14px; display:block; margin-bottom:4px; }
+  .bv .model { font-size:12px; color:var(--muted); line-height:1.45; margin:6px 0 10px; }
+  .beslis { background:var(--info-bg); border:1px solid #c9d3f2; border-radius:var(--radius); padding:18px 20px; max-width:1020px; margin-top:6px; }
+  .beslis h2 { font-size:14px; color:var(--info); margin-bottom:10px; }
+  .beslis li { margin:8px 0 8px 18px; line-height:1.5; font-size:13px; }
+  .norm { font-size:11px; color:var(--faint); margin-top:30px; }
+  .principe { background:var(--warn-bg); border:1px solid #ecd9b6; border-radius:var(--radius); padding:14px 18px; max-width:920px; font-size:13px; line-height:1.55; margin-bottom:20px; }
+</style>
+</head>
+<body>
+
+<h1>Voorraad-aansluiting — onafhankelijke controle-laag</h1>
+<p class="sub">Besluit Peter 28-08: parallel bouwen. Principe: dit is <b>geen</b> tweede voorraadadministratie maar een
+controle-laag — de instroom komt uit AI-gescande inkoopfacturen (externe documenten, door personeel niet te beïnvloeden),
+de uitstroom uit de geregistreerde verkoop/het verbruik. Theoretische stand vs systeemstand (RLZ/Odoo/telling) =
+verschil-signaal: breuk, lek, zwart verbruik of niet-doorbelast. Alles deterministisch (code voor cijfers); AI alleen
+voor regel-extractie en normalisatie-voorstellen, mens bevestigt. Nooit geboekt in RLZ.</p>
+
+<div class="principe">📐 <b>Per BV een eigen uitstroom-model</b> — dat is de kern van het ontwerp; de motor is één,
+de bron per administratie verschilt. Opt-in per administratie ("Voorraad bijhouden", Beheerder-only).</div>
+
+<div class="bv-kaarten">
+  <div class="bv"><b>Universal Verkoop B.V.</b><span class="badge purple">handel</span>
+    <div class="model">In: inkoopfacturen (stuks) · Uit: verkoopfacturen (stuks). Klassieke theoretische voorraad; eerste use-case (migreert eerst naar Odoo → aansluiting tegen Odoo-systeemvoorraad).</div>
+    <span class="chip">uitstroombron: verkoopfactuurregels</span></div>
+  <div class="bv"><b>Universal Nederland B.V.</b><span class="badge purple">verhuur</span>
+    <div class="model">In: inkoop materieel · Uit: verkoop/afvoer. Verhuur verbruikt níét — de "voorraad" is de vloot; aansluiting = vlootstand + wat er per saldo uitgehuurd is (transportmodule levert de huurstanden al).</div>
+    <span class="chip">uitstroombron: verkoop/afvoer + huurstand</span></div>
+  <div class="bv"><b>Universal Steigerbouw B.V.</b><span class="badge purple">projecten</span>
+    <div class="model">In: inkoop materiaal · Uit: verbruik op projecten (montage/verlies). Sluit aan op de bestaande materiaalstand per project (blok D) — de projectkant bestaat al, dit voegt de BV-brede som toe.</div>
+    <span class="chip">uitstroombron: materiaalstand projecten</span></div>
+  <div class="bv"><b>Bradwolff Constructie B.V.</b><span class="badge purple">constructie</span>
+    <div class="model">In: inkoop constructiemateriaal · Uit: verbruik per werk/project. Zelfde model als Steigerbouw, eigen catalogus.</div>
+    <span class="chip">uitstroombron: projectverbruik</span></div>
+</div>
+
+<h2 class="sectie">1 · Aansluiting per administratie — Universal Verkoop, per artikelgroep</h2>
+<p class="uitleg">Mutaties worden op DAGNIVEAU bijgehouden (besluit Peter 28-08) — de periode-weergave is een som van dagstanden,
+dus elke stand is per dag terug te bladeren. "Systeemstand" = de stand in het leidende systeem (nu RLZ-telling/handmatig, straks
+Odoo). Verschil buiten de tolerantie = vlag, puur MI — geen klikwerk, geen bevestiging, nooit een boeking.</p>
+<div class="panel">
+  <div style="display:flex; gap:10px; margin-bottom:14px; align-items:center;">
+    <span class="chip">Universal Verkoop B.V. ▾</span><span class="chip">Periode: jan–aug 2026 ▾</span>
+    <span style="flex:1;"></span><button class="btn klein">⟳ Verversen</button>
+  </div>
+  <table>
+    <tr><th>Artikelgroep</th><th class="n">Begin</th><th class="n">+ Inkoop (facturen)</th><th class="n">− Verkoop (facturen)</th><th class="n">= Theoretisch</th><th class="n">Systeemstand</th><th class="n">Verschil</th><th>Signaal</th></tr>
+    <tr><td>Koppelingen 48mm</td><td class="n">1.240</td><td class="n">3.600</td><td class="n">3.410</td><td class="n">1.430</td><td class="n">1.428</td><td class="n">−2</td><td><span class="badge ok">✓ binnen tolerantie</span></td></tr>
+    <tr><td>Steigerbuis 3m</td><td class="n">820</td><td class="n">1.200</td><td class="n">1.020</td><td class="n">1.000</td><td class="n">912</td><td class="n">−88</td><td><span class="badge danger">⚑ −8,8% — onderzoeken</span></td></tr>
+    <tr><td>Vlonders alu 2,5m</td><td class="n">610</td><td class="n">400</td><td class="n">380</td><td class="n">630</td><td class="n">641</td><td class="n">+11</td><td><span class="badge warn">⚑ +1,7% — telverschil?</span></td></tr>
+    <tr><td><i>Niet genormaliseerd</i></td><td class="n">—</td><td class="n">212 regels</td><td class="n">37 regels</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td><span class="badge info">→ normaliseren (scherm 2)</span></td></tr>
+  </table>
+  <p class="uitleg" style="margin:12px 0 0;">Drill-down per rij: alle factuurregels (in én uit) achter het getal, mét link naar het document.
+  De aansluiting is pas dekkend als de niet-genormaliseerde regels ↓ 0 naderen — die teller is bewust prominent.</p>
+</div>
+
+<h2 class="sectie">2 · Catalogus-normalisatie — volautomatisch, mét zichtbare onzekerheid (besluit Peter 28-08: geen verplicht klikwerk)</h2>
+<p class="uitleg">De normalisatie draait automatisch: eerste match per leverancier+artikeltekst = AI-voorstel dat direct als regel
+wordt toegepast (daarna deterministisch, geen nieuwe AI-calls voor dezelfde tekst). Er hoeft níéts bevestigd te worden —
+onzekere matches krijgen een zichtbare vlag en tellen mee mét markering, zodat een verschil-signaal altijd herleidbaar is.
+Corrigeren kán (optioneel, corrigeert historie mee), maar is nooit een voorwaarde.</p>
+<div class="panel">
+  <table>
+    <tr><th>Factuurregel (leverancier)</th><th>Aantal · eenheid</th><th>Genormaliseerd als</th><th>Zekerheid</th></tr>
+    <tr><td>"KOP.DR.48/48 SW22 gegalv." — Scafom</td><td class="n">500 st</td><td>Koppelingen 48mm</td><td><span class="badge ok">✓ zeker (92%)</span></td></tr>
+    <tr><td>"Buis 48,3x3,2 L=3000" — Van Thiel</td><td class="n">120 st</td><td>Steigerbuis 3m</td><td><span class="badge ok">✓ zeker (88%)</span></td></tr>
+    <tr><td>"Alu plank div." — Van Thiel</td><td class="n">40 st</td><td>Vlonders alu 2,5m</td><td><span class="badge warn">⚑ onzeker (61%) — telt mee mét vlag · <u>corrigeer</u></span></td></tr>
+    <tr><td>"Transportkosten zone 2" — Scafom</td><td class="n">1</td><td><span class="chip">geen artikel — automatisch uitgesloten</span></td><td><span class="badge ok">✓</span></td></tr>
+  </table>
+  <p class="uitleg" style="margin:12px 0 0;">Een correctie geldt vanaf dan voor álle regels met dezelfde leverancier+artikeltekst
+  (historie wordt herrekend). Diensten/transport worden automatisch uitgesloten. Het aandeel onzeker-genormaliseerd staat als
+  percentage bij elk verschil-signaal — een signaal op grotendeels onzekere data zegt dat er eerst genormaliseerd moet worden.</p>
+</div>
+
+<div class="beslis">
+  <h2>Beslispunten (voorstel Cowork — akkoord of bijstellen)</h2>
+  <ul>
+    <li><b>Volgorde:</b> Universal Verkoop eerst (jouw 24-08-keuze; zuiverste model, en de Odoo-migratie maakt de
+        aansluiting daar meteen waardevol als onafhankelijke toets op de medewerker-registratie). Daarna Steigerbouw
+        (hergebruikt materiaalstand), dan Bradwolff, dan Verhuur (vloot-model is het meest afwijkend).</li>
+    <li><b>Eerlijke kanttekening in het scherm:</b> de uitstroomkant komt uit interne registratie — het scherm toont de
+        bron per kolom, zodat een verschil altijd herleidbaar is naar "instroom (extern) vs uitstroom (intern)".</li>
+    <li><b>Systeemstand-bron:</b> handmatige telling-invoer als start (kolom "telling per datum"); Odoo-stand via de
+        bestaande JSON-2-leesroute zodra Universal Verkoop over is. Geen RLZ-writes, ooit.</li>
+    <li><b>Tolerantie:</b> per artikelgroep instelbaar (%, default 1%) — onder tolerantie groen, erboven oranje/rood
+        signaal + werkvoorraad-melding maandelijks (geen dagelijkse ruis).</li>
+    <li><b>Datamodel:</b> dit wordt de eerste bewoner van het mi-schema (feitenlaag op regel-niveau) — de
+        Jarvis-fundering; extractie levert vanaf dan aantal+eenheid+artikeltekst gestructureerd per regel.</li>
+    <li><b>AVG/omvang:</b> geen persoonsgegevens in deze laag; kosten AI-normalisatie vallen onder de bestaande
+        AI-kostengrens.</li>
+  </ul>
+</div>
+
+<p class="norm">Mockup voorraad-aansluiting · ontwerpronde 28-08 · stijl designpass v2 · ná akkoord = bouwnorm (fase 1: Universal Verkoop)</p>
+</body>
+</html>
