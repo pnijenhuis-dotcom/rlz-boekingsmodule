@@ -10,7 +10,7 @@
 // backend (py_webauthn) én de schermen merken het verschil niet. rp_id blijft de apex
 // (besluit 0022): bestaande passkeys van PWA-gebruikers blijven in de native app geldig.
 
-import { apiJson, apiPostJson, kaleAuthFetch } from '../api/client'
+import { ApiError, apiJson, apiPostJson, kaleAuthFetch } from '../api/client'
 import type { TokenPaarResponseDto } from '../api/types'
 import { natievePasskeyPlugin } from './nativePasskey'
 
@@ -137,6 +137,9 @@ export async function ondertekenAssertie(optiesJson: string): Promise<Record<str
     id: credential.id,
     rawId: bufferNaarB64url(credential.rawId),
     type: credential.type,
+    // Cross-device-detectie (kantoor-banner 28-08): 'platform' | 'cross-platform' | undefined.
+    // `ondertekenAssertieMetMeta` haalt 'm er weer uit vóór het naar de backend gaat.
+    authenticatorAttachment: (credential as unknown as { authenticatorAttachment?: string }).authenticatorAttachment,
     clientExtensionResults: credential.getClientExtensionResults(),
     response: {
       clientDataJSON: bufferNaarB64url(response.clientDataJSON),
@@ -180,7 +183,9 @@ async function alsJson<T>(resp: Response): Promise<T> {
   if (!resp.ok) {
     const detail =
       body && typeof body === 'object' && 'detail' in body ? String((body as { detail: unknown }).detail) : ''
-    throw new Error(detail || `Fout (${resp.status})`)
+    // ApiError mét status: de activeringsflow onderscheidt 401 (setup-token verlopen → terug
+    // naar de wachtwoordstap) van 400 (registratie mislukt → foutscherm).
+    throw new ApiError(resp.status, detail || `Fout (${resp.status})`, detail || undefined)
   }
   return body as T
 }
@@ -234,4 +239,91 @@ export async function ontgrendelen(payload: {
     body: JSON.stringify(payload),
   })
   return alsJson<TokenPaarResponseDto>(resp)
+}
+
+// --- Mobiel-first activatie externe rollen (besluit Peter 28-08, mockup activatie-mobiel.html) --
+
+/** Grove apparaatklasse uit de user-agent — uitsluitend als VANGNET naast de
+ * WebAuthn-capability-check (mockup-beslispunt 1). */
+export function isMobielUserAgent(ua: string = navigator.userAgent): boolean {
+  return /iPhone|iPad|iPod|Android/.test(ua)
+}
+
+/** `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()` — true/false, of null
+ * als de browser de vraag niet kan beantwoorden (geen API, geen secure context, exception).
+ * Null = twijfel; de beslisfunctie hieronder behandelt twijfel als "stop". */
+export async function platformAuthenticatorBeschikbaar(): Promise<boolean | null> {
+  try {
+    if (typeof window === 'undefined' || !('PublicKeyCredential' in window)) return null
+    const vraag = (window.PublicKeyCredential as unknown as Record<string, unknown>)
+      .isUserVerifyingPlatformAuthenticatorAvailable
+    if (typeof vraag !== 'function') return null
+    const uitkomst: unknown = await (vraag as () => Promise<unknown>)()
+    return uitkomst === true
+  } catch {
+    return null
+  }
+}
+
+export interface ActivatieApparaatToets {
+  /** Native schil (Capacitor) — de passkey-plugin is de bron; altijd doorgaan. */
+  native: boolean
+  mobielUa: boolean
+  platformAuthenticator: boolean | null
+  /** Dev-stub actief (LAN-kliktest zonder https): de stub vervangt de biometrie. */
+  devStub: boolean
+}
+
+/** Beslisregel activatielink (fail-safe richting telefoon): een externe activatie loopt alleen
+ * door op een apparaat dat een platform-authenticator HEEFT en mobiel IS; elke twijfel
+ * (onbekende capability, desktop-UA) = stop-scherm mét QR — de link verzilvert dáár niets.
+ * Puur, zodat de regel los van de browser getest wordt. */
+export function activatieOpDitApparaat(toets: ActivatieApparaatToets): 'doorgaan' | 'stop' {
+  if (toets.native) return 'doorgaan'
+  if (toets.devStub) return 'doorgaan'
+  if (!toets.mobielUa) return 'stop'
+  return toets.platformAuthenticator === true ? 'doorgaan' : 'stop'
+}
+
+/** Voert de toets uit op dít apparaat (capability + UA-vangnet + native + dev-stub). */
+export async function toetsActivatieApparaat(devStub: boolean): Promise<'doorgaan' | 'stop'> {
+  return activatieOpDitApparaat({
+    native: natievePasskeyPlugin() !== null,
+    mobielUa: isMobielUserAgent(),
+    platformAuthenticator: await platformAuthenticatorBeschikbaar(),
+    devStub,
+  })
+}
+
+export interface UitnodigingInfoDto {
+  flow: 'passkey' | 'totp'
+  naam: string
+  herstel: boolean
+  verloopt_op: string
+}
+
+/** Publiek, op token: welke activatieflow hoort bij deze link — verzilvert niets. */
+export function haalUitnodigingInfo(token: string): Promise<UitnodigingInfoDto> {
+  return apiJson(`/auth/uitnodigingen/info?token=${encodeURIComponent(token)}`)
+}
+
+/** Foutscherm stap 2: "Ik kom er niet uit — meld het kantoor" (audit + mail aan het kantoor). */
+export async function meldActivatieProbleem(token: string): Promise<void> {
+  await apiPostJson<unknown>('/auth/uitnodigingen/activatie-probleem', { token })
+}
+
+export interface AssertieMetMeta {
+  credential: Record<string, unknown>
+  /** true = de passkey kwam van een ánder apparaat (QR/cross-device, `authenticatorAttachment`
+   * 'cross-platform') — het moment voor de kantoor-banner "Passkey toevoegen op dit apparaat?". */
+  crossDevice: boolean
+}
+
+/** Als `ondertekenAssertie`, mét de attachment-meta van de ceremonie. De backend krijgt alleen
+ * het credential-object; de meta blijft client-side. */
+export async function ondertekenAssertieMetMeta(optiesJson: string): Promise<AssertieMetMeta> {
+  const credential = await ondertekenAssertie(optiesJson)
+  const attachment = credential.authenticatorAttachment
+  delete credential.authenticatorAttachment
+  return { credential, crossDevice: attachment === 'cross-platform' }
 }

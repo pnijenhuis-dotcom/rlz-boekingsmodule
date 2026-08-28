@@ -166,12 +166,19 @@ class AcceptatieResultaat:
 
 
 def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat:
-    """Token -> wachtwoord zetten -> tweede factor voorbereiden. Kantoor-rollen: TOTP-secret
-    genereren (nog niet bevestigd), activatie volgt pas na bevestig_totp(). Klant-accordeur:
-    status wacht_op_passkey + een passkey_setup-token — activatie volgt pas na de
-    passkey-registratie (app/auth/webauthn_service.py). Het token is hierna altijd verbruikt,
-    ook als een latere stap faalt — een mislukte enrollment betekent een nieuwe uitnodiging,
-    geen herbruikbaar token (consistent met "eenmalig")."""
+    """Token -> wachtwoord zetten -> tweede factor voorbereiden.
+
+    Kantoor-rollen (ongewijzigd): wachtwoord direct definitief, TOTP-secret genereren (nog niet
+    bevestigd), token verbruikt — activatie volgt pas na bevestig_totp().
+
+    Externe app-rollen (klant-accordeur + veldrollen) — ATOMAIR sinds 28-08 (besluit Peter,
+    mockup activatie-mobiel.html, casus Haci): het wachtwoord wordt hier NIET op de gebruiker
+    gezet en het token NIET verbruikt. De hash wordt geparkeerd op de uitnodigingsrij
+    (`wachtwoord_hash_in_wacht`, migratie 0083) en pas in dezelfde transactie als de geslaagde
+    passkey-registratie definitief gemaakt (`webauthn_service._rond_registratie_af`). Mislukt
+    de passkey, dan is er niets half geregistreerd en blijft de link tot zijn vervaldatum
+    verzilverbaar (her-opening = flow opnieuw, geen nieuwe link nodig). Het passkey_setup-token
+    draagt daarvoor de uitnodiging-id mee."""
     if len(wachtwoord) < MIN_WACHTWOORD_LENGTE:
         raise AuthError(f"Wachtwoord moet minimaal {MIN_WACHTWOORD_LENGTE} tekens zijn")
 
@@ -179,28 +186,19 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
     now = datetime.now(UTC)
 
     with scoped_session(None) as session:
-        uitnodiging = session.scalars(select(Uitnodiging).where(Uitnodiging.token_hash == token_hash)).one_or_none()
-        if uitnodiging is None:
-            raise AuthError("Ongeldig uitnodigingstoken")
-        if uitnodiging.gebruikt_op is not None:
-            raise AuthError("Uitnodiging is al gebruikt")
-        if uitnodiging.verloopt_op < now:
-            raise AuthError("Uitnodiging is verlopen")
-
+        uitnodiging = _open_uitnodiging(session, token_hash=token_hash, now=now)
         gebruiker = session.get(Gebruiker, uitnodiging.gebruiker_id)
         assert gebruiker is not None  # FK garandeert dit
 
+        if is_externe_app_rol(gebruiker.rol):
+            return _parkeer_wachtwoord_voor_passkey(uitnodiging, gebruiker, wachtwoord=wachtwoord)
+
         if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value:
-            return _accepteer_wachtwoord_herstel(session, uitnodiging, gebruiker, wachtwoord=wachtwoord, now=now)
+            # Herstel-links bestaan alleen voor externe rollen (maak_herstel_link) — vangnet.
+            raise AuthError("Herstel-links bestaan alleen voor externe app-gebruikers")
 
         gebruiker.wachtwoord_hash = hash_password(wachtwoord)
         uitnodiging.gebruikt_op = now
-
-        if is_externe_app_rol(gebruiker.rol):
-            # Accordeur én veldrollen (0040-lijn, migratie 0056): passkey i.p.v. TOTP.
-            gebruiker.status = GebruikerStatus.WACHT_OP_PASSKEY
-            return AcceptatieResultaat(soort="passkey", passkey_setup_token=create_passkey_setup_token(gebruiker.id))
-
         gebruiker.status = GebruikerStatus.WACHT_OP_TOTP
         secret = generate_secret()
         ciphertext, wrapped_key = wrap_secret(secret.encode())
@@ -216,35 +214,130 @@ def accepteer_uitnodiging(*, token: str, wachtwoord: str) -> AcceptatieResultaat
     )
 
 
-def _accepteer_wachtwoord_herstel(
-    session: Session, uitnodiging: Uitnodiging, gebruiker: Gebruiker, *, wachtwoord: str, now: datetime
-) -> AcceptatieResultaat:
-    """Herstel-link (soort wachtwoord_herstel, feedbackronde 25-08 punt 7) verzilveren: NIEUW
-    wachtwoord, status ongewijzigd (actief blijft actief — bestaande passkeys en akkoorden
-    blijven staan), alle lopende sessies ingetrokken (wachtwoordwissel = conventionele
-    sessie-reset; een apparaat logt daarna gewoon opnieuw in met het nieuwe wachtwoord + zijn
-    passkey), en direct een passkey-setup-token zodat het nieuwe/ontgrendelde apparaat
-    geregistreerd kan worden. Het token is hierna verbruikt. Is de gebruiker intussen
-    geblokkeerd, dan is de link waardeloos — blokkade wint altijd (0052-lijn)."""
-    if not is_externe_app_rol(gebruiker.rol):
-        raise AuthError("Herstel-links bestaan alleen voor externe app-gebruikers")
-    if gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
-        raise AuthError("Account is geblokkeerd of niet geactiveerd — neem contact op met het kantoor")
+def _open_uitnodiging(session: Session, *, token_hash: str, now: datetime) -> Uitnodiging:
+    """Eén plek voor de drie token-poorten (onbekend / al gebruikt / verlopen)."""
+    uitnodiging = session.scalars(select(Uitnodiging).where(Uitnodiging.token_hash == token_hash)).one_or_none()
+    if uitnodiging is None:
+        raise AuthError("Ongeldig uitnodigingstoken")
+    if uitnodiging.gebruikt_op is not None:
+        raise AuthError("Uitnodiging is al gebruikt")
+    if uitnodiging.verloopt_op < now:
+        raise AuthError("Uitnodiging is verlopen")
+    return uitnodiging
 
-    gebruiker.wachtwoord_hash = hash_password(wachtwoord)
+
+def _parkeer_wachtwoord_voor_passkey(
+    uitnodiging: Uitnodiging, gebruiker: Gebruiker, *, wachtwoord: str
+) -> AcceptatieResultaat:
+    """Wachtwoordstap externe rol (uitnodiging óf herstel): hash op de link parkeren, niets op de
+    gebruiker muteren. Herstel eist een account dat mag herstellen (blokkade wint — 0052-lijn);
+    de bestaande passkeys/akkoorden blijven staan, sessies worden pas bij afronding ingetrokken."""
+    if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value and gebruiker.status not in (
+        GebruikerStatus.ACTIEF,
+        GebruikerStatus.WACHT_OP_PASSKEY,
+    ):
+        raise AuthError("Account is geblokkeerd of niet geactiveerd — neem contact op met het kantoor")
+    if uitnodiging.soort == UitnodigingSoort.UITNODIGING.value and gebruiker.status != GebruikerStatus.UITGENODIGD:
+        raise AuthError("Account is al geactiveerd of geblokkeerd — neem contact op met het kantoor")
+    uitnodiging.wachtwoord_hash_in_wacht = hash_password(wachtwoord)
+    return AcceptatieResultaat(
+        soort="passkey",
+        passkey_setup_token=create_passkey_setup_token(gebruiker.id, uitnodiging_id=uitnodiging.id),
+    )
+
+
+def rond_uitnodiging_af_met_passkey(
+    session: Session, *, gebruiker: Gebruiker, uitnodiging_id: uuid.UUID, now: datetime
+) -> None:
+    """Het atomaire sluitstuk (aangeroepen BINNEN de registratie-transactie van
+    webauthn_service): geparkeerde hash → gebruiker, link verbruikt, status actief (uitnodiging)
+    resp. alle sessies ingetrokken (herstel), audit. Faalt hier iets, dan rolt de hele
+    registratie terug — passkey én wachtwoord bestaan dan allebei niet."""
+    uitnodiging = session.get(Uitnodiging, uitnodiging_id)
+    if uitnodiging is None or uitnodiging.gebruiker_id != gebruiker.id:
+        raise AuthError("Ongeldig uitnodigingstoken")
+    if uitnodiging.gebruikt_op is not None:
+        raise AuthError("Uitnodiging is al gebruikt")
+    if uitnodiging.verloopt_op < now:
+        raise AuthError("Uitnodiging is verlopen — vraag het kantoor om een nieuwe link")
+    if uitnodiging.wachtwoord_hash_in_wacht is None:
+        raise AuthError("Wachtwoordstap ontbreekt — begin de activatie opnieuw via de link")
+    if gebruiker.status in (GebruikerStatus.GEBLOKKEERD, GebruikerStatus.GEARCHIVEERD):
+        raise AuthError("Account is geblokkeerd — neem contact op met het kantoor")
+
+    gebruiker.wachtwoord_hash = uitnodiging.wachtwoord_hash_in_wacht
+    uitnodiging.wachtwoord_hash_in_wacht = None
     uitnodiging.gebruikt_op = now
-    _intrek_alle_sessies(session, gebruiker.id, now=now)
+    if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value:
+        _intrek_alle_sessies(session, gebruiker.id, now=now)
+        actie = "wachtwoord_hersteld"
+    else:
+        gebruiker.status = GebruikerStatus.ACTIEF
+        actie = "activatie_afgerond"
     record_audit_event(
         session,
         actor_id=gebruiker.id,
         module="platform",
         tabel="gebruiker",
         record_id=gebruiker.id,
-        actie="wachtwoord_hersteld",
+        actie=actie,
         correlatie_id=uuid.uuid4(),
-        nieuwe_waarde={"uitnodiging_id": str(uitnodiging.id), "status": gebruiker.status.value},
+        nieuwe_waarde={"uitnodiging_id": str(uitnodiging.id), "status": gebruiker.status.value, "atomair": True},
     )
-    return AcceptatieResultaat(soort="passkey", passkey_setup_token=create_passkey_setup_token(gebruiker.id))
+
+
+@dataclass(frozen=True)
+class UitnodigingInfo:
+    """Publieke voorkennis over een link (token = het geheim): welke flow hoort erbij, zodat het
+    /activeren-scherm vóór de wachtwoordstap weet of het een externe (passkey, mobiel-first)
+    of een kantoor-activatie (TOTP) is. Bewust minimaal — geen e-mail, geen rol."""
+
+    flow: str  # 'passkey' | 'totp'
+    naam: str
+    herstel: bool
+    verloopt_op: datetime
+
+
+def uitnodiging_info(*, token: str) -> UitnodigingInfo:
+    """Leest zonder te verzilveren; dezelfde drie poorten als accepteren."""
+    now = datetime.now(UTC)
+    with scoped_session(None) as session:
+        uitnodiging = _open_uitnodiging(session, token_hash=_hash_token(token), now=now)
+        gebruiker = session.get(Gebruiker, uitnodiging.gebruiker_id)
+        assert gebruiker is not None
+        return UitnodigingInfo(
+            flow="passkey" if is_externe_app_rol(gebruiker.rol) else "totp",
+            naam=gebruiker.naam,
+            herstel=uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value,
+            verloopt_op=uitnodiging.verloopt_op,
+        )
+
+
+def meld_activatie_probleem(*, token: str) -> str:
+    """Knop "Ik kom er niet uit — meld het kantoor" (mockup activatie-mobiel.html, foutscherm):
+    audit op de gebruiker (systeem-neutraal: de gebruiker zelf is actor) + notificatie aan het
+    kantoor via het gedeelde mailkanaal (fail-zichtbaar in de log, nooit een fout richting de
+    gebruiker — die kan er niets aan doen). Geeft de naam terug voor de bevestigingstekst."""
+    now = datetime.now(UTC)
+    with scoped_session(None) as session:
+        uitnodiging = _open_uitnodiging(session, token_hash=_hash_token(token), now=now)
+        gebruiker = session.get(Gebruiker, uitnodiging.gebruiker_id)
+        assert gebruiker is not None
+        record_audit_event(
+            session,
+            actor_id=gebruiker.id,
+            module="platform",
+            tabel="gebruiker",
+            record_id=gebruiker.id,
+            actie="activatie_probleem_gemeld",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={"uitnodiging_id": str(uitnodiging.id), "soort": uitnodiging.soort},
+        )
+        naam, e_mail = gebruiker.naam, gebruiker.e_mail
+    from app.berichten import uitnodigingsmail
+
+    uitnodigingsmail.verstuur_activatieprobleem_aan_kantoor(naam=naam, e_mail=e_mail)
+    return naam
 
 
 @dataclass(frozen=True)
@@ -300,7 +393,9 @@ def _issue_token_paar(
     return TokenPaar(access_token=access_token, refresh_token=refresh_token, refresh_ttl_seconds=ttl_seconds)
 
 
-def _ontgrendeling_nodig(session: Session, *, apparaat_id: uuid.UUID | None, rol: GebruikerRol, now: datetime) -> bool | None:
+def _ontgrendeling_nodig(
+    session: Session, *, apparaat_id: uuid.UUID | None, rol: GebruikerRol, now: datetime
+) -> bool | None:
     """24-uursvenster (besluit 2026-08-27, `settings.ontgrendel_venster_seconds`): geldt alleen
     voor apparaat-gebonden sessies van externe app-rollen. Anker = laatst_gebruikt_op van het
     apparaat (elke passkey-ceremonie zet 'm; een stille refresh niet) — nooit gezet = ontgrendelen.
@@ -1029,6 +1124,8 @@ class GebruikerOverzicht:
     geblokkeerd_door_naam: str | None
     gearchiveerd_op: datetime | None = None
     gearchiveerd_door_naam: str | None = None
+    # Externe app-rol met wachtwoord maar zonder actieve passkey (28-08, casus Haci).
+    half_geactiveerd: bool = False
 
 
 def lijst_gebruikers(*, actor_id: uuid.UUID, inclusief_gearchiveerd: bool = False) -> list[GebruikerOverzicht]:
@@ -1100,6 +1197,12 @@ def lijst_gebruikers(*, actor_id: uuid.UUID, inclusief_gearchiveerd: bool = Fals
             gearchiveerd_op=g.gearchiveerd_op,
             gearchiveerd_door_naam=(
                 blokkeerder_namen.get(g.gearchiveerd_door) if g.gearchiveerd_door is not None else None
+            ),
+            half_geactiveerd=(
+                is_externe_app_rol(g.rol)
+                and g.wachtwoord_hash is not None
+                and passkeys.get(g.id, 0) == 0
+                and g.status in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY)
             ),
         )
         for g in gebruikers

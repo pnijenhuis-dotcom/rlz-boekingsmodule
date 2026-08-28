@@ -4,6 +4,9 @@ import { apiJson, apiPostJson } from '../api/client'
  * de bestaande auth-endpoints; alleen de gebruikerslijst en "opnieuw mailen" zijn nieuw. */
 
 export interface GebruikerOverzichtDto {
+  /** Half geactiveerd (casus Haci, 28-08): externe rol mét wachtwoord, zónder passkey — de
+   * Herstel-link is de opruimroute. Nieuwe activaties zijn atomair en komen hier niet meer in. */
+  half_geactiveerd: boolean
   id: string
   naam: string
   e_mail: string

@@ -55,3 +55,28 @@ def verstuur_herstelmail(*, naam: str, e_mail: str, token: str, verloopt_op: dat
         f"Administratiekantoor Nijenhuis"
     )
     mail.verzend_mail(naar=e_mail, onderwerp="Nieuw wachtwoord instellen — Administratiekantoor Nijenhuis", tekst=tekst)
+
+
+def verstuur_activatieprobleem_aan_kantoor(*, naam: str, e_mail: str) -> None:
+    """Knop "Ik kom er niet uit — meld het kantoor" uit de mobiele activatieflow (28-08). Gaat
+    naar het kantoor-antwoordadres (berichten_reply_to — de mens, niet het intake-postvak);
+    ontbreekt dat of faalt de mail, dan blijft het audit-event op de gebruiker het spoor — de
+    fout wordt gelogd, nooit aan de gebruiker getoond (die kan er niets aan doen)."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    ontvanger = settings.berichten_reply_to
+    if not ontvanger:
+        logger.warning("Activatieprobleem gemeld door %s (%s) — geen kantoor-adres (BERICHTEN_REPLY_TO)", naam, e_mail)
+        return
+    tekst = (
+        f"{naam} ({e_mail}) meldt vanuit de activatieflow van de app dat de passkey-registratie niet "
+        f"lukt.\n\nEr is niets half geregistreerd: het account staat nog op 'uitgenodigd' en de "
+        f"activatielink blijft geldig tot de vervaldatum. Neem contact op met de gebruiker; lukt het "
+        f"daarna nog niet, stuur dan een nieuwe uitnodiging of herstel-link vanuit Gebruikers & toegang.\n\n"
+        f"Administratiekantoor Nijenhuis — automatisch bericht"
+    )
+    try:
+        mail.verzend_mail(naar=ontvanger, onderwerp=f"Activatie lukt niet — {naam}", tekst=tekst)
+    except mail.MailFout:
+        logger.exception("Activatieprobleem-mail aan het kantoor mislukt (%s)", e_mail)

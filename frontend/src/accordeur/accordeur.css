@@ -690,6 +690,25 @@
   max-width: 340px;
 }
 
+/* Activeringsflow mobiel-first (28-08, mockup activatie-mobiel.html §2): stapteller + vertrouwensregel */
+.acc-stapteller {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--acc-muted);
+}
+.acc-vertrouwen {
+  font-size: 11.5px;
+  color: var(--acc-muted);
+  text-align: center;
+  max-width: 340px;
+}
+.acc-foutdetail {
+  margin-top: 8px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
 /* Login-formulier (volledige login: wachtwoord + passkey) */
 .acc-form {
   width: 100%;

@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
+from app.auth import webauthn_service
 from app.config import settings
 from app.main import app
 from app.security.tokens import create_access_token
@@ -51,6 +52,22 @@ def _nodig_accordeur_uit(beheerder_id: uuid.UUID, administratie_id: uuid.UUID | 
 WACHTWOORD = "een-heel-lang-wachtwoord"
 
 
+def registreer_passkey_atomair(passkey_setup_token: str) -> SoftWebauthnApparaat:
+    """Servicelaag-variant van de passkeystap in de activeringsflow (atomaire activatie 28-08):
+    rondt de uitnodiging af mét de passkey — daarna is het wachtwoord definitief en het account
+    actief. Voor tests die niet via de HTTP-client lopen."""
+    setup = webauthn_service.passkey_setup_uit_token(passkey_setup_token)
+    apparaat = SoftWebauthnApparaat()
+    opties = webauthn_service.registratie_opties(gebruiker_id=setup.gebruiker_id)
+    webauthn_service.voltooi_registratie(
+        gebruiker_id=setup.gebruiker_id,
+        credential=apparaat.registreer(opties),
+        apparaat_naam="Test-toestel",
+        uitnodiging_id=setup.uitnodiging_id,
+    )
+    return apparaat
+
+
 def _activeer_accordeur(
     beheerder_id: uuid.UUID, administratie_id: uuid.UUID | None = None
 ) -> tuple[str, SoftWebauthnApparaat, str]:
@@ -84,9 +101,7 @@ def test_activering_accordeur_via_passkey_en_kantoorrol_blijft_totp(beheerder_id
         json={"naam": "Kantoor", "e_mail": f"{uuid.uuid4()}@test.local", "rol": "boekhouding", "administratie_ids": []},
         headers=_beheerder_bearer(beheerder_id),
     )
-    resp = client.post(
-        "/auth/uitnodigingen/accepteren", json={"token": resp.json()["token"], "wachtwoord": WACHTWOORD}
-    )
+    resp = client.post("/auth/uitnodigingen/accepteren", json={"token": resp.json()["token"], "wachtwoord": WACHTWOORD})
     assert resp.status_code == 200
     assert resp.json()["soort"] == "totp"
     assert resp.json()["totp_setup_token"]
@@ -138,9 +153,7 @@ def test_wachtrij_vereist_voorwaarden_akkoord(beheerder_id: uuid.UUID) -> None:
     assert resp.status_code == 200, resp.text
 
 
-def test_staande_regels_vereisen_voorwaarden_akkoord(
-    beheerder_id: uuid.UUID, administratie_id: uuid.UUID
-) -> None:
+def test_staande_regels_vereisen_voorwaarden_akkoord(beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
     """Nazorg 2026-08-11: het ✓✓-beheer (lijst + intrekken) zit achter dezelfde
     voorwaarden-poort als wachtrij/akkoord/afwijzen — een accordeur zonder vastgelegd akkoord
     kan er niet bij; kantoor-rollen raakt de poort niet."""
@@ -250,9 +263,7 @@ def test_registratie_challenge_verlopen_faalt(beheerder_id: uuid.UUID, admin_eng
     assert "challenge" in resp.json()["detail"].lower()
 
 
-def test_dev_stub_hard_vergrendeld_zonder_setting(
-    beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_dev_stub_hard_vergrendeld_zonder_setting(beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch) -> None:
     """De stub is dubbel vergrendeld: zonder auth_biometrie_dev_stub=True wordt een
     stub-registratie geweigerd, ongeacht de omgeving."""
     # Expliciet pinnen: de suite draait tegen de echte dev-.env, waar de stub voor
@@ -274,9 +285,7 @@ def test_dev_stub_hard_vergrendeld_zonder_setting(
     assert resp.json()["dev_stub"] is False
 
 
-def test_dev_stub_werkt_alleen_buiten_productie(
-    beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_dev_stub_werkt_alleen_buiten_productie(beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch) -> None:
     # jwt_secret vooraf pinnen: buiten dev bestaat er terecht geen fallback-secret, en de
     # tokens van vóór en ná de environment-wissel moeten hetzelfde secret delen.
     monkeypatch.setattr(settings, "jwt_secret", "test-secret-productie-gate-32-bytes!!")
@@ -414,12 +423,16 @@ class TestOntgrendelVenster:
         assert ontgrendeld.status_code == 200, ontgrendeld.text
         assert client.post("/auth/token/vernieuwen").json()["ontgrendeling_nodig"] is False
 
-    def test_nooit_een_ceremonie_geregistreerd_is_fail_closed(self, beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
+    def test_nooit_een_ceremonie_geregistreerd_is_fail_closed(
+        self, beheerder_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
         e_mail, _, _ = _activeer_accordeur(beheerder_id)
         _laatst_gebruikt_terugzetten(admin_engine, e_mail, uren=None)
         assert client.post("/auth/token/vernieuwen").json()["ontgrendeling_nodig"] is True
 
-    def test_venster_is_instelbaar_en_kill_switch_wint(self, beheerder_id: uuid.UUID, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_venster_is_instelbaar_en_kill_switch_wint(
+        self, beheerder_id: uuid.UUID, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         e_mail, _, _ = _activeer_accordeur(beheerder_id)
         # Venster op 1 uur pinnen: 2 uur oud = ontgrendelen.
         monkeypatch.setattr(settings, "ontgrendel_venster_seconds", 3600)

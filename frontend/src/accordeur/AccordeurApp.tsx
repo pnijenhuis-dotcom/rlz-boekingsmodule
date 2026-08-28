@@ -149,6 +149,16 @@ export default function AccordeurApp() {
     const state = location.state as { passkeySetupToken?: string } | null
     return opActiveren ? (state?.passkeySetupToken ?? null) : null
   }, [location, opActiveren])
+  // Mobiel-first + atomaire activatie (28-08): het /activeren-scherm van de kantoor-bundel
+  // stuurt externe rollen hierheen mét de uitnodigingslink in de URL (`?uitnodiging=`), zodat
+  // de drie stappen (wachtwoord → passkey → klaar) in de app-stijl lopen en een refresh de flow
+  // gewoon opnieuw begint — de link blijft verzilverbaar tot de passkey staat.
+  const uitnodigingToken = useMemo(() => {
+    if (!opActiveren) return null
+    const params = new URLSearchParams(location.search)
+    return params.get('uitnodiging')
+  }, [location.search, opActiveren])
+  const uitnodigingHerstel = new URLSearchParams(location.search).get('herstel') === '1'
 
   // Token-loos /activeren (kliktest 2026-08-15): het setup-token leeft alleen in de
   // navigation-state en is na een refresh weg — zonder deze branch viel de app stil terug
@@ -170,7 +180,9 @@ export default function AccordeurApp() {
   }
 
   let inhoud: React.ReactNode
-  if (activatieToken) {
+  if (uitnodigingToken) {
+    inhoud = <AccordeurActiveren uitnodigingToken={uitnodigingToken} herstel={uitnodigingHerstel} naIngelogd={naIngelogd} />
+  } else if (activatieToken) {
     inhoud = <AccordeurActiveren passkeySetupToken={activatieToken} naIngelogd={naIngelogd} />
   } else if (opActiveren && status !== 'uitgelogd') {
     // Zelfherstel (kliktest 2026-08-15, 2e reproductie): scherm herladen ná een geslaagde

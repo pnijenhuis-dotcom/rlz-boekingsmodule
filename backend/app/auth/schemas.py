@@ -38,6 +38,21 @@ class UitnodigingAccepterenRequest(StrikteInvoer):
     wachtwoord: str
 
 
+class UitnodigingInfoResponse(BaseModel):
+    """Publiek, op token: welke activatieflow hoort bij deze link (28-08, mockup
+    activatie-mobiel.html). `flow` = 'passkey' (externe app-rol, mobiel-first + atomair) of
+    'totp' (kantoor). Verzilvert niets; minimaal — geen e-mail, geen rol."""
+
+    flow: str
+    naam: str
+    herstel: bool
+    verloopt_op: datetime
+
+
+class ActivatieProbleemRequest(StrikteInvoer):
+    token: str
+
+
 class UitnodigingAccepterenResponse(BaseModel):
     """`soort` bepaalt de tweede activatiestap: 'totp' (kantoor-rollen; totp-velden gevuld) of
     'passkey' (klant-accordeur; passkey_setup_token gevuld — besluit auth-cadans 2026-08-11)."""
@@ -238,6 +253,10 @@ class GebruikerOverzichtResponse(BaseModel):
     open_herstel_verloopt_op: datetime | None = None
     # Alleen zinvol gevuld voor klant-accordeurs (0 voor kantoorrollen).
     staande_goedkeuringen: int
+    # Half geactiveerd (casus Haci, 28-08): externe app-rol MÉT wachtwoord maar ZONDER actieve
+    # passkey (status actief óf wacht_op_passkey) — de Haci-klasse van vóór de atomaire
+    # activatie; het scherm biedt dan de Herstel-link aan.
+    half_geactiveerd: bool = False
     # Alleen gevuld bij status 'geblokkeerd' (migratie 0052).
     geblokkeerd_op: datetime | None
     geblokkeerd_door_naam: str | None

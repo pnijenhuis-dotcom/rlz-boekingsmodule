@@ -16,6 +16,7 @@ from app.auth import service, webauthn_service
 from app.auth.normalisatie import normaliseer_e_mail
 from app.db.models import GebruikerRol
 from app.security.totp import STEP_SECONDS
+from tests.auth.test_webauthn_cadans import registreer_passkey_atomair
 
 
 def test_normaliseer_e_mail_lowercase_en_trim() -> None:
@@ -59,6 +60,8 @@ def test_accordeur_login_is_case_ongevoelig(beheerder_id: uuid.UUID) -> None:
     )
     acceptatie = service.accepteer_uitnodiging(token=resultaat.token, wachtwoord=wachtwoord)
     assert acceptatie.soort == "passkey"
+    # Atomaire activatie (28-08): het wachtwoord wordt pas definitief mét de passkey-registratie.
+    registreer_passkey_atomair(acceptatie.passkey_setup_token)
 
     login = webauthn_service.start_accordeur_login(e_mail=f"ACCORDEUR.{uniek}@test.local", wachtwoord=wachtwoord)
     assert login.passkey_setup_token

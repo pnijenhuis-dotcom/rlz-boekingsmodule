@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0082
+-- Migratie-head bij deze dump: 0083
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2750,6 +2750,7 @@ CREATE TABLE platform.uitnodiging (
     verloopt_op timestamp with time zone NOT NULL,
     gebruikt_op timestamp with time zone,
     soort text DEFAULT 'uitnodiging'::text NOT NULL,
+    wachtwoord_hash_in_wacht text,
     CONSTRAINT ck_uitnodiging_soort CHECK ((soort = ANY (ARRAY['uitnodiging'::text, 'wachtwoord_herstel'::text])))
 );
 

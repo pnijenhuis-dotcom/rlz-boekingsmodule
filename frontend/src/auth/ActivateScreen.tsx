@@ -1,10 +1,22 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { TokenPaarResponseDto, UitnodigingAccepterenResponseDto } from '../api/types'
+import {
+  haalUitnodigingInfo,
+  haalWebauthnConfig,
+  toetsActivatieApparaat,
+  type UitnodigingInfoDto,
+} from '../accordeur/webauthnClient'
 import { FormFouten, useFormFouten } from '../ui/FormFouten'
 import { useAuth } from './AuthContext'
+
+/** Externe rollen activeren in de app-flow (/accordeur/activeren) mét de link in de URL —
+ * een refresh begint de flow gewoon opnieuw, de link blijft geldig tot de passkey staat. */
+function accordeurActivatiePad(token: string, herstel: boolean): string {
+  return `/accordeur/activeren?uitnodiging=${encodeURIComponent(token)}${herstel ? '&herstel=1' : ''}`
+}
 
 function formatteerSecret(secret: string): string {
   return secret.match(/.{1,4}/g)?.join(' ') ?? secret
@@ -26,6 +38,45 @@ export function ActivateScreen() {
   const isHerstel = searchParams.get('herstel') === '1'
 
   const [stap, setStap] = useState<'wachtwoord' | 'totp'>('wachtwoord')
+  // Mobiel-first activatie externe rollen (besluit Peter 28-08, mockup activatie-mobiel.html):
+  // vóór de wachtwoordstap weten we via de publieke info-route welke flow bij de link hoort.
+  // Extern + telefoon → door naar de app-flow; extern + desktop/twijfel → stop-scherm mét QR
+  // (de link verzilvert hier níéts); kantoor → het bestaande wachtwoord + TOTP hieronder.
+  const [linkToets, setLinkToets] = useState<'bezig' | 'kantoor' | 'stop' | 'ongeldig'>('bezig')
+  const [linkInfo, setLinkInfo] = useState<UitnodigingInfoDto | null>(null)
+  const [linkFout, setLinkFout] = useState<string | null>(null)
+  useEffect(() => {
+    if (!token) return
+    let actief = true
+    ;(async () => {
+      try {
+        const info = await haalUitnodigingInfo(token)
+        if (!actief) return
+        setLinkInfo(info)
+        if (info.flow !== 'passkey') {
+          setLinkToets('kantoor')
+          return
+        }
+        const devStub = await haalWebauthnConfig()
+          .then((c) => c.dev_stub)
+          .catch(() => false)
+        const uitkomst = await toetsActivatieApparaat(devStub)
+        if (!actief) return
+        if (uitkomst === 'doorgaan') {
+          void navigate(accordeurActivatiePad(token, info.herstel), { replace: true })
+          return
+        }
+        setLinkToets('stop')
+      } catch (err) {
+        if (!actief) return
+        setLinkFout(err instanceof ApiError ? err.message : 'De link kon niet worden gecontroleerd.')
+        setLinkToets('ongeldig')
+      }
+    })()
+    return () => {
+      actief = false
+    }
+  }, [token, navigate])
   const [wachtwoord, setWachtwoord] = useState('')
   const [bevestiging, setBevestiging] = useState('')
   const [enrollment, setEnrollment] = useState<UitnodigingAccepterenResponseDto | null>(null)
@@ -48,6 +99,62 @@ export function ActivateScreen() {
     )
   }
 
+  if (linkToets === 'bezig') {
+    return (
+      <div className="auth-shell">
+        <div className="panel auth-card">
+          <h1>{isHerstel ? 'Nieuw wachtwoord instellen' : 'Account activeren'}</h1>
+          <div className="sub">RLZ Boekingsmodule</div>
+          <p className="hint">Link controleren…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (linkToets === 'ongeldig') {
+    return (
+      <div className="auth-shell">
+        <div className="panel auth-card">
+          <h1>{isHerstel ? 'Herstel-link werkt niet meer' : 'Activatielink werkt niet meer'}</h1>
+          <p className="hint">{linkFout}</p>
+          <p className="hint">
+            Al geactiveerd? Log dan gewoon in. Anders vraag je het kantoor om een nieuwe{' '}
+            {isHerstel ? 'herstel-link' : 'uitnodiging'} — er is niets vastgelegd.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (linkToets === 'stop') {
+    // Mockup §1: stop-scherm zonder wachtwoordveld; de QR bevat exact dezelfde activatie-URL.
+    const dezelfdeLink = typeof window !== 'undefined' ? window.location.href : ''
+    return (
+      <div className="auth-shell">
+        <div className="panel auth-card activatie-stop" data-testid="activatie-stopscherm">
+          <h1>Open deze uitnodiging op uw telefoon</h1>
+          <div className="sub">RLZ Boekingsmodule</div>
+          <p className="hint" style={{ marginTop: 0 }}>
+            {linkInfo?.naam ? `${linkInfo.naam}, u` : 'U'} activeert uw account in de app op uw telefoon, met
+            gezichtsherkenning of vingerafdruk. Scan de QR-code met de camera van uw telefoon, of open de link uit
+            de e-mail dáár.
+          </p>
+          <div className="row" style={{ alignItems: 'center' }}>
+            <span id="activeer-stop-qr-label">QR-code met dezelfde activatielink</span>
+            <div
+              role="img"
+              aria-labelledby="activeer-stop-qr-label"
+              style={{ background: '#fff', padding: 12, borderRadius: 8, width: 'fit-content' }}
+            >
+              <QRCodeSVG value={dezelfdeLink} size={180} />
+            </div>
+          </div>
+          <p className="hint">🔒 De link blijft 72 uur geldig · niets is nog vastgelegd</p>
+        </div>
+      </div>
+    )
+  }
+
   const wachtwoordInzenden = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!controleer(e.currentTarget)) return
@@ -63,11 +170,9 @@ export function ActivateScreen() {
         wachtwoord,
       })
       if (resultaat.soort === 'passkey') {
-        // Klant-accordeur (besluit auth-cadans 2026-08-11): geen TOTP maar passkey-registratie
-        // — die stap leeft in de accordeur-PWA-chunk, mét voorwaarden-akkoord erna (blok 3).
-        void navigate('/accordeur/activeren', {
-          state: { passkeySetupToken: resultaat.passkey_setup_token },
-        })
+        // Vangnet: een externe link die toch hier verzilverd wordt (info-route zei 'totp' of
+        // faalde) — door naar de app-flow; de server heeft het wachtwoord alleen geparkeerd.
+        void navigate(accordeurActivatiePad(token, isHerstel), { replace: true })
         return
       }
       setEnrollment(resultaat)

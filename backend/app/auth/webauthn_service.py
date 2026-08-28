@@ -48,7 +48,14 @@ from webauthn.helpers.structs import (
 
 from app.auth.normalisatie import normaliseer_e_mail
 from app.auth.rollen import EXTERNE_APP_ROLLEN, is_externe_app_rol
-from app.auth.service import AuthError, TokenPaar, _hash_token, _issue_token_paar, _login_metadata
+from app.auth.service import (
+    AuthError,
+    TokenPaar,
+    _hash_token,
+    _issue_token_paar,
+    _login_metadata,
+    rond_uitnodiging_af_met_passkey,
+)
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
@@ -170,9 +177,7 @@ def start_accordeur_login(*, e_mail: str, wachtwoord: str, ip_adres: str | None 
             creds = _actieve_credentials(session, gebruiker.id)
             # Een stub-credential telt alleen als "bekend apparaat" zolang de stub actief is —
             # anders zou de client een assertion proberen die nooit kan slagen.
-            heeft = any(not c.is_dev_stub for c in creds) or (
-                dev_stub_actief() and any(c.is_dev_stub for c in creds)
-            )
+            heeft = any(not c.is_dev_stub for c in creds) or (dev_stub_actief() and any(c.is_dev_stub for c in creds))
             resultaat = AccordeurLoginResultaat(
                 passkey_setup_token=create_passkey_setup_token(gebruiker.id), heeft_passkeys=heeft
             )
@@ -206,11 +211,25 @@ def start_accordeur_login(*, e_mail: str, wachtwoord: str, ip_adres: str | None 
 
 
 def gebruiker_id_uit_passkey_setup(token: str) -> uuid.UUID:
+    return passkey_setup_uit_token(token).gebruiker_id
+
+
+@dataclass(frozen=True)
+class PasskeySetup:
+    """Inhoud van een passkey_setup-token: de gebruiker + (alleen in de activerings-/herstelflow,
+    28-08) de uitnodiging waarvan het wachtwoord nog geparkeerd staat."""
+
+    gebruiker_id: uuid.UUID
+    uitnodiging_id: uuid.UUID | None = None
+
+
+def passkey_setup_uit_token(token: str) -> PasskeySetup:
     try:
         payload = decode_token(token, expected_type="passkey_setup")
     except TokenError as exc:
         raise AuthError(str(exc)) from exc
-    return uuid.UUID(payload["sub"])
+    ruw = payload.get("uitnodiging_id")
+    return PasskeySetup(gebruiker_id=uuid.UUID(payload["sub"]), uitnodiging_id=uuid.UUID(ruw) if ruw else None)
 
 
 # --- registratie (nieuw apparaat) -----------------------------------------------------------------
@@ -306,24 +325,50 @@ def _verifieer_en_bewaar_credential(
     return rij
 
 
+_REGISTRATIE_STATUSSEN = (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY, GebruikerStatus.UITGENODIGD)
+
+
+def _registratie_toegestaan(gebruiker: Gebruiker | None, *, uitnodiging_id: uuid.UUID | None) -> Gebruiker:
+    """Status-poort vóór een registratie. `uitgenodigd` mag uitsluitend mét een uitnodiging-id
+    (de atomaire activatie rondt de link in dezelfde transactie af); zonder link-koppeling
+    blijft het oude gedrag: alleen actief/wacht_op_passkey (legacy half-geactiveerde accounts
+    ronden via de accordeur-login af)."""
+    if gebruiker is None:
+        raise AuthError("Account niet (meer) actief")
+    if gebruiker.status == GebruikerStatus.UITGENODIGD and uitnodiging_id is None:
+        raise AuthError("Account is nog niet geactiveerd — gebruik de activatielink")
+    if gebruiker.status not in _REGISTRATIE_STATUSSEN:
+        raise AuthError("Account niet (meer) actief")
+    return gebruiker
+
+
 def voltooi_registratie(
-    *, gebruiker_id: uuid.UUID, credential: dict, apparaat_naam: str | None, ip_adres: str | None = None
+    *,
+    gebruiker_id: uuid.UUID,
+    credential: dict,
+    apparaat_naam: str | None,
+    ip_adres: str | None = None,
+    uitnodiging_id: uuid.UUID | None = None,
 ) -> RegistratieResultaat:
     """Verifieert de attestation, slaat de publieke sleutel per GEBRUIKER+APPARAAT op en geeft
-    een apparaat-gebonden sessie uit. Een gebruiker in wacht_op_passkey (activeringsflow) wordt
-    hier actief — de passkey ís de tweede factor."""
+    een apparaat-gebonden sessie uit. Een gebruiker in wacht_op_passkey (legacy activeringsflow)
+    wordt hier actief — de passkey ís de tweede factor. Mét `uitnodiging_id` (atomaire
+    activatie 28-08) wordt in DEZELFDE transactie het geparkeerde wachtwoord definitief, de
+    link verbruikt en het account actief — faalt de attestation, dan gebeurt niets daarvan."""
     with scoped_session(None, actor_id=gebruiker_id) as session:
-        gebruiker = session.get(Gebruiker, gebruiker_id)
-        if gebruiker is None or gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
-            raise AuthError("Account niet (meer) actief")
+        gebruiker = _registratie_toegestaan(session.get(Gebruiker, gebruiker_id), uitnodiging_id=uitnodiging_id)
         rij = _verifieer_en_bewaar_credential(
             session, gebruiker_id=gebruiker_id, credential=credential, apparaat_naam=apparaat_naam
         )
-        return _rond_registratie_af(session, gebruiker, rij, ip_adres=ip_adres)
+        return _rond_registratie_af(session, gebruiker, rij, ip_adres=ip_adres, uitnodiging_id=uitnodiging_id)
 
 
 def voltooi_registratie_stub(
-    *, gebruiker_id: uuid.UUID, apparaat_naam: str | None, ip_adres: str | None = None
+    *,
+    gebruiker_id: uuid.UUID,
+    apparaat_naam: str | None,
+    ip_adres: str | None = None,
+    uitnodiging_id: uuid.UUID | None = None,
 ) -> RegistratieResultaat:
     """Dev-stub-registratie (zie moduledocstring): geen crypto, wel exact dezelfde flow en
     vastlegging — zichtbaar gemarkeerd met is_dev_stub. Hard geweigerd buiten dev/local.
@@ -335,9 +380,7 @@ def voltooi_registratie_stub(
     if not dev_stub_actief():
         raise AuthError("Biometrie-dev-stub is niet actief")
     with scoped_session(None, actor_id=gebruiker_id) as session:
-        gebruiker = session.get(Gebruiker, gebruiker_id)
-        if gebruiker is None or gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
-            raise AuthError("Account niet (meer) actief")
+        gebruiker = _registratie_toegestaan(session.get(Gebruiker, gebruiker_id), uitnodiging_id=uitnodiging_id)
         bestaande = session.scalars(
             select(WebauthnCredential).where(
                 WebauthnCredential.gebruiker_id == gebruiker_id,
@@ -348,7 +391,7 @@ def voltooi_registratie_stub(
         ).first()
         if bestaande is not None:
             bestaande.laatst_gebruikt_op = datetime.now(UTC)
-            return _rond_registratie_af(session, gebruiker, bestaande, ip_adres=ip_adres)
+            return _rond_registratie_af(session, gebruiker, bestaande, ip_adres=ip_adres, uitnodiging_id=uitnodiging_id)
         rij = WebauthnCredential(
             id=uuid.uuid4(),
             gebruiker_id=gebruiker_id,
@@ -360,12 +403,23 @@ def voltooi_registratie_stub(
             laatst_gebruikt_op=datetime.now(UTC),
         )
         session.add(rij)
-        return _rond_registratie_af(session, gebruiker, rij, ip_adres=ip_adres)
+        return _rond_registratie_af(session, gebruiker, rij, ip_adres=ip_adres, uitnodiging_id=uitnodiging_id)
 
 
 def _rond_registratie_af(
-    session: Session, gebruiker: Gebruiker, rij: WebauthnCredential, *, ip_adres: str | None
+    session: Session,
+    gebruiker: Gebruiker,
+    rij: WebauthnCredential,
+    *,
+    ip_adres: str | None,
+    uitnodiging_id: uuid.UUID | None = None,
 ) -> RegistratieResultaat:
+    if uitnodiging_id is not None:
+        # Atomaire activatie/herstel (28-08): wachtwoord definitief + link verbruikt + status,
+        # in deze transactie — een AuthError hier rolt óók de credential-rij terug.
+        rond_uitnodiging_af_met_passkey(
+            session, gebruiker=gebruiker, uitnodiging_id=uitnodiging_id, now=datetime.now(UTC)
+        )
     if gebruiker.status == GebruikerStatus.WACHT_OP_PASSKEY:
         gebruiker.status = GebruikerStatus.ACTIEF
     record_audit_event(
@@ -450,9 +504,7 @@ def _voltooi_assertie(
     return rij
 
 
-def _voltooi_assertie_stub(
-    session: Session, *, gebruiker_id: uuid.UUID, ip_adres: str | None
-) -> WebauthnCredential:
+def _voltooi_assertie_stub(session: Session, *, gebruiker_id: uuid.UUID, ip_adres: str | None) -> WebauthnCredential:
     if not dev_stub_actief():
         raise AuthError("Biometrie-dev-stub is niet actief")
     rij = session.scalars(
@@ -523,12 +575,7 @@ def gebruiker_id_uit_geldig_refresh_token(refresh_token: str) -> uuid.UUID:
     with scoped_session(None) as session:
         rij = session.scalars(select(RefreshToken).where(RefreshToken.token_hash == token_hash)).one_or_none()
         now = datetime.now(UTC)
-        if (
-            rij is None
-            or rij.gebruikt_op is not None
-            or rij.ingetrokken_op is not None
-            or rij.verloopt_op < now
-        ):
+        if rij is None or rij.gebruikt_op is not None or rij.ingetrokken_op is not None or rij.verloopt_op < now:
             raise AuthError("Sessie verlopen — log opnieuw in")
     return gebruiker_id
 
@@ -655,11 +702,7 @@ def kantoor_login_opties(*, e_mail: str) -> KantoorLoginOpties:
     generieke_fout = "Geen passkey voor dit adres — log in met wachtwoord + TOTP"
     with scoped_session(None) as session:
         gebruiker = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == e_mail)).one_or_none()
-        if (
-            gebruiker is None
-            or not _is_kantoorrol(gebruiker.rol)
-            or gebruiker.status != GebruikerStatus.ACTIEF
-        ):
+        if gebruiker is None or not _is_kantoorrol(gebruiker.rol) or gebruiker.status != GebruikerStatus.ACTIEF:
             raise GeenPasskeys(generieke_fout)
         alle = _actieve_credentials(session, gebruiker.id)
         echte = [c for c in alle if not c.is_dev_stub]
@@ -702,9 +745,7 @@ def login_met_kantoor_passkey(
             else:
                 if credential is None:
                     raise AuthError("WebAuthn-response ontbreekt")
-                rij = _voltooi_assertie(
-                    session, gebruiker_id=gebruiker.id, credential=credential, ip_adres=ip_adres
-                )
+                rij = _voltooi_assertie(session, gebruiker_id=gebruiker.id, credential=credential, ip_adres=ip_adres)
             record_audit_event(
                 session,
                 actor_id=gebruiker.id,

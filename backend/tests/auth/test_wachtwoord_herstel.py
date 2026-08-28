@@ -26,6 +26,7 @@ from tests.auth.test_webauthn_cadans import (
     _bearer,
     _beheerder_bearer,
     client,
+    registreer_passkey_atomair,
 )
 from tests.uren.conftest import maak_gebruiker
 
@@ -34,9 +35,7 @@ NIEUW_WACHTWOORD = "een-nieuw-en-lang-wachtwoord"
 
 def _gebruiker_id_van(e_mail: str, admin_engine: Engine) -> uuid.UUID:
     with admin_engine.connect() as conn:
-        return conn.execute(
-            text("SELECT id FROM platform.gebruiker WHERE e_mail = :m"), {"m": e_mail}
-        ).scalar_one()
+        return conn.execute(text("SELECT id FROM platform.gebruiker WHERE e_mail = :m"), {"m": e_mail}).scalar_one()
 
 
 def _status(admin_engine: Engine, gebruiker_id: uuid.UUID) -> str:
@@ -98,25 +97,21 @@ class TestVolledigeHerstelcyclus:
         assert accept["passkey_setup_token"]
         assert accept["totp_setup_token"] is None
 
-        # Status ongewijzigd, bestaande passkey blijft staan, herstel-link is verbruikt.
+        # ATOMAIR (28-08): het nieuwe wachtwoord is nog NIET definitief en de link nog NIET
+        # verbruikt — dat gebeurt pas samen met de passkey-registratie. Status ongewijzigd,
+        # bestaande passkey blijft staan, oude wachtwoord + sessie werken nog.
         assert _status(admin_engine, gebruiker_id) == "actief"
         rij = _rij(beheerder_id, gebruiker_id)
         assert rij["aantal_passkeys"] == 1
-        assert rij["open_herstel_verloopt_op"] is None
-
-        # 4. Nieuw wachtwoord werkt, het oude niet meer (accordeur-wachtwoordstap).
+        assert rij["open_herstel_verloopt_op"] is not None
         resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": NIEUW_WACHTWOORD})
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["heeft_passkeys"] is True
-        resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": WACHTWOORD})
         assert resp.status_code == 401
+        resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": WACHTWOORD})
+        assert resp.status_code == 200, resp.text
 
-        # 5. Lopende sessies zijn ingetrokken: de refresh-cookie van de oude activatie is dood.
-        resp = client.post("/auth/token/vernieuwen")
-        assert resp.status_code == 401, resp.text
-
-        # 6. "Direct door naar apparaat-registratie": met het setup-token registreert het nieuwe
+        # 4. "Direct door naar apparaat-registratie": met het setup-token registreert het nieuwe
         #    apparaat en krijgt meteen een werkende sessie — twee apparaten, niets verwijderd.
+        #    In dezelfde transactie: wachtwoord definitief, link verbruikt, oude sessies dood.
         nieuw_apparaat = SoftWebauthnApparaat()
         setup = _bearer(accept["passkey_setup_token"])
         resp = client.post("/auth/webauthn/registratie/opties", headers=setup)
@@ -128,7 +123,31 @@ class TestVolledigeHerstelcyclus:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["access_token"]
-        assert _rij(beheerder_id, gebruiker_id)["aantal_passkeys"] == 2
+        rij = _rij(beheerder_id, gebruiker_id)
+        assert rij["aantal_passkeys"] == 2
+        assert rij["open_herstel_verloopt_op"] is None
+
+        # 5. Nieuw wachtwoord werkt, het oude niet meer (accordeur-wachtwoordstap).
+        resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": NIEUW_WACHTWOORD})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["heeft_passkeys"] is True
+        resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": WACHTWOORD})
+        assert resp.status_code == 401
+
+        # 6. Lopende sessies van vóór het herstel zijn ingetrokken: alleen de sessie van de
+        #    zojuist afgeronde registratie leeft nog (de oude activatie-sessie is dood).
+        with admin_engine.connect() as conn:
+            open_sessies = conn.execute(
+                text(
+                    "SELECT count(*) FROM platform.refresh_token WHERE gebruiker_id = :g AND ingetrokken_op IS NULL"
+                ),
+                {"g": gebruiker_id},
+            ).scalar_one()
+            totaal = conn.execute(
+                text("SELECT count(*) FROM platform.refresh_token WHERE gebruiker_id = :g"), {"g": gebruiker_id}
+            ).scalar_one()
+        assert open_sessies == 1
+        assert totaal >= 2
 
         # 7. Beide kanten geauditeerd: de beheerhandeling op de link, de verzilvering op de gebruiker.
         assert _audit_acties(admin_engine, uuid.UUID(herstel["uitnodiging_id"])) == [
@@ -138,8 +157,11 @@ class TestVolledigeHerstelcyclus:
         del oud_access  # access-JWT's blijven tot hun eigen expiry geldig — bewust (bestaand model).
 
     def test_wacht_op_passkey_account_mag_ook_herstellen(self, beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
-        """Wachtwoord gezet maar registratie nooit afgerond = ook 'wachtwoord ooit gezet'; de
-        herstel-link laat de status ongemoeid (registratie maakt hem later actief, 0040-lijn)."""
+        """LEGACY half-geactiveerd account (de Haci-klasse van vóór de atomaire activatie 28-08:
+        wachtwoord gezet, registratie nooit afgerond, status wacht_op_passkey) — via de nieuwe
+        flow ontstaat die staat niet meer, dus wordt hij hier direct in de DB nagebootst. De
+        gebruikerslijst markeert 'm als half geactiveerd, de herstel-link is de opruimroute:
+        verzilveren + passkey maakt het account actief."""
         resultaat = service.maak_uitnodiging(
             actor_id=beheerder_id,
             naam="Half Klaar",
@@ -147,12 +169,22 @@ class TestVolledigeHerstelcyclus:
             rol=GebruikerRol.ZZPER,
             administratie_ids=[],
         )
-        service.accepteer_uitnodiging(token=resultaat.token, wachtwoord=WACHTWOORD)
-        assert _status(admin_engine, resultaat.gebruiker_id) == "wacht_op_passkey"
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE platform.gebruiker SET status = 'wacht_op_passkey', wachtwoord_hash = 'legacy-hash' "
+                    "WHERE id = :id"
+                ),
+                {"id": resultaat.gebruiker_id},
+            )
+        assert _rij(beheerder_id, resultaat.gebruiker_id)["half_geactiveerd"] is True
         herstel = service.maak_herstel_link(actor_id=beheerder_id, gebruiker_id=resultaat.gebruiker_id)
         acceptatie = service.accepteer_uitnodiging(token=herstel.resultaat.token, wachtwoord=NIEUW_WACHTWOORD)
         assert acceptatie.soort == "passkey"
         assert _status(admin_engine, resultaat.gebruiker_id) == "wacht_op_passkey"
+        registreer_passkey_atomair(acceptatie.passkey_setup_token)
+        assert _status(admin_engine, resultaat.gebruiker_id) == "actief"
+        assert _rij(beheerder_id, resultaat.gebruiker_id)["half_geactiveerd"] is False
 
 
 class TestEenWerkendeLinkTegelijk:
@@ -166,7 +198,10 @@ class TestEenWerkendeLinkTegelijk:
             service.accepteer_uitnodiging(token=eerste.resultaat.token, wachtwoord=NIEUW_WACHTWOORD)
         acceptatie = service.accepteer_uitnodiging(token=tweede.resultaat.token, wachtwoord=NIEUW_WACHTWOORD)
         assert acceptatie.soort == "passkey"
-        # Eenmalig: verzilverd = verbruikt.
+        # Atomair (28-08): de wachtwoordstap verbruikt de link nog niet — her-openen mag (flow
+        # opnieuw), pas de passkey-registratie verzilvert. Daarna: eenmalig = verbruikt.
+        acceptatie = service.accepteer_uitnodiging(token=tweede.resultaat.token, wachtwoord=NIEUW_WACHTWOORD)
+        registreer_passkey_atomair(acceptatie.passkey_setup_token)
         with pytest.raises(service.AuthError, match="al gebruikt"):
             service.accepteer_uitnodiging(token=tweede.resultaat.token, wachtwoord=NIEUW_WACHTWOORD)
 

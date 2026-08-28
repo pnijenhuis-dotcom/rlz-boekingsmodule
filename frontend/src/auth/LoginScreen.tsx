@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { haalWebauthnConfig, ondertekenAssertie, webauthnBeschikbaar } from '../accordeur/webauthnClient'
+import { haalWebauthnConfig, ondertekenAssertieMetMeta, webauthnBeschikbaar } from '../accordeur/webauthnClient'
 import { ApiError, apiPostJson, BACKEND_ONBEREIKBAAR_MELDING } from '../api/client'
 import type { TokenPaarResponseDto } from '../api/types'
 import { FormFouten, useFormFouten } from '../ui/FormFouten'
 import { useAuth } from './AuthContext'
+import { markeerCrossDeviceLogin } from './passkeyBanner'
 import { kantoorLoginOpties, kantoorLoginVoltooien } from './passkeyApi'
 
 const LOGIN_VELD_LABELS: Record<string, string> = {
@@ -65,8 +66,11 @@ export function LoginScreen() {
       }
       let paar: TokenPaarResponseDto
       if (opties.opties !== null && !stubOmgeving) {
-        const credential = await ondertekenAssertie(opties.opties)
+        const { credential, crossDevice } = await ondertekenAssertieMetMeta(opties.opties)
         paar = await kantoorLoginVoltooien(eMail, { credential })
+        // Kwam de passkey van een ánder apparaat (QR-flow), dan stelt de shell éénmalig voor om
+        // op dít apparaat een passkey toe te voegen (28-08; géén eigen push-login).
+        if (crossDevice) markeerCrossDeviceLogin()
       } else if (opties.dev_stub) {
         paar = await kantoorLoginVoltooien(eMail, { dev_stub: true })
       } else {

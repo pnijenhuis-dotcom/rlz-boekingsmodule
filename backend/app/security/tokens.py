@@ -81,9 +81,7 @@ def create_access_token(
     )
 
 
-def create_refresh_token(
-    gebruiker_id: uuid.UUID, *, ttl_seconds: int | None = None, now: float | None = None
-) -> str:
+def create_refresh_token(gebruiker_id: uuid.UUID, *, ttl_seconds: int | None = None, now: float | None = None) -> str:
     return _issue(
         gebruiker_id=gebruiker_id,
         token_type="refresh",
@@ -104,15 +102,22 @@ def create_totp_setup_token(
 
 
 def create_passkey_setup_token(
-    gebruiker_id: uuid.UUID, *, ttl_seconds: int | None = None, now: float | None = None
+    gebruiker_id: uuid.UUID,
+    *,
+    ttl_seconds: int | None = None,
+    now: float | None = None,
+    uitnodiging_id: uuid.UUID | None = None,
 ) -> str:
     """Tussentoken ná een geslaagde wachtwoordstap (accordeur-login op een nieuw apparaat, of de
     activeringsflow) — machtigt uitsluitend het afronden van de passkey-registratie/-assertion,
-    nooit een API-call (geen access-type)."""
+    nooit een API-call (geen access-type). `uitnodiging_id` (atomaire activatie 28-08, migratie
+    0083) koppelt de registratie aan de uitnodigings-/herstel-link waarvan het wachtwoord nog
+    geparkeerd staat — alleen dan wordt de link bij de registratie verzilverd."""
     return _issue(
         gebruiker_id=gebruiker_id,
         token_type="passkey_setup",
         ttl_seconds=ttl_seconds if ttl_seconds is not None else settings.jwt_passkey_setup_ttl_seconds,
+        extra={"uitnodiging_id": str(uitnodiging_id)} if uitnodiging_id is not None else None,
         now=now,
     )
 

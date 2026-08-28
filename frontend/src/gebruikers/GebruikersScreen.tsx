@@ -388,6 +388,20 @@ export function GebruikersScreen() {
     }
   }
 
+  /** Casus Haci (28-08): wachtwoord gezet, passkey nooit gelukt — de Herstel-link (rechts) ruimt
+   * dit op. Nieuwe activaties zijn atomair; dit is de terugwerkende-kracht-detectie. */
+  function halfGeactiveerdBadge(g: GebruikerOverzichtDto) {
+    if (!g.half_geactiveerd) return null
+    return (
+      <>
+        {' '}
+        <Badge variant="warn" title="Wachtwoord staat, passkey ontbreekt — stuur een herstel-link">
+          half geactiveerd — geen passkey
+        </Badge>
+      </>
+    )
+  }
+
   function herstelBadge(g: GebruikerOverzichtDto) {
     if (!g.open_herstel_verloopt_op) return null
     return (
@@ -879,6 +893,7 @@ export function GebruikersScreen() {
                             {archiveringDetail(g)}
                           </>
                         )}
+                        {halfGeactiveerdBadge(g)}
                         {herstelBadge(g)}
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
                       </td>

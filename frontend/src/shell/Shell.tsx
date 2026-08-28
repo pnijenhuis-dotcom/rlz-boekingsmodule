@@ -3,6 +3,7 @@
 // alleen vormgeving; de navigatie-items en routes zijn ongewijzigd (IA-verbouwing = fase 2).
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { PasskeyToevoegenBanner } from '../auth/PasskeyToevoegenBanner'
 import { isMonoKlant, planningMenuPad, useMijnToegang } from '../auth/useMijnToegang'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { ThemaKnop } from '../ui/ThemaKnop'
@@ -75,6 +76,8 @@ export function Shell() {
             </div>
           </div>
           <div className="content">
+            {/* Eenmalig ná een cross-device-passkey-login (28-08): passkey op dít apparaat toevoegen. */}
+            <PasskeyToevoegenBanner />
             <Outlet />
           </div>
         </div>

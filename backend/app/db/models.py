@@ -333,6 +333,10 @@ class Uitnodiging(Base):
     soort: Mapped[str] = mapped_column(
         Text, default=UitnodigingSoort.UITNODIGING.value, server_default=UitnodigingSoort.UITNODIGING.value
     )
+    # Atomaire activatie externe rollen (migratie 0083, besluit 28-08): de wachtwoordstap parkeert
+    # de hash hier; pas de geslaagde passkey-registratie zet 'm op de gebruiker en verbruikt de
+    # link. Kantoor-rollen gebruiken dit veld niet.
+    wachtwoord_hash_in_wacht: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class RefreshToken(Base):

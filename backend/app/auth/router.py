@@ -139,6 +139,33 @@ def uitnodiging_aanmaken(
     )
 
 
+@router.get("/uitnodigingen/info", response_model=schemas.UitnodigingInfoResponse)
+def uitnodiging_info(token: str) -> schemas.UitnodigingInfoResponse:
+    """Publiek, op token (= het geheim): het /activeren-scherm moet vóór de wachtwoordstap weten
+    of dit een externe activatie is (mobiel-first stop-scherm op een desktop, 28-08) of een
+    kantoor-activatie. Verzilvert niets; ongeldig/gebruikt/verlopen = 400 met dezelfde
+    meldingen als accepteren."""
+    try:
+        info = service.uitnodiging_info(token=token)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return schemas.UitnodigingInfoResponse(
+        flow=info.flow, naam=info.naam, herstel=info.herstel, verloopt_op=info.verloopt_op
+    )
+
+
+@router.post("/uitnodigingen/activatie-probleem", status_code=status.HTTP_204_NO_CONTENT)
+def activatie_probleem_melden(payload: schemas.ActivatieProbleemRequest) -> Response:
+    """Foutscherm mobiele activatie: "Ik kom er niet uit — meld het kantoor" (28-08). Audit op
+    de gebruiker + mail aan het kantoor-antwoordadres; mailfalen is gelogd, nooit een fout
+    richting de gebruiker."""
+    try:
+        service.meld_activatie_probleem(token=payload.token)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/uitnodigingen/accepteren", response_model=schemas.UitnodigingAccepterenResponse)
 def uitnodiging_accepteren(
     payload: schemas.UitnodigingAccepterenRequest,
@@ -265,6 +292,7 @@ def gebruikers_lijst(
                 geblokkeerd_door_naam=item.geblokkeerd_door_naam,
                 gearchiveerd_op=item.gearchiveerd_op,
                 gearchiveerd_door_naam=item.gearchiveerd_door_naam,
+                half_geactiveerd=item.half_geactiveerd,
             )
             for item in items
         ]
@@ -492,13 +520,18 @@ def scope_verwijderen(
 # --- accordeur-cadans: passkeys/WebAuthn (migratie 0040, besluit 2026-08-11) ----------------------
 
 
-def _passkey_setup_gebruiker(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> uuid.UUID:
+def _passkey_setup(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> webauthn_service.PasskeySetup:
     """Bearer = het passkey_setup-token uit de wachtwoordstap (accordeur-login) of de
-    activeringsflow — machtigt uitsluitend het afronden van registratie/assertion."""
+    activeringsflow — machtigt uitsluitend het afronden van registratie/assertion. Draagt in
+    de activerings-/herstelflow de uitnodiging-id mee (atomaire activatie 28-08)."""
     try:
-        return webauthn_service.gebruiker_id_uit_passkey_setup(credentials.credentials)
+        return webauthn_service.passkey_setup_uit_token(credentials.credentials)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+
+def _passkey_setup_gebruiker(setup: webauthn_service.PasskeySetup = Depends(_passkey_setup)) -> uuid.UUID:
+    return setup.gebruiker_id
 
 
 @router.get("/webauthn/config", response_model=schemas.WebauthnConfigResponse)
@@ -538,22 +571,28 @@ def webauthn_registratie_voltooien(
     payload: schemas.WebauthnRegistratieVoltooienRequest,
     request: Request,
     response: Response,
-    gebruiker_id: uuid.UUID = Depends(_passkey_setup_gebruiker),
+    setup: webauthn_service.PasskeySetup = Depends(_passkey_setup),
 ) -> schemas.TokenPaarResponse:
-    """Rondt de registratie van dít apparaat af en logt meteen in (apparaat-gebonden sessie)."""
+    """Rondt de registratie van dít apparaat af en logt meteen in (apparaat-gebonden sessie).
+    In de activerings-/herstelflow (token mét uitnodiging-id) wordt in dezelfde transactie het
+    geparkeerde wachtwoord definitief en de link verbruikt — atomair (28-08)."""
     try:
         if payload.dev_stub:
             resultaat = webauthn_service.voltooi_registratie_stub(
-                gebruiker_id=gebruiker_id, apparaat_naam=payload.apparaat_naam, ip_adres=_client_ip(request)
+                gebruiker_id=setup.gebruiker_id,
+                apparaat_naam=payload.apparaat_naam,
+                ip_adres=_client_ip(request),
+                uitnodiging_id=setup.uitnodiging_id,
             )
         else:
             if payload.credential is None:
                 raise service.AuthError("WebAuthn-response ontbreekt")
             resultaat = webauthn_service.voltooi_registratie(
-                gebruiker_id=gebruiker_id,
+                gebruiker_id=setup.gebruiker_id,
                 credential=payload.credential,
                 apparaat_naam=payload.apparaat_naam,
                 ip_adres=_client_ip(request),
+                uitnodiging_id=setup.uitnodiging_id,
             )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
