@@ -622,7 +622,15 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   "accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist" + batch-id, eenmalige banner op de
   documentenlijst (`GET …/accordering/vervallen-meldingen`); herstelroute = bulk "Ter accordering
   aanbieden" op de tab Klaar om te boeken (`POST …/accordering/documenten/bulk-aanbieden`, zelfde
-  poorten per document, overgeslagen mét reden — punt 2b).** Klant-app = PWA + store-apps
+  poorten per document, overgeslagen mét reden — punt 2b).** **Ná het laatste akkoord BLIJFT het
+  document op ter_accordering tot de boeking staat (bugfix-run 28-08 — vóór de fix ging het éérst
+  naar klaar_om_te_boeken en bleef het dáár stil hangen zodra de boekpoging faalde; casus Kempen
+  Facilities 27-08, ±42 documenten): elke mislukking = persistente `boek_fout` op de ronde +
+  tijdlijnreden + audit, controlescherm-sectie mét "Opnieuw boeken (klant-akkoord compleet)", lijst-chip
+  "boeken ná akkoord mislukt"; poort telt alleen de LAATSTE ronde én het bedrag mag niet gewijzigd zijn;
+  élke ⚙-systeemovergang draagt een `reden` (vangnet in `_schrijf_overgang`); herstel bestaande gevallen
+  = `make accordering-herstel-boeken DRY_RUN=1` eerst, uitvoeren alleen op Peters go — BESLISSINGEN
+  "BUGFIX-RUN 28-08".** Klant-app = PWA + store-apps
   (besluit Peter 2026-08-14: de accordeur-app wordt óók uitgebracht als native App Store- én
   Google Play-app; de gebouwde PWA/webcode is de basis via een native schil, bv. Capacitor —
   PWA blijft interim + terugval; aandachtspunten native passkey-integratie (WebAuthn in een
