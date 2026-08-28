@@ -664,6 +664,15 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
         # Autoboeken-opt-in per leverancier (blok 2, 2026-08-09): post-commit, systeem-actor;
         # elke uitkomst geauditeerd zodra de opt-in aanstaat. Een fout hier mag de
         # upload/worker nooit laten falen — het document blijft dan gewoon mensenwerk.
+        from app.voorraad import service as voorraad_service  # lokaal: houdt de importgraaf klein
+
+        try:
+            # Blok D 28-08: instroom-feiten (regel-niveau) voor de voorraad-aansluiting — alleen bij
+            # de opt-in van de administratie; signalering, nooit een blokkade.
+            voorraad_service.registreer_inkoopregels(administratie_id=administratie_id, document_id=document_id)
+        except Exception:  # noqa: BLE001 — MI-laag, nooit een blokkade
+            logger.exception("Voorraad-registratie (inkoop) mislukt voor document %s", document_id)
+
         from app.documenten import autoboeken  # lokaal: houdt de importgraaf klein
 
         try:

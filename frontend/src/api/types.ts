@@ -532,6 +532,8 @@ export interface AdministratieInstellingenDto {
   /** Afdelingen (blok A 28-08, migratie 0084): AAN = afdeling verplicht op élk inkoopdocument +
    * accorderingsroute per afdeling; UIT = veld onzichtbaar. */
   afdelingen_ingeschakeld: boolean
+  /** Voorraad bijhouden (blok D 28-08, migratie 0086): opt-in controle-laag mi-schema. */
+  voorraad_ingeschakeld: boolean
   /** Koppelstand (wizard 26-08 punt 5): RLZ-id, webservice-gebruiker (null = geen credential —
    * nooit het wachtwoord) en of de laatste rechten-probe groen was (null = nog nooit). */
   rlz_admin_id?: string | null

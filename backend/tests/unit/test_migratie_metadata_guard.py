@@ -59,7 +59,7 @@ class TestMetadataDektLiveTestdatabase:
             inspector = inspect(engine)
             db_tabellen = {
                 f"{schema}.{tabel}"
-                for schema in ("platform", "boekhouding")
+                for schema in ("platform", "boekhouding", "mi")
                 for tabel in inspector.get_table_names(schema=schema)
             }
         finally:

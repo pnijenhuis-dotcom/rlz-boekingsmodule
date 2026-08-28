@@ -35,6 +35,7 @@ from app.sync.router import router as sync_router
 from app.uren.router import router as uren_router
 from app.materiaal.router import router as materiaal_router
 from app.verkoop.router import router as verkoop_router
+from app.voorraad.router import router as voorraad_router
 from app.waarborg.router import router as waarborg_router
 from app.zoeken.router import router as zoeken_router
 
@@ -171,6 +172,7 @@ app.include_router(sync_router)
 app.include_router(geheugen_router)
 app.include_router(omzet_router)
 app.include_router(verkoop_router)
+app.include_router(voorraad_router)
 app.include_router(waarborg_router)
 app.include_router(projecten_koppelvlak_router)
 app.include_router(registersync_router)

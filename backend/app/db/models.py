@@ -154,6 +154,10 @@ class Administratie(Base):
     # verplicht op élk inkoopdocument (blokkerende check) + accorderingsroute per afdeling; UIT =
     # veld onzichtbaar. Beheerder-only; aanzetten maakt de terugval-afdeling "Algemeen" aan.
     afdelingen_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Voorraad bijhouden (migratie 0086, bouwrun 28-08 blok D): opt-in voor de voorraad-aansluiting
+    # (controle-laag in het mi-schema; nooit RLZ-writes). Beheerder-only, default UIT — aan voor
+    # Universal Verkoop pas op Peters klik.
+    voorraad_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Signaal >N uur per dag (steigerbouw-run blok A6, migratie 0072): som van de ingediende uren
     # per persoon per kalenderdag over álle weekstaten heen boven deze drempel = oranje vlag bij
     # de keuring + zichtbaar voor kantoor. Geen blokkade. Default 12, per administratie instelbaar.

@@ -60,6 +60,10 @@ class UrenDagmaxDto(StrikteInvoer):
     dagmax_uren: Decimal = Field(gt=0, le=24)
 
 
+class VoorraadInstellingDto(StrikteInvoer):
+    ingeschakeld: bool
+
+
 class VerkoopAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
@@ -97,6 +101,8 @@ class AdministratieInstellingenDto(BaseModel):
     uren_dagmax_uren: Decimal = Decimal("12")
     # Afdelingen-toggle (blok A 28-08, migratie 0084, project_verplicht-patroon).
     afdelingen_ingeschakeld: bool = False
+    # Voorraad bijhouden (blok D 28-08, migratie 0086) — opt-in controle-laag mi-schema.
+    voorraad_ingeschakeld: bool = False
     # Koppelstand (wizard 26-08 punt 5): RLZ-administratie-id, webservice-gebruiker (None = geen
     # credential in de store — nooit het wachtwoord) en of de laatste rechten-probe groen was.
     rlz_admin_id: str | None = None

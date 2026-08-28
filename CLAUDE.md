@@ -974,6 +974,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (0019-patroon, Beheerder-only, audit, server-side incl. menu/standen/zoeken/API;
   klantscope blijft eronder gelden). Bouwstatus: zie BESLISSINGEN "Ontwerpronde uren &
   uitvoerder + meerwerk-kantoor" + "UREN & MEERWERK — BOUW".
+- **Voorraad-aansluiting fase 1 (bouwrun 28-08 blok D, mockup `voorraad-aansluiting.html`,
+  migratie 0086 — eerste bewoner van het `mi`-schema):** controle-laag, géén tweede
+  voorraadadministratie en NOOIT RLZ-writes. Opt-in `voorraad_ingeschakeld` (Beheerder-only, default
+  UIT; Universal Verkoop op Peters klik). Instroom = regel-niveau feiten uit het inkoop-veldvoorstel
+  (AI-regelschema levert nu óók eenheid `e` + stuksprijs `p`), uitstroom fase 1 = verkoopfactuur-
+  regels van de in de app geboekte verkoopdocumenten (UBL-hoeveelheden — RLZ-Lines/Odoo =
+  parkeerpost). Normalisatie VOLAUTOMATISCH: dienst-regel zonder AI, bestaande regel deterministisch,
+  eerste match = AI-voorstel (`ClaudeExtractieClient.vraag_json`, zelfde kostenpoort) direct
+  toegepast, onzeker telt mee mét vlag, geen AI = "niet genormaliseerd" (prominente teller);
+  correctie optioneel en herrekent historie. Aansluitscherm (menu Inzicht › Voorraad): per
+  artikelgroep begin + inkoop − verkoop = theoretisch vs telling, tolerantie 1% default, bron per
+  kolom, drill-down + dagstanden. `app/voorraad/`; BESLISSINGEN "BOUWRUN 28-08 AVOND" blok D.
 - **Zoeken**: globaal over boekingen (incl. archief + RLZ-boekstuk + PDF), accorderingshistorie
   — **GEBOUWD + GETEST (2026-08-09)**: `backend/app/zoeken/` + `frontend/src/zoeken/`,
   scope-veilig per administratie (RLS + server-side), doorzoekt kopgegevens + lokaal

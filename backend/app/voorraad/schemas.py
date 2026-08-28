@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+import uuid
+from datetime import date
+from decimal import Decimal
+
+from pydantic import BaseModel, Field
+
+from app.schemas_basis import StrikteInvoer
+
+
+class GroepAansluitingDto(BaseModel):
+    artikelgroep_id: uuid.UUID
+    naam: str
+    eenheid: str
+    tolerantie_pct: Decimal
+    begin: Decimal
+    inkoop: Decimal
+    verkoop: Decimal
+    theoretisch: Decimal
+    systeemstand: Decimal | None = None
+    telling_datum: date | None = None
+    verschil: Decimal | None = None
+    verschil_pct: Decimal | None = None
+    signaal: str
+    onzeker_pct: Decimal
+    regels_in: int
+    regels_uit: int
+
+
+class AansluitingDto(BaseModel):
+    administratie_id: uuid.UUID
+    van: date
+    tot: date
+    groepen: list[GroepAansluitingDto]
+    niet_genormaliseerd_in: int
+    niet_genormaliseerd_uit: int
+    onzeker_totaal: int
+    regels_totaal: int
+    # Bron per kolom (mockup-beslispunt 2: "instroom extern vs uitstroom intern" altijd herleidbaar).
+    bronnen: dict[str, str]
+
+
+class DagStandDto(BaseModel):
+    datum: date
+    inkoop: Decimal
+    verkoop: Decimal
+    stand: Decimal
+
+
+class RegelDto(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    richting: str
+    bron: str
+    datum: date
+    relatie_naam: str | None = None
+    artikeltekst: str
+    aantal: Decimal | None = None
+    eenheid: str | None = None
+    prijs: Decimal | None = None
+    netto_bedrag: Decimal | None = None
+    artikelgroep_id: uuid.UUID | None = None
+    artikelgroep_naam: str | None = None
+    normalisatie_status: str
+    normalisatie_zekerheid: Decimal | None = None
+
+
+class GroepDto(BaseModel):
+    id: uuid.UUID
+    naam: str
+    eenheid: str
+    tolerantie_pct: Decimal
+    actief: bool
+
+
+class GroepAanmakenDto(StrikteInvoer):
+    naam: str = Field(min_length=1, max_length=80)
+    eenheid: str = Field(default="st", max_length=16)
+    tolerantie_pct: Decimal = Field(default=Decimal("1.00"), ge=0, le=100)
+
+
+class TolerantieDto(StrikteInvoer):
+    tolerantie_pct: Decimal = Field(ge=0, le=100)
+
+
+class TellingInvoerDto(StrikteInvoer):
+    artikelgroep_id: uuid.UUID
+    datum: date
+    aantal: Decimal = Field(ge=0)
+    opmerking: str | None = Field(default=None, max_length=500)
+
+
+class CorrectieDto(StrikteInvoer):
+    regel_id: uuid.UUID
+    artikelgroep_id: uuid.UUID | None = None
+    uitgesloten: bool = False
+
+
+class HerrekenResultaatDto(BaseModel):
+    inkoop_documenten: int
+    inkoop_regels: int
+    verkoop_documenten: int
+    verkoop_regels: int
+
+
+class CorrectieResultaatDto(BaseModel):
+    herrekend: int

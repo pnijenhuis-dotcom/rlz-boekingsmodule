@@ -38,6 +38,7 @@ def administratie_instellingen_lijst(
                 uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
                 uren_dagmax_uren=r.uren_dagmax_uren,
                 afdelingen_ingeschakeld=r.afdelingen_ingeschakeld,
+                voorraad_ingeschakeld=r.voorraad_ingeschakeld,
                 rlz_admin_id=r.rlz_admin_id,
                 webservice_username=r.webservice_username,
                 probe_groen=r.probe_groen,
@@ -337,6 +338,25 @@ def eigenaar_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return schemas.EigenaarDto(eigenaar_gebruiker_id=eigenaar)
+
+
+@router.put(
+    "/administraties/{administratie_id}/voorraad-instelling",
+    response_model=schemas.VoorraadInstellingDto,
+)
+def voorraad_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.VoorraadInstellingDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.VoorraadInstellingDto:
+    """Opt-in "Voorraad bijhouden" (blok D 28-08) — Beheerder-only, default UIT."""
+    try:
+        ingeschakeld = service.zet_voorraad_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.VoorraadInstellingDto(ingeschakeld=ingeschakeld)
 
 
 @router.get(

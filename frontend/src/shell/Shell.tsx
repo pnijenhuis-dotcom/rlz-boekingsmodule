@@ -55,6 +55,9 @@ export function Shell() {
           <div className="nav-kop">Inzicht</div>
           <NavItem to="/zoeken">Zoeken</NavItem>
           <NavItem to="/archief">Archief</NavItem>
+          {/* Voorraad-aansluiting (blok D 28-08): controle-laag per administratie mét de opt-in
+              "Voorraad bijhouden" — het scherm zelf meldt leesbaar als de opt-in uit staat. */}
+          <NavItem to="/voorraad">Voorraad</NavItem>
           <div className="nav-kop">Beheer</div>
           {/* Gebruikers & toegang (fase 3, 15-08) is Beheerder-only — het endpoint weigert
               andere rollen, dus het menu-item verschijnt daar ook niet. */}

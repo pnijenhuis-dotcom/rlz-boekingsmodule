@@ -84,6 +84,14 @@ export function zetAfdelingenInstelling(administratieId: string, ingeschakeld: b
   })
 }
 
+/** Opt-in "Voorraad bijhouden" (blok D 28-08, migratie 0086) — Beheerder-only, default UIT. */
+export function zetVoorraadInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
+  return apiJson(`/administraties/${administratieId}/voorraad-instelling`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function zetProjectInstelling(administratieId: string, verplicht: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/project-instelling`, {
     ...PUT_JSON,

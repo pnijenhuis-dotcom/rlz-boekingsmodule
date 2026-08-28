@@ -929,6 +929,26 @@ def _zet_is_vastgoed(args: argparse.Namespace, *, is_vastgoed: bool) -> int:
     return 0
 
 
+def _zet_voorraad(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Opt-in "Voorraad bijhouden" (migratie 0086, blok D 28-08): zelfde patroon als de andere
+    toggles; Beheerder als audit_event-actor, default UIT."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_voorraad_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"voorraad_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    return 0
+
+
 def _zet_uren_meerwerk(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Opt-in uren & meerwerk (migratie 0056, steigerbouw-tak — BOUW GO 2026-08-21): zelfde
     patroon als de andere toggles; Beheerder als audit_event-actor, default UIT."""
@@ -1361,6 +1381,8 @@ def main(argv: list[str] | None = None) -> int:
         ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
         ("uren-meerwerk-aan", "Zet de uren-&-meerwerk-opt-in (steigerbouw-tak, migratie 0056) AAN."),
         ("uren-meerwerk-uit", "Zet de uren-&-meerwerk-opt-in UIT."),
+        ("voorraad-aan", "Zet de opt-in 'Voorraad bijhouden' (voorraad-aansluiting, migratie 0086) AAN."),
+        ("voorraad-uit", "Zet de opt-in 'Voorraad bijhouden' UIT."),
         ("is-vastgoed-aan", "Zet de vastgoed-koppeling (is_vastgoed: Vastly-events + VASTLY-VERKOOP) AAN — S2 R1."),
         ("is-vastgoed-uit", "Zet de vastgoed-koppeling UIT (verkoop-autoboeken gaat zichtbaar mee uit)."),
     ):
@@ -1507,6 +1529,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_uren_meerwerk(args, ingeschakeld=True)
     if args.commando == "uren-meerwerk-uit":
         return _zet_uren_meerwerk(args, ingeschakeld=False)
+    if args.commando == "voorraad-aan":
+        return _zet_voorraad(args, ingeschakeld=True)
+    if args.commando == "voorraad-uit":
+        return _zet_voorraad(args, ingeschakeld=False)
     if args.commando == "verkoop-autoboeken-aan":
         return _zet_verkoop_autoboeken(args, ingeschakeld=True)
     if args.commando == "verkoop-autoboeken-uit":

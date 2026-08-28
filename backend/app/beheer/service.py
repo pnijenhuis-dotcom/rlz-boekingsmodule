@@ -151,6 +151,7 @@ class AdministratieInstellingen:
     uren_meerwerk_ingeschakeld: bool = False
     uren_dagmax_uren: Decimal = Decimal("12")
     afdelingen_ingeschakeld: bool = False
+    voorraad_ingeschakeld: bool = False
     rlz_admin_id: str | None = None
     webservice_username: str | None = None
     probe_groen: bool | None = None
@@ -193,6 +194,7 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
             uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
             uren_dagmax_uren=r.uren_dagmax_uren,
             afdelingen_ingeschakeld=r.afdelingen_ingeschakeld,
+            voorraad_ingeschakeld=r.voorraad_ingeschakeld,
             rlz_admin_id=r.rlz_admin_id,
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],
@@ -200,6 +202,30 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
         )
         for r in rijen
     ]
+
+
+def zet_voorraad_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
+    """Opt-in "Voorraad bijhouden" (migratie 0086, blok D 28-08) — Beheerder-only (router), audit als
+    de andere toggles. Aanzetten herrekent de feitenlaag voor de bestaande documenten op de
+    achtergrond van de eerste "Verversen" (geen stille backfill hier)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.voorraad_ingeschakeld
+        administratie.voorraad_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="voorraad_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"voorraad_ingeschakeld": oud},
+            nieuwe_waarde={"voorraad_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
 
 
 def haal_project_verplicht_op(*, administratie_id: uuid.UUID) -> bool:

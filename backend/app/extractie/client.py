@@ -98,6 +98,16 @@ class ClaudeExtractieClient:
             max_retries=3,
         )
 
+    def vraag_json(self, *, system: str, opdracht: str, json_schema: dict[str, Any]) -> ClaudeAntwoord:
+        """Tekst in → schema-gevalideerde JSON uit (blok D 28-08: catalogus-normalisatie). Exact
+        dezelfde kostenpoort, throttle, verbruiksregistratie en stop_reason-afhandeling als de
+        PDF-variant — géén tweede pad om de kostenmeter heen."""
+        return self._vraag(
+            system=system,
+            json_schema=json_schema,
+            content=[{"type": "text", "text": opdracht}],
+        )
+
     def extraheer_json_uit_pdf(
         self,
         *,
@@ -135,10 +145,15 @@ class ClaudeExtractieClient:
         }
         if cache_document:
             document_block["cache_control"] = {"type": "ephemeral"}
+        return self._vraag(
+            system=system, json_schema=json_schema, content=[document_block, {"type": "text", "text": opdracht}]
+        )
+
+    def _vraag(self, *, system: str, json_schema: dict[str, Any], content: list[dict[str, Any]]) -> ClaudeAntwoord:
         # Harde kostenpoort (besluit 2026-08-14) vóór élke AI-call — hier in de client zodat geen
-        # enkel aanroeppad (inkoop, rapport, splitsing, ook individuele chunk-calls) eromheen kan.
-        # AiKostenLimietBereikt/AiKostenModelOnbekend propageren naar de aanroeper, die het
-        # document zichtbaar op het handmatige pad zet ("niets verdwijnt stil").
+        # enkel aanroeppad (inkoop, rapport, splitsing, normalisatie, ook individuele chunk-calls)
+        # eromheen kan. AiKostenLimietBereikt/AiKostenModelOnbekend propageren naar de aanroeper,
+        # die het document zichtbaar op het handmatige pad zet ("niets verdwijnt stil").
         controleer_poort(model=self._model)
         _THROTTLE.wacht()
         try:
@@ -147,7 +162,7 @@ class ClaudeExtractieClient:
                 max_tokens=settings.ai_extractie_max_tokens,
                 system=system,
                 output_config={"format": {"type": "json_schema", "schema": json_schema}},
-                messages=[{"role": "user", "content": [document_block, {"type": "text", "text": opdracht}]}],
+                messages=[{"role": "user", "content": content}],
             ) as stream:
                 response = stream.get_final_message()
         except anthropic.APITimeoutError as exc:

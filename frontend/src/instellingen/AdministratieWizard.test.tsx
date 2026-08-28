@@ -157,6 +157,7 @@ const ADMINISTRATIE = {
   verkoop_autoboeken_ingeschakeld: false,
   uren_meerwerk_ingeschakeld: false,
     afdelingen_ingeschakeld: false,
+    voorraad_ingeschakeld: false,
   uren_dagmax_uren: '12',
   rlz_admin_id: ADMIN_A,
   webservice_username: 'ws_oud',

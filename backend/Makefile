@@ -166,6 +166,14 @@ uren-meerwerk-aan: check-versions
 uren-meerwerk-uit: check-versions
 	.venv/bin/python -m app.cli uren-meerwerk-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
 
+# Opt-in "Voorraad bijhouden" (voorraad-aansluiting mi-schema, blok D 28-08), default UIT.
+# Voorbeeld: make voorraad-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
+voorraad-aan: check-versions
+	.venv/bin/python -m app.cli voorraad-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+voorraad-uit: check-versions
+	.venv/bin/python -m app.cli voorraad-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
 # Voorbeeld: make verkoop-autoboeken-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
 verkoop-autoboeken-aan: check-versions
 	.venv/bin/python -m app.cli verkoop-autoboeken-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"

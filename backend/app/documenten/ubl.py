@@ -33,6 +33,11 @@ class UblRegel:
     btw_percentage: str | None
     btw_categorie: str | None
     gb_code: str | None
+    # Blok D 28-08 (voorraad-aansluiting): hoeveelheid (BT-129, `unitCode` = eenheid) en prijs per
+    # eenheid (BT-146) — deterministisch uit de UBL, voedt de uitstroom-feitenlaag.
+    aantal: str | None = None
+    eenheid: str | None = None
+    prijs: str | None = None
 
     def als_dict(self) -> dict[str, str | int | None]:
         return asdict(self)
@@ -88,6 +93,12 @@ def _element_tekst(element: ET.Element, pad: str) -> str | None:
 def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str | None) -> tuple[dict, ...]:
     regels: list[dict] = []
     for i, lijn in enumerate(root.findall(regel_element, _NS), start=1):
+        # Invoice-regels dragen cbc:InvoicedQuantity, CreditNote-regels cbc:CreditedQuantity (BT-129).
+        hoeveelheid_el = lijn.find("cbc:InvoicedQuantity", _NS)
+        if hoeveelheid_el is None:
+            hoeveelheid_el = lijn.find("cbc:CreditedQuantity", _NS)
+        aantal = hoeveelheid_el.text.strip() if hoeveelheid_el is not None and hoeveelheid_el.text else None
+        eenheid = hoeveelheid_el.get("unitCode") if hoeveelheid_el is not None else None
         regels.append(
             UblRegel(
                 volgnummer=i,
@@ -99,6 +110,9 @@ def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str
                 # BT-133 per regel; BT-19 (documentniveau) is de contractuele fallback wanneer
                 # alle regels dezelfde code delen (§2d-GB-uitbreiding v1.10).
                 gb_code=_element_tekst(lijn, "cbc:AccountingCost") or document_gb_code,
+                aantal=aantal,
+                eenheid=eenheid,
+                prijs=_element_tekst(lijn, "cac:Price/cbc:PriceAmount"),
             ).als_dict()
         )
     return tuple(regels)

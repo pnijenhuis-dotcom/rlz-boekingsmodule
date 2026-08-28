@@ -34,6 +34,7 @@ const DoorbelastingReviewScreen = lazy(() =>
 // Projectenmodule (mockup projecten-invoer.html, 22-08): lazy — steigerbouw-specifiek, alleen
 // relevant voor administraties met de uren-&-meerwerk-tak.
 const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
+const VoorraadScreen = lazy(() => import('./voorraad/VoorraadScreen').then((m) => ({ default: m.VoorraadScreen })))
 const ProjectDetailScreenLazy = lazy(() =>
   import('./projecten/ProjectDetailScreen').then((m) => ({ default: m.ProjectDetailScreen })),
 )
@@ -109,6 +110,14 @@ function BeschermdeRoutes() {
         <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
         <Route path="/vragen" element={<VragenRedirect />} />
         <Route path="/zoeken" element={<ZoekenScreen />} />
+        <Route
+          path="/voorraad"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <VoorraadScreen />
+            </Suspense>
+          }
+        />
         <Route path="/archief" element={<ArchiefScreen />} />
         <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
         <Route path="/omzet/:administratieId/:documentId" element={<OmzetReviewScreen />} />

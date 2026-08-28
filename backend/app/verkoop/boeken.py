@@ -20,6 +20,7 @@ vastgoed-administraties — zelfde outbox/afleveraar, aflevering default UIT."""
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -58,6 +59,8 @@ from app.verkoop.voorstel import (
     verkoop_omschrijving_vastly,
     voer_verkoop_checks_uit,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -336,6 +339,15 @@ def boek_verkoop_document(
             },
             administratie_id=administratie_id,
         )
+
+    # Blok D 28-08 (voorraad-aansluiting): uitstroom-feiten ná de commit — alleen bij de opt-in van
+    # de administratie; MI-signalering, nooit een blokkade van de boeking.
+    from app.voorraad import service as voorraad_service  # lokaal: houdt de importgraaf klein
+
+    try:
+        voorraad_service.registreer_verkoopregels(administratie_id=administratie_id, document_id=document_id)
+    except Exception:  # noqa: BLE001 — MI-laag, nooit een blokkade
+        logger.exception("Voorraad-registratie (verkoop) mislukt voor document %s", document_id)
 
     return VerkoopBoekResultaat(
         document_id=document_id,

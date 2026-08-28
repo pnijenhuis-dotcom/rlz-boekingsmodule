@@ -325,6 +325,9 @@ def bouw_veldvoorstel(
                 "netto_bedrag": _bedrag_str(netto),
                 "btw_bedrag": _bedrag_str(btw),
                 "hoeveelheid": regel.hoeveelheid,
+                # Blok D 28-08 (voorraad-aansluiting): eenheid + stuksprijs zoals vermeld — ruw.
+                "eenheid": regel.eenheid,
+                "stuksprijs": regel.stuksprijs,
                 "taxrate_id": str(afleiding.taxrate_id) if afleiding.taxrate_id else None,
                 # Herkomst van de btw-code (punt 3, 26-08): "factuur" = deterministisch uit
                 # netto/btw afgeleid; None = leeg gelaten (0/onbepaalbaar/meerduidig — reden erbij).

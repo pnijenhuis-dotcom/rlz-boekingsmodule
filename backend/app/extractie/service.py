@@ -63,8 +63,10 @@ _KOP_PROPS: dict[str, Any] = {
     },
 }
 
-# Eén factuurregel: o=omschrijving, n=netto, b=btw, h=hoeveelheid, z=zekerheid (één getal voor de
-# hele regel — het controlescherm toont per regel toch het minimum).
+# Eén factuurregel: o=omschrijving, n=netto, b=btw, h=hoeveelheid, e=eenheid, p=stuksprijs,
+# z=zekerheid (één getal voor de hele regel — het controlescherm toont per regel toch het minimum).
+# e/p (blok D 28-08, voorraad-aansluiting): de extractie levert aantal+eenheid+artikeltekst
+# gestructureerd per regel — de feitenlaag in het mi-schema rekent er deterministisch mee.
 _REGEL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -72,9 +74,11 @@ _REGEL_SCHEMA: dict[str, Any] = {
         "n": _STRING_OF_NULL,
         "b": _STRING_OF_NULL,
         "h": _STRING_OF_NULL,
+        "e": _STRING_OF_NULL,
+        "p": _STRING_OF_NULL,
         "z": {"type": "number"},
     },
-    "required": ["o", "n", "b", "h", "z"],
+    "required": ["o", "n", "b", "h", "e", "p", "z"],
     "additionalProperties": False,
 }
 
@@ -123,7 +127,9 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen
-  indien expliciet vermeld), z=één zekerheidsscore voor de hele regel.
+  indien expliciet vermeld), e=eenheid van de hoeveelheid zoals vermeld (bijv. "st", "stuks", "m", "m2",
+  "kg", "uur", "doos"; null als niet vermeld), p=stuksprijs/prijs per eenheid zoals vermeld (null als niet
+  vermeld — nooit zelf uitrekenen), z=één zekerheidsscore voor de hele regel.
 
 Notatie: bedragen als string met punt-decimaal zonder duizendtalscheiding en zonder valutateken (bijv.
 "1234.56", credit negatief "-25.00"); datums als ISO 8601 (YYYY-MM-DD); valuta als ISO-code (bijv. "EUR").
@@ -180,6 +186,9 @@ class AiRegel:
     btw_bedrag: str | None
     hoeveelheid: str | None
     zekerheid: float
+    # Blok D 28-08: eenheid + stuksprijs zoals vermeld (ruwe tekst; parsen doet de feitenlaag).
+    eenheid: str | None = None
+    stuksprijs: str | None = None
 
 
 @dataclass(frozen=True)
@@ -285,7 +294,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
         if not isinstance(ruwe_regel, dict):
             continue
         waarden: dict[str, str | None] = {}
-        for key in ("o", "n", "b", "h"):
+        for key in ("o", "n", "b", "h", "e", "p"):
             waarde, bsn = _schoon_tekst(ruwe_regel.get(key), bsn_filter=key in _VRIJE_TEKST_REGEL_KEYS)
             uit.bsn_verwijderd += bsn
             waarden[key] = waarde
@@ -296,6 +305,8 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
                 btw_bedrag=waarden["b"],
                 hoeveelheid=waarden["h"],
                 zekerheid=_als_zekerheid(ruwe_regel.get("z")),
+                eenheid=waarden["e"],
+                stuksprijs=waarden["p"],
             )
         )
 

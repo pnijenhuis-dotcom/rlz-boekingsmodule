@@ -32,6 +32,7 @@ import {
   zetIntakeAiInstelling,
   zetAfdelingenInstelling,
   zetProjectInstelling,
+  zetVoorraadInstelling,
   zetUrenDagmaxInstelling,
   zetUrenMeerwerkInstelling,
   zetIsVastgoed,
@@ -49,6 +50,7 @@ type WijzigingType =
   | 'is_vastgoed'
   | 'uren_meerwerk'
   | 'afdelingen'
+  | 'voorraad'
   | 'eigenaar'
   | 'iban_accordeurs'
   | 'ai_kosten_limiet'
@@ -99,6 +101,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `Afdelingen gaan AAN voor "${pending.naam}": op élk inkoopdocument wordt een afdeling verplicht (blokkerende check bij boeken en ter accordering) en de accorderingsroute loopt per afdeling. De terugval-afdeling "Algemeen" ontstaat automatisch en volgt de bestaande accorderingsconfig — alleen nieuwe/nog niet geboekte documenten vergen een afdeling.`
         : `Afdelingen gaan UIT voor "${pending.naam}": het veld verdwijnt en de check zwijgt; afdelingen en gemaakte keuzes blijven bewaard.`
+    case 'voorraad':
+      return pending.nieuweWaarde
+        ? `Voorraad bijhouden gaat AAN voor "${pending.naam}": regel-niveau feiten uit gescande inkoopfacturen en verkoopfactuurregels worden bijgehouden in de controle-laag (mi-schema), artikelteksten worden volautomatisch genormaliseerd (AI achter de bestaande gates, onzeker telt mee mét vlag) en het aansluitscherm vergelijkt de theoretische stand met tellingen. Niets wordt geboekt; er gaat nooit iets naar Reeleezee.`
+        : `Voorraad bijhouden gaat UIT voor "${pending.naam}" — de feitenlaag en tellingen blijven bewaard, er komen geen nieuwe regels bij.`
     case 'uren_meerwerk':
       return pending.nieuweWaarde
         ? `Uren & meerwerk (steigerbouw-tak) wordt ingeschakeld voor "${pending.naam}": ZZP'ers/uitvoerders/detacheerders kunnen er weekstaten en meerwerk op werken en het kantoor ziet de standen (module-recht vereist).`
@@ -165,6 +171,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'afdelingen') {
     await zetAfdelingenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'voorraad') {
+    await zetVoorraadInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'eigenaar') {
@@ -332,7 +342,7 @@ export const INSTELLINGEN_SECTIES = [
   { pad: 'beveiliging', titel: 'Beveiliging', uitleg: 'Passkeys van jezelf en van medewerkers (apparaat-kill-switch).', beheerder: false },
   { pad: 'boeken', titel: 'Boeken & platform', uitleg: 'Boeken platformbreed aan/uit (noodstop) — de poort boven alle administraties.', beheerder: true },
   { pad: 'intake-ai', titel: 'Intake-AI & kosten', uitleg: 'AVG-gate voor de verzamelbak-AI en de maandelijkse AI-kostengrens.', beheerder: true },
-  { pad: 'administraties', titel: 'Administraties', uitleg: 'Per administratie: eigenaar, IBAN-accordeurs, projectplicht, boeken, AI-extractie, autoboeken, uren & meerwerk, afdelingen — mét bulkbediening.', beheerder: true },
+  { pad: 'administraties', titel: 'Administraties', uitleg: 'Per administratie: eigenaar, IBAN-accordeurs, projectplicht, boeken, AI-extractie, autoboeken, uren & meerwerk, afdelingen, voorraad — mét bulkbediening.', beheerder: true },
   { pad: 'accordering', titel: 'Klant-accordering', uitleg: 'Goedkeuring door klanten: lagen, apparaten, staande goedkeuringen.', beheerder: true },
   { pad: 'autoboeken', titel: 'Autoboeken', uitleg: 'Automatisch boeken per leverancier (opt-in, harde checks blijven blokkerend).', beheerder: true },
   { pad: 'doorbelasting', titel: 'Doorbelasting', uitleg: 'Kempen-doorbelasting: toggle, provisie, whitelist doelentiteiten, opruimlijst.', beheerder: true },
@@ -550,7 +560,9 @@ export function InstellingenScreen() {
                             ? { eigenaar_gebruiker_id: pending.eigenaarId ?? null }
                             : pending.type === 'afdelingen'
                               ? { afdelingen_ingeschakeld: pending.nieuweWaarde }
-                              : { project_verplicht: pending.nieuweWaarde }),
+                              : pending.type === 'voorraad'
+                                ? { voorraad_ingeschakeld: pending.nieuweWaarde }
+                                : { project_verplicht: pending.nieuweWaarde }),
                   }
                 : a,
             ) ?? null,
@@ -748,6 +760,7 @@ export function InstellingenScreen() {
                 <th>Autoboeken Vastly-verkoop</th>
                 <th>Uren &amp; meerwerk</th>
                 <th>Afdelingen</th>
+                <th>Voorraad bijhouden</th>
               </tr>
               {administraties.map((a) => (
                 <Fragment key={a.id}>
@@ -973,11 +986,36 @@ export function InstellingenScreen() {
                       {a.afdelingen_ingeschakeld ? 'aan' : 'uit'}
                     </label>
                   </td>
+                  <td>
+                    {/* Blok D 28-08 (mockup voorraad-aansluiting.html): opt-in controle-laag — nooit een boeking. */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
+                      <Switch
+                        aria-label={`Voorraad bijhouden voor ${a.naam}`}
+                        checked={a.voorraad_ingeschakeld}
+                        onChange={(e) =>
+                          setPending({
+                            type: 'voorraad',
+                            administratieId: a.id,
+                            naam: a.naam,
+                            nieuweWaarde: e.target.checked,
+                          })
+                        }
+                      />
+                      {a.voorraad_ingeschakeld ? 'aan' : 'uit'}
+                    </label>
+                    {a.voorraad_ingeschakeld && (
+                      <div style={{ marginTop: 4 }}>
+                        <Link to={`/voorraad?administratie=${a.id}`} className="text-primary no-underline hover:underline" style={{ fontSize: 11.5 }}>
+                          aansluitscherm →
+                        </Link>
+                      </div>
+                    )}
+                  </td>
                 </tr>
                 {a.afdelingen_ingeschakeld && (
                   <tr className="subrij">
                     <td />
-                    <td colSpan={11}>
+                    <td colSpan={12}>
                       <AfdelingenBeheer administratieId={a.id} naam={a.naam} />
                     </td>
                   </tr>
@@ -988,7 +1026,7 @@ export function InstellingenScreen() {
                 {a.eerste_sync && a.eerste_sync.status !== 'klaar' && a.eerste_sync.status !== 'geen' && (
                   <tr className="subrij">
                     <td />
-                    <td colSpan={11}>
+                    <td colSpan={12}>
                       <EersteSyncStatus
                         compact
                         administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }}

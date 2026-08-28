@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0085
+-- Migratie-head bij deze dump: 0086
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -29,6 +29,13 @@ SET row_security = off;
 --
 
 CREATE SCHEMA boekhouding;
+
+
+--
+-- Name: mi; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA mi;
 
 
 --
@@ -2441,6 +2448,95 @@ ALTER TABLE ONLY boekhouding.werkstempel FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: artikelgroep; Type: TABLE; Schema: mi; Owner: -
+--
+
+CREATE TABLE mi.artikelgroep (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    naam text NOT NULL,
+    eenheid text DEFAULT 'st'::text NOT NULL,
+    tolerantie_pct numeric(5,2) DEFAULT 1.00 NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_artikelgroep_tolerantie CHECK (((tolerantie_pct >= (0)::numeric) AND (tolerantie_pct <= (100)::numeric)))
+);
+
+ALTER TABLE ONLY mi.artikelgroep FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: normalisatie_regel; Type: TABLE; Schema: mi; Owner: -
+--
+
+CREATE TABLE mi.normalisatie_regel (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    artikeltekst_norm text NOT NULL,
+    artikelgroep_id uuid,
+    uitgesloten boolean DEFAULT false NOT NULL,
+    zekerheid numeric(4,3),
+    bron text NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_door uuid,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_normalisatie_regel_bron CHECK ((bron = ANY (ARRAY['ai'::text, 'handmatig'::text, 'regel'::text])))
+);
+
+ALTER TABLE ONLY mi.normalisatie_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: voorraad_regel; Type: TABLE; Schema: mi; Owner: -
+--
+
+CREATE TABLE mi.voorraad_regel (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    richting text NOT NULL,
+    bron text NOT NULL,
+    datum date NOT NULL,
+    vendor_id uuid,
+    relatie_naam text,
+    regel_volgnummer integer NOT NULL,
+    artikeltekst text NOT NULL,
+    aantal numeric(12,3),
+    eenheid text,
+    prijs numeric(14,4),
+    netto_bedrag numeric(14,2),
+    artikelgroep_id uuid,
+    normalisatie_status text NOT NULL,
+    normalisatie_zekerheid numeric(4,3),
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_voorraad_regel_richting CHECK ((richting = ANY (ARRAY['in'::text, 'uit'::text]))),
+    CONSTRAINT ck_voorraad_regel_status CHECK ((normalisatie_status = ANY (ARRAY['genormaliseerd'::text, 'onzeker'::text, 'uitgesloten'::text, 'niet_genormaliseerd'::text])))
+);
+
+ALTER TABLE ONLY mi.voorraad_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: voorraad_telling; Type: TABLE; Schema: mi; Owner: -
+--
+
+CREATE TABLE mi.voorraad_telling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    artikelgroep_id uuid NOT NULL,
+    datum date NOT NULL,
+    aantal numeric(12,3) NOT NULL,
+    opmerking text,
+    ingevoerd_door uuid NOT NULL,
+    ingevoerd_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY mi.voorraad_telling FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: accordeur_akkoord; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -2516,6 +2612,7 @@ CREATE TABLE platform.administratie (
     uren_meerwerk_ingeschakeld boolean DEFAULT false NOT NULL,
     uren_dagmax_uren numeric(4,2) DEFAULT 12 NOT NULL,
     afdelingen_ingeschakeld boolean DEFAULT false NOT NULL,
+    voorraad_ingeschakeld boolean DEFAULT false NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
 );
@@ -3760,6 +3857,62 @@ ALTER TABLE ONLY boekhouding.werkstempel
 
 
 --
+-- Name: artikelgroep artikelgroep_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelgroep
+    ADD CONSTRAINT artikelgroep_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: normalisatie_regel normalisatie_regel_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.normalisatie_regel
+    ADD CONSTRAINT normalisatie_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: normalisatie_regel uq_normalisatie_regel_tekst; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.normalisatie_regel
+    ADD CONSTRAINT uq_normalisatie_regel_tekst UNIQUE (administratie_id, vendor_id, artikeltekst_norm);
+
+
+--
+-- Name: voorraad_regel uq_voorraad_regel_document_regel; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_regel
+    ADD CONSTRAINT uq_voorraad_regel_document_regel UNIQUE (document_id, richting, regel_volgnummer);
+
+
+--
+-- Name: voorraad_telling uq_voorraad_telling_groep_datum; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_telling
+    ADD CONSTRAINT uq_voorraad_telling_groep_datum UNIQUE (artikelgroep_id, datum);
+
+
+--
+-- Name: voorraad_regel voorraad_regel_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_regel
+    ADD CONSTRAINT voorraad_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: voorraad_telling voorraad_telling_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_telling
+    ADD CONSTRAINT voorraad_telling_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: accordeur_akkoord accordeur_akkoord_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -4863,6 +5016,41 @@ CREATE UNIQUE INDEX ux_verkoop_boeking_actief_per_factuurnummer ON boekhouding.v
 --
 
 CREATE UNIQUE INDEX vraag_een_open_per_document ON boekhouding.vraag USING btree (document_id) WHERE (status = 'open'::text);
+
+
+--
+-- Name: ix_artikelgroep_administratie_id; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_artikelgroep_administratie_id ON mi.artikelgroep USING btree (administratie_id);
+
+
+--
+-- Name: ix_voorraad_regel_administratie_datum; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_voorraad_regel_administratie_datum ON mi.voorraad_regel USING btree (administratie_id, datum);
+
+
+--
+-- Name: ix_voorraad_regel_artikelgroep_id; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_voorraad_regel_artikelgroep_id ON mi.voorraad_regel USING btree (artikelgroep_id);
+
+
+--
+-- Name: ix_voorraad_telling_administratie_id; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_voorraad_telling_administratie_id ON mi.voorraad_telling USING btree (administratie_id);
+
+
+--
+-- Name: uq_artikelgroep_naam; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_artikelgroep_naam ON mi.artikelgroep USING btree (administratie_id, lower(naam)) WHERE actief;
 
 
 --
@@ -7029,6 +7217,94 @@ ALTER TABLE ONLY boekhouding.werkstempel
 
 
 --
+-- Name: artikelgroep artikelgroep_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelgroep
+    ADD CONSTRAINT artikelgroep_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: artikelgroep artikelgroep_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelgroep
+    ADD CONSTRAINT artikelgroep_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: normalisatie_regel normalisatie_regel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.normalisatie_regel
+    ADD CONSTRAINT normalisatie_regel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: normalisatie_regel normalisatie_regel_artikelgroep_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.normalisatie_regel
+    ADD CONSTRAINT normalisatie_regel_artikelgroep_id_fkey FOREIGN KEY (artikelgroep_id) REFERENCES mi.artikelgroep(id);
+
+
+--
+-- Name: normalisatie_regel normalisatie_regel_bijgewerkt_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.normalisatie_regel
+    ADD CONSTRAINT normalisatie_regel_bijgewerkt_door_fkey FOREIGN KEY (bijgewerkt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: voorraad_regel voorraad_regel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_regel
+    ADD CONSTRAINT voorraad_regel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: voorraad_regel voorraad_regel_artikelgroep_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_regel
+    ADD CONSTRAINT voorraad_regel_artikelgroep_id_fkey FOREIGN KEY (artikelgroep_id) REFERENCES mi.artikelgroep(id);
+
+
+--
+-- Name: voorraad_regel voorraad_regel_document_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_regel
+    ADD CONSTRAINT voorraad_regel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: voorraad_telling voorraad_telling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_telling
+    ADD CONSTRAINT voorraad_telling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: voorraad_telling voorraad_telling_artikelgroep_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_telling
+    ADD CONSTRAINT voorraad_telling_artikelgroep_id_fkey FOREIGN KEY (artikelgroep_id) REFERENCES mi.artikelgroep(id);
+
+
+--
+-- Name: voorraad_telling voorraad_telling_ingevoerd_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.voorraad_telling
+    ADD CONSTRAINT voorraad_telling_ingevoerd_door_fkey FOREIGN KEY (ingevoerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: accordeur_akkoord accordeur_akkoord_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -8528,6 +8804,58 @@ ALTER TABLE boekhouding.werkstempel ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY werkstempel_scope ON boekhouding.werkstempel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: artikelgroep; Type: ROW SECURITY; Schema: mi; Owner: -
+--
+
+ALTER TABLE mi.artikelgroep ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: artikelgroep artikelgroep_scope; Type: POLICY; Schema: mi; Owner: -
+--
+
+CREATE POLICY artikelgroep_scope ON mi.artikelgroep USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: normalisatie_regel; Type: ROW SECURITY; Schema: mi; Owner: -
+--
+
+ALTER TABLE mi.normalisatie_regel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: normalisatie_regel normalisatie_regel_scope; Type: POLICY; Schema: mi; Owner: -
+--
+
+CREATE POLICY normalisatie_regel_scope ON mi.normalisatie_regel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: voorraad_regel; Type: ROW SECURITY; Schema: mi; Owner: -
+--
+
+ALTER TABLE mi.voorraad_regel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: voorraad_regel voorraad_regel_scope; Type: POLICY; Schema: mi; Owner: -
+--
+
+CREATE POLICY voorraad_regel_scope ON mi.voorraad_regel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: voorraad_telling; Type: ROW SECURITY; Schema: mi; Owner: -
+--
+
+ALTER TABLE mi.voorraad_telling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: voorraad_telling voorraad_telling_scope; Type: POLICY; Schema: mi; Owner: -
+--
+
+CREATE POLICY voorraad_telling_scope ON mi.voorraad_telling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --
