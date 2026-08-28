@@ -519,11 +519,24 @@ def zet_specificatie(
     looptijd_tot: date | None = None,
     huurtijd_omschrijving: str | None = None,
     doorlopende_huur_omschrijving: str | None = None,
+    locatie_adres: str | None = None,
+    locatie_lat: Decimal | None = None,
+    locatie_lon: Decimal | None = None,
+    zone_straal_m: int | None = None,
 ) -> None:
     """Upsert van de projectspecificatie (mockup specs-grid) — voedt de uitvoerder-app, de
-    planning (looptijd) en de projectsignalen."""
+    planning (looptijd) en de projectsignalen. Projectzone (blok C 28-08): adres + WGS84-punt +
+    straal; zonder punt = geen geofence voor dit project (stil). Lat/lon altijd samen."""
     if looptijd_van is not None and looptijd_tot is not None and looptijd_tot < looptijd_van:
         raise OngeldigeInvoer("Looptijd-einde ligt vóór de start")
+    if (locatie_lat is None) != (locatie_lon is None):
+        raise OngeldigeInvoer("Projectlocatie vereist zowel breedte- als lengtegraad")
+    if locatie_lat is not None and not (Decimal("-90") <= locatie_lat <= Decimal("90")):
+        raise OngeldigeInvoer("Breedtegraad buiten bereik")
+    if locatie_lon is not None and not (Decimal("-180") <= locatie_lon <= Decimal("180")):
+        raise OngeldigeInvoer("Lengtegraad buiten bereik")
+    if zone_straal_m is not None and not (50 <= zone_straal_m <= 1000):
+        raise OngeldigeInvoer("Zone-straal moet tussen 50 en 1000 meter liggen")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _vereis_schrijfrol(session, actor_id)
         _vereis_project(session, administratie_id=administratie_id, project_id=project_id)
@@ -542,6 +555,10 @@ def zet_specificatie(
             "looptijd_tot": looptijd_tot.isoformat() if looptijd_tot else None,
             "huurtijd_omschrijving": huurtijd_omschrijving,
             "doorlopende_huur_omschrijving": doorlopende_huur_omschrijving,
+            "locatie_adres": locatie_adres,
+            "locatie_lat": str(locatie_lat) if locatie_lat is not None else None,
+            "locatie_lon": str(locatie_lon) if locatie_lon is not None else None,
+            "zone_straal_m": zone_straal_m,
         }
         spec.opdrachtgever = opdrachtgever
         spec.werknummer_opdrachtgever = werknummer_opdrachtgever
@@ -551,6 +568,10 @@ def zet_specificatie(
         spec.looptijd_tot = looptijd_tot
         spec.huurtijd_omschrijving = huurtijd_omschrijving
         spec.doorlopende_huur_omschrijving = doorlopende_huur_omschrijving
+        spec.locatie_adres = locatie_adres
+        spec.locatie_lat = locatie_lat
+        spec.locatie_lon = locatie_lon
+        spec.zone_straal_m = zone_straal_m
         spec.bijgewerkt_door = actor_id
         record_audit_event(
             session,

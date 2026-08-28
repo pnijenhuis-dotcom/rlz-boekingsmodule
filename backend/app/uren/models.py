@@ -436,8 +436,43 @@ class ProjectSpecificatie(Base):
     looptijd_tot: Mapped[date | None] = mapped_column(default=None)
     huurtijd_omschrijving: Mapped[str | None] = mapped_column(default=None)
     doorlopende_huur_omschrijving: Mapped[str | None] = mapped_column(default=None)
+    # Projectzone voor werkstempels (blok C 28-08, migratie 0085): adres + WGS84-punt + straal in
+    # meters. Zonder locatie = geen geofence voor dit project (stil, geen verplichting).
+    locatie_adres: Mapped[str | None] = mapped_column(default=None)
+    locatie_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), default=None)
+    locatie_lon: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), default=None)
+    zone_straal_m: Mapped[int | None] = mapped_column(SmallInteger, default=None)
     bijgewerkt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class Werkstempel(Base):
+    """Geofence-werkstempel (blok C 28-08, migratie 0085): {tijdstip, project, in/uit} van de
+    veldwerker zelf (nooit namens), APPEND-ONLY (geen UPDATE/DELETE-grant). Uitsluitend een
+    signaalbron voor de keurder — nooit automatische korting of confrontatie (DBA-grens). De
+    regeling staat in de algemene voorwaarden/privacyverklaring van de activering (jurist akkoord
+    28-08). `bron` = 'app' (handmatige/webstempel) of 'os_geofence' (de latere native
+    OS-registratie — eigen release-ronde)."""
+
+    __tablename__ = "werkstempel"
+    __table_args__ = (
+        UniqueConstraint("gebruiker_id", "project_id", "tijdstip", "soort", name="uq_werkstempel_moment"),
+        Index("ix_werkstempel_gebruiker_tijdstip", "gebruiker_id", "tijdstip"),
+        Index("ix_werkstempel_administratie_id", "administratie_id"),
+        CheckConstraint("soort IN ('in', 'uit')", name="ck_werkstempel_soort"),
+        CheckConstraint("bron IN ('app', 'os_geofence')", name="ck_werkstempel_bron"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    tijdstip: Mapped[datetime]
+    soort: Mapped[str]
+    bron: Mapped[str] = mapped_column(default="app", server_default="app")
+    apparaat_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    ontvangen_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class ProjectDocument(Base):

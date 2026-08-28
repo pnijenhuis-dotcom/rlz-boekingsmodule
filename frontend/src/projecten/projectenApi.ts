@@ -33,6 +33,11 @@ export interface SpecificatieDto {
   looptijd_tot: string | null
   huurtijd_omschrijving: string | null
   doorlopende_huur_omschrijving: string | null
+  /** Projectzone werkstempels (blok C 28-08): zonder lat/lon = geen geofence voor dit project. */
+  locatie_adres?: string | null
+  locatie_lat?: string | null
+  locatie_lon?: string | null
+  zone_straal_m?: number | null
 }
 
 export interface ProjectDocumentDto {

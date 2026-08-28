@@ -5,8 +5,9 @@ beoordeel-paneel, beheer) volgen in fase 3 op dezelfde schemas."""
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +36,39 @@ class DagDto(BaseModel):
     dag_totaal_uren: Decimal = Decimal("0")
     boven_dagmax: bool = False
     dagmax_uren: Decimal | None = None
+    # Geofence-stempels (blok C 28-08): gestempelde aanwezigheid — None = geen stempels (toets
+    # zwijgt); afwijking > 1,0 u = oranje vlag; onvolledig paar = markering. Nooit een blokkade.
+    gestempeld_uren: Decimal | None = None
+    stempel_van: time | None = None
+    stempel_tot: time | None = None
+    stempel_onvolledig: bool = False
+    stempel_afwijking: bool = False
+
+
+class StempelInvoerDto(StrikteInvoer):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    tijdstip: datetime
+    soort: Literal["in", "uit"]
+    bron: Literal["app", "os_geofence"] = "app"
+
+
+class StempelsInvoerDto(StrikteInvoer):
+    stempels: list[StempelInvoerDto] = Field(min_length=1, max_length=200)
+
+
+class StempelsOntvangenDto(BaseModel):
+    nieuw: int
+
+
+class StempelDto(BaseModel):
+    id: uuid.UUID
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    tijdstip: datetime
+    soort: str
+    bron: str
 
 
 class WeekstaatDto(BaseModel):

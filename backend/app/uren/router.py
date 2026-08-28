@@ -141,6 +141,11 @@ def _weekstaat_response(data: service.WeekstaatData) -> schemas.WeekstaatDto:
                 dag_totaal_uren=d.dag_totaal_uren,
                 boven_dagmax=d.boven_dagmax,
                 dagmax_uren=d.dagmax_uren,
+                gestempeld_uren=d.gestempeld_uren,
+                stempel_van=d.stempel_van,
+                stempel_tot=d.stempel_tot,
+                stempel_onvolledig=d.stempel_onvolledig,
+                stempel_afwijking=d.stempel_afwijking,
             )
             for d in data.dagen
         ],
@@ -289,6 +294,64 @@ def weekstaat_detail(
 
 
 # --- planning: veld alleen-lezen (besluit B, planning-agenda 22-08) -------------------------------
+
+
+@router.post("/stempels", response_model=schemas.StempelsOntvangenDto)
+def stempels_registreren(
+    invoer: schemas.StempelsInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> schemas.StempelsOntvangenDto:
+    """Intake geofence-werkstempels (blok C 28-08, append-only, fail-closed): alleen de veldwerker
+    zelf (nooit namens), alleen projecten mét een zone in eigen scope; idempotent op
+    (gebruiker, project, tijdstip, soort). De native OS-registratie volgt in een eigen
+    release-ronde — dit endpoint is er al voor."""
+    from app.uren import stempels as stempel_service
+
+    try:
+        nieuw = stempel_service.registreer_stempels(
+            actor_id=actor.id,
+            apparaat_id=actor.apparaat_id,
+            stempels=[
+                stempel_service.StempelInvoer(
+                    administratie_id=s.administratie_id,
+                    project_id=s.project_id,
+                    tijdstip=s.tijdstip,
+                    soort=s.soort,
+                    bron=s.bron,
+                )
+                for s in invoer.stempels
+            ],
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.StempelsOntvangenDto(nieuw=nieuw)
+
+
+@router.get("/stempels", response_model=list[schemas.StempelDto])
+def eigen_stempels(
+    datum: date | None = None,
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> list[schemas.StempelDto]:
+    """Eigen stempels van één dag (default vandaag) — transparantie voor de veldwerker (mockup §1
+    "Vandaag"); nooit namens, geen export."""
+    from app.uren import stempels as stempel_service
+
+    try:
+        rijen = stempel_service.eigen_stempels(actor_id=actor.id, dag=datum or date.today())
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [
+        schemas.StempelDto(
+            id=r.id,
+            administratie_id=r.administratie_id,
+            project_id=r.project_id,
+            project_naam=r.project_naam,
+            tijdstip=r.tijdstip,
+            soort=r.soort,
+            bron=r.bron,
+        )
+        for r in rijen
+    ]
 
 
 @router.get("/zzp/planning", response_model=list[schemas.MijnPlanningDagDto])

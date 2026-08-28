@@ -43,6 +43,10 @@ def _specificatie_dto(spec) -> schemas.SpecificatieDto | None:
         looptijd_tot=spec.looptijd_tot,
         huurtijd_omschrijving=spec.huurtijd_omschrijving,
         doorlopende_huur_omschrijving=spec.doorlopende_huur_omschrijving,
+        locatie_adres=spec.locatie_adres,
+        locatie_lat=spec.locatie_lat,
+        locatie_lon=spec.locatie_lon,
+        zone_straal_m=spec.zone_straal_m,
     )
 
 
@@ -274,6 +278,10 @@ def zet_specificatie(
             looptijd_tot=invoer.looptijd_tot,
             huurtijd_omschrijving=invoer.huurtijd_omschrijving,
             doorlopende_huur_omschrijving=invoer.doorlopende_huur_omschrijving,
+            locatie_adres=invoer.locatie_adres,
+            locatie_lat=invoer.locatie_lat,
+            locatie_lon=invoer.locatie_lon,
+            zone_straal_m=invoer.zone_straal_m,
         )
     except kantoor.ProjectenFout as exc:
         raise _vertaal(exc) from exc

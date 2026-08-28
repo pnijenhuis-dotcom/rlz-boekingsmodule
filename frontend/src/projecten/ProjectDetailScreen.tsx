@@ -187,9 +187,14 @@ function SpecificatiePaneel({
     looptijd_tot: specificatie?.looptijd_tot ?? null,
     huurtijd_omschrijving: specificatie?.huurtijd_omschrijving ?? null,
     doorlopende_huur_omschrijving: specificatie?.doorlopende_huur_omschrijving ?? null,
+    locatie_adres: specificatie?.locatie_adres ?? null,
+    locatie_lat: specificatie?.locatie_lat ?? null,
+    locatie_lon: specificatie?.locatie_lon ?? null,
+    zone_straal_m: specificatie?.zone_straal_m ?? null,
   }))
   const zet = (veld: keyof SpecificatieDto) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setVorm((huidig) => ({ ...huidig, [veld]: e.target.value || null }))
+  const zoneActief = Boolean(vorm.locatie_lat && vorm.locatie_lon)
 
   return (
     <div className="panel">
@@ -238,6 +243,39 @@ function SpecificatiePaneel({
             style={veldStijl}
           />
           <span style={{ color: 'var(--faint)', fontWeight: 400 }}>voedt het doorlopende-huur-signaal</span>
+        </label>
+        {/* Blok C 28-08 (mockup geofence-stempels.html §2): projectlocatie + zone-straal; zonder
+            locatie = geen geofence voor dit project (stil, geen verplichting). */}
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
+          Projectlocatie 📍
+          <input value={vorm.locatie_adres ?? ''} onChange={zet('locatie_adres')} placeholder="Kanaaldijk 12, Tilburg" style={veldStijl} />
+          <span style={{ color: 'var(--faint)', fontWeight: 400 }}>adres ter herkenning; de zone rekent met het punt hieronder</span>
+        </label>
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
+          Breedtegraad (lat)
+          <input value={vorm.locatie_lat ?? ''} onChange={zet('locatie_lat')} inputMode="decimal" placeholder="51.560000" style={veldStijl} />
+        </label>
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
+          Lengtegraad (lon)
+          <input value={vorm.locatie_lon ?? ''} onChange={zet('locatie_lon')} inputMode="decimal" placeholder="5.083000" style={veldStijl} />
+        </label>
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
+          Zone-straal
+          <select
+            value={vorm.zone_straal_m ?? ''}
+            onChange={(e) => setVorm((huidig) => ({ ...huidig, zone_straal_m: e.target.value ? Number(e.target.value) : null }))}
+            style={veldStijl}
+            aria-label="Zone-straal"
+          >
+            <option value="">— (default 150 m)</option>
+            <option value="100">100 m</option>
+            <option value="150">150 m</option>
+            <option value="250">250 m</option>
+            <option value="500">500 m</option>
+          </select>
+          <span style={{ color: 'var(--faint)', fontWeight: 400 }}>
+            {zoneActief ? '📍 Stempels actief — werkstempels op dit project worden aangenomen' : 'geen locatie = geen werkstempels voor dit project'}
+          </span>
         </label>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>

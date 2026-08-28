@@ -26,6 +26,14 @@ export interface DagDto {
   dag_totaal_uren: string
   boven_dagmax: boolean
   dagmax_uren: string | null
+  // Geofence-stempels (blok C 28-08, mockup geofence-stempels.html §3): gestempelde aanwezigheid
+  // (null = geen stempels → toets zwijgt), eerste in / laatste uit, "onvolledig paar" en de
+  // oranje vlag bij > 1,0 u afwijking — informatie voor het gesprek, nooit een korting/blokkade.
+  gestempeld_uren?: string | null
+  stempel_van?: string | null
+  stempel_tot?: string | null
+  stempel_onvolledig?: boolean
+  stempel_afwijking?: boolean
 }
 
 export interface WeekstaatDto {
@@ -256,6 +264,50 @@ export interface MijnPlanningDagDto {
   project_id: string
   project_naam: string | null
   dagdeel: 'heel' | 'half'
+}
+
+/** Eigen werkstempels van één dag (blok C 28-08, mockup §1 "Vandaag") — alleen de veldwerker zelf,
+ * nooit namens. De registratie zelf (POST /uren/stempels) komt uit de latere native OS-geofence. */
+export interface StempelDto {
+  id: string
+  administratie_id: string
+  project_id: string
+  project_naam: string | null
+  tijdstip: string
+  soort: 'in' | 'uit'
+  bron: 'app' | 'os_geofence'
+}
+
+export function haalEigenStempels(datum: string): Promise<StempelDto[]> {
+  return apiJson(`/uren/stempels?datum=${encodeURIComponent(datum)}`)
+}
+
+/** Stempeltijd als HH:MM (lokale tijd). */
+export function stempelTijd(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Label voor de keuringskolom "Gestempeld aanwezig" (mockup §3): "06:55 – 15:10 (8,3 u)",
+ * "06:58 – ? (onvolledig)" of null zonder stempels. */
+export function gestempeldLabel(dag: DagDto): string | null {
+  if (dag.gestempeld_uren === null || dag.gestempeld_uren === undefined) return null
+  const van = dag.stempel_van ? dag.stempel_van.slice(0, 5) : '?'
+  const tot = dag.stempel_tot ? dag.stempel_tot.slice(0, 5) : '?'
+  const uren = Number(dag.gestempeld_uren).toLocaleString('nl-NL', { maximumFractionDigits: 1 })
+  return `${van} – ${tot} (${uren} u${dag.stempel_onvolledig ? ', onvolledig paar' : ''})`
+}
+
+/** Toets-tekst per dag (mockup §3): sluit aan / N u boven of onder stempels — bespreken / geen toets. */
+export function stempelToets(dag: DagDto): { tekst: string; soort: 'ok' | 'vlag' | 'geen' } {
+  if (dag.gestempeld_uren === null || dag.gestempeld_uren === undefined) {
+    return { tekst: 'geen stempels — geen toets mogelijk', soort: 'geen' }
+  }
+  if (!dag.stempel_afwijking) return { tekst: 'sluit aan', soort: 'ok' }
+  const verschil = Number(dag.uren) - Number(dag.gestempeld_uren)
+  const abs = Math.abs(verschil).toLocaleString('nl-NL', { maximumFractionDigits: 1 })
+  return { tekst: `${abs} u ${verschil > 0 ? 'boven' : 'onder'} stempels — bespreken`, soort: 'vlag' }
 }
 
 export function haalMijnPlanning(

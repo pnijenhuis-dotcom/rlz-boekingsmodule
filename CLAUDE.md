@@ -904,6 +904,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   weekstaten per kalenderdag, oranje vlag, geen blokkade). **Seam-eis steigerbouw-run: nieuwe
   module-code roept nooit RlzClient aan; adapter-grepen per blok in BESLISSINGEN "ODOO-ADAPTER
   — GREPEN".**
+  **Geofence-stempels BASIS (bouwrun 28-08 blok C, mockup `geofence-stempels.html`, migratie 0085;
+  jurist akkoord 28-08 — regeling in de voorwaarden/privacyverklaring alinea 4, tekstversie
+  `2026-08-28-v2`, géén apart instemmingsscherm):** projectzone op de projectspecs (adres + lat/lon +
+  straal; geen zone = geen stempels), `boekhouding.werkstempel` APPEND-ONLY met fail-closed intake
+  `POST /uren/stempels` (alleen de veldwerker zelf, nooit namens; alleen projecten mét zone in
+  scope), eigen stempels in de veld-app, keuringskolom "gestempeld aanwezig" (Σ in/uit-paren,
+  onvolledig paar sluit op middernacht mét markering, > 1,0 u afwijking = oranje vlag — nooit
+  korting; geen stempels = toets zwijgt). **PARKEERPOST:** de native achtergrondlocatie
+  (manifest/permissies/OS-geofence-registratie/OS-permissiestap/store-motivering) komt in een eigen
+  release-ronde ná de eerste Play-release; de `ACCESS_BACKGROUND_LOCATION`-guard in
+  `bouw_android_release.sh` blijft tot dan. BESLISSINGEN "BOUWRUN 28-08 AVOND" blok C.
   **Prijsafspraken per project × veldwerker (steigerbouw-run 25-08 blok B1, GEBOUWD + GETEST
   2026-08-25, migratie 0073 — BESLISSINGEN "STEIGERBOUW-RUN 25-08 — BLOK B" is canoniek):**
   tarief mét eenheid uur óf m² + ISO-week-venster, append-only (intrekken met reden), overlap

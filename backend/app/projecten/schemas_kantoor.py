@@ -42,6 +42,11 @@ class SpecificatieDto(BaseModel):
     looptijd_tot: date | None = None
     huurtijd_omschrijving: str | None = None
     doorlopende_huur_omschrijving: str | None = None
+    # Projectzone werkstempels (blok C 28-08): zonder lat/lon = geen geofence voor dit project.
+    locatie_adres: str | None = None
+    locatie_lat: Decimal | None = None
+    locatie_lon: Decimal | None = None
+    zone_straal_m: int | None = None
 
 
 class SpecificatieInput(StrikteInvoer):
@@ -53,6 +58,10 @@ class SpecificatieInput(StrikteInvoer):
     looptijd_tot: date | None = None
     huurtijd_omschrijving: str | None = None
     doorlopende_huur_omschrijving: str | None = None
+    locatie_adres: str | None = None
+    locatie_lat: Decimal | None = None
+    locatie_lon: Decimal | None = None
+    zone_straal_m: int | None = None
 
 
 class ProjectDocumentDto(BaseModel):

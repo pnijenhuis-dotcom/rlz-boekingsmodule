@@ -20,7 +20,7 @@ from app.db.session import scoped_session
 
 # Bij elke inhoudelijke tekstwijziging ophogen — bestaande accordeurs krijgen dan opnieuw het
 # akkoord-scherm (fail-closed op de actuele versie).
-AKKOORD_TEKST_VERSIE = "2026-08-11-concept-v1"
+AKKOORD_TEKST_VERSIE = "2026-08-28-v2"
 
 # Placeholders [klantnaam]/[administratie] vult de PWA met de administratienamen uit de scope
 # van de accordeur; [link] verwijst naar de privacyverklaring (concept — jurist-toets open).
@@ -45,7 +45,17 @@ je gegevens omgaan en welke rechten je hebt (inzage, correctie, bezwaar).
 3. Staande goedkeuringen. Stel je een staande goedkeuring in ("akkoord voor deze en alle \
 volgende facturen van deze leverancier met exact dit bedrag"), dan wordt zo'n volgende \
 factuur automatisch namens jou goedgekeurd. Elke automatische toepassing is zichtbaar in het \
-logboek en je kunt de regel in de app altijd intrekken."""
+logboek en je kunt de regel in de app altijd intrekken.
+
+4. Werkstempels (alleen veldwerkers: ZZP'ers en uitvoerders). Werk je op projectlocaties, dan \
+kan de app op je telefoon je aankomst en vertrek op die locaties stempelen: uitsluitend het \
+tijdstip en het project, alleen bij het binnenkomen en verlaten van de projectzone die het \
+kantoor voor dat project heeft ingesteld — buiten die zones ontvangt de app niets en er wordt \
+niets gevolgd. De stempels zijn een hulpmiddel bij de controle van je weekstaat (het kantoor \
+ziet ze naast je opgegeven uren; een verschil is een gespreksonderwerp, nooit een automatische \
+korting) en zijn zichtbaar voor jou en voor de keurder van het kantoor — verder voor niemand. \
+Ze worden even lang bewaard als je weekstaten. Uitzetten kan altijd via de locatie-instelling \
+van je telefoon; de controle zwijgt dan."""
 
 
 def heeft_akkoord(*, gebruiker_id: uuid.UUID) -> bool:

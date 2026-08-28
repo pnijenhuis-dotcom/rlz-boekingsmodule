@@ -61,6 +61,11 @@ import {
   uploadDossierDocument,
   type DossierDto,
   datumMetWeek,
+  gestempeldLabel,
+  haalEigenStempels,
+  stempelTijd,
+  stempelToets,
+  type StempelDto,
 } from './urenApi'
 
 type Veldrol = 'zzper' | 'uitvoerder' | 'detacheerder'
@@ -1261,6 +1266,8 @@ function MijnPlanningView({
   return (
     <div>
       {terug && <Terug label={namens ? `${namens.naam} · projecten` : 'Terug'} onClick={terug} />}
+      {/* Blok C 28-08 (mockup §1 "Vandaag"): eigen stempels — alleen de veldwerker zelf, nooit namens. */}
+      {namens === null && isHuidigeWeek && <StempelsVandaag vangFout={vangFout} />}
       <div className="acc-seclabel" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span>
           Planning · week {week.weeknummer}
@@ -1314,6 +1321,50 @@ function MijnPlanningView({
           in op het juiste project — dat kleurt bij de keuring als "buiten planning", nooit een blokkade.
         </span>
       </div>
+    </div>
+  )
+}
+
+/** Eigen werkstempels van vandaag (blok C 28-08, mockup geofence-stempels.html §1): transparantie
+ * voor de veldwerker — per project de in-/uit-tijden; geen stempels = "Geen stempels vandaag".
+ * De registratie komt uit de latere native OS-geofence (eigen release-ronde); deze weergave en het
+ * intake-endpoint staan er al voor. */
+function StempelsVandaag({ vangFout }: { vangFout: (err: unknown) => string }) {
+  const [stempels, setStempels] = useState<StempelDto[] | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
+  const vandaag = new Date()
+  const datum = `${vandaag.getFullYear()}-${String(vandaag.getMonth() + 1).padStart(2, '0')}-${String(vandaag.getDate()).padStart(2, '0')}`
+  useEffect(() => {
+    let actief = true
+    haalEigenStempels(datum)
+      .then((s) => actief && setStempels(s))
+      .catch((err) => actief && setFout(vangFout(err) || null))
+    return () => {
+      actief = false
+    }
+  }, [datum, vangFout])
+  if (fout) return null // stempels zijn een extra; een leesfout mag de planning nooit hinderen
+  const perProject = new Map<string, StempelDto[]>()
+  for (const s of stempels ?? []) perProject.set(s.project_id, [...(perProject.get(s.project_id) ?? []), s])
+  return (
+    <div className="acc-card" data-testid="stempels-vandaag" style={{ marginBottom: 10 }}>
+      <div className="acc-seclabel" style={{ marginTop: 0 }}>
+        📍 Vandaag · werkstempels
+      </div>
+      {stempels === null && <Leeg tekst="Laden…" />}
+      {stempels !== null && perProject.size === 0 && <Leeg tekst="Geen stempels vandaag" />}
+      {[...perProject.entries()].map(([projectId, lijst]) => (
+        <div key={projectId} className="acc-dagrij">
+          <span className="acc-proj">
+            <b>{lijst[0].project_naam ?? 'project'}</b>
+            {lijst.map((s) => (
+              <span key={s.id} style={{ display: 'block' }}>
+                {stempelTijd(s.tijdstip)} {s.soort === 'in' ? 'aangekomen' : 'vertrokken'}
+              </span>
+            ))}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -1901,6 +1952,24 @@ function KeurDetailView({
                     {dag.namens && <small>ingevuld door {dag.ingevuld_door_naam ?? 'detacheerder'} (namens)</small>}
                     {/* Planning-toetsbron (besluit 22-08): oranje signaal, nooit een blokkade. */}
                     {dag.buiten_planning && <small style={{ color: 'var(--acc-warn, #e5a04c)' }}>⚠ buiten planning</small>}
+                    {/* Geofence-stempels (blok C 28-08, mockup §3): gestempelde aanwezigheid + toets —
+                        oranje vlag bij > 1,0 u afwijking, "onvolledig paar" gemarkeerd; geen stempels =
+                        de toets zwijgt (net als een dag zonder planning). Nooit een korting. */}
+                    {(() => {
+                      const label = gestempeldLabel(dag)
+                      const toets = stempelToets(dag)
+                      if (label === null) {
+                        return <small style={{ color: 'var(--acc-muted)' }}>📍 {toets.tekst}</small>
+                      }
+                      return (
+                        <small
+                          data-testid={`stempel-${dag.datum}`}
+                          style={{ color: toets.soort === 'vlag' ? 'var(--acc-orange)' : 'var(--acc-muted)' }}
+                        >
+                          📍 {label} · {toets.soort === 'ok' ? '✓' : '⚑'} {toets.tekst}
+                        </small>
+                      )
+                    })()}
                     {/* A6 (25-08): >N uur per dag over álle weekstaten — signaal, geen blokkade. */}
                     {dag.boven_dagmax && (
                       <small style={{ color: 'var(--acc-orange)' }}>
@@ -1944,6 +2013,15 @@ function KeurDetailView({
           <span>
             Dagen met <b>buiten planning</b>: uren op een dag/project waar het kantoor deze persoon niet gepland
             had — een signaal, geen blokkade (invallen en omplannen mag).
+          </span>
+        </div>
+      )}
+      {staat !== null && staat.dagen.some((d) => d.stempel_afwijking) && (
+        <div className="acc-notitie waarschuw" data-testid="stempel-notitie">
+          <span>📍</span>
+          <span>
+            Dagen waar de opgegeven uren méér dan 1 uur afwijken van de <b>gestempelde aanwezigheid</b> — informatie
+            voor het gesprek of het correctievoorstel, nooit een automatische korting. Geen stempels ≠ verdacht.
           </span>
         </div>
       )}

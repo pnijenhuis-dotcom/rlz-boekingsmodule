@@ -233,6 +233,7 @@ SWEEP_ALLOWLIST_PREFIXES = (
     "/uren/meerwerk/",
     "/uren/projectdocumenten/",
     "/uren/dossier",  # ZZP-dossier veldkant (A1/A2, 25-08): eigen dossier + upload (vereis_veldrol)
+    "/uren/stempels",  # werkstempels veldkant (blok C 28-08): intake + eigen stempels (vereis_veldrol, nooit namens)
     "/health",  # liveness (publiek)
 )
 

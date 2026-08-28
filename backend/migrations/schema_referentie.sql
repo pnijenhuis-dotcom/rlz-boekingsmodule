@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0084
+-- Migratie-head bij deze dump: 0085
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1889,7 +1889,12 @@ CREATE TABLE boekhouding.project_specificatie (
     huurtijd_omschrijving text,
     doorlopende_huur_omschrijving text,
     bijgewerkt_door uuid NOT NULL,
-    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    locatie_adres text,
+    locatie_lat numeric(9,6),
+    locatie_lon numeric(9,6),
+    zone_straal_m smallint,
+    CONSTRAINT ck_project_specificatie_zone_straal CHECK (((zone_straal_m IS NULL) OR ((zone_straal_m >= 50) AND (zone_straal_m <= 1000))))
 );
 
 ALTER TABLE ONLY boekhouding.project_specificatie FORCE ROW LEVEL SECURITY;
@@ -2412,6 +2417,27 @@ CREATE TABLE boekhouding.weekstaat_dag (
 );
 
 ALTER TABLE ONLY boekhouding.weekstaat_dag FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: werkstempel; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.werkstempel (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    tijdstip timestamp with time zone NOT NULL,
+    soort text NOT NULL,
+    bron text DEFAULT 'app'::text NOT NULL,
+    apparaat_id uuid,
+    ontvangen_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_werkstempel_bron CHECK ((bron = ANY (ARRAY['app'::text, 'os_geofence'::text]))),
+    CONSTRAINT ck_werkstempel_soort CHECK ((soort = ANY (ARRAY['in'::text, 'uit'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.werkstempel FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -3590,6 +3616,14 @@ ALTER TABLE ONLY boekhouding.weekstaat
 
 
 --
+-- Name: werkstempel uq_werkstempel_moment; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkstempel
+    ADD CONSTRAINT uq_werkstempel_moment UNIQUE (gebruiker_id, project_id, tijdstip, soort);
+
+
+--
 -- Name: uren_project_toewijzing uren_project_toewijzing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3715,6 +3749,14 @@ ALTER TABLE ONLY boekhouding.weekstaat_dag
 
 ALTER TABLE ONLY boekhouding.weekstaat
     ADD CONSTRAINT weekstaat_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: werkstempel werkstempel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkstempel
+    ADD CONSTRAINT werkstempel_pkey PRIMARY KEY (id);
 
 
 --
@@ -4688,6 +4730,20 @@ CREATE INDEX ix_weekstaat_dag_weekstaat_id ON boekhouding.weekstaat_dag USING bt
 --
 
 CREATE INDEX ix_weekstaat_gebruiker ON boekhouding.weekstaat USING btree (administratie_id, gebruiker_id);
+
+
+--
+-- Name: ix_werkstempel_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_werkstempel_administratie_id ON boekhouding.werkstempel USING btree (administratie_id);
+
+
+--
+-- Name: ix_werkstempel_gebruiker_tijdstip; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_werkstempel_gebruiker_tijdstip ON boekhouding.werkstempel USING btree (gebruiker_id, tijdstip);
 
 
 --
@@ -6957,6 +7013,22 @@ ALTER TABLE ONLY boekhouding.weekstaat
 
 
 --
+-- Name: werkstempel werkstempel_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkstempel
+    ADD CONSTRAINT werkstempel_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: werkstempel werkstempel_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkstempel
+    ADD CONSTRAINT werkstempel_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: accordeur_akkoord accordeur_akkoord_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -8443,6 +8515,19 @@ CREATE POLICY weekstaat_dag_scope ON boekhouding.weekstaat_dag USING ((administr
 --
 
 CREATE POLICY weekstaat_scope ON boekhouding.weekstaat USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: werkstempel; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.werkstempel ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: werkstempel werkstempel_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY werkstempel_scope ON boekhouding.werkstempel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -136,6 +136,14 @@ class DagData:
     dag_totaal_uren: Decimal = Decimal("0")
     boven_dagmax: bool = False
     dagmax_uren: Decimal | None = None
+    # Geofence-stempels (blok C 28-08, mockup geofence-stempels.html §3): gestempelde aanwezigheid
+    # op deze dag (None = geen stempels → toets zwijgt), eerste in/laatste uit, "onvolledig paar"
+    # (nooit gokken) en de oranje vlag bij > 1,0 u afwijking — signaal, nooit korting.
+    gestempeld_uren: Decimal | None = None
+    stempel_van: time | None = None
+    stempel_tot: time | None = None
+    stempel_onvolledig: bool = False
+    stempel_afwijking: bool = False
 
 
 @dataclass(frozen=True)
@@ -322,8 +330,12 @@ def _dag_data(
     gepland: set[date],
     dagtotalen: dict[date, Decimal] | None = None,
     dagmax: Decimal | None = None,
+    stempels: dict[date, object] | None = None,
 ) -> DagData:
+    from app.uren.stempels import afwijking_boven_drempel
+
     totaal = (dagtotalen or {}).get(dag.datum, dag.uren)
+    aanwezigheid = (stempels or {}).get(dag.datum)
     return DagData(
         id=dag.id,
         datum=dag.datum,
@@ -340,6 +352,11 @@ def _dag_data(
         dag_totaal_uren=totaal,
         boven_dagmax=dagmax is not None and totaal > dagmax,
         dagmax_uren=dagmax,
+        gestempeld_uren=aanwezigheid.gestempeld_uren if aanwezigheid is not None else None,  # type: ignore[attr-defined]
+        stempel_van=aanwezigheid.eerste_in if aanwezigheid is not None else None,  # type: ignore[attr-defined]
+        stempel_tot=aanwezigheid.laatste_uit if aanwezigheid is not None else None,  # type: ignore[attr-defined]
+        stempel_onvolledig=bool(aanwezigheid.onvolledig) if aanwezigheid is not None else False,  # type: ignore[attr-defined]
+        stempel_afwijking=afwijking_boven_drempel(dag.uren, aanwezigheid),  # type: ignore[arg-type]
     )
 
 
@@ -418,6 +435,11 @@ def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
     )
     gepland = _geplande_datums(session, staat, dagen)
     dagtotalen = _dagtotalen(session, staat, dagen)
+    from app.uren.stempels import stempels_per_dag  # lokaal: stempels.py importeert uit deze module
+
+    stempels = stempels_per_dag(
+        session, gebruiker_id=staat.gebruiker_id, project_id=staat.project_id, dagen=[d.datum for d in dagen]
+    )
     administratie = session.get(Administratie, staat.administratie_id)
     dagmax = administratie.uren_dagmax_uren if administratie is not None else None
     namen = _namen(
@@ -444,7 +466,13 @@ def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
         totaal_m2=sum((d.m2 for d in dagen if d.m2 is not None), Decimal("0")),
         dagen=[
             _dag_data(
-                d, zzper_id=staat.gebruiker_id, namen=namen, gepland=gepland, dagtotalen=dagtotalen, dagmax=dagmax
+                d,
+                zzper_id=staat.gebruiker_id,
+                namen=namen,
+                gepland=gepland,
+                dagtotalen=dagtotalen,
+                dagmax=dagmax,
+                stempels=stempels,
             )
             for d in dagen
         ],

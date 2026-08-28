@@ -139,6 +139,21 @@ alle volgende facturen van deze leverancier met exact dit bedrag"), dan wordt zo
 factuur automatisch namens jou goedgekeurd. Elke automatische toepassing is zichtbaar in het
 logboek en je kunt de regel in de app altijd intrekken.*
 
+***4. Werkstempels (alleen veldwerkers: ZZP'ers en uitvoerders).** Werk je op projectlocaties, dan
+kan de app op je telefoon je aankomst en vertrek op die locaties stempelen: uitsluitend het
+tijdstip en het project, alleen bij het binnenkomen en verlaten van de projectzone die het
+kantoor voor dat project heeft ingesteld — buiten die zones ontvangt de app niets en er wordt
+niets gevolgd. De stempels zijn een hulpmiddel bij de controle van je weekstaat (het kantoor ziet
+ze naast je opgegeven uren; een verschil is een gespreksonderwerp, nooit een automatische
+korting) en zijn zichtbaar voor jou en voor de keurder van het kantoor — verder voor niemand. Ze
+worden even lang bewaard als je weekstaten. Uitzetten kan altijd via de locatie-instelling van je
+telefoon; de controle zwijgt dan.*
+
+> Alinea 4 toegevoegd in tekstversie `2026-08-28-v2` (bouwrun 28-08 blok C, mockup
+> `geofence-stempels.html`; jurist akkoord 28-08 — regeling via deze voorwaarden, géén apart
+> instemmingsscherm; het OS toont daarnaast zijn eigen locatie-permissievraag). Bestaande
+> gebruikers krijgen door de versieophoging opnieuw het akkoordscherm.
+
 *☐ Ik heb de gebruiksvoorwaarden en de privacyverklaring gelezen en ga akkoord.*
 
 *(het akkoord wordt vastgelegd met naam, datum, tijdstip en tekstversie)*
