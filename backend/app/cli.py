@@ -487,6 +487,61 @@ def _doorbelasting_facturen_herstel(args: argparse.Namespace) -> int:
     return 1 if resultaat.mislukt else 0
 
 
+def _settings():
+    from app.config import settings
+
+    return settings
+
+
+def _accordering_herstel_boeken(args: argparse.Namespace) -> int:
+    """Bugfix-run 28-08: documenten mét afgeronde klant-accordering die niet geboekt staan alsnog
+    door het gefixte na-laatste-akkoord-pad boeken. Dry-run = lijst + diagnose per document, niets
+    geschreven. Uitvoeren is een expliciete actie van Peter (make-target zonder DRY_RUN)."""
+    from app.accordering import herstel as accordering_herstel
+
+    administratie_id = uuid.UUID(args.administratie_id) if args.administratie_id else None
+    resultaat = accordering_herstel.herstel_boeken(
+        dry_run=args.dry_run, administratie_id=administratie_id, max_aantal=args.max_aantal
+    )
+    label = "DRY-RUN   " if args.dry_run else "KANDIDAAT "
+    for k in resultaat.kandidaten:
+        bedrag = f"€ {k.totaalbedrag}" if k.totaalbedrag is not None else "bedrag onbekend"
+        afgerond = k.afgerond_op.isoformat(timespec="minutes") if k.afgerond_op else "?"
+        print(
+            f"{label} {k.administratie_naam} | {k.bestandsnaam} | {k.leverancier or 'leverancier onbekend'} | "
+            f"{bedrag} | status={k.documentstatus} | akkoord compleet {afgerond} | "
+            f"doorbelasting={'klaargezet' if k.doorbelasting_klaargezet else 'geen'} | document={k.document_id}"
+        )
+        if k.laatste_boek_fout:
+            print(f"           laatste boekfout: {k.laatste_boek_fout}")
+        if args.dry_run:
+            blokkades = resultaat.diagnose.get(k.document_id, [])
+            if blokkades:
+                for b in blokkades:
+                    print(f"           BLOKKEERT  {b}")
+            else:
+                print("           GROEN      boekt bij uitvoering (alle poorten groen op dit moment)")
+    if args.dry_run:
+        groen = sum(1 for k in resultaat.kandidaten if not resultaat.diagnose.get(k.document_id))
+        print(
+            f"DRY-RUN    {len(resultaat.kandidaten)} document(en) met afgerond klant-akkoord maar niet geboekt — "
+            f"{groen} groen, {len(resultaat.kandidaten) - groen} geblokkeerd; niets gewijzigd. "
+            f"Volumerem: max {_settings().max_boekingen_per_dag_per_administratie} boekingen/dag/administratie."
+        )
+        return 0
+    for document_id in resultaat.geboekt:
+        print(f"GEBOEKT    document={document_id}")
+    for document_id, reden in resultaat.mislukt.items():
+        print(f"MISLUKT    document={document_id}: {reden}", file=sys.stderr)
+    for document_id, reden in resultaat.overgeslagen.items():
+        print(f"OVERGESLAGEN document={document_id}: {reden}")
+    print(
+        f"{len(resultaat.geboekt)} geboekt, {len(resultaat.mislukt)} mislukt, "
+        f"{len(resultaat.overgeslagen)} overgeslagen van {len(resultaat.kandidaten)} kandidaat/kandidaten"
+    )
+    return 1 if resultaat.mislukt else 0
+
+
 def _doorbelasting_seed_kempen(args: argparse.Namespace) -> int:
     """Losse, expliciete seed-stap (migraties zijn schema-only): de whitelist doelentiteit ↔
     Customer-GUID uit verkenning/16 §1 voor de opgegeven BRON-administratie. Idempotent."""
@@ -1213,6 +1268,16 @@ def main(argv: list[str] | None = None) -> int:
         "--beheerder-id", default=None, dest="beheerder_id", help="Audit-actor; default de systeem-actor."
     )
 
+    acc_herstel_parser = subparsers.add_parser(
+        "accordering-herstel-boeken",
+        help="Bugfix-run 28-08: documenten mét afgeronde klant-accordering die niet geboekt staan alsnog "
+        "boeken via het gefixte na-laatste-akkoord-pad (alle poorten). --dry-run = lijst + diagnose, niets "
+        "gewijzigd; --administratie-id beperkt; --max N begrenst het aantal boekpogingen.",
+    )
+    acc_herstel_parser.add_argument("--dry-run", action="store_true", dest="dry_run")
+    acc_herstel_parser.add_argument("--administratie-id", default=None, dest="administratie_id")
+    acc_herstel_parser.add_argument("--max", type=int, default=None, dest="max_aantal")
+
     seed_kempen_parser = subparsers.add_parser(
         "doorbelasting-seed-kempen",
         help="Seed de doorbelasting-whitelist (doelentiteit ↔ Customer-GUID, verkenning/16 §1) "
@@ -1409,6 +1474,8 @@ def main(argv: list[str] | None = None) -> int:
         return _doorbelasting_reconciliatie(args)
     if args.commando == "doorbelasting-facturen-herstel":
         return _doorbelasting_facturen_herstel(args)
+    if args.commando == "accordering-herstel-boeken":
+        return _accordering_herstel_boeken(args)
     if args.commando == "doorbelasting-seed-kempen":
         return _doorbelasting_seed_kempen(args)
     if args.commando == "materiaal-seed-universal":

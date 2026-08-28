@@ -204,7 +204,9 @@ class TestAkkoordEnBoeken:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Boeken staat UIT (failsafe) — het akkoord is dan wél afgerond, maar de boekpoging
-        faalt zichtbaar (boek_fout) en het document blijft in de kantoorbak."""
+        faalt zichtbaar: boek_fout in de response ÉN persistent op de ronde, reden op de tijdlijn,
+        en het document blijft op ter_accordering (bugfix-run 28-08 — vóór de fix viel het stil
+        terug naar klaar_om_te_boeken, precies de casus Kempen Facilities 27-08)."""
         _patch_rlz(monkeypatch)
         zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
         service.bied_ter_accordering_aan(
@@ -219,7 +221,10 @@ class TestAkkoordEnBoeken:
         assert resultaat.alles_akkoord is True
         assert resultaat.geboekt is False
         assert resultaat.boek_fout is not None
-        assert document_status(admin_engine, klaar_document) == "klaar_om_te_boeken"
+        assert resultaat.accordering.boek_fout == resultaat.boek_fout
+        assert document_status(admin_engine, klaar_document) == "ter_accordering"
+        opnieuw = service.accordering_van_document(administratie_id=administratie_id, document_id=klaar_document)
+        assert opnieuw is not None and opnieuw.status == "afgerond" and "Boeken staat uit" in (opnieuw.boek_fout or "")
 
 
 class TestAfwijzenEnIntrekken:

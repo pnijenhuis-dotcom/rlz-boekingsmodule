@@ -152,9 +152,7 @@ class TestRouting:
         assert groot.status == DocumentStatus.EXTRACTIE_WACHTRIJ
         assert wachtrij.enqueued == [(administratie_id, groot.document_id)]
 
-        klein = _upload(
-            administratie_id, gescoopte_gebruiker, opslag, inhoud=_echte_pdf(paginas=2), wachtrij=wachtrij
-        )
+        klein = _upload(administratie_id, gescoopte_gebruiker, opslag, inhoud=_echte_pdf(paginas=2), wachtrij=wachtrij)
         assert klein.status == DocumentStatus.TE_CONTROLEREN
         assert len(wachtrij.enqueued) == 1
 
@@ -236,12 +234,12 @@ class TestAsyncFlow:
         """Projectplicht + onvolledige regelset → handmatig_afmaken, ook op de async-route:
         de waarborg zit in _rond_extractie_af en is voor worker en synchroon pad identiek."""
         monkeypatch.setattr(settings, "ai_extractie_sync_max_bytes", 10)
-        beheer_service.zet_project_verplicht(
-            actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True
-        )
+        beheer_service.zet_project_verplicht(actor_id=beheerder_id, administratie_id=administratie_id, verplicht=True)
         monkeypatch.setattr(
             "app.extractie.service.extraheer_inkoopfactuur",
-            lambda pdf_bytes, *, client=None, verbruik_referentie=None, mail_context=None: _fake_extractie(volledig=False),
+            lambda pdf_bytes, *, client=None, verbruik_referentie=None, mail_context=None: _fake_extractie(
+                volledig=False
+            ),
         )
         wachtrij = InProcessExtractieWachtrij(taak=service.verwerk_extractie_taak, max_workers=1)
 
@@ -352,7 +350,11 @@ class TestHerstelNaHerstart:
             document = session.get(Document, doc_bezig.document_id)
             assert document is not None
             service._schrijf_overgang(
-                session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=SYSTEEM_ACTOR_ID
+                session,
+                document=document,
+                naar=DocumentStatus.EXTRACTIE_BEZIG,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={"reden": "testopstelling: gestrande bezig-run nabootsen"},
             )
 
         herstel_wachtrij = FakeWachtrij()
@@ -367,7 +369,11 @@ class TestHerstelNaHerstart:
         assert detail.document.status == DocumentStatus.EXTRACTIE_WACHTRIJ
         laatste = detail.gebeurtenissen[-1]
         assert laatste.actor_id == SYSTEEM_ACTOR_ID
-        assert laatste.detail == {"herstel": "achtergebleven_na_herstart"}
+        # Vangnet 28-08: élke systeem-overgang draagt óók een leesbare reden.
+        assert laatste.detail == {
+            "herstel": "achtergebleven_na_herstart",
+            "reden": "opnieuw ingepland na een herstart van de verwerking",
+        }
 
     def test_niets_te_herstellen_is_een_nul_operatie(
         self,
@@ -432,7 +438,11 @@ class TestWachtrijJob:
             document = session.get(Document, doc.document_id)
             assert document is not None
             service._schrijf_overgang(
-                session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=SYSTEEM_ACTOR_ID
+                session,
+                document=document,
+                naar=DocumentStatus.EXTRACTIE_BEZIG,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={"reden": "testopstelling: gestrande bezig-run nabootsen"},
             )
         # Verse bezig-run (van een overlappende job-uitvoering): overslaan.
         assert service.verwerk_extractie_wachtrij() == 0
@@ -441,13 +451,18 @@ class TestWachtrijJob:
         assert service.verwerk_extractie_wachtrij(stale_na=timedelta(seconds=0)) == 1
         detail = service.haal_document_op(administratie_id=administratie_id, document_id=doc.document_id)
         assert detail.document.status == DocumentStatus.TE_CONTROLEREN
-        assert any(g.detail == {"herstel": "gestrand_op_bezig"} for g in detail.gebeurtenissen)
+        assert any(
+            (g.detail or {}).get("herstel") == "gestrand_op_bezig" and g.detail.get("reden")
+            for g in detail.gebeurtenissen
+        )
 
     def test_cloud_wachtrij_triggert_job_en_laat_upload_nooit_falen(self) -> None:
         from app.documenten.wachtrij import CloudRunJobExtractieWachtrij
 
         getriggerd: list[str] = []
-        wachtrij = CloudRunJobExtractieWachtrij(job_resource="projects/p/locations/l/jobs/rlz-extractie-wachtrij", trigger=getriggerd.append)
+        wachtrij = CloudRunJobExtractieWachtrij(
+            job_resource="projects/p/locations/l/jobs/rlz-extractie-wachtrij", trigger=getriggerd.append
+        )
         wachtrij.enqueue(administratie_id=uuid.uuid4(), document_id=uuid.uuid4())
         assert getriggerd == ["projects/p/locations/l/jobs/rlz-extractie-wachtrij"]
 

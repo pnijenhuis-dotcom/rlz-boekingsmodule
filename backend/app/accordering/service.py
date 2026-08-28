@@ -4,8 +4,11 @@ accordeur-PWA" punten 1/5/6; migratie 0033).
 Flow: kantoor biedt een boekklaar document "ter accordering" aan → stappen worden bevroren uit
 de actieve lagen (bedragdrempel geëvalueerd op het totaalbedrag; onbekend bedrag = laag
 vereist, fail-closed) → accordeurs besluiten SEQUENTIEEL (laag n pas na laag n-1) → na het
-laatste akkoord zet de flow het document terug op klaar_om_te_boeken en draait de bestaande
-boekmotor MET ALLE HARDE CHECKS opnieuw (CLAUDE.md, hard — een akkoord is nooit een bypass).
+laatste akkoord draait de flow de bestaande boekmotor MET ALLE HARDE CHECKS opnieuw (CLAUDE.md,
+hard — een akkoord is nooit een bypass). Het document BLIJFT daarbij op ter_accordering tot de
+boeking écht staat (bugfix-run 28-08): faalt het boeken (poort, toggle, volumerem, checks,
+RLZ-fout), dan is dat een zichtbare `boek_fout` op de ronde + een reden op de tijdlijn — nooit
+een stille terugval naar klaar_om_te_boeken. Zie `_rond_af_en_boek` / `_boek_na_laatste_akkoord`.
 
 Staande goedkeuring (besluit Peter 2026-08-08): een accordeur kan bij zijn akkoord "voortaan
 automatisch bij exact dit bedrag" vastleggen — per accordeur + leverancier (vendor_id) + exact
@@ -134,6 +137,10 @@ class AccorderingData:
     aangeboden_op: datetime
     afgerond_op: datetime | None
     stappen: list[StapData]
+    # Bugfix-run 28-08: de laatste boekfout ná het laatste akkoord (persistent op de ronde —
+    # `detail["boek_fout"]`), zichtbaar op het controlescherm + in de documentenlijst. None = geen.
+    boek_fout: str | None = None
+    boek_fout_op: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -168,15 +175,32 @@ def _eerstvolgende_open_stap(stappen: list[AccorderingStap]) -> AccorderingStap 
     return None
 
 
+def _boek_fout_van(accordering: DocumentAccordering) -> tuple[str | None, datetime | None]:
+    """De persistente boekfout op de ronde (`detail["boek_fout"] = {fout, tijdstip, geboekt}`)."""
+    boek_fout = (accordering.detail or {}).get("boek_fout")
+    if not isinstance(boek_fout, dict) or not boek_fout.get("fout"):
+        return None, None
+    tijdstip: datetime | None = None
+    if isinstance(boek_fout.get("tijdstip"), str):
+        try:
+            tijdstip = datetime.fromisoformat(boek_fout["tijdstip"])
+        except ValueError:  # pragma: no cover — defensief
+            tijdstip = None
+    return str(boek_fout["fout"]), tijdstip
+
+
 def _naar_data(session: Session, accordering: DocumentAccordering, stappen: list[AccorderingStap]) -> AccorderingData:
     namen = _gebruikersnamen(session, {s.accordeur_gebruiker_id for s in stappen})
     volgende = _eerstvolgende_open_stap(stappen) if accordering.status == AccorderingStatus.OPEN.value else None
+    boek_fout, boek_fout_op = _boek_fout_van(accordering)
     return AccorderingData(
         id=accordering.id,
         document_id=accordering.document_id,
         status=accordering.status,
         aangeboden_op=accordering.aangeboden_op,
         afgerond_op=accordering.afgerond_op,
+        boek_fout=boek_fout,
+        boek_fout_op=boek_fout_op,
         stappen=[
             StapData(
                 id=s.id,
@@ -209,18 +233,39 @@ def _open_accordering(session: Session, document_id: uuid.UUID) -> DocumentAccor
     ).first()
 
 
+def accordering_blokkade_voor_boeken(session: Session, *, document_id: uuid.UUID) -> str | None:
+    """Poort voor de boekmotor bij accordering-aan (app/documenten/boeken.py — nooit de client
+    vertrouwen): None = boeken mag, anders de leesbare reden waarom niet. Sinds de bugfix-run
+    28-08 telt uitsluitend de LAATSTE ronde (een oudere afgeronde ronde naast een nieuwe open
+    ronde was een bypass) én moet het totaalbedrag van het voorstel nog gelijk zijn aan het
+    bedrag waarop de klant akkoord gaf (aangrenzend gat: voorstel wijzigen ná akkoord)."""
+    laatste = _laatste_accordering(session, document_id)
+    if laatste is None:
+        return (
+            "Klant-accordering staat aan voor deze administratie — bied het document ter "
+            "accordering aan; na het laatste akkoord wordt automatisch geboekt"
+        )
+    if laatste.status == AccorderingStatus.OPEN.value:
+        return (
+            "Het document ligt bij de klant-accordeur (ronde loopt) — boeken volgt automatisch ná het laatste akkoord"
+        )
+    if laatste.status != AccorderingStatus.AFGEROND.value:
+        return f"De laatste accorderingsronde is {laatste.status} — bied het document opnieuw ter accordering aan"
+    akkoord_bedrag = _als_decimal((laatste.detail or {}).get("totaalbedrag"))
+    voorstel = session.get(Boekvoorstel, document_id)
+    huidig_bedrag = _als_decimal(voorstel.totaalbedrag) if voorstel is not None else None
+    if akkoord_bedrag is not None and huidig_bedrag is not None and akkoord_bedrag != huidig_bedrag:
+        return (
+            f"Het totaalbedrag is gewijzigd ná het klant-akkoord (€ {akkoord_bedrag} → € {huidig_bedrag}) — "
+            "bied het document opnieuw ter accordering aan"
+        )
+    return None
+
+
 def heeft_afgeronde_accordering(session: Session, *, document_id: uuid.UUID) -> bool:
-    """Poort voor de boekmotor: bij accordering-aan mag er alleen geboekt worden mét een
-    afgeronde ronde (app/documenten/boeken.py roept dit aan — nooit de client vertrouwen)."""
-    return (
-        session.scalars(
-            select(DocumentAccordering).where(
-                DocumentAccordering.document_id == document_id,
-                DocumentAccordering.status == AccorderingStatus.AFGEROND.value,
-            )
-        ).first()
-        is not None
-    )
+    """True als de boekmotor door de accorderingspoort mag (laatste ronde afgerond, bedrag
+    ongewijzigd) — leesbare variant van `accordering_blokkade_voor_boeken`."""
+    return accordering_blokkade_voor_boeken(session, document_id=document_id) is None
 
 
 def is_accordering_ingeschakeld(*, administratie_id: uuid.UUID) -> bool:
@@ -845,12 +890,22 @@ def _pas_staande_regels_toe_en_rond_af(
 # --- besluiten (accordeur) -----------------------------------------------------------------------
 
 
-def _laatste_accordering(session: Session, document_id: uuid.UUID) -> DocumentAccordering | None:
-    return session.scalars(
+def _laatste_accordering(
+    session: Session, document_id: uuid.UUID, *, vergrendel: bool = False
+) -> DocumentAccordering | None:
+    """`vergrendel=True` (besluit-paden, bugfix-run 28-08 punt 3d): SELECT … FOR UPDATE op de
+    laatste ronde — twee gelijktijdige besluiten op hetzelfde document (verzendrij-retry,
+    dubbeltik) serialiseren dan op de rij; de tweede ziet het eerste besluit en valt in het
+    idempotente `_herhaald_besluit`-pad i.p.v. een tweede boekronde of dubbel audit-spoor."""
+    stmt = (
         select(DocumentAccordering)
         .where(DocumentAccordering.document_id == document_id)
         .order_by(DocumentAccordering.aangeboden_op.desc())
-    ).first()
+        .limit(1)
+    )
+    if vergrendel:
+        stmt = stmt.with_for_update()
+    return session.scalars(stmt).first()
 
 
 def _herhaald_besluit(
@@ -863,7 +918,7 @@ def _herhaald_besluit(
     staande regel, geen tweede boekronde, geen dubbel audit-event). Alleen de LAATSTE
     accorderingsronde telt: een later opnieuw aangeboden document begint een verse ronde en
     die vraagt gewoon een nieuw besluit."""
-    laatste = _laatste_accordering(session, document_id)
+    laatste = _laatste_accordering(session, document_id, vergrendel=True)
     if laatste is None:
         return None
     stappen = _stappen_van(session, laatste.id)
@@ -1014,25 +1069,54 @@ def geef_akkoord(
     )
 
 
+BOEK_NA_AKKOORD_REDEN = "alle lagen akkoord — boeken gestart"
+
+
 def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) -> AkkoordResultaat:
-    """Ná het laatste akkoord: ronde afronden, document terug naar klaar_om_te_boeken (tijdlijn
-    "alle lagen akkoord") en de bestaande boekmotor draaien — MET alle harde checks (CLAUDE.md,
-    hard). Een geblokkeerde check of RLZ-fout is zichtbaar (boek_fout + documentstatus), nooit
-    stil."""
+    """Ná het laatste akkoord: ronde afronden en de bestaande boekmotor draaien — MET alle harde
+    checks (CLAUDE.md, hard). Het document BLIJFT op ter_accordering tot de boeking staat
+    (bugfix-run 28-08; vóór die fix ging het éérst naar klaar_om_te_boeken en bleef het dáár
+    stil hangen zodra de boekpoging faalde — de fout leefde alleen in de HTTP-response aan de
+    accordeur). Een geblokkeerde check, toggle, volumerem of RLZ-fout is nu zichtbaar op de
+    ronde (`boek_fout`), op de tijdlijn (reden) en in de documentenlijst, nooit stil.
+
+    Race-vangnet (3d): de ronde wordt FOR UPDATE gelezen; is zij al afgerond door een
+    gelijktijdige request, dan geeft dit pad de huidige stand terug zonder tweede boekpoging."""
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
-        accordering = session.get(DocumentAccordering, accordering_id)
-        assert accordering is not None
+        accordering = session.scalars(
+            select(DocumentAccordering).where(DocumentAccordering.id == accordering_id).with_for_update()
+        ).one()
+        document_id = accordering.document_id
+        if accordering.status != AccorderingStatus.OPEN.value:
+            stappen = _stappen_van(session, accordering_id)
+            document = session.get(Document, document_id)
+            boek_fout, _ = _boek_fout_van(accordering)
+            return AkkoordResultaat(
+                accordering=_naar_data(session, accordering, stappen),
+                alles_akkoord=accordering.status == AccorderingStatus.AFGEROND.value,
+                geboekt=document is not None and document.status == DocumentStatus.GEBOEKT.value,
+                boek_fout=boek_fout,
+                staande_regel_id=None,
+            )
         accordering.status = AccorderingStatus.AFGEROND.value
         accordering.afgerond_op = datetime.now(UTC)
-        document_id = accordering.document_id
         document = session.get(Document, document_id)
         assert document is not None
-        _schrijf_overgang(
-            session,
-            document=document,
-            naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
-            actor_id=SYSTEEM_ACTOR_ID,
-            detail={"accordering_id": str(accordering_id), "alle_lagen_akkoord": True},
+        # Tijdlijn-notitie zónder statusovergang: het document blijft bij de klant-status tot de
+        # boeking staat; de motor zelf schrijft de echte overgangen (mét reden).
+        session.add(
+            DocumentGebeurtenis(
+                id=uuid.uuid4(),
+                document_id=document_id,
+                van_status=document.status,
+                naar_status=document.status,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={
+                    "accordering_id": str(accordering_id),
+                    "alle_lagen_akkoord": True,
+                    "reden": BOEK_NA_AKKOORD_REDEN,
+                },
+            )
         )
         record_audit_event(
             session,
@@ -1049,25 +1133,32 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
         # Ligt er nog een open dialoog (bv. aan de accordeur zelf, gesteld terwijl het document bij
         # de klant lag), dan boeken we NIET maar zetten het document zichtbaar op vraag_open met
         # herkomst klaar_om_te_boeken — "Afgehandeld" door de vraagsteller brengt het terug en
-        # het kantoor boekt dan via de normale route. Nooit stil.
+        # het kantoor boekt dan via de normale route. Nooit stil (beide overgangen mét reden).
         open_vraag = session.scalars(
             select(Vraag).where(Vraag.document_id == document_id, Vraag.status == VraagStatus.OPEN.value)
         ).first()
         open_vraag_fout: str | None = None
         if open_vraag is not None:
+            open_vraag_fout = (
+                "Alle lagen akkoord; boeken wacht op het afhandelen van de open vraag "
+                f"(vraag {open_vraag.id}) door de vraagsteller"
+            )
             open_vraag.status_voor_vraag = DocumentStatus.KLAAR_OM_TE_BOEKEN.value
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={"accordering_id": str(accordering_id), "alle_lagen_akkoord": True, "reden": open_vraag_fout},
+            )
             _schrijf_overgang(
                 session,
                 document=document,
                 naar=DocumentStatus.VRAAG_OPEN,
                 actor_id=SYSTEEM_ACTOR_ID,
-                detail={"vraag_id": str(open_vraag.id), "boeken_wacht_op_open_vraag": True},
+                detail={"vraag_id": str(open_vraag.id), "boeken_wacht_op_open_vraag": True, "reden": open_vraag_fout},
             )
             document.toegewezen_aan = open_vraag.aan_de_beurt or open_vraag.toegewezen_aan
-            open_vraag_fout = (
-                "Alle lagen akkoord; boeken wacht op het afhandelen van de open vraag "
-                f"(vraag {open_vraag.id}) door de vraagsteller"
-            )
 
     if open_vraag_fout is not None:
         logger.info("Accordering %s afgerond; %s", accordering_id, open_vraag_fout)
@@ -1080,12 +1171,25 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
             accordering=data, alles_akkoord=True, geboekt=False, boek_fout=open_vraag_fout, staande_regel_id=None
         )
 
-    geboekt = False
-    boek_fout: str | None = None
-    # Orkestratie (besluit 25-08): mét klaargezette doorbelasting boekt alles in één gang
-    # (inkoop → verkopen → spiegels); zonder = exact de bestaande boek_document-aanroep.
+    return _boek_na_laatste_akkoord(
+        administratie_id=administratie_id, accordering_id=accordering_id, document_id=document_id
+    )
+
+
+def _boek_na_laatste_akkoord(
+    *, administratie_id: uuid.UUID, accordering_id: uuid.UUID, document_id: uuid.UUID
+) -> AkkoordResultaat:
+    """De boekpoging ná een AFGERONDE ronde (systeem-actor). Orkestratie (besluit 25-08): mét
+    klaargezette doorbelasting boekt alles in één gang (inkoop → verkopen → spiegels); zonder =
+    exact de bestaande boek_document-aanroep. ELKE mislukking — verwacht (poort/toggle/volumerem/
+    checks/RLZ) of onverwacht (credentials, netwerk, bug) — wordt vastgelegd via
+    `_registreer_boek_fout`: nooit een 500 richting de accordeur (zijn akkoord staat en is geldig)
+    en nooit een stille uitkomst. Herbruikbaar door de herstelroute (`app/accordering/herstel.py`)
+    en de kantoor-retry via POST …/boeken (die loopt door dezelfde poort)."""
     from app.doorbelasting import orkestratie
 
+    geboekt = False
+    boek_fout: str | None = None
     try:
         gecombineerd = orkestratie.boek_document_met_doorbelasting(
             administratie_id=administratie_id, document_id=document_id, actor_id=SYSTEEM_ACTOR_ID
@@ -1109,7 +1213,17 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
     except boeken_service.BoekenFout as exc:
         boek_fout = str(exc)
         logger.warning("Accordering %s afgerond maar boeken mislukt: %s", accordering_id, boek_fout)
+    except Exception as exc:  # noqa: BLE001 — bewust breed: zie docstring (nooit stil, nooit 500 naar de accordeur)
+        boek_fout = f"Onverwachte fout bij het boeken ná het laatste akkoord: {exc}"
+        logger.exception("Accordering %s afgerond maar boeken onverwacht mislukt", accordering_id)
 
+    _registreer_boek_fout(
+        administratie_id=administratie_id,
+        accordering_id=accordering_id,
+        document_id=document_id,
+        fout=boek_fout,
+        geboekt=geboekt,
+    )
     with scoped_session(administratie_id) as session:
         accordering = session.get(DocumentAccordering, accordering_id)
         assert accordering is not None
@@ -1118,6 +1232,116 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
     return AkkoordResultaat(
         accordering=data, alles_akkoord=True, geboekt=geboekt, boek_fout=boek_fout, staande_regel_id=None
     )
+
+
+def _registreer_boek_fout(
+    *, administratie_id: uuid.UUID, accordering_id: uuid.UUID, document_id: uuid.UUID, fout: str | None, geboekt: bool
+) -> None:
+    """Persistente uitkomst van de boekpoging ná het laatste akkoord (bugfix-run 28-08):
+    `detail["boek_fout"]` op de ronde (None bij een schone boeking), een tijdlijnregel mét reden
+    en een audit-event. Statusregel: is het document tijdens de poging op klaar_om_te_boeken
+    gezet (checks doorstaan, daarna toggle/volumerem/RLZ-fout), dan gaat het TERUG naar
+    ter_accordering — de werkvoorraad toont het bij "Bij klant" mét de fout, niet als stil
+    "klaar om te boeken". Staat het op boeken_mislukt (RLZ-fout — eigen zichtbare status mét
+    reden + retry) of nog op ter_accordering (poort vóór de checks), dan volstaat de notitie."""
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        accordering = session.get(DocumentAccordering, accordering_id)
+        assert accordering is not None
+        detail = dict(accordering.detail or {})
+        if fout is None:
+            if "boek_fout" in detail:
+                detail["boek_fout"] = None
+                accordering.detail = detail
+            return
+        detail["boek_fout"] = {"fout": fout[:1000], "tijdstip": datetime.now(UTC).isoformat(), "geboekt": geboekt}
+        accordering.detail = detail
+        document = session.get(Document, document_id)
+        assert document is not None
+        reden = (
+            f"inkoop geboekt, doorbelasting mislukt ná het laatste klant-akkoord: {fout}"
+            if geboekt
+            else f"boeken ná het laatste klant-akkoord mislukt: {fout}"
+        )
+        gebeurtenis_detail = {
+            "accordering_id": str(accordering_id),
+            "accordering_boek_fout": fout[:1000],
+            "reden": reden,
+        }
+        if not geboekt and document.status == DocumentStatus.KLAAR_OM_TE_BOEKEN:
+            _schrijf_overgang(
+                session,
+                document=document,
+                naar=DocumentStatus.TER_ACCORDERING,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail=gebeurtenis_detail,
+            )
+        else:
+            session.add(
+                DocumentGebeurtenis(
+                    id=uuid.uuid4(),
+                    document_id=document_id,
+                    van_status=document.status,
+                    naar_status=document.status,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    detail=gebeurtenis_detail,
+                )
+            )
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel="document_accordering",
+            record_id=accordering_id,
+            actie="accordering_boek_fout",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "document_id": str(document_id),
+                "fout": fout[:1000],
+                "inkoop_geboekt": geboekt,
+                "documentstatus": document.status.value,
+            },
+            administratie_id=administratie_id,
+        )
+
+
+def boek_na_afgerond_akkoord(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> AkkoordResultaat:
+    """Publieke ingang voor de herstelroute (`app/accordering/herstel.py`): de boekpoging voor een
+    document waarvan de LAATSTE ronde al AFGEROND is (akkoorden compleet) maar dat nog niet
+    geboekt staat — exact het pad dat ná het laatste akkoord loopt, systeem-actor, alle poorten."""
+    with scoped_session(administratie_id) as session:
+        laatste = _laatste_accordering(session, document_id)
+        if laatste is None or laatste.status != AccorderingStatus.AFGEROND.value:
+            raise GeenOpenAccordering("Geen afgeronde accorderingsronde voor dit document")
+        accordering_id = laatste.id
+    return _boek_na_laatste_akkoord(
+        administratie_id=administratie_id, accordering_id=accordering_id, document_id=document_id
+    )
+
+
+def boek_fout_per_document(session: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """Bulk (geen N+1) voor de documentenlijst: per document waarvan de LAATSTE ronde afgerond is
+    mét een geregistreerde boekfout → de fouttekst (kolom "Toegewezen" toont "boeken ná akkoord
+    mislukt"). Sessie van de aanroeper (al gescoopt)."""
+    if not document_ids:
+        return {}
+    rondes = list(
+        session.scalars(
+            select(DocumentAccordering)
+            .where(DocumentAccordering.document_id.in_(document_ids))
+            .order_by(DocumentAccordering.aangeboden_op.asc())
+        )
+    )
+    laatste_per_document: dict[uuid.UUID, DocumentAccordering] = {}
+    for ronde in rondes:
+        laatste_per_document[ronde.document_id] = ronde  # oplopend → de laatste wint
+    resultaat: dict[uuid.UUID, str] = {}
+    for document_id, ronde in laatste_per_document.items():
+        if ronde.status != AccorderingStatus.AFGEROND.value:
+            continue
+        fout, _ = _boek_fout_van(ronde)
+        if fout:
+            resultaat[document_id] = fout
+    return resultaat
 
 
 def wijs_af(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str) -> AccorderingData:
@@ -1190,22 +1414,39 @@ def wijs_af(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uu
 def trek_accordering_in(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, actor_rol: str
 ) -> AccorderingData:
-    """Kantoor haalt een document terug uit de accordering (bv. verkeerd aangeboden)."""
+    """Kantoor haalt een document terug uit de accordering (bv. verkeerd aangeboden). Sinds de
+    bugfix-run 28-08 óók toegestaan op een AFGERONDE ronde zolang het document nog op
+    ter_accordering staat (boeken ná het laatste akkoord mislukte): het kantoor kan dan het
+    voorstel aanpassen en opnieuw aanbieden — de afgeronde ronde wordt `ingetrokken` (het akkoord
+    op het oude voorstel telt niet meer als boekpoort), tijdlijn + audit zoals altijd."""
     _vereis_kantoor(actor_rol)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        assert document is not None
         accordering = _open_accordering(session, document_id)
+        na_boekfout = False
+        if accordering is None:
+            laatste = _laatste_accordering(session, document_id)
+            if (
+                laatste is not None
+                and laatste.status == AccorderingStatus.AFGEROND.value
+                and document.status == DocumentStatus.TER_ACCORDERING
+            ):
+                accordering, na_boekfout = laatste, True
         if accordering is None:
             raise GeenOpenAccordering("Er loopt geen accorderingsronde voor dit document")
         accordering.status = AccorderingStatus.INGETROKKEN.value
         accordering.afgerond_op = datetime.now(UTC)
-        document = session.get(Document, document_id)
-        assert document is not None
         _schrijf_overgang(
             session,
             document=document,
             naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
             actor_id=actor_id,
-            detail={"accordering_id": str(accordering.id), "accordering_ingetrokken": True},
+            detail={
+                "accordering_id": str(accordering.id),
+                "accordering_ingetrokken": True,
+                **({"na_boekfout": True} if na_boekfout else {}),
+            },
         )
         record_audit_event(
             session,

@@ -132,6 +132,34 @@ class HerextractieNietToegestaan(Exception):
     een (mislukte) extractie het document achterlaat. Alles daarna is mensenwerk."""
 
 
+class SysteemOvergangZonderReden(ValueError):
+    """Bugfix-run 28-08 (kernprincipe 4 "niets verdwijnt stil"): een statusovergang door de
+    systeem-actor (⚙) zónder leesbare `reden` in het detail. In dev/test een harde fout (vangnet
+    `tests/documenten/test_systeem_overgang_reden.py`); in productie wordt de overgang wél
+    geschreven — mét een placeholder-reden en een ERROR in de server-log — zodat een gemiste
+    aanroepplek nooit een boeking of statuswijziging blokkeert, maar ook nooit onzichtbaar blijft."""
+
+
+SYSTEEM_REDEN_ONTBREEKT = "systeemovergang zonder opgegeven reden (defect — zie server-log)"
+
+
+def _borg_systeem_reden(
+    *, actor_id: uuid.UUID, document_id: uuid.UUID, van: DocumentStatus, naar: DocumentStatus, detail: dict | None
+) -> dict | None:
+    if actor_id != SYSTEEM_ACTOR_ID:
+        return detail
+    reden = (detail or {}).get("reden")
+    if isinstance(reden, str) and reden.strip():
+        return detail
+    melding = (
+        f"Systeem-statusovergang {van.value} -> {naar.value} zonder reden (document {document_id}, detail {detail!r})"
+    )
+    if settings.environment != "production":
+        raise SysteemOvergangZonderReden(melding)
+    logger.error(melding)
+    return {**(detail or {}), "reden": SYSTEEM_REDEN_ONTBREEKT}
+
+
 def _schrijf_overgang(
     session: Session,
     *,
@@ -142,9 +170,13 @@ def _schrijf_overgang(
 ) -> None:
     """De ENIGE plek die document.status muteert: valideert eerst tegen de statusmachine
     (app/documenten/statusmachine.py), schrijft dan zowel de append-only tijdlijn
-    (document_gebeurtenis) als het platformbrede audit_event, in dezelfde transactie."""
+    (document_gebeurtenis) als het platformbrede audit_event, in dezelfde transactie.
+
+    Systeem-actor (bugfix-run 28-08): élke ⚙-overgang draagt een leesbare `detail["reden"]` —
+    de tijdlijn toont die regel generiek. Zie `_borg_systeem_reden`."""
     van = document.status
     valideer_overgang(van, naar)
+    detail = _borg_systeem_reden(actor_id=actor_id, document_id=document.id, van=van, naar=naar, detail=detail)
     document.status = naar
     session.add(
         DocumentGebeurtenis(
@@ -178,7 +210,13 @@ def _start_extractie(session: Session, *, document: Document, actor_id: uuid.UUI
     staat. Elke uitkomst — voorstel, overgeslagen, fout — komt herkenbaar in de tijdlijn terecht;
     een AI-fout laat de upload nooit falen ("niets verdwijnt stil", maar ook: de mens kan altijd
     handmatig verder)."""
-    _schrijf_overgang(session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=actor_id)
+    _schrijf_overgang(
+        session,
+        document=document,
+        naar=DocumentStatus.EXTRACTIE_BEZIG,
+        actor_id=actor_id,
+        detail={"reden": "extractie gestart"},
+    )
     _rond_extractie_af(session, document=document, actor_id=actor_id, opslag=opslag)
 
 
@@ -229,8 +267,26 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
             # bij projectplicht — blokkerende status, bewust GEEN (totalen-only) voorstel.
             doel_status = DocumentStatus.HANDMATIG_AFMAKEN
 
+    if actor_id == SYSTEEM_ACTOR_ID:
+        detail = {**(detail or {}), "reden": _extractie_reden(detail, doel_status)}
     _schrijf_overgang(session, document=document, naar=doel_status, actor_id=actor_id, detail=detail)
     _herstel_open_vraag_na_extractie(session, document=document, actor_id=actor_id)
+
+
+def _extractie_reden(detail: dict | None, doel_status: DocumentStatus) -> str:
+    """Leesbare reden voor de systeem-eindovergang van een extractie (vangnet 28-08)."""
+    d = detail or {}
+    if "ai_extractie_overgeslagen" in d:
+        return f"extractie overgeslagen: {d['ai_extractie_overgeslagen']}"
+    if "ai_extractie_onvolledig" in d:
+        return "extractie afgerond — regelset niet aantoonbaar compleet, handmatig afmaken"
+    if "ubl_parse_fout" in d:
+        return "UBL onleesbaar — handmatig invullen"
+    if "waarborg_parse_fout" in d:
+        return "waarborgbericht onleesbaar — handmatig beoordelen"
+    if doel_status == DocumentStatus.HANDMATIG_AFMAKEN:
+        return "extractie afgerond — handmatig afmaken vereist"
+    return "extractie afgerond — ter controle"
 
 
 def _herstel_open_vraag_na_extractie(session: Session, *, document: Document, actor_id: uuid.UUID) -> None:
@@ -254,7 +310,11 @@ def _herstel_open_vraag_na_extractie(session: Session, *, document: Document, ac
         document=document,
         naar=DocumentStatus.VRAAG_OPEN,
         actor_id=actor_id,
-        detail={"vraag_id": str(open_vraag.id), "vraag_hersteld_na_extractie": True},
+        detail={
+            "vraag_id": str(open_vraag.id),
+            "vraag_hersteld_na_extractie": True,
+            "reden": "open vraag blokkeert boeken weer ná de nieuwe extractie",
+        },
     )
     document.toegewezen_aan = open_vraag.aan_de_beurt or open_vraag.toegewezen_aan
 
@@ -310,7 +370,13 @@ def verwerk_extractie_taak(
                 document.status.value,
             )
             return
-        _schrijf_overgang(session, document=document, naar=DocumentStatus.EXTRACTIE_BEZIG, actor_id=SYSTEEM_ACTOR_ID)
+        _schrijf_overgang(
+            session,
+            document=document,
+            naar=DocumentStatus.EXTRACTIE_BEZIG,
+            actor_id=SYSTEEM_ACTOR_ID,
+            detail={"reden": "extractie gestart"},
+        )
 
     try:
         with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
@@ -330,7 +396,7 @@ def verwerk_extractie_taak(
                     document=document,
                     naar=DocumentStatus.TE_CONTROLEREN,
                     actor_id=SYSTEEM_ACTOR_ID,
-                    detail={"ai_extractie_fout": str(exc)},
+                    detail={"ai_extractie_fout": str(exc), "reden": f"AI-extractie mislukt: {exc}"},
                 )
 
 
@@ -362,7 +428,10 @@ def herstel_achtergebleven_extracties(*, wachtrij: ExtractieWachtrij | None = No
                         document=document,
                         naar=DocumentStatus.EXTRACTIE_WACHTRIJ,
                         actor_id=SYSTEEM_ACTOR_ID,
-                        detail={"herstel": "achtergebleven_na_herstart"},
+                        detail={
+                            "herstel": "achtergebleven_na_herstart",
+                            "reden": "opnieuw ingepland na een herstart van de verwerking",
+                        },
                     )
                 te_enqueuen.append(document.id)
         for document_id in te_enqueuen:
@@ -409,7 +478,10 @@ def verwerk_extractie_wachtrij(*, stale_na: timedelta = timedelta(minutes=15)) -
                         document=document,
                         naar=DocumentStatus.EXTRACTIE_WACHTRIJ,
                         actor_id=SYSTEEM_ACTOR_ID,
-                        detail={"herstel": "gestrand_op_bezig"},
+                        detail={
+                            "herstel": "gestrand_op_bezig",
+                            "reden": "extractie strandde op 'bezig' — opnieuw ingepland",
+                        },
                     )
                 te_verwerken.append(document.id)
         for document_id in te_verwerken:
@@ -980,6 +1052,9 @@ class DocumentMetDuplicaat:
     # Accordeur aan de beurt (C2 26-08): bij status ter_accordering wie (naam + laag) nu aan zet
     # is — de kolom "Toegewezen" toont dát in plaats van "—". None bij elke andere status.
     accordeur_aan_de_beurt: AccordeurAanDeBeurt | None = None
+    # Bugfix-run 28-08: boekfout ná het laatste klant-akkoord (laatste ronde afgerond, document
+    # niet geboekt) — zichtbaar in de lijst, nooit stil.
+    accordering_boek_fout: str | None = None
     # Duplicaatsignaal (25-08, deel 2 punt 6): gecachete RLZ-duplicaatuitkomst — None zolang er
     # nog niet getoetst is.
     duplicaatsignaal: DuplicaatSignaalKort | None = None
@@ -1055,11 +1130,13 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
 
         signalen = signalen_voor_documenten(session, document_ids)
         # Accordeur aan de beurt (C2 26-08, bulk): alleen voor documenten die bij de klant liggen.
-        from app.accordering.service import aan_de_beurt_per_document
+        from app.accordering.service import aan_de_beurt_per_document, boek_fout_per_document
 
         beurt = aan_de_beurt_per_document(
             session, [d.id for d in documenten if d.status == DocumentStatus.TER_ACCORDERING]
         )
+        # Boekfout ná het laatste akkoord (bugfix-run 28-08, bulk): alle niet-geboekte documenten.
+        boek_fouten = boek_fout_per_document(session, [d.id for d in documenten if d.status != DocumentStatus.GEBOEKT])
         veldvoorstellen: dict[uuid.UUID, dict] = {}
         zonder_voorstel = [d_id for d_id in document_ids if d_id not in voorstellen]
         if zonder_voorstel:
@@ -1105,6 +1182,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     factuurmatch=matches.get(d.id),
                     duplicaatsignaal=signalen.get(d.id),
                     accordeur_aan_de_beurt=beurt.get(d.id),
+                    accordering_boek_fout=boek_fouten.get(d.id),
                 )
             )
         return resultaat

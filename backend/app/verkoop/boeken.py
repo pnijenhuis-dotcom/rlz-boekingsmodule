@@ -218,7 +218,7 @@ def boek_verkoop_document(
                     document=document,
                     naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
                     actor_id=actor_id,
-                    detail={"harde_checks": "doorstaan"},
+                    detail={"harde_checks": "doorstaan", "reden": "harde checks doorstaan — boekpoging gestart"},
                 )
 
         with scoped_session(administratie_id) as session:
@@ -306,6 +306,7 @@ def boek_verkoop_document(
                 "soort": "verkoopfactuur",
                 "is_creditnota": voorstel.is_creditnota,
                 **(extra_overgang_detail or {}),
+                "reden": f"geboekt in RLZ — boekstuk {boekstuknummer or str(verkoop_rlz_id)[:8]}",
             },
         )
         _sla_verkoop_webhook_op(

@@ -281,6 +281,7 @@ def documenten_lijst(
                 factuurdatum=item.factuurdatum,
                 automatisch_geboekt=item.automatisch_geboekt,
                 factuurmatch=_naar_match_kort(item.factuurmatch),
+                accordering_boek_fout=item.accordering_boek_fout,
                 accordeur_aan_de_beurt=(
                     schemas.AccordeurAanDeBeurtDto(
                         gebruiker_id=item.accordeur_aan_de_beurt.gebruiker_id,
@@ -782,6 +783,10 @@ def document_boeken(
             detail={"message": str(exc), "materiaalmatch": exc.match_info},
         ) from exc
     except boeken.OngeldigeBoekpoging as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except boeken.AccorderingVereist as exc:
+        # Bugfix-run 28-08: was onvertaald (500) — de accorderingspoort is een nette 409 mét reden
+        # (ronde loopt / opnieuw aanbieden / bedrag gewijzigd ná akkoord).
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except boeken.BoekenGeblokkeerdDoorChecks as exc:
         raise HTTPException(

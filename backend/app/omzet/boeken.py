@@ -445,7 +445,7 @@ def boek_omzet_document(
                     document=document,
                     naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
                     actor_id=actor_id,
-                    detail={"harde_checks": "doorstaan"},
+                    detail={"harde_checks": "doorstaan", "reden": "harde checks doorstaan — boekpoging gestart"},
                 )
 
         with scoped_session(administratie_id) as session:
@@ -598,6 +598,7 @@ def boek_omzet_document(
                 "memoriaal_rlz_id": str(memoriaal_rlz_id) if memoriaal_lines else None,
                 "memoriaal_boekstuknummer": memoriaal_boekstuk,
                 "periode": f"{voorstel.periode_start} t/m {voorstel.periode_eind}",
+                "reden": f"geboekt in RLZ — verkoopboekstuk {verkoop_boekstuk or str(verkoop_rlz_id)[:8]}",
             },
         )
         record_audit_event(

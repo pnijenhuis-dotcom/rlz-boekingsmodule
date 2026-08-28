@@ -250,6 +250,9 @@ class DocumentListItemResponse(BaseModel):
     # Accordeur aan de beurt (C2 26-08): alleen bij status ter_accordering — de kolom "Toegewezen"
     # toont "<naam> · laag N" i.p.v. "—"; interne toewijzing blijft voor de overige statussen.
     accordeur_aan_de_beurt: AccordeurAanDeBeurtDto | None = None
+    # Bugfix-run 28-08: alle lagen akkoord maar het boeken ná het laatste akkoord faalde — de
+    # fouttekst (kolom "Toegewezen" toont de chip "boeken ná akkoord mislukt"). None = geen.
+    accordering_boek_fout: str | None = None
     # Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + filter.
     duplicaatsignaal: DuplicaatSignaalKortDto | None = None
 

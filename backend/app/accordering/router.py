@@ -68,6 +68,8 @@ def _accordering_response(data: service.AccorderingData) -> schemas.AccorderingR
         status=data.status,
         aangeboden_op=data.aangeboden_op,
         afgerond_op=data.afgerond_op,
+        boek_fout=data.boek_fout,
+        boek_fout_op=data.boek_fout_op,
         stappen=[
             schemas.StapResponse(
                 volgnummer=s.volgnummer,

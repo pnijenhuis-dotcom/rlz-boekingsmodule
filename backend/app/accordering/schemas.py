@@ -68,6 +68,10 @@ class AccorderingResponse(BaseModel):
     aangeboden_op: datetime
     afgerond_op: datetime | None
     stappen: list[StapResponse]
+    # Bugfix-run 28-08: laatste boekfout ná het laatste akkoord (persistent op de ronde) — het
+    # controlescherm toont 'm rood in de accorderingssectie mét de knop "Opnieuw boeken".
+    boek_fout: str | None = None
+    boek_fout_op: datetime | None = None
 
 
 class HerinneringResponse(BaseModel):

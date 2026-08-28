@@ -33,6 +33,11 @@ _KAN_BOEKPOGING_STARTEN_VANUIT = frozenset(
         # Handmatig afmaken (migratie 0015): de controleur heeft alles zelf ingevuld — de harde
         # checks (project verplicht per regel, regelsom) blijven onverkort de poort.
         DocumentStatus.HANDMATIG_AFMAKEN,
+        # Klant-accordering (bugfix-run 28-08): ná het laatste akkoord blijft het document op
+        # ter_accordering tot de boeking écht staat — de motor start dus óók vanaf hier, maar
+        # uitsluitend door de accorderingspoort hieronder (laatste ronde AFGEROND, bedrag
+        # ongewijzigd). Een open ronde = AccorderingVereist, nooit een bypass.
+        DocumentStatus.TER_ACCORDERING,
     }
 )
 
@@ -124,7 +129,7 @@ def _zorg_voor_klaar_om_te_boeken(session: Session, *, document: Document, actor
             document=document,
             naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
             actor_id=actor_id,
-            detail={"harde_checks": "doorstaan"},
+            detail={"harde_checks": "doorstaan", "reden": "harde checks doorstaan — boekpoging gestart"},
         )
 
 
@@ -278,7 +283,11 @@ def _zet_boeken_mislukt(
         document = session.get(Document, document_id)
         assert document is not None
         _schrijf_overgang(
-            session, document=document, naar=DocumentStatus.BOEKEN_MISLUKT, actor_id=actor_id, detail={"fout": reden}
+            session,
+            document=document,
+            naar=DocumentStatus.BOEKEN_MISLUKT,
+            actor_id=actor_id,
+            detail={"fout": reden, "reden": f"boeken in RLZ mislukt: {reden}"},
         )
 
 
@@ -383,11 +392,9 @@ def boek_document(
 
     if accordering_service.is_accordering_ingeschakeld(administratie_id=administratie_id):
         with scoped_session(administratie_id) as session:
-            if not accordering_service.heeft_afgeronde_accordering(session, document_id=document_id):
-                raise AccorderingVereist(
-                    "Klant-accordering staat aan voor deze administratie — bied het document ter "
-                    "accordering aan; na het laatste akkoord wordt automatisch geboekt"
-                )
+            blokkade = accordering_service.accordering_blokkade_voor_boeken(session, document_id=document_id)
+            if blokkade is not None:
+                raise AccorderingVereist(blokkade)
 
     # Factuurmatch-poort (fase 2): staten-versheid + afwijking-bevestiging, vóór de checks en
     # dus ruim vóór de RLZ-schrijfacties. Ná de accorderingspoort: "Ter accordering" hoort als
@@ -485,6 +492,7 @@ def boek_document(
                 **match_detail,
                 "rlz_document_id": str(rlz_document_id),
                 "rlz_boekstuknummer": rlz_boekstuknummer,
+                "reden": f"geboekt in RLZ — boekstuk {rlz_boekstuknummer or str(rlz_document_id)[:8]}",
             },
         )
         # Staten-verrekening ín de boek-transactie (fase 2, dubbeltelling-preventie): de

@@ -117,9 +117,7 @@ _HERSTELBARE_HERKOMSTEN = frozenset(
 # open vraag blokkeert het boeken, niet het akkoord: `accordering.service._rond_af_en_boek` zet
 # het document ná het laatste akkoord zichtbaar op vraag_open i.p.v. te boeken). Afhandelen/
 # intrekken herstelt dan ook niets: de status is nooit veranderd.
-_HERKOMSTEN_ZONDER_OVERGANG = frozenset(
-    {DocumentStatus.TER_ACCORDERING, DocumentStatus.GEBOEKT}
-)
+_HERKOMSTEN_ZONDER_OVERGANG = frozenset({DocumentStatus.TER_ACCORDERING, DocumentStatus.GEBOEKT})
 
 
 @dataclass(frozen=True)
@@ -339,6 +337,8 @@ def stel_vraag(
             "vraag_id": str(vraag.id),
             "toegewezen_aan": str(toegewezene),
             "status_voor_vraag": vraag.status_voor_vraag,
+            # Vangnet 28-08: een automatische (systeem-)vraag draagt haar tekst als reden.
+            "reden": f"vraag gesteld: {vraag_tekst.strip()[:160]}",
         }
         if zonder_overgang:
             # Blok B5: document blijft bij de klant / geboekt — alleen een tijdlijnregel.
@@ -469,13 +469,17 @@ def plaats_bericht_als_accordeur(
     return plaats_bericht(administratie_id=administratie_id, vraag_id=vraag_id, actor_id=actor_id, tekst=tekst)
 
 
-def _herstel_document_na_sluiten(session: Session, *, vraag: Vraag, document: Document, actor_id: uuid.UUID, detail: dict) -> None:
+def _herstel_document_na_sluiten(
+    session: Session, *, vraag: Vraag, document: Document, actor_id: uuid.UUID, detail: dict
+) -> None:
     """Afhandelen/intrekken: herstel de herkomst-status — behalve als de vraag zónder overgang
     gesteld was (document bij de klant/geboekt) of het document intussen zelf al verder is
     (ná het laatste akkoord zette de boek-poort 'm op vraag_open met herkomst klaar_om_te_boeken:
     dan wél herstellen). Regel: alleen een document dat NU op vraag_open staat wordt hersteld."""
     if document.status == DocumentStatus.VRAAG_OPEN:
-        _schrijf_overgang(session, document=document, naar=DocumentStatus(vraag.status_voor_vraag), actor_id=actor_id, detail=detail)
+        _schrijf_overgang(
+            session, document=document, naar=DocumentStatus(vraag.status_voor_vraag), actor_id=actor_id, detail=detail
+        )
     else:
         _tijdlijn_zonder_overgang(session, document=document, actor_id=actor_id, detail=detail)
 

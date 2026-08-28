@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -101,6 +101,15 @@ doorbelasting-reconciliatie: check-versions
 # Optioneel BEHEERDER_ID=<uuid> als audit-actor (default systeem-actor).
 doorbelasting-facturen-herstel: check-versions
 	.venv/bin/python -m app.cli doorbelasting-facturen-herstel $(if $(DRY_RUN),--dry-run,) $(if $(BEHEERDER_ID),--beheerder-id "$(BEHEERDER_ID)",)
+
+# Bugfix-run 28-08 (auto-boeken ná laatste klant-akkoord vuurde niet): documenten mét afgeronde
+# accordering die niet geboekt staan alsnog boeken via het gefixte pad — NOOIT automatisch.
+# Eerst `make accordering-herstel-boeken DRY_RUN=1` (lijst + diagnose per document, niets gewijzigd),
+# dan zonder DRY_RUN — optioneel ADMINISTRATIE_ID=<uuid> en MAX=<n> (bv. MAX=1 als proef).
+# Volumerem 20/dag/administratie geldt onverkort (run stopt zichtbaar; rest morgen of
+# MAX_BOEKINGEN_PER_DAG_PER_ADMINISTRATIE=<n> vóór déze aanroep).
+accordering-herstel-boeken: check-versions
+	.venv/bin/python -m app.cli accordering-herstel-boeken $(if $(DRY_RUN),--dry-run,) $(if $(ADMINISTRATIE_ID),--administratie-id "$(ADMINISTRATIE_ID)",) $(if $(MAX),--max $(MAX),)
 
 # Losse expliciete seed-stap (migraties zijn schema-only): ADMINISTRATIE_ID=<uuid> BEHEERDER_ID=<uuid>
 doorbelasting-seed-kempen: check-versions
