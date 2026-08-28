@@ -28,6 +28,10 @@ wijzigen; registreren onder het bestaande team).
 
 **Klik-voor-klik-recept voor de TestFlight-ronde (registratie ASC, archive/upload,
 APNS_SANDBOX-omslag, demo-account): `native/TESTFLIGHT_DRAAIBOEK.md` (2026-08-18).**
+**Android/Play: `native/PLAY_DRAAIBOEK.md` (Android-bouwronde 2026-08-28 — JDK/SDK-installatie,
+upload-keystore, release-AAB, app onder PDL + interne test-track, assetlinks/apk-key-hash,
+listing + Data safety, FCM-kliktest). Firebase-registratie (`google-services.json`) en de
+FCM-verzendkant (ADC, geen secret) zijn KLAAR; zie §8.**
 
 ## 1. Wat de app is (voor reviewnotities en listing)
 
@@ -61,7 +65,9 @@ passkey-assertion.
 
 Zelfde inhoud als §2 in Play-vorm: verzamelt e-mail, naam, gebruikers-id, financiële info
 (facturen); alles versleuteld in transit (https); verwijdering via het kantoor; geen data
-gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties.
+gedeeld met derden (FCM = verwerker voor bezorging); geen advertenties. **Vraag-voor-vraag
+uitgewerkt (incl. Device or other IDs voor het FCM-token, "app allows account creation = No" →
+geen account-deletion-URL vereist, Financial features = geen) in `PLAY_DRAAIBOEK.md` §7.**
 
 ## 4. Reviewnotities (Apple én Play — demo-toegang)
 
@@ -115,11 +121,14 @@ béta-/app-review, niet voor interne TestFlight), build koppelen ná de eerste u
    fail-zichtbaar in de job-logs — token wordt als vervallen opgeruimd); kabel-build-push
    testen = de vlag tijdelijk terug naar `true` (zelfde plekken) en daarna terugdraaien.
 4. `npm run bouw-web && npx cap sync` → archive/upload naar **TestFlight** (interne testers:
-   Peter + kantoor); Android: upload-keystore aanmaken (Play App Signing aan), **interne/
-   gesloten test** (de ≥ 12 testers/14 dagen-eis geldt alleen persoonlijke accounts — het
-   PDL-organisatieaccount valt daarbuiten; de accordeurs blijven de testgroep) +
-   `assetlinks.json` met de definitieve signing-hash + `android:apk-key-hash:`-origin in
-   `webauthn_origins`.
+   Peter + kantoor) — ✅ loopt via Xcode Cloud (§7). **Android — VOORBEREID (bouwronde
+   28-08, `PLAY_DRAAIBOEK.md`):** Firebase-registratie + FCM-verzendkant klaar, Gradle-signing
+   + scripts (`android_keystore.sh`, `bouw_android_release.sh`) staan; klikwerk Peter: JDK 21
+   + Android SDK installeren (ontbreken op de Mac), upload-keystore aanmaken (Play App Signing
+   aan), release-AAB bouwen, **interne test** (de ≥ 12 testers/14 dagen-eis geldt alleen
+   persoonlijke accounts — het PDL-organisatieaccount valt daarbuiten; de accordeurs blijven
+   de testgroep) + `assetlinks.json` met BEIDE signing-hashes (Google's app-signing-key +
+   upload-key) + de twee `android:apk-key-hash:`-origins in `webauthn_origins`.
 5. Store-listing (NL): naam "Nijenhuis Boekingsmodule" (hernoemd 19-08), ondertitel "Facturen goedkeuren" (ASC-limiet
    30 tekens). **Iconen: DEFINITIEF (2026-08-18)** — N-beeldmerk uit `mockup/app-icoon-n.svg`
    (zie status bovenaan). **Screenshots: KLAAR — hergenereerd 2026-08-19 mét de nieuwe
@@ -203,3 +212,34 @@ live-update-dienst (Appflow e.d.) is een latere, aparte afweging (kosten/AVG).
 **Build 3 (planning-tab + jaaragenda in de veld-app) staat klaar:** de web-assets komen bij
 elke cloud-build automatisch uit `main` — zodra de workflow gekoppeld is, is de eerste build
 die eruit rolt meteen Build 3 met de planning-weergave; er is geen extra klaarzet-stap.
+
+## 8. Android / Google Play (bouwronde 2026-08-28) — voorbereid, klikwerk in `PLAY_DRAAIBOEK.md`
+
+**Wat er in de repo staat (gebouwd, geen klikwerk):**
+
+- `native/android/app/google-services.json` — Firebase-app-registratie van
+  `nl.aknijenhuis.goedkeuren` in het GCP-project `rlz-boekhouding` (Firebase toegevoegd 28-08,
+  **Google Analytics UIT** conform de privacy-labels "geen analytics"); geen geheim, bewust
+  gecommit. `app/build.gradle` past het google-services-plugin onvoorwaardelijk toe (ontbreekt
+  het bestand → build faalt luid), `variables.gradle` pint `firebase-messaging 25.0.1`.
+- Manifest: `POST_NOTIFICATIONS` + FCM-meta-data (monochroom N-monogram als statusbalk-icoon
+  `drawable/ic_stat_nijenhuis`, meldingskleur wordmark-teal). Geen locatie-permissies (geofence
+  zit niet in deze release; `bouw_android_release.sh` faalt als `ACCESS_BACKGROUND_LOCATION`
+  toch in het manifest zou staan).
+- Signing: release-variant leest `native/android/keystore.properties` (gitignored; keystore
+  zelf BUITEN de repo in `~/Sleutels/`), aangemaakt door `native/scripts/android_keystore.sh`;
+  `bouw_android_release.sh` bouwt + valideert de AAB (signatuur = upload-key, manifest, versie).
+  versionCode/versionName overschrijfbaar via `-P`.
+- **FCM-verzendkant LIVE (28-08):** zelfde GCP-project → Application Default Credentials van
+  `run-backend@`/`run-jobs@` mét `roles/firebasecloudmessaging.admin`, `FCM_PROJECT_ID` op
+  service + notificatie-jobs (`scripts/gcp/fcm_afronden.sh` uitgevoerd; deploy.yml verankerd).
+  Geen server-key-secret. Verificatie zonder toestel: IAM-binding + FCM v1 `validate_only`
+  antwoordt 400 INVALID_ARGUMENT op een bewust ongeldig token (API luistert voor dit project).
+- Listing-graphics: `store-assets/play/icoon-512.png` + `feature-graphic-1024x500.png`
+  (`genereer_play_assets.sh`, zelfde bron-SVG). ⚠️ De iPhone-screenshots (2,17:1) voldoen niet
+  aan Play's ≤ 2:1-eis — Android-screenshots komen uit de emulator (draaiboek §6).
+
+**Klikwerk Peter, in volgorde:** JDK 21 + Android SDK → upload-keystore + wachtwoordmanager →
+release-AAB → app aanmaken onder PDL + interne test-track → assetlinks + apk-key-hash (twee
+certificaten) → listing + App content/Data safety → kliktest FCM + passkeys op toestel.
+Volledig uitgeschreven in `native/PLAY_DRAAIBOEK.md`.

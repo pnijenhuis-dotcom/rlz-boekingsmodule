@@ -185,5 +185,6 @@ plekken) — het is een óf-óf-schakelaar.
   echte uitrol (PWA blijft terugval, besluit 14-08).
 - Externe TestFlight-groepen of App Store-release = beta-/app-review → dan moeten §0
   (demo-account geseed + geactiveerd) en §1 (reviewnotities) af zijn.
-- Android/Firebase-ronde is een eigen spoor (STORE_GEREEDHEID §5 punt 4; keystore,
-  assetlinks, apk-key-hash-origin, FCM).
+- Android/Firebase-ronde: eigen draaiboek `native/PLAY_DRAAIBOEK.md` (bouwronde 28-08 —
+  Firebase-registratie + FCM-verzendkant klaar; keystore, AAB, Play-app onder PDL, assetlinks,
+  apk-key-hash-origins, listing/Data safety = klikwerk).

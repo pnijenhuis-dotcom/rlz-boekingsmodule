@@ -243,7 +243,9 @@ rest):**
    tegelijk het fase 4-Keychain-bewijs. Ook de bestaande PWA-passkey van hetzelfde account
    werkt in de native app (zelfde rp_id — 0022-lijn live bevestigd, ronde 2).
 5. Android idem zodra upload-keystore bestaat (assetlinks + apk-key-hash-origin eerst;
-   Play Console-account bestaat al).
+   Play Console-account bestaat al) — **draaiboek klaar (2026-08-28): `native/PLAY_DRAAIBOEK.md`**
+   (§2 keystore-script, §5 assetlinks mét BEIDE certificaten — Google's app-signing-key én de
+   upload-key — + twee `android:apk-key-hash:`-origins, §8 kliktest).
 
 ### Fase 3 — native push: BEWEZEN OP TOESTEL (kliktest ronde 2, 2026-08-17)
 
@@ -269,9 +271,13 @@ Android-bezorging; payload uitsluitend aantal + deep-link, nooit financiële det
   in. Schil: `@capacitor/push-notifications` 8.1.2 geïnstalleerd + `cap sync` geverifieerd
   (iOS SPM + Android gradle), AppDelegate-token-forwarding + `aps-environment`-entitlement.
 - **Config (deploy, pas bij activatie):** APNs `APNS_KEY_P8` (Secret Manager) +
-  `APNS_KEY_ID` (+ `APPLE_TEAM_ID` uit fase 2, `APNS_SANDBOX` voor TestFlight); FCM
-  `FCM_SERVICE_ACCOUNT_JSON` (Firebase-project — Peters klikwerk; het Play Console-account
-  bestaat al, correctie 2026-08-17).
+  `APNS_KEY_ID` (+ `APPLE_TEAM_ID` uit fase 2, `APNS_SANDBOX` voor TestFlight); FCM —
+  **HERZIEN 2026-08-28 (Android-bouwronde):** Firebase is aan HETZELFDE GCP-project
+  toegevoegd, dus de verzendkant gebruikt Application Default Credentials van de Cloud
+  Run-identiteit (`run-backend@`/`run-jobs@`, IAM `roles/firebasecloudmessaging.admin`) mét
+  alleen `FCM_PROJECT_ID` als config — het geplande `FCM_SERVICE_ACCOUNT_JSON`-secret is
+  vervallen als standaardroute (blijft als terugval in `fcm.py` voor omgevingen zonder ADC).
+  Uitgevoerd via `scripts/gcp/fcm_afronden.sh`; live geverifieerd zonder toestel.
 - **Kliktest-blok fase 3 — KLAARGEZET (2026-08-17):** het volledige pad is gebundeld in
   `scripts/gcp/apns_afronden.sh` (stdin-patroon, idempotent — zelfde grondhouding als
   notificaties_afronden.sh): .p8-aanmaakinstructies (Developer-portaal → Keys, níét App
@@ -283,8 +289,11 @@ Android-bezorging; payload uitsluitend aantal + deep-link, nooit financiële det
   TestFlight/App Store = false — staat als comment in deploy.yml en in
   STORE_GEREEDHEID. **Bewijs op het toestel GELEVERD (ronde 2, 2026-08-17):** registratie
   via de meldingen-kaart geslaagd, APNs-banner binnen op het toestel, tap = deep-link naar
-  het document ná ontgrendeling. Android idem ná
-  Firebase-project + google-services.json in `native/android/app/`.
+  het document ná ontgrendeling. **Android-kant VOORBEREID (2026-08-28):**
+  `google-services.json` in `native/android/app/` (gecommit, Analytics UIT), google-services-
+  plugin hard toegepast, `POST_NOTIFICATIONS` + monochroom statusbalk-icoon, FCM-verzendkant
+  live (ADC) — ontvangstbewijs op een Android-toestel = `native/PLAY_DRAAIBOEK.md` §8
+  (vergt eerst JDK/SDK + keystore + Play-interne-test; Java/Android-SDK ontbreken nog op de Mac).
 
 ### Fase 4 — gebundelde assets + bearer-refresh Keychain/Keystore: BEWEZEN OP TOESTEL (kliktest ronde 2, 2026-08-17)
 

@@ -698,8 +698,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   meldingen-flow + APNs-push + deep-link, PWA-passkey in native, kill-switch — BESLISSINGEN
   "NATIVE KLIKTEST RONDE 1/2"); **TestFlight LIVE via Xcode Cloud (23-08, workflow main →
   TestFlight intern) mét `APNS_SANDBOX=false` afgerond — native push op productie-APNs,
-  web-push/VAPID ongewijzigd (BESLISSINGEN "XCODE CLOUD")**; volgende halte: de
-  Android/Firebase-ronde). Factuurbeeld
+  web-push/VAPID ongewijzigd (BESLISSINGEN "XCODE CLOUD")**; **Android-bouwronde 28-08
+  VOORBEREID (BESLISSINGEN "ANDROID-BOUWRONDE 28-08", draaiboek `native/PLAY_DRAAIBOEK.md`):
+  Firebase in HETZELFDE GCP-project (Analytics UIT), `google-services.json` gecommit,
+  google-services-plugin hard, `POST_NOTIFICATIONS` + monochroom statusbalk-icoon; FCM-verzendkant
+  LIVE via Application Default Credentials van run-backend@/run-jobs@ (IAM
+  `roles/firebasecloudmessaging.admin`, alleen `FCM_PROJECT_ID` — géén server-key-secret;
+  `scripts/gcp/fcm_afronden.sh`); Gradle-signing leest `keystore.properties` (gitignored,
+  keystore buiten de repo — `native/scripts/android_keystore.sh`), release-AAB via
+  `bouw_android_release.sh`. Klikwerk Peter: JDK 21 + Android SDK (ontbreken op de Mac) →
+  keystore → AAB → Play-app onder PDL + interne test → assetlinks/apk-key-hash mét BEIDE
+  certificaten (Google's app-signing-key + upload-key) → listing/Data safety → kliktest.**).
+  Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,
