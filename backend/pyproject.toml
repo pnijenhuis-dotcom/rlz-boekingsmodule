@@ -47,6 +47,9 @@ dependencies = [
     # declareren = de import kan nooit wegvallen bij een upstream-herschikking.
     "pydantic>=2.9",
     "google-crc32c>=1.5",
+    # FCM HTTP v1 (app/berichten/fcm.py): google.auth.default (ADC) + google.oauth2.service_account —
+    # tot 28-08 alleen transitief via google-cloud-storage; expliciet nu de ADC-route de standaard is.
+    "google-auth>=2.30",
 ]
 
 [project.optional-dependencies]

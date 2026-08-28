@@ -122,9 +122,12 @@ jobs:
       # 'm daarna al staan.
       # Native store-app (fase 2/4, kliktest-prep 2026-08-17): de apex-origin in
       # WEBAUTHN_ORIGINS (iOS-passkey-assertions dragen de rp_id-origin, niet het
-      # app-subdomein) en capacitor://localhost in CORS (de iOS-webview-origin; de
-      # Android-origin https://localhost volgt pas in de Android-ronde, samen met de
-      # apk-key-hash-origin). APPLE_TEAM_ID (PDL-team, signing-ronde 2026-08-17) activeert
+      # app-subdomein) en de webview-origins in CORS: capacitor://localhost (iOS) én
+      # https://localhost (Android — Capacitor's androidScheme, Android-bouwronde 28-08). De
+      # Android-passkey-origin `android:apk-key-hash:<b64url-sha256>` in WEBAUTHN_ORIGINS +
+      # ANDROID_CERT_SHA256_VINGERAFDRUKKEN (assetlinks) volgen zodra de signing-certificaten
+      # bestaan (upload-key én Play App Signing-key — native/PLAY_DRAAIBOEK.md §5).
+      # APPLE_TEAM_ID (PDL-team, signing-ronde 2026-08-17) activeert
       # de AASA-leesroute app/auth/wellknown.py op het app-subdomein (referentie; de
       # bindende AASA staat als statisch bestand op de WordPress-apex) en is t.z.t. óók
       # de APNs-issuer (fase 3). Geen geheim — staat sowieso in de publieke AASA.
@@ -148,7 +151,7 @@ jobs:
             --memory 1Gi \
             --cpu 1 \
             --min-instances 1 \
-            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers@BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync@EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij@EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync" \
+            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers@BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync@EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij@EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest" \
             --quiet
 
@@ -281,11 +284,15 @@ jobs:
           # APNS_SANDBOX=false sinds A6 (2026-08-21): de TestFlight-build is de doel-build
           # (aps-environment 'production'); push op de oude dev-signed kabel-build werkt
           # daarmee bewust niet meer — dit is dezelfde omslag als het provisioning-profiel maakt.
+          # FCM (Android, bouwronde 28-08): Firebase zit in ditzelfde GCP-project, de verzendkant
+          # gebruikt Application Default Credentials van run-jobs@ (IAM
+          # roles/firebasecloudmessaging.admin — scripts/gcp/fcm_afronden.sh, eenmalig owner) —
+          # geen secret; FCM_PROJECT_ID is de enige config en is geen geheim.
           for NJOB in rlz-accordeur-herinneringen rlz-nieuwe-facturen; do
             gcloud run jobs update "${NJOB}" \
               --region "${REGION}" \
               --project "${PROJECT_ID}" \
-              --update-env-vars "APNS_SANDBOX=false,APPLE_TEAM_ID=VRQP26CX43" \
+              --update-env-vars "APNS_SANDBOX=false,APPLE_TEAM_ID=VRQP26CX43,FCM_PROJECT_ID=${PROJECT_ID}" \
               --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
               --quiet \
             || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — ${NJOB} verstuurt native push nog niet (webpush/mail ongemoeid)."
@@ -312,10 +319,12 @@ jobs:
           # APNs daar niet geconfigureerd is, en de handmatige herinner-knop verstuurt per
           # direct vanuit de service. Eigen || zodat een ontbrekend APNs-slot de mailconfig
           # hierboven niet meesleept. APNS_SANDBOX: zie de job-stap (TestFlight = false, A6).
+          # FCM_PROJECT_ID: Android-registratie (POST …/subscripties/native soort=fcm) is
+          # fail-closed 409 zolang FCM hier niet geconfigureerd is; ADC = run-backend@ (zie job-stap).
           gcloud run services update rlz-backend \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
-            --update-env-vars "APNS_SANDBOX=false" \
+            --update-env-vars "APNS_SANDBOX=false,FCM_PROJECT_ID=${PROJECT_ID}" \
             --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
             --quiet \
           || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — native-pushregistratie blijft fail-closed 409, web/PWA ongemoeid."

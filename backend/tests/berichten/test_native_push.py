@@ -117,9 +117,7 @@ class TestSubscriptieSoorten:
 
 class TestAdapterDispatch:
     def _subscriptie(self, soort: str, endpoint: str = "token-1") -> PushSubscriptie:
-        return PushSubscriptie(
-            gebruiker_id=uuid.uuid4(), apparaat_id=uuid.uuid4(), soort=soort, endpoint=endpoint
-        )
+        return PushSubscriptie(gebruiker_id=uuid.uuid4(), apparaat_id=uuid.uuid4(), soort=soort, endpoint=endpoint)
 
     def test_apns_soort_gaat_naar_de_apns_adapter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         aangeroepen: dict = {}
@@ -153,6 +151,11 @@ class TestAdapterDispatch:
         assert push.is_geconfigureerd(PushSoort.WEBPUSH.value) is False  # geen VAPID in testconfig
         assert push.is_geconfigureerd("apns") is False
         assert push.is_geconfigureerd("fcm") is False
+        # Standaardroute (Android-bouwronde 28-08): alleen het project-id + ADC van de Cloud Run-identiteit.
+        monkeypatch.setattr(settings, "fcm_project_id", "rlz-boekhouding")
+        assert push.is_geconfigureerd("fcm") is True
+        monkeypatch.setattr(settings, "fcm_project_id", None)
+        # Terugval: expliciete service-account-JSON.
         monkeypatch.setattr(settings, "fcm_service_account_json", "{}")
         assert push.is_geconfigureerd("fcm") is True
 
@@ -220,8 +223,67 @@ class TestFcmAdapter:
             fcm.verzend_fcm("tok", titel="t", tekst="x", url="/accordeur")
 
     def _configureer(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(settings, "fcm_service_account_json", '{"project_id": "rlz-test"}')
+        monkeypatch.setattr(settings, "fcm_project_id", "rlz-test")
         monkeypatch.setattr(fcm, "_access_token", lambda: ("oauth-tok", "rlz-test"))
+
+    def _verse_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(fcm, "_credentials_cache", None)
+
+    def test_adc_route_is_de_standaard(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Firebase in hetzelfde GCP-project (28-08): FCM_PROJECT_ID + Application Default
+        Credentials van de Cloud Run-identiteit — géén service-account-JSON/secret."""
+        import google.auth
+
+        self._verse_cache(monkeypatch)
+        monkeypatch.setattr(settings, "fcm_project_id", "rlz-boekhouding")
+        monkeypatch.setattr(settings, "fcm_service_account_json", None)
+        gezien: dict = {}
+
+        def fake_default(scopes: list[str]) -> tuple[object, str]:
+            gezien["scopes"] = scopes
+            return object(), "adc-project-negeren"
+
+        monkeypatch.setattr(google.auth, "default", fake_default)
+        _creds, project_id = fcm._credentials_en_project()
+        assert gezien["scopes"] == ["https://www.googleapis.com/auth/firebase.messaging"]
+        # Het project-id komt expliciet uit de setting — nooit stil uit ADC afgeleid.
+        assert project_id == "rlz-boekhouding"
+
+    def test_adc_ontbreekt_is_niet_geconfigureerd(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Lokale dev zonder gcloud-login: nette 'niet geconfigureerd' (→ e-mail-terugval), geen kale fout."""
+        import google.auth
+        from google.auth import exceptions as auth_exceptions
+
+        self._verse_cache(monkeypatch)
+        monkeypatch.setattr(settings, "fcm_project_id", "rlz-boekhouding")
+        monkeypatch.setattr(settings, "fcm_service_account_json", None)
+
+        def geen_adc(scopes: list[str]) -> tuple[object, str]:
+            raise auth_exceptions.DefaultCredentialsError("geen credentials")
+
+        monkeypatch.setattr(google.auth, "default", geen_adc)
+        with pytest.raises(fcm.FcmNietGeconfigureerd):
+            fcm._credentials_en_project()
+
+    def test_service_account_json_blijft_terugval(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Staat er een JSON, dan wint die (omgeving zonder ADC) — project-id uit de JSON."""
+        from google.oauth2 import service_account
+
+        self._verse_cache(monkeypatch)
+        monkeypatch.setattr(settings, "fcm_project_id", None)
+        monkeypatch.setattr(settings, "fcm_service_account_json", '{"project_id": "rlz-test-json"}')
+        monkeypatch.setattr(
+            service_account.Credentials, "from_service_account_info", staticmethod(lambda info, scopes: object())
+        )
+        _creds, project_id = fcm._credentials_en_project()
+        assert project_id == "rlz-test-json"
+
+    def test_json_zonder_project_id_is_fout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._verse_cache(monkeypatch)
+        monkeypatch.setattr(settings, "fcm_project_id", None)
+        monkeypatch.setattr(settings, "fcm_service_account_json", "{}")
+        with pytest.raises(fcm.FcmNietGeconfigureerd):
+            fcm._credentials_en_project()
 
     def test_verzendt_v1_bericht(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import httpx

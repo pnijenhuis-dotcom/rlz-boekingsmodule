@@ -349,10 +349,17 @@ class Settings(BaseSettings):
     apns_key_p8: str | None = None
     apns_key_id: str = ""
     apns_sandbox: bool = False
-    # FCM (HTTP v1): service-account-JSON van het Firebase-project (Secret Manager
-    # FCM_SERVICE_ACCOUNT_JSON; project-id zit in de JSON). AVG-notitie: gegevensstroom via
-    # Google — payload bevat alleen aantal + deep-link, nooit financiële details (zelfde
-    # dataminimalisatie als het lockscreen-principe van Web Push).
+    # FCM (HTTP v1) — Android-bouwronde 28-08: Firebase is toegevoegd aan HETZELFDE GCP-project
+    # (rlz-boekhouding), dus de verzendkant authenticeert met Application Default Credentials
+    # van de Cloud Run-identiteit (run-backend@ service / run-jobs@ notificatie-jobs, via de
+    # metadata-server) mét IAM-rol roles/firebasecloudmessaging.admin — GEEN los
+    # service-account-key-secret (scripts/gcp/fcm_afronden.sh zet de IAM + env). Geconfigureerd
+    # zodra FCM_PROJECT_ID gezet is (= het Firebase-/GCP-project-id; nooit uit ADC afgeleid, zodat
+    # een verkeerde omgeving fail-closed blijft). `fcm_service_account_json` blijft als expliciete
+    # terugval voor omgevingen zónder ADC (lokale dev tegen een testproject) — staat de JSON, dan
+    # wint die. AVG-notitie: gegevensstroom via Google — payload bevat alleen aantal + deep-link,
+    # nooit financiële details (zelfde dataminimalisatie als het lockscreen-principe van Web Push).
+    fcm_project_id: str | None = None
     fcm_service_account_json: str | None = None
 
     # Volumerem op de herinnering-job (noodrem-patroon, zelfde grondhouding als
