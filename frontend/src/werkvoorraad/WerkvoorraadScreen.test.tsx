@@ -672,6 +672,22 @@ describe('Klantlanding — tabs per soort + chip-rij (besluit Peter 25-08, punt 
     expect(screen.queryByText('open.pdf')).not.toBeInTheDocument()
   })
 
+  it('toont in de kolom Toegewezen de chip "boeken ná akkoord mislukt" (bugfix-run 28-08) mét reden als tooltip', async () => {
+    installFetchMock({
+      documenten: [
+        document({
+          id: 'd-2',
+          status: 'ter_accordering',
+          bestandsnaam: 'van-happen.pdf',
+          accordering_boek_fout: 'Boeken staat uit voor deze administratie of via de globale kill switch',
+        }),
+      ],
+    })
+    renderLanding(`/?administratie=${ADMINISTRATIE_ID}&status=ter_accordering`)
+    const chip = await screen.findByText('⚠ boeken ná akkoord mislukt')
+    expect(chip).toHaveAttribute('title', 'Boeken staat uit voor deze administratie of via de globale kill switch')
+  })
+
   it('oude URL sectie=documenten blijft werken en sectie=standen toont het standen-overzicht', async () => {
     installFetchMock({})
     renderLanding(`/?administratie=${ADMINISTRATIE_ID}&sectie=documenten`)

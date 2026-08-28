@@ -436,6 +436,12 @@ export function BoekvoorstelPanel({
   // Klant-accordering (migratie 0033): staat de toggle aan, dan wordt de boekknop
   // "Ter accordering" — direct boeken is server-side sowieso dicht (AccorderingVereist).
   const [accorderingAan, setAccorderingAan] = useState(false)
+  // Bugfix-run 28-08: is de LAATSTE accorderingsronde van dít document al afgerond (alle lagen
+  // akkoord) maar staat het nog niet geboekt (boeken ná het akkoord faalde, of de oude stille
+  // terugval naar klaar_om_te_boeken), dan is de knop weer "Boeken" — nooit een tweede ronde
+  // naar de klant. De server-poort toetst hetzelfde (laatste ronde afgerond, bedrag ongewijzigd).
+  const [klantAkkoordCompleet, setKlantAkkoordCompleet] = useState(false)
+  const effectiefAccorderingAan = accorderingAan && !klantAkkoordCompleet
   const [herstellenBezig, setHerstellenBezig] = useState(false)
   const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
 
@@ -858,10 +864,17 @@ export function BoekvoorstelPanel({
         // Stil degraderen naar de gewone boekknop — de server blokkeert direct boeken toch hard.
         if (actief) setAccorderingAan(false)
       })
+    apiJson<{ status: string } | null>(`/administraties/${administratieId}/accordering/documenten/${documentId}`)
+      .then((dto) => {
+        if (actief) setKlantAkkoordCompleet(dto?.status === 'afgerond')
+      })
+      .catch(() => {
+        if (actief) setKlantAkkoordCompleet(false)
+      })
     return () => {
       actief = false
     }
-  }, [administratieId])
+  }, [administratieId, documentId, status])
 
   const boeken = async (matchBevestigd = false, materiaalBevestigd = false) => {
     const vlaggen = { match: matchBevestigd || bevestigingen.match, materiaal: materiaalBevestigd || bevestigingen.materiaal }
@@ -872,7 +885,7 @@ export function BoekvoorstelPanel({
       // Accordering aan → de knop biedt het document ter accordering aan (zelfde 409-vorm bij
       // geblokkeerde checks als de boek-route); staande goedkeuringen kunnen direct tot boeken
       // leiden (alles_akkoord + geboekt in de response).
-      const pad = accorderingAan
+      const pad = effectiefAccorderingAan
         ? `/administraties/${administratieId}/accordering/documenten/${documentId}/aanbieden`
         : `/administraties/${administratieId}/documenten/${documentId}/boeken`
       const resp = await apiFetch(pad, {
@@ -889,7 +902,7 @@ export function BoekvoorstelPanel({
       const body: unknown = await resp.json().catch(() => null)
 
       const referentieVoorMelding = referentie.trim() || null
-      if (resp.ok && accorderingAan) {
+      if (resp.ok && effectiefAccorderingAan) {
         const resultaat = body as { geboekt: boolean; boek_fout: string | null; alles_akkoord: boolean }
         if (resultaat.boek_fout) setBoekenFout(resultaat.boek_fout)
         setPopupMatch(null)
@@ -997,13 +1010,17 @@ export function BoekvoorstelPanel({
     !checkRapport.geblokkeerd &&
     !isReadOnly &&
     !doorbelastingBlokkeert
-  const boekLabel = accorderingAan
+  const boekLabel = effectiefAccorderingAan
     ? doorbelastingKlaargezet
       ? 'Ter accordering (+ doorbelasten) →'
       : 'Ter accordering →'
-    : doorbelastingKlaargezet
-      ? 'Boeken + doorbelasten ✓'
-      : 'Boeken in RLZ ✓'
+    : klantAkkoordCompleet
+      ? doorbelastingKlaargezet
+        ? 'Boeken + doorbelasten (klant-akkoord compleet) ✓'
+        : 'Boeken in RLZ (klant-akkoord compleet) ✓'
+      : doorbelastingKlaargezet
+        ? 'Boeken + doorbelasten ✓'
+        : 'Boeken in RLZ ✓'
 
   // Punt 5: de actieve besluitknop naar buiten melden (sneltoets B doet exact de knop-klik);
   // `boeken` wisselt per render van identiteit → via ref, zodat de melding alleen bij een echte
@@ -1605,7 +1622,7 @@ export function BoekvoorstelPanel({
         <MatchAfwijkingPopup
           melding={popupMatch.melding}
           match={popupMatch.match}
-          actieLabel={accorderingAan ? 'Ter accordering ondanks afwijking' : 'Boeken ondanks afwijking'}
+          actieLabel={effectiefAccorderingAan ? 'Ter accordering ondanks afwijking' : 'Boeken ondanks afwijking'}
           bezig={boekenBezig}
           onBevestig={() => {
             setPopupMatch(null)
@@ -1618,7 +1635,7 @@ export function BoekvoorstelPanel({
         <MateriaalAfwijkingPopup
           melding={popupMateriaal.melding}
           match={popupMateriaal.match}
-          actieLabel={accorderingAan ? 'Ter accordering ondanks materiaal-afwijking' : 'Boeken ondanks materiaal-afwijking'}
+          actieLabel={effectiefAccorderingAan ? 'Ter accordering ondanks materiaal-afwijking' : 'Boeken ondanks materiaal-afwijking'}
           bezig={boekenBezig}
           onBevestig={() => {
             setPopupMateriaal(null)

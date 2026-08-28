@@ -53,6 +53,10 @@ interface FetchMockOverrides {
    * checks); zonder override een 404 — het paneel blijft dan in de neutrale beginstand. */
   checksResponse?: unknown
   checksAanroepen?: string[]
+  /** Klant-accordering: toggle-stand van de administratie (default: 404 → uit). */
+  accorderingAan?: boolean
+  /** Bugfix-run 28-08: de laatste accorderingsronde van dít document (default: null). */
+  accorderingVanDocument?: unknown
 }
 
 function installFetchMock(overrides: FetchMockOverrides) {
@@ -72,6 +76,12 @@ function installFetchMock(overrides: FetchMockOverrides) {
         overrides.geheugenAanroepen?.push(JSON.parse(String(init.body)))
         if (overrides.geheugenVoorstel === undefined) return Promise.resolve(new Response(null, { status: 404 }))
         return Promise.resolve(jsonResponse(overrides.geheugenVoorstel))
+      }
+      if (url.endsWith('/accordering/instellingen') && overrides.accorderingAan !== undefined) {
+        return Promise.resolve(jsonResponse({ ingeschakeld: overrides.accorderingAan, lagen: [] }))
+      }
+      if (url.endsWith(`/accordering/documenten/${DOCUMENT_ID}`) && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse(overrides.accorderingVanDocument ?? null))
       }
       if (url.endsWith('/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: grootboek }))
       if (url.endsWith('/btw-codes')) return Promise.resolve(jsonResponse({ btw_codes: taxrates }))
@@ -1166,5 +1176,51 @@ describe('BoekvoorstelPanel — kolombreedtes boekingsregels (addendum 27-08 pun
     renderPaneel()
     const veld = await screen.findByLabelText('Omschrijving')
     expect(veld.closest('td')?.classList.contains('omschrijving')).toBe(true)
+  })
+})
+
+describe('BoekvoorstelPanel — boekknop bij compleet klant-akkoord (bugfix-run 28-08)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: () => `local-${Math.random()}` })
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  const AFGEROND = {
+    id: 'acc-1',
+    document_id: DOCUMENT_ID,
+    status: 'afgerond',
+    aangeboden_op: '2026-08-27T14:03:00Z',
+    afgerond_op: '2026-08-27T15:57:00Z',
+    boek_fout: 'Boeken staat uit voor deze administratie of via de globale kill switch',
+    stappen: [],
+  }
+
+  it('accordering aan zónder afgeronde ronde → "Ter accordering →"', async () => {
+    installFetchMock({ accorderingAan: true })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="klaar_om_te_boeken"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    expect(await screen.findByRole('button', { name: 'Ter accordering →' })).toBeInTheDocument()
+  })
+
+  it('accordering aan mét afgeronde ronde (boeken ná akkoord faalde) → weer "Boeken", nooit een tweede ronde', async () => {
+    installFetchMock({ accorderingAan: true, accorderingVanDocument: AFGEROND })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="klaar_om_te_boeken"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    expect(await screen.findByRole('button', { name: 'Boeken in RLZ (klant-akkoord compleet) ✓' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Ter accordering/ })).not.toBeInTheDocument()
   })
 })

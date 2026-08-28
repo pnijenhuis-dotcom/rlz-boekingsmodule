@@ -1076,3 +1076,54 @@ describe('DocumentDetailScreen — tijdlijnregel "accordering vervallen" mét re
     expect(await screen.findByText(/Accordering vervallen — accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)).toBeInTheDocument()
   })
 })
+
+describe('DocumentDetailScreen — tijdlijn bugfix-run 28-08: elke ⚙-systeemovergang draagt een reden', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('toont "alle lagen akkoord", de boekfout ná akkoord en een generieke systeem-reden', async () => {
+    installFetchMock(
+      detailMet({
+        status: 'ter_accordering',
+        veldvoorstel: null,
+        tijdlijn: [
+          {
+            van_status: 'ter_accordering',
+            naar_status: 'ter_accordering',
+            actor_id: 'systeem',
+            actor_is_systeem: true,
+            detail: { accordering_id: 'acc-1', alle_lagen_akkoord: true, reden: 'alle lagen akkoord — boeken gestart' },
+            tijdstip: '2026-08-27T15:57:00Z',
+          },
+          {
+            van_status: 'ter_accordering',
+            naar_status: 'klaar_om_te_boeken',
+            actor_id: 'systeem',
+            actor_is_systeem: true,
+            detail: { harde_checks: 'doorstaan', reden: 'harde checks doorstaan — boekpoging gestart' },
+            tijdstip: '2026-08-27T15:57:01Z',
+          },
+          {
+            van_status: 'klaar_om_te_boeken',
+            naar_status: 'ter_accordering',
+            actor_id: 'systeem',
+            actor_is_systeem: true,
+            detail: {
+              accordering_id: 'acc-1',
+              accordering_boek_fout: 'Boeken staat uit voor deze administratie of via de globale kill switch',
+              reden: 'boeken ná het laatste klant-akkoord mislukt: Boeken staat uit …',
+            },
+            tijdstip: '2026-08-27T15:57:02Z',
+          },
+        ],
+      }),
+    )
+    renderScherm()
+    expect(await screen.findByText(/Alle lagen akkoord — boeken gestart/)).toBeInTheDocument()
+    expect(screen.getByText(/Reden: harde checks doorstaan — boekpoging gestart/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Boeken ná het laatste klant-akkoord mislukt — Boeken staat uit voor deze administratie/),
+    ).toBeInTheDocument()
+    // Geen dubbele reden-regel bij de specifieke boekfout-regel.
+    expect(screen.queryByText(/Reden: boeken ná het laatste klant-akkoord/)).not.toBeInTheDocument()
+  })
+})

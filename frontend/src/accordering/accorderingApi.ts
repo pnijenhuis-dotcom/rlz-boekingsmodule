@@ -79,6 +79,10 @@ export interface AccorderingDto {
   aangeboden_op: string
   afgerond_op: string | null
   stappen: AccorderingStapDto[]
+  /** Bugfix-run 28-08: laatste boekfout ná het laatste akkoord (persistent op de ronde) — de
+   * accorderingssectie toont 'm rood mét de knop "Opnieuw boeken". Null = geen. */
+  boek_fout?: string | null
+  boek_fout_op?: string | null
 }
 
 export interface BesluitResultaatDto {

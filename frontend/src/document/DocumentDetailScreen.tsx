@@ -1291,9 +1291,34 @@ export function DocumentDetailScreen() {
                       )}
                       {g.detail && 'accordering_ingetrokken' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>
-                          Accordering ingetrokken door {naamVoor(g.actor_id)}
+                          Accordering {'na_boekfout' in g.detail ? 'ná boekfout teruggehaald' : 'ingetrokken'} door{' '}
+                          {naamVoor(g.actor_id)}
                         </div>
                       )}
+                      {g.detail && 'alle_lagen_akkoord' in g.detail && !('accordering_boek_fout' in g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Alle lagen akkoord — boeken gestart (mét alle harde checks)
+                        </div>
+                      )}
+                      {g.detail && 'accordering_boek_fout' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--red)' }}>
+                          Boeken ná het laatste klant-akkoord mislukt — {String(g.detail.accordering_boek_fout)}
+                        </div>
+                      )}
+                      {/* Bugfix-run 28-08 (kernprincipe "niets verdwijnt stil"): élke ⚙-systeemovergang
+                          draagt een reden — generiek getoond, tenzij een specifieke regel hierboven 'm al
+                          leesbaar maakt. */}
+                      {g.actor_is_systeem &&
+                        g.detail &&
+                        typeof g.detail.reden === 'string' &&
+                        g.detail.reden &&
+                        !('accordering_vervallen' in g.detail) &&
+                        !('accordering_boek_fout' in g.detail) &&
+                        !('alle_lagen_akkoord' in g.detail) && (
+                          <div className="hint" style={{ marginTop: 2 }}>
+                            Reden: {g.detail.reden}
+                          </div>
+                        )}
                       {g.detail && 'tenaamstelling_geleerd' in g.detail && typeof g.detail.tenaamstelling_geleerd === 'string' && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           Onthouden: tenaamstelling &ldquo;{g.detail.tenaamstelling_geleerd}&rdquo; hoort bij deze administratie

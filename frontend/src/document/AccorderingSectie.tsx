@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { apiFetch } from '../api/client'
 import {
   haalAccorderingVanDocument,
   haalLaatstHerinnerd,
@@ -12,6 +13,20 @@ import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDa
 function formatTijdstip(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/** 409/403/429-antwoorden van de boek-route leesbaar maken (string-detail of {message, checks}). */
+function foutTekst(body: unknown, status: number): string {
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const detail = (body as { detail: unknown }).detail
+    if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object') {
+      const d = detail as { message?: string; checks?: { resultaten?: { ok: boolean; melding: string }[] } }
+      const rood = d.checks?.resultaten?.filter((r) => !r.ok).map((r) => r.melding) ?? []
+      return [d.message, ...rood].filter(Boolean).join(' — ')
+    }
+  }
+  return `Boeken mislukt (HTTP ${status})`
 }
 
 function stapChip(stap: AccorderingStapDto) {
@@ -54,6 +69,8 @@ export function AccorderingSectie({
   const [bezig, setBezig] = useState(false)
   const [herinnerBezig, setHerinnerBezig] = useState(false)
   const [laatstHerinnerd, setLaatstHerinnerd] = useState<string | null>(null)
+  const [boekenBezig, setBoekenBezig] = useState(false)
+  const [boekenFout, setBoekenFout] = useState<string | null>(null)
 
   const laad = useCallback(() => {
     haalAccorderingVanDocument(administratieId, documentId)
@@ -93,7 +110,36 @@ export function AccorderingSectie({
     }
   }
 
+  /** Bugfix-run 28-08: alle lagen akkoord maar het boeken ná het laatste akkoord faalde (of het
+   * document hing nog op de oude stille terugval) — het kantoor boekt opnieuw via de gewone
+   * boek-route; de server-poort laat dat toe omdat de laatste ronde afgerond is. */
+  const opnieuwBoeken = async () => {
+    setBoekenBezig(true)
+    setBoekenFout(null)
+    try {
+      const resp = await apiFetch(`/administraties/${administratieId}/documenten/${documentId}/boeken`, { method: 'POST' })
+      if (!resp.ok) {
+        const body: unknown = await resp.json().catch(() => null)
+        setBoekenFout(foutTekst(body, resp.status))
+        onGewijzigd()
+        return
+      }
+      onGewijzigd()
+    } catch (err) {
+      setBoekenFout(err instanceof Error ? err.message : 'Boeken mislukt')
+    } finally {
+      setBoekenBezig(false)
+    }
+  }
+
   if (accordering === null) return null
+
+  // Zelfde statussen als de herstelroute (app/accordering/herstel.py::HERSTELBARE_STATUSSEN):
+  // vraag_open ná akkoord (boeken wacht op de open vraag) en de tegenboek-herboeking vallen er
+  // bewust buiten — daar is niets "mislukt".
+  const akkoordMaarNietGeboekt =
+    accordering.status === 'afgerond' && ['ter_accordering', 'klaar_om_te_boeken', 'boeken_mislukt'].includes(documentStatus)
+  const terughaalbaar = accordering.status === 'open' || (akkoordMaarNietGeboekt && documentStatus === 'ter_accordering')
 
   return (
     <div className="panel">
@@ -105,6 +151,8 @@ export function AccorderingSectie({
           <span className="chip geboekt">alle lagen akkoord</span>
         ) : accordering.status === 'afgewezen' ? (
           <span className="chip vraag">afgewezen door accordeur</span>
+        ) : accordering.status === 'vervallen' ? (
+          <span className="chip vraag">vervallen</span>
         ) : (
           <span className="chip">ingetrokken</span>
         )}
@@ -143,23 +191,55 @@ export function AccorderingSectie({
         akkoord boekt de motor automatisch, mét alle harde checks opnieuw.
       </div>
       {fout && <div className="fout">{fout}</div>}
-      {accordering.status === 'open' && (
+      {akkoordMaarNietGeboekt && (
+        <div className="fout" role="alert" style={{ marginTop: 8 }}>
+          <b>Boeken ná het laatste akkoord is niet gelukt</b>
+          {accordering.boek_fout ? (
+            <>
+              {' — '}
+              {accordering.boek_fout}
+              {accordering.boek_fout_op && (
+                <span style={{ color: 'var(--muted)' }}> ({formatTijdstip(accordering.boek_fout_op)})</span>
+              )}
+            </>
+          ) : (
+            ' — het document staat nog niet geboekt (zie de tijdlijn voor de reden).'
+          )}
+          <div className="hint" style={{ marginTop: 4 }}>
+            Los de oorzaak op en boek opnieuw — het klant-akkoord blijft geldig zolang het bedrag ongewijzigd is.
+            Voorstel aanpassen? Haal het document dan terug uit de accordering en bied het opnieuw aan.
+          </div>
+          {boekenFout && (
+            <div className="hint" style={{ marginTop: 4, color: 'var(--red)' }}>
+              {boekenFout}
+            </div>
+          )}
+          <div className="actions" style={{ marginTop: 6 }}>
+            <button type="button" className="btn primary" disabled={boekenBezig} onClick={() => void opnieuwBoeken()}>
+              {boekenBezig ? 'Bezig…' : 'Opnieuw boeken (klant-akkoord compleet)'}
+            </button>
+          </div>
+        </div>
+      )}
+      {terughaalbaar && (
         <div className="actions">
           {/* Dagrem gespiegeld (max 1 per document per dag, Europe/Amsterdam): vandaag al
               verzonden = knop disabled mét tijdstip i.p.v. fout-ná-klik. Een mislukte
               poging zit niet in laatst_herinnerd → knop blijft actief (herkansing). */}
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={herinnerBezig || isVandaagHerinnerd(laatstHerinnerd)}
-            onClick={() => void herinneren()}
-          >
-            {herinnerBezig
-              ? 'Bezig…'
-              : isVandaagHerinnerd(laatstHerinnerd) && laatstHerinnerd
-                ? `Vandaag al herinnerd om ${herinnerTijdLabel(laatstHerinnerd)}`
-                : 'Herinner accordeur'}
-          </button>
+          {accordering.status === 'open' && (
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={herinnerBezig || isVandaagHerinnerd(laatstHerinnerd)}
+              onClick={() => void herinneren()}
+            >
+              {herinnerBezig
+                ? 'Bezig…'
+                : isVandaagHerinnerd(laatstHerinnerd) && laatstHerinnerd
+                  ? `Vandaag al herinnerd om ${herinnerTijdLabel(laatstHerinnerd)}`
+                  : 'Herinner accordeur'}
+            </button>
+          )}
           <button type="button" className="btn secondary" disabled={bezig} onClick={() => void intrekken()}>
             {bezig ? 'Bezig…' : 'Terughalen uit accordering'}
           </button>

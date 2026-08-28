@@ -826,7 +826,13 @@ export function DocumentenDeelscherm({
                         )}
                       </td>
                       <td>
-                        {d.status === 'ter_accordering' && d.accordeur_aan_de_beurt ? (
+                        {d.accordering_boek_fout ? (
+                          // Bugfix-run 28-08: alle lagen akkoord, maar het boeken ná het laatste akkoord
+                          // faalde — nooit stil in de lijst; de reden staat in de tooltip én op het document.
+                          <span className="chip vraag" title={d.accordering_boek_fout}>
+                            ⚠ boeken ná akkoord mislukt
+                          </span>
+                        ) : d.status === 'ter_accordering' && d.accordeur_aan_de_beurt ? (
                           <span title="Klant-accordeur die nu aan de beurt is">
                             {d.accordeur_aan_de_beurt.naam}
                             <span style={{ color: 'var(--muted)' }}> · laag {d.accordeur_aan_de_beurt.laag}</span>

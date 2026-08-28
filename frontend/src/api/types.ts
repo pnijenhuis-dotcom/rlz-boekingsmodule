@@ -183,6 +183,9 @@ export interface DocumentListItemDto {
   /** Accordeur aan de beurt (C2 26-08): alleen bij status ter_accordering — de kolom "Toegewezen"
    * toont "<naam> · laag N" in plaats van "—". */
   accordeur_aan_de_beurt?: AccordeurAanDeBeurtDto | null
+  /** Bugfix-run 28-08: alle lagen akkoord maar het boeken ná het laatste akkoord faalde — de
+   * kolom "Toegewezen" toont de chip "boeken ná akkoord mislukt" mét de reden. Null = geen. */
+  accordering_boek_fout?: string | null
   /** Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + het
    * filter. Null/afwezig = nog niet getoetst. */
   duplicaatsignaal?: DuplicaatSignaalKortDto | null

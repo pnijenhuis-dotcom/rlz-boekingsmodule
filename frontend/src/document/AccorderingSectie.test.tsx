@@ -26,13 +26,23 @@ function stap(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function installFetchMock(accordering: unknown, intrekkenAanroepen?: string[], laatstHerinnerd?: string) {
+function installFetchMock(
+  accordering: unknown,
+  intrekkenAanroepen?: string[],
+  laatstHerinnerd?: string,
+  boeken?: { aanroepen: string[]; response?: [unknown, number] },
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       if (url.endsWith('/intrekken') && init?.method === 'POST') {
         intrekkenAanroepen?.push(url)
         return Promise.resolve(jsonResponse({ ...(accordering as object), status: 'ingetrokken' }))
+      }
+      if (url.endsWith('/boeken') && init?.method === 'POST') {
+        boeken?.aanroepen.push(url)
+        const [body, status] = boeken?.response ?? [{ status: 'geboekt' }, 200]
+        return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
       }
       if (url.endsWith('/accordering/herinneringen')) {
         return Promise.resolve(
@@ -167,5 +177,86 @@ describe('AccorderingSectie', () => {
     const knop = await screen.findByRole('button', { name: 'Herinner accordeur' })
     expect(knop).toBeEnabled()
     expect(screen.getByText(/laatst herinnerd/)).toBeInTheDocument()
+  })
+
+  // ————— Bugfix-run 28-08: boeken ná het laatste akkoord mislukt — nooit stil —————
+
+  const AFGEROND_MET_BOEKFOUT = {
+    id: 'acc-1',
+    document_id: DOCUMENT_ID,
+    status: 'afgerond',
+    aangeboden_op: '2026-08-27T14:03:00Z',
+    afgerond_op: '2026-08-27T15:57:00Z',
+    boek_fout: 'Boeken staat uit voor deze administratie of via de globale kill switch',
+    boek_fout_op: '2026-08-27T15:57:01Z',
+    stappen: [stap({ besluit: 'akkoord', besluit_bron: 'handmatig', besloten_op: '2026-08-27T15:57:00Z', aan_de_beurt: false })],
+  }
+
+  it('toont de boekfout ná het laatste akkoord rood mét de knop "Opnieuw boeken" (POST /boeken)', async () => {
+    const boeken = { aanroepen: [] as string[] }
+    const onGewijzigd = vi.fn()
+    installFetchMock(AFGEROND_MET_BOEKFOUT, undefined, undefined, boeken)
+    render(
+      <AccorderingSectie
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        documentStatus="ter_accordering"
+        onGewijzigd={onGewijzigd}
+      />,
+    )
+
+    expect(await screen.findByText('alle lagen akkoord')).toBeInTheDocument()
+    const melding = screen.getByRole('alert')
+    expect(melding).toHaveTextContent('Boeken ná het laatste akkoord is niet gelukt')
+    expect(melding).toHaveTextContent('Boeken staat uit voor deze administratie')
+    await userEvent.click(screen.getByRole('button', { name: /Opnieuw boeken \(klant-akkoord compleet\)/ }))
+    await waitFor(() => expect(boeken.aanroepen).toEqual([`/administraties/${ADMINISTRATIE_ID}/documenten/${DOCUMENT_ID}/boeken`]))
+    expect(onGewijzigd).toHaveBeenCalled()
+    // Terughalen is óók mogelijk ná een boekfout (voorstel aanpassen → opnieuw aanbieden).
+    expect(screen.getByRole('button', { name: /Terughalen uit accordering/ })).toBeInTheDocument()
+    // Geen herinner-knop: er is niemand meer aan de beurt.
+    expect(screen.queryByRole('button', { name: /Herinner accordeur/ })).not.toBeInTheDocument()
+  })
+
+  it('een geweigerde herboeking (409 mét check-rijen) blijft leesbaar in de sectie', async () => {
+    const boeken = {
+      aanroepen: [] as string[],
+      response: [
+        {
+          detail: {
+            message: 'Boeken geblokkeerd door harde checks',
+            checks: { resultaten: [{ naam: 'duplicaat', ok: false, melding: 'Mogelijk duplicaat in RLZ' }] },
+          },
+        },
+        409,
+      ] as [unknown, number],
+    }
+    installFetchMock(AFGEROND_MET_BOEKFOUT, undefined, undefined, boeken)
+    render(
+      <AccorderingSectie
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        documentStatus="klaar_om_te_boeken"
+        onGewijzigd={() => {}}
+      />,
+    )
+    await userEvent.click(await screen.findByRole('button', { name: /Opnieuw boeken/ }))
+    expect(await screen.findByText(/Boeken geblokkeerd door harde checks — Mogelijk duplicaat in RLZ/)).toBeInTheDocument()
+  })
+
+  it('afgerond + geboekt = gewoon "alle lagen akkoord", geen foutmelding of boekknop', async () => {
+    installFetchMock({ ...AFGEROND_MET_BOEKFOUT, boek_fout: null, boek_fout_op: null })
+    render(
+      <AccorderingSectie
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        documentStatus="geboekt"
+        onGewijzigd={() => {}}
+      />,
+    )
+    expect(await screen.findByText('alle lagen akkoord')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Opnieuw boeken/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Terughalen/ })).not.toBeInTheDocument()
   })
 })
