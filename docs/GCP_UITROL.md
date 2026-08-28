@@ -721,9 +721,10 @@ Derde kanaal-secret (koppelcontract §8 v1.18, besluit 0023 — compartimenterin
 `REGISTERSYNC_HMAC_SECRET`, inkomend (Vastly tekent `GET /koppelvlak/vastgoed/register`, wij
 verifiëren; wij zijn de bron). Stappen: (1) `scripts/gcp/registersync_secret.sh` (container +
 accessor alleen `run-backend@` + genereren, idempotent); (2) `deploy.yml` `--set-secrets` van de
-service uitbreiden met `REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest` (commentaarregel
-staat klaar — bewust pas ná stap 1: Cloud Run weigert een verwijzing naar een secret zonder
-versie) → commit → deploy; (3) waarde via een veilig kanaal aan Vastly (besluit 0012); (4)
+service uitbreiden met `REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest` — **GEDAAN
+28-08 (commit ná het draaien van stap 1)**; NB het eerdere commentaarblok stond tússen de
+`\`-regelvervolgen van `gcloud run deploy` en zou de opdracht daar hebben afgebroken — verwijderd
+bij de activering; (3) waarde via een veilig kanaal aan Vastly (besluit 0012); (4)
 kanaaltest: mét headers 200 + tellingen, zonder headers 401. Tot stap 2 antwoordt productie
 zichtbaar 503 `niet_geconfigureerd` (fail-closed). Geen job leest dit secret.
 
