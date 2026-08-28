@@ -149,6 +149,9 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         samenvoegen_toegestaan=data.samenvoegen_toegestaan,
         samengevoegde_regel=_naar_regel_dto(data.samengevoegde_regel) if data.samengevoegde_regel else None,
         btw_verlegd_vermelding=data.btw_verlegd_vermelding,
+        afdeling_id=data.afdeling_id,
+        afdeling_prefill_id=data.afdeling_prefill_id,
+        afdeling_prefill_leverancier=data.afdeling_prefill_leverancier,
     )
 
 
@@ -286,6 +289,9 @@ def documenten_lijst(
                 factuurmatch=_naar_match_kort(item.factuurmatch),
                 accordering_boek_fout=item.accordering_boek_fout,
                 klant_akkoord_compleet=item.klant_akkoord_compleet,
+                afdeling=(
+                    schemas.AfdelingKortDto(id=item.afdeling[0], naam=item.afdeling[1]) if item.afdeling else None
+                ),
                 accordeur_aan_de_beurt=(
                     schemas.AccordeurAanDeBeurtDto(
                         gebruiker_id=item.accordeur_aan_de_beurt.gebruiker_id,
@@ -632,6 +638,7 @@ def boekvoorstel_opslaan(
                 for r in invoer.regels
             ],
             regels_samenvoegen=invoer.regels_samenvoegen,
+            afdeling_id=invoer.afdeling_id,
         )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

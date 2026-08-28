@@ -122,3 +122,38 @@ export async function synchroniseerAlleCaches(administratieId: string): Promise<
   )
   return resultaten.filter((fout): fout is string => fout !== null)
 }
+
+export interface AfdelingOptie {
+  id: string
+  naam: string
+  actief: boolean
+  is_terugval: boolean
+}
+
+export interface AfdelingenStand {
+  ingeschakeld: boolean
+  afdelingen: AfdelingOptie[]
+}
+
+/** Blok A 28-08 (mockup afdelingen.html §2): staat de afdelingen-toggle aan voor deze
+ * administratie, en welke afdelingen zijn er (ook gearchiveerde — voor weergave van een oude
+ * keuze; de kiezer biedt alleen actieve). Laadfout = "uit", het scherm loopt nooit vast. */
+export function useAfdelingen(administratieId: string, herlaadSleutel = 0): AfdelingenStand {
+  const [stand, setStand] = useState<AfdelingenStand>({ ingeschakeld: false, afdelingen: [] })
+
+  useEffect(() => {
+    let actief = true
+    apiJson<{ ingeschakeld: boolean; afdelingen: AfdelingOptie[] }>(`/administraties/${administratieId}/afdelingen`)
+      .then((data) => {
+        if (actief) setStand({ ingeschakeld: data.ingeschakeld, afdelingen: data.afdelingen })
+      })
+      .catch(() => {
+        if (actief) setStand({ ingeschakeld: false, afdelingen: [] })
+      })
+    return () => {
+      actief = false
+    }
+  }, [administratieId, herlaadSleutel])
+
+  return stand
+}

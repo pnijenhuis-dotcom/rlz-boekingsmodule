@@ -558,6 +558,8 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
                 laag_volgnummer=item.laag_volgnummer,
                 boeking_omschrijving=item.boeking_omschrijving,
                 staande_regel_kandidaat=item.staande_regel_kandidaat,
+                afdeling_id=item.afdeling_id,
+                afdeling_naam=item.afdeling_naam,
                 doorbelasting=(
                     None
                     if item.doorbelasting is None

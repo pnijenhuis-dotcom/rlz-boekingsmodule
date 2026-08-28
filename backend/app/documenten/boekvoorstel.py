@@ -18,6 +18,7 @@ from app.documenten.checks import (
     CheckRapport,
     CheckRegel,
     CheckResultaat,
+    check_afdeling,
     check_iban_wissel,
     check_regeltelling,
     check_verplichte_velden,
@@ -108,6 +109,12 @@ class BoekvoorstelData:
     vervaldatum: date | None = None
     # Oranje signaal bij een implausibele betaaltermijn (> 90 dagen) — checks.vervaldatum_signaal.
     vervaldatum_signaal: str | None = None
+    # Afdeling (blok A 28-08, migratie 0084): de handmatige keuze op dit document. `afdeling_prefill`
+    # = vorige keuze voor deze leverancier (alleen zolang het document zelf nog geen afdeling heeft;
+    # herkomst-chip "🧠 vorige keuze bij <leverancier>") — een voorstel, de mens beslist.
+    afdeling_id: uuid.UUID | None = None
+    afdeling_prefill_id: uuid.UUID | None = None
+    afdeling_prefill_leverancier: str | None = None
 
 
 def _als_decimal(waarde: str | None) -> Decimal | None:
@@ -312,6 +319,24 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 "samengevoegde_regel": _samengevoegde_regel(veldvoorstel) if veldvoorstel else None,
             }
 
+        def afdeling_velden(vendor_id: uuid.UUID | None, huidige_afdeling_id: uuid.UUID | None) -> dict:
+            """Blok A 28-08: prefill uit het leverancier-geheugen alleen als er nog geen keuze op het
+            document staat; toggle uit = niets (het veld is dan onzichtbaar)."""
+            from app.afdelingen.service import afdelingen_ingeschakeld_in_sessie, prefill_voor_vendor
+
+            if not afdelingen_ingeschakeld_in_sessie(session, administratie_id):
+                return {"afdeling_id": huidige_afdeling_id}
+            prefill = (
+                prefill_voor_vendor(session, administratie_id=administratie_id, vendor_id=vendor_id)
+                if huidige_afdeling_id is None
+                else None
+            )
+            return {
+                "afdeling_id": huidige_afdeling_id,
+                "afdeling_prefill_id": prefill.afdeling_id if prefill else None,
+                "afdeling_prefill_leverancier": prefill.leverancier_naam if prefill else None,
+            }
+
         bestaand = session.get(Boekvoorstel, document_id)
         if bestaand is not None:
             regels = session.scalars(
@@ -346,6 +371,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 boek_cyclus=bestaand.boek_cyclus,
                 btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
                 **samenvoeg_velden(bestaand.vendor_id),
+                **afdeling_velden(bestaand.vendor_id, bestaand.afdeling_id),
             )
 
         # Geen opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of
@@ -361,6 +387,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 opgeslagen=False,
                 regels=[],
                 **samenvoeg_velden(None),
+                **afdeling_velden(None, None),
             )
 
         # AI-voorstellen dragen een vendor-suggestie uit de controlelaag (exacte of fuzzy match
@@ -388,6 +415,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             regels=_regels_prefill(veldvoorstel),
             btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
             **samenvoeg_velden(vendor_id),
+            **afdeling_velden(vendor_id, None),
         )
 
 
@@ -413,23 +441,56 @@ def sla_boekvoorstel_op(
     regels: list[BoekvoorstelRegelData],
     regels_samenvoegen: bool | None = None,
     vervaldatum: date | None = None,
+    afdeling_id: uuid.UUID | None = None,
 ) -> BoekvoorstelData:
     """`regels_samenvoegen` (fix 3) is de weergavekeuze van de controleur op het moment van
     opslaan — die wordt als voorkeur per (administratie, crediteur) onthouden. None = niet
     meegegeven (bv. oude client of geen crediteur gekozen): voorkeur blijft ongemoeid. Bij
-    projectplicht wordt de keuze genegeerd — daar is per-regel hard."""
+    projectplicht wordt de keuze genegeerd — daar is per-regel hard.
+
+    `afdeling_id` (blok A 28-08): de handmatige afdelingskeuze; moet een afdeling van déze
+    administratie zijn (gearchiveerd mag opgeslagen worden — de check blokkeert dan zichtbaar).
+    Mét crediteur wordt de keuze als leverancier-geheugen onthouden (laatste wint). Verandert de
+    afdeling terwijl een accorderingsronde open staat, dan vervalt die ronde zichtbaar mét reden
+    (zelfde regel als een configuratiewijziging)."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = _laad_document(session, document_id=document_id)
         _controleer_niet_bevroren(document)
+
+        if afdeling_id is not None:
+            from app.afdelingen.models import Afdeling
+
+            afdeling = session.get(Afdeling, afdeling_id)
+            if afdeling is None or afdeling.administratie_id != administratie_id:
+                raise BoekvoorstelFout("Onbekende afdeling voor deze administratie")
 
         bestaand = session.get(Boekvoorstel, document_id)
         if bestaand is None:
             bestaand = Boekvoorstel(document_id=document_id)
             session.add(bestaand)
+        oude_afdeling_id = bestaand.afdeling_id
         bestaand.vendor_id = vendor_id
         bestaand.referentie = referentie
         bestaand.factuurdatum = factuurdatum
         bestaand.vervaldatum = vervaldatum
+        bestaand.afdeling_id = afdeling_id
+        if afdeling_id is not None and vendor_id is not None:
+            from app.afdelingen.service import onthoud_keuze
+
+            onthoud_keuze(
+                session,
+                administratie_id=administratie_id,
+                vendor_id=vendor_id,
+                afdeling_id=afdeling_id,
+                document_id=document_id,
+                actor_id=actor_id,
+            )
+        if oude_afdeling_id != afdeling_id and document.status == DocumentStatus.TER_ACCORDERING:
+            from app.accordering.service import laat_ronde_vervallen_bij_afdelingwijziging
+
+            laat_ronde_vervallen_bij_afdelingwijziging(
+                session, administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+            )
         # Punt 14 (28-08): het btw-/KvK-nummer van de factuur per crediteur onthouden zodra de mens de
         # crediteur bevestigt (opslaan mét vendor) — voedt nummer-match, cross-crediteur-check en de
         # dubbel-signalering. Lazy import: crediteur_kenmerk gebruikt de extractie-controlelaag.
@@ -492,7 +553,11 @@ def sla_boekvoorstel_op(
             record_id=document_id,
             actie="boekvoorstel_opgeslagen",
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"referentie": referentie, "aantal_regels": len(regels)},
+            nieuwe_waarde={
+                "referentie": referentie,
+                "aantal_regels": len(regels),
+                "afdeling_id": str(afdeling_id) if afdeling_id else None,
+            },
             administratie_id=administratie_id,
         )
 
@@ -602,11 +667,37 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 regels=regels,
                 project_verplicht=project_verplicht,
             ),
+            _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
             check_regeltelling(totaalbedrag=voorstel.totaalbedrag, regels=regels),
             check_vervaldatum(factuurdatum=voorstel.factuurdatum, vervaldatum=voorstel.vervaldatum),
             check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd),
             CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"),
         )
+    )
+
+
+def _afdeling_check(*, administratie_id: uuid.UUID, voorstel: BoekvoorstelData) -> CheckResultaat:
+    """Blok A 28-08: lokale check (geen RLZ nodig) — draait in beide rapport-takken, zodat hij ook
+    bij een RLZ-storing niet stil wegvalt (valkuil _duplicaatcheck_niet_uitgevoerd_rapport)."""
+    from app.afdelingen.models import Afdeling
+
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        ingeschakeld = administratie.afdelingen_ingeschakeld if administratie else False
+        administratie_naam = administratie.naam if administratie else None
+    afdeling_actief: bool | None = None
+    afdeling_naam: str | None = None
+    if ingeschakeld and voorstel.afdeling_id is not None:
+        with scoped_session(administratie_id) as session:
+            afdeling = session.get(Afdeling, voorstel.afdeling_id)
+            if afdeling is not None:
+                afdeling_actief, afdeling_naam = afdeling.actief, afdeling.naam
+    return check_afdeling(
+        afdelingen_ingeschakeld=ingeschakeld,
+        afdeling_id=voorstel.afdeling_id,
+        afdeling_actief=afdeling_actief,
+        afdeling_naam=afdeling_naam,
+        administratie_naam=administratie_naam,
     )
 
 
@@ -673,7 +764,7 @@ def voer_checks_uit(
             {rlz_herboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
             | {rlz_tegenboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
         )
-        return voer_harde_checks_uit(
+        rapport = voer_harde_checks_uit(
             client=client,
             vendor_id=voorstel.vendor_id,
             referentie=voorstel.referentie,
@@ -691,6 +782,11 @@ def voer_checks_uit(
             eigen_btw_nummer=factuur_btw_nummer,
             btw_per_vendor=btw_map,
         )
+        # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
+        # storings-tak), vóór de RLZ-afhankelijke checks.
+        resultaten = list(rapport.resultaten)
+        resultaten.insert(1, _afdeling_check(administratie_id=administratie_id, voorstel=voorstel))
+        return CheckRapport(tuple(resultaten))
     finally:
         if eigen_client:
             client.close()

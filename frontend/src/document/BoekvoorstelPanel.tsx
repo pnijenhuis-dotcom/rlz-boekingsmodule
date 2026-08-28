@@ -24,7 +24,7 @@ import {
   omschrijvingSleutel,
   type HandmatigeVelden,
 } from './geheugenVoorstel'
-import { Checkbox } from '../ui/basis'
+import { Checkbox, Select } from '../ui/basis'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { MatchAfwijkingPopup } from '../ui/MatchAfwijkingPopup'
 import { MateriaalAfwijkingPopup } from '../ui/MateriaalAfwijkingPopup'
@@ -38,6 +38,7 @@ import {
   synchroniseerAlleCaches,
   useGrootboekOpties,
   useProjectOpties,
+  useAfdelingen,
   useProjectVerplicht,
   useTaxrateOpties,
   useVendorOpties,
@@ -385,6 +386,8 @@ export function BoekvoorstelPanel({
   const { opties: vendorOpties, fout: vendorFout, laden: vendorLaden } = useVendorOpties(administratieId, cacheVersie)
   const { opties: projectOpties, laden: projectLaden } = useProjectOpties(administratieId, cacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId)
+  // Blok A 28-08 (mockup afdelingen.html §2): veld alleen zichtbaar als de toggle aan staat.
+  const afdelingen = useAfdelingen(administratieId, cacheVersie)
 
   const [synchroniserenBezig, setSynchroniserenBezig] = useState(false)
   const [synchroniserenFout, setSynchroniserenFout] = useState<string | null>(null)
@@ -396,6 +399,10 @@ export function BoekvoorstelPanel({
   const [factuurdatum, setFactuurdatum] = useState('')
   const [vervaldatum, setVervaldatum] = useState('')
   const [vervaldatumSignaal, setVervaldatumSignaal] = useState<string | null>(null)
+  const [afdelingId, setAfdelingId] = useState<string | null>(null)
+  // Prefill uit het leverancier-geheugen: herkomst-chip "🧠 vorige keuze bij <leverancier>" tot de
+  // mens het veld aanraakt (dan is het zijn keuze, geen voorstel meer).
+  const [afdelingPrefill, setAfdelingPrefill] = useState<{ leverancier: string | null } | null>(null)
   const [totaalbedrag, setTotaalbedrag] = useState('')
   const [regels, setRegels] = useState<RegelState[]>([nieuweRegel()])
   const [boekstuknummer, setBoekstuknummer] = useState<string | null>(null)
@@ -467,6 +474,17 @@ export function BoekvoorstelPanel({
         setFactuurdatum(dto.factuurdatum ?? '')
         setVervaldatum(dto.vervaldatum ?? '')
         setVervaldatumSignaal(dto.vervaldatum_signaal ?? null)
+        if (dto.afdeling_id) {
+          setAfdelingId(dto.afdeling_id)
+          setAfdelingPrefill(null)
+        } else if (dto.afdeling_prefill_id) {
+          // Voorstel uit het geheugen — vooraf ingevuld mét chip; de mens beslist (opslaan = keuze).
+          setAfdelingId(dto.afdeling_prefill_id)
+          setAfdelingPrefill({ leverancier: dto.afdeling_prefill_leverancier ?? null })
+        } else {
+          setAfdelingId(null)
+          setAfdelingPrefill(null)
+        }
         setTotaalbedrag(dto.totaalbedrag ?? '')
         setBoekstuknummer(dto.rlz_boekstuknummer)
         setVerlegdVermelding(dto.btw_verlegd_vermelding ?? ai?.btw_verlegd_vermelding ?? null)
@@ -820,6 +838,8 @@ export function BoekvoorstelPanel({
             referentie: referentie || null,
             factuurdatum: factuurdatum || null,
             vervaldatum: vervaldatum || null,
+            // Blok A 28-08: alleen meesturen als de toggle aan staat (uit = veld onzichtbaar, keuze blijft).
+            afdeling_id: afdelingen.ingeschakeld ? afdelingId : null,
             totaalbedrag: totaalbedrag ? normaliseerBedrag(totaalbedrag) : null,
             // Fix 3: de weergavekeuze reist mee en wordt backend-side als voorkeur per
             // (administratie, crediteur) onthouden; null = geen keuze door te geven.
@@ -1076,6 +1096,12 @@ export function BoekvoorstelPanel({
             <StatischVeld label="Referentie / factuurnummer" waarde={referentie} />
             <StatischVeld label="Factuurdatum" waarde={factuurdatum} />
             <StatischVeld label="Vervaldatum" waarde={vervaldatum} />
+            {afdelingen.ingeschakeld && (
+              <StatischVeld
+                label="Afdeling"
+                waarde={afdelingen.afdelingen.find((a) => a.id === afdelingId)?.naam ?? ''}
+              />
+            )}
             <StatischVeld label="Totaalbedrag (incl. btw)" waarde={totaalbedrag ? `€ ${totaalbedrag}` : ''} />
           </div>
         ) : (
@@ -1205,6 +1231,45 @@ export function BoekvoorstelPanel({
                 </div>
               )}
             </div>
+            {afdelingen.ingeschakeld && (
+              <div data-testid="afdeling-veld">
+                <label htmlFor="boekvoorstel-afdeling">Afdeling</label>
+                <Select
+                  id="boekvoorstel-afdeling"
+                  value={afdelingId ?? ''}
+                  onChange={(e) => {
+                    setAfdelingId(e.target.value || null)
+                    setAfdelingPrefill(null)
+                    veranderInvoer()
+                  }}
+                >
+                  <option value="">Kies afdeling…</option>
+                  {afdelingen.afdelingen
+                    .filter((a) => a.actief || a.id === afdelingId)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.naam}
+                        {!a.actief ? ' (gearchiveerd)' : ''}
+                      </option>
+                    ))}
+                </Select>
+                {afdelingPrefill && afdelingId && (
+                  <div style={{ marginTop: 4 }}>
+                    <span
+                      className="chip geheugen"
+                      title="Vorige keuze voor deze leverancier — een voorstel, opslaan maakt het uw keuze"
+                    >
+                      🧠 vorige keuze{afdelingPrefill.leverancier ? ` bij ${afdelingPrefill.leverancier}` : ''}
+                    </span>
+                  </div>
+                )}
+                {!afdelingId && (
+                  <div className="hint" style={{ marginTop: 4, color: 'var(--red)' }}>
+                    Afdeling ontbreekt — verplicht voor deze administratie
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <label htmlFor="boekvoorstel-totaal">Totaalbedrag (incl. btw)</label>
               <input

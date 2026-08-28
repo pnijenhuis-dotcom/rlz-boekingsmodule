@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0083
+-- Migratie-head bij deze dump: 0084
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -380,7 +380,8 @@ CREATE TABLE boekhouding.accordering_laag (
     aangemaakt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     gedeactiveerd_door uuid,
-    gedeactiveerd_op timestamp with time zone
+    gedeactiveerd_op timestamp with time zone,
+    afdeling_id uuid
 );
 
 ALTER TABLE ONLY boekhouding.accordering_laag FORCE ROW LEVEL SECURITY;
@@ -427,6 +428,25 @@ CREATE TABLE boekhouding.administratie_sync_run (
 );
 
 ALTER TABLE ONLY boekhouding.administratie_sync_run FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: afdeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.afdeling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    naam text NOT NULL,
+    is_terugval boolean DEFAULT false NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gearchiveerd_door uuid,
+    gearchiveerd_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.afdeling FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -729,7 +749,8 @@ CREATE TABLE boekhouding.boekvoorstel (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
     boek_cyclus integer DEFAULT 0 NOT NULL,
-    vervaldatum date
+    vervaldatum date,
+    afdeling_id uuid
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel FORCE ROW LEVEL SECURITY;
@@ -1241,6 +1262,22 @@ CREATE TABLE boekhouding.intercompany_tegenpartij (
 );
 
 ALTER TABLE ONLY boekhouding.intercompany_tegenpartij FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: leverancier_afdeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.leverancier_afdeling (
+    administratie_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    afdeling_id uuid NOT NULL,
+    laatste_document_id uuid,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.leverancier_afdeling FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -1955,7 +1992,8 @@ CREATE TABLE boekhouding.staande_goedkeuring (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bron_document_id uuid,
     ingetrokken_door uuid,
-    ingetrokken_op timestamp with time zone
+    ingetrokken_op timestamp with time zone,
+    afdeling_id uuid
 );
 
 ALTER TABLE ONLY boekhouding.staande_goedkeuring FORCE ROW LEVEL SECURITY;
@@ -2451,6 +2489,7 @@ CREATE TABLE platform.administratie (
     verkoop_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
     uren_meerwerk_ingeschakeld boolean DEFAULT false NOT NULL,
     uren_dagmax_uren numeric(4,2) DEFAULT 12 NOT NULL,
+    afdelingen_ingeschakeld boolean DEFAULT false NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
 );
@@ -2839,6 +2878,14 @@ ALTER TABLE ONLY boekhouding.administratie_sync_run
 
 
 --
+-- Name: afdeling afdeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.afdeling
+    ADD CONSTRAINT afdeling_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: afwijzing afwijzing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3156,6 +3203,14 @@ ALTER TABLE ONLY boekhouding.intercompany_tegenpartij
 
 ALTER TABLE ONLY boekhouding.intercompany_tegenpartij
     ADD CONSTRAINT intercompany_tegenpartij_uniek UNIQUE (administratie_id, entity_guid);
+
+
+--
+-- Name: leverancier_afdeling leverancier_afdeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_afdeling
+    ADD CONSTRAINT leverancier_afdeling_pkey PRIMARY KEY (administratie_id, vendor_id);
 
 
 --
@@ -3978,6 +4033,13 @@ CREATE INDEX ix_accordering_laag_administratie_id ON boekhouding.accordering_laa
 
 
 --
+-- Name: ix_accordering_laag_afdeling_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_accordering_laag_afdeling_id ON boekhouding.accordering_laag USING btree (afdeling_id);
+
+
+--
 -- Name: ix_accordering_stap_accordering_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -3996,6 +4058,13 @@ CREATE INDEX ix_administratie_sync_run_administratie_id ON boekhouding.administr
 --
 
 CREATE INDEX ix_administratie_sync_run_administratie_status ON boekhouding.administratie_sync_run USING btree (administratie_id, status);
+
+
+--
+-- Name: ix_afdeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_afdeling_administratie_id ON boekhouding.afdeling USING btree (administratie_id);
 
 
 --
@@ -4629,6 +4698,20 @@ CREATE UNIQUE INDEX reconciliatie_acceptatie_actief_uniek ON boekhouding.reconci
 
 
 --
+-- Name: uq_afdeling_actieve_naam; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_afdeling_actieve_naam ON boekhouding.afdeling USING btree (administratie_id, lower(naam)) WHERE actief;
+
+
+--
+-- Name: uq_afdeling_terugval; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_afdeling_terugval ON boekhouding.afdeling USING btree (administratie_id) WHERE is_terugval;
+
+
+--
 -- Name: uq_document_accordering_open; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -4898,6 +4981,14 @@ ALTER TABLE ONLY boekhouding.accordering_laag
 
 
 --
+-- Name: accordering_laag accordering_laag_afdeling_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_laag
+    ADD CONSTRAINT accordering_laag_afdeling_id_fkey FOREIGN KEY (afdeling_id) REFERENCES boekhouding.afdeling(id);
+
+
+--
 -- Name: accordering_laag accordering_laag_gedeactiveerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4943,6 +5034,30 @@ ALTER TABLE ONLY boekhouding.administratie_sync_run
 
 ALTER TABLE ONLY boekhouding.administratie_sync_run
     ADD CONSTRAINT administratie_sync_run_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: afdeling afdeling_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.afdeling
+    ADD CONSTRAINT afdeling_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: afdeling afdeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.afdeling
+    ADD CONSTRAINT afdeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: afdeling afdeling_gearchiveerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.afdeling
+    ADD CONSTRAINT afdeling_gearchiveerd_door_fkey FOREIGN KEY (gearchiveerd_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -5159,6 +5274,14 @@ ALTER TABLE ONLY boekhouding.bank_sync_stand
 
 ALTER TABLE ONLY boekhouding.boeking_observatie
     ADD CONSTRAINT boeking_observatie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: boekvoorstel boekvoorstel_afdeling_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.boekvoorstel
+    ADD CONSTRAINT boekvoorstel_afdeling_id_fkey FOREIGN KEY (afdeling_id) REFERENCES boekhouding.afdeling(id);
 
 
 --
@@ -5802,6 +5925,30 @@ ALTER TABLE ONLY boekhouding.intercompany_tegenpartij
 
 
 --
+-- Name: leverancier_afdeling leverancier_afdeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_afdeling
+    ADD CONSTRAINT leverancier_afdeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: leverancier_afdeling leverancier_afdeling_afdeling_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_afdeling
+    ADD CONSTRAINT leverancier_afdeling_afdeling_id_fkey FOREIGN KEY (afdeling_id) REFERENCES boekhouding.afdeling(id);
+
+
+--
+-- Name: leverancier_afdeling leverancier_afdeling_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.leverancier_afdeling
+    ADD CONSTRAINT leverancier_afdeling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: leverancier_iban leverancier_iban_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -6367,6 +6514,14 @@ ALTER TABLE ONLY boekhouding.staande_goedkeuring
 
 ALTER TABLE ONLY boekhouding.staande_goedkeuring
     ADD CONSTRAINT staande_goedkeuring_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: staande_goedkeuring staande_goedkeuring_afdeling_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring
+    ADD CONSTRAINT staande_goedkeuring_afdeling_id_fkey FOREIGN KEY (afdeling_id) REFERENCES boekhouding.afdeling(id);
 
 
 --
@@ -7137,6 +7292,19 @@ CREATE POLICY administratie_sync_run_scope ON boekhouding.administratie_sync_run
 
 
 --
+-- Name: afdeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.afdeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: afdeling afdeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY afdeling_scope ON boekhouding.afdeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: afwijzing; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -7618,6 +7786,19 @@ ALTER TABLE boekhouding.intercompany_tegenpartij ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY intercompany_tegenpartij_scope ON boekhouding.intercompany_tegenpartij USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: leverancier_afdeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.leverancier_afdeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: leverancier_afdeling leverancier_afdeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY leverancier_afdeling_scope ON boekhouding.leverancier_afdeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

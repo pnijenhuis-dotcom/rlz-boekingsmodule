@@ -95,6 +95,8 @@ class AdministratieInstellingenDto(BaseModel):
     uren_meerwerk_ingeschakeld: bool = False
     # Signaal >N uur per dag (A6, migratie 0072).
     uren_dagmax_uren: Decimal = Decimal("12")
+    # Afdelingen-toggle (blok A 28-08, migratie 0084, project_verplicht-patroon).
+    afdelingen_ingeschakeld: bool = False
     # Koppelstand (wizard 26-08 punt 5): RLZ-administratie-id, webservice-gebruiker (None = geen
     # credential in de store — nooit het wachtwoord) en of de laatste rechten-probe groen was.
     rlz_admin_id: str | None = None

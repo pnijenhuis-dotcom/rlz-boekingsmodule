@@ -222,6 +222,13 @@ class AccordeurAanDeBeurtDto(BaseModel):
     laag: int
 
 
+class AfdelingKortDto(BaseModel):
+    """Blok A 28-08: de afdeling van het document in de lijst (MI-dimensie, filter later)."""
+
+    id: uuid.UUID
+    naam: str
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
@@ -258,6 +265,8 @@ class DocumentListItemResponse(BaseModel):
     klant_akkoord_compleet: bool = False
     # Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + filter.
     duplicaatsignaal: DuplicaatSignaalKortDto | None = None
+    # Afdeling (blok A 28-08) — None bij administraties zonder afdelingen of documenten zonder keuze.
+    afdeling: AfdelingKortDto | None = None
 
 
 class LeverancierAutoboekenDto(BaseModel):
@@ -381,6 +390,11 @@ class BoekvoorstelResponse(BaseModel):
     samengevoegde_regel: BoekvoorstelRegelDto | None = None
     # Letterlijke "btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — hint bij 0%-regels.
     btw_verlegd_vermelding: str | None = None
+    # Afdeling (blok A 28-08): de keuze op het document + prefill uit het leverancier-geheugen
+    # (alleen zolang er nog geen keuze staat; herkomst-chip "vorige keuze bij <leverancier>").
+    afdeling_id: uuid.UUID | None = None
+    afdeling_prefill_id: uuid.UUID | None = None
+    afdeling_prefill_leverancier: str | None = None
 
 
 class BoekvoorstelInput(StrikteInvoer):
@@ -388,6 +402,7 @@ class BoekvoorstelInput(StrikteInvoer):
     referentie: str | None = None
     factuurdatum: date | None = None
     vervaldatum: date | None = None
+    afdeling_id: uuid.UUID | None = None
     totaalbedrag: DecimalMetKomma | None = None
     regels: list[BoekvoorstelRegelDto] = []
     # Fix 3: de weergavekeuze van de controleur bij opslaan — wordt als voorkeur per

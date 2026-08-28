@@ -37,6 +37,7 @@ def administratie_instellingen_lijst(
                 verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
                 uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
                 uren_dagmax_uren=r.uren_dagmax_uren,
+                afdelingen_ingeschakeld=r.afdelingen_ingeschakeld,
                 rlz_admin_id=r.rlz_admin_id,
                 webservice_username=r.webservice_username,
                 probe_groen=r.probe_groen,

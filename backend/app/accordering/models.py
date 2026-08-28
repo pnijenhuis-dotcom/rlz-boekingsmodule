@@ -84,6 +84,7 @@ class AccorderingLaag(Base):
     __tablename__ = "accordering_laag"
     __table_args__ = (
         Index("ix_accordering_laag_administratie_id", "administratie_id"),
+        Index("ix_accordering_laag_afdeling_id", "afdeling_id"),
         {"schema": "boekhouding"},
     )
 
@@ -92,6 +93,11 @@ class AccorderingLaag(Base):
     volgnummer: Mapped[int]
     accordeur_gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     bedrag_drempel: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    # Afdelingen (migratie 0084): NULL = de administratie-route (bestaand); gevuld = de route van
+    # díe afdeling, die de administratie-route vervángt zodra een document die afdeling draagt.
+    afdeling_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.afdeling.id"), default=None
+    )
     actief: Mapped[bool] = mapped_column(default=True)
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -172,6 +178,11 @@ class StaandeGoedkeuring(Base):
     vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     leverancier_naam: Mapped[str | None] = mapped_column(default=None)
     bedrag: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    # Afdelingen (migratie 0084): de regel telt alleen binnen de afdeling waar ze is afgegeven
+    # (NULL = afgegeven op een document zonder afdeling — geldt dan ook alleen dáárvoor).
+    afdeling_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.afdeling.id"), default=None
+    )
     actief: Mapped[bool] = mapped_column(default=True)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bron_document_id: Mapped[uuid.UUID | None] = mapped_column(

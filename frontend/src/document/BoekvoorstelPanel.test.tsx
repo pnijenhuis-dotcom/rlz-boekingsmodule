@@ -57,6 +57,8 @@ interface FetchMockOverrides {
   accorderingAan?: boolean
   /** Bugfix-run 28-08: de laatste accorderingsronde van dít document (default: null). */
   accorderingVanDocument?: unknown
+  /** Blok A 28-08: afdelingen-stand van de administratie (default: 404 → uit, veld onzichtbaar). */
+  afdelingen?: unknown
 }
 
 function installFetchMock(overrides: FetchMockOverrides) {
@@ -94,6 +96,10 @@ function installFetchMock(overrides: FetchMockOverrides) {
       if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: vendors }))
       if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten }))
       if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: overrides.projectVerplicht ?? false }))
+      if (url.endsWith('/afdelingen') && (!init || init.method === undefined)) {
+        if (overrides.afdelingen === undefined) return Promise.resolve(new Response(null, { status: 404 }))
+        return Promise.resolve(jsonResponse(overrides.afdelingen))
+      }
       if (url.endsWith('/boekvoorstel/checks') && init?.method === 'POST') {
         overrides.checksAanroepen?.push(url)
         if (overrides.checksResponse === undefined) return Promise.resolve(new Response(null, { status: 404 }))
@@ -1222,5 +1228,86 @@ describe('BoekvoorstelPanel — boekknop bij compleet klant-akkoord (bugfix-run 
     )
     expect(await screen.findByRole('button', { name: 'Boeken in RLZ (klant-akkoord compleet) ✓' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Ter accordering/ })).not.toBeInTheDocument()
+  })
+})
+
+// Blok A 28-08 (mockup afdelingen.html §2): veld "Afdeling" in het kopblok, alleen bij toggle
+// aan; prefill uit het leverancier-geheugen mét herkomst-chip; leeg = rode hint; de keuze reist
+// mee in de PUT.
+describe('BoekvoorstelPanel — afdeling (blok A 28-08)', () => {
+  const AFDELINGEN = {
+    ingeschakeld: true,
+    afdelingen: [
+      { id: 'alg', naam: 'Algemeen', actief: true, is_terugval: true },
+      { id: 'buiten', naam: 'Buitendienst', actief: true, is_terugval: false },
+      { id: 'oud', naam: 'Oud', actief: false, is_terugval: false },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: () => `local-${Math.random()}` })
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  function renderPanel() {
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+  }
+
+  it('toggle uit (404) → geen Afdeling-veld', async () => {
+    installFetchMock({})
+    renderPanel()
+    await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toBeInTheDocument())
+    expect(screen.queryByTestId('afdeling-veld')).toBeNull()
+  })
+
+  it('toggle aan zonder keuze → veld mét alleen actieve afdelingen en de rode ontbreekt-hint', async () => {
+    installFetchMock({ afdelingen: AFDELINGEN })
+    renderPanel()
+    const veld = await screen.findByLabelText('Afdeling')
+    expect(veld).toHaveValue('')
+    expect(screen.getByText(/Afdeling ontbreekt — verplicht/)).toBeInTheDocument()
+    const opties = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(opties).toContain('Buitendienst')
+    expect(opties).not.toContain('Oud (gearchiveerd)')
+  })
+
+  it('prefill uit het geheugen: vooraf ingevuld mét chip "vorige keuze bij …", chip verdwijnt zodra de mens kiest; keuze reist mee in de PUT', async () => {
+    const gebruiker = userEvent.setup()
+    const putBodies: unknown[] = []
+    installFetchMock({
+      afdelingen: AFDELINGEN,
+      boekvoorstel: { ...LEEG_BOEKVOORSTEL, afdeling_id: null, afdeling_prefill_id: 'buiten', afdeling_prefill_leverancier: 'Van Happen Containers' },
+      putBodies,
+      putResponse: {
+        boekvoorstel: { ...LEEG_BOEKVOORSTEL, opgeslagen: true, afdeling_id: 'alg' },
+        checks: { geblokkeerd: false, resultaten: [] },
+      },
+    })
+    renderPanel()
+    const veld = await screen.findByLabelText('Afdeling')
+    expect(veld).toHaveValue('buiten')
+    expect(screen.getByText(/vorige keuze bij Van Happen Containers/)).toBeInTheDocument()
+    await gebruiker.selectOptions(veld, 'alg')
+    expect(screen.queryByText(/vorige keuze bij/)).toBeNull()
+    await waitFor(() => expect(putBodies.length).toBeGreaterThan(0), { timeout: 4000 })
+    expect((putBodies.at(-1) as { afdeling_id: string }).afdeling_id).toBe('alg')
+  })
+
+  it('eigen keuze op het document wint boven het geheugen (geen chip)', async () => {
+    installFetchMock({
+      afdelingen: AFDELINGEN,
+      boekvoorstel: { ...LEEG_BOEKVOORSTEL, opgeslagen: true, afdeling_id: 'alg', afdeling_prefill_id: null },
+    })
+    renderPanel()
+    expect(await screen.findByLabelText('Afdeling')).toHaveValue('alg')
+    expect(screen.queryByText(/vorige keuze/)).toBeNull()
   })
 })

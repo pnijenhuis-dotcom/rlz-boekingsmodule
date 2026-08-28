@@ -81,6 +81,31 @@ def check_verplichte_velden(
     return CheckResultaat("Verplichte velden", True, "Alle verplichte velden zijn ingevuld")
 
 
+def check_afdeling(
+    *,
+    afdelingen_ingeschakeld: bool,
+    afdeling_id: object | None,
+    afdeling_actief: bool | None,
+    afdeling_naam: str | None,
+    administratie_naam: str | None,
+) -> CheckResultaat:
+    """Blok A 28-08 (mockup afdelingen.html §2): staat de administratie-toggle aan, dan is een
+    ACTIEVE afdeling op het document verplicht — ontbreekt ze of is ze gearchiveerd, dan blokkeert
+    boeken én ter accordering aanbieden. Toggle uit = check zwijgt (altijd ok)."""
+    if not afdelingen_ingeschakeld:
+        return CheckResultaat("Afdeling", True, "Afdelingen niet van toepassing voor deze administratie")
+    wie = f" voor {administratie_naam}" if administratie_naam else ""
+    if afdeling_id is None:
+        return CheckResultaat("Afdeling", False, f"Afdeling ontbreekt — verplicht{wie}")
+    if afdeling_actief is None:
+        return CheckResultaat("Afdeling", False, "Gekozen afdeling bestaat niet (meer) — kies een andere afdeling")
+    if not afdeling_actief:
+        return CheckResultaat(
+            "Afdeling", False, f"Afdeling '{afdeling_naam}' is gearchiveerd — kies een actieve afdeling"
+        )
+    return CheckResultaat("Afdeling", True, f"Afdeling gekozen — {afdeling_naam}")
+
+
 # Betaaltermijn waarboven de vervaldatum als implausibel geldt (C1 26-08): een scan die per
 # ongeluk een jaartal/andere datum als vervaldatum aanwijst valt zo op — signaal, geen blokkade.
 VERVALDATUM_TERMIJN_SIGNAAL_DAGEN = 90
@@ -99,7 +124,9 @@ def check_vervaldatum(*, factuurdatum: date | None, vervaldatum: date | None) ->
             False,
             f"Vervaldatum {vervaldatum.isoformat()} ligt vóór de factuurdatum {factuurdatum.isoformat()}",
         )
-    return CheckResultaat(naam, True, f"Vervaldatum {vervaldatum.isoformat()} (termijn {(vervaldatum - factuurdatum).days} dagen)")
+    return CheckResultaat(
+        naam, True, f"Vervaldatum {vervaldatum.isoformat()} (termijn {(vervaldatum - factuurdatum).days} dagen)"
+    )
 
 
 def vervaldatum_signaal(*, factuurdatum: date | None, vervaldatum: date | None) -> str | None:

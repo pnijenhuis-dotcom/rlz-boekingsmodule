@@ -79,6 +79,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vervallen, alleen adres + audit oud→nieuw); uitnodigen op een adres van een bestaand (ook
   gearchiveerd) account = leesbare 409 i.p.v. UniqueViolation→500 (`EMailAlInGebruik`). Zie
   BESLISSINGEN "OPRUIMRUN 28-08" punt 22.**
+  **Activatie externe rollen MOBIEL-FIRST + ATOMAIR (bouwrun 28-08 blok B, mockup
+  `activatie-mobiel.html`, casus Haci, migratie 0083):** de wachtwoordstap parkeert de hash op de
+  link (`uitnodiging.wachtwoord_hash_in_wacht`) en legt níéts vast; pas de geslaagde
+  passkey-registratie maakt in dezelfde transactie wachtwoord + account definitief en verbruikt de
+  link (mislukt = niets half, link blijft 72 u). `/activeren` op een desktop = stop-scherm mét QR
+  van dezelfde link (capability-check + UA-vangnet, twijfel = stop); telefoon →
+  `/accordeur/activeren?uitnodiging=` (3 stappen). Half-geactiveerde accounts (wachtwoord zonder
+  passkey) zijn zichtbaar op /gebruikers; Herstel-link ruimt ze op. **Géén eigen push-login
+  (besluit Peter 28-08)** — kantoor-web toont ná een cross-device-login éénmalig "Passkey
+  toevoegen op dit apparaat?". Zie BESLISSINGEN "BOUWRUN 28-08 AVOND" blok B.
   **Platformbesluit 0020 (2026-08-14, samen met vastgoed): passkeys worden de EERSTE
   authenticatielijn voor álle rollen; wachtwoord + TOTP wordt terugval/herstel.**
   **Kantoor-passkeys: GEBOUWD + GETEST (2026-08-15)** — tweede afnemer van de 0040-bouwstenen,
@@ -649,6 +659,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   spiegel-regel per project), verdeelsleutels per bron-administratie (naam + versie,
   append-only, één klik toepassen, herleidbaar op de run + audit). Verdeelhulp-UI voor gewone
   regel-splitsing zonder doorbelasting = parkeerpost.
+- **Afdelingen binnen een administratie (bouwrun 28-08 blok A, mockup `afdelingen.html`,
+  migratie 0084, casus Kempen Facilities):** toggle `afdelingen_ingeschakeld` op het
+  project_verplicht-patroon — AAN = afdeling verplicht op élk inkoopdocument (harde check
+  "Afdeling", óók als poort bij ter accordering vanaf klaar_om_te_boeken) + accorderingsroute per
+  afdeling (`accordering_laag.afdeling_id`, vervángt de administratie-route; terugval "Algemeen"
+  ontstaat automatisch en volgt de administratie-route; afdeling zonder route = expliciete fout);
+  afdelingen archiveren, nooit verwijderen; keuze handmatig per document mét prefill uit het
+  leverancier-geheugen (`leverancier_afdeling`, chip "vorige keuze bij …", nooit auto-toewijzing);
+  staande goedkeuringen tellen alleen binnen de afdeling waar afgegeven; afdeling wijzigen ná
+  aanbieden = ronde vervalt mét reden; accordeur-app = één kaart per (administratie, afdeling).
+  Geen backfill. `app/afdelingen/`; BESLISSINGEN "BOUWRUN 28-08 AVOND" blok A.
 - **Klant-autorisatie (à la Zenvoices), optioneel per administratie**: accordeurs per klant,
   sequentiële lagen met voorwaarden (bedragdrempels). Boekknop wordt "Ter accordering"; na laatste
   akkoord automatisch boeken (harde checks draaien opnieuw). **Configuratiewijziging (lagen/toggle)

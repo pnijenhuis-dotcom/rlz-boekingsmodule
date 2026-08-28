@@ -396,6 +396,11 @@ export interface BoekvoorstelDto {
   /** Letterlijke "btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — HINT bij een
    * 0%-regel zonder btw-code, nooit een invulling. */
   btw_verlegd_vermelding?: string | null
+  /** Afdeling (blok A 28-08): keuze op het document + prefill uit het leverancier-geheugen
+   * (alleen zolang er geen keuze staat; herkomst-chip "vorige keuze bij <leverancier>"). */
+  afdeling_id?: string | null
+  afdeling_prefill_id?: string | null
+  afdeling_prefill_leverancier?: string | null
 }
 
 export interface GeheugenVeldVoorstelDto {
@@ -524,6 +529,9 @@ export interface AdministratieInstellingenDto {
   uren_meerwerk_ingeschakeld: boolean
   /** Signaal >N uur per dag (A6, migratie 0072) — drempel per administratie, default 12. */
   uren_dagmax_uren: string
+  /** Afdelingen (blok A 28-08, migratie 0084): AAN = afdeling verplicht op élk inkoopdocument +
+   * accorderingsroute per afdeling; UIT = veld onzichtbaar. */
+  afdelingen_ingeschakeld: boolean
   /** Koppelstand (wizard 26-08 punt 5): RLZ-id, webservice-gebruiker (null = geen credential —
    * nooit het wachtwoord) en of de laatste rechten-probe groen was (null = nog nooit). */
   rlz_admin_id?: string | null

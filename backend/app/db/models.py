@@ -150,6 +150,10 @@ class Administratie(Base):
     # opt-in per administratie — alleen Universal initieel. Uit = geen weekstaten/meerwerk voor
     # deze administratie (server-side afgedwongen in app/uren/service.py), default UIT.
     uren_meerwerk_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Afdelingen (migratie 0084, bouwrun 28-08 blok A, project_verplicht-patroon): AAN = afdeling
+    # verplicht op élk inkoopdocument (blokkerende check) + accorderingsroute per afdeling; UIT =
+    # veld onzichtbaar. Beheerder-only; aanzetten maakt de terugval-afdeling "Algemeen" aan.
+    afdelingen_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Signaal >N uur per dag (steigerbouw-run blok A6, migratie 0072): som van de ingediende uren
     # per persoon per kalenderdag over álle weekstaten heen boven deze drempel = oranje vlag bij
     # de keuring + zichtbaar voor kantoor. Geen blokkade. Default 12, per administratie instelbaar.

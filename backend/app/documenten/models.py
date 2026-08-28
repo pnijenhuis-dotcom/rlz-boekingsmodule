@@ -197,6 +197,11 @@ class Boekvoorstel(Base):
     # `DueDate` mee naar RLZ (live bewezen — anders leidt RLZ 'm af uit Date + PaymentDueDays).
     vervaldatum: Mapped[date | None] = mapped_column(default=None)
     totaalbedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    # Afdeling (migratie 0084, blok A 28-08): handmatige kantoorkeuze per document zodra de
+    # administratie-toggle aan staat; stuurt de accorderingsroute en is de MI-dimensie voor later.
+    afdeling_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.afdeling.id"), default=None
+    )
     rlz_boekstuknummer: Mapped[str | None] = mapped_column(default=None)
     # Tegenboek-pad (migratie 0061): 0 = de oorspronkelijke boeking; elke "tegenboeken én
     # opnieuw boeken" verhoogt de cyclus. Bepaalt het RLZ-client-GUID van de (her)boeking
@@ -412,8 +417,10 @@ class VraagBericht(Base):
     een rij hier, mét auteur en tijdstip."""
 
     __tablename__ = "vraag_bericht"
-    __table_args__ = (Index("ix_vraag_bericht_vraag_id", "vraag_id"),
-        {"schema": "boekhouding"},)
+    __table_args__ = (
+        Index("ix_vraag_bericht_vraag_id", "vraag_id"),
+        {"schema": "boekhouding"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))

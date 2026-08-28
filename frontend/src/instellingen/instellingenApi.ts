@@ -75,6 +75,15 @@ export function zetBoekenInstelling(administratieId: string, ingeschakeld: boole
   })
 }
 
+/** Afdelingen-toggle (blok A 28-08, project_verplicht-patroon) — Beheerder-only; AAN maakt de
+ * terugval-afdeling "Algemeen" aan. */
+export function zetAfdelingenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
+  return apiJson(`/administraties/${administratieId}/afdelingen-instelling`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function zetProjectInstelling(administratieId: string, verplicht: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/project-instelling`, {
     ...PUT_JSON,

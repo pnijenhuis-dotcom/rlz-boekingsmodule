@@ -56,7 +56,14 @@ import { besluitVerzender, type BesluitOpdracht } from './besluitQueue'
 import { factuurCache } from './pdfCache'
 import { PdfWeergave } from './PdfWeergave'
 import { VoorwaardenScherm } from './VoorwaardenScherm'
-import { administratiesMetWerk, kiesActieveAdministratie, vragenChipTekst, wachtSindsTekst } from './administraties'
+import {
+  administratieVanSleutel,
+  administratiesMetWerk,
+  kaartSleutel,
+  kiesActieveAdministratie,
+  vragenChipTekst,
+  wachtSindsTekst,
+} from './administraties'
 import { PullToRefresh } from './PullToRefresh'
 import { useVerversBijVoorgrond } from './verversen'
 
@@ -516,8 +523,8 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   const openReview = (item: WachtrijItem) => {
     // Openen bindt de wachtrij aan de administratie van dit document (deep-links landen zo
     // direct in de juiste BV-wachtrij); een BV-wissel start de "N van M"-teller opnieuw.
-    if (bvKeuze !== item.administratie_id) {
-      setBvKeuze(item.administratie_id)
+    if (bvKeuze !== kaartSleutel(item)) {
+      setBvKeuze(kaartSleutel(item))
       setVerwerkt(0)
     }
     setHuidige(item)
@@ -557,7 +564,11 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
       const kaart = items.find((i) => i.vraag?.id === vraagId)
       if (kaart) openReview(kaart)
       else if (vraag) {
-        setBvKeuze(vraag.administratie_id)
+        // Een vraag draagt geen afdeling: land op de (eerste) kaart van haar administratie.
+        setBvKeuze(
+          administratiesMetWerk(items, vragen).find((s) => s.id === vraag.administratie_id)?.sleutel ??
+            vraag.administratie_id,
+        )
         setVraagOpen(vraag)
         setWeergave('thread')
       }
@@ -576,8 +587,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   // welke facturen/vragen de wachtrij toont. Eén met werk = automatisch die (geen keuzescherm).
   const standen = administratiesMetWerk(items, vragen)
   const actieveBv = kiesActieveAdministratie(bvKeuze, standen)
-  const bvItems: WachtrijItem[] = actieveBv ? items.filter((i) => i.administratie_id === actieveBv) : []
-  const bvNaam = standen.find((s) => s.id === actieveBv)?.naam ?? null
+  // Blok A 28-08: de kaart is per (administratie, afdeling) — `actieveBv` is de kaartsleutel.
+  const bvItems: WachtrijItem[] = actieveBv ? items.filter((i) => kaartSleutel(i) === actieveBv) : []
+  const bvNaam = standen.find((s) => s.sleutel === actieveBv)?.naam ?? null
 
   // Prefetch-venster: in review de huidige + eerstvolgende factuur VAN DEZELFDE ADMINISTRATIE,
   // op de wachtrij vast de eerste (op het overzicht: de eerste kaart) — verborgen gemonteerd
@@ -753,7 +765,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
   // plekken bij.
   const wachtrijDocumenten = new Set(items.map((i) => i.document_id))
   const losseVragen = vragen.filter(
-    (v) => !wachtrijDocumenten.has(v.document_id) && (actieveBv === null || v.administratie_id === actieveBv),
+    (v) =>
+      !wachtrijDocumenten.has(v.document_id) &&
+      (actieveBv === null || v.administratie_id === administratieVanSleutel(actieveBv)),
   )
   const toonOverzicht = actieveBv === null && standen.length > 1
   const allesBij = standen.length === 0
@@ -814,7 +828,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
                 {standen.map((s) => {
                   const wacht = wachtSindsTekst(s.oudsteWacht)
                   return (
-                    <button key={s.id} className="acc-qcard acc-bvkaart" onClick={() => kiesBv(s.id)} aria-label={`Administratie ${s.naam ?? ''}`}>
+                    <button key={s.sleutel} className="acc-qcard acc-bvkaart" onClick={() => kiesBv(s.sleutel)} aria-label={`Administratie ${s.naam ?? ''}`}>
                       <div>
                         <div className="acc-lev">{s.naam ?? 'Administratie'}</div>
                         {wacht && <div className="acc-meta">{wacht}</div>}

@@ -47,6 +47,7 @@ from app.accordering.models import (
     StapBesluit,
     StapBesluitBron,
 )
+from app.afdelingen.models import Afdeling
 from app.auth.rollen import is_externe_app_rol
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerRol
@@ -355,16 +356,127 @@ def _vereis_kantoor(actor_rol: str) -> None:
 
 def instellingen_ophalen(*, administratie_id: uuid.UUID) -> tuple[bool, list[AccorderingLaag], dict[uuid.UUID, str]]:
     with scoped_session(administratie_id) as session:
-        lagen = list(
-            session.scalars(
-                select(AccorderingLaag)
-                .where(AccorderingLaag.administratie_id == administratie_id, AccorderingLaag.actief.is_(True))
-                .order_by(AccorderingLaag.volgnummer)
-            )
-        )
+        lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None)
         namen = _gebruikersnamen(session, {laag.accordeur_gebruiker_id for laag in lagen})
         session.expunge_all()
     return is_accordering_ingeschakeld(administratie_id=administratie_id), lagen, namen
+
+
+def _actieve_lagen(
+    session: Session, *, administratie_id: uuid.UUID, afdeling_id: uuid.UUID | None
+) -> list[AccorderingLaag]:
+    """De actieve lagen van één route: `afdeling_id=None` = de administratie-route (bestaand),
+    anders de eigen route van die afdeling (blok A 28-08, migratie 0084)."""
+    return list(
+        session.scalars(
+            select(AccorderingLaag)
+            .where(
+                AccorderingLaag.administratie_id == administratie_id,
+                AccorderingLaag.actief.is_(True),
+                AccorderingLaag.afdeling_id.is_(None)
+                if afdeling_id is None
+                else AccorderingLaag.afdeling_id == afdeling_id,
+            )
+            .order_by(AccorderingLaag.volgnummer)
+        )
+    )
+
+
+def afdeling_route_ophalen(
+    *, administratie_id: uuid.UUID, afdeling_id: uuid.UUID
+) -> tuple[list[AccorderingLaag], dict[uuid.UUID, str]]:
+    with scoped_session(administratie_id) as session:
+        afdeling = session.get(Afdeling, afdeling_id)
+        if afdeling is None or afdeling.administratie_id != administratie_id:
+            raise AccorderingFout(f"Onbekende afdeling: {afdeling_id}")
+        if afdeling.is_terugval:
+            # De terugval volgt de administratie-route (mockup: "Route van de administratie").
+            lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None)
+        else:
+            lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=afdeling_id)
+        namen = _gebruikersnamen(session, {laag.accordeur_gebruiker_id for laag in lagen})
+        session.expunge_all()
+    return lagen, namen
+
+
+def afdeling_route_opslaan(
+    *,
+    administratie_id: uuid.UUID,
+    afdeling_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    actor_rol: str,
+    lagen: list[LaagInput],
+) -> int:
+    """Route per afdeling (blok A 28-08): zelfde lagen-bouwstenen en dezelfde vervallen-regel als
+    de administratie-route, maar alleen rondes van documenten in DEZE afdeling vervallen. De
+    terugval-afdeling heeft geen eigen route (409 — wijzig de administratie-route). Minstens
+    één laag: een lege route zou elk document van de afdeling stil laten stranden op
+    GeenLagenIngesteld. Geeft het aantal vervallen rondes terug."""
+    _vereis_kantoor(actor_rol)
+    if not lagen:
+        raise GeenLagenIngesteld("Een afdelingsroute vereist minstens één accorderingslaag")
+    volgnummers = [laag.volgnummer for laag in lagen]
+    if len(volgnummers) != len(set(volgnummers)):
+        raise OngeldigeAanbieding("Volgnummers van de lagen moeten uniek zijn")
+    vervallen = 0
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        afdeling = session.get(Afdeling, afdeling_id)
+        if afdeling is None or afdeling.administratie_id != administratie_id:
+            raise AccorderingFout(f"Onbekende afdeling: {afdeling_id}")
+        if afdeling.is_terugval:
+            raise OngeldigeAanbieding(
+                "De terugval-afdeling volgt de accorderingsroute van de administratie — wijzig die route"
+            )
+        if not afdeling.actief:
+            raise OngeldigeAanbieding("Deze afdeling is gearchiveerd")
+        bestaande = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=afdeling_id)
+        nu = datetime.now(UTC)
+        schema_gewijzigd = _schema_gewijzigd(bestaande, lagen)
+        for laag in bestaande:
+            laag.actief = False
+            laag.gedeactiveerd_door = actor_id
+            laag.gedeactiveerd_op = nu
+        if schema_gewijzigd:
+            vervallen = _laat_open_rondes_vervallen(
+                session, administratie_id=administratie_id, actor_id=actor_id, nu=nu, afdeling_ids={afdeling_id}
+            )
+        for invoer in lagen:
+            session.add(
+                AccorderingLaag(
+                    administratie_id=administratie_id,
+                    volgnummer=invoer.volgnummer,
+                    accordeur_gebruiker_id=invoer.accordeur_gebruiker_id,
+                    bedrag_drempel=invoer.bedrag_drempel,
+                    afdeling_id=afdeling_id,
+                    aangemaakt_door=actor_id,
+                )
+            )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="accordering_laag",
+            record_id=afdeling_id,
+            actie="accordering_afdelingsroute_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={
+                "lagen": [{"volgnummer": b.volgnummer, "accordeur": str(b.accordeur_gebruiker_id)} for b in bestaande]
+            },
+            nieuwe_waarde={
+                "afdeling": afdeling.naam,
+                "lagen": [
+                    {
+                        "volgnummer": laag.volgnummer,
+                        "accordeur": str(laag.accordeur_gebruiker_id),
+                        "bedrag_drempel": str(laag.bedrag_drempel) if laag.bedrag_drempel is not None else None,
+                    }
+                    for laag in lagen
+                ],
+                "rondes_vervallen": vervallen,
+            },
+            administratie_id=administratie_id,
+        )
+    return vervallen
 
 
 @dataclass(frozen=True)
@@ -403,13 +515,9 @@ def instellingen_opslaan(
 
     vervallen = 0
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        bestaande = list(
-            session.scalars(
-                select(AccorderingLaag).where(
-                    AccorderingLaag.administratie_id == administratie_id, AccorderingLaag.actief.is_(True)
-                )
-            )
-        )
+        # Alleen de administratie-route (afdeling_id NULL); afdelingsroutes hebben hun eigen
+        # opslag (afdeling_route_opslaan) en blijven hier ongemoeid.
+        bestaande = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None)
         administratie_vooraf = session.get(Administratie, administratie_id)
         was_ingeschakeld = bool(administratie_vooraf and administratie_vooraf.accordering_ingeschakeld)
         schema_gewijzigd = _schema_gewijzigd(bestaande, lagen) or (was_ingeschakeld and not ingeschakeld)
@@ -419,8 +527,15 @@ def instellingen_opslaan(
             laag.gedeactiveerd_door = actor_id
             laag.gedeactiveerd_op = nu
         if schema_gewijzigd:
+            # Toggle uit = álle rondes; schema-wijziging = alleen rondes die op de
+            # administratie-route liepen (geen afdeling, of de terugval-afdeling "Algemeen").
+            from app.afdelingen.service import terugval_id
+
+            filter_ids: set[uuid.UUID | None] | None = None
+            if ingeschakeld:
+                filter_ids = {None, terugval_id(session, administratie_id)}
             vervallen = _laat_open_rondes_vervallen(
-                session, administratie_id=administratie_id, actor_id=actor_id, nu=nu
+                session, administratie_id=administratie_id, actor_id=actor_id, nu=nu, afdeling_ids=filter_ids
             )
         for invoer in lagen:
             session.add(
@@ -497,20 +612,37 @@ def _schema_gewijzigd(bestaande: list[AccorderingLaag], nieuw: list[LaagInput]) 
     return oud_set != nieuw_set
 
 
+def _ronde_afdeling_id(accordering: DocumentAccordering) -> uuid.UUID | None:
+    ruw = (accordering.detail or {}).get("afdeling_id")
+    return uuid.UUID(ruw) if ruw else None
+
+
 def _laat_open_rondes_vervallen(
-    session: Session, *, administratie_id: uuid.UUID, actor_id: uuid.UUID, nu: datetime
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    nu: datetime,
+    afdeling_ids: set[uuid.UUID | None] | None = None,
+    document_ids: set[uuid.UUID] | None = None,
+    reden: str = VERVALLEN_REDEN,
 ) -> int:
-    """Alle OPEN rondes van de administratie → `vervallen`; document → klaar_om_te_boeken mét
-    tijdlijn-detail (reden + batch_id) en audit per ronde. Eén batch_id per configuratiewijziging
-    zodat de werkvoorraad-melding de wijziging als één gebeurtenis kan tonen."""
-    open_rondes = list(
-        session.scalars(
+    """OPEN rondes → `vervallen`; document → klaar_om_te_boeken mét tijdlijn-detail (reden +
+    batch_id) en audit per ronde. Eén batch_id per configuratiewijziging zodat de
+    werkvoorraad-melding de wijziging als één gebeurtenis kan tonen. `afdeling_ids` (blok A
+    28-08) beperkt tot rondes van díe afdelingen (None-lid = rondes zonder afdeling);
+    `document_ids` tot díe documenten (afdeling gewijzigd ná aanbieden). Zonder filters: alles."""
+    open_rondes = [
+        r
+        for r in session.scalars(
             select(DocumentAccordering).where(
                 DocumentAccordering.administratie_id == administratie_id,
                 DocumentAccordering.status == AccorderingStatus.OPEN.value,
             )
         )
-    )
+        if (afdeling_ids is None or _ronde_afdeling_id(r) in afdeling_ids)
+        and (document_ids is None or r.document_id in document_ids)
+    ]
     if not open_rondes:
         return 0
     batch_id = uuid.uuid4()
@@ -528,7 +660,7 @@ def _laat_open_rondes_vervallen(
             detail={
                 "accordering_id": str(accordering.id),
                 "accordering_vervallen": True,
-                "reden": VERVALLEN_REDEN,
+                "reden": reden,
                 "batch_id": str(batch_id),
             },
         )
@@ -544,11 +676,30 @@ def _laat_open_rondes_vervallen(
             nieuwe_waarde={
                 "status": AccorderingStatus.VERVALLEN.value,
                 "document_id": str(accordering.document_id),
-                "reden": VERVALLEN_REDEN,
+                "reden": reden,
             },
             administratie_id=administratie_id,
         )
     return len(open_rondes)
+
+
+# Blok A 28-08: afdeling gewijzigd ná aanbieden — zelfde regel als een configuratiewijziging.
+AFDELING_GEWIJZIGD_REDEN = "afdeling gewijzigd — opnieuw aanbieden vereist"
+
+
+def laat_ronde_vervallen_bij_afdelingwijziging(
+    session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
+) -> int:
+    """Aangeroepen vanuit het boekvoorstel-opslaan (zelfde transactie) zodra de afdeling van een
+    document mét open ronde verandert: de bevroren stappen horen bij de oude route."""
+    return _laat_open_rondes_vervallen(
+        session,
+        administratie_id=administratie_id,
+        actor_id=actor_id,
+        nu=datetime.now(UTC),
+        document_ids={document_id},
+        reden=AFDELING_GEWIJZIGD_REDEN,
+    )
 
 
 @dataclass(frozen=True)
@@ -611,6 +762,11 @@ def vervallen_meldingen(*, administratie_id: uuid.UUID) -> list[VervallenMelding
 
 
 # --- aanbieden -----------------------------------------------------------------------------------
+
+
+def _afdeling_gelijk(kolom, afdeling_id: uuid.UUID | None):  # noqa: ANN001, ANN202 — SQLAlchemy-expressie
+    """NULL-veilige gelijkheid op een afdeling-kolom (blok A 28-08)."""
+    return kolom.is_(None) if afdeling_id is None else kolom == afdeling_id
 
 
 def _als_decimal(waarde: object) -> Decimal | None:
@@ -717,19 +873,39 @@ def bied_ter_accordering_aan(
                 "zou de klant een tweede keer om hetzelfde akkoord vragen)"
             )
 
-        lagen = list(
-            session.scalars(
-                select(AccorderingLaag)
-                .where(AccorderingLaag.administratie_id == administratie_id, AccorderingLaag.actief.is_(True))
-                .order_by(AccorderingLaag.volgnummer)
-            )
-        )
-        if not lagen:
-            raise GeenLagenIngesteld("Geen accorderingslagen ingesteld voor deze administratie")
-
         voorstel = session.get(Boekvoorstel, document_id)
         totaalbedrag = _als_decimal(voorstel.totaalbedrag) if voorstel else None
         vendor_id = voorstel.vendor_id if voorstel else None
+
+        # Route per afdeling (blok A 28-08): een gekozen afdeling vervángt de administratie-route;
+        # de terugval-afdeling "Algemeen" volgt de administratie-route. Een afdeling zónder eigen
+        # route = expliciete fout (nooit stil op de administratie-route terugvallen).
+        afdeling_id = voorstel.afdeling_id if voorstel else None
+        afdeling = session.get(Afdeling, afdeling_id) if afdeling_id is not None else None
+        administratie_rij = session.get(Administratie, administratie_id)
+        if administratie_rij is not None and administratie_rij.afdelingen_ingeschakeld:
+            # Afdeling-poort óók vanaf klaar_om_te_boeken (de checks-poort hierboven draait alleen
+            # vanaf te_controleren): een document zonder actieve afdeling gaat nooit naar de klant.
+            from app.documenten.checks import CheckRapport, check_afdeling
+
+            afdeling_check = check_afdeling(
+                afdelingen_ingeschakeld=True,
+                afdeling_id=afdeling_id,
+                afdeling_actief=afdeling.actief if afdeling is not None else None,
+                afdeling_naam=afdeling.naam if afdeling is not None else None,
+                administratie_naam=administratie_rij.naam,
+            )
+            if not afdeling_check.ok:
+                raise ChecksNietGroen(CheckRapport((afdeling_check,)))
+        route_afdeling_id = afdeling_id if (afdeling is not None and not afdeling.is_terugval) else None
+        lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=route_afdeling_id)
+        if not lagen:
+            if route_afdeling_id is not None:
+                raise GeenLagenIngesteld(
+                    f"Geen accorderingsroute ingesteld voor afdeling '{afdeling.naam}' — stel die in op "
+                    f"Instellingen › Administraties"
+                )
+            raise GeenLagenIngesteld("Geen accorderingslagen ingesteld voor deze administratie")
 
         accordering = DocumentAccordering(
             administratie_id=administratie_id,
@@ -738,6 +914,8 @@ def bied_ter_accordering_aan(
             detail={
                 "totaalbedrag": str(totaalbedrag) if totaalbedrag is not None else None,
                 "vendor_id": str(vendor_id) if vendor_id else None,
+                "afdeling_id": str(afdeling_id) if afdeling_id else None,
+                "afdeling_naam": afdeling.naam if afdeling is not None else None,
             },
         )
         session.add(accordering)
@@ -893,6 +1071,7 @@ def _pas_staande_regels_toe_en_rond_af(
         detail = accordering.detail or {}
         vendor_id = detail.get("vendor_id")
         totaalbedrag = _als_decimal(detail.get("totaalbedrag"))
+        ronde_afdeling_id = _ronde_afdeling_id(accordering)
         stappen = _stappen_van(session, accordering_id)
 
         if vendor_id and totaalbedrag is not None:
@@ -907,6 +1086,9 @@ def _pas_staande_regels_toe_en_rond_af(
                         StaandeGoedkeuring.vendor_id == uuid.UUID(vendor_id),
                         StaandeGoedkeuring.bedrag == totaalbedrag,
                         StaandeGoedkeuring.actief.is_(True),
+                        # Blok A 28-08: een staande goedkeuring telt alleen binnen de afdeling
+                        # waar ze is afgegeven (NULL = zonder afdeling afgegeven).
+                        _afdeling_gelijk(StaandeGoedkeuring.afdeling_id, ronde_afdeling_id),
                     )
                 ).first()
                 if regel is None:
@@ -1076,6 +1258,7 @@ def geef_akkoord(
                 leverancier_naam=vendor.naam if vendor else None,
                 bedrag=totaalbedrag,
                 bron_document_id=document_id,
+                afdeling_id=_ronde_afdeling_id(accordering),
             )
             session.add(regel)
             session.flush()
@@ -1581,6 +1764,10 @@ class WachtrijItem:
     # Vragen-dialoog aan de accordeur (blok B5 26-08): de open vraag op dít document die aan déze
     # accordeur gericht is — None = geen (intern kantooroverleg komt hier nooit in).
     vraag: object | None = None
+    # Afdeling van het document (blok A 28-08): de BV-kaart in de app wordt per afdeling
+    # ("Kempen Facilities · Buitendienst"); None = administratie zonder afdelingen.
+    afdeling_id: uuid.UUID | None = None
+    afdeling_naam: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1669,10 +1856,12 @@ def _is_staande_regel_kandidaat(
     document_id: uuid.UUID,
     vendor_id: uuid.UUID | None,
     totaalbedrag: Decimal | None,
+    afdeling_id: uuid.UUID | None = None,
 ) -> bool:
     """True als déze accordeur eerder HANDMATIG akkoord gaf op een ander document van dezelfde
-    leverancier met exact hetzelfde bedrag, en er nog geen actieve staande regel voor die
-    combinatie bestaat — dan stelt de PWA ná het akkoord de staande goedkeuring voor."""
+    leverancier met exact hetzelfde bedrag (binnen dezelfde afdeling — blok A 28-08), en er nog
+    geen actieve staande regel voor die combinatie bestaat — dan stelt de PWA ná het akkoord de
+    staande goedkeuring voor."""
     if vendor_id is None or totaalbedrag is None:
         return False
     bestaande_regel = session.scalars(
@@ -1682,6 +1871,7 @@ def _is_staande_regel_kandidaat(
             StaandeGoedkeuring.vendor_id == vendor_id,
             StaandeGoedkeuring.bedrag == totaalbedrag,
             StaandeGoedkeuring.actief.is_(True),
+            _afdeling_gelijk(StaandeGoedkeuring.afdeling_id, afdeling_id),
         )
     ).first()
     if bestaande_regel is not None:
@@ -1695,6 +1885,8 @@ def _is_staande_regel_kandidaat(
     for accordering in eerdere:
         detail = accordering.detail or {}
         if detail.get("vendor_id") != str(vendor_id):
+            continue
+        if _ronde_afdeling_id(accordering) != afdeling_id:
             continue
         eerder_bedrag = _als_decimal(detail.get("totaalbedrag"))
         if eerder_bedrag is None or eerder_bedrag != totaalbedrag:
@@ -1756,11 +1948,14 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
                             document_id=accordering.document_id,
                             vendor_id=voorstel.vendor_id if voorstel else None,
                             totaalbedrag=voorstel.totaalbedrag if voorstel else None,
+                            afdeling_id=_ronde_afdeling_id(accordering),
                         ),
                         doorbelasting=None,
                         vraag=open_vraag_aan_accordeur_op_document(
                             session, document_id=accordering.document_id, actor_id=actor_id
                         ),
+                        afdeling_id=_ronde_afdeling_id(accordering),
+                        afdeling_naam=(accordering.detail or {}).get("afdeling_naam"),
                     )
                 )
     # Buiten de scoped_session per administratie: de doorbelasting-leesroute opent zijn eigen

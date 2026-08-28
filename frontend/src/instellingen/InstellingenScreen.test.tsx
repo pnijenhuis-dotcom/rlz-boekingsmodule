@@ -121,6 +121,22 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body })
         return Promise.resolve(jsonResponse(body))
       }
+      if (url.endsWith('/afdelingen-instelling') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body))
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse(body))
+      }
+      if (url.endsWith('/afdelingen') && (!init || init.method === undefined)) {
+        return Promise.resolve(
+          jsonResponse({
+            ingeschakeld: true,
+            afdelingen: [
+              { id: 'alg', naam: 'Algemeen', is_terugval: true, actief: true, route: [], staande_goedkeuringen: 0, gearchiveerd_op: null },
+            ],
+          }),
+        )
+      }
+      if (url.endsWith('/accordering/kandidaten')) return Promise.resolve(jsonResponse({ kandidaten: [] }))
       if (url.endsWith('/project-instelling') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as unknown
         opties.putAanroepen?.push({ url, body })
@@ -563,7 +579,8 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     })
     renderScherm('/instellingen/administraties')
     await waitFor(() => expect(screen.getByRole('button', { name: '+ Administratie toevoegen' })).toBeInTheDocument())
-    expect(screen.getByText('ws_nijenhuis')).toHaveClass('chip', 'ok')
+    // De knop rendert vóór de administratie-data terug is — wacht op de rij zelf (race/flake).
+    expect(await screen.findByText('ws_nijenhuis')).toHaveClass('chip', 'ok')
     expect(screen.getByText('geen credentials')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Webservice-gegevens van/ })).toHaveLength(2)
     expect(screen.getAllByRole('button', { name: /Schrijftest voor/ })).toHaveLength(2)
@@ -608,5 +625,40 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     // Ná de herstart toont de rij de nieuwe run (wachtrij) — de knop verdwijnt zolang hij loopt.
     await waitFor(() => expect(screen.queryByRole('button', { name: /Sync opnieuw starten voor Bouwadvies/ })).not.toBeInTheDocument())
     expect(screen.getByTestId('eerste-sync-rlz-boon')).toHaveTextContent('wachtrij')
+  })
+})
+
+// Blok A 28-08 (mockup afdelingen.html §1): toggle "Afdelingen" per administratie op het
+// project_verplicht-patroon — bevestiging vóór de PUT; staat hij aan, dan verschijnt het beheer
+// als subrij mét de terugval "Algemeen".
+describe('InstellingenScreen — afdelingen (blok A 28-08)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('toggle aan → bevestigingsdialoog benoemt de consequenties, bevestigen = PUT /afdelingen-instelling', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'Kempen Facilities B.V.', afdelingen_ingeschakeld: false })], putAanroepen })
+    renderScherm()
+    await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
+    expect(screen.queryByTestId(`afdelingen-${ADMINISTRATIE_ID}`)).toBeNull()
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Afdelingen van toepassing voor Kempen Facilities B.V.' }))
+    const dialoog = screen.getByRole('dialog')
+    expect(dialoog).toHaveTextContent(/afdeling verplicht/)
+    expect(dialoog).toHaveTextContent(/"Algemeen" ontstaat automatisch/)
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(putAanroepen).toHaveLength(1))
+    expect(putAanroepen[0]).toEqual({ url: `/administraties/${ADMINISTRATIE_ID}/afdelingen-instelling`, body: { ingeschakeld: true } })
+    // Ná de toggle verschijnt het afdelingen-beheer als subrij mét de terugval.
+    expect(await screen.findByTestId(`afdelingen-${ADMINISTRATIE_ID}`)).toBeInTheDocument()
+    expect(await screen.findByText('Algemeen')).toBeInTheDocument()
+  })
+
+  it('toggle al aan → beheer-subrij direct zichtbaar', async () => {
+    installFetchMock({ rol: 'beheerder', administraties: [administratie({ afdelingen_ingeschakeld: true })] })
+    renderScherm()
+    expect(await screen.findByTestId(`afdelingen-${ADMINISTRATIE_ID}`)).toBeInTheDocument()
+    expect(await screen.findByText('Route van de administratie (bestaande config)')).toBeInTheDocument()
   })
 })

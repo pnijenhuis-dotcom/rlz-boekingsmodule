@@ -22,6 +22,9 @@ export interface WachtrijItemDto {
   doorbelasting?: WachtrijDoorbelastingRegelDto[] | null
   /** Open vraag van het kantoor aan déze accordeur op dit document (blok B5, 26-08); null = geen. */
   vraag?: AccordeurVraagDto | null
+  /** Afdeling van het document (blok A 28-08): kaart per afdeling ("Kempen Facilities · Buitendienst"). */
+  afdeling_id?: string | null
+  afdeling_naam?: string | null
 }
 
 export interface AccordeurVraagBerichtDto {

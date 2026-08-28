@@ -80,6 +80,7 @@ class TestBoekvoorstelEndpoints:
         assert body["checks"]["geblokkeerd"] is False
         assert {r["naam"] for r in body["checks"]["resultaten"]} == {
             "Verplichte velden",
+            "Afdeling",
             "Regeltelling vs totaal",
             "Vervaldatum",
             "IBAN-wissel",
@@ -135,6 +136,7 @@ class TestBoekvoorstelEndpoints:
         assert body["checks"]["geblokkeerd"] is False
         assert {r["naam"] for r in body["checks"]["resultaten"]} == {
             "Verplichte velden",
+            "Afdeling",
             "Regeltelling vs totaal",
             "Vervaldatum",
             "IBAN-wissel",

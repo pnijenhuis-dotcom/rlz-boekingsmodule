@@ -94,3 +94,49 @@ describe('wachtSindsTekst + vragenChipTekst', () => {
     expect(vragenChipTekst(3)).toBe('💬 3 vragen aan u')
   })
 })
+
+// Blok A 28-08 (mockup afdelingen.html §3): één kaart per afdeling van dezelfde BV — "Kempen
+// Facilities · Buitendienst" — tellers blijven eenduidig; een vraag (zonder afdeling) telt op de
+// eerste kaart van haar administratie.
+describe('administratiesMetWerk — afdelingen (blok A 28-08)', () => {
+  it('groepeert per (administratie, afdeling) mét suffix in de naam', () => {
+    const standen = administratiesMetWerk(
+      [
+        item({ document_id: 'd1', afdeling_id: 'buiten', afdeling_naam: 'Buitendienst' }),
+        item({ document_id: 'd2', afdeling_id: 'buiten', afdeling_naam: 'Buitendienst' }),
+        item({ document_id: 'd3', afdeling_id: 'receptie', afdeling_naam: 'Receptie', aangeboden_op: '2026-08-27T09:00:00Z' }),
+        item({ document_id: 'd4', administratie_id: 'a2', administratie_naam: 'Molenhof Beheer' }),
+      ],
+      [],
+    )
+    // Langst wachtend eerst (buiten en a2 gelijk → op naam), Receptie wacht korter.
+    expect(standen.map((s) => [s.sleutel, s.naam, s.teAccorderen])).toEqual([
+      ['a1|buiten', 'Kempen Facilities B.V. · Buitendienst', 2],
+      ['a2', 'Molenhof Beheer', 1],
+      ['a1|receptie', 'Kempen Facilities B.V. · Receptie', 1],
+    ])
+    expect(standen[0].id).toBe('a1')
+    expect(standen[0].afdelingNaam).toBe('Buitendienst')
+  })
+
+  it('een vraag zonder afdeling telt op de eerste kaart van haar administratie; zonder facturen een eigen BV-kaart', () => {
+    const met = administratiesMetWerk([item({ afdeling_id: 'buiten', afdeling_naam: 'Buitendienst' })], [vraag({})])
+    expect(met).toHaveLength(1)
+    expect(met[0].vragen).toBe(1)
+    const zonder = administratiesMetWerk([], [vraag({})])
+    expect(zonder.map((s) => [s.sleutel, s.naam, s.vragen])).toEqual([['a1', 'Kempen Facilities B.V.', 1]])
+  })
+
+  it('kiesActieveAdministratie werkt op de kaartsleutel', () => {
+    const standen = administratiesMetWerk(
+      [
+        item({ document_id: 'd1', afdeling_id: 'buiten', afdeling_naam: 'Buitendienst' }),
+        item({ document_id: 'd2', afdeling_id: 'receptie', afdeling_naam: 'Receptie' }),
+      ],
+      [],
+    )
+    expect(kiesActieveAdministratie('a1|receptie', standen)).toBe('a1|receptie')
+    expect(kiesActieveAdministratie('a1', standen)).toBeNull()
+    expect(kiesActieveAdministratie(null, standen.slice(0, 1))).toBe('a1|buiten')
+  })
+})

@@ -10,8 +10,15 @@
 import type { AccordeurVraagDto, WachtrijItemDto } from './accordeurApi'
 
 export interface AdministratieStand {
+  /** Administratie-id (scope). */
   id: string
+  /** Kaartsleutel (blok A 28-08): `administratie_id` of `administratie_id|afdeling_id` — één
+   * kaart per afdeling van dezelfde BV zodat tellers eenduidig blijven (mockup afdelingen.html §3). */
+  sleutel: string
+  /** Weergavenaam: "Kempen Facilities · Buitendienst" bij een afdeling, anders de administratienaam. */
   naam: string | null
+  afdelingId: string | null
+  afdelingNaam: string | null
   /** Aantal te accorderen facturen in deze administratie. */
   teAccorderen: number
   /** Aantal open vragen van het kantoor aan déze accordeur (op de kaart én los). */
@@ -20,26 +27,52 @@ export interface AdministratieStand {
   oudsteWacht: string | null
 }
 
-/** Groepeert per administratie; alleen administraties met werk komen terug. */
+/** Kaartsleutel van een wachtrij-item: per (administratie, afdeling). */
+export function kaartSleutel(item: { administratie_id: string; afdeling_id?: string | null }): string {
+  return item.afdeling_id ? `${item.administratie_id}|${item.afdeling_id}` : item.administratie_id
+}
+
+/** Administratie-id uit een kaartsleutel (vragen dragen geen afdeling — zij filteren op de BV). */
+export function administratieVanSleutel(sleutel: string): string {
+  return sleutel.split('|')[0]
+}
+
+/** Groepeert per administratie × afdeling; alleen kaarten met werk komen terug. Een vraag draagt
+ * geen afdeling: die telt op de eerste kaart van haar administratie (of een eigen BV-kaart als er
+ * geen facturen wachten). */
 export function administratiesMetWerk(items: WachtrijItemDto[], vragen: AccordeurVraagDto[]): AdministratieStand[] {
   const per = new Map<string, AdministratieStand>()
-  const stand = (id: string, naam: string | null): AdministratieStand => {
-    let s = per.get(id)
+  const stand = (
+    sleutel: string,
+    id: string,
+    naam: string | null,
+    afdelingId: string | null,
+    afdelingNaam: string | null,
+  ): AdministratieStand => {
+    let s = per.get(sleutel)
     if (!s) {
-      s = { id, naam, teAccorderen: 0, vragen: 0, oudsteWacht: null }
-      per.set(id, s)
+      s = { id, sleutel, naam, afdelingId, afdelingNaam, teAccorderen: 0, vragen: 0, oudsteWacht: null }
+      per.set(sleutel, s)
     } else if (!s.naam && naam) {
       s.naam = naam
     }
     return s
   }
   for (const item of items) {
-    const s = stand(item.administratie_id, item.administratie_naam)
+    const afdelingNaam = item.afdeling_naam ?? null
+    const naam = item.administratie_naam
+      ? afdelingNaam
+        ? `${item.administratie_naam} · ${afdelingNaam}`
+        : item.administratie_naam
+      : null
+    const s = stand(kaartSleutel(item), item.administratie_id, naam, item.afdeling_id ?? null, afdelingNaam)
     s.teAccorderen += 1
     if (s.oudsteWacht === null || item.aangeboden_op < s.oudsteWacht) s.oudsteWacht = item.aangeboden_op
   }
   for (const vraag of vragen) {
-    stand(vraag.administratie_id, vraag.administratie_naam).vragen += 1
+    const bestaande = [...per.values()].find((s) => s.id === vraag.administratie_id)
+    const s = bestaande ?? stand(vraag.administratie_id, vraag.administratie_id, vraag.administratie_naam, null, null)
+    s.vragen += 1
   }
   return [...per.values()].sort((a, b) => {
     // Langst wachtend eerst; administraties met alleen vragen achteraan; daarna op naam.
@@ -56,8 +89,8 @@ export function administratiesMetWerk(items: WachtrijItemDto[], vragen: Accordeu
  * precies één administratie met werk, dan altijd die (keuzescherm overslaan); anders null =
  * het overzicht (≥ 2) of de lege staat (0). */
 export function kiesActieveAdministratie(keuze: string | null, standen: AdministratieStand[]): string | null {
-  if (standen.length === 1) return standen[0].id
-  if (keuze !== null && standen.some((s) => s.id === keuze)) return keuze
+  if (standen.length === 1) return standen[0].sleutel
+  if (keuze !== null && standen.some((s) => s.sleutel === keuze)) return keuze
   return null
 }
 

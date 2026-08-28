@@ -150,6 +150,7 @@ class AdministratieInstellingen:
     # Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie.
     uren_meerwerk_ingeschakeld: bool = False
     uren_dagmax_uren: Decimal = Decimal("12")
+    afdelingen_ingeschakeld: bool = False
     rlz_admin_id: str | None = None
     webservice_username: str | None = None
     probe_groen: bool | None = None
@@ -191,6 +192,7 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
             verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
             uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
             uren_dagmax_uren=r.uren_dagmax_uren,
+            afdelingen_ingeschakeld=r.afdelingen_ingeschakeld,
             rlz_admin_id=r.rlz_admin_id,
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],

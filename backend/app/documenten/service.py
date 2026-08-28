@@ -1049,6 +1049,9 @@ class DocumentMetDuplicaat:
     # Bugfix-run 28-08: boekfout ná het laatste klant-akkoord (laatste ronde afgerond, document
     # niet geboekt) — zichtbaar in de lijst, nooit stil.
     accordering_boek_fout: str | None = None
+    # Blok A 28-08: (id, naam) van de afdeling op het boekvoorstel — ook een gearchiveerde naam
+    # blijft leesbaar (historie).
+    afdeling: tuple[uuid.UUID, str] | None = None
     # Punt 24 (opruimrun 28-08): laatste ronde afgerond, bedrag ongewijzigd, nog niet geboekt —
     # aanbieden geweigerd, boeken kan wél.
     klant_akkoord_compleet: bool = False
@@ -1142,6 +1145,13 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
         akkoord_compleet = klant_akkoord_compleet_per_document(
             session, [d.id for d in documenten if d.status == DocumentStatus.KLAAR_OM_TE_BOEKEN]
         )
+        from app.afdelingen.service import afdeling_namen
+
+        afdelingen = (
+            afdeling_namen(session, administratie_id)
+            if any(v.afdeling_id is not None for v in voorstellen.values())
+            else {}
+        )
         veldvoorstellen: dict[uuid.UUID, dict] = {}
         zonder_voorstel = [d_id for d_id in document_ids if d_id not in voorstellen]
         if zonder_voorstel:
@@ -1189,6 +1199,13 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     accordeur_aan_de_beurt=beurt.get(d.id),
                     accordering_boek_fout=boek_fouten.get(d.id),
                     klant_akkoord_compleet=d.id in akkoord_compleet,
+                    afdeling=(
+                        (voorstellen[d.id].afdeling_id, afdelingen[voorstellen[d.id].afdeling_id])
+                        if d.id in voorstellen
+                        and voorstellen[d.id].afdeling_id is not None
+                        and voorstellen[d.id].afdeling_id in afdelingen
+                        else None
+                    ),
                 )
             )
         return resultaat

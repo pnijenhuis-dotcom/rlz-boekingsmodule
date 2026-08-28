@@ -207,6 +207,9 @@ class WachtrijItemResponse(BaseModel):
     doorbelasting: list[WachtrijDoorbelastingRegelResponse] | None = None
     # Open vraag aan déze accordeur op dit document (blok B5) — None = geen.
     vraag: AccordeurVraagResponse | None = None
+    # Blok A 28-08: kaart per afdeling in de app (None = administratie zonder afdelingen).
+    afdeling_id: uuid.UUID | None = None
+    afdeling_naam: str | None = None
 
 
 class WachtrijResponse(BaseModel):

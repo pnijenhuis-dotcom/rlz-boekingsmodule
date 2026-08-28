@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.accordering.router import router as accordering_router
+from app.afdelingen.router import router as afdelingen_router
 from app.auth.privacy_pagina import router as privacy_pagina_router
 from app.auth.router import router as auth_router
 from app.auth.wellknown import router as wellknown_router
@@ -161,6 +162,7 @@ app.include_router(auth_router)
 app.include_router(wellknown_router)
 app.include_router(privacy_pagina_router)
 app.include_router(accordering_router)
+app.include_router(afdelingen_router)
 app.include_router(berichten_router)
 app.include_router(bank_router)
 app.include_router(documenten_router)
