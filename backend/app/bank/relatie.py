@@ -237,6 +237,9 @@ def boek_mutatie_op_relatie(
             session, administratie_id=administratie_id, relatie_soort=relatie_soort, entity_id=entity_id, client=client
         )
         mutatie_bedrag = Decimal(mutatie.bedrag)
+        # Punt 15 (28-08): het aanbetalingsdocument krijgt de mutatiedatum als Date + BookDate (was:
+        # RLZ-serverdatum) — boekingsdatum = documentdatum, ook hier.
+        mutatie_datum_iso = f"{mutatie.boekdatum.isoformat()}T00:00:00" if mutatie.boekdatum else None
 
     # Verse RLZ-staat is leidend (kliktest-les 09-08: de cache kan achterlopen).
     try:
@@ -263,16 +266,20 @@ def boek_mutatie_op_relatie(
         "TaxRate": {"id": str(instelling.taxrate_id)},
         "NetAmount": float(abs(te_koppelen)),
         "TaxAmount": 0.0,
-        "Description": omschrijving or f"Aanbetaling zonder factuur — bankmutatie {mutatie_bedrag} ({mutatie.tegenpartij_naam or ''})".strip(),
+        "Description": omschrijving
+        or f"Aanbetaling zonder factuur — bankmutatie {mutatie_bedrag} ({mutatie.tegenpartij_naam or ''})".strip(),
     }
     referentie = f"AANBETALING-{str(payment_transaction_id)[:8].upper()}"
+    datum_extra: dict = {"Date": mutatie_datum_iso, "BookDate": mutatie_datum_iso} if mutatie_datum_iso else {}
     try:
         if is_crediteur:
-            client.put_purchase_invoice(rlz_document_id, vendor_id=entity_id, lines=[regel], reference=referentie)
+            client.put_purchase_invoice(
+                rlz_document_id, vendor_id=entity_id, lines=[regel], reference=referentie, **datum_extra
+            )
             client.book_purchase_invoice(rlz_document_id)
             document = client.get(f"PurchaseInvoices/{rlz_document_id}")
         else:
-            client.put_sales_invoice(rlz_document_id, customer_id=entity_id, lines=[regel])
+            client.put_sales_invoice(rlz_document_id, customer_id=entity_id, lines=[regel], **datum_extra)
             client.book_sales_invoice(rlz_document_id)
             document = client.get_sales_invoice(rlz_document_id)
         items = client.list_payment_items(params={"$filter": f"Document/id eq {rlz_document_id}"})

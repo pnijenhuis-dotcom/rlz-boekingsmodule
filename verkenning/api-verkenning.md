@@ -1693,3 +1693,32 @@ inkoopfactuur). Alles read-only behalve twee TEST-concepten (nooit geboekt, zie 
 - Zonder `DueDate` in de PUT (`…-B`): RLZ vult `Date + PaymentDueDays` van de crediteur (14 d →
   `2026-08-15`) — een niet-meegegeven vervaldatum is dus nooit leeg, maar een RLZ-afleiding.
   Beide concepten blijven als Status 1 staan (nooit verwijderen; storno n.v.t. want nooit geboekt).
+
+## Boekingsdatum = `BookDate` — STAP 0 (28-08, opruimrun punt 15; `verkenning/poc_boekdatum.py`)
+
+Vraag Peter (besluit 27-08): "boekingsdatum = factuurdatum". Live tegen de test-administratie,
+TEST-referenties TEST-BD-01/02/03/MEM/VK, alles ná afloop met actie 19 op concept gezet (nooit verwijderd):
+
+- **De journaalpost volgt `BookDate`, niet `Date`.** `PUT PurchaseInvoices` mét alleen `Date: 2026-06-15`
+  + actie 17 → document `Date=2026-06-15`, `BookDate=2026-08-28` (systeemdatum); de bijbehorende
+  `JournalEntry` (via `JournalEntryLines?$filter=Description eq '…'&$expand=JournalEntry`) draagt
+  `BookDate: 2026-08-28` — de grootboekmutatie stond dus op de dag van boeken, niet op de factuurdatum.
+  `JournalEntry` heeft als velden alleen `id`, `BookDate`, `DocumentType`, `EventID` (géén `Date`,
+  `Reference`, `Description`, `EntryDate` — filters daarop = 400 "Could not find a property").
+- **`BookDate` is expliciet zetbaar in de PUT** en wordt door actie 17 gerespecteerd, op álle drie
+  documenttypen: `PurchaseInvoices` (TEST-BD-03: `Date`+`BookDate` 2026-06-15 → JournalEntry.BookDate
+  2026-06-15), `SalesInvoices` (TEST-BD-VK, idem, DocumentType 10) en `ManualJournals` (TEST-BD-MEM, idem,
+  DocumentType 11, Status 3 saldo 0). Zonder `BookDate` valt RLZ terug op de systeemdatum.
+- **`DueDate` blijft afgeleid van `Date`** (+ PaymentDueDays), niet van `BookDate` (BD-01/03: DueDate 2026-06-29).
+- **Ingediende btw-periode:** `Date`+`BookDate` 2023-02-15 (Q1-2023 = Status 2) wordt NIET geweigerd
+  (204, Status 2, JournalEntry.BookDate 2023-02-15); de TaxSource landt in de eerstvolgende niet-ingediende
+  periode (hit met NetAmount 10 / TaxAmount 2,10 in de 2023-Q2-aangifte, Status 1; 0 hits in Q1) —
+  consistent met het eerdere actie-19/aangifte-experiment ("RLZ's ingebouwde suppletie-verschuiving").
+  Onze aangifte-poort (`app/rlz/aangifte.py`) toetst op `Date`; met BookDate = Date blijft dat één datum.
+- **Consequentie (gebouwd 28-08):** álle boekmotoren geven `BookDate` = factuur-/documentdatum mee náást
+  `Date` — inkoop (factuurdatum), verkoop/omzet/waarborg via de gedeelde `_boek_verkoopfactuur`/
+  `_boek_memoriaal` (factuurdatum resp. periode-einde resp. berichtdatum), doorbelasting beide kanten +
+  inhaalpad (factuurdatum van het BRON-document, was: dag van de run), bank-aanbetalingsdocument
+  (mutatiedatum, was: geen datum → serverdatum). Tegenboeken blijft bewust boekdatum vandaag
+  (RLZ-default, géén BookDate meegegeven). Bank-direct-op-grootboek kent geen datumveld (RLZ leidt af
+  uit de mutatie — ongewijzigd).

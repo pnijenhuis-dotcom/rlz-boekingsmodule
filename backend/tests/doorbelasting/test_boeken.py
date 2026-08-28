@@ -101,6 +101,16 @@ class TestHappyPathOnboarded:
         spiegel = doel.purchase_invoices[str(spiegel_id)]
         assert spiegel["Status"] == 2
         assert spiegel["Reference"] == verkoop["Reference"]
+        # Punt 15 (28-08): beide kanten op de FACTUURDATUM van het bron-document (Date + BookDate),
+        # niet op de dag van de run — STAP 0 boekdatum: de journaalpost volgt BookDate.
+        with admin_engine.connect() as conn:
+            factuurdatum = conn.execute(
+                text("SELECT factuurdatum FROM boekhouding.boekvoorstel WHERE document_id = :d"),
+                {"d": opzet.document_id},
+            ).scalar_one()
+        verwacht = f"{factuurdatum.isoformat()}T00:00:00"
+        assert verkoop["Date"] == verkoop["BookDate"] == verwacht
+        assert spiegel["Date"] == spiegel["BookDate"] == verwacht
         assert spiegel["DocumentLineList"][0]["Account"] == {"id": str(DOEL_KOSTEN_LEDGER_ID)}
         assert spiegel["DocumentLineList"][-1]["Account"] == {"id": str(PROVISIE_KOSTEN_LEDGER_ID)}
         # bijlage aan beide kanten

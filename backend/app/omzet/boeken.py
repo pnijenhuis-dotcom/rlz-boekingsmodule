@@ -283,7 +283,8 @@ def _boek_verkoopfactuur(
         # Retry-inhaal: een eerdere poging heeft deze factuur al geboekt.
         return bestaand.get("InvoiceNumber"), bestaand.get("Reference"), bestaand.get("ReceiptNumber")
 
-    body_extra: dict = {"Date": datum_iso}
+    # Punt 15 (28-08): BookDate = documentdatum — de journaalpost volgt BookDate (STAP 0 boekdatum).
+    body_extra: dict = {"Date": datum_iso, "BookDate": datum_iso}
     if omschrijving is not None:
         body_extra["Description"] = omschrijving
     put_extra: dict = {"document_category_id": categorie_id} if categorie_id is not None else {}
@@ -344,7 +345,9 @@ def _boek_memoriaal(
     if bestaand is not None and bestaand.get("Status") in (2, 3):
         return bestaand.get("ReceiptNumber")
 
-    client.put_manual_journal(rlz_id, diary_id=diary_id, lines=lines, Reference=referentie, Date=datum_iso)
+    client.put_manual_journal(
+        rlz_id, diary_id=diary_id, lines=lines, Reference=referentie, Date=datum_iso, BookDate=datum_iso
+    )
     zorg_voor_bijlage(
         client,
         "ManualJournals",

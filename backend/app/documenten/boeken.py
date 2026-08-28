@@ -289,6 +289,10 @@ def _boek_bij_rlz(
         # de RLZ-test-administratie (verkenning/api-verkenning.md, "Boekstuknummer, factuurdatum
         # en /Uploads"); een kale datumstring is nooit tegen de live API getest.
         Date=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
+        # Boekingsdatum = factuurdatum (punt 15, besluit Peter 27-08; STAP 0 28-08 api-verkenning
+        # "Boekingsdatum = BookDate"): de journaalpost volgt `BookDate`, niet `Date` — zonder
+        # BookDate zet RLZ de systeemdatum (dag van boeken). Expliciet meegeven, geen uitzonderingen.
+        BookDate=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
         # Vervaldatum (C1 26-08): `DueDate` — STAP-0 26-08 live bewezen (PUT 204, readback
         # identiek); zonder DueDate leidt RLZ 'm zelf af uit Date + PaymentDueDays crediteur.
         **({"DueDate": f"{voorstel.vervaldatum.isoformat()}T00:00:00"} if voorstel.vervaldatum else {}),

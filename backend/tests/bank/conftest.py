@@ -229,7 +229,8 @@ class FakeBankClient:
         self.aanbetalingen[str(invoice_id)] = {
             "id": str(invoice_id), "Entity": {"id": str(entity_id)}, "DocumentLineList": lines,
             "Status": 1, "ReceiptNumber": (bestaand or {}).get("ReceiptNumber") or f"RLZ-04-{len(self.aanbetalingen) + 1:08d}",
-            "Reference": extra.get("Reference"), "Date": "2026-08-25T00:00:00", "_pad": pad,
+            "Reference": extra.get("Reference"), "Date": extra.get("Date", "2026-08-25T00:00:00"),
+            "BookDate": extra.get("BookDate"), "_pad": pad,
             # Her-PUT op hetzelfde GUID ná storno: géén nieuw item meer (STAP-0 H5).
             "_herboekt": bestaand is not None,
         }

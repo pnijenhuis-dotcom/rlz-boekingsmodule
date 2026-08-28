@@ -555,6 +555,8 @@ class TestVervaldatum:
         monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
         boeken.boek_document(administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker)
         assert fake_client.puts[-1]["Date"] == "2026-07-01T00:00:00"
+        # Punt 15 (28-08): boekingsdatum = factuurdatum → BookDate expliciet mee (STAP 0: journaalpost volgt BookDate).
+        assert fake_client.puts[-1]["BookDate"] == "2026-07-01T00:00:00"
         assert fake_client.puts[-1]["DueDate"] == "2026-07-31T00:00:00"
 
     def test_zonder_vervaldatum_geen_duedate(

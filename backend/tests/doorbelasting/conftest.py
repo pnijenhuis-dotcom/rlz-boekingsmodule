@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -157,6 +158,8 @@ def maak_geboekt_inkoopfactuur(
             session.add(voorstel)
         voorstel.vendor_id = uuid.uuid4()
         voorstel.referentie = referentie
+        # Punt 15 (28-08): de doorbelasting boekt op de factuurdatum van het bron-document.
+        voorstel.factuurdatum = date(2026, 7, 1)
         for volgnummer, netto in enumerate(nettos, start=1):
             regel = BoekvoorstelRegel(
                 document_id=resultaat.document_id,
@@ -446,6 +449,7 @@ class FakeDoorbelastingClient:
             "Entity": {"id": str(customer_id)} if customer_id is not None else None,
             "DocumentLineList": lines,
             "Date": extra.get("Date"),
+            "BookDate": extra.get("BookDate"),
         }
 
     def book_sales_invoice(self, invoice_id: uuid.UUID) -> None:
@@ -493,6 +497,7 @@ class FakeDoorbelastingClient:
             "Entity": {"id": str(vendor_id)},
             "DocumentLineList": lines,
             "Date": extra.get("Date"),
+            "BookDate": extra.get("BookDate"),
         }
 
     def book_purchase_invoice(self, invoice_id: uuid.UUID) -> None:

@@ -175,7 +175,9 @@ def _boek_spiegel_inkoop(
     if bestaand is not None and bestaand.get("Status") in (2, 3):
         return bestaand.get("ReceiptNumber")
 
-    client.put_purchase_invoice(rlz_id, vendor_id=vendor_id, lines=lines, reference=referentie, Date=datum_iso)
+    client.put_purchase_invoice(
+        rlz_id, vendor_id=vendor_id, lines=lines, reference=referentie, Date=datum_iso, BookDate=datum_iso
+    )
     if factuur is not None:
         pdf, factuur_naam, factuur_upload_id = factuur
         fout = factuur_pdf.voeg_factuur_als_bijlage_toe(
@@ -443,6 +445,10 @@ def boek_doorbelasting_run(
         bron_referentie = voorstel.referentie or document.bestandsnaam
         opslag_pad = document.opslag_pad
         bestandsnaam = document.bestandsnaam
+        # Punt 15 (besluit Peter 27-08): beide kanten van de doorbelasting krijgen de factuurdatum van
+        # het BRON-document als Date én BookDate (was: dag van de run). Ontbreekt de datum (kan niet
+        # bij een geboekt document — verplichte-velden-check), dan de dag van de run.
+        bron_factuurdatum = voorstel.factuurdatum
         instelling_snapshot = {
             "provisie_pct": instelling.provisie_percentage,
             "btw_taxrate_id": instelling.btw_taxrate_id,
@@ -482,7 +488,7 @@ def boek_doorbelasting_run(
                 raise BoekenUitgeschakeld(f"Boeken staat uit voor doel-administratie {mapping.doelentiteit_naam}")
 
     bestand = _standaard_opslag().lezen(pad=opslag_pad)
-    datum_iso = f"{datetime.now(UTC).date().isoformat()}T00:00:00"
+    datum_iso = f"{(bron_factuurdatum or datetime.now(UTC).date()).isoformat()}T00:00:00"
 
     eigen_bron_client = bron_client is None
     if bron_client is None:
@@ -939,6 +945,7 @@ def boek_spiegel_alsnog(
             raise DoorbelastingFout("Doel-kosten-GB per regel en provisie-GB moeten eerst gekozen zijn")
         document = session.get(Document, boeking.document_id)
         voorstel = session.get(Boekvoorstel, boeking.document_id)
+        bron_factuurdatum = voorstel.factuurdatum if voorstel is not None else None
         bron_regels = {
             r.id: r
             for r in session.scalars(
@@ -1035,7 +1042,9 @@ def boek_spiegel_alsnog(
                     administratie_id=administratie_id, document_id=bron_document_id, mapping_id=mapping_id_snapshot
                 )
                 _standaard_opslag().opslaan(pad=factuur_pad, inhoud=factuur_bytes)
-        boekdatum = datetime.now(UTC).date()
+        # Punt 15: het inhaalpad boekt de spiegel op de factuurdatum van het bron-document (zelfde
+        # datum als de bron-verkoop), niet op de dag van de inhaalactie.
+        boekdatum = bron_factuurdatum or datetime.now(UTC).date()
         spiegel_boekstuknummer = _boek_spiegel_inkoop(
             client=doel_client,
             rlz_id=boeking.spiegel_rlz_id,
