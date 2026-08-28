@@ -119,10 +119,12 @@ def test_gearchiveerde_kan_niet_geblokkeerd_of_gemuteerd_worden(
         service.wijzig_rol(
             actor_id=beheerder_id, doel_gebruiker_id=actieve_gebruiker.id, nieuwe_rol=GebruikerRol.BOEKHOUDING
         )
-    with pytest.raises(service.AuthError, match="dearchiveer eerst"):
-        service.wijzig_e_mail(
-            actor_id=beheerder_id, doel_gebruiker_id=actieve_gebruiker.id, nieuw_e_mail="nieuw@test.local"
-        )
+    # Punt 22 (opruimrun 28-08): e-mail wijzigen mág wél op een gearchiveerd account (adres vrijmaken
+    # zonder carrousel) — zonder uitnodigingsmail; zie tests/auth/test_e_mail_opruimrun_28_08.py.
+    gewijzigd = service.wijzig_e_mail(
+        actor_id=beheerder_id, doel_gebruiker_id=actieve_gebruiker.id, nieuw_e_mail="nieuw@test.local"
+    )
+    assert gewijzigd.nieuw_e_mail == "nieuw@test.local" and gewijzigd.vernieuwde_uitnodiging is None
 
 
 def test_dearchiveren_zet_vorige_status_terug(

@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.exc import IntegrityError
 
 from app.auth import schemas, service, voorwaarden, webauthn_service
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder
@@ -91,14 +92,24 @@ def uitnodiging_aanmaken(
     payload: schemas.UitnodigingAanmakenRequest,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.UitnodigingAanmakenResponse:
-    resultaat = service.maak_uitnodiging(
-        actor_id=actor.id,
-        naam=payload.naam,
-        e_mail=payload.e_mail,
-        rol=payload.rol,
-        administratie_ids=payload.administratie_ids,
-        uitnodiging_later=payload.uitnodiging_later,
-    )
+    try:
+        resultaat = service.maak_uitnodiging(
+            actor_id=actor.id,
+            naam=payload.naam,
+            e_mail=payload.e_mail,
+            rol=payload.rol,
+            administratie_ids=payload.administratie_ids,
+            uitnodiging_later=payload.uitnodiging_later,
+        )
+    except service.EMailAlInGebruik as exc:
+        # Punt 22 (28-08, casus 9ba50485-…): leesbare 409 i.p.v. UniqueViolation → generieke 500.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        # Vangnet voor de race (twee gelijktijdige uitnodigingen op hetzelfde adres).
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dit e-mailadres is zojuist al aan een ander account gekoppeld — vernieuw de lijst",
+        ) from exc
     # Uitnodiging per mail (berichten-bouwsteen 2026-08-15). Fail-zichtbaar, niet fail-hard:
     # de uitnodiging bestaat al (en de link zit in de respons), dus een mailfout mag het
     # aanmaken niet terugdraaien — hij moet alleen nooit stil zijn. A4 (25-08): met

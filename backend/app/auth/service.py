@@ -44,6 +44,13 @@ INVITE_TTL = timedelta(hours=72)
 MIN_WACHTWOORD_LENGTE = 12
 
 
+class EMailAlInGebruik(Exception):
+    """Punt 22 (opruimrun 28-08, casus 9ba50485-…): het e-mailadres van een nieuwe uitnodiging hoort
+    al bij een bestaand account (óók een gearchiveerd) — vóór de fix een UniqueViolation op
+    `gebruiker_e_mail_key` → generieke 500 mét correlatie-id. Router → 409 mét leesbare uitleg.
+    Bewust géén AuthError-subklasse: de router mapt 'm apart (409, niet 400)."""
+
+
 class AuthError(Exception):
     """Domeinfout in de auth-flow. De reden is hier expliciet (niet generiek) zodat tests scherp
     kunnen assert-en; de router vertaalt dit naar de HTTP-respons en houdt inlog-/TOTP-fouten
@@ -94,6 +101,18 @@ def maak_uitnodiging(
     verloopt_op = datetime.now(UTC) + INVITE_TTL
 
     with scoped_session(None, actor_id=actor_id) as session:
+        # Punt 22 (28-08): leesbare weigering i.p.v. de DB-uniciteitsfout (500 mét correlatie-id).
+        bestaand = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == e_mail)).first()
+        if bestaand is not None:
+            if bestaand.status == GebruikerStatus.GEARCHIVEERD:
+                raise EMailAlInGebruik(
+                    f"Dit e-mailadres hoort bij een gearchiveerd account ({bestaand.naam}) — wijzig eerst dat "
+                    "adres via 'E-mail wijzigen' of dearchiveer het account"
+                )
+            raise EMailAlInGebruik(
+                f"Dit e-mailadres is al in gebruik door {bestaand.naam} (status {bestaand.status.value}) — "
+                "wijzig eerst dat adres of gebruik een ander adres"
+            )
         session.add(Gebruiker(id=gebruiker_id, naam=naam, e_mail=e_mail, rol=rol, status=GebruikerStatus.UITGENODIGD))
         session.flush()
         for administratie_id in administratie_ids:
@@ -1256,10 +1275,15 @@ class EMailGewijzigd:
 
 def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_mail: str) -> EMailGewijzigd:
     """A5 (steigerbouw-run 25-08, Beheerder-only via de router): het e-mailadres ís de login.
-    Uniciteitscheck (409), systeem-actor nooit, geblokkeerd account nooit. Niet-geactiveerd
-    account (uitgenodigd) → alle open uitnodigingslinks vervallen + een verse uitnodiging naar
-    het nieuwe adres (de router mailt). Geactiveerd account → alleen de login wijzigt: passkeys,
-    TOTP, sessies en historie hangen aan het account-id, niet aan het adres. Audit oud→nieuw."""
+    Uniciteitscheck (409), systeem-actor nooit. Niet-geactiveerd account (uitgenodigd) → alle
+    open uitnodigingslinks vervallen + een verse uitnodiging naar het nieuwe adres (de router
+    mailt). Geactiveerd account → alleen de login wijzigt: passkeys, TOTP, sessies en historie
+    hangen aan het account-id, niet aan het adres. Audit oud→nieuw.
+
+    Punt 22 (opruimrun 28-08, casus Haci): de status-weigeringen voor geblokkeerd/gearchiveerd zijn
+    VERVALLEN — het adres vrijmaken mag zonder de carrousel dearchiveren → wijzigen → archiveren.
+    Bij een GEARCHIVEERD account gaat er nooit een uitnodigingsmail (ook niet als het vóór de
+    archivering nog 'uitgenodigd' was): open links vervallen, alleen het adres wijzigt + audit."""
     _weiger_systeem_actor(doel_gebruiker_id)
     nieuw = normaliseer_e_mail(nieuw_e_mail)
     if "@" not in nieuw or nieuw.startswith("@") or nieuw.endswith("@"):
@@ -1269,10 +1293,6 @@ def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_
         gebruiker = session.get(Gebruiker, doel_gebruiker_id)
         if gebruiker is None:
             raise AuthError("Onbekende gebruiker")
-        if gebruiker.status == GebruikerStatus.GEBLOKKEERD:
-            raise AuthError("Account is geblokkeerd — heractiveer eerst")
-        if gebruiker.status == GebruikerStatus.GEARCHIVEERD:
-            raise AuthError("Account is gearchiveerd — dearchiveer eerst")
         if gebruiker.e_mail == nieuw:
             raise AuthError("Dit is al het huidige e-mailadres")
         bezet = session.scalars(select(Gebruiker.id).where(Gebruiker.e_mail == nieuw)).first()
@@ -1281,7 +1301,7 @@ def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_
         oud = gebruiker.e_mail
         gebruiker.e_mail = nieuw
         vernieuwd: UitnodigingResultaat | None = None
-        if gebruiker.status == GebruikerStatus.UITGENODIGD:
+        if gebruiker.status in (GebruikerStatus.UITGENODIGD, GebruikerStatus.GEARCHIVEERD):
             open_links = session.scalars(
                 select(Uitnodiging).where(
                     Uitnodiging.gebruiker_id == gebruiker.id,
@@ -1291,6 +1311,7 @@ def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_
             ).all()
             for link in open_links:
                 link.gebruikt_op = now  # oude links (naar het oude adres) ongeldig
+        if gebruiker.status == GebruikerStatus.UITGENODIGD:
             token = secrets.token_urlsafe(32)
             verloopt_op = now + INVITE_TTL
             uitnodiging_id = uuid.uuid4()

@@ -350,9 +350,10 @@ export function GebruikersScreen() {
   }
 
   /** A5 (25-08, Beheerder-only): e-mailadres = login wijzigen — uniciteit server-side (409),
-   * niet-geactiveerd account krijgt direct een verse uitnodiging op het nieuwe adres. */
+   * niet-geactiveerd account krijgt direct een verse uitnodiging op het nieuwe adres.
+   * Punt 22 (opruimrun 28-08, casus Haci): óók bij geblokkeerd/gearchiveerd én op de Kantoor-tab —
+   * een adres vrijmaken hoeft niet meer via dearchiveren → wijzigen → archiveren. */
   function eMailKnop(g: GebruikerOverzichtDto) {
-    if (g.status === 'geblokkeerd' || g.status === 'gearchiveerd') return null
     return (
       <Button variant="ghost" maat="klein" onClick={() => { setEMailVoor(g); setNieuwEMail(g.e_mail) }}>
         E-mail wijzigen
@@ -784,6 +785,7 @@ export function GebruikersScreen() {
                             eigen rol/scope wijzigt alleen een ándere Beheerder
                           </span>
                         )}{' '}
+                        {eMailKnop(g)}{' '}
                         {blokkadeKnop(g)}{' '}
                         {archiveerKnop(g)}
                       </td>
@@ -975,9 +977,14 @@ export function GebruikersScreen() {
           <DialogContent>
             <DialogTitle>E-mailadres wijzigen — {eMailVoor.naam}</DialogTitle>
             <DialogDescription>
-              Het e-mailadres is de login. {eMailVoor.status === 'uitgenodigd'
-                ? 'Dit account is nog niet geactiveerd: de oude uitnodigingslink vervalt en er gaat direct een verse uitnodiging naar het nieuwe adres.'
-                : 'Alleen de login wijzigt — passkeys, TOTP, sessies en historie blijven aan het account hangen.'}{' '}
+              Het e-mailadres is de login.{' '}
+              {eMailVoor.status === 'gearchiveerd'
+                ? 'Dit account is gearchiveerd: alleen het adres wijzigt (zodat het vrijkomt voor een ander account) — er gaat géén uitnodiging uit en het account blijft gearchiveerd.'
+                : eMailVoor.status === 'uitgenodigd'
+                  ? 'Dit account is nog niet geactiveerd: de oude uitnodigingslink vervalt en er gaat direct een verse uitnodiging naar het nieuwe adres.'
+                  : eMailVoor.status === 'geblokkeerd'
+                    ? 'Dit account is geblokkeerd: alleen de login wijzigt, de blokkade blijft staan.'
+                    : 'Alleen de login wijzigt — passkeys, TOTP, sessies en historie blijven aan het account hangen.'}{' '}
               De wijziging wordt geauditeerd (oud → nieuw).
             </DialogDescription>
             <FormField label="Nieuw e-mailadres" htmlFor="nieuw-e-mail">
