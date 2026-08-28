@@ -137,7 +137,7 @@ def actieve_afdelingen(session: Session, administratie_id: uuid.UUID) -> dict[uu
 def afdeling_namen(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, str]:
     """Álle afdelingen (ook gearchiveerd) — voor weergave van historische keuzes."""
     return dict(
-        session.execute(select(Afdeling.id, Afdeling.naam).where(Afdeling.administratie_id == administratie_id))
+        session.execute(select(Afdeling.id, Afdeling.naam).where(Afdeling.administratie_id == administratie_id)).all()
     )
 
 
