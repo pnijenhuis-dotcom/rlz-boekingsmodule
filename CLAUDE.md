@@ -921,7 +921,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **AVG hard principe: BSN's nooit extraheren, indexeren of in AI-output** — brondocument blijft
   bewaard (WKA), preview maskeert.
 
-## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.17)
+## Koppelvlak vastgoedmodule (`../Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md` is leidend, v1.18)
 
 - **Schrijfverdeling (gecorrigeerd v1.10, drift-audit 2026-08-07): vastgoed schrijft NIET in
   RLZ — wij doen álle RLZ-writes** (inkoop, omzet/verkoop incl. Vastly-huurfacturen uit de
@@ -977,6 +977,20 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   als VANGNET zolang er ergens een anker bestaat. Open: aanroepkant vastgoed (OPEN_ITEMS);
   `project_verplicht`-activatie = S2-moment (gereedheid geverifieerd: default UIT,
   Beheerder-only, check leest live).
+- **Registersync §8 (v1.18, GEBOUWD + GETEST 2026-08-28, migratie 0081 — BESLISSINGEN
+  "REGISTERSYNC-KOPPELVLAK 28-08" + Platform-besluit 0023):** `GET /koppelvlak/vastgoed/register`
+  levert Vastly in één response het VOLLEDIGE administratie- + grootboekregister als snapshot
+  (geen delta's/paginering/filtering; administraties ongefilterd, grootboek alleen actuele rijen
+  `verdwenen_uit_bron_op IS NULL` van álle administraties; afwezig = verdwenen, client verwijdert
+  nooit hard; telling per registerdeel, leeg = expliciet 0; sleutel grootboek
+  `(administratie_id, ledger_id)` — ledger-GUID's zijn NIET globaal uniek). Read-only in één
+  `REPEATABLE READ READ ONLY`-transactie mét per-administratie RLS-scope (`app/registersync/`).
+  Auth = route-A-patroon via headers `X-Registersync-Timestamp/-Nonce/-Signature` over de vaste
+  data `{"event":"registersync"}` mét EIGEN secret `REGISTERSYNC_HMAC_SECRET` (compartimentering
+  per koppelvlak — nooit het webhook-/projectaanvraag-secret; zonder secret buiten dev 503).
+  Klikpunt Peter: `scripts/gcp/registersync_secret.sh` + deploy.yml-regel + overdracht aan
+  Vastly. Vervangt de handmatige S2-nalevering van 27-08; vervalt per contractversie zodra het
+  §2c-leespatroon fysiek beschikbaar is.
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-

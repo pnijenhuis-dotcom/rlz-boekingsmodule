@@ -715,6 +715,18 @@ de lokale backend. Zie het OPEN_ITEMS-webhook-item voor de afspraken. NB het ín
 **Verificatie F4:** een echte `factuur_geboekt`-aflevering met 200 + verwerkt-bevestiging aan
 vastgoed-kant; een `factuur_afgeletterd` 2.0-event op een tier-administratie idem.
 
+#### F4-nazorg — registersync-secret (klikpunt Peter, ná 28-08)
+
+Derde kanaal-secret (koppelcontract §8 v1.18, besluit 0023 — compartimentering per koppelvlak):
+`REGISTERSYNC_HMAC_SECRET`, inkomend (Vastly tekent `GET /koppelvlak/vastgoed/register`, wij
+verifiëren; wij zijn de bron). Stappen: (1) `scripts/gcp/registersync_secret.sh` (container +
+accessor alleen `run-backend@` + genereren, idempotent); (2) `deploy.yml` `--set-secrets` van de
+service uitbreiden met `REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest` (commentaarregel
+staat klaar — bewust pas ná stap 1: Cloud Run weigert een verwijzing naar een secret zonder
+versie) → commit → deploy; (3) waarde via een veilig kanaal aan Vastly (besluit 0012); (4)
+kanaaltest: mét headers 200 + tellingen, zonder headers 401. Tot stap 2 antwoordt productie
+zichtbaar 503 `niet_geconfigureerd` (fail-closed). Geen job leest dit secret.
+
 #### F4 — VOLLEDIG AFGEROND (ma 24-08-2026, avondsessie)
 
 Kanaal-config live (deploy.yml-activatie-editie + direct via gcloud; SA-grant-route,
