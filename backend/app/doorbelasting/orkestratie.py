@@ -166,6 +166,10 @@ def boek_document_met_doorbelasting(
 
     toets_klaargezette_doorbelasting(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
 
+    # Punt 23: vóór de inkoopboeking vaststellen of deze gang ná een compleet klant-akkoord loopt —
+    # dan reist de hoge noodrem mee naar de doorbelastingsmotor (zelfde gang, zelfde uitzondering).
+    _, na_klant_akkoord = documenten_boeken.volumerem_limiet(administratie_id=administratie_id, document_id=document_id)
+
     boek = documenten_boeken.boek_document(
         administratie_id=administratie_id,
         document_id=document_id,
@@ -191,6 +195,7 @@ def boek_document_met_doorbelasting(
             actor_id=actor_id,
             bron_client=bron_client,
             doel_client_factory=doel_client_factory,
+            na_klant_akkoord=na_klant_akkoord,
         )
     except doorbelasting_boeken.BoekenGeblokkeerdDoorChecks as exc:
         fout = "Doorbelasting geblokkeerd door harde checks: " + "; ".join(

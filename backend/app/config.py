@@ -180,6 +180,12 @@ class Settings(BaseSettings):
     # per administratie per kalenderdag. Bewust laag — dit is een noodrem tegen een runaway-bug
     # of verkeerd geconfigureerde automatische boeking, geen normale-bedrijfsvoering-limiet.
     max_boekingen_per_dag_per_administratie: int = 20
+    # Punt 23 (besluit Peter 28-08, opruimrun): boekingen die volgen op een COMPLEET klant-akkoord
+    # (accorderingspad, incl. de herstel-CLI) zijn uitgezonderd van de 20/dag-rem — de mens heeft
+    # al per document op de knop gedrukt, de rem is een vangnet tegen ongewenste automatisering.
+    # Eigen hoge vangrail als noodrem (zelfde zichtbare boek_fout-afhandeling). Autoboek-paden
+    # (opt-ins, bank, verkoop) blijven onverkort onder de rem hierboven.
+    max_boekingen_na_klant_akkoord_per_dag_per_administratie: int = 200
 
     # AI-extractie (fase AI-extractie sessie 1): Claude leest de PDF, code rekent, mens drukt.
     # Key uitsluitend via .env/Secret Manager (besluit 0012 — nooit in code/logs/chat); géén

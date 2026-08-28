@@ -11,7 +11,8 @@ ter_accordering mét `boek_fout` en zijn óók kandidaat.
 
 Regels (opdracht Peter 28-08): NOOIT automatisch — dry-run is de default in de make-target
 (`DRY_RUN=1` telt, toont de lijst én per document de diagnose: wat zou blokkeren), uitvoeren is een
-expliciete actie. Volumerem (20 boekingen/dag/administratie) wordt VOORAF getoetst: bij het bereiken
+expliciete actie. Volumerem wordt VOORAF getoetst — sinds punt 23 (28-08) de hoge noodrem ná
+klant-akkoord (200/dag/administratie), niet de 20/dag-automatiseringsrem: bij het bereiken
 stopt de run zichtbaar i.p.v. per document een boekfout te registreren. Eén mislukking stopt de rest
 niet — alles in het rapport, per document geauditeerd via het gewone pad."""
 
@@ -27,7 +28,6 @@ from sqlalchemy import select
 
 from app.accordering import service as accordering_service
 from app.accordering.models import AccorderingStatus, DocumentAccordering
-from app.config import settings
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
@@ -165,10 +165,13 @@ def diagnose(kandidaat: HerstelKandidaat) -> list[str]:
             blokkades.append(f"open vraag {open_vraag.id} blokkeert boeken")
         if not boeken_service._is_boeken_toegestaan(session, administratie_id=aid):
             blokkades.append("boeken staat UIT (administratie-toggle of 'Boeken platformbreed')")
-        limiet = settings.max_boekingen_per_dag_per_administratie
+        limiet, na_akkoord = boeken_service.volumerem_limiet(administratie_id=aid, document_id=d_id)
         vandaag = boeken_service._boekingen_vandaag(session, administratie_id=aid)
         if vandaag >= limiet:
-            blokkades.append(f"volumerem: vandaag al {vandaag} van max {limiet} boekingen voor deze administratie")
+            blokkades.append(
+                f"{'noodrem ná klant-akkoord' if na_akkoord else 'volumerem'}: vandaag al {vandaag} van max {limiet} "
+                "boekingen voor deze administratie"
+            )
     if kandidaat.doorbelasting_klaargezet:
         from app.doorbelasting import orkestratie
 
@@ -212,13 +215,23 @@ def herstel_boeken(
         if max_aantal is not None and geprobeerd >= max_aantal:
             resultaat.overgeslagen[k.document_id] = f"--max {max_aantal} bereikt"
             continue
+        # Punt 23: de herstel-CLI boekt ná een compleet klant-akkoord → dezelfde noodrem als het
+        # accorderingspad (20/dag geldt hier niet meer; de env-var-truc van 28-08 is niet meer nodig).
+        limiet, na_akkoord = boeken_service.volumerem_limiet(
+            administratie_id=k.administratie_id, document_id=k.document_id
+        )
         with scoped_session(k.administratie_id) as session:
-            limiet = settings.max_boekingen_per_dag_per_administratie
             vandaag = boeken_service._boekingen_vandaag(session, administratie_id=k.administratie_id)
         if vandaag >= limiet:
+            rem = "noodrem ná klant-akkoord" if na_akkoord else "volumerem"
+            env = (
+                "MAX_BOEKINGEN_NA_KLANT_AKKOORD_PER_DAG_PER_ADMINISTRATIE"
+                if na_akkoord
+                else "MAX_BOEKINGEN_PER_DAG_PER_ADMINISTRATIE"
+            )
             resultaat.overgeslagen[k.document_id] = (
-                f"volumerem: vandaag al {vandaag} van max {limiet} boekingen voor {k.administratie_naam} — "
-                "rest morgen, of MAX_BOEKINGEN_PER_DAG_PER_ADMINISTRATIE voor déze run verhogen"
+                f"{rem}: vandaag al {vandaag} van max {limiet} boekingen voor {k.administratie_naam} — "
+                f"rest morgen, of {env} voor déze run verhogen"
             )
             continue
         geprobeerd += 1

@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -106,6 +106,9 @@ def _is_boeken_toegestaan(session: Session, *, administratie_id: uuid.UUID) -> b
 
 
 def _boekingen_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
+    """Volumerem-teller: alleen ÉCHTE statusovergangen niet-geboekt → geboekt vandaag. Teller-bug
+    (punt 23, opruimrun 28-08): tijdlijn-notities ná het boeken (geboekt → geboekt, bv. webhook-
+    of doorbelastingsnotities) telden mee en lieten de rem te vroeg bijten."""
     vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
     return (
         session.scalar(
@@ -115,11 +118,38 @@ def _boekingen_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
             .where(
                 Document.administratie_id == administratie_id,
                 DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
+                or_(
+                    DocumentGebeurtenis.van_status.is_(None),
+                    DocumentGebeurtenis.van_status != DocumentStatus.GEBOEKT,
+                ),
                 DocumentGebeurtenis.tijdstip >= vandaag_begin,
             )
         )
         or 0
     )
+
+
+def volumerem_limiet(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> tuple[int, bool]:
+    """Punt 23 (besluit Peter 28-08): (limiet, na_klant_akkoord). Ná een compleet klant-akkoord
+    geldt de hoge noodrem i.p.v. de 20/dag-automatiseringsrem; overal anders de gewone rem.
+    Lazy import: accordering.service gebruikt deze module."""
+    from app.accordering import service as accordering_service
+
+    if accordering_service.is_na_compleet_klant_akkoord(administratie_id=administratie_id, document_id=document_id):
+        return settings.max_boekingen_na_klant_akkoord_per_dag_per_administratie, True
+    return settings.max_boekingen_per_dag_per_administratie, False
+
+
+def toets_volumerem(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
+    """Failsafe (c) mét de akkoord-uitzondering van punt 23 — één toets voor boek_document en de
+    herstel-CLI. Raise-t VolumeremBereikt mét een leesbare melding die de geldende rem benoemt."""
+    limiet, na_akkoord = volumerem_limiet(administratie_id=administratie_id, document_id=document_id)
+    if _boekingen_vandaag(session, administratie_id=administratie_id) >= limiet:
+        if na_akkoord:
+            raise VolumeremBereikt(
+                f"Noodrem: dagelijkse limiet van {limiet} boekingen ná klant-akkoord bereikt voor deze administratie"
+            )
+        raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} boekingen bereikt voor deze administratie")
 
 
 def _zorg_voor_klaar_om_te_boeken(session: Session, *, document: Document, actor_id: uuid.UUID) -> None:
@@ -430,9 +460,7 @@ def boek_document(
         with scoped_session(administratie_id) as session:
             if not _is_boeken_toegestaan(session, administratie_id=administratie_id):
                 raise BoekenUitgeschakeld("Boeken staat uit voor deze administratie of via de globale kill switch")
-            limiet = settings.max_boekingen_per_dag_per_administratie
-            if _boekingen_vandaag(session, administratie_id=administratie_id) >= limiet:
-                raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} boekingen bereikt voor deze administratie")
+            toets_volumerem(session, administratie_id=administratie_id, document_id=document_id)
 
         try:
             voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)

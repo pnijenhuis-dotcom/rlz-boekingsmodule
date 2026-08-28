@@ -1055,6 +1055,9 @@ class DocumentMetDuplicaat:
     # Bugfix-run 28-08: boekfout ná het laatste klant-akkoord (laatste ronde afgerond, document
     # niet geboekt) — zichtbaar in de lijst, nooit stil.
     accordering_boek_fout: str | None = None
+    # Punt 24 (opruimrun 28-08): laatste ronde afgerond, bedrag ongewijzigd, nog niet geboekt —
+    # aanbieden geweigerd, boeken kan wél.
+    klant_akkoord_compleet: bool = False
     # Duplicaatsignaal (25-08, deel 2 punt 6): gecachete RLZ-duplicaatuitkomst — None zolang er
     # nog niet getoetst is.
     duplicaatsignaal: DuplicaatSignaalKort | None = None
@@ -1130,13 +1133,21 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
 
         signalen = signalen_voor_documenten(session, document_ids)
         # Accordeur aan de beurt (C2 26-08, bulk): alleen voor documenten die bij de klant liggen.
-        from app.accordering.service import aan_de_beurt_per_document, boek_fout_per_document
+        from app.accordering.service import (
+            aan_de_beurt_per_document,
+            boek_fout_per_document,
+            klant_akkoord_compleet_per_document,
+        )
 
         beurt = aan_de_beurt_per_document(
             session, [d.id for d in documenten if d.status == DocumentStatus.TER_ACCORDERING]
         )
         # Boekfout ná het laatste akkoord (bugfix-run 28-08, bulk): alle niet-geboekte documenten.
         boek_fouten = boek_fout_per_document(session, [d.id for d in documenten if d.status != DocumentStatus.GEBOEKT])
+        # Punt 24 (opruimrun 28-08, bulk): compleet-maar-onverzilverd klant-akkoord op boekklare rijen.
+        akkoord_compleet = klant_akkoord_compleet_per_document(
+            session, [d.id for d in documenten if d.status == DocumentStatus.KLAAR_OM_TE_BOEKEN]
+        )
         veldvoorstellen: dict[uuid.UUID, dict] = {}
         zonder_voorstel = [d_id for d_id in document_ids if d_id not in voorstellen]
         if zonder_voorstel:
@@ -1183,6 +1194,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     duplicaatsignaal=signalen.get(d.id),
                     accordeur_aan_de_beurt=beurt.get(d.id),
                     accordering_boek_fout=boek_fouten.get(d.id),
+                    klant_akkoord_compleet=d.id in akkoord_compleet,
                 )
             )
         return resultaat

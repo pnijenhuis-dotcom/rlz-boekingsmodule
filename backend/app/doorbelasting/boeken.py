@@ -370,10 +370,14 @@ def boek_doorbelasting_run(
     actor_id: uuid.UUID,
     bron_client: RlzClient | None = None,
     doel_client_factory: Callable[[uuid.UUID], RlzClient] | None = None,
+    na_klant_akkoord: bool = False,
 ) -> dict[str, str]:
     """Boekt de run per doelentiteit (onafhankelijk: één falende doelentiteit stopt de rest
     niet — mockup: "zichtbare status per deelboeking"). Retourneert status per mapping-id.
-    `bron_client`/`doel_client_factory` zijn test-seams (patroon omzet/verkoop-tests)."""
+    `bron_client`/`doel_client_factory` zijn test-seams (patroon omzet/verkoop-tests).
+    `na_klant_akkoord` (punt 23, besluit Peter 28-08): alleen de orkestratie zet dit, wanneer de
+    doorbelasting in dezelfde gang meeloopt als een boeking ná een compleet klant-akkoord — dan
+    geldt de hoge noodrem i.p.v. de 20/dag-rem. Een losse 'Doorbelasten…' blijft onder de rem."""
     # --- poorten (alles vóór de eerste RLZ-call) ------------------------------------------
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         run = session.get(DoorbelastingRun, run_id)
@@ -448,10 +452,18 @@ def boek_doorbelasting_run(
         te_boeken = sorted({r.mapping_id for r in regels} - bestaande_boekingen, key=str)
         bron_administratie_naam = administratie.naam
 
-        # volumerem: eigen telling (elke doelentiteit = één tweezijdige boeking)
-        limiet = settings.max_boekingen_per_dag_per_administratie
+        # volumerem: eigen telling (elke doelentiteit = één tweezijdige boeking); ná een compleet
+        # klant-akkoord in dezelfde gang de hoge noodrem (punt 23).
+        limiet = (
+            settings.max_boekingen_na_klant_akkoord_per_dag_per_administratie
+            if na_klant_akkoord
+            else settings.max_boekingen_per_dag_per_administratie
+        )
         if _eigen_boekingen_vandaag(session, administratie_id=administratie_id) + len(te_boeken) > limiet:
-            raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} doorbelastings-boekingen zou overschreden worden")
+            raise VolumeremBereikt(
+                f"{'Noodrem: dagelijkse' if na_klant_akkoord else 'Dagelijkse'} limiet van {limiet} "
+                "doorbelastings-boekingen zou overschreden worden"
+            )
 
     if not te_boeken:
         raise DoorbelastingFout("Alle doelentiteiten zijn al geboekt voor dit document")

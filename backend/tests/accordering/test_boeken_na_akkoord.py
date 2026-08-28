@@ -208,15 +208,17 @@ class TestBoekenGeblokkeerdNooitStil:
         admin_engine,
         monkeypatch,
     ) -> None:
+        # Punt 23 (28-08): ná een compleet klant-akkoord geldt de NOODREM (200/dag), niet de
+        # 20/dag-automatiseringsrem — de 20-rem op 0 mag dit pad dus níét meer blokkeren …
         _patch_rlz(monkeypatch)
         monkeypatch.setattr(boeken.settings, "max_boekingen_per_dag_per_administratie", 0)
+        monkeypatch.setattr(boeken.settings, "max_boekingen_na_klant_akkoord_per_dag_per_administratie", 0)
         self._setup(administratie_id, beheerder_id, gescoopte_gebruiker, accordeur_1, klaar_document)
         resultaat = service.geef_akkoord(
             administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1
         )
-        self._assert_zichtbaar_geblokkeerd(
-            admin_engine, klaar_document, administratie_id, resultaat, "Dagelijkse limiet"
-        )
+        # … maar de noodrem op 0 wél, mét exact dezelfde zichtbare boek_fout-afhandeling.
+        self._assert_zichtbaar_geblokkeerd(admin_engine, klaar_document, administratie_id, resultaat, "Noodrem")
 
     def test_harde_check_rood(
         self,
@@ -558,10 +560,12 @@ class TestHerstelroute:
         fake = _patch_rlz(monkeypatch)
         zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
         _aanbieden(administratie_id, klaar_document, gescoopte_gebruiker)
-        monkeypatch.setattr(boeken.settings, "max_boekingen_per_dag_per_administratie", 0)
+        # Punt 23: de herstel-CLI boekt ná klant-akkoord → de noodrem geldt (de 20-rem niet meer).
+        monkeypatch.setattr(boeken.settings, "max_boekingen_na_klant_akkoord_per_dag_per_administratie", 0)
         service.geef_akkoord(administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1)
         voor = _audit_teller(admin_engine, "accordering_boek_fout")
         resultaat = herstel.herstel_boeken(dry_run=False, administratie_id=administratie_id)
         assert len(resultaat.kandidaten) == 1 and not resultaat.geboekt and not resultaat.mislukt
-        assert "volumerem" in resultaat.overgeslagen[klaar_document]
+        assert "noodrem ná klant-akkoord" in resultaat.overgeslagen[klaar_document]
+        assert "MAX_BOEKINGEN_NA_KLANT_AKKOORD" in resultaat.overgeslagen[klaar_document]
         assert fake.puts == [] and _audit_teller(admin_engine, "accordering_boek_fout") == voor

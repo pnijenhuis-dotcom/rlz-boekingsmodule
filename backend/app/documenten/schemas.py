@@ -253,6 +253,9 @@ class DocumentListItemResponse(BaseModel):
     # Bugfix-run 28-08: alle lagen akkoord maar het boeken ná het laatste akkoord faalde — de
     # fouttekst (kolom "Toegewezen" toont de chip "boeken ná akkoord mislukt"). None = geen.
     accordering_boek_fout: str | None = None
+    # Punt 24 (opruimrun 28-08): klant-akkoord compleet én nog niet geboekt — opnieuw aanbieden is
+    # server-side geweigerd (409); de bulk-selectie zet de checkbox uit mét uitleg "boek direct".
+    klant_akkoord_compleet: bool = False
     # Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + filter.
     duplicaatsignaal: DuplicaatSignaalKortDto | None = None
 

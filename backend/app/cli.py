@@ -526,7 +526,8 @@ def _accordering_herstel_boeken(args: argparse.Namespace) -> int:
         print(
             f"DRY-RUN    {len(resultaat.kandidaten)} document(en) met afgerond klant-akkoord maar niet geboekt — "
             f"{groen} groen, {len(resultaat.kandidaten) - groen} geblokkeerd; niets gewijzigd. "
-            f"Volumerem: max {_settings().max_boekingen_per_dag_per_administratie} boekingen/dag/administratie."
+            f"Noodrem ná klant-akkoord: max {_settings().max_boekingen_na_klant_akkoord_per_dag_per_administratie} "
+            "boekingen/dag/administratie (de 20/dag-automatiseringsrem geldt hier niet — punt 23, 28-08)."
         )
         return 0
     for document_id in resultaat.geboekt:

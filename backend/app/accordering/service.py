@@ -35,7 +35,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.accordering.models import (
@@ -83,6 +83,13 @@ class GeenLagenIngesteld(AccorderingFout):
 
 class OngeldigeAanbieding(AccorderingFout):
     pass
+
+
+class KlantAkkoordAlCompleet(OngeldigeAanbieding):
+    """Punt 24 (opruimrun 28-08): de LAATSTE ronde is al afgerond (alle lagen akkoord), het bedrag
+    is ongewijzigd en het document is daarna nog niet geboekt — opnieuw aanbieden zou de klant
+    een tweede keer om hetzelfde akkoord vragen (casus 28-08: bulk-route omzeilde de
+    BoekvoorstelPanel-guard). De juiste actie is BOEKEN (de accorderingspoort staat open)."""
 
 
 class NietAanDeBeurt(AccorderingFout):
@@ -260,6 +267,68 @@ def accordering_blokkade_voor_boeken(session: Session, *, document_id: uuid.UUID
             "bied het document opnieuw ter accordering aan"
         )
     return None
+
+
+def klant_akkoord_compleet_onverzilverd(session: Session, *, document_id: uuid.UUID) -> bool:
+    """Punt 24: True als de LAATSTE ronde afgerond is, het bedrag ongewijzigd (de boekpoort staat
+    dus open) én er sinds die afronding géén boeking (GEBOEKT-overgang) meer geweest is — het
+    akkoord is compleet maar nog niet 'verzilverd'. Een herboeking ná tegenboeken (GEBOEKT →
+    te_controleren, boek_cyclus+1) telt als verzilverd: dáár mag het kantoor kiezen tussen
+    opnieuw aanbieden en direct boeken. Sessie van de aanroeper (al gescoopt)."""
+    laatste = _laatste_accordering(session, document_id)
+    if laatste is None or laatste.status != AccorderingStatus.AFGEROND.value:
+        return False
+    if accordering_blokkade_voor_boeken(session, document_id=document_id) is not None:
+        return False
+    geboekt_na_akkoord = session.scalar(
+        select(func.count())
+        .select_from(DocumentGebeurtenis)
+        .where(
+            DocumentGebeurtenis.document_id == document_id,
+            DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
+            DocumentGebeurtenis.van_status != DocumentStatus.GEBOEKT,
+            DocumentGebeurtenis.tijdstip >= (laatste.afgerond_op or laatste.aangeboden_op),
+        )
+    )
+    return not geboekt_na_akkoord
+
+
+def is_na_compleet_klant_akkoord(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> bool:
+    """Punt 23 (besluit Peter 28-08): loopt deze boekpoging ná een COMPLEET klant-akkoord? Dan
+    heeft een mens al per document op de knop gedrukt en geldt niet de 20/dag-automatiseringsrem
+    maar de hoge noodrem (`max_boekingen_na_klant_akkoord_per_dag_per_administratie`). Alleen
+    waar als accordering aan staat én de laatste ronde afgerond is mét ongewijzigd bedrag —
+    autoboek-paden (opt-ins, bank, verkoop) komen hier nooit doorheen."""
+    if not is_accordering_ingeschakeld(administratie_id=administratie_id):
+        return False
+    with scoped_session(administratie_id) as session:
+        laatste = _laatste_accordering(session, document_id)
+        if laatste is None or laatste.status != AccorderingStatus.AFGEROND.value:
+            return False
+        return accordering_blokkade_voor_boeken(session, document_id=document_id) is None
+
+
+def klant_akkoord_compleet_per_document(session: Session, document_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """Bulk (geen N+1) voor de documentenlijst (punt 24): de documenten waarvan het klant-akkoord
+    compleet én onverzilverd is — de bulk-selectie zet die uit mét uitleg ('boek direct')."""
+    if not document_ids:
+        return set()
+    rondes = list(
+        session.scalars(
+            select(DocumentAccordering)
+            .where(DocumentAccordering.document_id.in_(document_ids))
+            .order_by(DocumentAccordering.aangeboden_op.asc())
+        )
+    )
+    laatste_per_document: dict[uuid.UUID, DocumentAccordering] = {}
+    for ronde in rondes:
+        laatste_per_document[ronde.document_id] = ronde
+    return {
+        d_id
+        for d_id, ronde in laatste_per_document.items()
+        if ronde.status == AccorderingStatus.AFGEROND.value
+        and klant_akkoord_compleet_onverzilverd(session, document_id=d_id)
+    }
 
 
 def heeft_afgeronde_accordering(session: Session, *, document_id: uuid.UUID) -> bool:
@@ -640,6 +709,13 @@ def bied_ter_accordering_aan(
             )
         if _open_accordering(session, document_id) is not None:
             raise OngeldigeAanbieding("Er loopt al een accorderingsronde voor dit document")
+        # Punt 24 (opruimrun 28-08): een compleet, nog niet verzilverd klant-akkoord vraagt om BOEKEN,
+        # niet om een tweede ronde — zelfde poort voor de losse knop én de bulk-route.
+        if klant_akkoord_compleet_onverzilverd(session, document_id=document_id):
+            raise KlantAkkoordAlCompleet(
+                "Klant-akkoord is al compleet voor dit document — boek het direct (opnieuw aanbieden "
+                "zou de klant een tweede keer om hetzelfde akkoord vragen)"
+            )
 
         lagen = list(
             session.scalars(

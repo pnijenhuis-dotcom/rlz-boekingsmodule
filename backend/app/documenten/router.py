@@ -282,6 +282,7 @@ def documenten_lijst(
                 automatisch_geboekt=item.automatisch_geboekt,
                 factuurmatch=_naar_match_kort(item.factuurmatch),
                 accordering_boek_fout=item.accordering_boek_fout,
+                klant_akkoord_compleet=item.klant_akkoord_compleet,
                 accordeur_aan_de_beurt=(
                     schemas.AccordeurAanDeBeurtDto(
                         gebruiker_id=item.accordeur_aan_de_beurt.gebruiker_id,

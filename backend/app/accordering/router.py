@@ -50,6 +50,9 @@ def _vertaal(exc: service.AccorderingFout) -> HTTPException:
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     if isinstance(exc, service.GeenOpenAccordering):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, service.KlantAkkoordAlCompleet):
+        # Punt 24 (opruimrun 28-08): conflict met de actuele stand — boeken is de juiste actie.
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, herinnering.AlHerinnerdVandaag):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, herinnering.HerinneringVerzendingMislukt):
