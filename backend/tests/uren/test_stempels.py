@@ -311,3 +311,46 @@ def test_voorwaardentekst_versie_v2_bevat_werkstempels() -> None:
     assert voorwaarden.AKKOORD_TEKST_VERSIE == "2026-08-28-v2"
     assert "4. Werkstempels" in voorwaarden.AKKOORD_TEKST
     assert "nooit een automatische korting" in voorwaarden.AKKOORD_TEKST
+
+
+class TestZonesVoorOs:
+    """Geofence-native (branch feat/geofence-native): de zones die de native app bij het OS registreert
+    = projecten mét zone uit de planning van deze + volgende week van de veldwerker zelf."""
+
+    def test_alleen_geplande_projecten_met_zone_eigen_planning_max_20(
+        self, administratie_id, project_met_zone, tweede_project_id, zzper_met_scope, beheerder_id, detacheerder
+    ) -> None:
+        from app.uren import planning
+
+        # Gepland op een project mét zone én op een project zónder zone; alleen de eerste is een zone.
+        planning.plan_toewijzing(
+            administratie_id=administratie_id,
+            gebruiker_id=zzper_met_scope,
+            project_id=project_met_zone,
+            datum=MAANDAG + timedelta(days=2),
+            actor_id=beheerder_id,
+        )
+        planning.plan_toewijzing(
+            administratie_id=administratie_id,
+            gebruiker_id=zzper_met_scope,
+            project_id=tweede_project_id,
+            datum=MAANDAG + timedelta(days=3),
+            actor_id=beheerder_id,
+        )
+        zones = stempels.zones_voor_veldwerker(actor_id=zzper_met_scope)
+        assert [z.project_id for z in zones] == [project_met_zone]
+        assert zones[0].lat == Decimal("51.560000") and zones[0].lon == Decimal("5.083000")
+        assert zones[0].straal_m == 150 and zones[0].administratie_id == administratie_id
+        # Planning van drie weken terug telt niet; volgende week wél.
+        assert stempels.zones_voor_veldwerker(actor_id=zzper_met_scope, vandaag=MAANDAG - timedelta(days=21)) == []
+        assert len(stempels.zones_voor_veldwerker(actor_id=zzper_met_scope, vandaag=MAANDAG - timedelta(days=7))) == 1
+        # Nooit namens: een detacheerder heeft geen zones (zelfde poort als de intake).
+        with pytest.raises(service.GeenToegang):
+            stempels.zones_voor_veldwerker(actor_id=detacheerder)
+        assert stempels.MAX_ZONES == 20
+        # Endpoint (vereis_veldrol): eigen zones voor de ZZP'er, 403 voor de detacheerder.
+        resp = client.get("/uren/stempels/zones", headers=_bearer(zzper_met_scope, rol="zzper"))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()[0]["project_id"] == str(project_met_zone) and resp.json()[0]["straal_m"] == 150
+        resp = client.get("/uren/stempels/zones", headers=_bearer(detacheerder, rol="detacheerder"))
+        assert resp.status_code == 403

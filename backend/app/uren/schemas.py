@@ -61,6 +61,18 @@ class StempelsOntvangenDto(BaseModel):
     nieuw: int
 
 
+class StempelZoneDto(BaseModel):
+    """Projectzone voor de OS-geofence-registratie (geofence-native): uit de weekplanning van de
+    veldwerker zelf, alleen projecten mét zone, max 20."""
+
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    lat: Decimal
+    lon: Decimal
+    straal_m: int
+
+
 class StempelDto(BaseModel):
     id: uuid.UUID
     administratie_id: uuid.UUID

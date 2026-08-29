@@ -327,6 +327,20 @@ def stempels_registreren(
     return schemas.StempelsOntvangenDto(nieuw=nieuw)
 
 
+@router.get("/stempels/zones", response_model=list[schemas.StempelZoneDto])
+def stempel_zones(actor: CurrentGebruiker = Depends(vereis_veldrol)) -> list[schemas.StempelZoneDto]:
+    """Projectzones voor de native OS-geofence (geofence-native, branch feat/geofence-native): de
+    projecten mét zone uit de planning van deze en volgende week van de veldwerker ZELF (nooit
+    namens — detacheerder = 403), max 20 (OS-limiet). De app ververst ze bij opening/voorgrond."""
+    from app.uren import stempels as stempel_service
+
+    try:
+        zones = stempel_service.zones_voor_veldwerker(actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.StempelZoneDto(**z.__dict__) for z in zones]
+
+
 @router.get("/stempels", response_model=list[schemas.StempelDto])
 def eigen_stempels(
     datum: date | None = None,

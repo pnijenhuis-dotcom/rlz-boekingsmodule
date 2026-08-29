@@ -17,7 +17,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import service as auth_service
@@ -26,7 +26,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Gebruiker, GebruikerRol
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache
-from app.uren.models import ProjectSpecificatie, Werkstempel
+from app.uren.models import PlanningToewijzing, ProjectSpecificatie, Werkstempel
 from app.uren.service import GeenToegang, OngeldigeInvoer, UrenFout
 
 TIJDZONE = ZoneInfo("Europe/Amsterdam")
@@ -36,6 +36,10 @@ STEMPEL_AFWIJKING_DREMPEL_UREN = Decimal("1.0")
 # Stempels ouder dan dit worden niet meer aangenomen (nabezorging ná een offline periode mag wél).
 MAX_LEEFTIJD = timedelta(days=14)
 MAX_TOEKOMST = timedelta(minutes=5)
+# OS-limiet regiobewaking (iOS: 20 regio's per app; Android ruimer, maar we houden één grens).
+MAX_ZONES = 20
+# Zone zonder expliciete straal (kantoor liet 'm leeg): mockup-default 150 m.
+DEFAULT_STRAAL_M = 150
 _KWART = Decimal("0.01")
 
 
@@ -156,9 +160,7 @@ def _vereis_stempelende_veldwerker(session: Session, actor_id: uuid.UUID) -> Geb
     return actor
 
 
-def registreer_stempels(
-    *, actor_id: uuid.UUID, apparaat_id: uuid.UUID | None, stempels: list[StempelInvoer]
-) -> int:
+def registreer_stempels(*, actor_id: uuid.UUID, apparaat_id: uuid.UUID | None, stempels: list[StempelInvoer]) -> int:
     """Intake (fail-closed): alleen de veldwerker zelf, alleen administraties in scope mét de
     uren-&-meerwerk-opt-in, alleen actieve projecten mét een zone (locatie ingesteld), tijdstip
     niet in de toekomst en niet ouder dan MAX_LEEFTIJD. Idempotent op (gebruiker, project,
@@ -230,6 +232,70 @@ def registreer_stempels(
                     administratie_id=administratie_id,
                 )
     return nieuw
+
+
+@dataclass(frozen=True)
+class StempelZone:
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    project_naam: str | None
+    lat: Decimal
+    lon: Decimal
+    straal_m: int
+
+
+def zones_voor_veldwerker(*, actor_id: uuid.UUID, vandaag: date | None = None) -> list[StempelZone]:
+    """De projectzones die de native app bij het OS registreert (geofence-native, mockup-beslispunt
+    1 "zones uit de planning"): projecten mét een zone waarop de veldwerker ZELF in deze en de
+    volgende ISO-week ingepland staat, over alle administraties mét de uren-opt-in; alleen actieve
+    projecten; dichtstbijzijnde planningsdag eerst; max MAX_ZONES (OS-limiet). Nooit namens: een
+    detacheerder heeft geen zones (GeenToegang, zelfde poort als de intake)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        actor = _vereis_stempelende_veldwerker(session, actor_id)
+        administraties = [
+            a
+            for a in auth_service.mijn_administraties(actor_id=actor_id, rol=actor.rol)
+            if a.uren_meerwerk_ingeschakeld
+        ]
+    dag = vandaag or date.today()
+    iso = dag.isocalendar()
+    maandag = date.fromisocalendar(iso[0], iso[1], 1)
+    tot_en_met = maandag + timedelta(days=13)  # deze + volgende week (zondagavond-verversing)
+    gevonden: list[tuple[date, StempelZone]] = []
+    for administratie in administraties:
+        with scoped_session(administratie.id) as session:
+            rijen = session.execute(
+                select(PlanningToewijzing.project_id, func.min(PlanningToewijzing.datum))
+                .where(
+                    PlanningToewijzing.administratie_id == administratie.id,
+                    PlanningToewijzing.gebruiker_id == actor_id,
+                    PlanningToewijzing.datum >= maandag,
+                    PlanningToewijzing.datum <= tot_en_met,
+                )
+                .group_by(PlanningToewijzing.project_id)
+            ).all()
+            for project_id, eerste in rijen:
+                spec = session.get(ProjectSpecificatie, (project_id, administratie.id))
+                if spec is None or spec.locatie_lat is None or spec.locatie_lon is None:
+                    continue  # geen zone = geen geofence (stil, mockup §2)
+                project = session.get(ProjectCache, (project_id, administratie.id))
+                if project is None or not project.is_actief:
+                    continue
+                gevonden.append(
+                    (
+                        eerste,
+                        StempelZone(
+                            administratie_id=administratie.id,
+                            project_id=project_id,
+                            project_naam=project.naam,
+                            lat=spec.locatie_lat,
+                            lon=spec.locatie_lon,
+                            straal_m=spec.zone_straal_m or DEFAULT_STRAAL_M,
+                        ),
+                    )
+                )
+    gevonden.sort(key=lambda z: (z[0], z[1].project_naam or ""))
+    return [z for _, z in gevonden][:MAX_ZONES]
 
 
 def eigen_stempels(*, actor_id: uuid.UUID, dag: date) -> list[StempelData]:
