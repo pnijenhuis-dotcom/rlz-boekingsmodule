@@ -1722,3 +1722,42 @@ TEST-referenties TEST-BD-01/02/03/MEM/VK, alles ná afloop met actie 19 op conce
   (mutatiedatum, was: geen datum → serverdatum). Tegenboeken blijft bewust boekdatum vandaag
   (RLZ-default, géén BookDate meegegeven). Bank-direct-op-grootboek kent geen datumveld (RLZ leidt af
   uit de mutatie — ongewijzigd).
+
+## Voorraad-uitstroom STAP-0 — `Quantity` op SalesInvoice-Lines (29-08, opdracht blok A; `verkenning/poc_voorraad_uitstroom.py`) — GROEN, leesroute gebouwd
+
+Vraag: dragen de regels van Universal Verkoop's EIGEN RLZ-verkoopfacturen een bruikbaar aantal-veld voor de
+voorraad-aansluiting (fase-1-parkeerpost)? Strikt read-only (alleen GET's) tegen de gekoppelde administratie
+Universal Verkoop B.V. (`2d69fcfd-…`), credentials uit de cloud-credential-store (Auth Proxy 5434 + KMS; de
+voorraad-BV's zijn op 29-08 in de cloud gekoppeld, niet lokaal — het script wisselt naar de gcloud-
+gebruikerstoken als de ADC verlopen is). Steekproef: 80 recentste + 15 negatieve facturen = 84 facturen, 189 regels;
+rapport `verkenning/output/voorraad_uitstroom_stap0.json` (gitignored).
+
+- **Regelvelden** (`GET SalesInvoices/{id}/Lines`): `Account, AfterDiscountAmount, BaseNetAmount, BaseTaxAmount,
+  Date, Description, DiscountAmount, DiscountPercentage, InsertPageBreak, InvoiceLineType, LineTotalPayableAmount,
+  NetAmount, Price, Project, Quantity, Sequence, Show* (Amount/Date/Description/Price/ProductCode/Quantity/UOM/Vat),
+  TaxAmount, TotalAmount, id`. **`Quantity` staat op 189/189 regels, nooit null en nooit 0** (170 positief, 19
+  negatief, 13 fracties — uren/kilometers op dienstregels); **`Price` op 189/189; `Quantity × Price = NetAmount`
+  cent-exact op álle 189 regels.**
+- **Géén eenheidsveld op de regel** — `ShowUOM` is alleen een lay-outvlag; de artikelcode staat wél vaak in de
+  Description ("Steigerbuis 1 mtr (550100.6)"). `$expand=Article/Product/Item` wordt "geaccepteerd" maar levert
+  niets (RLZ negeert onbekende expands stil) — geen artikelkoppeling via de API. `$metadata` onder de admin-prefix
+  = 404.
+- **Creditfacturen** (kopveld `IsCreditInvoice`, 239 van 12.103): het teken zit in **`Quantity`** (−30 × 65,00 =
+  −1.950,00; NetAmount negatief, Price positief). Eén gratis-regel (Q 8 × Price 0 = 0) gezien; geen regel met
+  Q = 0. Consequentie: een retour is zonder omkering een negatieve uitstroom — NIET nog eens flippen op
+  IsCreditInvoice (dubbele omkering). Vangnet in `_aantal` voor de spiegelvorm (positief aantal × negatieve prijs).
+- **Kop** (`SalesInvoices`, 12.103 facturen sinds 2020, 1.290 in 2026): `Date` = `BookDate` in de praktijk,
+  `Status` 1/2/3 (4 concepten in de steekproef — alleen 2/3 tellen), `Reference` = `InvoiceNumber` als tekst
+  (concept: null), `Entity` alleen mét `$expand=Entity` (bekend feit, óók op de collectie). De collectie ziet
+  UI-/importfacturen (Universal Verkoop factureert in RLZ zelf; API-facturen van de app zijn hier onzichtbaar —
+  dedupe gaat toch via `verkoop_boeking.verkoop_rlz_id`).
+- **Filters/paging (voor de motor):** `$filter=Date ge 2026-01-01T00:00:00Z` werkt — de **tijdzone-suffix `Z` is
+  verplicht** (zonder: 400 DateTimeOffset-format); `BookDate ge …Z` idem; `Status ne 1` = 400 (enum-type) — de
+  werkende vorm is `Status ne Reeleezee.DTO.DocumentStatus'1'` (`'Tentative'` = 400 "not a valid enumeration
+  constant"); `IsCreditInvoice eq true` werkt; `$count=true` levert `@odata.count`; `$orderby=Date asc,id asc` +
+  `$top=200&$skip=n` pagineren betrouwbaar (geen `@odata.nextLink`).
+- **Consequentie (gebouwd 29-08, migratie 0087):** `app/voorraad/rlz_uitstroom.py` — dagelijkse leesroute in
+  `sync-alles` (rlz-sync-job 07:00) + `voorraad-rlz-sync [--volledig]`; per voorraad-administratie de geboekte
+  SalesInvoices vanaf max(datum) − 14 dagen (eerste run: 1 januari lopend jaar), regels als `mi.voorraad_regel`
+  richting 'uit', bron `rlz_verkoop` (`rlz_document_id` + `rlz_referentie`, `document_id` NULL), aantal = Quantity
+  (teken inbegrepen), normalisatie via dezelfde motor als de instroom. Nooit een write.
