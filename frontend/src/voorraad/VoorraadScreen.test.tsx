@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
 import { VoorraadScreen } from './VoorraadScreen'
-import { aantal, signaalTekst, type GroepAansluitingDto } from './voorraadApi'
+import { aantal, bronLabel, signaalTekst, type GroepAansluitingDto, type VoorraadRegelDto } from './voorraadApi'
 
 // Mockup voorraad-aansluiting.html §1 (blok D 28-08): tabel per artikelgroep met bron per kolom,
 // signaal op tolerantie, prominente "Niet genormaliseerd"-teller, telling-invoer; opt-in uit = leesbare
@@ -58,6 +58,41 @@ const AANSLUITING = {
   },
 }
 
+const REGEL_RLZ: VoorraadRegelDto = {
+  id: 'r-rlz',
+  document_id: null,
+  rlz_document_id: '11111111-aaaa-4aaa-8aaa-000000000001',
+  rlz_referentie: '50212273',
+  richting: 'uit',
+  bron: 'rlz_verkoop',
+  datum: '2026-08-28',
+  relatie_naam: 'Bouwbedr.Gebr. Kanters BV',
+  artikeltekst: 'Steigerbuis 4 mtr incl. tube-connect (550100.210)',
+  aantal: '610.000',
+  eenheid: null,
+  prijs: '20.1000',
+  netto_bedrag: '12261.00',
+  artikelgroep_id: 'g1',
+  artikelgroep_naam: 'Koppelingen 48mm',
+  normalisatie_status: 'onzeker',
+  normalisatie_zekerheid: '0.610',
+}
+const REGEL_APP: VoorraadRegelDto = {
+  ...REGEL_RLZ,
+  id: 'r-app',
+  document_id: 'doc-1',
+  rlz_document_id: null,
+  rlz_referentie: null,
+  richting: 'in',
+  bron: 'inkoop_veldvoorstel',
+  relatie_naam: 'Scafom B.V.',
+  artikeltekst: 'KOP.DR.48/48 SW22 gegalv.',
+  normalisatie_status: 'niet_genormaliseerd',
+  normalisatie_zekerheid: null,
+  artikelgroep_id: null,
+  artikelgroep_naam: null,
+}
+
 function stubFetch(opties: { uit?: boolean } = {}) {
   const aangeroepen: { pad: string; method: string; body: unknown }[] = []
   vi.stubGlobal(
@@ -72,11 +107,22 @@ function stubFetch(opties: { uit?: boolean } = {}) {
         if (opties.uit) return Promise.resolve(jsonResponse({ detail: 'Voorraad bijhouden staat uit voor deze administratie' }, 409))
         return Promise.resolve(jsonResponse(AANSLUITING))
       }
+      if (pad === `/administraties/${ADMIN}/voorraad/groepen` && method === 'POST') {
+        return Promise.resolve(jsonResponse({ id: 'g-nieuw', naam: 'Steigerbuis 4m', eenheid: 'st', tolerantie_pct: '1.00', actief: true }, 201))
+      }
       if (pad === `/administraties/${ADMIN}/voorraad/groepen`) {
         if (opties.uit) return Promise.resolve(jsonResponse([]))
         return Promise.resolve(jsonResponse(AANSLUITING.groepen.map((g) => ({ id: g.artikelgroep_id, naam: g.naam, eenheid: 'st', tolerantie_pct: '1.00', actief: true }))))
       }
       if (pad === `/administraties/${ADMIN}/voorraad/tellingen`) return Promise.resolve(new Response(null, { status: 204 }))
+      if (pad === `/administraties/${ADMIN}/voorraad/regels`) {
+        const status = new URL(url, 'http://x').searchParams.get('normalisatie_status')
+        const alle = [REGEL_RLZ, REGEL_APP]
+        return Promise.resolve(jsonResponse(status ? alle.filter((r) => r.normalisatie_status === status) : alle))
+      }
+      if (pad.endsWith('/dagstanden')) return Promise.resolve(jsonResponse([{ datum: '2026-08-28', inkoop: '0', verkoop: '610', stand: '820' }]))
+      if (pad === `/administraties/${ADMIN}/voorraad/normalisatie/corrigeer`) return Promise.resolve(jsonResponse({ herrekend: 3 }))
+      if (pad.endsWith('/tolerantie')) return Promise.resolve(new Response(null, { status: 204 }))
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
   )
@@ -146,7 +192,83 @@ describe('VoorraadScreen', () => {
   })
 })
 
+describe('VoorraadScreen — blok A herkomst + blok B dialogen', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('drill-down toont per regel de herkomst: RLZ-verkoopfactuur (geen documentlink) vs app-document (link)', async () => {
+    stubFetch()
+    renderScherm()
+    await screen.findByTestId('aansluiting-tabel')
+    const gebruiker = userEvent.setup()
+    await gebruiker.click(screen.getByRole('button', { name: 'Koppelingen 48mm' }))
+    const detail = await screen.findByTestId('groep-detail')
+    expect(detail).toHaveTextContent('RLZ-verkoopfactuur 50212273')
+    expect(within(detail).queryByRole('link', { name: /RLZ-verkoopfactuur/ })).toBeNull()
+    expect(within(detail).getByRole('link', { name: 'inkoopfactuur (scan) →' })).toHaveAttribute('href', `/documenten/${ADMIN}/doc-1`)
+    // Bron per kolom benoemt sinds blok A óók de RLZ-leesroute.
+    expect(screen.getByText(/verkoop = verkoopfactuurregels \(interne registratie\)/)).toBeInTheDocument()
+  })
+
+  it('"+ nieuwe artikelgroep…" opent een dialoog (geen window.prompt): aanmaken = POST groepen + POST corrigeer', async () => {
+    const aangeroepen = stubFetch()
+    const prompt = vi.fn()
+    vi.stubGlobal('prompt', prompt)
+    renderScherm()
+    await screen.findByTestId('aansluiting-tabel')
+    const gebruiker = userEvent.setup()
+    await gebruiker.click(screen.getByRole('button', { name: /normaliseren/ }))
+    const paneel = await screen.findByTestId('normalisatie-paneel')
+    await gebruiker.selectOptions(within(paneel).getAllByRole('combobox')[0], '__nieuw__')
+    const dialoog = await screen.findByTestId('nieuwe-groep-dialoog')
+    expect(prompt).not.toHaveBeenCalled()
+    // Leeg opslaan = validatie in de dialoog, geen request.
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Aanmaken en corrigeren' }))
+    expect(dialoog).toHaveTextContent('Geef de artikelgroep een naam.')
+    await gebruiker.type(within(dialoog).getByLabelText('Naam'), 'Steigerbuis 4m')
+    await gebruiker.clear(within(dialoog).getByLabelText('Tolerantie (%)'))
+    await gebruiker.type(within(dialoog).getByLabelText('Tolerantie (%)'), '2,5')
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Aanmaken en corrigeren' }))
+    await waitFor(() => expect(aangeroepen.some((a) => a.method === 'POST' && a.pad.endsWith('/normalisatie/corrigeer'))).toBe(true))
+    const post = aangeroepen.find((a) => a.method === 'POST' && a.pad.endsWith('/voorraad/groepen'))!
+    expect(post.body).toEqual({ naam: 'Steigerbuis 4m', eenheid: 'st', tolerantie_pct: '2.5' })
+    const corr = aangeroepen.find((a) => a.method === 'POST' && a.pad.endsWith('/normalisatie/corrigeer'))!
+    expect(corr.body).toEqual({ regel_id: 'r-app', artikelgroep_id: 'g-nieuw', uitgesloten: false })
+    expect(await screen.findByText(/Artikelgroep "Steigerbuis 4m" aangemaakt/)).toBeInTheDocument()
+    expect(screen.queryByTestId('nieuwe-groep-dialoog')).toBeNull()
+  })
+
+  it('Tolerantie → dialoog met huidige waarde, opslaan = PUT …/tolerantie; ongeldig = melding zonder request', async () => {
+    const aangeroepen = stubFetch()
+    renderScherm()
+    await screen.findByTestId('aansluiting-tabel')
+    const gebruiker = userEvent.setup()
+    await gebruiker.click(screen.getAllByRole('button', { name: 'Tolerantie' })[0])
+    const dialoog = await screen.findByTestId('tolerantie-dialoog')
+    expect(dialoog).toHaveTextContent('Tolerantie — Koppelingen 48mm')
+    const veld = within(dialoog).getByLabelText('Tolerantie (%)')
+    expect(veld).toHaveValue('1')
+    await gebruiker.clear(veld)
+    await gebruiker.type(veld, '150')
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Opslaan' }))
+    expect(dialoog).toHaveTextContent('tussen 0 en 100')
+    expect(aangeroepen.some((a) => a.method === 'PUT')).toBe(false)
+    await gebruiker.clear(veld)
+    await gebruiker.type(veld, '2,5')
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Opslaan' }))
+    await waitFor(() => expect(aangeroepen.some((a) => a.method === 'PUT' && a.pad.endsWith('/tolerantie'))).toBe(true))
+    expect(aangeroepen.find((a) => a.method === 'PUT')!.body).toEqual({ tolerantie_pct: '2.5' })
+    expect(await screen.findByText(/Tolerantie voor Koppelingen 48mm gezet op 2,5%/)).toBeInTheDocument()
+  })
+})
+
 describe('voorraadApi — weergave', () => {
+  it('bronLabel benoemt de herkomst leesbaar', () => {
+    expect(bronLabel({ bron: 'rlz_verkoop', rlz_referentie: '50212273' })).toBe('RLZ-verkoopfactuur 50212273')
+    expect(bronLabel({ bron: 'rlz_verkoop', rlz_referentie: null })).toBe('RLZ-verkoopfactuur')
+    expect(bronLabel({ bron: 'verkoop_regel', rlz_referentie: null })).toBe('verkoopfactuur (app)')
+    expect(bronLabel({ bron: 'inkoop_veldvoorstel', rlz_referentie: null })).toBe('inkoopfactuur (scan)')
+  })
+
   it('signaalTekst en aantal formatteren NL, nooit rekenen', () => {
     expect(signaalTekst(groep({}))).toEqual({ tekst: 'binnen tolerantie', soort: 'ok' })
     expect(signaalTekst(groep({ signaal: 'onderzoeken', verschil_pct: '1.70' }))).toEqual({ tekst: '+1,7% — onderzoeken', soort: 'vlag' })

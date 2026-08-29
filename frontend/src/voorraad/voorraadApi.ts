@@ -36,7 +36,11 @@ export interface AansluitingDto {
 
 export interface VoorraadRegelDto {
   id: string
-  document_id: string
+  // Herkomst (migratie 0087): een lokaal document óf een RLZ-verkoopfactuur (bron 'rlz_verkoop' — de
+  // eigen RLZ-facturen van de administratie via de dagelijkse leesroute; blok A 29-08).
+  document_id: string | null
+  rlz_document_id: string | null
+  rlz_referentie: string | null
   richting: 'in' | 'uit'
   bron: string
   datum: string
@@ -136,8 +140,17 @@ export function herrekenVoorraad(administratieId: string): Promise<{
   inkoop_regels: number
   verkoop_documenten: number
   verkoop_regels: number
+  rlz_regels: number
 }> {
   return apiJson(`/administraties/${administratieId}/voorraad/herreken`, { method: 'POST' })
+}
+
+/** Leesbare herkomst van een factuurregel (drill-down): app-document of RLZ-verkoopfactuur. */
+export function bronLabel(r: Pick<VoorraadRegelDto, 'bron' | 'rlz_referentie'>): string {
+  if (r.bron === 'rlz_verkoop') return `RLZ-verkoopfactuur${r.rlz_referentie ? ` ${r.rlz_referentie}` : ''}`
+  if (r.bron === 'verkoop_regel') return 'verkoopfactuur (app)'
+  if (r.bron === 'inkoop_veldvoorstel') return 'inkoopfactuur (scan)'
+  return r.bron
 }
 
 /** Getalweergave met NL-notatie; null = em-dash. */

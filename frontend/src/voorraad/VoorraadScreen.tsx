@@ -10,10 +10,11 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
-import { Badge, Button, Select, SkeletonRegels } from '../ui/basis'
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, Select, SkeletonRegels } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   aantal,
+  bronLabel,
   corrigeerNormalisatie,
   haalAansluiting,
   haalArtikelgroepen,
@@ -64,6 +65,11 @@ export function VoorraadScreen() {
   const [normRegels, setNormRegels] = useState<VoorraadRegelDto[] | null>(null)
   const [tellingVoor, setTellingVoor] = useState<{ groep: GroepAansluitingDto; datum: string; aantal: string } | null>(null)
   const [nieuweGroep, setNieuweGroep] = useState<string | null>(null)
+  // Blok B (nazorg bouwrun blok D): invoer via designpass-v2-dialogen i.p.v. window.prompt.
+  const [groepDialoog, setGroepDialoog] = useState<{ regel: VoorraadRegelDto; naam: string; eenheid: string; tolerantie: string } | null>(null)
+  const [tolerantieDialoog, setTolerantieDialoog] = useState<{ groep: GroepAansluitingDto; waarde: string } | null>(null)
+  const [dialoogBezig, setDialoogBezig] = useState(false)
+  const [dialoogFout, setDialoogFout] = useState<string | null>(null)
 
   const kies = (id: string) => {
     const p = new URLSearchParams(zoekParams)
@@ -132,17 +138,15 @@ export function VoorraadScreen() {
 
   const corrigeer = async (regel: VoorraadRegelDto, keuze: string) => {
     setMelding(null)
+    if (keuze === '__nieuw__') {
+      setDialoogFout(null)
+      setGroepDialoog({ regel, naam: '', eenheid: regel.eenheid ?? 'st', tolerantie: '1.00' })
+      return
+    }
     try {
-      let groepId: string | null = keuze
-      if (keuze === '__nieuw__') {
-        const naam = window.prompt('Naam van de nieuwe artikelgroep')
-        if (!naam) return
-        const g = await maakArtikelgroep(administratieId, naam, regel.eenheid ?? 'st', '1.00')
-        groepId = g.id
-      }
       const r = await corrigeerNormalisatie(administratieId, {
         regel_id: regel.id,
-        artikelgroep_id: keuze === '__geen__' ? null : groepId,
+        artikelgroep_id: keuze === '__geen__' ? null : keuze,
         uitgesloten: keuze === '__geen__',
       })
       setMelding(`Correctie toegepast op ${r.herrekend} regel${r.herrekend === 1 ? '' : 's'} met dezelfde leverancier + artikeltekst (historie herrekend).`)
@@ -150,6 +154,29 @@ export function VoorraadScreen() {
       void openNormalisatie()
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Corrigeren mislukt.')
+    }
+  }
+
+  const nieuweGroepOpslaan = async () => {
+    if (!groepDialoog) return
+    const naam = groepDialoog.naam.trim()
+    if (!naam) {
+      setDialoogFout('Geef de artikelgroep een naam.')
+      return
+    }
+    setDialoogBezig(true)
+    setDialoogFout(null)
+    try {
+      const g = await maakArtikelgroep(administratieId, naam, groepDialoog.eenheid.trim() || 'st', groepDialoog.tolerantie.replace(',', '.') || '1.00')
+      const r = await corrigeerNormalisatie(administratieId, { regel_id: groepDialoog.regel.id, artikelgroep_id: g.id, uitgesloten: false })
+      setGroepDialoog(null)
+      setMelding(`Artikelgroep "${g.naam}" aangemaakt; correctie toegepast op ${r.herrekend} regel${r.herrekend === 1 ? '' : 's'} (historie herrekend).`)
+      setVersie((v) => v + 1)
+      void openNormalisatie()
+    } catch (err) {
+      setDialoogFout(err instanceof ApiError ? err.message : 'Artikelgroep aanmaken mislukt.')
+    } finally {
+      setDialoogBezig(false)
     }
   }
 
@@ -170,14 +197,30 @@ export function VoorraadScreen() {
     }
   }
 
-  const tolerantieWijzigen = async (groep: GroepAansluitingDto) => {
-    const nieuw = window.prompt(`Tolerantie (%) voor ${groep.naam}`, groep.tolerantie_pct)
-    if (nieuw === null) return
+  const tolerantieWijzigen = (groep: GroepAansluitingDto) => {
+    setDialoogFout(null)
+    setTolerantieDialoog({ groep, waarde: aantal(groep.tolerantie_pct, 2) })
+  }
+
+  const tolerantieOpslaan = async () => {
+    if (!tolerantieDialoog) return
+    const waarde = tolerantieDialoog.waarde.trim().replace(',', '.')
+    const n = Number(waarde)
+    if (waarde === '' || Number.isNaN(n) || n < 0 || n > 100) {
+      setDialoogFout('Tolerantie moet een percentage tussen 0 en 100 zijn.')
+      return
+    }
+    setDialoogBezig(true)
+    setDialoogFout(null)
     try {
-      await zetTolerantie(administratieId, groep.artikelgroep_id, nieuw.replace(',', '.'))
+      await zetTolerantie(administratieId, tolerantieDialoog.groep.artikelgroep_id, waarde)
+      setTolerantieDialoog(null)
+      setMelding(`Tolerantie voor ${tolerantieDialoog.groep.naam} gezet op ${aantal(waarde, 2)}%.`)
       setVersie((v) => v + 1)
     } catch (err) {
-      setFout(err instanceof ApiError ? err.message : 'Tolerantie wijzigen mislukt.')
+      setDialoogFout(err instanceof ApiError ? err.message : 'Tolerantie wijzigen mislukt.')
+    } finally {
+      setDialoogBezig(false)
     }
   }
 
@@ -306,7 +349,7 @@ export function VoorraadScreen() {
                           >
                             Telling…
                           </Button>{' '}
-                          <Button variant="ghost" maat="klein" onClick={() => void tolerantieWijzigen(g)}>
+                          <Button variant="ghost" maat="klein" onClick={() => tolerantieWijzigen(g)}>
                             Tolerantie
                           </Button>
                         </td>
@@ -382,7 +425,7 @@ export function VoorraadScreen() {
                       <th className="amount">Aantal</th>
                       <th className="amount">Prijs</th>
                       <th>Zekerheid</th>
-                      <th />
+                      <th>Bron</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -400,7 +443,13 @@ export function VoorraadScreen() {
                           </Badge>
                         </td>
                         <td>
-                          <Link to={`/documenten/${administratieId}/${r.document_id}`}>document →</Link>
+                          {r.document_id ? (
+                            <Link to={`/documenten/${administratieId}/${r.document_id}`}>{bronLabel(r)} →</Link>
+                          ) : (
+                            <span className="hint" title="Gelezen uit RLZ (dagelijkse leesroute, alleen geboekte facturen) — geen app-document">
+                              {bronLabel(r)}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -497,6 +546,95 @@ export function VoorraadScreen() {
           )}
         </>
       )}
+
+      {/* Blok B: nieuwe artikelgroep vanuit de normalisatie-correctie — dialoog i.p.v. window.prompt. */}
+      <Dialog open={groepDialoog !== null} onOpenChange={(open) => !open && !dialoogBezig && setGroepDialoog(null)}>
+        <DialogContent aria-describedby={undefined} data-testid="nieuwe-groep-dialoog">
+          <DialogTitle>Nieuwe artikelgroep</DialogTitle>
+          <DialogDescription>
+            {groepDialoog && (
+              <>
+                Voor &ldquo;{groepDialoog.regel.artikeltekst}&rdquo;. De correctie geldt daarna voor álle regels met dezelfde leverancier +
+                artikeltekst (historie herrekend).
+              </>
+            )}
+          </DialogDescription>
+          {groepDialoog && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                void nieuweGroepOpslaan()
+              }}
+            >
+              <FormField label="Naam" htmlFor="groep-naam">
+                <input
+                  id="groep-naam"
+                  autoFocus
+                  maxLength={80}
+                  value={groepDialoog.naam}
+                  onChange={(e) => setGroepDialoog({ ...groepDialoog, naam: e.target.value })}
+                  placeholder="bv. Koppelingen 48mm"
+                />
+              </FormField>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormField label="Eenheid" htmlFor="groep-eenheid">
+                  <input id="groep-eenheid" maxLength={16} value={groepDialoog.eenheid} onChange={(e) => setGroepDialoog({ ...groepDialoog, eenheid: e.target.value })} />
+                </FormField>
+                <FormField label="Tolerantie (%)" htmlFor="groep-tolerantie" hint="default 1%">
+                  <input id="groep-tolerantie" inputMode="decimal" value={groepDialoog.tolerantie} onChange={(e) => setGroepDialoog({ ...groepDialoog, tolerantie: e.target.value })} />
+                </FormField>
+              </div>
+              {dialoogFout && <div className="fout">{dialoogFout}</div>}
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setGroepDialoog(null)} disabled={dialoogBezig}>
+                  Annuleren
+                </Button>
+                <Button type="submit" disabled={dialoogBezig}>
+                  {dialoogBezig ? 'Bezig…' : 'Aanmaken en corrigeren'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Blok B: tolerantie per artikelgroep — dialoog i.p.v. window.prompt. */}
+      <Dialog open={tolerantieDialoog !== null} onOpenChange={(open) => !open && !dialoogBezig && setTolerantieDialoog(null)}>
+        <DialogContent aria-describedby={undefined} data-testid="tolerantie-dialoog">
+          <DialogTitle>Tolerantie — {tolerantieDialoog?.groep.naam}</DialogTitle>
+          <DialogDescription>
+            Verschil tussen theoretische stand en systeemstand binnen dit percentage = &ldquo;binnen tolerantie&rdquo;; daarboven het signaal
+            &ldquo;onderzoeken&rdquo;. Alleen presentatie van het signaal — nooit een boeking.
+          </DialogDescription>
+          {tolerantieDialoog && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                void tolerantieOpslaan()
+              }}
+            >
+              <FormField label="Tolerantie (%)" htmlFor="tolerantie-pct" hint="0 t/m 100, decimalen met komma of punt">
+                <input
+                  id="tolerantie-pct"
+                  autoFocus
+                  inputMode="decimal"
+                  value={tolerantieDialoog.waarde}
+                  onChange={(e) => setTolerantieDialoog({ ...tolerantieDialoog, waarde: e.target.value })}
+                />
+              </FormField>
+              {dialoogFout && <div className="fout">{dialoogFout}</div>}
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setTolerantieDialoog(null)} disabled={dialoogBezig}>
+                  Annuleren
+                </Button>
+                <Button type="submit" disabled={dialoogBezig}>
+                  {dialoogBezig ? 'Bezig…' : 'Opslaan'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
