@@ -213,7 +213,7 @@ live-update-dienst (Appflow e.d.) is een latere, aparte afweging (kosten/AVG).
 elke cloud-build automatisch uit `main` — zodra de workflow gekoppeld is, is de eerste build
 die eruit rolt meteen Build 3 met de planning-weergave; er is geen extra klaarzet-stap.
 
-## 8. Android / Google Play (bouwronde 2026-08-28) — voorbereid, klikwerk in `PLAY_DRAAIBOEK.md`
+## 8. Android / Google Play (bouwronde 2026-08-28, AAB gebouwd 2026-08-29) — klikwerk in `PLAY_DRAAIBOEK.md`
 
 **Wat er in de repo staat (gebouwd, geen klikwerk):**
 
@@ -239,7 +239,17 @@ die eruit rolt meteen Build 3 met de planning-weergave; er is geen extra klaarze
   (`genereer_play_assets.sh`, zelfde bron-SVG). ⚠️ De iPhone-screenshots (2,17:1) voldoen niet
   aan Play's ≤ 2:1-eis — Android-screenshots komen uit de emulator (draaiboek §6).
 
-**Klikwerk Peter, in volgorde:** JDK 21 + Android SDK → upload-keystore + wachtwoordmanager →
-release-AAB → app aanmaken onder PDL + interne test-track → assetlinks + apk-key-hash (twee
-certificaten) → listing + App content/Data safety → kliktest FCM + passkeys op toestel.
-Volledig uitgeschreven in `native/PLAY_DRAAIBOEK.md`.
+**Stand 29-08 (agent, besluit Peter "installs toegestaan"):** JDK 21 + Android SDK staan op de Mac
+(CLI-route), `assembleDebug` groen (eerste compile van beide Java-plugins zonder fix), upload-keystore in
+`~/Sleutels/` (wachtwoord alleen dáár), **release-AAB gebouwd + gevalideerd**
+(`native/android/app/release/nijenhuis-goedkeuren-1.0-vc1-20260829-0919.aab`) en de drie
+Play-screenshots (1080×1920) in `store-assets/play/`. Twee Android-bevindingen uit de emulator-run
+gefikst en in de AAB: pdf.js **legacy-build** (hoofdbuild vereist `Uint8Array.prototype.toHex` =
+Chromium ≥ 140; WebView 133 gaf "factuurbeeld kon niet weergegeven worden") en het ⏻-uitlogglyph als
+inline-SVG (tofu-blokje in de Android-font). Play Console-kant (app, verklaringen, listing-teksten) was al
+door Peter gedaan.
+
+**Klikwerk Peter, in volgorde:** wachtwoordmanager (§2 stap 2) → AAB uploaden naar Internal testing →
+App signing-pagina: BEIDE certificaten noteren → assetlinks + apk-key-hash (twee certificaten) →
+screenshots uploaden → kliktest FCM + passkeys op toestel. Volledig uitgeschreven in
+`native/PLAY_DRAAIBOEK.md`.

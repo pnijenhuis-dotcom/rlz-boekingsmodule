@@ -7,6 +7,14 @@ Android-build — nog géén productierelease. STORE_GEREEDHEID.md blijft het ca
 achtergrondlocatie zit **niet** in deze release — er is dus geen locatiemotivering nodig en
 het bouwscript bewaakt dat het manifest geen `ACCESS_BACKGROUND_LOCATION` draagt.
 
+> **STAND 29-08 (uitgevoerd door de agent, besluit Peter 29-08 "installs toegestaan"):** §1 (JDK 21 +
+> Android SDK, CLI-route), §2 (upload-keystore in `~/Sleutels/`) en §3 (release-AAB, gevalideerd) zijn
+> **KLAAR** — details onderaan elke paragraaf. Ook de drie Play-screenshots (§6) staan in
+> `store-assets/play/`. Wat er nog van jou nodig is: **§2 stap 2 (wachtwoordmanager) → §4 → §5 → §6
+> (uploaden) → §7 → §8.** Twee Android-bevindingen uit de emulator-run zijn gefikst en zitten in de AAB
+> (BESLISSINGEN "ANDROID-BOUWRONDE 28-08" rij 7): pdf.js-legacy-build (factuurbeeld faalde in WebView
+> < 140) en het ⏻-glyph als SVG (tofu-blokje in de Android-font).
+
 ## 0. Wat er al klaar staat (voorwerk agent, 28-08 — geen klikwerk)
 
 - **Firebase-registratie in de schil:** `native/android/app/google-services.json` staat in de
@@ -70,7 +78,27 @@ JDK 21 (`capacitor.build.gradle` compileert op Java 21) en Android-platform 36.
    hier — die zijn tot nu toe alleen op iOS-equivalent bewezen; compileert er iets niet, dan
    is dat een bevinding voor de agent, niet iets om zelf te patchen.
 
-**Alternatief zonder Android Studio (CLI-only):** `brew install --cask temurin@21
+**✅ UITGEVOERD 29-08 (CLI-route, géén Android Studio):** `brew install openjdk@21` (de cask
+`temurin@21` vereist `sudo` voor de pkg-installer en kon niet onbeheerd draaien — de Homebrew-formule is
+dezelfde JDK 21, keg-only), `brew install --cask android-commandlinetools` + `brew install bundletool`,
+`sdkmanager --licenses`, `sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"`
+(+ `emulator` en `system-images;android-36;google_apis;arm64-v8a` voor §6), `local.properties` gezet
+(`sdk.dir=/opt/homebrew/share/android-commandlinetools`, gitignored). `./gradlew --version` = Gradle
+8.14.3 op JVM 21; **`./gradlew assembleDebug` groen — eerste échte compile van `NatievePasskeyPlugin` en
+`VeiligeOpslagPlugin` zonder één fix** (javac zonder waarschuwingen op onze bronnen). Omdat de JDK
+keg-only is, zetten de scripts/jij per shell:
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+export PATH="$JAVA_HOME/bin:$PATH"
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+```
+(zet dit in `~/.zshrc`; optioneel éénmalig `sudo ln -sfn /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk
+/Library/Java/JavaVirtualMachines/openjdk-21.jdk` zodat ook het macOS-stub-`java` werkt). Emulator-AVD
+`play_1080x1920` (Pixel 2-profiel, API 36 google_apis) bestaat in `~/.android/avd/`. De melding "SDK XML
+versions up to 3 … version 4" bij Gradle is cosmetisch (nieuwere cmdline-tools dan AGP kent).
+
+**Alternatief zonder Android Studio (CLI-only, de gevolgde route):** `brew install --cask temurin@21
 android-commandlinetools` → `sdkmanager --licenses` → `sdkmanager "platforms;android-36"
 "build-tools;36.0.0" "platform-tools"` → `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`.
 Geen emulator → screenshots (§6) en de kliktest (§8) dan op een echt Android-toestel.
@@ -98,6 +126,14 @@ Play Console-support (geen appverlies) — maar behandel 'm als productiegeheim.
 3. Controle: `git status` mag geen `.jks`/`keystore.properties` tonen (vangnet in
    `native/.gitignore` én `native/android/.gitignore`).
 
+**✅ UITGEVOERD 29-08:** keystore `~/Sleutels/nijenhuis-goedkeuren-upload.jks` (alias `upload`, RSA 4096,
+10000 dagen) + `native/android/keystore.properties` (gitignored, bewezen). Het wachtwoord is door de
+agent gegenereerd (32 tekens) en staat UITSLUITEND in **`~/Sleutels/nijenhuis-goedkeuren-upload.wachtwoord.txt`**
+(chmod 600) — nergens in chat, log of repo. **Jouw stap 2:** zet keystore-bestand + wachtwoord in je
+wachtwoordmanager en verwijder daarna desgewenst het .txt-bestand. Upload-key-vingerafdruk (géén geheim):
+- SHA-256: `4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1`
+- WebAuthn-origin: `android:apk-key-hash:SrQ88emG6lgC1z96eBP79e_AFw_oNQABLixFAgDpj6E`
+
 ## 3. Release-AAB bouwen + valideren
 
 `native/scripts/bouw_android_release.sh [versionCode] [versionName]` — eerste upload:
@@ -110,6 +146,12 @@ Het script bouwt de webbundel (`--mode native`, `VITE_API_BASE` = app-subdomein)
 `bundletool` er is — `bundletool validate` + package `nl.aknijenhuis.goedkeuren`,
 versionCode/-Name, `POST_NOTIFICATIONS` aanwezig, `ACCESS_BACKGROUND_LOCATION` afwezig. Resultaat
 + SHA-256 komt in `native/android/app/release/` (gitignored).
+
+**✅ UITGEVOERD 29-08:** `native/android/app/release/nijenhuis-goedkeuren-1.0-vc1-20260829-0919.aab`
+(14 MB, gitignored) — signatuur = upload-key, bundletool validate ✓, package/versionCode 1/versionName
+1.0 ✓, `POST_NOTIFICATIONS` ✓, geen `ACCESS_BACKGROUND_LOCATION` ✓, én de nieuwe guards: geen
+`allowMixedContent`/emulator-API-base in de bundel, geen `usesCleartextTraffic` in het release-manifest
+(die horen alleen bij de lokale debug-screenshotbuild, zie §6). Dít bestand sleep je in §4 stap 4.
 
 - **Elke volgende upload: versionCode +1** (Play weigert een hergebruikt nummer); versionName
   volgt de iOS `MARKETING_VERSION` (STORE_GEREEDHEID §6).
@@ -222,6 +264,19 @@ en het TestFlight-draaiboek §2, in Play-limieten):
   fictieve demo-facturen (zelfde opzet als de iOS-set, STORE_GEREEDHEID §5 punt 5): wachtrij,
   factuurbeeld, ontgrendelscherm. Screenshot = emulator-camera-knop → `~/Desktop`; bewaar ze
   als `native/store-assets/play/screenshot-0{1,2,3}-*.png`.
+  **✅ GEMAAKT 29-08:** `store-assets/play/screenshot-01-wachtrij.png`, `-02-factuurbeeld.png`,
+  `-03-ontgrendelen.png` (1080×1920, donker thema, demo-statusbalk, uitsluitend de fictieve
+  DEMO-2026-facturen op een lokale "Administratiekantoor Nijenhuis (demo)"-administratie). Recept
+  (herhaalbaar, alles lokaal): lokale backend-instantie met
+  `CORS_ALLOWED_ORIGINS='["https://localhost"]' AUTH_BIOMETRIE_DEV_STUB=true` op :8010; seed via
+  `cloud_seed_accordeur.py` + `cloud_seed_review_demo.py` tegen de dev-DB (failsafe omzeild in een
+  scratch-wrapper); debug-build met `VITE_API_BASE=http://10.0.2.2:8010 npm run bouw-web` +
+  `NATIVE_LOKALE_BACKEND=1 npx cap sync android` (zet `allowMixedContent`; de debug-manifest-overlay
+  `app/src/debug/AndroidManifest.xml` levert `usesCleartextTraffic`) + `assembleDebug`; emulator
+  `play_1080x1920` headless (`-no-window`), `adb exec-out screencap`. De emulator heeft geen
+  passkey-provider: de login liep via de dev-stub door in de debuggable webview (Chrome DevTools-
+  protocol op `localabstract:webview_devtools_remote_<pid>`) de plugin-detectie uit te zetten; het
+  ontgrendelscherm is het échte scherm (plugin-assertion faalt stil). Nooit echte klantdata.
 - Categorie: **Business**; Tags optioneel; Contact details: e-mail `p.nijenhuis@kempengroep.nl`,
   website `https://app.administratiekantoornijenhuis.nl`; External marketing: uit.
 

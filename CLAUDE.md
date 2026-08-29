@@ -727,9 +727,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `roles/firebasecloudmessaging.admin`, alleen `FCM_PROJECT_ID` — géén server-key-secret;
   `scripts/gcp/fcm_afronden.sh`); Gradle-signing leest `keystore.properties` (gitignored,
   keystore buiten de repo — `native/scripts/android_keystore.sh`), release-AAB via
-  `bouw_android_release.sh`. Klikwerk Peter: JDK 21 + Android SDK (ontbreken op de Mac) →
-  keystore → AAB → Play-app onder PDL + interne test → assetlinks/apk-key-hash mét BEIDE
-  certificaten (Google's app-signing-key + upload-key) → listing/Data safety → kliktest.**).
+  `bouw_android_release.sh`. **UITGEVOERD 29-08 (besluit Peter "installs toegestaan"): JDK 21 +
+  SDK via CLI (openjdk@21 keg-only → JAVA_HOME/ANDROID_HOME per shell, draaiboek §1), `assembleDebug`
+  groen (Java-plugins compileren zonder fix), upload-keystore in `~/Sleutels/` (wachtwoord alleen
+  dáár), release-AAB vc1/1.0 gevalideerd, drie Play-screenshots uit de emulator. Android-fixes uit
+  die run: pdf.js LEGACY-build in beide viewers (hoofdbuild vereist `Uint8Array.toHex`, Chromium ≥
+  140 — WebView 133 brak het factuurbeeld) + ⏻-glyph → `UitlogIcoon` (SVG). Debug-only
+  cleartext-overlay `app/src/debug/` + env-vlag `NATIVE_LOKALE_BACKEND` voor lokale
+  emulator-builds; release-script bewaakt dat beide NIET in de AAB zitten.** Klikwerk Peter:
+  wachtwoordmanager → AAB naar Internal testing → App signing: BEIDE certificaten → assetlinks/
+  apk-key-hash → screenshots → kliktest.**).
   Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
