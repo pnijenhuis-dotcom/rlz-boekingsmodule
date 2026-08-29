@@ -161,7 +161,59 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     print("\nProjectcijfers-sync (uren-&-meerwerk-administraties):")
     cijfers_exit = _rapporteer_cijfers_runs(sync_alle_via_runs())
-    return 1 if fouten or cijfers_exit else 0
+
+    # Voorraad-uitstroom uit RLZ-verkoopfacturen (blok A 29-08): dagelijkse leesroute voor de
+    # administraties mét de voorraad-opt-in — read-only, eigen fouten-telling (zichtbaar rood).
+    from app.voorraad import rlz_uitstroom
+
+    print("\nVoorraad-uitstroom RLZ-verkoopfacturen (voorraad-administraties):")
+    voorraad_exit = _rapporteer_voorraad_rlz(rlz_uitstroom.sync_alle_voorraad_administraties())
+    return 1 if fouten or cijfers_exit or voorraad_exit else 0
+
+
+def _rapporteer_voorraad_rlz(resultaten: dict) -> int:
+    """Rapportage voor de RLZ-uitstroom-leesroute: telling per administratie, geen credential =
+    zichtbaar overgeslagen (geen fout), elke andere fout = exit 1."""
+    from app.voorraad.rlz_uitstroom import RlzUitstroomTelling
+
+    if not resultaten:
+        print("(geen administraties met de voorraad-opt-in)")
+        return 0
+    fouten = 0
+    for administratie_id, resultaat in resultaten.items():
+        if isinstance(resultaat, RlzUitstroomTelling):
+            print(
+                f"OK    {administratie_id}: vanaf {resultaat.vanaf} — {resultaat.facturen_gelezen} facturen gelezen, "
+                f"{resultaat.facturen_verwerkt} verwerkt ({resultaat.regels} regels), "
+                f"{resultaat.overgeslagen_concept} concept, {resultaat.overgeslagen_in_app} in de app geboekt, "
+                f"{resultaat.verwijderd_na_storno} regels weg na storno"
+            )
+        elif isinstance(resultaat, GeenRlzCredentials):
+            print(f"OVERGESLAGEN {administratie_id}: {resultaat}")
+        else:
+            fouten += 1
+            print(f"FOUT  {administratie_id}: {resultaat}", file=sys.stderr)
+    return 1 if fouten else 0
+
+
+def _voorraad_rlz_sync(args: argparse.Namespace) -> int:
+    """Handmatige/eerste run van de RLZ-uitstroom-leesroute (`--volledig` = het lopende jaar
+    opnieuw lezen; zonder `--administratie-id` = alle voorraad-administraties)."""
+    from app.voorraad import rlz_uitstroom
+
+    if args.administratie_id:
+        try:
+            administratie_id = uuid.UUID(args.administratie_id)
+        except ValueError as exc:
+            print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+            return 1
+        try:
+            telling = rlz_uitstroom.sync_rlz_verkoopregels(administratie_id=administratie_id, volledig=args.volledig)
+        except GeenRlzCredentials as exc:
+            print(f"OVERGESLAGEN {administratie_id}: {exc}")
+            return 0
+        return _rapporteer_voorraad_rlz({administratie_id: telling})
+    return _rapporteer_voorraad_rlz(rlz_uitstroom.sync_alle_voorraad_administraties(volledig=args.volledig))
 
 
 def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
@@ -1175,6 +1227,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Sync Ledgers/TaxRates/Vendors/Projects voor alle administraties (nachtelijke sync).",
     )
 
+    voorraad_rlz_parser = subparsers.add_parser(
+        "voorraad-rlz-sync",
+        help="Voorraad-uitstroom uit RLZ-verkoopfacturen (leesroute, blok A 29-08) — loopt ook mee in "
+        "sync-alles; hier voor een eerste/volledige run of één administratie.",
+    )
+    voorraad_rlz_parser.add_argument("--administratie-id", dest="administratie_id", default=None)
+    voorraad_rlz_parser.add_argument(
+        "--volledig",
+        action="store_true",
+        help="Lees het lopende jaar opnieuw i.p.v. incrementeel (max(datum) − 14 dagen).",
+    )
+
     subparsers.add_parser(
         "projecten-cijfers-sync",
         help="Ververs de project_regel_cache (RLZ-documentregels mét projectreferentie — de "
@@ -1475,6 +1539,8 @@ def main(argv: list[str] | None = None) -> int:
         return _bootstrap_beheerder(args)
     if args.commando == "sync-alles":
         return _sync_alles(args)
+    if args.commando == "voorraad-rlz-sync":
+        return _voorraad_rlz_sync(args)
     if args.commando == "projecten-cijfers-sync":
         return _projecten_cijfers_sync(args)
     if args.commando == "projecten-cijfers-wachtrij":

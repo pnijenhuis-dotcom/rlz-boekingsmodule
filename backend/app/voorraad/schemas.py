@@ -50,7 +50,10 @@ class DagStandDto(BaseModel):
 
 class RegelDto(BaseModel):
     id: uuid.UUID
-    document_id: uuid.UUID
+    # Herkomst (migratie 0087): een lokaal document óf een RLZ-verkoopfactuur (bron rlz_verkoop).
+    document_id: uuid.UUID | None = None
+    rlz_document_id: uuid.UUID | None = None
+    rlz_referentie: str | None = None
     richting: str
     bron: str
     datum: date
@@ -102,6 +105,8 @@ class HerrekenResultaatDto(BaseModel):
     inkoop_regels: int
     verkoop_documenten: int
     verkoop_regels: int
+    # Opgeslagen RLZ-verkoopregels opnieuw genormaliseerd (het lezen uit RLZ zit in de dagelijkse sync).
+    rlz_regels: int = 0
 
 
 class CorrectieResultaatDto(BaseModel):

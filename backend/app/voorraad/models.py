@@ -9,7 +9,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +28,14 @@ class Artikelgroep(Base):
     __tablename__ = "artikelgroep"
     __table_args__ = (
         Index("ix_artikelgroep_administratie_id", "administratie_id"),
+        # Gespiegeld uit migratie 0086: naam uniek (case-insensitief) onder actieve groepen.
+        Index(
+            "uq_artikelgroep_naam",
+            "administratie_id",
+            text("lower(naam)"),
+            unique=True,
+            postgresql_where=text("actief"),
+        ),
         CheckConstraint("tolerantie_pct >= 0 AND tolerantie_pct <= 100", name="ck_artikelgroep_tolerantie"),
         {"schema": SCHEMA},
     )
@@ -76,14 +84,30 @@ class NormalisatieRegel(Base):
 class VoorraadRegel(Base):
     """Eén feit op regelniveau: in (inkoopfactuur, extern document) of uit (verkoopfactuurregel),
     op DAGNIVEAU (`datum`), mét de normalisatie-uitkomst. Afgeleide, herrekenbare feitenlaag
-    (upsert per (document, richting, regelvolgnummer); verwijderen = herrekenen, geen bron)."""
+    (upsert per (document, richting, regelvolgnummer); verwijderen = herrekenen, geen bron).
+
+    Herkomst (migratie 0087): een lokaal document (`document_id`) ÓF een RLZ-verkoopfactuur
+    (`rlz_document_id` + `rlz_referentie`, bron `rlz_verkoop` — de eigen RLZ-facturen van een
+    voorraad-administratie, dagelijkse leesroute); precies één van beide (CHECK)."""
 
     __tablename__ = "voorraad_regel"
     __table_args__ = (
         UniqueConstraint("document_id", "richting", "regel_volgnummer", name="uq_voorraad_regel_document_regel"),
         Index("ix_voorraad_regel_administratie_datum", "administratie_id", "datum"),
         Index("ix_voorraad_regel_artikelgroep_id", "artikelgroep_id"),
+        Index("ix_voorraad_regel_rlz_document_id", "rlz_document_id"),
+        Index(
+            "uq_voorraad_regel_rlz_regel",
+            "rlz_document_id",
+            "richting",
+            "regel_volgnummer",
+            unique=True,
+            postgresql_where=text("rlz_document_id IS NOT NULL"),
+        ),
         CheckConstraint("richting IN ('in', 'uit')", name="ck_voorraad_regel_richting"),
+        CheckConstraint(
+            "(document_id IS NOT NULL) <> (rlz_document_id IS NOT NULL)", name="ck_voorraad_regel_herkomst"
+        ),
         CheckConstraint(
             "normalisatie_status IN ('genormaliseerd', 'onzeker', 'uitgesloten', 'niet_genormaliseerd')",
             name="ck_voorraad_regel_status",
@@ -93,7 +117,11 @@ class VoorraadRegel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
-    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
+    )
+    rlz_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    rlz_referentie: Mapped[str | None] = mapped_column(default=None)
     richting: Mapped[str]
     bron: Mapped[str]
     datum: Mapped[date]

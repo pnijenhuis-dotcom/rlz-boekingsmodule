@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, func
+from sqlalchemy import ForeignKey, Index, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +25,16 @@ class Afdeling(Base):
     __tablename__ = "afdeling"
     __table_args__ = (
         Index("ix_afdeling_administratie_id", "administratie_id"),
+        # Gespiegeld uit migratie 0084 (alembic check als signaal — hygiëne-run 16-08): naam uniek onder
+        # actieve afdelingen (case-insensitief) en precies één terugval-afdeling per administratie.
+        Index(
+            "uq_afdeling_actieve_naam",
+            "administratie_id",
+            text("lower(naam)"),
+            unique=True,
+            postgresql_where=text("actief"),
+        ),
+        Index("uq_afdeling_terugval", "administratie_id", unique=True, postgresql_where=text("is_terugval")),
         {"schema": "boekhouding"},
     )
 

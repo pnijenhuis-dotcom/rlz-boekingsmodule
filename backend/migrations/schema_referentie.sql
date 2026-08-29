@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0086
+-- Migratie-head bij deze dump: 0087
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2495,7 +2495,7 @@ ALTER TABLE ONLY mi.normalisatie_regel FORCE ROW LEVEL SECURITY;
 CREATE TABLE mi.voorraad_regel (
     id uuid NOT NULL,
     administratie_id uuid NOT NULL,
-    document_id uuid NOT NULL,
+    document_id uuid,
     richting text NOT NULL,
     bron text NOT NULL,
     datum date NOT NULL,
@@ -2511,6 +2511,9 @@ CREATE TABLE mi.voorraad_regel (
     normalisatie_status text NOT NULL,
     normalisatie_zekerheid numeric(4,3),
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    rlz_document_id uuid,
+    rlz_referentie text,
+    CONSTRAINT ck_voorraad_regel_herkomst CHECK (((document_id IS NOT NULL) <> (rlz_document_id IS NOT NULL))),
     CONSTRAINT ck_voorraad_regel_richting CHECK ((richting = ANY (ARRAY['in'::text, 'uit'::text]))),
     CONSTRAINT ck_voorraad_regel_status CHECK ((normalisatie_status = ANY (ARRAY['genormaliseerd'::text, 'onzeker'::text, 'uitgesloten'::text, 'niet_genormaliseerd'::text])))
 );
@@ -5040,6 +5043,13 @@ CREATE INDEX ix_voorraad_regel_artikelgroep_id ON mi.voorraad_regel USING btree 
 
 
 --
+-- Name: ix_voorraad_regel_rlz_document_id; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_voorraad_regel_rlz_document_id ON mi.voorraad_regel USING btree (rlz_document_id);
+
+
+--
 -- Name: ix_voorraad_telling_administratie_id; Type: INDEX; Schema: mi; Owner: -
 --
 
@@ -5051,6 +5061,13 @@ CREATE INDEX ix_voorraad_telling_administratie_id ON mi.voorraad_telling USING b
 --
 
 CREATE UNIQUE INDEX uq_artikelgroep_naam ON mi.artikelgroep USING btree (administratie_id, lower(naam)) WHERE actief;
+
+
+--
+-- Name: uq_voorraad_regel_rlz_regel; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_voorraad_regel_rlz_regel ON mi.voorraad_regel USING btree (rlz_document_id, richting, regel_volgnummer) WHERE (rlz_document_id IS NOT NULL);
 
 
 --

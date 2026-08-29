@@ -1,7 +1,8 @@
 """Voorraad-aansluiting fase 1 — Universal Verkoop (bouwrun 28-08 blok D; mockup
 voorraad-aansluiting.html §1 = bouwnorm). Controle-laag: instroom = regel-niveau feiten uit het
-inkoop-veldvoorstel (extern document), uitstroom = verkoopfactuurregels (fase 1: de in de app
-geboekte verkoopdocumenten mét UBL-hoeveelheden; RLZ-SalesInvoice-Lines/Odoo = seam-parkeerpost),
+inkoop-veldvoorstel (extern document), uitstroom = verkoopfactuurregels (de in de app geboekte
+verkoopdocumenten mét UBL-hoeveelheden ÉN — sinds 29-08, `rlz_uitstroom.py` — de eigen
+RLZ-verkoopfacturen van de administratie via de dagelijkse leesroute; Odoo = parkeerpost),
 systeemstand = handmatige telling per datum. Mutaties op DAGNIVEAU; verschil buiten de tolerantie =
 vlag, puur MI — nooit een boeking, nooit RLZ-writes. Code voor cijfers: alle telling deterministisch."""
 
@@ -267,7 +268,13 @@ def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) 
                 )
             )
         )
-    telling = {"inkoop_documenten": 0, "inkoop_regels": 0, "verkoop_documenten": 0, "verkoop_regels": 0}
+    telling = {
+        "inkoop_documenten": 0,
+        "inkoop_regels": 0,
+        "verkoop_documenten": 0,
+        "verkoop_regels": 0,
+        "rlz_regels": 0,
+    }
     for d in inkoop:
         n = registreer_inkoopregels(administratie_id=administratie_id, document_id=d)
         if n:
@@ -278,6 +285,11 @@ def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) 
         if n:
             telling["verkoop_documenten"] += 1
             telling["verkoop_regels"] += n
+    # RLZ-verkoopfacturen (blok A 29-08): alleen de opgeslagen regels hernormaliseren — géén RLZ-calls
+    # vanuit de UI-knop (504-les); het lezen zelf zit in de dagelijkse sync / `voorraad-rlz-sync`.
+    from app.voorraad import rlz_uitstroom
+
+    telling["rlz_regels"] = rlz_uitstroom.hernormaliseer_rlz_regels(administratie_id=administratie_id)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         record_audit_event(
             session,
@@ -330,7 +342,14 @@ class Aansluiting:
     bronnen: dict[str, str] = field(
         default_factory=lambda: {
             "inkoop": "inkoopfacturen (AI-gescand, extern document)",
-            "verkoop": "verkoopfactuurregels (interne registratie)",
+            "verkoop": (
+                "verkoopfactuurregels (in de app geboekt) + RLZ-verkoopfacturen "
+                "(dagelijkse leesroute, Quantity per regel)"
+            ),
+            "verkoop_rlz": (
+                "RLZ-verkoopfacturen van de administratie (alleen geboekt, Status 2/3; "
+                "creditregels = negatieve Quantity)"
+            ),
             "systeemstand": "handmatige telling per datum",
         }
     )
@@ -504,7 +523,9 @@ def dagstanden(*, administratie_id: uuid.UUID, artikelgroep_id: uuid.UUID, van: 
 @dataclass(frozen=True)
 class RegelData:
     id: uuid.UUID
-    document_id: uuid.UUID
+    document_id: uuid.UUID | None
+    rlz_document_id: uuid.UUID | None
+    rlz_referentie: str | None
     richting: str
     bron: str
     datum: date
@@ -552,6 +573,8 @@ def regels(
         RegelData(
             id=r.id,
             document_id=r.document_id,
+            rlz_document_id=r.rlz_document_id,
+            rlz_referentie=r.rlz_referentie,
             richting=r.richting,
             bron=r.bron,
             datum=r.datum,
