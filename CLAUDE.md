@@ -918,10 +918,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `POST /uren/stempels` (alleen de veldwerker zelf, nooit namens; alleen projecten mét zone in
   scope), eigen stempels in de veld-app, keuringskolom "gestempeld aanwezig" (Σ in/uit-paren,
   onvolledig paar sluit op middernacht mét markering, > 1,0 u afwijking = oranje vlag — nooit
-  korting; geen stempels = toets zwijgt). **PARKEERPOST:** de native achtergrondlocatie
-  (manifest/permissies/OS-geofence-registratie/OS-permissiestap/store-motivering) komt in een eigen
-  release-ronde ná de eerste Play-release; de `ACCESS_BACKGROUND_LOCATION`-guard in
-  `bouw_android_release.sh` blijft tot dan. BESLISSINGEN "BOUWRUN 28-08 AVOND" blok C.
+  korting; geen stempels = toets zwijgt). **Native achtergrondlocatie: GEBOUWD OP
+  BRANCH `feat/geofence-native` (29-08) — NIET gemerged, NIET releasen:** iOS CLLocationManager-
+  regiobewaking + Android GeofencingClient, zones uit de weekplanning (`GET /uren/stempels/zones`,
+  max 20), éénmalige OS-permissiestap, buffer + nazenden via `POST /uren/stempels` bij app-opening;
+  kabeltest-draaiboek `native/GEOFENCE_KABELTEST.md` (branch). Xcode Cloud bouwt vanaf main; de
+  `ACCESS_BACKGROUND_LOCATION`-guard in `bouw_android_release.sh` blijft op main; store-motivering +
+  release = versie 1.1 ná de eerste store-goedkeuring. BESLISSINGEN "BOUWRUN 28-08 AVOND" blok C +
+  "OPDRACHT 29-08" blok C.
   **Prijsafspraken per project × veldwerker (steigerbouw-run 25-08 blok B1, GEBOUWD + GETEST
   2026-08-25, migratie 0073 — BESLISSINGEN "STEIGERBOUW-RUN 25-08 — BLOK B" is canoniek):**
   tarief mét eenheid uur óf m² + ISO-week-venster, append-only (intrekken met reden), overlap
