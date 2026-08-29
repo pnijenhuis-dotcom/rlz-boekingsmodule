@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activatieOpDitApparaat, isMobielUserAgent } from './webauthnClient'
+import { activatieOpDitApparaat, apparaatNaam, isIpadOs, isMobielUserAgent } from './webauthnClient'
 
 // Beslisregel activatielink (besluit Peter 28-08, mockup activatie-mobiel.html beslispunt 1):
 // capability-check + UA-vangnet, twijfel = stop-scherm (fail-safe richting telefoon).
@@ -37,5 +37,22 @@ describe('isMobielUserAgent', () => {
     expect(isMobielUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)')).toBe(false)
     expect(isMobielUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(false)
     expect(isMobielUserAgent('Mozilla/5.0 (darwin) AppleWebKit/537.36 (KHTML, like Gecko) jsdom/24.0.0')).toBe(false)
+  })
+
+  it('iPadOS met desktop-UA ("Macintosh") telt als mobiel zodra er een aanraakscherm is (iPad-ronde 29-08)', () => {
+    const ipadOs = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15'
+    expect(isMobielUserAgent(ipadOs, 5)).toBe(true)
+    // Echte Mac: zelfde UA, geen aanraakpunten → desktop blijft desktop (stop-scherm mét QR).
+    expect(isMobielUserAgent(ipadOs, 0)).toBe(false)
+    expect(isIpadOs(ipadOs, 5)).toBe(true)
+    expect(isIpadOs(ipadOs, 0)).toBe(false)
+    expect(isIpadOs('Mozilla/5.0 (iPad; CPU OS 12_0 like Mac OS X)', 0)).toBe(true)
+  })
+
+  it('apparaatNaam: iPad met desktop-UA heet "iPad", een Mac blijft "Mac"', () => {
+    const ipadOs = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15'
+    expect(apparaatNaam(ipadOs, 5)).toBe('iPad')
+    expect(apparaatNaam(ipadOs, 0)).toBe('Mac')
+    expect(apparaatNaam('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', 5)).toBe('iPhone')
   })
 })

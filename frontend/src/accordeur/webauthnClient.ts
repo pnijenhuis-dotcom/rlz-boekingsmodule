@@ -151,10 +151,9 @@ export async function ondertekenAssertie(optiesJson: string): Promise<Record<str
 }
 
 /** Leesbaar apparaat-label voor de kantoor-apparatenlijst (kill-switch) — puur informatief. */
-export function apparaatNaam(): string {
-  const ua = navigator.userAgent
+export function apparaatNaam(ua: string = navigator.userAgent, maxTouchPoints: number = navigator.maxTouchPoints ?? 0): string {
   if (/iPhone/.test(ua)) return 'iPhone'
-  if (/iPad/.test(ua)) return 'iPad'
+  if (isIpadOs(ua, maxTouchPoints)) return 'iPad'
   if (/Android/.test(ua)) return 'Android-toestel'
   if (/Macintosh/.test(ua)) return 'Mac'
   if (/Windows/.test(ua)) return 'Windows-pc'
@@ -245,8 +244,17 @@ export async function ontgrendelen(payload: {
 
 /** Grove apparaatklasse uit de user-agent — uitsluitend als VANGNET naast de
  * WebAuthn-capability-check (mockup-beslispunt 1). */
-export function isMobielUserAgent(ua: string = navigator.userAgent): boolean {
-  return /iPhone|iPad|iPod|Android/.test(ua)
+export function isMobielUserAgent(ua: string = navigator.userAgent, maxTouchPoints: number = navigator.maxTouchPoints ?? 0): boolean {
+  return /iPhone|iPad|iPod|Android/.test(ua) || isIpadOs(ua, maxTouchPoints)
+}
+
+/** iPadOS (≥ 13) meldt zich in Safari én in de native webview als "Macintosh" (desktop-UA);
+ * het enige onderscheid met een echte Mac is het aanraakscherm (`navigator.maxTouchPoints` > 1 —
+ * een Mac geeft 0). iPad-ronde 29-08: zonder deze toets kreeg een iPad-gebruiker op de
+ * activatielink het desktop-stop-scherm en heette het apparaat "Mac" in de apparatenlijst. */
+export function isIpadOs(ua: string, maxTouchPoints: number): boolean {
+  if (/iPad/.test(ua)) return true
+  return /Macintosh/.test(ua) && maxTouchPoints > 1
 }
 
 /** `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()` — true/false, of null

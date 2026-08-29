@@ -48,7 +48,10 @@
   }
 
   /* ===== Mobiel is leading: de app vult het scherm op ≤430px.
-         Desktop (>580px) is de afgeleide: zelfde app in een telefoonkader + zijnotitie. ===== */
+         Desktop (>580px) is de afgeleide: zelfde app in een telefoonkader + zijnotitie.
+         TABLET (iPad-ronde 29-08, iPad blijft ondersteund): in de echte app krijgt de kolom vanaf
+         700px viewport max-width 640px (accordeur.css) — zelfde opbouw, alleen breder; de mockup
+         toont bewust het telefoonkader. ===== */
   .stage { min-height: 100vh; display: flex; justify-content: center; }
   .phone { width: 100%; max-width: 430px; background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; position: relative; }
   .desknote { display: none; }

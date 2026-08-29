@@ -117,6 +117,15 @@
     border-right: 1px solid var(--acc-border);
   }
 }
+/* Tablet (iPad-ronde 29-08, iPad blijft ondersteund): vanaf ~700px viewport (iPad mini portret =
+   744pt) een bredere kolom — factuurbeeld en kaarten krijgen meer ruimte, de telefoonkolom zelf
+   (430px) blijft de norm voor telefoons. Alles ín de kolom is vloeibaar (100%-breedtes), de
+   losse formulieren houden hun eigen max-breedte en centreren. */
+@media (min-width: 700px) {
+  .acc-phone {
+    max-width: 640px;
+  }
+}
 
 /* ===== App-chrome ===== */
 .acc-apphead {
