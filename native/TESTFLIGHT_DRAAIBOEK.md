@@ -130,6 +130,10 @@ Onder **iOS App 1.0** (Prepare for Submission):
   `iphone-6p9-*.png` in het 6.9"-vak (volgorde: wachtrij, factuurbeeld, ontgrendelen).
   De `iphone-6p3-*.png` kunnen in het 6.3"-vak (optioneel — ASC schaalt anders zelf;
   `-04-meldingenkaart` is een optionele vierde). Alleen de 6.9"-set is verplicht.
+  **iPad (29-08, iPad blijft ondersteund):** zodra de app-record iPad-ondersteuning draagt
+  (`TARGETED_DEVICE_FAMILY = 1,2` — dat is al zo) vraagt ASC óók iPad-screenshots: sleep de drie
+  `ipad-13-0{1,2,3}-*.png` (2064×2752, portret) in het **iPad 13"**-vak; ASC schaalt ze zelf naar
+  de kleinere iPad-vakken.
 - **Description** (NL), voorstel:
   "Keur inkoopfacturen van je eigen administratie goed of wijs ze af — veilig met een
   passkey (Face ID), alleen op uitnodiging van Administratiekantoor Nijenhuis. Je ziet de

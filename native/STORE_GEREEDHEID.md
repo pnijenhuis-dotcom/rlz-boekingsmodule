@@ -138,7 +138,7 @@ béta-/app-review, niet voor interne TestFlight), build koppelen ná de eerste u
    **Aangevuld 2026-08-21 met de 6.5"-maat** (`iphone-6p5-*`, 1284×2778 — iPhone
    11 Pro Max-klasse, de derde maat die ASC op de versiepagina kan vragen): wachtrij,
    factuurbeeld, ontgrendelscherm (drie schermen, conform de 6.9"-set; zelfde
-   simulator-opzet met uitsluitend fictieve demo-facturen). **Privacy-URL: GEBOUWD (2026-08-18)** —
+   simulator-opzet met uitsluitend fictieve demo-facturen). **iPad-set toegevoegd 2026-08-29 (besluit Peter: iPad blijft ondersteund)** — `ipad-13-0{1,2,3}-*.png` (2064×2752, iPad Pro 13" M5-simulator, portret, donker thema: wachtrij, factuurbeeld, ontgrendelscherm; zelfde opzet — lokale backend met apex-rp_id, échte passkey-registratie via de AASA-keten, uitsluitend fictieve DEMO-facturen). Bijvangst iPad-ronde: tablet-breakpoint (kolom 640px vanaf 700px viewport) + iPadOS-herkenning in het UA-vangnet, zie BESLISSINGEN "iPAD-RONDE 29-08". **Privacy-URL: GEBOUWD (2026-08-18)** —
    `https://app.administratiekantoornijenhuis.nl/accordeur/privacy`
    (`backend/app/auth/privacy_pagina.py`, wellknown-patroon: rendert de akkoordtekst uit
    `app/auth/voorwaarden.py` — één bron van waarheid, versie zichtbaar; live ná de
