@@ -25,6 +25,11 @@ const config: CapacitorConfig = {
   },
   android: {
     backgroundColor: '#0b0d0e',
+    /* Alleen voor een LOKALE debug-build (emulator-screenshots PLAY_DRAAIBOEK §6 / kliktest
+     * zonder https): de webview-origin is https://localhost, de lokale backend http://10.0.2.2:…
+     * = mixed content → alleen toestaan als de bouwer dat expliciet vraagt. De release-build
+     * zet deze vlag nooit (bouw_android_release.sh bewaakt dat de gebundelde config 'm mist). */
+    ...(process.env.NATIVE_LOKALE_BACKEND === '1' ? { allowMixedContent: true } : {}),
   },
 }
 

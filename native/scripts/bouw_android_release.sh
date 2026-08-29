@@ -85,6 +85,16 @@ printf '%s\n' "${INHOUD}" | grep -q "base/manifest/AndroidManifest.xml" || { ech
 printf '%s\n' "${INHOUD}" | grep -q "base/assets/public/index.html" || { echo "   FOUT: webbundel (assets/public/index.html) ontbreekt — cap sync mislukt?"; exit 1; }
 printf '%s\n' "${INHOUD}" | grep -q "base/res/drawable/ic_stat_nijenhuis" || { echo "   FOUT: notificatie-icoon ic_stat_nijenhuis ontbreekt."; exit 1; }
 echo "   manifest + webbundel + notificatie-icoon aanwezig ✓"
+# (b2) geen lokale-debug-plumbing in de release (Android-bouwronde 29-08): de emulator-screenshot-
+#      build zet via NATIVE_LOKALE_BACKEND=1 `allowMixedContent` in de gebundelde Capacitor-config en
+#      de debug-manifest-overlay `usesCleartextTraffic` — beide horen NOOIT in een Play-upload.
+if unzip -p "${AAB}" base/assets/capacitor.config.json | grep -q "allowMixedContent"; then
+  echo "   FOUT: allowMixedContent in de gebundelde capacitor.config.json — NATIVE_LOKALE_BACKEND stond aan bij cap sync."; exit 1
+fi
+if unzip -p "${AAB}" base/assets/public/index.html >/dev/null 2>&1 && unzip -l "${AAB}" | grep -q "base/assets/public/assets/" && unzip -p "${AAB}" 'base/assets/public/assets/*.js' | grep -q "10\.0\.2\.2"; then
+  echo "   FOUT: de webbundel wijst naar de emulator-host 10.0.2.2 — bouw de web opnieuw zónder VITE_API_BASE-override."; exit 1
+fi
+echo "   geen mixed-content-vlag / emulator-API-base in de bundel ✓"
 # (c) bundletool (optioneel, als geïnstalleerd: brew install bundletool) — officiële validatie + manifest-dump.
 if command -v bundletool >/dev/null 2>&1; then
   bundletool validate --bundle="${AAB}" >/dev/null && echo "   bundletool validate ✓"
@@ -96,6 +106,8 @@ if command -v bundletool >/dev/null 2>&1; then
   echo "   package ${PKG} · versionCode ${VC} · versionName ${VN} ✓"
   printf '%s' "${MANIFEST}" | grep -q "POST_NOTIFICATIONS" && echo "   POST_NOTIFICATIONS gedeclareerd ✓"
   printf '%s' "${MANIFEST}" | grep -q "ACCESS_BACKGROUND_LOCATION" && { echo "   FOUT: ACCESS_BACKGROUND_LOCATION in het manifest — geofence zit NIET in deze release."; exit 1; }
+  printf '%s' "${MANIFEST}" | grep -q 'usesCleartextTraffic="true"' && { echo "   FOUT: usesCleartextTraffic in het release-manifest — de debug-overlay (app/src/debug) is in de release gelekt."; exit 1; }
+  echo "   geen ACCESS_BACKGROUND_LOCATION / usesCleartextTraffic ✓"
 else
   echo "   (bundletool niet geïnstalleerd — 'brew install bundletool' voor de officiële validatie + manifest-dump; niet verplicht)"
 fi

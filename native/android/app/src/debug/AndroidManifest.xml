@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG-OVERLAY (Android-bouwronde 29-08): alleen de debug-variant mag cleartext-http praten,
+     zodat een emulator-/toestel-debugbuild een LOKALE backend kan bereiken (10.0.2.2:<poort>) voor
+     de Play-screenshots (PLAY_DRAAIBOEK.md §6) en kliktests zonder https. De release-variant
+     krijgt dit NIET (bundleRelease merget alleen main/) — bouw_android_release.sh bewaakt dat
+     usesCleartextTraffic afwezig is in de AAB. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>
