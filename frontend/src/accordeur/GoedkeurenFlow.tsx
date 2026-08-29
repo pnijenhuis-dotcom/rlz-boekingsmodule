@@ -66,6 +66,7 @@ import {
 } from './administraties'
 import { PullToRefresh } from './PullToRefresh'
 import { useVerversBijVoorgrond } from './verversen'
+import { UitlogIcoon } from './UitlogIcoon'
 
 type Weergave = 'wachtrij' | 'review' | 'beheer' | 'thread'
 
@@ -800,7 +801,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
             ◐
           </button>
           <button className="acc-iconbtn" title="Uitloggen" aria-label="Uitloggen" onClick={() => void doeUitloggen()}>
-            ⏻
+            <UitlogIcoon />
           </button>
         </div>
       </div>

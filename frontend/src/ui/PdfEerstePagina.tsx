@@ -20,8 +20,12 @@ export function PdfEerstePagina({ blobUrl, breedte }: Props) {
     setFout(null)
     setBezig(true)
     const render = async () => {
-      const pdfjs = await import('pdfjs-dist')
-      const workerModule = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+      // LEGACY-build (Android-bouwronde 29-08): de hoofdbuild van pdf.js 6 vereist o.a.
+      // `Uint8Array.prototype.toHex` (Chromium ≥ 140) en faalde in de Android-WebView 133 van de
+      // emulator met "n.toHex is not a function" — een verouderde WebView op een echt toestel
+      // raakt dat óók. De legacy-build draagt de polyfills; zelfde API, zelfde worker-contract.
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
       pdfjs.GlobalWorkerOptions.workerSrc = workerModule.default
       const document_ = await pdfjs.getDocument({ url: blobUrl }).promise
       if (geannuleerd) return

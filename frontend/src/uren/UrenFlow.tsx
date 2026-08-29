@@ -15,6 +15,7 @@ import { haalMijnAdministraties, isVoorwaardenVereist } from '../accordeur/accor
 import { PdfWeergave } from '../accordeur/PdfWeergave'
 import { VoorwaardenScherm } from '../accordeur/VoorwaardenScherm'
 import { useAuth } from '../auth/AuthContext'
+import { UitlogIcoon } from '../accordeur/UitlogIcoon'
 import {
   beantwoordMeerwerkVraag,
   datumKort,
@@ -274,7 +275,7 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
             ◐
           </button>
           <button className="acc-iconbtn" title="Uitloggen" onClick={() => void uitloggen()}>
-            ⏻
+            <UitlogIcoon />
           </button>
         </div>
       </div>

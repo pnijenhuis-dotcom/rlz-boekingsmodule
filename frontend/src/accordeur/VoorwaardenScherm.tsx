@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { haalVoorwaarden, legVoorwaardenAkkoordVast, type VoorwaardenDto } from './accordeurApi'
+import { UitlogIcoon } from './UitlogIcoon'
 
 interface Props {
   naAkkoord: () => void
@@ -48,7 +49,7 @@ export function VoorwaardenScherm({ naAkkoord, uitloggen }: Props) {
       {/* Wie niet akkoord gaat moet er ook uit kunnen: zonder deze knop laat de fail-closed-gate
           alleen "app sluiten" over en blijft de server-sessie leven (randgeval 2026-08-12). */}
       <button className="acc-iconbtn" title="Uitloggen" aria-label="Uitloggen" onClick={() => void uitloggen()}>
-        ⏻
+        <UitlogIcoon />
       </button>
       <div className="acc-appnaam">
         Nijenhuis <span>Boekingsmodule</span>
