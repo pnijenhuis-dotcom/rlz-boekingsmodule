@@ -988,8 +988,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Voorraad-aansluiting fase 1 (bouwrun 28-08 blok D, mockup `voorraad-aansluiting.html`,
   migratie 0086 — eerste bewoner van het `mi`-schema):** controle-laag, géén tweede
   voorraadadministratie en NOOIT RLZ-writes. Opt-in `voorraad_ingeschakeld` (Beheerder-only, default
-  UIT; sinds 29-08 AAN voor Universal Verkoop, Universal Nederland, Bradwolff Constructie en BWC
-  Steigers — in de cloud gekoppeld). Instroom = regel-niveau feiten uit het inkoop-veldvoorstel
+  UIT; sinds 29-08 AAN voor Universal Verkoop, Universal Nederland, Universal Steigerbouw, Bradwolff
+  Constructie en BWC Steigers — in de cloud gekoppeld; eerste vulling 29-08 avond, zie BESLISSINGEN
+  "OPDRACHT 29-08" blok A "Eerste voorraad-vulling"). Instroom = regel-niveau feiten uit het inkoop-veldvoorstel
   (AI-regelschema levert nu óók eenheid `e` + stuksprijs `p`), uitstroom = verkoopfactuurregels van de
   in de app geboekte verkoopdocumenten (UBL-hoeveelheden) **én — blok A 29-08, STAP-0 groen, migratie
   0087 — de EIGEN RLZ-verkoopfacturen van de administratie via de dagelijkse leesroute
