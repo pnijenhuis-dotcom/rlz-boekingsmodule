@@ -40,6 +40,24 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `rlz-sql2` mét CMEK-key + default-CMEK-key op de documentenbucket (keys `cmek-sql`/
   `cmek-documenten` op keyring `rlz`, jaarrotatie, nooit destroy); client-side
   documentversleuteling alleen op expliciet klantverzoek.
+- **Instellingen › Administraties v2 (opdracht 30-08, mockup `instellingen-administraties-v2.html` =
+  norm, akkoord Peter 29-08; migratie 0089 — BESLISSINGEN "OPDRACHT 30-08 (2)" blok A is canoniek):**
+  compacte tabel (naam + meta, module-/afwijkings-chips, sync-chip, ⚙ 🧪 🗑) + detail-dialoog per
+  administratie met álle instellingen (`AdministratiesV2.tsx`); defaults boeken + AI-extractie AAN voor
+  NIEUWE administraties (bestaande behouden hun waarde, afwijking = chip); Vastly-autoboeken heeft geen
+  eigen knop meer — de motor toetst op `is_vastgoed`, de kolom is een spiegel; ARCHIVEREN (🗑, nooit
+  verwijderen): `actief=false` + `gearchiveerd_op/door`, webservice-login uit de credential-store,
+  álle RLZ-rakende jobs/meldingen en `mijn_administraties` filteren op `actief`, registersync levert
+  gearchiveerde rijen niet meer (contract v1.19, afwezigheid = verdwenen), dearchiveren = nieuwe login
+  mét groene probe; `BevestigDialog` is een Radix-dialoog (geneste modals).
+- **Terugkerende-facturen-signaal (opdracht 30-08 blok B, benchmark-besluit Peter 29-08, migratie 0090
+  — BESLISSINGEN "OPDRACHT 30-08 (2)" blok B):** `app/terugkerend/` — deterministisch (géén AI) per
+  (administratie, crediteur): ≥ 3 facturen met regelmatig interval maand/kwartaal ±35 % (app-documenten +
+  RLZ-boekingsgeheugen); signaal 1 "verwachte factuur ontbreekt" = oranje werkvoorraad-teller
+  (`terugkerend_signalen`, kolom "Verwachte facturen") + scherm Inzicht › Terugkerende facturen
+  (`/terugkerend`, snooze/afmelden per leverancier mét audit); signaal 2 "prijsstijging" boven de drempel
+  (`terugkerend_prijsstijging_pct`, default 10, Beheerder) = chip op het controlescherm
+  (`TerugkerendSignaal`) + in het overzicht; dagelijks meeliftend in `sync-alles`. Alleen signaleren.
 - **Administratie toevoegen via de UI (feedbackronde 26-08 punt 5, migratie 0076):** Instellingen ›
   Administraties "+ Administratie toevoegen" — wizard: webservice-login → verbinding + rechten-probe
   (10 leesroutes) verplicht groen → keuze uit `GET Administrations` (nooit een id typen) → opslaan
@@ -48,7 +66,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   storno 19); "Webservice-gegevens wijzigen" per rij (probe-gated). **Eerste-sync-stand op de
   administratie-rij (wizard-nazorg 27-08): subrij mét status per onderdeel, foutreden en "Sync
   opnieuw starten" zolang de laatste run niet volledig groen is — `eerste_sync` op de
-  lijst-response; BESLISSINGEN "VERZAMELRUN 27-08" punt 5.** Zie BESLISSINGEN
+  lijst-response; BESLISSINGEN "VERZAMELRUN 27-08" punt 5. Sinds v2 (30-08): sync-chip in de tabel
+  + de stand in de detail-dialoog; wizard-defaults = boeken + AI-extractie AAN.** Zie BESLISSINGEN
   "RLZ-FEEDBACKRONDE 26-08" punt 5; `app/beheer/onboarding.py`. **`is_vastgoed` is sinds de avondrun
   26-08 een Beheerder-toggle op dezelfde pagina (`PATCH /administraties/{id}/is-vastgoed`, kolom
   "Vastgoed-koppeling (Vastly)", bevestigingsdialoog met consequenties, audit oud→nieuw; UIT neemt

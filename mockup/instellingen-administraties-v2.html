@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Instellingen › Administraties v2 (herontwerp 29-08)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#f6f7f8; --panel:#fff; --panel-2:#fafbfb; --border:#e6e8ea; --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-fg:#fff; --accent-bg:#e6f4f2;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3; --danger:#b42318; --danger-bg:#fceceb;
+    --info:#3548a5; --info-bg:#eaeefb; --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px; --shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,sans-serif;
+  }
+  body { font-family:var(--font); background:var(--bg); color:var(--text); padding:28px; font-size:14px; }
+  h1 { font-size:20px; font-weight:800; }
+  .sub { color:var(--muted); margin:6px 0 22px; max-width:940px; line-height:1.5; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; margin-bottom:22px; max-width:1060px; }
+  .panel h2 { font-size:15px; font-weight:700; margin-bottom:4px; }
+  .uitleg { color:var(--muted); font-size:12.5px; margin-bottom:14px; line-height:1.5; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); padding:8px 10px; border-bottom:1px solid var(--border); }
+  td { padding:11px 10px; border-bottom:1px solid var(--border); vertical-align:middle; font-size:13px; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:var(--panel-2); }
+  .chip { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; margin-right:4px; }
+  .chip.vastgoed { background:var(--purple-bg); color:var(--purple); }
+  .chip.uren { background:var(--info-bg); color:var(--info); }
+  .chip.voorraad { background:var(--accent-bg); color:var(--primary); }
+  .chip.afdeling { background:var(--warn-bg); color:var(--warn); }
+  .chip.uit { background:var(--danger-bg); color:var(--danger); }
+  .chip.sync { background:var(--ok-bg); color:var(--ok); }
+  .naam { font-weight:700; }
+  .meta { font-size:11.5px; color:var(--faint); margin-top:2px; }
+  .btn { display:inline-block; padding:6px 12px; border-radius:var(--radius-sm); font-size:12.5px; font-weight:600; border:1px solid var(--border); background:var(--panel); cursor:pointer; white-space:nowrap; }
+  .btn.primair { background:var(--primary); border-color:var(--primary); color:var(--primary-fg); }
+  .icoon { border:none; background:none; cursor:pointer; font-size:15px; padding:4px 6px; border-radius:6px; }
+  .icoon:hover { background:var(--panel-2); }
+  .beslis { background:var(--info-bg); border:1px solid #c9d3f2; border-radius:var(--radius); padding:18px 20px; max-width:1060px; margin-top:6px; }
+  .beslis h2 { font-size:14px; color:var(--info); margin-bottom:10px; }
+  .beslis li { margin:8px 0 8px 18px; line-height:1.5; font-size:13px; }
+  .norm { font-size:11px; color:var(--faint); margin-top:28px; }
+  /* dialoog */
+  .dialoog { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 8px 40px rgba(18,24,31,.18); padding:22px; max-width:640px; }
+  .dialoog h3 { font-size:16px; font-weight:800; margin-bottom:2px; }
+  .dialoog .sectie { border-top:1px solid var(--border); margin-top:14px; padding-top:12px; }
+  .dialoog .sectie h4 { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); margin-bottom:8px; }
+  .regel { display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:13px; gap:14px; }
+  .regel .hint { color:var(--faint); font-size:11.5px; }
+  .switch { width:34px; height:19px; border-radius:999px; background:var(--primary); position:relative; display:inline-block; flex-shrink:0; }
+  .switch::after { content:''; position:absolute; top:2px; right:2px; width:15px; height:15px; border-radius:50%; background:#fff; }
+  .switch.uit { background:#c9ced4; } .switch.uit::after { right:auto; left:2px; }
+  .veld { border:1px solid var(--border); border-radius:var(--radius-sm); padding:7px 10px; background:var(--panel); font-size:13px; min-width:220px; }
+</style>
+</head>
+<body>
+
+<h1>Instellingen › Administraties — herontwerp</h1>
+<p class="sub">Besluiten Peter 29-08: Boeken, AI-extractie en Vastly-autoboeken worden <b>defaults</b> (kolommen vervallen;
+Vastly-autoboeken lift mee op de vastgoed-toggle — geen tweede knop). De hoofdtabel toont alleen wat per administratie
+<b>afwijkt of bijzonder is</b> (chips); álle instellingen leven in een detail-dialoog per rij. Prullenbak = archiveren +
+webservice-login intrekken — nooit verwijderen.</p>
+
+<!-- ============ hoofdtabel ============ -->
+<div class="panel">
+  <h2>Administraties <span style="font-weight:400; color:var(--faint); font-size:12px;">· 20 actief</span>
+    <span style="float:right;"><button class="btn primair">+ Administratie toevoegen</button></span></h2>
+  <p class="uitleg">Chips tonen alleen ingeschakelde modules en afwijkingen van de defaults. Klik op een rij (of ⚙) voor alle instellingen.</p>
+  <table>
+    <tr><th>Administratie</th><th>Modules & afwijkingen</th><th>Sync</th><th style="text-align:right;">Acties</th></tr>
+    <tr>
+      <td><div class="naam">Kempen Facilities B.V.</div><div class="meta">eigenaar: Peter · 2 IBAN-accordeurs</div></td>
+      <td><span class="chip vastgoed">Vastgoed + autoboeken</span><span class="chip afdeling">Afdelingen (di.)</span></td>
+      <td><span class="chip sync">✓ 06:14</span></td>
+      <td style="text-align:right;"><button class="icoon" title="Instellingen">⚙</button><button class="icoon" title="Schrijftest">🧪</button><button class="icoon" title="Archiveren">🗑</button></td>
+    </tr>
+    <tr>
+      <td><div class="naam">Universal Steigerbouw B.V.</div><div class="meta">eigenaar: Peter</div></td>
+      <td><span class="chip uren">Uren & meerwerk · 12u-max</span><span class="chip voorraad">Voorraad</span></td>
+      <td><span class="chip sync">✓ 06:15</span></td>
+      <td style="text-align:right;"><button class="icoon">⚙</button><button class="icoon">🧪</button><button class="icoon">🗑</button></td>
+    </tr>
+    <tr>
+      <td><div class="naam">Universal Verkoop B.V.</div><div class="meta">gekoppeld 29-08</div></td>
+      <td><span class="chip voorraad">Voorraad</span></td>
+      <td><span class="chip sync">✓ 06:15</span></td>
+      <td style="text-align:right;"><button class="icoon">⚙</button><button class="icoon">🧪</button><button class="icoon">🗑</button></td>
+    </tr>
+    <tr>
+      <td><div class="naam">Rubicon Investments B.V.</div><div class="meta">eigenaar: Peter</div></td>
+      <td><span class="chip vastgoed">Vastgoed + autoboeken</span><span class="chip vastgoed">afgeletterd-events</span></td>
+      <td><span class="chip sync">✓ 06:12</span></td>
+      <td style="text-align:right;"><button class="icoon">⚙</button><button class="icoon">🧪</button><button class="icoon">🗑</button></td>
+    </tr>
+    <tr>
+      <td><div class="naam">Beleggingsmaatschappij Meyer BV</div><div class="meta"></div></td>
+      <td><span class="chip uit">AI-extractie UIT (afwijking)</span></td>
+      <td><span class="chip sync">✓ 06:13</span></td>
+      <td style="text-align:right;"><button class="icoon">⚙</button><button class="icoon">🧪</button><button class="icoon">🗑</button></td>
+    </tr>
+    <tr>
+      <td><div class="naam">Administratiekantoor Nijenhuis (test)</div><div class="meta">testadministratie</div></td>
+      <td><span class="chip uit">Boeken UIT (afwijking)</span></td>
+      <td><span class="chip sync">✓ 06:11</span></td>
+      <td style="text-align:right;"><button class="icoon">⚙</button><button class="icoon">🧪</button><button class="icoon">🗑</button></td>
+    </tr>
+  </table>
+</div>
+
+<!-- ============ detail-dialoog ============ -->
+<div class="panel" style="background:var(--panel-2);">
+  <h2>Detail-dialoog (⚙ of klik op de rij)</h2>
+  <p class="uitleg">Alle instellingen op één plek, gegroepeerd; de tabel blijft schoon. Defaults staan aan — je ziet hier alleen nog de schakelaars, niet meer als kolommen.</p>
+  <div class="dialoog">
+    <h3>Kempen Facilities B.V.</h3>
+    <div class="meta">RLZ-id 66e1e296-… · gekoppeld 15-08 · laatste sync 06:14 ✓</div>
+
+    <div class="sectie"><h4>Verwerking</h4>
+      <div class="regel"><span>Boeken ingeschakeld <span class="hint">— default aan; uit = alleen bij uitzondering</span></span><span class="switch"></span></div>
+      <div class="regel"><span>AI-extractie (AVG-gate) <span class="hint">— default aan; platformbrede kill-switch blijft</span></span><span class="switch"></span></div>
+      <div class="regel"><span>Project verplicht bij boeken</span><span class="switch"></span></div>
+      <div class="regel"><span>Eigenaar (ontvangt automatische systeemvragen)</span><span class="veld">Peter Nijenhuis ▾</span></div>
+    </div>
+
+    <div class="sectie"><h4>Modules</h4>
+      <div class="regel"><span>Vastgoed-koppeling (Vastly) <span class="hint">— autoboeken verkoop lift automatisch mee</span></span><span class="switch"></span></div>
+      <div class="regel"><span>Uren & meerwerk</span><span class="switch uit"></span></div>
+      <div class="regel"><span>Afdelingen <span class="hint">— vereist afdelingen + routes (beheer hieronder)</span></span><span class="switch uit"></span></div>
+      <div class="regel"><span>Voorraad bijhouden</span><span class="switch uit"></span></div>
+    </div>
+
+    <div class="sectie"><h4>Toegang & accordering</h4>
+      <div class="regel"><span>IBAN-wissel accorderen door</span><span class="veld">2 accordeurs · wijzig</span></div>
+      <div class="regel"><span>Klant-accordering (lagen)</span><span class="veld">2 lagen · wijzig</span></div>
+    </div>
+
+    <div class="sectie"><h4>Webservice</h4>
+      <div class="regel"><span>Webservice-gegevens</span><span><button class="btn">Wijzigen (probe-gated)</button> <button class="btn">Schrijftest</button></span></div>
+      <div class="regel"><span style="color:var(--danger);">Archiveren <span class="hint">— login ingetrokken, sync stopt, data blijft; terugzetten kan</span></span><button class="btn" style="color:var(--danger); border-color:var(--danger);">🗑 Archiveren…</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="beslis">
+  <h2>Beslispunten (voorstel Cowork — akkoord of bijstellen)</h2>
+  <ul>
+    <li><b>Defaults bij bestaande administraties:</b> bij de migratie worden Boeken/AI-extractie voor bestáánde rijen
+        op hun huidige waarde gelaten — alleen wie afwijkt van de default krijgt een chip. Nieuwe administraties
+        starten mét de defaults aan (wizard vermeldt dat).</li>
+    <li><b>Vastly-autoboeken:</b> de aparte vlag verdwijnt uit de UI; gedrag = aan zodra vastgoed-koppeling aan
+        (zelfde poorten, audit blijft). Uit zetten = vastgoed-koppeling uit.</li>
+    <li><b>Archiveren:</b> webservice-login wordt uit de credential-store ingetrokken, syncs stoppen, documenten en
+        historie blijven; gearchiveerde administraties achter een filter (zelfde patroon als gebruikers). Registersync
+        levert ze niet meer (verdwenen-semantiek §8 — Vastly markeert, verwijdert niets).</li>
+    <li><b>Sync-kolom</b> vervangt de eerste-sync-subrij: groen vinkje + tijd; fout = rode chip mét reden en
+        "opnieuw starten" in de dialoog.</li>
+    <li><b>Schrijftest (🧪)</b> blijft als rij-actie voor snelheid; alles wat zelden nodig is zit in de dialoog.</li>
+  </ul>
+</div>
+
+<p class="norm">Mockup instellingen-administraties v2 · 29-08 · designpass v2 · ná akkoord = bouwnorm</p>
+</body>
+</html>
