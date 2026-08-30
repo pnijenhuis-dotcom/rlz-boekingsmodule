@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0088
+-- Migratie-head bij deze dump: 0090
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2051,6 +2051,36 @@ ALTER TABLE ONLY boekhouding.tegenboeking FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: terugkerend_signaal; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.terugkerend_signaal (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    patroon text NOT NULL,
+    interval_dagen integer NOT NULL,
+    aantal_facturen integer NOT NULL,
+    laatste_datum date NOT NULL,
+    laatste_bedrag numeric(14,2),
+    laatste_document_id uuid,
+    vorige_datum date,
+    vorige_bedrag numeric(14,2),
+    verwacht_op date NOT NULL,
+    uiterlijk_op date NOT NULL,
+    ontbreekt_sinds date,
+    prijsstijging_pct numeric(7,2),
+    snooze_tot date,
+    afgemeld_op timestamp with time zone,
+    afgemeld_door uuid,
+    berekend_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_terugkerend_signaal_patroon CHECK ((patroon = ANY (ARRAY['maand'::text, 'kwartaal'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.terugkerend_signaal FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: toewijzing_regel; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2648,6 +2678,9 @@ CREATE TABLE platform.administratie (
     uren_dagmax_uren numeric(4,2) DEFAULT 12 NOT NULL,
     afdelingen_ingeschakeld boolean DEFAULT false NOT NULL,
     voorraad_ingeschakeld boolean DEFAULT false NOT NULL,
+    gearchiveerd_op timestamp with time zone,
+    gearchiveerd_door uuid,
+    terugkerend_prijsstijging_pct numeric(5,2) DEFAULT 10.00 NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
 );
@@ -3652,6 +3685,14 @@ ALTER TABLE ONLY boekhouding.tegenboeking
 
 
 --
+-- Name: terugkerend_signaal terugkerend_signaal_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.terugkerend_signaal
+    ADD CONSTRAINT terugkerend_signaal_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: toewijzing_regel toewijzing_regel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3721,6 +3762,14 @@ ALTER TABLE ONLY boekhouding.materiaal_leverancier
 
 ALTER TABLE ONLY boekhouding.materiaal_product
     ADD CONSTRAINT uq_materiaal_product_naam UNIQUE (leverancier_id, naam);
+
+
+--
+-- Name: terugkerend_signaal uq_terugkerend_signaal_vendor; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.terugkerend_signaal
+    ADD CONSTRAINT uq_terugkerend_signaal_vendor UNIQUE (administratie_id, vendor_id);
 
 
 --
@@ -4808,6 +4857,13 @@ CREATE INDEX ix_taxrate_cache_administratie_id ON boekhouding.taxrate_cache USIN
 --
 
 CREATE INDEX ix_tegenboeking_administratie_id ON boekhouding.tegenboeking USING btree (administratie_id);
+
+
+--
+-- Name: ix_terugkerend_signaal_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_terugkerend_signaal_administratie_id ON boekhouding.terugkerend_signaal USING btree (administratie_id);
 
 
 --
@@ -6896,6 +6952,30 @@ ALTER TABLE ONLY boekhouding.tegenboeking
 
 
 --
+-- Name: terugkerend_signaal terugkerend_signaal_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.terugkerend_signaal
+    ADD CONSTRAINT terugkerend_signaal_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: terugkerend_signaal terugkerend_signaal_afgemeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.terugkerend_signaal
+    ADD CONSTRAINT terugkerend_signaal_afgemeld_door_fkey FOREIGN KEY (afgemeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: terugkerend_signaal terugkerend_signaal_laatste_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.terugkerend_signaal
+    ADD CONSTRAINT terugkerend_signaal_laatste_document_id_fkey FOREIGN KEY (laatste_document_id) REFERENCES boekhouding.document(id);
+
+
+--
 -- Name: toewijzing_regel toewijzing_regel_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -7445,6 +7525,14 @@ ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
 
 ALTER TABLE ONLY platform.administratie
     ADD CONSTRAINT administratie_eigenaar_gebruiker_id_fkey FOREIGN KEY (eigenaar_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: administratie administratie_gearchiveerd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.administratie
+    ADD CONSTRAINT administratie_gearchiveerd_door_fkey FOREIGN KEY (gearchiveerd_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -8674,6 +8762,19 @@ ALTER TABLE boekhouding.tegenboeking ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY tegenboeking_scope ON boekhouding.tegenboeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: terugkerend_signaal; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.terugkerend_signaal ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: terugkerend_signaal terugkerend_signaal_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY terugkerend_signaal_scope ON boekhouding.terugkerend_signaal USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

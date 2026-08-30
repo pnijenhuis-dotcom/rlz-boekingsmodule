@@ -1250,6 +1250,9 @@ class WerkvoorraadKlant:
     # Duplicaatsignaal (25-08, deel 2 punt 6): open documenten met gecachete uitkomst
     # `mogelijk_duplicaat` — zelfde signaal-patroon, telt niet mee in heeft_openstaand_werk.
     duplicaat_signalen: int = 0
+    # Terugkerende facturen (blok B 30-08): leveranciers met een actief "verwachte factuur
+    # ontbreekt"-signaal — zelfde signaal-patroon (oranje, geen blokkade, geen document erachter).
+    terugkerend_signalen: int = 0
 
     @property
     def heeft_openstaand_werk(self) -> bool:
@@ -1320,6 +1323,9 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 )
                 or 0
             )
+            from app.terugkerend import service as terugkerend_service
+
+            terugkerend_signalen = terugkerend_service.tel_ontbrekend(session, administratie_id)
         klanten.append(
             WerkvoorraadKlant(
                 administratie_id=administratie_id,
@@ -1334,6 +1340,7 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 iban_wachtend=per_status.get(DocumentStatus.WACHT_OP_IBAN_ACCORDERING, 0),
                 match_afwijkingen=match_afwijkingen,
                 duplicaat_signalen=duplicaat_signalen,
+                terugkerend_signalen=terugkerend_signalen,
             )
         )
     return klanten

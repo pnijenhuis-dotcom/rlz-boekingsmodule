@@ -250,6 +250,7 @@ def werkvoorraad_overzicht(
                 iban_wachtend=k.iban_wachtend,
                 match_afwijkingen=k.match_afwijkingen,
                 duplicaat_signalen=k.duplicaat_signalen,
+                terugkerend_signalen=k.terugkerend_signalen,
             )
             for k in klanten
         ]

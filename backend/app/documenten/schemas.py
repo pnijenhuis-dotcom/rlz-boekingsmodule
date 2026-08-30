@@ -297,6 +297,8 @@ class WerkvoorraadKlantResponse(BaseModel):
     match_afwijkingen: int = 0
     # Duplicaatsignaal (25-08, deel 2 punt 6): open documenten met gecachet 'mogelijk_duplicaat'.
     duplicaat_signalen: int = 0
+    # Terugkerende facturen (blok B 30-08): leveranciers met een actief "verwachte factuur ontbreekt".
+    terugkerend_signalen: int = 0
 
 
 class WerkvoorraadOverzichtResponse(BaseModel):

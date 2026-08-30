@@ -171,7 +171,27 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     print("\nVoorraad-uitstroom RLZ-verkoopfacturen (voorraad-administraties):")
     voorraad_exit = _rapporteer_voorraad_rlz(rlz_uitstroom.sync_alle_voorraad_administraties())
-    return 1 if fouten or cijfers_exit or voorraad_exit else 0
+    # Terugkerende-facturen-signaal (blok B 30-08): dagelijks meeliftend, puur code, geen RLZ-calls.
+    from app.terugkerend import service as terugkerend_service
+
+    print("\nTerugkerende-facturen-signaal (alle actieve administraties):")
+    terugkerend_exit = _rapporteer_terugkerend(terugkerend_service.herbereken_alle())
+    return 1 if fouten or cijfers_exit or voorraad_exit or terugkerend_exit else 0
+
+
+def _rapporteer_terugkerend(resultaten: dict) -> int:
+    fouten = 0
+    for administratie_id, r in resultaten.items():
+        if isinstance(r, dict):
+            print(
+                f"OK    {administratie_id}: {r['terugkerend']} terugkerende leveranciers, "
+                f"{r['ontbreekt']} verwachte factuur ontbreekt, {r['prijsstijging']} prijsstijging, "
+                f"{r['vervallen']} vervallen"
+            )
+        else:
+            fouten += 1
+            print(f"FOUT  {administratie_id}: {r}", file=sys.stderr)
+    return 1 if fouten else 0
 
 
 def _rapporteer_voorraad_rlz(resultaten: dict) -> int:
@@ -240,7 +260,7 @@ def _voorraad_hernormaliseer(args: argparse.Namespace) -> int:
     from app.voorraad import service as voorraad_service
 
     with scoped_session(None) as session:
-        q = select(Administratie).where(Administratie.voorraad_ingeschakeld.is_(True))
+        q = select(Administratie).where(Administratie.voorraad_ingeschakeld.is_(True), Administratie.actief.is_(True))
         if args.administratie_id:
             try:
                 q = q.where(Administratie.id == uuid.UUID(args.administratie_id))
