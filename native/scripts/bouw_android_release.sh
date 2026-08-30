@@ -7,6 +7,16 @@
 # Daarna valideert het script het resultaat (signatuur = onze upload-key, package-naam,
 # versionCode/-Name, google-services-resources aanwezig) en print pad + SHA-256.
 #
+# Upload-artefacten náást de AAB (Play-nazorg 30-08 — de twee Play-waarschuwingen "geen
+# deobfuscation-bestand" en "native code zonder debug-symbolen"):
+#   - <naam>-mapping.txt          R8-mapping (identiteitsmodus, zie app/proguard-rules.pro); zit óók
+#                                 in de AAB als BUNDLE-METADATA/com.android.tools.build.obfuscation/
+#                                 proguard.map — Play leest 'm dan automatisch;
+#   - <naam>-native-debug-symbols.zip   <abi>/<lib>.so uit de bundel, Play's uploadvorm voor
+#                                 "native debug symbols" (App bundle explorer → Downloads). De app heeft
+#                                 géén eigen native code — de enige .so is androidx-datastore (Firebase),
+#                                 zoals geleverd door de bibliotheek; er is dus geen NDK nodig.
+#
 # Vereisten (PLAY_DRAAIBOEK.md §1): JDK 21, Android SDK (platform 36 + build-tools),
 # native/android/local.properties of ANDROID_HOME, en keystore.properties (§2).
 #
@@ -112,17 +122,43 @@ else
   echo "   (bundletool niet geïnstalleerd — 'brew install bundletool' voor de officiële validatie + manifest-dump; niet verplicht)"
 fi
 
+# (d) R8-mapping ingebed (Play-nazorg 30-08): met minifyEnabled=true bundelt AGP de mapping als
+#     BUNDLE-METADATA — ontbreekt die, dan is de gradle-config teruggedraaid en komt Play's
+#     "geen deobfuscation-bestand"-waarschuwing terug.
+printf '%s\n' "${INHOUD}" | grep -q "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map" \
+  || { echo "   FOUT: proguard.map ontbreekt in de AAB (BUNDLE-METADATA) — minifyEnabled staat uit? Zie app/build.gradle."; exit 1; }
+MAPPING="${ANDROID}/app/build/outputs/mapping/release/mapping.txt"
+[ -f "${MAPPING}" ] || { echo "   FOUT: ${MAPPING} niet gevonden ná de build."; exit 1; }
+echo "   R8-mapping aanwezig (ingebed + ${MAPPING##*/}) ✓"
+
 echo
 echo "== 4/5: resultaat =="
 UIT="${ANDROID}/app/release"; mkdir -p "${UIT}"
 STEMPEL="$(date +%Y%m%d-%H%M)"
-DOEL="${UIT}/nijenhuis-goedkeuren-${VERSION_NAME:-versie}-vc${VERSION_CODE:-gradle}-${STEMPEL}.aab"
+NAAM="nijenhuis-goedkeuren-${VERSION_NAME:-versie}-vc${VERSION_CODE:-gradle}-${STEMPEL}"
+DOEL="${UIT}/${NAAM}.aab"
 cp "${AAB}" "${DOEL}"
 echo "   ${DOEL}"
 echo "   SHA-256: $(shasum -a 256 "${DOEL}" | cut -d' ' -f1)"
 echo "   grootte: $(du -h "${DOEL}" | cut -f1)"
+# Upload-artefacten náást de AAB (zie kop): mapping + native debug-symbols.
+cp "${MAPPING}" "${UIT}/${NAAM}-mapping.txt"
+echo "   ${UIT}/${NAAM}-mapping.txt"
+SYMBOLEN_WERK="$(mktemp -d)"
+if unzip -q -o "${AAB}" 'base/lib/*' -d "${SYMBOLEN_WERK}" 2>/dev/null && [ -d "${SYMBOLEN_WERK}/base/lib" ]; then
+  SYMBOLEN_ZIP="${UIT}/${NAAM}-native-debug-symbols.zip"
+  rm -f "${SYMBOLEN_ZIP}"
+  (cd "${SYMBOLEN_WERK}/base/lib" && zip -q -r -X "${SYMBOLEN_ZIP}" .)
+  echo "   ${SYMBOLEN_ZIP}  ($(unzip -l "${SYMBOLEN_ZIP}" | grep -c '\.so$') .so-bestanden: $(ls "${SYMBOLEN_WERK}/base/lib" | tr '\n' ' '))"
+else
+  echo "   (geen native bibliotheken in de bundel — geen debug-symbols-zip nodig)"
+fi
+rm -rf "${SYMBOLEN_WERK}"
 
 echo
 echo "== 5/5: volgende stap =="
 echo "   Upload deze .aab in Play Console → Test and release → Testing → Internal testing →"
 echo "   Create new release (PLAY_DRAAIBOEK.md §4). Elke volgende upload: versionCode +1."
+echo "   Ná de upload: App bundle explorer → (deze versie) → Downloads → 'Native debug symbols' →"
+echo "   upload de -native-debug-symbols.zip. De mapping zit al ín de AAB (ReTrace-bestand hoeft"
+echo "   niet apart, de -mapping.txt is de losse kopie voor als Play er tóch om vraagt)."

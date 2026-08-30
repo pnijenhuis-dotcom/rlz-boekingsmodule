@@ -51,7 +51,14 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
+            // R8 in IDENTITEITSMODUS (Play-nazorg 30-08): Play waarschuwt bij élke upload zonder
+            // deobfuscation-bestand, ook als er niets geobfusceerd is. Wij obfusceren bewust NIET
+            // (JS-app in een dunne schil, leesbare stacktraces wegen zwaarder) — proguard-rules.pro
+            // zet -dontobfuscate/-dontoptimize/-dontshrink, zodat R8 de bytecode ongewijzigd laat
+            // maar wél mapping.txt schrijft; AGP bundelt die als BUNDLE-METADATA/…/proguard.map en
+            // bouw_android_release.sh legt 'm náást de AAB. Echt shrinken/obfusceren = apart
+            // besluit mét emulator-kliktest (BESLISSINGEN "PLAY-NAZORG 30-08").
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             if (uploadSigningAanwezig) {
                 signingConfig signingConfigs.release
