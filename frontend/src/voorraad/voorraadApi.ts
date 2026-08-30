@@ -1,6 +1,10 @@
 // Voorraad-aansluiting fase 1 (bouwrun 28-08 blok D, mockup voorraad-aansluiting.html) — spiegelt
 // backend/app/voorraad/schemas.py. Aantallen/bedragen als string (Decimal), nooit berekend in de
 // client (code voor cijfers zit in de backend). Alle paden onder /administraties (bestaande proxy-prefix).
+// v2 (30-08): soort-label artikel/dienst/transport (dienstregels blijven bewaard, tellen niet), dienst-inzage
+// (§3) + codes-inzage (§4) mét correcties — controlemechanisme, nooit blind vertrouwen.
+export type VoorraadSoort = 'artikel' | 'dienst' | 'transport'
+export const SOORT_LABEL: Record<VoorraadSoort, string> = { artikel: 'artikel', dienst: 'dienst', transport: 'transport' }
 import { apiFetch, apiJson } from '../api/client'
 
 export interface GroepAansluitingDto {
@@ -31,6 +35,9 @@ export interface AansluitingDto {
   niet_genormaliseerd_uit: number
   onzeker_totaal: number
   regels_totaal: number
+  // v2: dienst-/transportregels in de periode (soort-label) — niet in de aansluiting, wél bewaard.
+  dienst_regels: number
+  transport_regels: number
   bronnen: Record<string, string>
 }
 
@@ -46,14 +53,50 @@ export interface VoorraadRegelDto {
   datum: string
   relatie_naam: string | null
   artikeltekst: string
+  // v2: artikelcode (normalisatiesleutel per richting) + soort.
+  artikelcode: string | null
+  soort: VoorraadSoort
   aantal: string | null
   eenheid: string | null
   prijs: string | null
   netto_bedrag: string | null
   artikelgroep_id: string | null
   artikelgroep_naam: string | null
+  // 'uitgesloten' = legacy pre-0088 (wordt door de hernormalisatie omgezet naar soort dienst/transport).
   normalisatie_status: 'genormaliseerd' | 'onzeker' | 'uitgesloten' | 'niet_genormaliseerd'
   normalisatie_zekerheid: string | null
+}
+
+/** §3 "als dienst geclassificeerd": één rij per unieke (leverancier, tekst) mét aantallen en de bron. */
+export interface DienstTekstDto {
+  voorbeeld_regel_id: string
+  artikeltekst: string
+  artikeltekst_norm: string
+  vendor_id: string | null
+  relatie_naam: string | null
+  soort: VoorraadSoort
+  bron: 'regel' | 'ai' | 'handmatig' | 'legacy' | string
+  richtingen: string
+  regels: number
+  som_aantal: string
+  som_netto: string
+}
+
+/** §4 codes-inzage: koppeling code → groep/soort per richting + leverancier. */
+export interface ArtikelcodeDto {
+  id: string
+  richting: 'in' | 'uit'
+  vendor_id: string | null
+  relatie_naam: string | null
+  code: string
+  soort: VoorraadSoort
+  artikelgroep_id: string | null
+  artikelgroep_naam: string | null
+  zekerheid: string | null
+  bron: 'ai' | 'handmatig' | string
+  voorbeeld_tekst: string | null
+  regels: number
+  teksten: number
 }
 
 export interface ArtikelgroepDto {
@@ -81,12 +124,33 @@ export function haalVoorraadRegels(
   administratieId: string,
   van: string,
   tot: string,
-  filter: { artikelgroepId?: string; status?: VoorraadRegelDto['normalisatie_status'] } = {},
+  filter: { artikelgroepId?: string; status?: VoorraadRegelDto['normalisatie_status']; soort?: VoorraadSoort } = {},
 ): Promise<VoorraadRegelDto[]> {
   const params = new URLSearchParams({ van, tot })
   if (filter.artikelgroepId) params.set('artikelgroep_id', filter.artikelgroepId)
   if (filter.status) params.set('normalisatie_status', filter.status)
+  if (filter.soort) params.set('soort', filter.soort)
   return apiJson(`/administraties/${administratieId}/voorraad/regels?${params.toString()}`)
+}
+
+export function haalDienstTeksten(administratieId: string, van: string, tot: string): Promise<DienstTekstDto[]> {
+  return apiJson(`/administraties/${administratieId}/voorraad/diensten?van=${van}&tot=${tot}`)
+}
+
+export function haalArtikelcodes(administratieId: string): Promise<ArtikelcodeDto[]> {
+  return apiJson(`/administraties/${administratieId}/voorraad/artikelcodes`)
+}
+
+export function corrigeerArtikelcode(
+  administratieId: string,
+  koppelingId: string,
+  invoer: { soort: VoorraadSoort; artikelgroep_id: string | null },
+): Promise<{ herrekend: number }> {
+  return apiJson(`/administraties/${administratieId}/voorraad/artikelcodes/${koppelingId}/corrigeer`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(invoer),
+  })
 }
 
 export function haalDagstanden(administratieId: string, artikelgroepId: string, van: string, tot: string): Promise<DagStandDto[]> {
@@ -126,7 +190,7 @@ export async function voerTellingIn(
 
 export function corrigeerNormalisatie(
   administratieId: string,
-  invoer: { regel_id: string; artikelgroep_id: string | null; uitgesloten: boolean },
+  invoer: { regel_id: string; soort: VoorraadSoort; artikelgroep_id: string | null },
 ): Promise<{ herrekend: number }> {
   return apiJson(`/administraties/${administratieId}/voorraad/normalisatie/corrigeer`, {
     method: 'POST',
@@ -143,6 +207,15 @@ export function herrekenVoorraad(administratieId: string): Promise<{
   rlz_regels: number
 }> {
   return apiJson(`/administraties/${administratieId}/voorraad/herreken`, { method: 'POST' })
+}
+
+/** Bron van een classificatie (dienst-/codes-inzage), leesbaar. */
+export function classificatieBronLabel(bron: string): string {
+  if (bron === 'regel') return 'regex (automatisch)'
+  if (bron === 'ai') return 'AI-voorstel'
+  if (bron === 'handmatig') return 'handmatig bevestigd'
+  if (bron === 'legacy') return 'vóór v2 (nog te hernormaliseren)'
+  return bron
 }
 
 /** Leesbare herkomst van een factuurregel (drill-down): app-document of RLZ-verkoopfactuur. */

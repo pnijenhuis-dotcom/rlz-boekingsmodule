@@ -112,6 +112,43 @@ Corrigeren kán (optioneel, corrigeert historie mee), maar is nooit een voorwaar
   percentage bij elk verschil-signaal — een signaal op grotendeels onzekere data zegt dat er eerst genormaliseerd moet worden.</p>
 </div>
 
+<h2 class="sectie">3 · Als dienst geclassificeerd — controle op regex/AI (v2, besluit Peter 29-08: nooit blind vertrouwen)</h2>
+<p class="uitleg">"Uitgesloten" is sinds v2 een <b>soort-label</b> (artikel / dienst / transport): dienst- en transportregels tellen niet in de
+voorraad, maar blijven bewaard en queryable als omzet-/dienstregel (kilometers, keuringen, werktijd = omzet-informatie voor MI). De
+dienst-regex is uitgebreid op de bevindingen van 29-08 (verreden kilometers, werk- en reistijd, inspectie/keuring/kalibratie,
+huurperiode conform huuroverzicht). Deze inzage toont élke unieke tekst mét aantallen en de bron van de classificatie; een correctie
+(dienst ↔ artikel) geldt voor álle regels met dezelfde relatie + tekst (en artikelcode) en herrekent de historie.</p>
+<div class="panel">
+  <table>
+    <tr><th>Tekst (relatie)</th><th>Soort</th><th>Bron</th><th class="n">Regels</th><th class="n">Σ aantal</th><th class="n">Σ netto</th><th>Corrigeer</th></tr>
+    <tr><td>"Verreden kilometers" — eigen verkoop · verkoop</td><td><span class="chip">transport</span></td><td><span class="chip">regex (automatisch)</span></td><td class="n">370</td><td class="n">12.480</td><td class="n">€ 9.984,00</td><td><u>— nu: transport — corrigeer naar… —</u></td></tr>
+    <tr><td>"Werk- en reistijd" — eigen verkoop · verkoop</td><td><span class="chip">dienst</span></td><td><span class="chip">regex (automatisch)</span></td><td class="n">371</td><td class="n">1.668,5</td><td class="n">€ 98.441,50</td><td><u>— nu: dienst — corrigeer naar… —</u></td></tr>
+    <tr><td>"Inspectie lift volgens Arbobesluit" — eigen verkoop · verkoop</td><td><span class="chip">dienst</span></td><td><span class="chip">regex (automatisch)</span></td><td class="n">141</td><td class="n">141</td><td class="n">€ 21.150,00</td><td><u>— nu: dienst — corrigeer naar… —</u></td></tr>
+    <tr><td>"Huur lift week 12" — Scafom · inkoop</td><td><span class="chip">dienst</span></td><td><span class="badge ok">handmatig bevestigd</span></td><td class="n">3</td><td class="n">3</td><td class="n">€ 1.200,00</td><td><u>— nu: dienst — corrigeer naar… —</u> → <i>artikel: Liften (huurvloot)</i></td></tr>
+  </table>
+  <p class="uitleg" style="margin:12px 0 0;">De aansluitingstabel (§1) krijgt een rij "Diensten &amp; transport" met de tellers (110 dienst · 25 transport) en de knoppen
+  "→ als dienst geclassificeerd" en "artikelcodes". Legacy-regels van vóór v2 (status 'uitgesloten') tellen als dienst en worden door de
+  hernormalisatie (<code>voorraad-hernormaliseer</code>) omgezet — zichtbaar als bron "vóór v2 (nog te hernormaliseren)".</p>
+</div>
+
+<h2 class="sectie">4 · Artikelcodes — deterministische sleutel per richting (v2; inkoopcode ≠ verkoopcode)</h2>
+<p class="uitleg">Uit de verkoop-Description ("Steigerbuis 1 mtr <b>(550100.6)</b>", ook "(Gebr. 550100.6)" = gebruikt, zelfde artikel) en uit
+de inkoop-veldvoorstelregels (AI-veld <code>a</code> = leverancierscode) haalt code de artikelcode. Koppeltabel code → artikelgroep per
+administratie, <b>richting</b> en leverancier — nooit aannemen dat in- en verkoopcodes gelijk zijn. Eerste keer per code = voorstel (AI,
+duidelijk gelabeld mét zekerheid), daarna deterministisch vóór de tekstregel en vóór de AI: een ándere omschrijving met dezelfde code volgt
+de code zonder AI-call. Prioriteit: handmatige correctie (tekst óf code) &gt; tekstregel &gt; code &gt; regex &gt; AI. Vastgelegd besluit:
+steigerdelen 3 m en 5 m zijn verschillende producten — de AI-prompt verbiedt samenvoegen op lengte.</p>
+<div class="panel">
+  <table>
+    <tr><th>Code</th><th>Richting · relatie</th><th>Voorbeeldtekst</th><th>Gekoppeld aan</th><th>Bron · zekerheid</th><th class="n">Regels · teksten</th><th>Corrigeer</th></tr>
+    <tr><td><b>550100.210</b></td><td>verkoop · eigen verkoop</td><td class="uitleg">Steigerbuis 4 mtr incl. tube-connect (550100.210)</td><td>Steigerbuis 4m</td><td><span class="badge warn">AI-voorstel (60%)</span></td><td class="n">41 · 2</td><td><u>— nu: Steigerbuis 4m — corrigeer naar… —</u></td></tr>
+    <tr><td><b>550100.6</b></td><td>verkoop · eigen verkoop</td><td class="uitleg">Gebr. Steigerbuis 1 mtr (Gebr.550100.6 )</td><td>Steigerbuis 1m</td><td><span class="badge ok">AI-voorstel (91%)</span></td><td class="n">12 · 2</td><td><u>— nu: Steigerbuis 1m — corrigeer naar… —</u></td></tr>
+    <tr><td><b>1002-3</b></td><td>inkoop · Scafom</td><td class="uitleg">Buis 48,3 x 3,2 mm 3000 gegalv. (art. 1002-3)</td><td>Steigerbuis 3m</td><td><span class="badge ok">handmatig bevestigd</span></td><td class="n">4 · 1</td><td><u>— nu: Steigerbuis 3m — corrigeer naar… —</u></td></tr>
+  </table>
+  <p class="uitleg" style="margin:12px 0 0;">Correctie op een code geldt voor álle regels met die (richting, leverancier, code) en herrekent de historie; een handmatige
+  tekstregel op één specifieke omschrijving blijft daarbij voorgaan. De drill-down (§1) toont per regel "code 550100.210" onder de bron.</p>
+</div>
+
 <div class="beslis">
   <h2>Beslispunten (voorstel Cowork — akkoord of bijstellen)</h2>
   <ul>

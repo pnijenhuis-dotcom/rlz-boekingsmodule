@@ -5,6 +5,9 @@
 // zichtbaar; drill-down naar factuurregels (in én uit) + dagstanden; de teller "Niet
 // genormaliseerd" bewust prominent. Normalisatie is volautomatisch — corrigeren kán (herrekent
 // historie), maar is nooit een voorwaarde. Puur MI: nooit een boeking.
+// v2 (30-08, besluiten Peter 29-08): dienst-/transportregels blijven bewaard mét soort-label (tellen niet) —
+// §3 inzage "als dienst geclassificeerd" per tekst mét aantallen + correctie dienst ↔ artikel; §4 codes-
+// inzage (artikelcode → groep per richting, AI-voorstel vs handmatig) + correctie. Nooit blind vertrouwen.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
@@ -15,21 +18,29 @@ import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   aantal,
   bronLabel,
+  classificatieBronLabel,
+  corrigeerArtikelcode,
   corrigeerNormalisatie,
   haalAansluiting,
+  haalArtikelcodes,
   haalArtikelgroepen,
   haalDagstanden,
+  haalDienstTeksten,
   haalVoorraadRegels,
   herrekenVoorraad,
   maakArtikelgroep,
   signaalTekst,
+  SOORT_LABEL,
   voerTellingIn,
   zetTolerantie,
   type AansluitingDto,
+  type ArtikelcodeDto,
   type ArtikelgroepDto,
   type DagStandDto,
+  type DienstTekstDto,
   type GroepAansluitingDto,
   type VoorraadRegelDto,
+  type VoorraadSoort,
 } from './voorraadApi'
 
 function isoVandaag(): string {
@@ -43,8 +54,15 @@ function isoJaarStart(): string {
 const STATUS_LABEL: Record<VoorraadRegelDto['normalisatie_status'], string> = {
   genormaliseerd: 'zeker',
   onzeker: 'onzeker — telt mee mét vlag',
-  uitgesloten: 'geen artikel — automatisch uitgesloten',
+  uitgesloten: 'dienst (vóór v2 — hernormaliseren)',
   niet_genormaliseerd: 'niet genormaliseerd',
+}
+
+/** Keuze uit de correctie-select → soort + groep (v2: geen 'uitsluiten' meer, wél dienst/transport). */
+function keuzeNaarCorrectie(keuze: string): { soort: VoorraadSoort; artikelgroep_id: string | null } {
+  if (keuze === '__dienst__') return { soort: 'dienst', artikelgroep_id: null }
+  if (keuze === '__transport__') return { soort: 'transport', artikelgroep_id: null }
+  return { soort: 'artikel', artikelgroep_id: keuze }
 }
 
 export function VoorraadScreen() {
@@ -63,8 +81,12 @@ export function VoorraadScreen() {
   const [detail, setDetail] = useState<{ groep: GroepAansluitingDto; regels: VoorraadRegelDto[]; dagen: DagStandDto[] } | null>(null)
   const [normalisatieOpen, setNormalisatieOpen] = useState(false)
   const [normRegels, setNormRegels] = useState<VoorraadRegelDto[] | null>(null)
+  // v2 §3/§4: dienst-inzage en codes-inzage (controlemechanisme).
+  const [dienstOpen, setDienstOpen] = useState(false)
+  const [dienstTeksten, setDienstTeksten] = useState<DienstTekstDto[] | null>(null)
+  const [codesOpen, setCodesOpen] = useState(false)
+  const [codes, setCodes] = useState<ArtikelcodeDto[] | null>(null)
   const [tellingVoor, setTellingVoor] = useState<{ groep: GroepAansluitingDto; datum: string; aantal: string } | null>(null)
-  const [nieuweGroep, setNieuweGroep] = useState<string | null>(null)
   // Blok B (nazorg bouwrun blok D): invoer via designpass-v2-dialogen i.p.v. window.prompt.
   const [groepDialoog, setGroepDialoog] = useState<{ regel: VoorraadRegelDto; naam: string; eenheid: string; tolerantie: string } | null>(null)
   const [tolerantieDialoog, setTolerantieDialoog] = useState<{ groep: GroepAansluitingDto; waarde: string } | null>(null)
@@ -77,6 +99,8 @@ export function VoorraadScreen() {
     setZoekParams(p, { replace: true })
     setDetail(null)
     setNormalisatieOpen(false)
+    setDienstOpen(false)
+    setCodesOpen(false)
   }
 
   const laad = useCallback(() => {
@@ -108,9 +132,11 @@ export function VoorraadScreen() {
     try {
       const r = await herrekenVoorraad(administratieId)
       setMelding(
-        `Herrekend: ${r.inkoop_regels} inkoopregels uit ${r.inkoop_documenten} facturen, ${r.verkoop_regels} verkoopregels uit ${r.verkoop_documenten} facturen.`,
+        `Herrekend: ${r.inkoop_regels} inkoopregels uit ${r.inkoop_documenten} facturen, ${r.verkoop_regels} verkoopregels uit ${r.verkoop_documenten} facturen, ${r.rlz_regels} RLZ-verkoopregels.`,
       )
       setVersie((v) => v + 1)
+      if (dienstOpen) void openDienstInzage()
+      if (codesOpen) void openCodesInzage()
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Verversen mislukt.')
       setLaden(false)
@@ -136,24 +162,56 @@ export function VoorraadScreen() {
     setNormRegels([...niet, ...onzeker])
   }
 
-  const corrigeer = async (regel: VoorraadRegelDto, keuze: string) => {
+  const openDienstInzage = async () => {
+    setDienstOpen(true)
+    setDienstTeksten(null)
+    try {
+      setDienstTeksten(await haalDienstTeksten(administratieId, van, tot))
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Dienst-inzage laden mislukt.')
+    }
+  }
+
+  const openCodesInzage = async () => {
+    setCodesOpen(true)
+    setCodes(null)
+    try {
+      setCodes(await haalArtikelcodes(administratieId))
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Codes-inzage laden mislukt.')
+    }
+  }
+
+  const naCorrectie = (herrekend: number, wat: string) => {
+    setMelding(`Correctie toegepast op ${herrekend} regel${herrekend === 1 ? '' : 's'} ${wat} (historie herrekend).`)
+    setVersie((v) => v + 1)
+    if (normalisatieOpen) void openNormalisatie()
+    if (dienstOpen) void openDienstInzage()
+    if (codesOpen) void openCodesInzage()
+  }
+
+  const corrigeer = async (regel: Pick<VoorraadRegelDto, 'id' | 'artikeltekst' | 'eenheid'>, keuze: string) => {
     setMelding(null)
     if (keuze === '__nieuw__') {
       setDialoogFout(null)
-      setGroepDialoog({ regel, naam: '', eenheid: regel.eenheid ?? 'st', tolerantie: '1.00' })
+      setGroepDialoog({ regel: regel as VoorraadRegelDto, naam: '', eenheid: regel.eenheid ?? 'st', tolerantie: '1.00' })
       return
     }
     try {
-      const r = await corrigeerNormalisatie(administratieId, {
-        regel_id: regel.id,
-        artikelgroep_id: keuze === '__geen__' ? null : keuze,
-        uitgesloten: keuze === '__geen__',
-      })
-      setMelding(`Correctie toegepast op ${r.herrekend} regel${r.herrekend === 1 ? '' : 's'} met dezelfde leverancier + artikeltekst (historie herrekend).`)
-      setVersie((v) => v + 1)
-      void openNormalisatie()
+      const r = await corrigeerNormalisatie(administratieId, { regel_id: regel.id, ...keuzeNaarCorrectie(keuze) })
+      naCorrectie(r.herrekend, 'met dezelfde leverancier + artikeltekst/artikelcode')
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Corrigeren mislukt.')
+    }
+  }
+
+  const corrigeerCode = async (koppeling: ArtikelcodeDto, keuze: string) => {
+    setMelding(null)
+    try {
+      const r = await corrigeerArtikelcode(administratieId, koppeling.id, keuzeNaarCorrectie(keuze))
+      naCorrectie(r.herrekend, `met code ${koppeling.code} (${koppeling.richting === 'in' ? 'inkoop' : 'verkoop'})`)
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Code corrigeren mislukt.')
     }
   }
 
@@ -168,11 +226,9 @@ export function VoorraadScreen() {
     setDialoogFout(null)
     try {
       const g = await maakArtikelgroep(administratieId, naam, groepDialoog.eenheid.trim() || 'st', groepDialoog.tolerantie.replace(',', '.') || '1.00')
-      const r = await corrigeerNormalisatie(administratieId, { regel_id: groepDialoog.regel.id, artikelgroep_id: g.id, uitgesloten: false })
+      const r = await corrigeerNormalisatie(administratieId, { regel_id: groepDialoog.regel.id, soort: 'artikel', artikelgroep_id: g.id })
       setGroepDialoog(null)
-      setMelding(`Artikelgroep "${g.naam}" aangemaakt; correctie toegepast op ${r.herrekend} regel${r.herrekend === 1 ? '' : 's'} (historie herrekend).`)
-      setVersie((v) => v + 1)
-      void openNormalisatie()
+      naCorrectie(r.herrekend, `— artikelgroep "${g.naam}" aangemaakt`)
     } catch (err) {
       setDialoogFout(err instanceof ApiError ? err.message : 'Artikelgroep aanmaken mislukt.')
     } finally {
@@ -226,6 +282,28 @@ export function VoorraadScreen() {
 
   const groepOpties = useMemo(() => groepen.filter((g) => g.actief), [groepen])
   const nietGenormaliseerd = (data?.niet_genormaliseerd_in ?? 0) + (data?.niet_genormaliseerd_uit ?? 0)
+  const dienstTotaal = (data?.dienst_regels ?? 0) + (data?.transport_regels ?? 0)
+
+  /** Correctie-select (v2): artikelgroepen, nieuwe groep, dienst, transport — één component voor §2/§3/§4. */
+  const CorrectieSelect = ({ label, huidige, onKeuze }: { label: string; huidige?: string; onKeuze: (keuze: string) => void }) => (
+    <Select
+      aria-label={label}
+      value=""
+      onChange={(e) => {
+        if (e.target.value) onKeuze(e.target.value)
+      }}
+    >
+      <option value="">{huidige ? `— nu: ${huidige} — corrigeer naar… —` : '— corrigeer naar… —'}</option>
+      {groepOpties.map((g) => (
+        <option key={g.id} value={g.id}>
+          artikel: {g.naam}
+        </option>
+      ))}
+      <option value="__nieuw__">+ nieuwe artikelgroep…</option>
+      <option value="__dienst__">dienst (geen voorraad, wél omzet-/dienstregel)</option>
+      <option value="__transport__">transport (geen voorraad)</option>
+    </Select>
+  )
 
   return (
     <div>
@@ -380,12 +458,37 @@ export function VoorraadScreen() {
                     </td>
                     <td />
                   </tr>
+                  <tr data-testid="diensten-rij">
+                    <td>
+                      <b>Diensten &amp; transport</b>
+                      <div className="hint" style={{ fontSize: 11 }}>
+                        soort-label: tellen niet in de voorraad, blijven bewaard als omzet-/dienstregel (km&rsquo;s, keuringen, werktijd)
+                      </div>
+                    </td>
+                    <td className="amount">—</td>
+                    <td className="amount" colSpan={2}>
+                      {data.dienst_regels} dienst · {data.transport_regels} transport
+                    </td>
+                    <td className="amount">—</td>
+                    <td className="amount">—</td>
+                    <td className="amount">—</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <Button variant="secundair" maat="klein" onClick={() => void openDienstInzage()} disabled={dienstTotaal === 0}>
+                        → als dienst geclassificeerd ({dienstTotaal})
+                      </Button>{' '}
+                      <Button variant="ghost" maat="klein" onClick={() => void openCodesInzage()}>
+                        artikelcodes
+                      </Button>
+                    </td>
+                    <td />
+                  </tr>
                 </tbody>
               </table>
             </div>
             <p className="hint" style={{ marginBottom: 0 }}>
               {data.regels_totaal} factuurregels in de periode · mutaties op dagniveau · bron per kolom: inkoop = {data.bronnen.inkoop},
-              verkoop = {data.bronnen.verkoop}, systeemstand = {data.bronnen.systeemstand}.
+              verkoop = {data.bronnen.verkoop}, systeemstand = {data.bronnen.systeemstand}
+              {data.bronnen.diensten ? `; diensten = ${data.bronnen.diensten}` : ''}.
             </p>
           </div>
 
@@ -450,6 +553,11 @@ export function VoorraadScreen() {
                               {bronLabel(r)}
                             </span>
                           )}
+                          {r.artikelcode && (
+                            <div className="hint" style={{ fontSize: 11 }} title="artikelcode uit de regel — deterministische normalisatiesleutel">
+                              code {r.artikelcode}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -510,7 +618,10 @@ export function VoorraadScreen() {
                             &ldquo;{r.artikeltekst}&rdquo; — {r.relatie_naam ?? 'onbekend'}
                           </td>
                           <td className="amount">{aantal(r.aantal, 3)} {r.eenheid ?? ''}</td>
-                          <td>{r.artikelgroep_naam ?? <span className="hint">—</span>}</td>
+                          <td>
+                            {r.artikelgroep_naam ?? <span className="hint">—</span>}
+                            {r.artikelcode && <div className="hint" style={{ fontSize: 11 }}>code {r.artikelcode}</div>}
+                          </td>
                           <td>
                             <Badge variant={r.normalisatie_status === 'niet_genormaliseerd' ? 'danger' : 'warn'}>
                               {STATUS_LABEL[r.normalisatie_status]}
@@ -518,23 +629,131 @@ export function VoorraadScreen() {
                             </Badge>
                           </td>
                           <td>
-                            <Select
-                              aria-label={`Corrigeer ${r.artikeltekst}`}
-                              value={nieuweGroep ?? ''}
-                              onChange={(e) => {
-                                setNieuweGroep(null)
-                                if (e.target.value) void corrigeer(r, e.target.value)
+                            <CorrectieSelect label={`Corrigeer ${r.artikeltekst}`} onKeuze={(keuze) => void corrigeer(r, keuze)} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {dienstOpen && (
+            <div className="panel" data-testid="dienst-inzage">
+              <h2 style={{ marginTop: 0 }}>Als dienst geclassificeerd — controle op de regex/AI</h2>
+              <p className="hint">
+                Elke unieke tekst die níét in de voorraad telt, mét aantallen en de bron van de classificatie. Klopt het niet
+                (bv. een huur-regel die wél een artikel is): corrigeer — geldt voor álle regels met dezelfde leverancier + tekst
+                (en dezelfde artikelcode), historie herrekend. De regels zelf blijven bewaard als omzet-/dienstinformatie.
+              </p>
+              {dienstTeksten === null && <SkeletonRegels />}
+              {dienstTeksten !== null && dienstTeksten.length === 0 && <p className="hint">Geen dienst-/transportregels in deze periode.</p>}
+              {dienstTeksten !== null && dienstTeksten.length > 0 && (
+                <div className="tabel-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Tekst (relatie)</th>
+                        <th>Soort</th>
+                        <th>Bron</th>
+                        <th className="amount">Regels</th>
+                        <th className="amount">Σ aantal</th>
+                        <th className="amount">Σ netto</th>
+                        <th>Corrigeer</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dienstTeksten.map((d) => (
+                        <tr key={`${d.vendor_id ?? '-'}|${d.artikeltekst_norm}`}>
+                          <td>
+                            &ldquo;{d.artikeltekst}&rdquo;
+                            <div className="hint" style={{ fontSize: 11 }}>
+                              {d.relatie_naam ?? 'eigen verkoop'} · {d.richtingen === 'in' ? 'inkoop' : d.richtingen === 'uit' ? 'verkoop' : 'in + uit'}
+                            </div>
+                          </td>
+                          <td>
+                            <Badge variant="stil">{SOORT_LABEL[d.soort]}</Badge>
+                          </td>
+                          <td>
+                            <Badge variant={d.bron === 'handmatig' ? 'ok' : d.bron === 'legacy' ? 'warn' : 'stil'}>{classificatieBronLabel(d.bron)}</Badge>
+                          </td>
+                          <td className="amount">{d.regels}</td>
+                          <td className="amount">{aantal(d.som_aantal, 3)}</td>
+                          <td className="amount">€ {aantal(d.som_netto, 2)}</td>
+                          <td>
+                            <CorrectieSelect
+                              label={`Corrigeer dienst ${d.artikeltekst}`}
+                              huidige={SOORT_LABEL[d.soort]}
+                              onKeuze={(keuze) => void corrigeer({ id: d.voorbeeld_regel_id, artikeltekst: d.artikeltekst, eenheid: null }, keuze)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {codesOpen && (
+            <div className="panel" data-testid="codes-inzage">
+              <h2 style={{ marginTop: 0 }}>Artikelcodes — deterministische sleutel per richting</h2>
+              <p className="hint">
+                Inkoopcodes (leverancier) en verkoopcodes (eigen omschrijving, bv. &ldquo;(560140.4)&rdquo;) zijn verschillende
+                sleutels — nooit gelijkgesteld. Eerste keer per code = AI-voorstel (zichtbaar mét zekerheid), daarna deterministisch
+                vóór de tekstregel en vóór de AI. Corrigeren geldt voor álle regels met die code (historie herrekend).
+              </p>
+              {codes === null && <SkeletonRegels />}
+              {codes !== null && codes.length === 0 && <p className="hint">Nog geen artikelcodes gekoppeld.</p>}
+              {codes !== null && codes.length > 0 && (
+                <div className="tabel-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Richting · relatie</th>
+                        <th>Voorbeeldtekst</th>
+                        <th>Gekoppeld aan</th>
+                        <th>Bron · zekerheid</th>
+                        <th className="amount">Regels · teksten</th>
+                        <th>Corrigeer</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {codes.map((k) => (
+                        <tr key={k.id}>
+                          <td>
+                            <b>{k.code}</b>
+                          </td>
+                          <td>
+                            {k.richting === 'in' ? 'inkoop' : 'verkoop'} · {k.relatie_naam ?? 'eigen verkoop'}
+                          </td>
+                          <td className="hint">{k.voorbeeld_tekst ?? '—'}</td>
+                          <td>{k.soort === 'artikel' ? (k.artikelgroep_naam ?? '—') : <Badge variant="stil">{SOORT_LABEL[k.soort]}</Badge>}</td>
+                          <td>
+                            <Badge variant={k.bron === 'handmatig' ? 'ok' : Number(k.zekerheid) < 0.75 ? 'warn' : 'stil'}>
+                              {classificatieBronLabel(k.bron)}
+                              {k.zekerheid !== null && k.bron !== 'handmatig' && ` (${aantal(String(Number(k.zekerheid) * 100), 0)}%)`}
+                            </Badge>
+                          </td>
+                          <td className="amount">
+                            {k.regels} · {k.teksten}
+                          </td>
+                          <td>
+                            <CorrectieSelect
+                              label={`Corrigeer code ${k.code}`}
+                              huidige={k.soort === 'artikel' ? (k.artikelgroep_naam ?? undefined) : SOORT_LABEL[k.soort]}
+                              onKeuze={(keuze) => {
+                                if (keuze === '__nieuw__') {
+                                  setFout('Maak de artikelgroep eerst aan via het normalisatie-paneel (+ nieuwe artikelgroep…) en kies die dan hier.')
+                                  return
+                                }
+                                void corrigeerCode(k, keuze)
                               }}
-                            >
-                              <option value="">— kies artikelgroep —</option>
-                              {groepOpties.map((g) => (
-                                <option key={g.id} value={g.id}>
-                                  {g.naam}
-                                </option>
-                              ))}
-                              <option value="__nieuw__">+ nieuwe artikelgroep…</option>
-                              <option value="__geen__">geen artikel (uitsluiten)</option>
-                            </Select>
+                            />
                           </td>
                         </tr>
                       ))}

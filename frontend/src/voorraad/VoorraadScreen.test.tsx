@@ -4,7 +4,16 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
 import { VoorraadScreen } from './VoorraadScreen'
-import { aantal, bronLabel, signaalTekst, type GroepAansluitingDto, type VoorraadRegelDto } from './voorraadApi'
+import {
+  aantal,
+  bronLabel,
+  classificatieBronLabel,
+  signaalTekst,
+  type ArtikelcodeDto,
+  type DienstTekstDto,
+  type GroepAansluitingDto,
+  type VoorraadRegelDto,
+} from './voorraadApi'
 
 // Mockup voorraad-aansluiting.html §1 (blok D 28-08): tabel per artikelgroep met bron per kolom,
 // signaal op tolerantie, prominente "Niet genormaliseerd"-teller, telling-invoer; opt-in uit = leesbare
@@ -51,12 +60,77 @@ const AANSLUITING = {
   niet_genormaliseerd_uit: 37,
   onzeker_totaal: 3,
   regels_totaal: 400,
+  dienst_regels: 110,
+  transport_regels: 25,
   bronnen: {
     inkoop: 'inkoopfacturen (AI-gescand, extern document)',
     verkoop: 'verkoopfactuurregels (interne registratie)',
     systeemstand: 'handmatige telling per datum',
+    diensten: 'dienst-/transportregels (soort-label)',
   },
 }
+
+const DIENSTEN: DienstTekstDto[] = [
+  {
+    voorbeeld_regel_id: 'r-km',
+    artikeltekst: 'Verreden kilometers',
+    artikeltekst_norm: 'verreden kilometers',
+    vendor_id: null,
+    relatie_naam: null,
+    soort: 'transport',
+    bron: 'regel',
+    richtingen: 'uit',
+    regels: 370,
+    som_aantal: '12480.000',
+    som_netto: '9984.00',
+  },
+  {
+    voorbeeld_regel_id: 'r-huur',
+    artikeltekst: 'Huur lift week 12',
+    artikeltekst_norm: 'huur lift week 12',
+    vendor_id: 'v1',
+    relatie_naam: 'Scafom B.V.',
+    soort: 'dienst',
+    bron: 'regel',
+    richtingen: 'in',
+    regels: 3,
+    som_aantal: '3.000',
+    som_netto: '1200.00',
+  },
+]
+
+const CODES: ArtikelcodeDto[] = [
+  {
+    id: 'k1',
+    richting: 'uit',
+    vendor_id: null,
+    relatie_naam: null,
+    code: '550100.210',
+    soort: 'artikel',
+    artikelgroep_id: 'g2',
+    artikelgroep_naam: 'Steigerbuis 3m',
+    zekerheid: '0.600',
+    bron: 'ai',
+    voorbeeld_tekst: 'Steigerbuis 4 mtr incl. tube-connect (550100.210)',
+    regels: 41,
+    teksten: 2,
+  },
+  {
+    id: 'k2',
+    richting: 'in',
+    vendor_id: 'v1',
+    relatie_naam: 'Scafom B.V.',
+    code: '1002-3',
+    soort: 'artikel',
+    artikelgroep_id: 'g1',
+    artikelgroep_naam: 'Koppelingen 48mm',
+    zekerheid: '1.000',
+    bron: 'handmatig',
+    voorbeeld_tekst: 'KOP.DR.48/48 (art. 1002-3)',
+    regels: 4,
+    teksten: 1,
+  },
+]
 
 const REGEL_RLZ: VoorraadRegelDto = {
   id: 'r-rlz',
@@ -68,6 +142,8 @@ const REGEL_RLZ: VoorraadRegelDto = {
   datum: '2026-08-28',
   relatie_naam: 'Bouwbedr.Gebr. Kanters BV',
   artikeltekst: 'Steigerbuis 4 mtr incl. tube-connect (550100.210)',
+  artikelcode: '550100.210',
+  soort: 'artikel',
   aantal: '610.000',
   eenheid: null,
   prijs: '20.1000',
@@ -87,6 +163,7 @@ const REGEL_APP: VoorraadRegelDto = {
   bron: 'inkoop_veldvoorstel',
   relatie_naam: 'Scafom B.V.',
   artikeltekst: 'KOP.DR.48/48 SW22 gegalv.',
+  artikelcode: null,
   normalisatie_status: 'niet_genormaliseerd',
   normalisatie_zekerheid: null,
   artikelgroep_id: null,
@@ -122,6 +199,9 @@ function stubFetch(opties: { uit?: boolean } = {}) {
       }
       if (pad.endsWith('/dagstanden')) return Promise.resolve(jsonResponse([{ datum: '2026-08-28', inkoop: '0', verkoop: '610', stand: '820' }]))
       if (pad === `/administraties/${ADMIN}/voorraad/normalisatie/corrigeer`) return Promise.resolve(jsonResponse({ herrekend: 3 }))
+      if (pad === `/administraties/${ADMIN}/voorraad/diensten`) return Promise.resolve(jsonResponse(DIENSTEN))
+      if (pad === `/administraties/${ADMIN}/voorraad/artikelcodes`) return Promise.resolve(jsonResponse(CODES))
+      if (pad.endsWith('/artikelcodes/k1/corrigeer')) return Promise.resolve(jsonResponse({ herrekend: 41 }))
       if (pad.endsWith('/tolerantie')) return Promise.resolve(new Response(null, { status: 204 }))
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
@@ -232,8 +312,8 @@ describe('VoorraadScreen — blok A herkomst + blok B dialogen', () => {
     const post = aangeroepen.find((a) => a.method === 'POST' && a.pad.endsWith('/voorraad/groepen'))!
     expect(post.body).toEqual({ naam: 'Steigerbuis 4m', eenheid: 'st', tolerantie_pct: '2.5' })
     const corr = aangeroepen.find((a) => a.method === 'POST' && a.pad.endsWith('/normalisatie/corrigeer'))!
-    expect(corr.body).toEqual({ regel_id: 'r-app', artikelgroep_id: 'g-nieuw', uitgesloten: false })
-    expect(await screen.findByText(/Artikelgroep "Steigerbuis 4m" aangemaakt/)).toBeInTheDocument()
+    expect(corr.body).toEqual({ regel_id: 'r-app', artikelgroep_id: 'g-nieuw', soort: 'artikel' })
+    expect(await screen.findByText(/artikelgroep "Steigerbuis 4m" aangemaakt/)).toBeInTheDocument()
     expect(screen.queryByTestId('nieuwe-groep-dialoog')).toBeNull()
   })
 
@@ -261,7 +341,76 @@ describe('VoorraadScreen — blok A herkomst + blok B dialogen', () => {
   })
 })
 
+describe('VoorraadScreen — v2 soort-label, dienst-inzage (§3) en codes-inzage (§4)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('toont de rij "Diensten & transport" met tellers; de inzage lijst per tekst mét aantallen en bron, en corrigeert dienst → artikel via de voorbeeldregel', async () => {
+    const aangeroepen = stubFetch()
+    renderScherm()
+    const rij = await screen.findByTestId('diensten-rij')
+    expect(within(rij).getByText('110 dienst · 25 transport')).toBeInTheDocument()
+    await userEvent.click(within(rij).getByRole('button', { name: /als dienst geclassificeerd \(135\)/ }))
+    const paneel = await screen.findByTestId('dienst-inzage')
+    expect(within(paneel).getByText(/Verreden kilometers/)).toBeInTheDocument()
+    expect(within(paneel).getByText('370')).toBeInTheDocument()
+    expect(within(paneel).getAllByText('regex (automatisch)')).toHaveLength(2)
+    expect(within(paneel).getByText('transport')).toBeInTheDocument()
+    // Correctie: de huur-regel is tóch een artikel → POST corrigeer op de voorbeeldregel mét soort artikel + groep.
+    await userEvent.selectOptions(within(paneel).getByLabelText('Corrigeer dienst Huur lift week 12'), 'g1')
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad.endsWith('/normalisatie/corrigeer') && a.method === 'POST')).toBe(true))
+    const post = aangeroepen.find((a) => a.pad.endsWith('/normalisatie/corrigeer'))
+    expect(post?.body).toEqual({ regel_id: 'r-huur', soort: 'artikel', artikelgroep_id: 'g1' })
+    expect(await screen.findByText(/Correctie toegepast op 3 regels/)).toBeInTheDocument()
+  })
+
+  it('normalisatie-paneel biedt dienst/transport i.p.v. "uitsluiten" en stuurt het soort-label mee', async () => {
+    const aangeroepen = stubFetch()
+    renderScherm()
+    const rij = await screen.findByTestId('niet-genormaliseerd-rij')
+    await userEvent.click(within(rij).getByRole('button', { name: /normaliseren/ }))
+    const paneel = await screen.findByTestId('normalisatie-paneel')
+    const select = await within(paneel).findByLabelText('Corrigeer KOP.DR.48/48 SW22 gegalv.')
+    expect(within(select).queryByText(/uitsluiten/)).toBeNull()
+    await userEvent.selectOptions(select, '__transport__')
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad.endsWith('/normalisatie/corrigeer'))).toBe(true))
+    expect(aangeroepen.find((a) => a.pad.endsWith('/normalisatie/corrigeer'))?.body).toEqual({ regel_id: 'r-app', soort: 'transport', artikelgroep_id: null })
+  })
+
+  it('codes-inzage toont code → groep per richting mét bron/zekerheid (AI-voorstel vs handmatig) en corrigeert per code', async () => {
+    const aangeroepen = stubFetch()
+    renderScherm()
+    const rij = await screen.findByTestId('diensten-rij')
+    await userEvent.click(within(rij).getByRole('button', { name: 'artikelcodes' }))
+    const paneel = await screen.findByTestId('codes-inzage')
+    expect(within(paneel).getByText('550100.210')).toBeInTheDocument()
+    expect(within(paneel).getByText(/AI-voorstel \(60%\)/)).toBeInTheDocument()
+    expect(within(paneel).getByText('handmatig bevestigd')).toBeInTheDocument()
+    expect(within(paneel).getByText(/verkoop · eigen verkoop/)).toBeInTheDocument()
+    expect(within(paneel).getByText(/inkoop · Scafom B.V./)).toBeInTheDocument()
+    await userEvent.selectOptions(within(paneel).getByLabelText('Corrigeer code 550100.210'), 'g1')
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad.endsWith('/artikelcodes/k1/corrigeer'))).toBe(true))
+    expect(aangeroepen.find((a) => a.pad.endsWith('/artikelcodes/k1/corrigeer'))?.body).toEqual({ soort: 'artikel', artikelgroep_id: 'g1' })
+    expect(await screen.findByText(/Correctie toegepast op 41 regels met code 550100.210 \(verkoop\)/)).toBeInTheDocument()
+  })
+
+  it('drill-down toont de artikelcode bij de regel', async () => {
+    stubFetch()
+    renderScherm()
+    const tabel = await screen.findByTestId('aansluiting-tabel')
+    await userEvent.click(within(tabel).getByRole('button', { name: 'Koppelingen 48mm' }))
+    const detail = await screen.findByTestId('groep-detail')
+    expect(within(detail).getByText('code 550100.210')).toBeInTheDocument()
+  })
+})
+
 describe('voorraadApi — weergave', () => {
+  it('classificatieBronLabel benoemt regex/AI/handmatig/legacy leesbaar', () => {
+    expect(classificatieBronLabel('regel')).toBe('regex (automatisch)')
+    expect(classificatieBronLabel('ai')).toBe('AI-voorstel')
+    expect(classificatieBronLabel('handmatig')).toBe('handmatig bevestigd')
+    expect(classificatieBronLabel('legacy')).toMatch(/vóór v2/)
+  })
+
   it('bronLabel benoemt de herkomst leesbaar', () => {
     expect(bronLabel({ bron: 'rlz_verkoop', rlz_referentie: '50212273' })).toBe('RLZ-verkoopfactuur 50212273')
     expect(bronLabel({ bron: 'rlz_verkoop', rlz_referentie: null })).toBe('RLZ-verkoopfactuur')
