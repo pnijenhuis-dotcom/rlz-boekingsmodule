@@ -15,9 +15,10 @@
 #   2. maakt ~/Sleutels/nijenhuis-goedkeuren-upload.jks (of $KEYSTORE_PAD) mét één
 #      wachtwoord voor store én key (Play accepteert dat; minder om kwijt te raken);
 #   3. schrijft native/android/keystore.properties (chmod 600) voor app/build.gradle;
-#   4. print de SHA-256 van het upload-certificaat in de twee vormen die de backend nodig
-#      heeft (assetlinks-vingerafdruk met dubbele punten + WebAuthn-origin
-#      android:apk-key-hash:<base64url>) — NB dat zijn de waarden van de UPLOAD-key; de
+#   4. print de SHA-256 van het upload-certificaat in twee vormen: de assetlinks-vingerafdruk
+#      met dubbele punten (dé configwaarde: ANDROID_CERT_SHA256_VINGERAFDRUKKEN) en ter controle
+#      de WebAuthn-origin android:apk-key-hash:<base64url>, die de backend sinds 30-08 zélf
+#      afleidt (app/auth/android_signing.py) — NB dat zijn de waarden van de UPLOAD-key; de
 #      door Play gedistribueerde app is gesigneerd met Google's app-signing-key, dus
 #      PLAY_DRAAIBOEK.md §5 vult daar de tweede set uit Play Console bij.
 #
@@ -104,7 +105,8 @@ rm -f "${CERT_DER}"
 cat <<EOF
    SHA-256 (assetlinks.json / ANDROID_CERT_SHA256_VINGERAFDRUKKEN):
      ${SHA_COLON}
-   WebAuthn-origin (WEBAUTHN_ORIGINS):
+   WebAuthn-origin (ter controle — de backend leidt deze ZELF af uit de vingerafdruk hierboven,
+   app/auth/android_signing.py; NIET met de hand in WEBAUTHN_ORIGINS zetten):
      android:apk-key-hash:${SHA_B64URL}
 
    ⚠️  Dit is de UPLOAD-key. Een via Play geïnstalleerde build (interne test, productie) is

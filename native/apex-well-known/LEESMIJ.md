@@ -24,7 +24,33 @@ referentie/vergelijkingsmateriaal, iOS kijkt er niet naar.
   moet er dus stáán vóór de eerste device-install (of: app verwijderen + opnieuw
   installeren dwingt een verse fetch af).
 
-## Android — `assetlinks.json` (volgt in de Android-ronde)
+## Android — `assetlinks.json` (Play App Signing live, 30-08)
 
-Zelfde map, pad `/.well-known/assetlinks.json` — kan pas als de upload-keystore bestaat
-(sha256-vingerafdruk van de signing-key). Zie verkenning/17 kliktest-blok punt 5.
+- **Bron in deze map:** `assetlinks.json` — GEGENEREERD, nooit met de hand bewerken:
+  ```bash
+  cd backend && .venv/bin/python -m app.auth.android_signing \
+    "<SHA256-app-signing-key>" "<SHA256-upload-key>" --schrijf ../native/apex-well-known/assetlinks.json
+  ```
+  Dezelfde generator (`app/auth/android_signing.py`) voedt de backend-route op het
+  app-subdomein én leidt de WebAuthn-origins `android:apk-key-hash:<b64url>` af; de test
+  `tests/auth/test_android_signing.py` eist dat dit bestand exact gelijk is aan de uitvoer voor
+  de certificaten in `deploy.yml` (`ANDROID_CERT_SHA256_VINGERAFDRUKKEN`) — drift = rode suite.
+- **Twee certificaten, beide verplicht:** [0] Google's app-signing-key (élke install via Play —
+  Play Console → Test and release → Setup → App signing → "App signing key certificate"),
+  [1] onze upload-key (lokale bundletool-/apk-installs, `android_keystore.sh`). Package
+  `nl.aknijenhuis.goedkeuren`, relaties `handle_all_urls` + `get_login_creds`.
+- **Doelpad op de hosting:** `/.well-known/assetlinks.json` — zelfde `.well-known`-map als de
+  AASA, bestandsnaam MÉT `.json`.
+- **Eisen:** HTTPS zonder redirect, HTTP 200, `Content-Type: application/json` (Android is hier
+  strenger dan Apple — `text/plain` wordt geweigerd; op Apache/nginx-hosting volgt dat uit de
+  `.json`-extensie, controleer het). Geen caching-plugin/HTML eromheen.
+- **Verificatie:**
+  `curl -si https://administratiekantoornijenhuis.nl/.well-known/assetlinks.json` → 200 +
+  `application/json`, body = dit bestand; daarna Google's checker (moet BEIDE statements geven):
+  `https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://administratiekantoornijenhuis.nl&relation=delegate_permission/common.get_login_creds`
+  Referentie op het app-subdomein (zelfde inhoud, ná de deploy):
+  `curl -s https://app.administratiekantoornijenhuis.nl/.well-known/assetlinks.json`.
+- **Stand 30-08:** bestand hier gegenereerd + deploy.yml bijgewerkt; de apex gaf op 30-08 nog
+  `404 File not found` op dit pad → **uploaden naar de WordPress-hosting is klikwerk Peter**
+  (PLAY_DRAAIBOEK §5 stap 1). Zonder dit bestand op de apex weigert Android de passkey-prompt in
+  de Play-build, óók als de backend al klopt.

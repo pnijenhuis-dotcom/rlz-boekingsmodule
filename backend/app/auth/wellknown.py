@@ -17,6 +17,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 
+from app.auth.android_signing import assetlinks_inhoud
 from app.config import settings
 
 router = APIRouter(tags=["wellknown"])
@@ -35,18 +36,12 @@ def apple_app_site_association() -> JSONResponse:
 def assetlinks() -> JSONResponse:
     if not settings.android_cert_sha256_vingerafdrukken or not settings.native_app_bundle_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    # Inhoud uit dezelfde bron als de WebAuthn-origins (app/auth/android_signing.py) — zo kunnen
+    # assetlinks en `android:apk-key-hash:`-origins nooit uit de pas lopen. NB dit is de REFERENTIE
+    # op het app-subdomein; het bindende exemplaar staat statisch op de apex (rp_id), zie
+    # native/apex-well-known/LEESMIJ.md.
     return JSONResponse(
-        content=[
-            {
-                "relation": [
-                    "delegate_permission/common.handle_all_urls",
-                    "delegate_permission/common.get_login_creds",
-                ],
-                "target": {
-                    "namespace": "android_app",
-                    "package_name": settings.native_app_bundle_id,
-                    "sha256_cert_fingerprints": list(settings.android_cert_sha256_vingerafdrukken),
-                },
-            }
-        ]
+        content=assetlinks_inhoud(
+            settings.native_app_bundle_id, settings.android_cert_sha256_vingerafdrukken
+        )
     )

@@ -46,6 +46,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
+from app.auth.android_signing import toegestane_webauthn_origins
 from app.auth.normalisatie import normaliseer_e_mail
 from app.auth.rollen import EXTERNE_APP_ROLLEN, is_externe_app_rol
 from app.auth.service import (
@@ -298,7 +299,7 @@ def _verifieer_en_bewaar_credential(
             credential=credential,
             expected_challenge=verwachte_challenge,
             expected_rp_id=settings.webauthn_rp_id,
-            expected_origin=list(settings.webauthn_origins),
+            expected_origin=toegestane_webauthn_origins(),
             require_user_verification=True,
         )
     except InvalidRegistrationResponse as exc:
@@ -481,7 +482,7 @@ def _voltooi_assertie(
             credential=credential,
             expected_challenge=verwachte_challenge,
             expected_rp_id=settings.webauthn_rp_id,
-            expected_origin=list(settings.webauthn_origins),
+            expected_origin=toegestane_webauthn_origins(),
             credential_public_key=rij.public_key,
             credential_current_sign_count=rij.sign_count,
             require_user_verification=True,

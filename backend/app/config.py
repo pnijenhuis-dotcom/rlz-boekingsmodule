@@ -1,7 +1,7 @@
 from decimal import Decimal
 from urllib.parse import quote_plus
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -83,11 +83,24 @@ class Settings(BaseSettings):
     # /.well-known/assetlinks.json — beide op de apex (rp_id, besluit 0022), geserveerd door
     # app/auth/wellknown.py. Fail-closed: leeg = 404 (geen halve of foute koppeling
     # publiceren). Waarden komen bij de store-accounts van Peter (PDL): het Apple-team-id en
-    # de sha256-vingerafdruk(ken) van de Android-signing-key. NB Android-login vergt straks
-    # óók de origin `android:apk-key-hash:<b64url-sha256>` in webauthn_origins (deploy-config).
+    # de sha256-vingerafdruk(ken) van de Android-signing-keys — sinds Play App Signing (30-08)
+    # ALTIJD twee: Google's app-signing-key (élke Play-install) én onze upload-key (lokale
+    # bundletool-/apk-installs). De WebAuthn-origin `android:apk-key-hash:<b64url-sha256>` per
+    # certificaat wordt hieruit door CODE afgeleid (app/auth/android_signing.py →
+    # toegestane_webauthn_origins) en hoeft níét in webauthn_origins te staan.
     apple_team_id: str = ""
     native_app_bundle_id: str = "nl.aknijenhuis.goedkeuren"
     android_cert_sha256_vingerafdrukken: list[str] = []
+
+    @field_validator("android_cert_sha256_vingerafdrukken")
+    @classmethod
+    def _valideer_vingerafdrukken(cls, waarden: list[str]) -> list[str]:
+        # Fail-loud bij het laden: een typefout in een certificaat-hash mag nooit als een
+        # onverklaarbare "origin not allowed" op een toestel landen. Genormaliseerd naar de
+        # Play Console-vorm (hoofdletters, dubbele punten) zodat assetlinks en origins exact kloppen.
+        from app.auth.android_signing import normaliseer_vingerafdruk
+
+        return [normaliseer_vingerafdruk(w) for w in waarden]
 
     # Race-tolerante hergebruik-detectie (browserreview 2026-08-07): twee parallelle
     # vernieuwen-calls uit dezelfde browser (dubbel useEffect/StrictMode, meerdere tabs) zijn

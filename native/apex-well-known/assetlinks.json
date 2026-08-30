@@ -1,0 +1,16 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "nl.aknijenhuis.goedkeuren",
+      "sha256_cert_fingerprints": [
+        "2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49",
+        "4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1"
+      ]
+    }
+  }
+]
