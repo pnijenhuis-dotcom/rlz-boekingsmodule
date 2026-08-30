@@ -1003,8 +1003,22 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   correctie optioneel en herrekent historie. Aansluitscherm (menu Inzicht › Voorraad): per
   artikelgroep begin + inkoop − verkoop = theoretisch vs telling, tolerantie 1% default, bron per
   kolom (incl. herkomst per regel: app-document vs "RLZ-verkoopfactuur nr"), drill-down + dagstanden;
-  invoer (nieuwe groep, tolerantie) via designpass-v2-dialogen (blok B 29-08). `app/voorraad/`;
-  BESLISSINGEN "BOUWRUN 28-08 AVOND" blok D + "OPDRACHT 29-08" blok A/B.
+  invoer (nieuwe groep, tolerantie) via designpass-v2-dialogen (blok B 29-08). **Normalisatie v2
+  (besluiten Peter 29-08 avond, GEBOUWD 30-08, migratie 0088 — BESLISSINGEN "OPDRACHT 30-08" is
+  canoniek): "uitgesloten" is een SOORT-label (artikel/dienst/transport) — dienst-/transportregels
+  blijven bewaard en queryable (`regels?soort=`, omzet-informatie voor MI) en tellen alleen niet;
+  `normalisatie_status` = puur zekerheid ('uitgesloten' = legacy pre-0088, omgezet door de
+  hernormalisatie; migratie puur DDL want Alembic op Cloud SQL heeft geen BYPASSRLS). Dienst-regex
+  uitgebreid op de 29-08-bevindingen (kilometers/reistijd/inspectie/keuring/kalibratie/huurperiode)
+  MÉT dienst-inzage per tekst + correctie (eis Peter: nooit blind vertrouwen). Artikelcode als
+  deterministische sleutel per RICHTING (verkoop: "(560140.4)" uit de Description; inkoop: nieuw
+  AI-regelveld `a`) in `mi.artikelcode_koppeling` — inkoop- en verkoopcodes nooit gelijkgesteld;
+  prioriteit handmatig > tekstregel > code > regex > AI (batches van 40); codes-inzage + correctie
+  per code; steigerdelen 3 m ≠ 5 m (prompt). Hernormalisatie zonder RLZ-calls: `make
+  voorraad-hernormaliseer` (rapport per BV + AI-maandmeter); tegen de cloud via
+  `backend/scripts/cloud_cli.py` — cloud-run 30-08 = klikpunt (deploy 0088 + `gcloud auth login`).**
+  `app/voorraad/`; BESLISSINGEN "BOUWRUN 28-08 AVOND" blok D + "OPDRACHT 29-08" blok A/B +
+  "OPDRACHT 30-08".
 - **Zoeken**: globaal over boekingen (incl. archief + RLZ-boekstuk + PDF), accorderingshistorie
   — **GEBOUWD + GETEST (2026-08-09)**: `backend/app/zoeken/` + `frontend/src/zoeken/`,
   scope-veilig per administratie (RLS + server-side), doorzoekt kopgegevens + lokaal
