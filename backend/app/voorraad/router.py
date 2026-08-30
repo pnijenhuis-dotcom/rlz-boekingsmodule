@@ -49,6 +49,8 @@ def aansluiting(
         niet_genormaliseerd_uit=a.niet_genormaliseerd_uit,
         onzeker_totaal=a.onzeker_totaal,
         regels_totaal=a.regels_totaal,
+        dienst_regels=a.dienst_regels,
+        transport_regels=a.transport_regels,
         bronnen=a.bronnen,
     )
 
@@ -78,10 +80,12 @@ def regels(
     tot: date,
     artikelgroep_id: uuid.UUID | None = None,
     normalisatie_status: str | None = None,
+    soort: str | None = None,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> list[schemas.RegelDto]:
-    """Drill-down per artikelgroep (alle factuurregels achter het getal) óf het normalisatie-
-    scherm (`normalisatie_status=niet_genormaliseerd|onzeker`)."""
+    """Drill-down per artikelgroep (alle factuurregels achter het getal), het normalisatie-scherm
+    (`normalisatie_status=niet_genormaliseerd|onzeker`) óf de dienst-/omzetregels (`soort=dienst|transport`
+    — v2, MI-query)."""
     try:
         rijen = service.regels(
             administratie_id=administratie_id,
@@ -89,10 +93,66 @@ def regels(
             tot=tot,
             artikelgroep_id=artikelgroep_id,
             status=normalisatie_status,
+            soort=soort,
         )
     except service.VoorraadFout as exc:
         raise _vertaal(exc) from exc
     return [_regel_dto(r) for r in rijen]
+
+
+@router.get("/administraties/{administratie_id}/voorraad/diensten", response_model=list[schemas.DienstTekstDto])
+def diensten(
+    administratie_id: uuid.UUID,
+    van: date,
+    tot: date,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> list[schemas.DienstTekstDto]:
+    """Inzage "als dienst geclassificeerd" (v2 blok B, eis Peter: controleerbaar): per unieke tekst
+    mét aantallen, soort en bron van de classificatie; correctie via `normalisatie/corrigeer` op de
+    voorbeeldregel (geldt voor álle regels met dezelfde tekst/code)."""
+    try:
+        rijen = service.dienst_teksten(administratie_id=administratie_id, van=van, tot=tot)
+    except service.VoorraadFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.DienstTekstDto(**d.__dict__) for d in rijen]
+
+
+@router.get("/administraties/{administratie_id}/voorraad/artikelcodes", response_model=list[schemas.ArtikelcodeDto])
+def artikelcodes(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> list[schemas.ArtikelcodeDto]:
+    """Codes-inzage (v2 blok C): élke code → groep/soort per richting + leverancier, mét bron
+    (AI-voorstel vs handmatig), zekerheid en het aantal regels dat erop steunt."""
+    try:
+        rijen = service.artikelcodes(administratie_id=administratie_id)
+    except service.VoorraadFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.ArtikelcodeDto(**a.__dict__) for a in rijen]
+
+
+@router.post(
+    "/administraties/{administratie_id}/voorraad/artikelcodes/{koppeling_id}/corrigeer",
+    response_model=schemas.CorrectieResultaatDto,
+)
+def artikelcode_corrigeren(
+    administratie_id: uuid.UUID,
+    koppeling_id: uuid.UUID,
+    invoer: schemas.ArtikelcodeCorrectieDto,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.CorrectieResultaatDto:
+    """Correctie van een code-koppeling: wordt 'handmatig' (wint van de AI) en herleidt álle regels met
+    dezelfde (richting, leverancier, code) deterministisch."""
+    try:
+        n = service.corrigeer_artikelcode(
+            administratie_id=administratie_id,
+            koppeling_id=koppeling_id,
+            soort=invoer.soort,
+            artikelgroep_id=invoer.artikelgroep_id,
+            actor_id=actor.id,
+        )
+    except service.VoorraadFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.CorrectieResultaatDto(herrekend=n)
 
 
 @router.get("/administraties/{administratie_id}/voorraad/groepen", response_model=list[schemas.GroepDto])
@@ -175,14 +235,15 @@ def normalisatie_corrigeren(
     invoer: schemas.CorrectieDto,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.CorrectieResultaatDto:
-    """Optionele correctie — geldt vanaf dan voor álle regels met dezelfde leverancier + tekst
-    (historie herrekend). Nooit een voorwaarde voor de aansluiting."""
+    """Optionele correctie — soort artikel (mét groep) óf dienst/transport; geldt vanaf dan voor álle
+    regels met dezelfde leverancier + tekst én dezelfde artikelcode (historie herrekend). Nooit een
+    voorwaarde voor de aansluiting."""
     try:
         n = service.corrigeer_normalisatie(
             administratie_id=administratie_id,
             regel_id=invoer.regel_id,
+            soort=invoer.soort,
             artikelgroep_id=invoer.artikelgroep_id,
-            uitgesloten=invoer.uitgesloten,
             actor_id=actor.id,
         )
     except service.VoorraadFout as exc:
@@ -194,7 +255,7 @@ def normalisatie_corrigeren(
 def herrekenen(
     administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
 ) -> schemas.HerrekenResultaatDto:
-    """"⟳ Verversen": alle inkoop-veldvoorstellen en geboekte verkoopdocumenten opnieuw door de
+    """ "⟳ Verversen": alle inkoop-veldvoorstellen en geboekte verkoopdocumenten opnieuw door de
     feitenlaag (bekende teksten deterministisch, nieuwe teksten via de AI-gates)."""
     try:
         telling = service.herreken_administratie(administratie_id=administratie_id, actor_id=actor.id)

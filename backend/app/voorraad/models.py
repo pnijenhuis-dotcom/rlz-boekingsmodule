@@ -50,17 +50,24 @@ class Artikelgroep(Base):
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+SOORTEN = ("artikel", "dienst", "transport")
+
+
 class NormalisatieRegel(Base):
     """Deterministische normalisatieregel per (administratie, leverancier, genormaliseerde
-    artikeltekst): → artikelgroep, of `uitgesloten` (dienst/transport). Bron 'regel' = de vaste
-    dienst-/transportregel, 'ai' = eerste match (direct toegepast, zekerheid erbij), 'handmatig' =
-    correctie door de mens (geldt vanaf dan voor álle regels met dezelfde tekst; historie herrekend).
-    Daarna nooit meer een AI-call voor dezelfde tekst."""
+    artikeltekst): → artikelgroep (soort 'artikel'), óf soort 'dienst'/'transport' (v2 30-08 — het
+    soort-label vervángt het oude 'uitgesloten': dienstregels blijven bewaard als omzet-/dienstregel
+    voor MI, tellen alleen niet in de voorraad-aansluiting). Bron 'regel' = de vaste dienst-/
+    transportregel, 'ai' = eerste match (direct toegepast, zekerheid erbij), 'handmatig' = correctie
+    door de mens (geldt vanaf dan voor álle regels met dezelfde tekst; historie herrekend). Daarna
+    nooit meer een AI-call voor dezelfde tekst. `uitgesloten` (pre-0088) blijft in sync met soort ≠
+    artikel tot de opruim-migratie ná de hernormalisatie op álle omgevingen."""
 
     __tablename__ = "normalisatie_regel"
     __table_args__ = (
         UniqueConstraint("administratie_id", "vendor_id", "artikeltekst_norm", name="uq_normalisatie_regel_tekst"),
         CheckConstraint("bron IN ('ai', 'handmatig', 'regel')", name="ck_normalisatie_regel_bron"),
+        CheckConstraint("soort IN ('artikel', 'dienst', 'transport')", name="ck_normalisatie_regel_soort"),
         {"schema": SCHEMA},
     )
 
@@ -72,8 +79,49 @@ class NormalisatieRegel(Base):
         UUID(as_uuid=True), ForeignKey(f"{SCHEMA}.artikelgroep.id"), default=None
     )
     uitgesloten: Mapped[bool] = mapped_column(default=False, server_default="false")
+    soort: Mapped[str] = mapped_column(default="artikel", server_default="artikel")
     zekerheid: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), default=None)
     bron: Mapped[str]
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bijgewerkt_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class ArtikelcodeKoppeling(Base):
+    """Artikelcode als deterministische normalisatiesleutel (v2 30-08, blok C): per (administratie,
+    RICHTING, leverancier, code) → artikelgroep óf soort dienst/transport. Inkoopcodes (leverancier)
+    en verkoopcodes (eigen Description "(560140.4)") zijn verschillende sleutelruimtes — nooit aannemen
+    dat ze gelijk zijn, daarom `richting` in de sleutel. Eerste keer per code = voorstel (bron 'ai',
+    zekerheid erbij, zichtbaar in de codes-inzage), daarna deterministisch vóór de tekstregel en vóór
+    de AI; 'handmatig' = correctie (wint, herrekent historie)."""
+
+    __tablename__ = "artikelcode_koppeling"
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "richting", "vendor_id", "code", name="uq_artikelcode_koppeling"),
+        Index("ix_artikelcode_koppeling_administratie_id", "administratie_id"),
+        CheckConstraint("richting IN ('in', 'uit')", name="ck_artikelcode_koppeling_richting"),
+        CheckConstraint("soort IN ('artikel', 'dienst', 'transport')", name="ck_artikelcode_koppeling_soort"),
+        CheckConstraint("bron IN ('ai', 'handmatig')", name="ck_artikelcode_koppeling_bron"),
+        CheckConstraint(
+            "(soort = 'artikel') OR artikelgroep_id IS NULL", name="ck_artikelcode_koppeling_groep_bij_artikel"
+        ),
+        {"schema": SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    richting: Mapped[str]
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    code: Mapped[str]
+    artikelgroep_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{SCHEMA}.artikelgroep.id"), default=None
+    )
+    soort: Mapped[str] = mapped_column(default="artikel", server_default="artikel")
+    zekerheid: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), default=None)
+    bron: Mapped[str]
+    voorbeeld_tekst: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bijgewerkt_door: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
@@ -88,7 +136,13 @@ class VoorraadRegel(Base):
 
     Herkomst (migratie 0087): een lokaal document (`document_id`) ÓF een RLZ-verkoopfactuur
     (`rlz_document_id` + `rlz_referentie`, bron `rlz_verkoop` — de eigen RLZ-facturen van een
-    voorraad-administratie, dagelijkse leesroute); precies één van beide (CHECK)."""
+    voorraad-administratie, dagelijkse leesroute); precies één van beide (CHECK).
+
+    v2 (migratie 0088): `soort` artikel/dienst/transport — dienst-/transportregels blijven bewaard
+    (omzet-/dienstinformatie voor MI) en tellen alleen niet in de aansluiting; `normalisatie_status`
+    is sindsdien puur de zekerheid (genormaliseerd/onzeker/niet_genormaliseerd — 'uitgesloten' = legacy
+    pre-0088, omgezet door de hernormalisatie); `artikelcode` = de code uit de regeltekst/het
+    veldvoorstel (normalisatiesleutel, zie ArtikelcodeKoppeling)."""
 
     __tablename__ = "voorraad_regel"
     __table_args__ = (
@@ -96,6 +150,7 @@ class VoorraadRegel(Base):
         Index("ix_voorraad_regel_administratie_datum", "administratie_id", "datum"),
         Index("ix_voorraad_regel_artikelgroep_id", "artikelgroep_id"),
         Index("ix_voorraad_regel_rlz_document_id", "rlz_document_id"),
+        Index("ix_voorraad_regel_artikelcode", "administratie_id", "artikelcode"),
         Index(
             "uq_voorraad_regel_rlz_regel",
             "rlz_document_id",
@@ -108,10 +163,13 @@ class VoorraadRegel(Base):
         CheckConstraint(
             "(document_id IS NOT NULL) <> (rlz_document_id IS NOT NULL)", name="ck_voorraad_regel_herkomst"
         ),
+        # 'uitgesloten' = legacy-representatie vóór 0088 (de code schrijft 'm niet meer; de app-
+        # hernormalisatie zet 'm om naar soort dienst/transport). Opruimen = latere migratie.
         CheckConstraint(
             "normalisatie_status IN ('genormaliseerd', 'onzeker', 'uitgesloten', 'niet_genormaliseerd')",
             name="ck_voorraad_regel_status",
         ),
+        CheckConstraint("soort IN ('artikel', 'dienst', 'transport')", name="ck_voorraad_regel_soort"),
         {"schema": SCHEMA},
     )
 
@@ -129,6 +187,8 @@ class VoorraadRegel(Base):
     relatie_naam: Mapped[str | None] = mapped_column(default=None)
     regel_volgnummer: Mapped[int]
     artikeltekst: Mapped[str]
+    artikelcode: Mapped[str | None] = mapped_column(default=None)
+    soort: Mapped[str] = mapped_column(default="artikel", server_default="artikel")
     aantal: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), default=None)
     eenheid: Mapped[str | None] = mapped_column(default=None)
     prijs: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), default=None)

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
+from sqlalchemy import select
 
 from app.auth import service
 from app.bank import reconciliatie as bank_reconciliatie
@@ -194,6 +197,75 @@ def _rapporteer_voorraad_rlz(resultaten: dict) -> int:
             fouten += 1
             print(f"FOUT  {administratie_id}: {resultaat}", file=sys.stderr)
     return 1 if fouten else 0
+
+
+def _rapporteer_voorraad_normalisatie(
+    resultaten: dict, *, kosten_voor: Decimal | None = None, kosten_na: Decimal | None = None
+) -> int:
+    """Rapport hernormalisatie (v2 blok D — zelfde vorm als het 29-08-rapport): per administratie
+    genormaliseerd / onzeker / dienst / transport / niet genormaliseerd (+ legacy 'uitgesloten' die nog
+    niet is omgezet, codes) en de AI-maandmeter vóór/ná. Fout per administratie = exit 1, rest loopt door."""
+    if not resultaten:
+        print("(geen administraties met de voorraad-opt-in)")
+        return 0
+    fouten = 0
+    for administratie_id, resultaat in resultaten.items():
+        if isinstance(resultaat, dict):
+            st = resultaat["stand"]
+            print(
+                f"OK    {resultaat.get('naam', administratie_id)}: {st['regels']} regels — "
+                f"genormaliseerd {st['genormaliseerd']} / onzeker {st['onzeker']} / dienst {st['dienst']} / "
+                f"transport {st['transport']} / NIET genormaliseerd {st['niet_genormaliseerd']}"
+                + (f" / legacy-uitgesloten {st['legacy_uitgesloten']}" if st["legacy_uitgesloten"] else "")
+                + f"; codes: {st['regels_met_code']} regels mét code, {st['codes_gekoppeld']} koppelingen"
+                f" (herrekend: {resultaat['inkoop_regels']} inkoop, {resultaat['verkoop_regels']} verkoop-app, "
+                f"{resultaat['rlz_regels']} RLZ)"
+            )
+        else:
+            fouten += 1
+            print(f"FOUT  {administratie_id}: {resultaat}", file=sys.stderr)
+    if kosten_voor is not None and kosten_na is not None:
+        print(f"AI-maandmeter: € {kosten_voor:.2f} → € {kosten_na:.2f} (Δ € {kosten_na - kosten_voor:.2f})")
+    return 1 if fouten else 0
+
+
+def _voorraad_hernormaliseer(args: argparse.Namespace) -> int:
+    """Hernormalisatie zonder RLZ-calls (v2 blok D): alle feitenregels van elke voorraad-administratie
+    opnieuw door de motor (bekende teksten/codes deterministisch, onbekende via de AI-gates; `--zonder-ai`
+    = alleen deterministisch), legacy 'uitgesloten' → soort-label, rapport per administratie + AI-kosten."""
+    from app.aikosten.service import haal_status_op
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+    from app.voorraad import service as voorraad_service
+
+    with scoped_session(None) as session:
+        q = select(Administratie).where(Administratie.voorraad_ingeschakeld.is_(True))
+        if args.administratie_id:
+            try:
+                q = q.where(Administratie.id == uuid.UUID(args.administratie_id))
+            except ValueError as exc:
+                print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+                return 1
+        administraties = [(a.id, a.naam) for a in session.scalars(q.order_by(Administratie.naam))]
+    kosten_voor = haal_status_op().verbruik_eur
+    resultaten: dict = {}
+    for administratie_id, naam in administraties:
+        try:
+            telling = voorraad_service.herreken_administratie(
+                administratie_id=administratie_id, actor_id=SYSTEEM_ACTOR_ID, met_ai=not args.zonder_ai
+            )
+            resultaten[administratie_id] = {
+                **telling,
+                "naam": naam,
+                "stand": voorraad_service.normalisatie_stand(administratie_id=administratie_id),
+            }
+        except Exception as exc:  # noqa: BLE001 — één administratie mag de rest niet raken
+            logging.getLogger(__name__).exception("Hernormalisatie mislukt voor %s", administratie_id)
+            resultaten[administratie_id] = str(exc)
+    return _rapporteer_voorraad_normalisatie(
+        resultaten, kosten_voor=kosten_voor, kosten_na=haal_status_op().verbruik_eur
+    )
 
 
 def _voorraad_rlz_sync(args: argparse.Namespace) -> int:
@@ -1227,6 +1299,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Sync Ledgers/TaxRates/Vendors/Projects voor alle administraties (nachtelijke sync).",
     )
 
+    voorraad_hernorm_parser = subparsers.add_parser(
+        "voorraad-hernormaliseer",
+        help="Voorraad: alle feitenregels hernormaliseren (soort-label + artikelcodes, geen RLZ-calls) + rapport",
+    )
+    voorraad_hernorm_parser.add_argument("--administratie-id", dest="administratie_id", default=None)
+    voorraad_hernorm_parser.add_argument(
+        "--zonder-ai", dest="zonder_ai", action="store_true", help="alleen het deterministische pad"
+    )
+
     voorraad_rlz_parser = subparsers.add_parser(
         "voorraad-rlz-sync",
         help="Voorraad-uitstroom uit RLZ-verkoopfacturen (leesroute, blok A 29-08) — loopt ook mee in "
@@ -1541,6 +1622,8 @@ def main(argv: list[str] | None = None) -> int:
         return _sync_alles(args)
     if args.commando == "voorraad-rlz-sync":
         return _voorraad_rlz_sync(args)
+    if args.commando == "voorraad-hernormaliseer":
+        return _voorraad_hernormaliseer(args)
     if args.commando == "projecten-cijfers-sync":
         return _projecten_cijfers_sync(args)
     if args.commando == "projecten-cijfers-wachtrij":

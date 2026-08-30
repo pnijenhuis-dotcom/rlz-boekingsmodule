@@ -4,7 +4,12 @@ inkoop-veldvoorstel (extern document), uitstroom = verkoopfactuurregels (de in d
 verkoopdocumenten mét UBL-hoeveelheden ÉN — sinds 29-08, `rlz_uitstroom.py` — de eigen
 RLZ-verkoopfacturen van de administratie via de dagelijkse leesroute; Odoo = parkeerpost),
 systeemstand = handmatige telling per datum. Mutaties op DAGNIVEAU; verschil buiten de tolerantie =
-vlag, puur MI — nooit een boeking, nooit RLZ-writes. Code voor cijfers: alle telling deterministisch."""
+vlag, puur MI — nooit een boeking, nooit RLZ-writes. Code voor cijfers: alle telling deterministisch.
+
+v2 (30-08, besluiten Peter 29-08 avond): dienst-/transportregels blijven in de feitenlaag mét
+soort-label (tellen niet in de aansluiting, wél zichtbaar/corrigeerbaar in de dienst-inzage en
+queryable als omzet-/dienstregel); artikelcode als deterministische sleutel per richting mét
+codes-inzage + correctie; élke correctie herleidt de historie deterministisch (geen AI)."""
 
 from __future__ import annotations
 
@@ -25,7 +30,15 @@ from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.sync.models import VendorCache
 from app.voorraad import normalisatie
-from app.voorraad.models import ONBEKENDE_LEVERANCIER, Artikelgroep, NormalisatieRegel, VoorraadRegel, VoorraadTelling
+from app.voorraad.models import (
+    ONBEKENDE_LEVERANCIER,
+    SOORTEN,
+    ArtikelcodeKoppeling,
+    Artikelgroep,
+    VoorraadRegel,
+    VoorraadTelling,
+)
+from app.voorraad.normalisatie import LEGACY_UITGESLOTEN, SOORT_ARTIKEL, RegelInvoer
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +151,22 @@ def registreer_inkoopregels(*, administratie_id: uuid.UUID, document_id: uuid.UU
             or document.aangemaakt_op.date()
         )
         regels = [r for r in (veldvoorstel.get("regels") or []) if isinstance(r, dict) and r.get("omschrijving")]
+        # Artikelcode = de leverancierscode uit het veldvoorstel (AI-veld `a`, v2 30-08), anders uit
+        # de omschrijving; richting 'in' — een andere sleutelruimte dan de eigen verkoopcodes.
         normalisaties = normalisatie.normaliseer_regels(
             session,
             administratie_id=administratie_id,
             document_id=document_id,
-            regels=[(str(r["omschrijving"]), vendor_id, leverancier) for r in regels],
+            regels=[
+                RegelInvoer(
+                    str(r["omschrijving"]),
+                    vendor_id,
+                    leverancier,
+                    "in",
+                    str(r["artikelcode"]) if r.get("artikelcode") else None,
+                )
+                for r in regels
+            ],
         )
         nieuwe: list[VoorraadRegel] = []
         for i, (r, n) in enumerate(zip(regels, normalisaties, strict=True), start=1):
@@ -162,6 +186,8 @@ def registreer_inkoopregels(*, administratie_id: uuid.UUID, document_id: uuid.UU
                     relatie_naam=leverancier,
                     regel_volgnummer=i,
                     artikeltekst=str(r["omschrijving"])[:500],
+                    artikelcode=n.artikelcode,
+                    soort=n.soort,
                     aantal=aantal,
                     eenheid=(str(r["eenheid"])[:16] if r.get("eenheid") else None),
                     prijs=prijs,
@@ -214,7 +240,7 @@ def registreer_verkoopregels(*, administratie_id: uuid.UUID, document_id: uuid.U
             session,
             administratie_id=administratie_id,
             document_id=document_id,
-            regels=[(str(r.omschrijving), None, None) for r in bruikbaar],
+            regels=[RegelInvoer(str(r.omschrijving), None, None, "uit") for r in bruikbaar],
         )
         nieuwe: list[VoorraadRegel] = []
         for r, n in zip(bruikbaar, normalisaties, strict=True):
@@ -231,6 +257,8 @@ def registreer_verkoopregels(*, administratie_id: uuid.UUID, document_id: uuid.U
                     relatie_naam=kop.debiteur_naam if kop is not None else None,
                     regel_volgnummer=r.volgnummer,
                     artikeltekst=str(r.omschrijving)[:500],
+                    artikelcode=n.artikelcode,
+                    soort=n.soort,
                     aantal=(aantal * teken) if aantal is not None else None,
                     eenheid=(str(ubl["eenheid"])[:16] if ubl.get("eenheid") else None),
                     prijs=_als_decimal(ubl.get("prijs")),
@@ -244,10 +272,12 @@ def registreer_verkoopregels(*, administratie_id: uuid.UUID, document_id: uuid.U
         return len(nieuwe)
 
 
-def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> dict[str, int]:
-    """ "⟳ Verversen" / ná een correctie: alle inkoopdocumenten mét veldvoorstel en alle geboekte
-    verkoopdocumenten opnieuw door de feitenlaag (bestaande normalisatieregels = deterministisch,
-    dus geen nieuwe AI-calls voor bekende teksten). Audit per run."""
+def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, met_ai: bool = True) -> dict[str, int]:
+    """ "⟳ Verversen" / hernormalisatie (CLI `voorraad-hernormaliseer`): alle inkoopdocumenten mét
+    veldvoorstel en alle geboekte verkoopdocumenten opnieuw door de feitenlaag én de opgeslagen
+    RLZ-regels hernormaliseren (bestaande tekstregels/code-koppelingen = deterministisch, dus geen
+    nieuwe AI-calls voor bekende teksten; `met_ai=False` = alleen deterministisch). Zet de legacy-
+    status 'uitgesloten' (pre-0088) om naar het soort-label. Audit per run mét de stand ná afloop."""
     _vereis_ingeschakeld(administratie_id)
     with scoped_session(administratie_id) as session:
         inkoop = list(
@@ -289,7 +319,8 @@ def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) 
     # vanuit de UI-knop (504-les); het lezen zelf zit in de dagelijkse sync / `voorraad-rlz-sync`.
     from app.voorraad import rlz_uitstroom
 
-    telling["rlz_regels"] = rlz_uitstroom.hernormaliseer_rlz_regels(administratie_id=administratie_id)
+    telling["rlz_regels"] = rlz_uitstroom.hernormaliseer_rlz_regels(administratie_id=administratie_id, met_ai=met_ai)
+    stand = normalisatie_stand(administratie_id=administratie_id)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         record_audit_event(
             session,
@@ -299,10 +330,58 @@ def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) 
             record_id=administratie_id,
             actie="voorraad_herrekend",
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde=telling,
+            nieuwe_waarde={**telling, "stand": stand},
             administratie_id=administratie_id,
         )
     return telling
+
+
+def _soort_van_rij(r: VoorraadRegel) -> str:
+    """Legacy-rijen (status 'uitgesloten', pre-0088) gelden als dienst tot de hernormalisatie ze omzet."""
+    if r.normalisatie_status == LEGACY_UITGESLOTEN:
+        return "dienst"
+    return r.soort
+
+
+def normalisatie_stand(*, administratie_id: uuid.UUID) -> dict[str, int]:
+    """Rapportstand per administratie (CLI-rapport blok D): genormaliseerd / onzeker / dienst /
+    transport / niet_genormaliseerd / legacy_uitgesloten + codes gekoppeld. Puur tellen."""
+    with scoped_session(administratie_id) as session:
+        rijen = session.execute(
+            select(VoorraadRegel.soort, VoorraadRegel.normalisatie_status, func.count())
+            .where(VoorraadRegel.administratie_id == administratie_id)
+            .group_by(VoorraadRegel.soort, VoorraadRegel.normalisatie_status)
+        ).all()
+        codes = session.scalar(
+            select(func.count())
+            .select_from(ArtikelcodeKoppeling)
+            .where(ArtikelcodeKoppeling.administratie_id == administratie_id)
+        )
+        met_code = session.scalar(
+            select(func.count()).where(
+                VoorraadRegel.administratie_id == administratie_id, VoorraadRegel.artikelcode.is_not(None)
+            )
+        )
+    stand = {
+        "regels": 0,
+        "genormaliseerd": 0,
+        "onzeker": 0,
+        "dienst": 0,
+        "transport": 0,
+        "niet_genormaliseerd": 0,
+        "legacy_uitgesloten": 0,
+        "regels_met_code": int(met_code or 0),
+        "codes_gekoppeld": int(codes or 0),
+    }
+    for soort, status, n in rijen:
+        stand["regels"] += n
+        if status == LEGACY_UITGESLOTEN:
+            stand["legacy_uitgesloten"] += n
+        elif soort != SOORT_ARTIKEL:
+            stand[soort] += n
+        else:
+            stand[status] += n
+    return stand
 
 
 # --- aansluiting ------------------------------------------------------------------------------------
@@ -339,6 +418,9 @@ class Aansluiting:
     niet_genormaliseerd_uit: int
     onzeker_totaal: int
     regels_totaal: int
+    # v2: dienst-/transportregels in de periode (soort-label) — niet in de aansluiting, wél bewaard.
+    dienst_regels: int = 0
+    transport_regels: int = 0
     bronnen: dict[str, str] = field(
         default_factory=lambda: {
             "inkoop": "inkoopfacturen (AI-gescand, extern document)",
@@ -351,6 +433,10 @@ class Aansluiting:
                 "creditregels = negatieve Quantity)"
             ),
             "systeemstand": "handmatige telling per datum",
+            "diensten": (
+                "dienst-/transportregels (soort-label: regex, AI of correctie) — tellen niet in de "
+                "aansluiting, blijven bewaard als omzet-/dienstinformatie"
+            ),
         }
     )
 
@@ -395,17 +481,24 @@ def aansluiting(*, administratie_id: uuid.UUID, van: date, tot: date) -> Aanslui
     per_groep: dict[uuid.UUID, dict[str, Decimal | int]] = defaultdict(
         lambda: {"begin": Decimal(0), "in": Decimal(0), "uit": Decimal(0), "n_in": 0, "n_uit": 0, "onzeker": 0}
     )
-    niet_in = niet_uit = onzeker_totaal = totaal = 0
+    niet_in = niet_uit = onzeker_totaal = totaal = dienst_n = transport_n = 0
     for r in regels:
+        soort = _soort_van_rij(r)
         if van <= r.datum <= tot:
             totaal += 1
+            if soort != SOORT_ARTIKEL:
+                if soort == "transport":
+                    transport_n += 1
+                else:
+                    dienst_n += 1
+                continue
             if r.normalisatie_status == "niet_genormaliseerd":
                 if r.richting == "in":
                     niet_in += 1
                 else:
                     niet_uit += 1
                 continue
-            if r.normalisatie_status == "uitgesloten" or r.artikelgroep_id is None:
+            if r.artikelgroep_id is None:
                 continue
             g = per_groep[r.artikelgroep_id]
             g["n_in" if r.richting == "in" else "n_uit"] += 1  # type: ignore[operator]
@@ -414,7 +507,7 @@ def aansluiting(*, administratie_id: uuid.UUID, van: date, tot: date) -> Aanslui
                 onzeker_totaal += 1
             if r.aantal is not None:
                 g["in" if r.richting == "in" else "uit"] += r.aantal  # type: ignore[operator]
-        elif r.datum < van and r.artikelgroep_id is not None and r.normalisatie_status != "uitgesloten":
+        elif r.datum < van and r.artikelgroep_id is not None and soort == SOORT_ARTIKEL:
             if r.aantal is not None:
                 g = per_groep[r.artikelgroep_id]
                 g["begin"] += r.aantal if r.richting == "in" else -r.aantal  # type: ignore[operator]
@@ -474,6 +567,8 @@ def aansluiting(*, administratie_id: uuid.UUID, van: date, tot: date) -> Aanslui
         niet_genormaliseerd_uit=niet_uit,
         onzeker_totaal=onzeker_totaal,
         regels_totaal=totaal,
+        dienst_regels=dienst_n,
+        transport_regels=transport_n,
     )
 
 
@@ -495,7 +590,8 @@ def dagstanden(*, administratie_id: uuid.UUID, artikelgroep_id: uuid.UUID, van: 
             .where(
                 VoorraadRegel.administratie_id == administratie_id,
                 VoorraadRegel.artikelgroep_id == artikelgroep_id,
-                VoorraadRegel.normalisatie_status != "uitgesloten",
+                VoorraadRegel.soort == SOORT_ARTIKEL,
+                VoorraadRegel.normalisatie_status != LEGACY_UITGESLOTEN,
                 VoorraadRegel.datum <= tot,
             )
             .group_by(VoorraadRegel.datum, VoorraadRegel.richting)
@@ -531,6 +627,8 @@ class RegelData:
     datum: date
     relatie_naam: str | None
     artikeltekst: str
+    artikelcode: str | None
+    soort: str
     aantal: Decimal | None
     eenheid: str | None
     prijs: Decimal | None
@@ -548,9 +646,11 @@ def regels(
     tot: date,
     artikelgroep_id: uuid.UUID | None = None,
     status: str | None = None,
+    soort: str | None = None,
 ) -> list[RegelData]:
-    """Drill-down (mockup: "alle factuurregels achter het getal, mét link naar het document") of
-    het normalisatie-scherm (status-filter: niet_genormaliseerd / onzeker)."""
+    """Drill-down (mockup: "alle factuurregels achter het getal, mét link naar het document"), het
+    normalisatie-scherm (status-filter: niet_genormaliseerd / onzeker) of de dienst-/omzetregels
+    (soort-filter: dienst / transport — MI-query, v2)."""
     _vereis_ingeschakeld(administratie_id)
     with scoped_session(administratie_id) as session:
         q = select(VoorraadRegel).where(
@@ -562,6 +662,10 @@ def regels(
             q = q.where(VoorraadRegel.artikelgroep_id == artikelgroep_id)
         if status is not None:
             q = q.where(VoorraadRegel.normalisatie_status == status)
+            if status != LEGACY_UITGESLOTEN:
+                q = q.where(VoorraadRegel.soort == SOORT_ARTIKEL)
+        if soort is not None:
+            q = q.where(VoorraadRegel.soort == soort)
         rijen = list(session.scalars(q.order_by(VoorraadRegel.datum.desc(), VoorraadRegel.regel_volgnummer)))
         namen = dict(
             session.execute(
@@ -580,6 +684,8 @@ def regels(
             datum=r.datum,
             relatie_naam=r.relatie_naam,
             artikeltekst=r.artikeltekst,
+            artikelcode=r.artikelcode,
+            soort=_soort_van_rij(r),
             aantal=r.aantal,
             eenheid=r.eenheid,
             prijs=r.prijs,
@@ -591,6 +697,160 @@ def regels(
         )
         for r in rijen
     ]
+
+
+# --- v2: dienst-inzage + codes-inzage (controlemechanisme, eis Peter: nooit blind vertrouwen) --------
+
+
+@dataclass(frozen=True)
+class DienstTekst:
+    voorbeeld_regel_id: uuid.UUID
+    artikeltekst: str
+    artikeltekst_norm: str
+    vendor_id: uuid.UUID | None
+    relatie_naam: str | None
+    soort: str  # dienst | transport
+    bron: str  # regel | ai | handmatig | legacy
+    richtingen: str  # in | uit | in+uit
+    regels: int
+    som_aantal: Decimal
+    som_netto: Decimal
+
+
+def dienst_teksten(*, administratie_id: uuid.UUID, van: date, tot: date) -> list[DienstTekst]:
+    """ "Als dienst geclassificeerd" — per unieke (leverancier, tekst) mét aantallen, soort en de bron van
+    de classificatie (regex 'regel' / AI / handmatig / legacy pre-0088). Meest voorkomend eerst."""
+    _vereis_ingeschakeld(administratie_id)
+    with scoped_session(administratie_id) as session:
+        rijen = list(
+            session.scalars(
+                select(VoorraadRegel).where(
+                    VoorraadRegel.administratie_id == administratie_id,
+                    VoorraadRegel.datum >= van,
+                    VoorraadRegel.datum <= tot,
+                    (VoorraadRegel.soort != SOORT_ARTIKEL) | (VoorraadRegel.normalisatie_status == LEGACY_UITGESLOTEN),
+                )
+            )
+        )
+        tekstregels, _ = normalisatie._bestaande_kennis(session, administratie_id=administratie_id)
+        session.expunge_all()
+    groepen: dict[tuple[uuid.UUID, str], dict] = {}
+    for r in rijen:
+        vendor = r.vendor_id or ONBEKENDE_LEVERANCIER
+        norm = normalisatie.normaliseer_tekst(r.artikeltekst)
+        g = groepen.setdefault(
+            (vendor, norm),
+            {
+                "voorbeeld": r,
+                "richtingen": set(),
+                "n": 0,
+                "aantal": Decimal(0),
+                "netto": Decimal(0),
+                "soort": _soort_van_rij(r),
+            },
+        )
+        g["richtingen"].add(r.richting)
+        g["n"] += 1
+        g["aantal"] += r.aantal or Decimal(0)
+        g["netto"] += r.netto_bedrag or Decimal(0)
+    uit: list[DienstTekst] = []
+    for (vendor, norm), g in groepen.items():
+        regel = tekstregels.get((vendor, norm))
+        voorbeeld: VoorraadRegel = g["voorbeeld"]
+        uit.append(
+            DienstTekst(
+                voorbeeld_regel_id=voorbeeld.id,
+                artikeltekst=voorbeeld.artikeltekst,
+                artikeltekst_norm=norm,
+                vendor_id=voorbeeld.vendor_id,
+                relatie_naam=voorbeeld.relatie_naam,
+                soort=g["soort"],
+                bron=regel.bron if regel is not None else "legacy",
+                richtingen="+".join(sorted(g["richtingen"])),
+                regels=g["n"],
+                som_aantal=Decimal(g["aantal"]).quantize(_DUIZENDSTE),
+                som_netto=Decimal(g["netto"]).quantize(_HONDERDSTE),
+            )
+        )
+    uit.sort(key=lambda d: (-d.regels, d.artikeltekst_norm))
+    return uit
+
+
+@dataclass(frozen=True)
+class ArtikelcodeData:
+    id: uuid.UUID
+    richting: str
+    vendor_id: uuid.UUID | None
+    relatie_naam: str | None
+    code: str
+    soort: str
+    artikelgroep_id: uuid.UUID | None
+    artikelgroep_naam: str | None
+    zekerheid: Decimal | None
+    bron: str
+    voorbeeld_tekst: str | None
+    regels: int
+    teksten: int
+
+
+def artikelcodes(*, administratie_id: uuid.UUID) -> list[ArtikelcodeData]:
+    """Codes-inzage: élke koppeling (code → groep/soort per richting + leverancier) mét bron (AI-voorstel
+    vs handmatig), zekerheid en het aantal feitenregels/unieke teksten dat erop steunt."""
+    _vereis_ingeschakeld(administratie_id)
+    with scoped_session(administratie_id) as session:
+        koppelingen = list(
+            session.scalars(
+                select(ArtikelcodeKoppeling)
+                .where(ArtikelcodeKoppeling.administratie_id == administratie_id)
+                .order_by(ArtikelcodeKoppeling.richting, ArtikelcodeKoppeling.code)
+            )
+        )
+        tellingen = session.execute(
+            select(
+                VoorraadRegel.richting,
+                VoorraadRegel.vendor_id,
+                VoorraadRegel.artikelcode,
+                func.count(),
+                func.count(func.distinct(VoorraadRegel.artikeltekst)),
+            )
+            .where(VoorraadRegel.administratie_id == administratie_id, VoorraadRegel.artikelcode.is_not(None))
+            .group_by(VoorraadRegel.richting, VoorraadRegel.vendor_id, VoorraadRegel.artikelcode)
+        ).all()
+        namen = dict(
+            session.execute(
+                select(Artikelgroep.id, Artikelgroep.naam).where(Artikelgroep.administratie_id == administratie_id)
+            ).all()
+        )
+        vendors = dict(
+            session.execute(
+                select(VendorCache.id, VendorCache.naam).where(VendorCache.administratie_id == administratie_id)
+            ).all()
+        )
+        session.expunge_all()
+    per_sleutel = {(ri, v or ONBEKENDE_LEVERANCIER, c): (int(n), int(t)) for ri, v, c, n, t in tellingen}
+    uit: list[ArtikelcodeData] = []
+    for k in koppelingen:
+        n, t = per_sleutel.get((k.richting, k.vendor_id, k.code), (0, 0))
+        vendor = None if k.vendor_id == ONBEKENDE_LEVERANCIER else k.vendor_id
+        uit.append(
+            ArtikelcodeData(
+                id=k.id,
+                richting=k.richting,
+                vendor_id=vendor,
+                relatie_naam=vendors.get(vendor) if vendor else None,
+                code=k.code,
+                soort=k.soort,
+                artikelgroep_id=k.artikelgroep_id,
+                artikelgroep_naam=namen.get(k.artikelgroep_id) if k.artikelgroep_id else None,
+                zekerheid=k.zekerheid,
+                bron=k.bron,
+                voorbeeld_tekst=k.voorbeeld_tekst,
+                regels=n,
+                teksten=t,
+            )
+        )
+    uit.sort(key=lambda d: (-d.regels, d.richting, d.code))
+    return uit
 
 
 # --- telling + groepen + correctie -----------------------------------------------------------------
@@ -743,54 +1003,92 @@ def zet_tolerantie(
         )
 
 
+def _toets_soort_en_groep(
+    session: Session, *, administratie_id: uuid.UUID, soort: str, artikelgroep_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    if soort not in SOORTEN:
+        raise OngeldigeInvoer("Onbekende soort — kies artikel, dienst of transport")
+    if soort != SOORT_ARTIKEL:
+        return None
+    if artikelgroep_id is None:
+        raise OngeldigeInvoer("Kies een artikelgroep, of markeer de regel als dienst/transport")
+    groep = session.get(Artikelgroep, artikelgroep_id)
+    if groep is None or groep.administratie_id != administratie_id or not groep.actief:
+        raise OngeldigeInvoer("Onbekende of inactieve artikelgroep")
+    return artikelgroep_id
+
+
+def _herleid(session: Session, *, administratie_id: uuid.UUID, rijen: list[VoorraadRegel]) -> int:
+    """Historie herrekenen ná een correctie: de betrokken feitenregels opnieuw door het
+    deterministische pad (handmatig > tekstregel > code > regex — géén AI)."""
+    if not rijen:
+        return 0
+    normalisaties = normalisatie.normaliseer_regels(
+        session,
+        administratie_id=administratie_id,
+        document_id=None,
+        regels=[RegelInvoer(r.artikeltekst, r.vendor_id, r.relatie_naam, r.richting, r.artikelcode) for r in rijen],
+        met_ai=False,
+    )
+    for r, n in zip(rijen, normalisaties, strict=True):
+        r.artikelgroep_id = n.artikelgroep_id
+        r.normalisatie_status = n.status
+        r.normalisatie_zekerheid = n.zekerheid
+        r.soort = n.soort
+        r.artikelcode = n.artikelcode
+    return len(rijen)
+
+
 def corrigeer_normalisatie(
     *,
     administratie_id: uuid.UUID,
     regel_id: uuid.UUID,
+    soort: str,
     artikelgroep_id: uuid.UUID | None,
-    uitgesloten: bool,
     actor_id: uuid.UUID,
 ) -> int:
-    """Optionele correctie (mockup §2): geldt vanaf dan voor álle regels met dezelfde leverancier +
-    artikeltekst (historie herrekend, bron 'handmatig' — wint van de AI). Geeft het aantal herrekende
-    feitenregels terug."""
+    """Optionele correctie (mockup §2, v2 mét soort): geldt vanaf dan voor álle regels met dezelfde
+    leverancier + artikeltekst ÉN — draagt de regel een artikelcode — voor álle regels met dezelfde
+    (richting, leverancier, code); bron 'handmatig' wint van de AI. Historie herrekend (deterministisch).
+    Geeft het aantal herrekende feitenregels terug."""
     _vereis_ingeschakeld(administratie_id)
-    if not uitgesloten and artikelgroep_id is None:
-        raise OngeldigeInvoer("Kies een artikelgroep of markeer de regel als 'geen artikel'")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         regel = session.get(VoorraadRegel, regel_id)
         if regel is None or regel.administratie_id != administratie_id:
             raise OngeldigeInvoer("Onbekende regel")
-        if artikelgroep_id is not None:
-            groep = session.get(Artikelgroep, artikelgroep_id)
-            if groep is None or groep.administratie_id != administratie_id or not groep.actief:
-                raise OngeldigeInvoer("Onbekende of inactieve artikelgroep")
+        groep_id = _toets_soort_en_groep(
+            session, administratie_id=administratie_id, soort=soort, artikelgroep_id=artikelgroep_id
+        )
         norm = normalisatie.normaliseer_tekst(regel.artikeltekst)
         vendor = regel.vendor_id or ONBEKENDE_LEVERANCIER
-        bestaande = normalisatie.zoek_regel(
-            session, administratie_id=administratie_id, vendor_id=vendor, tekst_norm=norm
+        code = regel.artikelcode or normalisatie.artikelcode_uit_tekst(regel.artikeltekst)
+        tekstregel, oud = normalisatie.zet_tekstregel(
+            session,
+            administratie_id=administratie_id,
+            vendor_id=vendor,
+            tekst_norm=norm,
+            soort=soort,
+            artikelgroep_id=groep_id,
+            zekerheid=Decimal("1.000"),
+            bron="handmatig",
+            actor_id=actor_id,
         )
-        oud = None
-        if bestaande is None:
-            bestaande = NormalisatieRegel(
-                administratie_id=administratie_id, vendor_id=vendor, artikeltekst_norm=norm, bron="handmatig"
+        if code:
+            normalisatie.zet_koppeling(
+                session,
+                administratie_id=administratie_id,
+                richting=regel.richting,
+                vendor_id=vendor,
+                code=code,
+                soort=soort,
+                artikelgroep_id=groep_id,
+                zekerheid=Decimal("1.000"),
+                bron="handmatig",
+                voorbeeld_tekst=regel.artikeltekst,
+                actor_id=actor_id,
             )
-            session.add(bestaande)
-        else:
-            oud = {
-                "artikelgroep_id": str(bestaande.artikelgroep_id) if bestaande.artikelgroep_id else None,
-                "uitgesloten": bestaande.uitgesloten,
-                "bron": bestaande.bron,
-            }
-        bestaande.artikelgroep_id = None if uitgesloten else artikelgroep_id
-        bestaande.uitgesloten = uitgesloten
-        bestaande.zekerheid = Decimal("1.000")
-        bestaande.bron = "handmatig"
-        bestaande.bijgewerkt_door = actor_id
-        session.flush()
-        uitkomst = normalisatie.pas_regel_toe(bestaande)
-        # Historie herrekenen: álle feitenregels met dezelfde (leverancier, tekst).
-        betrokken = list(
+        # Historie: álle feitenregels met dezelfde (leverancier, tekst) óf dezelfde (richting, leverancier, code).
+        kandidaten = list(
             session.scalars(
                 select(VoorraadRegel).where(
                     VoorraadRegel.administratie_id == administratie_id,
@@ -800,27 +1098,96 @@ def corrigeer_normalisatie(
                 )
             )
         )
-        n = 0
-        for r in betrokken:
-            if normalisatie.normaliseer_tekst(r.artikeltekst) != norm:
-                continue
-            r.artikelgroep_id = uitkomst.artikelgroep_id
-            r.normalisatie_status = uitkomst.status
-            r.normalisatie_zekerheid = uitkomst.zekerheid
-            n += 1
+        betrokken = [
+            r
+            for r in kandidaten
+            if normalisatie.normaliseer_tekst(r.artikeltekst) == norm
+            or (code is not None and r.richting == regel.richting and r.artikelcode == code)
+        ]
+        n = _herleid(session, administratie_id=administratie_id, rijen=betrokken)
         record_audit_event(
             session,
             actor_id=actor_id,
             module="mi",
             tabel="normalisatie_regel",
-            record_id=bestaande.id,
+            record_id=tekstregel.id,
             actie="normalisatie_gecorrigeerd",
             correlatie_id=regel_id,
             oude_waarde=oud,
             nieuwe_waarde={
                 "artikeltekst_norm": norm,
-                "artikelgroep_id": str(artikelgroep_id) if artikelgroep_id else None,
-                "uitgesloten": uitgesloten,
+                "artikelcode": code,
+                "soort": soort,
+                "artikelgroep_id": str(groep_id) if groep_id else None,
+                "herrekend": n,
+            },
+            administratie_id=administratie_id,
+        )
+        return n
+
+
+def corrigeer_artikelcode(
+    *,
+    administratie_id: uuid.UUID,
+    koppeling_id: uuid.UUID,
+    soort: str,
+    artikelgroep_id: uuid.UUID | None,
+    actor_id: uuid.UUID,
+) -> int:
+    """Correctie vanuit de codes-inzage: de koppeling wordt 'handmatig' (wint van de AI) en álle
+    feitenregels met dezelfde (richting, leverancier, code) worden deterministisch herleid. Een
+    handmatige TEKSTregel op één specifieke omschrijving blijft daarbij voorgaan (prioriteitsregel)."""
+    _vereis_ingeschakeld(administratie_id)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        koppeling = session.get(ArtikelcodeKoppeling, koppeling_id)
+        if koppeling is None or koppeling.administratie_id != administratie_id:
+            raise OngeldigeInvoer("Onbekende artikelcode-koppeling")
+        groep_id = _toets_soort_en_groep(
+            session, administratie_id=administratie_id, soort=soort, artikelgroep_id=artikelgroep_id
+        )
+        _, oud = normalisatie.zet_koppeling(
+            session,
+            administratie_id=administratie_id,
+            richting=koppeling.richting,
+            vendor_id=koppeling.vendor_id,
+            code=koppeling.code,
+            soort=soort,
+            artikelgroep_id=groep_id,
+            zekerheid=Decimal("1.000"),
+            bron="handmatig",
+            voorbeeld_tekst=koppeling.voorbeeld_tekst,
+            actor_id=actor_id,
+        )
+        vendor_filter = (
+            VoorraadRegel.vendor_id.is_(None)
+            if koppeling.vendor_id == ONBEKENDE_LEVERANCIER
+            else VoorraadRegel.vendor_id == koppeling.vendor_id
+        )
+        betrokken = list(
+            session.scalars(
+                select(VoorraadRegel).where(
+                    VoorraadRegel.administratie_id == administratie_id,
+                    VoorraadRegel.richting == koppeling.richting,
+                    VoorraadRegel.artikelcode == koppeling.code,
+                    vendor_filter,
+                )
+            )
+        )
+        n = _herleid(session, administratie_id=administratie_id, rijen=betrokken)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="mi",
+            tabel="artikelcode_koppeling",
+            record_id=koppeling.id,
+            actie="artikelcode_gecorrigeerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde=oud,
+            nieuwe_waarde={
+                "richting": koppeling.richting,
+                "code": koppeling.code,
+                "soort": soort,
+                "artikelgroep_id": str(groep_id) if groep_id else None,
                 "herrekend": n,
             },
             administratie_id=administratie_id,

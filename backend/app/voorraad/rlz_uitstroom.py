@@ -185,9 +185,7 @@ def _verwijder_factuur(administratie_id: uuid.UUID, rlz_document_id: uuid.UUID) 
         return int(resultaat.rowcount or 0)
 
 
-def registreer_rlz_factuur(
-    *, administratie_id: uuid.UUID, kop: dict[str, Any], regels: list[dict[str, Any]]
-) -> int:
+def registreer_rlz_factuur(*, administratie_id: uuid.UUID, kop: dict[str, Any], regels: list[dict[str, Any]]) -> int:
     """Eén geboekte RLZ-verkoopfactuur → haar regels als 'uit'-feiten (bron rlz_verkoop), vervangen
     per factuur (idempotent). Normalisatie via dezelfde motor als de instroom (leverancier = onze
     eigen verkoop → sentinel). Geeft het aantal regels terug."""
@@ -199,11 +197,13 @@ def registreer_rlz_factuur(
     debiteur = _debiteur(kop)
     bruikbaar = [r for r in regels if str(r.get("Description") or "").strip()]
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        # Artikelcode = uit de Description ("(560140.4)"), richting 'uit' — eigen verkoopcodes, een
+        # andere sleutelruimte dan de leverancierscodes van de inkoopkant (v2 30-08).
         normalisaties = normalisatie.normaliseer_regels(
             session,
             administratie_id=administratie_id,
             document_id=None,
-            regels=[(str(r["Description"]).strip(), None, None) for r in bruikbaar],
+            regels=[normalisatie.RegelInvoer(str(r["Description"]).strip(), None, None, "uit") for r in bruikbaar],
         )
         nieuwe: list[VoorraadRegel] = []
         for volgnummer, (r, n) in enumerate(zip(bruikbaar, normalisaties, strict=True), start=1):
@@ -220,6 +220,8 @@ def registreer_rlz_factuur(
                     relatie_naam=debiteur,
                     regel_volgnummer=volgnummer,
                     artikeltekst=str(r["Description"]).strip()[:500],
+                    artikelcode=n.artikelcode,
+                    soort=n.soort,
                     aantal=_aantal(r),
                     eenheid=None,
                     prijs=_dec(r.get("Price")),
@@ -295,11 +297,12 @@ def sync_rlz_verkoopregels(
     return telling
 
 
-def hernormaliseer_rlz_regels(*, administratie_id: uuid.UUID) -> int:
-    """"⟳ Verversen"-deel voor de RLZ-bron: de opgeslagen RLZ-regels opnieuw door de normalisatie
-    (bekende teksten deterministisch, nieuwe via de AI-gates) — zónder RLZ-calls, zodat de UI-knop
-    nooit op een lange RLZ-lees-lus wacht (504-les 23-08). Het lezen zelf hoort bij de dagelijkse sync
-    of `voorraad-rlz-sync`."""
+def hernormaliseer_rlz_regels(*, administratie_id: uuid.UUID, met_ai: bool = True) -> int:
+    """ "⟳ Verversen"-deel voor de RLZ-bron: de opgeslagen RLZ-regels opnieuw door de normalisatie
+    (bekende teksten/codes deterministisch, nieuwe via de AI-gates; `met_ai=False` = alleen
+    deterministisch) — zónder RLZ-calls, zodat de UI-knop nooit op een lange RLZ-lees-lus wacht
+    (504-les 23-08). Het lezen zelf hoort bij de dagelijkse sync of `voorraad-rlz-sync`. Zet óók de
+    legacy-status 'uitgesloten' (pre-0088) om naar het soort-label."""
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         rijen = list(
             session.scalars(
@@ -314,12 +317,15 @@ def hernormaliseer_rlz_regels(*, administratie_id: uuid.UUID) -> int:
             session,
             administratie_id=administratie_id,
             document_id=None,
-            regels=[(r.artikeltekst, None, None) for r in rijen],
+            regels=[normalisatie.RegelInvoer(r.artikeltekst, None, None, "uit") for r in rijen],
+            met_ai=met_ai,
         )
         for r, n in zip(rijen, normalisaties, strict=True):
             r.artikelgroep_id = n.artikelgroep_id
             r.normalisatie_status = n.status
             r.normalisatie_zekerheid = n.zekerheid
+            r.soort = n.soort
+            r.artikelcode = n.artikelcode
         return len(rijen)
 
 

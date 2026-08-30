@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +38,9 @@ class AansluitingDto(BaseModel):
     niet_genormaliseerd_uit: int
     onzeker_totaal: int
     regels_totaal: int
+    # v2 (30-08): dienst-/transportregels in de periode — soort-label, tellen niet in de aansluiting.
+    dienst_regels: int = 0
+    transport_regels: int = 0
     # Bron per kolom (mockup-beslispunt 2: "instroom extern vs uitstroom intern" altijd herleidbaar).
     bronnen: dict[str, str]
 
@@ -59,6 +63,9 @@ class RegelDto(BaseModel):
     datum: date
     relatie_naam: str | None = None
     artikeltekst: str
+    # v2: artikelcode (normalisatiesleutel) + soort artikel/dienst/transport.
+    artikelcode: str | None = None
+    soort: str = "artikel"
     aantal: Decimal | None = None
     eenheid: str | None = None
     prijs: Decimal | None = None
@@ -67,6 +74,40 @@ class RegelDto(BaseModel):
     artikelgroep_naam: str | None = None
     normalisatie_status: str
     normalisatie_zekerheid: Decimal | None = None
+
+
+class DienstTekstDto(BaseModel):
+    """ "Als dienst geclassificeerd" — één rij per unieke (leverancier, tekst) mét aantallen (v2, blok B)."""
+
+    voorbeeld_regel_id: uuid.UUID
+    artikeltekst: str
+    artikeltekst_norm: str
+    vendor_id: uuid.UUID | None = None
+    relatie_naam: str | None = None
+    soort: str
+    bron: str
+    richtingen: str
+    regels: int
+    som_aantal: Decimal
+    som_netto: Decimal
+
+
+class ArtikelcodeDto(BaseModel):
+    """Codes-inzage: koppeling code → groep/soort per richting + leverancier (v2, blok C)."""
+
+    id: uuid.UUID
+    richting: str
+    vendor_id: uuid.UUID | None = None
+    relatie_naam: str | None = None
+    code: str
+    soort: str
+    artikelgroep_id: uuid.UUID | None = None
+    artikelgroep_naam: str | None = None
+    zekerheid: Decimal | None = None
+    bron: str
+    voorbeeld_tekst: str | None = None
+    regels: int
+    teksten: int
 
 
 class GroepDto(BaseModel):
@@ -95,9 +136,17 @@ class TellingInvoerDto(StrikteInvoer):
 
 
 class CorrectieDto(StrikteInvoer):
+    """Correctie per regel(tekst): soort artikel (mét groep) óf dienst/transport (zonder groep) — v2
+    vervangt het oude `uitgesloten`-vlagje door het soort-label."""
+
     regel_id: uuid.UUID
+    soort: Literal["artikel", "dienst", "transport"] = "artikel"
     artikelgroep_id: uuid.UUID | None = None
-    uitgesloten: bool = False
+
+
+class ArtikelcodeCorrectieDto(StrikteInvoer):
+    soort: Literal["artikel", "dienst", "transport"] = "artikel"
+    artikelgroep_id: uuid.UUID | None = None
 
 
 class HerrekenResultaatDto(BaseModel):

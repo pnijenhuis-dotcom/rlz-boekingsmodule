@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0087
+-- Migratie-head bij deze dump: 0088
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2448,6 +2448,33 @@ ALTER TABLE ONLY boekhouding.werkstempel FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: artikelcode_koppeling; Type: TABLE; Schema: mi; Owner: -
+--
+
+CREATE TABLE mi.artikelcode_koppeling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    richting text NOT NULL,
+    vendor_id uuid NOT NULL,
+    code text NOT NULL,
+    artikelgroep_id uuid,
+    soort text DEFAULT 'artikel'::text NOT NULL,
+    zekerheid numeric(4,3),
+    bron text NOT NULL,
+    voorbeeld_tekst text,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_door uuid,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_artikelcode_koppeling_bron CHECK ((bron = ANY (ARRAY['ai'::text, 'handmatig'::text]))),
+    CONSTRAINT ck_artikelcode_koppeling_groep_bij_artikel CHECK (((soort = 'artikel'::text) OR (artikelgroep_id IS NULL))),
+    CONSTRAINT ck_artikelcode_koppeling_richting CHECK ((richting = ANY (ARRAY['in'::text, 'uit'::text]))),
+    CONSTRAINT ck_artikelcode_koppeling_soort CHECK ((soort = ANY (ARRAY['artikel'::text, 'dienst'::text, 'transport'::text])))
+);
+
+ALTER TABLE ONLY mi.artikelcode_koppeling FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: artikelgroep; Type: TABLE; Schema: mi; Owner: -
 --
 
@@ -2482,7 +2509,9 @@ CREATE TABLE mi.normalisatie_regel (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_door uuid,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_normalisatie_regel_bron CHECK ((bron = ANY (ARRAY['ai'::text, 'handmatig'::text, 'regel'::text])))
+    soort text DEFAULT 'artikel'::text NOT NULL,
+    CONSTRAINT ck_normalisatie_regel_bron CHECK ((bron = ANY (ARRAY['ai'::text, 'handmatig'::text, 'regel'::text]))),
+    CONSTRAINT ck_normalisatie_regel_soort CHECK ((soort = ANY (ARRAY['artikel'::text, 'dienst'::text, 'transport'::text])))
 );
 
 ALTER TABLE ONLY mi.normalisatie_regel FORCE ROW LEVEL SECURITY;
@@ -2513,8 +2542,11 @@ CREATE TABLE mi.voorraad_regel (
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
     rlz_document_id uuid,
     rlz_referentie text,
+    soort text DEFAULT 'artikel'::text NOT NULL,
+    artikelcode text,
     CONSTRAINT ck_voorraad_regel_herkomst CHECK (((document_id IS NOT NULL) <> (rlz_document_id IS NOT NULL))),
     CONSTRAINT ck_voorraad_regel_richting CHECK ((richting = ANY (ARRAY['in'::text, 'uit'::text]))),
+    CONSTRAINT ck_voorraad_regel_soort CHECK ((soort = ANY (ARRAY['artikel'::text, 'dienst'::text, 'transport'::text]))),
     CONSTRAINT ck_voorraad_regel_status CHECK ((normalisatie_status = ANY (ARRAY['genormaliseerd'::text, 'onzeker'::text, 'uitgesloten'::text, 'niet_genormaliseerd'::text])))
 );
 
@@ -3860,6 +3892,14 @@ ALTER TABLE ONLY boekhouding.werkstempel
 
 
 --
+-- Name: artikelcode_koppeling artikelcode_koppeling_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelcode_koppeling
+    ADD CONSTRAINT artikelcode_koppeling_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: artikelgroep artikelgroep_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
 --
 
@@ -3873,6 +3913,14 @@ ALTER TABLE ONLY mi.artikelgroep
 
 ALTER TABLE ONLY mi.normalisatie_regel
     ADD CONSTRAINT normalisatie_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: artikelcode_koppeling uq_artikelcode_koppeling; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelcode_koppeling
+    ADD CONSTRAINT uq_artikelcode_koppeling UNIQUE (administratie_id, richting, vendor_id, code);
 
 
 --
@@ -5022,6 +5070,13 @@ CREATE UNIQUE INDEX vraag_een_open_per_document ON boekhouding.vraag USING btree
 
 
 --
+-- Name: ix_artikelcode_koppeling_administratie_id; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_artikelcode_koppeling_administratie_id ON mi.artikelcode_koppeling USING btree (administratie_id);
+
+
+--
 -- Name: ix_artikelgroep_administratie_id; Type: INDEX; Schema: mi; Owner: -
 --
 
@@ -5033,6 +5088,13 @@ CREATE INDEX ix_artikelgroep_administratie_id ON mi.artikelgroep USING btree (ad
 --
 
 CREATE INDEX ix_voorraad_regel_administratie_datum ON mi.voorraad_regel USING btree (administratie_id, datum);
+
+
+--
+-- Name: ix_voorraad_regel_artikelcode; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_voorraad_regel_artikelcode ON mi.voorraad_regel USING btree (administratie_id, artikelcode);
 
 
 --
@@ -7234,6 +7296,30 @@ ALTER TABLE ONLY boekhouding.werkstempel
 
 
 --
+-- Name: artikelcode_koppeling artikelcode_koppeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelcode_koppeling
+    ADD CONSTRAINT artikelcode_koppeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: artikelcode_koppeling artikelcode_koppeling_artikelgroep_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelcode_koppeling
+    ADD CONSTRAINT artikelcode_koppeling_artikelgroep_id_fkey FOREIGN KEY (artikelgroep_id) REFERENCES mi.artikelgroep(id);
+
+
+--
+-- Name: artikelcode_koppeling artikelcode_koppeling_bijgewerkt_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.artikelcode_koppeling
+    ADD CONSTRAINT artikelcode_koppeling_bijgewerkt_door_fkey FOREIGN KEY (bijgewerkt_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: artikelgroep artikelgroep_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
 --
 
@@ -8821,6 +8907,19 @@ ALTER TABLE boekhouding.werkstempel ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY werkstempel_scope ON boekhouding.werkstempel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: artikelcode_koppeling; Type: ROW SECURITY; Schema: mi; Owner: -
+--
+
+ALTER TABLE mi.artikelcode_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: artikelcode_koppeling artikelcode_koppeling_scope; Type: POLICY; Schema: mi; Owner: -
+--
+
+CREATE POLICY artikelcode_koppeling_scope ON mi.artikelcode_koppeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

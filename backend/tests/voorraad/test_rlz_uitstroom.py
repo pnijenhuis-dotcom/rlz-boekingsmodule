@@ -204,10 +204,16 @@ class TestLeesroute:
         assert geboekt[0].rlz_referentie == "50212273" and geboekt[0].relatie_naam == "Bouwbedr.Gebr. Kanters BV"
         assert geboekt[0].datum == date(2026, 8, 28) and geboekt[0].prijs == Decimal("20.1000")
         assert geboekt[0].eenheid is None  # RLZ kent geen eenheidsveld op de regel (STAP-0)
-        assert geboekt[1].normalisatie_status == "uitgesloten"  # transport = dienst, geen AI
+        # v2: artikelcode uit de Description als sleutel (richting 'uit'); transport = soort-label, geen AI.
+        assert geboekt[0].artikelcode == "550100.210" and geboekt[0].soort == "artikel"
+        assert geboekt[1].soort == "transport" and geboekt[1].normalisatie_status == "genormaliseerd"
+        assert geboekt[1].artikelcode is None
         assert geboekt[2].normalisatie_status == "genormaliseerd" and geboekt[2].artikelgroep_id is not None
         credit = sorted(per_factuur[F_CREDIT], key=lambda r: r.regel_volgnummer)
         assert [r.aantal for r in credit] == [Decimal("-30.000"), Decimal("8.000"), Decimal("-5.000")]
+        assert credit[1].artikelcode == "550100.6"  # "(Gebr.550100.6 )" — gebruikt = zelfde code
+        codes = {(k.richting, k.code) for k in service.artikelcodes(administratie_id=administratie_id)}
+        assert codes == {("uit", "550100.210"), ("uit", "550100.6")}
         assert credit[0].netto_bedrag == Decimal("-1950.00")
         assert credit[0].artikelgroep_id == geboekt[2].artikelgroep_id  # zelfde regel, geen 2e AI-call
         # Eén AI-call per factuur voor uitsluitend de nog onbekende teksten: "Koppeling draaibaar 48"
@@ -222,6 +228,7 @@ class TestLeesroute:
         g = next(x for x in a.groepen if x.artikelgroep_id == groep.id)
         assert g.verkoop == Decimal("1965.000") and g.regels_uit == 3
         assert "RLZ-verkoopfacturen" in a.bronnen["verkoop"] and "verkoop_rlz" in a.bronnen
+        assert a.transport_regels == 1  # "Transportkosten" blijft als feit bewaard, telt niet
         drill = service.regels(
             administratie_id=administratie_id, van=date(2026, 1, 1), tot=date(2026, 12, 31), artikelgroep_id=groep.id
         )
