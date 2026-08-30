@@ -753,9 +753,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   die run: pdf.js LEGACY-build in beide viewers (hoofdbuild vereist `Uint8Array.toHex`, Chromium ≥
   140 — WebView 133 brak het factuurbeeld) + ⏻-glyph → `UitlogIcoon` (SVG). Debug-only
   cleartext-overlay `app/src/debug/` + env-vlag `NATIVE_LOKALE_BACKEND` voor lokale
-  emulator-builds; release-script bewaakt dat beide NIET in de AAB zitten.** Klikwerk Peter:
-  wachtwoordmanager → AAB naar Internal testing → App signing: BEIDE certificaten → assetlinks/
-  apk-key-hash → screenshots → kliktest.**).
+  emulator-builds; release-script bewaakt dat beide NIET in de AAB zitten.** **Interne
+  Play-testrelease LIVE (30-08); assetlinks + WebAuthn-origins (BESLISSINGEN "PLAY-NAZORG 30-08"):
+  `ANDROID_CERT_SHA256_VINGERAFDRUKKEN` in deploy.yml draagt BEIDE certificaten (Google
+  app-signing-key + upload-key) en is de ENIGE bron — `app/auth/android_signing.py` leidt daaruit
+  de assetlinks-statement (route + gegenereerd statisch apex-bestand
+  `native/apex-well-known/assetlinks.json`) én de `android:apk-key-hash:`-origins af
+  (`toegestane_webauthn_origins`; nooit met de hand in `WEBAUTHN_ORIGINS`), settings-validator
+  fail-loud, drift-test deploy↔apex-bestand; R8 in identiteitsmodus + mapping/debug-symbols als
+  upload-artefact naast de AAB. Klikwerk Peter: assetlinks.json naar de WordPress-apex (30-08 nog
+  404) → Google's checker → kliktest §8.** Eerder klikwerk: wachtwoordmanager → AAB naar Internal
+  testing → App signing: BEIDE certificaten → screenshots.**).
   Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +

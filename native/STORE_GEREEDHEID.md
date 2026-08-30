@@ -128,7 +128,10 @@ béta-/app-review, niet voor interne TestFlight), build koppelen ná de eerste u
    aan), release-AAB bouwen, **interne test** (de ≥ 12 testers/14 dagen-eis geldt alleen
    persoonlijke accounts — het PDL-organisatieaccount valt daarbuiten; de accordeurs blijven
    de testgroep) + `assetlinks.json` met BEIDE signing-hashes (Google's app-signing-key +
-   upload-key) + de twee `android:apk-key-hash:`-origins in `webauthn_origins`.
+   upload-key); de twee `android:apk-key-hash:`-origins leidt de backend sinds 30-08 zélf af
+   uit `ANDROID_CERT_SHA256_VINGERAFDRUKKEN` (`app/auth/android_signing.py`) — **agent-kant
+   UITGEVOERD 30-08 (BESLISSINGEN "PLAY-NAZORG 30-08"); open: assetlinks.json op de WordPress-apex
+   (klikwerk).**
 5. Store-listing (NL): naam "Nijenhuis Boekingsmodule" (hernoemd 19-08), ondertitel "Facturen goedkeuren" (ASC-limiet
    30 tekens). **Iconen: DEFINITIEF (2026-08-18)** — N-beeldmerk uit `mockup/app-icoon-n.svg`
    (zie status bovenaan). **Screenshots: KLAAR — hergenereerd 2026-08-19 mét de nieuwe

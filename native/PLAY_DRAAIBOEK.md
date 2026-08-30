@@ -155,6 +155,13 @@ versionCode/-Name, `POST_NOTIFICATIONS` aanwezig, `ACCESS_BACKGROUND_LOCATION` a
 
 - **Elke volgende upload: versionCode +1** (Play weigert een hergebruikt nummer); versionName
   volgt de iOS `MARKETING_VERSION` (STORE_GEREEDHEID §6).
+- **Upload-artefacten náást de AAB (sinds 30-08):** het script legt in `app/release/` óók
+  `<naam>-mapping.txt` (R8-mapping — identiteitsmodus, de app wordt bewust niet geobfusceerd; de
+  mapping zit ook ín de AAB, Play leest 'm automatisch) en `<naam>-native-debug-symbols.zip`
+  (de .so's uit de bundel — alleen androidx-datastore via Firebase, geen eigen native code). Die
+  zip upload je ná de AAB-upload via App bundle explorer → versie → Downloads → *Native debug
+  symbols*; daarmee verdwijnen de twee Play-waarschuwingen ("geen deobfuscation-bestand",
+  "native code zonder debug-symbolen").
 - Lokaal op een toestel proberen vóór de upload (optioneel): `bundletool build-apks
   --bundle=<aab> --output=/tmp/app.apks --ks=~/Sleutels/nijenhuis-goedkeuren-upload.jks
   --ks-key-alias=upload --connected-device` → `bundletool install-apks --apks=/tmp/app.apks`.
@@ -220,18 +227,29 @@ dus **beide** vingerafdrukken uit §4 stap 6 moeten in twee configs:
    Google's checker:
    `https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://administratiekantoornijenhuis.nl&relation=delegate_permission/common.get_login_creds`
    (moet beide statements teruggeven).
-2. **Backend-config in `.github/workflows/deploy.yml`** (service-stap `--set-env-vars`), door de
-   agent zodra jij de twee vingerafdrukken doorgeeft — of zelf:
+2. **Backend-config in `.github/workflows/deploy.yml`** (service-stap `--set-env-vars`) — één
+   variabele, de rest leidt de code af (herzien 30-08, `app/auth/android_signing.py`):
    - `ANDROID_CERT_SHA256_VINGERAFDRUKKEN=["<SHA256-app-signing>","<SHA256-upload>"]` — activeert
      de referentie-route `/.well-known/assetlinks.json` op het app-subdomein
-     (`app/auth/wellknown.py`, tot dan fail-closed 404);
-   - in `WEBAUTHN_ORIGINS` de twee origins **erbij**:
-     `android:apk-key-hash:<base64url-sha256-app-signing>` en
-     `android:apk-key-hash:<base64url-sha256-upload>` (base64url zonder `=`; `android_keystore.sh`
-     print die vorm voor de upload-key; voor Google's key: SHA-256-hex → bytes → base64url, bv.
-     `echo "AA:BB:…" | tr -d ':' | xxd -r -p | base64 | tr '+/' '-_' | tr -d '='`).
+     (`app/auth/wellknown.py`, tot dan fail-closed 404) **én** levert de WebAuthn-origins:
+     de backend berekent zélf `android:apk-key-hash:<base64url-sha256>` per certificaat en voegt ze
+     toe aan de toegestane origins (`toegestane_webauthn_origins`). **Niets met de hand in
+     `WEBAUTHN_ORIGINS` zetten** — de handmatige afleiding was precies de foutbron die hiermee
+     verdwijnt. Een kapotte vingerafdruk laat de backend luid weigeren te starten (validator).
+   - Het statische apex-bestand uit stap 1 komt uit dezelfde generator:
+     `cd backend && .venv/bin/python -m app.auth.android_signing "<cert1>" "<cert2>" --schrijf
+     ../native/apex-well-known/assetlinks.json` (print óók de origins ter controle); de test
+     `tests/auth/test_android_signing.py` bewaakt dat apex-bestand en deploy.yml gelijk zijn.
    De deploy-run zet 'm live; daarna werkt de activeringsflow (wachtwoord → passkey via
    Credential Manager) in de Play-build. **Controle op het toestel** = §8 stap 1.
+
+**✅ UITGEVOERD 30-08 (agent-kant):** beide certificaten in `deploy.yml` (Google app-signing-key
+`2C:EA:…:3F:49` eerst, upload-key `4A:B4:…:8F:A1`), `native/apex-well-known/assetlinks.json`
+gegenereerd, origins door de backend afgeleid (`android:apk-key-hash:LOoy-USnUvnbHoe0D9-HLPcUCSAd8VTJFnAsPeM-P0k`
+voor Google's key, `…SrQ88emG6lgC1z96eBP79e_AFw_oNQABLixFAgDpj6E` voor de upload-key — de laatste is gelijk
+aan wat `android_keystore.sh` op 29-08 onafhankelijk printte). **Jouw klikwerk:** stap 1 — het
+gegenereerde `assetlinks.json` naar `/.well-known/` op de WordPress-hosting (op 30-08 gaf de apex nog
+404) en daarna de curl + Google's checker hierboven; de deploy volgt automatisch de push naar main.
 
 ## 6. Store-listing (Main store listing) — teksten + grafisch
 
