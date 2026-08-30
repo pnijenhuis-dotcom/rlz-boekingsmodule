@@ -243,7 +243,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
         <DialogDescription>
           {stap === 1 && 'Webservice-gegevens van Reeleezee. Het wachtwoord wordt server-side versleuteld opgeslagen (credential-store) en is daarna nooit meer uitleesbaar.'}
           {stap === 2 && 'Deze login ziet de volgende administraties. Kies welke je aansluit; vóór het opslaan wordt per administratie de rechten-probe (10 leesroutes) gedraaid — die moet volledig groen zijn.'}
-          {stap === 3 && 'Aangesloten met de standaardinstellingen (alle opt-ins uit). De eerste sync draait op de achtergrond; de schrijftest is een aparte knop op de administratie. Niemand ziet de administratie tot je scopes toekent op Gebruikers & toegang.'}
+          {stap === 3 && 'Aangesloten met de standaardinstellingen: Boeken en AI-extractie (AVG-gate) staan AAN, alle overige opt-ins uit — aanpassen kan per administratie via ⚙. De eerste sync draait op de achtergrond; de schrijftest is een aparte knop op de administratie. Niemand ziet de administratie tot je scopes toekent op Gebruikers & toegang.'}
         </DialogDescription>
 
         {stap === 1 && (

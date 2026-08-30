@@ -232,6 +232,8 @@ export interface WerkvoorraadKlantDto {
   match_afwijkingen?: number
   /** Duplicaatsignaal (25-08, deel 2 punt 6): open documenten met gecachet 'mogelijk_duplicaat'. */
   duplicaat_signalen?: number
+  /** Terugkerende facturen (blok B 30-08): leveranciers met een actief "verwachte factuur ontbreekt". */
+  terugkerend_signalen?: number
 }
 
 export interface WerkvoorraadOverzichtDto {
@@ -542,6 +544,22 @@ export interface AdministratieInstellingenDto {
   /** Eerste-sync-stand (wizard-nazorg 27-08): laatste run; de rij toont 'm zolang die niet
    * volledig groen is (status ≠ klaar) mét herstartknop. null/ontbrekend = nog nooit gestart. */
   eerste_sync?: EersteSyncRunDto | null
+  /** v2 30-08 (mockup instellingen-administraties-v2): meta-regel, chips, sync-kolom, archiefspoor. */
+  eigenaar_naam?: string | null
+  iban_accordeurs_aantal?: number
+  afgeletterd_event_ingeschakeld?: boolean
+  doorbelasting_ingeschakeld?: boolean
+  bank_autoboeken_ingeschakeld?: boolean
+  accordering_ingeschakeld?: boolean
+  laatste_sync_op?: string | null
+  gearchiveerd_op?: string | null
+  gearchiveerd_door_naam?: string | null
+}
+
+export interface ArchiveringResultaatDto {
+  gearchiveerd_op: string
+  credential_ingetrokken: boolean
+  open_documenten: number
 }
 
 export interface AdministratieInstellingenLijstDto {

@@ -35,6 +35,7 @@ const DoorbelastingReviewScreen = lazy(() =>
 // relevant voor administraties met de uren-&-meerwerk-tak.
 const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
 const VoorraadScreen = lazy(() => import('./voorraad/VoorraadScreen').then((m) => ({ default: m.VoorraadScreen })))
+const TerugkerendScreen = lazy(() => import('./terugkerend/TerugkerendScreen').then((m) => ({ default: m.TerugkerendScreen })))
 const ProjectDetailScreenLazy = lazy(() =>
   import('./projecten/ProjectDetailScreen').then((m) => ({ default: m.ProjectDetailScreen })),
 )
@@ -115,6 +116,14 @@ function BeschermdeRoutes() {
           element={
             <Suspense fallback={<SkeletonPaneel />}>
               <VoorraadScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/terugkerend"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <TerugkerendScreen />
             </Suspense>
           }
         />

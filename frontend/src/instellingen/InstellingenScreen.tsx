@@ -1,21 +1,19 @@
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
-import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, Switch, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
+import { Button, Switch, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
 import type {
   AdministratieDto, AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
+import { zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstellingen'
-import { useMedewerkers } from '../vragen/useMedewerkers'
 import { DossierTypenModal } from './DossierTypenModal'
 import { MateriaalCatalogusBeheer } from './MateriaalCatalogusBeheer'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
-import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { BevestigDialog } from './BevestigDialog'
-import { BulkBediening } from './BulkBediening'
 import { BeveiligingInstellingen } from './BeveiligingInstellingen'
-import { AdministratieWizard, EersteSyncStatus } from './AdministratieWizard'
+import { AdministratieWizard } from './AdministratieWizard'
+import { AdministratiesV2 } from './AdministratiesV2'
 import { SchrijftestDialog, WebserviceGegevensDialog } from './KoppelingDialogen'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import { CrediteurDubbelen } from './CrediteurDubbelen'
@@ -117,12 +115,8 @@ function berichtVoor(pending: PendingWijziging): string {
       // Avondrun 26-08 (S2-draaiboek R1): de consequenties benoemen — dit is de schakelaar die
       // het koppelvlak met Vastly voor deze administratie aan- of uitzet.
       return pending.nieuweWaarde
-        ? `Vastgoed-koppeling gaat AAN voor "${pending.naam}": factuur_geboekt- en factuur_gestorneerd-events naar Vastly gaan per direct lopen voor deze administratie (ook voor doorbelasting-spiegels die hier landen), Vastly-verkoopfacturen (VASTLY-VERKOOP) worden hier geboekt mét webhook en projectaanvragen vanuit Vastly worden geaccepteerd. Alleen aanzetten ná Vastly's omschakeling voor deze administratie (draaiboek R1).`
-        : `Vastgoed-koppeling gaat UIT voor "${pending.naam}": de events naar Vastly stoppen per direct en projectaanvragen worden geweigerd.${
-            pending.verkoopAutoboekenAan
-              ? ' Autoboeken Vastly-verkoop staat aan en gaat MEE UIT (geauditeerd).'
-              : ' Autoboeken Vastly-verkoop kan daarna niet aan.'
-          } Niets wordt verwijderd; al verstuurde events blijven staan.`
+        ? `Vastgoed-koppeling gaat AAN voor "${pending.naam}": factuur_geboekt- en factuur_gestorneerd-events naar Vastly gaan per direct lopen voor deze administratie (ook voor doorbelasting-spiegels die hier landen), Vastly-verkoopfacturen (VASTLY-VERKOOP) worden hier geboekt mét webhook — en automatisch zodra álles groen is (autoboeken volgt de koppeling, besluit 29-08) — en projectaanvragen vanuit Vastly worden geaccepteerd. Alleen aanzetten ná Vastly's omschakeling voor deze administratie (draaiboek R1).`
+        : `Vastgoed-koppeling gaat UIT voor "${pending.naam}": de events naar Vastly stoppen per direct, projectaanvragen worden geweigerd en het automatisch boeken van Vastly-verkoopfacturen stopt (volgt de koppeling, geauditeerd). Niets wordt verwijderd; al verstuurde events blijven staan.`
     case 'eigenaar':
       return pending.eigenaarId
         ? `${pending.eigenaarNaam ?? 'Deze medewerker'} wordt eigenaar van "${pending.naam}" en krijgt nieuwe vragen standaard toegewezen.`
@@ -192,148 +186,6 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   await zetProjectInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
 }
 
-interface EigenaarCellProps {
-  administratie: AdministratieInstellingenDto
-  onKies: (eigenaarId: string | null, eigenaarNaam: string | undefined) => void
-}
-
-/** Eigenaar-select per administratie (mockup Instellingen "Eigenaar (krijgt vragen)"): de
- * toewijsbare medewerkers komen per rij uit het scope-gecontroleerde medewerkers-endpoint. */
-function EigenaarCell({ administratie, onKies }: EigenaarCellProps) {
-  const { medewerkers, fout } = useMedewerkers(administratie.id)
-  if (fout) return <span className="hint" style={{ margin: 0 }}>medewerkers niet te laden</span>
-  return (
-    <Select
-      aria-label={`Eigenaar van ${administratie.naam}`}
-      value={administratie.eigenaar_gebruiker_id ?? ''}
-      disabled={!medewerkers}
-      onChange={(e) => {
-        const id = e.target.value || null
-        onKies(id, medewerkers?.find((m) => m.id === id)?.naam)
-      }}
-    >
-      <option value="">— geen eigenaar —</option>
-      {(medewerkers ?? []).map((m) => (
-        <option key={m.id} value={m.id}>
-          {m.naam}
-        </option>
-      ))}
-    </Select>
-  )
-}
-
-interface IbanAccordeursCellProps {
-  administratie: AdministratieInstellingenDto
-  /** Bump na een geslaagde wijziging: de cel herlaadt dan zijn set van de backend. */
-  versie: number
-  onWijzig: (nieuweSet: string[], omschrijving: string) => void
-}
-
-/** Instelling "IBAN-wissel accorderen door" (vier-ogen-flow, docs/ontwerp/
- * iban-wissel-accordering.md): één of meer medewerkers binnen de scope. Compact in de rij
- * (feedbackronde 25-08 deel 3 punt 4a — de open checkbox-lijst maakte elke rij 4-6 regels hoog):
- * de gekozen namen als chips, of "beheerders (terugval)" zonder set, plus "wijzig" dat de
- * checkbox-lijst in een dialoog opent (patroon ScopeModal). Opslaan in de dialoog = één
- * bevestigde wijziging (PUT met de volledige nieuwe set), zoals voorheen per vinkje. */
-function IbanAccordeursCell({ administratie, versie, onWijzig }: IbanAccordeursCellProps) {
-  const { medewerkers, fout: medewerkersFout } = useMedewerkers(administratie.id)
-  const [accordeurs, setAccordeurs] = useState<string[] | null>(null)
-  const [fout, setFout] = useState<string | null>(null)
-  const [open, setOpen] = useState(false)
-  const [concept, setConcept] = useState<string[]>([])
-
-  useEffect(() => {
-    haalIbanAccordeursOp(administratie.id)
-      .then((dto) => setAccordeurs(dto.accordeurs))
-      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [administratie.id, versie])
-
-  if (fout || medewerkersFout) {
-    return (
-      <span className="hint" style={{ margin: 0 }}>
-        accordeurs niet te laden
-      </span>
-    )
-  }
-  if (accordeurs === null || !medewerkers) {
-    return (
-      <SkeletonRegels regels={2} />
-    )
-  }
-  const naamVan = (id: string) => medewerkers.find((m) => m.id === id)?.naam ?? 'onbekend'
-  const gekozen = accordeurs.filter((id) => medewerkers.some((m) => m.id === id))
-  const opslaan = () => {
-    const erbij = concept.filter((id) => !accordeurs.includes(id)).map(naamVan)
-    const eraf = accordeurs.filter((id) => !concept.includes(id)).map(naamVan)
-    setOpen(false)
-    if (erbij.length === 0 && eraf.length === 0) return
-    const delen = [
-      erbij.length ? `${erbij.join(', ')} ${erbij.length === 1 ? 'wordt' : 'worden'} IBAN-accordeur` : null,
-      eraf.length ? `${eraf.join(', ')} ${eraf.length === 1 ? 'is' : 'zijn'} niet langer IBAN-accordeur` : null,
-    ].filter(Boolean)
-    onWijzig(concept, delen.join('; '))
-  }
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      {gekozen.length === 0 ? (
-        <Badge variant="stil" title="Geen accordeurs ingesteld — een IBAN-wissel valt terug op de beheerder(s)">
-          beheerders (terugval)
-        </Badge>
-      ) : (
-        gekozen.map((id) => (
-          <Badge key={id} variant="info">
-            {naamVan(id)}
-          </Badge>
-        ))
-      )}
-      <Button
-        variant="ghost"
-        maat="klein"
-        aria-label={`IBAN-accordeurs van ${administratie.naam} wijzigen`}
-        onClick={() => {
-          setConcept(gekozen)
-          setOpen(true)
-        }}
-      >
-        wijzig
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogTitle>IBAN-wissel accorderen door — {administratie.naam}</DialogTitle>
-          <DialogDescription>
-            Wie mag een IBAN-wissel accorderen (vier ogen — nooit de aanvrager zelf)? Zonder keuze valt de
-            accordering terug op de beheerder(s). Opslaan vraagt één bevestiging en wordt geauditeerd.
-          </DialogDescription>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '10px 0' }}>
-            {medewerkers.map((m) => (
-              <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 13 }}>
-                <Checkbox
-                  checked={concept.includes(m.id)}
-                  onChange={(e) =>
-                    setConcept((huidig) => (e.target.checked ? [...huidig, m.id] : huidig.filter((id) => id !== m.id)))
-                  }
-                />
-                {m.naam}
-              </label>
-            ))}
-            {medewerkers.length === 0 && (
-              <span className="hint" style={{ margin: 0 }}>
-                Geen medewerkers met scope op deze administratie.
-              </span>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="secundair" onClick={() => setOpen(false)}>
-              Annuleren
-            </Button>
-            <Button onClick={opslaan}>Opslaan</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
-
 /** Sectiekaarten van de Instellingen-landing (besluit Peter 25-08, D2 — patroon Vastly's
  * configuratie-landing): elke kaart leidt naar een eigen subpagina `/instellingen/<sectie>`.
  * Geen functionaliteit gewijzigd, alleen herindeeld; deep-links naar de oude secties (hash of
@@ -394,7 +246,7 @@ export function InstellingenScreen() {
   const laadAlles = useCallback(() => {
     setLaadFout(null)
     Promise.all([
-      haalInstellingenAdministratiesOp(),
+      haalInstellingenAdministratiesOp(true),
       haalBoekenKillSwitchOp(),
       haalIntakeAiInstellingOp(),
       haalAiKostenStatusOp(),
@@ -714,7 +566,8 @@ export function InstellingenScreen() {
           <div>
             <h2 style={{ marginTop: 0 }}>Administraties</h2>
             <p className="hint" style={{ marginTop: 4 }}>
-              Selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
+              Chips tonen alleen ingeschakelde modules en afwijkingen van de defaults (Boeken en AI-extractie staan standaard aan).
+              Klik op een rij of ⚙ voor alle instellingen; selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
             </p>
           </div>
           {/* Wizard (besluit Peter 26-08, punt 5): webservice-gegevens → probe groen → keuze uit
@@ -726,322 +579,18 @@ export function InstellingenScreen() {
           <p className="hint">Nog geen administraties gekoppeld — begin met &ldquo;+ Administratie toevoegen&rdquo;.</p>
         )}
         {administraties !== null && administraties.length > 0 && (
-          <>
-          <BulkBediening
+          <AdministratiesV2
             administraties={administraties}
-            geselecteerd={selectie}
-            onWisSelectie={() => setSelectie([])}
-            onGereed={laadAlles}
+            selectie={selectie}
+            setSelectie={setSelectie}
+            accordeursVersie={accordeursVersie}
+            onHerlaad={laadAlles}
+            onPending={setPending}
+            onWebservice={setWebserviceVoor}
+            onSchrijftest={setSchrijftestVoor}
+            onDossierTypen={(a) => setDossierTypenVoor({ id: a.id, naam: a.naam })}
+            onDagmax={slaDagmaxOp}
           />
-          {/* .tabel-scroll (kliktest 2026-08-16, ~1170px): acht kolommen clipten rechts buiten
-              het paneel zonder scroll — brede inhoud scrolt intern, nooit paginabreed.
-              sticky-koppen (kliktest 2026-08-21): bij 11+ administraties blijven de kolomkoppen
-              in beeld tijdens het scrollen. */}
-          <div className="tabel-scroll sticky-koppen">
-          <table>
-            <tbody>
-              <tr>
-                <th style={{ width: 36 }}>
-                  <Checkbox
-                    aria-label="Alle administraties selecteren"
-                    checked={selectie.length === administraties.length}
-                    indeterminate={selectie.length > 0 && selectie.length < administraties.length}
-                    onChange={(e) => setSelectie(e.target.checked ? administraties.map((a) => a.id) : [])}
-                  />
-                </th>
-                <th>Administratie</th>
-                <th>Koppeling Reeleezee</th>
-                <th>Eigenaar (krijgt vragen)</th>
-                <th>IBAN-wissel accorderen door</th>
-                <th>Project verplicht bij boeken</th>
-                <th>Boeken ingeschakeld</th>
-                <th>AI-extractie (AVG-gate)</th>
-                <th>Vastgoed-koppeling (Vastly)</th>
-                <th>Autoboeken Vastly-verkoop</th>
-                <th>Uren &amp; meerwerk</th>
-                <th>Afdelingen</th>
-                <th>Voorraad bijhouden</th>
-              </tr>
-              {administraties.map((a) => (
-                <Fragment key={a.id}>
-                <tr className={selectie.includes(a.id) ? 'geselecteerd' : undefined}>
-                  <td>
-                    <Checkbox
-                      aria-label={`Selecteer ${a.naam}`}
-                      checked={selectie.includes(a.id)}
-                      onChange={(e) =>
-                        setSelectie((huidig) =>
-                          e.target.checked ? [...huidig, a.id] : huidig.filter((id) => id !== a.id),
-                        )
-                      }
-                    />
-                  </td>
-                  <td>{a.naam}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    {a.webservice_username ? (
-                      <span
-                        className={`chip ${a.probe_groen === false ? 'blokkerend' : a.probe_groen ? 'ok' : 'stil'}`}
-                        title={`Webservice-gebruiker ${a.webservice_username} · wachtwoord aanwezig (niet uitleesbaar)${
-                          a.probe_groen === null || a.probe_groen === undefined ? '' : a.probe_groen ? ' · rechten-probe groen' : ' · rechten-probe NIET groen'
-                        }${a.rlz_admin_id ? ` · RLZ-id ${a.rlz_admin_id}` : ''}`}
-                      >
-                        {a.webservice_username}
-                      </span>
-                    ) : (
-                      <span className="chip afwijking" title="Geen webservice-gegevens in de credential-store (alleen .env-fallback, indien aanwezig)">
-                        geen credentials
-                      </span>
-                    )}{' '}
-                    <Button variant="ghost" maat="klein" aria-label={`Webservice-gegevens van ${a.naam}`} onClick={() => setWebserviceVoor(a)}>
-                      Webservice-gegevens
-                    </Button>{' '}
-                    <Button variant="ghost" maat="klein" aria-label={`Schrijftest voor ${a.naam}`} onClick={() => setSchrijftestVoor(a)}>
-                      Schrijftest
-                    </Button>
-                  </td>
-                  <td>
-                    <EigenaarCell
-                      administratie={a}
-                      onKies={(eigenaarId, eigenaarNaam) =>
-                        setPending({
-                          type: 'eigenaar',
-                          administratieId: a.id,
-                          naam: a.naam,
-                          nieuweWaarde: eigenaarId !== null,
-                          eigenaarId,
-                          eigenaarNaam,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <IbanAccordeursCell
-                      administratie={a}
-                      versie={accordeursVersie}
-                      onWijzig={(nieuweSet, omschrijving) =>
-                        setPending({
-                          type: 'iban_accordeurs',
-                          administratieId: a.id,
-                          naam: a.naam,
-                          nieuweWaarde: nieuweSet.length > 0,
-                          accordeurs: nieuweSet,
-                          accordeursOmschrijving: omschrijving,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                      <Switch
-                        aria-label={`Project verplicht voor ${a.naam}`}
-                        checked={a.project_verplicht}
-                        onChange={(e) =>
-                          setPending({
-                            type: 'project',
-                            administratieId: a.id,
-                            naam: a.naam,
-                            nieuweWaarde: e.target.checked,
-                          })
-                        }
-                      />
-                      {a.project_verplicht ? 'aan' : 'uit'}
-                    </label>
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                      <Switch
-                        aria-label={`Boeken ingeschakeld voor ${a.naam}`}
-                        checked={a.boeken_ingeschakeld}
-                        onChange={(e) =>
-                          setPending({
-                            type: 'boeken',
-                            administratieId: a.id,
-                            naam: a.naam,
-                            nieuweWaarde: e.target.checked,
-                          })
-                        }
-                      />
-                      {a.boeken_ingeschakeld ? 'aan' : 'uit'}
-                    </label>
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                      <Switch
-                        aria-label={`AI-extractie voor ${a.naam}`}
-                        checked={a.ai_extractie_ingeschakeld}
-                        onChange={(e) =>
-                          setPending({
-                            type: 'ai_extractie',
-                            administratieId: a.id,
-                            naam: a.naam,
-                            nieuweWaarde: e.target.checked,
-                          })
-                        }
-                      />
-                      {a.ai_extractie_ingeschakeld ? 'aan' : 'uit'}
-                    </label>
-                  </td>
-                  <td>
-                    {/* Avondrun 26-08 (S2 R1): is_vastgoed als Beheerder-toggle — vóór 26-08 alleen via de DB. */}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                      <Switch
-                        aria-label={`Vastgoed-koppeling voor ${a.naam}`}
-                        checked={a.is_vastgoed}
-                        onChange={(e) =>
-                          setPending({
-                            type: 'is_vastgoed',
-                            administratieId: a.id,
-                            naam: a.naam,
-                            nieuweWaarde: e.target.checked,
-                            verkoopAutoboekenAan: a.verkoop_autoboeken_ingeschakeld,
-                          })
-                        }
-                      />
-                      {a.is_vastgoed ? 'aan' : 'uit'}
-                    </label>
-                  </td>
-                  <td>
-                    {a.is_vastgoed ? (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                        <Switch
-                          aria-label={`Autoboeken Vastly-verkoop voor ${a.naam}`}
-                          checked={a.verkoop_autoboeken_ingeschakeld}
-                          onChange={(e) =>
-                            setPending({
-                              type: 'verkoop_autoboeken',
-                              administratieId: a.id,
-                              naam: a.naam,
-                              nieuweWaarde: e.target.checked,
-                            })
-                          }
-                        />
-                        {a.verkoop_autoboeken_ingeschakeld ? 'aan' : 'uit'}
-                      </label>
-                    ) : (
-                      <span className="hint" title="Alleen voor vastgoed-administraties (Vastly-verkoopfacturen)">
-                        —
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                      <Switch
-                        aria-label={`Uren & meerwerk voor ${a.naam}`}
-                        checked={a.uren_meerwerk_ingeschakeld}
-                        onChange={(e) =>
-                          setPending({
-                            type: 'uren_meerwerk',
-                            administratieId: a.id,
-                            naam: a.naam,
-                            nieuweWaarde: e.target.checked,
-                          })
-                        }
-                      />
-                      {a.uren_meerwerk_ingeschakeld ? 'aan' : 'uit'}
-                    </label>
-                    {a.uren_meerwerk_ingeschakeld && (
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
-                        {/* A6 (25-08): drempel >N uur per dag — signaal bij de keuring, geen blokkade. */}
-                        <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11, margin: 0 }} title="Signaal >N uur per dag (som over alle weekstaten per kalenderdag)">
-                          max/dag
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0.5}
-                            max={24}
-                            step={0.5}
-                            aria-label={`Dagdrempel uren voor ${a.naam}`}
-                            defaultValue={a.uren_dagmax_uren}
-                            style={{ width: 62, padding: '2px 6px' }}
-                            onBlur={(e) => {
-                              const waarde = e.target.value.replace(',', '.')
-                              if (waarde !== '' && Number(waarde) !== Number(a.uren_dagmax_uren)) void slaDagmaxOp(a.id, a.naam, waarde)
-                            }}
-                          />
-                          u
-                        </label>
-                        <Button variant="ghost" maat="klein" onClick={() => setDossierTypenVoor({ id: a.id, naam: a.naam })}>
-                          📁 Dossier-documenttypen…
-                        </Button>
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {/* Blok A 28-08 (mockup afdelingen.html §1, project_verplicht-patroon): AAN =
-                        afdeling verplicht op élk inkoopdocument + route per afdeling; het beheer
-                        verschijnt als subrij zodra de toggle aan staat. */}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                      <Switch
-                        aria-label={`Afdelingen van toepassing voor ${a.naam}`}
-                        checked={a.afdelingen_ingeschakeld}
-                        onChange={(e) =>
-                          setPending({
-                            type: 'afdelingen',
-                            administratieId: a.id,
-                            naam: a.naam,
-                            nieuweWaarde: e.target.checked,
-                          })
-                        }
-                      />
-                      {a.afdelingen_ingeschakeld ? 'aan' : 'uit'}
-                    </label>
-                  </td>
-                  <td>
-                    {/* Blok D 28-08 (mockup voorraad-aansluiting.html): opt-in controle-laag — nooit een boeking. */}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                      <Switch
-                        aria-label={`Voorraad bijhouden voor ${a.naam}`}
-                        checked={a.voorraad_ingeschakeld}
-                        onChange={(e) =>
-                          setPending({
-                            type: 'voorraad',
-                            administratieId: a.id,
-                            naam: a.naam,
-                            nieuweWaarde: e.target.checked,
-                          })
-                        }
-                      />
-                      {a.voorraad_ingeschakeld ? 'aan' : 'uit'}
-                    </label>
-                    {a.voorraad_ingeschakeld && (
-                      <div style={{ marginTop: 4 }}>
-                        <Link to={`/voorraad?administratie=${a.id}`} className="text-primary no-underline hover:underline" style={{ fontSize: 11.5 }}>
-                          aansluitscherm →
-                        </Link>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-                {a.afdelingen_ingeschakeld && (
-                  <tr className="subrij">
-                    <td />
-                    <td colSpan={12}>
-                      <AfdelingenBeheer administratieId={a.id} naam={a.naam} />
-                    </td>
-                  </tr>
-                )}
-                {/* Wizard-nazorg 27-08 (casus Bouwadvies Oost Nederland): eerste-sync-stand op de rij
-                    zolang de laatste run niet volledig groen is — status per onderdeel, foutreden
-                    zoals in de wizard, én de herstartknop (zelfde endpoint). Groen/nooit = niets. */}
-                {a.eerste_sync && a.eerste_sync.status !== 'klaar' && a.eerste_sync.status !== 'geen' && (
-                  <tr className="subrij">
-                    <td />
-                    <td colSpan={12}>
-                      <EersteSyncStatus
-                        compact
-                        administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }}
-                        initieel={a.eerste_sync}
-                        onAfgerond={laadAlles}
-                      />
-                    </td>
-                  </tr>
-                )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-          </div>
-          </>
         )}
       </div>
       )}
@@ -1056,7 +605,7 @@ export function InstellingenScreen() {
       )}
 
       {sectie === 'materiaal' && administraties !== null && (
-        <MateriaalCatalogusBeheer administraties={administraties.filter((a) => a.uren_meerwerk_ingeschakeld).map((a) => ({ id: a.id, naam: a.naam }) as AdministratieDto)} />
+        <MateriaalCatalogusBeheer administraties={administraties.filter((a) => a.uren_meerwerk_ingeschakeld && !a.gearchiveerd_op).map((a) => ({ id: a.id, naam: a.naam }) as AdministratieDto)} />
       )}
 
       {sectie === 'accordering' && administraties !== null && (

@@ -31,6 +31,7 @@ import { VerplaatsModal } from './VerplaatsModal'
 import { redenNietVerplaatsbaar } from './verplaatsen'
 import { AlBetaaldSignaal } from './AlBetaaldSignaal'
 import { AanbetalingSignaal, type VerrekenRegel } from './AanbetalingSignaal'
+import { TerugkerendSignaal } from './TerugkerendSignaal'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
 import { BoekvoorstelPanel, type GeboektInfo, type ToeTeVoegenRegel } from './BoekvoorstelPanel'
@@ -1011,6 +1012,16 @@ export function DocumentDetailScreen() {
             />
           )}
 
+          {/* Prijsstijging-chip terugkerende factuur (blok B 30-08): signaal, geen blokkade. */}
+          {!achtergrondBezig && (
+            <TerugkerendSignaal
+              administratieId={administratieId}
+              documentId={documentId}
+              status={detail.status}
+              soort={detail.soort}
+              boekvoorstelVersie={boekvoorstelVersie}
+            />
+          )}
           {/* Aanbetaling-open-signaal (deel 4 punt 3): zelfde gates; de verrekenknop alleen
               zolang het boekvoorstel bewerkbaar is. */}
           {!achtergrondBezig && (

@@ -49,6 +49,9 @@ export function Klantenlijst({
   // Duplicaatsignaal (besluit 25-08, deel 2 punt 6): zelfde toon-regel — kolom alleen zodra er
   // ergens een gecachet "mogelijk duplicaat in RLZ" staat.
   const toonDuplicaat = (klanten ?? []).some((k) => (k.duplicaat_signalen ?? 0) > 0)
+  // Terugkerende facturen (blok B 30-08): leveranciers waarvan de verwachte factuur uitblijft —
+  // zelfde toon-regel, klik = signaal-overzicht per administratie.
+  const toonTerugkerend = (klanten ?? []).some((k) => (k.terugkerend_signalen ?? 0) > 0)
 
   return (
     <div className="panel">
@@ -73,6 +76,7 @@ export function Klantenlijst({
                 {toonSpiegel && <th>Spiegel-taken</th>}
                 {toonMatch && <th>Urenmatch</th>}
                 {toonDuplicaat && <th>Duplicaten</th>}
+                {toonTerugkerend && <th>Verwachte facturen</th>}
               </tr>
               {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
               {zichtbaar.map((k) => (
@@ -150,6 +154,18 @@ export function Klantenlijst({
                       }}
                     >
                       <Teller waarde={k.duplicaat_signalen ?? 0} chipKlasse="vraag" />
+                    </td>
+                  )}
+                  {toonTerugkerend && (
+                    <td
+                      title="Terugkerende leveranciers (maand/kwartaal) waarvan de verwachte factuur uitblijft — signaal, geen blokkade"
+                      onClick={(e) => {
+                        if ((k.terugkerend_signalen ?? 0) === 0) return
+                        e.stopPropagation()
+                        navigate(`/terugkerend?administratie=${k.administratie_id}`)
+                      }}
+                    >
+                      <Teller waarde={k.terugkerend_signalen ?? 0} chipKlasse="afwijking" />
                     </td>
                   )}
                 </tr>

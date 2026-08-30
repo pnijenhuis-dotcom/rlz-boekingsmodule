@@ -1,5 +1,6 @@
 import { apiJson } from '../api/client'
 import type {
+  ArchiveringResultaatDto,
   CrediteurKvkDto,
   DubbeleCrediteurenResponseDto,
   AdministratieInstellingenLijstDto,
@@ -19,8 +20,29 @@ import type {
 
 const PUT_JSON = { method: 'PUT', headers: { 'Content-Type': 'application/json' } }
 
-export function haalInstellingenAdministratiesOp(): Promise<AdministratieInstellingenLijstDto> {
-  return apiJson<AdministratieInstellingenLijstDto>('/instellingen/administraties')
+export function haalInstellingenAdministratiesOp(inclusiefGearchiveerd = false): Promise<AdministratieInstellingenLijstDto> {
+  return apiJson<AdministratieInstellingenLijstDto>(
+    inclusiefGearchiveerd ? '/instellingen/administraties?inclusief_gearchiveerd=true' : '/instellingen/administraties',
+  )
+}
+
+/** Archiveren (v2 30-08, 🗑 — nooit verwijderen): actief uit, webservice-login uit de store, syncs stoppen,
+ * documenten/historie blijven; registersync levert de rij niet meer. Beheerder-only. */
+export function archiveerAdministratie(administratieId: string): Promise<ArchiveringResultaatDto> {
+  return apiJson<ArchiveringResultaatDto>(`/instellingen/administraties/${administratieId}/archiveren`, { method: 'POST' })
+}
+
+/** Dearchiveren vereist een nieuwe webservice-login (probe groen, 422 mét rapport anders). */
+export function dearchiveerAdministratie(
+  administratieId: string,
+  webservice_username: string,
+  wachtwoord: string,
+): Promise<{ rapport: Record<string, string> }> {
+  return apiJson(`/instellingen/administraties/${administratieId}/dearchiveren`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ webservice_username, wachtwoord }),
+  })
 }
 
 export function haalBoekenKillSwitchOp(): Promise<BoekenIngeschakeldDto> {

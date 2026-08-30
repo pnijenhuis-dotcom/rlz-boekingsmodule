@@ -1,0 +1,534 @@
+// Instellingen › Administraties v2 (opdracht 30-08 blok A; mockup instellingen-administraties-v2.html =
+// bouwnorm, besluiten Peter 29-08): compacte tabel — naam + meta, module-/afwijkings-chips, sync-chip,
+// acties ⚙ (detail-dialoog) / 🧪 (schrijftest) / 🗑 (archiveren) — en een detail-dialoog per
+// administratie met álle instellingen gegroepeerd (Verwerking / Modules / Toegang & accordering /
+// Webservice). Defaults Boeken + AI-extractie AAN: alleen een afwijking krijgt een chip. Vastly-autoboeken
+// heeft geen eigen knop meer (volgt de vastgoed-koppeling). Archiveren = login intrekken + syncs stoppen,
+// data blijft; dearchiveren mét nieuwe webservice-login. NOOIT verwijderen. Bulk-selectie blijft (checkbox).
+import { Fragment, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ApiError } from '../api/client'
+import type { AdministratieInstellingenDto } from '../api/types'
+import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, Switch } from '../ui/basis'
+import { EigenaarCell, IbanAccordeursCell } from './AdministratieCellen'
+import { EersteSyncStatus } from './AdministratieWizard'
+import { AfdelingenBeheer } from './AfdelingenBeheer'
+import { BulkBediening } from './BulkBediening'
+import { archiveerAdministratie, dearchiveerAdministratie } from './instellingenApi'
+import { koppelFoutTekst, ProbeRapport } from './KoppelingDialogen'
+
+export type ToggleType = 'boeken' | 'project' | 'ai_extractie' | 'is_vastgoed' | 'uren_meerwerk' | 'afdelingen' | 'voorraad'
+
+export interface PendingToggle {
+  type: ToggleType | 'eigenaar' | 'iban_accordeurs'
+  administratieId: string
+  naam: string
+  nieuweWaarde: boolean
+  eigenaarId?: string | null
+  eigenaarNaam?: string
+  accordeurs?: string[]
+  accordeursOmschrijving?: string
+  verkoopAutoboekenAan?: boolean
+}
+
+interface Props {
+  administraties: AdministratieInstellingenDto[]
+  selectie: string[]
+  setSelectie: (f: (huidig: string[]) => string[]) => void
+  accordeursVersie: number
+  onHerlaad: () => void
+  onPending: (p: PendingToggle) => void
+  onWebservice: (a: AdministratieInstellingenDto) => void
+  onSchrijftest: (a: AdministratieInstellingenDto) => void
+  onDossierTypen: (a: AdministratieInstellingenDto) => void
+  onDagmax: (administratieId: string, naam: string, waarde: string) => Promise<void>
+}
+
+function tijd(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+}
+
+function datumKort(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' })
+}
+
+/** Chips: alleen ingeschakelde modules en afwijkingen van de defaults (mockup-regel). */
+export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; variant: 'info' | 'warn' | 'stil' | 'ok'; titel?: string }[] {
+  const chips: { tekst: string; variant: 'info' | 'warn' | 'stil' | 'ok'; titel?: string }[] = []
+  if (a.is_vastgoed) chips.push({ tekst: 'Vastgoed + autoboeken', variant: 'info', titel: 'Vastgoed-koppeling (Vastly) — autoboeken verkoop volgt de koppeling' })
+  if (a.afgeletterd_event_ingeschakeld) chips.push({ tekst: 'afgeletterd-events', variant: 'info' })
+  if (a.doorbelasting_ingeschakeld) chips.push({ tekst: 'Doorbelasting', variant: 'info' })
+  if (a.uren_meerwerk_ingeschakeld) chips.push({ tekst: `Uren & meerwerk · ${Number(a.uren_dagmax_uren).toLocaleString('nl-NL')}u-max`, variant: 'info' })
+  if (a.afdelingen_ingeschakeld) chips.push({ tekst: 'Afdelingen', variant: 'info' })
+  if (a.voorraad_ingeschakeld) chips.push({ tekst: 'Voorraad', variant: 'info' })
+  if (a.project_verplicht) chips.push({ tekst: 'Project verplicht', variant: 'info' })
+  if (a.bank_autoboeken_ingeschakeld) chips.push({ tekst: 'Bank-autoboeken', variant: 'info' })
+  if (a.accordering_ingeschakeld) chips.push({ tekst: 'Klant-accordering', variant: 'info' })
+  if (!a.boeken_ingeschakeld) chips.push({ tekst: 'Boeken UIT (afwijking)', variant: 'warn' })
+  if (!a.ai_extractie_ingeschakeld) chips.push({ tekst: 'AI-extractie UIT (afwijking)', variant: 'warn' })
+  return chips
+}
+
+function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
+  if (a.gearchiveerd_op) return <Badge variant="stil">gearchiveerd {datumKort(a.gearchiveerd_op)}</Badge>
+  if (!a.webservice_username) {
+    return (
+      <Badge variant="warn" title="Geen webservice-gegevens in de credential-store — sync kan niet draaien">
+        geen credentials
+      </Badge>
+    )
+  }
+  if (a.eerste_sync && a.eerste_sync.status === 'fout') {
+    return (
+      <Badge variant="warn" title={a.eerste_sync.fout_reden ?? 'eerste sync mislukt'}>
+        ⚠ sync-fout
+      </Badge>
+    )
+  }
+  if (a.eerste_sync && (a.eerste_sync.status === 'bezig' || a.eerste_sync.status === 'wachtrij')) {
+    return <Badge variant="stil">sync bezig…</Badge>
+  }
+  if (a.probe_groen === false) return <Badge variant="warn">rechten-probe niet groen</Badge>
+  if (a.laatste_sync_op) {
+    return (
+      <Badge variant="ok" title={`laatste sync ${new Date(a.laatste_sync_op).toLocaleString('nl-NL')}`}>
+        ✓ {tijd(a.laatste_sync_op)}
+      </Badge>
+    )
+  }
+  return <Badge variant="stil">nog niet gesynct</Badge>
+}
+
+export function AdministratiesV2({
+  administraties,
+  selectie,
+  setSelectie,
+  accordeursVersie,
+  onHerlaad,
+  onPending,
+  onWebservice,
+  onSchrijftest,
+  onDossierTypen,
+  onDagmax,
+}: Props) {
+  const [toonGearchiveerd, setToonGearchiveerd] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [archiveerVoor, setArchiveerVoor] = useState<AdministratieInstellingenDto | null>(null)
+  const [dearchiveerVoor, setDearchiveerVoor] = useState<AdministratieInstellingenDto | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const [dialoogFout, setDialoogFout] = useState<string | null>(null)
+  const [rapport, setRapport] = useState<Record<string, string> | null>(null)
+  const [melding, setMelding] = useState<string | null>(null)
+  const [wsGebruiker, setWsGebruiker] = useState('')
+  const [wsWachtwoord, setWsWachtwoord] = useState('')
+
+  const actieve = administraties.filter((a) => !a.gearchiveerd_op)
+  const gearchiveerd = administraties.filter((a) => a.gearchiveerd_op)
+  const rijen = toonGearchiveerd ? gearchiveerd : actieve
+  const detail = detailId ? administraties.find((a) => a.id === detailId) ?? null : null
+
+  const toggle = (a: AdministratieInstellingenDto, type: ToggleType, huidig: boolean, label: string) => (
+    <div className="regel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '6px 0' }}>
+      <span style={{ fontSize: 13 }}>{label}</span>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
+        <Switch
+          aria-label={`${ariaLabelVoor(type)} ${a.naam}`}
+          checked={huidig}
+          onChange={(e) => onPending({ type, administratieId: a.id, naam: a.naam, nieuweWaarde: e.target.checked, verkoopAutoboekenAan: a.verkoop_autoboeken_ingeschakeld })}
+        />
+        {huidig ? 'aan' : 'uit'}
+      </label>
+    </div>
+  )
+
+  const archiveer = async () => {
+    if (!archiveerVoor) return
+    setBezig(true)
+    setDialoogFout(null)
+    try {
+      const r = await archiveerAdministratie(archiveerVoor.id)
+      setMelding(
+        `"${archiveerVoor.naam}" gearchiveerd: webservice-login ${r.credential_ingetrokken ? 'ingetrokken' : 'was er niet'}, syncs gestopt, documenten en historie blijven staan${
+          r.open_documenten > 0 ? ` — let op: ${r.open_documenten} open document${r.open_documenten === 1 ? '' : 'en'}` : ''
+        }.`,
+      )
+      setArchiveerVoor(null)
+      setDetailId(null)
+      onHerlaad()
+    } catch (err) {
+      setDialoogFout(err instanceof ApiError ? err.message : 'Archiveren mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  const dearchiveer = async () => {
+    if (!dearchiveerVoor) return
+    setBezig(true)
+    setDialoogFout(null)
+    setRapport(null)
+    try {
+      await dearchiveerAdministratie(dearchiveerVoor.id, wsGebruiker.trim(), wsWachtwoord)
+      setMelding(`"${dearchiveerVoor.naam}" teruggezet met een nieuwe webservice-login (rechten-probe groen).`)
+      setDearchiveerVoor(null)
+      setWsGebruiker('')
+      setWsWachtwoord('')
+      onHerlaad()
+    } catch (err) {
+      const { bericht, rapport: r } = koppelFoutTekst(err)
+      setDialoogFout(bericht)
+      setRapport(r)
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <>
+      {melding && (
+        <div className="hint" role="status" style={{ marginBottom: 10 }}>
+          {melding}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+        <span className="hint" style={{ margin: 0 }}>
+          {actieve.length} actief
+        </span>
+        {gearchiveerd.length > 0 && (
+          <button type="button" className="linkbtn" onClick={() => setToonGearchiveerd((t) => !t)} aria-pressed={toonGearchiveerd}>
+            {toonGearchiveerd ? '← actieve administraties' : `gearchiveerd (${gearchiveerd.length})`}
+          </button>
+        )}
+      </div>
+      {!toonGearchiveerd && (
+        <BulkBediening administraties={actieve} geselecteerd={selectie} onWisSelectie={() => setSelectie(() => [])} onGereed={onHerlaad} />
+      )}
+      <div className="tabel-scroll sticky-koppen">
+        <table data-testid="administraties-v2">
+          <thead>
+            <tr>
+              <th style={{ width: 36 }}>
+                {!toonGearchiveerd && (
+                  <Checkbox
+                    aria-label="Alle administraties selecteren"
+                    checked={selectie.length === actieve.length && actieve.length > 0}
+                    indeterminate={selectie.length > 0 && selectie.length < actieve.length}
+                    onChange={(e) => setSelectie(() => (e.target.checked ? actieve.map((a) => a.id) : []))}
+                  />
+                )}
+              </th>
+              <th>Administratie</th>
+              <th>Modules &amp; afwijkingen</th>
+              <th>Sync</th>
+              <th className="acties" style={{ textAlign: 'right' }}>
+                Acties
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rijen.map((a) => (
+              <Fragment key={a.id}>
+                <tr
+                  className={selectie.includes(a.id) ? 'geselecteerd' : undefined}
+                  style={{ cursor: 'pointer', opacity: a.gearchiveerd_op ? 0.7 : 1 }}
+                  onClick={() => setDetailId(a.id)}
+                  data-testid={`administratie-rij-${a.id}`}
+                >
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {!a.gearchiveerd_op && (
+                      <Checkbox
+                        aria-label={`Selecteer ${a.naam}`}
+                        checked={selectie.includes(a.id)}
+                        onChange={(e) => setSelectie((huidig) => (e.target.checked ? [...huidig, a.id] : huidig.filter((id) => id !== a.id)))}
+                      />
+                    )}
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{a.naam}</div>
+                    <div className="hint" style={{ fontSize: 11.5, margin: 0 }}>
+                      {[
+                        a.eigenaar_naam ? `eigenaar: ${a.eigenaar_naam}` : null,
+                        a.iban_accordeurs_aantal ? `${a.iban_accordeurs_aantal} IBAN-accordeur${a.iban_accordeurs_aantal === 1 ? '' : 's'}` : null,
+                        a.gearchiveerd_op ? `gearchiveerd ${datumKort(a.gearchiveerd_op)}${a.gearchiveerd_door_naam ? ` door ${a.gearchiveerd_door_naam}` : ''}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {chipsVoor(a).map((c) => (
+                        <Badge key={c.tekst} variant={c.variant} title={c.titel}>
+                          {c.tekst}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
+                  <td>
+                    <SyncChip a={a} />
+                  </td>
+                  <td className="acties" style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                    {a.gearchiveerd_op ? (
+                      <Button variant="secundair" maat="klein" aria-label={`Dearchiveren ${a.naam}`} onClick={() => { setDialoogFout(null); setRapport(null); setDearchiveerVoor(a) }}>
+                        Dearchiveren…
+                      </Button>
+                    ) : (
+                      <>
+                        <Button variant="ghost" maat="klein" aria-label={`Instellingen van ${a.naam}`} title="Instellingen" onClick={() => setDetailId(a.id)}>
+                          ⚙
+                        </Button>
+                        <Button variant="ghost" maat="klein" aria-label={`Schrijftest voor ${a.naam}`} title="Schrijftest" onClick={() => onSchrijftest(a)}>
+                          🧪
+                        </Button>
+                        <Button variant="ghost" maat="klein" aria-label={`Archiveren ${a.naam}`} title="Archiveren" onClick={() => { setDialoogFout(null); setArchiveerVoor(a) }}>
+                          🗑
+                        </Button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+                {a.eerste_sync && a.eerste_sync.status === 'fout' && !a.gearchiveerd_op && (
+                  <tr className="subrij">
+                    <td />
+                    <td colSpan={4}>
+                      <EersteSyncStatus compact administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }} initieel={a.eerste_sync} onAfgerond={onHerlaad} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+            {rijen.length === 0 && (
+              <tr>
+                <td colSpan={5} className="hint">
+                  {toonGearchiveerd ? 'Geen gearchiveerde administraties.' : 'Geen actieve administraties.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Detail-dialoog: alle instellingen gegroepeerd (mockup). */}
+      <Dialog open={detail !== null} onOpenChange={(open) => !open && setDetailId(null)}>
+        <DialogContent aria-describedby={undefined} data-testid="administratie-detail" style={{ maxWidth: 680 }}>
+          {detail && (
+            <>
+              <DialogTitle>{detail.naam}</DialogTitle>
+              <DialogDescription>
+                {[
+                  detail.rlz_admin_id ? `RLZ-id ${detail.rlz_admin_id.slice(0, 8)}…` : 'geen RLZ-id',
+                  detail.laatste_sync_op ? `laatste sync ${tijd(detail.laatste_sync_op)} ✓` : 'nog niet gesynct',
+                ].join(' · ')}
+              </DialogDescription>
+
+              <Sectie titel="Verwerking">
+                {toggle(detail, 'boeken', detail.boeken_ingeschakeld, 'Boeken ingeschakeld — default aan; uit = alleen bij uitzondering')}
+                {toggle(detail, 'ai_extractie', detail.ai_extractie_ingeschakeld, 'AI-extractie (AVG-gate) — default aan; platformbrede kill-switch blijft')}
+                {toggle(detail, 'project', detail.project_verplicht, 'Project verplicht bij boeken')}
+                <div className="regel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '6px 0' }}>
+                  <span style={{ fontSize: 13 }}>Eigenaar (ontvangt automatische systeemvragen)</span>
+                  <EigenaarCell
+                    administratie={detail}
+                    onKies={(eigenaarId, eigenaarNaam) =>
+                      onPending({ type: 'eigenaar', administratieId: detail.id, naam: detail.naam, nieuweWaarde: eigenaarId !== null, eigenaarId, eigenaarNaam })
+                    }
+                  />
+                </div>
+              </Sectie>
+
+              <Sectie titel="Modules">
+                {toggle(detail, 'is_vastgoed', detail.is_vastgoed, 'Vastgoed-koppeling (Vastly) — autoboeken verkoop lift automatisch mee')}
+                {toggle(detail, 'uren_meerwerk', detail.uren_meerwerk_ingeschakeld, 'Uren & meerwerk')}
+                {detail.uren_meerwerk_ingeschakeld && (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '0 0 6px 12px', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11.5, margin: 0 }} title="Signaal >N uur per dag (som over alle weekstaten per kalenderdag)">
+                      max/dag
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0.5}
+                        max={24}
+                        step={0.5}
+                        aria-label={`Dagdrempel uren voor ${detail.naam}`}
+                        defaultValue={detail.uren_dagmax_uren}
+                        style={{ width: 62, padding: '2px 6px' }}
+                        onBlur={(e) => {
+                          const waarde = e.target.value.replace(',', '.')
+                          if (waarde !== '' && Number(waarde) !== Number(detail.uren_dagmax_uren)) void onDagmax(detail.id, detail.naam, waarde)
+                        }}
+                      />
+                      u
+                    </label>
+                    <Button variant="ghost" maat="klein" onClick={() => onDossierTypen(detail)}>
+                      📁 Dossier-documenttypen…
+                    </Button>
+                  </div>
+                )}
+                {toggle(detail, 'afdelingen', detail.afdelingen_ingeschakeld, 'Afdelingen — vereist afdelingen + routes (beheer hieronder)')}
+                {detail.afdelingen_ingeschakeld && (
+                  <div style={{ margin: '0 0 6px 12px' }}>
+                    <AfdelingenBeheer administratieId={detail.id} naam={detail.naam} />
+                  </div>
+                )}
+                {toggle(detail, 'voorraad', detail.voorraad_ingeschakeld, 'Voorraad bijhouden')}
+                {detail.voorraad_ingeschakeld && (
+                  <div style={{ margin: '0 0 6px 12px', fontSize: 11.5 }}>
+                    <Link to={`/voorraad?administratie=${detail.id}`} className="text-primary no-underline hover:underline">
+                      aansluitscherm →
+                    </Link>
+                  </div>
+                )}
+              </Sectie>
+
+              <Sectie titel="Toegang & accordering">
+                <div className="regel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '6px 0' }}>
+                  <span style={{ fontSize: 13 }}>IBAN-wissel accorderen door</span>
+                  <IbanAccordeursCell
+                    administratie={detail}
+                    versie={accordeursVersie}
+                    onWijzig={(nieuweSet, omschrijving) =>
+                      onPending({ type: 'iban_accordeurs', administratieId: detail.id, naam: detail.naam, nieuweWaarde: nieuweSet.length > 0, accordeurs: nieuweSet, accordeursOmschrijving: omschrijving })
+                    }
+                  />
+                </div>
+                <div className="regel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '6px 0' }}>
+                  <span style={{ fontSize: 13 }}>Klant-accordering (lagen)</span>
+                  <span className="hint" style={{ margin: 0 }}>
+                    {detail.accordering_ingeschakeld ? 'aan' : 'uit'} ·{' '}
+                    <Link to="/instellingen/accordering" className="text-primary no-underline hover:underline">
+                      wijzig
+                    </Link>
+                  </span>
+                </div>
+              </Sectie>
+
+              <Sectie titel="Webservice">
+                <div className="regel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '6px 0', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13 }}>
+                    Webservice-gegevens{' '}
+                    {detail.webservice_username ? (
+                      <span className={`chip ${detail.probe_groen === false ? 'blokkerend' : detail.probe_groen ? 'ok' : 'stil'}`} title="wachtwoord aanwezig (niet uitleesbaar)">
+                        {detail.webservice_username}
+                      </span>
+                    ) : (
+                      <span className="chip afwijking">geen credentials</span>
+                    )}
+                  </span>
+                  <span>
+                    <Button variant="ghost" maat="klein" aria-label={`Webservice-gegevens van ${detail.naam}`} onClick={() => onWebservice(detail)}>
+                      Wijzigen (probe-gated)
+                    </Button>{' '}
+                    <Button variant="ghost" maat="klein" onClick={() => onSchrijftest(detail)}>
+                      Schrijftest
+                    </Button>
+                  </span>
+                </div>
+                {detail.eerste_sync && detail.eerste_sync.status !== 'klaar' && detail.eerste_sync.status !== 'geen' && (
+                  <EersteSyncStatus compact administratie={{ id: detail.id, naam: detail.naam, rlz_admin_id: detail.rlz_admin_id ?? null }} initieel={detail.eerste_sync} onAfgerond={onHerlaad} />
+                )}
+                <div className="regel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '6px 0' }}>
+                  <span style={{ fontSize: 13 }}>
+                    Archiveren — login ingetrokken, sync stopt, data blijft; terugzetten kan
+                  </span>
+                  <Button variant="secundair" maat="klein" onClick={() => { setDialoogFout(null); setArchiveerVoor(detail) }}>
+                    🗑 Archiveren…
+                  </Button>
+                </div>
+              </Sectie>
+              <DialogFooter>
+                <Button variant="secundair" onClick={() => setDetailId(null)}>
+                  Sluiten
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Archiveren — bevestiging met consequenties. */}
+      <Dialog open={archiveerVoor !== null} onOpenChange={(open) => !open && !bezig && setArchiveerVoor(null)}>
+        <DialogContent aria-describedby={undefined} data-testid="archiveer-dialoog">
+          <DialogTitle>Archiveren — {archiveerVoor?.naam}</DialogTitle>
+          <DialogDescription>
+            De webservice-login wordt uit de credential-store ingetrokken, syncs en jobs stoppen, de administratie verdwijnt uit alle
+            werk-lijsten en uit de registersync voor Vastly. Documenten, boekingen en historie blijven bewaard — er wordt niets verwijderd.
+            Terugzetten kan later mét een nieuwe webservice-login.
+          </DialogDescription>
+          {dialoogFout && <div className="fout">{dialoogFout}</div>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setArchiveerVoor(null)} disabled={bezig}>
+              Annuleren
+            </Button>
+            <Button onClick={() => void archiveer()} disabled={bezig}>
+              {bezig ? 'Bezig…' : 'Archiveren'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dearchiveren — nieuwe webservice-login, probe-gated. */}
+      <Dialog open={dearchiveerVoor !== null} onOpenChange={(open) => !open && !bezig && setDearchiveerVoor(null)}>
+        <DialogContent aria-describedby={undefined} data-testid="dearchiveer-dialoog">
+          <DialogTitle>Dearchiveren — {dearchiveerVoor?.naam}</DialogTitle>
+          <DialogDescription>
+            Terugzetten vereist een nieuwe webservice-login van Reeleezee; de rechten-probe (10 leesroutes) moet volledig groen zijn.
+            Het wachtwoord wordt server-side versleuteld opgeslagen en is daarna nooit meer uitleesbaar.
+          </DialogDescription>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void dearchiveer()
+            }}
+          >
+            <FormField label="Webservice-gebruiker" htmlFor="dearch-gebruiker">
+              <input id="dearch-gebruiker" autoFocus value={wsGebruiker} onChange={(e) => setWsGebruiker(e.target.value)} />
+            </FormField>
+            <FormField label="Wachtwoord" htmlFor="dearch-wachtwoord">
+              <input id="dearch-wachtwoord" type="password" value={wsWachtwoord} onChange={(e) => setWsWachtwoord(e.target.value)} />
+            </FormField>
+            {dialoogFout && <div className="fout">{dialoogFout}</div>}
+            {rapport && <ProbeRapport rapport={rapport} />}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setDearchiveerVoor(null)} disabled={bezig}>
+                Annuleren
+              </Button>
+              <Button type="submit" disabled={bezig || !wsGebruiker.trim() || !wsWachtwoord}>
+                {bezig ? 'Bezig…' : 'Probe draaien en terugzetten'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function Sectie({ titel, children }: { titel: string; children: React.ReactNode }) {
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 12 }}>
+      <h4 style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--faint)', margin: '0 0 8px' }}>{titel}</h4>
+      {children}
+    </div>
+  )
+}
+
+function ariaLabelVoor(type: ToggleType): string {
+  switch (type) {
+    case 'boeken':
+      return 'Boeken ingeschakeld voor'
+    case 'project':
+      return 'Project verplicht voor'
+    case 'ai_extractie':
+      return 'AI-extractie voor'
+    case 'is_vastgoed':
+      return 'Vastgoed-koppeling voor'
+    case 'uren_meerwerk':
+      return 'Uren & meerwerk voor'
+    case 'afdelingen':
+      return 'Afdelingen van toepassing voor'
+    case 'voorraad':
+      return 'Voorraad bijhouden voor'
+  }
+}
