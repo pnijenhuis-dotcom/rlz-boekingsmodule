@@ -149,7 +149,8 @@ class TestAanmaken:
             acties = conn.execute(
                 text("SELECT actie, nieuwe_waarde::text FROM platform.audit_event WHERE record_id = :id"), {"id": nieuw.id}
             ).all()
-        assert (rij.boeken_ingeschakeld, rij.ai_extractie_ingeschakeld, rij.accordering_ingeschakeld) == (False, False, False)
+        # v2 30-08 (besluit Peter 29-08): boeken + AI-extractie AAN als default voor NIEUWE administraties.
+        assert (rij.boeken_ingeschakeld, rij.ai_extractie_ingeschakeld, rij.accordering_ingeschakeld) == (True, True, False)
         assert bytes(rij.wachtwoord_ciphertext) != b"geheim-ww"
         assert all(v == "ok" for v in rij.rapport.values())
         namen = {a for a, _ in acties}

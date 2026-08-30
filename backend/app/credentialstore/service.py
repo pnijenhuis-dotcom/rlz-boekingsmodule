@@ -72,6 +72,31 @@ class CredentialMetadata:
     bijgewerkt_op: datetime
 
 
+def trek_credential_in(*, actor_id: uuid.UUID, administratie_id: uuid.UUID) -> bool:
+    """Webservice-login intrekken (archiveren van een administratie, v2 30-08): de credential-rij
+    verdwijnt uit de store (een geheim, geen boekhoudkundige data — het audit_event blijft als spoor;
+    DELETE-grant sinds migratie 0089). Zonder credential valt élke RLZ-toegang voor deze administratie
+    weg (store-first; de .env-terugval geldt alleen in dev). Idempotent: geen rij = False, geen fout."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        bestaand = session.get(RlzCredential, administratie_id)
+        if bestaand is None:
+            return False
+        username = bestaand.webservice_username
+        session.delete(bestaand)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="rlz_credential",
+            record_id=administratie_id,
+            actie="credential_ingetrokken",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"webservice_username": username},
+            nieuwe_waarde=None,
+        )
+        return True
+
+
 def haal_credential_metadata_op(*, administratie_id: uuid.UUID) -> CredentialMetadata | None:
     with scoped_session(None) as session:
         rij = session.get(RlzCredential, administratie_id)

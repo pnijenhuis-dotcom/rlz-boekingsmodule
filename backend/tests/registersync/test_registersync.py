@@ -39,15 +39,24 @@ def headers(*, secret: str = DEV_SECRET, timestamp: str | None = None, nonce: st
     }
 
 
-def seed_administratie(admin_engine: Engine, naam: str, *, actief: bool = True, is_vastgoed: bool = False) -> uuid.UUID:
+def seed_administratie(
+    admin_engine: Engine, naam: str, *, actief: bool = True, is_vastgoed: bool = False, gearchiveerd: bool = False
+) -> uuid.UUID:
     aid = uuid.uuid4()
     with admin_engine.begin() as conn:
         conn.execute(
             text(
-                "INSERT INTO platform.administratie (id, naam, rlz_admin_id, actief, is_vastgoed) "
-                "VALUES (:id, :naam, :rlz, :actief, :vg)"
+                "INSERT INTO platform.administratie (id, naam, rlz_admin_id, actief, is_vastgoed, gearchiveerd_op) "
+                "VALUES (:id, :naam, :rlz, :actief, :vg, :arch)"
             ),
-            {"id": aid, "naam": naam, "rlz": f"rlz-{aid}", "actief": actief, "vg": is_vastgoed},
+            {
+                "id": aid,
+                "naam": naam,
+                "rlz": f"rlz-{aid}",
+                "actief": actief and not gearchiveerd,
+                "vg": is_vastgoed,
+                "arch": datetime.now(UTC) if gearchiveerd else None,
+            },
         )
     return aid
 
@@ -83,7 +92,10 @@ def seed_grootboek(
 
 def tabel_tellingen(admin_engine: Engine) -> tuple[int, int]:
     with admin_engine.connect() as conn:
-        adm = conn.execute(text("SELECT count(*) FROM platform.administratie")).scalar_one()
+        # v1.19: gearchiveerde administraties reizen niet mee (afwezigheid = verdwenen).
+        adm = conn.execute(
+            text("SELECT count(*) FROM platform.administratie WHERE gearchiveerd_op IS NULL")
+        ).scalar_one()
         gb = conn.execute(
             text("SELECT count(*) FROM platform.grootboekrekening WHERE verdwenen_uit_bron_op IS NULL")
         ).scalar_one()
@@ -97,6 +109,7 @@ def test_telling_gelijk_aan_tabel_telling_en_actuele_rijen_semantiek(admin_engin
     a = seed_administratie(admin_engine, "Alfa B.V.", is_vastgoed=True)
     b = seed_administratie(admin_engine, "Bèta Holding", actief=False)  # niet-actief, niet-vastgoed: tóch geleverd
     c = seed_administratie(admin_engine, "Gamma zonder grootboek")
+    d = seed_administratie(admin_engine, "Delta gearchiveerd", gearchiveerd=True)  # v1.19: niet geleverd
     seed_grootboek(admin_engine, a, 5, verdwenen=2)
     seed_grootboek(admin_engine, b, 3, verdwenen=1)
 
@@ -110,6 +123,7 @@ def test_telling_gelijk_aan_tabel_telling_en_actuele_rijen_semantiek(admin_engin
     assert body["grootboekrekeningen"]["aantal"] == gb_tabel == 8 == len(body["grootboekrekeningen"]["rijen"])
     geleverde_admins = {r["id"] for r in body["administraties"]["rijen"]}
     assert {str(a), str(b), str(c)} <= geleverde_admins  # ongefilterd: ook niet-actief/niet-vastgoed
+    assert str(d) not in geleverde_admins  # gearchiveerd = afwezig = verdwenen (contract v1.19)
     assert {r["actief"] for r in body["administraties"]["rijen"] if r["id"] == str(b)} == {False}
     assert not any(r["naam"].startswith("Verdwenen") for r in body["grootboekrekeningen"]["rijen"])
     per_admin = {str(a): 0, str(b): 0, str(c): 0}

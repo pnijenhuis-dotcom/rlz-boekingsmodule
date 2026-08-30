@@ -115,7 +115,9 @@ def probeer_verkoop_autoboeken_na_intake(
             return None
         mogelijk_duplicaat = document.mogelijk_duplicaat_van_id is not None
         administratie = session.get(Administratie, administratie_id)
-        if administratie is None or not administratie.verkoop_autoboeken_ingeschakeld:
+        # v2 30-08 (besluit Peter 29-08): de opt-in volgt de vastgoed-koppeling — aan zodra is_vastgoed
+        # aan staat (de spiegelkolom verkoop_autoboeken_ingeschakeld is rapportage, geen poort meer).
+        if administratie is None or not administratie.is_vastgoed:
             return None
         is_vastgoed = administratie.is_vastgoed
 

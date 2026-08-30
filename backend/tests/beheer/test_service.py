@@ -311,9 +311,10 @@ class TestIsVastgoedToggle:
         assert r.verkoop_autoboeken_uitgezet is True
         assert service.haal_verkoop_autoboeken_ingeschakeld_op(administratie_id=administratie_id) is False
         acties = _audit_acties(admin_engine, tabel="administratie", record_id=administratie_id)
-        # Twee is_vastgoed-audits (aan, uit) + twee verkoop-audits (aan via opt-in, uit via de toggle).
+        # Twee is_vastgoed-audits (aan, uit) + drie verkoop-audits: de spiegel gaat mee AAN met is_vastgoed
+        # (v2 30-08), de expliciete opt-in (no-op, tóch geauditeerd) en mee UIT.
         assert acties.count("is_vastgoed_gewijzigd") == 2
-        assert acties.count("verkoop_autoboeken_ingeschakeld_gewijzigd") == 2
+        assert acties.count("verkoop_autoboeken_ingeschakeld_gewijzigd") == 3
         with admin_engine.connect() as conn:
             laatste = conn.execute(
                 text(
@@ -323,7 +324,7 @@ class TestIsVastgoedToggle:
                 ),
                 {"id": administratie_id},
             ).scalar_one()
-        assert laatste == {"verkoop_autoboeken_ingeschakeld": False, "reden": "is_vastgoed uitgezet"}
+        assert laatste == {"verkoop_autoboeken_ingeschakeld": False, "reden": "volgt is_vastgoed (v2 30-08)"}
 
     def test_uitzetten_zonder_opt_in_raakt_verkoop_niet(
         self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine

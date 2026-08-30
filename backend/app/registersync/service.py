@@ -60,14 +60,16 @@ def bouw_snapshot() -> tuple[RegisterSnapshot, int]:
         # scoped_session(), dat eerst set_config uitvoert.
         session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
 
+        # v1.19 (30-08): gearchiveerde administraties reizen niet mee — afwezigheid = verdwenen (§8-
+        # semantiek, Vastly markeert, verwijdert niets); niet-gearchiveerde actief=false-rijen wél
+        # (kip-ei koppelscherm, ongewijzigd).
         administraties = session.execute(
-            select(
-                Administratie.id, Administratie.rlz_admin_id, Administratie.naam, Administratie.actief
-            ).order_by(Administratie.naam, Administratie.id)
+            select(Administratie.id, Administratie.rlz_admin_id, Administratie.naam, Administratie.actief)
+            .where(Administratie.gearchiveerd_op.is_(None))
+            .order_by(Administratie.naam, Administratie.id)
         ).all()
         admin_rijen = [
-            AdministratieRij(id=r.id, rlz_admin_id=r.rlz_admin_id, naam=r.naam, actief=r.actief)
-            for r in administraties
+            AdministratieRij(id=r.id, rlz_admin_id=r.rlz_admin_id, naam=r.naam, actief=r.actief) for r in administraties
         ]
 
         gb_rijen: list[GrootboekrekeningRij] = []

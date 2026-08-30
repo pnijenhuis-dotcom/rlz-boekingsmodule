@@ -419,7 +419,9 @@ def sync_bank_alle_administraties() -> dict[uuid.UUID, BankSyncResultaat | str]:
     """CLI `bank-sync` zonder administratie-id (en straks de Cloud Scheduler-job): één kapotte
     administratie stopt de rest niet — zelfde patroon als sync_alle_administraties()."""
     with scoped_session(None) as session:
-        administratie_ids = [row.id for row in session.scalars(select(Administratie))]
+        administratie_ids = [
+            row.id for row in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
+        ]
 
     resultaten: dict[uuid.UUID, BankSyncResultaat | str] = {}
     for administratie_id in administratie_ids:

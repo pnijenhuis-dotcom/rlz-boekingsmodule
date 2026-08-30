@@ -117,10 +117,22 @@ class Administratie(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     naam: Mapped[str]
     rlz_admin_id: Mapped[str] = mapped_column(unique=True)
+    # `actief` = niet gearchiveerd (v2 30-08): archiveren zet 'm op false; álle RLZ-rakende jobs en de
+    # UI-lijsten filteren erop. Archiveringsspoor (0089, 0075-patroon) hieronder.
     actief: Mapped[bool] = mapped_column(default=True)
-    boeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    gearchiveerd_op: Mapped[datetime | None] = mapped_column(default=None)
+    gearchiveerd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    # Defaults voor NIEUWE administraties (besluit Peter 29-08, mockup instellingen-administraties-v2):
+    # boeken + AI-extractie AAN — bestaande rijen behouden hun waarde (geen DB-default, geen backfill).
+    boeken_ingeschakeld: Mapped[bool] = mapped_column(default=True)
+    # Terugkerende-facturen-signaal (0090): drempel prijsstijging in %, default 10 (Beheerder-instelbaar).
+    terugkerend_prijsstijging_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("10.00"), server_default="10.00"
+    )
     project_verplicht: Mapped[bool] = mapped_column(default=False)
-    ai_extractie_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    ai_extractie_ingeschakeld: Mapped[bool] = mapped_column(default=True)
     is_vastgoed: Mapped[bool] = mapped_column(default=False)
     # Opt-in voor de volautomatische bankstappen (migratie 0026): vaste regels automatisch
     # direct-op-grootboek boeken tijdens de bank-sync — default UIT, werkt bovenop de

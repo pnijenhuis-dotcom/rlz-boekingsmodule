@@ -156,7 +156,10 @@ def detecteer_en_meld_gestorneerd_alle() -> dict[uuid.UUID, int | str]:
     CLI-commando `reconciliatie` — dezelfde cadans is dus ook de contract-latentie."""
     with scoped_session(None) as session:
         administratie_ids = [
-            row.id for row in session.scalars(select(Administratie).where(Administratie.is_vastgoed))
+            row.id
+            for row in session.scalars(
+                select(Administratie).where(Administratie.is_vastgoed, Administratie.actief.is_(True))
+            )
         ]
     resultaten: dict[uuid.UUID, int | str] = {}
     for administratie_id in administratie_ids:

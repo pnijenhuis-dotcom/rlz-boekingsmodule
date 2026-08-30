@@ -225,7 +225,7 @@ def verwerk_wachtrij() -> int:
     from app.db.models import Administratie
 
     with scoped_session(None) as session:
-        administratie_ids = list(session.scalars(select(Administratie.id)))
+        administratie_ids = list(session.scalars(select(Administratie.id).where(Administratie.actief.is_(True))))
     totaal = 0
     for administratie_id in administratie_ids:
         totaal += verwerk_wachtrij_voor(administratie_id)

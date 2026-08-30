@@ -336,7 +336,12 @@ def sync_alle_voorraad_administraties(
     laat de rest niet stuklopen; geen credential = zichtbaar overgeslagen, geen fout."""
     with scoped_session(None) as session:
         ids = [
-            a.id for a in session.scalars(select(Administratie).where(Administratie.voorraad_ingeschakeld.is_(True)))
+            a.id
+            for a in session.scalars(
+                select(Administratie).where(
+                    Administratie.voorraad_ingeschakeld.is_(True), Administratie.actief.is_(True)
+                )
+            )
         ]
     resultaten: dict[uuid.UUID, RlzUitstroomTelling | GeenRlzCredentials | str] = {}
     for administratie_id in ids:

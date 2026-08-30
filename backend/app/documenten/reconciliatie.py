@@ -139,7 +139,9 @@ def reconcilieer_alle_administraties() -> dict[uuid.UUID, ReconciliatieRapport |
     """Eén administratie zonder werkende credentials laat de rest niet stoppen — zelfde patroon
     als app/sync/service.py::sync_alle_administraties."""
     with scoped_session(None) as session:
-        administratie_ids = [row.id for row in session.scalars(select(Administratie))]
+        administratie_ids = [
+            row.id for row in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
+        ]
 
     resultaten: dict[uuid.UUID, ReconciliatieRapport | str] = {}
     for administratie_id in administratie_ids:

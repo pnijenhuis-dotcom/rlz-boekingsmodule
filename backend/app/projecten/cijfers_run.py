@@ -301,7 +301,9 @@ def _opt_in_administraties() -> list[uuid.UUID]:
     with scoped_session(None) as session:
         return [
             rij.id
-            for rij in session.scalars(select(Administratie).where(Administratie.uren_meerwerk_ingeschakeld))
+            for rij in session.scalars(
+                select(Administratie).where(Administratie.uren_meerwerk_ingeschakeld, Administratie.actief.is_(True))
+            )
         ]
 
 

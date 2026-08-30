@@ -111,10 +111,29 @@ class AdministratieInstellingenDto(BaseModel):
     # Eerste-sync-stand (wizard-nazorg 27-08): laatste run — de UI toont 'm op de rij zolang die
     # niet volledig groen is (status ≠ klaar), mét herstartknop; None = nog nooit gestart.
     eerste_sync: "EersteSyncRunDto | None" = None
+    # v2 30-08 (mockup instellingen-administraties-v2): meta-regel, chips, sync-kolom, archiefspoor.
+    eigenaar_naam: str | None = None
+    iban_accordeurs_aantal: int = 0
+    afgeletterd_event_ingeschakeld: bool = False
+    doorbelasting_ingeschakeld: bool = False
+    bank_autoboeken_ingeschakeld: bool = False
+    accordering_ingeschakeld: bool = False
+    laatste_sync_op: datetime | None = None
+    gearchiveerd_op: datetime | None = None
+    gearchiveerd_door_naam: str | None = None
 
 
 class AdministratieInstellingenLijstDto(BaseModel):
     administraties: list[AdministratieInstellingenDto]
+
+
+class ArchiveringResultaatDto(BaseModel):
+    """Archiveren (v2 30-08): archiefspoor + of de webservice-login uit de store ging + open werk
+    (waarschuwing, geen blokkade)."""
+
+    gearchiveerd_op: datetime
+    credential_ingetrokken: bool
+    open_documenten: int
 
 
 # --- Administratie toevoegen (wizard, feedbackronde 26-08 punt 5) -------------------------------

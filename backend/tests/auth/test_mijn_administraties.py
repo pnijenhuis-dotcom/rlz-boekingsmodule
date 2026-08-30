@@ -26,10 +26,21 @@ def test_beheerder_ziet_alle_administraties(
             {"id": andere_administratie_id, "rlz": f"rlz-{andere_administratie_id}"},
         )
 
+    gearchiveerd_id = uuid.uuid4()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO platform.administratie (id, naam, rlz_admin_id, actief, gearchiveerd_op) "
+                "VALUES (:id, 'Gearchiveerd', :rlz, false, now())"
+            ),
+            {"id": gearchiveerd_id, "rlz": f"rlz-{gearchiveerd_id}"},
+        )
+
     resp = client.get("/auth/administraties", headers=_bearer(beheerder_id, rol="beheerder"))
     assert resp.status_code == 200, resp.text
     ids = {a["id"] for a in resp.json()["administraties"]}
     assert {str(administratie_id), str(andere_administratie_id)} <= ids
+    assert str(gearchiveerd_id) not in ids  # v2 30-08: gearchiveerd = uit álle werk-lijsten
 
 
 def _actieve_gebruiker_zonder_scope(admin_engine: Engine) -> uuid.UUID:

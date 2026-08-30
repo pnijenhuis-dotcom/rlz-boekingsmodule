@@ -131,6 +131,13 @@ class TestVerkoopAutoboeken:
         boeken_aan: None,
         vastgoed_administratie: uuid.UUID,
     ) -> None:
+        # v2 30-08: de opt-in VOLGT is_vastgoed — "uit" = vastgoed-koppeling uit; dan is het document
+        # geen kandidaat en blijft de audit stil (geen weiger-rij).
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET is_vastgoed = false WHERE id = :id"),
+                {"id": vastgoed_administratie},
+            )
         _patch_client(monkeypatch, FakeVerkoopClient())
         document_id = _upload(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker,
@@ -426,9 +433,10 @@ class TestVerkoopAutoboeken:
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker,
             opslag=opslag, inhoud=bouw_vastly_verkoop_ubl(),
         )
+        # v2 30-08: is_vastgoed uit = geen kandidaat (de poort IS is_vastgoed; de achtergebleven
+        # spiegelvlag telt niet) — fail-closed, niets geboekt.
         assert _status(admin_engine, document_id) == "te_controleren"
-        [reden] = _weiger_redenen(admin_engine, document_id)
-        assert "is_vastgoed" in reden
+        assert _weiger_redenen(admin_engine, document_id) == []
 
     def test_opgeslagen_voorstel_weigert(
         self,
@@ -443,6 +451,13 @@ class TestVerkoopAutoboeken:
     ) -> None:
         """Her-verwerking van een document waar een mens al aan zat: de mens is eigenaar van
         het voorstel — het autoboek-pad blijft er vanaf (weiger, geauditeerd)."""
+        # Upload zónder vastgoed-koppeling (v2: anders boekt de intake al automatisch), mens slaat op,
+        # dán koppeling aan → de her-verwerking weigert op het opgeslagen voorstel.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET is_vastgoed = false WHERE id = :id"),
+                {"id": vastgoed_administratie},
+            )
         _patch_client(monkeypatch, FakeVerkoopClient())
         document_id = _upload(
             administratie_id=vastgoed_administratie, actor_id=gescoopte_gebruiker,
@@ -467,9 +482,7 @@ class TestVerkoopAutoboeken:
                 for r in prefill.regels
             ],
         )
-        beheer_service.zet_verkoop_autoboeken_ingeschakeld(
-            actor_id=beheerder_id, administratie_id=vastgoed_administratie, ingeschakeld=True
-        )
+        beheer_service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=vastgoed_administratie, is_vastgoed=True)
         besluit = verkoop_autoboeken.probeer_verkoop_autoboeken_na_intake(
             administratie_id=vastgoed_administratie, document_id=document_id
         )

@@ -182,7 +182,18 @@ def maak_administraties_aan(
         for rlz_id in gekozen:
             administratie_id = uuid.uuid4()
             naam = gevonden[rlz_id]
-            session.add(Administratie(id=administratie_id, naam=naam, rlz_admin_id=rlz_id))
+            # Defaults voor NIEUWE administraties (besluit Peter 29-08, mockup instellingen-administraties-v2):
+            # boeken + AI-extractie AAN, alle overige opt-ins UIT; de wizard vermeldt dit. Bestaande rijen
+            # blijven zoals ze zijn — alleen een afwijking van de default krijgt in de lijst een chip.
+            session.add(
+                Administratie(
+                    id=administratie_id,
+                    naam=naam,
+                    rlz_admin_id=rlz_id,
+                    boeken_ingeschakeld=True,
+                    ai_extractie_ingeschakeld=True,
+                )
+            )
             session.add(
                 RlzCredential(
                     administratie_id=administratie_id,
@@ -283,6 +294,29 @@ def wijzig_webservice_gegevens(
     )
     with scoped_session(None, actor_id=actor_id) as session:
         credentialstore.sla_probe_op(session, administratie_id=administratie_id, rapport=rapport, actor_id=actor_id)
+    return rapport
+
+
+def probe_nieuwe_login(
+    *, rlz_admin_id: str, naam: str, webservice_username: str, wachtwoord: str, client: RlzClient | None = None
+) -> dict[str, str]:
+    """Admin-pin + rechten-probe met een NIEUWE login, zonder iets op te slaan (dearchiveren v2 30-08 —
+    zelfde poort als `wijzig_webservice_gegevens`). Geeft het groene rapport terug, anders OnboardingFout."""
+    eigen = client is None
+    client = client or _nieuwe_root_client(webservice_username, wachtwoord)
+    try:
+        gevonden = _administraties_via(client)
+        if rlz_admin_id not in gevonden:
+            raise OnboardingFout(
+                f"Deze login ziet administratie '{naam}' niet in Reeleezee (admin-pin) — niets gewijzigd"
+            )
+        rapport = credentialstore.probe_rapport(client, rlz_admin_id)
+    finally:
+        if eigen:
+            client.close()
+    if not credentialstore.probe_is_groen(rapport):
+        rood = ", ".join(f"{k}={v}" for k, v in rapport.items() if v != "ok")
+        raise OnboardingFout(f"Rechten-probe niet groen ({rood}) — niets gewijzigd", rapporten={rlz_admin_id: rapport})
     return rapport
 
 

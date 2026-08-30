@@ -125,7 +125,9 @@ def reconcilieer_alle_omzet() -> OmzetReconciliatieResultaat:
     niet — zelfde patroon als sync_alle_administraties — maar wordt wél teruggegeven zodat de
     aanroeper hem zichtbaar maakt en de exit-code op 1 zet."""
     with scoped_session(None) as session:
-        administratie_ids = [rij.id for rij in session.scalars(select(Administratie))]
+        administratie_ids = [
+            rij.id for rij in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
+        ]
 
     alle: list[OmzetAfwijking] = []
     fouten: dict[uuid.UUID, str] = {}

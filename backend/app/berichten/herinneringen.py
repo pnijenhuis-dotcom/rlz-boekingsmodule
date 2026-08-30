@@ -87,7 +87,7 @@ def open_aantallen_per_accordeur() -> dict[uuid.UUID, int]:
     """Alle administraties langs (RLS: één scope per transactie) en de aan-de-beurt-tellingen
     per accordeur optellen."""
     with scoped_session(None) as session:
-        administratie_ids = list(session.scalars(select(Administratie.id)))
+        administratie_ids = list(session.scalars(select(Administratie.id).where(Administratie.actief.is_(True))))
     totalen: dict[uuid.UUID, int] = {}
     for administratie_id in administratie_ids:
         for accordeur_id, aantal in accordering_service.aantallen_aan_de_beurt(

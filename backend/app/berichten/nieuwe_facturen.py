@@ -88,7 +88,7 @@ def _documenten_per_accordeur() -> dict[uuid.UUID, set[uuid.UUID]]:
     """Alle administraties langs (RLS: één scope per transactie), documenten aan de beurt per
     accordeur — exact de wachtrij-definitie (accordering_service.documenten_aan_de_beurt)."""
     with scoped_session(None) as session:
-        administratie_ids = list(session.scalars(select(Administratie.id)))
+        administratie_ids = list(session.scalars(select(Administratie.id).where(Administratie.actief.is_(True))))
     totaal: dict[uuid.UUID, set[uuid.UUID]] = {}
     for administratie_id in administratie_ids:
         for accordeur_id, document_ids in accordering_service.documenten_aan_de_beurt(

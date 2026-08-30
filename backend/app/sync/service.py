@@ -407,7 +407,9 @@ def sync_alle_administraties() -> dict[uuid.UUID, SyncResultaat | GeenRlzCredent
     terug zodat de CLI 'm zichtbaar OVERSLAAT zonder de exit-code te raken — een échte
     credential-/API-fout blijft een string en dus een fout."""
     with scoped_session(None) as session:
-        administratie_ids = [row.id for row in session.scalars(select(Administratie))]
+        administratie_ids = [
+            row.id for row in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
+        ]
 
     resultaten: dict[uuid.UUID, SyncResultaat | GeenRlzCredentials | str] = {}
     for administratie_id in administratie_ids:

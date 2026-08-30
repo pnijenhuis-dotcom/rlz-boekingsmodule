@@ -19,11 +19,13 @@ router = APIRouter(tags=["beheer"], dependencies=[Depends(vereis_kantoorrol)])
     response_model=schemas.AdministratieInstellingenLijstDto,
 )
 def administratie_instellingen_lijst(
+    inclusief_gearchiveerd: bool = False,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.AdministratieInstellingenLijstDto:
     """Instellingen-scherm (design-pass taak 3): alle administraties met beide schakelaars in
-    één response — Beheerder-only, net als de losse per-administratie/globale endpoints."""
-    overzicht = service.overzicht_administratie_instellingen()
+    één response — Beheerder-only, net als de losse per-administratie/globale endpoints.
+    Gearchiveerde administraties (v2 30-08) alleen met `?inclusief_gearchiveerd=true`."""
+    overzicht = service.overzicht_administratie_instellingen(inclusief_gearchiveerd=inclusief_gearchiveerd)
     return schemas.AdministratieInstellingenLijstDto(
         administraties=[
             schemas.AdministratieInstellingenDto(
@@ -43,10 +45,69 @@ def administratie_instellingen_lijst(
                 webservice_username=r.webservice_username,
                 probe_groen=r.probe_groen,
                 eerste_sync=None if r.eerste_sync is None else _eerste_sync_dto(r.eerste_sync),
+                eigenaar_naam=r.eigenaar_naam,
+                iban_accordeurs_aantal=r.iban_accordeurs_aantal,
+                afgeletterd_event_ingeschakeld=r.afgeletterd_event_ingeschakeld,
+                doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
+                bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
+                accordering_ingeschakeld=r.accordering_ingeschakeld,
+                laatste_sync_op=r.laatste_sync_op,
+                gearchiveerd_op=r.gearchiveerd_op,
+                gearchiveerd_door_naam=r.gearchiveerd_door_naam,
             )
             for r in overzicht
         ]
     )
+
+
+@router.post(
+    "/instellingen/administraties/{administratie_id}/archiveren",
+    response_model=schemas.ArchiveringResultaatDto,
+)
+def administratie_archiveren(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.ArchiveringResultaatDto:
+    """Archiveren (🗑, v2 30-08 — nooit verwijderen): actief → false, webservice-login uit de store,
+    syncs/jobs stoppen, documenten/historie blijven, registersync levert de rij niet meer. Al
+    gearchiveerd = 409; onbekend = 404."""
+    try:
+        r = service.archiveer_administratie(actor_id=actor.id, administratie_id=administratie_id)
+    except service.AdministratieGearchiveerd as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.ArchiveringResultaatDto(
+        gearchiveerd_op=r.gearchiveerd_op,
+        credential_ingetrokken=r.credential_ingetrokken,
+        open_documenten=r.open_documenten,
+    )
+
+
+@router.post(
+    "/instellingen/administraties/{administratie_id}/dearchiveren",
+    response_model=schemas.ProbeRapportDto,
+)
+def administratie_dearchiveren(
+    administratie_id: uuid.UUID,
+    invoer: schemas.WebserviceGegevensDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.ProbeRapportDto:
+    """Dearchiveren vereist een nieuwe webservice-login: admin-pin + rechten-probe groen (422 mét
+    rapport, niets gewijzigd), dan credential opgeslagen en actief terug. Het wachtwoord reist
+    alleen inkomend."""
+    try:
+        rapport = service.dearchiveer_administratie(
+            actor_id=actor.id,
+            administratie_id=administratie_id,
+            webservice_username=invoer.webservice_username,
+            wachtwoord=invoer.wachtwoord,
+        )
+    except service.BeheerFout as exc:
+        code = status.HTTP_409_CONFLICT if "niet gearchiveerd" in str(exc) else status.HTTP_404_NOT_FOUND
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — OnboardingFout (422 mét rapport) / verbindingsfout (502)
+        raise _onboarding_fout(exc) from exc
+    return schemas.ProbeRapportDto(rapport=rapport)
 
 
 # --- Administratie toevoegen via de UI (feedbackronde 26-08 punt 5) ------------------------------

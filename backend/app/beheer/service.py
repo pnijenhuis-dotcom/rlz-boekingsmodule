@@ -5,10 +5,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.auth.rollen import is_kantoorrol
+from app.beheer.eerste_sync import EersteSyncRunInfo
 from app.config import settings
+from app.credentialstore import service as credentialstore_service
 from app.db.audit import record_audit_event
 from app.db.models import (
     Administratie,
@@ -22,7 +24,6 @@ from app.db.models import (
     WebhookInstelling,
 )
 from app.db.session import scoped_session
-from app.beheer.eerste_sync import EersteSyncRunInfo
 
 
 class BeheerFout(Exception):
@@ -158,7 +159,19 @@ class AdministratieInstellingen:
     # Eerste-sync-stand (wizard-nazorg 27-08, casus Bouwadvies Oost Nederland): de laatste run
     # zoals de wizard 'm toont (status + onderdelen + foutreden) — de UI toont 'm op de rij zolang
     # de run niet volledig groen is, mét herstartknop op hetzelfde endpoint. None = nog nooit.
-    eerste_sync: "EersteSyncRunInfo | None" = None
+    eerste_sync: EersteSyncRunInfo | None = None
+    # v2 30-08 (mockup instellingen-administraties-v2): compacte tabel mét meta-regel, chips en
+    # sync-kolom — daarom hier óók eigenaar-naam, IBAN-accordeur-telling, de overige module-vlaggen,
+    # de jongste sync-tijd (max laatst_gesynchroniseerd over de gesyncte caches) en het archiefspoor.
+    eigenaar_naam: str | None = None
+    iban_accordeurs_aantal: int = 0
+    afgeletterd_event_ingeschakeld: bool = False
+    doorbelasting_ingeschakeld: bool = False
+    bank_autoboeken_ingeschakeld: bool = False
+    accordering_ingeschakeld: bool = False
+    laatste_sync_op: datetime | None = None
+    gearchiveerd_op: datetime | None = None
+    gearchiveerd_door_naam: str | None = None
 
 
 def administratie_bestaat(administratie_id: uuid.UUID) -> bool:
@@ -166,18 +179,63 @@ def administratie_bestaat(administratie_id: uuid.UUID) -> bool:
         return session.get(Administratie, administratie_id) is not None
 
 
-def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
+def _laatste_sync(session, administratie_id: uuid.UUID) -> datetime | None:
+    """Jongste `laatst_gesynchroniseerd` over de gesyncte RLZ-caches (grootboek, btw, crediteuren) —
+    de sync-kolom "✓ 06:14" van de v2-tabel. Geen eigen logtabel: de caches zijn het spoor. De caches
+    zijn RLS-tabellen: altijd aanroepen binnen `scoped_session(administratie_id)` (RLS-les 25-08)."""
+    from app.db.models import Grootboekrekening
+    from app.sync.models import TaxRateCache, VendorCache
+
+    jongste: datetime | None = None
+    for model in (Grootboekrekening, TaxRateCache, VendorCache):
+        moment = session.scalar(
+            select(func.max(model.laatst_gesynchroniseerd)).where(model.administratie_id == administratie_id)
+        )
+        if moment is not None and (jongste is None or moment > jongste):
+            jongste = moment
+    return jongste
+
+
+def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False) -> list[AdministratieInstellingen]:
     """Voor het instellingen-scherm (design-pass taak 3): beide schakelaars per administratie in
     één keer, i.p.v. de losse per-administratie GET-endpoints hierboven N keer aan te roepen.
     Los van `overzicht_boeken_status()` (CLI, alleen boeken_ingeschakeld) gehouden — dat commando
-    hoeft niet mee te veranderen als deze lijst een derde kolom krijgt."""
+    hoeft niet mee te veranderen als deze lijst een derde kolom krijgt. Gearchiveerde administraties
+    (v2 30-08) alleen op expliciet verzoek — het scherm toont ze achter "gearchiveerd (N)"."""
     from app.beheer.eerste_sync import laatste_run
     from app.beheer.onboarding import koppelstand
+    from app.documenten.models import IbanAccordeur
 
     with scoped_session(None) as session:
-        rijen = list(session.scalars(select(Administratie).order_by(Administratie.naam)))
+        q = select(Administratie).order_by(Administratie.naam)
+        if not inclusief_gearchiveerd:
+            q = q.where(Administratie.gearchiveerd_op.is_(None))
+        rijen = list(session.scalars(q))
+        ids = [r.id for r in rijen]
+        gebruiker_ids = {r.eigenaar_gebruiker_id for r in rijen if r.eigenaar_gebruiker_id} | {
+            r.gearchiveerd_door for r in rijen if r.gearchiveerd_door
+        }
+        namen = (
+            dict(
+                session.execute(select(Gebruiker.id, Gebruiker.naam).where(Gebruiker.id.in_(list(gebruiker_ids)))).all()
+            )
+            if gebruiker_ids
+            else {}
+        )
         session.expunge_all()
-    stand = koppelstand([r.id for r in rijen])
+    # IBAN-accordeurs en de sync-caches zijn RLS-tabellen: per administratie gescoopt lezen.
+    iban_tellingen: dict[uuid.UUID, int] = {}
+    laatste_sync: dict[uuid.UUID, datetime | None] = {}
+    for aid in ids:
+        with scoped_session(aid) as session:
+            iban_tellingen[aid] = int(
+                session.scalar(
+                    select(func.count()).select_from(IbanAccordeur).where(IbanAccordeur.administratie_id == aid)
+                )
+                or 0
+            )
+            laatste_sync[aid] = _laatste_sync(session, aid)
+    stand = koppelstand(ids)
     # Per administratie (RLS-gescoopte tabel, zelfde stale-markering als de status-route) — één
     # korte query per rij is prima voor het Beheerder-scherm.
     syncs = {r.id: laatste_run(r.id) for r in rijen}
@@ -199,9 +257,130 @@ def overzicht_administratie_instellingen() -> list[AdministratieInstellingen]:
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],
             eerste_sync=None if syncs[r.id].status == "geen" else syncs[r.id],
+            eigenaar_naam=namen.get(r.eigenaar_gebruiker_id) if r.eigenaar_gebruiker_id else None,
+            iban_accordeurs_aantal=iban_tellingen.get(r.id, 0),
+            afgeletterd_event_ingeschakeld=r.afgeletterd_event_ingeschakeld,
+            doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
+            bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
+            accordering_ingeschakeld=r.accordering_ingeschakeld,
+            laatste_sync_op=laatste_sync.get(r.id),
+            gearchiveerd_op=r.gearchiveerd_op,
+            gearchiveerd_door_naam=namen.get(r.gearchiveerd_door) if r.gearchiveerd_door else None,
         )
         for r in rijen
     ]
+
+
+# --- Archiveren / dearchiveren (v2 30-08, mockup instellingen-administraties-v2, 0075-patroon) ---------
+
+
+class AdministratieGearchiveerd(BeheerFout):
+    pass
+
+
+@dataclass(frozen=True)
+class ArchiveringResultaat:
+    gearchiveerd_op: datetime
+    credential_ingetrokken: bool
+    open_documenten: int
+
+
+def archiveer_administratie(*, actor_id: uuid.UUID, administratie_id: uuid.UUID) -> ArchiveringResultaat:
+    """Archiveren (🗑, nooit verwijderen): `actief` → false + archiefspoor; de webservice-login gaat uit
+    de credential-store (syncs/jobs stoppen — ze filteren op `actief` én hebben geen login meer);
+    documenten, boekingen, historie en audit blijven staan; registersync levert de rij niet meer
+    (verdwenen-semantiek §8). Open werk is een waarschuwing in het resultaat, geen blokkade (zelfde
+    lijn als gebruiker-archiveren). Beheerder-only (router)."""
+    from app.documenten.models import Document, DocumentStatus
+
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        if administratie.gearchiveerd_op is not None:
+            raise AdministratieGearchiveerd("Administratie is al gearchiveerd")
+        nu = datetime.now(UTC)
+        administratie.actief = False
+        administratie.gearchiveerd_op = nu
+        administratie.gearchiveerd_door = actor_id
+        naam = administratie.naam
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="administratie_gearchiveerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"actief": True, "gearchiveerd_op": None},
+            nieuwe_waarde={"actief": False, "gearchiveerd_op": nu.isoformat(), "naam": naam},
+        )
+    ingetrokken = credentialstore_service.trek_credential_in(actor_id=actor_id, administratie_id=administratie_id)
+    with scoped_session(administratie_id) as session:
+        open_documenten = int(
+            session.scalar(
+                select(func.count()).where(
+                    Document.administratie_id == administratie_id,
+                    Document.status.notin_(
+                        [DocumentStatus.GEBOEKT, DocumentStatus.VERWIJDERD, DocumentStatus.GESPLITST]
+                    ),
+                )
+            )
+            or 0
+        )
+    return ArchiveringResultaat(gearchiveerd_op=nu, credential_ingetrokken=ingetrokken, open_documenten=open_documenten)
+
+
+def dearchiveer_administratie(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, webservice_username: str, wachtwoord: str, client=None
+) -> dict[str, str]:
+    """Terugzetten kan alleen mét een nieuwe webservice-login: admin-pin + rechten-probe groen (zelfde
+    poort als de wizard), dan credential opslaan, `actief` terug en archiefspoor gewist. Niets van de
+    tussenliggende historie wordt geraakt. Geeft het probe-rapport terug."""
+    from app.beheer import onboarding
+
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        if administratie.gearchiveerd_op is None:
+            raise BeheerFout("Administratie is niet gearchiveerd")
+        rlz_admin_id, naam = administratie.rlz_admin_id, administratie.naam
+    rapport = onboarding.probe_nieuwe_login(
+        rlz_admin_id=rlz_admin_id,
+        naam=naam,
+        webservice_username=webservice_username,
+        wachtwoord=wachtwoord,
+        client=client,
+    )
+    credentialstore_service.zet_credential(
+        actor_id=actor_id,
+        administratie_id=administratie_id,
+        webservice_username=webservice_username,
+        wachtwoord=wachtwoord,
+    )
+    with scoped_session(None, actor_id=actor_id) as session:
+        credentialstore_service.sla_probe_op(
+            session, administratie_id=administratie_id, rapport=rapport, actor_id=actor_id
+        )
+        administratie = session.get(Administratie, administratie_id)
+        assert administratie is not None
+        oud = administratie.gearchiveerd_op
+        administratie.actief = True
+        administratie.gearchiveerd_op = None
+        administratie.gearchiveerd_door = None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="administratie_gedearchiveerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"actief": False, "gearchiveerd_op": oud.isoformat() if oud else None},
+            nieuwe_waarde={"actief": True, "gearchiveerd_op": None},
+        )
+    return rapport
 
 
 def zet_voorraad_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
@@ -438,10 +617,12 @@ def zet_verkoop_autoboeken_ingeschakeld(
         administratie = session.get(Administratie, administratie_id)
         if administratie is None:
             raise BeheerFout(f"Onbekende administratie: {administratie_id}")
-        if ingeschakeld and not administratie.is_vastgoed:
+        # v2 30-08 (besluit Peter 29-08): de losse vlag volgt is_vastgoed — aan = aan, uit = uit. De
+        # kolom blijft als spiegel bestaan (rapportage/audit); afwijkend zetten is vervallen.
+        if ingeschakeld != administratie.is_vastgoed:
             raise BeheerFout(
-                "Verkoop-autoboeken kan alleen aan voor vastgoed-administraties (is_vastgoed) — "
-                "alleen dáár komen VASTLY-VERKOOP-documenten binnen"
+                "Verkoop-autoboeken volgt sinds 30-08 de vastgoed-koppeling (is_vastgoed): aan = aan, uit = uit — "
+                "zet de vastgoed-koppeling om, de losse instelling is vervallen"
             )
         oud = administratie.verkoop_autoboeken_ingeschakeld
         administratie.verkoop_autoboeken_ingeschakeld = ingeschakeld
@@ -508,10 +689,13 @@ def zet_is_vastgoed(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, is_vast
             oude_waarde={"is_vastgoed": oud},
             nieuwe_waarde={"is_vastgoed": is_vastgoed},
         )
+        # v2 30-08: verkoop-autoboeken volgt is_vastgoed (aan = aan, uit = uit) — de spiegelkolom gaat
+        # zichtbaar mee (eigen audit_event), de boekmotor toetst zelf op is_vastgoed.
         verkoop_uitgezet = False
-        if not is_vastgoed and administratie.verkoop_autoboeken_ingeschakeld:
-            administratie.verkoop_autoboeken_ingeschakeld = False
-            verkoop_uitgezet = True
+        if administratie.verkoop_autoboeken_ingeschakeld != is_vastgoed:
+            oud_vlag = administratie.verkoop_autoboeken_ingeschakeld
+            administratie.verkoop_autoboeken_ingeschakeld = is_vastgoed
+            verkoop_uitgezet = not is_vastgoed
             record_audit_event(
                 session,
                 actor_id=actor_id,
@@ -520,8 +704,11 @@ def zet_is_vastgoed(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, is_vast
                 record_id=administratie_id,
                 actie="verkoop_autoboeken_ingeschakeld_gewijzigd",
                 correlatie_id=correlatie_id,
-                oude_waarde={"verkoop_autoboeken_ingeschakeld": True},
-                nieuwe_waarde={"verkoop_autoboeken_ingeschakeld": False, "reden": "is_vastgoed uitgezet"},
+                oude_waarde={"verkoop_autoboeken_ingeschakeld": oud_vlag},
+                nieuwe_waarde={
+                    "verkoop_autoboeken_ingeschakeld": is_vastgoed,
+                    "reden": "volgt is_vastgoed (v2 30-08)",
+                },
             )
         return IsVastgoedResultaat(
             is_vastgoed=is_vastgoed,

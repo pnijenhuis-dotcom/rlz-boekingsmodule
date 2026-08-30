@@ -219,11 +219,6 @@ class TestBoekVerkoopDocument:
         rekeningschema: None,
         boeken_aan: None,
     ) -> None:
-        with admin_engine.begin() as conn:
-            conn.execute(
-                text("UPDATE platform.administratie SET is_vastgoed = true WHERE id = :id"),
-                {"id": administratie_id},
-            )
         client = FakeVerkoopClient()
         _patch_client(monkeypatch, client)
         document_id = _upload_en_bevestig(
@@ -232,6 +227,13 @@ class TestBoekVerkoopDocument:
             opslag=opslag,
             inhoud=bouw_vastly_verkoop_ubl(),
         )
+        # is_vastgoed pas ná de upload (v2 30-08: mét de koppeling aan boekt de intake anders al
+        # automatisch — hier toetsen we het handmatige boekpad + webhook).
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET is_vastgoed = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
         verkoop_boeken.boek_verkoop_document(
             administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker
         )

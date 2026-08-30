@@ -1090,12 +1090,18 @@ def mijn_administraties(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[Admin
     zonder die uitbreiding zou een niet-Beheerder hier altijd een lege lijst krijgen, want een
     sessie is maar op één administratie tegelijk gescoped."""
     with scoped_session(None, actor_id=actor_id) as session:
+        # Gearchiveerde administraties (v2 30-08, `actief` = false) vallen uit álle werk-lijsten;
+        # het Beheer-scherm haalt ze apart op achter het filter "gearchiveerd (N)".
         if rol == GebruikerRol.BEHEERDER:
-            return list(session.scalars(select(Administratie).order_by(Administratie.naam)))
+            return list(
+                session.scalars(
+                    select(Administratie).where(Administratie.actief.is_(True)).order_by(Administratie.naam)
+                )
+            )
         rijen = session.scalars(
             select(Administratie)
             .join(GebruikerAdministratie, GebruikerAdministratie.administratie_id == Administratie.id)
-            .where(GebruikerAdministratie.gebruiker_id == actor_id)
+            .where(GebruikerAdministratie.gebruiker_id == actor_id, Administratie.actief.is_(True))
             .order_by(Administratie.naam)
         )
         return list(rijen)

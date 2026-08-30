@@ -136,7 +136,9 @@ def reconcilieer_bank_alle_administraties() -> dict[uuid.UUID, BankReconciliatie
     """Zelfde tolerantie-patroon als de documenten-reconciliatie: één kapotte administratie
     stopt de rest niet."""
     with scoped_session(None) as session:
-        administratie_ids = [row.id for row in session.scalars(select(Administratie))]
+        administratie_ids = [
+            row.id for row in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
+        ]
 
     resultaten: dict[uuid.UUID, BankReconciliatieRapport | str] = {}
     for administratie_id in administratie_ids:

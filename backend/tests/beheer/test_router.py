@@ -148,9 +148,10 @@ class TestIsVastgoedEndpoint:
         headers = _bearer(beheerder_id, rol="beheerder")
         resp = client.patch(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers, json={"is_vastgoed": True})
         assert resp.status_code == 200, resp.text
+        # v2 30-08: verkoop-autoboeken volgt is_vastgoed — de spiegel gaat mee AAN.
         assert resp.json() == {
             "is_vastgoed": True,
-            "verkoop_autoboeken_ingeschakeld": False,
+            "verkoop_autoboeken_ingeschakeld": True,
             "verkoop_autoboeken_uitgezet": False,
         }
         gelezen = client.get(f"{PAD}/{administratie_id}/is-vastgoed", headers=headers).json()
