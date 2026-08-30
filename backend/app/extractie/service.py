@@ -64,9 +64,12 @@ _KOP_PROPS: dict[str, Any] = {
 }
 
 # Eén factuurregel: o=omschrijving, n=netto, b=btw, h=hoeveelheid, e=eenheid, p=stuksprijs,
-# z=zekerheid (één getal voor de hele regel — het controlescherm toont per regel toch het minimum).
-# e/p (blok D 28-08, voorraad-aansluiting): de extractie levert aantal+eenheid+artikeltekst
-# gestructureerd per regel — de feitenlaag in het mi-schema rekent er deterministisch mee.
+# a=artikelcode, z=zekerheid (één getal voor de hele regel — het controlescherm toont per regel toch
+# het minimum). e/p (blok D 28-08, voorraad-aansluiting): de extractie levert aantal+eenheid+
+# artikeltekst gestructureerd per regel — de feitenlaag in het mi-schema rekent er deterministisch
+# mee. a (voorraad-normalisatie v2, 30-08): de artikelcode/het artikelnummer van de LEVERANCIER zoals
+# vermeld op de regel — deterministische normalisatiesleutel per leverancier (inkoopcodes ≠ eigen
+# verkoopcodes, nooit gelijkgesteld).
 _REGEL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -76,9 +79,10 @@ _REGEL_SCHEMA: dict[str, Any] = {
         "h": _STRING_OF_NULL,
         "e": _STRING_OF_NULL,
         "p": _STRING_OF_NULL,
+        "a": _STRING_OF_NULL,
         "z": {"type": "number"},
     },
-    "required": ["o", "n", "b", "h", "e", "p", "z"],
+    "required": ["o", "n", "b", "h", "e", "p", "a", "z"],
     "additionalProperties": False,
 }
 
@@ -129,7 +133,9 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen
   indien expliciet vermeld), e=eenheid van de hoeveelheid zoals vermeld (bijv. "st", "stuks", "m", "m2",
   "kg", "uur", "doos"; null als niet vermeld), p=stuksprijs/prijs per eenheid zoals vermeld (null als niet
-  vermeld — nooit zelf uitrekenen), z=één zekerheidsscore voor de hele regel.
+  vermeld — nooit zelf uitrekenen), a=artikelcode/artikelnummer van de leverancier zoals op de regel vermeld
+  (eigen kolom "Art.nr"/"Code" of tussen haakjes; null als er geen code staat — nooit verzinnen), z=één
+  zekerheidsscore voor de hele regel.
 
 Notatie: bedragen als string met punt-decimaal zonder duizendtalscheiding en zonder valutateken (bijv.
 "1234.56", credit negatief "-25.00"); datums als ISO 8601 (YYYY-MM-DD); valuta als ISO-code (bijv. "EUR").
@@ -189,6 +195,8 @@ class AiRegel:
     # Blok D 28-08: eenheid + stuksprijs zoals vermeld (ruwe tekst; parsen doet de feitenlaag).
     eenheid: str | None = None
     stuksprijs: str | None = None
+    # Voorraad-normalisatie v2 (30-08): leverancierscode zoals vermeld (normalisatiesleutel per leverancier).
+    artikelcode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -249,7 +257,7 @@ class _Genormaliseerd:
 # controle van een echte factuur). Zie ook app/extractie/bsn.py: het filter zelf eist bovendien
 # BSN-context.
 _VRIJE_TEKST_KOP_KEYS = frozenset({"lev", "vl"})
-_VRIJE_TEKST_REGEL_KEYS = frozenset({"o"})
+_VRIJE_TEKST_REGEL_KEYS = frozenset({"o", "a"})
 
 
 def _als_tekst(waarde: Any) -> str | None:
@@ -294,7 +302,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
         if not isinstance(ruwe_regel, dict):
             continue
         waarden: dict[str, str | None] = {}
-        for key in ("o", "n", "b", "h", "e", "p"):
+        for key in ("o", "n", "b", "h", "e", "p", "a"):
             waarde, bsn = _schoon_tekst(ruwe_regel.get(key), bsn_filter=key in _VRIJE_TEKST_REGEL_KEYS)
             uit.bsn_verwijderd += bsn
             waarden[key] = waarde
@@ -307,6 +315,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
                 zekerheid=_als_zekerheid(ruwe_regel.get("z")),
                 eenheid=waarden["e"],
                 stuksprijs=waarden["p"],
+                artikelcode=waarden["a"],
             )
         )
 

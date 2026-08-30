@@ -328,6 +328,8 @@ def bouw_veldvoorstel(
                 # Blok D 28-08 (voorraad-aansluiting): eenheid + stuksprijs zoals vermeld — ruw.
                 "eenheid": regel.eenheid,
                 "stuksprijs": regel.stuksprijs,
+                # Voorraad-normalisatie v2 (30-08): leverancierscode als deterministische sleutel.
+                "artikelcode": regel.artikelcode,
                 "taxrate_id": str(afleiding.taxrate_id) if afleiding.taxrate_id else None,
                 # Herkomst van de btw-code (punt 3, 26-08): "factuur" = deterministisch uit
                 # netto/btw afgeleid; None = leeg gelaten (0/onbepaalbaar/meerduidig — reden erbij).
