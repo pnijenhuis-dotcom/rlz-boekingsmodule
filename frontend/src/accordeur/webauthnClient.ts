@@ -215,6 +215,31 @@ export async function loginVoltooien(
   return alsJson<TokenPaarResponseDto>(resp)
 }
 
+// ---- her-login zonder wachtwoord (pincode-flow 31-08) --------------------------------------------
+
+/** e-mail → assertion-options voor externe app-rollen. ApiError 409 = geen bruikbare passkey
+ * (de client valt terug op de wachtwoordflow of verwijst naar een verse kantoor-link). */
+export async function accordeurPasskeyLoginOpties(eMail: string): Promise<{ opties: string | null; dev_stub: boolean }> {
+  const resp = await kaleAuthFetch('/auth/accordeur/passkey-login/opties', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ e_mail: eMail }),
+  })
+  return alsJson<{ opties: string | null; dev_stub: boolean }>(resp)
+}
+
+export async function accordeurPasskeyLoginVoltooien(
+  eMail: string,
+  payload: { credential?: Record<string, unknown>; dev_stub?: boolean },
+): Promise<TokenPaarResponseDto> {
+  const resp = await kaleAuthFetch('/auth/accordeur/passkey-login/voltooien', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ e_mail: eMail, ...payload }),
+  })
+  return alsJson<TokenPaarResponseDto>(resp)
+}
+
 /** App-opening (bekend apparaat): assertion-options op de refresh-cookie. 401 = sessie
  * verlopen (ná 7 dagen) → volledige login; 409 = geen passkeys → registratie. */
 export async function ontgrendelOpties(): Promise<{ status: number; opties: string | null; detail: string }> {

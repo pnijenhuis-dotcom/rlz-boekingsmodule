@@ -335,9 +335,12 @@ function VraagThread({ vraag, onBeantwoord, toon, rustig = false }: VraagThreadP
 interface Props {
   wisselThema: () => void
   uitloggen: () => Promise<void>
+  /** App-lock-instellingen (native, 31-08 — mockup app-lock-pincode.html scherm 7); undefined
+   * buiten de native schil of zolang het slot niet staat → geen knop. */
+  openToegang?: () => void
 }
 
-export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
+export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   const { gebruikerId } = useAuth()
   const [weergave, setWeergave] = useState<Weergave>('wachtrij')
   const [items, setItems] = useState<WachtrijItem[]>([])
@@ -800,6 +803,11 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
           <button className="acc-iconbtn" title="Licht/donker (dark is default)" onClick={wisselThema}>
             ◐
           </button>
+          {openToegang && (
+            <button className="acc-iconbtn" title="Toegang tot de app" aria-label="Toegang tot de app" onClick={openToegang}>
+              ⚙
+            </button>
+          )}
           <button className="acc-iconbtn" title="Uitloggen" aria-label="Uitloggen" onClick={() => void doeUitloggen()}>
             <UitlogIcoon />
           </button>

@@ -13,8 +13,21 @@ import { AccordeurLogin } from './AccordeurLogin'
 import { AccordeurActiveren } from './AccordeurActiveren'
 import { GoedkeurenFlow } from './GoedkeurenFlow'
 import { installeerNativeTapAfhandeling } from './nativePush'
+import { installeerNativeUrlAfhandeling } from './nativeAppUrl'
 import { Ontgrendel } from './Ontgrendel'
 import { UrenFlow } from '../uren/UrenFlow'
+import {
+  ACHTERGROND_VERGRENDEL_MS,
+  appSlotBeschikbaar,
+  isAppSlotIngesteld,
+  isDirectVergrendelen,
+  isOntgrendeld,
+  stelCodeIn,
+  vergrendel,
+} from '../api/appSlot'
+import { AppSlotScherm } from './appslot/AppSlotScherm'
+import { PincodeKiezen } from './appslot/PincodeKiezen'
+import { ToegangInstellingen } from './appslot/ToegangInstellingen'
 
 const ONTGRENDELD_VLAG = 'accordeur-ontgrendeld'
 const THEMA_SLEUTEL = 'accordeur-thema'
@@ -101,6 +114,51 @@ export default function AccordeurApp() {
   const [ontgrendeld, setOntgrendeld] = useState(() => sessionStorage.getItem(ONTGRENDELD_VLAG) === '1')
   const [forceerLogin, setForceerLogin] = useState(false)
 
+  // App-lock (besluit Peter 31-08, mockup app-lock-pincode.html): in de native schil vervangt
+  // het lokale slot (code = anker, Face ID = gemak) de 24-uurs passkey-assertion bij het
+  // openen — de server-side sliding-refresh en kill-switch blijven ongewijzigd de poort. De
+  // PWA/web houdt de bestaande Ontgrendel-cadans (scope-besluit).
+  const nativeSlot = appSlotBeschikbaar()
+  const [slotStatus, setSlotStatus] = useState<'laden' | 'geen' | 'vergrendeld' | 'ontgrendeld'>(
+    nativeSlot ? 'laden' : 'geen',
+  )
+  const [toegangOpen, setToegangOpen] = useState(false)
+
+  useEffect(() => {
+    if (!nativeSlot) return
+    void isAppSlotIngesteld().then((ingesteld) =>
+      setSlotStatus(ingesteld ? (isOntgrendeld() ? 'ontgrendeld' : 'vergrendeld') : 'geen'),
+    )
+  }, [nativeSlot])
+
+  // Vergrendelen bij achtergrond: "direct vergrendelen" aan = meteen bij het verlaten, uit =
+  // pas ná 5 minuten achtergrond (mockup scherm 7). Een koude start is sowieso vergrendeld
+  // (het anker leeft alleen in het geheugen).
+  useEffect(() => {
+    if (!nativeSlot) return
+    let verborgenSinds: number | null = null
+    const naarSlot = () => {
+      vergrendel()
+      setToegangOpen(false)
+      setSlotStatus('vergrendeld')
+    }
+    const opWissel = () => {
+      if (document.visibilityState === 'hidden') {
+        verborgenSinds = Date.now()
+        void isDirectVergrendelen().then((direct) => {
+          if (direct && isOntgrendeld()) naarSlot()
+        })
+        return
+      }
+      if (isOntgrendeld() && verborgenSinds !== null && Date.now() - verborgenSinds > ACHTERGROND_VERGRENDEL_MS) {
+        naarSlot()
+      }
+      verborgenSinds = null
+    }
+    document.addEventListener('visibilitychange', opWissel)
+    return () => document.removeEventListener('visibilitychange', opWissel)
+  }, [nativeSlot])
+
   // Ontgrendel-frequentie (besluit Peter 27-08): hooguit 1× per 24 uur per apparaat. De stille
   // refresh bij het openen draagt de server-uitspraak (venster op het apparaat, geen client-
   // klok): false = de laatste passkey-ceremonie is jonger dan 24 u → direct door, ook bij een
@@ -117,6 +175,8 @@ export default function AccordeurApp() {
   // de auth-cadans blijft de poort (de app opent gewoon op ontgrendelen/login).
   useEffect(() => {
     installeerNativeTapAfhandeling()
+    // Universal links (31-08): een activatie-/accordeur-mail-link die de app opent.
+    installeerNativeUrlAfhandeling()
   }, [])
 
   const naIngelogd = useCallback(
@@ -125,13 +185,20 @@ export default function AccordeurApp() {
       sessionStorage.setItem(ONTGRENDELD_VLAG, '1')
       setOntgrendeld(true)
       setForceerLogin(false)
+      // App-lock: ná een activatie staat het slot al (ontgrendeld); ná een her-login is het
+      // bewust gewist — de gebruiker kiest dan opnieuw een code (setup-branch hieronder).
+      if (nativeSlot) {
+        void isAppSlotIngesteld().then((ingesteld) =>
+          setSlotStatus(ingesteld && isOntgrendeld() ? 'ontgrendeld' : ingesteld ? 'vergrendeld' : 'geen'),
+        )
+      }
       // Vanaf /activeren expliciet DOOR naar de flow (kliktest Peter 2026-08-15, 2e
       // reproductie): zonder deze navigatie bleef het scherm ná een geslaagde registratie
       // op de registratiestap staan — het setup-token in de navigation-state won het in de
       // render-vertakking van de ingelogde status, en niets ruimde de /activeren-route op.
       if (location.pathname.endsWith('/activeren')) void navigate('/accordeur', { replace: true })
     },
-    [inloggen, location.pathname, navigate],
+    [inloggen, location.pathname, navigate, nativeSlot],
   )
 
   // Uitloggen (kliktest 2026-08-12): trekt server-side de refresh-sessie in via het
@@ -143,6 +210,26 @@ export default function AccordeurApp() {
     sessionStorage.removeItem(ONTGRENDELD_VLAG)
     setOntgrendeld(false)
   }, [uitloggen])
+
+  // App-lock-handlers (native): ontgrendeld = verse sessie uit de stille refresh; naar login =
+  // de sessie was server-side dood en het slot is al lokaal gewist (AppSlotScherm).
+  const naSlotOntgrendeld = useCallback(
+    (paar: TokenPaarResponseDto) => {
+      setSlotStatus('ontgrendeld')
+      naIngelogd(paar)
+    },
+    [naIngelogd],
+  )
+  const naSlotNaarLogin = useCallback(() => {
+    setSlotStatus('geen')
+    setForceerLogin(true)
+  }, [])
+  const uitloggenVanToegang = useCallback(async () => {
+    setToegangOpen(false)
+    setSlotStatus('geen')
+    await uitloggenAccordeur()
+  }, [uitloggenAccordeur])
+  const openToegang = nativeSlot && slotStatus === 'ontgrendeld' ? () => setToegangOpen(true) : undefined
 
   const opActiveren = location.pathname.endsWith('/activeren')
   const activatieToken = useMemo(() => {
@@ -222,6 +309,22 @@ export default function AccordeurApp() {
         </button>
       </div>
     )
+  } else if (nativeSlot && slotStatus === 'laden') {
+    // Native: eerst weten of er een slot staat vóór er iets anders toont — een vergrendeld slot
+    // wint van het login-scherm (de stille refresh faalt bewust zolang het refresh-token op
+    // slot staat).
+    inhoud = (
+      <div className="acc-vol">
+        <div className="acc-appnaam">
+          Nijenhuis <span>Boekingsmodule</span>
+        </div>
+        <div className="acc-bio">
+          <div className="acc-sub">Laden…</div>
+        </div>
+      </div>
+    )
+  } else if (nativeSlot && slotStatus === 'vergrendeld' && !forceerLogin) {
+    inhoud = <AppSlotScherm naOntgrendeld={naSlotOntgrendeld} naarLogin={naSlotNaarLogin} />
   } else if (status === 'laden') {
     inhoud = (
       <div className="acc-vol">
@@ -235,13 +338,25 @@ export default function AccordeurApp() {
     )
   } else if (status === 'uitgelogd' || forceerLogin) {
     inhoud = <AccordeurLogin naIngelogd={naIngelogd} />
-  } else if (!ontgrendeld) {
+  } else if (nativeSlot && slotStatus === 'geen') {
+    // Slot instellen: ná een her-login (slot bewust gewist) of op een legacy-toestel van vóór
+    // 31-08 — de code is verplicht vóór de app verdergaat (het refresh-token gaat erachter).
+    inhoud = (
+      <PincodeKiezen
+        onGekozen={(codeNieuw) => {
+          void stelCodeIn(codeNieuw).then(() => setSlotStatus('ontgrendeld'))
+        }}
+      />
+    )
+  } else if (!ontgrendeld && !nativeSlot) {
     inhoud = <Ontgrendel naOntgrendeld={naIngelogd} naarLogin={() => setForceerLogin(true)} />
+  } else if (toegangOpen && nativeSlot) {
+    inhoud = <ToegangInstellingen sluit={() => setToegangOpen(false)} uitloggen={uitloggenVanToegang} />
   } else if (veldrol) {
     // Uren & meerwerk (fase 4, mockup/uren-uitvoerder.html): zelfde app, rolafhankelijke tabs.
-    inhoud = <UrenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} />
+    inhoud = <UrenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} openToegang={openToegang} />
   } else {
-    inhoud = <GoedkeurenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} />
+    inhoud = <GoedkeurenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} openToegang={openToegang} />
   }
 
   return (

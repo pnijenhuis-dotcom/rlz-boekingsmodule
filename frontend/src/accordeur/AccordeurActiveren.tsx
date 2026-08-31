@@ -10,8 +10,22 @@
 // Legacy-ingang `passkeySetupToken` (navigation-state, alleen stap 2): blijft bestaan voor de
 // nieuwe-apparaat-route en oude deep-links; nieuwe activaties komen mét `uitnodigingToken`.
 
+// PINCODE-ACTIVATIE (besluit Peter 31-08, mockup app-lock-pincode.html = norm, herziet de
+// 28-08-flow VOOR DE NATIVE APP): de wachtwoordstap vervalt — mail-link → code kiezen →
+// bevestigen → Face ID-vraag + voorwaarden (passkey-registratie onder water) → klaar. Zelfde
+// link-mechaniek en atomiciteit; de code is een puur lokaal anker (app-lock) en gaat nooit
+// naar de server. De PWA/web houdt de bestaande wachtwoord → passkey-flow (scope-besluit).
+
 import { useEffect, useState, type FormEvent } from 'react'
-import { ApiError, apiPostJson } from '../api/client'
+import { ApiError, apiPostJson, kaleAuthFetch } from '../api/client'
+import {
+  appSlotBeschikbaar,
+  bewaarCredentialId,
+  biometrieBeschikbaar,
+  stelCodeIn,
+  zetBiometrieAan,
+} from '../api/appSlot'
+import { PincodeKiezen } from './appslot/PincodeKiezen'
 import type { TokenPaarResponseDto, UitnodigingAccepterenResponseDto } from '../api/types'
 import {
   apparaatNaam,
@@ -36,7 +50,7 @@ interface Props {
   naIngelogd: (paar: TokenPaarResponseDto) => void
 }
 
-type Stap = 'laden' | 'wachtwoord' | 'passkey' | 'mislukt' | 'klaar' | 'link_ongeldig'
+type Stap = 'laden' | 'wachtwoord' | 'code' | 'afronden' | 'passkey' | 'mislukt' | 'klaar' | 'link_ongeldig'
 
 const MIN_WACHTWOORD = 12
 
@@ -51,12 +65,19 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
   const [devStub, setDevStub] = useState(false)
   const [paar, setPaar] = useState<TokenPaarResponseDto | null>(null)
   const [gemeld, setGemeld] = useState<'nee' | 'bezig' | 'ja'>('nee')
+  // Pincode-flow (native, 31-08): de gekozen code leeft alleen hier tot de passkey staat —
+  // mislukt de registratie, dan is er niets half (lokaal noch server-side).
+  const nativePin = uitnodigingToken !== undefined && appSlotBeschikbaar()
+  const [pincode, setPincode] = useState<string | null>(null)
+  const [akkoord, setAkkoord] = useState(false)
+  const [bioKan, setBioKan] = useState(false)
 
   useEffect(() => {
     haalWebauthnConfig()
       .then((config) => setDevStub(config.dev_stub))
       .catch(() => setDevStub(false))
-  }, [])
+    if (nativePin) void biometrieBeschikbaar().then(setBioKan)
+  }, [nativePin])
 
   useEffect(() => {
     if (!uitnodigingToken) return
@@ -65,7 +86,7 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
       .then((info) => {
         if (!actief) return
         setNaam(info.naam)
-        setStap('wachtwoord')
+        setStap(nativePin ? 'code' : 'wachtwoord')
       })
       .catch((err: unknown) => {
         if (!actief) return
@@ -75,7 +96,7 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
     return () => {
       actief = false
     }
-  }, [uitnodigingToken])
+  }, [uitnodigingToken, nativePin])
 
   const echteWebauthn = webauthnBeschikbaar()
 
@@ -174,6 +195,64 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
     }
   }
 
+  /** Scherm 3 pincode-flow: passkey onder water + slot instellen + voorwaarden — de knop is de
+   * enige zichtbare stap ("Face ID aanzetten en beginnen" / "Liever alleen met code"). */
+  const rondPincodeActivatieAf = async (metBiometrie: boolean) => {
+    if (!uitnodigingToken || !pincode || !akkoord) return
+    setFout(null)
+    setBezig(true)
+    try {
+      // 1. Link → passkey_setup-token (server legt níéts vast; de code blijft lokaal).
+      const start = await apiPostJson<{ passkey_setup_token: string }>(
+        '/auth/uitnodigingen/activatie-zonder-wachtwoord',
+        { token: uitnodigingToken },
+      )
+      // 2. Passkey onder water (native sheet toont zelf Face ID/vingerafdruk); zelfde
+      //    zelfherstel-route als de wachtwoordflow (NotAllowedError → assertie).
+      const opties = await registratieOpties(start.passkey_setup_token)
+      let nieuwPaar: TokenPaarResponseDto
+      let credentialId: string | null = null
+      try {
+        const credential = await registreerPasskey(opties)
+        credentialId = typeof credential.rawId === 'string' ? credential.rawId : null
+        nieuwPaar = await registratieVoltooien(start.passkey_setup_token, {
+          credential,
+          apparaat_naam: apparaatNaam(),
+        })
+      } catch (registratieFout) {
+        if (!(registratieFout instanceof DOMException && registratieFout.name === 'NotAllowedError')) {
+          throw registratieFout
+        }
+        const assertieOpties = await loginOpties(start.passkey_setup_token)
+        const credential = await ondertekenAssertie(assertieOpties)
+        credentialId = typeof credential.rawId === 'string' ? credential.rawId : null
+        nieuwPaar = await loginVoltooien(start.passkey_setup_token, { credential })
+      }
+      // 3. Slot instellen (anker + code-wrap) VÓÓR naIngelogd, zodat het refresh-token direct
+      //    versleuteld de Keychain/Keystore in gaat; credential_id = sleutel voor de
+      //    app-lock-meldingen (5× fout / hulpvraag).
+      if (credentialId) await bewaarCredentialId(credentialId)
+      await stelCodeIn(pincode)
+      if (metBiometrie) await zetBiometrieAan()
+      // 4. Voorwaarden-akkoord (server-side afgedwongen poort — fail-soft: de flows tonen het
+      //    akkoord-scherm alsnog als deze call het niet haalde).
+      try {
+        await kaleAuthFetch('/auth/accordeur/voorwaarden-akkoord', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${nieuwPaar.access_token}` },
+        })
+      } catch {
+        // zie boven
+      }
+      naIngelogd(nieuwPaar)
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : 'Activeren mislukt.')
+      setStap('mislukt')
+    } finally {
+      setBezig(false)
+    }
+  }
+
   const meldKantoor = async () => {
     if (!uitnodigingToken) return
     setGemeld('bezig')
@@ -222,6 +301,60 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
             Al geactiveerd? Log dan gewoon in. Anders vraagt u het kantoor om een nieuwe link — er is niets
             vastgelegd.
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (stap === 'code') {
+    return (
+      <PincodeKiezen
+        naam={herstel ? null : naam}
+        onGekozen={(code) => {
+          setPincode(code)
+          setStap('afronden')
+        }}
+      />
+    )
+  }
+
+  if (stap === 'afronden') {
+    // Scherm 3 (mockup): Face ID-vraag + voorwaarden-akkoord; de passkey-registratie gebeurt
+    // onder water bij de knop — geen eigen scherm (ontwerpnotitie ⑤).
+    return (
+      <div className="acc-vol">
+        {kop}
+        <div className="acc-bio">
+          <b>{bioKan ? 'Face ID gebruiken?' : 'Bijna klaar'}</b>
+          {bioKan && <div className="acc-faceid" />}
+          <div className="acc-sub">
+            {bioKan
+              ? 'Dan hoef je je code bijna nooit te typen. Werkt Face ID even niet, dan werkt je code altijd.'
+              : 'Nog één stap: akkoord op de voorwaarden — daarna is de app klaar voor gebruik.'}
+          </div>
+        </div>
+        {fout && <div className="acc-fout">{fout}</div>}
+        <label className="acc-sub" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', textAlign: 'left' }}>
+          <input type="checkbox" checked={akkoord} onChange={(e) => setAkkoord(e.target.checked)} />
+          <span>Ik ga akkoord met de gebruiksvoorwaarden en de privacyverklaring (versie 2026-08-28-v2).</span>
+        </label>
+        <div style={{ marginTop: 'auto', width: '100%' }}>
+          {bioKan && (
+            <button
+              className="acc-btn primair"
+              disabled={bezig || !akkoord}
+              onClick={() => void rondPincodeActivatieAf(true)}
+            >
+              {bezig ? 'Bezig…' : 'Face ID aanzetten en beginnen'}
+            </button>
+          )}
+          <button
+            className={bioKan ? 'acc-btn secundair' : 'acc-btn primair'}
+            disabled={bezig || !akkoord}
+            onClick={() => void rondPincodeActivatieAf(false)}
+          >
+            {bezig ? 'Bezig…' : bioKan ? 'Liever alleen met code — sla over' : 'Beginnen'}
+          </button>
         </div>
       </div>
     )
@@ -279,8 +412,9 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
           <div className="acc-icoon">✕</div>
           <b>Dat lukte niet</b>
           <div className="acc-sub">
-            De passkey kon niet worden aangemaakt. Uw wachtwoord is niet vastgelegd — er is niets half
-            geregistreerd. Probeer het opnieuw; blijft het misgaan, dan neemt het kantoor contact met u op.
+            {nativePin
+              ? 'Het activeren is niet gelukt. Er is niets half geregistreerd — je code en dit toestel zijn nog nergens vastgelegd. Probeer het opnieuw; blijft het misgaan, dan neemt het kantoor contact met je op.'
+              : 'De passkey kon niet worden aangemaakt. Uw wachtwoord is niet vastgelegd — er is niets half geregistreerd. Probeer het opnieuw; blijft het misgaan, dan neemt het kantoor contact met u op.'}
           </div>
           {fout && <div className="acc-sub acc-foutdetail">{fout}</div>}
         </div>
@@ -289,7 +423,7 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
           disabled={bezig}
           onClick={() => {
             setFout(null)
-            setStap('passkey')
+            setStap(nativePin ? 'afronden' : 'passkey')
           }}
         >
           Opnieuw proberen

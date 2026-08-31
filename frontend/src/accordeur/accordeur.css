@@ -1490,3 +1490,155 @@
   border-color: #cdbdf6;
   color: #4a3a76;
 }
+
+/* ---- App-lock: pincode + Face ID (31-08, mockup app-lock-pincode.html — ING-patroon) ----
+   Zelfde tokens als de rest van de app: teal = actie, rood = fout. De numpad is bewust groot
+   (duim-bediening); dots tonen de voortgang zonder ooit cijfers te tonen. */
+.acc-pin-dots {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin: 26px 0 6px;
+}
+.acc-pin-dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.5px solid var(--acc-muted);
+}
+.acc-pin-dot.vol {
+  background: var(--acc-accent);
+  border-color: var(--acc-accent);
+}
+.acc-pin-dot.fout {
+  border-color: var(--acc-red);
+  background: var(--acc-red-bg);
+}
+.acc-pin-hint {
+  font-size: 12px;
+  color: var(--acc-muted);
+  text-align: center;
+  margin-top: 6px;
+  min-height: 16px;
+}
+.acc-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 22px;
+}
+.acc-num {
+  height: 58px;
+  border-radius: 16px;
+  background: var(--acc-panel);
+  border: 1px solid var(--acc-border);
+  color: var(--acc-text);
+  font-size: 23px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.acc-num:active {
+  filter: brightness(1.25);
+}
+.acc-num.stil {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--acc-muted);
+}
+.acc-faceid {
+  width: 74px;
+  height: 74px;
+  margin: 30px auto 8px;
+  border: 2.5px solid var(--acc-accent);
+  border-radius: 20px;
+  position: relative;
+}
+.acc-faceid::before {
+  content: '';
+  position: absolute;
+  inset: 16px 18px auto 18px;
+  height: 8px;
+  border-left: 3px solid var(--acc-accent);
+  border-right: 3px solid var(--acc-accent);
+}
+.acc-faceid::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 16px;
+  height: 14px;
+  border: 3px solid var(--acc-accent);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+}
+.acc-toegang-rij {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: var(--acc-panel);
+  border: 1px solid var(--acc-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  width: 100%;
+  text-align: left;
+  color: var(--acc-text);
+  font: inherit;
+  cursor: pointer;
+}
+.acc-toegang-rij .t {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.acc-toegang-rij .s {
+  font-size: 12px;
+  color: var(--acc-muted);
+  margin-top: 3px;
+  line-height: 1.5;
+  max-width: 240px;
+}
+.acc-toegang-kop {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  color: var(--acc-accent);
+  text-transform: uppercase;
+  margin: 16px 0 10px;
+  align-self: flex-start;
+}
+.acc-slot-switch {
+  width: 46px;
+  height: 27px;
+  border-radius: 14px;
+  background: var(--acc-border);
+  position: relative;
+  flex-shrink: 0;
+  border: none;
+  cursor: pointer;
+}
+.acc-slot-switch::after {
+  content: '';
+  position: absolute;
+  top: 2.5px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--acc-muted);
+}
+.acc-slot-switch.aan {
+  background: var(--acc-accent);
+}
+.acc-slot-switch.aan::after {
+  left: auto;
+  right: 3px;
+  background: var(--acc-accent-fg);
+}

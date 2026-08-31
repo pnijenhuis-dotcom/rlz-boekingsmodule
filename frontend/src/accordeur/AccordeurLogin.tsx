@@ -3,9 +3,13 @@
 // apparaat). Velden ≥16px (iOS-autozoom-les 11-08).
 
 import { useEffect, useState, type FormEvent } from 'react'
+import { ApiError } from '../api/client'
+import { appSlotBeschikbaar, bewaarCredentialId } from '../api/appSlot'
 import type { TokenPaarResponseDto } from '../api/types'
 import {
   accordeurLogin,
+  accordeurPasskeyLoginOpties,
+  accordeurPasskeyLoginVoltooien,
   apparaatNaam,
   haalWebauthnConfig,
   loginOpties,
@@ -27,6 +31,10 @@ export function AccordeurLogin({ naIngelogd }: Props) {
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
   const [devStub, setDevStub] = useState(false)
+  // Pincode-flow (native, 31-08): her-login = e-mail → passkey-assertion, zonder wachtwoord
+  // (een pincode-geactiveerd account hééft geen wachtwoord). De wachtwoordvorm blijft als
+  // expliciete terugval bereikbaar voor legacy accounts.
+  const [zonderWachtwoord, setZonderWachtwoord] = useState(() => appSlotBeschikbaar())
 
   useEffect(() => {
     haalWebauthnConfig()
@@ -35,6 +43,70 @@ export function AccordeurLogin({ naIngelogd }: Props) {
   }, [])
 
   const echteWebauthn = webauthnBeschikbaar()
+
+  const passkeyInzenden = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setFout(null)
+    setBezig(true)
+    try {
+      const opties = await accordeurPasskeyLoginOpties(eMail.trim())
+      let paar: TokenPaarResponseDto
+      if (opties.opties === null && opties.dev_stub) {
+        paar = await accordeurPasskeyLoginVoltooien(eMail.trim(), { dev_stub: true })
+      } else if (opties.opties) {
+        const credential = await ondertekenAssertie(opties.opties)
+        if (typeof credential.rawId === 'string') await bewaarCredentialId(credential.rawId)
+        paar = await accordeurPasskeyLoginVoltooien(eMail.trim(), { credential })
+      } else {
+        throw new Error('Inloggen met passkey is nu niet mogelijk.')
+      }
+      naIngelogd(paar)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setFout(err.message)
+        return
+      }
+      setFout(err instanceof Error ? err.message : 'Inloggen mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  if (zonderWachtwoord) {
+    return (
+      <div className="acc-vol">
+        <div className="acc-appnaam">
+          Nijenhuis <span>Boekingsmodule</span>
+        </div>
+        <div className="acc-bio">
+          <b>Inloggen</b>
+          <div className="acc-sub">
+            Log in met je e-mailadres en je passkey (Face ID/vingerafdruk). Daarna kies je opnieuw
+            een code voor het slot op de app.
+          </div>
+        </div>
+        {fout && <div className="acc-fout">{fout}</div>}
+        <form className="acc-form" noValidate onSubmit={(e) => void passkeyInzenden(e)}>
+          <label htmlFor="acc-email">E-mailadres</label>
+          <input
+            id="acc-email"
+            type="email"
+            autoComplete="username"
+            inputMode="email"
+            required
+            value={eMail}
+            onChange={(e) => setEMail(e.target.value)}
+          />
+          <button className="acc-btn primair" type="submit" disabled={bezig} style={{ marginTop: 6 }}>
+            {bezig ? 'Bezig…' : 'Inloggen met passkey'}
+          </button>
+        </form>
+        <button className="acc-btn secundair klein" onClick={() => setZonderWachtwoord(false)}>
+          Inloggen met wachtwoord
+        </button>
+      </div>
+    )
+  }
 
   const inzenden = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()

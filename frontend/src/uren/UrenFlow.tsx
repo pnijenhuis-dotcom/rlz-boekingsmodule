@@ -124,7 +124,16 @@ function meerwerkChip(m: MeerwerkDto): { klasse: string; label: string } {
   }
 }
 
-export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; uitloggen: () => Promise<void> }) {
+export function UrenFlow({
+  wisselThema,
+  uitloggen,
+  openToegang,
+}: {
+  wisselThema: () => void
+  uitloggen: () => Promise<void>
+  /** App-lock-instellingen (native, 31-08) — undefined buiten de native schil. */
+  openToegang?: () => void
+}) {
   const { rol } = useAuth()
   const veldrol = rol as Veldrol
   const [scherm, setScherm] = useState<Scherm>(() =>
@@ -274,6 +283,11 @@ export function UrenFlow({ wisselThema, uitloggen }: { wisselThema: () => void; 
           <button className="acc-iconbtn" title="Thema wisselen" onClick={wisselThema}>
             ◐
           </button>
+          {openToegang && (
+            <button className="acc-iconbtn" title="Toegang tot de app" onClick={openToegang}>
+              ⚙
+            </button>
+          )}
           <button className="acc-iconbtn" title="Uitloggen" onClick={() => void uitloggen()}>
             <UitlogIcoon />
           </button>
