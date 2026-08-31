@@ -22,6 +22,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- App Links (pincode-activatie 31-08): activatie-/accordeur-mail-links openen de
+                 app. Verificatie loopt tegen /.well-known/assetlinks.json op het app-domein
+                 (backend-route, relatie handle_all_urls staat er al — android_signing.py). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="app.administratiekantoornijenhuis.nl" />
+                <data android:pathPrefix="/accordeur" />
+                <data android:path="/activeren" />
+            </intent-filter>
+
         </activity>
 
         <!-- FCM-notificatieweergave (native push fase 3, Android-bouwronde 28-08): de statusbalk
@@ -53,4 +65,7 @@
          vraagt 'm op (requestPermissions) — uitsluitend vanuit de expliciete klik in de
          activeringsflow (pushClient.ts) — maar de declaratie hoort in het app-manifest. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- App-lock (31-08): BiometricPrompt voor de Face ID-/vingerafdruk-gemakslaag; de
+         5-cijferige code blijft het altijd-werkende pad (AppSlotPlugin.java). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 </manifest>

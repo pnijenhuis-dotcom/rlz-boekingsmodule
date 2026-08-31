@@ -70,6 +70,10 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- App-lock (31-08): Face ID als gemakslaag over de 5-cijferige code (AppSlotPlugin).
+	     Verplichte usage-description — zonder deze key crasht de eerste Face ID-aanraking. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Open de app met Face ID in plaats van je code.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

@@ -8,5 +8,6 @@ class MainViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(NatievePasskeyPlugin())
         bridge?.registerPluginInstance(VeiligeOpslagPlugin())
+        bridge?.registerPluginInstance(AppSlotPlugin())
     }
 }

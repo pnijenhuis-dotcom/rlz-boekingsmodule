@@ -10,6 +10,10 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>webcredentials:administratiekantoornijenhuis.nl</string>
+		<!-- Universal links (pincode-activatie 31-08): activatie-/accordeur-mail-links openen
+		     de app. Het APP-domein (waar de links naartoe wijzen) — de backend serveert daar
+		     /.well-known/apple-app-site-association mét het applinks-blok (wellknown.py). -->
+		<string>applinks:app.administratiekantoornijenhuis.nl</string>
 	</array>
 	<!-- Native push (fase 3): APNs. Xcode/het provisioning-profiel zet dit bij een
 	     TestFlight-/App Store-build automatisch om naar 'production'. -->

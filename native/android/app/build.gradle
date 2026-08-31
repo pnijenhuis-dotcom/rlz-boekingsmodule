@@ -30,7 +30,9 @@ android {
         // de iOS-app (1.0); versionCode moet per Play-upload strikt omhoog (Play weigert een
         // hergebruikt nummer). Overschrijfbaar zonder code-wijziging voor een latere
         // CI-opzet: ./gradlew bundleRelease -PversionCode=12 -PversionName=1.1
-        versionCode(project.hasProperty('versionCode') ? project.property('versionCode').toString().toInteger() : 1)
+        // Default 2 sinds de app-lock-module (31-08) — de eerstvolgende Play-upload draagt
+        // sowieso een hoger nummer dan de interne test-release (vc1).
+        versionCode(project.hasProperty('versionCode') ? project.property('versionCode').toString().toInteger() : 2)
         versionName(project.hasProperty('versionName') ? project.property('versionName').toString() : "1.0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -84,6 +86,8 @@ dependencies {
     implementation "androidx.credentials:credentials-play-services-auth:1.5.0"
     // Refresh-token in Keystore-gedekte opslag (VeiligeOpslagPlugin, store-app fase 4).
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
+    // App-lock: BiometricPrompt voor de Face ID-/vingerafdruk-gemakslaag (AppSlotPlugin, 31-08).
+    implementation "androidx.biometric:biometric:1.1.0"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

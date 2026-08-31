@@ -37,9 +37,12 @@ FCM-verzendkant (ADC, geen secret) zijn KLAAR; zie §8.**
 
 Interne zakelijke app voor klanten van Administratiekantoor Nijenhuis: accordeurs keuren
 inkoopfacturen van hun eigen administratie goed of wijzen ze af (met verplichte reden).
-Alleen op uitnodiging — er is géén open registratie. Auth: e-mailuitnodiging → wachtwoord →
-passkey per apparaat (Face ID/Touch ID); daarna ontgrendelt de app per opening met een
-passkey-assertion.
+Alleen op uitnodiging — er is géén open registratie. Auth (sinds 31-08, pincode-activatie —
+mockup app-lock-pincode.html): e-mailuitnodiging → 5-cijferige code kiezen → passkey per
+apparaat onder water (Face ID/Touch ID); daarna opent de app met Face ID/vingerafdruk met de
+code als altijd-werkende terugval (app-lock, lokaal — de code gaat nooit naar de server;
+Face ID-data blijft op het toestel, raakt de privacy-tabel in §2 dus niet). 5 foute codes =
+toestel uitgelogd; herstel via een nieuwe uitnodigingslink van het kantoor.
 
 ## 2. App Store — privacy nutrition labels (in te vullen in App Store Connect)
 

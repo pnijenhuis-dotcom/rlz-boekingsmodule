@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         // In-app-plugins registreren vóór de bridge laadt (Capacitor-conventie).
         registerPlugin(NatievePasskeyPlugin.class);
         registerPlugin(VeiligeOpslagPlugin.class);
+        registerPlugin(AppSlotPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
