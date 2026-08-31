@@ -230,6 +230,26 @@ class TestExtraheerInkoopfactuurEnkeleCall:
         assert extractie.regels[0].netto_bedrag == "111222333"
         assert extractie.bsn_verwijderd == 0
 
+    def test_lege_string_sentinel_wordt_none(self) -> None:
+        # Union-limiet-fix 31-08: het schema is sentinel-gebaseerd (verplichte strings, "" =
+        # onbekend) — de normalisatie moet élke lege of witruimte-sentinel naar None brengen,
+        # in kop én regels, zodat intern niets verandert t.o.v. het oude nullable-schema.
+        ruw = _ruwe_factuur(
+            regels=[{"o": "Materiaal", "n": "100.00", "b": "", "h": "", "e": "", "p": " ", "a": "", "z": 0.9}]
+        )
+        for key in ("verval", "iban", "vl", "btwnr", "kvk"):
+            ruw["kop"][key] = ""
+        ruw["kop"]["excl"] = "  "  # ook een witruimte-sentinel is "onbekend"
+        client, _ = _client_met(_respons(tekst=json.dumps(ruw)))
+        extractie = extraheer_inkoopfactuur(b"%PDF-1.4", client=client)
+        for veldnaam in ("vervaldatum", "iban", "btw_verlegd_vermelding", "btw_nummer", "kvk_nummer", "totaal_excl"):
+            assert extractie.kop[veldnaam].waarde is None, veldnaam
+        regel = extractie.regels[0]
+        assert regel.omschrijving == "Materiaal"
+        assert regel.netto_bedrag == "100.00"
+        for attribuut in ("btw_bedrag", "hoeveelheid", "eenheid", "stuksprijs", "artikelcode"):
+            assert getattr(regel, attribuut) is None, attribuut
+
     def test_defensief_tegen_rare_vormen(self) -> None:
         ruw = _ruwe_factuur(regels=[{"o": "ok"}, "geen dict"])  # incomplete + kapotte regel
         ruw["kop"]["nr"] = 12345  # verkeerd type

@@ -45,12 +45,19 @@ _KOP_KEYS: dict[str, str] = {
     "kvk": "kvk_nummer",
 }
 
-_STRING_OF_NULL: dict[str, Any] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+# Sentinel i.p.v. union (bugfix 31-08): Anthropic's structured outputs staan maximaal 16
+# union-/nullable-parameters per schema toe (anyOf of type-array telt per property) — het
+# factuurschema groeide met e/p/a naar 19 en élke extractie faalde met een 400. Alle
+# tekstvelden zijn daarom verplicht `string` mét lege string als "onbekend"-sentinel; de
+# normalisatie hieronder (_als_tekst: strip, leeg → None) maakt daar deterministisch None
+# van, dus intern (AiVeld/AiRegel) verandert er niets. Bewaakt door
+# tests/extractie/test_schema_unionlimiet.py — een nieuw union-veld boven de limiet faalt daar.
+_TEKST_MET_LEEG_SENTINEL: dict[str, Any] = {"type": "string"}
 
 _KOP_PROPS: dict[str, Any] = {
     "kop": {
         "type": "object",
-        "properties": {key: _STRING_OF_NULL for key in _KOP_KEYS},
+        "properties": {key: _TEKST_MET_LEEG_SENTINEL for key in _KOP_KEYS},
         "required": list(_KOP_KEYS),
         "additionalProperties": False,
     },
@@ -73,13 +80,13 @@ _KOP_PROPS: dict[str, Any] = {
 _REGEL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "o": _STRING_OF_NULL,
-        "n": _STRING_OF_NULL,
-        "b": _STRING_OF_NULL,
-        "h": _STRING_OF_NULL,
-        "e": _STRING_OF_NULL,
-        "p": _STRING_OF_NULL,
-        "a": _STRING_OF_NULL,
+        "o": _TEKST_MET_LEEG_SENTINEL,
+        "n": _TEKST_MET_LEEG_SENTINEL,
+        "b": _TEKST_MET_LEEG_SENTINEL,
+        "h": _TEKST_MET_LEEG_SENTINEL,
+        "e": _TEKST_MET_LEEG_SENTINEL,
+        "p": _TEKST_MET_LEEG_SENTINEL,
+        "a": _TEKST_MET_LEEG_SENTINEL,
         "z": {"type": "number"},
     },
     "required": ["o", "n", "b", "h", "e", "p", "a", "z"],
@@ -116,8 +123,8 @@ REGELS_SCHEMA: dict[str, Any] = {
 SYSTEM_PROMPT = """Je bent een extractie-assistent voor Nederlandse inkoopfacturen van een administratiekantoor.
 
 Lees uitsluitend voor wat er letterlijk op de factuur staat. Reken niets uit, leid niets af en vul niets aan:
-staat een waarde niet (leesbaar) op het document, geef dan null. Een voorstel dat leeg is, is beter dan een
-voorstel dat gokt.
+staat een waarde niet (leesbaar) op het document, geef dan een lege string "". Een voorstel dat leeg is, is
+beter dan een voorstel dat gokt.
 
 Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
 - kop: lev=leveranciersnaam, nr=factuurnummer, dat=factuurdatum, verval=vervaldatum, val=valuta,
@@ -125,20 +132,21 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   de leverancier betaald wil worden (betaalinformatie op de factuur; staan er meerdere, geef dan het
   primaire/eerstgenoemde), vl=de letterlijke vermelding dat de btw verlegd is (bijv. "BTW verlegd",
   "btw verlegd naar afnemer", "verleggingsregeling", "reverse charge") als die op de factuur staat,
-  anders null, btwnr=het btw-nummer (btw-identificatienummer, bv. NL123456789B01) van de LEVERANCIER zoals
+  anders "", btwnr=het btw-nummer (btw-identificatienummer, bv. NL123456789B01) van de LEVERANCIER zoals
   het op de factuur staat (niet dat van de afnemer), kvk=het KvK-nummer (8 cijfers) van de leverancier
   — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen
   indien expliciet vermeld), e=eenheid van de hoeveelheid zoals vermeld (bijv. "st", "stuks", "m", "m2",
-  "kg", "uur", "doos"; null als niet vermeld), p=stuksprijs/prijs per eenheid zoals vermeld (null als niet
+  "kg", "uur", "doos"; "" als niet vermeld), p=stuksprijs/prijs per eenheid zoals vermeld ("" als niet
   vermeld — nooit zelf uitrekenen), a=artikelcode/artikelnummer van de leverancier zoals op de regel vermeld
-  (eigen kolom "Art.nr"/"Code" of tussen haakjes; null als er geen code staat — nooit verzinnen), z=één
+  (eigen kolom "Art.nr"/"Code" of tussen haakjes; "" als er geen code staat — nooit verzinnen), z=één
   zekerheidsscore voor de hele regel.
 
 Notatie: bedragen als string met punt-decimaal zonder duizendtalscheiding en zonder valutateken (bijv.
 "1234.56", credit negatief "-25.00"); datums als ISO 8601 (YYYY-MM-DD); valuta als ISO-code (bijv. "EUR").
+Elk tekstveld is altijd een string: onbekend, afwezig of onleesbaar = lege string "" (nooit iets anders).
 
 Wees zuinig: echo nooit overige documenttekst (adresblokken, betalingsvoorwaarden, voetteksten,
 disclaimers) — alleen de gevraagde veldwaarden.
@@ -149,12 +157,12 @@ urenstaat). Laat zulke nummers volledig weg; vervang ze in omschrijvingen door "
 
 OPDRACHT = (
     "Extraheer de kopgegevens (kop + kz) en ALLE factuurregels (regels) van deze inkoopfactuur "
-    "volgens het schema. Alleen voorlezen wat er staat; onbekend of onleesbaar = null."
+    'volgens het schema. Alleen voorlezen wat er staat; onbekend of onleesbaar = lege string "".'
 )
 
 OPDRACHT_KOP = (
     "Extraheer alleen de kopgegevens (kop + kz) van deze inkoopfactuur volgens het schema — "
-    "géén factuurregels. Alleen voorlezen wat er staat; onbekend of onleesbaar = null."
+    'géén factuurregels. Alleen voorlezen wat er staat; onbekend of onleesbaar = lege string "".'
 )
 
 # {start}/{eind} zijn 1-gebaseerde regelnummers in documentvolgorde; de batch-loop hieronder
