@@ -108,6 +108,24 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   passkey) zijn zichtbaar op /gebruikers; Herstel-link ruimt ze op. **Géén eigen push-login
   (besluit Peter 28-08)** — kantoor-web toont ná een cross-device-login éénmalig "Passkey
   toevoegen op dit apparaat?". Zie BESLISSINGEN "BOUWRUN 28-08 AVOND" blok B.
+  **PINCODE-ACTIVATIE + APP-LOCK NATIVE APP (besluit Peter 31-08, ING-patroon, mockup
+  `app-lock-pincode.html` = norm; herziet de 28-08-flow UITSLUITEND voor de native app — de
+  PWA/web houdt wachtwoord → passkey én de 24-uurs-Ontgrendel):** mail-link (universal link
+  opent de app; iOS applinks + Android App Links op het app-domein) → 5-cijferige code kiezen →
+  bevestigen → Face ID-vraag + voorwaarden (passkey onder water) → klaar. De wachtwoordstap
+  vervalt voor app-rollen (account houdt `wachtwoord_hash = NULL`; endpoint
+  `/auth/uitnodigingen/activatie-zonder-wachtwoord` legt níéts vast — zelfde atomiciteit). De
+  code is een puur LOKAAL anker (nooit server-side): PBKDF2-wrap ontgrendelt de sleutel die het
+  refresh-token in Keychain/Keystore versleutelt (`frontend/src/api/appSlot.ts`); biometrie =
+  gemakskopie via plugin `AppSlot` — HARDE EIS nageleefd: iOS `.biometryAny` (géén
+  biometryCurrentSet), Android `setInvalidatedByBiometricEnrollment(false)` — biometrie-falen
+  valt altijd stil terug op de code. Het slot vervangt in native de 24-uurs-assertion bij
+  openen (sliding-refresh + kill-switch ongewijzigd); her-login = e-mail → passkey-assertion
+  (`/auth/accordeur/passkey-login/*`, 0020-lijn) en reset het slot (nieuwe code). 5 foute
+  codes = lokaal gewist + `POST /auth/app-lock/uitgesloten` (kill-switch eigen apparaat +
+  audit) — herstel = verse kantoor-link; scherm "Toegang tot de app": Face ID-switch, code
+  wijzigen, direct vergrendelen (anders 5 min), toestel ontkoppelen
+  (`/auth/app-lock/ontkoppelen`). Zie BESLISSINGEN "PINCODE-ACTIVATIE + APP-LOCK".
   **Platformbesluit 0020 (2026-08-14, samen met vastgoed): passkeys worden de EERSTE
   authenticatielijn voor álle rollen; wachtwoord + TOTP wordt terugval/herstel.**
   **Kantoor-passkeys: GEBOUWD + GETEST (2026-08-15)** — tweede afnemer van de 0040-bouwstenen,
@@ -480,7 +498,22 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   deterministisch None); een NIEUW AI-veld nooit als nullable/union toevoegen maar via dit
   patroon. Testpoort: `tests/extractie/test_schema_unionlimiet.py` (alle live schema's ≤ 16 +
   fail-closed sweep op `json_schema=`-aanroepers). Nazorg-CLI `extractie-heraanbieden` biedt
-  gefaalde extracties bulk opnieuw aan via de bestaande opnieuw-route.
+  gefaalde extracties bulk opnieuw aan via de bestaande opnieuw-route. De teller/limiet leven
+  sinds 31-08 runtime in `app/extractie/schema_poort.py` (de test importeert ze dáár) — de
+  bewaking en de deploy-smoketest draaien dezelfde zelftest live.
+- **Synthetische bewaking + alerting (best-practice-besluit 1, 31-08 — aanleiding: twee stille
+  productie-incidenten 30/31-08; migratie 0092):** Cloud Run-job `rlz-bewaking` elk kwartier
+  (`app/bewaking/`, statusrijen `platform.bewaking_probe_run`/`bewaking_storing`): health, DB +
+  migratieversie, documentopslag-leesproef, mailkanaal-config, lichte RLZ-leesroute op de
+  TEST-administratie (nooit writes); 1×/uur schema-zelftest + minimale echte AI-call
+  (`claude-haiku-4-5`, onder de kostenmeter, bron `bewaking`) én het foutpiek-signaal
+  (extractie-foutratio per uur ≥ 50 % bij ≥ 3 pogingen). Alerts via het eigen SMTP-kanaal naar
+  p.nijenhuis@kempengroep.nl: pas bij 2 opeenvolgende fouten, idempotent per storing
+  (kolom-is-None), expliciete herstelmelding. Job-exit-contract: falende probes = exit 0 (eigen
+  alert); exit 1 alleen als de bewaking zelf niet draait → F3.2-vangnet. Post-deploy-smoketest
+  in deploy.yml (health + gepoorte route moet 401 geven + one-off `rlz-smoketest`-job met de
+  CLI `deploy-smoketest`) — een kapotte deploy is per direct luid rood. Zie BESLISSINGEN
+  "SYNTHETISCHE BEWAKING + ALERTING".
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,
