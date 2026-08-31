@@ -342,7 +342,14 @@ def _groot_document_detail(session: Session, *, document: Document, inhoud: byte
     )
     if not te_groot:
         return None
-    return {"extractie_wachtrij": "groot_document", "paginas": paginas, "bytes": len(inhoud)}
+    # "reden" hoort erbij: de heraanbied-lus (31-08) draait deze overgang met de systeem-actor,
+    # en élke ⚙-overgang draagt een leesbare reden (_borg_systeem_reden).
+    return {
+        "extractie_wachtrij": "groot_document",
+        "paginas": paginas,
+        "bytes": len(inhoud),
+        "reden": "groot document — extractie via de wachtrij",
+    }
 
 
 def verwerk_extractie_taak(
@@ -490,6 +497,97 @@ def verwerk_extractie_wachtrij(*, stale_na: timedelta = timedelta(minutes=15)) -
     if directe.verwerkt:
         logger.info("Extractie-wachtrij verwerkt: %s document(en)", len(directe.verwerkt))
     return len(directe.verwerkt)
+
+
+# De detail-sleutels waarmee een extractie-uitkomst in de tijdlijn landt (zie
+# _ai_extractie_detail/_rond_extractie_af): de jongste hiervan bepaalt of de laatste
+# extractiepoging van een document faalde.
+_AI_UITKOMST_KEYS = ("veldvoorstel", "ai_extractie_fout", "ai_extractie_overgeslagen", "ai_extractie_onvolledig")
+
+
+def heraanbied_gefaalde_extracties(
+    *,
+    sinds: datetime,
+    fout_filter: str | None = None,
+    dry_run: bool = False,
+    opslag: DocumentOpslag | None = None,
+    wachtrij: ExtractieWachtrij | None = None,
+) -> dict[str, int]:
+    """Bulk-nazorg (union-limiet-bugfix 31-08): biedt documenten waarvan de LAATSTE
+    extractiepoging sinds `sinds` faalde (tijdlijn-detail `ai_extractie_fout`) opnieuw aan via
+    de bestaande opnieuw-route (herextraheer_document) — géén nieuwe motor, dezelfde poorten
+    (PDF-only, status te_controleren/handmatig_afmaken, AVG-gate, klein-vs-groot-routing).
+    `fout_filter` beperkt tot fouten waarvan de tekst de substring bevat (case-insensitief,
+    bv. "union types"). `dry_run` telt alleen. Systeem-actor; elke stap zichtbaar in tijdlijn
+    en audit zoals elke herextractie. Retourneert tellingen: kandidaten / heraangeboden /
+    naar_wachtrij / overgeslagen."""
+    with scoped_session(None) as session:
+        administratie_ids = [rij.id for rij in session.scalars(select(Administratie))]
+
+    telling = {"kandidaten": 0, "heraangeboden": 0, "naar_wachtrij": 0, "overgeslagen": 0}
+    for administratie_id in administratie_ids:
+        kandidaten: list[uuid.UUID] = []
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            recent_gefaald = session.scalars(
+                select(DocumentGebeurtenis.document_id)
+                .join(Document, Document.id == DocumentGebeurtenis.document_id)
+                .where(
+                    Document.administratie_id == administratie_id,
+                    Document.status.in_((DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN)),
+                    DocumentGebeurtenis.tijdstip >= sinds,
+                    DocumentGebeurtenis.detail.has_key("ai_extractie_fout"),
+                )
+                .distinct()
+            ).all()
+            for document_id in recent_gefaald:
+                # Alleen als de jóngste extractie-uitkomst de fout is — een document dat na de
+                # fout alsnog een voorstel kreeg (handmatige "opnieuw"-klik) blijft met rust.
+                laatste_uitkomst = session.scalars(
+                    select(DocumentGebeurtenis)
+                    .where(DocumentGebeurtenis.document_id == document_id)
+                    .order_by(DocumentGebeurtenis.tijdstip.desc())
+                ).all()
+                uitkomst = next(
+                    (g for g in laatste_uitkomst if any(key in (g.detail or {}) for key in _AI_UITKOMST_KEYS)),
+                    None,
+                )
+                if uitkomst is None or "ai_extractie_fout" not in (uitkomst.detail or {}):
+                    continue
+                fout_tekst = str((uitkomst.detail or {}).get("ai_extractie_fout", ""))
+                if fout_filter and fout_filter.lower() not in fout_tekst.lower():
+                    continue
+                kandidaten.append(document_id)
+
+        telling["kandidaten"] += len(kandidaten)
+        if dry_run:
+            continue
+        for document_id in kandidaten:
+            try:
+                eind_status = herextraheer_document(
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    opslag=opslag,
+                    wachtrij=wachtrij,
+                )
+            except (DocumentNietGevonden, HerextractieNietToegestaan) as exc:
+                logger.warning("Heraanbieden overgeslagen voor document %s: %s", document_id, exc)
+                telling["overgeslagen"] += 1
+                continue
+            telling["heraangeboden"] += 1
+            if eind_status == DocumentStatus.EXTRACTIE_WACHTRIJ:
+                telling["naar_wachtrij"] += 1
+
+    logger.info(
+        "Heraanbieden gefaalde extracties: %s kandidaat/kandidaten, %s heraangeboden "
+        "(waarvan %s via de wachtrij), %s overgeslagen%s",
+        telling["kandidaten"],
+        telling["heraangeboden"],
+        telling["naar_wachtrij"],
+        telling["overgeslagen"],
+        " [dry-run]" if dry_run else "",
+    )
+    return telling
 
 
 def _taxrate_kandidaat(rij: TaxRateCache) -> extractie_controle.TaxRateKandidaat:

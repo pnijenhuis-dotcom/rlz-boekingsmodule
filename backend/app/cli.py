@@ -129,6 +129,30 @@ def _extractie_wachtrij_verwerken(args: argparse.Namespace) -> int:
     return 0
 
 
+def _extractie_heraanbieden(args: argparse.Namespace) -> int:
+    """Bulk-nazorg union-limiet-bugfix (31-08): biedt documenten waarvan de laatste
+    extractiepoging sinds --sinds faalde opnieuw aan via de bestaande opnieuw-route."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.documenten import service as documenten_service
+
+    try:
+        sinds = datetime.fromisoformat(args.sinds).replace(tzinfo=ZoneInfo("Europe/Amsterdam"))
+    except ValueError:
+        print(f"Ongeldige --sinds-datum: {args.sinds!r} (verwacht YYYY-MM-DD)", file=sys.stderr)
+        return 2
+    telling = documenten_service.heraanbied_gefaalde_extracties(
+        sinds=sinds, fout_filter=args.filter, dry_run=args.dry_run
+    )
+    print(
+        f"extractie-heraanbieden{' [dry-run]' if args.dry_run else ''}: "
+        f"{telling['kandidaten']} kandidaat/kandidaten, {telling['heraangeboden']} heraangeboden "
+        f"(waarvan {telling['naar_wachtrij']} via de wachtrij), {telling['overgeslagen']} overgeslagen"
+    )
+    return 0
+
+
 def _sync_alles(args: argparse.Namespace) -> int:
     """Nachtelijke sync-entrypoint (fase-vervolg: Cloud Scheduler -> Cloud Run job roept dit
     commando aan). Eén administratie zonder werkende .env-credentials laat de rest niet
@@ -1368,6 +1392,18 @@ def main(argv: list[str] | None = None) -> int:
         "het scheduler-vangnet draait 'm elke 10 min; lege wachtrij = snelle no-op).",
     )
 
+    heraanbied_parser = subparsers.add_parser(
+        "extractie-heraanbieden",
+        help="Bied documenten waarvan de laatste AI-extractie sinds --sinds faalde opnieuw aan "
+        "via de bestaande opnieuw-route (nazorg union-limiet-bugfix 31-08); --filter beperkt op "
+        "fouttekst-substring, --dry-run telt alleen.",
+    )
+    heraanbied_parser.add_argument("--sinds", required=True, help="Datum (YYYY-MM-DD, Europe/Amsterdam).")
+    heraanbied_parser.add_argument(
+        "--filter", default=None, help="Alleen fouten waarvan de tekst deze substring bevat (case-insensitief)."
+    )
+    heraanbied_parser.add_argument("--dry-run", action="store_true", help="Alleen tellen, niets heraanbieden.")
+
     subparsers.add_parser(
         "projecten-cijfers-wachtrij",
         help="Verwerk de wachtrij van projectcijfers-syncruns (entrypoint van de on-demand "
@@ -1652,6 +1688,8 @@ def main(argv: list[str] | None = None) -> int:
         return _bank_sync_wachtrij(args)
     if args.commando == "extractie-wachtrij-verwerken":
         return _extractie_wachtrij_verwerken(args)
+    if args.commando == "extractie-heraanbieden":
+        return _extractie_heraanbieden(args)
     if args.commando == "eerste-sync-wachtrij":
         return _eerste_sync_wachtrij(args)
     if args.commando == "reconciliatie":

@@ -130,6 +130,9 @@ class TestRouting:
             "extractie_wachtrij": "groot_document",
             "paginas": None,  # _PDF is geen echte PDF — telling faalt, bytes besliste
             "bytes": len(_PDF),
+            # Sinds 31-08 draagt de overgang altijd een reden — de heraanbied-lus draait 'm
+            # met de systeem-actor en élke ⚙-overgang vereist er een.
+            "reden": "groot document — extractie via de wachtrij",
         }
         assert wachtrij_gebeurtenis.actor_id == gescoopte_gebruiker  # de upload is een menselijke handeling
 

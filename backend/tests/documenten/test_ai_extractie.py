@@ -457,3 +457,98 @@ class TestWaarborgProjectadministratie:
         detail = _extractie_detail(administratie_id, resultaat.document_id)
         assert detail is not None
         assert "529 overloaded" in detail["ai_extractie_fout"]
+
+
+class TestHeraanbiedenGefaaldeExtracties:
+    """Bulk-nazorg union-limiet-bugfix (31-08): heraanbied_gefaalde_extracties biedt documenten
+    waarvan de LAATSTE extractiepoging faalde opnieuw aan via de bestaande opnieuw-route."""
+
+    def _upload_met_fout(
+        self,
+        administratie_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        monkeypatch: pytest.MonkeyPatch,
+        fout: str,
+    ):
+        def _kapot(pdf_bytes: bytes, *, client=None, verbruik_referentie=None, mail_context=None):
+            raise RuntimeError(fout)
+
+        monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _kapot)
+        return _upload_pdf(administratie_id, actor_id, opslag)
+
+    def test_heraanbieden_pakt_alleen_de_laatste_fout_en_respecteert_filter(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        ai_gate_aan: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+        union_fout = "Claude API-fout 400 — Schemas contains too many parameters with union types"
+
+        # Drie gefaalde documenten: twee met de union-fout, één met een andere fout.
+        union_1 = self._upload_met_fout(administratie_id, gescoopte_gebruiker, opslag, monkeypatch, union_fout)
+        union_2 = self._upload_met_fout(administratie_id, gescoopte_gebruiker, opslag, monkeypatch, union_fout)
+        andere = self._upload_met_fout(
+            administratie_id, gescoopte_gebruiker, opslag, monkeypatch, "Claude API-timeout na 120s"
+        )
+        # union_2 is intussen al handmatig opnieuw geëxtraheerd (jongste uitkomst = voorstel):
+        # die moet met rust gelaten worden.
+        aanroepen: list[bytes] = []
+
+        def _werkt(pdf_bytes: bytes, *, client=None, verbruik_referentie=None, mail_context=None):
+            aanroepen.append(pdf_bytes)
+            return _fake_extractie()
+
+        monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _werkt)
+        service.herextraheer_document(
+            administratie_id=administratie_id,
+            document_id=union_2.document_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        assert len(aanroepen) == 1
+
+        sinds = datetime.now(UTC) - timedelta(hours=1)
+
+        # Dry-run: telt de ene union-kandidaat, biedt niets aan.
+        telling = service.heraanbied_gefaalde_extracties(
+            sinds=sinds, fout_filter="union types", dry_run=True, opslag=opslag
+        )
+        assert telling == {"kandidaten": 1, "heraangeboden": 0, "naar_wachtrij": 0, "overgeslagen": 0}
+        assert len(aanroepen) == 1  # niets extra naar de AI
+
+        # Echte run mét filter: alleen union_1 wordt heraangeboden en krijgt een voorstel.
+        telling = service.heraanbied_gefaalde_extracties(sinds=sinds, fout_filter="union types", opslag=opslag)
+        assert telling == {"kandidaten": 1, "heraangeboden": 1, "naar_wachtrij": 0, "overgeslagen": 0}
+        assert len(aanroepen) == 2
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=union_1.document_id)
+        assert detail.veldvoorstel is not None and detail.veldvoorstel["bron"] == "ai"
+
+        # Zonder filter blijft de andere fout wél kandidaat.
+        telling = service.heraanbied_gefaalde_extracties(sinds=sinds, opslag=opslag)
+        assert telling["kandidaten"] == 1
+        assert telling["heraangeboden"] == 1
+        detail = service.haal_document_op(administratie_id=administratie_id, document_id=andere.document_id)
+        assert detail.veldvoorstel is not None
+
+    def test_sinds_grens_sluit_oude_fouten_uit(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        ai_gate_aan: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+        self._upload_met_fout(administratie_id, gescoopte_gebruiker, opslag, monkeypatch, "een fout")
+        telling = service.heraanbied_gefaalde_extracties(
+            sinds=datetime.now(UTC) + timedelta(minutes=5), dry_run=True, opslag=opslag
+        )
+        assert telling["kandidaten"] == 0

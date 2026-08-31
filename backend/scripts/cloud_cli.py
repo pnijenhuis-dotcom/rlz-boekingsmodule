@@ -18,7 +18,16 @@ $(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434
         .venv/bin/python scripts/cloud_cli.py voorraad-hernormaliseer
 (ANTHROPIC_API_KEY = het productie-secret zodat de AI-kostenmeter in de cloud-DB klopt; weglaten =
 geen AI-normalisatie, alleen het deterministische pad.) Voorwaarde: de cloud-DB staat op de
-migratie-head die de code verwacht (deploy-pipeline: migratie-job vóór de revisie)."""
+migratie-head die de code verwacht (deploy-pipeline: migratie-job vóór de revisie).
+
+BESTAND-RAKENDE COMMANDO'S (bewezen accordering-herstel-run 31-08, 31/32 geboekt ná deze twee
+vondsten): elk commando dat documentinhoud leest (boeken/herstel met PDF-bijlage,
+extractie-heraanbieden, herextractie) vereist bovendien:
+  DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten   (anders leest de opslaglaag lokaal → niets)
+én VERSE Application Default Credentials voor de GCS-client:
+  gcloud auth application-default login
+— de gcloud-GEBRUIKERStoken-terugval hierboven dekt alleen KMS (unwrap), niet de
+storage-client; verlopen ADC uit zich als een reauth-fout pas bíj de eerste bestandslezing."""
 
 from __future__ import annotations
 
