@@ -23,7 +23,20 @@ class TestAppleAppSiteAssociation:
         resp = client.get("/.well-known/apple-app-site-association")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("application/json")
-        assert resp.json() == {"webcredentials": {"apps": ["ABCDE12345.nl.aknijenhuis.goedkeuren"]}}
+        # Sinds 31-08 (pincode-activatie) draagt het app-domein-exemplaar óók universal links:
+        # een activatie-/accordeur-mail-link opent de geïnstalleerde app i.p.v. de browser.
+        assert resp.json() == {
+            "webcredentials": {"apps": ["ABCDE12345.nl.aknijenhuis.goedkeuren"]},
+            "applinks": {
+                "apps": [],
+                "details": [
+                    {
+                        "appIDs": ["ABCDE12345.nl.aknijenhuis.goedkeuren"],
+                        "components": [{"/": "/accordeur*"}, {"/": "/activeren*"}],
+                    }
+                ],
+            },
+        }
 
 
 class TestAssetlinks:

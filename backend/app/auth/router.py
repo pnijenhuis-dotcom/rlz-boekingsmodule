@@ -196,6 +196,22 @@ def uitnodiging_accepteren(
     )
 
 
+@router.post("/uitnodigingen/activatie-zonder-wachtwoord", response_model=schemas.ActivatieZonderWachtwoordResponse)
+def uitnodiging_activatie_zonder_wachtwoord(
+    payload: schemas.ActivatieZonderWachtwoordRequest,
+) -> schemas.ActivatieZonderWachtwoordResponse:
+    """Pincode-activatie native app (besluit Peter 31-08, mockup app-lock-pincode.html): de
+    wachtwoordstap vervalt voor app-rollen. Valideert de link en geeft direct het
+    passkey_setup-token — er wordt niets geparkeerd of vastgelegd; de passkey-registratie
+    (onder water bij stap 3) verbruikt de link atomair. Kantoor-rollen krijgen 400."""
+    try:
+        resultaat = service.start_activatie_zonder_wachtwoord(token=payload.token)
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    assert resultaat.passkey_setup_token is not None
+    return schemas.ActivatieZonderWachtwoordResponse(passkey_setup_token=resultaat.passkey_setup_token)
+
+
 @router.post("/totp/bevestigen", response_model=schemas.TokenPaarResponse)
 def totp_bevestigen(
     payload: schemas.TotpBevestigenRequest,
@@ -580,6 +596,39 @@ def accordeur_login(payload: schemas.AccordeurLoginRequest, request: Request) ->
     )
 
 
+@router.post("/accordeur/passkey-login/opties", response_model=schemas.KantoorPasskeyOptiesResponse)
+def accordeur_passkey_login_opties(
+    payload: schemas.KantoorPasskeyLoginOptiesRequest,
+) -> schemas.KantoorPasskeyOptiesResponse:
+    """Her-login zonder wachtwoord voor externe app-rollen (pincode-flow 31-08): e-mail →
+    assertion-options. 409 = geen bruikbare passkey — de client valt terug op de wachtwoordflow
+    (legacy account) of verwijst naar een verse kantoor-link; het antwoord is identiek voor
+    onbekend adres, kantoorrol, niet-actief account en passkey-loze gebruiker."""
+    try:
+        resultaat = webauthn_service.accordeur_login_opties(e_mail=payload.e_mail)
+    except webauthn_service.GeenPasskeys as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return schemas.KantoorPasskeyOptiesResponse(opties=resultaat.opties, dev_stub=resultaat.dev_stub)
+
+
+@router.post("/accordeur/passkey-login/voltooien", response_model=schemas.TokenPaarResponse)
+def accordeur_passkey_login_voltooien(
+    payload: schemas.KantoorPasskeyLoginVoltooienRequest, request: Request, response: Response
+) -> schemas.TokenPaarResponse:
+    try:
+        paar = webauthn_service.login_met_accordeur_passkey(
+            e_mail=payload.e_mail,
+            credential=payload.credential,
+            dev_stub=payload.dev_stub,
+            ip_adres=_client_ip(request),
+        )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    return _lever_token_paar(request, response, paar)
+
+
 @router.post("/webauthn/registratie/opties", response_model=schemas.WebauthnOptiesResponse)
 def webauthn_registratie_opties(
     gebruiker_id: uuid.UUID = Depends(_passkey_setup_gebruiker),
@@ -860,6 +909,43 @@ def apparaat_intrekken(apparaat_id: uuid.UUID, actor: CurrentGebruiker = Depends
             actor_id=actor.id,
             apparaat_id=apparaat_id,
             alleen_van_gebruiker=None if actor.rol == GebruikerRol.BEHEERDER else actor.id,
+        )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# --- app-lock (pincode-slot native app, 31-08 — mockup app-lock-pincode.html) ---------------------
+
+
+@router.post("/app-lock/uitgesloten", status_code=status.HTTP_204_NO_CONTENT)
+def app_lock_uitgesloten(payload: schemas.AppLockMeldingRequest) -> None:
+    """5× foute code: het toestel wist code + sessie lokaal en meldt zich hier uit voorzorg af —
+    kill-switch op het eigen apparaat + audit-event `app_lock_uitgesloten`. Ongeauthenticeerd
+    (het refresh-token zit op slot achter de gewiste code); altijd 204 — geen bestaans-lek,
+    idempotent. Herstel = verse kantoor-link (poortwachter-model)."""
+    webauthn_service.meld_app_lock_uitsluiting(credential_id_b64=payload.credential_id)
+
+
+@router.post("/app-lock/hulp", status_code=status.HTTP_204_NO_CONTENT)
+def app_lock_hulp(payload: schemas.AppLockMeldingRequest) -> None:
+    """Knop "Kantoor vragen om nieuwe link" (mockup scherm 6): mail aan het kantoor-antwoordadres
+    + audit. Altijd 204; mailfalen is gelogd, nooit een fout richting de gebruiker."""
+    webauthn_service.vraag_app_lock_hulp(credential_id_b64=payload.credential_id)
+
+
+@router.post("/app-lock/ontkoppelen", status_code=status.HTTP_204_NO_CONTENT)
+def app_lock_ontkoppelen(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> None:
+    """Instellingen › "Toestel ontkoppelen" (mockup scherm 7): trekt het ÉIGEN apparaat van deze
+    sessie in (apparaat-claim uit het access-token) — zelfde kill-switch-semantiek als
+    /apparaten/{id}/intrekken, maar zonder dat de app zijn apparaat-id hoeft te kennen.
+    Opnieuw koppelen = verse kantoor-link."""
+    if actor.apparaat_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Deze sessie is niet aan een apparaat gebonden"
+        )
+    try:
+        webauthn_service.trek_apparaat_in(
+            actor_id=actor.id, apparaat_id=actor.apparaat_id, alleen_van_gebruiker=actor.id
         )
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

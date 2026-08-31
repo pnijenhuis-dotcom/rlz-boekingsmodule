@@ -282,12 +282,10 @@ def _open_uitnodiging(session: Session, *, token_hash: str, now: datetime) -> Ui
     return uitnodiging
 
 
-def _parkeer_wachtwoord_voor_passkey(
-    uitnodiging: Uitnodiging, gebruiker: Gebruiker, *, wachtwoord: str
-) -> AcceptatieResultaat:
-    """Wachtwoordstap externe rol (uitnodiging óf herstel): hash op de link parkeren, niets op de
-    gebruiker muteren. Herstel eist een account dat mag herstellen (blokkade wint — 0052-lijn);
-    de bestaande passkeys/akkoorden blijven staan, sessies worden pas bij afronding ingetrokken."""
+def _toets_externe_activatie_status(uitnodiging: Uitnodiging, gebruiker: Gebruiker) -> None:
+    """Status-poort externe activatie/herstel (gedeeld door de wachtwoord- én de pincode-flow):
+    herstel eist een account dat mag herstellen (blokkade wint — 0052-lijn), een verse
+    uitnodiging eist status uitgenodigd."""
     if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value and gebruiker.status not in (
         GebruikerStatus.ACTIEF,
         GebruikerStatus.WACHT_OP_PASSKEY,
@@ -295,11 +293,43 @@ def _parkeer_wachtwoord_voor_passkey(
         raise AuthError("Account is geblokkeerd of niet geactiveerd — neem contact op met het kantoor")
     if uitnodiging.soort == UitnodigingSoort.UITNODIGING.value and gebruiker.status != GebruikerStatus.UITGENODIGD:
         raise AuthError("Account is al geactiveerd of geblokkeerd — neem contact op met het kantoor")
+
+
+def _parkeer_wachtwoord_voor_passkey(
+    uitnodiging: Uitnodiging, gebruiker: Gebruiker, *, wachtwoord: str
+) -> AcceptatieResultaat:
+    """Wachtwoordstap externe rol (uitnodiging óf herstel): hash op de link parkeren, niets op de
+    gebruiker muteren. De bestaande passkeys/akkoorden blijven staan, sessies worden pas bij
+    afronding ingetrokken."""
+    _toets_externe_activatie_status(uitnodiging, gebruiker)
     uitnodiging.wachtwoord_hash_in_wacht = hash_password(wachtwoord)
     return AcceptatieResultaat(
         soort="passkey",
         passkey_setup_token=create_passkey_setup_token(gebruiker.id, uitnodiging_id=uitnodiging.id),
     )
+
+
+def start_activatie_zonder_wachtwoord(*, token: str) -> AcceptatieResultaat:
+    """Pincode-activatie (besluit Peter 31-08, mockup app-lock-pincode.html, ING-patroon): de
+    wachtwoordstap vervalt voor app-rollen — de 5-cijferige code is een puur LOKAAL anker op
+    het toestel en komt nooit bij de server. Server-side wordt hier dus níéts geparkeerd en
+    níéts vastgelegd: alleen de linkpoorten + statuspoort, en dan een passkey_setup-token dat
+    de registratie machtigt. De atomiciteit van 28-08 blijft: pas de geslaagde
+    passkey-registratie verbruikt de link en maakt het account definitief
+    (rond_uitnodiging_af_met_passkey, wachtwoordloze tak). Alleen externe app-rollen —
+    kantoor-rollen houden wachtwoord + TOTP."""
+    now = datetime.now(UTC)
+    with scoped_session(None) as session:
+        uitnodiging = _open_uitnodiging(session, token_hash=_hash_token(token), now=now)
+        gebruiker = session.get(Gebruiker, uitnodiging.gebruiker_id)
+        assert gebruiker is not None  # FK garandeert dit
+        if not is_externe_app_rol(gebruiker.rol):
+            raise AuthError("Deze activatie is alleen voor app-gebruikers — kantoor activeert met wachtwoord + TOTP")
+        _toets_externe_activatie_status(uitnodiging, gebruiker)
+        return AcceptatieResultaat(
+            soort="passkey",
+            passkey_setup_token=create_passkey_setup_token(gebruiker.id, uitnodiging_id=uitnodiging.id),
+        )
 
 
 def rond_uitnodiging_af_met_passkey(
@@ -308,7 +338,12 @@ def rond_uitnodiging_af_met_passkey(
     """Het atomaire sluitstuk (aangeroepen BINNEN de registratie-transactie van
     webauthn_service): geparkeerde hash → gebruiker, link verbruikt, status actief (uitnodiging)
     resp. alle sessies ingetrokken (herstel), audit. Faalt hier iets, dan rolt de hele
-    registratie terug — passkey én wachtwoord bestaan dan allebei niet."""
+    registratie terug — passkey én wachtwoord bestaan dan allebei niet.
+
+    Pincode-flow (31-08, mockup app-lock-pincode.html): zonder geparkeerde hash is dit de
+    wachtwoordloze activatie — de code leeft uitsluitend lokaal op het toestel, het account
+    krijgt géén wachtwoord (wachtwoord_hash blijft zoals hij was; bij een verse uitnodiging is
+    dat None). Herstel = verse kantoor-link, precies het bestaande poortwachter-model."""
     uitnodiging = session.get(Uitnodiging, uitnodiging_id)
     if uitnodiging is None or uitnodiging.gebruiker_id != gebruiker.id:
         raise AuthError("Ongeldig uitnodigingstoken")
@@ -316,13 +351,13 @@ def rond_uitnodiging_af_met_passkey(
         raise AuthError("Uitnodiging is al gebruikt")
     if uitnodiging.verloopt_op < now:
         raise AuthError("Uitnodiging is verlopen — vraag het kantoor om een nieuwe link")
-    if uitnodiging.wachtwoord_hash_in_wacht is None:
-        raise AuthError("Wachtwoordstap ontbreekt — begin de activatie opnieuw via de link")
     if gebruiker.status in (GebruikerStatus.GEBLOKKEERD, GebruikerStatus.GEARCHIVEERD):
         raise AuthError("Account is geblokkeerd — neem contact op met het kantoor")
 
-    gebruiker.wachtwoord_hash = uitnodiging.wachtwoord_hash_in_wacht
-    uitnodiging.wachtwoord_hash_in_wacht = None
+    zonder_wachtwoord = uitnodiging.wachtwoord_hash_in_wacht is None
+    if not zonder_wachtwoord:
+        gebruiker.wachtwoord_hash = uitnodiging.wachtwoord_hash_in_wacht
+        uitnodiging.wachtwoord_hash_in_wacht = None
     uitnodiging.gebruikt_op = now
     if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value:
         _intrek_alle_sessies(session, gebruiker.id, now=now)
@@ -338,7 +373,12 @@ def rond_uitnodiging_af_met_passkey(
         record_id=gebruiker.id,
         actie=actie,
         correlatie_id=uuid.uuid4(),
-        nieuwe_waarde={"uitnodiging_id": str(uitnodiging.id), "status": gebruiker.status.value, "atomair": True},
+        nieuwe_waarde={
+            "uitnodiging_id": str(uitnodiging.id),
+            "status": gebruiker.status.value,
+            "atomair": True,
+            "zonder_wachtwoord": zonder_wachtwoord,
+        },
     )
 
 

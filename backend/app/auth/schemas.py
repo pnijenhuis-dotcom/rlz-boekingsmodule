@@ -53,6 +53,28 @@ class ActivatieProbleemRequest(StrikteInvoer):
     token: str
 
 
+class ActivatieZonderWachtwoordRequest(StrikteInvoer):
+    """Pincode-activatie (31-08, mockup app-lock-pincode.html): alleen de link — de 5-cijferige
+    code is een lokaal toestel-anker en reist NOOIT mee naar de server."""
+
+    token: str
+
+
+class ActivatieZonderWachtwoordResponse(BaseModel):
+    """Machtigt uitsluitend de passkey-registratie; server-side is nog niets vastgelegd — pas de
+    geslaagde registratie verbruikt de link en maakt het account definitief (atomair, 28-08)."""
+
+    passkey_setup_token: str
+
+
+class AppLockMeldingRequest(StrikteInvoer):
+    """App-lock-meldingen (5× foute code / hulpvraag): het credential_id (base64url) van de
+    passkey op dít toestel is de sleutel — hoge entropie, leeft alleen op het toestel en bij de
+    server; misbruik kan hoogstens het eigen apparaat uitsluiten (fail-safe richting)."""
+
+    credential_id: str = Field(min_length=8, max_length=2048)
+
+
 class UitnodigingAccepterenResponse(BaseModel):
     """`soort` bepaalt de tweede activatiestap: 'totp' (kantoor-rollen; totp-velden gevuld) of
     'passkey' (klant-accordeur; passkey_setup_token gevuld — besluit auth-cadans 2026-08-11)."""

@@ -80,3 +80,28 @@ def verstuur_activatieprobleem_aan_kantoor(*, naam: str, e_mail: str) -> None:
         mail.verzend_mail(naar=ontvanger, onderwerp=f"Activatie lukt niet — {naam}", tekst=tekst)
     except mail.MailFout:
         logger.exception("Activatieprobleem-mail aan het kantoor mislukt (%s)", e_mail)
+
+
+def verstuur_app_lock_hulp_aan_kantoor(*, naam: str, e_mail: str) -> None:
+    """Knop "Kantoor vragen om nieuwe link" ná de app-lock-uitsluiting (5× foute code, mockup
+    app-lock-pincode.html scherm 6). Zelfde kanaal- en faalgedrag als het activatieprobleem:
+    naar het kantoor-antwoordadres, fout gelogd, nooit aan de gebruiker getoond."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    ontvanger = settings.berichten_reply_to
+    if not ontvanger:
+        logger.warning("App-lock-hulp gevraagd door %s (%s) — geen kantoor-adres (BERICHTEN_REPLY_TO)", naam, e_mail)
+        return
+    tekst = (
+        f"{naam} ({e_mail}) heeft de toegangscode van de app 5 keer onjuist ingevoerd. Het toestel "
+        f"is uit voorzorg uitgelogd en de toegang van dat apparaat is ingetrokken.\n\n"
+        f"De gebruiker vraagt om een nieuwe activatielink. Stuur die vanuit Gebruikers & toegang "
+        f"(Herstel-link of nieuwe uitnodiging) — daarna kiest de gebruiker opnieuw een code en "
+        f"werkt alles zoals voorheen.\n\n"
+        f"Administratiekantoor Nijenhuis — automatisch bericht"
+    )
+    try:
+        mail.verzend_mail(naar=ontvanger, onderwerp=f"Nieuwe activatielink gevraagd — {naam}", tekst=tekst)
+    except mail.MailFout:
+        logger.exception("App-lock-hulpmail aan het kantoor mislukt (%s)", e_mail)

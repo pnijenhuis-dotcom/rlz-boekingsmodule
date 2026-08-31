@@ -29,7 +29,24 @@ def apple_app_site_association() -> JSONResponse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     app_id = f"{settings.apple_team_id}.{settings.native_app_bundle_id}"
     # Apple vereist Content-Type application/json (het pad heeft bewust geen extensie).
-    return JSONResponse(content={"webcredentials": {"apps": [app_id]}})
+    # `applinks` (universal links, pincode-activatie 31-08): een activatie-/accordeur-link uit
+    # een mail opent de geïnstalleerde app i.p.v. de browser — dit exemplaar leeft op het
+    # APP-domein (waar de mail-links naartoe wijzen; app_basis_url), de apex-kopie blijft
+    # alleen webcredentials dragen (rp_id-koppeling). Bewust smal: alleen de app-paden.
+    return JSONResponse(
+        content={
+            "webcredentials": {"apps": [app_id]},
+            "applinks": {
+                "apps": [],
+                "details": [
+                    {
+                        "appIDs": [app_id],
+                        "components": [{"/": "/accordeur*"}, {"/": "/activeren*"}],
+                    }
+                ],
+            },
+        }
+    )
 
 
 @router.get("/.well-known/assetlinks.json", include_in_schema=False)

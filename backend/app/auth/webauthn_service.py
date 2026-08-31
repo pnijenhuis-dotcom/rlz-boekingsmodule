@@ -779,6 +779,175 @@ def login_met_kantoor_passkey(
     return paar
 
 
+# --- accordeur-passkey-login (pincode-flow 31-08: her-login zonder wachtwoord) --------------------
+#
+# Derde afnemer van de 0040-bouwstenen. Sinds de pincode-activatie (besluit Peter 31-08, mockup
+# app-lock-pincode.html) heeft een pincode-geactiveerd app-account GEEN wachtwoord meer — de oude
+# her-loginflow (wachtwoordstap → assertion) is voor die accounts dood. Her-login (ná de 7-dagen
+# sliding-TTL of op een opnieuw gekoppeld toestel) = e-mail → passkey-assertion mét verplichte
+# user verification (bezit + biometrie/toestel-pincode — 0020-lijn, zelfde twee factoren als de
+# kantoor-passkey-login). Usernameless mag niet (0022/0006): e-mail blijft het startpunt.
+# Accounts uit de oude flow (mét wachtwoord) kunnen dit pad óók gebruiken; hun wachtwoordflow
+# blijft ongewijzigd bestaan als terugval (PWA/web).
+
+
+def accordeur_login_opties(*, e_mail: str) -> KantoorLoginOpties:
+    """Assertion-options op e-mailadres voor externe app-rollen. GeenPasskeys is bewust het
+    enige onderscheidbare faalpad (geen account-enumeratie): onbekend adres, kantoorrol,
+    niet-actieve gebruiker en passkey-loos account antwoorden identiek — de client valt dan
+    terug op de wachtwoordflow (legacy accounts) of verwijst naar een verse kantoor-link."""
+    e_mail = normaliseer_e_mail(e_mail)
+    generieke_fout = "Geen passkey voor dit adres — vraag het kantoor om een nieuwe activatielink"
+    with scoped_session(None) as session:
+        gebruiker = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == e_mail)).one_or_none()
+        if gebruiker is None or not is_externe_app_rol(gebruiker.rol) or gebruiker.status != GebruikerStatus.ACTIEF:
+            raise GeenPasskeys(generieke_fout)
+        alle = _actieve_credentials(session, gebruiker.id)
+        echte = [c for c in alle if not c.is_dev_stub]
+        stub_beschikbaar = dev_stub_actief() and any(c.is_dev_stub for c in alle)
+        if not echte:
+            if stub_beschikbaar:
+                return KantoorLoginOpties(opties=None, dev_stub=True)
+            raise GeenPasskeys(generieke_fout)
+        opties = generate_authentication_options(
+            rp_id=settings.webauthn_rp_id,
+            challenge=_maak_challenge(session, gebruiker_id=gebruiker.id, soort="assertie"),
+            allow_credentials=[PublicKeyCredentialDescriptor(id=c.credential_id) for c in echte],
+            user_verification=UserVerificationRequirement.REQUIRED,
+        )
+    return KantoorLoginOpties(opties=options_to_json(opties), dev_stub=stub_beschikbaar)
+
+
+def login_met_accordeur_passkey(
+    *, e_mail: str, credential: dict | None, dev_stub: bool = False, ip_adres: str | None = None
+) -> TokenPaar:
+    """Volledige app-login in één stap (pincode-flow 31-08): assertion mét verplichte user
+    verification. Zelfde generieke fout als service.login() — geen account-enumeratie. De
+    sessie volgt de bestaande externe-app-semantiek (apparaat-gebonden, 7-dagen sliding-TTL
+    via _refresh_ttl_voor, kill-switch per request én bij rotatie)."""
+    generic_error = "Ongeldige inloggegevens"
+    e_mail = normaliseer_e_mail(e_mail)
+    faal_gebruiker_id: uuid.UUID | None = None
+    paar: TokenPaar | None = None
+
+    with scoped_session(None) as session:
+        gebruiker = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == e_mail)).one_or_none()
+        if gebruiker is None:
+            pass
+        elif not is_externe_app_rol(gebruiker.rol) or gebruiker.status != GebruikerStatus.ACTIEF:
+            faal_gebruiker_id = gebruiker.id
+        else:
+            if dev_stub:
+                rij = _voltooi_assertie_stub(session, gebruiker_id=gebruiker.id, ip_adres=ip_adres)
+            else:
+                if credential is None:
+                    raise AuthError("WebAuthn-response ontbreekt")
+                rij = _voltooi_assertie(session, gebruiker_id=gebruiker.id, credential=credential, ip_adres=ip_adres)
+            record_audit_event(
+                session,
+                actor_id=gebruiker.id,
+                module="platform",
+                tabel="gebruiker",
+                record_id=gebruiker.id,
+                actie="login_geslaagd",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde=_login_metadata(ip_adres),
+            )
+            paar = _issue_token_paar(session, gebruiker_id=gebruiker.id, rol=gebruiker.rol, apparaat_id=rij.id)
+
+    # Zelfde patroon als login_met_kantoor_passkey: faal-audit in een eigen transactie ná de
+    # hoofdtransactie — een raise binnen het with-blok zou de audit-rij mee terugrollen.
+    if faal_gebruiker_id is not None:
+        with scoped_session(None, actor_id=faal_gebruiker_id) as log_session:
+            record_audit_event(
+                log_session,
+                actor_id=faal_gebruiker_id,
+                module="platform",
+                tabel="gebruiker",
+                record_id=faal_gebruiker_id,
+                actie="login_mislukt",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde=_login_metadata(ip_adres),
+            )
+
+    if paar is None:
+        raise AuthError(generic_error)
+    return paar
+
+
+# --- app-lock (pincode-slot native app, 31-08) ----------------------------------------------------
+#
+# De 5-cijferige code is een puur lokaal anker (mockup-notitie ①): de server slaat geen pincode
+# op en kent geen pogingen-teller. Wat de server WÉL doet: (a) na 5 foute codes meldt het toestel
+# zich uit voorzorg af — kill-switch-semantiek op het eigen apparaat + audit-event (notitie ④);
+# (b) de knop "Kantoor vragen om nieuwe link" mailt het kantoor. Beide endpoints zijn
+# ongeauthenticeerd (het toestel kán op dat moment niet meer authenticeren — het refresh-token
+# zit op slot achter de gewiste code) en antwoorden altijd 204 (geen bestaans-lek). De sleutel is
+# het credential_id: hoge entropie, leeft alleen op dit toestel en bij de server; misbruik kan
+# hoogstens het eigen apparaat uitsluiten — precies de fail-safe richting (herstel = kantoor-link).
+
+
+def meld_app_lock_uitsluiting(*, credential_id_b64: str) -> None:
+    """5× foute code (app-lock): trek het apparaat in (idempotent) + eigen audit-event
+    `app_lock_uitgesloten`. Onbekend of al ingetrokken credential = stil klaar."""
+    try:
+        credential_id = _b64url_decode(credential_id_b64)
+    except (TypeError, ValueError):
+        return
+    with scoped_session(None) as session:
+        rij = session.scalars(
+            select(WebauthnCredential).where(WebauthnCredential.credential_id == credential_id)
+        ).one_or_none()
+        if rij is None or rij.ingetrokken_op is not None:
+            return
+        gebruiker_id, apparaat_id = rij.gebruiker_id, rij.id
+    trek_apparaat_in(actor_id=gebruiker_id, apparaat_id=apparaat_id, alleen_van_gebruiker=gebruiker_id)
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        record_audit_event(
+            session,
+            actor_id=gebruiker_id,
+            module="platform",
+            tabel="webauthn_credential",
+            record_id=apparaat_id,
+            actie="app_lock_uitgesloten",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={"aanleiding": "5_foute_codes"},
+        )
+
+
+def vraag_app_lock_hulp(*, credential_id_b64: str) -> None:
+    """Knop "Kantoor vragen om nieuwe link" (mockup scherm 6): mail aan het kantoor-antwoordadres
+    + audit. Werkt óók op een zojuist ingetrokken credential (dat is juist de normale situatie
+    ná de uitsluiting). Mailfalen is gelogd, nooit een fout richting de gebruiker."""
+    try:
+        credential_id = _b64url_decode(credential_id_b64)
+    except (TypeError, ValueError):
+        return
+    with scoped_session(None) as session:
+        rij = session.scalars(
+            select(WebauthnCredential).where(WebauthnCredential.credential_id == credential_id)
+        ).one_or_none()
+        if rij is None:
+            return
+        gebruiker = session.get(Gebruiker, rij.gebruiker_id)
+        if gebruiker is None:
+            return
+        record_audit_event(
+            session,
+            actor_id=gebruiker.id,
+            module="platform",
+            tabel="webauthn_credential",
+            record_id=rij.id,
+            actie="app_lock_hulp_gevraagd",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde=None,
+        )
+        naam, e_mail = gebruiker.naam, gebruiker.e_mail
+    from app.berichten import uitnodigingsmail
+
+    uitnodigingsmail.verstuur_app_lock_hulp_aan_kantoor(naam=naam, e_mail=e_mail)
+
+
 # --- apparaatbeheer / kill-switch -----------------------------------------------------------------
 
 
