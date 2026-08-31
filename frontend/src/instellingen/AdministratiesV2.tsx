@@ -54,7 +54,10 @@ function datumKort(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' })
 }
 
-/** Chips: alleen ingeschakelde modules en afwijkingen van de defaults (mockup-regel). */
+/**
+ * Chips: ingeschakelde modules (info) en afwijkingen van de defaults (warn) eerst; daarna — feedback
+ * Peter 30-08 — de WERKELIJKE stand per rij: gedempte (stil) chips voor "aan volgens default".
+ */
 export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; variant: 'info' | 'warn' | 'stil' | 'ok'; titel?: string }[] {
   const chips: { tekst: string; variant: 'info' | 'warn' | 'stil' | 'ok'; titel?: string }[] = []
   if (a.is_vastgoed) chips.push({ tekst: 'Vastgoed + autoboeken', variant: 'info', titel: 'Vastgoed-koppeling (Vastly) — autoboeken verkoop volgt de koppeling' })
@@ -68,6 +71,9 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
   if (a.accordering_ingeschakeld) chips.push({ tekst: 'Klant-accordering', variant: 'info' })
   if (!a.boeken_ingeschakeld) chips.push({ tekst: 'Boeken UIT (afwijking)', variant: 'warn' })
   if (!a.ai_extractie_ingeschakeld) chips.push({ tekst: 'AI-extractie UIT (afwijking)', variant: 'warn' })
+  // Werkelijke stand bij "aan volgens default": gedempt achteraan (afwijkingen en modules eerst).
+  if (a.boeken_ingeschakeld) chips.push({ tekst: 'Boeken ✓', variant: 'stil', titel: 'boeken aan — default' })
+  if (a.ai_extractie_ingeschakeld) chips.push({ tekst: 'AI-extractie ✓', variant: 'stil', titel: 'AI-extractie aan — default' })
   return chips
 }
 

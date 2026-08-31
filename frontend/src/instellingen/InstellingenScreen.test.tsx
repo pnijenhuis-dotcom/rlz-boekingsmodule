@@ -574,7 +574,7 @@ describe('InstellingenScreen — administraties v2 (30-08)', () => {
     vi.unstubAllGlobals()
   })
 
-  it('toont per rij meta, module-/afwijkings-chips en de sync-chip; defaults zonder chip; oude kolommen weg', async () => {
+  it('toont per rij meta, module-/afwijkings-chips en de sync-chip; aan volgens default = stille ✓-chip (30-08); oude kolommen weg', async () => {
     installFetchMock({
       rol: 'beheerder',
       administraties: [
@@ -589,6 +589,10 @@ describe('InstellingenScreen — administraties v2 (30-08)', () => {
     expect(screen.getByText('Afdelingen')).toBeInTheDocument()
     expect(screen.getByText('AI-extractie UIT (afwijking)')).toBeInTheDocument()
     expect(screen.queryByText('Boeken UIT (afwijking)')).not.toBeInTheDocument()
+    // Werkelijke stand (feedback Peter 30-08): aan volgens default = gedempte ✓-chip, nooit náást een warn-chip.
+    expect(screen.getAllByText('Boeken ✓')).toHaveLength(2)
+    expect(screen.getAllByText('AI-extractie ✓')).toHaveLength(1)
+    expect(screen.getAllByTitle('boeken aan — default')).toHaveLength(2)
     expect(screen.getAllByText('geen credentials')).toHaveLength(1)
     expect(screen.getByText(/✓ \d\d:\d\d/)).toBeInTheDocument()
     expect(screen.queryByText('Autoboeken Vastly-verkoop')).not.toBeInTheDocument()

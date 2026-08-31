@@ -426,6 +426,20 @@ describe('GoedkeurenFlow', () => {
     await waitFor(() => expect(geaccordeerd).toEqual(['d1', 'd2']))
   })
 
+  it('beheer "Staande goedkeuringen" staat in de .acc-subvlak-wrapper — gecentreerd op het tablet-breakpoint (iPad-kliktest 30-08)', async () => {
+    const routes = basisRoutes([ITEM])
+    routes['/administraties/a1/accordering/staande-regels'] = () => jsonResponse({ regels: [] })
+    stubFetch(routes)
+    renderFlow()
+
+    await screen.findByText('1 factuur wacht op je akkoord')
+    await userEvent.click(screen.getByTitle('Staande goedkeuringen'))
+
+    const kop = await screen.findByRole('heading', { name: 'Staande goedkeuringen' })
+    expect(kop.closest('.acc-subvlak')).not.toBeNull()
+    expect(screen.getByText(/nog geen staande goedkeuringen/)).toBeInTheDocument()
+  })
+
   it('heeft een uitlog-knop in de header die de sessie beëindigt (kliktest 2026-08-12)', async () => {
     stubFetch(basisRoutes([ITEM]))
     const uitloggen = vi.fn(() => Promise.resolve())

@@ -1105,7 +1105,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen }: Props) {
         )}
 
         {weergave === 'beheer' && (
-          <div>
+          <div className="acc-subvlak">
             <div className="acc-revtop">
               <button className="acc-terug" onClick={() => setWeergave('wachtrij')}>
                 ‹ Wachtrij

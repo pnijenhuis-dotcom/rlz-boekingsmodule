@@ -183,6 +183,15 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Centreer-wrapper voor subschermen mét smalle inhoud binnen .acc-content: op het
+   tablet-breakpoint (kolom 640px) blijft zo'n scherm de telefoonmaat houden en centreert het
+   i.p.v. links te hangen (iPad-kliktest 30-08, beheer "Staande goedkeuringen"). */
+.acc-subvlak {
+  width: 100%;
+  max-width: 430px;
+  margin: 0 auto;
+}
+
 /* ===== Chips ===== */
 .acc-chip {
   display: inline-block;
@@ -1180,7 +1189,12 @@
   line-height: 1.5;
 }
 
-.acc-fotoknop {
+/* Uploadveld als eigen knop (overlap-bug iPad 30-08, vervangt .acc-fotoknop): verborgen
+   file-input ín de knop — position:relative verankert de absolute input hiér (niet op
+   .acc-phone), overflow:hidden houdt 'm binnen de knop. */
+.acc-bestandknop {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1194,6 +1208,17 @@
   width: 100%;
   background: none;
   font-family: inherit;
+}
+.acc-bestandknop[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* Gekozen bestandsnaam: nooit de knop laten groeien — afkappen met ellipsis. */
+.acc-bestandknop-naam {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .acc-mwrij {
@@ -1444,4 +1469,24 @@
   font-size: 11.5px;
   color: var(--acc-muted);
   line-height: 1.5;
+}
+
+/* Werkopdracht bij een geplande dag (31-08, mockup planning-werkopdracht-transport veld-app-
+ * paneel): paars alleen-lezen blokje onder de projectregel; de dag-override toont "afwijkend". */
+.acc-werkopdracht {
+  display: block;
+  background: #251b3d;
+  border: 1px solid #4a3a76;
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin-top: 6px;
+  color: #cdbdf6;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.acc[data-thema='licht'] .acc-werkopdracht {
+  background: #f1ecfb;
+  border-color: #cdbdf6;
+  color: #4a3a76;
 }

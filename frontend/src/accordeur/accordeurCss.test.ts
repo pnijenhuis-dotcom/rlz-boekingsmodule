@@ -53,3 +53,41 @@ describe('accordeur.css — telefoonkolom + tablet-breakpoint (iPad-ronde 29-08)
     expect(minWidth).toBeGreaterThan(430)
   })
 })
+
+/** Vindt het regelblok van één selector (zelfde tekst-patroon als hierboven). */
+function blokVan(selector: string): string {
+  const start = cssZonderCommentaar.indexOf(`${selector} {`)
+  if (start === -1) throw new Error(`${selector}-regel niet gevonden`)
+  return cssZonderCommentaar.slice(start, cssZonderCommentaar.indexOf('}', start))
+}
+
+describe('accordeur.css — centreer-wrapper subschermen (iPad-kliktest 30-08)', () => {
+  it('.acc-subvlak bestaat mét max-width en auto-marges: smalle subschermen centreren op het tablet-breakpoint', () => {
+    const blok = blokVan('.acc-subvlak')
+    expect(blok).toMatch(/max-width:\s*\d+px/)
+    expect(blok).toMatch(/margin:\s*0 auto/)
+    // Nooit breder dan de telefoonkolom — de wrapper is juist de telefoonmaat op een tablet.
+    expect(maxBreedte(blok)).toBeLessThanOrEqual(430)
+  })
+})
+
+describe('accordeur.css — uploadknop i.p.v. kale file-input (overlap-bug iPad 30-08)', () => {
+  it('.acc-bestandknop verankert de verborgen absolute input op zichzelf (position:relative + overflow:hidden)', () => {
+    const blok = blokVan('.acc-bestandknop')
+    expect(blok).toMatch(/position:\s*relative/)
+    expect(blok).toMatch(/overflow:\s*hidden/)
+    expect(blok).toMatch(/width:\s*100%/)
+  })
+
+  it('.acc-bestandknop-naam kapt een lange bestandsnaam af met ellipsis', () => {
+    const blok = blokVan('.acc-bestandknop-naam')
+    expect(blok).toMatch(/overflow:\s*hidden/)
+    expect(blok).toMatch(/text-overflow:\s*ellipsis/)
+    expect(blok).toMatch(/white-space:\s*nowrap/)
+    expect(blok).toMatch(/max-width:\s*100%/)
+  })
+
+  it('de oude .acc-fotoknop (input verankerde fragiel op .acc-phone) is volledig gemigreerd', () => {
+    expect(cssZonderCommentaar).not.toContain('.acc-fotoknop')
+  })
+})
