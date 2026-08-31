@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: pincode-activatie + app-lock — Nijenhuis Goedkeuren (ING-patroon)</title>
+<!-- ============================================================
+     BESLUIT PETER 31-08: activatie én toegang app-rollen op het
+     ING-patroon — 5-cijferige code is het ANKER, Face ID/vinger-
+     afdruk het gemakslaagje erover. Wachtwoord verdwijnt uit de
+     klant-flow. Patroon gedeeld met Vastly (referentie:
+     app-lock-pincode-vastly-referentie.html); dit is de RLZ-variant
+     in de Goedkeuren-huisstijl mét de aangepaste ACTIVATIE.
+     HARDE BOUW-EIS: lokale sleutel toestel-gebonden (Keychain
+     zónder biometryCurrentSet / Android zónder
+     setInvalidatedByBiometricEnrollment) — biometrie-falen of
+     -herinschrijving (nieuw gezicht) sluit NOOIT uit; de code
+     werkt altijd lokaal. Pincode is nooit een server-credential:
+     de passkey/het apparaat-token blijft de echte sleutel eronder,
+     kill-switch per apparaat blijft onverkort werken.
+     ============================================================ -->
+<style>
+  :root{
+    --bg:#101917; --kaart:#16211f; --kaart2:#121b1a; --rand:#263431; --rand2:#2c3a36;
+    --tekst:#e6ecea; --dim:#93a4a0; --dim2:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513; --danger:#f08579;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b100f;color:var(--tekst);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter',Segoe UI,sans-serif;padding:28px}
+  h1{font-size:20px;margin-bottom:4px}
+  .sub{color:var(--dim);font-size:13px;max-width:960px;line-height:1.6;margin-bottom:26px}
+  .rij{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .frame{width:390px;min-height:720px;background:var(--bg);border:1px solid var(--rand2);border-radius:34px;padding:52px 24px 30px;position:relative;display:flex;flex-direction:column}
+  .frame .label{position:absolute;top:-24px;left:8px;font-size:12px;color:var(--teal);font-weight:700;letter-spacing:.4px}
+  .notch{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:110px;height:22px;background:#000;border-radius:12px}
+  .logo{margin:22px auto 12px;text-align:center;font-weight:800;font-size:17px}
+  .logo b{color:var(--teal)}
+  .titel{font-size:22px;font-weight:800;text-align:center;letter-spacing:-.2px}
+  .body{font-size:14px;color:var(--dim);text-align:center;line-height:1.6;margin-top:8px}
+  .faceid{width:74px;height:74px;margin:34px auto 8px;border:2.5px solid var(--teal);border-radius:20px;position:relative}
+  .faceid:before{content:"";position:absolute;inset:16px 18px auto 18px;height:8px;border-left:3px solid var(--teal);border-right:3px solid var(--teal)}
+  .faceid:after{content:"";position:absolute;left:22px;right:22px;bottom:16px;height:14px;border:3px solid var(--teal);border-top:none;border-radius:0 0 12px 12px}
+  .dots{display:flex;gap:16px;justify-content:center;margin:28px 0 6px}
+  .dot{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--dim2)}
+  .dot.vol{background:var(--teal);border-color:var(--teal)}
+  .dot.fout{border-color:var(--danger);background:rgba(240,133,121,.25)}
+  .numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:auto;padding-top:24px}
+  .num{height:62px;border-radius:16px;background:var(--kaart);border:1px solid var(--rand);display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:600}
+  .num.stil{background:none;border:none;font-size:13px;color:var(--dim)}
+  .knop{display:block;width:100%;padding:15px;border-radius:14px;background:var(--teal);color:var(--teal-donker);font-weight:800;font-size:15.5px;text-align:center;border:none;margin-top:14px}
+  .link{display:block;text-align:center;color:var(--dim);font-size:14px;text-decoration:underline;margin-top:16px}
+  .fout{color:var(--danger);font-size:13.5px;text-align:center;margin-top:10px}
+  .hintfout{font-size:12px;color:var(--dim);text-align:center;margin-top:6px}
+  .stappen{display:flex;gap:6px;justify-content:center;margin-bottom:16px}
+  .stap{width:26px;height:4px;border-radius:2px;background:var(--rand2)}
+  .stap.actief{background:var(--teal)}
+  .instelrij{display:flex;justify-content:space-between;align-items:center;background:var(--kaart);border:1px solid var(--rand);border-radius:14px;padding:16px;margin-bottom:10px;gap:10px}
+  .instelrij .t{font-size:14.5px;font-weight:600}
+  .instelrij .s{font-size:12px;color:var(--dim);margin-top:3px;line-height:1.5;max-width:240px}
+  .switch{width:46px;height:27px;border-radius:14px;background:var(--teal);position:relative;flex-shrink:0}
+  .switch:after{content:"";position:absolute;top:2.5px;right:3px;width:22px;height:22px;border-radius:50%;background:var(--teal-donker)}
+  .switch.uit{background:var(--rand2)}
+  .switch.uit:after{right:auto;left:3px;background:var(--dim2)}
+  .kop{font-size:11px;font-weight:800;letter-spacing:1.3px;color:var(--teal);text-transform:uppercase;margin:18px 0 10px}
+  .terug{color:var(--dim);font-size:14px;margin-bottom:10px}
+  .vinkrij{display:flex;gap:10px;align-items:flex-start;background:var(--kaart);border:1px solid var(--rand);border-radius:12px;padding:13px 14px;margin-top:16px;font-size:12.5px;color:var(--dim);line-height:1.55;text-align:left}
+  .vink{width:20px;height:20px;border-radius:6px;background:var(--teal);flex-shrink:0;display:grid;place-items:center;color:var(--teal-donker);font-weight:900;font-size:13px}
+  .noot{max-width:960px;background:var(--kaart);border:1px solid var(--rand);border-radius:14px;padding:18px;margin-top:34px;font-size:13px;color:var(--dim);line-height:1.75}
+  .noot b{color:var(--tekst)}
+</style>
+</head>
+<body>
+<h1>Pincode-activatie + app-lock — Nijenhuis Goedkeuren</h1>
+<p class="sub">Besluit Peter 31-08, ING-patroon, gedeeld met Vastly. Verschil met de Vastly-referentie: bij ons zit de
+code-keuze ín de activatie en vervalt de wachtwoordstap volledig. Flow klant: mail-link tikken → code kiezen →
+bevestigen → Face ID aan → voorwaarden → klaar. Daarna dagelijks: app openen = Face ID, terugval = code. Geldt voor
+accordeurs én veldrollen, iOS en Android (vingerafdruk/gezicht).</p>
+
+<div class="rij">
+
+  <div class="frame"><span class="label">1 · Activatie — code kiezen (na tikken mail-link)</span>
+    <div class="notch"></div>
+    <div class="stappen" style="margin-top:18px"><span class="stap actief"></span><span class="stap"></span><span class="stap"></span></div>
+    <div class="logo">Nijenhuis <b>Goedkeuren</b></div>
+    <div class="titel">Welkom, Jan</div>
+    <p class="body">Kies een code van 5 cijfers.<br>Hiermee open je voortaan de app.</p>
+    <div class="dots"><span class="dot vol"></span><span class="dot vol"></span><span class="dot vol"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="hintfout">Geen reeks als 12345 of 00000.</div>
+    <div class="numpad">
+      <div class="num">1</div><div class="num">2</div><div class="num">3</div>
+      <div class="num">4</div><div class="num">5</div><div class="num">6</div>
+      <div class="num">7</div><div class="num">8</div><div class="num">9</div>
+      <div class="num stil"></div><div class="num">0</div><div class="num stil">Wis</div>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">2 · Activatie — bevestigen</span>
+    <div class="notch"></div>
+    <div class="stappen" style="margin-top:18px"><span class="stap actief"></span><span class="stap actief"></span><span class="stap"></span></div>
+    <div class="logo">Nijenhuis <b>Goedkeuren</b></div>
+    <div class="titel">Nog één keer</div>
+    <p class="body">Voer dezelfde code nog een keer in.</p>
+    <div class="dots"><span class="dot vol"></span><span class="dot vol"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="numpad">
+      <div class="num">1</div><div class="num">2</div><div class="num">3</div>
+      <div class="num">4</div><div class="num">5</div><div class="num">6</div>
+      <div class="num">7</div><div class="num">8</div><div class="num">9</div>
+      <div class="num stil">‹ Terug</div><div class="num">0</div><div class="num stil">Wis</div>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">3 · Activatie — Face ID + voorwaarden, klaar</span>
+    <div class="notch"></div>
+    <div class="stappen" style="margin-top:18px"><span class="stap actief"></span><span class="stap actief"></span><span class="stap actief"></span></div>
+    <div class="logo">Nijenhuis <b>Goedkeuren</b></div>
+    <div class="titel">Face ID gebruiken?</div>
+    <div class="faceid"></div>
+    <p class="body">Dan hoef je je code bijna nooit te typen.<br>Werkt Face ID even niet, dan werkt je code altijd.</p>
+    <div class="vinkrij"><span class="vink">✓</span><span>Ik ga akkoord met de gebruiksvoorwaarden en de privacyverklaring (versie 2026-08-28-v2).</span></div>
+    <div style="margin-top:auto">
+      <button class="knop">Face ID aanzetten en beginnen</button>
+      <a class="link">Liever alleen met code — sla over</a>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">4 · Dagelijks openen (standaardpad, geen interactie)</span>
+    <div class="notch"></div>
+    <div class="logo" style="margin-top:120px">Nijenhuis <b>Goedkeuren</b></div>
+    <div class="titel">Welkom terug</div>
+    <div class="faceid"></div>
+    <p class="body">Ontgrendelen met Face ID…</p>
+    <div style="margin-top:auto"><a class="link">Code gebruiken</a></div>
+  </div>
+
+  <div class="frame"><span class="label">5 · Code-terugval (Face ID faalt/weggetikt/nieuw gezicht)</span>
+    <div class="notch"></div>
+    <div class="logo" style="margin-top:40px">Nijenhuis <b>Goedkeuren</b></div>
+    <div class="titel">Voer je code in</div>
+    <div class="dots"><span class="dot vol"></span><span class="dot vol"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="numpad">
+      <div class="num">1</div><div class="num">2</div><div class="num">3</div>
+      <div class="num">4</div><div class="num">5</div><div class="num">6</div>
+      <div class="num">7</div><div class="num">8</div><div class="num">9</div>
+      <div class="num stil"></div><div class="num">0</div><div class="num stil">Wis</div>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">6 · 5× fout → uit voorzorg uitgelogd</span>
+    <div class="notch"></div>
+    <div class="logo" style="margin-top:40px">Nijenhuis <b>Goedkeuren</b></div>
+    <div class="titel">Even opnieuw beginnen</div>
+    <div class="dots"><span class="dot fout"></span><span class="dot fout"></span><span class="dot fout"></span><span class="dot fout"></span><span class="dot fout"></span></div>
+    <p class="fout">De code is 5 keer onjuist ingevoerd.</p>
+    <p class="body">Uit voorzorg is dit toestel uitgelogd. Vraag het kantoor om een nieuwe activatielink — daarna kies je opnieuw een code en werkt alles zoals je gewend bent.</p>
+    <div style="margin-top:auto"><button class="knop">Kantoor vragen om nieuwe link</button></div>
+  </div>
+
+  <div class="frame"><span class="label">7 · Instellingen · Toegang</span>
+    <div class="notch"></div>
+    <div class="terug">‹ Instellingen</div>
+    <div class="titel" style="text-align:left;font-size:20px">Toegang tot de app</div>
+    <div class="kop">Slot op de app</div>
+    <div class="instelrij"><div><div class="t">Face ID gebruiken</div><div class="s">Open de app met gezichtsherkenning. Op Android: vingerafdruk of gezicht.</div></div><div class="switch"></div></div>
+    <div class="instelrij"><div><div class="t">Code wijzigen</div><div class="s">Je huidige code is nodig om een nieuwe te kiezen.</div></div><div style="color:var(--dim)">›</div></div>
+    <div class="instelrij"><div><div class="t">Direct vergrendelen</div><div class="s">Vraag het slot meteen bij het wisselen van app. Uit: pas na 5 minuten.</div></div><div class="switch uit"></div></div>
+    <div class="kop">Dit toestel</div>
+    <div class="instelrij"><div><div class="t">Toestel ontkoppelen</div><div class="s">Logt dit toestel uit; opnieuw koppelen kan met een verse link van het kantoor.</div></div><div style="color:var(--dim)">›</div></div>
+  </div>
+
+</div>
+
+<p class="noot"><b>Ontwerpnotities (bouwnorm ná akkoord):</b> ① De 5-cijferige code is het <b>anker</b>: hij ontgrendelt
+lokaal een toestel-gebonden sleutel die het bestaande apparaat-token/de passkey beschermt — de code gaat <b>nooit</b>
+naar de server, er is dus geen server-side pincode-opslag of brute-force-apparaat nodig, en de kill-switch per apparaat
+blijft onverkort werken. ② <b>Harde eis:</b> sleutelopslag toestel-gebonden, expliciet NIET aan de biometrie-set
+(iOS: géén biometryCurrentSet; Android: setInvalidatedByBiometricEnrollment=false) — Face ID-falen of een nieuw
+ingeschreven gezicht mag nooit uitsluiten; de code werkt altijd. ③ Biometrie is puur gemak (scherm 4); weggetikt of
+mislukt → scherm 5. ④ 5 foute codes = sessie + code lokaal gewist + audit-event, herstel = verse kantoor-link
+(bestaand poortwachter-model, geen selfservice). ⑤ De wachtwoordstap vervalt volledig uit de activatie (herziet de
+atomaire flow van 28-08: de code-keuze vervangt het wachtwoord; de passkey-registratie gebeurt onder water bij stap 3,
+zonder eigen scherm). Voorwaarden-akkoord blijft server-side afgedwongen. ⑥ Zwakke reeksen (12345, 00000, 11111…)
+geweigerd met vriendelijke tekst. ⑦ Zelfde patroon als Vastly (referentie-mockup) = platform-consistent. ⑧ Vereist een
+kleine native biometrie-/keystore-module → meeliften met de volgende store-build (bv. samen met geofence v1.1).</p>
+</body>
+</html>

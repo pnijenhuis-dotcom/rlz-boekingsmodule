@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: app-lock met pincode + FaceID (ING-patroon)</title>
+<style>
+  :root{
+    --bg:#0A0B0C; --kaart:#151719; --kaart2:#1A1D1F; --rand:#232628; --rand2:#2C3134;
+    --tekst:#F2F4F3; --dim:#9BA3A0; --dim2:#7C8582;
+    --groen:#6EE7B7; --groen-rand:#2C5A46; --primair:#8fd7ae; --danger:#F87171;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#060707;color:var(--tekst);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Segoe UI,Roboto,sans-serif;padding:28px}
+  h1{font-size:20px;margin-bottom:4px}
+  .sub{color:var(--dim);font-size:13px;max-width:900px;line-height:1.6;margin-bottom:24px}
+  .rij{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .frame{width:390px;min-height:730px;background:var(--bg);border:1px solid var(--rand2);border-radius:34px;padding:52px 24px 30px;position:relative;display:flex;flex-direction:column}
+  .frame .label{position:absolute;top:-24px;left:8px;font-size:12px;color:var(--groen);font-weight:700;letter-spacing:.4px}
+  .notch{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:110px;height:22px;background:#000;border-radius:12px}
+  .logo{width:52px;height:52px;border-radius:13px;background:linear-gradient(150deg,#123528,#0E2A1D);border:1px solid var(--groen-rand);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:26px;color:var(--groen);margin:26px auto 14px}
+  .titel{font-size:22px;font-weight:800;text-align:center;letter-spacing:-.2px}
+  .body{font-size:14px;color:var(--dim);text-align:center;line-height:1.6;margin-top:8px}
+  .faceid{width:74px;height:74px;margin:38px auto 10px;border:2.5px solid var(--groen);border-radius:20px;position:relative;opacity:.95}
+  .faceid:before{content:"";position:absolute;inset:16px 18px auto 18px;height:8px;border-left:3px solid var(--groen);border-right:3px solid var(--groen)}
+  .faceid:after{content:"";position:absolute;left:22px;right:22px;bottom:16px;height:14px;border:3px solid var(--groen);border-top:none;border-radius:0 0 12px 12px}
+  .dots{display:flex;gap:16px;justify-content:center;margin:30px 0 6px}
+  .dot{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--dim2)}
+  .dot.vol{background:var(--groen);border-color:var(--groen)}
+  .dot.fout{border-color:var(--danger);background:rgba(248,113,113,.25)}
+  .numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:auto;padding-top:26px}
+  .num{height:64px;border-radius:16px;background:var(--kaart);border:1px solid var(--rand);display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:600}
+  .num.stil{background:none;border:none;font-size:13.5px;color:var(--dim)}
+  .knop{display:block;width:100%;padding:15px;border-radius:14px;background:var(--primair);color:#0A0B0C;font-weight:800;font-size:15.5px;text-align:center;border:none;margin-top:14px}
+  .knop.secundair{background:var(--kaart);color:var(--tekst);border:1px solid var(--rand2)}
+  .link{display:block;text-align:center;color:var(--dim);font-size:14px;text-decoration:underline;margin-top:18px}
+  .foutmelding{color:var(--danger);font-size:13.5px;text-align:center;margin-top:10px}
+  .instelrij{display:flex;justify-content:space-between;align-items:center;background:var(--kaart);border:1px solid var(--rand);border-radius:14px;padding:16px;margin-bottom:10px}
+  .instelrij .t{font-size:14.5px;font-weight:600}
+  .instelrij .s{font-size:12px;color:var(--dim);margin-top:3px;line-height:1.5;max-width:240px}
+  .switch{width:46px;height:27px;border-radius:14px;background:var(--groen);position:relative;flex-shrink:0}
+  .switch:after{content:"";position:absolute;top:2.5px;right:3px;width:22px;height:22px;border-radius:50%;background:#0A0B0C}
+  .switch.uit{background:var(--rand2)}
+  .switch.uit:after{right:auto;left:3px;background:var(--dim2)}
+  .kop{font-size:11px;font-weight:800;letter-spacing:1.3px;color:var(--groen);text-transform:uppercase;margin:18px 0 10px}
+  .terug{color:var(--dim);font-size:14px;margin-bottom:12px}
+  .noot{max-width:900px;background:var(--kaart);border:1px solid var(--rand);border-radius:14px;padding:18px;margin-top:34px;font-size:13px;color:var(--dim);line-height:1.7}
+  .noot b{color:var(--tekst)}
+</style>
+</head>
+<body>
+<h1>App-lock: pincode + FaceID (ING-patroon)</h1>
+<p class="sub">Vijf schermen, mobiel 390px, donkere huisstijl. Principe: de bestaande apparaat-gebonden sessie blijft
+staan; de app krijgt een lokaal slot. FaceID (of vingerafdruk op Android) opent direct, de pincode is de terugval.
+Vijf foute pogingen wist de sessie en de gebruiker logt opnieuw in met passkey of wachtwoord. De pincode is nooit
+een inlogmiddel richting de server.</p>
+
+<div class="rij">
+
+  <div class="frame"><span class="label">1 · Openen met FaceID (standaardpad, geen interactie nodig)</span>
+    <div class="notch"></div>
+    <div class="logo">V</div>
+    <div class="titel">Welkom terug</div>
+    <div class="faceid"></div>
+    <p class="body">Ontgrendelen met FaceID…</p>
+    <div style="margin-top:auto">
+      <a class="link">Pincode gebruiken</a>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">2 · Pincode-terugval</span>
+    <div class="notch"></div>
+    <div class="logo">V</div>
+    <div class="titel">Voer je pincode in</div>
+    <div class="dots"><span class="dot vol"></span><span class="dot vol"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="numpad">
+      <div class="num">1</div><div class="num">2</div><div class="num">3</div>
+      <div class="num">4</div><div class="num">5</div><div class="num">6</div>
+      <div class="num">7</div><div class="num">8</div><div class="num">9</div>
+      <div class="num stil">Opnieuw<br>inloggen</div><div class="num">0</div><div class="num stil">Wis</div>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">3 · Pincode instellen (na eerste login of activatie)</span>
+    <div class="notch"></div>
+    <div class="terug">‹ Terug</div>
+    <div class="logo">V</div>
+    <div class="titel">Kies een pincode</div>
+    <p class="body">Hiermee open je Vastly als FaceID even niet kan. Vijf cijfers, geen reeks als 12345.</p>
+    <div class="dots"><span class="dot vol"></span><span class="dot vol"></span><span class="dot vol"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="numpad">
+      <div class="num">1</div><div class="num">2</div><div class="num">3</div>
+      <div class="num">4</div><div class="num">5</div><div class="num">6</div>
+      <div class="num">7</div><div class="num">8</div><div class="num">9</div>
+      <div class="num stil"></div><div class="num">0</div><div class="num stil">Wis</div>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">4 · Te vaak onjuist (na 5 pogingen)</span>
+    <div class="notch"></div>
+    <div class="logo">V</div>
+    <div class="titel">Even opnieuw inloggen</div>
+    <div class="dots"><span class="dot fout"></span><span class="dot fout"></span><span class="dot fout"></span><span class="dot fout"></span><span class="dot fout"></span></div>
+    <p class="foutmelding">De pincode is 5 keer onjuist ingevoerd.</p>
+    <p class="body">Uit voorzorg ben je uitgelogd op dit toestel. Log opnieuw in, daarna werken FaceID en je pincode weer zoals je gewend bent.</p>
+    <div style="margin-top:auto">
+      <button class="knop">Opnieuw inloggen</button>
+    </div>
+  </div>
+
+  <div class="frame"><span class="label">5 · Instellingen · Beveiliging</span>
+    <div class="notch"></div>
+    <div class="terug">‹ Instellingen</div>
+    <div class="titel" style="text-align:left;font-size:20px">Toegang tot de app</div>
+    <div class="kop">Slot op de app</div>
+    <div class="instelrij"><div><div class="t">FaceID gebruiken</div><div class="s">Open Vastly met gezichtsherkenning. Op Android: vingerafdruk.</div></div><div class="switch"></div></div>
+    <div class="instelrij"><div><div class="t">Pincode wijzigen</div><div class="s">Je huidige pincode is nodig om een nieuwe te kiezen.</div></div><div style="color:var(--dim)">›</div></div>
+    <div class="instelrij"><div><div class="t">Direct vergrendelen</div><div class="s">Vraag het slot meteen bij het wisselen van app. Uit: pas na 5 minuten.</div></div><div class="switch uit"></div></div>
+    <div class="kop">Inloggen</div>
+    <div class="instelrij"><div><div class="t">Passkeys en apparaten</div><div class="s">Beheer waarmee je inlogt op nieuwe apparaten.</div></div><div style="color:var(--dim)">›</div></div>
+  </div>
+
+</div>
+
+<p class="noot"><b>Ontwerpnotities (voor de bouwopdracht):</b> het slot bewaakt de bestaande sessie en vervangt niets
+aan de serverkant. FaceID-pad = scherm 1, automatisch bij openen; lukt biometrie niet of tikt de gebruiker weg, dan
+scherm 2. Pincode-hash lokaal in de beveiligde opslag; 5 fouten wist sessie en pincode (scherm 4), audit-event
+app_lock_uitgelogd. Instellen (scherm 3) direct na de eerste login op een toestel en altijd via Instellingen;
+zwakke reeksen (12345, 00000) geweigerd met vriendelijke tekst. Zelfde flow op Android met vingerafdruk/gezicht.
+Vereist een nieuwe native module voor biometrie: mee met store-build 7.</p>
+</body>
+</html>
