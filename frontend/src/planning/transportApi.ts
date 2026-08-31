@@ -12,6 +12,12 @@ export interface LeverancierDto {
   vendor_id: string | null
   actief: boolean
   aantal_producten: number
+  // Contactpersonen transport-statusflow (31-08): transport-contact krijgt de bevestig-mail,
+  // materiaal-contact de materiaallijst bij definitief + de delta bij wijziging.
+  transport_contact_naam: string | null
+  transport_contact_email: string | null
+  materiaal_contact_naam: string | null
+  materiaal_contact_email: string | null
 }
 
 export interface ProductDto {
@@ -94,13 +100,30 @@ export interface TransportDto {
   soort: 'levering' | 'retour'
   datum: string
   tijdstip: string | null
-  status: 'gepland' | 'bevestigd' | 'geleverd' | 'geannuleerd'
+  // Statusflow 31-08: gereserveerd (rood) → bevestigd (oranje) → definitief (groen) → geleverd
+  // (grijs); legacy 'gepland' komt van de server al als 'gereserveerd' terug.
+  status: 'gereserveerd' | 'bevestigd' | 'definitief' | 'geleverd' | 'geannuleerd'
   status_bron: string
   status_reden: string | null
   regels: { product_id: string; naam: string; aantal: number; eenheid: string }[]
   samenvatting: string
   m2: string
   omschrijving: string | null
+  // Dag-agenda-kaart (31-08): zelfstandig leesbaar zonder projectrij.
+  voertuig: 'combi' | 'voorwagen' | null
+  transportplanner: string | null
+  opdrachtgever: string | null
+  project_adres: string | null
+}
+
+/** Signaalkaart "nog te plannen": verstuurde bestelling mét leverdatum in de week zonder transportregel. */
+export interface TePlannenDto {
+  bestelling_id: string
+  bestelling_nummer: string
+  project_id: string
+  project_naam: string | null
+  leverancier_naam: string
+  datum: string
 }
 
 export interface WachtrisicoDto {
@@ -134,6 +157,7 @@ export interface TransportWeekDto {
   bestellingen_concept: number
   bestellingen_met_wijzigingen: number
   materiaalmatch_open: number
+  te_plannen: TePlannenDto[]
 }
 
 export interface StandRegelDto {
@@ -190,7 +214,10 @@ export function haalLeveranciers(administratieId: string, zoek = '', alleenActie
   return apiJson(`/materiaal/${administratieId}/leveranciers?${q}`)
 }
 
-export function zetLeverancier(administratieId: string, payload: Partial<LeverancierDto> & { naam: string }): Promise<{ id: string }> {
+export function zetLeverancier(
+  administratieId: string,
+  payload: Partial<LeverancierDto> & { naam: string },
+): Promise<{ id: string }> {
   return apiJson(`/materiaal/${administratieId}/leveranciers`, { ...JSON_PUT, body: JSON.stringify(payload) })
 }
 
@@ -314,13 +341,54 @@ export function planTransport(
 export function wijzigTransport(
   administratieId: string,
   transportId: string,
-  payload: { datum?: string | null; tijdstip?: string | null; regels?: Record<string, number> | null; omschrijving?: string | null; project_id?: string | null },
+  payload: {
+    datum?: string | null
+    tijdstip?: string | null
+    regels?: Record<string, number> | null
+    omschrijving?: string | null
+    project_id?: string | null
+    soort?: 'levering' | 'retour' | null // alleen zolang gereserveerd (werkbakje-kaart wisselen ▲/▼)
+  },
 ): Promise<TransportDto> {
   return apiJson(`/materiaal/${administratieId}/transport/${transportId}`, { ...JSON_PUT, body: JSON.stringify(payload) })
 }
 
 export function zetTransportStatus(administratieId: string, transportId: string, status: TransportDto['status'], reden?: string): Promise<TransportDto> {
   return apiPostJson(`/materiaal/${administratieId}/transport/${transportId}/status`, { status, reden: reden ?? null })
+}
+
+/** Rood → oranje: kantoor legt het door het transport-contact toegezegde voertuig vast; de
+ * server mailt het transport-contact (422 = geen contact ingevuld, 502 = mailfout). */
+export function bevestigTransport(administratieId: string, transportId: string, voertuig: 'combi' | 'voorwagen'): Promise<TransportDto> {
+  return apiPostJson(`/materiaal/${administratieId}/transport/${transportId}/bevestigen`, { voertuig })
+}
+
+/** Oranje → groen: materiaallijst + transportplanner — de volledige lijst gaat naar het
+ * materiaal-contact (422 = lege lijst/planner/geen contact, 502 = mailfout). */
+export function maakTransportDefinitief(
+  administratieId: string,
+  transportId: string,
+  regels: Record<string, number>,
+  transportplanner: string,
+): Promise<TransportDto> {
+  return apiPostJson(`/materiaal/${administratieId}/transport/${transportId}/definitief`, { regels, transportplanner })
+}
+
+/** Materiaallijst wijzigen ná definitief: het materiaal-contact krijgt alléén de delta
+ * (oud → nieuw); 409 = geen wijzigingen. */
+export function wijzigMateriaallijst(
+  administratieId: string,
+  transportId: string,
+  regels: Record<string, number>,
+  transportplanner?: string | null,
+): Promise<TransportDto> {
+  return apiPostJson(`/materiaal/${administratieId}/transport/${transportId}/materiaallijst`, { regels, transportplanner: transportplanner ?? null })
+}
+
+/** Dag verschuiven (slepen/klik-klik): de kaart gaat TERUG naar gereserveerd — het
+ * transport-contact moet opnieuw bevestigen; materiaallijst + planner blijven bewaard. */
+export function verschuifTransport(administratieId: string, transportId: string, datum: string): Promise<TransportDto> {
+  return apiPostJson(`/materiaal/${administratieId}/transport/${transportId}/verschuiven`, { datum })
 }
 
 export function haalMateriaalstand(administratieId: string, projectId: string): Promise<MateriaalStandDto> {

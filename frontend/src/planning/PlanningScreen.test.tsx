@@ -40,6 +40,13 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
             { gebruiker_id: 'cccccccc-0000-0000-0000-00000000000c', naam: 'Ben v. Dijk', rol: 'uitvoerder', dagdeel: 'half' },
           ],
         },
+        // Werkopdrachten (31-08): chip in de rijkop + dag-override in de dagcel.
+        werkopdrachten: [
+          { groep_id: 'dddddddd-0000-0000-0000-00000000000d', van: '2026-08-22', tot_en_met: '2026-09-29', tekst: 'Montage fase 1 — zuidgevel eerst' },
+        ],
+        werkopdracht_overrides: {
+          '2026-08-25': [{ groep_id: 'dddddddd-0000-0000-0000-00000000000d', tekst: 'extra werk — traptoren bijplaatsen', afwijkend: true }],
+        },
       },
       // V3: de leesroute levert óók de actieve projecten zónder planning (compacte blok).
       {
@@ -51,6 +58,8 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
         is_actief: true,
         week_man: 0,
         per_datum: {},
+        werkopdrachten: [],
+        werkopdracht_overrides: {},
       },
     ],
     pool: [
@@ -84,6 +93,19 @@ function installMock(opties: MockOpties = {}) {
     const url = String(input)
     if (url.includes('/auth/administraties'))
       return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Universal Steigerbouw' }] }))
+    if (url.includes('/uren/kantoor/mijn-toegang'))
+      return Promise.resolve(
+        jsonResponse({
+          heeft_meerwerk_recht: true,
+          administraties_met_opt_in: [ADMINISTRATIE_ID],
+          aantal_administraties_in_scope: 1,
+          is_beheerder: true,
+          heeft_veldwerkerbeheer_recht: true,
+          is_beheerder_of_bp: true,
+        }),
+      )
+    if (url.includes('/uren/kantoor/werkopdrachten'))
+      return Promise.resolve(jsonResponse([]))
     if (url.includes('/uren/kantoor/planning') && init?.method === 'POST') {
       // Spiegel de echte backend: vereis_administratie_scope leest administratie_id als
       // QUERY-parameter, óók op POST — zonder die parameter is de cloud-response een 422
@@ -316,6 +338,26 @@ describe('PlanningScreen', () => {
     await waitFor(() =>
       expect(screen.getByText(/module-recht "Meerwerk & urenstaten"/)).toBeInTheDocument(),
     )
+  })
+
+  it('toont de werkopdracht-chip, dag-override en de 31-08-knoppen (+ Project, + ZZP\'er)', async () => {
+    installMock()
+    // Week vastpinnen op de fixture-week (35): de dag-override hangt aan di 25-08.
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    // Chip in de rijkop (actuele opdracht die de week raakt) + ⊕ op élke rij.
+    expect(screen.getByText('Montage fase 1 — zuidgevel eerst')).toBeInTheDocument()
+    expect(screen.getByLabelText('Werkopdracht toevoegen voor 25036 Arnhem')).toBeInTheDocument()
+    // Dag-override in de dagcel: alleen die dag wijkt af (mockup "di afwijkend: …").
+    const override = screen.getByTitle('Alleen deze dag wijkt de werkopdracht af — klik om te wijzigen')
+    expect(override.textContent).toContain('di afwijkend:')
+    expect(override.textContent).toContain('extra werk — traptoren bijplaatsen')
+    // Blok C (31-08): "+ Project aanmaken" (B+P) en "+ ZZP'er" (veldwerkerbeheer-recht).
+    expect(screen.getByText('+ Project aanmaken')).toBeInTheDocument()
+    expect(screen.getByText("+ ZZP'er")).toBeInTheDocument()
+    // Chip-klik opent de werkopdracht-popup (periode + tekst + historie).
+    fireEvent.click(screen.getByLabelText('Werkopdracht 144 Breda (Moeskops)'))
+    await waitFor(() => expect(screen.getByText(/Werkopdracht — 144 Breda/)).toBeInTheDocument())
   })
 
   it('meldt de opt-in-uitschakeling (409) zonder grid', async () => {

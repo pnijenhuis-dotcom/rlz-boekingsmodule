@@ -43,7 +43,12 @@ import {
   haalOpenWerkOp,
   type OpenWerkDto,
 } from './gebruikersApi'
-import { haalModuleRechtHouders, zetModuleRecht } from '../meerwerk/meerwerkApi'
+import {
+  haalModuleRechtHouders,
+  haalVeldwerkerbeheerHouders,
+  zetModuleRecht,
+  zetVeldwerkerbeheerRecht,
+} from '../meerwerk/meerwerkApi'
 import { ScopeModal } from './ScopeModal'
 import { UitnodigModal } from './UitnodigModal'
 import { VeldwerkersPanel } from './VeldwerkersPanel'
@@ -233,6 +238,36 @@ export function GebruikersScreen() {
         ingeschakeld
           ? `${g.naam} heeft nu het module-recht Meerwerk & urenstaten.`
           : `${g.naam} verliest het module-recht — meerwerk verdwijnt overal (menu, standen, zoeken, API).`,
+      )
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'Recht wijzigen mislukt.')
+    } finally {
+      setRechtBezig(null)
+    }
+  }
+
+  // Fijnmazig recht 'veldwerkerbeheer' (31-08, migratie 0091): B+P mét dit recht mag
+  // uitsluitend veldwerkers aanmaken/archiveren binnen de eigen scope — toekennen Beheerder-only.
+  const [vwbHouders, setVwbHouders] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    haalVeldwerkerbeheerHouders()
+      .then((data) => setVwbHouders(new Set(data.gebruiker_ids)))
+      .catch(() => undefined)
+  }, [])
+  async function toggleVeldwerkerbeheer(g: GebruikerOverzichtDto, ingeschakeld: boolean) {
+    setRechtBezig(g.id)
+    try {
+      await zetVeldwerkerbeheerRecht(g.id, ingeschakeld)
+      setVwbHouders((huidig) => {
+        const kopie = new Set(huidig)
+        if (ingeschakeld) kopie.add(g.id)
+        else kopie.delete(g.id)
+        return kopie
+      })
+      meld(
+        ingeschakeld
+          ? `${g.naam} mag nu veldwerkers aanmaken en archiveren binnen de eigen scope (veldwerkerbeheer).`
+          : `${g.naam} verliest het veldwerkerbeheer-recht.`,
       )
     } catch (err) {
       setActieFout(err instanceof ApiError ? err.message : 'Recht wijzigen mislukt.')
@@ -674,6 +709,7 @@ export function GebruikersScreen() {
                   <th>Rol</th>
                   <th>Scope</th>
                   <th>Meerwerk &amp; urenstaten</th>
+                  <th>Veldwerkerbeheer</th>
                   <th>Beveiliging</th>
                   <th>Status</th>
                   <th className="acties" />
@@ -735,6 +771,21 @@ export function GebruikersScreen() {
                             checked={rechtHouders.has(g.id)}
                             disabled={rechtBezig === g.id}
                             onChange={(e) => void toggleMeerwerkRecht(g, e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td>
+                        {g.rol === 'beheerder' ? (
+                          <span className="hint" style={{ margin: 0, fontSize: 11.5 }}>
+                            altijd (Beheerder)
+                          </span>
+                        ) : (
+                          <Switch
+                            aria-label={`Veldwerkerbeheer voor ${g.naam}`}
+                            title="Mag uitsluitend veldwerkers (ZZP'er/uitvoerder/detacheerder) aanmaken en archiveren binnen de eigen scope — nooit kantoorrollen of rol-/scope-mutaties"
+                            checked={vwbHouders.has(g.id)}
+                            disabled={rechtBezig === g.id}
+                            onChange={(e) => void toggleVeldwerkerbeheer(g, e.target.checked)}
                           />
                         )}
                       </td>

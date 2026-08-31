@@ -11,6 +11,19 @@ export interface PlanningKaartDto {
   dagdeel: 'heel' | 'half'
 }
 
+export interface WerkopdrachtKortDto {
+  groep_id: string
+  van: string
+  tot_en_met: string
+  tekst: string
+}
+
+export interface WerkopdrachtDagTekstDto {
+  groep_id: string
+  tekst: string
+  afwijkend: boolean
+}
+
 export interface PlanningProjectRijDto {
   project_id: string
   project_naam: string | null
@@ -23,6 +36,10 @@ export interface PlanningProjectRijDto {
   is_actief: boolean
   week_man: number
   per_datum: Record<string, PlanningKaartDto[]>
+  // Werkopdrachten (31-08): actuele opdrachten die de week raken (chip in de rijkop) +
+  // dag-overrides binnen de week (ISO-datum → afwijkende teksten in de dagcel).
+  werkopdrachten: WerkopdrachtKortDto[]
+  werkopdracht_overrides: Record<string, WerkopdrachtDagTekstDto[]>
 }
 
 export interface PlanningPoolPersoonDto {
@@ -114,6 +131,53 @@ export function zetDagdeel(payload: {
   dagdeel: 'heel' | 'half'
 }): Promise<void> {
   return apiPostJson(`/uren/kantoor/planning/dagdeel?administratie_id=${payload.administratie_id}`, payload)
+}
+
+/* --- werkopdrachten per project × periode (31-08, migratie 0091) ------------------------------ */
+
+export interface WerkopdrachtDto {
+  groep_id: string
+  project_id: string
+  versie: number
+  van: string
+  tot_en_met: string
+  tekst: string
+  dag_overrides: { datum: string; tekst: string }[]
+  historie: { tijdstip: string; door_naam: string; omschrijving: string }[]
+}
+
+export function haalWerkopdrachten(administratieId: string, projectId: string): Promise<WerkopdrachtDto[]> {
+  return apiJson(`/uren/kantoor/werkopdrachten?administratie_id=${administratieId}&project_id=${projectId}`)
+}
+
+export function maakWerkopdracht(payload: {
+  administratie_id: string
+  project_id: string
+  van: string
+  tot_en_met: string
+  tekst: string
+}): Promise<WerkopdrachtDto> {
+  return apiPostJson(`/uren/kantoor/werkopdrachten?administratie_id=${payload.administratie_id}`, payload)
+}
+
+export function wijzigWerkopdracht(
+  groepId: string,
+  payload: { administratie_id: string; van: string; tot_en_met: string; tekst: string },
+): Promise<WerkopdrachtDto> {
+  return apiPostJson(
+    `/uren/kantoor/werkopdrachten/${groepId}/wijzigen?administratie_id=${payload.administratie_id}`,
+    payload,
+  )
+}
+
+export function zetWerkopdrachtDagOverride(
+  groepId: string,
+  payload: { administratie_id: string; datum: string; tekst: string },
+): Promise<WerkopdrachtDto> {
+  return apiPostJson(
+    `/uren/kantoor/werkopdrachten/${groepId}/dag-override?administratie_id=${payload.administratie_id}`,
+    payload,
+  )
 }
 
 /* --- ISO-week-helpers (kantoor-chunk; bewust niet uit uren/urenApi — accordeur-chunk) --------- */

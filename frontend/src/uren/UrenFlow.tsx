@@ -655,15 +655,12 @@ function DossierView({
                 )}
                 <label className="acc-form">
                   {d.document_id ? 'Nieuw bestand' : 'Bestand (foto of PDF)'}
-                  <input
-                    type="file"
+                  <BestandKnop
+                    label={d.document_id ? 'Nieuw bestand kiezen' : 'Bestand kiezen (foto of PDF)'}
+                    bestandsnaam={null}
                     accept="application/pdf,image/jpeg,image/png"
                     disabled={bezig === d.code || (d.geldig_tot_vereist && !geldigTot[d.code])}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (f) void upload(d.code, f)
-                      e.target.value = ''
-                    }}
+                    onKies={(f) => void upload(d.code, f)}
                   />
                 </label>
               </div>
@@ -687,6 +684,49 @@ function DossierView({
 }
 
 /* ============ gedeelde bouwstenen ============ */
+
+/** Uploadveld als eigen knop (overlap-bug iPad 30-08): een kale native file-input rendert als
+ * OS-widget en viel op het tablet-breakpoint over andere velden heen. Daarom overal een eigen
+ * knop (.acc-bestandknop, patroon oude .acc-fotoknop) mét de verborgen input erín en de gekozen
+ * bestandsnaam mét ellipsis. Hoort binnen een <label> te staan (klik op de knop activeert de
+ * input via het label), zoals de bestaande formulieren. */
+function BestandKnop({
+  label,
+  bestandsnaam,
+  accept,
+  capture,
+  disabled,
+  onKies,
+  icoon = '📎',
+}: {
+  /** Knoptekst zolang er geen bestand gekozen is. */
+  label: string
+  bestandsnaam: string | null
+  accept: string
+  capture?: 'environment' | 'user'
+  disabled?: boolean
+  onKies: (file: File) => void
+  icoon?: string
+}) {
+  return (
+    <span className="acc-bestandknop" role="button" aria-disabled={disabled ? 'true' : undefined}>
+      <span aria-hidden>{icoon}</span>
+      {bestandsnaam ? <span className="acc-bestandknop-naam">{bestandsnaam}</span> : label}
+      <input
+        type="file"
+        accept={accept}
+        capture={capture}
+        disabled={disabled}
+        style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onKies(f)
+          e.target.value = ''
+        }}
+      />
+    </span>
+  )
+}
 
 function Terug({ label, onClick }: { label: string; onClick: () => void }) {
   return (
@@ -1306,6 +1346,14 @@ function MijnPlanningView({
                       <span key={`${item.administratie_id}-${item.project_id}`} style={{ display: 'block' }}>
                         <b>{item.project_naam ?? 'project'}</b>
                         {item.dagdeel === 'half' ? ' · ½ dag' : ''}
+                        {/* Werkopdracht(en) bij de geplande dag (31-08, alleen-lezen): de
+                            dag-override wint en toont "afwijkend" (mockup veld-app-paneel). */}
+                        {(item.werkopdrachten ?? []).map((wo) => (
+                          <span key={wo.groep_id} className="acc-werkopdracht">
+                            📋 {wo.afwijkend && <b>{naam} afwijkend: </b>}
+                            {wo.tekst}
+                          </span>
+                        ))}
                       </span>
                     ))}
                   </span>
@@ -1740,16 +1788,14 @@ function MeerwerkMeldenView({
         </label>
         <label className="acc-form">
           Foto (optioneel, sterk aangeraden)
-          <span className="acc-fotoknop" role="button">
-            📷 {foto ? foto.name : 'Maak of kies een foto'}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }}
-              onChange={(e) => setFoto(e.target.files?.[0] ?? null)}
-            />
-          </span>
+          <BestandKnop
+            icoon="📷"
+            label="Maak of kies een foto"
+            bestandsnaam={foto?.name ?? null}
+            accept="image/*"
+            capture="environment"
+            onKies={setFoto}
+          />
         </label>
         <div className="acc-notitie waarschuw">
           <span>⚠️</span>

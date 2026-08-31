@@ -16,8 +16,10 @@ import {
 import { Badge, Button, Checkbox, Paginering, Select, useToastOptioneel } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 
-/* Materiaalcatalogus per leverancier (steigerbouw-run D2, Beheerder): leveranciers (bestel-
- * mailadres, crediteur-koppeling voor de factuurcontrole D6), categorieën + producten met
+/* Materiaalcatalogus per leverancier (steigerbouw-run D2; leverancier-beheer sinds 31-08 óók
+ * voor Boekhouding + Projecten — server-side open, geen frontend-gate): leveranciers (bestel-
+ * mailadres, transport-/materiaal-contact voor de transport-statusflow 31-08,
+ * crediteur-koppeling voor de factuurcontrole D6), categorieën + producten met
  * verpakkingseenheid en m²-lengte (Σ aantal × lengte / 4,6 — de formule uit de bestellijst),
  * seed "Standaardcatalogus laden" uit verkenning/voorbeelden/bestellijst-universal-voorbeeld.xlsx
  * (idempotent). Schaalbaar (C4): zoeken + paginering server-side. */
@@ -135,6 +137,9 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
             <b>{lev.naam}</b>
             <span className="hint" style={{ margin: 0 }}>{lev.bestel_email ?? '⚠ geen bestel-mailadres'}</span>
             <span className="hint" style={{ margin: 0 }}>{lev.vendor_id ? `crediteur: ${vendors.find((v) => v.id === lev.vendor_id)?.naam ?? lev.vendor_id}` : 'geen crediteur-koppeling (factuurcontrole uit)'}</span>
+            <span className="hint" style={{ margin: 0 }}>
+              transport-contact: {lev.transport_contact_naam ?? 'nog niet ingevuld'} · materiaal-contact: {lev.materiaal_contact_naam ?? 'nog niet ingevuld'}
+            </span>
             <Button variant="ghost" maat="klein" onClick={() => setBewerkLev(lev)}>
               wijzig leverancier
             </Button>
@@ -212,6 +217,27 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
                 <input value={bewerkLev.adres ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, adres: e.target.value })} style={{ width: '100%' }} />
               </label>
             </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+              <label className="hint" style={{ margin: 0 }}>
+                Transport-contact (naam)
+                <input value={bewerkLev.transport_contact_naam ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, transport_contact_naam: e.target.value })} style={{ width: '100%' }} />
+              </label>
+              <label className="hint" style={{ margin: 0 }}>
+                Transport-contact e-mail
+                <input type="email" value={bewerkLev.transport_contact_email ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, transport_contact_email: e.target.value })} style={{ width: '100%' }} />
+              </label>
+              <label className="hint" style={{ margin: 0 }}>
+                Materiaal-contact (naam)
+                <input value={bewerkLev.materiaal_contact_naam ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, materiaal_contact_naam: e.target.value })} style={{ width: '100%' }} />
+              </label>
+              <label className="hint" style={{ margin: 0 }}>
+                Materiaal-contact e-mail
+                <input type="email" value={bewerkLev.materiaal_contact_email ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, materiaal_contact_email: e.target.value })} style={{ width: '100%' }} />
+              </label>
+            </div>
+            <p className="hint" style={{ margin: '4px 0 0', fontSize: 11 }}>
+              Transport-contact krijgt de bevestig-mail (&quot;transport gaat definitief door&quot;); materiaal-contact de materiaallijst bij definitief + de wijzigingen (delta).
+            </p>
             <label className="hint" style={{ display: 'block', marginTop: 8 }}>
               RLZ-crediteur (factuurcontrole materiaal, D6)
               <Select value={bewerkLev.vendor_id ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, vendor_id: e.target.value || null })} className="w-full">
@@ -243,6 +269,10 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
                         telefoon: bewerkLev.telefoon || null,
                         adres: bewerkLev.adres || null,
                         vendor_id: bewerkLev.vendor_id || null,
+                        transport_contact_naam: bewerkLev.transport_contact_naam || null,
+                        transport_contact_email: bewerkLev.transport_contact_email || null,
+                        materiaal_contact_naam: bewerkLev.materiaal_contact_naam || null,
+                        materiaal_contact_email: bewerkLev.materiaal_contact_email || null,
                         actief: bewerkLev.actief ?? true,
                       }).then(() => setBewerkLev(null)),
                     'Leverancier opgeslagen — geauditeerd.',

@@ -11,6 +11,10 @@ export interface MijnToegangDto {
   administraties_met_opt_in: string[]
   aantal_administraties_in_scope: number
   is_beheerder: boolean
+  // 31-08: fijnmazig recht 'veldwerkerbeheer' (+ZZP'er/archiveren in de planning-zijbalk) en
+  // de rolvlag voor "+ Project aanmaken"/leverancierbeheer (Beheerder óf B+P).
+  heeft_veldwerkerbeheer_recht: boolean
+  is_beheerder_of_bp: boolean
 }
 
 let cache: { waarde: MijnToegangDto | null; tijd: number } | null = null

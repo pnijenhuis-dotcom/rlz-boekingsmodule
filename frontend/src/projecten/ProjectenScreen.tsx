@@ -197,7 +197,9 @@ export function ProjectenScreen() {
   )
 }
 
-function NieuwProjectModal({
+// Geëxporteerd sinds 31-08: "+ Project aanmaken" staat óók op /planning (topbar, B+P) —
+// zelfde dialoog, zelfde projectmotor (naamconventie + RLZ-PUT), geen tweede pad.
+export function NieuwProjectModal({
   administratieId,
   onKlaar,
   onAnnuleren,

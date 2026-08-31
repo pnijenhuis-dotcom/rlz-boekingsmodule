@@ -4,7 +4,7 @@ import { isMonoKlant, landingsPad, planningMenuPad, type MijnToegangDto } from '
 /* Slimme landing + Planning-menu (steigerbouw-run C1/C2): pure beslislogica, fail-closed. */
 const A = { id: 'a1', naam: 'Universal Steigerbouw B.V.' }
 const B = { id: 'a2', naam: 'Kempen Facilities B.V.' }
-const basis: MijnToegangDto = { heeft_meerwerk_recht: false, administraties_met_opt_in: [], aantal_administraties_in_scope: 1, is_beheerder: false }
+const basis: MijnToegangDto = { heeft_meerwerk_recht: false, administraties_met_opt_in: [], aantal_administraties_in_scope: 1, is_beheerder: false, heeft_veldwerkerbeheer_recht: false, is_beheerder_of_bp: false }
 
 describe('landingsPad (C1)', () => {
   it('twijfel of fout → null (bestaande werkvoorraad)', () => {

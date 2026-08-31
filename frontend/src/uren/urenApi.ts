@@ -264,6 +264,8 @@ export interface MijnPlanningDagDto {
   project_id: string
   project_naam: string | null
   dagdeel: 'heel' | 'half'
+  // Werkopdracht(en) geldend op deze dag (31-08): dag-override wint (afwijkend=true).
+  werkopdrachten: { groep_id: string; tekst: string; afwijkend: boolean }[]
 }
 
 /** Eigen werkstempels van één dag (blok C 28-08, mockup §1 "Vandaag") — alleen de veldwerker zelf,

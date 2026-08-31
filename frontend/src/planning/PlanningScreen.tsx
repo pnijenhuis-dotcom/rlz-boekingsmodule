@@ -3,12 +3,17 @@ import { useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
-import { Badge, Button } from '../ui/basis'
+import { useMijnToegang } from '../auth/useMijnToegang'
+import { Badge, Button, Dialog, DialogContent, DialogFooter, DialogTitle, FormField, Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
+import { NieuwProjectModal } from '../projecten/ProjectenScreen'
+import { archiveerGebruiker, haalOpenWerkOp, nodigUit } from '../gebruikers/gebruikersApi'
 import { TransportTab } from './TransportTab'
 import {
   haalPlanning,
+  haalWerkopdrachten,
   isoWeekVan,
+  maakWerkopdracht,
   parseWeekParam,
   planToewijzing,
   schuifWeek,
@@ -16,10 +21,13 @@ import {
   verwijderToewijzing,
   weekDagen,
   weekNaarParam,
+  wijzigWerkopdracht,
   zetDagdeel,
+  zetWerkopdrachtDagOverride,
   type PlanningKaartDto,
   type PlanningProjectRijDto,
   type PlanningWeekDto,
+  type WerkopdrachtDto,
 } from './planningApi'
 
 /* Planning-agenda steigerbouw (mockup planning-steigerbouw.html v3, besluit Peter 23-08 —
@@ -65,6 +73,317 @@ function initialen(naam: string | null): string {
     .toUpperCase()
 }
 
+function tijdLabel(iso: string): string {
+  return new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/* Werkopdracht-popup (mockup planning-werkopdracht-transport.html, akkoord 31-08): periode +
+ * vrije tekst per project; meerdere/overlappende opdrachten per project; wijzigen = nieuwe
+ * append-only versie — de historie (wie/wanneer) blijft zichtbaar onderin. */
+function WerkopdrachtDialog({
+  administratieId,
+  projectId,
+  projectNaam,
+  onSluiten,
+  onGewijzigd,
+}: {
+  administratieId: string
+  projectId: string
+  projectNaam: string
+  onSluiten: () => void
+  onGewijzigd: () => void
+}) {
+  const [lijst, setLijst] = useState<WerkopdrachtDto[] | null>(null)
+  const [bewerk, setBewerk] = useState<WerkopdrachtDto | 'nieuw' | null>(null)
+  const [van, setVan] = useState('')
+  const [totEnMet, setTotEnMet] = useState('')
+  const [tekst, setTekst] = useState('')
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  function laadLijst() {
+    haalWerkopdrachten(administratieId, projectId)
+      .then((data) => {
+        setLijst(data)
+        // Geen opdracht = direct het nieuw-formulier; één opdracht = die open (mockup-flow).
+        if (data.length === 0) begin('nieuw')
+        else if (data.length === 1) begin(data[0])
+      })
+      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Laden mislukt'))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(laadLijst, [administratieId, projectId])
+
+  function begin(w: WerkopdrachtDto | 'nieuw') {
+    setBewerk(w)
+    setFout(null)
+    if (w === 'nieuw') {
+      setVan(lokaleIsoDatum(new Date()))
+      setTotEnMet('')
+      setTekst('')
+    } else {
+      setVan(w.van)
+      setTotEnMet(w.tot_en_met)
+      setTekst(w.tekst)
+    }
+  }
+
+  async function opslaan() {
+    if (!bewerk) return
+    setBezig(true)
+    setFout(null)
+    try {
+      if (bewerk === 'nieuw') {
+        await maakWerkopdracht({ administratie_id: administratieId, project_id: projectId, van, tot_en_met: totEnMet, tekst })
+      } else {
+        await wijzigWerkopdracht(bewerk.groep_id, { administratie_id: administratieId, van, tot_en_met: totEnMet, tekst })
+      }
+      onGewijzigd()
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Opslaan mislukt — probeer het opnieuw.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  const historie = bewerk !== null && bewerk !== 'nieuw' ? bewerk.historie : []
+  return (
+    <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
+      <DialogContent>
+        <DialogTitle>📋 Werkopdracht — {projectNaam}</DialogTitle>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Zichtbaar voor iedereen die in de periode op dit project is ingepland (veld-app, alleen-lezen).
+        </p>
+        {lijst !== null && lijst.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+            {lijst.map((w) => (
+              <button
+                key={w.groep_id}
+                className="linkbtn"
+                style={{
+                  border: `1px solid ${bewerk !== 'nieuw' && bewerk?.groep_id === w.groep_id ? 'var(--purple)' : 'var(--border)'}`,
+                  borderRadius: 99,
+                  padding: '2px 10px',
+                  fontSize: 11.5,
+                }}
+                onClick={() => begin(w)}
+              >
+                📋 {w.tekst.slice(0, 32)}
+                {w.tekst.length > 32 ? '…' : ''} · {dagLabel(w.van)}–{dagLabel(w.tot_en_met)}
+              </button>
+            ))}
+            <button className="linkbtn" style={{ fontSize: 11.5 }} onClick={() => begin('nieuw')}>
+              + nieuwe werkopdracht
+            </button>
+          </div>
+        )}
+        {bewerk !== null && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <FormField label="Van">
+                <input type="date" value={van} onChange={(e) => setVan(e.target.value)} />
+              </FormField>
+              <FormField label="Tot en met">
+                <input type="date" value={totEnMet} onChange={(e) => setTotEnMet(e.target.value)} />
+              </FormField>
+            </div>
+            <FormField label="Opdracht (vrije tekst)">
+              <textarea
+                rows={5}
+                value={tekst}
+                onChange={(e) => setTekst(e.target.value)}
+                placeholder="Bv. Montage fase 1 — zuidgevel eerst, daarna oost. Aanspreekpunt: …"
+                style={{ resize: 'vertical', width: '100%' }}
+              />
+            </FormField>
+            <p className="hint" style={{ fontSize: 11.5 }}>
+              Meerdere werkopdrachten per project mogen (ook overlappend, bv. montage + demontage). Eén dag afwijken?
+              Klik in het grid op de dagcel → &quot;afwijkende opdracht voor deze dag&quot;.
+            </p>
+            {historie.length > 0 && (
+              <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 8, fontSize: 11, color: 'var(--faint)', lineHeight: 1.6 }}>
+                <b>Historie (append-only):</b>{' '}
+                {historie.map((h) => `${tijdLabel(h.tijdstip)} ${h.omschrijving} door ${h.door_naam}`).join(' · ')} —
+                alles terug te zien, niets overschreven.
+              </div>
+            )}
+          </>
+        )}
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          <Button variant="secundair" maat="klein" onClick={onSluiten} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button maat="klein" onClick={() => void opslaan()} disabled={bezig || bewerk === null || !van || !totEnMet || !tekst.trim()}>
+            Opslaan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* Dag-override (sparse — alleen die dag wint): afwijkende tekst op één (werkopdracht, datum). */
+function DagOverrideDialog({
+  administratieId,
+  datum,
+  rij,
+  onSluiten,
+  onGewijzigd,
+}: {
+  administratieId: string
+  datum: string
+  rij: PlanningProjectRijDto
+  onSluiten: () => void
+  onGewijzigd: () => void
+}) {
+  // Binnen de periode van de dag zelf; meerdere overlappende opdrachten = keuze.
+  const opties = rij.werkopdrachten.filter((w) => w.van <= datum && datum <= w.tot_en_met)
+  const [groepId, setGroepId] = useState(opties[0]?.groep_id ?? '')
+  const bestaand = (rij.werkopdracht_overrides[datum] ?? []).find((o) => o.groep_id === groepId)
+  const [tekst, setTekst] = useState(bestaand?.tekst ?? '')
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  async function opslaan() {
+    setBezig(true)
+    setFout(null)
+    try {
+      await zetWerkopdrachtDagOverride(groepId, { administratie_id: administratieId, datum, tekst })
+      onGewijzigd()
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Opslaan mislukt — probeer het opnieuw.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
+      <DialogContent>
+        <DialogTitle>📋 Afwijkende opdracht — {rij.project_naam ?? ''} · {dagLabel(datum)}</DialogTitle>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Alleen deze dag wijkt af; de periode-tekst blijft de basis voor de overige dagen.
+        </p>
+        {opties.length > 1 && (
+          <FormField label="Bij welke werkopdracht">
+            <Select
+              value={groepId}
+              onChange={(e) => {
+                setGroepId(e.target.value)
+                const o = (rij.werkopdracht_overrides[datum] ?? []).find((x) => x.groep_id === e.target.value)
+                setTekst(o?.tekst ?? '')
+              }}
+            >
+              {opties.map((w) => (
+                <option key={w.groep_id} value={w.groep_id}>
+                  {w.tekst.slice(0, 60)}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+        )}
+        <FormField label={`Afwijkende tekst voor ${dagLabel(datum)}`}>
+          <textarea
+            rows={4}
+            value={tekst}
+            onChange={(e) => setTekst(e.target.value)}
+            placeholder="Bv. extra werk — traptoren bijplaatsen (meerwerk gemeld)"
+            style={{ resize: 'vertical', width: '100%' }}
+          />
+        </FormField>
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          <Button variant="secundair" maat="klein" onClick={onSluiten} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button maat="klein" onClick={() => void opslaan()} disabled={bezig || !groepId || !tekst.trim()}>
+            Opslaan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* "+ ZZP'er" in de planning-zijbalk (31-08): veldwerker aanmaken via het fijnmazige
+ * veldwerkerbeheer-recht (of Beheerder) — uitsluitend veldrollen, scope = deze administratie. */
+function NieuweVeldwerkerDialog({
+  administratieId,
+  onSluiten,
+  onKlaar,
+}: {
+  administratieId: string
+  onSluiten: () => void
+  onKlaar: () => void
+}) {
+  const [naam, setNaam] = useState('')
+  const [eMail, setEMail] = useState('')
+  const [rol, setRol] = useState('zzper')
+  const [uitnodigingLater, setUitnodigingLater] = useState(true)
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  async function aanmaken() {
+    setBezig(true)
+    setFout(null)
+    try {
+      await nodigUit({
+        naam: naam.trim(),
+        e_mail: eMail.trim(),
+        rol,
+        administratie_ids: [administratieId],
+        uitnodiging_later: uitnodigingLater,
+      })
+      onKlaar()
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Aanmaken mislukt — probeer het opnieuw.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
+      <DialogContent>
+        <DialogTitle>👷 Veldwerker toevoegen</DialogTitle>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Alleen veldwerker-rollen, gekoppeld aan deze administratie (veldwerkerbeheer-recht, geaudit).
+        </p>
+        <FormField label="Naam">
+          <input value={naam} onChange={(e) => setNaam(e.target.value)} placeholder="Bv. Milan Kovács" />
+        </FormField>
+        <FormField label="E-mailadres">
+          <input type="email" value={eMail} onChange={(e) => setEMail(e.target.value)} placeholder="naam@voorbeeld.nl" />
+        </FormField>
+        <FormField label="Rol">
+          <Select value={rol} onChange={(e) => setRol(e.target.value)}>
+            <option value="zzper">ZZP&apos;er</option>
+            <option value="uitvoerder">Uitvoerder</option>
+            <option value="detacheerder">Detacheerder</option>
+          </Select>
+        </FormField>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}>
+          <input type="checkbox" checked={uitnodigingLater} onChange={(e) => setUitnodigingLater(e.target.checked)} />
+          Uitnodiging later mailen (account bestaat alvast; mailen kan via Gebruikers &amp; toegang)
+        </label>
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          <Button variant="secundair" maat="klein" onClick={onSluiten} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button maat="klein" onClick={() => void aanmaken()} disabled={bezig || !naam.trim() || !eMail.includes('@')}>
+            Toevoegen
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function PlanningScreen() {
   const [searchParams, setSearchParams] = useSearchParams()
   const administratieId = searchParams.get('administratie')
@@ -86,6 +405,14 @@ export function PlanningScreen() {
   const [kiesCel, setKiesCel] = useState<string | null>(null) // klik-alternatief: persoon kiezen
   // Filterveld boven het grid: versmalt beide blokken live (client-side — één request).
   const [filterTerm, setFilterTerm] = useState('')
+  // Werkopdrachten (31-08): popup per project + dag-override per (project, datum).
+  const [woDialoog, setWoDialoog] = useState<{ projectId: string; projectNaam: string } | null>(null)
+  const [overrideDialoog, setOverrideDialoog] = useState<{ rij: PlanningProjectRijDto; datum: string } | null>(null)
+  // Blok C (31-08): "+ Project aanmaken" (B+P) en "+ ZZP'er"/archiveren (veldwerkerbeheer).
+  const [nieuwProjectOpen, setNieuwProjectOpen] = useState(false)
+  const [nieuweVeldwerkerOpen, setNieuweVeldwerkerOpen] = useState(false)
+  const toegang = useMijnToegang()
+  const magVeldwerkerbeheer = toegang?.is_beheerder === true || toegang?.heeft_veldwerkerbeheer_recht === true
   // Steigerbouw-run D1: tweede tab Transport naast Personeel (URL: ?tab=transport).
   const tab: 'personeel' | 'transport' = searchParams.get('tab') === 'transport' ? 'transport' : 'personeel'
   function zetTab(t: 'personeel' | 'transport') {
@@ -192,6 +519,27 @@ export function PlanningScreen() {
   function weiger(celKey: string) {
     setWeigerCel(celKey)
     window.setTimeout(() => setWeigerCel(null), 700)
+  }
+
+  // Archiveren vanaf het poolkaartje (31-08): open-werk-waarschuwing mét aantallen (geen
+  // blokkade, feedbackronde 26-08 punt 1), daarna het bestaande archiveer-endpoint.
+  async function archiveerVeldwerker(gebruikerId: string, naam: string) {
+    setActieFout(null)
+    try {
+      const werk = await haalOpenWerkOp(gebruikerId)
+      const totaalOpen = werk.open_accorderingen + werk.weekstaten_ter_keuring + werk.eigen_open_weekstaten
+      const waarschuwing =
+        totaalOpen > 0
+          ? `\n\nLet op: er staat nog open werk (${werk.eigen_open_weekstaten} open weekstaten, ${werk.weekstaten_ter_keuring} ter keuring, ${werk.open_accorderingen} accorderingen) — dat blijft staan.`
+          : ''
+      if (!window.confirm(`${naam} archiveren? Toegang gaat per direct dicht; niets wordt verwijderd.${waarschuwing}`)) {
+        return
+      }
+      await archiveerGebruiker(gebruikerId)
+      laad()
+    } catch (err) {
+      setActieFout(err instanceof ApiError ? err.message : 'Archiveren mislukt — probeer het opnieuw.')
+    }
   }
 
   function kaartenIn(projectId: string, datum: string): PlanningKaartDto[] {
@@ -339,6 +687,10 @@ export function PlanningScreen() {
   // projecten zou een per-render nieuw componenttype elke keer de hele subtree remounten.
   function renderRij(rij: PlanningProjectRijDto, compact: boolean) {
     const rijNaEinddatum = rij.looptijd_tot !== null && dagen[0].datum > rij.looptijd_tot
+    // Defensief: een oudere (gecachete) response zonder werkopdracht-velden mag het grid
+    // nooit breken — de chip blijft dan gewoon weg.
+    const werkopdrachten = rij.werkopdrachten ?? []
+    const overrides = rij.werkopdracht_overrides ?? {}
     return (
       <tr key={rij.project_id} className={compact ? 'plan-compact' : undefined}>
         <th style={{ verticalAlign: 'top', textAlign: 'left' }}>
@@ -361,6 +713,56 @@ export function PlanningScreen() {
               <Badge variant="info">deze week: {rij.week_man} man</Badge>
             </div>
           )}
+          {/* Werkopdracht-chip + ⊕ (31-08): chip = uitklappen/wijzigen, ⊕ = toevoegen. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
+            {werkopdrachten.length > 0 && (
+              <button
+                className="linkbtn"
+                title={werkopdrachten
+                  .map((w) => `${dagLabel(w.van)} t/m ${dagLabel(w.tot_en_met)}: ${w.tekst}`)
+                  .join('\n')}
+                aria-label={`Werkopdracht ${rij.project_naam ?? ''}`}
+                onClick={() => setWoDialoog({ projectId: rij.project_id, projectNaam: rij.project_naam ?? '' })}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  maxWidth: '100%',
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: 'var(--purple)',
+                  background: 'var(--purple-bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 99,
+                  padding: '2px 9px',
+                }}
+              >
+                📋{' '}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {werkopdrachten[0].tekst}
+                </span>
+                {werkopdrachten.length > 1 && <b>+{werkopdrachten.length - 1}</b>}
+              </button>
+            )}
+            <button
+              className="linkbtn"
+              title="Werkopdracht toevoegen"
+              aria-label={`Werkopdracht toevoegen voor ${rij.project_naam ?? ''}`}
+              onClick={() => setWoDialoog({ projectId: rij.project_id, projectNaam: rij.project_naam ?? '' })}
+              style={{
+                display: 'inline-grid',
+                placeItems: 'center',
+                width: 18,
+                height: 18,
+                borderRadius: 99,
+                border: '1px dashed var(--faint)',
+                color: 'var(--faint)',
+                fontSize: 12,
+              }}
+            >
+              +
+            </button>
+          </div>
         </th>
         {dagen.map((d) => {
           const celKey = `${rij.project_id}|${d.datum}`
@@ -410,6 +812,35 @@ export function PlanningScreen() {
                 background: dragOver === celKey ? 'var(--accent-bg)' : undefined,
               }}
             >
+              {/* Dag-override (31-08): alleen deze dag wijkt de werkopdracht af — klik = wijzigen. */}
+              {(overrides[d.datum] ?? []).map((o) => (
+                <button
+                  key={o.groep_id}
+                  className="linkbtn"
+                  title="Alleen deze dag wijkt de werkopdracht af — klik om te wijzigen"
+                  onClick={() => setOverrideDialoog({ rij, datum: d.datum })}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 5,
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'var(--purple-bg)',
+                    border: '1px dashed var(--purple)',
+                    borderRadius: 8,
+                    padding: '4px 7px',
+                    fontSize: 10.5,
+                    color: 'var(--purple)',
+                    marginBottom: 5,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  📋{' '}
+                  <span>
+                    <b>{d.naam} afwijkend:</b> {o.tekst}
+                  </span>
+                </button>
+              ))}
               {kaarten.map((k) => (
                 <Kaart
                   key={k.gebruiker_id}
@@ -457,6 +888,27 @@ export function PlanningScreen() {
                       {p.rol === 'uitvoerder' ? ' · uitv.' : ''}
                     </button>
                   ))}
+                  {/* Dag-override via de dagcel (31-08) — alleen als er hier een opdracht loopt. */}
+                  {werkopdrachten.some((w) => w.van <= d.datum && d.datum <= w.tot_en_met) && (
+                    <button
+                      className="linkbtn"
+                      style={{
+                        display: 'block',
+                        padding: '3px 4px',
+                        textAlign: 'left',
+                        width: '100%',
+                        color: 'var(--purple)',
+                        borderTop: '1px dashed var(--border)',
+                        marginTop: 3,
+                      }}
+                      onClick={() => {
+                        setKiesCel(null)
+                        setOverrideDialoog({ rij, datum: d.datum })
+                      }}
+                    >
+                      📋 afwijkende opdracht voor deze dag…
+                    </button>
+                  )}
                 </div>
               )}
             </td>
@@ -529,6 +981,13 @@ export function PlanningScreen() {
           >
             Vandaag
           </Button>
+          {/* 31-08 blok C: "+ Project aanmaken" terug op /planning voor B+P — bestaande
+              projectmotor (naamconventie + RLZ-PUT), geen nieuw pad. */}
+          {toegang?.is_beheerder_of_bp === true && (
+            <Button maat="klein" title="Via de projectmotor — wordt óók in RLZ aangemaakt" onClick={() => setNieuwProjectOpen(true)}>
+              + Project aanmaken
+            </Button>
+          )}
         </div>
       </div>
 
@@ -649,8 +1108,18 @@ export function PlanningScreen() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
           <div className="panel">
-            <h2 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)' }}>
+            <h2 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
               👷 ZZP&apos;ers &amp; uitvoerders <span style={{ fontWeight: 400, color: 'var(--faint)' }}>· sleep naar het grid</span>
+              {magVeldwerkerbeheer && (
+                <Button
+                  maat="klein"
+                  style={{ marginLeft: 'auto' }}
+                  title="Veldwerker toevoegen (veldwerkerbeheer-recht: alleen veldwerkers, eigen scope, geaudit)"
+                  onClick={() => setNieuweVeldwerkerOpen(true)}
+                >
+                  + ZZP&apos;er
+                </Button>
+              )}
             </h2>
             {data !== null && data.pool.length === 0 && (
               <p className="hint">Nog geen veldwerkers — nodig ze uit onder Gebruikers &amp; toegang.</p>
@@ -695,9 +1164,25 @@ export function PlanningScreen() {
                   >
                     {dagenGepland.toLocaleString('nl-NL', { maximumFractionDigits: 1 })} dg
                   </span>
+                  {magVeldwerkerbeheer && (
+                    <button
+                      className="linkbtn"
+                      title="Archiveren (nooit verwijderen; veldwerkerbeheer-recht, audit oud→nieuw)"
+                      aria-label={`${p.naam} archiveren`}
+                      style={{ fontSize: 10.5 }}
+                      onClick={() => void archiveerVeldwerker(p.gebruiker_id, p.naam)}
+                    >
+                      🗑
+                    </button>
+                  )}
                 </div>
               )
             })}
+            {magVeldwerkerbeheer && (
+              <p className="hint" style={{ fontSize: 10.5, marginTop: 6 }}>
+                🗑 op een kaartje = archiveren (nooit verwijderen) — via het veldwerkerbeheer-recht, geaudit.
+              </p>
+            )}
           </div>
 
           {data !== null && (data.wachtrisico ?? []).length > 0 && (
@@ -774,6 +1259,42 @@ export function PlanningScreen() {
           )}
         </div>
       </div>
+      )}
+
+      {woDialoog && administratieId && (
+        <WerkopdrachtDialog
+          administratieId={administratieId}
+          projectId={woDialoog.projectId}
+          projectNaam={woDialoog.projectNaam}
+          onSluiten={() => setWoDialoog(null)}
+          onGewijzigd={laad}
+        />
+      )}
+      {overrideDialoog && administratieId && (
+        <DagOverrideDialog
+          administratieId={administratieId}
+          rij={overrideDialoog.rij}
+          datum={overrideDialoog.datum}
+          onSluiten={() => setOverrideDialoog(null)}
+          onGewijzigd={laad}
+        />
+      )}
+      {nieuwProjectOpen && administratieId && (
+        <NieuwProjectModal
+          administratieId={administratieId}
+          onKlaar={() => {
+            setNieuwProjectOpen(false)
+            laad()
+          }}
+          onAnnuleren={() => setNieuwProjectOpen(false)}
+        />
+      )}
+      {nieuweVeldwerkerOpen && administratieId && (
+        <NieuweVeldwerkerDialog
+          administratieId={administratieId}
+          onSluiten={() => setNieuweVeldwerkerOpen(false)}
+          onKlaar={laad}
+        />
       )}
 
       <p className="hint" style={{ marginTop: 14, maxWidth: 980 }}>

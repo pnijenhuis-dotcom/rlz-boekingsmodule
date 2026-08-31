@@ -399,3 +399,17 @@ export async function zetModuleRecht(gebruikerId: string, ingeschakeld: boolean)
     body: JSON.stringify({ gebruiker_id: gebruikerId, ingeschakeld }),
   })
 }
+
+/* Fijnmazig recht 'veldwerkerbeheer' (31-08, migratie 0091): Beheerder-only toekennen; de
+ * houder mag uitsluitend veldwerkers aanmaken/archiveren binnen de eigen scope. */
+export function haalVeldwerkerbeheerHouders(): Promise<{ gebruiker_ids: string[] }> {
+  return apiJson<{ gebruiker_ids: string[] }>('/uren/beheer/veldwerkerbeheer-recht')
+}
+
+export async function zetVeldwerkerbeheerRecht(gebruikerId: string, ingeschakeld: boolean): Promise<void> {
+  await apiJson('/uren/beheer/veldwerkerbeheer-recht', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gebruiker_id: gebruikerId, ingeschakeld }),
+  })
+}
