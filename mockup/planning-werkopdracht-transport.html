@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planning — werkopdrachten + transport v2 (mockup)</title>
+<!-- ============================================================
+     MOCKUP planning-uitbreiding (feedbackronde Peter 31-08):
+     1. WERKOPDRACHT per project × periode (vrije tekst, meerdere/
+        overlappend per project, dag-override; append-only met
+        wie/wanneer; ZZP'ers zien 'm in de veld-app bij hun planning)
+     2. TRANSPORT: zoek-en-sleep-werkbakje (typ project → chip →
+        sleep naar dag; klik-alternatief), kleurstatussen
+        gereserveerd (geel) / bevestigd (groen) + signaal
+        "nog te plannen" (rood), typebare project-combobox
+     3. "+ Project aanmaken" terug op de planning (B+P-rol, via de
+        bestaande projectmotor → wordt óók in RLZ aangemaakt)
+     4. Zijbalk: ZZP'er toevoegen/archiveren (nieuw fijnmazig recht
+        "veldwerkerbeheer": alléén veldwerkers, eigen scope, audit)
+     Stijl/tokens = planning-steigerbouw.html (designpass-norm).
+     Klikbaar: tabs, thema, werkopdracht-popup, transport-werkbakje
+     (typ 2+ letters in het zoekveld), chips slepen naar cellen.
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#ffffff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-hover:#25534e; --primary-fg:#ffffff;
+    --accent-bg:#e9f2f0; --ring:rgba(46,102,96,.35);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  html.dark{
+    --bg:#0e1514; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --primary:#57b3a7; --primary-hover:#6ac4b8; --primary-fg:#0c1513;
+    --accent-bg:#1c2e2b; --ring:rgba(87,179,167,.35);
+    --ok:#4ecb94; --ok-bg:#152f24; --warn:#e5a04c; --warn-bg:#33260f;
+    --danger:#f08579; --danger-bg:#361713; --info:#93a6f5; --info-bg:#1a2038;
+    --purple:#b39af0; --purple-bg:#251b3d;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13.5px;letter-spacing:-.01em;line-height:1.45;padding:22px}
+  button{font-family:inherit}
+  .kop{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+  .kop h1{font-size:19px;letter-spacing:-.02em}
+  .kop .sub{color:var(--muted);font-size:12.5px}
+  .kop .rechts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .btn.secundair{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.klein{padding:5px 11px;font-size:12px;border-radius:7px}
+  .icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:15px}
+  .weeknav{display:flex;align-items:center;gap:6px;font-weight:700}
+  .layout{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+  .planner{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{border-bottom:1px solid color-mix(in srgb,var(--border) 55%,var(--muted));border-right:1px solid color-mix(in srgb,var(--border) 55%,var(--muted));vertical-align:top}
+  th:last-child,td:last-child{border-right:none}
+  td.cel:hover{background:var(--panel-2);box-shadow:inset 0 0 0 1px var(--primary)}
+  th.vandaag,td.vandaag{background:color-mix(in srgb,var(--accent-bg) 55%,transparent)}
+  thead th{background:var(--panel-2);padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:center}
+  thead th:first-child{text-align:left;width:186px}
+  thead th small{display:block;text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
+  tbody th{background:var(--panel-2);padding:10px;font-size:12.5px;text-align:left;vertical-align:top}
+  tbody th .pl{display:block;font-weight:400;font-size:10.5px;color:var(--faint)}
+  td.cel{padding:5px;min-height:52px;height:1px}
+  td.cel.dragover{outline:2px dashed var(--primary);outline-offset:-3px;background:var(--accent-bg)}
+  td.cel.teplannen{background:repeating-linear-gradient(45deg,transparent,transparent 7px,color-mix(in srgb,var(--danger-bg) 70%,transparent) 7px,color-mix(in srgb,var(--danger-bg) 70%,transparent) 14px)}
+  .kaart{background:var(--info-bg);border:1px solid color-mix(in srgb,var(--info) 30%,transparent);border-radius:9px;padding:5px 8px;font-size:11.5px;line-height:1.3;cursor:grab;margin-bottom:5px;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .kaart b{font-size:12px}
+  .kaart .init{width:20px;height:20px;border-radius:99px;background:var(--panel);border:1px solid var(--border);display:grid;place-items:center;font-size:9.5px;font-weight:800;color:var(--primary);flex-shrink:0}
+  .kaart.geel{background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+  .kaart.groen{background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+  .kaart.rood{background:var(--danger-bg);border-color:color-mix(in srgb,var(--danger) 35%,transparent)}
+  .kaart .half{font-size:10px;font-weight:700;color:var(--muted)}
+  /* werkopdracht */
+  .wo-chip{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:10.5px;font-weight:700;color:var(--purple);background:var(--purple-bg);border:1px solid color-mix(in srgb,var(--purple) 25%,transparent);border-radius:99px;padding:2px 9px;cursor:pointer;max-width:100%}
+  .wo-chip .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .wo-plus{display:inline-grid;place-items:center;width:18px;height:18px;margin-top:6px;margin-left:4px;border-radius:99px;border:1px dashed var(--faint);color:var(--faint);font-size:12px;cursor:pointer;background:none}
+  .wo-plus:hover{color:var(--primary);border-color:var(--primary)}
+  .dag-override{display:flex;align-items:flex-start;gap:5px;background:var(--purple-bg);border:1px dashed color-mix(in srgb,var(--purple) 45%,transparent);border-radius:8px;padding:4px 7px;font-size:10.5px;color:var(--purple);margin-bottom:5px;line-height:1.35}
+  .zij{display:flex;flex-direction:column;gap:14px;position:sticky;top:16px}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .paneel h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+  .paneel .body{padding:10px 12px}
+  .legenda{display:flex;gap:12px;align-items:center;font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .dot{width:9px;height:9px;border-radius:99px;display:inline-block;margin-right:4px}
+  input[type=search],input[type=text],input[type=date],textarea{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:12.5px;color:var(--text);font-family:inherit;width:100%}
+  textarea{resize:vertical;min-height:64px;line-height:1.5}
+  .zoeklijst{border:1px solid var(--border);border-radius:8px;margin-top:6px;overflow:hidden}
+  .zoeklijst div{padding:7px 11px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)}
+  .zoeklijst div:last-child{border-bottom:none}
+  .zoeklijst div:hover{background:var(--accent-bg)}
+  .bak-chip{display:flex;align-items:center;gap:7px;background:var(--accent-bg);border:1px solid color-mix(in srgb,var(--primary) 30%,transparent);border-radius:9px;padding:7px 9px;font-size:12px;font-weight:600;cursor:grab;margin-bottom:6px}
+  .bak-chip .x{margin-left:auto;color:var(--faint);cursor:pointer;font-size:13px}
+  .bak-chip.actief{outline:2px solid var(--primary);outline-offset:1px}
+  .veldapp{background:#101917;border-radius:18px;padding:14px;color:#e6ecea;font-size:12px;max-width:270px;border:6px solid #202b28}
+  html.dark .veldapp{border-color:#2c3a36}
+  .veldapp .rij{background:#16211f;border:1px solid #263431;border-radius:10px;padding:8px 10px;margin-top:8px}
+  .veldapp .wo{background:#251b3d;border:1px solid #4a3a76;border-radius:8px;padding:7px 9px;margin-top:6px;color:#cdbdf6;font-size:11.5px;line-height:1.45}
+  .notitie{background:var(--accent-bg);border-radius:var(--radius-sm);padding:10px 13px;font-size:12px;line-height:1.55;color:var(--primary);margin-top:14px;max-width:1080px}
+  /* popup */
+  .overlay{position:fixed;inset:0;background:rgba(10,18,16,.5);backdrop-filter:blur(3px);z-index:50;display:none;align-items:flex-start;justify-content:center;padding:6vh 16px}
+  .overlay.open{display:flex}
+  .modal{width:100%;max-width:560px;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:hidden}
+  .modal .m-kop{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--border)}
+  .modal .m-kop h3{font-size:15px}
+  .modal .m-kop .sub{font-size:12px;color:var(--muted)}
+  .modal .m-body{padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+  .modal .m-voet{display:flex;gap:8px;justify-content:flex-end;padding:13px 20px;border-top:1px solid var(--border);background:var(--panel-2)}
+  .veldlabel{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin-bottom:4px;display:block}
+  .historie{font-size:11px;color:var(--faint);border-top:1px dashed var(--border);padding-top:9px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="kop">
+  <div>
+    <h1>Planning — Universal Steigerbouw</h1>
+    <div class="sub">Week 35 · 24 – 28 aug · mockup werkopdrachten + transport-werkbakje (feedback 31-08)</div>
+  </div>
+  <div class="rechts">
+    <div class="weeknav"><button class="icon-btn">‹</button><span style="padding:0 6px">Week 35</span><button class="icon-btn">›</button></div>
+    <button class="btn secundair klein">Vandaag</button>
+    <button class="btn klein" title="B+P-rol; via de projectmotor — project wordt óók in RLZ aangemaakt">+ Project aanmaken</button>
+    <button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')">◐</button>
+  </div>
+</div>
+
+<div style="display:flex;gap:8px;margin:0 0 14px">
+  <button class="btn klein" id="tab-personeel" onclick="toonTab('personeel')">👷 Personeel</button>
+  <button class="btn secundair klein" id="tab-transport" onclick="toonTab('transport')">🚚 Transport</button>
+</div>
+
+<!-- ================= TAB 1: PERSONEEL mét WERKOPDRACHTEN ================= -->
+<div class="layout" id="view-personeel">
+  <div class="planner">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
+      <input type="search" placeholder="Filter projecten…" style="flex:0 0 300px">
+      <span class="legenda"><span><span class="dot" style="background:var(--purple)"></span>werkopdracht actief</span><span style="color:var(--faint)">chip = uitklappen · ⊕ = werkopdracht toevoegen</span></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Project (actief)</th>
+          <th class="vandaag">ma 24-8<small>vandaag</small></th>
+          <th>di 25-8</th><th>wo 26-8</th><th>do 27-8</th><th>vr 28-8</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>144 Breda<span class="pl">Moeskops · t/m wk 40</span>
+            <span class="wo-chip" onclick="openWo()" title="montage 22-8 t/m 29-9 — klik voor detail/wijzigen">📋 <span class="txt">Montage fase 1 — zuidgevel eerst…</span></span><button class="wo-plus" onclick="openWo()" title="werkopdracht toevoegen">+</button>
+          </th>
+          <td class="cel vandaag">
+            <div class="kaart"><span class="init">MK</span><b>Milan K.</b></div>
+            <div class="kaart groen"><span class="init">BD</span><b>Ben v. Dijk</b><span class="half">uitv.</span></div>
+          </td>
+          <td class="cel">
+            <div class="dag-override" title="alleen deze dag wijkt de werkopdracht af — klik om te wijzigen">📋 <span><b>di 25-8 afwijkend:</b> extra werk — trap­toren bijplaatsen (meerwerk gemeld)</span></div>
+            <div class="kaart"><span class="init">MK</span><b>Milan K.</b></div>
+          </td>
+          <td class="cel"><div class="kaart"><span class="init">SB</span><b>Stefan B.</b></div></td>
+          <td class="cel"></td>
+          <td class="cel"><div class="kaart"><span class="init">SB</span><b>Stefan B.</b></div></td>
+        </tr>
+        <tr>
+          <th>25016 Groesbeek<span class="pl">Janssen-Groesbeek · t/m wk 38</span>
+            <span class="wo-chip"><span class="txt">📋 Demontage west + tellen retour…</span></span><button class="wo-plus">+</button>
+          </th>
+          <td class="cel"><div class="kaart"><span class="init">AD</span><b>Ali D.</b></div></td>
+          <td class="cel"><div class="kaart"><span class="init">AD</span><b>Ali D.</b></div></td>
+          <td class="cel"></td>
+          <td class="cel"><div class="kaart geel"><span class="init">MK</span><b>Milan K.</b><span class="half">½ dag</span></div></td>
+          <td class="cel"></td>
+        </tr>
+        <tr>
+          <th>25013 Deurne<span class="pl">Bots Bouwgroep · t/m wk 36</span><button class="wo-plus" title="nog geen werkopdracht — toevoegen">+</button></th>
+          <td class="cel"></td><td class="cel"></td><td class="cel"></td>
+          <td class="cel"><div class="kaart geel"><span class="init">MK</span><b>Milan K.</b><span class="half">½ dag</span></div></td>
+          <td class="cel"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="zij">
+    <div class="paneel">
+      <h2>👷 ZZP'ers &amp; uitvoerders <button class="btn klein" style="margin-left:auto" title="fijnmazig recht 'veldwerkerbeheer': alleen veldwerkers, eigen scope, geaudit">+ ZZP'er</button></h2>
+      <div class="body">
+        <div class="kaart" draggable="true"><span class="init">MK</span><b>Milan K.</b></div>
+        <div class="kaart" draggable="true"><span class="init">SB</span><b>Stefan B.</b></div>
+        <div class="kaart" draggable="true"><span class="init">AD</span><b>Ali D.</b></div>
+        <div class="kaart groen" draggable="true"><span class="init">BD</span><b>Ben v. Dijk</b><span class="half">uitv.</span></div>
+        <div style="font-size:11px;color:var(--faint);margin-top:8px">rechtsklik / ⋯ op een kaartje = <b>archiveren</b> (nooit verwijderen; loopt via het nieuwe veldwerkerbeheer-recht, audit oud→nieuw)</div>
+      </div>
+    </div>
+    <div class="paneel">
+      <h2>📱 Zo ziet de ZZP'er het (veld-app · Planning)</h2>
+      <div class="body" style="display:flex;justify-content:center">
+        <div class="veldapp">
+          <b style="font-size:13px">📅 Mijn planning — wk 35</b>
+          <div class="rij"><b>di 25-8 · 144 Breda</b><br><span style="color:#93a4a0">Moeskops · hele dag</span>
+            <div class="wo">📋 <b>di afwijkend:</b> extra werk — traptoren bijplaatsen (meerwerk gemeld)</div>
+          </div>
+          <div class="rij"><b>wo 26-8 · 144 Breda</b><br><span style="color:#93a4a0">Moeskops · hele dag</span>
+            <div class="wo">📋 Montage fase 1 — zuidgevel eerst, dan oost. Valbeveiliging: lijn op niv. 3.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TAB 2: TRANSPORT mét werkbakje + kleurstatussen ================= -->
+<div class="layout" id="view-transport" style="display:none">
+  <div class="planner">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <span class="legenda">
+        <span><span class="dot" style="background:var(--danger)"></span><b>gereserveerd</b> (uit werkbakje gesleept)</span>
+        <span>→</span>
+        <span><span class="dot" style="background:var(--warn)"></span><b>bevestigd</b> (klik op kaart · melding aan Roland: transport gaat definitief door)</span>
+        <span>→</span>
+        <span><span class="dot" style="background:var(--ok)"></span><b>definitief</b> (materiaal + transportplanner ingevuld · lijst naar Theo)</span>
+        <span>→</span>
+        <span><span class="dot" style="background:var(--faint)"></span>geleverd</span>
+      </span>
+    </div>
+    <table>
+      <thead><tr><th class="vandaag" style="text-align:center;width:auto">ma 24-8<small>vandaag</small></th><th>di 25-8</th><th>wo 26-8</th><th>do 27-8</th><th>vr 28-8</th></tr></thead>
+      <tbody>
+        <tr style="height:340px">
+          <td class="cel vandaag">
+            <div class="kaart groen" draggable="true"><span class="init">▲</span><b>144 · Moeskops</b><span class="half" style="flex-basis:100%">Hoge Steenweg 12, Breda</span><span class="half">▲ levering · steiger 600 m² · Universal Verhuur · 07:00 · planner: De Jong</span><span class="half" style="color:var(--ok);font-weight:800">definitief · lijst bij Theo</span></div>
+          </td>
+          <td class="cel">
+            <div class="kaart geel" draggable="true" onclick="document.getElementById('mat-overlay').classList.add('open')" title="klik: materiaal + transportplanner invullen → definitief (groen) + lijst naar Theo"><span class="init">▲</span><b>144 · Moeskops</b><span class="half" style="flex-basis:100%">Hoge Steenweg 12, Breda</span><span class="half">▲ levering · lift 1× · Floor Liften · 🚛 combi</span><span class="half" style="color:var(--warn);font-weight:800">bevestigd — Roland gemeld · materiaallijst nog invullen</span></div>
+            <div class="kaart rood" draggable="true" onclick="document.getElementById('bev-overlay').classList.add('open')" title="klik om te bevestigen (melding aan Roland)"><span class="init">▲</span><b>25036 · Confide Bouw</b><span class="half" style="flex-basis:100%">Rijksweg 14, Arnhem</span><span class="half">▲ levering · nog geen materiaal</span><span class="half" style="color:var(--danger);font-weight:800">gereserveerd — klik om te bevestigen</span></div>
+          </td>
+          <td class="cel dragover">
+            <div style="font-size:11px;color:var(--primary);font-weight:700;padding:4px">⬇ 25036 · Confide — laat los om te plannen…</div>
+          </td>
+          <td class="cel">
+            <div class="kaart" style="background:var(--panel-2);border-color:var(--border)" draggable="true"><span class="init">▼</span><b style="color:var(--muted)">25047 · Welling bouw</b><span class="half" style="flex-basis:100%">Molenweg 3, Ede</span><span class="half">▼ retour · steiger 250 m²</span><span class="half">geleverd ✓</span></div>
+          </td>
+          <td class="cel">
+            <div class="kaart groen" draggable="true" onclick="document.getElementById('mat-overlay').classList.add('open')" title="materiaallijst wijzigen kan altijd — Theo krijgt dan alléén de wijzigingen (oud→nieuw)"><span class="init">▼</span><b>144 · Moeskops</b><span class="half" style="flex-basis:100%">Hoge Steenweg 12, Breda</span><span class="half">▼ retour · netten 400 m¹ · Universal Verhuur · 🚚 voorwagen · planner: De Jong</span><span class="half" style="color:var(--ok);font-weight:800">definitief · lijst bij Theo · ⚠ ploeg staat vr nog gepland</span></div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="padding:9px 12px;font-size:11px;color:var(--faint);border-top:1px solid var(--border)">Dag-agenda zónder projectrijen: elke kaart is zelfstandig leesbaar (projectnr · klant · adres · ▲levering/▼retour · materiaal · transporteur · status) en sleepbaar tussen dagen. Nieuw transport = project via het werkbakje rechts naar een dag slepen. Het ⚠ op een kaart = wachtrisico-kruissignaal met de personeelsplanning.</div>
+  </div>
+
+  <div class="zij">
+    <div class="paneel">
+      <h2>🧺 Werkbakje — project erbij pakken</h2>
+      <div class="body">
+        <input type="search" id="zoekveld" placeholder="Zoek project… (typ bv. 250)" oninput="zoek(this.value)">
+        <div class="zoeklijst" id="zoeklijst" style="display:none">
+          <div onclick="pak('25036 Arnhem — Confide Bouw')">25036 Arnhem <span style="color:var(--faint)">· Confide Bouw</span></div>
+          <div onclick="pak('25058 Haarlem — Slokker')">25058 Haarlem <span style="color:var(--faint)">· Slokker</span></div>
+          <div onclick="pak('25017 Kudo Arnhem fase 2')">25017 Kudo Arnhem-Kronenburg f2</div>
+        </div>
+        <div id="bak" style="margin-top:10px">
+          <div class="bak-chip" draggable="true">🏗 25058 Haarlem — Slokker <span class="x" title="uit het bakje">✕</span></div>
+          <div class="bak-chip actief" draggable="true">🏗 25036 Arnhem — Confide <span class="x">✕</span></div>
+        </div>
+        <div style="font-size:11px;color:var(--faint);margin-top:6px">Sleep een chip naar een dag, óf: klik de chip (selecteren) en klik daarna de dag. De chip blijft in het bakje tot je 'm wegklikt — zo plan je hetzelfde project op meerdere dagen.</div>
+      </div>
+    </div>
+    <div class="paneel">
+      <h2>🚚 Leveranciers <button class="btn klein secundair" style="margin-left:auto" title="sinds 31-08 ook voor Boekhouding + Projecten">+ Leverancier</button></h2>
+      <div class="body" style="font-size:12px;color:var(--muted)">
+        <b style="color:var(--text)">Universal Verhuur</b><br>
+        <span style="font-size:11px">transport-contact: <b>Roland</b> (melding bij bevestigen) · materiaal-contact: <b>Theo</b> (lijst bij definitief + delta bij wijziging)</span><br>
+        <span style="font-size:11px;color:var(--faint)">Floor Liften · De Jong Transport — beheer nu ook voor Boekhouding + Projecten, audit blijft</span>
+      </div>
+    </div>
+    <div class="paneel">
+      <h2>✉ Zo ziet Theo een wijziging</h2>
+      <div class="body" style="font-size:11.5px;line-height:1.6;color:var(--muted)">
+        <b style="color:var(--text)">Gewijzigde materiaallijst — 144 Moeskops, retour vr 28-8</b><br>
+        <span style="color:var(--danger)">− netten 400 m¹ → 250 m¹</span><br>
+        <span style="color:var(--ok)">+ kortelingen 40 st (nieuw)</span><br>
+        <span style="color:var(--faint)">alleen de wijzigingen (oud→nieuw) — de rest van de lijst is ongewijzigd en wordt niet herhaald; zelfde delta-patroon als de bestel-update-mails</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= POPUP: bevestigen (rood → oranje) ================= -->
+<div class="overlay" id="bev-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:440px">
+    <div class="m-kop">
+      <div style="width:38px;height:38px;border-radius:10px;background:var(--warn-bg);display:grid;place-items:center;font-size:18px">🚚</div>
+      <div><h3>Transport bevestigen — 25036 · Confide Bouw</h3><div class="sub">▲ levering · di 25-8 · Rijksweg 14, Arnhem</div></div>
+    </div>
+    <div class="m-body">
+      <div style="font-size:12.5px;color:var(--muted)">Roland (Universal Verhuur) bevestigt dat het transport definitief doorgaat — leg meteen het voertuig vast dat hij toezegt:</div>
+      <div style="display:flex;gap:10px">
+        <label style="flex:1;display:flex;gap:8px;align-items:center;border:1px solid var(--primary);background:var(--accent-bg);border-radius:9px;padding:10px 13px;font-weight:700;cursor:pointer"><input type="radio" name="voertuig" checked> 🚛 Combi</label>
+        <label style="flex:1;display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:9px;padding:10px 13px;font-weight:700;cursor:pointer"><input type="radio" name="voertuig"> 🚚 Voorwagen</label>
+      </div>
+      <div style="font-size:11.5px;color:var(--faint)">Na bevestigen kleurt de kaart oranje en krijgt Roland de melding "transport gaat definitief door" mét datum, adres en voertuig. Volgende stap: materiaallijst + transportplanner invullen → groen.</div>
+    </div>
+    <div class="m-voet">
+      <button class="btn secundair klein" onclick="document.getElementById('bev-overlay').classList.remove('open')">Annuleren</button>
+      <button class="btn klein" onclick="document.getElementById('bev-overlay').classList.remove('open')">Bevestigen → melding Roland</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= POPUP: materiaallijst (oranje → groen) ================= -->
+<div class="overlay" id="mat-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:680px">
+    <div class="m-kop">
+      <div style="width:38px;height:38px;border-radius:10px;background:var(--ok-bg);display:grid;place-items:center;font-size:18px">📦</div>
+      <div><h3>Materiaallijst — 144 · Moeskops</h3><div class="sub">▲ levering lift · di 25-8 · Hoge Steenweg 12, Breda · voertuig: combi</div></div>
+      <input type="search" placeholder="Zoek in catalogus…" style="margin-left:auto;max-width:200px">
+    </div>
+    <div class="m-body" style="max-height:46vh;overflow-y:auto;gap:4px">
+      <div class="veldlabel" style="margin-top:2px">Steigermateriaal</div>
+      <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:6px;font-size:12.5px;align-items:center">
+        <span>Steigerdeel 3,0 m</span><input type="text" value="120" style="text-align:right"><span style="color:var(--faint);font-size:11px">≈ 78 m²</span>
+        <span>Steigerdeel 5,0 m</span><input type="text" placeholder="0" style="text-align:right"><span></span>
+        <span>Koppelingen</span><input type="text" value="240" style="text-align:right"><span></span>
+        <span>Kortelingen</span><input type="text" placeholder="0" style="text-align:right"><span></span>
+        <span>Voetspindels</span><input type="text" value="36" style="text-align:right"><span></span>
+      </div>
+      <div class="veldlabel" style="margin-top:10px">Netten &amp; zeilen</div>
+      <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:6px;font-size:12.5px;align-items:center">
+        <span>Steigernet 2,5×20 m</span><input type="text" placeholder="0" style="text-align:right"><span></span>
+        <span>Zeil wit 3×20 m</span><input type="text" placeholder="0" style="text-align:right"><span></span>
+      </div>
+      <div class="veldlabel" style="margin-top:10px">Liften &amp; toebehoren</div>
+      <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:6px;font-size:12.5px;align-items:center">
+        <span>Bouwlift GEDA 500</span><input type="text" value="1" style="text-align:right"><span></span>
+        <span>Traptoren-element</span><input type="text" placeholder="0" style="text-align:right"><span></span>
+      </div>
+      <div style="font-size:11px;color:var(--faint);margin-top:8px">Hele catalogus van de leverancier staat in de lijst (scroll of zoek) — aantallen invullen is selecteren. m² rekent automatisch mee (Σ aantal × lengte ÷ 4,6).</div>
+    </div>
+    <div class="m-voet" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="veldlabel" style="margin:0">Transportplanner</span>
+        <select style="background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--text)"><option>De Jong Transport</option><option>Eigen wagen</option></select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn secundair klein" onclick="document.getElementById('mat-overlay').classList.remove('open')">Annuleren</button>
+        <button class="btn klein" onclick="document.getElementById('mat-overlay').classList.remove('open')">Definitief maken → lijst naar Theo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= POPUP: werkopdracht ================= -->
+<div class="overlay" id="wo-overlay" onclick="if(event.target===this)sluitWo()">
+  <div class="modal">
+    <div class="m-kop">
+      <div style="width:38px;height:38px;border-radius:10px;background:var(--purple-bg);display:grid;place-items:center;font-size:18px">📋</div>
+      <div><h3>Werkopdracht — 144 Breda</h3><div class="sub">zichtbaar voor iedereen die in de periode op dit project is ingepland (veld-app · alleen-lezen)</div></div>
+    </div>
+    <div class="m-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="veldlabel">Van</label><input type="date" value="2026-08-22"></div>
+        <div><label class="veldlabel">Tot en met</label><input type="date" value="2026-09-29"></div>
+      </div>
+      <div>
+        <label class="veldlabel">Opdracht (vrije tekst)</label>
+        <textarea>Montage fase 1 — zuidgevel eerst, daarna oost. Valbeveiliging: lijn op niveau 3. Aanspreekpunt Moeskops: R. Peters (06-…). Materiaal komt van Universal Verhuur, bon ligt in de keet.</textarea>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 11px">
+        Meerdere werkopdrachten per project mogen (ook overlappend, bv. montage + demontage). Eén dag afwijken? Klik in het grid op de dag­cel → "afwijkende opdracht voor deze dag" — de periode-tekst blijft dan de basis voor de overige dagen.
+      </div>
+      <div class="historie"><b>Historie (append-only):</b> 31-08 09:12 aangemaakt door Peter · 31-08 10:40 dag-override di 25-8 toegevoegd door Haci — alles terug te zien, niets overschreven.</div>
+    </div>
+    <div class="m-voet">
+      <button class="btn secundair klein" onclick="sluitWo()">Annuleren</button>
+      <button class="btn klein" onclick="sluitWo()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<div class="notitie">
+  <b>Ontwerpnotities (feedback 31-08):</b> ① werkopdracht = entiteit op projectniveau (periode + tekst, meerdere/overlappend per project; dag-override sparse; append-only mét wie/wanneer — schaalbaar tot 200+ projecten); veld-app toont de opdracht bij elke geplande dag binnen de periode, géén pushmelding bij tekstwijziging. ② Transport-statusflow (besluit Peter 31-08): slepen uit werkbakje = <b>gereserveerd</b> (rood) → klik op kaart = <b>bevestigd</b> (oranje, melding aan transport-contact Roland: "gaat definitief door") → materiaal + transportplanner ingevuld = <b>definitief</b> (groen, materiaallijst naar materiaal-contact Theo) → geleverd (grijs). Materiaallijst blijft altijd wijzigbaar; elke wijziging = delta-bericht aan Theo (alléén gewijzigde regels oud→nieuw, hergebruik bestel-update-mailpatroon). Bij het bevestigen legt kantoor het door Roland toegezegde voertuig vast: 🚛 combi of 🚚 voorwagen (zichtbaar op de kaart). DAG VERSCHUIVEN (besluit Peter): kaart gaat TERUG NAAR ROOD — Roland moet opnieuw bevestigen (planning kan vol zitten) en opnieuw combi/voorwagen toezeggen; de materiaallijst blijft bewaard, dus daarna is één bevestig-klik + planner-check genoeg om weer groen te worden. Contactpersonen per leverancier (transport-/materiaal-contact) in leverancierbeheer. ③ Transport = DAG-AGENDA zonder projectrijen (besluit Peter 31-08): kolommen = dagen, kaart = projectnr + klant + adres (uit projectspecs) + levering/retour + materiaal + transporteur + status; kaarten sleepbaar tussen dagen; wachtrisico-⚠ op de kaart zelf; nieuw transport via het werkbakje (zoek → chip → sleep of klik-klik). ④ "+ Project aanmaken" terug op de planning (B+P-rol, bestaande projectmotor → óók in RLZ). ⑤ Leverancierbeheer + ZZP'er toevoegen/archiveren voor B+P via nieuw fijnmazig recht "veldwerkerbeheer" (nooit kantoorrollen/scope, audit).
+</div>
+
+<script>
+  function toonTab(t){
+    document.getElementById('view-personeel').style.display = t==='personeel'?'grid':'none';
+    document.getElementById('view-transport').style.display = t==='transport'?'grid':'none';
+    document.getElementById('tab-personeel').classList.toggle('secundair', t!=='personeel');
+    document.getElementById('tab-transport').classList.toggle('secundair', t!=='transport');
+  }
+  function openWo(){document.getElementById('wo-overlay').classList.add('open')}
+  function sluitWo(){document.getElementById('wo-overlay').classList.remove('open')}
+  function zoek(v){document.getElementById('zoeklijst').style.display = v.trim().length>=2?'block':'none'}
+  function pak(naam){
+    const d=document.createElement('div'); d.className='bak-chip'; d.draggable=true;
+    d.innerHTML='🏗 '+naam+' <span class="x" onclick="this.parentElement.remove()">✕</span>';
+    document.getElementById('bak').prepend(d);
+    document.getElementById('zoeklijst').style.display='none';
+    document.getElementById('zoekveld').value='';
+  }
+</script>
+</body>
+</html>
