@@ -270,7 +270,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   bovenaan de werkvoorraad; oude URL's redirecten. Toon-regel: bakken-/soorten-regels alleen
   bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). **Instellingen = landing met
   sectiekaarten → subpagina's `/instellingen/<sectie>` (besluit 25-08, D2; deep-links
-  redirecten); de globale boeken-kill-switch heet in de UI/CLI "Boeken platformbreed" — aan =
+  redirecten; sinds 31-08 rol×sectie-matrix `zichtbareSecties` fail-closed — B+P ziet als
+  enige niet-Beheerder-uitzondering de Materiaalcatalogus-kaart/-sectie, spiegel van backend
+  `require_beheerder_of_bp`); de globale boeken-kill-switch heet in de UI/CLI "Boeken platformbreed" — aan =
   boeken kan, uit = boeken staat plat (D4, alleen presentatie). Deel 3 (25-08): `/gebruikers`
   = tabs Kantoor/Veldwerkers/Klant-accordeurs mét tellers, zoekveld + paginering (25) per tab,
   `?groep=` in de URL, actiekolom sticky rechts (`td.acties`) en compacte administraties-chip;
@@ -299,6 +301,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   zie BESLISSINGEN "Nazorg controls-review". Regressie-vangnet: `frontend/scripts/
   overflow_sweep.sh` (alle visuele harnassen × 1440/1170/1024/768 × licht/donker — geen
   horizontale pagina-overflow; vastgoed-sweep-patroon).
+- **Btw-tarief buitenland (verzamelrun 31-08 blok A, casus Labo Derva):** RLZ weigert de
+  boekactie (17) van een EU-/buitenland-tarief met 400 "ongeldig belastingtarief" zolang de
+  crediteurkaart in RLZ geen land/btw-nummer draagt — crediteur-datakwaliteit, geen tarief-fout;
+  land/btw-nummer zijn via de API níét leesbaar (api-verkenning "EU-tarieven op
+  PurchaseInvoice-Actions"). Daarom: onvoorwaardelijk oranje signaal "Btw-tarief buitenland"
+  bij élk buitenland-tarief (naam-prefix ≠ NL) + foutvertaling `vertaal_rlz_boekfout` mét
+  handelingsperspectief op controlescherm/boek_fout/herstel-CLI.
 - **Btw-code uit de scan (feedbackronde 26-08 punt 3):** ná AI-extractie leidt CODE per regel het
   tarief af (`extractie/controle.py::leid_btw_af`: netto × tarief ≈ btw ±1 ct tegen de gesyncte
   TaxRates; gelijk percentage → RLZ-favoriet `IsFavorite` wint; verlegd/vrijgesteld/gemengd doen
@@ -1185,7 +1194,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   per koppelvlak — nooit het webhook-/projectaanvraag-secret; zonder secret buiten dev 503).
   Klikpunt Peter: `scripts/gcp/registersync_secret.sh` + deploy.yml-regel + overdracht aan
   Vastly. Vervangt de handmatige S2-nalevering van 27-08; vervalt per contractversie zodra het
-  §2c-leespatroon fysiek beschikbaar is.
+  §2c-leespatroon fysiek beschikbaar is. **Sinds 31-08 (v1.19-notitie (2), verzoek Vastly):
+  optioneel additief veld `inbox_adres` per administratie-rij — afwezig = geen uitspraak,
+  null/leeg = expliciet geen intake-adres; wij leveren het centrale `facturen@ak-nijenhuis.nl`
+  op élke actieve rij (config `INTAKE_POSTVAK_ADRES`, sinds 31-08 óók op de Cloud Run-sérvice —
+  eigen deploy-stap, de waarde past niet in de `^@^`-gescheiden `--set-env-vars`).**
 - **§2d-uitbreidingen v1.10:** per UBL-regel komt de RLZ-grootboekcode mee als
   `cbc:AccountingCost` (BT-133) — wij lezen deterministisch, onbekende code = blokkerende check
   + vraag, ontbrekende code = mens kiest (geen fout); consument-facturen (alleen-BR-NL-10-
