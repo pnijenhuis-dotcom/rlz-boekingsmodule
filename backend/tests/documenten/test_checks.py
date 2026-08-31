@@ -236,6 +236,7 @@ class TestVoerHardeChecksUit:
             "Verplichte velden",
             "Regeltelling vs totaal",
             "Vervaldatum",
+            "Btw-tarief buitenland",
             "IBAN-wissel",
             "Duplicaatcheck",
             "Duplicaat bij andere crediteur",  # punt 14 (28-08): signaal/blokkade over crediteuren heen
@@ -269,7 +270,7 @@ class TestVoerHardeChecksUit:
             regels=[],
             eigen_rlz_document_id=uuid.uuid4(),
         )
-        assert len(rapport.resultaten) == 6  # incl. Vervaldatum (C1 26-08) + cross-crediteur (punt 14, 28-08)
+        assert len(rapport.resultaten) == 7  # incl. Vervaldatum (C1 26-08) + buitenland-tarief (31-08) + cross-crediteur (punt 14, 28-08)
 
 
 class TestIbanWissel:

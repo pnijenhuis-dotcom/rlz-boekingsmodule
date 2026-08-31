@@ -139,6 +139,51 @@ def vervaldatum_signaal(*, factuurdatum: date | None, vervaldatum: date | None) 
     return None
 
 
+def is_buitenland_tarief(naam: str | None) -> bool:
+    """Deterministisch op RLZ's tarief-naamconventie "<land/zone>, <omschrijving>": het prefix
+    vóór de eerste komma ≠ NL = EU-/Ex-EU-/buitenland-tarief ("EU, Producten Hoog tarief",
+    "Ex EU, …", "EU + Ex-EU, …", landcodes zoals 'DE'). Zonder komma-prefix geen uitspraak
+    (nooit vals signaleren op een vrije naam) — geverifieerd tegen de gesyncte taxrate_cache
+    (verzamelrun 31-08 blok A)."""
+    if not naam or "," not in naam:
+        return False
+    prefix = naam.split(",", 1)[0].strip().upper()
+    return bool(prefix) and prefix != "NL"
+
+
+def check_buitenland_tarief_crediteurkaart(
+    *,
+    regels: list[CheckRegel],
+    taxrate_namen: dict[uuid.UUID, str],
+    factuur_btw_nummer: str | None,
+) -> CheckResultaat:
+    """Casus Labo Derva 31-08: RLZ weigert de boekactie (17) van een EU-/buitenland-tarief met
+    400 "ongeldig belastingtarief" zolang de CREDITEURKAART in RLZ geen land/btw-nummer draagt —
+    een crediteur-datakwaliteitsfout, geen tarief-fout. Land en btw-nummer van de crediteur zijn
+    via de RLZ-API níét leesbaar (probe 31-08: Vendors/{id} — óók fields=all — en
+    Vendors/{id}/Addresses ($expand=Country blijft {}) dragen geen van beide; api-verkenning
+    "EU-tarieven op PurchaseInvoice-Actions"), dus dit is bewust een ONVOORWAARDELIJK oranje
+    signaal bij élk buitenland-tarief: waarschuwen vóór de boekpoging, nooit blokkeren."""
+    naam = "Btw-tarief buitenland"
+    treffers = [
+        (i, taxrate_namen.get(regel.taxrate_id, ""))
+        for i, regel in enumerate(regels, start=1)
+        if regel.taxrate_id is not None and is_buitenland_tarief(taxrate_namen.get(regel.taxrate_id))
+    ]
+    if not treffers:
+        return CheckResultaat(naam, True, "Geen EU-/buitenland-tarief op de regels")
+    plekken = ", ".join(f"regel {i} ('{tarief}')" for i, tarief in treffers)
+    hint = f" Btw-nummer uit de factuur: {factuur_btw_nummer}." if factuur_btw_nummer else ""
+    return CheckResultaat(
+        naam,
+        True,
+        f"EU-/buitenland-tarief op {plekken} — controleer vóór het boeken dat de crediteurkaart in "
+        "RLZ een land én btw-nummer draagt (via de API niet controleerbaar); ontbreekt dat, dan "
+        f"weigert RLZ het boeken met 'ongeldig belastingtarief'.{hint}",
+        signaal=True,
+    )
+
+
 def check_regeltelling(*, totaalbedrag: Decimal | None, regels: list[CheckRegel]) -> CheckResultaat:
     if totaalbedrag is None:
         return CheckResultaat("Regeltelling vs totaal", False, "Geen factuurtotaal ingevuld om tegen te controleren")
@@ -274,6 +319,7 @@ def voer_harde_checks_uit(
     eigen_btw_nummer: str | None = None,
     btw_per_vendor: dict[str, str] | None = None,
     vervaldatum: date | None = None,
+    taxrate_namen: dict[uuid.UUID, str] | None = None,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -295,6 +341,11 @@ def voer_harde_checks_uit(
             ),
             check_regeltelling(totaalbedrag=totaalbedrag, regels=regels),
             check_vervaldatum(factuurdatum=factuurdatum, vervaldatum=vervaldatum),
+            check_buitenland_tarief_crediteurkaart(
+                regels=regels,
+                taxrate_namen=taxrate_namen or {},
+                factuur_btw_nummer=eigen_btw_nummer,
+            ),
             check_iban_wissel(
                 factuur_iban=factuur_iban,
                 vertrouwde_ibans=vertrouwde_ibans or set(),

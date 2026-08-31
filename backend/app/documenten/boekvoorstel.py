@@ -19,6 +19,7 @@ from app.documenten.checks import (
     CheckRegel,
     CheckResultaat,
     check_afdeling,
+    check_buitenland_tarief_crediteurkaart,
     check_iban_wissel,
     check_regeltelling,
     check_verplichte_velden,
@@ -639,12 +640,25 @@ def _naar_check_regels(voorstel: BoekvoorstelData) -> list[CheckRegel]:
     ]
 
 
+def _taxrate_namen(administratie_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    """Tariefnamen uit de gesyncte taxrate_cache voor de buitenland-tarief-check (blok A 31-08) —
+    lokaal, geen RLZ-call: draait dus ook in de storings-tak mee."""
+    from app.sync.models import TaxRateCache
+
+    with scoped_session(administratie_id) as session:
+        rijen = session.execute(
+            select(TaxRateCache.id, TaxRateCache.naam).where(TaxRateCache.administratie_id == administratie_id)
+        ).all()
+    return {r.id: r.naam for r in rijen if r.naam}
+
+
 def _duplicaatcheck_niet_uitgevoerd_rapport(
     *,
     administratie_id: uuid.UUID,
     voorstel: BoekvoorstelData,
     project_verplicht: bool,
     factuur_iban: str | None,
+    factuur_btw_nummer: str | None,
     reden: str,
 ) -> CheckRapport:
     """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
@@ -670,6 +684,11 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
             _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
             check_regeltelling(totaalbedrag=voorstel.totaalbedrag, regels=regels),
             check_vervaldatum(factuurdatum=voorstel.factuurdatum, vervaldatum=voorstel.vervaldatum),
+            check_buitenland_tarief_crediteurkaart(
+                regels=regels,
+                taxrate_namen=_taxrate_namen(administratie_id),
+                factuur_btw_nummer=factuur_btw_nummer,
+            ),
             check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd),
             CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"),
         )
@@ -743,6 +762,7 @@ def voer_checks_uit(
                 voorstel=voorstel,
                 project_verplicht=project_verplicht,
                 factuur_iban=factuur_iban,
+                factuur_btw_nummer=factuur_btw_nummer,
                 reden=str(exc),
             )
     try:
@@ -781,6 +801,7 @@ def voer_checks_uit(
             iban_seed_mislukt=seed_mislukt,
             eigen_btw_nummer=factuur_btw_nummer,
             btw_per_vendor=btw_map,
+            taxrate_namen=_taxrate_namen(administratie_id),
         )
         # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
         # storings-tak), vóór de RLZ-afhankelijke checks.

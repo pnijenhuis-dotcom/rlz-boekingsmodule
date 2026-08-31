@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
@@ -87,6 +88,30 @@ class MatchAfwijkingBevestigingVereist(BoekenFout):
 class RlzBoekingMislukt(BoekenFout):
     """RLZ gaf een fout terug tijdens de boekpoging — het document staat op boeken_mislukt met de
     échte foutmelding; een volgende poging is idempotent (zelfde client-GUID's)."""
+
+
+# Casus Labo Derva 31-08 (api-verkenning "EU-tarieven op PurchaseInvoice-Actions"): RLZ weigert
+# de boekactie (17) met deze 400-tekst wanneer de CREDITEURKAART in RLZ geen land/btw-nummer
+# draagt bij een EU-/buitenland-tarief — na het aanvullen van de kaart accepteert RLZ hetzelfde
+# tarief gewoon. Het is dus een crediteur-datakwaliteitsfout, geen tarief-fout.
+_ONGELDIG_TARIEF_RE = re.compile(r"ongeldig belastingtarief\s*'([^']*)'(?:\s*op regel\s*(\d+))?", re.IGNORECASE)
+
+
+def vertaal_rlz_boekfout(exc: RlzApiError) -> str:
+    """Leesbare melding mét handelingsperspectief voor bekende RLZ-boekweigeringen; alles wat we
+    niet herkennen blijft de rauwe `str(exc)` — nooit informatie wegvertalen. Eén vertaalpunt:
+    via `_zet_boeken_mislukt`/`RlzBoekingMislukt` bedient dit het controlescherm, de
+    accordering-`boek_fout`-reden én de accordering-herstel-CLI."""
+    match = _ONGELDIG_TARIEF_RE.search(exc.body or "")
+    if exc.status_code == 400 and match:
+        tarief = f" ('{match.group(1)}')" if match.group(1) else ""
+        regel = f"regel {match.group(2)}" if match.group(2) else "een regel"
+        return (
+            f"RLZ weigert het btw-tarief{tarief} op {regel} — controleer land en btw-nummer van de "
+            f"crediteur in RLZ en probeer opnieuw (een crediteurkaart zonder land/btw-nummer geeft "
+            f"precies deze weigering bij EU-/buitenland-tarieven). RLZ-fout: {exc.body[:300]}"
+        )
+    return str(exc)
 
 
 @dataclass(frozen=True)
@@ -473,10 +498,11 @@ def boek_document(
                 client=client, document_id=document_id, voorstel=voorstel, bestand=bestand, bestandsnaam=bestandsnaam
             )
         except RlzApiError as exc:
+            reden = vertaal_rlz_boekfout(exc)
             _zet_boeken_mislukt(
-                administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, reden=str(exc)
+                administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, reden=reden
             )
-            raise RlzBoekingMislukt(str(exc)) from exc
+            raise RlzBoekingMislukt(reden) from exc
         except Exception as exc:  # noqa: BLE001
             # Elke andere fout tijdens de boekpoging (netwerkfout die alle retries overleeft,
             # opslagfout bij het lezen van de bijlage, bug) mag het document nooit in limbo

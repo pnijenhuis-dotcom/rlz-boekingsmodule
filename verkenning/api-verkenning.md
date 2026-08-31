@@ -1761,3 +1761,32 @@ rapport `verkenning/output/voorraad_uitstroom_stap0.json` (gitignored).
   SalesInvoices vanaf max(datum) − 14 dagen (eerste run: 1 januari lopend jaar), regels als `mi.voorraad_regel`
   richting 'uit', bron `rlz_verkoop` (`rlz_document_id` + `rlz_referentie`, `document_id` NULL), aantal = Quantity
   (teken inbegrepen), normalisatie via dezelfde motor als de instroom. Nooit een write.
+
+## EU-tarieven op PurchaseInvoice-Actions — 400 "ongeldig belastingtarief" = crediteur-datakwaliteit (31-08, casus Labo Derva)
+
+Casus (Peter, 31-08): een inkoopfactuur van Labo Derva (België) met een EU-tarief weigerde op de
+BOEKACTIE (17) met `400 "Inkoopfactuur N heeft een ongeldig belastingtarief 'DE' op regel 1"`,
+terwijl exact hetzelfde tarief op hetzelfde document ná het aanvullen van de CREDITEURKAART in de
+RLZ-UI (land + btw-nummer) gewoon geaccepteerd werd.
+
+- **Conclusie: het is een crediteur-datakwaliteitsfout, geen tarief-fout.** RLZ valideert een
+  EU-/buitenland-tarief bij actie 17 tegen land/btw-nummer van de crediteur; de PUT van het
+  concept slaagt gewoon — de weigering komt pas bij het boeken. Oplossing = de crediteurkaart in
+  de RLZ-UI aanvullen en opnieuw boeken (zelfde client-GUID's, idempotent).
+- **Land en btw-nummer van een Vendor zijn via de API NIET leesbaar** (probe 31-08, read-only,
+  test-administratie + Kempen Facilities): `GET Vendors/{id}` — óók met `fields=all` — draagt
+  geen van beide (wel `ChamberOfCommerceNumber`, `SocialSecurityNumber` ⚠️ BSN-regel);
+  `GET Vendors/{id}/Addresses` toont `Country: {}` en dat blijft `{}` mét `$expand=Country` —
+  óók op de zojuist door Peter aangevulde Labo-Derva-kaart (Heusden-Zolder, BE). De expand werkt
+  op deze nav-property dus niet; een gevulde kaart is van een lege niet te onderscheiden.
+  Consequentie: een deterministische pre-check "kaart is leeg" kan niet bestaan en meesyncen in
+  de Vendors-sync evenmin — de app-check (blok A 31-08) is daarom een ONVOORWAARDELIJK oranje
+  signaal bij élk buitenland-tarief (`check_buitenland_tarief_crediteurkaart`), plus de
+  foutvertaling `vertaal_rlz_boekfout` als vangnet ná een echte 400.
+- **Buitenland-tarief herkennen = naam-prefix vóór de eerste komma ≠ NL** (taxrate_cache-sweep
+  over alle gesyncte administraties): `"EU, …"`, `"Ex EU, …"`/`"Ex Eu, …"` (casing wisselt),
+  `"EU + Ex-EU, …"` en landcode-varianten zoals `'DE'`; alle NL-tarieven (incl. verlegd) dragen
+  `"NL, …"`. `IsRelayed` onderscheidt níét (NL-verlegd is óók relayed); `TaxKind` 2/3 komt alleen
+  bij EU-tarieven voor maar is niet dekkend gedocumenteerd — naam-prefix is de robuuste bron.
+  Een tarief zonder komma-prefix (de test-administratie heeft er één met `Name: null`) telt
+  bewust niet mee (nooit vals signaleren).
