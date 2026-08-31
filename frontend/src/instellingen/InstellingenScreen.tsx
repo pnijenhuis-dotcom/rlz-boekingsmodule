@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
-import { ApiError } from '../api/client'
+import { ApiError, apiJson } from '../api/client'
 import { Button, Switch, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
 import type {
   AdministratieDto, AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useMijnToegang } from '../auth/useMijnToegang'
 import { zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstellingen'
 import { DossierTypenModal } from './DossierTypenModal'
@@ -207,10 +208,28 @@ export type InstellingenSectie = (typeof INSTELLINGEN_SECTIES)[number]['pad']
 
 const SECTIE_PADEN = new Set<string>(INSTELLINGEN_SECTIES.map((s) => s.pad))
 
+/** Rol×sectie-matrix, fail-closed (verzamelrun 31-08 blok B): een beheer-kaart is Beheerder-only
+ * tenzij hier een expliciete uitzondering staat — élke nieuwe kaart of onbekende rol valt dus
+ * automatisch dicht. Enige uitzondering (besluit Peter 31-08, spiegel van backend
+ * `require_beheerder_of_bp`): Boekhouding+Projecten mag de Materiaalcatalogus (leveranciers,
+ * contactpersonen, catalogus) bereiken. */
+export function zichtbareSecties(rol: string | null) {
+  return INSTELLINGEN_SECTIES.filter((k) => {
+    if (!k.beheerder) return true // Beveiliging: eigen passkeys, elke kantoorrol
+    if (rol === 'beheerder') return true
+    return k.pad === 'materiaal' && rol === 'boekhouding_projecten'
+  })
+}
+
 export function InstellingenScreen() {
   const { rol, status } = useAuth()
   const { sectie: sectieParam } = useParams<{ sectie?: string }>()
   const location = useLocation()
+  // Blok B 31-08: B+P bereikt de Materiaalcatalogus — de administratie-namen komen dan uit de
+  // scope-gefilterde /auth/administraties (het Beheerder-instellingen-endpoint is niet van hen),
+  // de uren-&-meerwerk-opt-in-filter uit mijn-toegang (zelfde filter als de Beheerder-tak).
+  const toegang = useMijnToegang()
+  const [scopeAdministraties, setScopeAdministraties] = useState<AdministratieDto[] | null>(null)
 
   const [administraties, setAdministraties] = useState<AdministratieInstellingenDto[] | null>(null)
   const [accordeursVersie, setAccordeursVersie] = useState(0)
@@ -265,6 +284,21 @@ export function InstellingenScreen() {
     if (rol === 'beheerder') laadAlles()
   }, [rol, laadAlles])
 
+  useEffect(() => {
+    if (rol !== 'boekhouding_projecten') return
+    let actief = true
+    apiJson<{ administraties: AdministratieDto[] }>('/auth/administraties')
+      .then((r) => {
+        if (actief) setScopeAdministraties(r.administraties)
+      })
+      .catch(() => {
+        if (actief) setScopeAdministraties([]) // fail-closed: lege lijst, nooit een crash
+      })
+    return () => {
+      actief = false
+    }
+  }, [rol])
+
   // Backend dwingt dit al af op elk endpoint hieronder — dit is de UI-kant. Sinds de
   // kantoor-passkeys (besluit 0020) is Instellingen voor élke kantoor-rol bereikbaar, maar een
   // niet-Beheerder ziet uitsluitend de Beveiliging-sectie (eigen passkeys) — de beheer-secties
@@ -292,7 +326,62 @@ export function InstellingenScreen() {
   }
 
   if (!isBeheerder) {
-    // Niet-Beheerder: alleen Beveiliging (eigen passkeys) — landing én subpagina zijn hetzelfde.
+    // Niet-Beheerder: fail-closed via de rol×sectie-matrix (zichtbareSecties). Boekhouding ziet
+    // alleen Beveiliging (eigen passkeys, landing = subpagina); B+P daarnaast de
+    // Materiaalcatalogus (blok B 31-08) — élke andere sectie valt terug op Beveiliging.
+    const eigenSecties = zichtbareSecties(rol)
+    const magMateriaal = eigenSecties.some((k) => k.pad === 'materiaal')
+    if (magMateriaal && sectie === 'materiaal') {
+      const materiaalAdministraties =
+        toegang && scopeAdministraties
+          ? scopeAdministraties.filter((a) => toegang.administraties_met_opt_in.includes(a.id))
+          : null
+      return (
+        <div>
+          <div className="topbar">
+            <div>
+              <div className="mb-1 text-[12.5px] text-muted">
+                <Link to="/instellingen" className="text-primary no-underline hover:underline">
+                  Instellingen
+                </Link>{' '}
+                <span className="text-faint">›</span> Materiaalcatalogus
+              </div>
+              <h1>Materiaalcatalogus</h1>
+            </div>
+          </div>
+          {materiaalAdministraties === null ? (
+            <SkeletonRegels />
+          ) : (
+            <MateriaalCatalogusBeheer administraties={materiaalAdministraties} />
+          )}
+        </div>
+      )
+    }
+    if (magMateriaal && sectie === null) {
+      return (
+        <div>
+          <div className="topbar">
+            <div>
+              <h1>Instellingen</h1>
+              <p className="hint" style={{ margin: 0 }}>
+                Kies een onderdeel.
+              </p>
+            </div>
+          </div>
+          <div className="instellingen-kaarten">
+            {eigenSecties.map((k) => (
+              <Link key={k.pad} to={`/instellingen/${k.pad}`} className="panel instellingen-kaart">
+                <h2>{k.titel}</h2>
+                <p className="hint">{k.uitleg}</p>
+                <span className="rijlink text-primary" style={{ fontWeight: 600 }}>
+                  Openen →
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )
+    }
     return (
       <div>
         <div className="topbar">

@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
-import { InstellingenScreen } from './InstellingenScreen'
+import { resetMijnToegangCache } from '../auth/useMijnToegang'
+import { INSTELLINGEN_SECTIES, InstellingenScreen, zichtbareSecties } from './InstellingenScreen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 
@@ -186,6 +187,29 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body })
         return Promise.resolve(jsonResponse(body))
       }
+      // Blok B 31-08: B+P-toegang tot de Materiaalcatalogus — scope-lijst + mijn-toegang +
+      // de fetches die MateriaalCatalogusBeheer zelf doet.
+      if (url === '/uren/kantoor/mijn-toegang') {
+        return Promise.resolve(
+          jsonResponse({
+            heeft_meerwerk_recht: true,
+            administraties_met_opt_in: [ADMINISTRATIE_ID],
+            aantal_administraties_in_scope: 3,
+            is_beheerder: opties.rol === 'beheerder',
+            heeft_veldwerkerbeheer_recht: false,
+            is_beheerder_of_bp: opties.rol === 'beheerder' || opties.rol === 'boekhouding_projecten',
+          }),
+        )
+      }
+      if (url === '/auth/administraties') {
+        return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Testklant B.V.' }] }))
+      }
+      if (url.includes('/materiaal/') && url.includes('/leveranciers')) {
+        return Promise.resolve(jsonResponse([]))
+      }
+      if (url.endsWith('/crediteuren')) {
+        return Promise.resolve(jsonResponse({ crediteuren: [] }))
+      }
       // Beveiliging-sectie (kantoor-passkeys, besluit 0020) — voor élke kantoor-rol.
       if (url === '/auth/mijn/apparaten') {
         return Promise.resolve(jsonResponse({ apparaten: [] }))
@@ -280,6 +304,66 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     renderScherm()
     await openDetail('Testklant B.V.')
     expect(await screen.findByText(/beheerders \(terugval\)/)).toBeInTheDocument()
+  })
+})
+
+describe('InstellingenScreen — rol×sectie-matrix (blok B 31-08, fail-closed)', () => {
+  beforeEach(() => {
+    resetMijnToegangCache()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    resetMijnToegangCache()
+  })
+
+  it('zichtbareSecties is fail-closed: materiaal is de enige B+P-uitzondering, onbekende rol ziet alleen Beveiliging', () => {
+    const paden = (rol: string | null) => zichtbareSecties(rol).map((k) => k.pad)
+    expect(paden('beheerder')).toEqual(INSTELLINGEN_SECTIES.map((k) => k.pad))
+    expect(paden('boekhouding_projecten')).toEqual(['beveiliging', 'materiaal'])
+    expect(paden('boekhouding')).toEqual(['beveiliging'])
+    expect(paden('toekomstige_rol')).toEqual(['beveiliging'])
+    expect(paden(null)).toEqual(['beveiliging'])
+    // Vangnet op het vangnet: de matrix loopt over de échte kaartenlijst.
+    expect(INSTELLINGEN_SECTIES.length).toBeGreaterThan(9)
+  })
+
+  it('B+P landt op precies twee kaarten (Beveiliging + Materiaalcatalogus)', async () => {
+    installFetchMock({ rol: 'boekhouding_projecten' })
+    renderScherm('/instellingen')
+    expect(await screen.findByRole('heading', { name: 'Materiaalcatalogus' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Beveiliging' })).toBeInTheDocument()
+    expect(screen.queryByText('Boeken & platform')).not.toBeInTheDocument()
+    expect(screen.queryByText('Administraties')).not.toBeInTheDocument()
+  })
+
+  it('B+P bereikt /instellingen/materiaal mét de scope-administraties (casus Haci)', async () => {
+    installFetchMock({ rol: 'boekhouding_projecten' })
+    renderScherm('/instellingen/materiaal')
+    expect(await screen.findByRole('heading', { name: /Materiaalcatalogus \(transport/ })).toBeInTheDocument()
+    // De administratie-kiezer draagt de scope-administratie uit /auth/administraties.
+    expect(await screen.findByDisplayValue('Testklant B.V.')).toBeInTheDocument()
+  })
+
+  it('élke andere beheer-sectie valt voor B+P fail-closed terug op Beveiliging', async () => {
+    // 'gebruikers' uitgezonderd: die kaart redirect extern naar /gebruikers (eigen rol-gate).
+    const beheerSecties = INSTELLINGEN_SECTIES.filter((k) => k.beheerder && k.pad !== 'materiaal' && k.pad !== 'gebruikers')
+    expect(beheerSecties.length).toBeGreaterThan(5)
+    for (const kaart of beheerSecties) {
+      vi.unstubAllGlobals()
+      resetMijnToegangCache()
+      installFetchMock({ rol: 'boekhouding_projecten' })
+      const r = renderScherm(`/instellingen/${kaart.pad}`)
+      expect(await screen.findByRole('heading', { name: /Beveiliging — passkeys/ })).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: /Boeken platformbreed/ })).not.toBeInTheDocument()
+      r.unmount()
+    }
+  })
+
+  it('boekhouding blijft óók op /instellingen/materiaal op Beveiliging (fail-closed)', async () => {
+    installFetchMock({ rol: 'boekhouding' })
+    renderScherm('/instellingen/materiaal')
+    expect(await screen.findByRole('heading', { name: /Beveiliging — passkeys/ })).toBeInTheDocument()
+    expect(screen.queryByText(/Materiaalcatalogus \(transport/)).not.toBeInTheDocument()
   })
 })
 
