@@ -337,6 +337,22 @@ class Settings(BaseSettings):
     # zonder token) bestaat bewust niet.
     app_basis_url: str = "http://localhost:5173"
 
+    # Synthetische bewaking + alerting (best-practice-besluit 1, 31-08 — aanleiding: twee
+    # stille productie-incidenten in het weekend van 30/31-08). Job rlz-bewaking, elk kwartier
+    # (app/bewaking/service.py). De alert-ontvanger is bewust een code-default (het bestaande
+    # kantoor-antwoordadres): de bewaking mag nooit stil staan omdat een env-var vergeten is.
+    bewaking_alert_ontvanger: str = "p.nijenhuis@kempengroep.nl"
+    # Goedkoopste gepinde model (ai_kosten_prijzen_usd_per_mtok) voor de uurlijkse minimale
+    # echte AI-call — valt onder de bestaande kostenmeter/-poort (bron 'bewaking').
+    bewaking_ai_model: str = "claude-haiku-4-5"
+    # RLZ-admin-id van de TEST-administratie voor de lichte leesprobe (GET Ledgers $top=1,
+    # strikt read-only). Leeg = probe overgeslagen (dev/lokaal).
+    bewaking_rlz_administratie_id: str | None = None
+    # Foutpiek-signaal: extractie-foutratio per uur boven de drempel bij minstens dit aantal
+    # pogingen → alert (had de schema-limiet-bug van 30-08 binnen een uur gemeld).
+    bewaking_extractie_foutratio_drempel: float = 0.5
+    bewaking_extractie_min_pogingen: int = 3
+
     # Web Push (accordeur-PWA): VAPID-sleutelpaar (scripts/genereer_vapid_sleutels.py — private
     # key via Secret Manager PUSH_VAPID_PRIVATE_KEY, public key is geen geheim). Niet gezet =
     # push niet geconfigureerd: subscriben faalt zichtbaar en de herinnering valt terug op

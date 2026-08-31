@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0091
+-- Migratie-head bij deze dump: 0092
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2832,6 +2832,37 @@ COMMENT ON TABLE platform.audit_event IS 'Append-only audit-log (bron voor de WO
 
 
 --
+-- Name: bewaking_probe_run; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.bewaking_probe_run (
+    id uuid NOT NULL,
+    gestart_op timestamp with time zone DEFAULT now() NOT NULL,
+    beeindigd_op timestamp with time zone,
+    met_ai boolean NOT NULL,
+    uitkomsten jsonb NOT NULL,
+    alles_ok boolean NOT NULL
+);
+
+
+--
+-- Name: bewaking_storing; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.bewaking_storing (
+    id uuid NOT NULL,
+    soort text NOT NULL,
+    begonnen_op timestamp with time zone DEFAULT now() NOT NULL,
+    opeenvolgende_fouten integer NOT NULL,
+    laatste_fout_op timestamp with time zone,
+    laatste_detail text,
+    alert_verzonden_op timestamp with time zone,
+    hersteld_op timestamp with time zone,
+    herstel_gemeld_op timestamp with time zone
+);
+
+
+--
 -- Name: boeken_instelling; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -4188,6 +4219,22 @@ ALTER TABLE ONLY platform.audit_event
 
 
 --
+-- Name: bewaking_probe_run bewaking_probe_run_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.bewaking_probe_run
+    ADD CONSTRAINT bewaking_probe_run_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bewaking_storing bewaking_storing_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.bewaking_storing
+    ADD CONSTRAINT bewaking_storing_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: boeken_instelling boeken_instelling_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -5362,6 +5409,13 @@ CREATE INDEX ix_audit_event_tijdstip ON platform.audit_event USING btree (tijdst
 
 
 --
+-- Name: ix_bewaking_probe_run_gestart_op; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_bewaking_probe_run_gestart_op ON platform.bewaking_probe_run USING btree (gestart_op);
+
+
+--
 -- Name: ix_detacheerder_koppeling_zzper; Type: INDEX; Schema: platform; Owner: -
 --
 
@@ -5436,6 +5490,13 @@ CREATE INDEX ix_webauthn_challenge_gebruiker_id ON platform.webauthn_challenge U
 --
 
 CREATE INDEX ix_webauthn_credential_gebruiker_id ON platform.webauthn_credential USING btree (gebruiker_id);
+
+
+--
+-- Name: uq_bewaking_storing_open_soort; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_bewaking_storing_open_soort ON platform.bewaking_storing USING btree (soort) WHERE (hersteld_op IS NULL);
 
 
 --

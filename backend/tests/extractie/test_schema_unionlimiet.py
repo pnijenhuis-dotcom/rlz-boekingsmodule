@@ -21,52 +21,18 @@ from typing import Any
 
 import pytest
 
-from app.extractie import contract, rapport, service, splitsing
-from app.voorraad import normalisatie
+from app.extractie import service
+from app.extractie.schema_poort import (
+    ANTHROPIC_UNION_LIMIET,
+    controleer_live_schemas,
+    live_schemas,
+    tel_union_parameters,
+)
 
-# Anthropic's harde limiet (foutmelding 30-08): max 16 parameters met union types
-# (anyOf/oneOf of een type-array met meerdere typen).
-ANTHROPIC_UNION_LIMIET = 16
-
-
-def tel_union_parameters(schema: dict[str, Any]) -> int:
-    """Telt zoals Anthropic telt: elke property (op elk nestniveau, array-items meegerekend)
-    waarvan het deelschema een union is — `anyOf`/`oneOf`, of `type` als lijst met meer dan
-    één type. Elke property telt één keer, ook al genereert een dict-comprehension er twaalf."""
-
-    def is_union(deelschema: Any) -> bool:
-        if not isinstance(deelschema, dict):
-            return False
-        if "anyOf" in deelschema or "oneOf" in deelschema:
-            return True
-        soort = deelschema.get("type")
-        return isinstance(soort, list) and len(soort) > 1
-
-    def loop(deelschema: Any) -> int:
-        if not isinstance(deelschema, dict):
-            return 0
-        aantal = 0
-        for prop in (deelschema.get("properties") or {}).values():
-            if is_union(prop):
-                aantal += 1
-            aantal += loop(prop)
-        aantal += loop(deelschema.get("items"))
-        return aantal
-
-    return loop(schema)
-
-
-# Álle live schema's die naar de Claude API gaan. Nieuw AI-schema? Hier toevoegen —
-# de sweep-test hieronder dwingt dat af.
-LIVE_SCHEMAS: dict[str, dict[str, Any]] = {
-    "inkoop FACTUUR_SCHEMA": service.FACTUUR_SCHEMA,
-    "inkoop KOP_SCHEMA": service.KOP_SCHEMA,
-    "inkoop REGELS_SCHEMA": service.REGELS_SCHEMA,
-    "kassarapport RAPPORT_SCHEMA": rapport.RAPPORT_SCHEMA,
-    "intake SPLITSING_SCHEMA": splitsing.SPLITSING_SCHEMA,
-    "contract CONTRACT_SCHEMA": contract.CONTRACT_SCHEMA,
-    "voorraad _NORMALISATIE_SCHEMA": normalisatie._NORMALISATIE_SCHEMA,
-}
+# Teller, limiet én de schema-lijst leven sinds de bewaking (31-08) runtime in
+# app/extractie/schema_poort.py (de AI-probe en de deploy-smoketest draaien dezelfde
+# zelftest) — deze module blijft de testpoort en bewaakt dat elke aanroeper gedekt is.
+LIVE_SCHEMAS: dict[str, dict[str, Any]] = live_schemas()
 
 # Modules die json_schema= aan de client meegeven; client.py zelf is infra (geeft alleen door).
 _GEDEKTE_MODULES = {
@@ -76,6 +42,7 @@ _GEDEKTE_MODULES = {
     "app/extractie/contract.py",
     "app/extractie/client.py",
     "app/voorraad/normalisatie.py",
+    "app/bewaking/service.py",
 }
 
 
@@ -116,6 +83,12 @@ def test_inkoopschema_is_union_vrij() -> None:
     """Het gefixte factuurschema is volledig sentinel-gebaseerd — 0 unions, maximale marge.
     Groeit dit weer, dan is dat een bewuste keuze die hier zichtbaar hoort te worden."""
     assert tel_union_parameters(service.FACTUUR_SCHEMA) == 0
+
+
+def test_runtime_zelftest_is_schoon() -> None:
+    """De runtime-zelftest (AI-probe + deploy-smoketest) hoort op de huidige schema's niets te
+    melden — meldt hij wél iets, dan faalt de parametrized poort hierboven ook."""
+    assert controleer_live_schemas() == []
 
 
 def test_sweep_elke_json_schema_aanroeper_is_gedekt() -> None:

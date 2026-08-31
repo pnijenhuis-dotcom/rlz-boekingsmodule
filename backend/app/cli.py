@@ -153,6 +153,50 @@ def _extractie_heraanbieden(args: argparse.Namespace) -> int:
     return 0
 
 
+def _bewaking_probe(args: argparse.Namespace) -> int:
+    """Entrypoint van de kwartier-job rlz-bewaking (best-practice-besluit 1, 31-08): draai alle
+    probes, leg de statusrij vast en verstuur/sluit alerts. Een falende PROBE is een uitkomst
+    (vastgelegd + eigen SMTP-alert bij 2 op rij), géén job-failure — exit 1 alleen als de
+    bewaking zélf niet kon draaien (dan bijt de F3.2-job-failure-alert als vangnet)."""
+    from app.bewaking.service import voer_probes_uit
+
+    statussen = voer_probes_uit()
+    print("bewaking-probe: " + ", ".join(f"{soort}={status}" for soort, status in statussen.items()))
+    return 0
+
+
+def _deploy_smoketest(args: argparse.Namespace) -> int:
+    """Post-deploy-smoketest (best-practice-besluit 1, 31-08 punt 4 — geen stille kapotte
+    deploys meer): AI-schema-zelftest (union-limiet, de 30-08-klasse), DB + migratieversie en
+    de mailkanaal-config. Draait als one-off Cloud Run-job ná de revisie-switch (deploy.yml);
+    élke fout = exit 1 = de deploy-run is luid rood. De health-/route-checks doet de workflow
+    zelf met curl (die toetsen de nieuwe revisie van buitenaf)."""
+    from app.berichten import mail
+    from app.db import session as db_session
+    from app.db.migratie_guard import _huidige_migratie_in_database, _laatste_migratie_in_repo
+    from app.extractie.schema_poort import controleer_live_schemas
+
+    fouten: list[str] = []
+    overtredingen = controleer_live_schemas()
+    if overtredingen:
+        fouten.append("AI-schema-zelftest: " + "; ".join(overtredingen))
+    try:
+        huidige = _huidige_migratie_in_database(db_session.engine)
+        laatste = _laatste_migratie_in_repo()
+        if huidige != laatste:
+            fouten.append(f"migratieversie: DB={huidige} ≠ repo-head={laatste}")
+    except Exception as exc:  # noqa: BLE001 — élke DB-fout hoort de deploy rood te maken
+        fouten.append(f"database onbereikbaar: {exc}")
+    if not mail.is_geconfigureerd():
+        fouten.append("mailkanaal niet geconfigureerd (BERICHTEN_SMTP_*) — alerts en meldingen liggen plat")
+    if fouten:
+        for fout in fouten:
+            print(f"deploy-smoketest FOUT: {fout}", file=sys.stderr)
+        return 1
+    print("deploy-smoketest: alles groen (schema-zelftest, DB/migratieversie, mailkanaal)")
+    return 0
+
+
 def _sync_alles(args: argparse.Namespace) -> int:
     """Nachtelijke sync-entrypoint (fase-vervolg: Cloud Scheduler -> Cloud Run job roept dit
     commando aan). Eén administratie zonder werkende .env-credentials laat de rest niet
@@ -1405,6 +1449,19 @@ def main(argv: list[str] | None = None) -> int:
     heraanbied_parser.add_argument("--dry-run", action="store_true", help="Alleen tellen, niets heraanbieden.")
 
     subparsers.add_parser(
+        "bewaking-probe",
+        help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
+        "mailkanaal/RLZ-leesroute + 1×/uur AI-call en extractie-foutratio; alert per SMTP bij 2 "
+        "opeenvolgende fouten, herstelmelding zodra weer groen.",
+    )
+
+    subparsers.add_parser(
+        "deploy-smoketest",
+        help="Post-deploy-smoketest (deploy.yml, 31-08): AI-schema-zelftest + DB/migratieversie "
+        "+ mailkanaal-config; exit 1 = deploy-run rood.",
+    )
+
+    subparsers.add_parser(
         "projecten-cijfers-wachtrij",
         help="Verwerk de wachtrij van projectcijfers-syncruns (entrypoint van de on-demand "
         "Cloud Run-job rlz-projecten-cijfers — de sync-knop zet de run klaar en triggert "
@@ -1686,6 +1743,10 @@ def main(argv: list[str] | None = None) -> int:
         return _projecten_cijfers_wachtrij(args)
     if args.commando == "bank-sync-wachtrij":
         return _bank_sync_wachtrij(args)
+    if args.commando == "bewaking-probe":
+        return _bewaking_probe(args)
+    if args.commando == "deploy-smoketest":
+        return _deploy_smoketest(args)
     if args.commando == "extractie-wachtrij-verwerken":
         return _extractie_wachtrij_verwerken(args)
     if args.commando == "extractie-heraanbieden":
