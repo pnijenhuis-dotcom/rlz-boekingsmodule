@@ -70,6 +70,12 @@ logger = logging.getLogger(__name__)
 
 MODULE = "boekhouding"
 MEERWERK_URENSTATEN_RECHT = "meerwerk_urenstaten"
+# Fijnmazig recht 'veldwerkerbeheer' (31-08, migratie 0091): B+P mag uitsluitend veldwerkers
+# aanmaken/archiveren binnen de eigen scope — zie app/auth (poorten) + deps.py. Eigen
+# module-sleutel: de PK van gebruiker_module_rol is (gebruiker_id, module), dus een tweede
+# recht naast meerwerk_urenstaten vergt een eigen sleutel (één gebruiker draagt beide).
+VELDWERKERBEHEER_MODULE = "boekhouding.veldwerkerbeheer"
+VELDWERKERBEHEER_RECHT = "veldwerkerbeheer"
 BEWAKING_DAGEN = 14  # 2-weken-signaal: goedgekeurd maar nog niet doorbelast
 
 
@@ -310,6 +316,54 @@ def heeft_meerwerk_urenstaten_recht(*, gebruiker_id: uuid.UUID, rol: GebruikerRo
     with scoped_session(None, actor_id=gebruiker_id) as session:
         rij = session.get(GebruikerModuleRol, (gebruiker_id, MODULE))
         return rij is not None and rij.rol == MEERWERK_URENSTATEN_RECHT
+
+
+def heeft_veldwerkerbeheer_recht(*, gebruiker_id: uuid.UUID, rol: GebruikerRol) -> bool:
+    """Fijnmazig recht 'veldwerkerbeheer' (31-08, eigen module-sleutel — zie constante):
+    Beheerder heeft het impliciet, andere kantoor-rollen alleen mét rij; externe rollen nooit."""
+    if rol == GebruikerRol.BEHEERDER:
+        return True
+    if not is_kantoorrol(rol):
+        return False
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        rij = session.get(GebruikerModuleRol, (gebruiker_id, VELDWERKERBEHEER_MODULE))
+        return rij is not None and rij.rol == VELDWERKERBEHEER_RECHT
+
+
+def veldwerkerbeheer_houders(*, actor_id: uuid.UUID) -> list[uuid.UUID]:
+    """Houders van het veldwerkerbeheer-recht (Beheerder-only via de router). Actor verplicht —
+    de RLS-leespolicy geeft een actor-loze sessie stil nul rijen (zelfde les als de
+    module-recht-houderslijst, 31-08)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        return list(
+            session.scalars(
+                select(GebruikerModuleRol.gebruiker_id).where(
+                    GebruikerModuleRol.module == VELDWERKERBEHEER_MODULE,
+                    GebruikerModuleRol.rol == VELDWERKERBEHEER_RECHT,
+                )
+            )
+        )
+
+
+def zet_veldwerkerbeheer_recht(*, gebruiker_id: uuid.UUID, ingeschakeld: bool, actor_id: uuid.UUID) -> bool:
+    """Veldwerkerbeheer-recht toekennen/intrekken (Beheerder-only via de router; audit via de
+    DB-trigger van migratie 0034). Idempotent; alleen voor niet-Beheerder-kantoorrollen."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        doel = _gebruiker(session, gebruiker_id)
+        if doel.rol == GebruikerRol.BEHEERDER:
+            raise OngeldigeInvoer("Een Beheerder heeft dit recht altijd — niet instelbaar")
+        if not is_kantoorrol(doel.rol):
+            raise OngeldigeInvoer("Het veldwerkerbeheer-recht is alleen voor kantoor-rollen")
+        rij = session.get(GebruikerModuleRol, (gebruiker_id, VELDWERKERBEHEER_MODULE))
+        if ingeschakeld and rij is None:
+            session.add(
+                GebruikerModuleRol(
+                    gebruiker_id=gebruiker_id, module=VELDWERKERBEHEER_MODULE, rol=VELDWERKERBEHEER_RECHT
+                )
+            )
+        elif not ingeschakeld and rij is not None:
+            session.delete(rij)
+        return ingeschakeld
 
 
 def _vereis_meerwerk_recht(session, actor_id: uuid.UUID) -> Gebruiker:
@@ -1379,10 +1433,12 @@ def uren_stand(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> UrenStand
         )
 
 
-def module_recht_houders() -> list[uuid.UUID]:
+def module_recht_houders(*, actor_id: uuid.UUID) -> list[uuid.UUID]:
     """Gebruikers mét het module-recht 'Meerwerk & urenstaten' (Beheerder-only via de router;
-    Beheerders zelf staan hier niet in — zij hebben het recht impliciet altijd)."""
-    with scoped_session(None) as session:
+    Beheerders zelf staan hier niet in — zij hebben het recht impliciet altijd). De RLS-policy
+    op gebruiker_module_rol laat alleen de eigen rij of een Beheerder-actor lezen — een
+    actor-loze sessie ziet stil nul rijen (leesbug /gebruikers 31-08), dus actor verplicht."""
+    with scoped_session(None, actor_id=actor_id) as session:
         return list(
             session.scalars(
                 select(GebruikerModuleRol.gebruiker_id).where(

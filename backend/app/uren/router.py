@@ -32,6 +32,7 @@ from app.auth.deps import (
 from app.auth.rollen import is_veldrol
 from app.uren import dossier as dossier_service
 from app.uren import overzichten, planning, schemas, service
+from app.uren import werkopdracht as werkopdracht_service
 
 router = APIRouter(prefix="/uren", tags=["uren"])
 
@@ -384,7 +385,18 @@ def zzp_planning(
         )
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
-    return [schemas.MijnPlanningDagDto(**d.__dict__) for d in dagen]
+    return [
+        schemas.MijnPlanningDagDto(
+            **{
+                **d.__dict__,
+                "werkopdrachten": [
+                    schemas.WerkopdrachtDagTekstDto(groep_id=w.groep_id, tekst=w.tekst, afwijkend=w.afwijkend)
+                    for w in d.werkopdrachten
+                ],
+            }
+        )
+        for d in dagen
+    ]
 
 
 # --- ZZP-dossier: veldkant (A1/A2 — upload in de app, blokkade-melding) --------------------------
@@ -797,6 +809,17 @@ def kantoor_planning(
                     datum: [schemas.PlanningKaartDto(**k.__dict__) for k in kaarten]
                     for datum, kaarten in rij.per_datum.items()
                 },
+                werkopdrachten=[
+                    schemas.WerkopdrachtKortDto(groep_id=w.groep_id, van=w.van, tot_en_met=w.tot_en_met, tekst=w.tekst)
+                    for w in rij.werkopdrachten
+                ],
+                werkopdracht_overrides={
+                    datum: [
+                        schemas.WerkopdrachtDagTekstDto(groep_id=t.groep_id, tekst=t.tekst, afwijkend=t.afwijkend)
+                        for t in teksten
+                    ]
+                    for datum, teksten in rij.werkopdracht_overrides.items()
+                },
             )
             for rij in data.projecten
         ],
@@ -887,6 +910,108 @@ def kantoor_planning_dagdeel(
         raise _vertaal(exc) from exc
 
 
+# --- werkopdrachten per project × periode (akkoord Peter 31-08, migratie 0091) ------------------
+
+
+def _werkopdracht_dto(data: werkopdracht_service.WerkopdrachtData) -> schemas.WerkopdrachtDto:
+    return schemas.WerkopdrachtDto(
+        groep_id=data.groep_id,
+        project_id=data.project_id,
+        versie=data.versie,
+        van=data.van,
+        tot_en_met=data.tot_en_met,
+        tekst=data.tekst,
+        dag_overrides=[schemas.WerkopdrachtDagOverrideDto(datum=o.datum, tekst=o.tekst) for o in data.dag_overrides],
+        historie=[
+            schemas.WerkopdrachtHistorieRegelDto(
+                tijdstip=h.tijdstip, door_naam=h.door_naam, omschrijving=h.omschrijving
+            )
+            for h in data.historie
+        ],
+    )
+
+
+@router.get("/kantoor/werkopdrachten", response_model=list[schemas.WerkopdrachtDto])
+def kantoor_werkopdrachten(
+    administratie_id: uuid.UUID,
+    project_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> list[schemas.WerkopdrachtDto]:
+    """Alle werkopdrachten van één project: actuele versie + append-only historie + dag-overrides
+    (de popup op de Personeel-tab)."""
+    try:
+        data = werkopdracht_service.werkopdrachten_project(
+            administratie_id=administratie_id, project_id=project_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [_werkopdracht_dto(w) for w in data]
+
+
+@router.post("/kantoor/werkopdrachten", response_model=schemas.WerkopdrachtDto, status_code=status.HTTP_201_CREATED)
+def kantoor_werkopdracht_aanmaken(
+    payload: schemas.WerkopdrachtAanmakenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.WerkopdrachtDto:
+    try:
+        data = werkopdracht_service.maak_werkopdracht(
+            administratie_id=payload.administratie_id,
+            project_id=payload.project_id,
+            van=payload.van,
+            tot_en_met=payload.tot_en_met,
+            tekst=payload.tekst,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _werkopdracht_dto(data)
+
+
+@router.post("/kantoor/werkopdrachten/{groep_id}/wijzigen", response_model=schemas.WerkopdrachtDto)
+def kantoor_werkopdracht_wijzigen(
+    groep_id: uuid.UUID,
+    payload: schemas.WerkopdrachtWijzigenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.WerkopdrachtDto:
+    """Wijzigen = een nieuwe append-only versie; de oude blijft als historie zichtbaar."""
+    try:
+        data = werkopdracht_service.wijzig_werkopdracht(
+            administratie_id=payload.administratie_id,
+            groep_id=groep_id,
+            van=payload.van,
+            tot_en_met=payload.tot_en_met,
+            tekst=payload.tekst,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _werkopdracht_dto(data)
+
+
+@router.post("/kantoor/werkopdrachten/{groep_id}/dag-override", response_model=schemas.WerkopdrachtDto)
+def kantoor_werkopdracht_dag_override(
+    groep_id: uuid.UUID,
+    payload: schemas.WerkopdrachtDagOverrideRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.WerkopdrachtDto:
+    """Afwijkende tekst voor één dag binnen de periode (sparse — alleen die dag wint)."""
+    try:
+        data = werkopdracht_service.zet_dag_override(
+            administratie_id=payload.administratie_id,
+            groep_id=groep_id,
+            datum=payload.datum,
+            tekst=payload.tekst,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _werkopdracht_dto(data)
+
+
 @router.get("/kantoor/weekstaten/{administratie_id}/{weekstaat_id}", response_model=schemas.WeekstaatDto)
 def kantoor_weekstaat_detail(
     administratie_id: uuid.UUID,
@@ -916,6 +1041,8 @@ def kantoor_mijn_toegang(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -
         administraties_met_opt_in=[a.id for a in administraties if a.uren_meerwerk_ingeschakeld],
         aantal_administraties_in_scope=len(administraties),
         is_beheerder=actor.rol == GebruikerRol.BEHEERDER,
+        heeft_veldwerkerbeheer_recht=service.heeft_veldwerkerbeheer_recht(gebruiker_id=actor.id, rol=actor.rol),
+        is_beheerder_of_bp=actor.rol in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN),
     )
 
 
@@ -1268,7 +1395,29 @@ def beheer_detacheerder_tarief(
 def beheer_module_recht_houders(
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.ModuleRechtHoudersDto:
-    return schemas.ModuleRechtHoudersDto(gebruiker_ids=service.module_recht_houders())
+    return schemas.ModuleRechtHoudersDto(gebruiker_ids=service.module_recht_houders(actor_id=actor.id))
+
+
+@router.get("/beheer/veldwerkerbeheer-recht", response_model=schemas.ModuleRechtHoudersDto)
+def beheer_veldwerkerbeheer_houders(
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.ModuleRechtHoudersDto:
+    return schemas.ModuleRechtHoudersDto(gebruiker_ids=service.veldwerkerbeheer_houders(actor_id=actor.id))
+
+
+@router.put("/beheer/veldwerkerbeheer-recht", response_model=schemas.ModuleRechtDto)
+def beheer_veldwerkerbeheer_zetten(
+    payload: schemas.ModuleRechtRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.ModuleRechtDto:
+    """Fijnmazig recht 'veldwerkerbeheer' aan/uit per kantoormedewerker (31-08, 0019-patroon:
+    Beheerder-only toekennen, audit via de DB-trigger van migratie 0034, idempotent)."""
+    try:
+        ingeschakeld = service.zet_veldwerkerbeheer_recht(
+            gebruiker_id=payload.gebruiker_id, ingeschakeld=payload.ingeschakeld, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.ModuleRechtDto(gebruiker_id=payload.gebruiker_id, ingeschakeld=ingeschakeld)
 
 
 @router.put("/beheer/module-recht", response_model=schemas.ModuleRechtDto)

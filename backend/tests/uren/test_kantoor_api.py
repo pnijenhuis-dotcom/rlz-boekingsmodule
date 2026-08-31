@@ -62,6 +62,30 @@ class TestModuleRechtPoort:
         assert resp.status_code == 200
         assert len(resp.json()) == 1
 
+    def test_houderslijst_ziet_wat_de_put_schrijft(self, admin_engine: Engine, beheerder_id):
+        """Regressie leesbug /gebruikers 31-08: schrijf- en leespad tegen elkaar — de PUT
+        persisteerde wél maar de houderslijst las via een actor-loze sessie en zag door RLS
+        stil nul rijen (kolom toonde bij álle gebruikers 'uit')."""
+        medewerker = maak_gebruiker(admin_engine, "boekhouding", "Haci K.")
+        beheerder_headers = _bearer(beheerder_id, rol="beheerder")
+        resp = client.put(
+            "/uren/beheer/module-recht",
+            json={"gebruiker_id": str(medewerker), "ingeschakeld": True},
+            headers=beheerder_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        resp = client.get("/uren/beheer/module-recht", headers=beheerder_headers)
+        assert resp.status_code == 200, resp.text
+        assert str(medewerker) in resp.json()["gebruiker_ids"]
+        resp = client.put(
+            "/uren/beheer/module-recht",
+            json={"gebruiker_id": str(medewerker), "ingeschakeld": False},
+            headers=beheerder_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        resp = client.get("/uren/beheer/module-recht", headers=beheerder_headers)
+        assert str(medewerker) not in resp.json()["gebruiker_ids"]
+
     def test_klantscope_blijft_gelden_onder_het_recht(
         self, admin_engine: Engine, administratie_id, melding, beheerder_id
     ):
