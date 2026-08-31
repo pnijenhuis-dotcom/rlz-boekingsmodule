@@ -82,6 +82,51 @@ class UitnodigingResultaat:
     verloopt_op: datetime
 
 
+class VeldwerkerbeheerBegrenzing(AuthError):
+    """Buiten de begrenzing van het fijnmazige veldwerkerbeheer-recht (31-08) — router → 403."""
+
+
+def toets_veldwerkerbeheer_uitnodiging(
+    *, actor_id: uuid.UUID, actor_rol: GebruikerRol, rol: GebruikerRol, administratie_ids: list[uuid.UUID]
+) -> None:
+    """Begrenzing veldwerkerbeheer-recht (besluit Peter 31-08, migratie 0091): een
+    niet-Beheerder mét het recht maakt UITSLUITEND veldwerkers (ZZP'er/uitvoerder/detacheerder)
+    aan, mét scope, en uitsluitend binnen de eigen administratie-scope — nooit kantoorrollen.
+    Het harde principe "gebruikersbeheer exclusief Beheerder" blijft voor al het overige."""
+    from app.auth.rollen import is_veldrol
+
+    if actor_rol == GebruikerRol.BEHEERDER:
+        return
+    if not is_veldrol(rol):
+        raise VeldwerkerbeheerBegrenzing("Het veldwerkerbeheer-recht dekt alleen veldwerker-rollen")
+    if not administratie_ids:
+        raise VeldwerkerbeheerBegrenzing("Een veldwerker krijgt altijd een administratie-scope")
+    eigen = {a.id for a in mijn_administraties(actor_id=actor_id, rol=actor_rol)}
+    if not set(administratie_ids) <= eigen:
+        raise VeldwerkerbeheerBegrenzing("De scope valt buiten uw eigen administraties")
+
+
+def toets_veldwerkerbeheer_doel(*, actor_id: uuid.UUID, actor_rol: GebruikerRol, doel_gebruiker_id: uuid.UUID) -> None:
+    """Begrenzing veldwerkerbeheer-recht op een BESTAANDE gebruiker (archiveren/open-werk):
+    doel moet een veldwerker zijn én zijn VOLLEDIGE scope moet binnen die van de actor vallen —
+    getoetst via de zelf-gepoorte SECURITY DEFINER-functie (RLS laat de actor andermans
+    scope-rijen buiten de eigen administraties niet zien; fail-closed)."""
+    from app.auth.rollen import is_veldrol
+
+    if actor_rol == GebruikerRol.BEHEERDER:
+        return
+    with scoped_session(None, actor_id=actor_id) as session:
+        doel = session.get(Gebruiker, doel_gebruiker_id)
+        if doel is None or not is_veldrol(doel.rol):
+            raise VeldwerkerbeheerBegrenzing("Het veldwerkerbeheer-recht dekt alleen veldwerkers")
+        binnen = session.execute(
+            text("SELECT platform.veldwerker_scope_binnen_actor(:doel, :actor)"),
+            {"doel": str(doel_gebruiker_id), "actor": str(actor_id)},
+        ).scalar()
+        if binnen is not True:
+            raise VeldwerkerbeheerBegrenzing("Deze veldwerker valt (deels) buiten uw administratie-scope")
+
+
 def maak_uitnodiging(
     *,
     actor_id: uuid.UUID,
@@ -91,7 +136,8 @@ def maak_uitnodiging(
     administratie_ids: list[uuid.UUID],
     uitnodiging_later: bool = False,
 ) -> UitnodigingResultaat:
-    """Beheerder-only (afgedwongen door de router-dependency, niet hier — zie deps.require_beheerder).
+    """Beheerder-only (afgedwongen door de router-dependency, niet hier — zie deps.require_beheerder),
+    sinds 31-08 mét de veldwerkerbeheer-uitzondering (router toetst toets_veldwerkerbeheer_uitnodiging).
     Genereert een eenmalig token; alleen de hash ervan wordt opgeslagen (zie Uitnodiging).
     `uitnodiging_later` (A4) legt alleen vast dát de mail bewust is uitgesteld — de router
     slaat het verzenden over; het token blijft geldig voor "Opnieuw mailen"."""
@@ -116,7 +162,17 @@ def maak_uitnodiging(
         session.add(Gebruiker(id=gebruiker_id, naam=naam, e_mail=e_mail, rol=rol, status=GebruikerStatus.UITGENODIGD))
         session.flush()
         for administratie_id in administratie_ids:
+            # RLS-WITH-CHECK op gebruiker_administratie eist administratie_id =
+            # current_administratie_id() voor een niet-Beheerder (veldwerkerbeheer-pad 31-08):
+            # de GUC per rij zetten (SET LOCAL-semantiek, transactie-lokaal). Voor een
+            # Beheerder verandert dit niets (eigen bypass in de policy).
+            session.execute(
+                text("SELECT set_config('app.current_administratie_id', :v, true)"),
+                {"v": str(administratie_id)},
+            )
             session.add(GebruikerAdministratie(gebruiker_id=gebruiker_id, administratie_id=administratie_id))
+            session.flush()
+        session.execute(text("SELECT set_config('app.current_administratie_id', '', true)"))
         uitnodiging_id = uuid.uuid4()
         session.add(
             Uitnodiging(

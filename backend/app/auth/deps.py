@@ -109,6 +109,35 @@ def require_beheerder(current: CurrentGebruiker = Depends(get_current_gebruiker)
     return current
 
 
+def require_beheerder_of_bp(current: CurrentGebruiker = Depends(get_current_gebruiker)) -> CurrentGebruiker:
+    """Beheerder óf Boekhouding+Projecten (besluit Peter 31-08: leverancier-/catalogusbeheer
+    verruimd naar B+P; audit ongewijzigd). Bewust een aparte dependency — require_beheerder
+    blijft de harde poort voor gebruikers-/rechtenbeheer."""
+    if current.rol not in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Alleen toegestaan voor Beheerder en Boekhouding+Projecten"
+        )
+    return current
+
+
+def require_beheerder_of_veldwerkerbeheer(
+    current: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> CurrentGebruiker:
+    """Gebruikersbeheer blijft exclusief Beheerder, mét één fijnmazige uitzondering (besluit
+    Peter 31-08, 0019-patroon, migratie 0091): een kantoormedewerker mét het module-recht
+    'veldwerkerbeheer' mag UITSLUITEND veldwerkers (ZZP'er/uitvoerder/detacheerder) aanmaken en
+    archiveren binnen de eigen administratie-scope — nooit kantoorrollen, nooit rol-/scope-
+    mutaties. Die inhoudelijke begrenzing dwingt de service af (app/auth/service.py); deze
+    dependency opent alleen de deur voor houders van het recht."""
+    if current.rol == GebruikerRol.BEHEERDER:
+        return current
+    from app.uren.service import heeft_veldwerkerbeheer_recht
+
+    if not heeft_veldwerkerbeheer_recht(gebruiker_id=current.id, rol=current.rol):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen toegestaan voor Beheerder")
+    return current
+
+
 def require_meerwerk_urenstaten_recht(
     current: CurrentGebruiker = Depends(get_current_gebruiker),
 ) -> CurrentGebruiker:

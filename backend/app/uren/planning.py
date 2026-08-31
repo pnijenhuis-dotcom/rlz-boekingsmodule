@@ -89,6 +89,10 @@ class ProjectRijData:
     week_man: int  # "deze week: N man" — unieke personen met ≥ 1 toewijzing deze week
     # ISO-datum → kaartjes (alleen datums mét toewijzingen; de UI rendert de kolommen).
     per_datum: dict[str, list[PlanningKaartData]]
+    # Werkopdrachten (31-08): actuele opdrachten die de week raken (chip in de rijkop) en de
+    # dag-overrides binnen de week (blok in de dagcel; ISO-datum → afwijkende teksten).
+    werkopdrachten: list = field(default_factory=list)
+    werkopdracht_overrides: dict[str, list] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -157,6 +161,8 @@ class MijnPlanningDag:
     project_id: uuid.UUID
     project_naam: str | None
     dagdeel: str
+    # Geldende werkopdracht(en) op deze dag (31-08): override wint per opdracht — alleen-lezen.
+    werkopdrachten: list = field(default_factory=list)
 
 
 # --- helpers ---------------------------------------------------------------------------------
@@ -608,6 +614,13 @@ def planning_overzicht(
             )
         }
 
+        # Werkopdrachten (31-08): actuele versies + dag-overrides voor de week, in één batch.
+        from app.uren.werkopdracht import werkopdrachten_voor_grid
+
+        wo_per_project, wo_per_dag = werkopdrachten_voor_grid(
+            session, administratie_id=administratie_id, maandag=maandag, zondag=zondag
+        )
+
         rijen: list[ProjectRijData] = []
         for project in projecten:
             spec = specs.get(project.id)
@@ -632,6 +645,12 @@ def planning_overzicht(
                     is_actief=project.is_actief is True and project.verdwenen_uit_bron_op is None,
                     week_man=len({t.gebruiker_id for t in eigen}),
                     per_datum=per_datum,
+                    werkopdrachten=wo_per_project.get(project.id, []),
+                    werkopdracht_overrides={
+                        datum.isoformat(): teksten
+                        for (pid, datum), teksten in wo_per_dag.items()
+                        if pid == project.id
+                    },
                 )
             )
 
@@ -732,6 +751,8 @@ def mijn_planning(
                     )
                 )
             )
+            from app.uren.werkopdracht import teksten_voor_dag
+
             for rij in rijen:
                 project = session.get(ProjectCache, (rij.project_id, administratie.id))
                 dagen.append(
@@ -742,6 +763,11 @@ def mijn_planning(
                         project_id=rij.project_id,
                         project_naam=project.naam if project else None,
                         dagdeel=rij.dagdeel,
+                        # Werkopdracht(en) alleen-lezen bij de geplande dag (31-08); bewust
+                        # geen pushmelding bij een tekstwijziging.
+                        werkopdrachten=teksten_voor_dag(
+                            session, administratie_id=administratie.id, project_id=rij.project_id, datum=rij.datum
+                        ),
                     )
                 )
     dagen.sort(key=lambda d: (d.datum, d.project_naam or ""))

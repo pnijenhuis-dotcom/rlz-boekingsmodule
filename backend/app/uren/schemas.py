@@ -452,6 +452,10 @@ class PlanningProjectRijDto(BaseModel):
     is_actief: bool = True
     week_man: int  # "deze week: N man"
     per_datum: dict[str, list[PlanningKaartDto]]  # ISO-datum → kaartjes
+    # Werkopdrachten (31-08): actuele opdrachten die de week raken (chip) + dag-overrides
+    # binnen de week (ISO-datum → afwijkende teksten in de dagcel).
+    werkopdrachten: list[WerkopdrachtKortDto] = []
+    werkopdracht_overrides: dict[str, list[WerkopdrachtDagTekstDto]] = {}
 
 
 class PlanningPoolPersoonDto(BaseModel):
@@ -549,6 +553,69 @@ class MijnPlanningDagDto(BaseModel):
     project_id: uuid.UUID
     project_naam: str | None = None
     dagdeel: str
+    # Werkopdracht(en) geldend op deze dag (31-08): override wint, afwijkend=True voor die dag.
+    werkopdrachten: list[WerkopdrachtDagTekstDto] = []
+
+
+# --- werkopdrachten per project × periode (akkoord Peter 31-08, migratie 0091) ------------------
+
+
+class WerkopdrachtDagTekstDto(BaseModel):
+    groep_id: uuid.UUID
+    tekst: str
+    afwijkend: bool  # True = dag-override ("di afwijkend: …")
+
+
+class WerkopdrachtKortDto(BaseModel):
+    groep_id: uuid.UUID
+    van: date
+    tot_en_met: date
+    tekst: str
+
+
+class WerkopdrachtDagOverrideDto(BaseModel):
+    datum: date
+    tekst: str
+
+
+class WerkopdrachtHistorieRegelDto(BaseModel):
+    tijdstip: datetime
+    door_naam: str
+    omschrijving: str
+
+
+class WerkopdrachtDto(BaseModel):
+    """Actuele stand van één werkopdracht-groep mét historie (append-only) en dag-overrides."""
+
+    groep_id: uuid.UUID
+    project_id: uuid.UUID
+    versie: int
+    van: date
+    tot_en_met: date
+    tekst: str
+    dag_overrides: list[WerkopdrachtDagOverrideDto] = []
+    historie: list[WerkopdrachtHistorieRegelDto] = []
+
+
+class WerkopdrachtAanmakenRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    van: date
+    tot_en_met: date
+    tekst: str = Field(min_length=1, max_length=4000)
+
+
+class WerkopdrachtWijzigenRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    van: date
+    tot_en_met: date
+    tekst: str = Field(min_length=1, max_length=4000)
+
+
+class WerkopdrachtDagOverrideRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    datum: date
+    tekst: str = Field(min_length=1, max_length=4000)
 
 
 class ModuleRechtRequest(StrikteInvoer):
@@ -679,3 +746,7 @@ class MijnToegangDto(BaseModel):
     administraties_met_opt_in: list[uuid.UUID]
     aantal_administraties_in_scope: int
     is_beheerder: bool
+    # 31-08: fijnmazig recht 'veldwerkerbeheer' (+ZZP'er/archiveren in de planning-zijbalk)
+    # en de rolvlag voor "+ Project aanmaken"/leverancierbeheer (Beheerder óf B+P).
+    heeft_veldwerkerbeheer_recht: bool = False
+    is_beheerder_of_bp: bool = False

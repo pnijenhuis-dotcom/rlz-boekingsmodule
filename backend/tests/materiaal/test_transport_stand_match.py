@@ -32,9 +32,13 @@ def _buis(administratie_id, leverancier_id, beheerder_id, lengte: str) -> str:
 
 
 def plan(administratie_id, beheerder_id, project_id, leverancier_id, *, soort, datum, regels, status=None):
+    """Statusflow 31-08: naar 'geleverd' loopt via gereserveerd → bevestigd (voertuig) →
+    definitief → geleverd (de seam dwingt de keten af)."""
     t = materiaal.plan_transport(administratie_id=administratie_id, actor_id=beheerder_id, project_id=project_id, leverancier_id=leverancier_id, soort=soort, datum=datum, tijdstip=None, regels=regels, omschrijving=None)
     if status:
-        t = materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status=status)
+        keten = {"bevestigd": ["bevestigd"], "definitief": ["bevestigd", "definitief"], "geleverd": ["bevestigd", "definitief", "geleverd"], "geannuleerd": ["geannuleerd"]}[status]
+        for stap in keten:
+            t = materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status=stap, voertuig="combi" if stap == "bevestigd" else None, reden="test" if stap == "geannuleerd" else None)
     return t
 
 
@@ -42,21 +46,32 @@ class TestTransport:
     def test_statusseam_overgangen_en_audit(self, administratie_id, project_id, leverancier_id, beheerder_id, admin_engine):
         b4 = _buis(administratie_id, leverancier_id, beheerder_id, "4")
         t = plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="levering", datum=MAANDAG, regels={b4: 115})
-        assert t.status == "gepland" and t.m2 == Decimal("100.00") and t.samenvatting == "Levering steiger 100.00 m²"
-        t = materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="bevestigd")
+        assert t.status == "gereserveerd" and t.m2 == Decimal("100.00") and t.samenvatting == "Levering steiger 100.00 m²"
+        # Bevestigen vereist de voertuigtoezegging (31-08).
+        with pytest.raises(uren_service.OngeldigeInvoer):
+            materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="bevestigd")
+        t = materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="bevestigd", voertuig="voorwagen")
+        assert t.status == "bevestigd" and t.voertuig == "voorwagen"
+        # Geleverd kan pas ná definitief (materiaallijst-stap zit ertussen).
+        with pytest.raises(uren_service.OngeldigeOvergang):
+            materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="geleverd")
+        t = materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="definitief")
         t = materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="geleverd")
         assert t.status == "geleverd" and t.status_bron == "kantoor"
         with pytest.raises(uren_service.OngeldigeOvergang):
-            materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="gepland")
+            materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="gereserveerd")
         with pytest.raises(uren_service.OngeldigeOvergang):
-            materiaal.wijzig_transport(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, datum=MAANDAG + timedelta(days=1))
+            materiaal.wijzig_transport(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, tijdstip=None, omschrijving="x")
+        # De legacywaarde 'gepland' is geen geldige doelstatus meer.
+        with pytest.raises(uren_service.OngeldigeInvoer):
+            materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="gepland")
         t2 = plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="retour", datum=MAANDAG + timedelta(days=7), regels={b4: 15})
         with pytest.raises(uren_service.OngeldigeInvoer):
             materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t2.id, nieuwe_status="geannuleerd")
         t2 = materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t2.id, nieuwe_status="geannuleerd", reden="retour vervalt")
         assert t2.status == "geannuleerd" and t2.status_reden == "retour vervalt"
         acties = _audit(admin_engine, t.id)
-        assert acties == ["transport_gepland", "transport_status_gewijzigd", "transport_status_gewijzigd"]
+        assert acties == ["transport_gereserveerd", "transport_status_gewijzigd", "transport_status_gewijzigd", "transport_status_gewijzigd"]
         with pytest.raises(uren_service.OngeldigeInvoer):
             plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="levering", datum=MAANDAG, regels={str(uuid.uuid4()): 1})
 
@@ -66,7 +81,7 @@ class TestTransport:
         plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="levering", datum=MAANDAG, regels={b4: 100, b2: 50}, status="geleverd")
         plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="levering", datum=MAANDAG + timedelta(days=7), regels={b4: 50}, status="geleverd")
         plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="retour", datum=MAANDAG + timedelta(days=14), regels={b2: 50}, status="geleverd")
-        plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="levering", datum=MAANDAG + timedelta(days=21), regels={b4: 999})  # gepland: telt niet
+        plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="levering", datum=MAANDAG + timedelta(days=21), regels={b4: 999})  # gereserveerd: telt niet
         with scoped_session(administratie_id, actor_id=beheerder_id) as session:
             stand = materiaal.materiaalstand_in_sessie(session, administratie_id=administratie_id, project_id=project_id, tot_en_met=MAANDAG + timedelta(days=27))
         per = {r.naam: r for r in stand.regels}
@@ -83,7 +98,7 @@ class TestTransport:
     def test_wachtrisico_kruissignaal_beide_tabs(self, administratie_id, project_id, tweede_project_id, leverancier_id, gekoppelde_zzper, beheerder_id):
         b4 = _buis(administratie_id, leverancier_id, beheerder_id, "4")
         di = MAANDAG + timedelta(days=1)
-        # Project A: ploeg gepland op di, levering di nog 'gepland' → rood. Project B: levering geleverd → geen signaal.
+        # Project A: ploeg gepland op di, levering di nog 'gereserveerd' → rood. Project B: levering geleverd → geen signaal.
         planning.plan_toewijzing(administratie_id=administratie_id, gebruiker_id=gekoppelde_zzper, project_id=project_id, datum=di, dagdeel="heel", actor_id=beheerder_id)
         planning.plan_toewijzing(administratie_id=administratie_id, gebruiker_id=gekoppelde_zzper, project_id=tweede_project_id, datum=MAANDAG, dagdeel="heel", actor_id=beheerder_id)
         t = plan(administratie_id, beheerder_id, project_id, leverancier_id, soort="levering", datum=di, regels={b4: 100})
@@ -96,11 +111,13 @@ class TestTransport:
         pw = planning.planning_overzicht(administratie_id=administratie_id, jaar=JAAR, weeknummer=WEEK, actor_id=beheerder_id)
         assert len(pw.wachtrisico) == 1 and pw.wachtrisico[0].project_id == project_id
         # Een BEVESTIGDE levering neemt het risico weg (D5: "zonder bevestigde levering"); terug
-        # naar gepland = weer rood; geleverd = definitief weg.
-        materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="bevestigd")
+        # naar gereserveerd = weer rood; geleverd (via definitief) = definitief weg.
+        materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="bevestigd", voertuig="combi")
         assert materiaal.transport_week(administratie_id=administratie_id, actor_id=beheerder_id, jaar=JAAR, weeknummer=WEEK).wachtrisico == []
-        materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="gepland")
+        materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="gereserveerd")
         assert len(materiaal.transport_week(administratie_id=administratie_id, actor_id=beheerder_id, jaar=JAAR, weeknummer=WEEK).wachtrisico) == 1
+        materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="bevestigd", voertuig="combi")
+        materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="definitief")
         materiaal.zet_transport_status(administratie_id=administratie_id, actor_id=beheerder_id, transport_id=t.id, nieuwe_status="geleverd")
         assert materiaal.transport_week(administratie_id=administratie_id, actor_id=beheerder_id, jaar=JAAR, weeknummer=WEEK).wachtrisico == []
 

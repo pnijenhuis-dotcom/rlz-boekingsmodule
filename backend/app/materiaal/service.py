@@ -35,6 +35,7 @@ from app.materiaal.models import (
     MateriaalTransport,
     TransportSoort,
     TransportStatus,
+    TransportVoertuig,
 )
 from app.materiaal.pdf import TekstRegel, bouw_pdf, paginering
 from app.materiaal.seed import UNIVERSAL_CATALOGUS, UNIVERSAL_LEVERANCIER
@@ -61,9 +62,11 @@ class VerzendenMislukt(UrenFout):
 
 
 def _vereis_beheerder(session, actor_id: uuid.UUID) -> None:
+    """Leverancier-/catalogusbeheer: sinds 31-08 (besluit Peter) Beheerder ÓF
+    Boekhouding+Projecten — audit ongewijzigd; de naam blijft voor de greppelbaarheid."""
     actor = session.get(Gebruiker, actor_id)
-    if actor is None or actor.rol != GebruikerRol.BEHEERDER:
-        raise GeenToegang("Catalogusbeheer is voorbehouden aan de Beheerder")
+    if actor is None or actor.rol not in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN):
+        raise GeenToegang("Catalogusbeheer is voorbehouden aan Beheerder en Boekhouding+Projecten")
 
 
 def _leverancier(session, administratie_id: uuid.UUID, leverancier_id: uuid.UUID) -> MateriaalLeverancier:
@@ -97,6 +100,11 @@ class LeverancierData:
     vendor_id: uuid.UUID | None
     actief: bool
     aantal_producten: int
+    # Contactpersonen 31-08: transport-contact (bevestig-mail), materiaal-contact (lijst/delta).
+    transport_contact_naam: str | None = None
+    transport_contact_email: str | None = None
+    materiaal_contact_naam: str | None = None
+    materiaal_contact_email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +162,10 @@ def leveranciers_overzicht(
                 vendor_id=r.vendor_id,
                 actief=r.actief,
                 aantal_producten=tellingen.get(r.id, 0),
+                transport_contact_naam=r.transport_contact_naam,
+                transport_contact_email=r.transport_contact_email,
+                materiaal_contact_naam=r.materiaal_contact_naam,
+                materiaal_contact_email=r.materiaal_contact_email,
             )
             for r in rijen
         ]
@@ -170,12 +182,20 @@ def zet_leverancier(
     adres: str | None,
     vendor_id: uuid.UUID | None,
     actief: bool = True,
+    transport_contact_naam: str | None = None,
+    transport_contact_email: str | None = None,
+    materiaal_contact_naam: str | None = None,
+    materiaal_contact_email: str | None = None,
 ) -> uuid.UUID:
     naam = naam.strip()
     if not naam:
         raise OngeldigeInvoer("Naam is verplicht")
     if bestel_email is not None and bestel_email.strip() and "@" not in bestel_email:
         raise OngeldigeInvoer("Ongeldig bestel-mailadres")
+    contact_adressen = (("transport-contact", transport_contact_email), ("materiaal-contact", materiaal_contact_email))
+    for label, adres_veld in contact_adressen:
+        if adres_veld is not None and adres_veld.strip() and "@" not in adres_veld:
+            raise OngeldigeInvoer(f"Ongeldig mailadres voor het {label}")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)
         _vereis_beheerder(session, actor_id)
@@ -186,6 +206,10 @@ def zet_leverancier(
             "adres": (adres or "").strip() or None,
             "vendor_id": str(vendor_id) if vendor_id else None,
             "actief": actief,
+            "transport_contact_naam": (transport_contact_naam or "").strip() or None,
+            "transport_contact_email": (transport_contact_email or "").strip().lower() or None,
+            "materiaal_contact_naam": (materiaal_contact_naam or "").strip() or None,
+            "materiaal_contact_email": (materiaal_contact_email or "").strip().lower() or None,
         }
         if leverancier_id is None:
             lev = MateriaalLeverancier(
@@ -1164,7 +1188,9 @@ def _koppel_levering_aan_bestelling(
         select(MateriaalTransport).where(
             MateriaalTransport.bestelling_id == b.id,
             MateriaalTransport.soort == TransportSoort.LEVERING.value,
-            MateriaalTransport.status.in_([TransportStatus.GEPLAND.value, TransportStatus.BEVESTIGD.value]),
+            MateriaalTransport.status.in_(
+                [TransportStatus.GERESERVEERD.value, TransportStatus.GEPLAND.value, TransportStatus.BEVESTIGD.value]
+            ),
         )
     ).first()
     if levering is None:
@@ -1176,7 +1202,7 @@ def _koppel_levering_aan_bestelling(
             soort=TransportSoort.LEVERING.value,
             datum=b.gewenste_leverdatum,
             tijdstip=b.gewenste_levertijd,
-            status=TransportStatus.GEPLAND.value,
+            status=TransportStatus.GERESERVEERD.value,
             status_bron="kantoor",
             regels=regels,
             omschrijving=f"Levering bestelling {nummer_label(b.volgnummer, b.aangemaakt_op)}",
@@ -1270,6 +1296,12 @@ def revisie_pdf(
 # --- transport ------------------------------------------------------------------------------------------------
 
 
+def effectieve_status(status: str) -> str:
+    """De legacywaarde 'gepland' (pre-0091) gedraagt zich overal als 'gereserveerd' — de
+    omzetting van bestaande rijen is een expliciete app-stap, geen migratie-data-update."""
+    return TransportStatus.GERESERVEERD.value if status == TransportStatus.GEPLAND.value else status
+
+
 @dataclass(frozen=True)
 class TransportData:
     id: uuid.UUID
@@ -1282,13 +1314,18 @@ class TransportData:
     soort: str
     datum: date
     tijdstip: time | None
-    status: str
+    status: str  # effectief (legacy 'gepland' reist als 'gereserveerd')
     status_bron: str
     status_reden: str | None
     regels: list[dict]  # [{product_id, naam, aantal, eenheid}]
     samenvatting: str  # "Steiger 600 m²" / "Lift 1×"
     m2: Decimal
     omschrijving: str | None
+    # Dag-agenda-kaart (31-08): zelfstandig leesbaar — klant + adres uit de projectspecs.
+    voertuig: str | None = None
+    transportplanner: str | None = None
+    opdrachtgever: str | None = None
+    project_adres: str | None = None
 
 
 def _transport_data(
@@ -1298,6 +1335,7 @@ def _transport_data(
     leveranciers: dict[uuid.UUID, MateriaalLeverancier],
     projecten: dict[uuid.UUID, ProjectCache],
     bestellingen: dict[uuid.UUID, MateriaalBestelling],
+    specs: dict[uuid.UUID, ProjectSpecificatie] | None = None,
 ) -> TransportData:
     regels = []
     for pid, n in (t.regels or {}).items():
@@ -1324,6 +1362,7 @@ def _transport_data(
     lev = leveranciers.get(t.leverancier_id)
     proj = projecten.get(t.project_id)
     best = bestellingen.get(t.bestelling_id) if t.bestelling_id else None
+    spec = (specs or {}).get(t.project_id)
     return TransportData(
         id=t.id,
         project_id=t.project_id,
@@ -1335,13 +1374,17 @@ def _transport_data(
         soort=t.soort,
         datum=t.datum,
         tijdstip=t.tijdstip,
-        status=t.status,
+        status=effectieve_status(t.status),
         status_bron=t.status_bron,
         status_reden=t.status_reden,
         regels=regels,
         samenvatting=samenvatting,
         m2=m2,
         omschrijving=t.omschrijving,
+        voertuig=t.voertuig,
+        transportplanner=t.transportplanner,
+        opdrachtgever=spec.opdrachtgever if spec else None,
+        project_adres=spec.locatie_adres if spec else None,
     )
 
 
@@ -1375,7 +1418,20 @@ def _transport_context(session, administratie_id: uuid.UUID, transporten: list[M
         if best_ids
         else {}
     )
-    return producten, leveranciers, projecten, bestellingen
+    specs = (
+        {
+            s.project_id: s
+            for s in session.scalars(
+                select(ProjectSpecificatie).where(
+                    ProjectSpecificatie.administratie_id == administratie_id,
+                    ProjectSpecificatie.project_id.in_(project_ids),
+                )
+            )
+        }
+        if project_ids
+        else {}
+    )
+    return producten, leveranciers, projecten, bestellingen, specs
 
 
 def _transport(session, administratie_id: uuid.UUID, transport_id: uuid.UUID) -> MateriaalTransport:
@@ -1409,8 +1465,8 @@ def plan_transport(
         _leverancier(session, administratie_id, leverancier_id)
         producten = _producten_van(session, leverancier_id)
         schoon = _normaliseer_regels(regels, producten)
-        if not schoon and not (omschrijving or "").strip():
-            raise OngeldigeInvoer("Kies minstens één materiaalregel of geef een omschrijving")
+        # 31-08: een kaart uit het werkbakje start bewust ZONDER materiaal ("nog geen
+        # materiaal") — de materiaallijst is de poort naar definitief, niet naar plannen.
         if bestelling_id is not None:
             b = _bestelling(session, administratie_id, bestelling_id)
             if b.leverancier_id != leverancier_id or b.project_id != project_id:
@@ -1423,7 +1479,7 @@ def plan_transport(
             soort=soort,
             datum=datum,
             tijdstip=tijdstip,
-            status=TransportStatus.GEPLAND.value,
+            status=TransportStatus.GERESERVEERD.value,
             status_bron="kantoor",
             regels=schoon,
             omschrijving=(omschrijving or "").strip() or None,
@@ -1437,7 +1493,7 @@ def plan_transport(
             module=MODULE,
             tabel="materiaal_transport",
             record_id=t.id,
-            actie="transport_gepland",
+            actie="transport_gereserveerd",
             correlatie_id=t.id,
             nieuwe_waarde={
                 "soort": soort,
@@ -1463,6 +1519,7 @@ def wijzig_transport(
     regels: dict | None = None,
     omschrijving: str | None = None,
     project_id: uuid.UUID | None = None,
+    soort: str | None = None,
 ) -> TransportData:
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)
@@ -1472,12 +1529,26 @@ def wijzig_transport(
             raise OngeldigeOvergang(
                 "Een geleverd of geannuleerd transport wijzigt niet meer — plan een nieuw transport"
             )
+        # 31-08: DATUM wijzigen loopt via verschuif_transport (terug naar gereserveerd) —
+        # hier alleen zolang de kaart nog gereserveerd is (geen toezegging te herroepen).
+        if datum is not None and datum != t.datum and effectieve_status(t.status) != TransportStatus.GERESERVEERD.value:
+            raise OngeldigeOvergang("Dag verschuiven van een bevestigd/definitief transport gaat via verschuiven")
+        if soort is not None and soort != t.soort:
+            if soort not in {s.value for s in TransportSoort}:
+                raise OngeldigeInvoer("Soort moet levering of retour zijn")
+            if effectieve_status(t.status) != TransportStatus.GERESERVEERD.value:
+                raise OngeldigeOvergang("Levering/retour wisselen kan alleen zolang de kaart gereserveerd is")
+        # Ná definitief is de materiaallijst bij het materiaal-contact bekend: wijzigen loopt
+        # dan via wijzig_materiaallijst (delta-mail) — nooit stil hierlangs.
+        if regels is not None and effectieve_status(t.status) == TransportStatus.DEFINITIEF.value:
+            raise OngeldigeOvergang("De materiaallijst van een definitief transport wijzigt via de delta-flow")
         oud = {
             "datum": t.datum.isoformat(),
             "tijdstip": t.tijdstip.isoformat() if t.tijdstip else None,
             "regels": t.regels,
             "omschrijving": t.omschrijving,
             "project_id": str(t.project_id),
+            "soort": t.soort,
         }
         if datum is not None:
             t.datum = datum
@@ -1487,6 +1558,8 @@ def wijzig_transport(
             t.regels = _normaliseer_regels(regels, _producten_van(session, t.leverancier_id))
         if omschrijving is not None:
             t.omschrijving = omschrijving.strip() or None
+        if soort is not None:
+            t.soort = soort
         if project_id is not None and project_id != t.project_id:
             project = _project(session, administratie_id, project_id)
             if project.is_actief is not True:
@@ -1498,6 +1571,7 @@ def wijzig_transport(
             "regels": t.regels,
             "omschrijving": t.omschrijving,
             "project_id": str(t.project_id),
+            "soort": t.soort,
         }
         if oud != nieuw:
             record_audit_event(
@@ -1515,20 +1589,69 @@ def wijzig_transport(
         return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
 
 
+# Statusflow 31-08: gereserveerd → bevestigd → definitief → geleverd; terug naar gereserveerd
+# kan vanaf bevestigd/definitief (dag verschuiven / toezegging vervalt); annuleren mét reden
+# vanaf alles behalve geleverd; geleverd en geannuleerd zijn terminaal. Legacy 'gepland'
+# gedraagt zich als 'gereserveerd' (effectieve_status).
 _OVERGANGEN = {
-    TransportStatus.GEPLAND.value: {
+    TransportStatus.GERESERVEERD.value: {
         TransportStatus.BEVESTIGD.value,
-        TransportStatus.GELEVERD.value,
         TransportStatus.GEANNULEERD.value,
     },
     TransportStatus.BEVESTIGD.value: {
-        TransportStatus.GELEVERD.value,
+        TransportStatus.DEFINITIEF.value,
+        TransportStatus.GERESERVEERD.value,
         TransportStatus.GEANNULEERD.value,
-        TransportStatus.GEPLAND.value,
+    },
+    TransportStatus.DEFINITIEF.value: {
+        TransportStatus.GELEVERD.value,
+        TransportStatus.GERESERVEERD.value,
+        TransportStatus.GEANNULEERD.value,
     },
     TransportStatus.GELEVERD.value: set(),
     TransportStatus.GEANNULEERD.value: set(),
 }
+
+
+def _zet_status_in_sessie(
+    session,
+    t: MateriaalTransport,
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    nieuwe_status: str,
+    reden: str | None,
+    bron: str,
+    voertuig: str | None = None,
+) -> None:
+    """Overgangstoets + statusmutatie + audit bínnen een bestaande sessie (gedeeld door de
+    seam, bevestigen, definitief maken en verschuiven)."""
+    huidig = effectieve_status(t.status)
+    if nieuwe_status not in _OVERGANGEN[huidig]:
+        raise OngeldigeOvergang(f"Overgang {huidig} → {nieuwe_status} is niet toegestaan")
+    oud = {"status": huidig, "voertuig": t.voertuig}
+    if nieuwe_status == TransportStatus.BEVESTIGD.value:
+        if voertuig not in {v.value for v in TransportVoertuig}:
+            raise OngeldigeInvoer("Bevestigen vereist de voertuigtoezegging: combi of voorwagen")
+        t.voertuig = voertuig
+    if nieuwe_status == TransportStatus.GERESERVEERD.value:
+        # Terug naar rood: de voertuigtoezegging vervalt — opnieuw bevestigen (besluit 31-08);
+        # de materiaallijst en transportplanner blijven bewust staan.
+        t.voertuig = None
+    t.status, t.status_bron, t.status_reden = nieuwe_status, bron, reden
+    t.status_gewijzigd_door, t.status_gewijzigd_op = actor_id, datetime.now(UTC)
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module=MODULE,
+        tabel="materiaal_transport",
+        record_id=t.id,
+        actie="transport_status_gewijzigd",
+        correlatie_id=t.id,
+        oude_waarde=oud,
+        nieuwe_waarde={"status": nieuwe_status, "bron": bron, "reden": reden, "voertuig": t.voertuig},
+        administratie_id=administratie_id,
+    )
 
 
 def zet_transport_status(
@@ -1539,12 +1662,16 @@ def zet_transport_status(
     nieuwe_status: str,
     reden: str | None = None,
     bron: str = "kantoor",
+    voertuig: str | None = None,
 ) -> TransportData:
     """DE SEAM voor de latere verhuursysteem-koppeling: dezelfde functie met bron='verhuursysteem'
-    (parkeerpost; veld-app-aftekening idem). Nu kantoor-klikwerk. Overgangen: gepland → bevestigd
-    → geleverd (ook gepland → geleverd), bevestigd → gepland (terug), alles behalve geleverd →
-    geannuleerd mét reden. Geleverd is terminaal. Idempotent op dezelfde status."""
-    if nieuwe_status not in {s.value for s in TransportStatus}:
+    (parkeerpost; veld-app-aftekening idem). Statusflow 31-08: gereserveerd → bevestigd (mét
+    verplichte voertuigtoezegging) → definitief → geleverd; bevestigd/definitief → gereserveerd
+    (terug, toezegging vervalt); alles behalve geleverd → geannuleerd mét reden. Geleverd is
+    terminaal. Idempotent op dezelfde (effectieve) status. NB de kantoor-flows bevestigen en
+    definitief-maken lopen via bevestig_transport/maak_definitief (mail-first); deze seam doet
+    bewust géén mail."""
+    if nieuwe_status not in {s.value for s in TransportStatus} or nieuwe_status == TransportStatus.GEPLAND.value:
         raise OngeldigeInvoer("Onbekende transportstatus")
     if bron not in ("kantoor", "verhuursysteem", "veld"):
         raise OngeldigeInvoer("Onbekende statusbron")
@@ -1555,25 +1682,337 @@ def zet_transport_status(
         _administratie_met_opt_in(session, administratie_id)
         _vereis_meerwerk_recht(session, actor_id)
         t = _transport(session, administratie_id, transport_id)
-        if t.status == nieuwe_status:
+        if effectieve_status(t.status) == nieuwe_status:
             return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
-        if nieuwe_status not in _OVERGANGEN[t.status]:
-            raise OngeldigeOvergang(f"Overgang {t.status} → {nieuwe_status} is niet toegestaan")
-        oud = t.status
-        t.status, t.status_bron, t.status_reden = nieuwe_status, bron, reden
-        t.status_gewijzigd_door, t.status_gewijzigd_op = actor_id, datetime.now(UTC)
+        _zet_status_in_sessie(
+            session,
+            t,
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            nieuwe_status=nieuwe_status,
+            reden=reden,
+            bron=bron,
+            voertuig=voertuig,
+        )
+        return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+
+
+def bevestig_transport(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    voertuig: str,
+) -> TransportData:
+    """Rood → oranje (kantoor-flow): het transport-contact van de leverancier heeft toegezegd
+    dat het transport definitief doorgaat — kantoor legt het toegezegde voertuig vast en het
+    contact krijgt de bevestig-mail (datum, adres, project, voertuig). MAIL-FIRST (bestelbon-
+    patroon): mailfout = géén statuswijziging, zichtbare 502, opnieuw mag."""
+    if voertuig not in {v.value for v in TransportVoertuig}:
+        raise OngeldigeInvoer("Bevestigen vereist de voertuigtoezegging: combi of voorwagen")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        t = _transport(session, administratie_id, transport_id)
+        if effectieve_status(t.status) != TransportStatus.GERESERVEERD.value:
+            raise OngeldigeOvergang("Alleen een gereserveerd transport kan bevestigd worden")
+        lev = _leverancier(session, administratie_id, t.leverancier_id)
+        if not lev.transport_contact_email:
+            raise OngeldigeInvoer(
+                "De leverancier heeft geen transport-contact — vul naam + e-mail in bij het leverancierbeheer"
+            )
+        data = _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+        contact_naam = lev.transport_contact_naam or lev.naam
+        contact_email = lev.transport_contact_email
+        soort_label = "levering" if t.soort == TransportSoort.LEVERING.value else "retour"
+        onderwerp = (
+            f"Transport definitief — {data.project_naam or 'project'} · {soort_label} {_datum_met_week(t.datum)}"
+        )
+        tekst = (
+            f"Beste {contact_naam},\n\n"
+            f"Het transport gaat definitief door:\n"
+            f"- Datum: {_datum_met_week(t.datum)} {_tijd_label(t.tijdstip)}\n"
+            f"- Project: {data.project_naam or '—'}\n"
+            f"- Adres: {data.project_adres or '—'}\n"
+            f"- Soort: {soort_label}\n"
+            f"- Voertuig (toegezegd): {voertuig}\n\n"
+            f"Met vriendelijke groet,\nAdministratiekantoor Nijenhuis"
+        )
+    try:
+        mail.verzend_mail(naar=contact_email, onderwerp=onderwerp, tekst=tekst)
+    except Exception as exc:  # noqa: BLE001 — MailFout én onverwachte crash: zichtbaar, nooit stil
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module=MODULE,
+                tabel="materiaal_transport",
+                record_id=transport_id,
+                actie="transport_bevestiging_mail_mislukt",
+                correlatie_id=transport_id,
+                nieuwe_waarde={"naar": contact_email, "voertuig": voertuig, "fout": str(exc)},
+                administratie_id=administratie_id,
+            )
+        raise VerzendenMislukt(f"Bevestig-mail niet verzonden aan {contact_email}: {exc}") from exc
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        t = _transport(session, administratie_id, transport_id)
+        if effectieve_status(t.status) != TransportStatus.GERESERVEERD.value:
+            raise OngeldigeOvergang("Alleen een gereserveerd transport kan bevestigd worden")
+        _zet_status_in_sessie(
+            session,
+            t,
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            nieuwe_status=TransportStatus.BEVESTIGD.value,
+            reden=None,
+            bron="kantoor",
+            voertuig=voertuig,
+        )
+        return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+
+
+def _materiaallijst_mailregels(regels_data: list[dict], m2: Decimal) -> str:
+    regeltekst = "\n".join(f"- {r['naam']}: {r['aantal']} {r['eenheid']}" for r in regels_data)
+    return f"{regeltekst}\n\nTotaal steigermateriaal (bundel): {m2} m²"
+
+
+def maak_definitief(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    regels: dict,
+    transportplanner: str,
+) -> TransportData:
+    """Oranje → groen (kantoor-flow): materiaallijst + transportplanner ingevuld — de volledige
+    lijst gaat per mail naar het MATERIAAL-CONTACT van de leverancier. MAIL-FIRST: mailfout =
+    géén statuswijziging én géén lijstwijziging."""
+    transportplanner = transportplanner.strip()
+    if not transportplanner:
+        raise OngeldigeInvoer("Definitief maken vereist een transportplanner")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        t = _transport(session, administratie_id, transport_id)
+        if effectieve_status(t.status) != TransportStatus.BEVESTIGD.value:
+            raise OngeldigeOvergang("Alleen een bevestigd transport kan definitief gemaakt worden")
+        lev = _leverancier(session, administratie_id, t.leverancier_id)
+        if not lev.materiaal_contact_email:
+            raise OngeldigeInvoer(
+                "De leverancier heeft geen materiaal-contact — vul naam + e-mail in bij het leverancierbeheer"
+            )
+        producten = _producten_van(session, t.leverancier_id)
+        schoon = _normaliseer_regels(regels, producten)
+        if not schoon:
+            raise OngeldigeInvoer("Definitief maken vereist minstens één materiaalregel")
+        data = _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+        m2 = bereken_m2(schoon, producten)
+        regels_data = []
+        for pid, n in schoon.items():
+            p = producten.get(uuid.UUID(pid))
+            regels_data.append({"naam": p.naam if p else "?", "aantal": int(n), "eenheid": p.eenheid if p else "stuks"})
+        contact_naam = lev.materiaal_contact_naam or lev.naam
+        contact_email = lev.materiaal_contact_email
+        soort_label = "levering" if t.soort == TransportSoort.LEVERING.value else "retour"
+        onderwerp = f"Materiaallijst — {data.project_naam or 'project'} · {soort_label} {_datum_met_week(t.datum)}"
+        tekst = (
+            f"Beste {contact_naam},\n\n"
+            f"De materiaallijst voor het transport van {_datum_met_week(t.datum)} "
+            f"({soort_label}, project {data.project_naam or '—'}, {data.project_adres or 'adres onbekend'}):\n\n"
+            f"{_materiaallijst_mailregels(regels_data, m2)}\n\n"
+            f"Voertuig: {t.voertuig or '—'} · Transportplanner: {transportplanner}\n\n"
+            f"Met vriendelijke groet,\nAdministratiekantoor Nijenhuis"
+        )
+    try:
+        mail.verzend_mail(naar=contact_email, onderwerp=onderwerp, tekst=tekst)
+    except Exception as exc:  # noqa: BLE001
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module=MODULE,
+                tabel="materiaal_transport",
+                record_id=transport_id,
+                actie="transport_materiaallijst_mail_mislukt",
+                correlatie_id=transport_id,
+                nieuwe_waarde={"naar": contact_email, "fout": str(exc)},
+                administratie_id=administratie_id,
+            )
+        raise VerzendenMislukt(f"Materiaallijst niet verzonden aan {contact_email}: {exc}") from exc
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        t = _transport(session, administratie_id, transport_id)
+        if effectieve_status(t.status) != TransportStatus.BEVESTIGD.value:
+            raise OngeldigeOvergang("Alleen een bevestigd transport kan definitief gemaakt worden")
+        oude_regels = t.regels
+        t.regels = schoon
+        t.transportplanner = transportplanner
         record_audit_event(
             session,
             actor_id=actor_id,
             module=MODULE,
             tabel="materiaal_transport",
             record_id=t.id,
-            actie="transport_status_gewijzigd",
+            actie="transport_materiaallijst_gezet",
             correlatie_id=t.id,
-            oude_waarde={"status": oud},
-            nieuwe_waarde={"status": nieuwe_status, "bron": bron, "reden": reden},
+            oude_waarde={"regels": oude_regels},
+            nieuwe_waarde={"regels": schoon, "transportplanner": transportplanner, "naar": contact_email},
             administratie_id=administratie_id,
         )
+        _zet_status_in_sessie(
+            session,
+            t,
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            nieuwe_status=TransportStatus.DEFINITIEF.value,
+            reden=None,
+            bron="kantoor",
+        )
+        return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+
+
+def wijzig_materiaallijst(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    regels: dict,
+    transportplanner: str | None = None,
+) -> TransportData:
+    """Materiaallijst wijzigen ná definitief kan altijd (besluit 31-08): het materiaal-contact
+    krijgt een DELTA-mail met uitsluitend de gewijzigde regels oud → nieuw (hergebruik van het
+    bestel-update-mailpatroon). MAIL-FIRST: mailfout = zichtbaar en géén stille wijziging."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        t = _transport(session, administratie_id, transport_id)
+        if effectieve_status(t.status) != TransportStatus.DEFINITIEF.value:
+            raise OngeldigeOvergang("De delta-flow geldt alleen voor een definitief transport")
+        lev = _leverancier(session, administratie_id, t.leverancier_id)
+        if not lev.materiaal_contact_email:
+            raise OngeldigeInvoer(
+                "De leverancier heeft geen materiaal-contact — vul naam + e-mail in bij het leverancierbeheer"
+            )
+        producten = _producten_van(session, t.leverancier_id)
+        schoon = _normaliseer_regels(regels, producten)
+        if not schoon:
+            raise OngeldigeInvoer("De materiaallijst van een definitief transport kan niet leeg")
+        vorige = {str(k): int(v) for k, v in (t.regels or {}).items()}
+        delta = bereken_delta(vorige, schoon, producten)
+        nieuwe_planner = (transportplanner or "").strip() or None
+        if not delta and (nieuwe_planner is None or nieuwe_planner == t.transportplanner):
+            raise OngeldigeOvergang("Geen wijzigingen — er is niets te versturen")
+        data = _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+        contact_naam = lev.materiaal_contact_naam or lev.naam
+        contact_email = lev.materiaal_contact_email
+        soort_label = "levering" if t.soort == TransportSoort.LEVERING.value else "retour"
+        onderwerp = (
+            f"Gewijzigde materiaallijst — {data.project_naam or 'project'} · {soort_label} {_datum_met_week(t.datum)}"
+        )
+        if delta:
+            regeltekst = "\n".join(f"- {d['naam']}: {d['oud']} → {d['nieuw']}" for d in delta)
+            kern = (
+                "Wijziging op de materiaallijst — uitsluitend de gewijzigde regels (oud → nieuw):\n"
+                f"{regeltekst}\n\n"
+                "De rest van de lijst is ongewijzigd en wordt niet herhaald."
+            )
+        else:
+            kern = f"De transportplanner is gewijzigd naar: {nieuwe_planner}"
+        tekst = (
+            f"Beste {contact_naam},\n\n{kern}\n\n"
+            f"Transport: {soort_label} {_datum_met_week(t.datum)} · project {data.project_naam or '—'}\n\n"
+            f"Met vriendelijke groet,\nAdministratiekantoor Nijenhuis"
+        )
+    try:
+        mail.verzend_mail(naar=contact_email, onderwerp=onderwerp, tekst=tekst)
+    except Exception as exc:  # noqa: BLE001
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module=MODULE,
+                tabel="materiaal_transport",
+                record_id=transport_id,
+                actie="transport_delta_mail_mislukt",
+                correlatie_id=transport_id,
+                nieuwe_waarde={"naar": contact_email, "delta": delta, "fout": str(exc)},
+                administratie_id=administratie_id,
+            )
+        raise VerzendenMislukt(f"Delta-mail niet verzonden aan {contact_email}: {exc}") from exc
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        t = _transport(session, administratie_id, transport_id)
+        if effectieve_status(t.status) != TransportStatus.DEFINITIEF.value:
+            raise OngeldigeOvergang("De delta-flow geldt alleen voor een definitief transport")
+        oud = {"regels": t.regels, "transportplanner": t.transportplanner}
+        t.regels = schoon
+        if nieuwe_planner is not None:
+            t.transportplanner = nieuwe_planner
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="materiaal_transport",
+            record_id=t.id,
+            actie="transport_materiaallijst_gewijzigd",
+            correlatie_id=t.id,
+            oude_waarde=oud,
+            nieuwe_waarde={
+                "regels": schoon,
+                "transportplanner": t.transportplanner,
+                "delta": delta,
+                "naar": contact_email,
+            },
+            administratie_id=administratie_id,
+        )
+        return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+
+
+def verschuif_transport(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    nieuwe_datum: date,
+) -> TransportData:
+    """Dag verschuiven (slepen in de dag-agenda, besluit Peter 31-08): de kaart gaat TERUG NAAR
+    GERESERVEERD — het transport-contact moet opnieuw bevestigen (de planning kan vol zitten)
+    en opnieuw combi/voorwagen toezeggen; de materiaallijst en transportplanner blijven bewaard,
+    dus daarna is één bevestig-klik + planner-check genoeg om weer groen te worden."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        t = _transport(session, administratie_id, transport_id)
+        huidig = effectieve_status(t.status)
+        if huidig in (TransportStatus.GELEVERD.value, TransportStatus.GEANNULEERD.value):
+            raise OngeldigeOvergang("Een geleverd of geannuleerd transport verschuift niet meer")
+        if nieuwe_datum == t.datum:
+            return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
+        oude_datum = t.datum
+        t.datum = nieuwe_datum
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="materiaal_transport",
+            record_id=t.id,
+            actie="transport_verschoven",
+            correlatie_id=t.id,
+            oude_waarde={"datum": oude_datum.isoformat()},
+            nieuwe_waarde={"datum": nieuwe_datum.isoformat()},
+            administratie_id=administratie_id,
+        )
+        if huidig != TransportStatus.GERESERVEERD.value:
+            _zet_status_in_sessie(
+                session,
+                t,
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                nieuwe_status=TransportStatus.GERESERVEERD.value,
+                reden="dag verschoven — opnieuw bevestigen",
+                bron="kantoor",
+            )
+        elif t.status == TransportStatus.GEPLAND.value:
+            # Legacy-rij die verschuift: meteen naar de nieuwe enum-waarde (geen aparte stap).
+            t.status = TransportStatus.GERESERVEERD.value
         return _transport_data(session, t, *_transport_context(session, administratie_id, [t]))
 
 
@@ -1649,7 +2088,7 @@ def materiaalstand_in_sessie(
             MateriaalTransport.datum <= tot_en_met,
         )
     ).all()
-    producten, leveranciers, _, _ = _transport_context(session, administratie_id, transporten)
+    producten, leveranciers, _, _, _ = _transport_context(session, administratie_id, transporten)
     categorieen = {
         c.id: c
         for c in session.scalars(
@@ -1754,18 +2193,21 @@ def wachtrisico_in_sessie(
     ).all()
     if not transporten:
         return []
-    producten, leveranciers, projecten, bestellingen = _transport_context(session, administratie_id, transporten)
+    producten, leveranciers, projecten, bestellingen, specs = _transport_context(session, administratie_id, transporten)
     meldingen: list[WachtrisicoMelding] = []
     for (project_id, dag), aantal in sorted(personeel.items(), key=lambda kv: (kv[0][1], str(kv[0][0]))):
         eigen = [t for t in transporten if t.project_id == project_id]
         geleverd_voor_dag = any(t.status == TransportStatus.GELEVERD.value and t.datum <= dag for t in eigen)
         if geleverd_voor_dag:
             continue
-        pending = [t for t in eigen if t.status == TransportStatus.GEPLAND.value and t.datum <= dag]
+        # 31-08: 'gereserveerd' (of legacy 'gepland') = nog niet bevestigd — dát is het risico.
+        pending = [
+            t for t in eigen if effectieve_status(t.status) == TransportStatus.GERESERVEERD.value and t.datum <= dag
+        ]
         if not pending:
             continue
         t = sorted(pending, key=lambda x: x.datum)[-1]
-        data = _transport_data(session, t, producten, leveranciers, projecten, bestellingen)
+        data = _transport_data(session, t, producten, leveranciers, projecten, bestellingen, specs)
         meldingen.append(
             WachtrisicoMelding(
                 project_id=project_id,
@@ -1795,6 +2237,19 @@ class TransportProjectRij:
 
 
 @dataclass(frozen=True)
+class TePlannenSignaal:
+    """Signaalkaart 'nog te plannen' (31-08, rood gestippeld in de dagkolom): een verstuurde
+    bestelling met een gewenste leverdatum in de week zónder gekoppelde transportregel."""
+
+    bestelling_id: uuid.UUID
+    bestelling_nummer: str
+    project_id: uuid.UUID
+    project_naam: str | None
+    leverancier_naam: str
+    datum: date
+
+
+@dataclass(frozen=True)
 class TransportWeek:
     jaar: int
     weeknummer: int
@@ -1806,6 +2261,7 @@ class TransportWeek:
     bestellingen_concept: int
     bestellingen_met_wijzigingen: int
     materiaalmatch_open: int
+    te_plannen: list[TePlannenSignaal] = field(default_factory=list)
 
 
 def transport_week(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, jaar: int, weeknummer: int) -> TransportWeek:
@@ -1824,7 +2280,7 @@ def transport_week(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, jaar: in
                 MateriaalTransport.status != TransportStatus.GEANNULEERD.value,
             )
         ).all()
-        producten, leveranciers, _, bestellingen = _transport_context(session, administratie_id, transporten)
+        producten, leveranciers, _, bestellingen, _ = _transport_context(session, administratie_id, transporten)
         projecten = session.scalars(
             select(ProjectCache).where(
                 ProjectCache.administratie_id == administratie_id,
@@ -1865,7 +2321,7 @@ def transport_week(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, jaar: in
             per_datum: dict[str, list[TransportData]] = {}
             for t in sorted(eigen, key=lambda x: (x.datum, x.tijdstip or time.min)):
                 per_datum.setdefault(t.datum.isoformat(), []).append(
-                    _transport_data(session, t, producten, leveranciers, proj_map, bestellingen)
+                    _transport_data(session, t, producten, leveranciers, proj_map, bestellingen, specs)
                 )
             dagen_met_ploeg = sorted({d for (pid, d), _ in personeel.items() if pid == p.id})
             ploeg_label = None
@@ -1904,6 +2360,34 @@ def transport_week(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, jaar: in
                     str(k): int(v) for k, v in laatste.regels.items()
                 }:
                     met_wijz += 1
+        # Signaalkaart "nog te plannen" (31-08): verstuurde bestelling mét leverdatum in de week
+        # zónder enige (niet-geannuleerde) transportregel — over álle datums, want de gekoppelde
+        # levering kan bewust verschoven zijn.
+        gekoppelde_bestellingen = {
+            bid
+            for bid in session.scalars(
+                select(MateriaalTransport.bestelling_id).where(
+                    MateriaalTransport.administratie_id == administratie_id,
+                    MateriaalTransport.bestelling_id.is_not(None),
+                    MateriaalTransport.status != TransportStatus.GEANNULEERD.value,
+                )
+            )
+        }
+        te_plannen = [
+            TePlannenSignaal(
+                bestelling_id=b.id,
+                bestelling_nummer=nummer_label(b.volgnummer, b.aangemaakt_op),
+                project_id=b.project_id,
+                project_naam=proj_map[b.project_id].naam if b.project_id in proj_map else None,
+                leverancier_naam=leveranciers[b.leverancier_id].naam if b.leverancier_id in leveranciers else "?",
+                datum=b.gewenste_leverdatum,
+            )
+            for b in bestellingen_alle
+            if b.status == BestellingStatus.VERSTUURD.value
+            and b.gewenste_leverdatum is not None
+            and maandag <= b.gewenste_leverdatum <= zondag
+            and b.id not in gekoppelde_bestellingen
+        ]
         return TransportWeek(
             jaar=jaar,
             weeknummer=weeknummer,
@@ -1915,4 +2399,5 @@ def transport_week(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, jaar: in
             bestellingen_concept=concept,
             bestellingen_met_wijzigingen=met_wijz,
             materiaalmatch_open=open_materiaalmatches_in_sessie(session, administratie_id=administratie_id),
+            te_plannen=te_plannen,
         )

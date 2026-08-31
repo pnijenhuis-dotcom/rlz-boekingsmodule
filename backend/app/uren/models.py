@@ -381,6 +381,72 @@ class PlanningToewijzing(Base):
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
+class Werkopdracht(Base):
+    """Werkopdracht per project × periode (mockup planning-werkopdracht-transport.html, akkoord
+    Peter 31-08, migratie 0091): vrije tekst voor de ploeg, meerdere én overlappende opdrachten
+    per project toegestaan (bv. montage + demontage). APPEND-ONLY mét wie/wanneer: wijzigen =
+    een nieuwe rij met hetzelfde `groep_id` en `versie`+1 — de hoogste versie per groep is de
+    geldende opdracht, oudere versies zijn de zichtbare historie in de popup. De DB-grant kent
+    bewust geen UPDATE/DELETE (0074-patroon strenger): niets wordt overschreven. De veld-app
+    toont de geldende tekst alleen-lezen bij elke geplande dag binnen de periode; bewust géén
+    pushmelding bij een tekstwijziging (besluit Peter 31-08)."""
+
+    __tablename__ = "werkopdracht"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_werkopdracht_project_cache",
+        ),
+        UniqueConstraint("groep_id", "versie", name="uq_werkopdracht_groep_versie"),
+        CheckConstraint("van <= tot_en_met", name="ck_werkopdracht_periode"),
+        CheckConstraint("length(btrim(tekst)) > 0", name="ck_werkopdracht_tekst"),
+        CheckConstraint("versie >= 1", name="ck_werkopdracht_versie"),
+        Index("ix_werkopdracht_administratie_id", "administratie_id"),
+        Index("ix_werkopdracht_project", "administratie_id", "project_id", "van"),
+        Index("ix_werkopdracht_groep", "administratie_id", "groep_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    groep_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    versie: Mapped[int] = mapped_column(default=1)
+    van: Mapped[date]
+    tot_en_met: Mapped[date]
+    tekst: Mapped[str]
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class WerkopdrachtDag(Base):
+    """Dag-override op een werkopdracht (sparse, alleen die dag wint): per (groep, datum) een
+    afwijkende tekst — de periode-tekst blijft de basis voor de overige dagen. Zelfde
+    append-only versiepatroon als Werkopdracht (hoogste versie per (groep, datum) geldt,
+    historie blijft zichtbaar); een lege tekst is niet toegestaan (een override haal je niet
+    weg, je zet een nieuwe versie)."""
+
+    __tablename__ = "werkopdracht_dag"
+    __table_args__ = (
+        UniqueConstraint("groep_id", "datum", "versie", name="uq_werkopdracht_dag_versie"),
+        CheckConstraint("length(btrim(tekst)) > 0", name="ck_werkopdracht_dag_tekst"),
+        CheckConstraint("versie >= 1", name="ck_werkopdracht_dag_versie"),
+        Index("ix_werkopdracht_dag_administratie_id", "administratie_id"),
+        Index("ix_werkopdracht_dag_groep", "administratie_id", "groep_id", "datum"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    groep_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    datum: Mapped[date]
+    versie: Mapped[int] = mapped_column(default=1)
+    tekst: Mapped[str]
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class UrenProjectToewijzing(Base):
     """Kantoor-beheerde koppeling gebruiker↔project (Beheerder-only, geaudit): voor een ZZP'er
     = "op dit project schrijf je weekstaten", voor een uitvoerder = keurrecht + projectinhoud

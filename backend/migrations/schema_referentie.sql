@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0090
+-- Migratie-head bij deze dump: 0091
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -182,14 +182,14 @@ CREATE FUNCTION platform.actor_is_module_beheerder(p_module text) RETURNS boolea
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'platform', 'pg_temp'
     AS $$
-            SELECT EXISTS (
-                SELECT 1 FROM platform.gebruiker_module_rol r
-                WHERE r.gebruiker_id = platform.current_actor_id()
-                  AND r.module = p_module
-                  AND r.rol = CASE p_module WHEN 'vastgoed' THEN 'superadmin' ELSE NULL END
-            )
-            OR (p_module = 'boekhouding' AND platform.current_actor_is_beheerder())
-        $$;
+        SELECT EXISTS (
+            SELECT 1 FROM platform.gebruiker_module_rol r
+            WHERE r.gebruiker_id = platform.current_actor_id()
+              AND r.module = p_module
+              AND r.rol = CASE p_module WHEN 'vastgoed' THEN 'superadmin' ELSE NULL END
+        )
+        OR ((p_module = 'boekhouding' OR p_module LIKE 'boekhouding.%') AND platform.current_actor_is_beheerder())
+    $$;
 
 
 --
@@ -367,6 +367,27 @@ CREATE FUNCTION platform.current_administratie_id() RETURNS uuid
     AS $$
             SELECT nullif(current_setting('app.current_administratie_id', true), '')::uuid
         $$;
+
+
+--
+-- Name: veldwerker_scope_binnen_actor(uuid, uuid); Type: FUNCTION; Schema: platform; Owner: -
+--
+
+CREATE FUNCTION platform.veldwerker_scope_binnen_actor(p_doel uuid, p_actor uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'platform', 'pg_temp'
+    AS $$
+                SELECT p_actor = platform.current_actor_id()
+                   AND EXISTS (SELECT 1 FROM platform.gebruiker_administratie WHERE gebruiker_id = p_doel)
+                   AND NOT EXISTS (
+                       SELECT 1 FROM platform.gebruiker_administratie d
+                       WHERE d.gebruiker_id = p_doel
+                         AND d.administratie_id NOT IN (
+                             SELECT a.administratie_id FROM platform.gebruiker_administratie a
+                             WHERE a.gebruiker_id = p_actor
+                         )
+                   )
+            $$;
 
 
 SET default_tablespace = '';
@@ -1430,7 +1451,11 @@ CREATE TABLE boekhouding.materiaal_leverancier (
     vendor_id uuid,
     actief boolean NOT NULL,
     bijgewerkt_door uuid NOT NULL,
-    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    transport_contact_naam text,
+    transport_contact_email text,
+    materiaal_contact_naam text,
+    materiaal_contact_email text
 );
 
 ALTER TABLE ONLY boekhouding.materiaal_leverancier FORCE ROW LEVEL SECURITY;
@@ -1480,9 +1505,12 @@ CREATE TABLE boekhouding.materiaal_transport (
     aangemaakt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    voertuig text,
+    transportplanner text,
     CONSTRAINT ck_materiaal_transport_annulering CHECK (((status <> 'geannuleerd'::text) OR ((status_reden IS NOT NULL) AND (length(btrim(status_reden)) > 0)))),
     CONSTRAINT ck_materiaal_transport_soort CHECK ((soort = ANY (ARRAY['levering'::text, 'retour'::text]))),
-    CONSTRAINT ck_materiaal_transport_status CHECK ((status = ANY (ARRAY['gepland'::text, 'bevestigd'::text, 'geleverd'::text, 'geannuleerd'::text])))
+    CONSTRAINT ck_materiaal_transport_status CHECK ((status = ANY (ARRAY['gereserveerd'::text, 'bevestigd'::text, 'definitief'::text, 'geleverd'::text, 'geannuleerd'::text, 'gepland'::text]))),
+    CONSTRAINT ck_materiaal_transport_voertuig CHECK (((voertuig IS NULL) OR (voertuig = ANY (ARRAY['combi'::text, 'voorwagen'::text]))))
 );
 
 ALTER TABLE ONLY boekhouding.materiaal_transport FORCE ROW LEVEL SECURITY;
@@ -2457,6 +2485,49 @@ ALTER TABLE ONLY boekhouding.weekstaat_dag FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: werkopdracht; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.werkopdracht (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    groep_id uuid NOT NULL,
+    versie integer NOT NULL,
+    van date NOT NULL,
+    tot_en_met date NOT NULL,
+    tekst text NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_werkopdracht_periode CHECK ((van <= tot_en_met)),
+    CONSTRAINT ck_werkopdracht_tekst CHECK ((length(btrim(tekst)) > 0)),
+    CONSTRAINT ck_werkopdracht_versie CHECK ((versie >= 1))
+);
+
+ALTER TABLE ONLY boekhouding.werkopdracht FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: werkopdracht_dag; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.werkopdracht_dag (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    groep_id uuid NOT NULL,
+    datum date NOT NULL,
+    versie integer NOT NULL,
+    tekst text NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_werkopdracht_dag_tekst CHECK ((length(btrim(tekst)) > 0)),
+    CONSTRAINT ck_werkopdracht_dag_versie CHECK ((versie >= 1))
+);
+
+ALTER TABLE ONLY boekhouding.werkopdracht_dag FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: werkstempel; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2852,7 +2923,7 @@ CREATE TABLE platform.gebruiker_module_rol (
     module text NOT NULL,
     rol text NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_gebruiker_module_rol_geldig CHECK ((((module = 'vastgoed'::text) AND (rol = ANY (ARRAY['superadmin'::text, 'eigenaar'::text, 'kantoor'::text]))) OR ((module = 'boekhouding'::text) AND (rol = 'meerwerk_urenstaten'::text))))
+    CONSTRAINT ck_gebruiker_module_rol_geldig CHECK ((((module = 'vastgoed'::text) AND (rol = ANY (ARRAY['superadmin'::text, 'eigenaar'::text, 'kantoor'::text]))) OR ((module = 'boekhouding'::text) AND (rol = 'meerwerk_urenstaten'::text)) OR ((module = 'boekhouding.veldwerkerbeheer'::text) AND (rol = 'veldwerkerbeheer'::text))))
 );
 
 
@@ -3797,6 +3868,22 @@ ALTER TABLE ONLY boekhouding.weekstaat
 
 
 --
+-- Name: werkopdracht_dag uq_werkopdracht_dag_versie; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht_dag
+    ADD CONSTRAINT uq_werkopdracht_dag_versie UNIQUE (groep_id, datum, versie);
+
+
+--
+-- Name: werkopdracht uq_werkopdracht_groep_versie; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht
+    ADD CONSTRAINT uq_werkopdracht_groep_versie UNIQUE (groep_id, versie);
+
+
+--
 -- Name: werkstempel uq_werkstempel_moment; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3930,6 +4017,22 @@ ALTER TABLE ONLY boekhouding.weekstaat_dag
 
 ALTER TABLE ONLY boekhouding.weekstaat
     ADD CONSTRAINT weekstaat_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: werkopdracht_dag werkopdracht_dag_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht_dag
+    ADD CONSTRAINT werkopdracht_dag_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: werkopdracht werkopdracht_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht
+    ADD CONSTRAINT werkopdracht_pkey PRIMARY KEY (id);
 
 
 --
@@ -4990,6 +5093,41 @@ CREATE INDEX ix_weekstaat_dag_weekstaat_id ON boekhouding.weekstaat_dag USING bt
 --
 
 CREATE INDEX ix_weekstaat_gebruiker ON boekhouding.weekstaat USING btree (administratie_id, gebruiker_id);
+
+
+--
+-- Name: ix_werkopdracht_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_werkopdracht_administratie_id ON boekhouding.werkopdracht USING btree (administratie_id);
+
+
+--
+-- Name: ix_werkopdracht_dag_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_werkopdracht_dag_administratie_id ON boekhouding.werkopdracht_dag USING btree (administratie_id);
+
+
+--
+-- Name: ix_werkopdracht_dag_groep; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_werkopdracht_dag_groep ON boekhouding.werkopdracht_dag USING btree (administratie_id, groep_id, datum);
+
+
+--
+-- Name: ix_werkopdracht_groep; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_werkopdracht_groep ON boekhouding.werkopdracht USING btree (administratie_id, groep_id);
+
+
+--
+-- Name: ix_werkopdracht_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_werkopdracht_project ON boekhouding.werkopdracht USING btree (administratie_id, project_id, van);
 
 
 --
@@ -6224,6 +6362,14 @@ ALTER TABLE ONLY boekhouding.weekstaat
 
 
 --
+-- Name: werkopdracht fk_werkopdracht_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht
+    ADD CONSTRAINT fk_werkopdracht_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: iban_accordering iban_accordering_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -7357,6 +7503,38 @@ ALTER TABLE ONLY boekhouding.weekstaat
 
 ALTER TABLE ONLY boekhouding.weekstaat
     ADD CONSTRAINT weekstaat_ingediend_door_fkey FOREIGN KEY (ingediend_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: werkopdracht werkopdracht_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht
+    ADD CONSTRAINT werkopdracht_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: werkopdracht werkopdracht_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht
+    ADD CONSTRAINT werkopdracht_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: werkopdracht_dag werkopdracht_dag_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht_dag
+    ADD CONSTRAINT werkopdracht_dag_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: werkopdracht_dag werkopdracht_dag_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkopdracht_dag
+    ADD CONSTRAINT werkopdracht_dag_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -8995,6 +9173,32 @@ CREATE POLICY weekstaat_dag_scope ON boekhouding.weekstaat_dag USING ((administr
 --
 
 CREATE POLICY weekstaat_scope ON boekhouding.weekstaat USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: werkopdracht; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.werkopdracht ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: werkopdracht_dag; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.werkopdracht_dag ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: werkopdracht_dag werkopdracht_dag_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY werkopdracht_dag_scope ON boekhouding.werkopdracht_dag USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: werkopdracht werkopdracht_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY werkopdracht_scope ON boekhouding.werkopdracht USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

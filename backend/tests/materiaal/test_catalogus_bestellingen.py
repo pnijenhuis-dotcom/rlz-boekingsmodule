@@ -78,7 +78,8 @@ class TestCatalogus:
         levs = materiaal.leveranciers_overzicht(administratie_id=administratie_id, actor_id=boekhouder, zoek="floor")
         assert [lv.naam for lv in levs] == ["Floor Liften"] and levs[0].aantal_producten == 1
         assert "materiaal_product_gezet" in _audit(admin_engine, pid)
-        # API-poorten: veldrol 403 (kantoorrol router-breed), catalogus-PUT Beheerder-only.
+        # API-poorten: veldrol 403 (kantoorrol router-breed); catalogus-PUT = Beheerder óf B+P
+        # (31-08) — rol 'boekhouding' blijft dus 403 (het B+P-pad staat in test_transport_v2).
         zzper = maak_gebruiker(admin_engine, "zzper", "Milan")
         assert client.get(f"/materiaal/{administratie_id}/leveranciers", headers=_bearer(zzper, rol="zzper")).status_code == 403
         assert client.get(f"/materiaal/{administratie_id}/leveranciers", headers=_bearer(boekhouder, rol="boekhouding")).status_code == 200
@@ -112,7 +113,7 @@ class TestBestellingen:
         assert len(detail.transport_ids) == 1
         with scoped_session(administratie_id, actor_id=beheerder_id) as session:
             lev = session.get(MateriaalTransport, detail.transport_ids[0])
-            assert lev.datum == date(2026, 8, 24) and lev.status == "gepland" and lev.regels == regels
+            assert lev.datum == date(2026, 8, 24) and lev.status == "gereserveerd" and lev.regels == regels
         # opnieuw versturen zonder wijziging = fout (niets te versturen)
         with pytest.raises(uren_service.OngeldigeOvergang):
             materiaal.verstuur_bestelling(administratie_id=administratie_id, actor_id=beheerder_id, bestelling_id=bid)

@@ -20,6 +20,11 @@ class LeverancierDto(BaseModel):
     vendor_id: uuid.UUID | None = None
     actief: bool
     aantal_producten: int
+    # Contactpersonen (31-08): transport-contact (bevestig-mail), materiaal-contact (lijst/delta).
+    transport_contact_naam: str | None = None
+    transport_contact_email: str | None = None
+    materiaal_contact_naam: str | None = None
+    materiaal_contact_email: str | None = None
 
 
 class LeverancierZettenRequest(StrikteInvoer):
@@ -30,6 +35,10 @@ class LeverancierZettenRequest(StrikteInvoer):
     adres: str | None = Field(default=None, max_length=200)
     vendor_id: uuid.UUID | None = None
     actief: bool = True
+    transport_contact_naam: str | None = Field(default=None, max_length=120)
+    transport_contact_email: str | None = Field(default=None, max_length=254)
+    materiaal_contact_naam: str | None = Field(default=None, max_length=120)
+    materiaal_contact_email: str | None = Field(default=None, max_length=254)
 
 
 class ProductDto(BaseModel):
@@ -185,6 +194,11 @@ class TransportDto(BaseModel):
     samenvatting: str
     m2: Decimal
     omschrijving: str | None = None
+    # Dag-agenda-kaart (31-08): zelfstandig leesbaar.
+    voertuig: str | None = None
+    transportplanner: str | None = None
+    opdrachtgever: str | None = None
+    project_adres: str | None = None
 
 
 class TransportPlannenRequest(StrikteInvoer):
@@ -204,11 +218,38 @@ class TransportWijzigenRequest(StrikteInvoer):
     regels: dict[str, int] | None = None
     omschrijving: str | None = Field(default=None, max_length=300)
     project_id: uuid.UUID | None = None
+    soort: str | None = None  # alleen zolang gereserveerd (werkbakje-kaart wisselen ▲/▼)
 
 
 class TransportStatusRequest(StrikteInvoer):
     status: str
     reden: str | None = Field(default=None, max_length=500)
+
+
+class TransportBevestigRequest(StrikteInvoer):
+    """Rood → oranje: de voertuigtoezegging van het transport-contact is verplicht (31-08)."""
+
+    voertuig: str  # combi | voorwagen
+
+
+class TransportDefinitiefRequest(StrikteInvoer):
+    """Oranje → groen: materiaallijst + transportplanner — lijst gaat naar het materiaal-contact."""
+
+    regels: dict[str, int]
+    transportplanner: str = Field(min_length=1, max_length=120)
+
+
+class TransportMateriaallijstRequest(StrikteInvoer):
+    """Delta-flow ná definitief: alleen de gewijzigde regels gaan oud → nieuw per mail."""
+
+    regels: dict[str, int]
+    transportplanner: str | None = Field(default=None, max_length=120)
+
+
+class TransportVerschuifRequest(StrikteInvoer):
+    """Dag verschuiven (slepen): terug naar gereserveerd — opnieuw bevestigen."""
+
+    datum: date
 
 
 class WachtrisicoDto(BaseModel):
@@ -231,6 +272,18 @@ class TransportProjectRijDto(BaseModel):
     ploeg_label: str | None = None
 
 
+class TePlannenDto(BaseModel):
+    """Signaalkaart "nog te plannen" (31-08): verstuurde bestelling mét leverdatum in de week
+    zónder transportregel — rood gestippeld in de dagkolom."""
+
+    bestelling_id: uuid.UUID
+    bestelling_nummer: str
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    leverancier_naam: str
+    datum: date
+
+
 class TransportWeekDto(BaseModel):
     jaar: int
     weeknummer: int
@@ -242,6 +295,7 @@ class TransportWeekDto(BaseModel):
     bestellingen_concept: int
     bestellingen_met_wijzigingen: int
     materiaalmatch_open: int
+    te_plannen: list[TePlannenDto] = []
 
 
 class StandRegelDto(BaseModel):

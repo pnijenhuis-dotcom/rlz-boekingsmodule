@@ -42,10 +42,26 @@ class TransportSoort(enum.StrEnum):
 
 
 class TransportStatus(enum.StrEnum):
-    GEPLAND = "gepland"
+    """Statusflow her-enum 31-08 (mockup planning-werkopdracht-transport, besluit Peter):
+    GERESERVEERD (rood, ontstaat bij slepen uit het werkbakje) → BEVESTIGD (oranje, mét
+    verplichte voertuigtoezegging + mail aan het transport-contact) → DEFINITIEF (groen,
+    materiaallijst + transportplanner ingevuld, lijst per mail aan het materiaal-contact)
+    → GELEVERD (grijs, terminaal). GEPLAND is de pre-0091-legacywaarde en gedraagt zich
+    overal als GERESERVEERD (de CHECK laat 'm toe; omzetting = app-stap, migratie is DDL)."""
+
+    GERESERVEERD = "gereserveerd"
     BEVESTIGD = "bevestigd"
+    DEFINITIEF = "definitief"
     GELEVERD = "geleverd"
     GEANNULEERD = "geannuleerd"
+    GEPLAND = "gepland"  # legacy (pre-0091) — alias van GERESERVEERD
+
+
+class TransportVoertuig(enum.StrEnum):
+    """Voertuigtoezegging van het transport-contact bij het bevestigen (besluit Peter 31-08)."""
+
+    COMBI = "combi"
+    VOORWAGEN = "voorwagen"
 
 
 class BestellingStatus(enum.StrEnum):
@@ -80,6 +96,12 @@ class MateriaalLeverancier(Base):
     adres: Mapped[str | None] = mapped_column(default=None)
     # Koppeling met de RLZ-crediteur (D6 factuurcontrole) — bewust geen FK naar vendor_cache.
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    # Twee contactpersonen (31-08, migratie 0091): transport-contact krijgt de bevestig-mail
+    # ("transport gaat definitief door"), materiaal-contact de materiaallijst + delta-mails.
+    transport_contact_naam: Mapped[str | None] = mapped_column(default=None)
+    transport_contact_email: Mapped[str | None] = mapped_column(default=None)
+    materiaal_contact_naam: Mapped[str | None] = mapped_column(default=None)
+    materiaal_contact_email: Mapped[str | None] = mapped_column(default=None)
     actief: Mapped[bool] = mapped_column(default=True)
     bijgewerkt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
@@ -227,6 +249,10 @@ class MateriaalTransport(Base):
             "status <> 'geannuleerd' OR (status_reden IS NOT NULL AND length(btrim(status_reden)) > 0)",
             name="ck_materiaal_transport_annulering",
         ),
+        CheckConstraint(
+            f"voertuig IS NULL OR voertuig IN ({_sql(TransportVoertuig)})",
+            name="ck_materiaal_transport_voertuig",
+        ),
         Index("ix_materiaal_transport_administratie_id", "administratie_id"),
         Index("ix_materiaal_transport_datum", "administratie_id", "datum"),
         Index("ix_materiaal_transport_project", "administratie_id", "project_id", "datum"),
@@ -245,9 +271,14 @@ class MateriaalTransport(Base):
     soort: Mapped[str]
     datum: Mapped[date]
     tijdstip: Mapped[time | None] = mapped_column(default=None)
-    status: Mapped[str] = mapped_column(default=TransportStatus.GEPLAND.value)
+    status: Mapped[str] = mapped_column(default=TransportStatus.GERESERVEERD.value)
     status_bron: Mapped[str] = mapped_column(default="kantoor")  # kantoor | verhuursysteem (later)
     status_reden: Mapped[str | None] = mapped_column(default=None)
+    # Voertuigtoezegging van het transport-contact bij bevestigen (combi | voorwagen, 0091);
+    # dag verschuiven wist 'm — de toezegging moet opnieuw (besluit Peter 31-08).
+    voertuig: Mapped[str | None] = mapped_column(default=None)
+    # Transportplanner, ingevuld bij definitief maken (vrije tekst, mockup "planner: De Jong").
+    transportplanner: Mapped[str | None] = mapped_column(default=None)
     status_gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

@@ -7,7 +7,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import schemas, service, voorwaarden, webauthn_service
-from app.auth.deps import CurrentGebruiker, get_current_gebruiker, require_beheerder
+from app.auth.deps import (
+    CurrentGebruiker,
+    get_current_gebruiker,
+    require_beheerder,
+    require_beheerder_of_veldwerkerbeheer,
+)
 from app.auth.rollen import is_externe_app_rol
 from app.berichten import mail as berichten_mail
 from app.berichten import uitnodigingsmail
@@ -90,8 +95,16 @@ def _lever_token_paar(request: Request, response: Response, paar: service.TokenP
 @router.post("/uitnodigingen", response_model=schemas.UitnodigingAanmakenResponse)
 def uitnodiging_aanmaken(
     payload: schemas.UitnodigingAanmakenRequest,
-    actor: CurrentGebruiker = Depends(require_beheerder),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> schemas.UitnodigingAanmakenResponse:
+    try:
+        # 31-08: een niet-Beheerder mét veldwerkerbeheer-recht maakt uitsluitend veldwerkers
+        # aan binnen de eigen scope (server-side begrenzing; Beheerder = ongewijzigd).
+        service.toets_veldwerkerbeheer_uitnodiging(
+            actor_id=actor.id, actor_rol=actor.rol, rol=payload.rol, administratie_ids=payload.administratie_ids
+        )
+    except service.VeldwerkerbeheerBegrenzing as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     try:
         resultaat = service.maak_uitnodiging(
             actor_id=actor.id,
@@ -454,10 +467,15 @@ def gebruiker_heractiveren(
 @router.get("/gebruikers/{gebruiker_id}/open-werk", response_model=schemas.OpenWerkResponse)
 def gebruiker_open_werk(
     gebruiker_id: uuid.UUID,
-    actor: CurrentGebruiker = Depends(require_beheerder),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> schemas.OpenWerkResponse:
     """Open werk vóór archiveren (feedbackronde 26-08 punt 1): aantallen voor de
-    bevestigingswaarschuwing — geen blokkade, het werk blijft staan."""
+    bevestigingswaarschuwing — geen blokkade, het werk blijft staan. Veldwerkerbeheer-houders
+    (31-08) alleen voor veldwerkers binnen de eigen scope (onderdeel van de archiveer-flow)."""
+    try:
+        service.toets_veldwerkerbeheer_doel(actor_id=actor.id, actor_rol=actor.rol, doel_gebruiker_id=gebruiker_id)
+    except service.VeldwerkerbeheerBegrenzing as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     werk = service.open_werk_van_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
     return schemas.OpenWerkResponse(
         open_accorderingen=werk.open_accorderingen,
@@ -469,11 +487,17 @@ def gebruiker_open_werk(
 @router.post("/gebruikers/{gebruiker_id}/archiveren", status_code=status.HTTP_204_NO_CONTENT)
 def gebruiker_archiveren(
     gebruiker_id: uuid.UUID,
-    actor: CurrentGebruiker = Depends(require_beheerder),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
     """Archiveer een gebruiker (feedbackronde 26-08 punt 1, 0052-patroon): uit alle
     default-lijsten, toegang per direct dicht, niets verwijderd. Guards (eigen account,
-    systeem-actor, laatste actieve Beheerder) server-side in de service."""
+    systeem-actor, laatste actieve Beheerder) server-side in de service. Veldwerkerbeheer-
+    houders (31-08) archiveren uitsluitend veldwerkers binnen de eigen scope; dearchiveren
+    blijft Beheerder-only."""
+    try:
+        service.toets_veldwerkerbeheer_doel(actor_id=actor.id, actor_rol=actor.rol, doel_gebruiker_id=gebruiker_id)
+    except service.VeldwerkerbeheerBegrenzing as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     try:
         service.archiveer_gebruiker(actor_id=actor.id, doel_gebruiker_id=gebruiker_id)
     except service.AuthError as exc:

@@ -1,6 +1,7 @@
 """Transport + bestellingen + materiaal-API (blok D): prefix /materiaal/{administratie_id}/…
 Toegang: kantoorrol (router-breed) + module-recht 'Meerwerk & urenstaten' + klantscope per
-endpoint; catalogusbeheer = Beheerder. Fout-vertaling identiek aan de uren-router."""
+endpoint; leverancier-/catalogusbeheer = Beheerder óf Boekhouding+Projecten (besluit Peter
+31-08, was Beheerder-only). Fout-vertaling identiek aan de uren-router."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.auth.deps import (
     CurrentGebruiker,
-    require_beheerder,
+    require_beheerder_of_bp,
     require_meerwerk_urenstaten_recht,
     vereis_administratie_scope,
     vereis_kantoorrol,
@@ -84,7 +85,7 @@ def leveranciers(
 def leverancier_zetten(
     administratie_id: uuid.UUID,
     payload: schemas.LeverancierZettenRequest,
-    actor: CurrentGebruiker = Depends(require_beheerder),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
 ) -> dict:
     try:
         lid = materiaal.zet_leverancier(
@@ -97,6 +98,10 @@ def leverancier_zetten(
             adres=payload.adres,
             vendor_id=payload.vendor_id,
             actief=payload.actief,
+            transport_contact_naam=payload.transport_contact_naam,
+            transport_contact_email=payload.transport_contact_email,
+            materiaal_contact_naam=payload.materiaal_contact_naam,
+            materiaal_contact_email=payload.materiaal_contact_email,
         )
     except uren_service.UrenFout as exc:
         raise _vertaal(exc) from exc
@@ -166,7 +171,7 @@ def producten(
 def categorie_zetten(
     administratie_id: uuid.UUID,
     payload: schemas.CategorieZettenRequest,
-    actor: CurrentGebruiker = Depends(require_beheerder),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
 ) -> dict:
     try:
         cid = materiaal.zet_categorie(
@@ -188,7 +193,7 @@ def categorie_zetten(
 def product_zetten(
     administratie_id: uuid.UUID,
     payload: schemas.ProductZettenRequest,
-    actor: CurrentGebruiker = Depends(require_beheerder),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
 ) -> dict:
     try:
         pid = materiaal.zet_product(
@@ -211,7 +216,7 @@ def product_zetten(
 
 @router.post("/{administratie_id}/seed-universal", response_model=schemas.SeedResultaatDto)
 def seed_universal(
-    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder_of_bp)
 ) -> schemas.SeedResultaatDto:
     """Standaardcatalogus uit de bestellijst laden (idempotent, nooit verwijderen)."""
     try:
@@ -420,6 +425,7 @@ def transport_week(
         bestellingen_concept=w.bestellingen_concept,
         bestellingen_met_wijzigingen=w.bestellingen_met_wijzigingen,
         materiaalmatch_open=w.materiaalmatch_open,
+        te_plannen=[_dto(schemas.TePlannenDto, s) for s in w.te_plannen],
     )
 
 
@@ -468,6 +474,7 @@ def transport_wijzigen(
                 regels=payload.regels,
                 omschrijving=payload.omschrijving,
                 project_id=payload.project_id,
+                soort=payload.soort,
             )
         )
     except uren_service.UrenFout as exc:
@@ -482,8 +489,9 @@ def transport_status(
     actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.TransportDto:
-    """Statusovergang gepland → bevestigd → geleverd (kantoor-klikwerk; seam voor het
-    verhuursysteem). 'geleverd' ververst de materiaalmatch van open facturen van de leverancier."""
+    """Statusovergangen zónder mail (31-08): definitief → geleverd, terug naar gereserveerd,
+    annuleren mét reden. Bevestigen en definitief maken lopen via de eigen endpoints (mail-first).
+    'geleverd' ververst de materiaalmatch van open facturen van de leverancier."""
     try:
         data = materiaal.zet_transport_status(
             administratie_id=administratie_id,
@@ -502,6 +510,101 @@ def transport_status(
                 administratie_id=administratie_id, leverancier_id=data.leverancier_id
             )
     return _transport_dto(data)
+
+
+@router.post("/{administratie_id}/transport/{transport_id}/bevestigen", response_model=schemas.TransportDto)
+def transport_bevestigen(
+    administratie_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    payload: schemas.TransportBevestigRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.TransportDto:
+    """Rood → oranje (31-08): verplichte voertuigtoezegging + bevestig-mail aan het
+    transport-contact van de leverancier. Mailfout = 502, géén statuswijziging."""
+    try:
+        return _transport_dto(
+            materiaal.bevestig_transport(
+                administratie_id=administratie_id,
+                actor_id=actor.id,
+                transport_id=transport_id,
+                voertuig=payload.voertuig,
+            )
+        )
+    except uren_service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/{administratie_id}/transport/{transport_id}/definitief", response_model=schemas.TransportDto)
+def transport_definitief(
+    administratie_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    payload: schemas.TransportDefinitiefRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.TransportDto:
+    """Oranje → groen (31-08): materiaallijst + transportplanner ingevuld — de volledige lijst
+    gaat per mail naar het materiaal-contact. Mailfout = 502, niets gewijzigd."""
+    try:
+        return _transport_dto(
+            materiaal.maak_definitief(
+                administratie_id=administratie_id,
+                actor_id=actor.id,
+                transport_id=transport_id,
+                regels=payload.regels,
+                transportplanner=payload.transportplanner,
+            )
+        )
+    except uren_service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/{administratie_id}/transport/{transport_id}/materiaallijst", response_model=schemas.TransportDto)
+def transport_materiaallijst(
+    administratie_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    payload: schemas.TransportMateriaallijstRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.TransportDto:
+    """Materiaallijst wijzigen ná definitief (31-08): delta-mail (alleen gewijzigde regels
+    oud → nieuw) aan het materiaal-contact — bestel-update-mailpatroon. Mailfout = 502,
+    géén stille wijziging."""
+    try:
+        return _transport_dto(
+            materiaal.wijzig_materiaallijst(
+                administratie_id=administratie_id,
+                actor_id=actor.id,
+                transport_id=transport_id,
+                regels=payload.regels,
+                transportplanner=payload.transportplanner,
+            )
+        )
+    except uren_service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.post("/{administratie_id}/transport/{transport_id}/verschuiven", response_model=schemas.TransportDto)
+def transport_verschuiven(
+    administratie_id: uuid.UUID,
+    transport_id: uuid.UUID,
+    payload: schemas.TransportVerschuifRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.TransportDto:
+    """Dag verschuiven (slepen, 31-08): terug naar gereserveerd — opnieuw bevestigen mét
+    nieuwe voertuigtoezegging; materiaallijst + transportplanner blijven bewaard."""
+    try:
+        return _transport_dto(
+            materiaal.verschuif_transport(
+                administratie_id=administratie_id,
+                actor_id=actor.id,
+                transport_id=transport_id,
+                nieuwe_datum=payload.datum,
+            )
+        )
+    except uren_service.UrenFout as exc:
+        raise _vertaal(exc) from exc
 
 
 # --- materiaalstand + match ---------------------------------------------------------------------------------
