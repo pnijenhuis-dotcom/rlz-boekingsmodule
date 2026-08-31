@@ -973,11 +973,40 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   leverancier (seed uit de bestellijst-xlsx, m² = Σ(aantal × lengte)/4,6), bestellingen mét
   append-only revisies (PDF-bon per mail via het bestaande SMTP-kanaal, update-mail = alleen
   gewijzigde regels oud→nieuw, mailfout = geen revisie), transport levering/retour per project ×
-  dag met status gepland → bevestigd → geleverd (**seam `zet_transport_status(bron=)`** voor het
+  dag (**seam `zet_transport_status(bron=)`** voor het
   latere verhuursysteem/veld-aftekening), materiaalstand + huurperiode per item, wachtrisico-
   kruissignaal op beide planning-tabs, materiaalmatch (D6: verhuur-crediteur vs aantal ×
   huurperiode; zelfde vlag-patroon + boekpoort als de urenmatch; m²-toetsbron in de keuring).
   Nieuwe module-code roept nergens RlzClient aan (seam-eis).
+  **Transport v2 = DAG-AGENDA + statusflow-her-enum (opdracht 31-08, mockup
+  `planning-werkopdracht-transport.html` = norm, migratie 0091 — BESLISSINGEN
+  "PLANNING-UITBREIDING 31-08" is canoniek):** de Transport-tab is een dag-agenda zónder
+  projectrijen (kaart = projectnr + klant + adres uit de specs + ▲/▼ + materiaal + voertuig +
+  planner + status; sleepbaar tussen dagen mét klik-alternatief; werkbakje: zoek → chip → sleep
+  of klik-klik; signaalkaart "nog te plannen" bij een verstuurde bestelling zonder
+  transportregel). **Status: gereserveerd (rood, uit het werkbakje) → bevestigd (oranje,
+  VERPLICHTE voertuigtoezegging combi/voorwagen + mail aan het TRANSPORT-CONTACT) → definitief
+  (groen, materiaallijst + transportplanner + volledige lijst aan het MATERIAAL-CONTACT) →
+  geleverd (grijs); wijzigen ná definitief = delta-mail (alleen oud→nieuw); dag verschuiven =
+  terug naar gereserveerd (voertuig vervalt, lijst blijft); álle mails mail-first (mailfout =
+  502, geen stille wijziging); legacy 'gepland' gedraagt zich als gereserveerd
+  (`effectieve_status` — migratie puur DDL).** Leverancier draagt twee contactpersonen
+  (transport-/materiaal-contact, leverancierbeheer); leverancier-/catalogusbeheer sinds 31-08
+  voor Beheerder ÓF B+P (`require_beheerder_of_bp`).
+  **Werkopdrachten per project × periode (31-08, zelfde mockup/migratie):** `app/uren/
+  werkopdracht.py` — APPEND-ONLY (groep_id + versies, DB-grant zonder UPDATE/DELETE; historie
+  in de popup), meerdere/overlappende per project, dag-override sparse (alleen die dag wint);
+  paarse chip + ⊕ per projectrij op de Personeel-tab, override via de dagcel; de veld-app toont
+  de geldende tekst alleen-lezen per geplande dag — bewust GEEN push bij tekstwijziging.
+  **Fijnmazig recht "veldwerkerbeheer" (31-08, 0019-patroon, eigen module-sleutel
+  `boekhouding.veldwerkerbeheer` — PK-les: één gebruiker draagt meerwerk- én dit recht):**
+  B+P mét het recht mag UITSLUITEND veldwerkers aanmaken (incl. uitnodiging_later) en
+  archiveren binnen de eigen scope (zelf-gepoorte SECURITY DEFINER-scope-toets
+  `platform.veldwerker_scope_binnen_actor`, fail-closed) — nooit kantoorrollen of rol-/
+  scope-mutaties; toekennen Beheerder-only (/gebruikers-switch); ingang "+ ZZP'er"/🗑 in de
+  planning-zijbalk; "+ Project aanmaken" terug op /planning (B+P, bestaande projectmotor).
+  NB de module-recht-houderslijst leest sinds 31-08 mét actor (RLS-leesbug /gebruikers:
+  actor-loze sessie zag stil nul rijen — kolom toonde overal "uit").
   **Planning-agenda steigerbouw (ontwerpronde v2 + BOUW akkoord Peter 22-08, mockup
   `planning-steigerbouw.html` = norm; GEBOUWD + GETEST 2026-08-22, migratie 0060 —
   BESLISSINGEN "PLANNING-AGENDA STEIGERBOUW" is canoniek):** kantoor plant ZZP'ers/
@@ -1207,6 +1236,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - `mockup/planning-steigerbouw.html` — definitief goedgekeurde mockup planning-agenda
   (v2, Peter 2026-08-22; GEBOUWD 2026-08-22) — de bouwnorm voor `/planning` + de
   veld-app-planningweergave
+- `mockup/planning-werkopdracht-transport.html` — definitief goedgekeurde mockup
+  planning-uitbreiding 31-08 (werkopdrachten per project × periode + transport-dag-agenda
+  mét werkbakje/statusflow; ontwerpnotities onderin = onderdeel van het akkoord; GEBOUWD
+  2026-08-31) — de bouwnorm voor de Personeel-tab-werkopdrachten en de Transport-tab v2
 - `mockup/tegenboek-mockup.html` — definitief goedgekeurde mockup tegenboek-pad (Peter
   2026-08-22, suppletie-signaal geschrapt; GEBOUWD 2026-08-22) — de bouwnorm
 - `mockup/projecten-invoer.html` — definitief goedgekeurde mockup kantoor-projectenmodule
