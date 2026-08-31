@@ -161,6 +161,19 @@ jobs:
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest" \
             --quiet
 
+      # Registersync §8 inbox_adres (verzoek Vastly 31-08): het centrale intake-adres reist mee
+      # op élke actieve administratie-rij in de snapshot. Eigen update-stap, want de waarde
+      # bevat een '@' en kan dus niet in de ^@^-gescheiden --set-env-vars hierboven; bewust
+      # zónder ||-fallback (geen secrets nodig — deze stap mag nooit stil overgeslagen worden:
+      # zonder deze env laat de snapshot het veld weg = "geen uitspraak" richting Vastly).
+      - name: Registersync inbox_adres op de service
+        run: |
+          gcloud run services update rlz-backend \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --update-env-vars "INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl" \
+            --quiet
+
       # F3-jobs (draaiboek §F3): de bestaande CLI-commando's zijn de entrypoints — zelfde
       # beeld als de service, per job een eigen definitie (een hangende sync blokkeert nooit
       # de afleveraar). Config-as-code, zelfde patroon als rlz-migratie hierboven; de

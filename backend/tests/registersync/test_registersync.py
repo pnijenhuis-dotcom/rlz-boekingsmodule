@@ -153,6 +153,40 @@ def test_veldenset_dekt_exact_de_contract_paragraaf(admin_engine: Engine) -> Non
         assert isinstance(rij["soort"], int) and isinstance(rij["is_totaalrekening"], bool)
 
 
+def test_inbox_adres_op_elke_actieve_rij(admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """v1.19-notitie (2), verzoek Vastly 31-08: mét geconfigureerd centraal intake-adres draagt
+    élke ACTIEVE administratie-rij `inbox_adres`; een niet-actieve rij draagt het veld NIET
+    (afwezig = geen uitspraak, Vastly raakt de cache niet aan). Envelope, handtekening en
+    top-level-veldenset blijven ongewijzigd (additief, geen versiebump)."""
+    monkeypatch.setattr(app_settings, "intake_postvak_adres", "facturen@ak-nijenhuis.nl")
+    a = seed_administratie(admin_engine, "Actief mét inbox")
+    b = seed_administratie(admin_engine, "Niet-actief", actief=False)
+
+    resp = client.get(ENDPOINT, headers=headers())
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body) == {
+        "schema_version", "generated_at", "bron_laatst_gesynchroniseerd_op",
+        "administraties", "grootboekrekeningen",
+    }
+    per_id = {r["id"]: r for r in body["administraties"]["rijen"]}
+    assert set(per_id[str(a)]) == ADMINISTRATIE_VELDEN | {"inbox_adres"}
+    assert per_id[str(a)]["inbox_adres"] == "facturen@ak-nijenhuis.nl"
+    assert set(per_id[str(b)]) == ADMINISTRATIE_VELDEN  # geen uitspraak = veld afwezig
+    for rij in body["administraties"]["rijen"]:
+        if rij["actief"]:
+            assert rij["inbox_adres"] == "facturen@ak-nijenhuis.nl"
+
+
+def test_inbox_adres_zonder_config_afwezig(admin_engine: Engine) -> None:
+    """Zonder geconfigureerd adres (code-default None, o.a. dev): het veld ontbreekt op élke rij —
+    geen uitspraak, nooit een onbedoeld `null` (dat zou Vastly's cache expliciet leegmaken)."""
+    seed_administratie(admin_engine, "Zonder config")
+    body = client.get(ENDPOINT, headers=headers()).json()
+    assert all("inbox_adres" not in rij for rij in body["administraties"]["rijen"])
+
+
 def test_leeg_grootboekregister_is_expliciet_aantal_0(admin_engine: Engine) -> None:
     seed_administratie(admin_engine, "Leeg")
     with admin_engine.begin() as conn:

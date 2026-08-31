@@ -31,6 +31,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 import app.db.session as db_session
+from app.config import settings
 from app.db.models import Administratie, Grootboekrekening
 from app.registersync.schemas import (
     AdministratieRij,
@@ -68,8 +69,20 @@ def bouw_snapshot() -> tuple[RegisterSnapshot, int]:
             .where(Administratie.gearchiveerd_op.is_(None))
             .order_by(Administratie.naam, Administratie.id)
         ).all()
+        # inbox_adres (v1.19-notitie (2), verzoek Vastly 31-08): het éne centrale intake-adres
+        # (config `intake_postvak_adres`, geen per-administratie datamodel) reist mee op élke
+        # ACTIEVE rij; op een niet-actieve rij en zonder geconfigureerd adres blijft het veld
+        # wég (= geen uitspraak, Vastly raakt de cache niet aan — nooit een onbedoelde "leeg").
+        inbox_adres = (settings.intake_postvak_adres or "").strip() or None
         admin_rijen = [
-            AdministratieRij(id=r.id, rlz_admin_id=r.rlz_admin_id, naam=r.naam, actief=r.actief) for r in administraties
+            AdministratieRij(
+                id=r.id,
+                rlz_admin_id=r.rlz_admin_id,
+                naam=r.naam,
+                actief=r.actief,
+                **({"inbox_adres": inbox_adres} if inbox_adres and r.actief else {}),
+            )
+            for r in administraties
         ]
 
         gb_rijen: list[GrootboekrekeningRij] = []
