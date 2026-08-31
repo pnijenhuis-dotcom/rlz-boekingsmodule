@@ -216,6 +216,7 @@ jobs:
             "rlz-bank-sync|bank-sync-wachtrij|900" \
             "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800" \
             "rlz-eerste-sync|eerste-sync-wachtrij|1800" \
+            "rlz-bewaking|bewaking-probe|300" \
           ; do
             NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"
             gcloud run jobs deploy "${NAAM}" \
@@ -297,6 +298,22 @@ jobs:
             --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
             --quiet \
           || echo "LET OP: notificatie-secrets nog niet klaargezet — rlz-nieuwe-facturen draait zonder mail-/pushconfig (fail-zichtbaar)."
+          # Synthetische bewaking (best-practice-besluit 1, 31-08 — twee stille incidenten
+          # 30/31-08): kwartier-probes + eigen SMTP-alerts (2 op rij = mail, herstelmelding,
+          # idempotent per storing). APP_BASIS_URL = het doel van de synthetische health-check;
+          # BEWAKING_RLZ_ADMINISTRATIE_ID = de TEST-administratie (entiteitenregister,
+          # 'Administratiekantoor Nijenhuis' — lichte leesroute, nooit writes; zonder
+          # store-credentials wordt die probe zichtbaar overgeslagen, geen alert).
+          # ANTHROPIC_API_KEY: derde AI-dragende job — de uurlijkse minimale echte AI-call
+          # (goedkoopste model) valt onder de bestaande kostenmeter. Scheduler-cadans (*/15)
+          # staat in scripts/gcp/f3_jobs.sh (owner, eenmalig).
+          gcloud run jobs update rlz-bewaking \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl,BEWAKING_RLZ_ADMINISTRATIE_ID=8dbfb856-d75b-4ec3-9124-c8b739fe3bc5" \
+            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
+            --quiet \
+          || echo "LET OP: bewaking-config niet volledig gezet — rlz-bewaking draait, maar alerts/AI-probe kunnen falen (fail-zichtbaar in platform.bewaking_probe_run)."
           # Native push fase 3 (kliktest-ronde 2026-08-17): APNs op de twee notificatie-jobs.
           # APNS_KEY_P8 + APNS_KEY_ID zijn Secret Manager-slots (scripts/gcp/apns_afronden.sh
           # — het Key ID is geen geheim maar leeft dáár zodat deploy.yml waarde-vrij blijft).
@@ -347,3 +364,39 @@ jobs:
             --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
             --quiet \
           || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — native-pushregistratie blijft fail-closed 409, web/PWA ongemoeid."
+
+      # POST-DEPLOY-SMOKETEST (best-practice-besluit 1, 31-08 punt 4 — aanleiding: de
+      # schema-limiet-bug van 30-08 haalde een groene deploy en legde de extractie een dag
+      # plat). Drie toetsen, élke fout = deze run luid rood (geen ||-fallback, bewust):
+      # 1. health op de nieuwe revisie (van buitenaf, via het echte domein);
+      # 2. één kritieke gepoorte route: /auth/gebruikers hoort ZONDER token exact 401 te geven
+      #    (bewijst dat de router live is én dat de auth-poort dichtzit — een 200 of een
+      #    SPA-fallback is hier allebei fout);
+      # 3. de rlz-smoketest-job (CLI deploy-smoketest, zelfde image): AI-schema-zelftest
+      #    (union-limiet, de 30-08-klasse), DB + migratieversie, mailkanaal-config.
+      - name: Post-deploy-smoketest (health + gepoorte route + schema-zelftest)
+        run: |
+          BASIS="https://app.administratiekantoornijenhuis.nl"
+          STATUS="$(curl -fsS -m 20 "${BASIS}/health")"
+          echo "health: ${STATUS}"
+          echo "${STATUS}" | grep -q '"status":[[:space:]]*"ok"' || { echo "FOUT: /health antwoordt niet ok"; exit 1; }
+          CODE="$(curl -s -o /dev/null -m 20 -w "%{http_code}" -H "Accept: application/json" "${BASIS}/auth/gebruikers")"
+          echo "gepoorte route /auth/gebruikers zonder token: ${CODE}"
+          [ "${CODE}" = "401" ] || { echo "FOUT: verwachtte 401, kreeg ${CODE}"; exit 1; }
+          gcloud run jobs deploy rlz-smoketest \
+            --image "${IMAGE}:${GITHUB_SHA}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --set-cloudsql-instances "${CLOUD_SQL}" \
+            --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey,BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl" \
+            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest" \
+            --command python \
+            --args="-m,app.cli,deploy-smoketest" \
+            --max-retries 0 \
+            --task-timeout 300 \
+            --quiet
+          gcloud run jobs execute rlz-smoketest \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --wait

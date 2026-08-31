@@ -59,6 +59,12 @@ JOBS=(
   # elk groot document (stap 8) + dit scheduler-VANGNET elke 10 min voor een gemiste trigger.
   # Lege wachtrij = snelle no-op. Start NIET gepauzeerd: dit is een vangnet, geen notificatie.
   "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800|*/10 * * * *"
+  # Synthetische bewaking (best-practice-besluit 1, 31-08): kwartier-probes (health/DB/
+  # documentopslag/mailkanaal/RLZ-leesroute; 1×/uur AI-call + extractie-foutratio) mét eigen
+  # SMTP-alerts. Start NIET gepauzeerd: dit ís het vangnet — een gepauzeerde bewaking bewaakt
+  # niets. Exit is vrijwel altijd 0 (falende probes = eigen alert); exit 1 = de bewaking zelf
+  # kon niet draaien → de F3.2-job-failure-alert hieronder is dan het vangnet-op-het-vangnet.
+  "rlz-bewaking|bewaking-probe|300|*/15 * * * *"
 )
 
 gcloud config set project "${PROJECT_ID}" --quiet
