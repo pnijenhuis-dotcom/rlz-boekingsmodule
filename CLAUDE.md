@@ -464,6 +464,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   100%-melding éénmalig per maand (werkvoorraad-banner + audit); limiet Beheerder-only op
   Instellingen (verbruiksblok naast de AI-gate-knop). Tweede laag = klikwerk Peter: spend-limit
   ~$110 in de Anthropic-console. Zie BESLISSINGEN "AI-KOSTENGRENS INTAKE".
+- **AI-schema's onder Anthropic's union-limiet (bugfix 31-08, BESLISSINGEN "BUGFIX 31-08"):**
+  structured-output-schema's dragen max 16 union-/nullable-parameters (anyOf/type-array, ook in
+  array-items) — het inkoopschema groeide met e/p/a naar 19 en élke extractie faalde met een 400.
+  Het inkoopschema is sinds 31-08 sentinel-gebaseerd (verplichte strings, `""` = onbekend →
+  deterministisch None); een NIEUW AI-veld nooit als nullable/union toevoegen maar via dit
+  patroon. Testpoort: `tests/extractie/test_schema_unionlimiet.py` (alle live schema's ≤ 16 +
+  fail-closed sweep op `json_schema=`-aanroepers). Nazorg-CLI `extractie-heraanbieden` biedt
+  gefaalde extracties bulk opnieuw aan via de bestaande opnieuw-route.
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,
