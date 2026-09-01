@@ -691,8 +691,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   api-verkenning "Bankmutatie op een RELATIE + mutatie SPLITSEN — STAP-0 (25-08)"):**
   (2) **auto-verversing bij openen** — cache direct + "laatst ververst HH:MM", 202+status-poll
   (`app/bank/sync_run.py`, tabel `bank_sync_run`, job `rlz-bank-sync`/CLI `bank-sync-wachtrij`),
-  drempel `bank_auto_ververs_drempel_minuten` = 5 (jongere sync = `overgeslagen`), handmatige knop
-  blijft; (3) **derde verwerkroute "Koppel aan relatie"** — RLZ kent geen relatie-boeking zonder
+  drempel `bank_auto_ververs_drempel_minuten` = 5 (jongere sync = `overgeslagen`) — **HERZIEN 01/02-09
+  (blok E, BESLISSINGEN "BANKSCHERM BLOK E"): de knoppen "Verversen uit Reeleezee"/"Nu verifiëren" zijn
+  weg; versheid + klein ⟳ (noodrem, `?forceer=true` slaat alleen de drempel over) staan vast in de
+  paneelkop, de verificatie van wachtende afletteropdrachten lift in élke ronde mee (`afletteren_wachtend`,
+  alleen gemeld als er iets wachtte), succes = toast, fouten persistent; voorstel-kaart mét doel-post-specs
+  uit `payment_item_cache` (`bank/doelpost.py`, mockup `bank-voorstel-kaart.html`), match-chip
+  groen/oranje, deelmatch "restant € X blijft open" + "Afletteren (deel)", geen match = tekstregel, zelfde
+  kaart in splitsen (`VoorstelKaart.tsx`)**; (3) **derde verwerkroute "Koppel aan relatie"** — RLZ kent geen relatie-boeking zonder
   document (Entity op BMDB/memoriaal = 500), de bewezen vorm is het **aanbetalingsdocument**:
   PurchaseInvoice (crediteur, één regel op systeemrekening 1403, expliciet 0%-"Nul tarief" —
   zonder tarief rekent RLZ 21%) resp. SalesInvoice (debiteur, 1806) + actie 15; verrekening =
