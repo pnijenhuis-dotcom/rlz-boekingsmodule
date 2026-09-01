@@ -125,6 +125,9 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
         percentage: 82,
         waarschuwing_80: true,
         limiet_bereikt: false,
+        extracties_template_maand: 7,
+        extracties_ai_maand: 12,
+        templates_actief: 2,
       }),
     )
   }

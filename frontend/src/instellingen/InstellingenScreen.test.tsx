@@ -101,6 +101,9 @@ function installFetchMock(opties: {
             waarschuwing_80: false,
             limiet_bereikt: false,
             geblokkeerd: false,
+            extracties_template_maand: 7,
+            extracties_ai_maand: 12,
+            templates_actief: 2,
           }),
         )
       }
@@ -297,6 +300,17 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     expect(accordeurCheckbox).toBeChecked()
     expect(screen.queryByText(/Kon instellingen niet laden/)).not.toBeInTheDocument()
     expect(screen.queryByText(/accordeurs niet te laden/)).not.toBeInTheDocument()
+  })
+
+  it('toont naast het AI-verbruiksblok de extractie-teller per bron (template vs AI) + actieve templates (01-09)', async () => {
+    installFetchMock({ rol: 'beheerder' })
+    renderScherm('/instellingen/intake-ai')
+
+    const teller = await screen.findByTestId('extractie-template-teller')
+    expect(teller.textContent).toContain('7 via template')
+    expect(teller.textContent).toContain('12 via AI')
+    expect(teller.textContent).toContain('2 actieve templates')
+    expect(teller.textContent).toContain('geen AI-aanroep, geen data naar buiten')
   })
 
   it('toont de terugval op de beheerder(s) bij een lege accordeur-set', async () => {

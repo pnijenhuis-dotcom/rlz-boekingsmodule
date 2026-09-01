@@ -13,7 +13,7 @@ import type {
   MatchAfwijkingDetailDto,
   VendorOptieDto,
 } from '../api/types'
-import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
+import { alsAiVoorstel, zekerheidPct, type AiVoorstel, type VeldvoorstelBron } from './aiVoorstel'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { crediteurSuggesties } from './crediteurSuggesties'
 import {
@@ -212,32 +212,48 @@ function LegeCacheBanner({ naam, bezig, onSynchroniseren }: LegeCacheBannerProps
   )
 }
 
-type VendorMatch = 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer'
+type VendorMatch = 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer' | 'iban'
+
+const HERKENNING_LABEL: Record<string, string> = { btw_nummer: 'btw-nummer', kvk_nummer: 'KvK-nummer', iban: 'IBAN' }
 
 interface AiChipProps {
   score: number
   drempel: number
   /** Crediteur-match-soort (punt 14, 28-08): nummer-match = groen mét herkomst, fuzzy = oranje. */
   match?: VendorMatch
+  /** 'template' = deterministische terugval (geleerd leverancier-template, geen AI) — eigen chipvariant. */
+  bron?: VeldvoorstelBron
 }
 
-/** Zekerheidsscore van de AI-extractie bij een vooringevuld veld: oranje onder de drempel of bij
- * een fuzzy crediteur-match ("bij twijfel oranje, nooit gokken"), anders groen. Een crediteur die op
- * btw-/KvK-nummer herkend is (punt 14) is groen ongeacht de naam-score: het nummer is de sleutel.
- * Verdwijnt zodra de controleur het veld aanpast — de score beschrijft dan de inhoud niet meer. */
-function AiChip({ score, drempel, match }: AiChipProps) {
-  const opNummer = match === 'btw_nummer' || match === 'kvk_nummer'
+/** Herkomst-chip bij een vooringevuld veld. AI: zekerheidsscore, oranje onder de drempel of bij een
+ * fuzzy crediteur-match ("bij twijfel oranje, nooit gokken"), anders groen; een crediteur die op
+ * btw-/KvK-nummer/IBAN herkend is (punt 14) is groen ongeacht de naam-score: het nummer is de sleutel.
+ * Template (01-09): "uit template" — deterministisch gelezen via het geleerde template van deze
+ * leverancier (lokale code, geen AI, geen score); de harde checks blijven de poort.
+ * Verdwijnt zodra de controleur het veld aanpast — de herkomst beschrijft dan de inhoud niet meer. */
+function AiChip({ score, drempel, match, bron }: AiChipProps) {
+  const opNummer = match === 'btw_nummer' || match === 'kvk_nummer' || match === 'iban'
   const fuzzy = match === 'fuzzy'
+  if (bron === 'template') {
+    return (
+      <span
+        className="chip ok"
+        title="Deterministisch gelezen via het geleerde template van deze leverancier (lokale code, geen AI). Het template reproduceert de laatste bevestigde facturen exact; de harde checks blijven de poort."
+      >
+        uit template{opNummer ? ` · herkend op ${HERKENNING_LABEL[match ?? '']}` : ''}
+      </span>
+    )
+  }
   const laag = fuzzy || (!opNummer && score < drempel)
   const titel = opNummer
-    ? `Crediteur herkend op ${match === 'btw_nummer' ? 'btw-nummer' : 'KvK-nummer'} van de factuur (bekend van eerdere facturen of uit RLZ).`
+    ? `Crediteur herkend op ${HERKENNING_LABEL[match ?? '']} van de factuur (bekend van eerdere facturen of uit RLZ).`
     : fuzzy
       ? 'Crediteur benaderd op naam (fuzzy match tegen de crediteuren-cache) — controleer de keuze.'
       : 'Zekerheid van de AI-extractie voor dit veld.'
   return (
     <span className={`chip ${laag ? 'afwijking' : 'ok'}`} title={titel}>
       AI {zekerheidPct(score)}
-      {fuzzy ? ' · naam benaderd' : opNummer ? ` · herkend op ${match === 'btw_nummer' ? 'btw-nummer' : 'KvK-nummer'}` : ''}
+      {fuzzy ? ' · naam benaderd' : opNummer ? ` · herkend op ${HERKENNING_LABEL[match ?? '']}` : ''}
     </span>
   )
 }
@@ -623,6 +639,7 @@ export function BoekvoorstelPanel({
     }
     return {
       drempel: ai.zekerheid_drempel,
+      bron: ai.bron,
       vendor:
         ai.vendor_suggestie && vendorId === ai.vendor_suggestie.vendor_id
           ? { score: ai.zekerheid.leverancier_naam ?? 0, match: ai.vendor_suggestie.match }
@@ -1117,7 +1134,7 @@ export function BoekvoorstelPanel({
               />
               {aiKop?.vendor && (
                 <div style={{ marginTop: 4 }}>
-                  <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} match={aiKop.vendor.match} />
+                  <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} match={aiKop.vendor.match} bron={aiKop.bron} />
                 </div>
               )}
               {/* Punt 14 (28-08): btw-/KvK-nummer van de leverancier uit de factuur — herkomst-chip conform
@@ -1193,7 +1210,7 @@ export function BoekvoorstelPanel({
               />
               {aiKop?.referentie && (
                 <div style={{ marginTop: 4 }}>
-                  <AiChip score={aiKop.referentie.score} drempel={aiKop.drempel} />
+                  <AiChip score={aiKop.referentie.score} drempel={aiKop.drempel} bron={aiKop.bron} />
                 </div>
               )}
             </div>
@@ -1206,7 +1223,7 @@ export function BoekvoorstelPanel({
               />
               {aiKop?.factuurdatum && (
                 <div style={{ marginTop: 4 }}>
-                  <AiChip score={aiKop.factuurdatum.score} drempel={aiKop.drempel} />
+                  <AiChip score={aiKop.factuurdatum.score} drempel={aiKop.drempel} bron={aiKop.bron} />
                 </div>
               )}
             </div>
@@ -1222,7 +1239,7 @@ export function BoekvoorstelPanel({
               />
               {aiKop?.vervaldatum && (
                 <div style={{ marginTop: 4 }}>
-                  <AiChip score={aiKop.vervaldatum.score} drempel={aiKop.drempel} />
+                  <AiChip score={aiKop.vervaldatum.score} drempel={aiKop.drempel} bron={aiKop.bron} />
                 </div>
               )}
               {vervaldatumHint && (
@@ -1285,7 +1302,7 @@ export function BoekvoorstelPanel({
               />
               {aiKop?.totaalbedrag && (
                 <div style={{ marginTop: 4 }}>
-                  <AiChip score={aiKop.totaalbedrag.score} drempel={aiKop.drempel} />
+                  <AiChip score={aiKop.totaalbedrag.score} drempel={aiKop.drempel} bron={aiKop.bron} />
                 </div>
               )}
             </div>
@@ -1522,7 +1539,7 @@ export function BoekvoorstelPanel({
                       />
                       {aiChipsActief && regel.aiZekerheid !== null && (
                         <div style={{ marginTop: 4 }}>
-                          <AiChip score={regel.aiZekerheid} drempel={ai?.zekerheid_drempel ?? 0.8} />
+                          <AiChip score={regel.aiZekerheid} drempel={ai?.zekerheid_drempel ?? 0.8} bron={ai?.bron} />
                         </div>
                       )}
                     </>

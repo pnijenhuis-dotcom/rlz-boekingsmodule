@@ -77,6 +77,11 @@ export interface AiKostenStatusDto {
   waarschuwing_80: boolean
   limiet_bereikt: boolean
   geblokkeerd: boolean
+  /** Deterministische extractie-terugval (01-09): veldvoorstellen deze maand per bron + actieve
+   * leverancier-templates. Optioneel voor oudere responses/mocks. */
+  extracties_template_maand?: number
+  extracties_ai_maand?: number
+  templates_actief?: number
 }
 
 export function haalAiKostenStatusOp(): Promise<AiKostenStatusDto> {

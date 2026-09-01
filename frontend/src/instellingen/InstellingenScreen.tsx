@@ -618,6 +618,17 @@ export function InstellingenScreen() {
                 ) : null}
               </p>
             )}
+            {aiKosten && (
+              <p className="hint" style={{ marginTop: 8, marginBottom: 0 }} data-testid="extractie-template-teller">
+                <strong>Extracties {aiKosten.maand}:</strong> {aiKosten.extracties_template_maand ?? 0} via template ·{' '}
+                {aiKosten.extracties_ai_maand ?? 0} via AI · {aiKosten.templates_actief ?? 0} actieve{' '}
+                {(aiKosten.templates_actief ?? 0) === 1 ? 'template' : 'templates'}. Een template wordt automatisch
+                geleerd uit de laatste drie door u bevestigde facturen van een leverancier en leest volgende facturen
+                deterministisch (lokale code, geen AI-aanroep, geen data naar buiten) — daarom werkt het óók voor
+                administraties met AI-extractie uit en als de AI-limiet bereikt is. Eén afwijking = volledig verworpen
+                en het AI-pad; geen beheer nodig.
+              </p>
+            )}
           </div>
           {aiKosten && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>

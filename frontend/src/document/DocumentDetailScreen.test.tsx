@@ -393,6 +393,44 @@ describe('DocumentDetailScreen — opnieuw extraheren vanaf een geslaagd voorste
   })
 })
 
+// ————— Deterministische extractie-terugval (best-practice-besluit 2, 31-08 / gebouwd 01-09) —————
+
+describe('DocumentDetailScreen — veldvoorstel uit template', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('toont het paneel als template-voorstel mét herkomst-chip per veld, zonder AI-scores', async () => {
+    installFetchMock(
+      detailMet({
+        veldvoorstel: {
+          ...AI_VOORSTEL,
+          bron: 'template',
+          zekerheid: { leverancier_naam: 1, factuurnummer: 1, totaal_incl: 1 },
+          template: {
+            id: 't-1',
+            sleutel_soort: 'btw_nummer',
+            versie: 1,
+            herkend_op: 'btw_nummer',
+            velden: { factuurnummer: 'template' },
+            btw_percentage: '21',
+          },
+        },
+      }),
+    )
+
+    renderScherm()
+
+    await screen.findByText('Veldvoorstel (template)')
+    expect(screen.getByText('uit template — mens boekt')).toBeInTheDocument()
+    expect(screen.queryByText('AI-voorstel — mens boekt')).not.toBeInTheDocument()
+    // Per gevuld veld een "uit template"-chip i.p.v. een percentage.
+    expect(screen.getAllByText('uit template').length).toBeGreaterThanOrEqual(3)
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
+    expect(screen.getByText(/geen AI-aanroep, geen data naar buiten/)).toBeInTheDocument()
+  })
+})
+
 describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()

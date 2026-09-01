@@ -26,8 +26,21 @@ export interface AiControle {
   onvolledig: boolean
 }
 
+/** Herkomst van het veldvoorstel: 'ai' (Claude-extractie) of 'template' (deterministische terugval —
+ * geleerd template van de leverancier, lokale code, geen AI; best-practice-besluit 2, 31-08). */
+export type VeldvoorstelBron = 'ai' | 'template'
+
+export interface TemplateHerkomst {
+  id: string
+  sleutel_soort: 'btw_nummer' | 'kvk_nummer' | 'administratie_vendor'
+  versie: number
+  herkend_op: 'btw_nummer' | 'kvk_nummer' | 'iban' | 'naam'
+  velden: Record<string, string>
+  btw_percentage: string
+}
+
 export interface AiVoorstel {
-  bron: 'ai'
+  bron: VeldvoorstelBron
   leverancier_naam: string | null
   factuurnummer: string | null
   factuurdatum: string | null
@@ -45,7 +58,9 @@ export interface AiVoorstel {
   regel_zekerheid: number[]
   zekerheid_drempel: number
   /** Punt 14 (28-08): nummer-match wint vóór de naam — 'btw_nummer' | 'kvk_nummer' zijn de zekerste. */
-  vendor_suggestie: { vendor_id: string; match: 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer' } | null
+  vendor_suggestie: { vendor_id: string; match: 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer' | 'iban' } | null
+  /** Alleen bij bron 'template': welk template, hoe de crediteur herkend is, herkomst per veld. */
+  template?: TemplateHerkomst
   /** Punt 14: btw-/KvK-nummer van de leverancier uit de factuur (deterministisch gevalideerd). */
   btw_nummer?: string | null
   btw_nummer_geverifieerd?: boolean | null
@@ -54,8 +69,12 @@ export interface AiVoorstel {
 }
 
 export function alsAiVoorstel(veldvoorstel: Record<string, unknown> | null | undefined): AiVoorstel | null {
-  if (!veldvoorstel || veldvoorstel.bron !== 'ai') return null
+  if (!veldvoorstel || (veldvoorstel.bron !== 'ai' && veldvoorstel.bron !== 'template')) return null
   return veldvoorstel as unknown as AiVoorstel
+}
+
+export function isTemplateVoorstel(voorstel: AiVoorstel | null | undefined): boolean {
+  return voorstel?.bron === 'template'
 }
 
 export function zekerheidPct(score: number): string {

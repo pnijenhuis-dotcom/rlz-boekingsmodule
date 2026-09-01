@@ -32,7 +32,7 @@ import { redenNietVerplaatsbaar } from './verplaatsen'
 import { AlBetaaldSignaal } from './AlBetaaldSignaal'
 import { AanbetalingSignaal, type VerrekenRegel } from './AanbetalingSignaal'
 import { TerugkerendSignaal } from './TerugkerendSignaal'
-import { alsAiVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
+import { alsAiVoorstel, isTemplateVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
 import { BoekvoorstelPanel, type GeboektInfo, type ToeTeVoegenRegel } from './BoekvoorstelPanel'
 import { MatchSectie } from './MatchSectie'
@@ -129,10 +129,23 @@ interface AiVoorstelPanelProps {
  * signalen van de deterministische controlelaag (regelsom, onparseerbare velden, BSN-filter). */
 function AiVoorstelPanel({ voorstel, onOpnieuwExtraheren }: AiVoorstelPanelProps) {
   const controle = voorstel.controle
+  // Deterministische terugval (best-practice-besluit 2, 31-08): zelfde paneel, eigen herkomst-chip —
+  // geen zekerheidsscores (het template leest letterlijk of verwerpt volledig), wél "uit template" per veld.
+  const template = isTemplateVoorstel(voorstel)
   return (
     <div className="panel">
       <h2>
-        Veldvoorstel (AI) <span className="chip ai">AI-voorstel — mens boekt</span>
+        {template ? 'Veldvoorstel (template)' : 'Veldvoorstel (AI)'}{' '}
+        {template ? (
+          <span
+            className="chip ok"
+            title="Deterministisch geëxtraheerd via het geleerde template van deze leverancier — lokale code, geen AI-aanroep. Het template reproduceert de laatste bevestigde facturen van deze leverancier exact; één afwijking = volledig verworpen en AI-pad."
+          >
+            uit template — mens boekt
+          </span>
+        ) : (
+          <span className="chip ai">AI-voorstel — mens boekt</span>
+        )}
       </h2>
       <table className="lines">
         <tbody>
@@ -145,7 +158,8 @@ function AiVoorstelPanel({ voorstel, onOpnieuwExtraheren }: AiVoorstelPanelProps
                 <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{veldnaam(sleutel)}</td>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{waarde ?? '—'}</td>
                 <td style={{ textAlign: 'right' }}>
-                  {waarde !== null && score !== undefined && (
+                  {waarde !== null && template && <span className="chip ok">uit template</span>}
+                  {waarde !== null && !template && score !== undefined && (
                     <span className={`chip ${laag ? 'afwijking' : 'ok'}`}>{zekerheidPct(score)}</span>
                   )}
                 </td>
@@ -187,8 +201,12 @@ function AiVoorstelPanel({ voorstel, onOpnieuwExtraheren }: AiVoorstelPanelProps
         </div>
       )}
       <div className="hint">
-        De AI leest alleen voor; bedragen, datums en suggesties zijn door de controlelaag geparst en getoetst.
-        Grootboek en btw-code komen uitsluitend uit de sync-cache — boeken blijft een menselijke actie.
+        {template
+          ? 'Gelezen via het geleerde template van deze leverancier (deterministisch, geen AI-aanroep, geen data naar buiten); ' +
+            'bedragen en datums zijn cent-/dag-exact getoetst. Grootboek en btw-code komen uitsluitend uit de sync-cache — ' +
+            'boeken blijft een menselijke actie. Corrigeert u een waarde en boekt u, dan vervalt het template en leert het systeem opnieuw.'
+          : 'De AI leest alleen voor; bedragen, datums en suggesties zijn door de controlelaag geparst en getoetst. ' +
+            'Grootboek en btw-code komen uitsluitend uit de sync-cache — boeken blijft een menselijke actie.'}
       </div>
       {onOpnieuwExtraheren && (
         <div className="actions">
@@ -1354,6 +1372,11 @@ export function DocumentDetailScreen() {
                       {g.detail && 'ai_extractie_fout' in g.detail && (
                         <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }}>
                           AI-extractie mislukt (handmatig invullen): {String(g.detail.ai_extractie_fout)}
+                        </div>
+                      )}
+                      {g.detail && 'template_terugval' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          Template-terugval: {String(g.detail.template_terugval)}
                         </div>
                       )}
                       {g.detail && 'ai_extractie_overgeslagen' in g.detail && (
