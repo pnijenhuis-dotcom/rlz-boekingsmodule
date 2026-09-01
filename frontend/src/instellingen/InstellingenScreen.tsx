@@ -18,7 +18,7 @@ import { DossierTypenModal } from './DossierTypenModal'
 import { MateriaalCatalogusBeheer } from './MateriaalCatalogusBeheer'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
-import { BeveiligingInstellingen } from './BeveiligingInstellingen'
+import { BeveiligingInstellingen, WeekmailVoorkeur } from './BeveiligingInstellingen'
 import { AdministratieWizard } from './AdministratieWizard'
 import { AdministratiesV2, type PendingToggle } from './AdministratiesV2'
 import { AdministratieDetailPagina } from './AdministratieDetailPagina'
@@ -393,6 +393,7 @@ export function InstellingenScreen() {
       <div>
         <Sectiekop titel="Beveiliging" />
         <BeveiligingInstellingen isBeheerder={false} />
+        <WeekmailVoorkeur />
       </div>,
     )
   }
@@ -401,6 +402,7 @@ export function InstellingenScreen() {
       <div>
         <Sectiekop titel={sectieInfo.titel} />
         <BeveiligingInstellingen isBeheerder />
+        <WeekmailVoorkeur />
       </div>,
     )
   }

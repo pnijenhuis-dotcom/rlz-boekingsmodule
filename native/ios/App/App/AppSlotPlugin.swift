@@ -13,6 +13,8 @@
 import Foundation
 import Capacitor
 import LocalAuthentication
+import UIKit
+import UserNotifications
 import Security
 
 @objc(AppSlotPlugin)
@@ -23,8 +25,24 @@ public class AppSlotPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "beschikbaar", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "zetSleutel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "haalSleutel", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "wisSleutel", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "wisSleutel", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "zetBadge", returnType: CAPPluginReturnPromise)
     ]
+
+    // Badge-count op het app-icoon (best-practice-punt D4, 01-09): de webcode zet het aantal
+    // openstaande accorderingen bij openen en ná elk besluit; de push-payload draagt hetzelfde
+    // aantal (aps.badge). Fail-stil: een badge is gemak, nooit een blokkade.
+    @objc func zetBadge(_ call: CAPPluginCall) {
+        let aantal = max(0, call.getInt("aantal") ?? 0)
+        DispatchQueue.main.async {
+            if #available(iOS 16.0, *) {
+                UNUserNotificationCenter.current().setBadgeCount(aantal) { _ in call.resolve() }
+            } else {
+                UIApplication.shared.applicationIconBadgeNumber = aantal
+                call.resolve()
+            }
+        }
+    }
 
     private let service = Bundle.main.bundleIdentifier ?? "nl.aknijenhuis.goedkeuren"
     private let account = "appslot_biometrie_sleutel"

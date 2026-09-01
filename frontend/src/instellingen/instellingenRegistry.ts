@@ -376,6 +376,14 @@ export const REGISTRY: readonly RegistryEntry[] = [
     beheerder: true,
   },
   {
+    id: 'mijn-weekmail',
+    naam: 'Weekmail (maandagochtend-digest) aan/uit',
+    waar: 'Beveiliging › Weekmail',
+    synoniemen: ['weekmail', 'digest', 'maandag', 'mail', 'melding', 'meldingen', 'notificatie', 'opt-out'],
+    doel: { soort: 'sectie', sectie: 'beveiliging', anker: 'weekmail' },
+    beheerder: false,
+  },
+  {
     id: 'eigen-passkeys',
     naam: 'Mijn passkeys (dit apparaat toevoegen of intrekken)',
     waar: 'Beveiliging › Mijn apparaten',

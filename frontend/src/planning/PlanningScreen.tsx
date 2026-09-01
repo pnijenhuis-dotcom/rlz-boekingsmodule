@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react'
 import { ApiError } from '../api/client'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
@@ -325,12 +326,15 @@ function NieuweVeldwerkerDialog({
   const [uitnodigingLater, setUitnodigingLater] = useState(true)
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
+  // D3 (01-09): ná aanmaken de BESTAANDE uitnodigingslink als QR tonen — scannen op de bouwplaats,
+  // werkt samen met de pincode-activatieflow (universal link); zelfde link/geldigheid, audit ongewijzigd.
+  const [qrLink, setQrLink] = useState<string | null>(null)
 
   async function aanmaken() {
     setBezig(true)
     setFout(null)
     try {
-      await nodigUit({
+      const resultaat = await nodigUit({
         naam: naam.trim(),
         e_mail: eMail.trim(),
         rol,
@@ -338,7 +342,7 @@ function NieuweVeldwerkerDialog({
         uitnodiging_later: uitnodigingLater,
       })
       onKlaar()
-      onSluiten()
+      setQrLink(`${window.location.origin}/activeren?token=${encodeURIComponent(resultaat.token)}`)
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Aanmaken mislukt — probeer het opnieuw.')
     } finally {
@@ -350,6 +354,26 @@ function NieuweVeldwerkerDialog({
     <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
       <DialogContent>
         <DialogTitle>👷 Veldwerker toevoegen</DialogTitle>
+        {qrLink ? (
+          <div data-testid="veldwerker-qr">
+            <p className="hint" style={{ marginTop: 0 }}>
+              {naam.trim()} is aangemaakt. Laat de veldwerker deze code scannen met de telefoon — dezelfde eenmalige
+              activatielink als in de mail (72 uur geldig){uitnodigingLater ? '; de mail is nog niet verstuurd (later via Gebruikers & toegang)' : ''}.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <div style={{ background: '#fff', padding: 12, borderRadius: 10 }}>
+                <QRCodeSVG value={qrLink} size={220} />
+              </div>
+              <code style={{ fontSize: 11, wordBreak: 'break-all', color: 'var(--muted)' }}>{qrLink}</code>
+            </div>
+            <DialogFooter>
+              <Button maat="klein" onClick={onSluiten}>
+                Klaar
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <>
         <p className="hint" style={{ marginTop: 0 }}>
           Alleen veldwerker-rollen, gekoppeld aan deze administratie (veldwerkerbeheer-recht, geaudit).
         </p>
@@ -379,6 +403,8 @@ function NieuweVeldwerkerDialog({
             Toevoegen
           </Button>
         </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

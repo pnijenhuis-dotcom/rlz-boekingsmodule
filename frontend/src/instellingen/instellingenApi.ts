@@ -338,3 +338,13 @@ export function toonAutoboekKandidaatWeer(administratieId: string, vendorId: str
 export function zetAutoboekDrempel(drempelOpRij: number): Promise<{ drempel_op_rij: number; laatste_run_op: string | null }> {
   return apiJson('/instellingen/autoboeken/instelling', { ...PUT_JSON, body: JSON.stringify({ drempel_op_rij: drempelOpRij }) })
 }
+
+/* --- Maandagochtend-digest (D2 01-09): eigen weekmail-voorkeur, élke kantoorrol ---------------- */
+
+export function haalMijnDigestOp(): Promise<{ opt_out: boolean }> {
+  return apiJson('/auth/mijn/digest')
+}
+
+export function zetMijnDigest(optOut: boolean): Promise<{ opt_out: boolean }> {
+  return apiJson('/auth/mijn/digest', { ...PUT_JSON, body: JSON.stringify({ opt_out: optOut }) })
+}

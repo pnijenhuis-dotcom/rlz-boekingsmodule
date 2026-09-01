@@ -1433,6 +1433,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "kantoor-digest",
+        help="Maandagochtend-digest kantoor (D2 01-09): één weekmail per kantoormedewerker mét scope — alleen bij "
+        "iets te melden, idempotent per ISO-week, opt-out per gebruiker (job rlz-kantoor-digest, ma 07:30).",
+    )
+
+    subparsers.add_parser(
         "autoboek-kandidaten-herbereken",
         help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
     )
@@ -1783,6 +1789,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.commando == "bootstrap-beheerder":
         return _bootstrap_beheerder(args)
+    if args.commando == "kantoor-digest":
+        from app.berichten import digest
+
+        rapport = digest.verstuur_weekdigest()
+        print(
+            f"kantoor-digest: {rapport.verzonden} verzonden, {rapport.al_verzonden} al verzonden, "
+            f"{rapport.niets_te_melden} niets te melden, {rapport.opt_out} opt-out, {rapport.mislukt} mislukt, "
+            f"{rapport.onafgemaakt} onafgemaakt"
+        )
+        for fout in rapport.fouten:
+            print(f"FOUT  {fout}", file=sys.stderr)
+        return 1 if rapport.is_fout else 0
     if args.commando == "autoboek-kandidaten-herbereken":
         from app.autoboek_kandidaten import service as kandidaten_service
 

@@ -19,6 +19,12 @@ class UitnodigingAanmakenRequest(StrikteInvoer):
     uitnodiging_later: bool = False
 
 
+class DigestVoorkeurDto(BaseModel):
+    """Maandagochtend-digest (D2, 01-09): eigen opt-out van de kantoormedewerker."""
+
+    opt_out: bool
+
+
 class UitnodigingAanmakenResponse(BaseModel):
     uitnodiging_id: uuid.UUID
     gebruiker_id: uuid.UUID

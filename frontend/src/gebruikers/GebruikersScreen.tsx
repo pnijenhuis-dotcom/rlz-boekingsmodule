@@ -3,6 +3,8 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
+import { QrLinkDialog } from '../ui/QrLinkDialog'
+import { isVeldRol } from '../auth/rollen'
 import {
   Badge,
   Button,
@@ -27,6 +29,7 @@ import {
   haalGebruikersOp,
   formatVerloop,
   heractiveerGebruiker,
+  activeerLinkUrl,
   herstelLinkUrl,
   kanHerstelLinkKrijgen,
   mailUitnodigingOpnieuw,
@@ -175,6 +178,9 @@ export function GebruikersScreen() {
   const [gebruikers, setGebruikers] = useState<GebruikerOverzichtDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [mailFout, setMailFout] = useState<string | null>(null)
+  // D3 (01-09): "Toon QR" — de laatste uitnodigingslink van een veldwerker als QR voor de bouwplaats.
+  const [qrAanbod, setQrAanbod] = useState<{ link: string; naam: string } | null>(null)
+  const [qrOpen, setQrOpen] = useState(false)
   const [apparatenPer, setApparatenPer] = useState<Record<string, ApparaatDto[]>>({})
 
   const [uitnodigSoort, setUitnodigSoort] = useState<'medewerker' | 'accordeur' | 'veldwerker' | null>(null)
@@ -331,6 +337,7 @@ export function GebruikersScreen() {
     setMailFout(null)
     try {
       const resultaat = await mailUitnodigingOpnieuw(gebruiker.id)
+      if (isVeldRol(gebruiker.rol) && resultaat.token) setQrAanbod({ link: activeerLinkUrl(resultaat.token), naam: gebruiker.naam })
       if (resultaat.mail_verzonden) {
         meld(`Uitnodiging opnieuw gemaild aan ${gebruiker.e_mail} — de oude link is vervallen.`)
       } else {
@@ -670,6 +677,18 @@ export function GebruikersScreen() {
 
       {fout && <FoutMelding melding="De gebruikerslijst kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
       {mailFout && <FoutMelding melding={mailFout} />}
+      {qrAanbod && (
+        <div className="hint" role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }} data-testid="qr-aanbod">
+          Uitnodigingslink voor {qrAanbod.naam} — op de bouwplaats scannen?
+          <Button variant="secundair" maat="klein" onClick={() => setQrOpen(true)}>
+            Toon QR
+          </Button>
+          <button type="button" className="linkbtn" onClick={() => setQrAanbod(null)}>
+            verbergen
+          </button>
+        </div>
+      )}
+      <QrLinkDialog link={qrOpen && qrAanbod ? qrAanbod.link : null} titel={`QR-uitnodiging — ${qrAanbod?.naam ?? ''}`} onSluiten={() => setQrOpen(false)} />
       {administratiesFout && <FoutMelding melding="Administraties konden niet geladen worden." detail={administratiesFout} />}
 
       {/* Tabs per groep (besluit Peter 25-08 "net zoals instellingen"): tellers per tab, eigen
@@ -1016,6 +1035,9 @@ export function GebruikersScreen() {
         administraties={administraties ?? []}
         onSluiten={() => setUitnodigSoort(null)}
         onUitgenodigd={(resultaat) => {
+          if (uitnodigSoort === 'veldwerker' && resultaat.token) {
+            setQrAanbod({ link: activeerLinkUrl(resultaat.token), naam: 'de nieuwe veldwerker' })
+          }
           if (resultaat.mail_uitgesteld) {
             meld('Account aangemaakt zonder mail (status uitgenodigd) — nodig later uit via "Opnieuw mailen".')
           } else if (resultaat.mail_verzonden) {

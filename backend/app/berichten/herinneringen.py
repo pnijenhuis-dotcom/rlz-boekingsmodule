@@ -171,7 +171,7 @@ def _verstuur_voor_accordeur(
         pushtekst=pushtekst,
         mailtekst=mailtekst,
         url="/accordeur",
-        extra_payload={"aantal": aantal},
+        extra_payload={"aantal": aantal, "badge": aantal},
     )
     rapport.subscripties_vervallen += uitkomst.subscripties_vervallen
     return uitkomst.status, uitkomst.kanaal, uitkomst.detail

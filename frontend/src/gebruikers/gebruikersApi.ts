@@ -94,6 +94,11 @@ export function formatVerloop(iso: string): string {
 }
 
 /** De link zoals de mail 'm draagt — terugval om handmatig te delen als de mail mislukt. */
+/** Dezelfde eenmalige activeerlink als in de uitnodigingsmail (D3, "Toon QR"). */
+export function activeerLinkUrl(token: string): string {
+  return `${window.location.origin}/activeren?token=${encodeURIComponent(token)}`
+}
+
 export function herstelLinkUrl(token: string): string {
   return `${window.location.origin}/activeren?token=${encodeURIComponent(token)}&herstel=1`
 }

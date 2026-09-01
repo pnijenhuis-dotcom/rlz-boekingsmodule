@@ -48,7 +48,9 @@ def is_geconfigureerd(soort: str = PushSoort.WEBPUSH.value) -> bool:
 def verzend_push(subscriptie: PushSubscriptie, *, payload: dict) -> None:
     """Verzend één pushbericht naar één subscriptie (apparaat), via de adapter van de soort.
     Payload is een klein JSON-object ({titel, tekst, url} + extra's) — geen financiële details
-    in de notificatie zelf, alleen aantal + deep-link (dataminimalisatie op het lockscreen)."""
+    in de notificatie zelf, alleen aantal + deep-link (dataminimalisatie op het lockscreen).
+    `badge` (D4, 01-09) = aantal openstaande accorderingen voor het app-icoon (APNs `aps.badge`,
+    FCM `notification_count`); web push draagt 'm in de payload voor de service worker."""
     if subscriptie.soort == PushSoort.APNS.value:
         _verzend_apns(subscriptie, payload)
         return
@@ -58,6 +60,17 @@ def verzend_push(subscriptie: PushSubscriptie, *, payload: dict) -> None:
     _verzend_webpush(subscriptie, payload)
 
 
+def _badge(payload: dict) -> int | None:
+    waarde = payload.get("badge")
+    return int(waarde) if isinstance(waarde, int) and not isinstance(waarde, bool) else None
+
+
+def _badge_kw(payload: dict) -> dict:
+    """Alleen doorgeven als de payload er een draagt — de adapter-signatuur blijft anders ongewijzigd."""
+    badge = _badge(payload)
+    return {"badge": badge} if badge is not None else {}
+
+
 def _verzend_apns(subscriptie: PushSubscriptie, payload: dict) -> None:
     try:
         apns.verzend_apns(
@@ -65,6 +78,7 @@ def _verzend_apns(subscriptie: PushSubscriptie, payload: dict) -> None:
             titel=str(payload.get("titel", "Nijenhuis Boekingsmodule")),
             tekst=str(payload.get("tekst", "")),
             url=str(payload.get("url", "/accordeur")),
+            **_badge_kw(payload),
         )
     except apns.ApnsNietGeconfigureerd as exc:
         raise PushNietGeconfigureerd(str(exc)) from exc
@@ -81,6 +95,7 @@ def _verzend_fcm(subscriptie: PushSubscriptie, payload: dict) -> None:
             titel=str(payload.get("titel", "Nijenhuis Boekingsmodule")),
             tekst=str(payload.get("tekst", "")),
             url=str(payload.get("url", "/accordeur")),
+            **_badge_kw(payload),
         )
     except fcm.FcmNietGeconfigureerd as exc:
         raise PushNietGeconfigureerd(str(exc)) from exc

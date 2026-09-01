@@ -122,3 +122,23 @@ class AccordeurNieuwGemeld(Base):
     detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     verzonden_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class KantoorDigest(Base):
+    """Maandagochtend-digest kantoor (D2, 01-09; migratie 0097): één rij per (kantoormedewerker, ISO-week)
+    — claim-vóór-verzenden (status bezig → verzonden/mislukt), unique zodat een herhaalde run nooit dubbel
+    mailt. Alleen aangemaakt als er iets te melden was."""
+
+    __tablename__ = "kantoor_digest"
+    __table_args__ = (
+        UniqueConstraint("gebruiker_id", "iso_week", name="uq_kantoor_digest_week"),
+        {"schema": "platform"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    iso_week: Mapped[str]
+    status: Mapped[str] = mapped_column(default=HerinneringStatus.BEZIG.value)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verzonden_op: Mapped[datetime | None] = mapped_column(default=None)
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=None)

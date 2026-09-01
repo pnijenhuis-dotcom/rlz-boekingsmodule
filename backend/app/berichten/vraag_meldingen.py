@@ -101,6 +101,13 @@ def verstuur_vraag_meldingen(
         return rapport
     kandidaten = _kandidaten(vraag_id, administratie_id)
     rapport.kandidaten = len(kandidaten)
+    # Badge-count (D4, 01-09): het aantal openstaande accorderingen per accordeur reist mee in de push.
+    from app.berichten.herinneringen import open_aantallen_per_accordeur
+
+    try:
+        badges = open_aantallen_per_accordeur()
+    except Exception:  # noqa: BLE001 — badge is gemak; een telfout mag de melding niet blokkeren
+        badges = {}
     for v_id, administratie_id, accordeur_id, eerste_keer in kandidaten:
         with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
             gebruiker = session.get(Gebruiker, accordeur_id)
@@ -108,7 +115,12 @@ def verstuur_vraag_meldingen(
         onderwerp, pushtekst, mailtekst, pad = bericht_teksten(v_id, eerste_keer=eerste_keer)
         try:
             uitkomst = verzending.verstuur_push_anders_mail(
-                gebruiker, onderwerp=onderwerp, pushtekst=pushtekst, mailtekst=mailtekst, url=pad
+                gebruiker,
+                onderwerp=onderwerp,
+                pushtekst=pushtekst,
+                mailtekst=mailtekst,
+                url=pad,
+                extra_payload={"badge": badges.get(accordeur_id, 0)},
             )
         except Exception as exc:  # noqa: BLE001 — nooit stil, job herkanst
             rapport.mislukt += 1

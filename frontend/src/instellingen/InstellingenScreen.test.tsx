@@ -234,6 +234,13 @@ function installFetchMock(opties: {
         return Promise.resolve(jsonResponse({ crediteuren: [] }))
       }
       // Beveiliging-sectie (kantoor-passkeys, besluit 0020) — voor élke kantoor-rol.
+      // D2 (01-09): weekmail-voorkeur op de Beveiliging-pagina.
+      if (url === '/auth/mijn/digest' && (!init || init.method === undefined)) return Promise.resolve(jsonResponse({ opt_out: false }))
+      if (url === '/auth/mijn/digest' && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body))
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse(body))
+      }
       if (url === '/auth/mijn/apparaten') {
         return Promise.resolve(jsonResponse({ apparaten: [] }))
       }
@@ -713,6 +720,25 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     await waitFor(() => expect(putAanroepen.some((p) => p.url === `/instellingen/administraties/${ADMINISTRATIE_ID}/eerste-sync`)).toBe(true))
     await waitFor(() => expect(screen.queryByRole('button', { name: /Sync opnieuw starten voor Bouwadvies/ })).not.toBeInTheDocument())
     expect(screen.getByTestId('eerste-sync-rlz-boon')).toHaveTextContent('wachtrij')
+  })
+})
+
+describe('InstellingenScreen — weekmail-voorkeur (D2, 01-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('élke kantoorrol ziet de weekmail-switch onder Beveiliging; uitzetten PUT opt_out=true zonder bevestiging', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'boekhouding', putAanroepen })
+    renderScherm('/instellingen/beveiliging')
+    const paneel = await screen.findByTestId('weekmail-voorkeur')
+    const schakelaar = await within(paneel).findByRole('checkbox', { name: 'Weekmail ontvangen' })
+    expect(schakelaar).toBeChecked()
+    await gebruiker.click(schakelaar)
+    await waitFor(() => expect(putAanroepen).toEqual([{ url: '/auth/mijn/digest', body: { opt_out: true } }]))
+    await waitFor(() => expect(within(paneel).getByRole('checkbox', { name: 'Weekmail ontvangen' })).not.toBeChecked())
   })
 })
 

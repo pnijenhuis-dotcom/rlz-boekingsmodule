@@ -191,7 +191,13 @@ def verstuur_nieuwe_facturen_meldingen(*, nu: datetime | None = None) -> NieuweF
         totaal = len(document_ids)
         onderwerp, pushtekst, mailtekst = bericht_teksten(totaal)
         uitkomst = verzending.verstuur_push_anders_mail(
-            gebruiker, onderwerp=onderwerp, pushtekst=pushtekst, mailtekst=mailtekst, url="/accordeur"
+            gebruiker,
+            onderwerp=onderwerp,
+            pushtekst=pushtekst,
+            mailtekst=mailtekst,
+            url="/accordeur",
+            # Badge-count (D4, 01-09): N = totaal openstaand voor deze accordeur.
+            extra_payload={"badge": totaal},
         )
         rapport.subscripties_vervallen += uitkomst.subscripties_vervallen
         _rond_claims_af(claim.rij_ids, status=uitkomst.status, kanaal=uitkomst.kanaal, detail=uitkomst.detail)

@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: voorraad-hernormaliseer voorraad-rlz-sync projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit autoboek-kandidaten-herbereken uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: voorraad-hernormaliseer voorraad-rlz-sync projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit autoboek-kandidaten-herbereken kantoor-digest uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -199,6 +199,10 @@ omzet-autoboeken-aan: check-versions
 
 omzet-autoboeken-uit: check-versions
 	.venv/bin/python -m app.cli omzet-autoboeken-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+# Maandagochtend-digest kantoor los draaien (job rlz-kantoor-digest, ma 07:30; idempotent per week).
+kantoor-digest: check-versions
+	.venv/bin/python -m app.cli kantoor-digest
 
 # Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; blok B 01-09).
 autoboek-kandidaten-herbereken: check-versions

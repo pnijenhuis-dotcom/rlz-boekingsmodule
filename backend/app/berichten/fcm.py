@@ -85,7 +85,7 @@ def _access_token() -> tuple[str, str]:
     return str(getattr(credentials, "token", "")), project_id
 
 
-def verzend_fcm(registratie_token: str, *, titel: str, tekst: str, url: str) -> None:
+def verzend_fcm(registratie_token: str, *, titel: str, tekst: str, url: str, badge: int | None = None) -> None:
     """Eén notificatie naar één Android-apparaat (FCM HTTP v1). De deep-link reist als
     data-veld mee; de app opent 'm bij de tap (pushClient-seam)."""
     if not is_geconfigureerd():
@@ -93,13 +93,18 @@ def verzend_fcm(registratie_token: str, *, titel: str, tekst: str, url: str) -> 
     import httpx
 
     access_token, project_id = _access_token()
-    bericht = {
+    bericht: dict = {
         "message": {
             "token": registratie_token,
             "notification": {"title": titel, "body": tekst},
             "data": {"url": url},
         }
     }
+    # Badge-count (D4, 01-09): Android kent geen los badge-veld — launchers volgen
+    # `notification_count`; de app reset via de eigen plugin bij openen/besluit.
+    if badge is not None:
+        bericht["message"]["android"] = {"notification": {"notification_count": int(badge)}}
+        bericht["message"]["data"]["badge"] = str(int(badge))
     try:
         antwoord = httpx.post(
             f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send",

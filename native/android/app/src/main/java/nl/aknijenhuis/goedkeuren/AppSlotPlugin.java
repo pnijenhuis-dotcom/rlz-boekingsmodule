@@ -48,6 +48,22 @@ public class AppSlotPlugin extends Plugin {
         return getContext().getSharedPreferences(OPSLAG_NAAM, Context.MODE_PRIVATE);
     }
 
+    /** Badge-count (best-practice-punt D4, 01-09). Android kent geen los badge-veld: launchers volgen de
+     *  notificaties (FCM `notification_count`) — 0 = alle afgeleverde meldingen opruimen zodat de badge
+     *  verdwijnt; > 0 = de afgeleverde meldingen dragen het aantal al. Fail-stil. */
+    @PluginMethod
+    public void zetBadge(PluginCall call) {
+        int aantal = Math.max(0, call.getInt("aantal", 0));
+        try {
+            if (aantal == 0) {
+                androidx.core.app.NotificationManagerCompat.from(getContext()).cancelAll();
+            }
+        } catch (RuntimeException e) {
+            // gemak, nooit een blokkade
+        }
+        call.resolve();
+    }
+
     @PluginMethod
     public void beschikbaar(PluginCall call) {
         int status = BiometricManager.from(getContext())

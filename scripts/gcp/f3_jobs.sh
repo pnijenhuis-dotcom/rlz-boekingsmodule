@@ -55,6 +55,10 @@ JOBS=(
   # dwingt de stille uren (20:00–08:00 Europe/Amsterdam) bovendien zelf af. Scheduler start
   # GEPAUZEERD (zie onder) tot de notificatie-live-verificatie rond is.
   "rlz-nieuwe-facturen|nieuwe-facturen-melden|600|*/10 8-19 * * *"
+  # Maandagochtend-digest kantoor (best-practice-punt D2, 01-09): één weekmail per kantoormedewerker
+  # mét scope, alleen bij iets te melden, idempotent per ISO-week (herdraai = nooit dubbel). Mail via
+  # het bestaande SMTP-kanaal (zelfde secrets als de herinneringen). Start NIET gepauzeerd.
+  "rlz-kantoor-digest|kantoor-digest|600|30 7 * * 1"
   # Extractie-wachtrij (feedbackronde 26-08 punt 4): on-demand getriggerd door de service bij
   # elk groot document (stap 8) + dit scheduler-VANGNET elke 10 min voor een gemiste trigger.
   # Lege wachtrij = snelle no-op. Start NIET gepauzeerd: dit is een vangnet, geen notificatie.

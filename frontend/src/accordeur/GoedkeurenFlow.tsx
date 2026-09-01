@@ -53,6 +53,7 @@ import {
   type WachtrijItemDto,
 } from './accordeurApi'
 import { besluitVerzender, type BesluitOpdracht } from './besluitQueue'
+import { zetAppBadge } from './appBadge'
 import { factuurCache } from './pdfCache'
 import { PdfWeergave } from './PdfWeergave'
 import { VoorwaardenScherm } from './VoorwaardenScherm'
@@ -435,6 +436,12 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
     },
     [toon],
   )
+
+  // App-icoon-badge (D4, 01-09): volgt het aantal openstaande accorderingen — reset bij openen en ná
+  // elk (optimistisch) besluit; de push-payload zet hetzelfde aantal. Fail-stil.
+  useEffect(() => {
+    void zetAppBadge(items.length)
+  }, [items.length])
 
   useEffect(() => {
     void laadWachtrij()

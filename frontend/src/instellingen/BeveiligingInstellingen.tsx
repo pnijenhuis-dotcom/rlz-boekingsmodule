@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { haalMijnDigestOp, zetMijnDigest } from './instellingenApi'
 import { trekApparaatIn, type ApparaatDto } from '../accordering/accorderingApi'
-import { SkeletonRegels } from '../ui/basis'
+import { SkeletonRegels, Switch } from '../ui/basis'
 import {
   apparaatNaam,
   haalWebauthnConfig,
@@ -90,6 +91,55 @@ function ApparatenTabel({
  * daarnaast het kill-switch-overzicht van alle kantoor-apparaten (accordeur-apparaten hebben
  * hun eigen overzicht onder Klant-accordering). Wachtwoord + TOTP blijft altijd werken: de
  * laatste passkey intrekken sluit nooit buiten. */
+/** Weekmail (maandagochtend-digest, D2 01-09): eigen opt-out — élke kantoorrol, geen bevestiging nodig
+ * (eigen voorkeur, geen geldhandeling), wel geaudit server-side. */
+export function WeekmailVoorkeur() {
+  const [optOut, setOptOut] = useState<boolean | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
+  useEffect(() => {
+    let actief = true
+    haalMijnDigestOp()
+      .then((r) => {
+        if (actief) setOptOut(r.opt_out)
+      })
+      .catch((err: unknown) => {
+        if (actief) setFout(err instanceof Error ? err.message : 'Onbekende fout')
+      })
+    return () => {
+      actief = false
+    }
+  }, [])
+  const wissel = async (aan: boolean) => {
+    setFout(null)
+    try {
+      const r = await zetMijnDigest(!aan)
+      setOptOut(r.opt_out)
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : 'Opslaan mislukt')
+    }
+  }
+  return (
+    <div className="panel" style={{ marginTop: 16 }} id="weekmail" data-testid="weekmail-voorkeur">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+          <h2 style={{ margin: 0 }}>Weekmail (maandag 07:30)</h2>
+          <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
+            Eén korte mail met de standen van jouw administraties (te controleren, vragen, bij de klant, signalen) —
+            alleen als er iets te melden is. Dit is je eigen voorkeur.
+          </p>
+        </div>
+        {optOut !== null && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
+            <Switch aria-label="Weekmail ontvangen" checked={!optOut} onChange={(e) => void wissel(e.target.checked)} />
+            {optOut ? 'uit' : 'aan'}
+          </label>
+        )}
+      </div>
+      {fout && <div className="fout">{fout}</div>}
+    </div>
+  )
+}
+
 export function BeveiligingInstellingen({ isBeheerder }: { isBeheerder: boolean }) {
   const [apparaten, setApparaten] = useState<ApparaatDto[] | null>(null)
   const [kantoorApparaten, setKantoorApparaten] = useState<KantoorApparaatDto[] | null>(null)

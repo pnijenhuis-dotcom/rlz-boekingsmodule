@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0096
+-- Migratie-head bij deze dump: 0097
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2977,6 +2977,7 @@ CREATE TABLE platform.gebruiker (
     gearchiveerd_op timestamp with time zone,
     gearchiveerd_door uuid,
     status_voor_archivering text,
+    digest_opt_out boolean DEFAULT false NOT NULL,
     CONSTRAINT ck_gebruiker_e_mail_lowercase CHECK ((e_mail = lower(e_mail)))
 );
 
@@ -3055,6 +3056,21 @@ CREATE TABLE platform.intake_instelling (
     gewijzigd_door uuid,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT intake_instelling_singleton CHECK (singleton)
+);
+
+
+--
+-- Name: kantoor_digest; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.kantoor_digest (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    iso_week text NOT NULL,
+    status text DEFAULT 'bezig'::text NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verzonden_op timestamp with time zone,
+    detail jsonb
 );
 
 
@@ -4408,6 +4424,14 @@ ALTER TABLE ONLY platform.intake_instelling
 
 
 --
+-- Name: kantoor_digest kantoor_digest_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.kantoor_digest
+    ADD CONSTRAINT kantoor_digest_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: push_subscriptie push_subscriptie_endpoint_key; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -4501,6 +4525,14 @@ ALTER TABLE ONLY platform.accordeur_herinnering
 
 ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
     ADD CONSTRAINT uq_accordeur_nieuw_gemeld UNIQUE (gebruiker_id, document_id);
+
+
+--
+-- Name: kantoor_digest uq_kantoor_digest_week; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.kantoor_digest
+    ADD CONSTRAINT uq_kantoor_digest_week UNIQUE (gebruiker_id, iso_week);
 
 
 --
@@ -8040,6 +8072,14 @@ ALTER TABLE ONLY platform.grootboekrekening
 
 ALTER TABLE ONLY platform.intake_instelling
     ADD CONSTRAINT intake_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: kantoor_digest kantoor_digest_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.kantoor_digest
+    ADD CONSTRAINT kantoor_digest_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
 
 
 --

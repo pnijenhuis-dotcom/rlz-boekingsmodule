@@ -246,6 +246,8 @@ class Gebruiker(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     status_voor_archivering: Mapped[str | None] = mapped_column(default=None)
+    # Maandagochtend-digest kantoor (D2, 01-09, migratie 0097): opt-out per gebruiker (default mee).
+    digest_opt_out: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
 class GebruikerAdministratie(Base):

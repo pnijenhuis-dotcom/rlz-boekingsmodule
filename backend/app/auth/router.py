@@ -12,6 +12,7 @@ from app.auth.deps import (
     get_current_gebruiker,
     require_beheerder,
     require_beheerder_of_veldwerkerbeheer,
+    vereis_kantoorrol,
 )
 from app.auth.rollen import is_externe_app_rol
 from app.berichten import mail as berichten_mail
@@ -831,6 +832,23 @@ def kantoor_login_voltooien(
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     return _lever_token_paar(request, response, paar)
+
+
+@router.get("/mijn/digest", response_model=schemas.DigestVoorkeurDto)
+def mijn_digest_ophalen(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.DigestVoorkeurDto:
+    """Maandagochtend-digest (D2, 01-09): eigen opt-out (kantoorrollen)."""
+    from app.berichten import digest
+
+    return schemas.DigestVoorkeurDto(opt_out=digest.haal_opt_out_op(gebruiker_id=actor.id))
+
+
+@router.put("/mijn/digest", response_model=schemas.DigestVoorkeurDto)
+def mijn_digest_zetten(
+    invoer: schemas.DigestVoorkeurDto, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.DigestVoorkeurDto:
+    from app.berichten import digest
+
+    return schemas.DigestVoorkeurDto(opt_out=digest.zet_opt_out(gebruiker_id=actor.id, opt_out=invoer.opt_out))
 
 
 @router.get("/mijn/apparaten", response_model=schemas.ApparatenResponse)

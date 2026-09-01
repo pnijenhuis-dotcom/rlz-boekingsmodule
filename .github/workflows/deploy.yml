@@ -215,6 +215,7 @@ jobs:
             "rlz-intake-imap|intake-postvak-verwerken|900" \
             "rlz-accordeur-herinneringen|accordeur-herinneringen|600" \
             "rlz-nieuwe-facturen|nieuwe-facturen-melden|600" \
+            "rlz-kantoor-digest|kantoor-digest|600" \
             "rlz-projecten-cijfers|projecten-cijfers-wachtrij|3600" \
             "rlz-bank-sync|bank-sync-wachtrij|900" \
             "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800" \

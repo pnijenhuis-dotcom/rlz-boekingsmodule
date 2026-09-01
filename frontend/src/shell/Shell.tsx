@@ -7,6 +7,7 @@ import { PasskeyToevoegenBanner } from '../auth/PasskeyToevoegenBanner'
 import { isMonoKlant, planningMenuPad, useMijnToegang } from '../auth/useMijnToegang'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { ThemaKnop } from '../ui/ThemaKnop'
+import { WatIsNieuwKnop } from '../changelog/WatIsNieuw'
 import { ToastProvider } from '../ui/basis'
 
 function NavItem({ to, end, children }: { to: string; end?: boolean; children: React.ReactNode }) {
@@ -75,6 +76,8 @@ export function Shell() {
         <div className="main">
           <div className="shell-topbar">
             <div className="spacer" />
+            {/* "Wat is nieuw" (D1, 01-09): hand-gecureerd changelog + ongelezen-dot per gebruiker. */}
+            <WatIsNieuwKnop />
             <ThemaKnop />
             <div className="userbox">
               <b>{rol ?? 'Ingelogd'}</b>

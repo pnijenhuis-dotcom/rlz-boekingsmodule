@@ -60,7 +60,7 @@ def _maak_jwt() -> str:
     return token
 
 
-def verzend_apns(device_token: str, *, titel: str, tekst: str, url: str) -> None:
+def verzend_apns(device_token: str, *, titel: str, tekst: str, url: str, badge: int | None = None) -> None:
     """Eén alert-notificatie naar één iOS-apparaat. Payload minimaal (dataminimalisatie op het
     lockscreen, zelfde principe als Web Push): titel + tekst + deep-link; de app opent de
     deep-link bij de tap (pushClient-seam, nooit goedkeuren-vanuit-de-melding)."""
@@ -70,10 +70,14 @@ def verzend_apns(device_token: str, *, titel: str, tekst: str, url: str) -> None
     import httpx
 
     basis = _APNS_SANDBOX if settings.apns_sandbox else _APNS_PRODUCTIE
-    payload = {
+    payload: dict = {
         "aps": {"alert": {"title": titel, "body": tekst}, "sound": "default"},
         "url": url,
     }
+    # Badge-count (best-practice-punt D4, 01-09): aantal openstaande accorderingen op het app-icoon;
+    # None = ongewijzigd laten (de app reset zelf bij openen/besluit).
+    if badge is not None:
+        payload["aps"]["badge"] = int(badge)
     try:
         with httpx.Client(http2=True, timeout=10) as client:
             antwoord = client.post(
