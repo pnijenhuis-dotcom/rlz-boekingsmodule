@@ -68,7 +68,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   opnieuw starten" zolang de laatste run niet volledig groen is — `eerste_sync` op de
   lijst-response; BESLISSINGEN "VERZAMELRUN 27-08" punt 5. Sinds v2 (30-08): sync-chip in de tabel
   + de stand in de detail-dialoog; wizard-defaults = boeken + AI-extractie AAN.** Zie BESLISSINGEN
-  "RLZ-FEEDBACKRONDE 26-08" punt 5; `app/beheer/onboarding.py`. **`is_vastgoed` is sinds de avondrun
+  "RLZ-FEEDBACKRONDE 26-08" punt 5; `app/beheer/onboarding.py`. **Facturatiemodule niet afgenomen
+  (besluit 01-09, casus A.Y. Holding 2 + Abbegaa, migratie 0093): een 403 op SalesInvoices is de
+  ENIGE niet-blokkerende probe-uitkomst — wizard sluit aan mét waarschuwing en zet het persistente
+  kenmerk `verkoopmodule_afwezig` (chip "geen facturatiemodule"), dat de verkoop-rakende leesroutes
+  uitschakelt (voorraad-RLZ-uitstroom, SalesInvoices in de projectcijfers-sync — zichtbaar
+  overgeslagen, nooit stil op de 403 stuk); een herprobe mét SalesInvoices ok wist het kenmerk
+  (audit beide kanten); élke andere rechten-403 meldt "geef de webservice-gebruiker in RLZ
+  leesrecht op <route>". Zie BESLISSINGEN "SPOEDOPDRACHT 01-09" blok A.** **`is_vastgoed` is sinds de avondrun
   26-08 een Beheerder-toggle op dezelfde pagina (`PATCH /administraties/{id}/is-vastgoed`, kolom
   "Vastgoed-koppeling (Vastly)", bevestigingsdialoog met consequenties, audit oud→nieuw; UIT neemt
   verkoop-autoboeken zichtbaar mee uit, tier-vlag afgeletterd_event blijft; CLI-terugval `make
