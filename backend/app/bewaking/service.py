@@ -220,6 +220,9 @@ def _probe_extractie_foutratio(nu: datetime) -> ProbeUitkomst:
             # 'overgeslagen' (gate uit, limiet, geen key) is geen póging — telt niet mee.
             if detail is not None and "ai_extractie_overgeslagen" in detail:
                 continue
+            # Een template-extractie (deterministische terugval, 01-09) is geen AI-poging.
+            if detail is not None and detail.get("extractie_bron") == "template":
+                continue
             totaal += 1
             if detail is not None and "ai_extractie_fout" in detail:
                 fouten += 1

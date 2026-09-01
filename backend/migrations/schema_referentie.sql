@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0093
+-- Migratie-head bij deze dump: 0094
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1148,6 +1148,29 @@ CREATE TABLE boekhouding.duplicaat_signaal (
 );
 
 ALTER TABLE ONLY boekhouding.duplicaat_signaal FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: extractie_template; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.extractie_template (
+    id uuid NOT NULL,
+    sleutel text NOT NULL,
+    sleutel_soort text NOT NULL,
+    administratie_id uuid,
+    vendor_id uuid,
+    definitie jsonb NOT NULL,
+    geleerd_uit jsonb NOT NULL,
+    geleerd_op timestamp with time zone DEFAULT now() NOT NULL,
+    versie integer DEFAULT 1 NOT NULL,
+    geldig boolean NOT NULL,
+    ongeldig_op timestamp with time zone,
+    ongeldig_reden text,
+    gebruikt_aantal integer DEFAULT 0 NOT NULL,
+    laatst_gebruikt_op timestamp with time zone,
+    CONSTRAINT ck_extractie_template_sleutel_soort CHECK ((sleutel_soort = ANY (ARRAY['btw_nummer'::text, 'kvk_nummer'::text, 'administratie_vendor'::text])))
+);
 
 
 --
@@ -3436,6 +3459,14 @@ ALTER TABLE ONLY boekhouding.duplicaat_signaal
 
 
 --
+-- Name: extractie_template extractie_template_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.extractie_template
+    ADD CONSTRAINT extractie_template_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: factuurmatch factuurmatch_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3817,6 +3848,14 @@ ALTER TABLE ONLY boekhouding.dossier_documenttype
 
 ALTER TABLE ONLY boekhouding.dossier_herinnering
     ADD CONSTRAINT uq_dossier_herinnering_dag UNIQUE (administratie_id, gebruiker_id, datum);
+
+
+--
+-- Name: extractie_template uq_extractie_template_sleutel; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.extractie_template
+    ADD CONSTRAINT uq_extractie_template_sleutel UNIQUE (sleutel);
 
 
 --
@@ -6253,6 +6292,14 @@ ALTER TABLE ONLY boekhouding.duplicaat_signaal
 
 ALTER TABLE ONLY boekhouding.duplicaat_signaal
     ADD CONSTRAINT duplicaat_signaal_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: extractie_template extractie_template_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.extractie_template
+    ADD CONSTRAINT extractie_template_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --

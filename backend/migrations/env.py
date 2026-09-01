@@ -19,6 +19,7 @@ import app.berichten.models  # noqa: F401
 import app.bewaking.models  # noqa: F401
 import app.documenten.models  # noqa: F401
 import app.doorbelasting.models  # noqa: F401
+import app.extractie.models  # noqa: F401
 import app.geheugen.models  # noqa: F401
 import app.intake.models  # noqa: F401
 import app.materiaal.models  # noqa: F401

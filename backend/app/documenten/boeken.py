@@ -611,6 +611,13 @@ def boek_document(
             administratie_id=administratie_id,
         )
 
+    # Deterministische extractie-terugval (best-practice-besluit 2, 31-08): ná de commit het
+    # template van deze crediteur toetsen/leren uit de zojuist door een mens bevestigde boeking.
+    # Post-commit, systeem-actor, nooit een blokkade van de boeking (leer_na_boeking_stil logt).
+    from app.extractie import template_service  # lokaal: houdt de importgraaf klein
+
+    template_service.leer_na_boeking_stil(administratie_id=administratie_id, document_id=document_id)
+
     return BoekResultaat(
         document_id=document_id,
         status=DocumentStatus.GEBOEKT,

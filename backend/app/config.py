@@ -252,6 +252,10 @@ class Settings(BaseSettings):
     # Zekerheidsscores onder deze drempel markeert het controlescherm oranje ("bij twijfel nooit
     # gokken" — de waarde blijft een voorstel dat Peter controleert, nooit een automatische keuze).
     ai_extractie_zekerheid_drempel: float = 0.8
+    # Deterministische extractie-terugval (best-practice-besluit 2, 31-08): een template per
+    # crediteur wordt geleerd uit de laatste N mens-bevestigde (geboekte) PDF-facturen en is pas
+    # geldig als hij ze álle N exact reproduceert. Minimum 3 — minder is geen patroon.
+    extractie_template_leer_aantal: int = 3
 
     # Klein-vs-groot-routing (async extractie, 2026-07-10): een PDF die op de AI-route gaat en
     # boven één van deze drempels zit, gaat niet synchroon in de upload-request maar direct de

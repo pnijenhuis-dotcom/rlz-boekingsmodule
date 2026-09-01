@@ -688,8 +688,14 @@ def intake_ai_zetten(
 
 
 def _ai_kosten_status_dto() -> schemas.AiKostenStatusDto:
+    from app.extractie import template_service  # lokaal: houdt de importgraaf van de router klein
+
     status_ = aikosten_service.haal_status_op()
+    templates = template_service.maand_statistiek()
     return schemas.AiKostenStatusDto(
+        extracties_template_maand=templates.via_template,
+        extracties_ai_maand=templates.via_ai,
+        templates_actief=templates.templates_actief,
         maand=status_.maand.strftime("%Y-%m"),
         verbruik_eur=f"{status_.verbruik_eur:.2f}",
         limiet_eur=f"{status_.limiet_eur:.2f}",

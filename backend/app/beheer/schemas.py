@@ -32,6 +32,11 @@ class AiKostenStatusDto(BaseModel):
     waarschuwing_80: bool
     limiet_bereikt: bool
     geblokkeerd: bool
+    # Deterministische extractie-terugval (01-09): teller naast het verbruiksblok — veldvoorstellen
+    # deze maand per bron + het aantal geldige leverancier-templates. Geen nieuw scherm.
+    extracties_template_maand: int = 0
+    extracties_ai_maand: int = 0
+    templates_actief: int = 0
 
 
 class AiKostenLimietInput(StrikteInvoer):

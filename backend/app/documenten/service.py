@@ -43,6 +43,7 @@ from app.documenten.wachtrij import (
 )
 from app.extractie import controle as extractie_controle
 from app.extractie import service as extractie_service
+from app.extractie import template_service
 from app.sync.btw import taxrate_vlaggen
 from app.sync.models import TaxRateCache, VendorCache
 
@@ -261,7 +262,7 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
         except GeenGeldigeUbl as exc:
             detail = {"ubl_parse_fout": str(exc)}
     elif suffix == _PDF_SUFFIX:
-        detail, blokkeer = _ai_extractie_detail(session, document=document, opslag=opslag)
+        detail, blokkeer = _pdf_extractie_detail(session, document=document, opslag=opslag)
         if blokkeer:
             # Waarborg projectadministratie (migratie 0015): regelset niet aantoonbaar compleet
             # bij projectplicht — blokkerende status, bewust GEEN (totalen-only) voorstel.
@@ -276,6 +277,8 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
 def _extractie_reden(detail: dict | None, doel_status: DocumentStatus) -> str:
     """Leesbare reden voor de systeem-eindovergang van een extractie (vangnet 28-08)."""
     d = detail or {}
+    if d.get("extractie_bron") == "template":
+        return "extractie afgerond via template van de leverancier (deterministisch, geen AI) — ter controle"
     if "ai_extractie_overgeslagen" in d:
         return f"extractie overgeslagen: {d['ai_extractie_overgeslagen']}"
     if "ai_extractie_onvolledig" in d:
@@ -606,7 +609,52 @@ def _taxrate_kandidaat(rij: TaxRateCache) -> extractie_controle.TaxRateKandidaat
     )
 
 
-def _ai_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> tuple[dict, bool]:
+def _pdf_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> tuple[dict, bool]:
+    """Extractievolgorde voor PDF's (best-practice-besluit 2, 31-08 — deterministische terugval):
+    a. geldig template van de herkende crediteur + tekstlaag → template-parse (alle interne validaties
+       groen; één rood = héle uitkomst verworpen + template ongeldig, door naar b). Dit pad staat NIET
+       achter de AI-AVG-gate: lokale code, er gaat niets naar buiten — werkt dus óók voor
+       administraties met AI-extractie uit;
+    b. het AI-pad exact zoals het was (gates, kostengrens, schema-poort ongewijzigd);
+    c. AI niet beschikbaar + geen template → het bestaande handmatige pad (overgeslagen-detail).
+    Gevolg: het template bespaart AI-kosten op de bulk én is de terugval bij AI-uitval."""
+    inhoud = opslag.lezen(pad=document.opslag_pad)
+    notitie: str | None = None
+    if document.administratie_id is not None and document.soort == DocumentSoort.INKOOPFACTUUR.value:
+        from app.documenten.crediteur_kenmerk import kandidaten_met_kenmerken
+
+        vendors = kandidaten_met_kenmerken(session, administratie_id=document.administratie_id)
+        taxrates = _taxrate_kandidaten(session, administratie_id=document.administratie_id)
+        try:
+            detail, notitie = template_service.template_extractie_detail(
+                session, document=document, inhoud=inhoud, vendors=vendors, taxrates=taxrates
+            )
+        except Exception:  # noqa: BLE001 — de terugval mag de extractie nooit laten falen: dan gewoon het AI-pad
+            logger.exception("Template-terugval mislukt voor document %s — AI-pad gevolgd", document.id)
+            detail, notitie = None, "template-terugval gaf een fout — AI-pad gevolgd"
+        if detail is not None:
+            return detail, False
+    detail, blokkeer = _ai_extractie_detail(session, document=document, opslag=opslag, inhoud=inhoud)
+    if notitie:
+        detail = {**detail, "template_terugval": notitie}
+    return detail, blokkeer
+
+
+def _taxrate_kandidaten(session: Session, *, administratie_id: uuid.UUID) -> list[extractie_controle.TaxRateKandidaat]:
+    return [
+        _taxrate_kandidaat(rij)
+        for rij in session.scalars(
+            select(TaxRateCache).where(
+                TaxRateCache.administratie_id == administratie_id,
+                TaxRateCache.verdwenen_uit_bron_op.is_(None),
+            )
+        )
+    ]
+
+
+def _ai_extractie_detail(
+    session: Session, *, document: Document, opslag: DocumentOpslag, inhoud: bytes | None = None
+) -> tuple[dict, bool]:
     """AI-route voor PDF's: AVG-gate → Claude-extractie (adaptieve chunking bij afkap) →
     deterministische controlelaag. De AI levert uitsluitend een voorstel (veld-suggesties met
     zekerheidsscores); boeken blijft altijd een menselijke actie via het controlescherm + harde
@@ -625,7 +673,8 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
     if not settings.anthropic_api_key:
         return {"ai_extractie_overgeslagen": "geen_api_key"}, False
 
-    inhoud = opslag.lezen(pad=document.opslag_pad)
+    if inhoud is None:
+        inhoud = opslag.lezen(pad=document.opslag_pad)
     try:
         extractie = extractie_service.extraheer_inkoopfactuur(
             inhoud,
@@ -669,15 +718,7 @@ def _ai_extractie_detail(session: Session, *, document: Document, opslag: Docume
     from app.documenten.crediteur_kenmerk import kandidaten_met_kenmerken
 
     vendors = kandidaten_met_kenmerken(session, administratie_id=document.administratie_id)
-    taxrates = [
-        _taxrate_kandidaat(rij)
-        for rij in session.scalars(
-            select(TaxRateCache).where(
-                TaxRateCache.administratie_id == document.administratie_id,
-                TaxRateCache.verdwenen_uit_bron_op.is_(None),
-            )
-        )
-    ]
+    taxrates = _taxrate_kandidaten(session, administratie_id=document.administratie_id)
     voorstel = extractie_controle.bouw_veldvoorstel(
         extractie,
         vendors=vendors,
