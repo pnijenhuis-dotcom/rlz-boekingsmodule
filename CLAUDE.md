@@ -512,6 +512,31 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   gefaalde extracties bulk opnieuw aan via de bestaande opnieuw-route. De teller/limiet leven
   sinds 31-08 runtime in `app/extractie/schema_poort.py` (de test importeert ze dáár) — de
   bewaking en de deploy-smoketest draaien dezelfde zelftest live.
+- **Deterministische extractie-terugval — template per bekende leverancier (best-practice-besluit 2,
+  31-08, GEBOUWD + GETEST 01-09, migratie 0094 — BESLISSINGEN "EXTRACTIE-TERUGVAL TEMPLATES" is
+  canoniek):** `app/extractie/template_terugval.py` (pure logica) + `template_service.py` (DB/audit).
+  Per crediteur (sleutel: btw-nummer > KvK-nummer uit `crediteur_kenmerk` — werkt dan over
+  administraties heen — anders administratie+crediteur) leert het systeem uit de laatste N ≥ 3 door een
+  MENS geboekte PDF-facturen ankers per kopveld uit de tekstlaag (label ervoor / label erboven /
+  kolomkop, pypdf layout-modus); een template is pas geldig als hij álle N exact reproduceert
+  (cent-exact, datums exact, referentie letterlijk) — anders géén template, nooit half. Runtime-volgorde
+  per PDF (`documenten/service.py::_pdf_extractie_detail`): (a) geldig template + tekstlaag →
+  template-parse mét interne validaties (excl + btw = incl cent-exact, vormpatroon referentie,
+  geleerde btw-percentages, vervaldatum ≥ factuurdatum; één rood = VOLLEDIG verworpen + template
+  ongeldig mét reden + audit) — NIET achter de AI-AVG-gate (lokale code, geen data naar buiten, werkt
+  dus ook bij AI uit/limiet bereikt); (b) AI-pad ongewijzigd; (c) handmatig-pad ongewijzigd.
+  Regelniveau alleen de veilige vorm (één regel = kop-totalen als álle leerdocumenten zo bevestigd
+  zijn), anders kop-only + boekingsgeheugen. Crediteur-herkenning zonder AI: btw → KvK → IBAN → exacte
+  naam, precies één kandidaat. Downstream ongewijzigd: zelfde veldvoorstel-contract (`bron:
+  "template"`, zekerheid 1.0, `template`-blok), zelfde harde checks, autoboek-poorten tellen een
+  template-extractie exact als een AI-extractie; chip "uit template" per veld, tijdlijn benoemt de bron.
+  Leren/vervallen post-commit ná élke boeking (`boeken.py` → `leer_na_boeking_stil`): correctie door
+  de controleur of layoutwijziging = ongeldig + direct opnieuw leren; `automatisch_geboekt` telt niet
+  als leerbron; geen handmatig templatebeheer. Teller op Instellingen naast het AI-verbruiksblok ("N
+  via template · M via AI · K actieve templates", `AiKostenStatusDto`). Bewaking-foutratio telt
+  template-extracties niet als AI-poging. Tests: `tests/extractie/test_template_terugval.py` (pure,
+  40) + `tests/documenten/test_template_terugval_pad.py` (keten, 9) + `tests/extractie/pdf_helper.py`
+  (PDF-generator mét tekstlaag).
 - **Synthetische bewaking + alerting (best-practice-besluit 1, 31-08 — aanleiding: twee stille
   productie-incidenten 30/31-08; migratie 0092):** Cloud Run-job `rlz-bewaking` elk kwartier
   (`app/bewaking/`, statusrijen `platform.bewaking_probe_run`/`bewaking_storing`): health, DB +
