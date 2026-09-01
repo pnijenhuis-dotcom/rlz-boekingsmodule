@@ -1144,6 +1144,20 @@ layout-shift (diagnose Cowork 01-09); "Afletteren op 942" zei de beoordelaar nie
 | E9 hergebruik | Dezelfde kaart (compact, zonder chip) in de splitsen-dialoog bij het open-post-deel | `Splitsen.tsx` |
 | Tests | Backend: `tests/bank/test_doelpost.py` (4: specs volledig/terugval/ontbrekend/OpenPost optioneel) + `test_sync_run.py::test_forceer…` + bank-suite (105); frontend: `VoorstelKaart.test.tsx` (8), `BankDetailScreen.test.tsx` (geen knoppen, ⟳ forceer, toast mét/zonder verificatie, geen layout-shift, deelmatch, geen-match), `useBankAutoVerversing.test.tsx`, `BankVerwerkroutes.test.tsx` (kaart in splitsen). Matchmotor + volgorde stap 1–5 ongewijzigd | — |
 
+## STORE-LINK-NAZORG VOORBEREID (blok F nachtrun 01/02-09; Apple unlisted-verzoek loopt; GEBOUWD + GETEST 02-09; geen migratie)
+
+Doel: zodra Apple/Google de listing goedkeuren is de nazorg één config-waarde invullen, geen bouwrun.
+**Bewust NIET gedaan (opdracht): de links zelf invullen, deploys forceren, klikwerk Peter.**
+
+| Onderdeel | Besluit / gebouwd | Canonieke vindplaats |
+|---|---|---|
+| Settings | `STORE_LINK_IOS` / `STORE_LINK_ANDROID` (`settings.store_link_ios/-android`, default leeg). Leeg = exact het huidige gedrag: niets tonen, geen kale placeholders. deploy.yml draagt een gedocumenteerde plek (env-var-notitie bij de service-update-stap), geen waarde | `backend/app/config.py`; `.github/workflows/deploy.yml` |
+| Mail | Uitnodigings-/activatiemail voor APP-ROLLEN (`is_externe_app_rol`: klant-accordeur + veldrollen) krijgt mét gevulde link(s) het blok "Download eerst de app op je telefoon en open daarna de link hieronder" vóór de activatielink; per platform alleen als zijn link gevuld is; kantoorrollen nooit. Geldt voor uitnodigen, "Opnieuw mailen" en e-mail-wijzigen (rol-lookup `service.rol_van_gebruiker`) | `berichten/uitnodigingsmail.py::store_links/download_blok`; `auth/router.py` |
+| Schermen | Publieke config-route `/auth/webauthn/config` levert `store_link_ios/-android` (None zolang leeg). (a) Desktop-stop-scherm van `/activeren` toont naast de QR het blok "Download eerst de app"; (b) web-fallback van de universal link (`/accordeur/activeren` in de browser, niet-native) toont "App niet geïnstalleerd? Download hem hier" boven de wachtwoordstap — doorgaan in de browser blijft mogelijk. Eén component `StoreLinks` (varianten stop/fallback), klantleesbare copy | `frontend/src/auth/StoreLinks.tsx`; `ActivateScreen.tsx`; `accordeur/AccordeurActiveren.tsx` |
+| Tests | Backend `tests/berichten/test_store_links.py` (5: leeg = geen spoor óók voor app-rol; gevuld = blok vóór de link, alleen app-rol, alleen gevulde platformen; config-route null/gevuld); frontend `StoreLinks.test.tsx` (leeg rendert niets, per platform) + `ActivateScreen.test.tsx` (stop-scherm zonder/mét links) | — |
+
+**Klikwerk Peter ná goedkeuring:** de twee env-vars in deploy.yml zetten (of `gcloud run services update … --update-env-vars`) — verder niets.
+
 ## Onderhoud
 
 - Nieuwe regel of statusophoging **op het moment van akkoord/oplevering**, in dezelfde commit als

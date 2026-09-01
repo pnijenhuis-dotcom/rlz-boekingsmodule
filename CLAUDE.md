@@ -917,7 +917,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   upload-artefact naast de AAB. Klikwerk Peter: assetlinks.json naar de WordPress-apex (30-08 nog
   404) → Google's checker → kliktest §8.** Eerder klikwerk: wachtwoordmanager → AAB naar Internal
   testing → App signing: BEIDE certificaten → screenshots.**).
-  Factuurbeeld
+  **Store-link-nazorg voorbereid (blok F 01/02-09, BESLISSINGEN "STORE-LINK-NAZORG"): settings
+  `STORE_LINK_IOS`/`STORE_LINK_ANDROID` (default leeg = niets tonen); gevuld → blok "Download eerst de
+  app" in de uitnodigingsmail voor app-rollen, op het desktop-stop-scherm van /activeren en op het
+  web-fallback van de universal link (`auth/StoreLinks.tsx`); nazorg ná Apple/Google = alleen de
+  env-vars zetten.** Factuurbeeld
   centraal, akkoord → volgende, dagelijkse push 09:00 alleen bij >0 open.
   **Bouwstatus: backend + kantoor-UI GEBOUWD + GETEST (2026-08-09)** — migratie 0033 +
   `backend/app/accordering/` + kantoor-UI (Instellingen-sectie, "Ter accordering"-knop,
