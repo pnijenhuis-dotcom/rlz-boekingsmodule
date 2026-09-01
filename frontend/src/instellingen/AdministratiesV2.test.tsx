@@ -58,3 +58,17 @@ describe('chipsVoor — werkelijke stand per rij (feedback Peter 30-08)', () => 
     expect(chips.slice(stilIndex).every((c) => c.variant === 'stil')).toBe(true)
   })
 })
+
+describe('chipsVoor — facturatiemodule niet afgenomen (spoedopdracht 01-09 blok A)', () => {
+  it('verkoopmodule_afwezig = warn-chip "geen facturatiemodule" mét uitleg-titel', () => {
+    const chips = chipsVoor(administratie({ verkoopmodule_afwezig: true }))
+    const chip = chips.find((c) => c.tekst === 'geen facturatiemodule')
+    expect(chip?.variant).toBe('warn')
+    expect(chip?.titel).toContain('facturatiemodule niet afgenomen')
+    expect(chip?.titel).toContain('herprobe')
+  })
+
+  it('zonder het kenmerk bestaat de chip niet', () => {
+    expect(chipsVoor(administratie({})).some((c) => c.tekst === 'geen facturatiemodule')).toBe(false)
+  })
+})

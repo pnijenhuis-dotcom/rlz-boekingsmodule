@@ -32,7 +32,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import DetacheerderKoppeling
+from app.db.models import Administratie, DetacheerderKoppeling
 from app.db.session import scoped_session
 from app.projecten.models import ProjectRegelCache, ProjectRegelSoort
 from app.rlz.client import RlzApiError, RlzClient
@@ -205,8 +205,19 @@ def sync_project_regels(
         )
         return True
 
+    # Facturatiemodule niet afgenomen (01-09, kenmerk verkoopmodule_afwezig): de SalesInvoices-
+    # collectie geeft daar altijd 403 — de verkoopkant bewust en zichtbaar overslaan (teller
+    # `verkoop_overgeslagen`), de inkoopkant loopt gewoon door. Nooit stil op de 403 stuklopen.
+    with scoped_session(None) as sessie:
+        rij = sessie.get(Administratie, administratie_id)
+        verkoop_overslaan = rij is not None and rij.verkoopmodule_afwezig
+    if verkoop_overslaan:
+        teller["verkoop_overgeslagen"] = 1
+
     try:
         for collectie, soort in _COLLECTIES:
+            if collectie == "SalesInvoices" and verkoop_overslaan:
+                continue
             for pagina in _documenten_paginas(client, collectie, vanaf=vanaf):
                 if not pagina:
                     continue
@@ -246,12 +257,15 @@ def sync_project_regels(
             client.close()
 
     with scoped_session(administratie_id) as session:
-        for rij in session.scalars(
-            select(ProjectRegelCache).where(
-                ProjectRegelCache.administratie_id == administratie_id,
-                ProjectRegelCache.verdwenen_uit_bron_op.is_(None),
-            )
-        ):
+        sweep = select(ProjectRegelCache).where(
+            ProjectRegelCache.administratie_id == administratie_id,
+            ProjectRegelCache.verdwenen_uit_bron_op.is_(None),
+        )
+        if verkoop_overslaan:
+            # De verkoopkant is niet gelezen (facturatiemodule afwezig) — bestaande verkoop-rijen
+            # zijn dan niet "verdwenen uit de bron", de bron is bewust niet geraadpleegd.
+            sweep = sweep.where(ProjectRegelCache.soort != ProjectRegelSoort.VERKOOP.value)
+        for rij in session.scalars(sweep):
             if (
                 rij.id not in gezien
                 and rij.rlz_document_id not in nog_mislukt

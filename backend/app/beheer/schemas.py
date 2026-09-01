@@ -108,6 +108,8 @@ class AdministratieInstellingenDto(BaseModel):
     rlz_admin_id: str | None = None
     webservice_username: str | None = None
     probe_groen: bool | None = None
+    # Facturatiemodule niet afgenomen (migratie 0093, 01-09): SalesInvoices-403 bij de probe.
+    verkoopmodule_afwezig: bool = False
     # Eerste-sync-stand (wizard-nazorg 27-08): laatste run — de UI toont 'm op de rij zolang die
     # niet volledig groen is (status ≠ klaar), mét herstartknop; None = nog nooit gestart.
     eerste_sync: "EersteSyncRunDto | None" = None

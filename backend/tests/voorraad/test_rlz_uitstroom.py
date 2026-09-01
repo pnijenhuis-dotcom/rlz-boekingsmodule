@@ -147,6 +147,21 @@ class TestLeesroute:
         assert telling.vanaf is None and telling.facturen_gelezen == 0
         assert fake_rlz.aanroepen == []
 
+    def test_verkoopmodule_afwezig_slaat_zichtbaar_over_zonder_rlz_calls(
+        self, administratie_id, admin_engine, voorraad_aan, fake_rlz
+    ) -> None:
+        """Facturatiemodule niet afgenomen (01-09): SalesInvoices geeft daar altijd 403 — de
+        leesroute slaat de administratie over mét zichtbare reden, nooit stil stuklopen."""
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET verkoopmodule_afwezig = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        telling = rlz_uitstroom.sync_rlz_verkoopregels(administratie_id=administratie_id)
+        assert telling.overgeslagen_reden == "facturatiemodule niet afgenomen (RLZ)"
+        assert telling.als_dict()["overgeslagen_reden"] == "facturatiemodule niet afgenomen (RLZ)"
+        assert fake_rlz.aanroepen == []
+
     def test_geboekt_credit_concept_in_app_en_idempotent(
         self, administratie_id, beheerder_id, gescoopte_gebruiker, opslag, admin_engine, voorraad_aan, fake_ai, fake_rlz
     ) -> None:

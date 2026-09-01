@@ -541,6 +541,10 @@ export interface AdministratieInstellingenDto {
   rlz_admin_id?: string | null
   webservice_username?: string | null
   probe_groen?: boolean | null
+  /** Facturatiemodule niet afgenomen (migratie 0093, 01-09 — casus A.Y. Holding 2 + Abbegaa):
+   * SalesInvoices gaf 403 bij de rechten-probe; verkoop-rakende leesroutes slaan deze
+   * administratie over. Een herprobe mét SalesInvoices ok haalt het kenmerk weg. */
+  verkoopmodule_afwezig?: boolean
   /** Eerste-sync-stand (wizard-nazorg 27-08): laatste run; de rij toont 'm zolang die niet
    * volledig groen is (status ≠ klaar) mét herstartknop. null/ontbrekend = nog nooit gestart. */
   eerste_sync?: EersteSyncRunDto | null

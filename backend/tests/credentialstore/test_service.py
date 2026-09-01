@@ -194,3 +194,85 @@ def test_probe_onbekende_administratie_faalt(beheerder_id: uuid.UUID) -> None:
         service.voer_rechten_probe_uit(
             administratie_id=uuid.uuid4(), actor_id=beheerder_id, client=FakeRlzClient({})
         )
+
+
+# --- Facturatiemodule niet afgenomen (spoedopdracht 01-09 blok A, casus A.Y. Holding 2 + Abbegaa) ----
+
+
+def _rapport(**afwijkingen: str) -> dict[str, str]:
+    basis = {e: "ok" for e in service._TE_PROBEREN_ENDPOINTS}
+    basis.update(afwijkingen)
+    return basis
+
+
+class TestProbeIsGroenMetFacturatiemoduleUitzondering:
+    def test_salesinvoices_403_is_de_enige_niet_blokkerende_uitkomst(self) -> None:
+        assert service.probe_is_groen(_rapport()) is True
+        assert service.probe_is_groen(_rapport(SalesInvoices="403")) is True
+        # Elke andere route én elke andere fout op SalesInvoices blijft hard rood.
+        assert service.probe_is_groen(_rapport(Ledgers="403")) is False
+        assert service.probe_is_groen(_rapport(SalesInvoices="500")) is False
+        assert service.probe_is_groen(_rapport(SalesInvoices="403", Vendors="403")) is False
+        assert service.probe_is_groen({}) is False
+
+    def test_verkoopmodule_afwezig_in_kijkt_uitsluitend_naar_salesinvoices_403(self) -> None:
+        assert service.verkoopmodule_afwezig_in(_rapport(SalesInvoices="403")) is True
+        assert service.verkoopmodule_afwezig_in(_rapport()) is False
+        assert service.verkoopmodule_afwezig_in(_rapport(SalesInvoices="500")) is False
+
+    def test_beschrijf_probe_fouten_geeft_handelingsperspectief_bij_echte_403(self) -> None:
+        tekst = service.beschrijf_probe_fouten(_rapport(Ledgers="403", JournalEntries="500", SalesInvoices="403"))
+        assert "Ledgers=403 (geef de webservice-gebruiker in RLZ leesrecht op Ledgers)" in tekst
+        assert "JournalEntries=500" in tekst
+        # De SalesInvoices-403 is geen fout (facturatiemodule) en hoort hier niet tussen.
+        assert "SalesInvoices" not in tekst
+
+
+class TestKenmerkVerkoopmoduleAfwezig:
+    def _kenmerk(self, admin_engine: Engine, administratie_id: uuid.UUID) -> bool:
+        with admin_engine.connect() as conn:
+            return conn.execute(
+                text("SELECT verkoopmodule_afwezig FROM platform.administratie WHERE id = :id"),
+                {"id": administratie_id},
+            ).scalar_one()
+
+    def test_probe_met_salesinvoices_403_zet_het_kenmerk_en_auditeert(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        client = FakeRlzClient({}, fouten={"SalesInvoices": RlzApiError(403, "GET", "/x/SalesInvoices", "forbidden")})
+        rapport = service.voer_rechten_probe_uit(
+            administratie_id=administratie_id, actor_id=beheerder_id, client=client
+        )
+        assert service.probe_is_groen(rapport) is True
+        assert self._kenmerk(admin_engine, administratie_id) is True
+        with admin_engine.connect() as conn:
+            oud, nieuw = conn.execute(
+                text(
+                    "SELECT oude_waarde, nieuwe_waarde FROM platform.audit_event "
+                    "WHERE tabel = 'administratie' AND record_id = :id AND actie = 'verkoopmodule_afwezig_gewijzigd'"
+                ),
+                {"id": administratie_id},
+            ).one()
+        assert oud == {"verkoopmodule_afwezig": False}
+        assert nieuw == {"verkoopmodule_afwezig": True, "bron": "rechten_probe"}
+
+    def test_geslaagde_herprobe_wist_het_kenmerk(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        met_403 = FakeRlzClient({}, fouten={"SalesInvoices": RlzApiError(403, "GET", "/x/SalesInvoices", "")})
+        service.voer_rechten_probe_uit(administratie_id=administratie_id, actor_id=beheerder_id, client=met_403)
+        assert self._kenmerk(admin_engine, administratie_id) is True
+        service.voer_rechten_probe_uit(
+            administratie_id=administratie_id, actor_id=beheerder_id, client=FakeRlzClient({})
+        )
+        assert self._kenmerk(admin_engine, administratie_id) is False
+
+    def test_andere_salesinvoices_fout_laat_het_kenmerk_staan(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        met_403 = FakeRlzClient({}, fouten={"SalesInvoices": RlzApiError(403, "GET", "/x/SalesInvoices", "")})
+        service.voer_rechten_probe_uit(administratie_id=administratie_id, actor_id=beheerder_id, client=met_403)
+        met_500 = FakeRlzClient({}, fouten={"SalesInvoices": RlzApiError(500, "GET", "/x/SalesInvoices", "")})
+        service.voer_rechten_probe_uit(administratie_id=administratie_id, actor_id=beheerder_id, client=met_500)
+        # 500 = geen uitspraak over de facturatiemodule — het kenmerk blijft staan.
+        assert self._kenmerk(admin_engine, administratie_id) is True

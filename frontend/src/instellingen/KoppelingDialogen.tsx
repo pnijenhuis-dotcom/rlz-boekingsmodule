@@ -13,16 +13,34 @@ export function koppelFoutTekst(err: unknown): { bericht: string; rapport: Recor
   return { bericht, rapport: null }
 }
 
+/** Facturatiemodule niet afgenomen (01-09, casus A.Y. Holding 2 + Abbegaa): UITSLUITEND een 403
+ * op SalesInvoices — geen blokkade maar een waarschuwing (het kenmerk verkoopmodule_afwezig
+ * schakelt de verkoop-leesroutes uit; een herprobe mét ok haalt het weg). */
+export function facturatiemoduleAfwezig(rapport: Record<string, string>): boolean {
+  return rapport.SalesInvoices === '403'
+}
+
 /** Foutmelding uit een wizard-/koppeling-422: de backend stuurt `detail: {bericht, rapporten}`;
  * de api-laag zet `bericht` als message en het object als `ApiError.detail`. */
 export function ProbeRapport({ rapport }: { rapport: Record<string, string> }) {
   return (
     <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12 }}>
-      {Object.entries(rapport).map(([endpoint, stand]) => (
-        <li key={endpoint}>
-          {endpoint}: <span className={`chip ${stand === 'ok' ? 'ok' : 'blokkerend'}`}>{stand === 'ok' ? 'ok' : `HTTP ${stand}`}</span>
-        </li>
-      ))}
+      {Object.entries(rapport).map(([endpoint, stand]) => {
+        const moduleAfwezig = endpoint === 'SalesInvoices' && stand === '403'
+        return (
+          <li key={endpoint}>
+            {endpoint}:{' '}
+            <span className={`chip ${stand === 'ok' ? 'ok' : moduleAfwezig ? 'afwijking' : 'blokkerend'}`}>
+              {stand === 'ok' ? 'ok' : moduleAfwezig ? '403 — facturatiemodule niet afgenomen' : `HTTP ${stand}`}
+            </span>
+            {stand !== 'ok' && !moduleAfwezig && stand === '403' && (
+              <span className="hint" style={{ margin: '0 0 0 6px', fontSize: 11 }}>
+                geef de webservice-gebruiker in RLZ leesrecht op {endpoint}
+              </span>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -74,7 +92,11 @@ export function WebserviceGegevensDialog({
         </DialogDescription>
         {rapport ? (
           <div>
-            <p className="ok" style={{ margin: 0 }}>Opgeslagen — rechten-probe groen.</p>
+            <p className="ok" style={{ margin: 0 }}>
+              {facturatiemoduleAfwezig(rapport)
+                ? 'Opgeslagen — rechten-probe groen, met één waarschuwing: de facturatiemodule is in Reeleezee niet afgenomen (verkoop-leesroutes blijven uit).'
+                : 'Opgeslagen — rechten-probe groen.'}
+            </p>
             <ProbeRapport rapport={rapport} />
             <DialogFooter>
               <Button type="button" onClick={onSluiten}>

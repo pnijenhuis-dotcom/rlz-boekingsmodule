@@ -122,6 +122,41 @@ class TestGepagineerdeAanvoer:
         assert heartbeats[-1]["documenten"] == 3
 
 
+class TestVerkoopmoduleAfwezig:
+    def test_slaat_salesinvoices_over_en_markeert_verkoop_niet_als_verdwenen(
+        self, admin_engine: Engine, administratie_id: uuid.UUID  # noqa: F811
+    ) -> None:
+        """Facturatiemodule niet afgenomen (01-09): de SalesInvoices-collectie geeft daar altijd
+        403 — de sync slaat de verkoopkant zichtbaar over (teller verkoop_overgeslagen), leest de
+        inkoopkant gewoon, en markeert bestaande verkoop-cache-rijen nooit als verdwenen (de bron
+        is bewust niet geraadpleegd, niet leeg)."""
+        fake = FakeCijfersClient()
+        project_id = uuid.uuid4()
+        inkoop_id = uuid.uuid4()
+        fake.documenten["PurchaseInvoices"] = [_doc(inkoop_id)]
+        fake.lines[str(inkoop_id)] = [_line(project_id)]
+
+        # Eerst een gewone run mét verkoopkant → er staat een verkoop-cache-rij.
+        verkoop_id = uuid.uuid4()
+        fake.documenten["SalesInvoices"] = [_doc(verkoop_id, referentie="V-1")]
+        fake.lines[str(verkoop_id)] = [_line(project_id)]
+        cijfers.sync_project_regels(administratie_id=administratie_id, client=fake)
+        assert len(_cache_rijen(admin_engine, administratie_id)) == 2
+
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET verkoopmodule_afwezig = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        fake.collectie_params.clear()
+        teller = cijfers.sync_project_regels(administratie_id=administratie_id, client=fake)
+        assert teller["verkoop_overgeslagen"] == 1
+        assert all(p["collectie"] == "PurchaseInvoices" for p in fake.collectie_params)
+        rijen = _cache_rijen(admin_engine, administratie_id)
+        # Beide rijen (inkoop én verkoop) staan er nog en niets is als verdwenen gemarkeerd.
+        assert len(rijen) == 2 and all(r.verdwenen_uit_bron_op is None for r in rijen)
+
+
 class TestLeesfouten:
     def test_herkansing_herstelt_tijdelijke_leesfout(
         self, admin_engine: Engine, administratie_id: uuid.UUID  # noqa: F811

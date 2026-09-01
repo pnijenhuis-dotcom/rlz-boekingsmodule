@@ -166,6 +166,13 @@ class Administratie(Base):
     # verplicht op élk inkoopdocument (blokkerende check) + accorderingsroute per afdeling; UIT =
     # veld onzichtbaar. Beheerder-only; aanzetten maakt de terugval-afdeling "Algemeen" aan.
     afdelingen_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Facturatiemodule niet afgenomen (migratie 0093, spoedopdracht 01-09 blok A, casus A.Y.
+    # Holding 2 + Abbegaa): sommige RLZ-administraties hebben de facturatie-/verkoopmodule niet —
+    # SalesInvoices geeft dan 403 ongeacht de rechten. De rechten-probe zet/wist dit kenmerk
+    # (uitsluitend op SalesInvoices "403"/"ok", credentialstore.sla_probe_op, audit oud→nieuw);
+    # verkoop-rakende LEESroutes (voorraad-RLZ-uitstroom, SalesInvoices in de projectcijfers-sync)
+    # slaan de administratie zichtbaar over — nooit stil op de 403 laten stuklopen.
+    verkoopmodule_afwezig: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Voorraad bijhouden (migratie 0086, bouwrun 28-08 blok D): opt-in voor de voorraad-aansluiting
     # (controle-laag in het mi-schema; nooit RLZ-writes). Beheerder-only, default UIT — aan voor
     # Universal Verkoop pas op Peters klik.

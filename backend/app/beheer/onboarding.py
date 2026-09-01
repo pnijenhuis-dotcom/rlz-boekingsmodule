@@ -5,8 +5,12 @@ onboarding-batch 15-08 als wizard, met hergebruik van de bestaande bouwstenen:
      KMS-gewrapte data-key; `zet_credential`) — het wachtwoord komt nooit in een response, log of
      audit-payload (besluit 0012), alleen "aanwezig" + username;
   b. verbindings- en rechten-probe (de 10 leesroutes van `credentialstore.service.probe_rapport`)
-     verplicht GROEN vóór opslaan — anders duidelijke fout, niets half opgeslagen (alles-of-niets
-     in één transactie);
+     verplicht GROEN vóór opslaan — anders duidelijke fout mét handelingsperspectief per route,
+     niets half opgeslagen (alles-of-niets in één transactie). Eén uitzondering (01-09, casus
+     A.Y. Holding 2 + Abbegaa): SalesInvoices-403 = "facturatiemodule niet afgenomen" — geen
+     blokkade maar een waarschuwing + persistent kenmerk `verkoopmodule_afwezig` (gezet in
+     `sla_probe_op`), dat alle verkoop-rakende leesroutes uitschakelt; een latere herprobe mét
+     SalesInvoices ok wist het kenmerk;
   c. `GET Administrations` met die login → gevonden administraties, Beheerder kiest (naam +
      RLZ-id vooringevuld, nooit handmatig een id typen); admin-pin: alleen id's die de login
      écht ziet;
@@ -171,8 +175,7 @@ def maak_administraties_aan(
     rood = {rlz_id: r for rlz_id, r in rapporten.items() if not credentialstore.probe_is_groen(r)}
     if rood:
         samenvatting = "; ".join(
-            f"{gevonden[rlz_id]}: " + ", ".join(f"{k}={v}" for k, v in r.items() if v != "ok")
-            for rlz_id, r in rood.items()
+            f"{gevonden[rlz_id]}: {credentialstore.beschrijf_probe_fouten(r)}" for rlz_id, r in rood.items()
         )
         raise OnboardingFout(f"Rechten-probe niet groen — niets opgeslagen. {samenvatting}", rapporten=rapporten)
 
@@ -283,7 +286,7 @@ def wijzig_webservice_gegevens(
         if eigen:
             client.close()
     if not credentialstore.probe_is_groen(rapport):
-        rood = ", ".join(f"{k}={v}" for k, v in rapport.items() if v != "ok")
+        rood = credentialstore.beschrijf_probe_fouten(rapport)
         raise OnboardingFout(f"Rechten-probe niet groen ({rood}) — niets gewijzigd", rapporten={rlz_admin_id: rapport})
 
     credentialstore.zet_credential(
@@ -315,7 +318,7 @@ def probe_nieuwe_login(
         if eigen:
             client.close()
     if not credentialstore.probe_is_groen(rapport):
-        rood = ", ".join(f"{k}={v}" for k, v in rapport.items() if v != "ok")
+        rood = credentialstore.beschrijf_probe_fouten(rapport)
         raise OnboardingFout(f"Rechten-probe niet groen ({rood}) — niets gewijzigd", rapporten={rlz_admin_id: rapport})
     return rapport
 

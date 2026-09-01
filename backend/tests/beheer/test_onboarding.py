@@ -118,6 +118,34 @@ class TestAanmaken:
         with admin_engine.connect() as conn:
             assert conn.execute(text("SELECT count(*) FROM platform.administratie WHERE rlz_admin_id = :r"), {"r": ADMIN_A}).scalar_one() == 0
 
+    def test_echte_403_geeft_handelingsperspectief_in_de_fout(self, beheerder_id: uuid.UUID) -> None:
+        fake = FakeRlzClient(_rlz_data(), fouten={"TaxRates": RlzApiError(403, "GET", "u", "")})
+        verwacht = "geef de webservice-gebruiker in RLZ leesrecht op TaxRates"
+        with pytest.raises(onboarding.OnboardingFout, match=verwacht):
+            onboarding.maak_administraties_aan(
+                actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim",
+                rlz_admin_ids=[ADMIN_A], client=fake,
+            )
+
+    def test_salesinvoices_403_blokkeert_niet_en_zet_het_kenmerk_facturatiemodule_afwezig(
+        self, beheerder_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Spoedopdracht 01-09 blok A (casus A.Y. Holding 2 + Abbegaa): een administratie zonder
+        facturatiemodule geeft 403 op SalesInvoices ongeacht de rechten — de wizard sluit gewoon
+        aan (waarschuwing, geen blokkade) en het kenmerk verkoopmodule_afwezig staat persistent."""
+        fake = FakeRlzClient(_rlz_data(), fouten={"SalesInvoices": RlzApiError(403, "GET", "u", "")})
+        resultaten = onboarding.maak_administraties_aan(
+            actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim",
+            rlz_admin_ids=[ADMIN_A], client=fake, start_sync=False,
+        )
+        assert resultaten[0].probe["SalesInvoices"] == "403"
+        with admin_engine.connect() as conn:
+            kenmerk = conn.execute(
+                text("SELECT verkoopmodule_afwezig FROM platform.administratie WHERE rlz_admin_id = :r"),
+                {"r": ADMIN_A},
+            ).scalar_one()
+        assert kenmerk is True
+
     def test_admin_pin_weigert_onbekende_id(self, beheerder_id: uuid.UUID) -> None:
         with pytest.raises(onboarding.OnboardingFout, match="admin-pin"):
             onboarding.maak_administraties_aan(

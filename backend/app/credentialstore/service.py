@@ -204,12 +204,44 @@ def probe_rapport(client: RlzClient, rlz_admin_id: str) -> dict[str, str]:
     return rapport
 
 
+def verkoopmodule_afwezig_in(rapport: dict[str, str]) -> bool:
+    """Facturatiemodule niet afgenomen (spoedopdracht 01-09 blok A, casus A.Y. Holding 2 + Abbegaa,
+    bevestigd door Peter in de RLZ-UI): een RLZ-administratie zonder facturatie-/verkoopmodule geeft
+    op de SalesInvoices-collectie een 403 ongeacht de gebruikersrechten. UITSLUITEND die combinatie
+    telt als "module afwezig" — elke andere fout (ook op SalesInvoices) blijft een echte rechtenfout."""
+    return rapport.get("SalesInvoices") == "403"
+
+
 def probe_is_groen(rapport: dict[str, str]) -> bool:
-    return bool(rapport) and all(v == "ok" for v in rapport.values())
+    """Bruikbaar aangesloten: alle leesroutes ok, mét als enige uitzondering SalesInvoices-403 =
+    "facturatiemodule niet afgenomen" (besluit 01-09) — dat is een waarschuwing + persistent kenmerk
+    (`Administratie.verkoopmodule_afwezig`, gezet in sla_probe_op), geen blokkade. Elke andere route
+    én elke andere fout op SalesInvoices blijft hard rood."""
+    return bool(rapport) and all(
+        v == "ok" or (endpoint == "SalesInvoices" and v == "403") for endpoint, v in rapport.items()
+    )
+
+
+def beschrijf_probe_fouten(rapport: dict[str, str]) -> str:
+    """Rode regels mét handelingsperspectief (blok A punt 3): een 403 op een gewone leesroute is
+    vrijwel altijd een rechtenkwestie op de webservice-gebruiker — zeg dat er dan bij. De
+    SalesInvoices-403 is geen fout (zie probe_is_groen) en staat hier dus nooit tussen."""
+    regels = []
+    for endpoint, v in rapport.items():
+        if v == "ok" or (endpoint == "SalesInvoices" and v == "403"):
+            continue
+        if v == "403":
+            regels.append(f"{endpoint}=403 (geef de webservice-gebruiker in RLZ leesrecht op {endpoint})")
+        else:
+            regels.append(f"{endpoint}={v}")
+    return ", ".join(regels)
 
 
 def sla_probe_op(session, *, administratie_id: uuid.UUID, rapport: dict[str, str], actor_id: uuid.UUID) -> None:
-    """Rapport op platform.rlz_rechten_probe (overschrijft; historie in audit) + geaggregeerde audit."""
+    """Rapport op platform.rlz_rechten_probe (overschrijft; historie in audit) + geaggregeerde audit.
+    Onderhoudt óók het kenmerk `verkoopmodule_afwezig` (01-09): SalesInvoices "403" zet 'm,
+    SalesInvoices "ok" (geslaagde herprobe) wist 'm; élke andere uitkomst laat 'm staan (geen
+    uitspraak). Wijziging = eigen audit-event oud→nieuw."""
     now = datetime.now(UTC)
     bestaand = session.get(RlzRechtenProbe, administratie_id)
     if bestaand is None:
@@ -229,7 +261,30 @@ def sla_probe_op(session, *, administratie_id: uuid.UUID, rapport: dict[str, str
         nieuwe_waarde={
             "aantal_ok": sum(1 for v in rapport.values() if v == "ok"),
             "aantal_totaal": len(rapport),
+            "verkoopmodule_afwezig": verkoopmodule_afwezig_in(rapport),
         },
+    )
+    sales_stand = rapport.get("SalesInvoices")
+    if sales_stand not in ("ok", "403"):
+        return  # geen uitspraak over de facturatiemodule — kenmerk ongemoeid
+    administratie = session.get(Administratie, administratie_id)
+    if administratie is None:
+        return
+    nieuw = sales_stand == "403"
+    if administratie.verkoopmodule_afwezig == nieuw:
+        return
+    oud = administratie.verkoopmodule_afwezig
+    administratie.verkoopmodule_afwezig = nieuw
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="platform",
+        tabel="administratie",
+        record_id=administratie_id,
+        actie="verkoopmodule_afwezig_gewijzigd",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde={"verkoopmodule_afwezig": oud},
+        nieuwe_waarde={"verkoopmodule_afwezig": nieuw, "bron": "rechten_probe"},
     )
 
 

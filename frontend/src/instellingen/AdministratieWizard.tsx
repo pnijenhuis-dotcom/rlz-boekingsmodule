@@ -140,6 +140,13 @@ export function EersteSyncStatus({
             Rechten-probe: {probe && Object.values(probe).every((v) => v === 'ok') ? '10/10 groen' : 'zie rapport'} · eerste sync per
             onderdeel:
           </div>
+          {probe && probe.SalesInvoices === '403' && (
+            <div className="hint" style={{ marginTop: 4 }}>
+              <span className="chip afwijking">geen facturatiemodule</span> De facturatiemodule is in Reeleezee niet
+              afgenomen (SalesInvoices gaf 403) — de administratie is gewoon aangesloten; verkoop-rakende leesroutes
+              slaan haar over. Later wél afgenomen? Een geslaagde herprobe haalt het kenmerk weg.
+            </div>
+          )}
         </>
       )}
       <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }}>
@@ -242,7 +249,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
         <DialogTitle>Administratie toevoegen — stap {stap} van 3</DialogTitle>
         <DialogDescription>
           {stap === 1 && 'Webservice-gegevens van Reeleezee. Het wachtwoord wordt server-side versleuteld opgeslagen (credential-store) en is daarna nooit meer uitleesbaar.'}
-          {stap === 2 && 'Deze login ziet de volgende administraties. Kies welke je aansluit; vóór het opslaan wordt per administratie de rechten-probe (10 leesroutes) gedraaid — die moet volledig groen zijn.'}
+          {stap === 2 && 'Deze login ziet de volgende administraties. Kies welke je aansluit; vóór het opslaan wordt per administratie de rechten-probe (10 leesroutes) gedraaid — die moet groen zijn. Enige uitzondering: een 403 op SalesInvoices betekent "facturatiemodule niet afgenomen" en is een waarschuwing, geen blokkade.'}
           {stap === 3 && 'Aangesloten met de standaardinstellingen: Boeken en AI-extractie (AVG-gate) staan AAN, alle overige opt-ins uit — aanpassen kan per administratie via ⚙. De eerste sync draait op de achtergrond; de schrijftest is een aparte knop op de administratie. Niemand ziet de administratie tot je scopes toekent op Gebruikers & toegang.'}
         </DialogDescription>
 

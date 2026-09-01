@@ -156,6 +156,9 @@ class AdministratieInstellingen:
     rlz_admin_id: str | None = None
     webservice_username: str | None = None
     probe_groen: bool | None = None
+    # Facturatiemodule niet afgenomen (migratie 0093, 01-09): chip in de tabel + detail-dialoog;
+    # verkoop-rakende leesroutes slaan deze administratie over. Herprobe mét SalesInvoices ok wist 'm.
+    verkoopmodule_afwezig: bool = False
     # Eerste-sync-stand (wizard-nazorg 27-08, casus Bouwadvies Oost Nederland): de laatste run
     # zoals de wizard 'm toont (status + onderdelen + foutreden) — de UI toont 'm op de rij zolang
     # de run niet volledig groen is, mét herstartknop op hetzelfde endpoint. None = nog nooit.
@@ -256,6 +259,7 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             rlz_admin_id=r.rlz_admin_id,
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],
+            verkoopmodule_afwezig=r.verkoopmodule_afwezig,
             eerste_sync=None if syncs[r.id].status == "geen" else syncs[r.id],
             eigenaar_naam=namen.get(r.eigenaar_gebruiker_id) if r.eigenaar_gebruiker_id else None,
             iban_accordeurs_aantal=iban_tellingen.get(r.id, 0),

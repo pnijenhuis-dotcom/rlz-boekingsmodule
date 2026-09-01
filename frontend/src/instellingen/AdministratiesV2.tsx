@@ -69,6 +69,13 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
   if (a.project_verplicht) chips.push({ tekst: 'Project verplicht', variant: 'info' })
   if (a.bank_autoboeken_ingeschakeld) chips.push({ tekst: 'Bank-autoboeken', variant: 'info' })
   if (a.accordering_ingeschakeld) chips.push({ tekst: 'Klant-accordering', variant: 'info' })
+  if (a.verkoopmodule_afwezig)
+    chips.push({
+      tekst: 'geen facturatiemodule',
+      variant: 'warn',
+      titel:
+        'Reeleezee-facturatiemodule niet afgenomen (SalesInvoices gaf 403 bij de rechten-probe) — verkoop-rakende leesroutes slaan deze administratie over. Krijgt de administratie de module later wél, dan haalt een geslaagde herprobe (Webservice-gegevens wijzigen) het kenmerk weg.',
+    })
   if (!a.boeken_ingeschakeld) chips.push({ tekst: 'Boeken UIT (afwijking)', variant: 'warn' })
   if (!a.ai_extractie_ingeschakeld) chips.push({ tekst: 'AI-extractie UIT (afwijking)', variant: 'warn' })
   // Werkelijke stand bij "aan volgens default": gedempt achteraan (afwijkingen en modules eerst).
@@ -431,6 +438,16 @@ export function AdministratiesV2({
                     </Button>
                   </span>
                 </div>
+                {detail.verkoopmodule_afwezig && (
+                  <div className="regel" style={{ padding: '6px 0', fontSize: 12.5 }}>
+                    <span className="chip afwijking">geen facturatiemodule</span>{' '}
+                    <span className="hint" style={{ margin: 0 }}>
+                      Reeleezee-facturatiemodule niet afgenomen (SalesInvoices gaf 403 bij de rechten-probe) — verkoop-rakende
+                      leesroutes slaan deze administratie over. Later wél afgenomen? Draai de probe opnieuw via
+                      &ldquo;Wijzigen (probe-gated)&rdquo;; bij SalesInvoices ok verdwijnt dit kenmerk vanzelf.
+                    </span>
+                  </div>
+                )}
                 {detail.eerste_sync && detail.eerste_sync.status !== 'klaar' && detail.eerste_sync.status !== 'geen' && (
                   <EersteSyncStatus compact administratie={{ id: detail.id, naam: detail.naam, rlz_admin_id: detail.rlz_admin_id ?? null }} initieel={detail.eerste_sync} onAfgerond={onHerlaad} />
                 )}
@@ -479,7 +496,8 @@ export function AdministratiesV2({
         <DialogContent aria-describedby={undefined} data-testid="dearchiveer-dialoog">
           <DialogTitle>Dearchiveren — {dearchiveerVoor?.naam}</DialogTitle>
           <DialogDescription>
-            Terugzetten vereist een nieuwe webservice-login van Reeleezee; de rechten-probe (10 leesroutes) moet volledig groen zijn.
+            Terugzetten vereist een nieuwe webservice-login van Reeleezee; de rechten-probe (10 leesroutes) moet groen zijn
+            (een 403 op SalesInvoices = facturatiemodule niet afgenomen en telt als waarschuwing, geen blokkade).
             Het wachtwoord wordt server-side versleuteld opgeslagen en is daarna nooit meer uitleesbaar.
           </DialogDescription>
           <form

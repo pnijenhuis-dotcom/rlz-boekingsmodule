@@ -64,6 +64,9 @@ class RlzUitstroomTelling:
     overgeslagen_concept: int = 0
     overgeslagen_in_app: int = 0
     verwijderd_na_storno: int = 0
+    # Zichtbare skip-reden (01-09): een administratie zónder RLZ-facturatiemodule
+    # (verkoopmodule_afwezig) wordt overgeslagen mét reden — nooit stil stuklopen op de 403.
+    overgeslagen_reden: str | None = None
 
     def als_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -251,6 +254,13 @@ def sync_rlz_verkoopregels(
         administratie = session.get(Administratie, administratie_id)
         if administratie is None or not administratie.voorraad_ingeschakeld:
             return RlzUitstroomTelling(vanaf=None)
+        if administratie.verkoopmodule_afwezig:
+            # Facturatiemodule niet afgenomen (01-09): SalesInvoices geeft daar altijd 403 —
+            # bewust overslaan mét zichtbare reden i.p.v. elke nacht op die 403 stuklopen.
+            logger.info(
+                "Voorraad-RLZ-uitstroom overgeslagen voor %s: facturatiemodule niet afgenomen", administratie_id
+            )
+            return RlzUitstroomTelling(vanaf=None, overgeslagen_reden="facturatiemodule niet afgenomen (RLZ)")
     vanaf = _vanaf_datum(administratie_id, volledig=volledig)
     in_app = _in_app_geboekte_rlz_ids(administratie_id)
     rlz, eigen_client = _open_client(administratie_id, client)

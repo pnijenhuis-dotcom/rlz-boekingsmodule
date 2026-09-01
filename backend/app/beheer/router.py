@@ -44,6 +44,7 @@ def administratie_instellingen_lijst(
                 rlz_admin_id=r.rlz_admin_id,
                 webservice_username=r.webservice_username,
                 probe_groen=r.probe_groen,
+                verkoopmodule_afwezig=r.verkoopmodule_afwezig,
                 eerste_sync=None if r.eerste_sync is None else _eerste_sync_dto(r.eerste_sync),
                 eigenaar_naam=r.eigenaar_naam,
                 iban_accordeurs_aantal=r.iban_accordeurs_aantal,
