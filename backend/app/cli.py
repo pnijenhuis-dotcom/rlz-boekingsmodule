@@ -244,7 +244,27 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     print("\nTerugkerende-facturen-signaal (alle actieve administraties):")
     terugkerend_exit = _rapporteer_terugkerend(terugkerend_service.herbereken_alle())
-    return 1 if fouten or cijfers_exit or voorraad_exit or terugkerend_exit else 0
+    # Autoboek-kandidaten-motor (blok B 01-09): dagelijks meeliftend, puur code, geen RLZ-calls;
+    # nomineert per (administratie, leverancier) — aanzetten blijft een menselijk besluit.
+    from app.autoboek_kandidaten import service as kandidaten_service
+
+    print("\nAutoboek-kandidaten (alle actieve administraties):")
+    kandidaten_exit = _rapporteer_autoboek_kandidaten(kandidaten_service.herbereken_alle())
+    return 1 if fouten or cijfers_exit or voorraad_exit or terugkerend_exit or kandidaten_exit else 0
+
+
+def _rapporteer_autoboek_kandidaten(resultaten: dict) -> int:
+    fouten = 0
+    for administratie_id, r in resultaten.items():
+        if isinstance(r, dict):
+            print(
+                f"OK    {administratie_id}: {r['kandidaten']} kandidaten, {r['actief']} actief, "
+                f"{r['heroverwegen']} heroverwegen, {r['verborgen']} verborgen ({r['rijen']} leveranciers beoordeeld)"
+            )
+        else:
+            fouten += 1
+            print(f"FOUT  {administratie_id}: {r}", file=sys.stderr)
+    return 1 if fouten else 0
 
 
 def _rapporteer_terugkerend(resultaten: dict) -> int:
@@ -1387,6 +1407,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Sync Ledgers/TaxRates/Vendors/Projects voor alle administraties (nachtelijke sync).",
     )
 
+    subparsers.add_parser(
+        "autoboek-kandidaten-herbereken",
+        help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
+    )
+
     voorraad_hernorm_parser = subparsers.add_parser(
         "voorraad-hernormaliseer",
         help="Voorraad: alle feitenregels hernormaliseren (soort-label + artikelcodes, geen RLZ-calls) + rapport",
@@ -1731,6 +1756,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.commando == "bootstrap-beheerder":
         return _bootstrap_beheerder(args)
+    if args.commando == "autoboek-kandidaten-herbereken":
+        from app.autoboek_kandidaten import service as kandidaten_service
+
+        return _rapporteer_autoboek_kandidaten(kandidaten_service.herbereken_alle())
     if args.commando == "sync-alles":
         return _sync_alles(args)
     if args.commando == "voorraad-rlz-sync":

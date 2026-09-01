@@ -175,6 +175,13 @@ function installFetchMock(opties: {
       // v3: de tab "Boeken & AI" toont de leverancier-autoboeken van déze administratie.
       if (url.endsWith('/leveranciers-autoboeken')) return Promise.resolve(jsonResponse({ leveranciers: [] }))
       if (url.endsWith('/doorbelasting-instelling')) return Promise.resolve(jsonResponse({ ingeschakeld: false }))
+      // Blok B (01-09): kandidaten-motor — stand-chip + lege lijst.
+      if (url === '/instellingen/autoboeken/stand') {
+        return Promise.resolve(jsonResponse({ kandidaten: 3, actief: 1, heroverwegen: 0, verborgen: 0, administraties_met_kandidaten: 2, drempel: 5, laatste_run_op: '2026-09-01T06:00:00Z' }))
+      }
+      if (url.startsWith('/instellingen/autoboeken/kandidaten')) {
+        return Promise.resolve(jsonResponse({ rijen: [], totaal: 0, pagina: 1, per_pagina: 25, tellers: { kandidaten: 3, actief: 1, heroverwegen: 0, verborgen: 0, administraties_met_kandidaten: 2, drempel: 5, laatste_run_op: '2026-09-01T06:00:00Z' } }))
+      }
       if (url.endsWith('/project-instelling') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as unknown
         opties.putAanroepen?.push({ url, body })
@@ -289,6 +296,7 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     expect(within(nav).getByRole('link', { name: /Boeken platformbreed/ })).toHaveTextContent('aan')
     expect(within(nav).getByRole('link', { name: /Intake-AI & kosten/ })).toHaveTextContent('12%')
     expect(within(nav).getByRole('link', { name: /Administraties/ })).toHaveTextContent('1')
+    expect(within(nav).getByRole('link', { name: /Autoboeken/ })).toHaveTextContent('3')
     expect(screen.queryByText('WERKVOORRAAD-SCHERM')).not.toBeInTheDocument()
   })
 

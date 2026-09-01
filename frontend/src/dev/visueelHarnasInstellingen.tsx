@@ -207,6 +207,44 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
     )
   }
   if (url.endsWith('/doorbelasting-instelling')) return Promise.resolve(jsonResponse({ ingeschakeld: false }))
+  // Blok B (01-09): autoboek-kandidaten (nav-item Autoboeken) — tellers + drie kandidaten mét chips.
+  const tellers = { kandidaten: 31, actief: 12, heroverwegen: 2, verborgen: 1, administraties_met_kandidaten: 14, drempel: 5, laatste_run_op: '2026-09-01T06:00:00Z' }
+  if (url === '/instellingen/autoboeken/stand') return Promise.resolve(jsonResponse(tellers))
+  if (url.startsWith('/instellingen/autoboeken/kandidaten')) {
+    const heroverwegen = url.includes('tab=heroverwegen')
+    const rij = (naam: string, adm: string, admId: string, reeks: number, extra: string[], bedrag: string, signalen: string[] = []) => ({
+      administratie_id: admId,
+      administratie_naam: adm,
+      vendor_id: `v-${naam}`,
+      leverancier_naam: naam,
+      reeks_ongewijzigd: reeks,
+      correcties: 0,
+      open_vragen: 0,
+      kwalificeert: !heroverwegen,
+      actief: heroverwegen,
+      actief_sinds: heroverwegen ? '2026-08-12T09:00:00Z' : null,
+      redenen: [],
+      chips: [`${reeks} op rij ongewijzigd`, 'geheugen bevestigd', '0 vragen / 0 correcties', ...extra],
+      heroverweeg_signalen: signalen,
+      laatste_factuur_datum: '2026-08-25',
+      laatste_factuur_bedrag: bedrag,
+      laatste_document_id: null,
+      snooze_reden: null,
+      snooze_op: null,
+      berekend_op: '2026-09-01T06:00:00Z',
+    })
+    const rijen = heroverwegen
+      ? [
+          rij('Bouwmaat Eindhoven — Steigerbouwmaterialen B.V.', 'Universal Steigerbouw Nederland B.V.', ADMIN_1, 0, [], '1.240,00', ['2 correcties ná activatie', 'GB-code gewijzigd door mens (28 Aug)']),
+          rij('Labo Derva', 'Molenhof Verhuur B.V.', ADMIN_2, 0, [], '388,90', ['btw-tarief gewijzigd door mens (01 Sep)', 'buitenland-signaal']),
+        ]
+      : [
+          rij('Ebbers Salarisadvies B.V.', 'Administratiekantoor Nijenhuis C.V.', ADMIN_3, 12, ['vast maandbedrag'], '2721.83'),
+          rij('Transip B.V.', 'Administratiekantoor Nijenhuis C.V.', ADMIN_3, 9, [], '12.09'),
+          rij('Kadaster', 'Universal Steigerbouw Nederland B.V.', ADMIN_1, 6, ['bedrag wisselt'], '175.34'),
+        ]
+    return Promise.resolve(jsonResponse({ rijen, totaal: rijen.length, pagina: 1, per_pagina: 25, tellers }))
+  }
   // v3-detailpagina: tab "Boeken & AI" (leverancier-autoboeken + afdelingen).
   if (url.endsWith('/leveranciers-autoboeken')) {
     return Promise.resolve(

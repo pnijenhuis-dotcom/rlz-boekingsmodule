@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Autoboek-kandidaten (Instellingen › Autoboeken)</title>
+<!-- ============================================================
+     BESLUIT PETER 01-09 (n.a.v. schaalbaarheidskritiek Cowork):
+     de per-leverancier-autoboek-opt-in schaalt niet over ~80
+     administraties als Peter zelf moet zoeken. KANDIDATEN-MOTOR:
+     het systeem nomineert deterministisch leveranciers die
+     kwalificeren en Peter zet ze in bulk aan — "het systeem geeft
+     mij juiste adviezen". Mens blijft op de knop (opt-in blijft
+     een menselijk besluit), alleen het VINDWERK is geautomatiseerd.
+     Harde checks, volumerem en alle bestaande autoboek-poorten
+     blijven onverkort. Stijl designpass-v2.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#fff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-fg:#fff; --accent-bg:#e9f2f0;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --radius:12px; --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:18px;max-width:940px}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-width:1020px;overflow:hidden;margin-bottom:26px}
+  .p-kop{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .p-kop h2{font-size:14.5px}
+  .p-kop .s{font-size:12px;color:var(--muted)}
+  .tabs{display:flex;gap:4px;padding:10px 18px 0;border-bottom:1px solid var(--border)}
+  .tab{padding:7px 14px;border-radius:8px 8px 0 0;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer}
+  .tab.actief{background:var(--accent-bg);color:var(--primary)}
+  .filterrij{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel-2)}
+  .zoek{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:12.5px;color:var(--faint);width:280px}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .btn.sec{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.klein{padding:5px 11px;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;text-align:left;padding:9px 12px;border-bottom:1px solid var(--border)}
+  td{padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .lev{font-weight:700}
+  .adm{font-size:11.5px;color:var(--muted)}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+  .chip{font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--ok-bg);color:var(--ok)}
+  .chip.neutraal{background:var(--accent-bg);color:var(--primary)}
+  .chip.warn{background:var(--warn-bg);color:var(--warn)}
+  .cb{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--border);display:inline-block}
+  .cb.aan{background:var(--primary);border-color:var(--primary);position:relative}
+  .cb.aan:after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:900}
+  .bulkvoet{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--border);background:var(--panel-2)}
+  .bulkvoet b{font-size:12.5px}
+  .waarschuwing{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--warn);line-height:1.55;margin:12px 18px}
+  .noot{max-width:1020px;background:var(--accent-bg);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--primary);line-height:1.7;margin-top:4px}
+</style>
+</head>
+<body>
+<h1>Instellingen › Autoboeken — kandidaten &amp; actief</h1>
+<p class="sub">Nieuwe Instellingen-subpagina (sectiekaart "Autoboeken", Beheerder-only). De motor toetst dagelijks
+(meeliftend in sync-alles) per (administratie, leverancier) deterministisch of autoboeken verantwoord is en nomineert
+kandidaten mét onderbouwing. Aanzetten blijft een menselijk besluit — hier, in bulk. De bestaande per-leverancier-switch
+op de leverancierskaart blijft bestaan; dit scherm is de vind- en bulklaag erboven.</p>
+
+<div class="paneel">
+  <div class="p-kop"><h2>Autoboeken</h2><span class="s">criteria: ≥ 5 boekingen op rij waarbij het voorstel ongewijzigd is geboekt · volledig app-bevestigd geheugen · geen open vraag, correctie of duplicaatsignaal</span></div>
+  <div class="tabs"><span class="tab actief">Kandidaten (31)</span><span class="tab">Actief (12)</span><span class="tab">Heroverwegen (2)</span></div>
+  <div class="filterrij">
+    <div class="zoek">Zoek leverancier of administratie…</div>
+    <span style="font-size:12px;color:var(--muted)">31 kandidaten over 14 administraties</span>
+    <span style="margin-left:auto;font-size:12px;color:var(--muted)">Selecteer alles: <span class="cb" style="vertical-align:-3px"></span></span>
+  </div>
+  <table>
+    <tr><th style="width:36px"></th><th>Leverancier · administratie</th><th>Onderbouwing (live getoetst)</th><th style="width:120px">Laatste factuur</th></tr>
+    <tr>
+      <td><span class="cb aan"></span></td>
+      <td><div class="lev">Ebbers Salarisadvies B.V.</div><div class="adm">Administratiekantoor Nijenhuis C.V.</div></td>
+      <td><div class="chips"><span class="chip">12 op rij ongewijzigd</span><span class="chip">geheugen bevestigd</span><span class="chip">0 vragen / 0 correcties</span><span class="chip neutraal">vast maandbedrag</span></div></td>
+      <td class="adm">25 aug 2026<br>€ 2.721,83</td>
+    </tr>
+    <tr>
+      <td><span class="cb aan"></span></td>
+      <td><div class="lev">Transip B.V.</div><div class="adm">Administratiekantoor Nijenhuis C.V.</div></td>
+      <td><div class="chips"><span class="chip">9 op rij ongewijzigd</span><span class="chip">geheugen bevestigd</span><span class="chip">0 vragen / 0 correcties</span></div></td>
+      <td class="adm">22 aug 2026<br>€ 12,09</td>
+    </tr>
+    <tr>
+      <td><span class="cb"></span></td>
+      <td><div class="lev">Kadaster</div><div class="adm">ARVUM B.V.</div></td>
+      <td><div class="chips"><span class="chip">6 op rij ongewijzigd</span><span class="chip">geheugen bevestigd</span><span class="chip">0 vragen / 0 correcties</span><span class="chip neutraal">bedrag wisselt</span></div></td>
+      <td class="adm">31 aug 2026<br>€ 175,34</td>
+    </tr>
+    <tr>
+      <td><span class="cb"></span></td>
+      <td><div class="lev">…</div><div class="adm">(28 rijen — paginering 25, zelfde patroon als /gebruikers)</div></td>
+      <td></td><td></td>
+    </tr>
+  </table>
+  <div class="bulkvoet">
+    <b>2 geselecteerd</b>
+    <span style="margin-left:auto"></span>
+    <button class="btn klein sec">Kandidaat verbergen…</button>
+    <button class="btn klein">Autoboeken aanzetten (2)</button>
+  </div>
+</div>
+
+<div class="paneel">
+  <div class="p-kop"><h2>Tab "Heroverwegen" (2)</h2><span class="s">actieve opt-ins waar de motor ná activatie een signaal zag — advies: uitzetten, besluit blijft aan de mens</span></div>
+  <table>
+    <tr><th>Leverancier · administratie</th><th>Signaal</th><th style="width:140px"></th></tr>
+    <tr>
+      <td><div class="lev">Bouwmaat Eindhoven</div><div class="adm">Universal Steigerbouw B.V. · actief sinds 12 aug</div></td>
+      <td><div class="chips"><span class="chip warn">2 correcties ná activatie</span><span class="chip warn">GB-code gewijzigd door mens (28 aug)</span></div></td>
+      <td><button class="btn klein sec">Uitzetten</button></td>
+    </tr>
+    <tr>
+      <td><div class="lev">Labo Derva</div><div class="adm">Kempen Facilities B.V. · actief sinds 20 aug</div></td>
+      <td><div class="chips"><span class="chip warn">btw-tarief gecorrigeerd (01 sep)</span><span class="chip warn">buitenland-signaal</span></div></td>
+      <td><button class="btn klein sec">Uitzetten</button></td>
+    </tr>
+  </table>
+  <div class="waarschuwing">⚠ Heroverwegen zet níéts automatisch uit — het is een advies mét onderbouwing. Uitzetten is één klik,
+  geaudit; de leverancier verschijnt pas weer als kandidaat zodra hij opnieuw aan de criteria voldoet (teller start opnieuw
+  ná de laatste correctie).</div>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b> ① Beheerder-only; Instellingen krijgt de sectiekaart
+"Autoboeken" (rol×sectie-matrix mee bijwerken). ② De criteria zijn deterministisch en LIVE getoetst op het moment van
+aanzetten — de bulk-aanzet-actie hertoetst per rij en slaat een rij die intussen niet meer kwalificeert over mét reden
+(zelfde uitkomst-patroon als de bulk-accordering). Drempel "N op rij" = Beheerder-instelling, default 5. ③ Aanzetten loopt
+via de BESTAANDE per-leverancier-opt-in (geen tweede schrijver); alle bestaande autoboek-poorten (harde checks,
+app-bevestigd geheugen, duplicaat/vraag, volumerem 20/dag, accorderingspoort) blijven onverkort. ④ "Kandidaat verbergen"
+= snooze per (administratie, leverancier) mét reden (bv. "wil ik handmatig houden"), geaudit, terug te vinden onder een
+filter — nooit stil weg. ⑤ Heroverwegen-signalen: mens-correctie op een automatisch geboekt document, vraag/afwijzing,
+btw-/GB-wijziging, buitenland-signaal; advies-only. ⑥ Elke aan/uit hier = zelfde audit + tijdlijn als de bestaande
+switch. ⑦ Motor draait dagelijks meeliftend in sync-alles; tellers op de tabs zijn de stand van de laatste run mét
+tijdstip. ⑧ Toekomst (niet nu bouwen): zelfde kandidaten-patroon herbruikbaar voor omzet- en bank-autoboeken-adviezen.</p>
+</body>
+</html>

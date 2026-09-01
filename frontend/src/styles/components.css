@@ -1750,8 +1750,10 @@ tr.geselecteerd td.acties {
   flex-shrink: 0;
 }
 .inst-tabs {
+  display: flex;
   margin-bottom: 14px;
   flex-wrap: wrap;
+  max-width: 100%;
 }
 .inst-paneel {
   padding: 0;
@@ -1807,9 +1809,15 @@ tr.geselecteerd td.acties {
 }
 
 @media (max-width: 768px) {
+  /* Kolom-layout: align-items: stretch (de desktop-waarde flex-start zou de content op
+     max-content-breedte zetten — de tab-balk trok het paneel dan buiten het venster, sweep 01-09). */
   .instellingen-laag {
     flex-direction: column;
+    align-items: stretch;
     gap: 12px;
+  }
+  .instellingen-content {
+    width: 100%;
   }
   .snav {
     width: 100%;

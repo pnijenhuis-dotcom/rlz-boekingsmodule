@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0094
+-- Migratie-head bij deze dump: 0095
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -500,6 +500,35 @@ CREATE TABLE boekhouding.afwijzing (
 );
 
 ALTER TABLE ONLY boekhouding.afwijzing FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: autoboek_kandidaat_stand; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.autoboek_kandidaat_stand (
+    administratie_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    reeks_ongewijzigd integer DEFAULT 0 NOT NULL,
+    correcties integer DEFAULT 0 NOT NULL,
+    mens_boekingen integer DEFAULT 0 NOT NULL,
+    open_vragen integer DEFAULT 0 NOT NULL,
+    kwalificeert boolean DEFAULT false NOT NULL,
+    actief boolean DEFAULT false NOT NULL,
+    actief_sinds timestamp with time zone,
+    redenen jsonb DEFAULT '[]'::jsonb NOT NULL,
+    chips jsonb DEFAULT '[]'::jsonb NOT NULL,
+    heroverweeg_signalen jsonb DEFAULT '[]'::jsonb NOT NULL,
+    laatste_factuur_datum date,
+    laatste_factuur_bedrag numeric(14,2),
+    laatste_document_id uuid,
+    snooze_reden text,
+    snooze_op timestamp with time zone,
+    snooze_door uuid,
+    berekend_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.autoboek_kandidaat_stand FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2856,6 +2885,21 @@ COMMENT ON TABLE platform.audit_event IS 'Append-only audit-log (bron voor de WO
 
 
 --
+-- Name: autoboek_instelling; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.autoboek_instelling (
+    singleton boolean DEFAULT true NOT NULL,
+    drempel_op_rij integer DEFAULT 5 NOT NULL,
+    laatste_run_op timestamp with time zone,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT autoboek_instelling_drempel CHECK (((drempel_op_rij >= 1) AND (drempel_op_rij <= 50))),
+    CONSTRAINT autoboek_instelling_singleton CHECK (singleton)
+);
+
+
+--
 -- Name: bewaking_probe_run; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -3208,6 +3252,14 @@ ALTER TABLE ONLY boekhouding.afdeling
 
 ALTER TABLE ONLY boekhouding.afwijzing
     ADD CONSTRAINT afwijzing_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: autoboek_kandidaat_stand autoboek_kandidaat_stand_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.autoboek_kandidaat_stand
+    ADD CONSTRAINT autoboek_kandidaat_stand_pkey PRIMARY KEY (administratie_id, vendor_id);
 
 
 --
@@ -4259,6 +4311,14 @@ ALTER TABLE ONLY platform.audit_event
 
 
 --
+-- Name: autoboek_instelling autoboek_instelling_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.autoboek_instelling
+    ADD CONSTRAINT autoboek_instelling_pkey PRIMARY KEY (singleton);
+
+
+--
 -- Name: bewaking_probe_run bewaking_probe_run_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -4550,6 +4610,13 @@ CREATE INDEX ix_administratie_sync_run_administratie_status ON boekhouding.admin
 --
 
 CREATE INDEX ix_afdeling_administratie_id ON boekhouding.afdeling USING btree (administratie_id);
+
+
+--
+-- Name: ix_autoboek_kandidaat_stand_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_autoboek_kandidaat_stand_administratie_id ON boekhouding.autoboek_kandidaat_stand USING btree (administratie_id);
 
 
 --
@@ -5716,6 +5783,22 @@ ALTER TABLE ONLY boekhouding.afwijzing
 
 ALTER TABLE ONLY boekhouding.afwijzing
     ADD CONSTRAINT afwijzing_toegewezen_aan_fkey FOREIGN KEY (toegewezen_aan) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: autoboek_kandidaat_stand autoboek_kandidaat_stand_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.autoboek_kandidaat_stand
+    ADD CONSTRAINT autoboek_kandidaat_stand_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: autoboek_kandidaat_stand autoboek_kandidaat_stand_snooze_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.autoboek_kandidaat_stand
+    ADD CONSTRAINT autoboek_kandidaat_stand_snooze_door_fkey FOREIGN KEY (snooze_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -7855,6 +7938,14 @@ ALTER TABLE ONLY platform.audit_event
 
 
 --
+-- Name: autoboek_instelling autoboek_instelling_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.autoboek_instelling
+    ADD CONSTRAINT autoboek_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: boeken_instelling boeken_instelling_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -8141,6 +8232,19 @@ ALTER TABLE boekhouding.afwijzing ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY afwijzing_scope ON boekhouding.afwijzing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: autoboek_kandidaat_stand; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.autoboek_kandidaat_stand ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: autoboek_kandidaat_stand autoboek_kandidaat_stand_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY autoboek_kandidaat_stand_scope ON boekhouding.autoboek_kandidaat_stand USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

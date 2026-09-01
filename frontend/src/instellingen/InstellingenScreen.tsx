@@ -25,7 +25,7 @@ import { AdministratieDetailPagina } from './AdministratieDetailPagina'
 import { ArchiveerDialog } from './ArchiveerDialog'
 import { InstellingenLayout, type NavStanden } from './InstellingenLayout'
 import { SchrijftestDialog, WebserviceGegevensDialog } from './KoppelingDialogen'
-import { LeverancierAutoboeken } from './LeverancierAutoboeken'
+import { AutoboekKandidaten } from './AutoboekKandidaten'
 import {
   eersteSectieVoor,
   type InstellingenSectie,
@@ -36,6 +36,7 @@ import {
 } from './instellingenRegistry'
 import {
   haalAiKostenStatusOp,
+  haalAutoboekStandOp,
   haalBoekenKillSwitchOp,
   haalInstellingenAdministratiesOp,
   haalIntakeAiInstellingOp,
@@ -240,6 +241,8 @@ export function InstellingenScreen() {
   const [killSwitch, setKillSwitch] = useState<boolean | null>(null)
   const [intakeAi, setIntakeAi] = useState<boolean | null>(null)
   const [aiKosten, setAiKosten] = useState<AiKostenStatusDto | null>(null)
+  // Blok B (01-09): autoboek-kandidaten-teller voor de nav-stand-chip (oranje zolang > 0).
+  const [autoboekKandidaten, setAutoboekKandidaten] = useState<number | undefined>(undefined)
   const [limietInvoer, setLimietInvoer] = useState('')
   const [laadFout, setLaadFout] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingWijziging | null>(null)
@@ -284,6 +287,10 @@ export function InstellingenScreen() {
         setLimietInvoer(aiKostenDto.limiet_eur)
       })
       .catch((err: unknown) => setLaadFout(err instanceof Error ? err.message : 'Onbekende fout'))
+    // De kandidaten-stand is een los, licht endpoint: een fout hier mag de rest niet blokkeren.
+    haalAutoboekStandOp()
+      .then((t) => setAutoboekKandidaten(t.kandidaten))
+      .catch(() => setAutoboekKandidaten(undefined))
   }, [])
 
   useEffect(() => {
@@ -347,6 +354,7 @@ export function InstellingenScreen() {
     administraties: administraties ? administraties.filter((a) => !a.gearchiveerd_op).length : undefined,
     boekenPlatformbreed: killSwitch ?? undefined,
     intakeAiPercentage: aiKosten ? aiKosten.percentage : undefined,
+    autoboekKandidaten,
   }
   const zoekAdministraties = (administraties ?? []).filter((a) => !a.gearchiveerd_op).map((a) => ({ id: a.id, naam: a.naam }))
 
@@ -643,9 +651,9 @@ export function InstellingenScreen() {
           <AccorderingInstellingen administraties={administraties.filter((a) => !a.gearchiveerd_op).map((a) => ({ id: a.id, naam: a.naam }))} />
         )}
 
-        {sectie === 'autoboeken' && administraties !== null && (
-          <LeverancierAutoboeken administraties={administraties.filter((a) => !a.gearchiveerd_op).map((a) => ({ id: a.id, naam: a.naam }))} />
-        )}
+        {/* Blok B (01-09): de kandidaten-motor vervangt hier de kale leverancierslijst; de
+            per-leverancier-switch blijft op de detailpagina (tab Boeken & AI). */}
+        {sectie === 'autoboeken' && <AutoboekKandidaten onStand={(t) => setAutoboekKandidaten(t.kandidaten)} />}
 
         {sectie === 'doorbelasting' && administraties !== null && (
           <DoorbelastingInstellingen administraties={administraties.filter((a) => !a.gearchiveerd_op).map((a) => ({ id: a.id, naam: a.naam }))} />

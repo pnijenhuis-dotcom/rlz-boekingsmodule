@@ -13,6 +13,7 @@ from sqlalchemy import engine_from_config, pool
 # (tests/unit/test_migratie_metadata_guard.py) faalt als hier een model-module ontbreekt.
 import app.accordering.models  # noqa: F401
 import app.afdelingen.models  # noqa: F401
+import app.autoboek_kandidaten.models  # noqa: F401
 import app.bank.models  # noqa: F401
 import app.beheer.models  # noqa: F401
 import app.berichten.models  # noqa: F401

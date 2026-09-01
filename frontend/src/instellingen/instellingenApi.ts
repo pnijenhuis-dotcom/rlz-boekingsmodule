@@ -1,6 +1,9 @@
 import { apiJson } from '../api/client'
 import type {
   ArchiveringResultaatDto,
+  AutoboekBulkAanzettenResultaatDto,
+  AutoboekKandidatenLijstDto,
+  AutoboekTellersDto,
   CrediteurKvkDto,
   DubbeleCrediteurenResponseDto,
   AdministratieInstellingenLijstDto,
@@ -273,4 +276,57 @@ export function haalDubbeleCrediteurenOp(administratieId: string): Promise<Dubbe
 /** KvK-controle bij een dubbel-groep (hergebruik van de A3-KvK-client): officiële naam ter beoordeling. */
 export function controleerCrediteurKvk(administratieId: string, kvkNummer: string): Promise<CrediteurKvkDto> {
   return apiJson<CrediteurKvkDto>(`/administraties/${administratieId}/crediteuren/kvk/${encodeURIComponent(kvkNummer)}`)
+}
+
+/* --- Autoboek-kandidaten (blok B 01-09, Beheerder-only) ------------------------------------------- */
+
+export type AutoboekTab = 'kandidaten' | 'actief' | 'heroverwegen'
+
+export function haalAutoboekKandidatenOp(opties: {
+  tab: AutoboekTab
+  q?: string
+  pagina?: number
+  verborgen?: boolean
+}): Promise<AutoboekKandidatenLijstDto> {
+  const params = new URLSearchParams({ tab: opties.tab, pagina: String(opties.pagina ?? 1) })
+  if (opties.q) params.set('q', opties.q)
+  if (opties.verborgen) params.set('verborgen', 'true')
+  return apiJson<AutoboekKandidatenLijstDto>(`/instellingen/autoboeken/kandidaten?${params.toString()}`)
+}
+
+/** Nav-stand-chip + tab-tellers (stand van de laatste run mét tijdstip). */
+export function haalAutoboekStandOp(): Promise<AutoboekTellersDto> {
+  return apiJson<AutoboekTellersDto>('/instellingen/autoboeken/stand')
+}
+
+export function herberekenAutoboekKandidaten(): Promise<{ administraties: number; fouten: number; tellers: AutoboekTellersDto }> {
+  return apiJson('/instellingen/autoboeken/herbereken', { method: 'POST' })
+}
+
+/** "Autoboeken aanzetten (n)": per rij live hertoetst; niet-kwalificerend = overgeslagen mét reden. */
+export function zetAutoboekKandidatenAan(items: { administratie_id: string; vendor_id: string }[]): Promise<AutoboekBulkAanzettenResultaatDto> {
+  return apiJson<AutoboekBulkAanzettenResultaatDto>('/instellingen/autoboeken/kandidaten/aanzetten', {
+    ...POST_JSON,
+    body: JSON.stringify({ items }),
+  })
+}
+
+export function zetAutoboekKandidaatUit(administratieId: string, vendorId: string): Promise<unknown> {
+  return apiJson(`/instellingen/autoboeken/kandidaten/${administratieId}/${vendorId}/uitzetten`, { method: 'POST' })
+}
+
+/** "Kandidaat verbergen" = snooze mét verplichte reden (geaudit, terugvindbaar onder het filter). */
+export function verbergAutoboekKandidaat(administratieId: string, vendorId: string, reden: string): Promise<unknown> {
+  return apiJson(`/instellingen/autoboeken/kandidaten/${administratieId}/${vendorId}/verbergen`, {
+    ...POST_JSON,
+    body: JSON.stringify({ reden }),
+  })
+}
+
+export function toonAutoboekKandidaatWeer(administratieId: string, vendorId: string): Promise<unknown> {
+  return apiJson(`/instellingen/autoboeken/kandidaten/${administratieId}/${vendorId}/weer-tonen`, { method: 'POST' })
+}
+
+export function zetAutoboekDrempel(drempelOpRij: number): Promise<{ drempel_op_rij: number; laatste_run_op: string | null }> {
+  return apiJson('/instellingen/autoboeken/instelling', { ...PUT_JSON, body: JSON.stringify({ drempel_op_rij: drempelOpRij }) })
 }

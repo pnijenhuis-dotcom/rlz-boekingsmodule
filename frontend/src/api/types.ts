@@ -217,6 +217,62 @@ export interface LeverancierAutoboekenLijstDto {
   leveranciers: LeverancierAutoboekenDto[]
 }
 
+/** Autoboek-kandidaten (blok B 01-09, mockup autoboek-kandidaten.html, migratie 0095): één rij per
+ * (administratie, leverancier) met de deterministische onderbouwing; tabs Kandidaten / Actief /
+ * Heroverwegen. Bedragen als string (Decimal-precisie). */
+export interface AutoboekKandidaatRijDto {
+  administratie_id: string
+  administratie_naam: string
+  vendor_id: string
+  leverancier_naam: string | null
+  reeks_ongewijzigd: number
+  correcties: number
+  open_vragen: number
+  kwalificeert: boolean
+  actief: boolean
+  actief_sinds: string | null
+  redenen: string[]
+  chips: string[]
+  heroverweeg_signalen: string[]
+  laatste_factuur_datum: string | null
+  laatste_factuur_bedrag: string | null
+  laatste_document_id: string | null
+  snooze_reden: string | null
+  snooze_op: string | null
+  berekend_op: string
+}
+
+export interface AutoboekTellersDto {
+  kandidaten: number
+  actief: number
+  heroverwegen: number
+  verborgen: number
+  administraties_met_kandidaten: number
+  drempel: number
+  laatste_run_op: string | null
+}
+
+export interface AutoboekKandidatenLijstDto {
+  rijen: AutoboekKandidaatRijDto[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+  tellers: AutoboekTellersDto
+}
+
+export interface AutoboekAanzetUitkomstDto {
+  administratie_id: string
+  vendor_id: string
+  status: 'aangezet' | 'overgeslagen' | 'fout' | string
+  reden: string | null
+}
+
+export interface AutoboekBulkAanzettenResultaatDto {
+  uitkomsten: AutoboekAanzetUitkomstDto[]
+  aangezet: number
+  overgeslagen: number
+}
+
 /** Werkvoorraad-klantenlijst met tellers (mockup #werkvoorraad "Overzicht per klant"). */
 export interface WerkvoorraadKlantDto {
   administratie_id: string
