@@ -149,6 +149,92 @@ def mappings_lijst(
     return [_naar_mapping(m) for m in service.lijst_mappings(administratie_id=administratie_id)]
 
 
+@router.get(
+    "/doorbelasting/{administratie_id}/mappings/kandidaat-doelen",
+    response_model=schemas.KandidaatDoelenResponse,
+)
+def mapping_kandidaat_doelen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.KandidaatDoelenResponse:
+    """"+ Doelentiteit toevoegen" (mockup doorbelasting-doel-toevoegen.html, akkoord 01-09):
+    onboarded administraties die nog niet in de whitelist van deze bron staan, plus het
+    provisie-GB-voorstel uit de bestaande rijen. Beheerder-only, net als het mapping-beheer."""
+    kandidaten, voorstel = service.kandidaat_doelen(administratie_id=administratie_id)
+    return schemas.KandidaatDoelenResponse(
+        kandidaten=[schemas.KandidaatDoelDto(id=k.id, naam=k.naam) for k in kandidaten],
+        provisie_voorstel=(
+            schemas.ProvisieVoorstelDto(code=voorstel.code, naam=voorstel.naam) if voorstel else None
+        ),
+    )
+
+
+@router.post(
+    "/doorbelasting/{administratie_id}/mappings/debiteur-lookup",
+    response_model=schemas.DebiteurLookupResponse,
+)
+def mapping_debiteur_lookup(
+    administratie_id: uuid.UUID,
+    body: schemas.DebiteurLookupRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.DebiteurLookupResponse:
+    """Lookup op naam in de bron-RLZ: exacte én bijna-matches (enkelvoud/meervoud-tolerant,
+    deterministisch — les Mantelzorgwoningen 01-09), mét kaartgegevens; de dialoog laat de
+    mens expliciet bevestigen dat een treffer dezelfde entiteit is — nooit stil koppelen."""
+    from app.rlz.client import RlzApiError
+
+    try:
+        matches = service.zoek_debiteur_in_bron(administratie_id=administratie_id, zoeknaam=body.zoeknaam)
+    except GeenRlzCredentials as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RlzApiError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Reeleezee-lookup mislukt: {exc}",
+        ) from exc
+    return schemas.DebiteurLookupResponse(
+        matches=[
+            schemas.DebiteurMatchDto(customer_guid=m.customer_guid, naam=m.naam, exact=m.exact, kaart=m.kaart)
+            for m in matches
+        ]
+    )
+
+
+@router.post(
+    "/doorbelasting/{administratie_id}/mappings",
+    response_model=schemas.MappingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def mapping_aanmaken(
+    administratie_id: uuid.UUID,
+    body: schemas.MappingAanmaakRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.MappingResponse:
+    """Nieuw POST-endpoint naast het bestaande wijzig-endpoint (de seed-CLI blijft voor
+    bulk/herstel). Debiteur: bevestigde match = koppelen; geen match = idempotente aanmaak
+    (zorg_voor_debiteur). De whitelist blijft server-side afgedwongen in de motor."""
+    from app.rlz.client import RlzApiError
+    from app.verkoop.debiteur import DebiteurAanmakenMislukt
+
+    try:
+        mapping = service.maak_mapping(
+            administratie_id=administratie_id,
+            actor_id=actor.id,
+            doel_administratie_id=body.doel_administratie_id,
+            doelentiteit_naam=body.doelentiteit_naam,
+            doel_customer_guid=body.doel_customer_guid,
+            provisie_kosten_ledger_id=body.provisie_kosten_ledger_id,
+            intercompany=body.intercompany,
+        )
+    except (GeenRlzCredentials, DebiteurAanmakenMislukt, service.DoorbelastingFout) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RlzApiError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Reeleezee niet bereikbaar bij de debiteur-koppeling: {exc}",
+        ) from exc
+    return _naar_mapping(mapping)
+
+
 @router.put("/doorbelasting/{administratie_id}/mappings/{mapping_id}", response_model=schemas.MappingResponse)
 def mapping_wijzigen(
     administratie_id: uuid.UUID,

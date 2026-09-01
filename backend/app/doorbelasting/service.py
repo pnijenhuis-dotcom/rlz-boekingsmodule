@@ -250,6 +250,278 @@ def wijzig_mapping(
         return mapping
 
 
+# --- "+ Doelentiteit toevoegen" (mockup doorbelasting-doel-toevoegen.html, akkoord Peter 01-09,
+# --- casus Mantelzorgwoningen MN) -----------------------------------------------------------------
+#
+# Beheerder-klikwerk naast de seed-CLI (die blijft voor bulk/herstel): kandidaat-doelen =
+# onboarded administraties die nog niet in de whitelist van deze bron staan; de debiteur in de
+# bron-RLZ wordt op naam gezocht — een (bijna-)match wordt GETOOND ter bevestiging, nooit stil
+# gekoppeld (les 01-09: RLZ-naam ENKELVOUD 'Mantelzorgwoning …' vs administratienaam MEERVOUD);
+# geen match = idempotente aanmaak via de bestaande verkoopmotor-bouwsteen (zorg_voor_debiteur:
+# lookup-vóór-PUT + deterministisch client-GUID). De whitelist blijft server-side afgedwongen
+# in de motor — deze route voegt alleen rijen toe.
+
+# Rechtsvorm-tokens die bij de bijna-match niet meetellen ("Holding" blijft bewust WÉL
+# onderscheidend — naamnormalisatie-les mockup-casus). De losse letters vangen de
+# gepuncteerde vormen ("B.V." → tokens 'b' + 'v').
+_RECHTSVORM_TOKENS = frozenset({"bv", "nv", "vof", "cv", "bvba", "b", "v", "n", "o", "f", "c"})
+
+
+def _naam_tokens(naam: str) -> list[str]:
+    """Deterministische naamkern voor de bijna-match: kleine letters, leestekens weg,
+    rechtsvorm-tokens ('B.V.' → 'b'+'v') eruit."""
+    schoon = "".join(teken if teken.isalnum() else " " for teken in naam.lower())
+    return [t for t in schoon.split() if t not in _RECHTSVORM_TOKENS]
+
+
+def _is_bijna_match(zoeknaam: str, kandidaat: str) -> bool:
+    """Enkelvoud/meervoud-tolerant (Mantelzorgwoning ↔ Mantelzorgwoningen): élk token van de
+    ene naam moet een prefix-match (≥ 4 tekens gedeeld) hebben met een token van de andere,
+    één-op-één verbruikt. 'Molenhof Beheer' ↔ 'Molenhof Verhuur' matcht dus níét."""
+    a, b = _naam_tokens(zoeknaam), _naam_tokens(kandidaat)
+    if not a or not b:
+        return False
+    kort, lang = (a, b) if len(a) <= len(b) else (b, a)
+    beschikbaar = list(lang)
+    for token in kort:
+        treffer = next(
+            (
+                k
+                for k in beschikbaar
+                if (k.startswith(token) or token.startswith(k)) and min(len(k), len(token)) >= 4
+            ),
+            None,
+        )
+        # Korte tokens (bv. 'mn', 'de') moeten exact gelijk zijn.
+        if treffer is None:
+            treffer = next((k for k in beschikbaar if k == token), None)
+        if treffer is None:
+            return False
+        beschikbaar.remove(treffer)
+    return True
+
+
+@dataclass(frozen=True)
+class DebiteurMatch:
+    """Gevonden debiteur in de bron-RLZ, mét kaartgegevens ter expliciete bevestiging."""
+
+    customer_guid: uuid.UUID
+    naam: str
+    exact: bool
+    kaart: dict[str, str]
+
+
+def _open_bron_client(administratie_id: uuid.UUID, client) -> tuple[object, bool]:  # noqa: ANN001
+    """RlzClient voor de bron-administratie; `client` is de test-seam (patroon sync/service.py)."""
+    if client is not None:
+        return client, False
+    from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+
+    return client_voor_rlz_admin_id(rlz_admin_id_voor(administratie_id)), True
+
+
+def zoek_debiteur_in_bron(
+    *, administratie_id: uuid.UUID, zoeknaam: str, client=None  # noqa: ANN001
+) -> list[DebiteurMatch]:
+    """Lookup op naam in de bron-RLZ: exacte treffers éérst, dan deterministische bijna-matches
+    (client-side over de Customers-collectie — geen ongeverifieerde OData-zoekfeatures, geen
+    AI). De dialoog toont élke treffer ter bevestiging; het projectanker wordt nooit
+    aangeboden. Een RLZ-fout is blokkerend (fail-closed, leesbare melding via de router)."""
+    from app.projecten.anker import is_anker_naam
+
+    zoeknaam = " ".join(zoeknaam.split())
+    if not zoeknaam:
+        return []
+    rlz_client, eigen_client = _open_bron_client(administratie_id, client)
+    try:
+        rijen = rlz_client.get("Customers").get("value", [])
+    finally:
+        if eigen_client:
+            rlz_client.close()
+
+    def _kaart(rij: dict) -> dict[str, str]:
+        kaart: dict[str, str] = {}
+        if rij.get("StatutoryName") and rij["StatutoryName"] != rij.get("Name"):
+            kaart["statutaire naam"] = str(rij["StatutoryName"])
+        straat = " ".join(str(rij[v]) for v in ("Street", "StreetNumber") if rij.get(v))
+        if straat:
+            kaart["adres"] = straat
+        for bron_veld, label in (("City", "plaats"), ("Email", "e-mail")):
+            if rij.get(bron_veld):
+                kaart[label] = str(rij[bron_veld])
+        return kaart
+
+    matches: list[DebiteurMatch] = []
+    for rij in rijen:
+        naam = " ".join(str(rij.get("Name") or "").split())
+        if not naam or not rij.get("id") or is_anker_naam(naam):
+            continue
+        exact = naam.casefold() == zoeknaam.casefold()
+        if exact or _is_bijna_match(zoeknaam, naam):
+            matches.append(
+                DebiteurMatch(customer_guid=uuid.UUID(str(rij["id"])), naam=naam, exact=exact, kaart=_kaart(rij))
+            )
+    matches.sort(key=lambda m: (not m.exact, m.naam.lower()))
+    return matches[:8]
+
+
+@dataclass(frozen=True)
+class KandidaatDoel:
+    id: uuid.UUID
+    naam: str
+
+
+@dataclass(frozen=True)
+class ProvisieVoorstel:
+    """Vooringevulde provisie-GB (mockup-notitie ③): de meest voorkomende REKENINGCODE van de
+    bestaande rijen van dezelfde bron — ledger-GUID's zijn per administratie, dus de code is
+    het overdraagbare gegeven; de dialoog zoekt die code op in het schema van het gekozen doel."""
+
+    code: str
+    naam: str
+
+
+def kandidaat_doelen(*, administratie_id: uuid.UUID) -> tuple[list[KandidaatDoel], ProvisieVoorstel | None]:
+    """Doorzoekbare lijst voor de dialoog: actieve (onboarded) administraties die nog niet in de
+    whitelist van deze bron staan — de bron zelf uitgezonderd. Plus het provisie-voorstel."""
+    with scoped_session(administratie_id) as session:
+        mappings = list(
+            session.scalars(
+                select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == administratie_id)
+            )
+        )
+        gekoppeld = {m.doel_administratie_id for m in mappings if m.doel_administratie_id is not None}
+        administraties = [
+            KandidaatDoel(id=a.id, naam=a.naam)
+            for a in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
+            if a.id != administratie_id and a.id not in gekoppeld
+        ]
+        provisie_bronnen = [
+            (m.doel_administratie_id, m.provisie_kosten_ledger_id)
+            for m in mappings
+            if m.doel_administratie_id is not None and m.provisie_kosten_ledger_id is not None
+        ]
+    # Codes per bestaande provisie-GB uit de sync-cache van het bijbehorende DOEL (RLS: per
+    # administratie een eigen scope) — de modus wint.
+    from collections import Counter
+
+    from app.db.models import Grootboekrekening
+
+    teller: Counter[tuple[str, str]] = Counter()
+    for doel_id, ledger_id in provisie_bronnen:
+        with scoped_session(doel_id) as sessie_doel:
+            rekening = sessie_doel.get(Grootboekrekening, (ledger_id, doel_id))
+            if rekening is not None:
+                teller[(rekening.code, rekening.naam)] += 1
+    voorstel = None
+    if teller:
+        (code, naam), _ = teller.most_common(1)[0]
+        voorstel = ProvisieVoorstel(code=code, naam=naam)
+    return sorted(administraties, key=lambda k: k.naam.lower()), voorstel
+
+
+def maak_mapping(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    doel_administratie_id: uuid.UUID,
+    doelentiteit_naam: str,
+    doel_customer_guid: uuid.UUID | None,
+    provisie_kosten_ledger_id: uuid.UUID | None,
+    intercompany: bool,
+    client=None,  # noqa: ANN001 — test-seam (RlzClient)
+) -> DoorbelastingMapping:
+    """Nieuwe whitelist-rij (Beheerder-only via de router). `doel_customer_guid` gevuld = de
+    door de mens BEVESTIGDE bestaande debiteur (dialoog toonde naam + kaartgegevens);
+    None = idempotente aanmaak via zorg_voor_debiteur (lookup-vóór-PUT + deterministisch
+    client-GUID — bestaande verkoopmotor-bouwsteen). Audit op de aanmaak; de rij is direct
+    bruikbaar in "Doorbelasten na boeken" (de motor leest de whitelist live)."""
+    from app.projecten.anker import anker_customer_id as anker_id
+
+    doelentiteit_naam = " ".join(doelentiteit_naam.split())
+    if not doelentiteit_naam:
+        raise DoorbelastingFout("Doelentiteit-naam is leeg")
+
+    # Poorten vóór elke RLZ-call: doel bestaat, is actief, is niet de bron en zit nog niet in
+    # de whitelist van deze bron.
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        doel = session.get(Administratie, doel_administratie_id)
+        if doel is None:
+            raise DoorbelastingFout("Onbekende doel-administratie")
+        if not doel.actief:
+            raise DoorbelastingFout(f"'{doel.naam}' is gearchiveerd — dearchiveer de administratie eerst")
+        if doel_administratie_id == administratie_id:
+            raise DoorbelastingFout("De bron-administratie kan geen doelentiteit van zichzelf zijn")
+        bestaande = list(
+            session.scalars(
+                select(DoorbelastingMapping).where(DoorbelastingMapping.administratie_id == administratie_id)
+            )
+        )
+        if any(m.doel_administratie_id == doel_administratie_id for m in bestaande):
+            raise DoorbelastingFout(f"'{doel.naam}' staat al in de whitelist van deze bron")
+        if doel_customer_guid is not None and any(m.doel_customer_guid == doel_customer_guid for m in bestaande):
+            raise DoorbelastingFout("Deze RLZ-debiteur is al aan een whitelist-rij gekoppeld")
+
+    if doel_customer_guid is not None and doel_customer_guid == anker_id(administratie_id):
+        raise DoorbelastingFout("De gekozen debiteur is het projectanker-systeemrecord — niet koppelbaar")
+
+    if doel_customer_guid is None:
+        from app.verkoop.debiteur import zorg_voor_debiteur
+
+        rlz_client, eigen_client = _open_bron_client(administratie_id, client)
+        try:
+            doel_customer_guid = zorg_voor_debiteur(
+                client=rlz_client, administratie_id=administratie_id, actor_id=actor_id, naam=doelentiteit_naam
+            )
+        finally:
+            if eigen_client:
+                rlz_client.close()
+
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        mapping = DoorbelastingMapping(
+            administratie_id=administratie_id,
+            doelentiteit_naam=doelentiteit_naam,
+            doel_customer_guid=doel_customer_guid,
+            doel_administratie_id=doel_administratie_id,
+            intercompany=intercompany,
+            provisie_kosten_ledger_id=provisie_kosten_ledger_id,
+            aangemaakt_door=actor_id,
+        )
+        session.add(mapping)
+        session.flush()
+        # bron-kant IC-rij volgt de vlag (blok 2) — zelfde regel als seed/wijzig.
+        upsert_intercompany_tegenpartij(
+            session,
+            administratie_id=administratie_id,
+            entity_guid=doel_customer_guid,
+            naam=doelentiteit_naam,
+            mapping_id=mapping.id,
+            actief=intercompany,
+        )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=_MODULE,
+            tabel="doorbelasting_mapping",
+            record_id=mapping.id,
+            actie="doorbelasting_mapping_aangemaakt",
+            correlatie_id=mapping.id,
+            nieuwe_waarde={
+                "doelentiteit": doelentiteit_naam,
+                "doel_customer_guid": str(doel_customer_guid),
+                "doel_administratie_id": str(doel_administratie_id),
+                "intercompany": intercompany,
+                "provisie_kosten_ledger_id": (
+                    str(provisie_kosten_ledger_id) if provisie_kosten_ledger_id is not None else None
+                ),
+            },
+            administratie_id=administratie_id,
+        )
+        session.flush()
+        session.expunge(mapping)
+        return mapping
+
+
 def haal_instelling_op(*, administratie_id: uuid.UUID) -> DoorbelastingInstelling:
     """Get-or-default (niet persisted tot de eerste zet): default provisie 5,00%, rest leeg —
     de checks blokkeren boeken zolang btw-tarief/omzet-GB ontbreken."""

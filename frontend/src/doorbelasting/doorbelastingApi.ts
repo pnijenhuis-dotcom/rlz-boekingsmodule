@@ -58,6 +58,60 @@ export function haalDoorbelastingMappingsOp(administratieId: string): Promise<Do
   return apiJson<DoorbelastingMappingDto[]>(`/doorbelasting/${administratieId}/mappings`)
 }
 
+// --- "+ Doelentiteit toevoegen" (mockup doorbelasting-doel-toevoegen.html, 01-09) ---------------
+
+export interface KandidaatDoelDto {
+  id: string
+  naam: string
+}
+
+/** Vooringevulde provisie-GB: de meest voorkomende rekeningCODE van de bestaande rijen —
+ * ledger-GUID's verschillen per administratie, de code is het overdraagbare gegeven. */
+export interface ProvisieVoorstelDto {
+  code: string
+  naam: string
+}
+
+export interface KandidaatDoelenDto {
+  kandidaten: KandidaatDoelDto[]
+  provisie_voorstel: ProvisieVoorstelDto | null
+}
+
+export interface DebiteurMatchDto {
+  customer_guid: string
+  naam: string
+  exact: boolean
+  /** Kaartgegevens ter expliciete bevestiging (les Mantelzorgwoningen 01-09): label → waarde. */
+  kaart: Record<string, string>
+}
+
+export interface DoorbelastingMappingAanmaakDto {
+  doel_administratie_id: string
+  doelentiteit_naam: string
+  /** Gevuld = de door de mens bevestigde bestaande debiteur; null = idempotente aanmaak bij opslaan. */
+  doel_customer_guid: string | null
+  provisie_kosten_ledger_id: string | null
+  intercompany: boolean
+}
+
+export function haalKandidaatDoelenOp(administratieId: string): Promise<KandidaatDoelenDto> {
+  return apiJson<KandidaatDoelenDto>(`/doorbelasting/${administratieId}/mappings/kandidaat-doelen`)
+}
+
+export function zoekDebiteurInBron(
+  administratieId: string,
+  zoeknaam: string,
+): Promise<{ matches: DebiteurMatchDto[] }> {
+  return apiPostJson(`/doorbelasting/${administratieId}/mappings/debiteur-lookup`, { zoeknaam })
+}
+
+export function maakDoorbelastingMapping(
+  administratieId: string,
+  invoer: DoorbelastingMappingAanmaakDto,
+): Promise<DoorbelastingMappingDto> {
+  return apiPostJson(`/doorbelasting/${administratieId}/mappings`, invoer)
+}
+
 export function wijzigDoorbelastingMapping(
   administratieId: string,
   mappingId: string,

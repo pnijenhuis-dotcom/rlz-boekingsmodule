@@ -22,6 +22,51 @@ class MappingResponse(BaseModel):
     actief: bool
 
 
+class KandidaatDoelDto(BaseModel):
+    id: uuid.UUID
+    naam: str
+
+
+class ProvisieVoorstelDto(BaseModel):
+    """Vooringevulde provisie-GB (mockup doorbelasting-doel-toevoegen ③): de meest voorkomende
+    REKENINGCODE van de bestaande rijen — de dialoog zoekt de code op in het doel-schema."""
+
+    code: str
+    naam: str
+
+
+class KandidaatDoelenResponse(BaseModel):
+    kandidaten: list[KandidaatDoelDto]
+    provisie_voorstel: ProvisieVoorstelDto | None
+
+
+class DebiteurLookupRequest(StrikteInvoer):
+    zoeknaam: str
+
+
+class DebiteurMatchDto(BaseModel):
+    customer_guid: uuid.UUID
+    naam: str
+    exact: bool
+    # Kaartgegevens ter expliciete bevestiging (les Mantelzorgwoningen 01-09): label → waarde.
+    kaart: dict[str, str]
+
+
+class DebiteurLookupResponse(BaseModel):
+    matches: list[DebiteurMatchDto]
+
+
+class MappingAanmaakRequest(StrikteInvoer):
+    """"+ Doelentiteit toevoegen" (akkoord Peter 01-09): `doel_customer_guid` gevuld = de door
+    de mens bevestigde bestaande debiteur uit de lookup; None = idempotente aanmaak bij opslaan."""
+
+    doel_administratie_id: uuid.UUID
+    doelentiteit_naam: str
+    doel_customer_guid: uuid.UUID | None = None
+    provisie_kosten_ledger_id: uuid.UUID | None = None
+    intercompany: bool = True
+
+
 class MappingWijzigRequest(StrikteInvoer):
     """Gerichte mapping-mutatie; niet-meegegeven velden blijven ongewijzigd (exclude_unset
     in de router — het verschil tussen 'null zetten' en 'niet wijzigen' moet betrouwbaar zijn)."""

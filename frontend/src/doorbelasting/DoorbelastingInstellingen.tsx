@@ -23,6 +23,7 @@ import {
   zetDoorbelastingToggle,
   type OpruimlijstDto,
 } from './doorbelastingApi'
+import { DoelToevoegenDialog } from './DoelToevoegenDialog'
 import { formatPercentage } from './status'
 import { useDoelGrootboek } from './useDoelGrootboek'
 
@@ -108,6 +109,9 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
   const [pending, setPending] = useState<PendingWijziging | null>(null)
   const [bezig, setBezig] = useState(false)
   const [wijzigenFout, setWijzigenFout] = useState<string | null>(null)
+  // "+ Doelentiteit toevoegen" (mockup doorbelasting-doel-toevoegen.html, akkoord 01-09).
+  const [doelToevoegen, setDoelToevoegen] = useState(false)
+  const [doelMelding, setDoelMelding] = useState<string | null>(null)
 
   const grootboek = useGrootboekOpties(administratieId)
   const btwCodes = useTaxrateOpties(administratieId)
@@ -264,11 +268,23 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
         nooit hardcoded.
       </p>
 
-      <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>Doelentiteiten (whitelist)</h3>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '14px 0 6px' }}>
+        <h3 style={{ margin: 0, fontSize: 14 }}>Doelentiteiten (whitelist)</h3>
+        <span style={{ marginLeft: 'auto' }} />
+        {/* Beheerder-klikwerk naast de seed-CLI (die blijft voor bulk/herstel) — mockup ⑤. */}
+        <Button variant="secundair" maat="klein" onClick={() => { setDoelMelding(null); setDoelToevoegen(true) }}>
+          + Doelentiteit toevoegen
+        </Button>
+      </div>
+      {doelMelding && (
+        <div className="hint" role="status" style={{ margin: '0 0 8px' }}>
+          {doelMelding}
+        </div>
+      )}
       {mappings.length === 0 && (
         <p className="hint">
-          Nog geen doelentiteiten — de whitelist wordt geseed vanaf de server
-          (make doorbelasting-seed-kempen).
+          Nog geen doelentiteiten — voeg er één toe met &ldquo;+ Doelentiteit toevoegen&rdquo; (of seed in
+          bulk vanaf de server: make doorbelasting-seed-kempen).
         </p>
       )}
       {mappings.length > 0 && (
@@ -380,6 +396,18 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
       </p>
 
       <Opruimlijst administratieId={administratieId} />
+
+      {doelToevoegen && (
+        <DoelToevoegenDialog
+          administratieId={administratieId}
+          bronNaam={naam}
+          onSluiten={() => setDoelToevoegen(false)}
+          onToegevoegd={(melding) => {
+            setDoelMelding(melding)
+            setLaadVersie((v) => v + 1)
+          }}
+        />
+      )}
 
       {pending && (
         <BevestigDialog

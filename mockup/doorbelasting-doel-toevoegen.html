@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: + Doelentiteit toevoegen (Instellingen › Doorbelasting)</title>
+<!-- ============================================================
+     WENS PETER 01-09 (casus Mantelzorgwoningen MN): nieuwe
+     whitelist-rijen kunnen nu alleen via de seed-CLI (vaste lijst
+     in code) — er komt een "+ Doelentiteit toevoegen"-dialoog in
+     Instellingen › Doorbelasting (Beheerder-only). Debiteur in de
+     bron-RLZ wordt idempotent aangemaakt als hij niet bestaat
+     (zelfde bouwsteen als de verkoopmotor). Stijl designpass-v2.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#fff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-fg:#fff; --accent-bg:#e9f2f0;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --radius:12px; --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:18px;max-width:900px}
+  .kopregel{display:flex;align-items:center;gap:12px;max-width:760px;margin-bottom:14px}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .btn.sec{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.klein{padding:5px 11px;font-size:12px}
+  .tabel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-width:760px;font-size:12.5px;margin-bottom:26px;overflow:hidden}
+  .tabel div{display:flex;gap:10px;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border)}
+  .tabel div:last-child{border-bottom:none}
+  .tag{font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--accent-bg);color:var(--primary)}
+  .modal{width:560px;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.18);overflow:hidden}
+  .m-kop{padding:16px 20px;border-bottom:1px solid var(--border)}
+  .m-kop h3{font-size:15px}
+  .m-kop .s{font-size:12px;color:var(--muted);margin-top:2px}
+  .m-body{padding:18px 20px;display:flex;flex-direction:column;gap:13px}
+  .m-voet{display:flex;gap:8px;justify-content:flex-end;padding:13px 20px;border-top:1px solid var(--border);background:var(--panel-2)}
+  .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin-bottom:5px;display:block}
+  .veld{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:12.5px;width:100%}
+  .veld.placeholder{color:var(--faint)}
+  .hint{font-size:11.5px;color:var(--faint);margin-top:4px;line-height:1.5}
+  .okblok{background:var(--ok-bg);border:1px solid color-mix(in srgb,var(--ok) 25%,transparent);border-radius:10px;padding:10px 13px;font-size:12.5px;color:var(--ok);line-height:1.55}
+  .switchrij{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .switchrij .s{font-size:12px;color:var(--muted);line-height:1.5;max-width:380px}
+  .switch{width:44px;height:25px;border-radius:14px;background:var(--primary);position:relative;flex-shrink:0;margin-top:2px}
+  .switch:after{content:"";position:absolute;top:2.5px;right:3px;width:20px;height:20px;border-radius:50%;background:#fff}
+  .noot{max-width:900px;background:var(--accent-bg);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--primary);line-height:1.7;margin-top:26px}
+</style>
+</head>
+<body>
+<h1>Instellingen › Doorbelasting — + Doelentiteit toevoegen</h1>
+<p class="sub">De whitelist (doelentiteit ↔ debiteur in de bron-administratie) is nu alleen via de seed-CLI te vullen.
+Deze dialoog maakt dat Beheerder-klikwerk. Context: de bestaande whitelist-tabel krijgt de knop rechtsboven.</p>
+
+<div class="kopregel">
+  <b style="font-size:14px">Whitelist doelentiteiten — bron: Kempen Facilities B.V.</b>
+  <span style="margin-left:auto"></span>
+  <button class="btn klein">+ Doelentiteit toevoegen</button>
+</div>
+<div class="tabel">
+  <div><span>Molenhof Beheer B.V.</span><span class="tag">IC · provisie 4808</span></div>
+  <div><span>Molenhof Vastgoed B.V.</span><span class="tag">IC · provisie 4808</span></div>
+  <div><span>Oirschot Recreatie B.V.</span><span class="tag">IC · provisie 4808</span></div>
+  <div><span style="color:var(--faint)">… (bestaande rijen mét wijzig-potlood, ongewijzigd)</span><span></span></div>
+</div>
+
+<div class="modal">
+  <div class="m-kop">
+    <h3>Doelentiteit toevoegen</h3>
+    <div class="s">Bron: Kempen Facilities B.V. — de nieuwe rij is direct bruikbaar in "Doorbelasten na boeken".</div>
+  </div>
+  <div class="m-body">
+    <div>
+      <span class="lbl">Doel-administratie</span>
+      <div class="veld">Mantelzorgwoningen Midden Nederland</div>
+      <div class="hint">Doorzoekbare lijst van onboarded administraties die nog niet in de whitelist staan.</div>
+    </div>
+    <div>
+      <span class="lbl">Debiteur in Kempen Facilities (RLZ)</span>
+      <div class="okblok">Geen bestaande debiteur "Mantelzorgwoningen Midden Nederland" gevonden — wordt bij opslaan idempotent aangemaakt in RLZ (zelfde werkwijze als de verkoopboekingen). Bestaat er wél een match, dan wordt die gekoppeld en hier getoond.</div>
+    </div>
+    <div>
+      <span class="lbl">Provisierekening (kosten, doel-kant)</span>
+      <div class="veld">4808 · Provisie doorbelasting</div>
+      <div class="hint">Vooringevuld met de rekening van de bestaande rijen; aanpasbaar per rij.</div>
+    </div>
+    <div class="switchrij">
+      <div>
+        <span class="lbl" style="margin:0 0 3px">Intercompany (rekening-courant met de bron)</span>
+        <div class="s">Aan = open posten van dit doel worden uitgesloten van afletter-voorstellen (IC-poort). Alle huidige doelen behalve Rubicon hebben RC met Facilities → default aan.</div>
+      </div>
+      <div class="switch"></div>
+    </div>
+  </div>
+  <div class="m-voet">
+    <button class="btn sec klein">Annuleren</button>
+    <button class="btn klein">Toevoegen aan whitelist</button>
+  </div>
+</div>
+
+<p class="noot"><b>Ontwerpnotities:</b> ① Beheerder-only, zelfde router als de bestaande wijzig-endpoint (nieuw
+aanmaak-endpoint POST ernaast); alles geauditeerd. ② Debiteur-koppeling: lookup op naam in de bron-RLZ; geen match =
+idempotente aanmaak (lookup-vóór-PUT + deterministisch client-GUID, bestaande verkoopmotor-bouwsteen) — de dialoog zegt
+vooraf wat er gaat gebeuren. ③ Provisie-GB vooringevuld vanuit de bestaande rijen van dezelfde bron. ④ IC-vlag default
+aan (RC-praktijk Facilities), uitleg bij de switch; achteraf wijzigbaar in de bestaande rij-bewerking. ⑤ De seed-CLI
+blijft bestaan voor bulk/herstel; deze dialoog is de normale route. ⑥ Whitelist blijft server-side afgedwongen in de
+doorbelastingsmotor — de dialoog voegt alleen rijen toe, geen motorwijziging.</p>
+</body>
+</html>
