@@ -1107,6 +1107,31 @@ def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int
     return 0
 
 
+def _zet_omzet_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Autoboek-opt-in voor OMZETRAPPORTEN (GO Peter 01-09, migratie 0096) — zelfde patroon als de
+    andere opt-ins: Beheerder als audit_event-actor, default UIT; make-terugval voor de UI-toggle."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_omzet_autoboeken_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"omzet_autoboeken_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    if resultaat and not beheer_service.haal_boeken_ingeschakeld_op(administratie_id=administratie_id):
+        print(
+            "WAARSCHUWING: de boeken-toggle van deze administratie staat uit — automatisch boeken "
+            "blijft effectief uit tot die (en 'Boeken platformbreed') ook aan staat."
+        )
+    return 0
+
+
 def _zet_verkoop_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Autoboek-opt-in voor VASTLY-VERKOOP-documenten (migratie 0051, automatisering-first) —
     zelfde patroon als bank-autoboeken: Beheerder als audit_event-actor, default UIT; aanzetten
@@ -1660,6 +1685,8 @@ def main(argv: list[str] | None = None) -> int:
         ("bank-autoboeken-uit", "Zet de bank-autoboek-toggle UIT."),
         ("verkoop-autoboeken-aan", "Zet de verkoop-autoboek-toggle (VASTLY-VERKOOP automatisch boeken) AAN."),
         ("verkoop-autoboeken-uit", "Zet de verkoop-autoboek-toggle UIT."),
+        ("omzet-autoboeken-aan", "Zet de omzet-autoboek-opt-in (kassarapporten automatisch boeken, GO 01-09) AAN."),
+        ("omzet-autoboeken-uit", "Zet de omzet-autoboek-opt-in UIT."),
         ("afgeletterd-event-aan", "Zet de tier-vlag voor het factuur_afgeletterd-event AAN (§3 v1.11)."),
         ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
         ("uren-meerwerk-aan", "Zet de uren-&-meerwerk-opt-in (steigerbouw-tak, migratie 0056) AAN."),
@@ -1830,6 +1857,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_voorraad(args, ingeschakeld=True)
     if args.commando == "voorraad-uit":
         return _zet_voorraad(args, ingeschakeld=False)
+    if args.commando == "omzet-autoboeken-aan":
+        return _zet_omzet_autoboeken(args, ingeschakeld=True)
+    if args.commando == "omzet-autoboeken-uit":
+        return _zet_omzet_autoboeken(args, ingeschakeld=False)
     if args.commando == "verkoop-autoboeken-aan":
         return _zet_verkoop_autoboeken(args, ingeschakeld=True)
     if args.commando == "verkoop-autoboeken-uit":

@@ -146,6 +146,14 @@ export function zetUrenDagmaxInstelling(administratieId: string, dagmaxUren: str
   })
 }
 
+/** Opt-in omzet-autoboeken (kassarapporten; GO Peter 01-09, migratie 0096) — Beheerder-only, default UIT. */
+export function zetOmzetAutoboekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
+  return apiJson(`/administraties/${administratieId}/omzet-autoboeken-instelling`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function zetVerkoopAutoboekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/verkoop-autoboeken-instelling`, {
     ...PUT_JSON,

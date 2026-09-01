@@ -51,6 +51,7 @@ def administratie_instellingen_lijst(
                 afgeletterd_event_ingeschakeld=r.afgeletterd_event_ingeschakeld,
                 doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
                 doorbelasting_doel=r.doorbelasting_doel,
+                omzet_autoboeken_ingeschakeld=r.omzet_autoboeken_ingeschakeld,
                 bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
                 accordering_ingeschakeld=r.accordering_ingeschakeld,
                 laatste_sync_op=r.laatste_sync_op,
@@ -593,6 +594,40 @@ def verkoop_autoboeken_instelling_zetten(
         code = status.HTTP_409_CONFLICT if "is_vastgoed" in str(exc) else status.HTTP_404_NOT_FOUND
         raise HTTPException(status_code=code, detail=str(exc)) from exc
     return schemas.VerkoopAutoboekenDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
+    "/administraties/{administratie_id}/omzet-autoboeken-instelling",
+    response_model=schemas.OmzetAutoboekenDto,
+)
+def omzet_autoboeken_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.OmzetAutoboekenDto:
+    try:
+        ingeschakeld = service.haal_omzet_autoboeken_ingeschakeld_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.OmzetAutoboekenDto(ingeschakeld=ingeschakeld)
+
+
+@router.put(
+    "/administraties/{administratie_id}/omzet-autoboeken-instelling",
+    response_model=schemas.OmzetAutoboekenDto,
+)
+def omzet_autoboeken_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.OmzetAutoboekenDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.OmzetAutoboekenDto:
+    """Autoboek-opt-in OMZETRAPPORTEN (GO Peter 01-09, migratie 0096) — Beheerder-only, default UIT,
+    audit oud→nieuw; het pad zelf boekt alleen als álles groen is (app/omzet/autoboeken.py)."""
+    try:
+        ingeschakeld = service.zet_omzet_autoboeken_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.OmzetAutoboekenDto(ingeschakeld=ingeschakeld)
 
 
 @router.get(

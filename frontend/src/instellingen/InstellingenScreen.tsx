@@ -49,6 +49,7 @@ import {
   zetAfdelingenInstelling,
   zetProjectInstelling,
   zetVoorraadInstelling,
+  zetOmzetAutoboekenInstelling,
   zetUrenDagmaxInstelling,
   zetUrenMeerwerkInstelling,
   zetIsVastgoed,
@@ -67,6 +68,7 @@ type WijzigingType =
   | 'uren_meerwerk'
   | 'afdelingen'
   | 'voorraad'
+  | 'omzet_autoboeken'
   | 'eigenaar'
   | 'iban_accordeurs'
   | 'ai_kosten_limiet'
@@ -121,6 +123,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `Voorraad bijhouden gaat AAN voor "${pending.naam}": regel-niveau feiten uit gescande inkoopfacturen en verkoopfactuurregels worden bijgehouden in de controle-laag (mi-schema), artikelteksten worden volautomatisch genormaliseerd (AI achter de bestaande gates, onzeker telt mee mét vlag) en het aansluitscherm vergelijkt de theoretische stand met tellingen. Niets wordt geboekt; er gaat nooit iets naar Reeleezee.`
         : `Voorraad bijhouden gaat UIT voor "${pending.naam}" — de feitenlaag en tellingen blijven bewaard, er komen geen nieuwe regels bij.`
+    case 'omzet_autoboeken':
+      return pending.nieuweWaarde
+        ? `Omzet-autoboeken gaat AAN voor "${pending.naam}": een kassarapport boekt ná extractie automatisch (verkoopfactuur + kostprijsmemoriaal als één transactie) uitsluitend als álles groen is — harde checks incl. memoriaal-saldo-0 en marge-plausibiliteit, categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen open vraag of afwijzing. Elk ander geval blijft gewoon in de werkvoorraad; volumerem 20/dag; elke automatische boeking is gemarkeerd en geauditeerd en een half-geboekt-geval geeft een alert.`
+        : `Omzet-autoboeken gaat UIT voor "${pending.naam}" — elk kassarapport wacht weer op de boek-klik van een medewerker.`
     case 'uren_meerwerk':
       return pending.nieuweWaarde
         ? `Uren & meerwerk (steigerbouw-tak) wordt ingeschakeld voor "${pending.naam}": ZZP'ers/uitvoerders/detacheerders kunnen er weekstaten en meerwerk op werken en het kantoor ziet de standen (module-recht vereist).`
@@ -187,6 +193,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'voorraad') {
     await zetVoorraadInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'omzet_autoboeken') {
+    await zetOmzetAutoboekenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'eigenaar') {
@@ -442,6 +452,8 @@ export function InstellingenScreen() {
                                   ? { voorraad_ingeschakeld: pending.nieuweWaarde }
                                   : pending.type === 'uren_meerwerk'
                                     ? { uren_meerwerk_ingeschakeld: pending.nieuweWaarde }
+                                    : pending.type === 'omzet_autoboeken'
+                                      ? { omzet_autoboeken_ingeschakeld: pending.nieuweWaarde }
                                     : { project_verplicht: pending.nieuweWaarde }),
                   }
                 : a,

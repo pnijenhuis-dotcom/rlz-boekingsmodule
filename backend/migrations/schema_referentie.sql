@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0095
+-- Migratie-head bij deze dump: 0096
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2805,6 +2805,7 @@ CREATE TABLE platform.administratie (
     gearchiveerd_door uuid,
     terugkerend_prijsstijging_pct numeric(5,2) DEFAULT 10.00 NOT NULL,
     verkoopmodule_afwezig boolean DEFAULT false NOT NULL,
+    omzet_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
 );

@@ -419,7 +419,11 @@ def _registreer_half_geboekt(
 
 
 def boek_omzet_document(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    extra_overgang_detail: dict | None = None,
 ) -> OmzetBoekResultaat:
     """De omzet-boekactie: harde checks server-side herhalen → failsafes (toggle + kill switch,
     volumerem) → systeemdebiteur/dagboek borgen → verkoopfactuur boeken → kostprijsmemoriaal
@@ -602,6 +606,9 @@ def boek_omzet_document(
                 "memoriaal_boekstuknummer": memoriaal_boekstuk,
                 "periode": f"{voorstel.periode_start} t/m {voorstel.periode_eind}",
                 "reden": f"geboekt in RLZ — verkoopboekstuk {verkoop_boekstuk or str(verkoop_rlz_id)[:8]}",
+                # Omzet-autoboeken (GO 01-09): `automatisch_geboekt` + bron reizen mee in de tijdlijn —
+                # zelfde chip/filter als inkoop en verkoop.
+                **(extra_overgang_detail or {}),
             },
         )
         record_audit_event(

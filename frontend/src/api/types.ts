@@ -612,6 +612,8 @@ export interface AdministratieInstellingenDto {
   /** v3 01-09: deze administratie is DOEL van minstens één actieve doorbelasting-mapping (spiegel-kant) —
    * de detailpagina toont de Doorbelasting-tab bij bron óf doel. */
   doorbelasting_doel?: boolean
+  /** Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles groen is. */
+  omzet_autoboeken_ingeschakeld?: boolean
   bank_autoboeken_ingeschakeld?: boolean
   accordering_ingeschakeld?: boolean
   laatste_sync_op?: string | null

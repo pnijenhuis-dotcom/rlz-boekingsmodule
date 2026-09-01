@@ -73,6 +73,12 @@ class VerkoopAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class OmzetAutoboekenDto(StrikteInvoer):
+    """Opt-in omzet-autoboeken (kassarapporten; GO Peter 01-09, migratie 0096)."""
+
+    ingeschakeld: bool
+
+
 class IsVastgoedDto(StrikteInvoer):
     is_vastgoed: bool
 
@@ -125,6 +131,8 @@ class AdministratieInstellingenDto(BaseModel):
     doorbelasting_ingeschakeld: bool = False
     # v3 01-09: doel van ≥ 1 actieve doorbelasting-mapping (detailpagina-tab bij bron óf doel).
     doorbelasting_doel: bool = False
+    # Omzet-autoboeken (GO 01-09, migratie 0096): opt-in per administratie, default UIT.
+    omzet_autoboeken_ingeschakeld: bool = False
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None

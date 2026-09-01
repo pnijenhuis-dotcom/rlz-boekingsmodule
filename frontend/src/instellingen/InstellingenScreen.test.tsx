@@ -154,6 +154,11 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body })
         return Promise.resolve(jsonResponse(body))
       }
+      if (url.endsWith('/omzet-autoboeken-instelling') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body))
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse(body))
+      }
       if (url.endsWith('/afdelingen-instelling') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body))
         opties.putAanroepen?.push({ url, body })
@@ -708,6 +713,33 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     await waitFor(() => expect(putAanroepen.some((p) => p.url === `/instellingen/administraties/${ADMINISTRATIE_ID}/eerste-sync`)).toBe(true))
     await waitFor(() => expect(screen.queryByRole('button', { name: /Sync opnieuw starten voor Bouwadvies/ })).not.toBeInTheDocument())
     expect(screen.getByTestId('eerste-sync-rlz-boon')).toHaveTextContent('wachtrij')
+  })
+})
+
+describe('InstellingenScreen — omzet-autoboeken (GO Peter 01-09, blok C)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('toggle op de detailpagina (tab Boeken & AI) → consequentie-dialoog → PUT /omzet-autoboeken-instelling; chip in de tabel', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [administratie({ naam: 'BLOW B.V.' }), administratie({ id: 'bbbbbbbb-0000-0000-0000-000000000002', naam: 'Al Aan B.V.', omzet_autoboeken_ingeschakeld: true })],
+      putAanroepen,
+    })
+    renderScherm()
+    expect(await screen.findByText('Omzet-autoboeken')).toBeInTheDocument()
+    await openDetail('BLOW B.V.', 'Boeken & AI')
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Omzet-autoboeken voor BLOW B.V.' }))
+    expect(screen.getByText(/verkoopfactuur \+ kostprijsmemoriaal als één transactie/)).toBeInTheDocument()
+    expect(screen.getByText(/half-geboekt-geval geeft een alert/)).toBeInTheDocument()
+    expect(putAanroepen).toHaveLength(0)
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(putAanroepen).toHaveLength(1))
+    expect(putAanroepen[0]).toEqual({ url: `/administraties/${ADMINISTRATIE_ID}/omzet-autoboeken-instelling`, body: { ingeschakeld: true } })
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Omzet-autoboeken voor BLOW B.V.' })).toBeChecked())
   })
 })
 

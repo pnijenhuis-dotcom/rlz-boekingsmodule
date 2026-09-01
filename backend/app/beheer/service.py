@@ -171,6 +171,7 @@ class AdministratieInstellingen:
     afgeletterd_event_ingeschakeld: bool = False
     doorbelasting_ingeschakeld: bool = False
     doorbelasting_doel: bool = False
+    omzet_autoboeken_ingeschakeld: bool = False
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None
@@ -289,6 +290,7 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             afgeletterd_event_ingeschakeld=r.afgeletterd_event_ingeschakeld,
             doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
             doorbelasting_doel=r.id in doelen,
+            omzet_autoboeken_ingeschakeld=r.omzet_autoboeken_ingeschakeld,
             bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
             accordering_ingeschakeld=r.accordering_ingeschakeld,
             laatste_sync_op=laatste_sync.get(r.id),
@@ -630,6 +632,39 @@ def haal_verkoop_autoboeken_ingeschakeld_op(*, administratie_id: uuid.UUID) -> b
         if administratie is None:
             raise BeheerFout(f"Onbekende administratie: {administratie_id}")
         return administratie.verkoop_autoboeken_ingeschakeld
+
+
+def haal_omzet_autoboeken_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.omzet_autoboeken_ingeschakeld
+
+
+def zet_omzet_autoboeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
+    """Autoboek-opt-in voor OMZETRAPPORTEN (kassarapporten) — GO Peter 01-09, migratie 0096,
+    automatisering-first-patroon. Default UIT; Beheerder-only (router/CLI); overal UIT tot Peter per
+    administratie activeert. De boeken-failsafes (toggle + kill switch + volumerem) en álle harde
+    omzet-checks gelden onverkort in de omzet-boekmotor (app/omzet/autoboeken.py)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.omzet_autoboeken_ingeschakeld
+        administratie.omzet_autoboeken_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="omzet_autoboeken_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"omzet_autoboeken_ingeschakeld": oud},
+            nieuwe_waarde={"omzet_autoboeken_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
 
 
 def zet_verkoop_autoboeken_ingeschakeld(

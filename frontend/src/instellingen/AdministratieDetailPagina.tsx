@@ -51,6 +51,8 @@ export function ariaLabelVoor(type: ToggleType): string {
       return 'Afdelingen van toepassing voor'
     case 'voorraad':
       return 'Voorraad bijhouden voor'
+    case 'omzet_autoboeken':
+      return 'Omzet-autoboeken voor'
   }
 }
 
@@ -222,6 +224,12 @@ export function AdministratieDetailPagina({
             {toggle('ai_extractie', a.ai_extractie_ingeschakeld, 'AI-extractie (AVG-gate)', "PDF's gaan voor extractie naar de Claude API — default aan; de deterministische template-terugval werkt óók bij uit.")}
             {toggle('project', a.project_verplicht, 'Project verplicht bij boeken', 'Regels zonder project blokkeren dan het boeken (harde check).')}
             {toggle('afdelingen', a.afdelingen_ingeschakeld, 'Afdelingen', 'Afdeling verplicht op élk inkoopdocument + accorderingsroute per afdeling.')}
+            {toggle(
+              'omzet_autoboeken',
+              Boolean(a.omzet_autoboeken_ingeschakeld),
+              'Omzet-autoboeken (kassarapporten)',
+              'Boekt een omzetrapport automatisch zodra álles groen is: harde checks (incl. memoriaal-saldo-0 en marge-plausibiliteit), categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen vraag of afwijzing. Anders gewoon werkvoorraad; volumerem 20/dag; chip "automatisch" + audit.',
+            )}
             {a.afdelingen_ingeschakeld && (
               <div style={{ padding: '4px 16px 12px' }}>
                 <AfdelingenBeheer administratieId={a.id} naam={a.naam} />

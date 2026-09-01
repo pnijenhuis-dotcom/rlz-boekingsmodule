@@ -819,6 +819,16 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
         except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
             logger.exception("Autoboeken-poging mislukt voor document %s", document_id)
     elif soort == DocumentSoort.KASSARAPPORT.value:
+        # Omzet-autoboeken-opt-in (GO Peter 01-09, migratie 0096): éérst de autoboek-poging (post-commit,
+        # systeem-actor; elke uitkomst geauditeerd zodra de opt-in aanstaat), daarná de mapping-autovraag —
+        # zelfde volgorde als het verkoop-pad (andersom zou de vraag-status de weigering onzichtbaar maken).
+        from app.omzet import autoboeken as omzet_autoboeken  # lokaal: importcyclus omzet ↔ documenten
+
+        try:
+            omzet_autoboeken.probeer_omzet_autoboeken_na_extractie(administratie_id=administratie_id, document_id=document_id)
+        except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
+            logger.exception("Omzet-autoboeken-poging mislukt voor document %s", document_id)
+
         from app.omzet import autovraag  # lokaal: voorkomt een importcyclus omzet ↔ documenten
 
         try:
