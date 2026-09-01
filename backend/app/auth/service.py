@@ -1342,6 +1342,13 @@ class VernieuwdeUitnodiging:
     e_mail: str
 
 
+def rol_van_gebruiker(gebruiker_id: uuid.UUID) -> GebruikerRol | None:
+    """Rol-lookup voor de mailkant (blok F: app-rollen krijgen het "Download eerst de app"-blok)."""
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        g = session.get(Gebruiker, gebruiker_id)
+        return g.rol if g is not None else None
+
+
 def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> VernieuwdeUitnodiging:
     """ "Opnieuw mailen" (Gebruikers & toegang): het oorspronkelijke token bestaat alleen als
     hash, dus opnieuw versturen = een nieuw token uitgeven. Oudere nog-open uitnodigingen van

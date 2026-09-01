@@ -169,6 +169,10 @@ jobs:
       # bevat een '@' en kan dus niet in de ^@^-gescheiden --set-env-vars hierboven; bewust
       # zónder ||-fallback (geen secrets nodig — deze stap mag nooit stil overgeslagen worden:
       # zonder deze env laat de snapshot het veld weg = "geen uitspraak" richting Vastly).
+      # Store-links (blok F nachtrun 01/02-09): zodra Apple/Google de listing goedkeuren, hier
+      # STORE_LINK_IOS / STORE_LINK_ANDROID toevoegen aan de --update-env-vars hieronder
+      # (bv. "…,STORE_LINK_IOS=https://apps.apple.com/…,STORE_LINK_ANDROID=https://play.google.com/…").
+      # Config-waarde invullen = de hele nazorg; leeg = niets tonen. NIET vullen vóór de goedkeuring.
       - name: Registersync inbox_adres op de service
         run: |
           gcloud run services update rlz-backend \

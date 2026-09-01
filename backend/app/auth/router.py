@@ -138,6 +138,7 @@ def uitnodiging_aanmaken(
                 e_mail=payload.e_mail,
                 token=resultaat.token,
                 verloopt_op=resultaat.verloopt_op,
+                app_rol=is_externe_app_rol(payload.rol),
             )
             mail_verzonden = True
         except berichten_mail.MailFout as exc:
@@ -343,11 +344,13 @@ def uitnodiging_opnieuw_mailen(
     mail_verzonden = False
     mail_fout: str | None = None
     try:
+        rol = service.rol_van_gebruiker(gebruiker_id)
         uitnodigingsmail.verstuur_uitnodigingsmail(
             naam=vernieuwd.naam,
             e_mail=vernieuwd.e_mail,
             token=vernieuwd.resultaat.token,
             verloopt_op=vernieuwd.resultaat.verloopt_op,
+            app_rol=rol is not None and is_externe_app_rol(rol),
         )
         mail_verzonden = True
     except berichten_mail.MailFout as exc:
@@ -435,11 +438,13 @@ def e_mail_wijzigen(
     vernieuwd = gewijzigd.vernieuwde_uitnodiging
     if vernieuwd is not None:
         try:
+            rol = service.rol_van_gebruiker(gebruiker_id)
             uitnodigingsmail.verstuur_uitnodigingsmail(
                 naam=gewijzigd.naam,
                 e_mail=gewijzigd.nieuw_e_mail,
                 token=vernieuwd.token,
                 verloopt_op=vernieuwd.verloopt_op,
+                app_rol=rol is not None and is_externe_app_rol(rol),
             )
             mail_verzonden = True
         except berichten_mail.MailFout as exc:
@@ -579,7 +584,12 @@ def _passkey_setup_gebruiker(setup: webauthn_service.PasskeySetup = Depends(_pas
 def webauthn_config() -> schemas.WebauthnConfigResponse:
     """Publiek: de PWA moet vóór de login weten of de dev-stub actief is (LAN-IP-kliktest heeft
     geen secure context, dus geen echte WebAuthn). Bevat geen gevoelige informatie."""
-    return schemas.WebauthnConfigResponse(dev_stub=webauthn_service.dev_stub_actief(), rp_id=settings.webauthn_rp_id)
+    return schemas.WebauthnConfigResponse(
+        dev_stub=webauthn_service.dev_stub_actief(),
+        rp_id=settings.webauthn_rp_id,
+        store_link_ios=settings.store_link_ios.strip() or None,
+        store_link_android=settings.store_link_android.strip() or None,
+    )
 
 
 @router.post("/accordeur/login", response_model=schemas.AccordeurLoginResponse)

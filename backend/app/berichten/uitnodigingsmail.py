@@ -18,12 +18,36 @@ def activeerlink(token: str) -> str:
     return f"{settings.app_basis_url.rstrip('/')}/activeren?token={token}"
 
 
-def verstuur_uitnodigingsmail(*, naam: str, e_mail: str, token: str, verloopt_op: datetime) -> None:
-    """Raise-t mail.MailFout bij niet-geconfigureerd/mislukt — de aanroeper maakt dat zichtbaar."""
+def store_links() -> list[tuple[str, str]]:
+    """(label, url) per platform, alleen gevulde links (blok F: leeg = niets tonen)."""
+    uit: list[tuple[str, str]] = []
+    if settings.store_link_ios.strip():
+        uit.append(("iPhone/iPad (App Store)", settings.store_link_ios.strip()))
+    if settings.store_link_android.strip():
+        uit.append(("Android (Google Play)", settings.store_link_android.strip()))
+    return uit
+
+
+def download_blok() -> str:
+    """Blok "Download eerst de app" voor app-rollen — lege string zolang er geen store-link gevuld is."""
+    links = store_links()
+    if not links:
+        return ""
+    regels = "\n".join(f"- {label}: {url}" for label, url in links)
+    return f"Download eerst de app op je telefoon en open daarna de link hieronder:\n{regels}\n\n"
+
+
+def verstuur_uitnodigingsmail(
+    *, naam: str, e_mail: str, token: str, verloopt_op: datetime, app_rol: bool = False
+) -> None:
+    """Raise-t mail.MailFout bij niet-geconfigureerd/mislukt — de aanroeper maakt dat zichtbaar.
+    `app_rol` (accordeur/veldrollen, blok F): mét gevulde store-links krijgt de mail het blok
+    "Download eerst de app"; zonder links is de mail exact zoals voorheen."""
     link = activeerlink(token)
     tekst = (
         f"Beste {naam},\n\n"
         f"Er staat een account voor je klaar bij Administratiekantoor Nijenhuis.\n\n"
+        f"{download_blok() if app_rol else ''}"
         f"Activeer je account via deze link (eenmalig, geldig tot "
         f"{verloopt_op.astimezone().strftime('%d-%m-%Y %H:%M')}):\n{link}\n\n"
         f"Werkt de link niet meer? Vraag dan een nieuwe uitnodiging aan bij het kantoor.\n\n"

@@ -114,8 +114,35 @@ describe('ActivateScreen — mobiel-first activatie externe rollen (besluit 28-0
     expect(screen.getByLabelText('QR-code met dezelfde activatielink').querySelector('svg')).toBeInTheDocument()
     expect(screen.queryByLabelText(/wachtwoord/i)).toBeNull()
     expect(screen.getByText(/niets is nog vastgelegd/)).toBeInTheDocument()
+    // Blok F: zonder gevulde store-links geen spoor (geen placeholders).
+    expect(screen.queryByTestId('store-links')).toBeNull()
     // De link verzilvert hier niets: alleen de info-route is geraakt, nooit accepteren.
     expect(aangeroepen.some((a) => a.includes('/auth/uitnodigingen/accepteren'))).toBe(false)
+  })
+
+  it('blok F: mét gevulde store-links toont het stop-scherm "Download eerst de app" naast de QR — alleen de gevulde platformen', async () => {
+    stubInfoFetch('passkey')
+    const basis = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) =>
+        url === '/auth/webauthn/config'
+          ? Promise.resolve(
+              new Response(JSON.stringify({ dev_stub: false, rp_id: 'localhost', store_link_ios: 'https://apps.apple.com/nl/app/id123', store_link_android: null }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              }),
+            )
+          : (basis as typeof fetch)(url, init),
+      ),
+    )
+    renderActiveren('/activeren?token=abc')
+    expect(await screen.findByTestId('activatie-stopscherm')).toBeInTheDocument()
+    const links = await screen.findByTestId('store-links')
+    expect(links).toHaveTextContent('Download eerst de app')
+    expect(screen.getByRole('link', { name: /App Store/ })).toHaveAttribute('href', 'https://apps.apple.com/nl/app/id123')
+    expect(screen.queryByRole('link', { name: /Google Play/ })).toBeNull()
+    expect(screen.getByLabelText('QR-code met dezelfde activatielink')).toBeInTheDocument()
   })
 
   it('externe link op een telefoon mét platform-authenticator → door naar de app-flow, mét de link in de URL', async () => {

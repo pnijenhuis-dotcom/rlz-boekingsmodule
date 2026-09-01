@@ -340,6 +340,11 @@ class Settings(BaseSettings):
     # — de auth-cadans (passkey bij opening) blijft de poort; goedkeuren-vanuit-de-mail (met of
     # zonder token) bestaat bewust niet.
     app_basis_url: str = "http://localhost:5173"
+    # Store-links (blok F nachtrun 01/02-09): gevuld zodra Apple/Google de listing goedkeuren — leeg = exact het
+    # huidige gedrag (niets tonen, geen placeholders). Verschijnen in de uitnodigings-/activatiemail voor
+    # app-rollen, op het desktop-stop-scherm van /activeren en op het web-fallback-scherm van de universal link.
+    store_link_ios: str = ""
+    store_link_android: str = ""
 
     # Synthetische bewaking + alerting (best-practice-besluit 1, 31-08 — aanleiding: twee
     # stille productie-incidenten in het weekend van 30/31-08). Job rlz-bewaking, elk kwartier

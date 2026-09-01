@@ -155,6 +155,9 @@ class WebauthnConfigResponse(BaseModel):
 
     dev_stub: bool
     rp_id: str
+    # Store-links (blok F): None zolang leeg — de schermen tonen dan niets (geen placeholders).
+    store_link_ios: str | None = None
+    store_link_android: str | None = None
 
 
 class WebauthnRegistratieVoltooienRequest(StrikteInvoer):

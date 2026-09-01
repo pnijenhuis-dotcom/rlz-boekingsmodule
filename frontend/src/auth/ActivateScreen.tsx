@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
+import { StoreLinks } from './StoreLinks'
+import type { WebauthnConfigDto } from '../accordeur/webauthnClient'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { TokenPaarResponseDto, UitnodigingAccepterenResponseDto } from '../api/types'
 import {
@@ -45,6 +47,8 @@ export function ActivateScreen() {
   const [linkToets, setLinkToets] = useState<'bezig' | 'kantoor' | 'stop' | 'ongeldig'>('bezig')
   const [linkInfo, setLinkInfo] = useState<UitnodigingInfoDto | null>(null)
   const [linkFout, setLinkFout] = useState<string | null>(null)
+  // Blok F: store-links (leeg = niets tonen) voor het stop-scherm naast de QR.
+  const [webauthnConfig, setWebauthnConfig] = useState<WebauthnConfigDto | null>(null)
   useEffect(() => {
     if (!token) return
     let actief = true
@@ -58,7 +62,10 @@ export function ActivateScreen() {
           return
         }
         const devStub = await haalWebauthnConfig()
-          .then((c) => c.dev_stub)
+          .then((c) => {
+            if (actief) setWebauthnConfig(c)
+            return c.dev_stub
+          })
           .catch(() => false)
         const uitkomst = await toetsActivatieApparaat(devStub)
         if (!actief) return
@@ -149,6 +156,7 @@ export function ActivateScreen() {
               <QRCodeSVG value={dezelfdeLink} size={180} />
             </div>
           </div>
+          <StoreLinks config={webauthnConfig} variant="stop" />
           <p className="hint">🔒 De link blijft 72 uur geldig · niets is nog vastgelegd</p>
         </div>
       </div>

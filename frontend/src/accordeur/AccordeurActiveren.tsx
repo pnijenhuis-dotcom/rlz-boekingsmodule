@@ -26,11 +26,13 @@ import {
   zetBiometrieAan,
 } from '../api/appSlot'
 import { PincodeKiezen } from './appslot/PincodeKiezen'
+import { StoreLinks } from '../auth/StoreLinks'
 import type { TokenPaarResponseDto, UitnodigingAccepterenResponseDto } from '../api/types'
 import {
   apparaatNaam,
   haalUitnodigingInfo,
   haalWebauthnConfig,
+  type WebauthnConfigDto,
   loginOpties,
   loginVoltooien,
   meldActivatieProbleem,
@@ -68,13 +70,18 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
   // Pincode-flow (native, 31-08): de gekozen code leeft alleen hier tot de passkey staat —
   // mislukt de registratie, dan is er niets half (lokaal noch server-side).
   const nativePin = uitnodigingToken !== undefined && appSlotBeschikbaar()
+  // Blok F: store-links voor het web-fallback-scherm van de universal link (leeg = niets tonen).
+  const [storeConfig, setStoreConfig] = useState<WebauthnConfigDto | null>(null)
   const [pincode, setPincode] = useState<string | null>(null)
   const [akkoord, setAkkoord] = useState(false)
   const [bioKan, setBioKan] = useState(false)
 
   useEffect(() => {
     haalWebauthnConfig()
-      .then((config) => setDevStub(config.dev_stub))
+      .then((config) => {
+        setDevStub(config.dev_stub)
+        setStoreConfig(config)
+      })
       .catch(() => setDevStub(false))
     if (nativePin) void biometrieBeschikbaar().then(setBioKan)
   }, [nativePin])
@@ -386,6 +393,9 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
               : 'Kies een wachtwoord. Dit is uw terugval — dagelijks ontgrendelt u met gezicht of vingerafdruk.'}
           </div>
         </div>
+        {/* Blok F: de universal link landde in de browser (app niet geïnstalleerd) — download-aanbod,
+            alleen zodra de store-links gevuld zijn; doorgaan in de browser blijft mogelijk. */}
+        {!nativePin && <StoreLinks config={storeConfig} variant="fallback" />}
         {fout && <div className="acc-fout">{fout}</div>}
         <form className="acc-form" noValidate onSubmit={(e) => void wachtwoordInzenden(e)}>
           <label htmlFor="acc-act-wachtwoord">Wachtwoord (minimaal {MIN_WACHTWOORD} tekens)</label>

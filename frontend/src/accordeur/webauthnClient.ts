@@ -17,6 +17,9 @@ import { natievePasskeyPlugin } from './nativePasskey'
 export interface WebauthnConfigDto {
   dev_stub: boolean
   rp_id: string
+  /** Store-links (blok F): null/afwezig zolang leeg — dan niets tonen (geen placeholders). */
+  store_link_ios?: string | null
+  store_link_android?: string | null
 }
 
 export interface AccordeurLoginResponseDto {
