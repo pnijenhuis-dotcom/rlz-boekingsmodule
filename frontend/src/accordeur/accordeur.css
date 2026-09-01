@@ -1527,9 +1527,15 @@
   gap: 12px;
   margin-top: auto;
   padding-top: 22px;
+  /* Kliktest Peter 01-09 (activatiescherm): binnen .acc-vol (align-items: center) kromp het
+     grid naar zijn inhoudsbreedte — toetsen van ~30px. Volle breedte tot de mockup-maat
+     (frame 390px − 2×24px padding = 342px) op álle drie de numpad-schermen (kiezen/bevestigen/
+     slot), ook op kleine toestellen. */
+  width: 100%;
+  max-width: 342px;
 }
 .acc-num {
-  height: 58px;
+  height: 62px;
   border-radius: 16px;
   background: var(--acc-panel);
   border: 1px solid var(--acc-border);
@@ -1550,6 +1556,22 @@
   border: none;
   font-size: 13px;
   color: var(--acc-muted);
+}
+/* Klein terug-pijltje linksboven op een volledige-schermstaat (kliktest Peter 01-09, scherm 3
+   activatieflow): spiegel van de .acc-iconbtn rechtsboven — de inhoud blijft één gecentreerde
+   groep, het pijltje hangt in de hoek. */
+.acc-vol .acc-terug {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 12px;
+  background: none;
+  border: none;
+  color: var(--acc-muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .acc-faceid {
   width: 74px;

@@ -560,6 +560,11 @@ tr.subrij .eerste-sync-rij ul {
 .tabel-scroll.sticky-koppen {
   overflow: auto;
   max-height: max(340px, calc(100vh - 230px));
+  /* Kliktest Peter 01-09 (administraties-v2): een focus-terugkeer (dialoog sluiten, tabben)
+   * scrolt de rij minimaal in beeld — tot de contáinerrand, dus half achter de sticky kop.
+   * scroll-padding houdt programmatische scrolls (focus/scrollIntoView) onder de kop uit;
+   * de waarde dekt de kophoogte ruim (th ≈ 34px). */
+  scroll-padding-top: 40px;
 }
 
 .tabel-scroll.sticky-koppen table {

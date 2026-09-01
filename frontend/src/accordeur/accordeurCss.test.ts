@@ -91,3 +91,17 @@ describe('accordeur.css — uploadknop i.p.v. kale file-input (overlap-bug iPad 
     expect(cssZonderCommentaar).not.toContain('.acc-fotoknop')
   })
 })
+
+describe('accordeur.css — numpad-maatvoering app-lock (kliktest Peter 01-09)', () => {
+  it('.acc-numpad is vol breed tot de mockup-maat: binnen .acc-vol (align-items: center) kromp het grid anders naar inhoudsbreedte', () => {
+    const blok = blokVan('.acc-numpad')
+    expect(blok).toMatch(/width:\s*100%/)
+    // Mockup app-lock-pincode.html: frame 390px − 2×24px padding = 342px inhoudsbreedte.
+    expect(maxBreedte(blok)).toBe(342)
+  })
+
+  it('de toetsen dragen de mockup-hoogte (62px) — alle drie de numpad-schermen delen PincodeInvoer + deze regel', () => {
+    const blok = blokVan('.acc-num')
+    expect(blok).toMatch(/height:\s*62px/)
+  })
+})

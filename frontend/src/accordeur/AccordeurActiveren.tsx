@@ -320,9 +320,24 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
 
   if (stap === 'afronden') {
     // Scherm 3 (mockup): Face ID-vraag + voorwaarden-akkoord; de passkey-registratie gebeurt
-    // onder water bij de knop — geen eigen scherm (ontwerpnotitie ⑤).
+    // onder water bij de knop — geen eigen scherm (ontwerpnotitie ⑤). Kliktest Peter 01-09:
+    // het scherm vulde maar half (knoppen via margin-top:auto onderaan gepind, compacte inhoud
+    // bovenin → groot leeg gat) — nu één gecentreerde groep (volledig scherm, geen halfleeg
+    // onderstuk) mét klein terug-pijltje linksboven naar de code-stap.
     return (
       <div className="acc-vol">
+        <button
+          type="button"
+          className="acc-terug"
+          disabled={bezig}
+          onClick={() => {
+            setFout(null)
+            setPincode(null)
+            setStap('code')
+          }}
+        >
+          ‹ Code
+        </button>
         {kop}
         <div className="acc-bio">
           <b>{bioKan ? 'Face ID gebruiken?' : 'Bijna klaar'}</b>
@@ -338,24 +353,22 @@ export function AccordeurActiveren({ uitnodigingToken, herstel = false, passkeyS
           <input type="checkbox" checked={akkoord} onChange={(e) => setAkkoord(e.target.checked)} />
           <span>Ik ga akkoord met de gebruiksvoorwaarden en de privacyverklaring (versie 2026-08-28-v2).</span>
         </label>
-        <div style={{ marginTop: 'auto', width: '100%' }}>
-          {bioKan && (
-            <button
-              className="acc-btn primair"
-              disabled={bezig || !akkoord}
-              onClick={() => void rondPincodeActivatieAf(true)}
-            >
-              {bezig ? 'Bezig…' : 'Face ID aanzetten en beginnen'}
-            </button>
-          )}
+        {bioKan && (
           <button
-            className={bioKan ? 'acc-btn secundair' : 'acc-btn primair'}
+            className="acc-btn primair"
             disabled={bezig || !akkoord}
-            onClick={() => void rondPincodeActivatieAf(false)}
+            onClick={() => void rondPincodeActivatieAf(true)}
           >
-            {bezig ? 'Bezig…' : bioKan ? 'Liever alleen met code — sla over' : 'Beginnen'}
+            {bezig ? 'Bezig…' : 'Face ID aanzetten en beginnen'}
           </button>
-        </div>
+        )}
+        <button
+          className={bioKan ? 'acc-btn secundair' : 'acc-btn primair'}
+          disabled={bezig || !akkoord}
+          onClick={() => void rondPincodeActivatieAf(false)}
+        >
+          {bezig ? 'Bezig…' : bioKan ? 'Liever alleen met code — sla over' : 'Beginnen'}
+        </button>
       </div>
     )
   }

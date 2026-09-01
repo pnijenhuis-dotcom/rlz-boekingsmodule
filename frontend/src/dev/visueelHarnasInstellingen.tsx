@@ -37,6 +37,12 @@ const ADMINISTRATIES = [
     eigenaar_gebruiker_id: MEDEWERKER_ID,
     is_vastgoed: false,
     verkoop_autoboeken_ingeschakeld: false,
+    eigenaar_naam: 'Demi de Vries',
+    iban_accordeurs_aantal: 2,
+    laatste_sync_op: '2026-08-31T06:14:00Z',
+    webservice_username: 'ws-universal',
+    probe_groen: true,
+    rlz_admin_id: '11111111-2222-3333-4444-555555555555',
   },
   {
     id: ADMIN_2,
@@ -58,6 +64,23 @@ const ADMINISTRATIES = [
     is_vastgoed: false,
     verkoop_autoboeken_ingeschakeld: false,
   },
+  // Sticky-koppen-regressie (kliktest Peter 01-09): genoeg rijen dat .tabel-scroll.sticky-koppen
+  // intern scrolt — het sweep-geval ?pad=/instellingen/administraties toetst deze lange lijst.
+  ...Array.from({ length: 14 }, (_, i) => ({
+    id: `abcdef0${i.toString(16)}-0000-0000-0000-0000000000${i.toString(16).padStart(2, '0')}`,
+    naam: `Vulling ${i + 1} B.V. (sticky-koppen-regressie)`,
+    boeken_ingeschakeld: true,
+    project_verplicht: false,
+    ai_extractie_ingeschakeld: true,
+    eigenaar_gebruiker_id: null,
+    is_vastgoed: false,
+    verkoop_autoboeken_ingeschakeld: false,
+    eigenaar_naam: 'Demi de Vries',
+    iban_accordeurs_aantal: 1,
+    laatste_sync_op: '2026-08-31T06:14:00Z',
+    webservice_username: `ws-vulling-${i + 1}`,
+    probe_groen: true,
+  })),
 ]
 
 const MEDEWERKERS = {
@@ -75,7 +98,8 @@ const echteFetch = window.fetch.bind(window)
 window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof invoer === 'string' ? invoer : invoer instanceof URL ? invoer.toString() : invoer.url
   if (url === '/auth/token/vernieuwen') return Promise.resolve(jsonResponse({ access_token: fakeAccessToken() }))
-  if (url === '/instellingen/administraties') return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
+  if (url === '/instellingen/administraties' || url.startsWith('/instellingen/administraties?'))
+    return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
   if (url === '/instellingen/boeken-kill-switch') return Promise.resolve(jsonResponse({ ingeschakeld: true }))
   if (url === '/instellingen/intake-ai') return Promise.resolve(jsonResponse({ ingeschakeld: false }))
   if (url === '/instellingen/ai-kosten') {
@@ -167,9 +191,13 @@ if (new URLSearchParams(window.location.search).has('donker')) {
   document.body.classList.add('dark')
 }
 
+// Startroute overschrijfbaar (?pad=/instellingen/administraties) — zo kan de overflow-sweep
+// óók de subpagina's meten (sticky-koppen-regressie 01-09) zonder klik-automatisering.
+const startPad = new URLSearchParams(window.location.search).get('pad') ?? '/instellingen'
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MemoryRouter initialEntries={['/instellingen']}>
+    <MemoryRouter initialEntries={[startPad]}>
       <AuthProvider>
         <ToastProvider>
           <div className="app">
