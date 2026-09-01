@@ -64,6 +64,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Les vastgoed 20-08 (run #50) / conventies.md CI-gates punt 8,
+    # geland 01-09 (drift-audit I3): elke job een harde bovengrens.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
