@@ -651,17 +651,22 @@ export function InstellingenScreen() {
 
       {sectie === 'administraties' && (
       <div className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-          <div>
+        {/* Kopregel-layout (UI-fix 01-09, screenshot Peter): de knop kromp eerder als flex-item
+            onder de introtekst en viel daar half over de filterregel "N actief · gearchiveerd".
+            Nu: tekstblok mét flex-basis (knop blijft rechtsboven naast de titel, v2-mockup-norm)
+            + eigen marge onder de kopregel — knop en filterregel elk hun eigen ruimte, ook op de
+            smalle sweep-breekpunten (het scherm zit in scripts/overflow_sweep.sh). */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div style={{ flex: '1 1 320px', minWidth: 0 }}>
             <h2 style={{ marginTop: 0 }}>Administraties</h2>
-            <p className="hint" style={{ marginTop: 4 }}>
+            <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
               Chips tonen alleen ingeschakelde modules en afwijkingen van de defaults (Boeken en AI-extractie staan standaard aan).
               Klik op een rij of ⚙ voor alle instellingen; selecteer rijen voor bulk-bediening. Elke wijziging vraagt één bevestiging en wordt geauditeerd.
             </p>
           </div>
           {/* Wizard (besluit Peter 26-08, punt 5): webservice-gegevens → probe groen → keuze uit
               GET Administrations → opslaan met defaults → eerste sync op de achtergrond. */}
-          <Button onClick={() => setWizardOpen(true)}>+ Administratie toevoegen</Button>
+          <Button style={{ flexShrink: 0 }} onClick={() => setWizardOpen(true)}>+ Administratie toevoegen</Button>
         </div>
         {administraties === null && !laadFout && <SkeletonRegels />}
         {administraties !== null && administraties.length === 0 && (

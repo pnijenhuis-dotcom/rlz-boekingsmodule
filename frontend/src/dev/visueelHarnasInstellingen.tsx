@@ -64,6 +64,20 @@ const ADMINISTRATIES = [
     is_vastgoed: false,
     verkoop_autoboeken_ingeschakeld: false,
   },
+  // Kopregel-fix 01-09 (screenshot Peter: knop half over "N actief · gearchiveerd (1)"): één
+  // gearchiveerde rij zodat de filterregel mét gearchiveerd-link in de sweep meedraait.
+  {
+    id: 'abcdefff-0000-0000-0000-0000000000ff',
+    naam: 'Gearchiveerd Voorbeeld B.V.',
+    boeken_ingeschakeld: true,
+    project_verplicht: false,
+    ai_extractie_ingeschakeld: true,
+    eigenaar_gebruiker_id: null,
+    is_vastgoed: false,
+    verkoop_autoboeken_ingeschakeld: false,
+    gearchiveerd_op: '2026-08-30T10:00:00Z',
+    gearchiveerd_door_naam: 'Peter Nijenhuis',
+  },
   // Sticky-koppen-regressie (kliktest Peter 01-09): genoeg rijen dat .tabel-scroll.sticky-koppen
   // intern scrolt — het sweep-geval ?pad=/instellingen/administraties toetst deze lange lijst.
   ...Array.from({ length: 14 }, (_, i) => ({
