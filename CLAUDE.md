@@ -403,6 +403,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   vraag/afwijzing; volumerem en accorderingspoort onverkort; elk geval geauditeerd +
   tijdlijn-/werkvoorraadmarkering "automatisch". NB bank-autoboeken (opt-in per
   administrátie, vaste regels) staat hier los van (live sinds 2026-08-02).
+  **Autoboek-kandidaten-motor (blok B 01-09, mockup `autoboek-kandidaten.html` = norm, migratie
+  0095 — BESLISSINGEN "AUTOBOEK-KANDIDATEN-MOTOR" is canoniek):** `app/autoboek_kandidaten/` nomineert
+  deterministisch (geen AI, geen RLZ-calls) per (administratie, leverancier) bij ≥ N opeenvolgende
+  MENS-boekingen waarbij het geheugen-voorstel ongewijzigd is geboekt (N = Beheerder-instelling,
+  default 5; correctie = teller opnieuw; automatisch telt niet) + volledig app-bevestigd geheugen +
+  geen open vraag/afwijzing/duplicaatsignaal/veldwerker-koppeling. Dagelijks meeliftend in
+  `sync-alles` (+ CLI `autoboek-kandidaten-herbereken`); scherm = het Autoboeken-nav-item
+  (tabs Kandidaten/Actief/Heroverwegen, bulk "Autoboeken aanzetten (n)" mét LIVE hertoets per
+  rij — niet meer kwalificerend = overgeslagen mét reden — via de BESTAANDE opt-in-schrijver;
+  "Kandidaat verbergen" = snooze mét verplichte reden, filter "verborgen"; Heroverwegen =
+  advies-only, uitzetten één klik mét audit). De per-leverancier-switch blijft op de
+  administratie-detailpagina (tab Boeken & AI).
   **Automatisering-first (principe Peter, vastgelegd 2026-08-16, WERKWIJZE v1.10):
   mens-op-de-knop is een testfase-drempel en afwijkings-vangnet, geen einddoel — elk
   deterministisch pad krijgt een autoboek-opt-in volgens dit vaste patroon (default UIT,
