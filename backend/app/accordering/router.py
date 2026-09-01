@@ -228,6 +228,96 @@ def bulk_aanbieden(
     )
 
 
+def _naar_bulk_uitkomsten(uitkomsten: list[service.BulkInstelUitkomst]) -> list[schemas.BulkInstelUitkomstDto]:
+    return [
+        schemas.BulkInstelUitkomstDto(
+            administratie_id=u.administratie_id,
+            administratie_naam=u.administratie_naam,
+            uitkomst=u.uitkomst,
+            rondes_vervallen=u.rondes_vervallen,
+            toggle_aangezet=u.toggle_aangezet,
+            scope_toegevoegd_voor=u.scope_toegevoegd_voor or [],
+            reden=u.reden,
+        )
+        for u in uitkomsten
+    ]
+
+
+def _bulk_lagen(invoer: schemas.BulkInstellenInput) -> list[service.LaagInput]:
+    return [
+        service.LaagInput(
+            volgnummer=laag.volgnummer,
+            accordeur_gebruiker_id=laag.accordeur_gebruiker_id,
+            bedrag_drempel=laag.bedrag_drempel,
+        )
+        for laag in invoer.lagen
+    ]
+
+
+@router.post("/accordering/bulk-instellen/preview", response_model=schemas.BulkInstellenPreviewResponse)
+def bulk_instellen_preview(
+    invoer: schemas.BulkInstellenInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.BulkInstellenPreviewResponse:
+    """Preview van de bulk (mockup bulk-accordering.html): scope-meldingen per accordeur,
+    overschrijf-waarschuwing mét telling vervallen rondes en de uitkomstenlijst — leest alleen.
+    Beheerder-only: de bulk kan scope-rijen aanmaken en dat is Beheerder-exclusief."""
+    try:
+        uitkomsten, scope_ontbreekt = service.bulk_instellen_preview(
+            administratie_ids=list(invoer.administratie_ids),
+            lagen=_bulk_lagen(invoer),
+            scope_toevoegen=invoer.scope_toevoegen,
+            actor_id=actor.id,
+            actor_rol=actor.rol.value,
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.BulkInstellenPreviewResponse(
+        uitkomsten=_naar_bulk_uitkomsten(uitkomsten),
+        scope_ontbreekt=[
+            schemas.BulkScopeOntbreektDto(
+                accordeur_gebruiker_id=m.accordeur_gebruiker_id,
+                accordeur_naam=m.accordeur_naam,
+                administratie_ids=m.administratie_ids,
+                administratie_namen=m.administratie_namen,
+            )
+            for m in scope_ontbreekt
+        ],
+    )
+
+
+@router.post("/accordering/bulk-instellen", response_model=schemas.BulkInstellenResponse)
+def bulk_instellen(
+    invoer: schemas.BulkInstellenInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.BulkInstellenResponse:
+    """Toepassen: orkestratie over de bestaande per-administratie-configuratieroute (zelfde
+    validatie, vervallen-patroon en audits als een losse wijziging) — deelfout per BV zichtbaar
+    in de uitkomst, nooit stil half. Beheerder-only (scope-aanmaak is Beheerder-exclusief)."""
+    try:
+        uitkomsten = service.bulk_instellen(
+            administratie_ids=list(invoer.administratie_ids),
+            lagen=_bulk_lagen(invoer),
+            scope_toevoegen=invoer.scope_toevoegen,
+            actor_id=actor.id,
+            actor_rol=actor.rol.value,
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.BulkInstellenResponse(uitkomsten=_naar_bulk_uitkomsten(uitkomsten))
+
+
+@router.get("/accordering/accordeur-kandidaten", response_model=schemas.KandidatenResponse)
+def alle_accordeur_kandidaten(
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.KandidatenResponse:
+    """Keuzelijst voor de bulk-dialoog: álle actieve klant-accordeurs, platform-breed — de
+    scope kan bij een geselecteerde BV immers nog ontbreken (dat lost de scope-vink op)."""
+    return schemas.KandidatenResponse(
+        kandidaten=[schemas.KandidaatDto(id=k.id, naam=k.naam) for k in service.alle_accordeur_kandidaten()]
+    )
+
+
 @router.get(
     "/administraties/{administratie_id}/accordering/kandidaten",
     response_model=schemas.KandidatenResponse,

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: bulk klant-accordering instellen (Instellingen › Administraties)</title>
+<!-- ============================================================
+     WENS PETER 01-09: accorderingslagen in één keer over meerdere
+     BV's instellen. Besluiten (01-09): (1) ontbrekende accordeur-
+     scope automatisch aanmaken mét expliciete vink, geaudit;
+     (2) bestaande config overschrijven mét melding + telling
+     vervallen lopende rondes per BV; (3) de bulk zet ook de
+     klant-accordering-toggle aan waar die uit staat.
+     Stijl = designpass-v2 (kantoor). De dialoog haakt op de
+     bestaande bulk-selectie van de administraties-v2-tabel.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#fff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-fg:#fff; --accent-bg:#e9f2f0;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --radius:12px; --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:18px;max-width:900px}
+  .bulkbalk{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 14px;box-shadow:var(--shadow);max-width:760px;margin-bottom:26px}
+  .bulkbalk b{font-size:13px}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .btn.sec{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.klein{padding:5px 11px;font-size:12px}
+  .modal{width:640px;background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.18);overflow:hidden}
+  .m-kop{padding:16px 20px;border-bottom:1px solid var(--border)}
+  .m-kop h3{font-size:15px}
+  .m-kop .s{font-size:12px;color:var(--muted);margin-top:2px}
+  .m-body{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+  .m-voet{display:flex;gap:8px;justify-content:flex-end;padding:13px 20px;border-top:1px solid var(--border);background:var(--panel-2)}
+  .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin-bottom:6px;display:block}
+  .laag{display:grid;grid-template-columns:64px 1fr 180px 30px;gap:10px;align-items:center;margin-bottom:8px}
+  .laag .nr{font-weight:800;color:var(--primary);font-size:13px}
+  .veld{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-size:12.5px;color:var(--text)}
+  .veld.placeholder{color:var(--faint)}
+  .x{color:var(--faint);cursor:pointer;text-align:center}
+  .voegtoe{font-size:12.5px;color:var(--primary);font-weight:600;cursor:pointer}
+  .vinkrij{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--muted);line-height:1.5}
+  .vinkrij input{margin-top:3px}
+  .waarschuwing{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--warn);line-height:1.55}
+  .uitkomst{border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:12.5px}
+  .uitkomst div{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
+  .uitkomst div:last-child{border-bottom:none}
+  .tag{font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px}
+  .tag.ok{background:var(--ok-bg);color:var(--ok)}
+  .tag.warn{background:var(--warn-bg);color:var(--warn)}
+  .noot{max-width:900px;background:var(--accent-bg);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--primary);line-height:1.7;margin-top:26px}
+  .rij{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+</style>
+</head>
+<body>
+<h1>Bulk: klant-accordering instellen</h1>
+<p class="sub">Ingang: selecteer BV's met de bestaande checkboxes in Instellingen › Administraties → de bulkbalk toont de
+nieuwe actie. Eén dialoog stelt de lagen in voor álle geselecteerde administraties.</p>
+
+<div class="bulkbalk">
+  <b>4 administraties geselecteerd</b>
+  <span style="color:var(--faint);font-size:12px">ARVUM · Meyer · Molenhof Beheer · Mantelzorgwoningen MN</span>
+  <span style="margin-left:auto"></span>
+  <button class="btn klein">Klant-accordering instellen…</button>
+  <button class="btn klein sec">Meer ▾</button>
+</div>
+
+<div class="rij">
+  <div class="modal">
+    <div class="m-kop">
+      <h3>Klant-accordering instellen — 4 administraties</h3>
+      <div class="s">De lagen hieronder vervangen de bestaande configuratie en zetten klant-accordering aan waar die uit staat.</div>
+    </div>
+    <div class="m-body">
+      <div>
+        <span class="lbl">Accorderingslagen (op volgorde)</span>
+        <div class="laag"><span class="nr">Laag 1</span><div class="veld">J.W.F. Gerritsen — j.gerritsen@…</div><div class="veld">alle facturen</div><span class="x">✕</span></div>
+        <div class="laag"><span class="nr">Laag 2</span><div class="veld">S. Gerritsen — sophia@…</div><div class="veld">boven € 2.500</div><span class="x">✕</span></div>
+        <div class="laag"><span class="nr">Laag 3</span><div class="veld placeholder">accordeur zoeken… (doorzoekbare lijst)</div><div class="veld placeholder">voorwaarde</div><span class="x"></span></div>
+        <span class="voegtoe">+ Laag toevoegen</span>
+      </div>
+      <label class="vinkrij"><input type="checkbox" checked><span><b>Scope toevoegen waar die ontbreekt</b> — J.W.F. Gerritsen heeft nog geen toegang tot Molenhof Beheer en Mantelzorgwoningen MN; met deze vink krijgt hij die (geauditeerd). Zonder vink worden die BV's overgeslagen.</span></label>
+      <div class="waarschuwing">⚠ <b>Overschrijven:</b> ARVUM en Meyer hebben al een accorderingsconfiguratie — die wordt vervangen. Daarbij vervallen <b>3 lopende accorderingsrondes</b> (ARVUM 2, Meyer 1); de documenten gaan terug naar "Klaar om te boeken" en kunnen daarna in bulk opnieuw aangeboden worden (bestaande banner + bulk-knop).</div>
+      <div>
+        <span class="lbl">Uitkomst na toepassen (per administratie)</span>
+        <div class="uitkomst">
+          <div><span>ARVUM B.V.</span><span class="tag warn">vervangen · 2 rondes vervallen</span></div>
+          <div><span>Beleggingsmaatschappij Meyer BV</span><span class="tag warn">vervangen · 1 ronde vervallen</span></div>
+          <div><span>Molenhof Beheer B.V.</span><span class="tag ok">ingesteld · toggle aan · scope toegevoegd</span></div>
+          <div><span>Mantelzorgwoningen MN</span><span class="tag ok">ingesteld · toggle aan · scope toegevoegd</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="m-voet">
+      <button class="btn sec klein">Annuleren</button>
+      <button class="btn klein">Toepassen op 4 administraties</button>
+    </div>
+  </div>
+</div>
+
+<p class="noot"><b>Ontwerpnotities:</b> ① haakt op de bestaande bulk-selectie van de administraties-v2-tabel; Beheerder-only.
+② Accordeur-kiezer = doorzoekbare combobox over klant-accordeurs; voorwaarde = "alle facturen" of bedragdrempel (bestaand
+voorwaardenmodel). ③ Scope-vink: ontbrekende gebruiker↔administratie-scope wordt aangemaakt (audit oud→nieuw); zonder vink
+= BV overgeslagen mét reden. ④ Overschrijven vervangt de héle lagenconfig; lopende rondes vervallen via het bestaande
+vervallen-patroon (reden + banner + bulk-opnieuw-aanbieden); de telling staat vóóraf in de dialoog. ⑤ De bulk zet de
+klant-accordering-toggle aan waar die uit staat (uitkomstkolom toont het). ⑥ Uitkomstenlijst is dezelfde weergave vóór
+(preview) en ná (resultaat) het toepassen; alles geauditeerd per administratie.</p>
+</body>
+</html>

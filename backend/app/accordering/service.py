@@ -761,6 +761,280 @@ def vervallen_meldingen(*, administratie_id: uuid.UUID) -> list[VervallenMelding
         ]
 
 
+# --- Bulk klant-accordering instellen (mockup bulk-accordering.html, besluiten Peter 01-09) -------
+#
+# Eén dialoog past de lagen toe op álle geselecteerde administraties. Server-side is dit een
+# ORKESTRATIE over de bestaande per-administratie-configuratieroute (instellingen_opslaan) —
+# geen tweede configuratie-schrijver: elke administratie krijgt exact dezelfde validatie,
+# vervallen-regel (punt 2a) en audit als een losse wijziging. Besluiten 01-09: (1) ontbrekende
+# accordeur-scope automatisch aanmaken mét expliciete vink (audit via de DB-trigger op
+# gebruiker_administratie); (2) bestaande config wordt VERVANGEN mét vooraf de telling van de
+# lopende rondes die daarbij vervallen; (3) de bulk zet de klant-accordering-toggle aan waar
+# die uit staat. Preview en resultaat delen dezelfde uitkomst-vorm (mockup-notitie ⑥).
+
+
+@dataclass(frozen=True)
+class BulkScopeOntbreekt:
+    """Vooraf-melding per accordeur (mockup: "J.W.F. Gerritsen heeft nog geen toegang tot
+    Molenhof Beheer en Mantelzorgwoningen MN")."""
+
+    accordeur_gebruiker_id: uuid.UUID
+    accordeur_naam: str
+    administratie_ids: list[uuid.UUID]
+    administratie_namen: list[str]
+
+
+@dataclass(frozen=True)
+class BulkInstelUitkomst:
+    """Eén regel van de uitkomstenlijst — zelfde vorm vóór (preview) en ná (resultaat)."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    # 'ingesteld' (had geen config) | 'vervangen' (had config) | 'overgeslagen' (mét reden) |
+    # 'fout' (alleen ná toepassen: deelfout per BV zichtbaar, nooit stil half).
+    uitkomst: str
+    rondes_vervallen: int = 0
+    toggle_aangezet: bool = False
+    scope_toegevoegd_voor: list[str] | None = None
+    reden: str | None = None
+
+
+@dataclass(frozen=True)
+class _BulkEvaluatie:
+    uitkomst: BulkInstelUitkomst
+    ontbrekende_scope_ids: list[uuid.UUID]
+
+
+def _valideer_bulk_lagen(lagen: list[LaagInput]) -> dict[uuid.UUID, str]:
+    """Zelfde basisvalidatie als instellingen_opslaan, plus — omdat de bulk-kiezer over álle
+    klant-accordeurs gaat (scope kan immers nog ontbreken) — een harde rol/status-toets op
+    élke gekozen accordeur. Geeft de namen per accordeur terug (voor de scope-meldingen)."""
+    from app.db.models import GebruikerStatus
+
+    if not lagen:
+        raise GeenLagenIngesteld("Bulk instellen vereist minstens één accorderingslaag")
+    volgnummers = [laag.volgnummer for laag in lagen]
+    if len(volgnummers) != len(set(volgnummers)):
+        raise OngeldigeAanbieding("Volgnummers van de lagen moeten uniek zijn")
+    accordeur_ids = {laag.accordeur_gebruiker_id for laag in lagen}
+    with scoped_session(None) as session:
+        rijen = session.execute(
+            select(Gebruiker.id, Gebruiker.naam, Gebruiker.rol, Gebruiker.status).where(
+                Gebruiker.id.in_(accordeur_ids)
+            )
+        ).all()
+    per_id = {r.id: r for r in rijen}
+    for accordeur_id in accordeur_ids:
+        rij = per_id.get(accordeur_id)
+        if rij is None:
+            raise OngeldigeAanbieding(f"Onbekende accordeur: {accordeur_id}")
+        if rij.rol != GebruikerRol.KLANT_ACCORDEUR:
+            raise OngeldigeAanbieding(f"'{rij.naam}' is geen klant-accordeur — alleen die rol kan accorderen")
+        if rij.status != GebruikerStatus.ACTIEF:
+            raise OngeldigeAanbieding(f"'{rij.naam}' is niet actief ({rij.status.value}) — kies een actieve accordeur")
+    return {r.id: r.naam for r in rijen}
+
+
+def _open_rondes_administratie_route(session: Session, administratie_id: uuid.UUID) -> int:
+    """Telling voor de preview: open rondes die bij een schema-wijziging zouden vervallen —
+    exact het filter van instellingen_opslaan (administratie-route: rondes zonder afdeling of
+    op de terugval-afdeling; afdelingsroutes blijven ongemoeid)."""
+    from app.afdelingen.service import terugval_id
+
+    filter_ids: set[uuid.UUID | None] = {None, terugval_id(session, administratie_id)}
+    return sum(
+        1
+        for r in session.scalars(
+            select(DocumentAccordering).where(
+                DocumentAccordering.administratie_id == administratie_id,
+                DocumentAccordering.status == AccorderingStatus.OPEN.value,
+            )
+        )
+        if _ronde_afdeling_id(r) in filter_ids
+    )
+
+
+def _bulk_evalueer_administratie(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    lagen: list[LaagInput],
+    accordeur_namen: dict[uuid.UUID, str],
+    scope_toevoegen: bool,
+) -> _BulkEvaluatie:
+    from app.db.models import GebruikerAdministratie
+
+    accordeur_ids = sorted({laag.accordeur_gebruiker_id for laag in lagen}, key=str)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            return _BulkEvaluatie(
+                BulkInstelUitkomst(
+                    administratie_id=administratie_id,
+                    administratie_naam=str(administratie_id),
+                    uitkomst="overgeslagen",
+                    reden="onbekende administratie",
+                ),
+                [],
+            )
+        naam = administratie.naam
+        if not administratie.actief:
+            return _BulkEvaluatie(
+                BulkInstelUitkomst(
+                    administratie_id=administratie_id,
+                    administratie_naam=naam,
+                    uitkomst="overgeslagen",
+                    reden="administratie is gearchiveerd",
+                ),
+                [],
+            )
+        bestaande = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None)
+        was_ingeschakeld = administratie.accordering_ingeschakeld
+        heeft_config = was_ingeschakeld or bool(bestaande)
+        rondes = (
+            _open_rondes_administratie_route(session, administratie_id)
+            if _schema_gewijzigd(bestaande, lagen)
+            else 0
+        )
+        ontbrekend = [
+            accordeur_id
+            for accordeur_id in accordeur_ids
+            if session.get(GebruikerAdministratie, (accordeur_id, administratie_id)) is None
+        ]
+    if ontbrekend and not scope_toevoegen:
+        namen = ", ".join(accordeur_namen[a] for a in ontbrekend)
+        return _BulkEvaluatie(
+            BulkInstelUitkomst(
+                administratie_id=administratie_id,
+                administratie_naam=naam,
+                uitkomst="overgeslagen",
+                reden=f"scope ontbreekt voor {namen} (vink 'Scope toevoegen' aan om die aan te maken)",
+            ),
+            ontbrekend,
+        )
+    return _BulkEvaluatie(
+        BulkInstelUitkomst(
+            administratie_id=administratie_id,
+            administratie_naam=naam,
+            uitkomst="vervangen" if heeft_config else "ingesteld",
+            rondes_vervallen=rondes,
+            toggle_aangezet=not was_ingeschakeld,
+            scope_toegevoegd_voor=[accordeur_namen[a] for a in ontbrekend],
+        ),
+        ontbrekend,
+    )
+
+
+def bulk_instellen_preview(
+    *,
+    administratie_ids: list[uuid.UUID],
+    lagen: list[LaagInput],
+    scope_toevoegen: bool,
+    actor_id: uuid.UUID,
+    actor_rol: str,
+) -> tuple[list[BulkInstelUitkomst], list[BulkScopeOntbreekt]]:
+    """Preview vóór toepassen (mockup: scope-melding + overschrijf-waarschuwing mét telling +
+    uitkomstenlijst) — leest alleen, verandert niets."""
+    _vereis_kantoor(actor_rol)
+    accordeur_namen = _valideer_bulk_lagen(lagen)
+    uitkomsten: list[BulkInstelUitkomst] = []
+    ontbrekend_per_accordeur: dict[uuid.UUID, list[tuple[uuid.UUID, str]]] = {}
+    for administratie_id in administratie_ids:
+        evaluatie = _bulk_evalueer_administratie(
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            lagen=lagen,
+            accordeur_namen=accordeur_namen,
+            scope_toevoegen=scope_toevoegen,
+        )
+        uitkomsten.append(evaluatie.uitkomst)
+        for accordeur_id in evaluatie.ontbrekende_scope_ids:
+            ontbrekend_per_accordeur.setdefault(accordeur_id, []).append(
+                (administratie_id, evaluatie.uitkomst.administratie_naam)
+            )
+    scope_meldingen = [
+        BulkScopeOntbreekt(
+            accordeur_gebruiker_id=accordeur_id,
+            accordeur_naam=accordeur_namen[accordeur_id],
+            administratie_ids=[a for a, _ in paren],
+            administratie_namen=[n for _, n in paren],
+        )
+        for accordeur_id, paren in sorted(ontbrekend_per_accordeur.items(), key=lambda kv: str(kv[0]))
+    ]
+    return uitkomsten, scope_meldingen
+
+
+def bulk_instellen(
+    *,
+    administratie_ids: list[uuid.UUID],
+    lagen: list[LaagInput],
+    scope_toevoegen: bool,
+    actor_id: uuid.UUID,
+    actor_rol: str,
+) -> list[BulkInstelUitkomst]:
+    """Toepassen: per administratie éérst de ontbrekende scopes (Beheerder-exclusief — de router
+    poort dit endpoint op require_beheerder; de aanmaak audit via de DB-trigger oud→nieuw),
+    dan de bestaande configuratieroute (vervallen-patroon + audits inbegrepen). Elke
+    administratie in een eigen transactiegang: een deelfout is per BV zichtbaar in de uitkomst
+    ('fout' mét reden) en raakt de rest niet — nooit stil half."""
+    _vereis_kantoor(actor_rol)
+    accordeur_namen = _valideer_bulk_lagen(lagen)
+    uitkomsten: list[BulkInstelUitkomst] = []
+    for administratie_id in administratie_ids:
+        evaluatie = _bulk_evalueer_administratie(
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            lagen=lagen,
+            accordeur_namen=accordeur_namen,
+            scope_toevoegen=scope_toevoegen,
+        )
+        if evaluatie.uitkomst.uitkomst == "overgeslagen":
+            uitkomsten.append(evaluatie.uitkomst)
+            continue
+        try:
+            from app.auth import service as auth_service
+
+            for accordeur_id in evaluatie.ontbrekende_scope_ids:
+                auth_service.voeg_scope_toe(
+                    actor_id=actor_id, doel_gebruiker_id=accordeur_id, administratie_id=administratie_id
+                )
+            vervallen = instellingen_opslaan(
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                actor_rol=actor_rol,
+                ingeschakeld=True,
+                lagen=lagen,
+            )
+            uitkomsten.append(replace(evaluatie.uitkomst, rondes_vervallen=vervallen))
+        except Exception as exc:  # noqa: BLE001 — deelfout per BV zichtbaar, nooit stil half
+            logger.exception("Bulk klant-accordering instellen faalde voor %s", administratie_id)
+            uitkomsten.append(
+                BulkInstelUitkomst(
+                    administratie_id=administratie_id,
+                    administratie_naam=evaluatie.uitkomst.administratie_naam,
+                    uitkomst="fout",
+                    reden=str(exc) or exc.__class__.__name__,
+                )
+            )
+    return uitkomsten
+
+
+def alle_accordeur_kandidaten() -> list[AccordeurKandidaat]:
+    """Keuzelijst voor de bulk-dialoog (Beheerder-only via de router): álle actieve
+    klant-accordeurs, platform-breed — de scope kan immers nog ontbreken (dat is precies wat
+    de scope-vink oplost). Alleen id + naam (dataminimalisatie)."""
+    from app.db.models import GebruikerStatus
+
+    with scoped_session(None) as session:
+        rijen = session.execute(
+            select(Gebruiker.id, Gebruiker.naam).where(
+                Gebruiker.status == GebruikerStatus.ACTIEF,
+                Gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR,
+            )
+        ).all()
+    return sorted((AccordeurKandidaat(id=rij.id, naam=rij.naam) for rij in rijen), key=lambda k: k.naam.lower())
+
+
 # --- aanbieden -----------------------------------------------------------------------------------
 
 

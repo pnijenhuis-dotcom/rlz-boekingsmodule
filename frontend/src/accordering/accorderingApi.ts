@@ -132,6 +132,54 @@ export function haalAccorderingKandidaten(administratieId: string): Promise<{ ka
   return apiJson(`/administraties/${administratieId}/accordering/kandidaten`)
 }
 
+// --- Bulk klant-accordering instellen (mockup bulk-accordering.html, besluiten Peter 01-09) ------
+
+export interface BulkInstellenInputDto {
+  administratie_ids: string[]
+  lagen: { volgnummer: number; accordeur_gebruiker_id: string; bedrag_drempel: string | null }[]
+  /** De expliciete vink (besluit 1): ontbrekende accordeur-scope aanmaken i.p.v. BV overslaan. */
+  scope_toevoegen: boolean
+}
+
+export interface BulkScopeOntbreektDto {
+  accordeur_gebruiker_id: string
+  accordeur_naam: string
+  administratie_ids: string[]
+  administratie_namen: string[]
+}
+
+/** Eén regel van de uitkomstenlijst — zelfde vorm vóór (preview) en ná (resultaat). */
+export interface BulkInstelUitkomstDto {
+  administratie_id: string
+  administratie_naam: string
+  uitkomst: 'ingesteld' | 'vervangen' | 'overgeslagen' | 'fout' | string
+  rondes_vervallen: number
+  toggle_aangezet: boolean
+  scope_toegevoegd_voor: string[]
+  reden: string | null
+}
+
+export interface BulkInstellenPreviewDto {
+  uitkomsten: BulkInstelUitkomstDto[]
+  scope_ontbreekt: BulkScopeOntbreektDto[]
+}
+
+/** Álle actieve klant-accordeurs, platform-breed (Beheerder-only) — de bulk-kiezer: scope kan
+ * bij een geselecteerde BV immers nog ontbreken. */
+export function haalAlleAccordeurKandidaten(): Promise<{ kandidaten: KandidaatDto[] }> {
+  return apiJson('/accordering/accordeur-kandidaten')
+}
+
+export function bulkAccorderingPreview(invoer: BulkInstellenInputDto): Promise<BulkInstellenPreviewDto> {
+  return apiPostJson('/accordering/bulk-instellen/preview', invoer)
+}
+
+export function bulkAccorderingToepassen(
+  invoer: BulkInstellenInputDto,
+): Promise<{ uitkomsten: BulkInstelUitkomstDto[] }> {
+  return apiPostJson('/accordering/bulk-instellen', invoer)
+}
+
 export function haalAccorderingVanDocument(
   administratieId: string,
   documentId: string,

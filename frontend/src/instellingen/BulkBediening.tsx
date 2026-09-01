@@ -4,6 +4,7 @@ import type { AdministratieInstellingenDto } from '../api/types'
 import { Button, Select, useToastOptioneel } from '../ui/basis'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { BevestigDialog } from './BevestigDialog'
+import { BulkAccorderingDialog } from './BulkAccorderingDialog'
 import { zetAiExtractieInstelling, zetBoekenInstelling, zetEigenaar } from './instellingenApi'
 
 /* Bulkbediening administraties (fase 3 modernisering 15-08, mockup #scherm-instellingen):
@@ -39,6 +40,10 @@ export function BulkBediening({
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
   const [deelFouten, setDeelFouten] = useState<string[]>([])
+  // Bulk klant-accordering (mockup bulk-accordering.html, 01-09): de dialoog werkt op een
+  // kopie van de selectie op het moment van openen — wissen van de selectie ná toepassen
+  // laat de resultaatweergave intact.
+  const [accorderingVoor, setAccorderingVoor] = useState<{ id: string; naam: string }[] | null>(null)
 
   // Eigenaar-kandidaten: medewerkers met scope op de éérste geselecteerde administratie; per
   // administratie controleert de backend de scope opnieuw — een niet-gescoopte medewerker
@@ -111,6 +116,13 @@ export function BulkBediening({
             <Button variant="secundair" maat="klein" onClick={() => setEigenaarKiezen(true)}>
               Eigenaar toewijzen…
             </Button>
+            <Button
+              variant="secundair"
+              maat="klein"
+              onClick={() => setAccorderingVoor(gekozen.map((a) => ({ id: a.id, naam: a.naam })))}
+            >
+              Klant-accordering instellen…
+            </Button>
           </div>
           <Button variant="ghost" maat="klein" className="ml-auto" onClick={onWisSelectie}>
             ✕ selectie wissen
@@ -167,6 +179,17 @@ export function BulkBediening({
             </div>
           </div>
         </div>
+      )}
+
+      {accorderingVoor && (
+        <BulkAccorderingDialog
+          administraties={accorderingVoor}
+          onSluiten={() => setAccorderingVoor(null)}
+          onGereed={() => {
+            onWisSelectie()
+            onGereed()
+          }}
+        />
       )}
 
       {actie && (

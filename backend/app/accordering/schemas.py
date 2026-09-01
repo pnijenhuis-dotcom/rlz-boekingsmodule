@@ -120,6 +120,48 @@ class BulkAanbiedenResponse(BaseModel):
     overgeslagen: int
 
 
+class BulkInstellenInput(StrikteInvoer):
+    """Bulk klant-accordering instellen (mockup bulk-accordering.html, besluiten Peter 01-09):
+    één lagen-set voor álle geselecteerde administraties. `scope_toevoegen` = de expliciete
+    vink uit de dialoog (besluit 1): ontbrekende accordeur-scope aanmaken i.p.v. de BV
+    overslaan. Zelfde body voor preview en toepassen (uitkomst = zelfde weergave)."""
+
+    administratie_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    lagen: list[LaagInputDto] = Field(min_length=1)
+    scope_toevoegen: bool = True
+
+
+class BulkScopeOntbreektDto(BaseModel):
+    """Vooraf-melding per accordeur: bij welke geselecteerde BV's de scope nog ontbreekt."""
+
+    accordeur_gebruiker_id: uuid.UUID
+    accordeur_naam: str
+    administratie_ids: list[uuid.UUID]
+    administratie_namen: list[str]
+
+
+class BulkInstelUitkomstDto(BaseModel):
+    """Eén regel van de uitkomstenlijst — dezelfde vorm als preview (vóór) en resultaat (ná)."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    # 'ingesteld' | 'vervangen' | 'overgeslagen' | 'fout' (fout alleen ná toepassen)
+    uitkomst: str
+    rondes_vervallen: int = 0
+    toggle_aangezet: bool = False
+    scope_toegevoegd_voor: list[str] = Field(default_factory=list)
+    reden: str | None = None
+
+
+class BulkInstellenPreviewResponse(BaseModel):
+    uitkomsten: list[BulkInstelUitkomstDto]
+    scope_ontbreekt: list[BulkScopeOntbreektDto]
+
+
+class BulkInstellenResponse(BaseModel):
+    uitkomsten: list[BulkInstelUitkomstDto]
+
+
 class VervallenMeldingDto(BaseModel):
     """Eén configuratiewijziging die lopende rondes liet vervallen (punt 2a) — voedt de eenmalige
     banner op de documentenlijst; `nog_niet_opnieuw_aangeboden` 0 = klaar."""
