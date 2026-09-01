@@ -42,8 +42,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   documentversleuteling alleen op expliciet klantverzoek.
 - **Instellingen › Administraties v2 (opdracht 30-08, mockup `instellingen-administraties-v2.html` =
   norm, akkoord Peter 29-08; migratie 0089 — BESLISSINGEN "OPDRACHT 30-08 (2)" blok A is canoniek):**
-  compacte tabel (naam + meta, module-/afwijkings-chips, sync-chip, ⚙ 🧪 🗑) + detail-dialoog per
-  administratie met álle instellingen (`AdministratiesV2.tsx`); defaults boeken + AI-extractie AAN voor
+  compacte tabel (naam + meta, module-/afwijkings-chips, sync-chip, ⚙ 🧪 🗑) + — sinds v3 01-09 —
+  detailPAGINA per administratie met tabs (`AdministratieDetailPagina.tsx`; de v2-dialoog is
+  vervallen, rij-klik/⚙ navigeren); defaults boeken + AI-extractie AAN voor
   NIEUWE administraties (bestaande behouden hun waarde, afwijking = chip); Vastly-autoboeken heeft geen
   eigen knop meer — de motor toetst op `is_vastgoed`, de kolom is een spiegel; ARCHIVEREN (🗑, nooit
   verwijderen): `actief=false` + `gearchiveerd_op/door`, webservice-login uit de credential-store,
@@ -297,11 +298,22 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt C;**
   Vragen-/Bank-tabbladen vervallen, kantoorbrede dwarsdoorsneden via klikbare KPI-kaarten
   bovenaan de werkvoorraad; oude URL's redirecten. Toon-regel: bakken-/soorten-regels alleen
-  bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). **Instellingen = landing met
-  sectiekaarten → subpagina's `/instellingen/<sectie>` (besluit 25-08, D2; deep-links
-  redirecten; sinds 31-08 rol×sectie-matrix `zichtbareSecties` fail-closed — B+P ziet als
-  enige niet-Beheerder-uitzondering de Materiaalcatalogus-kaart/-sectie, spiegel van backend
-  `require_beheerder_of_bp`); de globale boeken-kill-switch heet in de UI/CLI "Boeken platformbreed" — aan =
+  bij teller > 0; AI-kosten alleen op Instellingen (Beheerder). **Instellingen v3 (mockup
+  `instellingen-v3.html` = norm, akkoord Peter 01-09 — HERZIET D2 25-08 "landing met
+  sectiekaarten" én 30-08 "detail-dialoog"): twee-paneel op élke `/instellingen`-route — vaste
+  linker settings-nav in drie groepen (Administraties / Platform / Kantoor) mét stand-chips en een
+  DETERMINISTISCHE zoeker (registry naam + synoniemen + doel; "accordering arvum" = deep-link naar
+  de detailpagina-tab; geen AI), `/instellingen` zonder sectie redirect naar het eerste zichtbare
+  item van de rol (Beheerder → administraties, Boekhouding → beveiliging, B+P → materiaal), álle
+  oude sectie-URL's redirecten; administratie-detail = PAGINA `/instellingen/administraties/{id}`
+  mét tabs (Algemeen · Boeken & AI · Klant-accordering · Doorbelasting (bron/doel) · Uren &
+  materiaal · Voorraad (opt-in)) die de bestaande componenten gefilterd hergebruiken — één bron,
+  twee ingangen; Crediteuren-dubbelsignalering → Inzicht (`/crediteuren`). Rol×sectie-matrix
+  fail-closed in `instellingenRegistry.ts` (`zichtbareNavItems`; B+P ziet als enige
+  niet-Beheerder-uitzondering de Materiaalcatalogus, spiegel van backend `require_beheerder_of_bp`);
+  GUARD: élk nav-item/élke tab heeft een registry-entry (`instellingenRegistry.test.ts`);
+  schaalregel: nieuwe module = nav-regel en/of tab, nooit een tegel. BESLISSINGEN "INSTELLINGEN
+  V3".** De globale boeken-kill-switch heet in de UI/CLI "Boeken platformbreed" — aan =
   boeken kan, uit = boeken staat plat (D4, alleen presentatie). Deel 3 (25-08): `/gebruikers`
   = tabs Kantoor/Veldwerkers/Klant-accordeurs mét tellers, zoekveld + paginering (25) per tab,
   `?groep=` in de URL, actiekolom sticky rechts (`td.acties`) en compacte administraties-chip;
