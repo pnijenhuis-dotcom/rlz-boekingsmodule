@@ -562,6 +562,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   template-extracties niet als AI-poging. Tests: `tests/extractie/test_template_terugval.py` (pure,
   40) + `tests/documenten/test_template_terugval_pad.py` (keten, 9) + `tests/extractie/pdf_helper.py`
   (PDF-generator mét tekstlaag).
+- **Best-practice-punten D1–D4 (01/02-09, BESLISSINGEN "BEST-PRACTICE-PUNTEN D1–D4"):** (D1) "Wat is
+  nieuw" = hand-gecureerd `frontend/src/changelog/WAT_IS_NIEUW.md` (klantleesbaar, nieuwste bovenaan —
+  **VERPLICHT bijvullen bij élke feature-commit**, guard-test op vorm/jargon), topbar-knop ✦ mét
+  ongelezen-dot per gebruiker (localStorage, geen server-infra); (D2) maandagochtend-digest kantoor
+  `app/berichten/digest.py` — weekmail per medewerker mét scope, alleen bij iets te melden, idempotent
+  per ISO-week (`platform.kantoor_digest`, migratie 0097), opt-out `gebruiker.digest_opt_out` via
+  `GET/PUT /auth/mijn/digest` + switch op Instellingen › Beveiliging, job `rlz-kantoor-digest` ma
+  07:30 (CLI/make `kantoor-digest`); (D3) "Toon QR" = de bestaande uitnodigingslink als QR
+  (`ui/QrLinkDialog.tsx`, /gebruikers + planning "+ ZZP'er"), geen nieuw auth-pad; (D4) badge-count
+  app-icoon = open accorderingen in élke push-payload (APNs `aps.badge`, FCM `notification_count`) +
+  reset/actualisatie in de app (`accordeur/appBadge.ts`, plugin `AppSlot.zetBadge`) — zichtbaar vanaf
+  de volgende store-build.
 - **Synthetische bewaking + alerting (best-practice-besluit 1, 31-08 — aanleiding: twee stille
   productie-incidenten 30/31-08; migratie 0092):** Cloud Run-job `rlz-bewaking` elk kwartier
   (`app/bewaking/`, statusrijen `platform.bewaking_probe_run`/`bewaking_storing`): health, DB +
