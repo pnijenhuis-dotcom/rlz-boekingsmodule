@@ -109,6 +109,10 @@ KEMPEN_SEED: tuple[tuple[str, str], ...] = (
     ("Molenhof Verhuur B.V.", "5027c79b-f6de-4b67-80db-867028ac35c0"),
     ("Kempen Chalets B.V.", "f5d427fa-2d63-4b19-bdb0-e3120fcbd92b"),
     ("Oirschot Vastgoed Beheer B.V.", "c945e48e-b92f-4328-97f8-7c088155989e"),
+    # NB de RLZ-debiteur in Facilities heet ENKELVOUD "Mantelzorgwoning … B.V."; de onboarded
+    # administratie heet MEERVOUD "Mantelzorgwoningen Midden Nederland" — de naam-match op
+    # `onboarded` hieronder pakt dit doel dus nooit; doel_administratie_id is handmatig
+    # gekoppeld via wijzig_mapping (mini-opdracht 01-09).
     ("Mantelzorgwoning Midden Nederland B.V.", "90dbadcb-5066-4822-a374-0b454a4a9180"),
     ("Rubicon Investments B.V.", "2f432363-127b-40e4-b331-ea8c03d4653d"),
 )

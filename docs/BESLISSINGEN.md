@@ -947,6 +947,22 @@ niet blokkeren.**
 | **Activatiescherm 3 (Face ID + voorwaarden) halfleeg.** | Oorzaak: knoppen via `margin-top: auto` onderaan gepind, compacte inhoud bovenin → groot leeg middenstuk op een echt toestel. Keuze uit Peters twee opties: VOLLEDIG SCHERM als één gecentreerde groep (geen halfleeg onderstuk) mét klein ‹-terug-pijltje linksboven terug naar de code-stap (nieuw: code her-kiezen kán nu). Mockup scherm 3 mee bijgewerkt (capture-at-acceptance) | gebouwd + getest 01-09 | `AccordeurActiveren.tsx` (stap 'afronden'); `accordeur.css::.acc-vol .acc-terug`; mockup `app-lock-pincode.html` frame 3 |
 | **Administraties-v2: bovenste rij half achter de sticky koppen.** | Headless gereproduceerd: een focus-terugkeer (Radix-dialoog sluiten, tabben) scrolt een rij minimaal in beeld — tot de contáinerrand, dus ~34px (de kophoogte) achter de sticky kop. Fix: `scroll-padding-top: 40px` op `.tabel-scroll.sticky-koppen` (dekt óók gebruikers/leverancier-autoboeken). Regressie: CSS-test + nieuw overflow-sweep-geval `harness-instellingen.html?pad=/instellingen/administraties` (harnas kreeg een `?pad=`-startroute + 14 vulling-rijen zodat de tabel écht intern scrolt) | gebouwd + getest 01-09 | `components.css::.tabel-scroll.sticky-koppen`; `styles/stickyKoppenCss.test.ts`; `scripts/overflow_sweep.sh`; `dev/visueelHarnasInstellingen.tsx` |
 
+## MINI-OPDRACHT 01-09 — doorbelasting-doel Mantelzorgwoningen Midden Nederland (uitgevoerd 01-09)
+
+De whitelist-rij bestond al sinds de 15-08-seed (verkenning/16 §1: "Mantelzorgwoning Midden
+Nederland B.V.", customer-GUID `90dbadcb-…`, toen niet-onboarded = spiegel_open-pad); de opdracht
+van 01-09 was de rij COMPLETEREN nu de administratie onboarded is. Uitgevoerd tegen de cloud-DB
+(cloud_cli-recept, geen migratie) mét live RLZ-verificatie conform het 15-08-protocol:
+
+| Onderdeel | Uitkomst | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Debiteur in Facilities' RLZ.** | Bestond al — GUID `90dbadcb-5066-4822-a374-0b454a4a9180` live bevestigd (GET Customers/{id}), naam exact ENKELVOUD "Mantelzorgwoning Midden Nederland B.V."; geen aanmaak nodig. ⚠️ De onboarded administratie heet MEERVOUD "Mantelzorgwoningen Midden Nederland" — de naam-match in `seed_kempen_mappings` pakt dit doel dus nooit; koppeling handmatig via `wijzig_mapping` (comment in `KEMPEN_SEED`) | geverifieerd 01-09 | `app/doorbelasting/service.py::KEMPEN_SEED` (comment) |
+| **Doel-koppeling + provisie-GB.** | `doel_administratie_id` = `40a37f14-1ee8-4029-ad8f-79e81e706b4c`; provisie-GB = **4808 "Provisie Kempen Facilities"** (ledger `a300ce52-…`) — zelfde criterium als 15-08: het doel draagt een éígen dedicated provisierekening (4173 bestaat daar niet). Gezet via `wijzig_mapping` (actor Peter, audit-event `doorbelasting_mapping_gewijzigd` oud→nieuw 11:21 UTC); seed-CLI daarna idempotent gedraaid (0 toegevoegd, 8 totaal). Rij zichtbaar via `lijst_mappings` (= bron Instellingen › Doorbelasting) | uitgevoerd 01-09 | audit_event op mapping `df68665c-…`; BESLISSINGEN "ONBOARDING-BATCH 15-08" (criterium) |
+| **IC-vlag: true (default) — NIET deterministisch bepaald, klikpunt Peter.** | Ledgers-search in het doel vond RC-rekeningen voor twee ándere partijen (1602 "RC Heren van Zuilichem I", 1603 "RC Mantelzorgwoningen Oost Nederland BV") maar GÉÉN benoemde RC Kempen Facilities; alleen de generieke template-rekening 1604 "Rekening-courant 3 (bv)" — niet toe te schrijven. Conform de opdracht default `intercompany=true` gehandhaafd; het benoemings-patroon (RC's dáár expliciet per partij) suggereert dat false (Rubicon-beeld) óók kan — **Peter beoordeelt en zet 'm desgewenst om in de bestaande wijzig-UI** | uitgevoerd 01-09 — open: IC-oordeel Peter | verkenning/16 §2c-vervolg (RC-criterium) |
+
+Structureel: de "+ Doelentiteit toevoegen"-UI is een aparte, al genoteerde opdracht — deze
+seed-/wijzig-route was bewust de snelle weg voor vandaag.
+
 ## Onderhoud
 
 - Nieuwe regel of statusophoging **op het moment van akkoord/oplevering**, in dezelfde commit als
