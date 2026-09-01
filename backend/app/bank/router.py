@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import service as auth_service
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, vereis_administratie_scope, vereis_kantoorrol
@@ -135,6 +135,10 @@ def _voorstel_response(item: voorstellen.MutatieMetVoorstel) -> schemas.Voorstel
             referentie=item.open_post.referentie,
             referentie2=item.open_post.referentie2,
             rlz_document_id=item.open_post.rlz_document_id,
+            tegenpartij_naam=item.open_post.tegenpartij_naam,
+            documentsoort=item.open_post.documentsoort,
+            boekstuknummer=item.open_post.boekstuknummer,
+            factuurdatum=item.open_post.factuurdatum,
         )
     return schemas.VoorstelResponse(
         soort=item.voorstel.soort.value,
@@ -273,6 +277,7 @@ def bank_sync_trigger(
         open_ververst=resultaat.mutaties.open_ververst,
         open_posten_bijgewerkt=resultaat.open_posten.aangemaakt + resultaat.open_posten.bijgewerkt,
         afletteren_geverifieerd=resultaat.afletteren_geverifieerd,
+        afletteren_wachtend=resultaat.afletteren_wachtend,
         automatisch_afgeletterd=resultaat.automatisch_afgeletterd,
         afletter_fouten=resultaat.afletter_fouten,
         vastly_gemeld=resultaat.vastly_gemeld,
@@ -555,15 +560,20 @@ def _sync_run_response(info) -> schemas.BankSyncRunResponse:
     status_code=status.HTTP_202_ACCEPTED,
 )
 def bank_sync_achtergrond(
-    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+    administratie_id: uuid.UUID,
+    forceer: bool = Query(False),
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.BankSyncRunResponse:
     """Auto-verversing bij het openen van het bankscherm (besluit Peter 25-08, punt 2): cache blijft
     direct zichtbaar, de RLZ-ronde loopt op de achtergrond (202 + status-poll). Laatste sync jonger
-    dan de drempel (`bank_auto_ververs_drempel_minuten`, default 5) → `overgeslagen`, geen ronde."""
+    dan de drempel (`bank_auto_ververs_drempel_minuten`, default 5) → `overgeslagen`, geen ronde.
+    `forceer=true` (blok E2, het ⟳-icoon als handmatige noodrem) slaat alleen die drempel over."""
     from app.bank import sync_run
 
     try:
-        return _sync_run_response(sync_run.start_bij_openen(administratie_id=administratie_id, actor_id=actor.id))
+        return _sync_run_response(
+            sync_run.start_bij_openen(administratie_id=administratie_id, actor_id=actor.id, forceer=forceer)
+        )
     except sync_run.BankSyncStartFout as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 

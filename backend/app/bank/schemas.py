@@ -62,11 +62,18 @@ class RekeningenResponse(BaseModel):
 
 
 class OpenPostResponse(BaseModel):
+    """`bedrag` = het OPEN bedrag van de post (PaymentItem.Amount). De kaart-specs (blok E5, 01/02-09) komen
+    uit de bestaande cache — ontbrekend = None, de kaart laat die regel dan weg."""
+
     id: uuid.UUID
     bedrag: Decimal | None
     referentie: str | None
     referentie2: str | None
     rlz_document_id: uuid.UUID | None
+    tegenpartij_naam: str | None = None
+    documentsoort: str | None = None
+    boekstuknummer: str | None = None
+    factuurdatum: date | None = None
 
 
 class BoekRegelResponse(BaseModel):
@@ -212,6 +219,9 @@ class BankSyncResponse(BaseModel):
     open_ververst: int
     open_posten_bijgewerkt: int
     afletteren_geverifieerd: int
+    # Blok E3 (01/02-09): aantal klaargezette afletteropdrachten dat vóór de verificatie wachtte — de UI
+    # meldt de verificatie-uitkomst alleen als dit > 0 is.
+    afletteren_wachtend: int = 0
     automatisch_afgeletterd: int = 0
     afletter_fouten: list[str] = []
     vastly_gemeld: int

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: bankscherm — voorstel-kaart + paneelkop zonder knoppen</title>
+<!-- ============================================================
+     BESLUITEN PETER 01-09 AVOND/NACHT (bankscherm):
+     (1) knoppen "Verversen uit Reeleezee" + "Nu verifiëren" WEG —
+     auto-ververs bij openen blijft de motor, klein ⟳ + "laatst
+     ververst HH:MM" vast in de paneelkop, verificatie lift mee,
+     uitkomsten als toast (geen layout-shift meer);
+     (2) het afletter-voorstel wordt een KAART mét de specs van de
+     doel-post (RLZ's eigen suggestieblok = de norm die Peter wil):
+     tegenpartij · soort + factuurnummer · boekstuknummer ·
+     factuurdatum · open bedrag; match-reden-chip blijft; deelmatch
+     toont het restant expliciet. Alle velden komen uit de bestaande
+     payment_item_cache (Document($expand=Entity)) — geen extra
+     RLZ-calls.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101917; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513;
+    --ok:#5ec792; --warn:#e2b25e; --warn-bg:rgba(226,178,94,.12);
+    --groen:#5ec792; --rood:#f08579;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:960px}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);max-width:1180px;overflow:hidden;position:relative}
+  .p-kop{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .p-kop h2{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:800}
+  .vers{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .vers .knopje{width:26px;height:26px;border:1px solid var(--border);border-radius:8px;display:grid;place-items:center;color:var(--teal);cursor:pointer;font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700;text-align:left;padding:9px 14px;border-bottom:1px solid var(--border)}
+  td{padding:13px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .tp{font-weight:700}
+  .oms{color:var(--muted);font-size:11.5px;margin-top:2px;max-width:420px}
+  .plus{color:var(--groen);font-weight:700;white-space:nowrap}
+  .min{color:var(--rood);font-weight:700;white-space:nowrap}
+  /* De voorstel-kaart */
+  .vk{border:1px solid color-mix(in srgb,var(--teal) 45%,transparent);background:color-mix(in srgb,var(--teal) 7%,transparent);border-radius:10px;padding:9px 12px;max-width:330px}
+  .vk .kop{font-weight:700;font-size:12.5px}
+  .vk .r{color:var(--muted);font-size:11.5px;margin-top:2px}
+  .vk .r b{color:var(--text);font-weight:600}
+  .vk .verschil{color:var(--warn);font-size:11.5px;margin-top:4px;font-weight:600}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--warn-bg);color:var(--warn);margin-top:7px}
+  .chip.auto{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+  .geen{color:var(--faint);font-size:12px}
+  .btn{display:inline-block;padding:7px 13px;border-radius:9px;background:var(--teal);color:var(--teal-donker);font-size:12.5px;font-weight:700;text-align:center;white-space:nowrap}
+  .btn.sec{background:none;border:1px solid var(--border);color:var(--text);font-weight:600}
+  .acties{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:140px}
+  .toast{position:absolute;right:18px;bottom:18px;background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:10px;padding:10px 14px;font-size:12.5px;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+  .noot{max-width:1180px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75;margin-top:24px}
+  .noot b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>Bankscherm — voorstel-kaart + paneelkop zonder knoppen</h1>
+<p class="sub">Het afletter-voorstel toont voortaan de volledige specs van de doel-post (RLZ's suggestieblok als norm),
+zodat "bevestigen" een geïnformeerd besluit is. De grote knoppen zijn weg: versheid + ⟳ staan vast in de paneelkop,
+uitkomsten komen als toast.</p>
+
+<div class="paneel">
+  <div class="p-kop">
+    <h2>Onverwerkte bankmutaties</h2>
+    <div class="vers">laatst ververst 23:33 <span class="knopje" title="Nu verversen (haalt ook de verificatie van wachtende opdrachten mee)">⟳</span></div>
+  </div>
+  <table>
+    <tr><th>Datum</th><th>Tegenpartij / omschrijving</th><th style="text-align:right">Bedrag</th><th>Voorstel</th><th></th></tr>
+
+    <tr>
+      <td>31-08</td>
+      <td><div class="tp">Hans Anders Nederland B.V.</div><div class="oms">903065 20249195 Debiteur 350000 20269 Periode 01-09-2026 t/m 30-09-2026 3701 CH Zeist</div></td>
+      <td style="text-align:right"><span class="plus">€ 4.428,73</span></td>
+      <td>
+        <div class="vk">
+          <div class="kop">Hans Anders Nederland B.V.</div>
+          <div class="r">Verkoopfactuur <b>202600081</b> · RLZ-01-00000942</div>
+          <div class="r">factuurdatum 1-9-2026 · open <b>€ 4.428,73</b></div>
+          <span class="chip">match op bedrag, geen referentie — bevestigen</span>
+        </div>
+      </td>
+      <td><div class="acties"><span class="btn">Afletteren ✓</span><span class="btn sec">Koppel aan relatie…</span><span class="btn sec">Splitsen…</span></div></td>
+    </tr>
+
+    <tr>
+      <td>31-08</td>
+      <td><div class="tp">KRIJGSMANRETAIL SERVICES BV</div><div class="oms">2202600078</div></td>
+      <td style="text-align:right"><span class="plus">€ 5.149,52</span></td>
+      <td>
+        <div class="vk">
+          <div class="kop">Krijgsman Retail Services B.V.</div>
+          <div class="r">Verkoopfactuur <b>202600078</b> · RLZ-01-00000937</div>
+          <div class="r">factuurdatum 1-9-2026 · open <b>€ 5.149,52</b></div>
+          <span class="chip auto">exacte match — naam + factuurnummer + bedrag</span>
+        </div>
+      </td>
+      <td><div class="acties"><span class="btn">Afletteren ✓</span><span class="btn sec">Koppel aan relatie…</span><span class="btn sec">Splitsen…</span></div></td>
+    </tr>
+
+    <tr>
+      <td>31-08</td>
+      <td><div class="tp">Bouwbedrijf Verhagen B.V.</div><div class="oms">Deelbetaling fact 26-0441</div></td>
+      <td style="text-align:right"><span class="min">€ -1.000,00</span></td>
+      <td>
+        <div class="vk">
+          <div class="kop">Bouwbedrijf Verhagen B.V.</div>
+          <div class="r">Inkoopfactuur <b>26-0441</b> · RLZ-01-00000921</div>
+          <div class="r">factuurdatum 14-8-2026 · open <b>€ 1.200,00</b></div>
+          <div class="verschil">deelbetaling — restant € 200,00 blijft open</div>
+          <span class="chip">match op naam + referentie, bedrag wijkt af — bevestigen</span>
+        </div>
+      </td>
+      <td><div class="acties"><span class="btn">Afletteren (deel) ✓</span><span class="btn sec">Koppel aan relatie…</span><span class="btn sec">Splitsen…</span></div></td>
+    </tr>
+
+    <tr>
+      <td>31-08</td>
+      <td><div class="tp">Sepa Green</div><div class="oms">Termijn Sep 2026-FACTNR 26505019 0371 DEB 1500037923--</div></td>
+      <td style="text-align:right"><span class="min">€ -673,96</span></td>
+      <td><span class="geen">Geen open post of regel gevonden — handmatig beoordelen.</span></td>
+      <td><div class="acties"><span class="btn">Boeken…</span><span class="btn sec">Koppel aan relatie…</span><span class="btn sec">Splitsen…</span></div></td>
+    </tr>
+  </table>
+  <div class="toast">⟳ Ververst: 0 nieuwe mutaties · 27 bijgewerkt — 2 afletteropdrachten wachten nog in Reeleezee</div>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① De kaart toont áltijd: tegenpartij (RLZ-naam), documentsoort + factuurnummer/referentie, boekstuknummer,
+factuurdatum en het open bedrag — alle velden uit de bestaande payment_item_cache (Document($expand=Entity)),
+géén extra RLZ-calls per rij. ② De match-reden-chip blijft en wordt specifieker: groen = exacte match
+(naam + referentie + bedrag, komt in aanmerking voor auto-afletteren bij opt-in), oranje = bevestigen nodig
+mét de reden (bedrag-match zonder referentie / referentie-match met afwijkend bedrag). ③ Deelmatch toont het
+restant expliciet ("restant € X blijft open") en de knop heet dan "Afletteren (deel)" — geen verrassingen ná
+de klik (NB: restant krijgt in RLZ een nieuw PaymentItem-id, bestaand gedrag). ④ Paneelkop: versheidsregel +
+klein ⟳ op de plek van de oude knoppen (blok E nachtrun); verversing + verificatie = één handeling; uitkomst =
+toast, fouten blijven persistent zichtbaar. ⑤ Geen match = rustige tekstregel, geen lege kaart. ⑥ Zelfde kaart
+her te gebruiken in de splitsen-dialoog bij het kiezen van een open post (zelfde component).</p>
+</body>
+</html>

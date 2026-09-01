@@ -22,6 +22,7 @@ import enum
 import re
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
@@ -83,6 +84,12 @@ class OpenPost:
     referentie: str | None
     referentie2: str | None
     rlz_document_id: uuid.UUID | None
+    # Doel-post-specs voor de voorstel-kaart (blok E5, 01/02-09) — puur presentatie uit de cache,
+    # de matchmotor kijkt er niet naar (volgorde stap 1–5 ongewijzigd).
+    tegenpartij_naam: str | None = None
+    documentsoort: str | None = None
+    boekstuknummer: str | None = None
+    factuurdatum: date | None = None
 
 
 @dataclass(frozen=True)

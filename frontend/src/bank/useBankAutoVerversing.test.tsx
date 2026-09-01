@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../ui/basis'
 import { BankDetailScreen, formatVerversTijd } from './BankDetailScreen'
 
 /* Auto-verversing bij openen (besluit Peter 25-08, deel 4 punt 2): POST sync-achtergrond bij mount,
@@ -90,11 +91,13 @@ function installFetchMock(startResponse: RunDto, statusReeks: RunDto[] = []) {
 
 function renderScherm() {
   return render(
-    <MemoryRouter initialEntries={[`/bank/${ADMINISTRATIE_ID}`]}>
-      <Routes>
-        <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={[`/bank/${ADMINISTRATIE_ID}`]}>
+        <Routes>
+          <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   )
 }
 
@@ -117,7 +120,7 @@ describe('useBankAutoVerversing via BankDetailScreen', () => {
     await waitFor(() =>
       expect(aanroepen.filter((a) => a.url.endsWith('/bank/sync-achtergrond') && a.method === 'POST')).toHaveLength(1),
     )
-    expect(await screen.findByText('ververst < 5 min geleden — actueel')).toBeInTheDocument()
+    expect(await screen.findByText('actueel')).toBeInTheDocument()
     expect(screen.getByText(/laatst ververst/)).toBeInTheDocument()
 
     await vi.advanceTimersByTimeAsync(6000)
@@ -157,7 +160,10 @@ describe('useBankAutoVerversing via BankDetailScreen', () => {
     await vi.advanceTimersByTimeAsync(2600)
     await waitFor(() => expect(telStatusPolls(aanroepen)).toBe(2))
 
-    expect(await screen.findByText(/3 nieuwe mutaties · 1 bijgewerkt/)).toBeInTheDocument()
+    // Blok E4: de samenvatting is een toast (geen statusregel boven de tabel); E3: zonder wachtende
+    // afletteropdrachten geen verificatie-tekst.
+    const toast = await screen.findByText(/⟳ Ververst: 3 nieuwe mutaties · 1 bijgewerkt/)
+    expect(toast).not.toHaveTextContent(/aflettering|wacht/)
     await waitFor(() => expect(telMutatiesLaads(aanroepen)).toBeGreaterThan(mutatiesVoor))
     expect(screen.getByText('zojuist ververst')).toBeInTheDocument()
 

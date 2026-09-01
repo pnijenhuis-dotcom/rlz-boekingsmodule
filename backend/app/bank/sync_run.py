@@ -114,8 +114,12 @@ def laatste_run(administratie_id: uuid.UUID) -> BankSyncRunInfo:
         return _dto(rij, laatste_sync_op=_laatste_sync_op(session, administratie_id))
 
 
-def start_bij_openen(*, administratie_id: uuid.UUID, actor_id: uuid.UUID | None) -> BankSyncRunInfo:
-    """Ingang van het bankscherm: drempel → hergebruik actieve run → nieuwe run + voertuig."""
+def start_bij_openen(
+    *, administratie_id: uuid.UUID, actor_id: uuid.UUID | None, forceer: bool = False
+) -> BankSyncRunInfo:
+    """Ingang van het bankscherm: drempel → hergebruik actieve run → nieuwe run + voertuig.
+    `forceer` (blok E2, het ⟳-icoon = handmatige noodrem) slaat alleen de drempel over — een al
+    lopende run wordt nog steeds hergebruikt (nooit twee runs tegelijk)."""
     nu = datetime.now(UTC)
     drempel = timedelta(minutes=settings.bank_auto_ververs_drempel_minuten)
     with scoped_session(administratie_id) as session:
@@ -124,7 +128,7 @@ def start_bij_openen(*, administratie_id: uuid.UUID, actor_id: uuid.UUID | None)
         actief = _actieve_run(session, administratie_id)
         if actief is not None:
             return _dto(actief, laatste_sync_op=laatste)
-        if laatste is not None and laatste > nu - drempel:
+        if not forceer and laatste is not None and laatste > nu - drempel:
             return _dto(None, laatste_sync_op=laatste, overgeslagen=True)
         rij = BankSyncRun(administratie_id=administratie_id, aangevraagd_door=actor_id)
         session.add(rij)
@@ -196,6 +200,7 @@ def verwerk_wachtrij_voor(administratie_id: uuid.UUID) -> int:
                 "open_ververst": resultaat.mutaties.open_ververst,
                 "open_posten_bijgewerkt": resultaat.open_posten.aangemaakt + resultaat.open_posten.bijgewerkt,
                 "afletteren_geverifieerd": resultaat.afletteren_geverifieerd,
+                "afletteren_wachtend": getattr(resultaat, "afletteren_wachtend", 0),
                 "automatisch_afgeletterd": resultaat.automatisch_afgeletterd,
                 "automatisch_geboekt": resultaat.automatisch_geboekt,
                 "fouten": list(resultaat.afletter_fouten) + list(resultaat.automatisch_fouten),

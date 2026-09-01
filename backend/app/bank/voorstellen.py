@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.bank import matchmotor
+from app.bank import doelpost, matchmotor
 from app.bank.models import (
     AfletterOpdrachtStatus,
     BankAfletterOpdracht,
@@ -24,6 +24,13 @@ from app.bank.models import (
 )
 from app.db.session import scoped_session
 from app.sync.models import TaxRateCache
+
+
+def _specs(post) -> "doelpost.DoelPostSpecs":
+    """Kaart-specs uit de cache-rij (blok E5): nooit een RLZ-call, ontbrekend = None."""
+    return doelpost.specs_uit_cache(
+        entity_naam=post.entity_naam, brondata=post.brondata, referentie2=post.referentie2, boekdatum=post.boekdatum
+    )
 
 
 def intercompany_entity_guids(session, *, administratie_id: uuid.UUID) -> set[uuid.UUID]:
@@ -158,6 +165,7 @@ def laad_matchcontext(
                 referentie=post.referentie,
                 referentie2=post.referentie2,
                 rlz_document_id=post.rlz_document_id,
+                **_specs(post).__dict__,
             )
             for post in posten
         ],

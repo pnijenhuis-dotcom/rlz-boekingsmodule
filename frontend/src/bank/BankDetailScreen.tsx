@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { SearchableCombobox } from '../document/SearchableCombobox'
-import { Checkbox, Select, SkeletonRegels } from '../ui/basis'
+import { Checkbox, Select, SkeletonRegels, useToastOptioneel } from '../ui/basis'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
-import { useAuthOptioneel } from '../auth/AuthContext'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   boekDirect,
   haalAfletterOpdrachten,
   haalMutaties,
   haalRekeningen,
-  synchroniseerBank,
   trekAfletterenIn,
-  verifieerAfletteren,
   voerAfletterOpdrachtUit,
   zetAfletterenKlaar,
   type AfletterActieResultaatDto,
@@ -27,6 +24,7 @@ import {
 import { AanbetalingenPaneel, KoppelRelatieForm } from './RelatieKoppeling'
 import { SplitsenForm, SplitsingWeergave, SplitsingenPaneel } from './Splitsen'
 import { useBankAutoVerversing } from './useBankAutoVerversing'
+import { GEEN_MATCH_TEKST, VoorstelKaart, isDeelbetaling } from './VoorstelKaart'
 import { amountKlasse } from '../werkvoorraad/format'
 
 function formatBedrag(bedrag: string | null): string {
@@ -68,7 +66,18 @@ function syncRunSamenvatting(run: BankSyncRunDto): string {
   if (r.automatisch_afgeletterd > 0) delen.push(`${r.automatisch_afgeletterd} automatisch afgeletterd`)
   if (r.automatisch_geboekt > 0) delen.push(`${r.automatisch_geboekt} automatisch geboekt`)
   if (r.fouten.length > 0) delen.push(`${r.fouten.length} fout(en)`)
-  return `Ververst uit Reeleezee: ${delen.join(' · ')}.`
+  // Blok E3 (01/02-09): de verificatie van wachtende terugval-afletteropdrachten lift in élke ronde
+  // mee — alleen melden als er écht iets wachtte.
+  const wachtend = r.afletteren_wachtend ?? 0
+  let verificatie = ''
+  if (wachtend > 0) {
+    const nogOpen = wachtend - r.afletteren_geverifieerd
+    verificatie =
+      r.afletteren_geverifieerd > 0
+        ? ` — ${r.afletteren_geverifieerd} aflettering(en) geverifieerd${nogOpen > 0 ? `, ${nogOpen} wacht${nogOpen === 1 ? '' : 'en'} nog in Reeleezee` : ''}`
+        : ` — ${wachtend} afletteropdracht${wachtend === 1 ? '' : 'en'} wacht${wachtend === 1 ? '' : 'en'} nog in Reeleezee`
+  }
+  return `⟳ Ververst: ${delen.join(' · ')}${verificatie}`
 }
 
 /** Levenscyclus-chip van een afletter-opdracht (kliktest 2026-08-08): klaargezet → wacht op
@@ -296,15 +305,16 @@ function MutatieRij({
         {formatBedrag(mutatie.bedrag)}
       </td>
       <td>
+        {/* Blok E5–E8 (mockup bank-voorstel-kaart.html): kaart mét doel-post-specs + match-chip; vaste regel =
+            eigen regel mét herkomst-chip; geen match = rustige tekstregel (geen lege kaart). */}
         {isAfletterVoorstel ? (
-          <>
-            Afletteren op {voorstel.open_post?.referentie ?? 'open post'}
-            {voorstel.open_post?.bedrag ? ` (${formatBedrag(voorstel.open_post.bedrag)})` : ''}
-          </>
+          <VoorstelKaart voorstel={voorstel} mutatieBedrag={mutatie.bedrag} />
         ) : voorstel.soort === 'vaste_regel' ? (
-          <>Direct op grootboek volgens vaste regel</>
+          <>
+            Direct op grootboek volgens vaste regel <span className={chipKlasse(voorstel)}>{voorstel.bron}</span>
+          </>
         ) : (
-          <>{voorstel.reden}</>
+          <span className="vk-geen">{GEEN_MATCH_TEKST}</span>
         )}
         {mutatie.regel_voorstel && (
           <div className="hint">
@@ -312,9 +322,6 @@ function MutatieRij({
             regel” aan.
           </div>
         )}
-      </td>
-      <td>
-        <span className={chipKlasse(voorstel)}>{voorstel.bron}</span>
       </td>
       <td>
         {opdracht ? (
@@ -345,7 +352,7 @@ function MutatieRij({
               void letterAf(() => zetAfletterenKlaar(administratieId, mutatie.id, voorstel.payment_item_id ?? ''))
             }
           >
-            Afletteren ✓
+            {isDeelbetaling(mutatie.bedrag, voorstel.open_post?.bedrag) ? 'Afletteren (deel) ✓' : 'Afletteren ✓'}
           </button>
         ) : voorstel.soort === 'vaste_regel' && voorstel.regels.length > 0 ? (
           <button
@@ -440,9 +447,9 @@ function MutatieRij({
 export function BankDetailScreen() {
   const { administratieId } = useParams<{ administratieId: string }>()
   const { administraties } = useAdministraties()
-  // UI-nazorg 22-08: de handmatige RLZ-sync is Beheerder-only — de nachtelijke cloud-sync
-  // is voor de overige rollen de verversing. Fail-closed: geen auth-context = geen knop.
-  const isBeheerder = useAuthOptioneel()?.rol === 'beheerder'
+  // Blok E4 (01/02-09): succes-uitkomsten zijn vluchtige toasts (geen statusregels boven de tabel =
+  // geen layout-shift); fouten blijven persistent zichtbaar (bestaand foutpatroon).
+  const toast = useToastOptioneel()
   const [searchParams, setSearchParams] = useSearchParams()
   const rekeningId = searchParams.get('rekening')
 
@@ -450,16 +457,12 @@ export function BankDetailScreen() {
   const [mutaties, setMutaties] = useState<MutatieDto[] | null>(null)
   const [afletterHistorie, setAfletterHistorie] = useState<AfletterHistorieRegelDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
-  const [syncBezig, setSyncBezig] = useState(false)
-  const [syncMelding, setSyncMelding] = useState<string | null>(null)
-  const [verifieerBezig, setVerifieerBezig] = useState(false)
   const [afletterBezigId, setAfletterBezigId] = useState<string | null>(null)
   const [afletterMelding, setAfletterMelding] = useState<{ tekst: string; isFout: boolean } | null>(null)
   // Deel 4 (25-08): herlaadsleutel voor de aanbetalingen-/splitsingen-panelen + het zojuist-
   // gesplitst-resultaat (de rij verdwijnt na verversen, het resultaat blijft zichtbaar).
   const [herlaadSleutel, setHerlaadSleutel] = useState(0)
   const [splitsResultaat, setSplitsResultaat] = useState<SplitsingDto | null>(null)
-  const [autoVerversMelding, setAutoVerversMelding] = useState<string | null>(null)
 
   const klantNaam = useMemo(
     () => administraties?.find((a) => a.id === administratieId)?.naam ?? '…',
@@ -511,10 +514,10 @@ export function BankDetailScreen() {
     administratieId,
     useCallback(
       (run: BankSyncRunDto) => {
-        setAutoVerversMelding(syncRunSamenvatting(run))
+        toast.meld(syncRunSamenvatting(run))
         verversAlles()
       },
-      [verversAlles],
+      [verversAlles, toast],
     ),
   )
   const laatsteSyncOp = autoVerversing.run?.laatste_sync_op ?? rekeningen?.laatste_sync_op ?? null
@@ -526,55 +529,15 @@ export function BankDetailScreen() {
     setAfletterBezigId(opdrachtId)
     setAfletterMelding(null)
     try {
-      setAfletterMelding(afletterUitkomstMelding(await voerAfletterOpdrachtUit(administratieId, opdrachtId)))
+      const melding = afletterUitkomstMelding(await voerAfletterOpdrachtUit(administratieId, opdrachtId))
+      // Succes vluchtig (toast), fout persistent in de sectie.
+      if (melding.isFout) setAfletterMelding(melding)
+      else toast.meld(melding.tekst)
       verversAlles()
     } catch (err) {
       setAfletterMelding({ tekst: err instanceof Error ? err.message : 'Afletteren mislukt', isFout: true })
     } finally {
       setAfletterBezigId(null)
-    }
-  }
-
-  const verifieerNu = async () => {
-    if (!administratieId || !rekeningId) return
-    setVerifieerBezig(true)
-    setSyncMelding(null)
-    try {
-      const resultaat = await verifieerAfletteren(administratieId, rekeningId)
-      setSyncMelding(
-        resultaat.geverifieerd > 0
-          ? `Verificatie gedraaid: ${resultaat.geverifieerd} aflettering(en) geverifieerd.`
-          : 'Verificatie gedraaid: nog geen aflettering afgerond in Reeleezee — de opdracht(en) blijven wachten.',
-      )
-      verversAlles()
-    } catch (err) {
-      setSyncMelding(err instanceof Error ? err.message : 'Verificatie mislukt')
-    } finally {
-      setVerifieerBezig(false)
-    }
-  }
-
-  const sync = async () => {
-    if (!administratieId) return
-    setSyncBezig(true)
-    setSyncMelding(null)
-    try {
-      const resultaat = await synchroniseerBank(administratieId)
-      const delen = [
-        `${resultaat.mutaties_nieuw} nieuwe mutaties`,
-        `${resultaat.afletteren_geverifieerd} aflettering(en) geverifieerd`,
-      ]
-      if (resultaat.automatisch_afgeletterd > 0)
-        delen.push(`${resultaat.automatisch_afgeletterd} automatisch afgeletterd`)
-      if (resultaat.afletter_fouten.length > 0) delen.push(`${resultaat.afletter_fouten.length} afletter-fout(en)`)
-      if (resultaat.automatisch_geboekt > 0) delen.push(`${resultaat.automatisch_geboekt} automatisch geboekt`)
-      if (resultaat.automatisch_fouten.length > 0) delen.push(`${resultaat.automatisch_fouten.length} autoboek-fout(en)`)
-      setSyncMelding(`Gesynchroniseerd: ${delen.join(', ')}.`)
-      verversAlles()
-    } catch (err) {
-      setSyncMelding(err instanceof Error ? err.message : 'Synchronisatie mislukt')
-    } finally {
-      setSyncBezig(false)
     }
   }
 
@@ -604,18 +567,6 @@ export function BankDetailScreen() {
             <span className="text-faint">›</span> Bank
           </div>
           <h1>Afletteren — {klantNaam}</h1>
-          <div className="hint" data-testid="ververs-hint" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span>{formatVerversTijd(laatsteSyncOp)}</span>
-            {autoVerversing.bezig ? (
-              <span className="chip vraag" role="status">
-                ⟳ verversen uit Reeleezee…
-              </span>
-            ) : autoVerversing.run?.status === 'overgeslagen' ? (
-              <span className="chip geheugen">ververst &lt; 5 min geleden — actueel</span>
-            ) : autoVerversing.run?.status === 'klaar' ? (
-              <span className="chip geheugen">zojuist ververst</span>
-            ) : null}
-          </div>
         </div>
         <div className="bankpicker">
           <span className="bp-icon">🏦</span>
@@ -656,8 +607,8 @@ export function BankDetailScreen() {
             ⚠️ Automatisch verversen uit Reeleezee is mislukt
             {autoVerversing.run?.fout_reden ? `: ${autoVerversing.run.fout_reden}` : ''}
             {autoVerversing.fout ? `: ${autoVerversing.fout}` : ''}. De getoonde mutaties komen uit de cache van{' '}
-            {formatVerversTijd(laatsteSyncOp).replace('laatst ververst ', '')}; probeer het later opnieuw of gebruik
-            “Verversen uit Reeleezee”.
+            {formatVerversTijd(laatsteSyncOp).replace('laatst ververst ', '')}; probeer het later opnieuw via het
+            ⟳-icoon in de paneelkop.
           </p>
         </div>
       )}
@@ -676,7 +627,7 @@ export function BankDetailScreen() {
           <p className="hint" style={{ color: 'var(--orange)' }}>
             ⚠️ De versheid van de bankaanlevering op deze rekening kon niet worden opgehaald (probe mislukt) —
             de getoonde importdatum kan verouderd zijn. De synchronisatie zelf is gewoon doorgegaan; probeer het
-            later opnieuw met “Verversen uit Reeleezee”.
+            later opnieuw via het ⟳-icoon in de paneelkop.
           </p>
         </div>
       )}
@@ -709,24 +660,35 @@ export function BankDetailScreen() {
       </div>
 
       <div className="panel">
-        <h2>Onverwerkte bankmutaties</h2>
-        <div className="actions" style={{ marginBottom: 8 }}>
-          {isBeheerder && (
-            <button className="btn secondary" onClick={() => void sync()} disabled={syncBezig || verifieerBezig}>
-              {syncBezig ? 'Synchroniseren…' : '⟳ Verversen uit Reeleezee'}
+        {/* Blok E1/E2 (besluiten Peter 01-09 avond — herziet 25-08 deel 4 punt 2 "handmatige knop blijft"):
+            geen knoppen meer; de versheidsregel staat vast in de paneelkop (blijft zichtbaar bij scrollen)
+            mét een klein ⟳-icoon als handmatige noodrem (zelfde endpoint, forceer = drempel overslaan).
+            Uitkomsten = toast; geen statusregels boven de tabel (layout-shift, diagnose Cowork 01-09). */}
+        <div className="p-kop bank-p-kop">
+          <h2 style={{ margin: 0 }}>Onverwerkte bankmutaties</h2>
+          <div className="vers" data-testid="ververs-hint">
+            <span>{formatVerversTijd(laatsteSyncOp)}</span>
+            {autoVerversing.bezig ? (
+              <span className="chip vraag" role="status">
+                ⟳ verversen uit Reeleezee…
+              </span>
+            ) : autoVerversing.run?.status === 'overgeslagen' ? (
+              <span className="chip geheugen">actueel</span>
+            ) : autoVerversing.run?.status === 'klaar' ? (
+              <span className="chip geheugen">zojuist ververst</span>
+            ) : null}
+            <button
+              type="button"
+              className="knopje"
+              aria-label="Nu verversen uit Reeleezee"
+              title="Nu verversen (haalt ook de verificatie van wachtende afletteropdrachten mee)"
+              disabled={autoVerversing.bezig}
+              onClick={() => autoVerversing.herstart()}
+            >
+              ⟳
             </button>
-          )}
-          <button
-            className="btn secondary"
-            onClick={() => void verifieerNu()}
-            disabled={syncBezig || verifieerBezig}
-            title="Controleert alleen de klaargezette afletter-opdrachten van deze rekening bij Reeleezee (geen volledige synchronisatie)"
-          >
-            {verifieerBezig ? 'Verifiëren…' : '✓ Nu verifiëren'}
-          </button>
+          </div>
         </div>
-        {autoVerversMelding && <p className="hint">{autoVerversMelding}</p>}
-        {syncMelding && <p className="hint">{syncMelding}</p>}
         {mutaties === null ? (
           <SkeletonRegels />
         ) : mutaties.length === 0 ? (
@@ -739,7 +701,6 @@ export function BankDetailScreen() {
                 <th>Tegenpartij / omschrijving</th>
                 <th className="amount">Bedrag</th>
                 <th>Voorstel</th>
-                <th>Bron voorstel</th>
                 <th></th>
               </tr>
             </thead>
@@ -750,7 +711,7 @@ export function BankDetailScreen() {
                   administratieId={administratieId}
                   mutatie={mutatie}
                   onVerversen={verversAlles}
-                  onMelding={setSyncMelding}
+                  onMelding={(tekst) => toast.meld(tekst)}
                   onGesplitst={setSplitsResultaat}
                 />
               ))}

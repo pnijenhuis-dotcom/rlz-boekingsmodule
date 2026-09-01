@@ -580,6 +580,23 @@ def _is_systeemhuls(document: dict[str, Any] | None) -> bool:
     return document.get("DocumentType") == 19 and document.get("Status") == 1
 
 
+def tel_wachtende_opdrachten(*, administratie_id: uuid.UUID) -> int:
+    """Aantal klaargezette (nog te verifiëren) afletteropdrachten — blok E3: de verversing meldt de
+    verificatie-uitkomst alleen als er écht iets wachtte."""
+    with scoped_session(administratie_id) as session:
+        return int(
+            session.scalar(
+                select(func.count())
+                .select_from(BankAfletterOpdracht)
+                .where(
+                    BankAfletterOpdracht.administratie_id == administratie_id,
+                    BankAfletterOpdracht.status == AfletterOpdrachtStatus.KLAARGEZET.value,
+                )
+            )
+            or 0
+        )
+
+
 def verifieer_openstaande_opdrachten(
     *, administratie_id: uuid.UUID, client: RlzClient, payment_account_id: uuid.UUID | None = None
 ) -> int:

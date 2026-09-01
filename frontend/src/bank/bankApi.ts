@@ -47,12 +47,18 @@ export interface RekeningenDto {
   heeft_bankaanlevering: boolean
 }
 
+/** `bedrag` = het OPEN bedrag van de post. De kaart-specs (blok E5, 01/02-09) komen uit de bestaande
+ * payment_item_cache — ontbrekend = null, de kaart laat die regel dan weg (nooit een wachtende kaart). */
 export interface OpenPostDto {
   id: string
   bedrag: string | null
   referentie: string | null
   referentie2: string | null
   rlz_document_id: string | null
+  tegenpartij_naam?: string | null
+  documentsoort?: string | null
+  boekstuknummer?: string | null
+  factuurdatum?: string | null
 }
 
 export interface BoekRegelDto {
@@ -140,6 +146,7 @@ export interface BankSyncResultaatDto {
   open_ververst: number
   open_posten_bijgewerkt: number
   afletteren_geverifieerd: number
+  afletteren_wachtend?: number
   automatisch_afgeletterd: number
   afletter_fouten: string[]
   vastly_gemeld: number
@@ -252,6 +259,9 @@ export interface BankSyncRunResultaatDto {
   mutaties_bijgewerkt: number
   open_ververst: number
   afletteren_geverifieerd: number
+  /** Blok E3 (01/02-09): klaargezette opdrachten die vóór de verificatie wachtten — de toast meldt de
+   * verificatie-uitkomst alleen als dit > 0 is. */
+  afletteren_wachtend?: number
   automatisch_afgeletterd: number
   automatisch_geboekt: number
   fouten: string[]
@@ -271,8 +281,11 @@ export interface BankSyncRunDto {
   fout_reden: string | null
 }
 
-export function startBankSyncAchtergrond(administratieId: string): Promise<BankSyncRunDto> {
-  return apiJson<BankSyncRunDto>(`/administraties/${administratieId}/bank/sync-achtergrond`, { method: 'POST' })
+/** `forceer` (blok E2: het ⟳-icoon als handmatige noodrem) slaat alleen de 5-minuten-drempel over. */
+export function startBankSyncAchtergrond(administratieId: string, forceer = false): Promise<BankSyncRunDto> {
+  return apiJson<BankSyncRunDto>(`/administraties/${administratieId}/bank/sync-achtergrond${forceer ? '?forceer=true' : ''}`, {
+    method: 'POST',
+  })
 }
 
 export function haalBankSyncAchtergrondStatus(administratieId: string): Promise<BankSyncRunDto> {

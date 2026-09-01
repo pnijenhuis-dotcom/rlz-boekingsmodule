@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { haalBankSyncAchtergrondStatus, startBankSyncAchtergrond, type BankSyncRunDto } from './bankApi'
 
 /** Poll-cadans op de status-route zolang de achtergrondronde loopt. */
@@ -11,6 +11,9 @@ export interface BankAutoVerversingStaat {
   bezig: boolean
   /** Netwerk-/API-fout bij het starten of pollen — zichtbaar, nooit stil. */
   fout: string | null
+  /** Blok E2 (01/02-09): het ⟳-icoon — zelfde endpoint, mét `forceer` (slaat de 5-min-drempel over);
+   * de verificatie van wachtende afletteropdrachten lift in élke ronde mee (blok E3). */
+  herstart: () => void
 }
 
 function isLopend(run: BankSyncRunDto): boolean {
@@ -34,48 +37,61 @@ export function useBankAutoVerversing(
   const onKlaarRef = useRef(onKlaar)
   onKlaarRef.current = onKlaar
 
-  useEffect(() => {
-    if (!administratieId) return
-    let actief = true
-    let timer: ReturnType<typeof setTimeout> | null = null
-    setRun(null)
-    setFout(null)
-    setBezig(false)
+  // Eén lopende "ronde-context" per administratie: de effect-start én de handmatige herstart delen
+  // dezelfde unmount-/wissel-guard via deze ref (late antwoorden van een vorige context worden genegeerd).
+  const contextRef = useRef<{ administratieId: string; actief: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null)
 
+  const startRonde = useCallback((administratieIdVoor: string, forceer: boolean) => {
+    const context = contextRef.current
+    if (!context || context.administratieId !== administratieIdVoor) return
+    setFout(null)
     const verwerk = (nieuw: BankSyncRunDto) => {
-      if (!actief) return
+      if (!context.actief) return
       setRun(nieuw)
       if (isLopend(nieuw)) {
         setBezig(true)
-        timer = setTimeout(() => void poll(), POLL_INTERVAL_MS)
+        context.timer = setTimeout(() => void poll(), POLL_INTERVAL_MS)
         return
       }
       setBezig(false)
       if (nieuw.status === 'klaar') onKlaarRef.current(nieuw)
     }
-
     const meldFout = (err: unknown) => {
-      if (!actief) return
+      if (!context.actief) return
       setBezig(false)
       setFout(err instanceof Error ? err.message : 'Verversen uit Reeleezee mislukt')
     }
-
     const poll = async () => {
-      if (!actief) return
+      if (!context.actief) return
       try {
-        verwerk(await haalBankSyncAchtergrondStatus(administratieId))
+        verwerk(await haalBankSyncAchtergrondStatus(administratieIdVoor))
       } catch (err) {
         meldFout(err)
       }
     }
+    startBankSyncAchtergrond(administratieIdVoor, forceer).then(verwerk).catch(meldFout)
+  }, [])
 
-    startBankSyncAchtergrond(administratieId).then(verwerk).catch(meldFout)
-
+  useEffect(() => {
+    if (!administratieId) return
+    const context = { administratieId, actief: true, timer: null as ReturnType<typeof setTimeout> | null }
+    contextRef.current = context
+    setRun(null)
+    setFout(null)
+    setBezig(false)
+    startRonde(administratieId, false)
     return () => {
-      actief = false
-      if (timer) clearTimeout(timer)
+      context.actief = false
+      if (context.timer) clearTimeout(context.timer)
+      if (contextRef.current === context) contextRef.current = null
     }
-  }, [administratieId])
+  }, [administratieId, startRonde])
 
-  return { run, bezig, fout }
+  const herstart = useCallback(() => {
+    const context = contextRef.current
+    if (!administratieId || !context) return
+    startRonde(administratieId, true)
+  }, [administratieId, startRonde])
+
+  return { run, bezig, fout, herstart }
 }

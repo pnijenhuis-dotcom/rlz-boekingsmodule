@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../ui/basis'
 import { BankDetailScreen } from './BankDetailScreen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -82,6 +83,9 @@ interface MockOpties {
   intrekkenAanroepen?: string[]
   boekenAanroepen?: { url: string; body: unknown }[]
   verifieerAanroepen?: string[]
+  /** Blok E: geforceerde achtergrondronde via het ⟳-icoon; response = klaar-run mét resultaat. */
+  syncAchtergrondAanroepen?: string[]
+  syncAchtergrondKlaarResultaat?: Record<string, unknown>
 }
 
 function installFetchMock(opties: MockOpties = {}) {
@@ -152,7 +156,33 @@ function installFetchMock(opties: MockOpties = {}) {
         return Promise.resolve(jsonResponse({ rekeningen: [], btw_codes: [] }))
       }
       // Deel 4 (25-08): auto-verversing + de nieuwe panelen — in deze suite neutraal (actueel/leeg).
-      if (url.endsWith('/bank/sync-achtergrond') && init?.method === 'POST') {
+      if (url.includes('/bank/sync-achtergrond') && init?.method === 'POST') {
+        opties.syncAchtergrondAanroepen?.push(url)
+        if (url.includes('forceer=true')) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                run_id: 'run-9',
+                status: 'klaar',
+                overgeslagen: false,
+                laatste_sync_op: '2026-09-02T00:30:00Z',
+                resultaat: {
+                  mutaties_nieuw: 0,
+                  mutaties_bijgewerkt: 27,
+                  open_ververst: 0,
+                  afletteren_geverifieerd: 0,
+                  afletteren_wachtend: 0,
+                  automatisch_afgeletterd: 0,
+                  automatisch_geboekt: 0,
+                  fouten: [],
+                  ...(opties.syncAchtergrondKlaarResultaat ?? {}),
+                },
+                fout_reden: null,
+              },
+              202,
+            ),
+          )
+        }
         return Promise.resolve(
           jsonResponse(
             {
@@ -177,11 +207,13 @@ function installFetchMock(opties: MockOpties = {}) {
 
 function renderScherm() {
   return render(
-    <MemoryRouter initialEntries={[`/bank/${ADMINISTRATIE_ID}`]}>
-      <Routes>
-        <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={[`/bank/${ADMINISTRATIE_ID}`]}>
+        <Routes>
+          <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   )
 }
 
@@ -195,7 +227,9 @@ describe('BankDetailScreen', () => {
     renderScherm()
 
     expect(await screen.findByText(/Bouwmaat Nederland B.V./)).toBeInTheDocument()
-    expect(screen.getByText('exacte match — referentie + bedrag')).toBeInTheDocument()
+    // Blok E6: de match-reden staat als chip ín de voorstel-kaart, niet meer als losse kolom.
+    expect(screen.getByTestId('voorstel-kaart')).toHaveTextContent('exacte match — naam + factuurnummer + bedrag')
+    expect(screen.queryByRole('columnheader', { name: 'Bron voorstel' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Rekening')).toBeInTheDocument()
     expect(screen.getByText(/Saldo/)).toBeInTheDocument()
   })
@@ -275,16 +309,83 @@ describe('BankDetailScreen', () => {
     expect(screen.getByText(/nog\s+open in RLZ/)).toBeInTheDocument()
   })
 
-  it('draait de verificatieronde met de "Nu verifiëren"-knop en meldt het resultaat', async () => {
-    const verifieerAanroepen: string[] = []
-    installFetchMock({ verifieerAanroepen })
+  it('blok E1/E2: geen "Verversen"/"Nu verifiëren"-knoppen; versheid + ⟳ staan in de paneelkop; ⟳ start een geforceerde ronde (zelfde endpoint) en de uitkomst is een toast zonder layout-shift', async () => {
+    const syncAchtergrondAanroepen: string[] = []
+    installFetchMock({ syncAchtergrondAanroepen, syncAchtergrondKlaarResultaat: { afletteren_wachtend: 2, afletteren_geverifieerd: 1 } })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: /Nu verifiëren/ }))
+    await screen.findByText(/Bouwmaat Nederland B.V./)
+    expect(screen.queryByRole('button', { name: /Nu verifiëren/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Verversen uit Reeleezee/ })).not.toBeInTheDocument()
+    const kop = screen.getByTestId('ververs-hint')
+    expect(kop.closest('.bank-p-kop')).not.toBeNull()
+    expect(kop).toHaveTextContent(/laatst ververst/)
+    const tabel = screen.getByRole('table')
+    expect(tabel.previousElementSibling).toHaveClass('bank-p-kop')
 
-    await waitFor(() => expect(verifieerAanroepen).toHaveLength(1))
-    expect(verifieerAanroepen[0]).toContain(`/bank/rekeningen/${REKENING_ID}/verifieer-afletteren`)
-    expect(await screen.findByText(/1 aflettering\(en\) geverifieerd/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Nu verversen uit Reeleezee' }))
+    await waitFor(() => expect(syncAchtergrondAanroepen.some((u) => u.includes('forceer=true'))).toBe(true))
+    // Uitkomst = toast (blok E4) mét de meeliftende verificatie (blok E3: er wachtten 2 opdrachten).
+    expect(await screen.findByText(/⟳ Ververst: 0 nieuwe mutaties · 27 bijgewerkt — 1 aflettering\(en\) geverifieerd, 1 wacht nog in Reeleezee/)).toBeInTheDocument()
+    // Geen statusregel boven de tabel: de tabel volgt nog steeds direct op de paneelkop.
+    expect(screen.getByRole('table').previousElementSibling).toHaveClass('bank-p-kop')
+  })
+
+  it('blok E3: zonder wachtende afletteropdrachten zwijgt de toast over verificatie', async () => {
+    const syncAchtergrondAanroepen: string[] = []
+    installFetchMock({ syncAchtergrondAanroepen, syncAchtergrondKlaarResultaat: { afletteren_wachtend: 0, afletteren_geverifieerd: 0 } })
+    renderScherm()
+    await screen.findByText(/Bouwmaat Nederland B.V./)
+    await userEvent.click(screen.getByRole('button', { name: 'Nu verversen uit Reeleezee' }))
+    const toast = await screen.findByText(/⟳ Ververst: 0 nieuwe mutaties · 27 bijgewerkt/)
+    expect(toast).not.toHaveTextContent(/aflettering|wacht/)
+  })
+
+  it('blok E7: deelmatch toont het restant cent-exact en de knop heet "Afletteren (deel)"', async () => {
+    installFetchMock({
+      mutaties: [
+        mutatie({
+          bedrag: '-1000.00',
+          open_bedrag: '-1000.00',
+          voorstel: {
+            soort: 'deel_match',
+            kleur: 'oranje',
+            bron: 'deel-match',
+            reden: 'Referentie gevonden, bedrag wijkt af',
+            payment_item_id: ITEM_ID,
+            open_post: {
+              id: ITEM_ID,
+              bedrag: '1200.00',
+              referentie: '26-0441',
+              referentie2: 'RLZ-01-00000921 14-08-2026',
+              rlz_document_id: null,
+              tegenpartij_naam: 'Bouwbedrijf Verhagen B.V.',
+              documentsoort: 'Inkoopfactuur',
+              boekstuknummer: 'RLZ-01-00000921',
+              factuurdatum: '2026-08-14',
+            },
+            regel_id: null,
+            regels: [],
+          },
+        }),
+      ],
+    })
+    renderScherm()
+    const kaart = await screen.findByTestId('voorstel-kaart')
+    expect(kaart).toHaveTextContent('Bouwbedrijf Verhagen B.V.')
+    expect(kaart).toHaveTextContent('Inkoopfactuur 26-0441 · RLZ-01-00000921')
+    expect(screen.getByTestId('voorstel-deelbetaling')).toHaveTextContent('deelbetaling — restant € 200,00 blijft open')
+    expect(kaart).toHaveTextContent('match op naam + referentie, bedrag wijkt af — bevestigen')
+    expect(screen.getByRole('button', { name: 'Afletteren (deel) ✓' })).toBeInTheDocument()
+  })
+
+  it('blok E8: geen match = rustige tekstregel, geen lege kaart', async () => {
+    installFetchMock({
+      mutaties: [mutatie({ voorstel: { soort: 'handmatig', kleur: 'oranje', bron: 'handmatig', reden: 'Geen regel en geen open-post-match', payment_item_id: null, open_post: null, regel_id: null, regels: [] } })],
+    })
+    renderScherm()
+    expect(await screen.findByText('Geen open post of regel gevonden — handmatig beoordelen.')).toBeInTheDocument()
+    expect(screen.queryByTestId('voorstel-kaart')).not.toBeInTheDocument()
   })
 
   it('toont de levenscyclus-sectie met geverifieerd resultaat, afwijkend-gevolgd en "Nu afletteren"', async () => {

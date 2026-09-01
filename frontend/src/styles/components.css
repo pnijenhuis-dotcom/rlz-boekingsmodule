@@ -1861,3 +1861,77 @@ tr.geselecteerd td.acties {
     width: 100%;
   }
 }
+
+/* Bankscherm blok E (mockup bank-voorstel-kaart.html, 01/02-09): paneelkop mét versheid + ⟳-noodrem,
+   voorstel-kaart met doel-post-specs, match-chip, deelbetaling en de rustige geen-match-regel. */
+.bank-p-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.bank-p-kop .vers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.bank-p-kop .knopje {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.bank-p-kop .knopje:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.bank-p-kop .knopje:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.vk {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  font-size: 12px;
+  line-height: 1.45;
+  min-width: 220px;
+  max-width: 420px;
+}
+.vk-compact {
+  background: var(--panel);
+}
+.vk-kop {
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.vk-r {
+  color: var(--muted);
+}
+.vk-verschil {
+  color: var(--warn);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.vk-chip {
+  display: inline-block;
+  margin-top: 5px;
+}
+.vk-geen {
+  color: var(--faint);
+  font-size: 12px;
+}

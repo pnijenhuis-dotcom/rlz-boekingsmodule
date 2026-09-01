@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { VoorstelKaart } from './VoorstelKaart'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { Select } from '../ui/basis'
@@ -252,10 +253,10 @@ export function SplitsenForm({
             </>
           )}
           {deel.soort === 'open_post' && openPost && (
-            <div className="hint">
-              Afletteren tegen open post <b>{openPost.referentie ?? openPost.id}</b>
-              {openPost.bedrag ? ` (${formatBedrag(openPost.bedrag)})` : ''} — de enige open post die de matchmotor bij
-              deze mutatie kent.
+            <div className="hint" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {/* E9: dezelfde voorstel-kaart als in de mutatielijst (één component, twee plekken). */}
+              <VoorstelKaart voorstel={mutatie.voorstel} mutatieBedrag={deel.bedrag || mutatie.bedrag} compact />
+              <span>De enige open post die de matchmotor bij deze mutatie kent.</span>
             </div>
           )}
           {deel.soort === 'relatie' && (

@@ -94,6 +94,9 @@ class BankSyncResultaat:
     vastly_gemeld: int
     automatisch_geboekt: int
     automatisch_fouten: list[str]
+    # Blok E3 (01/02-09): klaargezette opdrachten die vóór de verificatie wachtten (UI meldt de
+    # verificatie-uitkomst alleen als dit > 0).
+    afletteren_wachtend: int = 0
     # Voorstel-volgorde stap 1, écht automatisch sinds de seam-swap (capture-replay
     # 2026-08-09) — zelfde opt-in als het vaste-regels-autoboeken, eigen volumerem-teller.
     automatisch_afgeletterd: int = 0
@@ -369,6 +372,7 @@ def sync_bank_voor_administratie(
         rekeningen = sync_payment_accounts(administratie_id=administratie_id, client=client)
         mutaties = sync_payment_transactions(administratie_id=administratie_id, client=client)
         open_posten = sync_payment_items(administratie_id=administratie_id, client=client)
+        wachtend = afletteren.tel_wachtende_opdrachten(administratie_id=administratie_id)
         geverifieerd = afletteren.verifieer_openstaande_opdrachten(
             administratie_id=administratie_id, client=client
         )
@@ -404,6 +408,7 @@ def sync_bank_voor_administratie(
             mutaties=mutaties,
             open_posten=open_posten,
             afletteren_geverifieerd=geverifieerd,
+            afletteren_wachtend=wachtend,
             vastly_gemeld=vastly_gemeld,
             automatisch_geboekt=automatisch_geboekt,
             automatisch_fouten=automatisch_fouten,

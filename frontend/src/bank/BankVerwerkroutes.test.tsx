@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../ui/basis'
 import { BankDetailScreen } from './BankDetailScreen'
 import { parseBedragCenten } from './Splitsen'
 
@@ -195,11 +196,13 @@ function installFetchMock(opties: MockOpties = {}) {
 
 function renderScherm() {
   return render(
+    <ToastProvider>
     <MemoryRouter initialEntries={[`/bank/${ADMINISTRATIE_ID}`]}>
       <Routes>
         <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
+    </ToastProvider>,
   )
 }
 
@@ -332,7 +335,9 @@ describe('Splitsen', () => {
     const form = screen.getByTestId('splitsen-form')
     expect(within(form).getByLabelText('Bedrag deel 1')).toHaveValue('800.00')
     expect(within(form).getByLabelText('Bestemming deel 1')).toHaveValue('open_post')
-    expect(within(form).getByText(/Afletteren tegen open post/)).toBeInTheDocument()
+    // E9: dezelfde voorstel-kaart als in de mutatielijst, compact (zonder chip).
+    expect(within(form).getByTestId('voorstel-kaart')).toHaveClass('vk-compact')
+    expect(within(form).getByText(/De enige open post die de matchmotor/)).toBeInTheDocument()
     expect(within(form).getByTestId('splits-rest')).toHaveTextContent('Rest: € -200,00')
 
     await userEvent.type(within(form).getByLabelText('Bedrag deel 2'), '200')

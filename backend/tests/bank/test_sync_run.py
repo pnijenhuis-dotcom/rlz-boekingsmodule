@@ -87,3 +87,35 @@ def test_actieve_run_wordt_hergebruikt_en_stale_wordt_fout(
                      {"id": eerste.run_id})
     status = sync_run.laatste_run(administratie_id)
     assert status.status == "fout" and status.fout_reden == sync_run.AFGEBROKEN_REDEN
+
+
+def test_forceer_slaat_alleen_de_drempel_over(
+    administratie_id: uuid.UUID, beheerder_id: uuid.UUID, admin_engine: Engine, synchroon_voertuig: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Blok E2 (01/02-09): het ⟳-icoon start via hetzelfde endpoint mét `forceer` — de 5-min-drempel
+    wordt overgeslagen, een al lopende run wordt nog steeds hergebruikt."""
+    from app.bank import sync as bank_sync
+
+    aanroepen: list[uuid.UUID] = []
+
+    def fake_sync(*, administratie_id, client=None):
+        aanroepen.append(administratie_id)
+        return _resultaat()
+
+    monkeypatch.setattr(bank_sync, "sync_bank_voor_administratie", fake_sync)
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO boekhouding.bank_sync_stand (administratie_id, laatste_sync_op) VALUES (:a, :t) "
+                "ON CONFLICT (administratie_id) DO UPDATE SET laatste_sync_op = :t"
+            ),
+            {"a": administratie_id, "t": datetime.now(UTC) - timedelta(minutes=1)},
+        )
+    gewoon = sync_run.start_bij_openen(administratie_id=administratie_id, actor_id=beheerder_id)
+    assert gewoon.status == "overgeslagen" and aanroepen == []
+    geforceerd = sync_run.start_bij_openen(administratie_id=administratie_id, actor_id=beheerder_id, forceer=True)
+    assert geforceerd.overgeslagen is False and geforceerd.run_id is not None and len(aanroepen) == 1
+    status = sync_run.laatste_run(administratie_id)
+    assert status.status == "klaar" and status.resultaat is not None
+    # Blok E3: de verificatie-telling reist mee in de run-samenvatting (0 zonder wachtende opdrachten).
+    assert status.resultaat.get("afletteren_wachtend") == 0
