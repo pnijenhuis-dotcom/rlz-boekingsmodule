@@ -23,6 +23,18 @@ export const STATUSFILTER_URENMATCH = '__urenmatch_afwijking'
 /** Expliciete "alle documenten"-tab (incl. geboekt/verwijderd). */
 export const SOORT_ALLE = 'alle'
 
+/** Default status-filter bij binnenkomst ZONDER `status=` in de URL (wens Peter 01-09): eerst
+ * het werk — "Te controleren" — niet de geboekte facturen. Twee harde randvoorwaarden: (1) een
+ * expliciete `status=` in de URL (deep-link, kolom-teller, ‹ ›-doorloop) wint altijd — deze
+ * default geldt alleen zonder param (de aanroeper toetst dat); (2) staat er niets op
+ * "Te controleren" binnen de meegegeven scope, dan valt de default terug op "Alle" — nooit een
+ * leeg scherm als eerste beeld. */
+export const STATUS_TE_CONTROLEREN = 'te_controleren'
+
+export function defaultStatusFilter(items: DocumentListItemDto[]): string {
+  return items.some((d) => d.status === STATUS_TE_CONTROLEREN) ? STATUS_TE_CONTROLEREN : STATUSFILTER_ALLE
+}
+
 /** Sorteerbare kolomkoppen van de documentenlijst (punt 21, opruimrun 28-08). */
 export const SORTEER_KOLOMMEN = ['leverancier', 'factuurdatum', 'bedrag', 'status', 'toegewezen'] as const
 export type SorteerKolom = (typeof SORTEER_KOLOMMEN)[number]

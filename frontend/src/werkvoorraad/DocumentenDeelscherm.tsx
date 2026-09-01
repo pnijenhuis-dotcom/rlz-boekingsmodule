@@ -26,6 +26,7 @@ import {
   STATUSFILTER_AUTOMATISCH,
   STATUSFILTER_DUPLICAAT,
   STATUSFILTER_URENMATCH,
+  defaultStatusFilter,
   filterDocumenten,
   isMogelijkDuplicaat,
   isUrenmatchAfwijking,
@@ -102,7 +103,10 @@ export function DocumentenDeelscherm({
   const [lijstFout, setLijstFout] = useState<string | null>(null)
   const [toonVerwijderd, setToonVerwijderd] = useState(false)
   const [zoekterm, setZoekterm] = useState(zoekParam)
-  const [statusFilter, setStatusFilter] = useState(statusParam ?? STATUSFILTER_ALLE)
+  // Blok D 01-09: `null` = geen expliciete keuze (geen `status=` in de URL, nog geen klik) — het
+  // effectieve filter valt dan op de default "Te controleren" (of "Alle" bij teller 0), zie
+  // `statusFilter` hieronder. Een expliciete status (deep-link/kolom-teller/‹ ›) wint altijd.
+  const [statusKeuze, setStatusKeuze] = useState<string | null>(statusParam)
   const zoekveldRef = useRef<HTMLInputElement | null>(null)
   // Chip-rij-standen (verrijking — een fout hier blokkeert de lijst nooit, zelfde patroon als de
   // standen-pagina).
@@ -143,7 +147,7 @@ export function DocumentenDeelscherm({
   // `?status=` uit een chip/kolom-teller (Bij klant / Afgewezen / IBAN / klantoverzicht) kiest het
   // segment-filter voor; `?q=` de zoekterm (terugweg vanaf het controlescherm, punt 1).
   useEffect(() => {
-    setStatusFilter(statusParam ?? STATUSFILTER_ALLE)
+    setStatusKeuze(statusParam)
   }, [statusParam])
   useEffect(() => {
     setZoekterm(zoekParam)
@@ -262,6 +266,14 @@ export function DocumentenDeelscherm({
       }),
     [openPerSoort],
   )
+  // Effectieve status (blok D 01-09): een expliciete keuze (URL-param of segment-klik) wint
+  // altijd. Alleen de pure BINNENKOMST — geen `status=` én geen `soort=` in de URL — krijgt de
+  // default "Te controleren" (staat er niets te controleren, dan "Alle": nooit een leeg eerste
+  // beeld; kiesTabVoorStatus kiest de tab waarin het filter iets oplevert). Navigatie bínnen het
+  // scherm (tab-klik zet `soort=`) houdt het bestaande gedrag: status-reset naar "Alle".
+  const statusFilter =
+    statusKeuze ?? (soortParam === null && documenten !== null ? defaultStatusFilter(documenten) : STATUSFILTER_ALLE)
+
   // Zonder soort-param: de eerste tab met open werk — of, bij een voorgefilterde status (punt 1a),
   // de eerste tab waarin dat filter iets oplevert; niets open → alle documenten.
   const soort: string | null =
@@ -300,9 +312,23 @@ export function DocumentenDeelscherm({
     if (soortParam !== null) gewenst.set('soort', soortParam)
     const ctx = new URLSearchParams(lijstContextNaarParams({ ...context, soort: null }))
     ctx.delete('soort')
+    ctx.delete('status')
     for (const [k, v] of ctx) gewenst.set(k, v)
+    // Status net als de soort alleen expliciet ná een keuze (blok D 01-09): de default
+    // "Te controleren" blijft impliciet, zodat een verse binnenkomst hem opnieuw evalueert
+    // (alles verwerkt → "Alle"). Een expliciet gekozen "Alle" moet wél in de URL wanneer de
+    // default iets anders is — anders zou hij terugvallen op de default.
+    if (statusKeuze !== null && statusKeuze !== STATUSFILTER_ALLE) gewenst.set('status', statusKeuze)
+    else if (
+      statusKeuze === STATUSFILTER_ALLE &&
+      soortParam === null &&
+      defaultStatusFilter(documenten) !== STATUSFILTER_ALLE
+    )
+      // Expliciet gekozen "Alle" terwijl de binnenkomst-default "Te controleren" zou zijn: de
+      // keuze moet in de URL, anders valt een refresh/terugweg terug op de default.
+      gewenst.set('status', STATUSFILTER_ALLE)
     if (huidig.toString() !== gewenst.toString()) setSearchParams(gewenst, { replace: true })
-  }, [context, documenten, searchParams, setSearchParams, soortParam])
+  }, [context, documenten, searchParams, setSearchParams, soortParam, statusKeuze])
 
   // Soort-scope (tab = één soort; "alle" = alle documenten incl. geboekt/verwijderd).
   const inScope = useMemo(
@@ -591,7 +617,7 @@ export function DocumentenDeelscherm({
             <button
               type="button"
               className={statusFilter === STATUSFILTER_ALLE ? 'actief' : undefined}
-              onClick={() => setStatusFilter(STATUSFILTER_ALLE)}
+              onClick={() => setStatusKeuze(STATUSFILTER_ALLE)}
             >
               Alle ({inScope?.length ?? 0})
             </button>
@@ -600,7 +626,7 @@ export function DocumentenDeelscherm({
                 type="button"
                 key={s}
                 className={statusFilter === s ? 'actief' : undefined}
-                onClick={() => setStatusFilter(s)}
+                onClick={() => setStatusKeuze(s)}
               >
                 {statusLabel(s)} ({aantalMetStatus(s)})
               </button>
@@ -609,7 +635,7 @@ export function DocumentenDeelscherm({
               <button
                 type="button"
                 className={statusFilter === STATUSFILTER_AUTOMATISCH ? 'actief' : undefined}
-                onClick={() => setStatusFilter(STATUSFILTER_AUTOMATISCH)}
+                onClick={() => setStatusKeuze(STATUSFILTER_AUTOMATISCH)}
               >
                 Automatisch geboekt
               </button>
@@ -618,7 +644,7 @@ export function DocumentenDeelscherm({
               <button
                 type="button"
                 className={statusFilter === STATUSFILTER_DUPLICAAT ? 'actief' : undefined}
-                onClick={() => setStatusFilter(STATUSFILTER_DUPLICAAT)}
+                onClick={() => setStatusKeuze(STATUSFILTER_DUPLICAAT)}
                 title="Documenten waarvan de gecachete RLZ-duplicaatcheck een bestaande factuur met dezelfde crediteur, referentie en bedrag vond (of met dezelfde bestandsinhoud)"
               >
                 Mogelijk duplicaat ({aantalMogelijkDuplicaat})
@@ -628,7 +654,7 @@ export function DocumentenDeelscherm({
               <button
                 type="button"
                 className={statusFilter === STATUSFILTER_URENMATCH ? 'actief' : undefined}
-                onClick={() => setStatusFilter(STATUSFILTER_URENMATCH)}
+                onClick={() => setStatusKeuze(STATUSFILTER_URENMATCH)}
                 title="Veldwerker-facturen waarvan de urenmatch afwijkt van de goedgekeurde weekstaten"
               >
                 Urenmatch wijkt af ({aantalUrenmatch})

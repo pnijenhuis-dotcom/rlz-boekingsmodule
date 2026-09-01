@@ -5,6 +5,8 @@ import {
   STATUSFILTER_AUTOMATISCH,
   STATUSFILTER_DUPLICAAT,
   STATUSFILTER_URENMATCH,
+  STATUS_TE_CONTROLEREN,
+  defaultStatusFilter,
   filterDocumenten,
   kiesTabVoorStatus,
   lijstContextNaarParams,
@@ -46,6 +48,17 @@ const LIJST = [
   doc({ id: 'f', status: 'te_controleren', duplicaatsignaal: { uitkomst: 'mogelijk_duplicaat', aantal_treffers: 1, berekend_op: '2026-08-27T10:00:00Z' } }),
   doc({ id: 'g', status: 'te_controleren', factuurmatch: { uitkomst: 'afwijking', verschil_bedrag: '10.00', tarief_ontbreekt: false } as never }),
 ]
+
+describe('lijstContext — defaultStatusFilter (blok D 01-09: binnenkomst = eerst het werk)', () => {
+  it('kiest "Te controleren" zodra er te-controleren-werk is', () => {
+    expect(defaultStatusFilter(LIJST)).toBe(STATUS_TE_CONTROLEREN)
+  })
+
+  it('valt terug op "Alle" zonder te-controleren-werk — nooit een leeg eerste beeld', () => {
+    expect(defaultStatusFilter(LIJST.filter((d) => d.status !== STATUS_TE_CONTROLEREN))).toBe(STATUSFILTER_ALLE)
+    expect(defaultStatusFilter([])).toBe(STATUSFILTER_ALLE)
+  })
+})
 
 describe('lijstContext — filterDocumenten (één bron voor lijst én controlescherm)', () => {
   it('soort-scope + status-filter + zoekterm, in lijstvolgorde', () => {

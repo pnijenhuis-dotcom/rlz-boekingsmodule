@@ -476,8 +476,12 @@ describe('Klantpagina — kolommen, zoekveld en statusfilter (mockup #klantpagin
     renderScherm()
 
     // Punt 3a (27/28-08): leverancier is de vette hoofdregel, de bestandsnaam staat in de metaregel.
+    // Blok D (01-09): binnenkomst zonder status = default "Te controleren" — b.pdf (klaar om te
+    // boeken) verschijnt pas ná een expliciete filterkeuze.
     await waitFor(() => expect(screen.getByText('Eneco Zakelijk')).toBeInTheDocument())
     expect(screen.getByText(/a\.pdf/)).toBeInTheDocument()
+    expect(screen.queryByText(/b\.pdf/)).not.toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
     expect(screen.getByText(/b\.pdf/)).toBeInTheDocument()
 
     await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'eneco')
@@ -505,6 +509,52 @@ describe('Klantpagina — kolommen, zoekveld en statusfilter (mockup #klantpagin
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     await gebruiker.type(screen.getByLabelText('Zoek in documenten'), 'bestaat-niet-xyz')
     expect(screen.getByText(/Geen documenten die aan de zoekterm/)).toBeInTheDocument()
+  })
+})
+
+describe('Blok D (01-09) — documentenlijst opent standaard op "Te controleren"', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const werkEnGeboekt = [
+    document({ id: DOCUMENT_ID, bestandsnaam: 'werk.pdf', status: 'te_controleren' }),
+    document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'geboekt.pdf', status: 'geboekt' }),
+  ]
+
+  it('binnenkomst zonder status: default "Te controleren" — alleen het werk, segment actief', async () => {
+    installFetchMock({ documenten: werkEnGeboekt })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText(/werk\.pdf/)).toBeInTheDocument())
+    expect(screen.queryByText(/geboekt\.pdf/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Te controleren (1)' })).toHaveClass('actief')
+  })
+
+  it('randvoorwaarde 1: een expliciete status in de URL wint altijd van de default', async () => {
+    installFetchMock({ documenten: werkEnGeboekt })
+    render(
+      <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}&status=geboekt`]}>
+        <WerkvoorraadScreen />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.getByText(/geboekt\.pdf/)).toBeInTheDocument())
+    expect(screen.queryByText(/werk\.pdf/)).not.toBeInTheDocument()
+  })
+
+  it('randvoorwaarde 2: niets te controleren → default valt terug op "Alle" — nooit een leeg eerste beeld', async () => {
+    installFetchMock({
+      documenten: [
+        document({ id: DOCUMENT_ID, bestandsnaam: 'klaar.pdf', status: 'klaar_om_te_boeken' }),
+        document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'geboekt.pdf', status: 'geboekt' }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText(/klaar\.pdf/)).toBeInTheDocument())
+    expect(screen.getByText(/geboekt\.pdf/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Alle (2)' })).toHaveClass('actief')
   })
 })
 
@@ -875,8 +925,10 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
       documenten: klaarDocs,
       meldingen: [{ batch_id: 'b', tijdstip: '2026-08-27T14:02:00Z', door_gebruiker_id: 'x', door_naam: null, aantal: 3, nog_niet_opnieuw_aangeboden: 0, reden: 'r' }],
     })
+    // Blok D (01-09): binnenkomst zonder status = "Te controleren" — c.pdf (Bouwmaat) is dan het
+    // zichtbare document; de banner-afweging staat daar los van.
     renderOp(`/?administratie=${ADMINISTRATIE_ID}`)
-    await screen.findByText('Eneco Zakelijk')
+    await screen.findByText('Bouwmaat')
     expect(screen.queryByTestId('vervallen-melding')).not.toBeInTheDocument()
   })
 
@@ -907,7 +959,7 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
     const gebruiker = userEvent.setup()
     installRunMock({ documenten: klaarDocs })
     renderOp(`/?administratie=${ADMINISTRATIE_ID}`)
-    await screen.findByText('Eneco Zakelijk')
+    await screen.findByText('Bouwmaat')
     await gebruiker.keyboard('/')
     expect(screen.getByLabelText('Zoek in documenten')).toHaveFocus()
   })
