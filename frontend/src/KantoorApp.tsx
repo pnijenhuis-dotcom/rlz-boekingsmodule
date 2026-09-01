@@ -36,6 +36,7 @@ const DoorbelastingReviewScreen = lazy(() =>
 const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
 const VoorraadScreen = lazy(() => import('./voorraad/VoorraadScreen').then((m) => ({ default: m.VoorraadScreen })))
 const TerugkerendScreen = lazy(() => import('./terugkerend/TerugkerendScreen').then((m) => ({ default: m.TerugkerendScreen })))
+const CrediteurenScreen = lazy(() => import('./instellingen/CrediteurenScreen').then((m) => ({ default: m.CrediteurenScreen })))
 const ProjectDetailScreenLazy = lazy(() =>
   import('./projecten/ProjectDetailScreen').then((m) => ({ default: m.ProjectDetailScreen })),
 )
@@ -175,8 +176,20 @@ function BeschermdeRoutes() {
           }
         />
         <Route path="/gebruikers" element={<GebruikersScreen />} />
+        {/* Instellingen v3 (01-09): geen landing meer — /instellingen redirect naar het eerste zichtbare
+            nav-item van de rol; administratie-detail is een eigen pagina (vervangt de v2-dialoog). */}
         <Route path="/instellingen" element={<InstellingenScreen />} />
+        <Route path="/instellingen/administraties/:administratieId" element={<InstellingenScreen />} />
         <Route path="/instellingen/:sectie" element={<InstellingenScreen />} />
+        {/* Crediteuren-dubbelsignalering: sinds v3 een INZICHT-scherm (was Instellingen › Crediteuren). */}
+        <Route
+          path="/crediteuren"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <CrediteurenScreen />
+            </Suspense>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

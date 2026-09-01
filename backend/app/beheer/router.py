@@ -50,6 +50,7 @@ def administratie_instellingen_lijst(
                 iban_accordeurs_aantal=r.iban_accordeurs_aantal,
                 afgeletterd_event_ingeschakeld=r.afgeletterd_event_ingeschakeld,
                 doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
+                doorbelasting_doel=r.doorbelasting_doel,
                 bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
                 accordering_ingeschakeld=r.accordering_ingeschakeld,
                 laatste_sync_op=r.laatste_sync_op,

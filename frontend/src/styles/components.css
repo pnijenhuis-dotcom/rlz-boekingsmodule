@@ -877,49 +877,7 @@ tr.subrij .eerste-sync-rij ul {
   flex: 1;
 }
 
-/* Instellingen-landing (besluit 25-08, punt D2): sectiekaarten → subpagina's. */
-.instellingen-kaarten {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
-}
-
-.instellingen-kaart {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  text-decoration: none;
-  color: inherit;
-  margin: 0;
-  transition:
-    transform 0.12s,
-    box-shadow 0.12s,
-    border-color 0.12s;
-}
-
-/* Hover-lift op klikbare kaarten (v2). */
-.instellingen-kaart:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hover);
-  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
-}
-
-.instellingen-kaart h2 {
-  margin: 0;
-  font-size: 14px;
-}
-
-.instellingen-kaart .hint {
-  margin: 0;
-  flex: 1;
-}
-
-.instellingen-kaart-stand {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  min-height: 20px;
-}
+/* Instellingen-landing met sectiekaarten (D2 25-08) is per v3 (01-09) vervallen — zie .instellingen-laag onderaan. */
 
 /* Anker-popup (ui/basis/AnkerPopup.tsx, feedbackronde 26-08 punt 2): rendert via een portal op
    documentniveau mét position: fixed (inline gezet) — géén scroll-/overflow-container kan hem
@@ -1648,4 +1606,250 @@ tr.geselecteerd td.acties {
 .sneltoets-tabel td,
 .sneltoets-tabel th {
   padding: 6px 10px;
+}
+
+/* Instellingen v3 (mockup instellingen-v3.html, akkoord Peter 01-09): twee-paneel — vaste linker
+   settings-nav (zoekveld + drie groepen + stand-chips) op élke /instellingen-route, content rechts.
+   ≤ 768px: de nav klapt naar een uitklaplijst boven de content (ontwerpnotitie ⑩). */
+.instellingen-laag {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+.snav {
+  width: 236px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 12px;
+}
+.snav-toggle {
+  display: none;
+}
+.snav-zoek {
+  position: relative;
+  margin-bottom: 14px;
+}
+.snav-zoek input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 11px;
+  font-size: 12.5px;
+}
+.snav-zoekres {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-hover, 0 12px 32px rgba(21, 32, 29, 0.12));
+  overflow: hidden;
+  font-size: 12.5px;
+  min-width: 100%;
+  width: max(100%, 360px);
+}
+.snav-zoekres li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.snav-zoekres li:last-child {
+  border-bottom: none;
+}
+.snav-zoekres li.actief {
+  background: var(--accent-bg);
+}
+.snav-zoekres .snav-zoekres-waar {
+  color: var(--faint);
+  font-size: 11px;
+}
+.snav-zoekres-leeg {
+  color: var(--muted);
+  cursor: default;
+}
+.snav-groep {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  color: var(--faint);
+  text-transform: uppercase;
+  margin: 14px 0 5px;
+  padding-left: 10px;
+}
+.snav-groep-blok:first-of-type .snav-groep {
+  margin-top: 0;
+}
+.snav-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+}
+.snav-item:hover {
+  background: var(--panel);
+}
+.snav-item.actief {
+  background: var(--accent-bg);
+  color: var(--primary);
+  font-weight: 700;
+}
+.snav-tel,
+.snav-st {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 0 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.snav-tel {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.snav-st {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.instellingen-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Administratie-detailpagina (mockup scherm 2): kop met chips + acties, tabs, instellingenrijen. */
+.dkop {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.dkop-chips {
+  display: flex;
+  gap: 5px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.dkop-acties {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.inst-tabs {
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.inst-paneel {
+  padding: 0;
+}
+.inst-rij {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.inst-rij:last-child {
+  border-bottom: none;
+}
+.inst-rij-tekst {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.inst-rij-titel {
+  font-size: 13px;
+  font-weight: 600;
+}
+.inst-rij-uitleg {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 560px;
+  margin-top: 2px;
+}
+.inst-rij-bediening {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  max-width: 100%;
+}
+.inst-switch-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.inst-links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+
+@media (max-width: 768px) {
+  .instellingen-laag {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .snav {
+    width: 100%;
+    position: static;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .snav-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .snav-toggle .snav-mobiel-label {
+    color: var(--faint);
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .snav-toggle > span[aria-hidden] {
+    margin-left: auto;
+  }
+  .snav-inhoud {
+    display: none;
+    padding: 4px 8px 10px;
+    border-top: 1px solid var(--border);
+  }
+  .snav.open .snav-inhoud {
+    display: block;
+  }
+  .snav-zoekres {
+    width: 100%;
+  }
 }

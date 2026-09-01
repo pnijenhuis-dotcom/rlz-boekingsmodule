@@ -353,3 +353,72 @@ class TestIsVastgoedToggle:
     def test_onbekende_administratie(self, beheerder_id: uuid.UUID) -> None:
         with pytest.raises(service.BeheerFout):
             service.zet_is_vastgoed(actor_id=beheerder_id, administratie_id=uuid.uuid4(), is_vastgoed=True)
+
+
+class TestOverzichtDoorbelastingDoel:
+    """Instellingen v3 (01-09): de detailpagina toont de Doorbelasting-tab bij bron óf doel — het
+    lijst-DTO draagt daarom `doorbelasting_doel` (doel van ≥ 1 actieve mapping). De mapping-tabel
+    is RLS-gescoopt op de bron; de service leest per bron-administratie."""
+
+    def test_doel_vlag_volgt_actieve_mapping(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        from app.doorbelasting.models import DoorbelastingMapping
+        from app.db.session import scoped_session
+
+        doel_id = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Doel (test)', :rlz)"),
+                {"id": doel_id, "rlz": f"rlz-{doel_id}"},
+            )
+            conn.execute(
+                text("UPDATE platform.administratie SET doorbelasting_ingeschakeld = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            session.add(
+                DoorbelastingMapping(
+                    administratie_id=administratie_id,
+                    doelentiteit_naam="Doel (test)",
+                    doel_customer_guid=uuid.uuid4(),
+                    doel_administratie_id=doel_id,
+                    aangemaakt_door=beheerder_id,
+                )
+            )
+
+        per_id = {r.administratie_id: r for r in service.overzicht_administratie_instellingen()}
+        assert per_id[administratie_id].doorbelasting_ingeschakeld is True
+        assert per_id[administratie_id].doorbelasting_doel is False
+        assert per_id[doel_id].doorbelasting_doel is True
+        assert per_id[doel_id].doorbelasting_ingeschakeld is False
+
+    def test_inactieve_mapping_telt_niet(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        from app.doorbelasting.models import DoorbelastingMapping
+        from app.db.session import scoped_session
+
+        doel_id = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Doel (test)', :rlz)"),
+                {"id": doel_id, "rlz": f"rlz-{doel_id}"},
+            )
+            conn.execute(
+                text("UPDATE platform.administratie SET doorbelasting_ingeschakeld = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            session.add(
+                DoorbelastingMapping(
+                    administratie_id=administratie_id,
+                    doelentiteit_naam="Doel (test)",
+                    doel_customer_guid=uuid.uuid4(),
+                    doel_administratie_id=doel_id,
+                    actief=False,
+                    aangemaakt_door=beheerder_id,
+                )
+            )
+        per_id = {r.administratie_id: r for r in service.overzicht_administratie_instellingen()}
+        assert per_id[doel_id].doorbelasting_doel is False

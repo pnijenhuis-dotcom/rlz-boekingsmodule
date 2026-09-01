@@ -553,6 +553,9 @@ export interface AdministratieInstellingenDto {
   iban_accordeurs_aantal?: number
   afgeletterd_event_ingeschakeld?: boolean
   doorbelasting_ingeschakeld?: boolean
+  /** v3 01-09: deze administratie is DOEL van minstens één actieve doorbelasting-mapping (spiegel-kant) —
+   * de detailpagina toont de Doorbelasting-tab bij bron óf doel. */
+  doorbelasting_doel?: boolean
   bank_autoboeken_ingeschakeld?: boolean
   accordering_ingeschakeld?: boolean
   laatste_sync_op?: string | null

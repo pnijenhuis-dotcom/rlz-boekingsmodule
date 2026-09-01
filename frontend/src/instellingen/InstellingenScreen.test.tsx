@@ -38,11 +38,14 @@ function administratie(overrides: Record<string, unknown> = {}) {
   }
 }
 
-/** v2 (30-08): de instellingen leven in de detail-dialoog — ⚙ (of de rij) opent 'm eerst. */
-async function openDetail(naam: string) {
+/** v3 (01-09): de instellingen leven op de detailPAGINA /instellingen/administraties/{id} — ⚙ (of de
+ * rij) navigeert erheen; `tab` kiest daarna de tab (default Algemeen). */
+async function openDetail(naam: string, tab?: string) {
   await waitFor(() => expect(screen.getAllByText(naam).length).toBeGreaterThan(0))
   fireEvent.click(screen.getByRole('button', { name: `Instellingen van ${naam}` }))
-  return await screen.findByTestId('administratie-detail')
+  const detail = await screen.findByTestId('administratie-detail')
+  if (tab) fireEvent.click(within(detail).getByRole('tab', { name: tab }))
+  return detail
 }
 
 function installFetchMock(opties: {
@@ -167,6 +170,11 @@ function installFetchMock(opties: {
         )
       }
       if (url.endsWith('/accordering/kandidaten')) return Promise.resolve(jsonResponse({ kandidaten: [] }))
+      if (url.endsWith('/accordering/instellingen')) return Promise.resolve(jsonResponse({ ingeschakeld: false, lagen: [] }))
+      if (url.endsWith('/accordering/staande-regels')) return Promise.resolve(jsonResponse({ regels: [] }))
+      // v3: de tab "Boeken & AI" toont de leverancier-autoboeken van déze administratie.
+      if (url.endsWith('/leveranciers-autoboeken')) return Promise.resolve(jsonResponse({ leveranciers: [] }))
+      if (url.endsWith('/doorbelasting-instelling')) return Promise.resolve(jsonResponse({ ingeschakeld: false }))
       if (url.endsWith('/project-instelling') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as unknown
         opties.putAanroepen?.push({ url, body })
@@ -228,8 +236,9 @@ function installFetchMock(opties: {
   )
 }
 
-/** D2 (besluit 25-08): Instellingen is een landing met sectiekaarten; de secties leven op
- * `/instellingen/<sectie>`. Tests renderen standaard de subpagina die ze toetsen. */
+/** v3 (01-09): geen landing — /instellingen redirect naar het eerste zichtbare nav-item; de secties
+ * leven op `/instellingen/<sectie>`, administratie-detail op `/instellingen/administraties/<id>`.
+ * Tests renderen standaard de subpagina die ze toetsen. */
 function renderScherm(pad = '/instellingen/administraties') {
   return render(
     <MemoryRouter initialEntries={[pad]}>
@@ -237,7 +246,9 @@ function renderScherm(pad = '/instellingen/administraties') {
         <Routes>
           <Route path="/" element={<div>WERKVOORRAAD-SCHERM</div>} />
           <Route path="/gebruikers" element={<div>GEBRUIKERS-SCHERM</div>} />
+          <Route path="/crediteuren" element={<div>CREDITEUREN-SCHERM</div>} />
           <Route path="/instellingen" element={<InstellingenScreen />} />
+          <Route path="/instellingen/administraties/:administratieId" element={<InstellingenScreen />} />
           <Route path="/instellingen/:sectie" element={<InstellingenScreen />} />
         </Routes>
       </AuthProvider>
@@ -250,42 +261,99 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     vi.unstubAllGlobals()
   })
 
-  it('een niet-Beheerder ziet alléén de Beveiliging-sectie (eigen passkeys, besluit 0020)', async () => {
+  it('een niet-Beheerder ziet alléén de Beveiliging-sectie (eigen passkeys, besluit 0020) — nav toont alleen dat item, lege groepen geen kop', async () => {
     installFetchMock({ rol: 'boekhouding' })
     renderScherm('/instellingen')
     expect(await screen.findByRole('heading', { name: /Beveiliging — passkeys/ })).toBeInTheDocument()
     expect(screen.queryByText('Administraties')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /Boeken platformbreed/ })).not.toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Instellingen' })
+    expect(within(nav).getAllByRole('link')).toHaveLength(1)
+    expect(within(nav).getByText('Kantoor')).toBeInTheDocument()
+    expect(within(nav).queryByText('Platform')).not.toBeInTheDocument()
   })
 
-  it('een Beheerder landt op sectiekaarten (D2, besluit 25-08) en opent daaruit de administraties-subpagina', async () => {
-    const gebruiker = userEvent.setup()
+  it('v3 (01-09, herziet D2): een Beheerder landt zónder tussenstop op Administraties; de settings-nav staat erbij mét stand-chips en Gebruikers → /gebruikers', async () => {
     installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'Kempen Facilities B.V.' })] })
     renderScherm('/instellingen')
-    expect(await screen.findByRole('link', { name: /Administraties/ })).toHaveAttribute('href', '/instellingen/administraties')
-    for (const titel of ['Beveiliging', 'Boeken & platform', 'Intake-AI & kosten', 'Klant-accordering', 'Autoboeken', 'Doorbelasting']) {
-      expect(screen.getByRole('heading', { name: titel })).toBeInTheDocument()
-    }
-    expect(screen.getByRole('link', { name: /Gebruikers & toegang/ })).toHaveAttribute('href', '/gebruikers')
-    expect(await screen.findByText('boeken kan')).toBeInTheDocument()
-    expect(screen.queryByTestId('administraties-v2')).not.toBeInTheDocument()
-    await gebruiker.click(screen.getByRole('link', { name: /Administraties/ }))
     await waitFor(() => expect(screen.getAllByText('Kempen Facilities B.V.').length).toBeGreaterThan(0))
     expect(screen.getByTestId('administraties-v2')).toBeInTheDocument()
+    expect(screen.queryByText('Openen →')).not.toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Instellingen' })
+    for (const titel of ['Administraties', 'Klant-accordering', 'Autoboeken', 'Doorbelasting', 'Boeken platformbreed', 'Intake-AI & kosten', 'Beveiliging', 'Materiaalcatalogus']) {
+      expect(within(nav).getByRole('link', { name: new RegExp(titel) })).toBeInTheDocument()
+    }
+    expect(within(nav).getByRole('link', { name: /Gebruikers & toegang/ })).toHaveAttribute('href', '/gebruikers')
+    expect(within(nav).getByRole('link', { name: /Administraties/ })).toHaveAttribute('aria-current', 'page')
+    // Stand-chips (mockup: teller, aan/uit, %).
+    expect(within(nav).getByRole('link', { name: /Boeken platformbreed/ })).toHaveTextContent('aan')
+    expect(within(nav).getByRole('link', { name: /Intake-AI & kosten/ })).toHaveTextContent('12%')
+    expect(within(nav).getByRole('link', { name: /Administraties/ })).toHaveTextContent('1')
     expect(screen.queryByText('WERKVOORRAAD-SCHERM')).not.toBeInTheDocument()
   })
 
-  it('deep-links naar oude secties redirecten naar de subpagina (D2)', async () => {
-    installFetchMock({ rol: 'beheerder' })
-    renderScherm('/instellingen?sectie=doorbelasting')
-    expect(await screen.findByRole('heading', { name: 'Doorbelasting' })).toBeInTheDocument()
-    vi.unstubAllGlobals()
-    installFetchMock({ rol: 'beheerder' })
-    renderScherm('/instellingen#boeken')
-    expect(await screen.findByRole('heading', { name: 'Boeken platformbreed' })).toBeInTheDocument()
+  it('redirect-sweep oude URL\'s (v3): hash/query-deep-links → sectie, crediteuren → Inzicht, gebruikers → /gebruikers, ?administratie= → detailpagina, onbekend → landing', async () => {
+    const gevallen: [string, () => Promise<unknown>][] = [
+      ['/instellingen?sectie=doorbelasting', () => screen.findByRole('heading', { name: 'Doorbelasting' })],
+      ['/instellingen#boeken', () => screen.findByRole('checkbox', { name: 'Boeken platformbreed' })],
+      ['/instellingen/crediteuren', () => screen.findByText('CREDITEUREN-SCHERM')],
+      ['/instellingen#crediteuren', () => screen.findByText('CREDITEUREN-SCHERM')],
+      ['/instellingen/gebruikers', () => screen.findByText('GEBRUIKERS-SCHERM')],
+      [`/instellingen?administratie=${ADMINISTRATIE_ID}`, () => screen.findByTestId('administratie-detail')],
+      ['/instellingen/bestaat-niet', () => screen.findByTestId('administraties-v2')],
+      ['/instellingen', () => screen.findByTestId('administraties-v2')],
+    ]
+    for (const [pad, verwacht] of gevallen) {
+      vi.unstubAllGlobals()
+      installFetchMock({ rol: 'beheerder' })
+      const r = renderScherm(pad)
+      expect(await verwacht()).toBeInTheDocument()
+      r.unmount()
+    }
   })
 
-  it('detail-dialoog toont "IBAN-wissel accorderen door" mét accordeur-chip en wijzig-dialoog, zonder foutbanner', async () => {
+  it('zoeker: "accordering test" geeft een administratie-specifieke deep-link naar de detailpagina-tab (deterministische registry)', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'Testklant B.V.' })] })
+    renderScherm('/instellingen/boeken')
+    await screen.findByRole('checkbox', { name: 'Boeken platformbreed' })
+    const zoek = screen.getByRole('combobox', { name: 'Zoek instelling' })
+    await gebruiker.type(zoek, 'accordering test')
+    const res = await screen.findByTestId('instellingen-zoekresultaten')
+    expect(within(res).getByText('Klant-accordering — Testklant B.V.')).toBeInTheDocument()
+    expect(within(res).getByText('Klant-accordering — alle administraties')).toBeInTheDocument()
+    await gebruiker.click(within(res).getByText('Klant-accordering — Testklant B.V.'))
+    const detail = await screen.findByTestId('administratie-detail')
+    expect(within(detail).getByRole('tab', { name: 'Klant-accordering' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('detailpagina: tabs volgen de toon-regel (Voorraad/Uren alleen bij opt-in, Doorbelasting bij bron óf doel) en de kop draagt de acties', async () => {
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [
+        administratie({ naam: 'Kaal B.V.' }),
+        administratie({ id: 'bbbbbbbb-0000-0000-0000-000000000002', naam: 'Vol B.V.', voorraad_ingeschakeld: true, uren_meerwerk_ingeschakeld: true, doorbelasting_doel: true }),
+      ],
+    })
+    renderScherm()
+    let detail = await openDetail('Kaal B.V.')
+    expect(within(detail).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Algemeen', 'Boeken & AI', 'Klant-accordering'])
+    expect(within(detail).getByRole('button', { name: 'Schrijftest voor Kaal B.V.' })).toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: 'Webservice-gegevens van Kaal B.V.' })).toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: 'Archiveren Kaal B.V.' })).toBeInTheDocument()
+    fireEvent.click(within(detail).getByRole('link', { name: 'Administraties' }))
+    detail = await openDetail('Vol B.V.')
+    expect(within(detail).getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Algemeen',
+      'Boeken & AI',
+      'Klant-accordering',
+      'Doorbelasting',
+      'Uren & materiaal',
+      'Voorraad',
+    ])
+  })
+
+  it('detailpagina (Algemeen) toont "IBAN-accordeurs" mét accordeur-chip en wijzig-dialoog, zonder foutbanner', async () => {
     installFetchMock({
       rol: 'beheerder',
       administraties: [administratie({ naam: 'Kempen Facilities B.V.' })],
@@ -293,7 +361,7 @@ describe('InstellingenScreen — rolgedrag (design-pass taak 3)', () => {
     })
     renderScherm()
     await openDetail('Kempen Facilities B.V.')
-    expect(screen.getByText('IBAN-wissel accorderen door')).toBeInTheDocument()
+    expect(screen.getByText('IBAN-accordeurs')).toBeInTheDocument()
     await waitFor(() => expect(screen.getAllByText('M. de Boer').length).toBeGreaterThan(0))
     await userEvent.setup().click(screen.getByRole('button', { name: /IBAN-accordeurs van Kempen Facilities B\.V\. wijzigen/ }))
     const accordeurCheckbox = await screen.findByRole('checkbox', { name: /M\. de Boer/ })
@@ -337,16 +405,17 @@ describe('InstellingenScreen — rol×sectie-matrix (blok B 31-08, fail-closed)'
     expect(paden('boekhouding')).toEqual(['beveiliging'])
     expect(paden('toekomstige_rol')).toEqual(['beveiliging'])
     expect(paden(null)).toEqual(['beveiliging'])
-    // Vangnet op het vangnet: de matrix loopt over de échte kaartenlijst.
-    expect(INSTELLINGEN_SECTIES.length).toBeGreaterThan(9)
+    // Vangnet op het vangnet: de matrix loopt over de échte nav-lijst (v3: 9 items, Crediteuren → Inzicht).
+    expect(INSTELLINGEN_SECTIES.length).toBeGreaterThanOrEqual(9)
   })
 
-  it('B+P landt op precies twee kaarten (Beveiliging + Materiaalcatalogus)', async () => {
+  it('B+P landt (v3) direct op de Materiaalcatalogus; de nav toont precies twee items (Beveiliging + Materiaalcatalogus)', async () => {
     installFetchMock({ rol: 'boekhouding_projecten' })
     renderScherm('/instellingen')
     expect(await screen.findByRole('heading', { name: 'Materiaalcatalogus' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Beveiliging' })).toBeInTheDocument()
-    expect(screen.queryByText('Boeken & platform')).not.toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Instellingen' })
+    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual(['Beveiliging', 'Materiaalcatalogus'])
+    expect(screen.queryByText('Boeken platformbreed')).not.toBeInTheDocument()
     expect(screen.queryByText('Administraties')).not.toBeInTheDocument()
   })
 
@@ -358,17 +427,18 @@ describe('InstellingenScreen — rol×sectie-matrix (blok B 31-08, fail-closed)'
     expect(await screen.findByDisplayValue('Testklant B.V.')).toBeInTheDocument()
   })
 
-  it('élke andere beheer-sectie valt voor B+P fail-closed terug op Beveiliging', async () => {
-    // 'gebruikers' uitgezonderd: die kaart redirect extern naar /gebruikers (eigen rol-gate).
+  it('élke andere beheer-sectie (en de detailpagina) valt voor B+P fail-closed terug op de eigen landing (Materiaalcatalogus)', async () => {
+    // 'gebruikers' uitgezonderd: dat item redirect extern naar /gebruikers (eigen rol-gate).
     const beheerSecties = INSTELLINGEN_SECTIES.filter((k) => k.beheerder && k.pad !== 'materiaal' && k.pad !== 'gebruikers')
     expect(beheerSecties.length).toBeGreaterThan(5)
-    for (const kaart of beheerSecties) {
+    for (const pad of [...beheerSecties.map((k) => `/instellingen/${k.pad}`), `/instellingen/administraties/${ADMINISTRATIE_ID}`]) {
       vi.unstubAllGlobals()
       resetMijnToegangCache()
       installFetchMock({ rol: 'boekhouding_projecten' })
-      const r = renderScherm(`/instellingen/${kaart.pad}`)
-      expect(await screen.findByRole('heading', { name: /Beveiliging — passkeys/ })).toBeInTheDocument()
+      const r = renderScherm(pad)
+      expect(await screen.findByRole('heading', { name: /Materiaalcatalogus \(transport/ })).toBeInTheDocument()
       expect(screen.queryByRole('heading', { name: /Boeken platformbreed/ })).not.toBeInTheDocument()
+      expect(screen.queryByTestId('administratie-detail')).not.toBeInTheDocument()
       r.unmount()
     }
   })
@@ -386,14 +456,14 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     vi.unstubAllGlobals()
   })
 
-  it('een toggle-klik (in de dialoog) opent een bevestigingsdialoog en wijzigt pas na bevestigen; afwijking = chip in de tabel', async () => {
+  it('een toggle-klik (op de detailpagina) opent een bevestigingsdialoog en wijzigt pas na bevestigen; afwijking = chip in de tabel', async () => {
     const gebruiker = userEvent.setup()
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'BLOW B.V.', boeken_ingeschakeld: false })], putAanroepen })
     renderScherm()
     await waitFor(() => expect(screen.getAllByText('BLOW B.V.').length).toBeGreaterThan(0))
     expect(screen.getByText('Boeken UIT (afwijking)')).toBeInTheDocument()
-    await openDetail('BLOW B.V.')
+    await openDetail('BLOW B.V.', 'Boeken & AI')
     // Op naam, nooit op checkbox-index.
     const boekenToggle = screen.getByRole('checkbox', { name: 'Boeken ingeschakeld voor BLOW B.V.' })
     await gebruiker.click(boekenToggle)
@@ -439,7 +509,7 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'BLOW B.V.', project_verplicht: false })], putAanroepen })
     renderScherm()
-    await openDetail('BLOW B.V.')
+    await openDetail('BLOW B.V.', 'Boeken & AI')
     const projectToggle = screen.getByRole('checkbox', { name: 'Project verplicht voor BLOW B.V.' })
     await gebruiker.click(projectToggle)
     expect(screen.getByText(/Project wordt verplicht bij boeken/)).toBeInTheDocument()
@@ -481,7 +551,7 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Intake-AI ingeschakeld' })).toBeChecked())
   })
 
-  it('eigenaar kiezen (in de dialoog) vraagt bevestiging en PUT de eigenaar (krijgt vragen)', async () => {
+  it('eigenaar kiezen (op de detailpagina) vraagt bevestiging en PUT de eigenaar (krijgt vragen)', async () => {
     const gebruiker = userEvent.setup()
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', putAanroepen })
@@ -579,7 +649,7 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     vi.unstubAllGlobals()
   })
 
-  it('toont "+ Administratie toevoegen", de koppelstand als sync-chip/in de dialoog zonder wachtwoord en 🧪 per rij', async () => {
+  it('toont "+ Administratie toevoegen", de koppelstand als sync-chip/op de detailpagina zonder wachtwoord en 🧪 per rij', async () => {
     installFetchMock({
       rol: 'beheerder',
       administraties: [
@@ -591,11 +661,11 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     await waitFor(() => expect(screen.getByRole('button', { name: '+ Administratie toevoegen' })).toBeInTheDocument())
     expect(await screen.findByText('geen credentials')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Schrijftest voor/ })).toHaveLength(2)
-    await openDetail('Testklant B.V.')
+    const detail = await openDetail('Testklant B.V.')
     expect(screen.getByText('ws_nijenhuis')).toHaveClass('chip', 'ok')
     expect(screen.getByRole('button', { name: /Webservice-gegevens van Testklant B\.V\./ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
-    fireEvent.click(screen.getByRole('button', { name: '+ Administratie toevoegen' }))
+    fireEvent.click(within(detail).getByRole('link', { name: 'Administraties' }))
+    fireEvent.click(await screen.findByRole('button', { name: '+ Administratie toevoegen' }))
     expect(await screen.findByText('Administratie toevoegen — stap 1 van 3')).toBeInTheDocument()
   })
 
@@ -638,12 +708,12 @@ describe('InstellingenScreen — afdelingen (blok A 28-08)', () => {
     vi.unstubAllGlobals()
   })
 
-  it('toggle aan (in de dialoog) → bevestiging benoemt de consequenties, bevestigen = PUT /afdelingen-instelling; beheer verschijnt in de dialoog', async () => {
+  it('toggle aan (op de detailpagina, tab Boeken & AI) → bevestiging benoemt de consequenties, bevestigen = PUT /afdelingen-instelling; beheer verschijnt op de pagina', async () => {
     const gebruiker = userEvent.setup()
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'Kempen Facilities B.V.', afdelingen_ingeschakeld: false })], putAanroepen })
     renderScherm()
-    await openDetail('Kempen Facilities B.V.')
+    await openDetail('Kempen Facilities B.V.', 'Boeken & AI')
     expect(screen.queryByTestId(`afdelingen-${ADMINISTRATIE_ID}`)).toBeNull()
     await gebruiker.click(screen.getByRole('checkbox', { name: 'Afdelingen van toepassing voor Kempen Facilities B.V.' }))
     expect(screen.getByText(/afdeling verplicht/)).toBeInTheDocument()
@@ -651,15 +721,15 @@ describe('InstellingenScreen — afdelingen (blok A 28-08)', () => {
     await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await waitFor(() => expect(putAanroepen).toHaveLength(1))
     expect(putAanroepen[0]).toEqual({ url: `/administraties/${ADMINISTRATIE_ID}/afdelingen-instelling`, body: { ingeschakeld: true } })
-    expect(await screen.findByTestId(`afdelingen-${ADMINISTRATIE_ID}`)).toBeInTheDocument()
-    expect(await screen.findByText('Algemeen')).toBeInTheDocument()
+    const beheer = await screen.findByTestId(`afdelingen-${ADMINISTRATIE_ID}`)
+    expect(await within(beheer).findByText('Algemeen')).toBeInTheDocument()
   })
 
-  it('toggle al aan → chip "Afdelingen" in de tabel en beheer in de dialoog', async () => {
+  it('toggle al aan → chip "Afdelingen" in de tabel en beheer op de detailpagina', async () => {
     installFetchMock({ rol: 'beheerder', administraties: [administratie({ afdelingen_ingeschakeld: true })] })
     renderScherm()
     expect(await screen.findByText('Afdelingen')).toBeInTheDocument()
-    await openDetail('Testklant B.V.')
+    await openDetail('Testklant B.V.', 'Boeken & AI')
     expect(await screen.findByTestId(`afdelingen-${ADMINISTRATIE_ID}`)).toBeInTheDocument()
     expect(await screen.findByText('Route van de administratie (bestaande config)')).toBeInTheDocument()
   })

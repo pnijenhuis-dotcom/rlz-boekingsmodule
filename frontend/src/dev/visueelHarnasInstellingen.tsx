@@ -43,6 +43,13 @@ const ADMINISTRATIES = [
     webservice_username: 'ws-universal',
     probe_groen: true,
     rlz_admin_id: '11111111-2222-3333-4444-555555555555',
+    // v3 (01-09): álle tabs zichtbaar op de detailpagina (sweep-geval ?pad=/instellingen/administraties/<id>).
+    uren_meerwerk_ingeschakeld: true,
+    uren_dagmax_uren: '12',
+    voorraad_ingeschakeld: true,
+    afdelingen_ingeschakeld: true,
+    accordering_ingeschakeld: true,
+    doorbelasting_ingeschakeld: true,
   },
   {
     id: ADMIN_2,
@@ -200,6 +207,25 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
     )
   }
   if (url.endsWith('/doorbelasting-instelling')) return Promise.resolve(jsonResponse({ ingeschakeld: false }))
+  // v3-detailpagina: tab "Boeken & AI" (leverancier-autoboeken + afdelingen).
+  if (url.endsWith('/leveranciers-autoboeken')) {
+    return Promise.resolve(
+      jsonResponse({
+        leveranciers: [
+          { vendor_id: 'v-1', naam: 'Ebbers Salarisadvies B.V.', autoboeken_ingeschakeld: true },
+          { vendor_id: 'v-2', naam: 'Bouwmaat Eindhoven — Steigerbouwmaterialen en Toebehoren B.V.', autoboeken_ingeschakeld: false },
+        ],
+      }),
+    )
+  }
+  if (url.endsWith('/afdelingen')) {
+    return Promise.resolve(
+      jsonResponse({
+        ingeschakeld: true,
+        afdelingen: [{ id: 'alg', naam: 'Algemeen', is_terugval: true, actief: true, route: [], staande_goedkeuringen: 0, gearchiveerd_op: null }],
+      }),
+    )
+  }
   return echteFetch(invoer, init)
 }
 
@@ -208,9 +234,11 @@ if (new URLSearchParams(window.location.search).has('donker')) {
   document.body.classList.add('dark')
 }
 
-// Startroute overschrijfbaar (?pad=/instellingen/administraties) — zo kan de overflow-sweep
-// óók de subpagina's meten (sticky-koppen-regressie 01-09) zonder klik-automatisering.
-const startPad = new URLSearchParams(window.location.search).get('pad') ?? '/instellingen'
+// Startroute overschrijfbaar (?pad=/instellingen/administraties, optioneel &tab=boeken-ai voor de
+// detailpagina) — zo kan de overflow-sweep óók de subpagina's meten zonder klik-automatisering.
+const params = new URLSearchParams(window.location.search)
+const startTab = params.get('tab')
+const startPad = (params.get('pad') ?? '/instellingen') + (startTab ? `?tab=${startTab}` : '')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -233,6 +261,7 @@ createRoot(document.getElementById('root')!).render(
               <div className="content">
                 <Routes>
                   <Route path="/instellingen" element={<InstellingenScreen />} />
+                  <Route path="/instellingen/administraties/:administratieId" element={<InstellingenScreen />} />
                   <Route path="/instellingen/:sectie" element={<InstellingenScreen />} />
                 </Routes>
               </div>

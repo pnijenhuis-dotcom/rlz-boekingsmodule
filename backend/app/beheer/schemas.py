@@ -123,6 +123,8 @@ class AdministratieInstellingenDto(BaseModel):
     iban_accordeurs_aantal: int = 0
     afgeletterd_event_ingeschakeld: bool = False
     doorbelasting_ingeschakeld: bool = False
+    # v3 01-09: doel van ≥ 1 actieve doorbelasting-mapping (detailpagina-tab bij bron óf doel).
+    doorbelasting_doel: bool = False
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None

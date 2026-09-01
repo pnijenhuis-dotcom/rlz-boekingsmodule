@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Instellingen v3 — twee-paneel met vaste settings-navigatie (GitHub/Stripe-patroon)</title>
+<!-- ============================================================
+     REVIEW PETER 01-09: "veel tegels, veel instellingen, moet
+     gebruiksvriendelijker en schaalbaarder". ITERATIE 2 na
+     feedback "te rommelig": de tegel-landing VERVALT volledig.
+     Best-practice-patroon van GitHub/Stripe/Google Admin/Azure/
+     Moneybird: instellingen = twee-paneel — vaste linker-nav
+     (compacte tekstlinks in groepen, zoekveld bovenaan, geen
+     tussenstop-landing) + content rechts. Administratie-detail =
+     pagina met tabs (vervángt de v2-dialoog van 30-08).
+     Schaalregel: een nieuwe module = een regel in de nav en/of
+     een tab op de detailpagina — nooit meer een tegel.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7f6; --panel:#fff; --panel-2:#fafcfb; --border:#e3e9e7;
+    --text:#15201d; --muted:#5f6f6b; --faint:#8a9793;
+    --primary:#2e6660; --primary-fg:#fff; --accent-bg:#e9f2f0;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --radius:12px; --shadow:0 1px 2px rgba(21,32,29,.05),0 4px 16px rgba(21,32,29,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:960px}
+  .scherm{max-width:1120px;border:1px dashed var(--border);border-radius:16px;padding:20px;background:rgba(255,255,255,.45);margin-bottom:34px;position:relative}
+  .scherm>.schermlabel{position:absolute;top:-11px;left:14px;background:var(--primary);color:#fff;font-size:11px;font-weight:800;letter-spacing:.4px;padding:2px 10px;border-radius:99px}
+  .laag{display:flex;gap:18px;align-items:flex-start}
+  /* Linker settings-nav */
+  .snav{width:236px;flex-shrink:0}
+  .snav .zoek{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 11px;color:var(--faint);font-size:12.5px;margin-bottom:14px}
+  .snav .groep{font-size:10.5px;font-weight:800;letter-spacing:1.1px;color:var(--faint);text-transform:uppercase;margin:14px 0 5px;padding-left:10px}
+  .snav .groep:first-of-type{margin-top:0}
+  .snav a{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;font-size:13px;color:var(--text);text-decoration:none}
+  .snav a:hover{background:var(--panel)}
+  .snav a.actief{background:var(--accent-bg);color:var(--primary);font-weight:700}
+  .snav .tel{font-size:10.5px;font-weight:700;padding:0 7px;border-radius:99px;background:var(--warn-bg);color:var(--warn)}
+  .snav .st{font-size:10.5px;font-weight:700;padding:0 7px;border-radius:99px;background:var(--ok-bg);color:var(--ok)}
+  /* Rechter content */
+  .content{flex:1;min-width:0}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .p-kop{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border)}
+  .p-kop h2{font-size:15px}
+  .p-kop .s{font-size:12px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)}
+  td{padding:10px 12px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  .chip{font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--accent-bg);color:var(--primary)}
+  .chip.ok{background:var(--ok-bg);color:var(--ok)}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:12.5px;font-weight:600;cursor:pointer;flex-shrink:0}
+  .btn.sec{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.klein{padding:4px 10px;font-size:12px}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .crumb b{color:var(--primary);font-weight:600}
+  .dkop{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+  .dkop h2{font-size:16.5px}
+  .dkop .chips{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+  .tab{padding:8px 13px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer}
+  .tab.actief{color:var(--primary);border-bottom-color:var(--primary)}
+  .rij{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .rij:last-child{border-bottom:none}
+  .rij .t{font-size:13px;font-weight:600}
+  .rij .s{font-size:11.5px;color:var(--muted);line-height:1.5;max-width:460px;margin-top:2px}
+  .switch{width:44px;height:25px;border-radius:14px;background:var(--primary);position:relative;flex-shrink:0;margin-top:2px}
+  .switch:after{content:"";position:absolute;top:2.5px;right:3px;width:20px;height:20px;border-radius:50%;background:#fff}
+  .rijlink{font-size:12.5px;color:var(--primary);font-weight:600;white-space:nowrap;margin-top:4px}
+  .zoekres{background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(21,32,29,.12);overflow:hidden;font-size:12.5px;margin:-6px 0 14px}
+  .zoekres div{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
+  .zoekres div:last-child{border-bottom:none}
+  .zoekres .waar{color:var(--faint);font-size:11px}
+  .noot{max-width:1120px;background:var(--accent-bg);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--primary);line-height:1.7}
+</style>
+</head>
+<body>
+<h1>Instellingen v3 — twee-paneel, vaste settings-navigatie</h1>
+<p class="sub">Iteratie 2 (feedback Peter: tegels te rommelig). Het patroon van GitHub/Stripe/Google Admin/Moneybird:
+géén tegel-landing meer — Instellingen opent direct in het eerste onderdeel, links een vaste compacte navigatie in drie
+groepen mét zoekveld, rechts de content. Overal zie je waar je bent; alles is één klik.</p>
+
+<div class="scherm"><span class="schermlabel">SCHERM 1 · /instellingen/administraties — de nav staat op élke instellingenpagina</span>
+  <div class="laag">
+    <div class="snav">
+      <div class="zoek">🔍 Zoek instelling…</div>
+      <div class="groep">Administraties</div>
+      <a class="actief" href="#">Administraties <span class="st">24</span></a>
+      <a href="#">Klant-accordering</a>
+      <a href="#">Autoboeken <span class="tel">31</span></a>
+      <a href="#">Doorbelasting</a>
+      <div class="groep">Platform</div>
+      <a href="#">Boeken platformbreed <span class="st">aan</span></a>
+      <a href="#">Intake-AI &amp; kosten <span class="st">41%</span></a>
+      <div class="groep">Kantoor</div>
+      <a href="#">Gebruikers &amp; toegang</a>
+      <a href="#">Beveiliging</a>
+      <a href="#">Materiaalcatalogus</a>
+    </div>
+    <div class="content">
+      <div class="paneel">
+        <div class="p-kop"><h2>Administraties</h2><span class="s">24 actief · gearchiveerd (1)</span><span style="margin-left:auto"></span><span class="btn klein">+ Administratie toevoegen</span></div>
+        <table>
+          <tr><th></th><th>Administratie</th><th>Modules &amp; afwijkingen</th><th>Sync</th></tr>
+          <tr><td>☐</td><td><b>ARVUM B.V.</b></td><td><span class="chip">Vastgoed + autoboeken</span> <span class="chip">Project verplicht</span> <span class="chip">Klant-accordering</span></td><td><span class="chip ok">✓ 10:14</span></td></tr>
+          <tr><td>☐</td><td><b>A.Y. Holding BV</b></td><td><span class="chip">geen facturatiemodule</span></td><td><span class="chip ok">✓ 09:56</span></td></tr>
+          <tr><td>☐</td><td style="color:var(--faint)">… (v2-tabel ongewijzigd; rij-klik opent de detailpagina — scherm 2)</td><td></td><td></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scherm"><span class="schermlabel">SCHERM 2 · /instellingen/administraties/arvum — detailpagina (vervángt de v2-dialoog)</span>
+  <div class="laag">
+    <div class="snav">
+      <div class="zoek">🔍 Zoek instelling…</div>
+      <div class="groep">Administraties</div>
+      <a class="actief" href="#">Administraties <span class="st">24</span></a>
+      <a href="#">Klant-accordering</a>
+      <a href="#">Autoboeken <span class="tel">31</span></a>
+      <a href="#">Doorbelasting</a>
+      <div class="groep">Platform</div>
+      <a href="#">Boeken platformbreed <span class="st">aan</span></a>
+      <a href="#">Intake-AI &amp; kosten <span class="st">41%</span></a>
+      <div class="groep">Kantoor</div>
+      <a href="#">Gebruikers &amp; toegang</a>
+      <a href="#">Beveiliging</a>
+      <a href="#">Materiaalcatalogus</a>
+    </div>
+    <div class="content">
+      <div class="crumb"><b>Administraties</b> › ARVUM B.V.</div>
+      <div class="dkop">
+        <div style="flex:1">
+          <h2>ARVUM B.V.</h2>
+          <div class="chips"><span class="chip">Vastgoed + autoboeken</span><span class="chip">Project verplicht</span><span class="chip">Klant-accordering</span><span class="chip ok">sync ✓ 10:14</span></div>
+        </div>
+        <span class="btn klein sec">🧪 Schrijftest</span>
+        <span class="btn klein sec">⚙ Webservice</span>
+        <span class="btn klein sec">🗑 Archiveren</span>
+      </div>
+      <div class="tabs">
+        <span class="tab actief">Algemeen</span><span class="tab">Boeken &amp; AI</span><span class="tab">Klant-accordering</span><span class="tab">Doorbelasting</span><span class="tab">Uren &amp; materiaal</span><span class="tab">Voorraad</span>
+      </div>
+      <div class="paneel">
+        <div class="rij"><div><div class="t">Eigenaar (krijgt vragen)</div><div class="s">Nieuwe vragen worden standaard aan deze medewerker toegewezen.</div></div><span class="rijlink">P. Nijenhuis ▾</span></div>
+        <div class="rij"><div><div class="t">IBAN-accordeurs</div><div class="s">Vier-ogen-flow bij een IBAN-wissel van een crediteur.</div></div><span class="rijlink">2 accordeurs · wijzig</span></div>
+        <div class="rij"><div><div class="t">Vastgoed-koppeling (Vastly)</div><div class="s">Events, projectaanvragen en verkoop-autoboeken volgen deze schakelaar.</div></div><span class="switch"></span></div>
+        <div class="rij"><div><div class="t">Eerste sync</div><div class="s">Alle onderdelen groen. Bij een rode stand: foutreden + "Sync opnieuw starten".</div></div><span class="chip ok">volledig ✓</span></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--faint);margin-top:10px">Tab "Boeken &amp; AI": Boeken · AI-extractie · Project verplicht · Afdelingen · dagmax · link "3 leveranciers
+      autoboeken actief". Tab "Klant-accordering": de lagen van déze BV (zelfde componenten als het navigatie-item, gefilterd op één BV).
+      Elke toggle houdt de bestaande bevestigingsdialoog + audit.</p>
+    </div>
+  </div>
+</div>
+
+<div class="scherm" style="max-width:640px"><span class="schermlabel">ZOEKVELD · resultaten (deterministische registry, deep-links)</span>
+  <div class="zoek" style="display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 11px;font-size:12.5px;margin-bottom:8px">🔍 <span>accordering arvum</span></div>
+  <div class="zoekres">
+    <div><span><b>Klant-accordering — ARVUM B.V.</b> (lagen, toggle)</span><span class="waar">Administraties › ARVUM › tab Klant-accordering</span></div>
+    <div><span>Klant-accordering — alle administraties</span><span class="waar">nav-item Klant-accordering</span></div>
+    <div><span>Bulk: klant-accordering instellen op meerdere BV's</span><span class="waar">Administraties › bulkbalk</span></div>
+  </div>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① <b>De tegel-landing vervalt volledig</b> — /instellingen redirect naar het eerste zichtbare nav-item van de rol
+(Beheerder: Administraties; Boekhouding: Beveiliging; B+P: Materiaalcatalogus). Geen tussenstop, het patroon van
+GitHub/Stripe/Google Admin. ② De linker settings-nav staat op élke instellingenpagina (waar-ben-ik altijd zichtbaar),
+drie groepen: Administraties bovenaan want meest gebruikt; nav-items dragen compacte standen (aan/uit, teller, %) zodat
+de landing-chips niets verliezen. ③ <b>Herziet v2-besluit 30-08:</b> de administratie-detail-DIALOOG wordt een
+detailPAGINA met tabs (eigen URL, linkbaar, bereikbaar voor de zoeker); de v2-tabel blijft ongewijzigd de lijst.
+④ Klant-accordering/Autoboeken/Doorbelasting blijven als nav-item de dwarsdoorsnede over alle BV's; de administratie-tab
+toont dezelfde componenten gefilterd — één bron, twee ingangen, geen tweede schrijver. ⑤ <b>Crediteuren → Inzicht</b>
+(signaleringsscherm, geen instelling); oude URL's redirecten, ook de tegel-deep-links. ⑥ Zoeker = deterministische
+registry (instelling + synoniemen + administratienamen, geen AI); élke nieuwe instelling registreert zich in dezelfde
+commit (marker-discipline). ⑦ Rol×sectie-matrix blijft fail-closed: nav toont alleen zichtbare items, lege groep = geen
+kop. ⑧ <b>Schaalregel:</b> een nieuwe module = een nav-regel en/of een tab op de detailpagina, nooit meer een tegel.
+⑨ Fase 3 (instellingsprofielen) bewust niet in dit ontwerp — heroverwegen als bulk + defaults-chips aantoonbaar
+tekortschieten. ⑩ Smal scherm (≤ 768): de settings-nav klapt naar een uitklapbare lijst boven de content (bestaand
+patroon zijbalk).</p>
+</body>
+</html>

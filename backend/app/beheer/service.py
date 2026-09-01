@@ -170,6 +170,7 @@ class AdministratieInstellingen:
     iban_accordeurs_aantal: int = 0
     afgeletterd_event_ingeschakeld: bool = False
     doorbelasting_ingeschakeld: bool = False
+    doorbelasting_doel: bool = False
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None
@@ -197,6 +198,27 @@ def _laatste_sync(session, administratie_id: uuid.UUID) -> datetime | None:
         if moment is not None and (jongste is None or moment > jongste):
             jongste = moment
     return jongste
+
+
+def _doorbelasting_doelen(bron_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """Administraties die DOEL zijn van ≥ 1 actieve doorbelasting-mapping (v3 01-09: de detailpagina
+    toont de Doorbelasting-tab bij bron óf doel). De mapping-tabel is RLS-gescoopt op de BRON —
+    daarom per bron-administratie lezen en de doel-id's verzamelen."""
+    from app.doorbelasting.models import DoorbelastingMapping
+
+    doelen: set[uuid.UUID] = set()
+    for bron_id in bron_ids:
+        with scoped_session(bron_id) as session:
+            for doel_id in session.scalars(
+                select(DoorbelastingMapping.doel_administratie_id).where(
+                    DoorbelastingMapping.administratie_id == bron_id,
+                    DoorbelastingMapping.actief.is_(True),
+                    DoorbelastingMapping.doel_administratie_id.is_not(None),
+                )
+            ):
+                if doel_id is not None:
+                    doelen.add(doel_id)
+    return doelen
 
 
 def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False) -> list[AdministratieInstellingen]:
@@ -242,6 +264,7 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
     # Per administratie (RLS-gescoopte tabel, zelfde stale-markering als de status-route) — één
     # korte query per rij is prima voor het Beheerder-scherm.
     syncs = {r.id: laatste_run(r.id) for r in rijen}
+    doelen = _doorbelasting_doelen([r.id for r in rijen if r.doorbelasting_ingeschakeld])
     return [
         AdministratieInstellingen(
             administratie_id=r.id,
@@ -265,6 +288,7 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             iban_accordeurs_aantal=iban_tellingen.get(r.id, 0),
             afgeletterd_event_ingeschakeld=r.afgeletterd_event_ingeschakeld,
             doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
+            doorbelasting_doel=r.id in doelen,
             bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
             accordering_ingeschakeld=r.accordering_ingeschakeld,
             laatste_sync_op=laatste_sync.get(r.id),

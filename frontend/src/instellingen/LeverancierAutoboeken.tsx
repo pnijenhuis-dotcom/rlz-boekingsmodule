@@ -29,10 +29,14 @@ function berichtVoor(pending: PendingWijziging): string {
  * eigen panel, administraties als prop uit het scherm. */
 export function LeverancierAutoboeken({
   administraties,
+  vasteAdministratieId,
 }: {
   administraties: { id: string; naam: string }[]
+  /** Instellingen v3 (01-09): op de administratie-detailpagina staat de administratie vast — geen
+   * combobox, zelfde component/endpoint (één bron, twee ingangen). */
+  vasteAdministratieId?: string
 }) {
-  const [administratieId, setAdministratieId] = useState('')
+  const [administratieId, setAdministratieId] = useState(vasteAdministratieId ?? '')
   const [leveranciers, setLeveranciers] = useState<LeverancierAutoboekenDto[] | null>(null)
   const [laadFout, setLaadFout] = useState<string | null>(null)
   // Hersleutel voor "Opnieuw proberen": ophogen forceert een refetch van dezelfde administratie.
@@ -85,16 +89,18 @@ export function LeverancierAutoboeken({
       <h2>Automatisch boeken per leverancier</h2>
       <p className="hint" style={{ marginTop: 4 }}>
         Opt-in per leverancier: facturen die alle harde checks doorstaan én volledig op bevestigd
-        boekingsgeheugen steunen, worden dan zonder boek-klik geboekt. Kies eerst een administratie.
+        boekingsgeheugen steunen, worden dan zonder boek-klik geboekt.{!vasteAdministratieId && ' Kies eerst een administratie.'}
       </p>
-      <AdministratieCombobox
-        label="Administratie voor automatisch boeken"
-        toonLabel={false}
-        administraties={administraties}
-        waarde={administratieId}
-        onWijzig={setAdministratieId}
-        placeholder="— kies administratie —"
-      />
+      {!vasteAdministratieId && (
+        <AdministratieCombobox
+          label="Administratie voor automatisch boeken"
+          toonLabel={false}
+          administraties={administraties}
+          waarde={administratieId}
+          onWijzig={setAdministratieId}
+          placeholder="— kies administratie —"
+        />
+      )}
 
       {laadFout && (
         <FoutMelding

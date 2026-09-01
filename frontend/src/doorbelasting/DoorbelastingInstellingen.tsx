@@ -44,10 +44,14 @@ type PendingWijziging =
  * (BevestigDialog) en staat in het audit log. */
 export function DoorbelastingInstellingen({
   administraties,
+  vasteAdministratieId,
 }: {
   administraties: { id: string; naam: string }[]
+  /** Instellingen v3 (01-09): op de administratie-detailpagina staat de administratie vast — geen
+   * combobox, zelfde component/endpoints (één bron, twee ingangen). */
+  vasteAdministratieId?: string
 }) {
-  const [administratieId, setAdministratieId] = useState('')
+  const [administratieId, setAdministratieId] = useState(vasteAdministratieId ?? '')
 
   return (
     <div className="panel" style={{ marginTop: 16 }}>
@@ -55,16 +59,18 @@ export function DoorbelastingInstellingen({
       <p className="hint" style={{ marginTop: 4 }}>
         Doorbelasten van geboekte inkoopfacturen aan groepsentiteiten: toggle per bron-administratie
         (default uit), provisie-instellingen en de server-side afgedwongen whitelist van
-        doelentiteiten. Kies eerst een administratie.
+        doelentiteiten.{!vasteAdministratieId && ' Kies eerst een administratie.'}
       </p>
-      <AdministratieCombobox
-        label="Administratie voor doorbelasting"
-        toonLabel={false}
-        administraties={administraties}
-        waarde={administratieId}
-        onWijzig={setAdministratieId}
-        placeholder="— kies administratie —"
-      />
+      {!vasteAdministratieId && (
+        <AdministratieCombobox
+          label="Administratie voor doorbelasting"
+          toonLabel={false}
+          administraties={administraties}
+          waarde={administratieId}
+          onWijzig={setAdministratieId}
+          placeholder="— kies administratie —"
+        />
+      )}
       {administratieId && (
         <DoorbelastingAdministratie
           key={administratieId}
