@@ -963,6 +963,55 @@ van 01-09 was de rij COMPLETEREN nu de administratie onboarded is. Uitgevoerd te
 Structureel: de "+ Doelentiteit toevoegen"-UI is een aparte, al genoteerde opdracht — deze
 seed-/wijzig-route was bewust de snelle weg voor vandaag.
 
+## GECOMBINEERDE RUN 01-09 — bulk klant-accordering + "+ Doelentiteit toevoegen" + kopregel-fix + default "Te controleren" (besluiten + mockup-akkoorden Peter 01-09; geen migratie)
+
+**Twee mockups akkoord Peter 01-09 (capture-at-acceptance, incl. de ontwerpnotities onderin —
+onderdeel van het akkoord): `mockup/bulk-accordering.html` en
+`mockup/doorbelasting-doel-toevoegen.html` — beide 1-op-1 gebouwd dezelfde dag.**
+
+**Blok A — bulk klant-accordering instellen (mockup bulk-accordering.html = norm). Besluiten
+Peter 01-09: (1) ontbrekende accordeur-scope automatisch aanmaken mét expliciete vink,
+geauditeerd (DB-trigger oud→nieuw); (2) bestaande config overschrijven mét vooraf de melding +
+telling van de lopende rondes die daarbij vervallen (per BV); (3) de bulk zet de
+klant-accordering-toggle aan waar die uit staat.**
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Bulkbalk-actie "Klant-accordering instellen…" op de administraties-v2-selectie | Eén dialoog voor álle geselecteerde BV's: lagen (doorzoekbare combobox over ÁLLE actieve klant-accordeurs — scope kan immers nog ontbreken; voorwaarde = bestaand drempelmodel), scope-vink default aan mét vooraf de namen per accordeur, overschrijf-waarschuwing mét vervallen-telling, uitkomstenlijst = zelfde weergave als preview én als resultaat (notitie ⑥) | gebouwd + getest 01-09 | `BulkAccorderingDialog.tsx`; `BulkBediening.tsx`; mockup = norm |
+| Server-side orkestratie — géén tweede configuratie-schrijver | `POST /accordering/bulk-instellen` (+ `/preview`, + `GET /accordering/accordeur-kandidaten`), alle drie Beheerder-only (scope-mutatie is Beheerder-exclusief). Per BV: éérst `voeg_scope_toe` (trigger-audit), dan de BESTAANDE `instellingen_opslaan` (validatie + vervallen-patroon punt 2a + audits identiek aan een losse wijziging, `ingeschakeld=True` = besluit 3). Deelfout = per BV zichtbaar (`fout` mét reden), nooit stil half; zonder vink = BV overgeslagen mét reden; gearchiveerde BV = overgeslagen; niet-accordeur/inactief in de lagen = geweigerd | gebouwd + getest 01-09 | `accordering/service.py::bulk_instellen(_preview)/alle_accordeur_kandidaten`; `tests/accordering/test_bulk_instellen.py` (10); rol-gate-sweep dekt de poorten |
+
+**Blok B — "+ Doelentiteit toevoegen" (mockup doorbelasting-doel-toevoegen.html = norm; casus
+Mantelzorgwoningen MN — de seed-/wijzig-route van de mini-opdracht 01-09 was bewust de snelle
+weg, dit is de structurele UI):**
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Beheerder-dialoog naast de seed-CLI (die blijft voor bulk/herstel) | `POST /doorbelasting/{id}/mappings` + `GET …/mappings/kandidaat-doelen` (onboarded administraties nog niet in de whitelist + provisie-GB-voorstel = meest voorkomende REKENINGCODE van de bestaande rijen, opgezocht in het doel-schema — ledger-GUID's zijn per administratie) + `POST …/mappings/debiteur-lookup`. Whitelist blijft server-side afgedwongen in de motor; rij direct bruikbaar in "Doorbelasten na boeken"; audit `doorbelasting_mapping_aangemaakt` + IC-rij (blok 2-regel) | gebouwd + getest 01-09 | `doorbelasting/service.py::maak_mapping/kandidaat_doelen/zoek_debiteur_in_bron`; `DoelToevoegenDialog.tsx`; `tests/doorbelasting/test_mapping_aanmaken.py` (10) |
+| Debiteur-koppeling: (bijna-)match nooit stil koppelen (les Mantelzorg 01-09) | Lookup op naam in de bron-RLZ: exact + deterministische bijna-match (client-side over de Customers-collectie, token-prefix ≥ 4 — enkelvoud/meervoud-tolerant, rechtsvorm-tokens genegeerd, "Holding" blijft onderscheidend; projectanker nooit aangeboden; géén ongeverifieerde OData-zoekfeatures, géén AI). Match = getoond mét kaartgegevens + VERPLICHTE bevestigingsvink "dit is dezelfde entiteit" (RLZ-naam wint op de rij); geen match = idempotente aanmaak bij opslaan via `zorg_voor_debiteur` (lookup-vóór-PUT + deterministisch client-GUID, verkoopmotor-bouwsteen). IC-vlag default aan mét uitleg (RC-praktijk Facilities) | gebouwd + getest 01-09 | zelfde bestanden; mockup-notities ②–④ |
+
+**Blok C — kopregel-fix Instellingen › Administraties (screenshot Peter 01-09):** de knop
+"+ Administratie toevoegen" kromp als flex-item onder de introtekst en viel daar half over de
+filterregel "N actief · gearchiveerd (1)". Fix conform designpass-v2 + v2-mockup: tekstblok mét
+flex-basis (knop rechtsboven naast de titel), eigen marge onder de kopregel — knop en
+filterregel elk hun eigen ruimte op álle sweep-breekpunten; het scherm zat al in de
+overflow-sweep (`harness-instellingen.html?pad=/instellingen/administraties`), het harnas
+draagt nu óók een gearchiveerde rij zodat exact Peters filterregel-variant meedraait.
+`InstellingenScreen.tsx` (administraties-kopregel); sweep 56/56 groen.
+
+**Blok D — documentenlijst opent standaard op "Te controleren" (wens Peter 01-09):** binnenkomst
+zonder `status=` én zonder `soort=` in de URL = default "Te controleren" — eerst het werk, niet
+de geboekte facturen. Randvoorwaarde 1: een expliciete `status=` (deep-link, kolom-teller,
+‹ ›-doorloop/terugweg) wint altijd; de default blijft impliciet in de URL (zelfde regel als de
+automatische tab-keuze) zodat een verse binnenkomst hem opnieuw evalueert — een expliciet
+gekozen "Alle" gaat wél als `status=alle` de URL in (anders zou hij terugvallen op de default).
+Randvoorwaarde 2: niets te controleren → default "Alle", nooit een leeg eerste beeld
+(`kiesTabVoorStatus` kiest de tab waarin het filter iets oplevert). Tab-klik bínnen het scherm
+(zet `soort=`) houdt het bestaande gedrag: status-reset naar "Alle" (herstel-pad "Alle
+documenten" blijft alles tonen). Puur frontend: `lijstContext.ts::defaultStatusFilter` +
+`DocumentenDeelscherm.tsx` (`statusKeuze` = expliciete keuze, effectief filter valt op de
+default); regressietests op beide randvoorwaarden in `WerkvoorraadScreen.test.tsx` ("Blok D") +
+`lijstContext.test.ts`.
+
 ## Onderhoud
 
 - Nieuwe regel of statusophoging **op het moment van akkoord/oplevering**, in dezelfde commit als

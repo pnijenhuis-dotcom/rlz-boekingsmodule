@@ -268,6 +268,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   controlescherm — de doorloop blijft BINNEN het actieve filter (`kiesVolgendDocument(…, context)`),
   de topbar toont ‹ › mét "n van m", Esc/"← Werkvoorraad" gaan terug mét filter; élke kolom-teller in
   "Overzicht per klant" opent de lijst voorgefilterd; één filterbron `werkvoorraad/lijstContext.ts`.
+  **Binnenkomst-default = "Te controleren" (wens Peter 01-09): zonder `status=`/`soort=` in de URL
+  opent de lijst op het werk — expliciete status in de URL wint altijd, niets te controleren =
+  terugval "Alle" (nooit leeg), tab-klik houdt de bestaande status-reset; BESLISSINGEN
+  "GECOMBINEERDE RUN 01-09" blok D.**
   Sneltoetsen (punt 5): B = actieve besluitknop, A = afwijzen, ←/→, Esc, ? = overzicht, / = zoekveld —
   alleen buiten invoervelden/dialogen (`document/sneltoetsen.ts`). Onopgeslagen (debounce loopt) →
   bevestiging vóór verlaten. BESLISSINGEN "WERKSTROOM- + UI-RUN 27/28-08".**
@@ -646,7 +650,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   alleen-lezen, bevroren tot het besluit) en boekt alles ná het laatste akkoord. Zie
   BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt A** →
   regelverdeling in % (exact 100%, grootste-rest-centen) over de geseede mapping-whitelist
-  (doelentiteit ↔ customer-GUID, server-side afgedwongen, `make doorbelasting-seed-kempen`) →
+  (doelentiteit ↔ customer-GUID, server-side afgedwongen, `make doorbelasting-seed-kempen`;
+  **sinds 01-09 óók via "+ Doelentiteit toevoegen" op Instellingen › Doorbelasting — mockup
+  `doorbelasting-doel-toevoegen.html` = norm, Beheerder-only POST naast het wijzig-endpoint:
+  debiteur-lookup op naam in de bron-RLZ mét deterministische bijna-match (Mantelzorg-les
+  enkelvoud/meervoud: match altijd expliciet bevestigen, nooit stil koppelen), geen match =
+  idempotente aanmaak via `zorg_voor_debiteur`, provisie-GB vooringevuld op rekeningcode,
+  IC default aan — BESLISSINGEN "GECOMBINEERDE RUN 01-09" blok B**) →
   per doelentiteit: verkoopfactuur in de bron (kostenregels + losse provisieregel, provisie-%
   en vlak btw-tarief als config) + spiegel-inkoopfactuur in de doel-administratie (idempotente
   crediteur-aanmaak, Reference = verkoopnummer — bron éérst, STAP-0 2026-08-13),
@@ -754,7 +764,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   "accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist" + batch-id, eenmalige banner op de
   documentenlijst (`GET …/accordering/vervallen-meldingen`); herstelroute = bulk "Ter accordering
   aanbieden" op de tab Klaar om te boeken (`POST …/accordering/documenten/bulk-aanbieden`, zelfde
-  poorten per document, overgeslagen mét reden — punt 2b).** **Ná het laatste akkoord BLIJFT het
+  poorten per document, overgeslagen mét reden — punt 2b).** **Bulk instellen (01-09, mockup
+  `bulk-accordering.html` = norm): de bulk-selectie van administraties-v2 draagt
+  "Klant-accordering instellen…" — één dialoog past de lagen toe op álle geselecteerde BV's
+  (Beheerder-only endpoints; orkestratie over de bestaande configuratieroute, geen tweede
+  schrijver): ontbrekende accordeur-scope aangemaakt mét expliciete vink (trigger-audit; zonder
+  vink = BV overgeslagen mét reden), bestaande config VERVANGEN mét vooraf de telling vervallen
+  rondes (bestaand vervallen-patroon), toggle aan waar uit; preview = resultaat-weergave,
+  deelfout per BV zichtbaar. Zie BESLISSINGEN "GECOMBINEERDE RUN 01-09" blok A.** **Ná het laatste akkoord BLIJFT het
   document op ter_accordering tot de boeking staat (bugfix-run 28-08 — vóór de fix ging het éérst
   naar klaar_om_te_boeken en bleef het dáár stil hangen zodra de boekpoging faalde; casus Kempen
   Facilities 27-08, ±42 documenten): elke mislukking = persistente `boek_fout` op de ronde +
