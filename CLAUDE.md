@@ -419,9 +419,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   mens-op-de-knop is een testfase-drempel en afwijkings-vangnet, geen einddoel — elk
   deterministisch pad krijgt een autoboek-opt-in volgens dit vaste patroon (default UIT,
   harde checks blokkerend, volumerem, 'automatisch'-markering + audit, storno als terugweg).
-  Derde afnemer: verkoop-autoboeken (2026-08-16, zie "Verkoopfactuur-boekpad"); afweging
-  omzetrapporten + doorbelasting-spiegels gedocumenteerd in BESLISSINGEN
-  ("Autoboek-afweging overige deterministische paden") — bouw vergt apart akkoord.**
+  Derde afnemer: verkoop-autoboeken (2026-08-16, zie "Verkoopfactuur-boekpad"); vierde:
+  omzet-autoboeken (GO Peter 01-09, zie "Omzetboekingen"); doorbelasting-spiegels blijven
+  gedocumenteerd-geparkeerd in BESLISSINGEN ("Autoboek-afweging overige deterministische
+  paden") — bouw vergt apart akkoord.**
 - **Vragenworkflow**: vraag blokkeert boeken, toegewezen aan eigenaar per administratie, antwoord
   voedt het geheugen. Vragen zijn een status in de werkvoorraad (geen apart menu).
   **DIALOOG (besluit Peter 25-08, migratie 0064 — herziet het één-antwoord-model van 14-07):**
@@ -601,6 +602,17 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   storno verkoop, storno faalt óók → zichtbaar `half_geboekt` + `make omzet-reconciliatie`).
   Mapping-loze categorie = blokkerende check + automatische vraag. De SalesInvoice-motor
   blijft herbruikbaar (customer_id optioneel) — het Vastly-verkooppad hieronder draait erop.
+  **Omzet-autoboeken (GO Peter 01-09, migratie 0096 — BESLISSINGEN "OMZET-AUTOBOEKEN"):** opt-in
+  per administratie `omzet_autoboeken_ingeschakeld` (Beheerder-only, default UIT, overal UIT tot
+  Peter activeert; toggle op de Boeken & AI-tab van de detailpagina + `make omzet-autoboeken-aan/
+  -uit`). `app/omzet/autoboeken.py` boekt ná de rapport-extractie (vóór de mapping-autovraag)
+  uitsluitend als álles groen is: categorie-mapping volledig MENS-bevestigd (herkomst 'mapping' op
+  élke regel — 'nieuw' of een mens-opgeslagen voorstel weigert), voorraad-GB ingesteld, geen
+  duplicaat/vraag/afwijzing, en daarna de bestaande motor mét álle harde checks (incl.
+  memoriaal-saldo-0, duplicaat per periode, marge-plausibiliteit) + volumerem; één-transactie-
+  garantie ongewijzigd; half geboekt = audit `autoboeken_half_geboekt` + bewakings-alert (nooit
+  stil); `automatisch_geboekt` + bron `omzet_opt_in` op de GEBOEKT-overgang (zelfde chip/audit/
+  tijdlijn).
 - **Verkoopfactuur-boekpad (Vastly, §2d)** — **GEBOUWD + GETEST (2026-08-09)**: migratie 0035 +
   `backend/app/verkoop/` + `frontend/src/verkoop/`; details BESLISSINGEN
   "Vastly-verkoopfactuur-boekpad". Boekt een VASTLY-VERKOOP-document als SalesInvoice MÉT
