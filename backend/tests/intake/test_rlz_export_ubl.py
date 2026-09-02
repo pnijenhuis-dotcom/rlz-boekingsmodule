@@ -246,6 +246,21 @@ class TestHerlezenUbl:
         with scoped_session(None) as session:
             assert session.get(Document, document_id).status == DocumentStatus.NIET_TOEGEWEZEN
 
+    def test_alleen_ubl_laat_pdf_kandidaten_liggen(self, gescoopte_gebruiker: uuid.UUID, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "anthropic_api_key", None)
+        ubl_id = _pre_fix_verzamelbak_rij(gescoopte_gebruiker)
+        pdf_id = documenten_service.registreer_niet_toegewezen_document(
+            bestandsnaam="gestrand.pdf",
+            inhoud=bouw_pdf(1),
+            actor_id=gescoopte_gebruiker,
+            reden="splitsingsdetectie_mislukt: paginabereik 1–2 valt buiten het document",
+        )
+        kandidaten = {k.document_id for k in herlezen.vind_kandidaten(sinds=SINDS)}
+        assert {ubl_id, pdf_id} <= kandidaten
+        # Zonder --alleen-ubl zou de PDF de AI-gate raken (geen key → IntakeGateDicht); mét de vlag niet.
+        telling = herlezen.herlees_verzamelbak(sinds=SINDS, alleen_ubl=True)
+        assert telling.kandidaten == 1 and telling.herlezen == 1
+
     def test_dry_run_telt_alleen(self, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine) -> None:
         document_id = _pre_fix_verzamelbak_rij(gescoopte_gebruiker)
         telling = herlezen.herlees_verzamelbak(sinds=SINDS, dry_run=True)
@@ -263,8 +278,8 @@ def test_cli_geeft_zonder_toewijzen_door(monkeypatch, capsys) -> None:
         return herlezen.HerleesTelling(kandidaten=2, herlezen=2, tenaamstelling_gezet=2, beeld_gezet=2)
 
     monkeypatch.setattr(herlezen, "herlees_verzamelbak", nep)
-    assert cli.main(["intake-herlezen", "--sinds", "2026-08-25", "--zonder-toewijzen"]) == 0
-    assert gezien["toewijzen"] is False and gezien["dry_run"] is False
+    assert cli.main(["intake-herlezen", "--sinds", "2026-08-25", "--zonder-toewijzen", "--alleen-ubl"]) == 0
+    assert gezien["toewijzen"] is False and gezien["dry_run"] is False and gezien["alleen_ubl"] is True
     assert "2 beeld (ingesloten PDF) gezet" in capsys.readouterr().out
     assert cli.main(["intake-herlezen", "--sinds", "2026-08-25"]) == 0
     assert gezien["toewijzen"] is True

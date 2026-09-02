@@ -454,11 +454,16 @@ def herlees_verzamelbak(
     alle_redenen: bool = False,
     opslag: DocumentOpslag | None = None,
     toewijzen: bool = True,
+    alleen_ubl: bool = False,
 ) -> HerleesTelling:
     """Zie module-docstring. `dry_run` telt alleen; `opnieuw` herleest óók al-herlezen rijen;
-    `toewijzen=False` zet een eenduidige match als suggestie i.p.v. toe te wijzen."""
+    `toewijzen=False` zet een eenduidige match als suggestie i.p.v. toe te wijzen; `alleen_ubl`
+    beperkt de run tot UBL-rijen (deterministisch, geen AI-call en geen AI-kosten — de nazorg van
+    de RLZ-export-stapel zonder de PDF-kandidaten mee te nemen)."""
     telling = HerleesTelling()
     kandidaten = vind_kandidaten(sinds=sinds, alle_redenen=alle_redenen)
+    if alleen_ubl:
+        kandidaten = [k for k in kandidaten if k.is_ubl]
     telling.kandidaten = len(kandidaten)
     te_doen: list[HerleesKandidaat] = []
     for kandidaat in kandidaten:

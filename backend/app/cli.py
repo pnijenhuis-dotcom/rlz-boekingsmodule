@@ -174,6 +174,7 @@ def _intake_herlezen(args: argparse.Namespace) -> int:
             opnieuw=args.opnieuw,
             alle_redenen=args.alle_redenen,
             toewijzen=not args.zonder_toewijzen,
+            alleen_ubl=args.alleen_ubl,
         )
     except herlezen.IntakeGateDicht as exc:
         print(f"intake-herlezen: {exc}", file=sys.stderr)
@@ -1583,6 +1584,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Een eenduidige match niet toewijzen maar als suggestie op de rij zetten (de mens wijst zelf "
         "in bulk toe — blok A3/B 02-09). UBL-rijen (RLZ-export) worden altijd meegenomen: deterministisch, geen AI.",
+    )
+    herlees_parser.add_argument(
+        "--alleen-ubl",
+        action="store_true",
+        help="Alleen UBL-rijen herlezen (geen AI-call, geen AI-kosten, geen intake-AI-gate nodig) — de RLZ-export-nazorg.",
     )
 
     opschoon_parser = subparsers.add_parser(
