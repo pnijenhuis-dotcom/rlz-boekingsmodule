@@ -72,6 +72,13 @@ credential-store. Hoeft niet opnieuw als de administraties al gekoppeld zijn.
   code die de app toont, en klik "Bevestigen en inloggen". Je komt daarna direct in de werkvoorraad.
 - **Elke volgende keer**: `http://localhost:<poort>/login` — e-mailadres, wachtwoord, en de actuele
   6-cijferige TOTP-code uit je authenticator-app.
+- **Passkey (sinds 15-08, platformbesluit 0020 — BESLISSINGEN "KANTOOR-PASSKEYS — GEBOUWD + GETEST"):**
+  ná een login registreer je op Instellingen › Beveiliging een passkey voor dit apparaat (Touch ID /
+  Face ID / hardware-key; meerdere apparaten mogelijk). Daarna is inloggen één stap: e-mail →
+  passkey-bevestiging. Wachtwoord + TOTP blijft het volwaardige terugvalpad (geen passkey op dit
+  apparaat = stil terug naar wachtwoord + TOTP). Lokaal werkt WebAuthn alleen op `localhost` (of
+  https), niet op een LAN-IP — voor LAN-kliktests bestaat de dev-stub `auth_biometrie_dev_stub`
+  (buiten dev hard onwerkzaam).
 
 ## 5. Werkvoorraad gebruiken
 
@@ -88,11 +95,13 @@ credential-store. Hoeft niet opnieuw als de administraties al gekoppeld zijn.
 - Documenten kunnen (soft-)verwijderd en hersteld worden via het prullenbak-icoon in de lijst;
   geboekte/ter-accordering-documenten kunnen dat bewust niet (bewaarplicht/lopende accordering).
 
-## Bekende beperkingen van deze slice
+## Wat er (niet) is — zie het statusregister
 
-- Afwijzen (met verplichte reden) en de vragenworkflow staan nog niet in de UI.
-- Klant-autorisatie (accordering) en het e-mail-intake-scherm zijn nog niet gebouwd.
-- Geen automatische tests op de React-UI in een echte browser vanuit een geautomatiseerde sessie
-  (geen browser-automatiseringstool beschikbaar) — wel volledig geverifieerd via `tsc`, `oxlint`,
-  `vitest` en een productie-build; een eigen doorloop in de browser blijft de eerste echte
-  klik-voor-klik-test na elke sessie.
+De sectie "Bekende beperkingen van deze slice" (stand 09-07) is 02-09 geschrapt: afwijzen met
+verplichte reden (`frontend/src/document/AfwijsModal.tsx`), de vragenworkflow (`frontend/src/vragen/`),
+klant-accordering (`backend/app/accordering/` + `frontend/src/accordeur/`) en het intake-/
+verzamelbakscherm (`frontend/src/intake/`) bestaan allemaal. Dit runbook houdt geen eigen
+statuslijst bij — de canonieke stand per feature staat in `docs/BESLISSINGEN.md` (verplichte eerste
+check, leespad-regel besluit 0026). Voor de kliktest-regressie: `frontend/scripts/overflow_sweep.sh`
+(visuele harnassen) + `tsc -b` + `vitest`; een eigen doorloop in de browser blijft de eerste echte
+klik-voor-klik-test na elke sessie.

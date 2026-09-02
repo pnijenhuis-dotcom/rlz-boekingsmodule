@@ -717,7 +717,7 @@ vastgoed-kant; een `factuur_afgeletterd` 2.0-event op een tier-administratie ide
 
 #### F4-nazorg — registersync-secret (klikpunt Peter, ná 28-08)
 
-Derde kanaal-secret (koppelcontract §8 v1.18, besluit 0023 — compartimentering per koppelvlak):
+Derde kanaal-secret (koppelcontract §8 — ingevoerd v1.18, master nu v1.20; besluit 0023 — compartimentering per koppelvlak):
 `REGISTERSYNC_HMAC_SECRET`, inkomend (Vastly tekent `GET /koppelvlak/vastgoed/register`, wij
 verifiëren; wij zijn de bron). Stappen: (1) `scripts/gcp/registersync_secret.sh` (container +
 accessor alleen `run-backend@` + genereren, idempotent); (2) `deploy.yml` `--set-secrets` van de

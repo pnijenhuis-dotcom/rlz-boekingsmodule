@@ -26,24 +26,53 @@ Volgorde: eerst contracten, dan documenten, dan de knop.
       `Verwerkersovereenkomst-PDL-getekend-2026-08-18.pdf` (incl. Bijlagen A/B/C).
       Dit is de keten-schakel waarbinnen de Anthropic-DPA hangt (het
       API-organisatieaccount staat op naam van PDL, Bijlage B).
-- [ ] **Anthropic-DPA rond in de keten PDL ↔ Anthropic**: betaald API-account (organisatie,
-      op naam van PDL Powerhouse), Commercial Terms geaccepteerd door PDL (= DPA incl.
-      SCC's — voor de kantoor-klantdata is module 3 processor→processor de toepasselijke
-      variant), versie + datum gearchiveerd (checklist A in doc 2).
+- [x] **Anthropic-DPA rond in de keten PDL ↔ Anthropic** — **gedaan 2026-08-14** (afgevinkt
+      drift-audit-fix 02-09 op de registers): betaald API-organisatieaccount op naam van PDL
+      Powerhouse (document 7, Bijlage B), Commercial Terms (effective 17-06-2025) + DPA (effective
+      24-02-2025, incl. SCC's module 2 + 3) als PDF-webprints gearchiveerd in `docs/avg/` — DPA is
+      automatisch onderdeel van de Commercial Terms (checklist A in doc 2; BESLISSINGEN
+      "Anthropic-dossier"). Her-verifiëren bij een nieuwe Terms-versie.
 - [ ] **Zero data retention** aangevraagd en bevestigd, óf de default-retentie bewust
       geaccepteerd en vastgelegd (met motivering).
 - [ ] **Model-check**: `ai_extractie_model` is ZDR-compatibel (nu `claude-sonnet-5` — bij
       elke modelwissel opnieuw checken; sommige modellen vereisen 30 dagen retentie).
-- [ ] **Verwerkingsregister** V1/V2/V3 (doc 1) vastgesteld en actueel.
-- [ ] **DPIA-lichte toets** (doc 4) vastgesteld; restrisico's expliciet geaccepteerd.
+- [x] **Verwerkingsregister** V1/V2/V3 (doc 1) vastgesteld en actueel — **gedaan**: jurist-akkoord
+      2026-08-12 (alle vijf documenten), §8/§9 bijgewerkt op de cloudconfiguratie 2026-08-14 (F5
+      punt 7), doorgifte-notitie Anthropic-keten 2026-08-14. Open aanvulling (geen gate): dossier-
+      documenten veldwerkers als gegevenscategorie (BESLISSINGEN "Parkeerposten blok A" punt 4).
+- [x] **DPIA-lichte toets** (doc 4) vastgesteld — **gedaan**: jurist-akkoord 2026-08-12; restrisico's
+      staan in doc 4 (acceptatie = het akkoord van Peter op het pakket 11/12-08).
 - [ ] **Klanten geïnformeerd**: tekstblok (doc 3 §4) in de opdrachtvoorwaarden of als
       addendum verzonden — in elk geval voor de administraties waar de AI voor gaat draaien.
 - [ ] **Gevoelige administraties gemarkeerd**: per administratie beoordeeld of de AI-gate
       daar uit blijft (doc 4 §5.4).
-- [ ] Technische borging aanwezig (is gebouwd — alleen verifiëren): BSN-filtertests groen,
-      gate default UIT, audit op gate-wijziging.
+- [x] Technische borging aanwezig — **geverifieerd 02-09 op code + registers**: BSN-filtertests
+      groen in de suite, audit op élke gate-wijziging (platformgate `platform.intake_instelling`,
+      Beheerder-only; per-administratie `ai_extractie_ingeschakeld`), AI-kostengrens € 100/mnd
+      (14-08) en schema-poort (31-08) als extra lagen. **NB default gewijzigd (besluit Peter 29-08,
+      opdracht 30-08 blok A):** voor NIEUWE administraties staat `ai_extractie_ingeschakeld` sinds
+      30-08 default AAN (wizard); bestaande rijen behielden hun waarde. De platformgate
+      `intake_ai_ingeschakeld` blijft de bovenliggende schakelaar.
 - ➡️ Daarna: `make intake-ai-aan` (of de Instellingen-knop) — de wijziging zelf wordt
   geauditeerd.
+
+> ⚠️ **Feitelijke stand 02-09 (drift-audit-fix; bron: registers + code, geen cloud-DB-query — die is
+> een klikpunt):** de AI-gate staat in productie AL AAN vóór deze stap volledig is afgevinkt.
+> Bewijs: (1) 25-08 — 7 mail-facturen Kempen Facilities B.V. kregen "AI-extractie overgeslagen: geen
+> Claude-API-key"; die melding komt in `documenten/service.py` pas ná de administratie-gate, dus
+> `ai_extractie_ingeschakeld` stond daar AAN (BESLISSINGEN "ANTHROPIC_API_KEY GEMOUNT"); (2) 29-08 —
+> Universal Steigerbouw B.V. draaide 162 Claude-calls voor de voorraad-normalisatie ("enige
+> voorraad-BV mét AI-gate AAN"; Universal Verkoop/Nederland, Bradwolff, BWC Steigers toen UIT);
+> (3) 30-08 — default AAN voor nieuwe administraties (o.a. A.Y. Holding 2, Abbegaa 01-09);
+> (4) de intake-AI leest tenaamstellingen op echte mail-PDF's (diagnose 02-09), dus de platformgate
+> `intake_ai_ingeschakeld` staat AAN; (5) de AI-kostenmeter registreert productieverbruik.
+> **Nog open in deze stap en daarmee ACHTERSTALLIG (klikpunt Peter, geen code):** ZDR-besluit
+> (verzoek ingediend 14-08, uitkomst niet gearchiveerd), model-check ZDR-compatibiliteit
+> (`claude-sonnet-5` extractie, `claude-haiku-4-5` bewaking), klanten geïnformeerd (tekstblok doc 3
+> §4 — niet in de registers terug te vinden), gevoelige administraties beoordeeld (doc 4 §5.4). Deze
+> checklist wordt hier niet stil afgevinkt; de exacte gate-stand per administratie is met één
+> read-only query op `platform.administratie.ai_extractie_ingeschakeld` (cloud, proxy 5434) vast te
+> leggen — daarna hier per administratie noteren.
 
 **NB:** de AI-extractie voor inkoopfacturen, rapport-extractie (omzet) en
 multi-factuur-splitsing zitten allemaal achter dezelfde platform-brede gate — stap 1 dekt ze
@@ -58,17 +87,13 @@ TEST-administratie).
 > **Stand 2026-08-15: de poort is DICHT (8/8 ✅ in het dossier)** — datamigratie
 > tranche 2 is vrijgegeven zodra Peter het go-live-moment kiest.
 
-- [ ] **Google Cloud CDPA** geaccepteerd; versie + datum gearchiveerd (checklist B).
-- [ ] **Regio-borging**: alle services in `europe-west4`; Organization Policy op EU-locaties.
-- [ ] **Herzieningsmoment CLOUD Act uitgevoerd** (besluit 0003): CMEK en/of client-side
-      documentversleuteling beoordeeld; uitkomst als nieuw platformbesluit vastgelegd.
-- [ ] **Retentie geconfigureerd**: Cloud Storage-bucketretentie 7 jaar op documenten;
-      back-up/PITR-instellingen gedocumenteerd.
-- [ ] **Exact Reeleezee**: actuele verwerkersovereenkomst bevestigd en gearchiveerd
-      (checklist C) — formeel losstaand van GCP, maar vóór livegang afronden.
-- [ ] **IMAP-postvak**: providerkeuze gemaakt + DPA rond (checklist D) — vóór activering van
-      de live e-mail-fetch (`app/intake/postvak.py`).
-- [ ] Verwerkingsregister §8/§9 bijgewerkt op de werkelijke cloudconfiguratie.
+- [x] **Stap 2 integraal = de F5-poort: 8/8 ✅ (2026-08-15) in
+      [08-f5-poortdossier.md](08-f5-poortdossier.md)** — CDPA, regio-borging, CLOUD-Act-herziening
+      (besluit 0021), retentie/PITR, Exact-VWO, IMAP-provider-DPA, verwerkingsregister §8/§9 en de
+      identiteit-eerst-check staan dáár per punt met bewijs/vindplaats + wie. De losse checkboxen die
+      hier stonden zijn 02-09 (drift-audit-fix) vervangen door deze ene verwijsregel: één poort, één
+      register — status uitsluitend in het dossier bijhouden. Uitgevoerd: tranche 2 (22-08), F4-cutover
+      (24-08).
 
 ## Stap 3 — opt-ins per administratie (ná stap 1 en 2)
 

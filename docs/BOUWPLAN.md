@@ -180,10 +180,17 @@ Backend:
      drempel of bij fuzzy match, chips verdwijnen zodra de controleur het veld aanraakt).
    - **AVG-gate (migratie 0014):** `platform.administratie.ai_extractie_ingeschakeld`, default
      UIT — zonder opt-in gaat er geen byte klantdata naar de Claude API. Beheer via
-     instellingen-scherm/endpoints + `make ai-extractie-aan/uit`. **AVG-volgorde (hard): echte
-     klantfacturen pas ná (1) DPA met Anthropic, (2) bevestiging EU-verwerking/dataresidentie,
-     (3) opname in het verwerkersregister — tot die drie rond zijn staat de gate alleen aan voor
-     de test-administratie/eigen facturen.**
+     instellingen-scherm/endpoints + `make ai-extractie-aan/uit`. **AVG-volgorde (hard): de
+     geldende gate-volgorde staat uitsluitend in `docs/avg/05-activatie-checklist.md` stap 1 —
+     hier geen tweede formulering** (herschreven drift-audit-fix 02-09: de eerdere tekst hier eiste
+     "bevestiging EU-verwerking/dataresidentie"; die eis is vervangen door de SCC-route — verwerking
+     in de VS op de EU Standard Contractual Clauses in Anthropics DPA, jurist-akkoord 12-08, zie
+     `docs/avg/01-verwerkingsregister.md` §doorgifte en `02-subverwerkers-checklist.md` checklist A;
+     EU-dataresidentie is bij de first-party Anthropic-API niet haalbaar, alleen via Vertex AI —
+     Platform/OPEN_ITEMS "EU-verwerkingsroute"). Kort: PDL-verwerkersovereenkomst → Anthropic-DPA in
+     de keten PDL ↔ Anthropic (Commercial Terms = DPA incl. SCC's) → ZDR-besluit → model-check →
+     verwerkingsregister + DPIA → klantinformatie → dan de knop. Feitelijke gate-stand: `docs/avg/05`
+     "Feitelijke stand 02-09".
    - Tests: gemockte API (schema/refusal/afkap/JSON-fouten), BSN-filter (elfproef, maskering,
      geen valse hits op IBAN/datums/bedragen), controlelaag-guardrails (nooit gokken), gate-
      gedrag (default uit = nul AI-verkeer), voorstel-boekt-nooit-automatisch. Echte-API-test
@@ -737,7 +744,9 @@ UI-eisen):
 ## Fase 5 — Integraties & schaal
 
 - Vastgoedmodule-webhook live (HMAC + timestamp/nonce + schema_version; integratietest tegen de
-  aparte RLZ-test-administratie, testboekingen storneren — koppelcontract v1.3 §7.3).
+  aparte RLZ-test-administratie, testboekingen storneren — koppelcontract v1.3 §7.3) → **GEBOUWD +
+  GETEST; LIVE sinds de F4-cutover 24-08-2026** (BESLISSINGEN "F4-CUTOVER UITGEVOERD"; afleveraar-job
+  `rlz-webhook-afleveraar`, `WEBHOOK_DOEL_URL` Vastly; route A geactiveerd door Vastly 01-09).
 - MI-dashboard-module (read-only, Financials-endpoints + read-models).
   - **Groepsconsolidatie = pure reporting-overlay (platformbesluit 0015, 2026-07-14 — alleen
     documenteren, hier niets bouwen vóór de MI-fase):** geconsolideerde cijfers worden alleen
@@ -753,7 +762,10 @@ UI-eisen):
     eigendoms-% (minderheidsbelang), met een groep-scope bóven de per-administratie-scope;
     (4) intercompany-tagging (doorbelasting/centrale inkoop, IC-leveranciersvlag, VGB-prefix)
     is het zaad voor de eliminaties. Details: `Platform/besluiten/0015-…`.
-- Peppol-intake, hardening (rate-limit-gedrag, backup/restore, monitoring), uitrol alle klanten.
+- Peppol-intake (→ **VERKENNING UITGEVOERD 29-08**, `verkenning/PEPPOL_VERKENNING_29-08.md`; geen
+  bouw), hardening (rate-limit-gedrag, backup/restore, monitoring → **GEBOUWD + GETEST 31-08:
+  synthetische bewaking + alerting**, `backend/app/bewaking/`, migratie 0092, BESLISSINGEN
+  "SYNTHETISCHE BEWAKING + ALERTING"), uitrol alle klanten.
 
 ## Roadmap ná go-live — Betaalmodule via Ponto PIS (capture 2026-08-19, besluit Peter: GEEN bouw nu)
 
