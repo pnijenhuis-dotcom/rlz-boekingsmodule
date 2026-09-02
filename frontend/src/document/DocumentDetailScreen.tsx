@@ -396,6 +396,9 @@ export function DocumentDetailScreen() {
   // ⋯-actiemenu in de topbar (addendum 27-08 punt 5): "Verplaats naar andere administratie…".
   const [actieMenuOpen, setActieMenuOpen] = useState(false)
   const actieMenuKnop = useRef<HTMLButtonElement | null>(null)
+  const navKnopVorige = useRef<HTMLButtonElement | null>(null)
+  const navKnopVolgende = useRef<HTMLButtonElement | null>(null)
+  const [navTip, setNavTip] = useState<'vorige' | 'volgende' | null>(null)
   const [verplaatsModalOpen, setVerplaatsModalOpen] = useState(false)
   const { administraties } = useAdministraties()
   // Aanbetaling-verrekenregel (deel 4 punt 3): brug van het signaal naar het boekvoorstel — elke
@@ -527,6 +530,10 @@ export function DocumentDetailScreen() {
     if (!administratieId || !documentId) return
     let objectUrl: string | null = null
     let actief = true
+    // Bugfix 02-09 (B5a): bij ‹ ›-navigatie werd het <object> hergebruikt mét de al gerevokede
+    // blob-URL van het vorige document — Chrome herlaadt een <object> niet bij een data-wissel.
+    // Daarom: bijlage expliciet leegmaken (skeleton) én het <object> keyen op de nieuwe URL.
+    setBijlage(null)
 
     void apiFetch(`/administraties/${administratieId}/documenten/${documentId}/bestand`).then(async (resp) => {
       if (!resp.ok || !actief) return
@@ -648,13 +655,19 @@ export function DocumentDetailScreen() {
               én als dit document (nog) in die lijst staat. */}
           {positie && positie.index >= 0 && (
             <span className="lijst-navigatie" data-testid="lijst-navigatie">
+              {/* B5b (02-09): de uitleg als anker-popup bij de knop zelf (AnkerPopup-patroon) i.p.v.
+                  een tooltip die linksboven over de zijbalk rendert. */}
               <button
+                ref={navKnopVorige}
                 type="button"
                 className="icon-btn"
                 aria-label="Vorige document in de lijst"
-                title="Vorige in de gefilterde lijst — sneltoets ←"
                 disabled={!positie.vorige}
                 onClick={() => naarBuur('vorige')}
+                onMouseEnter={() => setNavTip('vorige')}
+                onMouseLeave={() => setNavTip(null)}
+                onFocus={() => setNavTip('vorige')}
+                onBlur={() => setNavTip(null)}
               >
                 ‹
               </button>
@@ -662,15 +675,30 @@ export function DocumentDetailScreen() {
                 {positie.index + 1} van {positie.totaal}
               </span>
               <button
+                ref={navKnopVolgende}
                 type="button"
                 className="icon-btn"
                 aria-label="Volgende document in de lijst"
-                title="Volgende in de gefilterde lijst — sneltoets →"
                 disabled={!positie.volgende}
                 onClick={() => naarBuur('volgende')}
+                onMouseEnter={() => setNavTip('volgende')}
+                onMouseLeave={() => setNavTip(null)}
+                onFocus={() => setNavTip('volgende')}
+                onBlur={() => setNavTip(null)}
               >
                 ›
               </button>
+              <AnkerPopup
+                open={navTip !== null}
+                anker={navTip === 'vorige' ? navKnopVorige : navKnopVolgende}
+                kant="onder"
+                uitlijning="start"
+                afstand={6}
+                className="tip"
+                role="tooltip"
+              >
+                {navTip === 'vorige' ? 'Vorige in de gefilterde lijst — sneltoets ←' : 'Volgende in de gefilterde lijst — sneltoets →'}
+              </AnkerPopup>
             </span>
           )}
           <StatusChip status={detail.status} />
@@ -750,7 +778,7 @@ export function DocumentDetailScreen() {
             <div className="bijlage-inhoud">
               {!bijlage && <SkeletonBlok />}
               {bijlage?.contentType.includes('pdf') && (
-                <object data={bijlage.url} type="application/pdf">
+                <object key={bijlage.url} data={bijlage.url} type="application/pdf" data-testid="bijlage-pdf">
                   <p className="hint">
                     Geen inline PDF-weergave in deze browser —{' '}
                     <a href={bijlage.url} download={detail.bestandsnaam}>

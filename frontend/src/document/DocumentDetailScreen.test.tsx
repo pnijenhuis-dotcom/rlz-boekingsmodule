@@ -962,6 +962,50 @@ describe('DocumentDetailScreen — lijstcontext reist mee (punt 1b/1c)', () => {
     )
   })
 
+  it('B5a (bugfix 02-09): ‹ ›-navigatie herlaadt de PDF — nieuw <object> mét nieuwe blob-URL, geen hergebruik van het oude element', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const detail1 = detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' })
+    installFetchMock(detail1, { lijst })
+    // Het volgende document krijgt óók een detail-antwoord (de basis-mock kent alleen DOCUMENT_ID).
+    const basis = fetch
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) =>
+      url.endsWith(`/documenten/${K2_ID}`) && !url.includes('/accordering/') && !init?.method
+        ? Promise.resolve(jsonResponse({ ...detail1, id: K2_ID, bestandsnaam: 'tweede.pdf' }))
+        : basis(url, init),
+    )
+    renderSchermMetQuery(CONTEXT_QUERY)
+
+    const eerste = await screen.findByTestId('bijlage-pdf')
+    const eersteUrl = eerste.getAttribute('data')
+    expect(eersteUrl).toMatch(/^blob:/)
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Volgende document in de lijst' }))
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${K2_ID}`))
+    await waitFor(() => {
+      const tweede = screen.getByTestId('bijlage-pdf')
+      expect(tweede.getAttribute('data')).not.toBe(eersteUrl)
+    })
+    // Het oude <object> is vervangen (key op de blob-URL), niet gemuteerd.
+    expect(eerste).not.toBeInTheDocument()
+  })
+
+  it('B5b (bugfix 02-09): de uitleg van › staat als tooltip bij de knop (anker-popup), niet als losse title', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [], status: 'klaar_om_te_boeken' }), { lijst })
+    renderSchermMetQuery(CONTEXT_QUERY)
+    const volgende = await screen.findByRole('button', { name: 'Volgende document in de lijst' })
+    expect(volgende).not.toHaveAttribute('title')
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    await gebruiker.hover(volgende)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Volgende in de gefilterde lijst — sneltoets →')
+    // Anker-popup: portal op documentniveau mét position: fixed (nooit afgekapt/verdwaald linksboven).
+    expect(screen.getByRole('tooltip')).toHaveStyle({ position: 'fixed' })
+    await gebruiker.unhover(volgende)
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument())
+  })
+
   it('zonder context: geen ‹ ›-navigatie en de kale terugweg (bestaand gedrag)', async () => {
     installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] }), { lijst })
     renderScherm()

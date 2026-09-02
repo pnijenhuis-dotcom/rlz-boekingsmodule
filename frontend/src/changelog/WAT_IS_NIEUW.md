@@ -13,6 +13,7 @@
 - Verdeelsleutels zitten achter één menu ("Verdeelsleutel ▾": toepassen of opslaan als sleutel); de grootboekrekening in de doeladministratie staat vooringevuld en is per rij uit te klappen.
 - Heeft een doeladministratie nog geen projecten in het systeem, dan staat er nu een knop "Nu synchroniseren" in plaats van een technische melding.
 - Bankscherm: mutaties zonder voorstel dragen een klein chipje "handmatig" in plaats van een herhaalde tekstregel; per rij staat nu één knop (Afletteren, Akkoord of Boeken…) met de overige routes (koppelen aan relatie, splitsen, handmatig boeken, intrekken) achter ⋯. De tabel gebruikt de volledige breedte en de omschrijving staat op een eigen regel.
+- Controlescherm: bij bladeren met ‹ › laadt de factuur-PDF nu altijd opnieuw (die bleef soms op het vorige document staan), en de uitleg bij de pijltjes verschijnt bij de knop zelf in plaats van linksboven in beeld.
 
 ## 2026-09-02 — Verzamelbak: facturen van één pagina worden weer herkend
 
