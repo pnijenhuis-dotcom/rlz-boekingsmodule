@@ -82,7 +82,10 @@ in de DPA) de toepasselijke module. De inhoudelijke checks hieronder veranderen 
   DPA (+ ZDR als mitigatie) dragen de doorgifte alleen. Periodiek herchecken (DPF-status
   kan wijzigen).
 
-**Zero data retention / data-handling — exact wat te kiezen:**
+**Zero data retention / data-handling — exact wat te kiezen:** *(besluitvoorbereiding 02-09:
+`09-zdr-beslisnotitie.md` — bronnen Privacy Center 09-06/01-07-2026; model-inventaris
+`10-model-check.md`: naast `claude-sonnet-5` roept de bewaking `claude-haiku-4-5` aan, beide
+géén Covered Model.)*
 
 1. **Default (zonder ZDR):** Anthropic bewaart API-in- en output een beperkte periode voor
    misbruik-/veiligheidsmonitoring (volgens Anthropics documentatie doorgaans max. 30 dagen);

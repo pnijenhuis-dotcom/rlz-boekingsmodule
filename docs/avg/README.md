@@ -18,6 +18,10 @@ september 2026).
 | 6 | [06-datalek-procedure.md](06-datalek-procedure.md) | Datalek-procedure (meldplicht art. 33/34 AVG), kantoorbreed, incl. rollen en meldstappen — meldketen §5 sinds 2026-08-19 via PDL (24 u, artikel 9 VWO) |
 | 7 | [07-verwerkersovereenkomst-pdl.md](07-verwerkersovereenkomst-pdl.md) | Intra-groep verwerkersovereenkomst kantoor ↔ PDL Powerhouse B.V. (jurist-vraag 9; **GETEKEND 2026-08-19** — in tweevoud te Arnhem, beide partijen P.W. Nijenhuis; getekend exemplaar `Verwerkersovereenkomst-PDL-getekend-2026-08-18.pdf` + bijlagen-docx `Bijlagen-A-B-C-…-2026-08-18.docx`; Bijlage B op de feitelijke accountstructuur: Anthropic/GCP/Workspace/Apple/Play onder PDL, Reeleezee rechtstreeks; documenten 1–3 en 5–6 op die keten aangepast 2026-08-19; KvK kantoor 72504412 ingevuld) |
 | 8 | [08-f5-poortdossier.md](08-f5-poortdossier.md) | Afvinkbaar bewijsdossier voor de F5-go-live-poort (= stap 2 van doc 5): per punt bewijs/vindplaats + wie + status |
+| 9 | [09-zdr-beslisnotitie.md](09-zdr-beslisnotitie.md) | **Blok A 02-09 — CONCEPT ter besluit Peter:** zero data retention bij Anthropic — wat het is, geen gepubliceerd tarief, Covered-Models-uitsluiting, opties A/B/C, advies A + C, invulblok voor het besluit |
+| 10 | [10-model-check.md](10-model-check.md) | **Blok A 02-09 — UITGEVOERD:** modellen in code vs productie-kostenmeter vs register/DPA (sonnet-5 + haiku-4-5; ZDR-compatibel GROEN, register-dekking ORANJE: voorraad-normalisatie + contract-ontleding zonder V-rij; prijstabel = fail-closed allowlist; audit-gaten gate-default) |
+| 11 | [11-klantinformatietekst-concept.md](11-klantinformatietekst-concept.md) | **Blok A 02-09 — CONCEPT (Peter/jurist redigeert + verstuurt):** klantleesbare A4 "Zo gebruiken wij AI bij uw administratie" — wat gaat er naar de AI, waarom, waarborgen, verwerkersrol, keuze; twee bewaar-varianten afhankelijk van doc 9 |
+| 12 | [12-beoordelingskader-gevoelige-administraties.md](12-beoordelingskader-gevoelige-administraties.md) | **Blok A 02-09 — VOORSTEL ter besluit Peter:** criteria A–E (+R) + classificatie van alle 31 administraties met feitelijke gate-stand (cloud-DB 02-09): 2× UIT tot bevestiging, 1× UIT (test), 27× AAN; verzendlog klantinfo per rij |
 
 Word-bundel voor verzending aan de jurist: `AVG-pakket-ter-toetsing-2026-08-11.docx`
 (memo + alle documenten in één bestand).
@@ -42,6 +46,11 @@ per partij in [02-subverwerkers-checklist.md](02-subverwerkers-checklist.md)):
 teken-/printversie, gebruikt voor de definitieve PDL-docx), nooit met de hand in Word bewerken (2026-08-13: een Word-hersave van de
 verwerkersovereenkomst-docx introduceerde precies zo'n zwevende binary-wijziging, incl.
 per ongeluk getikte tekst; opgelost door regeneratie uit de ongewijzigde md).
+
+**Stand 02-09 (blok A AVG-afronding):** de AI-gate staat in productie AAN voor alle 30 actieve
+administraties terwijl vier stap-1-punten open staan; documenten 9–12 maken die vier punten
+beslisklaar/aantoonbaar (ZDR, model-check, klantinformatie, gevoelige administraties). Niets is
+afgevinkt zonder besluit — zie doc 5 stap 1 en "Feitelijke stand".
 
 Status: **juridische toetsing afgerond — jurist-akkoord 2026-08-12** (alle 9 toetsvragen; zie
 `docs/BESLISSINGEN.md`, onderwerp "AVG-compliance"). De activatie-checklist (doc 5) is sindsdien

@@ -33,9 +33,20 @@ Volgorde: eerst contracten, dan documenten, dan de knop.
       automatisch onderdeel van de Commercial Terms (checklist A in doc 2; BESLISSINGEN
       "Anthropic-dossier"). Her-verifiëren bij een nieuwe Terms-versie.
 - [ ] **Zero data retention** aangevraagd en bevestigd, óf de default-retentie bewust
-      geaccepteerd en vastgelegd (met motivering).
+      geaccepteerd en vastgelegd (met motivering). **VOORBEREID 02-09 — besluit open:**
+      beslisnotitie `09-zdr-beslisnotitie.md` (wat ZDR is, geen gepubliceerd tarief, per
+      organisatie via Sales namens PDL, Covered Models uitgesloten — wij gebruiken er geen;
+      advies A + C: doorzetten én de tussenstand tijdelijk expliciet accepteren). Afvinken pas
+      ná Peters paraaf in doc 9 §4 + gearchiveerd bewijs (console-print retentie-instelling).
 - [ ] **Model-check**: `ai_extractie_model` is ZDR-compatibel (nu `claude-sonnet-5` — bij
       elke modelwissel opnieuw checken; sommige modellen vereisen 30 dagen retentie).
+      **UITGEVOERD 02-09 (`10-model-check.md`):** code + productie-kostenmeter roepen uitsluitend
+      `claude-sonnet-5` (alle extractiepaden) en `claude-haiku-4-5` (bewaking) aan; beide geen
+      Covered Model → ZDR-compatibel GROEN; prijstabel werkt als fail-closed allowlist.
+      Register-dekking ORANJE: `voorraad_normalisatie` en `contract_ontleding` hebben geen
+      V-rij (voorstel V8, doc 10 §4). Vinkje pas samen met het ZDR-besluit (de regel toetst
+      compatibiliteit mét een bestaande ZDR-afspraak). Vaste regel: doc 10 herhalen bij élke
+      modelwissel of nieuw AI-pad.
 - [x] **Verwerkingsregister** V1/V2/V3 (doc 1) vastgesteld en actueel — **gedaan**: jurist-akkoord
       2026-08-12 (alle vijf documenten), §8/§9 bijgewerkt op de cloudconfiguratie 2026-08-14 (F5
       punt 7), doorgifte-notitie Anthropic-keten 2026-08-14. Open aanvulling (geen gate): dossier-
@@ -44,8 +55,16 @@ Volgorde: eerst contracten, dan documenten, dan de knop.
       staan in doc 4 (acceptatie = het akkoord van Peter op het pakket 11/12-08).
 - [ ] **Klanten geïnformeerd**: tekstblok (doc 3 §4) in de opdrachtvoorwaarden of als
       addendum verzonden — in elk geval voor de administraties waar de AI voor gaat draaien.
+      **CONCEPT KLAAR 02-09:** `11-klantinformatietekst-concept.md` (één A4, klantleesbaar,
+      twee bewaar-varianten afhankelijk van doc 9; redactie + verzending = Peter/jurist).
+      Verzendlog per administratie = kolom "geïnformeerd" in doc 12. Op 02-09 draait de AI voor
+      álle 30 actieve administraties — de brief moet dus naar alle klanten.
 - [ ] **Gevoelige administraties gemarkeerd**: per administratie beoordeeld of de AI-gate
-      daar uit blijft (doc 4 §5.4).
+      daar uit blijft (doc 4 §5.4). **VOORSTEL KLAAR 02-09:**
+      `12-beoordelingskader-gevoelige-administraties.md` — criteria A–E (+R) en een
+      classificatie van alle 31 rijen; voorstel: 2× UIT tot bevestiging (Mantelzorgwoningen
+      Midden Nederland, Stichting Shuto — beide staan nu AAN), 1× UIT (test-seed), 27× AAN
+      (13 mét klantinfo wegens consument-betrokkenen). Afvinken ná Peters paraaf per rij.
 - [x] Technische borging aanwezig — **geverifieerd 02-09 op code + registers**: BSN-filtertests
       groen in de suite, audit op élke gate-wijziging (platformgate `platform.intake_instelling`,
       Beheerder-only; per-administratie `ai_extractie_ingeschakeld`), AI-kostengrens € 100/mnd
@@ -56,23 +75,31 @@ Volgorde: eerst contracten, dan documenten, dan de knop.
 - ➡️ Daarna: `make intake-ai-aan` (of de Instellingen-knop) — de wijziging zelf wordt
   geauditeerd.
 
-> ⚠️ **Feitelijke stand 02-09 (drift-audit-fix; bron: registers + code, geen cloud-DB-query — die is
-> een klikpunt):** de AI-gate staat in productie AL AAN vóór deze stap volledig is afgevinkt.
-> Bewijs: (1) 25-08 — 7 mail-facturen Kempen Facilities B.V. kregen "AI-extractie overgeslagen: geen
-> Claude-API-key"; die melding komt in `documenten/service.py` pas ná de administratie-gate, dus
-> `ai_extractie_ingeschakeld` stond daar AAN (BESLISSINGEN "ANTHROPIC_API_KEY GEMOUNT"); (2) 29-08 —
-> Universal Steigerbouw B.V. draaide 162 Claude-calls voor de voorraad-normalisatie ("enige
-> voorraad-BV mét AI-gate AAN"; Universal Verkoop/Nederland, Bradwolff, BWC Steigers toen UIT);
-> (3) 30-08 — default AAN voor nieuwe administraties (o.a. A.Y. Holding 2, Abbegaa 01-09);
-> (4) de intake-AI leest tenaamstellingen op echte mail-PDF's (diagnose 02-09), dus de platformgate
-> `intake_ai_ingeschakeld` staat AAN; (5) de AI-kostenmeter registreert productieverbruik.
-> **Nog open in deze stap en daarmee ACHTERSTALLIG (klikpunt Peter, geen code):** ZDR-besluit
-> (verzoek ingediend 14-08, uitkomst niet gearchiveerd), model-check ZDR-compatibiliteit
-> (`claude-sonnet-5` extractie, `claude-haiku-4-5` bewaking), klanten geïnformeerd (tekstblok doc 3
-> §4 — niet in de registers terug te vinden), gevoelige administraties beoordeeld (doc 4 §5.4). Deze
-> checklist wordt hier niet stil afgevinkt; de exacte gate-stand per administratie is met één
-> read-only query op `platform.administratie.ai_extractie_ingeschakeld` (cloud, proxy 5434) vast te
-> leggen — daarna hier per administratie noteren.
+> ⚠️ **Feitelijke stand 02-09 — GEVERIFIEERD op de cloud-DB (read-only query, Auth Proxy 5434,
+> `boekhouding_app`, 02-09 ±20:30 NL; eerder die dag alleen op registers + code):** de AI-gate staat
+> in productie AAN vóór deze stap volledig is afgevinkt.
+>
+> - **Platformgate** `platform.intake_instelling.ai_ingeschakeld = true` (audit
+>   `intake_ai_ingeschakeld_gewijzigd` 16-08 13:04 UTC, actor Peter; de rij zelf draagt
+>   `gewijzigd_op` 07-08 — cloud-seed).
+> - **Per administratie** `ai_extractie_ingeschakeld`: **AAN voor alle 30 actieve administraties**,
+>   UIT alleen voor de gearchiveerde "Administratiekantoor Nijenhuis (test)" (28-08 uitgezet,
+>   30-08 gearchiveerd). Volledige tabel mét GUID's + sector + voorstel:
+>   `12-beoordelingskader-gevoelige-administraties.md` §2. Hoe het aan ging (audit): 24-08
+>   Universal Steigerbouw; 25-08 10:03 twaalf administraties in één bulk (ARVUM, Meyer, Elissen,
+>   Kempen Facilities, Molenhof B/V, Oirschot R/OVB, Rubicon, Shuto, Veldhoven) + 15:00 Nijenhuis
+>   C.V.; 27-08 6-Steps + Bouwadvies Oost; 30-08 Bradwolff, BWC, Universal Nederland/Verkoop;
+>   sinds 30-08 wizard-default AAN (A.Y. Holding 1+2, Abbegaa, Adda, BLOw, B. van Rooijen/
+>   G. Schaalje, T&J, Zilver Beheer, Caravanpark De Visotter, test-seed) — die default legt
+>   géén gate-event vast (doc 10 §4.5); 01-09 10:05 een bulk van 23 no-op-events (true→true).
+> - **Productieverbruik (kostenmeter):** 1.487 sonnet-5-calls (18-08 → 02-09, € 38,09) + 13
+>   haiku-calls bewaking; bronnen inkoop_extractie 525, intake_splitsing 733,
+>   voorraad_normalisatie 226, intake_herlezen 3 — modeltabel in `10-model-check.md` §2.
+>
+> **Nog open in deze stap en daarmee ACHTERSTALLIG (besluiten Peter/jurist, geen code):** ZDR
+> (doc 9 §4), model-check-vinkje (hangt aan ZDR), klanten informeren (doc 11 versturen),
+> gevoelige administraties (doc 12 paraferen). Alles is op 02-09 **voorbereid en aantoonbaar
+> gemaakt**; niets is hier stil afgevinkt.
 
 **NB:** de AI-extractie voor inkoopfacturen, rapport-extractie (omzet) en
 multi-factuur-splitsing zitten allemaal achter dezelfde platform-brede gate — stap 1 dekt ze

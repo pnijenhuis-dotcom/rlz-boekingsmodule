@@ -1428,6 +1428,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (`app/intake/herlezen.py`, idempotent, systeem-actor, geen geheugen-leren). **Open: punt 2 (UBL+PDF-paren
   bundelen + handmatige samenvoeg-actie) en punt 3 (afzender-leren begrenzen op kantoor-/doorstuuradressen)**
   — aparte run ná beoordeling.
+- `docs/avg/` — AVG-pakket (jurist-akkoord 12-08); **stap 1 van `05-activatie-checklist.md` is op 02-09
+  beslisklaar gemaakt (blok A): `09-zdr-beslisnotitie.md` (besluit Peter), `10-model-check.md` (sonnet-5 +
+  haiku-4-5, ZDR-compatibel; register mist voorraad-normalisatie + contract-ontleding), `11-klantinformatie-
+  tekst-concept.md` (Peter/jurist verstuurt), `12-beoordelingskader-gevoelige-administraties.md` (voorstel:
+  Mantelzorgwoningen MN + Stichting Shuto UIT tot bevestiging). Feit cloud-DB 02-09: AI-gate AAN voor alle 30
+  actieve administraties. BESLISSINGEN "AVG STAP 1 — VOORBEREID".**
 - `docs/BOUWPLAN.md` — fasering en definition of done per fase
 - `verkenning/.env` — RLZ-credentials (BLOW + Universal Steigerbouw), NOOIT committen
 
