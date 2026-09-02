@@ -1416,12 +1416,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
   schema-versies, entiteiten, conventies)**
 - `docs/BESLISSINGEN.md` — **statusregister per feature/onderwerp (status + canonieke vindplaats)**
-- `docs/DIAGNOSE_INTAKE_VERZAMELBAK_02-09.md` — **diagnose kliktest 02-09 (alleen onderzocht, niets
-  gebouwd):** intake-AI leest de tenaamstelling wél maar antwoordt `ep=2` op 1-pagina-PDF's → onze
-  paginabereik-validatie verwerpt het hele voorstel (72/76 splitsingsfouten sinds 25-08, verzamelbak-UI
-  toont de reden niet); UBL+PDF-paren worden niet gebundeld; afzender-leren klapt om op kantoor-/
-  doorstuuradressen. Fix-voorstellen per punt wachten op Peters beoordeling (BESLISSINGEN "DIAGNOSE
-  INTAKE/VERZAMELBAK 02-09").
+- `docs/DIAGNOSE_INTAKE_VERZAMELBAK_02-09.md` — **diagnose kliktest 02-09:** intake-AI leest de
+  tenaamstelling wél maar antwoordt `ep=2` op 1-pagina-PDF's → de oude alles-of-niets-validatie verwierp het
+  hele voorstel (72/76 splitsingsfouten sinds 25-08). **Punt 1 GEFIXT (spoedopdracht 02-09, BESLISSINGEN
+  "INTAKE-SPLITSINGSBUG GEFIXT 02-09"):** pagina-aantal als feit in de opdracht
+  (`opdracht_met_paginatelling`, géén schema-wijziging), proportionele validatie (`beoordeel_segmenten`:
+  één factuur = hele document, bij meerdere alleen het ongeldige deel `ongeldig_reden` — `valideer_segmenten`
+  blijft de harde poort voor mens-bevestigde bereiken), verzamelbak-rij toont de échte reden
+  (`app/intake/redenen.py`; "geen tenaamstelling gelezen" alleen als er niets gelezen is), bewakingsprobe
+  `intake_verwerpingsratio` (≥ 50 % verworpen bij ≥ 3 pogingen/uur) en nazorg-CLI `intake-herlezen`
+  (`app/intake/herlezen.py`, idempotent, systeem-actor, geen geheugen-leren). **Open: punt 2 (UBL+PDF-paren
+  bundelen + handmatige samenvoeg-actie) en punt 3 (afzender-leren begrenzen op kantoor-/doorstuuradressen)**
+  — aparte run ná beoordeling.
 - `docs/BOUWPLAN.md` — fasering en definition of done per fase
 - `verkenning/.env` — RLZ-credentials (BLOW + Universal Steigerbouw), NOOIT committen
 

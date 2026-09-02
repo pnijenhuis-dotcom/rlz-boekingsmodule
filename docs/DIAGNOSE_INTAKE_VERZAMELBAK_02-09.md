@@ -1,6 +1,11 @@
 # Diagnose intake/verzamelbak — kliktest Peter 02-09-2026
 
-> **Status: DIAGNOSE, niets gebouwd of gewijzigd.** Read-only onderzoek op de cloud-data (Cloud SQL
+> **Status-update 02-09 (spoedopdracht): punt 1 is GEFIXT** — pagina-aantal in de opdracht, proportionele
+> validatie, zichtbare reden op de verzamelbak-rij, bewakingsprobe `intake_verwerpingsratio` en nazorg-CLI
+> `intake-herlezen`; zie BESLISSINGEN "INTAKE-SPLITSINGSBUG GEFIXT 02-09". **Punten 2 en 3 blijven open**
+> (aparte run ná beoordeling). De tekst hieronder is de oorspronkelijke diagnose.
+>
+> **Status (oorspronkelijk): DIAGNOSE, niets gebouwd of gewijzigd.** Read-only onderzoek op de cloud-data (Cloud SQL
 > Auth Proxy 5434, `boekhouding_app`, RLS-scope per query; GCS-leeskopieën van de bestanden; Cloud
 > Logging). Fix-voorstellen staan per punt onderaan en wachten op Peters beoordeling. Geen migraties,
 > geen RLZ-/Odoo-writes. Eén bewuste uitzondering: zes reproductie-AI-calls LOKAAL (dev-DB als
