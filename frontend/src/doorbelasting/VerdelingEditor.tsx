@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ApiError } from '../api/client'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ApiError, apiJson } from '../api/client'
 import type {
   DoorbelastingMappingDto,
   DoorbelastingRunDto,
@@ -7,11 +7,19 @@ import type {
   VerdeelsleutelDoelInputDto,
   VerdeelsleutelDto,
 } from '../api/types'
-import { normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
-import { MultiSelect, Select } from '../ui/basis'
+import { AnkerPopup, MultiSelect, Select } from '../ui/basis'
 import { haalVerdeelsleutelsOp, pasVerdeelsleutelToe, slaDoorbelastingVerdelingOp, slaVerdeelsleutelOp } from './doorbelastingApi'
-import { formatPct, parsePercentage, percentageVoorBackend, restPercentage, somPercentages as somVanInvoer } from './percentage'
+import {
+  bedragNaarPercentage,
+  formatPct,
+  parsePercentage,
+  percentageNaarBedrag,
+  percentageVoorBackend,
+  restPercentage,
+  restantStand,
+  somPercentages as somVanInvoer,
+} from './percentage'
 import { boekingStatusChip, formatEuroString, formatPercentage } from './status'
 import { useDoelGrootboek } from './useDoelGrootboek'
 import { useDoelProjecten } from './useDoelProjecten'
@@ -23,14 +31,17 @@ export interface BronRegel {
   netto: string | null
 }
 
-/** Eén verdeelregel in bewerking (mockup #verdeelmodal): doelentiteit + % + doel-kosten-GB.
- * `nettoDeel` is uitsluitend het server-berekende deel uit de laatste opslag — de client
- * rekent nooit bindend (grootste-rest leeft in de backend). */
+/** Eén verdeelregel in bewerking (mockup doorbelasten-blok-v2 ①): doelentiteit + % ÓF bedrag
+ * (twee kanten van één waarde — `percentage` is de bron, `bedragInvoer` de getypte andere kant)
+ * + doel-kosten-GB in een uitklap. `nettoDeel` is uitsluitend het server-berekende deel uit de
+ * laatste opslag — de client rekent nooit bindend (grootste-rest leeft in de backend). */
 interface VerdeelRij {
   key: string
   mappingId: string | null
   percentage: string
+  bedragInvoer: string | null
   gbId: string | null
+  gbOpen: boolean
   nettoDeel: string | null
   /** Doorbelasting × projecten (besluit Peter 25-08): projecten in de doel-administratie —
    * leeg = geen project, één = dat project, meerdere = multi-project-verdeling (server splitst
@@ -59,7 +70,9 @@ function verdelingUitRun(run: DoorbelastingRunDto): Verdeling {
         key: regel.id,
         mappingId: regel.mapping_id,
         percentage: formatPercentage(regel.percentage),
+        bedragInvoer: null,
         gbId: regel.doel_kosten_ledger_id,
+        gbOpen: false,
         nettoDeel: '0.00',
         projectIds: [],
         verdeelbasis: regel.verdeelbasis ?? null,
@@ -88,7 +101,9 @@ function nieuweRij(percentage: string): VerdeelRij {
     key: crypto.randomUUID(),
     mappingId: null,
     percentage,
+    bedragInvoer: null,
     gbId: null,
+    gbOpen: false,
     nettoDeel: null,
     projectIds: [],
     verdeelbasis: null,
@@ -116,10 +131,12 @@ export function runVerdelingOnvolledig(run: DoorbelastingRunDto): boolean {
 }
 
 /** Werkstaat-signalen voor de aanroeper (boekknop-poort): onopgeslagen wijzigingen of een
- * verdeelde regel die niet op 100% sluit = niet groen. */
+ * verdeelde regel die niet op 100% sluit = niet groen. `blokkade` = de ene zin waarom er (nog)
+ * niet opgeslagen wordt — dezelfde tekst als onder de tabel. */
 export interface VerdelingStaat {
   gewijzigd: boolean
   onvolledig: boolean
+  blokkade?: string | null
 }
 
 interface Props {
@@ -133,15 +150,58 @@ interface Props {
   onRunGewijzigd: (run: DoorbelastingRunDto) => void
   onStaat?: (staat: VerdelingStaat) => void
   /** Compacte variant voor het controlescherm-blok "Doorbelasten na boeken": geen eigen
-   * checks-paneel (de boekknop toont de gecombineerde poort), wél preview + opslaan. */
+   * checks-paneel (de boekknop toont de gecombineerde poort), wél preview. */
   compact?: boolean
 }
 
-/** Herbruikbare verdeel-UI (mockup #verdeelmodal, 1-op-1 uit het reviewscherm gelicht voor
- * besluit Peter 25-08 "doorbelasting in de boekflow"): per bron-regel een percentage-verdeling
- * over de whitelist-doelentiteiten, server-berekende netto-delen na "Verdeling opslaan",
- * provisie-preview per doelentiteit en (niet-compact) de harde checks. Zelfde component in het
- * reviewscherm (na boeken) én in het blok "Doorbelasten na boeken" (vóór boeken). */
+/** Debounce van het automatisch opslaan: de server berekent de centen bindend, dus élke geldige
+ * verdeling gaat kort ná de laatste toetsaanslag naar de server (één primaire actie = boeken;
+ * geen aparte opslaanknop meer — mockup doorbelasten-blok-v2 ②). */
+export const AUTO_OPSLAAN_MS = 600
+
+/** Restant-balk (mockup doorbelasten-blok-v2 ②: de enige voortgangsindicator, drie standen). */
+function RestantBalk({ netto, rijen }: { netto: string | null; rijen: VerdeelRij[] }) {
+  const som = somPercentages(rijen)
+  const stand = restantStand(som)
+  const nettoGetal = netto === null ? null : Number(netto)
+  const breedte = Math.min(100, Math.max(0, som))
+  const nogPct = Math.max(0, 100 - som)
+  return (
+    <div className={`restant-balk ${stand === 'compleet' ? 'compleet' : stand === 'te_veel' ? 'te-veel' : ''}`} data-testid="restant-balk">
+      {nettoGetal !== null && Number.isFinite(nettoGetal) && <b>€ {formatEuroString(netto!)} excl.</b>}
+      <div className="balk" aria-hidden="true">
+        <span style={{ width: `${breedte}%` }} />
+      </div>
+      {rijen.length === 0 ? (
+        <span className="chip geheugen">niet doorbelast</span>
+      ) : stand === 'compleet' ? (
+        <b className="compleet-tekst">verdeeld 100% ✓</b>
+      ) : stand === 'te_veel' ? (
+        <span className="te-veel-tekst">
+          {formatPct(som)}% — {formatPct(som - 100)}% te veel
+        </span>
+      ) : (
+        <>
+          <b>verdeeld {formatPct(som)}%</b>
+          <span className="nog">
+            nog {formatPct(nogPct)}%
+            {nettoGetal !== null && Number.isFinite(nettoGetal) && nettoGetal !== 0
+              ? ` · € ${formatEuroString(String(percentageNaarBedrag(nettoGetal, nogPct)))}`
+              : ''}
+          </span>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Herbruikbare verdeel-UI v2 (mockup `doorbelasten-blok-v2.html` = norm, akkoord Peter 02-09):
+ * per bron-regel een restant-balk + verdeel-tabel (doelentiteit · % · bedrag · project) waarin
+ * % en bedrag live gekoppeld zijn, één "Verdeelsleutel ▾"-menu, lege projectstand als actie
+ * ("Nu synchroniseren"), GB in een uitklap per rij, compacte preview pas ná een geldige
+ * verdeling. Opslaan gebeurt automatisch zodra de verdeling compleet is; de server berekent de
+ * centen bindend (grootste-rest). Zelfde component in het reviewscherm (na boeken) én in het
+ * blok "Doorbelasten na boeken" (vóór boeken). */
 export function VerdelingEditor({
   administratieId,
   run,
@@ -155,7 +215,7 @@ export function VerdelingEditor({
 }: Props) {
   const [verdeling, setVerdeling] = useState<Verdeling>(() => verdelingUitRun(run))
   // Elke wijziging maakt het laatste server-resultaat (netto-delen + checks) verouderd —
-  // boeken kan pas weer ná een verse "Verdeling opslaan" (server berekent bindend).
+  // boeken kan pas weer ná een verse opslag (server berekent bindend).
   const [gewijzigd, setGewijzigd] = useState(false)
   const [opslaanBezig, setOpslaanBezig] = useState(false)
   const [opslaanFout, setOpslaanFout] = useState<string | null>(null)
@@ -168,6 +228,7 @@ export function VerdelingEditor({
 
   const actieveMappings = useMemo(() => mappings.filter((m) => m.actief), [mappings])
   const mappingPerId = useMemo(() => new Map(mappings.map((m) => [m.id, m])), [mappings])
+  const bronPerId = useMemo(() => new Map(bronRegels.map((b) => [b.id, b])), [bronRegels])
   const doelGrootboek = useDoelGrootboek(
     useMemo(
       () =>
@@ -178,18 +239,43 @@ export function VerdelingEditor({
     ),
   )
 
-  const doelProjecten = useDoelProjecten(
+  const { kaart: doelProjecten, herlaad: herlaadProjecten } = useDoelProjecten(
     administratieId,
     useMemo(() => Object.values(verdeling).flat().map((rij) => rij.mappingId), [verdeling]),
   )
 
-  // Verdeelsleutels (25-08, punt 2c): herbruikbare verdeling per bron-administratie — één klik
-  // toepassen, daarna nog aanpasbaar; opslaan als sleutel vanuit de huidige verdeling.
+  // Lege stand als actie (mockup ④): "nog geen projecten gesynchroniseerd → Nu synchroniseren"
+  // triggert de bestaande projecten-sync van de DOEL-administratie en haalt de lijst opnieuw op.
+  const [syncStand, setSyncStand] = useState<Record<string, 'bezig' | string>>({})
+  const synchroniseerProjecten = async (mappingId: string, doelId: string) => {
+    setSyncStand((s) => ({ ...s, [mappingId]: 'bezig' }))
+    try {
+      await apiJson(`/administraties/${doelId}/sync/projects`, { method: 'POST' })
+      herlaadProjecten(mappingId)
+      setSyncStand((s) => {
+        const kopie = { ...s }
+        delete kopie[mappingId]
+        return kopie
+      })
+    } catch (err) {
+      const melding =
+        err instanceof ApiError && err.status === 403
+          ? 'Geen toegang tot de doel-administratie (geen scope) — vraag de Beheerder.'
+          : `Synchroniseren mislukt: ${err instanceof Error ? err.message : 'onbekende fout'}`
+      setSyncStand((s) => ({ ...s, [mappingId]: melding }))
+    }
+  }
+
+  // Verdeelsleutels (25-08, punt 2c) achter één menu (mockup ③): toepassen per sleutel,
+  // opslaan-als vanuit de huidige verdeling. Beheren (hernoemen/intrekken) heeft nog geen
+  // endpoint — bewust niet als dode knop getoond.
   const [sleutels, setSleutels] = useState<VerdeelsleutelDto[]>([])
-  const [gekozenSleutel, setGekozenSleutel] = useState('')
+  const [sleutelMenuOpen, setSleutelMenuOpen] = useState(false)
+  const [sleutelOpslaanOpen, setSleutelOpslaanOpen] = useState(false)
   const [sleutelNaam, setSleutelNaam] = useState('')
   const [sleutelBezig, setSleutelBezig] = useState(false)
   const [sleutelMelding, setSleutelMelding] = useState<string | null>(null)
+  const sleutelKnop = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
     if (bevroren) return
     let actief = true
@@ -205,14 +291,14 @@ export function VerdelingEditor({
     }
   }, [administratieId, bevroren])
 
-  const sleutelToepassen = async () => {
-    if (!gekozenSleutel) return
+  const sleutelToepassen = async (sleutelId: string) => {
+    setSleutelMenuOpen(false)
     setSleutelBezig(true)
     setSleutelMelding(null)
     try {
-      const vers = await pasVerdeelsleutelToe(administratieId, run.id, gekozenSleutel)
+      const vers = await pasVerdeelsleutelToe(administratieId, run.id, sleutelId)
       onRunGewijzigd(vers)
-      setSleutelMelding('Verdeelsleutel toegepast — controleer en pas zo nodig aan vóór opslaan.')
+      setSleutelMelding('Verdeelsleutel toegepast — controleer en pas zo nodig aan.')
     } catch (err) {
       setSleutelMelding(err instanceof ApiError ? err.message : 'Verdeelsleutel toepassen mislukt.')
     } finally {
@@ -227,10 +313,11 @@ export function VerdelingEditor({
     if (!eerste) return null
     const doelen: VerdeelsleutelDoelInputDto[] = []
     for (const rij of eerste) {
-      if (!rij.mappingId) return null
+      const pct = percentageVoorBackend(rij.percentage)
+      if (!rij.mappingId || pct === null) return null
       doelen.push({
         mapping_id: rij.mappingId,
-        percentage: normaliseerBedrag(rij.percentage),
+        percentage: pct,
         doel_kosten_ledger_id: rij.gbId,
         projecten: rij.alleActief ? 'alle_actief' : rij.projectIds,
         verdeelbasis: rij.projectIds.length > 1 || rij.alleActief ? (rij.verdeelbasis ?? 'gelijk') : null,
@@ -242,7 +329,7 @@ export function VerdelingEditor({
   const sleutelOpslaan = async () => {
     const doelen = sleutelDoelenUitVerdeling()
     if (!doelen) {
-      setSleutelMelding('Maak eerst een volledige verdeling (doelentiteit per regel) om als sleutel op te slaan.')
+      setSleutelMelding('Maak eerst een volledige verdeling (doelentiteit + geldig percentage per rij) om als sleutel op te slaan.')
       return
     }
     setSleutelBezig(true)
@@ -250,8 +337,8 @@ export function VerdelingEditor({
     try {
       const nieuw = await slaVerdeelsleutelOp(administratieId, { naam: sleutelNaam.trim(), doelen })
       setSleutels((huidig) => [...huidig.filter((s) => s.naam !== nieuw.naam), nieuw].sort((a, b) => a.naam.localeCompare(b.naam)))
-      setGekozenSleutel(nieuw.id)
       setSleutelNaam('')
+      setSleutelOpslaanOpen(false)
       setSleutelMelding(`Verdeelsleutel "${nieuw.naam}" opgeslagen als versie ${nieuw.versie}.`)
     } catch (err) {
       setSleutelMelding(err instanceof ApiError ? err.message : 'Verdeelsleutel opslaan mislukt.')
@@ -260,25 +347,20 @@ export function VerdelingEditor({
     }
   }
 
-  // Kliktest-bevinding Peter 2026-08-16: opslaan/boeken pas aanbieden als elke verdeelde
-  // regel exact op 100% sluit — de teller per regel laat live zien wat er nog open staat.
-  // Een regel zónder verdeelrijen blijft gewoon "niet doorbelast" (geen blokkade).
-  const percentageFouten = Object.values(verdeling)
-    .flat()
-    .some((rij) => parsePercentage(rij.percentage).fout !== null)
-  const verdelingOnvolledig =
-    percentageFouten ||
-    Object.values(verdeling).some((rijen) => rijen.length > 0 && somPercentages(rijen) !== 100)
-  useEffect(() => {
-    onStaat?.({ gewijzigd, onvolledig: verdelingOnvolledig })
-  }, [gewijzigd, verdelingOnvolledig, onStaat])
-
   const wijzig = (bronId: string, key: string, wijziging: Partial<VerdeelRij>) => {
     setVerdeling((huidig) => ({
       ...huidig,
       [bronId]: (huidig[bronId] ?? []).map((rij) => (rij.key === key ? { ...rij, ...wijziging, nettoDeel: null } : rij)),
     }))
     setGewijzigd(true)
+  }
+
+  /** Alleen-weergave-wijziging (uitklap open/dicht) — geen opslag-trigger. */
+  const wijzigWeergave = (bronId: string, key: string, wijziging: Partial<VerdeelRij>) => {
+    setVerdeling((huidig) => ({
+      ...huidig,
+      [bronId]: (huidig[bronId] ?? []).map((rij) => (rij.key === key ? { ...rij, ...wijziging } : rij)),
+    }))
   }
 
   const voegRijToe = (bronId: string) => {
@@ -297,9 +379,43 @@ export function VerdelingEditor({
     setGewijzigd(true)
   }
 
-  const rijenZonderEntiteit = Object.values(verdeling)
-    .flat()
-    .filter((rij) => rij.mappingId === null).length
+  // Eén zin waarom er (nog) niet opgeslagen/geboekt kan worden — de blokkeer-reden onder de
+  // tabel (mockup ②) én de poort voor het automatisch opslaan.
+  const blokkade = useMemo<string | null>(() => {
+    if (regelIdsOntbreken) return 'Niet alle boekingsregels zijn al opgeslagen — pas het voorstel aan, dan verschijnen ze hier.'
+    for (const [bronId, rijen] of Object.entries(verdeling)) {
+      if (rijen.length === 0) continue
+      for (const rij of rijen) {
+        if (!rij.mappingId) return 'Kies voor elke rij een doelentiteit — of verwijder de rij.'
+        const parse = parsePercentage(rij.percentage)
+        if (parse.fout) return parse.fout
+        if (parse.waarde === null || parse.waarde <= 0) return 'Elk percentage moet groter dan 0 zijn.'
+        if (rij.projectIds.length > 1 && rij.verdeelbasis === null) {
+          return 'Kies bij meerdere projecten een verdeelbasis: naar rato m² of gelijk per object.'
+        }
+        const info = doelProjecten[rij.mappingId]
+        const naam = mappingPerId.get(rij.mappingId)?.doelentiteit_naam ?? 'de doel-administratie'
+        if (info?.projectVerplicht && rij.projectIds.length === 0) return `Project verplicht in ${naam} — kies minimaal één project.`
+        if (rij.verdeelbasis === 'm2' && rij.projectIds.length > 1) {
+          const zonderM2 = (info?.projecten ?? []).filter((p) => rij.projectIds.includes(p.id) && p.contract_m2 === null)
+          if (zonderM2.length > 0) return `Geen m² bekend voor ${zonderM2.map((p) => p.naam).join(', ')} — vul de projectspecificatie aan of kies "gelijk per object".`
+        }
+      }
+      const som = somPercentages(rijen)
+      const bron = bronPerId.get(bronId)
+      const label = bronRegels.length > 1 && bron ? ` (${bron.omschrijving})` : ''
+      if (som < 100) return `Nog ${formatPct(100 - som)}% te verdelen${label}.`
+      if (som > 100) return `${formatPct(som - 100)}% te veel verdeeld${label}.`
+    }
+    return null
+  }, [verdeling, regelIdsOntbreken, doelProjecten, mappingPerId, bronPerId, bronRegels.length])
+
+  const verdelingOnvolledig = Object.values(verdeling).some(
+    (rijen) => rijen.length > 0 && (somPercentages(rijen) !== 100 || rijen.some((rij) => parsePercentage(rij.percentage).fout !== null)),
+  )
+  useEffect(() => {
+    onStaat?.({ gewijzigd, onvolledig: verdelingOnvolledig, blokkade })
+  }, [gewijzigd, verdelingOnvolledig, blokkade, onStaat])
 
   const opslaan = async () => {
     setOpslaanBezig(true)
@@ -308,34 +424,12 @@ export function VerdelingEditor({
       const regels: DoorbelastingVerdeelRegelInputDto[] = []
       for (const [bronId, rijen] of Object.entries(verdeling)) {
         for (const rij of rijen) {
-          if (!rij.mappingId) {
-            setOpslaanFout('Kies voor elke verdeelregel een doelentiteit — of verwijder de regel.')
-            return
-          }
-          const parse = parsePercentage(rij.percentage)
-          if (parse.fout) {
-            setOpslaanFout(parse.fout)
-            return
-          }
-          if (parse.waarde === null || parse.waarde <= 0) {
-            setOpslaanFout('Elk percentage moet groter dan 0 en hoogstens 100 zijn.')
-            return
-          }
-          if (rij.projectIds.length > 1 && rij.verdeelbasis === null) {
-            setOpslaanFout('Kies bij meerdere projecten een verdeelbasis: naar rato m² of gelijk per object.')
-            return
-          }
-          const info = rij.mappingId ? doelProjecten[rij.mappingId] : undefined
-          if (info?.projectVerplicht && rij.projectIds.length === 0) {
-            setOpslaanFout(
-              `Project verplicht in ${mappingPerId.get(rij.mappingId)?.doelentiteit_naam ?? 'de doel-administratie'} — kies minimaal één project.`,
-            )
-            return
-          }
+          const pct = rij.mappingId ? percentageVoorBackend(rij.percentage) : null
+          if (!rij.mappingId || pct === null) return // blokkade staat al onder de tabel
           regels.push({
             bron_regel_id: bronId,
             mapping_id: rij.mappingId,
-            percentage: percentageVoorBackend(rij.percentage) ?? normaliseerBedrag(rij.percentage),
+            percentage: pct,
             doel_kosten_ledger_id: rij.gbId,
             project_ids: rij.projectIds,
             verdeelbasis: rij.projectIds.length > 1 ? rij.verdeelbasis : null,
@@ -351,6 +445,18 @@ export function VerdelingEditor({
     }
   }
 
+  // Automatisch opslaan: kort ná de laatste wijziging, uitsluitend als de verdeling compleet is.
+  const opslaanRef = useRef(opslaan)
+  opslaanRef.current = opslaan
+  useEffect(() => {
+    if (bevroren || !gewijzigd || blokkade !== null || opslaanBezig) return
+    const timer = window.setTimeout(() => void opslaanRef.current(), AUTO_OPSLAAN_MS)
+    return () => window.clearTimeout(timer)
+  }, [verdeling, gewijzigd, blokkade, bevroren, opslaanBezig])
+
+  const heeftVerdeling = Object.values(verdeling).some((rijen) => rijen.length > 0)
+  const previewZichtbaar = run.previews.length > 0 && !gewijzigd
+
   return (
     <>
       <div className={compact ? undefined : 'panel'}>
@@ -361,78 +467,25 @@ export function VerdelingEditor({
             {run.verdeelsleutel.toegepast_op ? ` op ${new Date(run.verdeelsleutel.toegepast_op).toLocaleString('nl-NL')}` : ''}.
           </p>
         )}
-        {!bevroren && bronRegels.length > 0 && (
-          <div className="verdeelsleutel-balk" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <Select
-              aria-label="Verdeelsleutel"
-              value={gekozenSleutel}
-              onChange={(e) => setGekozenSleutel(e.target.value)}
-              style={{ maxWidth: 260 }}
-            >
-              <option value="">— verdeelsleutel kiezen —</option>
-              {sleutels.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.naam} (v{s.versie})
-                </option>
-              ))}
-            </Select>
-            <button type="button" className="btn secondary" disabled={!gekozenSleutel || sleutelBezig} onClick={() => void sleutelToepassen()}>
-              Sleutel toepassen
-            </button>
-            <input
-              aria-label="Naam nieuwe verdeelsleutel"
-              placeholder="Opslaan als sleutel… (naam)"
-              value={sleutelNaam}
-              onChange={(e) => setSleutelNaam(e.target.value)}
-              style={{ maxWidth: 220 }}
-            />
-            <button
-              type="button"
-              className="btn secondary"
-              disabled={!sleutelNaam.trim() || sleutelBezig}
-              title="Bewaart doelen + projecten + verdeelbasis van de huidige verdeling als herbruikbare sleutel (nieuwe versie bij een bestaande naam)"
-              onClick={() => void sleutelOpslaan()}
-            >
-              Opslaan als sleutel
-            </button>
-            {sleutelMelding && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{sleutelMelding}</span>}
-          </div>
-        )}
         {bronRegels.length === 0 && !regelIdsOntbreken && (
           <p className="hint">Geen boekingsregels gevonden bij dit document.</p>
         )}
         {bronRegels.map((bron) => {
           const rijen = verdeling[bron.id] ?? []
-          const som = somPercentages(rijen)
+          const nettoGetal = bron.netto === null ? null : Number(bron.netto)
           return (
-            <div key={bron.id} style={{ marginBottom: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+            <div key={bron.id} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12.5, marginBottom: 4 }}>
                 <b>{bron.omschrijving}</b>
-                {bron.netto !== null && (
-                  <span style={{ color: 'var(--muted)', fontSize: 13 }}>€ {formatEuroString(bron.netto)} excl.</span>
-                )}
-                {rijen.length === 0 ? (
-                  <span className="chip geheugen">niet doorbelast</span>
-                ) : som === 100 ? (
-                  <span className="chip ok">100% ✓</span>
-                ) : som < 100 ? (
-                  <span className="chip afwijking">
-                    {formatPct(som)}% — nog {formatPct(100 - som)}% te verdelen
-                  </span>
-                ) : (
-                  <span className="chip afwijking">
-                    {formatPct(som)}% — {formatPct(som - 100)}% te veel
-                  </span>
-                )}
               </div>
+              <RestantBalk netto={bron.netto} rijen={rijen} />
               {rijen.length > 0 && (
                 <div className="tabel-scroll">
-                  <table className="lines">
+                  <table className="lines vd-tabel">
                     <colgroup>
-                      <col style={{ width: '22%' }} />
-                      <col style={{ width: 70 }} />
-                      <col style={{ width: 110 }} />
-                      <col style={{ width: '28%' }} />
+                      <col style={{ width: '34%' }} />
+                      <col style={{ width: 82 }} />
+                      <col style={{ width: 120 }} />
                       <col />
                       <col style={{ width: 30 }} />
                     </colgroup>
@@ -441,8 +494,7 @@ export function VerdelingEditor({
                         <th>Doelentiteit</th>
                         <th>%</th>
                         <th className="amount">Bedrag excl.</th>
-                        <th>Project(en) in doel</th>
-                        <th>GB in doeladministratie</th>
+                        <th>Project in doel</th>
                         <th />
                       </tr>
                       {rijen.map((rij) => {
@@ -458,6 +510,19 @@ export function VerdelingEditor({
                         const zonderM2 = (projectInfo?.projecten ?? []).filter(
                           (p) => rij.projectIds.includes(p.id) && p.contract_m2 === null,
                         )
+                        const pctParse = parsePercentage(rij.percentage)
+                        const bedragWeergave =
+                          rij.bedragInvoer !== null
+                            ? rij.bedragInvoer
+                            : rij.nettoDeel !== null && !gewijzigd
+                              ? formatEuroString(rij.nettoDeel)
+                              : nettoGetal !== null && Number.isFinite(nettoGetal) && pctParse.waarde !== null
+                                ? formatEuroString(String(percentageNaarBedrag(nettoGetal, pctParse.waarde)))
+                                : ''
+                        const gbLabel = schema?.opties.find((o) => o.id === rij.gbId)?.label ?? rij.gbId ?? null
+                        const projectenLeeg =
+                          projectInfo !== undefined && !projectInfo.laden && !projectInfo.fout && projectInfo.projecten.length === 0
+                        const sync = rij.mappingId ? syncStand[rij.mappingId] : undefined
                         return (
                           <tr key={rij.key}>
                             <td>
@@ -469,10 +534,13 @@ export function VerdelingEditor({
                                   value={rij.mappingId ?? ''}
                                   onChange={(e) => {
                                     // Entiteit gewisseld: de GB-keuze hoort bij het oude
-                                    // rekeningschema en gaat bewust mee weg.
+                                    // rekeningschema en gaat mee weg; voorstel uit de
+                                    // whitelist-rij (laatste kosten-GB) komt vooringevuld.
+                                    const nieuweMapping = e.target.value ? mappingPerId.get(e.target.value) : undefined
                                     wijzig(bron.id, rij.key, {
                                       mappingId: e.target.value || null,
-                                      gbId: null,
+                                      gbId: nieuweMapping?.laatste_kosten_ledger_id ?? null,
+                                      gbOpen: false,
                                       projectIds: [],
                                       verdeelbasis: null,
                                       alleActief: false,
@@ -480,13 +548,46 @@ export function VerdelingEditor({
                                     })
                                   }}
                                 >
-                                  <option value="">— kies doelentiteit —</option>
+                                  <option value="">— doelentiteit kiezen —</option>
                                   {actieveMappings.map((m) => (
                                     <option key={m.id} value={m.id}>
                                       {m.doelentiteit_naam}
                                     </option>
                                   ))}
                                 </Select>
+                              )}
+                              {/* GB in doeladministratie: uitklap per rij (mockup ⑤) — vooringevuld
+                                  uit de whitelist-rij; alleen de combobox tonen bij ontbreken of uitklap. */}
+                              {mapping !== null && doelId === null && (
+                                <div className="vd-sub">GB volgt bij de spiegel-taak (doel niet onboarded)</div>
+                              )}
+                              {mapping !== null && doelId !== null && schema?.fout && (
+                                <div className="vd-sub" style={{ color: 'var(--orange)' }}>
+                                  {schema.fout}
+                                </div>
+                              )}
+                              {mapping !== null && doelId !== null && !schema?.fout && (bevroren || (rij.gbId && !rij.gbOpen)) && (
+                                <div className="vd-sub">
+                                  GB {gbLabel ?? '—'}
+                                  {!bevroren && (
+                                    <button type="button" className="linkbtn" onClick={() => wijzigWeergave(bron.id, rij.key, { gbOpen: true })}>
+                                      wijzigen
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {mapping !== null && doelId !== null && !schema?.fout && !bevroren && (!rij.gbId || rij.gbOpen) && (
+                                <div className="vd-sub" style={{ display: 'block' }}>
+                                  <SearchableCombobox
+                                    label={`Kosten-GB in ${mapping.doelentiteit_naam}`}
+                                    toonLabel={false}
+                                    opties={schema?.opties ?? []}
+                                    waarde={rij.gbId}
+                                    onWijzig={(id) => wijzig(bron.id, rij.key, { gbId: id, gbOpen: false })}
+                                    placeholder="GB in doel: typ nummer of naam…"
+                                    vereist
+                                  />
+                                </div>
                               )}
                             </td>
                             <td>
@@ -497,30 +598,44 @@ export function VerdelingEditor({
                                   <input
                                     aria-label={`Percentage voor ${bron.omschrijving}`}
                                     inputMode="decimal"
-                                    aria-invalid={parsePercentage(rij.percentage).fout !== null || undefined}
+                                    placeholder="%"
+                                    aria-invalid={pctParse.fout !== null || undefined}
                                     style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                                     value={rij.percentage}
-                                    onChange={(e) => wijzig(bron.id, rij.key, { percentage: e.target.value })}
+                                    onChange={(e) => wijzig(bron.id, rij.key, { percentage: e.target.value, bedragInvoer: null })}
                                   />
-                                  {parsePercentage(rij.percentage).fout && (
+                                  {pctParse.fout && (
                                     <div className="fout" style={{ fontSize: 11.5, marginTop: 4 }}>
-                                      {parsePercentage(rij.percentage).fout}
+                                      {pctParse.fout}
                                     </div>
                                   )}
                                 </>
                               )}
                             </td>
                             <td className="amount">
-                              {rij.nettoDeel !== null && !gewijzigd ? (
-                                `€ ${formatEuroString(rij.nettoDeel)}`
+                              {bevroren ? (
+                                rij.nettoDeel !== null ? `€ ${formatEuroString(rij.nettoDeel)}` : '—'
                               ) : (
-                                <span
-                                  className="hint"
-                                  style={{ margin: 0, display: 'inline' }}
-                                  title="De server berekent de centen bindend (grootste-rest) bij Verdeling opslaan"
-                                >
-                                  na opslaan
-                                </span>
+                                <input
+                                  aria-label={`Bedrag voor ${bron.omschrijving}`}
+                                  inputMode="decimal"
+                                  placeholder="€"
+                                  disabled={nettoGetal === null || !Number.isFinite(nettoGetal) || nettoGetal === 0}
+                                  title={
+                                    rij.nettoDeel !== null && !gewijzigd
+                                      ? 'Server-berekend deel (grootste-rest)'
+                                      : 'Indicatief — de server rondt de centen bindend bij opslaan'
+                                  }
+                                  style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                                  value={bedragWeergave}
+                                  onChange={(e) => {
+                                    const pct = nettoGetal !== null ? bedragNaarPercentage(nettoGetal, e.target.value) : null
+                                    wijzig(bron.id, rij.key, {
+                                      bedragInvoer: e.target.value,
+                                      percentage: pct === null ? rij.percentage : formatPct(pct),
+                                    })
+                                  }}
+                                />
                               )}
                             </td>
                             <td>
@@ -536,7 +651,21 @@ export function VerdelingEditor({
                                 <span className="hint" style={{ margin: 0, color: 'var(--orange)' }}>
                                   {projectInfo.fout}
                                 </span>
-                              ) : bevroren || rij.projectDelen.length > 0 && !gewijzigd ? (
+                              ) : projectInfo?.laden || sync === 'bezig' ? (
+                                <span className="hint" style={{ margin: 0 }}>
+                                  {sync === 'bezig' ? 'Projecten synchroniseren…' : 'Projecten laden…'}
+                                </span>
+                              ) : projectenLeeg ? (
+                                <div className="vd-leeg" data-testid="projecten-leeg">
+                                  <span>nog geen projecten gesynchroniseerd</span>
+                                  {!bevroren && (
+                                    <button type="button" className="knopje" onClick={() => void synchroniseerProjecten(rij.mappingId!, doelId)}>
+                                      Nu synchroniseren
+                                    </button>
+                                  )}
+                                  {sync && sync !== 'bezig' && <span className="fout" style={{ fontSize: 11.5 }}>{sync}</span>}
+                                </div>
+                              ) : bevroren || (rij.projectDelen.length > 0 && !gewijzigd) ? (
                                 <div>
                                   {rij.projectDelen.length === 0 ? (
                                     <span className="hint" style={{ margin: 0 }}>
@@ -560,8 +689,8 @@ export function VerdelingEditor({
                                   {!bevroren && (
                                     <button
                                       type="button"
-                                      className="btn secondary"
-                                      style={{ marginTop: 4, padding: '2px 8px', fontSize: 11.5 }}
+                                      className="linkbtn"
+                                      style={{ marginTop: 4, fontSize: 11.5 }}
                                       onClick={() => wijzig(bron.id, rij.key, { projectDelen: [] })}
                                     >
                                       projecten wijzigen
@@ -608,7 +737,6 @@ export function VerdelingEditor({
                                       })
                                     }
                                     zoekPlaceholder={`Zoek project in ${mapping.doelentiteit_naam}…`}
-                                    leegTekst={projectInfo?.laden ? 'Projecten laden…' : 'Geen projecten in de cache van deze administratie.'}
                                   />
                                   {rij.projectIds.length > 1 && (
                                     <div role="radiogroup" aria-label={`Verdeelbasis voor ${mapping.doelentiteit_naam}`} style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12 }}>
@@ -640,33 +768,6 @@ export function VerdelingEditor({
                                 </div>
                               )}
                             </td>
-                            <td>
-                              {mapping === null ? (
-                                <span className="hint" style={{ margin: 0 }}>
-                                  kies eerst een doelentiteit
-                                </span>
-                              ) : doelId === null ? (
-                                <span className="hint" style={{ margin: 0 }}>
-                                  nog niet onboarded — GB-keuze volgt bij de spiegel-taak
-                                </span>
-                              ) : schema?.fout ? (
-                                <span className="hint" style={{ margin: 0, color: 'var(--orange)' }}>
-                                  {schema.fout}
-                                </span>
-                              ) : bevroren ? (
-                                (schema?.opties.find((o) => o.id === rij.gbId)?.label ?? rij.gbId ?? '—')
-                              ) : (
-                                <SearchableCombobox
-                                  label={`Kosten-GB in ${mapping.doelentiteit_naam}`}
-                                  toonLabel={false}
-                                  opties={schema?.opties ?? []}
-                                  waarde={rij.gbId}
-                                  onWijzig={(id) => wijzig(bron.id, rij.key, { gbId: id })}
-                                  placeholder="typ nummer of naam…"
-                                  vereist
-                                />
-                              )}
-                            </td>
                             <td style={{ padding: '8px 4px' }}>
                               {!bevroren && (
                                 <button
@@ -675,7 +776,7 @@ export function VerdelingEditor({
                                   aria-label={`Verdeelregel verwijderen (${bron.omschrijving})`}
                                   onClick={() => verwijderRij(bron.id, rij.key)}
                                 >
-                                  ×
+                                  ✕
                                 </button>
                               )}
                             </td>
@@ -687,58 +788,117 @@ export function VerdelingEditor({
                 </div>
               )}
               {!bevroren && (
-                <div style={{ marginTop: 6 }}>
-                  <button type="button" className="btn secondary" onClick={() => voegRijToe(bron.id)}>
-                    + Doelentiteit toevoegen
-                  </button>
-                </div>
+                <button type="button" className="linkbtn" style={{ marginTop: 6, fontWeight: 600 }} onClick={() => voegRijToe(bron.id)}>
+                  + Doelentiteit
+                </button>
               )}
             </div>
           )
         })}
-        {!bevroren && (
-          <>
-            {opslaanFout && <div className="fout">{opslaanFout}</div>}
-            <div className="actions">
+
+        {!bevroren && bronRegels.length > 0 && (
+          <div className="vd-voet">
+            <button
+              ref={sleutelKnop}
+              type="button"
+              className="btn secondary"
+              aria-label="Verdeelsleutel"
+              aria-haspopup="menu"
+              aria-expanded={sleutelMenuOpen}
+              disabled={sleutelBezig}
+              onClick={() => setSleutelMenuOpen((o) => !o)}
+            >
+              Verdeelsleutel ▾
+            </button>
+            <AnkerPopup
+              open={sleutelMenuOpen}
+              anker={sleutelKnop}
+              kant="onder"
+              uitlijning="start"
+              className="rijmenu"
+              role="menu"
+              onAnkerUitBeeld={() => setSleutelMenuOpen(false)}
+            >
+              {sleutels.length === 0 && (
+                <span className="hint" style={{ display: 'block', padding: '6px 8px', margin: 0 }}>
+                  Nog geen verdeelsleutels voor deze administratie.
+                </span>
+              )}
+              {sleutels.map((s) => (
+                <button key={s.id} type="button" className="linkbtn" role="menuitem" onClick={() => void sleutelToepassen(s.id)}>
+                  Toepassen: {s.naam} (v{s.versie})
+                </button>
+              ))}
               <button
                 type="button"
-                className="btn secondary"
-                disabled={opslaanBezig || regelIdsOntbreken || verdelingOnvolledig}
-                title={
-                  verdelingOnvolledig
-                    ? 'Elke verdeelde regel moet exact op 100% sluiten — zie de teller per regel'
-                    : undefined
-                }
-                onClick={() => void opslaan()}
+                className="linkbtn"
+                role="menuitem"
+                disabled={!heeftVerdeling}
+                title={heeftVerdeling ? 'Bewaart doelen + projecten + verdeelbasis van de huidige verdeling als herbruikbare sleutel' : 'Maak eerst een verdeling'}
+                onClick={() => {
+                  setSleutelMenuOpen(false)
+                  setSleutelOpslaanOpen(true)
+                }}
               >
-                {opslaanBezig ? 'Bezig…' : 'Verdeling opslaan'}
+                Opslaan als sleutel…
               </button>
-              {rijenZonderEntiteit > 0 && (
-                <span className="chip afwijking">
-                  {rijenZonderEntiteit} verdeelregel{rijenZonderEntiteit === 1 ? '' : 's'} zonder doelentiteit
-                </span>
-              )}
-              {gewijzigd && !verdelingOnvolledig && (
-                <span className="chip vraag" title="De server herberekent de delen en de checks bij opslaan">
-                  nog niet opgeslagen
-                </span>
-              )}
-            </div>
-            {!compact && (
-              <p className="hint" style={{ marginBottom: 0 }}>
-                De server berekent de netto-delen bindend (grootste-rest-methode): de som van de delen is
-                altijd exact het regelbedrag. Opslaan kan zodra elke verdeelde regel exact op 100% sluit
-                (de teller per regel telt live mee); de harde check server-side blijft daarbovenop staan.
-              </p>
+            </AnkerPopup>
+            {sleutelOpslaanOpen && (
+              <>
+                <input
+                  aria-label="Naam nieuwe verdeelsleutel"
+                  placeholder="Naam van de sleutel…"
+                  value={sleutelNaam}
+                  onChange={(e) => setSleutelNaam(e.target.value)}
+                  style={{ maxWidth: 220 }}
+                />
+                <button type="button" className="btn secondary" disabled={!sleutelNaam.trim() || sleutelBezig} onClick={() => void sleutelOpslaan()}>
+                  Opslaan als sleutel
+                </button>
+                <button type="button" className="linkbtn" onClick={() => setSleutelOpslaanOpen(false)}>
+                  annuleren
+                </button>
+              </>
             )}
-          </>
+            <span className="vd-status" role="status">
+              {opslaanBezig
+                ? 'Verdeling opslaan…'
+                : opslaanFout
+                  ? null
+                  : gewijzigd
+                    ? blokkade
+                      ? null
+                      : 'Wordt opgeslagen…'
+                    : heeftVerdeling
+                      ? 'Verdeling opgeslagen ✓'
+                      : null}
+            </span>
+          </div>
+        )}
+        {sleutelMelding && (
+          <p className="hint" style={{ marginBottom: 0 }}>
+            {sleutelMelding}
+          </p>
+        )}
+        {opslaanFout && <div className="fout">{opslaanFout}</div>}
+        {!bevroren && blokkade && (
+          <p className="vd-blokkade" data-testid="verdeling-blokkade">
+            {heeftVerdeling || regelIdsOntbreken
+              ? `Nog niet compleet: ${blokkade}`
+              : blokkade}
+          </p>
+        )}
+        {!bevroren && !blokkade && !heeftVerdeling && bronRegels.length > 0 && (
+          <p className="vd-blokkade">
+            De boekknop wordt actief zodra de verdeling exact 100% is en elke rij een doelentiteit (en waar verplicht een
+            project) heeft.
+          </p>
         )}
       </div>
 
-      <div className={compact ? undefined : 'panel'} style={compact ? { marginTop: 12 } : undefined}>
-        <h2 style={compact ? { fontSize: 13.5 } : undefined}>Per doelentiteit (preview)</h2>
-        {run.previews.length === 0 && <p className="hint">Nog geen verdeling opgeslagen.</p>}
-        {run.previews.length > 0 && (
+      {previewZichtbaar && (
+        <div className={compact ? undefined : 'panel'} style={compact ? { marginTop: 10 } : undefined}>
+          <h2 style={compact ? { fontSize: 12.5 } : undefined}>Per doelentiteit</h2>
           <div className="tabel-scroll">
             <table className="lines">
               <tbody>
@@ -790,22 +950,22 @@ export function VerdelingEditor({
               </tbody>
             </table>
           </div>
-        )}
-        {!compact && (
-          <p className="hint" style={{ marginBottom: 0 }}>
-            De provisie (vast percentage uit Instellingen → Doorbelasting) boekt als losse regel op de
-            verkoopfactuur; de btw is het vlakke doorbelastings-tarief uit dezelfde instellingen. In de
-            doel-administratie boekt de provisie altijd apart, op de vaste provisie-GB van de mapping.
-          </p>
-        )}
-      </div>
+          {!compact && (
+            <p className="hint" style={{ marginBottom: 0 }}>
+              De provisie (vast percentage uit Instellingen → Doorbelasting) boekt als losse regel op de
+              verkoopfactuur; de btw is het vlakke doorbelastings-tarief uit dezelfde instellingen. In de
+              doel-administratie boekt de provisie altijd apart, op de vaste provisie-GB van de mapping.
+            </p>
+          )}
+        </div>
+      )}
 
       {!compact && (
         <div className="panel">
           <h2>
             Harde checks{' '}
             {gewijzigd ? (
-              <span className="chip vraag">verouderd — sla de verdeling eerst op</span>
+              <span className="chip vraag">verouderd — wordt opgeslagen</span>
             ) : (
               <span className={`chip ${run.checks.geblokkeerd ? 'blokkerend' : 'ok'}`}>
                 {run.checks.geblokkeerd ? 'blokkerend' : 'alle checks groen'}

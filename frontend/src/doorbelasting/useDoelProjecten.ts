@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { DoelProjectDto } from '../api/types'
 import { haalDoelProjectenOp } from './doorbelastingApi'
@@ -13,25 +13,26 @@ export interface DoelProjecten {
   laden: boolean
 }
 
+export interface DoelProjectenStand {
+  kaart: Record<string, DoelProjecten>
+  /** Projecten van één mapping opnieuw ophalen — ná "Nu synchroniseren" (lege stand als actie,
+   * mockup doorbelasten-blok-v2 ④). */
+  herlaad: (mappingId: string) => void
+}
+
+const LADEN: DoelProjecten = { projecten: [], projectVerplicht: false, doelAdministratieId: null, fout: null, laden: true }
+
 /** Projecten van DOEL-administraties per whitelist-rij (doorbelasting × projecten, besluit Peter
  * 25-08): één fetch per mapping-id, gecachet over de levensduur van het scherm — zelfde patroon
  * als useDoelGrootboek. Geen scope op het doel ⇒ nette melding, geen blokkade van de rest. */
-export function useDoelProjecten(administratieId: string, mappingIds: (string | null)[]): Record<string, DoelProjecten> {
+export function useDoelProjecten(administratieId: string, mappingIds: (string | null)[]): DoelProjectenStand {
   const [kaart, setKaart] = useState<Record<string, DoelProjecten>>({})
   const gestart = useRef(new Set<string>())
   const sleutel = [...new Set(mappingIds.filter((id): id is string => id !== null))].sort().join(',')
 
-  useEffect(() => {
-    if (!sleutel) return
-    const nieuw = sleutel.split(',').filter((id) => !gestart.current.has(id))
-    if (nieuw.length === 0) return
-    for (const id of nieuw) gestart.current.add(id)
-    setKaart((huidig) => {
-      const kopie = { ...huidig }
-      for (const id of nieuw) kopie[id] = { projecten: [], projectVerplicht: false, doelAdministratieId: null, fout: null, laden: true }
-      return kopie
-    })
-    for (const id of nieuw) {
+  const laad = useCallback(
+    (id: string) => {
+      setKaart((huidig) => ({ ...huidig, [id]: { ...(huidig[id] ?? LADEN), laden: true, fout: null } }))
       haalDoelProjectenOp(administratieId, id)
         .then((data) => {
           setKaart((huidig) => ({
@@ -55,8 +56,17 @@ export function useDoelProjecten(administratieId: string, mappingIds: (string | 
             [id]: { projecten: [], projectVerplicht: false, doelAdministratieId: null, fout: melding, laden: false },
           }))
         })
-    }
-  }, [administratieId, sleutel])
+    },
+    [administratieId],
+  )
 
-  return kaart
+  useEffect(() => {
+    if (!sleutel) return
+    const nieuw = sleutel.split(',').filter((id) => !gestart.current.has(id))
+    if (nieuw.length === 0) return
+    for (const id of nieuw) gestart.current.add(id)
+    for (const id of nieuw) laad(id)
+  }, [sleutel, laad])
+
+  return { kaart, herlaad: laad }
 }

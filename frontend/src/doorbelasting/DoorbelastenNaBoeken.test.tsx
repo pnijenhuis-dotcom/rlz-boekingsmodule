@@ -62,6 +62,8 @@ interface Opties {
    * de mens had het vinkje al eens uitgezet). */
   defaultAan?: 'maakt' | 'niets'
   aanroepen?: { url: string; method: string }[]
+  /** Doel-projectenlijst is leeg tot de sync-trigger van de doel-administratie is aangeroepen (v2 lege stand). */
+  projectenLeegTotSync?: boolean
 }
 
 function installFetchMock({
@@ -73,15 +75,24 @@ function installFetchMock({
   doelOnboarded = false,
   verdelingPuts,
   sleutelPosts,
+  projectenLeegTotSync = false,
 }: Opties) {
   let huidigeRun: DoorbelastingRunDto | null = bestaandeRun
+  let projectenGesynct = !projectenLeegTotSync
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET'
       aanroepen?.push({ url, method })
       if (url.endsWith('/administraties/doel-1/grootboek')) return Promise.resolve(jsonResponse({ rekeningen: [] }))
+      if (url.endsWith('/administraties/doel-1/sync/projects') && method === 'POST') {
+        projectenGesynct = true
+        return Promise.resolve(jsonResponse({ aangemaakt: 2, bijgewerkt: 0, verdwenen: 0 }))
+      }
       if (url.endsWith(`/mappings/${MAPPING}/projecten`)) {
+        if (!projectenGesynct) {
+          return Promise.resolve(jsonResponse({ doel_administratie_id: 'doel-1', project_verplicht: projectVerplicht, projecten: [] }))
+        }
         return Promise.resolve(
           jsonResponse({
             doel_administratie_id: 'doel-1',
@@ -206,7 +217,7 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     await waitFor(() => expect(screen.getByText('klaargezet')).toBeInTheDocument())
     // Verdeel-UI inline mét de bron-regel uit het boekvoorstel
     expect(screen.getByText('Steigermateriaal')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '+ Doelentiteit toevoegen' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Doelentiteit' })).toBeInTheDocument()
     // Nog niets verdeeld → de boekknop-poort meldt geblokkeerd mét reden (A2)
     await waitFor(() => expect(meldingen.at(-1)?.geblokkeerd).toBe(true))
     expect(meldingen.at(-1)?.reden).toMatch(/nog geen verdeling/)
@@ -260,8 +271,8 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     await userEvent.click(screen.getByLabelText('gelijk per object'))
     expect(screen.queryByText(/geen m² bekend/)).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Verdeling opslaan' }))
-    await waitFor(() => expect(verdelingPuts).toHaveLength(1))
+    // v2: geen opslaanknop — een complete verdeling gaat automatisch naar de server
+    await waitFor(() => expect(verdelingPuts).toHaveLength(1), { timeout: 3000 })
     const body = verdelingPuts[0] as { regels: { project_ids: string[]; verdeelbasis: string | null }[] }
     expect(body.regels[0].project_ids).toEqual([PROJECT_A, PROJECT_B])
     expect(body.regels[0].verdeelbasis).toBe('gelijk')
@@ -272,11 +283,11 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     installFetchMock({ bestaandeRun: RUN_MET_VERDELING, projectVerplicht: true, verdelingPuts, doelOnboarded: true })
     renderBlok('klaar_om_te_boeken')
     expect(await screen.findByText('project verplicht')).toBeInTheDocument()
-    // Een wijziging (percentage) zonder project kiezen → opslaan geweigerd met duidelijke reden
+    // Zonder project: de blokkeer-reden staat onder de tabel en er wordt niets (automatisch) opgeslagen
     await userEvent.clear(screen.getByLabelText('Percentage voor Steigermateriaal'))
     await userEvent.type(screen.getByLabelText('Percentage voor Steigermateriaal'), '100')
-    await userEvent.click(screen.getByRole('button', { name: 'Verdeling opslaan' }))
-    expect(await screen.findByText(/Project verplicht in Veldhoven Recreatie B.V./)).toBeInTheDocument()
+    expect(await screen.findByTestId('verdeling-blokkade')).toHaveTextContent(/Project verplicht in Veldhoven Recreatie B.V./)
+    await new Promise((r) => setTimeout(r, 900))
     expect(verdelingPuts).toHaveLength(0)
   })
 
@@ -286,15 +297,16 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     renderBlok('klaar_om_te_boeken')
     await waitFor(() => expect(screen.getByLabelText('Doorbelasten na boeken')).toBeChecked())
 
-    const kiezer = await screen.findByLabelText('Verdeelsleutel')
-    await waitFor(() => expect(screen.getByRole('option', { name: 'Alle panden (v2)' })).toBeInTheDocument())
-    await userEvent.selectOptions(kiezer, SLEUTEL)
-    await userEvent.click(screen.getByRole('button', { name: 'Sleutel toepassen' }))
+    // v2: één menu "Verdeelsleutel ▾" met toepassen per sleutel en opslaan-als
+    await userEvent.click(await screen.findByRole('button', { name: 'Verdeelsleutel' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Toepassen: Alle panden (v2)' }))
     await waitFor(() => expect(sleutelPosts.some((p) => p.url.endsWith(`/verdeelsleutels/${SLEUTEL}/toepassen`))).toBe(true))
     expect(await screen.findByText(/toegepast op/)).toBeInTheDocument()
     expect(screen.getByText('Alle panden', { selector: 'b' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'alle actieve projecten' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Verdeelsleutel' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Opslaan als sleutel…' }))
     await userEvent.type(screen.getByLabelText('Naam nieuwe verdeelsleutel'), 'Nieuwe sleutel')
     await userEvent.click(screen.getByRole('button', { name: 'Opslaan als sleutel' }))
     await waitFor(() => expect(sleutelPosts.some((p) => p.url.endsWith('/verdeelsleutels') && p.body)).toBe(true))
@@ -316,21 +328,38 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     const veld = screen.getByLabelText('Percentage voor Steigermateriaal')
     await userEvent.clear(veld)
     await userEvent.type(veld, '1110000')
-    expect(screen.getByText(/geen geldig percentage/)).toBeInTheDocument()
+    expect(screen.getAllByText(/geen geldig percentage/).length).toBeGreaterThan(0)
     expect(veld).toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeDisabled()
+    expect(screen.getByTestId('verdeling-blokkade')).toHaveTextContent(/geen geldig percentage/)
 
     await userEvent.clear(veld)
     await userEvent.paste('11.100,00')
-    expect(screen.getByText(/geen geldig percentage/)).toBeInTheDocument()
+    expect(screen.getAllByText(/geen geldig percentage/).length).toBeGreaterThan(0)
 
     // Rest-prefill: 88,9 gevuld → nieuwe rij krijgt exact "11,1" (niet 11,099999999999994)
     await userEvent.clear(veld)
     await userEvent.type(veld, '88,9')
-    await userEvent.click(screen.getByRole('button', { name: '+ Doelentiteit toevoegen' }))
+    await userEvent.click(screen.getByRole('button', { name: '+ Doelentiteit' }))
     const velden = screen.getAllByLabelText('Percentage voor Steigermateriaal')
     expect(velden[1]).toHaveValue('11,1')
+    // % ↔ bedrag live gekoppeld: bedrag typen zet het percentage (€ 60 van € 100 = 60%)
+    const bedragVelden = screen.getAllByLabelText('Bedrag voor Steigermateriaal')
+    await userEvent.clear(bedragVelden[1])
+    await userEvent.type(bedragVelden[1], '60')
+    expect(screen.getAllByLabelText('Percentage voor Steigermateriaal')[1]).toHaveValue('60')
     expect(verdelingPuts).toHaveLength(0)
+  })
+
+  it('lege projectstand is een actie (v2 ④): "Nu synchroniseren" triggert de projecten-sync van de doel-administratie en herlaadt de lijst', async () => {
+    const aanroepen: { url: string; method: string }[] = []
+    installFetchMock({ bestaandeRun: RUN_MET_VERDELING, doelOnboarded: true, aanroepen, projectenLeegTotSync: true })
+    renderBlok('klaar_om_te_boeken')
+    expect(await screen.findByTestId('projecten-leeg')).toHaveTextContent('nog geen projecten gesynchroniseerd')
+    await userEvent.click(screen.getByRole('button', { name: 'Nu synchroniseren' }))
+    await waitFor(() => expect(aanroepen.some((a) => a.method === 'POST' && a.url.endsWith('/administraties/doel-1/sync/projects'))).toBe(true))
+    // ná de sync komt de lijst terug en verdwijnt de lege stand
+    expect(await screen.findByRole('button', { name: 'alle actieve projecten' })).toBeInTheDocument()
+    expect(screen.queryByTestId('projecten-leeg')).not.toBeInTheDocument()
   })
 
   it('bij de klant (ter_accordering) is de verdeling alleen-lezen', async () => {
@@ -338,7 +367,7 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     renderBlok('ter_accordering')
     await waitFor(() => expect(screen.getByText('bij klant — alleen-lezen')).toBeInTheDocument())
     expect(screen.getByLabelText('Doorbelasten na boeken')).toBeDisabled()
-    expect(screen.queryByRole('button', { name: 'Verdeling opslaan' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '+ Doelentiteit toevoegen' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Verdeelsleutel' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '+ Doelentiteit' })).not.toBeInTheDocument()
   })
 })

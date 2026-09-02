@@ -218,8 +218,8 @@ describe('DoorbelastingReviewScreen', () => {
     renderScherm()
 
     expect(await screen.findByText('Multiplex 18mm (12×)')).toBeInTheDocument()
-    // Regel 1: 50+50 → exact 100%.
-    expect(screen.getByText('100% ✓')).toBeInTheDocument()
+    // Regel 1: 50+50 → exact 100% (restant-balk v2).
+    expect(screen.getByText('verdeeld 100% ✓')).toBeInTheDocument()
     // Regel 2 heeft geen verdeelregels.
     expect(screen.getByText('niet doorbelast')).toBeInTheDocument()
   })
@@ -230,9 +230,10 @@ describe('DoorbelastingReviewScreen', () => {
     installFetchMock({ run: nietSluitend })
     renderScherm()
 
-    expect(await screen.findByText('50% — nog 50% te verdelen')).toBeInTheDocument()
-    // Kliktest-bevinding Peter 2026-08-16: geen opslaan/boeken zolang het totaal ≠ 100% is.
-    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeDisabled()
+    expect(await screen.findByText('verdeeld 50%')).toBeInTheDocument()
+    expect(screen.getByText(/nog 50% · € 381,00/)).toBeInTheDocument()
+    // Kliktest-bevinding Peter 2026-08-16: geen boeken zolang het totaal ≠ 100% is; v2 benoemt de reden.
+    expect(screen.getByTestId('verdeling-blokkade')).toHaveTextContent(/Nog 50% te verdelen/)
     expect(screen.getByRole('button', { name: 'Doorbelasten in RLZ ✓' })).toBeDisabled()
   })
 
@@ -241,22 +242,23 @@ describe('DoorbelastingReviewScreen', () => {
     renderScherm()
     const gebruiker = userEvent.setup()
 
-    // Startsituatie: 50/50 = 100% — opslaan beschikbaar.
-    expect(await screen.findByText('100% ✓')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeEnabled()
+    // Startsituatie: 50/50 = 100%.
+    expect(await screen.findByText('verdeeld 100% ✓')).toBeInTheDocument()
 
-    // Eén percentage ophogen naar 70 → 120% totaal: teller "te veel" + opslaan uit.
+    // Eén percentage ophogen naar 70 → 120% totaal: balk "te veel" + blokkeer-reden.
     const pctVelden = screen.getAllByLabelText('Percentage voor Multiplex 18mm (12×)')
     await gebruiker.clear(pctVelden[0])
     await gebruiker.type(pctVelden[0], '70')
     expect(screen.getByText('120% — 20% te veel')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeDisabled()
+    expect(screen.getByTestId('verdeling-blokkade')).toHaveTextContent(/20% te veel verdeeld/)
+    // % ↔ bedrag: het bedragveld rekent live mee (70% van € 762,00)
+    expect(screen.getAllByLabelText('Bedrag voor Multiplex 18mm (12×)')[0]).toHaveValue('533,40')
 
-    // Terug naar 50 → weer exact 100%: teller weg, opslaan aan.
+    // Terug naar 50 → weer exact 100%: blokkade weg.
     await gebruiker.clear(pctVelden[0])
     await gebruiker.type(pctVelden[0], '50')
-    expect(screen.getByText('100% ✓')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeEnabled()
+    expect(screen.getByText('verdeeld 100% ✓')).toBeInTheDocument()
+    expect(screen.queryByTestId('verdeling-blokkade')).not.toBeInTheDocument()
   })
 
   it('houdt de boekknop uit zolang de harde checks blokkeren', async () => {
@@ -276,30 +278,23 @@ describe('DoorbelastingReviewScreen', () => {
     renderScherm()
     const gebruiker = userEvent.setup()
 
-    // Voeg op regel 1 twee doelentiteiten toe (50/50 — de rest-prefill zet 100 en dan 0,
-    // dus we typen de percentages zelf).
-    const toevoegKnoppen = await screen.findAllByRole('button', { name: '+ Doelentiteit toevoegen' })
-    await gebruiker.click(toevoegKnoppen[0])
-    await gebruiker.selectOptions(
-      screen.getByLabelText('Doelentiteit voor Multiplex 18mm (12×)'),
-      MAPPING_CHALETS,
-    )
-    const pctVeld = screen.getByLabelText('Percentage voor Multiplex 18mm (12×)')
-    await gebruiker.clear(pctVeld)
-    await gebruiker.type(pctVeld, '50')
-    await gebruiker.click(toevoegKnoppen[0])
+    // Voeg op regel 1 twee doelentiteiten toe (50/50). v2 slaat automatisch op zodra de
+    // verdeling compleet is — daarom eerst beide rijen + doelen, percentages als laatste.
+    const toevoegKnoppen = await screen.findAllByRole('button', { name: '+ Doelentiteit' })
+    await gebruiker.click(toevoegKnoppen[0]) // rest-prefill 100
+    await gebruiker.click(toevoegKnoppen[0]) // rest-prefill 0 → nog niet compleet
     const selects = screen.getAllByLabelText('Doelentiteit voor Multiplex 18mm (12×)')
+    await gebruiker.selectOptions(selects[0], MAPPING_CHALETS)
     await gebruiker.selectOptions(selects[1], MAPPING_RUBICON)
     const pctVelden = screen.getAllByLabelText('Percentage voor Multiplex 18mm (12×)')
+    await gebruiker.clear(pctVelden[0])
+    await gebruiker.type(pctVelden[0], '50')
+    expect(screen.getByTestId('verdeling-blokkade')).toHaveTextContent(/groter dan 0/)
     await gebruiker.clear(pctVelden[1])
     await gebruiker.type(pctVelden[1], '50')
+    expect(screen.getByText('verdeeld 100% ✓')).toBeInTheDocument()
 
-    // Vóór opslaan: geen server-bedragen, wel de "na opslaan"-plek.
-    expect(screen.getAllByText('na opslaan').length).toBeGreaterThan(0)
-
-    await gebruiker.click(screen.getByRole('button', { name: 'Verdeling opslaan' }))
-
-    await waitFor(() => expect(verdelingAanroepen).toHaveLength(1))
+    await waitFor(() => expect(verdelingAanroepen).toHaveLength(1), { timeout: 3000 })
     expect(verdelingAanroepen[0].body).toEqual({
       regels: [
         { bron_regel_id: BRON_REGEL_1, mapping_id: MAPPING_CHALETS, percentage: '50', doel_kosten_ledger_id: null, project_ids: [], verdeelbasis: null },

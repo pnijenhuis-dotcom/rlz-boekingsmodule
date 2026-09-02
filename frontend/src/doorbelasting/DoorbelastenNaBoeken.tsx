@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ApiError, apiJson } from '../api/client'
 import type { BoekvoorstelDto, DoorbelastingMappingDto, DoorbelastingRunDto } from '../api/types'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
-import { Checkbox } from '../ui/basis'
+import { Switch } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   haalDoorbelastingMappingsOp,
@@ -91,7 +91,7 @@ function Inhoud({
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
   const [vervallenVraag, setVervallenVraag] = useState(false)
-  const [staat, setStaat] = useState<VerdelingStaat>({ gewijzigd: false, onvolledig: false })
+  const [staat, setStaat] = useState<VerdelingStaat>({ gewijzigd: false, onvolledig: false, blokkade: null })
   const onStaat = useCallback((s: VerdelingStaat) => setStaat(s), [])
   const bevroren = status === 'ter_accordering'
 
@@ -148,9 +148,11 @@ function Inhoud({
     }
     const geenVerdeling = run.regels.length === 0
     const reden = staat.gewijzigd
-      ? 'De verdeling is gewijzigd maar nog niet opgeslagen — sla eerst op'
-      : staat.onvolledig || runVerdelingOnvolledig(run)
-        ? 'Elke verdeelde regel moet exact op 100% sluiten'
+      ? staat.blokkade ?? 'De verdeling wordt opgeslagen — een ogenblik'
+      : staat.blokkade
+        ? staat.blokkade
+        : staat.onvolledig || runVerdelingOnvolledig(run)
+          ? 'Elke verdeelde regel moet exact op 100% sluiten'
         : geenVerdeling
           ? 'Doorbelasten na boeken staat aan, maar er is nog geen verdeling opgeslagen'
           : run.checks.geblokkeerd
@@ -195,13 +197,11 @@ function Inhoud({
 
   return (
     <div className="panel">
-      <h2>
-        Doorbelasten na boeken{' '}
+      <div className="doorbelasten-kop">
+        <h2>Doorbelasten na boeken</h2>
         {aangevinkt && !bevroren && <span className="chip klaar">klaargezet</span>}
         {aangevinkt && bevroren && <span className="chip klaar">bij klant — alleen-lezen</span>}
-      </h2>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-        <Checkbox
+        <Switch
           checked={aangevinkt}
           disabled={bezig || run === undefined || bevroren}
           aria-label="Doorbelasten na boeken"
@@ -211,15 +211,17 @@ function Inhoud({
             else void uitzetten()
           }}
         />
-        <span>
-          Deze factuur na het boeken doorbelasten aan één of meer doelentiteiten (Kempen-patroon). De
-          boekknop wordt dan &ldquo;Boeken + doorbelasten&rdquo;: inkoopfactuur → verkoopfacturen → spiegels in
-          één gang, alle harde checks vooraf.
-        </span>
-      </label>
+      </div>
+      <p
+        className="hint"
+        style={{ marginTop: 4, marginBottom: aangevinkt ? 10 : 0 }}
+        title="Kempen-patroon: inkoopfactuur → per doelentiteit een verkoopfactuur (kosten + provisie) → spiegel-inkoopfactuur in de doel-administratie, alle harde checks vooraf. Faalt een deel ná de inkoopboeking, dan is dat zichtbaar op het document (herstel-/stornoroutes)."
+      >
+        Boekt de inkoopfactuur en direct daarna per doelentiteit de verkoopfactuur + spiegel, in één gang. ⓘ
+      </p>
       {fout && <FoutMelding melding={fout} />}
       {aangevinkt && (
-        <div style={{ marginTop: 12 }}>
+        <div>
           {bevroren && (
             <p className="hint" style={{ marginTop: 0 }}>
               Het document ligt bij de klant ter accordering: de accordeur ziet deze verdeling alleen-lezen.
@@ -238,15 +240,9 @@ function Inhoud({
             onStaat={onStaat}
             compact
           />
-          {regelIdsOntbreken && (
-            <FoutMelding melding="Niet alle boekingsregels zijn al opgeslagen — pas het voorstel aan (de checks slaan automatisch op) en de regels verschijnen hier." />
-          )}
-          <p className="hint" style={{ marginBottom: 0 }}>
-            Boekt de inkoopfactuur en direct daarna, via dezelfde doorbelastingsmotor, per doelentiteit
-            de verkoopfactuur (kosten + provisie) en de spiegel-inkoopfactuur. Faalt een deel ná de
-            inkoopboeking, dan is dat zichtbaar op het document (bestaande herstel-/stornoroutes). Later
-            alsnog doorbelasten kan ook: <Link to={`/doorbelasting/${administratieId}/${documentId}`}>Doorbelasten…</Link>{' '}
-            op het geboekte document.
+          <p className="hint" style={{ marginBottom: 0, marginTop: 8 }}>
+            Later alsnog doorbelasten kan ook: <Link to={`/doorbelasting/${administratieId}/${documentId}`}>Doorbelasten…</Link> op het
+            geboekte document.
           </p>
         </div>
       )}
