@@ -215,6 +215,12 @@ async function kiesCombobox(label: RegExp, zoek: string, optieTekst: RegExp) {
   await userEvent.click(optie)
 }
 
+/** Iteratie 2 (02-09): de tweede/derde verwerkroute zit achter het ⋯-menu van de rij. */
+async function kiesRijActie(naam: string) {
+  await userEvent.click((await screen.findAllByRole('button', { name: 'Meer acties' }))[0])
+  await userEvent.click(await screen.findByRole('menuitem', { name: naam }))
+}
+
 describe('Koppel aan relatie', () => {
   afterEach(() => vi.unstubAllGlobals())
 
@@ -223,7 +229,7 @@ describe('Koppel aan relatie', () => {
     installFetchMock({ koppelAanroepen })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Koppel aan relatie…' }))
+    await kiesRijActie('Koppel aan relatie…')
     const form = screen.getByTestId('koppel-relatie-form')
     expect(within(form).getByRole('radio', { name: 'Crediteur' })).toBeChecked()
     expect(within(form).getByText(/vooruitbetalingsrekening 1403\/1806/)).toBeInTheDocument()
@@ -249,7 +255,7 @@ describe('Koppel aan relatie', () => {
     })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Koppel aan relatie…' }))
+    await kiesRijActie('Koppel aan relatie…')
     await kiesCombobox(/Crediteur/, 'Bouw', /Bouwmaat Nederland/)
     await userEvent.click(screen.getByRole('button', { name: 'Koppel aan relatie ✓' }))
 
@@ -262,7 +268,7 @@ describe('Koppel aan relatie', () => {
     installFetchMock()
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Koppel aan relatie…' }))
+    await kiesRijActie('Koppel aan relatie…')
     await userEvent.click(screen.getByRole('radio', { name: 'Debiteur' }))
     expect(screen.getByPlaceholderText(/Zoek debiteur op naam/)).toBeInTheDocument()
   })
@@ -285,7 +291,7 @@ describe('Splitsen', () => {
     installFetchMock({ splitsAanroepen })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Splitsen…' }))
+    await kiesRijActie('Splitsen…')
     const form = screen.getByTestId('splitsen-form')
     const rest = within(form).getByTestId('splits-rest')
     const verstuur = within(form).getByRole('button', { name: /Splitsen en verwerken/ })
@@ -331,7 +337,7 @@ describe('Splitsen', () => {
     installFetchMock({ splitsAanroepen, mutaties: [deelMatchMutatie()] })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Splitsen…' }))
+    await kiesRijActie('Splitsen…')
     const form = screen.getByTestId('splitsen-form')
     expect(within(form).getByLabelText('Bedrag deel 1')).toHaveValue('800.00')
     expect(within(form).getByLabelText('Bestemming deel 1')).toHaveValue('open_post')
@@ -353,7 +359,7 @@ describe('Splitsen', () => {
   it('zonder bekende open post is de open-post-bestemming niet kiesbaar', async () => {
     installFetchMock()
     renderScherm()
-    await userEvent.click(await screen.findByRole('button', { name: 'Splitsen…' }))
+    await kiesRijActie('Splitsen…')
     const select = screen.getByLabelText('Bestemming deel 1')
     const optie = within(select).getByRole('option', { name: /Open post/ })
     expect(optie).toBeDisabled()
@@ -365,7 +371,7 @@ describe('Splitsen', () => {
     })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Splitsen…' }))
+    await kiesRijActie('Splitsen…')
     const form = screen.getByTestId('splitsen-form')
     await userEvent.type(within(form).getByLabelText('Bedrag deel 1'), '600')
     await userEvent.type(within(form).getByLabelText('Bedrag deel 2'), '400')
@@ -393,7 +399,7 @@ describe('Splitsen', () => {
     })
     renderScherm()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Splitsen…' }))
+    await kiesRijActie('Splitsen…')
     const form = screen.getByTestId('splitsen-form')
     await userEvent.type(within(form).getByLabelText('Bedrag deel 1'), '600')
     await userEvent.type(within(form).getByLabelText('Bedrag deel 2'), '400')

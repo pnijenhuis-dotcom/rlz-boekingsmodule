@@ -76,9 +76,10 @@ describe('VoorstelKaart', () => {
     expect(kaart).not.toHaveTextContent('·')
   })
 
-  it('geen open post = rustige tekstregel (E8); compact = zonder chip (E9, splitsen)', () => {
+  it('geen open post = klein chipje "handmatig" mét de uitleg als tooltip (iteratie 2); compact = zonder chip (E9, splitsen)', () => {
     const { rerender } = render(<VoorstelKaart voorstel={{ soort: 'handmatig', open_post: null }} mutatieBedrag="1" />)
-    expect(screen.getByText(GEEN_MATCH_TEKST)).toBeInTheDocument()
+    expect(screen.getByTestId('voorstel-handmatig')).toHaveTextContent('handmatig')
+    expect(screen.getByTestId('voorstel-handmatig')).toHaveAttribute('title', GEEN_MATCH_TEKST)
     rerender(<VoorstelKaart voorstel={{ soort: 'exacte_match', open_post: POST }} mutatieBedrag="4428.73" compact />)
     expect(screen.getByTestId('voorstel-kaart')).toHaveClass('vk-compact')
     expect(screen.getByTestId('voorstel-kaart')).not.toHaveTextContent('exacte match')

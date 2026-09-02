@@ -2046,3 +2046,51 @@ tr.geselecteerd td.acties {
   margin-left: auto;
   flex-shrink: 0;
 }
+
+/* Bankscherm iteratie 2 (mockup bank-voorstel-kaart.html ⑤–⑨, akkoord Peter 02-09): neutraal
+   chipje "handmatig", één primaire knop + ⋯-menu per rij, twee regels tegenpartij/omschrijving,
+   tabel op volledige contentbreedte (omschrijving krijgt de ruimte, kaart vaste breedte rechts). */
+.chip.handmatig {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--faint);
+}
+.chip.handmatig::before {
+  display: none;
+}
+.bank-tabel {
+  width: 100%;
+  table-layout: auto;
+}
+.bank-tabel th:last-child,
+.bank-tabel td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+.bank-tabel .vk {
+  width: 330px;
+  max-width: 330px;
+}
+.bank-tp {
+  font-weight: 700;
+}
+.bank-oms {
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-top: 2px;
+  max-width: 560px;
+  white-space: normal;
+}
+.acties-rij {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.acties-rij .btn.meer {
+  padding: 7px 10px;
+}
+.info-i {
+  color: var(--faint);
+  cursor: help;
+  font-weight: 400;
+}

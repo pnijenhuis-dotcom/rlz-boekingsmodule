@@ -291,7 +291,8 @@ describe('BankDetailScreen', () => {
     expect(screen.getByRole('button', { name: 'Nu afletteren ✓' })).toBeInTheDocument()
     // De oude instructie-staat ("leg de koppeling in Reeleezee; de sync verifieert") is vervangen.
     expect(screen.queryByText(/eerstvolgende bank-sync verifieert automatisch/)).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Intrekken' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Meer acties' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Intrekken' }))
     await waitFor(() => expect(intrekkenAanroepen).toHaveLength(1))
   })
 
@@ -379,13 +380,20 @@ describe('BankDetailScreen', () => {
     expect(screen.getByRole('button', { name: 'Afletteren (deel) ✓' })).toBeInTheDocument()
   })
 
-  it('blok E8: geen match = rustige tekstregel, geen lege kaart', async () => {
+  it('iteratie 2: geen match = klein chipje "handmatig" (geen herhaalde tekstregel), geen lege kaart; één primaire knop + ⋯-menu', async () => {
     installFetchMock({
       mutaties: [mutatie({ voorstel: { soort: 'handmatig', kleur: 'oranje', bron: 'handmatig', reden: 'Geen regel en geen open-post-match', payment_item_id: null, open_post: null, regel_id: null, regels: [] } })],
     })
     renderScherm()
-    expect(await screen.findByText('Geen open post of regel gevonden — handmatig beoordelen.')).toBeInTheDocument()
+    expect(await screen.findByTestId('voorstel-handmatig')).toHaveTextContent('handmatig')
+    expect(screen.queryByText('Geen open post of regel gevonden — handmatig beoordelen.')).not.toBeInTheDocument()
     expect(screen.queryByTestId('voorstel-kaart')).not.toBeInTheDocument()
+    // Eén primaire knop; de overige routes achter ⋯
+    expect(screen.getByRole('button', { name: 'Boeken…' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Koppel aan relatie…' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Meer acties' }))
+    expect(await screen.findByRole('menuitem', { name: 'Koppel aan relatie…' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Splitsen…' })).toBeInTheDocument()
   })
 
   it('toont de levenscyclus-sectie met geverifieerd resultaat, afwijkend-gevolgd en "Nu afletteren"', async () => {

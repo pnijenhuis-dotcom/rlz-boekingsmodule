@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { SearchableCombobox } from '../document/SearchableCombobox'
-import { Checkbox, Select, SkeletonRegels, useToastOptioneel } from '../ui/basis'
+import { AnkerPopup, Checkbox, Select, SkeletonRegels, useToastOptioneel } from '../ui/basis'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
@@ -24,7 +24,7 @@ import {
 import { AanbetalingenPaneel, KoppelRelatieForm } from './RelatieKoppeling'
 import { SplitsenForm, SplitsingWeergave, SplitsingenPaneel } from './Splitsen'
 import { useBankAutoVerversing } from './useBankAutoVerversing'
-import { GEEN_MATCH_TEKST, VoorstelKaart, isDeelbetaling } from './VoorstelKaart'
+import { GEEN_MATCH_TEKST, HandmatigChip, VoorstelKaart, isDeelbetaling } from './VoorstelKaart'
 import { amountKlasse } from '../werkvoorraad/format'
 
 function formatBedrag(bedrag: string | null): string {
@@ -250,6 +250,8 @@ function MutatieRij({
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
   const [actieModus, setActieModus] = useState<ActieModus>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuKnop = useRef<HTMLButtonElement | null>(null)
 
   const voorstel = mutatie.voorstel
   const opdracht = mutatie.afletter_opdracht
@@ -298,8 +300,8 @@ function MutatieRij({
     <tr style={opdracht ? { opacity: 0.75 } : undefined}>
       <td>{formatDatumKort(mutatie.boekdatum)}</td>
       <td>
-        <b>{mutatie.tegenpartij_naam ?? 'Onbekende tegenpartij'}</b>
-        {mutatie.omschrijving ? ` · ${mutatie.omschrijving}` : ''}
+        <div className="bank-tp">{mutatie.tegenpartij_naam ?? 'Onbekende tegenpartij'}</div>
+        {mutatie.omschrijving && <div className="bank-oms">{mutatie.omschrijving}</div>}
       </td>
       <td className="amount" style={{ color: bedragGetal < 0 ? 'var(--red)' : 'var(--green)' }}>
         {formatBedrag(mutatie.bedrag)}
@@ -310,11 +312,11 @@ function MutatieRij({
         {isAfletterVoorstel ? (
           <VoorstelKaart voorstel={voorstel} mutatieBedrag={mutatie.bedrag} />
         ) : voorstel.soort === 'vaste_regel' ? (
-          <>
-            Direct op grootboek volgens vaste regel <span className={chipKlasse(voorstel)}>{voorstel.bron}</span>
-          </>
+          <span className={chipKlasse(voorstel)} title="Direct op grootboek volgens een vaste regel (boekingsgeheugen)">
+            vaste regel · {voorstel.bron}
+          </span>
         ) : (
-          <span className="vk-geen">{GEEN_MATCH_TEKST}</span>
+          <HandmatigChip />
         )}
         {mutatie.regel_voorstel && (
           <div className="hint">
@@ -324,61 +326,10 @@ function MutatieRij({
         )}
       </td>
       <td>
-        {opdracht ? (
-          <>
-            <AfletterStatusChip opdracht={opdracht} />{' '}
-            {opdracht.status === 'klaargezet' && (
-              <button
-                className="btn"
-                disabled={bezig}
-                onClick={() => void letterAf(() => voerAfletterOpdrachtUit(administratieId, opdracht.id))}
-              >
-                Nu afletteren ✓
-              </button>
-            )}{' '}
-            <button
-              className="btn secondary"
-              disabled={bezig}
-              onClick={() => void doe(() => trekAfletterenIn(administratieId, opdracht.id))}
-            >
-              Intrekken
-            </button>
-          </>
-        ) : isAfletterVoorstel ? (
-          <button
-            className="btn"
-            disabled={bezig}
-            onClick={() =>
-              void letterAf(() => zetAfletterenKlaar(administratieId, mutatie.id, voorstel.payment_item_id ?? ''))
-            }
-          >
-            {isDeelbetaling(mutatie.bedrag, voorstel.open_post?.bedrag) ? 'Afletteren (deel) ✓' : 'Afletteren ✓'}
-          </button>
-        ) : voorstel.soort === 'vaste_regel' && voorstel.regels.length > 0 ? (
-          <button
-            className="btn"
-            disabled={bezig}
-            onClick={() =>
-              void doe(() =>
-                boekDirect(administratieId, mutatie.id, {
-                  regels: voorstel.regels.map((regel) => ({
-                    ledger_id: regel.ledger_id,
-                    netto_bedrag: regel.netto_bedrag,
-                    btw_bedrag: regel.btw_bedrag,
-                    taxrate_id: regel.taxrate_id,
-                    project_id: regel.project_id,
-                    omschrijving: regel.omschrijving,
-                  })),
-                  omschrijving: voorstel.regels[0]?.omschrijving ?? null,
-                  bron: 'vaste_regel',
-                  vaste_regel_opslaan: false,
-                }),
-              )
-            }
-          >
-            Akkoord ✓
-          </button>
-        ) : actieModus === 'handmatig' ? (
+        {/* Iteratie 2 (mockup bank-voorstel-kaart ⑥, akkoord Peter 02-09): één primaire knop
+            (context-afhankelijk) + een ⋯-menu voor de overige routes — nooit meer drie gestapelde
+            knoppen per rij. */}
+        {actieModus === 'handmatig' ? (
           <HandmatigBoekenForm
             administratieId={administratieId}
             mutatie={mutatie}
@@ -389,22 +340,137 @@ function MutatieRij({
             onAnnuleer={() => setActieModus(null)}
           />
         ) : actieModus === null ? (
-          <button className="btn" disabled={bezig} onClick={() => setActieModus('handmatig')}>
-            Boeken…
-          </button>
-        ) : null}
-        {/* Tweede en derde verwerkroute — beschikbaar op elke nog niet klaargezette mutatie, ook
-            naast een afletter-/regelvoorstel (bv. deelmatch → splitsen in open post + rest). */}
-        {!opdracht && actieModus === null && (
-          <div className="actions" style={{ marginTop: 6 }}>
-            <button className="btn secondary" disabled={bezig} onClick={() => setActieModus('relatie')}>
-              Koppel aan relatie…
+          <div className="acties-rij">
+            {opdracht ? (
+              <>
+                <AfletterStatusChip opdracht={opdracht} />
+                {opdracht.status === 'klaargezet' && (
+                  <button
+                    className="btn"
+                    disabled={bezig}
+                    onClick={() => void letterAf(() => voerAfletterOpdrachtUit(administratieId, opdracht.id))}
+                  >
+                    Nu afletteren ✓
+                  </button>
+                )}
+              </>
+            ) : isAfletterVoorstel ? (
+              <button
+                className="btn"
+                disabled={bezig}
+                onClick={() =>
+                  void letterAf(() => zetAfletterenKlaar(administratieId, mutatie.id, voorstel.payment_item_id ?? ''))
+                }
+              >
+                {isDeelbetaling(mutatie.bedrag, voorstel.open_post?.bedrag) ? 'Afletteren (deel) ✓' : 'Afletteren ✓'}
+              </button>
+            ) : voorstel.soort === 'vaste_regel' && voorstel.regels.length > 0 ? (
+              <button
+                className="btn"
+                disabled={bezig}
+                onClick={() =>
+                  void doe(() =>
+                    boekDirect(administratieId, mutatie.id, {
+                      regels: voorstel.regels.map((regel) => ({
+                        ledger_id: regel.ledger_id,
+                        netto_bedrag: regel.netto_bedrag,
+                        btw_bedrag: regel.btw_bedrag,
+                        taxrate_id: regel.taxrate_id,
+                        project_id: regel.project_id,
+                        omschrijving: regel.omschrijving,
+                      })),
+                      omschrijving: voorstel.regels[0]?.omschrijving ?? null,
+                      bron: 'vaste_regel',
+                      vaste_regel_opslaan: false,
+                    }),
+                  )
+                }
+              >
+                Akkoord ✓
+              </button>
+            ) : (
+              <button className="btn" disabled={bezig} onClick={() => setActieModus('handmatig')}>
+                Boeken…
+              </button>
+            )}
+            <button
+              ref={menuKnop}
+              type="button"
+              className="btn secondary meer"
+              aria-label="Meer acties"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              disabled={bezig}
+              title="Meer acties: koppelen aan relatie, splitsen, handmatig boeken"
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              ⋯
             </button>
-            <button className="btn secondary" disabled={bezig} onClick={() => setActieModus('splitsen')}>
-              Splitsen…
-            </button>
+            <AnkerPopup
+              open={menuOpen}
+              anker={menuKnop}
+              kant="onder"
+              uitlijning="eind"
+              className="rijmenu"
+              role="menu"
+              onAnkerUitBeeld={() => setMenuOpen(false)}
+            >
+              {opdracht ? (
+                <button
+                  type="button"
+                  className="linkbtn"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    void doe(() => trekAfletterenIn(administratieId, opdracht.id))
+                  }}
+                >
+                  Intrekken
+                </button>
+              ) : (
+                <>
+                  {/* Tweede en derde verwerkroute — beschikbaar op elke nog niet klaargezette mutatie,
+                      ook naast een afletter-/regelvoorstel (bv. deelmatch → splitsen in open post + rest). */}
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      setActieModus('relatie')
+                    }}
+                  >
+                    Koppel aan relatie…
+                  </button>
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      setActieModus('splitsen')
+                    }}
+                  >
+                    Splitsen…
+                  </button>
+                  {(isAfletterVoorstel || voorstel.soort === 'vaste_regel') && (
+                    <button
+                      type="button"
+                      className="linkbtn"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setActieModus('handmatig')
+                      }}
+                    >
+                      Boeken handmatig…
+                    </button>
+                  )}
+                </>
+              )}
+            </AnkerPopup>
           </div>
-        )}
+        ) : null}
         {actieModus === 'relatie' && (
           <KoppelRelatieForm
             administratieId={administratieId}
@@ -694,13 +760,18 @@ export function BankDetailScreen() {
         ) : mutaties.length === 0 ? (
           <p className="hint">Geen onverwerkte mutaties op deze rekening.</p>
         ) : (
-          <table>
+          <table className="bank-tabel">
             <thead>
               <tr>
                 <th>Datum</th>
                 <th>Tegenpartij / omschrijving</th>
                 <th className="amount">Bedrag</th>
-                <th>Voorstel</th>
+                <th>
+                  Voorstel{' '}
+                  <span className="info-i" title={`${GEEN_MATCH_TEKST} Een kaart = afletter-voorstel met de gegevens van de open post; "handmatig" = geen open post of vaste regel gevonden.`}>
+                    ⓘ
+                  </span>
+                </th>
                 <th></th>
               </tr>
             </thead>

@@ -66,6 +66,17 @@ function formatDatum(iso: string | null | undefined): string | null {
 
 export const GEEN_MATCH_TEKST = 'Geen open post of regel gevonden — handmatig beoordelen.'
 
+/** Geen match = klein neutraal chipje "handmatig" (iteratie 2, feedback Peter 02-09: op een echte
+ * rekening met 40+ handmatige rijen was de herhaalde tekstregel rommelig); de uitleg staat als
+ * tooltip op het chipje en éénmalig bij de kolomkop. */
+export function HandmatigChip() {
+  return (
+    <span className="chip handmatig" title={GEEN_MATCH_TEKST} data-testid="voorstel-handmatig">
+      handmatig
+    </span>
+  )
+}
+
 /** Kaart voor een afletter-voorstel (exacte_match / deel_match / rlz_voorstel mét open_post). */
 export function VoorstelKaart({
   voorstel,
@@ -78,7 +89,7 @@ export function VoorstelKaart({
   compact?: boolean
 }) {
   const post: OpenPostDto | null = voorstel.open_post ?? null
-  if (!post) return <span className="vk-geen">{GEEN_MATCH_TEKST}</span>
+  if (!post) return <HandmatigChip />
   const deel = isDeelbetaling(mutatieBedrag, post.bedrag)
   const restant = restantCenten(mutatieBedrag, post.bedrag)
   const chip = compact ? null : matchChip(voorstel, deel)
