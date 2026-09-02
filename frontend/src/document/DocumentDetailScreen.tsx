@@ -372,14 +372,23 @@ export function DocumentDetailScreen() {
   // banner én het tabblad "Opmerkingen" naast de tijdlijn.
   const [documentVragen, setDocumentVragen] = useState<VraagDto[] | null>(null)
   const [tijdlijnTab, setTijdlijnTab] = useState<'tijdlijn' | 'opmerkingen'>('tijdlijn')
+  // Gebundeld UBL+PDF-document (bundeling/samenvoegen 02-09): het opgeslagen bestand is de UBL
+  // (data), de PDF is het beeld — /bestand serveert dan de PDF en de UBL blijft via ?vorm=data
+  // downloadbaar. Anders (omgezette foto) is het origineel de bron zelf.
+  const ublMetBeeld = Boolean(
+    detail?.bestandsnaam.toLowerCase().endsWith('.xml') && detail.bron_bestandsnaam?.toLowerCase().endsWith('.pdf'),
+  )
   const downloadOrigineel = async () => {
     if (!detail?.bron_bestandsnaam) return
-    const resp = await apiFetch(`/administraties/${administratieId}/documenten/${documentId}/bronbestand`)
+    const pad = ublMetBeeld
+      ? `/administraties/${administratieId}/documenten/${documentId}/bestand?vorm=data`
+      : `/administraties/${administratieId}/documenten/${documentId}/bronbestand`
+    const resp = await apiFetch(pad)
     if (!resp.ok) return
     const url = URL.createObjectURL(await resp.blob())
     const a = document.createElement('a')
     a.href = url
-    a.download = detail.bron_bestandsnaam
+    a.download = ublMetBeeld ? detail.bestandsnaam : detail.bron_bestandsnaam
     a.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
@@ -797,19 +806,24 @@ export function DocumentDetailScreen() {
             </div>
             {bijlage && (
               <p style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <a className="btn secondary" href={bijlage.url} download={detail.bestandsnaam}>
+                <a className="btn secondary" href={bijlage.url} download={ublMetBeeld ? detail.bron_bestandsnaam ?? detail.bestandsnaam : detail.bestandsnaam}>
                   Downloaden
                 </a>
                 {detail.bron_bestandsnaam && (
                   // Omgezette afbeelding (punt 2, 25-08 deel 3): het aangeleverde origineel blijft
-                  // als brondocument bewaard en is hier op te halen.
+                  // als brondocument bewaard en is hier op te halen. Gebundeld UBL+PDF (02-09): de
+                  // UBL-data naast het PDF-beeld.
                   <button
                     type="button"
                     className="btn ghost"
-                    title="Deze PDF is gemaakt uit een aangeleverde afbeelding; het origineel blijft bewaard"
+                    title={
+                      ublMetBeeld
+                        ? 'Gebundeld document: de gegevens komen uit de UBL, de PDF is het beeld'
+                        : 'Deze PDF is gemaakt uit een aangeleverde afbeelding; het origineel blijft bewaard'
+                    }
                     onClick={() => void downloadOrigineel()}
                   >
-                    Origineel ({detail.bron_bestandsnaam})
+                    {ublMetBeeld ? `UBL-data (${detail.bestandsnaam})` : `Origineel (${detail.bron_bestandsnaam})`}
                   </button>
                 )}
               </p>

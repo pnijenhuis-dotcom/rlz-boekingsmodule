@@ -32,6 +32,12 @@ AFBEELDING (JPEG/PNG/HEIC — feedbackronde 25-08 deel 3, punt 2):
    (regel 5/6); het origineel blijft als brondocument bewaard (document.bron_*). Onbruikbaar
    (corrupt/leeg) → verzamelbak met reden `afbeelding_onbruikbaar: …`, het origineel als bestand.
 
+BUNDELING (diagnose 02-09 punt 2, app/intake/bundeling.py): een UBL + PDF van dezelfde factuur in
+één mail (ingesloten-PDF-hash gelijk, anders dezelfde naamstam — alleen ondubbelzinnig) wordt vóór
+regel 1–6 één document: UBL leidend (velden/tenaamstelling), PDF als beeld (document.bron_*), de
+PDF-bijlage zichtbaar als 'gebundeld' in het intake-bericht. Een losse UBL mét ingesloten PDF
+krijgt die PDF als beeld. Wat de detectie mist = handmatig "Samenvoegen" in de verzamelbak.
+
 Overige bijlage-typen worden zichtbaar als 'niet_verwerkbaar' in het intake-bericht
 geregistreerd (mail-handtekeningen/logo's horen niet als document in de verzamelbak).
 
@@ -70,6 +76,7 @@ from app.documenten.ubl import (
     parseer_ubl_factuur,
 )
 from app.extractie import splitsing as splitsing_extractie
+from app.intake.bundeling import BijlagePaar, BundelItem, bundel_bijlagen
 from app.intake.eml import GeenGeldigeEml, IntakeBijlage, IntakeMail, parse_eml
 from app.intake.models import IntakeBericht, IntakeSplitsing
 from app.intake.toewijzing import bepaal_toewijzing
@@ -317,6 +324,7 @@ def _verwerk_xml(
     intake_bericht_id: uuid.UUID | None,
     opslag: DocumentOpslag | None,
     body_hint: str | None = None,
+    bron_bestand: BronBestand | None = None,
     kanaal: DocumentBron = DocumentBron.EMAIL,
 ) -> BijlageResultaat:
     from app.documenten.waarborg_xml import is_waarborg_xml
@@ -342,6 +350,7 @@ def _verwerk_xml(
             opslag=opslag,
             intake_bericht_id=intake_bericht_id,
             afzender_hint=afzender,
+            bron_bestand=bron_bestand,
         )
         return BijlageResultaat(
             bestandsnaam=bijlage.bestandsnaam,
@@ -387,6 +396,7 @@ def _verwerk_xml(
                 intake_bericht_id=intake_bericht_id,
                 afzender_hint=afzender,
                 tenaamstelling=voorstel.leverancier_naam,
+                bron_bestand=bron_bestand,
             )
             return BijlageResultaat(
                 bestandsnaam=bijlage.bestandsnaam,
@@ -406,6 +416,7 @@ def _verwerk_xml(
                 intake_bericht_id=intake_bericht_id,
                 afzender_hint=afzender,
                 tenaamstelling=voorstel.leverancier_naam,
+                bron_bestand=bron_bestand,
             )
             return BijlageResultaat(
                 bestandsnaam=bijlage.bestandsnaam,
@@ -425,6 +436,7 @@ def _verwerk_xml(
             opslag=opslag,
             verzamelbak_reden="vastly_verkoop_zonder_eenduidige_entiteit",
             body_hint=body_hint,
+            bron_bestand=bron_bestand,
             kanaal=kanaal,
         )
 
@@ -440,6 +452,7 @@ def _verwerk_xml(
         opslag=opslag,
         verzamelbak_reden="tenaamstelling_niet_eenduidig",
         body_hint=body_hint,
+        bron_bestand=bron_bestand,
         kanaal=kanaal,
     )
 
@@ -664,6 +677,64 @@ def _verwerk_afbeelding(
     )
 
 
+def _routeer_bundel_item(
+    item: BundelItem,
+    *,
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
+    opslag: DocumentOpslag | None,
+    body_hint: str | None,
+    kanaal: DocumentBron,
+    logo_filter: bool,
+) -> list[BijlageResultaat]:
+    """Eén bundel-item → één of twee resultaatregels. Een paar (bundeling 02-09): de UBL wordt
+    het document (velden + tenaamstelling deterministisch), de PDF gaat mee als beeld
+    (`bron_bestand`) — géén AI-call voor de PDF; de PDF-bijlage krijgt een eigen regel 'gebundeld'
+    in het intake-bericht zodat élke bijlage zichtbaar verantwoord blijft."""
+    if isinstance(item, BijlagePaar):
+        beeld = BronBestand(bestandsnaam=item.pdf.bestandsnaam, inhoud=item.pdf.inhoud, content_type="application/pdf")
+        resultaat = _verwerk_xml(
+            item.ubl,
+            afzender=afzender,
+            actor_id=actor_id,
+            intake_bericht_id=intake_bericht_id,
+            opslag=opslag,
+            body_hint=body_hint,
+            bron_bestand=beeld,
+            kanaal=kanaal,
+        )
+        ubl_regel = BijlageResultaat(
+            bestandsnaam=resultaat.bestandsnaam,
+            uitkomst=resultaat.uitkomst,
+            document_id=resultaat.document_id,
+            detail=f"{resultaat.detail} · beeld: {item.pdf.bestandsnaam} ({item.reden})",
+        )
+        if not item.pdf_is_losse_bijlage:
+            return [ubl_regel]
+        return [
+            ubl_regel,
+            BijlageResultaat(
+                bestandsnaam=item.pdf.bestandsnaam,
+                uitkomst="gebundeld",
+                document_id=resultaat.document_id,
+                detail=f"gebundeld met {item.ubl.bestandsnaam} ({item.reden}) — PDF is het beeld van het UBL-document",
+            ),
+        ]
+    return [
+        _routeer_bijlage(
+            item,
+            afzender=afzender,
+            actor_id=actor_id,
+            intake_bericht_id=intake_bericht_id,
+            opslag=opslag,
+            body_hint=body_hint,
+            kanaal=kanaal,
+            logo_filter=logo_filter,
+        )
+    ]
+
+
 def _routeer_bijlage(
     bijlage: IntakeBijlage,
     *,
@@ -711,8 +782,8 @@ def verwerk_los_bestand(
     )
     if not (bijlage.is_xml or bijlage.is_pdf or is_afbeelding(bestandsnaam, content_type)):
         raise BestandstypeNietOndersteund("Alleen PDF, UBL/XML, .eml of een afbeelding (JPEG/PNG/HEIC)")
-    return _routeer_bijlage(
-        bijlage,
+    return _routeer_bundel_item(
+        bundel_bijlagen([bijlage])[0],
         afzender=None,
         actor_id=actor_id,
         intake_bericht_id=None,
@@ -720,7 +791,7 @@ def verwerk_los_bestand(
         body_hint=None,
         kanaal=DocumentBron.UPLOAD,
         logo_filter=False,
-    )
+    )[0]
 
 
 def verwerk_eml(
@@ -779,9 +850,13 @@ def verwerk_eml(
                 )
             )
 
+    # Bundeling 02-09: UBL+PDF-paren (ingesloten-PDF-hash, anders naamstam) worden één document
+    # vóór de routing — zie app/intake/bundeling.py.
     resultaten: list[BijlageResultaat] = [
-        _routeer_bijlage(
-            bijlage,
+        r
+        for item in bundel_bijlagen(mail.bijlagen)
+        for r in _routeer_bundel_item(
+            item,
             afzender=mail.afzender,
             actor_id=actor_id,
             intake_bericht_id=bericht_id,
@@ -790,7 +865,6 @@ def verwerk_eml(
             kanaal=DocumentBron.EMAIL,
             logo_filter=True,
         )
-        for bijlage in mail.bijlagen
     ]
 
     with scoped_session(None, actor_id=actor_id) as session:

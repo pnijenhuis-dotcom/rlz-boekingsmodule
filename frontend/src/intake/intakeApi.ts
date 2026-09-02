@@ -26,6 +26,11 @@ export interface VerzamelbakItemDto {
   aangemaakt_op: string
   splitsing_id: string | null
   splitsing_voorstel: SplitsSegmentDto[] | null
+  /** Bundeling/samenvoegen (02-09): PDF-beeld naast een UBL-document; samengevoegde tweede rij; herkomst-mail. */
+  beeld_bestandsnaam?: string | null
+  samengevoegd_document_id?: string | null
+  samengevoegd_bestandsnaam?: string | null
+  intake_bericht_id?: string | null
 }
 
 export interface VerzamelbakLijstDto {
@@ -55,12 +60,13 @@ export interface VerzamelbakBestand {
   contentType: string
 }
 
-/** Bestand van een verzamelbak-document (D1, besluit 25-08): lazy — pas bij hover/klik. */
-export async function haalVerzamelbakBestandBlob(documentId: string): Promise<VerzamelbakBestand> {
-  const resp = await apiFetch(`/verzamelbak/${documentId}/bestand`)
+/** Bestand van een verzamelbak-document (D1, besluit 25-08): lazy — pas bij hover/klik. Default =
+ * het BEELD (bij een gebundeld UBL+PDF-document de PDF); `vorm: 'data'` = het opgeslagen hoofdbestand. */
+export async function haalVerzamelbakBestandBlob(documentId: string, vorm: 'beeld' | 'data' = 'beeld'): Promise<VerzamelbakBestand> {
+  const resp = await apiFetch(`/verzamelbak/${documentId}/bestand${vorm === 'data' ? '?vorm=data' : ''}`)
   if (!resp.ok) throw new Error(`Bestand niet te laden (${resp.status})`)
   const blob = await resp.blob()
-  return { url: URL.createObjectURL(blob), contentType: blob.type }
+  return { url: URL.createObjectURL(blob), contentType: blob.type || resp.headers.get('content-type') || '' }
 }
 
 export function verwerkEml(bestand: File): Promise<IntakeVerwerkResponseDto> {
@@ -108,4 +114,42 @@ export function bevestigSplitsing(
 
 export function wijsSplitsingAf(splitsingId: string, reden: string | null): Promise<unknown> {
   return apiPostJson(`/intake/splitsingen/${splitsingId}/afwijzen`, { reden })
+}
+
+/** Leesbare kaart voor een losse UBL zonder beeld (02-09). */
+export interface UblSamenvattingDto {
+  leverancier: string | null
+  afnemer: string | null
+  factuurnummer: string | null
+  factuurdatum: string | null
+  totaal_excl: string | null
+  totaal_incl: string | null
+  valuta: string | null
+  regelaantal: number
+  regels: { omschrijving: string | null; netto_bedrag: string | null; aantal: string | null }[]
+}
+
+export function haalUblSamenvatting(documentId: string): Promise<UblSamenvattingDto> {
+  return apiJson<UblSamenvattingDto>(`/verzamelbak/${documentId}/ubl-samenvatting`)
+}
+
+export interface SamenvoegResultaatDto {
+  document_id: string
+  samengevoegd_document_id: string
+  beeld_bestandsnaam: string
+  waarschuwingen: string[]
+}
+
+/** Handmatig samenvoegen (toevoeging Peter 02-09): de mens kiest het leidende bestand; 409 mét
+ * code `zelfde_type` als twee UBL's/PDF's zonder bevestiging. */
+export function voegSamen(leidendId: string, anderId: string, bevestigZelfdeType = false): Promise<SamenvoegResultaatDto> {
+  return apiPostJson<SamenvoegResultaatDto>('/verzamelbak/samenvoegen', {
+    leidend_document_id: leidendId,
+    ander_document_id: anderId,
+    bevestig_zelfde_type: bevestigZelfdeType,
+  })
+}
+
+export function maakSamenvoegenOngedaan(documentId: string): Promise<{ document_id: string; teruggezet_document_id: string }> {
+  return apiPostJson(`/verzamelbak/${documentId}/samenvoegen-ongedaan`, {})
 }

@@ -136,6 +136,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.AFGEWEZEN,
             DocumentStatus.VERWIJDERD,
             DocumentStatus.GESPLITST,
+            DocumentStatus.SAMENGEVOEGD,  # handmatig samenvoegen in de verzamelbak (0098)
         }
     ),
     DocumentStatus.BOEKEN_MISLUKT: frozenset(
@@ -196,6 +197,8 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # inkooppad nog steeds niet (dat blijft actie 19 in de RLZ-UI + detectie).
     DocumentStatus.GEBOEKT: frozenset({DocumentStatus.TE_CONTROLEREN}),
     DocumentStatus.GESPLITST: frozenset(),
+    # Samenvoegen ongedaan maken (zolang het leidende document nog in de verzamelbak staat).
+    DocumentStatus.SAMENGEVOEGD: frozenset({DocumentStatus.NIET_TOEGEWEZEN}),
     DocumentStatus.VERWIJDERD: _NIET_GEBOEKTE_STATUSSEN,
 }
 

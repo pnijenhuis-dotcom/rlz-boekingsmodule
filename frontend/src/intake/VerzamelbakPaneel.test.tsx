@@ -7,6 +7,7 @@ const ADMIN_A = 'aaaaaaaa-0000-0000-0000-000000000001'
 const ADMIN_B = 'bbbbbbbb-0000-0000-0000-000000000002'
 const DOC_ID = 'cccccccc-0000-0000-0000-000000000003'
 const SPLITSING_ID = 'dddddddd-0000-0000-0000-000000000004'
+const DOC_ID_2 = 'eeeeeeee-0000-0000-0000-000000000005'
 
 const ADMINISTRATIES = [
   { id: ADMIN_A, naam: 'BLOW B.V.' },
@@ -49,8 +50,28 @@ function installFetchMock(opties: {
       if (url.endsWith('/verzamelbak') && (!init || !init.method)) {
         return Promise.resolve(jsonResponse({ items: opties.items ?? [item()] }))
       }
+      if (url.endsWith('/ubl-samenvatting') && (!init || !init.method)) {
+        return Promise.resolve(
+          jsonResponse({
+            leverancier: 'Saleswizard BV',
+            afnemer: 'Belastingbutler B.V.',
+            factuurnummer: '2026-8151',
+            factuurdatum: '2026-09-02',
+            totaal_excl: '29.50',
+            totaal_incl: '35.70',
+            valuta: 'EUR',
+            regelaantal: 1,
+            regels: [{ omschrijving: 'Abonnement', netto_bedrag: '29.50', aantal: '1' }],
+          }),
+        )
+      }
       if (init?.method === 'POST') {
         opties.aanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
+        if (url.endsWith('/verzamelbak/samenvoegen')) {
+          return Promise.resolve(
+            jsonResponse({ document_id: DOC_ID, samengevoegd_document_id: DOC_ID_2, beeld_bestandsnaam: 'factuur_energie.pdf', waarschuwingen: [] }),
+          )
+        }
         return Promise.resolve(jsonResponse({ document_id: DOC_ID, status: 'te_controleren' }))
       }
       return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
@@ -305,5 +326,87 @@ describe('VerzamelbakPaneel', () => {
         { start_pagina: 3, eind_pagina: 3, tenaamstelling: 'Kempen Groep B.V.' },
       ],
     })
+  })
+
+  it('B4 (02-09): gebundeld UBL+PDF-document toont het PDF-beeld als chip en de preview volgt het geserveerde bestand', async () => {
+    const bestandAanroepen: string[] = []
+    installFetchMock({
+      // Eigen id: de preview-blobcache is module-breed (één keer ophalen per document).
+      items: [item({ document_id: 'ffffffff-0000-0000-0000-00000000000f', bestandsnaam: '2026-8151.xml', beeld_bestandsnaam: '2026-8151.pdf', tenaamstelling: 'Belastingbutler B.V.' })],
+      bestandAanroepen,
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    expect(await screen.findByTestId('beeld-chip')).toHaveTextContent('2026-8151.pdf')
+    await userEvent.click(screen.getByRole('button', { name: 'Voorbeeld van 2026-8151.xml' }))
+    await waitFor(() => expect(bestandAanroepen).toHaveLength(1))
+    // Het beeld (PDF) wordt geserveerd en als PDF getoond — geen "geen inline weergave"-tekst.
+    await waitFor(() => expect(screen.getByLabelText('Documentweergave')).toBeInTheDocument())
+    expect(screen.queryByText(/Geen inline weergave/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/geen paginabeeld/)).not.toBeInTheDocument()
+  })
+
+  it('B4 (02-09): losse UBL zonder beeld toont een gerenderde samenvatting i.p.v. "geen paginabeeld"', async () => {
+    installFetchMock({ items: [item({ bestandsnaam: '2026-8151.xml', tenaamstelling: 'Belastingbutler B.V.' })] })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Voorbeeld van 2026-8151.xml' }))
+    const kaart = await screen.findByTestId('ubl-samenvatting')
+    expect(kaart).toHaveTextContent('Saleswizard BV')
+    expect(kaart).toHaveTextContent('Belastingbutler B.V.')
+    expect(kaart).toHaveTextContent('Factuur 2026-8151')
+  })
+
+  it('B4 (02-09): twee rijen selecteren → Samenvoegen → dialoog kiest de UBL als leidend → POST mét beide id\'s', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      items: [
+        item({ document_id: DOC_ID, bestandsnaam: '2026-8151.pdf', tenaamstelling: null, intake_bericht_id: 'm1' }),
+        item({ document_id: DOC_ID_2, bestandsnaam: '2026-8151.xml', tenaamstelling: 'Belastingbutler B.V.', intake_bericht_id: 'm1' }),
+      ],
+      aanroepen,
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await userEvent.click(await screen.findByLabelText('Selecteer 2026-8151.pdf voor samenvoegen'))
+    expect(screen.getByRole('button', { name: 'Samenvoegen (1)' })).toBeDisabled()
+    await userEvent.click(screen.getByLabelText('Selecteer 2026-8151.xml voor samenvoegen'))
+    await userEvent.click(screen.getByRole('button', { name: 'Samenvoegen (2)' }))
+    // Default leidend = de UBL (velden deterministisch); zelfde mail → geen waarschuwing.
+    expect(await screen.findByRole('radio', { name: /2026-8151\.xml/ })).toBeChecked()
+    expect(screen.queryByTestId('samenvoeg-waarschuwing-mail')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Samenvoegen — 2026-8151\.xml leidend/ }))
+    await waitFor(() => expect(aanroepen.some((a) => a.url.endsWith('/verzamelbak/samenvoegen'))).toBe(true))
+    expect(aanroepen.find((a) => a.url.endsWith('/verzamelbak/samenvoegen'))!.body).toEqual({
+      leidend_document_id: DOC_ID_2,
+      ander_document_id: DOC_ID,
+      bevestig_zelfde_type: false,
+    })
+  })
+
+  it('B4 (02-09): twee PDF\'s vragen een expliciete bevestiging; andere mail = zichtbare waarschuwing', async () => {
+    installFetchMock({
+      items: [
+        item({ document_id: DOC_ID, bestandsnaam: 'a.pdf', intake_bericht_id: 'm1' }),
+        item({ document_id: DOC_ID_2, bestandsnaam: 'b.pdf', intake_bericht_id: 'm2' }),
+      ],
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await userEvent.click(await screen.findByLabelText('Selecteer a.pdf voor samenvoegen'))
+    await userEvent.click(screen.getByLabelText('Selecteer b.pdf voor samenvoegen'))
+    await userEvent.click(screen.getByRole('button', { name: 'Samenvoegen (2)' }))
+    expect(await screen.findByTestId('samenvoeg-waarschuwing-mail')).toBeInTheDocument()
+    const bevestig = screen.getByRole('button', { name: /Samenvoegen — a\.pdf leidend/ })
+    expect(bevestig).toBeDisabled()
+    await userEvent.click(screen.getByRole('checkbox', { name: /Toch samenvoegen/ }))
+    expect(bevestig).toBeEnabled()
+  })
+
+  it('B4 (02-09): een handmatig samengevoegde rij biedt "samenvoegen ongedaan maken"', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      items: [item({ bestandsnaam: 'f.xml', beeld_bestandsnaam: 'f.pdf', samengevoegd_document_id: DOC_ID_2, samengevoegd_bestandsnaam: 'f.pdf' })],
+      aanroepen,
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'samenvoegen ongedaan maken' }))
+    await waitFor(() => expect(aanroepen.some((a) => a.url.endsWith(`/verzamelbak/${DOC_ID}/samenvoegen-ongedaan`))).toBe(true))
   })
 })

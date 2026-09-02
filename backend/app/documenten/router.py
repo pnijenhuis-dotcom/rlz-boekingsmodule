@@ -438,12 +438,15 @@ def document_detail(
 def document_bestand(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
+    vorm: str = "beeld",
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
     _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
 ) -> Response:
+    """`vorm=beeld` (default): wat de mens ziet — bij een gebundeld UBL+PDF-document de PDF;
+    `vorm=data`: het opgeslagen hoofdbestand (de UBL)."""
     try:
         inhoud, bestandsnaam, content_type = service.haal_bijlage_op(
-            administratie_id=administratie_id, document_id=document_id
+            administratie_id=administratie_id, document_id=document_id, vorm="data" if vorm == "data" else "beeld"
         )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

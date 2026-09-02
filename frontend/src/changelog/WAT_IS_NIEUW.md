@@ -15,6 +15,9 @@
 - Bankscherm: mutaties zonder voorstel dragen een klein chipje "handmatig" in plaats van een herhaalde tekstregel; per rij staat nu één knop (Afletteren, Akkoord of Boeken…) met de overige routes (koppelen aan relatie, splitsen, handmatig boeken, intrekken) achter ⋯. De tabel gebruikt de volledige breedte en de omschrijving staat op een eigen regel.
 - Controlescherm: bij bladeren met ‹ › laadt de factuur-PDF nu altijd opnieuw (die bleef soms op het vorige document staan), en de uitleg bij de pijltjes verschijnt bij de knop zelf in plaats van linksboven in beeld.
 - Goedkeur-app: op het inlogscherm zijn de knoppen "Inloggen met passkey" en "Inloggen met wachtwoord" nu even breed en netjes onder elkaar uitgelijnd.
+- Verzamelbak: komt een factuur als UBL én als PDF in dezelfde e-mail binnen, dan wordt dat nu één rij en één document (de gegevens uit de UBL, de PDF als beeld). Een losse UBL toont in het voorbeeld een leesbare samenvatting in plaats van "geen paginabeeld".
+- Verzamelbak: selecteer twee rijen en kies "Samenvoegen" als twee bestanden toch dezelfde factuur zijn; jij kiest welk bestand leidend is, niets wordt verwijderd en het is ongedaan te maken.
+- Het toewijzings-geheugen leert geen regels meer van kantoor- en doorstuuradressen, en een afzender die steeds naar een andere administratie wijst wordt niet meer voorgesteld.
 
 ## 2026-09-02 — Verzamelbak: facturen van één pagina worden weer herkend
 

@@ -1700,18 +1700,40 @@ def herextraheer_document(
     return eind_status
 
 
+def beeld_is_bron(document: Document) -> bool:
+    """Gebundeld UBL+PDF-document (bundeling/samenvoegen 02-09): het opgeslagen bestand is de UBL
+    (data), het beeld is de PDF in de bron-kolommen. Dan toont élke viewer de PDF en blijft de UBL
+    als `vorm=data` beschikbaar."""
+    return (
+        document.bron_opslag_pad is not None
+        and (document.bron_content_type or "").lower() == "application/pdf"
+        and document.bestandsnaam.lower().endswith(_UBL_SUFFIX)
+    )
+
+
 def haal_bijlage_op(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, opslag: DocumentOpslag | None = None
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    opslag: DocumentOpslag | None = None,
+    vorm: str = "beeld",
 ) -> tuple[bytes, str, str]:
-    """Retourneert (inhoud, bestandsnaam, content_type)."""
+    """Retourneert (inhoud, bestandsnaam, content_type). `vorm="beeld"` (default) = wat een mens
+    moet zien: bij een gebundeld UBL+PDF-document de PDF; `vorm="data"` = altijd het opgeslagen
+    hoofdbestand (de UBL)."""
     opslag = opslag or _standaard_opslag()
     with scoped_session(administratie_id) as session:
         document = session.get(Document, document_id)
         if document is None:
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
-        opslag_pad = document.opslag_pad
-        bestandsnaam = document.bestandsnaam
+        if vorm != "data" and beeld_is_bron(document):
+            opslag_pad = document.bron_opslag_pad
+            bestandsnaam = document.bron_bestandsnaam or "beeld.pdf"
+            content_type = document.bron_content_type or "application/pdf"
+        else:
+            opslag_pad = document.opslag_pad
+            bestandsnaam = document.bestandsnaam
+            content_type = content_type_voor(bestandsnaam)
 
     inhoud = opslag.lezen(pad=opslag_pad)
-    content_type = content_type_voor(bestandsnaam)
     return inhoud, bestandsnaam, content_type

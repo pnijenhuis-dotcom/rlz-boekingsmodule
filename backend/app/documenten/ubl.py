@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import asdict, dataclass, field
 from xml.etree import ElementTree as ET
 
@@ -233,3 +234,42 @@ def nlcius_kernvelden_ontbrekend(voorstel: UblVeldvoorstel) -> list[str]:
     if voorstel.is_creditnota and not voorstel.gecrediteerde_factuurnummers:
         ontbrekend.append("gecrediteerde factuur (cac:BillingReference)")
     return ontbrekend
+
+
+@dataclass(frozen=True)
+class IngeslotenBestand:
+    """PDF die in de UBL zelf zit (cac:AdditionalDocumentReference/cac:Attachment/
+    cbc:EmbeddedDocumentBinaryObject, doorgaans DocumentType "PrimaryImage")."""
+
+    bestandsnaam: str
+    inhoud: bytes
+
+
+def lees_ingesloten_pdf(inhoud: bytes) -> IngeslotenBestand | None:
+    """Eerste ingesloten PDF uit een UBL-bestand (bundeling 02-09). None bij geen/kapotte
+    inhoud — nooit een fout: dit is een hulpmiddel voor beeld/bundeling, geen poort."""
+    if b"<!DOCTYPE" in inhoud[:4096].upper():
+        return None
+    try:
+        root = ET.fromstring(inhoud)
+    except ET.ParseError:
+        return None
+    for ref in root.findall("cac:AdditionalDocumentReference", _NS):
+        binair = ref.find("cac:Attachment/cbc:EmbeddedDocumentBinaryObject", _NS)
+        if binair is None or not (binair.text or "").strip():
+            continue
+        mime = (binair.get("mimeCode") or "").lower()
+        naam = (binair.get("filename") or "").strip()
+        ref_id = (_element_tekst(ref, "cbc:ID") or "").strip()
+        is_pdf = mime == "application/pdf" or naam.lower().endswith(".pdf") or ref_id.lower().endswith(".pdf")
+        if not is_pdf:
+            continue
+        try:
+            data = base64.b64decode("".join(binair.text.split()), validate=False)
+        except (ValueError, TypeError):
+            continue
+        if not data.startswith(b"%PDF"):
+            continue
+        bestandsnaam = naam or (ref_id if ref_id.lower().endswith(".pdf") else "ingesloten.pdf")
+        return IngeslotenBestand(bestandsnaam=bestandsnaam, inhoud=data)
+    return None

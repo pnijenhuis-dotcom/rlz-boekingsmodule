@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.intake.models import ToewijzingRegel, ToewijzingRegelSoort
@@ -64,6 +65,36 @@ def normaliseer_afzender(afzender: str | None) -> str | None:
         return None
     schoon = afzender.strip().lower()
     return schoon or None
+
+
+def afzender_uitgesloten(afzender_sleutel: str | None) -> bool:
+    """Kantoor-/doorstuurdomein (config `intake_afzender_uitgesloten_domeinen`): géén afzender-regel
+    leren en géén (auto-)toewijzing/suggestie op afzender — diagnose 02-09 punt 3 (peter@ak-nijenhuis.nl
+    klapte in 9 dagen 4× om naar 4 administraties). Subdomeinen tellen mee."""
+    if not afzender_sleutel or "@" not in afzender_sleutel:
+        return False
+    domein = afzender_sleutel.rsplit("@", 1)[1].strip().lower().rstrip(">")
+    for uitgesloten in settings.intake_afzender_uitgesloten_domeinen:
+        u = uitgesloten.strip().lower().lstrip("@")
+        if u and (domein == u or domein.endswith("." + u)):
+            return True
+    return False
+
+
+#: Flip-detectie afzender-regels: zodra een afzender-sleutel in zijn historie (actief + gedeactiveerd)
+#: naar zoveel verschillende administraties heeft gewezen, is de afzender meerduidig — de regel wordt
+#: gedeactiveerd en nooit meer geleerd of gesuggereerd (admin@kempenrecreatie.nl: 12 versies, 6 doelen).
+AFZENDER_MEERDUIDIG_VANAF = 3
+
+
+def _historische_doelen(session: Session, *, soort: ToewijzingRegelSoort, sleutel: str) -> set[uuid.UUID]:
+    return set(
+        session.scalars(
+            select(ToewijzingRegel.administratie_id).where(
+                ToewijzingRegel.soort == soort.value, ToewijzingRegel.sleutel == sleutel
+            )
+        ).all()
+    )
 
 
 def _actieve_regel(session: Session, *, soort: ToewijzingRegelSoort, sleutel: str) -> ToewijzingRegel | None:
@@ -143,7 +174,7 @@ def bepaal_toewijzing(
 
     afzender_regel = (
         _actieve_regel(session, soort=ToewijzingRegelSoort.AFZENDER, sleutel=afzender_sleutel)
-        if afzender_sleutel
+        if afzender_sleutel and not afzender_uitgesloten(afzender_sleutel)
         else None
     )
     if afzender_regel is not None:
@@ -185,7 +216,7 @@ def leer_toewijzing(
     if tenaamstelling_sleutel:
         paren.append((ToewijzingRegelSoort.TENAAMSTELLING, tenaamstelling_sleutel))
     afzender_sleutel = normaliseer_afzender(afzender)
-    if afzender_sleutel:
+    if afzender_sleutel and not afzender_uitgesloten(afzender_sleutel):
         paren.append((ToewijzingRegelSoort.AFZENDER, afzender_sleutel))
 
     for soort, sleutel in paren:
@@ -198,6 +229,44 @@ def leer_toewijzing(
             bestaand.actief = False
             bestaand.gedeactiveerd_door = actor_id
             bestaand.gedeactiveerd_op = datetime.now(UTC)
+        if soort == ToewijzingRegelSoort.AFZENDER:
+            # Flip-detectie (02-09): een afzender die naar te veel verschillende administraties heeft
+            # gewezen is meerduidig — géén nieuwe regel (en de oude is zojuist gedeactiveerd), wél audit.
+            doelen = _historische_doelen(session, soort=soort, sleutel=sleutel) | {administratie_id}
+            if len(doelen) >= AFZENDER_MEERDUIDIG_VANAF:
+                # Het geweigerde doel wordt als INACTIEVE rij vastgelegd zodat de historie de
+                # meerduidigheid blijft dragen (anders zou een latere toewijzing 'm weer leren).
+                nu = datetime.now(UTC)
+                spoor = ToewijzingRegel(
+                    soort=soort.value,
+                    sleutel=sleutel,
+                    administratie_id=administratie_id,
+                    aangemaakt_door=actor_id,
+                    actief=False,
+                    gedeactiveerd_door=actor_id,
+                    gedeactiveerd_op=nu,
+                )
+                session.add(spoor)
+                session.flush()
+                record_audit_event(
+                    session,
+                    actor_id=actor_id,
+                    module="boekhouding",
+                    tabel="toewijzing_regel",
+                    record_id=spoor.id,
+                    actie="toewijzing_regel_meerduidig",
+                    correlatie_id=uuid.uuid4(),
+                    oude_waarde=oude_waarde,
+                    nieuwe_waarde={
+                        "soort": soort.value,
+                        "sleutel": sleutel,
+                        "geweigerd_doel": str(administratie_id),
+                        "historische_doelen": sorted(str(d) for d in doelen),
+                        "reden": "afzender is meerduidig — regel gedeactiveerd, wordt niet meer geleerd of gesuggereerd",
+                    },
+                    administratie_id=None,
+                )
+                continue
         regel = ToewijzingRegel(
             soort=soort.value,
             sleutel=sleutel,

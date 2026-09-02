@@ -1425,9 +1425,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   blijft de harde poort voor mens-bevestigde bereiken), verzamelbak-rij toont de échte reden
   (`app/intake/redenen.py`; "geen tenaamstelling gelezen" alleen als er niets gelezen is), bewakingsprobe
   `intake_verwerpingsratio` (≥ 50 % verworpen bij ≥ 3 pogingen/uur) en nazorg-CLI `intake-herlezen`
-  (`app/intake/herlezen.py`, idempotent, systeem-actor, geen geheugen-leren). **Open: punt 2 (UBL+PDF-paren
-  bundelen + handmatige samenvoeg-actie) en punt 3 (afzender-leren begrenzen op kantoor-/doorstuuradressen)**
-  — aparte run ná beoordeling.
+  (`app/intake/herlezen.py`, idempotent, systeem-actor, geen geheugen-leren). **Punten 2 en 3 GEBOUWD 02-09 (blok B4, migratie
+  0098 — BESLISSINGEN "UX-/INTAKE-VERBETER-RUN 02-09" rij B4):** UBL+PDF-paren bundelen vóór de routing
+  (`app/intake/bundeling.py`: ingesloten-PDF-hash → naamstam; UBL leidend, PDF als beeld via `bron_*`,
+  `/bestand?vorm=data` = de UBL), handmatig "Samenvoegen" in de verzamelbak (status `samengevoegd`, ongedaan
+  te maken, nooit verwijderen), UBL-samenvatting als preview, afzender-leren uitgesloten voor
+  kantoor-/doorstuurdomeinen (config `intake_afzender_uitgesloten_domeinen`) + flip-detectie (≥ 3 doelen =
+  meerduidig, nooit meer gesuggereerd).
 - `docs/avg/` — AVG-pakket (jurist-akkoord 12-08); **stap 1 van `05-activatie-checklist.md` is op 02-09
   beslisklaar gemaakt (blok A): `09-zdr-beslisnotitie.md` (besluit Peter), `10-model-check.md` (sonnet-5 +
   haiku-4-5, ZDR-compatibel; register mist voorraad-normalisatie + contract-ontleding), `11-klantinformatie-

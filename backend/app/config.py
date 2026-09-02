@@ -311,6 +311,12 @@ class Settings(BaseSettings):
     intake_imap_gebruiker: str | None = None
     intake_imap_wachtwoord: str | None = None
     intake_postvak_adres: str | None = None
+    # Afzender-leren begrenzen (diagnose 02-09 punt 3): kantoor-/doorstuurdomeinen leren nooit een
+    # afzender-regel en wijzen nooit automatisch toe op afzender (de afzender blijft wél zichtbaar
+    # als hint op de verzamelbak-rij). Subdomeinen tellen mee. Aanvullen = env-var
+    # INTAKE_AFZENDER_UITGESLOTEN_DOMEINEN (JSON-lijst); kandidaat op basis van de diagnose:
+    # kempenrecreatie.nl (12 omklap-versies) — besluit Peter.
+    intake_afzender_uitgesloten_domeinen: list[str] = ["ak-nijenhuis.nl", "kempengroep.nl"]
 
     # Berichten-bouwsteen (accordeur-notificaties, 2026-08-15): gedeeld uitgaand mailkanaal via
     # de bestaande Google Workspace (SMTP + app-wachtwoord — zelfde provider-lijn als de

@@ -49,6 +49,11 @@ class VerzamelbakItemDto(BaseModel):
     aangemaakt_op: datetime
     splitsing_id: uuid.UUID | None = None
     splitsing_voorstel: list[SplitsSegmentDto] | None = None
+    # Bundeling/samenvoegen (02-09): beeld naast een UBL-document, samengevoegde tweede rij, herkomst-mail.
+    beeld_bestandsnaam: str | None = None
+    samengevoegd_document_id: uuid.UUID | None = None
+    samengevoegd_bestandsnaam: str | None = None
+    intake_bericht_id: uuid.UUID | None = None
 
 
 class VerzamelbakLijstResponse(BaseModel):
@@ -95,3 +100,40 @@ class DocumentStatusResponse(BaseModel):
     # fout, rustig melden; `melding` is leesbare tekst voor de gebruiker.
     al_verwerkt: bool = False
     melding: str | None = None
+
+
+class SamenvoegenInput(StrikteInvoer):
+    leidend_document_id: uuid.UUID
+    ander_document_id: uuid.UUID
+    # Twee UBL's of twee PDF's alleen mét expliciete bevestiging (nooit stil).
+    bevestig_zelfde_type: bool = False
+
+
+class SamenvoegenResponse(BaseModel):
+    document_id: uuid.UUID
+    samengevoegd_document_id: uuid.UUID
+    beeld_bestandsnaam: str
+    waarschuwingen: list[str]
+
+
+class SamenvoegenOngedaanResponse(BaseModel):
+    document_id: uuid.UUID
+    teruggezet_document_id: uuid.UUID
+
+
+class UblSamenvattingRegelDto(BaseModel):
+    omschrijving: str | None = None
+    netto_bedrag: str | None = None
+    aantal: str | None = None
+
+
+class UblSamenvattingResponse(BaseModel):
+    leverancier: str | None
+    afnemer: str | None
+    factuurnummer: str | None
+    factuurdatum: str | None
+    totaal_excl: str | None
+    totaal_incl: str | None
+    valuta: str | None
+    regelaantal: int
+    regels: list[UblSamenvattingRegelDto]

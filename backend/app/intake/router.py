@@ -87,6 +87,10 @@ def verzamelbak_lijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> s
                 reden_label=item.reden_label,
                 aangemaakt_op=item.aangemaakt_op,
                 splitsing_id=item.splitsing_id,
+                beeld_bestandsnaam=item.beeld_bestandsnaam,
+                samengevoegd_document_id=item.samengevoegd_document_id,
+                samengevoegd_bestandsnaam=item.samengevoegd_bestandsnaam,
+                intake_bericht_id=item.intake_bericht_id,
                 splitsing_voorstel=[
                     schemas.SplitsSegmentDto(**segment)
                     for segment in (item.splitsing_voorstel or {}).get("facturen", [])
@@ -100,13 +104,17 @@ def verzamelbak_lijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> s
 
 
 @router.get("/verzamelbak/{document_id}/bestand")
-def verzamelbak_bestand(document_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> Response:
+def verzamelbak_bestand(
+    document_id: uuid.UUID, vorm: str = "beeld", actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> Response:
     """Bestand van een verzamelbak-document (besluit Peter 25-08, punt D1: preview-popup per rij
     zodat je ziet voor wie het document is). Fail-closed: alleen documenten die nog écht in de
     verzamelbak staan (administratie NULL + niet_toegewezen), anders 404 — een toegewezen
     document loopt via zijn administratie-gescoopte bestand-route."""
     try:
-        inhoud, bestandsnaam, content_type = verzamelbak.haal_bijlage_op(document_id=document_id)
+        inhoud, bestandsnaam, content_type = verzamelbak.haal_bijlage_op(
+            document_id=document_id, vorm="data" if vorm == "data" else "beeld"
+        )
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return Response(
@@ -114,6 +122,72 @@ def verzamelbak_bestand(document_id: uuid.UUID, actor: CurrentGebruiker = Depend
         media_type=content_type,
         headers={"Content-Disposition": f'inline; filename="{bestandsnaam}"'},
     )
+
+
+@router.get("/verzamelbak/{document_id}/ubl-samenvatting", response_model=schemas.UblSamenvattingResponse)
+def verzamelbak_ubl_samenvatting(
+    document_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.UblSamenvattingResponse:
+    """Leesbare kaart voor een losse UBL zonder beeld (02-09): leverancier, afnemer, nummer, datum,
+    totaal, regels — i.p.v. "geen paginabeeld"."""
+    try:
+        s = verzamelbak.ubl_samenvatting(document_id=document_id)
+    except DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.UblSamenvattingResponse(
+        leverancier=s.leverancier,
+        afnemer=s.afnemer,
+        factuurnummer=s.factuurnummer,
+        factuurdatum=s.factuurdatum,
+        totaal_excl=s.totaal_excl,
+        totaal_incl=s.totaal_incl,
+        valuta=s.valuta,
+        regelaantal=s.regelaantal,
+        regels=[schemas.UblSamenvattingRegelDto(**r) for r in s.regels],
+    )
+
+
+@router.post("/verzamelbak/samenvoegen", response_model=schemas.SamenvoegenResponse)
+def verzamelbak_samenvoegen(
+    invoer: schemas.SamenvoegenInput, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.SamenvoegenResponse:
+    """Handmatig samenvoegen van twee verzamelbak-rijen (toevoeging Peter 02-09): de mens kiest het
+    leidende bestand, het andere wordt beeld/bron; tweede rij → status samengevoegd (nooit
+    verwijderen). 409 mét code `zelfde_type` als twee UBL's/PDF's zonder bevestiging."""
+    try:
+        r = verzamelbak.voeg_samen(
+            leidend_document_id=invoer.leidend_document_id,
+            ander_document_id=invoer.ander_document_id,
+            actor_id=actor.id,
+            bevestig_zelfde_type=invoer.bevestig_zelfde_type,
+        )
+    except DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except verzamelbak.ZelfdeTypeBevestigingNodig as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "zelfde_type", "message": str(exc)}
+        ) from exc
+    except (verzamelbak.DocumentNietInVerzamelbak, verzamelbak.SamenvoegenGeweigerd) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.SamenvoegenResponse(
+        document_id=r.document_id,
+        samengevoegd_document_id=r.samengevoegd_document_id,
+        beeld_bestandsnaam=r.beeld_bestandsnaam,
+        waarschuwingen=r.waarschuwingen,
+    )
+
+
+@router.post("/verzamelbak/{document_id}/samenvoegen-ongedaan", response_model=schemas.SamenvoegenOngedaanResponse)
+def verzamelbak_samenvoegen_ongedaan(
+    document_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.SamenvoegenOngedaanResponse:
+    try:
+        teruggezet = verzamelbak.maak_samenvoegen_ongedaan(document_id=document_id, actor_id=actor.id)
+    except DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (verzamelbak.DocumentNietInVerzamelbak, verzamelbak.SamenvoegenGeweigerd) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.SamenvoegenOngedaanResponse(document_id=document_id, teruggezet_document_id=teruggezet)
 
 
 @router.post("/verzamelbak/{document_id}/toewijzen", response_model=schemas.DocumentStatusResponse)

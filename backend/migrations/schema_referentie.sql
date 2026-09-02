@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0097
+-- Migratie-head bij deze dump: 0098
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -72,6 +72,7 @@ CREATE TYPE boekhouding.document_status AS ENUM (
     'niet_toegewezen',
     'verwijderd',
     'gesplitst',
+    'samengevoegd',
     'handmatig_afmaken',
     'wacht_op_iban_accordering',
     'ter_accordering'
@@ -880,6 +881,7 @@ CREATE TABLE boekhouding.document (
     bron_opslag_pad text,
     bron_bestandsnaam text,
     bron_content_type text,
+    samengevoegd_in_id uuid,
     CONSTRAINT document_soort_geldig CHECK ((soort = ANY (ARRAY['inkoopfactuur'::text, 'kassarapport'::text, 'verkoopfactuur'::text, 'waarborg'::text])))
 );
 
@@ -4793,6 +4795,13 @@ CREATE INDEX ix_document_herinnering_document_id ON boekhouding.document_herinne
 
 
 --
+-- Name: ix_document_samengevoegd_in_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_document_samengevoegd_in_id ON boekhouding.document USING btree (samengevoegd_in_id) WHERE (samengevoegd_in_id IS NOT NULL);
+
+
+--
 -- Name: ix_document_status; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6152,6 +6161,14 @@ ALTER TABLE ONLY boekhouding.document
 
 ALTER TABLE ONLY boekhouding.document
     ADD CONSTRAINT document_mogelijk_duplicaat_van_id_fkey FOREIGN KEY (mogelijk_duplicaat_van_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: document document_samengevoegd_in_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.document
+    ADD CONSTRAINT document_samengevoegd_in_id_fkey FOREIGN KEY (samengevoegd_in_id) REFERENCES boekhouding.document(id);
 
 
 --

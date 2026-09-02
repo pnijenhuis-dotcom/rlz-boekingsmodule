@@ -78,6 +78,11 @@ class DocumentStatus(enum.StrEnum):
     # multi-factuur-splitsing kind-documenten heeft opgeleverd — het origineel blijft bestaan
     # en terugvindbaar, de kinderen doorlopen elk de normale flow.
     GESPLITST = "gesplitst"
+    # Verzamelbak "Samenvoegen" (migratie 0098, diagnose 02-09 punt 2): terminale status van de
+    # tweede rij van een handmatig samengevoegd paar — het bestand blijft bestaan (sha256
+    # terugvindbaar) en is het beeld/bron van het leidende document (`samengevoegd_in_id`);
+    # ongedaan maken zet 'm terug in de verzamelbak zolang het leidende document niet is toegewezen.
+    SAMENGEVOEGD = "samengevoegd"
 
 
 def _enum_waarden(python_enum: type[enum.StrEnum]) -> list[str]:
@@ -104,6 +109,11 @@ class Document(Base):
     __table_args__ = (
         Index("ix_document_administratie_id", "administratie_id"),
         Index("ix_document_administratie_hash", "administratie_id", "sha256_hash"),
+        Index(
+            "ix_document_samengevoegd_in_id",
+            "samengevoegd_in_id",
+            postgresql_where=text("samengevoegd_in_id IS NOT NULL"),
+        ),
         Index("ix_document_status", "status"),
         {"schema": "boekhouding"},
     )
@@ -147,6 +157,10 @@ class Document(Base):
     bron_opslag_pad: Mapped[str | None] = mapped_column(default=None)
     bron_bestandsnaam: Mapped[str | None] = mapped_column(default=None)
     bron_content_type: Mapped[str | None] = mapped_column(default=None)
+    # Samengevoegd (migratie 0098): deze rij is opgegaan in het leidende document.
+    samengevoegd_in_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
+    )
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     laatst_gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

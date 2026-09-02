@@ -7,11 +7,13 @@ import {
   bevestigSplitsing,
   haalVerzamelbakOp,
   hoortNietBijOns,
+  maakSamenvoegenOngedaan,
   wijsSplitsingAf,
   wijsToe,
   type VerzamelbakActieResultaatDto,
   type VerzamelbakItemDto,
 } from './intakeApi'
+import { SamenvoegDialog } from './SamenvoegDialog'
 import { VerzamelbakPreview } from './VerzamelbakPreview'
 
 function formatDatum(iso: string): string {
@@ -49,6 +51,9 @@ export function VerzamelbakPaneel({
   const [rijFouten, setRijFouten] = useState<Record<string, string>>({})
   const [stilleMeldingen, setStilleMeldingen] = useState<string[]>([])
   const onderweg = useRef(new Set<string>())
+  // Handmatig samenvoegen (02-09): twee rijen selecteren → dialoog (mens kiest het leidende bestand).
+  const [geselecteerd, setGeselecteerd] = useState<string[]>([])
+  const [samenvoegOpen, setSamenvoegOpen] = useState(false)
 
   const laad = useCallback(() => {
     haalVerzamelbakOp()
@@ -128,7 +133,29 @@ export function VerzamelbakPaneel({
 
   return (
     <div className="panel" style={{ borderLeft: '3px solid var(--orange)' }}>
-      <h2>Niet toegewezen — handmatig koppelen ({items.length})</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0 }}>Niet toegewezen — handmatig koppelen ({items.length})</h2>
+        {geselecteerd.length > 0 && (
+          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+            <span className="hint" style={{ margin: 0 }}>
+              {geselecteerd.length} geselecteerd
+            </span>
+            <button
+              type="button"
+              className="btn secondary"
+              style={{ padding: '5px 12px' }}
+              disabled={geselecteerd.length !== 2}
+              title={geselecteerd.length === 2 ? 'Twee bestanden van dezelfde factuur samenvoegen tot één document' : 'Selecteer precies twee rijen'}
+              onClick={() => setSamenvoegOpen(true)}
+            >
+              Samenvoegen ({geselecteerd.length})
+            </button>
+            <button type="button" className="linkbtn" onClick={() => setGeselecteerd([])}>
+              selectie wissen
+            </button>
+          </span>
+        )}
+      </div>
       {fout && <div className="fout">{fout}</div>}
       {stilleMeldingen.length > 0 && (
         <div className="hint" data-testid="verzamelbak-al-verwerkt" style={{ marginTop: 0 }}>
@@ -145,6 +172,7 @@ export function VerzamelbakPaneel({
         <table>
           <tbody>
             <tr>
+              <th style={{ width: 28 }} aria-label="Selecteren voor samenvoegen" />
               <th>Document</th>
               <th>Binnengekomen via</th>
               <th>Tenaamstelling / suggestie</th>
@@ -159,16 +187,59 @@ export function VerzamelbakPaneel({
               const ongeldigeDelen = (item.splitsing_voorstel ?? []).filter((s) => s.ongeldig_reden)
               // De échte intake-reden (02-09): "geen tenaamstelling gelezen" alleen als de AI niets las.
               const redenLabel = item.reden_label ?? (item.tenaamstelling ? null : 'geen tenaamstelling gelezen')
+              const isGeselecteerd = geselecteerd.includes(item.document_id)
               return (
                 <tr key={item.document_id}>
+                  <td style={{ padding: '8px 4px' }}>
+                    {!item.splitsing_voorstel && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Selecteer ${item.bestandsnaam} voor samenvoegen`}
+                        checked={isGeselecteerd}
+                        onChange={(e) =>
+                          setGeselecteerd((g) =>
+                            e.target.checked ? [...g.filter((id) => id !== item.document_id), item.document_id] : g.filter((id) => id !== item.document_id),
+                          )
+                        }
+                      />
+                    )}
+                  </td>
                   <td>
                     {/* D1 (besluit 25-08): voorbeeld bij hover, klik = volledige weergave — lazy. */}
                     <VerzamelbakPreview
                       documentId={item.document_id}
                       bestandsnaam={item.bestandsnaam}
                       tenaamstelling={item.tenaamstelling}
+                      beeldBestandsnaam={item.beeld_bestandsnaam ?? null}
                     />{' '}
                     {item.bestandsnaam}
+                    {item.beeld_bestandsnaam && (
+                      <span
+                        className="chip geheugen"
+                        style={{ marginLeft: 6 }}
+                        title={
+                          item.samengevoegd_document_id
+                            ? 'Handmatig samengevoegd: dit bestand is leidend, het andere is het beeld/de bron'
+                            : 'Gebundeld bij de intake: UBL + PDF van dezelfde factuur — UBL leidend, PDF als beeld'
+                        }
+                        data-testid="beeld-chip"
+                      >
+                        📎 {item.beeld_bestandsnaam}
+                      </span>
+                    )}
+                    {item.samengevoegd_document_id && (
+                      <button
+                        type="button"
+                        className="linkbtn"
+                        style={{ marginLeft: 6, fontSize: 11.5 }}
+                        disabled={bezig === item.document_id}
+                        onClick={() =>
+                          void actie(item.document_id, () => maakSamenvoegenOngedaan(item.document_id))
+                        }
+                      >
+                        samenvoegen ongedaan maken
+                      </button>
+                    )}
                     {rijFouten[item.document_id] && (
                       <div className="fout" role="alert" style={{ marginTop: 4, fontSize: 12 }}>
                         {rijFouten[item.document_id]}{' '}
@@ -306,10 +377,30 @@ export function VerzamelbakPaneel({
       </div>
       <div className="hint">
         Alles wat de intake niet eenduidig aan een administratie kan koppelen komt hier terecht — er raakt
-        nooit iets kwijt. Elke handmatige toewijzing wordt onthouden: dezelfde tenaamstelling of afzender
-        wordt de volgende keer automatisch gekoppeld.
+        nooit iets kwijt. Elke handmatige toewijzing wordt onthouden: dezelfde tenaamstelling wordt de volgende
+        keer automatisch gekoppeld (een afzender alleen buiten de kantoor-/doorstuuradressen). UBL + PDF van
+        dezelfde factuur worden bij binnenkomst gebundeld; mist dat een keer, selecteer dan twee rijen en kies
+        &ldquo;Samenvoegen&rdquo;.
       </div>
 
+      {samenvoegOpen && geselecteerd.length === 2 && (() => {
+        const a = items.find((i) => i.document_id === geselecteerd[0])
+        const b = items.find((i) => i.document_id === geselecteerd[1])
+        if (!a || !b) return null
+        return (
+          <SamenvoegDialog
+            items={[a, b]}
+            onSluit={() => setSamenvoegOpen(false)}
+            onGereed={(r) => {
+              setSamenvoegOpen(false)
+              setGeselecteerd([])
+              if (r.waarschuwingen.length > 0) setStilleMeldingen((m) => [...m, ...r.waarschuwingen.map((w) => `Samengevoegd met waarschuwing: ${w}`)])
+              laad()
+              onGewijzigd?.()
+            }}
+          />
+        )
+      })()}
       {redenVoor && (
         <div className="modal-bg open">
           <div className="modal">

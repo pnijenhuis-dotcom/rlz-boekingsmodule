@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnkerPopup, Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/basis'
 import { PdfEerstePagina } from '../ui/PdfEerstePagina'
-import { haalVerzamelbakBestandBlob, type VerzamelbakBestand } from './intakeApi'
+import { haalUblSamenvatting, haalVerzamelbakBestandBlob, type UblSamenvattingDto, type VerzamelbakBestand } from './intakeApi'
 
 const HOVER_VERTRAGING_MS = 200
 const PREVIEW_BREEDTE = 300
@@ -36,20 +36,32 @@ export function VerzamelbakPreview({
   documentId,
   bestandsnaam,
   tenaamstelling,
+  beeldBestandsnaam = null,
 }: {
   documentId: string
   bestandsnaam: string
   tenaamstelling: string | null
+  /** Bundeling/samenvoegen (02-09): naam van het PDF-beeld naast een UBL-document. */
+  beeldBestandsnaam?: string | null
 }) {
   const [bestand, setBestand] = useState<VerzamelbakBestand | null>(null)
+  const [samenvatting, setSamenvatting] = useState<UblSamenvattingDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [hover, setHover] = useState(false)
   const [open, setOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const knopRef = useRef<HTMLButtonElement>(null)
 
+  const isXmlZonderBeeld = /\.xml$/i.test(bestandsnaam) && !beeldBestandsnaam
   const haal = () => {
-    if (bestand || fout) return
+    if (bestand || fout || samenvatting) return
+    if (isXmlZonderBeeld) {
+      // Losse UBL zonder beeld (02-09): een leesbare samenvatting i.p.v. "geen paginabeeld".
+      haalUblSamenvatting(documentId)
+        .then(setSamenvatting)
+        .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Samenvatting niet te laden.'))
+      return
+    }
     laad(documentId)
       .then(setBestand)
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Bestand niet te laden.'))
@@ -74,10 +86,18 @@ export function VerzamelbakPreview({
     [],
   )
 
-  const isPdf = bestandsnaam.toLowerCase().endsWith('.pdf')
+  // Het geserveerde bestand is leidend (bundeling: een UBL-document krijgt de PDF als beeld);
+  // vóór de eerste fetch valt de keuze op de bestandsnaam/het beeld.
+  const naamZegtPdf = Boolean(beeldBestandsnaam) || bestandsnaam.toLowerCase().endsWith('.pdf')
+  const naamZegtAfbeelding = /\.(jpe?g|png|heic|heif)$/i.test(bestandsnaam)
+  // Het geserveerde content-type is leidend als het duidelijk is (pdf/xml/image); anders de naam —
+  // een testomgeving/proxy levert soms 'text/plain' of niets.
+  const ct = (bestand?.contentType ?? '').toLowerCase()
+  const isPdf = ct.includes('pdf') || (!/xml|image\//.test(ct) && naamZegtPdf)
   // Een onbruikbare (corrupte) afbeelding ligt als origineel in de verzamelbak (punt 2) — tonen
   // wat de browser ervan kan maken; een omgezette foto is gewoon een PDF.
-  const isAfbeelding = /\.(jpe?g|png|heic|heif)$/i.test(bestandsnaam)
+  const isAfbeelding = ct.startsWith('image/') || (!/pdf|xml/.test(ct) && naamZegtAfbeelding)
+  const toonNaam = beeldBestandsnaam ? `${bestandsnaam} + ${beeldBestandsnaam}` : bestandsnaam
 
   return (
     <span className="verzamelbak-preview" onMouseEnter={startHover} onMouseLeave={stopHover}>
@@ -107,28 +127,29 @@ export function VerzamelbakPreview({
         aria-label={`Voorbeeld ${bestandsnaam}`}
       >
         <div className="verzamelbak-preview-kop">
-          {bestandsnaam}
+          {toonNaam}
           {tenaamstelling && <span className="hint" style={{ margin: 0 }}> · &ldquo;{tenaamstelling}&rdquo;</span>}
         </div>
         {fout && <div className="hint">{fout}</div>}
-        {!bestand && !fout && <div className="hint">Voorbeeld laden…</div>}
+        {!bestand && !samenvatting && !fout && <div className="hint">Voorbeeld laden…</div>}
         {bestand && isPdf && <PdfEerstePagina blobUrl={bestand.url} breedte={PREVIEW_BREEDTE} />}
         {bestand && isAfbeelding && (
           <img src={bestand.url} alt={`Voorbeeld ${bestandsnaam}`} style={{ maxWidth: PREVIEW_BREEDTE, display: 'block' }} />
         )}
+        {samenvatting && <UblSamenvattingKaart s={samenvatting} compact />}
         {bestand && !isPdf && !isAfbeelding && (
-          <div className="hint">UBL/XML-bestand — geen paginabeeld; tenaamstelling staat in de rij.</div>
+          <div className="hint">Geen inline weergave voor dit bestandstype.</div>
         )}
       </AnkerPopup>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="verzamelbak-preview-dialog">
-          <DialogTitle>{bestandsnaam}</DialogTitle>
+          <DialogTitle>{toonNaam}</DialogTitle>
           <DialogDescription>
             Niet toegewezen document{tenaamstelling ? ` — tenaamstelling “${tenaamstelling}”` : ''}. Toewijzen of
             &ldquo;hoort niet bij ons&rdquo; gaat via de rij in de verzamelbak.
           </DialogDescription>
           {fout && <div className="fout">{fout}</div>}
-          {!bestand && !fout && <p className="hint">Bestand laden…</p>}
+          {!bestand && !samenvatting && !fout && <p className="hint">Bestand laden…</p>}
           {bestand && isPdf && (
             <object data={bestand.url} type="application/pdf" aria-label="Documentweergave" style={{ width: '100%', height: '70vh' }}>
               <p className="hint">Geen inline PDF-weergave beschikbaar in deze browser.</p>
@@ -137,16 +158,61 @@ export function VerzamelbakPreview({
           {bestand && isAfbeelding && (
             <img src={bestand.url} alt={bestandsnaam} style={{ maxWidth: '100%', maxHeight: '70vh', display: 'block' }} />
           )}
-          {bestand && !isPdf && !isAfbeelding && <p className="hint">UBL/XML-bestand — geen inline weergave.</p>}
+          {samenvatting && <UblSamenvattingKaart s={samenvatting} />}
+          {bestand && !isPdf && !isAfbeelding && <p className="hint">Geen inline weergave voor dit bestandstype.</p>}
           {bestand && (
             <p style={{ marginTop: 10 }}>
-              <a className="btn secondary" href={bestand.url} download={bestandsnaam}>
-                Downloaden
+              <a className="btn secondary" href={bestand.url} download={beeldBestandsnaam ?? bestandsnaam}>
+                Downloaden{beeldBestandsnaam ? ' (beeld)' : ''}
               </a>
             </p>
           )}
         </DialogContent>
       </Dialog>
     </span>
+  )
+}
+
+
+function formatBedrag(bedrag: string | null, valuta: string | null): string {
+  if (bedrag === null) return '—'
+  const getal = Number(bedrag)
+  if (!Number.isFinite(getal)) return bedrag
+  return getal.toLocaleString('nl-NL', { style: 'currency', currency: valuta || 'EUR' })
+}
+
+/** Gerenderde UBL-samenvatting (02-09): leverancier, afnemer, nummer, datum, totaal, regels. */
+export function UblSamenvattingKaart({ s, compact = false }: { s: UblSamenvattingDto; compact?: boolean }) {
+  return (
+    <div className="ubl-samenvatting" data-testid="ubl-samenvatting" style={{ fontSize: compact ? 12 : 13 }}>
+      <div><b>{s.leverancier ?? 'Leverancier onbekend'}</b> → {s.afnemer ?? 'afnemer onbekend'}</div>
+      <div className="hint" style={{ margin: '2px 0 6px' }}>
+        {s.factuurnummer ? `Factuur ${s.factuurnummer}` : 'Zonder factuurnummer'}
+        {s.factuurdatum ? ` · ${s.factuurdatum}` : ''}
+        {' · '}
+        {formatBedrag(s.totaal_incl, s.valuta)} incl.
+        {s.totaal_excl ? ` (${formatBedrag(s.totaal_excl, s.valuta)} excl.)` : ''}
+      </div>
+      {s.regels.length > 0 && (
+        <table className="lines" style={{ fontSize: compact ? 11.5 : 12.5 }}>
+          <tbody>
+            {s.regels.map((r, i) => (
+              <tr key={i}>
+                <td>{r.omschrijving ?? '—'}</td>
+                <td className="amount">{r.aantal ?? ''}</td>
+                <td className="amount">{formatBedrag(r.netto_bedrag, s.valuta)}</td>
+              </tr>
+            ))}
+            {s.regelaantal > s.regels.length && (
+              <tr>
+                <td colSpan={3} className="hint">
+                  … en {s.regelaantal - s.regels.length} regel(s) meer
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
   )
 }
