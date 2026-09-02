@@ -193,6 +193,27 @@ def _intake_herlezen(args: argparse.Namespace) -> int:
     return 0
 
 
+def _toewijzing_regels_opschonen(args: argparse.Namespace) -> int:
+    """Data-nazorg afzender-geheugen (blok D 02-09): actieve afzender-regels op een config-uitgesloten
+    kantoor-/doorstuurdomein óf met een meerduidige historie (≥ 3 doelen) deactiveren mét audit —
+    nooit verwijderen; tenaamstelling-regels blijven staan. --dry-run rapporteert alleen."""
+    from app.db.session import scoped_session
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+    from app.intake.toewijzing import schoon_afzender_regels_op
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        telling = schoon_afzender_regels_op(session, actor_id=SYSTEEM_ACTOR_ID, dry_run=args.dry_run)
+    label = " [dry-run]" if args.dry_run else ""
+    print(
+        f"toewijzing-regels-opschonen{label}: {telling.sleutels_bekeken} afzender-sleutels bekeken, "
+        f"{telling.gedeactiveerd} regel(s) gedeactiveerd ({telling.reden_uitgesloten_domein} uitgesloten domein, "
+        f"{telling.reden_meerduidig} meerduidig)"
+    )
+    for regel in telling.details:
+        print(f"  - {regel}")
+    return 0
+
+
 def _bewaking_probe(args: argparse.Namespace) -> int:
     """Entrypoint van de kwartier-job rlz-bewaking (best-practice-besluit 1, 31-08): draai alle
     probes, leg de statusrij vast en verstuur/sluit alerts. Een falende PROBE is een uitkomst
@@ -1564,6 +1585,13 @@ def main(argv: list[str] | None = None) -> int:
         "in bulk toe — blok A3/B 02-09). UBL-rijen (RLZ-export) worden altijd meegenomen: deterministisch, geen AI.",
     )
 
+    opschoon_parser = subparsers.add_parser(
+        "toewijzing-regels-opschonen",
+        help="Data-nazorg afzender-geheugen (02-09): actieve afzender-regels op kantoor-/doorstuurdomeinen of "
+        "met een meerduidige historie (≥ 3 doelen) deactiveren mét audit — niets verwijderen. --dry-run telt alleen.",
+    )
+    opschoon_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+
     subparsers.add_parser(
         "bewaking-probe",
         help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
@@ -1887,6 +1915,8 @@ def main(argv: list[str] | None = None) -> int:
         return _extractie_heraanbieden(args)
     if args.commando == "intake-herlezen":
         return _intake_herlezen(args)
+    if args.commando == "toewijzing-regels-opschonen":
+        return _toewijzing_regels_opschonen(args)
     if args.commando == "eerste-sync-wachtrij":
         return _eerste_sync_wachtrij(args)
     if args.commando == "reconciliatie":

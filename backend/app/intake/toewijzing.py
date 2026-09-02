@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -346,3 +346,99 @@ def corrigeer_toewijzing_na_verplaatsing(
         )
         gecorrigeerd.append(soort.value)
     return tuple(gecorrigeerd)
+
+
+# ---- Data-nazorg afzender-geheugen (blok D 02-09) ------------------------------------------------------
+
+
+@dataclass
+class OpschoningTelling:
+    """Uitkomst van `schoon_afzender_regels_op`: deterministisch, nooit verwijderen — regels worden
+    gedeactiveerd mét audit. `details` = één regel per gedeactiveerde sleutel (voor de CLI-rapportage)."""
+
+    sleutels_bekeken: int = 0
+    gedeactiveerd: int = 0
+    reden_uitgesloten_domein: int = 0
+    reden_meerduidig: int = 0
+    details: list[str] = field(default_factory=list)
+
+    def als_dict(self) -> dict:
+        return {
+            "sleutels_bekeken": self.sleutels_bekeken,
+            "gedeactiveerd": self.gedeactiveerd,
+            "reden_uitgesloten_domein": self.reden_uitgesloten_domein,
+            "reden_meerduidig": self.reden_meerduidig,
+        }
+
+
+def schoon_afzender_regels_op(session: Session, *, actor_id: uuid.UUID, dry_run: bool = False) -> OpschoningTelling:
+    """Bestaande afzender-regels die de sinds 02-09 geldende begrenzingen al overschrijden alsnog
+    deactiveren (mét audit `toewijzing_regel_opgeschoond`), zodat het geheugen niet blijft suggereren
+    wat het nu niet meer zou leren: (a) sleutels op een config-uitgesloten kantoor-/doorstuurdomein
+    (`intake_afzender_uitgesloten_domeinen`), (b) sleutels die in hun historie (actief + gedeactiveerd) al
+    naar ≥ AFZENDER_MEERDUIDIG_VANAF verschillende administraties wezen (admin@kempenrecreatie.nl: 12
+    versies, 6 doelen). Tenaamstelling-regels worden nooit geraakt. Idempotent: een tweede run vindt
+    niets meer. `dry_run` telt en rapporteert alleen."""
+    telling = OpschoningTelling()
+    regels = session.scalars(
+        select(ToewijzingRegel)
+        .where(ToewijzingRegel.soort == ToewijzingRegelSoort.AFZENDER.value)
+        .order_by(ToewijzingRegel.sleutel, ToewijzingRegel.aangemaakt_op)
+    ).all()
+    per_sleutel: dict[str, list[ToewijzingRegel]] = {}
+    for regel in regels:
+        per_sleutel.setdefault(regel.sleutel, []).append(regel)
+    telling.sleutels_bekeken = len(per_sleutel)
+    nu = datetime.now(UTC)
+    for sleutel, rijen in sorted(per_sleutel.items()):
+        actief = [r for r in rijen if r.actief]
+        if not actief:
+            continue
+        doelen = {r.administratie_id for r in rijen}
+        redenen: list[str] = []
+        if afzender_uitgesloten(sleutel):
+            redenen.append("uitgesloten_domein")
+        if len(doelen) >= AFZENDER_MEERDUIDIG_VANAF:
+            redenen.append("meerduidig")
+        if not redenen:
+            continue
+        telling.gedeactiveerd += len(actief)
+        if "uitgesloten_domein" in redenen:
+            telling.reden_uitgesloten_domein += len(actief)
+        if "meerduidig" in redenen:
+            telling.reden_meerduidig += len(actief)
+        telling.details.append(
+            f"{sleutel}: {len(actief)} actieve regel(s) gedeactiveerd — {' + '.join(redenen)} "
+            f"({len(rijen)} versies, {len(doelen)} doelen)"
+        )
+        if dry_run:
+            continue
+        for regel in actief:
+            regel.actief = False
+            regel.gedeactiveerd_door = actor_id
+            regel.gedeactiveerd_op = nu
+            session.flush()
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="toewijzing_regel",
+                record_id=regel.id,
+                actie="toewijzing_regel_opgeschoond",
+                correlatie_id=uuid.uuid4(),
+                oude_waarde={"actief": True, "administratie_id": str(regel.administratie_id)},
+                nieuwe_waarde={
+                    "actief": False,
+                    "soort": regel.soort,
+                    "sleutel": sleutel,
+                    "redenen": redenen,
+                    "historische_doelen": sorted(str(d) for d in doelen),
+                    "versies": len(rijen),
+                    "reden": (
+                        "data-nazorg 02-09: afzender-regel op uitgesloten domein en/of meerduidig — "
+                        "gedeactiveerd, niet verwijderd"
+                    ),
+                },
+                administratie_id=None,
+            )
+    return telling
