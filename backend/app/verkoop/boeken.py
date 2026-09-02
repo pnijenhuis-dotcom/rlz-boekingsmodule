@@ -31,6 +31,7 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
+from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boeken import (
     _KAN_BOEKPOGING_STARTEN_VANUIT,
     BoekenGeblokkeerdDoorChecks,
@@ -203,8 +204,7 @@ def boek_verkoop_document(
             raise OngeldigeBoekpoging(
                 f"Document heeft soort {document.soort} — deze boekactie is alleen voor verkoopfacturen"
             )
-        bestandsnaam = document.bestandsnaam
-        opslag_pad = document.opslag_pad
+        bestanden = BestandenSnapshot.van(document)
         rlz_admin_id = rlz_admin_id_voor(administratie_id)
 
     with _rlz_client_voor(administratie_id) as client:
@@ -242,7 +242,10 @@ def boek_verkoop_document(
                 actor_id=actor_id,
                 naam=voorstel.debiteur_naam,
             )
-            bestand = _standaard_opslag().lezen(pad=opslag_pad)
+            # RLZ-bijlage = het beeld (documenten/beeld.py, 02-09): de in de UBL ingesloten of
+            # gebundelde PDF als die er is, anders de UBL zelf (bestaand gedrag).
+            beeld = bepaal_beeld(bestanden, opslag=_standaard_opslag())
+            bestand, bestandsnaam = beeld.inhoud, beeld.bestandsnaam
             marker = verkoop_omschrijving_vastly(voorstel.factuurnummer, is_creditnota=voorstel.is_creditnota)
             invoice_number, referentie, boekstuknummer = _boek_verkoopfactuur(
                 client=client,

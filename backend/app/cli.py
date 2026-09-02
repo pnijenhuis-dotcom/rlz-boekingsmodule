@@ -169,7 +169,11 @@ def _intake_herlezen(args: argparse.Namespace) -> int:
         return 2
     try:
         telling = herlezen.herlees_verzamelbak(
-            sinds=sinds, dry_run=args.dry_run, opnieuw=args.opnieuw, alle_redenen=args.alle_redenen
+            sinds=sinds,
+            dry_run=args.dry_run,
+            opnieuw=args.opnieuw,
+            alle_redenen=args.alle_redenen,
+            toewijzen=not args.zonder_toewijzen,
         )
     except herlezen.IntakeGateDicht as exc:
         print(f"intake-herlezen: {exc}", file=sys.stderr)
@@ -179,7 +183,8 @@ def _intake_herlezen(args: argparse.Namespace) -> int:
         f"intake-herlezen{label}: {telling.kandidaten} kandidaat/kandidaten, "
         f"{telling.overgeslagen_al_herlezen} al eerder herlezen (overgeslagen), {telling.herlezen} herlezen — "
         f"{telling.toegewezen} toegewezen, {telling.tenaamstelling_gezet} tenaamstelling/suggestie gezet, "
-        f"{telling.splitsingsvoorstel} splitsingsvoorstel, {telling.mislukt} mislukt"
+        f"{telling.splitsingsvoorstel} splitsingsvoorstel, {telling.beeld_gezet} beeld (ingesloten PDF) gezet, "
+        f"{telling.mislukt} mislukt"
     )
     for regel in telling.details:
         print(f"  - {regel}")
@@ -1551,6 +1556,12 @@ def main(argv: list[str] | None = None) -> int:
     herlees_parser.add_argument("--opnieuw", action="store_true", help="Ook al eerder herlezen rijen opnieuw.")
     herlees_parser.add_argument(
         "--alle-redenen", action="store_true", help="Ook 'niet eenduidig'-rijen zonder gelezen tenaamstelling."
+    )
+    herlees_parser.add_argument(
+        "--zonder-toewijzen",
+        action="store_true",
+        help="Een eenduidige match niet toewijzen maar als suggestie op de rij zetten (de mens wijst zelf "
+        "in bulk toe — blok A3/B 02-09). UBL-rijen (RLZ-export) worden altijd meegenomen: deterministisch, geen AI.",
     )
 
     subparsers.add_parser(

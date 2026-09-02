@@ -18,6 +18,7 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import storage
+from app.documenten.beeld import BestandenSnapshot, beeld_is_bron, bepaal_beeld
 from app.documenten.mime import content_type_voor
 from app.documenten.models import (
     Boekvoorstel,
@@ -1700,17 +1701,6 @@ def herextraheer_document(
     return eind_status
 
 
-def beeld_is_bron(document: Document) -> bool:
-    """Gebundeld UBL+PDF-document (bundeling/samenvoegen 02-09): het opgeslagen bestand is de UBL
-    (data), het beeld is de PDF in de bron-kolommen. Dan toont élke viewer de PDF en blijft de UBL
-    als `vorm=data` beschikbaar."""
-    return (
-        document.bron_opslag_pad is not None
-        and (document.bron_content_type or "").lower() == "application/pdf"
-        and document.bestandsnaam.lower().endswith(_UBL_SUFFIX)
-    )
-
-
 def haal_bijlage_op(
     *,
     administratie_id: uuid.UUID,
@@ -1719,21 +1709,19 @@ def haal_bijlage_op(
     vorm: str = "beeld",
 ) -> tuple[bytes, str, str]:
     """Retourneert (inhoud, bestandsnaam, content_type). `vorm="beeld"` (default) = wat een mens
-    moet zien: bij een gebundeld UBL+PDF-document de PDF; `vorm="data"` = altijd het opgeslagen
-    hoofdbestand (de UBL)."""
+    moet zien (`documenten/beeld.py`: bron-PDF naast een UBL, anders de in de UBL ingesloten PDF,
+    anders het hoofdbestand); `vorm="data"` = altijd het opgeslagen hoofdbestand (de UBL)."""
     opslag = opslag or _standaard_opslag()
     with scoped_session(administratie_id) as session:
         document = session.get(Document, document_id)
         if document is None:
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
-        if vorm != "data" and beeld_is_bron(document):
-            opslag_pad = document.bron_opslag_pad
-            bestandsnaam = document.bron_bestandsnaam or "beeld.pdf"
-            content_type = document.bron_content_type or "application/pdf"
-        else:
-            opslag_pad = document.opslag_pad
-            bestandsnaam = document.bestandsnaam
-            content_type = content_type_voor(bestandsnaam)
+        bestanden = BestandenSnapshot.van(document)
 
-    inhoud = opslag.lezen(pad=opslag_pad)
-    return inhoud, bestandsnaam, content_type
+    if vorm == "data":
+        return opslag.lezen(pad=bestanden.opslag_pad), bestanden.bestandsnaam, content_type_voor(bestanden.bestandsnaam)
+    beeld = bepaal_beeld(bestanden, opslag=opslag)
+    return beeld.inhoud, beeld.bestandsnaam, beeld.content_type
+
+
+__all__ = ["beeld_is_bron"]  # her-export voor bestaande aanroepers (intake/verzamelbak.py e.a.)

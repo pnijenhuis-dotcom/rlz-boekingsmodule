@@ -15,7 +15,16 @@ Uitkomsten per document — nooit stil:
 - één factuur, niet eenduidig → tenaamstelling + suggestie op de rij gezet, blijft in de bak
   (tijdlijnregel met reden — de verzamelbak toont 'm);
 - meerdere facturen → splitsingsvoorstel ter controle (zoals de gewone intake);
-- AI-fout → tijdlijnregel `intake_herlezen_mislukt: …`, rij blijft ongewijzigd staan."""
+- AI-fout → tijdlijnregel `intake_herlezen_mislukt: …`, rij blijft ongewijzigd staan.
+
+UBL-rijen (blok A3 02-09, parser-gap RLZ-export-UBL's — 97 IC-facturen Universal Nederland →
+Universal Steigerbouw zonder tenaamstelling): een verzamelbak-UBL zónder tenaamstelling wordt
+opnieuw deterministisch geparst (`documenten/ubl.py`, sinds 02-09 mét PartyName/Name-terugval) —
+géén AI, dus óók zonder intake-AI-gate/API-key; de in de UBL ingesloten factuur-PDF wordt daarbij als
+beeld in de bron-kolommen gezet (zelfde vorm als de bundeling bij de intake), zodat preview,
+controlescherm en RLZ-bijlage de PDF tonen. Daarna dezelfde toewijzingsuitkomsten als hierboven.
+`toewijzen=False` (CLI `--zonder-toewijzen`): een eenduidige match wordt NIET toegewezen maar als
+suggestie op de rij gezet — voor een stapel die de mens bewust zelf in bulk wil toewijzen."""
 
 from __future__ import annotations
 
@@ -34,8 +43,15 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus
 from app.documenten.pdf import tel_paginas
-from app.documenten.service import _schrijf_overgang, _standaard_opslag, start_extractie_na_toewijzing
+from app.documenten.service import (
+    BronBestand,
+    _schrijf_overgang,
+    _sla_bronbestand_op,
+    _standaard_opslag,
+    start_extractie_na_toewijzing,
+)
 from app.documenten.storage import DocumentOpslag
+from app.documenten.ubl import GeenGeldigeUbl, is_vastly_verkoop, lees_ingesloten_pdf, parseer_ubl_factuur
 from app.extractie import splitsing as splitsing_extractie
 from app.intake.models import IntakeBericht, IntakeSplitsing, IntakeSplitsingStatus
 from app.intake.redenen import is_verworpen_intake_reden
@@ -57,6 +73,10 @@ class HerleesKandidaat:
     reden: str | None
     al_herlezen: bool
 
+    @property
+    def is_ubl(self) -> bool:
+        return self.bestandsnaam.lower().endswith(".xml")
+
 
 @dataclass
 class HerleesTelling:
@@ -67,6 +87,8 @@ class HerleesTelling:
     splitsingsvoorstel: int = 0
     mislukt: int = 0
     overgeslagen_al_herlezen: int = 0
+    #: UBL-rijen waarvan de ingesloten factuur-PDF als beeld in de bron-kolommen is gezet (A3 02-09).
+    beeld_gezet: int = 0
     gestopt_reden: str | None = None
     details: list[str] = field(default_factory=list)
 
@@ -79,6 +101,7 @@ class HerleesTelling:
             "splitsingsvoorstel": self.splitsingsvoorstel,
             "mislukt": self.mislukt,
             "overgeslagen_al_herlezen": self.overgeslagen_al_herlezen,
+            "beeld_gezet": self.beeld_gezet,
             "gestopt_reden": self.gestopt_reden,
         }
 
@@ -101,7 +124,8 @@ def _jongste_reden_en_herlezen(session, document_id: uuid.UUID) -> tuple[str | N
 def vind_kandidaten(*, sinds: datetime, alle_redenen: bool = False) -> list[HerleesKandidaat]:
     """Verzamelbak-PDF's zonder open splitsingsvoorstel, aangemaakt sinds `sinds`, waarvan de
     jongste intake-reden een verworpen/mislukt AI-voorstel is (default) — `alle_redenen=True`
-    neemt óók 'tenaamstelling_niet_eenduidig'-rijen zonder tenaamstelling mee."""
+    neemt óók 'tenaamstelling_niet_eenduidig'-rijen zonder tenaamstelling mee — én álle
+    verzamelbak-UBL's zonder tenaamstelling (parser-gap 02-09; deterministisch, geen AI)."""
     kandidaten: list[HerleesKandidaat] = []
     with scoped_session(None) as session:
         documenten = session.scalars(
@@ -122,7 +146,21 @@ def vind_kandidaten(*, sinds: datetime, alle_redenen: bool = False) -> list[Herl
             )
         )
         for document in documenten:
-            if not document.bestandsnaam.lower().endswith(".pdf") or document.id in open_splitsingen:
+            naam = document.bestandsnaam.lower()
+            if naam.endswith(".xml"):
+                # UBL zonder gelezen tenaamstelling (parser-gap 02-09) — of al eens herlezen.
+                reden, al_herlezen = _jongste_reden_en_herlezen(session, document.id)
+                if document.tenaamstelling is None or al_herlezen:
+                    kandidaten.append(
+                        HerleesKandidaat(
+                            document_id=document.id,
+                            bestandsnaam=document.bestandsnaam,
+                            reden=reden,
+                            al_herlezen=al_herlezen,
+                        )
+                    )
+                continue
+            if not naam.endswith(".pdf") or document.id in open_splitsingen:
                 continue
             reden, al_herlezen = _jongste_reden_en_herlezen(session, document.id)
             # Al eens herlezen = kandidaat (zichtbaar als "overgeslagen", `--opnieuw` herleest) — óók
@@ -160,7 +198,9 @@ def _tijdlijn_notitie(session, document: Document, detail: dict) -> None:
     )
 
 
-def _herlees_een(kandidaat: HerleesKandidaat, *, opslag: DocumentOpslag, telling: HerleesTelling) -> None:
+def _herlees_een(
+    kandidaat: HerleesKandidaat, *, opslag: DocumentOpslag, telling: HerleesTelling, toewijzen: bool = True
+) -> None:
     with scoped_session(None) as session:
         document = session.get(Document, kandidaat.document_id)
         if (
@@ -220,10 +260,124 @@ def _herlees_een(kandidaat: HerleesKandidaat, *, opslag: DocumentOpslag, telling
         telling.details.append(f"{kandidaat.bestandsnaam}: {reden}")
         return
 
-    segment = segmenten[0]
-    tenaamstelling = segment.tenaamstelling
+    _rond_toewijzing_af(
+        kandidaat,
+        tenaamstelling=segmenten[0].tenaamstelling,
+        afzender=afzender,
+        body_hint=body_hint,
+        telling=telling,
+        toewijzen=toewijzen,
+    )
+
+
+def _herlees_ubl(
+    kandidaat: HerleesKandidaat, *, opslag: DocumentOpslag, telling: HerleesTelling, toewijzen: bool
+) -> None:
+    """UBL-rij (A3 02-09): deterministisch herparsen, ingesloten PDF als beeld persisteren, dan
+    dezelfde toewijzingsafronding als een PDF. Geen AI, geen gate."""
+    with scoped_session(None) as session:
+        document = session.get(Document, kandidaat.document_id)
+        if (
+            document is None
+            or document.administratie_id is not None
+            or document.status != DocumentStatus.NIET_TOEGEWEZEN
+        ):
+            telling.details.append(f"{kandidaat.bestandsnaam}: intussen verwerkt — overgeslagen")
+            return
+        opslag_pad = document.opslag_pad
+        heeft_bron = document.bron_opslag_pad is not None
+        afzender = document.afzender_hint
+        intake_bericht_id = document.intake_bericht_id
+        body_hint = session.get(IntakeBericht, intake_bericht_id).body_tekst if intake_bericht_id is not None else None
+
+    inhoud = opslag.lezen(pad=opslag_pad)
+    try:
+        voorstel = parseer_ubl_factuur(inhoud)
+    except GeenGeldigeUbl as exc:
+        with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, kandidaat.document_id)
+            assert document is not None
+            _tijdlijn_notitie(session, document, {"reden": f"intake_herlezen_mislukt: ubl_invalide: {exc}"})
+        telling.herlezen += 1
+        telling.mislukt += 1
+        telling.details.append(f"{kandidaat.bestandsnaam}: mislukt — geen geldige UBL: {exc}")
+        return
+    telling.herlezen += 1
+
+    if not heeft_bron:
+        ingesloten = lees_ingesloten_pdf(inhoud)
+        if ingesloten is not None:
+            # Zelfde vorm als de intake-bundeling (bron_* = het beeld): preview, controlescherm en de
+            # RLZ-bijlage tonen vanaf nu de factuur-PDF; de UBL blijft het hoofdbestand (vorm=data).
+            bron = BronBestand(
+                bestandsnaam=ingesloten.bestandsnaam, inhoud=ingesloten.inhoud, content_type="application/pdf"
+            )
+            bron_pad = _sla_bronbestand_op(opslag, opslag_pad=opslag_pad, bron=bron)
+            with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+                document = session.get(Document, kandidaat.document_id)
+                assert document is not None
+                document.bron_opslag_pad = bron_pad
+                document.bron_bestandsnaam = bron.bestandsnaam
+                document.bron_content_type = bron.content_type
+                _tijdlijn_notitie(
+                    session,
+                    document,
+                    {"reden": f"intake_herlezen: ingesloten factuur-PDF '{bron.bestandsnaam}' als beeld gezet"},
+                )
+            telling.beeld_gezet += 1
+
+    # Vastly-verkoop-UBL's wijzen op de LEVERANCIER toe (onze entiteit); die route heeft een eigen
+    # intake-pad en komt hier in de praktijk niet — nooit stil de verkeerde partij als tenaamstelling.
+    tenaamstelling = voorstel.leverancier_naam if is_vastly_verkoop(voorstel) else voorstel.klant_naam
+    _rond_toewijzing_af(
+        kandidaat,
+        tenaamstelling=tenaamstelling,
+        afzender=afzender,
+        body_hint=body_hint,
+        telling=telling,
+        toewijzen=toewijzen,
+    )
+
+
+def _rond_toewijzing_af(
+    kandidaat: HerleesKandidaat,
+    *,
+    tenaamstelling: str | None,
+    afzender: str | None,
+    body_hint: str | None,
+    telling: HerleesTelling,
+    toewijzen: bool,
+) -> None:
+    """Gedeelde staart van een herlezing (PDF én UBL): toewijzen bij een eenduidige match — of, met
+    `toewijzen=False`, die match als SUGGESTIE op de rij zetten — anders tenaamstelling + suggestie."""
     with scoped_session(None) as session:
         besluit = bepaal_toewijzing(session, tenaamstelling=tenaamstelling, afzender=afzender, body_hint=body_hint)
+
+    if besluit.administratie_id is not None and not toewijzen:
+        # Bewust niet toewijzen (CLI --zonder-toewijzen): de eenduidige match wordt de suggestie zodat
+        # de bulk-toewijzing in de verzamelbak vooringevuld staat; de mens drukt op de knop.
+        reden = (
+            f"intake_herlezen: eenduidig op {besluit.bron} (tenaamstelling {tenaamstelling!r}) — "
+            "als suggestie gezet, niet toegewezen"
+        )
+        with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+            document = session.get(Document, kandidaat.document_id)
+            assert document is not None
+            document.tenaamstelling = tenaamstelling
+            document.toewijzing_suggestie_administratie_id = besluit.administratie_id
+            document.toewijzing_suggestie_bron = besluit.bron
+            _tijdlijn_notitie(
+                session,
+                document,
+                {
+                    "reden": reden,
+                    "tenaamstelling": tenaamstelling,
+                    "suggestie_administratie_id": str(besluit.administratie_id),
+                },
+            )
+        telling.tenaamstelling_gezet += 1
+        telling.details.append(f"{kandidaat.bestandsnaam}: {reden}")
+        return
 
     if besluit.administratie_id is not None:
         reden = f"intake_herlezen: toegewezen op {besluit.bron} (tenaamstelling {tenaamstelling!r})"
@@ -299,8 +453,10 @@ def herlees_verzamelbak(
     opnieuw: bool = False,
     alle_redenen: bool = False,
     opslag: DocumentOpslag | None = None,
+    toewijzen: bool = True,
 ) -> HerleesTelling:
-    """Zie module-docstring. `dry_run` telt alleen; `opnieuw` herleest óók al-herlezen rijen."""
+    """Zie module-docstring. `dry_run` telt alleen; `opnieuw` herleest óók al-herlezen rijen;
+    `toewijzen=False` zet een eenduidige match als suggestie i.p.v. toe te wijzen."""
     telling = HerleesTelling()
     kandidaten = vind_kandidaten(sinds=sinds, alle_redenen=alle_redenen)
     telling.kandidaten = len(kandidaten)
@@ -315,13 +471,19 @@ def herlees_verzamelbak(
         return telling
     if not te_doen:
         return telling
-    if not beheer_service.intake_ai_effectief_ingeschakeld() or not settings.anthropic_api_key:
+    # De AI-gate geldt alleen voor PDF's; UBL-herlezing is lokale code (geen data naar buiten).
+    if any(not k.is_ubl for k in te_doen) and (
+        not beheer_service.intake_ai_effectief_ingeschakeld() or not settings.anthropic_api_key
+    ):
         raise IntakeGateDicht("Intake-AI staat uit of er is geen API-key — herlezen kan niets doen.")
 
     opslag = opslag or _standaard_opslag()
     for kandidaat in te_doen:
         try:
-            _herlees_een(kandidaat, opslag=opslag, telling=telling)
+            if kandidaat.is_ubl:
+                _herlees_ubl(kandidaat, opslag=opslag, telling=telling, toewijzen=toewijzen)
+            else:
+                _herlees_een(kandidaat, opslag=opslag, telling=telling, toewijzen=toewijzen)
         except AiKostenLimietBereikt as exc:
             telling.gestopt_reden = f"AI-maandlimiet bereikt — gestopt bij {kandidaat.bestandsnaam}: {exc}"
             logger.warning(telling.gestopt_reden)

@@ -91,6 +91,30 @@ def _element_tekst(element: ET.Element, pad: str) -> str | None:
     return el.text.strip() if el is not None and el.text else None
 
 
+# Partijnaam in volgorde van voorkeur. EN 16931/NLCIUS zet de officiële naam in
+# cac:PartyLegalEntity/cbc:RegistrationName (BT-27/BT-44); oudere SI-UBL-1.x-exporten — waaronder
+# RLZ's eigen UBL-export (parser-gap 02-09: 97 IC-facturen Universal Nederland → Universal
+# Steigerbouw stonden zonder tenaamstelling in de verzamelbak) — dragen uitsluitend
+# cac:PartyName/cbc:Name (BT-28/BT-45) en een PartyLegalEntity mét alleen een KvK-CompanyID.
+_PARTIJNAAM_PADEN = (
+    "cac:Party/cac:PartyLegalEntity/cbc:RegistrationName",
+    "cac:Party/cac:PartyName/cbc:Name",
+)
+
+
+def _partijnaam(root: ET.Element, partij: str) -> str | None:
+    """Naam van AccountingSupplierParty/AccountingCustomerParty: RegistrationName wint, anders
+    PartyName/Name (SI-UBL 1.x, RLZ-export). Contact/Name is bewust géén bron (dat is een persoon)."""
+    partij_el = root.find(partij, _NS)
+    if partij_el is None:
+        return None
+    for pad in _PARTIJNAAM_PADEN:
+        naam = _element_tekst(partij_el, pad)
+        if naam:
+            return naam
+    return None
+
+
 def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str | None) -> tuple[dict, ...]:
     regels: list[dict] = []
     for i, lijn in enumerate(root.findall(regel_element, _NS), start=1):
@@ -146,8 +170,8 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
     totaal_excl = _tekst("cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount")
     totaal_incl = _tekst("cac:LegalMonetaryTotal/cbc:PayableAmount")
     totaal_btw = _tekst("cac:TaxTotal/cbc:TaxAmount")
-    leverancier_naam = _tekst("cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cbc:RegistrationName")
-    klant_naam = _tekst("cac:AccountingCustomerParty/cac:Party/cac:PartyLegalEntity/cbc:RegistrationName")
+    leverancier_naam = _partijnaam(root, "cac:AccountingSupplierParty")
+    klant_naam = _partijnaam(root, "cac:AccountingCustomerParty")
     regel_element = "cac:CreditNoteLine" if is_creditnota else "cac:InvoiceLine"
     regels = _parse_regels(root, regel_element=regel_element, document_gb_code=_tekst("cbc:AccountingCost"))
 

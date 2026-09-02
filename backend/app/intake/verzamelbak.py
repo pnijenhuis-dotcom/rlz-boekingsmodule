@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
+from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.mime import content_type_voor
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus
 from app.documenten.service import (
@@ -26,8 +27,8 @@ from app.documenten.service import (
     beeld_is_bron,
     start_extractie_na_toewijzing,
 )
-from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
 from app.documenten.storage import DocumentOpslag
+from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
 from app.intake.models import IntakeSplitsing, IntakeSplitsingStatus
 from app.intake.redenen import omschrijf_intake_reden
 from app.intake.toewijzing import leer_toewijzing
@@ -92,7 +93,7 @@ def haal_bijlage_op(
     administratie-gescoopte bestand-route past niet; deze leesroute is fail-closed beperkt tot
     documenten die écht nog in de verzamelbak staan (administratie NULL + status
     niet_toegewezen) — een al toegewezen document loopt via zijn administratie-route.
-    Retourneert (inhoud, bestandsnaam, content_type)."""
+    Retourneert (inhoud, bestandsnaam, content_type); `vorm="beeld"` volgt `documenten/beeld.py`."""
     opslag = opslag or _standaard_opslag()
     with scoped_session(None) as session:
         document = session.get(Document, document_id)
@@ -102,17 +103,13 @@ def haal_bijlage_op(
             or document.status != DocumentStatus.NIET_TOEGEWEZEN
         ):
             raise DocumentNietGevonden(f"Geen verzamelbak-document: {document_id}")
-        if vorm != "data" and beeld_is_bron(document):
-            # Gebundeld UBL+PDF (02-09): de mens ziet de PDF; de UBL blijft als vorm=data leesbaar.
-            opslag_pad = document.bron_opslag_pad
-            bestandsnaam = document.bron_bestandsnaam or "beeld.pdf"
-            content_type = document.bron_content_type or "application/pdf"
-        else:
-            opslag_pad = document.opslag_pad
-            bestandsnaam = document.bestandsnaam
-            content_type = content_type_voor(bestandsnaam)
-    inhoud = opslag.lezen(pad=opslag_pad)
-    return inhoud, bestandsnaam, content_type
+        bestanden = BestandenSnapshot.van(document)
+    if vorm == "data":
+        return opslag.lezen(pad=bestanden.opslag_pad), bestanden.bestandsnaam, content_type_voor(bestanden.bestandsnaam)
+    # Beeld (documenten/beeld.py): gebundelde bron-PDF, anders de in de UBL ingesloten PDF (RLZ-export-
+    # rijen van vóór 0098 — blok A2 02-09), anders het hoofdbestand. De UBL blijft als vorm=data leesbaar.
+    beeld = bepaal_beeld(bestanden, opslag=opslag)
+    return beeld.inhoud, beeld.bestandsnaam, beeld.content_type
 
 
 def _jongste_intake_redenen(session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, str | None]:

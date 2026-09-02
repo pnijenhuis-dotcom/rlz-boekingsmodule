@@ -13,6 +13,7 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
+from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
@@ -439,8 +440,7 @@ def boek_document(
             raise OngeldigeBoekpoging(
                 f"Document heeft soort {document.soort} — deze boekactie is alleen voor inkoopfacturen"
             )
-        bestandsnaam = document.bestandsnaam
-        opslag_pad = document.opslag_pad
+        bestanden = BestandenSnapshot.van(document)
         rlz_admin_id = rlz_admin_id_voor(administratie_id)
 
     # Klant-accorderingspoort (migratie 0033, server-side — nooit de client-knop vertrouwen):
@@ -493,9 +493,16 @@ def boek_document(
 
         try:
             voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-            bestand = _standaard_opslag().lezen(pad=opslag_pad)
+            # De RLZ-bijlage is het BEELD (documenten/beeld.py, blok A2 02-09): bij een UBL-document de
+            # gebundelde of ingesloten factuur-PDF — RLZ toont een PDF, een kale UBL is voor een mens
+            # onleesbaar. Zonder beeld gaat het hoofdbestand zelf mee (bestaand gedrag).
+            beeld = bepaal_beeld(bestanden, opslag=_standaard_opslag())
             rlz_document_id, rlz_boekstuknummer = _boek_bij_rlz(
-                client=client, document_id=document_id, voorstel=voorstel, bestand=bestand, bestandsnaam=bestandsnaam
+                client=client,
+                document_id=document_id,
+                voorstel=voorstel,
+                bestand=beeld.inhoud,
+                bestandsnaam=beeld.bestandsnaam,
             )
         except RlzApiError as exc:
             reden = vertaal_rlz_boekfout(exc)
