@@ -12,6 +12,7 @@
 - Zit de factuur-PDF ín het UBL-bestand ingesloten, dan zie je die PDF nu overal waar het beeld hoort: in het voorbeeld van de verzamelbak, als bijlage op het controlescherm en als bijlage bij de boeking in Reeleezee. Het UBL-bestand zelf blijft naast het beeld downloadbaar.
 - De bestaande nazorg-herlezing neemt zulke UBL-rijen nu ook mee (zonder AI): tenaamstelling en suggestie worden gezet en de ingesloten PDF wordt als beeld vastgelegd, zodat de rijen klaarstaan om toe te wijzen. Het toewijzings-geheugen leert daar niets van; dat gebeurt pas bij een menselijke toewijzing.
 - Verzamelbak in bulk: vink meerdere rijen aan (of alles binnen het filterveld) en wijs ze in één keer toe aan één administratie — de keuze staat vooringevuld als alle geselecteerde rijen dezelfde suggestie dragen — of handel ze samen af als "hoort niet bij ons" met één reden. Je ziet per rij wat er gebeurd is; een rij die niet verwerkt kon worden komt met de reden terug in de lijst.
+- Geboekte documenten laten nu zien wáár ze in Reeleezee staan: in de lijst (tooltip op de status), in de kop van het controlescherm en op de review-schermen staat "Geboekt in RLZ · boekstuk … · crediteur/debiteur". Bij verkoopfacturen en omzetboekingen staat erbij dat je ze in Reeleezee terugvindt op de debiteurenkaart of in het verkoopboek, en níét onder Verkopen → Facturen (die lijst toont alleen facturen die in Reeleezee zelf zijn gemaakt).
 
 ## 2026-09-02 — Doorbelasten, controlescherm en bank: minder scrollen, meer werkvolgorde
 

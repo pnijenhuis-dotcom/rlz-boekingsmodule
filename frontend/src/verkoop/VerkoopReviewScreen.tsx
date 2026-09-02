@@ -9,6 +9,7 @@ import type {
   VerkoopVoorstelDto,
   VerkoopVoorstelInputDto,
 } from '../api/types'
+import { GeboektInRlzRegel } from '../document/GeboektInRlz'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { formatteerXml } from '../document/DocumentDetailScreen'
 import { SearchableCombobox } from '../document/SearchableCombobox'
@@ -666,16 +667,22 @@ export function VerkoopReviewScreen() {
                 .
               </div>
             )}
+            {isGeboekt && !boekResultaat && detail.geboekt_in_rlz && <GeboektInRlzRegel stand={detail.geboekt_in_rlz} />}
             {isGeboekt && !boekResultaat && (
               <p className="hint" style={{ marginTop: 0 }}>
-                Deze verkoopfactuur is geboekt in RLZ
-                {voorstel.rlz_boekstuknummer ? (
+                {detail.geboekt_in_rlz ? 'Wijzigen' : (
                   <>
-                    {' '}
-                    als <b>{voorstel.rlz_boekstuknummer}</b>
+                    Deze verkoopfactuur is geboekt in RLZ
+                    {voorstel.rlz_boekstuknummer ? (
+                      <>
+                        {' '}
+                        als <b>{voorstel.rlz_boekstuknummer}</b>
+                      </>
+                    ) : null}
+                    . Wijzigen
                   </>
-                ) : null}
-                . Wijzigen kan alleen via stornering in Reeleezee (actie 19).
+                )}{' '}
+                kan alleen via stornering in Reeleezee (actie 19).
               </p>
             )}
             {!isGeboekt && (

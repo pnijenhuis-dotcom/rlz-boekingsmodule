@@ -40,6 +40,7 @@ import {
 } from './lijstContext'
 import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
+import { geboektInRlzTooltip } from '../document/GeboektInRlz'
 import { VerwijderDialog } from './VerwijderDialog'
 
 /** Ververs-interval zolang er documenten in extractie_wachtrij/extractie_bezig staan. */
@@ -853,7 +854,8 @@ export function DocumentenDeelscherm({
                         {isKassarapport && <span className="chip klaar">omzetboeking</span>}{' '}
                         {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}
                         {isWaarborg && <span className="chip klaar">waarborg</span>}{' '}
-                        <StatusChip status={d.status} />
+                        {/* Blok C 02-09: "Geboekt in RLZ · boekstuk · tegenpartij" (+ vindplaats-hint) als tooltip. */}
+                        <StatusChip status={d.status} title={d.geboekt_in_rlz ? geboektInRlzTooltip(d.geboekt_in_rlz) : undefined} />
                         {d.automatisch_geboekt && (
                           <>
                             {' '}

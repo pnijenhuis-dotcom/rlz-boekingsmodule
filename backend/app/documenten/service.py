@@ -19,6 +19,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import storage
 from app.documenten.beeld import BestandenSnapshot, beeld_is_bron, bepaal_beeld
+from app.documenten.geboekt_in_rlz import GeboektInRlz, bepaal_geboekt_in_rlz
 from app.documenten.mime import content_type_voor
 from app.documenten.models import (
     Boekvoorstel,
@@ -1217,6 +1218,9 @@ class DocumentMetDuplicaat:
     # Duplicaatsignaal (25-08, deel 2 punt 6): gecachete RLZ-duplicaatuitkomst — None zolang er
     # nog niet getoetst is.
     duplicaatsignaal: DuplicaatSignaalKort | None = None
+    # Blok C 02-09: boekstuk + tegenpartij + vindplaats-hint van een GEBOEKT document (lijst-tooltip);
+    # uit de boek-events/kolommen, nooit een RLZ-call. None bij elke andere status.
+    geboekt_in_rlz: GeboektInRlz | None = None
 
 
 def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
@@ -1340,6 +1344,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                 _als_datum_of_none(veldvoorstel.get("factuurdatum")),
             )
 
+        geboekt_stand = bepaal_geboekt_in_rlz(session, documenten)
         resultaat = []
         for d in documenten:
             leverancier, totaalbedrag, factuurdatum = _kop(d.id)
@@ -1358,6 +1363,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     accordeur_aan_de_beurt=beurt.get(d.id),
                     accordering_boek_fout=boek_fouten.get(d.id),
                     klant_akkoord_compleet=d.id in akkoord_compleet,
+                    geboekt_in_rlz=geboekt_stand.get(d.id),
                     afdeling=(
                         (voorstellen[d.id].afdeling_id, afdelingen[voorstellen[d.id].afdeling_id])
                         if d.id in voorstellen
@@ -1537,6 +1543,8 @@ class DocumentDetail:
     veldvoorstel: dict | None
     duplicaat_referentie: DuplicaatReferentie | None
     herkomst_mail: HerkomstMail | None = None
+    # Blok C 02-09: 'Geboekt in RLZ · boekstuk · tegenpartij' + vindplaats-hint voor de detailkop.
+    geboekt_in_rlz: GeboektInRlz | None = None
 
 
 def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDetail:
@@ -1578,6 +1586,7 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
                     body_tekst=bericht.body_tekst,
                     bron=bericht.bron,
                 )
+        geboekt_in_rlz = bepaal_geboekt_in_rlz(session, [document]).get(document.id)
 
     return DocumentDetail(
         document=document,
@@ -1585,6 +1594,7 @@ def haal_document_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
         veldvoorstel=veldvoorstel,
         duplicaat_referentie=duplicaat_referentie,
         herkomst_mail=herkomst_mail,
+        geboekt_in_rlz=geboekt_in_rlz,
     )
 
 

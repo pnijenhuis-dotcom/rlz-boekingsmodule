@@ -110,6 +110,21 @@ def _lees_match_dto(administratie_id: uuid.UUID, document_id: uuid.UUID) -> sche
     return _naar_match_dto(factuurmatch_pipeline.lees_match(administratie_id=administratie_id, document_id=document_id))
 
 
+def _naar_geboekt_in_rlz(stand) -> schemas.GeboektInRlzDto | None:
+    if stand is None:
+        return None
+    return schemas.GeboektInRlzDto(
+        regel=stand.als_regel(),
+        boekstuknummer=stand.boekstuknummer,
+        rlz_document_id=stand.rlz_document_id,
+        tegenpartij=stand.tegenpartij,
+        tegenpartij_rol=stand.tegenpartij_rol,
+        geboekt_op=stand.geboekt_op,
+        memoriaal_boekstuknummer=stand.memoriaal_boekstuknummer,
+        vindplaats_hint=stand.vindplaats_hint,
+    )
+
+
 def _naar_duplicaat_response(
     referentie: service.DuplicaatReferentie | None,
 ) -> schemas.DuplicaatReferentieResponse | None:
@@ -287,6 +302,7 @@ def documenten_lijst(
                 totaalbedrag=item.totaalbedrag,
                 factuurdatum=item.factuurdatum,
                 automatisch_geboekt=item.automatisch_geboekt,
+                geboekt_in_rlz=_naar_geboekt_in_rlz(item.geboekt_in_rlz),
                 factuurmatch=_naar_match_kort(item.factuurmatch),
                 accordering_boek_fout=item.accordering_boek_fout,
                 klant_akkoord_compleet=item.klant_akkoord_compleet,
@@ -409,6 +425,7 @@ def document_detail(
         materiaalmatch=_lees_materiaalmatch_dto(administratie_id, document_id),
         bron_bestandsnaam=d.bron_bestandsnaam,
         tenaamstelling=d.tenaamstelling,
+        geboekt_in_rlz=_naar_geboekt_in_rlz(detail.geboekt_in_rlz),
         herkomst_mail=(
             schemas.HerkomstMailDto(
                 afzender=detail.herkomst_mail.afzender,

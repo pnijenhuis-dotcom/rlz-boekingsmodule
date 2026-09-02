@@ -9,6 +9,7 @@ import type {
   OmzetVoorstelDto,
   OmzetVoorstelInputDto,
 } from '../api/types'
+import { GeboektInRlzRegel } from '../document/GeboektInRlz'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useAutoChecks } from '../document/useAutoChecks'
@@ -598,10 +599,11 @@ export function OmzetReviewScreen() {
                 — de periode is geregistreerd en kan niet dubbel geboekt worden.
               </div>
             )}
+            {isGeboekt && !boekResultaat && detail.geboekt_in_rlz && <GeboektInRlzRegel stand={detail.geboekt_in_rlz} />}
             {isGeboekt && !boekResultaat && (
               <p className="hint" style={{ marginTop: 0 }}>
-                Deze omzetboeking is geboekt in RLZ. Wijzigen kan alleen via stornering in Reeleezee
-                (actie 19) — de omzet-reconciliatie signaleert dat dan.
+                {detail.geboekt_in_rlz ? 'Wijzigen' : 'Deze omzetboeking is geboekt in RLZ. Wijzigen'} kan alleen via
+                stornering in Reeleezee (actie 19) — de omzet-reconciliatie signaleert dat dan.
               </p>
             )}
             {!isGeboekt && (

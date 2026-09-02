@@ -11,6 +11,7 @@ import type {
 } from '../api/types'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
+import { GeboektInRlzChip } from './GeboektInRlz'
 import { documentRoute } from '../werkvoorraad/format'
 import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
 import { lijstContextUitParams, lijstPositie, lijstRoute, type LijstContext } from '../werkvoorraad/lijstContext'
@@ -743,6 +744,7 @@ export function DocumentDetailScreen() {
             </span>
           )}
           <StatusChip status={detail.status} />
+          {detail.geboekt_in_rlz && <GeboektInRlzChip stand={detail.geboekt_in_rlz} />}
           <button
             ref={actieMenuKnop}
             type="button"

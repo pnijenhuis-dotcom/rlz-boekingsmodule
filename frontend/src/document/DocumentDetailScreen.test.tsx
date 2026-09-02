@@ -373,6 +373,28 @@ describe('DocumentDetailScreen — opnieuw extraheren vanaf een geslaagd voorste
     expect(extractieAanroepen).toHaveLength(0)
   })
 
+  it('blok C (02-09): een geboekt document draagt in de kop de chip "Geboekt in RLZ · boekstuk · crediteur"', async () => {
+    installFetchMock(
+      detailMet({
+        status: 'geboekt',
+        geboekt_in_rlz: {
+          regel: 'Geboekt in RLZ · boekstuk RLZ-04-00002001 · Universal Nederland B.V.',
+          boekstuknummer: 'RLZ-04-00002001',
+          rlz_document_id: 'x',
+          tegenpartij: 'Universal Nederland B.V.',
+          tegenpartij_rol: 'crediteur',
+          geboekt_op: '2026-09-02T10:00:00Z',
+          memoriaal_boekstuknummer: null,
+          vindplaats_hint: null,
+        },
+      }),
+    )
+    renderScherm()
+    const chip = await screen.findByTestId('geboekt-in-rlz-chip')
+    expect(chip).toHaveTextContent('Geboekt in RLZ · boekstuk RLZ-04-00002001 · Universal Nederland B.V.')
+    expect(chip).toHaveAttribute('title', 'Geboekt in RLZ · boekstuk RLZ-04-00002001 · Universal Nederland B.V.')
+  })
+
   it('geen knop op een geboekt document, ook al is er een AI-voorstel', async () => {
     installFetchMock(detailMet({ status: 'geboekt' }))
 

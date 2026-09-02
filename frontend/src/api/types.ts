@@ -157,6 +157,19 @@ export interface DuplicaatSignaalKortDto {
   berekend_op: string
 }
 
+/** Blok C 02-09: "Geboekt in RLZ · boekstuk <nr> · <tegenpartij>" + vindplaats-hint — alleen bij status
+ * geboekt; uit de boek-events/kolommen van de server, geen RLZ-call. */
+export interface GeboektInRlzDto {
+  regel: string
+  boekstuknummer: string | null
+  rlz_document_id: string | null
+  tegenpartij: string | null
+  tegenpartij_rol: 'crediteur' | 'debiteur' | null
+  geboekt_op: string
+  memoriaal_boekstuknummer: string | null
+  vindplaats_hint: string | null
+}
+
 export interface DocumentListItemDto {
   id: string
   bestandsnaam: string
@@ -177,6 +190,8 @@ export interface DocumentListItemDto {
   /** Autoboeken-opt-in per leverancier: geboekt zónder menselijke boek-klik — voedt de
    * werkvoorraad-chip "automatisch" en het filter "Automatisch geboekt". */
   automatisch_geboekt: boolean
+  /** Blok C 02-09: alleen gevuld bij status geboekt (lijst-tooltip). */
+  geboekt_in_rlz?: GeboektInRlzDto | null
   /** Factuurmatch (fase 2): urenmatch-stand van een veldwerker-factuur — voedt de chip
    * "urenmatch wijkt af". Null/afwezig = geen match van toepassing. */
   factuurmatch?: FactuurmatchKortDto | null
@@ -330,6 +345,8 @@ export interface DocumentDetailDto {
   bron_bestandsnaam?: string | null
   /** Gelezen tenaamstelling uit de intake — voedt de "onthoud"-optie in de verplaats-modal (27/28-08 punt 6a). */
   tenaamstelling?: string | null
+  /** Blok C 02-09: alleen gevuld bij status geboekt (detailkop-chip + reviewscherm-regel). */
+  geboekt_in_rlz?: GeboektInRlzDto | null
   tijdlijn: DocumentGebeurtenisDto[]
 }
 

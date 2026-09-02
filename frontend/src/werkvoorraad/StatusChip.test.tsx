@@ -19,4 +19,9 @@ describe('StatusChip (dot + label, designpass v2)', () => {
     render(<StatusChip status="iets_nieuws" />)
     expect(screen.getByText('iets_nieuws')).toHaveClass('status', 'geheugen')
   })
+
+  it('blok C (02-09): draagt de "Geboekt in RLZ"-tooltip als die meegegeven wordt', () => {
+    render(<StatusChip status="geboekt" title={'Geboekt in RLZ · boekstuk RLZ-1 · Crediteur\nhint'} />)
+    expect(screen.getByText('Geboekt')).toHaveAttribute('title', 'Geboekt in RLZ · boekstuk RLZ-1 · Crediteur\nhint')
+  })
 })

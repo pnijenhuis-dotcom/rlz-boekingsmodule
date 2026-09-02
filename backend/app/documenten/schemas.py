@@ -229,6 +229,22 @@ class AfdelingKortDto(BaseModel):
     naam: str
 
 
+class GeboektInRlzDto(BaseModel):
+    """Blok C 02-09: 'Geboekt in RLZ · boekstuk <nr> · <crediteur/debiteur>' + vindplaats-hint
+    (Elissen-casus: verkoopfacturen staan in RLZ níét onder Verkopen → Facturen). Uit de boek-events/
+    kolommen, geen RLZ-call. `regel` is de kant-en-klare tekst voor tooltip/chip."""
+
+    regel: str
+    boekstuknummer: str | None = None
+    rlz_document_id: str | None = None
+    tegenpartij: str | None = None
+    # 'crediteur' | 'debiteur' | None
+    tegenpartij_rol: str | None = None
+    geboekt_op: datetime
+    memoriaal_boekstuknummer: str | None = None
+    vindplaats_hint: str | None = None
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
@@ -251,6 +267,8 @@ class DocumentListItemResponse(BaseModel):
     # Autoboeken (blok 2, 2026-08-09): geboekt zonder menselijke boek-klik (opt-in leverancier)
     # — voedt de werkvoorraad-chip "automatisch" en het filter "automatisch geboekt".
     automatisch_geboekt: bool = False
+    # Blok C 02-09: alleen gevuld bij status geboekt.
+    geboekt_in_rlz: GeboektInRlzDto | None = None
     # Factuurmatch (fase 2): matchstand van een veldwerker-factuur — voedt de chip
     # "urenmatch wijkt af" (besluit 3, duplicaat-patroon). None = geen match van toepassing.
     factuurmatch: FactuurmatchKortDto | None = None
@@ -354,6 +372,8 @@ class DocumentDetailResponse(BaseModel):
     # Gelezen tenaamstelling uit de intake (verzamelbak-sleutel) — voedt de "onthoud"-optie in de
     # verplaats-modal (punt 6a); None bij directe uploads zonder tenaamstelling.
     tenaamstelling: str | None = None
+    # Blok C 02-09: alleen gevuld bij status geboekt.
+    geboekt_in_rlz: GeboektInRlzDto | None = None
     tijdlijn: list[DocumentGebeurtenisResponse]
 
 

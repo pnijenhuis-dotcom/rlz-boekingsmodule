@@ -419,4 +419,26 @@ describe('VerkoopReviewScreen', () => {
     expect(screen.getByText('RLZ-01-00000442')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Boeken in RLZ/ })).not.toBeInTheDocument()
   })
+
+  it('blok C (02-09): een geboekt document toont "Geboekt in RLZ · boekstuk · debiteur" mét de vindplaats-hint (Elissen-casus)', async () => {
+    installFetchMock({
+      detail: { status: 'geboekt', geboekt_in_rlz: {
+      regel: 'Geboekt in RLZ · boekstuk RLZ-01-00000442 · J.G.M. Elissen Holding BV',
+      boekstuknummer: 'RLZ-01-00000442',
+      rlz_document_id: 'x',
+      tegenpartij: 'J.G.M. Elissen Holding BV',
+      tegenpartij_rol: 'debiteur',
+      geboekt_op: '2026-09-02T10:00:00Z',
+      memoriaal_boekstuknummer: null,
+      vindplaats_hint: 'In RLZ zichtbaar op de debiteurenkaart en in het verkoopboek — níét in Verkopen → Facturen.',
+    } },
+      voorstelBody: { opgeslagen: true, rlz_boekstuknummer: 'RLZ-01-00000442' },
+    })
+    renderScherm()
+
+    const regel = await screen.findByTestId('geboekt-in-rlz-regel')
+    expect(regel).toHaveTextContent('Geboekt in RLZ · boekstuk RLZ-01-00000442 · J.G.M. Elissen Holding BV')
+    expect(regel).toHaveTextContent('níét in Verkopen → Facturen')
+    expect(screen.getByText(/Wijzigen kan alleen via stornering/)).toBeInTheDocument()
+  })
 })
