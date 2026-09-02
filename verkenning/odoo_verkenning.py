@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Odoo JSON-2 STAP-0-verkenning — UITSLUITEND LEZEN, geen enkele schrijfactie.
 
-Leest ODOO_URL / ODOO_DB / ODOO_API_KEY uit verkenning/.env en rapporteert:
+Leest ODOO_URL / ODOO_API_KEY uit verkenning/.env en rapporteert (eerste, kleine scan van 15-07;
+de volledige STAP-0 van 02-09 staat in odoo_stap0_inventaris.py + odoo_stap0_bewijs.py):
 versie, gebruiker, bedrijven, journalen, aantallen per documenttype, grootboek,
 btw-codes, relaties, analytic (projecten) en een voorbeeld-inkoopfactuur (velden).
 De API-key komt nooit in de output. Draaien: python3 verkenning/odoo_verkenning.py
@@ -29,8 +30,9 @@ def call(pad, body=None, method="POST"):
     req.add_header("Authorization", "bearer " + KEY)
     req.add_header("Content-Type", "application/json")
     req.add_header("User-Agent", "rlz-verkenning")
-    if DB:
-        req.add_header("X-Odoo-Database", DB)
+    # 02-09-2026: GEEN X-Odoo-Database-header — ODOO_DB in .env is niet de echte databasenaam
+    # (server: KeyError) en Odoo Online is single-db per host; mét een verkeerde header antwoordt
+    # Odoo 404 "No database is selected". Zie verkenning/odoo-verkenning.md §1.
     data = json.dumps(body or {}).encode() if method == "POST" else None
     try:
         with urllib.request.urlopen(req, data, timeout=30) as r:
