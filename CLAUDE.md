@@ -1416,6 +1416,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
   schema-versies, entiteiten, conventies)**
 - `docs/BESLISSINGEN.md` — **statusregister per feature/onderwerp (status + canonieke vindplaats)**
+- `docs/DIAGNOSE_INTAKE_VERZAMELBAK_02-09.md` — **diagnose kliktest 02-09 (alleen onderzocht, niets
+  gebouwd):** intake-AI leest de tenaamstelling wél maar antwoordt `ep=2` op 1-pagina-PDF's → onze
+  paginabereik-validatie verwerpt het hele voorstel (72/76 splitsingsfouten sinds 25-08, verzamelbak-UI
+  toont de reden niet); UBL+PDF-paren worden niet gebundeld; afzender-leren klapt om op kantoor-/
+  doorstuuradressen. Fix-voorstellen per punt wachten op Peters beoordeling (BESLISSINGEN "DIAGNOSE
+  INTAKE/VERZAMELBAK 02-09").
 - `docs/BOUWPLAN.md` — fasering en definition of done per fase
 - `verkenning/.env` — RLZ-credentials (BLOW + Universal Steigerbouw), NOOIT committen
 
