@@ -37,6 +37,7 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset({DocumentStatus.TE_CONTROLEREN})
     assert DocumentStatus.VERWIJDERD not in _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT]
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GESPLITST] == frozenset()
+    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.SAMENGEVOEGD] == frozenset({DocumentStatus.NIET_TOEGEWEZEN})
     for van in DocumentStatus:
         if van in (
             DocumentStatus.GEBOEKT,
@@ -45,6 +46,10 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
             # Klant-accordering (migratie 0033): een document dat bij de klant ligt is bewust
             # niet direct verwijderbaar — eerst intrekken (→ klaar_om_te_boeken), dan pas.
             DocumentStatus.TER_ACCORDERING,
+            # Samengevoegd (migratie 0098, blok B4 02-09): de rij is het beeld/de bron van het
+            # leidende document — enige uitgang is "samenvoegen ongedaan" (→ niet_toegewezen),
+            # nooit verwijderd (het bestand blijft terugvindbaar op sha256).
+            DocumentStatus.SAMENGEVOEGD,
         ):
             continue
         assert DocumentStatus.VERWIJDERD in _TOEGESTANE_OVERGANGEN[van], f"{van} kan niet verwijderd worden"
