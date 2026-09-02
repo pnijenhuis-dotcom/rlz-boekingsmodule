@@ -1439,13 +1439,25 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `/bestand?vorm=data` = de UBL), handmatig "Samenvoegen" in de verzamelbak (status `samengevoegd`, ongedaan
   te maken, nooit verwijderen), UBL-samenvatting als preview, afzender-leren uitgesloten voor
   kantoor-/doorstuurdomeinen (config `intake_afzender_uitgesloten_domeinen`) + flip-detectie (≥ 3 doelen =
-  meerduidig, nooit meer gesuggereerd).
+  meerduidig, nooit meer gesuggereerd). **Vervolgronde 02-09 (BESLISSINGEN "VERVOLGRONDE 02-09"):**
+  UBL-parser leest partijnamen óók uit `cac:PartyName/cbc:Name` (RLZ's eigen export, SI-UBL 1.1 — 97
+  IC-facturen zonder tenaamstelling); één beeld-bron `documenten/beeld.py::bepaal_beeld` (bron-PDF →
+  ingesloten PDF → hoofdbestand) voor preview, controlescherm én de RLZ-bijlage; `intake-herlezen
+  --alleen-ubl --zonder-toewijzen` (deterministisch, geen AI); bulk-toewijzen / bulk-hoort-niet-bij-ons in de
+  verzamelbak (orkestratie over de per-rij-routes, uitkomst per rij); zusje-signaal "tegenhanger al
+  toegewezen" (93 IC-PDF's waren vóór de bundeling al via AI toegewezen — UBL's bulk-toewijzen = dubbele
+  documenten; nabundel-nazorg = open beslispunt); "Geboekt in RLZ · boekstuk · tegenpartij" +
+  vindplaats-hint op lijst/detail/reviewschermen (`documenten/geboekt_in_rlz.py`, Elissen-casus);
+  CLI `toewijzing-regels-opschonen` (cloud-run 02-09: 6 afzender-regels gedeactiveerd).
 - `docs/avg/` — AVG-pakket (jurist-akkoord 12-08); **stap 1 van `05-activatie-checklist.md` is op 02-09
   beslisklaar gemaakt (blok A): `09-zdr-beslisnotitie.md` (besluit Peter), `10-model-check.md` (sonnet-5 +
   haiku-4-5, ZDR-compatibel; register mist voorraad-normalisatie + contract-ontleding), `11-klantinformatie-
   tekst-concept.md` (Peter/jurist verstuurt), `12-beoordelingskader-gevoelige-administraties.md` (voorstel:
   Mantelzorgwoningen MN + Stichting Shuto UIT tot bevestiging). Feit cloud-DB 02-09: AI-gate AAN voor alle 30
-  actieve administraties. BESLISSINGEN "AVG STAP 1 — VOORBEREID".**
+  actieve administraties. BESLISSINGEN "AVG STAP 1 — VOORBEREID". **Besluiten Peter 02-09
+  vastgelegd (BESLISSINGEN "VERVOLGRONDE 02-09" blok E): ZDR doorzetten via Sales + tijdelijke acceptatie
+  default-retentie (doc 9 §4); ALLE administraties AAN incl. Mantelzorgwoningen MN en Stichting Shuto
+  (doc 12); doc 11 gefinaliseerd; registeraanvulling V8 (doc 1 §7b).**
 - `docs/BOUWPLAN.md` — fasering en definition of done per fase
 - `verkenning/.env` — RLZ-credentials (BLOW + Universal Steigerbouw), NOOIT committen
 
