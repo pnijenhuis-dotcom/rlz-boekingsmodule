@@ -153,6 +153,41 @@ def _extractie_heraanbieden(args: argparse.Namespace) -> int:
     return 0
 
 
+def _intake_herlezen(args: argparse.Namespace) -> int:
+    """Nazorg intake-splitsingsbug (spoedopdracht 02-09, punt 5): verzamelbak-PDF's die sinds
+    --sinds op een verworpen/mislukt intake-AI-voorstel strandden opnieuw door de gefixte keten
+    (nieuwe tenaamstelling-bepaling); al toegewezen/verwerkte rijen worden nooit geraakt."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.intake import herlezen
+
+    try:
+        sinds = datetime.fromisoformat(args.sinds).replace(tzinfo=ZoneInfo("Europe/Amsterdam"))
+    except ValueError:
+        print(f"Ongeldige --sinds-datum: {args.sinds!r} (verwacht YYYY-MM-DD)", file=sys.stderr)
+        return 2
+    try:
+        telling = herlezen.herlees_verzamelbak(
+            sinds=sinds, dry_run=args.dry_run, opnieuw=args.opnieuw, alle_redenen=args.alle_redenen
+        )
+    except herlezen.IntakeGateDicht as exc:
+        print(f"intake-herlezen: {exc}", file=sys.stderr)
+        return 1
+    label = " [dry-run]" if args.dry_run else ""
+    print(
+        f"intake-herlezen{label}: {telling.kandidaten} kandidaat/kandidaten, "
+        f"{telling.overgeslagen_al_herlezen} al eerder herlezen (overgeslagen), {telling.herlezen} herlezen — "
+        f"{telling.toegewezen} toegewezen, {telling.tenaamstelling_gezet} tenaamstelling/suggestie gezet, "
+        f"{telling.splitsingsvoorstel} splitsingsvoorstel, {telling.mislukt} mislukt"
+    )
+    for regel in telling.details:
+        print(f"  - {regel}")
+    if telling.gestopt_reden:
+        print(f"  ! {telling.gestopt_reden}")
+    return 0
+
+
 def _bewaking_probe(args: argparse.Namespace) -> int:
     """Entrypoint van de kwartier-job rlz-bewaking (best-practice-besluit 1, 31-08): draai alle
     probes, leg de statusrij vast en verstuur/sluit alerts. Een falende PROBE is een uitkomst
@@ -1504,6 +1539,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     heraanbied_parser.add_argument("--dry-run", action="store_true", help="Alleen tellen, niets heraanbieden.")
 
+    herlees_parser = subparsers.add_parser(
+        "intake-herlezen",
+        help="Nazorg intake-splitsingsbug (02-09): verzamelbak-PDF's die sinds --sinds op een verworpen/"
+        "mislukt intake-AI-voorstel strandden opnieuw lezen met de gefixte keten (tenaamstelling, "
+        "toewijzing, splitsingsvoorstel). Idempotent (al herlezen = overgeslagen, --opnieuw heft op); "
+        "--dry-run telt alleen; --alle-redenen neemt óók rijen zonder tenaamstelling mee.",
+    )
+    herlees_parser.add_argument("--sinds", required=True, help="Datum (YYYY-MM-DD, Europe/Amsterdam).")
+    herlees_parser.add_argument("--dry-run", action="store_true", help="Alleen tellen, niets herlezen.")
+    herlees_parser.add_argument("--opnieuw", action="store_true", help="Ook al eerder herlezen rijen opnieuw.")
+    herlees_parser.add_argument(
+        "--alle-redenen", action="store_true", help="Ook 'niet eenduidig'-rijen zonder gelezen tenaamstelling."
+    )
+
     subparsers.add_parser(
         "bewaking-probe",
         help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
@@ -1825,6 +1874,8 @@ def main(argv: list[str] | None = None) -> int:
         return _extractie_wachtrij_verwerken(args)
     if args.commando == "extractie-heraanbieden":
         return _extractie_heraanbieden(args)
+    if args.commando == "intake-herlezen":
+        return _intake_herlezen(args)
     if args.commando == "eerste-sync-wachtrij":
         return _eerste_sync_wachtrij(args)
     if args.commando == "reconciliatie":

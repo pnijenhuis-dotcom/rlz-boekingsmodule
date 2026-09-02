@@ -16,6 +16,11 @@ toevallig ontdekt. Deze motor draait elk kwartier als Cloud Run-job (`rlz-bewaki
 - extractie_foutratio — 1× per uur: het aandeel gefaalde AI-extracties in het afgelopen uur
                   boven de drempel (default 50 % bij ≥ 3 pogingen) — dít had de schema-bug
                   binnen een uur gemeld i.p.v. na een dag.
+- intake_verwerpingsratio — 1× per uur (spoedopdracht 02-09): het aandeel intake-AI-voorstellen
+                  (tenaamstelling/splitsing vóór toewijzing) dat door code is verworpen of
+                  waarvan de lezing mislukte, boven de drempel (default 50 % bij ≥ 3 pogingen).
+                  De paginabereik-bug (72/76 sinds 25-08) viel buiten élk signaal omdat de
+                  extractie-foutratio pas ná toewijzing telt.
 
 Alerting: eigen SMTP-mail (app/berichten/mail) naar `bewaking_alert_ontvanger` — pas bij de
 2e opeenvolgende fout van hetzelfde type (geen ruis bij één hik), idempotent per storing
@@ -34,7 +39,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from app.bewaking.models import BewakingProbeRun, BewakingStoring
 from app.config import settings
@@ -238,6 +243,51 @@ def _probe_extractie_foutratio(nu: datetime) -> ProbeUitkomst:
     return ProbeUitkomst(soort="extractie_foutratio", status="ok", detail=f"{fouten}/{totaal}")
 
 
+def _probe_intake_verwerpingsratio(nu: datetime) -> ProbeUitkomst:
+    """Intake-verwerpingsratio (02-09): pogingen = intake-AI-calls in het afgelopen uur
+    (platform.ai_gebruik, bron intake_splitsing/intake_herlezen); verworpen = verzamelbak-
+    tijdlijnrijen in dat uur waarvan de reden een verworpen/mislukt AI-voorstel is
+    (app/intake/redenen.py::is_verworpen_intake_reden — dezelfde definitie als de UI). Een
+    mislukte call zónder usage-rij (API-fout) telt wél als poging: pogingen = max(calls,
+    verworpen), zodat een plat API-kanaal niet onder het minimum wegduikt. Verzamelbak-
+    documenten hebben administratie NULL en zijn in de scope-loze sessie zichtbaar (RLS-policy
+    0004)."""
+    from app.db.models import AiGebruik
+    from app.documenten.models import DocumentGebeurtenis, DocumentStatus
+    from app.intake.redenen import is_verworpen_intake_reden
+
+    sinds = nu - FOUTRATIO_VENSTER
+    with scoped_session(None) as session:
+        calls = session.scalar(
+            select(func.count())
+            .select_from(AiGebruik)
+            .where(AiGebruik.tijdstip >= sinds, AiGebruik.bron.in_(("intake_splitsing", "intake_herlezen")))
+        )
+        redenen = session.scalars(
+            select(DocumentGebeurtenis.detail["reden"].astext).where(
+                DocumentGebeurtenis.tijdstip >= sinds,
+                DocumentGebeurtenis.naar_status == DocumentStatus.NIET_TOEGEWEZEN,
+            )
+        ).all()
+    verworpen = sum(1 for reden in redenen if is_verworpen_intake_reden(reden))
+    pogingen = max(int(calls or 0), verworpen)
+    if pogingen < settings.bewaking_intake_min_pogingen:
+        return ProbeUitkomst(
+            soort="intake_verwerpingsratio", status="ok", detail=f"{verworpen}/{pogingen} (onder minimum)"
+        )
+    ratio = verworpen / pogingen
+    if ratio >= settings.bewaking_intake_verwerpingsratio_drempel:
+        return ProbeUitkomst(
+            soort="intake_verwerpingsratio",
+            status="fout",
+            detail=(
+                f"{verworpen}/{pogingen} intake-AI-voorstellen in het afgelopen uur verworpen of mislukt "
+                f"({ratio:.0%}) — zie de redenen op de verzamelbak-rijen"
+            ),
+        )
+    return ProbeUitkomst(soort="intake_verwerpingsratio", status="ok", detail=f"{verworpen}/{pogingen}")
+
+
 # ---- storing-administratie + alerts --------------------------------------------------------------
 
 
@@ -346,9 +396,13 @@ def voer_probes_uit(nu: datetime | None = None) -> dict[str, str]:
     if met_ai:
         uitkomsten.append(_meet("ai", _probe_ai))
         uitkomsten.append(_meet("extractie_foutratio", lambda: _probe_extractie_foutratio(nu)))
+        uitkomsten.append(_meet("intake_verwerpingsratio", lambda: _probe_intake_verwerpingsratio(nu)))
     else:
         uitkomsten.append(ProbeUitkomst(soort="ai", status="overgeslagen", detail="uurvenster"))
         uitkomsten.append(ProbeUitkomst(soort="extractie_foutratio", status="overgeslagen", detail="uurvenster"))
+        uitkomsten.append(
+            ProbeUitkomst(soort="intake_verwerpingsratio", status="overgeslagen", detail="uurvenster")
+        )
 
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
         session.add(

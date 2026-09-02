@@ -361,6 +361,12 @@ class Settings(BaseSettings):
     # pogingen → alert (had de schema-limiet-bug van 30-08 binnen een uur gemeld).
     bewaking_extractie_foutratio_drempel: float = 0.5
     bewaking_extractie_min_pogingen: int = 3
+    # Intake-verwerpingsratio (spoedopdracht 02-09, diagnose punt 1): aandeel intake-AI-voorstellen
+    # dat in het afgelopen uur door code is verworpen of waarvan de lezing mislukte, boven de
+    # drempel bij minstens dit aantal pogingen → alert. De paginabereik-bug raakte een week lang
+    # de helft van de intake-PDF's zonder één signaal; deze klasse mag nooit meer stil blijven.
+    bewaking_intake_verwerpingsratio_drempel: float = 0.5
+    bewaking_intake_min_pogingen: int = 3
 
     # Web Push (accordeur-PWA): VAPID-sleutelpaar (scripts/genereer_vapid_sleutels.py — private
     # key via Secret Manager PUSH_VAPID_PRIVATE_KEY, public key is geen geheim). Niet gezet =

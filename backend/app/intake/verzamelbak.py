@@ -10,13 +10,13 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.documenten.mime import content_type_voor
-from app.documenten.models import Document, DocumentStatus
+from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus
 from app.documenten.service import (
     DocumentNietGevonden,
     _schrijf_overgang,
@@ -25,6 +25,7 @@ from app.documenten.service import (
 )
 from app.documenten.storage import DocumentOpslag
 from app.intake.models import IntakeSplitsing, IntakeSplitsingStatus
+from app.intake.redenen import omschrijf_intake_reden
 from app.intake.toewijzing import leer_toewijzing
 
 
@@ -54,7 +55,11 @@ class VerzamelbakItem:
     tenaamstelling: str | None
     suggestie_administratie_id: uuid.UUID | None
     suggestie_bron: str | None
+    #: Technische intake-reden uit de jongste niet_toegewezen-overgang in de tijdlijn (02-09:
+    #: niet langer None — de rij toont waaróm het document in de bak ligt).
     reden: str | None
+    #: Leesbare vertaling van `reden` voor de rij (app/intake/redenen.py); None = niets extra.
+    reden_label: str | None
     aangemaakt_op: datetime
     splitsing_id: uuid.UUID | None
     splitsing_voorstel: dict | None
@@ -83,15 +88,42 @@ def haal_bijlage_op(*, document_id: uuid.UUID, opslag: DocumentOpslag | None = N
     return inhoud, bestandsnaam, content_type
 
 
+def _jongste_intake_redenen(session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, str | None]:
+    """Per document de `reden` uit de jóngste tijdlijnrij die op niet_toegewezen uitkomt (de
+    intake-registratie óf een latere herlezing) — één gebatchte query, geen lookup per rij."""
+    if not document_ids:
+        return {}
+    rangnummer = (
+        func.row_number()
+        .over(partition_by=DocumentGebeurtenis.document_id, order_by=DocumentGebeurtenis.tijdstip.desc())
+        .label("rang")
+    )
+    sub = (
+        select(DocumentGebeurtenis.document_id, DocumentGebeurtenis.detail, rangnummer)
+        .where(
+            DocumentGebeurtenis.document_id.in_(document_ids),
+            DocumentGebeurtenis.naar_status == DocumentStatus.NIET_TOEGEWEZEN,
+        )
+        .subquery()
+    )
+    rijen = session.execute(select(sub.c.document_id, sub.c.detail).where(sub.c.rang == 1)).all()
+    redenen: dict[uuid.UUID, str | None] = {}
+    for document_id, detail in rijen:
+        reden = (detail or {}).get("reden") if isinstance(detail, dict) else None
+        redenen[document_id] = reden if isinstance(reden, str) and reden.strip() else None
+    return redenen
+
+
 def lijst_verzamelbak() -> list[VerzamelbakItem]:
     """Alle open verzamelbak-documenten (administratie NULL, status niet_toegewezen), incl. een
-    eventueel openstaand splitsingsvoorstel — nieuwste eerst."""
+    eventueel openstaand splitsingsvoorstel én de intake-reden (02-09) — nieuwste eerst."""
     with scoped_session(None) as session:
         documenten = session.scalars(
             select(Document)
             .where(Document.administratie_id.is_(None), Document.status == DocumentStatus.NIET_TOEGEWEZEN)
             .order_by(Document.aangemaakt_op.desc())
         ).all()
+        redenen = _jongste_intake_redenen(session, [d.id for d in documenten])
         splitsingen = {
             s.bron_document_id: s
             for s in session.scalars(
@@ -103,9 +135,8 @@ def lijst_verzamelbak() -> list[VerzamelbakItem]:
         }
         items = []
         for document in documenten:
-            # De intake-reden staat in de niet_toegewezen-overgang in de tijdlijn; hier volstaat
-            # het meest recente detail via een lichte lookup per document (verzamelbak is klein).
             splitsing = splitsingen.get(document.id)
+            reden = redenen.get(document.id)
             items.append(
                 VerzamelbakItem(
                     document_id=document.id,
@@ -116,7 +147,8 @@ def lijst_verzamelbak() -> list[VerzamelbakItem]:
                     tenaamstelling=document.tenaamstelling,
                     suggestie_administratie_id=document.toewijzing_suggestie_administratie_id,
                     suggestie_bron=document.toewijzing_suggestie_bron,
-                    reden=None,
+                    reden=reden,
+                    reden_label=omschrijf_intake_reden(reden, tenaamstelling=document.tenaamstelling),
                     aangemaakt_op=document.aangemaakt_op,
                     splitsing_id=splitsing.id if splitsing else None,
                     splitsing_voorstel=splitsing.voorstel if splitsing else None,

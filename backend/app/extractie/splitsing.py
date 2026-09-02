@@ -3,9 +3,18 @@
 AI leest, code beslist: de AI rapporteert per gevonden factuur het paginabereik, de
 tenaamstelling (geadresseerde — leidend voor de administratie-toewijzing), de leverancier en
 het factuurnummer; de deterministische validatie hieronder toetst de paginabereiken (binnen
-het document, oplopend, niet overlappend) en een ongeldig voorstel telt als "geen voorstel" —
-het document valt dan gewoon in de verzamelbak. Splitsen zelf gebeurt nooit hier: het voorstel
+het document, oplopend, niet overlappend). Splitsen zelf gebeurt nooit hier: het voorstel
 gaat ALTIJD eerst ter controle naar een mens (app/intake/splitsing.py).
+
+PROPORTIONELE VALIDATIE (spoedopdracht 02-09, diagnose punt 1 — 72/76 splitsingsfouten sinds
+25-08): claude-sonnet-5 antwoordde op 1-pagina-PDF's systematisch `ep=2`, waarna de oude
+alles-of-niets-validatie het HELE voorstel verwierp, inclusief de correct gelezen
+tenaamstelling. Sinds 02-09 (a) gaat het wérkelijke pagina-aantal als feit mee in de opdracht
+(lokaal bewezen 3/3 correct) en (b) is de poort chirurgisch: één herkende factuur = het hele
+document (bereik genormaliseerd naar 1–N, splitsing is niet aan de orde); bij meerdere facturen
+krijgt alleen het ongeldige deel `ongeldig_reden` (de mens ziet het en beslist), de geldige delen
+en álle gelezen tenaamstellingen blijven staan. `valideer_segmenten` blijft de harde
+alles-of-niets-poort voor de door de MENS bevestigde bereiken (app/intake/splitsing.py).
 
 AVG: draait uitsluitend achter de platform-brede intake-gate (settings.intake_ai_ingeschakeld,
 default UIT) — op dit punt is er nog geen administratie, dus de per-administratie-gate kan
@@ -73,6 +82,24 @@ OPDRACHT = (
 )
 
 
+def opdracht_met_paginatelling(paginas: int) -> str:
+    """Het wérkelijke pagina-aantal (door code geteld, `tel_paginas`) als FEIT in de opdracht
+    (diagnose 02-09 §1.4: zonder dit feit antwoordt het model op 1-pagina-PDF's `ep=2`; mét
+    het feit 3/3 correct). Prompt-wijziging, géén schema-wijziging."""
+    paginas = max(int(paginas), 1)
+    if paginas == 1:
+        telling = (
+            "FEIT: dit document heeft precies 1 pagina (door code geteld). Er bestaat geen pagina 2; "
+            "elke factuur heeft dus sp=1 en ep=1."
+        )
+    else:
+        telling = (
+            f"FEIT: dit document heeft precies {paginas} pagina's (door code geteld), genummerd 1 tot en "
+            f"met {paginas}. Een paginabereik kan nooit buiten 1–{paginas} vallen."
+        )
+    return f"{OPDRACHT}\n\n{telling}"
+
+
 @dataclass(frozen=True)
 class FactuurSegment:
     start_pagina: int
@@ -81,6 +108,14 @@ class FactuurSegment:
     leverancier: str | None
     factuurnummer: str | None
     zekerheid: float
+    #: Gezet door `beoordeel_segmenten` als dít deel de deterministische paginabereik-toets niet
+    #: doorstaat (proportionele validatie 02-09): het deel gaat als "ongeldig — mens beslist" mee
+    #: in het splitsingsvoorstel; de overige delen en de gelezen tenaamstellingen blijven staan.
+    ongeldig_reden: str | None = None
+
+    @property
+    def geldig(self) -> bool:
+        return self.ongeldig_reden is None
 
     def als_dict(self) -> dict:
         return {
@@ -90,6 +125,7 @@ class FactuurSegment:
             "leverancier": self.leverancier,
             "factuurnummer": self.factuurnummer,
             "zekerheid": self.zekerheid,
+            "ongeldig_reden": self.ongeldig_reden,
         }
 
 
@@ -142,6 +178,95 @@ def valideer_segmenten(segmenten: list[FactuurSegment], *, paginas: int) -> str 
     return None
 
 
+@dataclass(frozen=True)
+class BeoordeeldeSegmenten:
+    """Uitkomst van de proportionele validatie: álle segmenten (ongeldige mét `ongeldig_reden`)
+    plus de normalisaties die code heeft toegepast (voor de tijdlijn/logging)."""
+
+    segmenten: list[FactuurSegment]
+    normalisaties: list[str]
+
+    @property
+    def geldig(self) -> list[FactuurSegment]:
+        return [s for s in self.segmenten if s.geldig]
+
+    @property
+    def ongeldig(self) -> list[FactuurSegment]:
+        return [s for s in self.segmenten if not s.geldig]
+
+
+def _bereik_reden(segment: FactuurSegment, *, paginas: int) -> str | None:
+    if segment.start_pagina < 1 or segment.eind_pagina > paginas:
+        return (
+            f"paginabereik {segment.start_pagina}–{segment.eind_pagina} valt buiten het document "
+            f"({paginas} pagina's)"
+        )
+    if segment.start_pagina > segment.eind_pagina:
+        return f"paginabereik {segment.start_pagina}–{segment.eind_pagina} is omgekeerd"
+    return None
+
+
+def beoordeel_segmenten(segmenten: list[FactuurSegment], *, paginas: int) -> BeoordeeldeSegmenten:
+    """Proportionele validatie (spoedopdracht 02-09): code beslist, maar chirurgisch.
+
+    - Geen segmenten: niets te beoordelen (de aanroeper meldt "geen facturen herkend").
+    - Precies één herkende factuur: één factuur = het hele document, dus het bereik wordt
+      DETERMINISTISCH genormaliseerd naar 1–`paginas` (het AI-bereik doet er niet toe; op een
+      1-pagina-document is splitsing per definitie niet aan de orde). De gelezen
+      tenaamstelling/leverancier/nummer blijven onaangeroerd.
+    - Meerdere facturen: per deel de bereik-toets (binnen het document, niet omgekeerd) en op de
+      geldige delen de volgorde-/overlap-toets; een deel dat faalt krijgt `ongeldig_reden`, de
+      rest blijft staan. Het voorstel gaat sowieso ter controle naar een mens."""
+    paginas = max(int(paginas), 1)
+    if not segmenten:
+        return BeoordeeldeSegmenten(segmenten=[], normalisaties=[])
+    if len(segmenten) == 1:
+        enige = segmenten[0]
+        if (enige.start_pagina, enige.eind_pagina) == (1, paginas):
+            return BeoordeeldeSegmenten(segmenten=[enige], normalisaties=[])
+        genormaliseerd = FactuurSegment(
+            start_pagina=1,
+            eind_pagina=paginas,
+            tenaamstelling=enige.tenaamstelling,
+            leverancier=enige.leverancier,
+            factuurnummer=enige.factuurnummer,
+            zekerheid=enige.zekerheid,
+        )
+        return BeoordeeldeSegmenten(
+            segmenten=[genormaliseerd],
+            normalisaties=[
+                f"paginabereik {enige.start_pagina}–{enige.eind_pagina} genormaliseerd naar 1–{paginas} "
+                "(één herkende factuur = het hele document)"
+            ],
+        )
+
+    beoordeeld: list[FactuurSegment] = []
+    vorige_eind = 0
+    for segment in segmenten:
+        reden = _bereik_reden(segment, paginas=paginas)
+        if reden is None and segment.start_pagina <= vorige_eind:
+            reden = (
+                f"paginabereik {segment.start_pagina}–{segment.eind_pagina} overlapt met een vorig deel "
+                "of staat niet in volgorde"
+            )
+        if reden is None:
+            vorige_eind = segment.eind_pagina
+            beoordeeld.append(segment)
+        else:
+            beoordeeld.append(
+                FactuurSegment(
+                    start_pagina=segment.start_pagina,
+                    eind_pagina=segment.eind_pagina,
+                    tenaamstelling=segment.tenaamstelling,
+                    leverancier=segment.leverancier,
+                    factuurnummer=segment.factuurnummer,
+                    zekerheid=segment.zekerheid,
+                    ongeldig_reden=reden,
+                )
+            )
+    return BeoordeeldeSegmenten(segmenten=beoordeeld, normalisaties=[])
+
+
 def detecteer_facturen(
     pdf_bytes: bytes,
     *,
@@ -150,15 +275,18 @@ def detecteer_facturen(
     verbruik_referentie: AiVerbruikReferentie | None = None,
     mail_context: str | None = None,
 ) -> list[FactuurSegment]:
-    """Eén Claude-aanroep → gevalideerde segmenten. Elke ongeldige uitkomst (afkap, ongeldige
-    bereiken) is een AiExtractieFout — de aanroeper vangt 'm en routeert naar de verzamelbak,
-    nooit een stille gok. `mail_context` = de begeleidende mailtekst als HINT (feedbackronde
-    25-08 deel 3 punt 1c) — gaat BSN-gefilterd mee in de opdracht, het document blijft leidend."""
+    """Eén Claude-aanroep → beoordeelde segmenten (proportionele validatie, zie
+    `beoordeel_segmenten`). Alleen een ONBRUIKBAAR antwoord (afkap, onleesbaar bereik, geen
+    facturen herkend) is een AiExtractieFout — de aanroeper vangt 'm en routeert naar de
+    verzamelbak, nooit een stille gok. Een ongeldig paginabereik verwerpt sinds 02-09 nooit
+    meer het hele voorstel: de teruggegeven lijst kan delen mét `ongeldig_reden` bevatten.
+    `mail_context` = de begeleidende mailtekst als HINT (feedbackronde 25-08 deel 3 punt 1c) —
+    gaat BSN-gefilterd mee in de opdracht, het document blijft leidend."""
     client = client or ClaudeExtractieClient(verbruik_referentie=verbruik_referentie)
     antwoord = client.extraheer_json_uit_pdf(
         pdf_bytes=pdf_bytes,
         system=SYSTEM_PROMPT,
-        opdracht=met_mail_context(OPDRACHT, mail_context),
+        opdracht=met_mail_context(opdracht_met_paginatelling(paginas), mail_context),
         json_schema=SPLITSING_SCHEMA,
     )
     if antwoord.afgekapt:
@@ -187,8 +315,17 @@ def detecteer_facturen(
             )
         )
 
-    reden = valideer_segmenten(segmenten, paginas=paginas)
-    if reden is not None:
-        raise AiExtractieFout(f"Splitsingsvoorstel ongeldig: {reden}")
-    logger.info("Splitsingsdetectie: %s factuur/facturen in %s pagina('s)", len(segmenten), paginas)
-    return segmenten
+    if not segmenten:
+        raise AiExtractieFout("Splitsingsvoorstel ongeldig: geen facturen herkend")
+    beoordeeld = beoordeel_segmenten(segmenten, paginas=paginas)
+    for normalisatie in beoordeeld.normalisaties:
+        logger.info("Splitsingsdetectie: %s", normalisatie)
+    for deel in beoordeeld.ongeldig:
+        logger.warning("Splitsingsdetectie: deel ongeldig — %s (mens beslist)", deel.ongeldig_reden)
+    logger.info(
+        "Splitsingsdetectie: %s factuur/facturen in %s pagina('s), %s deel/delen ongeldig",
+        len(beoordeeld.segmenten),
+        paginas,
+        len(beoordeeld.ongeldig),
+    )
+    return beoordeeld.segmenten

@@ -29,6 +29,8 @@ class SplitsSegmentDto(BaseModel):
     leverancier: str | None = None
     factuurnummer: str | None = None
     zekerheid: float = 0.0
+    # Proportionele validatie (02-09): dít deel doorstond de paginabereik-toets niet — mens beslist.
+    ongeldig_reden: str | None = None
 
 
 class VerzamelbakItemDto(BaseModel):
@@ -40,6 +42,10 @@ class VerzamelbakItemDto(BaseModel):
     tenaamstelling: str | None = None
     suggestie_administratie_id: uuid.UUID | None = None
     suggestie_bron: str | None = None
+    # Intake-reden (02-09): technisch + leesbaar label voor de rij — "geen tenaamstelling gelezen"
+    # alleen nog als de AI werkelijk niets las (app/intake/redenen.py).
+    reden: str | None = None
+    reden_label: str | None = None
     aangemaakt_op: datetime
     splitsing_id: uuid.UUID | None = None
     splitsing_voorstel: list[SplitsSegmentDto] | None = None

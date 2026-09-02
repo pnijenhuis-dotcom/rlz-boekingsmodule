@@ -51,9 +51,7 @@ class TestInkoopUblRouting:
         assert rij.administratie_id is None
         assert rij.status == "niet_toegewezen"
 
-    def test_kapotte_xml_valt_in_verzamelbak(
-        self, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
-    ) -> None:
+    def test_kapotte_xml_valt_in_verzamelbak(self, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine) -> None:
         eml = bouw_eml(bijlagen=[("factuur.xml", b"<geen-ubl>", "application", "xml")])
         resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
 
@@ -219,7 +217,7 @@ class TestBerichtVerwerking:
             conn.execute(
                 text(
                     "UPDATE boekhouding.intake_bericht "
-                    "SET detail = '{\"bijlagen\": [], \"verwerking\": \"bezig\"}'::jsonb "
+                    'SET detail = \'{"bijlagen": [], "verwerking": "bezig"}\'::jsonb '
                     "WHERE id = :id"
                 ),
                 {"id": eerste.bericht_id},
@@ -258,7 +256,7 @@ class TestBerichtVerwerking:
             conn.execute(
                 text(
                     "UPDATE boekhouding.intake_bericht "
-                    "SET detail = '{\"bijlagen\": [], \"verwerking\": \"bezig\"}'::jsonb "
+                    'SET detail = \'{"bijlagen": [], "verwerking": "bezig"}\'::jsonb '
                     "WHERE id = :id"
                 ),
                 {"id": eerste.bericht_id},
@@ -275,12 +273,111 @@ class TestBerichtVerwerking:
             ).scalar_one()
         assert aantal == 1
 
-    def test_onverwerkbaar_bijlagetype_zichtbaar_geregistreerd(
-        self, gescoopte_gebruiker: uuid.UUID
-    ) -> None:
+    def test_onverwerkbaar_bijlagetype_zichtbaar_geregistreerd(self, gescoopte_gebruiker: uuid.UUID) -> None:
         # Sinds punt 2 (25-08 deel 3) zijn afbeeldingen wél documenten — zie test_afbeeldingen.py;
         # een Word-bestand blijft zichtbaar 'niet_verwerkbaar'.
         eml = bouw_eml(bijlagen=[("brief.docx", b"PK fake", "application", "vnd.openxmlformats-officedocument")])
         resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
         assert resultaat.bijlagen[0].uitkomst == "niet_verwerkbaar"
         assert resultaat.bijlagen[0].document_id is None
+
+
+class TestSplitsingsbugProportioneel:
+    """Spoedopdracht 02-09 (diagnose punt 1): de intake-keten van eml tot document-rij."""
+
+    class _NepClient:
+        def __init__(self, facturen: list[dict]) -> None:
+            self.facturen = facturen
+            self.opdrachten: list[str] = []
+
+        def extraheer_json_uit_pdf(self, *, pdf_bytes, system, opdracht, json_schema, cache_document=False):
+            from app.extractie.client import ClaudeAntwoord
+
+            self.opdrachten.append(opdracht)
+            return ClaudeAntwoord(data={"facturen": self.facturen}, afgekapt=False, input_tokens=1, output_tokens=1)
+
+    def _installeer_client(self, monkeypatch, facturen: list[dict]) -> TestSplitsingsbugProportioneel._NepClient:
+        from app.extractie import splitsing as splitsing_module
+
+        client = self._NepClient(facturen)
+        monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+        monkeypatch.setattr(splitsing_module, "ClaudeExtractieClient", lambda **kw: client)
+        return client
+
+    def test_repro_1_pagina_ep_2_wordt_toegewezen_op_tenaamstelling(
+        self,
+        administratie_heet_blow: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+        intake_ai_aan: None,
+        monkeypatch,
+    ) -> None:
+        """De productie-casus: 1-pagina-PDF, AI antwoordt sp=1/ep=2 mét correcte tenaamstelling.
+        Vóór de fix: verzamelbak zonder tenaamstelling ("geen tenaamstelling gelezen")."""
+        client = self._installeer_client(
+            monkeypatch, [{"sp": 1, "ep": 2, "ten": "BLOW B.V.", "lev": "Van Happen", "nr": "226176996", "z": 0.9}]
+        )
+        eml = bouw_eml(bijlagen=[("226176996.pdf", bouw_pdf(1), "application", "pdf")])
+        resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+
+        assert resultaat.bijlagen[0].uitkomst == "toegewezen"
+        rij = _document_rij(admin_engine, resultaat.bijlagen[0].document_id)
+        assert rij.administratie_id == administratie_heet_blow
+        assert rij.tenaamstelling == "BLOW B.V."
+        assert "precies 1 pagina" in client.opdrachten[0]
+
+    def test_1_pagina_onbekende_tenaamstelling_blijft_met_tenaamstelling_in_de_bak(
+        self, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine, intake_ai_aan: None, monkeypatch
+    ) -> None:
+        self._installeer_client(
+            monkeypatch,
+            [{"sp": 1, "ep": 2, "ten": "Belastingbutler B.V.", "lev": "Saleswizard", "nr": "2026-8151", "z": 0.95}],
+        )
+        eml = bouw_eml(bijlagen=[("2026-8151.pdf", bouw_pdf(1), "application", "pdf")])
+        resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+
+        assert resultaat.bijlagen[0].uitkomst == "verzamelbak"
+        assert resultaat.bijlagen[0].detail == "tenaamstelling_niet_eenduidig"
+        rij = _document_rij(admin_engine, resultaat.bijlagen[0].document_id)
+        assert rij.status == "niet_toegewezen"
+        assert rij.tenaamstelling == "Belastingbutler B.V."  # nooit meer verloren
+
+    def test_meerpagina_ongeldig_deel_gaat_met_reden_mee_in_het_voorstel(
+        self,
+        administratie_heet_blow: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        admin_engine: Engine,
+        intake_ai_aan: None,
+        monkeypatch,
+    ) -> None:
+        self._installeer_client(
+            monkeypatch,
+            [
+                {"sp": 1, "ep": 2, "ten": "BLOW B.V.", "lev": "Bouwmaat", "nr": "F-1", "z": 0.95},
+                {"sp": 3, "ep": 7, "ten": "Kempen Groep B.V.", "lev": "Sligro", "nr": "F-2", "z": 0.9},
+            ],
+        )
+        eml = bouw_eml(bijlagen=[("batchscan.pdf", bouw_pdf(3), "application", "pdf")])
+        resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
+
+        assert resultaat.bijlagen[0].uitkomst == "splitsingsvoorstel"
+        assert "1 deel/delen ongeldig" in (resultaat.bijlagen[0].detail or "")
+        document_id = resultaat.bijlagen[0].document_id
+        with admin_engine.connect() as conn:
+            voorstel = conn.execute(
+                text("SELECT voorstel FROM boekhouding.intake_splitsing WHERE bron_document_id = :d"),
+                {"d": document_id},
+            ).scalar_one()
+            reden = conn.execute(
+                text(
+                    "SELECT detail->>'reden' FROM boekhouding.document_gebeurtenis "
+                    "WHERE document_id = :d AND naar_status = 'niet_toegewezen'"
+                ),
+                {"d": document_id},
+            ).scalar_one()
+        assert voorstel["ongeldig"] == 1
+        assert voorstel["facturen"][0]["ongeldig_reden"] is None
+        assert voorstel["facturen"][0]["tenaamstelling"] == "BLOW B.V."
+        assert voorstel["facturen"][1]["ongeldig_reden"] == "paginabereik 3–7 valt buiten het document (3 pagina's)"
+        assert voorstel["facturen"][1]["tenaamstelling"] == "Kempen Groep B.V."  # gelezen, blijft staan
+        assert reden.startswith("splitsingsvoorstel_ter_controle: 2 facturen herkend, 1 deel ongeldig")

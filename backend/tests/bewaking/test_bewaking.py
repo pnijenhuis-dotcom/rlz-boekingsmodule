@@ -41,9 +41,7 @@ def _vers_tijdstip() -> datetime:
 def _storing(soort: str) -> BewakingStoring | None:
     with scoped_session(None) as session:
         rij = session.scalars(
-            select(BewakingStoring)
-            .where(BewakingStoring.soort == soort)
-            .order_by(BewakingStoring.begonnen_op.desc())
+            select(BewakingStoring).where(BewakingStoring.soort == soort).order_by(BewakingStoring.begonnen_op.desc())
         ).first()
         if rij is not None:
             session.expunge(rij)
@@ -94,9 +92,7 @@ class TestStoringStatemachine:
         assert [m["onderwerp"][:1] for m in mails] == ["⛔", "✅"]
         assert soort in mails[1]["onderwerp"]
 
-    def test_mislukte_alertmail_wordt_volgende_run_opnieuw_geprobeerd(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_mislukte_alertmail_wordt_volgende_run_opnieuw_geprobeerd(self, monkeypatch: pytest.MonkeyPatch) -> None:
         soort = f"test-{uuid.uuid4().hex[:8]}"
         nu = datetime.now(UTC)
         pogingen: list[str] = []
@@ -146,6 +142,7 @@ class TestProbeRunCadans:
 
         monkeypatch.setattr(service, "_probe_ai", ai_stub)
         monkeypatch.setattr(service, "_probe_extractie_foutratio", lambda nu: stub("extractie_foutratio"))
+        monkeypatch.setattr(service, "_probe_intake_verwerpingsratio", lambda nu: stub("intake_verwerpingsratio"))
         monkeypatch.setattr(service, "_verzend_alert", lambda **kw: True)
         return tellers
 
@@ -157,6 +154,7 @@ class TestProbeRunCadans:
         # Kwartier later: uur-probes overgeslagen — geen tweede echte AI-call.
         tweede = voer_probes_uit(nu=nu + timedelta(minutes=15))
         assert tweede["ai"] == "overgeslagen"
+        assert tweede["intake_verwerpingsratio"] == "overgeslagen"  # zelfde uurslot (02-09)
         assert stub_probes["ai"] == 1
         # Ná het uurvenster draait hij weer mee.
         derde = voer_probes_uit(nu=nu + timedelta(minutes=61))
@@ -167,9 +165,7 @@ class TestProbeRunCadans:
         nu = _vers_tijdstip()
         voer_probes_uit(nu=nu)
         with scoped_session(None) as session:
-            rij = session.scalars(
-                select(BewakingProbeRun).where(BewakingProbeRun.gestart_op == nu)
-            ).one()
+            rij = session.scalars(select(BewakingProbeRun).where(BewakingProbeRun.gestart_op == nu)).one()
             assert rij.alles_ok is True
             assert rij.met_ai is True
             assert set(rij.uitkomsten) == {
@@ -180,6 +176,7 @@ class TestProbeRunCadans:
                 "rlz",
                 "ai",
                 "extractie_foutratio",
+                "intake_verwerpingsratio",
             }
             assert rij.uitkomsten["health"]["status"] == "ok"
 

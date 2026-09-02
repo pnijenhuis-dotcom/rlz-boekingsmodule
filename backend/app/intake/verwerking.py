@@ -16,10 +16,13 @@ XML (UBL):
 
 PDF:
 5. Intake-AI-gate aan → tenaamstelling + factuurgrensdetectie (app/extractie/splitsing.py):
-   één factuur → toewijzing; meerdere → bron-document in de verzamelbak MET een
-   splitsingsvoorstel dat ALTIJD eerst ter controle gaat (app/intake/splitsing.py).
+   één factuur → toewijzing (bereik genormaliseerd — één factuur = het hele document);
+   meerdere → bron-document in de verzamelbak MET een splitsingsvoorstel dat ALTIJD eerst ter
+   controle gaat (app/intake/splitsing.py); een deel met ongeldig paginabereik gaat mét reden
+   mee in dat voorstel (proportionele validatie 02-09 — nooit meer het hele voorstel verwerpen).
 6. Gate uit of AI-fout → verzamelbak (mens beoordeelt; na toewijzing draait de normale
-   extractie onder de AVG-gate van de gekozen administratie).
+   extractie onder de AVG-gate van de gekozen administratie). De reden is zichtbaar op de
+   verzamelbak-rij (app/intake/redenen.py) én telt mee in de bewaking (intake_verwerpingsratio).
 
 AFBEELDING (JPEG/PNG/HEIC — feedbackronde 25-08 deel 3, punt 2):
 7. Inline MIME-deel (Content-Disposition inline / Content-ID = in de HTML geplaatst logo) of
@@ -525,6 +528,8 @@ def _verwerk_pdf(
         )
 
     if len(segmenten) == 1:
+        # Eén herkende factuur = het hele document (proportionele validatie 02-09: het AI-bereik is
+        # dan irrelevant en al genormaliseerd) — de gelezen tenaamstelling is leidend.
         return _wijs_toe_of_verzamelbak(
             bijlage_naam=bijlage.bestandsnaam,
             inhoud=bijlage.inhoud,
@@ -542,11 +547,19 @@ def _verwerk_pdf(
 
     # Meerdere facturen: bron-document naar de verzamelbak MET splitsingsvoorstel — de
     # voorgestelde splitsing gaat ALTIJD eerst ter controle (mockup), nooit stil auto-splitsen.
+    # Proportioneel (02-09): een deel dat de bereik-toets niet doorstaat gaat mét `ongeldig_reden`
+    # mee (de mens ziet en beslist), de geldige delen en tenaamstellingen blijven staan.
+    ongeldig = [s for s in segmenten if not s.geldig]
+    verzamelbak_reden = f"splitsingsvoorstel_ter_controle: {len(segmenten)} facturen herkend"
+    if ongeldig:
+        verzamelbak_reden += (
+            f", {len(ongeldig)} deel ongeldig" if len(ongeldig) == 1 else f", {len(ongeldig)} delen ongeldig"
+        ) + " — " + "; ".join(s.ongeldig_reden or "" for s in ongeldig)
     document_id = documenten_service.registreer_niet_toegewezen_document(
         bestandsnaam=bijlage.bestandsnaam,
         inhoud=bijlage.inhoud,
         actor_id=actor_id,
-        reden=f"splitsingsvoorstel_ter_controle: {len(segmenten)} facturen herkend",
+        reden=verzamelbak_reden,
         opslag=opslag,
         intake_bericht_id=intake_bericht_id,
         afzender_hint=afzender,
@@ -563,14 +576,21 @@ def _verwerk_pdf(
             session.add(
                 IntakeSplitsing(
                     bron_document_id=document_id,
-                    voorstel={"paginas": paginas, "facturen": [s.als_dict() for s in segmenten]},
+                    voorstel={
+                        "paginas": paginas,
+                        "facturen": [s.als_dict() for s in segmenten],
+                        "ongeldig": len(ongeldig),
+                    },
                 )
             )
+    detail = f"{len(segmenten)} facturen herkend — splitsing ter controle"
+    if ongeldig:
+        detail += f" ({len(ongeldig)} deel/delen ongeldig)"
     return BijlageResultaat(
         bestandsnaam=bijlage.bestandsnaam,
         uitkomst="splitsingsvoorstel",
         document_id=document_id,
-        detail=f"{len(segmenten)} facturen herkend — splitsing ter controle",
+        detail=detail,
     )
 
 

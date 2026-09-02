@@ -34,6 +34,32 @@ class TestVerzamelbak:
         assert items[0].tenaamstelling == "Onbekend BV"
         assert items[0].afzender_hint == "administratie@bouwmaat.nl"
 
+    def test_lijst_toont_de_echte_intake_reden(
+        self, verzamelbak_document: uuid.UUID, gescoopte_gebruiker: uuid.UUID, intake_ai_aan: None, monkeypatch
+    ) -> None:
+        """02-09: de rij draagt de reden uit de tijdlijn + een leesbaar label — "geen tenaamstelling
+        gelezen" alleen als de AI werkelijk niets las."""
+        from app.config import settings
+        from app.extractie.client import AiExtractieFout
+
+        items = {i.document_id: i for i in verzamelbak.lijst_verzamelbak()}
+        ubl_rij = items[verzamelbak_document]
+        assert ubl_rij.reden == "tenaamstelling_niet_eenduidig"
+        assert ubl_rij.reden_label == "tenaamstelling matcht geen administratie of geleerde regel"
+
+        monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+
+        def faal(inhoud, paginas, client=None, verbruik_referentie=None, mail_context=None):
+            raise AiExtractieFout("Claude API-fout: 529 overloaded")
+
+        monkeypatch.setattr(verwerking.splitsing_extractie, "detecteer_facturen", faal)
+        eml = bouw_eml(bijlagen=[("kapot.pdf", bouw_pdf(1), "application", "pdf")])
+        pdf_id = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker).bijlagen[0].document_id
+        pdf_rij = {i.document_id: i for i in verzamelbak.lijst_verzamelbak()}[pdf_id]
+        assert pdf_rij.tenaamstelling is None
+        assert pdf_rij.reden == "splitsingsdetectie_mislukt: Claude API-fout: 529 overloaded"
+        assert pdf_rij.reden_label == "AI-lezing mislukt: Claude API-fout: 529 overloaded"
+
     def test_bestand_leesroute_alleen_voor_echte_verzamelbak_documenten(
         self,
         verzamelbak_document: uuid.UUID,
