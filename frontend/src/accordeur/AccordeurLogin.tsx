@@ -101,7 +101,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
             {bezig ? 'Bezig…' : 'Inloggen met passkey'}
           </button>
         </form>
-        <button className="acc-btn secundair klein" onClick={() => setZonderWachtwoord(false)}>
+        <button className="acc-btn secundair" onClick={() => setZonderWachtwoord(false)}>
           Inloggen met wachtwoord
         </button>
       </div>

@@ -653,10 +653,14 @@
 .acc-vol .acc-appnaam span {
   color: var(--acc-accent);
 }
+/* B6a (screenshot Peter 02-09): knoppen op de volledige-schermstaten even breed als het
+   formulier (320 px) — vóór de fix was de knop ín .acc-form (max 260, links uitgelijnd in een
+   320-brede kolom) smaller én verschoven t.o.v. de gecentreerde knop eronder. */
 .acc-vol .acc-btn {
   flex: none;
   width: 100%;
-  max-width: 260px;
+  max-width: 320px;
+  align-self: center;
 }
 .acc-bio {
   text-align: center;
