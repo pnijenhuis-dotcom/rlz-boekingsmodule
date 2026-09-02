@@ -230,6 +230,51 @@ def verzamelbak_hoort_niet_bij_ons(
     )
 
 
+def _bulk_response(r: verzamelbak.BulkResultaat) -> schemas.BulkVerzamelbakResponse:
+    return schemas.BulkVerzamelbakResponse(
+        uitkomsten=[
+            schemas.BulkRijUitkomstDto(
+                document_id=u.document_id,
+                bestandsnaam=u.bestandsnaam,
+                uitkomst=u.uitkomst,
+                status=u.status,
+                reden=u.reden,
+            )
+            for u in r.uitkomsten
+        ],
+        verwerkt=r.verwerkt,
+        al_verwerkt=r.al_verwerkt,
+        fout=r.fout,
+    )
+
+
+@router.post("/verzamelbak/bulk-toewijzen", response_model=schemas.BulkVerzamelbakResponse)
+def verzamelbak_bulk_toewijzen(
+    invoer: schemas.BulkToewijzenInput, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.BulkVerzamelbakResponse:
+    """Bulk-toewijzen (blok B 02-09, casus IC-stapel): orkestratie over de bestaande per-rij-route —
+    uitkomst per rij (verwerkt / al_verwerkt / fout mét reden), altijd 200; een fout op één rij stopt
+    de rest niet. Alleen een onbekende administratie is een 409 voor de hele aanroep."""
+    try:
+        r = verzamelbak.bulk_wijs_toe(
+            document_ids=invoer.document_ids, administratie_id=invoer.administratie_id, actor_id=actor.id
+        )
+    except verzamelbak.OnbekendeAdministratie as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _bulk_response(r)
+
+
+@router.post("/verzamelbak/bulk-hoort-niet-bij-ons", response_model=schemas.BulkVerzamelbakResponse)
+def verzamelbak_bulk_hoort_niet_bij_ons(
+    invoer: schemas.BulkHoortNietBijOnsInput, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.BulkVerzamelbakResponse:
+    try:
+        r = verzamelbak.bulk_hoort_niet_bij_ons(document_ids=invoer.document_ids, actor_id=actor.id, reden=invoer.reden)
+    except verzamelbak.RedenVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return _bulk_response(r)
+
+
 @router.post("/intake/splitsingen/{splitsing_id}/bevestigen", response_model=schemas.SplitsingBevestigenResponse)
 def splitsing_bevestigen(
     splitsing_id: uuid.UUID,

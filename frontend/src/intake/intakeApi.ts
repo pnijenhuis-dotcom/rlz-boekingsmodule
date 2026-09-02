@@ -153,3 +153,31 @@ export function voegSamen(leidendId: string, anderId: string, bevestigZelfdeType
 export function maakSamenvoegenOngedaan(documentId: string): Promise<{ document_id: string; teruggezet_document_id: string }> {
   return apiPostJson(`/verzamelbak/${documentId}/samenvoegen-ongedaan`, {})
 }
+
+/** Bulk (blok B 02-09, casus IC-stapel): één administratie of één reden voor de hele selectie —
+ * server-side een orkestratie over de per-rij-routes; uitkomst per rij, altijd 200. */
+export interface BulkRijUitkomstDto {
+  document_id: string
+  bestandsnaam: string | null
+  uitkomst: 'verwerkt' | 'al_verwerkt' | 'fout'
+  status: string | null
+  reden: string | null
+}
+
+export interface BulkVerzamelbakResponseDto {
+  uitkomsten: BulkRijUitkomstDto[]
+  verwerkt: number
+  al_verwerkt: number
+  fout: number
+}
+
+export function bulkWijsToe(documentIds: string[], administratieId: string): Promise<BulkVerzamelbakResponseDto> {
+  return apiPostJson<BulkVerzamelbakResponseDto>('/verzamelbak/bulk-toewijzen', {
+    document_ids: documentIds,
+    administratie_id: administratieId,
+  })
+}
+
+export function bulkHoortNietBijOns(documentIds: string[], reden: string): Promise<BulkVerzamelbakResponseDto> {
+  return apiPostJson<BulkVerzamelbakResponseDto>('/verzamelbak/bulk-hoort-niet-bij-ons', { document_ids: documentIds, reden })
+}

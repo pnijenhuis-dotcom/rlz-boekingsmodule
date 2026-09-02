@@ -5,11 +5,14 @@ import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   bevestigSplitsing,
+  bulkHoortNietBijOns,
+  bulkWijsToe,
   haalVerzamelbakOp,
   hoortNietBijOns,
   maakSamenvoegenOngedaan,
   wijsSplitsingAf,
   wijsToe,
+  type BulkVerzamelbakResponseDto,
   type VerzamelbakActieResultaatDto,
   type VerzamelbakItemDto,
 } from './intakeApi'
@@ -51,9 +54,16 @@ export function VerzamelbakPaneel({
   const [rijFouten, setRijFouten] = useState<Record<string, string>>({})
   const [stilleMeldingen, setStilleMeldingen] = useState<string[]>([])
   const onderweg = useRef(new Set<string>())
-  // Handmatig samenvoegen (02-09): twee rijen selecteren → dialoog (mens kiest het leidende bestand).
+  // Selectie (02-09): twee rijen → Samenvoegen (dialoog, mens kiest het leidende bestand); één of meer
+  // rijen → bulk-toewijzen / bulk "hoort niet bij ons" (blok B, casus IC-stapel). Selecteer-alles werkt
+  // binnen het actieve tekstfilter; rijen mét een open splitsingsvoorstel zijn nooit selecteerbaar.
   const [geselecteerd, setGeselecteerd] = useState<string[]>([])
   const [samenvoegOpen, setSamenvoegOpen] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [bulkKeuze, setBulkKeuze] = useState('')
+  const [bulkRedenOpen, setBulkRedenOpen] = useState(false)
+  const [bulkUitkomst, setBulkUitkomst] = useState<string | null>(null)
+  const [bulkBezig, setBulkBezig] = useState(false)
 
   const laad = useCallback(() => {
     haalVerzamelbakOp()
@@ -120,6 +130,74 @@ export function VerzamelbakPaneel({
     }
   }
 
+  /** Bulk (blok B 02-09): optimistisch — álle geselecteerde rijen verdwijnen direct, één request; per rij
+   * komt de uitkomst terug (patroon bulk-accordering): 'fout' = rij LUID terug mét reden, 'al_verwerkt' =
+   * rustige melding, 'verwerkt' = weg. Faalt het request zelf (5xx/time-out) → alle rijen terug. */
+  const bulkActie = async (
+    ids: string[],
+    werk: (ids: string[]) => Promise<BulkVerzamelbakResponseDto>,
+    omschrijving: (r: BulkVerzamelbakResponseDto) => string,
+  ) => {
+    if (bulkBezig || ids.length === 0) return
+    const teDoen = ids.filter((id) => !onderweg.current.has(id))
+    if (teDoen.length === 0) return
+    teDoen.forEach((id) => onderweg.current.add(id))
+    const weggehaald: { item: VerzamelbakItemDto; index: number }[] = []
+    setItems((huidig) => {
+      if (!huidig) return huidig
+      huidig.forEach((i, index) => {
+        if (teDoen.includes(i.document_id)) weggehaald.push({ item: i, index })
+      })
+      return huidig.filter((i) => !teDoen.includes(i.document_id))
+    })
+    setGeselecteerd([])
+    setBulkBezig(true)
+    setBulkUitkomst(null)
+    const zetTerug = (welke: { item: VerzamelbakItemDto; index: number }[], redenVoor: (id: string) => string) => {
+      if (welke.length === 0) return
+      setItems((huidig) => {
+        const kopie = [...(huidig ?? [])]
+        welke
+          .sort((a, b) => a.index - b.index)
+          .forEach(({ item, index }) => {
+            if (!kopie.some((i) => i.document_id === item.document_id)) kopie.splice(Math.min(index, kopie.length), 0, item)
+          })
+        return kopie
+      })
+      setRijFouten((f) => {
+        const kopie = { ...f }
+        welke.forEach(({ item }) => {
+          kopie[item.document_id] = redenVoor(item.document_id)
+        })
+        return kopie
+      })
+    }
+    try {
+      const r = await werk(teDoen)
+      const fouten = new Map(r.uitkomsten.filter((u) => u.uitkomst === 'fout').map((u) => [u.document_id, u.reden]))
+      zetTerug(
+        weggehaald.filter(({ item }) => fouten.has(item.document_id)),
+        (id) => `Niet verwerkt: ${fouten.get(id) ?? 'onbekende reden'}`,
+      )
+      const alVerwerkt = r.uitkomsten.filter((u) => u.uitkomst === 'al_verwerkt')
+      if (alVerwerkt.length > 0) {
+        setStilleMeldingen((m) => [
+          ...m,
+          ...alVerwerkt.map((u) => `${u.bestandsnaam ?? u.document_id}: ${u.reden ?? 'was al verwerkt — niets opnieuw gedaan.'}`),
+        ])
+      }
+      setBulkUitkomst(omschrijving(r))
+      onGewijzigd?.()
+    } catch (err) {
+      const reden = redenVoorMislukking(err)
+      zetTerug(weggehaald, () => reden)
+      setBulkUitkomst(null)
+    } finally {
+      teDoen.forEach((id) => onderweg.current.delete(id))
+      setBulkBezig(false)
+    }
+  }
+
   if (items === null || items.length === 0) {
     // Mockup: leeg = paneel onzichtbaar. Een laadfout tonen we wel — nooit stil.
     return fout ? (
@@ -131,31 +209,113 @@ export function VerzamelbakPaneel({
     ) : null
   }
 
+  const filterTerm = filter.trim().toLowerCase()
+  const zichtbaar = filterTerm
+    ? items.filter((i) =>
+        [i.bestandsnaam, i.afzender_hint ?? '', i.tenaamstelling ?? '', administraties.find((a) => a.id === i.suggestie_administratie_id)?.naam ?? '']
+          .join(' ')
+          .toLowerCase()
+          .includes(filterTerm),
+      )
+    : items
+  const selecteerbaar = zichtbaar.filter((i) => !i.splitsing_voorstel)
+  const geselecteerdeItems = items.filter((i) => geselecteerd.includes(i.document_id))
+  const allesGeselecteerd = selecteerbaar.length > 0 && selecteerbaar.every((i) => geselecteerd.includes(i.document_id))
+  // Vooringevuld als álle geselecteerde rijen dezelfde suggestie dragen (blok B); anders kiest de mens.
+  const gedeeldeSuggestie = (() => {
+    const s = new Set(geselecteerdeItems.map((i) => i.suggestie_administratie_id ?? ''))
+    return s.size === 1 && !s.has('') ? [...s][0] : ''
+  })()
+  const bulkDoel = bulkKeuze || gedeeldeSuggestie
+  const bulkDoelNaam = administraties.find((a) => a.id === bulkDoel)?.naam
+
   return (
     <div className="panel" style={{ borderLeft: '3px solid var(--orange)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>Niet toegewezen — handmatig koppelen ({items.length})</h2>
-        {geselecteerd.length > 0 && (
-          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
-            <span className="hint" style={{ margin: 0 }}>
-              {geselecteerd.length} geselecteerd
-            </span>
-            <button
-              type="button"
-              className="btn secondary"
-              style={{ padding: '5px 12px' }}
-              disabled={geselecteerd.length !== 2}
-              title={geselecteerd.length === 2 ? 'Twee bestanden van dezelfde factuur samenvoegen tot één document' : 'Selecteer precies twee rijen'}
-              onClick={() => setSamenvoegOpen(true)}
-            >
-              Samenvoegen ({geselecteerd.length})
-            </button>
-            <button type="button" className="linkbtn" onClick={() => setGeselecteerd([])}>
-              selectie wissen
-            </button>
+        <input
+          type="search"
+          aria-label="Filter verzamelbak"
+          placeholder="filter op bestand, afzender, tenaamstelling…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          style={{ marginLeft: 'auto', minWidth: 240, fontSize: 12.5 }}
+        />
+        {filterTerm && (
+          <span className="hint" style={{ margin: 0 }} data-testid="verzamelbak-filter-telling">
+            {zichtbaar.length} van {items.length}
           </span>
         )}
       </div>
+      {geselecteerd.length > 0 && (
+        <div
+          className="bulkbalk"
+          data-testid="verzamelbak-bulkbalk"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12.5 }}
+        >
+          <strong>{geselecteerd.length} geselecteerd</strong>
+          <span style={{ minWidth: 260 }}>
+            <AdministratieCombobox
+              label="Bulk toewijzen aan"
+              toonLabel={false}
+              administraties={administraties}
+              waarde={bulkDoel}
+              onWijzig={setBulkKeuze}
+              placeholder="— kies administratie —"
+            />
+          </span>
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: '5px 12px' }}
+            disabled={!bulkDoel || bulkBezig}
+            title={bulkDoel ? undefined : 'Kies eerst een administratie'}
+            onClick={() =>
+              void bulkActie(
+                geselecteerd,
+                (ids) => bulkWijsToe(ids, bulkDoel),
+                (r) =>
+                  `${r.verwerkt} toegewezen aan ${bulkDoelNaam ?? 'de administratie'}` +
+                  (r.al_verwerkt > 0 ? `, ${r.al_verwerkt} al eerder verwerkt` : '') +
+                  (r.fout > 0 ? `, ${r.fout} niet verwerkt (zie de rode rijen)` : '') +
+                  '.',
+              )
+            }
+          >
+            Toewijzen aan {bulkDoelNaam ?? '…'} ({geselecteerd.length}) ✓
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ padding: '5px 12px' }}
+            disabled={bulkBezig}
+            onClick={() => {
+              setReden('')
+              setBulkRedenOpen(true)
+            }}
+          >
+            Hoort niet bij ons ({geselecteerd.length})
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ padding: '5px 12px' }}
+            disabled={geselecteerd.length !== 2 || bulkBezig}
+            title={geselecteerd.length === 2 ? 'Twee bestanden van dezelfde factuur samenvoegen tot één document' : 'Selecteer precies twee rijen'}
+            onClick={() => setSamenvoegOpen(true)}
+          >
+            Samenvoegen ({geselecteerd.length})
+          </button>
+          <button type="button" className="linkbtn" onClick={() => setGeselecteerd([])}>
+            selectie wissen
+          </button>
+        </div>
+      )}
+      {bulkUitkomst && (
+        <div className="hint" data-testid="verzamelbak-bulk-uitkomst" style={{ marginTop: 6 }}>
+          {bulkUitkomst}
+        </div>
+      )}
       {fout && <div className="fout">{fout}</div>}
       {stilleMeldingen.length > 0 && (
         <div className="hint" data-testid="verzamelbak-al-verwerkt" style={{ marginTop: 0 }}>
@@ -172,14 +332,28 @@ export function VerzamelbakPaneel({
         <table>
           <tbody>
             <tr>
-              <th style={{ width: 28 }} aria-label="Selecteren voor samenvoegen" />
+              <th style={{ width: 28 }}>
+                <input
+                  type="checkbox"
+                  aria-label={filterTerm ? `Selecteer alle ${selecteerbaar.length} gefilterde rijen` : `Selecteer alle ${selecteerbaar.length} rijen`}
+                  checked={allesGeselecteerd}
+                  disabled={selecteerbaar.length === 0}
+                  onChange={(e) =>
+                    setGeselecteerd((g) =>
+                      e.target.checked
+                        ? [...g.filter((id) => !selecteerbaar.some((i) => i.document_id === id)), ...selecteerbaar.map((i) => i.document_id)]
+                        : g.filter((id) => !selecteerbaar.some((i) => i.document_id === id)),
+                    )
+                  }
+                />
+              </th>
               <th>Document</th>
               <th>Binnengekomen via</th>
               <th>Tenaamstelling / suggestie</th>
               <th>Toewijzen aan</th>
               <th />
             </tr>
-            {items.map((item) => {
+            {zichtbaar.map((item) => {
               const suggestieNaam = administraties.find((a) => a.id === item.suggestie_administratie_id)?.naam
               const gekozen = keuze[item.document_id] ?? item.suggestie_administratie_id ?? ''
               // Proportionele validatie (02-09): een deel mét ongeldig_reden is door code afgewezen —
@@ -194,7 +368,7 @@ export function VerzamelbakPaneel({
                     {!item.splitsing_voorstel && (
                       <input
                         type="checkbox"
-                        aria-label={`Selecteer ${item.bestandsnaam} voor samenvoegen`}
+                        aria-label={`Selecteer ${item.bestandsnaam}`}
                         checked={isGeselecteerd}
                         onChange={(e) =>
                           setGeselecteerd((g) =>
@@ -380,7 +554,8 @@ export function VerzamelbakPaneel({
         nooit iets kwijt. Elke handmatige toewijzing wordt onthouden: dezelfde tenaamstelling wordt de volgende
         keer automatisch gekoppeld (een afzender alleen buiten de kantoor-/doorstuuradressen). UBL + PDF van
         dezelfde factuur worden bij binnenkomst gebundeld; mist dat een keer, selecteer dan twee rijen en kies
-        &ldquo;Samenvoegen&rdquo;.
+        &ldquo;Samenvoegen&rdquo;. Selecteer meerdere rijen (of alles binnen het filter) om ze in één keer toe te
+        wijzen of als &ldquo;hoort niet bij ons&rdquo; af te handelen.
       </div>
 
       {samenvoegOpen && geselecteerd.length === 2 && (() => {
@@ -401,6 +576,49 @@ export function VerzamelbakPaneel({
           />
         )
       })()}
+      {bulkRedenOpen && geselecteerd.length > 0 && (
+        <div className="modal-bg open">
+          <div className="modal">
+            <h2>Hoort niet bij ons — {geselecteerd.length} documenten</h2>
+            <div className="row">
+              <label htmlFor="bulk-niet-van-ons-reden">Reden (verplicht, geldt voor de hele selectie)</label>
+              <textarea
+                id="bulk-niet-van-ons-reden"
+                rows={3}
+                value={reden}
+                onChange={(e) => setReden(e.target.value)}
+                placeholder="Bijv.: facturen voor een ander kantoor / geen klant van ons"
+              />
+            </div>
+            <div className="actions">
+              <button type="button" className="btn secondary" onClick={() => setBulkRedenOpen(false)}>
+                Annuleren
+              </button>
+              <button
+                type="button"
+                className="btn warn"
+                disabled={!reden.trim()}
+                onClick={() => {
+                  const schoneReden = reden.trim()
+                  const ids = geselecteerd
+                  setBulkRedenOpen(false)
+                  void bulkActie(
+                    ids,
+                    (sel) => bulkHoortNietBijOns(sel, schoneReden),
+                    (r) =>
+                      `${r.verwerkt} vastgelegd als "hoort niet bij ons"` +
+                      (r.al_verwerkt > 0 ? `, ${r.al_verwerkt} al eerder verwerkt` : '') +
+                      (r.fout > 0 ? `, ${r.fout} niet verwerkt (zie de rode rijen)` : '') +
+                      '.',
+                  )
+                }}
+              >
+                Vastleggen ({geselecteerd.length}) ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {redenVoor && (
         <div className="modal-bg open">
           <div className="modal">

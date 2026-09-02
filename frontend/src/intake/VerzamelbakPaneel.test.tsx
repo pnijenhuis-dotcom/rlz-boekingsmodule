@@ -39,6 +39,8 @@ function installFetchMock(opties: {
   items?: unknown[]
   aanroepen?: { url: string; body: unknown }[]
   bestandAanroepen?: string[]
+  /** Antwoord op /verzamelbak/bulk-* (blok B); default = alles verwerkt. */
+  bulkAntwoord?: (body: { document_ids: string[] }) => unknown
 }) {
   vi.stubGlobal(
     'fetch',
@@ -67,6 +69,17 @@ function installFetchMock(opties: {
       }
       if (init?.method === 'POST') {
         opties.aanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
+        if (url.includes('/verzamelbak/bulk-')) {
+          const body = JSON.parse(String(init.body)) as { document_ids: string[] }
+          const antwoord =
+            opties.bulkAntwoord?.(body) ?? {
+              uitkomsten: body.document_ids.map((id) => ({ document_id: id, bestandsnaam: null, uitkomst: 'verwerkt', status: 'ontvangen', reden: null })),
+              verwerkt: body.document_ids.length,
+              al_verwerkt: 0,
+              fout: 0,
+            }
+          return Promise.resolve(jsonResponse(antwoord))
+        }
         if (url.endsWith('/verzamelbak/samenvoegen')) {
           return Promise.resolve(
             jsonResponse({ document_id: DOC_ID, samengevoegd_document_id: DOC_ID_2, beeld_bestandsnaam: 'factuur_energie.pdf', waarschuwingen: [] }),
@@ -365,9 +378,9 @@ describe('VerzamelbakPaneel', () => {
       aanroepen,
     })
     render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
-    await userEvent.click(await screen.findByLabelText('Selecteer 2026-8151.pdf voor samenvoegen'))
+    await userEvent.click(await screen.findByLabelText('Selecteer 2026-8151.pdf'))
     expect(screen.getByRole('button', { name: 'Samenvoegen (1)' })).toBeDisabled()
-    await userEvent.click(screen.getByLabelText('Selecteer 2026-8151.xml voor samenvoegen'))
+    await userEvent.click(screen.getByLabelText('Selecteer 2026-8151.xml'))
     await userEvent.click(screen.getByRole('button', { name: 'Samenvoegen (2)' }))
     // Default leidend = de UBL (velden deterministisch); zelfde mail → geen waarschuwing.
     expect(await screen.findByRole('radio', { name: /2026-8151\.xml/ })).toBeChecked()
@@ -389,8 +402,8 @@ describe('VerzamelbakPaneel', () => {
       ],
     })
     render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
-    await userEvent.click(await screen.findByLabelText('Selecteer a.pdf voor samenvoegen'))
-    await userEvent.click(screen.getByLabelText('Selecteer b.pdf voor samenvoegen'))
+    await userEvent.click(await screen.findByLabelText('Selecteer a.pdf'))
+    await userEvent.click(screen.getByLabelText('Selecteer b.pdf'))
     await userEvent.click(screen.getByRole('button', { name: 'Samenvoegen (2)' }))
     expect(await screen.findByTestId('samenvoeg-waarschuwing-mail')).toBeInTheDocument()
     const bevestig = screen.getByRole('button', { name: /Samenvoegen — a\.pdf leidend/ })
@@ -408,5 +421,101 @@ describe('VerzamelbakPaneel', () => {
     render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
     await userEvent.click(await screen.findByRole('button', { name: 'samenvoegen ongedaan maken' }))
     await waitFor(() => expect(aanroepen.some((a) => a.url.endsWith(`/verzamelbak/${DOC_ID}/samenvoegen-ongedaan`))).toBe(true))
+  })
+
+  it('blok B (02-09): selecteer-alles → bulkbalk vooringevuld met de gedeelde suggestie → één POST, rijen optimistisch weg, fout-rij LUID terug', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      aanroepen,
+      items: [
+        item({ document_id: DOC_ID, bestandsnaam: 'Universal Nederland B.V - RLZ-2080143001.xml', tenaamstelling: 'Universal Steigerbouw B.V.' }),
+        item({ document_id: DOC_ID_2, bestandsnaam: 'Universal Nederland B.V - RLZ-2080143002.xml', tenaamstelling: 'Universal Steigerbouw B.V.' }),
+        item({ document_id: 'ffffffff-0000-0000-0000-000000000006', bestandsnaam: 'kapot.xml', tenaamstelling: 'Universal Steigerbouw B.V.' }),
+      ],
+      bulkAntwoord: (body) => ({
+        uitkomsten: body.document_ids.map((id) =>
+          id === 'ffffffff-0000-0000-0000-000000000006'
+            ? { document_id: id, bestandsnaam: 'kapot.xml', uitkomst: 'fout', status: null, reden: 'Dit document is intussen samengevoegd met een ander document — er is niets gewijzigd.' }
+            : { document_id: id, bestandsnaam: null, uitkomst: 'verwerkt', status: 'te_controleren', reden: null },
+        ),
+        verwerkt: 2,
+        al_verwerkt: 0,
+        fout: 1,
+      }),
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await screen.findByText(/handmatig koppelen \(3\)/)
+    expect(screen.queryByTestId('verzamelbak-bulkbalk')).toBeNull()
+
+    await userEvent.click(screen.getByLabelText('Selecteer alle 3 rijen'))
+    const balk = screen.getByTestId('verzamelbak-bulkbalk')
+    expect(balk).toHaveTextContent('3 geselecteerd')
+    // Alle drie dragen suggestie ADMIN_A → vooringevuld, knop benoemt het doel.
+    const knop = screen.getByRole('button', { name: /Toewijzen aan BLOW B.V. \(3\)/ })
+    await userEvent.click(knop)
+
+    // Optimistisch: alle drie rijen direct weg, nog vóór/ongeacht het antwoord.
+    await waitFor(() => expect(aanroepen.filter((a) => a.url.endsWith('/verzamelbak/bulk-toewijzen'))).toHaveLength(1))
+    const body = aanroepen[0].body as { document_ids: string[]; administratie_id: string }
+    expect(body.administratie_id).toBe(ADMIN_A)
+    expect(body.document_ids).toEqual([DOC_ID, DOC_ID_2, 'ffffffff-0000-0000-0000-000000000006'])
+    // Uitkomst per rij: de fout-rij komt LUID terug mét reden, de rest blijft weg; samenvatting zichtbaar.
+    expect(await screen.findByText(/Niet verwerkt: Dit document is intussen samengevoegd/)).toBeInTheDocument()
+    expect(screen.getByText('kapot.xml')).toBeInTheDocument()
+    expect(screen.queryByText('Universal Nederland B.V - RLZ-2080143001.xml')).toBeNull()
+    expect(screen.getByTestId('verzamelbak-bulk-uitkomst')).toHaveTextContent('2 toegewezen aan BLOW B.V., 1 niet verwerkt (zie de rode rijen).')
+    expect(screen.queryByTestId('verzamelbak-bulkbalk')).toBeNull()
+  })
+
+  it('blok B (02-09): filter beperkt selecteer-alles tot de zichtbare rijen; bulk "hoort niet bij ons" vraagt één reden voor de hele selectie', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      aanroepen,
+      items: [
+        item({ document_id: DOC_ID, bestandsnaam: 'reclame-1.pdf', tenaamstelling: null, suggestie_administratie_id: null }),
+        item({ document_id: DOC_ID_2, bestandsnaam: 'reclame-2.pdf', tenaamstelling: null, suggestie_administratie_id: ADMIN_B }),
+        item({ document_id: 'ffffffff-0000-0000-0000-000000000006', bestandsnaam: 'factuur.pdf' }),
+      ],
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await screen.findByText(/handmatig koppelen \(3\)/)
+    await userEvent.type(screen.getByLabelText('Filter verzamelbak'), 'reclame')
+    expect(screen.getByTestId('verzamelbak-filter-telling')).toHaveTextContent('2 van 3')
+    expect(screen.queryByText('factuur.pdf')).toBeNull()
+
+    await userEvent.click(screen.getByLabelText('Selecteer alle 2 gefilterde rijen'))
+    expect(screen.getByTestId('verzamelbak-bulkbalk')).toHaveTextContent('2 geselecteerd')
+    // Geen gedeelde suggestie (null + ADMIN_B) → niet vooringevuld, toewijzen-knop uit.
+    expect(screen.getByRole('button', { name: /Toewijzen aan … \(2\)/ })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hoort niet bij ons (2)' }))
+    const vastleggen = screen.getByRole('button', { name: 'Vastleggen (2) ✓' })
+    expect(vastleggen).toBeDisabled()
+    await userEvent.type(screen.getByLabelText(/Reden \(verplicht, geldt voor de hele selectie\)/), 'reclame, geen klant')
+    await userEvent.click(vastleggen)
+
+    await waitFor(() => expect(aanroepen.filter((a) => a.url.endsWith('/verzamelbak/bulk-hoort-niet-bij-ons'))).toHaveLength(1))
+    expect(aanroepen[0].body).toEqual({ document_ids: [DOC_ID, DOC_ID_2], reden: 'reclame, geen klant' })
+    expect(await screen.findByTestId('verzamelbak-bulk-uitkomst')).toHaveTextContent('2 vastgelegd als "hoort niet bij ons".')
+    // De ongefilterde rij is nooit geraakt.
+    await userEvent.clear(screen.getByLabelText('Filter verzamelbak'))
+    expect(screen.getByText('factuur.pdf')).toBeInTheDocument()
+  })
+
+  it('blok B (02-09): faalt het bulk-request zelf, dan komen álle rijen terug mét reden — nooit stil', async () => {
+    installFetchMock({
+      items: [item({ document_id: DOC_ID, bestandsnaam: 'a.pdf' }), item({ document_id: DOC_ID_2, bestandsnaam: 'b.pdf' })],
+      bulkAntwoord: () => {
+        throw new Error('kapot')
+      },
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await screen.findByText(/handmatig koppelen \(2\)/)
+    await userEvent.click(screen.getByLabelText('Selecteer alle 2 rijen'))
+    await userEvent.click(screen.getByRole('button', { name: /Toewijzen aan BLOW B.V. \(2\)/ }))
+    const fouten = await screen.findAllByRole('alert')
+    expect(fouten).toHaveLength(2)
+    expect(screen.getByText('a.pdf')).toBeInTheDocument()
+    expect(screen.getByText('b.pdf')).toBeInTheDocument()
   })
 })

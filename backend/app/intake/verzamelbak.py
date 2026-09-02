@@ -6,7 +6,9 @@ delete."""
 
 from __future__ import annotations
 
+import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -32,6 +34,8 @@ from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
 from app.intake.models import IntakeSplitsing, IntakeSplitsingStatus
 from app.intake.redenen import omschrijf_intake_reden
 from app.intake.toewijzing import leer_toewijzing
+
+logger = logging.getLogger(__name__)
 
 
 class VerzamelbakFout(Exception):
@@ -333,6 +337,113 @@ def hoort_niet_bij_ons(*, document_id: uuid.UUID, actor_id: uuid.UUID, reden: st
             administratie_id=None,
         )
         return VerzamelbakActieResultaat(status=document.status)
+
+
+# ---- Bulk (blok B 02-09, casus IC-stapel Universal Nederland → Universal Steigerbouw) -----------------
+
+
+@dataclass(frozen=True)
+class BulkRijUitkomst:
+    """Uitkomst per rij van een bulk-actie (patroon bulk-accordering 01-09: één lijst, dezelfde vorm
+    vóór en ná). `uitkomst`: 'verwerkt' | 'al_verwerkt' | 'fout' — een fout op één rij stopt de rest
+    niet en verdwijnt nooit stil (reden in leesbare taal)."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str | None
+    uitkomst: str
+    status: str | None = None
+    reden: str | None = None
+
+
+@dataclass(frozen=True)
+class BulkResultaat:
+    uitkomsten: list[BulkRijUitkomst]
+
+    @property
+    def verwerkt(self) -> int:
+        return sum(1 for u in self.uitkomsten if u.uitkomst == "verwerkt")
+
+    @property
+    def al_verwerkt(self) -> int:
+        return sum(1 for u in self.uitkomsten if u.uitkomst == "al_verwerkt")
+
+    @property
+    def fout(self) -> int:
+        return sum(1 for u in self.uitkomsten if u.uitkomst == "fout")
+
+
+def _bestandsnamen(document_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    with scoped_session(None) as session:
+        return dict(
+            session.execute(select(Document.id, Document.bestandsnaam).where(Document.id.in_(document_ids))).all()
+        )
+
+
+def _bulk(
+    document_ids: list[uuid.UUID],
+    per_rij: Callable[[uuid.UUID], VerzamelbakActieResultaat],
+) -> BulkResultaat:
+    """Orkestratie over de bestaande per-rij-functies — géén tweede schrijver: elke rij doorloopt exact
+    `wijs_toe`/`hoort_niet_bij_ons` (idempotentie, leren, audit, extractie-start). Dubbele id's in de
+    invoer worden één keer verwerkt (volgorde behouden)."""
+    namen = _bestandsnamen(document_ids)
+    uitkomsten: list[BulkRijUitkomst] = []
+    gezien: set[uuid.UUID] = set()
+    for document_id in document_ids:
+        if document_id in gezien:
+            continue
+        gezien.add(document_id)
+        naam = namen.get(document_id)
+        try:
+            r = per_rij(document_id)
+        except (DocumentNietGevonden, VerzamelbakFout) as exc:
+            uitkomsten.append(
+                BulkRijUitkomst(document_id=document_id, bestandsnaam=naam, uitkomst="fout", reden=str(exc))
+            )
+            continue
+        except Exception as exc:  # noqa: BLE001 — één kapotte rij mag de stapel niet stoppen; wél zichtbaar
+            logger.exception("Bulk-verzamelbakactie mislukt voor %s", document_id)
+            uitkomsten.append(
+                BulkRijUitkomst(
+                    document_id=document_id,
+                    bestandsnaam=naam,
+                    uitkomst="fout",
+                    reden=f"Onverwachte fout — niet verwerkt ({type(exc).__name__}). Probeer deze rij los opnieuw.",
+                )
+            )
+            continue
+        uitkomsten.append(
+            BulkRijUitkomst(
+                document_id=document_id,
+                bestandsnaam=naam,
+                uitkomst="al_verwerkt" if r.al_verwerkt else "verwerkt",
+                status=r.status.value,
+                reden=r.melding,
+            )
+        )
+    return BulkResultaat(uitkomsten=uitkomsten)
+
+
+def bulk_wijs_toe(*, document_ids: list[uuid.UUID], administratie_id: uuid.UUID, actor_id: uuid.UUID) -> BulkResultaat:
+    """Alle geselecteerde rijen aan één administratie — per rij exact `wijs_toe` (leert het geheugen per
+    rij, start per rij de extractie). Onbekende administratie = één keer vooraf toetsen zodat niet
+    élke rij dezelfde fout draagt."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        if session.get(Administratie, administratie_id) is None:
+            raise OnbekendeAdministratie(f"Onbekende administratie: {administratie_id}")
+    return _bulk(
+        document_ids,
+        lambda document_id: wijs_toe(document_id=document_id, administratie_id=administratie_id, actor_id=actor_id),
+    )
+
+
+def bulk_hoort_niet_bij_ons(*, document_ids: list[uuid.UUID], actor_id: uuid.UUID, reden: str) -> BulkResultaat:
+    """Eén reden voor de hele selectie — per rij exact `hoort_niet_bij_ons` (verplichte reden, audit)."""
+    if not (reden or "").strip():
+        raise RedenVerplicht("'Hoort niet bij ons' vereist een reden")
+    return _bulk(
+        document_ids, lambda document_id: hoort_niet_bij_ons(document_id=document_id, actor_id=actor_id, reden=reden)
+    )
 
 
 # ---- UBL-samenvatting (preview zonder beeld) ---------------------------------------------------

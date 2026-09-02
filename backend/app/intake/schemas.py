@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas_basis import StrikteInvoer
 
@@ -137,3 +137,37 @@ class UblSamenvattingResponse(BaseModel):
     valuta: str | None
     regelaantal: int
     regels: list[UblSamenvattingRegelDto]
+
+
+# ---- Bulk-toewijzen / bulk "hoort niet bij ons" (blok B 02-09, casus IC-stapel) ------------------------
+
+
+class BulkToewijzenInput(StrikteInvoer):
+    """Eén administratie voor álle geselecteerde rijen — server-side een orkestratie over de bestaande
+    per-rij-route `wijs_toe` (geen tweede schrijver), uitkomst per rij (patroon bulk-accordering)."""
+
+    document_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    administratie_id: uuid.UUID
+
+
+class BulkHoortNietBijOnsInput(StrikteInvoer):
+    document_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    reden: str
+
+
+class BulkRijUitkomstDto(BaseModel):
+    """Eén regel van de uitkomstenlijst — dezelfde vorm voor toewijzen en hoort-niet-bij-ons."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str | None = None
+    # 'verwerkt' | 'al_verwerkt' | 'fout'
+    uitkomst: str
+    status: str | None = None
+    reden: str | None = None
+
+
+class BulkVerzamelbakResponse(BaseModel):
+    uitkomsten: list[BulkRijUitkomstDto]
+    verwerkt: int
+    al_verwerkt: int
+    fout: int
