@@ -36,15 +36,17 @@ Volgorde: eerst contracten, dan documenten, dan de knop.
       geaccepteerd en vastgelegd (met motivering). **VOORBEREID 02-09 — besluit open:**
       beslisnotitie `09-zdr-beslisnotitie.md` (wat ZDR is, geen gepubliceerd tarief, per
       organisatie via Sales namens PDL, Covered Models uitgesloten — wij gebruiken er geen;
-      advies A + C: doorzetten én de tussenstand tijdelijk expliciet accepteren). Afvinken pas
-      ná Peters paraaf in doc 9 §4 + gearchiveerd bewijs (console-print retentie-instelling).
+      advies A + C: doorzetten én de tussenstand tijdelijk expliciet accepteren). **BESLOTEN
+      02-09 (Peter, doc 9 §4): A + C — ZDR doorzetten via Sales (klikwerk Peter) én de
+      default-retentie tijdelijk en gemotiveerd geaccepteerd tot ZDR actief is.** Afvinken pas
+      ná de ZDR-bevestiging + gearchiveerd bewijs (console-print retentie-instelling).
 - [ ] **Model-check**: `ai_extractie_model` is ZDR-compatibel (nu `claude-sonnet-5` — bij
       elke modelwissel opnieuw checken; sommige modellen vereisen 30 dagen retentie).
       **UITGEVOERD 02-09 (`10-model-check.md`):** code + productie-kostenmeter roepen uitsluitend
       `claude-sonnet-5` (alle extractiepaden) en `claude-haiku-4-5` (bewaking) aan; beide geen
       Covered Model → ZDR-compatibel GROEN; prijstabel werkt als fail-closed allowlist.
-      Register-dekking ORANJE: `voorraad_normalisatie` en `contract_ontleding` hebben geen
-      V-rij (voorstel V8, doc 10 §4). Vinkje pas samen met het ZDR-besluit (de regel toetst
+      Register-dekking: `voorraad_normalisatie` en `contract_ontleding` hadden geen V-rij —
+      **V8 doorgevoerd 02-09 (doc 1 §7b), register-dekking GROEN.** Vinkje pas samen met de ZDR-bevestiging (de regel toetst
       compatibiliteit mét een bestaande ZDR-afspraak). Vaste regel: doc 10 herhalen bij élke
       modelwissel of nieuw AI-pad.
 - [x] **Verwerkingsregister** V1/V2/V3 (doc 1) vastgesteld en actueel — **gedaan**: jurist-akkoord
@@ -57,14 +59,17 @@ Volgorde: eerst contracten, dan documenten, dan de knop.
       addendum verzonden — in elk geval voor de administraties waar de AI voor gaat draaien.
       **CONCEPT KLAAR 02-09:** `11-klantinformatietekst-concept.md` (één A4, klantleesbaar,
       twee bewaar-varianten afhankelijk van doc 9; redactie + verzending = Peter/jurist).
-      Verzendlog per administratie = kolom "geïnformeerd" in doc 12. Op 02-09 draait de AI voor
-      álle 30 actieve administraties — de brief moet dus naar alle klanten.
+      **GEFINALISEERD 02-09 op de variant van het ZDR-besluit (doc 9 §4);** jurist-redactie +
+      verzending = klikwerk Peter. Verzendlog per administratie = kolom "geïnformeerd" in doc 12.
+      Op 02-09 draait de AI voor álle actieve administraties — de brief gaat naar alle klanten.
 - [ ] **Gevoelige administraties gemarkeerd**: per administratie beoordeeld of de AI-gate
       daar uit blijft (doc 4 §5.4). **VOORSTEL KLAAR 02-09:**
       `12-beoordelingskader-gevoelige-administraties.md` — criteria A–E (+R) en een
-      classificatie van alle 31 rijen; voorstel: 2× UIT tot bevestiging (Mantelzorgwoningen
-      Midden Nederland, Stichting Shuto — beide staan nu AAN), 1× UIT (test-seed), 27× AAN
-      (13 mét klantinfo wegens consument-betrokkenen). Afvinken ná Peters paraaf per rij.
+      classificatie van alle 31 rijen; voorstel was 2× UIT tot bevestiging. **BESLOTEN 02-09
+      (Peter): ALLE administraties AAN, inclusief Mantelzorgwoningen Midden Nederland en Stichting
+      Shuto — geen zorg-/gevoelig materiaal in deze administraties, facturen zijn zakelijk;
+      automatisering is de norm.** Alleen de test-seed houdt het UIT-advies (hygiëne). De
+      feitelijke cloud-stand (alles AAN) ís daarmee de besloten stand — geen toggle-klikwerk.
 - [x] Technische borging aanwezig — **geverifieerd 02-09 op code + registers**: BSN-filtertests
       groen in de suite, audit op élke gate-wijziging (platformgate `platform.intake_instelling`,
       Beheerder-only; per-administratie `ai_extractie_ingeschakeld`), AI-kostengrens € 100/mnd

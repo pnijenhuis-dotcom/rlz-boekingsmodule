@@ -1,7 +1,11 @@
 # Concept-klantinformatietekst — "Zo gebruiken wij AI bij uw administratie"
 
-> **Status: CONCEPT (2026-09-02, blok A). Te redigeren en te versturen door Peter/jurist; niet
-> door de module verstuurd.** Dit is de klantleesbare invulling van de checklist-regel "Klanten
+> **Status: GEFINALISEERD op de ZDR-variant "doorzetten + tijdelijke acceptatie" (besluit Peter
+> 02-09, doc 9 §4) — vervolgronde 02-09, blok E. Jurist-redactie + verzending = klikwerk Peter; niet
+> door de module verstuurd.** De alinea "Bewaring" staat nu op de variant "zolang ZDR niet bevestigd
+> is" (maximaal 30 dagen); ná de ZDR-bevestiging wordt die ene zin vervangen door "Anthropic bewaart
+> de aangeboden documenten niet" (zie redactienotitie 1). Doelgroep: álle klantadministraties — het
+> beoordelingskader (doc 12) heeft op 02-09 geen enkele administratie UIT gezet. Dit is de klantleesbare invulling van de checklist-regel "Klanten
 > geïnformeerd" (`05-activatie-checklist.md` stap 1) en bouwt voort op het getoetste tekstblok in
 > `03-verwerker-vs-verantwoordelijke.md` §4 (jurist-akkoord 12-08). Waar het concept verder gaat
 > dan dat tekstblok (bewaartermijn bij Anthropic, uitzetbaarheid per administratie, de
@@ -48,10 +52,11 @@ ons gewend bent.
   ontbrekend gegeven.
 - *Geen training.* De AI-leverancier (Anthropic) gebruikt uw documenten contractueel niet om
   haar modellen te trainen.
-- *Bewaring.* [Optie na ZDR-bevestiging: "Anthropic bewaart de aangeboden documenten niet."
-  Optie zolang ZDR niet bevestigd is: "Anthropic bewaart de aangeboden documenten maximaal
-  30 dagen, uitsluitend voor misbruikbestrijding, en verwijdert ze daarna."] Wij bewaren uw
-  administratie zelf gedurende de wettelijke termijn van zeven jaar.
+- *Bewaring.* Anthropic bewaart de aangeboden documenten maximaal 30 dagen, uitsluitend voor
+  misbruikbestrijding, en verwijdert ze daarna. Wij hebben met Anthropic een afspraak in
+  voorbereiding waarmee documenten in het geheel niet bewaard worden; zodra die actief is,
+  informeren wij u daarover. Wij bewaren uw administratie zelf gedurende de wettelijke termijn van
+  zeven jaar.
 - *Waar.* Onze software en opslag draaien in de Europese Unie (Google Cloud, regio Nederland),
   versleuteld met door ons beheerde sleutels. De AI-verwerking vindt plaats in de Verenigde
   Staten; daarvoor gelden de Europese modelcontractbepalingen (standard contractual clauses)
@@ -83,12 +88,16 @@ Administratiekantoor Nijenhuis
 ---
 
 **Redactienotities voor Peter/jurist (niet meesturen):**
-1. De alinea "Bewaring" heeft twee varianten; kies op basis van het ZDR-besluit (doc 9).
+1. De alinea "Bewaring" staat op de variant van het ZDR-besluit 02-09 (doc 9 §4: doorzetten +
+   tijdelijke acceptatie). Ná de ZDR-bevestiging vervangen door: "Anthropic bewaart de aangeboden
+   documenten niet." en de zin over de afspraak in voorbereiding schrappen.
 2. De twee zinnen tussen haken in "Wat de AI doet" alleen opnemen voor administraties met
    voorraad-opt-in (Universal Verkoop/Nederland/Steigerbouw, Bradwolff, BWC Steigers) resp.
-   projectadministratie (Universal Steigerbouw); voor de rest weglaten. Voorwaarde: de
-   registeraanvulling uit `10-model-check.md` §4.1–4.2.
-3. Voor gevoelige administraties (doc 12, categorie A) de brief pas sturen ná Peters besluit
-   over de gate — anders informeren we over iets dat we misschien uitzetten.
+   projectadministratie (Universal Steigerbouw); voor de rest weglaten. Voorwaarde vervuld 02-09:
+   registeraanvulling V8 (voorraad-normalisatie + contract-ontleding) staat in
+   `01-verwerkingsregister.md` §7b.
+3. Besluit doc 12 (02-09): geen enkele administratie UIT — de brief kan naar alle klanten; de
+   twee eerder als "A?" gemarkeerde administraties (Mantelzorgwoningen MN, Stichting Shuto) zijn
+   door Peter als zakelijk (D) beoordeeld.
 4. Toon: geen jargon ("gate", "extractie", "LLM"), geen productnamen behalve de drie die de
    klant moet kunnen herleiden (Reeleezee, Anthropic, Google Cloud).

@@ -1,8 +1,11 @@
 # Beslisnotitie — Zero Data Retention (ZDR) bij Anthropic
 
-> **Status: CONCEPT ter besluit (opgesteld 2026-09-02, blok A AVG-afronding). Besluit = Peter
-> (eventueel mét jurist). Niets in deze notitie is afgevinkt; de checklist-regel "ZDR" in
-> `05-activatie-checklist.md` blijft open tot het besluit hier is ingevuld.**
+> **Status: BESLOTEN 2026-09-02 (Peter, vervolgronde 02-09) — zie §4: optie A + C.** ZDR wordt
+> doorgezet via het Anthropic-Sales-traject (namens PDL) én de default-retentie (≤ 30 dagen) is
+> TIJDELIJK en expliciet geaccepteerd tot ZDR actief is. Het Sales-contact zelf is klikwerk (Peter).
+> De checklist-regel "ZDR" in `05-activatie-checklist.md` blijft open tot de bevestiging + het
+> console-bewijs gearchiveerd zijn; de tijdelijke acceptatie maakt de huidige productiestand wél
+> aantoonbaar bewust.
 >
 > Context: het ZDR-verzoek is op 2026-08-14 ingediend (BESLISSINGEN "Anthropic-dossier"), de
 > uitkomst is niet gearchiveerd. Intussen staat de AI-gate in productie AAN voor alle 30 actieve
@@ -66,21 +69,30 @@ Anthropic opgeslagen staat: van maximaal 30 dagen naar nul (behoudens de genoemd
 ZDR-verzoek najagen; (3) bij bevestiging §4 afsluiten, checklist afvinken, Bijlage B en doc 2
 (checklist A) bijwerken, klantinformatietekst (doc 11) op "wordt niet bewaard" zetten.
 
-## 4. Besluit (in te vullen door Peter)
+## 4. Besluit (Peter, 2026-09-02)
 
 ```
-[ ] Optie A — ZDR doorzetten. Aanvrager: PDL Powerhouse (accounthouder). Actie: ............
-    Bevestiging ontvangen op: ..........  Bewijs: docs/avg/............ (console-print/overeenkomst)
+[x] Optie A — ZDR doorzetten. Aanvrager: PDL Powerhouse (accounthouder). Actie: Sales-contact
+    Anthropic namens PDL (klikwerk Peter; het verzoek van 14-08 najagen), bevestiging + console-print
+    (Settings › Privacy Controls › Data retention period) archiveren in docs/avg/.
+    Bevestiging ontvangen op: ..........  Bewijs: docs/avg/............ (nog open)
 
-[ ] Optie C — tijdelijke acceptatie default-retentie (≤ 30 dagen) totdat ZDR bevestigd is.
+[x] Optie C — tijdelijke acceptatie default-retentie (≤ 30 dagen) totdat ZDR bevestigd is.
     Motivering: documentinhoud (facturen, mail-tekst zonder BSN, regelteksten) gaat uitsluitend
     onder DPA + SCC's naar Anthropic; geen training; BSN-filter; kostenpoort; mens-in-de-lus;
-    bewaring ≤ 30 dagen uitsluitend voor misbruikbestrijding. Restrisico geaccepteerd tot: ..........
+    bewaring ≤ 30 dagen uitsluitend voor misbruikbestrijding. Restrisico geaccepteerd tot: de dag
+    waarop ZDR in de Console zichtbaar actief is (daarna vervalt deze regel automatisch).
 
-[ ] Optie B — default-retentie definitief accepteren (dan doc 3 §4 / doc 11 aanpassen: "max. 30 dagen").
+[ ] Optie B — default-retentie definitief accepteren — NIET gekozen.
 
-Naam / datum / paraaf: .......................................................
+Besluit: Peter Nijenhuis, 2026-09-02 (vastgelegd in de vervolgronde 02-09, blok E; canoniek hier +
+BESLISSINGEN "VERVOLGRONDE 02-09" blok E).
 ```
 
-Ná invulling: deze notitie is de canonieke vindplaats van het ZDR-besluit; `05-activatie-
-checklist.md` stap 1 en `02-subverwerkers-checklist.md` checklist A verwijzen hiernaar.
+Gevolgen doorgevoerd 02-09: `11-klantinformatietekst-concept.md` staat op de "zolang ZDR niet
+bevestigd is"-variant (mét de vervangzin voor ná de bevestiging); `05-activatie-checklist.md`
+stap 1 verwijst hiernaar; `02-subverwerkers-checklist.md` checklist A en Bijlage B (doc 7) worden
+bijgewerkt zodra de ZDR-bevestiging binnen is.
+
+Ná de ZDR-bevestiging: bewijs archiveren, checklist afvinken, doc 11 alinea "Bewaring" op "wordt
+niet bewaard" zetten, doc 2 checklist A + Bijlage B bijwerken.

@@ -58,8 +58,9 @@ in de DPA) de toepasselijke module. De inhoudelijke checks hieronder veranderen 
   - **Geen training op Customer Content** — Commercial Terms **§B (Customer Content)**.
     Daarmee is de verifieer-opdracht bij punt 1 hieronder ingevuld voor de gearchiveerde
     versie van 17-06-2025; her-verifiëren bij een nieuwe Terms-versie.
-  - **ZDR-verzoek is ingediend en loopt** (status 2026-08-14); uitkomst + eventuele
-    ZDR-overeenkomst hier archiveren zodra rond.
+  - **ZDR-verzoek is ingediend en loopt** (status 2026-08-14); **besluit Peter 02-09 (doc 9 §4):
+    doorzetten via Sales namens PDL + tijdelijke, gemotiveerde acceptatie van de default-retentie
+    (≤ 30 dagen) tot ZDR actief is.** Uitkomst + eventuele ZDR-overeenkomst hier archiveren zodra rond.
 
 **Hoe de DPA werkt (geverifieerd 2026-08-11):**
 

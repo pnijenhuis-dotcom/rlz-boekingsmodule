@@ -71,14 +71,14 @@ config-defaults zijn dus ook de werkelijkheid.
 
 ## 4. Afwijkingen (benoemd, niet stil hersteld)
 
-1. **`contract_ontleding` ontbreekt in het register.** Contract-/offerte-PDF's bevatten
+1. **`contract_ontleding` ontbreekt in het register.** → **DOORGEVOERD 02-09 (V8, doc 1 §7b).** Contract-/offerte-PDF's bevatten
    contactpersonen, handtekeningen en prijsafspraken. Verwerking is AI-VOORSTEL per regel achter
    dezelfde per-administratie-gate (BESLISSINGEN "PROJECTENMODULE KANTOOR"). Nog 0 productie-
    calls. **Voorstel:** V8 "Projectadministratie steigerbouw (contract-ontleding, uren/meerwerk,
    planning, dossier)" toevoegen aan doc 1 — inclusief de veldwerker-dossiers die al als open
    aanvulling in de checklist staan (BESLISSINGEN "Parkeerposten blok A" punt 4). Eén rij,
    twee openstaande punten in één keer dicht. Besluit + redactie: Peter/jurist.
-2. **`voorraad_normalisatie` ontbreekt in het register.** Naar de API gaan alleen
+2. **`voorraad_normalisatie` ontbreekt in het register.** → **DOORGEVOERD 02-09 (onderdeel van de V8-rij, doc 1 §7b).** Naar de API gaan alleen
    artikelomschrijvingen (tekst, géén PDF, géén afzender/afnemer). Persoonsgegevens zijn hier
    niet te verwachten maar niet uit te sluiten (een regeltekst "uren J. Jansen wk 34" komt voor).
    226 productie-calls sinds 29-08 (Universal Steigerbouw). **Voorstel:** korte alinea in V1

@@ -32,6 +32,7 @@
 | V5 | Bankmutatieverwerking en afletteren | Nee | gebouwd |
 | V6 | Klant-accordering (accordeurs per administratie) | Nee | gebouwd (PWA volgt) |
 | V7 | Gebruikers- en toegangsbeheer + audit log | Nee | gebouwd |
+| V8 | Projectadministratie steigerbouw: contract-/offerte-ontleding, uren & meerwerk, planning, veldwerker-dossiers, voorraad-normalisatie | Ja — twee AI-paden achter dezelfde per-administratie-gate (contract-ontleding: AI-voorstel per regel; voorraad-normalisatie: artikelomschrijvingen, tekst-only) | gebouwd — registeraanvulling 02-09 (doc 10 §4 punt 1+2) |
 
 ## 2. V1 — Inkoopfactuurverwerking
 
@@ -95,6 +96,23 @@ entity-loze Receipt + kostprijsmemoriaal in RLZ.
 | Gegevens | Naam, e-mailadres, wachtwoord-hash, TOTP-secret (versleuteld), rol- en scope-toekenningen, sessies (JWT/refresh-tokens), audit-events (wie/wat/wanneer/oud→nieuw, correlatie-id) |
 | Ontvangers | Google Cloud (na uitrol; subverwerker ván PDL); niemand extern |
 | Bewaartermijn | Accounts: duur dienstverband/relatie + pseudonimisering conform besluit 0004. Audit log: append-only, bewaartermijn gelijk aan de administratie (7 jaar); **PII gescheiden van financiële data** zodat pseudonimisering het audit-spoor niet breekt |
+
+## 7b. V8 — Projectadministratie steigerbouw (contract-ontleding, uren/meerwerk, planning, dossiers, voorraad-normalisatie)
+
+> Registeraanvulling 02-09 (vervolgronde blok E; voorstel doc 10 §4 punt 1 + 2, besluit Peter 02-09: één
+> V8-rij die beide openstaande punten dicht doet, incl. de veldwerker-dossiers uit BESLISSINGEN
+> "Parkeerposten blok A" punt 4). Opt-in per administratie (initieel Universal Steigerbouw; voorraad ook
+> Universal Verkoop/Nederland, Bradwolff Constructie, BWC Steigers).
+
+| Veld | Beschrijving |
+|---|---|
+| Doel | Projectadministratie voor de steigerbouwtak: contract-/offerte-ontleding (budget, staffels, verrekenbaarheid), weekstaten en meerwerk van ZZP'ers/uitvoerders, dag-planning en transport, ZZP-dossiers (WKA/ketenaansprakelijkheid), voorraad-aansluiting (controle-laag, geen tweede voorraadadministratie) |
+| Grondslag | Uitvoering overeenkomst met de klant (art. 6 lid 1 sub b AVG); wettelijke verplichting voor de dossierstukken (WKA/inlenersaansprakelijkheid, art. 6 lid 1 sub c) |
+| Categorieën betrokkenen | ZZP'ers, uitvoerders en detacheerders (veldwerkers) van de klant; contactpersonen van opdrachtgevers en leveranciers (contracten/offertes, bestellingen); kantoormedewerkers (planners/keurders) |
+| Categorieën gegevens | Veldwerkers: naam, e-mail, telefoon, KvK-nummer, uurtarief/prijsafspraken, gewerkte uren en m² per dag/project, planning, geofence-stempels (tijd + projectzone — geen doorlopende locatie), keuringsuitkomsten en correctievoorstellen; **dossierdocumenten** (kopie ID, steigerpas, VCA, AVB, KvK-uittreksel) mét geldigheidsdata — kopie ID volgt de BSN-regel: nooit geëxtraheerd/geïndexeerd, gemaskeerde weergave, élke inzage geauditeerd, **gaat nooit door de AI**. Contracten/offertes: contactpersonen, handtekeningen, prijsafspraken. Voorraad: artikelomschrijvingen op factuurregels (tekst; incidenteel een naam, bv. "uren J. Jansen wk 34") |
+| Ontvangers/verwerkers | Anthropic — uitsluitend (a) contract-/offerte-PDF's bij een door kantoor gestarte ontleding (AI-VOORSTEL per regel, mens bevestigt) en (b) artikelomschrijvingen van factuurregels voor de voorraad-normalisatie (batches van 40 regelteksten, géén PDF, géén afzender/afnemer); beide achter de per-administratie-gate `ai_extractie_ingeschakeld` + AI-kostengrens, zelfde model (`claude-sonnet-5`) en zelfde DPA-keten (subverwerker ván PDL) als V1. Exact Reeleezee (projecten, factuurregels — leesroute, geen dossierdata). Google Cloud (opslag/verwerking, subverwerker ván PDL). E-mailkanaal (Google Workspace) voor bestellingen/transportmails aan leveranciers (bedrijfscontacten). |
+| Bewaartermijn | Uren-/planningsdata en projectcijfers: als V1 (7 jaar, onderdeel van de administratie). Dossierdocumenten: bewaard zolang de WKA-bewaarplicht loopt (7 jaar ná einde inlening), daarna pseudonimisering conform besluit 0004 — nooit hard verwijderen. Voorraad-normalisatiefeiten: als V1. |
+| Beveiliging | Zie §8; aanvullend: dossier-uploads landen nooit in de document-extractieketen (eigen route `app/uren/dossier`, BESLISSINGEN "STEIGERBOUW-RUN 25-08 blok A"); geofence-intake fail-closed (alleen de veldwerker zelf, alleen projecten mét zone) |
 
 ## 8. Technische en organisatorische maatregelen (gebouwd)
 
