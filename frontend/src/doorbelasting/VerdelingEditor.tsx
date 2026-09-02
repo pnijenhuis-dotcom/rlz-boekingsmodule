@@ -7,10 +7,11 @@ import type {
   VerdeelsleutelDoelInputDto,
   VerdeelsleutelDto,
 } from '../api/types'
-import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
+import { normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { MultiSelect, Select } from '../ui/basis'
 import { haalVerdeelsleutelsOp, pasVerdeelsleutelToe, slaDoorbelastingVerdelingOp, slaVerdeelsleutelOp } from './doorbelastingApi'
+import { formatPct, parsePercentage, percentageVoorBackend, restPercentage, somPercentages as somVanInvoer } from './percentage'
 import { boekingStatusChip, formatEuroString, formatPercentage } from './status'
 import { useDoelGrootboek } from './useDoelGrootboek'
 import { useDoelProjecten } from './useDoelProjecten'
@@ -101,17 +102,10 @@ function formatM2(m2: string | null): string {
   return `${Number(m2).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} m²`
 }
 
-/** Percentagesom van de rijen van één bron-regel — afgerond op 2 decimalen tegen
- * floating-point-ruis (33,33+33,33+33,34). Puur weergave/poortwachter; de harde check leeft
- * server-side. */
+/** Percentagesom van de rijen van één bron-regel (2 decimalen, ongeldig = 0) — weergave/
+ * poortwachter; de harde check leeft server-side. Parsen/afronden: `percentage.ts`. */
 function somPercentages(rijen: VerdeelRij[]): number {
-  const som = rijen.reduce((acc, rij) => acc + (bedragAlsGetal(rij.percentage) ?? 0), 0)
-  return Math.round(som * 100) / 100
-}
-
-/** Percentage-getal voor weergave: 2 decimalen tegen floating-point-ruis, NL-komma. */
-function formatPct(x: number): string {
-  return String(Math.round(x * 100) / 100).replace('.', ',')
+  return somVanInvoer(rijen.map((rij) => rij.percentage))
 }
 
 /** Server-staat van de run: sluit elke verdeelde bron-regel exact op 100%? Synchroon
@@ -269,9 +263,12 @@ export function VerdelingEditor({
   // Kliktest-bevinding Peter 2026-08-16: opslaan/boeken pas aanbieden als elke verdeelde
   // regel exact op 100% sluit — de teller per regel laat live zien wat er nog open staat.
   // Een regel zónder verdeelrijen blijft gewoon "niet doorbelast" (geen blokkade).
-  const verdelingOnvolledig = Object.values(verdeling).some(
-    (rijen) => rijen.length > 0 && somPercentages(rijen) !== 100,
-  )
+  const percentageFouten = Object.values(verdeling)
+    .flat()
+    .some((rij) => parsePercentage(rij.percentage).fout !== null)
+  const verdelingOnvolledig =
+    percentageFouten ||
+    Object.values(verdeling).some((rijen) => rijen.length > 0 && somPercentages(rijen) !== 100)
   useEffect(() => {
     onStaat?.({ gewijzigd, onvolledig: verdelingOnvolledig })
   }, [gewijzigd, verdelingOnvolledig, onStaat])
@@ -287,8 +284,10 @@ export function VerdelingEditor({
   const voegRijToe = (bronId: string) => {
     setVerdeling((huidig) => {
       const rijen = huidig[bronId] ?? []
-      const rest = Math.max(0, 100 - somPercentages(rijen))
-      return { ...huidig, [bronId]: [...rijen, nieuweRij(String(rest).replace('.', ','))] }
+      // Bugfix 02-09: `100 - som` gaf floating-point-ruis ("11,099999999999994") die letterlijk
+      // in het %-veld belandde — de rest komt nu afgerond uit één bron.
+      const rest = restPercentage(rijen.map((rij) => rij.percentage))
+      return { ...huidig, [bronId]: [...rijen, nieuweRij(formatPct(rest))] }
     })
     setGewijzigd(true)
   }
@@ -313,8 +312,12 @@ export function VerdelingEditor({
             setOpslaanFout('Kies voor elke verdeelregel een doelentiteit — of verwijder de regel.')
             return
           }
-          const pct = bedragAlsGetal(rij.percentage)
-          if (pct === null || pct <= 0 || pct > 100) {
+          const parse = parsePercentage(rij.percentage)
+          if (parse.fout) {
+            setOpslaanFout(parse.fout)
+            return
+          }
+          if (parse.waarde === null || parse.waarde <= 0) {
             setOpslaanFout('Elk percentage moet groter dan 0 en hoogstens 100 zijn.')
             return
           }
@@ -332,7 +335,7 @@ export function VerdelingEditor({
           regels.push({
             bron_regel_id: bronId,
             mapping_id: rij.mappingId,
-            percentage: normaliseerBedrag(rij.percentage),
+            percentage: percentageVoorBackend(rij.percentage) ?? normaliseerBedrag(rij.percentage),
             doel_kosten_ledger_id: rij.gbId,
             project_ids: rij.projectIds,
             verdeelbasis: rij.projectIds.length > 1 ? rij.verdeelbasis : null,
@@ -490,13 +493,21 @@ export function VerdelingEditor({
                               {bevroren ? (
                                 `${rij.percentage}%`
                               ) : (
-                                <input
-                                  aria-label={`Percentage voor ${bron.omschrijving}`}
-                                  inputMode="decimal"
-                                  style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                                  value={rij.percentage}
-                                  onChange={(e) => wijzig(bron.id, rij.key, { percentage: e.target.value })}
-                                />
+                                <>
+                                  <input
+                                    aria-label={`Percentage voor ${bron.omschrijving}`}
+                                    inputMode="decimal"
+                                    aria-invalid={parsePercentage(rij.percentage).fout !== null || undefined}
+                                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                                    value={rij.percentage}
+                                    onChange={(e) => wijzig(bron.id, rij.key, { percentage: e.target.value })}
+                                  />
+                                  {parsePercentage(rij.percentage).fout && (
+                                    <div className="fout" style={{ fontSize: 11.5, marginTop: 4 }}>
+                                      {parsePercentage(rij.percentage).fout}
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </td>
                             <td className="amount">

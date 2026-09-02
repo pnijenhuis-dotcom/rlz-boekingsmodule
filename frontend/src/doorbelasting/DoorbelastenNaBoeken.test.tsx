@@ -307,6 +307,32 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     expect(await screen.findByText(/opgeslagen als versie 1/)).toBeInTheDocument()
   })
 
+  it('%-parse-bugfix 02-09: "1110000" of geplakt "11.100,00" wordt geweigerd mét uitleg, nooit doorgerekend; rest-prefill is afgerond', async () => {
+    const verdelingPuts: unknown[] = []
+    installFetchMock({ bestaandeRun: RUN_MET_VERDELING, verdelingPuts, doelOnboarded: true })
+    renderBlok('klaar_om_te_boeken')
+    await waitFor(() => expect(screen.getByLabelText('Doorbelasten na boeken')).toBeChecked())
+
+    const veld = screen.getByLabelText('Percentage voor Steigermateriaal')
+    await userEvent.clear(veld)
+    await userEvent.type(veld, '1110000')
+    expect(screen.getByText(/geen geldig percentage/)).toBeInTheDocument()
+    expect(veld).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: 'Verdeling opslaan' })).toBeDisabled()
+
+    await userEvent.clear(veld)
+    await userEvent.paste('11.100,00')
+    expect(screen.getByText(/geen geldig percentage/)).toBeInTheDocument()
+
+    // Rest-prefill: 88,9 gevuld → nieuwe rij krijgt exact "11,1" (niet 11,099999999999994)
+    await userEvent.clear(veld)
+    await userEvent.type(veld, '88,9')
+    await userEvent.click(screen.getByRole('button', { name: '+ Doelentiteit toevoegen' }))
+    const velden = screen.getAllByLabelText('Percentage voor Steigermateriaal')
+    expect(velden[1]).toHaveValue('11,1')
+    expect(verdelingPuts).toHaveLength(0)
+  })
+
   it('bij de klant (ter_accordering) is de verdeling alleen-lezen', async () => {
     installFetchMock({ bestaandeRun: RUN_MET_VERDELING })
     renderBlok('ter_accordering')
