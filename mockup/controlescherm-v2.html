@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: controlescherm v2 — werkvolgorde, checks onzichtbaar-tot-relevant</title>
+<!-- ============================================================
+     FEEDBACK PETER 02-09 (live meegekeken, casus Hello Kitchen):
+     te veel velden/scrollen, harde-checks-blok passief maar
+     prominent, doorbelasting (het werk) begraven, AI-blok =
+     duplicatie, miniatuur-rail steelt ruimte, geen nieuwe
+     crediteur aan te maken (foute fuzzy-match Son↔Duiven).
+     V2-principes: scherm volgt de WERKvolgorde; groen/passief =
+     één regel; alleen afwijkingen verschijnen; sticky actiebalk;
+     PDF full-height zonder rail; + Nieuwe crediteur in RLZ mét
+     KvK-mismatch-guard.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101917; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513;
+    --ok:#5ec792; --warn:#e2b25e; --warn-bg:rgba(226,178,94,.12); --rood:#f08579;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13px;line-height:1.5;padding:22px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:18px;max-width:1000px}
+  .scherm{border:1px dashed var(--border);border-radius:14px;overflow:hidden;max-width:1500px}
+  /* topbar */
+  .top{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--panel-2)}
+  .top .terug{color:var(--muted)}
+  .top b{font-size:14px}
+  .chip{font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok);white-space:nowrap}
+  .chip.warn{background:var(--warn-bg);color:var(--warn)}
+  .chip.neutraal{background:none;border:1px solid var(--border);color:var(--muted)}
+  .top .nav{margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap}
+  /* layout */
+  .kolommen{display:flex;min-height:640px}
+  .pdf{width:38%;border-right:1px solid var(--border);background:#0d1413;display:flex;flex-direction:column}
+  .pdf .balk{display:flex;align-items:center;gap:10px;padding:8px 12px;color:var(--faint);font-size:11.5px;border-bottom:1px solid var(--border)}
+  .pdf .pagina{flex:1;margin:14px;background:#fff;border-radius:4px;color:#333;font-size:9px;padding:16px;overflow:hidden}
+  .pdf .pagina .kopje{display:flex;justify-content:space-between;font-weight:700;margin-bottom:8px}
+  .werk{flex:1;display:flex;flex-direction:column}
+  .werk .scrollgebied{flex:1;padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+  .sectie{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 16px}
+  .sectie h3{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:800;margin-bottom:10px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .veldgroep label{display:block;font-size:10.5px;color:var(--faint);margin-bottom:3px}
+  .veld{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12.5px;width:100%}
+  .herkomst{font-size:9.5px;color:var(--faint)}
+  /* crediteur-kaart */
+  .cred{display:flex;align-items:flex-start;gap:12px}
+  .cred .info{flex:1}
+  .cred .waarschuwing{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);border-radius:9px;padding:8px 12px;font-size:12px;color:var(--warn);margin-top:8px;line-height:1.5}
+  .knopje{display:inline-block;font-size:12px;font-weight:700;color:var(--teal);border:1px solid var(--border);border-radius:8px;padding:5px 10px;white-space:nowrap;cursor:pointer}
+  /* regels */
+  .regels{width:100%;border-collapse:collapse;font-size:12px}
+  .regels th{font-size:10px;text-transform:uppercase;color:var(--faint);text-align:left;padding:4px 6px;border-bottom:1px solid var(--border)}
+  .regels td{padding:6px;border-bottom:1px solid var(--border)}
+  /* doorbelasten (v2-blok verkort) */
+  .restant{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:8px 12px;margin-bottom:10px;font-size:12px}
+  .balkje{flex:1;height:7px;border-radius:4px;background:var(--border);overflow:hidden}
+  .balkje span{display:block;height:100%;width:100%;background:var(--ok)}
+  /* inklap-context */
+  .inklap{display:flex;gap:8px;flex-wrap:wrap}
+  .inklap .item{font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer}
+  /* sticky actiebalk */
+  .actiebalk{display:flex;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid var(--border);background:var(--panel-2)}
+  .actiebalk .banner{font-size:12px;color:var(--warn);font-weight:600}
+  .btn{padding:9px 16px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer}
+  .btn.prim{background:var(--teal);color:var(--teal-donker)}
+  .btn.sec{border:1px solid var(--border);color:var(--text)}
+  .btn.stil{color:var(--muted);border:none}
+  .noot{max-width:1500px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75;margin-top:22px}
+  .noot b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>Controlescherm v2 — het scherm volgt de werkvolgorde</h1>
+<p class="sub">Links de factuur op volledige hoogte (geen miniatuur-rail). Rechts één werk-kolom: crediteur → kopgegevens →
+regels → doorbelasten → boeken, met de actiebalk altijd in beeld. Groen en passief bestaat alleen nog als chip of inklapregel;
+alleen afwijkingen nemen ruimte in.</p>
+
+<div class="scherm">
+  <div class="top">
+    <span class="terug">← Werkvoorraad</span>
+    <b>Hello Kitchen Son · factuur 24521000969 · € 13.500,00</b>
+    <span class="chip">alle controles groen ✓</span>
+    <span class="chip neutraal">te controleren</span>
+    <span class="nav">‹ 12 van 40 › &nbsp;·&nbsp; ⋯</span>
+  </div>
+
+  <div class="kolommen">
+    <div class="pdf">
+      <div class="balk">pagina 1 / 2 — scroll of ‹ › &nbsp;·&nbsp; 65% &nbsp;·&nbsp; vergroot ⤢ &nbsp;·&nbsp; download ↓</div>
+      <div class="pagina">
+        <div class="kopje"><span>hello KITCHEN</span><span>FACTUUR</span></div>
+        <p>Hello Kitchen Son · Ekkersrijt 4102-A, Son<br>KvK 80915957 · Ordernr 2 4521 000969</p>
+        <p style="margin-top:6px">Kempen Facilities B.V. · Banstraat 25, Veldhoven</p>
+        <p style="margin-top:10px;border-top:1px solid #ddd;padding-top:6px">Orderprijs € 12.175,00 · Montage € 1.325,00<br>Excl. € 11.157,02 · btw 21% € 2.342,98 · <b>Te voldoen € 13.500,00</b></p>
+        <p style="margin-top:8px;color:#777">Pos. 1–14: kastpastuk, apparatenkast, komgreep… (regels lopen door — scroll)</p>
+      </div>
+    </div>
+
+    <div class="werk">
+      <div class="scrollgebied">
+        <div class="sectie">
+          <h3>Crediteur</h3>
+          <div class="cred">
+            <div class="info">
+              <div class="veld" style="max-width:380px">Zoek crediteur… <span style="color:var(--faint)">(geen match op KvK 80915957)</span></div>
+              <div class="waarschuwing">⚠ Dichtstbijzijnde naam-match <b>"Hello Kitchen" (Duiven)</b> heeft een <b>ánder
+              KvK-nummer</b> — waarschijnlijk een andere vestiging/entiteit. Niet automatisch voorgesteld.</div>
+            </div>
+            <span class="knopje">+ Nieuwe crediteur in RLZ<br><span style="font-weight:400;color:var(--faint);font-size:10.5px">voorgevuld: naam · KvK · btw · IBAN uit de scan</span></span>
+          </div>
+        </div>
+
+        <div class="sectie">
+          <h3>Kopgegevens</h3>
+          <div class="grid">
+            <div class="veldgroep"><label>Referentie <span class="herkomst">· uit factuur</span></label><div class="veld">24521000969</div></div>
+            <div class="veldgroep"><label>Factuurdatum <span class="herkomst">· uit factuur</span></label><div class="veld">10-08-2026</div></div>
+            <div class="veldgroep"><label>Vervaldatum <span class="herkomst">· uit factuur</span></label><div class="veld">24-08-2026</div></div>
+            <div class="veldgroep"><label>Totaal incl. <span class="herkomst">· uit factuur</span></label><div class="veld">€ 13.500,00</div></div>
+          </div>
+        </div>
+
+        <div class="sectie">
+          <h3>Boekingsregels</h3>
+          <table class="regels">
+            <tr><th>Omschrijving</th><th>Grootboek</th><th>Btw</th><th style="text-align:right">Netto</th></tr>
+            <tr><td>Keuken Mantelzorgwoning Druten</td><td>4310 · Inventaris <span class="herkomst">· geheugen ✓</span></td><td>21%</td><td style="text-align:right">€ 11.157,02</td></tr>
+          </table>
+        </div>
+
+        <div class="sectie">
+          <h3>Doorbelasten na boeken <span class="chip" style="margin-left:6px">aan</span></h3>
+          <div class="restant"><b>€ 11.157,02</b><div class="balkje"><span></span></div><b style="color:var(--ok)">verdeeld 100% ✓</b></div>
+          <table class="regels">
+            <tr><td>Mantelzorgwoning Midden Nederland B.V.</td><td>100% · € 11.157,02</td><td>project: Druten</td><td style="text-align:right">GB 4808 ✓</td></tr>
+          </table>
+        </div>
+
+        <div class="sectie" style="background:none">
+          <div class="inklap">
+            <span class="item">▸ Controles (7 groen)</span>
+            <span class="item">▸ Extractie-details (AI 95%)</span>
+            <span class="item">▸ Uit de e-mail</span>
+            <span class="item">▸ Tijdlijn</span>
+            <span class="item">▸ Opmerkingen (0)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actiebalk">
+        <span class="banner">⚠ Kies of maak eerst de crediteur — daarna is alles groen.</span>
+        <span style="margin-left:auto"></span>
+        <span class="btn stil">Afwijzen</span>
+        <span class="btn stil">Vraag stellen</span>
+        <span class="btn sec">Ter accordering</span>
+        <span class="btn prim">Boeken + doorbelasten</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① <b>Checks onzichtbaar-tot-relevant:</b> alles groen = één chip in de topbar + inklapregel; élke rode/oranje uitkomst =
+één regel in de banner boven de actiebalk (klik = detail); bij de boekklik toont de bestaande server-hertoets een popup
+als er alsnog iets rood is. Het vaste checks-blok vervalt. ② <b>Het AI-veldvoorstel-blok vervalt</b> — de herkomst-chips
+staan al op de velden; volledige extractie-details = inklapregel. ③ <b>"Uit de e-mail", tijdlijn en opmerkingen</b> =
+inklapregels onderaan, niet meer bovenin. ④ <b>PDF full-height zonder miniatuur-rail</b> (pagina's via scroll/‹ ›),
+sticky naast de werk-kolom; vergroot-knop blijft. ⑤ <b>Sticky actiebalk</b>: acties altijd in beeld, de
+doorloop-sneltoetsen ongewijzigd. ⑥ <b>Crediteur-kaart:</b> match op KvK/btw eerst (bestaand); een naam-match mét
+afwijkend KvK wordt NOOIT stil voorgesteld maar als waarschuwing getoond (casus Hello Kitchen Son↔Duiven);
+<b>"+ Nieuwe crediteur in RLZ"</b> maakt idempotent een vendor aan (bestaande zorg_voor-bouwsteen), voorgevuld uit de
+scan (naam/KvK/btw/IBAN, herkomst-chips) — daarmee vervalt ook de valse IBAN-wissel-blokkade bij een nieuwe entiteit.
+⑦ Doorbelasten gebruikt het v2-blok (restant-balk, mockup doorbelasten-blok-v2.html) en staat ín de werkvolgorde,
+direct onder de regels. ⑧ Volgorde-principe als norm: invoer die de mens raakt bovenaan in werkvolgorde; alles
+passiefs/groens onderaan als inklap — zelfde regel voor toekomstige schermen.</p>
+</body>
+</html>

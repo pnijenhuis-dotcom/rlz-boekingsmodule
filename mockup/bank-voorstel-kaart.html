@@ -32,7 +32,7 @@
   body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
   h1{font-size:18px;margin-bottom:4px}
   .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:960px}
-  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);max-width:1180px;overflow:hidden;position:relative}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);max-width:none;overflow:hidden;position:relative}
   .p-kop{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
   .p-kop h2{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:800}
   .vers{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
@@ -126,8 +126,15 @@ uitkomsten komen als toast.</p>
       <td>31-08</td>
       <td><div class="tp">Sepa Green</div><div class="oms">Termijn Sep 2026-FACTNR 26505019 0371 DEB 1500037923--</div></td>
       <td style="text-align:right"><span class="min">€ -673,96</span></td>
-      <td><span class="geen">Geen open post of regel gevonden — handmatig beoordelen.</span></td>
-      <td><div class="acties"><span class="btn">Boeken…</span><span class="btn sec">Koppel aan relatie…</span><span class="btn sec">Splitsen…</span></div></td>
+      <td><span class="chip" style="background:none;border:1px solid var(--border);color:var(--faint)">handmatig</span></td>
+      <td><div class="acties" style="flex-direction:row;align-items:center;gap:6px"><span class="btn">Boeken…</span><span class="btn sec" style="padding:7px 10px" title="Koppel aan relatie… / Splitsen…">⋯</span></div></td>
+    </tr>
+    <tr>
+      <td>31-08</td>
+      <td><div class="tp">Evides Waterbedrijf</div><div class="oms">Factuurnr 135602088513 Termijnfactuur AUG</div></td>
+      <td style="text-align:right"><span class="min">€ -8,00</span></td>
+      <td><span class="chip" style="background:none;border:1px solid var(--border);color:var(--faint)">handmatig</span></td>
+      <td><div class="acties" style="flex-direction:row;align-items:center;gap:6px"><span class="btn">Boeken…</span><span class="btn sec" style="padding:7px 10px">⋯</span></div></td>
     </tr>
   </table>
   <div class="toast">⟳ Ververst: 0 nieuwe mutaties · 27 bijgewerkt — 2 afletteropdrachten wachten nog in Reeleezee</div>
@@ -142,7 +149,14 @@ mét de reden (bedrag-match zonder referentie / referentie-match met afwijkend b
 restant expliciet ("restant € X blijft open") en de knop heet dan "Afletteren (deel)" — geen verrassingen ná
 de klik (NB: restant krijgt in RLZ een nieuw PaymentItem-id, bestaand gedrag). ④ Paneelkop: versheidsregel +
 klein ⟳ op de plek van de oude knoppen (blok E nachtrun); verversing + verificatie = één handeling; uitkomst =
-toast, fouten blijven persistent zichtbaar. ⑤ Geen match = rustige tekstregel, geen lege kaart. ⑥ Zelfde kaart
-her te gebruiken in de splitsen-dialoog bij het kiezen van een open post (zelfde component).</p>
+toast, fouten blijven persistent zichtbaar. ⑤ HERZIEN (iteratie 2, feedback Peter 02-09 — "rommelig" op een echte
+rekening met 40+ handmatige rijen): geen match = alleen een klein neutraal chipje "handmatig", GEEN herhaalde
+tekstregel per rij (de uitleg staat éénmalig als tooltip/ⓘ bij de kolomkop). ⑥ Acties per rij compact: één
+primaire knop (context-afhankelijk: Afletteren ✓ / Boeken… / Akkoord ✓) + een ⋯-menu voor de rest (Koppel aan
+relatie…, Splitsen…) — nooit meer drie gestapelde knoppen per rij; rijen worden daarmee half zo hoog. ⑦ Zelfde
+kaart her te gebruiken in de splitsen-dialoog bij het kiezen van een open post (zelfde component). ⑧ Kolom
+"Bron voorstel" vervalt als losse kolom — de reden zit in de chip ín de kaart. ⑨ Het paneel gebruikt de
+VOLLEDIGE contentbreedte (geen max-width): de omschrijving-kolom krijgt de ruimte, de kaart houdt zijn vaste
+breedte rechts — akkoord Peter 02-09.</p>
 </body>
 </html>
