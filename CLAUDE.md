@@ -1094,7 +1094,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   signaal > N uur per dag (`administratie.uren_dagmax_uren`, default 12 — som over álle
   weekstaten per kalenderdag, oranje vlag, geen blokkade). **Seam-eis steigerbouw-run: nieuwe
   module-code roept nooit RlzClient aan; adapter-grepen per blok in BESLISSINGEN "ODOO-ADAPTER
-  — GREPEN".**
+  — GREPEN"; de Odoo-feiten voor de adapter staan in `verkenning/odoo-verkenning.md` (STAP-0 02-09).**
   **Geofence-stempels BASIS (bouwrun 28-08 blok C, mockup `geofence-stempels.html`, migratie 0085;
   jurist akkoord 28-08 — regeling in de voorwaarden/privacyverklaring alinea 4, tekstversie
   `2026-08-28-v2`, géén apart instemmingsscherm):** projectzone op de projectspecs (adres + lat/lon +
@@ -1407,6 +1407,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (Peter 2026-08-22, incl. resultaat per project + cumulatief; GEBOUWD 2026-08-22) — de
   bouwnorm
 - `verkenning/api-verkenning.md` — alle geverifieerde API-feiten + PoC-resultaten
+- `verkenning/odoo-verkenning.md` — **Odoo STAP-0 (02-09-2026, universal-steigers.odoo.com, Odoo 19 JSON-2):
+  verbinding/inventaris, veld-voor-veld-mapping RLZ→Odoo, semantiekverschillen, twee live bewijs-cycli,
+  beslispunten + klikpunten. Kernfeiten: multi-company-db (10 bedrijven, Universal Verkoop al live),
+  boekdatum-default = maandeinde (altijd `date` expliciet), storno = reversal als apart document, bijlage
+  ná posten (OCR auto_send). GEEN adapter gebouwd — bouw vergt bouwplan + akkoord (BESLISSINGEN "ODOO STAP-0").**
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
   schema-versies, entiteiten, conventies)**

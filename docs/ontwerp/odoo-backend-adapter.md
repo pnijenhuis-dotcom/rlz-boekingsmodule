@@ -9,6 +9,14 @@
 > (zichtbare "niet ondersteund"-fout, nooit een stille no-op) + rechten-probe bij setup.
 > Dit document legt de geverifieerde Odoo-feiten vast zodat de adapter-bouw straks niet met een
 > lege verkenning begint.
+>
+> **UPDATE 02-09-2026: de STAP-0-verkenning tegen de échte Universal-Odoo is uitgevoerd —
+> `verkenning/odoo-verkenning.md` is sindsdien de canonieke feitenbasis (inventaris, veld-mapping,
+> semantiek, twee live bewijs-cycli, beslispunten, klikpunten). De drie "nog te verifiëren"-punten
+> hieronder zijn daar beantwoord: attachments (§2.2/§4 A8), rate/size (§1.11/§3.7),
+> `ir.model.data`-anker (§3.1 — niet live getest, optioneel). Nieuw t.o.v. dit document:
+> multi-company-database, boekdatum-default = maandeinde, reversal spiegelt geen tax-override,
+> `button_draft` bestaat als actie-19-analoog.**
 
 ## Geverifieerde Odoo 19.0-feiten (bron: officiële Odoo-docs, geraadpleegd 2026-07-15)
 
