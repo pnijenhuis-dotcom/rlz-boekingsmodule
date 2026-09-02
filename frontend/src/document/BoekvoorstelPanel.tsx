@@ -11,7 +11,6 @@ import type {
   GeheugenVeldVoorstelDto,
   GeheugenVoorstelDto,
   MatchAfwijkingDetailDto,
-  VendorOptieDto,
 } from '../api/types'
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel, type VeldvoorstelBron } from './aiVoorstel'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
@@ -33,6 +32,7 @@ import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
+import { NieuweCrediteurDialog, type NieuweCrediteurResultaat } from './NieuweCrediteurDialog'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
 import {
   synchroniseerAlleCaches,
@@ -363,6 +363,18 @@ interface Props {
   /** Onopgeslagen wijzigingen (punt 1c/5): true zolang een invoerwijziging nog niet (gedebounced)
    * is opgeslagen en gecontroleerd — het scherm vraagt dan bevestiging bij ‹ ›/Esc/pijltjes. */
   onOnopgeslagenWijzigingen?: (heeft: boolean) => void
+  /** Controlescherm v2 (02-09): stand van de harde checks naar buiten (topbar-chip "alle controles
+   * groen ✓"); de inklapregel "Controles" en de afwijkingen-banner rendert het paneel zelf. */
+  onChecksStand?: (stand: ChecksStand | null) => void
+  /** Doel-element voor de inklapregel "Controles (n groen)" — onderaan de werk-kolom (v2 ①).
+   * undefined = inline (tests); null = doel nog niet gemonteerd. */
+  inklapDoel?: HTMLElement | null
+}
+
+export interface ChecksStand {
+  bezig: boolean
+  actueel: boolean
+  rapport: BoekvoorstelMetChecksDto['checks'] | null
 }
 
 /** Controlescherm-uitbreiding (CLAUDE.md-taak 2.1, design-pass): kopgegevens + boekingsregels met
@@ -384,6 +396,8 @@ export function BoekvoorstelPanel({
   actiebalkDoel,
   onActies,
   onOnopgeslagenWijzigingen,
+  onChecksStand,
+  inklapDoel,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -433,8 +447,9 @@ export function BoekvoorstelPanel({
   const [inactieveRegels, setInactieveRegels] = useState<RegelState[]>([])
 
   // Fix 2: "nieuwe crediteur aanmaken in RLZ" vanaf het voorstelblok onder het crediteur-veld.
-  const [crediteurAanmakenBezig, setCrediteurAanmakenBezig] = useState(false)
-  const [crediteurAanmakenFout, setCrediteurAanmakenFout] = useState<string | null>(null)
+  // v2 ⑥: "+ Nieuwe crediteur in RLZ" als dialoog, voorgevuld uit de scan.
+  const [nieuweCrediteurOpen, setNieuweCrediteurOpen] = useState(false)
+  const [crediteurMelding, setCrediteurMelding] = useState<string | null>(null)
 
   const [checkRapport, setCheckRapport] = useState<CheckRapportDto | null>(null)
   // Design-pass taak 7: elke veldwijziging maakt het laatste checkresultaat ongeldig voor de
@@ -789,43 +804,25 @@ export function BoekvoorstelPanel({
     [aiLeverancierNaam, vendorOpties],
   )
 
-  const nieuweCrediteurAanmaken = async () => {
-    if (!aiLeverancierNaam) return
-    setCrediteurAanmakenBezig(true)
-    setCrediteurAanmakenFout(null)
-    try {
-      const resp = await apiFetch(`/administraties/${administratieId}/crediteuren`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ naam: aiLeverancierNaam }),
-      })
-      const body: unknown = await resp.json().catch(() => null)
-      if (resp.ok) {
-        const nieuw = body as VendorOptieDto
-        setCacheVersie((v) => v + 1)
-        wijzigVendorId(nieuw.id)
-        return
-      }
-      // 409 = bestond al (bv. net gesynchroniseerd): de backend stuurt de bestaande vendor_id
-      // mee — die selecteren is voor de controleur hetzelfde eindresultaat.
-      const detail = body && typeof body === 'object' ? (body as { detail?: unknown }).detail : null
-      if (resp.status === 409 && detail && typeof detail === 'object' && 'vendor_id' in detail) {
-        setCacheVersie((v) => v + 1)
-        wijzigVendorId(String((detail as { vendor_id: unknown }).vendor_id))
-        return
-      }
-      const melding =
-        typeof detail === 'string'
-          ? detail
-          : detail && typeof detail === 'object' && 'message' in detail
-            ? String((detail as { message: unknown }).message)
-            : resp.statusText || `Fout (${resp.status})`
-      setCrediteurAanmakenFout(melding)
-    } catch (err) {
-      setCrediteurAanmakenFout(err instanceof ApiError ? err.message : 'Crediteur aanmaken mislukt.')
-    } finally {
-      setCrediteurAanmakenBezig(false)
-    }
+  const naNieuweCrediteur = (resultaat: NieuweCrediteurResultaat) => {
+    setNieuweCrediteurOpen(false)
+    setCacheVersie((v) => v + 1)
+    wijzigVendorId(resultaat.id)
+    const delen: string[] = []
+    if (resultaat.kvk_opgeslagen) delen.push('KvK')
+    if (resultaat.btw_opgeslagen) delen.push('btw')
+    if (resultaat.iban_vertrouwd) delen.push('IBAN vertrouwd')
+    const w = resultaat.waarschuwingen ?? []
+    setCrediteurMelding(
+      `Crediteur „${resultaat.naam ?? ''}” aangemaakt in RLZ${delen.length ? ` · onthouden: ${delen.join(', ')}` : ''}${w.length ? ` · let op: ${w.join('; ')}` : ''}`,
+    )
+  }
+  const naBestaandeCrediteur = (vendorId: string) => {
+    // 409 = bestond al (bv. net gesynchroniseerd): de bestaande selecteren is voor de controleur
+    // hetzelfde eindresultaat.
+    setNieuweCrediteurOpen(false)
+    setCacheVersie((v) => v + 1)
+    wijzigVendorId(vendorId)
   }
 
   const nuSynchroniseren = async () => {
@@ -1082,6 +1079,13 @@ export function BoekvoorstelPanel({
   useEffect(() => {
     onOnopgeslagenWijzigingen?.(heeftOnopgeslagen)
   }, [onOnopgeslagenWijzigingen, heeftOnopgeslagen])
+  useEffect(() => {
+    if (isReadOnly) {
+      onChecksStand?.(null)
+      return
+    }
+    onChecksStand?.({ bezig: checksBezig, actueel: checksActueel, rapport: checkRapport })
+  }, [onChecksStand, isReadOnly, checksBezig, checksActueel, checkRapport])
 
   if (laden) return <div className="panel">Boekvoorstel laden…</div>
   if (ladenFout) return <div className="fout">Kon boekvoorstel niet laden: {ladenFout}</div>
@@ -1098,15 +1102,131 @@ export function BoekvoorstelPanel({
             : undefined
   return (
     <>
+      {!isReadOnly && (
+        <div className="panel crediteur-kaart" data-testid="crediteur-kaart">
+          <h2>Crediteur</h2>
+          {synchroniserenFout && <div className="fout">Synchroniseren gaf fouten: {synchroniserenFout}</div>}
+          {!vendorLaden && vendorOpties.length === 0 && !vendorFout && (
+            <LegeCacheBanner naam="crediteuren" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
+          )}
+          {vendorFout && <div className="fout">Kon crediteuren niet laden: {vendorFout}</div>}
+          <div style={{ maxWidth: 520 }}>
+
+                <SearchableCombobox
+                  label="Crediteur"
+                  opties={vendorOpties}
+                  waarde={vendorId}
+                  onWijzig={wijzigVendorId}
+                  vereist
+                  fout={checkRapport?.geblokkeerd && vendorId === null}
+                />
+                {aiKop?.vendor && (
+                  <div style={{ marginTop: 4 }}>
+                    <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} match={aiKop.vendor.match} bron={aiKop.bron} />
+                  </div>
+                )}
+                {/* Punt 14 (28-08): btw-/KvK-nummer van de leverancier uit de factuur — herkomst-chip conform
+                    de andere kopvelden; wordt per crediteur onthouden zodra het voorstel mét crediteur is
+                    opgeslagen (voedt nummer-match + duplicaat over crediteuren heen). */}
+                {(ai?.btw_nummer || ai?.kvk_nummer) && (
+                  <div className="hint" style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {ai?.btw_nummer && (
+                      <span
+                        className={`chip ${ai.btw_nummer_geverifieerd ? 'ok' : 'afwijking'}`}
+                        title={
+                          ai.btw_nummer_geverifieerd
+                            ? 'Btw-nummer uit de factuur — vorm én elfproef/mod-97 kloppen.'
+                            : 'Btw-nummer uit de factuur — vorm klopt, controlegetal niet te verifiëren (controleer).'
+                        }
+                      >
+                        btw {ai.btw_nummer}
+                      </span>
+                    )}
+                    {ai?.kvk_nummer && (
+                      <span className="chip ok" title="KvK-nummer uit de factuur (8 cijfers).">
+                        KvK {ai.kvk_nummer}
+                      </span>
+                    )}
+                    <span>uit factuur</span>
+                  </div>
+                )}
+                {vendorId === null && aiLeverancierNaam && (
+                  <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                    {/* Chip kort (nooit meerregelig); de gelezen naam als gewone tekst die netjes
+                        binnen de grid-kolom afbreekt — een lange leveranciersnaam mag de layout
+                        nooit openduwen (Peters visuele controle 2026-07-11). */}
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                      {ai?.zekerheid.leverancier_naam !== undefined && (
+                        <span className="chip afwijking">AI {zekerheidPct(ai.zekerheid.leverancier_naam)}</span>
+                      )}
+                      <span style={{ fontSize: 12, color: 'var(--muted)', overflowWrap: 'anywhere', minWidth: 0 }}>
+                        AI las: „{aiLeverancierNaam}” — geen eenduidige match in de crediteuren-cache.
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {crediteurVoorstellen.map((s) => (
+                        <button
+                          key={s.optie.id}
+                          type="button"
+                          className="btn secondary"
+                          style={{ maxWidth: '100%' }}
+                          onClick={() => wijzigVendorId(s.optie.id)}
+                        >
+                          Koppel aan „{s.optie.label}”
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{ maxWidth: '100%' }}
+                        title="Maakt idempotent een crediteur aan in Reeleezee, voorgevuld met naam · KvK · btw · IBAN uit de scan"
+                        onClick={() => setNieuweCrediteurOpen(true)}
+                      >
+                        + Nieuwe crediteur in RLZ
+                      </button>
+                    </div>
+                  </div>
+                )}
+            
+          </div>
+          {/* KvK-/btw-mismatch-guard (v2 ⑥, casus Hello Kitchen Son ↔ Duiven): een naam-match met
+              een ánder nummer wordt NOOIT stil voorgesteld — wél getoond, de mens kiest. */}
+          {vendorId === null && ai?.vendor_waarschuwing && (
+            <div className="waarschuwing" role="note" data-testid="crediteur-waarschuwing">
+              ⚠ Dichtstbijzijnde naam-match <b>„{ai.vendor_waarschuwing.naam}”</b> heeft een{' '}
+              <b>ánder {ai.vendor_waarschuwing.reden === 'kvk_afwijkend' ? 'KvK-nummer' : 'btw-nummer'}</b> (
+              {ai.vendor_waarschuwing.kandidaat_nummer} i.p.v. {ai.vendor_waarschuwing.factuur_nummer} op de factuur) — waarschijnlijk een
+              andere vestiging of entiteit. Niet automatisch voorgesteld.{' '}
+              <button type="button" className="linkbtn" onClick={() => wijzigVendorId(ai.vendor_waarschuwing!.vendor_id)}>
+                toch koppelen
+              </button>
+            </div>
+          )}
+          {crediteurMelding && (
+            <div className="hint" style={{ color: 'var(--green)' }} role="status">
+              {crediteurMelding}
+            </div>
+          )}
+        </div>
+      )}
+      {nieuweCrediteurOpen && (
+        <NieuweCrediteurDialog
+          administratieId={administratieId}
+          documentId={documentId}
+          voorgevuld={{
+            naam: aiLeverancierNaam ?? '',
+            kvk_nummer: ai?.kvk_nummer ?? null,
+            btw_nummer: ai?.btw_nummer ?? null,
+            iban: typeof veldvoorstel?.iban === 'string' ? veldvoorstel.iban : null,
+          }}
+          herkomst={{ kvk: Boolean(ai?.kvk_nummer), btw: Boolean(ai?.btw_nummer), iban: typeof veldvoorstel?.iban === 'string' }}
+          onAangemaakt={naNieuweCrediteur}
+          onBestaand={naBestaandeCrediteur}
+          onSluit={() => setNieuweCrediteurOpen(false)}
+        />
+      )}
       <div className="panel">
         <h2>Kopgegevens</h2>
-        {!isReadOnly && synchroniserenFout && (
-          <div className="fout">Synchroniseren gaf fouten: {synchroniserenFout}</div>
-        )}
-        {!isReadOnly && !vendorLaden && vendorOpties.length === 0 && !vendorFout && (
-          <LegeCacheBanner naam="crediteuren" bezig={synchroniserenBezig} onSynchroniseren={() => void nuSynchroniseren()} />
-        )}
-        {!isReadOnly && vendorFout && <div className="fout">Kon crediteuren niet laden: {vendorFout}</div>}
         {isReadOnly ? (
           <div className="grid2">
             <StatischVeld label="Crediteur" waarde={optieWeergave(vendorOpties, vendorId)} />
@@ -1123,84 +1243,6 @@ export function BoekvoorstelPanel({
           </div>
         ) : (
           <div className="grid2">
-            <div>
-              <SearchableCombobox
-                label="Crediteur"
-                opties={vendorOpties}
-                waarde={vendorId}
-                onWijzig={wijzigVendorId}
-                vereist
-                fout={checkRapport?.geblokkeerd && vendorId === null}
-              />
-              {aiKop?.vendor && (
-                <div style={{ marginTop: 4 }}>
-                  <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} match={aiKop.vendor.match} bron={aiKop.bron} />
-                </div>
-              )}
-              {/* Punt 14 (28-08): btw-/KvK-nummer van de leverancier uit de factuur — herkomst-chip conform
-                  de andere kopvelden; wordt per crediteur onthouden zodra het voorstel mét crediteur is
-                  opgeslagen (voedt nummer-match + duplicaat over crediteuren heen). */}
-              {(ai?.btw_nummer || ai?.kvk_nummer) && (
-                <div className="hint" style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {ai?.btw_nummer && (
-                    <span
-                      className={`chip ${ai.btw_nummer_geverifieerd ? 'ok' : 'afwijking'}`}
-                      title={
-                        ai.btw_nummer_geverifieerd
-                          ? 'Btw-nummer uit de factuur — vorm én elfproef/mod-97 kloppen.'
-                          : 'Btw-nummer uit de factuur — vorm klopt, controlegetal niet te verifiëren (controleer).'
-                      }
-                    >
-                      btw {ai.btw_nummer}
-                    </span>
-                  )}
-                  {ai?.kvk_nummer && (
-                    <span className="chip ok" title="KvK-nummer uit de factuur (8 cijfers).">
-                      KvK {ai.kvk_nummer}
-                    </span>
-                  )}
-                  <span>uit factuur</span>
-                </div>
-              )}
-              {vendorId === null && aiLeverancierNaam && (
-                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-                  {/* Chip kort (nooit meerregelig); de gelezen naam als gewone tekst die netjes
-                      binnen de grid-kolom afbreekt — een lange leveranciersnaam mag de layout
-                      nooit openduwen (Peters visuele controle 2026-07-11). */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                    {ai?.zekerheid.leverancier_naam !== undefined && (
-                      <span className="chip afwijking">AI {zekerheidPct(ai.zekerheid.leverancier_naam)}</span>
-                    )}
-                    <span style={{ fontSize: 12, color: 'var(--muted)', overflowWrap: 'anywhere', minWidth: 0 }}>
-                      AI las: „{aiLeverancierNaam}” — geen eenduidige match in de crediteuren-cache.
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {crediteurVoorstellen.map((s) => (
-                      <button
-                        key={s.optie.id}
-                        type="button"
-                        className="btn secondary"
-                        style={{ maxWidth: '100%' }}
-                        onClick={() => wijzigVendorId(s.optie.id)}
-                      >
-                        Koppel aan „{s.optie.label}”
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      style={{ maxWidth: '100%' }}
-                      disabled={crediteurAanmakenBezig}
-                      onClick={() => void nieuweCrediteurAanmaken()}
-                    >
-                      {crediteurAanmakenBezig ? 'Bezig…' : `＋ Nieuwe crediteur „${aiLeverancierNaam}” aanmaken in RLZ`}
-                    </button>
-                  </div>
-                  {crediteurAanmakenFout && <div className="fout">{crediteurAanmakenFout}</div>}
-                </div>
-              )}
-            </div>
             <div>
               <label htmlFor="boekvoorstel-referentie">Referentie / factuurnummer</label>
               <input
@@ -1585,71 +1627,64 @@ export function BoekvoorstelPanel({
         )}
       </div>
 
-      {!isReadOnly && (
-        <div className="panel">
-          <h2>
-            Harde checks{' '}
-            {checksBezig ? (
-              <span className="chip vraag">checks worden uitgevoerd…</span>
-            ) : checkRapport !== null && checksActueel ? (
-              <span className={`chip ${checkRapport.geblokkeerd ? 'blokkerend' : 'ok'}`}>
-                {checkRapport.geblokkeerd ? 'blokkerend' : 'alle checks groen'}
-              </span>
-            ) : (
-              <span className="chip">automatisch</span>
-            )}
-          </h2>
-          {controlerenFout && <div className="fout">{controlerenFout}</div>}
-          {checkRapport === null && !checksBezig && (
-            <p className="hint">De harde checks draaien automatisch — bij het openen en na elke wijziging.</p>
-          )}
-          {checkRapport && (
-            <>
-              {!checksActueel && !checksBezig && (
-                <div className="hint" style={{ color: 'var(--orange)' }}>
-                  Wijzigingen sinds de laatste controle — de checks draaien zo automatisch opnieuw.
-                </div>
-              )}
-              <table className="lines">
-                <tbody>
-                  {checkRapport.resultaten.map((r) => (
-                    <tr key={r.naam} style={!checksActueel ? { opacity: 0.55 } : undefined}>
-                      <td>
-                        {/* Punt 14 (28-08): oranje signaal = ok maar kijken (geen blokkade). */}
-                        <span className={`chip ${!r.ok ? 'blokkerend' : r.signaal ? 'afwijking' : 'ok'}`}>
-                          {!r.ok ? 'Blokkerend' : r.signaal ? 'Signaal' : 'OK'}
-                        </span>
-                      </td>
-                      <td>
-                        <b>{r.naam}</b>
-                      </td>
-                      <td>{r.melding}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {onIbanAangeboden &&
-                checksActueel &&
-                checkRapport.resultaten.some((r) => r.naam === 'IBAN-wissel' && !r.ok) && (
-                  <div style={{ marginTop: 12 }}>
-                    <div className="hint" style={{ marginTop: 0 }}>
-                      Het rekeningnummer wijkt af van de vertrouwde set van deze crediteur. Bied het aan ter
-                      <b> vier-ogen-accordering</b>: een ingestelde accordeur (nooit uzelf) beoordeelt en
-                      deblokkeert — u kunt uw eigen aanvraag niet accorderen.
-                    </div>
-                    <IbanAanbiedenVorm
-                      administratieId={administratieId}
-                      documentId={documentId}
-                      initieelIban={typeof veldvoorstel?.iban === 'string' ? veldvoorstel.iban : ''}
-                      knopTekst="Rekening ter accordering aanbieden"
-                      onAangeboden={onIbanAangeboden}
-                    />
-                  </div>
+      {!isReadOnly &&
+        (() => {
+          // v2 ① "checks onzichtbaar-tot-relevant": groen/passief = één inklapregel onderaan
+          // (mét de volledige lijst); afwijkingen verschijnen als banner boven de actiebalk.
+          const groen = checkRapport ? checkRapport.resultaten.filter((r) => r.ok && !r.signaal).length : 0
+          const totaal = checkRapport ? checkRapport.resultaten.length : 0
+          const inklap = (
+            <details className="inklap-controles" data-testid="controles-inklap">
+              <summary>
+                Controles{' '}
+                {checksBezig ? (
+                  <span className="chip vraag">worden uitgevoerd…</span>
+                ) : checkRapport !== null && checksActueel ? (
+                  <span className={`chip ${checkRapport.geblokkeerd ? 'blokkerend' : 'ok'}`}>
+                    {checkRapport.geblokkeerd ? 'blokkerend' : `${groen}/${totaal} groen`}
+                  </span>
+                ) : (
+                  <span className="chip">automatisch</span>
                 )}
-            </>
-          )}
-        </div>
-      )}
+              </summary>
+              <div className="inklap-inhoud">
+                {controlerenFout && <div className="fout">{controlerenFout}</div>}
+                {checkRapport === null && !checksBezig && (
+                  <p className="hint">De harde checks draaien automatisch — bij het openen en na elke wijziging.</p>
+                )}
+                {checkRapport && (
+                  <>
+                    {!checksActueel && !checksBezig && (
+                      <div className="hint" style={{ color: 'var(--orange)' }}>
+                        Wijzigingen sinds de laatste controle — de checks draaien zo automatisch opnieuw.
+                      </div>
+                    )}
+                    <table className="lines">
+                      <tbody>
+                        {checkRapport.resultaten.map((r) => (
+                          <tr key={r.naam} style={!checksActueel ? { opacity: 0.55 } : undefined}>
+                            <td>
+                              {/* Punt 14 (28-08): oranje signaal = ok maar kijken (geen blokkade). */}
+                              <span className={`chip ${!r.ok ? 'blokkerend' : r.signaal ? 'afwijking' : 'ok'}`}>
+                                {!r.ok ? 'Blokkerend' : r.signaal ? 'Signaal' : 'OK'}
+                              </span>
+                            </td>
+                            <td>
+                              <b>{r.naam}</b>
+                            </td>
+                            <td>{r.melding}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+            </details>
+          )
+          if (inklapDoel === undefined) return inklap
+          return inklapDoel ? createPortal(inklap, inklapDoel) : null
+        })()}
 
       {/* Alleen-lezen-uitkomsten (geboekt/verwijderd/boekfout) blijven hier; de actiebalk zelf
           verhuist via `actiebalkDoel` naar ónder het doorbelast-blok (27-08). */}
@@ -1690,8 +1725,43 @@ export function BoekvoorstelPanel({
       )}
       {!isReadOnly &&
         (() => {
+          const afwijkingen = checkRapport && checksActueel ? checkRapport.resultaten.filter((r) => !r.ok || r.signaal) : []
+          const ibanGeblokkeerd =
+            Boolean(onIbanAangeboden) && checksActueel && (checkRapport?.resultaten.some((r) => r.naam === 'IBAN-wissel' && !r.ok) ?? false)
           const actiebalk = (
             <div className="panel actiebalk" data-testid="actiebalk">
+              {/* v2 ①: élke rode/oranje uitkomst = één regel boven de knoppen (klik = detail). */}
+              {afwijkingen.length > 0 && (
+                <div className="controles-banner" data-testid="controles-banner">
+                  {afwijkingen.map((r) => (
+                    <button
+                      key={r.naam}
+                      type="button"
+                      className={r.ok ? undefined : 'rood'}
+                      onClick={() => setPopupChecks({ melding: null, checks: checkRapport! })}
+                      title="Klik voor alle controles"
+                    >
+                      ⚠ {r.naam}: {r.melding}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {ibanGeblokkeerd && (
+                <div style={{ marginBottom: 10 }}>
+                  <div className="hint" style={{ marginTop: 0 }}>
+                    Het rekeningnummer wijkt af van de vertrouwde set van deze crediteur. Bied het aan ter
+                    <b> vier-ogen-accordering</b>: een ingestelde accordeur (nooit uzelf) beoordeelt en
+                    deblokkeert — u kunt uw eigen aanvraag niet accorderen.
+                  </div>
+                  <IbanAanbiedenVorm
+                    administratieId={administratieId}
+                    documentId={documentId}
+                    initieelIban={typeof veldvoorstel?.iban === 'string' ? veldvoorstel.iban : ''}
+                    knopTekst="Rekening ter accordering aanbieden"
+                    onAangeboden={onIbanAangeboden!}
+                  />
+                </div>
+              )}
               {boekenFout && <div className="fout">{boekenFout}</div>}
               {boekResultaat && (
                 <div className="hint" style={{ color: 'var(--green)', marginTop: 0 }}>

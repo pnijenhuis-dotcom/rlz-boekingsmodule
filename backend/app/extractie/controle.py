@@ -101,6 +101,40 @@ def _genormaliseerd(naam: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", zonder_rechtsvorm).strip()
 
 
+@dataclass(frozen=True)
+class VendorWaarschuwing:
+    """Naam-match die bewust NIET is voorgesteld (controlescherm v2 ⑥, casus Hello Kitchen Son ↔
+    Duiven): de dichtstbijzijnde naam-kandidaat draagt een ánder KvK-/btw-nummer dan de factuur —
+    waarschijnlijk een andere vestiging/entiteit. De mens ziet de waarschuwing en kiest of maakt."""
+
+    vendor_id: uuid.UUID
+    naam: str
+    reden: str  # 'kvk_afwijkend' | 'btw_afwijkend'
+    factuur_nummer: str
+    kandidaat_nummer: str
+
+    def als_dict(self) -> dict:
+        return {
+            "vendor_id": str(self.vendor_id),
+            "naam": self.naam,
+            "reden": self.reden,
+            "factuur_nummer": self.factuur_nummer,
+            "kandidaat_nummer": self.kandidaat_nummer,
+        }
+
+
+def _kenmerk_conflict(
+    kandidaat: VendorKandidaat, *, btw_nummer: str | None, kvk_nummer: str | None
+) -> tuple[str, str, str] | None:
+    """(reden, factuur_nummer, kandidaat_nummer) als de kandidaat een bekend nummer draagt dat
+    afwijkt van dat op de factuur; None als er niets te vergelijken valt of het klopt."""
+    if kvk_nummer and kandidaat.kvk_nummer and kandidaat.kvk_nummer != kvk_nummer:
+        return "kvk_afwijkend", kvk_nummer, kandidaat.kvk_nummer
+    if btw_nummer and kandidaat.btw_nummer and kandidaat.btw_nummer != btw_nummer:
+        return "btw_afwijkend", btw_nummer, kandidaat.btw_nummer
+    return None
+
+
 def match_vendor(
     leverancier_naam: str | None,
     kandidaten: list[VendorKandidaat],
@@ -108,6 +142,20 @@ def match_vendor(
     btw_nummer: str | None = None,
     kvk_nummer: str | None = None,
 ) -> tuple[uuid.UUID | None, str | None]:
+    """Compat-vorm: alleen (vendor_id, match) — zie `match_vendor_met_waarschuwing`."""
+    vendor_id, match, _ = match_vendor_met_waarschuwing(
+        leverancier_naam, kandidaten, btw_nummer=btw_nummer, kvk_nummer=kvk_nummer
+    )
+    return vendor_id, match
+
+
+def match_vendor_met_waarschuwing(
+    leverancier_naam: str | None,
+    kandidaten: list[VendorKandidaat],
+    *,
+    btw_nummer: str | None = None,
+    kvk_nummer: str | None = None,
+) -> tuple[uuid.UUID | None, str | None, VendorWaarschuwing | None]:
     """Crediteur-suggestie uit de vendor-cache: (vendor_id, "btw_nummer"|"kvk_nummer"|"exact"|"fuzzy")
     of (None, None). Voorstel, geen automatische keuze — bij meerdere plausibele kandidaten géén
     suggestie (consistent met "nooit auto-toewijzen bij twijfel").
@@ -116,26 +164,40 @@ def match_vendor(
     nummers per crediteur, dan het KvK-nummer, dan pas de naam — exact, dan fuzzy (genormaliseerde
     naam zonder rechtsvorm/leestekens exact óf SequenceMatcher ≥ 0.85 met een uniek beste resultaat).
     Een nummer dat bij méér dan één crediteur hoort (dubbele crediteur in RLZ) geeft géén
-    nummer-suggestie en valt terug op de naam — de dubbel-signalering op Instellingen toont 'm."""
+    nummer-suggestie en valt terug op de naam — de dubbel-signalering op Instellingen toont 'm.
+
+    KvK-/btw-mismatch-guard (controlescherm v2 ⑥, 02-09): een naam-match (exact óf fuzzy) waarvan
+    het bekende KvK-/btw-nummer afwijkt van dat op de factuur wordt NOOIT stil voorgesteld — die
+    komt terug als `VendorWaarschuwing` (derde element), zodat de mens 'm ziet en zelf kiest of
+    een nieuwe crediteur aanmaakt (casus Hello Kitchen Son ↔ Duiven)."""
     if btw_nummer:
         op_btw = [k for k in kandidaten if k.btw_nummer and k.btw_nummer == btw_nummer]
         if len(op_btw) == 1:
-            return op_btw[0].id, "btw_nummer"
+            return op_btw[0].id, "btw_nummer", None
     if kvk_nummer:
         op_kvk = [k for k in kandidaten if k.kvk_nummer and k.kvk_nummer == kvk_nummer]
         if len(op_kvk) == 1:
-            return op_kvk[0].id, "kvk_nummer"
+            return op_kvk[0].id, "kvk_nummer", None
     if not leverancier_naam:
-        return None, None
+        return None, None, None
     doel = _genormaliseerd(leverancier_naam)
     if not doel:
-        return None, None
+        return None, None, None
+
+    def met_guard(kandidaat: VendorKandidaat, match: str) -> tuple[uuid.UUID | None, str | None, VendorWaarschuwing | None]:
+        conflict = _kenmerk_conflict(kandidaat, btw_nummer=btw_nummer, kvk_nummer=kvk_nummer)
+        if conflict is None:
+            return kandidaat.id, match, None
+        reden, factuur, bekend = conflict
+        return None, None, VendorWaarschuwing(
+            vendor_id=kandidaat.id, naam=kandidaat.naam, reden=reden, factuur_nummer=factuur, kandidaat_nummer=bekend
+        )
 
     exact = [k for k in kandidaten if k.naam and k.naam.strip().lower() == leverancier_naam.strip().lower()]
     if len(exact) == 1:
-        return exact[0].id, "exact"
+        return met_guard(exact[0], "exact")
     if len(exact) > 1:
-        return None, None
+        return None, None, None
 
     scores: list[tuple[float, VendorKandidaat]] = []
     for kandidaat in kandidaten:
@@ -148,13 +210,13 @@ def match_vendor(
         if score >= _FUZZY_DREMPEL:
             scores.append((score, kandidaat))
     if not scores:
-        return None, None
+        return None, None, None
     scores.sort(key=lambda item: item[0], reverse=True)
     beste_score = scores[0][0]
     besten = [kandidaat for score, kandidaat in scores if beste_score - score < 0.02]
     if len(besten) != 1:
-        return None, None
-    return besten[0].id, "fuzzy"
+        return None, None, None
+    return met_guard(besten[0], "fuzzy")
 
 
 def leid_btw_af(netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]) -> BtwAfleiding:
@@ -297,7 +359,9 @@ def bouw_veldvoorstel(
     if tekst_van("kvk_nummer") and kvk_nummer is None:
         onparseerbaar.append("kvk_nummer")
 
-    vendor_id, vendor_match = match_vendor(leverancier_naam, vendors, btw_nummer=btw_nummer, kvk_nummer=kvk_nummer)
+    vendor_id, vendor_match, vendor_waarschuwing = match_vendor_met_waarschuwing(
+        leverancier_naam, vendors, btw_nummer=btw_nummer, kvk_nummer=kvk_nummer
+    )
 
     regels: list[dict] = []
     regel_zekerheid: list[float] = []
@@ -388,6 +452,8 @@ def bouw_veldvoorstel(
         "vendor_suggestie": (
             {"vendor_id": str(vendor_id), "match": vendor_match} if vendor_id is not None else None
         ),
+        # KvK-/btw-mismatch-guard (v2 ⑥): de naam-match die bewust níét is voorgesteld.
+        "vendor_waarschuwing": vendor_waarschuwing.als_dict() if vendor_waarschuwing is not None else None,
         "controle": {
             "regelsom": _bedrag_str(regelsom) if regelsom is not None else None,
             "regelsom_basis": regelsom_basis,

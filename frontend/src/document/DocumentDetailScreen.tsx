@@ -34,7 +34,7 @@ import { AanbetalingSignaal, type VerrekenRegel } from './AanbetalingSignaal'
 import { TerugkerendSignaal } from './TerugkerendSignaal'
 import { alsAiVoorstel, isTemplateVoorstel, zekerheidPct, type AiVoorstel } from './aiVoorstel'
 import { AccorderingSectie } from './AccorderingSectie'
-import { BoekvoorstelPanel, type GeboektInfo, type ToeTeVoegenRegel } from './BoekvoorstelPanel'
+import { BoekvoorstelPanel, type ChecksStand, type GeboektInfo, type ToeTeVoegenRegel } from './BoekvoorstelPanel'
 import { MatchSectie } from './MatchSectie'
 import { MateriaalMatchSectie } from './MateriaalMatchSectie'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
@@ -371,7 +371,6 @@ export function DocumentDetailScreen() {
   // Alle vragen van dit document (dialoog-threads, besluit Peter 25-08): voeden de open-vraag-
   // banner én het tabblad "Opmerkingen" naast de tijdlijn.
   const [documentVragen, setDocumentVragen] = useState<VraagDto[] | null>(null)
-  const [tijdlijnTab, setTijdlijnTab] = useState<'tijdlijn' | 'opmerkingen'>('tijdlijn')
   // Gebundeld UBL+PDF-document (bundeling/samenvoegen 02-09): het opgeslagen bestand is de UBL
   // (data), de PDF is het beeld — /bestand serveert dan de PDF en de UBL blijft via ?vorm=data
   // downloadbaar. Anders (omgezette foto) is het origineel de bron zelf.
@@ -392,13 +391,19 @@ export function DocumentDetailScreen() {
     a.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
-  const opmerkingenRef = useRef<HTMLDivElement | null>(null)
+  const opmerkingenRef = useRef<HTMLDetailsElement | null>(null)
   // Doorbelasten in de boekflow (besluit Peter 25-08): het blok meldt of er een klaargezette run
   // is en of die groen staat — de boekknop wordt dan "Boeken + doorbelasten" (poort in het paneel).
   const [doorbelastingKlaargezet, setDoorbelastingKlaargezet] = useState<KlaargezetteDoorbelasting | null>(null)
   // Actiebalk-positie (feedback Peter 27-08): het paneel rendert zijn besluitknoppen via een
   // portal in dit anker, dat ónder het blok "Doorbelasten na boeken" staat — alleen volgorde.
   const [actiebalkDoel, setActiebalkDoel] = useState<HTMLElement | null>(null)
+  // Controlescherm v2 (02-09): inklapregel "Controles" rendert het paneel via een portal onderaan
+  // de werk-kolom; de stand voedt de topbar-chip "alle controles groen ✓".
+  const [inklapDoel, setInklapDoel] = useState<HTMLElement | null>(null)
+  const [checksStand, setChecksStand] = useState<ChecksStand | null>(null)
+  const onChecksStand = useCallback((stand: ChecksStand | null) => setChecksStand(stand), [])
+  const [opmerkingenOpen, setOpmerkingenOpen] = useState(false)
   const [boekvoorstelVersie, setBoekvoorstelVersie] = useState(0)
   const onVoorstelOpgeslagen = useCallback(() => setBoekvoorstelVersie((v) => v + 1), [])
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
@@ -531,7 +536,7 @@ export function DocumentDetailScreen() {
     [documentVragen],
   )
   const toonOpmerkingen = () => {
-    setTijdlijnTab('opmerkingen')
+    setOpmerkingenOpen(true)
     opmerkingenRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -708,6 +713,30 @@ export function DocumentDetailScreen() {
               >
                 {navTip === 'vorige' ? 'Vorige in de gefilterde lijst — sneltoets ←' : 'Volgende in de gefilterde lijst — sneltoets →'}
               </AnkerPopup>
+            </span>
+          )}
+          {/* v2 ①: alles groen = één chip; afwijkingen staan als banner boven de actiebalk. */}
+          {checksStand && (
+            <span
+              className={`chip ${
+                checksStand.bezig || !checksStand.actueel || !checksStand.rapport
+                  ? 'neutraal'
+                  : checksStand.rapport.geblokkeerd
+                    ? 'blokkerend'
+                    : checksStand.rapport.resultaten.some((r) => r.signaal)
+                      ? 'afwijking'
+                      : 'ok'
+              }`}
+              data-testid="controles-chip"
+              title="Alle controles staan onderaan in de inklapregel “Controles”"
+            >
+              {checksStand.bezig || !checksStand.actueel || !checksStand.rapport
+                ? 'controles lopen…'
+                : checksStand.rapport.geblokkeerd
+                  ? `${checksStand.rapport.resultaten.filter((r) => !r.ok).length} controle(s) rood`
+                  : checksStand.rapport.resultaten.some((r) => r.signaal)
+                    ? `${checksStand.rapport.resultaten.filter((r) => r.signaal).length} signaal/signalen`
+                    : 'alle controles groen ✓'}
             </span>
           )}
           <StatusChip status={detail.status} />
@@ -1017,48 +1046,6 @@ export function DocumentDetailScreen() {
             </div>
           )}
 
-          {(() => {
-            // Zolang de achtergrondextractie loopt is een (ouder) voorstel of het
-            // boekvoorstel-formulier misleidend — de worker schrijft zo een nieuw voorstel.
-            if (achtergrondBezig) return null
-            const aiVoorstel = alsAiVoorstel(detail.veldvoorstel)
-            if (aiVoorstel) {
-              return (
-                <AiVoorstelPanel
-                  voorstel={aiVoorstel}
-                  onOpnieuwExtraheren={
-                    magOpnieuwExtraheren
-                      ? () => {
-                          setOpnieuwFout(null)
-                          setHerExtractieBevestigen(true)
-                        }
-                      : undefined
-                  }
-                />
-              )
-            }
-            if (!detail.veldvoorstel) return null
-            return (
-              <div className="panel">
-                <h2>
-                  Veldvoorstel (UBL) <span className="chip geheugen">deterministisch geparst</span>
-                </h2>
-                <table className="lines">
-                  <tbody>
-                    {Object.entries(detail.veldvoorstel).map(([sleutel, waarde]) => (
-                      <tr key={sleutel}>
-                        <td style={{ color: 'var(--muted)' }}>{veldnaam(sleutel)}</td>
-                        <td>{waarde === null || waarde === undefined ? '—' : String(waarde)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-          })()}
-
-          {/* Uit de e-mail (feedbackronde 25-08 deel 3 punt 1b): context bij het voorstel. */}
-          {detail.herkomst_mail && <UitDeEmail herkomst={detail.herkomst_mail} />}
 
           {/* Al-betaald-signaal (besluit Peter 25-08, deel 2 punt 1): alleen hier op het
               controlescherm, nooit blokkerend — de component gate zichzelf (soort/status). */}
@@ -1116,6 +1103,8 @@ export function DocumentDetailScreen() {
               onVoorstelOpgeslagen={onVoorstelOpgeslagen}
               toeTeVoegenRegel={toeTeVoegenRegel}
               actiebalkDoel={actiebalkDoel}
+              inklapDoel={inklapDoel}
+              onChecksStand={onChecksStand}
               onActies={onActies}
               onOnopgeslagenWijzigingen={onOnopgeslagenWijzigingen}
             />
@@ -1132,141 +1121,80 @@ export function DocumentDetailScreen() {
             onKlaargezet={setDoorbelastingKlaargezet}
           />
 
-          {/* Anker voor de actiebalk (Afwijzen / Vraag stellen / Ter accordering / Boeken, al dan
-              niet "+ doorbelasten"): ÓNDER het doorbelast-blok — eerst de verdeling zien/instellen,
-              dan de besluitknoppen (feedback Peter 27-08). Geen logica; het paneel blijft eigenaar. */}
-          {!achtergrondBezig && <div ref={setActiebalkDoel} data-testid="actiebalk-doel" />}
-
-          {/* Tegenboek-pad (mockup 22-08): actie op een GEBOEKTE inkoopfactuur waarvan storno
-              door de aangifte-poort geblokkeerd is — de sectie gate zichzelf. */}
-          <TegenboekSectie
-            administratieId={administratieId}
-            documentId={documentId}
-            status={detail.status}
-            soort={detail.soort}
-            onGewijzigd={laadDetail}
-          />
-
-          {/* Kempen-doorbelasting (blok 3): actie op een GEBOEKTE inkoopfactuur — de sectie
-              gate zichzelf (status + soort + toggle per administratie, faalvriendelijk). */}
-          <DoorbelastenSectie
-            administratieId={administratieId}
-            documentId={documentId}
-            status={detail.status}
-            soort={detail.soort}
-          />
-
-          {vraagModalOpen && (
-            <VraagModal
-              administratieId={administratieId}
-              documentId={documentId}
-              onGesteld={() => {
-                setVraagModalOpen(false)
-                laadDetail()
-              }}
-              onAnnuleren={() => setVraagModalOpen(false)}
-            />
-          )}
-
-          {afwijsModalOpen && (
-            <AfwijsModal
-              administratieId={administratieId}
-              documentId={documentId}
-              referentie={veldvoorstelReferentie}
-              onAfgewezen={(_afwijzing, info) => {
-                setAfwijsModalOpen(false)
-                void naVerwerking({ uitkomst: 'afgewezen', referentie: info.referentie, boekstuknummer: null })
-              }}
-              onAnnuleren={() => setAfwijsModalOpen(false)}
-            />
-          )}
-
-          {verplaatsModalOpen && (
-            <VerplaatsModal
-              administratieId={administratieId}
-              administratieNaam={administraties?.find((a) => a.id === administratieId)?.naam ?? null}
-              documentId={documentId}
-              bestandsnaam={detail.bestandsnaam}
-              openVragen={documentVragen?.filter((v) => v.status === 'open').length ?? 0}
-              tenaamstelling={detail.tenaamstelling ?? null}
-              onVerplaatst={(resultaat) => {
-                setVerplaatsModalOpen(false)
-                meld(`Verplaatst naar ${resultaat.naar_administratie_naam} — extractie draait opnieuw`)
-                // Het document is in de bron-scope niet meer zichtbaar: door naar het doel.
-                void navigate(`/documenten/${resultaat.naar_administratie_id}/${documentId}`)
-              }}
-              onAnnuleren={() => setVerplaatsModalOpen(false)}
-            />
-          )}
-
-          {overzichtOpen && <SneltoetsOverzicht onSluiten={() => setOverzichtOpen(false)} />}
-
-          {verlaatDoel !== null && (
-            <BevestigDialog
-              titel="Wijzigingen worden nog opgeslagen"
-              bericht={
-                'Je laatste wijziging in het boekvoorstel is nog niet opgeslagen (opslaan loopt automatisch, ' +
-                'maar is nog niet klaar). Wacht een moment, of verlaat het document — dan gaat die laatste ' +
-                'wijziging verloren.'
+          {/* v2 ①–③: alles passiefs/groens onderaan als inklapregel — Controles (portal uit het
+              paneel), Extractie-details, Uit de e-mail, Opmerkingen, Tijdlijn. */}
+          <div className="inklap-rijen" data-testid="inklap-rijen">
+            {!achtergrondBezig && <div ref={setInklapDoel} data-testid="inklap-doel" style={{ display: 'contents' }} />}
+            {(() => {
+              // v2 ②: het AI-veldvoorstel-blok is een inklapregel — de herkomst-chips staan al op
+              // de velden; hier de volledige extractie-details + "opnieuw extraheren".
+              if (achtergrondBezig) return null
+              const aiVoorstel = alsAiVoorstel(detail.veldvoorstel)
+              if (aiVoorstel) {
+                const scores = Object.values(aiVoorstel.zekerheid).filter((s): s is number => typeof s === 'number')
+                const gemiddeld = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
+                const label = isTemplateVoorstel(aiVoorstel)
+                  ? 'Extractie-details (template)'
+                  : `Extractie-details${gemiddeld !== null ? ` (AI ${zekerheidPct(gemiddeld)})` : ' (AI)'}`
+                return (
+                  <details data-testid="extractie-inklap">
+                    <summary>{label}</summary>
+                    <div className="inklap-inhoud">
+                <AiVoorstelPanel
+                  voorstel={aiVoorstel}
+                  onOpnieuwExtraheren={
+                    magOpnieuwExtraheren
+                      ? () => {
+                          setOpnieuwFout(null)
+                          setHerExtractieBevestigen(true)
+                        }
+                      : undefined
+                  }
+                />
+                    </div>
+                  </details>
+                )
               }
-              bezig={false}
-              fout={null}
-              onBevestigen={() => {
-                const doel = verlaatDoel
-                setVerlaatDoel(null)
-                void navigate(doel)
-              }}
-              onAnnuleren={() => setVerlaatDoel(null)}
-            />
-          )}
+              if (!detail.veldvoorstel) return null
+              return (
+                <details data-testid="extractie-inklap">
+                  <summary>Extractie-details (UBL)</summary>
+                  <div className="inklap-inhoud">
+              <div className="panel">
+                <h2>
+                  Veldvoorstel (UBL) <span className="chip geheugen">deterministisch geparst</span>
+                </h2>
+                <table className="lines">
+                  <tbody>
+                    {Object.entries(detail.veldvoorstel).map(([sleutel, waarde]) => (
+                      <tr key={sleutel}>
+                        <td style={{ color: 'var(--muted)' }}>{veldnaam(sleutel)}</td>
+                        <td>{waarde === null || waarde === undefined ? '—' : String(waarde)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+                  </div>
+                </details>
+              )
+            })()}
 
-          {herExtractieBevestigen && (
-            <BevestigDialog
-              titel="Opnieuw extraheren?"
-              bericht={
-                'De AI leest de PDF opnieuw en het nieuwe resultaat overschrijft het huidige ' +
-                'veldvoorstel (nieuwste extractie wint, ook in de boekvoorstel-prefill). Een al ' +
-                'opgeslagen boekvoorstel blijft bewaard.'
-              }
-              bezig={opnieuwBezig}
-              fout={opnieuwFout}
-              onBevestigen={() => void opnieuwExtraheren()}
-              onAnnuleren={() => {
-                if (!opnieuwBezig) setHerExtractieBevestigen(false)
-              }}
-            />
-          )}
-
-          <div className="panel" ref={opmerkingenRef}>
-            {/* Twee tabs (besluit Peter 25-08, punt B3): Tijdlijn = statusgebeurtenissen,
-                Opmerkingen = de vraag/antwoord-dialogen van dit document, nieuwste onderaan. */}
-            <div className="segment" role="tablist" aria-label="Tijdlijn of opmerkingen" style={{ marginBottom: 10 }}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tijdlijnTab === 'tijdlijn'}
-                className={tijdlijnTab === 'tijdlijn' ? 'actief' : undefined}
-                onClick={() => setTijdlijnTab('tijdlijn')}
-              >
-                Tijdlijn
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tijdlijnTab === 'opmerkingen'}
-                className={tijdlijnTab === 'opmerkingen' ? 'actief' : undefined}
-                onClick={() => setTijdlijnTab('opmerkingen')}
-              >
-                Opmerkingen{documentVragen && documentVragen.length > 0 ? ` (${documentVragen.length})` : ''}
-                {openVraag && (
-                  <span className="chip vraag" style={{ marginLeft: 6 }}>
-                    open
-                  </span>
-                )}
-              </button>
-            </div>
-            {tijdlijnTab === 'opmerkingen' && (
-              <div role="tabpanel" aria-label="Opmerkingen">
+            {/* Uit de e-mail (feedbackronde 25-08 deel 3 punt 1b): context bij het voorstel. */}
+            {detail.herkomst_mail && <UitDeEmail herkomst={detail.herkomst_mail} />}
+          {/* v2 ③: tijdlijn en opmerkingen als inklapregels (waren tabs — besluit 25-08 B3;
+              inhoud ongewijzigd: Tijdlijn = statusgebeurtenissen, Opmerkingen = de dialogen). */}
+          <details ref={opmerkingenRef} open={opmerkingenOpen || Boolean(openVraag)} onToggle={(e) => setOpmerkingenOpen((e.target as HTMLDetailsElement).open)} data-testid="opmerkingen-inklap">
+            <summary>
+              Opmerkingen{documentVragen && documentVragen.length > 0 ? ` (${documentVragen.length})` : ' (0)'}
+              {openVraag && (
+                <span className="chip vraag" style={{ marginLeft: 6 }}>
+                  open
+                </span>
+              )}
+            </summary>
+            <div className="inklap-inhoud">
+              <div aria-label="Opmerkingen">
                 {vragenChronologisch === null && <SkeletonRegels />}
                 {vragenChronologisch !== null && vragenChronologisch.length === 0 && (
                   <p className="hint" style={{ marginTop: 0 }}>
@@ -1289,9 +1217,12 @@ export function DocumentDetailScreen() {
                   />
                 ))}
               </div>
-            )}
-            {tijdlijnTab === 'tijdlijn' && (
-            <table className="lines" role="tabpanel" aria-label="Tijdlijn">
+            </div>
+          </details>
+          <details data-testid="tijdlijn-inklap">
+            <summary>Tijdlijn</summary>
+            <div className="inklap-inhoud">
+            <table className="lines" aria-label="Tijdlijn">
               <tbody>
                 {detail.tijdlijn.map((g, i) => (
                   <tr key={i}>
@@ -1525,8 +1456,119 @@ export function DocumentDetailScreen() {
                 ))}
               </tbody>
             </table>
-            )}
+            </div>
+          </details>
           </div>
+
+          {/* Anker voor de actiebalk (Afwijzen / Vraag stellen / Ter accordering / Boeken, al dan
+              niet "+ doorbelasten"): ÓNDER het doorbelast-blok en de inklapregels — sticky onderaan
+              (v2 ⑤), zodat de acties altijd in beeld zijn. Geen logica; het paneel blijft eigenaar. */}
+          {!achtergrondBezig && (
+            <div className="actiebalk-sticky">
+              <div ref={setActiebalkDoel} data-testid="actiebalk-doel" />
+            </div>
+          )}
+
+          {/* Tegenboek-pad (mockup 22-08): actie op een GEBOEKTE inkoopfactuur waarvan storno
+              door de aangifte-poort geblokkeerd is — de sectie gate zichzelf. */}
+          <TegenboekSectie
+            administratieId={administratieId}
+            documentId={documentId}
+            status={detail.status}
+            soort={detail.soort}
+            onGewijzigd={laadDetail}
+          />
+
+          {/* Kempen-doorbelasting (blok 3): actie op een GEBOEKTE inkoopfactuur — de sectie
+              gate zichzelf (status + soort + toggle per administratie, faalvriendelijk). */}
+          <DoorbelastenSectie
+            administratieId={administratieId}
+            documentId={documentId}
+            status={detail.status}
+            soort={detail.soort}
+          />
+
+          {vraagModalOpen && (
+            <VraagModal
+              administratieId={administratieId}
+              documentId={documentId}
+              onGesteld={() => {
+                setVraagModalOpen(false)
+                laadDetail()
+              }}
+              onAnnuleren={() => setVraagModalOpen(false)}
+            />
+          )}
+
+          {afwijsModalOpen && (
+            <AfwijsModal
+              administratieId={administratieId}
+              documentId={documentId}
+              referentie={veldvoorstelReferentie}
+              onAfgewezen={(_afwijzing, info) => {
+                setAfwijsModalOpen(false)
+                void naVerwerking({ uitkomst: 'afgewezen', referentie: info.referentie, boekstuknummer: null })
+              }}
+              onAnnuleren={() => setAfwijsModalOpen(false)}
+            />
+          )}
+
+          {verplaatsModalOpen && (
+            <VerplaatsModal
+              administratieId={administratieId}
+              administratieNaam={administraties?.find((a) => a.id === administratieId)?.naam ?? null}
+              documentId={documentId}
+              bestandsnaam={detail.bestandsnaam}
+              openVragen={documentVragen?.filter((v) => v.status === 'open').length ?? 0}
+              tenaamstelling={detail.tenaamstelling ?? null}
+              onVerplaatst={(resultaat) => {
+                setVerplaatsModalOpen(false)
+                meld(`Verplaatst naar ${resultaat.naar_administratie_naam} — extractie draait opnieuw`)
+                // Het document is in de bron-scope niet meer zichtbaar: door naar het doel.
+                void navigate(`/documenten/${resultaat.naar_administratie_id}/${documentId}`)
+              }}
+              onAnnuleren={() => setVerplaatsModalOpen(false)}
+            />
+          )}
+
+          {overzichtOpen && <SneltoetsOverzicht onSluiten={() => setOverzichtOpen(false)} />}
+
+          {verlaatDoel !== null && (
+            <BevestigDialog
+              titel="Wijzigingen worden nog opgeslagen"
+              bericht={
+                'Je laatste wijziging in het boekvoorstel is nog niet opgeslagen (opslaan loopt automatisch, ' +
+                'maar is nog niet klaar). Wacht een moment, of verlaat het document — dan gaat die laatste ' +
+                'wijziging verloren.'
+              }
+              bezig={false}
+              fout={null}
+              onBevestigen={() => {
+                const doel = verlaatDoel
+                setVerlaatDoel(null)
+                void navigate(doel)
+              }}
+              onAnnuleren={() => setVerlaatDoel(null)}
+            />
+          )}
+
+          {herExtractieBevestigen && (
+            <BevestigDialog
+              titel="Opnieuw extraheren?"
+              bericht={
+                'De AI leest de PDF opnieuw en het nieuwe resultaat overschrijft het huidige ' +
+                'veldvoorstel (nieuwste extractie wint, ook in de boekvoorstel-prefill). Een al ' +
+                'opgeslagen boekvoorstel blijft bewaard.'
+              }
+              bezig={opnieuwBezig}
+              fout={opnieuwFout}
+              onBevestigen={() => void opnieuwExtraheren()}
+              onAnnuleren={() => {
+                if (!opnieuwBezig) setHerExtractieBevestigen(false)
+              }}
+            />
+          )}
+
         </div>
       </div>
     </div>

@@ -1401,6 +1401,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   planning-uitbreiding 31-08 (werkopdrachten per project × periode + transport-dag-agenda
   mét werkbakje/statusflow; ontwerpnotities onderin = onderdeel van het akkoord; GEBOUWD
   2026-08-31) — de bouwnorm voor de Personeel-tab-werkopdrachten en de Transport-tab v2
+- `mockup/controlescherm-v2.html` + `mockup/doorbelasten-blok-v2.html` + `mockup/bank-voorstel-kaart.html`
+  (iteratie 2) — **bouwnorm 02-09 (akkoorden Peter 02-09, ontwerpnotities incl.; GEBOUWD 02-09,
+  BESLISSINGEN "UX-/INTAKE-VERBETER-RUN 02-09" + "UX-PATRONEN ALS NORM"):** controlescherm in
+  werkvolgorde mét checks onzichtbaar-tot-relevant, sticky actiebalk, crediteur-kaart mét
+  KvK-mismatch-guard + "+ Nieuwe crediteur in RLZ"; doorbelasten-blok mét restant-balk, %↔bedrag,
+  één sleutel-menu, auto-opslaan; bankscherm mét chip "handmatig" + één primaire knop + ⋯-menu.
+  Nieuwe schermen volgen de vastgelegde UX-patronen (voorstel-kaart, restant-balk, lege stand = actie,
+  één primaire knop + ⋯, werkvolgorde-regel, bundelen vóór tonen).
 - `mockup/tegenboek-mockup.html` — definitief goedgekeurde mockup tegenboek-pad (Peter
   2026-08-22, suppletie-signaal geschrapt; GEBOUWD 2026-08-22) — de bouwnorm
 - `mockup/projecten-invoer.html` — definitief goedgekeurde mockup kantoor-projectenmodule

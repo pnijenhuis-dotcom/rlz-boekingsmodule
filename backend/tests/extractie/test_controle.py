@@ -325,3 +325,41 @@ class TestLeidBtwAf:
         assert is_verlegd_vermelding("VAT reverse charge") is True
         assert is_verlegd_vermelding("Betaling binnen 30 dagen") is False
         assert is_verlegd_vermelding(None) is False
+
+
+class TestKvkMismatchGuard:
+    """Controlescherm v2 ⑥ (02-09, casus Hello Kitchen Son ↔ Duiven): een naam-match met een ánder
+    KvK-/btw-nummer wordt nooit stil voorgesteld — hij komt als waarschuwing terug."""
+
+    def test_naam_match_met_afwijkend_kvk_is_waarschuwing_geen_voorstel(self) -> None:
+        from app.extractie.controle import match_vendor_met_waarschuwing
+
+        duiven = VendorKandidaat(id=uuid.uuid4(), naam="Hello Kitchen", kvk_nummer="12345678")
+        vendor_id, soort, waarschuwing = match_vendor_met_waarschuwing(
+            "Hello Kitchen Son", [duiven], kvk_nummer="80915957"
+        )
+        assert vendor_id is None and soort is None
+        assert waarschuwing is not None
+        assert waarschuwing.vendor_id == duiven.id
+        assert waarschuwing.reden == "kvk_afwijkend"
+        assert waarschuwing.factuur_nummer == "80915957" and waarschuwing.kandidaat_nummer == "12345678"
+        # Compat-vorm blijft (None, None).
+        assert match_vendor("Hello Kitchen Son", [duiven], kvk_nummer="80915957") == (None, None)
+
+    def test_zonder_bekend_nummer_blijft_de_naam_match_gewoon_staan(self) -> None:
+        from app.extractie.controle import match_vendor_met_waarschuwing
+
+        kandidaat = VendorKandidaat(id=uuid.uuid4(), naam="Hello Kitchen")
+        vendor_id, soort, waarschuwing = match_vendor_met_waarschuwing(
+            "Hello Kitchen Son", [kandidaat], kvk_nummer="80915957"
+        )
+        assert vendor_id == kandidaat.id and soort == "fuzzy" and waarschuwing is None
+
+    def test_btw_conflict_bij_exacte_naam(self) -> None:
+        from app.extractie.controle import match_vendor_met_waarschuwing
+
+        kandidaat = VendorKandidaat(id=uuid.uuid4(), naam="Wola B.V.", btw_nummer="NL000000000B01")
+        vendor_id, soort, waarschuwing = match_vendor_met_waarschuwing(
+            "Wola B.V.", [kandidaat], btw_nummer="NL999999999B01"
+        )
+        assert vendor_id is None and waarschuwing is not None and waarschuwing.reden == "btw_afwijkend"

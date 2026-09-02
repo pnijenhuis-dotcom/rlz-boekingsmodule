@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -547,6 +547,40 @@ describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () 
       const onderDeTijdlijn = /Tijdlijn|Opmerkingen/.test(kop.textContent ?? '')
       if (!onderDeTijdlijn) expect(naDeKop).toBe(true)
     }
+  })
+})
+
+describe('DocumentDetailScreen — v2 werkvolgorde (mockup controlescherm-v2, 02-09)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('groen = topbar-chip + inklapregel; AI-details, e-mail, opmerkingen en tijdlijn zijn inklapregels; de actiebalk zit in de sticky wrapper', async () => {
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', tijdlijn: [], status: 'te_controleren' }), { checksResponse: GROEN_RAPPORT })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByTestId('controles-chip')).toHaveTextContent('alle controles groen ✓'))
+    const rijen = screen.getByTestId('inklap-rijen')
+    expect(within(rijen).getByTestId('controles-inklap')).toBeInTheDocument()
+    expect(within(rijen).getByTestId('extractie-inklap')).toHaveTextContent(/Extractie-details \(AI/)
+    expect(within(rijen).getByTestId('opmerkingen-inklap')).toBeInTheDocument()
+    expect(within(rijen).getByTestId('tijdlijn-inklap')).toBeInTheDocument()
+    // Geen vast checks-blok meer boven de actiebalk; de knoppen staan in de sticky wrapper.
+    expect(screen.queryByText('Harde checks')).not.toBeInTheDocument()
+    const doel = screen.getByTestId('actiebalk-doel')
+    expect(doel.parentElement).toHaveClass('actiebalk-sticky')
+    expect(screen.queryByTestId('controles-banner')).not.toBeInTheDocument()
+  })
+
+  it('een rode check = banner boven de actiebalk (klik = detail) en een rode topbar-chip', async () => {
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', tijdlijn: [], status: 'te_controleren' }), {
+      checksResponse: { geblokkeerd: true, resultaten: [{ naam: 'Verplichte velden', ok: false, melding: 'Ontbrekend: crediteur' }] },
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getByTestId('controles-chip')).toHaveTextContent('1 controle(s) rood'))
+    const banner = screen.getByTestId('controles-banner')
+    expect(banner).toHaveTextContent('Verplichte velden: Ontbrekend: crediteur')
+    const { default: userEvent } = await import('@testing-library/user-event')
+    await userEvent.setup().click(within(banner).getByRole('button'))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Ontbrekend: crediteur')
   })
 })
 

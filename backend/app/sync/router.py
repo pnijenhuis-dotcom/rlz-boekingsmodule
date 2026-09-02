@@ -114,20 +114,28 @@ def taxrate_lijst(
 
 @router.post(
     "/administraties/{administratie_id}/crediteuren",
-    response_model=schemas.VendorOptieResponse,
+    response_model=schemas.NieuweCrediteurResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def crediteur_aanmaken(
     administratie_id: uuid.UUID,
     invoer: schemas.NieuweCrediteurInput,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
-) -> schemas.VendorOptieResponse:
+) -> schemas.NieuweCrediteurResponse:
     """Nieuwe crediteur aanmaken in RLZ vanaf het controlescherm (fix 2, 2026-07-10) — de
     AI-gelezen leverancier die niet in de cache staat, met de geëxtraheerde naam voorgevuld.
     Schrijfactie in de klantboekhouding: idempotent client-GUID + duplicaatcheck + dezelfde
     failsafe-poort als boeken (zie service.maak_crediteur_aan)."""
     try:
-        crediteur = service.maak_crediteur_aan(administratie_id=administratie_id, actor_id=actor.id, naam=invoer.naam)
+        crediteur = service.maak_crediteur_aan(
+            administratie_id=administratie_id,
+            actor_id=actor.id,
+            naam=invoer.naam,
+            kvk_nummer=invoer.kvk_nummer,
+            btw_nummer=invoer.btw_nummer,
+            iban=invoer.iban,
+            document_id=invoer.document_id,
+        )
     except service.CrediteurBestaatAl as exc:
         # De bestaande vendor_id reist mee zodat de frontend de bestaande crediteur direct kan
         # selecteren — een kale foutmelding zou de controleur alsnog laten zoeken in de combobox.
@@ -143,7 +151,14 @@ def crediteur_aanmaken(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except RlzApiError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return schemas.VendorOptieResponse(id=crediteur.id, naam=crediteur.naam)
+    return schemas.NieuweCrediteurResponse(
+        id=crediteur.id,
+        naam=crediteur.naam,
+        kvk_opgeslagen=crediteur.kvk_opgeslagen,
+        btw_opgeslagen=crediteur.btw_opgeslagen,
+        iban_vertrouwd=crediteur.iban_vertrouwd,
+        waarschuwingen=list(crediteur.waarschuwingen),
+    )
 
 
 @router.get("/administraties/{administratie_id}/crediteuren", response_model=schemas.VendorLijstResponse)

@@ -46,6 +46,22 @@ class VendorLijstResponse(BaseModel):
 
 class NieuweCrediteurInput(StrikteInvoer):
     naam: str
+    # Controlescherm v2 ⑥ (02-09): voorgevuld uit de scan. RLZ's Vendor-PUT kent alleen `Name`
+    # (api-verkenning) — KvK/btw landen in `crediteur_kenmerk`, het IBAN in de vertrouwde set
+    # (`leverancier_iban`, bron bevestigd — de mens maakt bewust déze crediteur mét dít IBAN aan).
+    kvk_nummer: str | None = None
+    btw_nummer: str | None = None
+    iban: str | None = None
+    document_id: uuid.UUID | None = None
+
+
+class NieuweCrediteurResponse(BaseModel):
+    id: uuid.UUID
+    naam: str | None
+    kvk_opgeslagen: bool = False
+    btw_opgeslagen: bool = False
+    iban_vertrouwd: bool = False
+    waarschuwingen: list[str] = []
 
 
 class DubbeleCrediteurDto(BaseModel):

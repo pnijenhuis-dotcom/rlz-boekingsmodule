@@ -59,6 +59,15 @@ export interface AiVoorstel {
   zekerheid_drempel: number
   /** Punt 14 (28-08): nummer-match wint vóór de naam — 'btw_nummer' | 'kvk_nummer' zijn de zekerste. */
   vendor_suggestie: { vendor_id: string; match: 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer' | 'iban' } | null
+  /** KvK-/btw-mismatch-guard (controlescherm v2 ⑥, 02-09): naam-match die bewust níét is voorgesteld. */
+  vendor_waarschuwing?: {
+    vendor_id: string
+    naam: string
+    reden: 'kvk_afwijkend' | 'btw_afwijkend'
+    factuur_nummer: string
+    kandidaat_nummer: string
+  } | null
+  iban?: string | null
   /** Alleen bij bron 'template': welk template, hoe de crediteur herkend is, herkomst per veld. */
   template?: TemplateHerkomst
   /** Punt 14: btw-/KvK-nummer van de leverancier uit de factuur (deterministisch gevalideerd). */

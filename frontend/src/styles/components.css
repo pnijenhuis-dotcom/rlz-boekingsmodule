@@ -2104,3 +2104,88 @@ tr.geselecteerd td.acties {
   pointer-events: none;
   white-space: nowrap;
 }
+
+/* Controlescherm v2 (mockup controlescherm-v2.html, akkoord Peter 02-09): werkvolgorde-layout —
+   crediteur-kaart, sticky actiebalk mét afwijkingen-banner, inklapregels onderaan. */
+.crediteur-kaart .waarschuwing {
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--warn);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.actiebalk-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0 -2px;
+  padding-top: 6px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 14px);
+}
+.actiebalk-sticky .panel.actiebalk {
+  margin-bottom: 0;
+  box-shadow: var(--shadow-lg);
+}
+.controles-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.controles-banner button {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--warn);
+}
+.controles-banner button.rood {
+  color: var(--red);
+}
+.inklap-rijen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.inklap-rijen > details {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.inklap-rijen > details > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inklap-rijen > details > summary::-webkit-details-marker {
+  display: none;
+}
+.inklap-rijen > details > summary::before {
+  content: '▸';
+  font-size: 11px;
+}
+.inklap-rijen > details[open] > summary::before {
+  content: '▾';
+}
+.inklap-rijen > details > .inklap-inhoud {
+  padding: 4px 12px 12px;
+}
+.inklap-rijen > details > .inklap-inhoud > .panel {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}

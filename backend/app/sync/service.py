@@ -313,10 +313,22 @@ class CrediteurBestaatAl(Exception):
 class NieuweCrediteur:
     id: uuid.UUID
     naam: str
+    kvk_opgeslagen: bool = False
+    btw_opgeslagen: bool = False
+    iban_vertrouwd: bool = False
+    waarschuwingen: tuple[str, ...] = ()
 
 
 def maak_crediteur_aan(
-    *, administratie_id: uuid.UUID, actor_id: uuid.UUID, naam: str, client: RlzClient | None = None
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    naam: str,
+    client: RlzClient | None = None,
+    kvk_nummer: str | None = None,
+    btw_nummer: str | None = None,
+    iban: str | None = None,
+    document_id: uuid.UUID | None = None,
 ) -> NieuweCrediteur:
     """Maakt een crediteur aan in RLZ (fix 2, 2026-07-10: de AI las een leverancier die nog niet
     in de crediteuren-cache staat — het controlescherm biedt dan "nieuwe crediteur aanmaken in
@@ -393,7 +405,55 @@ def maak_crediteur_aan(
             nieuwe_waarde={"naam": naam},
             administratie_id=administratie_id,
         )
-    return NieuweCrediteur(id=vendor_id, naam=naam)
+    # Controlescherm v2 ⑥ (02-09): kenmerken uit de scan meteen vastleggen — KvK/btw in
+    # crediteur_kenmerk (bron 'factuur', audit), het IBAN als vertrouwd (bron bevestigd: de mens
+    # maakt bewust déze crediteur mét dít IBAN aan — zo ontstaat geen valse IBAN-wissel-blokkade
+    # op de eerste factuur van een nieuwe entiteit). Nooit stil: elke overgeslagen waarde is een
+    # waarschuwing in het resultaat.
+    waarschuwingen: list[str] = []
+    kvk_ok = btw_ok = iban_ok = False
+    if kvk_nummer or btw_nummer:
+        from app.documenten.crediteur_kenmerk import neem_over_uit_veldvoorstel
+        from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
+
+        kvk_norm = normaliseer_kvk_nummer(kvk_nummer) if kvk_nummer else None
+        btw_val = valideer_btw_nummer(btw_nummer) if btw_nummer else None
+        if kvk_nummer and kvk_norm is None:
+            waarschuwingen.append(f"KvK-nummer '{kvk_nummer}' heeft geen geldige vorm — niet opgeslagen")
+        if btw_nummer and btw_val is None:
+            waarschuwingen.append(f"Btw-nummer '{btw_nummer}' heeft geen geldige vorm — niet opgeslagen")
+        if kvk_norm or btw_val:
+            with scoped_session(administratie_id, actor_id=actor_id) as session:
+                neem_over_uit_veldvoorstel(
+                    session,
+                    administratie_id=administratie_id,
+                    vendor_id=vendor_id,
+                    veldvoorstel={
+                        "kvk_nummer": kvk_norm,
+                        "btw_nummer": btw_val.genormaliseerd if btw_val else None,
+                        "btw_nummer_geverifieerd": bool(btw_val and btw_val.geverifieerd),
+                    },
+                    document_id=document_id or vendor_id,
+                    actor_id=actor_id,
+                )
+            kvk_ok = kvk_norm is not None
+            btw_ok = btw_val is not None
+    if iban:
+        from app.documenten.leverancier_iban import OngeldigIban, bevestig_iban
+
+        try:
+            bevestig_iban(administratie_id=administratie_id, vendor_id=vendor_id, iban=iban, actor_id=actor_id)
+            iban_ok = True
+        except OngeldigIban:
+            waarschuwingen.append(f"IBAN '{iban}' doorstaat de controle niet — niet als vertrouwd vastgelegd")
+    return NieuweCrediteur(
+        id=vendor_id,
+        naam=naam,
+        kvk_opgeslagen=kvk_ok,
+        btw_opgeslagen=btw_ok,
+        iban_vertrouwd=iban_ok,
+        waarschuwingen=tuple(waarschuwingen),
+    )
 
 
 def sync_alle_administraties() -> dict[uuid.UUID, SyncResultaat | GeenRlzCredentials | str]:

@@ -8,6 +8,8 @@
 
 ## 2026-09-02 — Doorbelasten, controlescherm en bank: minder scrollen, meer werkvolgorde
 
+- Controlescherm opnieuw ingedeeld in werkvolgorde: crediteur → kopgegevens → regels → doorbelasten → boeken, met de knoppen altijd onderin in beeld. Staat alles op groen, dan zie je alleen nog een chip bovenin; alleen afwijkingen verschijnen als regel boven de knoppen. Het losse AI-blok, de e-mailtekst, de tijdlijn en de opmerkingen zijn inklapregels onderaan geworden.
+- Crediteur: lijkt een naam op een bestaande crediteur maar wijkt het KvK- of btw-nummer af, dan wordt die niet meer stilletjes voorgesteld — je ziet een waarschuwing en kiest zelf. Met "+ Nieuwe crediteur in RLZ" maak je in één keer een crediteur aan, voorgevuld met naam, KvK, btw en IBAN uit de factuur (het IBAN telt direct als vertrouwd).
 - Doorbelasten na boeken is opnieuw ontworpen: één restant-balk laat zien hoeveel van het regelbedrag al verdeeld is; per rij vul je een percentage óf een bedrag in en het andere rekent live mee. De verdeling wordt automatisch opgeslagen zodra die compleet is; de reden waarom de boekknop nog niet actief is staat in één zin onder de tabel.
 - Het percentageveld accepteert alleen nog 0–100 met hooguit 2 decimalen (komma of punt); geplakte bedragen zoals "11.100,00" worden geweigerd met uitleg in plaats van doorgerekend.
 - Verdeelsleutels zitten achter één menu ("Verdeelsleutel ▾": toepassen of opslaan als sleutel); de grootboekrekening in de doeladministratie staat vooringevuld en is per rij uit te klappen.

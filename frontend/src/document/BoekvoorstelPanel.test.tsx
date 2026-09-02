@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BoekvoorstelPanel } from './BoekvoorstelPanel'
@@ -325,7 +325,7 @@ describe('BoekvoorstelPanel', () => {
         onHersteld={() => {}}
       />,
     )
-    await waitFor(() => expect(screen.getByText('Harde checks')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('controles-inklap')).toBeInTheDocument())
     expect(screen.queryByText('Project')).not.toBeInTheDocument()
   })
 
@@ -557,7 +557,7 @@ describe('BoekvoorstelPanel', () => {
 
     await waitFor(() => expect(screen.getByText(/AI las: „Confide BV”/)).toBeInTheDocument())
     expect(screen.getByText(/93%/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken in RLZ/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' })).toBeInTheDocument()
   })
 
   it('fix 2: "koppel aan bestaande" toont fuzzy-suggesties uit de cache en vult het veld bij een klik', async () => {
@@ -609,13 +609,17 @@ describe('BoekvoorstelPanel', () => {
         onHersteld={() => {}}
       />,
     )
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' })).toBeInTheDocument())
+
+    // v2 ⑥: dialoog, voorgevuld uit de scan (naam · KvK · btw · IBAN), elk veld aanpasbaar.
+    await gebruiker.click(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' }))
+    const dialoog = await screen.findByRole('dialog')
+    expect(within(dialoog).getByLabelText('Naam')).toHaveValue('Confide BV')
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Aanmaken in RLZ ✓' }))
+
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ })).toBeInTheDocument(),
+      expect(aanroepen).toEqual([{ naam: 'Confide BV', kvk_nummer: null, btw_nummer: null, iban: null, document_id: DOCUMENT_ID }]),
     )
-
-    await gebruiker.click(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ }))
-
-    await waitFor(() => expect(aanroepen).toEqual([{ naam: 'Confide BV' }]))
     await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Confide BV'))
     expect(screen.queryByText(/AI las:/)).not.toBeInTheDocument()
   })
@@ -640,13 +644,43 @@ describe('BoekvoorstelPanel', () => {
         onHersteld={() => {}}
       />,
     )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ })).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' })).toBeInTheDocument())
 
-    await gebruiker.click(screen.getByRole('button', { name: /Nieuwe crediteur „Confide BV” aanmaken/ }))
+    await gebruiker.click(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' }))
+    const dialoog = await screen.findByRole('dialog')
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Aanmaken in RLZ ✓' }))
 
     await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Technische Unie'))
+  })
+
+  it('v2 ⑥ (02-09): een naam-match met afwijkend KvK wordt niet stil voorgesteld — waarschuwing in de crediteur-kaart, "toch koppelen" is de mens', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      boekvoorstel: AI_BOEKVOORSTEL,
+      vendors: [{ id: VENDOR_ID, naam: 'Hello Kitchen' }],
+    })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={{
+          ...AI_VOORSTEL,
+          leverancier_naam: 'Hello Kitchen Son',
+          kvk_nummer: '80915957',
+          vendor_suggestie: null,
+          vendor_waarschuwing: { vendor_id: VENDOR_ID, naam: 'Hello Kitchen', reden: 'kvk_afwijkend', factuur_nummer: '80915957', kandidaat_nummer: '12345678' },
+        }}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    const waarschuwing = await screen.findByTestId('crediteur-waarschuwing')
+    expect(waarschuwing).toHaveTextContent(/„Hello Kitchen” heeft een ánder KvK-nummer/)
+    expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('')
+    expect(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' })).toBeInTheDocument()
+    await gebruiker.click(within(waarschuwing).getByRole('button', { name: 'toch koppelen' }))
+    expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Hello Kitchen')
   })
 
   it('fix 2: directe cache-match (vendor_id in de dto) vult automatisch voor — geen voorstelblok', async () => {
@@ -1130,7 +1164,7 @@ describe('BoekvoorstelPanel — kolombreedtes boekingsregels (addendum 27-08 pun
   it('zonder projectplicht: elke <col> heeft een absolute px-breedte (geen procenten), de omschrijving is de rest-kolom en de tabel-min-width is de som van de minima', async () => {
     installFetchMock({ projectVerplicht: false })
     renderPaneel()
-    await waitFor(() => expect(screen.getByText('Harde checks')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('controles-inklap')).toBeInTheDocument())
     const tabel = screen.getByTestId('boekingsregels-tabel')
     expect(tabel.style.minWidth).toBe(`${minimaleTabelbreedte(false)}px`)
     expect(tabel.classList.contains('met-project')).toBe(false)
