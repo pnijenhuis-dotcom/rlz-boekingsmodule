@@ -31,6 +31,10 @@ export interface VerzamelbakItemDto {
   samengevoegd_document_id?: string | null
   samengevoegd_bestandsnaam?: string | null
   intake_bericht_id?: string | null
+  /** Zusje-signaal (02-09): de PDF/UBL van dezelfde factuur uit dezelfde mail is al toegewezen. */
+  zusje_document_id?: string | null
+  zusje_bestandsnaam?: string | null
+  zusje_administratie_id?: string | null
 }
 
 export interface VerzamelbakLijstDto {

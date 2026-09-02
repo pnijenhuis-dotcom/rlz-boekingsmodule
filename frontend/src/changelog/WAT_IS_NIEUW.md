@@ -13,6 +13,7 @@
 - De bestaande nazorg-herlezing neemt zulke UBL-rijen nu ook mee (zonder AI): tenaamstelling en suggestie worden gezet en de ingesloten PDF wordt als beeld vastgelegd, zodat de rijen klaarstaan om toe te wijzen. Het toewijzings-geheugen leert daar niets van; dat gebeurt pas bij een menselijke toewijzing.
 - Verzamelbak in bulk: vink meerdere rijen aan (of alles binnen het filterveld) en wijs ze in één keer toe aan één administratie — de keuze staat vooringevuld als alle geselecteerde rijen dezelfde suggestie dragen — of handel ze samen af als "hoort niet bij ons" met één reden. Je ziet per rij wat er gebeurd is; een rij die niet verwerkt kon worden komt met de reden terug in de lijst.
 - Geboekte documenten laten nu zien wáár ze in Reeleezee staan: in de lijst (tooltip op de status), in de kop van het controlescherm en op de review-schermen staat "Geboekt in RLZ · boekstuk … · crediteur/debiteur". Bij verkoopfacturen en omzetboekingen staat erbij dat je ze in Reeleezee terugvindt op de debiteurenkaart of in het verkoopboek, en níét onder Verkopen → Facturen (die lijst toont alleen facturen die in Reeleezee zelf zijn gemaakt).
+- Verzamelbak: is de PDF (of UBL) van dezelfde factuur uit dezelfde e-mail al toegewezen, dan draagt de rij nu een chip "tegenhanger al toegewezen" en valt hij buiten "selecteer alles" — toewijzen zou anders een tweede document van dezelfde factuur maken.
 
 ## 2026-09-02 — Doorbelasten, controlescherm en bank: minder scrollen, meer werkvolgorde
 

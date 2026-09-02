@@ -218,7 +218,10 @@ export function VerzamelbakPaneel({
           .includes(filterTerm),
       )
     : items
-  const selecteerbaar = zichtbaar.filter((i) => !i.splitsing_voorstel)
+  // Rijen mét een al-toegewezen zusje (PDF/UBL van dezelfde factuur) blijven buiten "selecteer alles":
+  // bulk-toewijzen zou er een tweede document van maken. Los aanvinken kan wél (mens beslist).
+  const selecteerbaar = zichtbaar.filter((i) => !i.splitsing_voorstel && !i.zusje_document_id)
+  const zusjesZichtbaar = zichtbaar.filter((i) => i.zusje_document_id).length
   const geselecteerdeItems = items.filter((i) => geselecteerd.includes(i.document_id))
   const allesGeselecteerd = selecteerbaar.length > 0 && selecteerbaar.every((i) => geselecteerd.includes(i.document_id))
   // Vooringevuld als álle geselecteerde rijen dezelfde suggestie dragen (blok B); anders kiest de mens.
@@ -247,6 +250,13 @@ export function VerzamelbakPaneel({
           </span>
         )}
       </div>
+      {zusjesZichtbaar > 0 && (
+        <div className="hint" data-testid="verzamelbak-zusje-banner" style={{ marginTop: 6 }}>
+          ⚠ {zusjesZichtbaar} {zusjesZichtbaar === 1 ? 'rij is' : 'rijen zijn'} een UBL/PDF waarvan de tegenhanger uit dezelfde e-mail
+          al is toegewezen. Toewijzen maakt dan een tweede document van dezelfde factuur; deze rijen vallen buiten
+          &ldquo;selecteer alles&rdquo; en dragen een chip.
+        </div>
+      )}
       {geselecteerd.length > 0 && (
         <div
           className="bulkbalk"
@@ -399,6 +409,23 @@ export function VerzamelbakPaneel({
                         data-testid="beeld-chip"
                       >
                         📎 {item.beeld_bestandsnaam}
+                      </span>
+                    )}
+                    {item.zusje_document_id && (
+                      <span
+                        className="chip vraag"
+                        style={{ marginLeft: 6 }}
+                        data-testid="zusje-chip"
+                        title={`${item.zusje_bestandsnaam ?? 'De tegenhanger'} uit dezelfde e-mail is al toegewezen${
+                          administraties.find((a) => a.id === item.zusje_administratie_id)?.naam
+                            ? ` aan ${administraties.find((a) => a.id === item.zusje_administratie_id)?.naam}`
+                            : ''
+                        } — deze rij toewijzen maakt een tweede document van dezelfde factuur.`}
+                      >
+                        ⚠ tegenhanger al toegewezen
+                        {administraties.find((a) => a.id === item.zusje_administratie_id)?.naam
+                          ? ` (${administraties.find((a) => a.id === item.zusje_administratie_id)?.naam})`
+                          : ''}
                       </span>
                     )}
                     {item.samengevoegd_document_id && (

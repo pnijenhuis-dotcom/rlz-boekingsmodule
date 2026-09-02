@@ -7,10 +7,12 @@ delete."""
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import func, select
 
@@ -31,7 +33,7 @@ from app.documenten.service import (
 )
 from app.documenten.storage import DocumentOpslag
 from app.documenten.ubl import GeenGeldigeUbl, parseer_ubl_factuur
-from app.intake.models import IntakeSplitsing, IntakeSplitsingStatus
+from app.intake.models import IntakeBericht, IntakeSplitsing, IntakeSplitsingStatus
 from app.intake.redenen import omschrijf_intake_reden
 from app.intake.toewijzing import leer_toewijzing
 
@@ -87,6 +89,12 @@ class VerzamelbakItem:
     samengevoegd_bestandsnaam: str | None = None
     #: Herkomst-mail (voor de samenvoeg-waarschuwing "ander intake-bericht").
     intake_bericht_id: uuid.UUID | None = None
+    #: Zusje-signaal (vervolgronde 02-09, casus IC-stapel): een bijlage uit dezelfde mail mét dezelfde
+    #: naamstam maar de andere extensie (UBL ↔ PDF) die al WEL is toegewezen — toewijzen van deze rij zou
+    #: een tweede document van dezelfde factuur maken. Alleen een signaal; de mens beslist.
+    zusje_document_id: uuid.UUID | None = None
+    zusje_bestandsnaam: str | None = None
+    zusje_administratie_id: uuid.UUID | None = None
 
 
 def haal_bijlage_op(
@@ -142,6 +150,45 @@ def _jongste_intake_redenen(session, document_ids: list[uuid.UUID]) -> dict[uuid
     return redenen
 
 
+_TOEGEWEZEN_DETAIL = re.compile(r"→\s*([0-9a-f-]{36})\s*$")
+
+
+def _toegewezen_zusjes(session, documenten: list[Document]) -> dict[uuid.UUID, tuple[uuid.UUID, str, uuid.UUID | None]]:
+    """Per verzamelbak-document het al-toegewezen zusje uit hetzelfde intake-bericht (zelfde naamstam,
+    andere extensie UBL↔PDF) — gelezen uit `intake_bericht.detail.bijlagen` (de intake-uitkomsten per
+    bijlage), géén RLS-doorbraak: de toegewezen rij zelf wordt niet gelezen. Casus 02-09: 93 IC-PDF's
+    waren vóór de bundeling al via AI toegewezen terwijl de UBL's in de bak bleven."""
+    bericht_ids = {d.intake_bericht_id for d in documenten if d.intake_bericht_id is not None}
+    if not bericht_ids:
+        return {}
+    berichten = {
+        b.id: b for b in session.scalars(select(IntakeBericht).where(IntakeBericht.id.in_(bericht_ids)))
+    }
+    zusjes: dict[uuid.UUID, tuple[uuid.UUID, str, uuid.UUID | None]] = {}
+    for d in documenten:
+        bericht = berichten.get(d.intake_bericht_id) if d.intake_bericht_id is not None else None
+        if bericht is None:
+            continue
+        pad = Path(d.bestandsnaam.lower())
+        if pad.suffix not in (".xml", ".pdf"):
+            continue
+        andere = pad.with_suffix(".pdf" if pad.suffix == ".xml" else ".xml").name
+        for bijlage in (bericht.detail or {}).get("bijlagen", []) or []:
+            if not isinstance(bijlage, dict) or bijlage.get("uitkomst") != "toegewezen":
+                continue
+            if (bijlage.get("bestandsnaam") or "").lower() != andere or not bijlage.get("document_id"):
+                continue
+            match = _TOEGEWEZEN_DETAIL.search(bijlage.get("detail") or "")
+            try:
+                zusje_id = uuid.UUID(str(bijlage["document_id"]))
+                adm = uuid.UUID(match.group(1)) if match else None
+            except ValueError:
+                continue
+            zusjes[d.id] = (zusje_id, str(bijlage.get("bestandsnaam")), adm)
+            break
+    return zusjes
+
+
 def lijst_verzamelbak() -> list[VerzamelbakItem]:
     """Alle open verzamelbak-documenten (administratie NULL, status niet_toegewezen), incl. een
     eventueel openstaand splitsingsvoorstel én de intake-reden (02-09) — nieuwste eerst."""
@@ -170,11 +217,13 @@ def lijst_verzamelbak() -> list[VerzamelbakItem]:
                 )
             )
         }
+        zusjes = _toegewezen_zusjes(session, documenten)
         items = []
         for document in documenten:
             splitsing = splitsingen.get(document.id)
             reden = redenen.get(document.id)
             samengevoegd = samengevoegd_per_leidend.get(document.id)
+            zusje = zusjes.get(document.id)
             items.append(
                 VerzamelbakItem(
                     document_id=document.id,
@@ -194,6 +243,9 @@ def lijst_verzamelbak() -> list[VerzamelbakItem]:
                     samengevoegd_document_id=samengevoegd.id if samengevoegd else None,
                     samengevoegd_bestandsnaam=samengevoegd.bestandsnaam if samengevoegd else None,
                     intake_bericht_id=document.intake_bericht_id,
+                    zusje_document_id=zusje[0] if zusje else None,
+                    zusje_bestandsnaam=zusje[1] if zusje else None,
+                    zusje_administratie_id=zusje[2] if zusje else None,
                 )
             )
         return items

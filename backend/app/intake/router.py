@@ -91,6 +91,9 @@ def verzamelbak_lijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> s
                 samengevoegd_document_id=item.samengevoegd_document_id,
                 samengevoegd_bestandsnaam=item.samengevoegd_bestandsnaam,
                 intake_bericht_id=item.intake_bericht_id,
+                zusje_document_id=item.zusje_document_id,
+                zusje_bestandsnaam=item.zusje_bestandsnaam,
+                zusje_administratie_id=item.zusje_administratie_id,
                 splitsing_voorstel=[
                     schemas.SplitsSegmentDto(**segment)
                     for segment in (item.splitsing_voorstel or {}).get("facturen", [])

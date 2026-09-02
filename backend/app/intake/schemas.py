@@ -54,6 +54,11 @@ class VerzamelbakItemDto(BaseModel):
     samengevoegd_document_id: uuid.UUID | None = None
     samengevoegd_bestandsnaam: str | None = None
     intake_bericht_id: uuid.UUID | None = None
+    # Zusje-signaal (02-09): de PDF/UBL van dezelfde factuur uit dezelfde mail is al toegewezen — toewijzen
+    # van deze rij zou een tweede document maken.
+    zusje_document_id: uuid.UUID | None = None
+    zusje_bestandsnaam: str | None = None
+    zusje_administratie_id: uuid.UUID | None = None
 
 
 class VerzamelbakLijstResponse(BaseModel):

@@ -518,4 +518,22 @@ describe('VerzamelbakPaneel', () => {
     expect(screen.getByText('a.pdf')).toBeInTheDocument()
     expect(screen.getByText('b.pdf')).toBeInTheDocument()
   })
+
+  it('zusje-signaal (02-09): een UBL waarvan de PDF uit dezelfde mail al is toegewezen draagt een chip en valt buiten selecteer-alles', async () => {
+    installFetchMock({
+      items: [
+        item({ document_id: DOC_ID, bestandsnaam: 'Universal Nederland B.V - RLZ-2080143277.xml', zusje_document_id: 'ffffffff-0000-0000-0000-000000000009', zusje_bestandsnaam: 'Universal Nederland B.V - RLZ-2080143277.pdf', zusje_administratie_id: ADMIN_B }),
+        item({ document_id: DOC_ID_2, bestandsnaam: 'los.xml' }),
+      ],
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await screen.findByText(/handmatig koppelen \(2\)/)
+    expect(screen.getByTestId('zusje-chip')).toHaveTextContent('tegenhanger al toegewezen (Kempen Groep B.V.)')
+    expect(screen.getByTestId('verzamelbak-zusje-banner')).toHaveTextContent('1 rij is een UBL/PDF')
+    await userEvent.click(screen.getByLabelText('Selecteer alle 1 rijen'))
+    expect(screen.getByTestId('verzamelbak-bulkbalk')).toHaveTextContent('1 geselecteerd')
+    // Los aanvinken blijft mogelijk — de mens beslist.
+    await userEvent.click(screen.getByLabelText('Selecteer Universal Nederland B.V - RLZ-2080143277.xml'))
+    expect(screen.getByTestId('verzamelbak-bulkbalk')).toHaveTextContent('2 geselecteerd')
+  })
 })

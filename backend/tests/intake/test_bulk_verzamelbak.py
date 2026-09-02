@@ -22,7 +22,7 @@ client = TestClient(app)
 
 
 def _bearer(gebruiker_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(gebruiker_id, rol="boekhouding")}"}
+    return {"Authorization": f"Bearer {create_access_token(gebruiker_id, rol='boekhouding')}"}
 
 
 def _bak_rij(actor_id: uuid.UUID, naam: str, *, tenaamstelling: str | None = "Universal Steigerbouw B.V.") -> uuid.UUID:
@@ -147,3 +147,62 @@ class TestEndpoints:
             headers=kantoor_headers,
         )
         assert ok.status_code == 200 and ok.json()["verwerkt"] == 1
+
+
+class TestZusjeSignaal:
+    def test_ubl_met_al_toegewezen_pdf_zusje_draagt_het_signaal(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        """Casus 02-09: vóór de bundeling werden PDF en UBL van dezelfde factuur los gerouteerd — de PDF via AI
+        toegewezen, de UBL in de bak. De bak-rij toont dan het toegewezen zusje (uit het intake-bericht)."""
+        from app.intake.models import IntakeBericht
+
+        pdf_doc_id = uuid.uuid4()
+        with scoped_session(None, actor_id=gescoopte_gebruiker) as session:
+            bericht = IntakeBericht(
+                id=uuid.uuid4(),
+                message_id=f"<{uuid.uuid4()}@test>",
+                afzender="administratie@universal-steigerbouw.nl",
+                onderwerp="IC-facturen",
+                bron="eml_upload",
+                verwerkt_door=gescoopte_gebruiker,
+                detail={
+                    "bijlagen": [
+                        {
+                            "bestandsnaam": "Universal Nederland B.V - RLZ-2080143277 - 2026-09-01.pdf",
+                            "uitkomst": "toegewezen",
+                            "document_id": str(pdf_doc_id),
+                            "detail": f"tenaamstelling_register → {administratie_id}",
+                        },
+                        {
+                            "bestandsnaam": "Universal Nederland B.V - RLZ-2080143277 - 2026-09-01.xml",
+                            "uitkomst": "verzamelbak",
+                            "document_id": None,
+                            "detail": "tenaamstelling_niet_eenduidig",
+                        },
+                    ]
+                },
+            )
+            session.add(bericht)
+            session.flush()
+            bericht_id = bericht.id
+        xml_id = documenten_service.registreer_niet_toegewezen_document(
+            bestandsnaam="Universal Nederland B.V - RLZ-2080143277 - 2026-09-01.xml",
+            inhoud=b"<Invoice/>",
+            actor_id=gescoopte_gebruiker,
+            reden="tenaamstelling_niet_eenduidig",
+            intake_bericht_id=bericht_id,
+            afzender_hint="administratie@universal-steigerbouw.nl",
+        )
+        los_id = documenten_service.registreer_niet_toegewezen_document(
+            bestandsnaam="los.xml",
+            inhoud=b"<Invoice>los</Invoice>",
+            actor_id=gescoopte_gebruiker,
+            reden="tenaamstelling_niet_eenduidig",
+            intake_bericht_id=bericht_id,
+        )
+        items = {i.document_id: i for i in verzamelbak.lijst_verzamelbak()}
+        assert items[xml_id].zusje_document_id == pdf_doc_id
+        assert items[xml_id].zusje_bestandsnaam == "Universal Nederland B.V - RLZ-2080143277 - 2026-09-01.pdf"
+        assert items[xml_id].zusje_administratie_id == administratie_id
+        assert items[los_id].zusje_document_id is None
