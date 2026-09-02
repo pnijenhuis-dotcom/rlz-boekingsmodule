@@ -154,6 +154,11 @@ export function VerzamelbakPaneel({
             {items.map((item) => {
               const suggestieNaam = administraties.find((a) => a.id === item.suggestie_administratie_id)?.naam
               const gekozen = keuze[item.document_id] ?? item.suggestie_administratie_id ?? ''
+              // Proportionele validatie (02-09): een deel mét ongeldig_reden is door code afgewezen —
+              // de mens ziet het; bevestigen kan pas als het voorstel geen ongeldig deel meer bevat.
+              const ongeldigeDelen = (item.splitsing_voorstel ?? []).filter((s) => s.ongeldig_reden)
+              // De échte intake-reden (02-09): "geen tenaamstelling gelezen" alleen als de AI niets las.
+              const redenLabel = item.reden_label ?? (item.tenaamstelling ? null : 'geen tenaamstelling gelezen')
               return (
                 <tr key={item.document_id}>
                   <td>
@@ -181,7 +186,12 @@ export function VerzamelbakPaneel({
                       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
                         Splitsingsvoorstel: {item.splitsing_voorstel.length} facturen —{' '}
                         {item.splitsing_voorstel
-                          .map((s) => `p.${s.start_pagina}-${s.eind_pagina} ${s.tenaamstelling ?? '?'}`)
+                          .map(
+                            (s) =>
+                              `p.${s.start_pagina}-${s.eind_pagina} ${s.tenaamstelling ?? '?'}${
+                                s.ongeldig_reden ? ` ⚠ ongeldig (${s.ongeldig_reden})` : ''
+                              }`,
+                          )
                           .join(' · ')}
                       </div>
                     )}
@@ -192,10 +202,13 @@ export function VerzamelbakPaneel({
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>{formatDatum(item.aangemaakt_op)}</div>
                   </td>
                   <td>
-                    {item.tenaamstelling ? (
-                      <span>&ldquo;{item.tenaamstelling}&rdquo;</span>
-                    ) : (
-                      <span className="chip vraag">geen tenaamstelling gelezen</span>
+                    {item.tenaamstelling && <span>&ldquo;{item.tenaamstelling}&rdquo;</span>}
+                    {redenLabel && (
+                      <div>
+                        <span className="chip vraag" title={item.reden ?? undefined}>
+                          {redenLabel}
+                        </span>
+                      </div>
                     )}
                     {suggestieNaam && (
                       <div>
@@ -226,7 +239,12 @@ export function VerzamelbakPaneel({
                           type="button"
                           className="btn"
                           style={{ padding: '5px 12px' }}
-                          disabled={bezig === item.document_id}
+                          disabled={bezig === item.document_id || ongeldigeDelen.length > 0}
+                          title={
+                            ongeldigeDelen.length > 0
+                              ? 'Het voorstel bevat een deel met een ongeldig paginabereik — kies "Is één factuur" en wijs het document handmatig toe.'
+                              : undefined
+                          }
                           onClick={() =>
                             void actie(item.document_id, () =>
                               bevestigSplitsing(

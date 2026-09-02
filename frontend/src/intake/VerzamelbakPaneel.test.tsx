@@ -73,6 +73,74 @@ describe('VerzamelbakPaneel', () => {
     expect(screen.getByText('suggestie: BLOW B.V.')).toBeInTheDocument()
   })
 
+  it('toont de échte intake-reden (02-09): verworpen AI-voorstel ≠ "geen tenaamstelling gelezen"', async () => {
+    installFetchMock({
+      items: [
+        item({
+          tenaamstelling: null,
+          suggestie_administratie_id: null,
+          suggestie_bron: null,
+          reden: "splitsingsdetectie_mislukt: Splitsingsvoorstel ongeldig: paginabereik 1–2 valt buiten het document (1 pagina's)",
+          reden_label: 'AI-voorstel verworpen door code: paginabereik 1–2 valt buiten het document — tenaamstelling niet overgenomen',
+        }),
+        item({
+          document_id: 'eeeeeeee-0000-0000-0000-000000000005',
+          bestandsnaam: 'leeg.pdf',
+          tenaamstelling: null,
+          suggestie_administratie_id: null,
+          reden: 'tenaamstelling_niet_eenduidig',
+          reden_label: 'geen tenaamstelling gelezen',
+        }),
+        item({
+          document_id: 'ffffffff-0000-0000-0000-000000000006',
+          bestandsnaam: 'oud.pdf',
+          tenaamstelling: null,
+          suggestie_administratie_id: null,
+          // Oudere server zonder label-veld: terugval blijft de oude chip.
+          reden: undefined,
+          reden_label: undefined,
+        }),
+      ],
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    expect(await screen.findByText(/AI-voorstel verworpen door code: paginabereik 1–2/)).toBeInTheDocument()
+    expect(screen.getAllByText('geen tenaamstelling gelezen')).toHaveLength(2)
+  })
+
+  it('een splitsingsvoorstel met een ongeldig deel toont de reden en kan niet blind bevestigd worden', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      aanroepen,
+      items: [
+        item({
+          bestandsnaam: 'batchscan.pdf',
+          tenaamstelling: null,
+          reden: "splitsingsvoorstel_ter_controle: 2 facturen herkend, 1 deel ongeldig — paginabereik 3–7 valt buiten het document (3 pagina's)",
+          reden_label: 'splitsingsvoorstel bevat een ongeldig deel — beoordeel de bereiken',
+          splitsing_id: SPLITSING_ID,
+          splitsing_voorstel: [
+            { start_pagina: 1, eind_pagina: 2, tenaamstelling: 'BLOW B.V.', leverancier: null, factuurnummer: null, zekerheid: 0.95 },
+            {
+              start_pagina: 3,
+              eind_pagina: 7,
+              tenaamstelling: 'Kempen Groep B.V.',
+              leverancier: null,
+              factuurnummer: null,
+              zekerheid: 0.9,
+              ongeldig_reden: "paginabereik 3–7 valt buiten het document (3 pagina's)",
+            },
+          ],
+        }),
+      ],
+    })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    expect(await screen.findByText(/⚠ ongeldig \(paginabereik 3–7/)).toBeInTheDocument()
+    expect(screen.getByText('splitsingsvoorstel bevat een ongeldig deel — beoordeel de bereiken')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Splitsing bevestigen ✓' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Is één factuur' })).toBeEnabled()
+    expect(aanroepen).toHaveLength(0)
+  })
+
   it('preview (D1, besluit 25-08): niets vooraf opgehaald; hover laadt het bestand één keer en toont de popup', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const bestandAanroepen: string[] = []

@@ -7,6 +7,8 @@ export interface SplitsSegmentDto {
   leverancier: string | null
   factuurnummer: string | null
   zekerheid: number
+  /** Proportionele validatie (02-09): dít deel doorstond de paginabereik-toets niet — mens beslist. */
+  ongeldig_reden?: string | null
 }
 
 export interface VerzamelbakItemDto {
@@ -18,6 +20,9 @@ export interface VerzamelbakItemDto {
   tenaamstelling: string | null
   suggestie_administratie_id: string | null
   suggestie_bron: string | null
+  /** Intake-reden (02-09): technisch + leesbaar label — waaróm het document in de bak ligt. */
+  reden?: string | null
+  reden_label?: string | null
   aangemaakt_op: string
   splitsing_id: string | null
   splitsing_voorstel: SplitsSegmentDto[] | null
