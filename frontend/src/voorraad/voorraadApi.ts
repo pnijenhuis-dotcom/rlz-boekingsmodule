@@ -114,31 +114,96 @@ export interface DagStandDto {
   stand: string
 }
 
+/** Server-side gepagineerde lijst (B3.3, design-ronde 03-09): regels, diensten en artikelcodes komen
+ * nooit meer als 7-jaar-dump binnen. Default 25 per pagina, max 200. */
+export interface GepagineerdDto<T> {
+  rijen: T[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+}
+
+/** Eén artikelgroep buiten tolerantie op de kantoorbrede landing Inzicht › Voorraad (B3, 03-09;
+ * mockup inzicht-kantoorbreed.html ⑤). `zwaarte` = STATUS-kleur (oranje | rood) — de server bepaalt. */
+export interface VoorraadVerschilRijDto {
+  administratie_id: string
+  administratie_naam: string
+  artikelgroep_id: string
+  naam: string
+  eenheid: string
+  tolerantie_pct: string
+  theoretisch: string
+  systeemstand: string
+  telling_datum: string
+  verschil: string
+  verschil_pct: string | null
+  zwaarte: 'oranje' | 'rood'
+  tot: string
+}
+
+export interface VoorraadVerschilTellersDto {
+  groepen: number
+  administraties: number
+  administraties_met_voorraad: number
+}
+
+export interface VoorraadVerschillenLijstDto extends GepagineerdDto<VoorraadVerschilRijDto> {
+  tellers: VoorraadVerschilTellersDto
+  facetten: { id: string; naam: string; aantal: number }[]
+  van: string
+  tot: string
+}
+
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 export function haalAansluiting(administratieId: string, van: string, tot: string): Promise<AansluitingDto> {
   return apiJson(`/administraties/${administratieId}/voorraad/aansluiting?van=${van}&tot=${tot}`)
 }
 
+export const VOORRAAD_PER_PAGINA = 25
+
+/** Kantoorbrede landing (B3.1): artikelgroepen buiten tolerantie over álle voorraad-administraties in
+ * scope, zwaarste eerst; `administratieId` = facet (leeg = alle), `q` zoekt op artikelgroep. */
+export function haalVoorraadVerschillen(
+  opties: { administratieId?: string; q?: string; pagina?: number; tot?: string } = {},
+): Promise<VoorraadVerschillenLijstDto> {
+  const params = new URLSearchParams({ pagina: String(opties.pagina ?? 1) })
+  if (opties.administratieId) params.set('administratie_id', opties.administratieId)
+  if (opties.q) params.set('q', opties.q)
+  if (opties.tot) params.set('tot', opties.tot)
+  return apiJson(`/voorraad/verschillen?${params.toString()}`)
+}
+
+/** Alleen de tellers (KPI-/nav-chip). */
+export function haalVoorraadVerschillenStand(): Promise<VoorraadVerschilTellersDto> {
+  return apiJson('/voorraad/verschillen/stand')
+}
+
 export function haalVoorraadRegels(
   administratieId: string,
   van: string,
   tot: string,
-  filter: { artikelgroepId?: string; status?: VoorraadRegelDto['normalisatie_status']; soort?: VoorraadSoort } = {},
-): Promise<VoorraadRegelDto[]> {
-  const params = new URLSearchParams({ van, tot })
+  filter: {
+    artikelgroepId?: string
+    /** Eén of meer statussen (komma-gescheiden server-side, bv. niet_genormaliseerd + onzeker in één lijst). */
+    status?: VoorraadRegelDto['normalisatie_status'] | VoorraadRegelDto['normalisatie_status'][]
+    soort?: VoorraadSoort
+    pagina?: number
+  } = {},
+): Promise<GepagineerdDto<VoorraadRegelDto>> {
+  const params = new URLSearchParams({ van, tot, pagina: String(filter.pagina ?? 1) })
   if (filter.artikelgroepId) params.set('artikelgroep_id', filter.artikelgroepId)
-  if (filter.status) params.set('normalisatie_status', filter.status)
+  if (filter.status) params.set('normalisatie_status', Array.isArray(filter.status) ? filter.status.join(',') : filter.status)
   if (filter.soort) params.set('soort', filter.soort)
   return apiJson(`/administraties/${administratieId}/voorraad/regels?${params.toString()}`)
 }
 
-export function haalDienstTeksten(administratieId: string, van: string, tot: string): Promise<DienstTekstDto[]> {
-  return apiJson(`/administraties/${administratieId}/voorraad/diensten?van=${van}&tot=${tot}`)
+export function haalDienstTeksten(administratieId: string, van: string, tot: string, pagina = 1): Promise<GepagineerdDto<DienstTekstDto>> {
+  return apiJson(`/administraties/${administratieId}/voorraad/diensten?van=${van}&tot=${tot}&pagina=${pagina}`)
 }
 
-export function haalArtikelcodes(administratieId: string): Promise<ArtikelcodeDto[]> {
-  return apiJson(`/administraties/${administratieId}/voorraad/artikelcodes`)
+export function haalArtikelcodes(administratieId: string, pagina = 1): Promise<GepagineerdDto<ArtikelcodeDto>> {
+  return apiJson(`/administraties/${administratieId}/voorraad/artikelcodes?pagina=${pagina}`)
 }
 
 export function corrigeerArtikelcode(
@@ -232,6 +297,19 @@ export function aantal(waarde: string | null | undefined, decimalen = 0): string
   const n = Number(waarde)
   if (Number.isNaN(n)) return waarde
   return n.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: decimalen })
+}
+
+/** Verschil-weergave op de kantoorbrede lijst: "−88 st (−8,8%)"; onbepaalbaar % = alleen het aantal. */
+export function verschilTekst(r: Pick<VoorraadVerschilRijDto, 'verschil' | 'verschil_pct' | 'eenheid'>): string {
+  const teken = Number(r.verschil) > 0 ? '+' : ''
+  const basis = `${teken}${aantal(r.verschil, 0)} ${r.eenheid}`
+  if (r.verschil_pct === null) return `${basis} (theoretisch 0)`
+  return `${basis} (${Number(r.verschil_pct) > 0 ? '+' : ''}${aantal(r.verschil_pct, 1)}%)`
+}
+
+/** Detail-deeplink per administratie (bestaande `?administratie=`-vorm) mét voorgefilterde groep/periode. */
+export function detailPad(r: Pick<VoorraadVerschilRijDto, 'administratie_id' | 'artikelgroep_id'>, van: string, tot: string): string {
+  return `/voorraad?administratie=${r.administratie_id}&groep=${r.artikelgroep_id}&van=${van}&tot=${tot}`
 }
 
 /** Signaaltekst conform mockup: "✓ binnen tolerantie" / "⚑ −8,8% — onderzoeken" / "— nog geen telling". */

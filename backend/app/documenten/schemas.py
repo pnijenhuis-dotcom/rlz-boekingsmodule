@@ -317,6 +317,8 @@ class WerkvoorraadKlantResponse(BaseModel):
     duplicaat_signalen: int = 0
     # Terugkerende facturen (blok B 30-08): leveranciers met een actief "verwachte factuur ontbreekt".
     terugkerend_signalen: int = 0
+    # Voorraadverschil (C2 03-09): artikelgroepen buiten tolerantie; 0 zonder de voorraad-opt-in.
+    voorraad_verschillen: int = 0
 
 
 class WerkvoorraadOverzichtResponse(BaseModel):

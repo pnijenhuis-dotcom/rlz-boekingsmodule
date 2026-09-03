@@ -8,13 +8,18 @@
 // v2 (30-08, besluiten Peter 29-08): dienst-/transportregels blijven bewaard mét soort-label (tellen niet) —
 // §3 inzage "als dienst geclassificeerd" per tekst mét aantallen + correctie dienst ↔ artikel; §4 codes-
 // inzage (artikelcode → groep per richting, AI-voorstel vs handmatig) + correctie. Nooit blind vertrouwen.
+// Design-ronde 03-09 (blok B3, mockup inzicht-kantoorbreed.html ⑤): `/voorraad` opent KANTOORBREED
+// (VoorraadLanding — artikelgroepen buiten tolerantie over alle administraties); dit detail per
+// administratie blijft erachter op de bestaande deeplink `?administratie=X` (+ `&groep=Y` opent de
+// drill-down voorgefilterd). Regels/diensten/codes zijn server-side gepagineerd (B3.3).
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
-import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, Select, SkeletonRegels } from '../ui/basis'
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, Paginering, Select, SkeletonRegels } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
+import { VoorraadLanding } from './VoorraadLanding'
 import {
   aantal,
   bronLabel,
@@ -39,6 +44,7 @@ import {
   type DagStandDto,
   type DienstTekstDto,
   type GroepAansluitingDto,
+  VOORRAAD_PER_PAGINA,
   type VoorraadRegelDto,
   type VoorraadSoort,
 } from './voorraadApi'
@@ -65,10 +71,26 @@ function keuzeNaarCorrectie(keuze: string): { soort: VoorraadSoort; artikelgroep
   return { soort: 'artikel', artikelgroep_id: keuze }
 }
 
+/** Route `/voorraad`: zonder `administratie` = de kantoorbrede landing (B3.2), mét = het detail per
+ * administratie (bestaande deeplink vanuit Instellingen › Administraties en de klantpagina). */
 export function VoorraadScreen() {
+  const [zoekParams] = useSearchParams()
+  const administratieId = zoekParams.get('administratie') ?? ''
+  if (!administratieId) return <VoorraadLanding />
+  return <VoorraadAdministratieDetail administratieId={administratieId} />
+}
+
+/** Gepagineerde lijststand (B3.3): rijen van de huidige pagina + totaal. */
+interface Lijst<T> {
+  rijen: T[]
+  totaal: number
+  pagina: number
+}
+
+export function VoorraadAdministratieDetail({ administratieId }: { administratieId: string }) {
   const { administraties } = useAdministraties()
   const [zoekParams, setZoekParams] = useSearchParams()
-  const administratieId = zoekParams.get('administratie') ?? ''
+  const groepParam = zoekParams.get('groep')
   const [van, setVan] = useState(zoekParams.get('van') ?? isoJaarStart())
   const [tot, setTot] = useState(zoekParams.get('tot') ?? isoVandaag())
   const [data, setData] = useState<AansluitingDto | null>(null)
@@ -78,14 +100,14 @@ export function VoorraadScreen() {
   const [laden, setLaden] = useState(false)
   const [versie, setVersie] = useState(0)
   const [melding, setMelding] = useState<string | null>(null)
-  const [detail, setDetail] = useState<{ groep: GroepAansluitingDto; regels: VoorraadRegelDto[]; dagen: DagStandDto[] } | null>(null)
+  const [detail, setDetail] = useState<{ groep: GroepAansluitingDto; regels: Lijst<VoorraadRegelDto>; dagen: DagStandDto[] } | null>(null)
   const [normalisatieOpen, setNormalisatieOpen] = useState(false)
-  const [normRegels, setNormRegels] = useState<VoorraadRegelDto[] | null>(null)
+  const [normRegels, setNormRegels] = useState<Lijst<VoorraadRegelDto> | null>(null)
   // v2 §3/§4: dienst-inzage en codes-inzage (controlemechanisme).
   const [dienstOpen, setDienstOpen] = useState(false)
-  const [dienstTeksten, setDienstTeksten] = useState<DienstTekstDto[] | null>(null)
+  const [dienstTeksten, setDienstTeksten] = useState<Lijst<DienstTekstDto> | null>(null)
   const [codesOpen, setCodesOpen] = useState(false)
-  const [codes, setCodes] = useState<ArtikelcodeDto[] | null>(null)
+  const [codes, setCodes] = useState<Lijst<ArtikelcodeDto> | null>(null)
   const [tellingVoor, setTellingVoor] = useState<{ groep: GroepAansluitingDto; datum: string; aantal: string } | null>(null)
   // Blok B (nazorg bouwrun blok D): invoer via designpass-v2-dialogen i.p.v. window.prompt.
   const [groepDialoog, setGroepDialoog] = useState<{ regel: VoorraadRegelDto; naam: string; eenheid: string; tolerantie: string } | null>(null)
@@ -96,6 +118,7 @@ export function VoorraadScreen() {
   const kies = (id: string) => {
     const p = new URLSearchParams(zoekParams)
     p.set('administratie', id)
+    p.delete('groep')
     setZoekParams(p, { replace: true })
     setDetail(null)
     setNormalisatieOpen(false)
@@ -143,40 +166,58 @@ export function VoorraadScreen() {
     }
   }
 
-  const openDetail = async (groep: GroepAansluitingDto) => {
-    setDetail(null)
-    const [regels, dagen] = await Promise.all([
-      haalVoorraadRegels(administratieId, van, tot, { artikelgroepId: groep.artikelgroep_id }),
-      haalDagstanden(administratieId, groep.artikelgroep_id, van, tot),
-    ])
-    setDetail({ groep, regels, dagen })
+  const openDetail = useCallback(
+    async (groep: GroepAansluitingDto, pagina = 1) => {
+      if (pagina === 1) setDetail(null)
+      const [regels, dagen] = await Promise.all([
+        haalVoorraadRegels(administratieId, van, tot, { artikelgroepId: groep.artikelgroep_id, pagina }),
+        haalDagstanden(administratieId, groep.artikelgroep_id, van, tot),
+      ])
+      setDetail({ groep, regels: { rijen: regels.rijen, totaal: regels.totaal, pagina }, dagen })
+    },
+    [administratieId, van, tot],
+  )
+
+  /** Groep kiezen = drill-down openen én `groep` in de URL (deeplink vanuit de kantoorbrede landing). */
+  const kiesGroep = (groep: GroepAansluitingDto) => {
+    const p = new URLSearchParams(zoekParams)
+    p.set('groep', groep.artikelgroep_id)
+    setZoekParams(p, { replace: true })
+    void openDetail(groep)
   }
 
-  const openNormalisatie = async () => {
+  // Deeplink `?groep=`: zodra de aansluiting geladen is de drill-down van die groep openen (één keer).
+  useEffect(() => {
+    if (!data || !groepParam || detail !== null) return
+    const groep = data.groepen.find((g) => g.artikelgroep_id === groepParam)
+    if (groep) void openDetail(groep)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, groepParam])
+
+  const openNormalisatie = async (pagina = 1) => {
     setNormalisatieOpen(true)
     setNormRegels(null)
-    const [niet, onzeker] = await Promise.all([
-      haalVoorraadRegels(administratieId, van, tot, { status: 'niet_genormaliseerd' }),
-      haalVoorraadRegels(administratieId, van, tot, { status: 'onzeker' }),
-    ])
-    setNormRegels([...niet, ...onzeker])
+    const p = await haalVoorraadRegels(administratieId, van, tot, { status: ['niet_genormaliseerd', 'onzeker'], pagina })
+    setNormRegels({ rijen: p.rijen, totaal: p.totaal, pagina })
   }
 
-  const openDienstInzage = async () => {
+  const openDienstInzage = async (pagina = 1) => {
     setDienstOpen(true)
     setDienstTeksten(null)
     try {
-      setDienstTeksten(await haalDienstTeksten(administratieId, van, tot))
+      const p = await haalDienstTeksten(administratieId, van, tot, pagina)
+      setDienstTeksten({ rijen: p.rijen, totaal: p.totaal, pagina })
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Dienst-inzage laden mislukt.')
     }
   }
 
-  const openCodesInzage = async () => {
+  const openCodesInzage = async (pagina = 1) => {
     setCodesOpen(true)
     setCodes(null)
     try {
-      setCodes(await haalArtikelcodes(administratieId))
+      const p = await haalArtikelcodes(administratieId, pagina)
+      setCodes({ rijen: p.rijen, totaal: p.totaal, pagina })
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Codes-inzage laden mislukt.')
     }
@@ -305,16 +346,24 @@ export function VoorraadScreen() {
     </Select>
   )
 
+  const administratieNaam = administraties?.find((a) => a.id === administratieId)?.naam
+
   return (
     <div>
       <div className="topbar">
         <div>
+          <div className="hint" style={{ marginBottom: 2 }}>
+            <Link to="/voorraad">Inzicht › Voorraad</Link> › {administratieNaam ?? 'administratie'}
+          </div>
           <h1 style={{ margin: 0 }}>Voorraad-aansluiting</h1>
           <div className="hint" style={{ marginTop: 2 }}>
             Onafhankelijke controle-laag: instroom uit gescande inkoopfacturen (extern) vs uitstroom uit verkoopfactuurregels
             (intern) — theoretische stand tegenover de systeemstand. Puur signaal, nooit een boeking.
           </div>
         </div>
+        <Link to="/voorraad" className="linkbtn">
+          ← Alle administraties
+        </Link>
       </div>
 
       <div className="panel" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -347,7 +396,6 @@ export function VoorraadScreen() {
         </div>
       )}
 
-      {!administratieId && <p className="hint">Kies een administratie met de opt-in &ldquo;Voorraad bijhouden&rdquo;.</p>}
       {uit && (
         <div className="panel" data-testid="voorraad-uit">
           <b>Voorraad bijhouden staat uit voor deze administratie.</b>
@@ -383,7 +431,7 @@ export function VoorraadScreen() {
                     return (
                       <tr key={g.artikelgroep_id}>
                         <td>
-                          <button type="button" className="linkbtn" onClick={() => void openDetail(g)}>
+                          <button type="button" className="linkbtn" onClick={() => kiesGroep(g)}>
                             <b>{g.naam}</b>
                           </button>
                           <div className="hint" style={{ fontSize: 11 }}>
@@ -409,10 +457,17 @@ export function VoorraadScreen() {
                         </td>
                         <td className="amount">{g.verschil !== null ? (Number(g.verschil) > 0 ? '+' : '') + aantal(g.verschil) : '—'}</td>
                         <td>
-                          <Badge variant={s.soort === 'ok' ? 'ok' : s.soort === 'vlag' ? 'warn' : 'stil'}>
-                            {s.soort === 'ok' ? '✓ ' : s.soort === 'vlag' ? '⚑ ' : ''}
-                            {s.tekst}
-                          </Badge>
+                          {s.soort === 'vlag' ? (
+                            // Het verschil-signaal linkt direct naar de verdachte regels (ontwerpnotitie ⑤).
+                            <button type="button" className="linkbtn" onClick={() => kiesGroep(g)} title="Bekijk de factuurregels achter dit verschil">
+                              <Badge variant="warn">⚑ {s.tekst}</Badge> <span className="hint">bekijk regels →</span>
+                            </button>
+                          ) : (
+                            <Badge variant={s.soort === 'ok' ? 'ok' : 'stil'}>
+                              {s.soort === 'ok' ? '✓ ' : ''}
+                              {s.tekst}
+                            </Badge>
+                          )}
                           {s.soort === 'vlag' && Number(g.onzeker_pct) > 0 && (
                             <div className="hint" style={{ fontSize: 11 }}>
                               {aantal(g.onzeker_pct, 0)}% van de regels is onzeker genormaliseerd — eerst normaliseren
@@ -532,7 +587,7 @@ export function VoorraadScreen() {
                     </tr>
                   </thead>
                   <tbody>
-                    {detail.regels.map((r) => (
+                    {detail.regels.rijen.map((r) => (
                       <tr key={r.id}>
                         <td>{r.datum}</td>
                         <td>{r.richting === 'in' ? 'in (inkoop)' : 'uit (verkoop)'}</td>
@@ -564,6 +619,13 @@ export function VoorraadScreen() {
                   </tbody>
                 </table>
               </div>
+              <Paginering
+                pagina={detail.regels.pagina}
+                totaal={detail.regels.totaal}
+                grootte={VOORRAAD_PER_PAGINA}
+                onPagina={(p) => void openDetail(detail.groep, p)}
+                label="factuurregels"
+              />
               <h3>Dagstanden</h3>
               <div className="tabel-scroll">
                 <table>
@@ -598,8 +660,8 @@ export function VoorraadScreen() {
                 vanaf dan voor álle regels met dezelfde leverancier + artikeltekst — historie wordt herrekend.
               </p>
               {normRegels === null && <SkeletonRegels />}
-              {normRegels !== null && normRegels.length === 0 && <p className="hint">Alles is genormaliseerd.</p>}
-              {normRegels !== null && normRegels.length > 0 && (
+              {normRegels !== null && normRegels.totaal === 0 && <p className="hint">Alles is genormaliseerd.</p>}
+              {normRegels !== null && normRegels.totaal > 0 && (
                 <div className="tabel-scroll">
                   <table>
                     <thead>
@@ -612,7 +674,7 @@ export function VoorraadScreen() {
                       </tr>
                     </thead>
                     <tbody>
-                      {normRegels.map((r) => (
+                      {normRegels.rijen.map((r) => (
                         <tr key={r.id}>
                           <td>
                             &ldquo;{r.artikeltekst}&rdquo; — {r.relatie_naam ?? 'onbekend'}
@@ -637,6 +699,15 @@ export function VoorraadScreen() {
                   </table>
                 </div>
               )}
+              {normRegels !== null && (
+                <Paginering
+                  pagina={normRegels.pagina}
+                  totaal={normRegels.totaal}
+                  grootte={VOORRAAD_PER_PAGINA}
+                  onPagina={(p) => void openNormalisatie(p)}
+                  label="regels"
+                />
+              )}
             </div>
           )}
 
@@ -649,8 +720,8 @@ export function VoorraadScreen() {
                 (en dezelfde artikelcode), historie herrekend. De regels zelf blijven bewaard als omzet-/dienstinformatie.
               </p>
               {dienstTeksten === null && <SkeletonRegels />}
-              {dienstTeksten !== null && dienstTeksten.length === 0 && <p className="hint">Geen dienst-/transportregels in deze periode.</p>}
-              {dienstTeksten !== null && dienstTeksten.length > 0 && (
+              {dienstTeksten !== null && dienstTeksten.totaal === 0 && <p className="hint">Geen dienst-/transportregels in deze periode.</p>}
+              {dienstTeksten !== null && dienstTeksten.totaal > 0 && (
                 <div className="tabel-scroll">
                   <table>
                     <thead>
@@ -665,7 +736,7 @@ export function VoorraadScreen() {
                       </tr>
                     </thead>
                     <tbody>
-                      {dienstTeksten.map((d) => (
+                      {dienstTeksten.rijen.map((d) => (
                         <tr key={`${d.vendor_id ?? '-'}|${d.artikeltekst_norm}`}>
                           <td>
                             &ldquo;{d.artikeltekst}&rdquo;
@@ -695,6 +766,15 @@ export function VoorraadScreen() {
                   </table>
                 </div>
               )}
+              {dienstTeksten !== null && (
+                <Paginering
+                  pagina={dienstTeksten.pagina}
+                  totaal={dienstTeksten.totaal}
+                  grootte={VOORRAAD_PER_PAGINA}
+                  onPagina={(p) => void openDienstInzage(p)}
+                  label="teksten"
+                />
+              )}
             </div>
           )}
 
@@ -707,8 +787,8 @@ export function VoorraadScreen() {
                 vóór de tekstregel en vóór de AI. Corrigeren geldt voor álle regels met die code (historie herrekend).
               </p>
               {codes === null && <SkeletonRegels />}
-              {codes !== null && codes.length === 0 && <p className="hint">Nog geen artikelcodes gekoppeld.</p>}
-              {codes !== null && codes.length > 0 && (
+              {codes !== null && codes.totaal === 0 && <p className="hint">Nog geen artikelcodes gekoppeld.</p>}
+              {codes !== null && codes.totaal > 0 && (
                 <div className="tabel-scroll">
                   <table>
                     <thead>
@@ -723,7 +803,7 @@ export function VoorraadScreen() {
                       </tr>
                     </thead>
                     <tbody>
-                      {codes.map((k) => (
+                      {codes.rijen.map((k) => (
                         <tr key={k.id}>
                           <td>
                             <b>{k.code}</b>
@@ -760,6 +840,15 @@ export function VoorraadScreen() {
                     </tbody>
                   </table>
                 </div>
+              )}
+              {codes !== null && (
+                <Paginering
+                  pagina={codes.pagina}
+                  totaal={codes.totaal}
+                  grootte={VOORRAAD_PER_PAGINA}
+                  onPagina={(p) => void openCodesInzage(p)}
+                  label="codes"
+                />
               )}
             </div>
           )}

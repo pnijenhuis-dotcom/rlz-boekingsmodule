@@ -841,11 +841,11 @@ class TestEndpoints:
             params={"van": "2026-01-01", "tot": "2026-12-31"},
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
-        assert resp.status_code == 200 and resp.json() == []
+        assert resp.status_code == 200 and resp.json() == {"rijen": [], "totaal": 0, "pagina": 1, "per_pagina": 25}
         resp = client.get(
             f"/administraties/{aid}/voorraad/artikelcodes", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
         )
-        assert resp.status_code == 200 and resp.json() == []
+        assert resp.status_code == 200 and resp.json() == {"rijen": [], "totaal": 0, "pagina": 1, "per_pagina": 25}
         resp = client.post(
             f"/administraties/{aid}/voorraad/artikelcodes/{uuid.uuid4()}/corrigeer",
             json={"soort": "dienst"},

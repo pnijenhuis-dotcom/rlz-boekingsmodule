@@ -17,7 +17,12 @@ import {
 
 // Mockup voorraad-aansluiting.html §1 (blok D 28-08): tabel per artikelgroep met bron per kolom,
 // signaal op tolerantie, prominente "Niet genormaliseerd"-teller, telling-invoer; opt-in uit = leesbare
-// melding. Cijfers komen uit de backend — de client formatteert alleen.
+// melding. Cijfers komen uit de backend — de client formatteert alleen. Sinds B3 (03-09) is dit het
+// DETAIL per administratie achter `?administratie=`; regels/diensten/codes komen gepagineerd binnen.
+
+function pagina<T>(rijen: T[], totaal = rijen.length) {
+  return { rijen, totaal, pagina: 1, per_pagina: 25 }
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -194,13 +199,14 @@ function stubFetch(opties: { uit?: boolean } = {}) {
       if (pad === `/administraties/${ADMIN}/voorraad/tellingen`) return Promise.resolve(new Response(null, { status: 204 }))
       if (pad === `/administraties/${ADMIN}/voorraad/regels`) {
         const status = new URL(url, 'http://x').searchParams.get('normalisatie_status')
+        const statussen = status ? status.split(',') : null
         const alle = [REGEL_RLZ, REGEL_APP]
-        return Promise.resolve(jsonResponse(status ? alle.filter((r) => r.normalisatie_status === status) : alle))
+        return Promise.resolve(jsonResponse(pagina(statussen ? alle.filter((r) => statussen.includes(r.normalisatie_status)) : alle)))
       }
       if (pad.endsWith('/dagstanden')) return Promise.resolve(jsonResponse([{ datum: '2026-08-28', inkoop: '0', verkoop: '610', stand: '820' }]))
       if (pad === `/administraties/${ADMIN}/voorraad/normalisatie/corrigeer`) return Promise.resolve(jsonResponse({ herrekend: 3 }))
-      if (pad === `/administraties/${ADMIN}/voorraad/diensten`) return Promise.resolve(jsonResponse(DIENSTEN))
-      if (pad === `/administraties/${ADMIN}/voorraad/artikelcodes`) return Promise.resolve(jsonResponse(CODES))
+      if (pad === `/administraties/${ADMIN}/voorraad/diensten`) return Promise.resolve(jsonResponse(pagina(DIENSTEN)))
+      if (pad === `/administraties/${ADMIN}/voorraad/artikelcodes`) return Promise.resolve(jsonResponse(pagina(CODES)))
       if (pad.endsWith('/artikelcodes/k1/corrigeer')) return Promise.resolve(jsonResponse({ herrekend: 41 }))
       if (pad.endsWith('/tolerantie')) return Promise.resolve(new Response(null, { status: 204 }))
       return Promise.resolve(new Response(null, { status: 404 }))
@@ -237,6 +243,8 @@ describe('VoorraadScreen', () => {
     expect(koppelingen).toHaveTextContent('✓ binnen tolerantie')
     const buis = rijen.find((r) => within(r).queryByText('Steigerbuis 3m'))!
     expect(buis).toHaveTextContent('⚑ -8,8% — onderzoeken')
+    // Het verschil-signaal is sinds B3 (03-09) een link naar de verdachte regels.
+    expect(within(buis).getByRole('button', { name: /-8,8% — onderzoeken bekijk regels/ })).toBeInTheDocument()
     expect(buis).toHaveTextContent('35% van de regels is onzeker genormaliseerd')
     const vlonders = rijen.find((r) => within(r).queryByText('Vlonders alu 2,5m'))!
     expect(vlonders).toHaveTextContent('nog geen telling')
@@ -298,7 +306,7 @@ describe('VoorraadScreen — blok A herkomst + blok B dialogen', () => {
     const gebruiker = userEvent.setup()
     await gebruiker.click(screen.getByRole('button', { name: /normaliseren/ }))
     const paneel = await screen.findByTestId('normalisatie-paneel')
-    await gebruiker.selectOptions(within(paneel).getAllByRole('combobox')[0], '__nieuw__')
+    await gebruiker.selectOptions(within(paneel).getByLabelText('Corrigeer KOP.DR.48/48 SW22 gegalv.'), '__nieuw__')
     const dialoog = await screen.findByTestId('nieuwe-groep-dialoog')
     expect(prompt).not.toHaveBeenCalled()
     // Leeg opslaan = validatie in de dialoog, geen request.
@@ -400,6 +408,47 @@ describe('VoorraadScreen — v2 soort-label, dienst-inzage (§3) en codes-inzage
     await userEvent.click(within(tabel).getByRole('button', { name: 'Koppelingen 48mm' }))
     const detail = await screen.findByTestId('groep-detail')
     expect(within(detail).getByText('code 550100.210')).toBeInTheDocument()
+  })
+})
+
+describe('VoorraadScreen — B3 detail achter de landing (03-09)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('deeplink ?groep= opent de drill-down van die groep direct; kruimelpad terug naar de kantoorbrede landing', async () => {
+    const aangeroepen = stubFetch()
+    render(
+      <MemoryRouter initialEntries={[`/voorraad?administratie=${ADMIN}&groep=g2&van=2026-01-01&tot=2026-08-31`]}>
+        <AuthProvider>
+          <VoorraadScreen />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+    const detail = await screen.findByTestId('groep-detail')
+    expect(detail).toHaveTextContent('Steigerbuis 3m — factuurregels')
+    const regels = aangeroepen.find((a) => a.pad.includes('/voorraad/regels'))!
+    expect(regels.pad).toContain('artikelgroep_id=g2')
+    expect(regels.pad).toContain('pagina=1')
+    expect(screen.getByRole('link', { name: '← Alle administraties' })).toHaveAttribute('href', '/voorraad')
+    expect(screen.getByRole('link', { name: 'Inzicht › Voorraad' })).toHaveAttribute('href', '/voorraad')
+  })
+
+  it('klik op het verschil-signaal opent de regels achter dat verschil en zet groep in de URL', async () => {
+    stubFetch()
+    renderScherm()
+    const tabel = await screen.findByTestId('aansluiting-tabel')
+    await userEvent.click(within(tabel).getByRole('button', { name: /-8,8% — onderzoeken bekijk regels/ }))
+    const detail = await screen.findByTestId('groep-detail')
+    expect(detail).toHaveTextContent('Steigerbuis 3m — factuurregels')
+  })
+
+  it('normalisatie-paneel haalt één gepagineerde lijst met beide statussen (komma-gescheiden)', async () => {
+    const aangeroepen = stubFetch()
+    renderScherm()
+    const rij = await screen.findByTestId('niet-genormaliseerd-rij')
+    await userEvent.click(within(rij).getByRole('button', { name: /normaliseren/ }))
+    await screen.findByTestId('normalisatie-paneel')
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad.includes('normalisatie_status=niet_genormaliseerd%2Conzeker'))).toBe(true))
+    expect(aangeroepen.filter((a) => a.pad.includes('/voorraad/regels')).length).toBe(1)
   })
 })
 

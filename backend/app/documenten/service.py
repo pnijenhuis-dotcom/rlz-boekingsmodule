@@ -1409,6 +1409,9 @@ class WerkvoorraadKlant:
     # Terugkerende facturen (blok B 30-08): leveranciers met een actief "verwachte factuur
     # ontbreekt"-signaal — zelfde signaal-patroon (oranje, geen blokkade, geen document erachter).
     terugkerend_signalen: int = 0
+    # Voorraadverschil (C2 design-ronde 03-09): artikelgroepen buiten tolerantie — alleen berekend bij
+    # de opt-in `voorraad_ingeschakeld` (anders 0); zelfde signaal-patroon, geen document erachter.
+    voorraad_verschillen: int = 0
 
     @property
     def heeft_openstaand_werk(self) -> bool:
@@ -1487,6 +1490,11 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
             from app.terugkerend import service as terugkerend_service
 
             terugkerend_signalen = terugkerend_service.tel_ontbrekend(session, administratie_id)
+            # Voorraadverschil (C2 03-09): twee aggregaatqueries, uitsluitend bij de voorraad-opt-in —
+            # dezelfde motorfunctie als de kantoorbrede lijst (één definitie).
+            from app.voorraad import service as voorraad_service  # lokaal: houdt de importgraaf klein
+
+            voorraad_verschillen = voorraad_service.tel_verschillen(session, administratie_id)
         klanten.append(
             WerkvoorraadKlant(
                 administratie_id=administratie_id,
@@ -1502,6 +1510,7 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 match_afwijkingen=match_afwijkingen,
                 duplicaat_signalen=duplicaat_signalen,
                 terugkerend_signalen=terugkerend_signalen,
+                voorraad_verschillen=voorraad_verschillen,
             )
         )
     return klanten

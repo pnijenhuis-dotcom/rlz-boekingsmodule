@@ -285,7 +285,7 @@ class TestLeesroute:
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
         assert resp.status_code == 200, resp.text
-        rij = next(r for r in resp.json() if r["bron"] == "rlz_verkoop" and r["rlz_referentie"] == "50212273")
+        rij = next(r for r in resp.json()["rijen"] if r["bron"] == "rlz_verkoop" and r["rlz_referentie"] == "50212273")
         assert rij["document_id"] is None and rij["rlz_document_id"] == F_GEBOEKT
         resp = client.post(
             f"/administraties/{administratie_id}/voorraad/herreken",

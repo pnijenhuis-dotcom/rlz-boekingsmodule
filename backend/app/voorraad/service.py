@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db.audit import record_audit_event
@@ -447,6 +447,24 @@ def _pct(deel: Decimal, geheel: Decimal) -> Decimal | None:
     return (deel / geheel * 100).quantize(_HONDERDSTE, rounding=ROUND_HALF_UP)
 
 
+def _signaal(
+    *, theoretisch: Decimal, systeemstand: Decimal | None, tolerantie_pct: Decimal
+) -> tuple[Decimal | None, Decimal | None, str]:
+    """DE signaalregel (één definitie — aansluitscherm, kantoorbrede lijst én werkvoorraad-teller
+    lezen 'm hier): verschil = systeemstand − theoretisch; % t.o.v. theoretisch; buiten de
+    tolerantie van de groep = `onderzoeken`. Theoretisch 0 maakt het % onbepaalbaar — dan telt
+    alleen "verschil ≠ 0". Geen telling = `geen_telling` (nooit een vals signaal)."""
+    if systeemstand is None:
+        return None, None, "geen_telling"
+    verschil = systeemstand - theoretisch
+    verschil_pct = _pct(verschil, theoretisch)
+    if verschil_pct is None:
+        signaal = "binnen_tolerantie" if verschil == 0 else "onderzoeken"
+    else:
+        signaal = "binnen_tolerantie" if abs(verschil_pct) <= tolerantie_pct else "onderzoeken"
+    return verschil, verschil_pct, signaal
+
+
 def aansluiting(*, administratie_id: uuid.UUID, van: date, tot: date) -> Aansluiting:
     """Per artikelgroep: begin (Σ vóór `van`) + inkoop − verkoop = theoretisch; systeemstand = laatste
     telling ≤ `tot`; verschil = systeemstand − theoretisch; signaal op de tolerantie van de groep.
@@ -524,14 +542,9 @@ def aansluiting(*, administratie_id: uuid.UUID, van: date, tot: date) -> Aanslui
         theoretisch = Decimal(g["begin"]) + Decimal(g["in"]) - Decimal(g["uit"])
         telling = laatste_telling.get(groep.id)
         systeemstand = telling.aantal if telling else None
-        verschil = (systeemstand - theoretisch) if systeemstand is not None else None
-        verschil_pct = _pct(verschil, theoretisch) if verschil is not None else None
-        if systeemstand is None:
-            signaal = "geen_telling"
-        elif verschil_pct is None:
-            signaal = "binnen_tolerantie" if verschil == 0 else "onderzoeken"
-        else:
-            signaal = "binnen_tolerantie" if abs(verschil_pct) <= groep.tolerantie_pct else "onderzoeken"
+        verschil, verschil_pct, signaal = _signaal(
+            theoretisch=theoretisch, systeemstand=systeemstand, tolerantie_pct=groep.tolerantie_pct
+        )
         n_regels = int(g["n_in"]) + int(g["n_uit"])
         onzeker_pct = (
             (Decimal(int(g["onzeker"])) / Decimal(n_regels) * 100).quantize(_HONDERDSTE, rounding=ROUND_HALF_UP)
@@ -569,6 +582,230 @@ def aansluiting(*, administratie_id: uuid.UUID, van: date, tot: date) -> Aanslui
         regels_totaal=totaal,
         dienst_regels=dienst_n,
         transport_regels=transport_n,
+    )
+
+
+# --- kantoorbreed: artikelgroepen buiten tolerantie (design-ronde 03-09, mockup inzicht-kantoorbreed ⑤) -
+
+
+#: Zwaarte van een afwijking (STATUS-kleur op de lijst): rood zodra |verschil-%| ≥ 5× de tolerantie van
+#: de groep (bij de default 1 % dus ≥ 5 %), met een ondergrens van 5 % voor groepen met tolerantie 0;
+#: onbepaalbaar % (theoretisch 0, telling ≠ 0) = rood. Daaronder oranje. Beslispunt Peter (03-09).
+ZWAARTE_ROOD_FACTOR = Decimal(5)
+ZWAARTE_ROOD_MINIMUM_PCT = Decimal(5)
+
+
+def _zwaarte(*, verschil_pct: Decimal | None, tolerantie_pct: Decimal) -> str:
+    if verschil_pct is None:
+        return "rood"
+    drempel = max(ZWAARTE_ROOD_FACTOR * tolerantie_pct, ZWAARTE_ROOD_MINIMUM_PCT)
+    return "rood" if abs(verschil_pct) >= drempel else "oranje"
+
+
+@dataclass(frozen=True)
+class VerschilRij:
+    """Eén artikelgroep buiten tolerantie op de kantoorbrede lijst (of achter de werkvoorraad-teller)."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    artikelgroep_id: uuid.UUID
+    naam: str
+    eenheid: str
+    tolerantie_pct: Decimal
+    theoretisch: Decimal
+    systeemstand: Decimal
+    telling_datum: date
+    verschil: Decimal
+    verschil_pct: Decimal | None
+    zwaarte: str  # oranje | rood
+    tot: date
+
+
+def _sorteersleutel_zwaarste_eerst(r: VerschilRij) -> tuple[Decimal, Decimal]:
+    """Zwaarste afwijking eerst: primair op |verschil-%| (de maat die de motor tegen de tolerantie toetst;
+    onbepaalbaar % = bovenaan), secundair op |verschil| in eenheden."""
+    pct = abs(r.verschil_pct) if r.verschil_pct is not None else Decimal("Infinity")
+    return (-pct, -abs(r.verschil))
+
+
+def verschillen_in_sessie(
+    session: Session, *, administratie_id: uuid.UUID, administratie_naam: str, tot: date
+) -> list[VerschilRij]:
+    """Artikelgroepen mét signaal `onderzoeken` voor één administratie, in twee aggregaatqueries —
+    bewust NIET via `aansluiting()` (die laadt álle feitenregels in Python; dit pad draait ook per
+    administratie in het werkvoorraad-overzicht). Zelfde rekenregel: theoretisch = Σ in − Σ uit van
+    álle artikelregels ≤ `tot` (= begin + periode, onafhankelijk van een `van`), systeemstand =
+    laatste telling ≤ `tot`, signaal via `_signaal`. Legacy-status 'uitgesloten' telt als dienst,
+    niet-genormaliseerde regels tellen niet (zoals in `aansluiting`)."""
+    groepen = list(
+        session.scalars(
+            select(Artikelgroep)
+            .where(Artikelgroep.administratie_id == administratie_id, Artikelgroep.actief.is_(True))
+            .order_by(Artikelgroep.naam)
+        )
+    )
+    if not groepen:
+        return []
+    teken = case((VoorraadRegel.richting == "in", VoorraadRegel.aantal), else_=-VoorraadRegel.aantal)
+    sommen = dict(
+        session.execute(
+            select(VoorraadRegel.artikelgroep_id, func.coalesce(func.sum(teken), 0))
+            .where(
+                VoorraadRegel.administratie_id == administratie_id,
+                VoorraadRegel.artikelgroep_id.is_not(None),
+                VoorraadRegel.soort == SOORT_ARTIKEL,
+                VoorraadRegel.normalisatie_status.notin_([LEGACY_UITGESLOTEN, "niet_genormaliseerd"]),
+                VoorraadRegel.aantal.is_not(None),
+                VoorraadRegel.datum <= tot,
+            )
+            .group_by(VoorraadRegel.artikelgroep_id)
+        ).all()
+    )
+    laatste_telling: dict[uuid.UUID, tuple[date, Decimal]] = {}
+    for groep_id, datum, aantal in session.execute(
+        select(VoorraadTelling.artikelgroep_id, VoorraadTelling.datum, VoorraadTelling.aantal)
+        .where(VoorraadTelling.administratie_id == administratie_id, VoorraadTelling.datum <= tot)
+        .order_by(VoorraadTelling.datum.desc())
+    ).all():
+        laatste_telling.setdefault(groep_id, (datum, aantal))
+    uit: list[VerschilRij] = []
+    for groep in groepen:
+        theoretisch = Decimal(sommen.get(groep.id, 0)).quantize(_DUIZENDSTE)
+        telling = laatste_telling.get(groep.id)
+        systeemstand = telling[1] if telling else None
+        verschil, verschil_pct, signaal = _signaal(
+            theoretisch=theoretisch, systeemstand=systeemstand, tolerantie_pct=groep.tolerantie_pct
+        )
+        if signaal != "onderzoeken" or telling is None or verschil is None:
+            continue
+        uit.append(
+            VerschilRij(
+                administratie_id=administratie_id,
+                administratie_naam=administratie_naam,
+                artikelgroep_id=groep.id,
+                naam=groep.naam,
+                eenheid=groep.eenheid,
+                tolerantie_pct=groep.tolerantie_pct,
+                theoretisch=theoretisch,
+                systeemstand=systeemstand,  # type: ignore[arg-type]
+                telling_datum=telling[0],
+                verschil=verschil.quantize(_DUIZENDSTE),
+                verschil_pct=verschil_pct,
+                zwaarte=_zwaarte(verschil_pct=verschil_pct, tolerantie_pct=groep.tolerantie_pct),
+                tot=tot,
+            )
+        )
+    uit.sort(key=_sorteersleutel_zwaarste_eerst)
+    return uit
+
+
+def tel_verschillen(session: Session, administratie_id: uuid.UUID, *, tot: date | None = None) -> int:
+    """Werkvoorraad-teller "Voorraadverschil" (C2): aantal artikelgroepen buiten tolerantie — 0 zonder
+    opt-in (dan wordt niets berekend). Zelfde motorfunctie als de kantoorbrede lijst."""
+    administratie = session.get(Administratie, administratie_id)
+    if administratie is None or not administratie.voorraad_ingeschakeld:
+        return 0
+    return len(
+        verschillen_in_sessie(
+            session, administratie_id=administratie_id, administratie_naam=administratie.naam, tot=tot or date.today()
+        )
+    )
+
+
+@dataclass(frozen=True)
+class VerschilTellers:
+    groepen: int
+    administraties: int
+    administraties_met_voorraad: int
+
+
+@dataclass(frozen=True)
+class FacetAdministratie:
+    id: uuid.UUID
+    naam: str
+    aantal: int
+
+
+@dataclass(frozen=True)
+class VerschillenLijst:
+    rijen: list[VerschilRij]
+    totaal: int
+    pagina: int
+    per_pagina: int
+    tellers: VerschilTellers
+    facetten: list[FacetAdministratie]
+    van: date
+    tot: date
+
+
+def _alle_verschillen(
+    *, administraties: list[tuple[uuid.UUID, str]], actor_id: uuid.UUID, tot: date
+) -> list[VerschilRij]:
+    """Kantoorbreed lezen onder RLS = itereren over de administraties in scope (de aanroeper levert
+    uitsluitend administraties mét voorraad-opt-in aan), per administratie in een gescoopte sessie mét
+    actor — nooit `scoped_session(None)` voor administratie-gebonden rijen."""
+    uit: list[VerschilRij] = []
+    for aid, naam in administraties:
+        with scoped_session(aid, actor_id=actor_id) as session:
+            uit.extend(verschillen_in_sessie(session, administratie_id=aid, administratie_naam=naam, tot=tot))
+    uit.sort(key=_sorteersleutel_zwaarste_eerst)
+    return uit
+
+
+def verschillen_tellers(
+    *, administraties: list[tuple[uuid.UUID, str]], actor_id: uuid.UUID, tot: date | None = None
+) -> VerschilTellers:
+    rijen = _alle_verschillen(administraties=administraties, actor_id=actor_id, tot=tot or date.today())
+    return VerschilTellers(
+        groepen=len(rijen),
+        administraties=len({r.administratie_id for r in rijen}),
+        administraties_met_voorraad=len(administraties),
+    )
+
+
+def verschillen_kantoorbreed(
+    *,
+    administraties: list[tuple[uuid.UUID, str]],
+    actor_id: uuid.UUID,
+    administratie_id: uuid.UUID | None = None,
+    q: str = "",
+    pagina: int = 1,
+    per_pagina: int = 25,
+    tot: date | None = None,
+) -> VerschillenLijst:
+    """Landing Inzicht › Voorraad (kandidaten-patroon): alle voorraad-administraties in scope in één
+    lijst, zwaarste afwijking eerst, administratie = facet (nooit poort), zoekterm op artikelgroep,
+    server-side paginering. Tellers en facetwaarden gaan over de ongefilterde stand."""
+    tot = tot or date.today()
+    van = date(tot.year, 1, 1)
+    alle = _alle_verschillen(administraties=administraties, actor_id=actor_id, tot=tot)
+    per_administratie: dict[uuid.UUID, int] = defaultdict(int)
+    for r in alle:
+        per_administratie[r.administratie_id] += 1
+    facetten = [
+        FacetAdministratie(id=aid, naam=naam, aantal=per_administratie.get(aid, 0)) for aid, naam in administraties
+    ]
+    selectie = alle
+    if administratie_id is not None:
+        selectie = [r for r in selectie if r.administratie_id == administratie_id]
+    zoek = q.strip().lower()
+    if zoek:
+        selectie = [r for r in selectie if zoek in r.naam.lower()]
+    totaal = len(selectie)
+    start = (pagina - 1) * per_pagina
+    return VerschillenLijst(
+        rijen=selectie[start : start + per_pagina],
+        totaal=totaal,
+        pagina=pagina,
+        per_pagina=per_pagina,
+        tellers=VerschilTellers(
+            groepen=len(alle),
+            administraties=len(per_administratie),
+            administraties_met_voorraad=len(administraties),
+        ),
+        facetten=facetten,
+        van=van,
+        tot=tot,
     )
 
 
@@ -651,28 +888,97 @@ def regels(
     """Drill-down (mockup: "alle factuurregels achter het getal, mét link naar het document"), het
     normalisatie-scherm (status-filter: niet_genormaliseerd / onzeker) of de dienst-/omzetregels
     (soort-filter: dienst / transport — MI-query, v2)."""
+    return regels_pagina(
+        administratie_id=administratie_id,
+        van=van,
+        tot=tot,
+        artikelgroep_id=artikelgroep_id,
+        status=status,
+        soort=soort,
+        pagina=None,
+    ).rijen
+
+
+@dataclass(frozen=True)
+class RegelsPagina:
+    rijen: list[RegelData]
+    totaal: int
+    pagina: int
+    per_pagina: int
+
+
+def _regels_filter(
+    *,
+    administratie_id: uuid.UUID,
+    van: date,
+    tot: date,
+    artikelgroep_id: uuid.UUID | None,
+    status: str | None,
+    soort: str | None,
+):
+    """Gedeelde WHERE-clausules voor de regel-lijst en de telling. `status` mag meerdere waarden dragen
+    (komma-gescheiden, bv. `niet_genormaliseerd,onzeker` — het normalisatie-paneel in één gepagineerde
+    lijst); zonder de legacy-waarde beperkt het status-filter zich tot artikelregels."""
+    clausules = [
+        VoorraadRegel.administratie_id == administratie_id,
+        VoorraadRegel.datum >= van,
+        VoorraadRegel.datum <= tot,
+    ]
+    if artikelgroep_id is not None:
+        clausules.append(VoorraadRegel.artikelgroep_id == artikelgroep_id)
+    if status is not None:
+        statussen = [s.strip() for s in status.split(",") if s.strip()]
+        clausules.append(VoorraadRegel.normalisatie_status.in_(statussen))
+        if LEGACY_UITGESLOTEN not in statussen:
+            clausules.append(VoorraadRegel.soort == SOORT_ARTIKEL)
+    if soort is not None:
+        clausules.append(VoorraadRegel.soort == soort)
+    return clausules
+
+
+def regels_pagina(
+    *,
+    administratie_id: uuid.UUID,
+    van: date,
+    tot: date,
+    artikelgroep_id: uuid.UUID | None = None,
+    status: str | None = None,
+    soort: str | None = None,
+    pagina: int | None = 1,
+    per_pagina: int = 25,
+) -> RegelsPagina:
+    """Server-side gepagineerde regel-lijst (B3.3, design-ronde 03-09): LIMIT/OFFSET in de database
+    plus een aparte telling — nooit meer een ongepagineerde 7-jaar-dump naar de browser. `pagina=None`
+    = alles (interne aanroepers/tests)."""
     _vereis_ingeschakeld(administratie_id)
+    clausules = _regels_filter(
+        administratie_id=administratie_id, van=van, tot=tot, artikelgroep_id=artikelgroep_id, status=status, soort=soort
+    )
     with scoped_session(administratie_id) as session:
-        q = select(VoorraadRegel).where(
-            VoorraadRegel.administratie_id == administratie_id,
-            VoorraadRegel.datum >= van,
-            VoorraadRegel.datum <= tot,
+        totaal = int(session.scalar(select(func.count()).select_from(VoorraadRegel).where(*clausules)) or 0)
+        q = (
+            select(VoorraadRegel)
+            .where(*clausules)
+            .order_by(VoorraadRegel.datum.desc(), VoorraadRegel.regel_volgnummer, VoorraadRegel.id)
         )
-        if artikelgroep_id is not None:
-            q = q.where(VoorraadRegel.artikelgroep_id == artikelgroep_id)
-        if status is not None:
-            q = q.where(VoorraadRegel.normalisatie_status == status)
-            if status != LEGACY_UITGESLOTEN:
-                q = q.where(VoorraadRegel.soort == SOORT_ARTIKEL)
-        if soort is not None:
-            q = q.where(VoorraadRegel.soort == soort)
-        rijen = list(session.scalars(q.order_by(VoorraadRegel.datum.desc(), VoorraadRegel.regel_volgnummer)))
+        if pagina is not None:
+            q = q.offset((pagina - 1) * per_pagina).limit(per_pagina)
+        rijen = list(session.scalars(q))
         namen = dict(
             session.execute(
                 select(Artikelgroep.id, Artikelgroep.naam).where(Artikelgroep.administratie_id == administratie_id)
             ).all()
         )
         session.expunge_all()
+    return RegelsPagina(
+        rijen=_regel_data(rijen, namen),
+        totaal=totaal,
+        pagina=pagina or 1,
+        per_pagina=per_pagina if pagina is not None else max(totaal, 1),
+    )
+
+
+def _regel_data(rijen: list[VoorraadRegel], namen: dict[uuid.UUID, str]) -> list[RegelData]:
     return [
         RegelData(
             id=r.id,

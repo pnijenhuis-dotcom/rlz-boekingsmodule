@@ -266,6 +266,7 @@ def werkvoorraad_overzicht(
                 match_afwijkingen=k.match_afwijkingen,
                 duplicaat_signalen=k.duplicaat_signalen,
                 terugkerend_signalen=k.terugkerend_signalen,
+                voorraad_verschillen=k.voorraad_verschillen,
             )
             for k in klanten
         ]

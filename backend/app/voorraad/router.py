@@ -7,12 +7,78 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.auth import service as auth_service
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.voorraad import schemas, service
 
 router = APIRouter(tags=["voorraad"], dependencies=[Depends(vereis_kantoorrol)])
+
+PER_PAGINA_DEFAULT = 25
+PER_PAGINA_MAX = 200
+
+
+def _pagineer(items: list, pagina: int, per_pagina: int) -> tuple[list, int]:
+    start = (pagina - 1) * per_pagina
+    return items[start : start + per_pagina], len(items)
+
+
+def _voorraad_administraties(actor: CurrentGebruiker) -> list[tuple[uuid.UUID, str]]:
+    """Scope-waarheid voor de kantoorbrede routes: de administraties van de actor (Beheerder = alle
+    actieve) mét de opt-in "Voorraad bijhouden" — per administratie leest de service daarna in een
+    gescoopte sessie (RLS blijft de poort, dit is alleen de iteratielijst)."""
+    return [
+        (a.id, a.naam)
+        for a in auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+        if a.voorraad_ingeschakeld
+    ]
+
+
+def _verschil_dto(r: service.VerschilRij) -> schemas.VerschilRijDto:
+    return schemas.VerschilRijDto(**r.__dict__)
+
+
+@router.get("/voorraad/verschillen", response_model=schemas.VerschillenLijstDto)
+def verschillen_kantoorbreed(
+    administratie_id: uuid.UUID | None = None,
+    q: str = Query(""),
+    pagina: int = Query(1, ge=1),
+    per_pagina: int = Query(PER_PAGINA_DEFAULT, ge=1, le=PER_PAGINA_MAX),
+    tot: date | None = None,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.VerschillenLijstDto:
+    """Landing Inzicht › Voorraad (design-ronde 03-09, mockup inzicht-kantoorbreed ⑤): artikelgroepen
+    buiten tolerantie over álle voorraad-administraties in scope, zwaarste afwijking eerst;
+    administratie = facet (leeg = alle), `q` zoekt op artikelgroep; paginering 25. Alleen lezen."""
+    lijst = service.verschillen_kantoorbreed(
+        administraties=_voorraad_administraties(actor),
+        actor_id=actor.id,
+        administratie_id=administratie_id,
+        q=q,
+        pagina=pagina,
+        per_pagina=per_pagina,
+        tot=tot,
+    )
+    return schemas.VerschillenLijstDto(
+        rijen=[_verschil_dto(r) for r in lijst.rijen],
+        totaal=lijst.totaal,
+        pagina=lijst.pagina,
+        per_pagina=lijst.per_pagina,
+        tellers=schemas.VerschilTellersDto(**lijst.tellers.__dict__),
+        facetten=[schemas.VerschilFacetAdministratieDto(**f.__dict__) for f in lijst.facetten],
+        van=lijst.van,
+        tot=lijst.tot,
+    )
+
+
+@router.get("/voorraad/verschillen/stand", response_model=schemas.VerschilTellersDto)
+def verschillen_stand(
+    tot: date | None = None, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.VerschilTellersDto:
+    """Alleen de tellers (nav-/KPI-chip): N groepen buiten tolerantie over M administraties."""
+    tellers = service.verschillen_tellers(administraties=_voorraad_administraties(actor), actor_id=actor.id, tot=tot)
+    return schemas.VerschilTellersDto(**tellers.__dict__)
 
 
 def _vertaal(exc: service.VoorraadFout) -> HTTPException:
@@ -73,7 +139,7 @@ def dagstanden(
     return [schemas.DagStandDto(**d.__dict__) for d in rijen]
 
 
-@router.get("/administraties/{administratie_id}/voorraad/regels", response_model=list[schemas.RegelDto])
+@router.get("/administraties/{administratie_id}/voorraad/regels", response_model=schemas.RegelsPaginaDto)
 def regels(
     administratie_id: uuid.UUID,
     van: date,
@@ -81,53 +147,72 @@ def regels(
     artikelgroep_id: uuid.UUID | None = None,
     normalisatie_status: str | None = None,
     soort: str | None = None,
+    pagina: int = Query(1, ge=1),
+    per_pagina: int = Query(PER_PAGINA_DEFAULT, ge=1, le=PER_PAGINA_MAX),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
-) -> list[schemas.RegelDto]:
+) -> schemas.RegelsPaginaDto:
     """Drill-down per artikelgroep (alle factuurregels achter het getal), het normalisatie-scherm
-    (`normalisatie_status=niet_genormaliseerd|onzeker`) óf de dienst-/omzetregels (`soort=dienst|transport`
-    — v2, MI-query)."""
+    (`normalisatie_status=niet_genormaliseerd,onzeker` — meerdere waarden komma-gescheiden) óf de
+    dienst-/omzetregels (`soort=dienst|transport` — v2, MI-query). Server-side gepagineerd (B3.3, 03-09):
+    `{rijen, totaal, pagina, per_pagina}`, default 25, max 200."""
     try:
-        rijen = service.regels(
+        p = service.regels_pagina(
             administratie_id=administratie_id,
             van=van,
             tot=tot,
             artikelgroep_id=artikelgroep_id,
             status=normalisatie_status,
             soort=soort,
+            pagina=pagina,
+            per_pagina=per_pagina,
         )
     except service.VoorraadFout as exc:
         raise _vertaal(exc) from exc
-    return [_regel_dto(r) for r in rijen]
+    return schemas.RegelsPaginaDto(
+        rijen=[_regel_dto(r) for r in p.rijen], totaal=p.totaal, pagina=p.pagina, per_pagina=p.per_pagina
+    )
 
 
-@router.get("/administraties/{administratie_id}/voorraad/diensten", response_model=list[schemas.DienstTekstDto])
+@router.get("/administraties/{administratie_id}/voorraad/diensten", response_model=schemas.DienstenPaginaDto)
 def diensten(
     administratie_id: uuid.UUID,
     van: date,
     tot: date,
+    pagina: int = Query(1, ge=1),
+    per_pagina: int = Query(PER_PAGINA_DEFAULT, ge=1, le=PER_PAGINA_MAX),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
-) -> list[schemas.DienstTekstDto]:
+) -> schemas.DienstenPaginaDto:
     """Inzage "als dienst geclassificeerd" (v2 blok B, eis Peter: controleerbaar): per unieke tekst
     mét aantallen, soort en bron van de classificatie; correctie via `normalisatie/corrigeer` op de
-    voorbeeldregel (geldt voor álle regels met dezelfde tekst/code)."""
+    voorbeeldregel (geldt voor álle regels met dezelfde tekst/code). Gepagineerd (B3.3), meest
+    voorkomend eerst."""
     try:
         rijen = service.dienst_teksten(administratie_id=administratie_id, van=van, tot=tot)
     except service.VoorraadFout as exc:
         raise _vertaal(exc) from exc
-    return [schemas.DienstTekstDto(**d.__dict__) for d in rijen]
+    deel, totaal = _pagineer(rijen, pagina, per_pagina)
+    return schemas.DienstenPaginaDto(
+        rijen=[schemas.DienstTekstDto(**d.__dict__) for d in deel], totaal=totaal, pagina=pagina, per_pagina=per_pagina
+    )
 
 
-@router.get("/administraties/{administratie_id}/voorraad/artikelcodes", response_model=list[schemas.ArtikelcodeDto])
+@router.get("/administraties/{administratie_id}/voorraad/artikelcodes", response_model=schemas.ArtikelcodesPaginaDto)
 def artikelcodes(
-    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
-) -> list[schemas.ArtikelcodeDto]:
+    administratie_id: uuid.UUID,
+    pagina: int = Query(1, ge=1),
+    per_pagina: int = Query(PER_PAGINA_DEFAULT, ge=1, le=PER_PAGINA_MAX),
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.ArtikelcodesPaginaDto:
     """Codes-inzage (v2 blok C): élke code → groep/soort per richting + leverancier, mét bron
-    (AI-voorstel vs handmatig), zekerheid en het aantal regels dat erop steunt."""
+    (AI-voorstel vs handmatig), zekerheid en het aantal regels dat erop steunt. Gepagineerd (B3.3)."""
     try:
         rijen = service.artikelcodes(administratie_id=administratie_id)
     except service.VoorraadFout as exc:
         raise _vertaal(exc) from exc
-    return [schemas.ArtikelcodeDto(**a.__dict__) for a in rijen]
+    deel, totaal = _pagineer(rijen, pagina, per_pagina)
+    return schemas.ArtikelcodesPaginaDto(
+        rijen=[schemas.ArtikelcodeDto(**a.__dict__) for a in deel], totaal=totaal, pagina=pagina, per_pagina=per_pagina
+    )
 
 
 @router.post(

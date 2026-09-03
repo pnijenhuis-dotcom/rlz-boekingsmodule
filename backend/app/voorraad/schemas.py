@@ -149,6 +149,72 @@ class ArtikelcodeCorrectieDto(StrikteInvoer):
     artikelgroep_id: uuid.UUID | None = None
 
 
+class RegelsPaginaDto(BaseModel):
+    """Server-side gepagineerde regel-lijst (B3.3, 03-09): `rijen` + `totaal` + `pagina`/`per_pagina`."""
+
+    rijen: list[RegelDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+
+
+class DienstenPaginaDto(BaseModel):
+    rijen: list[DienstTekstDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+
+
+class ArtikelcodesPaginaDto(BaseModel):
+    rijen: list[ArtikelcodeDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+
+
+class VerschilRijDto(BaseModel):
+    """Eén artikelgroep buiten tolerantie op de kantoorbrede landing Inzicht › Voorraad (B3, 03-09)."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    artikelgroep_id: uuid.UUID
+    naam: str
+    eenheid: str
+    tolerantie_pct: Decimal
+    theoretisch: Decimal
+    systeemstand: Decimal
+    telling_datum: date
+    verschil: Decimal
+    verschil_pct: Decimal | None
+    # STATUS-kleur op de lijst: oranje | rood (server bepaalt de zwaarte, de client kleurt alleen).
+    zwaarte: str
+    tot: date
+
+
+class VerschilTellersDto(BaseModel):
+    groepen: int
+    administraties: int
+    administraties_met_voorraad: int
+
+
+class VerschilFacetAdministratieDto(BaseModel):
+    id: uuid.UUID
+    naam: str
+    aantal: int
+
+
+class VerschillenLijstDto(BaseModel):
+    rijen: list[VerschilRijDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+    tellers: VerschilTellersDto
+    facetten: list[VerschilFacetAdministratieDto]
+    # Periode waarmee de drill-down per administratie geopend wordt (theoretisch is van-onafhankelijk).
+    van: date
+    tot: date
+
+
 class HerrekenResultaatDto(BaseModel):
     inkoop_documenten: int
     inkoop_regels: int
