@@ -463,6 +463,7 @@ describe('voorraadApi — weergave', () => {
   it('bronLabel benoemt de herkomst leesbaar', () => {
     expect(bronLabel({ bron: 'rlz_verkoop', rlz_referentie: '50212273' })).toBe('RLZ-verkoopfactuur 50212273')
     expect(bronLabel({ bron: 'rlz_verkoop', rlz_referentie: null })).toBe('RLZ-verkoopfactuur')
+    expect(bronLabel({ bron: 'odoo_verkoop', rlz_referentie: 'F/2026/00027' })).toBe('Odoo-verkoopfactuur F/2026/00027')
     expect(bronLabel({ bron: 'verkoop_regel', rlz_referentie: null })).toBe('verkoopfactuur (app)')
     expect(bronLabel({ bron: 'inkoop_veldvoorstel', rlz_referentie: null })).toBe('inkoopfactuur (scan)')
   })

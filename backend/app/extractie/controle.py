@@ -329,6 +329,7 @@ def bouw_veldvoorstel(
 
     leverancier_naam = tekst_van("leverancier_naam")
     factuurnummer = tekst_van("factuurnummer")
+    betalingskenmerk = tekst_van("betalingskenmerk")
     valuta = tekst_van("valuta")
     # IBAN: deterministische mod-97-validatie (app/extractie/iban.py) — een ongeldig IBAN wordt
     # gemarkeerd (onparseerbaar) en nooit doorgegeven; de IBAN-wissel-check mag alleen op een
@@ -431,6 +432,8 @@ def bouw_veldvoorstel(
         "factuurnummer": factuurnummer,
         "factuurdatum": factuurdatum.isoformat() if factuurdatum else None,
         "vervaldatum": vervaldatum.isoformat() if vervaldatum else None,
+        # Betalingskenmerk (fase 1 Odoo): alleen doorgeven, nooit afleiden; Odoo `payment_reference`.
+        "betalingskenmerk": betalingskenmerk,
         "valuta": valuta,
         "totaal_excl": _bedrag_str(totaal_excl),
         "totaal_incl": _bedrag_str(totaal_incl),

@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.backends.registry import inkoop_port_voor, standaard_regels_samenvoegen
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
@@ -108,6 +109,9 @@ class BoekvoorstelData:
     btw_verlegd_vermelding: str | None = None
     # Vervaldatum (C1 26-08): kopveld uit de scan; None = leeg (RLZ leidt DueDate dan zelf af).
     vervaldatum: date | None = None
+    # Betalingskenmerk (Odoo-adapter fase 1, migratie 0101): kopveld uit de scan (sentinel-patroon) →
+    # Odoo `payment_reference`; RLZ negeert het. None = niet gelezen.
+    betalingskenmerk: str | None = None
     # Oranje signaal bij een implausibele betaaltermijn (> 90 dagen) — checks.vervaldatum_signaal.
     vervaldatum_signaal: str | None = None
     # Afdeling (blok A 28-08, migratie 0084): de handmatige keuze op dit document. `afdeling_prefill`
@@ -265,6 +269,11 @@ def _verlegd_vermelding(veldvoorstel: dict | None) -> str | None:
     return waarde if isinstance(waarde, str) and waarde else None
 
 
+def _rlz_leesclient(administratie_id: uuid.UUID) -> RlzClient:
+    rlz_admin_id = rlz_admin_id_voor(administratie_id)
+    return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+
+
 def _project_verplicht(administratie_id: uuid.UUID) -> bool:
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
@@ -303,6 +312,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
     vooringevuld waar aanwezig"). PDF-documenten hebben geen UBL-veldvoorstel en krijgen dus een
     volledig leeg voorstel — de controleur vult alles handmatig in."""
     project_verplicht = _project_verplicht(administratie_id)
+    standaard_samenvoegen = standaard_regels_samenvoegen(administratie_id)
 
     with scoped_session(administratie_id) as session:
         _laad_document(session, document_id=document_id)
@@ -315,7 +325,9 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 return {"regels_samenvoegen": False, "samenvoegen_toegestaan": False, "samengevoegde_regel": None}
             voorkeur = _voorkeur_samenvoegen(session, administratie_id=administratie_id, vendor_id=vendor_id)
             return {
-                "regels_samenvoegen": voorkeur if voorkeur is not None else True,
+                # Default zonder leverancier-voorkeur = backend-capability (RLZ AAN; Odoo UIT — regelniveau-
+                # data moet in Odoo landen, eis Peter 03-09); de leverancier-voorkeur wint altijd.
+                "regels_samenvoegen": voorkeur if voorkeur is not None else standaard_samenvoegen,
                 "samenvoegen_toegestaan": True,
                 "samengevoegde_regel": _samengevoegde_regel(veldvoorstel) if veldvoorstel else None,
             }
@@ -354,6 +366,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 vervaldatum_signaal=vervaldatum_signaal(
                     factuurdatum=bestaand.factuurdatum, vervaldatum=bestaand.vervaldatum
                 ),
+                betalingskenmerk=bestaand.betalingskenmerk,
                 totaalbedrag=bestaand.totaalbedrag,
                 rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
                 opgeslagen=True,
@@ -410,6 +423,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
                 vervaldatum=_als_datum(veldvoorstel.get("vervaldatum")),
             ),
+            betalingskenmerk=(veldvoorstel.get("betalingskenmerk") or None),
             totaalbedrag=_als_decimal(veldvoorstel.get("totaal_incl")),
             rlz_boekstuknummer=None,
             opgeslagen=False,
@@ -443,6 +457,7 @@ def sla_boekvoorstel_op(
     regels_samenvoegen: bool | None = None,
     vervaldatum: date | None = None,
     afdeling_id: uuid.UUID | None = None,
+    betalingskenmerk: str | None = None,
 ) -> BoekvoorstelData:
     """`regels_samenvoegen` (fix 3) is de weergavekeuze van de controleur op het moment van
     opslaan — die wordt als voorkeur per (administratie, crediteur) onthouden. None = niet
@@ -474,6 +489,7 @@ def sla_boekvoorstel_op(
         bestaand.referentie = referentie
         bestaand.factuurdatum = factuurdatum
         bestaand.vervaldatum = vervaldatum
+        bestaand.betalingskenmerk = (" ".join(betalingskenmerk.split()) or None) if betalingskenmerk else None
         bestaand.afdeling_id = afdeling_id
         if afdeling_id is not None and vendor_id is not None:
             from app.afdelingen.service import onthoud_keuze
@@ -752,10 +768,15 @@ def voer_checks_uit(
         project_verplicht = administratie.project_verplicht if administratie else False
 
     eigen_client = client is None
+    eigen_port = None
     if client is None:
         try:
-            rlz_admin_id = rlz_admin_id_voor(administratie_id)
-            client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+            # Via de boekhoud-backend-port (0016): RLZ opent de bestaande client (test-seam
+            # `client_voor_rlz_admin_id` blijft de patch-plek), Odoo zijn eigen leesfacade.
+            eigen_port = inkoop_port_voor(
+                administratie_id, rlz_client_factory=lambda: _rlz_leesclient(administratie_id)
+            )
+            client = eigen_port.leesclient()
         except Exception as exc:  # noqa: BLE001 — bewust breed, zie de docstring hierboven
             return _duplicaatcheck_niet_uitgevoerd_rapport(
                 administratie_id=administratie_id,
@@ -809,5 +830,5 @@ def voer_checks_uit(
         resultaten.insert(1, _afdeling_check(administratie_id=administratie_id, voorstel=voorstel))
         return CheckRapport(tuple(resultaten))
     finally:
-        if eigen_client:
-            client.close()
+        if eigen_client and eigen_port is not None:
+            eigen_port.__exit__(None, None, None)

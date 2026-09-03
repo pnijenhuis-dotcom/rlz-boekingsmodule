@@ -131,7 +131,18 @@ def resolve_credentials(rlz_admin_id: str) -> tuple[str, str]:
     """Store-first (besluit 0001, credential-store is gedeeld platform-fundament): de DB-store
     (platform.rlz_credential) heeft voorrang; .env is de dev-fallback zolang niet elke
     administratie in de store zit — zie app/credentialstore/service.py::importeer_env_credentials
-    voor het eenmalige overzetcommando."""
+    voor het eenmalige overzetcommando.
+
+    Odoo-administraties (migratie 0101) dragen een sentinel als rlz_admin_id: élke poging om er een
+    RlzClient voor te openen is fail-loud — RLZ-rakende jobs slaan zo'n administratie zichtbaar over
+    via hun bestaande GeenRlzCredentials-afhandeling (nooit stil, nooit per ongeluk RLZ)."""
+    from app.odoo.ids import is_odoo_sentinel
+
+    if is_odoo_sentinel(rlz_admin_id):
+        raise GeenRlzCredentials(
+            f"Administratie draait op Odoo ({rlz_admin_id}) — geen Reeleezee-verbinding; deze bewerking loopt "
+            "via de Odoo-adapter of is voor Odoo-administraties (nog) niet beschikbaar"
+        )
     store_credentials = _resolve_from_store(rlz_admin_id)
     if store_credentials is not None:
         return store_credentials

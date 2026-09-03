@@ -402,6 +402,8 @@ class BoekvoorstelResponse(BaseModel):
     # Vervaldatum (C1 26-08) + oranje signaal bij een implausibele termijn (> 90 dagen, geen blokkade).
     vervaldatum: date | None = None
     vervaldatum_signaal: str | None = None
+    # Betalingskenmerk (migratie 0101, Odoo `payment_reference`) — kopveld uit de scan, optioneel.
+    betalingskenmerk: str | None = None
     totaalbedrag: DecimalMetKomma | None = None
     rlz_boekstuknummer: str | None = None
     opgeslagen: bool
@@ -426,6 +428,7 @@ class BoekvoorstelInput(StrikteInvoer):
     referentie: str | None = None
     factuurdatum: date | None = None
     vervaldatum: date | None = None
+    betalingskenmerk: str | None = None
     afdeling_id: uuid.UUID | None = None
     totaalbedrag: DecimalMetKomma | None = None
     regels: list[BoekvoorstelRegelDto] = []

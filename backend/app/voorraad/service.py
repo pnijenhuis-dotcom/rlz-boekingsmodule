@@ -304,6 +304,7 @@ def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, 
         "verkoop_documenten": 0,
         "verkoop_regels": 0,
         "rlz_regels": 0,
+        "odoo_regels": 0,
     }
     for d in inkoop:
         n = registreer_inkoopregels(administratie_id=administratie_id, document_id=d)
@@ -320,6 +321,12 @@ def herreken_administratie(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, 
     from app.voorraad import rlz_uitstroom
 
     telling["rlz_regels"] = rlz_uitstroom.hernormaliseer_rlz_regels(administratie_id=administratie_id, met_ai=met_ai)
+    # Odoo-verkoopfacturen (blok D 03-09): zelfde motor, eigen bron — de expliciete artikelcode (default_code) blijft.
+    from app.odoo import verkoop_uitstroom
+
+    telling["odoo_regels"] = rlz_uitstroom.hernormaliseer_rlz_regels(
+        administratie_id=administratie_id, met_ai=met_ai, bron=verkoop_uitstroom.BRON
+    )
     stand = normalisatie_stand(administratie_id=administratie_id)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         record_audit_event(
@@ -431,6 +438,10 @@ class Aansluiting:
             "verkoop_rlz": (
                 "RLZ-verkoopfacturen van de administratie (alleen geboekt, Status 2/3; "
                 "creditregels = negatieve Quantity)"
+            ),
+            "verkoop_odoo": (
+                "Odoo-verkoopfacturen van de administratie vanaf de voorraad-knip (alleen geposte facturen; "
+                "creditnota = negatief) — alleen-lezen Odoo-koppeling"
             ),
             "systeemstand": "handmatige telling per datum",
             "diensten": (

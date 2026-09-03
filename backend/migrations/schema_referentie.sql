@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0100
+-- Migratie-head bij deze dump: 0102
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -808,7 +808,8 @@ CREATE TABLE boekhouding.boekvoorstel (
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
     boek_cyclus integer DEFAULT 0 NOT NULL,
     vervaldatum date,
-    afdeling_id uuid
+    afdeling_id uuid,
+    betalingskenmerk character varying
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel FORCE ROW LEVEL SECURITY;
@@ -1679,6 +1680,67 @@ CREATE TABLE boekhouding.meerwerk (
 );
 
 ALTER TABLE ONLY boekhouding.meerwerk FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: odoo_document_koppeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.odoo_document_koppeling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    boek_cyclus integer NOT NULL,
+    soort character varying(16) NOT NULL,
+    odoo_move_id integer NOT NULL,
+    odoo_naam character varying,
+    odoo_move_type character varying(16) NOT NULL,
+    company_id integer NOT NULL,
+    state character varying(16) NOT NULL,
+    reversal_van_move_id integer,
+    detail jsonb,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_odoo_document_koppeling_soort CHECK (((soort)::text = ANY ((ARRAY['boeking'::character varying, 'tegenboeking'::character varying])::text[])))
+);
+
+ALTER TABLE ONLY boekhouding.odoo_document_koppeling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: odoo_id_koppeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.odoo_id_koppeling (
+    administratie_id uuid NOT NULL,
+    model character varying(64) NOT NULL,
+    odoo_id integer NOT NULL,
+    lokaal_id uuid NOT NULL,
+    naam character varying,
+    laatst_gezien_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.odoo_id_koppeling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: odoo_product_koppeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.odoo_product_koppeling (
+    administratie_id uuid NOT NULL,
+    materiaal_product_id uuid NOT NULL,
+    odoo_product_id integer NOT NULL,
+    odoo_template_id integer,
+    default_code character varying,
+    naam character varying,
+    bron character varying(16) NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_odoo_product_koppeling_bron CHECK (((bron)::text = ANY ((ARRAY['gevonden'::character varying, 'aangemaakt'::character varying])::text[])))
+);
+
+ALTER TABLE ONLY boekhouding.odoo_product_koppeling FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2873,7 +2935,9 @@ CREATE TABLE platform.administratie (
     terugkerend_prijsstijging_pct numeric(5,2) DEFAULT 10.00 NOT NULL,
     verkoopmodule_afwezig boolean DEFAULT false NOT NULL,
     omzet_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
+    boekhoud_backend character varying(16) DEFAULT 'rlz'::character varying NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
+    CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
 );
 
@@ -3138,6 +3202,34 @@ CREATE TABLE platform.kantoor_digest (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     verzonden_op timestamp with time zone,
     detail jsonb
+);
+
+
+--
+-- Name: odoo_koppeling; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.odoo_koppeling (
+    administratie_id uuid NOT NULL,
+    odoo_url character varying NOT NULL,
+    company_id integer NOT NULL,
+    company_naam character varying,
+    api_gebruiker character varying,
+    api_key_ciphertext bytea NOT NULL,
+    wrapped_data_key bytea NOT NULL,
+    api_key_verloopt_op date,
+    journal_purchase_id integer,
+    journal_general_id integer,
+    journal_sale_id integer,
+    analytic_plan_id integer,
+    probe_rapport jsonb,
+    probe_op timestamp with time zone,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    alleen_lezen boolean DEFAULT false NOT NULL,
+    voorraad_knip_datum date,
+    CONSTRAINT ck_odoo_koppeling_company CHECK ((company_id > 0))
 );
 
 
@@ -3779,6 +3871,30 @@ ALTER TABLE ONLY boekhouding.meerwerk
 
 
 --
+-- Name: odoo_document_koppeling odoo_document_koppeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_document_koppeling
+    ADD CONSTRAINT odoo_document_koppeling_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: odoo_id_koppeling odoo_id_koppeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_id_koppeling
+    ADD CONSTRAINT odoo_id_koppeling_pkey PRIMARY KEY (administratie_id, model, odoo_id);
+
+
+--
+-- Name: odoo_product_koppeling odoo_product_koppeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_product_koppeling
+    ADD CONSTRAINT odoo_product_koppeling_pkey PRIMARY KEY (administratie_id, materiaal_product_id);
+
+
+--
 -- Name: omzet_boeking omzet_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4072,6 +4188,22 @@ ALTER TABLE ONLY boekhouding.materiaal_leverancier
 
 ALTER TABLE ONLY boekhouding.materiaal_product
     ADD CONSTRAINT uq_materiaal_product_naam UNIQUE (leverancier_id, naam);
+
+
+--
+-- Name: odoo_document_koppeling uq_odoo_document_koppeling_cyclus; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_document_koppeling
+    ADD CONSTRAINT uq_odoo_document_koppeling_cyclus UNIQUE (administratie_id, document_id, boek_cyclus, soort);
+
+
+--
+-- Name: odoo_id_koppeling uq_odoo_id_koppeling_lokaal; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_id_koppeling
+    ADD CONSTRAINT uq_odoo_id_koppeling_lokaal UNIQUE (administratie_id, lokaal_id);
 
 
 --
@@ -4528,6 +4660,14 @@ ALTER TABLE ONLY platform.intake_instelling
 
 ALTER TABLE ONLY platform.kantoor_digest
     ADD CONSTRAINT kantoor_digest_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: odoo_koppeling odoo_koppeling_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.odoo_koppeling
+    ADD CONSTRAINT odoo_koppeling_pkey PRIMARY KEY (administratie_id);
 
 
 --
@@ -5099,6 +5239,20 @@ CREATE INDEX ix_meerwerk_administratie_id ON boekhouding.meerwerk USING btree (a
 --
 
 CREATE INDEX ix_meerwerk_administratie_status ON boekhouding.meerwerk USING btree (administratie_id, status);
+
+
+--
+-- Name: ix_odoo_document_koppeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_odoo_document_koppeling_administratie_id ON boekhouding.odoo_document_koppeling USING btree (administratie_id);
+
+
+--
+-- Name: ix_odoo_document_koppeling_move; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_odoo_document_koppeling_move ON boekhouding.odoo_document_koppeling USING btree (company_id, odoo_move_id);
 
 
 --
@@ -7145,6 +7299,46 @@ ALTER TABLE ONLY boekhouding.meerwerk
 
 
 --
+-- Name: odoo_document_koppeling odoo_document_koppeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_document_koppeling
+    ADD CONSTRAINT odoo_document_koppeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: odoo_document_koppeling odoo_document_koppeling_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_document_koppeling
+    ADD CONSTRAINT odoo_document_koppeling_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: odoo_id_koppeling odoo_id_koppeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_id_koppeling
+    ADD CONSTRAINT odoo_id_koppeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: odoo_product_koppeling odoo_product_koppeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_product_koppeling
+    ADD CONSTRAINT odoo_product_koppeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: odoo_product_koppeling odoo_product_koppeling_materiaal_product_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_product_koppeling
+    ADD CONSTRAINT odoo_product_koppeling_materiaal_product_id_fkey FOREIGN KEY (materiaal_product_id) REFERENCES boekhouding.materiaal_product(id);
+
+
+--
 -- Name: omzet_boeking omzet_boeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -8273,6 +8467,22 @@ ALTER TABLE ONLY platform.kantoor_digest
 
 
 --
+-- Name: odoo_koppeling odoo_koppeling_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.odoo_koppeling
+    ADD CONSTRAINT odoo_koppeling_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: odoo_koppeling odoo_koppeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.odoo_koppeling
+    ADD CONSTRAINT odoo_koppeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: push_subscriptie push_subscriptie_apparaat_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -9129,6 +9339,45 @@ ALTER TABLE boekhouding.meerwerk ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY meerwerk_scope ON boekhouding.meerwerk USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: odoo_document_koppeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.odoo_document_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: odoo_document_koppeling odoo_document_koppeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY odoo_document_koppeling_scope ON boekhouding.odoo_document_koppeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: odoo_id_koppeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.odoo_id_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: odoo_id_koppeling odoo_id_koppeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY odoo_id_koppeling_scope ON boekhouding.odoo_id_koppeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: odoo_product_koppeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.odoo_product_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: odoo_product_koppeling odoo_product_koppeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY odoo_product_koppeling_scope ON boekhouding.odoo_product_koppeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

@@ -210,6 +210,9 @@ class Boekvoorstel(Base):
     # Vervaldatum (C1 26-08, migratie 0078): kopveld uit de scan (zelfde herkomst-chip), gaat als
     # `DueDate` mee naar RLZ (live bewezen — anders leidt RLZ 'm af uit Date + PaymentDueDays).
     vervaldatum: Mapped[date | None] = mapped_column(default=None)
+    # Betalingskenmerk (migratie 0101, Odoo-adapter fase 1): kopveld uit de scan (sentinel-patroon) →
+    # Odoo `payment_reference`; RLZ kent het veld niet en negeert het. Leeg = niet gelezen/niet van toepassing.
+    betalingskenmerk: Mapped[str | None] = mapped_column(default=None)
     totaalbedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     # Afdeling (migratie 0084, blok A 28-08): handmatige kantoorkeuze per document zodra de
     # administratie-toggle aan staat; stuurt de accorderingsroute en is de MI-dimensie voor later.

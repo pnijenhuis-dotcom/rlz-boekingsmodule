@@ -367,7 +367,7 @@ def _sync_alles(args: argparse.Namespace) -> int:
     # administraties mét de voorraad-opt-in — read-only, eigen fouten-telling (zichtbaar rood).
     from app.voorraad import rlz_uitstroom
 
-    print("\nVoorraad-uitstroom RLZ-verkoopfacturen (voorraad-administraties):")
+    print("\nVoorraad-uitstroom RLZ-/Odoo-verkoopfacturen (voorraad-administraties):")
     voorraad_exit = _rapporteer_voorraad_rlz(rlz_uitstroom.sync_alle_voorraad_administraties())
     # Terugkerende-facturen-signaal (blok B 30-08): dagelijks meeliftend, puur code, geen RLZ-calls.
     from app.terugkerend import service as terugkerend_service
@@ -448,7 +448,27 @@ def _rapporteer_voorraad_rlz(resultaten: dict) -> int:
                 f"{resultaat.facturen_verwerkt} verwerkt ({resultaat.regels} regels), "
                 f"{resultaat.overgeslagen_concept} concept, {resultaat.overgeslagen_in_app} in de app geboekt, "
                 f"{resultaat.verwijderd_na_storno} regels weg na storno"
+                + (
+                    f", {resultaat.overgeslagen_na_knip} ná de Odoo-knip {resultaat.knip_datum}"
+                    if resultaat.knip_datum
+                    else ""
+                )
+                + (f" — RLZ overgeslagen: {resultaat.overgeslagen_reden}" if resultaat.overgeslagen_reden else "")
             )
+            odoo = resultaat.odoo
+            if odoo is not None:
+                # Blok D: de Odoo-leesroute van dezelfde administratie (alleen-lezen, vanaf de knip).
+                if odoo.get("overgeslagen_reden"):
+                    print(f"      Odoo: overgeslagen — {odoo['overgeslagen_reden']}")
+                else:
+                    print(
+                        f"      Odoo (company {odoo.get('company_id')}): vanaf {odoo.get('vanaf')} — "
+                        f"{odoo.get('facturen_gelezen', 0)} facturen gelezen, "
+                        f"{odoo.get('facturen_verwerkt', 0)} verwerkt ({odoo.get('regels', 0)} regels), "
+                        f"{odoo.get('overgeslagen_niet_geboekt', 0)} niet geboekt, "
+                        f"{odoo.get('verwijderd_na_annulering', 0)} regels weg na annulering, "
+                        f"{odoo.get('overgeslagen_dubbel', 0)} dubbel met RLZ"
+                    )
         elif isinstance(resultaat, GeenRlzCredentials):
             print(f"OVERGESLAGEN {administratie_id}: {resultaat}")
         else:
@@ -538,12 +558,70 @@ def _voorraad_rlz_sync(args: argparse.Namespace) -> int:
             print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
             return 1
         try:
-            telling = rlz_uitstroom.sync_rlz_verkoopregels(administratie_id=administratie_id, volledig=args.volledig)
+            telling = rlz_uitstroom.sync_voorraad_uitstroom(administratie_id=administratie_id, volledig=args.volledig)
         except GeenRlzCredentials as exc:
             print(f"OVERGESLAGEN {administratie_id}: {exc}")
             return 0
         return _rapporteer_voorraad_rlz({administratie_id: telling})
     return _rapporteer_voorraad_rlz(rlz_uitstroom.sync_alle_voorraad_administraties(volledig=args.volledig))
+
+
+def _odoo_leesbron(args: argparse.Namespace) -> int:
+    """Beheer-terugval voor de leesbron-koppeling (Beheerder-endpoints bestaan ook): koppelen mét leesprobe of
+    alleen de knip zetten. Actor = systeem-actor (audit benoemt de CLI); de key komt uit $ODOO_API_KEY."""
+    import os
+    from datetime import date as _date
+
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+    from app.odoo import service as odoo_service
+
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    knip: _date | None = None
+    if args.knip and args.knip != "geen":
+        try:
+            knip = _date.fromisoformat(args.knip)
+        except ValueError:
+            print("FOUT: --knip moet JJJJ-MM-DD zijn (of 'geen')", file=sys.stderr)
+            return 1
+    try:
+        if args.odoo_url:
+            if args.company_id is None:
+                print("FOUT: --company-id is verplicht bij koppelen", file=sys.stderr)
+                return 1
+            api_key = os.environ.get("ODOO_API_KEY")
+            if not api_key:
+                print("FOUT: zet de API-key in $ODOO_API_KEY (nooit op de commandoregel)", file=sys.stderr)
+                return 1
+            p = odoo_service.koppel_leesbron(
+                actor_id=SYSTEEM_ACTOR_ID,
+                administratie_id=administratie_id,
+                odoo_url=args.odoo_url,
+                api_key=api_key,
+                company_id=args.company_id,
+                voorraad_knip_datum=knip,
+                api_gebruiker=args.api_gebruiker,
+            )
+            print(f"OK    leesbron gekoppeld: company {args.company_id} ({p.company_naam}), knip {knip or 'geen'}")
+            for k, v in p.rapport.items():
+                print(f"      {k}: {v}")
+            return 0
+        if args.knip is None:
+            print("FOUT: geef --odoo-url/--company-id (koppelen) of --knip (knip zetten)", file=sys.stderr)
+            return 1
+        stand = odoo_service.wijzig_leesbron(
+            actor_id=SYSTEEM_ACTOR_ID, administratie_id=administratie_id, voorraad_knip_datum=knip
+        )
+        print(f"OK    voorraad-knip nu {stand.voorraad_knip_datum or 'geen'} (company {stand.company_id})")
+        return 0
+    except odoo_service.OdooKoppelFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        for k, v in exc.rapport.items():
+            print(f"      {k}: {v}", file=sys.stderr)
+        return 1
 
 
 def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
@@ -1610,14 +1688,29 @@ def main(argv: list[str] | None = None) -> int:
 
     voorraad_rlz_parser = subparsers.add_parser(
         "voorraad-rlz-sync",
-        help="Voorraad-uitstroom uit RLZ-verkoopfacturen (leesroute, blok A 29-08) — loopt ook mee in "
-        "sync-alles; hier voor een eerste/volledige run of één administratie.",
+        help="Voorraad-uitstroom uit RLZ-verkoopfacturen (leesroute, blok A 29-08) én — sinds blok D 03-09 — uit "
+        "Odoo-verkoopfacturen vanaf de voorraad-knip (alleen-lezen koppeling); loopt ook mee in sync-alles; hier "
+        "voor een eerste/volledige run of één administratie.",
     )
     voorraad_rlz_parser.add_argument("--administratie-id", dest="administratie_id", default=None)
     voorraad_rlz_parser.add_argument(
         "--volledig",
         action="store_true",
         help="Lees het lopende jaar opnieuw i.p.v. incrementeel (max(datum) − 14 dagen).",
+    )
+
+    odoo_leesbron_parser = subparsers.add_parser(
+        "odoo-leesbron",
+        help="Odoo als LEESBRON voor een RLZ-administratie (blok D 03-09): alleen-lezen koppeling + voorraad-knip "
+        "(Universal Verkoop, company 3). Koppelen: --odoo-url --company-id [--knip] met de API-key uit "
+        "$ODOO_API_KEY (nooit op de commandoregel); alleen de knip zetten: --knip zonder --odoo-url.",
+    )
+    odoo_leesbron_parser.add_argument("--administratie-id", dest="administratie_id", required=True)
+    odoo_leesbron_parser.add_argument("--odoo-url", dest="odoo_url", default=None)
+    odoo_leesbron_parser.add_argument("--company-id", dest="company_id", type=int, default=None)
+    odoo_leesbron_parser.add_argument("--api-gebruiker", dest="api_gebruiker", default=None)
+    odoo_leesbron_parser.add_argument(
+        "--knip", dest="knip", default=None, help="voorraad-knip JJJJ-MM-DD (leeg laten = geen knip; 'geen' = wissen)"
     )
 
     subparsers.add_parser(
@@ -2030,6 +2123,8 @@ def main(argv: list[str] | None = None) -> int:
         return _sync_alles(args)
     if args.commando == "voorraad-rlz-sync":
         return _voorraad_rlz_sync(args)
+    if args.commando == "odoo-leesbron":
+        return _odoo_leesbron(args)
     if args.commando == "voorraad-hernormaliseer":
         return _voorraad_hernormaliseer(args)
     if args.commando == "projecten-cijfers-sync":

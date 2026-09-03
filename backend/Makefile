@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: intake-herlezen verzamelbak-nabundelen voorraad-hernormaliseer voorraad-rlz-sync projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit autoboek-kandidaten-herbereken kantoor-digest uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: intake-herlezen verzamelbak-nabundelen voorraad-hernormaliseer voorraad-rlz-sync odoo-leesbron projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit autoboek-kandidaten-herbereken kantoor-digest uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -178,6 +178,13 @@ voorraad-uit: check-versions
 # sync-alles; los voor een eerste/volledige run. Voorbeeld: make voorraad-rlz-sync ADMIN_ID=<uuid> VOLLEDIG=1
 voorraad-rlz-sync: check-versions
 	.venv/bin/python -m app.cli voorraad-rlz-sync $(if $(ADMIN_ID),--administratie-id "$(ADMIN_ID)") $(if $(VOLLEDIG),--volledig)
+
+# Odoo als leesbron voor een RLZ-administratie (Odoo-adapter blok D 03-09): koppelen mét leesprobe
+# (API-key uit $ODOO_API_KEY) of alleen de voorraad-knip zetten. Bv.
+#   ODOO_API_KEY=… make odoo-leesbron ADMIN_ID=<uuid> ODOO_URL=https://x.odoo.com COMPANY_ID=3 KNIP=2026-08-01
+#   make odoo-leesbron ADMIN_ID=<uuid> KNIP=2026-09-01
+odoo-leesbron: check-versions
+	.venv/bin/python -m app.cli odoo-leesbron --administratie-id "$(ADMIN_ID)" $(if $(ODOO_URL),--odoo-url "$(ODOO_URL)") $(if $(COMPANY_ID),--company-id $(COMPANY_ID)) $(if $(KNIP),--knip "$(KNIP)") $(if $(API_GEBRUIKER),--api-gebruiker "$(API_GEBRUIKER)")
 
 # Voorraad-hernormalisatie (v2 30-08): alle feitenregels opnieuw door de motor (soort-label artikel/dienst/
 # transport, artikelcodes; bekende teksten deterministisch, onbekende via de AI-gates) — géén RLZ-calls;

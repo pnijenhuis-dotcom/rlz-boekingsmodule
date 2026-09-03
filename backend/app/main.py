@@ -14,6 +14,7 @@ from app.auth.router import router as auth_router
 from app.auth.wellknown import router as wellknown_router
 from app.bank.router import router as bank_router
 from app.beheer.router import router as beheer_router
+from app.odoo.router import router as odoo_router
 from app.berichten.router import router as berichten_router
 from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
@@ -194,6 +195,7 @@ app.include_router(uren_router)
 app.include_router(materiaal_router)
 app.include_router(credentialstore_router)
 app.include_router(beheer_router)
+app.include_router(odoo_router)
 
 
 @app.exception_handler(Exception)

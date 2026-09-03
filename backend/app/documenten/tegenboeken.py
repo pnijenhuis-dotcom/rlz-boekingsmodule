@@ -31,7 +31,6 @@ rlz_document_id, §3b)."""
 
 from __future__ import annotations
 
-import base64
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -39,6 +38,8 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.backends import BackendBoekFout, inkoop_port_voor
+from app.backends.port import InkoopPort
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
@@ -54,19 +55,17 @@ from app.documenten.models import (
     TegenboekingSoort,
     WebhookUitgaand,
 )
-from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id, rlz_tegenboeking_upload_id
+from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
 from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
-from app.rlz.aangifte import AangiftePoort, KantToets
-from app.rlz.bijlage import zorg_voor_bijlage
-from app.rlz.client import RlzApiError, RlzClient
+from app.rlz.aangifte import KantToets
+from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
 
 MIN_REDEN_LENGTE = 5  # zelfde ondergrens als de storno-redenen (en de DB-CHECK op de tabel)
 
 # RLZ-documentstatussen (geverifieerd 2026-07-13): geboekt = 2 óf 3, concept = 1.
-_RLZ_GEBOEKT = (2, 3)
 
 
 class TegenboekenFout(Exception):
@@ -165,6 +164,12 @@ def _rlz_client_voor(administratie_id: uuid.UUID) -> RlzClient:
     return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
 
 
+def _port_voor(administratie_id: uuid.UUID) -> InkoopPort:
+    """Boekhoud-backend-port (0016): RLZ = nieuwe PurchaseInvoice met gespiegelde regels; Odoo = reversal
+    (creditnota) mét kruisverwijzing — pakketkennis leeft in de adapter."""
+    return inkoop_port_voor(administratie_id, rlz_client_factory=lambda: _rlz_client_voor(administratie_id))
+
+
 def tegenboek_referentie(referentie: str | None) -> str:
     """Referentie van de tegenboeking: herkenbaar gekoppeld aan het origineel, binnen RLZ's
     30-tekens-afkap (find_purchase_invoices_by_reference)."""
@@ -243,29 +248,14 @@ def _laad_geboekt_document(session: Session, *, administratie_id: uuid.UUID, doc
     return document
 
 
-def _origineel_toets(
-    *, client: RlzClient, document_id: uuid.UUID, boek_cyclus: int
-) -> tuple[KantToets, BetaalStatus | None, dict | None]:
-    """Eén GET op het origineel: de aangifte-poort-toets (zelfde poort als de storno-paden) én
-    de betaalstatus (BasePaidAmount/BaseRemainingAmount) uit dezelfde response."""
-    rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
-    origineel: dict | None = None
-
-    def ophalen() -> dict:
-        nonlocal origineel
-        origineel = client.get(f"PurchaseInvoices/{rlz_document_id}")
-        return origineel
-
-    kant = AangiftePoort(client).toets_document(ophalen, kant="inkoopfactuur")
-    betaalstatus: BetaalStatus | None = None
-    if origineel is not None:
-        betaald = _als_decimal(origineel.get("BasePaidAmount"))
-        betaalstatus = BetaalStatus(
-            betaald_bedrag=betaald,
-            open_bedrag=_als_decimal(origineel.get("BaseRemainingAmount")),
-            volledig_afgeletterd=origineel.get("Status") == 3,
-        )
-    return kant, betaalstatus, origineel
+def _betaalstatus_van(stand) -> BetaalStatus | None:
+    if stand.betaald_bedrag is None and stand.open_bedrag is None:
+        return None
+    return BetaalStatus(
+        betaald_bedrag=stand.betaald_bedrag or Decimal("0"),
+        open_bedrag=stand.open_bedrag or Decimal("0"),
+        volledig_afgeletterd=stand.volledig_afgeletterd,
+    )
 
 
 def toets(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> TegenboekToets:
@@ -285,10 +275,10 @@ def toets(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> TegenboekTo
         )
         bestaande = _bestaande_tegenboeking(session, document_id=document_id, boek_cyclus=voorstel.boek_cyclus)
 
-    with _rlz_client_voor(administratie_id) as client:
-        kant, betaalstatus, _ = _origineel_toets(
-            client=client, document_id=document_id, boek_cyclus=voorstel.boek_cyclus
-        )
+    with _port_voor(administratie_id) as port:
+        stand = port.origineel_stand(document_id=document_id, boek_cyclus=voorstel.boek_cyclus)
+    kant = stand.kant
+    betaalstatus = _betaalstatus_van(stand)
 
     return TegenboekToets(
         document_id=document_id,
@@ -304,23 +294,6 @@ def toets(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> TegenboekTo
         totaal_netto=sum((r.netto_bedrag for r in voorbeeld), Decimal("0")),
         totaal_btw=sum((r.btw_bedrag for r in voorbeeld), Decimal("0")),
     )
-
-
-def _tegenboek_lines(voorstel: BoekvoorstelData, omschrijving: str) -> list[dict]:
-    """Gespiegelde regels (STAP-0-vorm): zelfde Account/TaxRate/Project, negatieve bedragen."""
-    lines: list[dict] = []
-    for regel in voorstel.regels:
-        line: dict = {
-            "Account": {"id": str(regel.ledger_id)},
-            "TaxRate": {"id": str(regel.taxrate_id)},
-            "NetAmount": float(-(regel.netto_bedrag or Decimal("0"))),
-            "TaxAmount": float(-(regel.btw_bedrag or Decimal("0"))),
-            "Description": omschrijving,
-        }
-        if regel.project_id is not None:
-            line["Project"] = {"id": str(regel.project_id)}
-        lines.append(line)
-    return lines
 
 
 def _harde_checks_op_tegenboeking(
@@ -476,17 +449,17 @@ def voer_tegenboeking_uit(
 
     referentie = tegenboek_referentie(voorstel.referentie)
     omschrijving = _tegenboek_omschrijving(voorstel, leverancier)
-    rlz_tegenboeking_id_ = rlz_tegenboeking_id(document_id, voorstel.boek_cyclus)
 
-    with _rlz_client_voor(administratie_id) as client:
-        kant, betaalstatus, origineel = _origineel_toets(
-            client=client, document_id=document_id, boek_cyclus=voorstel.boek_cyclus
-        )
-        # Eerst de concept-check: een al gestorneerd origineel telt in de aangifte-poort als
-        # "vrij" (geen btw-effect meer) — dat zou hieronder een misleidende melding geven.
-        if origineel is not None and origineel.get("Status") not in _RLZ_GEBOEKT:
+    with _port_voor(administratie_id) as port:
+        stand = port.origineel_stand(document_id=document_id, boek_cyclus=voorstel.boek_cyclus)
+        kant = stand.kant
+        betaalstatus = _betaalstatus_van(stand)
+        # Eerst de concept-check: een al gestorneerd origineel telt in de aangifte-poort als "vrij"
+        # (geen btw-effect meer) — dat zou hieronder een misleidende melding geven.
+        if not stand.nog_geboekt:
             raise OngeldigeTegenboeking(
-                "Het origineel staat in RLZ al op concept (gestorneerd) — een tegenboeking zou dubbel corrigeren"
+                "Het origineel staat in de boekhouding al op concept of is al teruggedraaid (gestorneerd) — een "
+                "tegenboeking zou dubbel corrigeren"
             )
         if kant.toegestaan:
             raise TegenboekenNietToegestaan(
@@ -495,7 +468,7 @@ def voer_tegenboeking_uit(
             )
 
         rapport = _harde_checks_op_tegenboeking(
-            client=client,
+            client=port.leesclient(),
             administratie_id=administratie_id,
             document_id=document_id,
             voorstel=voorstel,
@@ -504,41 +477,24 @@ def voer_tegenboeking_uit(
         if rapport.geblokkeerd:
             raise TegenboekenGeblokkeerdDoorChecks(rapport)
 
-        # RLZ-writes, idempotent: bestaat de tegenboeking al geboekt in RLZ (retry na een halve
-        # mislukking), dan geen tweede boekpoging — alleen de lokale registratie afmaken.
+        # Schrijfactie via de adapter, idempotent per (document, boek_cyclus): RLZ = lookup-vóór-PUT op het
+        # deterministische tegenboek-GUID; Odoo = reversal mét kruisverwijzing + gespiegelde btw-override.
         try:
-            try:
-                bestaand_rlz = client.get(f"PurchaseInvoices/{rlz_tegenboeking_id_}")
-            except RlzApiError as exc:
-                if exc.status_code != 404:
-                    raise
-                bestaand_rlz = None
-            if bestaand_rlz is not None and bestaand_rlz.get("Status") in _RLZ_GEBOEKT:
-                rlz_boekstuknummer = bestaand_rlz.get("ReceiptNumber")
-            else:
-                client.put_purchase_invoice(
-                    rlz_tegenboeking_id_,
-                    vendor_id=voorstel.vendor_id,
-                    lines=_tegenboek_lines(voorstel, omschrijving),
-                    reference=referentie,
-                    Date=f"{date.today().isoformat()}T00:00:00",
-                )
-                bestand = _standaard_opslag().lezen(pad=opslag_pad)
-                zorg_voor_bijlage(
-                    client,
-                    "PurchaseInvoices",
-                    rlz_tegenboeking_id_,
-                    upload_id=rlz_tegenboeking_upload_id(document_id, voorstel.boek_cyclus),
-                    filename=bestandsnaam,
-                    content_base64=base64.b64encode(bestand).decode(),
-                )
-                client.book_purchase_invoice(rlz_tegenboeking_id_)
-                geboekt = client.get(f"PurchaseInvoices/{rlz_tegenboeking_id_}")
-                rlz_boekstuknummer = geboekt.get("ReceiptNumber")
-        except RlzApiError as exc:
-            # Niets lokaal gewijzigd — het document blijft gewoon GEBOEKT; de fout is zichtbaar
-            # (502 in de router) en een volgende poging raakt hetzelfde GUID.
+            uitkomst = port.boek_tegenboeking(
+                document_id=document_id,
+                voorstel=voorstel,
+                referentie=referentie,
+                omschrijving=omschrijving,
+                reden=reden.strip(),
+                bestand=_standaard_opslag().lezen(pad=opslag_pad),
+                bestandsnaam=bestandsnaam,
+            )
+        except BackendBoekFout as exc:
+            # Niets lokaal gewijzigd — het document blijft gewoon GEBOEKT; de fout is zichtbaar (502 in de
+            # router) en een volgende poging raakt hetzelfde externe document.
             raise RlzTegenboekingMislukt(str(exc)) from exc
+        rlz_tegenboeking_id_ = uitkomst.extern_document_id
+        rlz_boekstuknummer = uitkomst.boekstuknummer
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
@@ -565,6 +521,7 @@ def voer_tegenboeking_uit(
                 "reden": reden.strip(),
                 "rlz_tegenboeking_id": str(rlz_tegenboeking_id_),
                 "rlz_boekstuknummer": rlz_boekstuknummer,
+                **uitkomst.detail,
                 "referentie": referentie,
                 "origineel_betaald_bedrag": str(betaalstatus.betaald_bedrag) if betaalstatus else None,
             }

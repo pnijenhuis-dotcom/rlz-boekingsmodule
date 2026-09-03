@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
@@ -9,6 +7,8 @@ from datetime import UTC, datetime, time
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.backends import BackendBoekFout, inkoop_port_voor
+from app.backends.port import InkoopPort
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
@@ -18,13 +18,13 @@ from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus, WebhookUitgaand
-from app.documenten.rlz_ids import rlz_herboeking_id, rlz_herboeking_upload_id
+from app.documenten.rlz_ids import rlz_herboeking_id  # noqa: F401 — re-export (tests, doorbelasting)
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
 from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
 from app.geheugen.leerlus import leg_boeking_vast
-from app.rlz.bijlage import zorg_voor_bijlage
-from app.rlz.client import RlzApiError, RlzClient
+from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+from app.rlz.fouten import vertaal_rlz_boekfout  # noqa: F401 — re-export (accordering-herstel-CLI, tests)
 from app.sync.models import VendorCache
 
 _KAN_BOEKPOGING_STARTEN_VANUIT = frozenset(
@@ -87,32 +87,13 @@ class MatchAfwijkingBevestigingVereist(BoekenFout):
 
 
 class RlzBoekingMislukt(BoekenFout):
-    """RLZ gaf een fout terug tijdens de boekpoging — het document staat op boeken_mislukt met de
-    échte foutmelding; een volgende poging is idempotent (zelfde client-GUID's)."""
+    """De boekhoud-backend (RLZ óf Odoo — via de port) gaf een fout terug tijdens de boekpoging — het
+    document staat op boeken_mislukt met de leesbare, vertaalde reden; een volgende poging is idempotent
+    (RLZ: zelfde client-GUID's; Odoo: zoek-vóór-create + eigen id-mapping). Naam behouden voor de
+    router/CLI-afhandeling; `BoekingMislukt` is het backend-neutrale alias."""
 
 
-# Casus Labo Derva 31-08 (api-verkenning "EU-tarieven op PurchaseInvoice-Actions"): RLZ weigert
-# de boekactie (17) met deze 400-tekst wanneer de CREDITEURKAART in RLZ geen land/btw-nummer
-# draagt bij een EU-/buitenland-tarief — na het aanvullen van de kaart accepteert RLZ hetzelfde
-# tarief gewoon. Het is dus een crediteur-datakwaliteitsfout, geen tarief-fout.
-_ONGELDIG_TARIEF_RE = re.compile(r"ongeldig belastingtarief\s*'([^']*)'(?:\s*op regel\s*(\d+))?", re.IGNORECASE)
-
-
-def vertaal_rlz_boekfout(exc: RlzApiError) -> str:
-    """Leesbare melding mét handelingsperspectief voor bekende RLZ-boekweigeringen; alles wat we
-    niet herkennen blijft de rauwe `str(exc)` — nooit informatie wegvertalen. Eén vertaalpunt:
-    via `_zet_boeken_mislukt`/`RlzBoekingMislukt` bedient dit het controlescherm, de
-    accordering-`boek_fout`-reden én de accordering-herstel-CLI."""
-    match = _ONGELDIG_TARIEF_RE.search(exc.body or "")
-    if exc.status_code == 400 and match:
-        tarief = f" ('{match.group(1)}')" if match.group(1) else ""
-        regel = f"regel {match.group(2)}" if match.group(2) else "een regel"
-        return (
-            f"RLZ weigert het btw-tarief{tarief} op {regel} — controleer land en btw-nummer van de "
-            f"crediteur in RLZ en probeer opnieuw (een crediteurkaart zonder land/btw-nummer geeft "
-            f"precies deze weigering bij EU-/buitenland-tarieven). RLZ-fout: {exc.body[:300]}"
-        )
-    return str(exc)
+BoekingMislukt = RlzBoekingMislukt
 
 
 @dataclass(frozen=True)
@@ -194,6 +175,12 @@ def _rlz_client_voor(administratie_id: uuid.UUID) -> RlzClient:
     return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
 
 
+def _port_voor(administratie_id: uuid.UUID) -> InkoopPort:
+    """De boekhoud-backend-port voor deze administratie (besluit 0016): de registry kiest RLZ of Odoo;
+    de RLZ-client wordt via de bestaande seam geopend (test-fakes patchen `client_voor_rlz_admin_id`)."""
+    return inkoop_port_voor(administratie_id, rlz_client_factory=lambda: _rlz_client_voor(administratie_id))
+
+
 def _als_str(waarde: object) -> str | None:
     return str(waarde) if waarde is not None else None
 
@@ -273,67 +260,6 @@ def toets_match_afwijking_poort(
             nieuwe_waarde=match_info,
             administratie_id=administratie_id,
         )
-
-
-def _regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
-    lines: list[dict] = []
-    for regel in voorstel.regels:
-        # btw_bedrag mag None zijn (de harde checks eisen 'm niet af, zie
-        # checks.py::check_verplichte_velden) — een geldige case bij bv. verlegde btw of een
-        # vrijgestelde regel, niet alleen een ontbrekend-veld-bug. netto_bedrag ís altijd gevuld
-        # op dit punt (dat check wél af, en boek_document() draait de checks eerst).
-        line: dict = {
-            "Account": {"id": str(regel.ledger_id)},
-            "TaxRate": {"id": str(regel.taxrate_id)},
-            "NetAmount": float(regel.netto_bedrag),
-            "TaxAmount": float(regel.btw_bedrag or 0),
-        }
-        if regel.project_id is not None:
-            line["Project"] = {"id": str(regel.project_id)}
-        if regel.omschrijving:
-            line["Description"] = regel.omschrijving
-        lines.append(line)
-    return lines
-
-
-def _boek_bij_rlz(
-    *, client: RlzClient, document_id: uuid.UUID, voorstel: BoekvoorstelData, bestand: bytes, bestandsnaam: str
-) -> tuple[uuid.UUID, str | None]:
-    """PUT + /Uploads + actie 17, in die volgorde (RLZ berekent zelf totalen uit de regels — geen
-    eigen bedragberekening hier). Retourneert (rlz_document_id, rlz_boekstuknummer). Het GUID
-    volgt de boek_cyclus (tegenboek-pad): een herboeking ná "tegenboeken én opnieuw boeken" is
-    een NIEUW RLZ-document — nooit een her-PUT op het geboekt blijvende origineel."""
-    rlz_document_id = rlz_herboeking_id(document_id, voorstel.boek_cyclus)
-    assert voorstel.vendor_id is not None and voorstel.factuurdatum is not None  # afgedwongen door de harde checks
-
-    client.put_purchase_invoice(
-        rlz_document_id,
-        vendor_id=voorstel.vendor_id,
-        lines=_regels_naar_rlz_lines(voorstel),
-        reference=voorstel.referentie,
-        # Volledige ISO-datetime, niet alleen de datum — exact de vorm die geverifieerd is tegen
-        # de RLZ-test-administratie (verkenning/api-verkenning.md, "Boekstuknummer, factuurdatum
-        # en /Uploads"); een kale datumstring is nooit tegen de live API getest.
-        Date=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
-        # Boekingsdatum = factuurdatum (punt 15, besluit Peter 27-08; STAP 0 28-08 api-verkenning
-        # "Boekingsdatum = BookDate"): de journaalpost volgt `BookDate`, niet `Date` — zonder
-        # BookDate zet RLZ de systeemdatum (dag van boeken). Expliciet meegeven, geen uitzonderingen.
-        BookDate=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
-        # Vervaldatum (C1 26-08): `DueDate` — STAP-0 26-08 live bewezen (PUT 204, readback
-        # identiek); zonder DueDate leidt RLZ 'm zelf af uit Date + PaymentDueDays crediteur.
-        **({"DueDate": f"{voorstel.vervaldatum.isoformat()}T00:00:00"} if voorstel.vervaldatum else {}),
-    )
-    zorg_voor_bijlage(
-        client,
-        "PurchaseInvoices",
-        rlz_document_id,
-        upload_id=rlz_herboeking_upload_id(document_id, voorstel.boek_cyclus),
-        filename=bestandsnaam,
-        content_base64=base64.b64encode(bestand).decode(),
-    )
-    client.book_purchase_invoice(rlz_document_id)
-    geboekt = client.get(f"PurchaseInvoices/{rlz_document_id}")
-    return rlz_document_id, geboekt.get("ReceiptNumber")
 
 
 def _zet_boeken_mislukt(
@@ -476,8 +402,8 @@ def boek_document(
         bevestigd=materiaal_afwijking_bevestigd,
     )
 
-    with _rlz_client_voor(administratie_id) as client:
-        rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, client=client)
+    with _port_voor(administratie_id) as port:
+        rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, client=port.leesclient())
         if rapport.geblokkeerd:
             raise BoekenGeblokkeerdDoorChecks(rapport)
 
@@ -497,15 +423,16 @@ def boek_document(
             # gebundelde of ingesloten factuur-PDF — RLZ toont een PDF, een kale UBL is voor een mens
             # onleesbaar. Zonder beeld gaat het hoofdbestand zelf mee (bestaand gedrag).
             beeld = bepaal_beeld(bestanden, opslag=_standaard_opslag())
-            rlz_document_id, rlz_boekstuknummer = _boek_bij_rlz(
-                client=client,
+            uitkomst = port.boek_inkoopfactuur(
                 document_id=document_id,
                 voorstel=voorstel,
                 bestand=beeld.inhoud,
                 bestandsnaam=beeld.bestandsnaam,
             )
-        except RlzApiError as exc:
-            reden = vertaal_rlz_boekfout(exc)
+            rlz_document_id, rlz_boekstuknummer = uitkomst.extern_document_id, uitkomst.boekstuknummer
+        except BackendBoekFout as exc:
+            # De adapter heeft de pakket-fout al vertaald (RLZ: vertaal_rlz_boekfout; Odoo: vertaal_odoo_fout).
+            reden = str(exc)
             _zet_boeken_mislukt(
                 administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, reden=reden
             )
@@ -522,6 +449,9 @@ def boek_document(
             )
             raise
 
+    from app.backends.registry import backend_label
+
+    port_label = backend_label(port.backend)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
         assert document is not None
@@ -555,9 +485,12 @@ def boek_document(
             detail={
                 **(extra_overgang_detail or {}),
                 **match_detail,
+                # Backend-detail (0016): RLZ = {"backend": "rlz"}; Odoo voegt odoo_move_id/odoo_naam/
+                # company_id/btw_override toe — de 'Geboekt in …'-regel en de tijdlijn lezen hieruit.
+                **uitkomst.detail,
                 "rlz_document_id": str(rlz_document_id),
                 "rlz_boekstuknummer": rlz_boekstuknummer,
-                "reden": f"geboekt in RLZ — boekstuk {rlz_boekstuknummer or str(rlz_document_id)[:8]}",
+                "reden": f"geboekt in {port_label} — boekstuk {rlz_boekstuknummer or str(rlz_document_id)[:8]}",
             },
         )
         # Staten-verrekening ín de boek-transactie (fase 2, dubbeltelling-preventie): de
@@ -614,7 +547,11 @@ def boek_document(
             record_id=document_id,
             actie="geboekt_in_rlz",
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"rlz_document_id": str(rlz_document_id), "rlz_boekstuknummer": rlz_boekstuknummer},
+            nieuwe_waarde={
+                "rlz_document_id": str(rlz_document_id),
+                "rlz_boekstuknummer": rlz_boekstuknummer,
+                **uitkomst.detail,
+            },
             administratie_id=administratie_id,
         )
 

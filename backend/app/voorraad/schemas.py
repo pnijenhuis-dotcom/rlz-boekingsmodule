@@ -222,6 +222,8 @@ class HerrekenResultaatDto(BaseModel):
     verkoop_regels: int
     # Opgeslagen RLZ-verkoopregels opnieuw genormaliseerd (het lezen uit RLZ zit in de dagelijkse sync).
     rlz_regels: int = 0
+    # Idem voor de Odoo-verkoopregels (blok D 03-09: Odoo als leesbron vanaf de voorraad-knip).
+    odoo_regels: int = 0
 
 
 class CorrectieResultaatDto(BaseModel):

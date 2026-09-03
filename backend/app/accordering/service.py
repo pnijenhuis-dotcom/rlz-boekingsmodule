@@ -1098,11 +1098,13 @@ def bied_ter_accordering_aan(
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
         status_vooraf = document.status
     if status_vooraf in (DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN):
-        from app.documenten.boeken import _rlz_client_voor
+        from app.documenten.boeken import _port_voor
         from app.documenten.boekvoorstel import voer_checks_uit
 
-        with _rlz_client_voor(administratie_id) as client:
-            rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, client=client)
+        with _port_voor(administratie_id) as port:
+            rapport = voer_checks_uit(
+                administratie_id=administratie_id, document_id=document_id, client=port.leesclient()
+            )
         if rapport.geblokkeerd:
             raise ChecksNietGroen(rapport)
         with scoped_session(administratie_id, actor_id=actor_id) as session:

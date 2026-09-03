@@ -43,6 +43,9 @@ _KOP_KEYS: dict[str, str] = {
     # app/extractie/btw_nummer.py — nooit de AI.
     "btwnr": "btw_nummer",
     "kvk": "kvk_nummer",
+    # Betalingskenmerk (Odoo-adapter fase 1, 03-09): het kenmerk dat de leverancier bij de betaling vraagt te
+    # vermelden (Odoo `payment_reference`; RLZ heeft het veld niet). Sentinel-string, geen union (limiet ≤ 16).
+    "kenmerk": "betalingskenmerk",
 }
 
 # Sentinel i.p.v. union (bugfix 31-08): Anthropic's structured outputs staan maximaal 16
@@ -133,7 +136,9 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   primaire/eerstgenoemde), vl=de letterlijke vermelding dat de btw verlegd is (bijv. "BTW verlegd",
   "btw verlegd naar afnemer", "verleggingsregeling", "reverse charge") als die op de factuur staat,
   anders "", btwnr=het btw-nummer (btw-identificatienummer, bv. NL123456789B01) van de LEVERANCIER zoals
-  het op de factuur staat (niet dat van de afnemer), kvk=het KvK-nummer (8 cijfers) van de leverancier
+  het op de factuur staat (niet dat van de afnemer), kvk=het KvK-nummer (8 cijfers) van de leverancier,
+  kenmerk=het betalingskenmerk/betalingsreferentie dat de leverancier vraagt bij de betaling te vermelden
+  (alleen als dat expliciet zo op de factuur staat; anders "" — het factuurnummer is géén betalingskenmerk)
   — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de

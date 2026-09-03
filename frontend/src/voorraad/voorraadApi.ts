@@ -283,9 +283,11 @@ export function classificatieBronLabel(bron: string): string {
   return bron
 }
 
-/** Leesbare herkomst van een factuurregel (drill-down): app-document of RLZ-verkoopfactuur. */
+/** Leesbare herkomst van een factuurregel (drill-down): app-document, RLZ- of Odoo-verkoopfactuur. */
 export function bronLabel(r: Pick<VoorraadRegelDto, 'bron' | 'rlz_referentie'>): string {
   if (r.bron === 'rlz_verkoop') return `RLZ-verkoopfactuur${r.rlz_referentie ? ` ${r.rlz_referentie}` : ''}`
+  // Odoo als leesbron vanaf de voorraad-knip (03-09): het Odoo-factuurnummer (F/2026/…) is de referentie.
+  if (r.bron === 'odoo_verkoop') return `Odoo-verkoopfactuur${r.rlz_referentie ? ` ${r.rlz_referentie}` : ''}`
   if (r.bron === 'verkoop_regel') return 'verkoopfactuur (app)'
   if (r.bron === 'inkoop_veldvoorstel') return 'inkoopfactuur (scan)'
   return r.bron

@@ -159,6 +159,13 @@ class AdministratieInstellingen:
     # Facturatiemodule niet afgenomen (migratie 0093, 01-09): chip in de tabel + detail-dialoog;
     # verkoop-rakende leesroutes slaan deze administratie over. Herprobe mét SalesInvoices ok wist 'm.
     verkoopmodule_afwezig: bool = False
+    # Boekhoud-backend (migratie 0101, besluit 0016): 'rlz' | 'odoo' + de Odoo-koppelstand (nooit de key).
+    boekhoud_backend: str = "rlz"
+    odoo_company_id: int | None = None
+    odoo_company_naam: str | None = None
+    odoo_api_gebruiker: str | None = None
+    odoo_api_key_verloopt_op: str | None = None
+    odoo_probe_groen: bool | None = None
     # Eerste-sync-stand (wizard-nazorg 27-08, casus Bouwadvies Oost Nederland): de laatste run
     # zoals de wizard 'm toont (status + onderdelen + foutreden) — de UI toont 'm op de rij zolang
     # de run niet volledig groen is, mét herstartknop op hetzelfde endpoint. None = nog nooit.
@@ -262,6 +269,9 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             )
             laatste_sync[aid] = _laatste_sync(session, aid)
     stand = koppelstand(ids)
+    from app.odoo.service import koppelstand as odoo_koppelstand
+
+    odoo_stand = odoo_koppelstand(ids)
     # Per administratie (RLS-gescoopte tabel, zelfde stale-markering als de status-route) — één
     # korte query per rij is prima voor het Beheerder-scherm.
     syncs = {r.id: laatste_run(r.id) for r in rijen}
@@ -284,6 +294,12 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],
             verkoopmodule_afwezig=r.verkoopmodule_afwezig,
+            boekhoud_backend=r.boekhoud_backend,
+            odoo_company_id=odoo_stand[r.id].company_id if r.id in odoo_stand else None,
+            odoo_company_naam=odoo_stand[r.id].company_naam if r.id in odoo_stand else None,
+            odoo_api_gebruiker=odoo_stand[r.id].api_gebruiker if r.id in odoo_stand else None,
+            odoo_api_key_verloopt_op=odoo_stand[r.id].api_key_verloopt_op if r.id in odoo_stand else None,
+            odoo_probe_groen=odoo_stand[r.id].probe_groen if r.id in odoo_stand else None,
             eerste_sync=None if syncs[r.id].status == "geen" else syncs[r.id],
             eigenaar_naam=namen.get(r.eigenaar_gebruiker_id) if r.eigenaar_gebruiker_id else None,
             iban_accordeurs_aantal=iban_tellingen.get(r.id, 0),

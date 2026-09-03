@@ -79,10 +79,18 @@ def bereken_duplicaatsignaal(
         melding = "Crediteur, referentie en totaalbedrag zijn nog niet alle drie bekend"
     else:
         eigen_client = client is None
+        eigen_port = None
         try:
             if client is None:
-                rlz_admin_id = rlz_admin_id_voor(administratie_id)
-                client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+                # Via de boekhoud-backend-port (0016): RLZ of Odoo, zelfde leesvorm.
+                from app.backends.registry import inkoop_port_voor
+
+                def _rlz() -> RlzClient:
+                    rlz_admin_id = rlz_admin_id_voor(administratie_id)
+                    return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+
+                eigen_port = inkoop_port_voor(administratie_id, rlz_client_factory=_rlz)
+                client = eigen_port.leesclient()
             gevonden = client.find_purchase_invoices_by_reference(
                 vendor_id=voorstel.vendor_id,
                 reference=voorstel.referentie,
@@ -93,11 +101,11 @@ def bereken_duplicaatsignaal(
             uitkomst = DuplicaatSignaalUitkomst.ONBEKEND
             melding = f"Duplicaatsignaal niet te berekenen: {exc}"
         finally:
-            if eigen_client and client is not None:
+            if eigen_client and eigen_port is not None:
                 try:
-                    client.close()
+                    eigen_port.__exit__(None, None, None)
                 except Exception:  # noqa: BLE001
-                    logger.debug("Sluiten RLZ-client mislukt", exc_info=True)
+                    logger.debug("Sluiten backend-verbinding mislukt", exc_info=True)
         if gevonden is not None:
             keten = {str(rlz_herboeking_id(document_id, c)) for c in range(voorstel.boek_cyclus + 1)} | {
                 str(rlz_tegenboeking_id(document_id, c)) for c in range(voorstel.boek_cyclus + 1)

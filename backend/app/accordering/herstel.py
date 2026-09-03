@@ -188,8 +188,8 @@ def diagnose(kandidaat: HerstelKandidaat) -> list[str]:
     try:
         from app.documenten.boekvoorstel import voer_checks_uit
 
-        with boeken_service._rlz_client_voor(aid) as client:
-            rapport = voer_checks_uit(administratie_id=aid, document_id=d_id, client=client)
+        with boeken_service._port_voor(aid) as port:
+            rapport = voer_checks_uit(administratie_id=aid, document_id=d_id, client=port.leesclient())
         if rapport.geblokkeerd:
             blokkades.append("harde checks: " + "; ".join(r.melding for r in rapport.resultaten if not r.ok))
     except Exception as exc:  # noqa: BLE001

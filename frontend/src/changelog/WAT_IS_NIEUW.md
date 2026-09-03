@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-03 — Odoo-koppeling: eerste stap voor Universal
+
+- Een administratie kan nu naast Reeleezee ook op Odoo draaien. De Beheerder koppelt met de Odoo-sleutel, kiest de vestiging (company) uit een lijst en de app controleert vooraf of verbinding, rechten, dagboeken en btw-codes kloppen; pas als alles groen is wordt er iets opgeslagen. Grootboek, btw-codes, crediteuren en projecten komen daarna in dezelfde lijsten terecht als bij Reeleezee, dus het controlescherm werkt hetzelfde.
+- Inkoopfacturen van zo'n administratie boeken in Odoo per regel, met product, aantal en prijs waar de materiaalcatalogus het product kent, en met het project op de regel. De boekdatum is de factuurdatum, de PDF hangt aan de boeking en een btw-verschil van een paar cent wordt zichtbaar gelijkgetrokken. Corrigeren gebeurt met een creditnota die naar het origineel verwijst; er wordt nooit iets verwijderd. Nieuw kopveld: het betalingskenmerk van de leverancier gaat mee.
+- Voorraad Universal Verkoop: de verkoopfacturen die sinds de overstap in Odoo staan tellen vanaf een instelbare knipdatum mee in de voorraadaansluiting, alleen-lezen. Reeleezee blijft de bron tot die datum, zodat niets dubbel telt; de herkomst per regel staat erbij ("Odoo-verkoopfactuur F/…").
+
 ## 2026-09-03 — Dubbele crediteuren: één lijst over alle administraties, mét actie
 
 - Inzicht › Crediteuren toont nu in één lijst alle waarschijnlijk-dubbele crediteuren van alle administraties waar je toegang toe hebt, met het zwaarste signaal bovenaan (zelfde btw-nummer, dan KvK, dan IBAN, dan alleen de naam). Je kunt filteren op administratie of soort signaal en zoeken op naam of nummer; de werkvoorraad krijgt een teller zodra er dubbelen zijn.

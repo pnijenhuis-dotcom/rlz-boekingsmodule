@@ -156,6 +156,7 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         factuurdatum=data.factuurdatum,
         vervaldatum=data.vervaldatum,
         vervaldatum_signaal=data.vervaldatum_signaal,
+        betalingskenmerk=data.betalingskenmerk,
         totaalbedrag=data.totaalbedrag,
         rlz_boekstuknummer=data.rlz_boekstuknummer,
         opgeslagen=data.opgeslagen,
@@ -647,6 +648,7 @@ def boekvoorstel_opslaan(
             referentie=invoer.referentie,
             factuurdatum=invoer.factuurdatum,
             vervaldatum=invoer.vervaldatum,
+            betalingskenmerk=invoer.betalingskenmerk,
             totaalbedrag=invoer.totaalbedrag,
             regels=[
                 boekvoorstel.BoekvoorstelRegelData(

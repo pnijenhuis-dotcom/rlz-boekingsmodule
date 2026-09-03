@@ -14,6 +14,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import RlzCredential, TotpSecret
+from app.odoo.models import OdooKoppeling
 from app.security.envelope import LocalMasterKeyProvider, unwrap_secret, wrap_secret
 from app.security.herversleutel import ENVELOPE_TABELLEN, herversleutel_alles
 from tests.unit.test_envelope_kms import SLEUTEL as KMS_SLEUTEL
@@ -55,6 +56,15 @@ def gevulde_database(admin_engine: Engine, beheerder_id: uuid.UUID) -> dict[str,
                 ),
                 {"aid": admin_id, "ct": ciphertext, "wk": wrapped, "actor": beheerder_id},
             )
+        # Odoo-koppeling (0101): dezelfde envelope op de API-key — één rij op de eerste administratie.
+        ciphertext, wrapped = wrap_secret(b"odoo-key-" + admin_ids[0].hex[:6].encode(), provider=oud)
+        conn.execute(
+            text(
+                "INSERT INTO platform.odoo_koppeling (administratie_id, odoo_url, company_id, api_key_ciphertext, "
+                "wrapped_data_key, aangemaakt_door) VALUES (:aid, 'https://x.odoo.com', 1, :ct, :wk, :actor)"
+            ),
+            {"aid": admin_ids[0], "ct": ciphertext, "wk": wrapped, "actor": beheerder_id},
+        )
         conn.execute(
             text(
                 "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "
@@ -81,6 +91,7 @@ def test_dry_run_telt_maar_schrijft_niets(sessie: Session, gevulde_database: dic
     assert resultaat.geslaagd
     assert resultaat.per_tabel["rlz_credential"].herversleuteld == 2
     assert resultaat.per_tabel["totp_secret"].herversleuteld == 2
+    assert resultaat.per_tabel["odoo_koppeling"].herversleuteld == 1
     # Niets geschreven: alles is nog steeds uitsluitend met de OUDE key te lezen.
     for credential in sessie.query(RlzCredential):
         geheim = unwrap_secret(credential.wachtwoord_ciphertext, credential.wrapped_data_key, provider=oud)
@@ -98,6 +109,9 @@ def test_uitvoeren_herversleutelt_alles(sessie: Session, gevulde_database: dict)
     for totp in sessie.query(TotpSecret):
         geheim = unwrap_secret(totp.secret_ciphertext, totp.wrapped_data_key, provider=nieuw)
         assert geheim == f"totp-{totp.gebruiker_id.hex[:6]}".encode()
+    for koppeling in sessie.query(OdooKoppeling):
+        geheim = unwrap_secret(koppeling.api_key_ciphertext, koppeling.wrapped_data_key, provider=nieuw)
+        assert geheim == b"odoo-key-" + koppeling.administratie_id.hex[:6].encode()
     # En de oude key kan er níét meer bij (de wrap is echt vervangen, niet gedupliceerd) —
     # AES-GCM weigert met InvalidTag.
     from cryptography.exceptions import InvalidTag

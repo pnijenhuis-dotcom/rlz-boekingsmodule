@@ -35,6 +35,13 @@ VINDPLAATS_OMZET = (
 VINDPLAATS_WAARBORG = (
     "In RLZ zichtbaar als memoriaalboeking (dagboek Memoriaal) — geen factuur, dus niet onder Inkoop of Verkopen."
 )
+#: Odoo-administraties (0016/0101): inkoopfacturen staan onder Boekhouding › Leveranciers › Facturen van de company;
+#: een correctie is een aparte creditnota (RBILL/…) mét kruisverwijzing — nooit een gewijzigd origineel.
+VINDPLAATS_ODOO_INKOOP = (
+    "In Odoo zichtbaar onder Boekhouding › Leveranciers › Facturen van de gekoppelde company (nummer BILL/…); "
+    "een correctie staat als aparte creditnota (RBILL/…) met kruisverwijzing naar het origineel."
+)
+LABEL_PER_BACKEND = {"rlz": "RLZ", "odoo": "Odoo"}
 
 
 @dataclass(frozen=True)
@@ -48,10 +55,13 @@ class GeboektInRlz:
     #: tweede boekstuk bij een omzetboeking (kostprijsmemoriaal)
     memoriaal_boekstuknummer: str | None = None
     vindplaats_hint: str | None = None
+    #: boekhoud-backend van de boeking (uit het GEBOEKT-tijdlijndetail; ontbreekt = rlz, pre-0101)
+    backend: str = "rlz"
 
     def als_regel(self) -> str:
-        """Eén leesbare regel: 'Geboekt in RLZ · boekstuk RLZ-01-00000442 · Universal Nederland B.V.'."""
-        delen = ["Geboekt in RLZ"]
+        """Eén leesbare regel: 'Geboekt in RLZ · boekstuk RLZ-01-00000442 · Universal Nederland B.V.' — of
+        'Geboekt in Odoo · boekstuk BILL/2026/09/0001 · …' voor een Odoo-administratie."""
+        delen = [f"Geboekt in {LABEL_PER_BACKEND.get(self.backend, self.backend)}"]
         delen.append(f"boekstuk {self.boekstuknummer}" if self.boekstuknummer else "boekstuk onbekend")
         if self.memoriaal_boekstuknummer:
             delen.append(f"memoriaal {self.memoriaal_boekstuknummer}")
@@ -175,12 +185,14 @@ def bepaal_geboekt_in_rlz(session: Session, documenten: list[Document]) -> dict[
             if voorstel is not None and voorstel.vendor_id is not None and d.administratie_id is not None
             else None
         )
+        backend = _tekst(detail, "backend") or "rlz"
         resultaat[d.id] = GeboektInRlz(
             boekstuknummer=boekstuk,
             rlz_document_id=_tekst(detail, "rlz_document_id"),
             tegenpartij=crediteur,
             tegenpartij_rol="crediteur" if crediteur else None,
             geboekt_op=geboekt_op,
-            vindplaats_hint=None,
+            vindplaats_hint=VINDPLAATS_ODOO_INKOOP if backend == "odoo" else None,
+            backend=backend,
         )
     return resultaat

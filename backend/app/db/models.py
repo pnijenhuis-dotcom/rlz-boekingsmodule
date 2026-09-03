@@ -176,6 +176,12 @@ class Administratie(Base):
     # verkoop-rakende LEESroutes (voorraad-RLZ-uitstroom, SalesInvoices in de projectcijfers-sync)
     # slaan de administratie zichtbaar over — nooit stil op de 403 laten stuklopen.
     verkoopmodule_afwezig: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Boekhoud-backend (migratie 0101, Platform-besluit 0016, Odoo-adapter fase 1 03-09): 'rlz' | 'odoo'.
+    # UITSLUITEND de routeringssleutel voor de adapter-registry (app/backends/registry.py) — het
+    # domein vertakt hier nooit op (guardrail 0016). Default 'rlz'; bestaande rijen ongemoeid. Een
+    # Odoo-administratie draagt in `rlz_admin_id` een sentinel (app/odoo/ids.py::odoo_admin_sentinel)
+    # zodat élke RLZ-client-resolutie er fail-loud op stukloopt (app/rlz/credentials.py).
+    boekhoud_backend: Mapped[str] = mapped_column(String(16), default="rlz", server_default="rlz")
     # Voorraad bijhouden (migratie 0086, bouwrun 28-08 blok D): opt-in voor de voorraad-aansluiting
     # (controle-laag in het mi-schema; nooit RLZ-writes). Beheerder-only, default UIT — aan voor
     # Universal Verkoop pas op Peters klik.

@@ -161,6 +161,23 @@ def _sync_generiek(
         )
 
 
+def _is_odoo(administratie_id: uuid.UUID) -> bool:
+    """Registry-lookup (0016): Odoo-administraties syncen via app/odoo/sync.py naar dezélfde caches. De
+    sync-laag is infrastructuur — dit is de enige vertakking, en hij loopt via de registry."""
+    from app.backends.registry import Backend, OnbekendeBackend, backend_voor
+
+    try:
+        return backend_voor(administratie_id) is Backend.ODOO
+    except OnbekendeBackend:
+        return False  # onbekende administratie: het RLZ-pad geeft de bestaande SyncFout
+
+
+def _odoo_sync(administratie_id: uuid.UUID) -> SyncResultaat:
+    from app.odoo.sync import sync_alles_voor_odoo_administratie
+
+    return sync_alles_voor_odoo_administratie(administratie_id=administratie_id)
+
+
 def _open_client_indien_nodig(administratie_id: uuid.UUID, client: RlzClient | None) -> tuple[RlzClient, bool]:
     """Opent zelf een RlzClient (via de .env-credential-resolutie, app/rlz/credentials.py) als de
     aanroeper er geen meegeeft. Het tweede returnwaarde-lid zegt of de aanroeper 'm zelf moet
@@ -172,6 +189,8 @@ def _open_client_indien_nodig(administratie_id: uuid.UUID, client: RlzClient | N
 
 
 def sync_ledgers(*, administratie_id: uuid.UUID, client: RlzClient | None = None) -> SyncTelling:
+    if client is None and _is_odoo(administratie_id):
+        return _odoo_sync(administratie_id).ledgers
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
@@ -184,6 +203,8 @@ def sync_ledgers(*, administratie_id: uuid.UUID, client: RlzClient | None = None
 
 
 def sync_taxrates(*, administratie_id: uuid.UUID, client: RlzClient | None = None) -> SyncTelling:
+    if client is None and _is_odoo(administratie_id):
+        return _odoo_sync(administratie_id).taxrates
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
@@ -196,6 +217,8 @@ def sync_taxrates(*, administratie_id: uuid.UUID, client: RlzClient | None = Non
 
 
 def sync_vendors(*, administratie_id: uuid.UUID, client: RlzClient | None = None) -> SyncTelling:
+    if client is None and _is_odoo(administratie_id):
+        return _odoo_sync(administratie_id).vendors
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
@@ -208,6 +231,8 @@ def sync_vendors(*, administratie_id: uuid.UUID, client: RlzClient | None = None
 
 
 def sync_projects(*, administratie_id: uuid.UUID, client: RlzClient | None = None) -> SyncTelling:
+    if client is None and _is_odoo(administratie_id):
+        return _odoo_sync(administratie_id).projects
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
@@ -221,7 +246,10 @@ def sync_projects(*, administratie_id: uuid.UUID, client: RlzClient | None = Non
 
 def sync_alles_voor_administratie(*, administratie_id: uuid.UUID, client: RlzClient | None = None) -> SyncResultaat:
     """Alle vier de bronnen voor één administratie, met één gedeelde RlzClient-verbinding
-    (efficiënter dan vier losse logins)."""
+    (efficiënter dan vier losse logins). Odoo-administraties (0101) gaan via de Odoo-sync naar
+    dezelfde caches."""
+    if client is None and _is_odoo(administratie_id):
+        return _odoo_sync(administratie_id)
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return SyncResultaat(
@@ -367,13 +395,25 @@ def maak_crediteur_aan(
         if bestaande is not None:
             raise CrediteurBestaatAl(bestaande.id, bestaande.naam or naam)
 
-    vendor_id = rlz_vendor_id(administratie_id, naam)
-    client, eigen_client = _open_client_indien_nodig(administratie_id, client)
-    try:
-        client.put_vendor(vendor_id, name=naam)
-    finally:
-        if eigen_client:
-            client.close()
+    if client is None and _is_odoo(administratie_id):
+        # Odoo-adapter (0016): res.partner groepsgedeeld, lookup-vóór-create op btw → KvK → naam (besluit 02-09);
+        # de UUID is de deterministische odoo_uuid van de partner (id-koppeling meteen geschreven).
+        from app.odoo.partners import zorg_voor_crediteur
+
+        partner = zorg_voor_crediteur(
+            administratie_id=administratie_id, naam=naam, btw_nummer=btw_nummer, kvk_nummer=kvk_nummer
+        )
+        vendor_id = partner.vendor_id
+        brondata_bron = {"odoo_id": partner.odoo_id, "backend": "odoo", "bron": "app_aangemaakt"}
+    else:
+        vendor_id = rlz_vendor_id(administratie_id, naam)
+        client, eigen_client = _open_client_indien_nodig(administratie_id, client)
+        try:
+            client.put_vendor(vendor_id, name=naam)
+        finally:
+            if eigen_client:
+                client.close()
+        brondata_bron = {"bron": "app_aangemaakt"}
 
     now = datetime.now(UTC)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
@@ -385,7 +425,7 @@ def maak_crediteur_aan(
                     administratie_id=administratie_id,
                     naam=naam,
                     is_gearchiveerd=False,
-                    brondata={"id": str(vendor_id), "Name": naam, "bron": "app_aangemaakt"},
+                    brondata={"id": str(vendor_id), "Name": naam, **brondata_bron},
                     laatst_gesynchroniseerd=now,
                     verdwenen_uit_bron_op=None,
                 )

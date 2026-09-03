@@ -24,14 +24,20 @@ Cadans: meelopend in `sync-alles` (rlz-sync-job 07:00) incrementeel vanaf max(da
 (her-lezing vangt latere storno's/correcties; een afgebroken run hervat vanzelf), eerste run vanaf
 1 januari van het lopende jaar; `--volledig` leest het jaar opnieuw. Dedupe met de app: een
 RLZ-factuur die de app zelf boekte (`verkoop_boeking.verkoop_rlz_id`) wordt overgeslagen — die regels
-staan al onder bron `verkoop_regel`."""
+staan al onder bron `verkoop_regel`.
+
+Knip naar Odoo (blok D 03-09, migratie 0102): heeft de administratie een ALLEEN-LEZEN Odoo-koppeling mét
+`voorraad_knip_datum`, dan is Odoo vanaf die factuurdatum de bron van de verkoop-uitstroom
+(`app/odoo/verkoop_uitstroom.py`) — RLZ-facturen met Date ≥ knip worden hier NIET geregistreerd (en eerder
+geregistreerde regels ervan verdwijnen, zoals bij een storno). Nooit dubbel tellen. De gedeelde schrijver
+`registreer_externe_factuur` (delete-then-insert per factuur, zelfde normalisatie) bedient beide routes."""
 
 from __future__ import annotations
 
 import logging
 import uuid
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -64,13 +70,21 @@ class RlzUitstroomTelling:
     overgeslagen_concept: int = 0
     overgeslagen_in_app: int = 0
     verwijderd_na_storno: int = 0
+    # Knip naar Odoo (blok D): facturen met Date ≥ knip zijn Odoo's terrein — hier overgeslagen (+ opgeruimd).
+    overgeslagen_na_knip: int = 0
+    verwijderd_na_knip: int = 0
+    knip_datum: date | None = None
     # Zichtbare skip-reden (01-09): een administratie zónder RLZ-facturatiemodule
     # (verkoopmodule_afwezig) wordt overgeslagen mét reden — nooit stil stuklopen op de 403.
     overgeslagen_reden: str | None = None
+    # Blok D: de uitkomst van de Odoo-leesroute voor dezelfde administratie (`OdooUitstroomTelling.als_dict()`),
+    # gevuld door `sync_voorraad_uitstroom`; None = Odoo-route niet gedraaid (alleen de RLZ-route aangeroepen).
+    odoo: dict[str, Any] | None = None
 
     def als_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["vanaf"] = self.vanaf.isoformat() if self.vanaf else None
+        d["knip_datum"] = self.knip_datum.isoformat() if self.knip_datum else None
         return d
 
 
@@ -188,25 +202,42 @@ def _verwijder_factuur(administratie_id: uuid.UUID, rlz_document_id: uuid.UUID) 
         return int(resultaat.rowcount or 0)
 
 
-def registreer_rlz_factuur(*, administratie_id: uuid.UUID, kop: dict[str, Any], regels: list[dict[str, Any]]) -> int:
-    """Eén geboekte RLZ-verkoopfactuur → haar regels als 'uit'-feiten (bron rlz_verkoop), vervangen
-    per factuur (idempotent). Normalisatie via dezelfde motor als de instroom (leverancier = onze
-    eigen verkoop → sentinel). Geeft het aantal regels terug."""
-    rlz_id = uuid.UUID(str(kop["id"]))
-    datum = _datum(kop)
-    if datum is None:
-        raise ValueError(f"RLZ-factuur {rlz_id} zonder bruikbare Date/BookDate")
-    referentie = kop.get("Reference") or (str(kop["InvoiceNumber"]) if kop.get("InvoiceNumber") else None)
-    debiteur = _debiteur(kop)
-    bruikbaar = [r for r in regels if str(r.get("Description") or "").strip()]
+@dataclass(frozen=True)
+class ExterneRegel:
+    """Eén factuurregel van een externe verkoopbron (RLZ of Odoo) in de vorm die de gedeelde schrijver
+    nodig heeft — het TEKEN van `aantal`/`netto_bedrag` is door de bron-route al bepaald."""
+
+    tekst: str
+    aantal: Decimal | None
+    prijs: Decimal | None
+    netto_bedrag: Decimal | None
+    artikelcode: str | None = None  # expliciet (Odoo default_code); None = uit de tekst halen
+    eenheid: str | None = None
+
+
+def registreer_externe_factuur(
+    *,
+    administratie_id: uuid.UUID,
+    bron: str,
+    extern_document_id: uuid.UUID,
+    referentie: str | None,
+    datum: date,
+    relatie_naam: str | None,
+    regels: list[ExterneRegel],
+) -> int:
+    """Gedeelde schrijver voor RLZ- én Odoo-verkoopfacturen (blok D): de regels van één geboekte externe
+    factuur als 'uit'-feiten, vervangen per factuur (idempotent — delete-then-insert op
+    `rlz_document_id`), normalisatie via dezelfde motor als de instroom (leverancier = onze eigen
+    verkoop → sentinel). Geeft het aantal geschreven regels terug."""
+    bruikbaar = [r for r in regels if r.tekst.strip()]
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
-        # Artikelcode = uit de Description ("(560140.4)"), richting 'uit' — eigen verkoopcodes, een
-        # andere sleutelruimte dan de leverancierscodes van de inkoopkant (v2 30-08).
+        # Artikelcode = expliciet (Odoo default_code) of uit de tekst ("(560140.4)"), richting 'uit' — eigen
+        # verkoopcodes, een andere sleutelruimte dan de leverancierscodes van de inkoopkant (v2 30-08).
         normalisaties = normalisatie.normaliseer_regels(
             session,
             administratie_id=administratie_id,
             document_id=None,
-            regels=[normalisatie.RegelInvoer(str(r["Description"]).strip(), None, None, "uit") for r in bruikbaar],
+            regels=[normalisatie.RegelInvoer(r.tekst.strip(), None, None, "uit", r.artikelcode) for r in bruikbaar],
         )
         nieuwe: list[VoorraadRegel] = []
         for volgnummer, (r, n) in enumerate(zip(bruikbaar, normalisaties, strict=True), start=1):
@@ -214,21 +245,21 @@ def registreer_rlz_factuur(*, administratie_id: uuid.UUID, kop: dict[str, Any], 
                 VoorraadRegel(
                     administratie_id=administratie_id,
                     document_id=None,
-                    rlz_document_id=rlz_id,
+                    rlz_document_id=extern_document_id,
                     rlz_referentie=str(referentie) if referentie else None,
                     richting="uit",
-                    bron=BRON,
+                    bron=bron,
                     datum=datum,
                     vendor_id=None,
-                    relatie_naam=debiteur,
+                    relatie_naam=relatie_naam,
                     regel_volgnummer=volgnummer,
-                    artikeltekst=str(r["Description"]).strip()[:500],
+                    artikeltekst=r.tekst.strip()[:500],
                     artikelcode=n.artikelcode,
                     soort=n.soort,
-                    aantal=_aantal(r),
-                    eenheid=None,
-                    prijs=_dec(r.get("Price")),
-                    netto_bedrag=_dec(r.get("NetAmount")),
+                    aantal=r.aantal,
+                    eenheid=r.eenheid,
+                    prijs=r.prijs,
+                    netto_bedrag=r.netto_bedrag,
                     artikelgroep_id=n.artikelgroep_id,
                     normalisatie_status=n.status,
                     normalisatie_zekerheid=n.zekerheid,
@@ -236,12 +267,49 @@ def registreer_rlz_factuur(*, administratie_id: uuid.UUID, kop: dict[str, Any], 
             )
         session.execute(
             delete(VoorraadRegel).where(
-                VoorraadRegel.administratie_id == administratie_id, VoorraadRegel.rlz_document_id == rlz_id
+                VoorraadRegel.administratie_id == administratie_id,
+                VoorraadRegel.rlz_document_id == extern_document_id,
             )
         )
         for rij in nieuwe:
             session.add(rij)
         return len(nieuwe)
+
+
+def registreer_rlz_factuur(*, administratie_id: uuid.UUID, kop: dict[str, Any], regels: list[dict[str, Any]]) -> int:
+    """Eén geboekte RLZ-verkoopfactuur → haar regels als 'uit'-feiten (bron rlz_verkoop), via de gedeelde
+    schrijver (vervangen per factuur, zelfde normalisatie). Geeft het aantal regels terug."""
+    rlz_id = uuid.UUID(str(kop["id"]))
+    datum = _datum(kop)
+    if datum is None:
+        raise ValueError(f"RLZ-factuur {rlz_id} zonder bruikbare Date/BookDate")
+    referentie = kop.get("Reference") or (str(kop["InvoiceNumber"]) if kop.get("InvoiceNumber") else None)
+    return registreer_externe_factuur(
+        administratie_id=administratie_id,
+        bron=BRON,
+        extern_document_id=rlz_id,
+        referentie=str(referentie) if referentie else None,
+        datum=datum,
+        relatie_naam=_debiteur(kop),
+        regels=[
+            ExterneRegel(
+                tekst=str(r["Description"]).strip(),
+                aantal=_aantal(r),
+                prijs=_dec(r.get("Price")),
+                netto_bedrag=_dec(r.get("NetAmount")),
+            )
+            for r in regels
+            if str(r.get("Description") or "").strip()
+        ],
+    )
+
+
+def knip_datum_voor(administratie_id: uuid.UUID) -> date | None:
+    """Blok D: de voorraad-knip van de alleen-lezen Odoo-koppeling (None = geen knip, RLZ blijft de bron)."""
+    from app.odoo.credentials import leeskoppeling_voor
+
+    verbinding = leeskoppeling_voor(administratie_id)
+    return verbinding.voorraad_knip_datum if verbinding is not None else None
 
 
 def sync_rlz_verkoopregels(
@@ -263,14 +331,22 @@ def sync_rlz_verkoopregels(
             return RlzUitstroomTelling(vanaf=None, overgeslagen_reden="facturatiemodule niet afgenomen (RLZ)")
     vanaf = _vanaf_datum(administratie_id, volledig=volledig)
     in_app = _in_app_geboekte_rlz_ids(administratie_id)
+    knip = knip_datum_voor(administratie_id)
     rlz, eigen_client = _open_client(administratie_id, client)
-    gelezen = verwerkt = regels = concept = in_app_n = verwijderd = 0
+    gelezen = verwerkt = regels = concept = in_app_n = verwijderd = na_knip = verwijderd_knip = 0
     try:
         for kop in lees_koppen(rlz, vanaf=vanaf):
             gelezen += 1
             rlz_id = uuid.UUID(str(kop["id"]))
             if rlz_id in in_app:
                 in_app_n += 1
+                continue
+            datum = _datum(kop)
+            if knip is not None and datum is not None and datum >= knip:
+                # Knip naar Odoo (blok D): vanaf de knip is Odoo de bron — niet registreren, en eerder
+                # (vóór de knip gezet werd) geregistreerde regels opruimen. Nooit dubbel tellen.
+                na_knip += 1
+                verwijderd_knip += _verwijder_factuur(administratie_id, rlz_id)
                 continue
             if int(kop.get("Status") or 0) not in GEBOEKT_STATUSSEN:
                 concept += 1
@@ -291,6 +367,9 @@ def sync_rlz_verkoopregels(
         overgeslagen_concept=concept,
         overgeslagen_in_app=in_app_n,
         verwijderd_na_storno=verwijderd,
+        overgeslagen_na_knip=na_knip,
+        verwijderd_na_knip=verwijderd_knip,
+        knip_datum=knip,
     )
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         record_audit_event(
@@ -307,17 +386,18 @@ def sync_rlz_verkoopregels(
     return telling
 
 
-def hernormaliseer_rlz_regels(*, administratie_id: uuid.UUID, met_ai: bool = True) -> int:
+def hernormaliseer_rlz_regels(*, administratie_id: uuid.UUID, met_ai: bool = True, bron: str = BRON) -> int:
     """ "⟳ Verversen"-deel voor de RLZ-bron: de opgeslagen RLZ-regels opnieuw door de normalisatie
     (bekende teksten/codes deterministisch, nieuwe via de AI-gates; `met_ai=False` = alleen
     deterministisch) — zónder RLZ-calls, zodat de UI-knop nooit op een lange RLZ-lees-lus wacht
     (504-les 23-08). Het lezen zelf hoort bij de dagelijkse sync of `voorraad-rlz-sync`. Zet óók de
-    legacy-status 'uitgesloten' (pre-0088) om naar het soort-label."""
+    legacy-status 'uitgesloten' (pre-0088) om naar het soort-label. `bron` = rlz_verkoop (default) of
+    odoo_verkoop (blok D — zelfde motor, expliciete artikelcode blijft staan)."""
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         rijen = list(
             session.scalars(
                 select(VoorraadRegel)
-                .where(VoorraadRegel.administratie_id == administratie_id, VoorraadRegel.bron == BRON)
+                .where(VoorraadRegel.administratie_id == administratie_id, VoorraadRegel.bron == bron)
                 .order_by(VoorraadRegel.datum, VoorraadRegel.regel_volgnummer)
             )
         )
@@ -327,7 +407,10 @@ def hernormaliseer_rlz_regels(*, administratie_id: uuid.UUID, met_ai: bool = Tru
             session,
             administratie_id=administratie_id,
             document_id=None,
-            regels=[normalisatie.RegelInvoer(r.artikeltekst, None, None, "uit") for r in rijen],
+            regels=[
+                normalisatie.RegelInvoer(r.artikeltekst, None, None, "uit", r.artikelcode if bron != BRON else None)
+                for r in rijen
+            ],
             met_ai=met_ai,
         )
         for r, n in zip(rijen, normalisaties, strict=True):
@@ -339,11 +422,31 @@ def hernormaliseer_rlz_regels(*, administratie_id: uuid.UUID, met_ai: bool = Tru
         return len(rijen)
 
 
+def sync_voorraad_uitstroom(*, administratie_id: uuid.UUID, volledig: bool = False) -> RlzUitstroomTelling:
+    """Beide leesroutes voor één administratie (blok D): RLZ (tot de knip) én Odoo (vanaf de knip, of alles bij een
+    Odoo-administratie). Een Odoo-administratie heeft geen RLZ-verkoop — de RLZ-route wordt dan zichtbaar
+    overgeslagen i.p.v. fail-loud op de sentinel te stranden. De Odoo-uitkomst hangt als `odoo` aan de telling."""
+    from app.backends.registry import Backend, OnbekendeBackend, backend_voor
+    from app.odoo import verkoop_uitstroom
+
+    try:
+        is_odoo = backend_voor(administratie_id) is Backend.ODOO
+    except OnbekendeBackend:
+        is_odoo = False
+    if is_odoo:
+        rlz = RlzUitstroomTelling(vanaf=None, overgeslagen_reden="administratie draait op Odoo (geen RLZ-verkoop)")
+    else:
+        rlz = sync_rlz_verkoopregels(administratie_id=administratie_id, volledig=volledig)
+    odoo = verkoop_uitstroom.sync_odoo_verkoopregels(administratie_id=administratie_id, volledig=volledig)
+    return replace(rlz, odoo=odoo.als_dict())
+
+
 def sync_alle_voorraad_administraties(
     *, volledig: bool = False
 ) -> dict[uuid.UUID, RlzUitstroomTelling | GeenRlzCredentials | str]:
     """Voor élke administratie mét de voorraad-opt-in (sync-alles-patroon): één kapotte administratie
-    laat de rest niet stuklopen; geen credential = zichtbaar overgeslagen, geen fout."""
+    laat de rest niet stuklopen; geen credential = zichtbaar overgeslagen, geen fout. Sinds blok D beide
+    leesroutes (RLZ + Odoo) per administratie."""
     with scoped_session(None) as session:
         ids = [
             a.id
@@ -356,7 +459,7 @@ def sync_alle_voorraad_administraties(
     resultaten: dict[uuid.UUID, RlzUitstroomTelling | GeenRlzCredentials | str] = {}
     for administratie_id in ids:
         try:
-            resultaten[administratie_id] = sync_rlz_verkoopregels(administratie_id=administratie_id, volledig=volledig)
+            resultaten[administratie_id] = sync_voorraad_uitstroom(administratie_id=administratie_id, volledig=volledig)
         except GeenRlzCredentials as exc:
             resultaten[administratie_id] = exc
         except Exception as exc:  # noqa: BLE001 — bewust breed: één administratie mag de rest niet raken

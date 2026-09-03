@@ -29,12 +29,15 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy.orm import Session
 
 from app.db.models import RlzCredential, TotpSecret
+from app.odoo.models import OdooKoppeling
 from app.security.envelope import MasterKeyProvider
 
 # (label, modelklasse, ciphertext-attribuut, sleutel-attribuut-voor-rapportage)
 ENVELOPE_TABELLEN: tuple[tuple[str, type, str, str], ...] = (
     ("rlz_credential", RlzCredential, "wachtwoord_ciphertext", "administratie_id"),
     ("totp_secret", TotpSecret, "secret_ciphertext", "gebruiker_id"),
+    # Odoo-adapter (migratie 0101): de API-key per Odoo-koppeling, zelfde envelope — rotatie neemt 'm mee.
+    ("odoo_koppeling", OdooKoppeling, "api_key_ciphertext", "administratie_id"),
 )
 
 
