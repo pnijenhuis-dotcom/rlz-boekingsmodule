@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -654,7 +654,9 @@ def voeg_samen(
         )
 
 
-def maak_samenvoegen_ongedaan(*, document_id: uuid.UUID, actor_id: uuid.UUID) -> uuid.UUID:
+def maak_samenvoegen_ongedaan(
+    *, document_id: uuid.UUID, actor_id: uuid.UUID, administratie_kandidaten: Sequence[uuid.UUID] = ()
+) -> uuid.UUID:
     """Ongedaan maken zolang het leidende document nog in de verzamelbak staat: de tweede rij komt
     terug (samengevoegd → niet_toegewezen), het leidende document verliest zijn beeld/bron-kolommen
     (het bestand blijft op de opslag staan — niets wordt verwijderd). Geeft het id van de teruggezette
@@ -663,7 +665,11 @@ def maak_samenvoegen_ongedaan(*, document_id: uuid.UUID, actor_id: uuid.UUID) ->
     Nagebundeld paar (nabundel-nazorg 03-09, `intake/nabundelen.py`): is `document_id` géén bak-rij maar
     het al toegewezen PDF-document waaraan een UBL-rij is nagebundeld, dan loopt dezelfde route via
     `maak_nabundeling_ongedaan` — de administratie komt uit de tijdlijn van de UBL-rij (platformbrede rij,
-    geen RLS-doorbraak); het leidende document wordt binnen die scope geladen (geen scope = 404)."""
+    geen RLS-doorbraak); het leidende document wordt binnen die scope geladen (geen scope = 404).
+
+    Dubbelpaar (03-09, uitbreiding): was de UBL zelf al een DOCUMENT in de administratie, dan is er geen
+    platformbrede rij — de UBL-rij wordt dan gezocht binnen `administratie_kandidaten` (de router geeft
+    uitsluitend de administraties in de scope van de actor door; niets daarbuiten wordt gelezen)."""
     from app.intake import nabundelen  # lokaal: geen importcyclus via documenten.service
 
     with scoped_session(None, actor_id=actor_id) as session:
@@ -683,6 +689,20 @@ def maak_samenvoegen_ongedaan(*, document_id: uuid.UUID, actor_id: uuid.UUID) ->
             adm = nabundelen.nagebundelde_administratie(session, ubl_rij.id) if ubl_rij is not None else None
             if ubl_rij is not None and adm is not None:
                 nagebundeld = (ubl_rij.id, adm)
+    if not in_bak and nagebundeld is None:
+        for adm in administratie_kandidaten:
+            with scoped_session(adm, actor_id=actor_id) as session:
+                ubl_rij = session.scalars(
+                    select(Document).where(
+                        Document.samengevoegd_in_id == document_id,
+                        Document.status == DocumentStatus.SAMENGEVOEGD,
+                        Document.administratie_id == adm,
+                    )
+                ).first()
+                if ubl_rij is not None:
+                    nagebundeld = (ubl_rij.id, adm)
+            if nagebundeld is not None:
+                break
     if nagebundeld is not None:
         return nabundelen.maak_nabundeling_ongedaan(
             administratie_id=nagebundeld[1], ubl_document_id=nagebundeld[0], actor_id=actor_id

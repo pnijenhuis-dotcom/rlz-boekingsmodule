@@ -74,8 +74,11 @@ export function documentRoute(administratieId: string, d: DocumentListItemDto, c
   return `/documenten/${administratieId}/${d.id}${q ? `?${q}` : ''}`
 }
 
-/** Openstaand = niet terminaal (zelfde definitie als de backend-overzichtstellers:
- * geboekt/verwijderd/gesplitst tellen niet als openstaand werk). */
+/** Terminale statussen — zelfde definitie als de backend-overzichtstellers
+ * (`_TERMINAAL_VOOR_TELLERS`): geboekt/verwijderd/gesplitst/samengevoegd tellen niet als openstaand werk. */
+export const TERMINALE_STATUSSEN = ['geboekt', 'verwijderd', 'gesplitst', 'samengevoegd']
+
+/** Openstaand = niet terminaal. */
 export function isOpenstaand(d: DocumentListItemDto): boolean {
-  return d.status !== 'geboekt' && d.status !== 'verwijderd' && d.status !== 'gesplitst'
+  return !TERMINALE_STATUSSEN.includes(d.status)
 }

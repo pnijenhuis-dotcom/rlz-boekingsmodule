@@ -37,7 +37,11 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset({DocumentStatus.TE_CONTROLEREN})
     assert DocumentStatus.VERWIJDERD not in _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT]
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GESPLITST] == frozenset()
-    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.SAMENGEVOEGD] == frozenset({DocumentStatus.NIET_TOEGEWEZEN})
+    # Samengevoegd: alleen de ongedaan-uitgangen — terug in de bak (niet_toegewezen) of, voor een
+    # nagebundeld UBL-document (03-09), terug naar de status van vóór de nabundeling.
+    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.SAMENGEVOEGD] == frozenset(
+        {DocumentStatus.NIET_TOEGEWEZEN, DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN}
+    )
     for van in DocumentStatus:
         if van in (
             DocumentStatus.GEBOEKT,

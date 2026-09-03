@@ -206,10 +206,12 @@ intake-herlezen: check-versions
 	.venv/bin/python -m app.cli intake-herlezen --sinds $(or $(SINDS),2026-08-25) $(if $(DRY_RUN),--dry-run,)
 
 # Nabundel-nazorg (03-09): verzamelbak-UBL's koppelen aan hun al toegewezen PDF-tegenhanger (UBL = data,
-# PDF = beeld, her-extractie; alleen te_controleren/handmatig_afmaken). DRY_RUN=1 eerst. Tegen de cloud:
-# scripts/cloud_cli.py verzamelbak-nabundelen --dry-run (mét DOCUMENT_GCS_BUCKET — leest en schrijft bestanden).
+# PDF = beeld, her-extractie; alleen te_controleren/handmatig_afmaken). DRY_RUN=1 eerst. OOK_TOEGEWEZEN=1 neemt de
+# dubbelparen mee (03-09: al toegewezen UBL-document naast zijn PDF-document in dezelfde administratie); ADMINISTRATIE=<uuid>
+# begrenst de run tot één administratie. Tegen de cloud:
+# scripts/cloud_cli.py verzamelbak-nabundelen --dry-run [--ook-toegewezen] (mét DOCUMENT_GCS_BUCKET — leest en schrijft bestanden).
 verzamelbak-nabundelen: check-versions
-	.venv/bin/python -m app.cli verzamelbak-nabundelen $(if $(DRY_RUN),--dry-run,)
+	.venv/bin/python -m app.cli verzamelbak-nabundelen $(if $(DRY_RUN),--dry-run,) $(if $(OOK_TOEGEWEZEN),--ook-toegewezen,) $(if $(ADMINISTRATIE),--administratie $(ADMINISTRATIE),)
 
 # Maandagochtend-digest kantoor los draaien (job rlz-kantoor-digest, ma 07:30; idempotent per week).
 kantoor-digest: check-versions

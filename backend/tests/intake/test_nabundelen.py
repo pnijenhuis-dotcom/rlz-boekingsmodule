@@ -438,3 +438,317 @@ class TestOngedaan:
         assert verzamelbak.maak_samenvoegen_ongedaan(document_id=ubl_id, actor_id=gescoopte_gebruiker) == pdf_id
         with pytest.raises(verzamelbak.SamenvoegenGeweigerd):
             verzamelbak.maak_samenvoegen_ongedaan(document_id=ubl_id, actor_id=gescoopte_gebruiker)
+
+
+# ---- Dubbelparen (uitbreiding 03-09, akkoord Peter) ---------------------------------------------------
+
+
+def _dubbelpaar(
+    actor: uuid.UUID,
+    administratie_id: uuid.UUID,
+    *,
+    ubl_naam: str = UBL_NAAM,
+    pdf_naam: str = PDF_NAAM,
+    factuurnummer: str = "2080141234",
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """Herschept de cloud-situatie van 03-09: het gescheiden paar, waarna de UBL vanuit de verzamelbak
+    handmatig (bulk) aan dezelfde administratie is toegewezen — twee documenten van dezelfde factuur
+    náást elkaar op te_controleren. Geeft (bericht_id, ubl_id, pdf_id)."""
+    bericht_id, ubl_id, pdf_id = _gescheiden_paar(
+        actor,
+        administratie_id,
+        ubl_naam=ubl_naam,
+        pdf_naam=pdf_naam,
+        ubl_inhoud=bouw_ubl(klant="Universal Steigerbouw B.V.", factuurnummer=factuurnummer),
+    )
+    resultaat = verzamelbak.wijs_toe(document_id=ubl_id, administratie_id=administratie_id, actor_id=actor)
+    assert resultaat.status.value == "te_controleren"
+    return bericht_id, ubl_id, pdf_id
+
+
+def _dubbelparen(
+    actor: uuid.UUID, administratie_id: uuid.UUID, aantal: int
+) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]]:
+    return [
+        _dubbelpaar(actor, administratie_id, ubl_naam=f"RLZ-{n}.xml", pdf_naam=f"RLZ-{n}.pdf", factuurnummer=str(n))
+        for n in range(1, aantal + 1)
+    ]
+
+
+def _verbroken_verbinding() -> Exception:
+    from sqlalchemy.exc import OperationalError
+
+    return OperationalError(
+        "SELECT 1", {}, Exception("server closed the connection unexpectedly"), connection_invalidated=True
+    )
+
+
+class TestDubbelparen:
+    def test_zonder_vlag_geen_kandidaat_met_vlag_samengevoegd(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        ubl_voor = _document(admin_engine, ubl_id)
+        assert ubl_voor["status"] == "te_controleren" and ubl_voor["administratie_id"] == administratie_id
+        voor = _document(admin_engine, pdf_id)
+        # De verzamelbak-variant ziet het paar niet (de UBL is geen bak-rij meer) — bestaand gedrag.
+        assert nabundelen.nabundel_verzamelbak().kandidaten == 0
+        with scoped_session(None) as session:
+            regels_voor = [(r.id, r.administratie_id) for r in session.scalars(select(ToewijzingRegel))]
+        assert len(regels_voor) >= 1  # Barbara's toewijzing leerde wél (mens-besluit)
+
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.als_dict() == {
+            "kandidaten": 1,
+            "samengevoegd": 1,
+            "gekoppeld_voorstel_behouden": 0,
+            "overgeslagen": 0,
+            "mislukt": 0,
+        }
+        assert telling.gestopt_reden is None and telling.herkanst == 0
+
+        # PDF-document = HET document met de UBL als data en de PDF als beeld; voorstel uit de UBL.
+        na = _document(admin_engine, pdf_id)
+        assert na["bestandsnaam"] == UBL_NAAM and na["opslag_pad"] == f"{administratie_id}/{pdf_id}.xml"
+        assert na["bron_opslag_pad"] == voor["opslag_pad"] and na["bron_bestandsnaam"] == PDF_NAAM
+        assert na["status"] == "te_controleren"
+        voorstel = boekvoorstel_service.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=pdf_id)
+        assert voorstel.opgeslagen is False and voorstel.referentie == "2080141234"
+        assert "document_nagebundeld" in _audit_acties(admin_engine, pdf_id)
+        assert any(d.get("dubbelpaar") is True for d in _tijdlijn_details(administratie_id, pdf_id))
+
+        # UBL-document: terminaal samengevoegd, blíjft in de administratie (nooit verwijderd), verwijst.
+        ubl = _document(admin_engine, ubl_id)
+        assert ubl["status"] == "samengevoegd" and ubl["samengevoegd_in_id"] == pdf_id
+        assert ubl["administratie_id"] == administratie_id
+        assert "document_nagebundeld_in" in _audit_acties(admin_engine, ubl_id)
+        ubl_details = _tijdlijn_details(administratie_id, ubl_id)
+        assert any(
+            d.get("vorige_status") == "te_controleren"
+            and d.get(nabundelen.NABUNDEL_ADMINISTRATIE_SLEUTEL) == str(administratie_id)
+            for d in ubl_details
+        )
+        # Zichtbaar in de documentenlijst als samengevoegd, maar geen openstaand werk meer in de tellers.
+        lijst = {
+            d.document.id: d.document.status.value
+            for d in documenten_service.lijst_documenten(administratie_id=administratie_id)
+        }
+        assert lijst[ubl_id] == "samengevoegd" and lijst[pdf_id] == "te_controleren"
+        klant = documenten_service.werkvoorraad_overzicht(administratie_ids_met_naam=[(administratie_id, "X")])[0]
+        assert klant.te_controleren == 1
+        # Het toewijzings-geheugen leerde niets van de nabundeling (wel eerder van Barbara's toewijzing).
+        with scoped_session(None) as session:
+            assert [(r.id, r.administratie_id) for r in session.scalars(select(ToewijzingRegel))] == regels_voor
+        # Idempotent.
+        tweede = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert tweede.kandidaten == 0
+
+    def test_administratie_filter_begrenst_de_run(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        buiten = nabundelen.nabundel_verzamelbak(ook_toegewezen=True, administratie_id=uuid.uuid4())
+        assert buiten.kandidaten == 0 and _document(admin_engine, ubl_id)["status"] == "te_controleren"
+        binnen = nabundelen.nabundel_verzamelbak(ook_toegewezen=True, administratie_id=administratie_id)
+        assert binnen.samengevoegd == 1 and binnen.uitkomsten[0].administratie_id == administratie_id
+        assert binnen.per_administratie() == {administratie_id: {"samengevoegd": 1}}
+        assert _document(admin_engine, pdf_id)["bestandsnaam"] == UBL_NAAM
+
+    def test_dry_run_meldt_dubbelpaar_en_schrijft_niets(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id)}
+        telling = nabundelen.nabundel_verzamelbak(dry_run=True, ook_toegewezen=True)
+        assert telling.kandidaten == 1 and telling.uitkomsten[0].uitkomst == nabundelen.UITKOMST_KANDIDAAT
+        assert "dubbelpaar" in (telling.uitkomsten[0].reden or "")
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+
+    def test_ubl_document_met_opgeslagen_voorstel_wordt_overgeslagen(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        boekvoorstel_service.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=ubl_id,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=None,
+            referentie="MENS-UBL",
+            factuurdatum=None,
+            totaalbedrag=Decimal("121.00"),
+            regels=[],
+        )
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id)}
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.kandidaten == 1 and telling.overgeslagen == 1
+        assert "opgeslagen boekvoorstel" in (telling.uitkomsten[0].reden or "")
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+
+    @pytest.mark.parametrize(("status", "fragment"), [("geboekt", "al geboekt"), ("vraag_open", "open vraag")])
+    def test_pdf_tegenhanger_met_andere_status_wordt_overgeslagen(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        status: str,
+        fragment: str,
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        _zet_status(admin_engine, pdf_id, status)
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id)}
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.overgeslagen == 1 and fragment in (telling.uitkomsten[0].reden or "")
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+
+    def test_ubl_document_dat_al_verder_is_wordt_niet_geraakt(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        _zet_status(admin_engine, ubl_id, "klaar_om_te_boeken")
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        # Niet eens een kandidaat: alleen te_controleren/handmatig_afmaken-UBL-documenten doen mee.
+        assert telling.kandidaten == 0
+        assert _document(admin_engine, pdf_id)["bestandsnaam"] == PDF_NAAM
+
+    def test_twee_pdf_documenten_met_dezelfde_stam_is_twijfel(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        bericht_id, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        tweede_pdf = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=PDF_NAAM,
+            inhoud=bouw_pdf(1) + b"tweede exemplaar",
+            actor_id=gescoopte_gebruiker,
+            intake_bericht_id=bericht_id,
+        ).document_id
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.kandidaten == 1 and telling.overgeslagen == 1
+        assert "meerduidig" in (telling.uitkomsten[0].reden or "")
+        assert _document(admin_engine, pdf_id)["bestandsnaam"] == PDF_NAAM
+        assert _document(admin_engine, tweede_pdf)["bestandsnaam"] == PDF_NAAM
+        assert _document(admin_engine, ubl_id)["status"] == "te_controleren"
+
+    def test_ongedaan_zet_ubl_document_terug_naar_zijn_vorige_status(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        _zet_status(admin_engine, ubl_id, "handmatig_afmaken")
+        voor = _document(admin_engine, pdf_id)
+        assert nabundelen.nabundel_verzamelbak(ook_toegewezen=True).samengevoegd == 1
+        assert _document(admin_engine, ubl_id)["status"] == "samengevoegd"
+
+        # Zonder scope-kandidaten (bv. een actor zonder scope) is er niets te vinden: fail-closed, niets geraakt.
+        with pytest.raises((verzamelbak.DocumentNietInVerzamelbak, documenten_service.DocumentNietGevonden)):
+            verzamelbak.maak_samenvoegen_ongedaan(document_id=pdf_id, actor_id=gescoopte_gebruiker)
+        assert _document(admin_engine, ubl_id)["status"] == "samengevoegd"
+
+        # De HTTP-route geeft de scope-administraties van de actor mee → het paar gaat uit elkaar.
+        r = client.post(f"/verzamelbak/{pdf_id}/samenvoegen-ongedaan", headers=_bearer(gescoopte_gebruiker))
+        assert r.status_code == 200, r.text
+        assert r.json()["teruggezet_document_id"] == str(ubl_id)
+        na = _document(admin_engine, pdf_id)
+        assert na["bestandsnaam"] == PDF_NAAM and na["opslag_pad"] == voor["opslag_pad"]
+        assert na["sha256_hash"] == voor["sha256_hash"] and na["bron_opslag_pad"] is None
+        ubl = _document(admin_engine, ubl_id)
+        # Terug naar de status van vóór de nabundeling — niet naar de verzamelbak, niet hardgecodeerd te_controleren.
+        assert ubl["status"] == "handmatig_afmaken" and ubl["administratie_id"] == administratie_id
+        assert ubl["samengevoegd_in_id"] is None
+        assert verzamelbak.lijst_verzamelbak() == []
+        assert "document_nabundeling_ongedaan" in _audit_acties(admin_engine, pdf_id)
+        # En opnieuw nabundelen kan gewoon weer.
+        assert nabundelen.nabundel_verzamelbak(ook_toegewezen=True).samengevoegd == 1
+
+    def test_ongedaan_zonder_scope_op_de_administratie_raakt_niets(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        assert nabundelen.nabundel_verzamelbak(ook_toegewezen=True).samengevoegd == 1
+        zonder_scope = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "
+                    "VALUES (:id, 'Zonder scope', :mail, 'boekhouding', 'actief')"
+                ),
+                {"id": zonder_scope, "mail": f"{zonder_scope}@test.local"},
+            )
+        r = client.post(f"/verzamelbak/{pdf_id}/samenvoegen-ongedaan", headers=_bearer(zonder_scope))
+        assert r.status_code in (404, 409), r.text
+        assert _document(admin_engine, ubl_id)["status"] == "samengevoegd"
+        assert _document(admin_engine, pdf_id)["bestandsnaam"] == UBL_NAAM
+
+
+class TestVerbindingsBlip:
+    """Blok B 03-09: precies één herkansing per paar bij een verbroken databaseverbinding; het paar is één
+    transactie (schoon teruggerold), dus de herkansing herhaalt nooit een half item."""
+
+    def test_blip_halverwege_wordt_een_keer_herkanst_en_de_rest_loopt_door(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        paren = _dubbelparen(gescoopte_gebruiker, administratie_id, 3)
+        echte_parser = nabundelen.parseer_ubl_factuur
+        aanroepen: list[bytes] = []
+
+        def parser_met_blip(inhoud: bytes):
+            aanroepen.append(inhoud)
+            # Tweede paar, eerste poging: de verbinding valt weg mídden in de transactie (vóór enige write).
+            if len(aanroepen) == 2:
+                raise _verbroken_verbinding()
+            return echte_parser(inhoud)
+
+        monkeypatch.setattr(nabundelen, "parseer_ubl_factuur", parser_met_blip)
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True, herkansing_wacht_seconds=0)
+        assert telling.samengevoegd == 3 and telling.mislukt == 0 and telling.herkanst == 1
+        assert telling.gestopt_reden is None and len(aanroepen) == 4
+        herkanst = [u for u in telling.uitkomsten if u.herkanst]
+        assert len(herkanst) == 1 and "(ná herkansing)" in herkanst[0].als_regel()
+        for _, ubl_id, pdf_id in paren:
+            assert _document(admin_engine, ubl_id)["status"] == "samengevoegd"
+            assert _document(admin_engine, pdf_id)["bestandsnaam"].endswith(".xml")
+        # Precies één audit per paar — de teruggerolde eerste poging liet niets achter.
+        for _, _ubl_id, pdf_id in paren:
+            assert _audit_acties(admin_engine, pdf_id).count("document_nagebundeld") == 1
+        assert nabundelen.nabundel_verzamelbak(ook_toegewezen=True).kandidaten == 0
+
+    def test_blijvende_verbindingsfout_is_mislukt_met_reden_en_noodrem_stopt_de_run(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        paren = _dubbelparen(gescoopte_gebruiker, administratie_id, 4)
+        voor = {pdf_id: _document(admin_engine, pdf_id) for _, _, pdf_id in paren}
+        echte_parser = nabundelen.parseer_ubl_factuur
+
+        def parser_zonder_verbinding(_inhoud: bytes):
+            raise _verbroken_verbinding()
+
+        monkeypatch.setattr(nabundelen, "parseer_ubl_factuur", parser_zonder_verbinding)
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True, herkansing_wacht_seconds=0)
+        assert telling.kandidaten == 4 and telling.mislukt == nabundelen.MAX_OPEENVOLGENDE_VERBINDINGSFOUTEN
+        assert telling.niet_geprobeerd == 1 and telling.gestopt_reden and "opeenvolgende" in telling.gestopt_reden
+        assert all("verbroken" in (u.reden or "") for u in telling.uitkomsten)
+        for pdf_id, snapshot in voor.items():
+            assert _document(admin_engine, pdf_id) == snapshot
+        # Een gewone (niet-verbindings)fout wordt níét herkanst.
+        aanroepen: list[int] = []
+
+        def parser_kapot(_inhoud: bytes):
+            aanroepen.append(1)
+            raise RuntimeError("iets anders")
+
+        monkeypatch.setattr(nabundelen, "parseer_ubl_factuur", parser_kapot)
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True, herkansing_wacht_seconds=0)
+        assert telling.mislukt == 4 and len(aanroepen) == 4 and telling.gestopt_reden is None
+        # Verbinding terug: de run is hervatbaar en rondt alles af.
+        monkeypatch.setattr(nabundelen, "parseer_ubl_factuur", echte_parser)
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.samengevoegd == 4

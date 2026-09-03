@@ -1422,6 +1422,15 @@ class WerkvoorraadKlant:
         ) > 0
 
 
+#: Terminale statussen voor de werkvoorraad-tellers (zie werkvoorraad_overzicht).
+_TERMINAAL_VOOR_TELLERS = [
+    DocumentStatus.VERWIJDERD,
+    DocumentStatus.GEBOEKT,
+    DocumentStatus.GESPLITST,
+    DocumentStatus.SAMENGEVOEGD,
+]
+
+
 def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, str]]) -> list[WerkvoorraadKlant]:
     """Tellers per administratie voor de werkvoorraad-klantenlijst (mockup #werkvoorraad). De
     aanroeper (router) levert uitsluitend administraties binnen de scope van de gebruiker aan —
@@ -1438,10 +1447,10 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                     .where(
                         Document.administratie_id == administratie_id,
                         # Terminale statussen tellen niet als openstaand werk: geboekt,
-                        # verwijderd en gesplitst (de kinderen van een splitsing tellen zelf).
-                        Document.status.notin_(
-                            [DocumentStatus.VERWIJDERD, DocumentStatus.GEBOEKT, DocumentStatus.GESPLITST]
-                        ),
+                        # verwijderd, gesplitst (de kinderen van een splitsing tellen zelf) en
+                        # samengevoegd (nabundel-dubbelpaar 03-09: het exemplaar leeft door in het
+                        # leidende document).
+                        Document.status.notin_(_TERMINAAL_VOOR_TELLERS),
                     )
                     .group_by(Document.status)
                 ).all()
@@ -1457,9 +1466,7 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                     .where(
                         Factuurmatch.administratie_id == administratie_id,
                         Factuurmatch.uitkomst == "afwijking",
-                        Document.status.notin_(
-                            [DocumentStatus.VERWIJDERD, DocumentStatus.GEBOEKT, DocumentStatus.GESPLITST]
-                        ),
+                        Document.status.notin_(_TERMINAAL_VOOR_TELLERS),
                     )
                 )
                 or 0
@@ -1472,9 +1479,7 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                     .where(
                         DuplicaatSignaal.administratie_id == administratie_id,
                         DuplicaatSignaal.uitkomst == DuplicaatSignaalUitkomst.MOGELIJK_DUPLICAAT.value,
-                        Document.status.notin_(
-                            [DocumentStatus.VERWIJDERD, DocumentStatus.GEBOEKT, DocumentStatus.GESPLITST]
-                        ),
+                        Document.status.notin_(_TERMINAAL_VOOR_TELLERS),
                     )
                 )
                 or 0

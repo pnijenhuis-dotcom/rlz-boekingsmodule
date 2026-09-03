@@ -12,7 +12,7 @@ import type {
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { StatusChip } from '../werkvoorraad/StatusChip'
 import { GeboektInRlzChip } from './GeboektInRlz'
-import { documentRoute } from '../werkvoorraad/format'
+import { documentRoute, TERMINALE_STATUSSEN } from '../werkvoorraad/format'
 import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
 import { lijstContextUitParams, lijstPositie, lijstRoute, type LijstContext } from '../werkvoorraad/lijstContext'
 import { SNELTOETSEN_CONTROLESCHERM, useSneltoetsen } from './sneltoetsen'
@@ -888,7 +888,7 @@ export function DocumentDetailScreen() {
               uitsplitsing, periode-keuze/herberekenen, concept-mail bij afwijking) — een
               signaal bovenop de normale flow (besluit 3, geen status); de boeken-ondanks-
               afwijking-bevestiging blijft de pop-up in het boekvoorstel. */}
-          {detail.factuurmatch && !['geboekt', 'verwijderd', 'gesplitst'].includes(detail.status) && (
+          {detail.factuurmatch && !TERMINALE_STATUSSEN.includes(detail.status) && (
             <MatchSectie
               administratieId={administratieId}
               documentId={documentId}
@@ -898,7 +898,7 @@ export function DocumentDetailScreen() {
           )}
           {/* Materiaalcontrole (steigerbouw-run D6): inkoopfacturen van gekoppelde verhuur-
               crediteuren vs geregistreerde leveringen — zelfde vlag-patroon als de urenmatch. */}
-          {detail.materiaalmatch && !['geboekt', 'verwijderd', 'gesplitst'].includes(detail.status) && (
+          {detail.materiaalmatch && !TERMINALE_STATUSSEN.includes(detail.status) && (
             <MateriaalMatchSectie
               administratieId={administratieId}
               documentId={documentId}

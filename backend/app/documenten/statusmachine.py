@@ -89,6 +89,11 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             # Opnieuw extraheren van een gróót document gaat via de wachtrij (async), niet
             # synchroon — zelfde klein-vs-groot-routing als bij de upload.
             DocumentStatus.EXTRACTIE_WACHTRIJ,
+            # Nabundel-nazorg dubbelparen (03-09, akkoord Peter): een al toegewezen UBL-DOCUMENT dat
+            # naast zijn PDF-tegenhanger in dezelfde administratie staat wordt in dat PDF-document
+            # nagebundeld (UBL = data, PDF = beeld) en gaat zelf terminaal naar samengevoegd —
+            # uitsluitend via app/intake/nabundelen.py, nooit verwijderd.
+            DocumentStatus.SAMENGEVOEGD,
         }
     ),
     DocumentStatus.KLAAR_OM_TE_BOEKEN: frozenset(
@@ -156,6 +161,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.AFGEWEZEN,
             DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
             DocumentStatus.VERWIJDERD,
+            DocumentStatus.SAMENGEVOEGD,  # nabundel-nazorg dubbelparen (03-09), zie te_controleren
         }
     ),
     # Accorderen herstelt de HERKOMST-status van vóór het aanbieden
@@ -197,8 +203,13 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # inkooppad nog steeds niet (dat blijft actie 19 in de RLZ-UI + detectie).
     DocumentStatus.GEBOEKT: frozenset({DocumentStatus.TE_CONTROLEREN}),
     DocumentStatus.GESPLITST: frozenset(),
-    # Samenvoegen ongedaan maken (zolang het leidende document nog in de verzamelbak staat).
-    DocumentStatus.SAMENGEVOEGD: frozenset({DocumentStatus.NIET_TOEGEWEZEN}),
+    # Samenvoegen ongedaan maken: een bak-rij gaat terug naar niet_toegewezen (zolang het leidende
+    # document nog in de verzamelbak staat of nagebundeld is); een nagebundeld UBL-DOCUMENT (03-09)
+    # gaat terug naar de status van vóór de nabundeling (te_controleren/handmatig_afmaken — uit het
+    # tijdlijn-detail `vorige_status`, nooit hardgecodeerd). Nooit naar verwijderd.
+    DocumentStatus.SAMENGEVOEGD: frozenset(
+        {DocumentStatus.NIET_TOEGEWEZEN, DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN}
+    ),
     DocumentStatus.VERWIJDERD: _NIET_GEBOEKTE_STATUSSEN,
 }
 

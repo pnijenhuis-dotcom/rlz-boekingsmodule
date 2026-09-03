@@ -35,6 +35,8 @@ export function redenNietVerplaatsbaar(status: string, soort: string): string | 
       return 'Verwijderd — herstel het document eerst.'
     case 'gesplitst':
       return 'Gesplitst brondocument — verplaats de losse delen.'
+    case 'samengevoegd':
+      return 'Samengevoegd met het document van dezelfde factuur — verplaats dát document.'
     default:
       return `Verplaatsen is niet mogelijk vanuit status ${status}.`
   }

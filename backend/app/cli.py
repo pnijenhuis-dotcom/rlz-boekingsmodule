@@ -200,24 +200,54 @@ def _verzamelbak_nabundelen(args: argparse.Namespace) -> int:
     beeld, deterministische her-extractie; UBL-rij → samengevoegd). Alleen te_controleren/
     handmatig_afmaken zonder opgeslagen voorstel wordt her-geëxtraheerd; alles anders overgeslagen mét
     reden. Geen AI, geen RLZ-calls. --dry-run toetst alle poorten en schrijft niets."""
+    from sqlalchemy import select
+
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
     from app.intake import nabundelen
 
-    telling = nabundelen.nabundel_verzamelbak(dry_run=args.dry_run)
+    administratie_filter: uuid.UUID | None = None
+    if args.administratie:
+        try:
+            administratie_filter = uuid.UUID(args.administratie)
+        except ValueError:
+            print(f"Ongeldig --administratie-id: {args.administratie!r}", file=sys.stderr)
+            return 2
+    telling = nabundelen.nabundel_verzamelbak(
+        dry_run=args.dry_run, ook_toegewezen=args.ook_toegewezen, administratie_id=administratie_filter
+    )
+    with scoped_session(None) as session:
+        namen = dict(session.execute(select(Administratie.id, Administratie.naam)).all())
     label = " [dry-run]" if args.dry_run else ""
+    if args.ook_toegewezen:
+        label += " [ook toegewezen UBL-documenten]"
+    if administratie_filter is not None:
+        label += f" [alleen {namen.get(administratie_filter, administratie_filter)}]"
     print(
         f"verzamelbak-nabundelen{label}: {telling.kandidaten} kandidaat/kandidaten — "
         f"{telling.samengevoegd} samengevoegd (+ her-extractie), "
         f"{telling.gekoppeld_voorstel_behouden} gekoppeld met behoud van het opgeslagen voorstel, "
         f"{telling.overgeslagen} overgeslagen, {telling.mislukt} mislukt"
+        + (f", {telling.herkanst} ná herkansing geslaagd" if telling.herkanst else "")
+        + (f", {telling.niet_geprobeerd} niet geprobeerd" if telling.niet_geprobeerd else "")
     )
     per_reden = telling.overgeslagen_per_reden()
     if per_reden:
         print("  overgeslagen per reden:")
         for reden, aantal in sorted(per_reden.items(), key=lambda kv: -kv[1]):
             print(f"    {aantal}× {reden}")
+    per_adm = telling.per_administratie()
+    if per_adm:
+        print("  per administratie:")
+        for adm_id, per in sorted(per_adm.items(), key=lambda kv: str(namen.get(kv[0], kv[0]))):
+            samenvatting = ", ".join(f"{n} {u}" for u, n in sorted(per.items()))
+            print(f"    {namen.get(adm_id, adm_id or 'administratie onbekend')}: {samenvatting}")
     for uitkomst in telling.uitkomsten:
-        print(f"  - {uitkomst.als_regel()}")
-    return 0
+        naam = namen.get(uitkomst.administratie_id, "?") if uitkomst.administratie_id else "?"
+        print(f"  - [{naam}] {uitkomst.als_regel()}")
+    if telling.gestopt_reden:
+        print(f"  ! {telling.gestopt_reden}")
+    return 0 if not telling.gestopt_reden else 1
 
 
 def _toewijzing_regels_opschonen(args: argparse.Namespace) -> int:
@@ -1632,6 +1662,19 @@ def main(argv: list[str] | None = None) -> int:
         "twijfel = overgeslagen mét reden. Geen AI. --dry-run toetst alles en schrijft niets.",
     )
     nabundel_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+    nabundel_parser.add_argument(
+        "--ook-toegewezen",
+        action="store_true",
+        help="Dubbelparen (03-09): óók een al toegewezen UBL-DOCUMENT dat naast zijn PDF-tegenhanger in dezelfde "
+        "administratie staat (zelfde e-mail + naamstam) in dat PDF-document nabundelen; het UBL-document gaat naar "
+        "samengevoegd (nooit verwijderd). Zelfde poorten aan beide kanten.",
+    )
+    nabundel_parser.add_argument(
+        "--administratie",
+        default=None,
+        metavar="UUID",
+        help="Beperk de run tot paren waarvan het leidende document in deze administratie staat (bereik-begrenzing).",
+    )
 
     subparsers.add_parser(
         "bewaking-probe",

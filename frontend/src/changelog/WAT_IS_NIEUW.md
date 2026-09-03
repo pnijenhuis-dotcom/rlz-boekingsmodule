@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-03 — Dubbele UBL- en PDF-documenten van dezelfde factuur samengevoegd; nazorg-runs bestand tegen een verbindingsstoring
+
+- Stond dezelfde factuur twee keer in de werkvoorraad van een administratie, één keer als UBL-document en één keer als PDF-document uit dezelfde e-mail, dan voegt de nazorg-run die nu samen: het PDF-document blijft staan met de gegevens uit de UBL en de PDF als beeld, het UBL-document krijgt de status "Samengevoegd" en verdwijnt uit het openstaande werk. Niets wordt verwijderd en de tijdlijn van beide documenten vermeldt de stap.
+- Dat gebeurt alleen als beide documenten nog te controleren zijn en niemand er een boekvoorstel op heeft opgeslagen. Is één van de twee al beoordeeld, geboekt, bij de klant of afgewezen, dan blijven beide staan met de reden in het rapport. Twijfel over welk paar bij elkaar hoort betekent overslaan.
+- Samenvoegen is ongedaan te maken zolang het document nog niet geboekt is: het UBL-document komt dan terug in de status die het had.
+- Valt tijdens een nazorg-run de databaseverbinding even weg, dan probeert de run dat ene document precies één keer opnieuw en gaat daarna door met de rest. Blijft de verbinding weg, dan stopt de run zichtbaar met een melding en kan hij later gewoon opnieuw worden gestart.
+
 ## 2026-09-03 — Verzamelbak: gescheiden UBL- en PDF-versies van dezelfde factuur alsnog samengevoegd
 
 - Kwam een factuur eerder als UBL én als PDF in dezelfde e-mail binnen en is alleen de PDF al aan een administratie toegewezen (de UBL bleef in de verzamelbak met de chip "tegenhanger al toegewezen"), dan voegt het kantoor die twee nu alsnog samen via een nazorg-run: het bestaande document blijft staan, de gegevens komen uit de UBL en de PDF blijft het beeld. De verzamelbak-rij verdwijnt als "samengevoegd", niets wordt verwijderd.

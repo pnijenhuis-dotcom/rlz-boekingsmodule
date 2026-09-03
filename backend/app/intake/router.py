@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
+from app.auth import service as auth_service
 from app.auth.deps import CurrentGebruiker, vereis_kantoorrol
 from app.documenten.service import DocumentNietGevonden
 from app.intake import nabundelen, schemas, splitsing, verwerking, verzamelbak
@@ -184,8 +185,13 @@ def verzamelbak_samenvoegen(
 def verzamelbak_samenvoegen_ongedaan(
     document_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
 ) -> schemas.SamenvoegenOngedaanResponse:
+    # Dubbelpaar-nabundeling (03-09): de UBL-rij kan een document in een administratie zijn — zoeken
+    # uitsluitend binnen de administraties in de scope van de actor (Beheerder = alle actieve).
+    administratie_kandidaten = [a.id for a in auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)]
     try:
-        teruggezet = verzamelbak.maak_samenvoegen_ongedaan(document_id=document_id, actor_id=actor.id)
+        teruggezet = verzamelbak.maak_samenvoegen_ongedaan(
+            document_id=document_id, actor_id=actor.id, administratie_kandidaten=administratie_kandidaten
+        )
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (

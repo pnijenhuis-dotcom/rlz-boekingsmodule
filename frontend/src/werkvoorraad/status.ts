@@ -18,6 +18,10 @@ export const STATUS_LABELS: Record<string, string> = {
   // Klant-accorderingsflow (migratie 0033): mockup-kolom "Bij klant".
   ter_accordering: 'Bij klant — ter accordering',
   verwijderd: 'Verwijderd',
+  // Nabundel-nazorg dubbelparen (03-09): een UBL-exemplaar dat in het PDF-document van dezelfde
+  // factuur is opgenomen — terminaal, leeft door in het leidende document.
+  samengevoegd: 'Samengevoegd',
+  gesplitst: 'Gesplitst',
 }
 
 export const STATUS_CHIP_KLASSE: Record<string, string> = {
@@ -35,6 +39,8 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   wacht_op_iban_accordering: 'vraag',
   ter_accordering: 'geheugen',
   verwijderd: 'geboekt',
+  samengevoegd: 'geboekt',
+  gesplitst: 'geboekt',
 }
 
 /** Statussen waarin de achtergrondextractie nog loopt (async extractie): werkvoorraad en

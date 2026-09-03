@@ -15,6 +15,16 @@ toegewezen en als document in de werkvoorraad, de UBL nog in de verzamelbak mét
   (`samengevoegd_in_id` = het PDF-document) — nooit verwijderen; de ongedaan-route werkt ook hier
   (`maak_nabundeling_ongedaan`, aangeroepen vanuit `verzamelbak.maak_samenvoegen_ongedaan`).
 
+UITBREIDING DUBBELPAREN (akkoord Peter 03-09, `ook_toegewezen=True` / CLI `--ook-toegewezen`): de UBL
+hoeft niet meer in de verzamelbak te staan — een al TOEGEWEZEN UBL-DOCUMENT dat náást zijn
+PDF-tegenhanger in DEZELFDE administratie staat (25 IC-facturen, bulk-toegewezen tijdens de
+proxy-storing van 03-09) wordt op dezelfde manier in dat PDF-document nagebundeld. Zelfde
+naamstam-zekerheid (zelfde intake-bericht + naamstam, precies één PDF-document én precies één
+UBL-document met die stam in die administratie), zelfde waarborgen aan BEIDE kanten (alleen
+te_controleren/handmatig_afmaken; een opgeslagen boekvoorstel op het UBL-document = overslaan, want
+dan heeft een mens dat exemplaar beoordeeld), het UBL-document zelf → terminaal `samengevoegd` (nooit
+verwijderd; tijdlijn + audit beide kanten; ongedaan = terug naar zijn status van vóór de nabundeling).
+
 HARDE VOORWAARDEN (besluit Peter 02-09):
 - uitsluitend PDF-documenten op `te_controleren` of `handmatig_afmaken`; geboekt, ter_accordering,
   vraag_open, afgewezen, … = overslaan mét reden in het rapport;
@@ -22,13 +32,16 @@ HARDE VOORWAARDEN (besluit Peter 02-09):
   alleen als data/beeld gekoppeld, het voorstel blijft staan, geen her-extractie — reden in het rapport;
 - het toewijzings-geheugen leert hier níéts (geen mens-besluit);
 - MATCH-ZEKERHEID: alleen paren die de zusje-detectie eenduidig legt (zelfde intake-bericht + zelfde
-  naamstam, precies één toegewezen PDF-tegenhanger én precies één verzamelbak-UBL met die stam in dat
+  naamstam, precies één toegewezen PDF-tegenhanger én precies één UBL met die stam in dat
   bericht); twijfel = overslaan mét reden, nooit gokken.
 
 Deterministisch (geen AI, geen RLZ-calls), systeem-actor, audit per paar, idempotent (een tweede run
 vindt 0 kandidaten: de UBL-rij is dan `samengevoegd`). Bestanden worden nooit verwijderd — de oude
 PDF-locatie ís de nieuwe bron-locatie, het UBL-bestand komt er als kopie naast onder het
-administratie-prefix."""
+administratie-prefix. Verbindings-blips (03-09): elk paar krijgt precies één herkansing bij een
+verbroken databaseverbinding (`app/db/herkansing.py`); drie opeenvolgende paren die óók ná de
+herkansing op de verbinding stranden = de run stopt zichtbaar (de rest blijft onaangeroerd voor een
+volgende, idempotente run)."""
 
 from __future__ import annotations
 
@@ -42,6 +55,8 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.db.audit import record_audit_event
+from app.db.herkansing import VerbindingVerbroken, voer_uit_met_herkansing
+from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.beeld import beeld_is_bron
@@ -61,6 +76,11 @@ logger = logging.getLogger(__name__)
 
 _TOEGEWEZEN_DETAIL = re.compile(r"→\s*([0-9a-f-]{36})\s*$")
 _NABUNDEL_STATUSSEN = frozenset({DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN})
+#: Statussen die bij het tellen van tegenhangers binnen een administratie niet meedoen (terminaal, geen
+#: exemplaar meer in de werkvoorraad) — een zacht-verwijderd derde exemplaar maakt een paar niet meerduidig.
+_TERMINAAL_VOOR_TELLING = frozenset({DocumentStatus.VERWIJDERD, DocumentStatus.GESPLITST, DocumentStatus.SAMENGEVOEGD})
+#: Noodrem: zoveel opeenvolgende paren die óók ná de herkansing op de verbinding stranden = run stopt.
+MAX_OPEENVOLGENDE_VERBINDINGSFOUTEN = 3
 
 UITKOMST_SAMENGEVOEGD = "samengevoegd"
 UITKOMST_GEKOPPELD_VOORSTEL_BEHOUDEN = "gekoppeld_voorstel_behouden"
@@ -71,6 +91,9 @@ UITKOMST_KANDIDAAT = "kandidaat"  # dry-run
 #: Sleutel in het tijdlijn-detail van de `samengevoegd`-overgang van de UBL-rij; draagt de administratie
 #: van het leidende PDF-document zodat de ongedaan-route (scope!) 'm terugvindt zonder RLS-doorbraak.
 NABUNDEL_ADMINISTRATIE_SLEUTEL = "nagebundeld_administratie_id"
+#: Sleutel in datzelfde detail: de status van het UBL-DOCUMENT vóór de nabundeling (dubbelparen 03-09) —
+#: de ongedaan-route zet 'm daarop terug; afwezig = het was een verzamelbak-rij (→ niet_toegewezen).
+NABUNDEL_VORIGE_STATUS_SLEUTEL = "vorige_status"
 
 
 class NabundelingOngedaanGeweigerd(Exception):
@@ -87,6 +110,9 @@ class NabundelKandidaat:
     pdf_bestandsnaam: str | None
     administratie_id: uuid.UUID | None
     twijfel_reden: str | None = None
+    #: True = de UBL is zelf al een toegewezen DOCUMENT in `administratie_id` (dubbelpaar, 03-09);
+    #: False = verzamelbak-rij (platformbreed).
+    ubl_in_administratie: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,9 +122,13 @@ class NabundelUitkomst:
     pdf_document_id: uuid.UUID | None
     uitkomst: str
     reden: str | None = None
+    herkanst: bool = False
+    administratie_id: uuid.UUID | None = None
 
     def als_regel(self) -> str:
         kern = f"{self.ubl_bestandsnaam}: {self.uitkomst}"
+        if self.herkanst:
+            kern += " (ná herkansing)"
         return f"{kern} — {self.reden}" if self.reden else kern
 
 
@@ -109,10 +139,17 @@ class NabundelTelling:
     gekoppeld_voorstel_behouden: int = 0
     overgeslagen: int = 0
     mislukt: int = 0
+    #: Paren waarvan de eerste poging op een verbroken verbinding strandde en de herkansing slaagde.
+    herkanst: int = 0
+    #: Paren die niet meer geprobeerd zijn omdat de run op de noodrem stopte.
+    niet_geprobeerd: int = 0
+    gestopt_reden: str | None = None
     uitkomsten: list[NabundelUitkomst] = field(default_factory=list)
 
     def registreer(self, uitkomst: NabundelUitkomst) -> None:
         self.uitkomsten.append(uitkomst)
+        if uitkomst.herkanst:
+            self.herkanst += 1
         if uitkomst.uitkomst == UITKOMST_SAMENGEVOEGD:
             self.samengevoegd += 1
         elif uitkomst.uitkomst == UITKOMST_GEKOPPELD_VOORSTEL_BEHOUDEN:
@@ -121,6 +158,14 @@ class NabundelTelling:
             self.overgeslagen += 1
         elif uitkomst.uitkomst == UITKOMST_MISLUKT:
             self.mislukt += 1
+
+    def per_administratie(self) -> dict[uuid.UUID | None, dict[str, int]]:
+        """Uitkomst-telling per (leidende) administratie — de CLI zet er de naam bij."""
+        telling: dict[uuid.UUID | None, dict[str, int]] = {}
+        for u in self.uitkomsten:
+            per = telling.setdefault(u.administratie_id, {})
+            per[u.uitkomst] = per.get(u.uitkomst, 0) + 1
+        return telling
 
     def overgeslagen_per_reden(self) -> dict[str, int]:
         telling: dict[str, int] = {}
@@ -147,7 +192,15 @@ def _sha256(inhoud: bytes) -> str:
     return hashlib.sha256(inhoud).hexdigest()
 
 
-def vind_kandidaten() -> list[NabundelKandidaat]:
+def _is_xml(bestandsnaam: str) -> bool:
+    return bestandsnaam.lower().endswith(".xml")
+
+
+def _is_pdf(bestandsnaam: str) -> bool:
+    return bestandsnaam.lower().endswith(".pdf")
+
+
+def _vind_verzamelbak_kandidaten() -> list[NabundelKandidaat]:
     """Alle verzamelbak-UBL's mét een PDF-tegenhanger uit hetzelfde intake-bericht die al is
     toegewezen (uitkomst 'toegewezen' in `intake_bericht.detail.bijlagen` — géén RLS-doorbraak: de
     toegewezen rij zelf wordt hier niet gelezen). Strikter dan het zusje-signaal in de verzamelbak: precies
@@ -165,7 +218,7 @@ def vind_kandidaten() -> list[NabundelKandidaat]:
                 )
                 .order_by(Document.aangemaakt_op)
             )
-            if d.bestandsnaam.lower().endswith(".xml")
+            if _is_xml(d.bestandsnaam)
         ]
         bericht_ids = {d.intake_bericht_id for d in ubls}
         berichten = (
@@ -191,7 +244,7 @@ def vind_kandidaten() -> list[NabundelKandidaat]:
                 for b in (bericht.detail or {}).get("bijlagen", []) or []
                 if isinstance(b, dict)
                 and b.get("uitkomst") == "toegewezen"
-                and (b.get("bestandsnaam") or "").lower().endswith(".pdf")
+                and _is_pdf(b.get("bestandsnaam") or "")
                 and _stam(b.get("bestandsnaam") or "") == stam
                 and b.get("document_id")
             ]
@@ -253,6 +306,97 @@ def vind_kandidaten() -> list[NabundelKandidaat]:
         return kandidaten
 
 
+def _vind_dubbelpaar_kandidaten() -> list[NabundelKandidaat]:
+    """Dubbelparen (03-09): per actieve administratie de al toegewezen UBL-DOCUMENTEN op
+    te_controleren/handmatig_afmaken die een PDF-document uit HETZELFDE intake-bericht met DEZELFDE
+    naamstam naast zich hebben in die administratie. Beide documenten leven in dezelfde RLS-scope —
+    geen doorbraak nodig. Zekerheid: precies één PDF-document én precies één UBL-document met die stam
+    uit dat bericht (terminale exemplaren tellen niet mee); anders twijfel = overslaan mét reden. De
+    status van de PDF-tegenhanger toetst `_nabundel_een` (geboekt/ter accordering/… = reden)."""
+    with scoped_session(None) as session:
+        administratie_ids = list(
+            session.scalars(select(Administratie.id).where(Administratie.actief.is_(True)).order_by(Administratie.naam))
+        )
+    kandidaten: list[NabundelKandidaat] = []
+    for adm in administratie_ids:
+        with scoped_session(adm, actor_id=SYSTEEM_ACTOR_ID) as session:
+            documenten = session.scalars(
+                select(Document)
+                .where(
+                    Document.administratie_id == adm,
+                    Document.intake_bericht_id.is_not(None),
+                    Document.status.notin_(list(_TERMINAAL_VOOR_TELLING)),
+                )
+                .order_by(Document.aangemaakt_op)
+            ).all()
+            ubls = [d for d in documenten if _is_xml(d.bestandsnaam) and d.status in _NABUNDEL_STATUSSEN]
+            if not ubls:
+                continue
+            pdfs_per_sleutel: dict[tuple[uuid.UUID, str], list[Document]] = {}
+            ubls_per_sleutel: dict[tuple[uuid.UUID, str], int] = {}
+            for d in documenten:
+                assert d.intake_bericht_id is not None
+                sleutel = (d.intake_bericht_id, _stam(d.bestandsnaam))
+                if _is_pdf(d.bestandsnaam):
+                    pdfs_per_sleutel.setdefault(sleutel, []).append(d)
+                elif _is_xml(d.bestandsnaam):
+                    ubls_per_sleutel[sleutel] = ubls_per_sleutel.get(sleutel, 0) + 1
+            for ubl in ubls:
+                assert ubl.intake_bericht_id is not None
+                sleutel = (ubl.intake_bericht_id, _stam(ubl.bestandsnaam))
+                pdfs = pdfs_per_sleutel.get(sleutel, [])
+                if not pdfs:
+                    continue  # gewone UBL-factuur zonder PDF-exemplaar — geen dubbelpaar
+                basis = {
+                    "ubl_document_id": ubl.id,
+                    "ubl_bestandsnaam": ubl.bestandsnaam,
+                    "intake_bericht_id": ubl.intake_bericht_id,
+                    "ubl_in_administratie": True,
+                }
+                if len(pdfs) > 1:
+                    kandidaten.append(
+                        NabundelKandidaat(
+                            **basis,
+                            pdf_document_id=None,
+                            pdf_bestandsnaam=None,
+                            administratie_id=adm,
+                            twijfel_reden="meerduidig: meer dan één PDF-document met dezelfde naamstam uit deze e-mail "
+                            "in de administratie",
+                        )
+                    )
+                    continue
+                if ubls_per_sleutel.get(sleutel, 0) > 1:
+                    kandidaten.append(
+                        NabundelKandidaat(
+                            **basis,
+                            pdf_document_id=None,
+                            pdf_bestandsnaam=None,
+                            administratie_id=adm,
+                            twijfel_reden="meerduidig: meer dan één UBL-document met dezelfde naamstam uit deze e-mail "
+                            "in de administratie",
+                        )
+                    )
+                    continue
+                kandidaten.append(
+                    NabundelKandidaat(
+                        **basis,
+                        pdf_document_id=pdfs[0].id,
+                        pdf_bestandsnaam=pdfs[0].bestandsnaam,
+                        administratie_id=adm,
+                    )
+                )
+    return kandidaten
+
+
+def vind_kandidaten(*, ook_toegewezen: bool = False) -> list[NabundelKandidaat]:
+    """Verzamelbak-UBL's mét toegewezen PDF-zusje; mét `ook_toegewezen` daarnaast de dubbelparen
+    (al toegewezen UBL-document naast zijn PDF-document in dezelfde administratie, 03-09)."""
+    kandidaten = _vind_verzamelbak_kandidaten()
+    if ook_toegewezen:
+        kandidaten.extend(_vind_dubbelpaar_kandidaten())
+    return kandidaten
+
+
 def _status_reden(status: DocumentStatus) -> str:
     """Leesbare overslaan-reden per status (harde voorwaarde Peter: alleen te_controleren/handmatig_afmaken)."""
     teksten = {
@@ -288,6 +432,7 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
             pdf_document_id=kandidaat.pdf_document_id,
             uitkomst=UITKOMST_OVERGESLAGEN,
             reden=reden,
+            administratie_id=kandidaat.administratie_id,
         )
 
     if kandidaat.twijfel_reden or kandidaat.pdf_document_id is None or kandidaat.administratie_id is None:
@@ -300,12 +445,25 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
     soort: str | None = None
     with scoped_session(adm, actor_id=SYSTEEM_ACTOR_ID) as session:
         ubl = session.get(Document, kandidaat.ubl_document_id)
-        if ubl is None or ubl.administratie_id is not None or ubl.status != DocumentStatus.NIET_TOEGEWEZEN:
+        if kandidaat.ubl_in_administratie:
+            # Dubbelpaar (03-09): het UBL-exemplaar is zelf een document in deze administratie.
+            if ubl is None or ubl.administratie_id != adm:
+                return overgeslagen("UBL-document niet (meer) gevonden in de administratie")
+            if ubl.status not in _NABUNDEL_STATUSSEN:
+                return overgeslagen(
+                    f"UBL-document is intussen verder verwerkt (status {ubl.status.value.replace('_', ' ')})"
+                )
+            if session.get(Boekvoorstel, ubl.id) is not None:
+                return overgeslagen(
+                    "UBL-document heeft een opgeslagen boekvoorstel (mens heeft dit exemplaar beoordeeld) — "
+                    "beide exemplaren blijven staan"
+                )
+        elif ubl is None or ubl.administratie_id is not None or ubl.status != DocumentStatus.NIET_TOEGEWEZEN:
             return overgeslagen("UBL-rij is intussen al verwerkt")
         pdf = session.get(Document, kandidaat.pdf_document_id)
         if pdf is None or pdf.administratie_id != adm:
             return overgeslagen("tegenhanger niet (meer) gevonden in de administratie uit het intake-bericht")
-        if not pdf.bestandsnaam.lower().endswith(".pdf"):
+        if not _is_pdf(pdf.bestandsnaam):
             return overgeslagen(f"tegenhanger is geen PDF-document ({pdf.bestandsnaam})")
         if pdf.intake_bericht_id != ubl.intake_bericht_id:
             return overgeslagen("tegenhanger komt uit een ander intake-bericht dan het intake-bericht vermeldt")
@@ -323,11 +481,13 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 ubl_bestandsnaam=ubl.bestandsnaam,
                 pdf_document_id=pdf.id,
                 uitkomst=UITKOMST_KANDIDAAT,
+                administratie_id=adm,
                 reden=(
                     "opgeslagen boekvoorstel aanwezig — UBL wordt alleen gekoppeld, voorstel blijft staan"
                     if voorstel_behouden
                     else f"samenvoegen + her-extractie uit de UBL (tegenhanger {pdf.bestandsnaam}, {pdf.status.value})"
-                ),
+                )
+                + (" [dubbelpaar: UBL-document → samengevoegd]" if kandidaat.ubl_in_administratie else ""),
             )
 
         ubl_inhoud = opslag.lezen(pad=ubl.opslag_pad)
@@ -340,9 +500,10 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 pdf_document_id=pdf.id,
                 uitkomst=UITKOMST_MISLUKT,
                 reden=f"geen geldige UBL — niet gekoppeld: {exc}",
+                administratie_id=adm,
             )
 
-        # 1. UBL onder het administratie-prefix (kopie; de verzamelbak-locatie blijft staan).
+        # 1. UBL onder het administratie-prefix (kopie; de oude UBL-locatie blijft staan).
         nieuw_pad = f"{adm}/{pdf.id}.xml"
         opslag.opslaan(pad=nieuw_pad, inhoud=ubl_inhoud)
 
@@ -356,7 +517,12 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
         pdf.sha256_hash = ubl.sha256_hash
         if pdf.tenaamstelling is None and ubl.tenaamstelling:
             pdf.tenaamstelling = ubl.tenaamstelling
-        reden_pdf = "nabundel-nazorg: UBL uit dezelfde e-mail gekoppeld als databron, deze PDF is het beeld" + (
+        herkomst = (
+            "UBL-document van dezelfde factuur uit dezelfde e-mail (dubbel exemplaar in deze administratie)"
+            if kandidaat.ubl_in_administratie
+            else "UBL uit dezelfde e-mail"
+        )
+        reden_pdf = f"nabundel-nazorg: {herkomst} gekoppeld als databron, deze PDF is het beeld" + (
             " — opgeslagen boekvoorstel blijft ongewijzigd (geen her-extractie)"
             if voorstel_behouden
             else " — velden opnieuw uit de UBL gelezen"
@@ -371,25 +537,36 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 "vorige_bestandsnaam": oud["bestandsnaam"],
                 "vorige_sha256_hash": oud["sha256_hash"],
                 "voorstel_behouden": voorstel_behouden,
+                "dubbelpaar": kandidaat.ubl_in_administratie,
                 "reden": reden_pdf,
             },
         )
 
-        # 3. UBL-rij → samengevoegd (terminaal, nooit verwijderen), mét de administratie voor de ongedaan-route.
+        # 3. UBL-rij/-document → samengevoegd (terminaal, nooit verwijderen), mét de administratie voor de
+        #    ongedaan-route en — voor een dubbelpaar — de status van vóór de nabundeling.
+        ubl_oud = {
+            "status": ubl.status.value,
+            "administratie_id": str(ubl.administratie_id) if ubl.administratie_id else None,
+        }
+        overgang_detail: dict = {
+            "samengevoegd_in": str(pdf.id),
+            "leidend_bestandsnaam": oud["bestandsnaam"],
+            "nagebundeld": True,
+            NABUNDEL_ADMINISTRATIE_SLEUTEL: str(adm),
+            "reden": (
+                "nabundel-nazorg: dubbel exemplaar — samengevoegd met het PDF-document van dezelfde factuur uit "
+                "dezelfde e-mail; de UBL is nu de databron van dat document"
+                if kandidaat.ubl_in_administratie
+                else "nabundel-nazorg: gekoppeld aan het al toegewezen PDF-document uit dezelfde e-mail"
+            ),
+        }
+        if kandidaat.ubl_in_administratie:
+            overgang_detail[NABUNDEL_VORIGE_STATUS_SLEUTEL] = ubl.status.value
         ubl.samengevoegd_in_id = pdf.id
         _schrijf_overgang(
-            session,
-            document=ubl,
-            naar=DocumentStatus.SAMENGEVOEGD,
-            actor_id=SYSTEEM_ACTOR_ID,
-            detail={
-                "samengevoegd_in": str(pdf.id),
-                "leidend_bestandsnaam": oud["bestandsnaam"],
-                "nagebundeld": True,
-                NABUNDEL_ADMINISTRATIE_SLEUTEL: str(adm),
-                "reden": "nabundel-nazorg: gekoppeld aan het al toegewezen PDF-document uit dezelfde e-mail",
-            },
+            session, document=ubl, naar=DocumentStatus.SAMENGEVOEGD, actor_id=SYSTEEM_ACTOR_ID, detail=overgang_detail
         )
+        correlatie_id = uuid.uuid4()
         record_audit_event(
             session,
             actor_id=SYSTEEM_ACTOR_ID,
@@ -397,7 +574,7 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
             tabel="document",
             record_id=pdf.id,
             actie="document_nagebundeld",
-            correlatie_id=uuid.uuid4(),
+            correlatie_id=correlatie_id,
             oude_waarde=oud,
             nieuwe_waarde={
                 "opslag_pad": nieuw_pad,
@@ -406,8 +583,25 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 "bron_bestandsnaam": oud["bestandsnaam"],
                 "samengevoegd_document_id": str(ubl.id),
                 "voorstel_behouden": voorstel_behouden,
+                "dubbelpaar": kandidaat.ubl_in_administratie,
             },
             administratie_id=adm,
+        )
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel="document",
+            record_id=ubl.id,
+            actie="document_nagebundeld_in",
+            correlatie_id=correlatie_id,
+            oude_waarde=ubl_oud,
+            nieuwe_waarde={
+                "status": DocumentStatus.SAMENGEVOEGD.value,
+                "samengevoegd_in_id": str(pdf.id),
+                "administratie_id": ubl_oud["administratie_id"],
+            },
+            administratie_id=ubl.administratie_id,
         )
 
         # 4. Her-extractie uit de UBL — deterministisch, zelfde pad als een verse UBL-upload. Niet als een
@@ -425,6 +619,7 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
         ubl_bestandsnaam=kandidaat.ubl_bestandsnaam,
         pdf_document_id=pdf_id,
         uitkomst=UITKOMST_GEKOPPELD_VOORSTEL_BEHOUDEN if voorstel_behouden else UITKOMST_SAMENGEVOEGD,
+        administratie_id=adm,
         reden=(
             "opgeslagen boekvoorstel aanwezig — alleen gekoppeld, voorstel ongewijzigd"
             if voorstel_behouden
@@ -433,16 +628,50 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
     )
 
 
-def nabundel_verzamelbak(*, dry_run: bool = False, opslag: DocumentOpslag | None = None) -> NabundelTelling:
-    """Zie module-docstring. `dry_run` toetst álle poorten maar schrijft niets (uitkomst 'kandidaat' per rij)."""
+def nabundel_verzamelbak(
+    *,
+    dry_run: bool = False,
+    opslag: DocumentOpslag | None = None,
+    ook_toegewezen: bool = False,
+    administratie_id: uuid.UUID | None = None,
+    herkansing_wacht_seconds: float | None = None,
+) -> NabundelTelling:
+    """Zie module-docstring. `dry_run` toetst álle poorten maar schrijft niets (uitkomst 'kandidaat' per rij);
+    `ook_toegewezen` neemt de dubbelparen mee (03-09); `administratie_id` beperkt de run tot paren waarvan het
+    leidende document in die administratie staat (bereik-begrenzing van een cloud-run — twijfelparen zonder
+    afgeleide administratie vallen dan buiten de run). Elk paar is één transactie mét precies één herkansing
+    bij een verbroken databaseverbinding; `herkansing_wacht_seconds` (tests) overschrijft de wachttijd."""
     telling = NabundelTelling()
-    kandidaten = vind_kandidaten()
+    kandidaten = vind_kandidaten(ook_toegewezen=ook_toegewezen)
+    if administratie_id is not None:
+        kandidaten = [k for k in kandidaten if k.administratie_id == administratie_id]
     telling.kandidaten = len(kandidaten)
     opslag = opslag or _standaard_opslag()
-    for kandidaat in kandidaten:
+    herkansing_kwargs = {} if herkansing_wacht_seconds is None else {"wacht_seconds": herkansing_wacht_seconds}
+    opeenvolgende_verbindingsfouten = 0
+    for index, kandidaat in enumerate(kandidaten):
+        herkanst = False
         try:
-            uitkomst = _nabundel_een(kandidaat, opslag=opslag, dry_run=dry_run)
+            uitkomst, herkanst = voer_uit_met_herkansing(
+                lambda: _nabundel_een(kandidaat, opslag=opslag, dry_run=dry_run),  # noqa: B023 — direct uitgevoerd
+                label=f"nabundelen {kandidaat.ubl_bestandsnaam}",
+                **herkansing_kwargs,
+            )
+            opeenvolgende_verbindingsfouten = 0
+        except VerbindingVerbroken as exc:
+            opeenvolgende_verbindingsfouten += 1
+            logger.warning("Nabundelen %s: %s", kandidaat.ubl_document_id, exc)
+            uitkomst = NabundelUitkomst(
+                ubl_document_id=kandidaat.ubl_document_id,
+                ubl_bestandsnaam=kandidaat.ubl_bestandsnaam,
+                pdf_document_id=kandidaat.pdf_document_id,
+                uitkomst=UITKOMST_MISLUKT,
+                reden="databaseverbinding verbroken, ook ná één herkansing — niets gewijzigd; opnieuw draaien zodra "
+                "de verbinding er weer is",
+                administratie_id=kandidaat.administratie_id,
+            )
         except Exception as exc:  # noqa: BLE001 — één kapot paar mag de stapel niet stoppen; wél zichtbaar
+            opeenvolgende_verbindingsfouten = 0
             logger.exception("Nabundelen mislukt voor %s", kandidaat.ubl_document_id)
             uitkomst = NabundelUitkomst(
                 ubl_document_id=kandidaat.ubl_document_id,
@@ -450,18 +679,36 @@ def nabundel_verzamelbak(*, dry_run: bool = False, opslag: DocumentOpslag | None
                 pdf_document_id=kandidaat.pdf_document_id,
                 uitkomst=UITKOMST_MISLUKT,
                 reden=f"onverwachte fout ({type(exc).__name__}: {exc})",
+                administratie_id=kandidaat.administratie_id,
+            )
+        if herkanst and uitkomst.herkanst is False:
+            uitkomst = NabundelUitkomst(
+                ubl_document_id=uitkomst.ubl_document_id,
+                ubl_bestandsnaam=uitkomst.ubl_bestandsnaam,
+                pdf_document_id=uitkomst.pdf_document_id,
+                uitkomst=uitkomst.uitkomst,
+                reden=uitkomst.reden,
+                herkanst=True,
+                administratie_id=uitkomst.administratie_id,
             )
         telling.registreer(uitkomst)
+        if opeenvolgende_verbindingsfouten >= MAX_OPEENVOLGENDE_VERBINDINGSFOUTEN:
+            telling.niet_geprobeerd = len(kandidaten) - index - 1
+            telling.gestopt_reden = (
+                f"gestopt: {opeenvolgende_verbindingsfouten} opeenvolgende paren strandden op de databaseverbinding "
+                f"(ook ná herkansing) — {telling.niet_geprobeerd} paar/paren niet geprobeerd; de run is idempotent, "
+                "draai 'm opnieuw zodra de verbinding er weer is"
+            )
+            logger.error(telling.gestopt_reden)
+            break
     return telling
 
 
 # ---- Ongedaan maken ----------------------------------------------------------------------------
 
 
-def nagebundelde_administratie(session, ubl_document_id: uuid.UUID) -> uuid.UUID | None:
-    """De administratie uit de jongste `samengevoegd`-overgang van een nagebundelde UBL-rij (None =
-    handmatig samengevoegd in de bak, of geen samengevoegd-overgang)."""
-    rij = session.scalars(
+def _jongste_samengevoegd_overgang(session, ubl_document_id: uuid.UUID) -> DocumentGebeurtenis | None:
+    return session.scalars(
         select(DocumentGebeurtenis)
         .where(
             DocumentGebeurtenis.document_id == ubl_document_id,
@@ -469,11 +716,32 @@ def nagebundelde_administratie(session, ubl_document_id: uuid.UUID) -> uuid.UUID
         )
         .order_by(DocumentGebeurtenis.tijdstip.desc())
     ).first()
+
+
+def nagebundelde_administratie(session, ubl_document_id: uuid.UUID) -> uuid.UUID | None:
+    """De administratie uit de jongste `samengevoegd`-overgang van een nagebundelde UBL-rij (None =
+    handmatig samengevoegd in de bak, of geen samengevoegd-overgang)."""
+    rij = _jongste_samengevoegd_overgang(session, ubl_document_id)
     waarde = (rij.detail or {}).get(NABUNDEL_ADMINISTRATIE_SLEUTEL) if rij is not None else None
     try:
         return uuid.UUID(str(waarde)) if waarde else None
     except ValueError:
         return None
+
+
+def _status_van_voor_nabundeling(session, ubl: Document) -> DocumentStatus:
+    """Waar de UBL-rij ná ongedaan maken heen gaat: een verzamelbak-rij terug in de bak; een UBL-DOCUMENT
+    (dubbelpaar) terug naar zijn status van vóór de nabundeling uit het tijdlijn-detail (terugval
+    te_controleren — nooit een status buiten de nabundel-statussen)."""
+    if ubl.administratie_id is None:
+        return DocumentStatus.NIET_TOEGEWEZEN
+    rij = _jongste_samengevoegd_overgang(session, ubl.id)
+    waarde = (rij.detail or {}).get(NABUNDEL_VORIGE_STATUS_SLEUTEL) if rij is not None else None
+    try:
+        status = DocumentStatus(str(waarde)) if waarde else DocumentStatus.TE_CONTROLEREN
+    except ValueError:
+        status = DocumentStatus.TE_CONTROLEREN
+    return status if status in _NABUNDEL_STATUSSEN else DocumentStatus.TE_CONTROLEREN
 
 
 def maak_nabundeling_ongedaan(
@@ -485,10 +753,11 @@ def maak_nabundeling_ongedaan(
 ) -> uuid.UUID:
     """Spiegel van `_nabundel_een` zolang het leidende document nog op te_controleren/handmatig_afmaken
     staat: de PDF wordt weer het hoofdbestand (kolommen terug, sha256 opnieuw uit de bytes), de
-    bron-kolommen leeg, de UBL-rij terug in de verzamelbak. Het UBL-bestand onder het administratie-prefix
-    blijft op de opslag staan (niets wordt verwijderd). Het veldvoorstel uit de UBL blijft in de tijdlijn —
-    de tijdlijnregel zegt dat en verwijst naar 'Opnieuw extraheren' voor een verse PDF-lezing. Geeft het id
-    van de teruggezette UBL-rij."""
+    bron-kolommen leeg, de UBL-rij terug in de verzamelbak — of, bij een dubbelpaar (03-09), het
+    UBL-document terug naar zijn status van vóór de nabundeling (weer een los exemplaar in de
+    werkvoorraad). Het UBL-bestand onder het administratie-prefix blijft op de opslag staan (niets wordt
+    verwijderd). Het veldvoorstel uit de UBL blijft in de tijdlijn — de tijdlijnregel zegt dat en verwijst
+    naar 'Opnieuw extraheren' voor een verse PDF-lezing. Geeft het id van de teruggezette UBL-rij."""
     opslag = opslag or _standaard_opslag()
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         ubl = session.get(Document, ubl_document_id)
@@ -528,14 +797,20 @@ def maak_nabundeling_ongedaan(
                 "blijft in de tijdlijn staan, kies 'Opnieuw extraheren' voor een nieuwe lezing van de PDF",
             },
         )
+        terug_naar = _status_van_voor_nabundeling(session, ubl)
         ubl.samengevoegd_in_id = None
         _schrijf_overgang(
             session,
             document=ubl,
-            naar=DocumentStatus.NIET_TOEGEWEZEN,
+            naar=terug_naar,
             actor_id=actor_id,
             detail={
-                "reden": "nabundeling ongedaan gemaakt — terug in de verzamelbak",
+                "reden": (
+                    "nabundeling ongedaan gemaakt — dit UBL-document staat weer los in de werkvoorraad "
+                    "(dubbel exemplaar van dezelfde factuur)"
+                    if terug_naar != DocumentStatus.NIET_TOEGEWEZEN
+                    else "nabundeling ongedaan gemaakt — terug in de verzamelbak"
+                ),
                 "was_samengevoegd_in": str(leidend.id),
             },
         )
@@ -554,6 +829,7 @@ def maak_nabundeling_ongedaan(
                 "sha256_hash": leidend.sha256_hash,
                 "bron_bestandsnaam": None,
                 "teruggezet_document_id": str(ubl.id),
+                "teruggezet_naar_status": terug_naar.value,
             },
             administratie_id=administratie_id,
         )
