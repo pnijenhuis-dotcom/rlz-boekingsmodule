@@ -414,3 +414,29 @@ Eindstand: twee geposte memorialen die elkaar opheffen. Chatter op alle vijf doc
 | K8 | Settings › Companies | vertalingen rekeningnamen (nu Engels) — cosmetisch | leesbaarheid voor de kantoormedewerkers |
 
 Voor de twee bewijs-cycli was **geen enkel klikpunt nodig**: alles werkte met de bestaande inrichting.
+
+---
+
+## §6 Fase 1 (03-09-2026) — product-semantiek + live-correcties op STAP-0 (blok B, `verkenning/odoo_stap0_producten.py`)
+
+Live op company 1 (TEST-ref `TEST-ODOO-FASE1-PRODUCTEN`, factuur `BILL/2026/09/0001` 115,91 → reversal
+`RBILL/2026/09/0002`, origineel `reversed`/residu 0,00; TEST-partner + TEST-product gearchiveerd, niets verwijderd).
+Ruwe uitvoer `verkenning/output/odoo_fase1_producten.json` (gitignored).
+
+| # | Vraag | Uitkomst (terug-gelezen) | Gevolg adapter |
+|---|---|---|---|
+| P1 | Productregel ZONDER `account_id` | rekening = `product.category.property_account_expense_categ_id` (700100) — de categorie, niet het product (`property_account_expense_id` False) | wij sturen ALTIJD een expliciete `account_id` uit het boekvoorstel; categorie = alleen terugval |
+| P2 | Productregel MÉT expliciete `account_id` 424000 | blijft staan ná posten (424000 Tools), analytic + tax ongewijzigd | het boekvoorstel bepaalt de rekening — bewezen |
+| P3 | `quantity 4 × price_unit 12,34` | `price_subtotal 49,36` cent-exact; `tax_ids []` blijft leeg (géén auto-`supplier_taxes_id`) | regelniveau aantal × prijs werkt; 0 %-inkoop = géén tax_ids bewezen |
+| P4 | `analytic_distribution` op productregel | `account.analytic.line` mét `product_id` (bv. `[AKN-TEST0001] …`) én `unit_amount` = quantity (4,0 / 3,0), `amount` −netto, `general_account_id` | Jarvis/MI leest product + aantal + bedrag + rekening + project uit `account.analytic.line` — acceptatiecriterium aantoonbaar |
+| P5 | Anglo-saxon + posten leveranciersfactuur zonder PO | `stock.move` vóór/ná 0/0; categorie `periodic`/`standard`; type `consu`, `is_storable` False → gewone kostenboeking, geen tussenrekening/kostprijsmechaniek | brug maakt `consu`-producten (geen voorraadwaardering in Odoo — die blijft onze mi-laag/telling) |
+| P6 | Eigen brug-product (template `consu`, `default_code AKN-…`, categorie uit catalogus) zonder `account_id` | rekening uit de categorie (700100); `standard_price 0` | brug = lookup op `default_code` → naam → aanmaak; categorie alleen bestaande Odoo-categorie op naam (inrichtingskeuze Odoo, adapter maakt geen categorieën) |
+| C1 | `account.account.deprecated` | **bestaat niet in Odoo 19** (`ValueError: Invalid field`) — STAP-0 §1.5 was hierin onjuist; `active` is het signaal | sync filtert op `active = True` |
+| C2 | Instellingen company 1 (live 03-09) | `fiscalyear_lock_date` = `tax_lock_date` = **2025-12-31** (K3 gezet), `extract_in_invoice_digitalization_mode` = **`no_send`** (K2 gezet); company 3 nog `auto_send`, geen lock dates | lock-date-poort vóór de create (`app/odoo/fouten.py::lock_date_melding`), bijlage blijft ná posten |
+| C3 | API-keys | "Facturatie" (verloopt 2027-08-12), "Nijenhuis Module" (2026-11-22), "N-Module" (02-09, géén vervaldatum) | probe `api_key` informatief; rotatie blijft klikpunt |
+| C4 | `res.partner.bank` | IBAN-leesroute voor de IBAN-wissel-check = `acc_number`/`active` per partner | `OdooLeesFacade.get("Vendors/{id}/BankRelations")` |
+| C5 | Reversal-wizard | `reverse_moves` geeft act_window mét `res_id` (creditnota, `in_refund`, draft); zonder btw-override geen residu | adapter spiegelt override alleen als er één was |
+
+Ontwerpgevolg (blok C): regels gaan als `quantity × price_unit` mét `product_id` waar de materiaalbrug een product kent
+én `aantal × stuksprijs = netto` cent-exact uit het veldvoorstel volgt; anders `1 × netto` (nooit gokken). Rekening,
+btw en project komen ALTIJD expliciet uit het boekvoorstel — Odoo leidt niets af.

@@ -1218,7 +1218,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   0087 — de EIGEN RLZ-verkoopfacturen van de administratie via de dagelijkse leesroute
   `app/voorraad/rlz_uitstroom.py` (meelopend in `sync-alles`, incrementeel vanaf max(datum) − 14 dagen,
   alleen Status 2/3, aantal = `Quantity` mét teken — creditregels zijn al negatief, nooit dubbel
-  flippen; `voorraad-rlz-sync --volledig` voor de eerste run; strikt GET-only). Odoo = parkeerpost.**
+  flippen; `voorraad-rlz-sync --volledig` voor de eerste run; strikt GET-only). **Odoo als LEESBRON vanaf de
+  voorraad-knip (Odoo-adapter blok D 03-09, migratie 0102): alleen-lezen koppeling op een RLZ-administratie,
+  `app/odoo/verkoop_uitstroom.py` leest geposte out_invoice/out_refund (creditnota = negatief) vanaf
+  `voorraad_knip_datum`, de RLZ-route registreert ≥ knip niet meer — zie BESLISSINGEN "ODOO-ADAPTER FASE 1".**
   Normalisatie VOLAUTOMATISCH: dienst-regel zonder AI, bestaande regel deterministisch,
   eerste match = AI-voorstel (`ClaudeExtractieClient.vraag_json`, zelfde kostenpoort) direct
   toegepast, onzeker telt mee mét vlag, geen AI = "niet genormaliseerd" (prominente teller);
@@ -1432,7 +1435,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   verbinding/inventaris, veld-voor-veld-mapping RLZ→Odoo, semantiekverschillen, twee live bewijs-cycli,
   beslispunten + klikpunten. Kernfeiten: multi-company-db (10 bedrijven, Universal Verkoop al live),
   boekdatum-default = maandeinde (altijd `date` expliciet), storno = reversal als apart document, bijlage
-  ná posten (OCR auto_send). GEEN adapter gebouwd — bouw vergt bouwplan + akkoord (BESLISSINGEN "ODOO STAP-0").**
+  ná posten (OCR auto_send). **Adapter FASE 1 GEBOUWD 03-09 (backend, blokken 0–D — BESLISSINGEN "ODOO-ADAPTER
+  FASE 1" is canoniek voor de bouwstatus): port/registry `app/backends/` (`boekhoud_backend` = alleen routeringssleutel,
+  domein vertakt nooit), `app/odoo/` (koppeling + probe + sleutelrotatie, stamgegevenssync naar dezelfde caches,
+  materiaalbrug product.product, inkoop-adapter boeken = create + lock-date-poort + btw-cent-override ± € 0,02 +
+  post-write-company-verificatie + bijlage ná posten, tegenboeken = reversal mét kruisverwijzing, Odoo als leesbron
+  voorraad); Odoo-administratie = sentinel in `rlz_admin_id` → RLZ-resolutie fail-loud; UI (blok E) en de eerste live
+  adapter-cyclus op company 1 zijn open klikpunten.**
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
   schema-versies, entiteiten, conventies)**

@@ -1,6 +1,8 @@
-# Ontwerp — Odoo-backend-adapter (verkenning, GEPARKEERD)
+# Ontwerp — Odoo-backend-adapter (verkenning; FASE 1 GEBOUWD 03-09-2026)
 
-> **Status: verkenning / geparkeerd — bouwen bij de eerste concrete Odoo-klant** (register:
+> **Status: fase 1 (backend, blokken 0–D) GEBOUWD 03-09-2026 — canonieke bouwstatus in `docs/BESLISSINGEN.md`
+> sectie "ODOO-ADAPTER FASE 1"; dit document blijft de ontwerp-/feitenachtergrond.** (Eerdere status: verkenning /
+> geparkeerd — bouwen bij de eerste concrete Odoo-klant; register:
 > `docs/BESLISSINGEN.md`). Architectuurfundament: **Platform-besluit 0016** ("Boekhoud-backend
 > als port/adapters; per administratie een koppeling-type",
 > `Platform/besluiten/0016-boekhoud-backend-port-adapters.md`) — de administratie ís de
