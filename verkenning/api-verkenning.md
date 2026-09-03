@@ -1790,3 +1790,42 @@ RLZ-UI (land + btw-nummer) gewoon geaccepteerd werd.
   bij EU-tarieven voor maar is niet dekkend gedocumenteerd — naam-prefix is de robuuste bron.
   Een tarief zonder komma-prefix (de test-administratie heeft er één met `Name: null`) telt
   bewust niet mee (nooit vals signaleren).
+
+## Vendor archiveren via API — STAP-0 03-09 (design-ronde crediteuren-dubbelen v2, blok 0; `verkenning/poc_vendor_archiveren.py`) — KAN NIET
+
+Vraag (mockup `crediteuren-dubbelen-v2.html` notitie ④): kan de app ná "voorkeur kiezen" de overige
+crediteuren van een dubbel-cluster via de API op inactief/gearchiveerd zetten? Uitkomst: **nee — identiek
+aan Customers (hertest 14-08, "Systeemanker route A" punt 8)**. Alle experimenten op de TEST-administratie
+tegen een eigen, daarvoor aangemaakte TEST-vendor (`TEST-ARCHIEF-STAP0 crediteur`,
+id `17b0b676-79a9-58c4-bc45-04b0f92d1a3c`, client-GUID uuid5); niets verwijderd, eindstand actief geverifieerd.
+
+**Representatie (read-only, `GET Vendors/{id}?fields=all`):** velden `AdditionalName,
+BookInboxDocumentAutomatically, ChamberOfCommerceCity, ChamberOfCommerceNumber, City, CreateDate,
+DefaultAccruedQuantity, DefaultAddressType, EMail, EntityKind, FirstName, FullAddress, IdentifierNumber,
+Initials, IsArchived, IsLinkedToCustomer, LastName, LastNamePrefix, Name, PaymentDueDays,
+PreferredDescription, RecordStatus, SearchName, SocialSecurityNumber (⚠️ BSN-regel), id`. Kandidaat-velden
+zijn dus alleen `IsArchived` (bool) en `RecordStatus` (enum `Reeleezee.DTO.RecordStatus`; alle 213 vendors
+van de TEST-administratie dragen `2`, `$filter=RecordStatus eq 'Active'` geeft diezelfde 213 — 2 = Active).
+`IsActive` bestaat niet op Vendor (`400 Could not find a property named 'IsActive'`).
+
+**Schrijfexperimenten (alle op `PUT Vendors/{id}` mét `id` + `Name` in de body):**
+
+| Vorm | Antwoord | Readback `IsArchived`/`RecordStatus` | Zichtbaar in `GET Vendors` |
+|---|---|---|---|
+| `"IsArchived": true` | 204 | `False` / `2` — **stil genegeerd** | ja |
+| `"RecordStatus": 1` · `3` · `0` | 204 | `False` / `2` — stil genegeerd | ja |
+| `"IsArchived": true` + `"RecordStatus": 1` | 204 | ongewijzigd | ja |
+| `"RecordStatus": "Archived"` / `"Inactive"` / `"Deleted"` (string-enum) | `400 The request is invalid` | — | — |
+| `PATCH Vendors/{id}` `{"IsArchived": true}` | **501 Unsupported Request** (HTML) — PATCH bestaat niet | ongewijzigd | ja |
+| `GET Vendors/{id}/Actions` | `[{Type: 22, Description: "Zet leverancier als klant"}]` — **géén archiveer-actie** | — | — |
+
+DELETE is bewust niet geprobeerd (kernprincipe 3). `$filter=IsArchived eq true` werkt syntactisch (0 rijen) —
+een door een mens in de RLZ-UI gearchiveerde crediteur is dus wél via de API te HERKENNEN (`IsArchived: true`
+in de readback en/of afwezig in de default-lijst; welke van de twee RLZ toepast is pas te zien zodra er een
+échte gearchiveerde crediteur is — de Vendors-sync moet beide vormen als "gearchiveerd" lezen).
+
+**Consequentie (blok A, notitie ④ — pad "API werkt niet"):** de actie "Voorkeur kiezen & rest archiveren…"
+schrijft niets naar RLZ; de uitkomst is een **RLZ-werklijst-regel** ("klaargezet — archiveer in RLZ: <namen>",
+status open/gedaan) én een dagelijkse hertoets (meeliftend in `sync-alles`) die de regel afvinkt zodra de
+crediteur in RLZ `IsArchived: true` draagt of uit de Vendors-lijst verdwenen is. Boekingsgeheugen en
+`crediteur_kenmerk` verhuizen wél direct in de app naar de voorkeurs-crediteur (notitie ⑥).
