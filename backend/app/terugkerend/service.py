@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import statistics
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -194,8 +195,14 @@ def herbereken_administratie(*, administratie_id: uuid.UUID, vandaag: date | Non
     return telling
 
 
-def herbereken_alle(*, vandaag: date | None = None) -> dict[uuid.UUID, dict[str, int] | str]:
-    """Voor élke actieve administratie (sync-alles-patroon): één kapotte stopt de rest niet."""
+def herbereken_alle(
+    *,
+    vandaag: date | None = None,
+    voortgang: Callable[[uuid.UUID, dict[str, int] | str], None] | None = None,
+) -> dict[uuid.UUID, dict[str, int] | str]:
+    """Voor élke actieve administratie (sync-alles-patroon): één kapotte stopt de rest niet.
+    `voortgang` (kantoorbrede achtergrondrun, blok B1 03-09) krijgt ná élke administratie de uitkomst
+    zodat de run-rij zichtbaar meetelt; de motor zelf is ongewijzigd."""
     with scoped_session(None) as session:
         ids = list(session.scalars(select(Administratie.id).where(Administratie.actief.is_(True))))
     uit: dict[uuid.UUID, dict[str, int] | str] = {}
@@ -205,6 +212,8 @@ def herbereken_alle(*, vandaag: date | None = None) -> dict[uuid.UUID, dict[str,
         except Exception as exc:  # noqa: BLE001 — één administratie mag de rest niet raken
             logger.exception("Terugkerend-signaal mislukt voor %s", administratie_id)
             uit[administratie_id] = str(exc)
+        if voortgang is not None:
+            voortgang(administratie_id, uit[administratie_id])
     return uit
 
 

@@ -278,13 +278,21 @@ export interface AutoboekKandidatenLijstDto {
 export interface AutoboekAanzetUitkomstDto {
   administratie_id: string
   vendor_id: string
-  status: 'aangezet' | 'overgeslagen' | 'fout' | string
+  /** aanzetten: aangezet | overgeslagen | fout — verbergen (B5.1, 03-09): verborgen | overgeslagen | fout */
+  status: 'aangezet' | 'verborgen' | 'overgeslagen' | 'fout' | string
   reden: string | null
+  /** Namen reizen mee (03-09) zodat ook rijen buiten de huidige pagina leesbaar zijn ("Selecteer alle N"). */
+  leverancier_naam?: string | null
+  administratie_naam?: string | null
 }
-
 export interface AutoboekBulkAanzettenResultaatDto {
   uitkomsten: AutoboekAanzetUitkomstDto[]
   aangezet: number
+  overgeslagen: number
+}
+export interface AutoboekBulkVerbergenResultaatDto {
+  uitkomsten: AutoboekAanzetUitkomstDto[]
+  verborgen: number
   overgeslagen: number
 }
 
@@ -305,6 +313,8 @@ export interface WerkvoorraadKlantDto {
   duplicaat_signalen?: number
   /** Terugkerende facturen (blok B 30-08): leveranciers met een actief "verwachte factuur ontbreekt". */
   terugkerend_signalen?: number
+  /** Voorraadverschil (C2 03-09): artikelgroepen buiten tolerantie; 0 zonder de voorraad-opt-in. */
+  voorraad_verschillen?: number
 }
 
 export interface WerkvoorraadOverzichtDto {
@@ -947,8 +957,41 @@ export interface ArchiefDocumentDto {
   tegengeboekt: boolean
 }
 
+/** C1 (03-09): verplicht gepagineerd + datumvenster; `van`/`tot` = het effectief toegepaste
+ * venster (defaults door de server ingevuld: laatste 12 maanden op boekmoment). */
 export interface ArchiefResponseDto {
   documenten: ArchiefDocumentDto[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+  van: string
+  tot: string
+}
+
+/** Kantoorbreed archief (B4 03-09, `GET /archief`): elke rij draagt zijn administratie — het
+ * ⋯-rijmenu en de rij-klik gebruiken díé administratie, nooit een schermbrede keuze. */
+export interface ArchiefKantoorbreedDocumentDto extends ArchiefDocumentDto {
+  administratie_id: string
+  administratie_naam: string
+}
+
+export interface ArchiefFacetDto {
+  administratie_id: string
+  naam: string
+  aantal: number
+}
+
+export interface ArchiefKantoorbreedResponseDto {
+  documenten: ArchiefKantoorbreedDocumentDto[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+  van: string
+  tot: string
+  /** "N documenten over M administraties" — M telt alleen administraties mét rijen in de selectie. */
+  administraties_met_documenten: number
+  /** Facetwaarden over de hele scope binnen venster + zoekterm (ook als een facet gezet is). */
+  facet: ArchiefFacetDto[]
 }
 
 /* --- Kempen-doorbelasting (blok 3, besluit Peter 2026-08-13) --------------------------------
@@ -1207,4 +1250,56 @@ export interface DocumentVerplaatsResponseDto {
   vragen_hertoegewezen: number
   /** Punt 6a: True als op verzoek een tenaamstelling-regel naar het doel is geleerd. */
   tenaamstelling_geleerd?: boolean
+}
+
+/** Inzicht › Open vragen kantoorbreed (design-ronde 03-09 blok B2, `GET /vragen`): één rij per open
+ * vraag over álle administraties in scope — oudste eerst. `aan_mij` = de ingelogde gebruiker is aan de
+ * beurt; `blokkeert_boeken` = het document staat in `vraag_open` (een vraag aan de klant-accordeur op een
+ * document dat bij de klant ligt of geboekt is telt wél als open, maar blokkeert niets — blok B5 26-08). */
+export interface OpenVraagRijDto {
+  vraag_id: string
+  document_id: string
+  administratie_id: string
+  administratie_naam: string
+  vraag_tekst: string
+  laatste_bericht: string | null
+  laatste_bericht_door: string | null
+  laatste_bericht_op: string | null
+  gesteld_door_id: string
+  gesteld_door_naam: string | null
+  gesteld_op: string
+  aan_de_beurt_id: string
+  aan_de_beurt_naam: string | null
+  aan_mij: boolean
+  wacht_dagen: number
+  document_bestandsnaam: string
+  document_status: string
+  leverancier_naam: string | null
+  referentie: string | null
+  /** Decimal serialiseert als string; null zonder boekvoorstel. */
+  totaalbedrag: string | null
+  blokkeert_boeken: boolean
+}
+
+/** Tellers over de ongefilterde scope-set — óók de bron van de KPI-kaart "Open vragen" (`GET /vragen/stand`). */
+export interface OpenVragenTellersDto {
+  open: number
+  aan_mij: number
+  blokkeert_boeken: number
+  administraties: number
+}
+
+export interface OpenVragenAdministratieFacetDto {
+  administratie_id: string
+  administratie_naam: string
+  aantal: number
+}
+
+export interface OpenVragenLijstDto {
+  rijen: OpenVraagRijDto[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+  tellers: OpenVragenTellersDto
+  administraties: OpenVragenAdministratieFacetDto[]
 }

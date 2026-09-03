@@ -59,7 +59,7 @@ export function TerugkerendSignaal({
           {signaal.vorige_bedrag ? formatBedrag(signaal.vorige_bedrag) : ''}
           {signaal.vorige_datum ? ` op ${formatDatumKort(signaal.vorige_datum)}` : ''}.
         </span>
-        <Link to={`/terugkerend?administratie=${administratieId}`} style={{ fontSize: 12 }}>
+        <Link to={`/terugkerend?administratie_id=${administratieId}`} style={{ fontSize: 12 }}>
           Alle terugkerende facturen →
         </Link>
       </div>

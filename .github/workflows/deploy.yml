@@ -160,7 +160,7 @@ jobs:
             --memory 1Gi \
             --cpu 1 \
             --min-instances 1 \
-            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers@BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync@EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij@EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync" \
+            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers@BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync@EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij@EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync@TERUGKEREND_HERBEREKEN_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-terugkerend-herbereken" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest" \
             --quiet
 
@@ -201,6 +201,12 @@ jobs:
       # géén scheduler — de wizard zet een administratie_sync_run klaar en triggert één
       # uitvoering via EERSTE_SYNC_JOB_RESOURCE (run-backend@ roles/run.invoker, f3_jobs.sh
       # stap 9); status per onderdeel via …/eerste-sync/status.
+      # rlz-terugkerend-herbereken (design-ronde 03-09 blok B1, mockup inzicht-kantoorbreed ③): ON-DEMAND,
+      # géén scheduler — "⟳ Herbereken alles" op Inzicht › Terugkerende facturen zet één platformbrede
+      # terugkerend_herbereken_run klaar en triggert één uitvoering via TERUGKEREND_HERBEREKEN_JOB_RESOURCE
+      # (zelfde metadata-server-auth; KLIKPUNT eenmalig: run-backend@ roles/run.invoker op déze job,
+      # f3_jobs.sh-patroon stap 6–9). Puur code (herbereken_alle), geen RLZ-calls; de dagelijkse
+      # herberekening blijft in rlz-sync.
       # rlz-projecten-cijfers is ON-DEMAND (géén scheduler): de sync-knop zet een wachtrij-rij
       # klaar en triggert één uitvoering via CIJFERS_SYNC_JOB_RESOURCE op de service
       # (achtergrondrun-fix 2026-08-23; run-backend@ heeft roles/run.invoker op déze job —
@@ -224,6 +230,7 @@ jobs:
             "rlz-bank-sync|bank-sync-wachtrij|900" \
             "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800" \
             "rlz-eerste-sync|eerste-sync-wachtrij|1800" \
+            "rlz-terugkerend-herbereken|terugkerend-herbereken-wachtrij|1800" \
             "rlz-bewaking|bewaking-probe|300" \
           ; do
             NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"

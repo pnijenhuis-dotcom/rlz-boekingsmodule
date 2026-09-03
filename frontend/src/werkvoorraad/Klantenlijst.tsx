@@ -52,6 +52,9 @@ export function Klantenlijst({
   // Terugkerende facturen (blok B 30-08): leveranciers waarvan de verwachte factuur uitblijft —
   // zelfde toon-regel, klik = signaal-overzicht per administratie.
   const toonTerugkerend = (klanten ?? []).some((k) => (k.terugkerend_signalen ?? 0) > 0)
+  // Voorraadverschil (C2 design-ronde 03-09): artikelgroepen buiten tolerantie — alleen bij de
+  // voorraad-opt-in berekend; zelfde toon-regel, klik = kantoorbrede voorraadlijst gefilterd op de klant.
+  const toonVoorraad = (klanten ?? []).some((k) => (k.voorraad_verschillen ?? 0) > 0)
 
   return (
     <div className="panel">
@@ -77,6 +80,7 @@ export function Klantenlijst({
                 {toonMatch && <th>Urenmatch</th>}
                 {toonDuplicaat && <th>Duplicaten</th>}
                 {toonTerugkerend && <th>Verwachte facturen</th>}
+                {toonVoorraad && <th>Voorraadverschil</th>}
               </tr>
               {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
               {zichtbaar.map((k) => (
@@ -162,10 +166,22 @@ export function Klantenlijst({
                       onClick={(e) => {
                         if ((k.terugkerend_signalen ?? 0) === 0) return
                         e.stopPropagation()
-                        navigate(`/terugkerend?administratie=${k.administratie_id}`)
+                        navigate(`/terugkerend?administratie_id=${k.administratie_id}`)
                       }}
                     >
                       <Teller waarde={k.terugkerend_signalen ?? 0} chipKlasse="afwijking" />
+                    </td>
+                  )}
+                  {toonVoorraad && (
+                    <td
+                      title="Artikelgroepen waarvan de telling buiten de tolerantie van de theoretische voorraadstand valt — signaal, geen blokkade"
+                      onClick={(e) => {
+                        if ((k.voorraad_verschillen ?? 0) === 0) return
+                        e.stopPropagation()
+                        navigate(`/voorraad?administratie_id=${k.administratie_id}`)
+                      }}
+                    >
+                      <Teller waarde={k.voorraad_verschillen ?? 0} chipKlasse="afwijking" />
                     </td>
                   )}
                 </tr>

@@ -5,8 +5,10 @@
     "/accordering",
     "/accordeur",
     "/administraties",
+    "/archief",
     "/auth",
     "/bank",
+    "/crediteuren",
     "/doorbelasting",
     "/health",
     "/instellingen",
@@ -15,14 +17,19 @@
     "/materiaal",
     "/notificaties",
     "/projecten",
+    "/terugkerend",
     "/uren",
     "/verzamelbak",
+    "/voorraad",
+    "/vragen",
     "/werkvoorraad",
     "/zoeken"
   ],
   "exacte_paden": [
+    "/archief",
     "/health",
     "/verzamelbak",
+    "/vragen",
     "/zoeken"
   ]
 }

@@ -236,6 +236,10 @@ class Settings(BaseSettings):
     # Eerste-sync-run van de onboarding-wizard (feedbackronde 26-08 punt 5:
     # "projects/…/jobs/rlz-eerste-sync"). Gezet = job-trigger, leeg = dev-thread.
     eerste_sync_job_resource: str | None = None
+    # Kantoorbrede terugkerend-herberekening (design-ronde 03-09 blok B1, mockup inzicht-kantoorbreed ③:
+    # "projects/…/jobs/rlz-terugkerend-herbereken"). Gezet = "⟳ Herbereken alles" triggert één
+    # on-demand job-uitvoering (terugkerend_herbereken_run-rij = de opdracht); leeg = dev-thread.
+    terugkerend_herbereken_job_resource: str | None = None
     bank_auto_ververs_drempel_minuten: int = 5
 
     boekingsgeheugen_seed_maanden: int = 36

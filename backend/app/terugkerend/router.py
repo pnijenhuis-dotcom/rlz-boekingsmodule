@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
 from app.terugkerend import schemas, service
@@ -111,3 +111,130 @@ def document_terugkerend_signaal(
     if s is None:
         return schemas.DocumentTerugkerendSignaalDto()
     return schemas.DocumentTerugkerendSignaalDto(**s.__dict__)
+
+
+# --- kantoorbreed (design-ronde 03-09 blok B1; mockup inzicht-kantoorbreed ①②③⑨) -----------------
+# Eén endpoint zónder administratie in het pad; scope = mijn_administraties van de actor, per
+# administratie gelezen onder RLS (kantoorbreed.py). De per-administratie-routes hierboven blijven
+# bestaan voor de klantpagina-deeplinks (⑨).
+
+
+@router.get("/terugkerend/signalen", response_model=schemas.KantoorLijstDto)
+def terugkerend_signalen_kantoorbreed(
+    pagina: int = Query(1, ge=1),
+    q: str = Query(""),
+    administratie_id: uuid.UUID | None = Query(None),
+    status_facet: str = Query("aandacht", alias="status"),
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.KantoorLijstDto:
+    """Alle signalen ("ontbreekt" + "prijsstijging") over de administraties in scope, urgentste
+    bovenaan; status = facet-filter (aandacht | gesnoozed | afgemeld | alle), administratie = facet,
+    q = leverancier; paginering 25."""
+    from app.terugkerend import kantoorbreed
+
+    try:
+        lijst = kantoorbreed.lijst(
+            actor_id=actor.id, rol=actor.rol, pagina=pagina, q=q, administratie_id=administratie_id, status=status_facet
+        )
+    except service.TerugkerendFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.KantoorLijstDto(
+        rijen=[schemas.KantoorRijDto(**r.__dict__) for r in lijst.rijen],
+        totaal=lijst.totaal,
+        pagina=lijst.pagina,
+        per_pagina=lijst.per_pagina,
+        administraties_in_selectie=lijst.administraties_in_selectie,
+        tellers=schemas.KantoorTellersDto(**lijst.tellers.__dict__),
+        facetten=schemas.KantoorFacettenDto(
+            status=lijst.facetten.status,
+            administraties=[schemas.AdministratieFacetDto(**f.__dict__) for f in lijst.facetten.administraties],
+        ),
+    )
+
+
+def _run_dto(info) -> schemas.HerberekenRunDto:
+    return schemas.HerberekenRunDto(**info.__dict__)
+
+
+@router.post("/terugkerend/herbereken", response_model=schemas.HerberekenRunDto, status_code=status.HTTP_202_ACCEPTED)
+def terugkerend_herbereken_alles(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.HerberekenRunDto:
+    """"⟳ Herbereken alles" (③): één kantoorbrede achtergrondrun over álle actieve administraties —
+    202 + run-id, status via GET /terugkerend/herbereken/{run_id}. Een lopende run wordt hergebruikt."""
+    from app.terugkerend import herbereken_run
+
+    try:
+        return _run_dto(herbereken_run.start_run(actor_id=actor.id))
+    except herbereken_run.HerberekenStartFout as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.get("/terugkerend/herbereken/laatste", response_model=schemas.HerberekenRunDto | None)
+def terugkerend_herbereken_laatste(
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.HerberekenRunDto | None:
+    """Jongste run (voor "stand van …" bij binnenkomst); null als er nog nooit een run was."""
+    from app.terugkerend import herbereken_run
+
+    info = herbereken_run.laatste_run()
+    return _run_dto(info) if info is not None else None
+
+
+@router.get("/terugkerend/herbereken/{run_id}", response_model=schemas.HerberekenRunDto)
+def terugkerend_herbereken_status(
+    run_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.HerberekenRunDto:
+    from app.terugkerend import herbereken_run
+
+    try:
+        return _run_dto(herbereken_run.status_van(run_id))
+    except herbereken_run.HerberekenRunNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/terugkerend/{administratie_id}/{vendor_id}/conceptmail", response_model=schemas.ConceptMailDto)
+def terugkerend_conceptmail(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.ConceptMailDto:
+    """"Navragen bij leverancier…" (②): deterministisch CONCEPT (geen AI) — genereren is lezen, er
+    wordt niets verzonden of vastgelegd; de mens bewerkt en verstuurt expliciet (POST …/versturen)."""
+    from app.terugkerend import kantoorbreed
+
+    try:
+        c = kantoorbreed.bouw_conceptmail(administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor.id)
+    except service.TerugkerendFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.ConceptMailDto(**c.__dict__)
+
+
+@router.post(
+    "/terugkerend/{administratie_id}/{vendor_id}/conceptmail/versturen", response_model=schemas.ConceptMailVerzondenDto
+)
+def terugkerend_conceptmail_versturen(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    invoer: schemas.ConceptMailVersturenDto,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.ConceptMailVerzondenDto:
+    """Verzend de door de mens gereviewde navraag — nooit automatisch. Fail-zichtbaar: mailkanaal
+    niet geconfigureerd = 503, verzendfout = 424 (factuurmatch-mail-afweging); geslaagd = audit."""
+    from app.berichten.mail import MailNietGeconfigureerd, MailVerzendFout
+    from app.terugkerend import kantoorbreed
+
+    try:
+        naar = kantoorbreed.verstuur_conceptmail(
+            administratie_id=administratie_id,
+            vendor_id=vendor_id,
+            actor_id=actor.id,
+            naar=invoer.naar,
+            onderwerp=invoer.onderwerp,
+            tekst=invoer.tekst,
+        )
+    except service.TerugkerendFout as exc:
+        raise _vertaal(exc) from exc
+    except MailNietGeconfigureerd as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except MailVerzendFout as exc:
+        raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=str(exc)) from exc
+    return schemas.ConceptMailVerzondenDto(verzonden_aan=naar)

@@ -316,6 +316,22 @@ else
   echo "   mislukt' en kan de sync via de knop opnieuw gestart worden."
 fi
 
+echo "== 10. rlz-terugkerend-herbereken: on-demand job (Inzicht › Terugkerende facturen, blok B1 03-09) =="
+# Geen scheduler: "⟳ Herbereken alles" triggert één uitvoering (TERUGKEREND_HERBEREKEN_JOB_RESOURCE
+# in deploy.yml); alleen de IAM-binding hier. Puur code (herbereken_alle), geen RLZ-calls.
+if gcloud run jobs describe rlz-terugkerend-herbereken --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding rlz-terugkerend-herbereken \
+    --region="${REGION}" \
+    --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet >/dev/null
+  echo "   run-backend@ mag rlz-terugkerend-herbereken uitvoeren (roles/run.invoker, job-niveau)."
+else
+  echo "   LET OP: job rlz-terugkerend-herbereken bestaat nog niet (eerste deploy-run maakt 'm) —"
+  echo "   draai dit script daarna opnieuw; tot dan toont '⟳ Herbereken alles' 'Achtergrondrun starten"
+  echo "   mislukt' (zichtbaar op de run, knop blijft werken)."
+fi
+
 echo
 echo "Klaar. Verificatie F3 (draaiboek): per job één handmatige run —"
 echo "  gcloud run jobs execute rlz-sync                --region=${REGION} --wait   # groen"

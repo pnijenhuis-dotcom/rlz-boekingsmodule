@@ -107,6 +107,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/administraties/{aid}/bank/rekeningen"),  # bank per administratie
         ("GET", "/zoeken?term=test"),  # zoeken
         ("GET", f"/administraties/{aid}/archief"),  # archief
+        ("GET", "/archief"),  # archief kantoorbreed (B4 03-09)
         ("GET", f"/administraties/{aid}/grootboek"),  # sync
         ("GET", f"/administraties/{aid}/crediteuren"),  # sync
         ("GET", "/verzamelbak"),  # intake
@@ -125,6 +126,15 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplaats"),  # verplaatsen (27-08 punt 5)
         ("POST", f"/administraties/{aid}/accordering/documenten/bulk-aanbieden"),  # bulk aanbieden (27/28-08 punt 2b)
         ("GET", f"/administraties/{aid}/accordering/vervallen-meldingen"),  # vervallen-melding (27/28-08 punt 2a)
+        ("GET", "/vragen"),  # open vragen kantoorbreed (blok B2 03-09)
+        ("GET", "/vragen/stand"),  # KPI-stand open vragen (blok B2 03-09)
+        ("GET", "/voorraad/verschillen"),  # kantoorbrede voorraad-landing (blok B3 03-09)
+        ("GET", "/voorraad/verschillen/stand"),  # voorraad-tellers (blok B3 03-09)
+        ("GET", "/terugkerend/signalen"),  # kantoorbrede terugkerend-lijst (blok B1 03-09)
+        ("POST", "/terugkerend/herbereken"),  # kantoorbrede herbereken-run (blok B1 03-09)
+        ("GET", f"/terugkerend/{aid}/{DUMMY_ID}/conceptmail"),  # navraag-conceptmail (blok B1 03-09)
+        ("GET", "/crediteuren/dubbelen"),  # crediteuren-dubbelen v2 kantoorbreed (blok A 03-09, vereis_kantoorrol)
+        ("GET", "/crediteuren/werklijst"),  # RLZ-werklijst crediteur-archivering (blok A 03-09)
     ]
 
 

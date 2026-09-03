@@ -120,6 +120,18 @@ def _eerste_sync_wachtrij(args: argparse.Namespace) -> int:
     return 0
 
 
+def _terugkerend_herbereken_wachtrij(args: argparse.Namespace) -> int:
+    """Entrypoint van de on-demand Cloud Run-job rlz-terugkerend-herbereken (design-ronde 03-09 blok B1,
+    mockup inzicht-kantoorbreed ③): verwerk klaargezette terugkerend_herbereken_run-rijen — de bestaande
+    motor herbereken_alle(), geen RLZ-calls. Geen wachtrij = snelle no-op; fouten landen zichtbaar op
+    de run (status fout + reden), nooit exit 1."""
+    from app.terugkerend import herbereken_run
+
+    aantal = herbereken_run.verwerk_wachtrij()
+    print(f"terugkerend-herbereken-wachtrij: {aantal} run(s) verwerkt")
+    return 0
+
+
 def _extractie_wachtrij_verwerken(args: argparse.Namespace) -> int:
     """Job-entrypoint extractie-wachtrij (punt 4, 26-08): synchroon, systeem-actor, idempotent."""
     from app.documenten import service as documenten_service
@@ -368,7 +380,27 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     print("\nAutoboek-kandidaten (alle actieve administraties):")
     kandidaten_exit = _rapporteer_autoboek_kandidaten(kandidaten_service.herbereken_alle())
-    return 1 if fouten or cijfers_exit or voorraad_exit or terugkerend_exit or kandidaten_exit else 0
+    # Crediteur-werklijst-hertoets (crediteuren-dubbelen v2, 03-09): leest per open werklijst-regel de Vendors in
+    # RLZ (GET-only) en vinkt af zodra de crediteur dáár gearchiveerd/afwezig is — één kapotte administratie
+    # stopt de rest niet; eigen rapportregel.
+    from app.crediteuren import service as crediteuren_service
+
+    print("\nCrediteur-archiveer-werklijst (hertoets tegen RLZ, administraties mét open regels):")
+    werklijst_exit = _rapporteer_crediteur_werklijst(crediteuren_service.hertoets_werklijst())
+    return 1 if fouten or cijfers_exit or voorraad_exit or terugkerend_exit or kandidaten_exit or werklijst_exit else 0
+
+
+def _rapporteer_crediteur_werklijst(resultaten: dict) -> int:
+    fouten = 0
+    if not resultaten:
+        print("OK    geen open werklijst-regels")
+    for administratie_id, r in resultaten.items():
+        if isinstance(r, dict):
+            print(f"OK    {administratie_id}: {r['open']} open regels hertoetst, {r['gedaan']} gedaan, {r['nog_open']} nog open")
+        else:
+            fouten += 1
+            print(f"FOUT  {administratie_id}: {r}", file=sys.stderr)
+    return 1 if fouten else 0
 
 
 def _rapporteer_autoboek_kandidaten(resultaten: dict) -> int:
@@ -1561,6 +1593,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
     )
 
+    subparsers.add_parser(
+        "crediteur-werklijst-hertoets",
+        help="Crediteur-archiveer-werklijst hertoetsen tegen RLZ (GET Vendors, geen writes): regels waarvan álle te "
+        "archiveren crediteuren in RLZ gearchiveerd/afwezig zijn worden 'gedaan' (loopt óók dagelijks mee in sync-alles).",
+    )
+
     voorraad_hernorm_parser = subparsers.add_parser(
         "voorraad-hernormaliseer",
         help="Voorraad: alle feitenregels hernormaliseren (soort-label + artikelcodes, geen RLZ-calls) + rapport",
@@ -1601,6 +1639,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Verwerk de wachtrij van eerste-sync-runs van nieuw aangesloten administraties "
         "(entrypoint van de on-demand Cloud Run-job rlz-eerste-sync, wizard 26-08 punt 5; lege "
         "wachtrij = snelle no-op).",
+    )
+
+    subparsers.add_parser(
+        "terugkerend-herbereken-wachtrij",
+        help="Verwerk de wachtrij van kantoorbrede terugkerend-herberekeningen (entrypoint van de "
+        "on-demand Cloud Run-job rlz-terugkerend-herbereken — '⟳ Herbereken alles' op Inzicht › "
+        "Terugkerende facturen zet de run klaar en triggert deze job; lege wachtrij = snelle no-op).",
     )
 
     subparsers.add_parser(
@@ -1977,6 +2022,10 @@ def main(argv: list[str] | None = None) -> int:
         from app.autoboek_kandidaten import service as kandidaten_service
 
         return _rapporteer_autoboek_kandidaten(kandidaten_service.herbereken_alle())
+    if args.commando == "crediteur-werklijst-hertoets":
+        from app.crediteuren import service as crediteuren_service
+
+        return _rapporteer_crediteur_werklijst(crediteuren_service.hertoets_werklijst())
     if args.commando == "sync-alles":
         return _sync_alles(args)
     if args.commando == "voorraad-rlz-sync":
@@ -2005,6 +2054,8 @@ def main(argv: list[str] | None = None) -> int:
         return _verzamelbak_nabundelen(args)
     if args.commando == "eerste-sync-wachtrij":
         return _eerste_sync_wachtrij(args)
+    if args.commando == "terugkerend-herbereken-wachtrij":
+        return _terugkerend_herbereken_wachtrij(args)
     if args.commando == "reconciliatie":
         return _reconciliatie(args)
     if args.commando == "bank-sync":
