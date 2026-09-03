@@ -6,6 +6,40 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-03 — Dubbele crediteuren: één lijst over alle administraties, mét actie
+
+- Inzicht › Crediteuren toont nu in één lijst alle waarschijnlijk-dubbele crediteuren van alle administraties waar je toegang toe hebt, met het zwaarste signaal bovenaan (zelfde btw-nummer, dan KvK, dan IBAN, dan alleen de naam). Je kunt filteren op administratie of soort signaal en zoeken op naam of nummer; de werkvoorraad krijgt een teller zodra er dubbelen zijn.
+- Per cluster kies je met "Voorkeur kiezen & rest archiveren…" welke crediteur blijft. De andere komen op de RLZ-werklijst onderaan het scherm ("klaargezet — archiveer in Reeleezee"), omdat Reeleezee archiveren via de koppeling niet toestaat; de app vinkt de regel dagelijks vanzelf af zodra het in Reeleezee gebeurd is, en je kunt hem ook zelf afvinken. Staat er nog een open factuur op een crediteur die zou verdwijnen, dan blokkeert de dialoog met "eerst afletteren". Boekingsgeheugen en btw-/KvK-nummer gaan direct mee naar de voorkeur, zodat voorstellen blijven werken. Er wordt niets verwijderd.
+- Lijken twee crediteuren alleen op naam op elkaar maar hebben ze een verschillend KvK-nummer, dan staat er "Geen dubbel — afmelden": met een reden verdwijnt het cluster uit de lijst en komt het voor die combinatie niet terug.
+
+## 2026-09-03 — Terugkerende facturen: één overzicht voor het hele kantoor
+
+- Inzicht › Terugkerende facturen toont nu alle signalen van al je administraties in één lijst, de meest urgente bovenaan: eerst de leveranciers waarvan de verwachte factuur het langst uitblijft, daarna de prijsstijgingen. Je filtert op administratie en status (aandacht nodig, gesnoozed, afgemeld) en zoekt op leverancier; de teller "Verwachte facturen" in de werkvoorraad opent de lijst direct gefilterd op die klant.
+- Elke regel heeft één knop: bij een uitgebleven factuur "Navragen bij leverancier…" — je krijgt een kant-en-klare mailtekst met de laatste factuur en de verwachte periode, past die aan en verstuurt zelf (het adres komt uit de crediteurkaart als dat bekend is, anders vul je het in); bij een prijsstijging "Naar de boeking →". Snoozen en afmelden zitten in het ⋯-menu.
+- "Herbereken alles" werkt nu in één keer voor alle administraties op de achtergrond; je ziet de voortgang en het resultaat, en een storing blijft zichtbaar met de reden.
+
+## 2026-09-03 — Open vragen: één lijst over alle klanten
+
+- Open vragen staan nu in één lijst over al je klanten, oudste eerst: klik op de kaart "Open vragen" op de werkvoorraad en je ziet per vraag de leverancier, het bedrag, wie aan de beurt is en hoeveel dagen de vraag al wacht (oranje vanaf een week). Filter op klant, op "aan mij" of op ouderdom, en klik "Beantwoorden" om direct in het gesprek te landen.
+- De lijst laadt in één keer in plaats van klant voor klant, dus ook met veel administraties is hij meteen compleet. Het getal op de kaart "Open vragen" komt uit dezelfde bron als de lijst; vragen aan een klant-accordeur over een factuur die al bij de klant ligt of geboekt is tellen nu ook mee, met apart erbij hoeveel vragen het boeken echt tegenhouden.
+
+## 2026-09-03 — Voorraad: één overzicht over alle administraties, teller op de werkvoorraad
+
+- Inzicht › Voorraad opent nu met één lijst van alle artikelgroepen waarvan de telling buiten de tolerantie valt, over alle administraties met "Voorraad bijhouden" tegelijk — de grootste afwijking bovenaan, met een oranje of rode markering naar zwaarte. U hoeft niet meer eerst een administratie te kiezen; filteren op administratie of zoeken op artikelgroep kan wel. "Bekijk regels" opent direct de factuurregels achter dat verschil.
+- Op de werkvoorraad staat per klant een teller "Voorraadverschil" zodra er iets buiten de tolerantie valt; een klik brengt u naar de lijst voor die klant. Het bestaande aansluitscherm per administratie blijft bereikbaar en toont bij een verschil nu ook een directe link naar de regels.
+- De lijsten met factuurregels, diensten en artikelcodes laden nu per 25 regels met bladerknoppen, in plaats van alles in één keer.
+
+## 2026-09-03 — Archief: over alle administraties tegelijk bladeren, met datumvenster en paginering
+
+- Het archief opent nu meteen met de geboekte documenten van ál uw administraties in één lijst; een administratie kiezen is een filter geworden (leeg = alles) en de kolom Administratie staat bij elke rij. Kolomkoppen zijn sorteerbaar (leverancier, boekstuk, bedrag, factuurdatum, geboekt op, administratie) en de teller toont "N documenten over M administraties".
+- De lijst laadt standaard de laatste twaalf maanden (op het moment van boeken) en toont 25 documenten per pagina; het datumvenster staat zichtbaar ingevuld en is vrij aan te passen, en het zoekveld filtert op leverancier, referentie, boekstuk of bedrag. Alle filters staan in de adresbalk, zodat een link naar het archief precies dezelfde weergave opent.
+- Ook het archief per administratie (vanaf de klantpagina) laadt niet meer alle jaren in één keer, maar gepagineerd binnen hetzelfde datumvenster — de lijst blijft snel, ook bij duizenden geboekte stukken.
+
+## 2026-09-03 — Autoboek-kandidaten in bulk verbergen; werklijst in de materiaalcatalogus
+
+- Autoboeken › Kandidaten: meerdere kandidaten tegelijk verbergen gaat nu in één keer — je ziet daarna per leverancier wat er gebeurd is (verborgen, overgeslagen met de reden, of mislukt). Staat er meer in de lijst dan op de pagina, dan kun je na "selecteer alles" kiezen voor "Selecteer alle N resultaten"; de knop noemt altijd het aantal dat je aanzet of verbergt, en de bevestiging zegt erbij dat het om alle resultaten binnen je filter gaat.
+- Materiaalcatalogus: leveranciers waarvoor nog een bestel-mailadres of crediteur-koppeling ontbreekt staan nu in één werklijst "Nog in te stellen" bovenaan het scherm; klik op een regel en je staat direct in het juiste veld. Bij meer dan vijftien leveranciers kun je de leverancier-chips doorzoeken.
+
 ## 2026-09-03 — Doorbelasten-blok: knoppen in de huisstijl
 
 - De knop "+ Doelentiteit" in het blok "Doorbelasten na boeken" op het controlescherm ziet er nu hetzelfde uit als "+ Regel toevoegen" bij de boekingsregels erboven; hij deed het al, maar stond er als kale grijze knop. "Verdeelsleutel" ernaast heeft dezelfde vorm.

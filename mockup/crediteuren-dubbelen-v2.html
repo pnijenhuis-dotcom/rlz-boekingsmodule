@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Crediteuren-dubbelen v2 — kantoorbrede werklijst mét actie</title>
+<!-- ============================================================
+     FEEDBACK PETER 02-09 ("dit scherm is nieuw maar zinloos") +
+     PRINCIPE minimale-mens 02-09: geen per-administratie-picker,
+     signalering zonder actie is niet af. V2 = kantoorbrede lijst
+     van dubbel-clusters over ÁLLE administraties, per cluster één
+     actie: voorkeur kiezen → de rest archiveren. Of archiveren
+     via de RLZ-API kan is een STAP-0-bewijsje (debiteuren konden
+     níét, hertest 14-08); zo niet, dan wordt de actie een
+     klik-klare RLZ-werklijst mét status. Nooit verwijderen.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101917; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513;
+    --ok:#5ec792; --warn:#e2b25e; --warn-bg:rgba(226,178,94,.12); --rood:#f08579;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:1000px}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;position:relative}
+  .p-kop{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border)}
+  .p-kop h2{font-size:12px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:800}
+  .p-kop .zoek{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:6px 11px;font-size:12px;color:var(--faint);width:260px}
+  .p-kop .facet{font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:6px 11px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700;text-align:left;padding:8px 14px;border-bottom:1px solid var(--border)}
+  td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--warn-bg);color:var(--warn);margin-right:4px}
+  .chip.grijs{background:none;border:1px solid var(--border);color:var(--muted)}
+  .chip.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+  .naam{font-weight:700}
+  .sub2{font-size:11.5px;color:var(--faint);margin-top:2px}
+  .btn{display:inline-block;padding:7px 13px;border-radius:9px;background:var(--teal);color:var(--teal-donker);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .btn.sec{background:none;border:1px solid var(--border);color:var(--text);font-weight:600}
+  /* uitklap-cluster */
+  .cluster{background:var(--panel-2);border-top:1px solid var(--border)}
+  .cluster td{padding:8px 14px 8px 34px;border-bottom:none;font-size:12px;color:var(--muted)}
+  .radio{display:inline-block;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--faint);margin-right:8px;vertical-align:-2px}
+  .radio.aan{border-color:var(--teal);background:radial-gradient(circle at center,var(--teal) 45%,transparent 50%)}
+  .noot{max-width:1000px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75;margin-top:22px}
+  .noot b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>Inzicht › Crediteuren — dubbelen over álle administraties, mét actie</h1>
+<p class="sub">Geen administratie-picker meer: één kantoorbrede lijst van dubbel-clusters, zwaarste signaal bovenaan.
+Per cluster kies je de voorkeurs-crediteur; de rest wordt gearchiveerd (in RLZ via de API als het STAP-0-bewijsje slaagt,
+anders als klik-klare RLZ-werklijst mét status). Administratie is een filter, geen poort.</p>
+
+<div class="paneel">
+  <div class="p-kop">
+    <h2>Dubbel-signalering</h2>
+    <span class="chip">7 clusters</span>
+    <span style="margin-left:auto"></span>
+    <span class="facet">Administratie: alle ▾</span>
+    <span class="facet">Sleutel: alle ▾</span>
+    <span class="zoek">🔍 zoek crediteur…</span>
+  </div>
+  <table>
+    <tr><th style="width:32%">Cluster</th><th>Administratie</th><th>Waarom dubbel</th><th style="width:230px"></th></tr>
+
+    <tr>
+      <td><div class="naam">Labo Derva / Labo Derva B.V.</div><div class="sub2">2 crediteuren · laatst geboekt 01-09</div></td>
+      <td>Kempen Facilities B.V.</td>
+      <td><span class="chip">zelfde btw-nummer</span><span class="chip grijs">naam ≈</span></td>
+      <td><span class="btn">Voorkeur kiezen & rest archiveren…</span></td>
+    </tr>
+    <tr class="cluster">
+      <td colspan="4">
+        <span class="radio aan"></span><b style="color:var(--text)">Labo Derva B.V.</b> · btw BE0424612847 · IBAN BE68… · 14 boekingen · <span class="chip ok">voorkeur (meest gebruikt)</span><br>
+        <span class="radio"></span>Labo Derva · geen btw op kaart · 2 boekingen · wordt gearchiveerd
+      </td>
+    </tr>
+
+    <tr>
+      <td><div class="naam">Hello Kitchen (Duiven) / Hello Kitchen Son</div><div class="sub2">2 crediteuren · aangemaakt 02-09</div></td>
+      <td>Kempen Facilities B.V.</td>
+      <td><span class="chip grijs">naam ≈</span> <span class="chip ok">verschillend KvK — géén dubbel</span></td>
+      <td><span class="btn sec">Geen dubbel — afmelden</span></td>
+    </tr>
+
+    <tr>
+      <td><div class="naam">Wola / Wola b.v.</div><div class="sub2">2 crediteuren · laatst geboekt 28-08</div></td>
+      <td>Universal Steigerbouw B.V.</td>
+      <td><span class="chip">zelfde IBAN</span><span class="chip grijs">naam ≈</span></td>
+      <td><span class="btn">Voorkeur kiezen & rest archiveren…</span></td>
+    </tr>
+
+    <tr>
+      <td><div class="naam">…</div><div class="sub2">4 overige clusters</div></td>
+      <td colspan="3" style="color:var(--faint)">zelfde patroon — zwaarste sleutel (btw > KvK > IBAN > naam) bepaalt de sortering</td>
+    </tr>
+  </table>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① Kantoorbreed default (principe 02-09): álle administraties in één lijst, administratie/sleutel als facet-filter,
+zoekveld; schaalbaar via paginering + zwaarste-signaal-eerst. ② Per cluster één primaire actie: "Voorkeur kiezen &
+rest archiveren…" — dialoog toont de crediteuren mét kaartgegevens (btw/KvK/IBAN/aantal boekingen), voorkeur
+vooringevuld op meest-gebruikt + meest complete kaart; bevestigen archiveert de overige(n). ③ Archiveren, nooit
+verwijderen; open posten op een te archiveren crediteur = blokkerend signaal in de dialoog ("eerst afletteren").
+④ STAP-0 vooraf (CC): kan een Vendor via de RLZ-API op inactief? Zo ja → de knop voert het uit mét audit + directe
+terug-lees-verificatie; zo nee → zelfde dialoog, maar de uitkomst is een RLZ-werklijst-regel ("klaargezet — archiveer
+in RLZ: <namen>") mét status open/gedaan, en een dagelijkse hertoets die 'm afvinkt zodra het in RLZ gebeurd is.
+⑤ "Geen dubbel — afmelden" voor naam-matches die aantoonbaar verschillende entiteiten zijn (KvK verschilt —
+Hello Kitchen-casus): cluster verdwijnt mét audit en komt niet terug voor dezelfde combinatie. ⑥ Boekingsgeheugen
+en crediteur_kenmerk verhuizen mee naar de voorkeurs-crediteur (deterministisch, audit) zodat voorstellen na
+archivering blijven werken. ⑦ Het oude per-administratie-scherm vervalt; route /crediteuren blijft (redirect al
+gebouwd in v3-run). ⑧ Zelfde lijst is de bron voor een werkvoorraad-teller "crediteur-dubbelen (N)" zodra N > 0 —
+signalering mét actie, conform de norm.</p>
+</body>
+</html>

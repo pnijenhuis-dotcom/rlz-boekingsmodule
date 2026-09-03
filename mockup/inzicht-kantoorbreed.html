@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Inzicht kantoorbreed — één lijstpatroon voor terugkerend / voorraad / vragen / archief</title>
+<!-- ============================================================
+     DESIGN-RONDE 03-09 (principe minimale-mens 02-09): de vier
+     oude Inzicht-schermen (terugkerend, voorraad, archief,
+     vragen) delen hetzelfde anti-patroon — AdministratieCombobox
+     als verplichte poort, gedwongen door backends met alleen
+     /administraties/{id}/…-routes. Het autoboek-kandidaten-scherm
+     (GET /kandidaten, paginering 25, zoek, tellers, bulk) is het
+     bewezen goede patroon. Deze mockup legt dat patroon vast als
+     HET Inzicht-lijstpatroon en toont het toegepast op de twee
+     meest afwijkende gevallen (terugkerend + vragen); de
+     ontwerpnotities mappen voorraad en archief erop.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101917; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513;
+    --ok:#5ec792; --warn:#e2b25e; --warn-bg:rgba(226,178,94,.12); --rood:#f08579;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:1000px}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;max-width:1000px;margin-bottom:26px}
+  .p-kop{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .p-kop h2{font-size:12px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:800}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--warn-bg);color:var(--warn)}
+  .chip.grijs{background:none;border:1px solid var(--border);color:var(--muted)}
+  .chip.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+  .facet{font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:6px 11px;white-space:nowrap}
+  .zoek{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:6px 11px;font-size:12px;color:var(--faint);width:220px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700;text-align:left;padding:8px 14px;border-bottom:1px solid var(--border)}
+  td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+  .naam{font-weight:700}
+  .sub2{font-size:11.5px;color:var(--faint);margin-top:2px}
+  .btn{display:inline-block;padding:7px 13px;border-radius:9px;background:var(--teal);color:var(--teal-donker);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .btn.sec{background:none;border:1px solid var(--border);color:var(--text);font-weight:600}
+  .meer{color:var(--faint);cursor:pointer;padding:0 6px;font-weight:700}
+  .voet{display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:12px;color:var(--faint)}
+  .noot{max-width:1000px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75}
+  .noot b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>Inzicht kantoorbreed — één lijstpatroon (kandidaten-patroon als norm)</h1>
+<p class="sub">Elk Inzicht-scherm opent kantoorbreed: alle administraties in één lijst, urgentste bovenaan, administratie
+en status als facet-filter (nooit poort), server-side paginering 25, en per rij een échte handeling — nooit alleen een
+signaal. Hieronder het patroon toegepast op de twee zwaarste gevallen; de notities mappen voorraad en archief.</p>
+
+<!-- ================= 1. TERUGKEREND ================= -->
+<div class="paneel">
+  <div class="p-kop">
+    <h2>Inzicht › Terugkerende facturen</h2>
+    <span class="chip">4 ontbrekend</span><span class="chip grijs">2 prijsstijging</span>
+    <span style="margin-left:auto"></span>
+    <span class="facet">Administratie: alle ▾</span>
+    <span class="facet">Status: aandacht nodig ▾</span>
+    <span class="zoek">🔍 zoek leverancier…</span>
+    <span class="btn sec">⟳ Herbereken alles</span>
+  </div>
+  <table>
+    <tr><th style="width:30%">Leverancier</th><th>Administratie</th><th>Signaal</th><th style="width:250px"></th></tr>
+    <tr>
+      <td><div class="naam">Odido Zakelijk</div><div class="sub2">maandelijks · laatst 28-07 · € 214,50</div></td>
+      <td>Kempen Facilities B.V.</td>
+      <td><span class="chip">verwacht ± 28-08 — 6 dagen te laat</span></td>
+      <td><span class="btn sec">Navragen bij leverancier…</span> <span class="meer">⋯</span></td>
+    </tr>
+    <tr>
+      <td><div class="naam">Renewi</div><div class="sub2">kwartaal · laatst 02-06 · € 890,00</div></td>
+      <td>Universal Steigerbouw B.V.</td>
+      <td><span class="chip">verwacht ± 02-09 — 1 dag te laat</span></td>
+      <td><span class="btn sec">Navragen bij leverancier…</span> <span class="meer">⋯</span></td>
+    </tr>
+    <tr>
+      <td><div class="naam">Labo Derva B.V.</div><div class="sub2">maandelijks · geboekt 01-09 · € 1.240,00</div></td>
+      <td>Kempen Facilities B.V.</td>
+      <td><span class="chip">prijs +14% t.o.v. gemiddelde</span></td>
+      <td><span class="btn sec">Naar de boeking →</span> <span class="meer">⋯</span></td>
+    </tr>
+  </table>
+  <div class="voet">‹ 1 van 1 › · 6 signalen over 3 administraties · ⋯-menu: snooze 30 d · afmelden per leverancier (met reden, audit)</div>
+</div>
+
+<!-- ================= 2. VRAGEN ================= -->
+<div class="paneel">
+  <div class="p-kop">
+    <h2>Inzicht › Open vragen</h2>
+    <span class="chip">9 open</span><span class="chip grijs">3 aan mij</span>
+    <span style="margin-left:auto"></span>
+    <span class="facet">Administratie: alle ▾</span>
+    <span class="facet">Toegewezen: aan mij ▾</span>
+    <span class="facet">Ouder dan: alles ▾</span>
+  </div>
+  <table>
+    <tr><th style="width:38%">Vraag</th><th>Administratie</th><th>Wacht sinds</th><th style="width:190px"></th></tr>
+    <tr>
+      <td><div class="naam">"Is dit privé of zakelijk getankt?"</div><div class="sub2">Shell 04-9284 · € 96,20 · aan Barbara</div></td>
+      <td>BWC Steigers B.V.</td>
+      <td><span class="chip">8 dagen</span></td>
+      <td><span class="btn">Beantwoorden →</span></td>
+    </tr>
+    <tr>
+      <td><div class="naam">"Welke kostenplaats voor deze lift?"</div><div class="sub2">Riwal · € 2.140,00 · aan u</div></td>
+      <td>Universal Steigerbouw B.V.</td>
+      <td><span class="chip grijs">2 dagen</span></td>
+      <td><span class="btn">Beantwoorden →</span></td>
+    </tr>
+  </table>
+  <div class="voet">‹ 1 van 1 › · oudste eerst · server-side (nieuw endpoint GET /vragen) — geen N+1-fan-out per administratie meer</div>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① <b>Het patroon</b> = het autoboek-kandidaten-scherm: kantoorbreed endpoint zónder administratie in het pad,
+paginering 25 server-side, zoekveld, facet-filters (administratie/status — filter, nooit poort), tellers "N signalen
+over M administraties", urgentste bovenaan. Elk Inzicht-scherm dat hiervan afwijkt is fout. ② <b>Elke rij draagt een
+handeling</b>: terugkerend krijgt naast snooze/afmelden de oplos-actie "Navragen bij leverancier…" (concept-mail,
+mens verstuurt — zelfde patroon als de factuurmatch-mail) en bij prijsstijging "Naar de boeking →". ③ <b>Terugkerend
+herbereken</b> wordt één kantoorbrede knop (achtergrondrun, zelfde 202+status-patroon als de bank-sync) — nooit meer
+per administratie klikken. ④ <b>Vragen</b>: nieuw server-side endpoint <code>GET /vragen</code> (scope-gefilterd via
+RLS) vervangt de client-side N+1-fan-out; filters "aan mij" en ouderdom; wordt óók de bron van de bestaande KPI-kaart.
+⑤ <b>Voorraad</b> volgt hetzelfde patroon: landing = kantoorbrede lijst van artikelgroepen buiten tolerantie
+(zwaarste afwijking eerst) mét werkvoorraad-teller "voorraadverschil (N)"; de bestaande detail-drill-down per
+administratie blijft erachter; het verschil-signaal linkt voortaan direct naar de verdachte regels; normalisatie-
+lijsten gepagineerd. ⑥ <b>Archief</b> wordt kantoorbreed bladerbaar (administratie = facet-filter) mét verplichte
+server-side paginering + datumfilter — de huidige route zonder LIMIT (7 jaar in één response) is los daarvan een
+directe bugfix die niet op dit herontwerp wacht. ⑦ <b>Materiaal/leveranciers</b> (instellingen-scherm, valt buiten
+dit lijstpatroon): de platte waarschuwingen "geen bestel-mailadres" / "geen crediteur-koppeling" worden een klikbare
+werklijst bovenaan het scherm; leverancier-chips krijgen zoek zodra > 15. ⑧ <b>Kandidaten-restpunten</b> liften mee:
+bulk-verbergen server-side in één call; "selecteer alle N resultaten" naast selecteer-pagina. ⑨ Backend-consequentie:
+per scherm één nieuw kantoorbreed endpoint naast de bestaande per-administratie-routes (die blijven voor de
+klantpagina-deeplinks); RLS blijft de scope-waarheid.</p>
+</body>
+</html>
