@@ -196,6 +196,22 @@ def vendor(admin_engine: Engine, administratie_id: uuid.UUID) -> uuid.UUID:
     return VENDOR
 
 
+VENDOR_2 = uuid.UUID("aaaaaaaa-3333-3333-3333-333333333333")
+
+
+@pytest.fixture
+def tweede_vendor(admin_engine: Engine, administratie_id: uuid.UUID, vendor: uuid.UUID) -> uuid.UUID:
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO boekhouding.vendor_cache (id, administratie_id, naam, brondata) "
+                "VALUES (:id, :aid, 'Transip B.V.', '{}') ON CONFLICT DO NOTHING"
+            ),
+            {"id": VENDOR_2, "aid": administratie_id},
+        )
+    return VENDOR_2
+
+
 def _geboekt(
     administratie_id: uuid.UUID,
     actor: uuid.UUID,
@@ -206,18 +222,19 @@ def _geboekt(
     automatisch: bool = False,
     status: DocumentStatus = DocumentStatus.GEBOEKT,
     bedrag: str = "2721.83",
+    vendor: uuid.UUID = VENDOR,
 ) -> uuid.UUID:
     tijdstip = T0 + timedelta(days=30 * n)
     document_id = documenten_service.upload_document(
         administratie_id=administratie_id,
-        bestandsnaam=f"ebbers-{n}.pdf",
-        inhoud=f"%PDF-1.4 ebbers {n}".encode(),
+        bestandsnaam=f"ebbers-{vendor.hex[:6]}-{n}.pdf",
+        inhoud=f"%PDF-1.4 ebbers {vendor} {n}".encode(),
         actor_id=actor,
         opslag=opslag,
     ).document_id
     with scoped_session(administratie_id, actor_id=actor) as session:
         session.add(
-            Boekvoorstel(document_id=document_id, vendor_id=VENDOR, factuurdatum=tijdstip.date(), totaalbedrag=Decimal(bedrag), referentie=f"F-{n}")
+            Boekvoorstel(document_id=document_id, vendor_id=vendor, factuurdatum=tijdstip.date(), totaalbedrag=Decimal(bedrag), referentie=f"F-{vendor.hex[:6]}-{n}")
         )
         session.add(BoekvoorstelRegel(document_id=document_id, volgnummer=1, ledger_id=gb, taxrate_id=BTW, netto_bedrag=Decimal("2249.45"), btw_bedrag=Decimal("472.38"), omschrijving="Salarisverwerking"))
         document = session.get(Document, document_id)
@@ -241,7 +258,7 @@ def _geboekt(
                 BoekingObservatie(
                     id=uuid.uuid4(),
                     administratie_id=administratie_id,
-                    vendor_id=VENDOR,
+                    vendor_id=vendor,
                     gb_id=gb,
                     btw_id=BTW,
                     bron=ObservatieBron.APP.value,
@@ -390,10 +407,160 @@ class TestKeten:
         assert _rapporteer_autoboek_kandidaten({administratie_id: "RuntimeError: kapot"}) == 1
 
 
+class TestBulkVerbergenEnSelecteerAlle:
+    """B5.1 + B5.2 (design-ronde 03-09, mockup inzicht-kantoorbreed ⑧): bulk-verbergen server-side in
+    één call mét uitkomst per rij, en `alle: true` = exact de filterset van de lijst zonder paginering."""
+
+    def _twee_kandidaten(self, administratie_id, beheerder_id, opslag) -> None:
+        for n in range(6):
+            _geboekt(administratie_id, beheerder_id, opslag, n=n)
+            _geboekt(administratie_id, beheerder_id, opslag, n=n, vendor=VENDOR_2, bedrag="99.00")
+        service.herbereken_administratie(administratie_id=administratie_id)
+
+    def test_reden_verplicht_en_precies_een_selectievorm(
+        self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, vendor: uuid.UUID, tweede_vendor: uuid.UUID, opslag
+    ) -> None:
+        self._twee_kandidaten(administratie_id, beheerder_id, opslag)
+        headers = _bearer(beheerder_id, rol="beheerder")
+        item = {"administratie_id": str(administratie_id), "vendor_id": str(vendor)}
+        pad = "/instellingen/autoboeken/kandidaten/verbergen"
+        assert client.post(pad, headers=headers, json={"items": [item]}).status_code == 422
+        assert client.post(pad, headers=headers, json={"items": [item], "reden": "   "}).status_code == 422
+        assert client.post(pad, headers=headers, json={"items": [], "reden": "x"}).status_code == 422
+        assert client.post(pad, headers=headers, json={"reden": "x"}).status_code == 422
+        assert client.post(pad, headers=headers, json={"items": [item], "alle": True, "reden": "x"}).status_code == 422
+        assert client.post("/instellingen/autoboeken/kandidaten/aanzetten", headers=headers, json={"items": []}).status_code == 422
+        # Niets verborgen door de geweigerde aanroepen.
+        assert client.get("/instellingen/autoboeken/kandidaten?tab=kandidaten", headers=headers).json()["totaal"] == 2
+
+    def test_bulk_verbergen_uitkomst_per_rij_en_een_fout_stopt_de_rest_niet(
+        self,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        vendor: uuid.UUID,
+        tweede_vendor: uuid.UUID,
+        opslag,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._twee_kandidaten(administratie_id, beheerder_id, opslag)
+        headers = _bearer(beheerder_id, rol="beheerder")
+        pad = "/instellingen/autoboeken/kandidaten/verbergen"
+        onbekend = uuid.uuid4()
+
+        # Eén kapotte rij (gesimuleerde DB-fout op de tweede leverancier) → 'fout', de rest gaat door.
+        echte_verbergen = service.verbergen
+
+        def kapot(*, administratie_id, vendor_id, actor_id, reden):
+            if vendor_id == tweede_vendor:
+                raise RuntimeError("verbinding weg")
+            return echte_verbergen(administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor_id, reden=reden)
+
+        monkeypatch.setattr(service, "verbergen", kapot)
+        r = client.post(
+            pad,
+            headers=headers,
+            json={
+                "items": [
+                    {"administratie_id": str(administratie_id), "vendor_id": str(vendor)},
+                    {"administratie_id": str(administratie_id), "vendor_id": str(onbekend)},
+                    {"administratie_id": str(administratie_id), "vendor_id": str(tweede_vendor)},
+                ],
+                "reden": "wil ik handmatig houden",
+            },
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["verborgen"] == 1 and body["overgeslagen"] == 2
+        statussen = [(u["status"], u["reden"]) for u in body["uitkomsten"]]
+        assert statussen[0] == ("verborgen", None)
+        assert statussen[1] == ("overgeslagen", "onbekende kandidaat")
+        assert statussen[2][0] == "fout" and "verbinding weg" in statussen[2][1]
+        # Namen reizen mee (ook voor rijen buiten de huidige pagina); onbekende rij zonder naam.
+        assert body["uitkomsten"][0]["leverancier_naam"] == "Ebbers Salarisadvies B.V."
+        assert body["uitkomsten"][0]["administratie_naam"]
+        assert body["uitkomsten"][1]["leverancier_naam"] is None
+        assert _audit_acties(admin_engine, "autoboek_kandidaat_verborgen") == 1
+        monkeypatch.undo()
+
+        # Tweede keer: de al verborgen rij wordt overgeslagen mét reden, de andere wordt nu wél verborgen.
+        r = client.post(
+            pad,
+            headers=headers,
+            json={
+                "items": [
+                    {"administratie_id": str(administratie_id), "vendor_id": str(vendor)},
+                    {"administratie_id": str(administratie_id), "vendor_id": str(tweede_vendor)},
+                ],
+                "reden": "tweede ronde",
+            },
+        )
+        body = r.json()
+        assert [u["status"] for u in body["uitkomsten"]] == ["overgeslagen", "verborgen"]
+        assert body["uitkomsten"][0]["reden"] == "al verborgen"
+        assert _audit_acties(admin_engine, "autoboek_kandidaat_verborgen") == 2
+        lijst = client.get("/instellingen/autoboeken/kandidaten?tab=kandidaten&verborgen=true", headers=headers).json()
+        assert lijst["totaal"] == 2 and {r_["snooze_reden"] for r_ in lijst["rijen"]} == {"wil ik handmatig houden", "tweede ronde"}
+        assert client.get("/instellingen/autoboeken/kandidaten?tab=kandidaten", headers=headers).json()["totaal"] == 0
+
+    def test_alle_true_herleidt_exact_de_filterset_zonder_paginering(
+        self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, vendor: uuid.UUID, tweede_vendor: uuid.UUID, opslag, admin_engine: Engine
+    ) -> None:
+        self._twee_kandidaten(administratie_id, beheerder_id, opslag)
+        headers = _bearer(beheerder_id, rol="beheerder")
+        # Service-laag: de filterset is exact wat de lijst zou tonen (sortering identiek), zonder paginering.
+        alle = service.rijen_binnen_filter(tab="kandidaten")
+        assert [r.vendor_id for r in alle] == [r.vendor_id for r in service.lijst(tab="kandidaten", per_pagina=1).rijen] + [
+            r.vendor_id for r in service.lijst(tab="kandidaten", pagina=2, per_pagina=1).rijen
+        ]
+        assert service.rijen_binnen_filter(tab="kandidaten", q="transip") and all(
+            r.vendor_id == tweede_vendor for r in service.rijen_binnen_filter(tab="kandidaten", q="transip")
+        )
+        assert service.rijen_binnen_filter(tab="actief") == []
+        with pytest.raises(service.AutoboekKandidaatFout):
+            service.rijen_binnen_filter(tab="bestaat-niet")
+
+        # Verbergen mét alle:true + q: alleen Transip wordt verborgen.
+        r = client.post(
+            "/instellingen/autoboeken/kandidaten/verbergen",
+            headers=headers,
+            json={"alle": True, "tab": "kandidaten", "q": "transip", "reden": "eerst kijken"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["verborgen"] == 1 and [u["vendor_id"] for u in r.json()["uitkomsten"]] == [str(tweede_vendor)]
+        assert client.get("/instellingen/autoboeken/kandidaten?tab=kandidaten", headers=headers).json()["totaal"] == 1
+
+        # Aanzetten mét alle:true (zonder q): de resterende kandidaat — Transip zit niet meer in de filterset.
+        r = client.post("/instellingen/autoboeken/kandidaten/aanzetten", headers=headers, json={"alle": True, "tab": "kandidaten"})
+        assert r.status_code == 200, r.text
+        assert r.json()["aangezet"] == 1 and r.json()["uitkomsten"][0]["vendor_id"] == str(vendor)
+        assert r.json()["uitkomsten"][0]["leverancier_naam"] == "Ebbers Salarisadvies B.V."
+        with scoped_session(administratie_id) as session:
+            assert session.get(LeverancierVoorkeur, (administratie_id, vendor)).autoboeken_ingeschakeld is True
+            assert session.get(LeverancierVoorkeur, (administratie_id, tweede_vendor)) is None
+        # Onbekende tab in de selectie = dezelfde 404 als de lijst-GET geeft (`_vertaal`), niets gebeurd.
+        assert client.post("/instellingen/autoboeken/kandidaten/aanzetten", headers=headers, json={"alle": True, "tab": "x"}).status_code == 404
+        # Verbergen op een actieve rij = overgeslagen mét reden (verbergen geldt voor kandidaten).
+        r = client.post(
+            "/instellingen/autoboeken/kandidaten/verbergen",
+            headers=headers,
+            json={"items": [{"administratie_id": str(administratie_id), "vendor_id": str(vendor)}], "reden": "x"},
+        )
+        assert r.json()["uitkomsten"][0]["status"] == "overgeslagen" and "staat aan" in r.json()["uitkomsten"][0]["reden"]
+
+
 class TestRolpoorten:
     @pytest.mark.parametrize("rol", ["boekhouding", "boekhouding_projecten"])
     def test_alleen_beheerder(self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, rol: str) -> None:
         headers = _bearer(gescoopte_gebruiker, rol=rol)
+        assert (
+            client.post(
+                "/instellingen/autoboeken/kandidaten/verbergen",
+                headers=headers,
+                json={"items": [{"administratie_id": str(administratie_id), "vendor_id": str(VENDOR)}], "reden": "x"},
+            ).status_code
+            == 403
+        )
         assert client.get("/instellingen/autoboeken/kandidaten", headers=headers).status_code == 403
         assert client.get("/instellingen/autoboeken/stand", headers=headers).status_code == 403
         assert client.post("/instellingen/autoboeken/herbereken", headers=headers).status_code == 403

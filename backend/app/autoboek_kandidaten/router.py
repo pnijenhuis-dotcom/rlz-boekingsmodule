@@ -62,18 +62,45 @@ def kandidaten_herberekenen(actor: CurrentGebruiker = Depends(require_beheerder)
     )
 
 
+def _selectie(invoer: schemas.BulkSelectieDto) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """Bulk-selectie: expliciete items, óf `alle: true` = exact de rijen die de lijst mét dezelfde filters
+    toont, zonder paginering (B5.2 — "Selecteer alle N resultaten")."""
+    if invoer.alle:
+        try:
+            rijen = service.rijen_binnen_filter(tab=invoer.tab, q=invoer.q, verborgen=invoer.verborgen)
+        except service.AutoboekKandidaatFout as exc:
+            raise _vertaal(exc) from exc
+        return [(r.administratie_id, r.vendor_id) for r in rijen]
+    return [(i.administratie_id, i.vendor_id) for i in invoer.items or []]
+
+
 @router.post("/kandidaten/aanzetten", response_model=schemas.BulkAanzettenResultaatDto)
 def kandidaten_aanzetten(
     invoer: schemas.BulkAanzettenDto, actor: CurrentGebruiker = Depends(require_beheerder)
 ) -> schemas.BulkAanzettenResultaatDto:
     """"Autoboeken aanzetten (n)": per rij live hertoetst; niet-kwalificerend = overgeslagen mét reden."""
-    uitkomsten = service.bulk_aanzetten(
-        items=[(i.administratie_id, i.vendor_id) for i in invoer.items], actor_id=actor.id
-    )
+    uitkomsten = service.bulk_aanzetten(items=_selectie(invoer), actor_id=actor.id)
     return schemas.BulkAanzettenResultaatDto(
         uitkomsten=[schemas.AanzetUitkomstDto(**u.__dict__) for u in uitkomsten],
         aangezet=sum(1 for u in uitkomsten if u.status == "aangezet"),
         overgeslagen=sum(1 for u in uitkomsten if u.status != "aangezet"),
+    )
+
+
+@router.post("/kandidaten/verbergen", response_model=schemas.BulkVerbergenResultaatDto)
+def kandidaten_verbergen(
+    invoer: schemas.BulkVerbergenDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.BulkVerbergenResultaatDto:
+    """"Kandidaat verbergen" in bulk, één call (B5.1, 03-09): reden verplicht (422 zonder), uitkomst per rij
+    verborgen | overgeslagen mét reden | fout; één fout stopt de rest niet."""
+    try:
+        uitkomsten = service.bulk_verbergen(items=_selectie(invoer), actor_id=actor.id, reden=invoer.reden)
+    except service.AutoboekKandidaatFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.BulkVerbergenResultaatDto(
+        uitkomsten=[schemas.AanzetUitkomstDto(**u.__dict__) for u in uitkomsten],
+        verborgen=sum(1 for u in uitkomsten if u.status == "verborgen"),
+        overgeslagen=sum(1 for u in uitkomsten if u.status != "verborgen"),
     )
 
 

@@ -22,7 +22,27 @@ import { AdministratieCombobox } from '../ui/AdministratieCombobox'
  * crediteur-koppeling voor de factuurcontrole D6), categorieën + producten met
  * verpakkingseenheid en m²-lengte (Σ aantal × lengte / 4,6 — de formule uit de bestellijst),
  * seed "Standaardcatalogus laden" uit verkenning/voorbeelden/bestellijst-universal-voorbeeld.xlsx
- * (idempotent). Schaalbaar (C4): zoeken + paginering server-side. */
+ * (idempotent). Schaalbaar (C4): zoeken + paginering server-side.
+ * Design-ronde 03-09 (mockup inzicht-kantoorbreed.html ⑦): de platte waarschuwingen per leverancier zijn een
+ * klikbare WERKLIJST "Nog in te stellen" bovenaan (één regel per probleem, klik = wijzig-dialoog mét focus op
+ * het veld; leeg = paneel weg), en de leverancier-chips krijgen een zoekveld zodra er > 15 zijn. */
+
+/** Boven dit aantal leveranciers krijgt de chip-rij een client-side zoekveld. */
+export const CHIPS_ZOEK_VANAF = 15
+
+type WerklijstVeld = 'bestel_email' | 'vendor_id'
+
+/** Eén regel per probleem per ACTIEVE leverancier — deterministisch uit de lijst-response, geen extra call. */
+export function bepaalWerklijst(leveranciers: LeverancierDto[]): { lev: LeverancierDto; veld: WerklijstVeld; tekst: string }[] {
+  const uit: { lev: LeverancierDto; veld: WerklijstVeld; tekst: string }[] = []
+  for (const lev of leveranciers) {
+    if (!lev.actief) continue
+    if (!lev.bestel_email) uit.push({ lev, veld: 'bestel_email', tekst: 'geen bestel-mailadres' })
+    if (!lev.vendor_id) uit.push({ lev, veld: 'vendor_id', tekst: 'geen crediteur-koppeling (factuurcontrole uit)' })
+  }
+  return uit
+}
+
 export function MateriaalCatalogusBeheer({ administraties }: { administraties: AdministratieDto[] }) {
   const { meld } = useToastOptioneel()
   const [administratieId, setAdministratieId] = useState(administraties[0]?.id ?? '')
@@ -35,6 +55,9 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
   const [producten, setProducten] = useState<{ items: ProductDto[]; totaal: number } | null>(null)
   const [categorieen, setCategorieen] = useState<CategorieDto[]>([])
   const [bewerkLev, setBewerkLev] = useState<Partial<LeverancierDto> | null>(null)
+  // Werklijst-klik: welk veld in de wijzig-dialoog focus krijgt (null = gewoon openen).
+  const [focusVeld, setFocusVeld] = useState<WerklijstVeld | null>(null)
+  const [chipZoek, setChipZoek] = useState('')
   const [bewerkProd, setBewerkProd] = useState<Partial<ProductDto> | null>(null)
   const [nieuweCat, setNieuweCat] = useState('')
   const [vendors, setVendors] = useState<{ id: string; naam: string }[]>([])
@@ -87,6 +110,22 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
   }
 
   const lev = leveranciers?.find((l) => l.id === leverancierId) ?? null
+  const werklijst = bepaalWerklijst(leveranciers ?? [])
+  const chipsMetZoek = (leveranciers?.length ?? 0) > CHIPS_ZOEK_VANAF
+  const zichtbareChips = (leveranciers ?? []).filter((l) => !chipsMetZoek || l.naam.toLowerCase().includes(chipZoek.trim().toLowerCase()))
+
+  useEffect(() => {
+    if (!bewerkLev || !focusVeld) return
+    document.getElementById(focusVeld === 'bestel_email' ? 'leverancier-bestel-email' : 'leverancier-vendor')?.focus()
+    setFocusVeld(null)
+  }, [bewerkLev, focusVeld])
+
+  const openWerklijstRegel = (regel: { lev: LeverancierDto; veld: WerklijstVeld }) => {
+    setLeverancierId(regel.lev.id)
+    setPagina(1)
+    setFocusVeld(regel.veld)
+    setBewerkLev(regel.lev)
+  }
 
   return (
     <div className="panel">
@@ -119,9 +158,43 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
       </p>
       {fout && <div className="fout">{fout}</div>}
       {leveranciers !== null && leveranciers.length === 0 && !fout && <p className="hint">Nog geen leveranciers — laad de standaardcatalogus of voeg een leverancier toe.</p>}
+      {werklijst.length > 0 && (
+        <section
+          aria-labelledby="materiaal-werklijst-kop"
+          data-testid="materiaal-werklijst"
+          style={{ margin: '10px 0', padding: '10px 13px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--panel-2)' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 id="materiaal-werklijst-kop" style={{ margin: 0, fontSize: 13 }}>
+              Nog in te stellen
+            </h3>
+            <Badge variant="warn">{werklijst.length}</Badge>
+            <span className="hint" style={{ margin: 0 }}>klik een regel om het in te vullen</span>
+          </div>
+          <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {werklijst.map((regel) => (
+              <li key={`${regel.lev.id}:${regel.veld}`}>
+                <button type="button" className="linkbtn" style={{ fontSize: 12.5 }} onClick={() => openWerklijstRegel(regel)}>
+                  {regel.lev.naam} — {regel.tekst}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {leveranciers !== null && leveranciers.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '10px 0' }}>
-          {leveranciers.map((l) => (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '10px 0' }}>
+          {chipsMetZoek && (
+            <input
+              type="search"
+              aria-label="Zoek leverancier"
+              placeholder="Zoek leverancier…"
+              value={chipZoek}
+              onChange={(e) => setChipZoek(e.target.value)}
+              style={{ width: 220, maxWidth: '100%' }}
+            />
+          )}
+          {zichtbareChips.map((l) => (
             <button key={l.id} className="linkbtn" onClick={() => { setLeverancierId(l.id); setPagina(1) }} style={{ padding: 0 }}>
               <Badge variant={l.id === leverancierId ? 'info' : l.actief ? 'stil' : 'danger'}>
                 {l.naam} · {l.aantal_producten}
@@ -129,14 +202,15 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
               </Badge>
             </button>
           ))}
+          {chipsMetZoek && zichtbareChips.length === 0 && <span className="hint" style={{ margin: 0 }}>geen leverancier met &ldquo;{chipZoek}&rdquo;</span>}
         </div>
       )}
       {lev && (
         <>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 12.5 }}>
             <b>{lev.naam}</b>
-            <span className="hint" style={{ margin: 0 }}>{lev.bestel_email ?? '⚠ geen bestel-mailadres'}</span>
-            <span className="hint" style={{ margin: 0 }}>{lev.vendor_id ? `crediteur: ${vendors.find((v) => v.id === lev.vendor_id)?.naam ?? lev.vendor_id}` : 'geen crediteur-koppeling (factuurcontrole uit)'}</span>
+            <span className="hint" style={{ margin: 0 }}>{lev.bestel_email ?? 'bestel-mailadres: —'}</span>
+            <span className="hint" style={{ margin: 0 }}>{lev.vendor_id ? `crediteur: ${vendors.find((v) => v.id === lev.vendor_id)?.naam ?? lev.vendor_id}` : 'crediteur: —'}</span>
             <span className="hint" style={{ margin: 0 }}>
               transport-contact: {lev.transport_contact_naam ?? 'nog niet ingevuld'} · materiaal-contact: {lev.materiaal_contact_naam ?? 'nog niet ingevuld'}
             </span>
@@ -197,15 +271,15 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
 
       {bewerkLev && (
         <div className="modal-bg" role="presentation" onClick={() => !bezig && setBewerkLev(null)}>
-          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2>{bewerkLev.id ? 'Leverancier wijzigen' : 'Nieuwe leverancier'}</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="leverancier-dialoog-kop" onClick={(e) => e.stopPropagation()}>
+            <h2 id="leverancier-dialoog-kop">{bewerkLev.id ? 'Leverancier wijzigen' : 'Nieuwe leverancier'}</h2>
             <label className="hint" style={{ display: 'block' }}>
               Naam
               <input value={bewerkLev.naam ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, naam: e.target.value })} style={{ width: '100%' }} />
             </label>
             <label className="hint" style={{ display: 'block', marginTop: 8 }}>
               Bestel-mailadres (ontvanger van de PDF-bon)
-              <input type="email" value={bewerkLev.bestel_email ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, bestel_email: e.target.value })} style={{ width: '100%' }} />
+              <input id="leverancier-bestel-email" type="email" value={bewerkLev.bestel_email ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, bestel_email: e.target.value })} style={{ width: '100%' }} />
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
               <label className="hint" style={{ margin: 0 }}>
@@ -240,7 +314,7 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
             </p>
             <label className="hint" style={{ display: 'block', marginTop: 8 }}>
               RLZ-crediteur (factuurcontrole materiaal, D6)
-              <Select value={bewerkLev.vendor_id ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, vendor_id: e.target.value || null })} className="w-full">
+              <Select id="leverancier-vendor" value={bewerkLev.vendor_id ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, vendor_id: e.target.value || null })} className="w-full">
                 <option value="">— geen koppeling —</option>
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>

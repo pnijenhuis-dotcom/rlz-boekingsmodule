@@ -545,13 +545,11 @@ def tellers() -> Tellers:
     )
 
 
-def lijst(*, tab: str, q: str = "", pagina: int = 1, per_pagina: int = 25, verborgen: bool = False) -> Lijst:
-    """Tab-inhoud (Kandidaten / Actief / Heroverwegen; Kandidaten mét `verborgen=True` = de gesnoozede
-    rijen), zoekterm op leverancier óf administratie, paginering 25 (patroon /gebruikers)."""
+def _filter_selectie(rijen: list[KandidaatRij], *, tab: str, q: str, verborgen: bool) -> list[KandidaatRij]:
+    """Dé filterbron van de lijst (tab + zoekterm + verborgen-filter, gesorteerd urgentste bovenaan) —
+    gedeeld door `lijst` (mét paginering) en `rijen_binnen_filter` (zonder, voor "Selecteer alle N")."""
     if tab not in TABS:
         raise AutoboekKandidaatFout(f"Onbekende tab: {tab}")
-    rijen = _alle_rijen()
-    drempel, laatste_run = haal_instelling_op()
     if tab == "kandidaten":
         doel = "verborgen" if verborgen else "kandidaten"
         selectie = [r for r in rijen if _tab_rij(r) == doel]
@@ -564,7 +562,24 @@ def lijst(*, tab: str, q: str = "", pagina: int = 1, per_pagina: int = 25, verbo
         selectie = [
             r for r in selectie if zoek in (r.leverancier_naam or "").lower() or zoek in r.administratie_naam.lower()
         ]
-    selectie.sort(key=lambda r: (-r.reeks_ongewijzigd, (r.leverancier_naam or "").lower(), r.administratie_naam.lower()))
+    selectie.sort(
+        key=lambda r: (-r.reeks_ongewijzigd, (r.leverancier_naam or "").lower(), r.administratie_naam.lower())
+    )
+    return selectie
+
+
+def rijen_binnen_filter(*, tab: str, q: str = "", verborgen: bool = False) -> list[KandidaatRij]:
+    """"Selecteer alle N resultaten" (B5.2, 03-09): exact de rijen die de lijst mét deze filters zou tonen,
+    ZONDER paginering — de bulk-endpoints verwerken ze daarna met dezelfde per-rij-hertoets/uitkomst."""
+    return _filter_selectie(_alle_rijen(), tab=tab, q=q, verborgen=verborgen)
+
+
+def lijst(*, tab: str, q: str = "", pagina: int = 1, per_pagina: int = 25, verborgen: bool = False) -> Lijst:
+    """Tab-inhoud (Kandidaten / Actief / Heroverwegen; Kandidaten mét `verborgen=True` = de gesnoozede
+    rijen), zoekterm op leverancier óf administratie, paginering 25 (patroon /gebruikers)."""
+    rijen = _alle_rijen()
+    drempel, laatste_run = haal_instelling_op()
+    selectie = _filter_selectie(rijen, tab=tab, q=q, verborgen=verborgen)
     totaal = len(selectie)
     start = max(pagina - 1, 0) * per_pagina
     kandidaten = [r for r in rijen if _tab_rij(r) == "kandidaten"]
@@ -592,14 +607,37 @@ def lijst(*, tab: str, q: str = "", pagina: int = 1, per_pagina: int = 25, verbo
 class AanzetUitkomst:
     administratie_id: uuid.UUID
     vendor_id: uuid.UUID
-    status: str  # 'aangezet' | 'overgeslagen' | 'fout'
+    status: str  # aanzetten: 'aangezet' | 'overgeslagen' | 'fout' — verbergen: 'verborgen' | 'overgeslagen' | 'fout'
     reden: str | None
+    leverancier_naam: str | None = None
+    administratie_naam: str | None = None
 
 
-def bulk_aanzetten(*, items: list[tuple[uuid.UUID, uuid.UUID]], actor_id: uuid.UUID) -> list[AanzetUitkomst]:
+_Sleutel = tuple[uuid.UUID, uuid.UUID]
+
+
+def _naam_kaart() -> dict[_Sleutel, tuple[str | None, str]]:
+    """(administratie, vendor) → (leverancier-naam, administratie-naam) voor leesbare bulk-uitkomsten —
+    óók voor rijen buiten de huidige pagina ("Selecteer alle N")."""
+    return {(r.administratie_id, r.vendor_id): (r.leverancier_naam, r.administratie_naam) for r in _alle_rijen()}
+
+
+def _met_namen(uitkomsten: list[AanzetUitkomst], namen: dict[_Sleutel, tuple[str | None, str]]) -> list[AanzetUitkomst]:
+    uit: list[AanzetUitkomst] = []
+    for u in uitkomsten:
+        lev, adm = namen.get((u.administratie_id, u.vendor_id), (None, None))
+        uit.append(AanzetUitkomst(u.administratie_id, u.vendor_id, u.status, u.reden, lev, adm))
+    return uit
+
+
+def bulk_aanzetten(*, items: list[_Sleutel], actor_id: uuid.UUID) -> list[AanzetUitkomst]:
     """"Autoboeken aanzetten (n)": per rij LIVE hertoetsen; kwalificeert de rij niet (meer) → overgeslagen
     mét reden (uitkomst-patroon bulk-accordering); anders via de BESTAANDE opt-in-schrijver aanzetten
     (zelfde audit + poorten, incl. de veldwerker-weigering) + eigen audit met de onderbouwing."""
+    return _met_namen(_bulk_aanzetten(items=items, actor_id=actor_id), _naam_kaart())
+
+
+def _bulk_aanzetten(*, items: list[_Sleutel], actor_id: uuid.UUID) -> list[AanzetUitkomst]:
     from app.documenten import autoboeken
 
     uit: list[AanzetUitkomst] = []
@@ -702,6 +740,42 @@ def verbergen(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID, actor_id: uu
             nieuwe_waarde={"snooze_reden": reden},
             administratie_id=administratie_id,
         )
+
+
+def bulk_verbergen(*, items: list[_Sleutel], actor_id: uuid.UUID, reden: str) -> list[AanzetUitkomst]:
+    """"Kandidaat verbergen" in bulk, server-side in één call (B5.1, design-ronde 03-09): per rij
+    `verbergen` (zelfde audit `autoboek_kandidaat_verborgen`), élke rij zijn eigen transactie zodat één
+    fout de rest niet stopt; uitkomst per rij verborgen | overgeslagen mét reden | fout (patroon
+    `bulk_aanzetten`). Verbergen geldt voor kandidaten: een actieve opt-in of een al verborgen rij wordt
+    overgeslagen mét reden — nooit stil."""
+    reden = reden.strip()
+    if not reden:
+        raise AutoboekKandidaatFout("Een reden is verplicht bij het verbergen van een kandidaat")
+    uit: list[AanzetUitkomst] = []
+    for administratie_id, vendor_id in items:
+        try:
+            with scoped_session(administratie_id, actor_id=actor_id) as session:
+                rij = session.get(AutoboekKandidaatStand, (administratie_id, vendor_id))
+                if rij is None:
+                    uit.append(AanzetUitkomst(administratie_id, vendor_id, "overgeslagen", "onbekende kandidaat"))
+                    continue
+                if rij.actief:
+                    reden_actief = "autoboeken staat aan — uitzetten via Actief/Heroverwegen"
+                    uit.append(AanzetUitkomst(administratie_id, vendor_id, "overgeslagen", reden_actief))
+                    continue
+                if rij.snooze_op is not None:
+                    uit.append(AanzetUitkomst(administratie_id, vendor_id, "overgeslagen", "al verborgen"))
+                    continue
+            verbergen(administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor_id, reden=reden)
+        except AutoboekKandidaatFout as exc:
+            uit.append(AanzetUitkomst(administratie_id, vendor_id, "overgeslagen", str(exc)))
+            continue
+        except Exception as exc:  # noqa: BLE001 — één kapotte rij stopt de rest niet; zichtbaar als 'fout'
+            logger.exception("bulk_verbergen: rij %s/%s mislukt", administratie_id, vendor_id)
+            uit.append(AanzetUitkomst(administratie_id, vendor_id, "fout", f"{type(exc).__name__}: {exc}"))
+            continue
+        uit.append(AanzetUitkomst(administratie_id, vendor_id, "verborgen", None))
+    return _met_namen(uit, _naam_kaart())
 
 
 def toon_weer(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID, actor_id: uuid.UUID) -> None:

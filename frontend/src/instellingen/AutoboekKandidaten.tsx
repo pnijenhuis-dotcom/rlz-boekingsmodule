@@ -6,6 +6,10 @@
 // schrijver); de per-leverancier-switch op de detailpagina (tab Boeken & AI) blijft bestaan — dit is
 // de vind- en bulklaag erboven. "Kandidaat verbergen" = snooze mét verplichte reden, terugvindbaar
 // onder het filter "verborgen". Heroverwegen = advies-only. Beheerder-only.
+// Restpunten design-ronde 03-09 (mockup inzicht-kantoorbreed.html ⑧): bulk-verbergen is ÉÉN server-call mét
+// uitkomst per rij (zelfde lijst als bij aanzetten), en "Selecteer alle N resultaten" naast de pagina-selectie
+// stuurt een server-side selectie ({alle, tab, q, verborgen}) mee i.p.v. duizenden id's — de bevestigknop
+// benoemt altijd het aantal.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError } from '../api/client'
@@ -14,11 +18,12 @@ import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, Dial
 import { FoutMelding } from '../ui/FoutMelding'
 import { BevestigDialog } from './BevestigDialog'
 import {
+  type AutoboekBulkSelectie,
   type AutoboekTab,
   haalAutoboekKandidatenOp,
   herberekenAutoboekKandidaten,
   toonAutoboekKandidaatWeer,
-  verbergAutoboekKandidaat,
+  verbergAutoboekKandidaten,
   zetAutoboekDrempel,
   zetAutoboekKandidaatUit,
   zetAutoboekKandidatenAan,
@@ -64,11 +69,13 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
   const [laadFout, setLaadFout] = useState<string | null>(null)
   const [versie, setVersie] = useState(0)
   const [selectie, setSelectie] = useState<string[]>([])
+  // "Selecteer alle N resultaten": server-side selectie binnen het actieve filter (tab/q/verborgen), over álle pagina's.
+  const [alleGeselecteerd, setAlleGeselecteerd] = useState(false)
   const [bezig, setBezig] = useState(false)
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [bevestigAanzetten, setBevestigAanzetten] = useState(false)
-  const [uitkomsten, setUitkomsten] = useState<AutoboekAanzetUitkomstDto[] | null>(null)
-  const [verbergVoor, setVerbergVoor] = useState<AutoboekKandidaatRijDto[] | null>(null)
+  const [uitkomsten, setUitkomsten] = useState<{ soort: 'aanzetten' | 'verbergen'; lijst: AutoboekAanzetUitkomstDto[] } | null>(null)
+  const [verbergVoor, setVerbergVoor] = useState<{ rijen: AutoboekKandidaatRijDto[]; aantal: number } | null>(null)
   const [verbergReden, setVerbergReden] = useState('')
   const [uitzetVoor, setUitzetVoor] = useState<AutoboekKandidaatRijDto | null>(null)
   const [drempelInvoer, setDrempelInvoer] = useState('')
@@ -98,24 +105,38 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, zoek, pagina, verborgen, versie])
 
+  const wisSelectie = () => {
+    setSelectie([])
+    setAlleGeselecteerd(false)
+  }
+
   const kiesTab = (t: AutoboekTab) => {
     setTab(t)
     setPagina(1)
-    setSelectie([])
+    wisSelectie()
     setUitkomsten(null)
     setActieFout(null)
   }
 
   const geselecteerdeRijen = (rijen ?? []).filter((r) => selectie.includes(sleutel(r)))
+  const paginaVolledig = rijen !== null && rijen.length > 0 && selectie.length === rijen.length
+  const aantalGeselecteerd = alleGeselecteerd ? totaal : selectie.length
+  const heeftSelectie = alleGeselecteerd || selectie.length > 0
+
+  /** Wat naar de bulk-endpoints gaat: de aangevinkte rijen, óf de server-side filterset ("alle N"). */
+  const bulkSelectie = (): AutoboekBulkSelectie =>
+    alleGeselecteerd
+      ? { alle: true, tab, q: zoek, verborgen: tab === 'kandidaten' && verborgen }
+      : { items: geselecteerdeRijen.map((x) => ({ administratie_id: x.administratie_id, vendor_id: x.vendor_id })) }
 
   const aanzetten = async () => {
     setBezig(true)
     setActieFout(null)
     try {
-      const r = await zetAutoboekKandidatenAan(geselecteerdeRijen.map((x) => ({ administratie_id: x.administratie_id, vendor_id: x.vendor_id })))
-      setUitkomsten(r.uitkomsten)
+      const r = await zetAutoboekKandidatenAan(bulkSelectie())
+      setUitkomsten({ soort: 'aanzetten', lijst: r.uitkomsten })
       setBevestigAanzetten(false)
-      setSelectie([])
+      wisSelectie()
       herlaad()
     } catch (err) {
       setActieFout(err instanceof ApiError ? err.message : 'Aanzetten mislukt.')
@@ -129,10 +150,13 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
     setBezig(true)
     setActieFout(null)
     try {
-      for (const r of verbergVoor) await verbergAutoboekKandidaat(r.administratie_id, r.vendor_id, verbergReden)
+      // Eén request voor de hele selectie (B5.1): de server verbergt per rij in een eigen transactie en
+      // meldt per rij verborgen | overgeslagen mét reden | fout — één fout stopt de rest niet.
+      const r = await verbergAutoboekKandidaten(bulkSelectie(), verbergReden)
+      setUitkomsten({ soort: 'verbergen', lijst: r.uitkomsten })
       setVerbergVoor(null)
       setVerbergReden('')
-      setSelectie([])
+      wisSelectie()
       herlaad()
     } catch (err) {
       setActieFout(err instanceof ApiError ? err.message : 'Verbergen mislukt.')
@@ -200,9 +224,12 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
   const drempel = tellers?.drempel ?? 5
   const naamVan = (r: AutoboekKandidaatRijDto) => r.leverancier_naam ?? r.vendor_id
   const uitkomstNaam = (u: AutoboekAanzetUitkomstDto) => {
+    if (u.leverancier_naam || u.administratie_naam) return `${u.leverancier_naam ?? u.vendor_id} · ${u.administratie_naam ?? ''}`.trim()
     const rij = (rijen ?? []).find((r) => r.administratie_id === u.administratie_id && r.vendor_id === u.vendor_id)
     return rij ? `${naamVan(rij)} · ${rij.administratie_naam}` : u.vendor_id
   }
+  const uitkomstTekst = (u: AutoboekAanzetUitkomstDto) =>
+    u.status === 'aangezet' ? 'autoboeken aan' : u.status === 'verborgen' ? 'verborgen' : `${u.status} — ${u.reden ?? ''}`
 
   return (
     <div className="panel inst-paneel" data-testid="autoboek-kandidaten">
@@ -235,6 +262,7 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
           onChange={(e) => {
             setZoek(e.target.value)
             setPagina(1)
+            setAlleGeselecteerd(false)
           }}
           style={{ width: 280, maxWidth: '100%' }}
         />
@@ -251,7 +279,7 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
               onChange={(e) => {
                 setVerborgen(e.target.checked)
                 setPagina(1)
-                setSelectie([])
+                wisSelectie()
               }}
             />
             verborgen{tellers ? ` (${tellers.verborgen})` : ''}
@@ -262,9 +290,12 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
             Selecteer alles
             <Checkbox
               aria-label="Alle kandidaten op deze pagina selecteren"
-              checked={selectie.length === rijen.length}
-              indeterminate={selectie.length > 0 && selectie.length < rijen.length}
-              onChange={(e) => setSelectie(e.target.checked ? rijen.map(sleutel) : [])}
+              checked={alleGeselecteerd || selectie.length === rijen.length}
+              indeterminate={!alleGeselecteerd && selectie.length > 0 && selectie.length < rijen.length}
+              onChange={(e) => {
+                setAlleGeselecteerd(false)
+                setSelectie(e.target.checked ? rijen.map(sleutel) : [])
+              }}
             />
           </label>
         )}
@@ -281,13 +312,16 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
       {uitkomsten && (
         <div className="hint" role="status" style={{ margin: '10px 18px' }} data-testid="aanzet-uitkomsten">
           <b>
-            {uitkomsten.filter((u) => u.status === 'aangezet').length} aangezet
-            {uitkomsten.some((u) => u.status !== 'aangezet') ? ` · ${uitkomsten.filter((u) => u.status !== 'aangezet').length} overgeslagen` : ''}
+            {uitkomsten.soort === 'aanzetten'
+              ? `${uitkomsten.lijst.filter((u) => u.status === 'aangezet').length} aangezet`
+              : `${uitkomsten.lijst.filter((u) => u.status === 'verborgen').length} verborgen`}
+            {uitkomsten.lijst.some((u) => u.status === 'overgeslagen') ? ` · ${uitkomsten.lijst.filter((u) => u.status === 'overgeslagen').length} overgeslagen` : ''}
+            {uitkomsten.lijst.some((u) => u.status === 'fout') ? ` · ${uitkomsten.lijst.filter((u) => u.status === 'fout').length} mislukt` : ''}
           </b>
           <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-            {uitkomsten.map((u) => (
+            {uitkomsten.lijst.map((u) => (
               <li key={sleutel(u)}>
-                {uitkomstNaam(u)}: {u.status === 'aangezet' ? 'autoboeken aan' : `${u.status} — ${u.reden ?? ''}`}
+                {uitkomstNaam(u)}: {uitkomstTekst(u)}
               </li>
             ))}
           </ul>
@@ -323,13 +357,18 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
               {rijen.map((r) => {
                 const key = sleutel(r)
                 return (
-                  <tr key={key} className={selectie.includes(key) ? 'geselecteerd' : undefined}>
+                  <tr key={key} className={alleGeselecteerd || selectie.includes(key) ? 'geselecteerd' : undefined}>
                     {tab === 'kandidaten' && !verborgen && (
                       <td>
                         <Checkbox
                           aria-label={`Selecteer ${naamVan(r)} (${r.administratie_naam})`}
-                          checked={selectie.includes(key)}
-                          onChange={(e) => setSelectie((h) => (e.target.checked ? [...h, key] : h.filter((k) => k !== key)))}
+                          checked={alleGeselecteerd || selectie.includes(key)}
+                          onChange={(e) => {
+                            // Eén rij uitvinken ná "alle N" = terug naar een pagina-selectie zonder die rij.
+                            const basis = alleGeselecteerd ? rijen.map(sleutel) : selectie
+                            setAlleGeselecteerd(false)
+                            setSelectie(e.target.checked ? [...basis, key] : basis.filter((k) => k !== key))
+                          }}
                         />
                       </td>
                     )}
@@ -398,15 +437,27 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
         </div>
       )}
 
-      {tab === 'kandidaten' && !verborgen && selectie.length > 0 && (
+      {tab === 'kandidaten' && !verborgen && heeftSelectie && (
         <div className="bulkvoet" role="toolbar" aria-label="Bulk-bediening kandidaten" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--panel-2)', flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5 }}>{selectie.length} geselecteerd</b>
+          <b style={{ fontSize: 12.5 }}>
+            {alleGeselecteerd ? `Alle ${totaal} resultaten geselecteerd` : paginaVolledig && totaal > selectie.length ? `Pagina geselecteerd (${selectie.length})` : `${selectie.length} geselecteerd`}
+          </b>
+          {!alleGeselecteerd && paginaVolledig && totaal > selectie.length && (
+            <button type="button" className="linkbtn" style={{ fontSize: 12.5 }} onClick={() => setAlleGeselecteerd(true)}>
+              Selecteer alle {totaal} resultaten
+            </button>
+          )}
+          {alleGeselecteerd && (
+            <button type="button" className="linkbtn" style={{ fontSize: 12.5 }} onClick={() => setAlleGeselecteerd(false)}>
+              Alleen deze pagina
+            </button>
+          )}
           <span style={{ marginLeft: 'auto' }} />
-          <Button variant="secundair" maat="klein" onClick={() => { setVerbergReden(''); setVerbergVoor(geselecteerdeRijen) }}>
+          <Button variant="secundair" maat="klein" onClick={() => { setVerbergReden(''); setVerbergVoor({ rijen: geselecteerdeRijen, aantal: aantalGeselecteerd }) }}>
             Kandidaat verbergen…
           </Button>
           <Button maat="klein" onClick={() => setBevestigAanzetten(true)}>
-            Autoboeken aanzetten ({selectie.length})
+            Autoboeken aanzetten ({aantalGeselecteerd})
           </Button>
         </div>
       )}
@@ -426,8 +477,9 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
 
       {bevestigAanzetten && (
         <BevestigDialog
-          titel={`Autoboeken aanzetten voor ${selectie.length} leverancier${selectie.length === 1 ? '' : 's'}?`}
+          titel={`Autoboeken aanzetten voor ${aantalGeselecteerd} leverancier${aantalGeselecteerd === 1 ? '' : 's'}?`}
           bericht={
+            (alleGeselecteerd ? `Dit betreft álle ${totaal} resultaten binnen het huidige filter, ook buiten deze pagina. ` : '') +
             `Elke rij wordt op dít moment opnieuw getoetst; een leverancier die intussen niet meer kwalificeert wordt overgeslagen mét reden. ` +
             `Facturen van aangezette leveranciers boeken daarna automatisch zodra álle harde checks groen zijn en het voorstel volledig uit bevestigd ` +
             `boekingsgeheugen komt (volumerem, accorderingspoort en duplicaat-/vraagpoorten blijven onverkort). Elke boeking krijgt de chip "automatisch" en staat in het audit log.`
@@ -454,8 +506,9 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
         <DialogContent aria-describedby={undefined} data-testid="verberg-dialoog">
           <DialogTitle>Kandidaat verbergen</DialogTitle>
           <DialogDescription>
-            {verbergVoor?.length === 1 ? naamVan(verbergVoor[0]) : `${verbergVoor?.length ?? 0} kandidaten`} verdwijnt uit de kandidatenlijst tot je
+            {verbergVoor?.aantal === 1 && verbergVoor.rijen[0] ? naamVan(verbergVoor.rijen[0]) : `${verbergVoor?.aantal ?? 0} kandidaten`} verdwijnt uit de kandidatenlijst tot je
             &ldquo;Weer tonen&rdquo; kiest onder het filter &ldquo;verborgen&rdquo;. Een reden is verplicht en wordt geauditeerd — niets verdwijnt stil.
+            {alleGeselecteerd ? ' Dit betreft álle resultaten binnen het huidige filter, ook buiten deze pagina.' : ''}
           </DialogDescription>
           <form
             onSubmit={(e) => {
@@ -472,7 +525,7 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
                 Annuleren
               </Button>
               <Button type="submit" disabled={bezig || verbergReden.trim() === ''}>
-                {bezig ? 'Bezig…' : 'Verbergen'}
+                {bezig ? 'Bezig…' : `Verbergen (${verbergVoor?.aantal ?? 0})`}
               </Button>
             </DialogFooter>
           </form>

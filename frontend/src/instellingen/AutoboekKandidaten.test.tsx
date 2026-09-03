@@ -1,6 +1,8 @@
 // Autoboek-kandidaten (blok B 01-09, mockup autoboek-kandidaten.html): tabs mét tellers + stand-tijdstip,
 // onderbouwings-chips, bulk aanzetten mét bevestiging en uitkomst-lijst (overgeslagen mét reden), verbergen
 // = verplichte reden, heroverwegen = advies + uitzetten mét bevestiging, drempel instelbaar.
+// Restpunten 03-09 (mockup inzicht-kantoorbreed ⑧): verbergen = ÉÉN request mét uitkomst per rij;
+// "Selecteer alle N resultaten" verschijnt alleen als het totaal groter is dan de pagina en stuurt {alle: true, …}.
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -39,7 +41,7 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-function installFetch(aanroepen: { url: string; body: unknown }[]) {
+function installFetch(aanroepen: { url: string; body: unknown }[], opties: { totaal?: number } = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -54,7 +56,7 @@ function installFetch(aanroepen: { url: string; body: unknown }[]) {
             : tab === 'heroverwegen'
               ? [rij({ vendor_id: 'v-3', leverancier_naam: 'Bouwmaat Eindhoven', actief: true, actief_sinds: '2026-08-12T09:00:00Z', kwalificeert: false, heroverweeg_signalen: ['2 correcties ná activatie', 'GB-code gewijzigd door mens (28 Aug)'] })]
               : [rij({ vendor_id: 'v-3', leverancier_naam: 'Bouwmaat Eindhoven', actief: true, actief_sinds: '2026-08-12T09:00:00Z', heroverweeg_signalen: ['2 correcties ná activatie'] })]
-        return Promise.resolve(json({ rijen, totaal: rijen.length, pagina: 1, per_pagina: 25, tellers: TELLERS }))
+        return Promise.resolve(json({ rijen, totaal: opties.totaal ?? rijen.length, pagina: 1, per_pagina: 25, tellers: TELLERS }))
       }
       if (url === '/instellingen/autoboeken/kandidaten/aanzetten' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body))
@@ -70,9 +72,19 @@ function installFetch(aanroepen: { url: string; body: unknown }[]) {
           }),
         )
       }
-      if (url.endsWith('/verbergen') && init?.method === 'POST') {
-        aanroepen.push({ url, body: JSON.parse(String(init.body)) })
-        return Promise.resolve(new Response(null, { status: 204 }))
+      if (url === '/instellingen/autoboeken/kandidaten/verbergen' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body))
+        aanroepen.push({ url, body })
+        return Promise.resolve(
+          json({
+            uitkomsten: [
+              { administratie_id: ADM, vendor_id: 'v-1', status: 'verborgen', reden: null, leverancier_naam: 'Ebbers Salarisadvies B.V.', administratie_naam: 'Administratiekantoor Nijenhuis C.V.' },
+              { administratie_id: ADM, vendor_id: 'v-7', status: 'overgeslagen', reden: 'al verborgen', leverancier_naam: 'Elders B.V.', administratie_naam: 'Andere B.V.' },
+            ],
+            verborgen: 1,
+            overgeslagen: 1,
+          }),
+        )
       }
       if (url.endsWith('/uitzetten') && init?.method === 'POST') {
         aanroepen.push({ url, body: null })
@@ -134,24 +146,73 @@ describe('AutoboekKandidaten', () => {
     expect(uitkomst).toHaveTextContent('Transip B.V. · Administratiekantoor Nijenhuis C.V.: overgeslagen — kwalificeert niet meer: 1 open vraag')
   })
 
-  it('kandidaat verbergen vereist een reden en POST die; het filter "verborgen" toont de rij mét reden en "Weer tonen"', async () => {
+  it('kandidaat verbergen vereist een reden en stuurt ÉÉN bulk-request mét uitkomst per rij; het filter "verborgen" toont de rij mét reden en "Weer tonen"', async () => {
     const gebruiker = userEvent.setup()
     const aanroepen: { url: string; body: unknown }[] = []
     installFetch(aanroepen)
     renderScherm()
     await screen.findByText('Ebbers Salarisadvies B.V.')
+    // Twee rijen aanvinken → één request met beide items (vroeger N losse requests).
     await gebruiker.click(screen.getByRole('checkbox', { name: /Selecteer Ebbers/ }))
+    await gebruiker.click(screen.getByRole('checkbox', { name: /Selecteer Transip/ }))
     await gebruiker.click(screen.getByRole('button', { name: 'Kandidaat verbergen…' }))
     const dialoog = await screen.findByTestId('verberg-dialoog')
-    expect(within(dialoog).getByRole('button', { name: 'Verbergen' })).toBeDisabled()
+    expect(within(dialoog).getByRole('button', { name: 'Verbergen (2)' })).toBeDisabled()
     await gebruiker.type(within(dialoog).getByLabelText('Reden'), 'wil ik handmatig houden')
-    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Verbergen' }))
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Verbergen (2)' }))
     await waitFor(() => expect(aanroepen).toHaveLength(1))
-    expect(aanroepen[0]).toEqual({ url: `/instellingen/autoboeken/kandidaten/${ADM}/v-1/verbergen`, body: { reden: 'wil ik handmatig houden' } })
+    expect(aanroepen[0]).toEqual({
+      url: '/instellingen/autoboeken/kandidaten/verbergen',
+      body: { items: [{ administratie_id: ADM, vendor_id: 'v-1' }, { administratie_id: ADM, vendor_id: 'v-2' }], reden: 'wil ik handmatig houden' },
+    })
+    const uitkomst = await screen.findByTestId('aanzet-uitkomsten')
+    expect(uitkomst).toHaveTextContent('1 verborgen · 1 overgeslagen')
+    expect(uitkomst).toHaveTextContent('Ebbers Salarisadvies B.V. · Administratiekantoor Nijenhuis C.V.: verborgen')
+    // De naam van een rij buiten de huidige pagina komt uit de server-uitkomst zelf.
+    expect(uitkomst).toHaveTextContent('Elders B.V. · Andere B.V.: overgeslagen — al verborgen')
     await gebruiker.click(screen.getByRole('checkbox', { name: 'Verborgen kandidaten tonen' }))
     expect(await screen.findByText('Verborgen B.V.')).toBeInTheDocument()
     expect(screen.getByText(/wil ik handmatig houden/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Weer tonen Verborgen B.V.' })).toBeInTheDocument()
+  })
+
+  it('"Selecteer alle N resultaten" verschijnt alleen bij totaal > pagina en stuurt een server-side selectie {alle: true, …} mee', async () => {
+    const gebruiker = userEvent.setup()
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetch(aanroepen, { totaal: 60 })
+    renderScherm()
+    await screen.findByText('Ebbers Salarisadvies B.V.')
+    // Losse rij-selectie: geen "alle N"-knop (de pagina is nog niet volledig geselecteerd).
+    await gebruiker.click(screen.getByRole('checkbox', { name: /Selecteer Ebbers/ }))
+    expect(screen.queryByRole('button', { name: 'Selecteer alle 60 resultaten' })).not.toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Alle kandidaten op deze pagina selecteren' }))
+    expect(screen.getByText('Pagina geselecteerd (2)')).toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: 'Selecteer alle 60 resultaten' }))
+    expect(screen.getByText('Alle 60 resultaten geselecteerd')).toBeInTheDocument()
+    // Veiligheidsrem: het aantal staat in de bevestigknop én in de dialoogtitel.
+    await gebruiker.click(screen.getByRole('button', { name: 'Autoboeken aanzetten (60)' }))
+    expect(screen.getByText('Autoboeken aanzetten voor 60 leveranciers?')).toBeInTheDocument()
+    expect(screen.getByText(/álle 60 resultaten binnen het huidige filter/)).toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(aanroepen).toHaveLength(1))
+    expect(aanroepen[0].body).toEqual({ alle: true, tab: 'kandidaten', q: '', verborgen: false })
+    expect(await screen.findByTestId('aanzet-uitkomsten')).toHaveTextContent('1 aangezet · 1 overgeslagen')
+    // "Alleen deze pagina" zet terug naar een pagina-selectie; en zonder meer rijen dan de pagina géén knop.
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Alle kandidaten op deze pagina selecteren' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Selecteer alle 60 resultaten' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Alleen deze pagina' }))
+    expect(screen.getByText('Pagina geselecteerd (2)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Autoboeken aanzetten (2)' })).toBeInTheDocument()
+  })
+
+  it('zonder meer resultaten dan de pagina is er géén "Selecteer alle N"-knop', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch([])
+    renderScherm()
+    await screen.findByText('Ebbers Salarisadvies B.V.')
+    await gebruiker.click(screen.getByRole('checkbox', { name: 'Alle kandidaten op deze pagina selecteren' }))
+    expect(screen.getByText('2 geselecteerd')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Selecteer alle/ })).not.toBeInTheDocument()
   })
 
   it('heroverwegen: advies-waarschuwing, signaal-chips, uitzetten mét bevestiging → POST uitzetten', async () => {
