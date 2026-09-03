@@ -69,6 +69,31 @@
   cursor: not-allowed;
 }
 
+/* Tekst-link-knop (aanvulling blok D 03-09, screenshot Peter "+ Doelentiteit" grijs default-blok):
+   .linkbtn had géén basisstijl — buiten .userbox en het ⋯-rijmenu viel élke linkbtn terug op de
+   browser-default. Basis = tekstactie in teal (semantiek-regel v2: teal = actie), zonder vulling
+   of rand; varianten (.userbox, .anker-popup.rijmenu) overschrijven per context. */
+.linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.linkbtn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.linkbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* A11y-basis (fase 1 modernisering): zichtbare focus-ring op alle knopvormen — geen
  * outline: none zonder vervanging. */
 .btn:focus-visible,
@@ -904,6 +929,13 @@ tr.subrij .eerste-sync-rij ul {
   padding: 6px 8px;
   text-align: left;
   width: 100%;
+  color: var(--text);
+  font-weight: 500;
+  border-radius: 6px;
+}
+.anker-popup.rijmenu .linkbtn:hover:not(:disabled) {
+  text-decoration: none;
+  background: var(--bg);
 }
 
 /* Verzamelbak-preview (besluit 25-08, punt D1): popup met de eerste PDF-pagina bij hover —

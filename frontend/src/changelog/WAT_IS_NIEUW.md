@@ -6,6 +6,11 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-03 — Doorbelasten-blok: knoppen in de huisstijl
+
+- De knop "+ Doelentiteit" in het blok "Doorbelasten na boeken" op het controlescherm ziet er nu hetzelfde uit als "+ Regel toevoegen" bij de boekingsregels erboven; hij deed het al, maar stond er als kale grijze knop. "Verdeelsleutel" ernaast heeft dezelfde vorm.
+- Kleine tekstknoppen elders in de app (zoals "wijzigen", "annuleren" of "gearchiveerd tonen") tonen nu als tekstlink in de actiekleur in plaats van als standaard grijze knop. Er verandert niets aan wat ze doen.
+
 ## 2026-09-03 — Dubbele UBL- en PDF-documenten van dezelfde factuur samengevoegd; nazorg-runs bestand tegen een verbindingsstoring
 
 - Stond dezelfde factuur twee keer in de werkvoorraad van een administratie, één keer als UBL-document en één keer als PDF-document uit dezelfde e-mail, dan voegt de nazorg-run die nu samen: het PDF-document blijft staan met de gegevens uit de UBL en de PDF als beeld, het UBL-document krijgt de status "Samengevoegd" en verdwijnt uit het openstaande werk. Niets wordt verwijderd en de tijdlijn van beide documenten vermeldt de stap.

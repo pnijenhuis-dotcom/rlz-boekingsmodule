@@ -217,7 +217,9 @@ describe('DoorbelastenNaBoeken (besluit Peter 25-08, punt A)', () => {
     await waitFor(() => expect(screen.getByText('klaargezet')).toBeInTheDocument())
     // Verdeel-UI inline mét de bron-regel uit het boekvoorstel
     expect(screen.getByText('Steigermateriaal')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '+ Doelentiteit' })).toBeInTheDocument()
+    // Aanvulling blok D 03-09: zelfde component als "+ Regel toevoegen" (btn secondary), nooit een kale linkbtn
+    expect(screen.getByRole('button', { name: '+ Doelentiteit' })).toHaveClass('btn', 'secondary')
+    expect(screen.getByRole('button', { name: 'Verdeelsleutel' })).toHaveClass('btn', 'secondary')
     // Nog niets verdeeld → de boekknop-poort meldt geblokkeerd mét reden (A2)
     await waitFor(() => expect(meldingen.at(-1)?.geblokkeerd).toBe(true))
     expect(meldingen.at(-1)?.reden).toMatch(/nog geen verdeling/)

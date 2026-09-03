@@ -788,7 +788,7 @@ export function VerdelingEditor({
                 </div>
               )}
               {!bevroren && (
-                <button type="button" className="linkbtn" style={{ marginTop: 6, fontWeight: 600 }} onClick={() => voegRijToe(bron.id)}>
+                <button type="button" className="btn secondary" style={{ marginTop: 10 }} onClick={() => voegRijToe(bron.id)}>
                   + Doelentiteit
                 </button>
               )}
