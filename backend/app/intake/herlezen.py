@@ -39,6 +39,7 @@ from app.aikosten.service import AiKostenLimietBereikt, AiVerbruikReferentie
 from app.beheer import service as beheer_service
 from app.config import settings
 from app.db.audit import record_audit_event
+from app.db.herkansing import VerbindingVerbroken, is_verbroken_verbinding, voer_uit_met_herkansing
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus
@@ -486,11 +487,48 @@ def herlees_verzamelbak(
     for kandidaat in te_doen:
         try:
             if kandidaat.is_ubl:
-                _herlees_ubl(kandidaat, opslag=opslag, telling=telling, toewijzen=toewijzen)
+                # Verbindings-blip (03-09): precies één herkansing per UBL-rij bij een verbroken
+                # databaseverbinding. Het UBL-pad is deterministisch (geen AI, geen kosten) en elke deelstap
+                # is status-gepoort/idempotent; de telling wordt vóór de herkansing teruggezet zodat een
+                # deels bijgewerkte eerste poging niet dubbel telt. Het PDF-pad (AI-call) krijgt bewust GEEN
+                # herkansing — een herstart zou de AI-lezing kunnen herhalen: dat item telt dan als mislukt
+                # mét reden en de run loopt door.
+                snapshot = _telling_snapshot(telling)
+                voer_uit_met_herkansing(
+                    lambda: _herlees_ubl(kandidaat, opslag=opslag, telling=telling, toewijzen=toewijzen),  # noqa: B023
+                    label=f"intake-herlezen {kandidaat.bestandsnaam}",
+                    voor_herkansing=lambda: _telling_herstel(telling, snapshot),  # noqa: B023
+                )
             else:
-                _herlees_een(kandidaat, opslag=opslag, telling=telling, toewijzen=toewijzen)
+                try:
+                    _herlees_een(kandidaat, opslag=opslag, telling=telling, toewijzen=toewijzen)
+                except Exception as exc:  # noqa: BLE001 — alleen classificatie; alles anders gaat door
+                    if not is_verbroken_verbinding(exc):
+                        raise
+                    telling.mislukt += 1
+                    telling.details.append(
+                        f"{kandidaat.bestandsnaam}: mislukt — databaseverbinding verbroken (PDF-pad wordt niet "
+                        "herkanst: AI-lezing zou herhaald kunnen worden); opnieuw draaien zodra de verbinding er is"
+                    )
+                    logger.warning("intake-herlezen %s: verbinding verbroken — %s", kandidaat.bestandsnaam, exc)
         except AiKostenLimietBereikt as exc:
             telling.gestopt_reden = f"AI-maandlimiet bereikt — gestopt bij {kandidaat.bestandsnaam}: {exc}"
             logger.warning(telling.gestopt_reden)
             break
+        except VerbindingVerbroken as exc:
+            telling.gestopt_reden = (
+                f"databaseverbinding verbroken (ook ná herkansing) — gestopt bij {kandidaat.bestandsnaam}: {exc}; "
+                "de run is idempotent, draai 'm opnieuw zodra de verbinding er weer is"
+            )
+            logger.error(telling.gestopt_reden)
+            break
     return telling
+
+
+def _telling_snapshot(telling: HerleesTelling) -> dict:
+    return {**{k: v for k, v in vars(telling).items() if k != "details"}, "details": list(telling.details)}
+
+
+def _telling_herstel(telling: HerleesTelling, snapshot: dict) -> None:
+    for sleutel, waarde in snapshot.items():
+        setattr(telling, sleutel, list(waarde) if sleutel == "details" else waarde)
