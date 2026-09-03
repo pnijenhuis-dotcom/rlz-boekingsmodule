@@ -1409,6 +1409,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   één sleutel-menu, auto-opslaan; bankscherm mét chip "handmatig" + één primaire knop + ⋯-menu.
   Nieuwe schermen volgen de vastgelegde UX-patronen (voorstel-kaart, restant-balk, lege stand = actie,
   één primaire knop + ⋯, werkvolgorde-regel, bundelen vóór tonen).
+  **Aanvulling 03-09 (blok D, screenshot Peter): "+ Doelentiteit" = dezelfde `btn secondary` als "+ Regel
+  toevoegen"; `.linkbtn` heeft sinds 03-09 een BASISSTIJL (tekstactie in teal) — daarvóór viel élke linkbtn
+  buiten `.userbox`/`.rijmenu` terug op de grijze browser-default. Een tekstknop = `linkbtn`, een echte knop =
+  `btn`/`btn secondary`; nooit een kale `<button>`. BESLISSINGEN "MINI-RUN 03-09 (2)" rij D.**
 - `mockup/tegenboek-mockup.html` — definitief goedgekeurde mockup tegenboek-pad (Peter
   2026-08-22, suppletie-signaal geschrapt; GEBOUWD 2026-08-22) — de bouwnorm
 - `mockup/projecten-invoer.html` — definitief goedgekeurde mockup kantoor-projectenmodule
