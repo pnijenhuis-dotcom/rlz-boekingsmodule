@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0102
+-- Migratie-head bij deze dump: 0103
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -809,7 +809,7 @@ CREATE TABLE boekhouding.boekvoorstel (
     boek_cyclus integer DEFAULT 0 NOT NULL,
     vervaldatum date,
     afdeling_id uuid,
-    betalingskenmerk character varying
+    betalingskenmerk text
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel FORCE ROW LEVEL SECURITY;
@@ -842,17 +842,17 @@ CREATE TABLE boekhouding.crediteur_archiveer_werklijst (
     id uuid NOT NULL,
     administratie_id uuid NOT NULL,
     voorkeur_vendor_id uuid NOT NULL,
-    voorkeur_naam character varying,
+    voorkeur_naam text,
     te_archiveren jsonb NOT NULL,
-    status character varying NOT NULL,
+    status text NOT NULL,
     aangemaakt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     gedaan_op timestamp with time zone,
     gedaan_door uuid,
-    gedaan_bron character varying,
+    gedaan_bron text,
     laatste_hertoets_op timestamp with time zone,
     hertoets_detail jsonb,
-    CONSTRAINT ck_crediteur_archiveer_werklijst_status CHECK (((status)::text = ANY ((ARRAY['open'::character varying, 'gedaan'::character varying])::text[])))
+    CONSTRAINT ck_crediteur_archiveer_werklijst_status CHECK ((status = ANY (ARRAY[('open'::character varying)::text, ('gedaan'::character varying)::text])))
 );
 
 ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst FORCE ROW LEVEL SECURITY;
@@ -865,14 +865,14 @@ ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst FORCE ROW LEVEL SECUR
 CREATE TABLE boekhouding.crediteur_dubbel_afmelding (
     id uuid NOT NULL,
     administratie_id uuid NOT NULL,
-    sleutel_soort character varying NOT NULL,
-    sleutel character varying NOT NULL,
-    combinatie character varying NOT NULL,
+    sleutel_soort text NOT NULL,
+    sleutel text NOT NULL,
+    combinatie text NOT NULL,
     vendor_ids jsonb NOT NULL,
-    reden character varying NOT NULL,
+    reden text NOT NULL,
     afgemeld_door uuid NOT NULL,
     afgemeld_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_crediteur_dubbel_afmelding_soort CHECK (((sleutel_soort)::text = ANY ((ARRAY['btw_nummer'::character varying, 'kvk_nummer'::character varying, 'iban'::character varying, 'naam'::character varying])::text[])))
+    CONSTRAINT ck_crediteur_dubbel_afmelding_soort CHECK ((sleutel_soort = ANY (ARRAY[('btw_nummer'::character varying)::text, ('kvk_nummer'::character varying)::text, ('iban'::character varying)::text, ('naam'::character varying)::text])))
 );
 
 ALTER TABLE ONLY boekhouding.crediteur_dubbel_afmelding FORCE ROW LEVEL SECURITY;
@@ -1693,7 +1693,7 @@ CREATE TABLE boekhouding.odoo_document_koppeling (
     boek_cyclus integer NOT NULL,
     soort character varying(16) NOT NULL,
     odoo_move_id integer NOT NULL,
-    odoo_naam character varying,
+    odoo_naam text,
     odoo_move_type character varying(16) NOT NULL,
     company_id integer NOT NULL,
     state character varying(16) NOT NULL,
@@ -1716,7 +1716,7 @@ CREATE TABLE boekhouding.odoo_id_koppeling (
     model character varying(64) NOT NULL,
     odoo_id integer NOT NULL,
     lokaal_id uuid NOT NULL,
-    naam character varying,
+    naam text,
     laatst_gezien_op timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -1732,8 +1732,8 @@ CREATE TABLE boekhouding.odoo_product_koppeling (
     materiaal_product_id uuid NOT NULL,
     odoo_product_id integer NOT NULL,
     odoo_template_id integer,
-    default_code character varying,
-    naam character varying,
+    default_code text,
+    naam text,
     bron character varying(16) NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
@@ -2244,7 +2244,7 @@ ALTER TABLE ONLY boekhouding.tegenboeking FORCE ROW LEVEL SECURITY;
 
 CREATE TABLE boekhouding.terugkerend_herbereken_run (
     id uuid NOT NULL,
-    status character varying DEFAULT 'wachtend'::character varying NOT NULL,
+    status text DEFAULT 'wachtend'::character varying NOT NULL,
     gestart_door uuid,
     aangevraagd_op timestamp with time zone DEFAULT now() NOT NULL,
     gestart_op timestamp with time zone,
@@ -2253,9 +2253,9 @@ CREATE TABLE boekhouding.terugkerend_herbereken_run (
     aantal_administraties integer DEFAULT 0 NOT NULL,
     aantal_verwerkt integer DEFAULT 0 NOT NULL,
     aantal_fouten integer DEFAULT 0 NOT NULL,
-    foutreden character varying,
+    foutreden text,
     resultaat jsonb,
-    CONSTRAINT ck_terugkerend_herbereken_run_status CHECK (((status)::text = ANY ((ARRAY['wachtend'::character varying, 'bezig'::character varying, 'klaar'::character varying, 'fout'::character varying])::text[])))
+    CONSTRAINT ck_terugkerend_herbereken_run_status CHECK ((status = ANY (ARRAY[('wachtend'::character varying)::text, ('bezig'::character varying)::text, ('klaar'::character varying)::text, ('fout'::character varying)::text])))
 );
 
 
@@ -3211,10 +3211,10 @@ CREATE TABLE platform.kantoor_digest (
 
 CREATE TABLE platform.odoo_koppeling (
     administratie_id uuid NOT NULL,
-    odoo_url character varying NOT NULL,
+    odoo_url text NOT NULL,
     company_id integer NOT NULL,
-    company_naam character varying,
-    api_gebruiker character varying,
+    company_naam text,
+    api_gebruiker text,
     api_key_ciphertext bytea NOT NULL,
     wrapped_data_key bytea NOT NULL,
     api_key_verloopt_op date,
