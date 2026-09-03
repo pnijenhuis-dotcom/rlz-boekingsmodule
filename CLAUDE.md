@@ -1457,7 +1457,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   overschreven (alleen koppelen), twijfel = overslaan mét reden, geheugen leert niets; ongedaan via de bestaande
   `samenvoegen-ongedaan`-route (alleen vóór boeken). **Cloud-run UITGEVOERD 03-09: 68 samengevoegd, 25 mislukt op een
   proxy-storing (schoon teruggerold) en daarna door Barbara bulk-toegewezen → 25 UBL+PDF-dubbelparen in Universal Steigerbouw =
-  nazorg-beslispunt (BESLISSINGEN "NABUNDEL-NAZORG 03-09").**
+  nazorg-beslispunt (BESLISSINGEN "NABUNDEL-NAZORG 03-09").** **Mini-run 03-09 (2) (BESLISSINGEN "MINI-RUN 03-09 (2)"):
+  (A) nabundelen óók voor DUBBELPAREN — een al toegewezen UBL-document naast zijn PDF-document in dezelfde administratie
+  uit hetzelfde intake-bericht (`--ook-toegewezen`, `--administratie` begrenst; UBL-document → terminaal `samengevoegd`,
+  ongedaan = terug naar zijn vorige status); cloud-run Universal Steigerbouw 03-09 (dry-run 142 kandidaten — niet ~25:
+  de hele deel-2–10-mailreeks van 02-09 stond dubbel). (B) `app/db/herkansing.py`: precies één herkansing per item bij
+  een verbroken databaseverbinding in de nazorg-CLI's (pre-ping stond al aan sinds 0001); noodrem ná 3 opeenvolgende
+  verbindingsfouten. (C) Webhook-diagnose Elissen: alle drie de geboekt-events op 31-08 16:15 afgeleverd (HTTP 2xx) —
+  concept-antwoord `Platform/uitwisseling/rlz-antwoord-geboekt-events-2026-09-03.md`.**
 - `docs/avg/` — AVG-pakket (jurist-akkoord 12-08); **stap 1 van `05-activatie-checklist.md` is op 02-09
   beslisklaar gemaakt (blok A): `09-zdr-beslisnotitie.md` (besluit Peter), `10-model-check.md` (sonnet-5 +
   haiku-4-5, ZDR-compatibel; register mist voorraad-normalisatie + contract-ontleding), `11-klantinformatie-
@@ -1511,6 +1518,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   te wachten; de Stop-hook pusht daarna beide repo's. **Uitzondering:** zegt een opdracht
   expliciet "niet committen, eerst review", dan wordt er niet gecommit en stopt de run voor
   review. Force-push blijft verboden.
+- **Bash-commando's: absolute paden, geen cd-kettingen met relatieve reads (afspraak Peter
+  03-09, herhaalde permission-prompts).** Er staat een Read-deny op secret-bestanden; een
+  samengesteld commando met `cd` + relatieve bestandsreads kan niet automatisch getoetst
+  worden en triggert dan élke keer een handmatige toestemmingsvraag aan Peter. Gebruik daarom
+  absolute paden (of `git -C` / `--directory`-vormen) zodat de toetsing automatisch kan.
+  Secrets-paden (`.env`, `~/Sleutels`) blijven sowieso verboden terrein.
 - **Pre-commit-vangnet frontend (procesnotitie Peter 2026-08-15, les verbeteringen.md 12-08
   vastgoed; aanleiding: deploys #23/#24 rood op een TS-fout die bij het committen gevangen had
   moeten worden):** vóór élke frontend-rakende commit draait `tsc -b` over de VOLLEDIGE actuele
