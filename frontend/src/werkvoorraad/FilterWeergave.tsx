@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiJson } from '../api/client'
-import type { AdministratieDto, DocumentListItemDto, DocumentListResponseDto, VraagDto } from '../api/types'
+import type { AdministratieDto, DocumentListItemDto, DocumentListResponseDto } from '../api/types'
 import { BankOverzichtScreen } from '../bank/BankOverzichtScreen'
 import { FoutMelding } from '../ui/FoutMelding'
-import { haalVragenOp } from '../vragen/vragenApi'
+import { OpenVragenKantoorbreed } from '../vragen/OpenVragenKantoorbreed'
 import { Breadcrumb } from './Breadcrumb'
 import { documentRoute, amountKlasse, formatBedrag, ouderdomLabel } from './format'
 import { StatusChip } from './StatusChip'
@@ -12,8 +12,10 @@ import { teVerwerken, type KlantRij } from './useWerkvoorraadData'
 
 /* Kantoorbrede dwarsdoorsneden (IA-besluit 15-08): de klikbare KPI-kaarten bovenaan de
  * werkvoorraad vervangen de losse Vragen- en Bank-tabbladen. Elke weergave toont één dimensie
- * over álle klanten heen; de data komt per administratie uit de bestaande scope-veilige
- * endpoints (alleen administraties met een teller > 0 worden bevraagd). */
+ * over álle klanten heen. Open vragen draaien sinds de design-ronde 03-09 (blok B2, mockup
+ * inzicht-kantoorbreed.html ④) op het server-side endpoint GET /vragen (`OpenVragenKantoorbreed`) —
+ * de client-side N+1-fan-out per administratie is daar vervallen. Te verwerken / bij klant lezen nog
+ * per administratie uit de bestaande scope-veilige endpoints (alleen administraties met teller > 0). */
 
 export type WerkvoorraadFilter = 'te_verwerken' | 'vragen' | 'bank' | 'bij_klant'
 
@@ -55,6 +57,19 @@ export function FilterWeergave({
       </div>
     )
   }
+  if (filter === 'vragen') {
+    return (
+      <div>
+        <div className="topbar">
+          <div>
+            <Breadcrumb stappen={[{ label: 'Werkvoorraad', naar: '/' }]} huidige={FILTER_LABELS.vragen} />
+            <h1>{FILTER_LABELS.vragen}</h1>
+          </div>
+        </div>
+        <OpenVragenKantoorbreed />
+      </div>
+    )
+  }
   return (
     <DocumentDwarsdoorsnede
       filter={filter}
@@ -71,26 +86,19 @@ interface DwarsRij {
   document: DocumentListItemDto
 }
 
-interface VraagRij {
-  administratieId: string
-  administratieNaam: string
-  vraag: VraagDto
-}
-
 function DocumentDwarsdoorsnede({
   filter,
   klanten,
   klantenFout,
   administraties,
 }: {
-  filter: 'te_verwerken' | 'vragen' | 'bij_klant'
+  filter: 'te_verwerken' | 'bij_klant'
   klanten: KlantRij[] | null
   klantenFout: string | null
   administraties: AdministratieDto[]
 }) {
   const navigate = useNavigate()
   const [rijen, setRijen] = useState<DwarsRij[] | null>(null)
-  const [vraagRijen, setVraagRijen] = useState<VraagRij[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
 
   const naamPer = useMemo(() => new Map(administraties.map((a) => [a.id, a.naam])), [administraties])
@@ -99,9 +107,7 @@ function DocumentDwarsdoorsnede({
   const relevanteIds = useMemo(() => {
     if (klanten === null) return null
     return klanten
-      .filter((k) =>
-        filter === 'te_verwerken' ? teVerwerken(k) > 0 : filter === 'vragen' ? k.vragen > 0 : k.bij_klant > 0,
-      )
+      .filter((k) => (filter === 'te_verwerken' ? teVerwerken(k) > 0 : k.bij_klant > 0))
       .map((k) => k.administratie_id)
   }, [klanten, filter])
 
@@ -110,54 +116,35 @@ function DocumentDwarsdoorsnede({
     let actueel = true
     setFout(null)
     setRijen(null)
-    setVraagRijen(null)
-    if (filter === 'vragen') {
-      Promise.all(
-        relevanteIds.map(async (id) => {
-          const data = await haalVragenOp(id)
-          return data.vragen
-            .filter((v) => v.status === 'open')
-            .map((vraag): VraagRij => ({ administratieId: id, administratieNaam: naamPer.get(id) ?? id, vraag }))
-        }),
-      )
-        .then((per) => {
-          if (actueel)
-            setVraagRijen(per.flat().sort((a, b) => a.vraag.gesteld_op.localeCompare(b.vraag.gesteld_op)))
-        })
-        .catch((err: unknown) => {
-          if (actueel) setFout(err instanceof Error ? err.message : 'Onbekende fout')
-        })
-    } else {
-      Promise.all(
-        relevanteIds.map(async (id) => {
-          const data = await apiJson<DocumentListResponseDto>(`/administraties/${id}/documenten`)
-          return data.documenten
-            .filter((d) =>
-              filter === 'te_verwerken' ? TE_VERWERKEN_STATUSSEN.has(d.status) : d.status === 'ter_accordering',
-            )
-            .map(
-              (document): DwarsRij => ({
-                administratieId: id,
-                administratieNaam: naamPer.get(id) ?? id,
-                document,
-              }),
-            )
-        }),
-      )
-        .then((per) => {
-          if (actueel)
-            setRijen(per.flat().sort((a, b) => a.document.aangemaakt_op.localeCompare(b.document.aangemaakt_op)))
-        })
-        .catch((err: unknown) => {
-          if (actueel) setFout(err instanceof Error ? err.message : 'Onbekende fout')
-        })
-    }
+    Promise.all(
+      relevanteIds.map(async (id) => {
+        const data = await apiJson<DocumentListResponseDto>(`/administraties/${id}/documenten`)
+        return data.documenten
+          .filter((d) =>
+            filter === 'te_verwerken' ? TE_VERWERKEN_STATUSSEN.has(d.status) : d.status === 'ter_accordering',
+          )
+          .map(
+            (document): DwarsRij => ({
+              administratieId: id,
+              administratieNaam: naamPer.get(id) ?? id,
+              document,
+            }),
+          )
+      }),
+    )
+      .then((per) => {
+        if (actueel)
+          setRijen(per.flat().sort((a, b) => a.document.aangemaakt_op.localeCompare(b.document.aangemaakt_op)))
+      })
+      .catch((err: unknown) => {
+        if (actueel) setFout(err instanceof Error ? err.message : 'Onbekende fout')
+      })
     return () => {
       actueel = false
     }
   }, [relevanteIds, filter, naamPer])
 
-  const laden = klanten === null || (filter === 'vragen' ? vraagRijen === null : rijen === null)
+  const laden = klanten === null || rijen === null
 
   return (
     <div>
@@ -177,53 +164,7 @@ function DocumentDwarsdoorsnede({
             <span className="skeleton" style={{ width: '40%' }} />
           </div>
         )}
-        {filter === 'vragen' && vraagRijen !== null && (
-          <>
-            {vraagRijen.length === 0 && <p className="hint">Geen open vragen — nergens.</p>}
-            {vraagRijen.length > 0 && (
-              <div className="tabel-scroll">
-                <table>
-                  <tbody>
-                    <tr>
-                      <th>Klant</th>
-                      <th>Vraag</th>
-                      <th>Sinds</th>
-                      <th />
-                    </tr>
-                    {vraagRijen.map((rij) => (
-                      <tr
-                        key={rij.vraag.id}
-                        className="clickable"
-                        onClick={() =>
-                          navigate(
-                            `/?administratie=${rij.administratieId}&sectie=vragen&document=${rij.vraag.document_id}`,
-                          )
-                        }
-                      >
-                        <td>
-                          <b>{rij.administratieNaam}</b>
-                        </td>
-                        <td>
-                          {rij.vraag.vraag_tekst}
-                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                            blokkeert {rij.vraag.document_bestandsnaam}
-                          </div>
-                        </td>
-                        <td>{ouderdomLabel(rij.vraag.gesteld_op)}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <span className="text-primary" style={{ fontWeight: 600 }}>
-                            Beantwoorden →
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-        {filter !== 'vragen' && rijen !== null && (
+        {rijen !== null && (
           <>
             {rijen.length === 0 && (
               <p className="hint">

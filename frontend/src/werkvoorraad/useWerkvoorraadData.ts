@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AdministratieDto, WerkvoorraadKlantDto } from '../api/types'
+import type { AdministratieDto, OpenVragenTellersDto, WerkvoorraadKlantDto } from '../api/types'
 import { haalBankOverzicht } from '../bank/bankApi'
 import { haalSpiegelTakenOp } from '../doorbelasting/doorbelastingApi'
+import { haalOpenVragenStandOp } from '../vragen/vragenApi'
 import { haalWerkvoorraadOverzichtOp } from './werkvoorraadApi'
 
 /** Gedeelde databron voor de werkvoorraad-ingang (IA-verbouwing fase 2): de KPI-rij én de
  * klantenlijst rekenen op dezelfde rijen, zodat tellers nooit uiteenlopen. Bank- en
  * spiegel-tellers zijn verrijking: een fout daar mag de lijst niet blokkeren (bestaand
- * faalvriendelijk patroon uit de oude Klantenlijst). */
+ * faalvriendelijk patroon uit de oude Klantenlijst). De KPI-kaart "Open vragen" leest sinds de
+ * design-ronde 03-09 (blok B2) de stand van GET /vragen/stand — één definitie mét de kantoorbrede
+ * lijst (open vraag-rij op een niet-verdwenen document, óók vragen aan de klant-accordeur op
+ * documenten bij de klant/geboekt) i.p.v. de som van de klantenlijst-kolom (documenten in vraag_open). */
 export interface KlantRij extends WerkvoorraadKlantDto {
   bank_open: number | null
   spiegel_taken: number | null
@@ -33,6 +37,7 @@ export function heeftOpenstaandWerk(k: KlantRij): boolean {
 
 export function useWerkvoorraadData(administraties: AdministratieDto[]) {
   const [klanten, setKlanten] = useState<KlantRij[] | null>(null)
+  const [openVragen, setOpenVragen] = useState<OpenVragenTellersDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [herlaadTeller, setHerlaadTeller] = useState(0)
 
@@ -40,7 +45,14 @@ export function useWerkvoorraadData(administraties: AdministratieDto[]) {
     let actueel = true
     setFout(null)
     setKlanten(null)
+    setOpenVragen(null)
     const bankBelofte = haalBankOverzicht().catch(() => null)
+    // Stand open vragen (B2.3): verrijking — een fout hier blokkeert de lijst niet, de kaart toont dan "—".
+    haalOpenVragenStandOp()
+      .then((stand) => {
+        if (actueel && typeof stand?.open === 'number') setOpenVragen(stand)
+      })
+      .catch(() => undefined)
     const spiegelBelofte = Promise.all(
       administraties.map(async (a) => {
         try {
@@ -74,5 +86,5 @@ export function useWerkvoorraadData(administraties: AdministratieDto[]) {
   }, [herlaadTeller, administraties])
 
   const herlaad = useCallback(() => setHerlaadTeller((t) => t + 1), [])
-  return { klanten, fout, herlaad }
+  return { klanten, openVragen, fout, herlaad }
 }

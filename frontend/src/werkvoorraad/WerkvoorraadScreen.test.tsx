@@ -13,6 +13,17 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
+/** Kantoorbrede open vragen (blok B2 03-09): GET /vragen/stand + GET /vragen?… — leeg antwoord in de
+ * juiste vorm, zodat de KPI-kaart en de dwarsdoorsnede op het nieuwe endpoint draaien. */
+function openVragenAntwoord(url: string): Response | null {
+  const leegTellers = { open: 0, aan_mij: 0, blokkeert_boeken: 0, administraties: 0 }
+  if (url === '/vragen/stand') return jsonResponse(leegTellers)
+  if (url.startsWith('/vragen?')) {
+    return jsonResponse({ rijen: [], totaal: 0, pagina: 1, per_pagina: 25, tellers: leegTellers, administraties: [] })
+  }
+  return null
+}
+
 function document(overrides: Record<string, unknown>) {
   return {
     id: DOCUMENT_ID,
@@ -266,6 +277,7 @@ describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
         if (url.endsWith('/medewerkers')) {
           return Promise.resolve(jsonResponse({ medewerkers: [{ id: EIGENAAR_ID, naam: 'M. de Boer' }] }))
         }
+        if (openVragenAntwoord(url)) return Promise.resolve(openVragenAntwoord(url)!)
         if (url.includes('/vragen')) {
           return Promise.resolve(jsonResponse({ vragen: [] }))
         }
@@ -357,6 +369,7 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
         if (url.endsWith('/verzamelbak')) {
           return Promise.resolve(jsonResponse({ items: [] }))
         }
+        if (openVragenAntwoord(url)) return Promise.resolve(openVragenAntwoord(url)!)
         if (url.includes('/vragen')) {
           return Promise.resolve(jsonResponse({ vragen: [] }))
         }
@@ -416,6 +429,38 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
     await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
     // Bank-teller staat in de lijst én telt mee in de KPI-kaart — minstens één zichtbaar.
     expect(screen.getAllByText('3').length).toBeGreaterThan(0)
+  })
+
+  it('voorraadverschil-teller (C2 03-09): kolom alleen bij > 0, klik opent de kantoorbrede voorraadlijst gefilterd op de klant', async () => {
+    const gebruiker = userEvent.setup()
+    // Zonder een enkele klant mét voorraadverschil bestaat de kolom niet (toon-regel signaal-tellers).
+    installOverzichtMock([klant({ te_controleren: 1, voorraad_verschillen: 0 })])
+    const { unmount } = renderIngang()
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.queryByText('Voorraadverschil')).toBeNull()
+    unmount()
+    installOverzichtMock([
+      klant({ te_controleren: 1, voorraad_verschillen: 2 }),
+      klant({ administratie_id: TWEEDE_ADMINISTRATIE_ID, naam: 'Klant Zonder Verschil', klaar_om_te_boeken: 1, voorraad_verschillen: 0 }),
+    ])
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<WerkvoorraadScreen />} />
+          <Route path="/voorraad" element={<div>Voorraad-landing {window.location.search}</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.getByText('Voorraadverschil')).toBeInTheDocument()
+    const rij = screen.getByText('Testklant').closest('tr')!
+    const teller = within(rij).getByText('2')
+    expect(teller).toHaveClass('chip')
+    // De klant zonder verschil toont "—" in die kolom (geen valse teller).
+    const andere = screen.getByText('Klant Zonder Verschil').closest('tr')!
+    expect(within(andere).getAllByText('—').length).toBeGreaterThan(0)
+    await gebruiker.click(teller)
+    await waitFor(() => expect(screen.getByText(/Voorraad-landing/)).toBeInTheDocument())
   })
 
   it('de KPI-kaarten zijn klikbaar en openen de kantoorbrede dwarsdoorsnede', async () => {
@@ -803,6 +848,7 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
           opties.bulkAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
           return Promise.resolve(jsonResponse(opties.bulkResponse ?? { resultaten: [], aangeboden: 0, geboekt: 0, overgeslagen: 0 }))
         }
+        if (openVragenAntwoord(url)) return Promise.resolve(openVragenAntwoord(url)!)
         if (url.includes('/vragen')) return Promise.resolve(jsonResponse({ vragen: [] }))
         if (url.includes('/documenten') && (!init || init.method === undefined)) {
           return Promise.resolve(jsonResponse({ documenten: opties.documenten ?? [] }))
