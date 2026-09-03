@@ -1338,6 +1338,28 @@ NIET gebouwd — afwijs-klikwerk voor kantoor; de motor slaat ze correct over al
 
 **Suites 03-09 (middag):** backend `tests/intake tests/documenten tests/security tests/unit` 1343 groen, daarna volledige suite `pytest tests` 2910 passed / 21 deselected (8:15), incl. blok B — engine-config ongewijzigd; frontend vitest 866 groen (incl. changelog-guard), `tsc -b` groen.
 
+## PRINCIPE MINIMALE MENS, MAXIMALE AUTONOMIE (besluit Peter 02-09; capture design-ronde 03-09 — CLAUDE.md kernprincipe 7)
+
+**Aanleiding:** feedback Peter 02-09 op het crediteuren-scherm ("dit scherm is nieuw maar zinloos") + de
+design-audit 03-09: de Inzicht-schermen terugkerend, voorraad, archief en vragen deelden hetzelfde anti-patroon
+— AdministratieCombobox als verplichte poort, gedwongen door backends met uitsluitend
+`/administraties/{id}/…`-routes, en signalen zonder handeling. Het principe bouwt voort op "Automatisering-first"
+(2026-08-16, WERKWIJZE v1.10) en op het autoboek-kandidaten-patroon (01-09) en is bindend voor élk nieuw en
+élk te herzien scherm.
+
+| # | Regel | Consequentie / toets |
+|---|---|---|
+| 1 | **Administratie is een filter, nooit een poort.** | Kantoorbrede overzichten zijn de norm: één lijst over álle administraties in scope (RLS + `mijn_administraties`), administratie als facet-filter (leeg = alle). Per-administratie-routes blijven uitsluitend als deeplink-doel vanaf de klantpagina. Een scherm dat pas iets toont ná een administratie-keuze is fout. |
+| 2 | **Signalering zonder handeling is niet af.** | Elke rij/elk signaal draagt één primaire actie (+ ⋯-menu) die het signaal oplost of wegzet mét audit (archiveer-werklijst, conceptmail, "naar de boeking", afmelden mét reden). Een kale teller of lijst is geen deliverable. |
+| 3 | **Opt-ins zijn testfase-drempels, geen einddoel.** | Elk deterministisch pad krijgt het vaste autoboek-opt-in-patroon (default UIT, harde checks blokkerend, volumerem, 'automatisch'-markering + audit, storno als terugweg); het systeem nomineert, de mens zet in bulk aan (kandidaten-patroon). |
+| 4 | **Alles schaalt van 2 naar 2000 administraties.** | Server-side paginering (25) verplicht op élke lijst, urgentste bovenaan (deterministische sortering), tellers "N … over M administraties", geen client-side N+1-fan-out per administratie, geen ongepagineerde responses (archief-les 03-09). |
+| 5 | **De grenzen blijven onverkort.** | Nooit verwijderen in externe systemen (archiveren/werklijst, nooit delete); geld in code; harde checks blokkerend; append-only audit op élke handeling; RLS + server-side scope fail-closed. |
+
+**Toepassing 03-09 (design-ronde, mockups `crediteuren-dubbelen-v2.html` + `inzicht-kantoorbreed.html` = bouwnorm):**
+blok A crediteuren-dubbelen v2, blok B1–B6 Inzicht-kantoorbreed-patroon, blok C directe fixes — zie de secties
+hieronder; elke rij daar verwijst naar dit principe. Referentie-implementatie van het lijstpatroon:
+`frontend/src/instellingen/AutoboekKandidaten.tsx` + `backend/app/autoboek_kandidaten/router.py`.
+
 ## Onderhoud
 
 - Nieuwe regel of statusophoging **op het moment van akkoord/oplevering**, in dezelfde commit als

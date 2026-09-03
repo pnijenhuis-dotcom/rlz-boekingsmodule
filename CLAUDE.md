@@ -20,6 +20,15 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
    zelf bij boeken (17). Niet gebruiken; idempotentie is volledig onze verantwoordelijkheid.
 6. **Secrets** in `.env`/secret-store, nooit in code of git. RLZ-credentials server-side versleuteld
    (envelope encryption, master key buiten de DB).
+7. **Minimale mens, maximale autonomie (besluit Peter 02-09, capture design-ronde 03-09 —
+   BESLISSINGEN "PRINCIPE MINIMALE MENS, MAXIMALE AUTONOMIE" is canoniek):** (1) administratie is
+   een FILTER, nooit een poort — kantoorbrede overzichten zijn de norm, een verplichte
+   administratie-picker vóór je iets ziet is fout (per-administratie-routes blijven alleen als
+   deeplink-doel); (2) signalering zonder handeling is niet af — elk signaal draagt een actie op de
+   rij; (3) opt-ins zijn testfase-drempels, geen einddoel; (4) alles schaalt van 2 naar 2000
+   administraties (server-side paginering, urgentie-sortering, tellers "N over M administraties");
+   (5) de grenzen blijven onverkort: nooit verwijderen in externe systemen, geld in code, harde
+   checks blokkerend, audit op alles. Referentie-patroon: het autoboek-kandidaten-scherm.
 
 ## Stack & platform (besloten, koppelcontract v1.1 §2b)
 
