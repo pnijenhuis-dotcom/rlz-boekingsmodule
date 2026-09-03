@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: intake-herlezen voorraad-hernormaliseer voorraad-rlz-sync projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit autoboek-kandidaten-herbereken kantoor-digest uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: intake-herlezen verzamelbak-nabundelen voorraad-hernormaliseer voorraad-rlz-sync projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit autoboek-kandidaten-herbereken kantoor-digest uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -204,6 +204,12 @@ omzet-autoboeken-uit: check-versions
 # DRY_RUN=1 telt alleen. Tegen de cloud: scripts/cloud_cli.py intake-herlezen --sinds 2026-08-25 (zie docstring).
 intake-herlezen: check-versions
 	.venv/bin/python -m app.cli intake-herlezen --sinds $(or $(SINDS),2026-08-25) $(if $(DRY_RUN),--dry-run,)
+
+# Nabundel-nazorg (03-09): verzamelbak-UBL's koppelen aan hun al toegewezen PDF-tegenhanger (UBL = data,
+# PDF = beeld, her-extractie; alleen te_controleren/handmatig_afmaken). DRY_RUN=1 eerst. Tegen de cloud:
+# scripts/cloud_cli.py verzamelbak-nabundelen --dry-run (mét DOCUMENT_GCS_BUCKET — leest en schrijft bestanden).
+verzamelbak-nabundelen: check-versions
+	.venv/bin/python -m app.cli verzamelbak-nabundelen $(if $(DRY_RUN),--dry-run,)
 
 # Maandagochtend-digest kantoor los draaien (job rlz-kantoor-digest, ma 07:30; idempotent per week).
 kantoor-digest: check-versions

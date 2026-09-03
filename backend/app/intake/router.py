@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 
 from app.auth.deps import CurrentGebruiker, vereis_kantoorrol
 from app.documenten.service import DocumentNietGevonden
-from app.intake import schemas, splitsing, verwerking, verzamelbak
+from app.intake import nabundelen, schemas, splitsing, verwerking, verzamelbak
 
 # De lokale vereis_kantoorrol is bij de rollen-gate-fix (2026-08-21) verhuisd naar
 # app/auth/deps.py — één bron voor de kantoor-console-poort; de per-endpoint-Depends hieronder
@@ -188,7 +188,11 @@ def verzamelbak_samenvoegen_ongedaan(
         teruggezet = verzamelbak.maak_samenvoegen_ongedaan(document_id=document_id, actor_id=actor.id)
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (verzamelbak.DocumentNietInVerzamelbak, verzamelbak.SamenvoegenGeweigerd) as exc:
+    except (
+        verzamelbak.DocumentNietInVerzamelbak,
+        verzamelbak.SamenvoegenGeweigerd,
+        nabundelen.NabundelingOngedaanGeweigerd,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return schemas.SamenvoegenOngedaanResponse(document_id=document_id, teruggezet_document_id=teruggezet)
 

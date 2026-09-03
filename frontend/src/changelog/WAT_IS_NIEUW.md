@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-03 — Verzamelbak: gescheiden UBL- en PDF-versies van dezelfde factuur alsnog samengevoegd
+
+- Kwam een factuur eerder als UBL én als PDF in dezelfde e-mail binnen en is alleen de PDF al aan een administratie toegewezen (de UBL bleef in de verzamelbak met de chip "tegenhanger al toegewezen"), dan voegt het kantoor die twee nu alsnog samen via een nazorg-run: het bestaande document blijft staan, de gegevens komen uit de UBL en de PDF blijft het beeld. De verzamelbak-rij verdwijnt als "samengevoegd", niets wordt verwijderd.
+- Dat gebeurt alleen bij documenten die nog te controleren zijn. Geboekte facturen, facturen bij de klant ter accordering, met een open vraag of afgewezen worden overgeslagen met de reden in het rapport, en een boekvoorstel dat je zelf al hebt opgeslagen wordt nooit overschreven (dan wordt alleen de UBL gekoppeld).
+- Twijfelt het systeem over welke UBL bij welke PDF hoort, dan doet het niets en meldt het waarom. Samenvoegen is ongedaan te maken zolang het document nog niet geboekt is.
+
 ## 2026-09-02 — Verzamelbak: facturen uit Reeleezee-exports leesbaar en boekbaar
 
 - Facturen die als UBL-bestand uit Reeleezee zelf komen (bijvoorbeeld de onderlinge facturen tussen Universal Nederland en Universal Steigerbouw) tonen nu wél voor wie ze zijn: de tenaamstelling wordt ook gelezen als die alleen als bedrijfsnaam in het bestand staat. Tientallen van zulke facturen stonden ten onrechte met "geen tenaamstelling gelezen" in de verzamelbak.

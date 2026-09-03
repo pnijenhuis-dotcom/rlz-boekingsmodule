@@ -194,6 +194,32 @@ def _intake_herlezen(args: argparse.Namespace) -> int:
     return 0
 
 
+def _verzamelbak_nabundelen(args: argparse.Namespace) -> int:
+    """Nabundel-nazorg (akkoord Peter 02-09): verzamelbak-UBL's waarvan de PDF-tegenhanger uit dezelfde
+    e-mail al vóór de bundeling is toegewezen alsnog aan dat PDF-document koppelen (UBL = data, PDF =
+    beeld, deterministische her-extractie; UBL-rij → samengevoegd). Alleen te_controleren/
+    handmatig_afmaken zonder opgeslagen voorstel wordt her-geëxtraheerd; alles anders overgeslagen mét
+    reden. Geen AI, geen RLZ-calls. --dry-run toetst alle poorten en schrijft niets."""
+    from app.intake import nabundelen
+
+    telling = nabundelen.nabundel_verzamelbak(dry_run=args.dry_run)
+    label = " [dry-run]" if args.dry_run else ""
+    print(
+        f"verzamelbak-nabundelen{label}: {telling.kandidaten} kandidaat/kandidaten — "
+        f"{telling.samengevoegd} samengevoegd (+ her-extractie), "
+        f"{telling.gekoppeld_voorstel_behouden} gekoppeld met behoud van het opgeslagen voorstel, "
+        f"{telling.overgeslagen} overgeslagen, {telling.mislukt} mislukt"
+    )
+    per_reden = telling.overgeslagen_per_reden()
+    if per_reden:
+        print("  overgeslagen per reden:")
+        for reden, aantal in sorted(per_reden.items(), key=lambda kv: -kv[1]):
+            print(f"    {aantal}× {reden}")
+    for uitkomst in telling.uitkomsten:
+        print(f"  - {uitkomst.als_regel()}")
+    return 0
+
+
 def _toewijzing_regels_opschonen(args: argparse.Namespace) -> int:
     """Data-nazorg afzender-geheugen (blok D 02-09): actieve afzender-regels op een config-uitgesloten
     kantoor-/doorstuurdomein óf met een meerduidige historie (≥ 3 doelen) deactiveren mét audit —
@@ -1598,6 +1624,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     opschoon_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
 
+    nabundel_parser = subparsers.add_parser(
+        "verzamelbak-nabundelen",
+        help="Nabundel-nazorg (03-09): verzamelbak-UBL's waarvan de PDF-tegenhanger uit dezelfde e-mail al is "
+        "toegewezen alsnog aan dat PDF-document koppelen (UBL = data, PDF = beeld, her-extractie uit de UBL; "
+        "UBL-rij → samengevoegd). Alleen te_controleren/handmatig_afmaken; opgeslagen voorstel blijft staan; "
+        "twijfel = overgeslagen mét reden. Geen AI. --dry-run toetst alles en schrijft niets.",
+    )
+    nabundel_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+
     subparsers.add_parser(
         "bewaking-probe",
         help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
@@ -1923,6 +1958,8 @@ def main(argv: list[str] | None = None) -> int:
         return _intake_herlezen(args)
     if args.commando == "toewijzing-regels-opschonen":
         return _toewijzing_regels_opschonen(args)
+    if args.commando == "verzamelbak-nabundelen":
+        return _verzamelbak_nabundelen(args)
     if args.commando == "eerste-sync-wachtrij":
         return _eerste_sync_wachtrij(args)
     if args.commando == "reconciliatie":
