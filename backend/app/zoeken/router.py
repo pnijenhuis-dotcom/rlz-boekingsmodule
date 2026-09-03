@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.auth.deps import CurrentGebruiker, get_current_gebruiker, vereis_administratie_scope, vereis_kantoorrol
@@ -83,7 +83,15 @@ class ArchiefDocumentDto(BaseModel):
 
 
 class ArchiefResponse(BaseModel):
+    """C1 (03-09): verplicht gepagineerd + datumvenster — `totaal` is de telling over het hele
+    venster/zoekfilter, `van`/`tot` het effectief toegepaste venster (defaults ingevuld)."""
+
     documenten: list[ArchiefDocumentDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+    van: date
+    tot: date
 
 
 @router.get("/zoeken", response_model=ZoekResponse)
@@ -124,10 +132,36 @@ def globaal_zoeken(
 @router.get("/administraties/{administratie_id}/archief", response_model=ArchiefResponse)
 def archief_lijst(
     administratie_id: uuid.UUID,
+    pagina: int = Query(1, ge=1),
+    per_pagina: int = Query(service.ARCHIEF_PER_PAGINA_DEFAULT, ge=1, le=service.ARCHIEF_PER_PAGINA_MAX),
+    van: date | None = Query(None),
+    tot: date | None = Query(None),
+    q: str = Query(""),
+    sort: str | None = Query(None, description="<kolom>:<asc|desc>; leeg = boekmoment nieuwste eerst"),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> ArchiefResponse:
-    """Geboekte documenten van één administratie (bewaarplicht 7 jaar), mét kopgegevens en
-    RLZ-boekstuknummer; de PDF/UBL via het bestaande bestand-endpoint."""
+    """Geboekte documenten van één administratie (bewaarplicht 7 jaar), gepagineerd (C1 03-09)
+    mét datumvenster (default laatste 12 maanden op boekmoment), zoekterm en server-side
+    sortering; de PDF/UBL via het bestaande bestand-endpoint. Blijft de deeplink-route vanaf de
+    klantpagina; kantoorbreed bladeren = `GET /archief` (archief_kantoorbreed.py)."""
+    try:
+        sortering = service.parse_archief_sortering(sort)
+        resultaat = service.archief(
+            administratie_id=administratie_id,
+            pagina=pagina,
+            per_pagina=per_pagina,
+            van=van,
+            tot=tot,
+            q=q,
+            sortering=sortering,
+        )
+    except service.ArchiefFout as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     return ArchiefResponse(
-        documenten=[ArchiefDocumentDto(**vars(rij)) for rij in service.archief(administratie_id=administratie_id)]
+        documenten=[ArchiefDocumentDto(**vars(rij)) for rij in resultaat.documenten],
+        totaal=resultaat.totaal,
+        pagina=resultaat.pagina,
+        per_pagina=resultaat.per_pagina,
+        van=resultaat.van,
+        tot=resultaat.tot,
     )

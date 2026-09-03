@@ -229,7 +229,7 @@ class TestArchief:
                 actor_id=gescoopte_gebruiker,
                 detail={"rlz_boekstuknummer": "IF-2026-0219"},
             )
-        rijen = zoeken_service.archief(administratie_id=administratie_id)
+        rijen = zoeken_service.archief(administratie_id=administratie_id).documenten
         assert [r.document_id for r in rijen] == [geboekt]
         assert rijen[0].rlz_boekstuknummer == "IF-2026-0219"
         assert rijen[0].geboekt_op is not None

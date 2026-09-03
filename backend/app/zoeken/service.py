@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import String, cast, exists, or_, select
+from sqlalchemy import Date, String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.accordering.models import AccorderingStap, DocumentAccordering
@@ -413,91 +413,319 @@ class ArchiefDocument:
     tegengeboekt: bool
 
 
-def archief(*, administratie_id: uuid.UUID) -> list[ArchiefDocument]:
-    """Het geboekte archief van één administratie (bewaarplicht 7 jaar): kopgegevens +
-    RLZ-boekstuknummer + boekmoment; de PDF/UBL zelf via het bestaande bestand-endpoint."""
-    with scoped_session(administratie_id) as session:
-        rijen = session.execute(
-            select(Document, Boekvoorstel, VerkoopVoorstel)
-            .join(Boekvoorstel, Boekvoorstel.document_id == Document.id, isouter=True)
-            .join(VerkoopVoorstel, VerkoopVoorstel.document_id == Document.id, isouter=True)
-            .where(
-                Document.administratie_id == administratie_id,
-                Document.status == DocumentStatus.GEBOEKT,
-            )
-            .order_by(Document.aangemaakt_op.desc())
-        ).all()
-        document_ids = [document.id for document, _, _ in rijen]
-        vendor_namen: dict[uuid.UUID, str | None] = dict(
-            session.execute(
-                select(VendorCache.id, VendorCache.naam).where(
-                    VendorCache.administratie_id == administratie_id,
-                    VendorCache.id.in_(
-                        [bv.vendor_id for _, bv, _ in rijen if bv is not None and bv.vendor_id is not None]
-                    ),
-                )
-            ).all()
+# --- Archief: server-side paginering + datumvenster + sortering (C1 design-ronde 03-09) ----------
+#
+# Bugfix-aanleiding (mockup inzicht-kantoorbreed.html ⑥): de oude route gaf 7 jaar historie in één
+# response zonder LIMIT. Sinds C1 is paginering verplicht (default 25, max 200), het datumvenster
+# default de laatste 12 maanden en de sortering server-side. De helpers hieronder (`archief_tel`,
+# `archief_rijen`) zijn bewust per (sessie, administratie) opgezet zodat het kantoorbrede bladeren
+# (B4, `archief_kantoorbreed.py`) ze per administratie in een eigen RLS-scope hergebruikt.
+#
+# DATUMKEUZE: het venster toetst op de datum die de lijst al toonde in de kolom "Geboekt op" —
+# het BOEKMOMENT (laatste GEBOEKT-overgang in de tijdlijn, Europe/Amsterdam) mét terugval op de
+# factuurdatum als er geen boekmoment bekend is (bv. geïmporteerde/oude rijen). Boekmoment i.p.v.
+# factuurdatum omdat het archief een "wat is er wanneer geboekt"-register is en omdat omzet-/
+# waarborgdocumenten geen factuurdatum in dit joinbeeld dragen.
+
+ARCHIEF_PER_PAGINA_DEFAULT = 25
+ARCHIEF_PER_PAGINA_MAX = 200
+ARCHIEF_VENSTER_MAANDEN = 12
+ARCHIEF_SORTEER_KOLOMMEN = ("leverancier", "factuurdatum", "bedrag", "boekstuk", "administratie", "geboekt_op")
+ARCHIEF_TIJDZONE = "Europe/Amsterdam"
+
+
+class ArchiefFout(ValueError):
+    """Ongeldige invoer (venster, sortering) — de router vertaalt naar 422."""
+
+
+@dataclass(frozen=True)
+class ArchiefFilter:
+    van: date
+    tot: date
+    q: str = ""
+
+
+@dataclass(frozen=True)
+class ArchiefSortering:
+    kolom: str
+    richting: str  # 'asc' | 'desc'
+
+
+STANDAARD_ARCHIEF_SORTERING = ArchiefSortering(kolom="geboekt_op", richting="desc")
+
+
+@dataclass(frozen=True)
+class ArchiefPagina:
+    documenten: list[ArchiefDocument]
+    totaal: int
+    pagina: int
+    per_pagina: int
+    van: date
+    tot: date
+
+
+def _maanden_terug(vandaag: date, maanden: int) -> date:
+    """Kalenderdatum `maanden` terug; een niet-bestaande dag (31 → 30, 29-02) schuift naar de
+    laatste dag van die maand. Geen dateutil-afhankelijkheid."""
+    maand_index = vandaag.year * 12 + (vandaag.month - 1) - maanden
+    jaar, maand = divmod(maand_index, 12)
+    maand += 1
+    for dag in range(vandaag.day, 27, -1):
+        try:
+            return date(jaar, maand, dag)
+        except ValueError:
+            continue
+    return date(jaar, maand, min(vandaag.day, 28))
+
+
+def standaard_datumvenster(vandaag: date | None = None) -> tuple[date, date]:
+    """Default venster = de laatste 12 maanden t/m vandaag."""
+    vandaag = vandaag or date.today()
+    return _maanden_terug(vandaag, ARCHIEF_VENSTER_MAANDEN), vandaag
+
+
+def maak_archief_filter(
+    *, van: date | None, tot: date | None, q: str = "", vandaag: date | None = None
+) -> ArchiefFilter:
+    """Ontbrekende grenzen krijgen de default (12 maanden terug resp. vandaag); van > tot = fout.
+    Eén expliciete grens laat de andere op de default staan — `van` in het verleden zonder `tot`
+    betekent dus "van die datum tot vandaag"."""
+    default_van, default_tot = standaard_datumvenster(vandaag)
+    van = van or default_van
+    tot = tot or default_tot
+    if van > tot:
+        raise ArchiefFout("Het datumvenster is ongeldig: 'van' ligt na 'tot'.")
+    return ArchiefFilter(van=van, tot=tot, q=q.strip())
+
+
+def parse_archief_sortering(waarde: str | None) -> ArchiefSortering:
+    """`sort=<kolom>:<richting>` (documentenlijst-conventie punt 21); leeg = standaard
+    (boekmoment, nieuwste eerst). Onbekende kolom of richting = fout (422)."""
+    if not waarde:
+        return STANDAARD_ARCHIEF_SORTERING
+    kolom, _, richting = waarde.partition(":")
+    richting = richting or "asc"
+    if kolom not in ARCHIEF_SORTEER_KOLOMMEN or richting not in ("asc", "desc"):
+        raise ArchiefFout(f"Onbekende sortering: {waarde!r}.")
+    return ArchiefSortering(kolom=kolom, richting=richting)
+
+
+def _geboekt_op_expr():
+    """Boekmoment = de laatste GEBOEKT-overgang in de tijdlijn (gecorreleerde subquery)."""
+    return (
+        select(func.max(DocumentGebeurtenis.tijdstip))
+        .where(
+            DocumentGebeurtenis.document_id == Document.id,
+            DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
         )
-        automatisch = _automatisch_geboekt_ids(session, document_ids)
-        tegengeboekte_ids: set[uuid.UUID] = set()
-        if document_ids:
-            from app.documenten.models import Tegenboeking
+        .correlate(Document)
+        .scalar_subquery()
+    )
 
-            tegengeboekte_ids = {
-                doc_id
-                for doc_id, cyclus in session.execute(
-                    select(Tegenboeking.document_id, Tegenboeking.boek_cyclus).where(
-                        Tegenboeking.document_id.in_(document_ids)
-                    )
-                )
-                # Alleen de tegenboeking van de HUIDIGE cyclus telt: na "tegenboeken én
-                # opnieuw boeken" (cyclus +1) is de nieuwe boeking niet tegengeboekt.
-                if cyclus == next((bv.boek_cyclus for d, bv, _ in rijen if d.id == doc_id and bv is not None), 0)
-            }
-        geboekt_momenten: dict[uuid.UUID, datetime] = {}
-        if document_ids:
-            for gebeurtenis in session.scalars(
-                select(DocumentGebeurtenis)
-                .where(
-                    DocumentGebeurtenis.document_id.in_(document_ids),
-                    DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
-                )
-                .order_by(DocumentGebeurtenis.tijdstip)
-            ):
-                geboekt_momenten[gebeurtenis.document_id] = gebeurtenis.tijdstip
 
-        resultaat = []
-        for document, boekvoorstel, verkoopvoorstel in rijen:
-            leverancier = None
-            referentie = None
-            boekstuk = None
-            totaal = None
-            datum = None
-            if boekvoorstel is not None:
-                leverancier = vendor_namen.get(boekvoorstel.vendor_id) if boekvoorstel.vendor_id else None
-                referentie = boekvoorstel.referentie
-                boekstuk = boekvoorstel.rlz_boekstuknummer
-                totaal = boekvoorstel.totaalbedrag
-                datum = boekvoorstel.factuurdatum
-            if verkoopvoorstel is not None:
-                leverancier = leverancier or verkoopvoorstel.debiteur_naam
-                referentie = referentie or verkoopvoorstel.factuurnummer
-                boekstuk = boekstuk or verkoopvoorstel.rlz_boekstuknummer
-                totaal = totaal if totaal is not None else verkoopvoorstel.totaalbedrag_incl
-                datum = datum or verkoopvoorstel.factuurdatum
-            resultaat.append(
-                ArchiefDocument(
-                    document_id=document.id,
-                    soort=document.soort,
-                    bestandsnaam=document.bestandsnaam,
-                    leverancier=leverancier,
-                    referentie=referentie,
-                    rlz_boekstuknummer=boekstuk,
-                    totaalbedrag=totaal,
-                    factuurdatum=datum,
-                    geboekt_op=geboekt_momenten.get(document.id),
-                    automatisch_geboekt=document.id in automatisch,
-                    tegengeboekt=document.id in tegengeboekte_ids,
+def _leverancier_expr():
+    """Crediteurnaam uit de vendor-cache (PK id+administratie → precies één rij) mét terugval op
+    de debiteurnaam van het verkoopvoorstel — zelfde voorrang als de kolom in de lijst."""
+    vendor_naam = (
+        select(VendorCache.naam)
+        .where(
+            VendorCache.id == Boekvoorstel.vendor_id,
+            VendorCache.administratie_id == Document.administratie_id,
+        )
+        .correlate(Boekvoorstel, Document)
+        .scalar_subquery()
+    )
+    return func.coalesce(vendor_naam, VerkoopVoorstel.debiteur_naam)
+
+
+def _archief_kolomexpressies() -> dict[str, object]:
+    geboekt_op = _geboekt_op_expr()
+    return {
+        "geboekt_op": geboekt_op,
+        "leverancier": _leverancier_expr(),
+        "factuurdatum": func.coalesce(Boekvoorstel.factuurdatum, VerkoopVoorstel.factuurdatum),
+        "bedrag": func.coalesce(Boekvoorstel.totaalbedrag, VerkoopVoorstel.totaalbedrag_incl),
+        "boekstuk": func.coalesce(Boekvoorstel.rlz_boekstuknummer, VerkoopVoorstel.rlz_boekstuknummer),
+        # Vensterdatum: boekmoment (lokale kalenderdag) → terugval factuurdatum.
+        "vensterdatum": func.coalesce(
+            cast(func.timezone(ARCHIEF_TIJDZONE, geboekt_op), Date),
+            Boekvoorstel.factuurdatum,
+            VerkoopVoorstel.factuurdatum,
+        ),
+    }
+
+
+def _archief_zoekvoorwaarde(term: str, kolommen: dict[str, object]):
+    """Zoekveld op de kopgegevens (bestandsnaam, referentie/factuurnummer, boekstuk, leverancier/
+    debiteur, exact bedrag). Bewust zónder de JSON-scan over de extractietekst van het globale
+    zoeken — dit is een bladerfilter, geen full-text-zoekopdracht."""
+    patroon = f"%{term}%"
+    voorwaarden = [
+        Document.bestandsnaam.ilike(patroon),
+        Boekvoorstel.referentie.ilike(patroon),
+        VerkoopVoorstel.factuurnummer.ilike(patroon),
+        kolommen["boekstuk"].ilike(patroon),
+        kolommen["leverancier"].ilike(patroon),
+    ]
+    bedrag = _als_bedrag(term)
+    if bedrag is not None:
+        voorwaarden.append(kolommen["bedrag"] == bedrag)
+    return or_(*voorwaarden)
+
+
+def _archief_basis(administratie_id: uuid.UUID, filt: ArchiefFilter):
+    kolommen = _archief_kolomexpressies()
+    where = [
+        Document.administratie_id == administratie_id,
+        Document.status == DocumentStatus.GEBOEKT,
+        kolommen["vensterdatum"] >= filt.van,
+        kolommen["vensterdatum"] <= filt.tot,
+    ]
+    if filt.q:
+        where.append(_archief_zoekvoorwaarde(filt.q, kolommen))
+    return kolommen, where
+
+
+def _joins(stmt):
+    return stmt.join(Boekvoorstel, Boekvoorstel.document_id == Document.id, isouter=True).join(
+        VerkoopVoorstel, VerkoopVoorstel.document_id == Document.id, isouter=True
+    )
+
+
+def _archief_order_by(sortering: ArchiefSortering, kolommen: dict[str, object]) -> list:
+    """Server-side sortering; ontbrekende waarden altijd achteraan (conventie punt 21), tekst
+    bytegewijs op lowercase (COLLATE "C") zodat de Python-samenvoeging van het kantoorbrede
+    bladeren (B4) exact dezelfde volgorde reproduceert; secundair boekmoment nieuwste eerst,
+    tertiair document-id (deterministisch)."""
+    tekst = sortering.kolom in ("leverancier", "boekstuk")
+    if sortering.kolom == "administratie":
+        # Binnen één administratie is deze kolom constant — alleen de secundaire volgorde telt.
+        primair = []
+    else:
+        expr = kolommen[sortering.kolom]
+        if tekst:
+            expr = func.lower(expr).collate("C")
+        primair = [(expr.desc() if sortering.richting == "desc" else expr.asc()).nulls_last()]
+    return [*primair, kolommen["geboekt_op"].desc().nulls_last(), Document.id.asc()]
+
+
+def archief_tel(session: Session, *, administratie_id: uuid.UUID, filt: ArchiefFilter) -> int:
+    """Aantal geboekte documenten binnen venster + zoekterm (aparte count-query)."""
+    _, where = _archief_basis(administratie_id, filt)
+    stmt = _joins(select(func.count(Document.id)).select_from(Document)).where(*where)
+    return int(session.scalar(stmt) or 0)
+
+
+def archief_rijen(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    filt: ArchiefFilter,
+    sortering: ArchiefSortering,
+    limit: int,
+    offset: int = 0,
+) -> list[ArchiefDocument]:
+    """Eén pagina (LIMIT/OFFSET in SQL) van het geboekte archief van één administratie, server-side
+    gesorteerd; chips (automatisch/tegengeboekt) worden alleen voor de teruggegeven rijen opgezocht."""
+    kolommen, where = _archief_basis(administratie_id, filt)
+    stmt = (
+        _joins(
+            select(
+                Document,
+                Boekvoorstel,
+                VerkoopVoorstel,
+                kolommen["geboekt_op"].label("geboekt_op"),
+                kolommen["leverancier"].label("leverancier"),
+            )
+        )
+        .where(*where)
+        .order_by(*_archief_order_by(sortering, kolommen))
+        .limit(limit)
+        .offset(offset)
+    )
+    rijen = session.execute(stmt).all()
+    document_ids = [document.id for document, *_ in rijen]
+    automatisch = _automatisch_geboekt_ids(session, document_ids)
+    tegengeboekte_ids: set[uuid.UUID] = set()
+    if document_ids:
+        from app.documenten.models import Tegenboeking
+
+        cyclus_per_document = {d.id: (bv.boek_cyclus if bv is not None else 0) for d, bv, *_ in rijen}
+        tegengeboekte_ids = {
+            doc_id
+            for doc_id, cyclus in session.execute(
+                select(Tegenboeking.document_id, Tegenboeking.boek_cyclus).where(
+                    Tegenboeking.document_id.in_(document_ids)
                 )
             )
-        return resultaat
+            # Alleen de tegenboeking van de HUIDIGE cyclus telt: na "tegenboeken én opnieuw
+            # boeken" (cyclus +1) is de nieuwe boeking niet tegengeboekt.
+            if cyclus == cyclus_per_document.get(doc_id, 0)
+        }
+
+    resultaat: list[ArchiefDocument] = []
+    for document, boekvoorstel, verkoopvoorstel, geboekt_op, leverancier in rijen:
+        referentie = None
+        boekstuk = None
+        totaal = None
+        datum = None
+        if boekvoorstel is not None:
+            referentie = boekvoorstel.referentie
+            boekstuk = boekvoorstel.rlz_boekstuknummer
+            totaal = boekvoorstel.totaalbedrag
+            datum = boekvoorstel.factuurdatum
+        if verkoopvoorstel is not None:
+            referentie = referentie or verkoopvoorstel.factuurnummer
+            boekstuk = boekstuk or verkoopvoorstel.rlz_boekstuknummer
+            totaal = totaal if totaal is not None else verkoopvoorstel.totaalbedrag_incl
+            datum = datum or verkoopvoorstel.factuurdatum
+        resultaat.append(
+            ArchiefDocument(
+                document_id=document.id,
+                soort=document.soort,
+                bestandsnaam=document.bestandsnaam,
+                leverancier=leverancier,
+                referentie=referentie,
+                rlz_boekstuknummer=boekstuk,
+                totaalbedrag=totaal,
+                factuurdatum=datum,
+                geboekt_op=geboekt_op,
+                automatisch_geboekt=document.id in automatisch,
+                tegengeboekt=document.id in tegengeboekte_ids,
+            )
+        )
+    return resultaat
+
+
+def archief(
+    *,
+    administratie_id: uuid.UUID,
+    pagina: int = 1,
+    per_pagina: int = ARCHIEF_PER_PAGINA_DEFAULT,
+    van: date | None = None,
+    tot: date | None = None,
+    q: str = "",
+    sortering: ArchiefSortering | None = None,
+) -> ArchiefPagina:
+    """Het geboekte archief van één administratie (bewaarplicht 7 jaar), gepagineerd (C1 03-09):
+    kopgegevens + RLZ-boekstuknummer + boekmoment; de PDF/UBL zelf via het bestaande
+    bestand-endpoint. Zonder `van`/`tot` = de laatste 12 maanden op boekmoment."""
+    if pagina < 1:
+        raise ArchiefFout("Pagina begint bij 1.")
+    if not 1 <= per_pagina <= ARCHIEF_PER_PAGINA_MAX:
+        raise ArchiefFout(f"per_pagina moet tussen 1 en {ARCHIEF_PER_PAGINA_MAX} liggen.")
+    filt = maak_archief_filter(van=van, tot=tot, q=q)
+    sortering = sortering or STANDAARD_ARCHIEF_SORTERING
+    with scoped_session(administratie_id) as session:
+        totaal = archief_tel(session, administratie_id=administratie_id, filt=filt)
+        documenten = archief_rijen(
+            session,
+            administratie_id=administratie_id,
+            filt=filt,
+            sortering=sortering,
+            limit=per_pagina,
+            offset=(pagina - 1) * per_pagina,
+        )
+    return ArchiefPagina(
+        documenten=documenten, totaal=totaal, pagina=pagina, per_pagina=per_pagina, van=filt.van, tot=filt.tot
+    )

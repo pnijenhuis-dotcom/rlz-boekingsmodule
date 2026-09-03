@@ -171,7 +171,7 @@ class TestVolledigTegenboeken:
             assert audit == 1
         # Archief: de rij draagt de tegengeboekt-vlag (chip TEGENGEBOEKT).
         [archief_rij] = [
-            d for d in zoeken_service.archief(administratie_id=administratie_id) if d.document_id == document_id
+            d for d in zoeken_service.archief(administratie_id=administratie_id).documenten if d.document_id == document_id
         ]
         assert archief_rij.tegengeboekt is True
         # De toets toont nu de kruisverwijzing.
