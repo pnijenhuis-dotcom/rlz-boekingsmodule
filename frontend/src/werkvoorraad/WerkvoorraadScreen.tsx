@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { AdministratieDto } from '../api/types'
 import { useAuthOptioneel } from '../auth/AuthContext'
+import { haalDubbelenStandOp } from '../crediteuren/api'
 import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/instellingenApi'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
 import { verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
@@ -112,9 +113,21 @@ function WerkvoorraadIngang({
   filter: string | null
 }) {
   const navigate = useNavigate()
-  const { klanten, fout, herlaad } = useWerkvoorraadData(administraties)
+  const { klanten, openVragen, fout, herlaad } = useWerkvoorraadData(administraties)
   // Hersleutel voor het verzamelbak-paneel: ophogen forceert een refetch (na .eml-upload).
   const [verzamelbakVersie, setVerzamelbakVersie] = useState(0)
+  // Crediteur-dubbelen (v2 03-09, ontwerpnotitie ⑧): kantoorbrede teller uit dezelfde bron als Inzicht ›
+  // Crediteuren — verrijking, alleen getoond bij N > 0 (teller-conventie); een fout hier blokkeert niets.
+  const [crediteurDubbelen, setCrediteurDubbelen] = useState<number | null>(null)
+  useEffect(() => {
+    let actueel = true
+    haalDubbelenStandOp()
+      .then((s) => actueel && setCrediteurDubbelen(s.clusters))
+      .catch(() => actueel && setCrediteurDubbelen(null))
+    return () => {
+      actueel = false
+    }
+  }, [])
 
   // Kantoorbrede dwarsdoorsnede (klikbare KPI-kaart) — zelfde databron als de lijst.
   if (filter === 'te_verwerken' || filter === 'vragen' || filter === 'bank' || filter === 'bij_klant') {
@@ -129,7 +142,6 @@ function WerkvoorraadIngang({
   }
 
   const bankBekend = klanten !== null && klanten.some((k) => k.bank_open !== null)
-  const openVragen = somOver(klanten, (k) => k.vragen)
   const ibanWachtend = somOver(klanten, (k) => k.iban_wachtend) ?? 0
 
   return (
@@ -163,10 +175,17 @@ function WerkvoorraadIngang({
             onClick: () => navigate('/?filter=te_verwerken'),
           },
           {
+            // B2.3 (03-09): één definitie mét Inzicht › Open vragen (GET /vragen/stand) — niet meer de som
+            // van de klantenlijst-kolom; de delta benoemt hoeveel daarvan de boekknop dichthouden.
             label: 'Open vragen',
-            waarde: openVragen,
+            waarde: openVragen?.open ?? null,
             stipKleur: 'danger',
-            delta: (openVragen ?? 0) > 0 ? 'blokkeert boeken' : undefined,
+            delta:
+              (openVragen?.blokkeert_boeken ?? 0) > 0
+                ? openVragen!.blokkeert_boeken === openVragen!.open
+                  ? 'blokkeert boeken'
+                  : `${openVragen!.blokkeert_boeken} blokkeren boeken`
+                : undefined,
             deltaWarn: true,
             onClick: () => navigate('/?filter=vragen'),
           },
@@ -184,6 +203,17 @@ function WerkvoorraadIngang({
             deltaWarn: ibanWachtend > 0,
             onClick: () => navigate('/?filter=bij_klant'),
           },
+          ...(crediteurDubbelen !== null && crediteurDubbelen > 0
+            ? [
+                {
+                  label: 'Crediteur-dubbelen',
+                  waarde: crediteurDubbelen,
+                  stipKleur: 'warn' as const,
+                  delta: 'voorkeur kiezen, rest archiveren',
+                  onClick: () => navigate('/crediteuren'),
+                },
+              ]
+            : []),
         ]}
       />
 

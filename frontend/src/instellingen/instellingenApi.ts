@@ -2,10 +2,9 @@ import { apiJson } from '../api/client'
 import type {
   ArchiveringResultaatDto,
   AutoboekBulkAanzettenResultaatDto,
+  AutoboekBulkVerbergenResultaatDto,
   AutoboekKandidatenLijstDto,
   AutoboekTellersDto,
-  CrediteurKvkDto,
-  DubbeleCrediteurenResponseDto,
   AdministratieInstellingenLijstDto,
   BoekenIngeschakeldDto,
   EersteSyncRunDto,
@@ -275,16 +274,8 @@ export function voerSchrijftestUit(administratieId: string): Promise<Schrijftest
   return apiJson<SchrijftestResultaatDto>(`/instellingen/administraties/${administratieId}/schrijftest`, { method: 'POST' })
 }
 
-/** Punt 14 (28-08): dubbel-signalering bestaande crediteuren (naam/IBAN/btw-/KvK-nummer) — alleen
- * lezen; samenvoegen blijft RLZ-mensenwerk, de app verwijdert niets. */
-export function haalDubbeleCrediteurenOp(administratieId: string): Promise<DubbeleCrediteurenResponseDto> {
-  return apiJson<DubbeleCrediteurenResponseDto>(`/administraties/${administratieId}/crediteuren/dubbelen`)
-}
-
-/** KvK-controle bij een dubbel-groep (hergebruik van de A3-KvK-client): officiële naam ter beoordeling. */
-export function controleerCrediteurKvk(administratieId: string, kvkNummer: string): Promise<CrediteurKvkDto> {
-  return apiJson<CrediteurKvkDto>(`/administraties/${administratieId}/crediteuren/kvk/${encodeURIComponent(kvkNummer)}`)
-}
+/* De per-administratie dubbelen-/KvK-calls (punt 14, 28-08) zijn per 03-09 vervangen door het kantoorbrede
+ * scherm Inzicht › Crediteuren (frontend/src/crediteuren/api.ts); de backend-routes blijven bestaan. */
 
 /* --- Autoboek-kandidaten (blok B 01-09, Beheerder-only) ------------------------------------------- */
 
@@ -311,11 +302,17 @@ export function herberekenAutoboekKandidaten(): Promise<{ administraties: number
   return apiJson('/instellingen/autoboeken/herbereken', { method: 'POST' })
 }
 
+/** Bulk-selectie (B5.2, 03-09): óf de aangevinkte rijen (`items`), óf `alle: true` mét dezelfde filters als
+ * de lijst — de server herleidt dan de rijen zónder paginering ("Selecteer alle N resultaten"). */
+export type AutoboekBulkSelectie =
+  | { items: { administratie_id: string; vendor_id: string }[] }
+  | { alle: true; tab: AutoboekTab; q: string; verborgen: boolean }
+
 /** "Autoboeken aanzetten (n)": per rij live hertoetst; niet-kwalificerend = overgeslagen mét reden. */
-export function zetAutoboekKandidatenAan(items: { administratie_id: string; vendor_id: string }[]): Promise<AutoboekBulkAanzettenResultaatDto> {
+export function zetAutoboekKandidatenAan(selectie: AutoboekBulkSelectie): Promise<AutoboekBulkAanzettenResultaatDto> {
   return apiJson<AutoboekBulkAanzettenResultaatDto>('/instellingen/autoboeken/kandidaten/aanzetten', {
     ...POST_JSON,
-    body: JSON.stringify({ items }),
+    body: JSON.stringify(selectie),
   })
 }
 
@@ -328,6 +325,15 @@ export function verbergAutoboekKandidaat(administratieId: string, vendorId: stri
   return apiJson(`/instellingen/autoboeken/kandidaten/${administratieId}/${vendorId}/verbergen`, {
     ...POST_JSON,
     body: JSON.stringify({ reden }),
+  })
+}
+
+/** Bulk-verbergen in ÉÉN call (B5.1, 03-09): uitkomst per rij (verborgen | overgeslagen mét reden | fout),
+ * zelfde patroon als aanzetten; reden verplicht (server 422 zonder). */
+export function verbergAutoboekKandidaten(selectie: AutoboekBulkSelectie, reden: string): Promise<AutoboekBulkVerbergenResultaatDto> {
+  return apiJson<AutoboekBulkVerbergenResultaatDto>('/instellingen/autoboeken/kandidaten/verbergen', {
+    ...POST_JSON,
+    body: JSON.stringify({ ...selectie, reden }),
   })
 }
 

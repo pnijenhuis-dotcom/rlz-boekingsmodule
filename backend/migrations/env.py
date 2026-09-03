@@ -18,6 +18,7 @@ import app.bank.models  # noqa: F401
 import app.beheer.models  # noqa: F401
 import app.berichten.models  # noqa: F401
 import app.bewaking.models  # noqa: F401
+import app.crediteuren.models  # noqa: F401
 import app.documenten.models  # noqa: F401
 import app.doorbelasting.models  # noqa: F401
 import app.extractie.models  # noqa: F401

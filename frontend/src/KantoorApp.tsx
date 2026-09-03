@@ -36,7 +36,10 @@ const DoorbelastingReviewScreen = lazy(() =>
 const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
 const VoorraadScreen = lazy(() => import('./voorraad/VoorraadScreen').then((m) => ({ default: m.VoorraadScreen })))
 const TerugkerendScreen = lazy(() => import('./terugkerend/TerugkerendScreen').then((m) => ({ default: m.TerugkerendScreen })))
-const CrediteurenScreen = lazy(() => import('./instellingen/CrediteurenScreen').then((m) => ({ default: m.CrediteurenScreen })))
+// Crediteuren-dubbelen v2 (03-09): kantoorbreed mét actie — vervangt het per-administratie-scherm.
+const CrediteurenDubbelenScreen = lazy(() =>
+  import('./crediteuren/CrediteurenDubbelenScreen').then((m) => ({ default: m.CrediteurenDubbelenScreen })),
+)
 const ProjectDetailScreenLazy = lazy(() =>
   import('./projecten/ProjectDetailScreen').then((m) => ({ default: m.ProjectDetailScreen })),
 )
@@ -181,12 +184,13 @@ function BeschermdeRoutes() {
         <Route path="/instellingen" element={<InstellingenScreen />} />
         <Route path="/instellingen/administraties/:administratieId" element={<InstellingenScreen />} />
         <Route path="/instellingen/:sectie" element={<InstellingenScreen />} />
-        {/* Crediteuren-dubbelsignalering: sinds v3 een INZICHT-scherm (was Instellingen › Crediteuren). */}
+        {/* Crediteuren-dubbelen: sinds v3 een INZICHT-scherm (was Instellingen › Crediteuren); sinds 03-09 (v2)
+            kantoorbreed mét actie — élke kantoorrol, binnen de eigen scope (backend vereis_kantoorrol). */}
         <Route
           path="/crediteuren"
           element={
             <Suspense fallback={<SkeletonPaneel />}>
-              <CrediteurenScreen />
+              <CrediteurenDubbelenScreen />
             </Suspense>
           }
         />

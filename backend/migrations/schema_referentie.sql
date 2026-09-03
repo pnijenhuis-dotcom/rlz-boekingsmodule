@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0098
+-- Migratie-head bij deze dump: 0100
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -831,6 +831,50 @@ CREATE TABLE boekhouding.boekvoorstel_regel (
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: crediteur_archiveer_werklijst; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.crediteur_archiveer_werklijst (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    voorkeur_vendor_id uuid NOT NULL,
+    voorkeur_naam character varying,
+    te_archiveren jsonb NOT NULL,
+    status character varying NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gedaan_op timestamp with time zone,
+    gedaan_door uuid,
+    gedaan_bron character varying,
+    laatste_hertoets_op timestamp with time zone,
+    hertoets_detail jsonb,
+    CONSTRAINT ck_crediteur_archiveer_werklijst_status CHECK (((status)::text = ANY ((ARRAY['open'::character varying, 'gedaan'::character varying])::text[])))
+);
+
+ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: crediteur_dubbel_afmelding; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.crediteur_dubbel_afmelding (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    sleutel_soort character varying NOT NULL,
+    sleutel character varying NOT NULL,
+    combinatie character varying NOT NULL,
+    vendor_ids jsonb NOT NULL,
+    reden character varying NOT NULL,
+    afgemeld_door uuid NOT NULL,
+    afgemeld_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_crediteur_dubbel_afmelding_soort CHECK (((sleutel_soort)::text = ANY ((ARRAY['btw_nummer'::character varying, 'kvk_nummer'::character varying, 'iban'::character varying, 'naam'::character varying])::text[])))
+);
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afmelding FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2133,6 +2177,27 @@ ALTER TABLE ONLY boekhouding.tegenboeking FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: terugkerend_herbereken_run; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.terugkerend_herbereken_run (
+    id uuid NOT NULL,
+    status character varying DEFAULT 'wachtend'::character varying NOT NULL,
+    gestart_door uuid,
+    aangevraagd_op timestamp with time zone DEFAULT now() NOT NULL,
+    gestart_op timestamp with time zone,
+    laatst_actief_op timestamp with time zone,
+    klaar_op timestamp with time zone,
+    aantal_administraties integer DEFAULT 0 NOT NULL,
+    aantal_verwerkt integer DEFAULT 0 NOT NULL,
+    aantal_fouten integer DEFAULT 0 NOT NULL,
+    foutreden character varying,
+    resultaat jsonb,
+    CONSTRAINT ck_terugkerend_herbereken_run_status CHECK (((status)::text = ANY ((ARRAY['wachtend'::character varying, 'bezig'::character varying, 'klaar'::character varying, 'fout'::character varying])::text[])))
+);
+
+
+--
 -- Name: terugkerend_signaal; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -3386,6 +3451,22 @@ ALTER TABLE ONLY boekhouding.boekvoorstel_regel
 
 
 --
+-- Name: crediteur_archiveer_werklijst crediteur_archiveer_werklijst_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst
+    ADD CONSTRAINT crediteur_archiveer_werklijst_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crediteur_dubbel_afmelding crediteur_dubbel_afmelding_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afmelding
+    ADD CONSTRAINT crediteur_dubbel_afmelding_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: crediteur_kenmerk crediteur_kenmerk_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3890,6 +3971,14 @@ ALTER TABLE ONLY boekhouding.tegenboeking
 
 
 --
+-- Name: terugkerend_herbereken_run terugkerend_herbereken_run_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.terugkerend_herbereken_run
+    ADD CONSTRAINT terugkerend_herbereken_run_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: terugkerend_signaal terugkerend_signaal_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -3903,6 +3992,14 @@ ALTER TABLE ONLY boekhouding.terugkerend_signaal
 
 ALTER TABLE ONLY boekhouding.toewijzing_regel
     ADD CONSTRAINT toewijzing_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crediteur_dubbel_afmelding uq_crediteur_dubbel_afmelding_combinatie; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afmelding
+    ADD CONSTRAINT uq_crediteur_dubbel_afmelding_combinatie UNIQUE (administratie_id, combinatie);
 
 
 --
@@ -4732,6 +4829,20 @@ CREATE INDEX ix_boekvoorstel_regel_document_id ON boekhouding.boekvoorstel_regel
 
 
 --
+-- Name: ix_crediteur_archiveer_werklijst_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_crediteur_archiveer_werklijst_administratie_id ON boekhouding.crediteur_archiveer_werklijst USING btree (administratie_id);
+
+
+--
+-- Name: ix_crediteur_dubbel_afmelding_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_crediteur_dubbel_afmelding_administratie_id ON boekhouding.crediteur_dubbel_afmelding USING btree (administratie_id);
+
+
+--
 -- Name: ix_crediteur_kenmerk_btw; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -5156,6 +5267,20 @@ CREATE INDEX ix_taxrate_cache_administratie_id ON boekhouding.taxrate_cache USIN
 --
 
 CREATE INDEX ix_tegenboeking_administratie_id ON boekhouding.tegenboeking USING btree (administratie_id);
+
+
+--
+-- Name: ix_terugkerend_herbereken_run_aangevraagd_op; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_terugkerend_herbereken_run_aangevraagd_op ON boekhouding.terugkerend_herbereken_run USING btree (aangevraagd_op);
+
+
+--
+-- Name: ix_terugkerend_herbereken_run_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_terugkerend_herbereken_run_status ON boekhouding.terugkerend_herbereken_run USING btree (status);
 
 
 --
@@ -6041,6 +6166,46 @@ ALTER TABLE ONLY boekhouding.boekvoorstel
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel
     ADD CONSTRAINT boekvoorstel_regel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.boekvoorstel(document_id);
+
+
+--
+-- Name: crediteur_archiveer_werklijst crediteur_archiveer_werklijst_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst
+    ADD CONSTRAINT crediteur_archiveer_werklijst_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: crediteur_archiveer_werklijst crediteur_archiveer_werklijst_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst
+    ADD CONSTRAINT crediteur_archiveer_werklijst_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: crediteur_archiveer_werklijst crediteur_archiveer_werklijst_gedaan_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst
+    ADD CONSTRAINT crediteur_archiveer_werklijst_gedaan_door_fkey FOREIGN KEY (gedaan_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: crediteur_dubbel_afmelding crediteur_dubbel_afmelding_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afmelding
+    ADD CONSTRAINT crediteur_dubbel_afmelding_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: crediteur_dubbel_afmelding crediteur_dubbel_afmelding_afgemeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afmelding
+    ADD CONSTRAINT crediteur_dubbel_afmelding_afgemeld_door_fkey FOREIGN KEY (afgemeld_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -7340,6 +7505,14 @@ ALTER TABLE ONLY boekhouding.tegenboeking
 
 
 --
+-- Name: terugkerend_herbereken_run terugkerend_herbereken_run_gestart_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.terugkerend_herbereken_run
+    ADD CONSTRAINT terugkerend_herbereken_run_gestart_door_fkey FOREIGN KEY (gestart_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: terugkerend_signaal terugkerend_signaal_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -8484,6 +8657,32 @@ CREATE POLICY boekvoorstel_scope ON boekhouding.boekvoorstel USING ((EXISTS ( SE
   WHERE ((d.id = boekvoorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM boekhouding.document d
   WHERE ((d.id = boekvoorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+
+
+--
+-- Name: crediteur_archiveer_werklijst; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.crediteur_archiveer_werklijst ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: crediteur_archiveer_werklijst crediteur_archiveer_werklijst_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY crediteur_archiveer_werklijst_scope ON boekhouding.crediteur_archiveer_werklijst USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: crediteur_dubbel_afmelding; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.crediteur_dubbel_afmelding ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: crediteur_dubbel_afmelding crediteur_dubbel_afmelding_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY crediteur_dubbel_afmelding_scope ON boekhouding.crediteur_dubbel_afmelding USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

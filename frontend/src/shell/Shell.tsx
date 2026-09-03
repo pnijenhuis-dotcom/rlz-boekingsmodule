@@ -61,9 +61,9 @@ export function Shell() {
           <NavItem to="/voorraad">Voorraad</NavItem>
           {/* Terugkerende facturen (blok B 30-08): signaal-overzicht per administratie. */}
           <NavItem to="/terugkerend">Terugkerende facturen</NavItem>
-          {/* Crediteuren-dubbelsignalering (Instellingen v3, 01-09): een signaleringsscherm, geen
-              instelling — daarom onder Inzicht; rolpoort ongewijzigd (Beheerder, backend 403). */}
-          {rol === 'beheerder' && <NavItem to="/crediteuren">Crediteuren</NavItem>}
+          {/* Crediteuren-dubbelen v2 (03-09): kantoorbreed mét actie, voor élke kantoorrol binnen de eigen
+              scope (backend vereis_kantoorrol) — de Beheerder-gate van v3 verviel met de administratie-picker. */}
+          <NavItem to="/crediteuren">Crediteuren</NavItem>
           <div className="nav-kop">Beheer</div>
           {/* Gebruikers & toegang (fase 3, 15-08) is Beheerder-only — het endpoint weigert
               andere rollen, dus het menu-item verschijnt daar ook niet. */}

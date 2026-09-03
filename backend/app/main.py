@@ -17,6 +17,7 @@ from app.beheer.router import router as beheer_router
 from app.berichten.router import router as berichten_router
 from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
+from app.crediteuren.router import router as crediteuren_router
 from app.db import session as db_session
 from app.db.migratie_guard import controleer_migratie_versie
 from app.documenten import service as documenten_service
@@ -38,7 +39,9 @@ from app.uren.router import router as uren_router
 from app.materiaal.router import router as materiaal_router
 from app.verkoop.router import router as verkoop_router
 from app.voorraad.router import router as voorraad_router
+from app.vragen.router import router as vragen_router
 from app.waarborg.router import router as waarborg_router
+from app.zoeken.archief_kantoorbreed import router as archief_kantoorbreed_router
 from app.zoeken.router import router as zoeken_router
 
 logger = logging.getLogger(__name__)
@@ -177,12 +180,15 @@ app.include_router(verkoop_router)
 app.include_router(voorraad_router)
 app.include_router(terugkerend_router)
 app.include_router(autoboek_kandidaten_router)
+app.include_router(crediteuren_router)
 app.include_router(waarborg_router)
 app.include_router(projecten_koppelvlak_router)
 app.include_router(registersync_router)
 app.include_router(projecten_kantoor_router)
 app.include_router(doorbelasting_router)
 app.include_router(zoeken_router)
+app.include_router(archief_kantoorbreed_router)
+app.include_router(vragen_router)
 app.include_router(intake_router)
 app.include_router(uren_router)
 app.include_router(materiaal_router)
