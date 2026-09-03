@@ -1446,9 +1446,16 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   --alleen-ubl --zonder-toewijzen` (deterministisch, geen AI); bulk-toewijzen / bulk-hoort-niet-bij-ons in de
   verzamelbak (orkestratie over de per-rij-routes, uitkomst per rij); zusje-signaal "tegenhanger al
   toegewezen" (93 IC-PDF's waren vóór de bundeling al via AI toegewezen — UBL's bulk-toewijzen = dubbele
-  documenten; nabundel-nazorg = open beslispunt); "Geboekt in RLZ · boekstuk · tegenpartij" +
+  documenten); "Geboekt in RLZ · boekstuk · tegenpartij" +
   vindplaats-hint op lijst/detail/reviewschermen (`documenten/geboekt_in_rlz.py`, Elissen-casus);
-  CLI `toewijzing-regels-opschonen` (cloud-run 02-09: 6 afzender-regels gedeactiveerd).
+  CLI `toewijzing-regels-opschonen` (cloud-run 02-09: 6 afzender-regels gedeactiveerd). **Nabundel-nazorg
+  (akkoord Peter 02-09, GEBOUWD 03-09 — BESLISSINGEN "NABUNDEL-NAZORG 03-09"):** `app/intake/nabundelen.py` +
+  CLI `verzamelbak-nabundelen [--dry-run]` (`make verzamelbak-nabundelen DRY_RUN=1`) koppelt een verzamelbak-UBL
+  aan zijn al toegewezen PDF-tegenhanger uit dezelfde mail volgens het bundelingsmodel — het PDF-document blijft
+  HET document, UBL = hoofdbestand/data, PDF = beeld (`bron_*`), deterministische her-extractie via het bestaande
+  pad, UBL-rij → `samengevoegd`; uitsluitend te_controleren/handmatig_afmaken, opgeslagen boekvoorstel nooit
+  overschreven (alleen koppelen), twijfel = overslaan mét reden, geheugen leert niets; ongedaan via de bestaande
+  `samenvoegen-ongedaan`-route (alleen vóór boeken). Cloud-run = klikpunt (gcloud-herauthenticatie).
 - `docs/avg/` — AVG-pakket (jurist-akkoord 12-08); **stap 1 van `05-activatie-checklist.md` is op 02-09
   beslisklaar gemaakt (blok A): `09-zdr-beslisnotitie.md` (besluit Peter), `10-model-check.md` (sonnet-5 +
   haiku-4-5, ZDR-compatibel; register mist voorraad-normalisatie + contract-ontleding), `11-klantinformatie-
