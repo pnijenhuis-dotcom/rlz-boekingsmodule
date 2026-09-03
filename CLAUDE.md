@@ -1455,7 +1455,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   HET document, UBL = hoofdbestand/data, PDF = beeld (`bron_*`), deterministische her-extractie via het bestaande
   pad, UBL-rij → `samengevoegd`; uitsluitend te_controleren/handmatig_afmaken, opgeslagen boekvoorstel nooit
   overschreven (alleen koppelen), twijfel = overslaan mét reden, geheugen leert niets; ongedaan via de bestaande
-  `samenvoegen-ongedaan`-route (alleen vóór boeken). Cloud-run = klikpunt (gcloud-herauthenticatie).
+  `samenvoegen-ongedaan`-route (alleen vóór boeken). **Cloud-run UITGEVOERD 03-09: 68 samengevoegd, 25 mislukt op een
+  proxy-storing (schoon teruggerold) en daarna door Barbara bulk-toegewezen → 25 UBL+PDF-dubbelparen in Universal Steigerbouw =
+  nazorg-beslispunt (BESLISSINGEN "NABUNDEL-NAZORG 03-09").**
 - `docs/avg/` — AVG-pakket (jurist-akkoord 12-08); **stap 1 van `05-activatie-checklist.md` is op 02-09
   beslisklaar gemaakt (blok A): `09-zdr-beslisnotitie.md` (besluit Peter), `10-model-check.md` (sonnet-5 +
   haiku-4-5, ZDR-compatibel; register mist voorraad-normalisatie + contract-ontleding), `11-klantinformatie-
