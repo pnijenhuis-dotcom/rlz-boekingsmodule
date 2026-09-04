@@ -811,3 +811,8 @@ class MijnToegangDto(BaseModel):
     # 04-09 (mee-lift-punt 0.2, besluit Peter): "+ Project aanmaken" op /planning volgt dezelfde
     # rolpoort als de combobox-ingang — óók Boekhouding (spiegel van `projecten.kantoor._AANMAAK_ROLLEN`).
     mag_project_aanmaken: bool = False
+    # Odoo-afrondingsrun 04-09 blok B (besluit Peter): administraties in scope mét toegang tot de
+    # MATERIAALCATALOGUS = uren-opt-in ÓF Odoo-backend ÓF Odoo-leesbron-koppeling (voeding voor de
+    # administratie-kiezer op /instellingen/materiaal). `administraties_met_opt_in` blijft puur de
+    # steigerbouw-opt-in (planning, weekstaten, bestellingen, transport).
+    administraties_met_catalogus: list[uuid.UUID] = []

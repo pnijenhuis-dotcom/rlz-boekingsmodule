@@ -5,7 +5,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { bepaalWerklijst, CHIPS_ZOEK_VANAF, MateriaalCatalogusBeheer } from './MateriaalCatalogusBeheer'
+import { bepaalWerklijst, CATALOGUS_UIT_TEKST, CHIPS_ZOEK_VANAF, heeftCatalogusToegang, MateriaalCatalogusBeheer } from './MateriaalCatalogusBeheer'
 
 const ADM = 'aaaaaaaa-0000-0000-0000-000000000001'
 const VENDOR = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -116,5 +116,39 @@ describe('MateriaalCatalogusBeheer — werklijst + chip-zoek (03-09)', () => {
     await gebruiker.type(zoek, 'bestaat niet')
     expect(screen.queryByText(/^Leverancier \d\d · 3$/)).not.toBeInTheDocument()
     expect(screen.getByText(/geen leverancier met/)).toBeInTheDocument()
+  })
+})
+
+describe('MateriaalCatalogusBeheer — toegang bij Odoo (Odoo-afrondingsrun 04-09 blok B)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('heeftCatalogusToegang: uren-opt-in ÓF Odoo-backend ÓF Odoo-leesbron — spiegel van de backend-poort', () => {
+    expect(heeftCatalogusToegang({})).toBe(false)
+    expect(heeftCatalogusToegang({ uren_meerwerk_ingeschakeld: false, boekhoud_backend: 'rlz', odoo_alleen_lezen: false })).toBe(false)
+    expect(heeftCatalogusToegang({ uren_meerwerk_ingeschakeld: true })).toBe(true)
+    expect(heeftCatalogusToegang({ boekhoud_backend: 'odoo' })).toBe(true)
+    expect(heeftCatalogusToegang({ boekhoud_backend: 'rlz', odoo_alleen_lezen: true })).toBe(true)
+  })
+
+  it('lege administratielijst = lege stand mét uitleg, geen catalogus-fetch', () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 404 })))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<MateriaalCatalogusBeheer administraties={[]} />)
+    expect(screen.getByTestId('materiaal-geen-administratie')).toHaveTextContent(/Uren & meerwerk aan heeft óf een Odoo-koppeling/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('409 van de server = de nieuwe leesbare reden (Uren & meerwerk óf Odoo-koppeling), niet meer "hoort bij de steigerbouw-tak"', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.startsWith(`/materiaal/${ADM}/leveranciers?`)) return Promise.resolve(json({ detail: 'Materiaalcatalogus vereist Uren & meerwerk óf een Odoo-koppeling voor deze administratie' }, 409))
+        if (url === `/administraties/${ADM}/crediteuren`) return Promise.resolve(json({ crediteuren: [] }))
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+    renderScherm()
+    expect(await screen.findByText(CATALOGUS_UIT_TEKST)).toBeInTheDocument()
+    expect(screen.queryByText(/steigerbouw-tak/)).not.toBeInTheDocument()
   })
 })

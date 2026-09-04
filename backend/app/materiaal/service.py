@@ -9,7 +9,11 @@ statusovergang mét bron — de seam voor het verhuursysteem).
 Statusmodel transport: gepland → bevestigd → geleverd (kantoor-klikwerk; ook gepland → geleverd
 mag); alles behalve geleverd → geannuleerd mét reden; geleverd is terminaal (correctie = nieuw
 retour/levering — parkeerpost veld-app-aftekening). Materiaalstand = uitsluitend status
-'geleverd' telt (Σ leveringen − Σ retouren per product), huurperiode per item uit de tijdlijn."""
+'geleverd' telt (Σ leveringen − Σ retouren per product), huurperiode per item uit de tijdlijn.
+
+Poorten (04-09): de CATALOGUS staat achter `_administratie_met_catalogus_toegang` (uren-opt-in ÓF Odoo-backend
+ÓF Odoo-leesbron — de productenbrug naar Odoo leeft erop); bestellingen/transport/stand/match blijven achter
+`_administratie_met_opt_in` (steigerbouw-tak)."""
 
 from __future__ import annotations
 
@@ -22,7 +26,7 @@ from sqlalchemy import Text, func, or_, select
 
 from app.berichten import mail
 from app.db.audit import record_audit_event
-from app.db.models import Gebruiker, GebruikerRol
+from app.db.models import Administratie, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
 from app.materiaal.models import (
     M2_DELER,
@@ -39,11 +43,13 @@ from app.materiaal.models import (
 )
 from app.materiaal.pdf import TekstRegel, bouw_pdf, paginering
 from app.materiaal.seed import UNIVERSAL_CATALOGUS, UNIVERSAL_LEVERANCIER
+from app.odoo.models import OdooKoppeling
 from app.sync.models import ProjectCache
 from app.uren.models import ProjectSpecificatie
 from app.uren.service import (
     MODULE,
     GeenToegang,
+    ModuleUitgeschakeld,
     NietGevonden,
     OngeldigeInvoer,
     OngeldigeOvergang,
@@ -67,6 +73,50 @@ def _vereis_beheerder(session, actor_id: uuid.UUID) -> None:
     actor = session.get(Gebruiker, actor_id)
     if actor is None or actor.rol not in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN):
         raise GeenToegang("Catalogusbeheer is voorbehouden aan Beheerder en Boekhouding+Projecten")
+
+
+CATALOGUS_VEREIST_TEKST = "Materiaalcatalogus vereist Uren & meerwerk óf een Odoo-koppeling voor deze administratie"
+
+
+def heeft_catalogus_toegang(session, administratie: Administratie) -> bool:
+    """Besluit Peter 04-09 (Odoo-afrondingsrun blok B, beslispunt 9/8 "ODOO-ADAPTER BLOK E"): de
+    CATALOGUS (leveranciers, categorieën, producten, seed) en de product.product-brug zijn beschikbaar
+    zodra een administratie (a) de uren-&-meerwerk-opt-in heeft, ÓF (b) op de Odoo-backend draait
+    (`boekhoud_backend == 'odoo'`), ÓF (c) een Odoo-leesbron-koppeling heeft (`platform.odoo_koppeling`
+    aanwezig, óók `alleen_lezen`). Bestellingen, transport, materiaalstand, materiaalmatch en alles wat
+    planning/weekstaten raakt blijft UITSLUITEND uren-gated (`_administratie_met_opt_in`) — dat is de
+    steigerbouw-tak. `platform.odoo_koppeling` draagt geen RLS, de lookup werkt in élke scope."""
+    if administratie.uren_meerwerk_ingeschakeld or administratie.boekhoud_backend == "odoo":
+        return True
+    return session.get(OdooKoppeling, administratie.id) is not None
+
+
+def _administratie_met_catalogus_toegang(session, administratie_id: uuid.UUID) -> Administratie:
+    """Catalogus-poort (zie `heeft_catalogus_toegang`): 404 onbekend, 409 `ModuleUitgeschakeld` mét
+    leesbare reden. UITSLUITEND voor de catalogus-functies; de rolpoort `_vereis_beheerder` (Beheerder/B+P)
+    op de schrijvers blijft onverkort."""
+    administratie = session.get(Administratie, administratie_id)
+    if administratie is None:
+        raise NietGevonden("Onbekende administratie")
+    if not heeft_catalogus_toegang(session, administratie):
+        raise ModuleUitgeschakeld(CATALOGUS_VEREIST_TEKST)
+    return administratie
+
+
+def administraties_met_catalogus_toegang(administraties: list[Administratie]) -> list[uuid.UUID]:
+    """Deelverzameling mét catalogus-toegang (voeding voor `mijn-toegang` → administratie-kiezer op
+    /instellingen/materiaal). Eén query op de koppeltabel voor de rest — geen N+1."""
+    uit = [a.id for a in administraties if a.uren_meerwerk_ingeschakeld or a.boekhoud_backend == "odoo"]
+    rest = [a.id for a in administraties if a.id not in set(uit)]
+    if rest:
+        with scoped_session(None) as session:
+            gekoppeld = set(
+                session.scalars(
+                    select(OdooKoppeling.administratie_id).where(OdooKoppeling.administratie_id.in_(rest))
+                ).all()
+            )
+        uit.extend(a.id for a in administraties if a.id in gekoppeld)
+    return uit
 
 
 def _leverancier(session, administratie_id: uuid.UUID, leverancier_id: uuid.UUID) -> MateriaalLeverancier:
@@ -137,7 +187,7 @@ def leveranciers_overzicht(
     *, administratie_id: uuid.UUID, actor_id: uuid.UUID, zoek: str = "", alleen_actief: bool = True
 ) -> list[LeverancierData]:
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        _administratie_met_catalogus_toegang(session, administratie_id)
         _vereis_meerwerk_recht(session, actor_id)
         query = select(MateriaalLeverancier).where(MateriaalLeverancier.administratie_id == administratie_id)
         if alleen_actief:
@@ -197,7 +247,7 @@ def zet_leverancier(
         if adres_veld is not None and adres_veld.strip() and "@" not in adres_veld:
             raise OngeldigeInvoer(f"Ongeldig mailadres voor het {label}")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        _administratie_met_catalogus_toegang(session, administratie_id)
         _vereis_beheerder(session, actor_id)
         nieuw = {
             "naam": naam,
@@ -298,7 +348,7 @@ def catalogus(
     *, administratie_id: uuid.UUID, leverancier_id: uuid.UUID, actor_id: uuid.UUID, alleen_actief: bool = True
 ) -> list[CategorieData]:
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        _administratie_met_catalogus_toegang(session, administratie_id)
         _vereis_meerwerk_recht(session, actor_id)
         _leverancier(session, administratie_id, leverancier_id)
         return _catalogus_in_sessie(session, administratie_id, leverancier_id, alleen_actief=alleen_actief)
@@ -316,7 +366,7 @@ def producten_overzicht(
     """Schaalbare catalogus-lijst (C4): zoeken + paginering server-side."""
     per_pagina = max(1, min(per_pagina, MAX_PER_PAGINA))
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        _administratie_met_catalogus_toegang(session, administratie_id)
         _vereis_meerwerk_recht(session, actor_id)
         query = (
             select(MateriaalProduct, MateriaalCategorie)
@@ -371,7 +421,7 @@ def zet_categorie(
     if bundel not in ("steiger", "trappentoren", "overig"):
         raise OngeldigeInvoer("Bundel moet steiger, trappentoren of overig zijn")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        _administratie_met_catalogus_toegang(session, administratie_id)
         _vereis_beheerder(session, actor_id)
         _leverancier(session, administratie_id, leverancier_id)
         nieuw = {"naam": naam, "bundel": bundel, "volgorde": volgorde, "actief": actief}
@@ -424,7 +474,7 @@ def zet_product(
     if m2_lengte is not None and m2_lengte < 0:
         raise OngeldigeInvoer("m²-lengte kan niet negatief zijn")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        _administratie_met_catalogus_toegang(session, administratie_id)
         _vereis_beheerder(session, actor_id)
         _leverancier(session, administratie_id, leverancier_id)
         cat = session.get(MateriaalCategorie, categorie_id)
@@ -501,7 +551,7 @@ def seed_universal(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> SeedR
     """Idempotente seed uit de bestellijst (app/materiaal/seed.py): upsert op naam, nooit
     verwijderen; bestaande producten blijven ongemoeid (ook hun m²-lengte)."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        _administratie_met_opt_in(session, administratie_id)
+        _administratie_met_catalogus_toegang(session, administratie_id)
         _vereis_beheerder(session, actor_id)
         lev = session.scalars(
             select(MateriaalLeverancier).where(

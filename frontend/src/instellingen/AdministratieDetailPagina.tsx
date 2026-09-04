@@ -228,6 +228,19 @@ export function AdministratieDetailPagina({
               <OdooLeesbronRij administratie={a} onHerlaad={onHerlaad} />
             </>
           )}
+          {/* Blok B Odoo-afrondingsrun 04-09 (besluit Peter): een Odoo-administratie (backend óf leesbron) ZONDER
+              uren-opt-in bereikt de materiaalcatalogus — de basis voor de productbrug — vanaf hier; mét opt-in
+              staat de link al op de tab "Uren & materiaal". */}
+          {(isOdoo || a.odoo_alleen_lezen) && !a.uren_meerwerk_ingeschakeld && (
+            <InstellingRij
+              titel="Materiaalcatalogus"
+              uitleg="Beschikbaar via de Odoo-koppeling: leveranciers, categorieën en producten — de basis voor de productbrug naar Odoo (boeken op producten). Bestellingen en transport horen bij Uren & meerwerk."
+            >
+              <Link to="/instellingen/materiaal" className="text-primary no-underline hover:underline" data-testid="odoo-materiaalcatalogus-link">
+                materiaalcatalogus →
+              </Link>
+            </InstellingRij>
+          )}
           <h3 className="inst-groep-kop">Algemeen</h3>
           <InstellingRij titel="Eigenaar (krijgt vragen)" uitleg="Nieuwe vragen worden standaard aan deze medewerker toegewezen.">
             <EigenaarCell
@@ -247,7 +260,12 @@ export function AdministratieDetailPagina({
             />
           </InstellingRij>
           {toggle('is_vastgoed', a.is_vastgoed, 'Vastgoed-koppeling (Vastly)', 'Events, projectaanvragen en verkoop-autoboeken volgen deze schakelaar.')}
-          {toggle('uren_meerwerk', a.uren_meerwerk_ingeschakeld, 'Uren & meerwerk (steigerbouw-tak)', 'Weekstaten, meerwerk, planning en materiaal — instellingen op de tab "Uren & materiaal" zodra aan.')}
+          {toggle(
+            'uren_meerwerk',
+            a.uren_meerwerk_ingeschakeld,
+            'Uren & meerwerk (steigerbouw-tak)',
+            'Weekstaten, meerwerk, planning, bestellingen en transport — instellingen op de tab "Uren & materiaal" zodra aan. De materiaalcatalogus zelf is óók beschikbaar via een Odoo-koppeling.',
+          )}
           {toggle('voorraad', a.voorraad_ingeschakeld, 'Voorraad bijhouden', 'Controle-laag (mi-schema): instroom uit inkoopregels, uitstroom uit verkoopregels — nooit geboekt.')}
           {/* Blok "Intake-regels" (blok B 04-09): 'nooit splitsen'-regels per afzender — beheer per administratie,
               aanmaak uitsluitend via "Is één factuur" in de verzamelbak. */}

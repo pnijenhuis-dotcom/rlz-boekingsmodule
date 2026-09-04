@@ -28,7 +28,7 @@ from app.db.session import scoped_session
 from app.documenten.boekvoorstel import BoekvoorstelData
 from app.documenten.models import DocumentGebeurtenis
 from app.materiaal.models import MateriaalLeverancier, MateriaalProduct
-from app.odoo.client import OdooClient, OdooFout
+from app.odoo.client import OdooAlleenLezen, OdooClient, OdooFout
 from app.odoo.credentials import koppeling_voor, odoo_client_voor
 from app.odoo.models import OdooProductKoppeling
 
@@ -85,6 +85,11 @@ def _categorie_id(client: OdooClient, naam: str | None, cache: dict[str, int | N
 
 
 def leg_brug(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, client: OdooClient | None = None) -> BrugUitkomst:
+    """Poort (Odoo-afrondingsrun 04-09 blok B, besluit Peter): de brug vereist GEEN uren-&-meerwerk-opt-in —
+    `koppeling_voor` is de enige toets (Odoo-backend óf leesbron-koppeling), en precies die twee gevallen
+    geven per `materiaal.service.heeft_catalogus_toegang` óók toegang tot de catalogus. Een tweede toets zou
+    dus altijd dezelfde uitkomst geven; bewust weggelaten (één bron). De live-keten-hobbel van 04-09 stap 5
+    ("uren_meerwerk moest AAN") zat in het VULLEN van de catalogus (seed/zet_product), niet hier."""
     verbinding = koppeling_voor(administratie_id)
     eigen = client is None
     client = client or odoo_client_voor(administratie_id)
@@ -160,6 +165,10 @@ def leg_brug(*, administratie_id: uuid.UUID, actor_id: uuid.UUID, client: OdooCl
                         tmpl_id = client.create(MODEL_TEMPLATE, vals)
                     except OdooFout as exc:
                         uitkomst.overgeslagen.append(f"{product.naam}: Odoo weigert aanmaak ({exc.naam or exc.status})")
+                        continue
+                    except OdooAlleenLezen:
+                        # Leesbron-koppeling (blok D): lookup mag, aanmaak nooit — zichtbaar overgeslagen, geen crash.
+                        uitkomst.overgeslagen.append(f"{product.naam}: alleen-lezen Odoo-koppeling — niet aangemaakt")
                         continue
                     treffer = client.search_read(
                         MODEL_PRODUCT, [["product_tmpl_id", "=", tmpl_id]], ["id", "name", "product_tmpl_id"]

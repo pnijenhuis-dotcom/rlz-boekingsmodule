@@ -11,11 +11,11 @@ import { ApiError, apiJson } from '../api/client'
 import { Button, Switch, SkeletonPaneel, SkeletonRegels } from '../ui/basis'
 import type { AdministratieDto, AdministratieInstellingenDto } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { useMijnToegang } from '../auth/useMijnToegang'
+import { catalogusAdministraties, useMijnToegang } from '../auth/useMijnToegang'
 import { zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { DoorbelastingInstellingen } from '../doorbelasting/DoorbelastingInstellingen'
 import { DossierTypenModal } from './DossierTypenModal'
-import { MateriaalCatalogusBeheer } from './MateriaalCatalogusBeheer'
+import { heeftCatalogusToegang, MateriaalCatalogusBeheer } from './MateriaalCatalogusBeheer'
 import { AccorderingInstellingen } from './AccorderingInstellingen'
 import { BevestigDialog } from './BevestigDialog'
 import { BeveiligingInstellingen, WeekmailVoorkeur } from './BeveiligingInstellingen'
@@ -395,7 +395,7 @@ export function InstellingenScreen() {
     if (sectie === 'materiaal') {
       const materiaalAdministraties =
         toegang && scopeAdministraties
-          ? scopeAdministraties.filter((a) => toegang.administraties_met_opt_in.includes(a.id))
+          ? scopeAdministraties.filter((a) => catalogusAdministraties(toegang).includes(a.id))
           : null
       return laag(
         <div>
@@ -703,7 +703,7 @@ export function InstellingenScreen() {
         )}
 
         {sectie === 'materiaal' && administraties !== null && (
-          <MateriaalCatalogusBeheer administraties={administraties.filter((a) => a.uren_meerwerk_ingeschakeld && !a.gearchiveerd_op).map((a) => ({ id: a.id, naam: a.naam }) as AdministratieDto)} />
+          <MateriaalCatalogusBeheer administraties={administraties.filter((a) => heeftCatalogusToegang(a) && !a.gearchiveerd_op).map((a) => ({ id: a.id, naam: a.naam }) as AdministratieDto)} />
         )}
 
         {sectie === 'accordering' && administraties !== null && (

@@ -58,6 +58,10 @@ function installFetchMock(opties: {
   putAanroepen?: { url: string; body: unknown }[]
   /** Odoo-adapter blok E: antwoord op GET /administraties/{id}/odoo (default 404 = geen koppeling). */
   odooStand?: unknown
+  /** Blok A 04-09: antwoord op GET …/odoo/mapping (default = lege mapping). */
+  odooMapping?: Record<string, unknown>
+  /** Blok B 04-09: overrides op /uren/kantoor/mijn-toegang (o.a. `administraties_met_catalogus`). */
+  mijnToegang?: Record<string, unknown>
 }) {
   const administraties = opties.administraties ?? [administratie()]
   let killSwitch = opties.killSwitch ?? true
@@ -275,6 +279,7 @@ function installFetchMock(opties: {
       if (url === '/auth/mijn/apparaten') {
         return Promise.resolve(jsonResponse({ apparaten: [] }))
       }
+            ...(opties.mijnToegang ?? {}),
       if (url === '/auth/webauthn/config') {
         return Promise.resolve(jsonResponse({ dev_stub: false, rp_id: 'localhost' }))
       }
@@ -816,7 +821,7 @@ describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-
     expect(within(detail).getByRole('button', { name: 'Schrijftest voor Testklant B.V.' })).toBeInTheDocument()
     expect(within(detail).getByRole('button', { name: 'Webservice-gegevens van Testklant B.V.' })).toBeInTheDocument()
     fireEvent.click(within(detail).getByRole('button', { name: 'Odoo koppelen aan Testklant B.V.' }))
-    expect(await screen.findByText('Odoo koppelen — Testklant B.V. — stap 1 van 4')).toBeInTheDocument()
+    expect(await screen.findByText('Odoo koppelen — Testklant B.V. — stap 1 van 5')).toBeInTheDocument()
     expect(screen.getByLabelText('Volledige backend')).toBeChecked()
     expect(screen.getByLabelText('Alleen-lezen leesbron')).toBeInTheDocument()
     // Netjes sluiten: een open Radix-dialoog bij unmount laat een focus-scope-timer achter (flaky teardown).
@@ -887,6 +892,9 @@ describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-
         administratie({
           naam: 'Universal Verkoop B.V.',
           webservice_username: 'ws_uv',
+    // Blok A 04-09: zonder mapping-rijen alleen de tekst, geen knop.
+    await waitFor(() => expect(within(detail).getByTestId('odoo-mapping-stand')).toHaveTextContent('geen mapping — nieuwe Odoo-administratie zonder RLZ-verleden'))
+    expect(within(detail).queryByRole('button', { name: /Rekening-mapping bekijken/ })).not.toBeInTheDocument()
           probe_groen: true,
           rlz_admin_id: 'rlz-uv',
           odoo_alleen_lezen: true,
@@ -937,6 +945,136 @@ describe('InstellingenScreen — omzet-autoboeken (GO Peter 01-09, blok C)', () 
   afterEach(() => {
     vi.unstubAllGlobals()
   })
+describe('InstellingenScreen — rekening-mapping + overgangsdatum (Odoo blok A/C1, 04-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const ODOO_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
+  const ODOO_STAND = {
+    company_id: 1,
+    company_naam: 'Universal Steigerbouw',
+    odoo_url: 'https://universal-steigers.odoo.com',
+    api_gebruiker: 'n-module',
+    api_key_verloopt_op: null,
+    probe_groen: true,
+    probe_op: '2026-09-03T20:14:00Z',
+    alleen_lezen: false,
+    voorraad_knip_datum: null,
+    probe_rapport: { ledgers: 'ok', boeken: 'ok' },
+    stamgegevens: { ledgers: 212, taxrates: 14, vendors: 380, projects: 6 },
+    laatste_sync_op: '2026-09-03T05:00:00Z',
+    overgangsdatum: '2026-10-01',
+    rlz_admin_id_voor_overstap: 'rlz-us',
+  }
+  const ODOO_MAPPING = {
+    grootboek: [
+      { soort: 'grootboek', rlz_id: 'gb-4808', rlz_code: '4808', rlz_naam: 'Huur materieel', odoo_id: 11, odoo_code: '480800', odoo_naam: 'Huur materieel', bron: 'code_verlengd', versie: 1, bevestigd_op: '2026-09-04T09:00:00Z', bevestigd_door_naam: 'Peter' },
+      { soort: 'grootboek', rlz_id: 'gb-4699', rlz_code: '4699', rlz_naam: 'Diverse algemene kosten', odoo_id: 13, odoo_code: '4699', odoo_naam: 'Diverse algemene kosten', bron: 'zelfde_code', versie: 1, bevestigd_op: '2026-09-04T09:00:00Z', bevestigd_door_naam: 'Peter' },
+    ],
+    btw: [{ soort: 'btw', rlz_id: 'btw-hoog', rlz_code: null, rlz_naam: 'NL, Hoog Tarief', odoo_id: 21, odoo_code: null, odoo_naam: '21% inkoop', bron: 'tarief', versie: 1, bevestigd_op: '2026-09-04T09:00:00Z', bevestigd_door_naam: 'Peter' }],
+    odoo_grootboek: [
+      { odoo_id: 11, lokaal_id: '11111111-0000-0000-0000-000000000011', code: '480800', naam: 'Huur materieel' },
+      { odoo_id: 12, lokaal_id: '11111111-0000-0000-0000-000000000012', code: '424000', naam: 'Inhuur personeel' },
+      { odoo_id: 13, lokaal_id: '11111111-0000-0000-0000-000000000013', code: '4699', naam: 'Diverse algemene kosten' },
+    ],
+    odoo_btw: [{ odoo_id: 21, lokaal_id: '22222222-0000-0000-0000-000000000021', naam: '21% inkoop', percentage: '0.21', verlegd: false, synthetisch: false }],
+    laatst_bevestigd_op: '2026-09-04T09:00:00Z',
+    laatst_bevestigd_door_naam: 'Peter',
+  }
+  const odooAdministratie = () =>
+    administratie({
+      id: ODOO_ID,
+      naam: 'Universal Steigerbouw B.V.',
+      boekhoud_backend: 'odoo',
+      odoo_company_id: 1,
+      odoo_company_naam: 'Universal Steigerbouw',
+      odoo_url: 'https://universal-steigers.odoo.com',
+      odoo_probe_groen: true,
+      odoo_probe_op: '2026-09-03T20:14:00Z',
+      odoo_alleen_lezen: false,
+      odoo_overgangsdatum: '2026-10-01',
+      laatste_sync_op: '2026-09-03T05:00:00Z',
+    })
+
+  it('rij "Rekening-mapping": telling + bevestigd door; dialoog in corrigeer-modus, keuze = PUT …/odoo/mapping/{soort}/{rlz_id} → versie-badge v2', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'beheerder', putAanroepen, odooStand: ODOO_STAND, odooMapping: ODOO_MAPPING, administraties: [odooAdministratie()] })
+    renderScherm()
+    const detail = await openDetail('Universal Steigerbouw B.V.')
+    const rij = within(detail).getByTestId('odoo-mapping-stand')
+    await waitFor(() => expect(rij).toHaveTextContent('2 grootboek · 1 btw · bevestigd 04-09'))
+    expect(rij).toHaveTextContent('door Peter')
+
+    fireEvent.click(within(detail).getByRole('button', { name: 'Rekening-mapping bekijken of corrigeren voor Universal Steigerbouw B.V.' }))
+    const dialoog = await screen.findByTestId('odoo-mapping-dialoog')
+    expect(within(dialoog).getByTestId('odoo-mapping-teller')).toHaveTextContent('3 van 3 gekoppeld')
+    // Corrigeer-modus: geen filter, wel de geldende waarde + herkomst-chip.
+    expect(within(dialoog).queryByLabelText('Alleen nog te kiezen')).not.toBeInTheDocument()
+    const rij4808 = within(dialoog).getByTestId('odoo-mapping-rij-grootboek:gb-4808')
+    expect(within(rij4808).getByRole('combobox')).toHaveValue('480800 · Huur materieel')
+    expect(within(rij4808).getByText('code + 00 — bevestig')).toHaveClass('chip', 'afwijking')
+    expect(within(rij4808).queryByText('v2')).not.toBeInTheDocument()
+
+    await gebruiker.click(within(rij4808).getByRole('combobox'))
+    await gebruiker.click(screen.getByRole('option', { name: /424000.*Inhuur personeel/ }))
+    await waitFor(() => expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/mapping/grootboek/gb-4808`, body: { odoo_id: 12 } }))
+    const rij4808Nieuw = await within(dialoog).findByTestId('odoo-mapping-rij-grootboek:gb-4808')
+    await waitFor(() => expect(within(rij4808Nieuw).getByText('v2')).toBeInTheDocument())
+    expect(within(rij4808Nieuw).getByRole('combobox')).toHaveValue('424000 · Inhuur personeel')
+    expect(within(rij4808Nieuw).getByText('handmatig')).toHaveClass('chip', 'handmatig')
+    // De andere rij is ongemoeid (append-only per rij).
+    expect(within(within(dialoog).getByTestId('odoo-mapping-rij-grootboek:gb-4699')).queryByText(/^v\d/)).not.toBeInTheDocument()
+
+    fireEvent.click(within(dialoog).getByRole('button', { name: 'Sluiten' }))
+    await waitFor(() => expect(screen.queryByTestId('odoo-mapping-dialoog')).not.toBeInTheDocument())
+  })
+
+  it('C1 "Overgangsdatum wijzigen…": 409 = servertekst rood + dialoog blijft open, niets gewijzigd; toegestane datum = PUT + dialoog dicht', async () => {
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'beheerder', putAanroepen, odooStand: ODOO_STAND, administraties: [odooAdministratie()] })
+    renderScherm()
+    const detail = await openDetail('Universal Steigerbouw B.V.')
+    const overgang = await within(detail).findByTestId('odoo-overgangsdatum')
+    expect(overgang).toHaveTextContent('overgestapt per 01-10-2026')
+    fireEvent.click(within(overgang).getByRole('button', { name: 'Overgangsdatum wijzigen voor Universal Steigerbouw B.V.' }))
+    const dialoog = await screen.findByTestId('overgangsdatum-dialoog')
+    const veld = within(dialoog).getByLabelText('Overgangsdatum') as HTMLInputElement
+    expect(veld.value).toBe('2026-10-01')
+    expect(within(dialoog).getByText(/Facturen mét factuurdatum vóór deze datum boeken in Reeleezee/)).toBeInTheDocument()
+    // Ongewijzigd = niets op te slaan.
+    expect(within(dialoog).getByRole('button', { name: 'Overgangsdatum opslaan' })).toBeDisabled()
+
+    // Geblokkeerd: er staat al een Odoo-boeking vóór de nieuwe datum → 409 mét de servertekst, dialoog blijft open.
+    fireEvent.change(veld, { target: { value: '2026-11-01' } })
+    fireEvent.click(within(dialoog).getByRole('button', { name: 'Overgangsdatum opslaan' }))
+    await waitFor(() => expect(within(dialoog).getByTestId('overgangsdatum-fout')).toHaveTextContent('1 factuur is al in Odoo geboekt vóór 01-11-2026: BILL/2026/06/0001 op 05-06-2026'))
+    expect(within(dialoog).getByTestId('overgangsdatum-fout')).toHaveTextContent('Niets gewijzigd')
+    expect(screen.getByTestId('overgangsdatum-dialoog')).toBeInTheDocument()
+    expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/overgangsdatum`, body: { overgangsdatum: '2026-11-01' } })
+
+    // Toegestaan: op/vóór het oudste boekstuk → 200, dialoog dicht.
+    fireEvent.change(veld, { target: { value: '2026-06-01' } })
+    fireEvent.click(within(dialoog).getByRole('button', { name: 'Overgangsdatum opslaan' }))
+    await waitFor(() => expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/overgangsdatum`, body: { overgangsdatum: '2026-06-01' } }))
+    await waitFor(() => expect(screen.queryByTestId('overgangsdatum-dialoog')).not.toBeInTheDocument())
+  })
+
+  it('RLZ-administratie mét Odoo-leesbron toont géén mapping-rij en géén "Overgangsdatum wijzigen…" (alleen bij de volledige backend)', async () => {
+    installFetchMock({
+      rol: 'beheerder',
+      odooStand: { ...ODOO_STAND, company_id: 3, alleen_lezen: true, voorraad_knip_datum: '2026-09-01', overgangsdatum: null, rlz_admin_id_voor_overstap: null },
+      administraties: [administratie({ naam: 'Universal Verkoop B.V.', webservice_username: 'ws_uv', probe_groen: true, rlz_admin_id: 'rlz-uv', odoo_alleen_lezen: true, odoo_company_id: 3, odoo_voorraad_knip_datum: '2026-09-01' })],
+    })
+    renderScherm()
+    const detail = await openDetail('Universal Verkoop B.V.')
+    await within(detail).findByTestId('leesbron-odoo')
+    expect(within(detail).queryByText('Rekening-mapping')).not.toBeInTheDocument()
+    expect(within(detail).queryByRole('button', { name: /Overgangsdatum wijzigen/ })).not.toBeInTheDocument()
+  })
+})
+
 
   it('toggle op de detailpagina (tab Boeken & AI) → consequentie-dialoog → PUT /omzet-autoboeken-instelling; chip in de tabel', async () => {
     const gebruiker = userEvent.setup()
@@ -1060,5 +1198,101 @@ describe('InstellingenScreen — administraties v2 (30-08)', () => {
       { url: '/instellingen/administraties/bbbbbbbb-0000-0000-0000-000000000002/dearchiveren', body: { webservice_username: 'rood' } },
     ])
     expect(JSON.stringify(putAanroepen)).not.toContain('geheim')
+  })
+})
+
+describe('InstellingenScreen — materiaalcatalogus bij Odoo (Odoo-afrondingsrun 04-09 blok B)', () => {
+  /* Besluit Peter 04-09: de catalogus is beschikbaar bij de uren-opt-in ÓF een Odoo-backend ÓF een Odoo-leesbron-
+   * koppeling; bestellingen/transport blijven uren-gated. Kiezer op /instellingen/materiaal + rij op tab Algemeen. */
+  const ODOO_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
+  const LEESBRON_ID = 'cccccccc-0000-0000-0000-000000000003'
+  const ODOO_STAND = {
+    company_id: 1,
+    company_naam: 'Universal Steigerbouw',
+    odoo_url: 'https://universal-steigers.odoo.com',
+    api_gebruiker: null,
+    api_key_verloopt_op: null,
+    probe_groen: true,
+    probe_op: '2026-09-03T20:14:00Z',
+    alleen_lezen: false,
+    voorraad_knip_datum: null,
+    probe_rapport: {},
+    stamgegevens: { ledgers: 1, taxrates: 1, vendors: 1, projects: 1 },
+    laatste_sync_op: null,
+    overgangsdatum: null,
+    rlz_admin_id_voor_overstap: null,
+  }
+  const odooZonderUren = () =>
+    administratie({ id: ODOO_ID, naam: 'Odoo zonder uren B.V.', boekhoud_backend: 'odoo', odoo_company_id: 1, odoo_probe_groen: true, odoo_alleen_lezen: false })
+
+  beforeEach(() => resetMijnToegangCache())
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('Beheerder: de administratie-kiezer op /instellingen/materiaal biedt Odoo- en leesbron-administraties zonder uren-opt-in aan, een kale RLZ-administratie niet', async () => {
+    installFetchMock({
+      rol: 'beheerder',
+      administraties: [
+        administratie({ naam: 'Kaal RLZ B.V.' }),
+        odooZonderUren(),
+        administratie({ id: LEESBRON_ID, naam: 'Leesbron B.V.', odoo_alleen_lezen: true }),
+      ],
+    })
+    renderScherm('/instellingen/materiaal')
+    expect(await screen.findByRole('heading', { name: /Materiaalcatalogus \(transport/ })).toBeInTheDocument()
+    // Eerste administratie mét toegang = de Odoo-administratie; de kale RLZ-administratie staat er niet.
+    const kiezer = await screen.findByRole('combobox', { name: 'Administratie' })
+    expect(kiezer).toHaveValue('Odoo zonder uren B.V.')
+    await userEvent.setup().click(kiezer)
+    const opties = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(opties.some((t) => t?.includes('Leesbron B.V.'))).toBe(true)
+    expect(opties.some((t) => t?.includes('Odoo zonder uren B.V.'))).toBe(true)
+    expect(opties.some((t) => t?.includes('Kaal RLZ B.V.'))).toBe(false)
+    expect(screen.queryByTestId('materiaal-geen-administratie')).not.toBeInTheDocument()
+  })
+
+  it('Beheerder: zonder enige administratie met toegang toont het scherm de lege stand mét uitleg (Uren & meerwerk óf Odoo-koppeling)', async () => {
+    installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'Kaal RLZ B.V.' })] })
+    renderScherm('/instellingen/materiaal')
+    expect(await screen.findByTestId('materiaal-geen-administratie')).toHaveTextContent(/Uren & meerwerk aan heeft óf een Odoo-koppeling/)
+    expect(screen.getByRole('combobox', { name: 'Administratie' })).toHaveValue('')
+  })
+
+  it('B+P: de kiezer volgt `administraties_met_catalogus` uit mijn-toegang (óók zonder uren-opt-in)', async () => {
+    installFetchMock({ rol: 'boekhouding_projecten', mijnToegang: { administraties_met_opt_in: [], administraties_met_catalogus: [ADMINISTRATIE_ID] } })
+    renderScherm('/instellingen/materiaal')
+    expect(await screen.findByRole('heading', { name: /Materiaalcatalogus \(transport/ })).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('Testklant B.V.')).toBeInTheDocument()
+  })
+
+  it('B+P: oudere response zonder `administraties_met_catalogus` valt fail-closed terug op de opt-in-lijst', async () => {
+    installFetchMock({ rol: 'boekhouding_projecten', mijnToegang: { administraties_met_opt_in: [] } })
+    renderScherm('/instellingen/materiaal')
+    expect(await screen.findByTestId('materiaal-geen-administratie')).toBeInTheDocument()
+  })
+
+  it('detailpagina Algemeen: Odoo-administratie ZONDER uren-opt-in draagt de rij "Materiaalcatalogus" mét link onder het backend-blok; mét opt-in of zonder Odoo niet', async () => {
+    installFetchMock({
+      rol: 'beheerder',
+      odooStand: ODOO_STAND,
+      administraties: [
+        odooZonderUren(),
+        administratie({ id: LEESBRON_ID, naam: 'Odoo met uren B.V.', boekhoud_backend: 'odoo', uren_meerwerk_ingeschakeld: true }),
+        administratie({ naam: 'Kaal RLZ B.V.' }),
+      ],
+    })
+    renderScherm()
+    let detail = await openDetail('Odoo zonder uren B.V.')
+    const link = within(detail).getByTestId('odoo-materiaalcatalogus-link')
+    expect(link).toHaveAttribute('href', '/instellingen/materiaal')
+    expect(within(detail).getByText('Materiaalcatalogus')).toBeInTheDocument()
+    // De toggle-uitleg claimt materiaal niet meer exclusief voor de opt-in.
+    expect(within(detail).getByText(/De materiaalcatalogus zelf is óók beschikbaar via een Odoo-koppeling/)).toBeInTheDocument()
+    fireEvent.click(within(detail).getByRole('link', { name: 'Administraties' }))
+    detail = await openDetail('Odoo met uren B.V.')
+    expect(within(detail).queryByTestId('odoo-materiaalcatalogus-link')).not.toBeInTheDocument()
+    expect(within(detail).getByRole('tab', { name: 'Uren & materiaal' })).toBeInTheDocument()
+    fireEvent.click(within(detail).getByRole('link', { name: 'Administraties' }))
+    detail = await openDetail('Kaal RLZ B.V.')
+    expect(within(detail).queryByTestId('odoo-materiaalcatalogus-link')).not.toBeInTheDocument()
   })
 })

@@ -30,6 +30,17 @@ import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 /** Boven dit aantal leveranciers krijgt de chip-rij een client-side zoekveld. */
 export const CHIPS_ZOEK_VANAF = 15
 
+/** Odoo-afrondingsrun 04-09 blok B (besluit Peter): de catalogus is beschikbaar bij de uren-&-meerwerk-opt-in ÓF een
+ * Odoo-backend ÓF een Odoo-leesbron-koppeling — spiegel van backend `materiaal.service.heeft_catalogus_toegang`.
+ * Bestellingen, transport en materiaalstand blijven uren-gated (steigerbouw-tak). */
+export function heeftCatalogusToegang(a: { uren_meerwerk_ingeschakeld?: boolean; boekhoud_backend?: string; odoo_alleen_lezen?: boolean }): boolean {
+  return Boolean(a.uren_meerwerk_ingeschakeld) || a.boekhoud_backend === 'odoo' || Boolean(a.odoo_alleen_lezen)
+}
+
+export const CATALOGUS_UIT_TEKST = 'De materiaalcatalogus is beschikbaar bij Uren & meerwerk óf een Odoo-koppeling — beide staan uit voor deze administratie.'
+export const CATALOGUS_GEEN_ADMINISTRATIE_TEKST =
+  'Geen administratie met toegang tot de materiaalcatalogus. De catalogus komt beschikbaar zodra een administratie Uren & meerwerk aan heeft óf een Odoo-koppeling — in te stellen op de administratie-detailpagina.'
+
 type WerklijstVeld = 'bestel_email' | 'vendor_id'
 
 /** Eén regel per probleem per ACTIEVE leverancier — deterministisch uit de lijst-response, geen extra call. */
@@ -72,7 +83,7 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
       })
       .catch((err: unknown) => {
         setLeveranciers([])
-        setFout(err instanceof ApiError && err.status === 409 ? 'Uren & meerwerk staat uit voor deze administratie — de materiaalcatalogus hoort bij de steigerbouw-tak.' : err instanceof Error ? err.message : 'Laden mislukt')
+        setFout(err instanceof ApiError && err.status === 409 ? CATALOGUS_UIT_TEKST : err instanceof Error ? err.message : 'Laden mislukt')
       })
     apiJson<VendorLijstDto>(`/administraties/${administratieId}/crediteuren`)
       .then((v) => setVendors(v.crediteuren.map((c) => ({ id: c.id, naam: c.naam ?? c.id }))))
@@ -152,10 +163,12 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
         </div>
       </div>
       <p className="hint" style={{ marginTop: 6 }}>
-        Per leverancier (eigen verhuurbedrijven): bestel-mailadres voor de PDF-bon, koppeling met de RLZ-crediteur voor de factuurcontrole (D6),
+        Per leverancier (eigen verhuurbedrijven): bestel-mailadres voor de PDF-bon, koppeling met de crediteur voor de factuurcontrole (D6),
         categorieën + producten met verpakkingseenheid en m²-lengte — m² = Σ(aantal × lengte) / 4,6 (formule uit de bestellijst). Producten
-        verdwijnen nooit (inactief zetten). Alles geauditeerd.
+        verdwijnen nooit (inactief zetten). Alles geauditeerd. Beschikbaar bij Uren &amp; meerwerk óf een Odoo-koppeling (de catalogus is dan de
+        basis voor de productbrug naar Odoo); bestellingen en transport horen bij Uren &amp; meerwerk.
       </p>
+      {administraties.length === 0 && <p className="hint" data-testid="materiaal-geen-administratie">{CATALOGUS_GEEN_ADMINISTRATIE_TEKST}</p>}
       {fout && <div className="fout">{fout}</div>}
       {leveranciers !== null && leveranciers.length === 0 && !fout && <p className="hint">Nog geen leveranciers — laad de standaardcatalogus of voeg een leverancier toe.</p>}
       {werklijst.length > 0 && (

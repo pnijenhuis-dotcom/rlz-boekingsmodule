@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isMonoKlant, landingsPad, planningMenuPad, type MijnToegangDto } from './useMijnToegang'
+import { catalogusAdministraties, isMonoKlant, landingsPad, planningMenuPad, type MijnToegangDto } from './useMijnToegang'
 
 /* Slimme landing + Planning-menu (steigerbouw-run C1/C2): pure beslislogica, fail-closed. */
 const A = { id: 'a1', naam: 'Universal Steigerbouw B.V.' }
@@ -31,5 +31,15 @@ describe('planningMenuPad (C2)', () => {
     expect(planningMenuPad({ ...basis, administraties_met_opt_in: ['a1'] })).toBeNull()
     expect(planningMenuPad({ ...basis, heeft_meerwerk_recht: true, administraties_met_opt_in: ['a1'] })).toBe('/planning?administratie=a1')
     expect(planningMenuPad({ ...basis, heeft_meerwerk_recht: true, administraties_met_opt_in: ['a1', 'a2'], is_beheerder: true })).toBe('/planning')
+  })
+})
+
+describe('catalogusAdministraties (Odoo-afrondingsrun 04-09 blok B)', () => {
+  it('leest `administraties_met_catalogus`; oudere response zonder dat veld = de opt-in-lijst; geen toegang = leeg', () => {
+    expect(catalogusAdministraties(null)).toEqual([])
+    expect(catalogusAdministraties(undefined)).toEqual([])
+    expect(catalogusAdministraties({ ...basis, administraties_met_opt_in: ['a1'] })).toEqual(['a1'])
+    expect(catalogusAdministraties({ ...basis, administraties_met_opt_in: ['a1'], administraties_met_catalogus: ['a1', 'a2'] })).toEqual(['a1', 'a2'])
+    expect(catalogusAdministraties({ ...basis, administraties_met_opt_in: ['a1'], administraties_met_catalogus: [] })).toEqual([])
   })
 })

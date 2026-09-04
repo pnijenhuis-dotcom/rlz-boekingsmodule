@@ -104,7 +104,7 @@ export const NAV_GROEPEN: readonly NavGroep[] = [
       {
         pad: 'materiaal',
         titel: 'Materiaalcatalogus',
-        uitleg: 'Steigerbouw: leveranciers, catalogus (verpakking, m²-lengte), bestel-mailadres, crediteur-koppeling.',
+        uitleg: 'Leveranciers, catalogus (verpakking, m²-lengte), bestel-mailadres, crediteur-koppeling — bij Uren & meerwerk óf een Odoo-koppeling (productbrug).',
         beheerder: true,
         // Besluit Peter 31-08 (spiegel van backend `require_beheerder_of_bp`): B+P bereikt de catalogus.
         rollen: ['boekhouding_projecten'],
@@ -288,7 +288,7 @@ export const REGISTRY: readonly RegistryEntry[] = [
     id: 'nav-materiaal',
     naam: 'Materiaalcatalogus',
     waar: 'nav-item Materiaalcatalogus',
-    synoniemen: ['materiaal', 'catalogus', 'steiger', 'steigerbouw', 'bestelling', 'bestellen', 'transport', 'leverancier', 'm2'],
+    synoniemen: ['materiaal', 'catalogus', 'steiger', 'steigerbouw', 'bestelling', 'bestellen', 'transport', 'leverancier', 'm2', 'odoo', 'product', 'producten', 'productbrug'],
     doel: { soort: 'sectie', sectie: 'materiaal' },
     beheerder: true,
   },

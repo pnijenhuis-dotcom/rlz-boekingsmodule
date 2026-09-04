@@ -18,6 +18,16 @@ export interface MijnToegangDto {
   // 04-09 (0.2): "+ Project aanmaken" volgt de aanmaak-rolpoort (óók Boekhouding) — server-side bron,
   // spiegel van `auth/rollen.ts::magProjectAanmaken`. Optioneel voor oudere responses (fail-closed).
   mag_project_aanmaken?: boolean
+  // Odoo-afrondingsrun 04-09 blok B (besluit Peter): administraties in scope mét toegang tot de
+  // MATERIAALCATALOGUS = uren-opt-in ÓF Odoo-backend ÓF Odoo-leesbron-koppeling. Optioneel voor oudere
+  // responses — dan valt `catalogusAdministraties` fail-closed terug op de opt-in-lijst.
+  administraties_met_catalogus?: string[]
+}
+
+/** Administraties waarvoor /instellingen/materiaal iets te tonen heeft (blok B 04-09). */
+export function catalogusAdministraties(toegang: MijnToegangDto | null | undefined): string[] {
+  if (!toegang) return []
+  return toegang.administraties_met_catalogus ?? toegang.administraties_met_opt_in
 }
 
 let cache: { waarde: MijnToegangDto | null; tijd: number } | null = null
