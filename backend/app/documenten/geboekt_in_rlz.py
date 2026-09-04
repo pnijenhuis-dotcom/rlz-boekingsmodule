@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -78,6 +78,10 @@ class GeboektInRlz:
     tegenboeking_boekstuknummer: str | None = None
     kruisverwijzing: str | None = None
     btw_override: bool = False
+    #: Slotstuk 04-09 (A2): leesbare regel als de adapter de boekdatum ná een Odoo-lock date heeft verschoven —
+    #: "boekdatum 01-01-2026 · factuurdatum 15-12-2025 valt in een in Odoo afgesloten periode". Uit het
+    #: GEBOEKT-detail `boekdatum_verschoven`; RLZ-boekingen dragen 'm nooit (byte-identiek).
+    boekdatum_verschoven: str | None = None
 
     def als_regel(self) -> str:
         """Eén leesbare regel: 'Geboekt in RLZ · boekstuk RLZ-01-00000442 · Universal Nederland B.V.' — of, voor
@@ -134,6 +138,29 @@ def _tekst(detail: dict | None, *sleutels: str) -> str | None:
         if isinstance(waarde, str) and waarde.strip():
             return waarde
     return None
+
+
+def _datum_nl(iso: object) -> str | None:
+    if not isinstance(iso, str) or len(iso) < 10:
+        return None
+    try:
+        return date.fromisoformat(iso[:10]).strftime("%d-%m-%Y")
+    except ValueError:
+        return None
+
+
+def boekdatum_verschoven_regel(detail: dict | None) -> str | None:
+    """A2 (slotstuk 04-09): uit het GEBOEKT-detail `boekdatum_verschoven {van, naar, …}` één leesbare regel voor
+    tooltip/detailkop — None als de boeking geen verschuiving draagt (alle RLZ-boekingen, Odoo zonder lock)."""
+    if not isinstance(detail, dict):
+        return None
+    blok = detail.get("boekdatum_verschoven")
+    if not isinstance(blok, dict):
+        return None
+    naar, van = _datum_nl(blok.get("naar")), _datum_nl(blok.get("van"))
+    if naar is None or van is None:
+        return None
+    return f"boekdatum {naar} · factuurdatum {van} valt in een in Odoo afgesloten periode"
 
 
 @dataclass(frozen=True)
@@ -281,6 +308,7 @@ def bepaal_geboekt_in_rlz(session: Session, documenten: list[Document]) -> dict[
                 tegenboeking_boekstuknummer=tegen_nr,
                 kruisverwijzing=f"Reversal · {tegen_nr} ↔ {boeking_nr}" if tegen_nr else None,
                 btw_override=bool(detail.get("btw_override")) if isinstance(detail, dict) else False,
+                boekdatum_verschoven=boekdatum_verschoven_regel(detail),
             )
             continue
         resultaat[d.id] = GeboektInRlz(

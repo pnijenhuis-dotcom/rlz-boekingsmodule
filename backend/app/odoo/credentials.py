@@ -40,8 +40,10 @@ class OdooVerbinding:
     #: Blok D: alleen-lezen-koppeling (Odoo = leesbron, boeken blijft in RLZ) + voorraad-knip.
     alleen_lezen: bool = False
     voorraad_knip_datum: date | None = None
-    #: Blok E (migratie 0104): overstap van een RLZ-administratie — factuurdatum < overgangsdatum = weigering
-    #: in de inkoop-adapter (hoort nog in RLZ). None = geen poort.
+    #: Blok E (migratie 0104), herzien slotstuk 04-09: KANTELDATUM — vanaf wanneer de administratie Odoo is; géén
+    #: poort op documenten. Nakomers mét een factuurdatum vóór deze datum boeken óók in Odoo (boekdatum verschuift
+    #: zo nodig ná de lock date, `fouten.bepaal_boekdatum`); wat al in Reeleezee geboekt was filtert de
+    #: duplicaatcheck over de backend-grens (`documenten/duplicaat_historie.py`). None = geen RLZ-verleden.
     overgangsdatum: date | None = None
 
 

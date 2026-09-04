@@ -25,6 +25,7 @@ from app.documenten.checks import (
     check_regeltelling,
     check_verplichte_velden,
     check_vervaldatum,
+    historie_melding,
     vervaldatum_signaal,
     voer_harde_checks_uit,
 )
@@ -94,6 +95,10 @@ class BoekvoorstelRegelData:
     # scan én geheugen niets hadden. Alleen op prefill-regels; komt uit `btw_afleiding_reden` van de
     # extractie (app/extractie/controle.py::leid_btw_af). Intern veld, niet in de DTO.
     btw_bewust_leeg: bool = False
+    # Slotstuk 04-09 (C1, migratie 0112): spoor van de hervertaling van een OPEN voorstel bij een Odoo-overstap
+    # (`app/odoo/hervertaling.py`) — per veld van→naar of "geen tegenhanger". Alleen op opgeslagen regels; de
+    # eerstvolgende PUT door de mens schrijft de regels opnieuw zonder dit spoor (chip verdwijnt, bewust).
+    overstap_vertaling: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -348,6 +353,22 @@ def _rlz_leesclient(administratie_id: uuid.UUID) -> RlzClient:
     return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
 
 
+def _historie_treffers(*, administratie_id: uuid.UUID, voorstel: BoekvoorstelData) -> list[dict]:
+    """Odoo-slotstuk 04-09 (`documenten/duplicaat_historie.py`): RLZ-era GEBOEKTE documenten met dezelfde kop,
+    alleen voor een overgestapte administratie — de live query van de Odoo-backend kent Reeleezee niet."""
+    from app.documenten.duplicaat_historie import geboekte_treffers_uit_historie
+
+    with scoped_session(administratie_id) as session:
+        return geboekte_treffers_uit_historie(
+            session,
+            administratie_id=administratie_id,
+            vendor_id=voorstel.vendor_id,
+            referentie=voorstel.referentie,
+            totaalbedrag=voorstel.totaalbedrag,
+            eigen_document_id=voorstel.document_id,
+        )
+
+
 def _project_verplicht(administratie_id: uuid.UUID) -> bool:
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
@@ -453,6 +474,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                         btw_bedrag=r.btw_bedrag,
                         omschrijving=r.omschrijving,
                         id=r.id,
+                        overstap_vertaling=r.overstap_vertaling,
                     )
                     for r in regels
                 ],
@@ -797,6 +819,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     factuur_btw_nummer: str | None,
     reden: str,
     gelezen_totalen: tuple[Decimal | None, Decimal | None] = (None, None),
+    historie_treffers: list[dict] | None = None,
 ) -> CheckRapport:
     """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
     fout, netwerkfout) — vóórdat check_duplicaat() de kans krijgt zijn eigen RlzApiError-vangnet te
@@ -833,7 +856,14 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 factuur_btw_nummer=factuur_btw_nummer,
             ),
             check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd),
-            CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"),
+            # Odoo-slotstuk 04-09: treffers uit de eigen RLZ-era-historie (overgestapte administratie) horen óók
+            # in de storings-tak thuis — de reden blijft rood, het boekstuk komt erbij.
+            CheckResultaat(
+                "Duplicaatcheck",
+                False,
+                f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"
+                + (f"; {historie_melding(historie_treffers)}" if historie_treffers else ""),
+            ),
         )
     )
 
@@ -908,6 +938,9 @@ def voer_checks_uit(
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
         project_verplicht = administratie.project_verplicht if administratie else False
+    # Odoo-slotstuk 04-09: duplicaat over de backend-grens — voor een OVERGESTAPTE administratie de in de app
+    # geboekte RLZ-era documenten met dezelfde kop (geen RLZ-/Odoo-call; leeg voor alle andere administraties).
+    historie_treffers = _historie_treffers(administratie_id=administratie_id, voorstel=voorstel)
 
     eigen_client = client is None
     eigen_port = None
@@ -928,6 +961,7 @@ def voer_checks_uit(
                 factuur_btw_nummer=factuur_btw_nummer,
                 reden=str(exc),
                 gelezen_totalen=gelezen_totalen,
+                historie_treffers=historie_treffers,
             )
     try:
         vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = leverancier_iban.seed_en_baseline_voor_checks(
@@ -968,6 +1002,7 @@ def voer_checks_uit(
             taxrate_namen=_taxrate_namen(administratie_id),
             totaal_excl=gelezen_totalen[0],
             factuur_btw=gelezen_totalen[1],
+            historie_treffers=historie_treffers,
         )
         # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
         # storings-tak), vóór de RLZ-afhankelijke checks.

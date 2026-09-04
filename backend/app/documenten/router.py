@@ -170,6 +170,7 @@ def _naar_geboekt_in_rlz(stand) -> schemas.GeboektInRlzDto | None:
         tegenboeking_boekstuknummer=stand.tegenboeking_boekstuknummer,
         kruisverwijzing=stand.kruisverwijzing,
         btw_override=stand.btw_override,
+        boekdatum_verschoven=stand.boekdatum_verschoven,
     )
 
 
@@ -195,6 +196,7 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
         btw_bron=r.btw_bron,
         gb_bron=r.gb_bron,
         gb_voorstel_detail=r.gb_voorstel_detail,
+        overstap_vertaling=r.overstap_vertaling,
     )
 
 

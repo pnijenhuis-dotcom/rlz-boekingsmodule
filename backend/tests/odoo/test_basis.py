@@ -1,5 +1,5 @@
 """Pure logica van de Odoo-adapter (geen DB, geen HTTP): id-vertaling, sentinel, stamgegevens-mapping,
-lock-date-poort, foutvertaling, btw-override-tolerantie, marker."""
+boekdatum-besluit + tegenboek-lock-poort, foutvertaling, btw-override-tolerantie, marker."""
 
 from __future__ import annotations
 
@@ -11,9 +11,10 @@ import pytest
 
 from app.odoo import sync as odoo_sync
 from app.odoo.client import OdooFout
-from app.odoo.fouten import lock_date_melding, overgangsdatum_melding, vertaal_odoo_fout
+from app.odoo.credentials import OdooVerbinding
+from app.odoo.fouten import lock_date_melding, vertaal_odoo_fout
 from app.odoo.ids import GEEN_BTW_ODOO_ID, is_odoo_sentinel, odoo_admin_sentinel, odoo_uuid
-from app.odoo.inkoop import BTW_OVERRIDE_TOLERANTIE, marker
+from app.odoo.inkoop import BTW_OVERRIDE_TOLERANTIE, OdooInkoopPort, marker
 from app.odoo.producten import product_code
 from app.rlz.credentials import GeenRlzCredentials, resolve_credentials
 
@@ -154,16 +155,59 @@ class TestPoortenEnFouten:
         assert lock_date_melding(boekdatum=date(2026, 1, 1), lock_dates=lock) is None
         assert lock_date_melding(boekdatum=date(2020, 1, 1), lock_dates={"hard_lock_date": None}) is None
 
-    def test_overgangsdatum_poort_weigert_facturen_van_voor_de_overstap(self) -> None:
-        overgang = date(2026, 9, 1)
-        melding = overgangsdatum_melding(factuurdatum=date(2026, 8, 31), overgangsdatum=overgang)
-        assert melding is not None
-        assert "2026-08-31" in melding and "2026-09-01" in melding
-        assert "hoort nog in Reeleezee" in melding and "Instellingen › Administraties" in melding
-        # Op de dag zelf en erna: geen poort; zonder overgangsdatum (bestaande koppelingen) nooit.
-        assert overgangsdatum_melding(factuurdatum=overgang, overgangsdatum=overgang) is None
-        assert overgangsdatum_melding(factuurdatum=date(2026, 9, 15), overgangsdatum=overgang) is None
-        assert overgangsdatum_melding(factuurdatum=date(2020, 1, 1), overgangsdatum=None) is None
+    def test_lock_date_poort_alleen_nog_voor_de_tegenboeking(self) -> None:
+        """Slotstuk 04-09: het boekpad verschuift (fouten.bepaal_boekdatum, tests/odoo/test_boekdatum.py); de
+        weigering blijft uitsluitend de tegenboek-poort — de adapter kent geen `_toets_overgangsdatum` meer."""
+        assert not hasattr(OdooInkoopPort, "_toets_overgangsdatum")
+        assert hasattr(OdooInkoopPort, "_toets_lock_dates") and hasattr(OdooInkoopPort, "_bepaal_boekdatum")
+        import app.odoo.fouten as fouten
+
+        assert not hasattr(fouten, "overgangsdatum_melding")
+
+    def test_overgangsdatum_is_kanteldatum_geen_poort_op_documenten(self) -> None:
+        """Besluit Peter 04-09 "geen blokkade": een document mét factuurdatum vóór de kanteldatum komt gewoon in het
+        boekpad — `_move_vals` bouwt de create-vals mét `invoice_date` = factuurdatum en `date` = de meegegeven
+        boekdatum; de kanteldatum speelt nergens mee (de dedup over de backend-grens filtert wat al in RLZ stond)."""
+        from decimal import Decimal as D
+
+        from app.documenten.boekvoorstel import BoekvoorstelData
+
+        kanteldatum = date(2026, 9, 1)
+        verbinding = OdooVerbinding(
+            administratie_id=uuid.uuid4(),
+            odoo_url="https://x.odoo.com",
+            company_id=1,
+            company_naam="Universal Steigerbouw",
+            journal_purchase_id=7,
+            journal_general_id=8,
+            journal_sale_id=9,
+            analytic_plan_id=2,
+            overgangsdatum=kanteldatum,
+        )
+
+        class _Client:
+            company_id = 1
+
+        port = OdooInkoopPort(verbinding.administratie_id, verbinding, client=_Client())  # type: ignore[arg-type]
+        document_id = uuid.uuid4()
+        voorstel = BoekvoorstelData(
+            document_id=document_id,
+            vendor_id=uuid.uuid4(),
+            referentie="F-NAKOMER-1",
+            factuurdatum=date(2026, 8, 20),  # vóór de kanteldatum
+            totaalbedrag=D("121.00"),
+            rlz_boekstuknummer=None,
+            opgeslagen=True,
+            regels=[],
+        )
+        vals = port._move_vals(document_id=document_id, voorstel=voorstel, partner_id=5, regels=[])
+        assert vals["invoice_date"] == "2026-08-20" and vals["date"] == "2026-08-20"
+        assert vals["invoice_origin"] == marker(document_id, 0) and vals["company_id"] == 1
+        # Mét een verschoven boekdatum (lock date geraakt) blijft de factuurdatum de factuurdatum.
+        vals = port._move_vals(
+            document_id=document_id, voorstel=voorstel, partner_id=5, regels=[], boekdatum=date(2026, 9, 1)
+        )
+        assert vals["invoice_date"] == "2026-08-20" and vals["date"] == "2026-09-01"
 
     def test_vertaal_odoo_fout_herkent_lock_balans_rechten(self) -> None:
         lock = OdooFout(
@@ -222,3 +266,47 @@ class TestEigenConceptHerkenning:
 
         odoo_sync.lees_projecten(_Client(), _Vertaler(), plan_id=1)
         assert ["active", "=", True] in gezien[0]
+
+
+class TestVerlegdeTaxratesNaOverstap:
+    """Generale 04-09 stap 6: ná een overstap staan de RLZ-btw-tarieven nog als `verdwenen_uit_bron_op` in de cache;
+    `_verlegde_taxrates` mag die niet meer meenemen (ze dragen geen Odoo-id → "account.tax … niet bekend" op élke
+    boeking). Alleen de actuele (Odoo-)verlegd-tarieven tellen."""
+
+    def test_verdwenen_rlz_verlegd_tarief_telt_niet_mee(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import types
+        from datetime import UTC, datetime
+
+        from app.sync.models import TaxRateCache
+
+        aid = uuid.uuid4()
+        rlz_verlegd = TaxRateCache(
+            id=uuid.uuid4(), administratie_id=aid, naam="NL, BTW verlegd (hoog)", brondata={"IsRelayed": True}
+        )
+        rlz_verlegd.verdwenen_uit_bron_op = datetime.now(UTC)
+        odoo_verlegd = TaxRateCache(id=uuid.uuid4(), administratie_id=aid, naam="21% R", brondata={"IsRelayed": True})
+        odoo_gewoon = TaxRateCache(id=uuid.uuid4(), administratie_id=aid, naam="21%", brondata={})
+        rijen = [rlz_verlegd, odoo_verlegd, odoo_gewoon]
+
+        class _Sessie:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return None
+
+            def scalars(self, stmt):
+                # Emuleer het WHERE-filter `verdwenen_uit_bron_op IS NULL` van de query letterlijk op de rijen.
+                sql = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+                assert "verdwenen_uit_bron_op IS NULL" in sql, sql
+                return [r for r in rijen if r.verdwenen_uit_bron_op is None]
+
+        import app.odoo.inkoop as inkoop_mod
+
+        monkeypatch.setattr(inkoop_mod, "scoped_session", lambda *a, **k: _Sessie())
+        verbinding = OdooVerbinding(
+            administratie_id=aid, odoo_url="https://x", company_id=1, company_naam=None,
+            journal_purchase_id=1, journal_general_id=None, journal_sale_id=None, analytic_plan_id=None,
+        )  # fmt: skip
+        port = OdooInkoopPort(aid, verbinding, client=types.SimpleNamespace(company_id=1))  # type: ignore[arg-type]
+        assert port._verlegde_taxrates() == {odoo_verlegd.id}

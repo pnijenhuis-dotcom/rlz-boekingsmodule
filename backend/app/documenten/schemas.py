@@ -308,6 +308,10 @@ class GeboektInRlzDto(BaseModel):
     tegenboeking_boekstuknummer: str | None = None
     kruisverwijzing: str | None = None
     btw_override: bool = False
+    # Slotstuk 04-09 (A2, additief): leesbare regel als de Odoo-adapter de boekdatum ná een lock date heeft
+    # verschoven — "boekdatum 01-01-2026 · factuurdatum 15-12-2025 valt in een in Odoo afgesloten periode".
+    # None voor RLZ-boekingen en Odoo-boekingen zonder verschuiving.
+    boekdatum_verschoven: str | None = None
 
 
 class VerplichtingMatchKortDto(BaseModel):
@@ -487,6 +491,11 @@ class BoekvoorstelRegelDto(BaseModel):
     # None = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Informatief — de server negeert ze bij opslaan.
     gb_bron: str | None = None
     gb_voorstel_detail: str | None = None
+    # Slotstuk 04-09 (C1, migratie 0112): hervertaling van een OPEN boekvoorstel bij een Odoo-overstap — per veld
+    # `grootboek`/`btw`/`project` een blok {van_id, van_code, van_naam, naar_id, naar_code, naar_naam} (vertaald) of
+    # {…, naar_id: None, reden} (geen Odoo-tegenhanger → veld leeg gelaten), plus `op` (iso). Informatief — de
+    # server negeert 'm bij opslaan; ná een PUT door de mens verdwijnt 'm (bewust: de keuze is dan de mens z'n keuze).
+    overstap_vertaling: dict | None = None
 
 
 class BoekvoorstelResponse(BaseModel):

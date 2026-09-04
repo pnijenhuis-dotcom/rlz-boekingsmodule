@@ -3,8 +3,13 @@
 
 Boeken (`boek_inkoopfactuur`), in deze volgorde — élke stap fail-loud, nooit stil:
  1. vertaling UUID → Odoo-int via `odoo_id_koppeling` (partner, rekening, btw, project) — onbekend = fout;
- 2. lock-date-poort: `date` (= factuurdatum, BookDate-lijn) op/vóór een Odoo-lock date = leesbare weigering
-    vóór de create (STAP-0 §3.5; K3: lock dates staan op 31-12-2025);
+ 2. boekdatum-besluit (slotstuk 04-09, `fouten.bepaal_boekdatum`): `date` = factuurdatum (BookDate-lijn), TENZIJ die
+    op/vóór een Odoo-lock date valt — dan verschuiven WIJ de boekdatum deterministisch naar (hoogste geraakte lock
+    date) + 1 dag = de eerste dag van de eerstvolgende open periode; `invoice_date` blijft de factuurdatum; zichtbaar
+    in het detail (`boekdatum_verschoven`) en ná het posten geverifieerd tegen wat Odoo terugleest (live bewijs A2:
+    Odoo weigert niet maar verschuift anders STIL naar het maandeinde). De overgangsdatum is sinds 04-09 een
+    KANTELDATUM, geen poort: nakomers van vóór de overstap boeken óók in Odoo, de duplicaatcheck over de
+    backend-grens (`documenten/duplicaat_historie.py`) filtert wat al in Reeleezee stond;
  3. idempotentie (§3.1): (a) eigen `odoo_document_koppeling` voor (document, boek_cyclus) → move terug-lezen
     (posted = klaar, draft = doorgaan, cancel = opnieuw); (b) anders zoeken op onze marker in `invoice_origin`
     (company, in_invoice, state ≠ cancel) — een create waarvan het antwoord verloren ging; (c) anders create;
@@ -47,7 +52,7 @@ from app.documenten.boekvoorstel import BoekvoorstelData
 from app.odoo import sync as odoo_sync
 from app.odoo.client import OdooClient, OdooFout
 from app.odoo.credentials import OdooVerbinding, koppeling_voor, odoo_client_voor
-from app.odoo.fouten import lock_date_melding, overgangsdatum_melding, vertaal_odoo_fout
+from app.odoo.fouten import BoekdatumBesluit, bepaal_boekdatum, lock_date_melding, vertaal_odoo_fout
 from app.odoo.ids import GEEN_BTW_ODOO_ID, odoo_uuid
 from app.odoo.models import OdooDocumentKoppeling
 from app.odoo.probe import lees_lock_dates
@@ -109,6 +114,12 @@ def eigen_id_uit_marker(invoice_origin: Any) -> str | None:
 
     maker = rlz_tegenboeking_id if delen[3] == "tegenboeking" else rlz_herboeking_id
     return str(maker(document_id, int(delen[2])))
+
+
+def _voeg_waarschuwing_toe(detail: dict[str, Any], tekst: str) -> None:
+    """Meerdere waarschuwingen op één boeking (boekdatum + bijlage) overschrijven elkaar niet."""
+    bestaand = detail.get("waarschuwing")
+    detail["waarschuwing"] = f"{bestaand}; {tekst}" if bestaand else tekst
 
 
 def _cent(waarde: Decimal | float | int | None) -> Decimal:
@@ -252,8 +263,16 @@ class OdooInkoopPort:
         return self._odoo_id("res.partner", vendor_id)
 
     def _verlegde_taxrates(self) -> set[uuid.UUID]:
+        """De verlegd-tarieven van de ACTUELE (Odoo-)stamgegevens. Alleen niet-verdwenen rijen: ná een overstap
+        (ingang B) staan de oude RLZ-tarieven nog in de cache als `verdwenen_uit_bron_op` — die dragen geen
+        Odoo-id en lieten élke boeking stranden op "account.tax … niet bekend" (generale 04-09, stap 6)."""
         with scoped_session(self.administratie_id) as session:
-            rijen = session.scalars(select(TaxRateCache).where(TaxRateCache.administratie_id == self.administratie_id))
+            rijen = session.scalars(
+                select(TaxRateCache).where(
+                    TaxRateCache.administratie_id == self.administratie_id,
+                    TaxRateCache.verdwenen_uit_bron_op.is_(None),
+                )
+            )
             return {r.id for r in rijen if (r.brondata or {}).get("IsRelayed")}
 
     def _vertaal_regels(self, document_id: uuid.UUID, voorstel: BoekvoorstelData) -> list[_Regel]:
@@ -381,19 +400,43 @@ class OdooInkoopPort:
 
     # --- poorten -----------------------------------------------------------------------------------
     def _toets_lock_dates(self, boekdatum: date) -> dict[str, date | None]:
+        """Tegenboek-poort: een reversal op boekdatum vandaag in een vergrendelde periode = leesbare weigering."""
         lock_dates = lees_lock_dates(self.client)
         melding = lock_date_melding(boekdatum=boekdatum, lock_dates=lock_dates)
         if melding:
             raise BackendBoekFout(melding)
         return lock_dates
 
-    def _toets_overgangsdatum(self, factuurdatum: date) -> None:
-        """Overstap-poort (blok E): een RLZ-administratie die op Odoo is overgestapt boekt alleen facturen
-        vanaf de overgangsdatum in Odoo — eerdere facturen horen nog in Reeleezee (leesbare weigering,
-        geen Odoo-call). Geen overgangsdatum = geen poort."""
-        melding = overgangsdatum_melding(factuurdatum=factuurdatum, overgangsdatum=self.verbinding.overgangsdatum)
-        if melding:
-            raise BackendBoekFout(melding)
+    def _bepaal_boekdatum(self, factuurdatum: date) -> BoekdatumBesluit:
+        """Boekpad (slotstuk 04-09): lock dates vers lezen en de boekdatum deterministisch bepalen — geen
+        weigering meer, wél een zichtbare verschuiving naar de eerste dag ná de hoogste geraakte lock date."""
+        return bepaal_boekdatum(factuurdatum=factuurdatum, lock_dates=lees_lock_dates(self.client))
+
+    def _verifieer_boekdatum(
+        self, move: dict[str, Any], *, besluit: BoekdatumBesluit | None, detail: dict[str, Any]
+    ) -> None:
+        """Post-write (slotstuk 04-09): legt een verschuiving vast in het detail en toetst de teruggelezen
+        `date` tegen ons besluit. Afwijking = zichtbare waarschuwing + log (de boeking stáát; raisen zou een
+        geposte boeking als mislukt tonen). Geen besluit (hergebruikt gepost document) = niets te toetsen."""
+        if besluit is None:
+            return
+        if besluit.verschoven:
+            assert besluit.verschoven_van is not None and besluit.lock_datum is not None
+            detail["boekdatum_verschoven"] = {
+                "van": besluit.verschoven_van.isoformat(),
+                "naar": besluit.boekdatum.isoformat(),
+                "lock_veld": besluit.lock_veld,
+                "lock_datum": besluit.lock_datum.isoformat(),
+                "reden": besluit.reden,
+            }
+        gelezen = move.get("date")
+        if isinstance(gelezen, str) and gelezen[:10] != besluit.boekdatum.isoformat():
+            tekst = (
+                f"Odoo zette de boekdatum op {gelezen[:10]} i.p.v. de door ons bepaalde "
+                f"{besluit.boekdatum.isoformat()} — controleer de periode van deze boeking in Odoo"
+            )
+            logger.warning("Odoo-document %s: %s", move.get("name") or move.get("id"), tekst)
+            _voeg_waarschuwing_toe(detail, tekst)
 
     def _verifieer_company(self, move: dict[str, Any], *, document_id: uuid.UUID) -> None:
         """De heilige poort: staat het document op de company van de administratie? Anders kritiek."""
@@ -440,7 +483,13 @@ class OdooInkoopPort:
         return vals
 
     def _move_vals(
-        self, *, document_id: uuid.UUID, voorstel: BoekvoorstelData, partner_id: int, regels: list[_Regel]
+        self,
+        *,
+        document_id: uuid.UUID,
+        voorstel: BoekvoorstelData,
+        partner_id: int,
+        regels: list[_Regel],
+        boekdatum: date | None = None,
     ) -> dict:
         if self.verbinding.journal_purchase_id is None:
             raise BackendBoekFout("Odoo-koppeling zonder inkoopdagboek — voer de rechten-probe opnieuw uit")
@@ -452,9 +501,11 @@ class OdooInkoopPort:
             "partner_id": partner_id,
             "ref": voorstel.referentie,
             "invoice_origin": marker(document_id, voorstel.boek_cyclus),
+            # Factuurdatum blijft ALTIJD de factuurdatum (vervaldatum/betaaltermijn/rapportage volgen 'm).
             "invoice_date": voorstel.factuurdatum.isoformat(),
-            # Boekdatum = factuurdatum, EXPLICIET (Odoo-default = maandeinde — STAP-0 §2.2 A3/A4).
-            "date": voorstel.factuurdatum.isoformat(),
+            # Boekdatum EXPLICIET (Odoo-default = maandeinde — STAP-0 §2.2 A3/A4): = factuurdatum, of de door
+            # `bepaal_boekdatum` verschoven datum ná een lock date (slotstuk 04-09) — nooit Odoo laten kiezen.
+            "date": (boekdatum or voorstel.factuurdatum).isoformat(),
             "invoice_line_ids": [[0, 0, self._regel_vals(r)] for r in regels],
         }
         if voorstel.betalingskenmerk:
@@ -465,11 +516,19 @@ class OdooInkoopPort:
         return vals
 
     def _ververs_concept(
-        self, move_id: int, *, voorstel: BoekvoorstelData, partner_id: int, regels: list[_Regel]
+        self,
+        move_id: int,
+        *,
+        voorstel: BoekvoorstelData,
+        partner_id: int,
+        regels: list[_Regel],
+        boekdatum: date | None = None,
     ) -> None:
         """Kop + regels van een hergebruikt CONCEPT gelijktrekken met het actuele voorstel: `[5, 0, 0]` wist
         alle regels, daarna de verse regels — company/dagboek/marker blijven ongewijzigd."""
-        vals = self._move_vals(document_id=uuid.UUID(int=0), voorstel=voorstel, partner_id=partner_id, regels=regels)
+        vals = self._move_vals(
+            document_id=uuid.UUID(int=0), voorstel=voorstel, partner_id=partner_id, regels=regels, boekdatum=boekdatum
+        )
         for sleutel in ("move_type", "company_id", "journal_id", "invoice_origin"):
             vals.pop(sleutel, None)
         vals["invoice_line_ids"] = [[5, 0, 0], *[[0, 0, self._regel_vals(r)] for r in regels]]
@@ -563,12 +622,20 @@ class OdooInkoopPort:
             raise BackendBoekFout(str(exc)) from exc
 
         detail: dict[str, Any] = {"backend": Backend.ODOO.value, "odoo_company_id": self.client.company_id}
+        # Boekdatum-besluit (slotstuk 04-09): alleen op het pad waar wij `date` zetten (create / concept verversen);
+        # een al gepost hergebruikt document draagt zijn eerder bepaalde boekdatum — geen herbeoordeling.
+        besluit: BoekdatumBesluit | None = None
         try:
             move = self._bestaande_move(document_id, voorstel.boek_cyclus, "boeking")
             if move is None:
-                self._toets_overgangsdatum(voorstel.factuurdatum)
-                self._toets_lock_dates(voorstel.factuurdatum)
-                vals = self._move_vals(document_id=document_id, voorstel=voorstel, partner_id=partner_id, regels=regels)
+                besluit = self._bepaal_boekdatum(voorstel.factuurdatum)
+                vals = self._move_vals(
+                    document_id=document_id,
+                    voorstel=voorstel,
+                    partner_id=partner_id,
+                    regels=regels,
+                    boekdatum=besluit.boekdatum,
+                )
                 move_id = self.client.create(MODEL_MOVE, vals)
                 move = self._lees_move(move_id)
                 if move is None:
@@ -588,8 +655,10 @@ class OdooInkoopPort:
                     # geweigerd — bv. gearchiveerde analytische rekening) draagt de REGELS VAN TOEN. Het actuele
                     # boekvoorstel is de waarheid: kop + regels vervangen (RLZ-equivalent: her-PUT vervangt de
                     # DocumentLineList), daarna pas posten.
-                    self._toets_lock_dates(voorstel.factuurdatum)
-                    self._ververs_concept(move_id, voorstel=voorstel, partner_id=partner_id, regels=regels)
+                    besluit = self._bepaal_boekdatum(voorstel.factuurdatum)
+                    self._ververs_concept(
+                        move_id, voorstel=voorstel, partner_id=partner_id, regels=regels, boekdatum=besluit.boekdatum
+                    )
                     move = self._lees_move(move_id) or move
                     detail["odoo_concept_ververst"] = True
                 overrides = self._btw_override(move_id, regels, verlegd_ids)
@@ -629,6 +698,7 @@ class OdooInkoopPort:
             self._leg_koppeling_vast(
                 document_id=document_id, boek_cyclus=voorstel.boek_cyclus, soort="boeking", move=move
             )
+            self._verifieer_boekdatum(move, besluit=besluit, detail=detail)
         except BackendBoekFout:
             raise
         except OdooFout as exc:
@@ -639,7 +709,7 @@ class OdooInkoopPort:
         except Exception as exc:  # noqa: BLE001 — de boeking stáát; de bijlage-fout is een zichtbare waarschuwing
             logger.exception("Bijlage op Odoo-document %s mislukt", move_id)
             detail["bijlage"] = f"MISLUKT: {vertaal_odoo_fout(exc)}"
-            detail["waarschuwing"] = "bijlage niet gekoppeld in Odoo — later opnieuw koppelen"
+            _voeg_waarschuwing_toe(detail, "bijlage niet gekoppeld in Odoo — later opnieuw koppelen")
 
         detail.update(
             {

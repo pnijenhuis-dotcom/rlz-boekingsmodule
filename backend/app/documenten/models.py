@@ -263,6 +263,11 @@ class BoekvoorstelRegel(Base):
     netto_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     btw_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     omschrijving: Mapped[str | None] = mapped_column(default=None)
+    # Slotstuk 04-09 (C1, migratie 0112): spoor van de hervertaling bij een Odoo-overstap — {"op": iso,
+    # "grootboek"/"btw"/"project": {van_id, van_code, van_naam, naar_id, naar_code, naar_naam} óf {…, naar_id: None,
+    # reden}} per geraakt veld (`app/odoo/hervertaling.py`). NULL = niet hervertaald. Een PUT door de mens schrijft
+    # de regels opnieuw zónder dit spoor (bewust — de keuze is dan de mens z'n keuze).
+    overstap_vertaling: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), default=None)
 
 
 class LeverancierVoorkeur(Base):

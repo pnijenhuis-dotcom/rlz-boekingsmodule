@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -268,6 +269,7 @@ def check_duplicaat(
     totaalbedrag: Decimal | None,
     eigen_rlz_document_id: uuid.UUID,
     uitgezonderde_rlz_document_ids: frozenset[uuid.UUID] = frozenset(),
+    historie_treffers: Sequence[dict] = (),
 ) -> CheckResultaat:
     """Eigen duplicaatquery (RLZ's actie 138 geeft geen bruikbaar signaal, besluit 0013): zoekt
     op Entity+Reference(afgekapt op 30 tekens, zie RlzClient.find_purchase_invoices_by_reference)
@@ -282,27 +284,56 @@ def check_duplicaat(
     Een falende RLZ-aanroep hier mag nooit als kale 500 bij de gebruiker terechtkomen — zonder
     duplicaatcheck is boeken net zo onverantwoord als met een echte duplicaat-hit, dus dit
     resultaat blijft blokkerend, maar wél als een normaal (herkenbaar) checkresultaat i.p.v. een
-    onafgevangen exception die de hele PUT/checks-aanroep laat crashen."""
+    onafgevangen exception die de hele PUT/checks-aanroep laat crashen.
+
+    `historie_treffers` (Odoo-slotstuk 04-09, `documenten/duplicaat_historie.py`): documenten die vóór een overstap
+    al in Reeleezee geboekt zijn — de live query van de Odoo-backend ziet die niet. Aanwezig = rood mét boekstuk,
+    ongeacht de live uitkomst (dedup op `id`, zelfde uitzonderingen)."""
     if vendor_id is None or not referentie:
         return CheckResultaat("Duplicaatcheck", False, "Kan niet controleren zonder crediteur en referentie")
     bedrag = float(totaalbedrag) if totaalbedrag is not None else None
+    uitgezonderd = {str(eigen_rlz_document_id)} | {str(i) for i in uitgezonderde_rlz_document_ids}
+    historie = [t for t in historie_treffers if str(t.get("id")) not in uitgezonderd]
     try:
         gevonden = client.find_purchase_invoices_by_reference(
             vendor_id=vendor_id, reference=referentie, total_amount=bedrag
         )
     except RlzApiError as exc:
-        return CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {exc}")
-    except Exception as exc:  # noqa: BLE001 — bewust breed: elke RLZ-connectiefout blokkeert, crasht nooit
-        return CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {exc}")
-    uitgezonderd = {str(eigen_rlz_document_id)} | {str(i) for i in uitgezonderde_rlz_document_ids}
-    anderen = [f for f in gevonden if f.get("id") not in uitgezonderd]
-    if anderen:
         return CheckResultaat(
-            "Duplicaatcheck",
-            False,
-            f"{len(anderen)} bestaande factuur/facturen in RLZ met dezelfde crediteur, referentie en bedrag",
+            "Duplicaatcheck", False, _met_historie(f"Duplicaatcheck kon niet uitgevoerd worden: {exc}", historie)
         )
+    except Exception as exc:  # noqa: BLE001 — bewust breed: elke RLZ-connectiefout blokkeert, crasht nooit
+        return CheckResultaat(
+            "Duplicaatcheck", False, _met_historie(f"Duplicaatcheck kon niet uitgevoerd worden: {exc}", historie)
+        )
+    historie_ids = {str(t.get("id")) for t in historie}
+    anderen = [f for f in gevonden if f.get("id") not in uitgezonderd and str(f.get("id")) not in historie_ids]
+    if anderen or historie:
+        delen = []
+        if anderen:
+            delen.append(
+                f"{len(anderen)} bestaande factuur/facturen in RLZ met dezelfde crediteur, referentie en bedrag"
+            )
+        if historie:
+            delen.append(historie_melding(historie))
+        return CheckResultaat("Duplicaatcheck", False, "; ".join(delen))
     return CheckResultaat("Duplicaatcheck", True, "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag")
+
+
+def historie_melding(historie: Sequence[dict]) -> str:
+    """Rode melding voor treffers uit de eigen historie (Odoo-slotstuk 04-09): al geboekt in Reeleezee vóór de
+    overstap, mét boekstuknummer(s) zodat de controleur 'm in RLZ terugvindt."""
+    from app.documenten.duplicaat_historie import boekstukken
+
+    n = len(historie)
+    return (
+        f"{n} factu{'ur' if n == 1 else 'ren'} met dezelfde crediteur, referentie en bedrag al geboekt in Reeleezee "
+        f"vóór de overstap (boekstuk {boekstukken(list(historie))})"
+    )
+
+
+def _met_historie(melding: str, historie: Sequence[dict]) -> str:
+    return f"{melding}; {historie_melding(historie)}" if historie else melding
 
 
 def check_iban_wissel(
@@ -384,6 +415,7 @@ def voer_harde_checks_uit(
     taxrate_namen: dict[uuid.UUID, str] | None = None,
     totaal_excl: Decimal | None = None,
     factuur_btw: Decimal | None = None,
+    historie_treffers: Sequence[dict] = (),
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -425,6 +457,7 @@ def voer_harde_checks_uit(
                 totaalbedrag=totaalbedrag,
                 eigen_rlz_document_id=eigen_rlz_document_id,
                 uitgezonderde_rlz_document_ids=uitgezonderde_rlz_document_ids,
+                historie_treffers=historie_treffers,
             ),
             check_duplicaat_over_crediteuren(
                 client=client,

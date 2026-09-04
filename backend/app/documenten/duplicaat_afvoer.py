@@ -59,7 +59,7 @@ from app.db.audit import record_audit_event
 from app.db.models import DuplicaatAfvoerInstelling
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import afwijzen
+from app.documenten import afwijzen, vragen
 from app.documenten.crediteur_kenmerk import btw_per_vendor
 from app.documenten.models import (
     Afwijzing,
@@ -74,7 +74,6 @@ from app.documenten.models import (
 )
 from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.statusmachine import OngeldigeStatusovergang
-from app.documenten import vragen
 from app.documenten.vragen import GeenToewijzingMogelijk, ToegewezeneBuitenScope
 
 logger = logging.getLogger(__name__)
@@ -319,12 +318,39 @@ def _origineel_uit_geboekt_lid(session: Session, lid: _Lid, treffers: list[dict]
     )
 
 
+def _origineel_uit_historie_treffer(session: Session, t: dict, referentie: str) -> Origineel | None:
+    """Odoo-slotstuk 04-09: een treffer uit de eigen RLZ-era-historie (`duplicaat_historie.py`, bron
+    `app_historie`) ís een app-document — koppel het als volwaardig geboekt origineel (bestandsnaam, datum,
+    boekstuk), ook als dat document zelf geen duplicaat_signaal-kop (meer) heeft."""
+    if t.get("bron") != "app_historie":
+        return None
+    document_id = _als_uuid(t.get("document_id"))
+    document = session.get(Document, document_id) if document_id is not None else None
+    if document is None:
+        return None
+    voorstel = session.get(Boekvoorstel, document.id)
+    return Origineel(
+        bron="geboekt",
+        referentie=str(t.get("reference") or referentie),
+        document_id=document.id,
+        rlz_document_id=_als_uuid(t.get("id")),
+        boekstuknummer=(voorstel.rlz_boekstuknummer if voorstel is not None else None)
+        or (str(t["invoice_number"]) if t.get("invoice_number") else None),
+        bestandsnaam=document.bestandsnaam,
+        aangemaakt_op=document.aangemaakt_op,
+        status=document.status.value,
+    )
+
+
 def _bepaal_origineel(session: Session, *, groep: list[_Lid], treffers: list[dict], referentie: str) -> Origineel:
     geboekt = sorted((lid for lid in groep if lid.status == DocumentStatus.GEBOEKT), key=_rang)
     if geboekt:
         return _origineel_uit_geboekt_lid(session, geboekt[0], treffers)
     if treffers:
         t = treffers[0]
+        uit_historie = _origineel_uit_historie_treffer(session, t, referentie)
+        if uit_historie is not None:
+            return uit_historie
         return Origineel(
             bron="geboekt",
             referentie=str(t.get("reference") or referentie),

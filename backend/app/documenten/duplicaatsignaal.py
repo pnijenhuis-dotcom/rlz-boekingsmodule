@@ -42,13 +42,18 @@ class DuplicaatSignaalData:
 
 
 def _treffer_kort(factuur: dict) -> dict:
-    """Alleen de herleidbare kern van een RLZ-treffer (geen hele RLZ-records in de cache)."""
-    return {
+    """Alleen de herleidbare kern van een RLZ-treffer (geen hele RLZ-records in de cache). Een treffer uit de eigen
+    historie (Odoo-slotstuk 04-09, `duplicaat_historie.py`) houdt zijn `bron`/`document_id`/`backend`, zodat de
+    afvoer het origineel als app-document kan koppelen."""
+    kort = {
         "id": factuur.get("id"),
         "reference": factuur.get("Reference"),
         "invoice_number": factuur.get("InvoiceNumber"),
         "status": (factuur.get("Status") or {}).get("id") if isinstance(factuur.get("Status"), dict) else None,
     }
+    if factuur.get("bron") == "app_historie":
+        kort.update({"bron": "app_historie", "document_id": factuur.get("document_id"), "backend": "rlz"})
+    return kort
 
 
 def bereken_duplicaatsignaal(
@@ -78,6 +83,20 @@ def bereken_duplicaatsignaal(
         uitkomst = DuplicaatSignaalUitkomst.NIET_TOETSBAAR
         melding = "Crediteur, referentie en totaalbedrag zijn nog niet alle drie bekend"
     else:
+        # Odoo-slotstuk 04-09: duplicaat over de backend-grens — RLZ-era GEBOEKTE documenten uit de eigen historie
+        # (alleen voor een overgestapte administratie; geen externe call). Meegenomen náást de live treffers, óók
+        # als de live query faalt: een bekend RLZ-duplicaat mag nooit achter 'onbekend' verdwijnen.
+        from app.documenten.duplicaat_historie import geboekte_treffers_uit_historie, voeg_historie_toe
+
+        with scoped_session(administratie_id) as session:
+            historie = geboekte_treffers_uit_historie(
+                session,
+                administratie_id=administratie_id,
+                vendor_id=voorstel.vendor_id,
+                referentie=voorstel.referentie,
+                totaalbedrag=voorstel.totaalbedrag,
+                eigen_document_id=document_id,
+            )
         eigen_client = client is None
         eigen_port = None
         try:
@@ -106,7 +125,10 @@ def bereken_duplicaatsignaal(
                     eigen_port.__exit__(None, None, None)
                 except Exception:  # noqa: BLE001
                     logger.debug("Sluiten backend-verbinding mislukt", exc_info=True)
+        if gevonden is None and historie:
+            gevonden = []  # live onbekend, maar de historie is hard — signaal mét treffers, niet 'onbekend'
         if gevonden is not None:
+            gevonden = voeg_historie_toe(gevonden, historie)
             keten = {str(rlz_herboeking_id(document_id, c)) for c in range(voorstel.boek_cyclus + 1)} | {
                 str(rlz_tegenboeking_id(document_id, c)) for c in range(voorstel.boek_cyclus + 1)
             }
@@ -114,7 +136,12 @@ def bereken_duplicaatsignaal(
             treffers = [_treffer_kort(f) for f in anderen]
             if anderen:
                 uitkomst = DuplicaatSignaalUitkomst.MOGELIJK_DUPLICAAT
-                melding = f"{len(anderen)} bestaande factuur/facturen in RLZ met dezelfde crediteur, referentie en bedrag"
+                n_historie = sum(1 for f in anderen if f.get("bron") == "app_historie")
+                melding = (
+                    f"{len(anderen)} bestaande factuur/facturen in RLZ met dezelfde crediteur, referentie en bedrag"
+                )
+                if n_historie:
+                    melding += f" (waarvan {n_historie} al geboekt in Reeleezee vóór de overstap)"
             else:
                 uitkomst = DuplicaatSignaalUitkomst.GEEN
                 melding = None
