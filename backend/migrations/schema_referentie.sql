@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0110
+-- Migratie-head bij deze dump: 0111
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1767,6 +1767,34 @@ CREATE TABLE boekhouding.odoo_product_koppeling (
 );
 
 ALTER TABLE ONLY boekhouding.odoo_product_koppeling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: odoo_rekening_mapping; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.odoo_rekening_mapping (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    soort character varying(16) NOT NULL,
+    rlz_id uuid NOT NULL,
+    rlz_code text,
+    rlz_naam text,
+    odoo_lokaal_id uuid NOT NULL,
+    odoo_id integer NOT NULL,
+    odoo_code text,
+    odoo_naam text,
+    bron character varying(16) NOT NULL,
+    versie integer NOT NULL,
+    bevestigd_door uuid NOT NULL,
+    bevestigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_odoo_rekening_mapping_bron CHECK (((bron)::text = ANY ((ARRAY['zelfde_code'::character varying, 'code_verlengd'::character varying, 'tarief'::character varying, 'handmatig'::character varying])::text[]))),
+    CONSTRAINT ck_odoo_rekening_mapping_odoo_id CHECK ((odoo_id >= 0)),
+    CONSTRAINT ck_odoo_rekening_mapping_soort CHECK (((soort)::text = ANY ((ARRAY['grootboek'::character varying, 'btw'::character varying])::text[]))),
+    CONSTRAINT ck_odoo_rekening_mapping_versie CHECK ((versie >= 1))
+);
+
+ALTER TABLE ONLY boekhouding.odoo_rekening_mapping FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4050,6 +4078,14 @@ ALTER TABLE ONLY boekhouding.odoo_product_koppeling
 
 
 --
+-- Name: odoo_rekening_mapping odoo_rekening_mapping_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_rekening_mapping
+    ADD CONSTRAINT odoo_rekening_mapping_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: omzet_boeking omzet_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4375,6 +4411,14 @@ ALTER TABLE ONLY boekhouding.odoo_document_koppeling
 
 ALTER TABLE ONLY boekhouding.odoo_id_koppeling
     ADD CONSTRAINT uq_odoo_id_koppeling_lokaal UNIQUE (administratie_id, lokaal_id);
+
+
+--
+-- Name: odoo_rekening_mapping uq_odoo_rekening_mapping_versie; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_rekening_mapping
+    ADD CONSTRAINT uq_odoo_rekening_mapping_versie UNIQUE (administratie_id, soort, rlz_id, versie);
 
 
 --
@@ -5478,6 +5522,13 @@ CREATE INDEX ix_odoo_document_koppeling_administratie_id ON boekhouding.odoo_doc
 --
 
 CREATE INDEX ix_odoo_document_koppeling_move ON boekhouding.odoo_document_koppeling USING btree (company_id, odoo_move_id);
+
+
+--
+-- Name: ix_odoo_rekening_mapping_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_odoo_rekening_mapping_administratie_id ON boekhouding.odoo_rekening_mapping USING btree (administratie_id);
 
 
 --
@@ -7638,6 +7689,22 @@ ALTER TABLE ONLY boekhouding.odoo_product_koppeling
 
 
 --
+-- Name: odoo_rekening_mapping odoo_rekening_mapping_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_rekening_mapping
+    ADD CONSTRAINT odoo_rekening_mapping_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: odoo_rekening_mapping odoo_rekening_mapping_bevestigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.odoo_rekening_mapping
+    ADD CONSTRAINT odoo_rekening_mapping_bevestigd_door_fkey FOREIGN KEY (bevestigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: omzet_boeking omzet_boeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -9770,6 +9837,19 @@ ALTER TABLE boekhouding.odoo_product_koppeling ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY odoo_product_koppeling_scope ON boekhouding.odoo_product_koppeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: odoo_rekening_mapping; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.odoo_rekening_mapping ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: odoo_rekening_mapping odoo_rekening_mapping_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY odoo_rekening_mapping_scope ON boekhouding.odoo_rekening_mapping USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

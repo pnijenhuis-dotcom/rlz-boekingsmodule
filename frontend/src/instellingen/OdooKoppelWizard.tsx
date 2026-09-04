@@ -8,10 +8,13 @@ import {
   ODOO_SYNC_ONDERDELEN,
   odooOverstap,
   testOdooVerbinding,
+  voorbereidOdooOverstap,
   type OdooCompanyDto,
   type OdooGekoppeldeAdministratieDto,
+  type OdooOverstapVoorbereidingDto,
   type OdooProbeDto,
 } from './instellingenApi'
+import { mappingCompleet, mappingInvoer, mappingSleutel, OdooMappingTabel, rijenUitVoorbereiding, type MappingTabelRij } from './OdooMappingTabel'
 import { datumNl, odooKoppelFout, odooProbeGroen, OdooProbeRapport, odooProbeSamenvatting } from './odooProbe'
 
 /** Odoo-koppelwizard — één component, twee ingangen (besluit Peter 03-09, mockup odoo-koppeling-ui.html §2;
@@ -25,10 +28,16 @@ import { datumNl, odooKoppelFout, odooProbeGroen, OdooProbeRapport, odooProbeSam
  * Poort = die van de RLZ-wizard: de server draait de rechten-probe en slaat alleen groen op — een 422 toont het
  * rapport rood mét de foutregels en de wizard blijft op zijn stap. De API-sleutel leeft alleen in component-state
  * en de request-body; geen enkele response draagt 'm terug. Afwijking van de mockup-placeholder "URL · database ·
- * API-sleutel": er is bewust GEEN database-veld — de JSON-2-URL bindt de database al (odoo-verkenning STAP-0). */
+ * API-sleutel": er is bewust GEEN database-veld — de JSON-2-URL bindt de database al (odoo-verkenning STAP-0).
+ *
+ * Blok A 04-09 (besluit Peter, beslispunt 1 van "ODOO-ADAPTER BLOK E"): de VOLLEDIGE overstap heeft een verplichte
+ * mapping-stap RLZ-grootboek → Odoo-account en RLZ-btw → Odoo-tax. "Verder" op de company-stap roept
+ * POST …/odoo/overstap/voorbereiden aan (voorvalidaties + probe — 422 = rapport rood, wizard blijft staan — en het
+ * deterministische voorstel, niets persistent); de mens bevestigt de hele tabel, pas dán POST …/odoo/overstap mét
+ * `mapping`. Zo blijft het boekingsgeheugen (en de autoboek-opt-ins) ná de overstap werken. */
 
 export type OdooKoppelvorm = 'volledig' | 'leesbron'
-type StapId = 'koppelvorm' | 'verbinding' | 'company' | 'knip' | 'resultaat'
+type StapId = 'koppelvorm' | 'verbinding' | 'company' | 'mapping' | 'knip' | 'resultaat'
 
 export const ODOO_KNIP_DEFAULT = '2026-09-01'
 
@@ -44,9 +53,21 @@ interface Props {
   onSluiten: () => void
 }
 
+/** Het servervoorstel voor een rij (id + reden) — om ná een handmatige wijziging te herkennen dat de mens terug op
+ * het voorstel staat (chip weer groen/oranje i.p.v. "handmatig"). */
+function voorstelVoor(v: OdooOverstapVoorbereidingDto | null, rij: MappingTabelRij): { odoo_id: number; reden: MappingTabelRij['bron'] } | null {
+  if (!v) return null
+  const bron = rij.soort === 'grootboek' ? v.grootboek.find((r) => r.rlz_id === rij.rlz_id) : v.btw.find((r) => r.rlz_id === rij.rlz_id)
+  if (!bron || bron.voorstel_odoo_id == null) return null
+  const reden = bron.reden
+  return { odoo_id: bron.voorstel_odoo_id, reden: reden === 'zelfde_code' || reden === 'code_verlengd' || reden === 'tarief' ? reden : 'handmatig' }
+}
+
 function stappenVoor(ingang: Props['ingang'], vorm: OdooKoppelvorm): StapId[] {
   if (ingang === 'nieuw') return ['verbinding', 'company', 'resultaat']
-  return vorm === 'leesbron' ? ['koppelvorm', 'verbinding', 'company', 'knip', 'resultaat'] : ['koppelvorm', 'verbinding', 'company', 'resultaat']
+  return vorm === 'leesbron'
+    ? ['koppelvorm', 'verbinding', 'company', 'knip', 'resultaat']
+    : ['koppelvorm', 'verbinding', 'company', 'mapping', 'resultaat']
 }
 
 export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTerug, onKlaar, onSluiten }: Props) {
@@ -64,6 +85,8 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
   const [fout, setFout] = useState<{ bericht: string; rapport: Record<string, string> | null } | null>(null)
   const [gekoppeld, setGekoppeld] = useState<OdooGekoppeldeAdministratieDto[]>([])
   const [leesbronProbe, setLeesbronProbe] = useState<OdooProbeDto | null>(null)
+  const [voorbereiding, setVoorbereiding] = useState<OdooOverstapVoorbereidingDto | null>(null)
+  const [mappingRijen, setMappingRijen] = useState<MappingTabelRij[]>([])
 
   const index = stappen.indexOf(stap)
   const titel =
@@ -98,6 +121,36 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
 
   const verbinding = () => ({ odoo_url: odooUrl.trim(), api_key: apiKey, ...(apiGebruiker.trim() ? { api_gebruiker: apiGebruiker.trim() } : {}) })
 
+  /** Volledige overstap: probe + mappingvoorstel ophalen (niets persistent) en door naar de mapping-stap. */
+  const voorbereiden = async () => {
+    if (!administratie) return
+    setBezig(true)
+    setFout(null)
+    try {
+      const resp = await voorbereidOdooOverstap(administratie.id, { ...verbinding(), company_id: gekozen[0] })
+      setVoorbereiding(resp)
+      setMappingRijen(rijenUitVoorbereiding(resp))
+      naar('mapping')
+    } catch (err) {
+      setFout(odooKoppelFout(err))
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  const kiesMapping = (rij: MappingTabelRij, odooId: number | null) => {
+    const sleutel = mappingSleutel(rij.soort, rij.rlz_id)
+    setMappingRijen((huidig) =>
+      huidig.map((r) => {
+        if (mappingSleutel(r.soort, r.rlz_id) !== sleutel) return r
+        // Terug op het voorstel = de voorstel-reden terug; iets anders = handmatig (zo legt de server het ook vast).
+        const voorstel = voorstelVoor(voorbereiding, r)
+        const bron = odooId == null ? null : voorstel && voorstel.odoo_id === odooId ? voorstel.reden : 'handmatig'
+        return { ...r, odoo_id: odooId, bron }
+      }),
+    )
+  }
+
   const opslaan = async () => {
     setBezig(true)
     setFout(null)
@@ -108,7 +161,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
       } else if (!administratie) {
         throw new Error('Geen administratie')
       } else if (vorm === 'volledig') {
-        const resp = await odooOverstap(administratie.id, { ...verbinding(), company_id: gekozen[0], overgangsdatum })
+        const resp = await odooOverstap(administratie.id, { ...verbinding(), company_id: gekozen[0], overgangsdatum, mapping: mappingInvoer(mappingRijen) })
         setGekoppeld([resp])
       } else {
         const resp = await koppelOdooLeesbron(administratie.id, { ...verbinding(), company_id: gekozen[0], voorraad_knip_datum: knip || null })
@@ -126,6 +179,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
 
   const companyNaam = (id: number) => companies.find((c) => c.company_id === id)?.naam ?? null
   const kanOpslaan = gekozen.length > 0 && !(ingang === 'bestaand' && vorm === 'volledig' && !overgangsdatum)
+  const mappingKlaar = mappingCompleet(mappingRijen)
 
   return (
     <>
@@ -141,6 +195,8 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
             : vorm === 'volledig'
               ? 'Kies de company waarin deze administratie vanaf de overgangsdatum boekt. Vóór het opslaan draait de rechten-probe inclusief schrijfrecht — die moet groen zijn, anders wordt niets opgeslagen.'
               : 'Kies de company waarvan de verkoopfacturen als leesbron dienen. De leesprobe (alleen leesrechten) moet groen zijn — er wordt in deze vorm nooit in Odoo geschreven.')}
+        {stap === 'mapping' &&
+          'Vertaal de Reeleezee-grootboekrekeningen en btw-tarieven die in het boekingsgeheugen en in open boekvoorstellen voorkomen naar hun Odoo-tegenhanger. Het voorstel is deterministisch (zelfde code, of code + "00"); bevestig of kies zelf. Zo blijven de geleerde boekvoorstellen en de autoboek-instellingen ná de overstap werken. Niets wordt opgeslagen vóór "Koppeling opslaan".'}
         {stap === 'knip' &&
           'Vanaf de knipdatum telt de voorraad-uitstroom uit Odoo (geposte verkoopfacturen en creditnota’s van deze company); de Reeleezee-uitstroomroute stopt automatisch vanaf die datum, zodat niets dubbel telt.'}
         {stap === 'resultaat' &&
@@ -289,11 +345,47 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
               <Button type="button" onClick={() => naar('knip')} disabled={bezig || gekozen.length === 0}>
                 Knipdatum kiezen →
               </Button>
+            ) : ingang === 'bestaand' && vorm === 'volledig' ? (
+              <Button type="button" onClick={() => void voorbereiden()} disabled={bezig || !kanOpslaan}>
+                {bezig ? 'Rechten-probe en mappingvoorstel…' : 'Verder →'}
+              </Button>
             ) : (
               <Button type="button" onClick={() => void opslaan()} disabled={bezig || !kanOpslaan}>
                 {bezig ? 'Rechten-probe en opslaan…' : ingang === 'nieuw' ? `Koppeling opslaan (${gekozen.length}) →` : 'Koppeling opslaan →'}
               </Button>
             )}
+          </DialogFooter>
+        </div>
+      )}
+
+      {stap === 'mapping' && voorbereiding && (
+        <div data-testid="odoo-wizard-mapping">
+          <p className="hint" style={{ marginTop: 0 }}>
+            ✓ Rechten-probe groen · company {voorbereiding.company_naam ?? companyNaam(gekozen[0]) ?? gekozen[0]} · overgang per {datumNl(overgangsdatum)} ·{' '}
+            {voorbereiding.odoo_grootboek.length} Odoo-rekeningen · {voorbereiding.odoo_btw.length} Odoo-taxen
+          </p>
+          <OdooMappingTabel rijen={mappingRijen} odooGrootboek={voorbereiding.odoo_grootboek} odooBtw={voorbereiding.odoo_btw} onKies={kiesMapping} />
+          {fout && (
+            <div className="fout" style={{ marginTop: 10 }}>
+              {fout.bericht}
+              {fout.rapport && <OdooProbeRapport rapport={fout.rapport} />}
+              <div className="hint" style={{ marginTop: 4 }}>
+                Niets is opgeslagen — pas de mapping aan en probeer opnieuw.
+              </div>
+            </div>
+          )}
+          {!mappingKlaar && (
+            <p className="hint" style={{ margin: '8px 0 0' }}>
+              Opslaan kan zodra élke rij een Odoo-tegenhanger heeft — de server weigert een onvolledige mapping.
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={vorige} disabled={bezig}>
+              ← Terug
+            </Button>
+            <Button type="button" onClick={() => void opslaan()} disabled={bezig || !mappingKlaar}>
+              {bezig ? 'Rechten-probe en opslaan…' : 'Koppeling opslaan →'}
+            </Button>
           </DialogFooter>
         </div>
       )}

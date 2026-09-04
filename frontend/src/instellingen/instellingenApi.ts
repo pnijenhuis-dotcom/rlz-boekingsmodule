@@ -452,14 +452,6 @@ export function koppelOdooNieuw(body: {
   return apiJson('/instellingen/odoo/koppelen', { ...POST_JSON, body: JSON.stringify(body) })
 }
 
-/** Ingang B, volledige backend: bestaande RLZ-administratie stapt over per `overgangsdatum`. */
-export function odooOverstap(
-  administratieId: string,
-  body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number; overgangsdatum: string },
-): Promise<OdooGekoppeldeAdministratieDto> {
-  return apiJson(`/administraties/${administratieId}/odoo/overstap`, { ...POST_JSON, body: JSON.stringify(body) })
-}
-
 /** Ingang B, alleen-lezen leesbron (voorraad-uitstroom vanaf de knip; backend blijft RLZ). */
 export function koppelOdooLeesbron(
   administratieId: string,
@@ -475,10 +467,136 @@ export function zetOdooKnipdatum(administratieId: string, voorraadKnipDatum: str
   })
 }
 
+/** C1 (04-09): 409 `{bericht}` als er al een Odoo-boeking vóór de nieuwe datum staat — de aanroeper toont de
+ * servertekst (noemt aantal + oudste boekstuk) en laat de dialoog open. */
 export function zetOdooOvergangsdatum(administratieId: string, overgangsdatum: string): Promise<OdooStandDto> {
   return apiJson<OdooStandDto>(`/administraties/${administratieId}/odoo/overgangsdatum`, {
     ...PUT_JSON,
     body: JSON.stringify({ overgangsdatum }),
+  })
+}
+
+/* --- Rekening-mapping RLZ → Odoo bij een overstap (blok A 04-09, besluit Peter beslispunt 1) ---------
+ * Types lokaal (niet in api/types.ts — afspraak parallelle run). Decimal = string. */
+
+export type OdooMappingSoort = 'grootboek' | 'btw'
+/** Hoe een mapping-rij tot stand kwam: deterministisch voorstel (`zelfde_code` = groen, `code_verlengd` =
+ * RLZ-code + "00", `tarief` = btw-percentage/verlegd) of `handmatig` (mens koos zelf / correctie). */
+export type OdooMappingBron = 'zelfde_code' | 'code_verlengd' | 'tarief' | 'handmatig'
+
+export interface OdooMappingVoorstelRijDto {
+  rlz_id: string
+  rlz_code: string | null
+  rlz_naam: string | null
+  in_gebruik_observaties: number
+  in_gebruik_open_regels: number
+  voorstel_odoo_id: number | null
+  voorstel_odoo_code: string | null
+  voorstel_odoo_naam: string | null
+  reden: string | null
+}
+
+export interface OdooBtwMappingVoorstelRijDto {
+  rlz_id: string
+  rlz_naam: string | null
+  rlz_percentage: string | null
+  verlegd: boolean
+  in_gebruik_observaties: number
+  in_gebruik_open_regels: number
+  voorstel_odoo_id: number | null
+  voorstel_odoo_naam: string | null
+  reden: string | null
+}
+
+export interface OdooRekeningDto {
+  odoo_id: number
+  lokaal_id: string
+  code: string
+  naam: string
+}
+
+/** `synthetisch` = de "Geen btw (0%)"-rij (odoo_id 0 — géén tax_ids in Odoo). */
+export interface OdooTariefDto {
+  odoo_id: number
+  lokaal_id: string
+  naam: string
+  percentage: string
+  verlegd: boolean
+  synthetisch: boolean
+}
+
+export interface OdooOverstapVoorbereidingDto {
+  company_naam: string | null
+  probe: Record<string, string>
+  grootboek: OdooMappingVoorstelRijDto[]
+  btw: OdooBtwMappingVoorstelRijDto[]
+  odoo_grootboek: OdooRekeningDto[]
+  odoo_btw: OdooTariefDto[]
+  telling: { grootboek_totaal: number; grootboek_met_voorstel: number; btw_totaal: number; btw_met_voorstel: number }
+}
+
+export interface OdooMappingInvoerDto {
+  grootboek: { rlz_id: string; odoo_id: number }[]
+  btw: { rlz_id: string; odoo_id: number }[]
+}
+
+export interface OdooMappingRijDto {
+  soort: OdooMappingSoort
+  rlz_id: string
+  rlz_code: string | null
+  rlz_naam: string | null
+  odoo_id: number
+  odoo_code: string | null
+  odoo_naam: string | null
+  bron: OdooMappingBron
+  versie: number
+  bevestigd_op: string
+  bevestigd_door_naam: string | null
+}
+
+/** Geldende mapping (hoogste versie per rij) + de Odoo-cache-lijsten voor de corrigeer-combobox. */
+export interface OdooMappingStandDto {
+  grootboek: OdooMappingRijDto[]
+  btw: OdooMappingRijDto[]
+  odoo_grootboek: OdooRekeningDto[]
+  odoo_btw: OdooTariefDto[]
+  laatst_bevestigd_op: string | null
+  laatst_bevestigd_door_naam: string | null
+}
+
+/** Wizard ingang B (volledig), "Verder" op de company-stap: voorvalidaties + probe (422 mét rapport) en het
+ * deterministische mappingvoorstel — niets persistent, de sleutel reist alleen in de body. */
+export function voorbereidOdooOverstap(
+  administratieId: string,
+  body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number },
+): Promise<OdooOverstapVoorbereidingDto> {
+  return apiJson(`/administraties/${administratieId}/odoo/overstap/voorbereiden`, { ...POST_JSON, body: JSON.stringify(body) })
+}
+
+/** Ingang B, volledige backend: bestaande RLZ-administratie stapt over per `overgangsdatum` — sinds 04-09 mét
+ * de door de mens bevestigde rekening-mapping (verplicht; leeg mag alleen zonder in-gebruik-rijen). */
+export function odooOverstap(
+  administratieId: string,
+  body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number; overgangsdatum: string; mapping: OdooMappingInvoerDto },
+): Promise<OdooGekoppeldeAdministratieDto> {
+  return apiJson(`/administraties/${administratieId}/odoo/overstap`, { ...POST_JSON, body: JSON.stringify(body) })
+}
+
+/** 404 = geen Odoo-koppeling → null. Lege lijsten = koppeling zonder mapping (nieuwe Odoo-administratie). */
+export async function haalOdooMappingOp(administratieId: string): Promise<OdooMappingStandDto | null> {
+  try {
+    return await apiJson<OdooMappingStandDto>(`/administraties/${administratieId}/odoo/mapping`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null
+    throw err
+  }
+}
+
+/** Correctie per rij = nieuwe versie (append-only, bron 'handmatig', audit oud→nieuw); 422 bij onbekend odoo_id. */
+export function corrigeerOdooMapping(administratieId: string, soort: OdooMappingSoort, rlzId: string, odooId: number): Promise<OdooMappingStandDto> {
+  return apiJson<OdooMappingStandDto>(`/administraties/${administratieId}/odoo/mapping/${soort}/${rlzId}`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ odoo_id: odooId }),
   })
 }
 

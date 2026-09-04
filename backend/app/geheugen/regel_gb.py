@@ -202,16 +202,25 @@ def vendor_groep(session: Session, *, administratie_id: uuid.UUID, vendor_id: uu
 def laad_observaties(
     session: Session, *, administratie_id: uuid.UUID, vendor_ids: frozenset[uuid.UUID]
 ) -> list[RegelObservatie]:
+    """Regel-niveau-observaties van de leverancier-groep. Eén vertaalpunt (blok A 04-09, migratie 0111):
+    een Odoo-rekening-mapping van een overgestapte administratie vertaalt de RLZ-grootboek-UUID's VÓÓR
+    `bepaal_regel_gb`, zodat de treffer op de Odoo-rekening landt en app-bevestiging behouden blijft."""
+    from app.odoo import mapping as odoo_mapping  # lokaal: odoo.mapping importeert RegelObservatie
+
     rijen = session.scalars(
         select(BoekingObservatie).where(
             BoekingObservatie.administratie_id == administratie_id,
             BoekingObservatie.vendor_id.in_(list(vendor_ids)),
         )
     ).all()
-    return [
+    observaties = [
         RegelObservatie(regel_sleutel=r.regel_sleutel, gb_id=r.gb_id, bron=r.bron, bron_datum=r.bron_datum)
         for r in rijen
     ]
+    mapping = odoo_mapping.geldende_mapping(session, administratie_id)
+    if mapping.leeg:
+        return observaties
+    return odoo_mapping.vertaal_regel_observaties(observaties, mapping)
 
 
 def kandidaten_met_naam(

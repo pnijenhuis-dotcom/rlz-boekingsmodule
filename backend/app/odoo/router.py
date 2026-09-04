@@ -8,6 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_kantoorrol
+from app.odoo import mapping as odoo_mapping
 from app.odoo import schemas, service
 from app.odoo.credentials import GeenOdooKoppeling
 
@@ -15,6 +16,9 @@ router = APIRouter(tags=["odoo"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 def _koppel_fout(exc: Exception) -> HTTPException:
+    if isinstance(exc, service.OvergangsdatumGeblokkeerd):
+        # C1: de nieuwe overgangsdatum botst met al in Odoo geboekte facturen — conflict, geen invoerfout.
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"bericht": str(exc)})
     if isinstance(exc, service.OdooKoppelFout):
         return HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -103,12 +107,164 @@ def odoo_overstap(
             company_id=invoer.company_id,
             overgangsdatum=invoer.overgangsdatum,
             api_gebruiker=invoer.api_gebruiker,
+            mapping=_mapping_invoer(invoer.mapping),
         )
     except service.OdooKoppelFout as exc:
         raise _koppel_fout(exc) from exc
     return schemas.GekoppeldeAdministratieDto(
         id=r.id, naam=r.naam, company_id=r.company_id, probe=r.probe, sync_run_id=r.sync_run_id, sync=r.sync
     )
+
+
+# --- blok A Odoo-afrondingsrun 04-09: rekening-mapping RLZ → Odoo -----------------------------------------
+
+
+def _mapping_invoer(dto: schemas.OdooMappingInvoerDto) -> odoo_mapping.MappingInvoer:
+    return odoo_mapping.MappingInvoer(
+        grootboek=[odoo_mapping.MappingRijInvoer(rlz_id=r.rlz_id, odoo_id=r.odoo_id) for r in dto.grootboek],
+        btw=[odoo_mapping.MappingRijInvoer(rlz_id=r.rlz_id, odoo_id=r.odoo_id) for r in dto.btw],
+    )
+
+
+def _rekening_dto(o: odoo_mapping.OdooRekening) -> schemas.OdooRekeningDto:
+    return schemas.OdooRekeningDto(odoo_id=o.odoo_id, lokaal_id=o.lokaal_id, code=o.code, naam=o.naam)
+
+
+def _tarief_dto(o: odoo_mapping.OdooTarief) -> schemas.OdooTariefDto:
+    return schemas.OdooTariefDto(
+        odoo_id=o.odoo_id,
+        lokaal_id=o.lokaal_id,
+        naam=o.naam,
+        percentage=o.percentage,
+        verlegd=o.verlegd,
+        synthetisch=o.synthetisch,
+    )
+
+
+def _stand_dto(stand: odoo_mapping.MappingStand) -> schemas.OdooMappingStandDto:
+    def rij(r: odoo_mapping.MappingRij) -> schemas.MappingRijDto:
+        assert r.bevestigd_op is not None
+        return schemas.MappingRijDto(
+            soort=r.soort,
+            rlz_id=r.rlz_id,
+            rlz_code=r.rlz_code,
+            rlz_naam=r.rlz_naam,
+            odoo_id=r.odoo_id,
+            odoo_code=r.odoo_code,
+            odoo_naam=r.odoo_naam,
+            bron=r.bron,
+            versie=r.versie,
+            bevestigd_op=r.bevestigd_op,
+            bevestigd_door_naam=r.bevestigd_door_naam,
+        )
+
+    return schemas.OdooMappingStandDto(
+        grootboek=[rij(r) for r in stand.grootboek],
+        btw=[rij(r) for r in stand.btw],
+        odoo_grootboek=[_rekening_dto(o) for o in stand.odoo_grootboek],
+        odoo_btw=[_tarief_dto(o) for o in stand.odoo_btw],
+        laatst_bevestigd_op=stand.laatst_bevestigd_op,
+        laatst_bevestigd_door_naam=stand.laatst_bevestigd_door_naam,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/odoo/overstap/voorbereiden",
+    response_model=schemas.OdooOverstapVoorbereidingDto,
+)
+def odoo_overstap_voorbereiden(
+    administratie_id: uuid.UUID,
+    invoer: schemas.OdooOverstapVoorbereidenDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.OdooOverstapVoorbereidingDto:
+    """Blok A (04-09): de mapping-stap van de overstap-wizard — dezelfde voorvalidaties + probe als de overstap
+    (rood/ongeldig → 422 mét rapport), dan live (read-only) het Odoo-grootboek + de inkooptarieven, de
+    in-gebruik-RLZ-rijen (boekingsgeheugen ∪ open boekvoorstellen) en een deterministisch voorstel per rij.
+    Niets persistent."""
+    try:
+        v = odoo_mapping.voorbereid_overstap(
+            actor_id=actor.id,
+            administratie_id=administratie_id,
+            odoo_url=invoer.odoo_url,
+            api_key=invoer.api_key,
+            company_id=invoer.company_id,
+        )
+    except service.OdooKoppelFout as exc:
+        raise _koppel_fout(exc) from exc
+    return schemas.OdooOverstapVoorbereidingDto(
+        company_naam=v.company_naam,
+        probe=v.probe,
+        grootboek=[
+            schemas.MappingVoorstelRijDto(
+                rlz_id=r.rlz.rlz_id,
+                rlz_code=r.rlz.code,
+                rlz_naam=r.rlz.naam,
+                in_gebruik_observaties=r.rlz.in_gebruik_observaties,
+                in_gebruik_open_regels=r.rlz.in_gebruik_open_regels,
+                voorstel_odoo_id=r.voorstel.odoo_id if r.voorstel else None,
+                voorstel_odoo_code=r.voorstel.code if r.voorstel else None,
+                voorstel_odoo_naam=r.voorstel.naam if r.voorstel else None,
+                reden=r.reden,
+            )
+            for r in v.grootboek
+        ],
+        btw=[
+            schemas.BtwMappingVoorstelRijDto(
+                rlz_id=b.rlz.rlz_id,
+                rlz_naam=b.rlz.naam,
+                rlz_percentage=b.rlz.percentage,
+                verlegd=b.rlz.verlegd,
+                in_gebruik_observaties=b.rlz.in_gebruik_observaties,
+                in_gebruik_open_regels=b.rlz.in_gebruik_open_regels,
+                voorstel_odoo_id=b.voorstel.odoo_id if b.voorstel else None,
+                voorstel_odoo_naam=b.voorstel.naam if b.voorstel else None,
+                reden=b.reden,
+            )
+            for b in v.btw
+        ],
+        odoo_grootboek=[_rekening_dto(o) for o in v.odoo_grootboek],
+        odoo_btw=[_tarief_dto(o) for o in v.odoo_btw],
+        telling=schemas.OdooMappingTellingDto(
+            grootboek_totaal=len(v.grootboek),
+            grootboek_met_voorstel=sum(1 for r in v.grootboek if r.voorstel is not None),
+            btw_totaal=len(v.btw),
+            btw_met_voorstel=sum(1 for b in v.btw if b.voorstel is not None),
+        ),
+    )
+
+
+@router.get("/administraties/{administratie_id}/odoo/mapping", response_model=schemas.OdooMappingStandDto)
+def odoo_mapping_stand(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.OdooMappingStandDto:
+    """De geldende rekening-mapping (hoogste versie per rij) + de Odoo-keuzelijsten uit de gesyncte cache.
+    404 zonder koppeling; een Odoo-administratie zonder RLZ-verleden = lege lijsten."""
+    try:
+        stand = odoo_mapping.mapping_stand(administratie_id)
+    except GeenOdooKoppeling as exc:
+        raise _koppel_fout(exc) from exc
+    return _stand_dto(stand)
+
+
+@router.put(
+    "/administraties/{administratie_id}/odoo/mapping/{soort}/{rlz_id}", response_model=schemas.OdooMappingStandDto
+)
+def odoo_mapping_corrigeren(
+    administratie_id: uuid.UUID,
+    soort: str,
+    rlz_id: uuid.UUID,
+    invoer: schemas.OdooMappingCorrectieDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.OdooMappingStandDto:
+    """Correctie per rij ná de overstap: nieuwe versie (append-only, bron 'handmatig', audit oud→nieuw);
+    422 bij een onbekende soort of een odoo_id dat niet in de gesyncte stamgegevens staat."""
+    try:
+        stand = odoo_mapping.corrigeer_rij(
+            actor_id=actor.id, administratie_id=administratie_id, soort=soort, rlz_id=rlz_id, odoo_id=invoer.odoo_id
+        )
+    except (service.OdooKoppelFout, GeenOdooKoppeling) as exc:
+        raise _koppel_fout(exc) from exc
+    return _stand_dto(stand)
 
 
 @router.put("/administraties/{administratie_id}/odoo/overgangsdatum", response_model=schemas.OdooStandDto)

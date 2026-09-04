@@ -16,6 +16,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 
@@ -27,9 +28,12 @@ from app.odoo import sync as odoo_sync
 from app.odoo.client import OdooClient, OdooFout
 from app.odoo.credentials import odoo_client_voor
 from app.odoo.ids import odoo_admin_sentinel
-from app.odoo.models import OdooKoppeling
+from app.odoo.models import OdooDocumentKoppeling, OdooKoppeling
 from app.odoo.probe import ProbeUitkomst, lees_companies, voer_leesprobe_uit, voer_probe_uit
 from app.security.envelope import wrap_secret
+
+if TYPE_CHECKING:  # app/odoo/mapping.py importeert deze module (OdooKoppelFout) — runtime lokaal importeren
+    from app.odoo.mapping import MappingInvoer
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,12 @@ class OdooKoppelFout(Exception):
     def __init__(self, bericht: str, *, rapport: dict[str, str] | None = None) -> None:
         super().__init__(bericht)
         self.rapport = rapport or {}
+
+
+class OvergangsdatumGeblokkeerd(OdooKoppelFout):
+    """C1 (Odoo-afrondingsrun 04-09): de nieuwe overgangsdatum zou al in Odoo geboekte facturen (factuurdatum
+    vóór die datum) achter de adapter-poort zetten — de tijdlijn zou dan liegen ("hoort nog in Reeleezee"
+    terwijl het boekstuk in Odoo staat). Router: 409 mét het aantal + het oudste boekstuk."""
 
 
 @dataclass(frozen=True)
@@ -435,25 +445,10 @@ def koppelstand(administratie_ids: list[uuid.UUID], *, met_details: bool = True)
 # --- blok E: overstap van een BESTAANDE RLZ-administratie op Odoo (ingang B, volledige backend) -----------
 
 
-def koppel_overstap(
-    *,
-    actor_id: uuid.UUID,
-    administratie_id: uuid.UUID,
-    odoo_url: str,
-    api_key: str,
-    company_id: int,
-    overgangsdatum: date,
-    api_gebruiker: str | None = None,
-    start_sync: bool = True,
-) -> GekoppeldeAdministratie:
-    """Een bestaande RLZ-administratie stapt over op Odoo (het Universal-migratiescenario, mockup ingang B):
-    volledige probe verplicht groen (anders 422 mét rapport, niets opgeslagen), dan in ÉÉN transactie
-    `boekhoud_backend = 'odoo'`, `rlz_admin_id` → sentinel (dáárdoor slaan álle RLZ-jobs de administratie
-    zichtbaar over — anders zouden RLZ- en Odoo-sync dezelfde caches over elkaar schrijven), het oude RLZ-id
-    bewaard op de koppeling, koppeling-rij (envelope-key, dagboeken/plan uit de probe, overgangsdatum) +
-    audit (nooit de key). De RLZ-credential-rij blijft staan (via het sentinel onbereikbaar); bestaande
-    documenten/boekvoorstellen blijven onaangeroerd. Daarna de eerste stamgegevens-sync zoals bij koppelen."""
-    url = odoo_url.rstrip("/")
+def toets_overstap_voorwaarden(*, administratie_id: uuid.UUID, url: str, company_id: int) -> tuple[str, str]:
+    """De voorvalidaties van een overstap (gedeeld door `koppel_overstap` en `mapping.voorbereid_overstap`):
+    bestaande, actieve RLZ-administratie zonder Odoo-koppeling; company nog vrij op deze host. Retourneert
+    (naam, oud rlz_admin_id)."""
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
         if administratie is None:
@@ -479,6 +474,39 @@ def koppel_overstap(
     al = _gekoppelde_companies(url)
     if int(company_id) in al:
         raise OdooKoppelFout(f"Company {company_id} is al gekoppeld aan een andere administratie")
+    return naam, oud_rlz_admin_id
+
+
+def koppel_overstap(
+    *,
+    actor_id: uuid.UUID,
+    administratie_id: uuid.UUID,
+    odoo_url: str,
+    api_key: str,
+    company_id: int,
+    overgangsdatum: date,
+    api_gebruiker: str | None = None,
+    start_sync: bool = True,
+    mapping: MappingInvoer | None = None,
+) -> GekoppeldeAdministratie:
+    """Een bestaande RLZ-administratie stapt over op Odoo (het Universal-migratiescenario, mockup ingang B):
+    volledige probe verplicht groen (anders 422 mét rapport, niets opgeslagen), dan in ÉÉN transactie
+    `boekhoud_backend = 'odoo'`, `rlz_admin_id` → sentinel (dáárdoor slaan álle RLZ-jobs de administratie
+    zichtbaar over — anders zouden RLZ- en Odoo-sync dezelfde caches over elkaar schrijven), het oude RLZ-id
+    bewaard op de koppeling, koppeling-rij (envelope-key, dagboeken/plan uit de probe, overgangsdatum) +
+    audit (nooit de key). De RLZ-credential-rij blijft staan (via het sentinel onbereikbaar); bestaande
+    documenten/boekvoorstellen blijven onaangeroerd. Daarna de eerste stamgegevens-sync zoals bij koppelen.
+
+    Blok A (04-09): `mapping` = de door de mens bevestigde rekening-mapping RLZ → Odoo (grootboek + btw) voor
+    álle in-gebruik-rijen van het boekingsgeheugen en de open boekvoorstellen — gevalideerd tegen de live
+    Odoo-lijsten en ín dezelfde transactie geschreven (versie 1). Een lege administratie (niets in gebruik)
+    mag met een lege mapping overstappen; anders is de mapping VERPLICHT (422 "onvolledig")."""
+    from app.odoo import mapping as odoo_mapping  # lokaal: mapping importeert OdooKoppelFout uit deze module
+
+    url = odoo_url.rstrip("/")
+    naam, oud_rlz_admin_id = toets_overstap_voorwaarden(
+        administratie_id=administratie_id, url=url, company_id=int(company_id)
+    )
 
     p = probe_voor(odoo_url=url, api_key=api_key, company_id=int(company_id))
     if not p.groen:
@@ -488,9 +516,27 @@ def koppel_overstap(
             rapport=p.rapport,
         )
 
+    # Blok A (04-09): de mens heeft de rekening-mapping RLZ → Odoo bevestigd. Live opnieuw lezen (de wizard-
+    # stap "voorbereiden" was een eerdere request) en valideren VÓÓR er iets geschreven wordt: élke in-gebruik-
+    # rij moet een bestaande Odoo-tegenhanger hebben, anders 422 en niets opgeslagen.
+    odoo_gb, odoo_btw = odoo_mapping.lees_live_odoo_stamgegevens(
+        odoo_url=url, api_key=api_key, company_id=int(company_id)
+    )
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rlz_gb, rlz_btw = odoo_mapping.rlz_in_gebruik(session, administratie_id)
+    mapping_rijen = odoo_mapping.valideer_mapping(
+        grootboek=odoo_mapping.bepaal_grootboek_voorstel(rlz_gb, odoo_gb),
+        btw=odoo_mapping.bepaal_btw_voorstel(rlz_btw, odoo_btw),
+        odoo_grootboek=odoo_gb,
+        odoo_btw=odoo_btw,
+        invoer=mapping,
+    )
+
     ciphertext, wrapped = wrap_secret(api_key.encode())
     sentinel = odoo_admin_sentinel(url, int(company_id))
-    with scoped_session(None, actor_id=actor_id) as session:
+    # Gescoopt op de administratie: de mapping-tabel is RLS-beveiligd en hoort in DEZELFDE transactie als de
+    # koppeling (platform-tabellen kennen geen RLS — de scope is daar onschadelijk).
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
         administratie = session.get(Administratie, administratie_id)
         assert administratie is not None
         administratie.boekhoud_backend = "odoo"
@@ -561,6 +607,14 @@ def koppel_overstap(
                 "bron": "overstap",
             },
         )
+        odoo_mapping.schrijf_mapping(
+            session,
+            administratie_id=administratie_id,
+            company_id=int(company_id),
+            rijen=mapping_rijen,
+            actor_id=actor_id,
+            versie=1,
+        )
 
     resultaat = GekoppeldeAdministratie(
         id=administratie_id, naam=naam, company_id=int(company_id), probe=p.rapport, sync_run_id=None
@@ -578,11 +632,42 @@ def koppel_overstap(
     )
 
 
+def _toets_overgangsdatum_tegen_odoo_boekingen(session, *, administratie_id: uuid.UUID, nieuw: date) -> None:
+    """C1: bestaat er een Odoo-boeking (soort 'boeking', state ≠ 'cancel') van een document mét factuurdatum
+    vóór de nieuwe datum, dan is de verschuiving geblokkeerd — de adapter-poort zou die facturen "hoort nog in
+    Reeleezee" noemen terwijl ze al in Odoo staan. Melding noemt het aantal + het oudste boekstuk."""
+    from app.documenten.models import Boekvoorstel
+
+    geboekt = session.execute(
+        select(OdooDocumentKoppeling.odoo_naam, Boekvoorstel.factuurdatum)
+        .join(Boekvoorstel, Boekvoorstel.document_id == OdooDocumentKoppeling.document_id)
+        .where(
+            OdooDocumentKoppeling.administratie_id == administratie_id,
+            OdooDocumentKoppeling.soort == "boeking",
+            OdooDocumentKoppeling.state != "cancel",
+            Boekvoorstel.factuurdatum.is_not(None),
+            Boekvoorstel.factuurdatum < nieuw,
+        )
+        .order_by(Boekvoorstel.factuurdatum, OdooDocumentKoppeling.odoo_naam)
+    ).all()
+    if not geboekt:
+        return
+    oudste_naam, oudste_datum = geboekt[0]
+    n = len(geboekt)
+    datum = oudste_datum.strftime("%d-%m-%Y")
+    raise OvergangsdatumGeblokkeerd(
+        f"Overgangsdatum {nieuw.strftime('%d-%m-%Y')} niet mogelijk: {n} factu{'ur' if n == 1 else 'ren'} mét een "
+        f"eerdere factuurdatum {'is' if n == 1 else 'zijn'} al in Odoo geboekt — {oudste_naam or 'boekstuk'} op "
+        f"{datum} is al in Odoo geboekt — kies een datum op of vóór {datum} of boek die factuur tegen"
+    )
+
+
 def wijzig_overgangsdatum(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, overgangsdatum: date) -> OdooStand:
     """De overgangsdatum van een SCHRIJVENDE Odoo-koppeling zetten/verschuiven (audit oud→nieuw). De adapter-
     poort volgt de nieuwe datum bij de volgende boekpoging; een alleen-lezen-koppeling kent geen overgangsdatum
     (daar is de voorraad-knip het begrip)."""
-    with scoped_session(None, actor_id=actor_id) as session:
+    # Gescoopt op de administratie: de C1-toets leest de RLS-tabel odoo_document_koppeling.
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
         rij = session.get(OdooKoppeling, administratie_id)
         if rij is None:
             raise OdooKoppelFout("Deze administratie heeft geen Odoo-koppeling")
@@ -591,6 +676,7 @@ def wijzig_overgangsdatum(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, o
                 "De overgangsdatum hoort bij een Odoo-administratie (volledige backend), niet bij een alleen-lezen "
                 "leesbron-koppeling — daar geldt de voorraad-knip"
             )
+        _toets_overgangsdatum_tegen_odoo_boekingen(session, administratie_id=administratie_id, nieuw=overgangsdatum)
         oud = rij.overgangsdatum
         rij.overgangsdatum = overgangsdatum
         record_audit_event(

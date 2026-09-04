@@ -130,3 +130,44 @@ class OdooProductKoppeling(Base):
     bron: Mapped[str] = mapped_column(String(16))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class OdooRekeningMapping(Base):
+    """Door de MENS bevestigde vertaling RLZ-grootboek/-btw → Odoo-account/-tax per administratie
+    (migratie 0111, blok A Odoo-afrondingsrun 04-09). Het boekingsgeheugen draagt RLZ-UUID's van vóór de
+    overstap; `app/odoo/mapping.py::vertaal_observaties` vertaalt ze mét deze tabel VÓÓR de engine weegt,
+    zodat `app_bevestigd` behouden blijft (de mens bevestigde het bóékgedrag, niet het rekeningnummer).
+
+    APPEND-ONLY (GRANT zonder UPDATE/DELETE): een correctie is een nieuwe rij met `versie + 1`; de
+    geldende rij is de hoogste versie per (administratie, soort, rlz_id). `odoo_id` 0 = de synthetische
+    "Geen btw (0%)" (alleen soort 'btw'). `bron` = hoe de rij tot stand kwam: `zelfde_code` (groen
+    voorstel, exact gelijke code), `code_verlengd` (RLZ-code + "00", oranje — bevestigd), `tarief`
+    (btw op percentage/verlegd/vrijgesteld) of `handmatig` (mens koos zelf)."""
+
+    __tablename__ = "odoo_rekening_mapping"
+    __table_args__ = (
+        UniqueConstraint("administratie_id", "soort", "rlz_id", "versie", name="uq_odoo_rekening_mapping_versie"),
+        CheckConstraint("soort IN ('grootboek', 'btw')", name="ck_odoo_rekening_mapping_soort"),
+        CheckConstraint(
+            "bron IN ('zelfde_code', 'code_verlengd', 'tarief', 'handmatig')", name="ck_odoo_rekening_mapping_bron"
+        ),
+        CheckConstraint("versie >= 1", name="ck_odoo_rekening_mapping_versie"),
+        CheckConstraint("odoo_id >= 0", name="ck_odoo_rekening_mapping_odoo_id"),
+        Index("ix_odoo_rekening_mapping_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    soort: Mapped[str] = mapped_column(String(16))
+    rlz_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    rlz_code: Mapped[str | None] = mapped_column(default=None)
+    rlz_naam: Mapped[str | None] = mapped_column(default=None)
+    odoo_lokaal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    odoo_id: Mapped[int] = mapped_column(Integer)
+    odoo_code: Mapped[str | None] = mapped_column(default=None)
+    odoo_naam: Mapped[str | None] = mapped_column(default=None)
+    bron: Mapped[str] = mapped_column(String(16))
+    versie: Mapped[int] = mapped_column(Integer)
+    bevestigd_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    bevestigd_op: Mapped[datetime] = mapped_column(server_default=func.now())

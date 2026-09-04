@@ -28,6 +28,7 @@ from app.backends.port import BackendBoekFout
 from app.db.models import Grootboekrekening, RlzCredential
 from app.db.session import scoped_session
 from app.main import app
+from app.odoo import mapping as odoo_mapping
 from app.odoo import service as odoo_service
 from app.odoo import sync as odoo_sync
 from app.odoo.credentials import OdooVerbinding
@@ -83,8 +84,11 @@ def _rode_probe() -> ProbeUitkomst:
 
 @pytest.fixture
 def probe_groen(monkeypatch: pytest.MonkeyPatch) -> ProbeUitkomst:
+    """Groene probe + (blok A 04-09) een lege live Odoo-stamgegevenslijst voor de mapping-validatie — de
+    mapping-tests in tests/odoo/test_mapping.py overschrijven `lees_live_odoo_stamgegevens` mét inhoud."""
     p = _groene_probe()
     monkeypatch.setattr(odoo_service, "probe_voor", lambda **kw: p)
+    monkeypatch.setattr(odoo_mapping, "lees_live_odoo_stamgegevens", lambda **kw: ([], []))
     return p
 
 
@@ -130,6 +134,7 @@ def rlz_credential(administratie_id, beheerder_id) -> uuid.UUID:
 def _overstap(aid: uuid.UUID, beheerder: uuid.UUID, **body: Any):
     payload = {"odoo_url": URL, "api_key": KEY, "api_gebruiker": "n-module", "company_id": COMPANY}
     payload["overgangsdatum"] = OVERGANG.isoformat()
+    payload["mapping"] = {"grootboek": [], "btw": []}  # lege administratie: niets in gebruik (blok A 04-09)
     payload.update(body)
     return client.post(
         f"/administraties/{aid}/odoo/overstap", json=payload, headers=_bearer(beheerder, rol="beheerder")

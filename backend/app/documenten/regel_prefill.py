@@ -29,14 +29,13 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Administratie
 from app.geheugen import regel_gb
 from app.geheugen.engine import Observatie, bepaal_voorstel
-from app.geheugen.models import BoekingObservatie
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
+from app.geheugen.service import laad_engine_observaties
 
 if TYPE_CHECKING:  # boekvoorstel.py importeert deze module (lazy) — geen runtime-cyclus
     from app.documenten.boekvoorstel import BoekvoorstelRegelData
@@ -45,25 +44,11 @@ BTW_BRON_STANDAARD = "standaard"
 
 
 def _engine_observaties(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID) -> list[Observatie]:
-    """Exact dezelfde invoer als `geheugen.service.voorstel_voor` (vendor-niveau, geen kenmerk-groep):
-    de toets "heeft het leverancier-geheugen een btw-voorstel?" moet hetzelfde antwoord geven als wat
-    de UI straks via die route invult."""
-    rijen = session.scalars(
-        select(BoekingObservatie).where(
-            BoekingObservatie.administratie_id == administratie_id, BoekingObservatie.vendor_id == vendor_id
-        )
-    ).all()
-    return [
-        Observatie(
-            regel_sleutel=r.regel_sleutel,
-            gb_id=r.gb_id,
-            btw_id=r.btw_id,
-            project_id=r.project_id,
-            bron=r.bron,
-            bron_datum=r.bron_datum,
-        )
-        for r in rijen
-    ]
+    """Exact dezelfde invoer als `geheugen.service.voorstel_voor` (vendor-niveau, geen kenmerk-groep) —
+    via dezélfde lader, incl. de Odoo-rekening-mapping-vertaling van een overgestapte administratie (blok A
+    04-09): de toets "heeft het leverancier-geheugen een btw-voorstel?" moet hetzelfde antwoord geven als
+    wat de UI straks via die route invult."""
+    return laad_engine_observaties(session, administratie_id=administratie_id, vendor_id=vendor_id)
 
 
 def _engine_heeft_btw(engine_observaties: list[Observatie], *, regel_sleutel: str | None) -> bool:

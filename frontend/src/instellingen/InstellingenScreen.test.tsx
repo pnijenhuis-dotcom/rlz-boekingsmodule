@@ -89,6 +89,29 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body: null })
         return Promise.resolve(jsonResponse({ run_id: 'run-9', onderdelen: { ledgers: { status: 'klaar', aangemaakt: 3, bijgewerkt: 209 }, taxrates: { status: 'klaar', aangemaakt: 0, bijgewerkt: 14 } } }))
       }
+      // Blok A 04-09: rekening-mapping (GET + correctie-PUT) en C1 overgangsdatum (409 bij een Odoo-boeking ervóór).
+      if (url.endsWith('/odoo/mapping') && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse(opties.odooMapping ?? { grootboek: [], btw: [], odoo_grootboek: [], odoo_btw: [], laatst_bevestigd_op: null, laatst_bevestigd_door_naam: null }))
+      }
+      if (url.includes('/odoo/mapping/') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as { odoo_id: number }
+        opties.putAanroepen?.push({ url, body })
+        const stand = opties.odooMapping as { grootboek: Record<string, unknown>[]; btw: Record<string, unknown>[]; odoo_grootboek: { odoo_id: number; code: string; naam: string }[] }
+        const [, soort, rlzId] = /\/odoo\/mapping\/(grootboek|btw)\/([^/]+)$/.exec(url) ?? []
+        const doel = stand.odoo_grootboek.find((o) => o.odoo_id === body.odoo_id)
+        const rijen = (soort === 'grootboek' ? stand.grootboek : stand.btw).map((r) =>
+          r.rlz_id === rlzId ? { ...r, odoo_id: body.odoo_id, odoo_code: doel?.code ?? null, odoo_naam: doel?.naam ?? null, bron: 'handmatig', versie: (r.versie as number) + 1, bevestigd_op: '2026-09-04T11:00:00Z' } : r,
+        )
+        return Promise.resolve(jsonResponse({ ...stand, [soort as string]: rijen, laatst_bevestigd_op: '2026-09-04T11:00:00Z' }))
+      }
+      if (url.endsWith('/odoo/overgangsdatum') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as { overgangsdatum: string }
+        opties.putAanroepen?.push({ url, body })
+        if (body.overgangsdatum > '2026-06-05') {
+          return Promise.resolve(jsonResponse({ detail: { bericht: '1 factuur is al in Odoo geboekt vóór 01-11-2026: BILL/2026/06/0001 op 05-06-2026 — kies een datum op of vóór 05-06-2026 of boek die factuur tegen' } }, 409))
+        }
+        return Promise.resolve(jsonResponse({ ...(opties.odooStand as Record<string, unknown>), overgangsdatum: body.overgangsdatum }))
+      }
       if (url.endsWith('/odoo/leesbron') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body))
         opties.putAanroepen?.push({ url, body })
@@ -256,6 +279,7 @@ function installFetchMock(opties: {
             is_beheerder: opties.rol === 'beheerder',
             heeft_veldwerkerbeheer_recht: false,
             is_beheerder_of_bp: opties.rol === 'beheerder' || opties.rol === 'boekhouding_projecten',
+            ...(opties.mijnToegang ?? {}),
           }),
         )
       }
@@ -279,7 +303,6 @@ function installFetchMock(opties: {
       if (url === '/auth/mijn/apparaten') {
         return Promise.resolve(jsonResponse({ apparaten: [] }))
       }
-            ...(opties.mijnToegang ?? {}),
       if (url === '/auth/webauthn/config') {
         return Promise.resolve(jsonResponse({ dev_stub: false, rp_id: 'localhost' }))
       }
@@ -869,6 +892,9 @@ describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-
     expect(within(detail).getByText(/•••• ingesteld \(n-module\) · verloopt niet/)).toBeInTheDocument()
     expect(within(detail).getByTestId('odoo-stamgegevens')).toHaveTextContent('grootboek 212 · btw 14 · relaties 380 · projecten 6 · laatst gesynct 03-09')
     expect(within(detail).getByText('n.v.t. — volledige backend')).toBeInTheDocument()
+    // Blok A 04-09: zonder mapping-rijen alleen de tekst, geen knop.
+    await waitFor(() => expect(within(detail).getByTestId('odoo-mapping-stand')).toHaveTextContent('geen mapping — nieuwe Odoo-administratie zonder RLZ-verleden'))
+    expect(within(detail).queryByRole('button', { name: /Rekening-mapping bekijken/ })).not.toBeInTheDocument()
     expect(within(detail).queryByText('Odoo koppelen…')).not.toBeInTheDocument()
     expect(within(detail).getByRole('button', { name: 'Odoo API-sleutel wijzigen voor Universal Steigerbouw B.V.' })).toBeInTheDocument()
     expect(within(detail).getByRole('button', { name: 'Odoo-verbinding opnieuw testen voor Universal Steigerbouw B.V.' })).toBeInTheDocument()
@@ -892,9 +918,6 @@ describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-
         administratie({
           naam: 'Universal Verkoop B.V.',
           webservice_username: 'ws_uv',
-    // Blok A 04-09: zonder mapping-rijen alleen de tekst, geen knop.
-    await waitFor(() => expect(within(detail).getByTestId('odoo-mapping-stand')).toHaveTextContent('geen mapping — nieuwe Odoo-administratie zonder RLZ-verleden'))
-    expect(within(detail).queryByRole('button', { name: /Rekening-mapping bekijken/ })).not.toBeInTheDocument()
           probe_groen: true,
           rlz_admin_id: 'rlz-uv',
           odoo_alleen_lezen: true,
@@ -922,29 +945,6 @@ describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-
   })
 })
 
-describe('InstellingenScreen — weekmail-voorkeur (D2, 01-09)', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('élke kantoorrol ziet de weekmail-switch onder Beveiliging; uitzetten PUT opt_out=true zonder bevestiging', async () => {
-    const gebruiker = userEvent.setup()
-    const putAanroepen: { url: string; body: unknown }[] = []
-    installFetchMock({ rol: 'boekhouding', putAanroepen })
-    renderScherm('/instellingen/beveiliging')
-    const paneel = await screen.findByTestId('weekmail-voorkeur')
-    const schakelaar = await within(paneel).findByRole('checkbox', { name: 'Weekmail ontvangen' })
-    expect(schakelaar).toBeChecked()
-    await gebruiker.click(schakelaar)
-    await waitFor(() => expect(putAanroepen).toEqual([{ url: '/auth/mijn/digest', body: { opt_out: true } }]))
-    await waitFor(() => expect(within(paneel).getByRole('checkbox', { name: 'Weekmail ontvangen' })).not.toBeChecked())
-  })
-})
-
-describe('InstellingenScreen — omzet-autoboeken (GO Peter 01-09, blok C)', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
 describe('InstellingenScreen — rekening-mapping + overgangsdatum (Odoo blok A/C1, 04-09)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -1075,6 +1075,29 @@ describe('InstellingenScreen — rekening-mapping + overgangsdatum (Odoo blok A/
   })
 })
 
+describe('InstellingenScreen — weekmail-voorkeur (D2, 01-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('élke kantoorrol ziet de weekmail-switch onder Beveiliging; uitzetten PUT opt_out=true zonder bevestiging', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'boekhouding', putAanroepen })
+    renderScherm('/instellingen/beveiliging')
+    const paneel = await screen.findByTestId('weekmail-voorkeur')
+    const schakelaar = await within(paneel).findByRole('checkbox', { name: 'Weekmail ontvangen' })
+    expect(schakelaar).toBeChecked()
+    await gebruiker.click(schakelaar)
+    await waitFor(() => expect(putAanroepen).toEqual([{ url: '/auth/mijn/digest', body: { opt_out: true } }]))
+    await waitFor(() => expect(within(paneel).getByRole('checkbox', { name: 'Weekmail ontvangen' })).not.toBeChecked())
+  })
+})
+
+describe('InstellingenScreen — omzet-autoboeken (GO Peter 01-09, blok C)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
 
   it('toggle op de detailpagina (tab Boeken & AI) → consequentie-dialoog → PUT /omzet-autoboeken-instelling; chip in de tabel', async () => {
     const gebruiker = userEvent.setup()

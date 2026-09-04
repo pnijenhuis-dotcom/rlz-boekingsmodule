@@ -2401,3 +2401,13 @@ tr.geselecteerd td.acties {
   color: var(--muted);
   text-decoration: line-through;
 }
+
+/* Rekening-mapping RLZ → Odoo (blok A 04-09, OdooMappingTabel): compacte rijen mét een combobox per rij —
+   de standaard td-padding (12px) maakt een tabel van 50+ rekeningen onnodig hoog. Alleen padding; kleuren
+   en chips komen uit de bestaande klassen (chip ok/afwijking/blokkerend/handmatig, restant-balk). */
+.odoo-mapping-tabel td {
+  padding: 7px 12px;
+}
+.odoo-mapping-tabel th {
+  padding: 7px 12px;
+}
