@@ -20,6 +20,7 @@
     "/projectverdeling",
     "/terugkerend",
     "/uren",
+    "/verplichtingen",
     "/verzamelbak",
     "/voorraad",
     "/vragen",
@@ -29,6 +30,7 @@
   "exacte_paden": [
     "/archief",
     "/health",
+    "/verplichtingen",
     "/verzamelbak",
     "/vragen",
     "/zoeken"

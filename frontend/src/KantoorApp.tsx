@@ -36,6 +36,14 @@ const DoorbelastingReviewScreen = lazy(() =>
 const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
 const VoorraadScreen = lazy(() => import('./voorraad/VoorraadScreen').then((m) => ({ default: m.VoorraadScreen })))
 const TerugkerendScreen = lazy(() => import('./terugkerend/TerugkerendScreen').then((m) => ({ default: m.TerugkerendScreen })))
+// Verplichtingen (blok B 04-09): kantoorbreed overzicht + reviewscherm — lazy, want alleen
+// relevant voor administraties die offertes/opdrachtbevestigingen laten accorderen.
+const VerplichtingenScreen = lazy(() =>
+  import('./verplichting/VerplichtingenScreen').then((m) => ({ default: m.VerplichtingenScreen })),
+)
+const VerplichtingReviewScreen = lazy(() =>
+  import('./verplichting/VerplichtingReviewScreen').then((m) => ({ default: m.VerplichtingReviewScreen })),
+)
 // Crediteuren-dubbelen v2 (03-09): kantoorbreed mét actie — vervangt het per-administratie-scherm.
 const CrediteurenDubbelenScreen = lazy(() =>
   import('./crediteuren/CrediteurenDubbelenScreen').then((m) => ({ default: m.CrediteurenDubbelenScreen })),
@@ -128,6 +136,22 @@ function BeschermdeRoutes() {
           element={
             <Suspense fallback={<SkeletonPaneel />}>
               <TerugkerendScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/verplichtingen"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <VerplichtingenScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/verplichting/:administratieId/:documentId"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <VerplichtingReviewScreen />
             </Suspense>
           }
         />

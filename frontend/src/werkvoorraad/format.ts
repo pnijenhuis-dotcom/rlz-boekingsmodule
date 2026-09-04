@@ -47,6 +47,9 @@ export const SOORT_LABELS: Record<string, string> = {
   kassarapport: 'Omzetrapporten (kassarapporten)',
   verkoopfactuur: 'Verkoopfacturen',
   waarborg: 'Waarborg-berichten',
+  // Verplichtingen (blok B 04-09, mockup offerte-matching ①): offertes/prijsopgaven/
+  // opdrachtbevestigingen — eigen tab in de werkvoorraad, eigen reviewscherm, geen boeking.
+  verplichting: 'Verplichtingen (offertes)',
 }
 
 export function soortLabel(soort: string): string {
@@ -56,7 +59,7 @@ export function soortLabel(soort: string): string {
 /** Vaste soort-volgorde (mockup-norm 25-08: minimaal Inkoopfacturen / Verkoopfacturen) — gedeeld
  * door de tabs van de documentenlijst en de "volgende document"-keuze ná boeken/afwijzen
  * (deel 4 punt 1). Onbekende soorten volgen achteraan. */
-export const SOORT_VOLGORDE = ['inkoopfactuur', 'verkoopfactuur', 'kassarapport', 'waarborg']
+export const SOORT_VOLGORDE = ['inkoopfactuur', 'verplichting', 'verkoopfactuur', 'kassarapport', 'waarborg']
 
 /** Route per documentsoort/-status — één plek voor het klik-doel van een documentregel
  * (mockup: klik op een vraag-regel opent de vráág, niet het controlescherm). Mét lijstcontext
@@ -70,13 +73,16 @@ export function documentRoute(administratieId: string, d: DocumentListItemDto, c
   if (d.soort === 'kassarapport') return `/omzet/${administratieId}/${d.id}`
   if (d.soort === 'verkoopfactuur') return `/verkoop/${administratieId}/${d.id}`
   if (d.soort === 'waarborg') return `/waarborg/${administratieId}/${d.id}`
+  if (d.soort === 'verplichting') return `/verplichting/${administratieId}/${d.id}`
   const q = lijstContextNaarParams(context)
   return `/documenten/${administratieId}/${d.id}${q ? `?${q}` : ''}`
 }
 
 /** Terminale statussen — zelfde definitie als de backend-overzichtstellers
- * (`_TERMINAAL_VOOR_TELLERS`): geboekt/verwijderd/gesplitst/samengevoegd tellen niet als openstaand werk. */
-export const TERMINALE_STATUSSEN = ['geboekt', 'verwijderd', 'gesplitst', 'samengevoegd']
+ * (`_TERMINAAL_VOOR_TELLERS`): geboekt/verwijderd/gesplitst/samengevoegd tellen niet als openstaand
+ * werk. `geaccordeerd` (blok B 04-09) is de eindstand van een verplichting: het akkoord is gegeven,
+ * er wordt niets geboekt — dus geen openstaand werk meer. */
+export const TERMINALE_STATUSSEN = ['geboekt', 'verwijderd', 'gesplitst', 'samengevoegd', 'geaccordeerd']
 
 /** Openstaand = niet terminaal. */
 export function isOpenstaand(d: DocumentListItemDto): boolean {

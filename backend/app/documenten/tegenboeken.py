@@ -543,6 +543,18 @@ def voer_tegenboeking_uit(
             _tijdlijn(session, document=document, actor_id=actor_id, detail=detail)
             nieuwe_status = DocumentStatus.GEBOEKT
 
+        # Offerte-matching (04-09, ③): de tegenboeking maakt deze factuur boekhoudkundig ongedaan —
+        # het verbruik van de gematchte verplichting gaat terug (verrekend_op op NULL), zodat een
+        # herboeking ("tegenboeken én opnieuw boeken") straks opnieuw verrekent. Ín deze transactie.
+        from app.verplichting import match_pipeline as verplichting_match
+
+        verplichting_match.draai_verbruik_terug_in_sessie(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor_id,
+            reden=f"tegengeboekt ({soort}): {reden.strip()}",
+        )
         _sla_tegenboek_webhook_op(
             session,
             administratie_id=administratie_id,

@@ -20,6 +20,10 @@ export const STATUSFILTER_AUTOMATISCH = '__automatisch_geboekt'
 export const STATUSFILTER_DUPLICAAT = '__mogelijk_duplicaat'
 /** Sentinel voor urenmatch-afwijkingen (kolom "Urenmatch" in het klantoverzicht, punt 1a). */
 export const STATUSFILTER_URENMATCH = '__urenmatch_afwijking'
+/** Sentinel voor de offerte-match-vlag (blok B 04-09, ⑤): inkoopdocumenten die BUITEN de
+ * goedgekeurde offerte vallen óf waarvoor géén goedgekeurde offerte gevonden is — zelfde
+ * prefix-regel, duplicaat-patroon. Signaal, nooit een blokkade. */
+export const STATUSFILTER_BUITEN_OFFERTE = '__buiten_offerte'
 /** Expliciete "alle documenten"-tab (incl. geboekt/verwijderd). */
 export const SOORT_ALLE = 'alle'
 
@@ -140,12 +144,21 @@ export function isUrenmatchAfwijking(d: DocumentListItemDto): boolean {
   return d.factuurmatch?.uitkomst === 'afwijking'
 }
 
+/** Eén begrip voor de teller, het filter en de rij-chip: buiten de goedgekeurde offerte (`buiten`)
+ * of er is een lopende offerte van deze leverancier maar geen treffer (`geen_match`).
+ * `geen_verplichting`/`niet_toetsbaar` blijven bewust stil — er is niets te melden. */
+export function isBuitenOfferte(d: DocumentListItemDto): boolean {
+  const uitkomst = d.verplichting_match?.uitkomst
+  return uitkomst === 'buiten' || uitkomst === 'geen_match'
+}
+
 /** Voldoet één document aan het status-filter (echte status óf sentinel)? */
 export function voldoetAanStatusFilter(d: DocumentListItemDto, status: string): boolean {
   if (status === STATUSFILTER_ALLE) return true
   if (status === STATUSFILTER_AUTOMATISCH) return d.automatisch_geboekt
   if (status === STATUSFILTER_DUPLICAAT) return isMogelijkDuplicaat(d)
   if (status === STATUSFILTER_URENMATCH) return isUrenmatchAfwijking(d)
+  if (status === STATUSFILTER_BUITEN_OFFERTE) return isBuitenOfferte(d)
   return d.status === status
 }
 

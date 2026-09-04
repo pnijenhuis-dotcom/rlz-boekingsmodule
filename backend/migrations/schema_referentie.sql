@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0109
+-- Migratie-head bij deze dump: 0110
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -75,7 +75,8 @@ CREATE TYPE boekhouding.document_status AS ENUM (
     'samengevoegd',
     'handmatig_afmaken',
     'wacht_op_iban_accordering',
-    'ter_accordering'
+    'ter_accordering',
+    'geaccordeerd'
 );
 
 
@@ -931,7 +932,7 @@ CREATE TABLE boekhouding.document (
     bron_bestandsnaam text,
     bron_content_type text,
     samengevoegd_in_id uuid,
-    CONSTRAINT document_soort_geldig CHECK ((soort = ANY (ARRAY['inkoopfactuur'::text, 'kassarapport'::text, 'verkoopfactuur'::text, 'waarborg'::text])))
+    CONSTRAINT document_soort_geldig CHECK ((soort = ANY (ARRAY['inkoopfactuur'::text, 'kassarapport'::text, 'verkoopfactuur'::text, 'waarborg'::text, 'verplichting'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.document FORCE ROW LEVEL SECURITY;
@@ -2543,6 +2544,62 @@ CREATE TABLE boekhouding.verkoop_voorstel_regel (
 );
 
 ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: verplichting; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.verplichting (
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    soort_label text,
+    vendor_id uuid,
+    project_id uuid,
+    offertenummer text,
+    datum date,
+    totaalbedrag_excl numeric(14,2),
+    geldig_tot date,
+    omschrijving text,
+    opgeslagen_door uuid,
+    opgeslagen_op timestamp with time zone,
+    goedgekeurd_bedrag_excl numeric(14,2),
+    goedgekeurd_op timestamp with time zone,
+    goedgekeurd_door uuid,
+    verbruikt_bedrag_excl numeric(14,2) DEFAULT '0'::numeric NOT NULL,
+    vervallen_op timestamp with time zone,
+    vervallen_reden text,
+    vervallen_door uuid,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_verplichting_soort_label CHECK (((soort_label IS NULL) OR (soort_label = ANY (ARRAY['offerte'::text, 'prijsopgave'::text, 'opdrachtbevestiging'::text]))))
+);
+
+ALTER TABLE ONLY boekhouding.verplichting FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: verplichting_match; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.verplichting_match (
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    verplichting_document_id uuid,
+    uitkomst text NOT NULL,
+    bedrag_excl numeric(14,2),
+    verbruik_voor numeric(14,2),
+    verbruik_na numeric(14,2),
+    overschrijding_excl numeric(14,2),
+    handmatig_gekoppeld boolean DEFAULT false NOT NULL,
+    verrekend_op timestamp with time zone,
+    berekend_op timestamp with time zone DEFAULT now() NOT NULL,
+    details jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT ck_verplichting_match_overschrijding CHECK (((overschrijding_excl IS NULL) OR (overschrijding_excl >= (0)::numeric))),
+    CONSTRAINT ck_verplichting_match_uitkomst CHECK ((uitkomst = ANY (ARRAY['binnen'::text, 'buiten'::text, 'geen_match'::text, 'meerdere_kandidaten'::text, 'niet_toetsbaar'::text, 'geen_verplichting'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.verplichting_match FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4457,6 +4514,22 @@ ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel
 
 
 --
+-- Name: verplichting_match verplichting_match_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verplichting_match
+    ADD CONSTRAINT verplichting_match_pkey PRIMARY KEY (document_id);
+
+
+--
+-- Name: verplichting verplichting_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verplichting
+    ADD CONSTRAINT verplichting_pkey PRIMARY KEY (document_id);
+
+
+--
 -- Name: vraag_bericht vraag_bericht_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5657,6 +5730,20 @@ CREATE INDEX ix_verkoop_boeking_document_id ON boekhouding.verkoop_boeking USING
 --
 
 CREATE INDEX ix_verkoop_voorstel_regel_document_id ON boekhouding.verkoop_voorstel_regel USING btree (document_id);
+
+
+--
+-- Name: ix_verplichting_administratie_vendor; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_verplichting_administratie_vendor ON boekhouding.verplichting USING btree (administratie_id, vendor_id);
+
+
+--
+-- Name: ix_verplichting_match_administratie_uitkomst; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_verplichting_match_administratie_uitkomst ON boekhouding.verplichting_match USING btree (administratie_id, uitkomst);
 
 
 --
@@ -8135,6 +8222,46 @@ ALTER TABLE ONLY boekhouding.verkoop_voorstel_regel
 
 
 --
+-- Name: verplichting verplichting_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verplichting
+    ADD CONSTRAINT verplichting_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: verplichting verplichting_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verplichting
+    ADD CONSTRAINT verplichting_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: verplichting_match verplichting_match_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verplichting_match
+    ADD CONSTRAINT verplichting_match_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: verplichting_match verplichting_match_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verplichting_match
+    ADD CONSTRAINT verplichting_match_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: verplichting_match verplichting_match_verplichting_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.verplichting_match
+    ADD CONSTRAINT verplichting_match_verplichting_document_id_fkey FOREIGN KEY (verplichting_document_id) REFERENCES boekhouding.document(id);
+
+
+--
 -- Name: vraag vraag_aan_de_beurt_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -10088,6 +10215,32 @@ CREATE POLICY verkoop_voorstel_scope ON boekhouding.verkoop_voorstel USING ((EXI
   WHERE ((d.id = verkoop_voorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM boekhouding.document d
   WHERE ((d.id = verkoop_voorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+
+
+--
+-- Name: verplichting; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.verplichting ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: verplichting_match; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.verplichting_match ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: verplichting_match verplichting_match_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY verplichting_match_scope ON boekhouding.verplichting_match USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: verplichting verplichting_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY verplichting_scope ON boekhouding.verplichting USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

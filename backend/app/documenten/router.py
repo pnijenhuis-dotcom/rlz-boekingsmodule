@@ -253,6 +253,13 @@ async def document_uploaden(
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Een kassarapport moet een PDF (of foto) zijn"
         )
+    # Idem voor een verplichting (offerte/prijsopgave/opdrachtbevestiging, 04-09): altijd een PDF of
+    # foto — er bestaat geen UBL-vorm van een offerte in deze keten.
+    if document_soort == DocumentSoort.VERPLICHTING and Path(bestand.filename).suffix.lower() == ".xml":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Een offerte/prijsopgave/opdrachtbevestiging moet een PDF (of foto) zijn",
+        )
 
     inhoud = await bestand.read()
     if not inhoud:
@@ -318,6 +325,7 @@ def werkvoorraad_overzicht(
                 duplicaat_signalen=k.duplicaat_signalen,
                 terugkerend_signalen=k.terugkerend_signalen,
                 voorraad_verschillen=k.voorraad_verschillen,
+                buiten_offerte=k.buiten_offerte,
             )
             for k in klanten
         ]
@@ -364,6 +372,15 @@ def documenten_lijst(
                 accordering_boek_fout=item.accordering_boek_fout,
                 klant_akkoord_compleet=item.klant_akkoord_compleet,
                 projectverdeling_afwijking_pct=item.projectverdeling_afwijking_pct,
+                verplichting_match=(
+                    schemas.VerplichtingMatchKortDto(
+                        uitkomst=item.verplichting_match.uitkomst,
+                        overschrijding_excl=item.verplichting_match.overschrijding_excl,
+                        offertenummer=item.verplichting_match.offertenummer,
+                    )
+                    if item.verplichting_match is not None
+                    else None
+                ),
                 afdeling=(
                     schemas.AfdelingKortDto(id=item.afdeling[0], naam=item.afdeling[1]) if item.afdeling else None
                 ),
@@ -729,6 +746,13 @@ def boekvoorstel_opslaan(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except boekvoorstel.BoekvoorstelFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    # Factuur↔verplichting-match (offerte-matching 04-09): de crediteur/het project/het bedrag
+    # kunnen net gewijzigd zijn — post-commit opnieuw toetsen tegen de goedgekeurde offertes.
+    # Stil: de match is een signaal (⑤), nooit een blokkade van het opslaan.
+    from app.verplichting import match_pipeline as verplichting_match
+
+    verplichting_match.draai_match_stil(administratie_id=administratie_id, document_id=document_id)
 
     # voer_checks_uit() vangt credential-/RLZ-fouten zelf af (app/documenten/boekvoorstel.py) —
     # het resultaat is altijd een CheckRapport, nooit een onafgevangen RlzApiError/GeenRlzCredentials.

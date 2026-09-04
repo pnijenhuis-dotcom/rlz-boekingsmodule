@@ -24,10 +24,12 @@ import {
   SOORT_ALLE,
   STATUSFILTER_ALLE,
   STATUSFILTER_AUTOMATISCH,
+  STATUSFILTER_BUITEN_OFFERTE,
   STATUSFILTER_DUPLICAAT,
   STATUSFILTER_URENMATCH,
   defaultStatusFilter,
   filterDocumenten,
+  isBuitenOfferte,
   isMogelijkDuplicaat,
   isUrenmatchAfwijking,
   kiesTabVoorStatus,
@@ -399,6 +401,9 @@ export function DocumentenDeelscherm({
   const heeftAutomatischGeboekt = useMemo(() => (inScope ?? []).some((d) => d.automatisch_geboekt), [inScope])
   const aantalMogelijkDuplicaat = useMemo(() => (inScope ?? []).filter(isMogelijkDuplicaat).length, [inScope])
   const aantalUrenmatch = useMemo(() => (inScope ?? []).filter(isUrenmatchAfwijking).length, [inScope])
+  // Buiten offerte (blok B 04-09, ⑤): eigen teller in het duplicaat-patroon — de documenten
+  // zelf blijven in hun gewone statuskolom staan.
+  const aantalBuitenOfferte = useMemo(() => (inScope ?? []).filter(isBuitenOfferte).length, [inScope])
   const aantalMetStatus = useCallback(
     (status: string) => (inScope ?? []).filter((d) => d.status === status).length,
     [inScope],
@@ -632,7 +637,7 @@ export function DocumentenDeelscherm({
                 className={statusFilter === s ? 'actief' : undefined}
                 onClick={() => setStatusKeuze(s)}
               >
-                {statusLabel(s)} ({aantalMetStatus(s)})
+                {statusLabel(s, soort)} ({aantalMetStatus(s)})
               </button>
             ))}
             {heeftAutomatischGeboekt && (
@@ -662,6 +667,16 @@ export function DocumentenDeelscherm({
                 title="Veldwerker-facturen waarvan de urenmatch afwijkt van de goedgekeurde weekstaten"
               >
                 Urenmatch wijkt af ({aantalUrenmatch})
+              </button>
+            )}
+            {aantalBuitenOfferte > 0 && (
+              <button
+                type="button"
+                className={statusFilter === STATUSFILTER_BUITEN_OFFERTE ? 'actief' : undefined}
+                onClick={() => setStatusKeuze(STATUSFILTER_BUITEN_OFFERTE)}
+                title="Inkoopfacturen die buiten de goedgekeurde offerte van deze leverancier vallen, of waarvoor geen goedgekeurde offerte gevonden is — een signaal, geen blokkade"
+              >
+                Buiten offerte ({aantalBuitenOfferte})
               </button>
             )}
           </div>
@@ -858,7 +873,11 @@ export function DocumentenDeelscherm({
                         {isVerkoopfactuur && <span className="chip klaar">verkoopfactuur</span>}{' '}
                         {isWaarborg && <span className="chip klaar">waarborg</span>}{' '}
                         {/* Blok C 02-09: "Geboekt in RLZ · boekstuk · tegenpartij" (+ vindplaats-hint) als tooltip. */}
-                        <StatusChip status={d.status} title={d.geboekt_in_rlz ? geboektInRlzTooltip(d.geboekt_in_rlz) : undefined} />
+                        <StatusChip
+                          status={d.status}
+                          soort={d.soort}
+                          title={d.geboekt_in_rlz ? geboektInRlzTooltip(d.geboekt_in_rlz) : undefined}
+                        />
                         {d.automatisch_geboekt && (
                           <>
                             {' '}
@@ -958,6 +977,39 @@ export function DocumentenDeelscherm({
                               title="De omzet van de verdeelmaand is ná het boeken gewijzigd — open het document voor Herverdelen…"
                             >
                               verdeling wijkt {Number(d.projectverdeling_afwijking_pct).toLocaleString('nl-NL')}% af
+                            </span>
+                          </div>
+                        )}
+                        {/* Factuur ↔ offerte-match (blok B 04-09, ⑤): binnen = groene status-chip,
+                            buiten/geen treffer = oranje vlag mét het bedrag erover — nooit een
+                            blokkade; het handelingsperspectief staat op het controlescherm. */}
+                        {d.verplichting_match?.uitkomst === 'binnen' && (
+                          <div style={{ marginTop: 4 }} data-testid="chip-binnen-offerte">
+                            <span
+                              className="chip ok"
+                              title={
+                                d.verplichting_match.offertenummer
+                                  ? `Past binnen de goedgekeurde offerte ${d.verplichting_match.offertenummer}`
+                                  : 'Past binnen de goedgekeurde offerte'
+                              }
+                            >
+                              binnen offerte
+                            </span>
+                          </div>
+                        )}
+                        {isBuitenOfferte(d) && (
+                          <div style={{ marginTop: 4 }} data-testid="chip-buiten-offerte">
+                            <span
+                              className="chip afwijking"
+                              title={
+                                d.verplichting_match?.uitkomst === 'geen_match'
+                                  ? 'Er is wel een goedgekeurde offerte van deze leverancier, maar geen treffer voor dit project — koppel de offerte op het controlescherm'
+                                  : 'Cumulatief boven het goedgekeurde offertebedrag — meerwerk hoort een eigen verplichting te krijgen'
+                              }
+                            >
+                              {d.verplichting_match?.overschrijding_excl
+                                ? `buiten offerte − ${formatBedrag(d.verplichting_match.overschrijding_excl)} over`
+                                : 'buiten offerte'}
                             </span>
                           </div>
                         )}

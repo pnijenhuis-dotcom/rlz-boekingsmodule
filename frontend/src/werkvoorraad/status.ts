@@ -22,6 +22,18 @@ export const STATUS_LABELS: Record<string, string> = {
   // factuur is opgenomen — terminaal, leeft door in het leidende document.
   samengevoegd: 'Samengevoegd',
   gesplitst: 'Gesplitst',
+  // Verplichtingen (blok B 04-09): eindstand ná het laatste klant-akkoord — er wordt niets
+  // geboekt, het akkoord (wie/wanneer/welk bedrag) ís het resultaat.
+  geaccordeerd: 'Geaccordeerd',
+}
+
+/** Statuslabels die per DOCUMENTSOORT afwijken (blok B 04-09): een verplichting wordt niet
+ * geboekt, dus "Klaar om te boeken" heet daar "Klaar voor accordering" — puur een label, de
+ * status en de statusmachine zijn ongewijzigd. */
+export const STATUS_LABELS_PER_SOORT: Record<string, Record<string, string>> = {
+  verplichting: {
+    klaar_om_te_boeken: 'Klaar voor accordering',
+  },
 }
 
 export const STATUS_CHIP_KLASSE: Record<string, string> = {
@@ -41,6 +53,8 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   verwijderd: 'geboekt',
   samengevoegd: 'geboekt',
   gesplitst: 'geboekt',
+  // Statusgroen (--ok), net als geboekt: het akkoord is een afgeronde stand, geen actie.
+  geaccordeerd: 'geboekt',
 }
 
 /** Statussen waarin de achtergrondextractie nog loopt (async extractie): werkvoorraad en
@@ -49,7 +63,13 @@ export function extractieActief(status: string): boolean {
   return status === 'extractie_wachtrij' || status === 'extractie_bezig'
 }
 
-export function statusLabel(status: string): string {
+/** Statuslabel, optioneel soort-bewust (blok B 04-09) — zonder `soort` blijft het gedrag exact
+ * zoals het was, zodat alle bestaande aanroepen ongewijzigd werken. */
+export function statusLabel(status: string, soort?: string | null): string {
+  if (soort) {
+    const perSoort = STATUS_LABELS_PER_SOORT[soort]?.[status]
+    if (perSoort) return perSoort
+  }
   return STATUS_LABELS[status] ?? status
 }
 

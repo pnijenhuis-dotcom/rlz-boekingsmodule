@@ -160,6 +160,14 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("PUT", "/instellingen/duplicaat-autoafvoer"),
         ("GET", f"/administraties/{aid}/btw-default"),  # btw-default per administratie (blok E 04-09, beheerder-only)
         ("PUT", f"/administraties/{aid}/btw-default"),  # btw-default zetten (blok E 04-09, beheerder-only)
+        # Verplichtingen / offerte-matching (04-09) — router-breed vereis_kantoorrol + scope.
+        ("GET", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),
+        ("PUT", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),
+        ("POST", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/checks"),
+        ("POST", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/vervallen"),
+        ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplichting-match"),
+        ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplichting-match/koppel"),
+        ("GET", "/verplichtingen"),  # kantoorbrede Inzicht-lijst (⑦)
     ]
 
 

@@ -59,6 +59,7 @@ from app.documenten.models import (
     Boekvoorstel,
     Document,
     DocumentGebeurtenis,
+    DocumentSoort,
     DocumentStatus,
     Vraag,
     VraagStatus,
@@ -1107,47 +1108,63 @@ def bied_ter_accordering_aan(
     """De "Ter accordering"-knop (kantoor): bevriest de actieve lagen tot stappen (drempel op
     het totaalbedrag; onbekend bedrag = vereist, fail-closed), zet het document op
     ter_accordering en past daarna staande goedkeuringen toe — zijn álle stappen daarmee al
-    akkoord, dan boekt de motor direct (met alle harde checks)."""
+    akkoord, dan boekt de motor direct (met alle harde checks).
+
+    VERPLICHTINGEN (offerte/prijsopgave/opdrachtbevestiging, wens Peter 04-09, ⑥): exact dezelfde
+    lagen/drempels/app, maar met de VERPLICHTING-checks, het bedrag exclusief btw als
+    drempelbedrag, zónder factuurmatch-/materiaal-/doorbelasting-poorten (die gaan over facturen)
+    en zónder staande goedkeuringen. Ná het laatste akkoord volgt géén boeking maar de terminale
+    status `geaccordeerd` — zie `_rond_af_verplichting`."""
     _vereis_kantoor(actor_rol)
     if not is_accordering_ingeschakeld(administratie_id=administratie_id):
         raise AccorderingUitgeschakeld("Accordering staat uit voor deze administratie")
 
-    # Factuurmatch-poort (fase 2, besluit 2): een match-afwijking vraagt de expliciete
-    # kantoor-bevestiging al bij het AANBIEDEN — de klant-accordeur is niet degene die de
-    # urenmatch beoordeelt, en het boeken ná het laatste akkoord (systeem-actor) leunt op de
-    # hier persistent vastgelegde bevestiging (migratie 0058). Zelfde 409-vorm als de
-    # boek-route (router vertaalt MatchAfwijkingBevestigingVereist).
-    boeken_service.toets_match_afwijking_poort(
-        administratie_id=administratie_id,
-        document_id=document_id,
-        actor_id=actor_id,
-        bevestigd=match_afwijking_bevestigd,
-    )
-    from app.materiaal.match import toets_materiaalmatch_poort  # D6, zelfde poort-vorm
-
-    toets_materiaalmatch_poort(
-        administratie_id=administratie_id,
-        document_id=document_id,
-        actor_id=actor_id,
-        bevestigd=materiaal_afwijking_bevestigd,
-    )
-
-    # De "Ter accordering"-knop vervangt de boekknop op het controlescherm — dus ook vanaf
-    # te_controleren/handmatig_afmaken, mét exact dezelfde checks-poort als boek_document:
-    # een document met blokkerende checks gaat nooit naar de klant.
     with scoped_session(administratie_id) as session:
         document = session.get(Document, document_id)
         if document is None:
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        is_verplichting = document.soort == DocumentSoort.VERPLICHTING.value
         status_vooraf = document.status
-    if status_vooraf in (DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN):
-        from app.documenten.boeken import _port_voor
-        from app.documenten.boekvoorstel import voer_checks_uit
 
-        with _port_voor(administratie_id) as port:
-            rapport = voer_checks_uit(
-                administratie_id=administratie_id, document_id=document_id, client=port.leesclient()
+    if not is_verplichting:
+        # Factuurmatch-poort (fase 2, besluit 2): een match-afwijking vraagt de expliciete
+        # kantoor-bevestiging al bij het AANBIEDEN — de klant-accordeur is niet degene die de
+        # urenmatch beoordeelt, en het boeken ná het laatste akkoord (systeem-actor) leunt op de
+        # hier persistent vastgelegde bevestiging (migratie 0058). Zelfde 409-vorm als de
+        # boek-route (router vertaalt MatchAfwijkingBevestigingVereist).
+        boeken_service.toets_match_afwijking_poort(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor_id,
+            bevestigd=match_afwijking_bevestigd,
+        )
+        from app.materiaal.match import toets_materiaalmatch_poort  # D6, zelfde poort-vorm
+
+        toets_materiaalmatch_poort(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor_id,
+            bevestigd=materiaal_afwijking_bevestigd,
+        )
+
+    # De "Ter accordering"-knop vervangt de boekknop op het controlescherm — dus ook vanaf
+    # te_controleren/handmatig_afmaken, mét exact dezelfde checks-poort als boek_document:
+    # een document met blokkerende checks gaat nooit naar de klant.
+    if status_vooraf in (DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN):
+        if is_verplichting:
+            from app.verplichting import service as verplichting_service
+
+            rapport = verplichting_service.voer_checks_uit(
+                administratie_id=administratie_id, document_id=document_id
             )
+        else:
+            from app.documenten.boeken import _port_voor
+            from app.documenten.boekvoorstel import voer_checks_uit
+
+            with _port_voor(administratie_id) as port:
+                rapport = voer_checks_uit(
+                    administratie_id=administratie_id, document_id=document_id, client=port.leesclient()
+                )
         if rapport.geblokkeerd:
             raise ChecksNietGroen(rapport)
         with scoped_session(administratie_id, actor_id=actor_id) as session:
@@ -1162,17 +1179,18 @@ def bied_ter_accordering_aan(
                     detail={"harde_checks": "doorstaan"},
                 )
 
-    # Klaargezette doorbelasting (besluit 25-08, A2/A3): boek-checks én doorbelasting-checks
-    # moeten samen groen zijn vóór het document naar de klant gaat — de accordeur ziet de
-    # verdeling alleen-lezen en ná het laatste akkoord boekt alles in één gang. Lazy import.
-    from app.doorbelasting import orkestratie
+    if not is_verplichting:
+        # Klaargezette doorbelasting (besluit 25-08, A2/A3): boek-checks én doorbelasting-checks
+        # moeten samen groen zijn vóór het document naar de klant gaat — de accordeur ziet de
+        # verdeling alleen-lezen en ná het laatste akkoord boekt alles in één gang. Lazy import.
+        from app.doorbelasting import orkestratie
 
-    try:
-        orkestratie.toets_klaargezette_doorbelasting(
-            administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
-        )
-    except orkestratie.DoorbelastingChecksNietGroen as exc:
-        raise ChecksNietGroen(exc.rapport) from exc
+        try:
+            orkestratie.toets_klaargezette_doorbelasting(
+                administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+            )
+        except orkestratie.DoorbelastingChecksNietGroen as exc:
+            raise ChecksNietGroen(exc.rapport) from exc
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
@@ -1192,17 +1210,30 @@ def bied_ter_accordering_aan(
                 "zou de klant een tweede keer om hetzelfde akkoord vragen)"
             )
 
-        voorstel = session.get(Boekvoorstel, document_id)
-        totaalbedrag = _als_decimal(voorstel.totaalbedrag) if voorstel else None
-        vendor_id = voorstel.vendor_id if voorstel else None
+        if is_verplichting:
+            # Verplichting (04-09): het drempelbedrag is het totaalbedrag EXCLUSIEF btw uit de
+            # verplichting-rij (de accordeur beoordeelt precies dát bedrag) en de crediteur komt
+            # daar ook uit — een verplichting heeft geen boekvoorstel. Onbekend bedrag = laag
+            # vereist (fail-closed, zelfde regel als bij facturen).
+            from app.verplichting.models import Verplichting
+
+            verplichting_rij = session.get(Verplichting, document_id)
+            totaalbedrag = _als_decimal(verplichting_rij.totaalbedrag_excl) if verplichting_rij else None
+            vendor_id = verplichting_rij.vendor_id if verplichting_rij else None
+            voorstel = None
+        else:
+            voorstel = session.get(Boekvoorstel, document_id)
+            totaalbedrag = _als_decimal(voorstel.totaalbedrag) if voorstel else None
+            vendor_id = voorstel.vendor_id if voorstel else None
 
         # Route per afdeling (blok A 28-08): een gekozen afdeling vervángt de administratie-route;
         # de terugval-afdeling "Algemeen" volgt de administratie-route. Een afdeling zónder eigen
         # route = expliciete fout (nooit stil op de administratie-route terugvallen).
+        # Een verplichting kent geen afdeling-keuze (geen boekvoorstel) — de administratie-route geldt.
         afdeling_id = voorstel.afdeling_id if voorstel else None
         afdeling = session.get(Afdeling, afdeling_id) if afdeling_id is not None else None
         administratie_rij = session.get(Administratie, administratie_id)
-        if administratie_rij is not None and administratie_rij.afdelingen_ingeschakeld:
+        if administratie_rij is not None and administratie_rij.afdelingen_ingeschakeld and not is_verplichting:
             # Afdeling-poort óók vanaf klaar_om_te_boeken (de checks-poort hierboven draait alleen
             # vanaf te_controleren): een document zonder actieve afdeling gaat nooit naar de klant.
             from app.documenten.checks import CheckRapport, check_afdeling
@@ -1231,6 +1262,9 @@ def bied_ter_accordering_aan(
             document_id=document_id,
             aangeboden_door=actor_id,
             detail={
+                # `soort` op de ronde (04-09): de vervolgpaden (staande regels, afronden) vertakken
+                # hierop zonder het document opnieuw te hoeven lezen.
+                "soort": document.soort,
                 "totaalbedrag": str(totaalbedrag) if totaalbedrag is not None else None,
                 "vendor_id": str(vendor_id) if vendor_id else None,
                 "afdeling_id": str(afdeling_id) if afdeling_id else None,
@@ -1392,6 +1426,10 @@ def _pas_staande_regels_toe_en_rond_af(
         totaalbedrag = _als_decimal(detail.get("totaalbedrag"))
         ronde_afdeling_id = _ronde_afdeling_id(accordering)
         stappen = _stappen_van(session, accordering_id)
+        # Verplichtingen (⑥, besluit Peter 04-09): staande goedkeuring is UITGESLOTEN — een offerte
+        # is per definitie een nieuw aanbod, dus nooit "voortaan automatisch bij dit bedrag".
+        if detail.get("soort") == DocumentSoort.VERPLICHTING.value:
+            vendor_id = None
 
         if vendor_id and totaalbedrag is not None:
             document = session.get(Document, document_id)
@@ -1563,6 +1601,13 @@ def geef_akkoord(
 
         detail = accordering.detail or {}
         if staande_regel_aanmaken:
+            if detail.get("soort") == DocumentSoort.VERPLICHTING.value:
+                # ⑥ (besluit Peter 04-09): een offerte is altijd een nieuw aanbod — nooit een
+                # staande goedkeuring. De app biedt 'm niet aan; deze poort is het vangnet.
+                raise StaandeRegelNietMogelijk(
+                    "Een staande goedkeuring bestaat niet voor offertes/prijsopgaven — elk aanbod "
+                    "wordt afzonderlijk goedgekeurd"
+                )
             vendor_id = detail.get("vendor_id")
             totaalbedrag = _als_decimal(detail.get("totaalbedrag"))
             if not vendor_id or totaalbedrag is None:
@@ -1680,6 +1725,13 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
         accordering.afgerond_op = datetime.now(UTC)
         document = session.get(Document, document_id)
         assert document is not None
+        # Verplichting (04-09): ná het laatste akkoord volgt géén boeking maar de terminale status
+        # `geaccordeerd` (zie `_rond_af_verplichting`) — de soort staat op de ronde én, fail-safe,
+        # op het document zelf.
+        is_verplichting_ronde = (
+            (accordering.detail or {}).get("soort") == DocumentSoort.VERPLICHTING.value
+            or document.soort == DocumentSoort.VERPLICHTING.value
+        )
         # Tijdlijn-notitie zónder statusovergang: het document blijft bij de klant-status tot de
         # boeking staat; de motor zelf schrijft de echte overgangen (mét reden).
         session.add(
@@ -1749,8 +1801,65 @@ def _rond_af_en_boek(*, administratie_id: uuid.UUID, accordering_id: uuid.UUID) 
             accordering=data, alles_akkoord=True, geboekt=False, boek_fout=open_vraag_fout, staande_regel_id=None
         )
 
+    if is_verplichting_ronde:
+        # Verplichting (04-09): géén boeking — de terminale status `geaccordeerd` + het vastgelegde
+        # goedgekeurde bedrag (wie/wanneer) zijn het resultaat.
+        return _rond_af_verplichting(
+            administratie_id=administratie_id, accordering_id=accordering_id, document_id=document_id
+        )
     return _boek_na_laatste_akkoord(
         administratie_id=administratie_id, accordering_id=accordering_id, document_id=document_id
+    )
+
+
+def _rond_af_verplichting(
+    *, administratie_id: uuid.UUID, accordering_id: uuid.UUID, document_id: uuid.UUID
+) -> AkkoordResultaat:
+    """Afronding van een VERPLICHTING-ronde (wens Peter 04-09, ①/⑥): het document gaat naar de
+    terminale status `geaccordeerd` — bewust GEEN boeking in RLZ/Odoo — en de verplichting-rij legt
+    het goedgekeurde bedrag + wie/wanneer vast (dát is het discrepantie-doel). Tijdlijn + audit via
+    de bestaande `_schrijf_overgang`; daarna worden de open inkoopdocumenten van deze crediteur
+    opnieuw getoetst zodat de nieuwe offerte direct meedoet in de cumulatieve match."""
+    from app.verplichting import match_pipeline as verplichting_match
+    from app.verplichting import service as verplichting_service
+
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        document = session.get(Document, document_id)
+        assert document is not None
+        accordering = session.get(DocumentAccordering, accordering_id)
+        assert accordering is not None
+        if document.status == DocumentStatus.GEACCORDEERD:
+            # Race-/retry-vangnet: al afgerond door een gelijktijdige request.
+            stappen = _stappen_van(session, accordering_id)
+            return AkkoordResultaat(
+                accordering=_naar_data(session, accordering, stappen),
+                alles_akkoord=True,
+                geboekt=False,
+                boek_fout=None,
+                staande_regel_id=None,
+            )
+        bedrag = verplichting_service.leg_goedkeuring_vast_in_sessie(
+            session, administratie_id=administratie_id, document_id=document_id, actor_id=SYSTEEM_ACTOR_ID
+        )
+        _schrijf_overgang(
+            session,
+            document=document,
+            naar=DocumentStatus.GEACCORDEERD,
+            actor_id=SYSTEEM_ACTOR_ID,
+            detail={
+                "accordering_id": str(accordering_id),
+                "verplichting_goedgekeurd_bedrag_excl": str(bedrag) if bedrag is not None else None,
+                "reden": "alle lagen akkoord — verplichting goedgekeurd (geen boeking)",
+            },
+        )
+        stappen = _stappen_van(session, accordering_id)
+        data = _naar_data(session, accordering, stappen)
+
+    verplichting_match.herbereken_na_verplichting_wijziging_stil(
+        administratie_id=administratie_id, verplichting_document_id=document_id
+    )
+    return AkkoordResultaat(
+        accordering=data, alles_akkoord=True, geboekt=False, boek_fout=None, staande_regel_id=None
     )
 
 
@@ -2087,6 +2196,15 @@ class WachtrijItem:
     # ("Kempen Facilities · Buitendienst"); None = administratie zonder afdelingen.
     afdeling_id: uuid.UUID | None = None
     afdeling_naam: str | None = None
+    # Offerte-matching (04-09): documentsoort van dit wachtrij-item ('inkoopfactuur' |
+    # 'verplichting') — de app rendert per soort een andere kaart (mockup blok 1).
+    soort: str = "inkoopfactuur"
+    # Alleen bij soort 'verplichting': de kaart-gegevens van de offerte/prijsopgave
+    # (VerplichtingKaart) — bedrag EXCLUSIEF btw, want dát is wat de accordeur goedkeurt.
+    verplichting: object | None = None
+    # Alleen bij een inkoopfactuur mét een binnen/buiten-match: de conform-offerte-melding
+    # (OPTIE A, ④) — het vinkje "Conform offerte ‹nr›" staat vóóringevuld, de mens tikt Akkoord.
+    offerte_match: object | None = None
 
 
 @dataclass(frozen=True)
@@ -2130,6 +2248,60 @@ def _doorbelasting_voor_wachtrij(
             )
         )
     return tuple(regels)
+
+
+@dataclass(frozen=True)
+class VerplichtingKaart:
+    """Kaart-gegevens van een verplichting-document in de accordeur-wachtrij (mockup blok 1)."""
+
+    soort_label: str | None
+    leverancier_naam: str | None
+    project_naam: str | None
+    totaal_excl: Decimal | None
+    geldig_tot: object | None
+    omschrijving: str | None
+
+
+def _verplichting_kaart(
+    session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID
+) -> VerplichtingKaart | None:
+    """Leesroute voor de accordeur (04-09): de verplichting-rij + leveranciers-/projectnaam uit de
+    caches. Faalvriendelijk: geen rij = geen kaart (de app valt dan terug op de kop-gegevens)."""
+    from app.sync.models import ProjectCache
+    from app.verplichting.models import Verplichting
+
+    rij = session.get(Verplichting, document_id)
+    if rij is None:
+        return None
+    vendor = session.get(VendorCache, (rij.vendor_id, administratie_id)) if rij.vendor_id else None
+    project = session.get(ProjectCache, (rij.project_id, administratie_id)) if rij.project_id else None
+    return VerplichtingKaart(
+        soort_label=rij.soort_label,
+        leverancier_naam=vendor.naam if vendor else None,
+        project_naam=project.naam if project else None,
+        totaal_excl=rij.totaalbedrag_excl,
+        geldig_tot=rij.geldig_tot,
+        omschrijving=rij.omschrijving,
+    )
+
+
+def _offerte_match_voor_wachtrij(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, soort: str
+) -> object | None:
+    """De conform-offerte-melding voor een INKOOPfactuur in de wachtrij (OPTIE A, ④): alleen een
+    `binnen`/`buiten`-uitkomst is voor de accordeur zichtbaar. Faalvriendelijk: een leesfout mag de
+    wachtrij nooit blokkeren — dan géén melding."""
+    if soort != DocumentSoort.INKOOPFACTUUR.value:
+        return None
+    from app.verplichting import service as verplichting_service
+
+    try:
+        return verplichting_service.offerte_match_kort(
+            administratie_id=administratie_id, document_id=document_id
+        )
+    except Exception:  # noqa: BLE001 — verrijking, nooit blokkerend voor de wachtrij
+        logger.exception("Offerte-match voor de wachtrij niet te laden (document %s)", document_id)
+        return None
 
 
 def _boeking_omschrijving(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
@@ -2241,11 +2413,22 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
                 volgende = _eerstvolgende_open_stap(stappen)
                 if volgende is None or volgende.accordeur_gebruiker_id != actor_id:
                     continue
+                document = session.get(Document, accordering.document_id)
+                soort = document.soort if document is not None else DocumentSoort.INKOOPFACTUUR.value
                 voorstel = session.get(Boekvoorstel, accordering.document_id)
                 leverancier = None
                 if voorstel is not None and voorstel.vendor_id is not None:
                     vendor = session.get(VendorCache, (voorstel.vendor_id, administratie_id))
                     leverancier = vendor.naam if vendor else None
+                verplichting_kaart = None
+                if soort == DocumentSoort.VERPLICHTING.value:
+                    # Verplichting-kaart (mockup blok 1): chip soort-label, leverancier vet,
+                    # "‹omschrijving› · project ‹nr› · geldig t/m ‹d›", bedrag excl.
+                    verplichting_kaart = _verplichting_kaart(
+                        session, administratie_id=administratie_id, document_id=accordering.document_id
+                    )
+                    if verplichting_kaart is not None and verplichting_kaart.leverancier_naam:
+                        leverancier = verplichting_kaart.leverancier_naam
                 items.append(
                     WachtrijItem(
                         document_id=accordering.document_id,
@@ -2275,6 +2458,8 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
                         ),
                         afdeling_id=_ronde_afdeling_id(accordering),
                         afdeling_naam=(accordering.detail or {}).get("afdeling_naam"),
+                        soort=soort,
+                        verplichting=verplichting_kaart,
                     )
                 )
     # Buiten de scoped_session per administratie: de doorbelasting-leesroute opent zijn eigen
@@ -2284,6 +2469,9 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
             item,
             doorbelasting=_doorbelasting_voor_wachtrij(
                 administratie_id=item.administratie_id, document_id=item.document_id
+            ),
+            offerte_match=_offerte_match_voor_wachtrij(
+                administratie_id=item.administratie_id, document_id=item.document_id, soort=item.soort
             ),
         )
         for item in items

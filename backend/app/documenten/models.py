@@ -36,6 +36,12 @@ class DocumentSoort(enum.StrEnum):
     # §2d (koppelcontract): Vastly-verkoopfactuur uit de e-mail-intake (UBL-markering
     # VASTLY-VERKOOP) — de omzetkant boekt 'm als SalesInvoice (migratie 0028).
     VERKOOPFACTUUR = "verkoopfactuur"
+    # Inkomende offerte / prijsopgave / opdrachtbevestiging (wens Peter 04-09, migratie 0110,
+    # mockup offerte-matching.html ①): één documenttype mét soort-label op de verplichting-rij
+    # (app/verplichting/). Doorloopt de BESTAANDE klant-accorderingsflow en eindigt op de
+    # terminale status `geaccordeerd` — NOOIT een boeking in RLZ/Odoo; latere facturen worden
+    # er cumulatief tegen gematcht.
+    VERPLICHTING = "verplichting"
 
 
 class DocumentStatus(enum.StrEnum):
@@ -83,6 +89,12 @@ class DocumentStatus(enum.StrEnum):
     # terugvindbaar) en is het beeld/bron van het leidende document (`samengevoegd_in_id`);
     # ongedaan maken zet 'm terug in de verzamelbak zolang het leidende document niet is toegewezen.
     SAMENGEVOEGD = "samengevoegd"
+    # Verplichtingen (migratie 0110, wens Peter 04-09): TERMINALE status van een offerte/
+    # prijsopgave/opdrachtbevestiging ná het LAATSTE klant-akkoord — er volgt bewust GEEN boeking
+    # (geen RLZ-/Odoo-document); het goedgekeurde bedrag + wie/wanneer staat op de verplichting-rij
+    # en voedt de cumulatieve factuur↔offerte-match. Kantoor kan een geaccordeerde verplichting
+    # laten VERVALLEN (kolom op verplichting, géén statuswissel — het document blijft geaccordeerd).
+    GEACCORDEERD = "geaccordeerd"
 
 
 def _enum_waarden(python_enum: type[enum.StrEnum]) -> list[str]:

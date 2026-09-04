@@ -581,7 +581,7 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
   const [bericht, setBericht] = useState<string | null>(null)
-  const [uploadSoort, setUploadSoort] = useState<'inkoopfactuur' | 'kassarapport'>('inkoopfactuur')
+  const [uploadSoort, setUploadSoort] = useState<'inkoopfactuur' | 'kassarapport' | 'verplichting'>('inkoopfactuur')
 
   const uploadBestand = useCallback(
     async (bestand: File) => {
@@ -641,7 +641,9 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
           <>
             Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst; een foto (JPEG/PNG/HEIC) wordt naar
             PDF omgezet (origineel blijft bewaard). Een .eml doorloopt de mail-intake mét tenaamstelling-routing.
-            Kies rechts de documentsoort vóór het uploaden: inkoopfactuur (standaard) of kassarapport (omzetboeking).
+            Kies rechts de documentsoort vóór het uploaden: inkoopfactuur (standaard), kassarapport (omzetboeking) of
+            verplichting — een offerte, prijsopgave of opdrachtbevestiging die ter accordering gaat en waar latere
+            facturen tegen gematcht worden (PDF of foto, geen UBL).
           </>
         }
         extra={
@@ -650,10 +652,11 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
             <Select
               aria-label="Documentsoort voor upload"
               value={uploadSoort}
-              onChange={(e) => setUploadSoort(e.target.value as 'inkoopfactuur' | 'kassarapport')}
+              onChange={(e) => setUploadSoort(e.target.value as 'inkoopfactuur' | 'kassarapport' | 'verplichting')}
             >
               <option value="inkoopfactuur">Inkoopfactuur</option>
               <option value="kassarapport">Kassarapport (omzetboeking)</option>
+              <option value="verplichting">Verplichting (offerte / prijsopgave / opdrachtbevestiging)</option>
             </Select>
           </label>
         }

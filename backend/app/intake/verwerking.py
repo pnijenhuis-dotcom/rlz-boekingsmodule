@@ -88,6 +88,10 @@ logger = logging.getLogger(__name__)
 # gescand document maar een handtekening-logo of icoon (deterministische drempel, punt 2).
 MIN_DOCUMENT_PIXELS = 600
 
+# Documentsoort-herkenning (offerte-matching 04-09): de AI twijfelt tussen factuur en offerte →
+# verzamelbak mét deze reden; de mens kiest bij het toewijzen de soort. Nooit stil als factuur.
+REDEN_DOCUMENTSOORT_ONDUIDELIJK = "documentsoort_onduidelijk"
+
 
 @dataclass(frozen=True)
 class BijlageResultaat:
@@ -580,12 +584,42 @@ def _verwerk_pdf(
         )
 
     if len(segmenten) == 1:
-        # Eén herkende factuur = het hele document (proportionele validatie 02-09: het AI-bereik is
+        # Eén herkend document = het hele bestand (proportionele validatie 02-09: het AI-bereik is
         # dan irrelevant en al genormaliseerd) — de gelezen tenaamstelling is leidend.
+        #
+        # Documentsoort-herkenning (offerte-matching 04-09, mockup blok 1): AI leest, CODE routeert.
+        # "verplichting" (offerte/prijsopgave/opdrachtbevestiging) → eigen documentsoort mét exact
+        # dezelfde tenaamstelling-routing; "onduidelijk" → verzamelbak mét reden (factuur of offerte?),
+        # nooit stil als factuur behandeld; niets gelezen of "factuur" → bestaande inkooproute.
+        gelezen_soort = segmenten[0].documentsoort
+        if gelezen_soort == splitsing_extractie.DOCUMENTSOORT_ONDUIDELIJK:
+            document_id = documenten_service.registreer_niet_toegewezen_document(
+                bestandsnaam=bijlage.bestandsnaam,
+                inhoud=bijlage.inhoud,
+                actor_id=actor_id,
+                reden=REDEN_DOCUMENTSOORT_ONDUIDELIJK,
+                opslag=opslag,
+                intake_bericht_id=intake_bericht_id,
+                afzender_hint=afzender,
+                tenaamstelling=segmenten[0].tenaamstelling,
+                bron_bestand=bron_bestand,
+                bron=kanaal,
+            )
+            return BijlageResultaat(
+                bestandsnaam=bijlage.bestandsnaam,
+                uitkomst="verzamelbak",
+                document_id=document_id,
+                detail=REDEN_DOCUMENTSOORT_ONDUIDELIJK,
+            )
+        soort = (
+            DocumentSoort.VERPLICHTING
+            if gelezen_soort == splitsing_extractie.DOCUMENTSOORT_VERPLICHTING
+            else DocumentSoort.INKOOPFACTUUR
+        )
         return _wijs_toe_of_verzamelbak(
             bijlage_naam=bijlage.bestandsnaam,
             inhoud=bijlage.inhoud,
-            soort=DocumentSoort.INKOOPFACTUUR,
+            soort=soort,
             tenaamstelling=segmenten[0].tenaamstelling,
             afzender=afzender,
             actor_id=actor_id,

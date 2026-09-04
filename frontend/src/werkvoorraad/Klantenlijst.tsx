@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { Avatar } from '../ui/Avatar'
 import { SkeletonRijen } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
-import { STATUSFILTER_URENMATCH } from './lijstContext'
+import { STATUSFILTER_BUITEN_OFFERTE, STATUSFILTER_URENMATCH } from './lijstContext'
 import { heeftOpenstaandWerk, type KlantRij } from './useWerkvoorraadData'
 
 /** Werkvoorraad-ingang (mockup #werkvoorraad "Overzicht per klant"): alleen klanten mét
@@ -55,6 +55,9 @@ export function Klantenlijst({
   // Voorraadverschil (C2 design-ronde 03-09): artikelgroepen buiten tolerantie — alleen bij de
   // voorraad-opt-in berekend; zelfde toon-regel, klik = kantoorbrede voorraadlijst gefilterd op de klant.
   const toonVoorraad = (klanten ?? []).some((k) => (k.voorraad_verschillen ?? 0) > 0)
+  // Buiten offerte (blok B 04-09, ⑤): open inkoopdocumenten die buiten de goedgekeurde offerte
+  // vallen (of geen treffer hebben) — zelfde toon-regel, klik = documentenlijst voorgefilterd.
+  const toonBuitenOfferte = (klanten ?? []).some((k) => (k.buiten_offerte ?? 0) > 0)
 
   return (
     <div className="panel">
@@ -81,6 +84,7 @@ export function Klantenlijst({
                 {toonDuplicaat && <th>Duplicaten</th>}
                 {toonTerugkerend && <th>Verwachte facturen</th>}
                 {toonVoorraad && <th>Voorraadverschil</th>}
+                {toonBuitenOfferte && <th>Buiten offerte</th>}
               </tr>
               {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
               {zichtbaar.map((k) => (
@@ -182,6 +186,14 @@ export function Klantenlijst({
                       }}
                     >
                       <Teller waarde={k.voorraad_verschillen ?? 0} chipKlasse="afwijking" />
+                    </td>
+                  )}
+                  {toonBuitenOfferte && (
+                    <td
+                      title="Inkoopfacturen die buiten de goedgekeurde offerte van de leverancier vallen, of waarvoor geen goedgekeurde offerte gevonden is — signaal, geen blokkade"
+                      onClick={naarStatus(k, STATUSFILTER_BUITEN_OFFERTE, k.buiten_offerte ?? 0)}
+                    >
+                      <Teller waarde={k.buiten_offerte ?? 0} chipKlasse="afwijking" />
                     </td>
                   )}
                 </tr>

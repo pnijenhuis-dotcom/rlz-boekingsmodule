@@ -21,7 +21,7 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.mime import content_type_voor
-from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus
+from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.documenten.service import (
     BronBestand,
     DocumentNietGevonden,
@@ -292,7 +292,11 @@ def _laad_verzamelbak_document(session, document_id: uuid.UUID) -> Document:
 
 
 def wijs_toe(
-    *, document_id: uuid.UUID, administratie_id: uuid.UUID, actor_id: uuid.UUID
+    *,
+    document_id: uuid.UUID,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    soort: DocumentSoort | None = None,
 ) -> VerzamelbakActieResultaat:
     """Handmatige toewijzing vanuit de verzamelbak: administratie zetten, toewijzings-geheugen
     leren (mockup: "wordt onthouden"), terug naar ontvangen en de normale extractieflow starten
@@ -319,12 +323,24 @@ def wijs_toe(
             )
         document = _laad_verzamelbak_document(session, document_id)
         document.administratie_id = administratie_id
+        # Documentsoort-keuze (offerte-matching 04-09): de mens kan bij het toewijzen kiezen tussen
+        # inkoopfactuur en verplichting (offerte/prijsopgave/opdrachtbevestiging) — nodig zodra de
+        # intake-AI de soort niet kon bepalen (reden `documentsoort_onduidelijk`) of zich vergiste.
+        # `soort=None` = de soort laten staan (bestaand gedrag).
+        soort_gewijzigd: str | None = None
+        if soort is not None and soort.value != document.soort:
+            soort_gewijzigd = f"{document.soort} -> {soort.value}"
+            document.soort = soort.value
         _schrijf_overgang(
             session,
             document=document,
             naar=DocumentStatus.ONTVANGEN,
             actor_id=actor_id,
-            detail={"toegewezen_aan_administratie": str(administratie_id), "vanuit": "verzamelbak"},
+            detail={
+                "toegewezen_aan_administratie": str(administratie_id),
+                "vanuit": "verzamelbak",
+                **({"documentsoort_gewijzigd": soort_gewijzigd} if soort_gewijzigd else {}),
+            },
         )
         leer_toewijzing(
             session,
@@ -341,7 +357,10 @@ def wijs_toe(
             record_id=document_id,
             actie="verzamelbak_toegewezen",
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"administratie_id": str(administratie_id)},
+            nieuwe_waarde={
+                "administratie_id": str(administratie_id),
+                **({"documentsoort": document.soort} if soort_gewijzigd else {}),
+            },
             administratie_id=administratie_id,
         )
 

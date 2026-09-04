@@ -522,6 +522,14 @@ def boek_document(
             boek_cyclus=voorstel.boek_cyclus,
             actor_id=actor_id,
         )
+        # Offerte-matching (wens Peter 04-09, ③): het verbruik van de gematchte verplichting
+        # bijschrijven ÍN deze transactie — samen met de GEBOEKT-overgang, of samen niet. Alleen
+        # geboekte facturen tellen mee in de cumulatieve stand; tegenboeken draait het terug.
+        from app.verplichting import match_pipeline as verplichting_match
+
+        verplichting_match.verreken_in_sessie(
+            session, administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+        )
         # Leerlus boekingsgeheugen (B5): de zojuist bevestigde boeking als bron='app'-observaties,
         # in dezelfde transactie als de GEBOEKT-overgang — vendor is hier altijd gevuld
         # (afgedwongen door de harde checks die deze functie zelf herhaalde). bron_datum =

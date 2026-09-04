@@ -417,6 +417,19 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   default gevuld; de default vult uitsluitend velden waarvoor scan én geheugen niets hadden.** (F) **Bugfix Huvanco**: kortingsregels als negatieve regel (prompt +
   UBL `AllowanceCharge`), regeltelling via één gedeelde beslisboom `documenten/regelsom.py` (netto-vs-excl,
   netto+btw-vs-incl, nooit stil excl-vs-incl; lege btw = 0 alleen op een gesynct 0%-tarief).
+- **Verplichtingen — offerte-accordering + factuur↔offerte-match (besluiten Peter 04-09, mockup `offerte-matching.html` ①–⑧ = norm,
+  migratie 0110 — BESLISSINGEN "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09" is canoniek):** één documenttype `verplichting` (soort-label
+  offerte/prijsopgave/opdrachtbevestiging), door de intake-AI herkend (sentinel-veld `ds`; twijfel = verzamelbak "factuur of offerte? — kies
+  bij toewijzen", nooit stil als factuur), eigen werkvoorraad-tab + reviewscherm `/verplichting/…` (veldvoorstel-patroon mét herkomst-chips,
+  `app/extractie/verplichting.py` achter de bestaande gates), daarna de BESTAANDE accorderingsflow (lagen/drempels op het bedrag excl., app-kaart;
+  staande goedkeuring uitgesloten) → nieuwe terminale status `geaccordeerd` (wie/wanneer/bedrag vastgelegd) — **géén RLZ-/Odoo-boeking**,
+  dossierstuk 7 jaar. Deterministische match-motor `app/verplichting/match.py` (sleutel crediteur-kenmerk + project, offertenummer versterkt,
+  meerdere kandidaten = "Koppel offerte…" éénmalig + onthouden): CUMULATIEF verbruik = som van de GEBOEKTE gematchte facturen, binnen = totaal ≤
+  offertebedrag zonder tolerantie; verbruik bijgewerkt ín de boek-transactie, teruggedraaid bij tegenboeken/storno; groene melding + verbruiksbalk
+  op controlescherm én accordeur-kaart mét vooringevuld vinkje (optie A: de mens tikt), buiten offerte/geen match = oranje vlag mét bedrag erover
+  + werkvoorraad-teller "buiten offerte" (duplicaat-patroon) + handelingsperspectief "meerwerk = aparte verplichting" — nooit blokkade;
+  afgewezen/vervallen verplichting stopt nieuwe matches, verrekende facturen blijven; Inzicht › Verplichtingen `/verplichtingen` kantoorbreed
+  (overschreden bovenaan, uitklap gekoppelde facturen).
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
@@ -1480,6 +1493,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   RLZ-projectmotor; ná aanmaken direct geselecteerd); projecten AANMAKEN mag élke kantoorrol incl. Boekhouding (`app/projecten/kantoor.py::
   _vereis_aanmaakrol`, frontend-spiegel `auth/rollen.ts::magProjectAanmaken`), overige projectmutaties blijven Beheerder + B+P. BESLISSINGEN
   "UI-FIXES 04-09 BLOK C".**
+- `mockup/offerte-matching.html` — definitief goedgekeurde mockup offerte-accordering + factuur↔offerte-match (Peter 04-09,
+  ontwerpnotities ①–⑧ = onderdeel van het akkoord; GEBOUWD 04-09) — de bouwnorm voor het documenttype "verplichting"
 - `mockup/tegenboek-mockup.html` — definitief goedgekeurde mockup tegenboek-pad (Peter
   2026-08-22, suppletie-signaal geschrapt; GEBOUWD 2026-08-22) — de bouwnorm
 - `mockup/projecten-invoer.html` — definitief goedgekeurde mockup kantoor-projectenmodule

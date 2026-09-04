@@ -34,6 +34,12 @@ logger = logging.getLogger(__name__)
 
 _STRING_OF_NULL: dict[str, Any] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
 
+#: Documentsoort-herkenning door de intake-AI (offerte-matching 04-09) — sentinel-waarden.
+DOCUMENTSOORT_FACTUUR = "factuur"
+DOCUMENTSOORT_VERPLICHTING = "verplichting"
+DOCUMENTSOORT_ONDUIDELIJK = "onduidelijk"
+DOCUMENTSOORTEN = (DOCUMENTSOORT_FACTUUR, DOCUMENTSOORT_VERPLICHTING, DOCUMENTSOORT_ONDUIDELIJK)
+
 SPLITSING_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -51,8 +57,11 @@ SPLITSING_SCHEMA: dict[str, Any] = {
                     # Bijlage-bewust (blok B 04-09): aantal pagina's dat de FACTUUR zelf beslaat; 0 = onbekend.
                     # Bewust een kale integer (sentinel-patroon, geen union) — de unionlimiet blijft 3.
                     "fp": {"type": "integer"},
+                    # Documentsoort-herkenning (offerte-matching 04-09): "factuur" | "verplichting" |
+                    # "onduidelijk" | "" (niet gelezen). Sentinel-string, GEEN union — de unionlimiet blijft 3.
+                    "ds": {"type": "string"},
                 },
-                "required": ["sp", "ep", "ten", "lev", "nr", "z", "fp"],
+                "required": ["sp", "ep", "ten", "lev", "nr", "z", "fp", "ds"],
                 "additionalProperties": False,
             },
         }
@@ -73,6 +82,10 @@ Identificeer elke afzonderlijke factuur in het document. Per factuur geef je:
 - z: één zekerheidsscore tussen 0 en 1 voor deze factuur (grens + velden samen).
 - fp: het aantal pagina's dat de FACTUUR ZELF beslaat (de pagina's met factuurkop, regels en totalen),
   zónder de bijlagen. Weet je het niet: 0.
+- ds: wat voor document dit is. "factuur" voor een factuur of creditnota (een betalingsverzoek voor
+  geleverd werk of goederen). "verplichting" voor een OFFERTE, PRIJSOPGAVE, AANBIEDING of
+  OPDRACHTBEVESTIGING — een aanbod/toezegging vóóraf, waar nog niet om betaling wordt gevraagd.
+  Twijfel je: "onduidelijk". Niet te bepalen: "".
 
 BIJLAGEN HOREN BIJ DE FACTUUR: een factuur bestaat uit de factuurpagina's PLUS haar bijbehorende
 bijlagen — werkbonnen, urenstaten, specificaties, pakbonnen, weekstaten, mandagenregisters,
@@ -92,7 +105,8 @@ OPDRACHT = (
     "Identificeer alle afzonderlijke facturen in deze PDF volgens het schema — paginabereik, "
     "tenaamstelling (geadresseerde), leverancier en factuurnummer per factuur. Bijlagen (werkbonnen, "
     "urenstaten, specificaties, pakbonnen) horen bij de factuur ervóór; geef per factuur in fp het aantal "
-    "pagina's van de factuur zelf (0 = onbekend)."
+    "pagina's van de factuur zelf (0 = onbekend). Geef in ds aan of het een factuur is of een "
+    "offerte/prijsopgave/opdrachtbevestiging (verplichting); bij twijfel \"onduidelijk\"."
 )
 
 
@@ -130,6 +144,11 @@ class FactuurSegment:
     #: model (`fp`; 0/afwezig = None = onbekend). Puur informatief — de bereik-toets rekent er
     #: nooit mee; `bijlage_paginas` leidt code er deterministisch uit af.
     factuur_paginas: int | None = None
+    #: Documentsoort-herkenning (offerte-matching 04-09): DOCUMENTSOORT_FACTUUR |
+    #: DOCUMENTSOORT_VERPLICHTING | DOCUMENTSOORT_ONDUIDELIJK | None (niet gelezen). De ROUTING
+    #: beslist code (app/intake/verwerking.py): verplichting = eigen documentsoort mét dezelfde
+    #: tenaamstelling-routing, onduidelijk = verzamelbak mét reden — nooit stil als factuur.
+    documentsoort: str | None = None
 
     @property
     def geldig(self) -> bool:
@@ -154,6 +173,7 @@ class FactuurSegment:
             "ongeldig_reden": self.ongeldig_reden,
             "factuur_paginas": self.factuur_paginas,
             "bijlage_paginas": self.bijlage_paginas,
+            "documentsoort": self.documentsoort,
         }
 
 
@@ -303,6 +323,7 @@ def beoordeel_segmenten(segmenten: list[FactuurSegment], *, paginas: int) -> Beo
                     zekerheid=segment.zekerheid,
                     ongeldig_reden=reden,
                     factuur_paginas=segment.factuur_paginas,
+                    documentsoort=segment.documentsoort,
                 )
             )
     return BeoordeeldeSegmenten(segmenten=beoordeeld, normalisaties=[])
@@ -350,6 +371,14 @@ def detecteer_facturen(
         fp_ruw = ruw.get("fp")
         fp_bruikbaar = isinstance(fp_ruw, int) and not isinstance(fp_ruw, bool) and fp_ruw > 0
         factuur_paginas = int(fp_ruw) if fp_bruikbaar else None
+        # ds (offerte-matching 04-09): sentinel — alleen de drie bekende waarden zijn een uitspraak;
+        # alles anders (leeg, onbekend woord) = None = "niet gelezen" → bestaande factuur-routing.
+        ds_ruw = ruw.get("ds")
+        documentsoort = (
+            ds_ruw.strip().lower()
+            if isinstance(ds_ruw, str) and ds_ruw.strip().lower() in DOCUMENTSOORTEN
+            else None
+        )
         segmenten.append(
             FactuurSegment(
                 start_pagina=start,
@@ -359,6 +388,7 @@ def detecteer_facturen(
                 factuurnummer=factuurnummer,
                 zekerheid=min(max(zekerheid, 0.0), 1.0),
                 factuur_paginas=factuur_paginas,
+                documentsoort=documentsoort,
             )
         )
 

@@ -47,7 +47,7 @@ from app.extractie import controle as extractie_controle
 from app.extractie import service as extractie_service
 from app.extractie import template_service
 from app.sync.btw import taxrate_vlaggen
-from app.sync.models import TaxRateCache, VendorCache
+from app.sync.models import ProjectCache, TaxRateCache, VendorCache
 from app.vragen import service as vragen_kpi
 
 logger = logging.getLogger(__name__)
@@ -257,6 +257,11 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
             }
         except OngeldigWaarborgBericht as exc:
             detail = {"waarborg_parse_fout": str(exc)}
+    elif document.soort == DocumentSoort.VERPLICHTING.value:
+        # Verplichtingen (wens Peter 04-09): offerte/prijsopgave/opdrachtbevestiging — eigen
+        # kop-extractie (app/extractie/verplichting.py) achter dezelfde AVG-gate + kostenmeter;
+        # geen regelset, dus ook geen projectplicht-waarborg. Uitkomst altijd te_controleren.
+        detail = _verplichting_extractie_detail(session, document=document, opslag=opslag)
     elif suffix == _UBL_SUFFIX:
         inhoud = opslag.lezen(pad=document.opslag_pad)
         try:
@@ -766,6 +771,61 @@ def _rapport_extractie_detail(session: Session, *, document: Document, opslag: D
     return {"veldvoorstel": voorstel}
 
 
+def _verplichting_extractie_detail(session: Session, *, document: Document, opslag: DocumentOpslag) -> dict:
+    """AI-route voor verplichtingen (offerte/prijsopgave/opdrachtbevestiging, wens Peter 04-09):
+    AVG-gate → kop-extractie (app/extractie/verplichting.py) → deterministische controlelaag
+    (bedragen/datums geparst door code, crediteur uit de vendor-cache, project uit de project-cache).
+    Zelfde uitkomst-conventie als de andere extracties: voorstel, overgeslagen of fout — altijd
+    herkenbaar in de tijdlijn; een AI-fout laat de upload nooit falen."""
+    from app.extractie import verplichting as verplichting_extractie
+
+    if document.administratie_id is None:
+        return {"ai_extractie_overgeslagen": "geen_administratie"}
+    administratie = session.get(Administratie, document.administratie_id)
+    if administratie is None or not administratie.ai_extractie_ingeschakeld:
+        return {"ai_extractie_overgeslagen": "ai_extractie_uitgeschakeld"}
+    if not settings.anthropic_api_key:
+        return {"ai_extractie_overgeslagen": "geen_api_key"}
+    if Path(document.bestandsnaam).suffix.lower() != _PDF_SUFFIX:
+        # Een verplichting is altijd een PDF (of een omgezette foto) — een UBL/XML hoort hier niet.
+        return {"ai_extractie_overgeslagen": "geen_pdf"}
+
+    inhoud = opslag.lezen(pad=document.opslag_pad)
+    try:
+        extractie = verplichting_extractie.extraheer_verplichting(
+            inhoud,
+            verbruik_referentie=AiVerbruikReferentie(bron="verplichting_extractie", document_id=document.id),
+        )
+    except AiKostenLimietBereikt:
+        logger.warning("AI-maandlimiet bereikt — verplichting-extractie overgeslagen voor document %s", document.id)
+        return {"ai_extractie_overgeslagen": "ai_limiet_bereikt"}
+    except Exception as exc:  # noqa: BLE001 — een AI-fout mag de upload nooit laten falen
+        logger.exception("Verplichting-extractie mislukt voor document %s", document.id)
+        return {"ai_extractie_fout": str(exc)}
+
+    from app.documenten.crediteur_kenmerk import kandidaten_met_kenmerken
+
+    vendors = kandidaten_met_kenmerken(session, administratie_id=document.administratie_id)
+    projecten = [
+        verplichting_extractie.ProjectKandidaat(id=rij.id, naam=rij.naam or "")
+        for rij in session.scalars(
+            select(ProjectCache).where(
+                ProjectCache.administratie_id == document.administratie_id,
+                ProjectCache.verdwenen_uit_bron_op.is_(None),
+                ProjectCache.is_actief.isnot(False),
+            )
+        )
+        if rij.naam
+    ]
+    voorstel = verplichting_extractie.bouw_verplichting_veldvoorstel(
+        extractie,
+        vendors=vendors,
+        projecten=projecten,
+        zekerheid_drempel=settings.ai_extractie_zekerheid_drempel,
+    )
+    return {"veldvoorstel": voorstel}
+
+
 def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.UUID, soort: str) -> None:
     """Ná de commit van een afgeronde extractie (upload, her-extractie én worker): voor
     kassarapporten de automatische mapping-vraag ("nieuwe categorie zonder mapping → regel
@@ -804,6 +864,12 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
             factuurmatch_pipeline.draai_match_voor_document(administratie_id=administratie_id, document_id=document_id)
         except Exception:  # noqa: BLE001 — de match is signalering, nooit een blokkade
             logger.exception("Factuurmatch-run mislukt voor document %s", document_id)
+
+        # Factuur↔verplichting-match (offerte-matching, wens Peter 04-09): cumulatieve toets tegen
+        # de goedgekeurde offertes van deze crediteur — signaal + chip, nooit een blokkade (⑤).
+        from app.verplichting import match_pipeline as verplichting_match  # lokaal: geen kring
+
+        verplichting_match.draai_match_stil(administratie_id=administratie_id, document_id=document_id)
         # Materiaalmatch (steigerbouw-run D6): verhuur-crediteuren vs geregistreerde leveringen.
         from app.materiaal import match as materiaalmatch
 
@@ -1234,6 +1300,9 @@ class DocumentMetDuplicaat:
     # Projectverdeling-hercontrole (blok C 04-09, ⑥): afwijking in % op een geboekte pro-rato-verdeling boven de
     # drempel — voedt de rij-chip "verdeling wijkt x % af". None = geen signaal.
     projectverdeling_afwijking_pct: Decimal | None = None
+    # Offerte-matching (04-09): de actuele factuur↔verplichting-matchstand — voedt de rij-chip
+    # "buiten offerte − € O" / "binnen offerte" + het filter. None = nog niet getoetst.
+    verplichting_match: object | None = None
 
 
 def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
@@ -1364,6 +1433,10 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
         pv_afwijkingen = afwijkingen_per_document(
             session, [d.id for d in documenten if d.status == DocumentStatus.GEBOEKT]
         )
+        # Offerte-matching (04-09, bulk — zelfde geen-N+1-regel).
+        from app.verplichting.match_pipeline import matches_voor_documenten
+
+        verplichting_matches = matches_voor_documenten(session, document_ids)
         resultaat = []
         for d in documenten:
             leverancier, totaalbedrag, factuurdatum = _kop(d.id)
@@ -1384,6 +1457,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     klant_akkoord_compleet=d.id in akkoord_compleet,
                     geboekt_in_rlz=geboekt_stand.get(d.id),
                     projectverdeling_afwijking_pct=pv_afwijkingen.get(d.id),
+                    verplichting_match=verplichting_matches.get(d.id),
                     afdeling=(
                         (voorstellen[d.id].afdeling_id, afdelingen[voorstellen[d.id].afdeling_id])
                         if d.id in voorstellen
@@ -1439,6 +1513,10 @@ class WerkvoorraadKlant:
     # Voorraadverschil (C2 design-ronde 03-09): artikelgroepen buiten tolerantie — alleen berekend bij
     # de opt-in `voorraad_ingeschakeld` (anders 0); zelfde signaal-patroon, geen document erachter.
     voorraad_verschillen: int = 0
+    # Offerte-matching (⑤, 04-09): open inkoopdocumenten met matchuitkomst `buiten` óf `geen_match`
+    # — zelfde signaal-patroon als de duplicaat-/matchtellers (de documenten zelf zitten al in een
+    # status-teller hierboven), telt daarom niet mee in heeft_openstaand_werk.
+    buiten_offerte: int = 0
 
     @property
     def heeft_openstaand_werk(self) -> bool:
@@ -1458,6 +1536,9 @@ _TERMINAAL_VOOR_TELLERS = [
     DocumentStatus.GEBOEKT,
     DocumentStatus.GESPLITST,
     DocumentStatus.SAMENGEVOEGD,
+    # Verplichtingen (04-09): geaccordeerd is terminaal — de offerte is goedgekeurd, er volgt geen
+    # boeking; het werk zit dan in de verbruiksstand, niet in de werkvoorraad.
+    DocumentStatus.GEACCORDEERD,
 ]
 
 
@@ -1525,6 +1606,10 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
             # Open vragen (G1 03-09): de KPI-definitie uit app.vragen.service — één bron met de kaart
             # "Open vragen"; dezelfde gescoopte sessie als de overige tellers (RLS op vraag = administratie).
             vragen = vragen_kpi.tel_open_vragen(session, administratie_id)
+            # Buiten offerte (⑤, 04-09): één aggregaatquery op verplichting_match — signaal, geen status.
+            from app.verplichting import match_pipeline as verplichting_match  # lokaal: geen kring
+
+            buiten_offerte = verplichting_match.tel_buiten_offerte(session, administratie_id)
         klanten.append(
             WerkvoorraadKlant(
                 administratie_id=administratie_id,
@@ -1541,6 +1626,7 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 duplicaat_signalen=duplicaat_signalen,
                 terugkerend_signalen=terugkerend_signalen,
                 voorraad_verschillen=voorraad_verschillen,
+                buiten_offerte=buiten_offerte,
             )
         )
     return klanten

@@ -18,6 +18,9 @@ _VOORSTEL_ONGELDIG = "Splitsingsvoorstel ongeldig:"
 # Blok B 04-09 — gelijk aan `app/intake/splitsing_uitsluiting.REDEN_PREFIX` (hier letterlijk, geen import:
 # redenen.py blijft afhankelijkheidsvrij voor de bewaking).
 _NOOIT_SPLITSEN = "splitsing_overgeslagen_nooit_splitsen:"
+# Offerte-matching 04-09 — gelijk aan `app/intake/verwerking.REDEN_DOCUMENTSOORT_ONDUIDELIJK`
+# (hier letterlijk, geen import: redenen.py blijft afhankelijkheidsvrij voor de bewaking).
+_DOCUMENTSOORT_ONDUIDELIJK = "documentsoort_onduidelijk"
 _MAX_DETAIL = 140
 
 
@@ -46,6 +49,10 @@ def omschrijf_intake_reden(reden: str | None, *, tenaamstelling: str | None) -> 
 
     if reden == "intake_ai_uitgeschakeld":
         return "intake-AI staat uit — handmatig toewijzen"
+    if reden == _DOCUMENTSOORT_ONDUIDELIJK:
+        # Offerte-matching 04-09: de AI kon factuur en offerte niet onderscheiden — de mens kiest de
+        # soort bij het toewijzen (nooit stil als factuur behandeld).
+        return "factuur of offerte? — kies bij toewijzen"
     if reden == "ai_limiet_bereikt":
         return "AI-limiet bereikt — handmatig verwerken"
     if reden.startswith(_SPLITSING_MISLUKT) or reden.startswith(_HERLEZEN_MISLUKT):

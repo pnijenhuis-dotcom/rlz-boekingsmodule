@@ -195,7 +195,17 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # afwijzen door de accordeur loopt via datzelfde terugzetten + het bestaande
     # afwijzen-met-verplichte-reden (heropenen brengt het document dan terug in de kantoorbak).
     # Bewust NIET naar VERWIJDERD: een document dat bij de klant ligt haal je eerst terug.
-    DocumentStatus.TER_ACCORDERING: frozenset({DocumentStatus.KLAAR_OM_TE_BOEKEN}),
+    # Verplichtingen (migratie 0110, wens Peter 04-09): een VERPLICHTING-document (offerte/
+    # prijsopgave/opdrachtbevestiging) gaat ná het laatste klant-akkoord naar GEACCORDEERD i.p.v.
+    # geboekt te worden — die tak is uitsluitend voor soort 'verplichting' (service-poort in
+    # app/accordering/service.py::_rond_af_verplichting), inkoopfacturen houden onverkort de
+    # terugweg naar klaar_om_te_boeken.
+    DocumentStatus.TER_ACCORDERING: frozenset(
+        {DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.GEACCORDEERD}
+    ),
+    # Terminaal (bewaarplicht/herleidbaarheid): een geaccordeerde verplichting VERVALT via een kolom
+    # op de verplichting-rij, nooit via een statuswissel.
+    DocumentStatus.GEACCORDEERD: frozenset(),
     # Tegenboek-pad (migratie 0061, mockup tegenboek-mockup.html): "tegenboeken én opnieuw
     # boeken" zet het document terug in de werkvoorraad — de ENIGE uitgang uit GEBOEKT, en
     # uitsluitend gebruikt door app/documenten/tegenboeken.py ná een geslaagde tegenboeking in

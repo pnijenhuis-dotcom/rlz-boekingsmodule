@@ -271,6 +271,17 @@ export interface DocumentListItemDto {
   /** Projectverdeling-hercontrole (blok C 04-09): afwijking in % boven de drempel op een geboekte
    * pro-rato-verdeling — chip "verdeling wijkt x% af", actie "Herverdelen…" op het document. */
   projectverdeling_afwijking_pct?: string | null
+  /** Factuur ↔ offerte-match (blok B 04-09): stand t.o.v. de goedgekeurde verplichting — voedt de
+   * rij-chip "binnen offerte" / "buiten offerte − € O" en het filter "Buiten offerte".
+   * Null/afwezig = niet getoetst of geen verplichting van deze leverancier (stil). */
+  verplichting_match?: DocumentVerplichtingMatchKortDto | null
+}
+
+/** Korte match-stand op een documentregel (blok B 04-09) — geen status, een vlag (⑤). */
+export interface DocumentVerplichtingMatchKortDto {
+  uitkomst: string
+  overschrijding_excl: string | null
+  offertenummer: string | null
 }
 
 export interface AccordeurAanDeBeurtDto {
@@ -483,6 +494,9 @@ export interface WerkvoorraadKlantDto {
   terugkerend_signalen?: number
   /** Voorraadverschil (C2 03-09): artikelgroepen buiten tolerantie; 0 zonder de voorraad-opt-in. */
   voorraad_verschillen?: number
+  /** Buiten offerte (blok B 04-09, ⑤): open inkoopdocumenten waarvan de offerte-match `buiten` of
+   * `geen_match` is — signaal-teller in het duplicaat-patroon, nooit een blokkade. */
+  buiten_offerte?: number
 }
 
 export interface WerkvoorraadOverzichtDto {

@@ -103,9 +103,17 @@ export interface VerzamelbakActieResultaatDto {
   melding?: string | null
 }
 
-export function wijsToe(documentId: string, administratieId: string): Promise<VerzamelbakActieResultaatDto> {
+/** Toewijzen aan een administratie. `soort` (blok B 04-09) alleen meegeven als de mens er expliciet
+ * over beslist heeft — de intake-AI kan "factuur of offerte?" onbeslist laten (reden
+ * `documentsoort_onduidelijk`); zonder `soort` houdt de server zijn bestaande default. */
+export function wijsToe(
+  documentId: string,
+  administratieId: string,
+  soort?: 'inkoopfactuur' | 'verplichting',
+): Promise<VerzamelbakActieResultaatDto> {
   return apiPostJson<VerzamelbakActieResultaatDto>(`/verzamelbak/${documentId}/toewijzen`, {
     administratie_id: administratieId,
+    ...(soort ? { soort } : {}),
   })
 }
 

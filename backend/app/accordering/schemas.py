@@ -252,6 +252,36 @@ class WachtrijItemResponse(BaseModel):
     # Blok A 28-08: kaart per afdeling in de app (None = administratie zonder afdelingen).
     afdeling_id: uuid.UUID | None = None
     afdeling_naam: str | None = None
+    # Offerte-matching (04-09): 'inkoopfactuur' | 'verplichting' — de app rendert per soort een
+    # andere kaart (mockup offerte-matching.html blok 1).
+    soort: str = "inkoopfactuur"
+    # Alleen bij soort 'verplichting'.
+    verplichting: WachtrijVerplichtingDto | None = None
+    # Alleen bij een inkoopfactuur mét een binnen/buiten-offerte-match (OPTIE A, ④).
+    offerte_match: OfferteMatchKortDto | None = None
+
+
+class WachtrijVerplichtingDto(BaseModel):
+    soort_label: str | None = None
+    project_naam: str | None = None
+    totaal_excl: Decimal | None = None
+    geldig_tot: date | None = None
+    omschrijving: str | None = None
+
+
+class OfferteMatchKortDto(BaseModel):
+    """Conform-/buiten-offerte-melding op de accordeur-kaart (04-09, ④)."""
+
+    uitkomst: str
+    offertenummer: str | None = None
+    leverancier_naam: str | None = None
+    goedgekeurd_door_naam: str | None = None
+    goedgekeurd_op: datetime | None = None
+    bedrag_excl: Decimal | None = None
+    verbruik_na: Decimal | None = None
+    totaal_excl: Decimal | None = None
+    percentage_na: int | None = None
+    overschrijding_excl: Decimal | None = None
 
 
 class WachtrijResponse(BaseModel):

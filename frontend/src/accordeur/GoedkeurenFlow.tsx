@@ -206,6 +206,90 @@ function pctWeergave(pct: string): string {
   return `${getal.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
 }
 
+// --- Verplichtingen + offerte-match (blok B 04-09, mockup offerte-matching blok 1/2) ----------
+
+const VERPLICHTING_SOORT_TEKST: Record<string, string> = {
+  offerte: 'Offerte',
+  prijsopgave: 'Prijsopgave',
+  opdrachtbevestiging: 'Opdrachtbevestiging',
+}
+
+function verplichtingSoortLabel(soort: string | null | undefined): string {
+  return (soort && VERPLICHTING_SOORT_TEKST[soort]) || 'Verplichting'
+}
+
+/** Metaregel van de verplichting-kaart: "‹omschrijving› · project ‹nr› · geldig t/m ‹d›". */
+function verplichtingMeta(item: WachtrijItem): string {
+  const v = item.verplichting
+  const delen = [
+    v?.omschrijving ?? null,
+    v?.project_naam ? `project ${v.project_naam}` : null,
+    v?.geldig_tot ? `geldig t/m ${datumWeergave(v.geldig_tot)}` : null,
+    item.administratie_naam,
+  ].filter((d): d is string => Boolean(d))
+  return delen.join(' · ')
+}
+
+/** Balkbreedte 0–100; een overschrijding is vol + rood (het bedrag erover staat in de tekst). */
+function offerteBalkBreedte(match: NonNullable<WachtrijItem['offerte_match']>): number {
+  if (match.uitkomst === 'buiten') return 100
+  const pct = match.percentage_na
+  if (pct === null || pct === undefined || !Number.isFinite(pct)) return 0
+  return Math.min(100, Math.max(0, pct))
+}
+
+/** Offerte-melding op de factuur-review (②③) + het VOORINGEVULDE vinkje "Conform offerte ‹nr›"
+ * (④, besluit Peter 04-09 optie A). Het vinkje is presentatie: het akkoord komt uitsluitend van
+ * de Akkoord-knop, de accordeur tikt zélf. Buiten de offerte = oranje signaal, nooit een blokkade
+ * — afwijzen met reden blijft de weg als het niet klopt. */
+function OfferteMelding({ item }: { item: WachtrijItem }) {
+  const match = item.offerte_match
+  const [conform, setConform] = useState(true)
+  if (!match) return null
+  const binnen = match.uitkomst === 'binnen'
+  const nummer = match.offertenummer ?? 'zonder nummer'
+  return (
+    <>
+      <div className={`acc-offerte ${binnen ? 'binnen' : 'buiten'}`} data-testid="acc-offerte-melding">
+        <div className="acc-offerte-kop">
+          {binnen ? `✓ Binnen de goedgekeurde offerte ${nummer}` : `⚠ Buiten de offerte ${nummer}`}
+        </div>
+        <div>
+          {binnen
+            ? `Deze factuur van ${eurWeergave(match.bedrag_excl)} past.`
+            : `Deze factuur van ${eurWeergave(match.bedrag_excl)} komt cumulatief boven het goedgekeurde bedrag${
+                match.overschrijding_excl ? ` — ${eurWeergave(match.overschrijding_excl)} erover` : ''
+              }.`}
+        </div>
+        <div className="acc-offerte-balk" aria-hidden="true">
+          <span style={{ width: `${offerteBalkBreedte(match)}%` }} />
+        </div>
+        <div className="acc-offerte-stand">
+          {eurWeergave(match.verbruik_na)} van {eurWeergave(match.totaal_excl)}
+          {match.goedgekeurd_door_naam
+            ? ` · akkoord ${match.goedgekeurd_door_naam}${match.goedgekeurd_op ? `, ${datumWeergave(match.goedgekeurd_op)}` : ''}`
+            : ''}
+        </div>
+      </div>
+      <label className="acc-conform" data-testid="acc-conform">
+        <input
+          type="checkbox"
+          checked={conform}
+          onChange={(e) => setConform(e.target.checked)}
+          aria-label={`Conform offerte ${nummer}`}
+        />
+        <span>
+          <b>Conform offerte {nummer}</b>
+          <br />
+          <span className="acc-k">
+            Vooringevuld op basis van de controle. Je akkoord geef je zelf met de knop hieronder.
+          </span>
+        </span>
+      </label>
+    </>
+  )
+}
+
 function FactuurBeeld({ item, actief = true }: { item: WachtrijItemDto; actief?: boolean }) {
   const [url, setUrl] = useState<string | null>(null)
   const [laden, setLaden] = useState(true)
@@ -889,12 +973,23 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                 {bvItems.map((item) => (
                   <button key={item.document_id} className="acc-qcard" onClick={() => openReview(item)}>
                     <div>
+                      {/* Verplichting (blok B 04-09, mockup blok 1): neutrale soort-chip vóór de
+                          leverancier, en een metaregel mét werk/project/geldigheid i.p.v. een
+                          factuurnummer + datum — er valt hier niets te boeken, alleen te beslissen. */}
+                      {item.soort === 'verplichting' && (
+                        <div className="acc-kaartchips" style={{ marginBottom: 4 }}>
+                          <span className="acc-chip grijs" data-testid="acc-verplichting-chip">
+                            {verplichtingSoortLabel(item.verplichting?.soort_label)}
+                          </span>
+                        </div>
+                      )}
                       <div className="acc-lev">{item.leverancier_naam ?? 'Onbekende leverancier'}</div>
                       <div className="acc-meta">
-                        {item.referentie ? `nr. ${item.referentie} · ` : ''}
-                        {datumWeergave(item.factuurdatum)}
-                        {item.administratie_naam ? ` · ${item.administratie_naam}` : ''}
-                        {` · laag ${item.laag_volgnummer}`}
+                        {item.soort === 'verplichting' && verplichtingMeta(item)}
+                        {item.soort !== 'verplichting' && item.referentie ? `nr. ${item.referentie} · ` : ''}
+                        {item.soort !== 'verplichting' && datumWeergave(item.factuurdatum)}
+                        {item.soort !== 'verplichting' && item.administratie_naam ? ` · ${item.administratie_naam}` : ''}
+                        {item.soort !== 'verplichting' && ` · laag ${item.laag_volgnummer}`}
                         {item.verzend_fout && (
                           <>
                             {' · '}
@@ -908,9 +1003,17 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                           </>
                         )}
                       </div>
-                      {(item.vraag || (item.doorbelasting && item.doorbelasting.length > 0)) && (
+                      {(item.vraag || item.offerte_match || (item.doorbelasting && item.doorbelasting.length > 0)) && (
                         <div className="acc-kaartchips">
                           {item.vraag && <span className="acc-chip vraag">💬 Vraag van kantoor</span>}
+                          {item.offerte_match && (
+                            <span
+                              className={`acc-chip ${item.offerte_match.uitkomst === 'binnen' ? 'klaar' : 'fout'}`}
+                              data-testid="acc-offerte-chip"
+                            >
+                              {item.offerte_match.uitkomst === 'binnen' ? 'Conform offerte' : 'Buiten offerte'}
+                            </span>
+                          )}
                           {item.doorbelasting && item.doorbelasting.length > 0 && (
                             <span className="acc-chip wacht">Wordt doorbelast</span>
                           )}
@@ -1012,14 +1115,48 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
         {weergave === 'review' && huidige && (
           <div>
             <div className="acc-boekinfo">
-              Boeking: <b>{huidige.boeking_omschrijving ?? '—'}</b>
-              <br />
-              <span className="acc-k">
-                {eurWeergave(huidige.totaalbedrag)}
-                {huidige.administratie_naam ? ` · ${huidige.administratie_naam}` : ''}
-                {` · laag ${huidige.laag_volgnummer}`}
-              </span>
+              {/* Blok B 04-09: een verplichting wordt niet geboekt — de kop heet dan
+                  "Verplichting:" en beschrijft het werk, niet de boekingsregel. */}
+              {huidige.soort === 'verplichting' ? (
+                <>
+                  Verplichting:{' '}
+                  <b>
+                    {huidige.verplichting?.omschrijving ??
+                      huidige.boeking_omschrijving ??
+                      verplichtingSoortLabel(huidige.verplichting?.soort_label)}
+                  </b>
+                  <br />
+                  <span className="acc-k">
+                    {eurWeergave(huidige.verplichting?.totaal_excl ?? huidige.totaalbedrag)} excl.
+                    {huidige.verplichting?.project_naam ? ` · project ${huidige.verplichting.project_naam}` : ''}
+                    {huidige.verplichting?.geldig_tot
+                      ? ` · geldig t/m ${datumWeergave(huidige.verplichting.geldig_tot)}`
+                      : ''}
+                    {huidige.administratie_naam ? ` · ${huidige.administratie_naam}` : ''}
+                    {` · laag ${huidige.laag_volgnummer}`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Boeking: <b>{huidige.boeking_omschrijving ?? '—'}</b>
+                  <br />
+                  <span className="acc-k">
+                    {eurWeergave(huidige.totaalbedrag)}
+                    {huidige.administratie_naam ? ` · ${huidige.administratie_naam}` : ''}
+                    {` · laag ${huidige.laag_volgnummer}`}
+                  </span>
+                </>
+              )}
             </div>
+            {huidige.soort === 'verplichting' && (
+              <div className="acc-toelicht" data-testid="acc-verplichting-toelicht">
+                Je keurt hier de <b>opdracht</b> goed, niet een factuur — er wordt niets geboekt. Wat je goedkeurt
+                (bedrag, datum, jouw naam) wordt vastgelegd; latere facturen van deze leverancier worden hier
+                cumulatief tegen getoetst.
+              </div>
+            )}
+            {/* Offerte-match op een factuur (④ optie A): melding mét balk + vooringevuld vinkje. */}
+            {huidige.soort !== 'verplichting' && <OfferteMelding item={huidige} />}
             {huidige.doorbelasting && huidige.doorbelasting.length > 0 && (
               // Feedbackpunt 3 (26-08): één regel, tikbaar uitklappen — verdeling alleen-lezen.
               <div className={`acc-doorbelast${doorbelastOpen ? ' open' : ''}`} aria-label="Doorbelasting">

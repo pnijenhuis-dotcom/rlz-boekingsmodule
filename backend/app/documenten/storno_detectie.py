@@ -127,6 +127,17 @@ def detecteer_en_meld_gestorneerd(*, administratie_id: uuid.UUID, client: RlzCli
                 session.add(
                     WebhookUitgaand(document_id=document_id, event=payload["event"], payload=payload)
                 )
+                # Offerte-matching (04-09, ③): de boeking is in RLZ teruggedraaid — het verbruik van
+                # de gematchte verplichting gaat mee terug (idempotent: al teruggedraaid = no-op).
+                from app.verplichting import match_pipeline as verplichting_match
+
+                verplichting_match.draai_verbruik_terug_in_sessie(
+                    session,
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    reden="storno gedetecteerd in de RLZ-UI (actie 19)",
+                )
                 record_audit_event(
                     session,
                     actor_id=SYSTEEM_ACTOR_ID,

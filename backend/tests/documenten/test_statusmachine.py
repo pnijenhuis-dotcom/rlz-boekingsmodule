@@ -37,6 +37,8 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset({DocumentStatus.TE_CONTROLEREN})
     assert DocumentStatus.VERWIJDERD not in _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT]
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GESPLITST] == frozenset()
+    # Verplichtingen (04-09): geaccordeerd is óók terminaal — géén uitgangen.
+    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEACCORDEERD] == frozenset()
     # Samengevoegd: alleen de ongedaan-uitgangen — terug in de bak (niet_toegewezen) of, voor een
     # nagebundeld UBL-document (03-09), terug naar de status van vóór de nabundeling.
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.SAMENGEVOEGD] == frozenset(
@@ -54,19 +56,30 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
             # leidende document — enige uitgang is "samenvoegen ongedaan" (→ niet_toegewezen),
             # nooit verwijderd (het bestand blijft terugvindbaar op sha256).
             DocumentStatus.SAMENGEVOEGD,
+            # Verplichtingen (migratie 0110, 04-09): een GEACCORDEERDE offerte/prijsopgave is
+            # terminaal — vervallen is een kolom op de verplichting-rij (⑥), geen statuswissel, en
+            # verwijderen zou het goedkeuringsspoor breken.
+            DocumentStatus.GEACCORDEERD,
         ):
             continue
         assert DocumentStatus.VERWIJDERD in _TOEGESTANE_OVERGANGEN[van], f"{van} kan niet verwijderd worden"
 
 
-def test_ter_accordering_kan_alleen_terug_naar_de_kantoorbak() -> None:
-    """Klant-accordering (migratie 0033): de enige uitgang is klaar_om_te_boeken — het laatste
-    akkoord (waarna de boekmotor zelf boekt), intrekken door het kantoor én de afwijs-route
-    (die eerst terugzet en dan het bestaande afwijzen-patroon volgt) lopen daar allemaal
-    doorheen; nooit rechtstreeks naar geboekt of verwijderd."""
+def test_ter_accordering_kan_alleen_terug_naar_de_kantoorbak_of_geaccordeerd() -> None:
+    """Klant-accordering (migratie 0033): voor een FACTUUR is klaar_om_te_boeken de enige uitgang —
+    het laatste akkoord (waarna de boekmotor zelf boekt), intrekken door het kantoor én de
+    afwijs-route (die eerst terugzet en dan het bestaande afwijzen-patroon volgt) lopen daar
+    allemaal doorheen; nooit rechtstreeks naar geboekt of verwijderd.
+
+    Sinds de verplichtingen (migratie 0110, 04-09) is er één tweede uitgang: GEACCORDEERD — de
+    terminale status van een offerte/prijsopgave/opdrachtbevestiging ná het laatste akkoord, ZONDER
+    boeking. Die tak is gepoort op documentsoort in
+    `app/accordering/service.py::_rond_af_verplichting` (een inkoopfactuur komt er nooit)."""
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.TER_ACCORDERING] == frozenset(
-        {DocumentStatus.KLAAR_OM_TE_BOEKEN}
+        {DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.GEACCORDEERD}
     )
+    assert DocumentStatus.GEBOEKT not in _TOEGESTANE_OVERGANGEN[DocumentStatus.TER_ACCORDERING]
+    assert DocumentStatus.VERWIJDERD not in _TOEGESTANE_OVERGANGEN[DocumentStatus.TER_ACCORDERING]
     assert DocumentStatus.TER_ACCORDERING in _TOEGESTANE_OVERGANGEN[DocumentStatus.KLAAR_OM_TE_BOEKEN]
 
 

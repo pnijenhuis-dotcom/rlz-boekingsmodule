@@ -1668,3 +1668,76 @@
   right: 3px;
   background: var(--acc-accent-fg);
 }
+
+/* ===== Verplichtingen + offerte-match (blok B 04-09, mockup offerte-matching blok 1/2) ===== */
+/* Neutrale soort-chip ("Offerte"/"Prijsopgave"/"Opdrachtbevestiging"): een LABEL, geen status —
+   dus geen kleurvlak, alleen een rand (mockup .chip.grijs). */
+.acc-chip.grijs {
+  background: none;
+  border: 1px solid var(--acc-border);
+  color: var(--acc-muted);
+}
+.acc-chip.grijs::before {
+  display: none;
+}
+
+/* Offerte-melding op de factuur-review: groen = binnen de goedgekeurde offerte (status),
+   oranje = buiten (signaal, nooit een blokkade — de accordeur kan gewoon beslissen). */
+.acc-offerte {
+  margin-top: 10px;
+  padding: 11px 14px;
+  border-radius: var(--acc-radius);
+  font-size: 12.5px;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.acc-offerte.binnen {
+  background: var(--acc-green-bg);
+  border-color: var(--acc-green);
+  color: var(--acc-text);
+}
+.acc-offerte.buiten {
+  background: var(--acc-orange-bg);
+  border-color: var(--acc-orange);
+  color: var(--acc-text);
+}
+.acc-offerte .acc-offerte-kop {
+  font-weight: 700;
+}
+.acc-offerte .acc-offerte-balk {
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--acc-border);
+  overflow: hidden;
+}
+.acc-offerte .acc-offerte-balk > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--acc-green);
+}
+.acc-offerte.buiten .acc-offerte-balk > span {
+  background: var(--acc-red);
+}
+.acc-offerte .acc-offerte-stand {
+  margin-top: 6px;
+  color: var(--acc-muted);
+  font-size: 11.5px;
+}
+/* ④ Optie A: het vinkje staat vooringevuld en is PRESENTATIE — het akkoord komt van de
+   Akkoord-knop, nooit van deze checkbox. Daarom bewust een tikbaar label mét uitleg. */
+.acc-conform {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+.acc-conform input {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--acc-green);
+}

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 
 from app.auth import service as auth_service
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
+from app.documenten.models import DocumentSoort
 from app.documenten.service import DocumentNietGevonden
 from app.intake import nabundelen, schemas, splitsing, splitsing_uitsluiting, verwerking, verzamelbak
 
@@ -13,6 +14,26 @@ from app.intake import nabundelen, schemas, splitsing, splitsing_uitsluiting, ve
 # app/auth/deps.py — één bron voor de kantoor-console-poort; de per-endpoint-Depends hieronder
 # blijven ongewijzigd werken.
 router = APIRouter(tags=["intake"])
+
+# Documentsoort-keuze bij het toewijzen (offerte-matching 04-09): alleen deze twee soorten zijn
+# vanuit de verzamelbak te kiezen — een kassarapport/verkoopfactuur/waarborg komt via een eigen
+# kanaal, dus die zouden hier een stille misroutering zijn (fail-closed: onbekend = 422).
+_TOEWIJSBARE_SOORTEN = {
+    DocumentSoort.INKOOPFACTUUR.value: DocumentSoort.INKOOPFACTUUR,
+    DocumentSoort.VERPLICHTING.value: DocumentSoort.VERPLICHTING,
+}
+
+
+def _documentsoort(ruw: str | None) -> DocumentSoort | None:
+    if ruw is None:
+        return None
+    soort = _TOEWIJSBARE_SOORTEN.get(ruw)
+    if soort is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Onbekende of niet-toewijsbare documentsoort: {ruw}",
+        )
+    return soort
 
 
 @router.post("/intake/eml", response_model=schemas.IntakeVerwerkResponse, status_code=status.HTTP_201_CREATED)
@@ -214,7 +235,12 @@ def verzamelbak_toewijzen(
     een geslaagde actie als fout terugmelden). Écht conflict (intussen afgehandeld als "hoort niet
     bij ons", andere administratie) blijft 409/404 mét leesbare melding."""
     try:
-        r = verzamelbak.wijs_toe(document_id=document_id, administratie_id=invoer.administratie_id, actor_id=actor.id)
+        r = verzamelbak.wijs_toe(
+            document_id=document_id,
+            administratie_id=invoer.administratie_id,
+            actor_id=actor.id,
+            soort=_documentsoort(invoer.soort),
+        )
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (verzamelbak.DocumentNietInVerzamelbak, verzamelbak.OnbekendeAdministratie) as exc:

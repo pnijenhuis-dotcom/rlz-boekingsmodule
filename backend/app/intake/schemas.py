@@ -71,6 +71,9 @@ class VerzamelbakLijstResponse(BaseModel):
 
 class ToewijzenInput(StrikteInvoer):
     administratie_id: uuid.UUID
+    # Documentsoort-keuze (offerte-matching 04-09): 'inkoopfactuur' | 'verplichting'. Weglaten =
+    # de soort laten staan zoals de intake 'm bepaalde (default-gedrag, bestaande clients).
+    soort: str | None = None
 
 
 class HoortNietBijOnsInput(StrikteInvoer):

@@ -61,6 +61,9 @@ export function Shell() {
           <NavItem to="/voorraad">Voorraad</NavItem>
           {/* Terugkerende facturen (blok B 30-08): signaal-overzicht per administratie. */}
           <NavItem to="/terugkerend">Terugkerende facturen</NavItem>
+          {/* Verplichtingen (blok B 04-09, ⑦): goedgekeurde offertes/opdrachtbevestigingen mét
+              verbruiksstand — kantoorbreed lijstpatroon, filter i.p.v. poort. */}
+          <NavItem to="/verplichtingen">Verplichtingen</NavItem>
           {/* Crediteuren-dubbelen v2 (03-09): kantoorbreed mét actie, voor élke kantoorrol binnen de eigen
               scope (backend vereis_kantoorrol) — de Beheerder-gate van v3 verviel met de administratie-picker. */}
           <NavItem to="/crediteuren">Crediteuren</NavItem>

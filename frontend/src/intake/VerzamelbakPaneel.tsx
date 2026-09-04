@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, BackendOnbereikbaarError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
+import { Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   bevestigSplitsing,
@@ -46,6 +47,9 @@ export function VerzamelbakPaneel({
   const [items, setItems] = useState<VerzamelbakItemDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [keuze, setKeuze] = useState<Record<string, string>>({})
+  // Blok B 04-09: per rij de door de MENS gekozen documentsoort — alleen relevant als de intake
+  // "factuur of offerte?" niet kon beslissen (reden documentsoort_onduidelijk).
+  const [soortKeuze, setSoortKeuze] = useState<Record<string, 'inkoopfactuur' | 'verplichting'>>({})
   const [bezig, setBezig] = useState<string | null>(null)
   const [redenVoor, setRedenVoor] = useState<VerzamelbakItemDto | null>(null)
   // "Is één factuur" (blok B 04-09): bevestigingsdialoog mét optionele vink "nooit splitsen" voor deze afzender.
@@ -496,14 +500,38 @@ export function VerzamelbakPaneel({
                         eerst de splitsing beoordelen
                       </span>
                     ) : (
-                      <AdministratieCombobox
-                        label={`Toewijzen aan voor ${item.bestandsnaam}`}
-                        toonLabel={false}
-                        administraties={administraties}
-                        waarde={gekozen}
-                        onWijzig={(id) => setKeuze((k) => ({ ...k, [item.document_id]: id }))}
-                        placeholder="— kies administratie —"
-                      />
+                      <>
+                        <AdministratieCombobox
+                          label={`Toewijzen aan voor ${item.bestandsnaam}`}
+                          toonLabel={false}
+                          administraties={administraties}
+                          waarde={gekozen}
+                          onWijzig={(id) => setKeuze((k) => ({ ...k, [item.document_id]: id }))}
+                          placeholder="— kies administratie —"
+                        />
+                        {/* Blok B 04-09: de intake-AI liet "factuur of offerte?" onbeslist — de mens
+                            beslist hier, nooit stil als factuur behandeld (①). */}
+                        {item.reden === 'documentsoort_onduidelijk' && (
+                          <label style={{ display: 'block', marginTop: 6, fontSize: 11.5, margin: 0 }}>
+                            <span className="hint" style={{ margin: 0 }}>
+                              Wat is dit?
+                            </span>
+                            <Select
+                              aria-label={`Documentsoort voor ${item.bestandsnaam}`}
+                              value={soortKeuze[item.document_id] ?? 'inkoopfactuur'}
+                              onChange={(e) =>
+                                setSoortKeuze((k) => ({
+                                  ...k,
+                                  [item.document_id]: e.target.value as 'inkoopfactuur' | 'verplichting',
+                                }))
+                              }
+                            >
+                              <option value="inkoopfactuur">Inkoopfactuur</option>
+                              <option value="verplichting">Verplichting (offerte / opdrachtbevestiging)</option>
+                            </Select>
+                          </label>
+                        )}
+                      </>
                     )}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
@@ -551,7 +579,17 @@ export function VerzamelbakPaneel({
                           className="btn"
                           style={{ padding: '5px 12px' }}
                           disabled={!gekozen || bezig === item.document_id}
-                          onClick={() => void optimistischeActie(item, () => wijsToe(item.document_id, gekozen))}
+                          onClick={() =>
+                            void optimistischeActie(item, () =>
+                              wijsToe(
+                                item.document_id,
+                                gekozen,
+                                item.reden === 'documentsoort_onduidelijk'
+                                  ? (soortKeuze[item.document_id] ?? 'inkoopfactuur')
+                                  : undefined,
+                              ),
+                            )
+                          }
                         >
                           Toewijzen ✓
                         </button>{' '}

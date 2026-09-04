@@ -40,6 +40,7 @@ _GEDEKTE_MODULES = {
     "app/extractie/rapport.py",
     "app/extractie/splitsing.py",
     "app/extractie/contract.py",
+    "app/extractie/verplichting.py",  # verplichting-extractie (04-09), VERPLICHTING_SCHEMA in live_schemas
     "app/extractie/client.py",
     "app/voorraad/normalisatie.py",
     "app/bewaking/service.py",

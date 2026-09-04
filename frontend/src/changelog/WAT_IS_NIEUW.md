@@ -6,6 +6,16 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Offertes laten goedkeuren en elke factuur automatisch tegen de offerte gelegd
+
+- **Offertes, prijsopgaven en opdrachtbevestigingen laat je nu goedkeuren, net als facturen.** Zo'n document komt binnen op een eigen tabblad in de werkvoorraad: je controleert leverancier, project, bedrag excl. btw en de geldigheid — met dezelfde chips die laten zien wat er automatisch is gelezen — en stuurt het daarna met één knop naar de accordeur van de klant. Er wordt niets geboekt: wat wordt vastgelegd is wíé op welke datum welk bedrag heeft goedgekeurd. Twijfelt de verwerking of iets een factuur of een offerte is, dan kies je dat zelf bij het toewijzen — het wordt nooit stil als factuur behandeld.
+- **De accordeur ziet een offerte als een aparte kaart, met het werk en het bedrag.** Op de kaart staan het soort (offerte, prijsopgave of opdrachtbevestiging), de leverancier, het werk, het project, tot wanneer het geldig is en het bedrag exclusief btw. Goedkeuren of afwijzen gaat met dezelfde twee knoppen als bij een factuur.
+- **Elke factuur wordt daarna automatisch tegen de goedgekeurde offerte gelegd — cumulatief.** Past de factuur binnen het goedgekeurde bedrag, dan zie je een groene melding met een balkje: "verbruik ná deze factuur € 27.150 van € 48.500". Komt het totaal erboven, of is er geen goedgekeurde offerte voor deze leverancier en dit project, dan is het een oranje melding met precies het bedrag dat eroverheen gaat. Boeken kan altijd nog: het is een signaal, geen blokkade. En de melding zegt ook wat je ermee doet — meerwerk rekt een offerte niet op, dat hoort een eigen offerte te krijgen.
+- **Pakte de match de verkeerde offerte, of géén? Dan koppel je hem zelf, één keer.** Met "Koppel offerte…" kies je uit de lopende goedgekeurde offertes van die leverancier; die keuze wordt onthouden voor volgende facturen. Ontkoppelen zet de automatische match weer terug.
+- **De klant-accordeur krijgt de melding ook te zien, met het vinkje "Conform offerte" al aangezet.** Het vinkje is een samenvatting van de controle — het akkoord geeft de accordeur nog altijd zelf, met de knop.
+- **Nieuw overzicht: Inzicht › Verplichtingen.** Alle goedgekeurde offertes over al je administraties op één lijst, met de verbruiksstand: wat is er al aan facturen tegen weggeboekt en hoeveel ruimte is er nog. Wat eroverheen gaat staat bovenaan, met het bedrag erover. Per rij klap je de gekoppelde facturen uit, open je de offerte, of laat je hem vervallen als de opdracht niet doorgaat — met een reden, en zonder dat de facturen die er al aan hangen veranderen.
+- **In de werkvoorraad zie je in één oogopslag wat buiten een offerte valt.** Bij de klant staat een teller "Buiten offerte", en op de documentenlijst een filter en een chip per regel — hetzelfde patroon als bij mogelijke duplicaten.
+
 ## 2026-09-04 — Keuzekaarten in de wizard, factuurbeeld op volle breedte en projecten aanmaken vanuit de regel
 
 - **De keuze tussen Reeleezee en Odoo staat nu op twee klikbare kaarten.** Bij het toevoegen van een administratie (en bij het koppelen van Odoo aan een bestaande) kies je het pakket door op de kaart te klikken; de gekozen kaart licht op. Ook alle andere keuzerondjes in de app staan weer netjes op hun eigen formaat.

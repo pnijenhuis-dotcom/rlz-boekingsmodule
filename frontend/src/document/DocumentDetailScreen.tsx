@@ -41,6 +41,7 @@ import { AccorderingSectie } from './AccorderingSectie'
 import { BoekvoorstelPanel, type ChecksStand, type GeboektInfo, type ToeTeVoegenRegel } from './BoekvoorstelPanel'
 import { MatchSectie } from './MatchSectie'
 import { MateriaalMatchSectie } from './MateriaalMatchSectie'
+import { OfferteMatchMelding } from './OfferteMatchMelding'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
@@ -1522,6 +1523,19 @@ export function DocumentDetailScreen() {
             </div>
           </details>
           </div>
+
+          {/* Factuur ↔ offerte-match (blok B 04-09, mockup offerte-matching blok 2): melding + chip
+              direct boven de actiebalk — de component gate zichzelf (alleen inkoopfacturen; stil bij
+              geen verplichting). Nooit een blokkade: boeken kan altijd. */}
+          {!achtergrondBezig && (
+            <OfferteMatchMelding
+              administratieId={administratieId}
+              documentId={documentId}
+              status={detail.status}
+              soort={detail.soort}
+              boekvoorstelVersie={boekvoorstelVersie}
+            />
+          )}
 
           {/* Anker voor de actiebalk (Afwijzen / Vraag stellen / Ter accordering / Boeken, al dan
               niet "+ doorbelasten"): ÓNDER het doorbelast-blok en de inklapregels — sticky onderaan

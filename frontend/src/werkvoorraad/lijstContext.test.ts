@@ -3,11 +3,13 @@ import type { DocumentListItemDto } from '../api/types'
 import {
   STATUSFILTER_ALLE,
   STATUSFILTER_AUTOMATISCH,
+  STATUSFILTER_BUITEN_OFFERTE,
   STATUSFILTER_DUPLICAAT,
   STATUSFILTER_URENMATCH,
   STATUS_TE_CONTROLEREN,
   defaultStatusFilter,
   filterDocumenten,
+  isBuitenOfferte,
   kiesTabVoorStatus,
   lijstContextNaarParams,
   lijstContextUitParams,
@@ -18,7 +20,8 @@ import {
   type LijstContext,
   type Sortering,
 } from './lijstContext'
-import { documentRoute } from './format'
+import { documentRoute, isOpenstaand } from './format'
+import { statusChipKlasse, statusLabel } from './status'
 
 function doc(overrides: Partial<DocumentListItemDto> & { id: string }): DocumentListItemDto {
   return {
@@ -177,5 +180,61 @@ describe('lijstContext — kolomsortering (punt 21, opruimrun 28-08)', () => {
     expect(positie.index).toBe(1)
     expect(positie.vorige?.id).toBe('d')
     expect(positie.volgende?.id).toBe('b')
+  })
+})
+
+describe('lijstContext — offerte-match-filter (blok B 04-09, ⑤)', () => {
+  const binnen = doc({ id: 'a', verplichting_match: { uitkomst: 'binnen', overschrijding_excl: null, offertenummer: 'OFF-1' } })
+  const buiten = doc({
+    id: 'b',
+    verplichting_match: { uitkomst: 'buiten', overschrijding_excl: '3400.00', offertenummer: 'OFF-1' },
+  })
+  const geenMatch = doc({ id: 'c', verplichting_match: { uitkomst: 'geen_match', overschrijding_excl: null, offertenummer: null } })
+  const geenVerplichting = doc({
+    id: 'd',
+    verplichting_match: { uitkomst: 'geen_verplichting', overschrijding_excl: null, offertenummer: null },
+  })
+  const nietGetoetst = doc({ id: 'e' })
+
+  it('buiten en geen_match zijn "buiten offerte"; binnen/geen_verplichting/niet getoetst niet', () => {
+    expect(isBuitenOfferte(buiten)).toBe(true)
+    expect(isBuitenOfferte(geenMatch)).toBe(true)
+    expect(isBuitenOfferte(binnen)).toBe(false)
+    expect(isBuitenOfferte(geenVerplichting)).toBe(false)
+    expect(isBuitenOfferte(nietGetoetst)).toBe(false)
+  })
+
+  it('het sentinel-filter levert exact die rijen (zelfde bron als de teller en de chip)', () => {
+    const context: LijstContext = { soort: null, status: STATUSFILTER_BUITEN_OFFERTE, zoekterm: '' }
+    const rijen = filterDocumenten([binnen, buiten, geenMatch, geenVerplichting, nietGetoetst], context)
+    expect(rijen.map((d) => d.id)).toEqual(['b', 'c'])
+  })
+
+  it('het sentinel draagt de __-prefix en reist mee in de URL-context', () => {
+    expect(STATUSFILTER_BUITEN_OFFERTE.startsWith('__')).toBe(true)
+    const params = lijstContextNaarParams({ soort: 'inkoopfactuur', status: STATUSFILTER_BUITEN_OFFERTE, zoekterm: '' })
+    expect(params).toContain(`status=${encodeURIComponent(STATUSFILTER_BUITEN_OFFERTE)}`)
+    const terug = lijstContextUitParams(new URLSearchParams(params))
+    expect(terug?.status).toBe(STATUSFILTER_BUITEN_OFFERTE)
+  })
+})
+
+describe('format — soort verplichting (blok B 04-09)', () => {
+  it('routeert naar het eigen reviewscherm i.p.v. het inkoop-controlescherm', () => {
+    const route = documentRoute('adm-1', doc({ id: 'v1', soort: 'verplichting' }))
+    expect(route).toBe('/verplichting/adm-1/v1')
+  })
+
+  it('geaccordeerd is terminaal: geen openstaand werk meer', () => {
+    expect(isOpenstaand(doc({ id: 'v2', soort: 'verplichting', status: 'geaccordeerd' }))).toBe(false)
+    expect(isOpenstaand(doc({ id: 'v3', soort: 'verplichting', status: 'ter_accordering' }))).toBe(true)
+  })
+
+  it('"Klaar om te boeken" heet bij een verplichting "Klaar voor accordering" (alleen label)', () => {
+    expect(statusLabel('klaar_om_te_boeken')).toBe('Klaar om te boeken')
+    expect(statusLabel('klaar_om_te_boeken', 'verplichting')).toBe('Klaar voor accordering')
+    expect(statusLabel('geaccordeerd')).toBe('Geaccordeerd')
+    // Chipklasse = statusgroen, net als geboekt (status, geen actie).
+    expect(statusChipKlasse('geaccordeerd')).toBe('geboekt')
   })
 })

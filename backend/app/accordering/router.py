@@ -650,6 +650,54 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
                 staande_regel_kandidaat=item.staande_regel_kandidaat,
                 afdeling_id=item.afdeling_id,
                 afdeling_naam=item.afdeling_naam,
+                soort=item.soort,
+                verplichting=(
+                    schemas.WachtrijVerplichtingDto(
+                        soort_label=item.verplichting.soort_label,
+                        project_naam=item.verplichting.project_naam,
+                        totaal_excl=item.verplichting.totaal_excl,
+                        geldig_tot=item.verplichting.geldig_tot,
+                        omschrijving=item.verplichting.omschrijving,
+                    )
+                    if item.verplichting is not None
+                    else None
+                ),
+                offerte_match=(
+                    schemas.OfferteMatchKortDto(
+                        uitkomst=item.offerte_match.uitkomst,
+                        offertenummer=(
+                            item.offerte_match.verplichting.offertenummer
+                            if item.offerte_match.verplichting
+                            else None
+                        ),
+                        leverancier_naam=(
+                            item.offerte_match.verplichting.leverancier_naam
+                            if item.offerte_match.verplichting
+                            else None
+                        ),
+                        goedgekeurd_door_naam=(
+                            item.offerte_match.verplichting.goedgekeurd_door_naam
+                            if item.offerte_match.verplichting
+                            else None
+                        ),
+                        goedgekeurd_op=(
+                            item.offerte_match.verplichting.goedgekeurd_op
+                            if item.offerte_match.verplichting
+                            else None
+                        ),
+                        bedrag_excl=item.offerte_match.bedrag_excl,
+                        verbruik_na=item.offerte_match.verbruik_na,
+                        totaal_excl=(
+                            item.offerte_match.verplichting.totaal_excl
+                            if item.offerte_match.verplichting
+                            else None
+                        ),
+                        percentage_na=item.offerte_match.percentage_na,
+                        overschrijding_excl=item.offerte_match.overschrijding_excl,
+                    )
+                    if item.offerte_match is not None
+                    else None
+                ),
                 doorbelasting=(
                     None
                     if item.doorbelasting is None

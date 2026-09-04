@@ -310,6 +310,14 @@ class GeboektInRlzDto(BaseModel):
     btw_override: bool = False
 
 
+class VerplichtingMatchKortDto(BaseModel):
+    """Chipdata offerte-matching op de documentenlijst (04-09)."""
+
+    uitkomst: str
+    overschrijding_excl: Decimal | None = None
+    offertenummer: str | None = None
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
@@ -357,6 +365,9 @@ class DocumentListItemResponse(BaseModel):
     # crediteur (btw-nummer), referentie en totaalbedrag — voedt het rijmenu-item "Afvoeren als duplicaat"
     # en de chip; RLZ-/Odoo-treffers lopen via `duplicaatsignaal`. None = geen werkvoorraad-match.
     duplicaat_werkvoorraad_van: DuplicaatOrigineelDto | None = None
+    # Offerte-matching (04-09, ⑤): matchstand tegen de goedgekeurde verplichtingen — voedt de rij-chip
+    # "buiten offerte − € O" / "binnen offerte" + het filter "Buiten offerte (N)". None = niet getoetst.
+    verplichting_match: VerplichtingMatchKortDto | None = None
 
 
 class LeverancierAutoboekenDto(BaseModel):
@@ -391,6 +402,9 @@ class WerkvoorraadKlantResponse(BaseModel):
     terugkerend_signalen: int = 0
     # Voorraadverschil (C2 03-09): artikelgroepen buiten tolerantie; 0 zonder de voorraad-opt-in.
     voorraad_verschillen: int = 0
+    # Offerte-matching (⑤, 04-09): open inkoopdocumenten `buiten` óf `geen_match` — kolom/chip
+    # "Buiten offerte" op de klantenlijst; signaal-teller (geen status).
+    buiten_offerte: int = 0
 
 
 class WerkvoorraadOverzichtResponse(BaseModel):

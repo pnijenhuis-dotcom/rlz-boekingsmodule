@@ -25,6 +25,38 @@ export interface WachtrijItemDto {
   /** Afdeling van het document (blok A 28-08): kaart per afdeling ("Kempen Facilities · Buitendienst"). */
   afdeling_id?: string | null
   afdeling_naam?: string | null
+  /** Documentsoort (blok B 04-09): 'inkoopfactuur' (default/afwezig) of 'verplichting' — een
+   * verplichting krijgt een eigen kaart en review-kop ("Verplichting:" i.p.v. "Boeking:"). */
+  soort?: string
+  /** Alleen bij soort 'verplichting': de kern die de accordeur nodig heeft om te beslissen (①). */
+  verplichting?: WachtrijVerplichtingDto | null
+  /** Alleen bij inkoopfacturen: de stand t.o.v. de goedgekeurde offerte (②③). Null = niets te
+   * melden (geen verplichting van deze leverancier / niet toetsbaar). */
+  offerte_match?: OfferteMatchKortDto | null
+}
+
+/** Verplichting op de accordeur-kaart (mockup offerte-matching blok 1). */
+export interface WachtrijVerplichtingDto {
+  soort_label: 'offerte' | 'prijsopgave' | 'opdrachtbevestiging' | null
+  project_naam: string | null
+  totaal_excl: string | null
+  geldig_tot: string | null
+  omschrijving: string | null
+}
+
+/** Korte offerte-match op de factuur-kaart (④, optie A: melding + vooringevuld vinkje, de mens
+ * tikt zélf Akkoord — het vinkje is presentatie en verandert het besluit niet). */
+export interface OfferteMatchKortDto {
+  uitkomst: 'binnen' | 'buiten'
+  offertenummer: string | null
+  leverancier_naam: string | null
+  goedgekeurd_door_naam: string | null
+  goedgekeurd_op: string | null
+  bedrag_excl: string | null
+  verbruik_na: string | null
+  totaal_excl: string | null
+  percentage_na: number | null
+  overschrijding_excl: string | null
 }
 
 export interface AccordeurVraagBerichtDto {
