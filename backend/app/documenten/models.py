@@ -475,6 +475,12 @@ class Afwijzing(Base):
             unique=True,
             postgresql_where=text("status = 'open'"),
         ),
+        # Blok A 04-09 (migratie 0105): leesroute origineel-kant van de duplicaat-kruisverwijzing.
+        Index(
+            "afwijzing_duplicaat_van_document_idx",
+            "duplicaat_van_document_id",
+            postgresql_where=text("duplicaat_van_document_id IS NOT NULL"),
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -493,6 +499,16 @@ class Afwijzing(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     heropend_op: Mapped[datetime | None] = mapped_column(default=None)
+    # Duplicaat-afvoer (besluit Peter 04-09, migratie 0105): persistente kruisverwijzing naar het
+    # origineel — zichtbaar op het afgevoerde document én op het origineel ("N duplicaten afgevoerd").
+    # Een gewone afwijzing draagt hier NULL. `automatisch` = door het systeem afgevoerd (opt-in per
+    # administratie), False = mens (één-klik "Afvoeren als duplicaat" of gewoon afwijzen).
+    duplicaat_van_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), default=None
+    )
+    duplicaat_van_rlz_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    duplicaat_van_referentie: Mapped[str | None] = mapped_column(default=None)
+    automatisch: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
 class IbanAccorderingStatus(enum.StrEnum):

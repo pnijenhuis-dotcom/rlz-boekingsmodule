@@ -76,6 +76,63 @@ class AfwijzingInfoDto(BaseModel):
     afgewezen_op: datetime
     toegewezen_aan: uuid.UUID
     status_voor_afwijzing: str
+    # Duplicaat-afvoer (04-09, migratie 0105): kruisverwijzing naar het origineel — gevuld als het
+    # document als duplicaat is afgevoerd (chip "duplicaat afgevoerd" op de lijst); `automatisch` =
+    # door het systeem (opt-in), anders door een mens. Een gewone afwijzing draagt hier None/False.
+    duplicaat_van_document_id: uuid.UUID | None = None
+    duplicaat_van_rlz_document_id: uuid.UUID | None = None
+    duplicaat_van_referentie: str | None = None
+    automatisch: bool = False
+
+
+class DuplicaatOrigineelDto(BaseModel):
+    """Het origineel van een (kandidaat-)duplicaat — leesbaar voor de bevestigingsdialoog en de
+    kruisverwijzing: bron 'geboekt' (RLZ/Odoo of in de app geboekt) of 'werkvoorraad' (ouder app-document).
+    `document_id` is None bij een RLZ-/Odoo-origineel zonder app-document (alleen referentie/boekstuk)."""
+
+    bron: str
+    referentie: str
+    document_id: uuid.UUID | None = None
+    rlz_document_id: uuid.UUID | None = None
+    boekstuknummer: str | None = None
+    bestandsnaam: str | None = None
+    aangemaakt_op: datetime | None = None
+    status: str | None = None
+
+
+class AfgevoerdDuplicaatDto(BaseModel):
+    """Origineel-kant: één als duplicaat van dít document afgevoerd document (open afwijzing)."""
+
+    afwijzing_id: uuid.UUID
+    document_id: uuid.UUID
+    bestandsnaam: str
+    aangemaakt_op: datetime
+    referentie: str | None = None
+    automatisch: bool = False
+    afgewezen_op: datetime
+    afgewezen_door: uuid.UUID
+
+
+class DuplicaatAfvoerStandDto(BaseModel):
+    """Controlescherm: `kandidaat` = harde match gevonden én status laat afvoeren toe (knop "Afvoeren als
+    duplicaat"); `afgevoerd_als_duplicaat_van` = dit document ís afgevoerd (→ open origineel);
+    `afgevoerde_duplicaten` = de duplicaten die naar dít origineel wijzen."""
+
+    kandidaat: DuplicaatOrigineelDto | None = None
+    afgevoerd_als_duplicaat_van: DuplicaatOrigineelDto | None = None
+    afgevoerde_duplicaten: list[AfgevoerdDuplicaatDto] = []
+
+
+class DuplicaatAfvoerResponse(BaseModel):
+    """Antwoord op POST …/afvoeren-als-duplicaat. `al_afgevoerd` = idempotente herhaling (200, zelfde data)."""
+
+    afwijzing_id: uuid.UUID
+    document_id: uuid.UUID
+    document_status: str
+    reden: str
+    automatisch: bool
+    al_afgevoerd: bool
+    origineel: DuplicaatOrigineelDto
 
 
 class FactuurmatchKortDto(BaseModel):
@@ -293,6 +350,13 @@ class DocumentListItemResponse(BaseModel):
     duplicaatsignaal: DuplicaatSignaalKortDto | None = None
     # Afdeling (blok A 28-08) — None bij administraties zonder afdelingen of documenten zonder keuze.
     afdeling: AfdelingKortDto | None = None
+    # Projectverdeling-hercontrole (blok C 04-09): afwijking in % boven de drempel op een geboekte pro-rato-
+    # verdeling — voedt de rij-chip "verdeling wijkt x % af" (actie: Herverdelen… op het document). None = geen.
+    projectverdeling_afwijking_pct: Decimal | None = None
+    # Duplicaat-afvoer (04-09): dit document heeft een OUDER/verder-in-de-flow app-document met dezelfde
+    # crediteur (btw-nummer), referentie en totaalbedrag — voedt het rijmenu-item "Afvoeren als duplicaat"
+    # en de chip; RLZ-/Odoo-treffers lopen via `duplicaatsignaal`. None = geen werkvoorraad-match.
+    duplicaat_werkvoorraad_van: DuplicaatOrigineelDto | None = None
 
 
 class LeverancierAutoboekenDto(BaseModel):
@@ -385,6 +449,9 @@ class DocumentDetailResponse(BaseModel):
     # Blok C 02-09: alleen gevuld bij status geboekt.
     geboekt_in_rlz: GeboektInRlzDto | None = None
     tijdlijn: list[DocumentGebeurtenisResponse]
+    # Duplicaat-afvoer (04-09, migratie 0105): kandidaat + kruisverwijzing beide kanten; alleen voor
+    # inkoopfacturen gevuld.
+    duplicaat_afvoer: DuplicaatAfvoerStandDto | None = None
 
 
 class BoekvoorstelRegelDto(BaseModel):

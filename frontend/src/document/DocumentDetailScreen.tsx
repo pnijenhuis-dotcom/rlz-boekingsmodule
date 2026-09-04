@@ -28,6 +28,7 @@ import { DoorbelastenNaBoeken, type KlaargezetteDoorbelasting } from '../doorbel
 import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
+import { DuplicaatAfvoerSectie } from './DuplicaatAfvoer'
 import { VerplaatsModal } from './VerplaatsModal'
 import { redenNietVerplaatsbaar } from './verplaatsen'
 import { AlBetaaldSignaal } from './AlBetaaldSignaal'
@@ -906,6 +907,17 @@ export function DocumentDetailScreen() {
               onGewijzigd={laadDetail}
             />
           )}
+
+          {/* Duplicaat-afvoer (besluit Peter 04-09): kandidaat-knop, afgevoerd-kant en origineel-kant. */}
+          <DuplicaatAfvoerSectie
+            administratieId={administratieId}
+            documentId={documentId}
+            bestandsnaam={detail.bestandsnaam}
+            status={detail.status}
+            stand={detail.duplicaat_afvoer}
+            naamVoor={naamVoor}
+            onGewijzigd={laadDetail}
+          />
 
           {detail.status === 'afgewezen' && (
             <div className="panel">

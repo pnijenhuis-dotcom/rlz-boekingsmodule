@@ -1335,6 +1335,26 @@ def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int
     return 0
 
 
+def _zet_duplicaat_autoafvoer(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
+    """Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105) — make-terugval voor de
+    UI-toggle; Beheerder als audit_event-actor, default UIT."""
+    try:
+        administratie_id = uuid.UUID(args.administratie_id)
+        beheerder_id = uuid.UUID(args.beheerder_id)
+    except ValueError as exc:
+        print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
+        return 1
+    try:
+        resultaat = beheer_service.zet_duplicaat_autoafvoer_ingeschakeld(
+            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
+        )
+    except beheer_service.BeheerFout as exc:
+        print(f"FOUT: {exc}", file=sys.stderr)
+        return 1
+    print(f"duplicaat_autoafvoer_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    return 0
+
+
 def _zet_omzet_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
     """Autoboek-opt-in voor OMZETRAPPORTEN (GO Peter 01-09, migratie 0096) — zelfde patroon als de
     andere opt-ins: Beheerder als audit_event-actor, default UIT; make-terugval voor de UI-toggle."""
@@ -2003,6 +2023,8 @@ def main(argv: list[str] | None = None) -> int:
         ("verkoop-autoboeken-uit", "Zet de verkoop-autoboek-toggle UIT."),
         ("omzet-autoboeken-aan", "Zet de omzet-autoboek-opt-in (kassarapporten automatisch boeken, GO 01-09) AAN."),
         ("omzet-autoboeken-uit", "Zet de omzet-autoboek-opt-in UIT."),
+        ("duplicaat-autoafvoer-aan", "Zet de opt-in duplicaat-auto-afvoer (harde duplicaten automatisch afvoeren, 04-09) AAN."),
+        ("duplicaat-autoafvoer-uit", "Zet de opt-in duplicaat-auto-afvoer UIT."),
         ("afgeletterd-event-aan", "Zet de tier-vlag voor het factuur_afgeletterd-event AAN (§3 v1.11)."),
         ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
         ("uren-meerwerk-aan", "Zet de uren-&-meerwerk-opt-in (steigerbouw-tak, migratie 0056) AAN."),
@@ -2203,6 +2225,10 @@ def main(argv: list[str] | None = None) -> int:
         return _zet_omzet_autoboeken(args, ingeschakeld=True)
     if args.commando == "omzet-autoboeken-uit":
         return _zet_omzet_autoboeken(args, ingeschakeld=False)
+    if args.commando == "duplicaat-autoafvoer-aan":
+        return _zet_duplicaat_autoafvoer(args, ingeschakeld=True)
+    if args.commando == "duplicaat-autoafvoer-uit":
+        return _zet_duplicaat_autoafvoer(args, ingeschakeld=False)
     if args.commando == "verkoop-autoboeken-aan":
         return _zet_verkoop_autoboeken(args, ingeschakeld=True)
     if args.commando == "verkoop-autoboeken-uit":

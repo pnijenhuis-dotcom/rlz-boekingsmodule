@@ -1,7 +1,7 @@
 PYTHON := python3.12
 PG16_BIN := /opt/homebrew/opt/postgresql@16/bin
 
-.PHONY: intake-herlezen verzamelbak-nabundelen voorraad-hernormaliseer voorraad-rlz-sync odoo-leesbron projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit autoboek-kandidaten-herbereken kantoor-digest uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
+.PHONY: intake-herlezen verzamelbak-nabundelen voorraad-hernormaliseer voorraad-rlz-sync odoo-leesbron projecten-cijfers-sync check-versions venv install migrate dump-proxy-prefixes test seed-boekingsgeheugen test-write-integration test-read-integration test-ai-integration bootstrap-beheerder sync-alles reconciliatie bank-sync bank-reconciliatie omzet-reconciliatie doorbelasting-reconciliatie doorbelasting-facturen-herstel accordering-herstel-boeken doorbelasting-seed-kempen materiaal-seed-universal reconciliatie-alles reconciliatie-accepteer reconciliatie-intrekken reconciliatie-acceptaties reconciliatie-uitsluiten reconciliatie-insluiten bank-autoboeken-aan bank-autoboeken-uit verkoop-autoboeken-aan verkoop-autoboeken-uit omzet-autoboeken-aan omzet-autoboeken-uit duplicaat-autoafvoer-aan duplicaat-autoafvoer-uit autoboek-kandidaten-herbereken kantoor-digest uren-meerwerk-aan uren-meerwerk-uit afgeletterd-event-aan afgeletterd-event-uit is-vastgoed-aan is-vastgoed-uit boeken-aan boeken-uit boeken-status ai-extractie-aan ai-extractie-uit webhook-afleveren webhook-aflevering-aan webhook-aflevering-uit webhook-redrive import-env-credentials run pg16-start pg16-stop intake-ai-aan intake-ai-uit
 
 # Harde versie-pariteitscheck met productie (Cloud SQL 16, Cloud Run-container op 3.12).
 # Lokaal ouder-of-gelijk aan prod is aanvaardbaar om te signaleren; lokaal NIEUWER dan prod
@@ -206,6 +206,14 @@ omzet-autoboeken-aan: check-versions
 
 omzet-autoboeken-uit: check-versions
 	.venv/bin/python -m app.cli omzet-autoboeken-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+# Opt-in duplicaat-auto-afvoer (harde duplicaten automatisch naar Afgewezen mét kruisverwijzing; besluit
+# Peter 04-09, migratie 0105), default UIT. Voorbeeld: make duplicaat-autoafvoer-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
+duplicaat-autoafvoer-aan: check-versions
+	.venv/bin/python -m app.cli duplicaat-autoafvoer-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+
+duplicaat-autoafvoer-uit: check-versions
+	.venv/bin/python -m app.cli duplicaat-autoafvoer-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
 
 # Nazorg intake-splitsingsbug (02-09): verzamelbak-PDF's sinds SINDS opnieuw lezen met de gefixte keten.
 # DRY_RUN=1 telt alleen. Tegen de cloud: scripts/cloud_cli.py intake-herlezen --sinds 2026-08-25 (zie docstring).

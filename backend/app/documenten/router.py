@@ -20,6 +20,7 @@ from app.documenten import (
     afwijzen,
     boeken,
     boekvoorstel,
+    duplicaat_afvoer,
     iban_accordering,
     leverancier_iban,
     schemas,
@@ -67,6 +68,48 @@ def _naar_afwijzing_info(data: afwijzen.AfwijzingData | None) -> schemas.Afwijzi
         afgewezen_op=data.afgewezen_op,
         toegewezen_aan=data.toegewezen_aan,
         status_voor_afwijzing=data.status_voor_afwijzing,
+        duplicaat_van_document_id=data.duplicaat_van_document_id,
+        duplicaat_van_rlz_document_id=data.duplicaat_van_rlz_document_id,
+        duplicaat_van_referentie=data.duplicaat_van_referentie,
+        automatisch=data.automatisch,
+    )
+
+
+def _naar_origineel_dto(o: duplicaat_afvoer.Origineel | None) -> schemas.DuplicaatOrigineelDto | None:
+    if o is None:
+        return None
+    return schemas.DuplicaatOrigineelDto(
+        bron=o.bron,
+        referentie=o.referentie,
+        document_id=o.document_id,
+        rlz_document_id=o.rlz_document_id,
+        boekstuknummer=o.boekstuknummer,
+        bestandsnaam=o.bestandsnaam,
+        aangemaakt_op=o.aangemaakt_op,
+        status=o.status,
+    )
+
+
+def _naar_duplicaat_afvoer_stand(
+    administratie_id: uuid.UUID, document_id: uuid.UUID
+) -> schemas.DuplicaatAfvoerStandDto:
+    stand = duplicaat_afvoer.stand_voor_document(administratie_id=administratie_id, document_id=document_id)
+    return schemas.DuplicaatAfvoerStandDto(
+        kandidaat=_naar_origineel_dto(stand.kandidaat),
+        afgevoerd_als_duplicaat_van=_naar_origineel_dto(stand.afgevoerd_als_duplicaat_van),
+        afgevoerde_duplicaten=[
+            schemas.AfgevoerdDuplicaatDto(
+                afwijzing_id=d.afwijzing_id,
+                document_id=d.document_id,
+                bestandsnaam=d.bestandsnaam,
+                aangemaakt_op=d.aangemaakt_op,
+                referentie=d.referentie,
+                automatisch=d.automatisch,
+                afgewezen_op=d.afgewezen_op,
+                afgewezen_door=d.afgewezen_door,
+            )
+            for d in stand.afgevoerde_duplicaten
+        ],
     )
 
 
@@ -292,6 +335,10 @@ def documenten_lijst(
     # Werkvoorraad-chip "Afgewezen — ter controle" mét reden + wie afwees (mockup): één query
     # voor alle open afwijzingen, geen N+1.
     afwijzingen = afwijzen.open_afwijzingen(administratie_id=administratie_id)
+    # Duplicaat-afvoer (04-09): werkvoorraad-matches in bulk (geen N+1, geen RLZ-calls) voor rijmenu + chip.
+    werkvoorraad_duplicaten = duplicaat_afvoer.werkvoorraad_matches_bulk(
+        administratie_id=administratie_id, document_ids=[item.document.id for item in items]
+    )
     return schemas.DocumentListResponse(
         documenten=[
             schemas.DocumentListItemResponse(
@@ -305,6 +352,7 @@ def documenten_lijst(
                 aangemaakt_op=item.document.aangemaakt_op,
                 laatst_gewijzigd_op=item.document.laatst_gewijzigd_op,
                 afwijzing=_naar_afwijzing_info(afwijzingen.get(item.document.id)),
+                duplicaat_werkvoorraad_van=_naar_origineel_dto(werkvoorraad_duplicaten.get(item.document.id)),
                 leverancier=item.leverancier,
                 totaalbedrag=item.totaalbedrag,
                 factuurdatum=item.factuurdatum,
@@ -433,6 +481,11 @@ def document_detail(
         bron_bestandsnaam=d.bron_bestandsnaam,
         tenaamstelling=d.tenaamstelling,
         geboekt_in_rlz=_naar_geboekt_in_rlz(detail.geboekt_in_rlz),
+        duplicaat_afvoer=(
+            _naar_duplicaat_afvoer_stand(administratie_id, document_id)
+            if d.soort == DocumentSoort.INKOOPFACTUUR.value
+            else None
+        ),
         herkomst_mail=(
             schemas.HerkomstMailDto(
                 afzender=detail.herkomst_mail.afzender,
@@ -1302,6 +1355,42 @@ def document_afwijzen(
     except OngeldigeStatusovergang as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _naar_afwijzing_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/afvoeren-als-duplicaat",
+    response_model=schemas.DuplicaatAfvoerResponse,
+)
+def document_afvoeren_als_duplicaat(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DuplicaatAfvoerResponse:
+    """Één-klik "Afvoeren als duplicaat" (besluit Peter 04-09, migratie 0105) — altijd beschikbaar, ook
+    zonder de opt-in. Zelfde motor als het automatische pad, actor = de mens, `automatisch=false`, reden
+    deterministisch ("Duplicaat van ‹referentie› (…)"). Idempotent: al afgevoerd = 200 met dezelfde data;
+    409 leesbaar zonder harde match (meer) of bij een status die het niet toelaat. Nooit verwijderen —
+    terughalen via heropenen."""
+    try:
+        resultaat = duplicaat_afvoer.voer_af_als_duplicaat(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (duplicaat_afvoer.DuplicaatAfvoerFout, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (vragen.GeenToewijzingMogelijk, vragen.ToegewezeneBuitenScope) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    a = resultaat.afwijzing
+    return schemas.DuplicaatAfvoerResponse(
+        afwijzing_id=a.id,
+        document_id=a.document_id,
+        document_status=a.document_status.value,
+        reden=a.reden,
+        automatisch=a.automatisch,
+        al_afgevoerd=resultaat.al_afgevoerd,
+        origineel=_naar_origineel_dto(resultaat.origineel),  # type: ignore[arg-type]
+    )
 
 
 @router.post(

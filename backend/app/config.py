@@ -199,6 +199,12 @@ class Settings(BaseSettings):
     # Eigen hoge vangrail als noodrem (zelfde zichtbare boek_fout-afhandeling). Autoboek-paden
     # (opt-ins, bank, verkoop) blijven onverkort onder de rem hierboven.
     max_boekingen_na_klant_akkoord_per_dag_per_administratie: int = 200
+    # Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): max. automatisch afgevoerde
+    # duplicaten per administratie per kalenderdag — noodrem tegen een runaway (bv. een leverancier
+    # die per ongeluk alle facturen hetzelfde nummer geeft), geen bedrijfsvoeringslimiet. Boven de rem
+    # blijft het document gewoon in de werkvoorraad (geweigerd mét reden + audit); de één-klik-variant
+    # telt niet mee.
+    max_duplicaat_afvoer_per_dag_per_administratie: int = 20
 
     # AI-extractie (fase AI-extractie sessie 1): Claude leest de PDF, code rekent, mens drukt.
     # Key uitsluitend via .env/Secret Manager (besluit 0012 — nooit in code/logs/chat); géén

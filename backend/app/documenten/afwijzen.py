@@ -73,10 +73,20 @@ class AfwijzingData:
     toegewezen_aan: uuid.UUID
     heropend_door: uuid.UUID | None
     heropend_op: datetime | None
+    # Duplicaat-afvoer (04-09, migratie 0105): kruisverwijzing naar het origineel; None bij een
+    # gewone afwijzing. `automatisch` = door het systeem afgevoerd (opt-in per administratie).
+    duplicaat_van_document_id: uuid.UUID | None = None
+    duplicaat_van_rlz_document_id: uuid.UUID | None = None
+    duplicaat_van_referentie: str | None = None
+    automatisch: bool = False
 
 
 def _naar_data(afwijzing: Afwijzing, document: Document) -> AfwijzingData:
     return AfwijzingData(
+        duplicaat_van_document_id=afwijzing.duplicaat_van_document_id,
+        duplicaat_van_rlz_document_id=afwijzing.duplicaat_van_rlz_document_id,
+        duplicaat_van_referentie=afwijzing.duplicaat_van_referentie,
+        automatisch=bool(afwijzing.automatisch),
         id=afwijzing.id,
         document_id=afwijzing.document_id,
         document_status=document.status,
@@ -98,11 +108,20 @@ def wijs_af(
     actor_id: uuid.UUID,
     reden: str,
     toegewezen_aan: uuid.UUID | None = None,
+    duplicaat_van_document_id: uuid.UUID | None = None,
+    duplicaat_van_rlz_document_id: uuid.UUID | None = None,
+    duplicaat_van_referentie: str | None = None,
+    automatisch: bool = False,
 ) -> AfwijzingData:
     """Wijst een document af: reden verplicht, document -> afgewezen (blijft zichtbaar in de
     werkvoorraad, boeken geblokkeerd), toewijzing ("Ter controle naar", mockup #afwijsmodal)
     default naar de administratie-eigenaar. Document.toegewezen_aan volgt mee (werkvoorraad-
-    kolom "Toegewezen") — zelfde gedrag als een vraag."""
+    kolom "Toegewezen") — zelfde gedrag als een vraag.
+
+    Duplicaat-afvoer (04-09, migratie 0105): de `duplicaat_van_*`-kruisverwijzing en `automatisch`
+    reizen mee naar de afwijzing-rij, de tijdlijn (`automatisch_afgevoerd`, `duplicaat_van_*`) en het
+    audit-event — de enige schrijver is `app/documenten/duplicaat_afvoer.py`; een gewone afwijzing
+    laat ze leeg. Een systeem-actor-overgang draagt de reden als tijdlijnregel (`_borg_systeem_reden`)."""
     reden_tekst = reden.strip()
     if not reden_tekst:
         raise RedenVerplicht("Een afwijzing zonder reden is niet toegestaan")
@@ -134,8 +153,23 @@ def wijs_af(
             reden=reden_tekst,
             toegewezen_aan=toegewezene,
             status_voor_afwijzing=document.status.value,
+            duplicaat_van_document_id=duplicaat_van_document_id,
+            duplicaat_van_rlz_document_id=duplicaat_van_rlz_document_id,
+            duplicaat_van_referentie=duplicaat_van_referentie,
+            automatisch=automatisch,
         )
         session.add(afwijzing)
+        duplicaat_detail: dict = {}
+        if duplicaat_van_document_id or duplicaat_van_rlz_document_id or duplicaat_van_referentie:
+            duplicaat_detail = {
+                "duplicaat_van_document_id": str(duplicaat_van_document_id) if duplicaat_van_document_id else None,
+                "duplicaat_van_rlz_document_id": (
+                    str(duplicaat_van_rlz_document_id) if duplicaat_van_rlz_document_id else None
+                ),
+                "duplicaat_van_referentie": duplicaat_van_referentie,
+            }
+        if automatisch:
+            duplicaat_detail["automatisch_afgevoerd"] = True
         # De overgang valideert tegen de statusmachine vóór er iets persisteert — een afwijzing
         # op bv. een geboekt document rolt de hele transactie (incl. de afwijzing-rij) terug.
         _schrijf_overgang(
@@ -148,6 +182,7 @@ def wijs_af(
                 "reden": reden_tekst,
                 "toegewezen_aan": str(toegewezene),
                 "status_voor_afwijzing": afwijzing.status_voor_afwijzing,
+                **duplicaat_detail,
             },
         )
         document.toegewezen_aan = toegewezene
@@ -165,6 +200,7 @@ def wijs_af(
                 "reden": reden_tekst,
                 "toegewezen_aan": str(toegewezene),
                 "status_voor_afwijzing": afwijzing.status_voor_afwijzing,
+                **duplicaat_detail,
             },
             administratie_id=administratie_id,
         )

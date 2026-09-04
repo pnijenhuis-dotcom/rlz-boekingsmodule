@@ -54,6 +54,8 @@ export function ariaLabelVoor(type: ToggleType): string {
       return 'Voorraad bijhouden voor'
     case 'omzet_autoboeken':
       return 'Omzet-autoboeken voor'
+    case 'duplicaat_autoafvoer':
+      return 'Duplicaat-afvoer automatisch voor'
   }
 }
 

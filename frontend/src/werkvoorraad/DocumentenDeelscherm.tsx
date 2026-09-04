@@ -42,6 +42,7 @@ import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
 import { geboektInRlzTooltip } from '../document/GeboektInRlz'
 import { VerwijderDialog } from './VerwijderDialog'
+import { DuplicaatAfvoerDialog, toonAfvoerenAlsDuplicaat } from '../document/DuplicaatAfvoer'
 
 /** Ververs-interval zolang er documenten in extractie_wachtrij/extractie_bezig staan. */
 const EXTRACTIE_POLL_MS = 3000
@@ -119,6 +120,8 @@ export function DocumentenDeelscherm({
   const [verwijderenFout, setVerwijderenFout] = useState<string | null>(null)
   const [herstellenBezig, setHerstellenBezig] = useState<string | null>(null)
   const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
+  // Duplicaat-afvoer (04-09): één-klik vanuit het ⋯-rijmenu, bevestiging mét het gevonden origineel.
+  const [afvoerenVoor, setAfvoerenVoor] = useState<DocumentListItemDto | null>(null)
   // ⋯-rijmenu (punt 4): archief-patroon — één open menu, anker per rij.
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const menuKnoppen = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -864,7 +867,43 @@ export function DocumentenDeelscherm({
                         )}
                         {d.afwijzing && (
                           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                            {/* Duplicaat-afvoer (04-09): chip + link naar het origineel als de afwijzing een
+                                kruisverwijzing draagt; ⚙ = automatisch afgevoerd (opt-in). */}
+                            {(d.afwijzing.duplicaat_van_document_id || d.afwijzing.duplicaat_van_referentie) && (
+                              <>
+                                <span className="chip geheugen" title={d.afwijzing.automatisch ? 'Automatisch afgevoerd door het systeem (opt-in duplicaat-afvoer)' : 'Afgevoerd als duplicaat door een medewerker'}>
+                                  {d.afwijzing.automatisch ? '⚙ ' : ''}duplicaat afgevoerd
+                                </span>{' '}
+                                {d.afwijzing.duplicaat_van_document_id && (
+                                  <Link
+                                    to={`/documenten/${administratieId}/${d.afwijzing.duplicaat_van_document_id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ fontSize: 11.5 }}
+                                  >
+                                    open origineel
+                                  </Link>
+                                )}
+                                <br />
+                              </>
+                            )}
                             reden: &ldquo;{d.afwijzing.reden}&rdquo; — {naamVoor(d.afwijzing.afgewezen_door)}
+                          </div>
+                        )}
+                        {d.duplicaat_werkvoorraad_van && (
+                          <div style={{ marginTop: 4 }}>
+                            <span className="chip vraag" title="Zelfde crediteur, referentie en totaalbedrag als een ouder document in de werkvoorraad — afvoeren als duplicaat kan via het ⋯-menu">
+                              Duplicaat in werkvoorraad
+                            </span>{' '}
+                            {d.duplicaat_werkvoorraad_van.document_id && (
+                              <Link
+                                to={`/documenten/${administratieId}/${d.duplicaat_werkvoorraad_van.document_id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ fontSize: 11.5 }}
+                              >
+                                van {d.duplicaat_werkvoorraad_van.bestandsnaam}
+                                {d.duplicaat_werkvoorraad_van.aangemaakt_op ? ` (${formatDatumKort(d.duplicaat_werkvoorraad_van.aangemaakt_op)})` : ''}
+                              </Link>
+                            )}
                           </div>
                         )}
                         {d.mogelijk_duplicaat_van && (
@@ -985,6 +1024,20 @@ export function DocumentenDeelscherm({
                             </button>
                           ) : (
                             <>
+                              {/* Duplicaat-afvoer (04-09): alleen bij een harde-match-signaal én afvoerbare status. */}
+                              {toonAfvoerenAlsDuplicaat(d) && (
+                                <button
+                                  type="button"
+                                  className="linkbtn"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setMenuOpen(null)
+                                    setAfvoerenVoor(d)
+                                  }}
+                                >
+                                  ⧉ Afvoeren als duplicaat…
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className="linkbtn"
@@ -1018,6 +1071,20 @@ export function DocumentenDeelscherm({
         )}
       </div>
 
+      {afvoerenVoor && (
+        <DuplicaatAfvoerDialog
+          administratieId={administratieId}
+          documentId={afvoerenVoor.id}
+          bestandsnaam={afvoerenVoor.leverancier ?? afvoerenVoor.bestandsnaam}
+          kandidaat={afvoerenVoor.duplicaat_werkvoorraad_van ?? undefined}
+          onAfgevoerd={(resultaat) => {
+            setAfvoerenVoor(null)
+            meld(`Afgevoerd als duplicaat — ${resultaat.reden}`, 'ok')
+            laadDocumenten()
+          }}
+          onAnnuleren={() => setAfvoerenVoor(null)}
+        />
+      )}
       {verwijderenVoor && (
         <VerwijderDialog
           bestandsnaam={verwijderenVoor.bestandsnaam}

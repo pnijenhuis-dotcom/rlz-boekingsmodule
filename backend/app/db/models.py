@@ -147,6 +147,18 @@ class Administratie(Base):
     # Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles
     # groen is — opt-in per administratie, default UIT, Beheerder-only (app/omzet/autoboeken.py).
     omzet_autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): bij een HARDE duplicaat-match (zelfde
+    # crediteur op btw-nummer + referentie + totaalbedrag, origineel geboekt óf ouder in de werkvoorraad)
+    # voert het systeem het document automatisch af naar Afgewezen mét kruisverwijzing — opt-in per
+    # administratie, default UIT, Beheerder-only (app/documenten/duplicaat_afvoer.py). De één-klik-
+    # variant "Afvoeren als duplicaat" werkt altijd.
+    duplicaat_autoafvoer_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Btw-default per administratie (blok E medewerker-wensen 04-09, migratie 0108, mockup
+    # `projectverdeling-en-regelvoorstellen.html` blok 3 + notitie ⑧): standaard-btw-voorstel dat in de
+    # prefill ALLEEN regels vult waar factuur én leverancier-geheugen niets opleveren (chip "standaard
+    # administratie"). NULL = uit — bestaande administraties ongemoeid tot Peter activeert. Bewust geen FK
+    # naar taxrate_cache (overleeft een sync-verdwijning); app/beheer/btw_default.py valideert tegen de cache.
+    standaard_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     # Klant-accorderingsflow (migratie 0033, mockup #autorisatie): optioneel per administratie,
     # default UIT. Aan = de boekknop wordt "Ter accordering" en direct boeken is server-side
     # geblokkeerd tot alle vereiste lagen akkoord zijn (app/accordering/service.py).

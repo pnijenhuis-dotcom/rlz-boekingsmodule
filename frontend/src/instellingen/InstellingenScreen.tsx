@@ -50,6 +50,7 @@ import {
   zetProjectInstelling,
   zetVoorraadInstelling,
   zetOmzetAutoboekenInstelling,
+  zetDuplicaatAutoafvoerInstelling,
   zetUrenDagmaxInstelling,
   zetUrenMeerwerkInstelling,
   zetIsVastgoed,
@@ -69,6 +70,7 @@ type WijzigingType =
   | 'afdelingen'
   | 'voorraad'
   | 'omzet_autoboeken'
+  | 'duplicaat_autoafvoer'
   | 'eigenaar'
   | 'iban_accordeurs'
   | 'ai_kosten_limiet'
@@ -127,6 +129,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `Omzet-autoboeken gaat AAN voor "${pending.naam}": een kassarapport boekt ná extractie automatisch (verkoopfactuur + kostprijsmemoriaal als één transactie) uitsluitend als álles groen is — harde checks incl. memoriaal-saldo-0 en marge-plausibiliteit, categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen open vraag of afwijzing. Elk ander geval blijft gewoon in de werkvoorraad; volumerem 20/dag; elke automatische boeking is gemarkeerd en geauditeerd en een half-geboekt-geval geeft een alert.`
         : `Omzet-autoboeken gaat UIT voor "${pending.naam}" — elk kassarapport wacht weer op de boek-klik van een medewerker.`
+    case 'duplicaat_autoafvoer':
+      return pending.nieuweWaarde
+        ? `Duplicaten automatisch afvoeren gaat AAN voor "${pending.naam}": bij een harde match — zelfde crediteur (btw-nummer), zelfde referentie én zelfde totaalbedrag, origineel al geboekt óf ouder in de werkvoorraad — zet het systeem het duplicaat direct op Afgewezen met reden "Duplicaat van …" en een kruisverwijzing naar het origineel (beide kanten zichtbaar). Niets wordt verwijderd; terughalen kan via Heropenen. Documenten bij de klant, met een open vraag of al geboekt worden nooit automatisch afgevoerd; volumerem 20 per dag; alles in audit en tijdlijn.`
+        : `Duplicaten automatisch afvoeren gaat UIT voor "${pending.naam}" — duplicaten blijven als signaal staan; de knop "Afvoeren als duplicaat" blijft beschikbaar.`
     case 'uren_meerwerk':
       return pending.nieuweWaarde
         ? `Uren & meerwerk (steigerbouw-tak) wordt ingeschakeld voor "${pending.naam}": ZZP'ers/uitvoerders/detacheerders kunnen er weekstaten en meerwerk op werken en het kantoor ziet de standen (module-recht vereist).`
@@ -197,6 +203,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'omzet_autoboeken') {
     await zetOmzetAutoboekenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'duplicaat_autoafvoer') {
+    await zetDuplicaatAutoafvoerInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'eigenaar') {
@@ -456,6 +466,8 @@ export function InstellingenScreen() {
                                     ? { uren_meerwerk_ingeschakeld: pending.nieuweWaarde }
                                     : pending.type === 'omzet_autoboeken'
                                       ? { omzet_autoboeken_ingeschakeld: pending.nieuweWaarde }
+                                      : pending.type === 'duplicaat_autoafvoer'
+                                        ? { duplicaat_autoafvoer_ingeschakeld: pending.nieuweWaarde }
                                     : { project_verplicht: pending.nieuweWaarde }),
                   }
                 : a,

@@ -63,6 +63,7 @@ def administratie_instellingen_lijst(
                 doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
                 doorbelasting_doel=r.doorbelasting_doel,
                 omzet_autoboeken_ingeschakeld=r.omzet_autoboeken_ingeschakeld,
+                duplicaat_autoafvoer_ingeschakeld=r.duplicaat_autoafvoer_ingeschakeld,
                 bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
                 accordering_ingeschakeld=r.accordering_ingeschakeld,
                 laatste_sync_op=r.laatste_sync_op,
@@ -639,6 +640,40 @@ def omzet_autoboeken_instelling_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return schemas.OmzetAutoboekenDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
+    "/administraties/{administratie_id}/duplicaat-autoafvoer-instelling",
+    response_model=schemas.DuplicaatAutoafvoerDto,
+)
+def duplicaat_autoafvoer_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.DuplicaatAutoafvoerDto:
+    try:
+        ingeschakeld = service.haal_duplicaat_autoafvoer_ingeschakeld_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.DuplicaatAutoafvoerDto(ingeschakeld=ingeschakeld)
+
+
+@router.put(
+    "/administraties/{administratie_id}/duplicaat-autoafvoer-instelling",
+    response_model=schemas.DuplicaatAutoafvoerDto,
+)
+def duplicaat_autoafvoer_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.DuplicaatAutoafvoerDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.DuplicaatAutoafvoerDto:
+    """Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105) — Beheerder-only, default UIT,
+    audit oud→nieuw; het pad zelf voert alleen af bij een HARDE match (app/documenten/duplicaat_afvoer.py)."""
+    try:
+        ingeschakeld = service.zet_duplicaat_autoafvoer_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.DuplicaatAutoafvoerDto(ingeschakeld=ingeschakeld)
 
 
 @router.get(

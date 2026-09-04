@@ -79,6 +79,13 @@ class OmzetAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class DuplicaatAutoafvoerDto(StrikteInvoer):
+    """Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): harde duplicaten automatisch
+    naar Afgewezen mét kruisverwijzing. Beheerder-only, default UIT."""
+
+    ingeschakeld: bool
+
+
 class IsVastgoedDto(StrikteInvoer):
     is_vastgoed: bool
 
@@ -148,6 +155,8 @@ class AdministratieInstellingenDto(BaseModel):
     doorbelasting_doel: bool = False
     # Omzet-autoboeken (GO 01-09, migratie 0096): opt-in per administratie, default UIT.
     omzet_autoboeken_ingeschakeld: bool = False
+    # Duplicaat-auto-afvoer (04-09, migratie 0105): opt-in per administratie, default UIT.
+    duplicaat_autoafvoer_ingeschakeld: bool = False
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None

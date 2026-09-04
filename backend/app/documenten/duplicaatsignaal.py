@@ -143,6 +143,14 @@ def bereken_duplicaatsignaal_stil(*, administratie_id: uuid.UUID | None, documen
         bereken_duplicaatsignaal(administratie_id=administratie_id, document_id=document_id)
     except Exception:  # noqa: BLE001 — signalering mag de upload/worker/opslag nooit laten falen
         logger.exception("Duplicaatsignaal berekenen mislukt voor document %s", document_id)
+    # Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): direct ná het verse signaal — bij een
+    # HARDE match (crediteur op btw-nummer + referentie + bedrag; origineel geboekt óf ouder in de
+    # werkvoorraad) én de opt-in van de administratie gaat het duplicaat automatisch naar Afgewezen
+    # mét kruisverwijzing. Zelfde post-commit-plek voor extractie én veldopslag; fouten gelogd, nooit
+    # een blokkade. Lokale import: duplicaat_afvoer leest deze module (kringimport vermijden).
+    from app.documenten import duplicaat_afvoer
+
+    duplicaat_afvoer.verwerk_na_signaal_stil(administratie_id=administratie_id, document_id=document_id)
 
 
 @dataclass(frozen=True)

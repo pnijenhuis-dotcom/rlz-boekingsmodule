@@ -153,6 +153,14 @@ export function zetOmzetAutoboekenInstelling(administratieId: string, ingeschake
   })
 }
 
+/** Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105) — Beheerder-only, default UIT. */
+export function zetDuplicaatAutoafvoerInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
+  return apiJson(`/administraties/${administratieId}/duplicaat-autoafvoer-instelling`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function zetVerkoopAutoboekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/verkoop-autoboeken-instelling`, {
     ...PUT_JSON,

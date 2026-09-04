@@ -22,6 +22,56 @@ export interface AfwijzingInfoDto {
   afgewezen_op: string
   toegewezen_aan: string
   status_voor_afwijzing: string
+  /** Duplicaat-afvoer (04-09, migratie 0105): kruisverwijzing naar het origineel — gevuld als het document
+   * als duplicaat is afgevoerd (chip "duplicaat afgevoerd"); `automatisch` = door het systeem (opt-in). */
+  duplicaat_van_document_id?: string | null
+  duplicaat_van_rlz_document_id?: string | null
+  duplicaat_van_referentie?: string | null
+  automatisch?: boolean
+}
+
+/** Origineel van een (kandidaat-)duplicaat (04-09): bron 'geboekt' (RLZ/Odoo of in de app geboekt) of
+ * 'werkvoorraad' (ouder/verder app-document). `document_id` null = RLZ-/Odoo-origineel zonder app-document. */
+export interface DuplicaatOrigineelDto {
+  bron: 'geboekt' | 'werkvoorraad' | string
+  referentie: string
+  document_id: string | null
+  rlz_document_id: string | null
+  boekstuknummer: string | null
+  bestandsnaam: string | null
+  aangemaakt_op: string | null
+  status: string | null
+}
+
+/** Origineel-kant: één als duplicaat van dít document afgevoerd document (open afwijzing). */
+export interface AfgevoerdDuplicaatDto {
+  afwijzing_id: string
+  document_id: string
+  bestandsnaam: string
+  aangemaakt_op: string
+  referentie: string | null
+  automatisch: boolean
+  afgewezen_op: string
+  afgewezen_door: string
+}
+
+/** Controlescherm-stand duplicaat-afvoer (04-09): kandidaat (knop), eigen afvoer (→ origineel), afgevoerde
+ * duplicaten (origineel-kant). */
+export interface DuplicaatAfvoerStandDto {
+  kandidaat: DuplicaatOrigineelDto | null
+  afgevoerd_als_duplicaat_van: DuplicaatOrigineelDto | null
+  afgevoerde_duplicaten: AfgevoerdDuplicaatDto[]
+}
+
+/** Antwoord op POST …/documenten/{id}/afvoeren-als-duplicaat. */
+export interface DuplicaatAfvoerResponseDto {
+  afwijzing_id: string
+  document_id: string
+  document_status: string
+  reden: string
+  automatisch: boolean
+  al_afgevoerd: boolean
+  origineel: DuplicaatOrigineelDto
 }
 
 export interface AfwijzingDto {
@@ -215,6 +265,12 @@ export interface DocumentListItemDto {
   /** Duplicaatsignaal (25-08, deel 2 punt 6): voedt de chip "mogelijk duplicaat in RLZ" + het
    * filter. Null/afwezig = nog niet getoetst. */
   duplicaatsignaal?: DuplicaatSignaalKortDto | null
+  /** Duplicaat-afvoer (04-09): een ouder/verder app-document met dezelfde crediteur (btw-nummer), referentie en
+   * totaalbedrag — voedt het rijmenu-item "Afvoeren als duplicaat" en de chip. Null/afwezig = geen. */
+  duplicaat_werkvoorraad_van?: DuplicaatOrigineelDto | null
+  /** Projectverdeling-hercontrole (blok C 04-09): afwijking in % boven de drempel op een geboekte
+   * pro-rato-verdeling — chip "verdeling wijkt x% af", actie "Herverdelen…" op het document. */
+  projectverdeling_afwijking_pct?: string | null
 }
 
 export interface AccordeurAanDeBeurtDto {
@@ -366,6 +422,8 @@ export interface DocumentDetailDto {
   /** Blok C 02-09: alleen gevuld bij status geboekt (detailkop-chip + reviewscherm-regel). */
   geboekt_in_rlz?: GeboektInRlzDto | null
   tijdlijn: DocumentGebeurtenisDto[]
+  /** Duplicaat-afvoer (04-09, migratie 0105): kandidaat + kruisverwijzing beide kanten; alleen inkoopfacturen. */
+  duplicaat_afvoer?: DuplicaatAfvoerStandDto | null
 }
 
 export interface HerkomstMailDto {
@@ -649,6 +707,8 @@ export interface AdministratieInstellingenDto {
   doorbelasting_doel?: boolean
   /** Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles groen is. */
   omzet_autoboeken_ingeschakeld?: boolean
+  /** Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): harde duplicaten automatisch naar Afgewezen. */
+  duplicaat_autoafvoer_ingeschakeld?: boolean
   bank_autoboeken_ingeschakeld?: boolean
   accordering_ingeschakeld?: boolean
   laatste_sync_op?: string | null

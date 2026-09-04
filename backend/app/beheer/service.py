@@ -185,6 +185,7 @@ class AdministratieInstellingen:
     doorbelasting_ingeschakeld: bool = False
     doorbelasting_doel: bool = False
     omzet_autoboeken_ingeschakeld: bool = False
+    duplicaat_autoafvoer_ingeschakeld: bool = False
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None
@@ -318,6 +319,7 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
             doorbelasting_doel=r.id in doelen,
             omzet_autoboeken_ingeschakeld=r.omzet_autoboeken_ingeschakeld,
+            duplicaat_autoafvoer_ingeschakeld=r.duplicaat_autoafvoer_ingeschakeld,
             bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
             accordering_ingeschakeld=r.accordering_ingeschakeld,
             laatste_sync_op=laatste_sync.get(r.id),
@@ -690,6 +692,42 @@ def zet_omzet_autoboeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: 
             correlatie_id=uuid.uuid4(),
             oude_waarde={"omzet_autoboeken_ingeschakeld": oud},
             nieuwe_waarde={"omzet_autoboeken_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
+def haal_duplicaat_autoafvoer_ingeschakeld_op(*, administratie_id: uuid.UUID) -> bool:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return administratie.duplicaat_autoafvoer_ingeschakeld
+
+
+def zet_duplicaat_autoafvoer_ingeschakeld(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
+) -> bool:
+    """Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): bij een harde duplicaat-match
+    (crediteur op btw-nummer + referentie + totaalbedrag; origineel geboekt óf ouder in de werkvoorraad)
+    voert het systeem het document automatisch af naar Afgewezen mét kruisverwijzing
+    (app/documenten/duplicaat_afvoer.py). Default UIT; Beheerder-only (router/CLI); audit oud→nieuw.
+    De één-klik-variant "Afvoeren als duplicaat" staat hier los van (altijd beschikbaar)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.duplicaat_autoafvoer_ingeschakeld
+        administratie.duplicaat_autoafvoer_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="duplicaat_autoafvoer_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"duplicaat_autoafvoer_ingeschakeld": oud},
+            nieuwe_waarde={"duplicaat_autoafvoer_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
 
