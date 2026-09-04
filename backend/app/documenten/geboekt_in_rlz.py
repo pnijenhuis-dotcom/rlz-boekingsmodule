@@ -6,7 +6,12 @@ Eén bron voor lijst-tooltip, detailkop en de reviewschermen: per GEBOEKT docume
 de tegenpartij (crediteur/debiteur) en een vindplaats-hint per documentsoort. Alles komt uit wat de app
 al heeft — de GEBOEKT-overgang in de tijdlijn (élke motor legt daar `rlz_document_id` +
 boekstuknummer vast), het boekvoorstel + de vendor-cache (inkoop), het verkoopvoorstel (debiteur), de
-omzetboeking (verkoop + memoriaal) — NOOIT een RLZ-call. Gebatcht per lijst (geen N+1)."""
+omzetboeking (verkoop + memoriaal) — NOOIT een RLZ-call. Gebatcht per lijst (geen N+1).
+
+Odoo-adapter blok E (03-09, mockup `odoo-koppeling-ui.html` sectie 3): voor een document waarvan de jongste
+GEBOEKT-overgang `backend: odoo` draagt, komt het nummer uit `odoo_document_koppeling` (boeking + eventuele
+tegenboeking van de jongste boek_cyclus — kruisverwijzing "Reversal · RBILL/… ↔ BILL/…"), de company uit de
+koppelstand (company-poort zichtbaar, ontwerpnotitie ④) en de btw-cent-override-chip uit het detail."""
 
 from __future__ import annotations
 
@@ -35,13 +40,23 @@ VINDPLAATS_OMZET = (
 VINDPLAATS_WAARBORG = (
     "In RLZ zichtbaar als memoriaalboeking (dagboek Memoriaal) — geen factuur, dus niet onder Inkoop of Verkopen."
 )
-#: Odoo-administraties (0016/0101): inkoopfacturen staan onder Boekhouding › Leveranciers › Facturen van de company;
-#: een correctie is een aparte creditnota (RBILL/…) mét kruisverwijzing — nooit een gewijzigd origineel.
+#: Odoo-administraties (0016/0101, mockup blok E sectie 3): inkoopfacturen staan onder Boekhouding → Leveranciers →
+#: Facturen van de company; een correctie is een aparte creditnota (RBILL/…) mét kruisverwijzing — nooit een
+#: gewijzigd origineel. `vindplaats_odoo_inkoop(company_naam)` vult de company in als die bekend is.
 VINDPLAATS_ODOO_INKOOP = (
-    "In Odoo zichtbaar onder Boekhouding › Leveranciers › Facturen van de gekoppelde company (nummer BILL/…); "
-    "een correctie staat als aparte creditnota (RBILL/…) met kruisverwijzing naar het origineel."
+    "In Odoo: Boekhouding → Leveranciers → Facturen van de gekoppelde company (nummer BILL/…); een correctie staat "
+    "als aparte creditnota (RBILL/…) met kruisverwijzing naar het origineel."
 )
 LABEL_PER_BACKEND = {"rlz": "RLZ", "odoo": "Odoo"}
+
+
+def vindplaats_odoo_inkoop(company_naam: str | None) -> str:
+    if not company_naam:
+        return VINDPLAATS_ODOO_INKOOP
+    return (
+        f"In Odoo: Boekhouding → Leveranciers → Facturen van company {company_naam} (nummer BILL/…); een correctie "
+        "staat als aparte creditnota (RBILL/…) met kruisverwijzing naar het origineel."
+    )
 
 
 @dataclass(frozen=True)
@@ -57,11 +72,23 @@ class GeboektInRlz:
     vindplaats_hint: str | None = None
     #: boekhoud-backend van de boeking (uit het GEBOEKT-tijdlijndetail; ontbreekt = rlz, pre-0101)
     backend: str = "rlz"
+    #: Odoo (blok E): de company van de koppeling (company-poort zichtbaar), het nummer van de creditnota bij een
+    #: tegenboeking, de kruisverwijzing "Reversal · RBILL/… ↔ BILL/…" en of de btw-cent-override is toegepast.
+    company_naam: str | None = None
+    tegenboeking_boekstuknummer: str | None = None
+    kruisverwijzing: str | None = None
+    btw_override: bool = False
 
     def als_regel(self) -> str:
-        """Eén leesbare regel: 'Geboekt in RLZ · boekstuk RLZ-01-00000442 · Universal Nederland B.V.' — of
-        'Geboekt in Odoo · boekstuk BILL/2026/09/0001 · …' voor een Odoo-administratie."""
+        """Eén leesbare regel: 'Geboekt in RLZ · boekstuk RLZ-01-00000442 · Universal Nederland B.V.' — of, voor
+        een Odoo-administratie (mockup sectie 3): 'Geboekt in Odoo · BILL/2026/09/0001 · Universal Steigerbouw'
+        (nummer zónder 'boekstuk'-prefix, company i.p.v. tegenpartij)."""
         delen = [f"Geboekt in {LABEL_PER_BACKEND.get(self.backend, self.backend)}"]
+        if self.backend == "odoo":
+            delen.append(self.boekstuknummer or "nummer onbekend")
+            if self.company_naam:
+                delen.append(self.company_naam)
+            return " · ".join(delen)
         delen.append(f"boekstuk {self.boekstuknummer}" if self.boekstuknummer else "boekstuk onbekend")
         if self.memoriaal_boekstuknummer:
             delen.append(f"memoriaal {self.memoriaal_boekstuknummer}")
@@ -85,6 +112,9 @@ def _jongste_geboekt_overgangen(
         .where(
             DocumentGebeurtenis.document_id.in_(document_ids),
             DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
+            # Een tegenboeking is een geboekt→geboekt-gebeurtenis (detail `tegenboeking`), geen boeking — zonder
+            # dit filter verloor een tegengeboekt Odoo-document zijn backend/nummer (live keten-cyclus 04-09).
+            DocumentGebeurtenis.van_status.is_distinct_from(DocumentStatus.GEBOEKT),
         )
         .subquery()
     )
@@ -104,6 +134,45 @@ def _tekst(detail: dict | None, *sleutels: str) -> str | None:
         if isinstance(waarde, str) and waarde.strip():
             return waarde
     return None
+
+
+@dataclass(frozen=True)
+class _OdooNummers:
+    boeking: str | None
+    tegenboeking: str | None
+
+
+def _odoo_nummers(session: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, _OdooNummers]:
+    """Per Odoo-geboekt document het `account.move`-nummer van de boeking én de eventuele tegenboeking
+    (reversal) van de JONGSTE boek_cyclus — gebatcht uit `odoo_document_koppeling` (lokale mapping, geen
+    Odoo-call). Geannuleerde concepten (state cancel) tellen niet."""
+    if not document_ids:
+        return {}
+    from app.odoo.models import OdooDocumentKoppeling
+
+    rijen = session.scalars(
+        select(OdooDocumentKoppeling).where(
+            OdooDocumentKoppeling.document_id.in_(document_ids), OdooDocumentKoppeling.state != "cancel"
+        )
+    ).all()
+    per_document: dict[uuid.UUID, dict[int, dict[str, str | None]]] = {}
+    for rij in rijen:
+        per_document.setdefault(rij.document_id, {}).setdefault(rij.boek_cyclus, {})[rij.soort] = rij.odoo_naam
+    resultaat: dict[uuid.UUID, _OdooNummers] = {}
+    for document_id, cycli in per_document.items():
+        met_boeking = [c for c, soorten in cycli.items() if "boeking" in soorten]
+        cyclus = max(met_boeking) if met_boeking else max(cycli)
+        soorten = cycli[cyclus]
+        resultaat[document_id] = _OdooNummers(boeking=soorten.get("boeking"), tegenboeking=soorten.get("tegenboeking"))
+    return resultaat
+
+
+def _odoo_company_namen(administratie_ids: set[uuid.UUID]) -> dict[uuid.UUID, str | None]:
+    if not administratie_ids:
+        return {}
+    from app.odoo.service import koppelstand
+
+    return {aid: stand.company_naam for aid, stand in koppelstand(list(administratie_ids), met_details=False).items()}
 
 
 def bepaal_geboekt_in_rlz(session: Session, documenten: list[Document]) -> dict[uuid.UUID, GeboektInRlz]:
@@ -139,6 +208,13 @@ def bepaal_geboekt_in_rlz(session: Session, documenten: list[Document]) -> dict[
         for v in session.scalars(select(VerkoopVoorstel).where(VerkoopVoorstel.document_id.in_(verkoop_ids))):
             if v.debiteur_naam:
                 debiteuren[v.document_id] = v.debiteur_naam
+
+    # Odoo (blok E): nummers uit de document-koppeling + company uit de koppelstand — gebatcht.
+    odoo_ids = [d.id for d in geboekt if d.id in overgangen and _tekst(overgangen[d.id].detail, "backend") == "odoo"]
+    odoo_nummers = _odoo_nummers(session, odoo_ids)
+    odoo_company = _odoo_company_namen(
+        {d.administratie_id for d in geboekt if d.id in odoo_ids and d.administratie_id is not None}
+    )
 
     resultaat: dict[uuid.UUID, GeboektInRlz] = {}
     for d in geboekt:
@@ -186,13 +262,34 @@ def bepaal_geboekt_in_rlz(session: Session, documenten: list[Document]) -> dict[
             else None
         )
         backend = _tekst(detail, "backend") or "rlz"
+        if backend == "odoo":
+            nummers = odoo_nummers.get(d.id)
+            boeking_nr = (nummers.boeking if nummers else None) or _tekst(detail, "odoo_naam", "rlz_boekstuknummer")
+            if boeking_nr is None:
+                boeking_nr = boekstuk
+            tegen_nr = nummers.tegenboeking if nummers else None
+            company_naam = odoo_company.get(d.administratie_id) if d.administratie_id is not None else None
+            resultaat[d.id] = GeboektInRlz(
+                boekstuknummer=boeking_nr,
+                rlz_document_id=_tekst(detail, "rlz_document_id"),
+                tegenpartij=crediteur,
+                tegenpartij_rol="crediteur" if crediteur else None,
+                geboekt_op=geboekt_op,
+                vindplaats_hint=vindplaats_odoo_inkoop(company_naam),
+                backend="odoo",
+                company_naam=company_naam,
+                tegenboeking_boekstuknummer=tegen_nr,
+                kruisverwijzing=f"Reversal · {tegen_nr} ↔ {boeking_nr}" if tegen_nr else None,
+                btw_override=bool(detail.get("btw_override")) if isinstance(detail, dict) else False,
+            )
+            continue
         resultaat[d.id] = GeboektInRlz(
             boekstuknummer=boekstuk,
             rlz_document_id=_tekst(detail, "rlz_document_id"),
             tegenpartij=crediteur,
             tegenpartij_rol="crediteur" if crediteur else None,
             geboekt_op=geboekt_op,
-            vindplaats_hint=VINDPLAATS_ODOO_INKOOP if backend == "odoo" else None,
+            vindplaats_hint=None,
             backend=backend,
         )
     return resultaat

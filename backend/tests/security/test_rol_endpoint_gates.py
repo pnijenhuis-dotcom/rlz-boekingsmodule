@@ -135,6 +135,14 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/terugkerend/{aid}/{DUMMY_ID}/conceptmail"),  # navraag-conceptmail (blok B1 03-09)
         ("GET", "/crediteuren/dubbelen"),  # crediteuren-dubbelen v2 kantoorbreed (blok A 03-09, vereis_kantoorrol)
         ("GET", "/crediteuren/werklijst"),  # RLZ-werklijst crediteur-archivering (blok A 03-09)
+        ("GET", f"/administraties/{aid}/odoo"),  # Odoo-koppelstand (adapter blok 0/E, beheerder-only)
+        ("POST", f"/administraties/{aid}/odoo/overstap"),  # overstap RLZ → Odoo (blok E, beheerder-only)
+        ("PUT", f"/administraties/{aid}/odoo/overgangsdatum"),  # overgangsdatum (blok E, beheerder-only)
+        ("PUT", f"/administraties/{aid}/odoo"),  # Odoo-gegevens wijzigen / sleutelrotatie (beheerder-only)
+        ("POST", f"/administraties/{aid}/odoo/leesbron"),  # alleen-lezen leesbron (blok D, beheerder-only)
+        ("POST", f"/administraties/{aid}/odoo/sync"),  # stamgegevens opnieuw syncen (beheerder-only)
+        ("POST", "/instellingen/odoo/verbinding-testen"),  # Odoo-wizard stap a (beheerder-only)
+        ("POST", "/instellingen/odoo/koppelen"),  # Odoo-wizard stap b+c+d (beheerder-only)
     ]
 
 
@@ -208,9 +216,15 @@ class TestKantoorBlijftWerken:
 
     def test_kantoor_endpoints_geen_403_rolpoort(self, boekhouder, administratie_id):
         for methode, pad in _kantoor_endpoints(administratie_id):
-            if pad.startswith("/auth/gebruikers") or pad.startswith("/uren/kantoor") or pad.endswith("/is-vastgoed"):
-                # Beheerder-only resp. module-recht 'Meerwerk & urenstaten': 403 voor een
-                # boekhouder zónder dat recht is correct bestaand gedrag, geen rolpoort-regressie.
+            if (
+                pad.startswith("/auth/gebruikers")
+                or pad.startswith("/uren/kantoor")
+                or pad.endswith("/is-vastgoed")
+                or "/odoo" in pad
+            ):
+                # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling) resp. module-recht
+                # 'Meerwerk & urenstaten': 403 voor een boekhouder zónder dat recht is correct bestaand
+                # gedrag, geen rolpoort-regressie.
                 continue
             resp = client.request(methode, pad, headers=_bearer(boekhouder, rol="boekhouding"))
             assert resp.status_code != 403, f"boekhouding {methode} {pad}: onterecht 403"

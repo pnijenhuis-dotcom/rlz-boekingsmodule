@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Odoo-koppeling in de kantoor-UI, eerste echte Odoo-boeking en tellers gelijk
+
+- Op de administratie-pagina (tab Algemeen) staat nu bovenaan het blok **Boekhoud-backend**: je ziet in één oogopslag of een administratie in Reeleezee of in Odoo boekt (paarse chip), welke Odoo-company gekoppeld is, of de verbinding groen is, wanneer de stamgegevens voor het laatst zijn gesynct — mét knoppen "Opnieuw testen", "Sleutel wijzigen…" en "⟳ Sync nu". De bestaande Reeleezee-rijen (webservice-login, eerste sync) staan in datzelfde blok.
+- "+ Administratie toevoegen" vraagt als eerste stap het boekhoudpakket: Reeleezee (zoals altijd) of Odoo. Bij Odoo kies je de company uit de lijst — nooit een nummer typen — en wordt de koppeling pas opgeslagen als alle rechten groen zijn; een rode uitkomst legt leesbaar uit wat er in Odoo moet worden rechtgezet.
+- Een bestaande Reeleezee-administratie kan via "Odoo koppelen…" op de detailpagina óf volledig overstappen naar Odoo (met een overgangsdatum), óf Odoo alleen gebruiken als leesbron voor de voorraad-uitstroom vanaf een knipdatum (die knipdatum is daarna ter plekke te wijzigen). De wizard vraagt die keuze altijd expliciet.
+- Op geboekte documenten staat "Geboekt in Odoo · factuurnummer · company" op dezelfde plek als "Geboekt in RLZ"; een tegenboeking toont de kruisverwijzing tussen beide nummers en een cent-bijstelling van de btw krijgt de chip "btw-cent-override". Werkvoorraad en controlescherm zijn verder identiek voor beide pakketten.
+- De eerste complete inkoopfactuur is via de app in Odoo geboekt én weer gecrediteerd (testfactuur op de lege company van Universal Steigerbouw): boekdatum gelijk aan de factuurdatum, bedragen op de cent, producten uit de materiaalcatalogus met aantal en prijs op de regel, project op elke regel en de PDF als bijlage. Wat we daarbij tegenkwamen is direct verbeterd: gearchiveerde Odoo-projecten worden niet meer aangeboden, en een mislukte boekpoging laat geen verouderd concept achter dat een tweede poging in de weg zit.
+- **Teller "Vragen" per klant telt hetzelfde als de kaart "Open vragen".** In de werkvoorraad-klantenlijst telde de kolom "Vragen" alleen documenten die door een vraag geblokkeerd staan; de kaart "Open vragen" telde óók vragen op al geboekte documenten of documenten bij de klant. Beide tellen nu het aantal open vragen — een klant met alleen zo'n vraag staat nu ook in de lijst, en het weekoverzicht per mail gebruikt hetzelfde getal.
+
 ## 2026-09-03 — Odoo-koppeling: eerste stap voor Universal
 
 - Een administratie kan nu naast Reeleezee ook op Odoo draaien. De Beheerder koppelt met de Odoo-sleutel, kiest de vestiging (company) uit een lijst en de app controleert vooraf of verbinding, rechten, dagboeken en btw-codes kloppen; pas als alles groen is wordt er iets opgeslagen. Grootboek, btw-codes, crediteuren en projecten komen daarna in dezelfde lijsten terecht als bij Reeleezee, dus het controlescherm werkt hetzelfde.

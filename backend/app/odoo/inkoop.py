@@ -47,7 +47,7 @@ from app.documenten.boekvoorstel import BoekvoorstelData
 from app.odoo import sync as odoo_sync
 from app.odoo.client import OdooClient, OdooFout
 from app.odoo.credentials import OdooVerbinding, koppeling_voor, odoo_client_voor
-from app.odoo.fouten import lock_date_melding, vertaal_odoo_fout
+from app.odoo.fouten import lock_date_melding, overgangsdatum_melding, vertaal_odoo_fout
 from app.odoo.ids import GEEN_BTW_ODOO_ID, odoo_uuid
 from app.odoo.models import OdooDocumentKoppeling
 from app.odoo.probe import lees_lock_dates
@@ -89,6 +89,25 @@ def marker(document_id: uuid.UUID, boek_cyclus: int, soort: str = "boeking") -> 
     """Onze deterministische herkenning in `invoice_origin` (Odoo kent geen client-GUID) — zichtbaar in de
     Odoo-UI als 'Bron' en het zoek-anker bij een verloren create-antwoord."""
     return f"AKN:{document_id}:{boek_cyclus}:{soort}"
+
+
+def eigen_id_uit_marker(invoice_origin: Any) -> str | None:
+    """`AKN:<document>:<cyclus>:<soort>` → het deterministische id waaronder de harde checks het eigen document
+    kennen (`rlz_herboeking_id` voor een boeking, `rlz_tegenboeking_id` voor een tegenboeking); None als de
+    origin niet onze marker is."""
+    if not isinstance(invoice_origin, str) or not invoice_origin.startswith("AKN:"):
+        return None
+    delen = invoice_origin.split(":")
+    if len(delen) != 4 or not delen[2].isdigit():
+        return None
+    try:
+        document_id = uuid.UUID(delen[1])
+    except ValueError:
+        return None
+    from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
+
+    maker = rlz_tegenboeking_id if delen[3] == "tegenboeking" else rlz_herboeking_id
+    return str(maker(document_id, int(delen[2])))
 
 
 def _cent(waarde: Decimal | float | int | None) -> Decimal:
@@ -141,7 +160,9 @@ class OdooLeesFacade:
         ]
         if vendor_id is not None:
             domain.append(["partner_id", "=", self._port.partner_id_voor(uuid.UUID(str(vendor_id)))])
-        rijen = client.search_read(MODEL_MOVE, domain, ["name", "partner_id", "amount_total", "state", "payment_state"])
+        rijen = client.search_read(
+            MODEL_MOVE, domain, ["name", "partner_id", "amount_total", "state", "payment_state", "invoice_origin"]
+        )
         uit: list[dict[str, Any]] = []
         for rij in rijen:
             afwijking = abs(_cent(rij.get("amount_total")) - _cent(total_amount)) if total_amount is not None else 0
@@ -151,7 +172,11 @@ class OdooLeesFacade:
             partner_id = _m2o_id(partner)
             uit.append(
                 {
-                    "id": str(odoo_uuid(client.company_id, MODEL_MOVE, int(rij["id"]))),
+                    # Een EIGEN document (onze marker in invoice_origin) meldt zich onder het deterministische
+                    # RLZ-stijl-id dat de duplicaatcheck als `eigen_rlz_document_id` kent — anders blokkeert een
+                    # retry ná boeken_mislukt zichzelf op het achtergebleven concept (live keten-cyclus 04-09).
+                    "id": eigen_id_uit_marker(rij.get("invoice_origin"))
+                    or str(odoo_uuid(client.company_id, MODEL_MOVE, int(rij["id"]))),
                     "ReceiptNumber": rij.get("name") or None,
                     "Status": (
                         1
@@ -348,6 +373,14 @@ class OdooInkoopPort:
             raise BackendBoekFout(melding)
         return lock_dates
 
+    def _toets_overgangsdatum(self, factuurdatum: date) -> None:
+        """Overstap-poort (blok E): een RLZ-administratie die op Odoo is overgestapt boekt alleen facturen
+        vanaf de overgangsdatum in Odoo — eerdere facturen horen nog in Reeleezee (leesbare weigering,
+        geen Odoo-call). Geen overgangsdatum = geen poort."""
+        melding = overgangsdatum_melding(factuurdatum=factuurdatum, overgangsdatum=self.verbinding.overgangsdatum)
+        if melding:
+            raise BackendBoekFout(melding)
+
     def _verifieer_company(self, move: dict[str, Any], *, document_id: uuid.UUID) -> None:
         """De heilige poort: staat het document op de company van de administratie? Anders kritiek."""
         company_id = _m2o_id(move.get("company_id"))
@@ -414,6 +447,17 @@ class OdooInkoopPort:
             vals["invoice_date_due"] = voorstel.vervaldatum.isoformat()
             vals["invoice_payment_term_id"] = False
         return vals
+
+    def _ververs_concept(
+        self, move_id: int, *, voorstel: BoekvoorstelData, partner_id: int, regels: list[_Regel]
+    ) -> None:
+        """Kop + regels van een hergebruikt CONCEPT gelijktrekken met het actuele voorstel: `[5, 0, 0]` wist
+        alle regels, daarna de verse regels — company/dagboek/marker blijven ongewijzigd."""
+        vals = self._move_vals(document_id=uuid.UUID(int=0), voorstel=voorstel, partner_id=partner_id, regels=regels)
+        for sleutel in ("move_type", "company_id", "journal_id", "invoice_origin"):
+            vals.pop(sleutel, None)
+        vals["invoice_line_ids"] = [[5, 0, 0], *[[0, 0, self._regel_vals(r)] for r in regels]]
+        self.client.write(MODEL_MOVE, [move_id], vals)
 
     # --- btw-override ------------------------------------------------------------------------------
     def _btw_override(self, move_id: int, regels: list[_Regel], verlegd: set[int], *, teken: int = 1) -> list[dict]:
@@ -506,6 +550,7 @@ class OdooInkoopPort:
         try:
             move = self._bestaande_move(document_id, voorstel.boek_cyclus, "boeking")
             if move is None:
+                self._toets_overgangsdatum(voorstel.factuurdatum)
                 self._toets_lock_dates(voorstel.factuurdatum)
                 vals = self._move_vals(document_id=document_id, voorstel=voorstel, partner_id=partner_id, regels=regels)
                 move_id = self.client.create(MODEL_MOVE, vals)
@@ -522,6 +567,15 @@ class OdooInkoopPort:
             self._verifieer_company(move, document_id=document_id)
 
             if move.get("state") == "draft":
+                if detail.get("odoo_hergebruikt"):
+                    # Live keten-cyclus 04-09: een concept dat bij een eerdere poging is blijven staan (action_post
+                    # geweigerd — bv. gearchiveerde analytische rekening) draagt de REGELS VAN TOEN. Het actuele
+                    # boekvoorstel is de waarheid: kop + regels vervangen (RLZ-equivalent: her-PUT vervangt de
+                    # DocumentLineList), daarna pas posten.
+                    self._toets_lock_dates(voorstel.factuurdatum)
+                    self._ververs_concept(move_id, voorstel=voorstel, partner_id=partner_id, regels=regels)
+                    move = self._lees_move(move_id) or move
+                    detail["odoo_concept_ververst"] = True
                 overrides = self._btw_override(move_id, regels, verlegd_ids)
                 if overrides:
                     detail["btw_override"] = overrides

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -129,6 +129,13 @@ class AdministratieInstellingenDto(BaseModel):
     odoo_api_gebruiker: str | None = None
     odoo_api_key_verloopt_op: str | None = None
     odoo_probe_groen: bool | None = None
+    # Blok E (UI, migratie 0104): host, probe-tijdstip, koppelvorm (alleen-lezen leesbron vs volledige backend),
+    # voorraad-knip en overgangsdatum — voor de backend-chip/-tooltip in de tabel en het detailblok.
+    odoo_url: str | None = None
+    odoo_probe_op: datetime | None = None
+    odoo_alleen_lezen: bool = False
+    odoo_voorraad_knip_datum: date | None = None
+    odoo_overgangsdatum: date | None = None
     # Eerste-sync-stand (wizard-nazorg 27-08): laatste run — de UI toont 'm op de rij zolang die
     # niet volledig groen is (status ≠ klaar), mét herstartknop; None = nog nooit gestart.
     eerste_sync: "EersteSyncRunDto | None" = None

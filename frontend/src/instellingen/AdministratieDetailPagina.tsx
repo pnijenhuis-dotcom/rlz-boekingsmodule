@@ -16,6 +16,7 @@ import { chipsVoor, type PendingToggle, type ToggleType } from './Administraties
 import { EersteSyncStatus } from './AdministratieWizard'
 import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
+import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
 import { DETAIL_TAB_PADEN, type DetailTab, zichtbareTabs } from './instellingenRegistry'
 
 interface Props {
@@ -113,6 +114,8 @@ export function AdministratieDetailPagina({
   )
 
   const enkel = [{ id: a.id, naam: a.naam }]
+  // Odoo-adapter blok E (03-09): backend is een eigenschap van de administratie, geen module (notitie ②).
+  const isOdoo = a.boekhoud_backend === 'odoo'
 
   return (
     <div data-testid="administratie-detail">
@@ -141,12 +144,18 @@ export function AdministratieDetailPagina({
         </div>
         {!a.gearchiveerd_op && (
           <div className="dkop-acties">
-            <Button variant="secundair" maat="klein" aria-label={`Schrijftest voor ${a.naam}`} onClick={() => onSchrijftest(a)}>
-              🧪 Schrijftest
-            </Button>
-            <Button variant="secundair" maat="klein" aria-label={`Webservice-gegevens van ${a.naam}`} onClick={() => onWebservice(a)}>
-              ⚙ Webservice
-            </Button>
+            {/* RLZ-specifiek (TEST-boeking + storno 19, webservice-login): een Odoo-administratie heeft "Sleutel
+                wijzigen…" en "Opnieuw testen" in het blok Boekhoud-backend. */}
+            {!isOdoo && (
+              <>
+                <Button variant="secundair" maat="klein" aria-label={`Schrijftest voor ${a.naam}`} onClick={() => onSchrijftest(a)}>
+                  🧪 Schrijftest
+                </Button>
+                <Button variant="secundair" maat="klein" aria-label={`Webservice-gegevens van ${a.naam}`} onClick={() => onWebservice(a)}>
+                  ⚙ Webservice
+                </Button>
+              </>
+            )}
             <Button variant="secundair" maat="klein" aria-label={`Archiveren ${a.naam}`} onClick={() => onArchiveren(a)}>
               🗑 Archiveren
             </Button>
@@ -171,6 +180,52 @@ export function AdministratieDetailPagina({
 
       {tab === 'algemeen' && (
         <div className="panel inst-paneel" role="tabpanel">
+          {/* Blok "Boekhoud-backend" (Odoo-adapter blok E 03-09, mockup odoo-koppeling-ui.html §1): paars =
+              platform-herkomst (notitie ①); de bestaande Webservice-/Eerste-sync-rijen verhuizen hierin. */}
+          <h3 className="inst-groep-kop" data-testid="backend-blok-kop">
+            Boekhoud-backend
+          </h3>
+          {isOdoo ? (
+            <OdooBackendRijen administratie={a} onHerlaad={onHerlaad} />
+          ) : (
+            <>
+              <InstellingRij titel="Backend" uitleg="Boekhoud-backend van deze administratie.">
+                <span className="inst-links" style={{ alignItems: 'center', gap: 8 }} data-testid="backend-rlz">
+                  <Badge variant="paars">Reeleezee</Badge>
+                  {a.rlz_admin_id && (
+                    <span className="hint" style={{ margin: 0 }}>
+                      RLZ-id {a.rlz_admin_id}
+                    </span>
+                  )}
+                </span>
+              </InstellingRij>
+              <InstellingRij
+                titel="Webservice-gegevens"
+                uitleg={
+                  a.verkoopmodule_afwezig
+                    ? 'Reeleezee-facturatiemodule niet afgenomen (SalesInvoices gaf 403 bij de rechten-probe) — verkoop-rakende leesroutes slaan deze administratie over. Later wél afgenomen? Draai de probe opnieuw via "Webservice"; bij SalesInvoices ok verdwijnt dit kenmerk vanzelf.'
+                    : 'Login van de RLZ-webservice — wijzigen is probe-gated (10 leesroutes groen).'
+                }
+              >
+                {a.webservice_username ? (
+                  <span className={`chip ${a.probe_groen === false ? 'blokkerend' : a.probe_groen ? 'ok' : 'stil'}`} title="wachtwoord aanwezig (niet uitleesbaar)">
+                    {a.webservice_username}
+                  </span>
+                ) : (
+                  <span className="chip afwijking">geen credentials</span>
+                )}
+              </InstellingRij>
+              <InstellingRij titel="Eerste sync" uitleg={a.eerste_sync && a.eerste_sync.status !== 'klaar' ? 'Bij een rode stand: foutreden + "Sync opnieuw starten".' : 'Alle onderdelen groen.'}>
+                {a.eerste_sync && a.eerste_sync.status !== 'klaar' && a.eerste_sync.status !== 'geen' ? (
+                  <EersteSyncStatus compact administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }} initieel={a.eerste_sync} onAfgerond={onHerlaad} />
+                ) : (
+                  <Badge variant="ok">volledig ✓</Badge>
+                )}
+              </InstellingRij>
+              <OdooLeesbronRij administratie={a} onHerlaad={onHerlaad} />
+            </>
+          )}
+          <h3 className="inst-groep-kop">Algemeen</h3>
           <InstellingRij titel="Eigenaar (krijgt vragen)" uitleg="Nieuwe vragen worden standaard aan deze medewerker toegewezen.">
             <EigenaarCell
               administratie={a}
@@ -191,29 +246,6 @@ export function AdministratieDetailPagina({
           {toggle('is_vastgoed', a.is_vastgoed, 'Vastgoed-koppeling (Vastly)', 'Events, projectaanvragen en verkoop-autoboeken volgen deze schakelaar.')}
           {toggle('uren_meerwerk', a.uren_meerwerk_ingeschakeld, 'Uren & meerwerk (steigerbouw-tak)', 'Weekstaten, meerwerk, planning en materiaal — instellingen op de tab "Uren & materiaal" zodra aan.')}
           {toggle('voorraad', a.voorraad_ingeschakeld, 'Voorraad bijhouden', 'Controle-laag (mi-schema): instroom uit inkoopregels, uitstroom uit verkoopregels — nooit geboekt.')}
-          <InstellingRij
-            titel="Webservice-gegevens"
-            uitleg={
-              a.verkoopmodule_afwezig
-                ? 'Reeleezee-facturatiemodule niet afgenomen (SalesInvoices gaf 403 bij de rechten-probe) — verkoop-rakende leesroutes slaan deze administratie over. Later wél afgenomen? Draai de probe opnieuw via "Webservice"; bij SalesInvoices ok verdwijnt dit kenmerk vanzelf.'
-                : 'Login van de RLZ-webservice — wijzigen is probe-gated (10 leesroutes groen).'
-            }
-          >
-            {a.webservice_username ? (
-              <span className={`chip ${a.probe_groen === false ? 'blokkerend' : a.probe_groen ? 'ok' : 'stil'}`} title="wachtwoord aanwezig (niet uitleesbaar)">
-                {a.webservice_username}
-              </span>
-            ) : (
-              <span className="chip afwijking">geen credentials</span>
-            )}
-          </InstellingRij>
-          <InstellingRij titel="Eerste sync" uitleg={a.eerste_sync && a.eerste_sync.status !== 'klaar' ? 'Bij een rode stand: foutreden + "Sync opnieuw starten".' : 'Alle onderdelen groen.'}>
-            {a.eerste_sync && a.eerste_sync.status !== 'klaar' && a.eerste_sync.status !== 'geen' ? (
-              <EersteSyncStatus compact administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }} initieel={a.eerste_sync} onAfgerond={onHerlaad} />
-            ) : (
-              <Badge variant="ok">volledig ✓</Badge>
-            )}
-          </InstellingRij>
         </div>
       )}
 

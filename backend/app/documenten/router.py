@@ -122,6 +122,11 @@ def _naar_geboekt_in_rlz(stand) -> schemas.GeboektInRlzDto | None:
         geboekt_op=stand.geboekt_op,
         memoriaal_boekstuknummer=stand.memoriaal_boekstuknummer,
         vindplaats_hint=stand.vindplaats_hint,
+        backend=stand.backend,
+        company_naam=stand.company_naam,
+        tegenboeking_boekstuknummer=stand.tegenboeking_boekstuknummer,
+        kruisverwijzing=stand.kruisverwijzing,
+        btw_override=stand.btw_override,
     )
 
 

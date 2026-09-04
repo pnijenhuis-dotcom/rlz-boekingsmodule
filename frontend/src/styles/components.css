@@ -1790,6 +1790,17 @@ tr.geselecteerd td.acties {
 .inst-paneel {
   padding: 0;
 }
+/* Groepskop binnen een instellingenpaneel (Odoo-adapter blok E 03-09, mockup odoo-koppeling-ui .blok h2):
+   "Boekhoud-backend" boven de backend-rijen — zelfde uppercase-kop als de mockup, geen eigen paneel. */
+.inst-groep-kop {
+  margin: 0;
+  padding: 12px 16px 4px;
+  font-size: 11px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 800;
+}
 .inst-rij {
   display: flex;
   justify-content: space-between;

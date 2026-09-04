@@ -273,7 +273,7 @@ def _zet_boeken_mislukt(
             document=document,
             naar=DocumentStatus.BOEKEN_MISLUKT,
             actor_id=actor_id,
-            detail={"fout": reden, "reden": f"boeken in RLZ mislukt: {reden}"},
+            detail={"fout": reden, "reden": f"boeken mislukt: {reden}"},
         )
 
 

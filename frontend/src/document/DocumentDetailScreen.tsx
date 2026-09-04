@@ -1379,6 +1379,20 @@ export function DocumentDetailScreen() {
                           auditlog)
                         </div>
                       )}
+                      {/* Odoo-adapter blok E (03-09, notitie ④): een GEBOEKT-gebeurtenis in Odoo benoemt backend +
+                          company — een mens moet een company-mismatch kunnen zíén. RLZ-gebeurtenissen ongewijzigd. */}
+                      {g.detail && g.detail.backend === 'odoo' && g.naar_status === 'geboekt' && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-geboekt-odoo">
+                          Geboekt in Odoo
+                          {typeof g.detail.odoo_naam === 'string' && g.detail.odoo_naam ? ` · ${g.detail.odoo_naam}` : ''}
+                          {g.detail.odoo_company_id != null ? ` (company ${String(g.detail.odoo_company_id)})` : ''}
+                        </div>
+                      )}
+                      {g.detail && Array.isArray(g.detail.btw_override) && g.detail.btw_override.length > 0 && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }} data-testid="tijdlijn-btw-override">
+                          <span className="chip afwijking">btw-cent-override</span> Btw-cent-override toegepast (± € 0,02 per tarief) — zie boeking
+                        </div>
+                      )}
                       {g.detail && 'tegenboeking' in g.detail && (
                         <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }}>
                           {(() => {
@@ -1390,7 +1404,10 @@ export function DocumentDetailScreen() {
                                 : 'Volledig tegengeboekt — origineel gemarkeerd TEGENGEBOEKT'
                             const boekstuk = typeof info.rlz_boekstuknummer === 'string' ? info.rlz_boekstuknummer : null
                             const reden = typeof info.reden === 'string' ? info.reden : null
-                            return `${soortTekst} door ${naamVoor(g.actor_id)}${boekstuk ? ` · tegenboeking ${boekstuk}` : ''}${reden ? ` — “${reden}”` : ''}`
+                            // Odoo (blok E): het boekstuk is een reversal (RBILL-nummer) — benoem de backend + de kruisverwijzing.
+                            const inOdoo = info.backend === 'odoo' || g.detail.backend === 'odoo'
+                            const kruis = typeof info.kruisverwijzing === 'string' && info.kruisverwijzing ? ` · ${info.kruisverwijzing}` : ''
+                            return `${soortTekst} door ${naamVoor(g.actor_id)}${boekstuk ? ` · tegenboeking ${boekstuk}${inOdoo ? ' in Odoo' : ''}` : ''}${kruis}${reden ? ` — “${reden}”` : ''}`
                           })()}
                         </div>
                       )}

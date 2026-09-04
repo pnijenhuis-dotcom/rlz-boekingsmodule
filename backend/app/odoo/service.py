@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.beheer.models import AdministratieSyncRun, AdministratieSyncRunStatus
 from app.db.audit import record_audit_event
@@ -67,12 +67,22 @@ def _client(url: str, api_key: str, company_id: int) -> OdooClient:
 
 
 def _gekoppelde_companies(url: str) -> dict[int, uuid.UUID]:
+    """Company-id → administratie voor deze Odoo-host: via de koppeling-rijen én via administraties die het
+    sentinel-`rlz_admin_id` (`odoo:<host>:<company>`) dragen zonder koppeling-rij (bv. gearchiveerd, of een
+    halve stand). Het sentinel is uniek — zonder deze tweede bron strandde een tweede koppeling van dezelfde
+    company op een UniqueViolation (500) i.p.v. een leesbare 422 (live keten-cyclus 04-09)."""
     host = url.split("//", 1)[-1].rstrip("/").lower()
+    prefix = f"odoo:{host}:"
     with scoped_session(None) as session:
         rijen = session.scalars(select(OdooKoppeling)).all()
-        return {
+        uit = {
             r.company_id: r.administratie_id for r in rijen if r.odoo_url.split("//", 1)[-1].rstrip("/").lower() == host
         }
+        for a in session.scalars(select(Administratie).where(Administratie.rlz_admin_id.like(f"{prefix}%"))):
+            rest = (a.rlz_admin_id or "")[len(prefix) :]
+            if rest.isdigit():
+                uit.setdefault(int(rest), a.id)
+        return uit
 
 
 def test_verbinding(*, odoo_url: str, api_key: str) -> list[GevondenCompany]:
@@ -163,8 +173,8 @@ def koppel_administraties(
     dubbel = [c for c in gekozen if c in al]
     if dubbel:
         raise OdooKoppelFout(
-            f"Company {', '.join(map(str, dubbel))} is al gekoppeld — gebruik 'Odoo-gegevens wijzigen' op die "
-            "administratie"
+            f"Company {', '.join(map(str, dubbel))} is al gekoppeld (of een gearchiveerde administratie draagt dit "
+            "Odoo-id nog) — gebruik 'Odoo-gegevens wijzigen' op die administratie of dearchiveer haar"
         )
     probes = {c: probe_voor(odoo_url=odoo_url, api_key=api_key, company_id=c) for c in gekozen}
     rood = {c: p for c, p in probes.items() if not p.groen}
@@ -341,28 +351,260 @@ class OdooStand:
     #: Blok D: alleen-lezen-koppeling (Odoo = leesbron, boeken blijft in RLZ) + voorraad-knip.
     alleen_lezen: bool = False
     voorraad_knip_datum: date | None = None
+    #: Blok E (UI): het volledige probe-rapport (regel per onderdeel), de actuele stamgegevens-tellers
+    #: ({"ledgers", "taxrates", "vendors", "projects"} — niet-verdwenen cache-rijen van déze administratie) en de
+    #: jongste sync-tijd (zelfde bron als `laatste_sync_op` op de administraties-lijst). None = niet opgevraagd
+    #: (`koppelstand(..., met_details=False)` voor lijsten) of geen koppeling.
+    probe_rapport: dict[str, str] | None = None
+    stamgegevens: dict[str, int] | None = None
+    laatste_sync_op: datetime | None = None
+    #: Blok E (migratie 0104): overstap van een RLZ-administratie — vanaf deze factuurdatum boekt ze in Odoo;
+    #: het oude RLZ-administratie-id blijft herleidbaar.
+    overgangsdatum: date | None = None
+    rlz_admin_id_voor_overstap: str | None = None
 
 
-def koppelstand(administratie_ids: list[uuid.UUID]) -> dict[uuid.UUID, OdooStand]:
-    """Voor de administraties-lijst/detail: de Odoo-stand per administratie (nooit de key)."""
+STAMGEGEVENS_ONDERDELEN: tuple[str, ...] = ("ledgers", "taxrates", "vendors", "projects")
+
+
+def _stamgegevens_tellers(administratie_id: uuid.UUID) -> tuple[dict[str, int], datetime | None]:
+    """Actuele (niet-verdwenen) cache-rijen per onderdeel + de jongste sync-tijd — de caches die de Odoo-sync
+    vult zijn dezélfde als die van RLZ (`app/odoo/sync.py`); RLS-tabellen, dus gescoopt lezen."""
+    from app.beheer.service import _laatste_sync
+    from app.db.models import Grootboekrekening
+    from app.sync.models import ProjectCache, TaxRateCache, VendorCache
+
+    modellen = {
+        "ledgers": Grootboekrekening,
+        "taxrates": TaxRateCache,
+        "vendors": VendorCache,
+        "projects": ProjectCache,
+    }
+    tellers: dict[str, int] = {}
+    with scoped_session(administratie_id) as session:
+        for naam in STAMGEGEVENS_ONDERDELEN:
+            model = modellen[naam]
+            tellers[naam] = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(model)
+                    .where(model.administratie_id == administratie_id, model.verdwenen_uit_bron_op.is_(None))
+                )
+                or 0
+            )
+        laatste = _laatste_sync(session, administratie_id)
+    return tellers, laatste
+
+
+def koppelstand(administratie_ids: list[uuid.UUID], *, met_details: bool = True) -> dict[uuid.UUID, OdooStand]:
+    """Voor de administraties-lijst/detail: de Odoo-stand per administratie (nooit de key). `met_details`
+    voegt per koppeling de stamgegevens-tellers + jongste sync-tijd toe (een paar gescoopte tellingen per
+    gekoppelde administratie — voor het detailblok; lijsten zetten 'm uit)."""
     if not administratie_ids:
         return {}
     with scoped_session(None) as session:
-        rijen = session.scalars(select(OdooKoppeling).where(OdooKoppeling.administratie_id.in_(administratie_ids)))
-        return {
-            r.administratie_id: OdooStand(
-                company_id=r.company_id,
-                company_naam=r.company_naam,
-                odoo_url=r.odoo_url,
-                api_gebruiker=r.api_gebruiker,
-                api_key_verloopt_op=r.api_key_verloopt_op.isoformat() if r.api_key_verloopt_op else None,
-                probe_groen=_groen(r.probe_rapport),
-                probe_op=r.probe_op,
-                alleen_lezen=bool(r.alleen_lezen),
-                voorraad_knip_datum=r.voorraad_knip_datum,
+        rijen = list(
+            session.scalars(select(OdooKoppeling).where(OdooKoppeling.administratie_id.in_(administratie_ids)))
+        )
+        session.expunge_all()
+    resultaat: dict[uuid.UUID, OdooStand] = {}
+    for r in rijen:
+        stamgegevens: dict[str, int] | None = None
+        laatste_sync: datetime | None = None
+        if met_details:
+            stamgegevens, laatste_sync = _stamgegevens_tellers(r.administratie_id)
+        resultaat[r.administratie_id] = OdooStand(
+            company_id=r.company_id,
+            company_naam=r.company_naam,
+            odoo_url=r.odoo_url,
+            api_gebruiker=r.api_gebruiker,
+            api_key_verloopt_op=r.api_key_verloopt_op.isoformat() if r.api_key_verloopt_op else None,
+            probe_groen=_groen(r.probe_rapport),
+            probe_op=r.probe_op,
+            alleen_lezen=bool(r.alleen_lezen),
+            voorraad_knip_datum=r.voorraad_knip_datum,
+            probe_rapport=dict(r.probe_rapport) if r.probe_rapport else None,
+            stamgegevens=stamgegevens,
+            laatste_sync_op=laatste_sync,
+            overgangsdatum=r.overgangsdatum,
+            rlz_admin_id_voor_overstap=r.rlz_admin_id_voor_overstap,
+        )
+    return resultaat
+
+
+# --- blok E: overstap van een BESTAANDE RLZ-administratie op Odoo (ingang B, volledige backend) -----------
+
+
+def koppel_overstap(
+    *,
+    actor_id: uuid.UUID,
+    administratie_id: uuid.UUID,
+    odoo_url: str,
+    api_key: str,
+    company_id: int,
+    overgangsdatum: date,
+    api_gebruiker: str | None = None,
+    start_sync: bool = True,
+) -> GekoppeldeAdministratie:
+    """Een bestaande RLZ-administratie stapt over op Odoo (het Universal-migratiescenario, mockup ingang B):
+    volledige probe verplicht groen (anders 422 mét rapport, niets opgeslagen), dan in ÉÉN transactie
+    `boekhoud_backend = 'odoo'`, `rlz_admin_id` → sentinel (dáárdoor slaan álle RLZ-jobs de administratie
+    zichtbaar over — anders zouden RLZ- en Odoo-sync dezelfde caches over elkaar schrijven), het oude RLZ-id
+    bewaard op de koppeling, koppeling-rij (envelope-key, dagboeken/plan uit de probe, overgangsdatum) +
+    audit (nooit de key). De RLZ-credential-rij blijft staan (via het sentinel onbereikbaar); bestaande
+    documenten/boekvoorstellen blijven onaangeroerd. Daarna de eerste stamgegevens-sync zoals bij koppelen."""
+    url = odoo_url.rstrip("/")
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise OdooKoppelFout("Onbekende administratie")
+        if administratie.gearchiveerd_op is not None or not administratie.actief:
+            raise OdooKoppelFout("Deze administratie is gearchiveerd — dearchiveer 'm eerst voordat je overstapt")
+        if administratie.boekhoud_backend != "rlz":
+            raise OdooKoppelFout(
+                f"Deze administratie boekt al in Odoo (backend {administratie.boekhoud_backend}) — een overstap "
+                "geldt alleen voor een Reeleezee-administratie"
             )
-            for r in rijen
-        }
+        bestaand = session.get(OdooKoppeling, administratie_id)
+        if bestaand is not None:
+            if bestaand.alleen_lezen:
+                raise OdooKoppelFout(
+                    "Deze administratie heeft al een alleen-lezen Odoo-koppeling (leesbron voorraad-uitstroom) — "
+                    "een overstap naar Odoo als boekhoud-backend is dan niet mogelijk; laat de Beheerder de "
+                    "leesbron-koppeling eerst beoordelen"
+                )
+            raise OdooKoppelFout("Deze administratie heeft al een Odoo-koppeling — gebruik 'Odoo-gegevens wijzigen'")
+        naam = administratie.naam
+        oud_rlz_admin_id = administratie.rlz_admin_id
+    al = _gekoppelde_companies(url)
+    if int(company_id) in al:
+        raise OdooKoppelFout(f"Company {company_id} is al gekoppeld aan een andere administratie")
+
+    p = probe_voor(odoo_url=url, api_key=api_key, company_id=int(company_id))
+    if not p.groen:
+        raise OdooKoppelFout(
+            f"Rechten-probe niet groen — niets opgeslagen. company {company_id} ({p.company_naam or '?'}): "
+            f"{p.rode_regels()}",
+            rapport=p.rapport,
+        )
+
+    ciphertext, wrapped = wrap_secret(api_key.encode())
+    sentinel = odoo_admin_sentinel(url, int(company_id))
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        assert administratie is not None
+        administratie.boekhoud_backend = "odoo"
+        administratie.rlz_admin_id = sentinel
+        session.add(
+            OdooKoppeling(
+                administratie_id=administratie_id,
+                odoo_url=url,
+                company_id=int(company_id),
+                company_naam=p.company_naam,
+                api_gebruiker=api_gebruiker,
+                api_key_ciphertext=ciphertext,
+                wrapped_data_key=wrapped,
+                api_key_verloopt_op=p.api_key_verloopt_op,
+                journal_purchase_id=p.journal_purchase_id,
+                journal_general_id=p.journal_general_id,
+                journal_sale_id=p.journal_sale_id,
+                analytic_plan_id=p.analytic_plan_id,
+                probe_rapport=p.rapport,
+                probe_op=datetime.now(UTC),
+                overgangsdatum=overgangsdatum,
+                rlz_admin_id_voor_overstap=oud_rlz_admin_id,
+                aangemaakt_door=actor_id,
+            )
+        )
+        session.flush()
+        correlatie = uuid.uuid4()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="odoo_overstap",
+            correlatie_id=correlatie,
+            oude_waarde={"boekhoud_backend": "rlz", "rlz_admin_id": oud_rlz_admin_id},
+            nieuwe_waarde={
+                "administratie": naam,
+                "boekhoud_backend": "odoo",
+                "rlz_admin_id": sentinel,
+                "odoo_url": url,
+                "odoo_company_id": int(company_id),
+                "company_naam": p.company_naam,
+                "api_gebruiker": api_gebruiker,
+                "overgangsdatum": overgangsdatum.isoformat(),
+                "rlz_admin_id_voor_overstap": oud_rlz_admin_id,
+                "probe_groen": True,
+            },
+        )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="odoo_koppeling",
+            record_id=administratie_id,
+            actie="odoo_koppeling_aangemaakt",
+            correlatie_id=correlatie,
+            nieuwe_waarde={
+                "odoo_url": url,
+                "company_id": int(company_id),
+                "api_gebruiker": api_gebruiker,
+                "probe_groen": True,
+                "journal_purchase_id": p.journal_purchase_id,
+                "journal_general_id": p.journal_general_id,
+                "analytic_plan_id": p.analytic_plan_id,
+                "versie": p.versie,
+                "overgangsdatum": overgangsdatum.isoformat(),
+                "bron": "overstap",
+            },
+        )
+
+    resultaat = GekoppeldeAdministratie(
+        id=administratie_id, naam=naam, company_id=int(company_id), probe=p.rapport, sync_run_id=None
+    )
+    if not start_sync:
+        return resultaat
+    run_id, onderdelen = eerste_sync(administratie_id=administratie_id, actor_id=actor_id)
+    return GekoppeldeAdministratie(
+        id=administratie_id,
+        naam=naam,
+        company_id=int(company_id),
+        probe=p.rapport,
+        sync_run_id=run_id,
+        sync=onderdelen,
+    )
+
+
+def wijzig_overgangsdatum(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, overgangsdatum: date) -> OdooStand:
+    """De overgangsdatum van een SCHRIJVENDE Odoo-koppeling zetten/verschuiven (audit oud→nieuw). De adapter-
+    poort volgt de nieuwe datum bij de volgende boekpoging; een alleen-lezen-koppeling kent geen overgangsdatum
+    (daar is de voorraad-knip het begrip)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        rij = session.get(OdooKoppeling, administratie_id)
+        if rij is None:
+            raise OdooKoppelFout("Deze administratie heeft geen Odoo-koppeling")
+        if rij.alleen_lezen:
+            raise OdooKoppelFout(
+                "De overgangsdatum hoort bij een Odoo-administratie (volledige backend), niet bij een alleen-lezen "
+                "leesbron-koppeling — daar geldt de voorraad-knip"
+            )
+        oud = rij.overgangsdatum
+        rij.overgangsdatum = overgangsdatum
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="odoo_koppeling",
+            record_id=administratie_id,
+            actie="odoo_overgangsdatum_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"overgangsdatum": oud.isoformat() if oud else None},
+            nieuwe_waarde={"overgangsdatum": overgangsdatum.isoformat()},
+        )
+    return koppelstand([administratie_id])[administratie_id]
 
 
 # --- blok D: Odoo als LEESBRON voor een RLZ-administratie ---------------------------------------------

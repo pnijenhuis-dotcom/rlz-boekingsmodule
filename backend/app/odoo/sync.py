@@ -230,7 +230,10 @@ def lees_projecten(client: OdooClient, vertaler: _Vertaler, *, plan_id: int | No
         [
             ["plan_id", "=", plan_id],
             ["company_id", "in", [client.company_id, False]],
-            ["active", "in", [True, False]],
+            # Alleen ACTIEVE analytic accounts (live keten-cyclus 04-09: Odoo weigert `action_post` op een
+            # gearchiveerde analytische rekening — "Je kunt geen boeking maken met een gearchiveerde analytische
+            # rekening"); gearchiveerd = verdwenen uit de bron, zoals bij account.account.
+            ["active", "=", True],
         ],
         ["name", "code", "active", "company_id"],
         order="code, name",

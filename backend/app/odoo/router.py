@@ -81,6 +81,52 @@ def odoo_stand(
     return schemas.OdooStandDto(**stand.__dict__)
 
 
+@router.post(
+    "/administraties/{administratie_id}/odoo/overstap",
+    response_model=schemas.GekoppeldeAdministratieDto,
+    status_code=status.HTTP_201_CREATED,
+)
+def odoo_overstap(
+    administratie_id: uuid.UUID,
+    invoer: schemas.OdooOverstapDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.GekoppeldeAdministratieDto:
+    """Blok E, ingang B (volledige backend): een bestaande RLZ-administratie stapt over op Odoo — probe verplicht
+    groen (anders 422 mét rapport, niets opgeslagen) → backend 'odoo' + sentinel + koppeling mét overgangsdatum +
+    audit in één transactie → eerste stamgegevens-sync mét zichtbare run."""
+    try:
+        r = service.koppel_overstap(
+            actor_id=actor.id,
+            administratie_id=administratie_id,
+            odoo_url=invoer.odoo_url,
+            api_key=invoer.api_key,
+            company_id=invoer.company_id,
+            overgangsdatum=invoer.overgangsdatum,
+            api_gebruiker=invoer.api_gebruiker,
+        )
+    except service.OdooKoppelFout as exc:
+        raise _koppel_fout(exc) from exc
+    return schemas.GekoppeldeAdministratieDto(
+        id=r.id, naam=r.naam, company_id=r.company_id, probe=r.probe, sync_run_id=r.sync_run_id, sync=r.sync
+    )
+
+
+@router.put("/administraties/{administratie_id}/odoo/overgangsdatum", response_model=schemas.OdooStandDto)
+def odoo_overgangsdatum(
+    administratie_id: uuid.UUID,
+    invoer: schemas.OdooOvergangsdatumDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.OdooStandDto:
+    """De overgangsdatum van een schrijvende Odoo-koppeling zetten/verschuiven (audit oud→nieuw; alleen-lezen = 422)."""
+    try:
+        stand = service.wijzig_overgangsdatum(
+            actor_id=actor.id, administratie_id=administratie_id, overgangsdatum=invoer.overgangsdatum
+        )
+    except service.OdooKoppelFout as exc:
+        raise _koppel_fout(exc) from exc
+    return schemas.OdooStandDto(**stand.__dict__)
+
+
 @router.put("/administraties/{administratie_id}/odoo", response_model=schemas.OdooProbeDto)
 def odoo_wijzigen(
     administratie_id: uuid.UUID,

@@ -55,6 +55,8 @@ function installFetchMock(opties: {
   intakeAi?: boolean
   ibanAccordeurs?: string[]
   putAanroepen?: { url: string; body: unknown }[]
+  /** Odoo-adapter blok E: antwoord op GET /administraties/{id}/odoo (default 404 = geen koppeling). */
+  odooStand?: unknown
 }) {
   const administraties = opties.administraties ?? [administratie()]
   let killSwitch = opties.killSwitch ?? true
@@ -67,6 +69,24 @@ function installFetchMock(opties: {
       }
       if (url === '/instellingen/administraties' || url === '/instellingen/administraties?inclusief_gearchiveerd=true') {
         return Promise.resolve(jsonResponse({ administraties }))
+      }
+      // Odoo-adapter blok E (03-09): stand, herprobe, sync en knipdatum.
+      if (url.endsWith('/odoo') && (!init || init.method === undefined)) {
+        return Promise.resolve(opties.odooStand ? jsonResponse(opties.odooStand) : jsonResponse({ detail: 'geen Odoo-koppeling' }, 404))
+      }
+      if (url.endsWith('/odoo') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body))
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse({ groen: true, rapport: { ledgers: 'ok', boeken: 'ok' }, company_naam: 'Universal Steigerbouw', versie: '19.0', lock_dates: {} }))
+      }
+      if (url.endsWith('/odoo/sync') && init?.method === 'POST') {
+        opties.putAanroepen?.push({ url, body: null })
+        return Promise.resolve(jsonResponse({ run_id: 'run-9', onderdelen: { ledgers: { status: 'klaar', aangemaakt: 3, bijgewerkt: 209 }, taxrates: { status: 'klaar', aangemaakt: 0, bijgewerkt: 14 } } }))
+      }
+      if (url.endsWith('/odoo/leesbron') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body))
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse({ ...(opties.odooStand as Record<string, unknown>), voorraad_knip_datum: body.voorraad_knip_datum }))
       }
       if (url.endsWith('/archiveren') && init?.method === 'POST') {
         opties.putAanroepen?.push({ url, body: null })
@@ -686,7 +706,7 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     expect(screen.getByRole('button', { name: /Webservice-gegevens van Testklant B\.V\./ })).toBeInTheDocument()
     fireEvent.click(within(detail).getByRole('link', { name: 'Administraties' }))
     fireEvent.click(await screen.findByRole('button', { name: '+ Administratie toevoegen' }))
-    expect(await screen.findByText('Administratie toevoegen — stap 1 van 3')).toBeInTheDocument()
+    expect(await screen.findByText('Administratie toevoegen — stap 1 van 4')).toBeInTheDocument()
   })
 
   it('wizard-nazorg 27-08: mislukte eerste sync = rode sync-chip + subrij mét foutreden en herstartknop (zelfde endpoint); groen of nooit = niets', async () => {
@@ -720,6 +740,142 @@ describe('InstellingenScreen — koppeling Reeleezee (feedbackronde 26-08 punt 5
     await waitFor(() => expect(putAanroepen.some((p) => p.url === `/instellingen/administraties/${ADMINISTRATIE_ID}/eerste-sync`)).toBe(true))
     await waitFor(() => expect(screen.queryByRole('button', { name: /Sync opnieuw starten voor Bouwadvies/ })).not.toBeInTheDocument())
     expect(screen.getByTestId('eerste-sync-rlz-boon')).toHaveTextContent('wachtrij')
+  })
+})
+
+describe('InstellingenScreen — blok Boekhoud-backend (Odoo-adapter blok E, 03-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const ODOO_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
+  const ODOO_STAND = {
+    company_id: 1,
+    company_naam: 'Universal Steigerbouw',
+    odoo_url: 'https://universal-steigers.odoo.com',
+    api_gebruiker: 'n-module',
+    api_key_verloopt_op: null,
+    probe_groen: true,
+    probe_op: '2026-09-03T20:14:00Z',
+    alleen_lezen: false,
+    voorraad_knip_datum: null,
+    probe_rapport: { ledgers: 'ok', taxrates: 'ok', vendors: 'ok', journals: 'ok', facturen: 'ok', boeken: 'ok' },
+    stamgegevens: { ledgers: 212, taxrates: 14, vendors: 380, projects: 6 },
+    laatste_sync_op: '2026-09-03T05:00:00Z',
+    overgangsdatum: '2026-10-01',
+    rlz_admin_id_voor_overstap: 'rlz-us',
+  }
+
+  it('RLZ-administratie: paarse chip Reeleezee + RLZ-id, webservice- en eerste-sync-rij ín het blok, leesbron "n.v.t." + "Odoo koppelen…" (ingang B) opent de koppelvorm-stap', async () => {
+    installFetchMock({ rol: 'beheerder', administraties: [administratie({ webservice_username: 'ws_nijenhuis', probe_groen: true, rlz_admin_id: 'rlz-1' })] })
+    renderScherm()
+    const detail = await openDetail('Testklant B.V.')
+    expect(within(detail).getByTestId('backend-blok-kop')).toHaveTextContent('Boekhoud-backend')
+    const backend = within(detail).getByTestId('backend-rlz')
+    expect(within(backend).getByText('Reeleezee')).toHaveClass('text-purple')
+    expect(within(backend).getByText('RLZ-id rlz-1')).toBeInTheDocument()
+    expect(within(detail).getByText('ws_nijenhuis')).toHaveClass('chip', 'ok')
+    expect(within(detail).getByText('Eerste sync')).toBeInTheDocument()
+    expect(within(detail).getByText('n.v.t.')).toBeInTheDocument()
+    // RLZ-kopacties blijven.
+    expect(within(detail).getByRole('button', { name: 'Schrijftest voor Testklant B.V.' })).toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: 'Webservice-gegevens van Testklant B.V.' })).toBeInTheDocument()
+    fireEvent.click(within(detail).getByRole('button', { name: 'Odoo koppelen aan Testklant B.V.' }))
+    expect(await screen.findByText('Odoo koppelen — Testklant B.V. — stap 1 van 4')).toBeInTheDocument()
+    expect(screen.getByLabelText('Volledige backend')).toBeChecked()
+    expect(screen.getByLabelText('Alleen-lezen leesbron')).toBeInTheDocument()
+    // Netjes sluiten: een open Radix-dialoog bij unmount laat een focus-scope-timer achter (flaky teardown).
+    fireEvent.click(screen.getByRole('button', { name: 'Annuleren' }))
+    await waitFor(() => expect(screen.queryByTestId('odoo-koppel-dialoog')).not.toBeInTheDocument())
+  })
+
+  it('Odoo-administratie: tabel-chip "Odoo" + probe-sync-chip zonder "geen credentials"; blok mét company, probe groen, sleutel, stamgegevens en "⟳ Sync nu"; géén Schrijftest/Webservice-knoppen', async () => {
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      putAanroepen,
+      odooStand: ODOO_STAND,
+      administraties: [
+        administratie({
+          id: ODOO_ID,
+          naam: 'Universal Steigerbouw B.V.',
+          boekhoud_backend: 'odoo',
+          odoo_company_id: 1,
+          odoo_company_naam: 'Universal Steigerbouw',
+          odoo_url: 'https://universal-steigers.odoo.com',
+          odoo_probe_groen: true,
+          odoo_probe_op: '2026-09-03T20:14:00Z',
+          odoo_alleen_lezen: false,
+          laatste_sync_op: '2026-09-03T05:00:00Z',
+        }),
+      ],
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getAllByText('Universal Steigerbouw B.V.').length).toBeGreaterThan(0))
+    expect(screen.getByText('Odoo')).toHaveClass('text-purple')
+    expect(screen.queryByText('geen credentials')).not.toBeInTheDocument()
+    expect(screen.getByText(/✓ \d\d:\d\d/)).toBeInTheDocument()
+    // Geen RLZ-schrijftest in de tabel voor een Odoo-administratie.
+    expect(screen.queryByRole('button', { name: /Schrijftest voor/ })).not.toBeInTheDocument()
+
+    const detail = await openDetail('Universal Steigerbouw B.V.')
+    expect(within(detail).queryByRole('button', { name: /Schrijftest voor/ })).not.toBeInTheDocument()
+    expect(within(detail).queryByRole('button', { name: /Webservice-gegevens van/ })).not.toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: 'Archiveren Universal Steigerbouw B.V.' })).toBeInTheDocument()
+    const backend = within(detail).getByTestId('backend-odoo')
+    expect(backend).toHaveTextContent('universal-steigers.odoo.com · company Universal Steigerbouw (1)')
+    await waitFor(() => expect(backend).toHaveTextContent('overgestapt per 01-10-2026 (voorheen RLZ-id rlz-us)'))
+    expect(within(detail).getByText(/✓ probe groen · 03-09 \d\d:\d\d/)).toBeInTheDocument()
+    expect(within(detail).getByText(/•••• ingesteld \(n-module\) · verloopt niet/)).toBeInTheDocument()
+    expect(within(detail).getByTestId('odoo-stamgegevens')).toHaveTextContent('grootboek 212 · btw 14 · relaties 380 · projecten 6 · laatst gesynct 03-09')
+    expect(within(detail).getByText('n.v.t. — volledige backend')).toBeInTheDocument()
+    expect(within(detail).queryByText('Odoo koppelen…')).not.toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: 'Odoo API-sleutel wijzigen voor Universal Steigerbouw B.V.' })).toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: 'Odoo-verbinding opnieuw testen voor Universal Steigerbouw B.V.' })).toBeInTheDocument()
+
+    fireEvent.click(within(detail).getByRole('button', { name: 'Odoo-stamgegevens nu synchroniseren voor Universal Steigerbouw B.V.' }))
+    await waitFor(() => expect(putAanroepen.some((p) => p.url === `/administraties/${ODOO_ID}/odoo/sync`)).toBe(true))
+    expect(await screen.findByTestId('odoo-sync-uitkomst')).toHaveTextContent('3 nieuw · 209 bijgewerkt')
+
+    fireEvent.click(within(detail).getByRole('button', { name: 'Odoo-verbinding opnieuw testen voor Universal Steigerbouw B.V.' }))
+    await waitFor(() => expect(putAanroepen.some((p) => p.url === `/administraties/${ODOO_ID}/odoo` && JSON.stringify(p.body) === '{}')).toBe(true))
+    expect(await screen.findByText('Probe groen — alle onderdelen ok.')).toBeInTheDocument()
+  })
+
+  it('RLZ-administratie mét Odoo-leesbron: chip "Odoo · leesbron", regel "verkoop-uitstroom vanaf 01-09-2026 (knip)", knipdatum wijzigen = PUT …/odoo/leesbron', async () => {
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({
+      rol: 'beheerder',
+      putAanroepen,
+      odooStand: { ...ODOO_STAND, company_id: 3, company_naam: 'Universal Verkoop', alleen_lezen: true, voorraad_knip_datum: '2026-09-01', overgangsdatum: null, rlz_admin_id_voor_overstap: null },
+      administraties: [
+        administratie({
+          naam: 'Universal Verkoop B.V.',
+          webservice_username: 'ws_uv',
+          probe_groen: true,
+          rlz_admin_id: 'rlz-uv',
+          odoo_alleen_lezen: true,
+          odoo_company_id: 3,
+          odoo_company_naam: 'Universal Verkoop',
+          odoo_voorraad_knip_datum: '2026-09-01',
+        }),
+      ],
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getAllByText('Universal Verkoop B.V.').length).toBeGreaterThan(0))
+    expect(screen.getByText('Odoo · leesbron')).toHaveClass('text-purple')
+    const detail = await openDetail('Universal Verkoop B.V.')
+    // Backend blijft Reeleezee (notitie ⑤) — de RLZ-kopacties staan er gewoon.
+    expect(within(detail).getByTestId('backend-rlz')).toHaveTextContent('Reeleezee')
+    expect(within(detail).getByRole('button', { name: 'Schrijftest voor Universal Verkoop B.V.' })).toBeInTheDocument()
+    const leesbron = within(detail).getByTestId('leesbron-odoo')
+    expect(leesbron).toHaveTextContent('verkoop-uitstroom vanaf 01-09-2026 (knip)')
+    await waitFor(() => expect(leesbron).toHaveTextContent('company Universal Verkoop (3)'))
+    fireEvent.click(within(leesbron).getByRole('button', { name: 'Knipdatum wijzigen voor Universal Verkoop B.V.' }))
+    const dialoog = await screen.findByTestId('knipdatum-dialoog')
+    fireEvent.change(within(dialoog).getByLabelText('Knipdatum'), { target: { value: '2026-10-01' } })
+    fireEvent.click(within(dialoog).getByRole('button', { name: 'Knipdatum opslaan' }))
+    await waitFor(() => expect(putAanroepen).toContainEqual({ url: `/administraties/${ADMINISTRATIE_ID}/odoo/leesbron`, body: { voorraad_knip_datum: '2026-10-01' } }))
   })
 })
 

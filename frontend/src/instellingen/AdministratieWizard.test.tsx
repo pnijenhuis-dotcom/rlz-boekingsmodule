@@ -74,6 +74,14 @@ function installMock(opties: { aanmaakStatus?: number; syncStatussen?: unknown[]
 
 afterEach(() => vi.unstubAllGlobals())
 
+/** Sinds blok E (03-09) is stap 1 de backend-keuze (◉ Reeleezee default) — het RLZ-pad begint op stap 2. */
+function naarReeleezee() {
+  expect(screen.getByText('Administratie toevoegen — stap 1 van 4')).toBeInTheDocument()
+  expect(screen.getByLabelText('Reeleezee')).toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
+  expect(screen.getByText('Administratie toevoegen — stap 2 van 4')).toBeInTheDocument()
+}
+
 const KLAAR = {
   run_id: 'run-1',
   status: 'fout', // één onderdeel mislukt → run op fout, de rest wél klaar
@@ -95,12 +103,13 @@ describe('AdministratieWizard', () => {
     installMock({ posts, syncStatussen: [KLAAR] })
     const onAangemaakt = vi.fn()
     render(<AdministratieWizard open onSluiten={() => {}} onAangemaakt={onAangemaakt} />)
+    naarReeleezee()
 
     fireEvent.change(screen.getByLabelText('Webservice-gebruiker'), { target: { value: 'ws_nijenhuis' } })
     fireEvent.change(screen.getByLabelText('Wachtwoord'), { target: { value: 'geheim' } })
     fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
 
-    await waitFor(() => expect(screen.getByText('Administratie toevoegen — stap 2 van 3')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Administratie toevoegen — stap 3 van 4')).toBeInTheDocument())
     expect(screen.getByText('Nieuwe Klant B.V.')).toBeInTheDocument()
     const alAangesloten = screen.getByLabelText('Aansluiten Universal Steigerbouw B.V.')
     expect(alAangesloten).toBeDisabled()
@@ -110,7 +119,7 @@ describe('AdministratieWizard', () => {
     expect(screen.getByText(`RLZ-id ${ADMIN_A}`)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Aansluiten \(1\)/ }))
-    await waitFor(() => expect(screen.getByText('Administratie toevoegen — stap 3 van 3')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Administratie toevoegen — stap 4 van 4')).toBeInTheDocument())
     const aanmaak = posts.find((p) => p.url.endsWith('/aanmaken'))
     expect(aanmaak?.body).toEqual({ webservice_username: 'ws_nijenhuis', wachtwoord: 'geheim', rlz_admin_ids: [ADMIN_A] })
     // Eerste sync per onderdeel, incl. een zichtbaar mislukt onderdeel.
@@ -125,16 +134,18 @@ describe('AdministratieWizard', () => {
   it('login geweigerd = duidelijke fout op stap 1 (niets opgeslagen)', async () => {
     installMock({})
     render(<AdministratieWizard open onSluiten={() => {}} onAangemaakt={() => {}} />)
+    naarReeleezee()
     fireEvent.change(screen.getByLabelText('Webservice-gebruiker'), { target: { value: 'ws' } })
     fireEvent.change(screen.getByLabelText('Wachtwoord'), { target: { value: 'fout' } })
     fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
     await waitFor(() => expect(screen.getByText(/weigert deze login \(HTTP 401\)/)).toBeInTheDocument())
-    expect(screen.getByText('Administratie toevoegen — stap 1 van 3')).toBeInTheDocument()
+    expect(screen.getByText('Administratie toevoegen — stap 2 van 4')).toBeInTheDocument()
   })
 
   it('rode rechten-probe bij aansluiten toont het rapport per endpoint en blijft op stap 2', async () => {
     installMock({ aanmaakStatus: 422 })
     render(<AdministratieWizard open onSluiten={() => {}} onAangemaakt={() => {}} />)
+    naarReeleezee()
     fireEvent.change(screen.getByLabelText('Webservice-gebruiker'), { target: { value: 'ws' } })
     fireEvent.change(screen.getByLabelText('Wachtwoord'), { target: { value: 'geheim' } })
     fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
@@ -142,7 +153,22 @@ describe('AdministratieWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Aansluiten \(1\)/ }))
     await waitFor(() => expect(screen.getByText(/Rechten-probe niet groen — niets opgeslagen/)).toBeInTheDocument())
     expect(screen.getByText(/TaxRates ✗ \(403\)/)).toBeInTheDocument()
-    expect(screen.getByText('Administratie toevoegen — stap 2 van 3')).toBeInTheDocument()
+    expect(screen.getByText('Administratie toevoegen — stap 3 van 4')).toBeInTheDocument()
+  })
+
+  it('backend-keuzestap (blok E 03-09): Reeleezee is default, "← Terug" vanaf de webservice-stap gaat terug naar de keuze; Odoo rendert de Odoo-wizard in dezelfde dialoog', () => {
+    installMock({})
+    render(<AdministratieWizard open onSluiten={() => {}} onAangemaakt={() => {}} />)
+    naarReeleezee()
+    expect(screen.getByLabelText('Webservice-gebruiker')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '← Terug' }))
+    expect(screen.getByText('Administratie toevoegen — stap 1 van 4')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Odoo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
+    expect(screen.getByText('Administratie toevoegen — stap 2 van 4')).toBeInTheDocument()
+    expect(screen.getByLabelText('Odoo-URL')).toBeInTheDocument()
+    expect(screen.getByLabelText('API-sleutel')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Webservice-gebruiker')).not.toBeInTheDocument()
   })
 })
 

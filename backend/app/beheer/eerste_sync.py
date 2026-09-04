@@ -102,8 +102,28 @@ def laatste_run(administratie_id: uuid.UUID) -> EersteSyncRunInfo:
         return _dto(rij)
 
 
+def _is_odoo_administratie(administratie_id: uuid.UUID) -> bool:
+    from app.backends.port import Backend
+    from app.backends.registry import OnbekendeBackend, backend_voor
+
+    try:
+        return backend_voor(administratie_id) is Backend.ODOO
+    except OnbekendeBackend:
+        return False
+
+
 def start_run(*, administratie_id: uuid.UUID, actor_id: uuid.UUID | None) -> EersteSyncRunInfo:
-    """Nieuwe run (of hergebruik van een al actieve) + voertuig starten."""
+    """Nieuwe run (of hergebruik van een al actieve) + voertuig starten.
+
+    Odoo-administratie (blok E): de RLZ-verwerker zou op het sentinel fail-loud stranden; de Odoo-
+    stamgegevenssync is klein (~10 calls) en draait daarom SYNCHROON via `app.odoo.service.eerste_sync`
+    (zelfde `administratie_sync_run`-rij) — zo werkt "Sync opnieuw starten" vanuit de gedeelde UI-component."""
+    if _is_odoo_administratie(administratie_id):
+        from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+        from app.odoo import service as odoo_service
+
+        odoo_service.eerste_sync(administratie_id=administratie_id, actor_id=actor_id or SYSTEEM_ACTOR_ID)
+        return laatste_run(administratie_id)
     nu = datetime.now(UTC)
     with scoped_session(administratie_id) as session:
         _markeer_stale(session, administratie_id, nu)

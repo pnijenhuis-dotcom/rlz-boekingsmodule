@@ -44,6 +44,12 @@ class OdooKoppeling(Base):
     alleen_lezen: Mapped[bool] = mapped_column(default=False, server_default="false")
     #: Vanaf deze factuurdatum is Odoo de bron van de verkoop-uitstroom (RLZ-facturen ≥ knip tellen niet meer).
     voorraad_knip_datum: Mapped[date | None] = mapped_column(default=None)
+    #: Blok E (migratie 0104): overstap van een bestaande RLZ-administratie — vanaf deze factuurdatum boekt de
+    #: administratie in Odoo (adapter-poort: factuurdatum < overgangsdatum = leesbare weigering, hoort nog in
+    #: RLZ). NULL = geen poort (nieuwe Odoo-administratie zonder RLZ-verleden, of alleen-lezen-koppeling).
+    overgangsdatum: Mapped[date | None] = mapped_column(default=None)
+    #: Het oude RLZ-administratie-id vóór de overstap (`administratie.rlz_admin_id` draagt daarna de sentinel).
+    rlz_admin_id_voor_overstap: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

@@ -1,4 +1,4 @@
-import { apiJson } from '../api/client'
+import { ApiError, apiJson } from '../api/client'
 import type {
   ArchiveringResultaatDto,
   AutoboekBulkAanzettenResultaatDto,
@@ -343,6 +343,130 @@ export function toonAutoboekKandidaatWeer(administratieId: string, vendorId: str
 
 export function zetAutoboekDrempel(drempelOpRij: number): Promise<{ drempel_op_rij: number; laatste_run_op: string | null }> {
   return apiJson('/instellingen/autoboeken/instelling', { ...PUT_JSON, body: JSON.stringify({ drempel_op_rij: drempelOpRij }) })
+}
+
+/* --- Odoo-koppeling (adapter blok E, 03-09 — mockup odoo-koppeling-ui.html) ----------------------- */
+
+/** Stand van de Odoo-koppeling op een administratie (GET …/odoo; 404 = geen koppeling). De API-sleutel
+ * komt nooit terug — alleen het label `api_gebruiker` + de vervaldatum. `alleen_lezen` = leesbron-variant
+ * (backend blijft RLZ, voorraad-uitstroom vanaf `voorraad_knip_datum`). */
+export interface OdooStandDto {
+  company_id: number
+  company_naam: string | null
+  odoo_url: string
+  api_gebruiker: string | null
+  api_key_verloopt_op: string | null
+  probe_groen: boolean | null
+  probe_op: string | null
+  alleen_lezen: boolean
+  voorraad_knip_datum: string | null
+  probe_rapport: Record<string, string> | null
+  stamgegevens: { ledgers: number; taxrates: number; vendors: number; projects: number } | null
+  laatste_sync_op: string | null
+  overgangsdatum: string | null
+  rlz_admin_id_voor_overstap: string | null
+}
+
+/** Uitkomst van een (her)probe: per onderdeel 'ok' óf een leesbare foutregel mét handelingsperspectief
+ * (notitie ⑥ — vertaal_rlz_boekfout-patroon). */
+export interface OdooProbeDto {
+  groen: boolean
+  rapport: Record<string, string>
+  company_naam: string | null
+  versie: string | null
+  lock_dates: Record<string, string | null>
+}
+
+export interface OdooSyncResultaatDto {
+  run_id: string
+  onderdelen: Record<string, { status: string; aangemaakt?: number; bijgewerkt?: number; fout?: string }>
+}
+
+export interface OdooCompanyDto {
+  company_id: number
+  naam: string
+  al_gekoppeld: boolean
+}
+
+/** Resultaat van koppelen/overstap: probe-rapport + eerste-sync-run (zelfde subrij-patroon als RLZ). */
+export interface OdooGekoppeldeAdministratieDto {
+  id: string
+  naam: string
+  company_id: number
+  probe: Record<string, string>
+  sync_run_id: string | null
+  sync: Record<string, { status: string; aangemaakt?: number; bijgewerkt?: number; fout?: string }>
+}
+
+/** Stamgegevens-onderdelen van een Odoo-administratie (geen bankrekeningen — de bank blijft RLZ-domein). */
+export const ODOO_SYNC_ONDERDELEN = ['ledgers', 'taxrates', 'vendors', 'projects']
+
+export async function haalOdooStandOp(administratieId: string): Promise<OdooStandDto | null> {
+  try {
+    return await apiJson<OdooStandDto>(`/administraties/${administratieId}/odoo`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null
+    throw err
+  }
+}
+
+/** Leeg object = herprobe ("Opnieuw testen"); mét api_key = "Sleutel wijzigen…" — probe-gated, de server
+ * slaat alleen groen op (422 mét `detail: {bericht, rapport}` anders). De sleutel reist alleen in de body. */
+export function probeOdooKoppeling(
+  administratieId: string,
+  body: { odoo_url?: string; api_key?: string; api_gebruiker?: string } = {},
+): Promise<OdooProbeDto> {
+  return apiJson<OdooProbeDto>(`/administraties/${administratieId}/odoo`, { ...PUT_JSON, body: JSON.stringify(body) })
+}
+
+export function startOdooSync(administratieId: string): Promise<OdooSyncResultaatDto> {
+  return apiJson<OdooSyncResultaatDto>(`/administraties/${administratieId}/odoo/sync`, { method: 'POST' })
+}
+
+/** Wizard-stap Verbinding: URL + sleutel proberen → companies van die database (nooit een id typen). */
+export function testOdooVerbinding(body: { odoo_url: string; api_key: string; api_gebruiker?: string }): Promise<{ companies: OdooCompanyDto[] }> {
+  return apiJson('/instellingen/odoo/verbinding-testen', { ...POST_JSON, body: JSON.stringify(body) })
+}
+
+/** Ingang A: nieuwe Odoo-administratie(s) — probe groen vereist, daarna eerste sync als achtergrondrun. */
+export function koppelOdooNieuw(body: {
+  odoo_url: string
+  api_key: string
+  api_gebruiker?: string
+  company_ids: number[]
+  namen?: Record<string, string>
+}): Promise<{ administraties: OdooGekoppeldeAdministratieDto[] }> {
+  return apiJson('/instellingen/odoo/koppelen', { ...POST_JSON, body: JSON.stringify(body) })
+}
+
+/** Ingang B, volledige backend: bestaande RLZ-administratie stapt over per `overgangsdatum`. */
+export function odooOverstap(
+  administratieId: string,
+  body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number; overgangsdatum: string },
+): Promise<OdooGekoppeldeAdministratieDto> {
+  return apiJson(`/administraties/${administratieId}/odoo/overstap`, { ...POST_JSON, body: JSON.stringify(body) })
+}
+
+/** Ingang B, alleen-lezen leesbron (voorraad-uitstroom vanaf de knip; backend blijft RLZ). */
+export function koppelOdooLeesbron(
+  administratieId: string,
+  body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number; voorraad_knip_datum: string | null },
+): Promise<OdooProbeDto> {
+  return apiJson(`/administraties/${administratieId}/odoo/leesbron`, { ...POST_JSON, body: JSON.stringify(body) })
+}
+
+export function zetOdooKnipdatum(administratieId: string, voorraadKnipDatum: string | null): Promise<OdooStandDto> {
+  return apiJson<OdooStandDto>(`/administraties/${administratieId}/odoo/leesbron`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ voorraad_knip_datum: voorraadKnipDatum }),
+  })
+}
+
+export function zetOdooOvergangsdatum(administratieId: string, overgangsdatum: string): Promise<OdooStandDto> {
+  return apiJson<OdooStandDto>(`/administraties/${administratieId}/odoo/overgangsdatum`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ overgangsdatum }),
+  })
 }
 
 /* --- Maandagochtend-digest (D2 01-09): eigen weekmail-voorkeur, élke kantoorrol ---------------- */

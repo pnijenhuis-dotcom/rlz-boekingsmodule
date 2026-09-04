@@ -243,6 +243,14 @@ class GeboektInRlzDto(BaseModel):
     geboekt_op: datetime
     memoriaal_boekstuknummer: str | None = None
     vindplaats_hint: str | None = None
+    # Odoo-adapter blok E (additief): boekhoud-backend van de boeking ('rlz' | 'odoo'), company (Odoo — de
+    # company-poort zichtbaar, mockup ④), nummer van de creditnota bij een tegenboeking + kruisverwijzing
+    # "Reversal · RBILL/… ↔ BILL/…", en of de ± € 0,02-btw-cent-override is toegepast (chip).
+    backend: str = "rlz"
+    company_naam: str | None = None
+    tegenboeking_boekstuknummer: str | None = None
+    kruisverwijzing: str | None = None
+    btw_override: bool = False
 
 
 class DocumentListItemResponse(BaseModel):

@@ -55,8 +55,19 @@ function datumKort(iso: string | null | undefined): string {
  * Chips: ingeschakelde modules (info) en afwijkingen van de defaults (warn) eerst; daarna — feedback
  * Peter 30-08 — de WERKELIJKE stand per rij: gedempte (stil) chips voor "aan volgens default".
  */
-export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; variant: 'info' | 'warn' | 'stil' | 'ok'; titel?: string }[] {
-  const chips: { tekst: string; variant: 'info' | 'warn' | 'stil' | 'ok'; titel?: string }[] = []
+export type ChipVariant = 'info' | 'warn' | 'stil' | 'ok' | 'paars'
+
+export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; variant: ChipVariant; titel?: string }[] {
+  const chips: { tekst: string; variant: ChipVariant; titel?: string }[] = []
+  // Platform-herkomst (Odoo-adapter blok E 03-09, notitie ①): paars, nooit teal/groen — vóór de modules.
+  if (a.boekhoud_backend === 'odoo')
+    chips.push({
+      tekst: 'Odoo',
+      variant: 'paars',
+      titel: `Boekhoud-backend Odoo${a.odoo_company_naam ? ` · company ${a.odoo_company_naam}${a.odoo_company_id != null ? ` (${a.odoo_company_id})` : ''}` : ''}`,
+    })
+  else if (a.odoo_alleen_lezen)
+    chips.push({ tekst: 'Odoo · leesbron', variant: 'paars', titel: 'Reeleezee blijft de backend; Odoo levert alleen-lezen de voorraad-uitstroom vanaf de knipdatum' })
   if (a.is_vastgoed) chips.push({ tekst: 'Vastgoed + autoboeken', variant: 'info', titel: 'Vastgoed-koppeling (Vastly) — autoboeken verkoop volgt de koppeling' })
   if (a.afgeletterd_event_ingeschakeld) chips.push({ tekst: 'afgeletterd-events', variant: 'info' })
   if (a.doorbelasting_ingeschakeld) chips.push({ tekst: 'Doorbelasting', variant: 'info' })
@@ -84,7 +95,23 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
 
 function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
   if (a.gearchiveerd_op) return <Badge variant="stil">gearchiveerd {datumKort(a.gearchiveerd_op)}</Badge>
-  if (!a.webservice_username) {
+  const isOdoo = a.boekhoud_backend === 'odoo'
+  // Odoo-administratie (blok E 03-09): geen webservice-login — de Odoo-probe-stand is de poort.
+  if (isOdoo && a.odoo_probe_groen === false) {
+    return (
+      <Badge variant="warn" title="De laatste Odoo-rechten-probe was rood — zie het blok Boekhoud-backend op de detailpagina">
+        Odoo-probe rood
+      </Badge>
+    )
+  }
+  if (isOdoo && a.odoo_probe_groen == null) {
+    return (
+      <Badge variant="warn" title="De Odoo-koppeling is nog nooit getest — ‘Opnieuw testen’ in het blok Boekhoud-backend">
+        nog niet getest
+      </Badge>
+    )
+  }
+  if (!isOdoo && !a.webservice_username) {
     return (
       <Badge variant="warn" title="Geen webservice-gegevens in de credential-store — sync kan niet draaien">
         geen credentials
@@ -101,7 +128,7 @@ function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
   if (a.eerste_sync && (a.eerste_sync.status === 'bezig' || a.eerste_sync.status === 'wachtrij')) {
     return <Badge variant="stil">sync bezig…</Badge>
   }
-  if (a.probe_groen === false) return <Badge variant="warn">rechten-probe niet groen</Badge>
+  if (!isOdoo && a.probe_groen === false) return <Badge variant="warn">rechten-probe niet groen</Badge>
   if (a.laatste_sync_op) {
     return (
       <Badge variant="ok" title={`laatste sync ${new Date(a.laatste_sync_op).toLocaleString('nl-NL')}`}>
@@ -242,9 +269,12 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
                         <Button variant="ghost" maat="klein" aria-label={`Instellingen van ${a.naam}`} title="Instellingen" onClick={() => navigate(detailPad(a.id))}>
                           ⚙
                         </Button>
-                        <Button variant="ghost" maat="klein" aria-label={`Schrijftest voor ${a.naam}`} title="Schrijftest" onClick={() => onSchrijftest(a)}>
-                          🧪
-                        </Button>
+                        {/* RLZ-schrijftest (TEST-boeking + storno 19) — niet voor een Odoo-administratie (blok E 03-09). */}
+                        {a.boekhoud_backend !== 'odoo' && (
+                          <Button variant="ghost" maat="klein" aria-label={`Schrijftest voor ${a.naam}`} title="Schrijftest" onClick={() => onSchrijftest(a)}>
+                            🧪
+                          </Button>
+                        )}
                         <Button variant="ghost" maat="klein" aria-label={`Archiveren ${a.naam}`} title="Archiveren" onClick={() => { setDialoogFout(null); setArchiveerVoor(a) }}>
                           🗑
                         </Button>

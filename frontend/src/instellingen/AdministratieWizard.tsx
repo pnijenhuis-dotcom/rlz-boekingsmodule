@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
-import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
+import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
+import { OdooKoppelWizard } from './OdooKoppelWizard'
+import { odooProbeSamenvatting } from './odooProbe'
 import {
   haalEersteSyncStatusOp,
   maakAdministratiesAan,
@@ -44,6 +46,10 @@ export interface EersteSyncAdministratie {
   naam: string
   rlz_admin_id: string | null
   probe?: Record<string, string>
+  /** Odoo-administratie (adapter blok E, 03-09): de kop toont "company <naam> (<id>)" i.p.v. de RLZ-id en de
+   * probe-samenvatting in Odoo-vorm; onderdelen = alleen ledgers/taxrates/vendors/projects. */
+  odoo_company_id?: number | null
+  odoo_company_naam?: string | null
 }
 
 /** Poll-blok per administratie: status per onderdeel tot klaar/fout + "Sync opnieuw starten".
@@ -55,11 +61,14 @@ export function EersteSyncStatus({
   administratie,
   initieel,
   compact = false,
+  onderdelen = Object.keys(ONDERDEEL_LABELS),
   onAfgerond,
 }: {
   administratie: EersteSyncAdministratie | AangemaakteAdministratieDto
   initieel?: EersteSyncRunDto | null
   compact?: boolean
+  /** Welke onderdelen de run kent (default alle RLZ-onderdelen; Odoo geeft ODOO_SYNC_ONDERDELEN — geen bankrekeningen). */
+  onderdelen?: string[]
   onAfgerond?: (run: EersteSyncRunDto) => void
 }) {
   const [run, setRun] = useState<EersteSyncRunDto | null>(initieel ?? null)
@@ -122,6 +131,9 @@ export function EersteSyncStatus({
   }
 
   const probe = 'probe' in administratie ? administratie.probe : undefined
+  const odooCompanyId = 'odoo_company_id' in administratie ? administratie.odoo_company_id ?? null : null
+  const odooCompanyNaam = 'odoo_company_naam' in administratie ? administratie.odoo_company_naam ?? null : null
+  const isOdoo = odooCompanyId !== null
   return (
     <div className={compact ? 'eerste-sync-rij' : 'panel'} style={compact ? undefined : { marginTop: 10 }} data-testid={`eerste-sync-${administratie.rlz_admin_id ?? administratie.id}`}>
       {compact ? (
@@ -133,12 +145,19 @@ export function EersteSyncStatus({
         <>
           <h3 style={{ margin: '0 0 6px' }}>
             {administratie.naam}{' '}
-            <span className="hint" style={{ margin: 0, fontSize: 11 }}>· RLZ-id {administratie.rlz_admin_id}</span>{' '}
+            {isOdoo ? (
+              <span className="hint" style={{ margin: 0, fontSize: 11 }}>
+                · company {odooCompanyNaam ? `${odooCompanyNaam} ` : ''}({odooCompanyId})
+              </span>
+            ) : (
+              <span className="hint" style={{ margin: 0, fontSize: 11 }}>· RLZ-id {administratie.rlz_admin_id}</span>
+            )}{' '}
             {run && statusChip(run.status === 'geen' ? 'wachtrij' : run.status)}
           </h3>
           <div className="hint" style={{ marginTop: 0 }}>
-            Rechten-probe: {probe && Object.values(probe).every((v) => v === 'ok') ? '10/10 groen' : 'zie rapport'} · eerste sync per
-            onderdeel:
+            {isOdoo
+              ? `${odooProbeSamenvatting(probe)} · eerste sync per onderdeel:`
+              : `Rechten-probe: ${probe && Object.values(probe).every((v) => v === 'ok') ? '10/10 groen' : 'zie rapport'} · eerste sync per onderdeel:`}
           </div>
           {probe && probe.SalesInvoices === '403' && (
             <div className="hint" style={{ marginTop: 4 }}>
@@ -150,11 +169,11 @@ export function EersteSyncStatus({
         </>
       )}
       <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }}>
-        {Object.keys(ONDERDEEL_LABELS).map((naam) => {
+        {onderdelen.map((naam) => {
           const stand = run?.onderdelen?.[naam]
           return (
             <li key={naam}>
-              {ONDERDEEL_LABELS[naam]}: {stand ? statusChip(stand.status) : statusChip('wachtrij')}
+              {ONDERDEEL_LABELS[naam] ?? naam}: {stand ? statusChip(stand.status) : statusChip('wachtrij')}
               {stand?.status === 'klaar' && typeof stand.aangemaakt === 'number' && (
                 <span className="hint" style={{ margin: '0 0 0 6px', fontSize: 11 }}>
                   {stand.aangemaakt} nieuw · {stand.bijgewerkt ?? 0} bijgewerkt
@@ -178,8 +197,15 @@ export function EersteSyncStatus({
   )
 }
 
+/** Sinds Odoo-adapter blok E (03-09, besluit Peter "één knop, twee ingangen"): stap 1 = backend-keuze
+ * ◉ Reeleezee ○ Odoo (Reeleezee default). Reeleezee → de bestaande stappen ongewijzigd (nu 2–4 van 4);
+ * Odoo → de OdooKoppelWizard (ingang "nieuw") binnen dezelfde dialoog, nummering loopt door. */
+export type WizardBackend = 'rlz' | 'odoo'
+
 export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: boolean; onSluiten: () => void; onAangemaakt: () => void }) {
-  const [stap, setStap] = useState<1 | 2 | 3>(1)
+  const [stap, setStap] = useState<1 | 2 | 3 | 4>(1)
+  const [backend, setBackend] = useState<WizardBackend>('rlz')
+  const [odooKlaar, setOdooKlaar] = useState(false)
   const [gebruiker, setGebruiker] = useState('')
   const [wachtwoord, setWachtwoord] = useState('')
   const [bezig, setBezig] = useState(false)
@@ -191,6 +217,8 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
 
   const reset = () => {
     setStap(1)
+    setBackend('rlz')
+    setOdooKlaar(false)
     setGebruiker('')
     setWachtwoord('')
     setBezig(false)
@@ -203,7 +231,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
 
   const sluit = () => {
     if (bezig) return
-    const klaar = stap === 3
+    const klaar = (backend === 'rlz' && stap === 4) || odooKlaar
     reset()
     onSluiten()
     if (klaar) onAangemaakt()
@@ -216,7 +244,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
       const resp = await testVerbinding(gebruiker.trim(), wachtwoord)
       setGevonden(resp.administraties)
       setGekozen(resp.administraties.filter((a) => !a.al_aangesloten).length === 1 ? resp.administraties.filter((a) => !a.al_aangesloten).map((a) => a.rlz_admin_id) : [])
-      setStap(2)
+      setStap(3)
     } catch (err) {
       setFout(foutTekst(err))
     } finally {
@@ -232,7 +260,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
       const resp = await maakAdministratiesAan(gebruiker.trim(), wachtwoord, gekozen)
       setAangemaakt(resp.administraties)
       setWachtwoord('') // niet langer nodig in het geheugen van de pagina
-      setStap(3)
+      setStap(4)
     } catch (err) {
       setFout(foutTekst(err))
       if (err instanceof ApiError && err.detail && typeof err.detail === 'object' && 'rapporten' in err.detail) {
@@ -243,17 +271,61 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
     }
   }
 
+  if (backend === 'odoo' && stap >= 2) {
+    return (
+      <Dialog open={open} onOpenChange={(o) => !o && sluit()}>
+        <DialogContent className="administratie-wizard" aria-describedby={undefined}>
+          <OdooKoppelWizard ingang="nieuw" stapOffset={1} onTerug={() => setStap(1)} onKlaar={() => setOdooKlaar(true)} onSluiten={sluit} />
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && sluit()}>
       <DialogContent className="administratie-wizard" aria-describedby={undefined}>
-        <DialogTitle>Administratie toevoegen — stap {stap} van 3</DialogTitle>
+        <DialogTitle>Administratie toevoegen — stap {stap} van 4</DialogTitle>
         <DialogDescription>
-          {stap === 1 && 'Webservice-gegevens van Reeleezee. Het wachtwoord wordt server-side versleuteld opgeslagen (credential-store) en is daarna nooit meer uitleesbaar.'}
-          {stap === 2 && 'Deze login ziet de volgende administraties. Kies welke je aansluit; vóór het opslaan wordt per administratie de rechten-probe (10 leesroutes) gedraaid — die moet groen zijn. Enige uitzondering: een 403 op SalesInvoices betekent "facturatiemodule niet afgenomen" en is een waarschuwing, geen blokkade.'}
-          {stap === 3 && 'Aangesloten met de standaardinstellingen: Boeken en AI-extractie (AVG-gate) staan AAN, alle overige opt-ins uit — aanpassen kan per administratie via ⚙. De eerste sync draait op de achtergrond; de schrijftest is een aparte knop op de administratie. Niemand ziet de administratie tot je scopes toekent op Gebruikers & toegang.'}
+          {stap === 1 && 'Kies eerst het boekhoudpakket waarin deze administratie boekt. De backend is een eigenschap van de administratie, geen module — werkvoorraad en controlescherm zijn voor beide identiek.'}
+          {stap === 2 && 'Webservice-gegevens van Reeleezee. Het wachtwoord wordt server-side versleuteld opgeslagen (credential-store) en is daarna nooit meer uitleesbaar.'}
+          {stap === 3 && 'Deze login ziet de volgende administraties. Kies welke je aansluit; vóór het opslaan wordt per administratie de rechten-probe (10 leesroutes) gedraaid — die moet groen zijn. Enige uitzondering: een 403 op SalesInvoices betekent "facturatiemodule niet afgenomen" en is een waarschuwing, geen blokkade.'}
+          {stap === 4 && 'Aangesloten met de standaardinstellingen: Boeken en AI-extractie (AVG-gate) staan AAN, alle overige opt-ins uit — aanpassen kan per administratie via ⚙. De eerste sync draait op de achtergrond; de schrijftest is een aparte knop op de administratie. Niemand ziet de administratie tot je scopes toekent op Gebruikers & toegang.'}
         </DialogDescription>
 
         {stap === 1 && (
+          <div>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '0 0 10px' }}>
+              <input type="radio" name="wizard-backend" value="rlz" checked={backend === 'rlz'} onChange={() => setBackend('rlz')} aria-label="Reeleezee" />
+              <span>
+                <Badge variant="paars">Reeleezee</Badge>
+                <br />
+                <span className="hint" style={{ margin: 0 }}>
+                  Webservice-login → rechten-probe → keuze uit de administraties van die login.
+                </span>
+              </span>
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: 0 }}>
+              <input type="radio" name="wizard-backend" value="odoo" checked={backend === 'odoo'} onChange={() => setBackend('odoo')} aria-label="Odoo" />
+              <span>
+                <Badge variant="paars">Odoo</Badge>
+                <br />
+                <span className="hint" style={{ margin: 0 }}>
+                  URL + API-sleutel → rechten-probe → keuze uit de companies van die database.
+                </span>
+              </span>
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={sluit} disabled={bezig}>
+                Annuleren
+              </Button>
+              <Button type="button" onClick={() => setStap(2)}>
+                Verder →
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {stap === 2 && (
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -268,8 +340,8 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
             </FormField>
             {fout && <div className="fout">{fout}</div>}
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={sluit} disabled={bezig}>
-                Annuleren
+              <Button type="button" variant="ghost" onClick={() => { setStap(1); setFout(null) }} disabled={bezig}>
+                ← Terug
               </Button>
               <Button type="submit" disabled={bezig || !gebruiker.trim() || !wachtwoord}>
                 {bezig ? 'Verbinding testen…' : 'Verbinding testen →'}
@@ -278,7 +350,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
           </form>
         )}
 
-        {stap === 2 && (
+        {stap === 3 && (
           <div>
             {gevonden.length === 0 && <p className="hint">Deze login ziet geen administraties.</p>}
             <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px' }}>
@@ -317,7 +389,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
             </ul>
             {fout && <div className="fout">{fout}</div>}
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => { setStap(1); setFout(null); setRapporten(null) }} disabled={bezig}>
+              <Button type="button" variant="ghost" onClick={() => { setStap(2); setFout(null); setRapporten(null) }} disabled={bezig}>
                 ← Terug
               </Button>
               <Button type="button" onClick={() => void aansluiten()} disabled={bezig || gekozen.length === 0}>
@@ -327,7 +399,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
           </div>
         )}
 
-        {stap === 3 && (
+        {stap === 4 && (
           <div>
             {aangemaakt.map((a) => (
               <EersteSyncStatus key={a.id} administratie={a} />

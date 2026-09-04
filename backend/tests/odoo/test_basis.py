@@ -11,7 +11,7 @@ import pytest
 
 from app.odoo import sync as odoo_sync
 from app.odoo.client import OdooFout
-from app.odoo.fouten import lock_date_melding, vertaal_odoo_fout
+from app.odoo.fouten import lock_date_melding, overgangsdatum_melding, vertaal_odoo_fout
 from app.odoo.ids import GEEN_BTW_ODOO_ID, is_odoo_sentinel, odoo_admin_sentinel, odoo_uuid
 from app.odoo.inkoop import BTW_OVERRIDE_TOLERANTIE, marker
 from app.odoo.producten import product_code
@@ -154,6 +154,17 @@ class TestPoortenEnFouten:
         assert lock_date_melding(boekdatum=date(2026, 1, 1), lock_dates=lock) is None
         assert lock_date_melding(boekdatum=date(2020, 1, 1), lock_dates={"hard_lock_date": None}) is None
 
+    def test_overgangsdatum_poort_weigert_facturen_van_voor_de_overstap(self) -> None:
+        overgang = date(2026, 9, 1)
+        melding = overgangsdatum_melding(factuurdatum=date(2026, 8, 31), overgangsdatum=overgang)
+        assert melding is not None
+        assert "2026-08-31" in melding and "2026-09-01" in melding
+        assert "hoort nog in Reeleezee" in melding and "Instellingen › Administraties" in melding
+        # Op de dag zelf en erna: geen poort; zonder overgangsdatum (bestaande koppelingen) nooit.
+        assert overgangsdatum_melding(factuurdatum=overgang, overgangsdatum=overgang) is None
+        assert overgangsdatum_melding(factuurdatum=date(2026, 9, 15), overgangsdatum=overgang) is None
+        assert overgangsdatum_melding(factuurdatum=date(2020, 1, 1), overgangsdatum=None) is None
+
     def test_vertaal_odoo_fout_herkent_lock_balans_rechten(self) -> None:
         lock = OdooFout(
             422,
@@ -175,3 +186,39 @@ class TestPoortenEnFouten:
 
     def test_btw_override_tolerantie_is_twee_cent(self) -> None:
         assert Decimal("0.02") == BTW_OVERRIDE_TOLERANTIE
+
+
+class TestEigenConceptHerkenning:
+    """Live keten-cyclus 04-09: een achtergebleven concept (action_post geweigerd) van hetzelfde document mag de
+    duplicaatcheck bij de retry niet blokkeren — de leesfacade meldt het onder het eigen deterministische id."""
+
+    def test_marker_vertaalt_naar_eigen_id(self) -> None:
+        from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
+        from app.odoo.inkoop import eigen_id_uit_marker
+
+        d = uuid.uuid4()
+        assert eigen_id_uit_marker(marker(d, 0)) == str(rlz_herboeking_id(d, 0))
+        assert eigen_id_uit_marker(marker(d, 2, "tegenboeking")) == str(rlz_tegenboeking_id(d, 2))
+
+    @pytest.mark.parametrize("origin", [None, False, "", "PO00012", "AKN:niet-een-uuid:0:boeking", "AKN:x"])
+    def test_vreemde_origin_geeft_none(self, origin) -> None:
+        from app.odoo.inkoop import eigen_id_uit_marker
+
+        assert eigen_id_uit_marker(origin) is None
+
+    def test_lees_projecten_vraagt_alleen_actieve_analytic_accounts(self) -> None:
+        gezien: list = []
+
+        class _Client:
+            company_id = 1
+
+            def search_read_alles(self, model, domain, fields, **kw):
+                gezien.append(domain)
+                return []
+
+        class _Vertaler:
+            def lokaal(self, model, odoo_id, naam):
+                return uuid.uuid4()
+
+        odoo_sync.lees_projecten(_Client(), _Vertaler(), plan_id=1)
+        assert ["active", "=", True] in gezien[0]

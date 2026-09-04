@@ -61,6 +61,16 @@ class OdooProbeDto(BaseModel):
     lock_dates: dict[str, str | None] = Field(default_factory=dict)
 
 
+class OdooStamgegevensDto(BaseModel):
+    """Actuele (niet-verdwenen) cache-rijen per onderdeel van déze administratie — het blok "Stamgegevens
+    grootboek 212 · btw 14 · relaties 380" (mockup sectie 1)."""
+
+    ledgers: int = 0
+    taxrates: int = 0
+    vendors: int = 0
+    projects: int = 0
+
+
 class OdooStandDto(BaseModel):
     company_id: int
     company_naam: str | None
@@ -72,6 +82,25 @@ class OdooStandDto(BaseModel):
     #: Blok D: alleen-lezen (Odoo = leesbron voor de voorraad-uitstroom; boeken blijft in RLZ) + voorraad-knip.
     alleen_lezen: bool = False
     voorraad_knip_datum: date | None = None
+    #: Blok E (UI): probe-rapport per onderdeel, stamgegevens-tellers, jongste sync-tijd (zelfde bron als de
+    #: lijst), overgangsdatum + oud RLZ-id bij een overgestapte administratie.
+    probe_rapport: dict[str, str] | None = None
+    stamgegevens: OdooStamgegevensDto | None = None
+    laatste_sync_op: datetime | None = None
+    overgangsdatum: date | None = None
+    rlz_admin_id_voor_overstap: str | None = None
+
+
+class OdooOverstapDto(OdooGegevensDto):
+    """Blok E, ingang B: een bestaande RLZ-administratie stapt over op Odoo (volledige backend) — company uit
+    de lijst + verplichte overgangsdatum (vanaf die factuurdatum boekt de administratie in Odoo)."""
+
+    company_id: int = Field(gt=0)
+    overgangsdatum: date
+
+
+class OdooOvergangsdatumDto(StrikteInvoer):
+    overgangsdatum: date
 
 
 class OdooLeesbronKoppelenDto(OdooGegevensDto):

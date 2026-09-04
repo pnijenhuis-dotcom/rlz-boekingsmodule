@@ -40,6 +40,9 @@ class OdooVerbinding:
     #: Blok D: alleen-lezen-koppeling (Odoo = leesbron, boeken blijft in RLZ) + voorraad-knip.
     alleen_lezen: bool = False
     voorraad_knip_datum: date | None = None
+    #: Blok E (migratie 0104): overstap van een RLZ-administratie — factuurdatum < overgangsdatum = weigering
+    #: in de inkoop-adapter (hoort nog in RLZ). None = geen poort.
+    overgangsdatum: date | None = None
 
 
 def lees_dev_env() -> tuple[str | None, str | None]:
@@ -84,6 +87,7 @@ def koppeling_voor(administratie_id: uuid.UUID) -> OdooVerbinding:
             analytic_plan_id=rij.analytic_plan_id,
             alleen_lezen=bool(rij.alleen_lezen),
             voorraad_knip_datum=rij.voorraad_knip_datum,
+            overgangsdatum=rij.overgangsdatum,
         )
 
 

@@ -168,6 +168,14 @@ export interface GeboektInRlzDto {
   geboekt_op: string
   memoriaal_boekstuknummer: string | null
   vindplaats_hint: string | null
+  /** Odoo-adapter blok E (03-09), additief: backend + company van de boeking (notitie ④ — een mens moet
+   * een company-mismatch kunnen zíén), tegenboeking-nummer + kruisverwijzing beide kanten
+   * ("Reversal · RBILL/… ↔ BILL/…") en of de ± € 0,02-btw-cent-override is toegepast. Afwezig = RLZ. */
+  backend?: 'rlz' | 'odoo'
+  company_naam?: string | null
+  tegenboeking_boekstuknummer?: string | null
+  kruisverwijzing?: string | null
+  btw_override?: boolean
 }
 
 export interface DocumentListItemDto {
@@ -646,6 +654,24 @@ export interface AdministratieInstellingenDto {
   laatste_sync_op?: string | null
   gearchiveerd_op?: string | null
   gearchiveerd_door_naam?: string | null
+  /** Boekhoud-backend (Odoo-adapter fase 1, migraties 0101/0102 — Platform-besluit 0016): 'rlz' (default,
+   * ook als het veld ontbreekt) of 'odoo' = volledige backend (boeken in Odoo). `odoo_alleen_lezen` =
+   * een RLZ-administratie mét Odoo als LEESBRON voor de voorraad-uitstroom vanaf `odoo_voorraad_knip_datum`
+   * (Universal-Verkoop-pad) — twee koppelvormen die nooit impliciet in elkaar overlopen (notitie ⑤).
+   * De API-sleutel komt nooit terug; alleen het optionele label `odoo_api_gebruiker` + de vervaldatum. */
+  boekhoud_backend?: 'rlz' | 'odoo'
+  odoo_company_id?: number | null
+  odoo_company_naam?: string | null
+  odoo_url?: string | null
+  odoo_api_gebruiker?: string | null
+  odoo_api_key_verloopt_op?: string | null
+  odoo_probe_groen?: boolean | null
+  odoo_probe_op?: string | null
+  odoo_alleen_lezen?: boolean
+  odoo_voorraad_knip_datum?: string | null
+  /** Overstap van een bestaande RLZ-administratie (ingang B, volledige backend): vanaf deze datum
+   * boekt de administratie in Odoo; permanent zichtbaar in het backend-blok (notitie ④). */
+  odoo_overgangsdatum?: string | null
 }
 
 export interface ArchiveringResultaatDto {

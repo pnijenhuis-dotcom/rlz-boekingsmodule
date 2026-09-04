@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Odoo-koppeling kantoor-UI (adapter blok E)</title>
+<!-- ============================================================
+     ODOO-ADAPTER BLOK E (fase 1 blokken 0–D gebouwd 03-09; UI
+     bewust geparkeerd tot UX-akkoord). Drie plekken, allemaal
+     hergebruik van bestaande patronen — geen nieuw scherm:
+     1) administratie-detailpagina tab Algemeen: backend-blok
+     2) koppel-wizard (RLZ-wizard-patroon: probe verplicht groen,
+        keuze uit lijst — nooit een id typen)
+     3) "Geboekt in Odoo · nr" op lijst/controlescherm (spiegel
+        van geboekt_in_rlz, Elissen-patroon)
+     Twee koppelvormen strikt gescheiden: VOLLEDIGE backend
+     (boekhoud_backend = odoo) vs ALLEEN-LEZEN leesbron
+     (voorraad-uitstroom mét knipdatum, backend blijft RLZ).
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101917; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513; --paars:#a48fd8;
+    --ok:#5ec792; --warn:#e2b25e; --warn-bg:rgba(226,178,94,.12); --rood:#f08579;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:980px}
+  .blok{background:var(--panel);border:1px solid var(--border);border-radius:12px;max-width:760px;padding:16px 18px;margin-bottom:26px}
+  .blok h2{font-size:12px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:800;margin-bottom:12px}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--paars) 16%,transparent);color:var(--paars)}
+  .chip.rlz{background:color-mix(in srgb,var(--teal) 14%,transparent);color:var(--teal)}
+  .chip.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+  .chip.grijs{background:none;border:1px solid var(--border);color:var(--muted)}
+  .rij{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+  .rij:last-child{border-bottom:none}
+  .rij .lbl{width:190px;color:var(--muted);flex-shrink:0}
+  .btn{display:inline-block;padding:7px 13px;border-radius:9px;background:var(--teal);color:var(--teal-donker);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .btn.sec{background:none;border:1px solid var(--border);color:var(--text);font-weight:600}
+  .btn.uit{opacity:.45}
+  .veld{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12.5px;color:var(--text);min-width:280px}
+  .veld.placeholder{color:var(--faint)}
+  .stap{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
+  .stap:last-child{border-bottom:none}
+  .stap .nr{width:22px;height:22px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0;margin-top:1px}
+  .stap .nr.ok{background:color-mix(in srgb,var(--ok) 16%,transparent);border-color:transparent;color:var(--ok)}
+  .probe{font-size:11.5px;color:var(--ok);margin-top:4px}
+  .probe.rood{color:var(--rood)}
+  .hint{font-size:11.5px;color:var(--faint);margin-top:3px}
+  .doc{display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:8px}
+  .noot{max-width:980px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75}
+  .noot b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>Odoo-koppeling — kantoor-UI (adapter blok E)</h1>
+<p class="sub">Drie plekken, alle drie hergebruik van bestaande patronen. Odoo krijgt een eigen paarse chip zodat
+backend nooit verward wordt met status (teal = actie, groen = status — paars = platform). Twee koppelvormen strikt
+gescheiden: volledige backend vs alleen-lezen leesbron.</p>
+
+<!-- 1. Detailpagina tab Algemeen -->
+<div class="blok">
+  <h2>1 · Administratie-detailpagina › tab Algemeen — blok "Boekhoud-backend"</h2>
+  <div class="rij"><span class="lbl">Backend</span><span class="chip">Odoo</span><span style="color:var(--muted)">universal-steigers.odoo.com · company <b style="color:var(--text)">Universal Steigerbouw (1)</b></span></div>
+  <div class="rij"><span class="lbl">Verbinding</span><span class="chip ok">✓ probe groen · 03-09 22:14</span><span class="btn sec" style="margin-left:auto">Opnieuw testen</span></div>
+  <div class="rij"><span class="lbl">API-sleutel</span><span style="color:var(--muted)">•••• ingesteld · verloopt niet</span><span class="btn sec" style="margin-left:auto">Sleutel wijzigen…</span></div>
+  <div class="rij"><span class="lbl">Stamgegevens</span><span style="color:var(--muted)">grootboek 212 · btw 14 · relaties 380 · laatst gesynct 07:00</span><span class="btn sec" style="margin-left:auto">⟳ Sync nu</span></div>
+  <div class="rij"><span class="lbl">Leesbron voorraad</span><span class="chip grijs">n.v.t. — volledige backend</span></div>
+  <p class="hint" style="margin-top:8px">Bij een RLZ-administratie toont ditzelfde blok <span class="chip rlz">Reeleezee</span> + webservice-stand (bestaande inhoud verhuist hierin);
+  een RLZ-administratie mét Odoo-leesbron (Universal Verkoop) toont daar: <span class="chip">Odoo · leesbron</span> "verkoop-uitstroom vanaf 01-09-2026 (knip)".</p>
+</div>
+
+<!-- 2. Wizard -->
+<div class="blok">
+  <h2>2 · Wizard — één component, twee ingangen (besluit Peter 03-09)</h2>
+  <p class="hint" style="margin-bottom:10px"><b style="color:var(--text)">Ingang A (nieuw):</b> de bestaande knop
+  "+ Administratie toevoegen" krijgt als éérste stap de backend-keuze ◉ Reeleezee ○ Odoo — daarna vraagt de wizard de
+  bijpassende specs (RLZ: webservice-login; Odoo: onderstaande stappen). Géén tweede knop.
+  <b style="color:var(--text)">Ingang B (bestaand, detailpagina):</b> "Odoo koppelen…" voor de overstap van een
+  bestaande RLZ-administratie (mét overgangsdatum — het Universal-migratiescenario) en voor de alleen-lezen leesbron
+  (Universal Verkoop) — beide zijn geen "toevoegen".</p>
+  <div class="stap"><span class="nr ok">✓</span><div><b>Koppelvorm</b> (alleen bij ingang B)<br><span style="color:var(--muted)">◉ Volledige backend (boeken in Odoo, mét overgangsdatum) &nbsp; ○ Alleen-lezen leesbron (voorraad-uitstroom, backend blijft Reeleezee)</span>
+  <p class="hint">Bij ingang A (nieuwe administratie via "+ Administratie toevoegen") is de backend-keuze al stap 1 en vervalt deze stap.</p></div></div>
+  <div class="stap"><span class="nr ok">✓</span><div><b>Verbinding</b><br><span class="veld placeholder">URL · database · API-sleutel</span>
+  <div class="probe">✓ Verbonden als n-module@… · Odoo 19 · JSON-2</div></div></div>
+  <div class="stap"><span class="nr ok">✓</span><div><b>Company kiezen</b> — uit de lijst, nooit een id typen<br>
+  <span class="veld">Universal Steigerbouw (1) ▾</span>
+  <div class="probe">✓ Rechten-probe groen: grootboek · btw · relaties · journals · facturen (lezen) · boeken (schrijven, alleen bij volledige backend)</div>
+  <div class="probe rood" style="opacity:.7">✗ voorbeeld-foutstand: "geen schrijfrecht op account.move — geef de API-gebruiker boekhoudrechten in Odoo" (opslaan geblokkeerd)</div></div></div>
+  <div class="stap"><span class="nr">4</span><div><b>Opslaan + eerste sync</b> — credential-store (envelope), daarna stamgegevens-sync als achtergrondrun met status per onderdeel (zelfde subrij-patroon als de RLZ-eerste-sync).
+  <p class="hint">Bij "alleen-lezen leesbron" is stap 4: knipdatum kiezen (default 01-09-2026) + leesprobe; de RLZ-uitstroomroute stopt automatisch vanaf de knip.</p></div></div>
+  <div style="margin-top:10px;text-align:right"><span class="btn uit">Koppeling opslaan</span></div>
+  <p class="hint" style="text-align:right">Knop actief zodra álle probes groen zijn — zelfde poort als de RLZ-wizard.</p>
+</div>
+
+<!-- 3. Geboekt in Odoo -->
+<div class="blok">
+  <h2>3 · Documentenlijst + controlescherm — "Geboekt in Odoo"</h2>
+  <div class="doc"><span class="chip ok">Geboekt</span><b>Riwal Hoogwerkers</b><span style="color:var(--muted)">€ 2.140,00 · 28-08</span>
+  <span style="margin-left:auto;color:var(--muted)">Geboekt in Odoo · <b style="color:var(--text)">FACT/2026/0912</b> · Universal Steigerbouw</span></div>
+  <p class="hint">Zelfde plek en vorm als "Geboekt in RLZ · boekstuk · tegenpartij" (Elissen-patroon), mét vindplaats-hint:
+  "in Odoo: Boekhouding → Leveranciers → Facturen". Een tegenboeking toont "Reversal · RFACT/2026/0031 ↔ FACT/2026/0912"
+  (kruisverwijzing beide kanten). De ±0,02-btw-cent-override draagt zijn bestaande chip óók hier.</p>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① <b>Paars = platform-herkomst</b> (Odoo/RLZ-chips), nooit teal of groen — de v2-semantiekregel blijft: teal = actie,
+groen = status. ② <b>Geen nieuw nav-item en geen nieuwe pagina</b>: alles leeft op de bestaande administratie-detailpagina
+(tab Algemeen) en de bestaande lijst/controleschermen — backend is een eigenschap van een administratie, geen module.
+③ <b>De wizard is de RLZ-wizard in Odoo-vorm</b>: probe verplicht groen vóór opslaan, keuze uit lijst (companies via de
+API), credential-store envelope, eerste sync = achtergrondrun met status per onderdeel. ④ <b>Company-poort zichtbaar</b>:
+de gekozen company staat permanent in het backend-blok én in elke "Geboekt in Odoo"-regel — een mens moet een
+company-mismatch kunnen zíén. ⑤ <b>Koppelvorm is expliciet</b> (stap 1): volledige backend vs alleen-lezen leesbron zijn
+twee verschillende dingen die nooit impliciet in elkaar overlopen; de leesbron-variant bedient het bestaande
+Universal-Verkoop-pad (knipdatum, migratie 0102). ⑥ <b>Foutvertaling</b>: lock-date-, rechten- en company-fouten in
+leesbare taal mét handelingsperspectief, conform vertaal_rlz_boekfout-patroon. ⑦ Controlescherm en werkvoorraad blijven
+identiek aan het RLZ-pad — de gebruiker merkt het backend-verschil alleen aan de chip en het boekstuknummer-formaat.</p>
+</body>
+</html>

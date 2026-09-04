@@ -12,9 +12,16 @@ from sqlalchemy import Engine, text
 
 from app.db.session import scoped_session
 from app.documenten import boeken, service
-from app.documenten.geboekt_in_rlz import VINDPLAATS_OMZET, VINDPLAATS_VERKOOP, bepaal_geboekt_in_rlz
+from app.documenten.geboekt_in_rlz import (
+    VINDPLAATS_OMZET,
+    VINDPLAATS_VERKOOP,
+    bepaal_geboekt_in_rlz,
+    vindplaats_odoo_inkoop,
+)
 from app.documenten.models import Document, DocumentSoort
 from app.main import app
+from app.odoo.models import OdooDocumentKoppeling, OdooKoppeling
+from app.security.envelope import wrap_secret
 from app.security.tokens import create_access_token
 from tests.documenten.fake_rlz_client import FakeBoekClient
 from tests.documenten.test_boeken import boeken_aan, klaar_document  # noqa: F401 — fixtures
@@ -41,7 +48,8 @@ def _zet_geboekt(admin_engine: Engine, document_id: uuid.UUID, actor_id: uuid.UU
         conn.execute(
             text(
                 "INSERT INTO boekhouding.document_gebeurtenis "
-                "(id, document_id, van_status, naar_status, actor_id, detail) VALUES (:id, :d, 'klaar_om_te_boeken', 'geboekt', :a, CAST(:detail AS jsonb))"
+                "(id, document_id, van_status, naar_status, actor_id, detail) "
+                "VALUES (:id, :d, 'klaar_om_te_boeken', 'geboekt', :a, CAST(:detail AS jsonb))"
             ),
             {"id": uuid.uuid4(), "d": document_id, "a": actor_id, "detail": detail},
         )
@@ -167,3 +175,143 @@ class TestVerkoopEnOmzet:
         )
         with scoped_session(administratie_id) as session:
             assert bepaal_geboekt_in_rlz(session, [session.get(Document, r.document_id)]) == {}
+
+
+class TestOdoo:
+    """Blok E (mockup sectie 3): 'Geboekt in Odoo · BILL/… · <company>' — nummer uit de document-koppeling,
+    company uit de koppelstand, kruisverwijzing naar de reversal, btw-cent-override-chip; geen Odoo-call."""
+
+    def _odoo_koppeling(self, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        ciphertext, wrapped = wrap_secret(b"sleutel")
+        with scoped_session(None, actor_id=actor_id) as session:
+            session.add(
+                OdooKoppeling(
+                    administratie_id=administratie_id,
+                    odoo_url="https://universal-steigers.odoo.com",
+                    company_id=1,
+                    company_naam="Universal Steigerbouw",
+                    api_key_ciphertext=ciphertext,
+                    wrapped_data_key=wrapped,
+                    aangemaakt_door=actor_id,
+                )
+            )
+
+    def test_odoo_boeking_met_reversal_regel_kruisverwijzing_company_en_override(
+        self, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine, opslag
+    ) -> None:
+        r = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="riwal.pdf",
+            inhoud=b"%PDF-1.4 riwal",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        self._odoo_koppeling(administratie_id, gescoopte_gebruiker)
+        with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
+            session.add(
+                OdooDocumentKoppeling(
+                    administratie_id=administratie_id,
+                    document_id=r.document_id,
+                    boek_cyclus=0,
+                    soort="boeking",
+                    odoo_move_id=3049,
+                    odoo_naam="BILL/2026/09/0001",
+                    odoo_move_type="in_invoice",
+                    company_id=1,
+                    state="posted",
+                )
+            )
+            session.add(
+                OdooDocumentKoppeling(
+                    administratie_id=administratie_id,
+                    document_id=r.document_id,
+                    boek_cyclus=0,
+                    soort="tegenboeking",
+                    odoo_move_id=3050,
+                    odoo_naam="RBILL/2026/09/0002",
+                    odoo_move_type="in_refund",
+                    company_id=1,
+                    state="posted",
+                    reversal_van_move_id=3049,
+                )
+            )
+        _zet_geboekt(
+            admin_engine,
+            r.document_id,
+            gescoopte_gebruiker,
+            '{"backend": "odoo", "odoo_company_id": 1, "odoo_move_id": 3049, "odoo_naam": "BILL/2026/09/0001", '
+            '"rlz_document_id": "33333333-3333-3333-3333-333333333333", "rlz_boekstuknummer": "BILL/2026/09/0001", '
+            '"btw_override": [{"tarief": "21%", "odoo_btw": "44.09", "factuur_btw": "44.10", "verschil": "0.01"}], '
+            '"reden": "geboekt in Odoo — BILL/2026/09/0001"}',
+        )
+        with scoped_session(administratie_id) as session:
+            stand = bepaal_geboekt_in_rlz(session, [session.get(Document, r.document_id)])[r.document_id]
+        assert stand.backend == "odoo" and stand.boekstuknummer == "BILL/2026/09/0001"
+        assert stand.company_naam == "Universal Steigerbouw"
+        assert stand.tegenboeking_boekstuknummer == "RBILL/2026/09/0002"
+        assert stand.kruisverwijzing == "Reversal · RBILL/2026/09/0002 ↔ BILL/2026/09/0001"
+        assert stand.btw_override is True
+        assert stand.vindplaats_hint == vindplaats_odoo_inkoop("Universal Steigerbouw")
+        assert "company Universal Steigerbouw" in stand.vindplaats_hint and "RBILL/" in stand.vindplaats_hint
+        assert stand.als_regel() == "Geboekt in Odoo · BILL/2026/09/0001 · Universal Steigerbouw"
+
+        # Live keten-cyclus 04-09: de tegenboeking schrijft een geboekt→geboekt-gebeurtenis (detail `tegenboeking`)
+        # die JONGER is dan de boeking — die mag de backend/het nummer niet overschaduwen.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO boekhouding.document_gebeurtenis (id, document_id, van_status, naar_status, actor_id, "
+                    "detail, tijdstip) VALUES (:id, :d, 'geboekt', 'geboekt', :a, CAST(:detail AS jsonb), "
+                    "now() + interval '1 minute')"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "d": r.document_id,
+                    "a": gescoopte_gebruiker,
+                    "detail": '{"tegenboeking": {"backend": "odoo", "soort": "volledig", "rlz_boekstuknummer": '
+                    '"RBILL/2026/09/0002"}}',
+                },
+            )
+        with scoped_session(administratie_id) as session:
+            stand = bepaal_geboekt_in_rlz(session, [session.get(Document, r.document_id)])[r.document_id]
+        assert stand.backend == "odoo" and stand.boekstuknummer == "BILL/2026/09/0001"
+        assert stand.kruisverwijzing == "Reversal · RBILL/2026/09/0002 ↔ BILL/2026/09/0001"
+
+        headers = {"Authorization": f"Bearer {create_access_token(gescoopte_gebruiker, rol='boekhouding')}"}
+        detail_resp = client.get(f"/administraties/{administratie_id}/documenten/{r.document_id}", headers=headers)
+        assert detail_resp.status_code == 200, detail_resp.text
+        dto = detail_resp.json()["geboekt_in_rlz"]
+        assert dto["backend"] == "odoo" and dto["company_naam"] == "Universal Steigerbouw"
+        assert dto["regel"] == "Geboekt in Odoo · BILL/2026/09/0001 · Universal Steigerbouw"
+        assert dto["kruisverwijzing"] == "Reversal · RBILL/2026/09/0002 ↔ BILL/2026/09/0001"
+        assert dto["tegenboeking_boekstuknummer"] == "RBILL/2026/09/0002" and dto["btw_override"] is True
+
+    def test_odoo_zonder_koppelingsrij_valt_terug_op_tijdlijndetail(
+        self, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine, opslag
+    ) -> None:
+        r = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="los.pdf",
+            inhoud=b"%PDF-1.4 los",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        _zet_geboekt(
+            admin_engine,
+            r.document_id,
+            gescoopte_gebruiker,
+            '{"backend": "odoo", "odoo_naam": "BILL/2026/09/0007", "rlz_boekstuknummer": "BILL/2026/09/0007"}',
+        )
+        with scoped_session(administratie_id) as session:
+            stand = bepaal_geboekt_in_rlz(session, [session.get(Document, r.document_id)])[r.document_id]
+        assert stand.boekstuknummer == "BILL/2026/09/0007" and stand.company_naam is None
+        assert stand.kruisverwijzing is None and stand.btw_override is False
+        assert stand.als_regel() == "Geboekt in Odoo · BILL/2026/09/0007"
+        assert "gekoppelde company" in (stand.vindplaats_hint or "")
+
+        # RLZ-vorm ongewijzigd: geen Odoo-velden, klassieke regel.
+        rlz_dto = client.get(
+            f"/administraties/{administratie_id}/documenten/{r.document_id}",
+            headers={"Authorization": f"Bearer {create_access_token(gescoopte_gebruiker, rol='boekhouding')}"},
+        ).json()["geboekt_in_rlz"]
+        assert rlz_dto["backend"] == "odoo" and rlz_dto["company_naam"] is None

@@ -395,6 +395,38 @@ describe('DocumentDetailScreen — opnieuw extraheren vanaf een geslaagd voorste
     expect(chip).toHaveAttribute('title', 'Geboekt in RLZ · boekstuk RLZ-04-00002001 · Universal Nederland B.V.')
   })
 
+  it('Odoo-adapter blok E (03-09): de GEBOEKT-gebeurtenis benoemt backend + company en de btw-cent-override; de tegenboeking draagt de kruisverwijzing', async () => {
+    installFetchMock(
+      detailMet({
+        status: 'geboekt',
+        tijdlijn: [
+          { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-09-03T10:00:00Z' },
+          {
+            van_status: 'klaar_om_te_boeken',
+            naar_status: 'geboekt',
+            actor_id: 'x',
+            actor_is_systeem: false,
+            detail: { backend: 'odoo', odoo_naam: 'BILL/2026/09/0001', odoo_company_id: 1, btw_override: [{ tarief: '21%', verschil: '0.01' }] },
+            tijdstip: '2026-09-03T10:05:00Z',
+          },
+          {
+            van_status: 'geboekt',
+            naar_status: 'geboekt',
+            actor_id: 'x',
+            actor_is_systeem: false,
+            detail: { tegenboeking: { soort: 'volledig', backend: 'odoo', rlz_boekstuknummer: 'RBILL/2026/09/0002', kruisverwijzing: 'Reversal · RBILL/2026/09/0002 ↔ BILL/2026/09/0001', reden: 'dubbel' } },
+            tijdstip: '2026-09-03T11:00:00Z',
+          },
+        ],
+      }),
+    )
+    renderScherm()
+    expect(await screen.findByTestId('tijdlijn-geboekt-odoo')).toHaveTextContent('Geboekt in Odoo · BILL/2026/09/0001 (company 1)')
+    expect(screen.getByTestId('tijdlijn-btw-override')).toHaveTextContent('btw-cent-override')
+    expect(screen.getByTestId('tijdlijn-btw-override')).toHaveTextContent('Btw-cent-override toegepast (± € 0,02 per tarief) — zie boeking')
+    expect(screen.getByText(/tegenboeking RBILL\/2026\/09\/0002 in Odoo · Reversal · RBILL\/2026\/09\/0002 ↔ BILL\/2026\/09\/0001 — “dubbel”/)).toBeInTheDocument()
+  })
+
   it('geen knop op een geboekt document, ook al is er een AI-voorstel', async () => {
     installFetchMock(detailMet({ status: 'geboekt' }))
 

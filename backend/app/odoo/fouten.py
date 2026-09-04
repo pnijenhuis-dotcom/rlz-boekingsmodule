@@ -46,6 +46,20 @@ def vertaal_odoo_fout(exc: Exception) -> str:
     return str(exc)
 
 
+def overgangsdatum_melding(*, factuurdatum: date, overgangsdatum: date | None) -> str | None:
+    """Overstap-poort (blok E, migratie 0104): een bestaande RLZ-administratie boekt vanaf de overgangsdatum
+    in Odoo — een factuur mét factuurdatum vóór die datum hoort nog in Reeleezee (periode vóór de overstap)
+    en wordt leesbaar geweigerd, nooit stil in het verkeerde pakket geboekt. Geen overgangsdatum = geen
+    poort (Odoo-administratie zonder RLZ-verleden)."""
+    if overgangsdatum is None or factuurdatum >= overgangsdatum:
+        return None
+    return (
+        f"Factuurdatum {factuurdatum.isoformat()} ligt vóór de overgangsdatum {overgangsdatum.isoformat()} van deze "
+        "administratie — deze factuur hoort nog in Reeleezee (periode vóór de overstap). Boek 'm dáár, of laat de "
+        "Beheerder de overgangsdatum aanpassen op Instellingen › Administraties."
+    )
+
+
 def lock_date_melding(*, boekdatum: date, lock_dates: dict[str, date | None]) -> str | None:
     """Vóór de create: valt de boekdatum op/vóór een lock date, dan is dat een leesbare, blokkerende
     fout (STAP-0 §3.5: Odoo zou de datum anders stil verschuiven of weigeren). `lock_dates` =
