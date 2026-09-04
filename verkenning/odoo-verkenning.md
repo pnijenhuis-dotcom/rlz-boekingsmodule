@@ -1,6 +1,6 @@
 # Odoo STAP-0-verkenning — universal-steigers.odoo.com (02-09-2026)
 
-**Status: UITGEVOERD — feitenbasis voor het adapter-bouwplan (besluit 0016). Er is GEEN adapter gebouwd.**
+**Status: UITGEVOERD — feitenbasis voor het adapter-bouwplan (besluit 0016). Adapter fase 1 GEBOUWD 03-09 (blokken 0–E) en de keten LIVE BEWEZEN 04-09 op company 1 — zie §7.**
 Opdracht Peter 02-09: alleen verkennen naar het RLZ-patroon (`api-verkenning.md`); schrijven beperkt tot exact
 twee bewijs-cycli mét `TEST-`-prefix, tegengeboekt via Odoo's eigen reversal, niets verwijderd, geen Odoo-
 instellingen gewijzigd. Scripts: `verkenning/odoo_stap0_client.py` (JSON-2-client, audit-log, kill-switch
@@ -440,3 +440,33 @@ Ruwe uitvoer `verkenning/output/odoo_fase1_producten.json` (gitignored).
 Ontwerpgevolg (blok C): regels gaan als `quantity × price_unit` mét `product_id` waar de materiaalbrug een product kent
 én `aantal × stuksprijs = netto` cent-exact uit het veldvoorstel volgt; anders `1 × netto` (nooit gokken). Rekening,
 btw en project komen ALTIJD expliciet uit het boekvoorstel — Odoo leidt niets af.
+
+## §7 Adapter keten-cyclus — LIVE 04-09-2026 (blok F, GO Peter 03-09; via de app-API, geen los script)
+
+Volledige keten op **company 1 (Universal Steigerbouw B.V., leeg)** via de eigen HTTP-API (uvicorn 8011, dev-DB ná
+migratie 0104, Beheerder-token) — géén rechtstreekse Odoo-schrijfcalls buiten het opruimen (archiveren, zie stap 12).
+Ruwe request/response-log (API-key geredigeerd): `verkenning/output/odoo_keten_cyclus_2026-09-04.jsonl` (gitignored,
+33 regels). Echte factuur-PDF: `20260066.pdf` (Confide BV, btw verlegd, 9 regels, € 10.323,49) mét TEST-referentie
+`TEST-ODOO-KETEN-20260066` op de TEST-crediteur "TEST-ODOO-KETEN Leverancier (niet gebruiken)". Niets verwijderd in
+Odoo; géén writes op company 3; géén RLZ-writes.
+
+| # | Stap (app-route) | Uitkomst (terug-gelezen uit Odoo waar relevant) |
+|---|---|---|
+| 1 | `POST /instellingen/odoo/verbinding-testen` | 200 — 10 companies, alle `al_gekoppeld: false` |
+| 2 | `POST /instellingen/odoo/koppelen` company 1 | **eerste poging 500** (UniqueViolation op het sentinel `odoo:universal-steigers.odoo.com:1` — een halve-stand-rij uit de migratie-herdraai van 0101 droeg het nog; gefixt: sentinel-dragers tellen als "al gekoppeld" → leesbare 422); tweede poging **201**, probe 29/29 groen (lock dates 31-12-2025 informatief), eerste sync 355 grootboek · 17 btw · 4 crediteuren · 4 projecten |
+| 3 | `GET /administraties/{id}/odoo` | stand mét `stamgegevens {355,17,4,4}`, `probe_rapport`, `laatste_sync_op` |
+| 4 | `POST /administraties/{id}/crediteuren` (controlescherm-pad "+ Nieuwe crediteur") | 201 → `res.partner` 160, groepsgedeeld (`company_id False`), vendor-UUID `2bd67f6d-…` |
+| 5 | Materiaal: leverancier + categorie + 2 producten (`PUT /materiaal/{id}/…`) → `POST …/odoo/producten-brug` | `uren_meerwerk` moest AAN (materiaal-opt-in, 409 anders); brug: gevonden 0, **aangemaakt 2** (`product.product` 9261 `[AKN-9C4F8801] Huur dixi per week`, 9262 `[AKN-B94F8304] Materialen ventilatie`, `consu`, company 1) |
+| 6 | `POST /administraties/{id}/documenten` (PDF-upload) | 201 in 22 s, AI-extractie 9 regels mét `hoeveelheid`/`stuksprijs`/`eenheid` (bv. 7 × 42,35 = 296,45; 25,5 uur × 60,50), kop: btw 0,00 + "BTW verlegd", btw-nummer geverifieerd, IBAN gelezen |
+| 7 | `PUT …/boekvoorstel` (vendor TEST, referentie TEST-…, 9 regels mét `21% R` (verlegd) + project op élke regel, `regels_samenvoegen false`) | 200; harde checks 8/8 groen (duplicaatcheck via de Odoo-leesfacade, IBAN-baseline vastgelegd) |
+| 8 | `POST …/boeken` — **eerste poging** | **502** "Je kunt geen boeking maken met een gearchiveerde analytische rekening: TEST-ODOO-STAP0 Project" — het gekozen project was het in STAP-0 gearchiveerde analytic account, dat de sync tóch aanbood (`active in (True, False)`). App: status `boeken_mislukt` mét de leesbare Odoo-fout; het Odoo-concept (draft, marker in `invoice_origin`, `date = invoice_date = 2026-06-05`) bleef staan. **Drie fixes:** (a) sync leest alleen `active = True` analytic accounts (her-sync: `projects verdwenen 1`); (b) een hergebruikt concept krijgt kop + regels VERVERST uit het actuele voorstel (`[5,0,0]` + verse regels) vóór het posten — anders zou het oude regels posten; (c) de leesfacade meldt een eigen concept (marker) onder het deterministische eigen id, zodat de duplicaatcheck de retry niet blokkeert (dat deed 'm wél: "Duplicaatcheck ✗" ná de eerste poging) |
+| 9 | `PUT …/boekvoorstel` (project "Test Thomas") + `POST …/boeken` — **tweede poging** | **200 → `BILL/2026/06/0001`**, `state posted`, `company_id 1`, partner 160, journal 9 Purchases, `ref TEST-ODOO-KETEN-20260066`, `invoice_origin AKN:<doc>:0:boeking`, **`date 2026-06-05 = invoice_date`** (niet Odoo's maandeinde), due 2026-06-19, `amount_untaxed = amount_total = 10323.49`, tax 0,00 (verlegd: tax_ids [20] op élke regel); 9 regels: **`Huur dixi per week` = product 9261, qty 7 × 42,35 = 296,45; `Materialen ventilatie` = product 9262, qty 1 × 583,56**; overige 1 × netto zonder product; `analytic_distribution {758: 100}` op élke regel → 9 `account.analytic.line`-rijen mét `product_id`, `unit_amount` (7,0), `amount` −netto, `general_account_id`; bijlage `20260066.pdf` (159.990 B) ná posten; tijdlijn-detail `odoo_hergebruikt + odoo_concept_ververst`, `regels_met_product 2` |
+| 10 | App-weergave | lijst + detail: **"Geboekt in Odoo · BILL/2026/06/0001 · Universal Steigerbouw B.V."** + vindplaats-hint met company; `tegenboek-toets`: storno geblokkeerd mét Odoo-reden ("corrigeren = creditnota (reversal)"), tegenboeken aangeboden, betaalstatus open 10.323,49 |
+| 11 | `POST …/tegenboeken` (volledig, reden verplicht) | **200 → `RBILL/2026/09/0003`** `in_refund posted`, `reversed_entry_id = 3084 BILL/2026/06/0001`, `ref TB TEST-ODOO-KETEN-20260066`, marker `…:0:tegenboeking`, `date 2026-09-04` (bewust vandaag), totaal 10.323,49, `residual 0.0 paid`; origineel: `payment_state reversed`, `amount_residual 0.0`, `reversal_move_ids [3087]`; bijlage op de creditnota. App ná fix (d): **"Reversal · RBILL/2026/09/0003 ↔ BILL/2026/06/0001"** — vóór de fix viel de regel terug op de RLZ-vorm omdat de tegenboek-gebeurtenis (geboekt→geboekt) als jongste GEBOEKT-overgang gold |
+| 12 | Opruimen (rechtstreeks, `write active=False`) | partner 160 en templates 9447/9448 gearchiveerd — nooit `unlink`; het TEST-paar BILL/RBILL blijft staan (norm) |
+| 13 | `POST /administraties/{rlz-admin}/odoo/overstap` (ingang B, validatie) | 422 "Company 1 is al gekoppeld aan een andere administratie" — niets opgeslagen; de volledige overstap-cyclus (probe + sync) is niet live gedraaid (company 1 was al bezet) |
+
+**Conclusie:** de adapter-keten intake → extractie → checks → boeken → bijlage → reversal is live bewezen op company 1,
+inclusief BookDate = factuurdatum, cent-exacte totalen, product-regels via de catalogus-brug en `analytic_distribution`
+op regelniveau. De vier gevonden gebreken (sentinel-500, gearchiveerde analytic accounts in de sync, stale concept bij
+hergebruik, eigen concept in de duplicaatcheck, jongste-overgang bij tegenboeking) zijn in dezelfde run gefixt en getest.

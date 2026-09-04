@@ -1440,8 +1440,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   domein vertakt nooit), `app/odoo/` (koppeling + probe + sleutelrotatie, stamgegevenssync naar dezelfde caches,
   materiaalbrug product.product, inkoop-adapter boeken = create + lock-date-poort + btw-cent-override ± € 0,02 +
   post-write-company-verificatie + bijlage ná posten, tegenboeken = reversal mét kruisverwijzing, Odoo als leesbron
-  voorraad); Odoo-administratie = sentinel in `rlz_admin_id` → RLZ-resolutie fail-loud; UI (blok E) en de eerste live
-  adapter-cyclus op company 1 zijn open klikpunten.**
+  voorraad); Odoo-administratie = sentinel in `rlz_admin_id` → RLZ-resolutie fail-loud. **Blok E (kantoor-UI) GEBOUWD 03/04-09 (mockup `odoo-koppeling-ui.html` = norm: backend-blok op tab Algemeen mét paarse platformchip, één wizard met twee ingangen — backend-keuze als stap 1 van "+ Administratie toevoegen" resp. "Odoo koppelen…" = overstap mét verplichte overgangsdatum (migratie 0104, adapter-poort) óf alleen-lezen leesbron — en "Geboekt in Odoo · nr · company" mét reversal-kruisverwijzing) en de keten LIVE BEWEZEN 04-09 op company 1 (odoo-verkenning §7: BILL/2026/06/0001 ↔ RBILL/2026/09/0003; vijf adapter-gebreken in de run gefixt). BESLISSINGEN "ODOO-ADAPTER BLOK E + LIVE KETEN-CYCLUS 04-09".**
 - `../Platform/` — **gedeelde platform-map (v1.6): koppelcontract-master (`contracten/`),
   besluitenregister (`besluiten/INDEX.md` — lees bij elke sessiestart!), registers (prefixen,
   schema-versies, entiteiten, conventies)**
