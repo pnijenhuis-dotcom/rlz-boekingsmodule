@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.aikosten import service as aikosten_service
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
-from app.beheer import schemas, service
+from app.beheer import btw_default, schemas, service
 
 # Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
 # kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
@@ -835,3 +835,40 @@ def kill_switch_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
     return schemas.BoekenIngeschakeldDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
+    "/administraties/{administratie_id}/btw-default",
+    response_model=btw_default.BtwDefaultDto,
+)
+def btw_default_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> btw_default.BtwDefaultDto:
+    """Btw-default per administratie (blok E 04-09, migratie 0108): huidige stand + keuzelijst uit de
+    gesyncte btw-codes — Beheerder-only (tab "Boeken & AI" op de administratie-detailpagina)."""
+    try:
+        return btw_default.naar_dto(btw_default.haal_btw_default_op(administratie_id=administratie_id))
+    except btw_default.BtwDefaultFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put(
+    "/administraties/{administratie_id}/btw-default",
+    response_model=btw_default.BtwDefaultDto,
+)
+def btw_default_zetten(
+    administratie_id: uuid.UUID,
+    invoer: btw_default.BtwDefaultInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> btw_default.BtwDefaultDto:
+    """Standaard-btw-voorstel zetten (null = uit) — vult in de prefill alleen regels waar factuur en
+    leverancier-geheugen niets opleveren; onbekend tarief = 422; audit oud→nieuw mét tariefnaam."""
+    try:
+        stand = btw_default.zet_btw_default(
+            actor_id=actor.id, administratie_id=administratie_id, taxrate_id=invoer.taxrate_id
+        )
+    except btw_default.BtwDefaultFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except btw_default.BtwDefaultOnbekendTarief as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return btw_default.naar_dto(stand)

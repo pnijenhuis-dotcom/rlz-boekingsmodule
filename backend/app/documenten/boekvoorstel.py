@@ -79,8 +79,15 @@ class BoekvoorstelRegelData:
     # Herkomst van de btw-code (feedbackronde 26-08 punt 3): "factuur" = deterministisch uit
     # netto/btw van de gelezen regel afgeleid (prefill, nog niet opgeslagen). None = leeg of van
     # de mens/het geheugen. Alleen gevuld op prefill-regels — ná opslaan is de keuze van de
-    # controleur (zelfde regel als de AI-zekerheidschips).
+    # controleur (zelfde regel als de AI-zekerheidschips). Sinds blok E 04-09 óók "standaard" = de
+    # btw-default van de administratie (vult alleen wat factuur én leverancier-geheugen leeg lieten).
     btw_bron: str | None = None
+    # Herkomst van het grootboek-voorstel per regel (blok D 04-09, app/geheugen/regel_gb.py):
+    # "geheugen" (groen, app-bevestigd) | "geheugen_seed" / "geheugen_conflict" (oranje) | "ai"
+    # (oranje, AI-classificatie tegen de historische grootboeken van deze leverancier). None = leeg of
+    # van de mens. Alleen gevuld op prefill-regels; `gb_voorstel_detail` = tooltip-tekst.
+    gb_bron: str | None = None
+    gb_voorstel_detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -452,7 +459,21 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             vendor_id = _raad_vendor_id(
                 session, administratie_id=administratie_id, leverancier_naam=veldvoorstel.get("leverancier_naam")
             )
-        return BoekvoorstelData(
+        # Blok D + E (medewerker-wensen 04-09): regel-GB-voorstel (regel-geheugen → persistente
+        # AI-classificatie → leeg) en btw-default van de administratie (factuur → leverancier-geheugen →
+        # default → leeg) — uitsluitend op dit prefill-pad; een opgeslagen keuze van de mens wint altijd.
+        from app.documenten import regel_prefill  # lokaal: regel_prefill leest de dataclass hierboven
+
+        samenvoeg = samenvoeg_velden(vendor_id)
+        prefill_regels, samenvoeg["samengevoegde_regel"] = regel_prefill.verrijk_prefill(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            vendor_id=vendor_id,
+            regels=_regels_prefill(veldvoorstel),
+            samengevoegde_regel=samenvoeg["samengevoegde_regel"],
+        )
+        return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
             document_id=document_id,
             vendor_id=vendor_id,
             referentie=veldvoorstel.get("factuurnummer"),
@@ -466,9 +487,9 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             totaalbedrag=_als_decimal(veldvoorstel.get("totaal_incl")),
             rlz_boekstuknummer=None,
             opgeslagen=False,
-            regels=_regels_prefill(veldvoorstel),
+            regels=prefill_regels,
             btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
-            **samenvoeg_velden(vendor_id),
+            **samenvoeg,
             **afdeling_velden(vendor_id, None),
         ))
 

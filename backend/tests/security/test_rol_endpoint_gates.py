@@ -154,6 +154,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/administraties/{aid}/odoo/sync"),  # stamgegevens opnieuw syncen (beheerder-only)
         ("POST", "/instellingen/odoo/verbinding-testen"),  # Odoo-wizard stap a (beheerder-only)
         ("POST", "/instellingen/odoo/koppelen"),  # Odoo-wizard stap b+c+d (beheerder-only)
+        ("GET", f"/administraties/{aid}/btw-default"),  # btw-default per administratie (blok E 04-09, beheerder-only)
+        ("PUT", f"/administraties/{aid}/btw-default"),  # btw-default zetten (blok E 04-09, beheerder-only)
     ]
 
 

@@ -623,8 +623,14 @@ export interface BoekvoorstelRegelDto {
   btw_bedrag: string | null
   omschrijving: string | null
   /** Herkomst van de btw-code (feedbackronde 26-08 punt 3): 'factuur' = door code afgeleid uit
-   * netto/btw van de gelezen regel (prefill); null = leeg, of van de mens/het geheugen. */
+   * netto/btw van de gelezen regel (prefill); 'standaard' = btw-default van de administratie (blok E
+   * 04-09, chip "standaard administratie"); null = leeg, of van de mens/het geheugen. */
   btw_bron?: string | null
+  /** Herkomst van het grootboek-voorstel per regel (blok D 04-09, regel-geheugen): 'geheugen' (groen,
+   * app-bevestigd) | 'geheugen_seed' / 'geheugen_conflict' (oranje) | 'ai' (oranje, bevestigen);
+   * null = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Alleen op prefill-regels. */
+  gb_bron?: string | null
+  gb_voorstel_detail?: string | null
 }
 
 export interface BoekvoorstelDto {

@@ -49,9 +49,11 @@ def live_schemas() -> dict[str, dict[str, Any]]:
     imports: deze module moet importeerbaar blijven zonder de hele extractieketen te laden."""
     from app.bewaking.service import AI_PROBE_SCHEMA
     from app.extractie import contract, rapport, service, splitsing
+    from app.geheugen import regel_gb
     from app.voorraad import normalisatie
 
     return {
+        "geheugen CLASSIFICATIE_SCHEMA": regel_gb.CLASSIFICATIE_SCHEMA,
         "inkoop FACTUUR_SCHEMA": service.FACTUUR_SCHEMA,
         "inkoop KOP_SCHEMA": service.KOP_SCHEMA,
         "inkoop REGELS_SCHEMA": service.REGELS_SCHEMA,

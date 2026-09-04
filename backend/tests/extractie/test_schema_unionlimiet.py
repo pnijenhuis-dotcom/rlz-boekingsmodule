@@ -43,6 +43,7 @@ _GEDEKTE_MODULES = {
     "app/extractie/client.py",
     "app/voorraad/normalisatie.py",
     "app/bewaking/service.py",
+    "app/geheugen/regel_gb.py",  # regel-GB-classificatie (blok D 04-09), CLASSIFICATIE_SCHEMA in live_schemas
 }
 
 

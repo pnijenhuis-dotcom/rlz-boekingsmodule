@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import ForeignKey, Index, func
+from sqlalchemy import ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -85,4 +85,39 @@ class BoekingObservatie(Base):
     bron: Mapped[str]
     bron_datum: Mapped[date]
     boekstuk_ref: Mapped[str | None] = mapped_column(default=None)
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class RegelGbClassificatie(Base):
+    """Persistente AI-classificatie-uitkomst per (document, regel) — blok D medewerker-wensen 04-09
+    (migratie 0108, mockup `projectverdeling-en-regelvoorstellen.html` blok 2, notitie ⑦; Derks-casus).
+
+    Het deterministische regel-geheugen (app/geheugen/regel_gb.py) leest de bestaande
+    `boeking_observatie` en heeft géén eigen tabel nodig. De AI-classificatie (alleen voor regels
+    zónder geheugen-treffer, achter de AI-gates + kostenmeter) moet daarentegen persistent zijn, zodat
+    het controlescherm bij herladen nooit een tweede call doet. `ledger_id` NULL = het model koos
+    "geen"; `regel_sleutel` = de genormaliseerde omschrijving waarop de uitkomst hoort — een her-extractie
+    mét andere omschrijving maakt de rij ongeldig (opnieuw classificeren). Eén rij per
+    (document, regel-volgnummer), upsert; nooit gewist (GRANT zonder DELETE). De uitkomst is een
+    VOORSTEL (oranje chip "AI-voorstel — bevestig"): de mens bevestigt of corrigeert, de leerlus
+    (leg_boeking_vast) maakt die keuze pas een app-observatie — een AI-keuze telt nooit als
+    app-bevestigd geheugen (autoboek-poorten lezen uitsluitend de engine)."""
+
+    __tablename__ = "regel_gb_classificatie"
+    __table_args__ = (
+        UniqueConstraint("document_id", "regel_volgnummer", name="uq_regel_gb_classificatie_document_regel"),
+        Index("ix_regel_gb_classificatie_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    regel_volgnummer: Mapped[int]
+    regel_sleutel: Mapped[str | None] = mapped_column(default=None)
+    ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    kandidaten_n: Mapped[int]
+    model: Mapped[str]
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())

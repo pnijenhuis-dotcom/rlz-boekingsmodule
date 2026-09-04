@@ -466,7 +466,13 @@ class BoekvoorstelRegelDto(BaseModel):
     omschrijving: str | None = None
     # Herkomst btw-code (punt 3, 26-08): "factuur" = deterministisch uit netto/btw afgeleid
     # (prefill); None = leeg/mens/geheugen. Alleen informatief — de server negeert 'm bij opslaan.
+    # Blok E 04-09: "standaard" = btw-default van de administratie (chip "standaard administratie").
     btw_bron: str | None = None
+    # Blok D 04-09 (app/geheugen/regel_gb.py): herkomst van het grootboek-voorstel per regel —
+    # "geheugen" (groen) | "geheugen_seed" / "geheugen_conflict" (oranje) | "ai" (oranje, bevestigen);
+    # None = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Informatief — de server negeert ze bij opslaan.
+    gb_bron: str | None = None
+    gb_voorstel_detail: str | None = None
 
 
 class BoekvoorstelResponse(BaseModel):

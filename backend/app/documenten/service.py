@@ -784,6 +784,15 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
 
         duplicaatsignaal.bereken_duplicaatsignaal_stil(administratie_id=administratie_id, document_id=document_id)
 
+        # Regel-GB-voorstel blok D (medewerker-wensen 04-09): AI-classificatie van regels zónder
+        # regel-geheugen-treffer tegen de historische grootboeken van deze leverancier — éénmaal ná de
+        # extractie, persistent per document (herladen doet nooit een nieuwe call), achter de AI-gates +
+        # kostenmeter; stil (gelogd), nooit blokkerend. Vóór de autoboek-poging is niet nodig: de
+        # autoboek-poorten lezen uitsluitend de engine, een AI-voorstel telt daar nooit mee.
+        from app.geheugen import regel_gb  # lokaal: houdt de importgraaf klein
+
+        regel_gb.classificeer_document_stil(administratie_id=administratie_id, document_id=document_id)
+
         # Factuurmatch (fase 2, akkoord Peter 2026-08-21): éérst de match-run — vóór de
         # autoboek-poging, zodat het autoboek-slot (fase 4) en de weigering hieronder de
         # actuele matchstand zien, en de werkvoorraad-teller/chip direct ná extractie klopt.

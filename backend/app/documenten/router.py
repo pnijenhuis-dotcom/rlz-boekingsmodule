@@ -193,6 +193,8 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
         btw_bedrag=r.btw_bedrag,
         omschrijving=r.omschrijving,
         btw_bron=r.btw_bron,
+        gb_bron=r.gb_bron,
+        gb_voorstel_detail=r.gb_voorstel_detail,
     )
 
 

@@ -24,6 +24,7 @@ import {
   omschrijvingSleutel,
   type HandmatigeVelden,
 } from './geheugenVoorstel'
+import { bepaalBtwStandaardChip, bepaalGbChip, btwBronUitDto, gbBronUitDto, type BtwBron, type GbBron } from './regelVoorstelChips'
 import { Checkbox, Select } from '../ui/basis'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { MatchAfwijkingPopup } from '../ui/MatchAfwijkingPopup'
@@ -85,8 +86,15 @@ interface RegelState {
   btwHandmatig: boolean
   /** Herkomst van de vooringevulde btw-code (punt 3, 26-08): 'factuur' = door code afgeleid uit
    * netto/btw van de gelezen regel. Toont de chip "uit factuur (21%)" zolang de controleur het
-   * veld niet zelf aanraakt — daarna is de keuze van de mens (zelfde regel als de AI-chip). */
-  btwBron: 'factuur' | null
+   * veld niet zelf aanraakt — daarna is de keuze van de mens (zelfde regel als de AI-chip).
+   * 'standaard' (blok E 04-09) = btw-default van de administratie, chip "standaard administratie". */
+  btwBron: BtwBron | null
+  /** Herkomst van het vooringevulde grootboek per regel (blok D 04-09, mockup blok 2): regel-geheugen
+   * (groen), historie/conflict (oranje) of AI-classificatie (oranje "bevestig"). Zelfde chip-regel als
+   * btwBron: weg zodra de mens het veld aanraakt; het kop-niveau-geheugen (GeheugenChipBlok) zwijgt
+   * op het grootboek zolang deze regel-chip staat — de regel-treffer is specifieker. */
+  gbBron: GbBron | null
+  gbDetail: string | null
   omschrijving: string
   /** Laagste AI-zekerheidsscore van de vooringevulde regelvelden (alleen bij een vers, nog niet
    * opgeslagen AI-voorstel). Elke handmatige wijziging aan de regel wist de score — dan beschrijft
@@ -117,6 +125,8 @@ function nieuweRegel(): RegelState {
     btw: '',
     btwHandmatig: false,
     btwBron: null,
+    gbBron: null,
+    gbDetail: null,
     omschrijving: '',
     aiZekerheid: null,
     geheugen: null,
@@ -134,7 +144,9 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     netto: r.netto_bedrag ?? '',
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
-    btwBron: r.btw_bron === 'factuur' && r.taxrate_id ? 'factuur' : null,
+    btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
+    gbBron: r.ledger_id ? gbBronUitDto(r.gb_bron) : null,
+    gbDetail: r.gb_voorstel_detail ?? null,
     omschrijving: r.omschrijving ?? '',
     aiZekerheid,
     geheugen: null,
@@ -167,7 +179,11 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     netto: r.netto_bedrag ?? '',
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
-    btwBron: r.btw_bron === 'factuur' && r.taxrate_id ? 'factuur' : null,
+    btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
+    // Client-side splitsing uit het AI-veldvoorstel kent geen regel-GB-voorstel (dat reist mee op de
+    // server-prefill van dto.regels); de kop-niveau-engine vult 'm dan zoals voorheen.
+    gbBron: null,
+    gbDetail: null,
     omschrijving: r.omschrijving ?? '',
     aiZekerheid: ai.regel_zekerheid[i] ?? null,
     geheugen: null,
@@ -1454,7 +1470,19 @@ export function BoekvoorstelPanel({
                         vereist
                         toonLabel={false}
                       />
-                      {regel.geheugen && (
+                      {(() => {
+                        // Blok D 04-09 (mockup blok 2): regel-niveau grootboek-voorstel — groen "uit geheugen",
+                        // oranje historie/conflict/"AI-voorstel — bevestig". Weg zodra de mens het veld aanraakt.
+                        const gbChip = bepaalGbChip(regel.gbBron, regel.gbDetail, regel.ledgerId, regel.handmatigeVelden.ledgerId)
+                        return gbChip ? (
+                          <div style={{ marginTop: 4 }}>
+                            <span className={`chip ${gbChip.klasse}`} title={gbChip.titel} data-testid="regel-gb-chip">
+                              {gbChip.tekst}
+                            </span>
+                          </div>
+                        ) : null
+                      })()}
+                      {regel.geheugen && !bepaalGbChip(regel.gbBron, regel.gbDetail, regel.ledgerId, regel.handmatigeVelden.ledgerId) && (
                         <GeheugenChipBlok
                           veld={regel.geheugen.gb}
                           huidig={regel.ledgerId}
@@ -1486,6 +1514,18 @@ export function BoekvoorstelPanel({
                         vereist
                         toonLabel={false}
                       />
+                      {(() => {
+                        // Blok E 04-09 (mockup blok 3): btw-default van de administratie — neutrale chip
+                        // "standaard administratie", alleen zolang de mens het veld niet aanraakt.
+                        const btwChip = bepaalBtwStandaardChip(regel.btwBron, regel.taxrateId, regel.handmatigeVelden.taxrateId)
+                        return btwChip ? (
+                          <div style={{ marginTop: 4 }}>
+                            <span className={`chip ${btwChip.klasse}`} title={btwChip.titel} data-testid="regel-btw-standaard-chip">
+                              {btwChip.tekst}
+                            </span>
+                          </div>
+                        ) : null
+                      })()}
                       {regel.btwBron === 'factuur' && regel.taxrateId && !regel.handmatigeVelden.taxrateId && (
                         <div style={{ marginTop: 4 }}>
                           <span
