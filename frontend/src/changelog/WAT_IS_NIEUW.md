@@ -6,6 +6,11 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Open facturen zichtbaar op de offerte en projecten aanmaken vanuit de planning
+
+- **Onder de verbruiksbalk van een goedgekeurde offerte zie je nu ook wat er nog aankomt.** Staan er facturen op die offerte die al wel herkend maar nog niet geboekt zijn, dan staat er één regel onder de balk: "2 open facturen op deze offerte (€ 8.300) — nog niet geboekt, telt niet mee". Zo zie je vooraf of de offerte straks vol raakt. De balk zelf blijft wat hij was: alleen geboekte facturen tellen als verbruik. Je vindt de regel op het offertescherm en in Inzicht › Verplichtingen.
+- **"+ Project aanmaken" in de planning mag nu iedereen op kantoor, ook met de rol Boekhouding.** Dezelfde regel als bij het aanmaken vanuit de projectkeuze op het controlescherm. Projectgegevens wijzigen blijft voorbehouden aan Beheerder en Boekhouding+Projecten.
+
 ## 2026-09-04 — Offertes laten goedkeuren en elke factuur automatisch tegen de offerte gelegd
 
 - **Offertes, prijsopgaven en opdrachtbevestigingen laat je nu goedkeuren, net als facturen.** Zo'n document komt binnen op een eigen tabblad in de werkvoorraad: je controleert leverancier, project, bedrag excl. btw en de geldigheid — met dezelfde chips die laten zien wat er automatisch is gelezen — en stuurt het daarna met één knop naar de accordeur van de klant. Er wordt niets geboekt: wat wordt vastgelegd is wíé op welke datum welk bedrag heeft goedgekeurd. Twijfelt de verwerking of iets een factuur of een offerte is, dan kies je dat zelf bij het toewijzen — het wordt nooit stil als factuur behandeld.
