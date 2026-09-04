@@ -35,6 +35,7 @@ from app.registersync.router import router as registersync_router
 from app.static_frontend import activeer_frontend_serving
 from app.sync.router import router as sync_router
 from app.terugkerend.router import router as terugkerend_router
+from app.projectverdeling.router import router as projectverdeling_router
 from app.autoboek_kandidaten.router import router as autoboek_kandidaten_router
 from app.uren.router import router as uren_router
 from app.materiaal.router import router as materiaal_router
@@ -180,6 +181,7 @@ app.include_router(omzet_router)
 app.include_router(verkoop_router)
 app.include_router(voorraad_router)
 app.include_router(terugkerend_router)
+app.include_router(projectverdeling_router)
 app.include_router(autoboek_kandidaten_router)
 app.include_router(crediteuren_router)
 app.include_router(waarborg_router)

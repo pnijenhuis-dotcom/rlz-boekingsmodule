@@ -134,6 +134,14 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", "/voorraad/verschillen"),  # kantoorbrede voorraad-landing (blok B3 03-09)
         ("GET", "/voorraad/verschillen/stand"),  # voorraad-tellers (blok B3 03-09)
         ("GET", "/terugkerend/signalen"),  # kantoorbrede terugkerend-lijst (blok B1 03-09)
+        ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),  # projectverdeling (blok C 04-09)
+        ("PUT", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),
+        ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling/herverdelen"),
+        ("GET", f"/administraties/{aid}/leveranciers-projectverdeling"),  # beheerder-only
+        ("PUT", f"/administraties/{aid}/leveranciers/{DUMMY_ID}/projectverdeling-instelling"),  # beheerder-only
+        ("GET", f"/administraties/{aid}/projectverdeling-instellingen"),  # beheerder-only
+        ("PUT", f"/administraties/{aid}/projectverdeling-instellingen"),  # beheerder-only
+        ("GET", "/projectverdeling/hercontrole-signalen"),  # kantoorbrede hercontrole-lijst (blok C 04-09)
         ("POST", "/terugkerend/herbereken"),  # kantoorbrede herbereken-run (blok B1 03-09)
         ("GET", f"/terugkerend/{aid}/{DUMMY_ID}/conceptmail"),  # navraag-conceptmail (blok B1 03-09)
         ("GET", "/crediteuren/dubbelen"),  # crediteuren-dubbelen v2 kantoorbreed (blok A 03-09, vereis_kantoorrol)
@@ -223,6 +231,10 @@ class TestKantoorBlijftWerken:
                 pad.startswith("/auth/gebruikers")
                 or pad.startswith("/uren/kantoor")
                 or pad.endswith("/is-vastgoed")
+                or pad.endswith("/btw-default")
+                or pad.endswith("/leveranciers-projectverdeling")
+                or pad.endswith("/projectverdeling-instelling")
+                or pad.endswith("/projectverdeling-instellingen")
                 or "/odoo" in pad
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling) resp. module-recht

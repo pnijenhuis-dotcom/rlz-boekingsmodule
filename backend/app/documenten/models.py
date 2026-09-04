@@ -274,6 +274,9 @@ class LeverancierVoorkeur(Base):
     # wijzigen, elke wijziging in audit_event. De harde checks + failsafes blijven bij het
     # automatisch boeken onverkort blokkerend (app/documenten/autoboeken.py).
     autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Projectverdeling pro rato omzet (migratie 0107, blok C 04-09, ④): AAN = élk document van deze crediteur
+    # krijgt automatisch een verdeelvoorstel mét alleen de restant-regel (app/projectverdeling/). Beheerder-only.
+    projectverdeling_pro_rato: Mapped[bool] = mapped_column(default=False, server_default="false")
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 

@@ -38,6 +38,7 @@ from app.documenten.models import (
 )
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.documenten.service import DocumentNietGevonden
+from app.projectverdeling.data import ProjectverdelingData
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
@@ -120,6 +121,30 @@ class BoekvoorstelData:
     afdeling_id: uuid.UUID | None = None
     afdeling_prefill_id: uuid.UUID | None = None
     afdeling_prefill_leverancier: str | None = None
+    # Projectverdeling pro rato omzet (blok C 04-09, migratie 0107): vaste regels + restant pro rato over de
+    # projecten mét omzet; None = niet van toepassing. Voorstel = live herrekend, geboekt = bevroren snapshot.
+    # De adapters (RLZ: regels splitsen; Odoo: analytic_distribution) lezen hieruit — app/projectverdeling/.
+    projectverdeling: ProjectverdelingData | None = None
+
+
+def _met_projectverdeling(
+    session: Session, administratie_id: uuid.UUID, project_verplicht: bool, data: BoekvoorstelData
+) -> BoekvoorstelData:
+    """Koppelpunt blok C: zet `projectverdeling` op het (frozen) voorstel — lazy import, geen kring."""
+    from app.projectverdeling import service as projectverdeling_service
+
+    return projectverdeling_service.verrijk_boekvoorstel(
+        session, administratie_id=administratie_id, data=data, project_verplicht=project_verplicht
+    )
+
+
+def _project_verplicht_per_regel(project_verplicht: bool, voorstel: BoekvoorstelData) -> bool:
+    """Draagt het document een ACTIEVE projectverdeling, dan toetst "Verplichte velden" het project niet meer per
+    regel — de aanvullende check "Projectverdeling" (blokkeert tot de verdeling exact sluit) is dan de poort.
+    Nooit een verzwakking: zonder verdeling geldt de projectplicht per regel onverkort."""
+    if voorstel.projectverdeling is not None and voorstel.projectverdeling.actief:
+        return False
+    return project_verplicht
 
 
 def _als_decimal(waarde: str | None) -> Decimal | None:
@@ -371,7 +396,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 .where(BoekvoorstelRegel.document_id == document_id)
                 .order_by(BoekvoorstelRegel.volgnummer)
             ).all()
-            return BoekvoorstelData(
+            return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
                 document_id=document_id,
                 vendor_id=bestaand.vendor_id,
                 referentie=bestaand.referentie,
@@ -400,12 +425,12 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
                 **samenvoeg_velden(bestaand.vendor_id),
                 **afdeling_velden(bestaand.vendor_id, bestaand.afdeling_id),
-            )
+            ))
 
         # Geen opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of
         # het AI-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), indien aanwezig.
         if veldvoorstel is None:
-            return BoekvoorstelData(
+            return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
                 document_id=document_id,
                 vendor_id=None,
                 referentie=None,
@@ -416,7 +441,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 regels=[],
                 **samenvoeg_velden(None),
                 **afdeling_velden(None, None),
-            )
+            ))
 
         # AI-voorstellen dragen een vendor-suggestie uit de controlelaag (exacte of fuzzy match
         # tegen de vendor-cache, alleen bij een uniek resultaat); anders de bestaande exacte
@@ -445,7 +470,7 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
             btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
             **samenvoeg_velden(vendor_id),
             **afdeling_velden(vendor_id, None),
-        )
+        ))
 
 
 def _gebeurtenissen_van(session: Session, document_id: uuid.UUID) -> list[DocumentGebeurtenis]:
@@ -742,10 +767,16 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 factuurdatum=voorstel.factuurdatum,
                 totaalbedrag=voorstel.totaalbedrag,
                 regels=regels,
-                project_verplicht=project_verplicht,
+                project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
             ),
             _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
-            check_regeltelling(totaalbedrag=voorstel.totaalbedrag, regels=regels),
+            _projectverdeling_check(voorstel),
+            check_regeltelling(
+                totaalbedrag=voorstel.totaalbedrag,
+                regels=regels,
+                totaal_excl=gelezen_totalen[0],
+                factuur_btw=gelezen_totalen[1],
+            ),
             check_vervaldatum(factuurdatum=voorstel.factuurdatum, vervaldatum=voorstel.vervaldatum),
             check_buitenland_tarief_crediteurkaart(
                 regels=regels,
@@ -756,6 +787,14 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
             CheckResultaat("Duplicaatcheck", False, f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"),
         )
     )
+
+
+def _projectverdeling_check(voorstel: BoekvoorstelData) -> CheckResultaat:
+    """Blok C 04-09: lokale check op de projectverdeling (app/projectverdeling/service.py::check) — géén
+    verdeling = niet van toepassing (ok); actieve verdeling die niet sluit = blokkerend mét de blokkade-zin."""
+    from app.projectverdeling import service as projectverdeling_service
+
+    return projectverdeling_service.check(voorstel.projectverdeling)
 
 
 def _afdeling_check(*, administratie_id: uuid.UUID, voorstel: BoekvoorstelData) -> CheckResultaat:
@@ -865,7 +904,7 @@ def voer_checks_uit(
             regels=_naar_check_regels(voorstel, _taxrate_percentages(administratie_id)),
             eigen_rlz_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),
             uitgezonderde_rlz_document_ids=keten,
-            project_verplicht=project_verplicht,
+            project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
             factuur_iban=factuur_iban,
             vertrouwde_ibans=vertrouwde_ibans,
             iban_baseline_vastgelegd=baseline_vastgelegd,
@@ -880,6 +919,9 @@ def voer_checks_uit(
         # storings-tak), vóór de RLZ-afhankelijke checks.
         resultaten = list(rapport.resultaten)
         resultaten.insert(1, _afdeling_check(administratie_id=administratie_id, voorstel=voorstel))
+        # Blok C 04-09: projectverdeling-check (lokaal, geen RLZ) direct ná de afdeling — zelfde plek als in
+        # de storings-tak; blokkeert zolang een actieve verdeling niet exact op 100 % sluit.
+        resultaten.insert(2, _projectverdeling_check(voorstel))
         return CheckRapport(tuple(resultaten))
     finally:
         if eigen_client and eigen_port is not None:

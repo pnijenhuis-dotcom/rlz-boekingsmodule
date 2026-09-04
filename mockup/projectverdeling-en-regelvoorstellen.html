@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Projectverdeling pro rato + regel-GB-voorstellen + btw-default (medewerker-wensen 04-09)</title>
+<!-- ============================================================
+     MEDEWERKER-WENSEN 04-09, besluiten Peter zelfde dag:
+     (3) kosten zonder projectnummer (Floorbeheer/Derks) pro rato
+         op OMZET-basis verdelen — mengvorm (deel vast, restant
+         pro rato), periode = vorige afgesloten maand, projecten
+         zonder omzet tellen NIET mee, OVH uitgesloten,
+         maandelijkse hercontrole met herverdeel-actie;
+     (4) regel-niveau GB-voorstel uit gelezen omschrijving
+         (deterministisch geheugen > AI-classificatie), leert van
+         correcties;
+     (5) btw-default per administratie ("verlegd hoog") als scan
+         én geheugen niets opleveren.
+     Alles in de donkere controlescherm-v2-stijl; harde checks
+     blijven onverkort de poort.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101917; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513;
+    --ok:#5ec792; --warn:#e2b25e; --warn-bg:rgba(226,178,94,.12); --rood:#f08579;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:980px}
+  .blok{background:var(--panel);border:1px solid var(--border);border-radius:12px;max-width:880px;padding:16px 18px;margin-bottom:26px}
+  .blok h2{font-size:12px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:800;margin-bottom:10px}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--teal) 14%,transparent);color:var(--teal)}
+  .chip.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+  .chip.warn{background:var(--warn-bg);color:var(--warn)}
+  .chip.grijs{background:none;border:1px solid var(--border);color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700;text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+  .veld{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12.5px;color:var(--text)}
+  .veld.klein{width:84px;text-align:right}
+  .euro{color:var(--muted);white-space:nowrap;text-align:right}
+  .restant{display:flex;align-items:center;gap:12px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:12px 0}
+  .balk{flex:1;height:8px;border-radius:4px;background:var(--border);overflow:hidden}
+  .balk>span{display:block;height:100%;width:100%;background:var(--ok);border-radius:4px}
+  .btn{display:inline-block;padding:7px 13px;border-radius:9px;background:var(--teal);color:var(--teal-donker);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .btn.sec{background:none;border:1px solid var(--border);color:var(--text);font-weight:600}
+  .hint{font-size:11.5px;color:var(--faint);margin-top:6px}
+  .signaal{display:flex;align-items:center;gap:10px;background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:10px;padding:10px 14px;font-size:12.5px;margin-top:10px}
+  .noot{max-width:980px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75}
+  .noot b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>Projectverdeling pro rato omzet + regel-GB-voorstellen + btw-default</h1>
+<p class="sub">Drie controlescherm-uitbreidingen uit de medewerker-wensen 04-09. Alles voorstellen, mens bevestigt;
+harde checks blijven de poort. Donkere controlescherm-v2-stijl.</p>
+
+<!-- 1. Projectverdeling -->
+<div class="blok">
+  <h2>1 · Blok "Projectverdeling" (Floorbeheer-casus: € 2.000, deel vast + restant pro rato)</h2>
+  <table>
+    <tr><th style="width:38%">Project</th><th style="width:100px">Wijze</th><th style="width:90px;text-align:right">Bedrag excl.</th><th></th></tr>
+    <tr>
+      <td><div class="veld">26127 Tilburg (Heijmans)</div></td>
+      <td><span class="chip grijs">vast</span></td>
+      <td class="euro"><input class="veld klein" value="600,00"></td>
+      <td class="hint">rechtstreeks steigerbouwen</td>
+    </tr>
+    <tr>
+      <td><b>Restant — pro rato omzet juli 2026</b><div class="hint">7 projecten mét omzet · omzetloos telt niet mee · OVH uitgesloten</div></td>
+      <td><span class="chip">pro rato ▾</span></td>
+      <td class="euro"><b>€ 1.400,00</b></td>
+      <td><span class="btn sec">Verdeling tonen ▸</span></td>
+    </tr>
+    <tr>
+      <td colspan="4" style="color:var(--faint);font-size:11.5px;padding-left:24px">
+        26120 Eindhoven 31,4% · € 439,60 &nbsp;·&nbsp; 26127 Tilburg 22,1% · € 309,40 &nbsp;·&nbsp; 26131 Venlo 18,0% · € 252,00 &nbsp;·&nbsp; + 4 kleinere — grootste-rest-centen, som exact € 1.400,00
+      </td>
+    </tr>
+  </table>
+  <div class="restant"><b>€ 2.000,00 excl.</b><div class="balk"><span></span></div><b style="color:var(--ok)">verdeeld 100% ✓</b><span class="chip ok">omzetstanden vastgelegd</span></div>
+  <div class="signaal">⚠ <b>Hercontrole augustus:</b> omzet juli is ná het boeken gewijzigd (nagekomen factuur 26131 Venlo) — verdeling wijkt nu 4,2% af. <span class="btn sec" style="margin-left:auto">Herverdelen…</span></div>
+  <p class="hint">Hercontrole = maandelijkse job; "Herverdelen…" = tegenboeking + nieuwe verdeling, mens bevestigt — nooit stil herboeken.</p>
+</div>
+
+<!-- 2. Regel-GB -->
+<div class="blok">
+  <h2>2 · Boekingsregels — GB-voorstel per regel uit de gelezen omschrijving (Derks-casus)</h2>
+  <table>
+    <tr><th style="width:40%">Omschrijving (gelezen)</th><th style="width:26%">Grootboek</th><th></th><th style="width:80px;text-align:right">Netto</th></tr>
+    <tr><td>Microsoft 365 Business Premium (YR-MTH)</td><td><div class="veld">4110 Automatisering</div></td><td><span class="chip ok">uit geheugen</span></td><td class="euro">82,40</td></tr>
+    <tr><td>Microsoft 365 Exchange Online — Plan 1</td><td><div class="veld">4110 Automatisering</div></td><td><span class="chip ok">uit geheugen</span></td><td class="euro">3,70</td></tr>
+    <tr><td>Copilot Business Premium (YR-MTH)</td><td><div class="veld">4112 Software-abonnementen</div></td><td><span class="chip warn">AI-voorstel — bevestig</span></td><td class="euro">29,51</td></tr>
+  </table>
+  <p class="hint">Volgorde: exacte omschrijving-match bij deze leverancier (deterministisch, groen) → AI-classificatie
+  tegen de historisch gebruikte GB's van deze leverancier (oranje, bevestigen) → leeg (mens kiest). Elke correctie
+  voedt het regel-geheugen; ná bevestiging is dezelfde omschrijving voortaan groen.</p>
+</div>
+
+<!-- 3. Btw-default -->
+<div class="blok">
+  <h2>3 · Btw-default per administratie (steigerbouw: verlegd hoog)</h2>
+  <table>
+    <tr><th style="width:40%">Omschrijving</th><th style="width:30%">Btw-code</th><th></th></tr>
+    <tr><td>AR-40 staander 2,0m m.p. (huur)</td><td><div class="veld">Verlegd hoog</div></td><td><span class="chip grijs">standaard administratie</span></td></tr>
+    <tr><td>Diesel heftruck</td><td><div class="veld">21% hoog</div></td><td><span class="chip">uit factuur (21%)</span></td></tr>
+  </table>
+  <p class="hint">Invulvolgorde: uit factuur (scan) → leverancier-geheugen → administratie-default (nieuwe
+  Beheerder-instelling, chip "standaard administratie") → leeg. De default vult alléén wat anders leeg bleef;
+  harde checks blijven onverkort — een verkeerde default kan nooit stil doorboeken.</p>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① <b>Omzetdefinitie</b>: geboekte verkoopfacturen per project uit de eigen datalaag (projectcijfers-cache), periode =
+vorige afgesloten kalendermaand; de gebruikte omzetstanden worden bij het boeken vastgelegd (audit + herleidbaarheid).
+② <b>Weging</b>: alleen projecten mét omzet in de periode; OVH-project uitgesloten; grootste-rest-centen server-side.
+③ <b>Mengvorm</b>: vaste regels eerst, het pro-rato-restant sluit de balk op exact 100% — zelfde restant-balk-patroon
+als doorbelasten-v2. ④ <b>Aanzetten per leverancier</b> (instelling "verdelen: pro rato omzet", Beheerder), daarna
+vooringevuld voorstel op élk document van die leverancier; dit is projectverdeling BINNEN de administratie — géén
+Kempen-doorbelasting, wel dezelfde verdeelmotor-bouwstenen. ⑤ <b>Uitvoering</b>: RLZ = regels splitsen (Project per
+regel), Odoo = één analytic_distribution met percentages — zelfde voorstel, backend bepaalt de vorm. ⑥ <b>Hercontrole</b>:
+maandelijkse job herrekent geboekte pro-rato-verdelingen tegen de actuele omzetstand van dezelfde maand; afwijking
+boven drempel = signaal mét actie "Herverdelen…" (tegenboeking + nieuwe verdeling, mens bevestigt). Flankerend: het
+weekanalyse-signaal "inkoop zonder omzet" wordt tijd-gebonden (pas ná N weken of ná de eerste contract-termijndatum).
+⑦ <b>Regel-GB-geheugen</b> (blok 2): sleutel = (crediteur-kenmerk, genormaliseerde omschrijving); deterministisch wint
+altijd van AI; AI-classificatie loopt onder de bestaande AI-gates + kostenmeter; seed-only blijft oranje conform de
+geheugen-regel. ⑧ <b>Btw-default</b> (blok 3): Beheerder-instelling per administratie, default UIT; bestaande
+administraties ongemoeid tot Peter activeert. ⑨ <b>Losse bugfix</b> (niet op dit ontwerp wachten): kortingsregels
+worden nu niet als regel geëxtraheerd én de regeltelling vergeleek som-excl met totaal-incl (Huvanco-casus 04-09,
+afwijking € 117,95) — extractie kortingsregels + netto-vs-netto-toets.</p>
+</body>
+</html>

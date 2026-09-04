@@ -26,6 +26,7 @@ import { VraagModal } from '../vragen/VraagModal'
 import { VraagThread } from '../vragen/VraagThread'
 import { DoorbelastenNaBoeken, type KlaargezetteDoorbelasting } from '../doorbelasting/DoorbelastenNaBoeken'
 import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
+import { ProjectverdelingBlok } from './ProjectverdelingBlok'
 import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
 import { DuplicaatAfvoerSectie } from './DuplicaatAfvoer'
@@ -1126,6 +1127,19 @@ export function DocumentDetailScreen() {
               onOnopgeslagenWijzigingen={onOnopgeslagenWijzigingen}
             />
           )}
+
+          {/* Projectverdeling pro rato omzet (blok C 04-09, mockup projectverdeling-en-regelvoorstellen.html
+              blok 1): in de werkvolgorde direct ná de boekingsregels en vóór het doorbelasten-blok — het blok
+              gate zichzelf (inkoopfactuur; prefill bij leverancier-opt-in, anders tekstknop; geboekt =
+              bevroren + hercontrole-signaal). */}
+          <ProjectverdelingBlok
+            administratieId={administratieId}
+            documentId={documentId}
+            status={detail.status}
+            soort={detail.soort}
+            boekvoorstelVersie={boekvoorstelVersie}
+            onGewijzigd={laadDetail}
+          />
 
           {/* Doorbelasten ná boeken (besluit Peter 25-08, herziet 13-08): optioneel blok op een NOG
               NIET geboekt document — de sectie gate zichzelf (soort + status + toggle). */}

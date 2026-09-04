@@ -1222,6 +1222,9 @@ class DocumentMetDuplicaat:
     # Blok C 02-09: boekstuk + tegenpartij + vindplaats-hint van een GEBOEKT document (lijst-tooltip);
     # uit de boek-events/kolommen, nooit een RLZ-call. None bij elke andere status.
     geboekt_in_rlz: GeboektInRlz | None = None
+    # Projectverdeling-hercontrole (blok C 04-09, ⑥): afwijking in % op een geboekte pro-rato-verdeling boven de
+    # drempel — voedt de rij-chip "verdeling wijkt x % af". None = geen signaal.
+    projectverdeling_afwijking_pct: Decimal | None = None
 
 
 def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
@@ -1346,6 +1349,12 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
             )
 
         geboekt_stand = bepaal_geboekt_in_rlz(session, documenten)
+        # Projectverdeling-hercontrole-signalen (blok C 04-09, bulk, alleen geboekte rijen). Lazy import: geen kring.
+        from app.projectverdeling.service import afwijkingen_per_document
+
+        pv_afwijkingen = afwijkingen_per_document(
+            session, [d.id for d in documenten if d.status == DocumentStatus.GEBOEKT]
+        )
         resultaat = []
         for d in documenten:
             leverancier, totaalbedrag, factuurdatum = _kop(d.id)
@@ -1365,6 +1374,7 @@ def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = Fal
                     accordering_boek_fout=boek_fouten.get(d.id),
                     klant_akkoord_compleet=d.id in akkoord_compleet,
                     geboekt_in_rlz=geboekt_stand.get(d.id),
+                    projectverdeling_afwijking_pct=pv_afwijkingen.get(d.id),
                     afdeling=(
                         (voorstellen[d.id].afdeling_id, afdelingen[voorstellen[d.id].afdeling_id])
                         if d.id in voorstellen

@@ -51,6 +51,7 @@ from app.odoo.fouten import lock_date_melding, overgangsdatum_melding, vertaal_o
 from app.odoo.ids import GEEN_BTW_ODOO_ID, odoo_uuid
 from app.odoo.models import OdooDocumentKoppeling
 from app.odoo.probe import lees_lock_dates
+from app.projectverdeling.data import analytic_percentages, gewichten_per_project
 from app.rlz.aangifte import KantToets
 from app.sync.models import TaxRateCache
 
@@ -134,6 +135,9 @@ class _Regel:
     quantity: Decimal
     price_unit: Decimal
     product_uom_id: int | None
+    # Projectverdeling (blok C 04-09, ⑤): {odoo_analytic_id: percentage} — percentages op 2 decimalen, som exact 100;
+    # None = geen verdeling (dan telt `analytic_account_id` als 100 %).
+    analytic_distribution: dict[str, float] | None = None
 
 
 class OdooLeesFacade:
@@ -263,6 +267,15 @@ class OdooInkoopPort:
             logger.warning("Productverrijking overgeslagen voor %s: %s", document_id, exc)
             producten = {}
         regels: list[_Regel] = []
+        # Projectverdeling (blok C 04-09, ⑤): één analytic_distribution voor élke regel zonder eigen project —
+        # percentages op 2 decimalen die exact op 100 sommen (grootste-rest), analytic-id's via de id-mapping.
+        verdeling = voorstel.projectverdeling
+        distributie: dict[str, float] | None = None
+        if verdeling is not None and verdeling.dekt_regels_zonder_project:
+            distributie = {
+                str(self._odoo_id("account.analytic.account", project_id)): float(pct)
+                for project_id, pct in analytic_percentages(gewichten_per_project(verdeling.delen))
+            }
         for i, regel in enumerate(voorstel.regels):
             if regel.ledger_id is None or regel.taxrate_id is None or regel.netto_bedrag is None:
                 raise BackendBoekFout(f"Regel {i + 1} mist rekening, btw-code of bedrag — boeken geweigerd")
@@ -288,6 +301,7 @@ class OdooInkoopPort:
                     quantity=quantity,
                     price_unit=price_unit,
                     product_uom_id=uom,
+                    analytic_distribution=distributie if regel.project_id is None else None,
                 )
             )
         return regels
@@ -415,7 +429,9 @@ class OdooInkoopPort:
             "price_unit": float(r.price_unit),
             "tax_ids": [[6, 0, [r.tax_id]]] if r.tax_id else [],
         }
-        if r.analytic_account_id is not None:
+        if r.analytic_distribution:
+            vals["analytic_distribution"] = dict(r.analytic_distribution)
+        elif r.analytic_account_id is not None:
             vals["analytic_distribution"] = {str(r.analytic_account_id): 100}
         if r.product_id is not None:
             vals["product_id"] = r.product_id

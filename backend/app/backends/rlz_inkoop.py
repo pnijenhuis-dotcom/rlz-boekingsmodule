@@ -18,6 +18,7 @@ from app.documenten.rlz_ids import (
     rlz_tegenboeking_id,
     rlz_tegenboeking_upload_id,
 )
+from app.projectverdeling.data import gewichten_per_project, splits_regel
 from app.rlz.aangifte import AangiftePoort
 from app.rlz.bijlage import zorg_voor_bijlage
 from app.rlz.client import RlzApiError, RlzClient
@@ -27,34 +28,61 @@ from app.rlz.fouten import vertaal_rlz_boekfout
 _RLZ_GEBOEKT = frozenset({2, 3})
 
 
+def _projectgewichten(voorstel: BoekvoorstelData) -> list[tuple[uuid.UUID, Decimal]]:
+    """Projectverdeling (blok C 04-09, ⑤): de totale verdeling per project (vast + pro rato) als gewichten voor de
+    regelsplitsing — alleen bij een actieve, complete verdeling; anders leeg (= geen splitsing)."""
+    verdeling = voorstel.projectverdeling
+    if verdeling is None or not verdeling.dekt_regels_zonder_project:
+        return []
+    return gewichten_per_project(verdeling.delen)
+
+
 def regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
+    gewichten = _projectgewichten(voorstel)
     lines: list[dict] = []
     for regel in voorstel.regels:
         # btw_bedrag mag None zijn (verlegd/vrijgesteld); netto_bedrag is door de harde checks afgedwongen.
-        line: dict = {
+        basis: dict = {
             "Account": {"id": str(regel.ledger_id)},
             "TaxRate": {"id": str(regel.taxrate_id)},
-            "NetAmount": float(regel.netto_bedrag),
-            "TaxAmount": float(regel.btw_bedrag or 0),
         }
+        if regel.omschrijving:
+            basis["Description"] = regel.omschrijving
+        if regel.project_id is None and gewichten:
+            # Regel zonder eigen project → N regels mét Project, netto én btw per deel via grootste-rest (sluitend).
+            for deel in splits_regel(regel.netto_bedrag, regel.btw_bedrag, gewichten):
+                lines.append(
+                    {**basis, "NetAmount": float(deel.netto), "TaxAmount": float(deel.btw), "Project": {"id": str(deel.project_id)}}
+                )
+            continue
+        line: dict = {**basis, "NetAmount": float(regel.netto_bedrag), "TaxAmount": float(regel.btw_bedrag or 0)}
         if regel.project_id is not None:
             line["Project"] = {"id": str(regel.project_id)}
-        if regel.omschrijving:
-            line["Description"] = regel.omschrijving
         lines.append(line)
     return lines
 
 
 def tegenboek_lines(voorstel: BoekvoorstelData, omschrijving: str) -> list[dict]:
-    """Gespiegelde regels (STAP-0-vorm): zelfde Account/TaxRate/Project, negatieve bedragen."""
+    """Gespiegelde regels (STAP-0-vorm): zelfde Account/TaxRate/Project, negatieve bedragen. Een bevroren
+    projectverdeling wordt exact gespiegeld (dezelfde splitsing per project als de boeking)."""
+    gewichten = _projectgewichten(voorstel)
     lines: list[dict] = []
     for regel in voorstel.regels:
-        line: dict = {
+        basis: dict = {
             "Account": {"id": str(regel.ledger_id)},
             "TaxRate": {"id": str(regel.taxrate_id)},
+            "Description": omschrijving,
+        }
+        if regel.project_id is None and gewichten:
+            for deel in splits_regel(regel.netto_bedrag or Decimal("0"), regel.btw_bedrag, gewichten):
+                lines.append(
+                    {**basis, "NetAmount": float(-deel.netto), "TaxAmount": float(-deel.btw), "Project": {"id": str(deel.project_id)}}
+                )
+            continue
+        line: dict = {
+            **basis,
             "NetAmount": float(-(regel.netto_bedrag or Decimal("0"))),
             "TaxAmount": float(-(regel.btw_bedrag or Decimal("0"))),
-            "Description": omschrijving,
         }
         if regel.project_id is not None:
             line["Project"] = {"id": str(regel.project_id)}

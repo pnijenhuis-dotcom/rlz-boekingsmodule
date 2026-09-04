@@ -361,6 +361,7 @@ def documenten_lijst(
                 factuurmatch=_naar_match_kort(item.factuurmatch),
                 accordering_boek_fout=item.accordering_boek_fout,
                 klant_akkoord_compleet=item.klant_akkoord_compleet,
+                projectverdeling_afwijking_pct=item.projectverdeling_afwijking_pct,
                 afdeling=(
                     schemas.AfdelingKortDto(id=item.afdeling[0], naam=item.afdeling[1]) if item.afdeling else None
                 ),

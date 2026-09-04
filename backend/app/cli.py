@@ -387,7 +387,33 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     print("\nCrediteur-archiveer-werklijst (hertoets tegen RLZ, administraties mét open regels):")
     werklijst_exit = _rapporteer_crediteur_werklijst(crediteuren_service.hertoets_werklijst())
-    return 1 if fouten or cijfers_exit or voorraad_exit or terugkerend_exit or kandidaten_exit or werklijst_exit else 0
+    # Projectverdeling-hercontrole (blok C 04-09, ⑥): maandelijks meeliftend (1e–7e óf ná verse cijfers) — herrekent
+    # geboekte pro-rato-verdelingen tegen de actuele omzetstand; puur code, geen RLZ-/Odoo-calls.
+    from app.projectverdeling import hercontrole as projectverdeling_hercontrole
+
+    print("\nProjectverdeling-hercontrole (geboekte pro-rato-verdelingen, alle actieve administraties):")
+    projectverdeling_exit = _rapporteer_projectverdeling(projectverdeling_hercontrole.herbereken_alle())
+    return (
+        1
+        if fouten or cijfers_exit or voorraad_exit or terugkerend_exit or kandidaten_exit or werklijst_exit or projectverdeling_exit
+        else 0
+    )
+
+
+def _rapporteer_projectverdeling(resultaten: dict) -> int:
+    fouten = 0
+    if not resultaten:
+        print("OK    geen actieve administraties")
+    for administratie_id, r in resultaten.items():
+        if isinstance(r, dict):
+            print(
+                f"OK    {administratie_id}: {r['beoordeeld']} verdelingen beoordeeld, {r['herrekend']} herrekend, "
+                f"{r['signalen']} signalen, {r['overgeslagen']} overgeslagen"
+            )
+        else:
+            fouten += 1
+            print(f"FOUT  {administratie_id}: {r}", file=sys.stderr)
+    return 1 if fouten else 0
 
 
 def _rapporteer_crediteur_werklijst(resultaten: dict) -> int:
@@ -1697,6 +1723,15 @@ def main(argv: list[str] | None = None) -> int:
         "archiveren crediteuren in RLZ gearchiveerd/afwezig zijn worden 'gedaan' (loopt óók dagelijks mee in sync-alles).",
     )
 
+    projectverdeling_parser = subparsers.add_parser(
+        "projectverdeling-hercontrole",
+        help="Projectverdeling-hercontrole los draaien: geboekte pro-rato-verdelingen herrekenen tegen de actuele "
+        "omzetstand van dezelfde maand (loopt maandelijks mee in sync-alles; puur code, geen RLZ-/Odoo-calls).",
+    )
+    projectverdeling_parser.add_argument(
+        "--forceer", action="store_true", help="Alle verdelingen herrekenen, ook buiten de maandcadans."
+    )
+
     voorraad_hernorm_parser = subparsers.add_parser(
         "voorraad-hernormaliseer",
         help="Voorraad: alle feitenregels hernormaliseren (soort-label + artikelcodes, geen RLZ-calls) + rapport",
@@ -2141,6 +2176,10 @@ def main(argv: list[str] | None = None) -> int:
         from app.crediteuren import service as crediteuren_service
 
         return _rapporteer_crediteur_werklijst(crediteuren_service.hertoets_werklijst())
+    if args.commando == "projectverdeling-hercontrole":
+        from app.projectverdeling import hercontrole as projectverdeling_hercontrole
+
+        return _rapporteer_projectverdeling(projectverdeling_hercontrole.herbereken_alle(forceer=args.forceer))
     if args.commando == "sync-alles":
         return _sync_alles(args)
     if args.commando == "voorraad-rlz-sync":

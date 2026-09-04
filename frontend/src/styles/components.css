@@ -2232,3 +2232,64 @@ tr.geselecteerd td.acties {
   margin: 0;
   background: transparent;
 }
+
+/* Projectverdeling pro rato omzet (blok C 04-09, mockup projectverdeling-en-regelvoorstellen.html blok 1):
+   tabel Project · Wijze · Bedrag excl. · hint, restant-balk (hergebruik .restant-balk), blokkade-zin en het
+   hercontrole-signaal mét actie "Herverdelen…" (oranje = signaal, teal-knop = actie). */
+.projectverdeling-blok .pv-tabel td {
+  vertical-align: middle;
+}
+.projectverdeling-blok .pv-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.projectverdeling-blok .pv-euro {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.projectverdeling-blok .pv-bedrag {
+  width: 96px;
+  text-align: right;
+  padding: 3px 6px;
+}
+.projectverdeling-blok .pv-preview {
+  color: var(--muted);
+  font-size: 11.5px;
+  padding-left: 24px;
+  line-height: 1.7;
+}
+.projectverdeling-blok .pv-blokkade {
+  font-size: 12.5px;
+  color: var(--orange);
+  margin: 6px 0 0;
+}
+.projectverdeling-blok .pv-periode {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 999px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.projectverdeling-blok .signaal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--orange-bg);
+  border: 1px solid color-mix(in srgb, var(--orange) 30%, transparent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  margin-top: 10px;
+}
+.projectverdeling-blok .signaal .pv-actie {
+  margin-left: auto;
+}
+.projectverdeling-blok .pv-vergelijk td.oud {
+  color: var(--muted);
+  text-decoration: line-through;
+}

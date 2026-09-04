@@ -645,6 +645,13 @@ def overzicht_alle_projecten(*, administratie_id: uuid.UUID, vandaag: date | Non
             )
         }
 
+        # Flankerend (blok C 04-09, ⑥): het signaal "inkoop zonder omzet" is tijd-gebonden — pas ná N weken
+        # projectlooptijd (Beheerder-instelling, default 4). Lazy import: flankerend leest deze module.
+        from app.projectverdeling.flankerend import inkoop_zonder_omzet_weken
+
+        administratie = session.get(Administratie, administratie_id)
+        wachtweken = administratie.inkoop_zonder_omzet_wachtweken if administratie else 4
+
         rijen: list[OverzichtRij] = []
         for project in projecten:
             cijfers = bereken_project_cijfers(session, administratie_id=administratie_id, project_id=project.id)
@@ -655,7 +662,12 @@ def overzicht_alle_projecten(*, administratie_id: uuid.UUID, vandaag: date | Non
                 OverzichtRij(
                     cijfers=cijfers,
                     trend=trend_over_vier_weken(cijfers, vandaag=vandaag),
-                    kosten_zonder_omzet_weken=kosten_zonder_omzet_weken(cijfers),
+                    kosten_zonder_omzet_weken=inkoop_zonder_omzet_weken(
+                        cijfers,
+                        vandaag=vandaag,
+                        wachtweken=wachtweken,
+                        looptijd_van=spec.looptijd_van if spec else None,
+                    ),
                     meerwerk_te_lang_niet_doorbelast=te_lang_per_project.get(project.id, 0),
                     doorlopende_huur=bool(spec and spec.doorlopende_huur_omschrijving),
                 )

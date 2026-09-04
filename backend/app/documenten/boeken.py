@@ -510,6 +510,18 @@ def boek_document(
             rlz_document_id=rlz_document_id,
             rlz_boekstuknummer=rlz_boekstuknummer,
         )
+        # Projectverdeling (blok C 04-09, ①): de gebruikte omzetstanden + berekende delen bevriezen ín de
+        # GEBOEKT-transactie — exact wat de adapter zojuist heeft geboekt. Lazy import: geen kring.
+        from app.projectverdeling import service as projectverdeling_service
+
+        projectverdeling_service.bevries_bij_boeking(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            data=voorstel.projectverdeling,
+            boek_cyclus=voorstel.boek_cyclus,
+            actor_id=actor_id,
+        )
         # Leerlus boekingsgeheugen (B5): de zojuist bevestigde boeking als bron='app'-observaties,
         # in dezelfde transactie als de GEBOEKT-overgang — vendor is hier altijd gevuld
         # (afgedwongen door de harde checks die deze functie zelf herhaalde). bron_datum =

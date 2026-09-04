@@ -202,6 +202,14 @@ class Administratie(Base):
     # per persoon per kalenderdag over álle weekstaten heen boven deze drempel = oranje vlag bij
     # de keuring + zichtbaar voor kantoor. Geen blokkade. Default 12, per administratie instelbaar.
     uren_dagmax_uren: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("12"), server_default="12")
+    # Projectverdeling pro rato omzet (migratie 0107, blok C 04-09): hercontrole-drempel in % (default 5) — boven
+    # de drempel wijkt een geboekte pro-rato-verdeling zichtbaar af (signaal mét actie "Herverdelen…").
+    projectverdeling_drempel_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("5.00"), server_default="5.00"
+    )
+    # Flankerend (blok C 04-09): het weekanalyse-signaal "inkoop zonder omzet" spreekt pas ná N weken
+    # projectlooptijd (default 4) — een net gestart project heeft per definitie nog geen omzet.
+    inkoop_zonder_omzet_wachtweken: Mapped[int] = mapped_column(default=4, server_default="4")
     eigenaar_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

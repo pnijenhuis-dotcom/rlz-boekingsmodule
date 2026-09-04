@@ -949,6 +949,18 @@ export function DocumentenDeelscherm({
                             <span className="chip vraag">Urenmatch: geen tarief bekend</span>
                           </div>
                         )}
+                        {/* Projectverdeling-hercontrole (blok C 04-09, ⑥): signaal mét actie — de chip wijst naar
+                            "Herverdelen…" op het document (geboekte rijen). */}
+                        {d.projectverdeling_afwijking_pct && (
+                          <div style={{ marginTop: 4 }}>
+                            <span
+                              className="chip afwijking"
+                              title="De omzet van de verdeelmaand is ná het boeken gewijzigd — open het document voor Herverdelen…"
+                            >
+                              verdeling wijkt {Number(d.projectverdeling_afwijking_pct).toLocaleString('nl-NL')}% af
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td>
                         {d.accordering_boek_fout ? (

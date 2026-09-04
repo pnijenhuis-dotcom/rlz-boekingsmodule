@@ -296,6 +296,107 @@ export interface LeverancierAutoboekenLijstDto {
   leveranciers: LeverancierAutoboekenDto[]
 }
 
+/** Projectverdeling pro rato omzet (blok C 04-09, mockup projectverdeling-en-regelvoorstellen.html
+ * blok 1). Bedragen als string (Decimal). `wijze` 'vast' | 'pro_rato'. */
+export interface ProjectverdelingVasteRegelDto {
+  project_id: string
+  bedrag: string
+  hint?: string | null
+  project_naam?: string | null
+}
+
+export interface ProjectverdelingDeelDto {
+  project_id: string
+  project_naam?: string | null
+  wijze: 'vast' | 'pro_rato'
+  bedrag: string
+  aandeel?: string | null
+  omzet?: string | null
+}
+
+export interface ProjectverdelingOmzetstandDto {
+  project_id: string
+  project_naam?: string | null
+  omzet: string
+}
+
+export interface ProjectverdelingHercontroleDto {
+  op: string
+  afwijking_pct: string | null
+  drempel_pct: string
+  periode: string | null
+  signaal: boolean
+  nieuwe_verdeling: ProjectverdelingDeelDto[]
+}
+
+export interface ProjectverdelingDto {
+  document_id: string
+  /** 'geen' = niet van toepassing; 'voorstel' | 'geboekt' | 'vervallen'. */
+  status: 'geen' | 'voorstel' | 'geboekt' | 'vervallen'
+  opgeslagen: boolean
+  prefill?: boolean
+  basisbedrag?: string | null
+  vaste_regels?: ProjectverdelingVasteRegelDto[]
+  pro_rato?: boolean
+  pro_rato_periode?: string | null
+  pro_rato_periode_label?: string | null
+  pro_rato_bedrag?: string | null
+  delen?: ProjectverdelingDeelDto[]
+  omzetstanden?: ProjectverdelingOmzetstandDto[]
+  aantal_projecten_met_omzet?: number
+  omzet_cache_leeg?: boolean
+  compleet?: boolean
+  blokkade?: string | null
+  boek_cyclus?: number | null
+  hercontrole?: ProjectverdelingHercontroleDto | null
+}
+
+export interface ProjectverdelingInputDto {
+  vaste_regels: { project_id: string; bedrag: string; hint?: string | null }[]
+  pro_rato_periode: string | null
+  vervallen?: boolean
+}
+
+export interface ProjectverdelingHerverdeelResultaatDto {
+  document_id: string
+  status: string
+  rlz_tegenboeking_id: string
+  rlz_boekstuknummer: string | null
+}
+
+export interface LeverancierProRatoDto {
+  vendor_id: string
+  naam: string | null
+  projectverdeling_pro_rato: boolean
+}
+
+export interface ProjectverdelingInstellingenDto {
+  drempel_pct: string
+  wachtweken: number
+}
+
+export interface ProjectverdelingSignaalRijDto {
+  administratie_id: string
+  administratie_naam: string
+  document_id: string
+  bestandsnaam: string
+  leverancier: string | null
+  referentie: string | null
+  pro_rato_periode: string | null
+  pro_rato_bedrag: string | null
+  afwijking_pct: string
+  drempel_pct: string
+  hercontrole_op: string
+}
+
+export interface ProjectverdelingSignaalLijstDto {
+  rijen: ProjectverdelingSignaalRijDto[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+  administraties: number
+}
+
 /** Autoboek-kandidaten (blok B 01-09, mockup autoboek-kandidaten.html, migratie 0095): één rij per
  * (administratie, leverancier) met de deterministische onderbouwing; tabs Kandidaten / Actief /
  * Heroverwegen. Bedragen als string (Decimal-precisie). */

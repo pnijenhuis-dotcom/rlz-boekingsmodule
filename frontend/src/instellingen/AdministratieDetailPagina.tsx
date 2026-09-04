@@ -16,6 +16,7 @@ import { chipsVoor, type PendingToggle, type ToggleType } from './Administraties
 import { EersteSyncStatus } from './AdministratieWizard'
 import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
+import { LeverancierProjectverdeling, ProjectverdelingInstellingen } from './ProjectverdelingInstellingen'
 import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
 import { DETAIL_TAB_PADEN, type DetailTab, zichtbareTabs } from './instellingenRegistry'
 
@@ -281,6 +282,10 @@ export function AdministratieDetailPagina({
             )}
           </div>
           <LeverancierAutoboeken administraties={enkel} vasteAdministratieId={a.id} />
+          {/* Projectverdeling pro rato omzet (blok C 04-09): opt-in per leverancier + hercontrole-drempel /
+              wachttijd "inkoop zonder omzet" — Beheerder-only. */}
+          <LeverancierProjectverdeling administratieId={a.id} />
+          <ProjectverdelingInstellingen administratieId={a.id} naam={a.naam} />
         </div>
       )}
 
