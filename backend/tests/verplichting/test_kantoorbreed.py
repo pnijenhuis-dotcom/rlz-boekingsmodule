@@ -51,6 +51,7 @@ class TestLijst:
         assert rij.percentage == 56
         assert rij.over_excl is None
         assert rij.goedgekeurd_door_naam is not None
+        assert rij.open_facturen_aantal == 0 and rij.open_facturen_excl == Decimal("0.00")
         assert lijst.tellers.lopend == 1 and lijst.tellers.overschreden == 0
 
     def test_overschreden_krijgt_het_bedrag_erover(

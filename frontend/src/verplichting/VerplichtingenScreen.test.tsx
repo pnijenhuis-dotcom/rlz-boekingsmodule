@@ -28,6 +28,8 @@ const CONFIDE: VerplichtingKantoorRijDto = {
   verbruikt_excl: '27150.00',
   percentage: 56,
   over_excl: null,
+  open_facturen_aantal: 1,
+  open_facturen_excl: '12400.00',
   goedgekeurd_op: '2026-09-04T10:00:00Z',
   goedgekeurd_door_naam: 'J. de Groot',
   geldig_tot: '2026-12-31',
@@ -142,6 +144,9 @@ describe('VerplichtingenScreen — Inzicht kantoorbreed', () => {
     expect(rijen[0]).toHaveTextContent('€ 1.370,00 over')
     expect(rijen[1]).toHaveTextContent('binnen')
     expect(within(rijen[1]).getByTestId(`balk-${CONFIDE.document_id}`)).toHaveTextContent('56%')
+    // 0.1 (04-09): voorwaarschuwing open facturen op de Inzicht-rij — informatief, buiten de balk.
+    expect(within(rijen[1]).getByTestId(`balk-${CONFIDE.document_id}-open`)).toHaveTextContent('1 open factuur op deze offerte (€ 12.400,00)')
+    expect(within(rijen[0]).queryByTestId(/-open$/)).toBeNull()
     expect(screen.getByTestId('verplichtingen-voet')).toHaveTextContent('2 verplichtingen over 2 administraties')
   })
 

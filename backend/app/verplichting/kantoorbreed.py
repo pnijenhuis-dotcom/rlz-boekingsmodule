@@ -25,7 +25,7 @@ from app.documenten.models import Boekvoorstel, Document, DocumentStatus
 from app.sync.models import ProjectCache, VendorCache
 from app.verplichting import match as match_motor
 from app.verplichting.models import Verplichting, VerplichtingMatch
-from app.verplichting.service import VerplichtingFout
+from app.verplichting.service import VerplichtingFout, is_open_factuur
 
 PER_PAGINA = 25
 STATUSSEN = ("lopend", "overschreden", "vervallen", "alle")
@@ -59,6 +59,9 @@ class KantoorRij:
     geldig_tot: date | None
     status: str
     facturen: list[FactuurRij]
+    #: Voorwaarschuwing 0.1: open (nog niet geboekte) gematchte facturen — informatief, buiten het verbruik.
+    open_facturen_aantal: int = 0
+    open_facturen_excl: Decimal = Decimal("0.00")
 
 
 @dataclass(frozen=True)
@@ -143,6 +146,8 @@ def _alle_rijen(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[KantoorRij]:
                 totaal = v.goedgekeurd_bedrag_excl
                 verbruikt = Decimal(v.verbruikt_bedrag_excl or 0)
                 over = (verbruikt - totaal).quantize(Decimal("0.01")) if totaal is not None else None
+                facturen = facturen_per_verplichting.get(v.document_id, [])
+                open_facturen = [f for f in facturen if is_open_factuur(f.status, verrekend=f.verrekend)]
                 rijen.append(
                     KantoorRij(
                         document_id=v.document_id,
@@ -160,7 +165,11 @@ def _alle_rijen(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[KantoorRij]:
                         goedgekeurd_door_naam=gebruiker_namen.get(v.goedgekeurd_door),
                         geldig_tot=v.geldig_tot,
                         status=_rij_status(v),
-                        facturen=facturen_per_verplichting.get(v.document_id, []),
+                        facturen=facturen,
+                        open_facturen_aantal=len(open_facturen),
+                        open_facturen_excl=sum((f.bedrag_excl or Decimal(0) for f in open_facturen), Decimal(0)).quantize(
+                            Decimal("0.01")
+                        ),
                     )
                 )
     return rijen

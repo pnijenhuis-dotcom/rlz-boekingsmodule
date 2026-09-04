@@ -233,7 +233,14 @@ describe('VerplichtingReviewScreen — controle kantoor', () => {
         status: 'geaccordeerd',
         opgeslagen: true,
         goedgekeurd: { bedrag_excl: '48500.00', op: '2026-09-04T10:00:00Z', door_naam: 'J. de Groot' },
-        verbruik: { verbruikt_excl: '27150.00', totaal_excl: '48500.00', percentage: 56, over_excl: null },
+        verbruik: {
+          verbruikt_excl: '27150.00',
+          totaal_excl: '48500.00',
+          percentage: 56,
+          over_excl: null,
+          open_facturen_aantal: 2,
+          open_facturen_excl: '8300.00',
+        },
         gekoppelde_facturen: [
           {
             document_id: 'eeee0000-0000-0000-0000-000000000005',
@@ -251,6 +258,10 @@ describe('VerplichtingReviewScreen — controle kantoor', () => {
     const blok = await screen.findByTestId('goedgekeurd-blok')
     expect(within(blok).getByText(/J. de Groot/)).toBeInTheDocument()
     expect(within(blok).getByTestId('verbruiks-balk')).toHaveTextContent('56%')
+    // 0.1 (04-09): voorwaarschuwing — open facturen staan als informatieve regel onder de balk, niet in de stand.
+    expect(within(blok).getByTestId('verbruiks-balk-open')).toHaveTextContent('2 open facturen op deze offerte')
+    expect(within(blok).getByTestId('verbruiks-balk-open')).toHaveTextContent('8.300,00')
+    expect(within(blok).getByTestId('verbruiks-balk-open')).toHaveTextContent('telt niet mee')
     expect(within(blok).getByTestId('gekoppelde-facturen')).toHaveTextContent('F-2026-118')
     expect(within(blok).getByText('verrekend')).toBeInTheDocument()
     // Geaccordeerd = eindstand: geen aanbied-knop meer.

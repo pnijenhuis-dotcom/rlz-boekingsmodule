@@ -66,6 +66,10 @@ class VerbruikStand:
     totaal_excl: Decimal
     percentage: int
     over_excl: Decimal | None
+    #: Voorwaarschuwing (besluit Peter 04-09, mee-lift-punt 0.1): gematchte facturen die nog NIET
+    #: geboekt zijn — informatief, tellen niet in het verbruik (③ blijft: verbruik = geboekt).
+    open_facturen_aantal: int = 0
+    open_facturen_excl: Decimal = Decimal("0.00")
 
 
 @dataclass(frozen=True)
@@ -224,17 +228,67 @@ def _gekoppelde_facturen(
     ]
 
 
-def _verbruik_stand(rij: Verplichting) -> VerbruikStand | None:
+#: Een gematchte factuur in één van deze statussen is geen "open factuur" meer: geboekt = verrekend
+#: (telt in het verbruik), de rest is afgevoerd/terminaal zonder verbruik.
+_GEEN_OPEN_FACTUUR = frozenset(
+    {
+        DocumentStatus.GEBOEKT.value,
+        DocumentStatus.AFGEWEZEN.value,
+        DocumentStatus.VERWIJDERD.value,
+        DocumentStatus.GESPLITST.value,
+        DocumentStatus.SAMENGEVOEGD.value,
+    }
+)
+
+
+def is_open_factuur(status: str, *, verrekend: bool) -> bool:
+    """Voorwaarschuwing 0.1 (besluit Peter 04-09): een gematchte (binnen/buiten) factuur die nog niet
+    geboekt/verrekend is en nog in de werkstroom zit. Eén definitie voor het controlescherm, het
+    reviewscherm én Inzicht › Verplichtingen — informatief, telt nooit in het verbruik."""
+    return not verrekend and status not in _GEEN_OPEN_FACTUUR
+
+
+def open_facturen_per_verplichting(
+    session: Session, *, administratie_id: uuid.UUID, verplichting_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[int, Decimal]]:
+    """Bulk: (aantal, Σ bedrag excl.) van de open gematchte facturen per verplichting."""
+    if not verplichting_ids:
+        return {}
+    rijen = session.execute(
+        select(VerplichtingMatch.verplichting_document_id, VerplichtingMatch.bedrag_excl, Document.status)
+        .join(Document, Document.id == VerplichtingMatch.document_id)
+        .where(
+            VerplichtingMatch.administratie_id == administratie_id,
+            VerplichtingMatch.verplichting_document_id.in_(verplichting_ids),
+            VerplichtingMatch.uitkomst.in_([match_motor.BINNEN, match_motor.BUITEN]),
+            VerplichtingMatch.verrekend_op.is_(None),
+        )
+    ).all()
+    per: dict[uuid.UUID, tuple[int, Decimal]] = {}
+    for verplichting_id, bedrag, status in rijen:
+        if not is_open_factuur(status.value if hasattr(status, "value") else str(status), verrekend=False):
+            continue
+        aantal, som = per.get(verplichting_id, (0, Decimal("0.00")))
+        per[verplichting_id] = (aantal + 1, (som + Decimal(bedrag or 0)).quantize(Decimal("0.01")))
+    return per
+
+
+def _verbruik_stand(session: Session, rij: Verplichting) -> VerbruikStand | None:
     totaal = rij.goedgekeurd_bedrag_excl
     if totaal is None:
         return None
     verbruikt = Decimal(rij.verbruikt_bedrag_excl or 0)
     over = (verbruikt - totaal).quantize(Decimal("0.01"))
+    aantal, som = open_facturen_per_verplichting(
+        session, administratie_id=rij.administratie_id, verplichting_ids=[rij.document_id]
+    ).get(rij.document_id, (0, Decimal("0.00")))
     return VerbruikStand(
         verbruikt_excl=verbruikt,
         totaal_excl=totaal,
         percentage=match_motor.percentage(verbruikt, totaal) or 0,
         over_excl=over if over > 0 else None,
+        open_facturen_aantal=aantal,
+        open_facturen_excl=som,
     )
 
 
@@ -338,7 +392,7 @@ def _bouw_voorstel(
             if rij is not None and rij.goedgekeurd_op is not None
             else None
         ),
-        verbruik=_verbruik_stand(rij) if rij is not None else None,
+        verbruik=_verbruik_stand(session, rij) if rij is not None else None,
         vervallen=(
             VervallenStand(
                 op=rij.vervallen_op,

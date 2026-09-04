@@ -251,6 +251,7 @@ export function VerplichtingenScreen() {
                             totaal={r.totaal_excl}
                             percentage={r.percentage}
                             over={r.over_excl}
+                            openFacturen={{ aantal: r.open_facturen_aantal, bedrag: r.open_facturen_excl }}
                             testId={`balk-${key}`}
                           />
                         </td>

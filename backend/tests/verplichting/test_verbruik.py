@@ -169,6 +169,13 @@ class TestMatchRun:
         assert rij.uitkomst == match_motor.BINNEN
         assert rij.verbruik_voor == Decimal("0.00")
         assert verbruik(administratie_id, offerte) == Decimal("0.00")
+        # 0.1 (besluit Peter 04-09): de voorwaarschuwing telt de twee open facturen wél — informatief,
+        # náást het verbruik dat op 0 blijft staan.
+        voorstel = verplichting_service.haal_voorstel_op(administratie_id=administratie_id, document_id=offerte)
+        assert voorstel.verbruik is not None
+        assert voorstel.verbruik.verbruikt_excl == Decimal("0.00")
+        assert voorstel.verbruik.open_facturen_aantal == 2
+        assert voorstel.verbruik.open_facturen_excl == Decimal("80000.00")
 
 
 class TestVerrekenenBijBoeken:

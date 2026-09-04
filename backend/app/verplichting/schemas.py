@@ -36,6 +36,9 @@ class VerbruikDto(BaseModel):
     totaal_excl: Decimal
     percentage: int
     over_excl: Decimal | None = None
+    #: Voorwaarschuwing 0.1: gematchte, nog niet geboekte facturen — informatief, buiten het verbruik.
+    open_facturen_aantal: int = 0
+    open_facturen_excl: Decimal = Decimal("0.00")
 
 
 class VervallenDto(BaseModel):
@@ -197,6 +200,8 @@ class KantoorRijDto(BaseModel):
     goedgekeurd_door_naam: str | None = None
     geldig_tot: date | None = None
     status: str
+    open_facturen_aantal: int = 0
+    open_facturen_excl: Decimal = Decimal("0.00")
     facturen: list[KantoorFactuurDto] = []
 
 

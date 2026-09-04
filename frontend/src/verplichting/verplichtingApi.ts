@@ -66,6 +66,9 @@ export interface VerplichtingVerbruikDto {
   /** Server rekent; de client toont alleen (③ cumulatief, grens = het offertebedrag). */
   percentage: number
   over_excl: string | null
+  /** Voorwaarschuwing (0.1, 04-09): gematchte facturen die nog niet geboekt zijn — informatief, buiten het verbruik. */
+  open_facturen_aantal?: number
+  open_facturen_excl?: string
 }
 
 export interface VerplichtingVervallenDto {
@@ -212,6 +215,9 @@ export interface VerplichtingKantoorRijDto {
   /** null = niet te bepalen (geen goedgekeurd bedrag) — de balk staat dan op 0. */
   percentage: number | null
   over_excl: string | null
+  /** Voorwaarschuwing (0.1, 04-09): open (nog niet geboekte) gematchte facturen — telt niet in het verbruik. */
+  open_facturen_aantal?: number
+  open_facturen_excl?: string
   goedgekeurd_op: string | null
   goedgekeurd_door_naam: string | null
   geldig_tot: string | null
