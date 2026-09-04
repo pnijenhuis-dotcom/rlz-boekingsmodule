@@ -13,8 +13,8 @@ export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
 export type BtwBron = 'factuur' | 'standaard'
 
 export interface RegelChip {
-  /** CSS-klassen naast `chip` — `ok` (groen), `afwijking` (oranje), `handmatig` (neutraal grijs). */
-  klasse: 'ok' | 'afwijking' | 'handmatig'
+  /** CSS-klassen naast `chip` — `ok` (groen), `afwijking` (oranje), `handmatig` (neutraal grijs), `blokkerend` (rood). */
+  klasse: 'ok' | 'afwijking' | 'handmatig' | 'blokkerend'
   tekst: string
   titel: string
 }
@@ -78,5 +78,92 @@ export function bepaalBtwStandaardChip(bron: BtwBron | null, huidigTaxrateId: st
     tekst: 'standaard administratie',
     titel:
       'Standaard btw-voorstel van deze administratie (Instellingen › Boeken & AI) — vult alleen regels waar factuur en leverancier-geheugen niets opleveren. Controleer; de harde checks blijven de poort.',
+  }
+}
+
+/* --- Overstap-vertaling van een OPEN boekvoorstel (Odoo-slotstuk 04-09, C1 hervertaling) ---------------------
+ * Bij een Reeleezee → Odoo-overstap hervertaalt de server de regels van nog open boekvoorstellen via de bevestigde
+ * mapping en legt per veld een informatief spoor vast (`boekvoorstel_regel.overstap_vertaling`). Twee chips:
+ *   - oranje "vertaald bij overstap"  — het veld draagt nog exact de vertaalde Odoo-waarde (`naar_id`): controleer en boek;
+ *   - rood   "niet vertaalbaar bij overstap — kies" — geen Odoo-tegenhanger in de mapping, veld is leeg gelaten.
+ * Zelfde regel als de gb-/btw-chips: weg zodra de mens het veld aanraakt of een andere waarde in het veld staat. */
+
+export type OverstapVeld = 'grootboek' | 'btw' | 'project'
+
+export interface OverstapVeldVertaling {
+  van_id: string | null
+  van_code: string | null
+  van_naam: string | null
+  naar_id: string | null
+  naar_code?: string | null
+  naar_naam?: string | null
+  reden?: string | null
+}
+
+export type OverstapVertaling = Partial<Record<OverstapVeld, OverstapVeldVertaling | null>> & { op?: string | null }
+
+function alsTekst(w: unknown): string | null {
+  return typeof w === 'string' && w !== '' ? w : null
+}
+
+function veldVertalingUit(w: unknown): OverstapVeldVertaling | null {
+  if (!w || typeof w !== 'object') return null
+  const o = w as Record<string, unknown>
+  if (!('naar_id' in o) && !('van_id' in o)) return null
+  return {
+    van_id: alsTekst(o.van_id),
+    van_code: alsTekst(o.van_code),
+    van_naam: alsTekst(o.van_naam),
+    naar_id: alsTekst(o.naar_id),
+    naar_code: alsTekst(o.naar_code),
+    naar_naam: alsTekst(o.naar_naam),
+    reden: alsTekst(o.reden),
+  }
+}
+
+/** Server-JSON → gevalideerd spoor; alles wat niet op de contractvorm lijkt telt als "geen spoor". */
+export function overstapVertalingUitDto(waarde: unknown): OverstapVertaling | null {
+  if (!waarde || typeof waarde !== 'object') return null
+  const o = waarde as Record<string, unknown>
+  const uit: OverstapVertaling = { op: alsTekst(o.op) }
+  let iets = false
+  for (const veld of ['grootboek', 'btw', 'project'] as const) {
+    const v = veldVertalingUit(o[veld])
+    if (v) {
+      uit[veld] = v
+      iets = true
+    }
+  }
+  return iets ? uit : null
+}
+
+const VELD_LABEL: Record<OverstapVeld, string> = { grootboek: 'grootboekrekening', btw: 'btw-tarief', project: 'project' }
+
+function rlzOmschrijving(v: OverstapVeldVertaling): string {
+  return [v.van_code, v.van_naam].filter(Boolean).join(' ') || v.van_id || 'onbekend'
+}
+
+/** Chip-besluit per veld. `huidigId` = wat nu in het veld staat; `handmatig` = de mens raakte het veld aan. */
+export function bepaalOverstapChip(
+  vertaling: OverstapVeldVertaling | null | undefined,
+  veld: OverstapVeld,
+  huidigId: string | null,
+  handmatig: boolean,
+): RegelChip | null {
+  if (!vertaling || handmatig) return null
+  if (vertaling.naar_id != null) {
+    if (huidigId !== vertaling.naar_id) return null
+    const odoo = [vertaling.naar_code, vertaling.naar_naam].filter(Boolean).join(' ') || vertaling.naar_id
+    return {
+      klasse: 'afwijking',
+      tekst: 'vertaald bij overstap',
+      titel: `Reeleezee ${rlzOmschrijving(vertaling)} → Odoo ${odoo} — ${VELD_LABEL[veld]} bij de Odoo-overstap via de bevestigde rekening-mapping vertaald; controleer en boek. De harde checks blijven de poort.`,
+    }
+  }
+  if (huidigId) return null
+  return {
+    klasse: 'blokkerend',
+    tekst: 'niet vertaalbaar bij overstap — kies',
+    titel: `${vertaling.reden ?? 'Geen Odoo-tegenhanger in de mapping bij de overstap'} — Reeleezee ${VELD_LABEL[veld]} ${rlzOmschrijving(vertaling)} is leeg gelaten; kies de Odoo-${VELD_LABEL[veld]}.`,
   }
 }

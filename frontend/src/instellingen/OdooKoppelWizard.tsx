@@ -34,7 +34,13 @@ import { datumNl, odooKoppelFout, odooProbeGroen, OdooProbeRapport, odooProbeSam
  * mapping-stap RLZ-grootboek → Odoo-account en RLZ-btw → Odoo-tax. "Verder" op de company-stap roept
  * POST …/odoo/overstap/voorbereiden aan (voorvalidaties + probe — 422 = rapport rood, wizard blijft staan — en het
  * deterministische voorstel, niets persistent); de mens bevestigt de hele tabel, pas dán POST …/odoo/overstap mét
- * `mapping`. Zo blijft het boekingsgeheugen (en de autoboek-opt-ins) ná de overstap werken. */
+ * `mapping`. Zo blijft het boekingsgeheugen (en de autoboek-opt-ins) ná de overstap werken.
+ *
+ * Slotstuk 04-09 (besluiten Peter): (1) de mapping-stap krijgt een OPTIONEEL derde blok "Projecten" (RLZ-project ↔
+ * Odoo analytic account; leeg = vervalt, "Aanmaken in Odoo" = de server maakt bij de overstap een analytic account aan
+ * op het RLZ-projectnummer — mislukt = zichtbaar overgeslagen op het resultaat, nooit stil); (2) de overgangsdatum is
+ * een KANTELDATUM, geen poort: facturen van vóór die datum die nog binnenkomen boeken óók in Odoo, al in Reeleezee
+ * geboekte facturen worden als duplicaat afgevoerd. */
 
 export type OdooKoppelvorm = 'volledig' | 'leesbron'
 type StapId = 'koppelvorm' | 'verbinding' | 'company' | 'mapping' | 'knip' | 'resultaat'
@@ -57,10 +63,16 @@ interface Props {
  * het voorstel staat (chip weer groen/oranje i.p.v. "handmatig"). */
 function voorstelVoor(v: OdooOverstapVoorbereidingDto | null, rij: MappingTabelRij): { odoo_id: number; reden: MappingTabelRij['bron'] } | null {
   if (!v) return null
-  const bron = rij.soort === 'grootboek' ? v.grootboek.find((r) => r.rlz_id === rij.rlz_id) : v.btw.find((r) => r.rlz_id === rij.rlz_id)
+  const bron =
+    rij.soort === 'grootboek'
+      ? v.grootboek.find((r) => r.rlz_id === rij.rlz_id)
+      : rij.soort === 'btw'
+        ? v.btw.find((r) => r.rlz_id === rij.rlz_id)
+        : (v.project ?? []).find((r) => r.rlz_id === rij.rlz_id)
   if (!bron || bron.voorstel_odoo_id == null) return null
   const reden = bron.reden
-  return { odoo_id: bron.voorstel_odoo_id, reden: reden === 'zelfde_code' || reden === 'code_verlengd' || reden === 'tarief' ? reden : 'handmatig' }
+  const voorstelRedenen: ReadonlySet<string> = new Set(['zelfde_code', 'code_verlengd', 'tarief', 'projectnummer', 'projectnaam'])
+  return { odoo_id: bron.voorstel_odoo_id, reden: reden && voorstelRedenen.has(reden) ? (reden as MappingTabelRij['bron']) : 'handmatig' }
 }
 
 function stappenVoor(ingang: Props['ingang'], vorm: OdooKoppelvorm): StapId[] {
@@ -146,7 +158,21 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
         // Terug op het voorstel = de voorstel-reden terug; iets anders = handmatig (zo legt de server het ook vast).
         const voorstel = voorstelVoor(voorbereiding, r)
         const bron = odooId == null ? null : voorstel && voorstel.odoo_id === odooId ? voorstel.reden : 'handmatig'
-        return { ...r, odoo_id: odooId, bron }
+        return { ...r, odoo_id: odooId, bron, aanmaken: false }
+      }),
+    )
+  }
+
+  /** Projectrij: "Aanmaken in Odoo" aan = geen bestaande tegenhanger (odoo_id null) én `aanmaken: true` in de body; uit =
+   * terug naar het servervoorstel als dat er was, anders leeg (vervalt). */
+  const zetAanmaken = (rij: MappingTabelRij, aanmaken: boolean) => {
+    const sleutel = mappingSleutel(rij.soort, rij.rlz_id)
+    setMappingRijen((huidig) =>
+      huidig.map((r) => {
+        if (mappingSleutel(r.soort, r.rlz_id) !== sleutel) return r
+        if (aanmaken) return { ...r, odoo_id: null, bron: null, aanmaken: true }
+        const voorstel = voorstelVoor(voorbereiding, r)
+        return { ...r, odoo_id: voorstel?.odoo_id ?? null, bron: voorstel?.reden ?? null, aanmaken: false }
       }),
     )
   }
@@ -186,17 +212,17 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
       <DialogTitle>{titel}</DialogTitle>
       <DialogDescription>
         {stap === 'koppelvorm' &&
-          'Twee verschillende dingen die nooit in elkaar overlopen: de volledige backend boekt vanaf de overgangsdatum in Odoo (Reeleezee blijft het archief van vóór die datum); de alleen-lezen leesbron laat de backend Reeleezee en leest uitsluitend de geposte verkoopfacturen uit Odoo voor de voorraad-uitstroom vanaf de knipdatum.'}
+          'Twee verschillende dingen die nooit in elkaar overlopen: de volledige backend zet de administratie vanaf de overgangsdatum (kanteldatum) op Odoo — Reeleezee blijft het archief van wat dáár al geboekt is, nakomers boeken in Odoo; de alleen-lezen leesbron laat de backend Reeleezee en leest uitsluitend de geposte verkoopfacturen uit Odoo voor de voorraad-uitstroom vanaf de knipdatum.'}
         {stap === 'verbinding' &&
           'Adres van de Odoo-omgeving en een API-sleutel van een gebruiker mét boekhoudrechten. De sleutel wordt server-side versleuteld opgeslagen (credential-store) en is daarna nooit meer uitleesbaar. De URL bindt de database — een apart database-veld is niet nodig.'}
         {stap === 'company' &&
           (ingang === 'nieuw'
             ? 'Deze sleutel ziet de volgende companies in de database. Kies welke je aansluit; vóór het opslaan draait per company de rechten-probe (grootboek · btw · relaties · journals · facturen · boeken) — die moet groen zijn, anders wordt niets opgeslagen.'
             : vorm === 'volledig'
-              ? 'Kies de company waarin deze administratie vanaf de overgangsdatum boekt. Vóór het opslaan draait de rechten-probe inclusief schrijfrecht — die moet groen zijn, anders wordt niets opgeslagen.'
+              ? 'Kies de company waarin deze administratie vanaf de overgangsdatum (kanteldatum) boekt. Vóór het opslaan draait de rechten-probe inclusief schrijfrecht — die moet groen zijn, anders wordt niets opgeslagen.'
               : 'Kies de company waarvan de verkoopfacturen als leesbron dienen. De leesprobe (alleen leesrechten) moet groen zijn — er wordt in deze vorm nooit in Odoo geschreven.')}
         {stap === 'mapping' &&
-          'Vertaal de Reeleezee-grootboekrekeningen en btw-tarieven die in het boekingsgeheugen en in open boekvoorstellen voorkomen naar hun Odoo-tegenhanger. Het voorstel is deterministisch (zelfde code, of code + "00"); bevestig of kies zelf. Zo blijven de geleerde boekvoorstellen en de autoboek-instellingen ná de overstap werken. Niets wordt opgeslagen vóór "Koppeling opslaan".'}
+          'Vertaal de Reeleezee-grootboekrekeningen en btw-tarieven die in het boekingsgeheugen en in open boekvoorstellen voorkomen naar hun Odoo-tegenhanger. Het voorstel is deterministisch (zelfde code, of code + "00"); bevestig of kies zelf. Projecten zijn optioneel: koppel aan een bestaand Odoo-project (voorstel op projectnummer, anders op naam), laat ze aanmaken in Odoo, of laat ze leeg — dan vervalt het project in het geheugen. Zo blijven de geleerde boekvoorstellen en de autoboek-instellingen ná de overstap werken. Niets wordt opgeslagen vóór "Koppeling opslaan".'}
         {stap === 'knip' &&
           'Vanaf de knipdatum telt de voorraad-uitstroom uit Odoo (geposte verkoopfacturen en creditnota’s van deze company); de Reeleezee-uitstroomroute stopt automatisch vanaf die datum, zodat niets dubbel telt.'}
         {stap === 'resultaat' &&
@@ -219,7 +245,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                 ariaLabel: 'Volledige backend',
                 kop: <b>Volledige backend</b>,
                 uitleg:
-                  'Boeken in Odoo vanaf een overgangsdatum — het migratiescenario van een bestaande Reeleezee-administratie.',
+                  'Vanaf een overgangsdatum (kanteldatum) boekt de administratie in Odoo — het migratiescenario van een bestaande Reeleezee-administratie. Nakomers van vóór die datum boeken óók in Odoo; wat al in Reeleezee geboekt is, wordt als duplicaat afgevoerd.',
               },
               {
                 waarde: 'leesbron',
@@ -324,7 +350,11 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
             ))}
           </ul>
           {ingang === 'bestaand' && vorm === 'volledig' && (
-            <FormField label="Overgangsdatum" htmlFor="odoo-overgangsdatum" hint="Vanaf deze datum boekt de administratie in Odoo; Reeleezee blijft het archief van daarvóór.">
+            <FormField
+              label="Overgangsdatum (kanteldatum)"
+              htmlFor="odoo-overgangsdatum"
+              hint="Vanaf deze datum is de administratie op Odoo. Facturen van vóór deze datum die nog binnenkomen boeken óók in Odoo — al in Reeleezee geboekte facturen worden als duplicaat afgevoerd."
+            >
               <input id="odoo-overgangsdatum" type="date" value={overgangsdatum} onChange={(e) => setOvergangsdatum(e.target.value)} required />
             </FormField>
           )}
@@ -361,10 +391,18 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
       {stap === 'mapping' && voorbereiding && (
         <div data-testid="odoo-wizard-mapping">
           <p className="hint" style={{ marginTop: 0 }}>
-            ✓ Rechten-probe groen · company {voorbereiding.company_naam ?? companyNaam(gekozen[0]) ?? gekozen[0]} · overgang per {datumNl(overgangsdatum)} ·{' '}
+            ✓ Rechten-probe groen · company {voorbereiding.company_naam ?? companyNaam(gekozen[0]) ?? gekozen[0]} · kanteldatum {datumNl(overgangsdatum)} ·{' '}
             {voorbereiding.odoo_grootboek.length} Odoo-rekeningen · {voorbereiding.odoo_btw.length} Odoo-taxen
+            {voorbereiding.odoo_projecten ? ` · ${voorbereiding.odoo_projecten.length} Odoo-projecten` : ''}
           </p>
-          <OdooMappingTabel rijen={mappingRijen} odooGrootboek={voorbereiding.odoo_grootboek} odooBtw={voorbereiding.odoo_btw} onKies={kiesMapping} />
+          <OdooMappingTabel
+            rijen={mappingRijen}
+            odooGrootboek={voorbereiding.odoo_grootboek}
+            odooBtw={voorbereiding.odoo_btw}
+            odooProjecten={voorbereiding.odoo_projecten ?? []}
+            onKies={kiesMapping}
+            onAanmaken={zetAanmaken}
+          />
           {fout && (
             <div className="fout" style={{ marginTop: 10 }}>
               {fout.bericht}
@@ -376,7 +414,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
           )}
           {!mappingKlaar && (
             <p className="hint" style={{ margin: '8px 0 0' }}>
-              Opslaan kan zodra élke rij een Odoo-tegenhanger heeft — de server weigert een onvolledige mapping.
+              Opslaan kan zodra élke grootboek- en btw-rij een Odoo-tegenhanger heeft — de server weigert een onvolledige mapping. Projecten mogen leeg blijven.
             </p>
           )}
           <DialogFooter>
@@ -437,11 +475,14 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
             </div>
           ) : (
             gekoppeld.map((g) => (
-              <EersteSyncStatus
-                key={g.id}
-                administratie={{ id: g.id, naam: g.naam, rlz_admin_id: null, odoo_company_id: g.company_id, odoo_company_naam: companyNaam(g.company_id), probe: g.probe }}
-                onderdelen={ODOO_SYNC_ONDERDELEN}
-              />
+              <div key={g.id}>
+                <EersteSyncStatus
+                  administratie={{ id: g.id, naam: g.naam, rlz_admin_id: null, odoo_company_id: g.company_id, odoo_company_naam: companyNaam(g.company_id), probe: g.probe }}
+                  onderdelen={ODOO_SYNC_ONDERDELEN}
+                />
+                <ProjectenAanmaakResultaat aangemaakt={g.projecten_aangemaakt ?? 0} overgeslagen={g.projecten_overgeslagen ?? []} />
+                <HervertalingResultaat stand={g.hervertaling ?? null} />
+              </div>
             ))
           )}
           <DialogFooter>
@@ -452,6 +493,51 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
         </div>
       )}
     </>
+  )
+}
+
+/** Slotstuk 04-09 blok C1: open boekvoorstellen mét Reeleezee-rekeningen zijn bij de overstap via de mapping hervertaald —
+ * één regel met de tellingen (de controleur ziet per veld de chip "vertaald bij overstap"). Niets geraakt = niets tonen. */
+export function HervertalingResultaat({
+  stand,
+}: {
+  stand: { documenten: number; regels: number; vertaald: Record<string, number>; leeg: Record<string, number> } | null
+}) {
+  if (!stand || stand.documenten === 0) return null
+  const leeg = Object.values(stand.leeg).reduce((a, b) => a + b, 0)
+  return (
+    <p className="hint" style={{ margin: '6px 0 0' }} data-testid="odoo-hervertaling-resultaat">
+      <span className="chip afwijking">vertaald bij overstap</span> {stand.documenten} open {stand.documenten === 1 ? 'boekvoorstel' : 'boekvoorstellen'} (
+      {stand.regels} regels) hervertaald naar de Odoo-rekeningen
+      {leeg > 0 ? ` — ${leeg} veld${leeg === 1 ? '' : 'en'} zonder tegenhanger leeggemaakt (de controleur kiest opnieuw)` : ''}.
+    </p>
+  )
+}
+
+/** Slotstuk 04-09: bij een overstap mét "Aanmaken in Odoo" toont het resultaat hoeveel analytic accounts zijn aangemaakt
+ * en — per rij, nooit stil — welke aanmaak is overgeslagen mét de reden van de server. Niets = niets tonen. */
+export function ProjectenAanmaakResultaat({ aangemaakt, overgeslagen }: { aangemaakt: number; overgeslagen: string[] }) {
+  if (aangemaakt === 0 && overgeslagen.length === 0) return null
+  return (
+    <div style={{ marginTop: 6 }} data-testid="odoo-projecten-resultaat">
+      {aangemaakt > 0 && (
+        <p className="hint" style={{ margin: 0 }}>
+          <span className="chip ok">projecten</span> {aangemaakt} {aangemaakt === 1 ? 'project' : 'projecten'} aangemaakt in Odoo (analytic account op het
+          RLZ-projectnummer)
+        </p>
+      )}
+      {overgeslagen.length > 0 && (
+        <div className="hint" style={{ margin: '4px 0 0', color: 'var(--orange)' }} data-testid="odoo-projecten-overgeslagen">
+          <span className="chip afwijking">niet aangemaakt</span> {overgeslagen.length} {overgeslagen.length === 1 ? 'project' : 'projecten'} overgeslagen — koppel of
+          maak ze later aan via "Mapping bekijken/corrigeren…":
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {overgeslagen.map((regel, i) => (
+              <li key={i}>{regel}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 

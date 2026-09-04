@@ -7,8 +7,19 @@ import type { GeboektInRlzDto } from '../api/types'
 
 export function geboektInRlzTooltip(stand: GeboektInRlzDto): string {
   // Odoo-adapter blok E (03-09), additief: de kruisverwijzing van een tegenboeking ("Reversal · RBILL/… ↔
-  // BILL/…") als eigen tooltip-regel; niets verandert voor een RLZ-stand zonder dat veld.
-  return [stand.regel, stand.kruisverwijzing ?? null, stand.vindplaats_hint].filter(Boolean).join('\n')
+  // BILL/…") als eigen tooltip-regel; slotstuk 04-09 (A2): de verschoven boekdatum idem. Niets verandert voor
+  // een RLZ-stand zonder die velden.
+  return [stand.regel, stand.kruisverwijzing ?? null, stand.boekdatum_verschoven ?? null, stand.vindplaats_hint].filter(Boolean).join('\n')
+}
+
+/** Slotstuk 04-09 (A2): de Odoo-boekdatum is deterministisch naar de eerste dag van de eerstvolgende open periode
+ * verschoven omdat de factuurdatum in een afgesloten (aangegeven) periode valt — factuurdatum ongewijzigd. */
+function BoekdatumVerschovenChip({ regel }: { regel: string }) {
+  return (
+    <span className="chip afwijking" data-testid="boekdatum-verschoven-chip" title={regel}>
+      boekdatum verschoven
+    </span>
+  )
 }
 
 /** ± € 0,02-btw-cent-override (Odoo-adapter, blok C): draagt zijn bestaande chip óók hier (mockup §3). */
@@ -33,6 +44,12 @@ export function GeboektInRlzChip({ stand }: { stand: GeboektInRlzDto }) {
           <BtwOverrideChip />
         </>
       )}
+      {stand.boekdatum_verschoven && (
+        <>
+          {' '}
+          <BoekdatumVerschovenChip regel={stand.boekdatum_verschoven} />
+        </>
+      )}
     </>
   )
 }
@@ -52,6 +69,12 @@ export function GeboektInRlzRegel({ stand }: { stand: GeboektInRlzDto }) {
         <>
           <br />
           <span data-testid="geboekt-kruisverwijzing">{stand.kruisverwijzing}</span>
+        </>
+      )}
+      {stand.boekdatum_verschoven && (
+        <>
+          <br />
+          <BoekdatumVerschovenChip regel={stand.boekdatum_verschoven} /> <span data-testid="geboekt-boekdatum-verschoven">{stand.boekdatum_verschoven}</span>
         </>
       )}
       {stand.vindplaats_hint && (

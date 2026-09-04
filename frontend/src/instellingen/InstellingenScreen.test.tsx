@@ -89,17 +89,25 @@ function installFetchMock(opties: {
         opties.putAanroepen?.push({ url, body: null })
         return Promise.resolve(jsonResponse({ run_id: 'run-9', onderdelen: { ledgers: { status: 'klaar', aangemaakt: 3, bijgewerkt: 209 }, taxrates: { status: 'klaar', aangemaakt: 0, bijgewerkt: 14 } } }))
       }
-      // Blok A 04-09: rekening-mapping (GET + correctie-PUT) en C1 overgangsdatum (409 bij een Odoo-boeking ervóór).
+      // Blok A 04-09: rekening-mapping (GET + correctie-PUT, sinds het slotstuk 04-09 óók soort project) en C1 overgangsdatum —
+      // sinds het slotstuk een KANTELDATUM zonder 409-poort (altijd 200); een generieke serverfout blijft mogelijk (sentinel 2099-01-01).
       if (url.endsWith('/odoo/mapping') && (!init || init.method === undefined)) {
-        return Promise.resolve(jsonResponse(opties.odooMapping ?? { grootboek: [], btw: [], odoo_grootboek: [], odoo_btw: [], laatst_bevestigd_op: null, laatst_bevestigd_door_naam: null }))
+        return Promise.resolve(jsonResponse(opties.odooMapping ?? { grootboek: [], btw: [], project: [], odoo_grootboek: [], odoo_btw: [], odoo_projecten: [], laatst_bevestigd_op: null, laatst_bevestigd_door_naam: null }))
       }
       if (url.includes('/odoo/mapping/') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as { odoo_id: number }
         opties.putAanroepen?.push({ url, body })
-        const stand = opties.odooMapping as { grootboek: Record<string, unknown>[]; btw: Record<string, unknown>[]; odoo_grootboek: { odoo_id: number; code: string; naam: string }[] }
-        const [, soort, rlzId] = /\/odoo\/mapping\/(grootboek|btw)\/([^/]+)$/.exec(url) ?? []
-        const doel = stand.odoo_grootboek.find((o) => o.odoo_id === body.odoo_id)
-        const rijen = (soort === 'grootboek' ? stand.grootboek : stand.btw).map((r) =>
+        const stand = opties.odooMapping as {
+          grootboek: Record<string, unknown>[]
+          btw: Record<string, unknown>[]
+          project?: Record<string, unknown>[]
+          odoo_grootboek: { odoo_id: number; code: string; naam: string }[]
+          odoo_projecten?: { odoo_id: number; code: string | null; naam: string }[]
+        }
+        const [, soort, rlzId] = /\/odoo\/mapping\/(grootboek|btw|project)\/([^/]+)$/.exec(url) ?? []
+        const doel = (soort === 'project' ? (stand.odoo_projecten ?? []) : stand.odoo_grootboek).find((o) => o.odoo_id === body.odoo_id)
+        const bron = soort === 'grootboek' ? stand.grootboek : soort === 'btw' ? stand.btw : (stand.project ?? [])
+        const rijen = bron.map((r) =>
           r.rlz_id === rlzId ? { ...r, odoo_id: body.odoo_id, odoo_code: doel?.code ?? null, odoo_naam: doel?.naam ?? null, bron: 'handmatig', versie: (r.versie as number) + 1, bevestigd_op: '2026-09-04T11:00:00Z' } : r,
         )
         return Promise.resolve(jsonResponse({ ...stand, [soort as string]: rijen, laatst_bevestigd_op: '2026-09-04T11:00:00Z' }))
@@ -107,8 +115,8 @@ function installFetchMock(opties: {
       if (url.endsWith('/odoo/overgangsdatum') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as { overgangsdatum: string }
         opties.putAanroepen?.push({ url, body })
-        if (body.overgangsdatum > '2026-06-05') {
-          return Promise.resolve(jsonResponse({ detail: { bericht: '1 factuur is al in Odoo geboekt vóór 01-11-2026: BILL/2026/06/0001 op 05-06-2026 — kies een datum op of vóór 05-06-2026 of boek die factuur tegen' } }, 409))
+        if (body.overgangsdatum === '2099-01-01') {
+          return Promise.resolve(jsonResponse({ detail: 'Overgangsdatum ligt in de toekomst voorbij de laatste sync — controleer de datum' }, 422))
         }
         return Promise.resolve(jsonResponse({ ...(opties.odooStand as Record<string, unknown>), overgangsdatum: body.overgangsdatum }))
       }
@@ -979,6 +987,12 @@ describe('InstellingenScreen — rekening-mapping + overgangsdatum (Odoo blok A/
       { odoo_id: 13, lokaal_id: '11111111-0000-0000-0000-000000000013', code: '4699', naam: 'Diverse algemene kosten' },
     ],
     odoo_btw: [{ odoo_id: 21, lokaal_id: '22222222-0000-0000-0000-000000000021', naam: '21% inkoop', percentage: '0.21', verlegd: false, synthetisch: false }],
+    // Slotstuk 04-09 (blok B): één projectrij, bij de overstap aangemaakt in Odoo.
+    project: [{ soort: 'project', rlz_id: 'pr-26127', rlz_code: '26127', rlz_naam: '26127 Tilburg (Heijmans)', odoo_id: 31, odoo_code: '26127', odoo_naam: '[26127] Tilburg (Heijmans)', bron: 'aangemaakt', versie: 1, bevestigd_op: '2026-09-04T09:00:00Z', bevestigd_door_naam: 'Peter' }],
+    odoo_projecten: [
+      { odoo_id: 31, lokaal_id: '33333333-0000-0000-0000-000000000031', naam: '[26127] Tilburg (Heijmans)', code: '26127' },
+      { odoo_id: 32, lokaal_id: '33333333-0000-0000-0000-000000000032', naam: 'Eindhoven Strijp-S', code: null },
+    ],
     laatst_bevestigd_op: '2026-09-04T09:00:00Z',
     laatst_bevestigd_door_naam: 'Peter',
   }
@@ -997,19 +1011,24 @@ describe('InstellingenScreen — rekening-mapping + overgangsdatum (Odoo blok A/
       laatste_sync_op: '2026-09-03T05:00:00Z',
     })
 
-  it('rij "Rekening-mapping": telling + bevestigd door; dialoog in corrigeer-modus, keuze = PUT …/odoo/mapping/{soort}/{rlz_id} → versie-badge v2', async () => {
+  it('rij "Rekening-mapping": telling (incl. projecten) + bevestigd door; dialoog in corrigeer-modus mét projectblok, keuze = PUT …/odoo/mapping/{soort}/{rlz_id} → versie-badge v2 (ook soort project)', async () => {
     const gebruiker = userEvent.setup()
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', putAanroepen, odooStand: ODOO_STAND, odooMapping: ODOO_MAPPING, administraties: [odooAdministratie()] })
     renderScherm()
     const detail = await openDetail('Universal Steigerbouw B.V.')
     const rij = within(detail).getByTestId('odoo-mapping-stand')
-    await waitFor(() => expect(rij).toHaveTextContent('2 grootboek · 1 btw · bevestigd 04-09'))
+    await waitFor(() => expect(rij).toHaveTextContent('2 grootboek · 1 btw · 1 project · bevestigd 04-09'))
     expect(rij).toHaveTextContent('door Peter')
 
     fireEvent.click(within(detail).getByRole('button', { name: 'Rekening-mapping bekijken of corrigeren voor Universal Steigerbouw B.V.' }))
     const dialoog = await screen.findByTestId('odoo-mapping-dialoog')
+    // Projecten tellen niet mee in de verplichte teller; het projectblok staat er wél mét de neutrale "aangemaakt"-chip.
     expect(within(dialoog).getByTestId('odoo-mapping-teller')).toHaveTextContent('3 van 3 gekoppeld')
+    expect(within(dialoog).getByRole('heading', { name: 'Projecten (1)' })).toBeInTheDocument()
+    const rijProject = within(dialoog).getByTestId('odoo-mapping-rij-project:pr-26127')
+    expect(within(rijProject).getByText('aangemaakt in Odoo')).toHaveClass('chip', 'handmatig')
+    expect(within(rijProject).queryByLabelText(/Aanmaken in Odoo/)).not.toBeInTheDocument()
     // Corrigeer-modus: geen filter, wel de geldende waarde + herkomst-chip.
     expect(within(dialoog).queryByLabelText('Alleen nog te kiezen')).not.toBeInTheDocument()
     const rij4808 = within(dialoog).getByTestId('odoo-mapping-rij-grootboek:gb-4808')
@@ -1027,37 +1046,47 @@ describe('InstellingenScreen — rekening-mapping + overgangsdatum (Odoo blok A/
     // De andere rij is ongemoeid (append-only per rij).
     expect(within(within(dialoog).getByTestId('odoo-mapping-rij-grootboek:gb-4699')).queryByText(/^v\d/)).not.toBeInTheDocument()
 
+    // Projectcorrectie = PUT soort project → v2.
+    await gebruiker.click(within(within(dialoog).getByTestId('odoo-mapping-rij-project:pr-26127')).getByRole('combobox'))
+    await gebruiker.click(screen.getByRole('option', { name: /Eindhoven Strijp-S/ }))
+    await waitFor(() => expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/mapping/project/pr-26127`, body: { odoo_id: 32 } }))
+    await waitFor(() => expect(within(within(dialoog).getByTestId('odoo-mapping-rij-project:pr-26127')).getByText('v2')).toBeInTheDocument())
+
     fireEvent.click(within(dialoog).getByRole('button', { name: 'Sluiten' }))
     await waitFor(() => expect(screen.queryByTestId('odoo-mapping-dialoog')).not.toBeInTheDocument())
   })
 
-  it('C1 "Overgangsdatum wijzigen…": 409 = servertekst rood + dialoog blijft open, niets gewijzigd; toegestane datum = PUT + dialoog dicht', async () => {
+  it('"Overgangsdatum wijzigen…" (kanteldatum, slotstuk 04-09): uitleg zonder "boeken in Reeleezee", generieke serverfout blijft rood + dialoog open (geen 409-hint meer), elke andere datum = PUT + dialoog dicht', async () => {
     const putAanroepen: { url: string; body: unknown }[] = []
     installFetchMock({ rol: 'beheerder', putAanroepen, odooStand: ODOO_STAND, administraties: [odooAdministratie()] })
     renderScherm()
     const detail = await openDetail('Universal Steigerbouw B.V.')
     const overgang = await within(detail).findByTestId('odoo-overgangsdatum')
     expect(overgang).toHaveTextContent('overgestapt per 01-10-2026')
+    expect(overgang).toHaveAttribute('title', expect.stringContaining('Facturen van vóór deze datum die nog binnenkomen boeken óók in Odoo'))
     fireEvent.click(within(overgang).getByRole('button', { name: 'Overgangsdatum wijzigen voor Universal Steigerbouw B.V.' }))
     const dialoog = await screen.findByTestId('overgangsdatum-dialoog')
-    const veld = within(dialoog).getByLabelText('Overgangsdatum') as HTMLInputElement
+    const veld = within(dialoog).getByLabelText('Overgangsdatum (kanteldatum)') as HTMLInputElement
     expect(veld.value).toBe('2026-10-01')
-    expect(within(dialoog).getByText(/Facturen mét factuurdatum vóór deze datum boeken in Reeleezee/)).toBeInTheDocument()
+    expect(within(dialoog).getByText(/al in Reeleezee geboekte facturen worden als duplicaat afgevoerd/)).toBeInTheDocument()
+    expect(within(dialoog).getByText(/De datum is geen poort/)).toBeInTheDocument()
+    expect(within(dialoog).queryByText(/boeken in Reeleezee/)).not.toBeInTheDocument()
     // Ongewijzigd = niets op te slaan.
     expect(within(dialoog).getByRole('button', { name: 'Overgangsdatum opslaan' })).toBeDisabled()
 
-    // Geblokkeerd: er staat al een Odoo-boeking vóór de nieuwe datum → 409 mét de servertekst, dialoog blijft open.
+    // Generieke serverfout (422): servertekst rood, dialoog blijft open, géén 409-specifieke "kies een datum op of vóór dat boekstuk"-hint.
+    fireEvent.change(veld, { target: { value: '2099-01-01' } })
+    fireEvent.click(within(dialoog).getByRole('button', { name: 'Overgangsdatum opslaan' }))
+    await waitFor(() => expect(within(dialoog).getByTestId('overgangsdatum-fout')).toHaveTextContent('Overgangsdatum ligt in de toekomst voorbij de laatste sync'))
+    expect(within(dialoog).getByTestId('overgangsdatum-fout')).not.toHaveTextContent('Niets gewijzigd')
+    expect(within(dialoog).getByTestId('overgangsdatum-fout')).not.toHaveTextContent('boek die factuur eerst tegen')
+    expect(screen.getByTestId('overgangsdatum-dialoog')).toBeInTheDocument()
+    expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/overgangsdatum`, body: { overgangsdatum: '2099-01-01' } })
+
+    // Een datum ná een al in Odoo geboekte factuur is géén blokkade meer (kanteldatum): 200, dialoog dicht.
     fireEvent.change(veld, { target: { value: '2026-11-01' } })
     fireEvent.click(within(dialoog).getByRole('button', { name: 'Overgangsdatum opslaan' }))
-    await waitFor(() => expect(within(dialoog).getByTestId('overgangsdatum-fout')).toHaveTextContent('1 factuur is al in Odoo geboekt vóór 01-11-2026: BILL/2026/06/0001 op 05-06-2026'))
-    expect(within(dialoog).getByTestId('overgangsdatum-fout')).toHaveTextContent('Niets gewijzigd')
-    expect(screen.getByTestId('overgangsdatum-dialoog')).toBeInTheDocument()
-    expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/overgangsdatum`, body: { overgangsdatum: '2026-11-01' } })
-
-    // Toegestaan: op/vóór het oudste boekstuk → 200, dialoog dicht.
-    fireEvent.change(veld, { target: { value: '2026-06-01' } })
-    fireEvent.click(within(dialoog).getByRole('button', { name: 'Overgangsdatum opslaan' }))
-    await waitFor(() => expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/overgangsdatum`, body: { overgangsdatum: '2026-06-01' } }))
+    await waitFor(() => expect(putAanroepen).toContainEqual({ url: `/administraties/${ODOO_ID}/odoo/overgangsdatum`, body: { overgangsdatum: '2026-11-01' } }))
     await waitFor(() => expect(screen.queryByTestId('overgangsdatum-dialoog')).not.toBeInTheDocument())
   })
 

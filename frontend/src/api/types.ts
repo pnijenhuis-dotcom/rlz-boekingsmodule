@@ -226,6 +226,10 @@ export interface GeboektInRlzDto {
   tegenboeking_boekstuknummer?: string | null
   kruisverwijzing?: string | null
   btw_override?: boolean
+  /** Slotstuk 04-09 (A2): leesbare regel als de Odoo-boekdatum deterministisch is verschoven omdat de factuurdatum in
+   * een in Odoo afgesloten (aangegeven) periode valt — "boekdatum 01-01-2026 · factuurdatum 15-12-2025 valt in een in
+   * Odoo afgesloten periode". Afwezig/null = niet verschoven (RLZ altijd). */
+  boekdatum_verschoven?: string | null
 }
 
 export interface DocumentListItemDto {
@@ -648,6 +652,11 @@ export interface BoekvoorstelRegelDto {
    * null = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Alleen op prefill-regels. */
   gb_bron?: string | null
   gb_voorstel_detail?: string | null
+  /** Slotstuk 04-09 (C1 hervertaling): informatief spoor per veld (`grootboek`/`btw`/`project`) als een OPEN voorstel bij
+   * de Odoo-overstap via de mapping is hervertaald — `{van_id, van_code, van_naam, naar_id, naar_code, naar_naam}`, óf
+   * `naar_id: null` + `reden` als er geen Odoo-tegenhanger was (veld dan leeg). De server negeert 'm bij opslaan; ná een
+   * PUT door de mens verdwijnt het spoor (bewust — de chip is dan niet meer waar). */
+  overstap_vertaling?: Record<string, unknown> | null
 }
 
 export interface BoekvoorstelDto {

@@ -24,7 +24,19 @@ import {
   omschrijvingSleutel,
   type HandmatigeVelden,
 } from './geheugenVoorstel'
-import { bepaalBtwStandaardChip, bepaalGbChip, btwBronUitDto, gbBronUitDto, type BtwBron, type GbBron } from './regelVoorstelChips'
+import {
+  bepaalBtwStandaardChip,
+  bepaalGbChip,
+  bepaalOverstapChip,
+  btwBronUitDto,
+  gbBronUitDto,
+  overstapVertalingUitDto,
+  type BtwBron,
+  type GbBron,
+  type OverstapVeld,
+  type OverstapVeldVertaling,
+  type OverstapVertaling,
+} from './regelVoorstelChips'
 import { Checkbox, Select } from '../ui/basis'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { MatchAfwijkingPopup } from '../ui/MatchAfwijkingPopup'
@@ -75,6 +87,29 @@ function StatischVeld({ label, waarde }: StatischVeldProps) {
   )
 }
 
+/** Odoo-slotstuk 04-09: chip per veld uit `regel.overstap` (pure beslislogica in regelVoorstelChips.ts). */
+function OverstapChip({
+  vertaling,
+  veld,
+  huidig,
+  handmatig,
+}: {
+  vertaling: OverstapVeldVertaling | null | undefined
+  veld: OverstapVeld
+  huidig: string | null
+  handmatig: boolean
+}) {
+  const chip = bepaalOverstapChip(vertaling ?? null, veld, huidig, handmatig)
+  if (!chip) return null
+  return (
+    <div style={{ marginTop: 4 }}>
+      <span className={`chip ${chip.klasse}`} title={chip.titel} data-testid={`regel-overstap-chip-${veld}`}>
+        {chip.tekst}
+      </span>
+    </div>
+  )
+}
+
 interface RegelState {
   key: string
   ledgerId: string | null
@@ -98,6 +133,10 @@ interface RegelState {
    * op het grootboek zolang deze regel-chip staat — de regel-treffer is specifieker. */
   gbBron: GbBron | null
   gbDetail: string | null
+  /** Odoo-slotstuk 04-09 (C1 hervertaling): informatief spoor per veld als een OPEN voorstel bij de overstap via de
+   * mapping is hervertaald — chips "vertaald bij overstap" (oranje) / "niet vertaalbaar — kies" (rood), weg zodra de
+   * mens het veld aanraakt (zelfde regel als de gb-/btw-chips). Alleen op geladen server-regels. */
+  overstap: OverstapVertaling | null
   omschrijving: string
   /** Laagste AI-zekerheidsscore van de vooringevulde regelvelden (alleen bij een vers, nog niet
    * opgeslagen AI-voorstel). Elke handmatige wijziging aan de regel wist de score — dan beschrijft
@@ -130,6 +169,7 @@ function nieuweRegel(): RegelState {
     btwBron: null,
     gbBron: null,
     gbDetail: null,
+    overstap: null,
     omschrijving: '',
     aiZekerheid: null,
     geheugen: null,
@@ -150,6 +190,7 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
     gbBron: r.ledger_id ? gbBronUitDto(r.gb_bron) : null,
     gbDetail: r.gb_voorstel_detail ?? null,
+    overstap: overstapVertalingUitDto(r.overstap_vertaling),
     omschrijving: r.omschrijving ?? '',
     aiZekerheid,
     geheugen: null,
@@ -187,6 +228,7 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     // server-prefill van dto.regels); de kop-niveau-engine vult 'm dan zoals voorheen.
     gbBron: null,
     gbDetail: null,
+    overstap: null,
     omschrijving: r.omschrijving ?? '',
     aiZekerheid: ai.regel_zekerheid[i] ?? null,
     geheugen: null,
@@ -1519,6 +1561,7 @@ export function BoekvoorstelPanel({
                           </div>
                         ) : null
                       })()}
+                      <OverstapChip vertaling={regel.overstap?.grootboek} veld="grootboek" huidig={regel.ledgerId} handmatig={regel.handmatigeVelden.ledgerId} />
                       {regel.geheugen && !bepaalGbChip(regel.gbBron, regel.gbDetail, regel.ledgerId, regel.handmatigeVelden.ledgerId) && (
                         <GeheugenChipBlok
                           veld={regel.geheugen.gb}
@@ -1563,6 +1606,7 @@ export function BoekvoorstelPanel({
                           </div>
                         ) : null
                       })()}
+                      <OverstapChip vertaling={regel.overstap?.btw} veld="btw" huidig={regel.taxrateId} handmatig={regel.handmatigeVelden.taxrateId} />
                       {regel.btwBron === 'factuur' && regel.taxrateId && !regel.handmatigeVelden.taxrateId && (
                         <div style={{ marginTop: 4 }}>
                           <span
@@ -1620,6 +1664,7 @@ export function BoekvoorstelPanel({
                               : undefined
                           }
                         />
+                        <OverstapChip vertaling={regel.overstap?.project} veld="project" huidig={regel.projectId} handmatig={regel.handmatigeVelden.projectId} />
                         {regel.geheugen && (
                           <GeheugenChipBlok
                             veld={regel.geheugen.project}

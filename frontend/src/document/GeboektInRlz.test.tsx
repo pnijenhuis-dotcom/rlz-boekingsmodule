@@ -71,3 +71,39 @@ describe('GeboektInRlz — Odoo (blok E)', () => {
     expect(screen.getByText('Geboekt in Odoo · BILL/2026/09/0001 · Universal Steigerbouw')).toBeInTheDocument()
   })
 })
+
+describe('GeboektInRlz — boekdatum verschoven (Odoo-slotstuk 04-09, A2)', () => {
+  const VERSCHOVEN: GeboektInRlzDto = {
+    ...ODOO,
+    btw_override: false,
+    kruisverwijzing: null,
+    tegenboeking_boekstuknummer: null,
+    boekdatum_verschoven: 'boekdatum 01-01-2026 · factuurdatum 15-12-2025 valt in een in Odoo afgesloten periode',
+  }
+
+  it('tooltip krijgt de verschuiving als eigen regel, ná de kruisverwijzing en vóór de vindplaats-hint', () => {
+    expect(geboektInRlzTooltip(VERSCHOVEN)).toBe(`${ODOO.regel}\nboekdatum 01-01-2026 · factuurdatum 15-12-2025 valt in een in Odoo afgesloten periode\nin Odoo: Boekhouding → Leveranciers → Facturen`)
+    expect(geboektInRlzTooltip({ ...VERSCHOVEN, kruisverwijzing: ODOO.kruisverwijzing })).toBe(
+      `${ODOO.regel}\n${ODOO.kruisverwijzing}\nboekdatum 01-01-2026 · factuurdatum 15-12-2025 valt in een in Odoo afgesloten periode\nin Odoo: Boekhouding → Leveranciers → Facturen`,
+    )
+  })
+
+  it('detailkop: oranje chip "boekdatum verschoven" mét de regel als tooltip, naast de Odoo-chip', () => {
+    render(<GeboektInRlzChip stand={VERSCHOVEN} />)
+    const chip = screen.getByTestId('boekdatum-verschoven-chip')
+    expect(chip).toHaveTextContent('boekdatum verschoven')
+    expect(chip).toHaveClass('chip', 'afwijking')
+    expect(chip).toHaveAttribute('title', VERSCHOVEN.boekdatum_verschoven)
+    expect(screen.queryByTestId('btw-override-chip')).not.toBeInTheDocument()
+  })
+
+  it('reviewscherm-regel: chip + de verschuivingsregel als eigen regel; RLZ-stand en Odoo zonder verschuiving tonen niets extra', () => {
+    render(<GeboektInRlzRegel stand={VERSCHOVEN} />)
+    expect(screen.getByTestId('boekdatum-verschoven-chip')).toBeInTheDocument()
+    expect(screen.getByTestId('geboekt-boekdatum-verschoven')).toHaveTextContent('boekdatum 01-01-2026 · factuurdatum 15-12-2025')
+    render(<GeboektInRlzRegel stand={RLZ} />)
+    render(<GeboektInRlzRegel stand={{ ...ODOO, boekdatum_verschoven: null }} />)
+    expect(screen.getAllByTestId('boekdatum-verschoven-chip')).toHaveLength(1)
+    expect(geboektInRlzTooltip(RLZ)).toBe(RLZ.regel)
+  })
+})

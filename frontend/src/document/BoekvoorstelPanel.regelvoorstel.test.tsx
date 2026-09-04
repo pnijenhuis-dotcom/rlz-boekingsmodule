@@ -15,6 +15,7 @@ const GB_4112 = 'cccccccc-0000-0000-0000-000000004112'
 const TAXRATE_HOOG = 'dddddddd-0000-0000-0000-000000000021'
 const TAXRATE_VERLEGD = 'dddddddd-0000-0000-0000-000000000009'
 const VENDOR_ID = 'eeeeeeee-0000-0000-0000-000000000005'
+const PROJECT_ODOO = 'ffffffff-0000-0000-0000-000000026127'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -36,7 +37,7 @@ function regel(overrides: Record<string, unknown>) {
   }
 }
 
-function installFetchMock(regels: unknown[], geheugenVoorstel?: unknown) {
+function installFetchMock(regels: unknown[], geheugenVoorstel?: unknown, opties: { projectVerplicht?: boolean } = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -65,8 +66,8 @@ function installFetchMock(regels: unknown[], geheugenVoorstel?: unknown) {
         )
       }
       if (url.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: [{ id: VENDOR_ID, naam: 'Derks Automatisering B.V.' }] }))
-      if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten: [] }))
-      if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: false }))
+      if (url.endsWith('/projecten')) return Promise.resolve(jsonResponse({ projecten: [{ id: PROJECT_ODOO, naam: '[26127] Tilburg (Heijmans)' }] }))
+      if (url.endsWith('/project-instelling')) return Promise.resolve(jsonResponse({ verplicht: opties.projectVerplicht ?? false }))
       if (url.endsWith('/boekvoorstel') && (!init || init.method === undefined)) {
         return Promise.resolve(
           jsonResponse({
@@ -192,5 +193,69 @@ describe('BoekvoorstelPanel — btw-default administratie (blok E 04-09, mockup 
     await gebruiker.click(screen.getAllByLabelText('Btw-code', { exact: false })[0])
     await gebruiker.click(await screen.findByRole('option', { name: /NL, Hoog Tarief/ }))
     await waitFor(() => expect(screen.queryByTestId('regel-btw-standaard-chip')).toBeNull())
+  })
+})
+
+describe('BoekvoorstelPanel — overstap-vertaling van een open voorstel (Odoo-slotstuk 04-09, C1 hervertaling)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: () => `local-${Math.random()}` })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const GB_VERTAALD = { van_id: 'rlz-4304', van_code: '4304', van_naam: 'Brandstof auto', naar_id: GB_4110, naar_code: '4110', naar_naam: 'Automatisering' }
+  const BTW_LEEG = { van_id: 'rlz-btw-x', van_code: null, van_naam: 'NL, BTW verlegd (hoog)', naar_id: null, reden: 'geen Odoo-tegenhanger in de mapping bij de overstap' }
+  const PROJECT_VERTAALD = { van_id: 'rlz-pr-26127', van_code: '26127', van_naam: '26127 Tilburg (Heijmans)', naar_id: PROJECT_ODOO, naar_code: '26127', naar_naam: '[26127] Tilburg (Heijmans)' }
+
+  it('grootboek vertaald = oranje "vertaald bij overstap"; btw niet vertaalbaar en leeg = rode "kies"; project vertaald = oranje in de projectkolom', async () => {
+    installFetchMock(
+      [
+        regel({
+          omschrijving: 'Diesel',
+          ledger_id: GB_4110,
+          taxrate_id: null,
+          project_id: PROJECT_ODOO,
+          overstap_vertaling: { op: '2026-09-04T20:00:00Z', grootboek: GB_VERTAALD, btw: BTW_LEEG, project: PROJECT_VERTAALD },
+        }),
+      ],
+      undefined,
+      { projectVerplicht: true },
+    )
+    renderPanel()
+    const gb = await screen.findByTestId('regel-overstap-chip-grootboek')
+    expect(gb).toHaveTextContent('vertaald bij overstap')
+    expect(gb).toHaveClass('chip', 'afwijking')
+    expect(gb).toHaveAttribute('title', expect.stringContaining('Reeleezee 4304 Brandstof auto → Odoo 4110 Automatisering'))
+    const btw = screen.getByTestId('regel-overstap-chip-btw')
+    expect(btw).toHaveTextContent('niet vertaalbaar bij overstap — kies')
+    expect(btw).toHaveClass('chip', 'blokkerend')
+    expect(btw).toHaveAttribute('title', expect.stringContaining('geen Odoo-tegenhanger in de mapping bij de overstap'))
+    const project = screen.getByTestId('regel-overstap-chip-project')
+    expect(project).toHaveTextContent('vertaald bij overstap')
+    expect(project).toHaveClass('chip', 'afwijking')
+  })
+
+  it('de chip verdwijnt zodra de mens het veld aanraakt — ook de rode "kies" ná een keuze', async () => {
+    installFetchMock([regel({ ledger_id: GB_4110, taxrate_id: null, overstap_vertaling: { grootboek: GB_VERTAALD, btw: BTW_LEEG } })])
+    const gebruiker = userEvent.setup()
+    renderPanel()
+    expect(await screen.findByTestId('regel-overstap-chip-grootboek')).toBeInTheDocument()
+    expect(screen.getByTestId('regel-overstap-chip-btw')).toBeInTheDocument()
+    await gebruiker.click(screen.getAllByLabelText('Grootboek', { exact: false })[0])
+    await gebruiker.click(await screen.findByRole('option', { name: /4112.*Software-abonnementen/ }))
+    await waitFor(() => expect(screen.queryByTestId('regel-overstap-chip-grootboek')).toBeNull())
+    await gebruiker.click(screen.getAllByLabelText('Btw-code', { exact: false })[0])
+    await gebruiker.click(await screen.findByRole('option', { name: /NL, Hoog Tarief/ }))
+    await waitFor(() => expect(screen.queryByTestId('regel-overstap-chip-btw')).toBeNull())
+  })
+
+  it('zonder spoor (RLZ-administratie of gewoon voorstel) geen overstap-chips', async () => {
+    installFetchMock([regel({ ledger_id: GB_4110, gb_bron: 'geheugen', gb_voorstel_detail: '3× bevestigd' })])
+    renderPanel()
+    expect(await screen.findByTestId('regel-gb-chip')).toBeInTheDocument()
+    expect(screen.queryByTestId('regel-overstap-chip-grootboek')).toBeNull()
+    expect(screen.queryByTestId('regel-overstap-chip-btw')).toBeNull()
   })
 })

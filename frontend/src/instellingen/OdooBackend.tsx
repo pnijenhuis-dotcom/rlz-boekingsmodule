@@ -3,7 +3,6 @@ import type { AdministratieInstellingenDto } from '../api/types'
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, useToastOptioneel } from '../ui/basis'
 import { EersteSyncStatus } from './AdministratieWizard'
 import { InstellingRij } from './AdministratieDetailPagina'
-import { ApiError } from '../api/client'
 import {
   corrigeerOdooMapping,
   haalOdooMappingOp,
@@ -32,6 +31,10 @@ import { datumNl, datumTijdKort, odooHost, odooKoppelFout, odooProbeGroen, OdooP
 function foutTekst(err: unknown): string {
   return err instanceof Error ? err.message : 'Onbekende fout'
 }
+
+/** Slotstuk 04-09 (besluit Peter "geen blokkade"): de overgangsdatum is een KANTELDATUM, geen poort op documenten. */
+export const KANTELDATUM_UITLEG =
+  'Kanteldatum: vanaf deze datum is de administratie op Odoo. Facturen van vóór deze datum die nog binnenkomen boeken óók in Odoo — al in Reeleezee geboekte facturen worden als duplicaat afgevoerd.'
 
 function useOdooStand(administratieId: string, actief: boolean) {
   const [stand, setStand] = useState<OdooStandDto | null>(null)
@@ -132,7 +135,7 @@ export function OdooBackendRijen({ administratie: a, onHerlaad }: { administrati
             )}
           </span>
           {overgangsdatum && (
-            <span className="hint" style={{ margin: 0 }} data-testid="odoo-overgangsdatum">
+            <span className="hint" style={{ margin: 0 }} data-testid="odoo-overgangsdatum" title={KANTELDATUM_UITLEG}>
               overgestapt per {datumNl(overgangsdatum)}
               {rlzVoorOverstap ? ` (voorheen RLZ-id ${rlzVoorOverstap})` : ''}
               {/* C1 (04-09): alleen bij een overstap (volledige backend mét overgangsdatum). */}
@@ -216,19 +219,21 @@ export function OdooBackendRijen({ administratie: a, onHerlaad }: { administrati
 
       {/* Blok A 04-09: de bij de overstap bevestigde rekening-mapping (geheugen vertaalt erlangs); correctie per
           rij = nieuwe versie. Een Odoo-administratie zónder RLZ-verleden heeft geen mapping — dan alleen de tekst. */}
-      <InstellingRij titel="Rekening-mapping" uitleg="Vertaling Reeleezee-grootboek/btw → Odoo waarlangs het boekingsgeheugen (en de autoboek-instellingen) ná de overstap blijven werken; correctie per rij, append-only.">
+      <InstellingRij titel="Rekening-mapping" uitleg="Vertaling Reeleezee-grootboek/btw (en optioneel projecten) → Odoo waarlangs het boekingsgeheugen (en de autoboek-instellingen) ná de overstap blijven werken; correctie per rij, append-only.">
         <span className="text-muted" style={{ fontSize: 12.5 }} data-testid="odoo-mapping-stand">
           {mappingFout
             ? `stand niet op te halen: ${mappingFout}`
             : mapping === undefined
               ? 'laden…'
-              : !mapping || (mapping.grootboek.length === 0 && mapping.btw.length === 0)
+              : !mapping || mappingAantal(mapping) === 0
                 ? 'geen mapping — nieuwe Odoo-administratie zonder RLZ-verleden'
                 : `${mapping.grootboek.length} grootboek · ${mapping.btw.length} btw${
-                    mapping.laatst_bevestigd_op ? ` · bevestigd ${datumTijdKort(mapping.laatst_bevestigd_op)}` : ''
-                  }${mapping.laatst_bevestigd_door_naam ? ` door ${mapping.laatst_bevestigd_door_naam}` : ''}`}
+                    (mapping.project?.length ?? 0) > 0 ? ` · ${mapping.project?.length} ${mapping.project?.length === 1 ? 'project' : 'projecten'}` : ''
+                  }${mapping.laatst_bevestigd_op ? ` · bevestigd ${datumTijdKort(mapping.laatst_bevestigd_op)}` : ''}${
+                    mapping.laatst_bevestigd_door_naam ? ` door ${mapping.laatst_bevestigd_door_naam}` : ''
+                  }`}
         </span>
-        {mapping && (mapping.grootboek.length > 0 || mapping.btw.length > 0) && (
+        {mapping && mappingAantal(mapping) > 0 && (
           <Button variant="secundair" maat="klein" disabled={Boolean(a.gearchiveerd_op)} onClick={() => setMappingDialoog(true)} aria-label={`Rekening-mapping bekijken of corrigeren voor ${a.naam}`}>
             Mapping bekijken/corrigeren…
           </Button>
@@ -283,6 +288,10 @@ export function OdooBackendRijen({ administratie: a, onHerlaad }: { administrati
   )
 }
 
+function mappingAantal(m: OdooMappingStandDto): number {
+  return m.grootboek.length + m.btw.length + (m.project?.length ?? 0)
+}
+
 /** Geldende rekening-mapping (GET …/odoo/mapping): `undefined` = nog aan het laden, `null` = geen koppeling (404). */
 function useOdooMapping(administratieId: string, actief: boolean) {
   const [mapping, setMapping] = useState<OdooMappingStandDto | null | undefined>(undefined)
@@ -332,7 +341,7 @@ export function OdooMappingDialog({
     try {
       const nieuw = await corrigeerOdooMapping(administratie.id, rij.soort, rij.rlz_id, odooId)
       onStand(nieuw)
-      const nieuweRij = [...nieuw.grootboek, ...nieuw.btw].find((r) => r.soort === rij.soort && r.rlz_id === rij.rlz_id)
+      const nieuweRij = [...nieuw.grootboek, ...nieuw.btw, ...(nieuw.project ?? [])].find((r) => r.soort === rij.soort && r.rlz_id === rij.rlz_id)
       toast.meld(`Mapping gecorrigeerd${nieuweRij ? ` (v${nieuweRij.versie})` : ''} — ${rij.rlz_code ?? rij.rlz_naam ?? rij.rlz_id} → ${nieuweRij?.odoo_code ?? nieuweRij?.odoo_naam ?? odooId}`, 'ok')
     } catch (err) {
       setFout(foutTekst(err))
@@ -359,7 +368,15 @@ export function OdooMappingDialog({
           voorstellen uit het boekingsgeheugen en wordt als nieuwe versie vastgelegd (eerdere versies blijven in de audit); reeds geboekte
           documenten veranderen niet.
         </DialogDescription>
-        <OdooMappingTabel rijen={rijen} odooGrootboek={stand.odoo_grootboek} odooBtw={stand.odoo_btw} onKies={(rij, id) => void corrigeer(rij, id)} modus="corrigeren" bezigSleutel={bezigSleutel} />
+        <OdooMappingTabel
+          rijen={rijen}
+          odooGrootboek={stand.odoo_grootboek}
+          odooBtw={stand.odoo_btw}
+          odooProjecten={stand.odoo_projecten ?? []}
+          onKies={(rij, id) => void corrigeer(rij, id)}
+          modus="corrigeren"
+          bezigSleutel={bezigSleutel}
+        />
         {fout && (
           <div className="fout" style={{ marginTop: 10 }}>
             {fout}
@@ -382,9 +399,9 @@ export function OdooMappingDialog({
   )
 }
 
-/** C1 (04-09): "Overgangsdatum wijzigen…" → PUT …/odoo/overgangsdatum. De server weigert met 409 zodra er al een
- * Odoo-boeking mét factuurdatum vóór de nieuwe datum bestaat (bericht noemt aantal + oudste boekstuk) — de
- * dialoog toont die servertekst rood en blijft open; 200 = toast + herlaad bij de aanroeper. */
+/** C1 (04-09) + slotstuk 04-09: "Overgangsdatum wijzigen…" → PUT …/odoo/overgangsdatum. De datum is een KANTELDATUM
+ * (besluit Peter "geen blokkade"): geen poort op documenten, dus ook geen 409 meer — altijd 200 mét audit oud→nieuw.
+ * Een serverfout (netwerk, 4xx/5xx) blijft generiek rood zichtbaar en de dialoog blijft open. */
 export function OvergangsdatumDialog({
   administratie,
   huidig,
@@ -399,7 +416,7 @@ export function OvergangsdatumDialog({
   const toast = useToastOptioneel()
   const [datum, setDatum] = useState(huidig)
   const [bezig, setBezig] = useState(false)
-  const [fout, setFout] = useState<{ tekst: string; geblokkeerd: boolean } | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
 
   const opslaan = async () => {
     setBezig(true)
@@ -409,7 +426,7 @@ export function OvergangsdatumDialog({
       toast.meld(`Overgangsdatum gewijzigd naar ${datumNl(datum)}`, 'ok')
       onGewijzigd()
     } catch (err) {
-      setFout({ tekst: foutTekst(err), geblokkeerd: err instanceof ApiError && err.status === 409 })
+      setFout(foutTekst(err))
     } finally {
       setBezig(false)
     }
@@ -420,8 +437,7 @@ export function OvergangsdatumDialog({
       <DialogContent aria-describedby={undefined} data-testid="overgangsdatum-dialoog">
         <DialogTitle>Overgangsdatum — {administratie.naam}</DialogTitle>
         <DialogDescription>
-          Facturen mét factuurdatum vóór deze datum boeken in Reeleezee; vanaf deze datum boekt de administratie in Odoo. De datum kan
-          niet vóór een al in Odoo geboekte factuur komen te liggen — de server weigert dat en noemt het boekstuk. Geauditeerd (oud → nieuw).
+          {KANTELDATUM_UITLEG} De datum is geen poort: verschuiven blokkeert of verplaatst geen boekingen. Geauditeerd (oud → nieuw).
         </DialogDescription>
         <form
           onSubmit={(e) => {
@@ -429,17 +445,12 @@ export function OvergangsdatumDialog({
             void opslaan()
           }}
         >
-          <FormField label="Overgangsdatum" htmlFor="odoo-overgangsdatum-wijzig" hint={`Huidig: ${datumNl(huidig)}`}>
+          <FormField label="Overgangsdatum (kanteldatum)" htmlFor="odoo-overgangsdatum-wijzig" hint={`Huidig: ${datumNl(huidig)}`}>
             <input id="odoo-overgangsdatum-wijzig" type="date" value={datum} onChange={(e) => setDatum(e.target.value)} required />
           </FormField>
           {fout && (
             <div className="fout" data-testid="overgangsdatum-fout">
-              {fout.tekst}
-              {fout.geblokkeerd && (
-                <div className="hint" style={{ marginTop: 4 }}>
-                  Niets gewijzigd — kies een datum op of vóór dat boekstuk, of boek die factuur eerst tegen.
-                </div>
-              )}
+              {fout}
             </div>
           )}
           <DialogFooter>

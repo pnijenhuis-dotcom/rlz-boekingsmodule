@@ -33,9 +33,16 @@ const VOORBEREIDING = {
     { odoo_id: 21, lokaal_id: '22222222-0000-0000-0000-000000000021', naam: '21% inkoop', percentage: '0.21', verlegd: false, synthetisch: false },
     { odoo_id: 0, lokaal_id: '22222222-0000-0000-0000-000000000000', naam: 'Geen btw (0%)', percentage: '0', verlegd: false, synthetisch: true },
   ],
-  telling: { grootboek_totaal: 3, grootboek_met_voorstel: 2, btw_totaal: 1, btw_met_voorstel: 1 },
+  // Slotstuk 04-09 (blok B): één project mét voorstel op nummer, één zonder voorstel (aan te maken), één zonder nummer (vervalt).
+  project: [
+    { rlz_id: 'pr-26127', rlz_naam: '26127 Tilburg (Heijmans)', rlz_nummer: '26127', actief: true, in_gebruik_observaties: 8, in_gebruik_open_regels: 1, voorstel_odoo_id: 31, voorstel_odoo_naam: '[26127] Tilburg (Heijmans)', reden: 'projectnummer', kan_aanmaken: true },
+    { rlz_id: 'pr-26140', rlz_naam: '26140 Breda (BAM)', rlz_nummer: '26140', actief: true, in_gebruik_observaties: 1, in_gebruik_open_regels: 0, voorstel_odoo_id: null, voorstel_odoo_naam: null, reden: null, kan_aanmaken: true },
+    { rlz_id: 'pr-ovh', rlz_naam: 'OVH Overhead', rlz_nummer: null, actief: true, in_gebruik_observaties: 30, in_gebruik_open_regels: 0, voorstel_odoo_id: null, voorstel_odoo_naam: null, reden: null, kan_aanmaken: false },
+  ],
+  odoo_projecten: [{ odoo_id: 31, lokaal_id: '33333333-0000-0000-0000-000000000031', naam: '[26127] Tilburg (Heijmans)', code: '26127' }],
+  telling: { grootboek_totaal: 3, grootboek_met_voorstel: 2, btw_totaal: 1, btw_met_voorstel: 1, project_totaal: 3, project_met_voorstel: 1 },
 }
-const VOORBEREIDING_LEEG = { ...VOORBEREIDING, grootboek: [], btw: [], telling: { grootboek_totaal: 0, grootboek_met_voorstel: 0, btw_totaal: 0, btw_met_voorstel: 0 } }
+const VOORBEREIDING_LEEG = { ...VOORBEREIDING, grootboek: [], btw: [], project: [], telling: { grootboek_totaal: 0, grootboek_met_voorstel: 0, btw_totaal: 0, btw_met_voorstel: 0, project_totaal: 0, project_met_voorstel: 0 } }
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -91,7 +98,24 @@ function installMock(posts: { url: string; body: unknown }[]) {
         if (body?.api_key !== 'leeg' && mapping.grootboek.length + mapping.btw.length < 3) {
           return Promise.resolve(jsonResponse({ detail: { bericht: 'Rekening-mapping onvolledig: 1 grootboekrekening(en) en 0 btw-tarief(en) zonder Odoo-tegenhanger — niets opgeslagen' } }, 422))
         }
-        return Promise.resolve(jsonResponse({ id: ADMIN_ID, naam: 'Universal Steigerbouw B.V.', company_id: 1, probe: PROBE_OK, sync_run_id: 'run-2', sync: {} }, 201))
+        // Slotstuk 04-09: aanmaak-uitkomst per project — één aangemaakt, één overgeslagen mét reden (zichtbaar, nooit stil).
+        const project = (mapping as { project?: { aanmaken: boolean }[] }).project ?? []
+        const aanmaken = project.filter((r) => r.aanmaken).length
+        return Promise.resolve(
+          jsonResponse(
+            {
+              id: ADMIN_ID,
+              naam: 'Universal Steigerbouw B.V.',
+              company_id: 1,
+              probe: PROBE_OK,
+              sync_run_id: 'run-2',
+              sync: {},
+              projecten_aangemaakt: aanmaken,
+              projecten_overgeslagen: aanmaken > 0 ? ['26140 Breda (BAM): Odoo weigerde de aanmaak (HTTP 403 op account.analytic.account) — geen analytic-plan-recht'] : [],
+            },
+            201,
+          ),
+        )
       }
       if (url === `/administraties/${ADMIN_ID}/odoo/leesbron` && init?.method === 'POST') {
         return Promise.resolve(jsonResponse({ groen: true, rapport: { ledgers: 'ok', facturen: 'ok' }, company_naam: 'Universal Steigerbouw', versie: '19.0', lock_dates: {} }, 201))
@@ -198,7 +222,7 @@ describe('OdooKoppelWizard — ingang A (Odoo-tak van "+ Administratie toevoegen
 describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () => {
   const administratie = { id: ADMIN_ID, naam: 'Universal Steigerbouw B.V.' }
 
-  it('koppelvorm VOLLEDIG: overgangsdatum verplicht, "Verder" = POST …/overstap/voorbereiden → mapping-stap mét voorstel vooringevuld; opslaan pas als alles gekozen is; POST …/odoo/overstap draagt de mapping', async () => {
+  it('koppelvorm VOLLEDIG: kanteldatum verplicht, "Verder" = POST …/overstap/voorbereiden → mapping-stap mét voorstel vooringevuld (incl. optioneel projectblok); opslaan pas als grootboek/btw compleet is; POST …/odoo/overstap draagt de mapping mét project-rijen; resultaat toont aangemaakte + overgeslagen projecten', async () => {
     const gebruiker = userEvent.setup()
     const posts: { url: string; body: unknown }[] = []
     installMock(posts)
@@ -215,15 +239,21 @@ describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () =
     expect(screen.queryByRole('button', { name: /Koppeling opslaan/ })).not.toBeInTheDocument()
     const verder = screen.getByRole('button', { name: 'Verder →' })
     expect(verder).toBeDisabled()
-    fireEvent.change(screen.getByLabelText('Overgangsdatum'), { target: { value: '2026-10-01' } })
+    // Slotstuk 04-09: de overgangsdatum is een KANTELDATUM — label + hint zeggen dat nakomers óók in Odoo boeken.
+    expect(screen.getByText(/Facturen van vóór deze datum die nog binnenkomen boeken óók in Odoo/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Overgangsdatum (kanteldatum)'), { target: { value: '2026-10-01' } })
     expect(verder).toBeEnabled()
     fireEvent.click(verder)
 
     // Mapping-stap: voorstel vooringevuld, chips per herkomst, teller, opslaan geblokkeerd tot compleet.
     await waitFor(() => expect(screen.getByTestId('odoo-wizard-mapping')).toBeInTheDocument())
     expect(screen.getByText('Odoo koppelen — Universal Steigerbouw B.V. — stap 4 van 5')).toBeInTheDocument()
+    expect(screen.getByText(/kanteldatum 01-10-2026 · 3 Odoo-rekeningen · 2 Odoo-taxen · 1 Odoo-projecten/)).toBeInTheDocument()
     expect(posts.find((p) => p.url === `/administraties/${ADMIN_ID}/odoo/overstap/voorbereiden`)?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', api_key: 'geheim', company_id: 1 })
+    // Projecten tellen niet mee in de verplichte teller (3 van 4), wél apart.
     expect(screen.getByTestId('odoo-mapping-teller')).toHaveTextContent('3 van 4 gekoppeld')
+    expect(screen.getByTestId('odoo-mapping-projecten-teller')).toHaveTextContent('projecten: 1 van 3 gekoppeld · 2 vervallen')
+    expect(within(screen.getByTestId('odoo-mapping-rij-project:pr-26127')).getByText('projectnummer')).toHaveClass('chip', 'ok')
     expect(within(screen.getByTestId('odoo-mapping-rij-grootboek:gb-4699')).getByText('zelfde code')).toHaveClass('chip', 'ok')
     expect(within(screen.getByTestId('odoo-mapping-rij-grootboek:gb-4808')).getByText('code + 00 — bevestig')).toHaveClass('chip', 'afwijking')
     expect(within(screen.getByTestId('odoo-mapping-rij-grootboek:gb-4808')).getByRole('combobox')).toHaveValue('480800 · Huur materieel')
@@ -237,6 +267,11 @@ describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () =
     await gebruiker.click(screen.getByRole('option', { name: /424000.*Inhuur personeel/ }))
     expect(screen.getByTestId('odoo-mapping-teller')).toHaveTextContent('4 van 4 gekoppeld')
     expect(within(screen.getByTestId('odoo-mapping-rij-grootboek:gb-7000')).getByText('handmatig')).toBeInTheDocument()
+    expect(opslaan).toBeEnabled()
+    // Project 26140 laten aanmaken in Odoo; OVH blijft leeg (vervalt) — beide houden opslaan niet tegen.
+    fireEvent.click(within(screen.getByTestId('odoo-mapping-rij-project:pr-26140')).getByLabelText(/Aanmaken in Odoo: 26140/))
+    expect(within(screen.getByTestId('odoo-mapping-rij-project:pr-26140')).getByText('wordt aangemaakt in Odoo')).toHaveClass('chip', 'handmatig')
+    expect(screen.getByTestId('odoo-mapping-projecten-teller')).toHaveTextContent('projecten: 1 van 3 gekoppeld · 1 wordt aangemaakt · 1 vervalt')
     expect(opslaan).toBeEnabled()
     fireEvent.click(opslaan)
 
@@ -254,9 +289,18 @@ describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () =
           { rlz_id: 'gb-7000', odoo_id: 12 },
         ],
         btw: [{ rlz_id: 'btw-hoog', odoo_id: 21 }],
+        project: [
+          { rlz_id: 'pr-26127', odoo_id: 31, aanmaken: false },
+          { rlz_id: 'pr-26140', odoo_id: null, aanmaken: true },
+        ],
       },
     })
     expect(posts.some((p) => p.url.endsWith('/odoo/leesbron'))).toBe(false)
+    // Resultaat: aantal aangemaakt + de overgeslagen aanmaak mét serverreden, per regel.
+    const projecten = screen.getByTestId('odoo-projecten-resultaat')
+    expect(projecten).toHaveTextContent('1 project aangemaakt in Odoo')
+    expect(screen.getByTestId('odoo-projecten-overgeslagen')).toHaveTextContent('1 project overgeslagen')
+    expect(screen.getByTestId('odoo-projecten-overgeslagen')).toHaveTextContent('26140 Breda (BAM): Odoo weigerde de aanmaak (HTTP 403 op account.analytic.account)')
     fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
     expect(onAfgerond).toHaveBeenCalledTimes(1)
   })
@@ -267,7 +311,7 @@ describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () =
     render(<OdooKoppelDialog administratie={administratie} onSluiten={() => {}} onAfgerond={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
     await vulVerbinding('rood')
-    fireEvent.change(screen.getByLabelText('Overgangsdatum'), { target: { value: '2026-10-01' } })
+    fireEvent.change(screen.getByLabelText('Overgangsdatum (kanteldatum)'), { target: { value: '2026-10-01' } })
     fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
     await waitFor(() => expect(screen.getByText(/Rechten-probe niet groen — niets opgeslagen/)).toBeInTheDocument())
     expect(screen.getByText(/geen schrijfrecht op account.move — geef de API-gebruiker boekhoudrechten in Odoo/)).toBeInTheDocument()
@@ -282,7 +326,7 @@ describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () =
     render(<OdooKoppelDialog administratie={administratie} onSluiten={() => {}} onAfgerond={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
     await vulVerbinding('leeg')
-    fireEvent.change(screen.getByLabelText('Overgangsdatum'), { target: { value: '2026-10-01' } })
+    fireEvent.change(screen.getByLabelText('Overgangsdatum (kanteldatum)'), { target: { value: '2026-10-01' } })
     fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
     await waitFor(() => expect(screen.getByTestId('odoo-mapping-leeg')).toBeInTheDocument())
     expect(screen.getByTestId('odoo-mapping-leeg')).toHaveTextContent('Geen boekingsgeheugen of open regels om te vertalen — mapping niet nodig.')
@@ -290,7 +334,9 @@ describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () =
     expect(opslaan).toBeEnabled()
     fireEvent.click(opslaan)
     await waitFor(() => expect(screen.getByTestId('odoo-wizard-resultaat')).toBeInTheDocument())
-    expect(posts.find((p) => p.url === `/administraties/${ADMIN_ID}/odoo/overstap`)?.body).toMatchObject({ mapping: { grootboek: [], btw: [] } })
+    expect(posts.find((p) => p.url === `/administraties/${ADMIN_ID}/odoo/overstap`)?.body).toMatchObject({ mapping: { grootboek: [], btw: [], project: [] } })
+    // Niets aangemaakt/overgeslagen = geen projectenblok op het resultaat.
+    expect(screen.queryByTestId('odoo-projecten-resultaat')).not.toBeInTheDocument()
   })
 
   it('koppelvorm LEESBRON: knipdatum-stap mét default 2026-09-01, "Koppeling opslaan" = POST …/odoo/leesbron mét knip; resultaat toont de leesprobe', async () => {
@@ -303,7 +349,7 @@ describe('OdooKoppelWizard — ingang B (detailpagina "Odoo koppelen…")', () =
     expect(screen.getByText('Odoo koppelen — Universal Steigerbouw B.V. — stap 2 van 5')).toBeInTheDocument()
     await vulVerbinding()
     // Leesbron: geen overgangsdatum, wél een knipdatum-stap.
-    expect(screen.queryByLabelText('Overgangsdatum')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Overgangsdatum/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Knipdatum kiezen →' }))
     const knip = screen.getByLabelText('Knipdatum voorraad-uitstroom') as HTMLInputElement
     expect(knip.value).toBe(ODOO_KNIP_DEFAULT)

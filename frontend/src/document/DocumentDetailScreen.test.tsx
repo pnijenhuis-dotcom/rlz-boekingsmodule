@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../ui/basis'
-import { DocumentDetailScreen } from './DocumentDetailScreen'
+import { boekdatumVerschovenHint, DocumentDetailScreen } from './DocumentDetailScreen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 const DOCUMENT_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -425,6 +425,38 @@ describe('DocumentDetailScreen — opnieuw extraheren vanaf een geslaagd voorste
     expect(screen.getByTestId('tijdlijn-btw-override')).toHaveTextContent('btw-cent-override')
     expect(screen.getByTestId('tijdlijn-btw-override')).toHaveTextContent('Btw-cent-override toegepast (± € 0,02 per tarief) — zie boeking')
     expect(screen.getByText(/tegenboeking RBILL\/2026\/09\/0002 in Odoo · Reversal · RBILL\/2026\/09\/0002 ↔ BILL\/2026\/09\/0001 — “dubbel”/)).toBeInTheDocument()
+  })
+
+  it('Odoo-slotstuk 04-09 (A2): een GEBOEKT-detail mét `boekdatum_verschoven` krijgt de tijdlijn-hint "Boekdatum verschoven naar … — factuurdatum … valt in een in Odoo afgesloten (aangegeven) periode"', async () => {
+    installFetchMock(
+      detailMet({
+        status: 'geboekt',
+        tijdlijn: [
+          {
+            van_status: 'klaar_om_te_boeken',
+            naar_status: 'geboekt',
+            actor_id: 'x',
+            actor_is_systeem: false,
+            detail: {
+              backend: 'odoo',
+              odoo_naam: 'BILL/2026/01/0001',
+              odoo_company_id: 1,
+              boekdatum_verschoven: { van: '2025-12-15', naar: '2026-01-01', lock_veld: 'tax_lock_date', lock_datum: '2025-12-31', reden: 'Factuurdatum 15-12-2025 valt in een in Odoo afgesloten periode' },
+            },
+            tijdstip: '2026-09-04T20:11:00Z',
+          },
+        ],
+      }),
+    )
+    renderScherm()
+    const hint = await screen.findByTestId('tijdlijn-boekdatum-verschoven')
+    expect(hint).toHaveTextContent('boekdatum verschoven')
+    expect(hint).toHaveTextContent('Boekdatum verschoven naar 01-01-2026 — factuurdatum 15-12-2025 valt in een in Odoo afgesloten (aangegeven) periode (t/m 31-12-2025); factuurdatum ongewijzigd')
+    expect(screen.getByTestId('tijdlijn-geboekt-odoo')).toHaveTextContent('Geboekt in Odoo · BILL/2026/01/0001 (company 1)')
+    // Puur: zonder het veld, of met een kaal object, geen hint.
+    expect(boekdatumVerschovenHint({ backend: 'odoo' })).toBeNull()
+    expect(boekdatumVerschovenHint({ boekdatum_verschoven: { naar: '2026-01-01' } })).toBeNull()
+    expect(boekdatumVerschovenHint(null)).toBeNull()
   })
 
   it('geen knop op een geboekt document, ook al is er een AI-voorstel', async () => {

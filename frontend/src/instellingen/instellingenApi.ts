@@ -401,7 +401,9 @@ export interface OdooCompanyDto {
   al_gekoppeld: boolean
 }
 
-/** Resultaat van koppelen/overstap: probe-rapport + eerste-sync-run (zelfde subrij-patroon als RLZ). */
+/** Resultaat van koppelen/overstap: probe-rapport + eerste-sync-run (zelfde subrij-patroon als RLZ). Slotstuk
+ * 04-09 additief: bij een overstap het aantal in Odoo aangemaakte analytic accounts + de per rij overgeslagen
+ * (mislukte) aanmaak mét reden — zichtbaar, nooit stil. */
 export interface OdooGekoppeldeAdministratieDto {
   id: string
   naam: string
@@ -409,6 +411,11 @@ export interface OdooGekoppeldeAdministratieDto {
   probe: Record<string, string>
   sync_run_id: string | null
   sync: Record<string, { status: string; aangemaakt?: number; bijgewerkt?: number; fout?: string }>
+  projecten_aangemaakt?: number
+  projecten_overgeslagen?: string[]
+  /** Slotstuk 04-09 blok C1 (alleen overstap): open boekvoorstellen mét Reeleezee-rekeningen zijn via de mapping
+   * hervertaald — tellingen voor het resultaatscherm; null/afwezig bij een gewone koppeling. */
+  hervertaling?: { documenten: number; regels: number; vertaald: Record<string, number>; leeg: Record<string, number> } | null
 }
 
 /** Stamgegevens-onderdelen van een Odoo-administratie (geen bankrekeningen — de bank blijft RLZ-domein). */
@@ -467,8 +474,9 @@ export function zetOdooKnipdatum(administratieId: string, voorraadKnipDatum: str
   })
 }
 
-/** C1 (04-09): 409 `{bericht}` als er al een Odoo-boeking vóór de nieuwe datum staat — de aanroeper toont de
- * servertekst (noemt aantal + oudste boekstuk) en laat de dialoog open. */
+/** Overgangsdatum = KANTELDATUM (slotstuk 04-09, besluit Peter "geen blokkade"): vanaf wanneer de administratie
+ * op Odoo is — géén poort op documenten (nakomers van vóór de datum boeken óók in Odoo; al in Reeleezee geboekte
+ * facturen vangt de duplicaatcheck). Altijd 200 mét audit oud→nieuw; de 409 van C1 is vervallen. */
 export function zetOdooOvergangsdatum(administratieId: string, overgangsdatum: string): Promise<OdooStandDto> {
   return apiJson<OdooStandDto>(`/administraties/${administratieId}/odoo/overgangsdatum`, {
     ...PUT_JSON,
@@ -479,10 +487,13 @@ export function zetOdooOvergangsdatum(administratieId: string, overgangsdatum: s
 /* --- Rekening-mapping RLZ → Odoo bij een overstap (blok A 04-09, besluit Peter beslispunt 1) ---------
  * Types lokaal (niet in api/types.ts — afspraak parallelle run). Decimal = string. */
 
-export type OdooMappingSoort = 'grootboek' | 'btw'
+/** `project` (slotstuk 04-09, blok B): RLZ-project ↔ Odoo analytic account — OPTIONEEL per rij (projectplicht is
+ * een aparte boek-check; ongemapt = het project-geheugen begint leeg en een open regel wordt leeg mét reden). */
+export type OdooMappingSoort = 'grootboek' | 'btw' | 'project'
 /** Hoe een mapping-rij tot stand kwam: deterministisch voorstel (`zelfde_code` = groen, `code_verlengd` =
- * RLZ-code + "00", `tarief` = btw-percentage/verlegd) of `handmatig` (mens koos zelf / correctie). */
-export type OdooMappingBron = 'zelfde_code' | 'code_verlengd' | 'tarief' | 'handmatig'
+ * RLZ-code + "00", `tarief` = btw-percentage/verlegd; projecten: `projectnummer` = groen, `projectnaam` = oranje)
+ * of `handmatig` (mens koos zelf / correctie); `aangemaakt` = analytic account bij de overstap in Odoo aangemaakt. */
+export type OdooMappingBron = 'zelfde_code' | 'code_verlengd' | 'tarief' | 'handmatig' | 'projectnummer' | 'projectnaam' | 'aangemaakt'
 
 export interface OdooMappingVoorstelRijDto {
   rlz_id: string
@@ -525,6 +536,29 @@ export interface OdooTariefDto {
   synthetisch: boolean
 }
 
+/** Odoo analytic account (`account.analytic.account`) uit de gesyncte projectcache; `code` = het projectnummer. */
+export interface OdooProjectDto {
+  odoo_id: number
+  lokaal_id: string
+  naam: string
+  code: string | null
+}
+
+/** Projectrij in het overstap-voorstel (blok B): `rlz_nummer` = leidende cijfers van de RLZ-naam ("26127 Tilburg
+ * (Heijmans)" → "26127"); `kan_aanmaken` = nummer aanwezig én analytic plan bekend → "Aanmaken in Odoo" mogelijk. */
+export interface OdooProjectMappingVoorstelRijDto {
+  rlz_id: string
+  rlz_naam: string | null
+  rlz_nummer: string | null
+  actief: boolean | null
+  in_gebruik_observaties: number
+  in_gebruik_open_regels: number
+  voorstel_odoo_id: number | null
+  voorstel_odoo_naam: string | null
+  reden: string | null
+  kan_aanmaken: boolean
+}
+
 export interface OdooOverstapVoorbereidingDto {
   company_naam: string | null
   probe: Record<string, string>
@@ -532,12 +566,31 @@ export interface OdooOverstapVoorbereidingDto {
   btw: OdooBtwMappingVoorstelRijDto[]
   odoo_grootboek: OdooRekeningDto[]
   odoo_btw: OdooTariefDto[]
-  telling: { grootboek_totaal: number; grootboek_met_voorstel: number; btw_totaal: number; btw_met_voorstel: number }
+  /** Projecten (slotstuk 04-09) — additief: ontbreekt bij een server zonder blok B = geen projectblok. */
+  project?: OdooProjectMappingVoorstelRijDto[]
+  odoo_projecten?: OdooProjectDto[]
+  telling: {
+    grootboek_totaal: number
+    grootboek_met_voorstel: number
+    btw_totaal: number
+    btw_met_voorstel: number
+    project_totaal?: number
+    project_met_voorstel?: number
+  }
+}
+
+/** Projectrijen zijn optioneel: alleen gekozen (`odoo_id`) óf aan te maken (`aanmaken: true`, `odoo_id: null`)
+ * rijen reizen mee; een leeg gelaten project reist niet (= vervalt). */
+export interface OdooProjectMappingRijInvoerDto {
+  rlz_id: string
+  odoo_id: number | null
+  aanmaken: boolean
 }
 
 export interface OdooMappingInvoerDto {
   grootboek: { rlz_id: string; odoo_id: number }[]
   btw: { rlz_id: string; odoo_id: number }[]
+  project: OdooProjectMappingRijInvoerDto[]
 }
 
 export interface OdooMappingRijDto {
@@ -560,6 +613,9 @@ export interface OdooMappingStandDto {
   btw: OdooMappingRijDto[]
   odoo_grootboek: OdooRekeningDto[]
   odoo_btw: OdooTariefDto[]
+  /** Projecten (slotstuk 04-09) — additief; ontbreekt bij een oudere server. */
+  project?: OdooMappingRijDto[]
+  odoo_projecten?: OdooProjectDto[]
   laatst_bevestigd_op: string | null
   laatst_bevestigd_door_naam: string | null
 }
@@ -592,7 +648,8 @@ export async function haalOdooMappingOp(administratieId: string): Promise<OdooMa
   }
 }
 
-/** Correctie per rij = nieuwe versie (append-only, bron 'handmatig', audit oud→nieuw); 422 bij onbekend odoo_id. */
+/** Correctie per rij = nieuwe versie (append-only, bron 'handmatig', audit oud→nieuw); 422 bij onbekend odoo_id.
+ * Soort `project` (slotstuk 04-09): odoo_id > 0 verplicht (0 = alleen de synthetische btw-rij). */
 export function corrigeerOdooMapping(administratieId: string, soort: OdooMappingSoort, rlzId: string, odooId: number): Promise<OdooMappingStandDto> {
   return apiJson<OdooMappingStandDto>(`/administraties/${administratieId}/odoo/mapping/${soort}/${rlzId}`, {
     ...PUT_JSON,

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { OdooMappingStandDto, OdooOverstapVoorbereidingDto, OdooRekeningDto, OdooTariefDto } from './instellingenApi'
+import type { OdooMappingStandDto, OdooOverstapVoorbereidingDto, OdooProjectDto, OdooRekeningDto, OdooTariefDto } from './instellingenApi'
 import {
   bronChip,
   btwOpties,
@@ -10,6 +10,10 @@ import {
   mappingInvoer,
   mappingTelling,
   OdooMappingTabel,
+  projectChip,
+  projectNaamDelen,
+  projectOpties,
+  projectTelling,
   rijenUitStand,
   rijenUitVoorbereiding,
   type MappingTabelRij,
@@ -46,17 +50,50 @@ const VOORBEREIDING: OdooOverstapVoorbereidingDto = {
   telling: { grootboek_totaal: 3, grootboek_met_voorstel: 2, btw_totaal: 2, btw_met_voorstel: 1 },
 }
 
-function Harnas({ start, modus, onKies }: { start: MappingTabelRij[]; modus?: 'kiezen' | 'corrigeren'; onKies?: (rij: MappingTabelRij, id: number | null) => void }) {
+/** Slotstuk 04-09 (blok B): projecten — één op nummer (groen), één op naam (oranje), één zonder voorstel mét
+ * aanmaak-mogelijkheid, één zonder nummer (kan niet aanmaken). */
+const ODOO_PROJECTEN: OdooProjectDto[] = [
+  { odoo_id: 31, lokaal_id: '33333333-0000-0000-0000-000000000031', naam: '[26127] Tilburg (Heijmans)', code: '26127' },
+  { odoo_id: 32, lokaal_id: '33333333-0000-0000-0000-000000000032', naam: 'Eindhoven Strijp-S', code: null },
+]
+const VOORBEREIDING_MET_PROJECTEN: OdooOverstapVoorbereidingDto = {
+  ...VOORBEREIDING,
+  project: [
+    { rlz_id: 'pr-26127', rlz_naam: '26127 Tilburg (Heijmans)', rlz_nummer: '26127', actief: true, in_gebruik_observaties: 8, in_gebruik_open_regels: 1, voorstel_odoo_id: 31, voorstel_odoo_naam: '[26127] Tilburg (Heijmans)', reden: 'projectnummer', kan_aanmaken: true },
+    { rlz_id: 'pr-26130', rlz_naam: '26130 Eindhoven Strijp-S', rlz_nummer: '26130', actief: true, in_gebruik_observaties: 2, in_gebruik_open_regels: 0, voorstel_odoo_id: 32, voorstel_odoo_naam: 'Eindhoven Strijp-S', reden: 'projectnaam', kan_aanmaken: true },
+    { rlz_id: 'pr-26140', rlz_naam: '26140 Breda (BAM)', rlz_nummer: '26140', actief: false, in_gebruik_observaties: 1, in_gebruik_open_regels: 0, voorstel_odoo_id: null, voorstel_odoo_naam: null, reden: null, kan_aanmaken: true },
+    { rlz_id: 'pr-ovh', rlz_naam: 'OVH Overhead', rlz_nummer: null, actief: true, in_gebruik_observaties: 30, in_gebruik_open_regels: 0, voorstel_odoo_id: null, voorstel_odoo_naam: null, reden: null, kan_aanmaken: false },
+  ],
+  odoo_projecten: ODOO_PROJECTEN,
+  telling: { ...VOORBEREIDING.telling, project_totaal: 4, project_met_voorstel: 2 },
+}
+
+function Harnas({
+  start,
+  modus,
+  onKies,
+  onAanmaken,
+}: {
+  start: MappingTabelRij[]
+  modus?: 'kiezen' | 'corrigeren'
+  onKies?: (rij: MappingTabelRij, id: number | null) => void
+  onAanmaken?: (rij: MappingTabelRij, aanmaken: boolean) => void
+}) {
   const [rijen, setRijen] = useState(start)
   return (
     <OdooMappingTabel
       rijen={rijen}
       odooGrootboek={ODOO_GB}
       odooBtw={ODOO_BTW}
+      odooProjecten={ODOO_PROJECTEN}
       modus={modus}
       onKies={(rij, id) => {
         onKies?.(rij, id)
-        setRijen((h) => h.map((r) => (r.rlz_id === rij.rlz_id ? { ...r, odoo_id: id, bron: id == null ? null : 'handmatig' } : r)))
+        setRijen((h) => h.map((r) => (r.rlz_id === rij.rlz_id ? { ...r, odoo_id: id, bron: id == null ? null : 'handmatig', aanmaken: false } : r)))
+      }}
+      onAanmaken={(rij, aanmaken) => {
+        onAanmaken?.(rij, aanmaken)
+        setRijen((h) => h.map((r) => (r.rlz_id === rij.rlz_id ? { ...r, odoo_id: aanmaken ? null : r.odoo_id, bron: aanmaken ? null : r.bron, aanmaken } : r)))
       }}
     />
   )
@@ -81,6 +118,7 @@ describe('OdooMappingTabel — helpers (puur)', () => {
         { rlz_id: 'gb-4808', odoo_id: 11 },
       ],
       btw: [{ rlz_id: 'btw-hoog', odoo_id: 21 }],
+      project: [],
     })
     expect(mappingTelling(rijen)).toEqual({ gekozen: 3, totaal: 5 })
     expect(mappingCompleet(rijen)).toBe(false)
@@ -229,5 +267,151 @@ describe('OdooMappingTabel — weergave en keuze', () => {
     await gebruiker.click(within(rij4699).getByRole('combobox'))
     await gebruiker.click(screen.getByRole('option', { name: /480800.*Huur materieel/ }))
     expect(onKies).toHaveBeenCalledWith(expect.objectContaining({ rlz_id: 'gb-4699', odoo_id: 13 }), 11)
+  })
+})
+
+describe('OdooMappingTabel — projecten (slotstuk 04-09, blok B: optioneel derde blok)', () => {
+  it('rijenUitVoorbereiding zet projectrijen achteraan mét nummer/kan_aanmaken; leeg voorstel = geen bron; oudere server zonder `project` = geen projectrijen', () => {
+    const rijen = rijenUitVoorbereiding(VOORBEREIDING_MET_PROJECTEN)
+    expect(rijen).toHaveLength(9)
+    expect(rijen[5]).toMatchObject({ soort: 'project', rlz_id: 'pr-26127', rlz_nummer: '26127', kan_aanmaken: true, aanmaken: false, odoo_id: 31, bron: 'projectnummer' })
+    expect(rijen[6]).toMatchObject({ soort: 'project', odoo_id: 32, bron: 'projectnaam' })
+    expect(rijen[7]).toMatchObject({ soort: 'project', odoo_id: null, bron: null, actief: false })
+    expect(rijen[8]).toMatchObject({ soort: 'project', rlz_nummer: null, kan_aanmaken: false })
+    expect(rijenUitVoorbereiding(VOORBEREIDING).filter((r) => r.soort === 'project')).toHaveLength(0)
+  })
+
+  it('projectrijen tellen NIET mee in mappingCompleet/mappingTelling, wél in projectTelling (gekoppeld · aanmaken · vervalt)', () => {
+    const rijen = rijenUitVoorbereiding(VOORBEREIDING_MET_PROJECTEN).map((r) => (r.soort !== 'project' && r.odoo_id == null ? { ...r, odoo_id: 12 } : r))
+    expect(mappingTelling(rijen)).toEqual({ gekozen: 5, totaal: 5 })
+    expect(mappingCompleet(rijen)).toBe(true)
+    expect(projectTelling(rijen)).toEqual({ gekoppeld: 2, aanmaken: 0, vervalt: 2, totaal: 4 })
+    const metAanmaken = rijen.map((r) => (r.rlz_id === 'pr-26140' ? { ...r, aanmaken: true } : r))
+    expect(projectTelling(metAanmaken)).toEqual({ gekoppeld: 2, aanmaken: 1, vervalt: 1, totaal: 4 })
+    // Alleen projectrijen, geen grootboek/btw = compleet (niets verplicht open).
+    expect(mappingCompleet(rijen.filter((r) => r.soort === 'project'))).toBe(true)
+  })
+
+  it('mappingInvoer: gekozen project → {odoo_id, aanmaken:false}, aanmaken → {odoo_id:null, aanmaken:true}, leeg reist niet (vervalt)', () => {
+    const rijen = rijenUitVoorbereiding(VOORBEREIDING_MET_PROJECTEN).map((r) => (r.rlz_id === 'pr-26140' ? { ...r, aanmaken: true } : r))
+    expect(mappingInvoer(rijen).project).toEqual([
+      { rlz_id: 'pr-26127', odoo_id: 31, aanmaken: false },
+      { rlz_id: 'pr-26130', odoo_id: 32, aanmaken: false },
+      { rlz_id: 'pr-26140', odoo_id: null, aanmaken: true },
+    ])
+  })
+
+  it('projectChip: groen projectnummer · oranje projectnaam — bevestig · neutraal handmatig/aangemaakt · neutraal "geen — project vervalt" · neutraal "wordt aangemaakt in Odoo" (status, geen actie-kleur)', () => {
+    expect(projectChip({ bron: 'projectnummer', odoo_id: 31, aanmaken: false })).toEqual({ klasse: 'chip ok', tekst: 'projectnummer' })
+    expect(projectChip({ bron: 'projectnaam', odoo_id: 32, aanmaken: false })).toEqual({ klasse: 'chip afwijking', tekst: 'projectnaam — bevestig' })
+    expect(projectChip({ bron: 'handmatig', odoo_id: 32, aanmaken: false })).toEqual({ klasse: 'chip handmatig', tekst: 'handmatig' })
+    expect(projectChip({ bron: 'aangemaakt', odoo_id: 33, aanmaken: false })).toEqual({ klasse: 'chip handmatig', tekst: 'aangemaakt in Odoo' })
+    expect(projectChip({ bron: null, odoo_id: null, aanmaken: false })).toEqual({ klasse: 'chip handmatig', tekst: 'geen — project vervalt' })
+    expect(projectChip({ bron: null, odoo_id: null, aanmaken: true })).toEqual({ klasse: 'chip handmatig', tekst: 'wordt aangemaakt in Odoo' })
+    // De grootboek/btw-chip blijft rood "kies" bij leeg — projecten niet.
+    expect(bronChip(null, null)).toEqual({ klasse: 'chip blokkerend', tekst: 'kies' })
+  })
+
+  it('projectOpties: code = projectnummer, "[code] "-prefix uit de Odoo-naam gestript; projectNaamDelen splitst nummer/rest', () => {
+    expect(projectOpties(ODOO_PROJECTEN)).toEqual([
+      { id: '31', code: '26127', label: 'Tilburg (Heijmans)' },
+      { id: '32', label: 'Eindhoven Strijp-S' },
+    ])
+    expect(projectNaamDelen('26127 Tilburg (Heijmans)', '26127')).toEqual({ nummer: '26127', rest: 'Tilburg (Heijmans)' })
+    expect(projectNaamDelen('OVH Overhead', null)).toEqual({ nummer: null, rest: 'OVH Overhead' })
+    expect(projectNaamDelen(null, '26140')).toEqual({ nummer: '26140', rest: '' })
+  })
+
+  it('weergave: blok "Projecten (4)", nummer vet, chips per herkomst, lege rij zonder rode rand + "geen — project vervalt", "Aanmaken in Odoo" alleen bij kan_aanmaken; kop-teller telt projecten apart', async () => {
+    const gebruiker = userEvent.setup()
+    const onAanmaken = vi.fn()
+    const onKies = vi.fn()
+    render(<Harnas start={rijenUitVoorbereiding(VOORBEREIDING_MET_PROJECTEN)} onAanmaken={onAanmaken} onKies={onKies} />)
+    expect(screen.getByRole('heading', { name: 'Projecten (4)' })).toBeInTheDocument()
+    // Verplichte teller ongewijzigd (3 van 5), projecten als eigen fragment.
+    expect(screen.getByTestId('odoo-mapping-teller')).toHaveTextContent('3 van 5 gekoppeld')
+    expect(screen.getByTestId('odoo-mapping-projecten-teller')).toHaveTextContent('projecten: 2 van 4 gekoppeld · 2 vervallen')
+
+    const rij26127 = screen.getByTestId('odoo-mapping-rij-project:pr-26127')
+    expect(within(rij26127).getByText('26127').tagName).toBe('B')
+    expect(rij26127).toHaveTextContent('Tilburg (Heijmans)')
+    expect(rij26127).toHaveTextContent('in gebruik: 8× geheugen · 1 open regel')
+    expect(within(rij26127).getByRole('combobox')).toHaveValue('26127 · Tilburg (Heijmans)')
+    expect(within(rij26127).getByText('projectnummer')).toHaveClass('chip', 'ok')
+    expect(within(rij26127).getByLabelText(/Aanmaken in Odoo: 26127/)).toBeInTheDocument()
+
+    expect(within(screen.getByTestId('odoo-mapping-rij-project:pr-26130')).getByText('projectnaam — bevestig')).toHaveClass('chip', 'afwijking')
+
+    const rij26140 = screen.getByTestId('odoo-mapping-rij-project:pr-26140')
+    expect(within(rij26140).getByText('geen — project vervalt')).toHaveClass('chip', 'handmatig')
+    expect(within(rij26140).queryByText('kies')).not.toBeInTheDocument()
+    expect(within(rij26140).getByRole('combobox')).not.toHaveAttribute('aria-invalid', 'true')
+    expect(rij26140).toHaveTextContent('niet actief')
+
+    const rijOvh = screen.getByTestId('odoo-mapping-rij-project:pr-ovh')
+    expect(within(rijOvh).queryByLabelText(/Aanmaken in Odoo/)).not.toBeInTheDocument()
+    expect(within(rijOvh).getByText('geen — project vervalt')).toBeInTheDocument()
+
+    // Aanmaken aan: combobox weg, neutrale status-chip, teller "1 wordt aangemaakt"; uit = terug naar leeg.
+    fireEvent.click(within(rij26140).getByLabelText(/Aanmaken in Odoo: 26140/))
+    expect(onAanmaken).toHaveBeenCalledWith(expect.objectContaining({ soort: 'project', rlz_id: 'pr-26140' }), true)
+    const rij26140Nieuw = screen.getByTestId('odoo-mapping-rij-project:pr-26140')
+    expect(within(rij26140Nieuw).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(within(rij26140Nieuw).getByText('wordt aangemaakt in Odoo')).toHaveClass('chip', 'handmatig')
+    expect(within(rij26140Nieuw).getByTestId('odoo-mapping-aanmaken-tekst-project:pr-26140')).toHaveTextContent('nieuw analytic account 26140 Breda (BAM)')
+    expect(screen.getByTestId('odoo-mapping-projecten-teller')).toHaveTextContent('projecten: 2 van 4 gekoppeld · 1 wordt aangemaakt · 1 vervalt')
+    // Verplichte opslaan-poort blijft onaangeraakt door projecten.
+    expect(screen.getByTestId('odoo-mapping-teller')).toHaveTextContent('3 van 5 gekoppeld')
+
+    // Handmatig een bestaand Odoo-project kiezen voor OVH → chip handmatig, teller 3 van 4.
+    await gebruiker.click(within(rijOvh).getByRole('combobox'))
+    await gebruiker.click(screen.getByRole('option', { name: /Eindhoven Strijp-S/ }))
+    expect(onKies).toHaveBeenLastCalledWith(expect.objectContaining({ soort: 'project', rlz_id: 'pr-ovh' }), 32)
+    expect(within(screen.getByTestId('odoo-mapping-rij-project:pr-ovh')).getByText('handmatig')).toHaveClass('chip', 'handmatig')
+    expect(screen.getByTestId('odoo-mapping-projecten-teller')).toHaveTextContent('projecten: 3 van 4 gekoppeld · 1 wordt aangemaakt')
+  })
+
+  it('filter "alleen nog te kiezen" houdt lege projectrijen zichtbaar (alsnog koppelen/aanmaken) maar verbergt gekoppelde en aan te maken', () => {
+    const rijen = rijenUitVoorbereiding(VOORBEREIDING_MET_PROJECTEN).map((r) => (r.rlz_id === 'pr-26140' ? { ...r, aanmaken: true } : r))
+    render(<Harnas start={rijen} />)
+    fireEvent.click(screen.getByLabelText('Alleen nog te kiezen'))
+    expect(screen.queryByTestId('odoo-mapping-rij-project:pr-26127')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('odoo-mapping-rij-project:pr-26140')).not.toBeInTheDocument()
+    expect(screen.getByTestId('odoo-mapping-rij-project:pr-ovh')).toBeInTheDocument()
+  })
+
+  it('corrigeer-modus: projectblok mét geldende rijen (bron aangemaakt = neutraal), geen aanmaak-checkbox, keuze meldt door (PUT soort project bij de aanroeper); oudere stand zonder `project` = geen blok', async () => {
+    const gebruiker = userEvent.setup()
+    const onKies = vi.fn()
+    const stand: OdooMappingStandDto = {
+      grootboek: [],
+      btw: [],
+      project: [
+        { soort: 'project', rlz_id: 'pr-26127', rlz_code: '26127', rlz_naam: '26127 Tilburg (Heijmans)', odoo_id: 31, odoo_code: '26127', odoo_naam: '[26127] Tilburg (Heijmans)', bron: 'projectnummer', versie: 1, bevestigd_op: '2026-09-04T10:00:00Z', bevestigd_door_naam: 'Peter' },
+        { soort: 'project', rlz_id: 'pr-26140', rlz_code: '26140', rlz_naam: '26140 Breda (BAM)', odoo_id: 33, odoo_code: '26140', odoo_naam: '[26140] 26140 Breda (BAM)', bron: 'aangemaakt', versie: 1, bevestigd_op: '2026-09-04T10:00:00Z', bevestigd_door_naam: 'Peter' },
+      ],
+      odoo_grootboek: ODOO_GB,
+      odoo_btw: ODOO_BTW,
+      odoo_projecten: ODOO_PROJECTEN,
+      laatst_bevestigd_op: '2026-09-04T10:00:00Z',
+      laatst_bevestigd_door_naam: 'Peter',
+    }
+    const rijen = rijenUitStand(stand)
+    expect(rijen).toHaveLength(2)
+    expect(rijen[0]).toMatchObject({ soort: 'project', rlz_nummer: '26127', odoo_id: 31, bron: 'projectnummer', versie: 1 })
+    render(<Harnas start={rijen} modus="corrigeren" onKies={onKies} />)
+    expect(screen.getByRole('heading', { name: 'Projecten (2)' })).toBeInTheDocument()
+    expect(screen.getByTestId('odoo-mapping-teller')).toHaveTextContent('geen grootboek of btw te vertalen')
+    expect(screen.queryByLabelText(/Aanmaken in Odoo/)).not.toBeInTheDocument()
+    const rij26140 = screen.getByTestId('odoo-mapping-rij-project:pr-26140')
+    expect(within(rij26140).getByText('aangemaakt in Odoo')).toHaveClass('chip', 'handmatig')
+    await gebruiker.click(within(screen.getByTestId('odoo-mapping-rij-project:pr-26127')).getByRole('combobox'))
+    await gebruiker.click(screen.getByRole('option', { name: /Eindhoven Strijp-S/ }))
+    expect(onKies).toHaveBeenCalledWith(expect.objectContaining({ soort: 'project', rlz_id: 'pr-26127', odoo_id: 31 }), 32)
+
+    const { project: _weg, odoo_projecten: _weg2, ...zonderProject } = stand
+    void _weg
+    void _weg2
+    expect(rijenUitStand({ ...zonderProject, grootboek: [{ soort: 'grootboek', rlz_id: 'gb-4699', rlz_code: '4699', rlz_naam: 'Diverse', odoo_id: 13, odoo_code: '4699', odoo_naam: 'Diverse', bron: 'zelfde_code', versie: 1, bevestigd_op: '2026-09-04T10:00:00Z', bevestigd_door_naam: 'Peter' }] })).toHaveLength(1)
   })
 })

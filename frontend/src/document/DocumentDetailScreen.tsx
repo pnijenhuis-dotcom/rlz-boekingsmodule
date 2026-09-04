@@ -84,6 +84,24 @@ function formatDatumKort(iso: string): string {
   return new Date(iso).toLocaleDateString('nl-NL', { dateStyle: 'medium' })
 }
 
+/** ISO-datum "2026-01-01" → "01-01-2026" (kalenderdatum, geen tijdzone — zelfde vorm als de boekstuk-teksten). */
+function datumDdMmJjjj(iso: unknown): string {
+  if (typeof iso !== 'string') return '—'
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : iso
+}
+
+/** Slotstuk 04-09 (A2): GEBOEKT-detail `boekdatum_verschoven {van, naar, lock_veld, lock_datum, reden}` → één leesbare hint. */
+export function boekdatumVerschovenHint(detail: Record<string, unknown> | null | undefined): string | null {
+  const info = detail?.boekdatum_verschoven
+  if (!info || typeof info !== 'object') return null
+  const o = info as Record<string, unknown>
+  if (typeof o.naar !== 'string' || typeof o.van !== 'string') return null
+  return `Boekdatum verschoven naar ${datumDdMmJjjj(o.naar)} — factuurdatum ${datumDdMmJjjj(o.van)} valt in een in Odoo afgesloten (aangegeven) periode${
+    typeof o.lock_datum === 'string' ? ` (t/m ${datumDdMmJjjj(o.lock_datum)})` : ''
+  }; factuurdatum ongewijzigd`
+}
+
 function veldnaam(sleutel: string): string {
   const namen: Record<string, string> = {
     factuurnummer: 'Factuurnummer',
@@ -1428,6 +1446,11 @@ export function DocumentDetailScreen() {
                           Geboekt in Odoo
                           {typeof g.detail.odoo_naam === 'string' && g.detail.odoo_naam ? ` · ${g.detail.odoo_naam}` : ''}
                           {g.detail.odoo_company_id != null ? ` (company ${String(g.detail.odoo_company_id)})` : ''}
+                        </div>
+                      )}
+                      {g.detail && g.naar_status === 'geboekt' && boekdatumVerschovenHint(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--orange)' }} data-testid="tijdlijn-boekdatum-verschoven">
+                          <span className="chip afwijking">boekdatum verschoven</span> {boekdatumVerschovenHint(g.detail)}
                         </div>
                       )}
                       {g.detail && Array.isArray(g.detail.btw_override) && g.detail.btw_override.length > 0 && (
